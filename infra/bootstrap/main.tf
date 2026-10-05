@@ -186,6 +186,13 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = ["arn:aws:cognito-idp:${local.region}:${local.account}:userpool/*"]
       },
       {
+        # Looked up by domain name, so it has no resource-level scoping.
+        Sid      = "CognitoDomainLookup"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:DescribeUserPoolDomain"]
+        Resource = ["*"]
+      },
+      {
         Sid      = "Dsql"
         Effect   = "Allow"
         Action   = ["dsql:*"]
