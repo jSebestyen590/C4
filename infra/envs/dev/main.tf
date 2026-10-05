@@ -8,7 +8,6 @@ terraform {
     bucket       = "c4-terraform-state-189575358537"
     key          = "envs/dev/terraform.tfstate"
     region       = "eu-central-1"
-    profile      = "C4"
     use_lockfile = true
   }
 }
@@ -16,7 +15,6 @@ terraform {
 provider "aws" {
   region              = "eu-central-1"
   allowed_account_ids = ["189575358537"]
-  profile             = "C4"
   default_tags {
     tags = { Project = "c4", Environment = "dev", ManagedBy = "terraform" }
   }
@@ -26,7 +24,6 @@ provider "aws" {
   alias               = "us_east_1"
   region              = "us-east-1"
   allowed_account_ids = ["189575358537"]
-  profile             = "C4"
   default_tags {
     tags = { Project = "c4", Environment = "dev", ManagedBy = "terraform" }
   }

@@ -17,9 +17,12 @@ provider "aws" {
   }
 }
 
+# The repository is configured with immutable ids in its OIDC subject claim
+# (repo:<owner>@<owner_id>/<repo>@<repo_id>:...), not the default repo:<owner>/<repo>:... form.
 variable "github_repo" {
-  type    = string
-  default = "jSebestyen590/C4"
+  type        = string
+  default     = "jSebestyen590@26395410/C4@1395447517"
+  description = "Repository as it appears in the OIDC sub claim."
 }
 
 variable "envs" {
