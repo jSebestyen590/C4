@@ -225,6 +225,22 @@ resource "aws_iam_role_policy" "deploy" {
         ]
       },
       {
+        # API Gateway access logging calls the CloudWatch Logs delivery APIs as the caller; these
+        # actions do not support resource-level permissions.
+        Sid    = "LogDeliveryForApiGateway"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+        ]
+        Resource = ["*"]
+      },
+      {
         Sid    = "ApiGateway"
         Effect = "Allow"
         Action = ["apigateway:*"]
