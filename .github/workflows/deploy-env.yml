@@ -1,0 +1,67 @@
+name: Deploy environment
+on:
+  workflow_call:
+    inputs:
+      env:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The GitHub Environment named like the env; configure required reviewers on "prod".
+    environment: ${{ inputs.env }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: hashicorp/setup-terraform@v4
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::189575358537:role/c4-${{ inputs.env }}-deploy
+          aws-region: eu-central-1
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Terraform apply
+        working-directory: infra/envs/${{ inputs.env }}
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+          terraform output -json app > ../../../app-outputs.json
+
+      - name: Publish web build
+        run: |
+          BUCKET=$(jq -r .web_bucket app-outputs.json)
+          DIST=$(jq -r .distribution_id app-outputs.json)
+          # Hashed assets are immutable; index.html must always be revalidated.
+          aws s3 sync packages/web/dist "s3://$BUCKET/app" --delete \
+            --exclude config.json --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp packages/web/dist/index.html "s3://$BUCKET/app/index.html" \
+            --cache-control "no-cache" --content-type text/html
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app/index.html" "/app/config.json"
+
+      - name: Migrate database
+        run: |
+          export DSQL_ENDPOINT=$(jq -r .dsql_endpoint app-outputs.json)
+          export USER_POOL_ID=$(jq -r .user_pool_id app-outputs.json)
+          export CLIENT_ID=$(jq -r .client_id app-outputs.json)
+          export AWS_REGION=eu-central-1
+          pnpm db:migrate
+
+      - name: Smoke test
+        run: |
+          URL=$(jq -r .url app-outputs.json)
+          HOST=$(jq -r .cloudfront_domain app-outputs.json)
+          # Custom hostnames may not resolve yet (manual DNS); always test the cloudfront.net URL.
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 "https://$HOST/api/health"

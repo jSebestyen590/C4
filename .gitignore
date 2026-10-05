@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.terraform
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.zip
+.DS_Store
+.build
+infra/**/terraform.tfstate*
+packages/web/public/config.json
+app-outputs.json

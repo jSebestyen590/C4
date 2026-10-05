@@ -1,0 +1,6 @@
+{
+  "region": "eu-central-1",
+  "userPoolId": "REPLACE_ME",
+  "clientId": "REPLACE_ME",
+  "cognitoDomain": "REPLACE_ME.auth.eu-central-1.amazoncognito.com"
+}

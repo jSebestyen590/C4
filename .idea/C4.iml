@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/infra/bootstrap/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/infra/envs/dev/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/infra/envs/prod/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/infra/local-db/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/infra/modules/app/.terraform" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
