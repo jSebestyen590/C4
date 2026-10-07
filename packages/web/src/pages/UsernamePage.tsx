@@ -1,3 +1,4 @@
+import { Button, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -15,8 +16,8 @@ export function UsernamePage() {
   const save = useMutation({
     mutationFn: async (value: string) => api.me.username.$put({ json: { username: value } }),
     onSuccess: async (res) => {
-      if (res.status === 409) return setError('That username is already taken.');
-      if (!res.ok) return setError('Could not save the username.');
+      if (res.status === 409) return setError('Dieser Benutzername ist bereits vergeben.');
+      if (!res.ok) return setError('Der Benutzername konnte nicht gespeichert werden.');
       await qc.invalidateQueries({ queryKey: ['me'] });
       navigate('/');
     },
@@ -26,29 +27,32 @@ export function UsernamePage() {
     e.preventDefault();
     setError(null);
     const parsed = setUsernameSchema.safeParse({ username });
-    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? 'Invalid username');
+    if (!parsed.success)
+      return setError(parsed.error.issues[0]?.message ?? 'Ungültiger Benutzername');
     save.mutate(parsed.data.username);
   };
 
   return (
-    <>
-      <h1>Choose your username</h1>
-      <p>
-        You can sign in with this name or with your email address.
-        {me.data?.preferredUsername && ` Current: ${me.data.preferredUsername}`}
-      </p>
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8 }}>
-        <input
+    <form onSubmit={onSubmit} noValidate>
+      <Stack maw={420}>
+        <Title order={2}>Benutzernamen wählen</Title>
+        <Text>
+          Du kannst dich mit diesem Namen oder mit deiner E-Mail-Adresse anmelden.
+          {me.data?.preferredUsername && ` Aktuell: ${me.data.preferredUsername}`}
+        </Text>
+        <TextInput
           required
-          placeholder="username"
+          label="Benutzername"
+          autoCapitalize="none"
+          autoCorrect="off"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => setUsername(e.currentTarget.value)}
+          error={error}
         />
-        <button type="submit" disabled={save.isPending}>
-          Save
-        </button>
-      </form>
-      {error && <p>{error}</p>}
-    </>
+        <Button type="submit" loading={save.isPending} fullWidth>
+          Speichern
+        </Button>
+      </Stack>
+    </form>
   );
 }

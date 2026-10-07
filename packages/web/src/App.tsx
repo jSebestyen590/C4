@@ -1,8 +1,10 @@
+import { Alert, Container, Loader } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { AppConfig, Permission } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { AdminPage } from './pages/AdminPage';
 import { CallbackPage } from './pages/CallbackPage';
@@ -16,9 +18,14 @@ function Protected({
   const { user, can, login } = useAuth();
   if (!user) {
     void login();
-    return <p>Redirecting to sign-in…</p>;
+    return <Loader m="md" aria-label="Weiterleitung zur Anmeldung" />;
   }
-  if (permission && !can(permission)) return <p>You are not allowed to view this page.</p>;
+  if (permission && !can(permission))
+    return (
+      <Alert color="red" title="Kein Zugriff">
+        Du darfst diese Seite nicht ansehen.
+      </Alert>
+    );
   return <>{children}</>;
 }
 
@@ -32,21 +39,9 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
 }
 
 export function App({ config }: Readonly<{ config: AppConfig }>) {
-  const { user, can, logout } = useAuth();
   return (
-    <>
-      <nav style={{ display: 'flex', gap: 16, padding: 12 }}>
-        <Link to="/">Home</Link>
-        {can('users:manage') && <Link to="/admin">Admin</Link>}
-        <span style={{ marginLeft: 'auto' }}>
-          {user ? (
-            <button type="button" onClick={logout}>
-              Sign out
-            </button>
-          ) : null}
-        </span>
-      </nav>
-      <main style={{ padding: 12 }}>
+    <AppLayout>
+      <Container size="md" p={0}>
         <Routes>
           <Route path="/auth/callback" element={<CallbackPage config={config} />} />
           <Route
@@ -79,7 +74,7 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </main>
-    </>
+      </Container>
+    </AppLayout>
   );
 }

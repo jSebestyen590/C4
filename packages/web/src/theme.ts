@@ -1,0 +1,24 @@
+import {
+  Button,
+  Checkbox,
+  Chip,
+  createTheme,
+  PasswordInput,
+  Select,
+  TextInput,
+} from '@mantine/core';
+
+// Mobile first: "md" inputs/buttons give >= 44px tap targets and a 16px font (iOS Safari zooms
+// into inputs with a smaller font on focus).
+export const theme = createTheme({
+  primaryColor: 'indigo',
+  defaultRadius: 'md',
+  components: {
+    Button: Button.extend({ defaultProps: { size: 'md' } }),
+    TextInput: TextInput.extend({ defaultProps: { size: 'md' } }),
+    PasswordInput: PasswordInput.extend({ defaultProps: { size: 'md' } }),
+    Select: Select.extend({ defaultProps: { size: 'md' } }),
+    Checkbox: Checkbox.extend({ defaultProps: { size: 'md' } }),
+    Chip: Chip.extend({ defaultProps: { size: 'md' } }),
+  },
+});

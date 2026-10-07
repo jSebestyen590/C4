@@ -4,8 +4,18 @@ import { useAuth } from './auth';
 
 /** Typed API client; the Authorization header is read lazily so it always carries the current token. */
 export function useApi() {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, refreshAccessToken } = useAuth();
   return hc<AppType>('/', {
+    // On 401 (token expired between renewals) renew once and retry.
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const res = await fetch(input, init);
+      if (res.status !== 401) return res;
+      const token = await refreshAccessToken();
+      if (!token) return res;
+      const headers = new Headers(init?.headers);
+      headers.set('authorization', `Bearer ${token}`);
+      return fetch(input, { ...init, headers });
+    },
     headers: () => {
       const token = getAccessToken();
       return token ? { authorization: `Bearer ${token}` } : ({} as Record<string, string>);
