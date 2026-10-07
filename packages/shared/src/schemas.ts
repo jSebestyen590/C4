@@ -24,7 +24,7 @@ export type AdminUser = z.infer<typeof adminUserSchema>;
 /** Login name (Cognito preferred_username alias): must not look like an email address. */
 export const usernameSchema = z
   .string()
-  .regex(/^[A-Za-z0-9._-]{3,64}$/, 'Use 3-64 letters, digits, . _ -');
+  .regex(/^[A-Za-z0-9._-]{3,64}$/, 'Verwende 3–64 Zeichen: Buchstaben, Ziffern, . _ -');
 
 export const setUsernameSchema = z.object({ username: usernameSchema });
 export type SetUsernameInput = z.infer<typeof setUsernameSchema>;

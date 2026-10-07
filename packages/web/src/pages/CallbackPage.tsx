@@ -1,3 +1,4 @@
+import { Alert, Group, Loader, Text } from '@mantine/core';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AppConfig } from '@c4/shared';
@@ -20,5 +21,14 @@ export function CallbackPage({ config }: Readonly<{ config: AppConfig }>) {
       .catch((e: unknown) => setError(String(e)));
   }, [config, navigate]);
 
-  return error ? <p>Sign-in failed: {error}</p> : <p>Signing in…</p>;
+  return error ? (
+    <Alert color="red" title="Anmeldung fehlgeschlagen">
+      {error}
+    </Alert>
+  ) : (
+    <Group>
+      <Loader size="sm" />
+      <Text>Anmeldung läuft…</Text>
+    </Group>
+  );
 }

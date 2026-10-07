@@ -76,6 +76,11 @@ resource "aws_cognito_user_pool_client" "web" {
   access_token_validity                = 60
   id_token_validity                    = 60
   refresh_token_validity               = 30
+  # Each refresh returns a new refresh token, so the 30 days count from the last use.
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 30
+  }
   token_validity_units {
     access_token  = "minutes"
     id_token      = "minutes"

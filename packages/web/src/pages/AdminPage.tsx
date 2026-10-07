@@ -1,7 +1,20 @@
+import {
+  Alert,
+  Badge,
+  Button,
+  Chip,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
-import { ROLES, type Role } from '@c4/shared';
+import { createUserSchema, ROLES, type Role } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { label, ROLE_LABELS, USER_STATUS_LABELS } from '../i18n';
 
 export function AdminPage() {
   const api = useApi();
@@ -30,81 +43,79 @@ export function AdminPage() {
 
   const [email, setEmail] = useState('');
   const [newGroups, setNewGroups] = useState<Role[]>(['reader']);
-  const toggle = (list: Role[], role: Role) =>
-    list.includes(role) ? list.filter((r) => r !== role) : [...list, role];
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    create.mutate({ email, groups: newGroups }, { onSuccess: () => setEmail('') });
+    const trimmed = email.trim();
+    if (!trimmed) return setEmailError('Bitte gib eine E-Mail-Adresse ein.');
+    if (!createUserSchema.shape.email.safeParse(trimmed).success)
+      return setEmailError('Das ist keine gültige E-Mail-Adresse.');
+    setEmailError(null);
+    create.mutate({ email: trimmed, groups: newGroups }, { onSuccess: () => setEmail('') });
   };
 
   return (
-    <>
-      <h1>Users</h1>
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input
-          type="email"
-          required
-          placeholder="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        {ROLES.map((role) => (
-          <label key={role}>
-            <input
-              type="checkbox"
-              checked={newGroups.includes(role)}
-              onChange={() => setNewGroups(toggle(newGroups, role))}
+    <Stack>
+      <Title order={2}>Benutzer</Title>
+      <Paper withBorder p="md">
+        <form onSubmit={onSubmit} noValidate>
+          <Stack>
+            <TextInput
+              type="email"
+              required
+              label="Per E-Mail einladen"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              error={emailError}
             />
-            {role}
-          </label>
-        ))}
-        <button type="submit" disabled={create.isPending}>
-          Invite
-        </button>
-      </form>
-      {create.isError && <p>Could not create user.</p>}
-      {users.isError && <p>Could not load users.</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Username</th>
-            <th>Status</th>
-            {ROLES.map((r) => (
-              <th key={r}>{r}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {users.data?.map((u) => (
-            <tr key={u.username}>
-              <td>{u.email}</td>
-              <td>{u.preferredUsername ?? '(not chosen yet)'}</td>
-              <td>{u.status}</td>
-              {ROLES.map((role) => (
-                <td key={role}>
-                  <input
-                    type="checkbox"
-                    checked={u.groups.includes(role)}
-                    onChange={() =>
-                      setGroups.mutate({
-                        username: u.username,
-                        groups: toggle(
-                          u.groups.filter((g): g is Role =>
-                            (ROLES as readonly string[]).includes(g),
-                          ),
-                          role,
-                        ),
-                      })
-                    }
-                  />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
+            <Chip.Group multiple value={newGroups} onChange={(v) => setNewGroups(v as Role[])}>
+              <Group gap="xs">
+                {ROLES.map((role) => (
+                  <Chip key={role} value={role}>
+                    {ROLE_LABELS[role]}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+            <Button type="submit" loading={create.isPending} fullWidth>
+              Einladen
+            </Button>
+          </Stack>
+        </form>
+      </Paper>
+      {create.isError && <Alert color="red">Benutzer konnte nicht angelegt werden.</Alert>}
+      {users.isError && <Alert color="red">Benutzer konnten nicht geladen werden.</Alert>}
+      {users.data?.map((u) => (
+        <Paper key={u.username} withBorder p="md">
+          <Stack gap="xs">
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <div style={{ minWidth: 0 }}>
+                <Text fw={500} truncate>
+                  {u.email}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {u.preferredUsername ?? '(Benutzername noch nicht gewählt)'}
+                </Text>
+              </div>
+              <Badge variant="light">{label(USER_STATUS_LABELS, u.status)}</Badge>
+            </Group>
+            <Chip.Group
+              multiple
+              value={u.groups.filter((g) => (ROLES as readonly string[]).includes(g))}
+              onChange={(v) => setGroups.mutate({ username: u.username, groups: v as Role[] })}
+            >
+              <Group gap="xs">
+                {ROLES.map((role) => (
+                  <Chip key={role} value={role}>
+                    {ROLE_LABELS[role]}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+          </Stack>
+        </Paper>
+      ))}
+    </Stack>
   );
 }

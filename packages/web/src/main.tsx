@@ -1,3 +1,7 @@
+import { MantineProvider, Text } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
+import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -6,6 +10,7 @@ import type { AppConfig } from '@c4/shared';
 import { App } from './App';
 import { AuthProvider } from './auth';
 import { loadAppConfig } from './config';
+import { theme } from './theme';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -15,16 +20,21 @@ function Root() {
   useEffect(() => {
     loadAppConfig().then(setConfig, (e: unknown) => setError(String(e)));
   }, []);
-  if (error) return <p>Failed to start: {error}</p>;
-  if (!config) return null;
   return (
-    <AuthProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename="/app">
-          <App config={config} />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </AuthProvider>
+    <MantineProvider theme={theme} defaultColorScheme="auto">
+      <Notifications position="top-center" />
+      {error ? (
+        <Text p="md">Start fehlgeschlagen: {error}</Text>
+      ) : config ? (
+        <AuthProvider config={config}>
+          <QueryClientProvider client={queryClient}>
+            <BrowserRouter basename="/app">
+              <App config={config} />
+            </BrowserRouter>
+          </QueryClientProvider>
+        </AuthProvider>
+      ) : null}
+    </MantineProvider>
   );
 }
 
