@@ -31,7 +31,7 @@ provider "aws" {
 
 variable "domain_name" {
   type        = string
-  default     = ""
+  default     = "dev.c4-leipzig.de"
   description = "Custom hostname. Set to an empty string to use only the cloudfront.net URL."
 }
 
