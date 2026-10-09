@@ -26,8 +26,12 @@ export function AdminPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['admin-users'] });
 
   const create = useMutation({
-    mutationFn: async (input: { email: string; groups: Role[] }) =>
-      unwrap(await api.admin.users.$post({ json: input })),
+    mutationFn: async (input: {
+      email: string;
+      groups: Role[];
+      vorname?: string;
+      nachname?: string;
+    }) => unwrap(await api.admin.users.$post({ json: input })),
     onSuccess: refresh,
   });
   const setGroups = useMutation({
@@ -43,6 +47,8 @@ export function AdminPage() {
 
   const [email, setEmail] = useState('');
   const [newGroups, setNewGroups] = useState<Role[]>(['reader']);
+  const [vorname, setVorname] = useState('');
+  const [nachname, setNachname] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
@@ -52,7 +58,21 @@ export function AdminPage() {
     if (!createUserSchema.shape.email.safeParse(trimmed).success)
       return setEmailError('Das ist keine gültige E-Mail-Adresse.');
     setEmailError(null);
-    create.mutate({ email: trimmed, groups: newGroups }, { onSuccess: () => setEmail('') });
+    create.mutate(
+      {
+        email: trimmed,
+        groups: newGroups,
+        vorname: vorname.trim() || undefined,
+        nachname: nachname.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setEmail('');
+          setVorname('');
+          setNachname('');
+        },
+      },
+    );
   };
 
   return (
@@ -68,6 +88,16 @@ export function AdminPage() {
               value={email}
               onChange={(e) => setEmail(e.currentTarget.value)}
               error={emailError}
+            />
+            <TextInput
+              label="Vorname (optional)"
+              value={vorname}
+              onChange={(e) => setVorname(e.currentTarget.value)}
+            />
+            <TextInput
+              label="Nachname (optional)"
+              value={nachname}
+              onChange={(e) => setNachname(e.currentTarget.value)}
             />
             <Chip.Group multiple value={newGroups} onChange={(v) => setNewGroups(v as Role[])}>
               <Group gap="xs">
@@ -91,7 +121,12 @@ export function AdminPage() {
           <Stack gap="xs">
             <Group justify="space-between" wrap="nowrap" align="flex-start">
               <div style={{ minWidth: 0 }}>
-                <Text fw={500} truncate>
+                {u.vorname && (
+                  <Text fw={500} truncate>
+                    {u.vorname} {u.nachname}
+                  </Text>
+                )}
+                <Text fw={u.vorname ? undefined : 500} size={u.vorname ? 'sm' : undefined} truncate>
                   {u.email}
                 </Text>
                 <Text size="sm" c="dimmed">

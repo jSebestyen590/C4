@@ -15,6 +15,10 @@ export const adminUserSchema = z.object({
   username: z.string(),
   preferredUsername: z.string().optional(),
   email: z.string().optional(),
+  /** Cognito sub; the key of the member row. */
+  sub: z.string().optional(),
+  vorname: z.string().optional(),
+  nachname: z.string().optional(),
   status: z.string(),
   enabled: z.boolean(),
   groups: z.array(z.string()),
@@ -29,9 +33,30 @@ export const usernameSchema = z
 export const setUsernameSchema = z.object({ username: usernameSchema });
 export type SetUsernameInput = z.infer<typeof setUsernameSchema>;
 
+const pflichtText = (feld: string, max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1, `Bitte gib ${feld} ein.`)
+    .max(max, `${feld[0]?.toUpperCase()}${feld.slice(1)} darf höchstens ${max} Zeichen lang sein.`);
+
+const optionalerText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Höchstens ${max} Zeichen erlaubt.`)
+    .transform((v) => (v === '' ? null : v))
+    .nullable()
+    .default(null);
+
+export const vornameSchema = pflichtText('deinen Vornamen', 100);
+export const nachnameSchema = pflichtText('deinen Nachnamen', 100);
+
 export const createUserSchema = z.object({
   email: z.email(),
   groups: z.array(roleSchema).default([]),
+  vorname: z.string().trim().max(100).optional(),
+  nachname: z.string().trim().max(100).optional(),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
@@ -48,3 +73,47 @@ export const appConfigSchema = z.object({
   cognitoDomain: z.string(),
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
+
+/** Members edit these fields themselves; everything except the names is optional. */
+export const mitgliedAktualisierenSchema = z.object({
+  vorname: vornameSchema,
+  nachname: nachnameSchema,
+  adresse: optionalerText(500),
+  telefon: optionalerText(50),
+  ueberMich: optionalerText(2000),
+  /** Object key returned by POST /api/me/profilbild; null removes the picture. */
+  profilbildKey: z.string().max(300).nullable().default(null),
+});
+export type MitgliedAktualisieren = z.input<typeof mitgliedAktualisierenSchema>;
+
+export const mitgliedSchema = z.object({
+  sub: z.string(),
+  vorname: z.string(),
+  nachname: z.string(),
+  adresse: z.string().nullable(),
+  telefon: z.string().nullable(),
+  ueberMich: z.string().nullable(),
+  profilbildKey: z.string().nullable(),
+  /** Short-lived presigned URL for the picture; null without one. */
+  profilbildUrl: z.string().nullable(),
+});
+export type Mitglied = z.infer<typeof mitgliedSchema>;
+
+export const PROFILBILD_TYPEN = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const PROFILBILD_MAX_BYTES = 5 * 1024 * 1024;
+
+export const profilbildAnfrageSchema = z.object({
+  contentType: z.enum(PROFILBILD_TYPEN),
+  groesse: z
+    .number()
+    .int()
+    .positive()
+    .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 5 MB groß sein.'),
+});
+export type ProfilbildAnfrage = z.infer<typeof profilbildAnfrageSchema>;
+
+export const profilbildUploadSchema = z.object({
+  uploadUrl: z.string(),
+  key: z.string(),
+});
+export type ProfilbildUpload = z.infer<typeof profilbildUploadSchema>;

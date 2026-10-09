@@ -38,6 +38,7 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
           username: u.Username ?? '',
           preferredUsername: u.Attributes?.find((a) => a.Name === 'preferred_username')?.Value,
           email: u.Attributes?.find((a) => a.Name === 'email')?.Value,
+          sub: u.Attributes?.find((a) => a.Name === 'sub')?.Value,
           status: u.UserStatus ?? 'UNKNOWN',
           enabled: u.Enabled ?? false,
           groups: await groupsOf(u.Username ?? ''),
@@ -71,6 +72,7 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
       return {
         username: created,
         email,
+        sub: res.User?.Attributes?.find((a) => a.Name === 'sub')?.Value,
         status: res.User?.UserStatus ?? 'FORCE_CHANGE_PASSWORD',
         enabled: res.User?.Enabled ?? true,
         groups,

@@ -9,6 +9,8 @@ import { useAuth } from './auth';
 import { AdminPage } from './pages/AdminPage';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
+import { MitgliederPage } from './pages/MitgliederPage';
+import { ProfilPage } from './pages/ProfilPage';
 import { UsernamePage } from './pages/UsernamePage';
 
 function Protected({
@@ -29,13 +31,38 @@ function Protected({
   return <>{children}</>;
 }
 
-/** First login: users without a chosen username are sent to the username page. */
+/**
+ * First login: users without a chosen username are sent to the username page, and afterwards to
+ * the profile page until they entered their name.
+ */
 function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
+  const api = useApi();
+  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const hatUsername = !!me.data?.preferredUsername;
+  const mitglied = useQuery({
+    queryKey: ['mitglied'],
+    enabled: hatUsername,
+    queryFn: async () => {
+      const res = await api.me.mitglied.$get();
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Profil konnte nicht geladen werden');
+      return res.json();
+    },
+  });
+  if (me.isPending) return null;
+  if (me.data && !hatUsername) return <Navigate to="/username" replace />;
+  if (mitglied.isPending) return null;
+  if (mitglied.data === null) return <Navigate to="/profil" replace />;
+  return <>{children}</>;
+}
+
+/** The profile page needs a username first, but must stay reachable without a profile. */
+function ProfilGate() {
   const api = useApi();
   const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
   if (me.isPending) return null;
   if (me.data && !me.data.preferredUsername) return <Navigate to="/username" replace />;
-  return <>{children}</>;
+  return <ProfilPage />;
 }
 
 export function App({ config }: Readonly<{ config: AppConfig }>) {
@@ -61,6 +88,24 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
                 <RequireUsername>
                   <AdminPage />
                 </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/mitglieder"
+            element={
+              <Protected permission="mitglieder:lesen">
+                <RequireUsername>
+                  <MitgliederPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/profil"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <ProfilGate />
               </Protected>
             }
           />

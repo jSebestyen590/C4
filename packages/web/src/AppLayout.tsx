@@ -1,6 +1,6 @@
 import { AppShell, Burger, Button, Group, NavLink, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconHome, IconLogout, IconUsers } from '@tabler/icons-react';
+import { IconHome, IconLogout, IconUser, IconUsers, IconUsersGroup } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
@@ -15,6 +15,18 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
 
   const links = [
     { to: '/', label: 'Startseite', icon: <IconHome size={20} />, show: true },
+    {
+      to: '/mitglieder',
+      label: 'Mitglieder',
+      icon: <IconUsersGroup size={20} />,
+      show: can('mitglieder:lesen'),
+    },
+    {
+      to: '/profil',
+      label: 'Mein Profil',
+      icon: <IconUser size={20} />,
+      show: can('profil:bearbeiten'),
+    },
     { to: '/admin', label: 'Benutzer', icon: <IconUsers size={20} />, show: can('users:manage') },
   ].filter((l) => l.show);
 

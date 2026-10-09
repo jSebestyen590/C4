@@ -10,6 +10,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const PERMISSION_LABELS: Record<Permission, string> = {
   'users:manage': 'Benutzer verwalten',
   'content:read': 'Inhalte lesen',
+  'mitglieder:lesen': 'Mitglieder ansehen',
+  'profil:bearbeiten': 'Eigenes Profil bearbeiten',
 };
 
 /** Cognito user statuses. */

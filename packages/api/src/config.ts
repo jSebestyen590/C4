@@ -3,6 +3,7 @@ export interface Config {
   userPoolId: string;
   clientId: string;
   dsqlEndpoint: string;
+  profilbildBucket: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -16,5 +17,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     userPoolId: need('USER_POOL_ID'),
     clientId: need('CLIENT_ID'),
     dsqlEndpoint: need('DSQL_ENDPOINT'),
+    profilbildBucket: need('PROFILBILD_BUCKET'),
   };
 }

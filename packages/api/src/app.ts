@@ -3,18 +3,26 @@ import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
   createUserSchema,
+  mitgliedAktualisierenSchema,
   permissionsFor,
+  profilbildAnfrageSchema,
   setGroupsSchema,
   setUsernameSchema,
   type Health,
   type Me,
+  type Mitglied,
 } from '@c4/shared';
 import { UsernameTakenError, type UserAdmin } from './admin';
+import type { MitgliedRow } from './db/schema';
+import type { MitgliederStore } from './mitglieder';
+import { profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
 
 export interface AppDeps {
   verifyToken: TokenVerifier;
   userAdmin: UserAdmin;
+  mitglieder: MitgliederStore;
+  profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }
@@ -22,6 +30,19 @@ export interface AppDeps {
 export function createApp(deps: AppDeps) {
   const auth = authenticate(deps.verifyToken);
   const adminOnly = requirePermission('users:manage');
+  const mitgliederLesen = requirePermission('mitglieder:lesen');
+  const profilBearbeiten = requirePermission('profil:bearbeiten');
+
+  const alsMitglied = async (row: MitgliedRow): Promise<Mitglied> => ({
+    sub: row.sub,
+    vorname: row.vorname,
+    nachname: row.nachname,
+    adresse: row.adresse,
+    telefon: row.telefon,
+    ueberMich: row.ueberMich,
+    profilbildKey: row.profilbildKey,
+    profilbildUrl: row.profilbildKey ? await deps.profilbilder.anzeigeUrl(row.profilbildKey) : null,
+  });
 
   return new Hono<AuthEnv>()
     .basePath('/api')
@@ -58,10 +79,75 @@ export function createApp(deps: AppDeps) {
       }
       return c.json({ username });
     })
-    .get('/admin/users', auth, adminOnly, async (c) => c.json(await deps.userAdmin.listUsers()))
+    .get('/me/mitglied', auth, profilBearbeiten, async (c) => {
+      const row = await deps.mitglieder.holen(c.get('user').sub);
+      if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+      return c.json(await alsMitglied(row));
+    })
+    .put(
+      '/me/mitglied',
+      auth,
+      profilBearbeiten,
+      zValidator('json', mitgliedAktualisierenSchema),
+      async (c) => {
+        const { sub } = c.get('user');
+        const { profilbildKey, ...daten } = c.req.valid('json');
+        if (profilbildKey && !profilbildKey.startsWith(profilbildPrefix(sub))) {
+          throw new HTTPException(400, { message: 'Ungültiges Profilbild' });
+        }
+        const vorher = await deps.mitglieder.holen(sub);
+        await deps.mitglieder.speichern(sub, { ...daten, profilbildKey });
+        if (vorher?.profilbildKey && vorher.profilbildKey !== profilbildKey) {
+          await deps.profilbilder.loeschen(vorher.profilbildKey).catch((err) => {
+            console.error('profilbild: delete failed', err);
+          });
+        }
+        const row = await deps.mitglieder.holen(sub);
+        if (!row) throw new Error('Mitglied nach dem Speichern nicht gefunden');
+        return c.json(await alsMitglied(row));
+      },
+    )
+    .post(
+      '/me/profilbild',
+      auth,
+      profilBearbeiten,
+      zValidator('json', profilbildAnfrageSchema),
+      async (c) =>
+        c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
+    )
+    .get('/mitglieder', auth, mitgliederLesen, async (c) =>
+      c.json(await Promise.all((await deps.mitglieder.alle()).map(alsMitglied))),
+    )
+    .get('/mitglieder/:sub', auth, mitgliederLesen, async (c) => {
+      const row = await deps.mitglieder.holen(c.req.param('sub'));
+      if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+      return c.json(await alsMitglied(row));
+    })
+    .get('/admin/users', auth, adminOnly, async (c) => {
+      const [users, rows] = await Promise.all([deps.userAdmin.listUsers(), deps.mitglieder.alle()]);
+      const nachSub = new Map(rows.map((r) => [r.sub, r]));
+      return c.json(
+        users.map((u) => {
+          const m = u.sub ? nachSub.get(u.sub) : undefined;
+          return { ...u, vorname: m?.vorname, nachname: m?.nachname };
+        }),
+      );
+    })
     .post('/admin/users', auth, adminOnly, zValidator('json', createUserSchema), async (c) => {
-      const { email, groups } = c.req.valid('json');
-      return c.json(await deps.userAdmin.createUser(email, groups), 201);
+      const { email, groups, vorname, nachname } = c.req.valid('json');
+      const user = await deps.userAdmin.createUser(email, groups);
+      if (user.sub && vorname && nachname) {
+        await deps.mitglieder.speichern(user.sub, {
+          vorname,
+          nachname,
+          adresse: null,
+          telefon: null,
+          ueberMich: null,
+          profilbildKey: null,
+        });
+        return c.json({ ...user, vorname, nachname }, 201);
+      }
+      return c.json(user, 201);
     })
     .put(
       '/admin/users/:username/groups',

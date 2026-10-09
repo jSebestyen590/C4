@@ -4,12 +4,17 @@ export const ROLES = ['admin', 'reader'] as const;
 export const roleSchema = z.enum(ROLES);
 export type Role = z.infer<typeof roleSchema>;
 
-export const PERMISSIONS = ['users:manage', 'content:read'] as const;
+export const PERMISSIONS = [
+  'users:manage',
+  'content:read',
+  'mitglieder:lesen',
+  'profil:bearbeiten',
+] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  admin: ['users:manage', 'content:read'],
-  reader: ['content:read'],
+  admin: ['users:manage', 'content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
+  reader: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
 };
 
 export function permissionsFor(groups: readonly string[]): Permission[] {

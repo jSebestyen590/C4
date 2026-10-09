@@ -8,6 +8,12 @@ describe('roles', () => {
   it('reader may not manage users', () => {
     expect(hasPermission(['reader'], 'users:manage')).toBe(false);
   });
+  it('every role may read members and edit its profile', () => {
+    for (const role of ['admin', 'reader']) {
+      expect(hasPermission([role], 'mitglieder:lesen')).toBe(true);
+      expect(hasPermission([role], 'profil:bearbeiten')).toBe(true);
+    }
+  });
   it('unknown groups grant nothing', () => {
     expect(permissionsFor(['whatever'])).toEqual([]);
   });
