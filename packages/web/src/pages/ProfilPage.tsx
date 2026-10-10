@@ -133,8 +133,11 @@ export function ProfilFormular({
     <form onSubmit={onSubmit} noValidate>
       <Stack maw={520}>
         <Title order={2}>Mein Profil</Title>
-        {!mitglied && (
-          <Text>Willkommen! Bitte trag deinen Namen ein, damit dich die anderen finden.</Text>
+        {(!mitglied || !aktuellerUsername) && (
+          <Text>
+            Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die
+            anderen finden.
+          </Text>
         )}
         <Group wrap="nowrap">
           <Avatar src={bildUrl} size={96} radius="xl" alt="Profilbild" />

@@ -12,7 +12,6 @@ import { HomePage } from './pages/HomePage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
 import { ProfilPage } from './pages/ProfilPage';
-import { UsernamePage } from './pages/UsernamePage';
 
 function Protected({
   children,
@@ -33,16 +32,14 @@ function Protected({
 }
 
 /**
- * First login: users without a chosen username are sent to the username page, and afterwards to
- * the profile page until they entered their name.
+ * First login: users without a username or a profile are sent to the profile page, where they
+ * choose both at once.
  */
 function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
   const api = useApi();
   const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
-  const hatUsername = !!me.data?.preferredUsername;
   const mitglied = useQuery({
     queryKey: ['mitglied'],
-    enabled: hatUsername,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
       if (res.status === 404) return null;
@@ -50,20 +47,10 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
       return res.json();
     },
   });
-  if (me.isPending) return null;
-  if (me.data && !hatUsername) return <Navigate to="/username" replace />;
-  if (mitglied.isPending) return null;
+  if (me.isPending || mitglied.isPending) return null;
+  if (me.data && !me.data.preferredUsername) return <Navigate to="/profil" replace />;
   if (mitglied.data === null) return <Navigate to="/profil" replace />;
   return <>{children}</>;
-}
-
-/** The profile page needs a username first, but must stay reachable without a profile. */
-function ProfilGate() {
-  const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
-  if (me.isPending) return null;
-  if (me.data && !me.data.preferredUsername) return <Navigate to="/username" replace />;
-  return <ProfilPage />;
 }
 
 export function App({ config }: Readonly<{ config: AppConfig }>) {
@@ -116,18 +103,11 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             path="/profil"
             element={
               <Protected permission="profil:bearbeiten">
-                <ProfilGate />
+                <ProfilPage />
               </Protected>
             }
           />
-          <Route
-            path="/username"
-            element={
-              <Protected>
-                <UsernamePage />
-              </Protected>
-            }
-          />
+          <Route path="/username" element={<Navigate to="/profil" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Container>
