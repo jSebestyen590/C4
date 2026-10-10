@@ -107,7 +107,6 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               </Protected>
             }
           />
-          <Route path="/username" element={<Navigate to="/profil" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Container>
