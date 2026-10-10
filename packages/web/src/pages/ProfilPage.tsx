@@ -19,7 +19,9 @@ import { mitgliedAktualisierenSchema, type Mitglied } from '@c4/shared';
 import { useApi } from '../api';
 import { profilbildVerkleinern } from '../profilbild';
 
-type Fehler = Partial<Record<'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich', string>>;
+type Fehler = Partial<
+  Record<'vorname' | 'nachname' | 'spitzname' | 'adresse' | 'telefon' | 'ueberMich', string>
+>;
 
 function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
   const api = useApi();
@@ -27,6 +29,7 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
   const navigate = useNavigate();
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
+  const [spitzname, setSpitzname] = useState(mitglied?.spitzname ?? '');
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
@@ -77,6 +80,7 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
     const parsed = mitgliedAktualisierenSchema.safeParse({
       vorname,
       nachname,
+      spitzname,
       adresse,
       telefon,
       ueberMich,
@@ -144,6 +148,13 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
           value={nachname}
           onChange={(e) => setNachname(e.currentTarget.value)}
           error={fehler.nachname}
+        />
+        <TextInput
+          label="Spitzname"
+          autoComplete="nickname"
+          value={spitzname}
+          onChange={(e) => setSpitzname(e.currentTarget.value)}
+          error={fehler.spitzname}
         />
         <Textarea
           size="md"
