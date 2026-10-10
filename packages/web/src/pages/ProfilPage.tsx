@@ -167,6 +167,14 @@ export function ProfilFormular({
             )}
           </Stack>
         </Group>
+        {mitglied?.email && (
+          <TextInput
+            label="E-Mail"
+            description="Kann hier nicht geändert werden."
+            value={mitglied.email}
+            readOnly
+          />
+        )}
         <TextInput
           required
           label="Benutzername"
