@@ -56,6 +56,7 @@ jobs:
           export DSQL_ENDPOINT=$(jq -r .dsql_endpoint app-outputs.json)
           export USER_POOL_ID=$(jq -r .user_pool_id app-outputs.json)
           export CLIENT_ID=$(jq -r .client_id app-outputs.json)
+          export PROFILBILD_BUCKET=$(jq -r .profilbild_bucket app-outputs.json)
           export AWS_REGION=eu-central-1
           pnpm db:migrate
 
