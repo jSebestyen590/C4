@@ -1,6 +1,5 @@
 import {
   Alert,
-  Avatar,
   Button,
   FileInput,
   Group,
@@ -17,6 +16,7 @@ import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbildVerkleinern } from '../profilbild';
 
 type Fehler = Partial<
@@ -140,7 +140,7 @@ export function ProfilFormular({
           </Text>
         )}
         <Group wrap="nowrap">
-          <Avatar src={bildUrl} size={96} radius="xl" alt="Profilbild" />
+          <ProfilbildAnzeige src={bildUrl} size={96} alt="Profilbild" />
           <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
             <FileInput
               size="md"

@@ -1,9 +1,10 @@
-import { Alert, Anchor, Avatar, Badge, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, nebenname } from '../mitglied';
+import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
@@ -44,7 +45,7 @@ export function MitgliedPage() {
       {m && !(m.sub === me.data.sub && can('profil:bearbeiten')) && (
         <Stack maw={520}>
           <Group wrap="nowrap">
-            <Avatar src={m.profilbildUrl} size={96} radius="xl" alt="" />
+            <ProfilbildAnzeige src={m.profilbildUrl} size={96} alt="Profilbild" />
             <div style={{ minWidth: 0 }}>
               <Title order={2} style={{ overflowWrap: 'anywhere' }}>
                 {anzeigename(m)}
