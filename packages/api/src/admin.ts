@@ -16,6 +16,8 @@ export class UsernameTakenError extends Error {}
 export interface UserAdmin {
   listUsers(): Promise<AdminUser[]>;
   createUser(email: string, groups: string[]): Promise<AdminUser>;
+  /** Login names (preferred_username) of all users, keyed by Cognito `sub`. */
+  usernamesBySub(): Promise<Map<string, string>>;
   getPreferredUsername(username: string): Promise<string | undefined>;
   /** Throws UsernameTakenError when another user already uses the name. */
   setPreferredUsername(username: string, preferred: string): Promise<void>;
@@ -44,6 +46,22 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
           groups: await groupsOf(u.Username ?? ''),
         })),
       );
+    },
+    async usernamesBySub() {
+      const result = new Map<string, string>();
+      let token: string | undefined;
+      do {
+        const res = await client.send(
+          new ListUsersCommand({ UserPoolId: userPoolId, Limit: 60, PaginationToken: token }),
+        );
+        for (const u of res.Users ?? []) {
+          const sub = u.Attributes?.find((a) => a.Name === 'sub')?.Value;
+          const name = u.Attributes?.find((a) => a.Name === 'preferred_username')?.Value;
+          if (sub && name) result.set(sub, name);
+        }
+        token = res.PaginationToken;
+      } while (token);
+      return result;
     },
     async createUser(email, groups) {
       // The internal username is an opaque UUID; people sign in with email or their chosen alias.

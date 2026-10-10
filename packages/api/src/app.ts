@@ -33,10 +33,14 @@ export function createApp(deps: AppDeps) {
   const mitgliederLesen = requirePermission('mitglieder:lesen');
   const profilBearbeiten = requirePermission('profil:bearbeiten');
 
-  const alsMitglied = async (row: MitgliedRow): Promise<Mitglied> => ({
+  const alsMitglied = async (
+    row: MitgliedRow,
+    username: string | undefined,
+  ): Promise<Mitglied> => ({
     sub: row.sub,
     vorname: row.vorname,
     nachname: row.nachname,
+    username: username ?? null,
     adresse: row.adresse,
     telefon: row.telefon,
     ueberMich: row.ueberMich,
@@ -82,7 +86,7 @@ export function createApp(deps: AppDeps) {
     .get('/me/mitglied', auth, profilBearbeiten, async (c) => {
       const row = await deps.mitglieder.holen(c.get('user').sub);
       if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
-      return c.json(await alsMitglied(row));
+      return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(row.sub)));
     })
     .put(
       '/me/mitglied',
@@ -104,7 +108,7 @@ export function createApp(deps: AppDeps) {
         }
         const row = await deps.mitglieder.holen(sub);
         if (!row) throw new Error('Mitglied nach dem Speichern nicht gefunden');
-        return c.json(await alsMitglied(row));
+        return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(sub)));
       },
     )
     .post(
@@ -115,13 +119,17 @@ export function createApp(deps: AppDeps) {
       async (c) =>
         c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
     )
-    .get('/mitglieder', auth, mitgliederLesen, async (c) =>
-      c.json(await Promise.all((await deps.mitglieder.alle()).map(alsMitglied))),
-    )
+    .get('/mitglieder', auth, mitgliederLesen, async (c) => {
+      const [rows, usernames] = await Promise.all([
+        deps.mitglieder.alle(),
+        deps.userAdmin.usernamesBySub(),
+      ]);
+      return c.json(await Promise.all(rows.map((r) => alsMitglied(r, usernames.get(r.sub)))));
+    })
     .get('/mitglieder/:sub', auth, mitgliederLesen, async (c) => {
       const row = await deps.mitglieder.holen(c.req.param('sub'));
       if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
-      return c.json(await alsMitglied(row));
+      return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(row.sub)));
     })
     .get('/admin/users', auth, adminOnly, async (c) => {
       const [users, rows] = await Promise.all([deps.userAdmin.listUsers(), deps.mitglieder.alle()]);

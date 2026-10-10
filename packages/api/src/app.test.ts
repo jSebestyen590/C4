@@ -14,6 +14,7 @@ const users: Record<string, AuthUser> = {
 function makeApp(pingDb = async () => {}) {
   const userAdmin = {
     listUsers: vi.fn(async () => []),
+    usernamesBySub: vi.fn(async () => new Map<string, string>()),
     getPreferredUsername: vi.fn(async (): Promise<string | undefined> => undefined),
     setPreferredUsername: vi.fn<(username: string, preferred: string) => Promise<void>>(
       async () => {},
@@ -208,6 +209,16 @@ describe('api', () => {
       expect(await res.json()).toMatchObject([
         { sub: 'r', vorname: 'Erika', profilbildUrl: 'https://s3.example/profilbilder/r/a.png' },
       ]);
+    });
+
+    it('includes the login name from Cognito, null when none is chosen', async () => {
+      const { app, userAdmin } = makeApp();
+      await app.request('/api/me/mitglied', json('reader-token', 'PUT', gueltig));
+      userAdmin.usernamesBySub.mockResolvedValueOnce(new Map([['r', 'erika_m']]));
+      const mit = await app.request('/api/mitglieder', json('admin-token', 'GET'));
+      expect(await mit.json()).toMatchObject([{ sub: 'r', username: 'erika_m' }]);
+      const ohne = await app.request('/api/mitglieder', json('admin-token', 'GET'));
+      expect(await ohne.json()).toMatchObject([{ sub: 'r', username: null }]);
     });
 
     it('creates the member row when an admin invites with names', async () => {

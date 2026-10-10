@@ -90,6 +90,8 @@ export const mitgliedSchema = z.object({
   sub: z.string(),
   vorname: z.string(),
   nachname: z.string(),
+  /** Login name from Cognito (preferred_username); null until the member chose one. */
+  username: z.string().nullable(),
   adresse: z.string().nullable(),
   telefon: z.string().nullable(),
   ueberMich: z.string().nullable(),
