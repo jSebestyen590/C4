@@ -15,16 +15,32 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mitgliedAktualisierenSchema, type Mitglied } from '@c4/shared';
-import { useApi } from '../api';
+import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
+import { unwrap, useApi } from '../api';
 import { profilbildVerkleinern } from '../profilbild';
 
-type Fehler = Partial<Record<'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich', string>>;
+type Fehler = Partial<
+  Record<'username' | 'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich', string>
+>;
 
-function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
+/** Thrown when the chosen username belongs to someone else. */
+class UsernameVergeben extends Error {}
+
+/** Edit form for the caller's own profile, including the login username. */
+export function ProfilFormular({
+  mitglied,
+  username: aktuellerUsername,
+  onGespeichert,
+}: Readonly<{
+  mitglied: Mitglied | null;
+  username: string | undefined;
+  /** Called after a successful save; the default is to go to the start page. */
+  onGespeichert?: () => void;
+}>) {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [username, setUsername] = useState(aktuellerUsername ?? '');
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
@@ -60,20 +76,35 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
   });
 
   const speichern = useMutation({
-    mutationFn: async (json: ReturnType<typeof mitgliedAktualisierenSchema.parse>) => {
-      const res = await api.me.mitglied.$put({ json });
+    mutationFn: async (eingabe: {
+      username: string;
+      daten: ReturnType<typeof mitgliedAktualisierenSchema.parse>;
+    }) => {
+      if (eingabe.username !== aktuellerUsername) {
+        const res = await api.me.username.$put({ json: { username: eingabe.username } });
+        if (res.status === 409) throw new UsernameVergeben();
+        if (!res.ok) throw new Error('Benutzername konnte nicht gespeichert werden');
+      }
+      const res = await api.me.mitglied.$put({ json: eingabe.daten });
       if (!res.ok) throw new Error('Speichern fehlgeschlagen');
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['mitglied'] });
-      await qc.invalidateQueries({ queryKey: ['mitglieder'] });
+      await Promise.all(
+        ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+      );
       notifications.show({ color: 'green', message: 'Dein Profil wurde gespeichert.' });
-      navigate('/');
+      if (onGespeichert) onGespeichert();
+      else navigate('/');
+    },
+    onError: (err) => {
+      if (err instanceof UsernameVergeben)
+        setFehler({ username: 'Dieser Benutzername ist bereits vergeben.' });
     },
   });
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const usernameGeprueft = setUsernameSchema.safeParse({ username });
     const parsed = mitgliedAktualisierenSchema.safeParse({
       vorname,
       nachname,
@@ -82,16 +113,20 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
       ueberMich,
       profilbildKey: bildKey,
     });
-    if (!parsed.success) {
+    if (!usernameGeprueft.success || !parsed.success) {
       const neu: Fehler = {};
-      for (const issue of parsed.error.issues) {
+      const probleme = [
+        ...(usernameGeprueft.success ? [] : usernameGeprueft.error.issues),
+        ...(parsed.success ? [] : parsed.error.issues),
+      ];
+      for (const issue of probleme) {
         const feld = issue.path[0] as keyof Fehler;
         neu[feld] ??= issue.message;
       }
       return setFehler(neu);
     }
     setFehler({});
-    speichern.mutate(parsed.data);
+    speichern.mutate({ username: usernameGeprueft.data.username, daten: parsed.data });
   };
 
   return (
@@ -129,6 +164,17 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
             )}
           </Stack>
         </Group>
+        <TextInput
+          required
+          label="Benutzername"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="username"
+          description="Damit kannst du dich auch anmelden."
+          value={username}
+          onChange={(e) => setUsername(e.currentTarget.value)}
+          error={fehler.username}
+        />
         <TextInput
           required
           label="Vorname"
@@ -191,6 +237,7 @@ function ProfilFormular({ mitglied }: Readonly<{ mitglied: Mitglied | null }>) {
 
 export function ProfilPage() {
   const api = useApi();
+  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
   const mitglied = useQuery({
     queryKey: ['mitglied'],
     queryFn: async () => {
@@ -200,7 +247,8 @@ export function ProfilPage() {
       return res.json();
     },
   });
-  if (mitglied.isPending) return <Loader m="md" aria-label="Profil wird geladen" />;
-  if (mitglied.isError) return <Alert color="red">Das Profil konnte nicht geladen werden.</Alert>;
-  return <ProfilFormular mitglied={mitglied.data} />;
+  if (mitglied.isPending || me.isPending) return <Loader m="md" aria-label="Profil wird geladen" />;
+  if (mitglied.isError || me.isError)
+    return <Alert color="red">Das Profil konnte nicht geladen werden.</Alert>;
+  return <ProfilFormular mitglied={mitglied.data} username={me.data.preferredUsername} />;
 }

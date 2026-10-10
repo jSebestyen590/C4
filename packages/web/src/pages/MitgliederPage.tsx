@@ -12,6 +12,7 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 
 export function MitgliederPage() {
@@ -45,7 +46,14 @@ export function MitgliederPage() {
       )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
         {treffer.map((m) => (
-          <Paper key={m.sub} withBorder p="md">
+          <Paper
+            key={m.sub}
+            withBorder
+            p="md"
+            component={Link}
+            to={`/mitglieder/${m.sub}`}
+            style={{ color: 'inherit', textDecoration: 'none' }}
+          >
             <Stack gap="xs">
               <Group wrap="nowrap">
                 <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
@@ -60,11 +68,6 @@ export function MitgliederPage() {
                   )}
                 </div>
               </Group>
-              {m.telefon && (
-                <Text size="sm" component="a" href={`tel:${m.telefon}`}>
-                  {m.telefon}
-                </Text>
-              )}
               {m.adresse && (
                 <Text size="sm" style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                   {m.adresse}

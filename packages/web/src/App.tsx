@@ -9,6 +9,7 @@ import { useAuth } from './auth';
 import { AdminPage } from './pages/AdminPage';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
+import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { UsernamePage } from './pages/UsernamePage';
@@ -97,6 +98,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="mitglieder:lesen">
                 <RequireUsername>
                   <MitgliederPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/mitglieder/:sub"
+            element={
+              <Protected permission="mitglieder:lesen">
+                <RequireUsername>
+                  <MitgliedPage />
                 </RequireUsername>
               </Protected>
             }
