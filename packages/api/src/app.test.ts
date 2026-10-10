@@ -154,11 +154,10 @@ describe('api', () => {
         app.request('/api/me/mitglied', json('reader-token', 'PUT', body));
       expect((await put({ vorname: '', nachname: 'Muster' })).status).toBe(400);
       expect((await put({ vorname: 'Erika' })).status).toBe(400);
-      const ok = await put({ ...gueltig, telefon: '  ', ueberMich: 'Hallo', spitzname: ' Eri ' });
+      const ok = await put({ ...gueltig, telefon: '  ', ueberMich: 'Hallo' });
       expect(ok.status).toBe(200);
       expect(mitglieder.speichern).toHaveBeenCalledWith('r', {
         ...gueltig,
-        spitzname: 'Eri',
         adresse: null,
         telefon: null,
         ueberMich: 'Hallo',

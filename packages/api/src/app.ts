@@ -37,7 +37,6 @@ export function createApp(deps: AppDeps) {
     sub: row.sub,
     vorname: row.vorname,
     nachname: row.nachname,
-    spitzname: row.spitzname,
     adresse: row.adresse,
     telefon: row.telefon,
     ueberMich: row.ueberMich,
@@ -141,7 +140,6 @@ export function createApp(deps: AppDeps) {
         await deps.mitglieder.speichern(user.sub, {
           vorname,
           nachname,
-          spitzname: null,
           adresse: null,
           telefon: null,
           ueberMich: null,

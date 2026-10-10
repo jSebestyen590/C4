@@ -11,7 +11,6 @@ export const mitglieder = pgTable('mitglieder', {
   sub: text('sub').primaryKey(),
   vorname: text('vorname').notNull(),
   nachname: text('nachname').notNull(),
-  spitzname: text('spitzname'),
   adresse: text('adresse'),
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),

@@ -23,9 +23,7 @@ export function MitgliederPage() {
   });
 
   const treffer = (mitglieder.data ?? []).filter((m) =>
-    `${m.vorname} ${m.nachname} ${m.spitzname ?? ''}`
-      .toLowerCase()
-      .includes(suche.trim().toLowerCase()),
+    `${m.vorname} ${m.nachname}`.toLowerCase().includes(suche.trim().toLowerCase()),
   );
 
   return (
@@ -33,7 +31,7 @@ export function MitgliederPage() {
       <Title order={2}>Mitglieder</Title>
       <TextInput
         type="search"
-        placeholder="Nach Namen oder Spitznamen suchen"
+        placeholder="Nach Namen suchen"
         aria-label="Mitglieder suchen"
         value={suche}
         onChange={(e) => setSuche(e.currentTarget.value)}
@@ -49,16 +47,9 @@ export function MitgliederPage() {
             <Stack gap="xs">
               <Group wrap="nowrap">
                 <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={500} style={{ overflowWrap: 'anywhere' }}>
-                    {m.vorname} {m.nachname}
-                  </Text>
-                  {m.spitzname && (
-                    <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      „{m.spitzname}“
-                    </Text>
-                  )}
-                </div>
+                <Text fw={500} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                  {m.vorname} {m.nachname}
+                </Text>
               </Group>
               {m.telefon && (
                 <Text size="sm" component="a" href={`tel:${m.telefon}`}>

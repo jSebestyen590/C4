@@ -78,7 +78,6 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 export const mitgliedAktualisierenSchema = z.object({
   vorname: vornameSchema,
   nachname: nachnameSchema,
-  spitzname: optionalerText(100),
   adresse: optionalerText(500),
   telefon: optionalerText(50),
   ueberMich: optionalerText(2000),
@@ -91,7 +90,6 @@ export const mitgliedSchema = z.object({
   sub: z.string(),
   vorname: z.string(),
   nachname: z.string(),
-  spitzname: z.string().nullable(),
   adresse: z.string().nullable(),
   telefon: z.string().nullable(),
   ueberMich: z.string().nullable(),
