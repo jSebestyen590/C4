@@ -51,11 +51,11 @@ export function MitgliederPage() {
                 <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
                 <div style={{ minWidth: 0 }}>
                   <Text fw={500} style={{ overflowWrap: 'anywhere' }}>
-                    {m.vorname} {m.nachname}
+                    {m.username ?? `${m.vorname} ${m.nachname}`}
                   </Text>
                   {m.username && (
                     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      @{m.username}
+                      {m.vorname} {m.nachname}
                     </Text>
                   )}
                 </div>
