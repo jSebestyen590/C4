@@ -65,7 +65,7 @@ export function MitgliederPage() {
   const api = useApi();
   const navigate = useNavigate();
   const [suche, setSuche] = useState('');
-  const [sortierung, setSortierung] = useState<Sortierung>('nachname');
+  const [sortierung, setSortierung] = useState<Sortierung>('username');
   const [aufsteigend, setAufsteigend] = useState(true);
   const mitglieder = useQuery({
     queryKey: ['mitglieder'],
