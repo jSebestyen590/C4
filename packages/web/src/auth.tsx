@@ -24,7 +24,7 @@ export function createUserManager(config: AppConfig): UserManager {
     client_id: config.clientId,
     redirect_uri: `${origin}${base}/auth/callback`,
     response_type: 'code',
-    scope: 'openid email',
+    scope: 'openid email aws.cognito.signin.user.admin',
     userStore: new WebStorageStateStore({ store: window.localStorage }),
     // Renews shortly before expiry using the refresh token (30 days), so users stay signed in.
     automaticSilentRenew: true,

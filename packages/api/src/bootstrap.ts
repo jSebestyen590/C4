@@ -1,5 +1,6 @@
 import { createCognitoUserAdmin } from './admin';
 import { createApp } from './app';
+import { createCognitoEmailAenderung } from './emailaenderung';
 import { createCognitoVerifier } from './auth';
 import { loadConfig } from './config';
 import { createDb, createPool } from './db/client';
@@ -13,6 +14,7 @@ export function createProductionApp() {
   return createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin: createCognitoUserAdmin(config.userPoolId, config.region),
+    emailAenderung: createCognitoEmailAenderung(config.region),
     mitglieder: createMitgliederStore(createDb(pool)),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {

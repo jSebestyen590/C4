@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AdminUser } from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
+import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
 import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
@@ -28,6 +29,10 @@ function makeApp(pingDb = async () => {}) {
     })),
     setGroups: vi.fn(async (_u: string, groups: string[]) => groups),
   };
+  const emailAenderung = {
+    anfordern: vi.fn<(token: string, email: string) => Promise<void>>(async () => {}),
+    bestaetigen: vi.fn<(token: string, code: string) => Promise<void>>(async () => {}),
+  };
   const zeilen = new Map<string, MitgliedRow>();
   const mitglieder = {
     holen: vi.fn(async (sub: string) => zeilen.get(sub)),
@@ -51,11 +56,12 @@ function makeApp(pingDb = async () => {}) {
       return user;
     },
     userAdmin,
+    emailAenderung,
     mitglieder,
     profilbilder,
     pingDb,
   });
-  return { app, userAdmin, mitglieder, profilbilder };
+  return { app, userAdmin, emailAenderung, mitglieder, profilbilder };
 }
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -238,6 +244,31 @@ describe('api', () => {
       const detail = await app.request('/api/mitglieder/n', json('admin-token', 'GET'));
       expect(detail.status).toBe(200);
       expect((await app.request('/api/mitglieder/x', json('admin-token', 'GET'))).status).toBe(404);
+    });
+
+    it('requests an email change with the caller token and maps errors', async () => {
+      const { app, emailAenderung } = makeApp();
+      const put = (body: unknown) =>
+        app.request('/api/me/email', json('reader-token', 'PUT', body));
+      expect((await put({ email: 'kein-mail' })).status).toBe(400);
+      expect((await put({ email: ' Neu@Example.DE ' })).status).toBe(200);
+      expect(emailAenderung.anfordern).toHaveBeenCalledWith('reader-token', 'neu@example.de');
+      emailAenderung.anfordern.mockRejectedValueOnce(new EmailVergeben());
+      expect((await put({ email: 'x@example.de' })).status).toBe(409);
+      emailAenderung.anfordern.mockRejectedValueOnce(new NeuAnmeldungNoetig());
+      expect((await put({ email: 'y@example.de' })).status).toBe(403);
+      expect((await app.request('/api/me/email', json('', 'PUT', {}))).status).toBe(401);
+    });
+
+    it('confirms an email change with the code', async () => {
+      const { app, emailAenderung } = makeApp();
+      const post = (body: unknown) =>
+        app.request('/api/me/email/bestaetigen', json('reader-token', 'POST', body));
+      expect((await post({ code: '' })).status).toBe(400);
+      expect((await post({ code: ' 123456 ' })).status).toBe(200);
+      expect(emailAenderung.bestaetigen).toHaveBeenCalledWith('reader-token', '123456');
+      emailAenderung.bestaetigen.mockRejectedValueOnce(new CodeUngueltig());
+      expect((await post({ code: '000000' })).status).toBe(400);
     });
 
     it('creates the member row when an admin invites with names', async () => {

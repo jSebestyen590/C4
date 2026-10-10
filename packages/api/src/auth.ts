@@ -11,7 +11,7 @@ export interface AuthUser {
 }
 export type TokenVerifier = (token: string) => Promise<AuthUser>;
 
-export type AuthEnv = { Variables: { user: AuthUser } };
+export type AuthEnv = { Variables: { user: AuthUser; accessToken: string } };
 
 /** Verifies a Cognito *access* token (signature, issuer, token_use, client_id). */
 export function createCognitoVerifier(
@@ -40,6 +40,7 @@ export function authenticate(verify: TokenVerifier) {
     if (!token) throw new HTTPException(401, { message: 'Missing bearer token' });
     try {
       c.set('user', await verify(token));
+      c.set('accessToken', token);
     } catch {
       throw new HTTPException(401, { message: 'Invalid token' });
     }

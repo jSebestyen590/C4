@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
   createUserSchema,
+  emailAendernSchema,
+  emailBestaetigenSchema,
   mitgliedAktualisierenSchema,
   permissionsFor,
   profilbildAnfrageSchema,
@@ -13,6 +15,12 @@ import {
   type Mitglied,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
+import {
+  CodeUngueltig,
+  EmailVergeben,
+  NeuAnmeldungNoetig,
+  type EmailAenderung,
+} from './emailaenderung';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliederStore } from './mitglieder';
 import { profilbildPrefix, type Profilbilder } from './profilbilder';
@@ -21,10 +29,25 @@ import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } fro
 export interface AppDeps {
   verifyToken: TokenVerifier;
   userAdmin: UserAdmin;
+  emailAenderung: EmailAenderung;
   mitglieder: MitgliederStore;
   profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
+}
+
+/** Maps the email-change errors to HTTP statuses the web app can tell apart. */
+async function emailAenderung(aktion: () => Promise<void>): Promise<void> {
+  try {
+    await aktion();
+  } catch (err) {
+    if (err instanceof NeuAnmeldungNoetig)
+      throw new HTTPException(403, { message: 'Erneute Anmeldung erforderlich' });
+    if (err instanceof EmailVergeben)
+      throw new HTTPException(409, { message: 'E-Mail-Adresse bereits vergeben' });
+    if (err instanceof CodeUngueltig) throw new HTTPException(400, { message: 'Ungültiger Code' });
+    throw err;
+  }
 }
 
 export function createApp(deps: AppDeps) {
@@ -103,6 +126,24 @@ export function createApp(deps: AppDeps) {
       }
       return c.json({ username });
     })
+    .put('/me/email', auth, profilBearbeiten, zValidator('json', emailAendernSchema), async (c) => {
+      await emailAenderung(() =>
+        deps.emailAenderung.anfordern(c.get('accessToken'), c.req.valid('json').email),
+      );
+      return c.json({ ok: true });
+    })
+    .post(
+      '/me/email/bestaetigen',
+      auth,
+      profilBearbeiten,
+      zValidator('json', emailBestaetigenSchema),
+      async (c) => {
+        await emailAenderung(() =>
+          deps.emailAenderung.bestaetigen(c.get('accessToken'), c.req.valid('json').code),
+        );
+        return c.json({ ok: true });
+      },
+    )
     .get('/me/mitglied', auth, profilBearbeiten, async (c) => {
       const row = await deps.mitglieder.holen(c.get('user').sub);
       if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });

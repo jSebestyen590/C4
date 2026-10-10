@@ -86,6 +86,14 @@ export const mitgliedAktualisierenSchema = z.object({
 });
 export type MitgliedAktualisieren = z.input<typeof mitgliedAktualisierenSchema>;
 
+export const emailAendernSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+});
+export type EmailAendernInput = z.infer<typeof emailAendernSchema>;
+
+export const emailBestaetigenSchema = z.object({ code: z.string().trim().min(1).max(20) });
+export type EmailBestaetigenInput = z.infer<typeof emailBestaetigenSchema>;
+
 export const mitgliedSchema = z.object({
   sub: z.string(),
   vorname: z.string(),

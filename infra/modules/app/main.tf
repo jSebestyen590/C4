@@ -21,6 +21,11 @@ resource "aws_cognito_user_pool" "this" {
   auto_verified_attributes = ["email"]
   deletion_protection      = var.deletion_protection ? "ACTIVE" : "INACTIVE"
 
+  # A changed email only replaces the old one (the login) once the new address was verified.
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
   admin_create_user_config {
     allow_admin_create_user_only = true
 
@@ -62,13 +67,14 @@ resource "aws_cognito_user_pool_domain" "this" {
   user_pool_id = aws_cognito_user_pool.this.id
 }
 
+# The scope aws.cognito.signin.user.admin lets the API change the caller's email with their token.
 resource "aws_cognito_user_pool_client" "web" {
   name                                 = "${local.name}-web"
   user_pool_id                         = aws_cognito_user_pool.this.id
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email"]
+  allowed_oauth_scopes                 = ["openid", "email", "aws.cognito.signin.user.admin"]
   supported_identity_providers         = ["COGNITO"]
   callback_urls                        = concat(local.callback, local.local_cb)
   logout_urls                          = concat(local.logout, local.local_out)

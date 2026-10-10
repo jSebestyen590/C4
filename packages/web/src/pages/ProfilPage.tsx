@@ -16,6 +16,7 @@ import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbildVerkleinern } from '../profilbild';
 
@@ -130,119 +131,114 @@ export function ProfilFormular({
   };
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <Stack maw={520}>
-        <Title order={2}>Mein Profil</Title>
-        {(!mitglied || !aktuellerUsername) && (
-          <Text>
-            Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die
-            anderen finden.
-          </Text>
-        )}
-        <Group wrap="nowrap">
-          <ProfilbildAnzeige src={bildUrl} size={96} alt="Profilbild" />
-          <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
-            <FileInput
-              size="md"
-              label="Profilbild"
-              placeholder="Bild auswählen"
-              accept="image/jpeg,image/png,image/webp"
-              clearable
-              onChange={(f) => f && bildHochladen.mutate(f)}
-              rightSection={bildHochladen.isPending ? <Loader size="xs" /> : undefined}
-              error={bildFehler}
-            />
-            {bildKey && (
-              <Button
-                variant="subtle"
-                color="red"
-                size="sm"
-                onClick={() => {
-                  setBildKey(null);
-                  setBildUrl(null);
-                }}
-              >
-                Bild entfernen
-              </Button>
-            )}
-          </Stack>
-        </Group>
-        {mitglied?.email && (
+    <Stack gap="xl">
+      <form onSubmit={onSubmit} noValidate>
+        <Stack maw={520}>
+          <Title order={2}>Mein Profil</Title>
+          {(!mitglied || !aktuellerUsername) && (
+            <Text>
+              Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die
+              anderen finden.
+            </Text>
+          )}
+          <Group wrap="nowrap">
+            <ProfilbildAnzeige src={bildUrl} size={96} alt="Profilbild" />
+            <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
+              <FileInput
+                size="md"
+                label="Profilbild"
+                placeholder="Bild auswählen"
+                accept="image/jpeg,image/png,image/webp"
+                clearable
+                onChange={(f) => f && bildHochladen.mutate(f)}
+                rightSection={bildHochladen.isPending ? <Loader size="xs" /> : undefined}
+                error={bildFehler}
+              />
+              {bildKey && (
+                <Button
+                  variant="subtle"
+                  color="red"
+                  size="sm"
+                  onClick={() => {
+                    setBildKey(null);
+                    setBildUrl(null);
+                  }}
+                >
+                  Bild entfernen
+                </Button>
+              )}
+            </Stack>
+          </Group>
           <TextInput
-            label="E-Mail"
-            description="Kann hier nicht geändert werden."
-            value={mitglied.email}
-            readOnly
+            required
+            label="Benutzername"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
+            description="Damit kannst du dich auch anmelden."
+            value={username}
+            onChange={(e) => setUsername(e.currentTarget.value)}
+            error={fehler.username}
           />
-        )}
-        <TextInput
-          required
-          label="Benutzername"
-          autoCapitalize="none"
-          autoCorrect="off"
-          autoComplete="username"
-          description="Damit kannst du dich auch anmelden."
-          value={username}
-          onChange={(e) => setUsername(e.currentTarget.value)}
-          error={fehler.username}
-        />
-        <TextInput
-          required
-          label="Vorname"
-          autoComplete="given-name"
-          value={vorname}
-          onChange={(e) => setVorname(e.currentTarget.value)}
-          error={fehler.vorname}
-        />
-        <TextInput
-          required
-          label="Nachname"
-          autoComplete="family-name"
-          value={nachname}
-          onChange={(e) => setNachname(e.currentTarget.value)}
-          error={fehler.nachname}
-        />
-        <Textarea
-          size="md"
-          label="Adresse"
-          autoComplete="street-address"
-          autosize
-          minRows={2}
-          value={adresse}
-          onChange={(e) => setAdresse(e.currentTarget.value)}
-          error={fehler.adresse}
-        />
-        <TextInput
-          type="tel"
-          label="Telefonnummer"
-          autoComplete="tel"
-          value={telefon}
-          onChange={(e) => setTelefon(e.currentTarget.value)}
-          error={fehler.telefon}
-        />
-        <Textarea
-          size="md"
-          label="Über mich"
-          autosize
-          minRows={3}
-          maxRows={10}
-          value={ueberMich}
-          onChange={(e) => setUeberMich(e.currentTarget.value)}
-          error={fehler.ueberMich}
-        />
-        {speichern.isError && (
-          <Alert color="red">Das Profil konnte nicht gespeichert werden.</Alert>
-        )}
-        <Button
-          type="submit"
-          loading={speichern.isPending}
-          disabled={bildHochladen.isPending}
-          fullWidth
-        >
-          Speichern
-        </Button>
-      </Stack>
-    </form>
+          <TextInput
+            required
+            label="Vorname"
+            autoComplete="given-name"
+            value={vorname}
+            onChange={(e) => setVorname(e.currentTarget.value)}
+            error={fehler.vorname}
+          />
+          <TextInput
+            required
+            label="Nachname"
+            autoComplete="family-name"
+            value={nachname}
+            onChange={(e) => setNachname(e.currentTarget.value)}
+            error={fehler.nachname}
+          />
+          <Textarea
+            size="md"
+            label="Adresse"
+            autoComplete="street-address"
+            autosize
+            minRows={2}
+            value={adresse}
+            onChange={(e) => setAdresse(e.currentTarget.value)}
+            error={fehler.adresse}
+          />
+          <TextInput
+            type="tel"
+            label="Telefonnummer"
+            autoComplete="tel"
+            value={telefon}
+            onChange={(e) => setTelefon(e.currentTarget.value)}
+            error={fehler.telefon}
+          />
+          <Textarea
+            size="md"
+            label="Über mich"
+            autosize
+            minRows={3}
+            maxRows={10}
+            value={ueberMich}
+            onChange={(e) => setUeberMich(e.currentTarget.value)}
+            error={fehler.ueberMich}
+          />
+          {speichern.isError && (
+            <Alert color="red">Das Profil konnte nicht gespeichert werden.</Alert>
+          )}
+          <Button
+            type="submit"
+            loading={speichern.isPending}
+            disabled={bildHochladen.isPending}
+            fullWidth
+          >
+            Speichern
+          </Button>
+        </Stack>
+      </form>
+      {mitglied?.email && <EmailAendern email={mitglied.email} />}
+    </Stack>
   );
 }
 
