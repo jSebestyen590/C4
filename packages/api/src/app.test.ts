@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AdminUser } from '@c4/shared';
 import { createApp } from './app';
-import { UsernameTakenError } from './admin';
+import { UsernameTakenError, type Konto } from './admin';
 import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
@@ -14,7 +14,7 @@ const users: Record<string, AuthUser> = {
 function makeApp(pingDb = async () => {}) {
   const userAdmin = {
     listUsers: vi.fn(async () => []),
-    usernamesBySub: vi.fn(async () => new Map<string, string>()),
+    konten: vi.fn(async () => new Map<string, Konto>()),
     getPreferredUsername: vi.fn(async (): Promise<string | undefined> => undefined),
     setPreferredUsername: vi.fn<(username: string, preferred: string) => Promise<void>>(
       async () => {},
@@ -211,14 +211,33 @@ describe('api', () => {
       ]);
     });
 
-    it('includes the login name from Cognito, null when none is chosen', async () => {
+    it('merges Cognito accounts into the list, including users that are not activated', async () => {
       const { app, userAdmin } = makeApp();
       await app.request('/api/me/mitglied', json('reader-token', 'PUT', gueltig));
-      userAdmin.usernamesBySub.mockResolvedValueOnce(new Map([['r', 'erika_m']]));
-      const mit = await app.request('/api/mitglieder', json('admin-token', 'GET'));
-      expect(await mit.json()).toMatchObject([{ sub: 'r', username: 'erika_m' }]);
-      const ohne = await app.request('/api/mitglieder', json('admin-token', 'GET'));
-      expect(await ohne.json()).toMatchObject([{ sub: 'r', username: null }]);
+      userAdmin.konten.mockResolvedValue(
+        new Map<string, Konto>([
+          [
+            'r',
+            {
+              sub: 'r',
+              username: 'erika_m',
+              email: 'e@example.de',
+              aktiviert: true,
+              enabled: true,
+            },
+          ],
+          ['n', { sub: 'n', email: 'neu@example.de', aktiviert: false, enabled: true }],
+          ['x', { sub: 'x', email: 'aus@example.de', aktiviert: true, enabled: false }],
+        ]),
+      );
+      const res = await app.request('/api/mitglieder', json('admin-token', 'GET'));
+      expect(await res.json()).toMatchObject([
+        { sub: 'r', username: 'erika_m', email: 'e@example.de', aktiviert: true },
+        { sub: 'n', username: null, email: 'neu@example.de', aktiviert: false, vorname: '' },
+      ]);
+      const detail = await app.request('/api/mitglieder/n', json('admin-token', 'GET'));
+      expect(detail.status).toBe(200);
+      expect((await app.request('/api/mitglieder/x', json('admin-token', 'GET'))).status).toBe(404);
     });
 
     it('creates the member row when an admin invites with names', async () => {

@@ -1,8 +1,9 @@
-import { Alert, Anchor, Avatar, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Avatar, Badge, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { anzeigename, nebenname } from '../mitglied';
 import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
@@ -46,23 +47,34 @@ export function MitgliedPage() {
             <Avatar src={m.profilbildUrl} size={96} radius="xl" alt="" />
             <div style={{ minWidth: 0 }}>
               <Title order={2} style={{ overflowWrap: 'anywhere' }}>
-                {m.username ?? `${m.vorname} ${m.nachname}`}
+                {anzeigename(m)}
               </Title>
-              {m.username && (
+              {nebenname(m) && (
                 <Text c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                  {m.vorname} {m.nachname}
+                  {nebenname(m)}
                 </Text>
+              )}
+              {!m.aktiviert && (
+                <Badge color="yellow" variant="light" mt={4}>
+                  Noch nicht aktiviert
+                </Badge>
               )}
             </div>
           </Group>
+          {m.email && (
+            <div>
+              <Text size="sm" c="dimmed">
+                E-Mail
+              </Text>
+              <Text style={{ overflowWrap: 'anywhere' }}>{m.email}</Text>
+            </div>
+          )}
           {m.telefon && (
             <div>
               <Text size="sm" c="dimmed">
                 Telefonnummer
               </Text>
-              <Text component="a" href={`tel:${m.telefon}`}>
-                {m.telefon}
-              </Text>
+              <Text>{m.telefon}</Text>
             </div>
           )}
           {m.adresse && (

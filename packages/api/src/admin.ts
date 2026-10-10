@@ -11,13 +11,24 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { AdminUser } from '@c4/shared';
 
+/** The Cognito side of a member: login name, email and whether the account is usable. */
+export interface Konto {
+  sub: string;
+  username?: string;
+  email?: string;
+  /** False while the user still has to set their first password. */
+  aktiviert: boolean;
+  /** False for accounts an admin disabled. */
+  enabled: boolean;
+}
+
 export class UsernameTakenError extends Error {}
 
 export interface UserAdmin {
   listUsers(): Promise<AdminUser[]>;
   createUser(email: string, groups: string[]): Promise<AdminUser>;
-  /** Login names (preferred_username) of all users, keyed by Cognito `sub`. */
-  usernamesBySub(): Promise<Map<string, string>>;
+  /** All Cognito accounts, keyed by `sub`. */
+  konten(): Promise<Map<string, Konto>>;
   getPreferredUsername(username: string): Promise<string | undefined>;
   /** Throws UsernameTakenError when another user already uses the name. */
   setPreferredUsername(username: string, preferred: string): Promise<void>;
@@ -47,17 +58,24 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
         })),
       );
     },
-    async usernamesBySub() {
-      const result = new Map<string, string>();
+    async konten() {
+      const result = new Map<string, Konto>();
       let token: string | undefined;
       do {
         const res = await client.send(
           new ListUsersCommand({ UserPoolId: userPoolId, Limit: 60, PaginationToken: token }),
         );
         for (const u of res.Users ?? []) {
-          const sub = u.Attributes?.find((a) => a.Name === 'sub')?.Value;
-          const name = u.Attributes?.find((a) => a.Name === 'preferred_username')?.Value;
-          if (sub && name) result.set(sub, name);
+          const attr = (name: string) => u.Attributes?.find((a) => a.Name === name)?.Value;
+          const sub = attr('sub');
+          if (!sub) continue;
+          result.set(sub, {
+            sub,
+            username: attr('preferred_username'),
+            email: attr('email'),
+            aktiviert: u.UserStatus !== 'FORCE_CHANGE_PASSWORD',
+            enabled: u.Enabled ?? false,
+          });
         }
         token = res.PaginationToken;
       } while (token);

@@ -12,7 +12,7 @@ import {
   type Me,
   type Mitglied,
 } from '@c4/shared';
-import { UsernameTakenError, type UserAdmin } from './admin';
+import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliederStore } from './mitglieder';
 import { profilbildPrefix, type Profilbilder } from './profilbilder';
@@ -33,20 +33,40 @@ export function createApp(deps: AppDeps) {
   const mitgliederLesen = requirePermission('mitglieder:lesen');
   const profilBearbeiten = requirePermission('profil:bearbeiten');
 
+  /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
-    row: MitgliedRow,
-    username: string | undefined,
+    sub: string,
+    row: MitgliedRow | undefined,
+    konto: Konto | undefined,
   ): Promise<Mitglied> => ({
-    sub: row.sub,
-    vorname: row.vorname,
-    nachname: row.nachname,
-    username: username ?? null,
-    adresse: row.adresse,
-    telefon: row.telefon,
-    ueberMich: row.ueberMich,
-    profilbildKey: row.profilbildKey,
-    profilbildUrl: row.profilbildKey ? await deps.profilbilder.anzeigeUrl(row.profilbildKey) : null,
+    sub,
+    vorname: row?.vorname ?? '',
+    nachname: row?.nachname ?? '',
+    username: konto?.username ?? null,
+    email: konto?.email ?? null,
+    aktiviert: konto?.aktiviert ?? true,
+    adresse: row?.adresse ?? null,
+    telefon: row?.telefon ?? null,
+    ueberMich: row?.ueberMich ?? null,
+    profilbildKey: row?.profilbildKey ?? null,
+    profilbildUrl: row?.profilbildKey
+      ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
+      : null,
   });
+
+  /** All members: every profile row plus every enabled account that has no profile yet. */
+  const alleMitglieder = async (): Promise<Mitglied[]> => {
+    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
+    const nachSub = new Map(rows.map((r) => [r.sub, r]));
+    const subs = [
+      ...rows.map((r) => r.sub),
+      ...[...konten.values()].filter((k) => k.enabled && !nachSub.has(k.sub)).map((k) => k.sub),
+    ];
+    const liste = await Promise.all(subs.map((s) => alsMitglied(s, nachSub.get(s), konten.get(s))));
+    const sortKey = (m: Mitglied) =>
+      `${m.nachname || '\uffff'} ${m.vorname} ${m.username ?? m.email ?? ''}`.toLowerCase();
+    return liste.sort((a, b) => sortKey(a).localeCompare(sortKey(b), 'de'));
+  };
 
   return new Hono<AuthEnv>()
     .basePath('/api')
@@ -86,7 +106,7 @@ export function createApp(deps: AppDeps) {
     .get('/me/mitglied', auth, profilBearbeiten, async (c) => {
       const row = await deps.mitglieder.holen(c.get('user').sub);
       if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
-      return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(row.sub)));
+      return c.json(await alsMitglied(row.sub, row, (await deps.userAdmin.konten()).get(row.sub)));
     })
     .put(
       '/me/mitglied',
@@ -108,7 +128,7 @@ export function createApp(deps: AppDeps) {
         }
         const row = await deps.mitglieder.holen(sub);
         if (!row) throw new Error('Mitglied nach dem Speichern nicht gefunden');
-        return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(sub)));
+        return c.json(await alsMitglied(sub, row, (await deps.userAdmin.konten()).get(sub)));
       },
     )
     .post(
@@ -119,17 +139,11 @@ export function createApp(deps: AppDeps) {
       async (c) =>
         c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
     )
-    .get('/mitglieder', auth, mitgliederLesen, async (c) => {
-      const [rows, usernames] = await Promise.all([
-        deps.mitglieder.alle(),
-        deps.userAdmin.usernamesBySub(),
-      ]);
-      return c.json(await Promise.all(rows.map((r) => alsMitglied(r, usernames.get(r.sub)))));
-    })
+    .get('/mitglieder', auth, mitgliederLesen, async (c) => c.json(await alleMitglieder()))
     .get('/mitglieder/:sub', auth, mitgliederLesen, async (c) => {
-      const row = await deps.mitglieder.holen(c.req.param('sub'));
-      if (!row) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
-      return c.json(await alsMitglied(row, (await deps.userAdmin.usernamesBySub()).get(row.sub)));
+      const mitglied = (await alleMitglieder()).find((m) => m.sub === c.req.param('sub'));
+      if (!mitglied) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+      return c.json(mitglied);
     })
     .get('/admin/users', auth, adminOnly, async (c) => {
       const [users, rows] = await Promise.all([deps.userAdmin.listUsers(), deps.mitglieder.alle()]);

@@ -1,6 +1,7 @@
 import {
   Alert,
   Avatar,
+  Badge,
   Group,
   Loader,
   Paper,
@@ -14,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
+import { anzeigename, nebenname } from '../mitglied';
 
 export function MitgliederPage() {
   const api = useApi();
@@ -34,7 +36,7 @@ export function MitgliederPage() {
       <Title order={2}>Mitglieder</Title>
       <TextInput
         type="search"
-        placeholder="Nach Namen oder Username suchen"
+        placeholder="Nach Name, Username oder E-Mail suchen"
         aria-label="Mitglieder suchen"
         value={suche}
         onChange={(e) => setSuche(e.currentTarget.value)}
@@ -59,15 +61,26 @@ export function MitgliederPage() {
                 <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
                 <div style={{ minWidth: 0 }}>
                   <Text fw={500} style={{ overflowWrap: 'anywhere' }}>
-                    {m.username ?? `${m.vorname} ${m.nachname}`}
+                    {anzeigename(m)}
                   </Text>
-                  {m.username && (
+                  {nebenname(m) && (
                     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      {m.vorname} {m.nachname}
+                      {nebenname(m)}
                     </Text>
+                  )}
+                  {!m.aktiviert && (
+                    <Badge color="yellow" variant="light" mt={4}>
+                      Noch nicht aktiviert
+                    </Badge>
                   )}
                 </div>
               </Group>
+              {m.email && (
+                <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                  {m.email}
+                </Text>
+              )}
+              {m.telefon && <Text size="sm">{m.telefon}</Text>}
               {m.adresse && (
                 <Text size="sm" style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                   {m.adresse}
