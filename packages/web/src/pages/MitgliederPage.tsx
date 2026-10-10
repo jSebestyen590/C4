@@ -5,6 +5,7 @@ import {
   Group,
   Loader,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -17,29 +18,55 @@ import { Link } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { anzeigename, nebenname } from '../mitglied';
 
+const SORTIERUNGEN = [
+  { value: 'username', label: 'Username' },
+  { value: 'vorname', label: 'Vorname' },
+  { value: 'nachname', label: 'Nachname' },
+];
+type Sortierung = 'username' | 'vorname' | 'nachname';
+
+/** Empty values sort last so members without a username do not lead the list. */
+const vergleichen = (a: string, b: string) =>
+  a === b ? 0 : a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'de', { sensitivity: 'base' });
+
 export function MitgliederPage() {
   const api = useApi();
   const [suche, setSuche] = useState('');
+  const [sortierung, setSortierung] = useState<Sortierung>('nachname');
   const mitglieder = useQuery({
     queryKey: ['mitglieder'],
     queryFn: async () => unwrap(await api.mitglieder.$get()),
   });
 
-  const treffer = (mitglieder.data ?? []).filter((m) =>
-    `${m.vorname} ${m.nachname} ${m.username ?? ''}`
-      .toLowerCase()
-      .includes(suche.trim().toLowerCase()),
-  );
+  const treffer = (mitglieder.data ?? [])
+    .filter((m) =>
+      `${m.vorname} ${m.nachname} ${m.username ?? ''} ${m.email ?? ''}`
+        .toLowerCase()
+        .includes(suche.trim().toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        vergleichen(a[sortierung] ?? '', b[sortierung] ?? '') ||
+        vergleichen(anzeigename(a), anzeigename(b)),
+    );
 
   return (
     <Stack>
       <Title order={2}>Mitglieder</Title>
       <TextInput
         type="search"
-        placeholder="Nach Name, Username oder E-Mail suchen"
+        placeholder="Suchen"
         aria-label="Mitglieder suchen"
         value={suche}
         onChange={(e) => setSuche(e.currentTarget.value)}
+      />
+      <Select
+        label="Sortieren nach"
+        data={SORTIERUNGEN}
+        value={sortierung}
+        onChange={(v) => v && setSortierung(v as Sortierung)}
+        allowDeselect={false}
+        comboboxProps={{ withinPortal: true }}
       />
       {mitglieder.isPending && <Loader m="md" aria-label="Mitglieder werden geladen" />}
       {mitglieder.isError && <Alert color="red">Mitglieder konnten nicht geladen werden.</Alert>}
