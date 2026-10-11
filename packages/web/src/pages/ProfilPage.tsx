@@ -29,7 +29,8 @@ import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
-import { profilbildVerkleinern } from '../profilbild';
+import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
+import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 
 type Fehler = Partial<
   Record<'username' | 'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich', string>
@@ -62,29 +63,41 @@ export function ProfilFormular({
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
   const [bildKey, setBildKey] = useState<string | null>(mitglied?.profilbildKey ?? null);
   const [bildUrl, setBildUrl] = useState<string | null>(mitglied?.profilbildUrl ?? null);
+  const [bildGrossUrl, setBildGrossUrl] = useState<string | null>(
+    mitglied?.profilbildGrossUrl ?? null,
+  );
+  const [gewaehlt, setGewaehlt] = useState<File | null>(null);
   const [fehler, setFehler] = useState<Fehler>({});
   const [bildFehler, setBildFehler] = useState<string | null>(null);
 
   const bildHochladen = useMutation({
-    mutationFn: async (datei: File) => {
-      const blob = await profilbildVerkleinern(datei);
+    mutationFn: async ({ datei, ausschnitt }: { datei: File; ausschnitt: Ausschnitt }) => {
+      const { gross, klein } = await profilbilderErzeugen(datei, ausschnitt);
       const res = await api.me.profilbild.$post({
-        json: { contentType: 'image/jpeg', groesse: blob.size },
+        json: { contentType: 'image/jpeg', groesse: gross.size, kleinGroesse: klein.size },
       });
       if (!res.ok) throw new Error('Upload konnte nicht vorbereitet werden');
-      const { uploadUrl, key } = await res.json();
-      const put = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'content-type': 'image/jpeg' },
-        body: blob,
-      });
-      if (!put.ok) throw new Error('Upload fehlgeschlagen');
-      return { key, vorschau: URL.createObjectURL(blob) };
+      const { uploadUrl, kleinUploadUrl, key } = await res.json();
+      const hochladen = async (url: string, blob: Blob) => {
+        const put = await fetch(url, {
+          method: 'PUT',
+          headers: { 'content-type': 'image/jpeg' },
+          body: blob,
+        });
+        if (!put.ok) throw new Error('Upload fehlgeschlagen');
+      };
+      await Promise.all([hochladen(uploadUrl, gross), hochladen(kleinUploadUrl, klein)]);
+      return {
+        key,
+        vorschau: URL.createObjectURL(klein),
+        grossVorschau: URL.createObjectURL(gross),
+      };
     },
-    onSuccess: ({ key, vorschau }) => {
+    onSuccess: ({ key, vorschau, grossVorschau }) => {
       setBildFehler(null);
       setBildKey(key);
       setBildUrl(vorschau);
+      setBildGrossUrl(grossVorschau);
     },
     onError: () => setBildFehler('Das Bild konnte nicht hochgeladen werden.'),
   });
@@ -161,8 +174,16 @@ export function ProfilFormular({
               anderen finden.
             </Text>
           )}
+          <ProfilbildZuschnitt
+            datei={gewaehlt}
+            onAbbrechen={() => setGewaehlt(null)}
+            onUebernehmen={(datei, ausschnitt) => {
+              setGewaehlt(null);
+              bildHochladen.mutate({ datei, ausschnitt });
+            }}
+          />
           <Group wrap="nowrap">
-            <ProfilbildAnzeige src={bildUrl} size={96} alt="Profilbild" />
+            <ProfilbildAnzeige src={bildUrl} grossSrc={bildGrossUrl} size={96} alt="Profilbild" />
             <Stack gap="xs" style={{ flex: 1, minWidth: 0 }}>
               <FileInput
                 size="md"
@@ -170,7 +191,8 @@ export function ProfilFormular({
                 placeholder="Bild auswählen"
                 accept="image/jpeg,image/png,image/webp"
                 clearable
-                onChange={(f) => f && bildHochladen.mutate(f)}
+                value={null}
+                onChange={setGewaehlt}
                 rightSection={bildHochladen.isPending ? <Loader size="xs" /> : undefined}
                 error={bildFehler}
               />
@@ -182,6 +204,7 @@ export function ProfilFormular({
                   onClick={() => {
                     setBildKey(null);
                     setBildUrl(null);
+                    setBildGrossUrl(null);
                   }}
                 >
                   Bild entfernen

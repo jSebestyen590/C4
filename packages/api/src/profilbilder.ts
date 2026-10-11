@@ -22,36 +22,49 @@ export interface Profilbilder {
   uploadVorbereiten(
     sub: string,
     anfrage: ProfilbildAnfrage,
-  ): Promise<{ uploadUrl: string; key: string }>;
+  ): Promise<{ uploadUrl: string; kleinUploadUrl: string; key: string }>;
   anzeigeUrl(key: string): Promise<string>;
+  /** Deletes the large picture and its small variant. */
   loeschen(key: string): Promise<void>;
 }
+
+/** Key of the small variant that belongs to the large picture `key`. */
+export const kleinKey = (key: string) => key.replace(/(\.[^./]+)$/, '-klein$1');
 
 export const profilbildPrefix = (sub: string) => `profilbilder/${sub}/`;
 
 export function createProfilbilder(bucket: string, region: string): Profilbilder {
   const s3 = new S3Client({ region });
   return {
-    async uploadVorbereiten(sub, { contentType, groesse }) {
+    async uploadVorbereiten(sub, { contentType, groesse, kleinGroesse }) {
       const key = `${profilbildPrefix(sub)}${randomUUID()}.${ENDUNG[contentType]}`;
-      const uploadUrl = await getSignedUrl(
-        s3,
-        new PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          ContentType: contentType,
-          ContentLength: groesse,
-        }),
-        { expiresIn: UPLOAD_GUELTIG_S },
-      );
-      return { uploadUrl, key };
+      const putUrl = (k: string, laenge: number) =>
+        getSignedUrl(
+          s3,
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: k,
+            ContentType: contentType,
+            ContentLength: laenge,
+          }),
+          { expiresIn: UPLOAD_GUELTIG_S },
+        );
+      const [uploadUrl, kleinUploadUrl] = await Promise.all([
+        putUrl(key, groesse),
+        putUrl(kleinKey(key), kleinGroesse),
+      ]);
+      return { uploadUrl, kleinUploadUrl, key };
     },
     anzeigeUrl: (key) =>
       getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
         expiresIn: ANZEIGE_GUELTIG_S,
       }),
     async loeschen(key) {
-      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      await Promise.all(
+        [key, kleinKey(key)].map((k) =>
+          s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: k })),
+        ),
+      );
     },
   };
 }

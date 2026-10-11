@@ -1,12 +1,16 @@
 import { Avatar, Image, Modal, UnstyledButton } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-/** Profile picture that opens enlarged in an overlay on click; without a picture it is inert. */
+/**
+ * Small profile picture that opens the large variant in an overlay on click; without a picture it
+ * is inert.
+ */
 export function ProfilbildAnzeige({
   src,
+  grossSrc,
   size,
   alt,
-}: Readonly<{ src: string | null; size: number; alt: string }>) {
+}: Readonly<{ src: string | null; grossSrc: string | null; size: number; alt: string }>) {
   const [offen, { open, close }] = useDisclosure(false);
   if (!src) return <Avatar size={size} radius="xl" alt="" />;
   return (
@@ -23,7 +27,7 @@ export function ProfilbildAnzeige({
         closeButtonProps={{ 'aria-label': 'Schließen' }}
         padding="xs"
       >
-        <Image src={src} alt={alt} fit="contain" maw="100%" mah="80dvh" />
+        <Image src={grossSrc ?? src} alt={alt} fit="contain" maw="100%" mah="80dvh" />
       </Modal>
     </>
   );

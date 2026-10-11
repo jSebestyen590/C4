@@ -47,7 +47,12 @@ export function MitgliedPage() {
       {m && !(m.sub === me.data.sub && can('profil:bearbeiten')) && (
         <Stack maw={520}>
           <Group wrap="nowrap">
-            <ProfilbildAnzeige src={m.profilbildUrl} size={96} alt="Profilbild" />
+            <ProfilbildAnzeige
+              src={m.profilbildUrl}
+              grossSrc={m.profilbildGrossUrl}
+              size={96}
+              alt="Profilbild"
+            />
             <div style={{ minWidth: 0 }}>
               <StatusTitel status={m.status}>{anzeigename(m)}</StatusTitel>
               {nebenname(m) && (

@@ -123,8 +123,10 @@ export const mitgliedSchema = z.object({
   telefon: z.string().nullable(),
   ueberMich: z.string().nullable(),
   profilbildKey: z.string().nullable(),
-  /** Short-lived presigned URL for the picture; null without one. */
+  /** Short-lived presigned URL of the small picture (256 px), used everywhere by default. */
   profilbildUrl: z.string().nullable(),
+  /** Short-lived presigned URL of the large picture (up to 512 px), shown when opened. */
+  profilbildGrossUrl: z.string().nullable(),
   /** Roles of the member; only sent to administrators. */
   rollen: z.array(z.string()).optional(),
 });
@@ -140,11 +142,20 @@ export const profilbildAnfrageSchema = z.object({
     .int()
     .positive()
     .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 5 MB groß sein.'),
+  /** Size of the small variant (256 px) that is uploaded next to the large one. */
+  kleinGroesse: z
+    .number()
+    .int()
+    .positive()
+    .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 5 MB groß sein.'),
 });
 export type ProfilbildAnfrage = z.infer<typeof profilbildAnfrageSchema>;
 
 export const profilbildUploadSchema = z.object({
   uploadUrl: z.string(),
+  /** Presigned PUT for the small variant. */
+  kleinUploadUrl: z.string(),
+  /** Key of the large variant; the small one is derived from it. */
   key: z.string(),
 });
 export type ProfilbildUpload = z.infer<typeof profilbildUploadSchema>;

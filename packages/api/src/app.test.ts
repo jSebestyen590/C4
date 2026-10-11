@@ -55,6 +55,7 @@ function makeApp(pingDb = async () => {}) {
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
+      kleinUploadUrl: 'https://s3.example/upload-klein',
       key: `profilbilder/${sub}/neu.png`,
     })),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
@@ -235,13 +236,20 @@ describe('api', () => {
       const { app, profilbilder } = makeApp();
       const post = (body: unknown) =>
         app.request('/api/me/profilbild', json('reader-token', 'POST', body));
-      expect((await post({ contentType: 'image/gif', groesse: 100 })).status).toBe(400);
-      expect((await post({ contentType: 'image/png', groesse: 6 * 1024 * 1024 })).status).toBe(400);
-      const ok = await post({ contentType: 'image/png', groesse: 1000 });
+      expect(
+        (await post({ contentType: 'image/gif', groesse: 100, kleinGroesse: 10 })).status,
+      ).toBe(400);
+      expect(
+        (await post({ contentType: 'image/png', groesse: 6 * 1024 * 1024, kleinGroesse: 10 }))
+          .status,
+      ).toBe(400);
+      expect((await post({ contentType: 'image/png', groesse: 1000 })).status).toBe(400);
+      const ok = await post({ contentType: 'image/png', groesse: 1000, kleinGroesse: 200 });
       expect(ok.status).toBe(200);
       expect(profilbilder.uploadVorbereiten).toHaveBeenCalledWith('r', {
         contentType: 'image/png',
         groesse: 1000,
+        kleinGroesse: 200,
       });
     });
 
@@ -253,7 +261,12 @@ describe('api', () => {
       );
       const res = await app.request('/api/mitglieder', json('admin-token', 'GET'));
       expect(await res.json()).toMatchObject([
-        { sub: 'r', vorname: 'Erika', profilbildUrl: 'https://s3.example/profilbilder/r/a.png' },
+        {
+          sub: 'r',
+          vorname: 'Erika',
+          profilbildUrl: 'https://s3.example/profilbilder/r/a-klein.png',
+          profilbildGrossUrl: 'https://s3.example/profilbilder/r/a.png',
+        },
       ]);
     });
 

@@ -23,7 +23,7 @@ import {
 } from './emailaenderung';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliederStore } from './mitglieder';
-import { profilbildPrefix, type Profilbilder } from './profilbilder';
+import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
 
 export interface AppDeps {
@@ -79,6 +79,9 @@ export function createApp(deps: AppDeps) {
     ueberMich: row?.ueberMich ?? null,
     profilbildKey: row?.profilbildKey ?? null,
     profilbildUrl: row?.profilbildKey
+      ? await deps.profilbilder.anzeigeUrl(kleinKey(row.profilbildKey))
+      : null,
+    profilbildGrossUrl: row?.profilbildKey
       ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
       : null,
     ...(rollen && { rollen }),
