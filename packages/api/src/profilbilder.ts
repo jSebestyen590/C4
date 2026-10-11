@@ -28,8 +28,8 @@ export interface Profilbilder {
   loeschen(key: string): Promise<void>;
 }
 
-/** Key of the small variant that belongs to the large picture `key`. */
-export const kleinKey = (key: string) => key.replace(/(\.[^./]+)$/, '-klein$1');
+/** Key of the small variant (always a JPEG) that belongs to the original `key`. */
+export const kleinKey = (key: string) => key.replace(/\.[^./]+$/, '-klein.jpg');
 
 export const profilbildPrefix = (sub: string) => `profilbilder/${sub}/`;
 
@@ -38,20 +38,20 @@ export function createProfilbilder(bucket: string, region: string): Profilbilder
   return {
     async uploadVorbereiten(sub, { contentType, groesse, kleinGroesse }) {
       const key = `${profilbildPrefix(sub)}${randomUUID()}.${ENDUNG[contentType]}`;
-      const putUrl = (k: string, laenge: number) =>
+      const putUrl = (k: string, typ: string, laenge: number) =>
         getSignedUrl(
           s3,
           new PutObjectCommand({
             Bucket: bucket,
             Key: k,
-            ContentType: contentType,
+            ContentType: typ,
             ContentLength: laenge,
           }),
           { expiresIn: UPLOAD_GUELTIG_S },
         );
       const [uploadUrl, kleinUploadUrl] = await Promise.all([
-        putUrl(key, groesse),
-        putUrl(kleinKey(key), kleinGroesse),
+        putUrl(key, contentType, groesse),
+        putUrl(kleinKey(key), 'image/jpeg', kleinGroesse),
       ]);
       return { uploadUrl, kleinUploadUrl, key };
     },

@@ -240,7 +240,7 @@ describe('api', () => {
         (await post({ contentType: 'image/gif', groesse: 100, kleinGroesse: 10 })).status,
       ).toBe(400);
       expect(
-        (await post({ contentType: 'image/png', groesse: 6 * 1024 * 1024, kleinGroesse: 10 }))
+        (await post({ contentType: 'image/png', groesse: 21 * 1024 * 1024, kleinGroesse: 10 }))
           .status,
       ).toBe(400);
       expect((await post({ contentType: 'image/png', groesse: 1000 })).status).toBe(400);
@@ -264,7 +264,7 @@ describe('api', () => {
         {
           sub: 'r',
           vorname: 'Erika',
-          profilbildUrl: 'https://s3.example/profilbilder/r/a-klein.png',
+          profilbildUrl: 'https://s3.example/profilbilder/r/a-klein.jpg',
           profilbildGrossUrl: 'https://s3.example/profilbilder/r/a.png',
         },
       ]);

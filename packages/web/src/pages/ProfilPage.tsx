@@ -17,6 +17,7 @@ import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ANREDEN,
+  PROFILBILD_TYPEN,
   mitgliedAktualisierenSchema,
   setUsernameSchema,
   type Anrede,
@@ -29,7 +30,7 @@ import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
-import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
+import { kleinesProfilbild, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 
 type Fehler = Partial<
@@ -72,25 +73,29 @@ export function ProfilFormular({
 
   const bildHochladen = useMutation({
     mutationFn: async ({ datei, ausschnitt }: { datei: File; ausschnitt: Ausschnitt }) => {
-      const { gross, klein } = await profilbilderErzeugen(datei, ausschnitt);
+      const klein = await kleinesProfilbild(datei, ausschnitt);
       const res = await api.me.profilbild.$post({
-        json: { contentType: 'image/jpeg', groesse: gross.size, kleinGroesse: klein.size },
+        json: {
+          contentType: datei.type as (typeof PROFILBILD_TYPEN)[number],
+          groesse: datei.size,
+          kleinGroesse: klein.size,
+        },
       });
       if (!res.ok) throw new Error('Upload konnte nicht vorbereitet werden');
       const { uploadUrl, kleinUploadUrl, key } = await res.json();
       const hochladen = async (url: string, blob: Blob) => {
         const put = await fetch(url, {
           method: 'PUT',
-          headers: { 'content-type': 'image/jpeg' },
+          headers: { 'content-type': blob.type },
           body: blob,
         });
         if (!put.ok) throw new Error('Upload fehlgeschlagen');
       };
-      await Promise.all([hochladen(uploadUrl, gross), hochladen(kleinUploadUrl, klein)]);
+      await Promise.all([hochladen(uploadUrl, datei), hochladen(kleinUploadUrl, klein)]);
       return {
         key,
         vorschau: URL.createObjectURL(klein),
-        grossVorschau: URL.createObjectURL(gross),
+        grossVorschau: URL.createObjectURL(datei),
       };
     },
     onSuccess: ({ key, vorschau, grossVorschau }) => {

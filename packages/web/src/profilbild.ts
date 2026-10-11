@@ -1,4 +1,3 @@
-const GROSS_KANTE = 512;
 const KLEIN_KANTE = 256;
 
 /** Selected square in pixels of the original picture. */
@@ -7,13 +6,6 @@ export interface Ausschnitt {
   y: number;
   width: number;
   height: number;
-}
-
-export interface Profilbilder {
-  /** Up to 512 px; shown when the picture is opened. */
-  gross: Blob;
-  /** Up to 256 px; shown everywhere else. */
-  klein: Blob;
 }
 
 const alsJpeg = (canvas: HTMLCanvasElement) =>
@@ -25,35 +17,31 @@ const alsJpeg = (canvas: HTMLCanvasElement) =>
     );
   });
 
-/** Cuts the selected square out of the picture and scales it to both sizes (never enlarging). */
-export async function profilbilderErzeugen(
-  datei: File,
-  ausschnitt: Ausschnitt,
-): Promise<Profilbilder> {
+/**
+ * Cuts the selected square out of the picture and scales it down to the small variant (never
+ * enlarging). The original file itself is uploaded unchanged.
+ */
+export async function kleinesProfilbild(datei: File, ausschnitt: Ausschnitt): Promise<Blob> {
   const bild = await createImageBitmap(datei);
   try {
-    const erzeugen = (maxKante: number) => {
-      const kante = Math.max(1, Math.round(Math.min(maxKante, ausschnitt.width)));
-      const canvas = document.createElement('canvas');
-      canvas.width = kante;
-      canvas.height = kante;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas nicht verfügbar');
-      ctx.drawImage(
-        bild,
-        ausschnitt.x,
-        ausschnitt.y,
-        ausschnitt.width,
-        ausschnitt.height,
-        0,
-        0,
-        kante,
-        kante,
-      );
-      return alsJpeg(canvas);
-    };
-    const [gross, klein] = await Promise.all([erzeugen(GROSS_KANTE), erzeugen(KLEIN_KANTE)]);
-    return { gross, klein };
+    const kante = Math.max(1, Math.round(Math.min(KLEIN_KANTE, ausschnitt.width)));
+    const canvas = document.createElement('canvas');
+    canvas.width = kante;
+    canvas.height = kante;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas nicht verfügbar');
+    ctx.drawImage(
+      bild,
+      ausschnitt.x,
+      ausschnitt.y,
+      ausschnitt.width,
+      ausschnitt.height,
+      0,
+      0,
+      kante,
+      kante,
+    );
+    return await alsJpeg(canvas);
   } finally {
     bild.close();
   }

@@ -133,21 +133,20 @@ export const mitgliedSchema = z.object({
 export type Mitglied = z.infer<typeof mitgliedSchema>;
 
 export const PROFILBILD_TYPEN = ['image/jpeg', 'image/png', 'image/webp'] as const;
-export const PROFILBILD_MAX_BYTES = 5 * 1024 * 1024;
+/** The original is stored untouched, so it may be a full-size photo. */
+export const PROFILBILD_MAX_BYTES = 20 * 1024 * 1024;
+export const PROFILBILD_KLEIN_MAX_BYTES = 1024 * 1024;
 
 export const profilbildAnfrageSchema = z.object({
+  /** Type of the original file, which is uploaded unchanged. */
   contentType: z.enum(PROFILBILD_TYPEN),
   groesse: z
     .number()
     .int()
     .positive()
-    .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 5 MB groß sein.'),
-  /** Size of the small variant (256 px) that is uploaded next to the large one. */
-  kleinGroesse: z
-    .number()
-    .int()
-    .positive()
-    .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 5 MB groß sein.'),
+    .max(PROFILBILD_MAX_BYTES, 'Das Bild darf höchstens 20 MB groß sein.'),
+  /** Size of the small variant: always a JPEG of at most 256 px. */
+  kleinGroesse: z.number().int().positive().max(PROFILBILD_KLEIN_MAX_BYTES),
 });
 export type ProfilbildAnfrage = z.infer<typeof profilbildAnfrageSchema>;
 
