@@ -22,7 +22,7 @@ variable "lambda_source_dir" {
 
 variable "groups" {
   type    = list(string)
-  default = ["admin", "reader"]
+  default = ["admin"]
 }
 
 variable "allow_localhost_callback" {

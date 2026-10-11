@@ -4,7 +4,6 @@ import type { MitgliedStatus, Permission, Role } from '@c4/shared';
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administrator',
-  reader: 'Lesender Zugriff',
 };
 
 export const PERMISSION_LABELS: Record<Permission, string> = {

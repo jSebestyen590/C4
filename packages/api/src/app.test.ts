@@ -9,7 +9,7 @@ import type { MitgliedDaten } from './mitglieder';
 
 const users: Record<string, AuthUser> = {
   'admin-token': { sub: 'a', groups: ['admin'] },
-  'reader-token': { sub: 'r', groups: ['reader'] },
+  'reader-token': { sub: 'r', groups: [] },
 };
 
 function makeApp(pingDb = async () => {}) {
@@ -119,10 +119,10 @@ describe('api', () => {
         ['m1', { sub: 'm1', kontoName: 'uuid-1', aktiviert: true, enabled: true }],
       ]),
     );
-    userAdmin.rollen.mockResolvedValue(new Map([['m1', ['reader']]]));
+    userAdmin.rollen.mockResolvedValue(new Map([['m1', ['admin']]]));
     const liste = async (token: string) =>
       (await app.request('/api/mitglieder', { headers: bearer(token) })).json();
-    expect(await liste('admin-token')).toMatchObject([{ sub: 'm1', rollen: ['reader'] }]);
+    expect(await liste('admin-token')).toMatchObject([{ sub: 'm1', rollen: ['admin'] }]);
     expect((await liste('reader-token'))[0]).not.toHaveProperty('rollen');
 
     const put = (sub: string, groups: string[]) =>
@@ -134,7 +134,7 @@ describe('api', () => {
     expect((await put('m1', ['admin'])).status).toBe(200);
     expect(userAdmin.setGroups).toHaveBeenCalledWith('uuid-1', ['admin']);
     expect((await put('unbekannt', [])).status).toBe(404);
-    expect((await put('a', ['reader'])).status).toBe(400);
+    expect((await put('a', [])).status).toBe(400);
   });
 
   it('lets admins create users and validates input', async () => {
@@ -146,9 +146,9 @@ describe('api', () => {
         body: JSON.stringify(body),
       });
     expect((await post({ email: 'not-an-email' })).status).toBe(400);
-    const ok = await post({ email: 'x@example.de', groups: ['reader'] });
+    const ok = await post({ email: 'x@example.de', groups: ['admin'] });
     expect(ok.status).toBe(201);
-    expect(userAdmin.createUser).toHaveBeenCalledWith('x@example.de', ['reader']);
+    expect(userAdmin.createUser).toHaveBeenCalledWith('x@example.de', ['admin']);
   });
 
   it('lets users choose a username and reports conflicts', async () => {

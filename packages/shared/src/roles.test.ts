@@ -1,20 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { hasPermission, permissionsFor } from './roles';
+import { hasPermission, permissionsFor, STATUS_PERMISSIONS } from './roles';
+import { MITGLIED_STATI } from './status';
 
-describe('roles', () => {
-  it('admin may manage users', () => {
-    expect(hasPermission(['admin'], 'users:manage')).toBe(true);
-  });
-  it('reader may not manage users', () => {
-    expect(hasPermission(['reader'], 'users:manage')).toBe(false);
-  });
-  it('every role may read members and edit its profile', () => {
-    for (const role of ['admin', 'reader']) {
-      expect(hasPermission([role], 'mitglieder:lesen')).toBe(true);
-      expect(hasPermission([role], 'profil:bearbeiten')).toBe(true);
+describe('permissions', () => {
+  it('only the admin group may manage users, whatever the status', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission(['admin'], status, 'users:manage')).toBe(true);
+      expect(hasPermission([], status, 'users:manage')).toBe(false);
     }
   });
-  it('unknown groups grant nothing', () => {
-    expect(permissionsFor(['whatever'])).toEqual([]);
+  it('every status may read members and edit its profile', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'mitglieder:lesen')).toBe(true);
+      expect(hasPermission([], status, 'profil:bearbeiten')).toBe(true);
+    }
+  });
+  it('admins keep the permissions of their status', () => {
+    expect(permissionsFor(['admin'], 'em')).toEqual(
+      expect.arrayContaining([...STATUS_PERMISSIONS.em, 'users:manage']),
+    );
+  });
+  it('unknown groups grant nothing beyond the status', () => {
+    expect(permissionsFor(['whatever'], 'anwaerter')).toEqual([...STATUS_PERMISSIONS.anwaerter]);
   });
 });

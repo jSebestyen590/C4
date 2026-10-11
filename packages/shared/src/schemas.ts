@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { roleSchema } from './roles';
+import { MITGLIED_STATI } from './status';
 
 export const meSchema = z.object({
   sub: z.string(),
@@ -52,10 +53,7 @@ const optionalerText = (max: number) =>
 export const vornameSchema = pflichtText('deinen Vornamen', 100);
 export const nachnameSchema = pflichtText('deinen Nachnamen', 100);
 
-/** Membership category: candidate, member, honorary member. Only admins change it. */
-export const MITGLIED_STATI = ['anwaerter', 'mitglied', 'em'] as const;
 export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
-export type MitgliedStatus = z.infer<typeof mitgliedStatusSchema>;
 
 export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
 export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;

@@ -6,7 +6,6 @@ import {
   emailAendernSchema,
   emailBestaetigenSchema,
   mitgliedAktualisierenSchema,
-  permissionsFor,
   profilbildAnfrageSchema,
   setGroupsSchema,
   setMitgliedStatusSchema,
@@ -14,7 +13,6 @@ import {
   type Health,
   type Me,
   type Mitglied,
-  hasPermission,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import {
@@ -53,7 +51,10 @@ async function emailAenderung(aktion: () => Promise<void>): Promise<void> {
 }
 
 export function createApp(deps: AppDeps) {
-  const auth = authenticate(deps.verifyToken);
+  const auth = authenticate(
+    deps.verifyToken,
+    async (sub) => (await deps.mitglieder.holen(sub))?.status,
+  );
   const adminOnly = requirePermission('users:manage');
   const mitgliederLesen = requirePermission('mitglieder:lesen');
   const profilBearbeiten = requirePermission('profil:bearbeiten');
@@ -122,7 +123,7 @@ export function createApp(deps: AppDeps) {
         sub: user.sub,
         preferredUsername: await deps.userAdmin.getPreferredUsername(user.username ?? user.sub),
         groups: user.groups,
-        permissions: permissionsFor(user.groups),
+        permissions: c.get('permissions'),
       };
       return c.json(me);
     })
@@ -194,12 +195,12 @@ export function createApp(deps: AppDeps) {
         c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
     )
     .get('/mitglieder', auth, mitgliederLesen, async (c) =>
-      c.json(await alleMitglieder(hasPermission(c.get('user').groups, 'users:manage'))),
+      c.json(await alleMitglieder(c.get('permissions').includes('users:manage'))),
     )
     .get('/mitglieder/:sub', auth, mitgliederLesen, async (c) => {
-      const mitglied = (
-        await alleMitglieder(hasPermission(c.get('user').groups, 'users:manage'))
-      ).find((m) => m.sub === c.req.param('sub'));
+      const mitglied = (await alleMitglieder(c.get('permissions').includes('users:manage'))).find(
+        (m) => m.sub === c.req.param('sub'),
+      );
       if (!mitglied) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
       return c.json(mitglied);
     })

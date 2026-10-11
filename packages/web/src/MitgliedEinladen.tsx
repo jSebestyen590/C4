@@ -18,7 +18,7 @@ export function MitgliedEinladen() {
   const qc = useQueryClient();
   const [offen, { open, close }] = useDisclosure(false);
   const [email, setEmail] = useState('');
-  const [rollen, setRollen] = useState<Role[]>(['reader']);
+  const [rollen, setRollen] = useState<Role[]>([]);
   const [vorname, setVorname] = useState('');
   const [nachname, setNachname] = useState('');
   const [status, setStatus] = useState<MitgliedStatus>('anwaerter');
@@ -38,7 +38,7 @@ export function MitgliedEinladen() {
       setVorname('');
       setNachname('');
       setStatus('anwaerter');
-      setRollen(['reader']);
+      setRollen([]);
       close();
     },
   });

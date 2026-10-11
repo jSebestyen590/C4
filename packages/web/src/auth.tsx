@@ -1,6 +1,6 @@
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { hasPermission, type AppConfig, type Permission } from '@c4/shared';
+import { meSchema, type AppConfig, type Permission } from '@c4/shared';
 
 export interface AuthState {
   user: User | null;
@@ -49,6 +49,8 @@ export function AuthProvider({
   const manager = useMemo(() => createUserManager(config), [config]);
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  // Effective permissions as computed by the API (status + groups); null until loaded.
+  const [permissions, setPermissions] = useState<Permission[] | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -68,12 +70,22 @@ export function AuthProvider({
     };
   }, [manager]);
 
+  // Reload on every new token (sign-in and hourly renewal), so a changed status takes effect.
+  const accessToken = user?.access_token;
+  useEffect(() => {
+    if (!accessToken) return;
+    void fetch('/api/me', { headers: { authorization: `Bearer ${accessToken}` } })
+      .then(async (res) => meSchema.parse(await res.json()).permissions as Permission[])
+      .catch(() => [])
+      .then(setPermissions);
+  }, [accessToken]);
+
   const value = useMemo<AuthState>(() => {
     const groups = user ? decodeGroups(user.access_token) : [];
     return {
       user,
       groups,
-      can: (permission) => hasPermission(groups, permission),
+      can: (permission) => permissions?.includes(permission) ?? false,
       login: () => manager.signinRedirect({ extraQueryParams: { lang: 'de' } }),
       logout: () => {
         void manager.removeUser();
@@ -89,9 +101,10 @@ export function AuthProvider({
         return (await manager.signinSilent().catch(() => null))?.access_token ?? null;
       },
     };
-  }, [user, manager, config]);
+  }, [user, manager, config, permissions]);
 
-  if (!ready) return null;
+  // Wait for the permissions so protected pages do not flash "no access".
+  if (!ready || (user && permissions === null)) return null;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
