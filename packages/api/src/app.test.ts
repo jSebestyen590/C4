@@ -37,11 +37,11 @@ function makeApp(pingDb = async () => {}) {
   const mitglieder = {
     holen: vi.fn(async (sub: string) => zeilen.get(sub)),
     alle: vi.fn(async () => [...zeilen.values()]),
-    speichern: vi.fn(async (sub: string, daten: MitgliedDaten) => {
+    speichern: vi.fn(async (sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus) => {
       zeilen.set(sub, {
         sub,
         ...daten,
-        status: zeilen.get(sub)?.status ?? 'anwaerter',
+        status: zeilen.get(sub)?.status ?? statusNeu ?? 'anwaerter',
         aktualisiertAm: new Date(),
       });
     }),
@@ -302,28 +302,39 @@ describe('api', () => {
       expect(await danach.json()).toMatchObject({ status: 'mitglied' });
     });
 
-    it('creates the member row when an admin invites with names', async () => {
+    it('creates the member row right away when an admin invites', async () => {
       const { app, userAdmin, mitglieder } = makeApp();
-      userAdmin.createUser.mockResolvedValueOnce({
-        username: 'u',
-        email: 'x@example.de',
-        sub: 'sub-1',
-        status: 'FORCE_CHANGE_PASSWORD',
-        enabled: true,
-        groups: [],
-      });
-      const res = await app.request(
-        '/api/admin/users',
-        json('admin-token', 'POST', {
+      const einladen = (body: unknown, sub: string) => {
+        userAdmin.createUser.mockResolvedValueOnce({
+          username: 'u',
           email: 'x@example.de',
-          vorname: 'Max',
-          nachname: 'Mustermann',
-        }),
+          sub,
+          status: 'FORCE_CHANGE_PASSWORD',
+          enabled: true,
+          groups: [],
+        });
+        return app.request('/api/admin/users', json('admin-token', 'POST', body));
+      };
+      const mit = await einladen(
+        { email: 'x@example.de', vorname: 'Max', nachname: 'Mustermann', status: 'em' },
+        'sub-1',
       );
-      expect(res.status).toBe(201);
-      expect(mitglieder.speichern).toHaveBeenCalledWith(
+      expect(mit.status).toBe(201);
+      expect(mitglieder.speichern).toHaveBeenLastCalledWith(
         'sub-1',
         expect.objectContaining({ vorname: 'Max', nachname: 'Mustermann' }),
+        'em',
+      );
+      // without names: still a row, empty names, status defaults to Anwaerter
+      const ohne = await einladen({ email: 'y@example.de' }, 'sub-2');
+      expect(await ohne.json()).toMatchObject({ vorname: '', nachname: '', status: 'anwaerter' });
+      expect(mitglieder.speichern).toHaveBeenLastCalledWith(
+        'sub-2',
+        expect.objectContaining({ vorname: '', nachname: '' }),
+        'anwaerter',
+      );
+      expect((await einladen({ email: 'z@example.de', status: 'quatsch' }, 'sub-3')).status).toBe(
+        400,
       );
     });
   });

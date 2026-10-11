@@ -8,8 +8,8 @@ export type MitgliedDaten = Omit<MitgliedRow, 'sub' | 'aktualisiertAm' | 'status
 export interface MitgliederStore {
   holen(sub: string): Promise<MitgliedRow | undefined>;
   alle(): Promise<MitgliedRow[]>;
-  /** Creates or replaces the row for `sub`. */
-  speichern(sub: string, daten: MitgliedDaten): Promise<void>;
+  /** Creates or replaces the row for `sub`; `statusNeu` only applies when the row is created. */
+  speichern(sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus): Promise<void>;
   /** Admin only. Returns false when the member has no profile row yet. */
   statusSetzen(sub: string, status: MitgliedStatus): Promise<boolean>;
 }
@@ -23,11 +23,11 @@ export function createMitgliederStore(db: Db): MitgliederStore {
     async alle() {
       return db.select().from(mitglieder).orderBy(mitglieder.nachname, mitglieder.vorname);
     },
-    async speichern(sub, daten) {
+    async speichern(sub, daten, statusNeu = 'anwaerter') {
       const werte = { ...daten, aktualisiertAm: new Date() };
       await db
         .insert(mitglieder)
-        .values({ sub, ...werte, status: 'anwaerter' })
+        .values({ sub, ...werte, status: statusNeu })
         .onConflictDoUpdate({ target: mitglieder.sub, set: werte });
     },
     async statusSetzen(sub, status) {

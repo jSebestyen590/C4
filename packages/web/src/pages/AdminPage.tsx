@@ -5,6 +5,7 @@ import {
   Chip,
   Group,
   Paper,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -12,9 +13,15 @@ import {
 } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
-import { createUserSchema, ROLES, type Role } from '@c4/shared';
+import {
+  createUserSchema,
+  MITGLIED_STATI,
+  ROLES,
+  type MitgliedStatus,
+  type Role,
+} from '@c4/shared';
 import { unwrap, useApi } from '../api';
-import { label, ROLE_LABELS, USER_STATUS_LABELS } from '../i18n';
+import { label, MITGLIED_STATUS_LABELS, ROLE_LABELS, USER_STATUS_LABELS } from '../i18n';
 
 export function AdminPage() {
   const api = useApi();
@@ -31,8 +38,11 @@ export function AdminPage() {
       groups: Role[];
       vorname?: string;
       nachname?: string;
+      status: MitgliedStatus;
     }) => unwrap(await api.admin.users.$post({ json: input })),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      await Promise.all([refresh(), qc.invalidateQueries({ queryKey: ['mitglieder'] })]);
+    },
   });
   const setGroups = useMutation({
     mutationFn: async (input: { username: string; groups: Role[] }) =>
@@ -49,6 +59,7 @@ export function AdminPage() {
   const [newGroups, setNewGroups] = useState<Role[]>(['reader']);
   const [vorname, setVorname] = useState('');
   const [nachname, setNachname] = useState('');
+  const [status, setStatus] = useState<MitgliedStatus>('anwaerter');
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
@@ -64,12 +75,14 @@ export function AdminPage() {
         groups: newGroups,
         vorname: vorname.trim() || undefined,
         nachname: nachname.trim() || undefined,
+        status,
       },
       {
         onSuccess: () => {
           setEmail('');
           setVorname('');
           setNachname('');
+          setStatus('anwaerter');
         },
       },
     );
@@ -98,6 +111,16 @@ export function AdminPage() {
               label="Nachname (optional)"
               value={nachname}
               onChange={(e) => setNachname(e.currentTarget.value)}
+            />
+            <Select
+              label="Status"
+              data={MITGLIED_STATI.map((s) => ({
+                value: s,
+                label: label(MITGLIED_STATUS_LABELS, s),
+              }))}
+              value={status}
+              allowDeselect={false}
+              onChange={(v) => v && setStatus(v as MitgliedStatus)}
             />
             <Chip.Group multiple value={newGroups} onChange={(v) => setNewGroups(v as Role[])}>
               <Group gap="xs">

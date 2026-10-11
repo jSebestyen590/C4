@@ -49,7 +49,9 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
   });
   if (me.isPending || mitglied.isPending) return null;
   if (me.data && !me.data.preferredUsername) return <Navigate to="/profil" replace />;
-  if (mitglied.data === null) return <Navigate to="/profil" replace />;
+  // Invited users already have a row, but with empty names until they filled in their profile.
+  if (mitglied.data === null || mitglied.data?.vorname === '')
+    return <Navigate to="/profil" replace />;
   return <>{children}</>;
 }
 

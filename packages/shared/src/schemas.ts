@@ -52,11 +52,21 @@ const optionalerText = (max: number) =>
 export const vornameSchema = pflichtText('deinen Vornamen', 100);
 export const nachnameSchema = pflichtText('deinen Nachnamen', 100);
 
+/** Membership category: candidate, member, honorary member. Only admins change it. */
+export const MITGLIED_STATI = ['anwaerter', 'mitglied', 'em'] as const;
+export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
+export type MitgliedStatus = z.infer<typeof mitgliedStatusSchema>;
+
+export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
+export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;
+
 export const createUserSchema = z.object({
   email: z.email(),
   groups: z.array(roleSchema).default([]),
   vorname: z.string().trim().max(100).optional(),
   nachname: z.string().trim().max(100).optional(),
+  /** Category of the new member; every invited user gets a member row right away. */
+  status: mitgliedStatusSchema.default('anwaerter'),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
@@ -73,14 +83,6 @@ export const appConfigSchema = z.object({
   cognitoDomain: z.string(),
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
-
-/** Membership category: candidate, member, honorary member. Only admins change it. */
-export const MITGLIED_STATI = ['anwaerter', 'mitglied', 'em'] as const;
-export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
-export type MitgliedStatus = z.infer<typeof mitgliedStatusSchema>;
-
-export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
-export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;
 
 /** Members edit these fields themselves; everything except the names is optional. */
 export const mitgliedAktualisierenSchema = z.object({

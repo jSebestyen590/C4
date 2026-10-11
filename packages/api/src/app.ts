@@ -212,20 +212,24 @@ export function createApp(deps: AppDeps) {
       },
     )
     .post('/admin/users', auth, adminOnly, zValidator('json', createUserSchema), async (c) => {
-      const { email, groups, vorname, nachname } = c.req.valid('json');
+      const { email, groups, vorname = '', nachname = '', status } = c.req.valid('json');
       const user = await deps.userAdmin.createUser(email, groups);
-      if (user.sub && vorname && nachname) {
-        await deps.mitglieder.speichern(user.sub, {
-          vorname,
-          nachname,
-          adresse: null,
-          telefon: null,
-          ueberMich: null,
-          profilbildKey: null,
-        });
-        return c.json({ ...user, vorname, nachname }, 201);
+      // Every invited user gets a member row right away; names may be filled in later.
+      if (user.sub) {
+        await deps.mitglieder.speichern(
+          user.sub,
+          {
+            vorname,
+            nachname,
+            adresse: null,
+            telefon: null,
+            ueberMich: null,
+            profilbildKey: null,
+          },
+          status,
+        );
       }
-      return c.json(user, 201);
+      return c.json({ ...user, vorname, nachname, status }, 201);
     })
     .put(
       '/admin/users/:username/groups',

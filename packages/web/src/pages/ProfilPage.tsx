@@ -137,7 +137,7 @@ export function ProfilFormular({
         <Stack maw={520}>
           <Title order={2}>Mein Profil</Title>
           {mitglied && <StatusFeld sub={mitglied.sub} status={mitglied.status} />}
-          {(!mitglied || !aktuellerUsername) && (
+          {(!mitglied?.vorname || !aktuellerUsername) && (
             <Text>
               Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die
               anderen finden.
