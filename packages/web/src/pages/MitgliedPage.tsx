@@ -5,6 +5,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
+import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { ProfilFormular } from './ProfilPage';
 
@@ -36,6 +37,11 @@ export function MitgliedPage() {
         ← Zurück zur Liste
       </Anchor>
       {!m && <Alert color="yellow">Dieses Mitglied wurde nicht gefunden.</Alert>}
+      {m && can('users:manage') && (
+        <Stack maw={520}>
+          <RollenFeld sub={m.sub} rollen={m.rollen ?? []} />
+        </Stack>
+      )}
       {m && m.sub === me.data.sub && can('profil:bearbeiten') && (
         <ProfilFormular
           mitglied={m}

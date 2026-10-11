@@ -160,6 +160,7 @@ resource "aws_iam_role_policy" "lambda" {
           "cognito-idp:AdminGetUser",
           "cognito-idp:AdminUpdateUserAttributes",
           "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsersInGroup",
           "cognito-idp:AdminAddUserToGroup",
           "cognito-idp:AdminRemoveUserFromGroup",
         ]

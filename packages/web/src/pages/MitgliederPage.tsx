@@ -20,6 +20,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
+import { useAuth } from '../auth';
+import { MitgliedEinladen } from '../MitgliedEinladen';
+import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, nebenname } from '../mitglied';
 import { StatusBadge, StatusName } from '../StatusAnzeige';
 
@@ -65,6 +68,7 @@ function SortKopf({
 export function MitgliederPage() {
   const api = useApi();
   const navigate = useNavigate();
+  const istAdmin = useAuth().can('users:manage');
   const [suche, setSuche] = useState('');
   const [sortierung, setSortierung] = useState<Sortierung>('username');
   const [aufsteigend, setAufsteigend] = useState(true);
@@ -96,7 +100,10 @@ export function MitgliederPage() {
   return (
     <Stack>
       <Flex direction={{ base: 'column', sm: 'row' }} justify="space-between" gap="sm">
-        <Title order={2}>Mitglieder</Title>
+        <Group justify="space-between" wrap="nowrap">
+          <Title order={2}>Mitglieder</Title>
+          {istAdmin && <MitgliedEinladen />}
+        </Group>
         <TextInput
           type="search"
           placeholder="Suchen"
@@ -174,12 +181,13 @@ export function MitgliederPage() {
                   {m.ueberMich}
                 </Text>
               )}
+              {istAdmin && <RollenBadges rollen={m.rollen ?? []} />}
             </Stack>
           </Paper>
         ))}
       </SimpleGrid>
       {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={640} visibleFrom="sm">
+        <Table.ScrollContainer minWidth={istAdmin ? 860 : 640} visibleFrom="sm">
           <Table highlightOnHover verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -196,6 +204,7 @@ export function MitgliederPage() {
                 <Table.Th>Status</Table.Th>
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
+                {istAdmin && <Table.Th>Berechtigungen</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -225,6 +234,11 @@ export function MitgliederPage() {
                   </Table.Td>
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
+                  {istAdmin && (
+                    <Table.Td>
+                      <RollenBadges rollen={m.rollen ?? []} />
+                    </Table.Td>
+                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>

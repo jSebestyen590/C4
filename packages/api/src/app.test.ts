@@ -14,7 +14,7 @@ const users: Record<string, AuthUser> = {
 
 function makeApp(pingDb = async () => {}) {
   const userAdmin = {
-    listUsers: vi.fn(async () => []),
+    rollen: vi.fn(async () => new Map<string, string[]>()),
     konten: vi.fn(async () => new Map<string, Konto>()),
     getPreferredUsername: vi.fn(async (): Promise<string | undefined> => undefined),
     setPreferredUsername: vi.fn<(username: string, preferred: string) => Promise<void>>(
@@ -104,10 +104,37 @@ describe('api', () => {
   });
 
   it('forbids admin routes for readers', async () => {
-    const res = await makeApp().app.request('/api/admin/users', {
-      headers: bearer('reader-token'),
+    const res = await makeApp().app.request('/api/admin/mitglieder/x/rollen', {
+      method: 'PUT',
+      headers: { ...bearer('reader-token'), 'content-type': 'application/json' },
+      body: JSON.stringify({ groups: [] }),
     });
     expect(res.status).toBe(403);
+  });
+
+  it('shows roles only to admins and lets them change roles', async () => {
+    const { app, userAdmin } = makeApp();
+    userAdmin.konten.mockResolvedValue(
+      new Map<string, Konto>([
+        ['m1', { sub: 'm1', kontoName: 'uuid-1', aktiviert: true, enabled: true }],
+      ]),
+    );
+    userAdmin.rollen.mockResolvedValue(new Map([['m1', ['reader']]]));
+    const liste = async (token: string) =>
+      (await app.request('/api/mitglieder', { headers: bearer(token) })).json();
+    expect(await liste('admin-token')).toMatchObject([{ sub: 'm1', rollen: ['reader'] }]);
+    expect((await liste('reader-token'))[0]).not.toHaveProperty('rollen');
+
+    const put = (sub: string, groups: string[]) =>
+      app.request(`/api/admin/mitglieder/${sub}/rollen`, {
+        method: 'PUT',
+        headers: { ...bearer('admin-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ groups }),
+      });
+    expect((await put('m1', ['admin'])).status).toBe(200);
+    expect(userAdmin.setGroups).toHaveBeenCalledWith('uuid-1', ['admin']);
+    expect((await put('unbekannt', [])).status).toBe(404);
+    expect((await put('a', ['reader'])).status).toBe(400);
   });
 
   it('lets admins create users and validates input', async () => {
@@ -237,14 +264,21 @@ describe('api', () => {
             'r',
             {
               sub: 'r',
+              kontoName: 'ur',
               username: 'erika_m',
               email: 'e@example.de',
               aktiviert: true,
               enabled: true,
             },
           ],
-          ['n', { sub: 'n', email: 'neu@example.de', aktiviert: false, enabled: true }],
-          ['x', { sub: 'x', email: 'aus@example.de', aktiviert: true, enabled: false }],
+          [
+            'n',
+            { sub: 'n', kontoName: 'un', email: 'neu@example.de', aktiviert: false, enabled: true },
+          ],
+          [
+            'x',
+            { sub: 'x', kontoName: 'ux', email: 'aus@example.de', aktiviert: true, enabled: false },
+          ],
         ]),
       );
       const res = await app.request('/api/mitglieder', json('admin-token', 'GET'));

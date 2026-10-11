@@ -6,7 +6,6 @@ import type { AppConfig, Permission } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
-import { AdminPage } from './pages/AdminPage';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
 import { MitgliedPage } from './pages/MitgliedPage';
@@ -67,16 +66,6 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected>
                 <RequireUsername>
                   <HomePage />
-                </RequireUsername>
-              </Protected>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <Protected permission="users:manage">
-                <RequireUsername>
-                  <AdminPage />
                 </RequireUsername>
               </Protected>
             }

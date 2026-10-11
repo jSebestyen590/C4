@@ -14,6 +14,7 @@ import {
   type Health,
   type Me,
   type Mitglied,
+  hasPermission,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import {
@@ -62,6 +63,7 @@ export function createApp(deps: AppDeps) {
     sub: string,
     row: MitgliedRow | undefined,
     konto: Konto | undefined,
+    rollen?: string[],
   ): Promise<Mitglied> => ({
     sub,
     vorname: row?.vorname ?? '',
@@ -77,17 +79,26 @@ export function createApp(deps: AppDeps) {
     profilbildUrl: row?.profilbildKey
       ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
       : null,
+    ...(rollen && { rollen }),
   });
 
   /** All members: every profile row plus every enabled account that has no profile yet. */
-  const alleMitglieder = async (): Promise<Mitglied[]> => {
-    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
+  const alleMitglieder = async (mitRollen: boolean): Promise<Mitglied[]> => {
+    const [rows, konten, rollen] = await Promise.all([
+      deps.mitglieder.alle(),
+      deps.userAdmin.konten(),
+      mitRollen ? deps.userAdmin.rollen() : undefined,
+    ]);
     const nachSub = new Map(rows.map((r) => [r.sub, r]));
     const subs = [
       ...rows.map((r) => r.sub),
       ...[...konten.values()].filter((k) => k.enabled && !nachSub.has(k.sub)).map((k) => k.sub),
     ];
-    const liste = await Promise.all(subs.map((s) => alsMitglied(s, nachSub.get(s), konten.get(s))));
+    const liste = await Promise.all(
+      subs.map((s) =>
+        alsMitglied(s, nachSub.get(s), konten.get(s), rollen && (rollen.get(s) ?? [])),
+      ),
+    );
     const sortKey = (m: Mitglied) =>
       `${m.nachname || '\uffff'} ${m.vorname} ${m.username ?? m.email ?? ''}`.toLowerCase();
     return liste.sort((a, b) => sortKey(a).localeCompare(sortKey(b), 'de'));
@@ -182,21 +193,15 @@ export function createApp(deps: AppDeps) {
       async (c) =>
         c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
     )
-    .get('/mitglieder', auth, mitgliederLesen, async (c) => c.json(await alleMitglieder()))
+    .get('/mitglieder', auth, mitgliederLesen, async (c) =>
+      c.json(await alleMitglieder(hasPermission(c.get('user').groups, 'users:manage'))),
+    )
     .get('/mitglieder/:sub', auth, mitgliederLesen, async (c) => {
-      const mitglied = (await alleMitglieder()).find((m) => m.sub === c.req.param('sub'));
+      const mitglied = (
+        await alleMitglieder(hasPermission(c.get('user').groups, 'users:manage'))
+      ).find((m) => m.sub === c.req.param('sub'));
       if (!mitglied) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
       return c.json(mitglied);
-    })
-    .get('/admin/users', auth, adminOnly, async (c) => {
-      const [users, rows] = await Promise.all([deps.userAdmin.listUsers(), deps.mitglieder.alle()]);
-      const nachSub = new Map(rows.map((r) => [r.sub, r]));
-      return c.json(
-        users.map((u) => {
-          const m = u.sub ? nachSub.get(u.sub) : undefined;
-          return { ...u, vorname: m?.vorname, nachname: m?.nachname };
-        }),
-      );
     })
     .put(
       '/admin/mitglieder/:sub/status',
@@ -232,16 +237,21 @@ export function createApp(deps: AppDeps) {
       return c.json({ ...user, vorname, nachname, status }, 201);
     })
     .put(
-      '/admin/users/:username/groups',
+      '/admin/mitglieder/:sub/rollen',
       auth,
       adminOnly,
       zValidator('json', setGroupsSchema),
       async (c) => {
-        const groups = await deps.userAdmin.setGroups(
-          c.req.param('username'),
-          c.req.valid('json').groups,
-        );
-        return c.json({ groups });
+        const sub = c.req.param('sub');
+        const { groups } = c.req.valid('json');
+        if (sub === c.get('user').sub && !groups.includes('admin')) {
+          throw new HTTPException(400, {
+            message: 'Du kannst dir die Administrator-Rolle nicht selbst entziehen.',
+          });
+        }
+        const konto = (await deps.userAdmin.konten()).get(sub);
+        if (!konto) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+        return c.json({ groups: await deps.userAdmin.setGroups(konto.kontoName, groups) });
       },
     )
     .onError((err, c) => {

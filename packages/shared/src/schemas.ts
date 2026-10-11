@@ -120,6 +120,8 @@ export const mitgliedSchema = z.object({
   profilbildKey: z.string().nullable(),
   /** Short-lived presigned URL for the picture; null without one. */
   profilbildUrl: z.string().nullable(),
+  /** Roles of the member; only sent to administrators. */
+  rollen: z.array(z.string()).optional(),
 });
 export type Mitglied = z.infer<typeof mitgliedSchema>;
 

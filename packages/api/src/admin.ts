@@ -7,13 +7,16 @@ import {
   AdminRemoveUserFromGroupCommand,
   CognitoIdentityProviderClient,
   ListUsersCommand,
+  ListUsersInGroupCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { randomUUID } from 'node:crypto';
-import type { AdminUser } from '@c4/shared';
+import { ROLES, type AdminUser } from '@c4/shared';
 
 /** The Cognito side of a member: login name, email and whether the account is usable. */
 export interface Konto {
   sub: string;
+  /** Internal Cognito username (UUID); the key for group operations. */
+  kontoName: string;
   username?: string;
   email?: string;
   /** False while the user still has to set their first password. */
@@ -25,10 +28,11 @@ export interface Konto {
 export class UsernameTakenError extends Error {}
 
 export interface UserAdmin {
-  listUsers(): Promise<AdminUser[]>;
   createUser(email: string, groups: string[]): Promise<AdminUser>;
   /** All Cognito accounts, keyed by `sub`. */
   konten(): Promise<Map<string, Konto>>;
+  /** Roles per account, keyed by `sub`; accounts without a role are missing. */
+  rollen(): Promise<Map<string, string[]>>;
   getPreferredUsername(username: string): Promise<string | undefined>;
   /** Throws UsernameTakenError when another user already uses the name. */
   setPreferredUsername(username: string, preferred: string): Promise<void>;
@@ -44,20 +48,6 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
     return (res.Groups ?? []).flatMap((g) => (g.GroupName ? [g.GroupName] : []));
   };
   return {
-    async listUsers() {
-      const res = await client.send(new ListUsersCommand({ UserPoolId: userPoolId, Limit: 60 }));
-      return Promise.all(
-        (res.Users ?? []).map(async (u) => ({
-          username: u.Username ?? '',
-          preferredUsername: u.Attributes?.find((a) => a.Name === 'preferred_username')?.Value,
-          email: u.Attributes?.find((a) => a.Name === 'email')?.Value,
-          sub: u.Attributes?.find((a) => a.Name === 'sub')?.Value,
-          status: u.UserStatus ?? 'UNKNOWN',
-          enabled: u.Enabled ?? false,
-          groups: await groupsOf(u.Username ?? ''),
-        })),
-      );
-    },
     async konten() {
       const result = new Map<string, Konto>();
       let token: string | undefined;
@@ -71,6 +61,7 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
           if (!sub) continue;
           result.set(sub, {
             sub,
+            kontoName: u.Username ?? '',
             username: attr('preferred_username'),
             email: attr('email'),
             aktiviert: u.UserStatus !== 'FORCE_CHANGE_PASSWORD',
@@ -79,6 +70,28 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
         }
         token = res.PaginationToken;
       } while (token);
+      return result;
+    },
+    async rollen() {
+      const result = new Map<string, string[]>();
+      for (const role of ROLES) {
+        let token: string | undefined;
+        do {
+          const res = await client.send(
+            new ListUsersInGroupCommand({
+              UserPoolId: userPoolId,
+              GroupName: role,
+              Limit: 60,
+              NextToken: token,
+            }),
+          );
+          for (const u of res.Users ?? []) {
+            const sub = u.Attributes?.find((a) => a.Name === 'sub')?.Value;
+            if (sub) result.set(sub, [...(result.get(sub) ?? []), role]);
+          }
+          token = res.NextToken;
+        } while (token);
+      }
       return result;
     },
     async createUser(email, groups) {

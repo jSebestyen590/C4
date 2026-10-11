@@ -13,14 +13,7 @@ import {
   useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconHome,
-  IconLogout,
-  IconMoon,
-  IconUser,
-  IconUsers,
-  IconUsersGroup,
-} from '@tabler/icons-react';
+import { IconHome, IconLogout, IconMoon, IconUser, IconUsersGroup } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -103,7 +96,6 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       icon: <IconUsersGroup size={20} />,
       show: can('mitglieder:lesen'),
     },
-    { to: '/admin', label: 'Benutzer', icon: <IconUsers size={20} />, show: can('users:manage') },
   ].filter((l) => l.show);
 
   return (
