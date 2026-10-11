@@ -1,1 +1,0 @@
-ALTER TABLE mitglieder ALTER COLUMN status SET NOT NULL;
