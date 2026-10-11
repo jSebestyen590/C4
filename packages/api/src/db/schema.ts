@@ -16,8 +16,7 @@ export const mitglieder = pgTable('mitglieder', {
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),
   profilbildKey: text('profilbild_key'),
-  /** Null only before the backfill migration ran; read it as 'anwaerter'. */
-  status: text('status').$type<MitgliedStatus>(),
+  status: text('status').$type<MitgliedStatus>().notNull().default('anwaerter'),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });
 export type MitgliedRow = typeof mitglieder.$inferSelect;

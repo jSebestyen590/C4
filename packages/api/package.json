@@ -8,6 +8,7 @@
     "typecheck": "tsc -p .",
     "test": "vitest run --passWithNoTests",
     "migrate": "tsx --env-file-if-exists=.env.local src/db/migrate-cli.ts",
+    "reset": "tsx --env-file-if-exists=.env.local src/db/reset-cli.ts",
     "seed": "tsx --env-file-if-exists=.env.local src/db/seed.ts"
   },
   "dependencies": {

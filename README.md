@@ -78,6 +78,9 @@ Login uses the **dev** Cognito pool (localhost callback is allowed there). Needs
 
 - DSQL: no foreign keys or sequences, `CREATE INDEX ASYNC`, one DDL statement per transaction.
   Migrations are plain SQL files in `packages/api/src/db/migrations` (one DDL statement per file).
+  DSQL cannot `SET NOT NULL` on an existing column, so declare constraints when creating the table.
+  `pnpm db:reset` (needs `CONFIRM_DB_RESET=yes`) drops every table; the Deploy workflow's `reset_db`
+  input does the same for dev before migrating. Both lose all data.
 - The Lambda connects as the DSQL `admin` role; a least-privilege DB role is a follow-up.
 - SPA config (`/app/config.json`) is written by Terraform, so one build serves all environments.
 - Cognito's default email sender is limited (~50 mails/day); switch to SES when needed.

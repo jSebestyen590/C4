@@ -6,5 +6,6 @@ CREATE TABLE IF NOT EXISTS mitglieder (
   telefon text,
   ueber_mich text,
   profilbild_key text,
+  status text NOT NULL DEFAULT 'anwaerter',
   aktualisiert_am timestamptz NOT NULL DEFAULT now()
 );
