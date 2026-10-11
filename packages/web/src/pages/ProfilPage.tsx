@@ -16,6 +16,8 @@ import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { useAuth } from '../auth';
+import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
@@ -42,6 +44,7 @@ export function ProfilFormular({
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { can } = useAuth();
   const [username, setUsername] = useState(aktuellerUsername ?? '');
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
@@ -137,6 +140,9 @@ export function ProfilFormular({
         <Stack maw={520}>
           <Title order={2}>Mein Profil</Title>
           {mitglied && <StatusFeld sub={mitglied.sub} status={mitglied.status} />}
+          {mitglied?.rollen && can('users:manage') && (
+            <RollenFeld sub={mitglied.sub} rollen={mitglied.rollen} />
+          )}
           {(!mitglied?.vorname || !aktuellerUsername) && (
             <Text>
               Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die

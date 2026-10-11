@@ -37,11 +37,6 @@ export function MitgliedPage() {
         ← Zurück zur Liste
       </Anchor>
       {!m && <Alert color="yellow">Dieses Mitglied wurde nicht gefunden.</Alert>}
-      {m && can('users:manage') && (
-        <Stack maw={520}>
-          <RollenFeld sub={m.sub} rollen={m.rollen ?? []} />
-        </Stack>
-      )}
       {m && m.sub === me.data.sub && can('profil:bearbeiten') && (
         <ProfilFormular
           mitglied={m}
@@ -68,6 +63,7 @@ export function MitgliedPage() {
             </div>
           </Group>
           <StatusFeld sub={m.sub} status={m.status} />
+          {can('users:manage') && <RollenFeld sub={m.sub} rollen={m.rollen ?? []} />}
           {m.email && (
             <div>
               <Text size="sm" c="dimmed">
