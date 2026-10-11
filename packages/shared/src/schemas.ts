@@ -133,12 +133,12 @@ export const mitgliedSchema = z.object({
 export type Mitglied = z.infer<typeof mitgliedSchema>;
 
 export const PROFILBILD_TYPEN = ['image/jpeg', 'image/png', 'image/webp'] as const;
-/** The original is stored untouched, so it may be a full-size photo. */
+/** The large picture keeps the full resolution of the chosen area, so it can be big. */
 export const PROFILBILD_MAX_BYTES = 20 * 1024 * 1024;
 export const PROFILBILD_KLEIN_MAX_BYTES = 1024 * 1024;
 
 export const profilbildAnfrageSchema = z.object({
-  /** Type of the original file, which is uploaded unchanged. */
+  /** Type of the large picture: PNG for PNG sources, JPEG otherwise. */
   contentType: z.enum(PROFILBILD_TYPEN),
   groesse: z
     .number()

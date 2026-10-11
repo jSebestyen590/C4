@@ -30,7 +30,7 @@ import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
-import { kleinesProfilbild, type Ausschnitt } from '../profilbild';
+import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 
 type Fehler = Partial<
@@ -73,11 +73,11 @@ export function ProfilFormular({
 
   const bildHochladen = useMutation({
     mutationFn: async ({ datei, ausschnitt }: { datei: File; ausschnitt: Ausschnitt }) => {
-      const klein = await kleinesProfilbild(datei, ausschnitt);
+      const { gross, klein } = await profilbilderErzeugen(datei, ausschnitt);
       const res = await api.me.profilbild.$post({
         json: {
-          contentType: datei.type as (typeof PROFILBILD_TYPEN)[number],
-          groesse: datei.size,
+          contentType: gross.type as (typeof PROFILBILD_TYPEN)[number],
+          groesse: gross.size,
           kleinGroesse: klein.size,
         },
       });
@@ -91,11 +91,11 @@ export function ProfilFormular({
         });
         if (!put.ok) throw new Error('Upload fehlgeschlagen');
       };
-      await Promise.all([hochladen(uploadUrl, datei), hochladen(kleinUploadUrl, klein)]);
+      await Promise.all([hochladen(uploadUrl, gross), hochladen(kleinUploadUrl, klein)]);
       return {
         key,
         vorschau: URL.createObjectURL(klein),
-        grossVorschau: URL.createObjectURL(datei),
+        grossVorschau: URL.createObjectURL(gross),
       };
     },
     onSuccess: ({ key, vorschau, grossVorschau }) => {
