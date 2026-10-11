@@ -6,27 +6,44 @@ import {
   Group,
   Menu,
   NavLink,
-  Switch,
+  SegmentedControl,
+  Text,
   Title,
   UnstyledButton,
-  useComputedColorScheme,
+  type MantineColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconHome, IconLogout, IconMoon, IconUser, IconUsersGroup } from '@tabler/icons-react';
+import {
+  IconDeviceDesktop,
+  IconHome,
+  IconLogout,
+  IconMoon,
+  IconSun,
+  IconUser,
+  IconUsersGroup,
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
 
-/** Own profile picture in the header; opens the menu with the profile link and the theme switch. */
+function FarbmodusLabel({ icon, text }: Readonly<{ icon: ReactNode; text: string }>) {
+  return (
+    <Group gap={4} justify="center" wrap="nowrap">
+      {icon}
+      <span>{text}</span>
+    </Group>
+  );
+}
+
+/** Own profile picture in the header; opens the menu with the profile link and the light/dark/system choice. */
 function ProfilMenue() {
   const api = useApi();
   const { can } = useAuth();
   const darfProfil = can('profil:bearbeiten');
-  const { setColorScheme } = useMantineColorScheme();
-  const dunkel = useComputedColorScheme('light') === 'dark';
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
   const mitglied = useQuery({
     queryKey: ['mitglied'],
@@ -39,7 +56,7 @@ function ProfilMenue() {
     },
   });
   return (
-    <Menu position="bottom-end" width={240}>
+    <Menu position="bottom-end" width={280}>
       <Menu.Target>
         <UnstyledButton aria-label="Profilmenü" style={{ lineHeight: 0 }} p={2}>
           <Avatar
@@ -58,23 +75,29 @@ function ProfilMenue() {
             Mein Profil
           </Menu.Item>
         )}
-        <Menu.Item
-          closeMenuOnClick={false}
-          onClick={() => setColorScheme(dunkel ? 'light' : 'dark')}
-          leftSection={<IconMoon size={18} />}
-          rightSection={
-            <Switch
-              checked={dunkel}
-              onChange={() => {}}
-              tabIndex={-1}
-              aria-hidden
-              style={{ pointerEvents: 'none' }}
-            />
-          }
-          py="sm"
-        >
-          Dunkler Modus
-        </Menu.Item>
+        <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>
+          Darstellung
+        </Text>
+        <SegmentedControl
+          fullWidth
+          size="md"
+          mx="xs"
+          mb="xs"
+          aria-label="Darstellung"
+          value={colorScheme}
+          onChange={(v) => setColorScheme(v as MantineColorScheme)}
+          data={[
+            { value: 'light', label: <FarbmodusLabel icon={<IconSun size={16} />} text="Hell" /> },
+            {
+              value: 'dark',
+              label: <FarbmodusLabel icon={<IconMoon size={16} />} text="Dunkel" />,
+            },
+            {
+              value: 'auto',
+              label: <FarbmodusLabel icon={<IconDeviceDesktop size={16} />} text="System" />,
+            },
+          ]}
+        />
       </Menu.Dropdown>
     </Menu>
   );
