@@ -1,18 +1,21 @@
 import { Badge, Chip, Group, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ROLES, type Role } from '@c4/shared';
+import { ROLES, type Anrede, type Role } from '@c4/shared';
 import { useApi } from './api';
-import { label, ROLE_LABELS } from './i18n';
+import { labelFuer, ROLE_LABELS } from './i18n';
 
 /** Role badges of a member; renders nothing without roles. */
-export function RollenBadges({ rollen }: Readonly<{ rollen: readonly string[] }>) {
+export function RollenBadges({
+  rollen,
+  anrede,
+}: Readonly<{ rollen: readonly string[]; anrede: Anrede }>) {
   if (rollen.length === 0) return null;
   return (
     <Group gap={4}>
       {rollen.map((rolle) => (
         <Badge key={rolle} variant="outline" color="blue">
-          {label(ROLE_LABELS, rolle)}
+          {labelFuer(ROLE_LABELS, rolle, anrede)}
         </Badge>
       ))}
     </Group>
@@ -20,7 +23,11 @@ export function RollenBadges({ rollen }: Readonly<{ rollen: readonly string[] }>
 }
 
 /** Admins add and remove roles of a member here. */
-export function RollenFeld({ sub, rollen }: Readonly<{ sub: string; rollen: readonly string[] }>) {
+export function RollenFeld({
+  sub,
+  rollen,
+  anrede,
+}: Readonly<{ sub: string; rollen: readonly string[]; anrede: Anrede }>) {
   const api = useApi();
   const qc = useQueryClient();
   const setzen = useMutation({
@@ -60,7 +67,7 @@ export function RollenFeld({ sub, rollen }: Readonly<{ sub: string; rollen: read
         <Group gap="xs">
           {ROLES.map((role) => (
             <Chip key={role} value={role} disabled={setzen.isPending}>
-              {ROLE_LABELS[role]}
+              {ROLE_LABELS[role][anrede]}
             </Chip>
           ))}
         </Group>

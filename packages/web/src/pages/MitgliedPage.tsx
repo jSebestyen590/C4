@@ -62,8 +62,10 @@ export function MitgliedPage() {
               )}
             </div>
           </Group>
-          <StatusFeld sub={m.sub} status={m.status} />
-          {can('users:manage') && <RollenFeld sub={m.sub} rollen={m.rollen ?? []} />}
+          <StatusFeld sub={m.sub} status={m.status} anrede={m.anrede} />
+          {can('users:manage') && (
+            <RollenFeld sub={m.sub} rollen={m.rollen ?? []} anrede={m.anrede} />
+          )}
           {m.email && (
             <div>
               <Text size="sm" c="dimmed">

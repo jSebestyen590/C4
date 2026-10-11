@@ -69,6 +69,7 @@ export function createApp(deps: AppDeps) {
     sub,
     vorname: row?.vorname ?? '',
     nachname: row?.nachname ?? '',
+    anrede: row?.anrede ?? 'neutral',
     username: konto?.username ?? null,
     status: row?.status ?? 'anwaerter',
     email: konto?.email ?? null,
@@ -121,6 +122,7 @@ export function createApp(deps: AppDeps) {
       const user = c.get('user');
       const me: Me = {
         sub: user.sub,
+        anrede: (await deps.mitglieder.holen(user.sub))?.anrede ?? 'neutral',
         preferredUsername: await deps.userAdmin.getPreferredUsername(user.username ?? user.sub),
         groups: user.groups,
         permissions: c.get('permissions'),
@@ -227,6 +229,7 @@ export function createApp(deps: AppDeps) {
           {
             vorname,
             nachname,
+            anrede: null,
             adresse: null,
             telefon: null,
             ueberMich: null,

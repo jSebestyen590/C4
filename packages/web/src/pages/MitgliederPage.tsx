@@ -147,7 +147,7 @@ export function MitgliederPage() {
                 <div style={{ minWidth: 0 }}>
                   <Group gap="xs">
                     <StatusName status={m.status}>{anzeigename(m)}</StatusName>
-                    <StatusBadge status={m.status} />
+                    <StatusBadge status={m.status} anrede={m.anrede} />
                   </Group>
                   {nebenname(m) && (
                     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
@@ -181,7 +181,7 @@ export function MitgliederPage() {
                   {m.ueberMich}
                 </Text>
               )}
-              {istAdmin && <RollenBadges rollen={m.rollen ?? []} />}
+              {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
           </Paper>
         ))}
@@ -230,13 +230,13 @@ export function MitgliederPage() {
                   <Table.Td>{m.vorname}</Table.Td>
                   <Table.Td>{m.nachname}</Table.Td>
                   <Table.Td>
-                    <StatusBadge status={m.status} />
+                    <StatusBadge status={m.status} anrede={m.anrede} />
                   </Table.Td>
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
                   {istAdmin && (
                     <Table.Td>
-                      <RollenBadges rollen={m.rollen ?? []} />
+                      <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />
                     </Table.Td>
                   )}
                 </Table.Tr>

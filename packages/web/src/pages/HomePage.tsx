@@ -1,7 +1,7 @@
 import { Alert, Badge, Group, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { unwrap, useApi } from '../api';
-import { label, PERMISSION_LABELS, ROLE_LABELS } from '../i18n';
+import { label, labelFuer, PERMISSION_LABELS, ROLE_LABELS } from '../i18n';
 
 export function HomePage() {
   const api = useApi();
@@ -41,7 +41,7 @@ export function HomePage() {
           </Text>
           <Group gap="xs">
             {me.data?.groups.map((g) => (
-              <Badge key={g}>{label(ROLE_LABELS, g)}</Badge>
+              <Badge key={g}>{labelFuer(ROLE_LABELS, g, me.data?.anrede ?? 'neutral')}</Badge>
             ))}
             {me.data && me.data.groups.length === 0 && <Text>—</Text>}
           </Group>

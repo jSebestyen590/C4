@@ -4,6 +4,7 @@ import {
   FileInput,
   Group,
   Loader,
+  Select,
   Stack,
   Text,
   Textarea,
@@ -14,7 +15,14 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
+import {
+  ANREDEN,
+  mitgliedAktualisierenSchema,
+  setUsernameSchema,
+  type Anrede,
+  type Mitglied,
+} from '@c4/shared';
+import { ANREDE_LABELS } from '../i18n';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { RollenFeld } from '../RollenAnzeige';
@@ -48,6 +56,7 @@ export function ProfilFormular({
   const [username, setUsername] = useState(aktuellerUsername ?? '');
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
+  const [anrede, setAnrede] = useState<Anrede>(mitglied?.anrede ?? 'neutral');
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
@@ -113,6 +122,7 @@ export function ProfilFormular({
     const parsed = mitgliedAktualisierenSchema.safeParse({
       vorname,
       nachname,
+      anrede,
       adresse,
       telefon,
       ueberMich,
@@ -139,9 +149,11 @@ export function ProfilFormular({
       <form onSubmit={onSubmit} noValidate>
         <Stack maw={520}>
           <Title order={2}>Mein Profil</Title>
-          {mitglied && <StatusFeld sub={mitglied.sub} status={mitglied.status} />}
+          {mitglied && (
+            <StatusFeld sub={mitglied.sub} status={mitglied.status} anrede={mitglied.anrede} />
+          )}
           {mitglied?.rollen && can('users:manage') && (
-            <RollenFeld sub={mitglied.sub} rollen={mitglied.rollen} />
+            <RollenFeld sub={mitglied.sub} rollen={mitglied.rollen} anrede={mitglied.anrede} />
           )}
           {(!mitglied?.vorname || !aktuellerUsername) && (
             <Text>
@@ -203,6 +215,14 @@ export function ProfilFormular({
             value={nachname}
             onChange={(e) => setNachname(e.currentTarget.value)}
             error={fehler.nachname}
+          />
+          <Select
+            label="Wie möchtest du angesprochen werden?"
+            description="Bestimmt, wie Bezeichnungen wie dein Status in der App für dich geschrieben werden."
+            data={ANREDEN.map((a) => ({ value: a, label: ANREDE_LABELS[a] }))}
+            value={anrede}
+            allowDeselect={false}
+            onChange={(v) => v && setAnrede(v as Anrede)}
           />
           <Textarea
             size="md"

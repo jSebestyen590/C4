@@ -10,7 +10,7 @@ import {
   type Role,
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
-import { label, MITGLIED_STATUS_LABELS, ROLE_LABELS } from './i18n';
+import { labelFuer, MITGLIED_STATUS_LABELS, ROLE_LABELS } from './i18n';
 
 /** Button plus dialog to invite a new member by email. */
 export function MitgliedEinladen() {
@@ -89,7 +89,7 @@ export function MitgliedEinladen() {
               label="Status"
               data={MITGLIED_STATI.map((s) => ({
                 value: s,
-                label: label(MITGLIED_STATUS_LABELS, s),
+                label: labelFuer(MITGLIED_STATUS_LABELS, s, 'neutral'),
               }))}
               value={status}
               allowDeselect={false}
@@ -99,7 +99,7 @@ export function MitgliedEinladen() {
               <Group gap="xs">
                 {ROLES.map((role) => (
                   <Chip key={role} value={role}>
-                    {ROLE_LABELS[role]}
+                    {ROLE_LABELS[role].neutral}
                   </Chip>
                 ))}
               </Group>

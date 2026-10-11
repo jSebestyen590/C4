@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import type { MitgliedStatus } from '@c4/shared';
+import type { Anrede, MitgliedStatus } from '@c4/shared';
 
 /** Placeholder table; real domain tables go here. DSQL: no foreign keys, no sequences. */
 export const appInfo = pgTable('app_info', {
@@ -12,6 +12,8 @@ export const mitglieder = pgTable('mitglieder', {
   sub: text('sub').primaryKey(),
   vorname: text('vorname').notNull(),
   nachname: text('nachname').notNull(),
+  /** Null until the member chose; the app then treats it as neutral. */
+  anrede: text('anrede').$type<Anrede>(),
   adresse: text('adresse'),
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),

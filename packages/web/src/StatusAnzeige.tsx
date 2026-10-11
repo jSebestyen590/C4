@@ -1,10 +1,10 @@
 import { Badge, Select, Stack, Text, Title, useComputedColorScheme } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MITGLIED_STATI, type MitgliedStatus } from '@c4/shared';
+import { MITGLIED_STATI, type Anrede, type MitgliedStatus } from '@c4/shared';
 import { useApi } from './api';
 import { useAuth } from './auth';
-import { label, MITGLIED_STATUS_LABELS } from './i18n';
+import { labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
 
 const BADGE_FARBE: Record<MitgliedStatus, string> = {
   anwaerter: 'orange',
@@ -25,10 +25,13 @@ export function useStatusFarbe(status: MitgliedStatus): string {
   return NAME_FARBE[status][dunkel ? 1 : 0];
 }
 
-export function StatusBadge({ status }: Readonly<{ status: MitgliedStatus }>) {
+export function StatusBadge({
+  status,
+  anrede,
+}: Readonly<{ status: MitgliedStatus; anrede: Anrede }>) {
   return (
     <Badge color={BADGE_FARBE[status]} variant="light">
-      {label(MITGLIED_STATUS_LABELS, status)}
+      {labelFuer(MITGLIED_STATUS_LABELS, status, anrede)}
     </Badge>
   );
 }
@@ -60,7 +63,11 @@ export function StatusTitel({
 }
 
 /** Admins pick the status; everyone else sees it read-only. */
-export function StatusFeld({ sub, status }: Readonly<{ sub: string; status: MitgliedStatus }>) {
+export function StatusFeld({
+  sub,
+  status,
+  anrede,
+}: Readonly<{ sub: string; status: MitgliedStatus; anrede: Anrede }>) {
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -96,14 +103,17 @@ export function StatusFeld({ sub, status }: Readonly<{ sub: string; status: Mitg
           Status
         </Text>
         <div>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} anrede={anrede} />
         </div>
       </Stack>
     );
   return (
     <Select
       label="Status"
-      data={MITGLIED_STATI.map((s) => ({ value: s, label: label(MITGLIED_STATUS_LABELS, s) }))}
+      data={MITGLIED_STATI.map((s) => ({
+        value: s,
+        label: labelFuer(MITGLIED_STATUS_LABELS, s, anrede),
+      }))}
       value={status}
       allowDeselect={false}
       disabled={setzen.isPending}

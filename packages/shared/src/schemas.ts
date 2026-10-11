@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { roleSchema } from './roles';
+import { ANREDEN } from './anrede';
 import { MITGLIED_STATI } from './status';
+
+export const anredeSchema = z.enum(ANREDEN);
 
 export const meSchema = z.object({
   sub: z.string(),
+  /** How the caller wants to be addressed; neutral until they chose. */
+  anrede: anredeSchema,
   /** Login name chosen by the user; undefined until they picked one. */
   preferredUsername: z.string().optional(),
   groups: z.array(z.string()),
@@ -86,6 +91,7 @@ export type AppConfig = z.infer<typeof appConfigSchema>;
 export const mitgliedAktualisierenSchema = z.object({
   vorname: vornameSchema,
   nachname: nachnameSchema,
+  anrede: anredeSchema.default('neutral'),
   adresse: optionalerText(500),
   telefon: optionalerText(50),
   ueberMich: optionalerText(2000),
@@ -106,6 +112,7 @@ export const mitgliedSchema = z.object({
   sub: z.string(),
   vorname: z.string(),
   nachname: z.string(),
+  anrede: anredeSchema,
   /** Login name from Cognito (preferred_username); null until the member chose one. */
   username: z.string().nullable(),
   status: mitgliedStatusSchema,

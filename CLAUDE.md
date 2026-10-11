@@ -35,4 +35,8 @@ start; don't add English user-facing strings.
 - Fixed backend values (roles, permissions, user statuses, ...) are translated in
   `packages/web/src/i18n.ts`. When you add a role, permission or status, add its German label there.
   Example: `reader` -> "Lesender Zugriff". Use `label()` for values that may not be translated yet.
+- Texts that name a person (status, roles, ...) exist in a male, female and neutral form
+  (`Gegendert` in `i18n.ts`, e.g. Anwärter / Anwärterin / Anwärter:in). Pick the form with
+  `labelFuer(labels, value, anrede)` using the `anrede` of the person the text is about; never hardcode
+  one form. New texts naming a person need all three forms.
 - Code, identifiers, comments and commit messages stay English.
