@@ -74,6 +74,14 @@ export const appConfigSchema = z.object({
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
 
+/** Membership category: candidate, member, honorary member. Only admins change it. */
+export const MITGLIED_STATI = ['anwaerter', 'mitglied', 'em'] as const;
+export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
+export type MitgliedStatus = z.infer<typeof mitgliedStatusSchema>;
+
+export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
+export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;
+
 /** Members edit these fields themselves; everything except the names is optional. */
 export const mitgliedAktualisierenSchema = z.object({
   vorname: vornameSchema,
@@ -100,6 +108,7 @@ export const mitgliedSchema = z.object({
   nachname: z.string(),
   /** Login name from Cognito (preferred_username); null until the member chose one. */
   username: z.string().nullable(),
+  status: mitgliedStatusSchema,
   email: z.string().nullable(),
   /** False while the member has not finished the first login (no password set yet). */
   aktiviert: z.boolean(),

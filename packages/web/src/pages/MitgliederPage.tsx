@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { anzeigename, nebenname } from '../mitglied';
+import { StatusBadge, StatusName } from '../StatusAnzeige';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
 const SORTIERUNGEN: { value: Sortierung; label: string }[] = [
@@ -137,9 +138,10 @@ export function MitgliederPage() {
               <Group wrap="nowrap">
                 <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
                 <div style={{ minWidth: 0 }}>
-                  <Text fw={500} style={{ overflowWrap: 'anywhere' }}>
-                    {anzeigename(m)}
-                  </Text>
+                  <Group gap="xs">
+                    <StatusName status={m.status}>{anzeigename(m)}</StatusName>
+                    <StatusBadge status={m.status} />
+                  </Group>
                   {nebenname(m) && (
                     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
                       {nebenname(m)}
@@ -191,6 +193,7 @@ export function MitgliederPage() {
                     onSort={sortieren}
                   />
                 ))}
+                <Table.Th>Status</Table.Th>
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
               </Table.Tr>
@@ -205,15 +208,9 @@ export function MitgliederPage() {
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
-                      <Text
-                        component={Link}
-                        to={`/mitglieder/${m.sub}`}
-                        fw={500}
-                        c="inherit"
-                        style={{ textDecoration: 'none' }}
-                      >
-                        {m.username ?? '–'}
-                      </Text>
+                      <Link to={`/mitglieder/${m.sub}`} style={{ textDecoration: 'none' }}>
+                        <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
+                      </Link>
                       {!m.aktiviert && (
                         <Badge color="yellow" variant="light">
                           Noch nicht aktiviert
@@ -223,6 +220,9 @@ export function MitgliederPage() {
                   </Table.Td>
                   <Table.Td>{m.vorname}</Table.Td>
                   <Table.Td>{m.nachname}</Table.Td>
+                  <Table.Td>
+                    <StatusBadge status={m.status} />
+                  </Table.Td>
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
                 </Table.Tr>

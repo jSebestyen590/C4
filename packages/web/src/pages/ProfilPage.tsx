@@ -16,6 +16,7 @@ import { useState, type SubmitEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mitgliedAktualisierenSchema, setUsernameSchema, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbildVerkleinern } from '../profilbild';
@@ -135,6 +136,7 @@ export function ProfilFormular({
       <form onSubmit={onSubmit} noValidate>
         <Stack maw={520}>
           <Title order={2}>Mein Profil</Title>
+          {mitglied && <StatusFeld sub={mitglied.sub} status={mitglied.status} />}
           {(!mitglied || !aktuellerUsername) && (
             <Text>
               Willkommen! Bitte wähle einen Benutzernamen und trag deinen Namen ein, damit dich die

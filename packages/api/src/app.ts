@@ -9,6 +9,7 @@ import {
   permissionsFor,
   profilbildAnfrageSchema,
   setGroupsSchema,
+  setMitgliedStatusSchema,
   setUsernameSchema,
   type Health,
   type Me,
@@ -66,6 +67,7 @@ export function createApp(deps: AppDeps) {
     vorname: row?.vorname ?? '',
     nachname: row?.nachname ?? '',
     username: konto?.username ?? null,
+    status: row?.status ?? 'anwaerter',
     email: konto?.email ?? null,
     aktiviert: konto?.aktiviert ?? true,
     adresse: row?.adresse ?? null,
@@ -196,6 +198,19 @@ export function createApp(deps: AppDeps) {
         }),
       );
     })
+    .put(
+      '/admin/mitglieder/:sub/status',
+      auth,
+      adminOnly,
+      zValidator('json', setMitgliedStatusSchema),
+      async (c) => {
+        const { status } = c.req.valid('json');
+        if (!(await deps.mitglieder.statusSetzen(c.req.param('sub'), status))) {
+          throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+        }
+        return c.json({ status });
+      },
+    )
     .post('/admin/users', auth, adminOnly, zValidator('json', createUserSchema), async (c) => {
       const { email, groups, vorname, nachname } = c.req.valid('json');
       const user = await deps.userAdmin.createUser(email, groups);

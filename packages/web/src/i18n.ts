@@ -1,4 +1,4 @@
-import type { Permission, Role } from '@c4/shared';
+import type { MitgliedStatus, Permission, Role } from '@c4/shared';
 
 // The whole UI is German. Fixed values coming from the backend get their German label here.
 
@@ -12,6 +12,12 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'content:read': 'Inhalte lesen',
   'mitglieder:lesen': 'Mitglieder ansehen',
   'profil:bearbeiten': 'Eigenes Profil bearbeiten',
+};
+
+export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, string> = {
+  anwaerter: 'Anwärter',
+  mitglied: 'Mitglied',
+  em: 'EM',
 };
 
 /** Cognito user statuses. */

@@ -1,10 +1,11 @@
-import { Alert, Anchor, Badge, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Group, Loader, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
+import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
@@ -47,9 +48,7 @@ export function MitgliedPage() {
           <Group wrap="nowrap">
             <ProfilbildAnzeige src={m.profilbildUrl} size={96} alt="Profilbild" />
             <div style={{ minWidth: 0 }}>
-              <Title order={2} style={{ overflowWrap: 'anywhere' }}>
-                {anzeigename(m)}
-              </Title>
+              <StatusTitel status={m.status}>{anzeigename(m)}</StatusTitel>
               {nebenname(m) && (
                 <Text c="dimmed" style={{ overflowWrap: 'anywhere' }}>
                   {nebenname(m)}
@@ -62,6 +61,7 @@ export function MitgliedPage() {
               )}
             </div>
           </Group>
+          <StatusFeld sub={m.sub} status={m.status} />
           {m.email && (
             <div>
               <Text size="sm" c="dimmed">

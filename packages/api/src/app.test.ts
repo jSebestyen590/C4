@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AdminUser } from '@c4/shared';
+import type { AdminUser, MitgliedStatus } from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
@@ -38,7 +38,18 @@ function makeApp(pingDb = async () => {}) {
     holen: vi.fn(async (sub: string) => zeilen.get(sub)),
     alle: vi.fn(async () => [...zeilen.values()]),
     speichern: vi.fn(async (sub: string, daten: MitgliedDaten) => {
-      zeilen.set(sub, { sub, ...daten, aktualisiertAm: new Date() });
+      zeilen.set(sub, {
+        sub,
+        ...daten,
+        status: zeilen.get(sub)?.status ?? 'anwaerter',
+        aktualisiertAm: new Date(),
+      });
+    }),
+    statusSetzen: vi.fn(async (sub: string, status: MitgliedStatus) => {
+      const row = zeilen.get(sub);
+      if (!row) return false;
+      zeilen.set(sub, { ...row, status });
+      return true;
     }),
   };
   const profilbilder = {
@@ -269,6 +280,26 @@ describe('api', () => {
       expect(emailAenderung.bestaetigen).toHaveBeenCalledWith('reader-token', '123456');
       emailAenderung.bestaetigen.mockRejectedValueOnce(new CodeUngueltig());
       expect((await post({ code: '000000' })).status).toBe(400);
+    });
+
+    it('lets only admins change the status, and never through the profile', async () => {
+      const { app } = makeApp();
+      await app.request('/api/me/mitglied', json('reader-token', 'PUT', gueltig));
+      const setze = (token: string, sub: string, status: string) =>
+        app.request(`/api/admin/mitglieder/${sub}/status`, json(token, 'PUT', { status }));
+      expect((await setze('reader-token', 'r', 'em')).status).toBe(403);
+      expect((await setze('admin-token', 'r', 'quatsch')).status).toBe(400);
+      expect((await setze('admin-token', 'unbekannt', 'em')).status).toBe(404);
+      expect((await setze('admin-token', 'r', 'mitglied')).status).toBe(200);
+      const liste = await app.request('/api/mitglieder', json('admin-token', 'GET'));
+      expect(await liste.json()).toMatchObject([{ sub: 'r', status: 'mitglied' }]);
+      // a profile save by the member keeps the status, even when they send one
+      await app.request(
+        '/api/me/mitglied',
+        json('reader-token', 'PUT', { ...gueltig, status: 'em' }),
+      );
+      const danach = await app.request('/api/me/mitglied', json('reader-token', 'GET'));
+      expect(await danach.json()).toMatchObject({ status: 'mitglied' });
     });
 
     it('creates the member row when an admin invites with names', async () => {
