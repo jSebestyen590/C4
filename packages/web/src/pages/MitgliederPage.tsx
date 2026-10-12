@@ -15,7 +15,12 @@ import {
   Title,
   UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown, IconChevronUp, IconSelector, IconUserCircle } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconSelector,
+  IconArrowUpRight,
+} from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -206,7 +211,7 @@ export function MitgliederPage() {
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
-                      {/* Only the username leads to the detail page; the icon shows that. */}
+                      {/* Only the username leads to the detail page; the arrow shows that. */}
                       <Link
                         to={mitgliedLink(m)}
                         aria-label={`Profil von ${anzeigename(m)} öffnen`}
@@ -219,7 +224,7 @@ export function MitgliederPage() {
                         }}
                       >
                         <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
-                        <IconUserCircle size={18} aria-hidden style={{ opacity: 0.7 }} />
+                        <IconArrowUpRight size={18} aria-hidden style={{ opacity: 0.7 }} />
                       </Link>
                       {!m.aktiviert && (
                         <Badge color="yellow" variant="light">
