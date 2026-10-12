@@ -21,7 +21,10 @@ export const theme = createTheme({
     PasswordInput: PasswordInput.extend({ defaultProps: { size: 'md' } }),
     Textarea: Textarea.extend({ defaultProps: { size: 'md' } }),
     FileInput: FileInput.extend({ defaultProps: { size: 'md' } }),
-    Select: Select.extend({ defaultProps: { size: 'md' } }),
+    // Selects are not free text: stop iOS from offering AutoFill suggestions above the keyboard.
+    Select: Select.extend({
+      defaultProps: { size: 'md', autoComplete: 'off', inputMode: 'none' },
+    }),
     Checkbox: Checkbox.extend({ defaultProps: { size: 'md' } }),
     Chip: Chip.extend({ defaultProps: { size: 'md' } }),
   },
