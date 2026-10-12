@@ -15,10 +15,10 @@ import {
   Title,
   UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronUp, IconSelector, IconUserCircle } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
@@ -68,7 +68,6 @@ function SortKopf({
 
 export function MitgliederPage() {
   const api = useApi();
-  const navigate = useNavigate();
   const istAdmin = useAuth().can('users:manage');
   const [suche, setSuche] = useState('');
   const [sortierung, setSortierung] = useState<Sortierung>('username');
@@ -181,7 +180,7 @@ export function MitgliederPage() {
       </SimpleGrid>
       {treffer.length > 0 && (
         <Table.ScrollContainer minWidth={istAdmin ? 980 : 760} visibleFrom="sm">
-          <Table highlightOnHover verticalSpacing="xs">
+          <Table verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
                 {SORTIERUNGEN.map((sp) => (
@@ -203,16 +202,24 @@ export function MitgliederPage() {
             </Table.Thead>
             <Table.Tbody>
               {treffer.map((m) => (
-                <Table.Tr
-                  key={m.sub}
-                  onClick={() => navigate(mitgliedLink(m))}
-                  style={{ cursor: 'pointer' }}
-                >
+                <Table.Tr key={m.sub}>
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
-                      <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
+                      {/* Only the username leads to the detail page; the icon shows that. */}
+                      <Link
+                        to={mitgliedLink(m)}
+                        aria-label={`Profil von ${anzeigename(m)} öffnen`}
+                        title="Profil öffnen"
+                        style={{
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
                         <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
+                        <IconUserCircle size={18} aria-hidden style={{ opacity: 0.7 }} />
                       </Link>
                       {!m.aktiviert && (
                         <Badge color="yellow" variant="light">
@@ -229,13 +236,11 @@ export function MitgliederPage() {
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
                   <Table.Td>
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <KontaktkanalIcons
-                        gewaehlt={m.kontaktkanaele}
-                        angaben={kontaktangaben(m)}
-                        groesse={36}
-                      />
-                    </div>
+                    <KontaktkanalIcons
+                      gewaehlt={m.kontaktkanaele}
+                      angaben={kontaktangaben(m)}
+                      groesse={36}
+                    />
                   </Table.Td>
                   {istAdmin && (
                     <Table.Td>
