@@ -1,10 +1,10 @@
-# Documentation
+# Dokumentation
 
-Feature documentation for C4. Keep it short and current: when a feature changes, update its page in
-the same change.
+Dokumentation der Features von C4. Sie soll kurz und aktuell bleiben: Wer ein Feature ändert,
+aktualisiert die zugehörige Seite im selben Change.
 
-| Page                       | Covers                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| [members.md](./members.md) | Members: profile, status, permissions, contact channels, pictures, member list |
+| Seite                      | Inhalt                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| [members.md](./members.md) | Mitglieder: Profil, Status, Rechte, Kontaktkanäle, Profilbilder, Mitgliederliste |
 
-See the repository `README.md` for architecture, setup and deployment.
+Architektur, Einrichtung und Deployment stehen in der `README.md` im Repository-Root.

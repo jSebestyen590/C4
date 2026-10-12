@@ -2,13 +2,13 @@
 
 See `README.md` for the architecture and setup.
 
-## Documentation (`docs/`)
+## Dokumentation (`docs/`)
 
-Feature documentation lives in `docs/` (start at `docs/README.md`). **Before planning or implementing
-a feature, read the relevant page there** (e.g. `docs/members.md` for anything about members,
-profiles, permissions or contact channels) so the change fits what exists. When you add or change a
-feature, update its page in the same change; add a new page and a line in `docs/README.md` for new
-feature areas. Keep it short and factual.
+Die Feature-Dokumentation liegt in `docs/` (Einstieg: `docs/README.md`, auf Deutsch). **Lies vor dem
+Planen oder Umsetzen eines Features die passende Seite dort** (z. B. `docs/members.md` für alles rund
+um Mitglieder, Profile, Rechte oder Kontaktkanäle), damit die Änderung zum Bestehenden passt. Wenn du
+ein Feature anlegst oder änderst, aktualisiere dessen Seite im selben Change. Für neue Feature-Bereiche
+legst du eine neue Seite samt Zeile in `docs/README.md` an. Halte sie kurz und sachlich.
 
 ## UI: mobile first (important)
 

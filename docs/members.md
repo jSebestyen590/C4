@@ -1,123 +1,128 @@
-# Members
+# Mitglieder
 
-A member is a person with a Cognito account **plus** a profile row in the database. Cognito owns
-login data (username, email, password); the database owns everything else.
+Ein Mitglied ist eine Person mit einem Cognito-Konto **und** einer Profilzeile in der Datenbank.
+Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank alles andere.
 
-## Data model
+## Datenmodell
 
-Table `mitglieder`, keyed by the Cognito `sub` (migrations `0002`–`0005`; Aurora DSQL allows one DDL
-statement per migration, no foreign keys and no `ALTER ... SET NOT NULL`, so columns added later are
-nullable).
+Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`0005`). Aurora DSQL erlaubt
+pro Migration nur ein DDL-Statement, keine Fremdschlüssel und kein `ALTER ... SET NOT NULL`. Später
+hinzugefügte Spalten sind deshalb nullable.
 
-| Column                             | Notes                                                                 |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `vorname`, `nachname`              | Required (empty strings for invited members until they fill them in). |
-| `status`                           | `anwaerter` (default), `mitglied`, `em`. Only admins change it.       |
-| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null is treated as neutral.       |
-| `adresse`, `telefon`, `ueber_mich` | Optional free text.                                                   |
-| `kontaktkanaele`                   | Comma-separated channels, e.g. `whatsapp,mail` (see below).           |
-| `discord_name`                     | Discord username, display only.                                       |
-| `profilbild_key`                   | S3 key of the large picture; null without a picture.                  |
+| Spalte                             | Hinweise                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen). |
+| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.           |
+| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                 |
+| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                       |
+| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).               |
+| `discord_name`                     | Discord-Username, nur zur Anzeige.                                         |
+| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                  |
 
-The **username** (Cognito `preferred_username`) and **email** are read from Cognito, not stored.
-The member list is the union of all profile rows and all enabled Cognito accounts, so members that
-have not finished activation (or have no row yet) still appear.
+**Username** (Cognito `preferred_username`) und **E-Mail** kommen aus Cognito und werden nicht
+gespeichert. Die Mitgliederliste ist die Vereinigung aller Profilzeilen und aller aktivierten
+Cognito-Konten. Mitglieder, die ihre Aktivierung noch nicht abgeschlossen haben oder noch keine Zeile
+haben, erscheinen also ebenfalls.
 
-## Creating members
+## Mitglieder anlegen
 
-An admin invites a member by email (`POST /api/admin/users`). The Cognito account **and** the profile
-row (with the chosen initial status) are created at once. On first login the member is sent to
-`/profil` until username and name are set. Self sign-up is disabled.
+Ein Admin lädt ein Mitglied per E-Mail ein (`POST /api/admin/users`). Dabei entstehen das Cognito-Konto
+**und** die Profilzeile mit dem gewählten Anfangsstatus. Beim ersten Login wird das Mitglied auf
+`/profil` geleitet, bis Username und Name gesetzt sind. Eine Selbstregistrierung gibt es nicht.
 
-## Permissions
+## Rechte
 
-Effective permissions are computed in the API on every request
-(`packages/shared/src/roles.ts`, `packages/api/src/auth.ts`):
+Die effektiven Rechte berechnet das API bei jedem Request (`packages/shared/src/roles.ts`,
+`packages/api/src/auth.ts`):
 
 ```
-permissions = STATUS_PERMISSIONS[status]  ∪  ROLE_PERMISSIONS[cognito groups]
+Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]
 ```
 
-- `status` comes from the profile row; a missing row counts as `anwaerter`.
-- The only Cognito group is `admin` (`users:manage`). Everything else follows the status.
-- The web app reads the result from `GET /api/me` (`can()` in `auth.tsx`); the token groups are not
-  used for the UI.
-- All statuses currently get the same permissions; give them different ones in `STATUS_PERMISSIONS`
-  when features need it. Responsibilities (e.g. moderator) that carry extra permissions are planned,
-  stored in the database per member, and are **not built yet**.
+- Der `status` kommt aus der Profilzeile. Ohne Zeile gilt `anwaerter`.
+- Die einzige Cognito-Gruppe ist `admin` (`users:manage`). Alles andere folgt aus dem Status.
+- Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
+  Token werden für die Oberfläche nicht verwendet.
+- Aktuell bekommen alle Status dieselben Rechte. Sobald Features unterschiedliche Rechte brauchen,
+  trägt man sie in `STATUS_PERMISSIONS` ein. Zuständigkeiten (z. B. Moderator) mit zusätzlichen
+  Rechten sind geplant, sollen pro Mitglied in der Datenbank liegen und sind **noch nicht gebaut**.
 
-## Gendered texts
+## Gegenderte Texte
 
-Texts that name a person (status, roles) exist in a male, female and neutral form
-(`Gegendert` in `packages/web/src/i18n.ts`). Use `labelFuer(labels, value, anrede)` with the
-`anrede` of the person the text is about.
+Texte, die eine Person bezeichnen (Status, Rollen), gibt es in männlicher, weiblicher und neutraler
+Form (`Gegendert` in `packages/web/src/i18n.ts`). Man wählt die Form mit
+`labelFuer(labels, value, anrede)` und nimmt die `anrede` der Person, über die der Text spricht.
 
-## Contact channels
+## Kontaktkanäle
 
-Channels: WhatsApp, Telegram, Signal, Discord, Mail. Shown as icons everywhere (grayed out when not
-chosen); the profile edits them as toggle buttons. Chosen channels link to the app:
+Kanäle: WhatsApp, Telegram, Signal, Discord, Mail. Überall als Icons dargestellt (ausgegraut, wenn
+nicht gewählt). Im Profil werden sie über Toggle-Buttons bearbeitet. Gewählte Kanäle verlinken auf die
+App:
 
-| Channel  | Link                             | Built from     |
-| -------- | -------------------------------- | -------------- |
-| WhatsApp | `https://wa.me/<number>`         | phone number   |
-| Signal   | `https://signal.me/#p/+<number>` | phone number   |
-| Telegram | `https://t.me/+<number>`         | phone number   |
-| Mail     | `mailto:<address>`               | Cognito email  |
-| Discord  | none (name is displayed only)    | `discord_name` |
+| Kanal    | Link                             | Quelle           |
+| -------- | -------------------------------- | ---------------- |
+| WhatsApp | `https://wa.me/<nummer>`         | Telefonnummer    |
+| Signal   | `https://signal.me/#p/+<nummer>` | Telefonnummer    |
+| Telegram | `https://t.me/+<nummer>`         | Telefonnummer    |
+| Mail     | `mailto:<adresse>`               | E-Mail (Cognito) |
+| Discord  | kein Link (Name nur angezeigt)   | `discord_name`   |
 
-The free-text phone number is normalized by `telefonNormalisieren` (German default `+49` for a
-leading `0`; unreadable numbers give no link). Code: `packages/shared/src/kontakt.ts`.
+Die Telefonnummer ist Freitext und wird mit `telefonNormalisieren` umgewandelt (bei führender `0`
+gilt `+49`, nicht lesbare Nummern ergeben keinen Link). Code: `packages/shared/src/kontakt.ts`.
 
-Discord cannot be linked by username. A bot on the club server could resolve names to user IDs
-(`GET /guilds/{id}/members/search`) — not built; needs a bot token and the Server Members intent.
+Discord lässt sich nicht über den Username verlinken. Ein Bot auf dem Vereinsserver könnte Namen in
+User-IDs auflösen (`GET /guilds/{id}/members/search`). Das ist nicht gebaut und braucht ein Bot-Token
+sowie den Server Members Intent.
 
-## Profile pictures
+## Profilbilder
 
-Chosen in the profile, cropped to a square in the browser (`react-easy-crop`). Two JPEG/PNG files are
-uploaded straight to S3 with presigned URLs:
+Das Bild wird im Profil gewählt und im Browser auf ein Quadrat zugeschnitten (`react-easy-crop`).
+Zwei Dateien gehen per Presigned URL direkt nach S3:
 
-- **large**: the selected area at full resolution (PNG stays PNG, otherwise 95 % JPEG), up to 20 MB;
-  shown only in the enlarged overlay of the detail page.
-- **small**: the selected area at most 256 px (JPEG), key = large key with `-klein.jpg`; used
-  everywhere else.
+- **groß:** der gewählte Ausschnitt in voller Auflösung (PNG bleibt PNG, sonst JPEG mit 95 %), bis
+  20 MB. Wird nur im vergrößerten Overlay der Detailseite gezeigt.
+- **klein:** der Ausschnitt mit höchstens 256 px (JPEG), Key = Key des großen Bildes mit `-klein.jpg`.
+  Wird überall sonst gezeigt.
 
-Only `profilbild_key` (large) is stored; the small key is derived (`kleinKey`). Replacing or removing
-a picture deletes both files. Keys must lie under `profilbilder/<own sub>/`.
+Gespeichert wird nur `profilbild_key` (groß), der kleine Key wird abgeleitet (`kleinKey`). Beim Ersetzen
+oder Entfernen werden beide Dateien gelöscht. Keys müssen unter `profilbilder/<eigene sub>/` liegen.
 
-## Username and URLs
+## Username und URLs
 
-The username is chosen on the profile page (Cognito alias, unique, 3–64 chars of `A-Za-z0-9._-`, must
-not look like a UUID). The detail page lives at `/mitglieder/<username>`; members without a username
-are addressed by their `sub`. Changing the username on one's own detail page moves the URL along.
+Der Username wird auf der Profilseite gewählt (Cognito-Alias, eindeutig, 3–64 Zeichen aus
+`A-Za-z0-9._-`, darf nicht wie eine UUID aussehen). Die Detailseite liegt unter
+`/mitglieder/<username>`. Mitglieder ohne Username sind über ihre `sub` erreichbar. Ändert man auf der
+eigenen Detailseite den Username, zieht die URL mit.
 
-## Email change
+## E-Mail ändern
 
-`PUT /api/me/email` starts the change with the user's own access token (Cognito
-`UpdateUserAttributes`), `POST /api/me/email/bestaetigen` confirms the emailed code. Needs the scope
-`aws.cognito.signin.user.admin`; users who logged in before that scope existed must sign in again.
+`PUT /api/me/email` startet die Änderung mit dem Access-Token des Nutzers (Cognito
+`UpdateUserAttributes`), `POST /api/me/email/bestaetigen` bestätigt den per E-Mail gesendeten Code.
+Dafür braucht es den Scope `aws.cognito.signin.user.admin`. Wer sich vor dessen Einführung angemeldet
+hat, muss sich neu anmelden.
 
-## Pages and API
+## Seiten und API
 
-| Page                 | Who                | Purpose                                                                                |
-| -------------------- | ------------------ | -------------------------------------------------------------------------------------- |
-| `/profil`            | every member       | Edit own profile (also first-login gate)                                               |
-| `/mitglieder`        | `mitglieder:lesen` | List (cards on phones, sortable table from `sm`); admins also see roles and can invite |
-| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; own page is editable; admins change status and roles                           |
+| Seite                | Wer                | Zweck                                                                                         |
+| -------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                       |
+| `/mitglieder`        | `mitglieder:lesen` | Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`); Admins sehen Rollen und laden ein |
+| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status und Rollen                     |
 
-| Route                                                                         | Notes                                     |
-| ----------------------------------------------------------------------------- | ----------------------------------------- |
-| `GET/PUT /api/me/mitglied`                                                    | Own profile                               |
-| `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Cognito-backed                            |
-| `POST /api/me/profilbild`                                                     | Presigned upload URLs (large + small)     |
-| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` only sent to admins              |
-| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                     |
-| `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; cannot remove one's own admin role |
-| `POST /api/admin/users`                                                       | Admin; invite + profile row               |
+| Route                                                                         | Hinweise                                      |
+| ----------------------------------------------------------------------------- | --------------------------------------------- |
+| `GET/PUT /api/me/mitglied`                                                    | Eigenes Profil                                |
+| `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Über Cognito                                  |
+| `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)        |
+| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins                       |
+| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                         |
+| `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; die eigene Admin-Rolle bleibt erhalten |
+| `POST /api/admin/users`                                                       | Admin; Einladung samt Profilzeile             |
 
-The Lambda needs the Cognito permissions listed in `infra/modules/app/main.tf`, including
-`ListUsersInGroup` for the role column.
+Die Lambda braucht die Cognito-Berechtigungen aus `infra/modules/app/main.tf`, darunter
+`ListUsersInGroup` für die Rollenspalte.
 
-## Database resets (dev only)
+## Datenbank zurücksetzen (nur dev)
 
-`pnpm db:reset` drops all tables (needs `CONFIRM_DB_RESET=yes`); the Deploy workflow has a `reset_db`
-input that only works for `dev`.
+`pnpm db:reset` löscht alle Tabellen (braucht `CONFIRM_DB_RESET=yes`). Der Deploy-Workflow hat dafür
+die Eingabe `reset_db`, die nur für `dev` funktioniert.
