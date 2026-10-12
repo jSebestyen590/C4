@@ -6,7 +6,6 @@ import {
   Group,
   Menu,
   NavLink,
-  SegmentedControl,
   Text,
   Title,
   UnstyledButton,
@@ -15,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconCheck,
   IconDeviceDesktop,
   IconHome,
   IconLogout,
@@ -29,14 +29,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
 
-function FarbmodusLabel({ icon, text }: Readonly<{ icon: ReactNode; text: string }>) {
-  return (
-    <Group gap={4} justify="center" wrap="nowrap">
-      {icon}
-      <span>{text}</span>
-    </Group>
-  );
-}
+const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
+  { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
+  { wert: 'dark', text: 'Dunkel', icon: <IconMoon size={18} /> },
+  { wert: 'auto', text: 'Systemeinstellung', icon: <IconDeviceDesktop size={18} /> },
+];
 
 /** Own profile picture in the header; opens the menu with the profile link and the light/dark/system choice. */
 function ProfilMenue() {
@@ -56,7 +53,7 @@ function ProfilMenue() {
     },
   });
   return (
-    <Menu position="bottom-end" width={280}>
+    <Menu position="bottom-end" width={240}>
       <Menu.Target>
         <UnstyledButton aria-label="Profilmenü" style={{ lineHeight: 0 }} p={2}>
           <Avatar
@@ -78,26 +75,19 @@ function ProfilMenue() {
         <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>
           Darstellung
         </Text>
-        <SegmentedControl
-          fullWidth
-          size="md"
-          mx="xs"
-          mb="xs"
-          aria-label="Darstellung"
-          value={colorScheme}
-          onChange={(v) => setColorScheme(v as MantineColorScheme)}
-          data={[
-            { value: 'light', label: <FarbmodusLabel icon={<IconSun size={16} />} text="Hell" /> },
-            {
-              value: 'dark',
-              label: <FarbmodusLabel icon={<IconMoon size={16} />} text="Dunkel" />,
-            },
-            {
-              value: 'auto',
-              label: <FarbmodusLabel icon={<IconDeviceDesktop size={16} />} text="System" />,
-            },
-          ]}
-        />
+        {FARBMODI.map(({ wert, text, icon }) => (
+          <Menu.Item
+            key={wert}
+            closeMenuOnClick={false}
+            leftSection={icon}
+            rightSection={colorScheme === wert ? <IconCheck size={18} /> : undefined}
+            aria-current={colorScheme === wert}
+            onClick={() => setColorScheme(wert)}
+            py="sm"
+          >
+            {text}
+          </Menu.Item>
+        ))}
       </Menu.Dropdown>
     </Menu>
   );
