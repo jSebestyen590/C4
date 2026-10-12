@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
-import { anzeigename, mitgliedLink, nebenname } from '../mitglied';
+import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenFeld } from '../RollenAnzeige';
@@ -90,7 +90,12 @@ export function MitgliedPage() {
             <Text size="sm" c="dimmed" mb={4}>
               Am besten erreichbar über
             </Text>
-            <KontaktkanalIcons gewaehlt={m.kontaktkanaele} />
+            <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
+            {m.kontaktkanaele.includes('discord') && m.discordName && (
+              <Text size="sm" mt={4}>
+                Discord: {m.discordName}
+              </Text>
+            )}
           </div>
           {m.telefon && (
             <div>

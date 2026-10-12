@@ -16,6 +16,7 @@ export const mitglieder = pgTable('mitglieder', {
   anrede: text('anrede').$type<Anrede>(),
   /** Comma-separated channels, e.g. "whatsapp,mail"; null when none were chosen. */
   kontaktkanaele: text('kontaktkanaele'),
+  discordName: text('discord_name'),
   adresse: text('adresse'),
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),

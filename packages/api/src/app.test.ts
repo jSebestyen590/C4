@@ -207,6 +207,7 @@ describe('api', () => {
         ...gueltig,
         anrede: 'weiblich',
         kontaktkanaele: ['mail', 'signal'],
+        discordName: ' erika#1 ',
         telefon: '  ',
         ueberMich: 'Hallo',
       });
@@ -215,6 +216,7 @@ describe('api', () => {
         ...gueltig,
         anrede: 'weiblich',
         kontaktkanaele: 'signal,mail',
+        discordName: 'erika#1',
         adresse: null,
         telefon: null,
         ueberMich: 'Hallo',

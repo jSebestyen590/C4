@@ -24,7 +24,7 @@ import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenBadges } from '../RollenAnzeige';
-import { anzeigename, mitgliedLink, nebenname } from '../mitglied';
+import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { StatusBadge, StatusName } from '../StatusAnzeige';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
@@ -134,41 +134,46 @@ export function MitgliederPage() {
       )}
       <SimpleGrid cols={1} hiddenFrom="sm">
         {treffer.map((m) => (
-          <Paper
-            key={m.sub}
-            withBorder
-            p="md"
-            component={Link}
-            to={mitgliedLink(m)}
-            style={{ color: 'inherit', textDecoration: 'none' }}
-          >
+          <Paper key={m.sub} withBorder p="md">
             <Stack gap="xs">
-              <Group wrap="nowrap">
-                <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
-                <div style={{ minWidth: 0 }}>
-                  <Group gap="xs">
-                    <StatusName status={m.status}>{anzeigename(m)}</StatusName>
-                    <StatusBadge status={m.status} anrede={m.anrede} />
-                  </Group>
-                  {nebenname(m) && (
-                    <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      {nebenname(m)}
-                    </Text>
-                  )}
-                  {!m.aktiviert && (
-                    <Badge color="yellow" variant="light" mt={4}>
-                      Noch nicht aktiviert
-                    </Badge>
-                  )}
-                </div>
-              </Group>
-              {m.email && (
-                <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
-                  {m.email}
-                </Text>
-              )}
-              {m.telefon && <Text size="sm">{m.telefon}</Text>}
-              <KontaktkanalIcons gewaehlt={m.kontaktkanaele} size={24} />
+              {/* Only the upper part links to the detail page; the contact icons are links themselves. */}
+              <Link
+                to={mitgliedLink(m)}
+                style={{
+                  color: 'inherit',
+                  textDecoration: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--mantine-spacing-xs)',
+                }}
+              >
+                <Group wrap="nowrap">
+                  <Avatar src={m.profilbildUrl} size={64} radius="xl" alt="" />
+                  <div style={{ minWidth: 0 }}>
+                    <Group gap="xs">
+                      <StatusName status={m.status}>{anzeigename(m)}</StatusName>
+                      <StatusBadge status={m.status} anrede={m.anrede} />
+                    </Group>
+                    {nebenname(m) && (
+                      <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                        {nebenname(m)}
+                      </Text>
+                    )}
+                    {!m.aktiviert && (
+                      <Badge color="yellow" variant="light" mt={4}>
+                        Noch nicht aktiviert
+                      </Badge>
+                    )}
+                  </div>
+                </Group>
+                {m.email && (
+                  <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                    {m.email}
+                  </Text>
+                )}
+                {m.telefon && <Text size="sm">{m.telefon}</Text>}
+              </Link>
+              <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
               {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
           </Paper>
@@ -224,7 +229,13 @@ export function MitgliederPage() {
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
                   <Table.Td>
-                    <KontaktkanalIcons gewaehlt={m.kontaktkanaele} size={22} />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <KontaktkanalIcons
+                        gewaehlt={m.kontaktkanaele}
+                        angaben={kontaktangaben(m)}
+                        groesse={36}
+                      />
+                    </div>
                   </Table.Td>
                   {istAdmin && (
                     <Table.Td>

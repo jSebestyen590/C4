@@ -35,7 +35,10 @@ import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 
 type Fehler = Partial<
-  Record<'username' | 'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich', string>
+  Record<
+    'username' | 'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich' | 'discordName',
+    string
+  >
 >;
 
 /** Thrown when the chosen username belongs to someone else. */
@@ -60,6 +63,7 @@ export function ProfilFormular({
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
   const [anrede, setAnrede] = useState<Anrede>(mitglied?.anrede ?? 'neutral');
   const [kanaele, setKanaele] = useState<Kontaktkanal[]>(mitglied?.kontaktkanaele ?? []);
+  const [discordName, setDiscordName] = useState(mitglied?.discordName ?? '');
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
@@ -143,6 +147,7 @@ export function ProfilFormular({
       nachname,
       anrede,
       kontaktkanaele: kanaele,
+      discordName,
       adresse,
       telefon,
       ueberMich,
@@ -255,6 +260,24 @@ export function ProfilFormular({
             onChange={(v) => v && setAnrede(v as Anrede)}
           />
           <KontaktkanalAuswahl gewaehlt={kanaele} onChange={setKanaele} />
+          {kanaele.includes('discord') && (
+            <TextInput
+              label="Discord-Name"
+              description="Dein Benutzername auf Discord. Er wird angezeigt, aber nicht verlinkt."
+              autoComplete="off"
+              value={discordName}
+              onChange={(e) => setDiscordName(e.currentTarget.value)}
+              error={fehler.discordName}
+            />
+          )}
+          {(kanaele.includes('whatsapp') ||
+            kanaele.includes('signal') ||
+            kanaele.includes('telegram')) && (
+            <Text size="xs" c="dimmed">
+              WhatsApp, Signal und Telegram werden über deine Telefonnummer verlinkt, Mail über
+              deine E-Mail-Adresse.
+            </Text>
+          )}
           <Textarea
             size="md"
             label="Adresse"

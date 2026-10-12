@@ -98,6 +98,7 @@ export const mitgliedAktualisierenSchema = z.object({
   nachname: nachnameSchema,
   anrede: anredeSchema.default('neutral'),
   kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)).default([]),
+  discordName: optionalerText(64),
   adresse: optionalerText(500),
   telefon: optionalerText(50),
   ueberMich: optionalerText(2000),
@@ -121,6 +122,8 @@ export const mitgliedSchema = z.object({
   anrede: anredeSchema,
   /** Channels the member can best be reached on, in a fixed order. */
   kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)),
+  /** Discord username; Discord cannot be linked by name, so it is only displayed. */
+  discordName: z.string().nullable(),
   /** Login name from Cognito (preferred_username); null until the member chose one. */
   username: z.string().nullable(),
   status: mitgliedStatusSchema,

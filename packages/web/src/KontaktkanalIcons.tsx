@@ -7,7 +7,7 @@ import {
   IconMail,
 } from '@tabler/icons-react';
 import type { ComponentType } from 'react';
-import { KONTAKTKANAELE, type Kontaktkanal } from '@c4/shared';
+import { KONTAKTKANAELE, kontaktLink, type Kontaktkanal } from '@c4/shared';
 import { KONTAKTKANAL_LABELS } from './i18n';
 
 const ICONS: Record<Kontaktkanal, ComponentType<{ size?: number }>> = {
@@ -18,28 +18,66 @@ const ICONS: Record<Kontaktkanal, ComponentType<{ size?: number }>> = {
   mail: IconMail,
 };
 
-/** All channels as icons; the ones the member did not choose are grayed out. */
+/** What is needed to build the links of the channels. */
+export interface Kontaktangaben {
+  telefon: string | null;
+  email: string | null;
+  discordName: string | null;
+}
+
+/**
+ * All channels as icons; the ones the member did not choose are grayed out. Chosen channels with
+ * enough details link to the app (WhatsApp, Signal and Telegram by phone number, mail by address).
+ */
 export function KontaktkanalIcons({
   gewaehlt,
-  size = 28,
-}: Readonly<{ gewaehlt: readonly Kontaktkanal[]; size?: number }>) {
+  angaben,
+  groesse = 44,
+}: Readonly<{
+  gewaehlt: readonly Kontaktkanal[];
+  angaben: Kontaktangaben;
+  /** Edge length of one icon button; keep >= 44 wherever the icons are tappable. */
+  groesse?: number;
+}>) {
   return (
-    <Group gap="xs" wrap="nowrap">
+    <Group gap={4} wrap="nowrap">
       {KONTAKTKANAELE.map((kanal) => {
         const aktiv = gewaehlt.includes(kanal);
         const Icon = ICONS[kanal];
+        const name = KONTAKTKANAL_LABELS[kanal];
+        const link = aktiv ? kontaktLink(kanal, angaben) : null;
+        const zusatz =
+          kanal === 'discord' && aktiv && angaben.discordName ? ` (${angaben.discordName})` : '';
+        const icon = <Icon size={Math.round(groesse * 0.6)} />;
+        if (link)
+          return (
+            <ActionIcon
+              key={kanal}
+              component="a"
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="subtle"
+              color="blue"
+              size={groesse}
+              aria-label={`${name} öffnen`}
+              title={`${name} öffnen`}
+            >
+              {icon}
+            </ActionIcon>
+          );
         return (
           <ThemeIcon
             key={kanal}
             variant="transparent"
             color={aktiv ? 'blue' : 'gray'}
-            size={size}
+            size={groesse}
             style={{ opacity: aktiv ? 1 : 0.35 }}
             role="img"
-            aria-label={`${KONTAKTKANAL_LABELS[kanal]}: ${aktiv ? 'bevorzugt' : 'nicht angegeben'}`}
-            title={KONTAKTKANAL_LABELS[kanal]}
+            aria-label={`${name}${zusatz}: ${aktiv ? 'bevorzugt' : 'nicht angegeben'}`}
+            title={`${name}${zusatz}`}
           >
-            <Icon size={size} />
+            {icon}
           </ThemeIcon>
         );
       })}
