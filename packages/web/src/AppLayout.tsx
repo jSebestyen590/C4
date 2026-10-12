@@ -95,6 +95,7 @@ function ProfilMenue() {
 
 /**
  * Mobile-first shell: header + burger-toggled navbar below `md`, persistent sidebar from `md` up.
+ * Logout lives at the bottom of the sidebar; tablets (xs to md) also get it in the header.
  */
 export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
@@ -139,6 +140,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
                 leftSection={<IconLogout size={18} />}
                 onClick={logout}
                 visibleFrom="xs"
+                hiddenFrom="md"
               >
                 Abmelden
               </Button>
@@ -165,7 +167,6 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
           label="Abmelden"
           leftSection={<IconLogout size={20} />}
           onClick={logout}
-          hiddenFrom="xs"
           py="sm"
           mt="auto"
         />

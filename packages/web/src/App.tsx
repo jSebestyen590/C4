@@ -57,7 +57,8 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
 export function App({ config }: Readonly<{ config: AppConfig }>) {
   return (
     <AppLayout>
-      <Container size="md" p={0}>
+      {/* Full width: the member list uses all space; other pages limit their own content width. */}
+      <Container fluid p={0}>
         <Routes>
           <Route path="/auth/callback" element={<CallbackPage config={config} />} />
           <Route

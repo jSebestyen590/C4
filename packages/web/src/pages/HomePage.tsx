@@ -11,7 +11,7 @@ export function HomePage() {
     queryFn: async () => (await api.health.$get()).json(),
   });
   return (
-    <Stack>
+    <Stack maw={720}>
       <Title order={2}>C4</Title>
       <Paper withBorder p="md">
         <Group justify="space-between">
