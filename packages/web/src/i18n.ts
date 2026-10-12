@@ -1,4 +1,4 @@
-import type { Anrede, MitgliedStatus, Permission, Role } from '@c4/shared';
+import type { Anrede, Kontaktkanal, MitgliedStatus, Permission, Role } from '@c4/shared';
 
 // The whole UI is German. Fixed values coming from the backend get their German label here.
 
@@ -7,6 +7,14 @@ export type Gegendert = Record<Anrede, string>;
 
 export const ROLE_LABELS: Record<Role, Gegendert> = {
   admin: { maennlich: 'Administrator', weiblich: 'Administratorin', neutral: 'Administrator:in' },
+};
+
+export const KONTAKTKANAL_LABELS: Record<Kontaktkanal, string> = {
+  whatsapp: 'WhatsApp',
+  telegram: 'Telegram',
+  signal: 'Signal',
+  discord: 'Discord',
+  mail: 'E-Mail',
 };
 
 export const ANREDE_LABELS: Gegendert = {

@@ -14,6 +14,8 @@ export const mitglieder = pgTable('mitglieder', {
   nachname: text('nachname').notNull(),
   /** Null until the member chose; the app then treats it as neutral. */
   anrede: text('anrede').$type<Anrede>(),
+  /** Comma-separated channels, e.g. "whatsapp,mail"; null when none were chosen. */
+  kontaktkanaele: text('kontaktkanaele'),
   adresse: text('adresse'),
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),

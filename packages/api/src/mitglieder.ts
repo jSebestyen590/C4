@@ -1,9 +1,21 @@
 import { eq } from 'drizzle-orm';
-import type { MitgliedStatus } from '@c4/shared';
+import { KONTAKTKANAELE, type Kontaktkanal, type MitgliedStatus } from '@c4/shared';
 import type { Db } from './db/client';
 import { mitglieder, type MitgliedRow } from './db/schema';
 
 export type MitgliedDaten = Omit<MitgliedRow, 'sub' | 'aktualisiertAm' | 'status'>;
+
+/** Comma-separated database value -> known channels in their canonical order. */
+export const kanaeleLesen = (wert: string | null): Kontaktkanal[] => {
+  const gewaehlt = new Set((wert ?? '').split(','));
+  return KONTAKTKANAELE.filter((k) => gewaehlt.has(k));
+};
+
+/** Channels -> comma-separated database value; null when empty. */
+export const kanaeleSchreiben = (kanaele: readonly Kontaktkanal[]): string | null => {
+  const wert = KONTAKTKANAELE.filter((k) => kanaele.includes(k)).join(',');
+  return wert === '' ? null : wert;
+};
 
 export interface MitgliederStore {
   holen(sub: string): Promise<MitgliedRow | undefined>;

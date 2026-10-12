@@ -5,6 +5,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
+import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { ProfilFormular } from './ProfilPage';
@@ -79,6 +80,12 @@ export function MitgliedPage() {
               <Text style={{ overflowWrap: 'anywhere' }}>{m.email}</Text>
             </div>
           )}
+          <div>
+            <Text size="sm" c="dimmed" mb={4}>
+              Am besten erreichbar über
+            </Text>
+            <KontaktkanalIcons gewaehlt={m.kontaktkanaele} />
+          </div>
           {m.telefon && (
             <div>
               <Text size="sm" c="dimmed">

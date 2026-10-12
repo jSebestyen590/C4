@@ -22,6 +22,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
+import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, nebenname } from '../mitglied';
 import { StatusBadge, StatusName } from '../StatusAnzeige';
@@ -167,6 +168,7 @@ export function MitgliederPage() {
                 </Text>
               )}
               {m.telefon && <Text size="sm">{m.telefon}</Text>}
+              <KontaktkanalIcons gewaehlt={m.kontaktkanaele} size={24} />
               {m.adresse && (
                 <Text size="sm" style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
                   {m.adresse}
@@ -187,7 +189,7 @@ export function MitgliederPage() {
         ))}
       </SimpleGrid>
       {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={istAdmin ? 860 : 640} visibleFrom="sm">
+        <Table.ScrollContainer minWidth={istAdmin ? 980 : 760} visibleFrom="sm">
           <Table highlightOnHover verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -204,6 +206,7 @@ export function MitgliederPage() {
                 <Table.Th>Status</Table.Th>
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
+                <Table.Th>Kontakt</Table.Th>
                 {istAdmin && <Table.Th>Berechtigungen</Table.Th>}
               </Table.Tr>
             </Table.Thead>
@@ -234,6 +237,9 @@ export function MitgliederPage() {
                   </Table.Td>
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>
+                  <Table.Td>
+                    <KontaktkanalIcons gewaehlt={m.kontaktkanaele} size={22} />
+                  </Table.Td>
                   {istAdmin && (
                     <Table.Td>
                       <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />

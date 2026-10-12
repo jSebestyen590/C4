@@ -201,11 +201,19 @@ describe('api', () => {
       expect((await put({ vorname: '', nachname: 'Muster' })).status).toBe(400);
       expect((await put({ vorname: 'Erika' })).status).toBe(400);
       expect((await put({ ...gueltig, anrede: 'x' })).status).toBe(400);
-      const ok = await put({ ...gueltig, anrede: 'weiblich', telefon: '  ', ueberMich: 'Hallo' });
+      expect((await put({ ...gueltig, kontaktkanaele: ['fax'] })).status).toBe(400);
+      const ok = await put({
+        ...gueltig,
+        anrede: 'weiblich',
+        kontaktkanaele: ['mail', 'signal'],
+        telefon: '  ',
+        ueberMich: 'Hallo',
+      });
       expect(ok.status).toBe(200);
       expect(mitglieder.speichern).toHaveBeenCalledWith('r', {
         ...gueltig,
         anrede: 'weiblich',
+        kontaktkanaele: 'signal,mail',
         adresse: null,
         telefon: null,
         ueberMich: 'Hallo',

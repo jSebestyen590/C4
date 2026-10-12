@@ -21,6 +21,7 @@ import {
   mitgliedAktualisierenSchema,
   setUsernameSchema,
   type Anrede,
+  type Kontaktkanal,
   type Mitglied,
 } from '@c4/shared';
 import { ANREDE_LABELS } from '../i18n';
@@ -29,6 +30,7 @@ import { useAuth } from '../auth';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
+import { KontaktkanalAuswahl } from '../KontaktkanalIcons';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
@@ -59,6 +61,7 @@ export function ProfilFormular({
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
   const [nachname, setNachname] = useState(mitglied?.nachname ?? '');
   const [anrede, setAnrede] = useState<Anrede>(mitglied?.anrede ?? 'neutral');
+  const [kanaele, setKanaele] = useState<Kontaktkanal[]>(mitglied?.kontaktkanaele ?? []);
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
@@ -141,6 +144,7 @@ export function ProfilFormular({
       vorname,
       nachname,
       anrede,
+      kontaktkanaele: kanaele,
       adresse,
       telefon,
       ueberMich,
@@ -252,6 +256,7 @@ export function ProfilFormular({
             allowDeselect={false}
             onChange={(v) => v && setAnrede(v as Anrede)}
           />
+          <KontaktkanalAuswahl gewaehlt={kanaele} onChange={setKanaele} />
           <Textarea
             size="md"
             label="Adresse"

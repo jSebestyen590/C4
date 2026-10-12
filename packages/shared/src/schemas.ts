@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { roleSchema } from './roles';
 import { ANREDEN } from './anrede';
+import { KONTAKTKANAELE } from './kontakt';
 import { MITGLIED_STATI } from './status';
 
 export const anredeSchema = z.enum(ANREDEN);
@@ -92,6 +93,7 @@ export const mitgliedAktualisierenSchema = z.object({
   vorname: vornameSchema,
   nachname: nachnameSchema,
   anrede: anredeSchema.default('neutral'),
+  kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)).default([]),
   adresse: optionalerText(500),
   telefon: optionalerText(50),
   ueberMich: optionalerText(2000),
@@ -113,6 +115,8 @@ export const mitgliedSchema = z.object({
   vorname: z.string(),
   nachname: z.string(),
   anrede: anredeSchema,
+  /** Channels the member can best be reached on, in a fixed order. */
+  kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)),
   /** Login name from Cognito (preferred_username); null until the member chose one. */
   username: z.string().nullable(),
   status: mitgliedStatusSchema,

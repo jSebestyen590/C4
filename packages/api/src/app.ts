@@ -22,7 +22,7 @@ import {
   type EmailAenderung,
 } from './emailaenderung';
 import type { MitgliedRow } from './db/schema';
-import type { MitgliederStore } from './mitglieder';
+import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
 
@@ -70,6 +70,7 @@ export function createApp(deps: AppDeps) {
     vorname: row?.vorname ?? '',
     nachname: row?.nachname ?? '',
     anrede: row?.anrede ?? 'neutral',
+    kontaktkanaele: kanaeleLesen(row?.kontaktkanaele ?? null),
     username: konto?.username ?? null,
     status: row?.status ?? 'anwaerter',
     email: konto?.email ?? null,
@@ -175,12 +176,16 @@ export function createApp(deps: AppDeps) {
       zValidator('json', mitgliedAktualisierenSchema),
       async (c) => {
         const { sub } = c.get('user');
-        const { profilbildKey, ...daten } = c.req.valid('json');
+        const { profilbildKey, kontaktkanaele, ...daten } = c.req.valid('json');
         if (profilbildKey && !profilbildKey.startsWith(profilbildPrefix(sub))) {
           throw new HTTPException(400, { message: 'Ungültiges Profilbild' });
         }
         const vorher = await deps.mitglieder.holen(sub);
-        await deps.mitglieder.speichern(sub, { ...daten, profilbildKey });
+        await deps.mitglieder.speichern(sub, {
+          ...daten,
+          kontaktkanaele: kanaeleSchreiben(kontaktkanaele),
+          profilbildKey,
+        });
         if (vorher?.profilbildKey && vorher.profilbildKey !== profilbildKey) {
           await deps.profilbilder.loeschen(vorher.profilbildKey).catch((err) => {
             console.error('profilbild: delete failed', err);
@@ -233,6 +238,7 @@ export function createApp(deps: AppDeps) {
             vorname,
             nachname,
             anrede: null,
+            kontaktkanaele: null,
             adresse: null,
             telefon: null,
             ueberMich: null,
