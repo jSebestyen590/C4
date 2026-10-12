@@ -5,6 +5,10 @@ on:
       env:
         required: true
         type: string
+      reset_db:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -56,7 +60,15 @@ jobs:
           export DSQL_ENDPOINT=$(jq -r .dsql_endpoint app-outputs.json)
           export USER_POOL_ID=$(jq -r .user_pool_id app-outputs.json)
           export CLIENT_ID=$(jq -r .client_id app-outputs.json)
+          export PROFILBILD_BUCKET=$(jq -r .profilbild_bucket app-outputs.json)
           export AWS_REGION=eu-central-1
+          if [ "${{ inputs.reset_db }}" = "true" ]; then
+            if [ "${{ inputs.env }}" != "dev" ]; then
+              echo "::error::reset_db is only allowed for dev"
+              exit 1
+            fi
+            CONFIRM_DB_RESET=yes pnpm db:reset
+          fi
           pnpm db:migrate
 
       - name: Smoke test

@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
-import { hasPermission, type Permission } from '@c4/shared';
+import { permissionsFor, type MitgliedStatus, type Permission } from '@c4/shared';
 import type { Config } from './config';
 
 export interface AuthUser {
@@ -11,7 +11,9 @@ export interface AuthUser {
 }
 export type TokenVerifier = (token: string) => Promise<AuthUser>;
 
-export type AuthEnv = { Variables: { user: AuthUser } };
+export type AuthEnv = {
+  Variables: { user: AuthUser; accessToken: string; permissions: Permission[] };
+};
 
 /** Verifies a Cognito *access* token (signature, issuer, token_use, client_id). */
 export function createCognitoVerifier(
@@ -33,23 +35,33 @@ export function createCognitoVerifier(
   };
 }
 
-export function authenticate(verify: TokenVerifier) {
+/**
+ * Verifies the token and derives the effective permissions from the member's status (database) and
+ * the token's groups. A member without a profile row counts as a candidate.
+ */
+export function authenticate(
+  verify: TokenVerifier,
+  statusOf: (sub: string) => Promise<MitgliedStatus | undefined>,
+) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const header = c.req.header('authorization');
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
     if (!token) throw new HTTPException(401, { message: 'Missing bearer token' });
     try {
       c.set('user', await verify(token));
+      c.set('accessToken', token);
     } catch {
       throw new HTTPException(401, { message: 'Invalid token' });
     }
+    const user = c.get('user');
+    c.set('permissions', permissionsFor(user.groups, (await statusOf(user.sub)) ?? 'anwaerter'));
     await next();
   });
 }
 
 export function requirePermission(permission: Permission) {
   return createMiddleware<AuthEnv>(async (c, next) => {
-    if (!hasPermission(c.get('user').groups, permission)) {
+    if (!c.get('permissions').includes(permission)) {
       throw new HTTPException(403, { message: 'Forbidden' });
     }
     await next();

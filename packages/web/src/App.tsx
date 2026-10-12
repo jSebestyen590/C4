@@ -6,10 +6,11 @@ import type { AppConfig, Permission } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
-import { AdminPage } from './pages/AdminPage';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
-import { UsernamePage } from './pages/UsernamePage';
+import { MitgliedPage } from './pages/MitgliedPage';
+import { MitgliederPage } from './pages/MitgliederPage';
+import { ProfilPage } from './pages/ProfilPage';
 
 function Protected({
   children,
@@ -29,19 +30,35 @@ function Protected({
   return <>{children}</>;
 }
 
-/** First login: users without a chosen username are sent to the username page. */
+/**
+ * First login: users without a username or a profile are sent to the profile page, where they
+ * choose both at once.
+ */
 function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
   const api = useApi();
   const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
-  if (me.isPending) return null;
-  if (me.data && !me.data.preferredUsername) return <Navigate to="/username" replace />;
+  const mitglied = useQuery({
+    queryKey: ['mitglied'],
+    queryFn: async () => {
+      const res = await api.me.mitglied.$get();
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Profil konnte nicht geladen werden');
+      return res.json();
+    },
+  });
+  if (me.isPending || mitglied.isPending) return null;
+  if (me.data && !me.data.preferredUsername) return <Navigate to="/profil" replace />;
+  // Invited users already have a row, but with empty names until they filled in their profile.
+  if (mitglied.data === null || mitglied.data?.vorname === '')
+    return <Navigate to="/profil" replace />;
   return <>{children}</>;
 }
 
 export function App({ config }: Readonly<{ config: AppConfig }>) {
   return (
     <AppLayout>
-      <Container size="md" p={0}>
+      {/* Full width: the member list uses all space; other pages limit their own content width. */}
+      <Container fluid p={0}>
         <Routes>
           <Route path="/auth/callback" element={<CallbackPage config={config} />} />
           <Route
@@ -55,20 +72,30 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             }
           />
           <Route
-            path="/admin"
+            path="/mitglieder"
             element={
-              <Protected permission="users:manage">
+              <Protected permission="mitglieder:lesen">
                 <RequireUsername>
-                  <AdminPage />
+                  <MitgliederPage />
                 </RequireUsername>
               </Protected>
             }
           />
           <Route
-            path="/username"
+            path="/mitglieder/:kennung"
             element={
-              <Protected>
-                <UsernamePage />
+              <Protected permission="mitglieder:lesen">
+                <RequireUsername>
+                  <MitgliedPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/profil"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <ProfilPage />
               </Protected>
             }
           />

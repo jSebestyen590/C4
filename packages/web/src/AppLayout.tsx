@@ -1,12 +1,101 @@
-import { AppShell, Burger, Button, Group, NavLink, Title } from '@mantine/core';
+import {
+  AppShell,
+  Avatar,
+  Burger,
+  Button,
+  Group,
+  Menu,
+  NavLink,
+  Text,
+  Title,
+  UnstyledButton,
+  type MantineColorScheme,
+  useMantineColorScheme,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconHome, IconLogout, IconUsers } from '@tabler/icons-react';
+import {
+  IconCheck,
+  IconDeviceDesktop,
+  IconHome,
+  IconLogout,
+  IconMoon,
+  IconSun,
+  IconUser,
+  IconUsersGroup,
+} from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
+
+const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
+  { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
+  { wert: 'dark', text: 'Dunkel', icon: <IconMoon size={18} /> },
+  { wert: 'auto', text: 'Systemeinstellung', icon: <IconDeviceDesktop size={18} /> },
+];
+
+/** Own profile picture in the header; opens the menu with the profile link and the light/dark/system choice. */
+function ProfilMenue() {
+  const api = useApi();
+  const { can } = useAuth();
+  const darfProfil = can('profil:bearbeiten');
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const mitglied = useQuery({
+    queryKey: ['mitglied'],
+    enabled: darfProfil,
+    queryFn: async () => {
+      const res = await api.me.mitglied.$get();
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Profil konnte nicht geladen werden');
+      return res.json();
+    },
+  });
+  return (
+    <Menu position="bottom-end" width={240}>
+      <Menu.Target>
+        <UnstyledButton aria-label="Profilmenü" style={{ lineHeight: 0 }} p={2}>
+          <Avatar
+            src={mitglied.data?.profilbildUrl}
+            name={me.data?.preferredUsername}
+            color="initials"
+            size={40}
+            radius="xl"
+            alt=""
+          />
+        </UnstyledButton>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {darfProfil && (
+          <Menu.Item component={Link} to="/profil" leftSection={<IconUser size={18} />} py="sm">
+            Mein Profil
+          </Menu.Item>
+        )}
+        <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>
+          Darstellung
+        </Text>
+        {FARBMODI.map(({ wert, text, icon }) => (
+          <Menu.Item
+            key={wert}
+            closeMenuOnClick={false}
+            leftSection={icon}
+            rightSection={colorScheme === wert ? <IconCheck size={18} /> : undefined}
+            aria-current={colorScheme === wert}
+            onClick={() => setColorScheme(wert)}
+            py="sm"
+          >
+            {text}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
 
 /**
  * Mobile-first shell: header + burger-toggled navbar below `md`, persistent sidebar from `md` up.
+ * Logout lives at the bottom of the sidebar; tablets (xs to md) also get it in the header.
  */
 export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
@@ -15,7 +104,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
 
   const links = [
     { to: '/', label: 'Startseite', icon: <IconHome size={20} />, show: true },
-    { to: '/admin', label: 'Benutzer', icon: <IconUsers size={20} />, show: can('users:manage') },
+    {
+      to: '/mitglieder',
+      label: 'Mitglieder',
+      icon: <IconUsersGroup size={20} />,
+      show: can('mitglieder:lesen'),
+    },
   ].filter((l) => l.show);
 
   return (
@@ -39,15 +133,19 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
             <Title order={3}>C4</Title>
           </Group>
           {user && (
-            <Button
-              variant="subtle"
-              size="sm"
-              leftSection={<IconLogout size={18} />}
-              onClick={logout}
-              visibleFrom="xs"
-            >
-              Abmelden
-            </Button>
+            <Group gap="xs" wrap="nowrap">
+              <Button
+                variant="subtle"
+                size="sm"
+                leftSection={<IconLogout size={18} />}
+                onClick={logout}
+                visibleFrom="xs"
+                hiddenFrom="md"
+              >
+                Abmelden
+              </Button>
+              <ProfilMenue />
+            </Group>
           )}
         </Group>
       </AppShell.Header>
@@ -69,7 +167,6 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
           label="Abmelden"
           leftSection={<IconLogout size={20} />}
           onClick={logout}
-          hiddenFrom="xs"
           py="sm"
           mt="auto"
         />

@@ -45,3 +45,7 @@ output "dns_cname_target" {
   description = "Point the custom hostname (CNAME) at this value."
   value       = aws_cloudfront_distribution.this.domain_name
 }
+
+output "profilbild_bucket" {
+  value = aws_s3_bucket.profilbilder.bucket
+}

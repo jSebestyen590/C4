@@ -16,6 +16,7 @@
     "db:up": "bash infra/local-db/up.sh",
     "db:down": "bash infra/local-db/down.sh",
     "db:migrate": "pnpm --filter @c4/api migrate",
+    "db:reset": "pnpm --filter @c4/api reset",
     "db:seed": "pnpm --filter @c4/api seed"
   },
   "devDependencies": {

@@ -2,6 +2,14 @@
 
 See `README.md` for the architecture and setup.
 
+## Dokumentation (`docs/`)
+
+Die Feature-Dokumentation liegt in `docs/` (Einstieg: `docs/README.md`, auf Deutsch). **Lies vor dem
+Planen oder Umsetzen eines Features die passende Seite dort** (z. B. `docs/members.md` für alles rund
+um Mitglieder, Profile, Rechte oder Kontaktkanäle), damit die Änderung zum Bestehenden passt. Wenn du
+ein Feature anlegst oder änderst, aktualisiere dessen Seite im selben Change. Für neue Feature-Bereiche
+legst du eine neue Seite samt Zeile in `docs/README.md` an. Halte sie kurz und sachlich.
+
 ## UI: mobile first (important)
 
 The app is used **mainly on cellphones**, and only sometimes on tablets or desktops. Every new page
@@ -35,4 +43,8 @@ start; don't add English user-facing strings.
 - Fixed backend values (roles, permissions, user statuses, ...) are translated in
   `packages/web/src/i18n.ts`. When you add a role, permission or status, add its German label there.
   Example: `reader` -> "Lesender Zugriff". Use `label()` for values that may not be translated yet.
+- Texts that name a person (status, roles, ...) exist in a male, female and neutral form
+  (`Gegendert` in `i18n.ts`, e.g. Anwärter / Anwärterin / Anwärter:in). Pick the form with
+  `labelFuer(labels, value, anrede)` using the `anrede` of the person the text is about; never hardcode
+  one form. New texts naming a person need all three forms.
 - Code, identifiers, comments and commit messages stay English.

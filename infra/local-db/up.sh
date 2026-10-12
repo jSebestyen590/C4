@@ -23,6 +23,7 @@ AWS_REGION=eu-central-1
 DSQL_ENDPOINT=$ENDPOINT
 USER_POOL_ID=$USER_POOL_ID
 CLIENT_ID=$CLIENT_ID
+PROFILBILD_BUCKET=$(field profilbild_bucket)
 ENVFILE
 echo "Wrote packages/api/.env.local"
 cd ../..

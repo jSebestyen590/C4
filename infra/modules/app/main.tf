@@ -21,23 +21,28 @@ resource "aws_cognito_user_pool" "this" {
   auto_verified_attributes = ["email"]
   deletion_protection      = var.deletion_protection ? "ACTIVE" : "INACTIVE"
 
+  # A changed email only replaces the old one (the login) once the new address was verified.
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
   admin_create_user_config {
     allow_admin_create_user_only = true
 
     # Cognito requires both {username} and {####} (temporary password) in the message.
     # {username} is an internal id; people sign in with their email address.
     invite_message_template {
-      email_subject = "You have been invited to C4"
+      email_subject = "Du wurdest zu C4 eingeladen"
       email_message = <<-HTML
-        <p>Hello,</p>
-        <p>you have been invited to C4.</p>
-        <p><a href="${local.app_origin}/app/">Open the app and sign in</a><br>
+        <p>Hallo,</p>
+        <p>du wurdest zu C4 eingeladen.</p>
+        <p><a href="${local.app_origin}/app/">App öffnen und anmelden</a><br>
         ${local.app_origin}/app/</p>
-        <p>Sign in with this email address and the temporary password <b>{####}</b>.
-        You will then be asked to set a new password and to choose a username.</p>
-        <p style="color:#666">Internal id: {username}</p>
+        <p>Melde dich mit dieser E-Mail-Adresse und dem temporären Passwort <b>{####}</b> an.
+        Danach wirst du gebeten, ein neues Passwort und einen Benutzernamen zu wählen und dein Profil auszufüllen.</p>
+        <p style="color:#666">Interne ID: {username}</p>
       HTML
-      sms_message   = "C4: sign in at ${local.app_origin}/app/ with your temporary password {####} (id {username})"
+      sms_message   = "C4: Melde dich unter ${local.app_origin}/app/ mit dem temporären Passwort {####} an (ID {username})"
     }
   }
 
@@ -62,13 +67,14 @@ resource "aws_cognito_user_pool_domain" "this" {
   user_pool_id = aws_cognito_user_pool.this.id
 }
 
+# The scope aws.cognito.signin.user.admin lets the API change the caller's email with their token.
 resource "aws_cognito_user_pool_client" "web" {
   name                                 = "${local.name}-web"
   user_pool_id                         = aws_cognito_user_pool.this.id
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email"]
+  allowed_oauth_scopes                 = ["openid", "email", "aws.cognito.signin.user.admin"]
   supported_identity_providers         = ["COGNITO"]
   callback_urls                        = concat(local.callback, local.local_cb)
   logout_urls                          = concat(local.logout, local.local_out)
@@ -142,6 +148,11 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = aws_dsql_cluster.this.arn
       },
       {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.profilbilder.arn}/profilbilder/*"
+      },
+      {
         Effect = "Allow"
         Action = [
           "cognito-idp:ListUsers",
@@ -149,6 +160,7 @@ resource "aws_iam_role_policy" "lambda" {
           "cognito-idp:AdminGetUser",
           "cognito-idp:AdminUpdateUserAttributes",
           "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsersInGroup",
           "cognito-idp:AdminAddUserToGroup",
           "cognito-idp:AdminRemoveUserFromGroup",
         ]
@@ -171,9 +183,10 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      USER_POOL_ID  = aws_cognito_user_pool.this.id
-      CLIENT_ID     = aws_cognito_user_pool_client.web.id
-      DSQL_ENDPOINT = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
+      USER_POOL_ID      = aws_cognito_user_pool.this.id
+      CLIENT_ID         = aws_cognito_user_pool_client.web.id
+      DSQL_ENDPOINT     = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
+      PROFILBILD_BUCKET = aws_s3_bucket.profilbilder.bucket
     }
   }
 
@@ -287,6 +300,58 @@ resource "aws_s3_bucket_policy" "web" {
         Condition = { Bool = { "aws:SecureTransport" = "false" } }
       },
     ]
+  })
+}
+
+# ---------------------------------------------------------------- S3 (profile pictures)
+# Private; the browser uploads and downloads through short-lived presigned URLs.
+resource "aws_s3_bucket" "profilbilder" {
+  bucket        = "${local.name}-profilbilder-${data.aws_caller_identity.current.account_id}"
+  force_destroy = var.env != "prod"
+}
+
+resource "aws_s3_bucket_public_access_block" "profilbilder" {
+  bucket                  = aws_s3_bucket.profilbilder.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_cors_configuration" "profilbilder" {
+  bucket = aws_s3_bucket.profilbilder.id
+  cors_rule {
+    allowed_methods = ["GET", "PUT"]
+    allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
+    allowed_headers = ["*"]
+    max_age_seconds = 3000
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "profilbilder" {
+  bucket = aws_s3_bucket.profilbilder.id
+  rule {
+    id     = "abort-incomplete-uploads"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "profilbilder" {
+  bucket = aws_s3_bucket.profilbilder.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.profilbilder.arn, "${aws_s3_bucket.profilbilder.arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
   })
 }
 

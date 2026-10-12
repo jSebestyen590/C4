@@ -10,6 +10,10 @@ on:
         type: choice
         options: [dev, prod]
         default: dev
+      reset_db:
+        description: 'DEV ONLY: drop all tables and migrate from scratch (all data is lost)'
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -21,10 +25,11 @@ concurrency:
 
 jobs:
   dev:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.env == 'dev')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.env == 'dev')
     uses: ./.github/workflows/deploy-env.yml
     with:
       env: dev
+      reset_db: ${{ inputs.reset_db == true }}
 
   prod:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.env == 'prod')

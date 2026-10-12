@@ -60,6 +60,7 @@ output "app" {
     client_id         = module.app.client_id
     cognito_domain    = module.app.cognito_domain
     dsql_endpoint     = module.app.dsql_endpoint
+    profilbild_bucket = module.app.profilbild_bucket
   }
 }
 
