@@ -51,7 +51,7 @@ export function ProfilFormular({
   mitglied: Mitglied | null;
   username: string | undefined;
   /** Called after a successful save; the default is to go to the start page. */
-  onGespeichert?: () => void;
+  onGespeichert?: (username: string) => void;
 }>) {
   const api = useApi();
   const qc = useQueryClient();
@@ -123,13 +123,14 @@ export function ProfilFormular({
       const res = await api.me.mitglied.$put({ json: eingabe.daten });
       if (!res.ok) throw new Error('Speichern fehlgeschlagen');
     },
-    onSuccess: async () => {
+    onSuccess: async (_, eingabe) => {
+      notifications.show({ color: 'green', message: 'Dein Profil wurde gespeichert.' });
+      // Navigate before refetching so a page addressed by the old username is not reloaded.
+      if (onGespeichert) onGespeichert(eingabe.username);
+      else navigate('/');
       await Promise.all(
         ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
       );
-      notifications.show({ color: 'green', message: 'Dein Profil wurde gespeichert.' });
-      if (onGespeichert) onGespeichert();
-      else navigate('/');
     },
     onError: (err) => {
       if (err instanceof UsernameVergeben)

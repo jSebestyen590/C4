@@ -35,7 +35,11 @@ export type AdminUser = z.infer<typeof adminUserSchema>;
 /** Login name (Cognito preferred_username alias): must not look like an email address. */
 export const usernameSchema = z
   .string()
-  .regex(/^[A-Za-z0-9._-]{3,64}$/, 'Verwende 3–64 Zeichen: Buchstaben, Ziffern, . _ -');
+  .regex(/^[A-Za-z0-9._-]{3,64}$/, 'Verwende 3–64 Zeichen: Buchstaben, Ziffern, . _ -')
+  // Member URLs take a username or a sub (UUID); a username must never be mistaken for a sub.
+  .refine((v) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v), {
+    message: 'Dieser Benutzername ist nicht erlaubt.',
+  });
 
 export const setUsernameSchema = z.object({ username: usernameSchema });
 export type SetUsernameInput = z.infer<typeof setUsernameSchema>;

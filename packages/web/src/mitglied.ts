@@ -9,3 +9,7 @@ export const anzeigename = (m: Namen) => m.username ?? (vollerName(m) || m.email
 
 /** Secondary label: the full name below the username. */
 export const nebenname = (m: Namen) => (m.username ? vollerName(m) : '');
+
+/** URL of the detail page: by username, or by sub while the member has not chosen one. */
+export const mitgliedLink = (m: Pick<Mitglied, 'username' | 'sub'>) =>
+  `/mitglieder/${encodeURIComponent(m.username ?? m.sub)}`;

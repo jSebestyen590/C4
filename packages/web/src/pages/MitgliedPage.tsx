@@ -1,9 +1,9 @@
 import { Alert, Anchor, Badge, Group, Loader, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
-import { anzeigename, nebenname } from '../mitglied';
+import { anzeigename, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenFeld } from '../RollenAnzeige';
@@ -12,15 +12,16 @@ import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
 export function MitgliedPage() {
-  const { sub = '' } = useParams();
+  const { kennung = '' } = useParams();
+  const navigate = useNavigate();
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
   const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
   const mitglied = useQuery({
-    queryKey: ['mitglieder', sub],
+    queryKey: ['mitglieder', kennung],
     queryFn: async () => {
-      const res = await api.mitglieder[':sub'].$get({ param: { sub } });
+      const res = await api.mitglieder[':kennung'].$get({ param: { kennung } });
       if (res.status === 404) return null;
       return unwrap(res);
     },
@@ -42,7 +43,12 @@ export function MitgliedPage() {
         <ProfilFormular
           mitglied={m}
           username={me.data.preferredUsername}
-          onGespeichert={() => void qc.invalidateQueries({ queryKey: ['mitglieder', sub] })}
+          onGespeichert={(username) => {
+            // A changed username changes this page's URL.
+            if (username.toLowerCase() !== kennung.toLowerCase())
+              navigate(mitgliedLink({ username, sub: m.sub }), { replace: true });
+            void qc.invalidateQueries({ queryKey: ['mitglieder'] });
+          }}
         />
       )}
       {m && !(m.sub === me.data.sub && can('profil:bearbeiten')) && (

@@ -82,7 +82,7 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             }
           />
           <Route
-            path="/mitglieder/:sub"
+            path="/mitglieder/:kennung"
             element={
               <Protected permission="mitglieder:lesen">
                 <RequireUsername>

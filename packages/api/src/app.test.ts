@@ -161,6 +161,7 @@ describe('api', () => {
         body: JSON.stringify(body),
       });
     expect((await put({ username: 'a@b.de' })).status).toBe(400);
+    expect((await put({ username: '123e4567-e89b-12d3-a456-426614174000' })).status).toBe(400);
     expect((await put({ username: 'ab' })).status).toBe(400);
     expect((await put({ username: 'reader_one' })).status).toBe(200);
     expect(userAdmin.setPreferredUsername).toHaveBeenCalledWith('r', 'reader_one');
@@ -311,6 +312,8 @@ describe('api', () => {
       ]);
       const detail = await app.request('/api/mitglieder/n', json('admin-token', 'GET'));
       expect(detail.status).toBe(200);
+      const nachName = await app.request('/api/mitglieder/Erika_M', json('admin-token', 'GET'));
+      expect(await nachName.json()).toMatchObject({ sub: 'r', username: 'erika_m' });
       expect((await app.request('/api/mitglieder/x', json('admin-token', 'GET'))).status).toBe(404);
     });
 

@@ -24,7 +24,7 @@ import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { RollenBadges } from '../RollenAnzeige';
-import { anzeigename, nebenname } from '../mitglied';
+import { anzeigename, mitgliedLink, nebenname } from '../mitglied';
 import { StatusBadge, StatusName } from '../StatusAnzeige';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
@@ -139,7 +139,7 @@ export function MitgliederPage() {
             withBorder
             p="md"
             component={Link}
-            to={`/mitglieder/${m.sub}`}
+            to={mitgliedLink(m)}
             style={{ color: 'inherit', textDecoration: 'none' }}
           >
             <Stack gap="xs">
@@ -200,13 +200,13 @@ export function MitgliederPage() {
               {treffer.map((m) => (
                 <Table.Tr
                   key={m.sub}
-                  onClick={() => navigate(`/mitglieder/${m.sub}`)}
+                  onClick={() => navigate(mitgliedLink(m))}
                   style={{ cursor: 'pointer' }}
                 >
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
-                      <Link to={`/mitglieder/${m.sub}`} style={{ textDecoration: 'none' }}>
+                      <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
                         <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
                       </Link>
                       {!m.aktiviert && (
