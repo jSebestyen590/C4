@@ -169,20 +169,6 @@ export function MitgliederPage() {
               )}
               {m.telefon && <Text size="sm">{m.telefon}</Text>}
               <KontaktkanalIcons gewaehlt={m.kontaktkanaele} size={24} />
-              {m.adresse && (
-                <Text size="sm" style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
-                  {m.adresse}
-                </Text>
-              )}
-              {m.ueberMich && (
-                <Text
-                  size="sm"
-                  c="dimmed"
-                  style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}
-                >
-                  {m.ueberMich}
-                </Text>
-              )}
               {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
           </Paper>
