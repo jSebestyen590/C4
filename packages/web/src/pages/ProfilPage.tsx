@@ -14,7 +14,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ANREDEN,
   PROFILBILD_TYPEN,
@@ -50,12 +49,11 @@ export function ProfilFormular({
 }: Readonly<{
   mitglied: Mitglied | null;
   username: string | undefined;
-  /** Called after a successful save; the default is to go to the start page. */
+  /** Called after a successful save. */
   onGespeichert?: (username: string) => void;
 }>) {
   const api = useApi();
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const { can } = useAuth();
   const [username, setUsername] = useState(aktuellerUsername ?? '');
   const [vorname, setVorname] = useState(mitglied?.vorname ?? '');
@@ -125,9 +123,8 @@ export function ProfilFormular({
     },
     onSuccess: async (_, eingabe) => {
       notifications.show({ color: 'green', message: 'Dein Profil wurde gespeichert.' });
-      // Navigate before refetching so a page addressed by the old username is not reloaded.
-      if (onGespeichert) onGespeichert(eingabe.username);
-      else navigate('/');
+      // Call before refetching so a page addressed by the old username is not reloaded.
+      onGespeichert?.(eingabe.username);
       await Promise.all(
         ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
       );
