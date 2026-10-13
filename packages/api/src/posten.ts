@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import {
   POSTEN_RECHTE,
+  rechteZeitraum,
   tagVorher,
   type Bezeichnungen,
   type Permission,
@@ -33,15 +34,15 @@ export const ueberschneiden = (a: Zeitraum, b: Zeitraum): boolean =>
   a.startDatum <= (b.endDatum ?? '9999-12-31') && b.startDatum <= (a.endDatum ?? '9999-12-31');
 
 /**
- * Whether the permissions of a Besetzung apply on `heute`. The period defaults to the Besetzung's
- * own, so transition periods before the start or after the end need explicit dates.
+ * Whether the permissions of a Besetzung apply on `heute`: from one month before its start until one
+ * month after its end (transition period, see `rechteZeitraum`).
  */
 export const rechteAktiv = (
-  b: Pick<BesetzungRow, 'startDatum' | 'endDatum' | 'rechteVon' | 'rechteBis'>,
+  b: Pick<BesetzungRow, 'startDatum' | 'endDatum'>,
   heute: string,
 ): boolean => {
-  const bis = b.rechteBis ?? b.endDatum;
-  return (b.rechteVon ?? b.startDatum) <= heute && (bis === null || bis >= heute);
+  const { von, bis } = rechteZeitraum(b.startDatum, b.endDatum);
+  return von <= heute && (bis === null || bis >= heute);
 };
 
 export interface PostenDetails extends PostenRow {
@@ -61,8 +62,6 @@ export interface BesetzungDaten {
   mitgliedSub: string;
   start: string;
   ende: string | null;
-  rechteVon: string | null;
-  rechteBis: string | null;
 }
 
 /** A Besetzung to take over does not exist, has an end already or starts too late. */
@@ -224,8 +223,6 @@ export function createPostenStore(db: Db): PostenStore {
           mitgliedSub: daten.mitgliedSub,
           startDatum: daten.start,
           endDatum: daten.ende,
-          rechteVon: daten.rechteVon,
-          rechteBis: daten.rechteBis,
         });
       });
       return id;
@@ -239,8 +236,6 @@ export function createPostenStore(db: Db): PostenStore {
             mitgliedSub: daten.mitgliedSub,
             startDatum: daten.start,
             endDatum: daten.ende,
-            rechteVon: daten.rechteVon,
-            rechteBis: daten.rechteBis,
           })
           .where(and(eq(postenBesetzungen.id, id), eq(postenBesetzungen.postenId, postenId)))
           .returning({ id: postenBesetzungen.id });

@@ -36,23 +36,14 @@ describe('ueberschneiden', () => {
 });
 
 describe('rechteAktiv', () => {
-  const finanzer = {
-    startDatum: '2026-01-01',
-    endDatum: '2026-12-31',
-    rechteVon: '2025-12-01',
-    rechteBis: '2027-01-31',
-  };
-  it('applies in the transition periods around the Besetzung', () => {
+  const finanzer = { startDatum: '2026-01-01', endDatum: '2026-12-31' };
+  it('applies from one month before the start until one month after the end', () => {
     expect(rechteAktiv(finanzer, '2025-12-01')).toBe(true);
     expect(rechteAktiv(finanzer, '2027-01-31')).toBe(true);
     expect(rechteAktiv(finanzer, '2025-11-30')).toBe(false);
     expect(rechteAktiv(finanzer, '2027-02-01')).toBe(false);
   });
-  it('falls back to the Besetzung itself without explicit dates', () => {
-    const ohne = { ...finanzer, rechteVon: null, rechteBis: null };
-    expect(rechteAktiv(ohne, '2025-12-31')).toBe(false);
-    expect(rechteAktiv(ohne, '2026-06-01')).toBe(true);
-    expect(rechteAktiv(ohne, '2027-01-01')).toBe(false);
-    expect(rechteAktiv({ ...ohne, endDatum: null }, '2040-01-01')).toBe(true);
+  it('has no upper limit for an open end', () => {
+    expect(rechteAktiv({ ...finanzer, endDatum: null }, '2040-01-01')).toBe(true);
   });
 });

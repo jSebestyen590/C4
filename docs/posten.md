@@ -21,10 +21,11 @@ hat (sonst antwortet das API mit 400). Eingeladene Mitglieder bekommen ihre Zeil
 Profil zeigen statt des Postennamens die Form passend zur `anrede` des Mitglieds
 (`bezeichnungFuer` in `packages/shared/src/posten.ts`); ohne Bezeichnung gilt der Name.
 
-**Rechtezeitraum:** Jede Besetzung hat optional `rechte_von` und `rechte_bis`. Nur in diesem Zeitraum gelten die
-Rechte des Postens (`rechteAktiv` in `posten.ts`); leer heißt Start bzw. Ende der Besetzung. So lassen sich
-Übergangsfristen abbilden, z. B. Besetzung 01.01.–31.12.2026, Rechte 01.12.2025–31.01.2027. Die Anzeige
-(„aktuell besetzt“) und die Überschneidungsprüfung richten sich allein nach Start und Ende.
+**Übergangszeit:** Die Rechte eines Postens gelten für jede Besetzung immer einen Monat vor dem Start bis einen Monat
+nach dem Ende (`rechteZeitraum` in `packages/shared/src/datum.ts`, `rechteAktiv` in `posten.ts`), bei offenem Ende
+unbefristet. Beispiel: Besetzung 01.01.–31.12.2026, Rechte 01.12.2025–31.01.2027. Ist der Zieltag im Zielmonat nicht
+vorhanden, gilt der letzte Tag des Monats. Die Anzeige („aktuell besetzt“) und die Überschneidungsprüfung richten
+sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Besetzung.
 
 **Aktuell besetzt** heißt: Posten nicht archiviert, `start_datum` ≤ heute und `end_datum` leer oder
 ≥ heute. „Heute“ ist der Kalendertag in Europe/Berlin (`heuteBerlin`).
@@ -32,9 +33,8 @@ Rechte des Postens (`rechteAktiv` in `posten.ts`); leer heißt Start bzw. Ende d
 ## Rechte
 
 - `posten:lesen` haben alle Status (`STATUS_PERMISSIONS`).
-- `posten:bearbeiten` gewährt ein Posten über `posten_rechte`. Wer den Posten im Rechtezeitraum seiner Besetzung innehat, erhält
-  das Recht (`rechteVon` in `auth.ts`, bei jedem Request). Archivieren oder ein Rechtezeitraum, der nicht
-  (mehr) gilt, entziehen es.
+- `posten:bearbeiten` gewährt ein Posten über `posten_rechte`. Wer den Posten innerhalb der Übergangszeit seiner Besetzung innehat, erhält
+  das Recht (`rechteVon` in `auth.ts`, bei jedem Request). Archivieren oder eine abgelaufene Übergangszeit entziehen es.
 - Admins (Cognito-Gruppe `admin`) haben `posten:bearbeiten` immer und können so Posten anlegen, bearbeiten,
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl

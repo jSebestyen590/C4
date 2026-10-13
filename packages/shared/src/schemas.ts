@@ -211,9 +211,6 @@ export const besetzungSchema = z.object({
   }),
   start: datumSchema,
   ende: datumSchema.nullable(),
-  /** Period in which the Posten's permissions apply; null = same as start / ende. */
-  rechteVon: datumSchema.nullable(),
-  rechteBis: datumSchema.nullable(),
   /** True when today lies within start and ende. */
   aktuell: z.boolean(),
 });
@@ -223,33 +220,14 @@ const besetzungFelder = {
   mitgliedSub: z.string().min(1),
   start: datumSchema,
   ende: datumSchema.nullable().default(null),
-  /** Permissions apply from `rechteVon` to `rechteBis`; null = same as start / ende (transition periods). */
-  rechteVon: datumSchema.nullable().default(null),
-  rechteBis: datumSchema.nullable().default(null),
 };
 
-type BesetzungDaten = {
-  start: string;
-  ende: string | null;
-  rechteVon: string | null;
-  rechteBis: string | null;
-};
-
-const besetzungPruefen = (b: BesetzungDaten, ctx: z.RefinementCtx) => {
+const besetzungPruefen = (b: { start: string; ende: string | null }, ctx: z.RefinementCtx) => {
   if (b.ende !== null && b.ende < b.start) {
     ctx.addIssue({
       code: 'custom',
       message: 'Das Ende darf nicht vor dem Start liegen.',
       path: ['ende'],
-    });
-  }
-  const von = b.rechteVon ?? b.start;
-  const bis = b.rechteBis ?? b.ende;
-  if (bis !== null && bis < von) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Das Ende der Rechte darf nicht vor ihrem Beginn liegen.',
-      path: ['rechteBis'],
     });
   }
 };

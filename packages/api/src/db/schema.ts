@@ -63,8 +63,5 @@ export const postenBesetzungen = pgTable('posten_besetzungen', {
     .references(() => mitglieder.sub),
   startDatum: date('start_datum', { mode: 'string' }).notNull(),
   endDatum: date('end_datum', { mode: 'string' }),
-  /** Period in which the Posten's permissions apply; null falls back to start / end of the Besetzung. */
-  rechteVon: date('rechte_von', { mode: 'string' }),
-  rechteBis: date('rechte_bis', { mode: 'string' }),
 });
 export type BesetzungRow = typeof postenBesetzungen.$inferSelect;

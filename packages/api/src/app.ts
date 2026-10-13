@@ -143,8 +143,6 @@ export function createApp(deps: AppDeps) {
         },
         start: b.startDatum,
         ende: b.endDatum,
-        rechteVon: b.rechteVon,
-        rechteBis: b.rechteBis,
         aktuell: istAktuell(b, heute),
       }))
       .sort(

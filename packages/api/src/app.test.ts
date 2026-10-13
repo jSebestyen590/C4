@@ -117,8 +117,6 @@ function makeApp(pingDb = async () => {}) {
           mitgliedSub: daten.mitgliedSub,
           startDatum: daten.start,
           endDatum: daten.ende,
-          rechteVon: daten.rechteVon,
-          rechteBis: daten.rechteBis,
         });
         return id;
       },
@@ -635,8 +633,6 @@ describe('posten', () => {
     const alt = await posten.besetzungAnlegen(id, {
       mitgliedSub: 'm1',
       start: '2025-01-01',
-      rechteVon: null,
-      rechteBis: null,
       ende: null,
     });
     const neu = (ablosung: string[]) =>

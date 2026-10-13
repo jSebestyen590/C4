@@ -23,6 +23,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   besetzungEingabeSchema,
   datumAnzeigen,
+  rechteZeitraum,
   tagVorher,
   POSTEN_RECHTE,
   postenAktualisierenSchema,
@@ -107,8 +108,6 @@ function BesetzungDialog({
   const [sub, setSub] = useState<string | null>(besetzung?.mitgliedSub ?? null);
   const [start, setStart] = useState(besetzung?.start ?? '');
   const [ende, setEnde] = useState(besetzung?.ende ?? '');
-  const [rechteVon, setRechteVon] = useState(besetzung?.rechteVon ?? '');
-  const [rechteBis, setRechteBis] = useState(besetzung?.rechteBis ?? '');
   const [ablosung, setAblosung] = useState<string[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
   // A new Besetzung may take over open-ended ones that are active today.
@@ -128,8 +127,6 @@ function BesetzungDialog({
       mitgliedSub: string;
       start: string;
       ende: string | null;
-      rechteVon: string | null;
-      rechteBis: string | null;
       ablosung: string[];
     }) => {
       const param = { id: posten.id };
@@ -162,8 +159,6 @@ function BesetzungDialog({
       mitgliedSub: sub ?? '',
       start,
       ende: ende || null,
-      rechteVon: rechteVon || null,
-      rechteBis: rechteBis || null,
     };
     const parsed = besetzungEingabeSchema.safeParse(eingabe);
     if (!sub) return setFehler('Bitte wähle ein Mitglied.');
@@ -202,18 +197,6 @@ function BesetzungDialog({
             }}
           />
           <DatumFeld label="Ende (optional)" value={ende} onWert={setEnde} />
-          <DatumFeld
-            label="Rechte ab (optional)"
-            description="Leer = ab Start. Für Übergangsfristen vor dem Start."
-            value={rechteVon}
-            onWert={setRechteVon}
-          />
-          <DatumFeld
-            label="Rechte bis (optional)"
-            description="Leer = bis Ende. Für Übergangsfristen nach dem Ende."
-            value={rechteBis}
-            onWert={setRechteBis}
-          />
           {offene.length > 0 && (
             <Checkbox.Group
               label="Übernimmt die Person den Posten?"
@@ -289,12 +272,12 @@ function BesetzungZeile({
           <Text size="sm" c="dimmed">
             {zeitraum(b)}
           </Text>
-          {(b.rechteVon || b.rechteBis) && (
-            <Text size="sm" c="dimmed">
-              Rechte: {datumAnzeigen(b.rechteVon ?? b.start)} –{' '}
-              {(b.rechteBis ?? b.ende) ? datumAnzeigen((b.rechteBis ?? b.ende)!) : 'unbefristet'}
-            </Text>
-          )}
+          <Text size="sm" c="dimmed">
+            Rechte: {datumAnzeigen(rechteZeitraum(b.start, b.ende).von)} –{' '}
+            {rechteZeitraum(b.start, b.ende).bis
+              ? datumAnzeigen(rechteZeitraum(b.start, b.ende).bis!)
+              : 'unbefristet'}
+          </Text>
         </div>
         {darfBearbeiten && (
           <Button variant="default" onClick={open}>
