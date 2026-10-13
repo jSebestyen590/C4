@@ -12,7 +12,6 @@ import {
   Select,
   Stack,
   Text,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -34,6 +33,7 @@ import {
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { PERMISSION_LABELS } from '../i18n';
+import { DatumFeld } from '../DatumFeld';
 import { PostenFelder, postenWerte, type PostenWerte } from '../PostenFelder';
 import { anzeigename, mitgliedLink } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
@@ -192,36 +192,27 @@ function BesetzungDialog({
             onChange={setSub}
             nothingFoundMessage="Kein Mitglied gefunden"
           />
-          <TextInput
-            type="date"
+          <DatumFeld
             label="Start"
             value={start}
-            onChange={(e) => {
-              const neu = e.currentTarget.value;
+            onWert={(neu) => {
               setStart(neu);
               // Setting the start always proposes the end of that year; it can be changed afterwards.
               if (/^\d{4}-\d{2}-\d{2}$/.test(neu)) setEnde(`${neu.slice(0, 4)}-12-31`);
             }}
           />
-          <TextInput
-            type="date"
-            label="Ende (optional)"
-            value={ende}
-            onChange={(e) => setEnde(e.currentTarget.value)}
-          />
-          <TextInput
-            type="date"
+          <DatumFeld label="Ende (optional)" value={ende} onWert={setEnde} />
+          <DatumFeld
             label="Rechte ab (optional)"
             description="Leer = ab Start. Für Übergangsfristen vor dem Start."
             value={rechteVon}
-            onChange={(e) => setRechteVon(e.currentTarget.value)}
+            onWert={setRechteVon}
           />
-          <TextInput
-            type="date"
+          <DatumFeld
             label="Rechte bis (optional)"
             description="Leer = bis Ende. Für Übergangsfristen nach dem Ende."
             value={rechteBis}
-            onChange={(e) => setRechteBis(e.currentTarget.value)}
+            onWert={setRechteBis}
           />
           {offene.length > 0 && (
             <Checkbox.Group
