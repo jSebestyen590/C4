@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconBriefcase,
   IconCheck,
   IconDeviceDesktop,
   IconHome,
@@ -110,6 +111,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       icon: <IconUsersGroup size={20} />,
       show: can('mitglieder:lesen'),
     },
+    {
+      to: '/posten',
+      label: 'Posten',
+      icon: <IconBriefcase size={20} />,
+      show: can('posten:lesen'),
+    },
   ].filter((l) => l.show);
 
   return (
@@ -158,7 +165,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
             to={l.to}
             label={l.label}
             leftSection={l.icon}
-            active={pathname === l.to}
+            active={pathname === l.to || (l.to !== '/' && pathname.startsWith(`${l.to}/`))}
             onClick={close}
             py="sm"
           />

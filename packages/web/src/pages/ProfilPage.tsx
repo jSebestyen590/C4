@@ -26,6 +26,7 @@ import {
 import { ANREDE_LABELS } from '../i18n';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
@@ -176,6 +177,14 @@ export function ProfilFormular({
           <Title order={2}>Mein Profil</Title>
           {mitglied && (
             <StatusFeld sub={mitglied.sub} status={mitglied.status} anrede={mitglied.anrede} />
+          )}
+          {mitglied && mitglied.posten.length > 0 && (
+            <div>
+              <Text size="sm" c="dimmed" mb={4}>
+                Posten
+              </Text>
+              <PostenLinks posten={mitglied.posten} />
+            </div>
           )}
           {mitglied?.rollen && can('users:manage') && (
             <RollenFeld sub={mitglied.sub} rollen={mitglied.rollen} anrede={mitglied.anrede} />

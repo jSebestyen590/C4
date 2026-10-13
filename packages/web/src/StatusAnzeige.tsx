@@ -36,14 +36,14 @@ export function StatusBadge({
   );
 }
 
-/** A member's primary label (username or name) in the color of their status. */
+/** A member's primary label (username or name): always bold, in the color of their status. */
 export function StatusName({
   status,
   children,
 }: Readonly<{ status: MitgliedStatus; children: string }>) {
   const farbe = useStatusFarbe(status);
   return (
-    <Text component="span" fw={500} c={farbe} style={{ overflowWrap: 'anywhere' }}>
+    <Text component="span" fw={700} c={farbe} style={{ overflowWrap: 'anywhere' }}>
       {children}
     </Text>
   );

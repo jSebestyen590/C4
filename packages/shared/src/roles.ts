@@ -11,24 +11,37 @@ export const PERMISSIONS = [
   'content:read',
   'mitglieder:lesen',
   'profil:bearbeiten',
+  'posten:lesen',
+  'posten:bearbeiten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+/** Permissions an admin may attach to a Posten; whoever currently holds the Posten gets them. */
+export const POSTEN_RECHTE = ['posten:bearbeiten'] as const satisfies readonly Permission[];
+export type PostenRecht = (typeof POSTEN_RECHTE)[number];
+
 /** Extra permissions of a Cognito group, on top of those of the member's status. */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  admin: ['users:manage'],
+  admin: ['users:manage', 'posten:bearbeiten'],
 };
 
 /** What a member may do, derived from their status (maintained by admins in the member profile). */
 export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> = {
-  anwaerter: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
-  mitglied: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
-  em: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
+  anwaerter: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
+  mitglied: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
+  em: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
 };
 
-/** Effective permissions: those of the member's status plus those of their Cognito groups. */
-export function permissionsFor(groups: readonly string[], status: MitgliedStatus): Permission[] {
-  const result = new Set<Permission>(STATUS_PERMISSIONS[status]);
+/**
+ * Effective permissions: those of the member's status plus those of their Cognito groups plus
+ * `extra` (the permissions of the Posten the member currently holds).
+ */
+export function permissionsFor(
+  groups: readonly string[],
+  status: MitgliedStatus,
+  extra: readonly Permission[] = [],
+): Permission[] {
+  const result = new Set<Permission>([...STATUS_PERMISSIONS[status], ...extra]);
   for (const group of groups) {
     ROLE_PERMISSIONS[group as Role]?.forEach((p) => result.add(p));
   }
@@ -39,6 +52,7 @@ export function hasPermission(
   groups: readonly string[],
   status: MitgliedStatus,
   permission: Permission,
+  extra: readonly Permission[] = [],
 ): boolean {
-  return permissionsFor(groups, status).includes(permission);
+  return permissionsFor(groups, status, extra).includes(permission);
 }

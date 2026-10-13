@@ -6,7 +6,7 @@ Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank a
 ## Datenmodell
 
 Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`0005`). Aurora DSQL erlaubt
-pro Migration nur ein DDL-Statement, keine Fremdschlüssel und kein `ALTER ... SET NOT NULL`. Später
+pro Migration nur ein DDL-Statement und kein `ALTER ... SET NOT NULL`. Fremdschlüssel sind erlaubt. Später
 hinzugefügte Spalten sind deshalb nullable.
 
 | Spalte                             | Hinweise                                                                   |
@@ -36,7 +36,7 @@ Die effektiven Rechte berechnet das API bei jedem Request (`packages/shared/src/
 `packages/api/src/auth.ts`):
 
 ```
-Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]
+Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪  Rechte der aktuellen Posten
 ```
 
 - Der `status` kommt aus der Profilzeile. Ohne Zeile gilt `anwaerter`.
@@ -44,8 +44,9 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
 - Aktuell bekommen alle Status dieselben Rechte. Sobald Features unterschiedliche Rechte brauchen,
-  trägt man sie in `STATUS_PERMISSIONS` ein. Zuständigkeiten (z. B. Moderator) mit zusätzlichen
-  Rechten sind geplant, sollen pro Mitglied in der Datenbank liegen und sind **noch nicht gebaut**.
+  trägt man sie in `STATUS_PERMISSIONS` ein.
+- Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
+  (siehe [posten.md](./posten.md)).
 
 ## Gegenderte Texte
 
@@ -103,18 +104,18 @@ hat, muss sich neu anmelden.
 
 ## Seiten und API
 
-| Seite                | Wer                | Zweck                                                                                         |
-| -------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                       |
-| `/mitglieder`        | `mitglieder:lesen` | Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`); Admins sehen Rollen und laden ein |
-| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status und Rollen                     |
+| Seite                | Wer                | Zweck                                                                                                                            |
+| -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                          |
+| `/mitglieder`        | `mitglieder:lesen` | Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links; Admins sehen Rollen und laden ein |
+| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status und Rollen                                                        |
 
 | Route                                                                         | Hinweise                                      |
 | ----------------------------------------------------------------------------- | --------------------------------------------- |
 | `GET/PUT /api/me/mitglied`                                                    | Eigenes Profil                                |
 | `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Über Cognito                                  |
 | `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)        |
-| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins                       |
+| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle    |
 | `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                         |
 | `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; die eigene Admin-Rolle bleibt erhalten |
 | `POST /api/admin/users`                                                       | Admin; Einladung samt Profilzeile             |

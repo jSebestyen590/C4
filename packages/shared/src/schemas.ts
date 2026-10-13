@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { roleSchema } from './roles';
+import { POSTEN_RECHTE, roleSchema } from './roles';
 import { ANREDEN } from './anrede';
 import { KONTAKTKANAELE } from './kontakt';
 import { MITGLIED_STATI } from './status';
@@ -140,6 +140,8 @@ export const mitgliedSchema = z.object({
   profilbildGrossUrl: z.string().nullable(),
   /** Roles of the member; only sent to administrators. */
   rollen: z.array(z.string()).optional(),
+  /** Posten the member currently holds (not archived, started, not ended). */
+  posten: z.array(z.object({ id: z.string(), name: z.string(), bezeichnung: z.string() })),
 });
 export type Mitglied = z.infer<typeof mitgliedSchema>;
 
@@ -169,3 +171,73 @@ export const profilbildUploadSchema = z.object({
   key: z.string(),
 });
 export type ProfilbildUpload = z.infer<typeof profilbildUploadSchema>;
+
+const datumSchema = z.iso.date();
+
+/** The three forms of the holder's title belong together: all set or none. */
+export const postenAktualisierenSchema = z
+  .object({
+    name: pflichtText('einen Namen', 100),
+    beschreibung: optionalerText(2000),
+    bezeichnungMaennlich: optionalerText(100),
+    bezeichnungWeiblich: optionalerText(100),
+    bezeichnungNeutral: optionalerText(100),
+  })
+  .refine(
+    (p) => {
+      const gesetzt = [p.bezeichnungMaennlich, p.bezeichnungWeiblich, p.bezeichnungNeutral].filter(
+        Boolean,
+      );
+      return gesetzt.length === 0 || gesetzt.length === 3;
+    },
+    { message: 'Bitte gib die Bezeichnung in allen drei Formen an.', path: ['bezeichnungNeutral'] },
+  );
+export type PostenAktualisieren = z.input<typeof postenAktualisierenSchema>;
+
+export const postenArchivierenSchema = z.object({ archiviert: z.boolean() });
+
+export const postenRechteSetzenSchema = z.object({ rechte: z.array(z.enum(POSTEN_RECHTE)) });
+
+export const besetzungSchema = z.object({
+  id: z.string(),
+  mitgliedSub: z.string(),
+  /** Display data of the member, so lists need no second request. */
+  mitglied: z.object({
+    username: z.string().nullable(),
+    vorname: z.string(),
+    nachname: z.string(),
+    status: mitgliedStatusSchema,
+    anrede: anredeSchema,
+  }),
+  start: datumSchema,
+  ende: datumSchema.nullable(),
+  /** True when today lies within start and ende. */
+  aktuell: z.boolean(),
+});
+export type Besetzung = z.infer<typeof besetzungSchema>;
+
+export const besetzungEingabeSchema = z
+  .object({
+    mitgliedSub: z.string().min(1),
+    start: datumSchema,
+    ende: datumSchema.nullable().default(null),
+  })
+  .refine((b) => b.ende === null || b.ende >= b.start, {
+    message: 'Das Ende darf nicht vor dem Start liegen.',
+    path: ['ende'],
+  });
+export type BesetzungEingabe = z.input<typeof besetzungEingabeSchema>;
+
+export const postenSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  beschreibung: z.string().nullable(),
+  bezeichnungMaennlich: z.string().nullable(),
+  bezeichnungWeiblich: z.string().nullable(),
+  bezeichnungNeutral: z.string().nullable(),
+  archiviert: z.boolean(),
+  rechte: z.array(z.enum(POSTEN_RECHTE)),
+  /** Current holders first, then by start date (newest first). */
+  besetzungen: z.array(besetzungSchema),
+});
+export type Posten = z.infer<typeof postenSchema>;

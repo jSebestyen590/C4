@@ -15,6 +15,18 @@ describe('permissions', () => {
       expect(hasPermission([], status, 'profil:bearbeiten')).toBe(true);
     }
   });
+  it('every status may read Posten, but only extra permissions allow editing them', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'posten:lesen')).toBe(true);
+      expect(hasPermission([], status, 'posten:bearbeiten')).toBe(false);
+      expect(hasPermission([], status, 'posten:bearbeiten', ['posten:bearbeiten'])).toBe(true);
+    }
+  });
+  it('admins may always edit Posten, so the first Posten can be set up', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission(['admin'], status, 'posten:bearbeiten')).toBe(true);
+    }
+  });
   it('admins keep the permissions of their status', () => {
     expect(permissionsFor(['admin'], 'em')).toEqual(
       expect.arrayContaining([...STATUS_PERMISSIONS.em, 'users:manage']),
