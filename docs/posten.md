@@ -5,7 +5,7 @@ Beschreibung und beliebig viele **Besetzungen**: ein Mitglied mit Startdatum und
 
 ## Datenmodell
 
-Migrationen `0006`–`0008`, Code in `packages/api/src/posten.ts`.
+Migrationen `0006`–`0008` (Tabellen) und `0009` (Vorstandsposten), Code in `packages/api/src/posten.ts`.
 
 | Tabelle              | Inhalt                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------ |
@@ -67,7 +67,7 @@ Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bez
 
 ## Vorstandsposten
 
-Migration `0012_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender
+Migration `0009_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender
 Vorstandsvorsitz (Vize / Vize / Vize) und Buchhaltung (Finanzer / Finanzerin / Finanzer:in) an. Sie haben
 dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`); wer sie besetzt, kann
 also auch Mitglieder einladen sowie Status und Rollen ändern. Die Ids sind fest
