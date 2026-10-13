@@ -1,15 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AdminUser, MitgliedStatus } from '@c4/shared';
+import { tagVorher, type AdminUser, type MitgliedStatus, type PostenRecht } from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
 import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
+import {
+  AblosungUngueltig,
+  BesetzungUeberschneidung,
+  ueberschneiden,
+  type AktuellerPosten,
+  type BesetzungDaten,
+  type PostenDaten,
+  type PostenDetails,
+} from './posten';
 
 const users: Record<string, AuthUser> = {
   'admin-token': { sub: 'a', groups: ['admin'] },
   'reader-token': { sub: 'r', groups: [] },
+  'vorstand-token': { sub: 'v', groups: [] },
 };
 
 function makeApp(pingDb = async () => {}) {
@@ -52,6 +62,75 @@ function makeApp(pingDb = async () => {}) {
       return true;
     }),
   };
+  const postenListe = new Map<string, PostenDetails>();
+  const posten = {
+    alle: vi.fn(async (mitArchiv: boolean) =>
+      [...postenListe.values()].filter((p) => mitArchiv || !p.archiviert),
+    ),
+    holen: vi.fn(async (id: string) => postenListe.get(id)),
+    anlegen: vi.fn(async (daten: PostenDaten) => {
+      const id = `p${postenListe.size + 1}`;
+      postenListe.set(id, {
+        id,
+        ...daten,
+        archiviert: false,
+        aktualisiertAm: new Date(),
+        rechte: [],
+        besetzungen: [],
+      });
+      return id;
+    }),
+    aktualisieren: vi.fn(async (id: string, daten: PostenDaten) => {
+      const p = postenListe.get(id);
+      if (p) postenListe.set(id, { ...p, ...daten });
+      return !!p;
+    }),
+    archivieren: vi.fn(async (id: string, archiviert: boolean) => {
+      const p = postenListe.get(id);
+      if (p) postenListe.set(id, { ...p, archiviert });
+      return !!p;
+    }),
+    rechteSetzen: vi.fn(async (id: string, rechte: readonly PostenRecht[]) => {
+      const p = postenListe.get(id);
+      if (p) postenListe.set(id, { ...p, rechte: [...rechte] });
+      return !!p;
+    }),
+    besetzungAnlegen: vi.fn(
+      async (postenId: string, daten: BesetzungDaten, ablosung: readonly string[] = []) => {
+        const p = postenListe.get(postenId);
+        if (!p) return undefined;
+        for (const bid of ablosung) {
+          const alt = p.besetzungen.find((b) => b.id === bid && b.endDatum === null);
+          if (!alt) throw new AblosungUngueltig();
+          alt.endDatum = tagVorher(daten.start);
+        }
+        const neu = { startDatum: daten.start, endDatum: daten.ende };
+        if (
+          p.besetzungen.some((b) => b.mitgliedSub === daten.mitgliedSub && ueberschneiden(b, neu))
+        ) {
+          throw new BesetzungUeberschneidung();
+        }
+        const id = `b${p.besetzungen.length + 1}`;
+        p.besetzungen.push({
+          id,
+          postenId,
+          mitgliedSub: daten.mitgliedSub,
+          startDatum: daten.start,
+          endDatum: daten.ende,
+        });
+        return id;
+      },
+    ),
+    besetzungAendern: vi.fn(async () => true),
+    besetzungLoeschen: vi.fn(async (postenId: string, id: string) => {
+      const p = postenListe.get(postenId);
+      const vorher = p?.besetzungen.length ?? 0;
+      if (p) p.besetzungen = p.besetzungen.filter((b) => b.id !== id);
+      return (p?.besetzungen.length ?? 0) < vorher;
+    }),
+    aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
+    rechteVon: vi.fn(async (sub: string) => (sub === 'v' ? ['posten:bearbeiten' as const] : [])),
+  };
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -70,10 +149,11 @@ function makeApp(pingDb = async () => {}) {
     userAdmin,
     emailAenderung,
     mitglieder,
+    posten,
     profilbilder,
     pingDb,
   });
-  return { app, userAdmin, emailAenderung, mitglieder, profilbilder };
+  return { app, userAdmin, emailAenderung, mitglieder, posten, profilbilder };
 }
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -100,7 +180,7 @@ describe('api', () => {
     const res = await makeApp().app.request('/api/me', { headers: bearer('reader-token') });
     expect(await res.json()).toMatchObject({
       sub: 'r',
-      permissions: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten'],
+      permissions: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
     });
   });
 
@@ -399,5 +479,197 @@ describe('api', () => {
         400,
       );
     });
+  });
+});
+
+describe('posten', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  it('lets every member read but only holders of posten:bearbeiten write', async () => {
+    const { app } = makeApp();
+    expect((await app.request('/api/posten', { headers: bearer('reader-token') })).status).toBe(
+      200,
+    );
+    const neu = { name: 'Kassenwart' };
+    expect((await app.request('/api/posten', json('reader-token', 'POST', neu))).status).toBe(403);
+    expect((await app.request('/api/posten', json('vorstand-token', 'POST', neu))).status).toBe(
+      201,
+    );
+  });
+
+  it('hides archived Posten from readers and lists them for editors on request', async () => {
+    const { app } = makeApp();
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Alt' }));
+    const { id } = (await res.json()) as { id: string };
+    await app.request(
+      `/api/posten/${id}/archiv`,
+      json('vorstand-token', 'PUT', { archiviert: true }),
+    );
+
+    const liste = async (token: string, query = '') =>
+      (await app.request(`/api/posten${query}`, { headers: bearer(token) })).json();
+    expect(await liste('reader-token')).toEqual([]);
+    expect(await liste('vorstand-token')).toEqual([]);
+    expect(await liste('vorstand-token', '?archiv=1')).toHaveLength(1);
+    expect(
+      (await app.request('/api/posten?archiv=1', { headers: bearer('reader-token') })).status,
+    ).toBe(403);
+    expect(
+      (await app.request(`/api/posten/${id}`, { headers: bearer('reader-token') })).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/api/posten/${id}`, { headers: bearer('vorstand-token') })).status,
+    ).toBe(200);
+  });
+
+  it('only assigns members that have a profile row', async () => {
+    const { app, mitglieder } = makeApp();
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
+    const { id } = (await res.json()) as { id: string };
+    const besetzung = { mitgliedSub: 'm1', start: '2026-01-01' };
+    const post = () =>
+      app.request(`/api/posten/${id}/besetzungen`, json('vorstand-token', 'POST', besetzung));
+    expect((await post()).status).toBe(400);
+    await mitglieder.speichern('m1', {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+    });
+    expect((await post()).status).toBe(201);
+    const bad = { mitgliedSub: 'm1', start: '2026-02-01', ende: '2026-01-01' };
+    expect(
+      (await app.request(`/api/posten/${id}/besetzungen`, json('vorstand-token', 'POST', bad)))
+        .status,
+    ).toBe(400);
+  });
+
+  it('lets only admins attach rights to a Posten', async () => {
+    const { app } = makeApp();
+    const res = await app.request(
+      '/api/posten',
+      json('vorstand-token', 'POST', { name: 'Vorstand' }),
+    );
+    const { id } = (await res.json()) as { id: string };
+    const rechte = { rechte: ['posten:bearbeiten'] };
+    const put = (token: string) =>
+      app.request(`/api/admin/posten/${id}/rechte`, json(token, 'PUT', rechte));
+    expect((await put('vorstand-token')).status).toBe(403);
+    expect((await put('admin-token')).status).toBe(200);
+  });
+
+  it('adds the permissions of held Posten to /api/me', async () => {
+    const res = await makeApp().app.request('/api/me', { headers: bearer('vorstand-token') });
+    expect(((await res.json()) as { permissions: string[] }).permissions).toContain(
+      'posten:bearbeiten',
+    );
+  });
+
+  it('titles the holder in the list by their form of address', async () => {
+    const { app, mitglieder, posten, userAdmin } = makeApp();
+    for (const [sub, anrede] of [
+      ['w1', 'weiblich'],
+      ['m1', 'maennlich'],
+    ] as const) {
+      await mitglieder.speichern(sub, {
+        vorname: 'A',
+        nachname: 'B',
+        anrede,
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+      });
+    }
+    userAdmin.konten.mockResolvedValue(new Map());
+    const chef = {
+      id: 'p1',
+      name: 'Vorstandsvorsitz',
+      bezeichnungMaennlich: 'Chef',
+      bezeichnungWeiblich: 'Chefin',
+      bezeichnungNeutral: 'Chef:in',
+    };
+    posten.aktuelleNachMitglied.mockResolvedValue(
+      new Map([
+        ['w1', [chef]],
+        ['m1', [chef]],
+      ]),
+    );
+    const liste = (await (
+      await app.request('/api/mitglieder', { headers: bearer('reader-token') })
+    ).json()) as { sub: string; posten: { bezeichnung: string }[] }[];
+    expect(liste.find((m) => m.sub === 'w1')?.posten[0]?.bezeichnung).toBe('Chefin');
+    expect(liste.find((m) => m.sub === 'm1')?.posten[0]?.bezeichnung).toBe('Chef');
+  });
+
+  it('ends taken-over Besetzungen the day before the new start', async () => {
+    const { app, mitglieder, posten } = makeApp();
+    const leer = {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+    };
+    await mitglieder.speichern('m1', leer);
+    await mitglieder.speichern('m2', leer);
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
+    const { id } = (await res.json()) as { id: string };
+    const alt = await posten.besetzungAnlegen(id, {
+      mitgliedSub: 'm1',
+      start: '2025-01-01',
+      ende: null,
+    });
+    const neu = (ablosung: string[]) =>
+      app.request(
+        `/api/posten/${id}/besetzungen`,
+        json('vorstand-token', 'POST', { mitgliedSub: 'm2', start: '2026-03-01', ablosung }),
+      );
+    expect((await neu(['gibt-es-nicht'])).status).toBe(400);
+    expect((await neu([alt!])).status).toBe(201);
+    expect((await posten.holen(id))?.besetzungen.find((b) => b.id === alt)?.endDatum).toBe(
+      '2026-02-28',
+    );
+  });
+
+  it('rejects overlapping Besetzungen of one member, but allows disjoint ones', async () => {
+    const { app, mitglieder } = makeApp();
+    await mitglieder.speichern('m1', {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+    });
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
+    const { id } = (await res.json()) as { id: string };
+    const post = (start: string, ende: string | null) =>
+      app.request(
+        `/api/posten/${id}/besetzungen`,
+        json('vorstand-token', 'POST', { mitgliedSub: 'm1', start, ende }),
+      );
+    expect((await post('2020-01-01', '2020-12-31')).status).toBe(201);
+    expect((await post('2024-01-01', '2025-12-31')).status).toBe(201);
+    expect((await post('2020-12-31', '2021-06-30')).status).toBe(409);
+    expect((await post('2025-06-01', null)).status).toBe(409);
   });
 });

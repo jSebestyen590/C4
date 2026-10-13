@@ -6,6 +6,7 @@ import { useAuth } from '../auth';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
+import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { ProfilFormular } from './ProfilPage';
@@ -77,6 +78,14 @@ export function MitgliedPage() {
           <StatusFeld sub={m.sub} status={m.status} anrede={m.anrede} />
           {can('users:manage') && (
             <RollenFeld sub={m.sub} rollen={m.rollen ?? []} anrede={m.anrede} />
+          )}
+          {m.posten.length > 0 && (
+            <div>
+              <Text size="sm" c="dimmed" mb={4}>
+                Posten
+              </Text>
+              <PostenLinks posten={m.posten} />
+            </div>
           )}
           {m.email && (
             <div>

@@ -36,12 +36,14 @@ export function createCognitoVerifier(
 }
 
 /**
- * Verifies the token and derives the effective permissions from the member's status (database) and
- * the token's groups. A member without a profile row counts as a candidate.
+ * Verifies the token and derives the effective permissions from the member's status (database), the
+ * token's groups and the permissions of the Posten the member currently holds (database). A member
+ * without a profile row counts as a candidate.
  */
 export function authenticate(
   verify: TokenVerifier,
   statusOf: (sub: string) => Promise<MitgliedStatus | undefined>,
+  postenRechteOf: (sub: string) => Promise<Permission[]>,
 ) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const header = c.req.header('authorization');
@@ -54,7 +56,8 @@ export function authenticate(
       throw new HTTPException(401, { message: 'Invalid token' });
     }
     const user = c.get('user');
-    c.set('permissions', permissionsFor(user.groups, (await statusOf(user.sub)) ?? 'anwaerter'));
+    const [status, extra] = await Promise.all([statusOf(user.sub), postenRechteOf(user.sub)]);
+    c.set('permissions', permissionsFor(user.groups, status ?? 'anwaerter', extra));
     await next();
   });
 }

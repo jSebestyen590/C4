@@ -23,6 +23,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
+import { PostenLinks } from '../PostenAnzeige';
 import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { StatusBadge, StatusName } from '../StatusAnzeige';
@@ -172,6 +173,7 @@ export function MitgliederPage() {
                 )}
                 {m.telefon && <Text size="sm">{m.telefon}</Text>}
               </Link>
+              <PostenLinks posten={m.posten} />
               <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
               {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
@@ -179,7 +181,7 @@ export function MitgliederPage() {
         ))}
       </SimpleGrid>
       {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={istAdmin ? 980 : 760} visibleFrom="sm">
+        <Table.ScrollContainer minWidth={istAdmin ? 1100 : 880} visibleFrom="sm">
           <Table verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -194,6 +196,7 @@ export function MitgliederPage() {
                   />
                 ))}
                 <Table.Th>Status</Table.Th>
+                <Table.Th>Posten</Table.Th>
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
                 <Table.Th>Kontakt</Table.Th>
@@ -221,6 +224,9 @@ export function MitgliederPage() {
                   <Table.Td>{m.nachname}</Table.Td>
                   <Table.Td>
                     <StatusBadge status={m.status} anrede={m.anrede} />
+                  </Table.Td>
+                  <Table.Td>
+                    <PostenLinks posten={m.posten} />
                   </Table.Td>
                   <Table.Td>{m.email}</Table.Td>
                   <Table.Td>{m.telefon}</Table.Td>

@@ -10,6 +10,8 @@ import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
+import { PostenDetailPage } from './pages/PostenDetailPage';
+import { PostenPage } from './pages/PostenPage';
 import { ProfilPage } from './pages/ProfilPage';
 
 function Protected({
@@ -87,6 +89,26 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="mitglieder:lesen">
                 <RequireUsername>
                   <MitgliedPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/posten"
+            element={
+              <Protected permission="posten:lesen">
+                <RequireUsername>
+                  <PostenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/posten/:id"
+            element={
+              <Protected permission="posten:lesen">
+                <RequireUsername>
+                  <PostenDetailPage />
                 </RequireUsername>
               </Protected>
             }

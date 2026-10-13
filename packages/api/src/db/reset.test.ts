@@ -14,4 +14,17 @@ describe('resetDatabase', () => {
     expect(query).toHaveBeenCalledWith('DROP TABLE IF EXISTS "mitglieder"');
     expect(query).toHaveBeenCalledWith('DROP TABLE IF EXISTS "we""ird"');
   });
+
+  it('retries tables that are still referenced by a foreign key', async () => {
+    const dropped: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      if (sql.startsWith('SELECT'))
+        return { rows: [{ table_name: 'posten' }, { table_name: 'besetzungen' }] };
+      if (sql.includes('"posten"') && !dropped.includes('besetzungen'))
+        throw new Error('referenced');
+      dropped.push(sql.match(/"(.+)"/)![1]!);
+      return { rows: [] };
+    });
+    expect(await resetDatabase({ query } as unknown as pg.Pool)).toEqual(['besetzungen', 'posten']);
+  });
 });

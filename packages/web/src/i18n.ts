@@ -28,6 +28,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'content:read': 'Inhalte lesen',
   'mitglieder:lesen': 'Mitglieder ansehen',
   'profil:bearbeiten': 'Eigenes Profil bearbeiten',
+  'posten:lesen': 'Posten ansehen',
+  'posten:bearbeiten': 'Posten bearbeiten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {

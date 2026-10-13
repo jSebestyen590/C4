@@ -48,11 +48,11 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
    that you can sign in with either. Further users (invited by email only) and group changes: Admin page.
 
 ### GitHub setup
+
 The deploy roles trust the repository's OIDC `sub` claim, which uses immutable ids
 (`repo:jSebestyen590@26395410/C4@1395447517:environment:<env>`). The value is the `github_repo` variable in
 `infra/bootstrap`; a different repo (or a repo transfer) needs its own `sub` (print it with a debug step
 in the workflow). Re-apply `infra/bootstrap` after changing it.
-
 
 Create the GitHub Environments `dev` and `prod` (add required reviewers on `prod`). A push to `main`
 deploys **dev**; pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`) deploys **prod**
@@ -76,7 +76,7 @@ Login uses the **dev** Cognito pool (localhost callback is allowed there). Needs
   Billing console (Cost allocation tags; it can take up to 24h to show up). Until then the per-env
   budgets see no cost.
 
-- DSQL: no foreign keys or sequences, `CREATE INDEX ASYNC`, one DDL statement per transaction.
+- DSQL: foreign keys are supported (a conflicting concurrent change fails the transaction), no sequences, `CREATE INDEX ASYNC`, one DDL statement per transaction.
   Migrations are plain SQL files in `packages/api/src/db/migrations` (one DDL statement per file).
   DSQL cannot `SET NOT NULL` on an existing column, so declare constraints when creating the table.
   `pnpm db:reset` (needs `CONFIRM_DB_RESET=yes`) drops every table; the Deploy workflow's `reset_db`
