@@ -5,6 +5,7 @@ import {
   createUserSchema,
   emailAendernSchema,
   emailBestaetigenSchema,
+  besetzungAnlegenSchema,
   besetzungEingabeSchema,
   mitgliedAktualisierenSchema,
   postenAktualisierenSchema,
@@ -29,6 +30,8 @@ import {
 } from './emailaenderung';
 import type { MitgliedRow } from './db/schema';
 import {
+  AblosungUngueltig,
+  BesetzungUeberschneidung,
   heuteBerlin,
   istAktuell,
   type AktuellerPosten,
@@ -140,6 +143,8 @@ export function createApp(deps: AppDeps) {
         },
         start: b.startDatum,
         ende: b.endDatum,
+        rechteVon: b.rechteVon,
+        rechteBis: b.rechteBis,
         aktuell: istAktuell(b, heute),
       }))
       .sort(
@@ -159,6 +164,17 @@ export function createApp(deps: AppDeps) {
 
   const eigenePosten = async (sub: string) =>
     (await deps.posten.aktuelleNachMitglied()).get(sub) ?? [];
+
+  /** Maps the store's Besetzung errors to HTTP statuses the web app can tell apart. */
+  const besetzungFehler = (err: unknown): never => {
+    if (err instanceof AblosungUngueltig) {
+      throw new HTTPException(400, { message: 'Ungültige Ablösung' });
+    }
+    if (err instanceof BesetzungUeberschneidung) {
+      throw new HTTPException(409, { message: 'Besetzung überschneidet sich' });
+    }
+    throw err;
+  };
 
   /** Besetzungen may only name members that already have a profile row. */
   const mitgliedMussExistieren = async (sub: string) => {
@@ -433,11 +449,13 @@ export function createApp(deps: AppDeps) {
         '/posten/:id/besetzungen',
         auth,
         postenBearbeiten,
-        zValidator('json', besetzungEingabeSchema),
+        zValidator('json', besetzungAnlegenSchema),
         async (c) => {
-          const daten = c.req.valid('json');
+          const { ablosung, ...daten } = c.req.valid('json');
           await mitgliedMussExistieren(daten.mitgliedSub);
-          const id = await deps.posten.besetzungAnlegen(c.req.param('id'), daten);
+          const id = await deps.posten
+            .besetzungAnlegen(c.req.param('id'), daten, ablosung)
+            .catch(besetzungFehler);
           if (!id) throw new HTTPException(404, { message: 'Posten nicht gefunden' });
           return c.json({ id }, 201);
         },
@@ -450,7 +468,10 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const daten = c.req.valid('json');
           await mitgliedMussExistieren(daten.mitgliedSub);
-          if (!(await deps.posten.besetzungAendern(c.req.param('id'), c.req.param('bid'), daten))) {
+          const geaendert = await deps.posten
+            .besetzungAendern(c.req.param('id'), c.req.param('bid'), daten)
+            .catch(besetzungFehler);
+          if (!geaendert) {
             throw new HTTPException(404, { message: 'Besetzung nicht gefunden' });
           }
           return c.json({ ok: true });

@@ -21,15 +21,20 @@ hat (sonst antwortet das API mit 400). Eingeladene Mitglieder bekommen ihre Zeil
 Profil zeigen statt des Postennamens die Form passend zur `anrede` des Mitglieds
 (`bezeichnungFuer` in `packages/shared/src/posten.ts`); ohne Bezeichnung gilt der Name.
 
+**Rechtezeitraum:** Jede Besetzung hat optional `rechte_von` und `rechte_bis`. Nur in diesem Zeitraum gelten die
+Rechte des Postens (`rechteAktiv` in `posten.ts`); leer heißt Start bzw. Ende der Besetzung. So lassen sich
+Übergangsfristen abbilden, z. B. Besetzung 01.01.–31.12.2026, Rechte 01.12.2025–31.01.2027. Die Anzeige
+(„aktuell besetzt“) und die Überschneidungsprüfung richten sich allein nach Start und Ende.
+
 **Aktuell besetzt** heißt: Posten nicht archiviert, `start_datum` ≤ heute und `end_datum` leer oder
 ≥ heute. „Heute“ ist der Kalendertag in Europe/Berlin (`heuteBerlin`).
 
 ## Rechte
 
 - `posten:lesen` haben alle Status (`STATUS_PERMISSIONS`).
-- `posten:bearbeiten` gewährt ein Posten über `posten_rechte`. Wer den Posten aktuell innehat, erhält
-  das Recht (`rechteVon` in `auth.ts`, bei jedem Request). Archivieren, Enddatum in der Vergangenheit
-  oder ein Startdatum in der Zukunft entziehen es.
+- `posten:bearbeiten` gewährt ein Posten über `posten_rechte`. Wer den Posten im Rechtezeitraum seiner Besetzung innehat, erhält
+  das Recht (`rechteVon` in `auth.ts`, bei jedem Request). Archivieren oder ein Rechtezeitraum, der nicht
+  (mehr) gilt, entziehen es.
 - Admins (Cognito-Gruppe `admin`) haben `posten:bearbeiten` immer und können so Posten anlegen, bearbeiten,
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
@@ -58,4 +63,24 @@ Datumswerte erscheinen überall als `dd.MM.yyyy` (`datumAnzeigen` in `packages/s
 
 Mitglieder werden überall fett und in der Farbe ihres Status genannt (`StatusName` in `packages/web/src/StatusAnzeige.tsx`).
 
-Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bezeichnung>“ (Bezeichnung nach der `anrede` des Mitglieds, Datum = Start der Besetzung, hält die Person den Posten mehrfach zugleich, zählt die zuletzt begonnene Besetzung). In der Tabelle ist die ganze Zeile klickbar.
+Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bezeichnung>“ (Bezeichnung nach der `anrede` des Mitglieds, Datum = Start der Besetzung), eine Zeile pro aktueller Besetzung. In der Tabelle ist die ganze Zeile klickbar.
+
+## Vorstandsposten
+
+Migration `0012_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender
+Vorstandsvorsitz (Vize / Vize / Vize) und Buchhaltung (Finanzer / Finanzerin / Finanzer:in) an. Sie haben
+dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`); wer sie besetzt, kann
+also auch Mitglieder einladen sowie Status und Rollen ändern. Die Ids sind fest
+(`vorstandsvorsitz`, `stellvertretender-vorstandsvorsitz`, `buchhaltung`), die Migration ist idempotent.
+
+Beim Setzen des Startdatums einer Besetzung wird das Ende automatisch auf den 31.12. desselben Jahres gesetzt; es lässt sich danach ändern oder leeren.
+
+Beim Zuweisen erscheint eine Auswahl „Übernimmt die Person den Posten?“, sobald der Posten aktuelle Besetzungen
+ohne Ende hat (bei mehreren sind alle wählbar). Gewählte Besetzungen enden am Tag vor dem Start der neuen
+(`ablosung` in `POST /api/posten/:id/besetzungen`, in einer Transaktion). Der Start der neuen muss nach dem
+Start der abgelösten liegen.
+
+Dieselbe Person darf einen Posten nie zweimal zugleich innehaben: Zeiträume derselben Person auf demselben
+Posten dürfen sich nicht überschneiden (beide Enden inklusive, kein Ende = offen). Aufeinanderfolgende,
+getrennte Zeiträume (z. B. 01.01.2020–31.12.2020 und 01.01.2024–31.12.2025) sind erlaubt. Das API prüft das beim
+Anlegen und Ändern in der Transaktion (`ueberschneiden` in `posten.ts`) und antwortet sonst mit 409.

@@ -17,7 +17,10 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 /** Permissions an admin may attach to a Posten; whoever currently holds the Posten gets them. */
-export const POSTEN_RECHTE = ['posten:bearbeiten'] as const satisfies readonly Permission[];
+export const POSTEN_RECHTE = [
+  'users:manage',
+  'posten:bearbeiten',
+] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
 /** Extra permissions of a Cognito group, on top of those of the member's status. */

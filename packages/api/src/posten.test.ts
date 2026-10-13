@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { heuteBerlin, istAktuell } from './posten';
+import { heuteBerlin, istAktuell, rechteAktiv, ueberschneiden } from './posten';
 
 describe('istAktuell', () => {
   const heute = '2026-06-15';
@@ -17,5 +17,42 @@ describe('heuteBerlin', () => {
   it('uses the Berlin calendar day', () => {
     expect(heuteBerlin(new Date('2026-06-15T22:30:00Z'))).toBe('2026-06-16');
     expect(heuteBerlin(new Date('2026-06-15T21:30:00Z'))).toBe('2026-06-15');
+  });
+});
+
+describe('ueberschneiden', () => {
+  const z = (startDatum: string, endDatum: string | null) => ({ startDatum, endDatum });
+  it('allows disjoint periods, even when adjacent', () => {
+    expect(ueberschneiden(z('2020-01-01', '2020-12-31'), z('2024-01-01', '2025-12-31'))).toBe(
+      false,
+    );
+    expect(ueberschneiden(z('2020-01-01', '2020-12-31'), z('2021-01-01', null))).toBe(false);
+  });
+  it('detects shared days, including open ends and a single shared day', () => {
+    expect(ueberschneiden(z('2020-01-01', '2020-12-31'), z('2020-12-31', '2021-06-30'))).toBe(true);
+    expect(ueberschneiden(z('2020-01-01', null), z('2030-01-01', '2030-12-31'))).toBe(true);
+    expect(ueberschneiden(z('2020-03-01', '2020-04-01'), z('2020-01-01', '2020-12-31'))).toBe(true);
+  });
+});
+
+describe('rechteAktiv', () => {
+  const finanzer = {
+    startDatum: '2026-01-01',
+    endDatum: '2026-12-31',
+    rechteVon: '2025-12-01',
+    rechteBis: '2027-01-31',
+  };
+  it('applies in the transition periods around the Besetzung', () => {
+    expect(rechteAktiv(finanzer, '2025-12-01')).toBe(true);
+    expect(rechteAktiv(finanzer, '2027-01-31')).toBe(true);
+    expect(rechteAktiv(finanzer, '2025-11-30')).toBe(false);
+    expect(rechteAktiv(finanzer, '2027-02-01')).toBe(false);
+  });
+  it('falls back to the Besetzung itself without explicit dates', () => {
+    const ohne = { ...finanzer, rechteVon: null, rechteBis: null };
+    expect(rechteAktiv(ohne, '2025-12-31')).toBe(false);
+    expect(rechteAktiv(ohne, '2026-06-01')).toBe(true);
+    expect(rechteAktiv(ohne, '2027-01-01')).toBe(false);
+    expect(rechteAktiv({ ...ohne, endDatum: null }, '2040-01-01')).toBe(true);
   });
 });

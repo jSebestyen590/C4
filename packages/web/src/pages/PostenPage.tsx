@@ -38,17 +38,13 @@ const postenLink = (id: string) => `/posten/${encodeURIComponent(id)}`;
 
 /** Names of the current holders, each in the color of their status; "–" when nobody holds it. */
 function Besetzer({ posten }: Readonly<{ posten: Posten }>) {
-  // One line per member; with overlapping Besetzungen the most recently started one counts.
-  const aktuell = new Map<string, Besetzung>();
-  for (const b of posten.besetzungen.filter((b) => b.aktuell)) {
-    const vorhanden = aktuell.get(b.mitgliedSub);
-    if (!vorhanden || b.start > vorhanden.start) aktuell.set(b.mitgliedSub, b);
-  }
-  if (aktuell.size === 0) return <Text c="dimmed">Aktuell nicht besetzt</Text>;
+  // A member never holds a Posten twice at once, so every current Besetzung is its own line.
+  const aktuell = posten.besetzungen.filter((b) => b.aktuell);
+  if (aktuell.length === 0) return <Text c="dimmed">Aktuell nicht besetzt</Text>;
   return (
     <Stack gap={2}>
-      {[...aktuell.values()].map((b) => (
-        <Text key={b.mitgliedSub}>
+      {aktuell.map((b) => (
+        <Text key={b.id}>
           <StatusName status={b.mitglied.status}>{besetzungName(b)}</StatusName> ist seit{' '}
           {datumAnzeigen(b.start)} {bezeichnungFuer(posten, b.mitglied.anrede)}
         </Text>

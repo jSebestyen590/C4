@@ -3,6 +3,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Chip,
   Group,
   Loader,
@@ -23,6 +24,7 @@ import { Link, useParams } from 'react-router-dom';
 import {
   besetzungEingabeSchema,
   datumAnzeigen,
+  tagVorher,
   POSTEN_RECHTE,
   postenAktualisierenSchema,
   type Besetzung,
@@ -105,7 +107,12 @@ function BesetzungDialog({
   const [sub, setSub] = useState<string | null>(besetzung?.mitgliedSub ?? null);
   const [start, setStart] = useState(besetzung?.start ?? '');
   const [ende, setEnde] = useState(besetzung?.ende ?? '');
+  const [rechteVon, setRechteVon] = useState(besetzung?.rechteVon ?? '');
+  const [rechteBis, setRechteBis] = useState(besetzung?.rechteBis ?? '');
+  const [ablosung, setAblosung] = useState<string[]>([]);
   const [fehler, setFehler] = useState<string | null>(null);
+  // A new Besetzung may take over open-ended ones that are active today.
+  const offene = besetzung ? [] : posten.besetzungen.filter((b) => b.aktuell && b.ende === null);
   const mitglieder = useQuery({
     queryKey: ['mitglieder'],
     queryFn: async () => unwrap(await api.mitglieder.$get()),
@@ -117,7 +124,14 @@ function BesetzungDialog({
     onClose();
   };
   const speichern = useMutation({
-    mutationFn: async (json: { mitgliedSub: string; start: string; ende: string | null }) => {
+    mutationFn: async (json: {
+      mitgliedSub: string;
+      start: string;
+      ende: string | null;
+      rechteVon: string | null;
+      rechteBis: string | null;
+      ablosung: string[];
+    }) => {
       const param = { id: posten.id };
       const res = besetzung
         ? await api.posten[':id'].besetzungen[':bid'].$put({
@@ -126,6 +140,7 @@ function BesetzungDialog({
           })
         : await api.posten[':id'].besetzungen.$post({ param, json });
       if (res.status === 400) throw new Error('profil');
+      if (res.status === 409) throw new Error('ueberschneidung');
       if (!res.ok) throw new Error('fehler');
     },
     onSuccess: fertig,
@@ -143,12 +158,21 @@ function BesetzungDialog({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const eingabe = { mitgliedSub: sub ?? '', start, ende: ende || null };
+    const eingabe = {
+      mitgliedSub: sub ?? '',
+      start,
+      ende: ende || null,
+      rechteVon: rechteVon || null,
+      rechteBis: rechteBis || null,
+    };
     const parsed = besetzungEingabeSchema.safeParse(eingabe);
     if (!sub) return setFehler('Bitte wähle ein Mitglied.');
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    const zuBeenden = offene.filter((b) => ablosung.includes(b.id));
+    if (zuBeenden.some((b) => b.start >= start))
+      return setFehler('Der Start muss nach dem Start der bisherigen Besetzung liegen.');
     setFehler(null);
-    speichern.mutate(eingabe);
+    speichern.mutate({ ...eingabe, ablosung: zuBeenden.map((b) => b.id) });
   };
 
   return (
@@ -172,7 +196,12 @@ function BesetzungDialog({
             type="date"
             label="Start"
             value={start}
-            onChange={(e) => setStart(e.currentTarget.value)}
+            onChange={(e) => {
+              const neu = e.currentTarget.value;
+              setStart(neu);
+              // Setting the start always proposes the end of that year; it can be changed afterwards.
+              if (/^\d{4}-\d{2}-\d{2}$/.test(neu)) setEnde(`${neu.slice(0, 4)}-12-31`);
+            }}
           />
           <TextInput
             type="date"
@@ -180,12 +209,55 @@ function BesetzungDialog({
             value={ende}
             onChange={(e) => setEnde(e.currentTarget.value)}
           />
+          <TextInput
+            type="date"
+            label="Rechte ab (optional)"
+            description="Leer = ab Start. Für Übergangsfristen vor dem Start."
+            value={rechteVon}
+            onChange={(e) => setRechteVon(e.currentTarget.value)}
+          />
+          <TextInput
+            type="date"
+            label="Rechte bis (optional)"
+            description="Leer = bis Ende. Für Übergangsfristen nach dem Ende."
+            value={rechteBis}
+            onChange={(e) => setRechteBis(e.currentTarget.value)}
+          />
+          {offene.length > 0 && (
+            <Checkbox.Group
+              label="Übernimmt die Person den Posten?"
+              description={
+                start
+                  ? `Die gewählten Besetzungen enden am ${datumAnzeigen(tagVorher(start))}.`
+                  : 'Die gewählten Besetzungen enden am Tag vor dem Start.'
+              }
+              value={ablosung}
+              onChange={setAblosung}
+            >
+              <Stack gap="xs" mt="xs">
+                {offene.map((b) => (
+                  <Checkbox
+                    key={b.id}
+                    value={b.id}
+                    label={
+                      <>
+                        Von <StatusName status={b.mitglied.status}>{besetzungName(b)}</StatusName>{' '}
+                        (seit {datumAnzeigen(b.start)}) übernehmen
+                      </>
+                    }
+                  />
+                ))}
+              </Stack>
+            </Checkbox.Group>
+          )}
           {fehler && <Alert color="red">{fehler}</Alert>}
           {(speichern.isError || loeschen.isError) && (
             <Alert color="red">
               {speichern.error?.message === 'profil'
                 ? 'Dieses Mitglied hat noch kein Profil und kann keinem Posten zugewiesen werden.'
-                : 'Das Speichern ist fehlgeschlagen.'}
+                : speichern.error?.message === 'ueberschneidung'
+                  ? 'Diese Person hat den Posten in diesem Zeitraum bereits. Die Zeiträume dürfen sich nicht überschneiden.'
+                  : 'Das Speichern ist fehlgeschlagen.'}
             </Alert>
           )}
           <Button type="submit" loading={speichern.isPending}>
@@ -226,6 +298,12 @@ function BesetzungZeile({
           <Text size="sm" c="dimmed">
             {zeitraum(b)}
           </Text>
+          {(b.rechteVon || b.rechteBis) && (
+            <Text size="sm" c="dimmed">
+              Rechte: {datumAnzeigen(b.rechteVon ?? b.start)} –{' '}
+              {(b.rechteBis ?? b.ende) ? datumAnzeigen((b.rechteBis ?? b.ende)!) : 'unbefristet'}
+            </Text>
+          )}
         </div>
         {darfBearbeiten && (
           <Button variant="default" onClick={open}>

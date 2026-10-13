@@ -1,12 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AdminUser, MitgliedStatus, PostenRecht } from '@c4/shared';
+import { tagVorher, type AdminUser, type MitgliedStatus, type PostenRecht } from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
 import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
-import type { AktuellerPosten, BesetzungDaten, PostenDaten, PostenDetails } from './posten';
+import {
+  AblosungUngueltig,
+  BesetzungUeberschneidung,
+  ueberschneiden,
+  type AktuellerPosten,
+  type BesetzungDaten,
+  type PostenDaten,
+  type PostenDetails,
+} from './posten';
 
 const users: Record<string, AuthUser> = {
   'admin-token': { sub: 'a', groups: ['admin'] },
@@ -87,19 +95,34 @@ function makeApp(pingDb = async () => {}) {
       if (p) postenListe.set(id, { ...p, rechte: [...rechte] });
       return !!p;
     }),
-    besetzungAnlegen: vi.fn(async (postenId: string, daten: BesetzungDaten) => {
-      const p = postenListe.get(postenId);
-      if (!p) return undefined;
-      const id = `b${p.besetzungen.length + 1}`;
-      p.besetzungen.push({
-        id,
-        postenId,
-        mitgliedSub: daten.mitgliedSub,
-        startDatum: daten.start,
-        endDatum: daten.ende,
-      });
-      return id;
-    }),
+    besetzungAnlegen: vi.fn(
+      async (postenId: string, daten: BesetzungDaten, ablosung: readonly string[] = []) => {
+        const p = postenListe.get(postenId);
+        if (!p) return undefined;
+        for (const bid of ablosung) {
+          const alt = p.besetzungen.find((b) => b.id === bid && b.endDatum === null);
+          if (!alt) throw new AblosungUngueltig();
+          alt.endDatum = tagVorher(daten.start);
+        }
+        const neu = { startDatum: daten.start, endDatum: daten.ende };
+        if (
+          p.besetzungen.some((b) => b.mitgliedSub === daten.mitgliedSub && ueberschneiden(b, neu))
+        ) {
+          throw new BesetzungUeberschneidung();
+        }
+        const id = `b${p.besetzungen.length + 1}`;
+        p.besetzungen.push({
+          id,
+          postenId,
+          mitgliedSub: daten.mitgliedSub,
+          startDatum: daten.start,
+          endDatum: daten.ende,
+          rechteVon: daten.rechteVon,
+          rechteBis: daten.rechteBis,
+        });
+        return id;
+      },
+    ),
     besetzungAendern: vi.fn(async () => true),
     besetzungLoeschen: vi.fn(async (postenId: string, id: string) => {
       const p = postenListe.get(postenId);
@@ -590,5 +613,67 @@ describe('posten', () => {
     ).json()) as { sub: string; posten: { bezeichnung: string }[] }[];
     expect(liste.find((m) => m.sub === 'w1')?.posten[0]?.bezeichnung).toBe('Chefin');
     expect(liste.find((m) => m.sub === 'm1')?.posten[0]?.bezeichnung).toBe('Chef');
+  });
+
+  it('ends taken-over Besetzungen the day before the new start', async () => {
+    const { app, mitglieder, posten } = makeApp();
+    const leer = {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+    };
+    await mitglieder.speichern('m1', leer);
+    await mitglieder.speichern('m2', leer);
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
+    const { id } = (await res.json()) as { id: string };
+    const alt = await posten.besetzungAnlegen(id, {
+      mitgliedSub: 'm1',
+      start: '2025-01-01',
+      rechteVon: null,
+      rechteBis: null,
+      ende: null,
+    });
+    const neu = (ablosung: string[]) =>
+      app.request(
+        `/api/posten/${id}/besetzungen`,
+        json('vorstand-token', 'POST', { mitgliedSub: 'm2', start: '2026-03-01', ablosung }),
+      );
+    expect((await neu(['gibt-es-nicht'])).status).toBe(400);
+    expect((await neu([alt!])).status).toBe(201);
+    expect((await posten.holen(id))?.besetzungen.find((b) => b.id === alt)?.endDatum).toBe(
+      '2026-02-28',
+    );
+  });
+
+  it('rejects overlapping Besetzungen of one member, but allows disjoint ones', async () => {
+    const { app, mitglieder } = makeApp();
+    await mitglieder.speichern('m1', {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+    });
+    const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
+    const { id } = (await res.json()) as { id: string };
+    const post = (start: string, ende: string | null) =>
+      app.request(
+        `/api/posten/${id}/besetzungen`,
+        json('vorstand-token', 'POST', { mitgliedSub: 'm1', start, ende }),
+      );
+    expect((await post('2020-01-01', '2020-12-31')).status).toBe(201);
+    expect((await post('2024-01-01', '2025-12-31')).status).toBe(201);
+    expect((await post('2020-12-31', '2021-06-30')).status).toBe(409);
+    expect((await post('2025-06-01', null)).status).toBe(409);
   });
 });

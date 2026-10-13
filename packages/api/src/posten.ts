@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, gte, isNull, lte, or } from 'drizzle-orm';
-import { POSTEN_RECHTE, type Bezeichnungen, type Permission, type PostenRecht } from '@c4/shared';
+import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import {
+  POSTEN_RECHTE,
+  tagVorher,
+  type Bezeichnungen,
+  type Permission,
+  type PostenRecht,
+} from '@c4/shared';
 import type { Db } from './db/client';
 import {
   posten,
@@ -20,6 +26,24 @@ export const istAktuell = (
   heute: string,
 ): boolean => b.startDatum <= heute && (b.endDatum === null || b.endDatum >= heute);
 
+type Zeitraum = Pick<BesetzungRow, 'startDatum' | 'endDatum'>;
+
+/** Whether two Besetzungen share at least one day (both ends inclusive, no end = open). */
+export const ueberschneiden = (a: Zeitraum, b: Zeitraum): boolean =>
+  a.startDatum <= (b.endDatum ?? '9999-12-31') && b.startDatum <= (a.endDatum ?? '9999-12-31');
+
+/**
+ * Whether the permissions of a Besetzung apply on `heute`. The period defaults to the Besetzung's
+ * own, so transition periods before the start or after the end need explicit dates.
+ */
+export const rechteAktiv = (
+  b: Pick<BesetzungRow, 'startDatum' | 'endDatum' | 'rechteVon' | 'rechteBis'>,
+  heute: string,
+): boolean => {
+  const bis = b.rechteBis ?? b.endDatum;
+  return (b.rechteVon ?? b.startDatum) <= heute && (bis === null || bis >= heute);
+};
+
 export interface PostenDetails extends PostenRow {
   rechte: PostenRecht[];
   besetzungen: BesetzungRow[];
@@ -37,7 +61,15 @@ export interface BesetzungDaten {
   mitgliedSub: string;
   start: string;
   ende: string | null;
+  rechteVon: string | null;
+  rechteBis: string | null;
 }
+
+/** A Besetzung to take over does not exist, has an end already or starts too late. */
+export class AblosungUngueltig extends Error {}
+
+/** A member would hold the same Posten twice at the same time. */
+export class BesetzungUeberschneidung extends Error {}
 
 export interface PostenStore {
   alle(mitArchiv: boolean): Promise<PostenDetails[]>;
@@ -47,7 +79,15 @@ export interface PostenStore {
   aktualisieren(id: string, daten: PostenDaten): Promise<boolean>;
   archivieren(id: string, archiviert: boolean): Promise<boolean>;
   rechteSetzen(id: string, rechte: readonly PostenRecht[]): Promise<boolean>;
-  besetzungAnlegen(postenId: string, daten: BesetzungDaten): Promise<string | undefined>;
+  /**
+   * `ablosung` are open-ended Besetzungen of this Posten that end the day before the new start, in
+   * the same transaction. Throws AblosungUngueltig for any that cannot be ended that way.
+   */
+  besetzungAnlegen(
+    postenId: string,
+    daten: BesetzungDaten,
+    ablosung?: readonly string[],
+  ): Promise<string | undefined>;
   besetzungAendern(postenId: string, id: string, daten: BesetzungDaten): Promise<boolean>;
   besetzungLoeschen(postenId: string, id: string): Promise<boolean>;
   /** Current, non-archived Posten per member `sub`. */
@@ -57,6 +97,30 @@ export interface PostenStore {
 }
 
 const istRecht = (r: string): r is PostenRecht => (POSTEN_RECHTE as readonly string[]).includes(r);
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** Throws unless `daten` leaves the member's other Besetzungen of this Posten untouched. */
+async function keineUeberschneidung(
+  tx: Tx,
+  postenId: string,
+  daten: BesetzungDaten,
+  ausser?: string,
+) {
+  const andere = await tx
+    .select()
+    .from(postenBesetzungen)
+    .where(
+      and(
+        eq(postenBesetzungen.postenId, postenId),
+        eq(postenBesetzungen.mitgliedSub, daten.mitgliedSub),
+      ),
+    );
+  const neu = { startDatum: daten.start, endDatum: daten.ende };
+  if (andere.some((b) => b.id !== ausser && ueberschneiden(b, neu))) {
+    throw new BesetzungUeberschneidung();
+  }
+}
 
 export function createPostenStore(db: Db): PostenStore {
   const aktuellBedingung = (heute: string) =>
@@ -121,29 +185,67 @@ export function createPostenStore(db: Db): PostenStore {
       });
       return true;
     },
-    async besetzungAnlegen(postenId, daten) {
+    async besetzungAnlegen(postenId, daten, ablosung = []) {
       const [vorhanden] = await db
         .select({ id: posten.id })
         .from(posten)
         .where(eq(posten.id, postenId));
       if (!vorhanden) return undefined;
       const id = randomUUID();
-      await db.insert(postenBesetzungen).values({
-        id,
-        postenId,
-        mitgliedSub: daten.mitgliedSub,
-        startDatum: daten.start,
-        endDatum: daten.ende,
+      await db.transaction(async (tx) => {
+        if (ablosung.length > 0) {
+          const alte = await tx
+            .select()
+            .from(postenBesetzungen)
+            .where(
+              and(
+                eq(postenBesetzungen.postenId, postenId),
+                inArray(postenBesetzungen.id, [...ablosung]),
+              ),
+            );
+          const ungueltig =
+            alte.length !== new Set(ablosung).size ||
+            alte.some((b) => b.endDatum !== null || b.startDatum >= daten.start);
+          if (ungueltig) throw new AblosungUngueltig();
+          await tx
+            .update(postenBesetzungen)
+            .set({ endDatum: tagVorher(daten.start) })
+            .where(
+              inArray(
+                postenBesetzungen.id,
+                alte.map((b) => b.id),
+              ),
+            );
+        }
+        await keineUeberschneidung(tx, postenId, daten);
+        await tx.insert(postenBesetzungen).values({
+          id,
+          postenId,
+          mitgliedSub: daten.mitgliedSub,
+          startDatum: daten.start,
+          endDatum: daten.ende,
+          rechteVon: daten.rechteVon,
+          rechteBis: daten.rechteBis,
+        });
       });
       return id;
     },
     async besetzungAendern(postenId, id, daten) {
-      const rows = await db
-        .update(postenBesetzungen)
-        .set({ mitgliedSub: daten.mitgliedSub, startDatum: daten.start, endDatum: daten.ende })
-        .where(and(eq(postenBesetzungen.id, id), eq(postenBesetzungen.postenId, postenId)))
-        .returning({ id: postenBesetzungen.id });
-      return rows.length > 0;
+      return db.transaction(async (tx) => {
+        await keineUeberschneidung(tx, postenId, daten, id);
+        const rows = await tx
+          .update(postenBesetzungen)
+          .set({
+            mitgliedSub: daten.mitgliedSub,
+            startDatum: daten.start,
+            endDatum: daten.ende,
+            rechteVon: daten.rechteVon,
+            rechteBis: daten.rechteBis,
+          })
+          .where(and(eq(postenBesetzungen.id, id), eq(postenBesetzungen.postenId, postenId)))
+          .returning({ id: postenBesetzungen.id });
+        return rows.length > 0;
+      });
     },
     async besetzungLoeschen(postenId, id) {
       const rows = await db
@@ -168,21 +270,20 @@ export function createPostenStore(db: Db): PostenStore {
         .orderBy(posten.name);
       const result = new Map<string, AktuellerPosten[]>();
       for (const { sub, ...p } of rows) {
-        const liste = result.get(sub) ?? [];
-        // A member may hold a Posten twice (overlapping Besetzungen); list it once.
-        if (!liste.some((q) => q.id === p.id)) liste.push(p);
-        result.set(sub, liste);
+        // Besetzungen of one member never overlap per Posten, so each Posten appears once.
+        result.set(sub, [...(result.get(sub) ?? []), p]);
       }
       return result;
     },
     async rechteVon(sub, heute = heuteBerlin()) {
       const rows = await db
-        .selectDistinct({ recht: postenRechte.recht })
+        .select({ recht: postenRechte.recht, besetzung: postenBesetzungen })
         .from(postenBesetzungen)
         .innerJoin(posten, eq(posten.id, postenBesetzungen.postenId))
         .innerJoin(postenRechte, eq(postenRechte.postenId, posten.id))
-        .where(and(eq(postenBesetzungen.mitgliedSub, sub), aktuellBedingung(heute)));
-      return rows.map((r) => r.recht).filter(istRecht);
+        .where(and(eq(postenBesetzungen.mitgliedSub, sub), eq(posten.archiviert, false)));
+      const rechte = rows.filter((r) => rechteAktiv(r.besetzung, heute)).map((r) => r.recht);
+      return [...new Set(rechte)].filter(istRecht);
     },
   };
 }
