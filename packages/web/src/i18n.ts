@@ -1,4 +1,14 @@
-import type { Anrede, Kontaktkanal, MitgliedStatus, Permission, Role } from '@c4/shared';
+import type {
+  Anrede,
+  BuchungsArt,
+  Kontaktkanal,
+  MhdArt,
+  MitgliedStatus,
+  Permission,
+  Quelle,
+  Role,
+  VorgangTyp,
+} from '@c4/shared';
 
 // The whole UI is German. Fixed values coming from the backend get their German label here.
 
@@ -39,6 +49,30 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   anwaerter: { maennlich: 'Anwärter', weiblich: 'Anwärterin', neutral: 'Anwärter:in' },
   mitglied: { maennlich: 'Mitglied', weiblich: 'Mitglied', neutral: 'Mitglied' },
   em: { maennlich: 'EM', weiblich: 'EM', neutral: 'EM' },
+};
+
+export const MHD_ART_LABELS: Record<MhdArt, string> = {
+  keins: 'Kein MHD',
+  tag: 'Tagesgenau',
+  monat: 'Monatsgenau',
+};
+
+export const BUCHUNGS_ART_LABELS: Record<BuchungsArt, string> = {
+  zugang: 'Zugang',
+  abgang: 'Abgang',
+  anbruch: 'Anbruch',
+  korrektur: 'Korrektur',
+};
+
+export const VORGANG_TYP_LABELS: Record<VorgangTyp, string> = {
+  einlagerung: 'Einlagerung',
+  entnahme: 'Entnahme',
+  inventur: 'Inventur',
+};
+
+export const QUELLE_LABELS: Record<Quelle, string> = {
+  manuell: 'Manuell',
+  inventur: 'Inventur',
 };
 
 /** Cognito user statuses. */

@@ -36,3 +36,13 @@ zeigen sie nur mit `?archiv=1`.
 Inventur: pro Lagerort höchstens eine offene (409). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
 Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nicht gezählte
 Knoten gelten als 0.
+
+## Oberfläche
+
+- `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
+  (Unterebene anlegen, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
+  stattdessen Archivieren angeboten). Mit `bestand:buchen` startet oder setzt man eine Inventur fort (`/lager/inventur/:id`);
+  oberste Knoten zeigen die Schaltfläche direkt. Die Reihenfolge der Warenliste ist die Zählreihenfolge der Inventur.
+- `/lager/stammdaten`: Tabs „Warengruppen“ (Baum, nach Name sortiert, verschiebbar über die übergeordnete Gruppe) und
+  „Gebinde“ (Karten auf dem Handy, Tabelle ab `sm`; Pfand, Untergebinde, Gesamtpfand).
+- `WareFelder.tsx`: wiederverwendbares Formular für Waren (Name, Warengruppe, MHD-Art, Gebinde, Aliase).

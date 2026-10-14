@@ -1,6 +1,7 @@
 import { MantineProvider, Text } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
+import '@mantine/charts/styles.css';
 import '@mantine/notifications/styles.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, useEffect, useState } from 'react';

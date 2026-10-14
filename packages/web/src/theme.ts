@@ -4,9 +4,12 @@ import {
   Chip,
   createTheme,
   FileInput,
+  MultiSelect,
+  NumberInput,
   PasswordInput,
   Select,
   Textarea,
+  TagsInput,
   TextInput,
 } from '@mantine/core';
 
@@ -25,6 +28,9 @@ export const theme = createTheme({
     Select: Select.extend({
       defaultProps: { size: 'md', autoComplete: 'off', inputMode: 'none' },
     }),
+    NumberInput: NumberInput.extend({ defaultProps: { size: 'md' } }),
+    MultiSelect: MultiSelect.extend({ defaultProps: { size: 'md', autoComplete: 'off' } }),
+    TagsInput: TagsInput.extend({ defaultProps: { size: 'md' } }),
     Checkbox: Checkbox.extend({ defaultProps: { size: 'md' } }),
     Chip: Chip.extend({ defaultProps: { size: 'md' } }),
   },

@@ -17,6 +17,7 @@ import {
   IconBriefcase,
   IconCheck,
   IconDeviceDesktop,
+  IconBuildingWarehouse,
   IconHome,
   IconLogout,
   IconMoon,
@@ -116,6 +117,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Posten',
       icon: <IconBriefcase size={20} />,
       show: can('posten:lesen'),
+    },
+    {
+      to: '/lager',
+      label: 'Lager',
+      icon: <IconBuildingWarehouse size={20} />,
+      show: can('waren:lesen'),
     },
   ].filter((l) => l.show);
 

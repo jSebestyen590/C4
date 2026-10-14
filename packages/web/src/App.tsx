@@ -8,11 +8,13 @@ import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
+import { LagerPage } from './pages/LagerPage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
 import { ProfilPage } from './pages/ProfilPage';
+import { StammdatenPage } from './pages/StammdatenPage';
 
 function Protected({
   children,
@@ -109,6 +111,26 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="posten:lesen">
                 <RequireUsername>
                   <PostenDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <LagerPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/stammdaten"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <StammdatenPage />
                 </RequireUsername>
               </Protected>
             }
