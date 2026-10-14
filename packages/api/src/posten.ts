@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import {
+  heuteBerlin,
   POSTEN_RECHTE,
   rechteZeitraum,
   tagVorher,
@@ -16,10 +17,6 @@ import {
   type BesetzungRow,
   type PostenRow,
 } from './db/schema';
-
-/** Today as `YYYY-MM-DD` in the club's time zone; Besetzungen are compared as plain dates. */
-export const heuteBerlin = (jetzt = new Date()): string =>
-  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
 
 /** Whether `heute` lies within the Besetzung (both ends inclusive, no end = open). */
 export const istAktuell = (

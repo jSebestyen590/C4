@@ -38,3 +38,7 @@ export function rechteZeitraum(
     bis: ende === null ? null : monateVerschieben(ende, UEBERGANG_MONATE),
   };
 }
+
+/** Today as `YYYY-MM-DD` in the club's time zone; dates are compared as plain strings. */
+export const heuteBerlin = (jetzt = new Date()): string =>
+  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
