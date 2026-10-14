@@ -1,0 +1,205 @@
+import { Alert, Anchor, Badge, Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import {
+  IconArchive,
+  IconArchiveOff,
+  IconChevronLeft,
+  IconEdit,
+  IconMinus,
+  IconPlus,
+  IconTrash,
+} from '@tabler/icons-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { centAnzeigen, gesamtPfandCent, pfad } from '@c4/shared';
+import { AktionsMenue } from '../AktionsMenue';
+import { unwrap, useApi } from '../api';
+import { useAuth } from '../auth';
+import { BuchungModal, type BuchungsModus } from '../BuchungModal';
+import { LoeschenDialog } from '../LoeschenDialog';
+import { MHD_ART_LABELS } from '../i18n';
+import { WareBestand } from '../WareBestand';
+import { WareFormular } from '../WareFormular';
+import { WareHistorie } from '../WareHistorie';
+import { WareVerlauf } from '../WareVerlauf';
+import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { useWarenStammdaten, type WareEintrag } from '../warenDaten';
+
+/** Detail of one Ware: master data, bookings, current stock, stock chart and history. */
+export function WareDetailPage() {
+  const { id = '' } = useParams();
+  const api = useApi();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { can } = useAuth();
+  const darfVerwalten = can('waren:verwalten');
+  const darfBuchen = can('bestand:buchen');
+  const stamm = useWarenStammdaten();
+  const [bearbeiten, setBearbeiten] = useState(false);
+  const [loeschen, setLoeschen] = useState(false);
+  const [buchung, setBuchung] = useState<BuchungsModus | null>(null);
+
+  const daten = useQuery({
+    queryKey: ['waren', 'detail', id],
+    queryFn: async () => unwrap(await api.waren[':id'].$get({ param: { id } })),
+  });
+
+  const archivieren = async (archiviert: boolean) => {
+    await pruefen(await api.waren[':id'].archiv.$put({ param: { id }, json: { archiviert } }));
+    await qc.invalidateQueries({ queryKey: ['waren'] });
+  };
+  const archivMutation = useMutation({
+    mutationFn: archivieren,
+    onError: (e) => fehlerAnzeigen(e),
+  });
+
+  const zurueck = (
+    <Anchor component={Link} to="/waren" size="sm">
+      <Group gap={4} wrap="nowrap">
+        <IconChevronLeft size={16} />
+        Alle Waren
+      </Group>
+    </Anchor>
+  );
+
+  if (daten.isPending || stamm.laedt) return <Loader m="md" aria-label="Ware wird geladen" />;
+  if (daten.isError || stamm.fehler)
+    return (
+      <Stack>
+        {zurueck}
+        <Alert color="red">Die Ware konnte nicht geladen werden.</Alert>
+      </Stack>
+    );
+  const ware: WareEintrag = daten.data;
+  const eigene = stamm.gebinde.filter((g) => ware.gebindeIds.includes(g.id));
+
+  return (
+    <Stack maw={900}>
+      {zurueck}
+      <Group justify="space-between" wrap="nowrap" align="flex-start" gap={4}>
+        <Stack gap={4} style={{ minWidth: 0 }}>
+          <Title order={2} style={{ overflowWrap: 'anywhere' }}>
+            {ware.name}
+          </Title>
+          {ware.aliase.length > 0 && (
+            <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+              {ware.aliase.join(', ')}
+            </Text>
+          )}
+          <Text size="sm">{pfad(stamm.warengruppen, ware.warengruppeId)}</Text>
+          <Group gap="xs">
+            <Badge variant="light">{MHD_ART_LABELS[ware.mhdArt]}</Badge>
+            {ware.archiviert && (
+              <Badge color="gray" variant="light">
+                Archiviert
+              </Badge>
+            )}
+          </Group>
+        </Stack>
+        <AktionsMenue
+          label={`Aktionen für ${ware.name}`}
+          aktionen={[
+            {
+              text: 'Bearbeiten',
+              icon: <IconEdit size={18} />,
+              onClick: () => setBearbeiten(true),
+              sichtbar: darfVerwalten,
+            },
+            {
+              text: ware.archiviert ? 'Wiederherstellen' : 'Archivieren',
+              icon: ware.archiviert ? <IconArchiveOff size={18} /> : <IconArchive size={18} />,
+              onClick: () => archivMutation.mutate(!ware.archiviert),
+              sichtbar: darfVerwalten,
+              trenner: true,
+            },
+            {
+              text: 'Löschen',
+              icon: <IconTrash size={18} />,
+              color: 'red',
+              onClick: () => setLoeschen(true),
+              sichtbar: darfVerwalten,
+            },
+          ]}
+        />
+      </Group>
+
+      <Stack gap={2}>
+        <Text fw={600}>Gebinde</Text>
+        {eigene.map((g) => (
+          <Text key={g.id} size="sm">
+            {g.name} · Gesamtpfand {centAnzeigen(gesamtPfandCent(g, stamm.gebinde))}
+          </Text>
+        ))}
+      </Stack>
+
+      {darfBuchen && (
+        <Group grow>
+          <Button
+            size="lg"
+            mih={48}
+            leftSection={<IconPlus size={20} />}
+            disabled={ware.archiviert}
+            onClick={() => setBuchung('einlagerung')}
+          >
+            Einlagern
+          </Button>
+          <Button
+            size="lg"
+            mih={48}
+            variant="light"
+            leftSection={<IconMinus size={20} />}
+            disabled={ware.archiviert}
+            onClick={() => setBuchung('entnahme')}
+          >
+            Entnehmen
+          </Button>
+        </Group>
+      )}
+
+      <Title order={3}>Bestand</Title>
+      <WareBestand ware={ware} lagerorte={stamm.lagerorte} gebinde={stamm.gebinde} />
+
+      <Title order={3}>Bestandsverlauf</Title>
+      <WareVerlauf wareId={ware.id} gebinde={stamm.gebinde} />
+
+      <Title order={3}>Vorgänge</Title>
+      <WareHistorie
+        ware={ware}
+        lagerorte={stamm.lagerorte}
+        gebinde={stamm.gebinde}
+        darfBuchen={darfBuchen}
+      />
+
+      {bearbeiten && (
+        <WareFormular
+          ware={ware}
+          warengruppen={stamm.warengruppen}
+          gebinde={stamm.gebinde}
+          onClose={() => setBearbeiten(false)}
+        />
+      )}
+      {buchung && (
+        <BuchungModal
+          modus={buchung}
+          ware={ware}
+          lagerorte={stamm.lagerorte}
+          gebinde={stamm.gebinde}
+          onClose={() => setBuchung(null)}
+        />
+      )}
+      {loeschen && (
+        <LoeschenDialog
+          titel="Ware löschen"
+          name={ware.name}
+          onClose={() => setLoeschen(false)}
+          loeschen={async () => {
+            await pruefen(await api.waren[':id'].$delete({ param: { id } }));
+            await qc.invalidateQueries({ queryKey: ['waren'] });
+            navigate('/waren');
+          }}
+          archivieren={() => archivieren(true)}
+        />
+      )}
+    </Stack>
+  );
+}

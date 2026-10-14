@@ -23,6 +23,7 @@ import {
   type InventurZeile,
   type MhdArt,
   type MitgliedStatus,
+  type VerlaufPunkt,
   type VerlaufSerie,
   type VerlaufZeile,
 } from '@c4/shared';
@@ -260,6 +261,8 @@ export interface VorgangDetails {
 export interface WareVerlauf {
   serien: VerlaufSerie[];
   zeilen: VerlaufZeile[];
+  /** Same order as `zeilen`: stock per top-level Lager and Gebinde (not base units) at each point. */
+  punkte: VerlaufPunkt[];
   /** Names of the Lager and Gebinde the series refer to. */
   lager: { id: string; name: string }[];
   gebinde: { id: string; name: string }[];
@@ -997,12 +1000,14 @@ export function createWarenStore(db: Db): WarenStore {
         db.select().from(lagerorte),
         db.select().from(gebinde),
       ]);
-      const { serien, zeilen } = verlaufSerien(verlauf(buchungen, orte, alleGebinde), alleGebinde);
+      const punkte = verlauf(buchungen, orte, alleGebinde);
+      const { serien, zeilen } = verlaufSerien(punkte, alleGebinde);
       const lagerIds = new Set(serien.flatMap((s) => (s.lagerId ? [s.lagerId] : [])));
       const gebindeIds = new Set(serien.map((s) => s.basisGebindeId));
       return {
         serien,
         zeilen,
+        punkte,
         lager: orte.filter((l) => lagerIds.has(l.id)).map((l) => ({ id: l.id, name: l.name })),
         gebinde: alleGebinde
           .filter((g) => gebindeIds.has(g.id))

@@ -15,6 +15,8 @@ import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { StammdatenPage } from './pages/StammdatenPage';
+import { WareDetailPage } from './pages/WareDetailPage';
+import { WarenPage } from './pages/WarenPage';
 
 function Protected({
   children,
@@ -111,6 +113,26 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="posten:lesen">
                 <RequireUsername>
                   <PostenDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/waren"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <WarenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/waren/:id"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <WareDetailPage />
                 </RequireUsername>
               </Protected>
             }
