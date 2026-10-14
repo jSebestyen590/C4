@@ -1,5 +1,14 @@
-import { boolean, date, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
-import type { Anrede, MitgliedStatus } from '@c4/shared';
+import {
+  boolean,
+  date,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  type AnyPgColumn,
+} from 'drizzle-orm/pg-core';
+import type { Anrede, BuchungsArt, MhdArt, MitgliedStatus, Quelle, VorgangTyp } from '@c4/shared';
 
 /** Placeholder table; real domain tables go here. DSQL: no sequences. */
 export const appInfo = pgTable('app_info', {
@@ -65,3 +74,164 @@ export const postenBesetzungen = pgTable('posten_besetzungen', {
   endDatum: date('end_datum', { mode: 'string' }),
 });
 export type BesetzungRow = typeof postenBesetzungen.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Waren
+
+/** Tree of storage places (Lager > Regal > Etage); `position` orders siblings. */
+export const lagerorte = pgTable('lagerorte', {
+  id: text('id').primaryKey(),
+  parentId: text('parent_id').references((): AnyPgColumn => lagerorte.id),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  position: integer('position').notNull().default(0),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type LagerortRow = typeof lagerorte.$inferSelect;
+
+export const warengruppen = pgTable('warengruppen', {
+  id: text('id').primaryKey(),
+  parentId: text('parent_id').references((): AnyPgColumn => warengruppen.id),
+  name: text('name').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type WarengruppeRow = typeof warengruppen.$inferSelect;
+
+/** Packaging unit; an Obergebinde contains `unterAnzahl` of its `unterGebindeId`. */
+export const gebinde = pgTable('gebinde', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  pfandCent: integer('pfand_cent').notNull().default(0),
+  unterGebindeId: text('unter_gebinde_id').references((): AnyPgColumn => gebinde.id),
+  unterAnzahl: integer('unter_anzahl'),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type GebindeRow = typeof gebinde.$inferSelect;
+
+export const waren = pgTable('waren', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  warengruppeId: text('warengruppe_id')
+    .notNull()
+    .references(() => warengruppen.id),
+  mhdArt: text('mhd_art').$type<MhdArt>().notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type WareRow = typeof waren.$inferSelect;
+
+export const wareAliase = pgTable(
+  'ware_aliase',
+  {
+    wareId: text('ware_id')
+      .notNull()
+      .references(() => waren.id),
+    alias: text('alias').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.wareId, t.alias] })],
+);
+
+export const wareGebinde = pgTable(
+  'ware_gebinde',
+  {
+    wareId: text('ware_id')
+      .notNull()
+      .references(() => waren.id),
+    gebindeId: text('gebinde_id')
+      .notNull()
+      .references(() => gebinde.id),
+  },
+  (t) => [primaryKey({ columns: [t.wareId, t.gebindeId] })],
+);
+
+/** The ordered Warenliste of a Lagerort (what is expected to be stored there). */
+export const lagerortWaren = pgTable(
+  'lagerort_waren',
+  {
+    lagerortId: text('lagerort_id')
+      .notNull()
+      .references(() => lagerorte.id),
+    wareId: text('ware_id')
+      .notNull()
+      .references(() => waren.id),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.lagerortId, t.wareId] })],
+);
+
+/** One stock operation (Einlagerung, Entnahme, Inventur) with many Buchungszeilen. */
+export const bestandsvorgaenge = pgTable('bestandsvorgaenge', {
+  id: text('id').primaryKey(),
+  typ: text('typ').$type<VorgangTyp>().notNull(),
+  quelle: text('quelle').$type<Quelle>().notNull(),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull(),
+  kommentar: text('kommentar'),
+  /** Cognito sub, deliberately without a foreign key (users without a profile may book). */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type VorgangRow = typeof bestandsvorgaenge.$inferSelect;
+
+export const bestandsbuchungen = pgTable('bestandsbuchungen', {
+  id: text('id').primaryKey(),
+  vorgangId: text('vorgang_id')
+    .notNull()
+    .references(() => bestandsvorgaenge.id),
+  wareId: text('ware_id')
+    .notNull()
+    .references(() => waren.id),
+  lagerortId: text('lagerort_id')
+    .notNull()
+    .references(() => lagerorte.id),
+  gebindeId: text('gebinde_id')
+    .notNull()
+    .references(() => gebinde.id),
+  mhd: date('mhd', { mode: 'string' }),
+  menge: integer('menge').notNull(),
+  art: text('art').$type<BuchungsArt>().notNull(),
+});
+export type BuchungRow = typeof bestandsbuchungen.$inferSelect;
+
+/** Server-side draft of an Inventur; `status` is `offen` or `abgeschlossen`. */
+export const inventuren = pgTable('inventuren', {
+  id: text('id').primaryKey(),
+  lagerortId: text('lagerort_id')
+    .notNull()
+    .references(() => lagerorte.id),
+  status: text('status').$type<'offen' | 'abgeschlossen'>().notNull(),
+  gestartetVon: text('gestartet_von').notNull(),
+  gestartetAm: timestamp('gestartet_am', { withTimezone: true }).notNull().defaultNow(),
+  vorgangId: text('vorgang_id').references(() => bestandsvorgaenge.id),
+});
+export type InventurRow = typeof inventuren.$inferSelect;
+
+export const inventurKnoten = pgTable(
+  'inventur_knoten',
+  {
+    inventurId: text('inventur_id')
+      .notNull()
+      .references(() => inventuren.id),
+    lagerortId: text('lagerort_id')
+      .notNull()
+      .references(() => lagerorte.id),
+    erledigt: boolean('erledigt').notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.inventurId, t.lagerortId] })],
+);
+
+export const inventurZaehlungen = pgTable('inventur_zaehlungen', {
+  id: text('id').primaryKey(),
+  inventurId: text('inventur_id')
+    .notNull()
+    .references(() => inventuren.id),
+  lagerortId: text('lagerort_id')
+    .notNull()
+    .references(() => lagerorte.id),
+  wareId: text('ware_id')
+    .notNull()
+    .references(() => waren.id),
+  gebindeId: text('gebinde_id')
+    .notNull()
+    .references(() => gebinde.id),
+  mhd: date('mhd', { mode: 'string' }),
+  anzahl: integer('anzahl').notNull(),
+});

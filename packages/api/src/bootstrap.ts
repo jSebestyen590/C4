@@ -6,6 +6,7 @@ import { loadConfig } from './config';
 import { createDb, createPool } from './db/client';
 import { createMitgliederStore } from './mitglieder';
 import { createPostenStore } from './posten';
+import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
 
 /** Wires the real AWS-backed dependencies. Shared by the Lambda and the local server. */
@@ -19,6 +20,7 @@ export function createProductionApp() {
     emailAenderung: createCognitoEmailAenderung(config.region),
     mitglieder: createMitgliederStore(db),
     posten: createPostenStore(db),
+    waren: createWarenStore(db),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {
       await pool.query('select 1');

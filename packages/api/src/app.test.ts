@@ -7,6 +7,16 @@ import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
 import {
+  verwendetMeldung,
+  WarenKonflikt,
+  WarenUngueltig,
+  zyklusFehler,
+  type GebindeDaten,
+  type LagerortDaten,
+  type WarenStore,
+} from './waren';
+import type { GebindeRow, LagerortRow } from './db/schema';
+import {
   AblosungUngueltig,
   BesetzungUeberschneidung,
   ueberschneiden,
@@ -21,6 +31,81 @@ const users: Record<string, AuthUser> = {
   'reader-token': { sub: 'r', groups: [] },
   'vorstand-token': { sub: 'v', groups: [] },
 };
+
+/** Map-backed fake of the lagerorte/gebinde parts; the rest records its calls. */
+function makeWarenFake() {
+  const orte = new Map<string, LagerortRow>();
+  const gebindeListe = new Map<string, GebindeRow>();
+  const verwendet = new Set<string>();
+  const fake = {
+    lagerorte: vi.fn(async (mitArchiv: boolean) =>
+      [...orte.values()].filter((l) => mitArchiv || !l.archiviert),
+    ),
+    lagerortAnlegen: vi.fn(async (daten: LagerortDaten) => {
+      const id = `l${orte.size + 1}`;
+      orte.set(id, { id, ...daten, position: orte.size, archiviert: false });
+      return id;
+    }),
+    lagerortAktualisieren: vi.fn(async (id: string, daten: LagerortDaten) => {
+      const l = orte.get(id);
+      if (!l) return false;
+      const fehler = zyklusFehler([...orte.values()], id, daten.parentId);
+      if (fehler) throw new WarenUngueltig(fehler);
+      orte.set(id, { ...l, ...daten });
+      return true;
+    }),
+    lagerortLoeschen: vi.fn(async (id: string) => {
+      if (!orte.has(id)) return false;
+      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('Lagerort'));
+      orte.delete(id);
+      return true;
+    }),
+    lagerortArchivieren: vi.fn(async (id: string, archiviert: boolean) => {
+      const l = orte.get(id);
+      if (!l) return false;
+      if (archiviert && verwendet.has(id)) throw new WarenKonflikt('Noch Bestand vorhanden.');
+      orte.set(id, { ...l, archiviert });
+      return true;
+    }),
+    lagerortReihenfolge: vi.fn<WarenStore['lagerortReihenfolge']>(async () => true),
+    lagerortWaren: vi.fn(async (id: string) => (orte.has(id) ? ['w1'] : undefined)),
+    lagerortWarenSetzen: vi.fn<WarenStore['lagerortWarenSetzen']>(async (id) => orte.has(id)),
+    warengruppen: vi.fn(async () => []),
+    warengruppeAnlegen: vi.fn(async () => 'g1'),
+    warengruppeAktualisieren: vi.fn(async () => true),
+    warengruppeLoeschen: vi.fn(async () => true),
+    warengruppeArchivieren: vi.fn(async () => true),
+    gebinde: vi.fn(async () => [...gebindeListe.values()]),
+    gebindeAnlegen: vi.fn(async (daten: GebindeDaten) => {
+      const id = `gb${gebindeListe.size + 1}`;
+      gebindeListe.set(id, { id, ...daten, archiviert: false });
+      return id;
+    }),
+    gebindeAktualisieren: vi.fn(async () => true),
+    gebindeLoeschen: vi.fn(async () => true),
+    gebindeArchivieren: vi.fn(async () => true),
+    waren: vi.fn(async () => []),
+    wareHolen: vi.fn(async () => undefined),
+    wareAnlegen: vi.fn(async () => 'w1'),
+    wareAktualisieren: vi.fn(async () => true),
+    wareLoeschen: vi.fn(async () => true),
+    wareArchivieren: vi.fn(async () => true),
+    wareBestand: vi.fn(async () => []),
+    wareVerlauf: vi.fn(async () => undefined),
+    wareVorgaenge: vi.fn(async () => undefined),
+    einlagern: vi.fn<WarenStore['einlagern']>(async () => 'v1'),
+    entnehmen: vi.fn<WarenStore['entnehmen']>(async () => 'v2'),
+    vorgangLoeschen: vi.fn(async (id: string) => id === 'v1'),
+    inventuren: vi.fn(async () => []),
+    inventurStarten: vi.fn<WarenStore['inventurStarten']>(async () => 'i1'),
+    inventurHolen: vi.fn(async () => undefined),
+    inventurKnotenSpeichern: vi.fn(async () => true),
+    inventurZusammenfassung: vi.fn(async () => undefined),
+    inventurAbschliessen: vi.fn(async (id: string) => (id === 'i1' ? 'v3' : undefined)),
+    inventurVerwerfen: vi.fn(async () => true),
+  } satisfies WarenStore;
+  return { fake, orte, verwendet };
+}
 
 function makeApp(pingDb = async () => {}) {
   const userAdmin = {
@@ -129,8 +214,11 @@ function makeApp(pingDb = async () => {}) {
       return (p?.besetzungen.length ?? 0) < vorher;
     }),
     aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
-    rechteVon: vi.fn(async (sub: string) => (sub === 'v' ? ['posten:bearbeiten' as const] : [])),
+    rechteVon: vi.fn(async (sub: string) =>
+      sub === 'v' ? ['posten:bearbeiten' as const, 'waren:verwalten' as const] : [],
+    ),
   };
+  const { fake: waren, orte, verwendet } = makeWarenFake();
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -150,10 +238,21 @@ function makeApp(pingDb = async () => {}) {
     emailAenderung,
     mitglieder,
     posten,
+    waren,
     profilbilder,
     pingDb,
   });
-  return { app, userAdmin, emailAenderung, mitglieder, posten, profilbilder };
+  return {
+    app,
+    userAdmin,
+    emailAenderung,
+    mitglieder,
+    posten,
+    profilbilder,
+    waren,
+    orte,
+    verwendet,
+  };
 }
 
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -180,7 +279,14 @@ describe('api', () => {
     const res = await makeApp().app.request('/api/me', { headers: bearer('reader-token') });
     expect(await res.json()).toMatchObject({
       sub: 'r',
-      permissions: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
+      permissions: [
+        'content:read',
+        'mitglieder:lesen',
+        'profil:bearbeiten',
+        'posten:lesen',
+        'waren:lesen',
+        'bestand:buchen',
+      ],
     });
   });
 
@@ -671,5 +777,255 @@ describe('posten', () => {
     expect((await post('2024-01-01', '2025-12-31')).status).toBe(201);
     expect((await post('2020-12-31', '2021-06-30')).status).toBe(409);
     expect((await post('2025-06-01', null)).status).toBe(409);
+  });
+  describe('waren', () => {
+    const json = (token: string, method: string, body?: unknown) => ({
+      method,
+      headers: { ...bearer(token), 'content-type': 'application/json' },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
+    const zeitpunkt = '2026-05-01T10:00:00.000Z';
+
+    it('lets everyone read and book, but only Waren-Verwalter change master data', async () => {
+      const { app, waren } = makeApp();
+      expect((await app.request('/api/lagerorte', json('reader-token', 'GET'))).status).toBe(200);
+      for (const [url, method] of [
+        ['/api/lagerorte', 'POST'],
+        ['/api/lagerorte/l1', 'PUT'],
+        ['/api/lagerorte/l1', 'DELETE'],
+        ['/api/lagerorte/l1/archiv', 'PUT'],
+        ['/api/lagerorte/root/reihenfolge', 'PUT'],
+        ['/api/lagerorte/l1/waren', 'PUT'],
+        ['/api/warengruppen', 'POST'],
+        ['/api/gebinde', 'POST'],
+        ['/api/waren', 'POST'],
+        ['/api/waren/w1', 'DELETE'],
+        ['/api/waren/w1/archiv', 'PUT'],
+      ] as const) {
+        const res = await app.request(url, json('reader-token', method, {}));
+        expect(res.status, `${method} ${url}`).toBe(403);
+      }
+      expect(waren.lagerortAnlegen).not.toHaveBeenCalled();
+
+      const einlagerung = {
+        wareId: 'w1',
+        lagerortId: 'l1',
+        gebindeId: 'gb1',
+        anzahl: 3,
+        mhd: '2027-01-15',
+        zeitpunkt,
+      };
+      const res = await app.request(
+        '/api/bestand/einlagerung',
+        json('reader-token', 'POST', einlagerung),
+      );
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ id: 'v1' });
+      expect(waren.einlagern).toHaveBeenCalledWith(
+        expect.objectContaining({ anzahl: 3, mhd: '2027-01-15', kommentar: null }),
+        'r',
+      );
+    });
+
+    it('manages Lagerorte: create, update, cycle, 404, conflict on delete, archive, order', async () => {
+      const { app, verwendet, waren } = makeApp();
+      const post = async (body: unknown) =>
+        app.request('/api/lagerorte', json('admin-token', 'POST', body));
+      expect((await post({ name: '  ' })).status).toBe(400);
+      const lager = (await (await post({ name: 'Lager' })).json()) as { id: string };
+      const regal = (await (await post({ name: 'Regal', parentId: lager.id })).json()) as {
+        id: string;
+      };
+      expect(regal.id).toBe('l2');
+
+      const put = (id: string, body: unknown) =>
+        app.request(`/api/lagerorte/${id}`, json('vorstand-token', 'PUT', body));
+      expect((await put(lager.id, { name: 'Lager', parentId: regal.id })).status).toBe(400);
+      expect((await put(lager.id, { name: 'Lager', parentId: lager.id })).status).toBe(400);
+      expect((await put('x', { name: 'X' })).status).toBe(404);
+      expect((await put(regal.id, { name: 'Regal 2', parentId: lager.id })).status).toBe(200);
+
+      verwendet.add(regal.id);
+      const del = await app.request(`/api/lagerorte/${regal.id}`, json('admin-token', 'DELETE'));
+      expect(del.status).toBe(409);
+      expect((await del.json()) as { error: string }).toEqual({
+        error: 'Der Lagerort wird noch verwendet, archiviere ihn stattdessen.',
+      });
+      const archiv = (id: string, archiviert: boolean) =>
+        app.request(`/api/lagerorte/${id}/archiv`, json('admin-token', 'PUT', { archiviert }));
+      expect((await archiv(regal.id, true)).status).toBe(409);
+      verwendet.delete(regal.id);
+      expect((await archiv(regal.id, true)).status).toBe(200);
+      expect((await archiv('x', true)).status).toBe(404);
+
+      const liste = async (query = '') =>
+        (await (
+          await app.request(`/api/lagerorte${query}`, json('reader-token', 'GET'))
+        ).json()) as unknown[];
+      expect(await liste()).toHaveLength(1);
+      expect(await liste('?archiv=1')).toHaveLength(2);
+
+      const reihenfolge = await app.request(
+        '/api/lagerorte/root/reihenfolge',
+        json('admin-token', 'PUT', { ids: [lager.id] }),
+      );
+      expect(reihenfolge.status).toBe(200);
+      expect(waren.lagerortReihenfolge).toHaveBeenCalledWith(null, [lager.id]);
+      expect(
+        (
+          await app.request(
+            '/api/lagerorte/root/reihenfolge',
+            json('admin-token', 'PUT', { ids: ['a', 'a'] }),
+          )
+        ).status,
+      ).toBe(400);
+
+      expect(
+        (await app.request('/api/lagerorte/x/waren', json('reader-token', 'GET'))).status,
+      ).toBe(404);
+      const ware = await app.request(
+        `/api/lagerorte/${lager.id}/waren`,
+        json('admin-token', 'PUT', { wareIds: ['w1', 'w2'] }),
+      );
+      expect(ware.status).toBe(200);
+      expect(waren.lagerortWarenSetzen).toHaveBeenCalledWith(lager.id, ['w1', 'w2']);
+    });
+
+    it('validates Gebinde and Waren input', async () => {
+      const { app, waren } = makeApp();
+      const gebinde = (body: unknown) =>
+        app.request('/api/gebinde', json('admin-token', 'POST', body));
+      expect((await gebinde({ name: 'Flasche', pfandCent: -1 })).status).toBe(400);
+      expect(
+        (await gebinde({ name: 'Kasten', pfandCent: 150, unterGebindeId: 'gb1' })).status,
+      ).toBe(400);
+      expect((await gebinde({ name: 'Flasche', pfandCent: 8 })).status).toBe(201);
+
+      waren.wareAnlegen.mockRejectedValueOnce(
+        new WarenUngueltig('Die Warengruppe existiert nicht.'),
+      );
+      const ware = (body: unknown) => app.request('/api/waren', json('admin-token', 'POST', body));
+      expect(
+        (await ware({ name: 'Cola', warengruppeId: 'g', mhdArt: 'x', gebindeIds: ['gb1'] })).status,
+      ).toBe(400);
+      expect(
+        (await ware({ name: 'Cola', warengruppeId: 'g', mhdArt: 'tag', gebindeIds: [] })).status,
+      ).toBe(400);
+      const res = await ware({
+        name: 'Cola',
+        warengruppeId: 'g',
+        mhdArt: 'tag',
+        gebindeIds: ['gb1'],
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Die Warengruppe existiert nicht.' });
+      expect(
+        (await ware({ name: 'Cola', warengruppeId: 'g', mhdArt: 'tag', gebindeIds: ['gb1'] }))
+          .status,
+      ).toBe(201);
+
+      expect((await app.request('/api/waren/nope', json('reader-token', 'GET'))).status).toBe(404);
+      expect(
+        (await app.request('/api/waren/nope/verlauf', json('reader-token', 'GET'))).status,
+      ).toBe(404);
+    });
+
+    it('validates bookings and maps store errors', async () => {
+      const { app, waren } = makeApp();
+      const basis = { wareId: 'w1', lagerortId: 'l1', gebindeId: 'gb1', zeitpunkt };
+      const entnahme = (body: unknown) =>
+        app.request('/api/bestand/entnahme', json('reader-token', 'POST', body));
+      expect((await entnahme({ ...basis, anzahl: 0 })).status).toBe(400);
+      expect((await entnahme({ ...basis, anzahl: 1.5 })).status).toBe(400);
+      expect((await entnahme({ ...basis, anzahl: 1, zeitpunkt: 'gestern' })).status).toBe(400);
+      const ok = await entnahme({ ...basis, anzahl: 2, kommentar: ' Fest ' });
+      expect(ok.status).toBe(201);
+      expect(waren.entnehmen).toHaveBeenCalledWith(
+        expect.objectContaining({ anzahl: 2, kommentar: 'Fest' }),
+        'r',
+      );
+      waren.entnehmen.mockRejectedValueOnce(new WarenUngueltig('Die Ware ist archiviert.'));
+      expect((await entnahme({ ...basis, anzahl: 1 })).status).toBe(400);
+
+      const einlagerung = (body: unknown) =>
+        app.request('/api/bestand/einlagerung', json('reader-token', 'POST', body));
+      waren.einlagern.mockRejectedValueOnce(new WarenUngueltig('Bitte gib ein MHD an.'));
+      const res = await einlagerung({ ...basis, anzahl: 1 });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Bitte gib ein MHD an.' });
+
+      const loeschen = (id: string) =>
+        app.request(`/api/bestand/vorgaenge/${id}`, json('reader-token', 'DELETE'));
+      expect((await loeschen('v1')).status).toBe(200);
+      expect((await loeschen('nope')).status).toBe(404);
+    });
+
+    it('runs the Inventur flow and maps conflicts', async () => {
+      const { app, waren } = makeApp();
+      const start = (body: unknown) =>
+        app.request('/api/inventuren', json('reader-token', 'POST', body));
+      expect((await start({})).status).toBe(400);
+      const ok = await start({ lagerortId: 'l1' });
+      expect(ok.status).toBe(201);
+      expect(waren.inventurStarten).toHaveBeenCalledWith('l1', 'r');
+      waren.inventurStarten.mockRejectedValueOnce(
+        new WarenKonflikt('Für diesen Lagerort läuft bereits eine Inventur.'),
+      );
+      expect((await start({ lagerortId: 'l1' })).status).toBe(409);
+
+      expect(
+        (await app.request('/api/inventuren?status=offen', json('reader-token', 'GET'))).status,
+      ).toBe(200);
+      expect(waren.inventuren).toHaveBeenCalledWith('offen');
+      expect(
+        (await app.request('/api/inventuren?status=x', json('reader-token', 'GET'))).status,
+      ).toBe(400);
+      expect((await app.request('/api/inventuren/nope', json('reader-token', 'GET'))).status).toBe(
+        404,
+      );
+
+      const knoten = (body: unknown) =>
+        app.request('/api/inventuren/i1/knoten/l1', json('reader-token', 'PUT', body));
+      expect(
+        (await knoten({ zaehlungen: [{ wareId: 'w1', gebindeId: 'gb1', anzahl: -1 }] })).status,
+      ).toBe(400);
+      const gespeichert = await knoten({
+        zaehlungen: [{ wareId: 'w1', gebindeId: 'gb1', mhd: '2027-01-01', anzahl: 0 }],
+        inListeAufnehmen: ['w2'],
+      });
+      expect(gespeichert.status).toBe(200);
+      expect(waren.inventurKnotenSpeichern).toHaveBeenCalledWith(
+        'i1',
+        'l1',
+        [{ wareId: 'w1', gebindeId: 'gb1', mhd: '2027-01-01', anzahl: 0 }],
+        ['w2'],
+      );
+
+      expect(
+        (
+          await app.request(
+            '/api/inventuren/i1/zusammenfassung?zeitpunkt=gestern',
+            json('reader-token', 'GET'),
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (await app.request('/api/inventuren/i1/zusammenfassung', json('reader-token', 'GET')))
+          .status,
+      ).toBe(404);
+
+      const abschluss = (id: string, body: unknown) =>
+        app.request(`/api/inventuren/${id}/abschluss`, json('reader-token', 'POST', body));
+      expect((await abschluss('i1', { zeitpunkt: 'bald' })).status).toBe(400);
+      const fertig = await abschluss('i1', { zeitpunkt });
+      expect(await fertig.json()).toEqual({ vorgangId: 'v3' });
+      expect((await abschluss('nope', { zeitpunkt })).status).toBe(404);
+      waren.inventurAbschliessen.mockRejectedValueOnce(new WarenKonflikt('Bereits abgeschlossen.'));
+      expect((await abschluss('i1', { zeitpunkt })).status).toBe(409);
+
+      expect((await app.request('/api/inventuren/i1', json('reader-token', 'DELETE'))).status).toBe(
+        200,
+      );
+    });
   });
 });

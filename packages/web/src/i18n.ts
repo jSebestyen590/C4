@@ -30,6 +30,9 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'profil:bearbeiten': 'Eigenes Profil bearbeiten',
   'posten:lesen': 'Posten ansehen',
   'posten:bearbeiten': 'Posten bearbeiten',
+  'waren:lesen': 'Waren ansehen',
+  'bestand:buchen': 'Bestand buchen',
+  'waren:verwalten': 'Waren verwalten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {

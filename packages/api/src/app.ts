@@ -8,6 +8,17 @@ import {
   heuteBerlin,
   besetzungAnlegenSchema,
   besetzungEingabeSchema,
+  einlagerungSchema,
+  entnahmeSchema,
+  gebindeSchema,
+  inventurAbschlussSchema,
+  inventurStartenSchema,
+  inventurZaehlungSchema,
+  lagerortReihenfolgeSchema,
+  lagerortSchema,
+  lagerortWarenSchema,
+  wareSchema,
+  warengruppeSchema,
   mitgliedAktualisierenSchema,
   postenAktualisierenSchema,
   postenArchivierenSchema,
@@ -38,6 +49,7 @@ import {
   type PostenDetails,
   type PostenStore,
 } from './posten';
+import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
@@ -48,6 +60,7 @@ export interface AppDeps {
   emailAenderung: EmailAenderung;
   mitglieder: MitgliederStore;
   posten: PostenStore;
+  waren: WarenStore;
   profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
@@ -78,6 +91,9 @@ export function createApp(deps: AppDeps) {
   const profilBearbeiten = requirePermission('profil:bearbeiten');
   const postenLesen = requirePermission('posten:lesen');
   const postenBearbeiten = requirePermission('posten:bearbeiten');
+  const warenLesen = requirePermission('waren:lesen');
+  const bestandBuchen = requirePermission('bestand:buchen');
+  const warenVerwalten = requirePermission('waren:verwalten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -172,6 +188,19 @@ export function createApp(deps: AppDeps) {
       throw new HTTPException(409, { message: 'Besetzung überschneidet sich' });
     }
     throw err;
+  };
+
+  /** Maps the Waren store's domain errors to 400 (invalid) and 409 (conflict). */
+  const warenFehler = (err: unknown): never => {
+    if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
+    throw err;
+  };
+
+  /** 404 unless the store found the entry (`false` / `undefined` mean it does not exist). */
+  const gefunden = <T>(wert: T | false | undefined, meldung: string): T => {
+    if (wert === false || wert === undefined) throw new HTTPException(404, { message: meldung });
+    return wert;
   };
 
   /** Besetzungen may only name members that already have a profile row. */
@@ -494,6 +523,344 @@ export function createApp(deps: AppDeps) {
           return c.json({ rechte });
         },
       )
+      // ----- Waren: Lagerorte
+      .get('/lagerorte', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.lagerorte(c.req.query('archiv') === '1')),
+      )
+      .post('/lagerorte', auth, warenVerwalten, zValidator('json', lagerortSchema), async (c) => {
+        const id = await deps.waren.lagerortAnlegen(c.req.valid('json')).catch(warenFehler);
+        return c.json({ id }, 201);
+      })
+      .put(
+        '/lagerorte/:id',
+        auth,
+        warenVerwalten,
+        zValidator('json', lagerortSchema),
+        async (c) => {
+          gefunden(
+            await deps.waren
+              .lagerortAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Lagerort nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/lagerorte/:id', auth, warenVerwalten, async (c) => {
+        gefunden(
+          await deps.waren.lagerortLoeschen(c.req.param('id')).catch(warenFehler),
+          'Lagerort nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/lagerorte/:id/archiv',
+        auth,
+        warenVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.waren.lagerortArchivieren(c.req.param('id'), archiviert).catch(warenFehler),
+            'Lagerort nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      // `:id` = `root` orders the top level.
+      .put(
+        '/lagerorte/:id/reihenfolge',
+        auth,
+        warenVerwalten,
+        zValidator('json', lagerortReihenfolgeSchema),
+        async (c) => {
+          const id = c.req.param('id');
+          const { ids } = c.req.valid('json');
+          gefunden(
+            await deps.waren.lagerortReihenfolge(id === 'root' ? null : id, ids).catch(warenFehler),
+            'Lagerort nicht gefunden',
+          );
+          return c.json({ ids });
+        },
+      )
+      .get('/lagerorte/:id/waren', auth, warenLesen, async (c) => {
+        const wareIds = gefunden(
+          await deps.waren.lagerortWaren(c.req.param('id')),
+          'Lagerort nicht gefunden',
+        );
+        return c.json({ wareIds });
+      })
+      .put(
+        '/lagerorte/:id/waren',
+        auth,
+        warenVerwalten,
+        zValidator('json', lagerortWarenSchema),
+        async (c) => {
+          const { wareIds } = c.req.valid('json');
+          gefunden(
+            await deps.waren.lagerortWarenSetzen(c.req.param('id'), wareIds).catch(warenFehler),
+            'Lagerort nicht gefunden',
+          );
+          return c.json({ wareIds });
+        },
+      )
+      // ----- Waren: Warengruppen
+      .get('/warengruppen', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.warengruppen(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/warengruppen',
+        auth,
+        warenVerwalten,
+        zValidator('json', warengruppeSchema),
+        async (c) => {
+          const id = await deps.waren.warengruppeAnlegen(c.req.valid('json')).catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/warengruppen/:id',
+        auth,
+        warenVerwalten,
+        zValidator('json', warengruppeSchema),
+        async (c) => {
+          gefunden(
+            await deps.waren
+              .warengruppeAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Warengruppe nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/warengruppen/:id', auth, warenVerwalten, async (c) => {
+        gefunden(
+          await deps.waren.warengruppeLoeschen(c.req.param('id')).catch(warenFehler),
+          'Warengruppe nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/warengruppen/:id/archiv',
+        auth,
+        warenVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.waren
+              .warengruppeArchivieren(c.req.param('id'), archiviert)
+              .catch(warenFehler),
+            'Warengruppe nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      // ----- Waren: Gebinde
+      .get('/gebinde', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.gebinde(c.req.query('archiv') === '1')),
+      )
+      .post('/gebinde', auth, warenVerwalten, zValidator('json', gebindeSchema), async (c) => {
+        const id = await deps.waren.gebindeAnlegen(c.req.valid('json')).catch(warenFehler);
+        return c.json({ id }, 201);
+      })
+      .put('/gebinde/:id', auth, warenVerwalten, zValidator('json', gebindeSchema), async (c) => {
+        gefunden(
+          await deps.waren
+            .gebindeAktualisieren(c.req.param('id'), c.req.valid('json'))
+            .catch(warenFehler),
+          'Gebinde nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .delete('/gebinde/:id', auth, warenVerwalten, async (c) => {
+        gefunden(
+          await deps.waren.gebindeLoeschen(c.req.param('id')).catch(warenFehler),
+          'Gebinde nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/gebinde/:id/archiv',
+        auth,
+        warenVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.waren.gebindeArchivieren(c.req.param('id'), archiviert),
+            'Gebinde nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      // ----- Waren
+      .get('/waren', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.waren(c.req.query('archiv') === '1')),
+      )
+      .post('/waren', auth, warenVerwalten, zValidator('json', wareSchema), async (c) => {
+        const id = await deps.waren.wareAnlegen(c.req.valid('json')).catch(warenFehler);
+        return c.json({ id }, 201);
+      })
+      .get('/waren/:id', auth, warenLesen, async (c) =>
+        c.json(gefunden(await deps.waren.wareHolen(c.req.param('id')), 'Ware nicht gefunden')),
+      )
+      .put('/waren/:id', auth, warenVerwalten, zValidator('json', wareSchema), async (c) => {
+        gefunden(
+          await deps.waren
+            .wareAktualisieren(c.req.param('id'), c.req.valid('json'))
+            .catch(warenFehler),
+          'Ware nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .delete('/waren/:id', auth, warenVerwalten, async (c) => {
+        gefunden(
+          await deps.waren.wareLoeschen(c.req.param('id')).catch(warenFehler),
+          'Ware nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/waren/:id/archiv',
+        auth,
+        warenVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.waren.wareArchivieren(c.req.param('id'), archiviert),
+            'Ware nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      .get('/waren/:id/bestand', auth, warenLesen, async (c) =>
+        c.json(gefunden(await deps.waren.wareBestand(c.req.param('id')), 'Ware nicht gefunden')),
+      )
+      .get('/waren/:id/verlauf', auth, warenLesen, async (c) =>
+        c.json(gefunden(await deps.waren.wareVerlauf(c.req.param('id')), 'Ware nicht gefunden')),
+      )
+      .get('/waren/:id/vorgaenge', auth, warenLesen, async (c) =>
+        c.json(gefunden(await deps.waren.wareVorgaenge(c.req.param('id')), 'Ware nicht gefunden')),
+      )
+      // ----- Bestand
+      .post(
+        '/bestand/einlagerung',
+        auth,
+        bestandBuchen,
+        zValidator('json', einlagerungSchema),
+        async (c) => {
+          const id = await deps.waren
+            .einlagern(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/bestand/entnahme',
+        auth,
+        bestandBuchen,
+        zValidator('json', entnahmeSchema),
+        async (c) => {
+          const id = await deps.waren
+            .entnehmen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .delete('/bestand/vorgaenge/:id', auth, bestandBuchen, async (c) => {
+        gefunden(await deps.waren.vorgangLoeschen(c.req.param('id')), 'Vorgang nicht gefunden');
+        return c.json({ ok: true });
+      })
+      // ----- Inventur
+      .get('/inventuren', auth, warenLesen, async (c) => {
+        const status = c.req.query('status');
+        if (status !== undefined && status !== 'offen' && status !== 'abgeschlossen') {
+          throw new HTTPException(400, { message: 'Ungültiger Status' });
+        }
+        return c.json(await deps.waren.inventuren(status));
+      })
+      .post(
+        '/inventuren',
+        auth,
+        bestandBuchen,
+        zValidator('json', inventurStartenSchema),
+        async (c) => {
+          const id = await deps.waren
+            .inventurStarten(c.req.valid('json').lagerortId, c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .get('/inventuren/:id', auth, warenLesen, async (c) =>
+        c.json(
+          gefunden(await deps.waren.inventurHolen(c.req.param('id')), 'Inventur nicht gefunden'),
+        ),
+      )
+      .put(
+        '/inventuren/:id/knoten/:lid',
+        auth,
+        bestandBuchen,
+        zValidator('json', inventurZaehlungSchema),
+        async (c) => {
+          const { zaehlungen, inListeAufnehmen } = c.req.valid('json');
+          gefunden(
+            await deps.waren
+              .inventurKnotenSpeichern(
+                c.req.param('id'),
+                c.req.param('lid'),
+                zaehlungen,
+                inListeAufnehmen,
+              )
+              .catch(warenFehler),
+            'Inventur nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .get('/inventuren/:id/zusammenfassung', auth, warenLesen, async (c) => {
+        const q = c.req.query('zeitpunkt');
+        const zeitpunkt =
+          q === undefined ? undefined : inventurAbschlussSchema.safeParse({ zeitpunkt: q });
+        if (zeitpunkt && !zeitpunkt.success) {
+          throw new HTTPException(400, { message: 'Ungültiger Zeitpunkt.' });
+        }
+        return c.json(
+          gefunden(
+            await deps.waren
+              .inventurZusammenfassung(c.req.param('id'), zeitpunkt?.data.zeitpunkt)
+              .catch(warenFehler),
+            'Inventur nicht gefunden',
+          ),
+        );
+      })
+      .post(
+        '/inventuren/:id/abschluss',
+        auth,
+        bestandBuchen,
+        zValidator('json', inventurAbschlussSchema),
+        async (c) => {
+          const vorgangId = gefunden(
+            await deps.waren
+              .inventurAbschliessen(
+                c.req.param('id'),
+                c.req.valid('json').zeitpunkt,
+                c.get('user').sub,
+              )
+              .catch(warenFehler),
+            'Inventur nicht gefunden',
+          );
+          return c.json({ vorgangId });
+        },
+      )
+      .delete('/inventuren/:id', auth, bestandBuchen, async (c) => {
+        gefunden(
+          await deps.waren.inventurVerwerfen(c.req.param('id')).catch(warenFehler),
+          'Inventur nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
       .onError((err, c) => {
         if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
         console.error(err);

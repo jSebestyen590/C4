@@ -15,6 +15,15 @@ describe('permissions', () => {
       expect(hasPermission([], status, 'profil:bearbeiten')).toBe(true);
     }
   });
+  it('every status may read and book Waren, but only extra permissions manage them', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'waren:lesen')).toBe(true);
+      expect(hasPermission([], status, 'bestand:buchen')).toBe(true);
+      expect(hasPermission([], status, 'waren:verwalten')).toBe(false);
+      expect(hasPermission([], status, 'waren:verwalten', ['waren:verwalten'])).toBe(true);
+      expect(hasPermission(['admin'], status, 'waren:verwalten')).toBe(true);
+    }
+  });
   it('every status may read Posten, but only extra permissions allow editing them', () => {
     for (const status of MITGLIED_STATI) {
       expect(hasPermission([], status, 'posten:lesen')).toBe(true);

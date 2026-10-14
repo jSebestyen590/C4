@@ -198,6 +198,12 @@ export const inventurZaehlungSchema = z.object({
 });
 export type InventurZaehlungEingabe = z.input<typeof inventurZaehlungSchema>;
 
+export const inventurStartenSchema = z.object({
+  lagerortId: idSchema('Bitte wähle einen Lagerort.'),
+});
+
+export const inventurAbschlussSchema = z.object({ zeitpunkt: zeitpunktSchema });
+
 // ---------------------------------------------------------------------------
 // Trees (Lagerorte, Warengruppen)
 

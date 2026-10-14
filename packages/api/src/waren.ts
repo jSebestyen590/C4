@@ -1,0 +1,1289 @@
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
+import {
+  bestandZu,
+  entnahmePlanen,
+  gebindeErgaenzen,
+  gebindeFehler,
+  inventurAbgleich,
+  inventurKorrekturen,
+  mhdNormalisieren,
+  pfad,
+  teilbaumIds,
+  tiefensuche,
+  verlauf,
+  verlaufSerien,
+  type Anrede,
+  type BaumKnoten,
+  type Bestandsposten,
+  type Buchung,
+  type Buchungszeile,
+  type InventurIst,
+  type InventurZeile,
+  type MhdArt,
+  type MitgliedStatus,
+  type VerlaufSerie,
+  type VerlaufZeile,
+} from '@c4/shared';
+import type { Db } from './db/client';
+import {
+  bestandsbuchungen,
+  bestandsvorgaenge,
+  gebinde,
+  inventurKnoten,
+  inventuren,
+  inventurZaehlungen,
+  lagerortWaren,
+  lagerorte,
+  mitglieder,
+  wareAliase,
+  wareGebinde,
+  waren,
+  warengruppen,
+  type BuchungRow,
+  type GebindeRow,
+  type InventurRow,
+  type LagerortRow,
+  type VorgangRow,
+  type WareRow,
+  type WarengruppeRow,
+} from './db/schema';
+
+// ---------------------------------------------------------------------------
+// Errors
+
+/** The request is well-formed but names unknown/archived entries or violates a domain rule (400). */
+export class WarenUngueltig extends Error {}
+
+/** The request conflicts with the current state, e.g. the entry is still in use (409). */
+export class WarenKonflikt extends Error {}
+
+// ---------------------------------------------------------------------------
+// Pure helpers (unit-tested in waren.test.ts)
+
+export type EintragArt = 'Lagerort' | 'Warengruppe' | 'Gebinde' | 'Ware';
+
+/** `Der Lagerort wird noch verwendet, archiviere ihn stattdessen.` */
+export function verwendetMeldung(art: EintragArt): string {
+  const [artikel, pronomen] = {
+    Lagerort: ['Der', 'ihn'],
+    Warengruppe: ['Die', 'sie'],
+    Gebinde: ['Das', 'es'],
+    Ware: ['Die', 'sie'],
+  }[art];
+  return `${artikel} ${art} wird noch verwendet, archiviere ${pronomen} stattdessen.`;
+}
+
+/** German error if `id` would get itself or one of its descendants as parent, otherwise null. */
+export function zyklusFehler(
+  nodes: BaumKnoten[],
+  id: string,
+  parentId: string | null,
+): string | null {
+  if (parentId === null) return null;
+  if (teilbaumIds(nodes, id).includes(parentId)) {
+    return 'Der übergeordnete Eintrag darf nicht der Eintrag selbst oder einer seiner Untereinträge sein.';
+  }
+  return null;
+}
+
+/** German error if `parentId` is no usable (existing, not archived) parent, otherwise null. */
+export function elternFehler(
+  nodes: (BaumKnoten & { archiviert: boolean })[],
+  parentId: string | null,
+): string | null {
+  if (parentId === null) return null;
+  const parent = nodes.find((n) => n.id === parentId);
+  if (!parent) return 'Der übergeordnete Eintrag existiert nicht.';
+  if (parent.archiviert) return 'Der übergeordnete Eintrag ist archiviert.';
+  return null;
+}
+
+/** German error unless `ids` is a permutation of the `kinderIds`, otherwise null. */
+export function reihenfolgeFehler(kinderIds: string[], ids: string[]): string | null {
+  const erwartet = new Set(kinderIds);
+  if (ids.length !== erwartet.size || ids.some((id) => !erwartet.has(id))) {
+    return 'Die Reihenfolge muss genau die Einträge dieser Ebene enthalten.';
+  }
+  return null;
+}
+
+/** Position for a node appended to `geschwister`. */
+export const naechstePosition = (geschwister: { position: number }[]): number =>
+  geschwister.reduce((max, g) => Math.max(max, g.position + 1), 0);
+
+/** MHD of an Einlagerung: required unless the ware has none, normalised by the ware's MHD-Art. */
+export function einlagerungMhd(mhd: string | null | undefined, mhdArt: MhdArt): string | null {
+  if (mhdArt !== 'keins' && !mhd) throw new WarenUngueltig('Bitte gib ein MHD an.');
+  return mhdNormalisieren(mhd, mhdArt);
+}
+
+/**
+ * Booking lines of a withdrawal: stock of the ware AT `zeitpunkt` (backdating allowed), restricted to
+ * the subtree of the chosen node, planned FIFO. `buchungen` may contain rows of other wares.
+ */
+export function entnahmeZeilen(eingabe: {
+  buchungen: Buchung[];
+  lagerorte: BaumKnoten[];
+  gebinde: GebindeRow[];
+  wareId: string;
+  lagerortId: string;
+  gebindeId: string;
+  anzahl: number;
+  zeitpunkt: string;
+}): Buchungszeile[] {
+  const knoten = new Set(teilbaumIds(eingabe.lagerorte, eingabe.lagerortId));
+  const posten = bestandZu(
+    eingabe.buchungen.filter((b) => b.wareId === eingabe.wareId),
+    eingabe.zeitpunkt,
+  ).filter((p) => knoten.has(p.lagerortId));
+  return entnahmePlanen({
+    posten,
+    gebinde: eingabe.gebinde,
+    gebindeId: eingabe.gebindeId,
+    anzahl: eingabe.anzahl,
+    lagerortId: eingabe.lagerortId,
+  });
+}
+
+/** Ids of the Lagerort and its non-archived descendants in inventory order (preorder, by position). */
+export function inventurKnotenIds(
+  lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
+  wurzelId: string,
+): string[] {
+  return tiefensuche(
+    lagerorteAlle.filter((l) => !l.archiviert),
+    wurzelId,
+  ).map((l) => l.id);
+}
+
+export interface ZaehlungDaten {
+  wareId: string;
+  gebindeId: string;
+  mhd: string | null;
+  anzahl: number;
+}
+
+/**
+ * Validates counted lines against the wares (the Gebinde must belong to the ware), normalises the
+ * MHD by the ware's MHD-Art and merges lines with the same key.
+ */
+export function zaehlungenNormalisieren(
+  zaehlungen: ZaehlungDaten[],
+  waren: Map<string, { mhdArt: MhdArt; gebindeIds: string[] }>,
+): ZaehlungDaten[] {
+  const ergebnis = new Map<string, ZaehlungDaten>();
+  for (const z of zaehlungen) {
+    const ware = waren.get(z.wareId);
+    if (!ware) throw new WarenUngueltig('Die Ware gibt es nicht.');
+    if (!ware.gebindeIds.includes(z.gebindeId)) {
+      throw new WarenUngueltig('Dieses Gebinde gehört nicht zur Ware.');
+    }
+    const mhd = mhdNormalisieren(z.mhd, ware.mhdArt);
+    const key = [z.wareId, z.gebindeId, mhd ?? ''].join('\u0000');
+    const vorhanden = ergebnis.get(key);
+    if (vorhanden) vorhanden.anzahl += z.anzahl;
+    else ergebnis.set(key, { ...z, mhd });
+  }
+  return [...ergebnis.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Types
+
+export interface LagerortDaten {
+  name: string;
+  beschreibung: string | null;
+  parentId: string | null;
+}
+
+export interface WarengruppeDaten {
+  name: string;
+  parentId: string | null;
+}
+
+export interface GebindeDaten {
+  name: string;
+  pfandCent: number;
+  unterGebindeId: string | null;
+  unterAnzahl: number | null;
+}
+
+export interface WareDaten {
+  name: string;
+  warengruppeId: string;
+  mhdArt: MhdArt;
+  gebindeIds: string[];
+  aliase: string[];
+}
+
+export interface WareDetails extends WareRow {
+  aliase: string[];
+  gebindeIds: string[];
+  /** Current stock per Lagerort, Gebinde and MHD. */
+  bestand: Bestandsposten[];
+  /** Earliest MHD among the stock on hand. */
+  fruehestesMhd: string | null;
+}
+
+/** Display data of the member who created something; null for users without a profile. */
+export interface Ersteller {
+  vorname: string;
+  nachname: string;
+  anrede: Anrede;
+  status: MitgliedStatus;
+}
+
+export interface BuchungZeile {
+  id: string;
+  wareId: string;
+  lagerortId: string;
+  gebindeId: string;
+  mhd: string | null;
+  menge: number;
+  art: BuchungRow['art'];
+}
+
+export interface VorgangDetails {
+  id: string;
+  typ: VorgangRow['typ'];
+  quelle: VorgangRow['quelle'];
+  zeitpunkt: string;
+  kommentar: string | null;
+  erstelltVon: string;
+  ersteller: Ersteller | null;
+  erstelltAm: string;
+  zeilen: BuchungZeile[];
+}
+
+export interface WareVerlauf {
+  serien: VerlaufSerie[];
+  zeilen: VerlaufZeile[];
+  /** Names of the Lager and Gebinde the series refer to. */
+  lager: { id: string; name: string }[];
+  gebinde: { id: string; name: string }[];
+}
+
+export interface EinlagerungDaten {
+  wareId: string;
+  lagerortId: string;
+  gebindeId: string;
+  anzahl: number;
+  mhd: string | null;
+  zeitpunkt: string;
+  kommentar: string | null;
+}
+
+export interface EntnahmeDaten {
+  wareId: string;
+  lagerortId: string;
+  gebindeId: string;
+  anzahl: number;
+  zeitpunkt: string;
+  kommentar: string | null;
+}
+
+export interface InventurUebersicht {
+  id: string;
+  lagerortId: string;
+  lagerortPfad: string;
+  status: InventurRow['status'];
+  gestartetVon: string;
+  ersteller: Ersteller | null;
+  gestartetAm: string;
+  vorgangId: string | null;
+}
+
+export interface WareKurz {
+  id: string;
+  name: string;
+  mhdArt: MhdArt;
+  archiviert: boolean;
+  gebindeIds: string[];
+}
+
+export interface InventurKnotenDetails {
+  lagerortId: string;
+  name: string;
+  pfad: string;
+  /** The configured Warenliste of the node, in order. */
+  wareIds: string[];
+  /** Current expected stock on this node. */
+  soll: { wareId: string; gebindeId: string; mhd: string | null; menge: number }[];
+  zaehlungen: ZaehlungDaten[];
+  erledigt: boolean;
+}
+
+export interface InventurDetails extends InventurUebersicht {
+  knoten: InventurKnotenDetails[];
+  waren: WareKurz[];
+  gebinde: GebindeRow[];
+}
+
+export interface InventurZusammenfassung {
+  zeitpunkt: string;
+  zeilen: (InventurZeile & { lagerortPfad: string })[];
+  /** Nodes of the subtree that were not counted (treated as 0). */
+  offeneKnoten: { id: string; pfad: string }[];
+  waren: WareKurz[];
+  gebinde: GebindeRow[];
+}
+
+/**
+ * The mutations return false (or undefined) when the entry itself does not exist, and throw
+ * `WarenUngueltig` / `WarenKonflikt` for the domain rules.
+ */
+export interface WarenStore {
+  // Lagerorte
+  lagerorte(mitArchiv: boolean): Promise<LagerortRow[]>;
+  lagerortAnlegen(daten: LagerortDaten): Promise<string>;
+  lagerortAktualisieren(id: string, daten: LagerortDaten): Promise<boolean>;
+  lagerortLoeschen(id: string): Promise<boolean>;
+  /** Archives (or restores) the whole subtree; archiving needs a stock of 0 in the subtree. */
+  lagerortArchivieren(id: string, archiviert: boolean): Promise<boolean>;
+  /** Orders the children of `parentId` (null = top level). */
+  lagerortReihenfolge(parentId: string | null, ids: string[]): Promise<boolean>;
+  lagerortWaren(id: string): Promise<string[] | undefined>;
+  lagerortWarenSetzen(id: string, wareIds: string[]): Promise<boolean>;
+  // Warengruppen
+  warengruppen(mitArchiv: boolean): Promise<WarengruppeRow[]>;
+  warengruppeAnlegen(daten: WarengruppeDaten): Promise<string>;
+  warengruppeAktualisieren(id: string, daten: WarengruppeDaten): Promise<boolean>;
+  warengruppeLoeschen(id: string): Promise<boolean>;
+  warengruppeArchivieren(id: string, archiviert: boolean): Promise<boolean>;
+  // Gebinde
+  gebinde(mitArchiv: boolean): Promise<GebindeRow[]>;
+  gebindeAnlegen(daten: GebindeDaten): Promise<string>;
+  gebindeAktualisieren(id: string, daten: GebindeDaten): Promise<boolean>;
+  gebindeLoeschen(id: string): Promise<boolean>;
+  gebindeArchivieren(id: string, archiviert: boolean): Promise<boolean>;
+  // Waren
+  waren(mitArchiv: boolean): Promise<WareDetails[]>;
+  wareHolen(id: string): Promise<WareDetails | undefined>;
+  wareAnlegen(daten: WareDaten): Promise<string>;
+  wareAktualisieren(id: string, daten: WareDaten): Promise<boolean>;
+  wareLoeschen(id: string): Promise<boolean>;
+  wareArchivieren(id: string, archiviert: boolean): Promise<boolean>;
+  wareBestand(id: string): Promise<Bestandsposten[] | undefined>;
+  wareVerlauf(id: string): Promise<WareVerlauf | undefined>;
+  wareVorgaenge(id: string): Promise<VorgangDetails[] | undefined>;
+  // Bestand
+  einlagern(daten: EinlagerungDaten, sub: string): Promise<string>;
+  entnehmen(daten: EntnahmeDaten, sub: string): Promise<string>;
+  vorgangLoeschen(id: string): Promise<boolean>;
+  // Inventur
+  inventuren(status?: InventurRow['status']): Promise<InventurUebersicht[]>;
+  inventurStarten(lagerortId: string, sub: string): Promise<string>;
+  inventurHolen(id: string): Promise<InventurDetails | undefined>;
+  inventurKnotenSpeichern(
+    id: string,
+    lagerortId: string,
+    zaehlungen: ZaehlungDaten[],
+    inListeAufnehmen: string[],
+  ): Promise<boolean>;
+  inventurZusammenfassung(
+    id: string,
+    zeitpunkt?: string,
+  ): Promise<InventurZusammenfassung | undefined>;
+  /** Returns the id of the created Vorgang. */
+  inventurAbschliessen(id: string, zeitpunkt: string, sub: string): Promise<string | undefined>;
+  inventurVerwerfen(id: string): Promise<boolean>;
+}
+
+// ---------------------------------------------------------------------------
+// Store
+
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+/** What the loaders need; satisfied by the database and by a transaction. */
+type Q = Pick<Db, 'select'>;
+
+const sortiert = <T>(liste: T[], schluessel: (t: T) => string) =>
+  [...liste].sort((a, b) => schluessel(a).localeCompare(schluessel(b), 'de'));
+
+const inListe = <T>(spalte: Parameters<typeof inArray>[0], werte: T[]) =>
+  werte.length === 0 ? undefined : inArray(spalte, werte as never[]);
+
+/** Whether any row of `tabelle` matches `bedingung`. */
+async function gibtEs(q: Q, tabelle: PgTable, bedingung: SQL | undefined): Promise<boolean> {
+  const rows = await q.select().from(tabelle).where(bedingung).limit(1);
+  return rows.length > 0;
+}
+
+async function buchungenLaden(q: Q, bedingung?: SQL): Promise<Buchung[]> {
+  const rows = await q
+    .select({
+      vorgangId: bestandsbuchungen.vorgangId,
+      zeitpunkt: bestandsvorgaenge.zeitpunkt,
+      wareId: bestandsbuchungen.wareId,
+      lagerortId: bestandsbuchungen.lagerortId,
+      gebindeId: bestandsbuchungen.gebindeId,
+      mhd: bestandsbuchungen.mhd,
+      menge: bestandsbuchungen.menge,
+      art: bestandsbuchungen.art,
+    })
+    .from(bestandsbuchungen)
+    .innerJoin(bestandsvorgaenge, eq(bestandsvorgaenge.id, bestandsbuchungen.vorgangId))
+    .where(bedingung);
+  return rows.map((r) => ({ ...r, zeitpunkt: r.zeitpunkt.toISOString() }));
+}
+
+/** Loads the ware for a booking and checks that it and the Gebinde can be booked on. */
+async function buchbareWare(q: Q, wareId: string, gebindeId: string): Promise<WareRow> {
+  const [ware] = await q.select().from(waren).where(eq(waren.id, wareId));
+  if (!ware) throw new WarenUngueltig('Die Ware gibt es nicht.');
+  if (ware.archiviert) throw new WarenUngueltig('Die Ware ist archiviert.');
+  const verknuepft = await q
+    .select()
+    .from(wareGebinde)
+    .where(and(eq(wareGebinde.wareId, wareId), eq(wareGebinde.gebindeId, gebindeId)));
+  if (verknuepft.length === 0) throw new WarenUngueltig('Dieses Gebinde gehört nicht zur Ware.');
+  const [g] = await q.select().from(gebinde).where(eq(gebinde.id, gebindeId));
+  if (g?.archiviert) throw new WarenUngueltig('Das Gebinde ist archiviert.');
+  return ware;
+}
+
+async function buchbarerLagerort(q: Q, lagerortId: string): Promise<void> {
+  const [l] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
+  if (!l) throw new WarenUngueltig('Der Lagerort existiert nicht.');
+  if (l.archiviert) throw new WarenUngueltig('Der Lagerort ist archiviert.');
+}
+
+async function vorgangAnlegen(
+  tx: Tx,
+  vorgang: Pick<VorgangRow, 'typ' | 'quelle' | 'kommentar' | 'erstelltVon'> & {
+    zeitpunkt: string;
+  },
+  zeilen: (Buchungszeile & { wareId: string })[],
+): Promise<string> {
+  const id = randomUUID();
+  await tx
+    .insert(bestandsvorgaenge)
+    .values({ id, ...vorgang, zeitpunkt: new Date(vorgang.zeitpunkt) });
+  if (zeilen.length > 0) {
+    await tx
+      .insert(bestandsbuchungen)
+      .values(zeilen.map((z) => ({ id: randomUUID(), vorgangId: id, ...z })));
+  }
+  return id;
+}
+
+export function createWarenStore(db: Db): WarenStore {
+  const erstellerLaden = async (subs: string[]): Promise<Map<string, Ersteller>> => {
+    const eindeutig = [...new Set(subs)];
+    if (eindeutig.length === 0) return new Map();
+    const rows = await db
+      .select({
+        sub: mitglieder.sub,
+        vorname: mitglieder.vorname,
+        nachname: mitglieder.nachname,
+        anrede: mitglieder.anrede,
+        status: mitglieder.status,
+      })
+      .from(mitglieder)
+      .where(inArray(mitglieder.sub, eindeutig));
+    return new Map(
+      rows.map(({ sub, anrede, ...r }) => [sub, { ...r, anrede: anrede ?? 'neutral' }]),
+    );
+  };
+
+  const warenDetails = async (rows: WareRow[], nurIds?: string[]): Promise<WareDetails[]> => {
+    const [aliase, verknuepft, buchungen] = await Promise.all([
+      db.select().from(wareAliase),
+      db.select().from(wareGebinde),
+      buchungenLaden(db, nurIds ? inListe(bestandsbuchungen.wareId, nurIds) : undefined),
+    ]);
+    const bestand = bestandZu(buchungen);
+    return rows.map((w) => {
+      const eigener = bestand.filter((p) => p.wareId === w.id);
+      const mhds = eigener
+        .filter((p) => p.menge > 0 && p.mhd !== null)
+        .map((p) => p.mhd as string)
+        .sort();
+      return {
+        ...w,
+        aliase: sortiert(
+          aliase.filter((a) => a.wareId === w.id).map((a) => a.alias),
+          (a) => a,
+        ),
+        gebindeIds: verknuepft.filter((g) => g.wareId === w.id).map((g) => g.gebindeId),
+        bestand: eigener,
+        fruehestesMhd: mhds[0] ?? null,
+      };
+    });
+  };
+
+  const vorgangDetails = async (
+    rows: { vorgang: VorgangRow; buchung: BuchungRow }[],
+  ): Promise<VorgangDetails[]> => {
+    const nachId = new Map<string, VorgangDetails>();
+    const ersteller = await erstellerLaden(rows.map((r) => r.vorgang.erstelltVon));
+    for (const { vorgang: v, buchung: b } of rows) {
+      const eintrag = nachId.get(v.id) ?? {
+        id: v.id,
+        typ: v.typ,
+        quelle: v.quelle,
+        zeitpunkt: v.zeitpunkt.toISOString(),
+        kommentar: v.kommentar,
+        erstelltVon: v.erstelltVon,
+        ersteller: ersteller.get(v.erstelltVon) ?? null,
+        erstelltAm: v.erstelltAm.toISOString(),
+        zeilen: [],
+      };
+      eintrag.zeilen.push({
+        id: b.id,
+        wareId: b.wareId,
+        lagerortId: b.lagerortId,
+        gebindeId: b.gebindeId,
+        mhd: b.mhd,
+        menge: b.menge,
+        art: b.art,
+      });
+      nachId.set(v.id, eintrag);
+    }
+    return [...nachId.values()].sort(
+      (a, b) => b.zeitpunkt.localeCompare(a.zeitpunkt) || b.erstelltAm.localeCompare(a.erstelltAm),
+    );
+  };
+
+  /** Wares (with their Gebinde) that are mentioned in an inventory. */
+  const warenKurz = async (q: Q, ids: string[]): Promise<WareKurz[]> => {
+    if (ids.length === 0) return [];
+    const [rows, verknuepft] = await Promise.all([
+      q.select().from(waren).where(inArray(waren.id, ids)),
+      q.select().from(wareGebinde).where(inArray(wareGebinde.wareId, ids)),
+    ]);
+    return sortiert(rows, (w) => w.name).map((w) => ({
+      id: w.id,
+      name: w.name,
+      mhdArt: w.mhdArt,
+      archiviert: w.archiviert,
+      gebindeIds: verknuepft.filter((g) => g.wareId === w.id).map((g) => g.gebindeId),
+    }));
+  };
+
+  const inventurUebersichten = async (rows: InventurRow[]): Promise<InventurUebersicht[]> => {
+    if (rows.length === 0) return [];
+    const [alle, ersteller] = await Promise.all([
+      db.select().from(lagerorte),
+      erstellerLaden(rows.map((r) => r.gestartetVon)),
+    ]);
+    return rows.map((r) => ({
+      id: r.id,
+      lagerortId: r.lagerortId,
+      lagerortPfad: pfad(alle, r.lagerortId),
+      status: r.status,
+      gestartetVon: r.gestartetVon,
+      ersteller: ersteller.get(r.gestartetVon) ?? null,
+      gestartetAm: r.gestartetAm.toISOString(),
+      vorgangId: r.vorgangId,
+    }));
+  };
+
+  /** The inventory plus the ids of the nodes it covers (in counting order). */
+  const inventurKontext = async (q: Q, id: string) => {
+    const [inventur] = await q.select().from(inventuren).where(eq(inventuren.id, id));
+    if (!inventur) return undefined;
+    const alle = await q.select().from(lagerorte);
+    return { inventur, alle, knotenIds: inventurKnotenIds(alle, inventur.lagerortId) };
+  };
+
+  const nurOffen = (inventur: InventurRow) => {
+    if (inventur.status !== 'offen')
+      throw new WarenKonflikt('Die Inventur ist bereits abgeschlossen.');
+  };
+
+  const istZaehlungen = async (q: Q, inventurId: string): Promise<InventurIst[]> =>
+    (
+      await q.select().from(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, inventurId))
+    ).map((z) => ({
+      lagerortId: z.lagerortId,
+      wareId: z.wareId,
+      gebindeId: z.gebindeId,
+      mhd: z.mhd,
+      anzahl: z.anzahl,
+    }));
+
+  /** Parses the Gebinde of a ware save and returns the ids to store (Untergebinde added). */
+  const wareSpeichern = async (tx: Tx, id: string | undefined, daten: WareDaten) => {
+    const [bisher, alleGebinde, vorhandeneVerknuepfung] = await Promise.all([
+      id ? tx.select().from(waren).where(eq(waren.id, id)) : Promise.resolve([]),
+      tx.select().from(gebinde),
+      id ? tx.select().from(wareGebinde).where(eq(wareGebinde.wareId, id)) : Promise.resolve([]),
+    ]);
+    if (id && !bisher[0]) return false;
+
+    if (!bisher[0] || bisher[0].warengruppeId !== daten.warengruppeId) {
+      const [gruppe] = await tx
+        .select()
+        .from(warengruppen)
+        .where(eq(warengruppen.id, daten.warengruppeId));
+      if (!gruppe) throw new WarenUngueltig('Die Warengruppe existiert nicht.');
+      if (gruppe.archiviert) throw new WarenUngueltig('Die Warengruppe ist archiviert.');
+    }
+
+    const bekannt = new Set(alleGebinde.map((g) => g.id));
+    if (daten.gebindeIds.some((g) => !bekannt.has(g))) {
+      throw new WarenUngueltig('Ein ausgewähltes Gebinde existiert nicht.');
+    }
+    const gebindeIds = gebindeErgaenzen(daten.gebindeIds, alleGebinde);
+    const vorher = new Set(vorhandeneVerknuepfung.map((v) => v.gebindeId));
+    for (const g of alleGebinde) {
+      if (gebindeIds.includes(g.id) && !vorher.has(g.id) && g.archiviert) {
+        throw new WarenUngueltig('Ein ausgewähltes Gebinde ist archiviert.');
+      }
+    }
+    const entfernt = [...vorher].filter((g) => !gebindeIds.includes(g));
+    if (id && entfernt.length > 0) {
+      const benutzt = await gibtEs(
+        tx,
+        bestandsbuchungen,
+        and(eq(bestandsbuchungen.wareId, id), inArray(bestandsbuchungen.gebindeId, entfernt)),
+      );
+      if (benutzt) {
+        throw new WarenKonflikt(
+          'Ein Gebinde, das du entfernen willst, wird für diese Ware noch verwendet.',
+        );
+      }
+    }
+
+    const wareId = id ?? randomUUID();
+    const werte = {
+      name: daten.name,
+      warengruppeId: daten.warengruppeId,
+      mhdArt: daten.mhdArt,
+    };
+    if (id) {
+      await tx.update(waren).set(werte).where(eq(waren.id, id));
+      await tx.delete(wareAliase).where(eq(wareAliase.wareId, id));
+      await tx.delete(wareGebinde).where(eq(wareGebinde.wareId, id));
+    } else {
+      await tx.insert(waren).values({ id: wareId, ...werte });
+    }
+    if (daten.aliase.length > 0) {
+      await tx.insert(wareAliase).values(daten.aliase.map((alias) => ({ wareId, alias })));
+    }
+    await tx.insert(wareGebinde).values(gebindeIds.map((gebindeId) => ({ wareId, gebindeId })));
+    return wareId;
+  };
+
+  return {
+    // ----- Lagerorte
+    async lagerorte(mitArchiv) {
+      const rows = await db.select().from(lagerorte);
+      return rows
+        .filter((l) => mitArchiv || !l.archiviert)
+        .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, 'de'));
+    },
+    async lagerortAnlegen(daten) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        const fehler = elternFehler(alle, daten.parentId);
+        if (fehler) throw new WarenUngueltig(fehler);
+        const id = randomUUID();
+        await tx.insert(lagerorte).values({
+          id,
+          ...daten,
+          position: naechstePosition(alle.filter((l) => l.parentId === daten.parentId)),
+        });
+        return id;
+      });
+    },
+    async lagerortAktualisieren(id, daten) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        const bisher = alle.find((l) => l.id === id);
+        if (!bisher) return false;
+        const fehler = zyklusFehler(alle, id, daten.parentId);
+        if (fehler) throw new WarenUngueltig(fehler);
+        let position = bisher.position;
+        if (daten.parentId !== bisher.parentId) {
+          const elternProblem = elternFehler(alle, daten.parentId);
+          if (elternProblem) throw new WarenUngueltig(elternProblem);
+          position = naechstePosition(alle.filter((l) => l.parentId === daten.parentId));
+        }
+        await tx
+          .update(lagerorte)
+          .set({ ...daten, position })
+          .where(eq(lagerorte.id, id));
+        return true;
+      });
+    },
+    async lagerortLoeschen(id) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx.select().from(lagerorte).where(eq(lagerorte.id, id));
+        if (!vorhanden) return false;
+        const verwendet = await Promise.all([
+          gibtEs(tx, lagerorte, eq(lagerorte.parentId, id)),
+          gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.lagerortId, id)),
+          gibtEs(tx, lagerortWaren, eq(lagerortWaren.lagerortId, id)),
+          gibtEs(tx, inventuren, eq(inventuren.lagerortId, id)),
+          gibtEs(tx, inventurKnoten, eq(inventurKnoten.lagerortId, id)),
+          gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.lagerortId, id)),
+        ]);
+        if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Lagerort'));
+        await tx.delete(lagerorte).where(eq(lagerorte.id, id));
+        return true;
+      });
+    },
+    async lagerortArchivieren(id, archiviert) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        const knoten = alle.find((l) => l.id === id);
+        if (!knoten) return false;
+        const ids = teilbaumIds(alle, id);
+        if (archiviert) {
+          const bestand = bestandZu(
+            await buchungenLaden(tx, inArray(bestandsbuchungen.lagerortId, ids)),
+          );
+          if (bestand.length > 0) {
+            throw new WarenKonflikt(
+              'Im Lagerort (oder darin) ist noch Bestand vorhanden. Buche ihn zuerst aus.',
+            );
+          }
+          const offen = await gibtEs(
+            tx,
+            inventuren,
+            and(eq(inventuren.status, 'offen'), inArray(inventuren.lagerortId, ids)),
+          );
+          if (offen) {
+            throw new WarenKonflikt(
+              'Für den Lagerort läuft noch eine Inventur. Schließe oder verwirf sie zuerst.',
+            );
+          }
+        } else {
+          const parent = alle.find((l) => l.id === knoten.parentId);
+          if (parent?.archiviert) {
+            throw new WarenKonflikt(
+              'Der übergeordnete Lagerort ist archiviert. Stelle ihn zuerst wieder her.',
+            );
+          }
+        }
+        await tx.update(lagerorte).set({ archiviert }).where(inArray(lagerorte.id, ids));
+        return true;
+      });
+    },
+    async lagerortReihenfolge(parentId, ids) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        if (parentId !== null && !alle.some((l) => l.id === parentId)) return false;
+        const kinder = alle.filter((l) => l.parentId === parentId);
+        const fehler = reihenfolgeFehler(
+          kinder.map((k) => k.id),
+          ids,
+        );
+        if (fehler) throw new WarenUngueltig(fehler);
+        for (const [position, id] of ids.entries()) {
+          await tx.update(lagerorte).set({ position }).where(eq(lagerorte.id, id));
+        }
+        return true;
+      });
+    },
+    async lagerortWaren(id) {
+      const [vorhanden] = await db.select().from(lagerorte).where(eq(lagerorte.id, id));
+      if (!vorhanden) return undefined;
+      const rows = await db
+        .select()
+        .from(lagerortWaren)
+        .where(eq(lagerortWaren.lagerortId, id))
+        .orderBy(asc(lagerortWaren.position));
+      return rows.map((r) => r.wareId);
+    },
+    async lagerortWarenSetzen(id, wareIds) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx.select().from(lagerorte).where(eq(lagerorte.id, id));
+        if (!vorhanden) return false;
+        const bisher = new Set(
+          (await tx.select().from(lagerortWaren).where(eq(lagerortWaren.lagerortId, id))).map(
+            (r) => r.wareId,
+          ),
+        );
+        const rows = wareIds.length
+          ? await tx.select().from(waren).where(inArray(waren.id, wareIds))
+          : [];
+        if (rows.length !== wareIds.length) throw new WarenUngueltig('Eine Ware existiert nicht.');
+        if (rows.some((w) => w.archiviert && !bisher.has(w.id))) {
+          throw new WarenUngueltig('Eine ausgewählte Ware ist archiviert.');
+        }
+        await tx.delete(lagerortWaren).where(eq(lagerortWaren.lagerortId, id));
+        if (wareIds.length > 0) {
+          await tx
+            .insert(lagerortWaren)
+            .values(wareIds.map((wareId, position) => ({ lagerortId: id, wareId, position })));
+        }
+        return true;
+      });
+    },
+
+    // ----- Warengruppen
+    async warengruppen(mitArchiv) {
+      const rows = await db.select().from(warengruppen);
+      return sortiert(
+        rows.filter((g) => mitArchiv || !g.archiviert),
+        (g) => g.name,
+      );
+    },
+    async warengruppeAnlegen(daten) {
+      return db.transaction(async (tx) => {
+        const fehler = elternFehler(await tx.select().from(warengruppen), daten.parentId);
+        if (fehler) throw new WarenUngueltig(fehler);
+        const id = randomUUID();
+        await tx.insert(warengruppen).values({ id, ...daten });
+        return id;
+      });
+    },
+    async warengruppeAktualisieren(id, daten) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(warengruppen);
+        const bisher = alle.find((g) => g.id === id);
+        if (!bisher) return false;
+        const fehler =
+          zyklusFehler(alle, id, daten.parentId) ??
+          (daten.parentId !== bisher.parentId ? elternFehler(alle, daten.parentId) : null);
+        if (fehler) throw new WarenUngueltig(fehler);
+        await tx.update(warengruppen).set(daten).where(eq(warengruppen.id, id));
+        return true;
+      });
+    },
+    async warengruppeLoeschen(id) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx.select().from(warengruppen).where(eq(warengruppen.id, id));
+        if (!vorhanden) return false;
+        const verwendet = await Promise.all([
+          gibtEs(tx, warengruppen, eq(warengruppen.parentId, id)),
+          gibtEs(tx, waren, eq(waren.warengruppeId, id)),
+        ]);
+        if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Warengruppe'));
+        await tx.delete(warengruppen).where(eq(warengruppen.id, id));
+        return true;
+      });
+    },
+    async warengruppeArchivieren(id, archiviert) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(warengruppen);
+        const gruppe = alle.find((g) => g.id === id);
+        if (!gruppe) return false;
+        if (!archiviert && alle.find((g) => g.id === gruppe.parentId)?.archiviert) {
+          throw new WarenKonflikt(
+            'Die übergeordnete Warengruppe ist archiviert. Stelle sie zuerst wieder her.',
+          );
+        }
+        await tx
+          .update(warengruppen)
+          .set({ archiviert })
+          .where(inArray(warengruppen.id, teilbaumIds(alle, id)));
+        return true;
+      });
+    },
+
+    // ----- Gebinde
+    async gebinde(mitArchiv) {
+      const rows = await db.select().from(gebinde);
+      return sortiert(
+        rows.filter((g) => mitArchiv || !g.archiviert),
+        (g) => g.name,
+      );
+    },
+    async gebindeAnlegen(daten) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(gebinde);
+        const fehler = gebindeFehler({ unterGebindeId: daten.unterGebindeId }, alle);
+        if (fehler) throw new WarenUngueltig(fehler);
+        if (alle.find((g) => g.id === daten.unterGebindeId)?.archiviert) {
+          throw new WarenUngueltig('Das Untergebinde ist archiviert.');
+        }
+        const id = randomUUID();
+        await tx.insert(gebinde).values({ id, ...daten });
+        return id;
+      });
+    },
+    async gebindeAktualisieren(id, daten) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(gebinde);
+        const bisher = alle.find((g) => g.id === id);
+        if (!bisher) return false;
+        const fehler = gebindeFehler({ id, unterGebindeId: daten.unterGebindeId }, alle);
+        if (fehler) throw new WarenUngueltig(fehler);
+        if (
+          daten.unterGebindeId !== bisher.unterGebindeId &&
+          alle.find((g) => g.id === daten.unterGebindeId)?.archiviert
+        ) {
+          throw new WarenUngueltig('Das Untergebinde ist archiviert.');
+        }
+        await tx.update(gebinde).set(daten).where(eq(gebinde.id, id));
+        return true;
+      });
+    },
+    async gebindeLoeschen(id) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx.select().from(gebinde).where(eq(gebinde.id, id));
+        if (!vorhanden) return false;
+        const verwendet = await Promise.all([
+          gibtEs(tx, gebinde, eq(gebinde.unterGebindeId, id)),
+          gibtEs(tx, wareGebinde, eq(wareGebinde.gebindeId, id)),
+          gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.gebindeId, id)),
+          gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.gebindeId, id)),
+        ]);
+        if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Gebinde'));
+        await tx.delete(gebinde).where(eq(gebinde.id, id));
+        return true;
+      });
+    },
+    async gebindeArchivieren(id, archiviert) {
+      const rows = await db
+        .update(gebinde)
+        .set({ archiviert })
+        .where(eq(gebinde.id, id))
+        .returning({ id: gebinde.id });
+      return rows.length > 0;
+    },
+
+    // ----- Waren
+    async waren(mitArchiv) {
+      const rows = await db.select().from(waren);
+      return warenDetails(
+        sortiert(
+          rows.filter((w) => mitArchiv || !w.archiviert),
+          (w) => w.name,
+        ),
+      );
+    },
+    async wareHolen(id) {
+      const rows = await db.select().from(waren).where(eq(waren.id, id));
+      return (await warenDetails(rows, [id]))[0];
+    },
+    async wareAnlegen(daten) {
+      const id = await db.transaction((tx) => wareSpeichern(tx, undefined, daten));
+      if (!id) throw new Error('Ware konnte nicht angelegt werden');
+      return id;
+    },
+    async wareAktualisieren(id, daten) {
+      return (await db.transaction((tx) => wareSpeichern(tx, id, daten))) !== false;
+    },
+    async wareLoeschen(id) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx.select().from(waren).where(eq(waren.id, id));
+        if (!vorhanden) return false;
+        const verwendet = await Promise.all([
+          gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.wareId, id)),
+          gibtEs(tx, lagerortWaren, eq(lagerortWaren.wareId, id)),
+          gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.wareId, id)),
+        ]);
+        if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Ware'));
+        await tx.delete(wareAliase).where(eq(wareAliase.wareId, id));
+        await tx.delete(wareGebinde).where(eq(wareGebinde.wareId, id));
+        await tx.delete(waren).where(eq(waren.id, id));
+        return true;
+      });
+    },
+    async wareArchivieren(id, archiviert) {
+      const rows = await db
+        .update(waren)
+        .set({ archiviert })
+        .where(eq(waren.id, id))
+        .returning({ id: waren.id });
+      return rows.length > 0;
+    },
+    async wareBestand(id) {
+      const [ware] = await db.select().from(waren).where(eq(waren.id, id));
+      if (!ware) return undefined;
+      return bestandZu(await buchungenLaden(db, eq(bestandsbuchungen.wareId, id)));
+    },
+    async wareVerlauf(id) {
+      const [ware] = await db.select().from(waren).where(eq(waren.id, id));
+      if (!ware) return undefined;
+      const [buchungen, orte, alleGebinde] = await Promise.all([
+        buchungenLaden(db, eq(bestandsbuchungen.wareId, id)),
+        db.select().from(lagerorte),
+        db.select().from(gebinde),
+      ]);
+      const { serien, zeilen } = verlaufSerien(verlauf(buchungen, orte, alleGebinde), alleGebinde);
+      const lagerIds = new Set(serien.flatMap((s) => (s.lagerId ? [s.lagerId] : [])));
+      const gebindeIds = new Set(serien.map((s) => s.basisGebindeId));
+      return {
+        serien,
+        zeilen,
+        lager: orte.filter((l) => lagerIds.has(l.id)).map((l) => ({ id: l.id, name: l.name })),
+        gebinde: alleGebinde
+          .filter((g) => gebindeIds.has(g.id))
+          .map((g) => ({ id: g.id, name: g.name })),
+      };
+    },
+    async wareVorgaenge(id) {
+      const [ware] = await db.select().from(waren).where(eq(waren.id, id));
+      if (!ware) return undefined;
+      const rows = await db
+        .select({ vorgang: bestandsvorgaenge, buchung: bestandsbuchungen })
+        .from(bestandsbuchungen)
+        .innerJoin(bestandsvorgaenge, eq(bestandsvorgaenge.id, bestandsbuchungen.vorgangId))
+        .where(eq(bestandsbuchungen.wareId, id))
+        .orderBy(desc(bestandsvorgaenge.zeitpunkt));
+      return vorgangDetails(rows);
+    },
+
+    // ----- Bestand
+    async einlagern(daten, sub) {
+      return db.transaction(async (tx) => {
+        const ware = await buchbareWare(tx, daten.wareId, daten.gebindeId);
+        await buchbarerLagerort(tx, daten.lagerortId);
+        const mhd = einlagerungMhd(daten.mhd, ware.mhdArt);
+        return vorgangAnlegen(
+          tx,
+          {
+            typ: 'einlagerung',
+            quelle: 'manuell',
+            zeitpunkt: daten.zeitpunkt,
+            kommentar: daten.kommentar,
+            erstelltVon: sub,
+          },
+          [
+            {
+              wareId: daten.wareId,
+              lagerortId: daten.lagerortId,
+              gebindeId: daten.gebindeId,
+              mhd,
+              menge: daten.anzahl,
+              art: 'zugang',
+            },
+          ],
+        );
+      });
+    },
+    async entnehmen(daten, sub) {
+      return db.transaction(async (tx) => {
+        await buchbareWare(tx, daten.wareId, daten.gebindeId);
+        await buchbarerLagerort(tx, daten.lagerortId);
+        const [buchungen, orte, alleGebinde] = await Promise.all([
+          buchungenLaden(tx, eq(bestandsbuchungen.wareId, daten.wareId)),
+          tx.select().from(lagerorte),
+          tx.select().from(gebinde),
+        ]);
+        const zeilen = entnahmeZeilen({
+          buchungen,
+          lagerorte: orte,
+          gebinde: alleGebinde,
+          ...daten,
+        });
+        return vorgangAnlegen(
+          tx,
+          {
+            typ: 'entnahme',
+            quelle: 'manuell',
+            zeitpunkt: daten.zeitpunkt,
+            kommentar: daten.kommentar,
+            erstelltVon: sub,
+          },
+          zeilen.map((z) => ({ ...z, wareId: daten.wareId })),
+        );
+      });
+    },
+    async vorgangLoeschen(id) {
+      return db.transaction(async (tx) => {
+        const [vorhanden] = await tx
+          .select()
+          .from(bestandsvorgaenge)
+          .where(eq(bestandsvorgaenge.id, id));
+        if (!vorhanden) return false;
+        await tx.update(inventuren).set({ vorgangId: null }).where(eq(inventuren.vorgangId, id));
+        await tx.delete(bestandsbuchungen).where(eq(bestandsbuchungen.vorgangId, id));
+        await tx.delete(bestandsvorgaenge).where(eq(bestandsvorgaenge.id, id));
+        return true;
+      });
+    },
+
+    // ----- Inventur
+    async inventuren(status) {
+      const rows = await db
+        .select()
+        .from(inventuren)
+        .where(status ? eq(inventuren.status, status) : undefined)
+        .orderBy(desc(inventuren.gestartetAm));
+      return inventurUebersichten(rows);
+    },
+    async inventurStarten(lagerortId, sub) {
+      return db.transaction(async (tx) => {
+        await buchbarerLagerort(tx, lagerortId);
+        const offen = await gibtEs(
+          tx,
+          inventuren,
+          and(eq(inventuren.lagerortId, lagerortId), eq(inventuren.status, 'offen')),
+        );
+        if (offen) {
+          throw new WarenKonflikt('Für diesen Lagerort läuft bereits eine Inventur.');
+        }
+        const id = randomUUID();
+        await tx.insert(inventuren).values({ id, lagerortId, status: 'offen', gestartetVon: sub });
+        return id;
+      });
+    },
+    async inventurHolen(id) {
+      const kontext = await inventurKontext(db, id);
+      if (!kontext) return undefined;
+      const { inventur, alle, knotenIds } = kontext;
+      const [knotenRows, zaehlungen, listen, buchungen, alleGebinde, uebersicht] =
+        await Promise.all([
+          db.select().from(inventurKnoten).where(eq(inventurKnoten.inventurId, id)),
+          db.select().from(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, id)),
+          db
+            .select()
+            .from(lagerortWaren)
+            .where(inListe(lagerortWaren.lagerortId, knotenIds))
+            .orderBy(asc(lagerortWaren.position)),
+          buchungenLaden(db, inListe(bestandsbuchungen.lagerortId, knotenIds)),
+          db.select().from(gebinde),
+          inventurUebersichten([inventur]),
+        ]);
+      const soll = bestandZu(buchungen);
+      const wareIds = [
+        ...new Set([
+          ...listen.map((l) => l.wareId),
+          ...soll.map((p) => p.wareId),
+          ...zaehlungen.map((z) => z.wareId),
+        ]),
+      ];
+      const nachId = new Map(alle.map((l) => [l.id, l]));
+      return {
+        ...uebersicht[0]!,
+        knoten: knotenIds.map((lagerortId) => ({
+          lagerortId,
+          name: nachId.get(lagerortId)?.name ?? '',
+          pfad: pfad(alle, lagerortId),
+          wareIds: listen.filter((l) => l.lagerortId === lagerortId).map((l) => l.wareId),
+          soll: soll
+            .filter((p) => p.lagerortId === lagerortId)
+            .map(({ wareId, gebindeId, mhd, menge }) => ({ wareId, gebindeId, mhd, menge })),
+          zaehlungen: zaehlungen
+            .filter((z) => z.lagerortId === lagerortId)
+            .map(({ wareId, gebindeId, mhd, anzahl }) => ({ wareId, gebindeId, mhd, anzahl })),
+          erledigt: knotenRows.find((k) => k.lagerortId === lagerortId)?.erledigt ?? false,
+        })),
+        waren: await warenKurz(db, wareIds),
+        gebinde: alleGebinde,
+      };
+    },
+    async inventurKnotenSpeichern(id, lagerortId, zaehlungen, inListeAufnehmen) {
+      return db.transaction(async (tx) => {
+        const kontext = await inventurKontext(tx, id);
+        if (!kontext) return false;
+        nurOffen(kontext.inventur);
+        if (!kontext.knotenIds.includes(lagerortId)) {
+          throw new WarenUngueltig('Der Lagerort gehört nicht zu dieser Inventur.');
+        }
+        const wareIds = [...new Set([...zaehlungen.map((z) => z.wareId), ...inListeAufnehmen])];
+        const bekannt = await warenKurz(tx, wareIds);
+        const normalisiert = zaehlungenNormalisieren(
+          zaehlungen,
+          new Map(bekannt.map((w) => [w.id, w])),
+        );
+        const liste = await tx
+          .select()
+          .from(lagerortWaren)
+          .where(eq(lagerortWaren.lagerortId, lagerortId));
+        const neu = inListeAufnehmen.filter((w) => !liste.some((l) => l.wareId === w));
+        for (const wareId of neu) {
+          const ware = bekannt.find((w) => w.id === wareId);
+          if (!ware) throw new WarenUngueltig('Die Ware gibt es nicht.');
+          if (ware.archiviert) throw new WarenUngueltig('Die Ware ist archiviert.');
+        }
+        const gebindeIds = [...new Set(normalisiert.map((z) => z.gebindeId))];
+        if (gebindeIds.length > 0) {
+          const gebindeRows = await tx
+            .select()
+            .from(gebinde)
+            .where(inArray(gebinde.id, gebindeIds));
+          if (gebindeRows.length !== gebindeIds.length) {
+            throw new WarenUngueltig('Ein Gebinde existiert nicht.');
+          }
+        }
+
+        await tx
+          .delete(inventurZaehlungen)
+          .where(
+            and(
+              eq(inventurZaehlungen.inventurId, id),
+              eq(inventurZaehlungen.lagerortId, lagerortId),
+            ),
+          );
+        if (normalisiert.length > 0) {
+          await tx.insert(inventurZaehlungen).values(
+            normalisiert.map((z) => ({
+              id: randomUUID(),
+              inventurId: id,
+              lagerortId,
+              ...z,
+            })),
+          );
+        }
+        await tx
+          .delete(inventurKnoten)
+          .where(and(eq(inventurKnoten.inventurId, id), eq(inventurKnoten.lagerortId, lagerortId)));
+        await tx.insert(inventurKnoten).values({ inventurId: id, lagerortId, erledigt: true });
+        if (neu.length > 0) {
+          const start = naechstePosition(liste);
+          await tx
+            .insert(lagerortWaren)
+            .values(neu.map((wareId, i) => ({ lagerortId, wareId, position: start + i })));
+        }
+        return true;
+      });
+    },
+    async inventurZusammenfassung(id, zeitpunkt = new Date().toISOString()) {
+      const kontext = await inventurKontext(db, id);
+      if (!kontext) return undefined;
+      nurOffen(kontext.inventur);
+      const { alle, knotenIds } = kontext;
+      const [buchungen, ist, knotenRows, alleGebinde] = await Promise.all([
+        buchungenLaden(db, inListe(bestandsbuchungen.lagerortId, knotenIds)),
+        istZaehlungen(db, id),
+        db.select().from(inventurKnoten).where(eq(inventurKnoten.inventurId, id)),
+        db.select().from(gebinde),
+      ]);
+      const zeilen = inventurAbgleich(bestandZu(buchungen, zeitpunkt), ist, knotenIds);
+      const erledigt = new Set(knotenRows.filter((k) => k.erledigt).map((k) => k.lagerortId));
+      return {
+        zeitpunkt,
+        zeilen: zeilen.map((z) => ({ ...z, lagerortPfad: pfad(alle, z.lagerortId) })),
+        offeneKnoten: knotenIds
+          .filter((k) => !erledigt.has(k))
+          .map((k) => ({ id: k, pfad: pfad(alle, k) })),
+        waren: await warenKurz(db, [...new Set(zeilen.map((z) => z.wareId))]),
+        gebinde: alleGebinde,
+      };
+    },
+    async inventurAbschliessen(id, zeitpunkt, sub) {
+      return db.transaction(async (tx) => {
+        const kontext = await inventurKontext(tx, id);
+        if (!kontext) return undefined;
+        nurOffen(kontext.inventur);
+        const { knotenIds } = kontext;
+        const [buchungen, ist] = await Promise.all([
+          buchungenLaden(tx, inListe(bestandsbuchungen.lagerortId, knotenIds)),
+          istZaehlungen(tx, id),
+        ]);
+        // Nodes that were not counted count as 0: their whole stock is corrected away.
+        const korrekturen = inventurKorrekturen(bestandZu(buchungen, zeitpunkt), ist, knotenIds);
+        const vorgangId = await vorgangAnlegen(
+          tx,
+          { typ: 'inventur', quelle: 'inventur', zeitpunkt, kommentar: null, erstelltVon: sub },
+          korrekturen,
+        );
+        await tx
+          .update(inventuren)
+          .set({ status: 'abgeschlossen', vorgangId })
+          .where(eq(inventuren.id, id));
+        return vorgangId;
+      });
+    },
+    async inventurVerwerfen(id) {
+      return db.transaction(async (tx) => {
+        const [inventur] = await tx.select().from(inventuren).where(eq(inventuren.id, id));
+        if (!inventur) return false;
+        nurOffen(inventur);
+        await tx.delete(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, id));
+        await tx.delete(inventurKnoten).where(eq(inventurKnoten.inventurId, id));
+        await tx.delete(inventuren).where(eq(inventuren.id, id));
+        return true;
+      });
+    },
+  };
+}
