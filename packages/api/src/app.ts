@@ -819,22 +819,21 @@ export function createApp(deps: AppDeps) {
           return c.json({ ok: true });
         },
       )
-      .get('/inventuren/:id/zusammenfassung', auth, warenLesen, async (c) => {
-        const q = c.req.query('zeitpunkt');
-        const zeitpunkt =
-          q === undefined ? undefined : inventurAbschlussSchema.safeParse({ zeitpunkt: q });
-        if (zeitpunkt && !zeitpunkt.success) {
-          throw new HTTPException(400, { message: 'Ungültiger Zeitpunkt.' });
-        }
-        return c.json(
-          gefunden(
-            await deps.waren
-              .inventurZusammenfassung(c.req.param('id'), zeitpunkt?.data.zeitpunkt)
-              .catch(warenFehler),
-            'Inventur nicht gefunden',
+      .get(
+        '/inventuren/:id/zusammenfassung',
+        auth,
+        warenLesen,
+        zValidator('query', inventurAbschlussSchema.partial()),
+        async (c) =>
+          c.json(
+            gefunden(
+              await deps.waren
+                .inventurZusammenfassung(c.req.param('id'), c.req.valid('query').zeitpunkt)
+                .catch(warenFehler),
+              'Inventur nicht gefunden',
+            ),
           ),
-        );
-      })
+      )
       .post(
         '/inventuren/:id/abschluss',
         auth,

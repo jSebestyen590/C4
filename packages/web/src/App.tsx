@@ -8,6 +8,7 @@ import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
+import { InventurPage } from './pages/InventurPage';
 import { LagerPage } from './pages/LagerPage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
@@ -143,6 +144,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="waren:lesen">
                 <RequireUsername>
                   <LagerPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/inventur/:id"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <InventurPage />
                 </RequireUsername>
               </Protected>
             }

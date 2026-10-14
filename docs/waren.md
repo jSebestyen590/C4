@@ -53,3 +53,12 @@ Knoten gelten als 0.
   Stufendiagramm je Basisgebinde, umschaltbar Gesamt / Je Lager (`WareVerlauf.tsx`; `GET /waren/:id/verlauf` liefert dazu
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,
   neueste zuerst, mit Löschen (`WareHistorie.tsx`). Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet.
+- `/lager/inventur/:id` (`bestand:buchen`): geführte Inventur, Handy zuerst. Schritt je Platz in Zählreihenfolge
+  (`InventurPage.tsx`, `InventurKnoten.tsx`, `InventurWareZeilen.tsx`): je Ware Karte mit Zahlenfeldern je Gebinde
+  (Obergebinde zuerst, −/+ mit 44px) und bei MHD-Waren Blöcke je MHD („MHD hinzufügen“), vorbelegt mit den MHD aus dem
+  Soll („Laut Bestand: …“), aber mit leeren Zahlen; leer zählt als 0. Waren mit Soll, die nicht in der Warenliste stehen,
+  folgen mit Hinweis „nicht in der Liste“; weitere Waren lassen sich per Suche (Name, Alias) ergänzen, optional dauerhaft
+  in die Liste (`inListeAufnehmen`). „Weiter“ speichert den Platz (`PUT …/knoten/:lid`), beim Öffnen geht es beim ersten
+  nicht gezählten Platz weiter; „Übersicht“ springt zu jedem Platz. Die Zusammenfassung (`InventurZusammenfassung.tsx`)
+  warnt vor nicht gezählten Plätzen, zeigt Soll → Ist je Platz und Ware (nur Abweichungen, optional alle) und bucht mit
+  frei wählbarem Zeitpunkt. „Inventur verwerfen“ liegt im Menü. Abgeschlossene Inventuren sind nur ein Hinweis.
