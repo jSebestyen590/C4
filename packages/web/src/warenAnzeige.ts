@@ -5,6 +5,7 @@ import {
   type BuchungsArt,
   type Gebinde,
   type MhdArt,
+  vergleicheBuchungsZeilen,
 } from '@c4/shared';
 import { BUCHUNGS_ART_LABELS } from './i18n';
 
@@ -47,4 +48,20 @@ export function zeileText(
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+/** Booking lines in display order: by art, then Lagerort path, Gebinde name and MHD. */
+export function zeilenSortieren<T extends ZeileDaten>(
+  zeilen: T[],
+  gebinde: Gebinde[],
+  lagerorte: BaumKnoten[],
+): T[] {
+  const name = (z: T) => gebinde.find((g) => g.id === z.gebindeId)?.name ?? '';
+  return [...zeilen].sort(
+    (a, b) =>
+      vergleicheBuchungsZeilen(a, b) ||
+      pfad(lagerorte, a.lagerortId).localeCompare(pfad(lagerorte, b.lagerortId), 'de') ||
+      name(a).localeCompare(name(b), 'de') ||
+      (a.mhd ?? '').localeCompare(b.mhd ?? ''),
+  );
 }

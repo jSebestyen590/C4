@@ -122,7 +122,7 @@ export function InventurZusammenfassung({
 
   return (
     <>
-      <Stack gap="md" p="md" style={{ flex: 1 }}>
+      <Stack gap="md" style={{ flex: 1 }}>
         <Title order={3}>Zusammenfassung</Title>
         {daten.isError && (
           <Alert color="red">{fehlerText(daten.error, 'Laden fehlgeschlagen.')}</Alert>

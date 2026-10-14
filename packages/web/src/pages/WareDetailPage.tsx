@@ -1,4 +1,4 @@
-import { Alert, Anchor, Badge, Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import {
   IconArchive,
   IconArchiveOff,
@@ -133,7 +133,7 @@ export function WareDetailPage() {
       </Stack>
 
       {darfBuchen && (
-        <Group grow>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <Button
             size="lg"
             mih={48}
@@ -153,7 +153,7 @@ export function WareDetailPage() {
           >
             Entnehmen
           </Button>
-        </Group>
+        </SimpleGrid>
       )}
 
       <Title order={3}>Bestand</Title>

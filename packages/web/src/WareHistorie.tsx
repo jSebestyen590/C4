@@ -9,7 +9,7 @@ import { unwrap, useApi } from './api';
 import { QUELLE_LABELS, VORGANG_TYP_LABELS } from './i18n';
 import { StatusName } from './StatusAnzeige';
 import { fehlerAnzeigen, pruefen } from './warenApi';
-import { zeileText, zeitAnzeigen } from './warenAnzeige';
+import { zeileText, zeilenSortieren, zeitAnzeigen } from './warenAnzeige';
 import type { WareEintrag } from './warenDaten';
 
 const SCHRITT = 10;
@@ -79,7 +79,7 @@ export function WareHistorie({
                   {v.kommentar}
                 </Text>
               )}
-              {v.zeilen.map((z) => (
+              {zeilenSortieren(v.zeilen, gebinde, lagerorte).map((z) => (
                 <Text
                   key={z.id}
                   size="sm"

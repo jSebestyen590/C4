@@ -7,6 +7,19 @@ export type MhdArt = (typeof MHD_ARTEN)[number];
 export const BUCHUNGS_ARTEN = ['zugang', 'abgang', 'anbruch', 'korrektur'] as const;
 export type BuchungsArt = (typeof BUCHUNGS_ARTEN)[number];
 
+const ANZEIGE_ART: Record<BuchungsArt, number> = { anbruch: 0, zugang: 1, abgang: 2, korrektur: 3 };
+
+/** Display order of booking lines in one Vorgang: Anbruch (Obergebinde −, then +), Zugang, Abgang, Korrektur. */
+export function vergleicheBuchungsZeilen(
+  a: { art: BuchungsArt; menge: number },
+  b: { art: BuchungsArt; menge: number },
+): number {
+  return (
+    ANZEIGE_ART[a.art] - ANZEIGE_ART[b.art] ||
+    (a.art === 'anbruch' ? Math.sign(a.menge) - Math.sign(b.menge) : 0)
+  );
+}
+
 export const VORGANG_TYPEN = ['einlagerung', 'entnahme', 'inventur'] as const;
 export type VorgangTyp = (typeof VORGANG_TYPEN)[number];
 

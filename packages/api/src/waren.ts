@@ -14,6 +14,7 @@ import {
   tiefensuche,
   verlauf,
   verlaufSerien,
+  vergleicheBuchungsZeilen,
   type Anrede,
   type BaumKnoten,
   type Bestandsposten,
@@ -544,6 +545,7 @@ export function createWarenStore(db: Db): WarenStore {
       });
       nachId.set(v.id, eintrag);
     }
+    for (const eintrag of nachId.values()) eintrag.zeilen.sort(vergleicheBuchungsZeilen);
     return [...nachId.values()].sort(
       (a, b) => b.zeitpunkt.localeCompare(a.zeitpunkt) || b.erstelltAm.localeCompare(a.erstelltAm),
     );
@@ -1138,7 +1140,7 @@ export function createWarenStore(db: Db): WarenStore {
           db.select().from(gebinde),
           inventurUebersichten([inventur]),
         ]);
-      const soll = bestandZu(buchungen);
+      const soll = bestandZu(buchungen, new Date().toISOString());
       const wareIds = [
         ...new Set([
           ...listen.map((l) => l.wareId),
@@ -1247,7 +1249,16 @@ export function createWarenStore(db: Db): WarenStore {
       const erledigt = new Set(knotenRows.filter((k) => k.erledigt).map((k) => k.lagerortId));
       return {
         zeitpunkt,
-        zeilen: zeilen.map((z) => ({ ...z, lagerortPfad: pfad(alle, z.lagerortId) })),
+        zeilen: zeilen.map((z) => ({
+          lagerortId: z.lagerortId,
+          wareId: z.wareId,
+          gebindeId: z.gebindeId,
+          mhd: z.mhd,
+          soll: z.soll,
+          ist: z.ist,
+          differenz: z.differenz,
+          lagerortPfad: pfad(alle, z.lagerortId),
+        })),
         offeneKnoten: knotenIds
           .filter((k) => !erledigt.has(k))
           .map((k) => ({ id: k, pfad: pfad(alle, k) })),

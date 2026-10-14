@@ -53,7 +53,9 @@ export function InventurPage() {
     const offen = daten.data.knoten.findIndex((k) => !k.erledigt);
     setSchritt(offen === -1 ? daten.data.knoten.length : offen);
   }, [daten.data]);
-  useEffect(() => window.scrollTo(0, 0), [schritt]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [schritt]);
 
   const aktuell = schritt !== null && schritt < knoten.length ? knoten[schritt] : undefined;
   const entwurf = aktuell
@@ -118,7 +120,7 @@ export function InventurPage() {
 
   if (inventur.status !== 'offen')
     return (
-      <Stack p="md">
+      <Stack>
         <Alert color="blue" title="Inventur abgeschlossen">
           Diese Inventur ist abgeschlossen und kann nicht mehr bearbeitet werden.
         </Alert>
@@ -133,18 +135,16 @@ export function InventurPage() {
 
   return (
     <Stack gap={0} mih="calc(100dvh - 60px)">
-      <Stack gap="xs" p="md" pb="sm">
-        <Group justify="space-between" wrap="nowrap" align="flex-start">
-          <Stack gap={0} style={{ minWidth: 0 }}>
-            <Text fw={700} size="lg" style={{ overflowWrap: 'anywhere' }}>
-              Inventur: {inventur.lagerortPfad}
-            </Text>
-            <Text size="sm" c="dimmed">
-              {aktuell
-                ? `Platz ${schritt + 1} von ${knoten.length} · ${erledigt} gezählt`
-                : `Zusammenfassung · ${erledigt} von ${knoten.length} Plätzen gezählt`}
-            </Text>
-          </Stack>
+      <Stack gap="xs" pb="sm">
+        <Text fw={700} size="lg" style={{ overflowWrap: 'anywhere' }}>
+          Inventur: {inventur.lagerortPfad}
+        </Text>
+        <Group justify="space-between" wrap="nowrap" gap="xs">
+          <Text size="sm" c="dimmed">
+            {aktuell
+              ? `Platz ${schritt + 1} von ${knoten.length} · ${erledigt} gezählt`
+              : `Zusammenfassung · ${erledigt} von ${knoten.length} Plätzen gezählt`}
+          </Text>
           <Group gap={0} wrap="nowrap">
             <Button
               variant="subtle"
@@ -174,7 +174,7 @@ export function InventurPage() {
 
       {aktuell && entwurf ? (
         <>
-          <Stack p="md" pt="xs" style={{ flex: 1 }}>
+          <Stack pt="xs" style={{ flex: 1 }}>
             <InventurKnoten
               knoten={aktuell}
               entwurf={entwurf}

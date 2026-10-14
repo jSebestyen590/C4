@@ -7,8 +7,8 @@ import { unwrap, useApi } from './api';
 
 const FARBEN = ['indigo.6', 'teal.6', 'orange.6', 'grape.6', 'cyan.6', 'pink.6', 'lime.7', 'red.6'];
 
-const zeitKurz = (iso: string) =>
-  new Date(iso)
+const zeitKurz = (zeit: string | number) =>
+  new Date(zeit)
     .toLocaleString('de-DE', {
       timeZone: 'Europe/Berlin',
       day: '2-digit',
@@ -19,9 +19,18 @@ const zeitKurz = (iso: string) =>
     })
     .replace(',', '');
 
+const tagKurz = (ms: number) =>
+  new Date(ms).toLocaleDateString('de-DE', {
+    timeZone: 'Europe/Berlin',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  });
+
 /** Stock over time: one step chart per Basisgebinde, total or per top-level Lager. */
 export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebinde: Gebinde[] }>) {
   const api = useApi();
+  const [jetzt] = useState(() => Date.now());
   const [ansicht, setAnsicht] = useState<'gesamt' | 'lager'>('gesamt');
   const daten = useQuery({
     queryKey: ['waren', wareId, 'verlauf'],
@@ -56,11 +65,14 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
         const reihen = serien.filter(
           (s) => s.basisGebindeId === basis.id && (ansicht === 'gesamt') === (s.lagerId === null),
         );
-        const daten = zeilen.map((z, i) => {
-          const zeile: Record<string, string | number> = { x: zeitKurz(z.zeitpunkt), i };
+        const zeilenDaten = zeilen.map((z, i) => {
+          const zeile: { x: number; i: number } & Record<string, number> = { x: new Date(z.zeitpunkt).getTime(), i };
           reihen.forEach((s, k) => (zeile[`s${k}`] = z[s.key] as number));
           return zeile;
         });
+        // Extend the last level as a flat line up to now (same breakdown as the last point).
+        const letzte = zeilenDaten[zeilenDaten.length - 1]!;
+        const daten = jetzt > letzte.x ? [...zeilenDaten, { ...letzte, x: jetzt }] : zeilenDaten;
         return (
           <Stack key={basis.id} gap="xs">
             {basen.length > 1 && <Title order={4}>{basis.name}</Title>}
@@ -71,7 +83,13 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
               curveType="stepAfter"
               withLegend={reihen.length > 1}
               yAxisProps={{ width: 40, allowDecimals: false }}
-              xAxisProps={{ minTickGap: 40 }}
+              xAxisProps={{
+                type: 'number',
+                scale: 'time',
+                domain: ['dataMin', 'dataMax'],
+                minTickGap: 40,
+                tickFormatter: (v: number) => tagKurz(v),
+              }}
               series={reihen.map((s, k) => ({
                 name: `s${k}`,
                 label: s.lagerId === null ? basis.name : lagerName(s.lagerId),
@@ -84,7 +102,7 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
                   return (
                     <Paper withBorder shadow="sm" p="xs" maw={280}>
                       <Text fw={600} size="sm" mb={4}>
-                        {label}
+                        {zeitKurz(Number(label))}
                       </Text>
                       {payload.map((p) => {
                         const k = Number(String(p.name).slice(1));
