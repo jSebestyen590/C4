@@ -1,7 +1,5 @@
 import {
   Alert,
-  Anchor,
-  Badge,
   Button,
   Card,
   Group,
@@ -27,13 +25,11 @@ import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
 export function InventurZusammenfassung({
   inventurId,
   knotenIds,
-  onSpringen,
   onZurueck,
 }: Readonly<{
   inventurId: string;
-  /** Node ids in counting order (for sorting and jump links). */
+  /** Node ids in table order (for sorting). */
   knotenIds: string[];
-  onSpringen: (lagerortId: string) => void;
   onZurueck: () => void;
 }>) {
   const api = useApi();
@@ -50,6 +46,8 @@ export function InventurZusammenfassung({
     queryKey: ['inventuren', inventurId, 'zusammenfassung', iso],
     enabled: iso !== null,
     placeholderData: keepPreviousData,
+    staleTime: 0,
+    gcTime: 0,
     queryFn: async () =>
       unwrap(
         await api.inventuren[':id'].zusammenfassung.$get({
@@ -86,7 +84,6 @@ export function InventurZusammenfassung({
     if (!z) return [];
     const wareName = new Map(z.waren.map((w) => [w.id, w]));
     const gebindeName = new Map(z.gebinde.map((g) => [g.id, g.name]));
-    const offen = new Set(z.offeneKnoten.map((k) => k.id));
     const nachKnoten = new Map<string, { pfad: string; waren: Map<string, string[]> }>();
     const sortiert = [...z.zeilen].sort(
       (a, b) =>
@@ -109,7 +106,6 @@ export function InventurZusammenfassung({
     return [...nachKnoten].map(([id, k]) => ({
       id,
       pfad: k.pfad,
-      offen: offen.has(id),
       waren: [...k.waren].map(([wareId, zeilen]) => ({
         wareId,
         name: wareName.get(wareId)?.name ?? '?',
@@ -128,32 +124,10 @@ export function InventurZusammenfassung({
           <Alert color="red">{fehlerText(daten.error, 'Laden fehlgeschlagen.')}</Alert>
         )}
         {daten.isPending && iso !== null && <Loader />}
-        {z && z.offeneKnoten.length > 0 && (
-          <Alert color="orange" title="Nicht gezählte Plätze">
-            <Stack gap={4}>
-              <Text size="sm">
-                Diese Plätze wurden nicht gezählt. Ihr gesamter Bestand wird beim Abschluss auf 0
-                gesetzt.
-              </Text>
-              {z.offeneKnoten.map((k) => (
-                <Anchor
-                  key={k.id}
-                  component="button"
-                  type="button"
-                  ta="left"
-                  mih={32}
-                  onClick={() => onSpringen(k.id)}
-                >
-                  {k.pfad}
-                </Anchor>
-              ))}
-            </Stack>
-          </Alert>
-        )}
         {z && (
           <>
             <Text size="sm" c="dimmed">
-              Angezeigt wird: Soll → Ist (Differenz). Nicht erfasste Bestände zählen als 0.
+              Angezeigt wird: Soll → Ist (Differenz). Leere Felder zählen als korrekt.
             </Text>
             <Switch
               size="md"
@@ -165,16 +139,9 @@ export function InventurZusammenfassung({
             {gruppen.map((k) => (
               <Card key={k.id} withBorder padding="sm">
                 <Stack gap="xs">
-                  <Group justify="space-between" wrap="nowrap" align="flex-start">
-                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {k.pfad}
-                    </Text>
-                    {k.offen && (
-                      <Badge color="orange" variant="light">
-                        nicht gezählt
-                      </Badge>
-                    )}
-                  </Group>
+                  <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                    {k.pfad}
+                  </Text>
                   {k.waren.map((w) => (
                     <Stack key={w.wareId} gap={0}>
                       <Text fw={500}>{w.name}</Text>
@@ -208,7 +175,7 @@ export function InventurZusammenfassung({
           disabled={!z || iso === null}
           onClick={() => setBestaetigen(true)}
         >
-          Inventur abschließen
+          Abschließen
         </Button>
       </InventurLeiste>
       <Modal
@@ -220,10 +187,7 @@ export function InventurZusammenfassung({
           <Text>
             {aenderungen === 0
               ? 'Es gibt keine Abweichungen, daher werden keine Korrekturen gebucht.'
-              : `Es werden ${aenderungen} Korrekturbuchungen angelegt.`}
-            {z &&
-              z.offeneKnoten.length > 0 &&
-              ` ${z.offeneKnoten.length} nicht gezählte Plätze werden auf 0 gesetzt.`}{' '}
+              : `Es werden ${aenderungen} Korrekturbuchungen angelegt.`}{' '}
             Der Bestand wird entsprechend korrigiert.
           </Text>
           <Group justify="flex-end" grow preventGrowOverflow={false}>

@@ -663,19 +663,22 @@ export interface InventurZeile {
   differenz: number;
 }
 
-/** Compares counted stock with the expected stock on the given nodes; one row per key. */
+/**
+ * Compares counted stock with the expected stock on the given nodes; one row per key.
+ * A Soll key without a counted value is taken as correct (ist = soll); only stored counts differ.
+ */
 export function inventurAbgleich(
   soll: Bestandsposten[],
   ist: InventurIst[],
   knotenIds: string[],
 ): InventurZeile[] {
   const knoten = new Set(knotenIds);
-  const zeilen = new Map<string, InventurZeile>();
+  const zeilen = new Map<string, InventurZeile & { gezaehlt: boolean }>();
   const zeile = (k: Pick<InventurZeile, 'lagerortId' | 'wareId' | 'gebindeId' | 'mhd'>) => {
     const key = schluessel(k.lagerortId, k.wareId, k.gebindeId, k.mhd);
     let z = zeilen.get(key);
     if (!z) {
-      z = { ...k, soll: 0, ist: 0, differenz: 0 };
+      z = { ...k, soll: 0, ist: 0, differenz: 0, gezaehlt: false };
       zeilen.set(key, z);
     }
     return z;
@@ -684,11 +687,20 @@ export function inventurAbgleich(
     if (knoten.has(p.lagerortId)) zeile(p).soll += p.menge;
   }
   for (const i of ist) {
-    zeile({ lagerortId: i.lagerortId, wareId: i.wareId, gebindeId: i.gebindeId, mhd: i.mhd }).ist +=
-      i.anzahl;
+    const z = zeile({
+      lagerortId: i.lagerortId,
+      wareId: i.wareId,
+      gebindeId: i.gebindeId,
+      mhd: i.mhd,
+    });
+    z.ist += i.anzahl;
+    z.gezaehlt = true;
   }
   return [...zeilen.values()]
-    .map((z) => ({ ...z, differenz: z.ist - z.soll }))
+    .map(({ gezaehlt, ...z }) => {
+      const ist = gezaehlt ? z.ist : z.soll;
+      return { ...z, ist, differenz: ist - z.soll };
+    })
     .sort(
       (a, b) =>
         a.lagerortId.localeCompare(b.lagerortId) ||

@@ -316,7 +316,6 @@ export interface InventurKnotenDetails {
   /** Current expected stock on this node. */
   soll: { wareId: string; gebindeId: string; mhd: string | null; menge: number }[];
   zaehlungen: ZaehlungDaten[];
-  erledigt: boolean;
 }
 
 export interface InventurDetails extends InventurUebersicht {
@@ -328,8 +327,6 @@ export interface InventurDetails extends InventurUebersicht {
 export interface InventurZusammenfassung {
   zeitpunkt: string;
   zeilen: (InventurZeile & { lagerortPfad: string })[];
-  /** Nodes of the subtree that were not counted (treated as 0). */
-  offeneKnoten: { id: string; pfad: string }[];
   waren: WareKurz[];
   gebinde: GebindeRow[];
 }
@@ -1127,19 +1124,17 @@ export function createWarenStore(db: Db): WarenStore {
       const kontext = await inventurKontext(db, id);
       if (!kontext) return undefined;
       const { inventur, alle, knotenIds } = kontext;
-      const [knotenRows, zaehlungen, listen, buchungen, alleGebinde, uebersicht] =
-        await Promise.all([
-          db.select().from(inventurKnoten).where(eq(inventurKnoten.inventurId, id)),
-          db.select().from(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, id)),
-          db
-            .select()
-            .from(lagerortWaren)
-            .where(inListe(lagerortWaren.lagerortId, knotenIds))
-            .orderBy(asc(lagerortWaren.position)),
-          buchungenLaden(db, inListe(bestandsbuchungen.lagerortId, knotenIds)),
-          db.select().from(gebinde),
-          inventurUebersichten([inventur]),
-        ]);
+      const [zaehlungen, listen, buchungen, alleGebinde, uebersicht] = await Promise.all([
+        db.select().from(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, id)),
+        db
+          .select()
+          .from(lagerortWaren)
+          .where(inListe(lagerortWaren.lagerortId, knotenIds))
+          .orderBy(asc(lagerortWaren.position)),
+        buchungenLaden(db, inListe(bestandsbuchungen.lagerortId, knotenIds)),
+        db.select().from(gebinde),
+        inventurUebersichten([inventur]),
+      ]);
       const soll = bestandZu(buchungen, new Date().toISOString());
       const wareIds = [
         ...new Set([
@@ -1162,7 +1157,6 @@ export function createWarenStore(db: Db): WarenStore {
           zaehlungen: zaehlungen
             .filter((z) => z.lagerortId === lagerortId)
             .map(({ wareId, gebindeId, mhd, anzahl }) => ({ wareId, gebindeId, mhd, anzahl })),
-          erledigt: knotenRows.find((k) => k.lagerortId === lagerortId)?.erledigt ?? false,
         })),
         waren: await warenKurz(db, wareIds),
         gebinde: alleGebinde,
@@ -1221,10 +1215,6 @@ export function createWarenStore(db: Db): WarenStore {
             })),
           );
         }
-        await tx
-          .delete(inventurKnoten)
-          .where(and(eq(inventurKnoten.inventurId, id), eq(inventurKnoten.lagerortId, lagerortId)));
-        await tx.insert(inventurKnoten).values({ inventurId: id, lagerortId, erledigt: true });
         if (neu.length > 0) {
           const start = naechstePosition(liste);
           await tx
@@ -1239,14 +1229,12 @@ export function createWarenStore(db: Db): WarenStore {
       if (!kontext) return undefined;
       nurOffen(kontext.inventur);
       const { alle, knotenIds } = kontext;
-      const [buchungen, ist, knotenRows, alleGebinde] = await Promise.all([
+      const [buchungen, ist, alleGebinde] = await Promise.all([
         buchungenLaden(db, inListe(bestandsbuchungen.lagerortId, knotenIds)),
         istZaehlungen(db, id),
-        db.select().from(inventurKnoten).where(eq(inventurKnoten.inventurId, id)),
         db.select().from(gebinde),
       ]);
       const zeilen = inventurAbgleich(bestandZu(buchungen, zeitpunkt), ist, knotenIds);
-      const erledigt = new Set(knotenRows.filter((k) => k.erledigt).map((k) => k.lagerortId));
       return {
         zeitpunkt,
         zeilen: zeilen.map((z) => ({
@@ -1259,9 +1247,6 @@ export function createWarenStore(db: Db): WarenStore {
           differenz: z.differenz,
           lagerortPfad: pfad(alle, z.lagerortId),
         })),
-        offeneKnoten: knotenIds
-          .filter((k) => !erledigt.has(k))
-          .map((k) => ({ id: k, pfad: pfad(alle, k) })),
         waren: await warenKurz(db, [...new Set(zeilen.map((z) => z.wareId))]),
         gebinde: alleGebinde,
       };
@@ -1276,7 +1261,7 @@ export function createWarenStore(db: Db): WarenStore {
           buchungenLaden(tx, inListe(bestandsbuchungen.lagerortId, knotenIds)),
           istZaehlungen(tx, id),
         ]);
-        // Nodes that were not counted count as 0: their whole stock is corrected away.
+        // Soll keys without a stored count are taken as correct; only counts yield corrections.
         const korrekturen = inventurKorrekturen(bestandZu(buchungen, zeitpunkt), ist, knotenIds);
         const vorgangId = await vorgangAnlegen(
           tx,

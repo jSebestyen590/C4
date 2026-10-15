@@ -134,6 +134,7 @@ describe('Krosti scenario', () => {
       ],
       ['L1', 'L2'],
     );
+    // K 06.2027 left empty on L1 is not a difference (and does not exist there anyway).
     expect(korrekturen).toHaveLength(3);
     expect(korrekturen).toEqual(
       expect.arrayContaining([
@@ -164,12 +165,35 @@ describe('Krosti scenario', () => {
       ]),
     );
   });
+
+  it('takes uncounted Soll keys as correct', () => {
+    const soll = bestandZu(alle);
+    const korrekturen = inventurKorrekturen(
+      soll,
+      [
+        { lagerortId: 'L1', wareId: 'krosti', gebindeId: 'K', mhd: '2027-02-01', anzahl: 3 },
+        { lagerortId: 'L1', wareId: 'krosti', gebindeId: 'F', mhd: '2027-02-01', anzahl: 6 },
+      ],
+      ['L1', 'L2'],
+    );
+    expect(korrekturen.map((k) => [k.gebindeId, k.menge])).toEqual([
+      ['F', -7],
+      ['K', -2],
+    ]);
+  });
 });
 
 describe('inventurKorrekturen', () => {
   const soll = bestandZu([buchung('2027-01-01T00:00:00Z', 'L1', 'F', null, 5)]);
-  it('treats missing counts as zero and ignores nodes out of scope', () => {
-    expect(inventurKorrekturen(soll, [], ['L1'])).toEqual([
+  it('takes missing counts as correct, but an explicit 0 as none', () => {
+    expect(inventurKorrekturen(soll, [], ['L1'])).toEqual([]);
+    expect(
+      inventurKorrekturen(
+        soll,
+        [{ lagerortId: 'L1', wareId: 'krosti', gebindeId: 'F', mhd: null, anzahl: 0 }],
+        ['L1'],
+      ),
+    ).toEqual([
       {
         wareId: 'krosti',
         lagerortId: 'L1',

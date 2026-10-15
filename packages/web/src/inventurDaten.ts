@@ -32,23 +32,23 @@ export interface KnotenDaten {
   wareIds: string[];
   soll: Soll[];
   zaehlungen: Zaehlung[];
-  erledigt: boolean;
 }
 
-/** Empty input = not counted (= 0 when saving). */
-export type Anzahl = number | '';
-
-/** All counts of one MHD (or of the single "no MHD" block) per Gebinde. */
-export interface MhdGruppe {
+/** One table row: a Ware with one MHD (or without), one input text per Gebinde. */
+export interface Zeile {
   key: string;
+  wareId: string;
   /** Input value: `YYYY-MM-DD` (Tag), `YYYY-MM` (Monat) or empty. */
   mhd: string;
-  anzahl: Record<string, Anzahl>;
+  /** MHD comes from Soll / saved counts and cannot be edited. */
+  fest: boolean;
+  /** Digits per Gebinde id; empty or missing = take Soll. */
+  anzahl: Record<string, string>;
 }
 
-/** Unsaved input of one node. */
-export interface KnotenEntwurf {
-  gruppen: Record<string, MhdGruppe[]>;
+/** Local (source of truth while editing) state of one node. */
+export interface KnotenZustand {
+  zeilen: Zeile[];
   /** Wares added ad hoc (not in the Warenliste, no Soll). */
   extra: string[];
   /** Ad hoc wares that should join the Warenliste of the node permanently. */
@@ -56,7 +56,13 @@ export interface KnotenEntwurf {
 }
 
 let zaehler = 0;
-export const neueGruppe = (mhd = ''): MhdGruppe => ({ key: `g${++zaehler}`, mhd, anzahl: {} });
+export const neueZeile = (wareId: string, mhd = '', fest = false): Zeile => ({
+  key: `z${++zaehler}`,
+  wareId,
+  mhd,
+  fest,
+  anzahl: {},
+});
 
 export const mhdEingabe = (mhd: string | null, art: MhdArt): string =>
   !mhd || art === 'keins' ? '' : art === 'monat' ? mhd.slice(0, 7) : mhd;
@@ -84,23 +90,22 @@ export function gebindeVonWare(ware: WareInfo, alle: Gebinde[]): Gebinde[] {
     );
 }
 
+/** Short unit label for the tiny caption above an input: the last word of the Gebinde name. */
+export const gebindeKurz = (name: string): string => name.trim().split(/\s+/).pop() ?? name;
+
 /** Wares of a node: the configured list, then wares with Soll or saved counts that are not in it. */
-export function knotenWaren(
-  knoten: KnotenDaten,
-  waren: Map<string, WareInfo>,
-): { liste: string[]; weitere: string[] } {
+export function knotenWaren(knoten: KnotenDaten, waren: Map<string, WareInfo>): string[] {
   const liste = knoten.wareIds.filter((id) => waren.has(id));
   const bekannt = new Set(liste);
   const weitere = [...new Set([...knoten.soll, ...knoten.zaehlungen].map((x) => x.wareId))]
     .filter((id) => !bekannt.has(id) && waren.has(id))
     .sort((a, b) => waren.get(a)!.name.localeCompare(waren.get(b)!.name, 'de'));
-  return { liste, weitere };
+  return [...liste, ...weitere];
 }
 
-/** Groups for one Ware: one per known MHD (from Soll and saved counts), saved counts prefilled. */
-export function wareGruppen(ware: WareInfo, knoten: KnotenDaten): MhdGruppe[] {
-  const eigene = <T extends { wareId: string; mhd: string | null }>(xs: T[]) =>
-    xs.filter((x) => x.wareId === ware.id);
+/** Rows of one Ware: one per known MHD (Soll and saved counts), saved counts prefilled. */
+export function wareZeilen(ware: WareInfo, knoten: KnotenDaten): Zeile[] {
+  const eigene = <T extends { wareId: string }>(xs: T[]) => xs.filter((x) => x.wareId === ware.id);
   const zaehlungen = eigene(knoten.zaehlungen);
   const mhds =
     ware.mhdArt === 'keins'
@@ -109,47 +114,70 @@ export function wareGruppen(ware: WareInfo, knoten: KnotenDaten): MhdGruppe[] {
           ...new Set(
             [...eigene(knoten.soll), ...zaehlungen].map((x) => mhdEingabe(x.mhd, ware.mhdArt)),
           ),
-        ].sort();
-  if (mhds.length === 0) mhds.push('');
+        ]
+          .filter((m) => m !== '')
+          .sort();
+  if (mhds.length === 0) return [neueZeile(ware.id)];
   return mhds.map((mhd) => {
-    const gruppe = neueGruppe(mhd);
+    const zeile = neueZeile(ware.id, mhd, ware.mhdArt !== 'keins');
     for (const z of zaehlungen) {
-      if (mhdEingabe(z.mhd, ware.mhdArt) === mhd) gruppe.anzahl[z.gebindeId] = z.anzahl;
+      if (mhdEingabe(z.mhd, ware.mhdArt) === mhd) zeile.anzahl[z.gebindeId] = String(z.anzahl);
     }
-    return gruppe;
+    return zeile;
   });
 }
 
-export function knotenEntwurf(knoten: KnotenDaten, waren: Map<string, WareInfo>): KnotenEntwurf {
-  const { liste, weitere } = knotenWaren(knoten, waren);
+export function knotenZustand(knoten: KnotenDaten, waren: Map<string, WareInfo>): KnotenZustand {
   return {
-    gruppen: Object.fromEntries(
-      [...liste, ...weitere].map((id) => [id, wareGruppen(waren.get(id)!, knoten)]),
-    ),
+    zeilen: knotenWaren(knoten, waren).flatMap((id) => wareZeilen(waren.get(id)!, knoten)),
     extra: [],
     inListe: [],
   };
 }
 
-/** Counted lines for the API; empty inputs are left out. Returns an error text when input is incomplete. */
+const sollKey = (wareId: string, gebindeId: string, mhd: string | null) =>
+  `${wareId}|${gebindeId}|${mhd ?? ''}`;
+
+/** Lookup of the expected amount per (Ware, Gebinde, MHD) of a node; 0 when there is none. */
+export function sollLookup(
+  soll: Soll[],
+): (wareId: string, gebindeId: string, mhd: string | null) => number {
+  const karte = new Map<string, number>();
+  for (const s of soll) {
+    const key = sollKey(s.wareId, s.gebindeId, s.mhd);
+    karte.set(key, (karte.get(key) ?? 0) + s.menge);
+  }
+  return (wareId, gebindeId, mhd) => karte.get(sollKey(wareId, gebindeId, mhd)) ?? 0;
+}
+
+/**
+ * Counted lines for the API: only non-empty inputs. Rows of MHD wares without a (valid) MHD are
+ * left out and reported as `unvollstaendig`.
+ */
 export function zaehlungenAus(
-  entwurf: KnotenEntwurf,
+  zustand: KnotenZustand,
   waren: Map<string, WareInfo>,
-): { zaehlungen: Zaehlung[] } | { fehler: string } {
-  const zaehlungen: Zaehlung[] = [];
-  for (const [wareId, gruppen] of Object.entries(entwurf.gruppen)) {
-    const ware = waren.get(wareId);
+): { zaehlungen: Zaehlung[]; unvollstaendig: boolean } {
+  const zaehlungen = new Map<string, Zaehlung>();
+  let unvollstaendig = false;
+  for (const zeile of zustand.zeilen) {
+    const ware = waren.get(zeile.wareId);
     if (!ware) continue;
-    for (const g of gruppen) {
-      const werte = Object.entries(g.anzahl).filter(([, a]) => a !== '');
-      if (werte.length === 0) continue;
-      const mhd = mhdAusEingabe(g.mhd, ware.mhdArt);
-      if (ware.mhdArt !== 'keins' && !mhd)
-        return { fehler: `Bitte gib bei „${ware.name}“ ein MHD an.` };
-      for (const [gebindeId, anzahl] of werte) {
-        zaehlungen.push({ wareId, gebindeId, mhd, anzahl: Number(anzahl) });
-      }
+    const werte = Object.entries(zeile.anzahl).filter(([, a]) => a !== '');
+    if (werte.length === 0) continue;
+    const mhd = mhdAusEingabe(zeile.mhd, ware.mhdArt);
+    if (ware.mhdArt !== 'keins' && !mhd) {
+      unvollstaendig = true;
+      continue;
+    }
+    for (const [gebindeId, anzahl] of werte) {
+      zaehlungen.set(sollKey(zeile.wareId, gebindeId, mhd), {
+        wareId: zeile.wareId,
+        gebindeId,
+        mhd,
+        anzahl: Number(anzahl),
+      });
     }
   }
-  return { zaehlungen };
+  return { zaehlungen: [...zaehlungen.values()], unvollstaendig };
 }

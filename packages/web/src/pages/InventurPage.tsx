@@ -1,33 +1,42 @@
-import { Alert, Anchor, Button, Group, Loader, Modal, Progress, Stack, Text } from '@mantine/core';
-import { IconListCheck, IconTrash } from '@tabler/icons-react';
+import { Alert, Anchor, Box, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
+import { IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Gebinde } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { AktionsMenue } from '../AktionsMenue';
-import { InventurKnoten } from '../InventurKnoten';
+import { InventurAbschnitt } from '../InventurAbschnitt';
 import { InventurLeiste } from '../InventurLeiste';
-import { InventurUebersicht } from '../InventurUebersicht';
 import { InventurZusammenfassung } from '../InventurZusammenfassung';
-import { knotenEntwurf, zaehlungenAus, type KnotenEntwurf, type WareInfo } from '../inventurDaten';
+import { knotenZustand, type KnotenZustand, type WareInfo } from '../inventurDaten';
+import { useInventurSpeichern, type SpeicherStatus } from '../useInventurSpeichern';
 import { fehlerAnzeigen, fehlerText, pruefen } from '../warenApi';
 
-/** Guided inventory: count node by node (draft saved on the server), then review and book. */
+const STATUS_TEXT: Record<SpeicherStatus, string> = {
+  leer: '',
+  speichert: 'Speichert…',
+  gespeichert: 'Gespeichert',
+  fehler: 'Nicht gespeichert',
+  unvollstaendig: 'Gespeichert, MHD fehlt',
+};
+
+/** Inventory as one editable table for the whole Lager (autosaved draft), then review and booking. */
 export function InventurPage() {
   const { id = '' } = useParams();
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [schritt, setSchritt] = useState<number | null>(null);
-  const [entwuerfe, setEntwuerfe] = useState<Record<string, KnotenEntwurf>>({});
-  const [uebersicht, setUebersicht] = useState(false);
+  const [zustaende, setZustaende] = useState<Record<string, KnotenZustand> | null>(null);
+  const [zusammenfassung, setZusammenfassung] = useState(false);
+  const [weiter, setWeiter] = useState(false);
   const [verwerfen, setVerwerfen] = useState(false);
-  const [fehler, setFehler] = useState<string | null>(null);
 
   const daten = useQuery({
     queryKey: ['inventuren', id],
     queryFn: async () => unwrap(await api.inventuren[':id'].$get({ param: { id } })),
+    staleTime: 0,
+    gcTime: 0,
   });
   const katalogDaten = useQuery({
     queryKey: ['waren', { archiv: true }],
@@ -43,62 +52,35 @@ export function InventurPage() {
   }, [daten.data, katalog]);
   const gebinde: Gebinde[] = useMemo(() => daten.data?.gebinde ?? [], [daten.data]);
   const knoten = useMemo(() => daten.data?.knoten ?? [], [daten.data]);
-  const knotenIds = useMemo(() => knoten.map((k) => k.lagerortId), [knoten]);
 
-  // Resume at the first node that has not been counted yet (once, when the draft arrives).
-  const gestartet = useRef(false);
-  useEffect(() => {
-    if (!daten.data || gestartet.current) return;
-    gestartet.current = true;
-    const offen = daten.data.knoten.findIndex((k) => !k.erledigt);
-    setSchritt(offen === -1 ? daten.data.knoten.length : offen);
-  }, [daten.data]);
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [schritt]);
-
-  const aktuell = schritt !== null && schritt < knoten.length ? knoten[schritt] : undefined;
-  const entwurf = aktuell
-    ? (entwuerfe[aktuell.lagerortId] ?? knotenEntwurf(aktuell, waren))
-    : undefined;
-
-  const speichern = useMutation({
-    mutationFn: async ({ lagerortId, e }: { lagerortId: string; e: KnotenEntwurf }) => {
-      const ergebnis = zaehlungenAus(e, waren);
-      if ('fehler' in ergebnis) throw new Error(ergebnis.fehler);
-      await pruefen(
-        await api.inventuren[':id'].knoten[':lid'].$put({
-          param: { id, lid: lagerortId },
-          json: {
-            zaehlungen: ergebnis.zaehlungen,
-            inListeAufnehmen: e.inListe.filter((w) => e.extra.includes(w)),
-          },
-        }),
-      );
-    },
-    onError: (e) => {
-      // Our own validation message is German; API errors carry theirs.
-      setFehler(e instanceof Error && e.name === 'Error' ? e.message : fehlerText(e));
-    },
-  });
-
-  const weiter = () => {
-    if (!aktuell || !entwurf || schritt === null) return;
-    setFehler(null);
-    speichern.mutate(
-      { lagerortId: aktuell.lagerortId, e: entwurf },
-      {
-        onSuccess: async () => {
-          setEntwuerfe((alt) => ({ ...alt, [aktuell.lagerortId]: entwurf }));
-          await qc.invalidateQueries({ queryKey: ['inventuren', id], exact: true });
-          setSchritt(schritt + 1);
-        },
-      },
+  // The local input state is the source of truth; it is built once from the fresh draft.
+  if (zustaende === null && daten.data && !daten.isFetching) {
+    setZustaende(
+      Object.fromEntries(daten.data.knoten.map((k) => [k.lagerortId, knotenZustand(k, waren)])),
     );
+  }
+
+  const speicher = useInventurSpeichern(id, () => ({ zustaende: zustaende ?? {}, waren }));
+
+  const aendern = (lid: string, f: (alt: KnotenZustand) => KnotenZustand) => {
+    setZustaende((alt) => (alt && alt[lid] ? { ...alt, [lid]: f(alt[lid]) } : alt));
+    speicher.geaendert(lid);
+  };
+
+  const zurZusammenfassung = async () => {
+    setWeiter(true);
+    const ok = await speicher.alleSpeichern();
+    setWeiter(false);
+    if (!ok) return;
+    window.scrollTo(0, 0);
+    setZusammenfassung(true);
   };
 
   const verwerfenMutation = useMutation({
-    mutationFn: async () => pruefen(await api.inventuren[':id'].$delete({ param: { id } })),
+    mutationFn: async () => {
+      speicher.verwerfen();
+      await pruefen(await api.inventuren[':id'].$delete({ param: { id } }));
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['inventuren'] });
       navigate('/lager');
@@ -115,7 +97,7 @@ export function InventurPage() {
         {fehlerText(daten.error, 'Die Inventur konnte nicht geladen werden.')}
       </Alert>
     );
-  if (!daten.data || schritt === null) return <Loader m="md" aria-label="Lädt" />;
+  if (!daten.data || zustaende === null) return <Loader m="md" aria-label="Lädt" />;
   const inventur = daten.data;
 
   if (inventur.status !== 'offen')
@@ -130,108 +112,83 @@ export function InventurPage() {
       </Stack>
     );
 
-  const erledigt = knoten.filter((k) => k.erledigt).length;
-  const letzter = schritt === knoten.length - 1;
-
   return (
     <Stack gap={0} mih="calc(100dvh - 60px)">
-      <Stack gap="xs" pb="sm">
-        <Text fw={700} size="lg" style={{ overflowWrap: 'anywhere' }}>
-          Inventur: {inventur.lagerortPfad}
-        </Text>
-        <Group justify="space-between" wrap="nowrap" gap="xs">
-          <Text size="sm" c="dimmed">
-            {aktuell
-              ? `Platz ${schritt + 1} von ${knoten.length} · ${erledigt} gezählt`
-              : `Zusammenfassung · ${erledigt} von ${knoten.length} Plätzen gezählt`}
-          </Text>
-          <Group gap={0} wrap="nowrap">
-            <Button
-              variant="subtle"
-              size="md"
-              mih={44}
-              px="xs"
-              leftSection={<IconListCheck size={20} />}
-              onClick={() => setUebersicht(true)}
-            >
-              Übersicht
-            </Button>
-            <AktionsMenue
-              label="Inventur-Aktionen"
-              aktionen={[
-                {
-                  text: 'Inventur verwerfen',
-                  icon: <IconTrash size={18} />,
-                  color: 'red',
-                  onClick: () => setVerwerfen(true),
-                },
-              ]}
-            />
-          </Group>
-        </Group>
-        <Progress value={(erledigt / Math.max(knoten.length, 1)) * 100} aria-label="Fortschritt" />
-      </Stack>
-
-      {aktuell && entwurf ? (
+      {zusammenfassung ? (
+        <InventurZusammenfassung
+          inventurId={id}
+          knotenIds={knoten.map((k) => k.lagerortId)}
+          onZurueck={() => setZusammenfassung(false)}
+        />
+      ) : (
         <>
-          <Stack pt="xs" style={{ flex: 1 }}>
-            <InventurKnoten
-              knoten={aktuell}
-              entwurf={entwurf}
-              waren={waren}
-              katalog={katalog}
-              gebinde={gebinde}
-              onChange={(f) =>
-                setEntwuerfe((alt) => ({
-                  ...alt,
-                  [aktuell.lagerortId]: f(alt[aktuell.lagerortId] ?? entwurf),
-                }))
-              }
-            />
-            {fehler && <Alert color="red">{fehler}</Alert>}
+          <Stack gap={2} pb="xs">
+            <Group justify="space-between" wrap="nowrap" gap="xs" align="flex-start">
+              <Text fw={700} size="lg" style={{ overflowWrap: 'anywhere' }}>
+                Inventur: {inventur.lagerortPfad}
+              </Text>
+              <AktionsMenue label="Inventur-Aktionen" aktionen={verwerfenAktion(setVerwerfen)} />
+            </Group>
+            <Group justify="space-between" wrap="nowrap" gap="xs" align="flex-start">
+              <Text size="sm" c="dimmed">
+                Leere Felder übernehmen den erwarteten Bestand (grau).
+              </Text>
+              <Text
+                size="xs"
+                c={speicher.status === 'fehler' ? 'red' : 'dimmed'}
+                role="status"
+                ta="right"
+                style={{ flex: 'none' }}
+              >
+                {STATUS_TEXT[speicher.status]}
+              </Text>
+            </Group>
           </Stack>
+          <Box
+            style={{ flex: 1, border: '1px solid var(--mantine-color-default-border)' }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+              const ziel = e.target as HTMLElement;
+              if (!ziel.matches('input[data-inventur]')) return;
+              e.preventDefault();
+              const alle = [
+                ...e.currentTarget.querySelectorAll<HTMLElement>('input[data-inventur]'),
+              ];
+              const naechstes = alle[alle.indexOf(ziel) + 1];
+              if (naechstes) naechstes.focus();
+              else document.getElementById('inventur-weiter')?.focus();
+            }}
+          >
+            {knoten.map((k) => {
+              const z = zustaende[k.lagerortId];
+              return z ? (
+                <InventurAbschnitt
+                  key={k.lagerortId}
+                  knoten={k}
+                  zustand={z}
+                  waren={waren}
+                  katalog={katalog}
+                  gebinde={gebinde}
+                  onChange={(f) => aendern(k.lagerortId, f)}
+                  onBlur={() => speicher.beiBlur(k.lagerortId)}
+                />
+              ) : null;
+            })}
+          </Box>
           <InventurLeiste>
             <Button
-              variant="default"
+              id="inventur-weiter"
               size="md"
               mih={48}
-              disabled={schritt === 0 || speichern.isPending}
-              onClick={() => {
-                setFehler(null);
-                setEntwuerfe((alt) => ({ ...alt, [aktuell.lagerortId]: entwurf }));
-                setSchritt(schritt - 1);
-              }}
+              loading={weiter}
+              onClick={() => void zurZusammenfassung()}
             >
-              Zurück
-            </Button>
-            <Button size="md" mih={48} loading={speichern.isPending} onClick={weiter}>
-              {letzter ? 'Zur Zusammenfassung' : 'Weiter'}
+              Zur Zusammenfassung
             </Button>
           </InventurLeiste>
         </>
-      ) : (
-        <InventurZusammenfassung
-          inventurId={id}
-          knotenIds={knotenIds}
-          onSpringen={(lid) => setSchritt(Math.max(knotenIds.indexOf(lid), 0))}
-          onZurueck={() => setSchritt(Math.max(knoten.length - 1, 0))}
-        />
       )}
 
-      {uebersicht && (
-        <InventurUebersicht
-          knoten={knoten}
-          aktuell={schritt}
-          onClose={() => setUebersicht(false)}
-          onWaehlen={(i) => {
-            setFehler(null);
-            if (aktuell && entwurf)
-              setEntwuerfe((alt) => ({ ...alt, [aktuell.lagerortId]: entwurf }));
-            setSchritt(i);
-            setUebersicht(false);
-          }}
-        />
-      )}
       <Modal opened={verwerfen} onClose={() => setVerwerfen(false)} title="Inventur verwerfen?">
         <Stack>
           <Text>
@@ -255,3 +212,12 @@ export function InventurPage() {
     </Stack>
   );
 }
+
+const verwerfenAktion = (setVerwerfen: (v: boolean) => void) => [
+  {
+    text: 'Inventur verwerfen',
+    icon: <IconTrash size={18} />,
+    color: 'red',
+    onClick: () => setVerwerfen(true),
+  },
+];

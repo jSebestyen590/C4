@@ -34,8 +34,9 @@ zeigen sie nur mit `?archiv=1`.
 | `POST /api/inventuren`, `PUT …/:id/knoten/:lid`, `POST …/:id/abschluss`, `DELETE …/:id`                                                                                              | `bestand:buchen`  |
 
 Inventur: pro Lagerort höchstens eine offene (409). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
-Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nicht gezählte
-Knoten gelten als 0.
+Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nur
+gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, Gebinde, MHD) ohne Zählwert gilt als korrekt
+(Ist = Soll), eine ausdrückliche 0 bedeutet „nichts da“. Die Tabelle `inventur_knoten` wird nicht mehr genutzt.
 
 ## Oberfläche
 
@@ -53,12 +54,19 @@ Knoten gelten als 0.
   Stufendiagramm je Basisgebinde, umschaltbar Gesamt / Je Lager (`WareVerlauf.tsx`; `GET /waren/:id/verlauf` liefert dazu
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,
   neueste zuerst, mit Löschen (`WareHistorie.tsx`). Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet.
-- `/lager/inventur/:id` (`bestand:buchen`): geführte Inventur, Handy zuerst. Schritt je Platz in Zählreihenfolge
-  (`InventurPage.tsx`, `InventurKnoten.tsx`, `InventurWareZeilen.tsx`): je Ware Karte mit Zahlenfeldern je Gebinde
-  (Obergebinde zuerst, −/+ mit 44px) und bei MHD-Waren Blöcke je MHD („MHD hinzufügen“), vorbelegt mit den MHD aus dem
-  Soll („Laut Bestand: …“), aber mit leeren Zahlen; leer zählt als 0. Waren mit Soll, die nicht in der Warenliste stehen,
-  folgen mit Hinweis „nicht in der Liste“; weitere Waren lassen sich per Suche (Name, Alias) ergänzen, optional dauerhaft
-  in die Liste (`inListeAufnehmen`). „Weiter“ speichert den Platz (`PUT …/knoten/:lid`), beim Öffnen geht es beim ersten
-  nicht gezählten Platz weiter; „Übersicht“ springt zu jedem Platz. Die Zusammenfassung (`InventurZusammenfassung.tsx`)
-  warnt vor nicht gezählten Plätzen, zeigt Soll → Ist je Platz und Ware (nur Abweichungen, optional alle) und bucht mit
-  frei wählbarem Zeitpunkt. „Inventur verwerfen“ liegt im Menü. Abgeschlossene Inventuren sind nur ein Hinweis.
+- `/lager/inventur/:id` (`bestand:buchen`): Inventur als eine kompakte, direkt bearbeitbare Tabelle für das ganze Lager,
+  Handy zuerst (`InventurPage.tsx`, `InventurAbschnitt.tsx`, `InventurZeile.tsx`). Je Platz (Tiefensuche) eine Überschrift
+  mit dem Pfad, darunter eine Zeile je Ware und MHD: vorbelegt aus dem Soll (eine Zeile je vorhandenem MHD, Anzeige „Name ·
+  MM.yyyy“) und der Warenliste (in Listenreihenfolge, Waren nur mit Soll danach). MHD-Waren ohne Soll bekommen eine Zeile mit
+  MHD-Eingabe, „+ MHD“ fügt eine weitere hinzu; Waren ohne MHD haben genau eine Zeile. Pro Gebinde ein kleines Zahlenfeld
+  (Obergebinde zuerst, kurze Einheit darüber). **Leere Felder übernehmen den erwarteten Bestand** (grauer Platzhalter),
+  eine eingetippte 0 heißt „nichts da“. „+ Ware“ je Platz ergänzt eine Ware ad hoc, optional dauerhaft in die Liste
+  (`inListeAufnehmen`).
+- Speichern: automatisch beim Verlassen eines Feldes und ca. 0,8 s nach dem Tippen (`useInventurSpeichern.ts`,
+  `PUT …/knoten/:lid`, nur nicht leere Felder werden Zählwerte); der lokale Eingabestand bleibt maßgeblich, der Status
+  („Speichert…“, „Gespeichert“) steht im Kopf. Zeilen mit Zahlen, aber ohne MHD werden nicht gespeichert („MHD fehlt“).
+- Tastatur: numerisches Tastaturlayout, Eingaben nur Ziffern, Schriftgröße 16px. Enter springt zum nächsten Zahlen- oder
+  MHD-Feld (über Plätze hinweg), im letzten Feld auf „Zur Zusammenfassung“.
+- Die Zusammenfassung (`InventurZusammenfassung.tsx`) speichert zuvor alles Ausstehende, zeigt Soll → Ist je Platz und Ware
+  (nur Abweichungen, optional alle) und bucht mit frei wählbarem Zeitpunkt nach Bestätigung. „Inventur verwerfen“ liegt im
+  Menü. Abgeschlossene Inventuren sind nur ein Hinweis.
