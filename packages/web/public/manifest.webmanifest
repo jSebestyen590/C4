@@ -1,0 +1,9 @@
+{
+  "name": "C4",
+  "short_name": "C4",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "icons": [{ "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }]
+}
