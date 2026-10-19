@@ -13,9 +13,17 @@ import {
   type ComboboxItem,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconArrowDown, IconArrowUp, IconX } from '@tabler/icons-react';
+import { IconGripVertical, IconX } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DraggableProvidedDragHandleProps,
+  type DropResult,
+} from '@hello-pangea/dnd';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { unwrap, useApi } from './api';
 import { fehlerText, pruefen } from './warenApi';
 
@@ -52,12 +60,63 @@ function WarenlisteInhalt({
     },
   });
 
-  const verschieben = (i: number, richtung: -1 | 1) => {
+  const verschieben = ({ source, destination }: DropResult) => {
+    if (!destination || destination.index === source.index) return;
     const neu = [...ids];
-    const ziel = i + richtung;
-    if (ziel < 0 || ziel >= neu.length) return;
-    [neu[i], neu[ziel]] = [neu[ziel]!, neu[i]!];
+    const [bewegt] = neu.splice(source.index, 1);
+    neu.splice(destination.index, 0, bewegt!);
     setIds(neu);
+  };
+
+  const zeile = (
+    id: string,
+    i: number,
+    handleProps: DraggableProvidedDragHandleProps | null | undefined,
+    zieht: boolean,
+  ) => {
+    const ware = index.get(id);
+    return (
+      <Paper withBorder p={4} pr={4} shadow={zieht ? 'md' : undefined}>
+        <Group gap={0} wrap="nowrap">
+          <div
+            {...handleProps}
+            aria-label={`${ware?.name ?? 'Ware'} verschieben`}
+            style={{
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'grab',
+              touchAction: 'none',
+              color: 'var(--mantine-color-dimmed)',
+            }}
+          >
+            <IconGripVertical size={20} />
+          </div>
+          <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ overflowWrap: 'anywhere' }}>
+              {ware?.name ?? id}
+            </Text>
+            {ware?.archiviert && (
+              <Badge color="gray" variant="light" w="fit-content">
+                Archiviert
+              </Badge>
+            )}
+          </Stack>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size={44}
+            aria-label={`${ware?.name ?? 'Ware'} entfernen`}
+            onClick={() => setIds(ids.filter((x) => x !== id))}
+          >
+            <IconX size={20} />
+          </ActionIcon>
+        </Group>
+      </Paper>
+    );
   };
 
   const auswahl = waren
@@ -95,56 +154,40 @@ function WarenlisteInhalt({
         }}
       />
       {ids.length === 0 && <Text c="dimmed">Noch keine Waren in der Liste.</Text>}
-      <Stack gap="xs">
-        {ids.map((id, i) => {
-          const ware = index.get(id);
-          return (
-            <Paper key={id} withBorder p={4} pl="sm">
-              <Group gap={0} wrap="nowrap">
-                <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ overflowWrap: 'anywhere' }}>
-                    {i + 1}. {ware?.name ?? id}
-                  </Text>
-                  {ware?.archiviert && (
-                    <Badge color="gray" variant="light" w="fit-content">
-                      Archiviert
-                    </Badge>
+      <DragDropContext onDragEnd={verschieben}>
+        <Droppable
+          droppableId="waren"
+          renderClone={(provided, _snapshot, rubric) => {
+            const id = ids[rubric.source.index]!;
+            // Portal so the clone is not offset by the Modal's transformed/scrolling ancestors.
+            return createPortal(
+              <div
+                ref={provided.innerRef}
+                {...provided.draggableProps}
+                style={{ ...provided.draggableProps.style, zIndex: 1000 }}
+              >
+                {zeile(id, rubric.source.index, provided.dragHandleProps, true)}
+              </div>,
+              document.body,
+            );
+          }}
+        >
+          {(drop) => (
+            <Stack gap="xs" ref={drop.innerRef} {...drop.droppableProps}>
+              {ids.map((id, i) => (
+                <Draggable key={id} draggableId={id} index={i}>
+                  {(drag, snapshot) => (
+                    <div ref={drag.innerRef} {...drag.draggableProps}>
+                      {zeile(id, i, drag.dragHandleProps, snapshot.isDragging)}
+                    </div>
                   )}
-                </Stack>
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size={44}
-                  disabled={i === 0}
-                  aria-label={`${ware?.name ?? 'Ware'} nach oben`}
-                  onClick={() => verschieben(i, -1)}
-                >
-                  <IconArrowUp size={20} />
-                </ActionIcon>
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size={44}
-                  disabled={i === ids.length - 1}
-                  aria-label={`${ware?.name ?? 'Ware'} nach unten`}
-                  onClick={() => verschieben(i, 1)}
-                >
-                  <IconArrowDown size={20} />
-                </ActionIcon>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  size={44}
-                  aria-label={`${ware?.name ?? 'Ware'} entfernen`}
-                  onClick={() => setIds(ids.filter((x) => x !== id))}
-                >
-                  <IconX size={20} />
-                </ActionIcon>
-              </Group>
-            </Paper>
-          );
-        })}
-      </Stack>
+                </Draggable>
+              ))}
+              {drop.placeholder}
+            </Stack>
+          )}
+        </Droppable>
+      </DragDropContext>
       {speichern.isError && (
         <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>
       )}
