@@ -14,6 +14,10 @@ on:
         description: 'DEV ONLY: drop all tables and migrate from scratch (all data is lost)'
         type: boolean
         default: false
+      rollback_to:
+        description: 'DEV ONLY: roll back all migrations applied after this one (e.g. 0009_foo) before migrating; needs down files; data of rolled back migrations is lost'
+        type: string
+        default: ''
 
 permissions:
   id-token: write
@@ -30,6 +34,7 @@ jobs:
     with:
       env: dev
       reset_db: ${{ inputs.reset_db == true }}
+      rollback_to: ${{ inputs.rollback_to }}
 
   prod:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.env == 'prod')
