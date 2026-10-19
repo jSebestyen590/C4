@@ -9,6 +9,11 @@ on:
         required: false
         type: boolean
         default: false
+      rollback_to:
+        description: 'DEV ONLY: roll back all migrations applied after this one before migrating'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   id-token: write
@@ -58,6 +63,8 @@ jobs:
           aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app/index.html" "/app/config.json" "/app/manifest.webmanifest"
 
       - name: Migrate database
+        env:
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
         run: |
           export DSQL_ENDPOINT=$(jq -r .dsql_endpoint app-outputs.json)
           export USER_POOL_ID=$(jq -r .user_pool_id app-outputs.json)
@@ -70,6 +77,12 @@ jobs:
               exit 1
             fi
             CONFIRM_DB_RESET=yes pnpm db:reset
+          elif [ -n "$ROLLBACK_TO" ]; then
+            if [ "${{ inputs.env }}" != "dev" ]; then
+              echo "::error::rollback_to is only allowed for dev"
+              exit 1
+            fi
+            CONFIRM_DB_ROLLBACK=yes pnpm db:rollback --to "$ROLLBACK_TO"
           fi
           pnpm db:migrate
 

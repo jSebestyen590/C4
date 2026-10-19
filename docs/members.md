@@ -126,4 +126,5 @@ Die Lambda braucht die Cognito-Berechtigungen aus `infra/modules/app/main.tf`, d
 ## Datenbank zurücksetzen (nur dev)
 
 `pnpm db:reset` löscht alle Tabellen (braucht `CONFIRM_DB_RESET=yes`). Der Deploy-Workflow hat dafür
-die Eingabe `reset_db`, die nur für `dev` funktioniert.
+die Eingabe `reset_db`, die nur für `dev` funktioniert. Einzelne Migrationen zurückzunehmen steht in
+[datenbank.md](./datenbank.md).
