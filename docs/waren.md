@@ -26,12 +26,12 @@ zeigen sie nur mit `?archiv=1`.
 ## Gebinde
 
 Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen gebildet
-(`gebindeBezeichnung` in `packages/shared/src/waren.ts`). Feste Listen: `EINHEITEN` (l, ml, kg, g, Stk) und
-`VERPACKUNGSEINHEITEN` (Flasche, Dose, Glas, Karton, Beutel, Packung, Kasten, Tray, Kiste, Fass), Labels in shared
+(`gebindeBezeichnung` in `packages/shared/src/waren.ts`). Feste Listen: `EINHEITEN` (l, kg, Stk) und
+`VERPACKUNGSEINHEITEN` (Flasche, Dose, Kasten, Kolli, Fass, Packung), Labels in shared
 (`EINHEIT_LABELS`, `VERPACKUNGSEINHEIT_LABELS`, von `i18n.ts` re-exportiert).
 
 - **Basisgebinde:** `menge` (> 0, höchstens 3 Nachkommastellen), `einheit`, `verpackungseinheit`, optional `pfandCent`
-  (`null` = kein Pfand). Bezeichnung `0,5l Flasche 0,08 €`, `330ml Dose 0,25 €`, `1l Karton`, `6 Stk Packung`.
+  (`null` = kein Pfand). Bezeichnung `0,5l Flasche 0,08 €`, `0,33l Dose 0,25 €`, `1l Packung`, `6 Stk Packung`.
 - **Obergebinde:** `unterGebindeId` + `unterAnzahl` (≥ 2), eigene `verpackungseinheit` und optional eigenes Pfand, keine
   Menge/Einheit. Bezeichnung `20 x 0,5l Flasche 3,10 €` (Pfand = eigenes + Anzahl × Pfand des Untergebindes, `null` zählt
   als 0; ohne jedes Pfand entfällt der Teil). Die eigene Verpackungseinheit steht nicht in der Bezeichnung.

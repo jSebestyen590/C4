@@ -26,40 +26,23 @@ export type VorgangTyp = (typeof VORGANG_TYPEN)[number];
 export const QUELLEN = ['manuell', 'inventur'] as const;
 export type Quelle = (typeof QUELLEN)[number];
 
-export const EINHEITEN = ['l', 'ml', 'kg', 'g', 'stk'] as const;
+export const EINHEITEN = ['l', 'kg', 'stk'] as const;
 export type Einheit = (typeof EINHEITEN)[number];
 export const EINHEIT_LABELS: Record<Einheit, string> = {
   l: 'l',
-  ml: 'ml',
   kg: 'kg',
-  g: 'g',
   stk: 'Stk',
 };
 
-export const VERPACKUNGSEINHEITEN = [
-  'flasche',
-  'dose',
-  'glas',
-  'karton',
-  'beutel',
-  'packung',
-  'kasten',
-  'tray',
-  'kiste',
-  'fass',
-] as const;
+export const VERPACKUNGSEINHEITEN = ['flasche', 'dose', 'kasten', 'kolli', 'fass', 'packung'] as const;
 export type Verpackungseinheit = (typeof VERPACKUNGSEINHEITEN)[number];
 export const VERPACKUNGSEINHEIT_LABELS: Record<Verpackungseinheit, string> = {
   flasche: 'Flasche',
   dose: 'Dose',
-  glas: 'Glas',
-  karton: 'Karton',
-  beutel: 'Beutel',
-  packung: 'Packung',
   kasten: 'Kasten',
-  tray: 'Tray',
-  kiste: 'Kiste',
+  kolli: 'Kolli',
   fass: 'Fass',
+  packung: 'Packung',
 };
 
 /**
@@ -399,7 +382,7 @@ export function centAnzeigen(cent: number): string {
     .replaceAll(String.fromCharCode(160), ' ');
 }
 
-/** `0,5l`, `330ml`, `6 Stk`; empty for an Obergebinde. */
+/** `0,5l`, `0,33l`, `6 Stk`; empty for an Obergebinde. */
 export function inhaltAnzeigen(g: Pick<Gebinde, 'menge' | 'einheit'>): string {
   if (g.menge === null || g.einheit === null) return '';
   return `${mengeAnzeigen(g.menge)}${g.einheit === 'stk' ? ' ' : ''}${EINHEIT_LABELS[g.einheit]}`;
@@ -416,7 +399,7 @@ function basisBezeichnung(g: Gebinde, pfand: boolean): string {
 }
 
 /**
- * Full name: `0,5l Flasche 0,08 €`, `1l Karton`, `20 x 0,5l Flasche 3,10 €`. An Obergebinde is
+ * Full name: `0,5l Flasche 0,08 €`, `1l Packung`, `20 x 0,5l Flasche 3,10 €`. An Obergebinde is
  * described by its content and the aggregated deposit; its own Verpackungseinheit is not part of it.
  */
 export function gebindeBezeichnung(g: Gebinde, alle: Gebinde[]): string {

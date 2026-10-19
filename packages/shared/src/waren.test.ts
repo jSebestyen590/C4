@@ -454,7 +454,7 @@ describe('Gebinde helpers', () => {
     expect(gebindeFehler(ober('K'), ALLE)).toMatch(/Untergebinde haben/);
     expect(gebindeFehler(ober('F', 'F'), ALLE)).toMatch(/sich selbst/);
     expect(gebindeFehler(ober('K', 'F'), ALLE)).not.toBeNull();
-    const G = { ...basisgebinde('G', 1, 'stk', 'kiste', null) };
+    const G = { ...basisgebinde('G', 1, 'stk', 'packung', null) };
     expect(gebindeFehler(ober('G', 'F'), [...ALLE, G])).toMatch(/bereits Untergebinde/);
   });
   it('rejects incomplete combinations', () => {
@@ -469,15 +469,15 @@ describe('Gebinde helpers', () => {
   it('formats names', () => {
     expect(gebindeBezeichnung(F, ALLE)).toBe('0,5l Flasche 0,08 €');
     expect(gebindeBezeichnung(K, ALLE)).toBe('20 x 0,5l Flasche 3,10 €');
-    expect(gebindeBezeichnung(basisgebinde('D', 330, 'ml', 'dose', 25), ALLE)).toBe(
-      '330ml Dose 0,25 €',
+    expect(gebindeBezeichnung(basisgebinde('D', 0.33, 'l', 'dose', 25), ALLE)).toBe(
+      '0,33l Dose 0,25 €',
     );
-    expect(gebindeBezeichnung(basisgebinde('C', 1, 'l', 'karton', null), ALLE)).toBe('1l Karton');
+    expect(gebindeBezeichnung(basisgebinde('C', 1, 'l', 'packung', null), ALLE)).toBe('1l Packung');
     expect(gebindeBezeichnung(basisgebinde('P', 6, 'stk', 'packung', null), ALLE)).toBe(
       '6 Stk Packung',
     );
-    expect(gebindeBezeichnung(basisgebinde('P', 0.33, 'l', 'glas', 0), ALLE)).toBe(
-      '0,33l Glas 0,00 €',
+    expect(gebindeBezeichnung(basisgebinde('P', 0.7, 'l', 'flasche', 0), ALLE)).toBe(
+      '0,7l Flasche 0,00 €',
     );
     // Aggregated deposit with a missing crate or bottle deposit
     expect(gebindeBezeichnung({ ...K, pfandCent: null }, ALLE)).toBe('20 x 0,5l Flasche 1,60 €');
@@ -508,7 +508,7 @@ describe('Gebinde helpers', () => {
   it('sorts Basisgebinde before Obergebinde', () => {
     const dose = basisgebinde('D', 0.33, 'l', 'dose', 25);
     const gross = basisgebinde('F1', 1, 'l', 'flasche', 8);
-    const tray = { ...K, id: 'T', verpackungseinheit: 'tray' as const, unterAnzahl: 6 };
+    const tray = { ...K, id: 'T', verpackungseinheit: 'kolli' as const, unterAnzahl: 6 };
     const alle = [K, tray, gross, dose, F];
     expect(gebindeSortieren(alle).map((g) => g.id)).toEqual(['F', 'F1', 'D', 'T', 'K']);
   });
