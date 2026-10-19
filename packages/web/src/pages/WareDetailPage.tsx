@@ -22,7 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { centAnzeigen, gebindeBezeichnung, pfad, pfandGesamtCent } from '@c4/shared';
+import { gebindeBezeichnung, pfad } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
@@ -136,15 +136,11 @@ export function WareDetailPage() {
 
       <Stack gap={2}>
         <Text fw={600}>Gebinde</Text>
-        {eigene.map((g) => {
-          const pfand = pfandGesamtCent(g, stamm.gebinde);
-          return (
-            <Text key={g.id} size="sm">
-              {gebindeBezeichnung(g, stamm.gebinde)}
-              {g.unterGebindeId && pfand !== null && ` · Gesamtpfand ${centAnzeigen(pfand)}`}
-            </Text>
-          );
-        })}
+        {eigene.map((g) => (
+          <Text key={g.id} size="sm">
+            {gebindeBezeichnung(g, stamm.gebinde)}
+          </Text>
+        ))}
       </Stack>
 
       {darfBuchen && (
