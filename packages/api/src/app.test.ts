@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { tagVorher, type AdminUser, type MitgliedStatus, type PostenRecht } from '@c4/shared';
+import {
+  gebindeDoppelt,
+  tagVorher,
+  type AdminUser,
+  type MitgliedStatus,
+  type PostenRecht,
+} from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
@@ -7,6 +13,7 @@ import type { AuthUser } from './auth';
 import type { MitgliedRow } from './db/schema';
 import type { MitgliedDaten } from './mitglieder';
 import {
+  GEBINDE_DOPPELT,
   verwendetMeldung,
   WarenKonflikt,
   WarenUngueltig,
@@ -77,6 +84,9 @@ function makeWarenFake() {
     warengruppeArchivieren: vi.fn(async () => true),
     gebinde: vi.fn(async () => [...gebindeListe.values()]),
     gebindeAnlegen: vi.fn(async (daten: GebindeDaten) => {
+      if (gebindeDoppelt(daten, [...gebindeListe.values()])) {
+        throw new WarenKonflikt(GEBINDE_DOPPELT);
+      }
       const id = `gb${gebindeListe.size + 1}`;
       gebindeListe.set(id, { id, ...daten, archiviert: false });
       return id;
@@ -895,11 +905,42 @@ describe('posten', () => {
       const { app, waren } = makeApp();
       const gebinde = (body: unknown) =>
         app.request('/api/gebinde', json('admin-token', 'POST', body));
-      expect((await gebinde({ name: 'Flasche', pfandCent: -1 })).status).toBe(400);
+      const flasche = { menge: 0.5, einheit: 'l', verpackungseinheit: 'flasche', pfandCent: 8 };
+      expect((await gebinde({ ...flasche, pfandCent: -1 })).status).toBe(400);
+      expect((await gebinde({ name: 'Flasche', pfandCent: 8 })).status).toBe(400);
+      // Basisgebinde without menge/einheit, Obergebinde without count or with its own menge
+      expect((await gebinde({ verpackungseinheit: 'dose' })).status).toBe(400);
+      expect((await gebinde({ verpackungseinheit: 'kasten', unterGebindeId: 'gb1' })).status).toBe(
+        400,
+      );
       expect(
-        (await gebinde({ name: 'Kasten', pfandCent: 150, unterGebindeId: 'gb1' })).status,
+        (
+          await gebinde({
+            verpackungseinheit: 'kasten',
+            unterGebindeId: 'gb1',
+            unterAnzahl: 20,
+            menge: 1,
+            einheit: 'l',
+          })
+        ).status,
       ).toBe(400);
-      expect((await gebinde({ name: 'Flasche', pfandCent: 8 })).status).toBe(201);
+      expect((await gebinde({ ...flasche, einheit: 'oz' })).status).toBe(400);
+      expect((await gebinde(flasche)).status).toBe(201);
+      const doppelt = await gebinde(flasche);
+      expect(doppelt.status).toBe(409);
+      expect(await doppelt.json()).toEqual({ error: 'Dieses Gebinde gibt es schon.' });
+      // Same bottle with a different deposit is a different Gebinde
+      expect((await gebinde({ ...flasche, pfandCent: 15 })).status).toBe(201);
+      expect(
+        (
+          await gebinde({
+            verpackungseinheit: 'kasten',
+            pfandCent: 150,
+            unterGebindeId: 'gb1',
+            unterAnzahl: 20,
+          })
+        ).status,
+      ).toBe(201);
 
       waren.wareAnlegen.mockRejectedValueOnce(
         new WarenUngueltig('Die Warengruppe existiert nicht.'),

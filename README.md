@@ -86,6 +86,7 @@ Login uses the **dev** Cognito pool (localhost callback is allowed there). Needs
   (`<name>.down.sql`, or `<name>.down.1.sql`, `<name>.down.2.sql`, ... for several statements). It
   fails without changes if a down file is missing. The Deploy workflow's `rollback_to` input does this
   for dev before migrating. See `docs/datenbank.md`.
+  `pnpm db:waren-neu` (needs `CONFIRM_WAREN_RESET=yes`) drops only the Waren tables and their migration records (0010-0024) so the next `pnpm db:migrate` recreates them; Mitglieder and Posten stay.
 - The Lambda connects as the DSQL `admin` role; a least-privilege DB role is a follow-up.
 - SPA config (`/app/config.json`) is written by Terraform, so one build serves all environments.
 - Cognito's default email sender is limited (~50 mails/day); switch to SES when needed.

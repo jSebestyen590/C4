@@ -13,7 +13,7 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 
 ## Datenmodell
 
-Migrationen `0010`–`0023`. Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
+Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
 ein `bestandsvorgang` (Einlagerung, Entnahme, Inventur) hat viele Zeilen. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts) und
 nie neu berechnet; negativer Bestand ist erlaubt.
@@ -22,6 +22,32 @@ Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansons
 (`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist;
 dabei wird der Teilbaum archiviert. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
 zeigen sie nur mit `?archiv=1`.
+
+## Gebinde
+
+Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen gebildet
+(`gebindeBezeichnung` in `packages/shared/src/waren.ts`). Feste Listen: `EINHEITEN` (l, ml, kg, g, Stk) und
+`VERPACKUNGSEINHEITEN` (Flasche, Dose, Glas, Karton, Beutel, Packung, Kasten, Tray, Kiste, Fass), Labels in shared
+(`EINHEIT_LABELS`, `VERPACKUNGSEINHEIT_LABELS`, von `i18n.ts` re-exportiert).
+
+- **Basisgebinde:** `menge` (> 0, höchstens 3 Nachkommastellen), `einheit`, `verpackungseinheit`, optional `pfandCent`
+  (`null` = kein Pfand). Bezeichnung `0,5l Flasche 0,08 €`, `330ml Dose 0,25 €`, `1l Karton`, `6 Stk Packung`.
+- **Obergebinde:** `unterGebindeId` + `unterAnzahl` (≥ 2), eigene `verpackungseinheit` und optional eigenes Pfand, keine
+  Menge/Einheit. Bezeichnung `20 x 0,5l Flasche 3,10 €` (Pfand = eigenes + Anzahl × Pfand des Untergebindes, `null` zählt
+  als 0; ohne jedes Pfand entfällt der Teil). Die eigene Verpackungseinheit steht nicht in der Bezeichnung.
+- **Kurzname** (`gebindeKurz`) ist die Verpackungseinheit („Flasche“, „Kasten“) und steht in Bestandszeilen
+  (`5 × Kasten`) und Inventur-Spaltenköpfen; kommt derselbe Kurzname in einer Zeile mehrfach vor, steht dort stattdessen
+  die volle Bezeichnung. Auswahlfelder, Buchungszeilen, Verlauf und die Gebinde-Liste zeigen immer die volle Bezeichnung.
+- Regeln (`gebindeSchema`, `gebindeFehler`): vollständige Basis- oder Obergebinde-Kombination, nur eine Verschachtelungsebene.
+  Identische Gebinde (alle Attribute inkl. Pfand, bei Obergebinden Untergebinde + Anzahl) gibt es nur einmal (409
+  „Dieses Gebinde gibt es schon.“, `gebindeDoppelt`). Sortierung: erst Basis-, dann Obergebinde (`gebindeSortieren`).
+- `GET /waren/:id/verlauf` liefert `gebinde: [{ id, bezeichnung, kurz }]`.
+
+## Wartung
+
+Hat sich das Waren-Schema ohne Migration für Bestandsdaten geändert (die Migrationen 0010–0024 werden dann umgeschrieben),
+löscht `CONFIRM_WAREN_RESET=yes pnpm db:waren-neu` nur die Waren-Tabellen samt Migrationseinträgen (Mitglieder und Posten bleiben);
+danach `pnpm db:migrate`. Alle Waren-Daten gehen verloren.
 
 ## API
 
@@ -43,9 +69,9 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
   (Unterebene anlegen, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
   stattdessen Archivieren angeboten). Mit `bestand:buchen` startet oder setzt man eine Inventur fort (`/lager/inventur/:id`);
-  oberste Knoten zeigen die Schaltfläche direkt. Die Reihenfolge der Warenliste ist die Zählreihenfolge der Inventur.
+  oberste Knoten zeigen die Schaltfläche direkt. Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur) ist die Zählreihenfolge der Inventur.
 - `/lager/stammdaten`: Tabs „Warengruppen“ (Baum, nach Name sortiert, verschiebbar über die übergeordnete Gruppe) und
-  „Gebinde“ (Karten auf dem Handy, Tabelle ab `sm`; Pfand, Untergebinde, Gesamtpfand).
+  „Gebinde“ (Karten auf dem Handy, Tabelle ab `sm`; Bezeichnung, Verpackung, Pfand, Gesamtpfand; Formular mit Umschalter „Einzelgebinde“ / „Mit Untergebinde“ und Live-Vorschau der Bezeichnung).
 - `WareFelder.tsx`: wiederverwendbares Formular für Waren (Name, Warengruppe, MHD-Art, Gebinde, Aliase).
 - `/waren` (`waren:lesen`): Karten aller Waren mit Suche (Name, Aliase), Warengruppenfilter (inkl. Untergruppen), Archiv-Schalter,
   aktuellem Bestand und frühestem MHD. Mit `waren:verwalten` legt „Ware anlegen“ (`WareFormular.tsx`) neue Waren an.

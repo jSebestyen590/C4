@@ -1,6 +1,8 @@
 import {
+  gebindeBezeichnung,
   mhdAnzeigen,
   pfad,
+  vergleicheGebinde,
   type BaumKnoten,
   type BuchungsArt,
   type Gebinde,
@@ -38,7 +40,8 @@ export function zeileText(
   gebinde: Gebinde[],
   lagerorte: BaumKnoten[],
 ): string {
-  const name = gebinde.find((g) => g.id === z.gebindeId)?.name ?? '?';
+  const g = gebinde.find((x) => x.id === z.gebindeId);
+  const name = g ? gebindeBezeichnung(g, gebinde) : '?';
   const vorzeichen = z.menge < 0 ? '−' : '+';
   const mhd = mhdAnzeigen(z.mhd, mhdArt);
   return [
@@ -56,12 +59,16 @@ export function zeilenSortieren<T extends ZeileDaten>(
   gebinde: Gebinde[],
   lagerorte: BaumKnoten[],
 ): T[] {
-  const name = (z: T) => gebinde.find((g) => g.id === z.gebindeId)?.name ?? '';
+  const reihenfolge = (a: T, b: T) => {
+    const ga = gebinde.find((g) => g.id === a.gebindeId);
+    const gb = gebinde.find((g) => g.id === b.gebindeId);
+    return ga && gb ? vergleicheGebinde(ga, gb, gebinde) : 0;
+  };
   return [...zeilen].sort(
     (a, b) =>
       vergleicheBuchungsZeilen(a, b) ||
       pfad(lagerorte, a.lagerortId).localeCompare(pfad(lagerorte, b.lagerortId), 'de') ||
-      name(a).localeCompare(name(b), 'de') ||
+      reihenfolge(a, b) ||
       (a.mhd ?? '').localeCompare(b.mhd ?? ''),
   );
 }

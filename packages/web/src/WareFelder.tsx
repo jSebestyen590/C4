@@ -9,7 +9,9 @@ import {
 } from '@mantine/core';
 import { useMemo } from 'react';
 import {
+  gebindeBezeichnung,
   gebindeErgaenzen,
+  gebindeSortieren,
   MHD_ARTEN,
   pfad,
   type BaumKnoten,
@@ -77,17 +79,10 @@ export function WareFelder({
     [warengruppen, werte.warengruppeId],
   );
   const gebindeDaten = useMemo(() => {
-    const name = new Map(gebinde.map((g) => [g.id, g.name]));
-    return gebinde
-      .filter((g) => !g.archiviert || werte.gebindeIds.includes(g.id))
-      .map((g) => ({
-        value: g.id,
-        label:
-          g.unterGebindeId && g.unterAnzahl
-            ? `${g.name} (${g.unterAnzahl} × ${name.get(g.unterGebindeId) ?? '?'})`
-            : g.name,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'de'));
+    return gebindeSortieren(
+      gebinde.filter((g) => !g.archiviert || werte.gebindeIds.includes(g.id)),
+      gebinde,
+    ).map((g) => ({ value: g.id, label: gebindeBezeichnung(g, gebinde) }));
   }, [gebinde, werte.gebindeIds]);
 
   return (

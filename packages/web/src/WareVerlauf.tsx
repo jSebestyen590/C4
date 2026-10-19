@@ -66,7 +66,10 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
           (s) => s.basisGebindeId === basis.id && (ansicht === 'gesamt') === (s.lagerId === null),
         );
         const zeilenDaten = zeilen.map((z, i) => {
-          const zeile: { x: number; i: number } & Record<string, number> = { x: new Date(z.zeitpunkt).getTime(), i };
+          const zeile: { x: number; i: number } & Record<string, number> = {
+            x: new Date(z.zeitpunkt).getTime(),
+            i,
+          };
           reihen.forEach((s, k) => (zeile[`s${k}`] = z[s.key] as number));
           return zeile;
         });
@@ -75,7 +78,7 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
         const daten = jetzt > letzte.x ? [...zeilenDaten, { ...letzte, x: jetzt }] : zeilenDaten;
         return (
           <Stack key={basis.id} gap="xs">
-            {basen.length > 1 && <Title order={4}>{basis.name}</Title>}
+            {basen.length > 1 && <Title order={4}>{basis.bezeichnung}</Title>}
             <LineChart
               h={240}
               data={daten}
@@ -92,7 +95,7 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
               }}
               series={reihen.map((s, k) => ({
                 name: `s${k}`,
-                label: s.lagerId === null ? basis.name : lagerName(s.lagerId),
+                label: s.lagerId === null ? basis.bezeichnung : lagerName(s.lagerId),
                 color: FARBEN[k % FARBEN.length]!,
               }))}
               tooltipProps={{
@@ -115,7 +118,8 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
                         return (
                           <Text key={String(p.name)} size="sm">
                             {s.lagerId !== null && `${lagerName(s.lagerId)}: `}
-                            {String(p.value)} × {basis.name} ({bestandAnzeigen(mengen, gebinde)})
+                            {String(p.value)} × {basis.bezeichnung} (
+                            {bestandAnzeigen(mengen, gebinde)})
                           </Text>
                         );
                       })}

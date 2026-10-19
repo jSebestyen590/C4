@@ -11,7 +11,12 @@ import {
   gebindeErgaenzen,
   gebindeFehler,
   gebindeSchema,
-  gesamtPfandCent,
+  gebindeBezeichnung,
+  gebindeDoppelt,
+  gebindeKurz,
+  gebindeSortieren,
+  mengeAnzeigen,
+  pfandGesamtCent,
   inBasiseinheiten,
   inventurKorrekturen,
   inventurZaehlungSchema,
@@ -29,16 +34,27 @@ import {
   type Gebinde,
 } from './waren';
 
-const F: Gebinde = {
-  id: 'F',
-  name: '0,5l Flasche',
-  pfandCent: 8,
+const basisgebinde = (
+  id: string,
+  menge: number,
+  einheit: Gebinde['einheit'],
+  verpackungseinheit: Gebinde['verpackungseinheit'],
+  pfandCent: number | null,
+): Gebinde => ({
+  id,
+  menge,
+  einheit,
+  verpackungseinheit,
+  pfandCent,
   unterGebindeId: null,
   unterAnzahl: null,
-};
+});
+const F = basisgebinde('F', 0.5, 'l', 'flasche', 8);
 const K: Gebinde = {
   id: 'K',
-  name: '20×0,5l Kasten',
+  menge: null,
+  einheit: null,
+  verpackungseinheit: 'kasten',
   pfandCent: 150,
   unterGebindeId: 'F',
   unterAnzahl: 20,
@@ -87,14 +103,14 @@ describe('Krosti scenario', () => {
   };
 
   it('plans the FIFO withdrawals and tracks stock', () => {
-    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('10 × 20×0,5l Kasten');
+    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('10 × Kasten');
 
     expect(schritt(t2, 'F', 7)).toEqual([
       { lagerortId: 'L1', gebindeId: 'K', mhd: '2027-02-01', menge: -1, art: 'anbruch' },
       { lagerortId: 'L1', gebindeId: 'F', mhd: '2027-02-01', menge: 20, art: 'anbruch' },
       { lagerortId: 'L1', gebindeId: 'F', mhd: '2027-02-01', menge: -7, art: 'abgang' },
     ]);
-    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('9 × 20×0,5l Kasten, 13 × 0,5l Flasche');
+    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('9 × Kasten, 13 × Flasche');
 
     expect(schritt(t3, 'K', 4)).toEqual([
       { lagerortId: 'L1', gebindeId: 'K', mhd: '2027-02-01', menge: -4, art: 'abgang' },
@@ -387,8 +403,12 @@ describe('trees', () => {
 
 describe('Gebinde helpers', () => {
   it('computes deposits', () => {
-    expect(gesamtPfandCent(K, ALLE)).toBe(310);
-    expect(gesamtPfandCent(F, ALLE)).toBe(8);
+    expect(pfandGesamtCent(K, ALLE)).toBe(310);
+    expect(pfandGesamtCent(F, ALLE)).toBe(8);
+    expect(pfandGesamtCent({ ...K, pfandCent: null }, ALLE)).toBe(160);
+    expect(pfandGesamtCent({ ...K, pfandCent: 150 }, [{ ...F, pfandCent: null }])).toBe(150);
+    expect(pfandGesamtCent({ ...K, pfandCent: null }, [{ ...F, pfandCent: null }])).toBeNull();
+    expect(pfandGesamtCent({ ...F, pfandCent: null }, ALLE)).toBeNull();
     expect(centAnzeigen(310)).toBe('3,10 €');
     expect(centAnzeigen(0)).toBe('0,00 €');
     expect(centAnzeigen(123456)).toBe('1.234,56 €');
@@ -409,7 +429,7 @@ describe('Gebinde helpers', () => {
         ],
         ALLE,
       ),
-    ).toBe('9 × 20×0,5l Kasten, 13 × 0,5l Flasche');
+    ).toBe('9 × Kasten, 13 × Flasche');
     expect(bestandAnzeigen([{ gebindeId: 'K', menge: 0 }], ALLE)).toBe('kein Bestand');
     expect(bestandAnzeigen([], ALLE)).toBe('kein Bestand');
   });
@@ -419,23 +439,93 @@ describe('Gebinde helpers', () => {
     expect(gebindeErgaenzen(['F'], ALLE)).toEqual(['F']);
   });
   it('validates nesting', () => {
-    expect(gebindeFehler({ unterGebindeId: null }, ALLE)).toBeNull();
-    expect(gebindeFehler({ unterGebindeId: 'F' }, ALLE)).toBeNull();
-    expect(gebindeFehler({ id: 'K', unterGebindeId: 'F' }, ALLE)).toBeNull();
-    expect(gebindeFehler({ unterGebindeId: 'X' }, ALLE)).toMatch(/existiert nicht/);
-    expect(gebindeFehler({ unterGebindeId: 'K' }, ALLE)).toMatch(/Untergebinde haben/);
-    expect(gebindeFehler({ id: 'F', unterGebindeId: 'F' }, ALLE)).toMatch(/sich selbst/);
-    expect(gebindeFehler({ id: 'F', unterGebindeId: 'K' }, ALLE)).not.toBeNull();
-    const G: Gebinde = {
-      id: 'G',
-      name: 'Palette',
-      pfandCent: 0,
-      unterGebindeId: null,
-      unterAnzahl: null,
-    };
-    expect(gebindeFehler({ id: 'F', unterGebindeId: 'G' }, [...ALLE, G])).toMatch(
-      /bereits Untergebinde/,
+    const basis = { menge: 0.5, einheit: 'l' as const, unterGebindeId: null, unterAnzahl: null };
+    const ober = (unterGebindeId: string | null, id?: string) => ({
+      id,
+      menge: null,
+      einheit: null,
+      unterGebindeId,
+      unterAnzahl: 20,
+    });
+    expect(gebindeFehler(basis, ALLE)).toBeNull();
+    expect(gebindeFehler(ober('F'), ALLE)).toBeNull();
+    expect(gebindeFehler(ober('F', 'K'), ALLE)).toBeNull();
+    expect(gebindeFehler(ober('X'), ALLE)).toMatch(/existiert nicht/);
+    expect(gebindeFehler(ober('K'), ALLE)).toMatch(/Untergebinde haben/);
+    expect(gebindeFehler(ober('F', 'F'), ALLE)).toMatch(/sich selbst/);
+    expect(gebindeFehler(ober('K', 'F'), ALLE)).not.toBeNull();
+    const G = { ...basisgebinde('G', 1, 'stk', 'kiste', null) };
+    expect(gebindeFehler(ober('G', 'F'), [...ALLE, G])).toMatch(/bereits Untergebinde/);
+  });
+  it('rejects incomplete combinations', () => {
+    const k = (menge: number | null, einheit: 'l' | null, id: string | null, n: number | null) =>
+      gebindeFehler({ menge, einheit, unterGebindeId: id, unterAnzahl: n }, ALLE);
+    expect(k(null, null, null, null)).toMatch(/Menge/);
+    expect(k(1, null, null, null)).toMatch(/Einheit/);
+    expect(k(1, 'l', null, 3)).toMatch(/keine Untergebinde/);
+    expect(k(null, null, 'F', null)).toMatch(/wie viele/);
+    expect(k(1, 'l', 'F', 20)).toMatch(/keine eigene Menge/);
+  });
+  it('formats names', () => {
+    expect(gebindeBezeichnung(F, ALLE)).toBe('0,5l Flasche 0,08 €');
+    expect(gebindeBezeichnung(K, ALLE)).toBe('20 x 0,5l Flasche 3,10 €');
+    expect(gebindeBezeichnung(basisgebinde('D', 330, 'ml', 'dose', 25), ALLE)).toBe(
+      '330ml Dose 0,25 €',
     );
+    expect(gebindeBezeichnung(basisgebinde('C', 1, 'l', 'karton', null), ALLE)).toBe('1l Karton');
+    expect(gebindeBezeichnung(basisgebinde('P', 6, 'stk', 'packung', null), ALLE)).toBe(
+      '6 Stk Packung',
+    );
+    expect(gebindeBezeichnung(basisgebinde('P', 0.33, 'l', 'glas', 0), ALLE)).toBe(
+      '0,33l Glas 0,00 €',
+    );
+    // Aggregated deposit with a missing crate or bottle deposit
+    expect(gebindeBezeichnung({ ...K, pfandCent: null }, ALLE)).toBe('20 x 0,5l Flasche 1,60 €');
+    const ohne = basisgebinde('F', 0.5, 'l', 'flasche', null);
+    expect(gebindeBezeichnung(K, [ohne, K])).toBe('20 x 0,5l Flasche 1,50 €');
+    expect(gebindeBezeichnung({ ...K, pfandCent: null }, [ohne])).toBe('20 x 0,5l Flasche');
+    expect(gebindeBezeichnung(K, [])).toBe('20 x ? 1,50 €');
+    expect(mengeAnzeigen(1)).toBe('1');
+    expect(mengeAnzeigen(0.5)).toBe('0,5');
+    expect(mengeAnzeigen(1500)).toBe('1.500');
+    expect(gebindeKurz(K)).toBe('Kasten');
+    expect(gebindeKurz(F)).toBe('Flasche');
+  });
+  it('uses full names when short names collide', () => {
+    const F2 = basisgebinde('F2', 0.5, 'l', 'flasche', 15);
+    const alle = [F, F2, K];
+    expect(
+      bestandAnzeigen(
+        [
+          { gebindeId: 'F', menge: 1 },
+          { gebindeId: 'F2', menge: 2 },
+          { gebindeId: 'K', menge: 3 },
+        ],
+        alle,
+      ),
+    ).toBe('3 × Kasten, 1 × 0,5l Flasche 0,08 €, 2 × 0,5l Flasche 0,15 €');
+  });
+  it('sorts Basisgebinde before Obergebinde', () => {
+    const dose = basisgebinde('D', 0.33, 'l', 'dose', 25);
+    const gross = basisgebinde('F1', 1, 'l', 'flasche', 8);
+    const tray = { ...K, id: 'T', verpackungseinheit: 'tray' as const, unterAnzahl: 6 };
+    const alle = [K, tray, gross, dose, F];
+    expect(gebindeSortieren(alle).map((g) => g.id)).toEqual(['F', 'F1', 'D', 'T', 'K']);
+  });
+  it('finds duplicates', () => {
+    const daten = (g: Gebinde) => ({
+      menge: g.menge,
+      einheit: g.einheit,
+      verpackungseinheit: g.verpackungseinheit,
+      pfandCent: g.pfandCent,
+      unterGebindeId: g.unterGebindeId,
+      unterAnzahl: g.unterAnzahl,
+    });
+    expect(gebindeDoppelt(daten(F), ALLE)?.id).toBe('F');
+    expect(gebindeDoppelt(daten(F), ALLE, 'F')).toBeUndefined();
+    expect(gebindeDoppelt({ ...daten(F), pfandCent: 15 }, ALLE)).toBeUndefined();
+    expect(gebindeDoppelt(daten(K), ALLE)?.id).toBe('K');
+    expect(gebindeDoppelt({ ...daten(K), unterAnzahl: 24 }, ALLE)).toBeUndefined();
   });
 });
 
@@ -456,31 +546,40 @@ describe('MHD helpers', () => {
 
 describe('schemas', () => {
   it('validates Gebinde', () => {
-    expect(gebindeSchema.safeParse({ name: ' Flasche ', pfandCent: 8 }).data).toEqual({
-      name: 'Flasche',
-      pfandCent: 8,
+    expect(
+      gebindeSchema.safeParse({ menge: 0.5, einheit: 'l', verpackungseinheit: 'flasche' }).data,
+    ).toEqual({
+      menge: 0.5,
+      einheit: 'l',
+      verpackungseinheit: 'flasche',
+      pfandCent: null,
       unterGebindeId: null,
       unterAnzahl: null,
     });
-    expect(
-      gebindeSchema.safeParse({ name: 'K', pfandCent: 150, unterGebindeId: 'F', unterAnzahl: 20 })
-        .success,
-    ).toBe(true);
-    expect(
-      gebindeSchema.safeParse({ name: 'K', pfandCent: 150, unterGebindeId: 'F' }).success,
-    ).toBe(false);
-    expect(gebindeSchema.safeParse({ name: 'K', pfandCent: 150, unterAnzahl: 20 }).success).toBe(
+    const flasche = { menge: 0.5, einheit: 'l', verpackungseinheit: 'flasche', pfandCent: 8 };
+    const kasten = { verpackungseinheit: 'kasten', unterGebindeId: 'F', unterAnzahl: 20 };
+    expect(gebindeSchema.safeParse(flasche).success).toBe(true);
+    expect(gebindeSchema.safeParse({ ...kasten, pfandCent: 150 }).success).toBe(true);
+    expect(gebindeSchema.safeParse({ ...kasten, pfandCent: null }).success).toBe(true);
+    // Basisgebinde needs menge and einheit
+    expect(gebindeSchema.safeParse({ ...flasche, menge: undefined }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, einheit: undefined }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, menge: 0 }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, menge: 0.0005 }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, einheit: 'oz' }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, verpackungseinheit: 'sack' }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, unterAnzahl: 3 }).success).toBe(false);
+    // Obergebinde needs unterGebindeId + unterAnzahl >= 2 and no menge/einheit
+    expect(gebindeSchema.safeParse({ ...kasten, unterAnzahl: undefined }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...kasten, unterGebindeId: undefined }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...kasten, unterAnzahl: 1 }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...kasten, menge: 1, einheit: 'l' }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...kasten, verpackungseinheit: undefined }).success).toBe(
       false,
     );
-    expect(
-      gebindeSchema.safeParse({ name: 'K', pfandCent: 150, unterGebindeId: 'F', unterAnzahl: 1 })
-        .success,
-    ).toBe(false);
-    expect(gebindeSchema.safeParse({ name: 'K', pfandCent: -1 }).success).toBe(false);
-    expect(gebindeSchema.safeParse({ name: 'K', pfandCent: 1.5 }).success).toBe(false);
-    expect(gebindeSchema.safeParse({ name: '  ', pfandCent: 1 }).error?.issues[0]?.message).toBe(
-      'Bitte gib einen Namen ein.',
-    );
+    // Pfand
+    expect(gebindeSchema.safeParse({ ...flasche, pfandCent: -1 }).success).toBe(false);
+    expect(gebindeSchema.safeParse({ ...flasche, pfandCent: 1.5 }).success).toBe(false);
   });
   it('validates Ware', () => {
     const basis = { name: 'Krosti', warengruppeId: 'g', mhdArt: 'monat', gebindeIds: ['K', 'F'] };

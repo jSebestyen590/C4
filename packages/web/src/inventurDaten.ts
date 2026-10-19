@@ -1,4 +1,4 @@
-import { mhdNormalisieren, type Gebinde, type MhdArt } from '@c4/shared';
+import { mhdNormalisieren, vergleicheGebinde, type Gebinde, type MhdArt } from '@c4/shared';
 
 /** A Ware as needed for counting: master data plus aliases (for the search). */
 export interface WareInfo {
@@ -85,13 +85,9 @@ export function gebindeVonWare(ware: WareInfo, alle: Gebinde[]): Gebinde[] {
     .filter((g) => ware.gebindeIds.includes(g.id))
     .sort(
       (a, b) =>
-        Number(!!b.unterGebindeId) - Number(!!a.unterGebindeId) ||
-        a.name.localeCompare(b.name, 'de'),
+        Number(!!b.unterGebindeId) - Number(!!a.unterGebindeId) || vergleicheGebinde(a, b, alle),
     );
 }
-
-/** Short unit label for the tiny caption above an input: the last word of the Gebinde name. */
-export const gebindeKurz = (name: string): string => name.trim().split(/\s+/).pop() ?? name;
 
 /** Wares of a node: the configured list, then wares with Soll or saved counts that are not in it. */
 export function knotenWaren(knoten: KnotenDaten, waren: Map<string, WareInfo>): string[] {

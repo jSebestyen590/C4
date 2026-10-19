@@ -4,8 +4,12 @@ import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   bestandZu,
   entnahmePlanen,
+  gebindeBezeichnung,
+  gebindeDoppelt,
   gebindeErgaenzen,
   gebindeFehler,
+  gebindeKurz,
+  gebindeSortieren,
   inventurAbgleich,
   inventurKorrekturen,
   mhdNormalisieren,
@@ -20,6 +24,7 @@ import {
   type Bestandsposten,
   type Buchung,
   type Buchungszeile,
+  type GebindeDaten,
   type InventurIst,
   type InventurZeile,
   type MhdArt,
@@ -63,6 +68,11 @@ export class WarenKonflikt extends Error {}
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in waren.test.ts)
+
+export type { GebindeDaten };
+
+/** Message for a Gebinde that already exists with identical attributes. */
+export const GEBINDE_DOPPELT = 'Dieses Gebinde gibt es schon.';
 
 export type EintragArt = 'Lagerort' | 'Warengruppe' | 'Gebinde' | 'Ware';
 
@@ -205,13 +215,6 @@ export interface WarengruppeDaten {
   parentId: string | null;
 }
 
-export interface GebindeDaten {
-  name: string;
-  pfandCent: number;
-  unterGebindeId: string | null;
-  unterAnzahl: number | null;
-}
-
 export interface WareDaten {
   name: string;
   warengruppeId: string;
@@ -266,7 +269,7 @@ export interface WareVerlauf {
   punkte: VerlaufPunkt[];
   /** Names of the Lager and Gebinde the series refer to. */
   lager: { id: string; name: string }[];
-  gebinde: { id: string; name: string }[];
+  gebinde: { id: string; bezeichnung: string; kurz: string }[];
 }
 
 export interface EinlagerungDaten {
@@ -881,19 +884,20 @@ export function createWarenStore(db: Db): WarenStore {
     // ----- Gebinde
     async gebinde(mitArchiv) {
       const rows = await db.select().from(gebinde);
-      return sortiert(
+      return gebindeSortieren(
         rows.filter((g) => mitArchiv || !g.archiviert),
-        (g) => g.name,
+        rows,
       );
     },
     async gebindeAnlegen(daten) {
       return db.transaction(async (tx) => {
         const alle = await tx.select().from(gebinde);
-        const fehler = gebindeFehler({ unterGebindeId: daten.unterGebindeId }, alle);
+        const fehler = gebindeFehler(daten, alle);
         if (fehler) throw new WarenUngueltig(fehler);
         if (alle.find((g) => g.id === daten.unterGebindeId)?.archiviert) {
           throw new WarenUngueltig('Das Untergebinde ist archiviert.');
         }
+        if (gebindeDoppelt(daten, alle)) throw new WarenKonflikt(GEBINDE_DOPPELT);
         const id = randomUUID();
         await tx.insert(gebinde).values({ id, ...daten });
         return id;
@@ -904,7 +908,7 @@ export function createWarenStore(db: Db): WarenStore {
         const alle = await tx.select().from(gebinde);
         const bisher = alle.find((g) => g.id === id);
         if (!bisher) return false;
-        const fehler = gebindeFehler({ id, unterGebindeId: daten.unterGebindeId }, alle);
+        const fehler = gebindeFehler({ id, ...daten }, alle);
         if (fehler) throw new WarenUngueltig(fehler);
         if (
           daten.unterGebindeId !== bisher.unterGebindeId &&
@@ -912,6 +916,7 @@ export function createWarenStore(db: Db): WarenStore {
         ) {
           throw new WarenUngueltig('Das Untergebinde ist archiviert.');
         }
+        if (gebindeDoppelt(daten, alle, id)) throw new WarenKonflikt(GEBINDE_DOPPELT);
         await tx.update(gebinde).set(daten).where(eq(gebinde.id, id));
         return true;
       });
@@ -1010,7 +1015,11 @@ export function createWarenStore(db: Db): WarenStore {
         lager: orte.filter((l) => lagerIds.has(l.id)).map((l) => ({ id: l.id, name: l.name })),
         gebinde: alleGebinde
           .filter((g) => gebindeIds.has(g.id))
-          .map((g) => ({ id: g.id, name: g.name })),
+          .map((g) => ({
+            id: g.id,
+            bezeichnung: gebindeBezeichnung(g, alleGebinde),
+            kurz: gebindeKurz(g),
+          })),
       };
     },
     async wareVorgaenge(id) {

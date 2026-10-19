@@ -18,6 +18,7 @@
     "db:migrate": "pnpm --filter @c4/api migrate",
     "db:reset": "pnpm --filter @c4/api reset",
     "db:rollback": "pnpm --filter @c4/api rollback",
+    "db:waren-neu": "pnpm --filter @c4/api waren-neu",
     "db:seed": "pnpm --filter @c4/api seed"
   },
   "devDependencies": {

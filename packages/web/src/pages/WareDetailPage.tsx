@@ -1,4 +1,15 @@
-import { Alert, Anchor, Badge, Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import {
   IconArchive,
   IconArchiveOff,
@@ -11,7 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { centAnzeigen, gesamtPfandCent, pfad } from '@c4/shared';
+import { centAnzeigen, gebindeBezeichnung, pfad, pfandGesamtCent } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
@@ -125,11 +136,15 @@ export function WareDetailPage() {
 
       <Stack gap={2}>
         <Text fw={600}>Gebinde</Text>
-        {eigene.map((g) => (
-          <Text key={g.id} size="sm">
-            {g.name} · Gesamtpfand {centAnzeigen(gesamtPfandCent(g, stamm.gebinde))}
-          </Text>
-        ))}
+        {eigene.map((g) => {
+          const pfand = pfandGesamtCent(g, stamm.gebinde);
+          return (
+            <Text key={g.id} size="sm">
+              {gebindeBezeichnung(g, stamm.gebinde)}
+              {g.unterGebindeId && pfand !== null && ` · Gesamtpfand ${centAnzeigen(pfand)}`}
+            </Text>
+          );
+        })}
       </Stack>
 
       {darfBuchen && (

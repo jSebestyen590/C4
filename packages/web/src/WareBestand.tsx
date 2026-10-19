@@ -1,5 +1,13 @@
 import { Group, Paper, Stack, Text } from '@mantine/core';
-import { bestandAnzeigen, mhdAnzeigen, pfad, type BaumKnoten, type Gebinde } from '@c4/shared';
+import {
+  bestandAnzeigen,
+  gebindeBezeichnung,
+  mhdAnzeigen,
+  pfad,
+  vergleicheGebinde,
+  type BaumKnoten,
+  type Gebinde,
+} from '@c4/shared';
 import type { WareEintrag } from './warenDaten';
 
 /** Current stock of a Ware, grouped by Lagerort (stacked cards, no table). */
@@ -11,7 +19,15 @@ export function WareBestand({
   const gruppen = new Map<string, WareEintrag['bestand']>();
   for (const p of ware.bestand)
     gruppen.set(p.lagerortId, [...(gruppen.get(p.lagerortId) ?? []), p]);
-  const name = (id: string) => gebinde.find((g) => g.id === id)?.name ?? '?';
+  const name = (id: string) => {
+    const g = gebinde.find((x) => x.id === id);
+    return g ? gebindeBezeichnung(g, gebinde) : '?';
+  };
+  const vergleiche = (a: string, b: string) => {
+    const ga = gebinde.find((g) => g.id === a);
+    const gb = gebinde.find((g) => g.id === b);
+    return ga && gb ? vergleicheGebinde(ga, gb, gebinde) : a.localeCompare(b);
+  };
   const liste = [...gruppen]
     .map(([id, posten]) => ({ id, pfad: pfad(lagerorte, id), posten }))
     .sort((a, b) => a.pfad.localeCompare(b.pfad, 'de'));
@@ -29,7 +45,7 @@ export function WareBestand({
             {g.posten
               .sort(
                 (a, b) =>
-                  name(a.gebindeId).localeCompare(name(b.gebindeId), 'de') ||
+                  vergleiche(a.gebindeId, b.gebindeId) ||
                   (a.mhd ?? '9').localeCompare(b.mhd ?? '9'),
               )
               .map((p) => {

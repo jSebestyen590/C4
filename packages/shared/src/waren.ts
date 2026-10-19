@@ -26,10 +26,53 @@ export type VorgangTyp = (typeof VORGANG_TYPEN)[number];
 export const QUELLEN = ['manuell', 'inventur'] as const;
 export type Quelle = (typeof QUELLEN)[number];
 
+export const EINHEITEN = ['l', 'ml', 'kg', 'g', 'stk'] as const;
+export type Einheit = (typeof EINHEITEN)[number];
+export const EINHEIT_LABELS: Record<Einheit, string> = {
+  l: 'l',
+  ml: 'ml',
+  kg: 'kg',
+  g: 'g',
+  stk: 'Stk',
+};
+
+export const VERPACKUNGSEINHEITEN = [
+  'flasche',
+  'dose',
+  'glas',
+  'karton',
+  'beutel',
+  'packung',
+  'kasten',
+  'tray',
+  'kiste',
+  'fass',
+] as const;
+export type Verpackungseinheit = (typeof VERPACKUNGSEINHEITEN)[number];
+export const VERPACKUNGSEINHEIT_LABELS: Record<Verpackungseinheit, string> = {
+  flasche: 'Flasche',
+  dose: 'Dose',
+  glas: 'Glas',
+  karton: 'Karton',
+  beutel: 'Beutel',
+  packung: 'Packung',
+  kasten: 'Kasten',
+  tray: 'Tray',
+  kiste: 'Kiste',
+  fass: 'Fass',
+};
+
+/**
+ * Packaging unit. A Basisgebinde has `menge` + `einheit` (e.g. 0,5 l); an Obergebinde has no
+ * content of its own but contains `unterAnzahl` of its `unterGebindeId`. Both have a
+ * `verpackungseinheit` and an optional deposit (`null` = kein Pfand).
+ */
 export interface Gebinde {
   id: string;
-  name: string;
-  pfandCent: number;
+  menge: number | null;
+  einheit: Einheit | null;
+  verpackungseinheit: Verpackungseinheit;
+  pfandCent: number | null;
   unterGebindeId: string | null;
   unterAnzahl: number | null;
 }
@@ -132,24 +175,36 @@ export const warengruppeSchema = z.object({
 });
 export type WarengruppeEingabe = z.input<typeof warengruppeSchema>;
 
+const nullish = <T extends z.ZodType>(schema: T) => schema.nullish().transform((v) => v ?? null);
+
 export const gebindeSchema = z
   .object({
-    name: name(),
-    pfandCent: z
-      .number('Bitte gib das Pfand an.')
-      .int('Das Pfand muss in ganzen Cent angegeben werden.')
-      .min(0, 'Das Pfand darf nicht negativ sein.'),
+    menge: nullish(
+      z
+        .number('Bitte gib eine Menge an.')
+        .positive('Die Menge muss größer als 0 sein.')
+        .max(1_000_000, 'Die Menge ist zu groß.')
+        .refine((v) => Math.round(v * 1000) / 1000 === v, 'Höchstens 3 Nachkommastellen erlaubt.'),
+    ),
+    einheit: nullish(z.enum(EINHEITEN, 'Ungültige Einheit.')),
+    verpackungseinheit: z.enum(VERPACKUNGSEINHEITEN, 'Bitte wähle eine Verpackungseinheit.'),
+    pfandCent: nullish(
+      z
+        .number('Bitte gib das Pfand an.')
+        .int('Das Pfand muss in ganzen Cent angegeben werden.')
+        .min(0, 'Das Pfand darf nicht negativ sein.'),
+    ),
     unterGebindeId: parentIdSchema,
-    unterAnzahl: z
-      .number()
-      .int('Die Anzahl muss eine ganze Zahl sein.')
-      .min(2, 'Die Anzahl muss mindestens 2 sein.')
-      .nullish()
-      .transform((v) => v ?? null),
+    unterAnzahl: nullish(
+      z
+        .number('Bitte gib eine Anzahl an.')
+        .int('Die Anzahl muss eine ganze Zahl sein.')
+        .min(2, 'Die Anzahl muss mindestens 2 sein.'),
+    ),
   })
-  .refine((g) => (g.unterGebindeId === null) === (g.unterAnzahl === null), {
-    message: 'Gib Untergebinde und Anzahl entweder beide an oder keins von beiden.',
-    path: ['unterAnzahl'],
+  .superRefine((g, ctx) => {
+    const fehler = gebindeKombinationFehler(g);
+    if (fehler) ctx.addIssue({ code: 'custom', message: fehler.message, path: [fehler.feld] });
   });
 export type GebindeEingabe = z.input<typeof gebindeSchema>;
 
@@ -316,12 +371,25 @@ export function pfad(nodes: BaumKnoten[], id: string): string {
 // ---------------------------------------------------------------------------
 // Gebinde
 
+/** The attributes that define a Gebinde (everything but id and archive flag). */
+export type GebindeDaten = Omit<Gebinde, 'id'>;
+
 const gebindeIndex = (alle: Gebinde[]) => new Map(alle.map((g) => [g.id, g]));
 
-/** Deposit of the Gebinde including the contained Untergebinde. */
-export function gesamtPfandCent(gebinde: Gebinde, alle: Gebinde[]): number {
+const istOber = (g: Pick<Gebinde, 'unterGebindeId'>) => g.unterGebindeId !== null;
+
+/** `0.5` -> `0,5`, `1` -> `1`, `1000.25` -> `1.000,25`; at most 3 decimals. */
+export function mengeAnzeigen(menge: number): string {
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 3 }).format(menge);
+}
+
+/** Deposit of the Gebinde including the contained Untergebinde; null if there is no deposit at all. */
+export function pfandGesamtCent(gebinde: Gebinde, alle: Gebinde[]): number | null {
   const unter = gebinde.unterGebindeId ? gebindeIndex(alle).get(gebinde.unterGebindeId) : undefined;
-  return gebinde.pfandCent + (unter ? (gebinde.unterAnzahl ?? 0) * unter.pfandCent : 0);
+  if (gebinde.pfandCent === null && (unter?.pfandCent ?? null) === null) return null;
+  return (
+    (gebinde.pfandCent ?? 0) + (unter ? (gebinde.unterAnzahl ?? 0) * (unter.pfandCent ?? 0) : 0)
+  );
 }
 
 /** `310` -> `3,10 €` */
@@ -329,6 +397,61 @@ export function centAnzeigen(cent: number): string {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
     .format(cent / 100)
     .replaceAll(String.fromCharCode(160), ' ');
+}
+
+/** `0,5l`, `330ml`, `6 Stk`; empty for an Obergebinde. */
+export function inhaltAnzeigen(g: Pick<Gebinde, 'menge' | 'einheit'>): string {
+  if (g.menge === null || g.einheit === null) return '';
+  return `${mengeAnzeigen(g.menge)}${g.einheit === 'stk' ? ' ' : ''}${EINHEIT_LABELS[g.einheit]}`;
+}
+
+/** Short name used where space is tight: the Verpackungseinheit (`Flasche`, `Kasten`). */
+export function gebindeKurz(g: Pick<Gebinde, 'verpackungseinheit'>): string {
+  return VERPACKUNGSEINHEIT_LABELS[g.verpackungseinheit];
+}
+
+function basisBezeichnung(g: Gebinde, pfand: boolean): string {
+  const text = `${inhaltAnzeigen(g)} ${gebindeKurz(g)}`.trim();
+  return pfand && g.pfandCent !== null ? `${text} ${centAnzeigen(g.pfandCent)}` : text;
+}
+
+/**
+ * Full name: `0,5l Flasche 0,08 €`, `1l Karton`, `20 x 0,5l Flasche 3,10 €`. An Obergebinde is
+ * described by its content and the aggregated deposit; its own Verpackungseinheit is not part of it.
+ */
+export function gebindeBezeichnung(g: Gebinde, alle: Gebinde[]): string {
+  if (!istOber(g)) return basisBezeichnung(g, true);
+  const unter = gebindeIndex(alle).get(g.unterGebindeId!);
+  const text = `${g.unterAnzahl} x ${unter ? basisBezeichnung(unter, false) : '?'}`;
+  const pfand = pfandGesamtCent(g, alle);
+  return pfand === null ? text : `${text} ${centAnzeigen(pfand)}`;
+}
+
+/** Orders Basisgebinde (Verpackung, Einheit, Menge, Pfand) before Obergebinde (content, count, Verpackung). */
+export function vergleicheGebinde(a: Gebinde, b: Gebinde, alle: Gebinde[]): number {
+  const index = gebindeIndex(alle);
+  const basis = (g: Gebinde) => (istOber(g) ? (index.get(g.unterGebindeId!) ?? g) : g);
+  const verpackung = (g: Gebinde) => VERPACKUNGSEINHEITEN.indexOf(g.verpackungseinheit);
+  const einheit = (g: Gebinde) => (g.einheit === null ? -1 : EINHEITEN.indexOf(g.einheit));
+  return (
+    Number(istOber(a)) - Number(istOber(b)) ||
+    (istOber(a)
+      ? verpackung(basis(a)) - verpackung(basis(b)) ||
+        einheit(basis(a)) - einheit(basis(b)) ||
+        (basis(a).menge ?? 0) - (basis(b).menge ?? 0) ||
+        (a.unterAnzahl ?? 0) - (b.unterAnzahl ?? 0) ||
+        verpackung(a) - verpackung(b)
+      : verpackung(a) - verpackung(b) ||
+        einheit(a) - einheit(b) ||
+        (a.menge ?? 0) - (b.menge ?? 0)) ||
+    (a.pfandCent ?? -1) - (b.pfandCent ?? -1) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/** Basisgebinde first, then Obergebinde; see `vergleicheGebinde`. */
+export function gebindeSortieren<T extends Gebinde>(liste: T[], alle: Gebinde[] = liste): T[] {
+  return [...liste].sort((a, b) => vergleicheGebinde(a, b, alle));
 }
 
 /** Id of the base Gebinde (the Untergebinde of an Obergebinde, otherwise the Gebinde itself). */
@@ -342,7 +465,10 @@ export function inBasiseinheiten(gebindeId: string, menge: number, alle: Gebinde
   return menge * (g?.unterGebindeId ? (g.unterAnzahl ?? 1) : 1);
 }
 
-/** `9 × 20×0,5l Kasten, 13 × 0,5l Flasche`; Obergebinde first, zero amounts skipped. */
+/**
+ * `9 × Kasten, 13 × Flasche`; Obergebinde first, zero amounts skipped. Short names that occur
+ * more than once in the list are replaced by the full Bezeichnung so they stay distinguishable.
+ */
 export function bestandAnzeigen(
   mengen: { gebindeId: string; menge: number }[],
   alle: Gebinde[],
@@ -350,15 +476,27 @@ export function bestandAnzeigen(
   const index = gebindeIndex(alle);
   const summen = new Map<string, number>();
   for (const m of mengen) summen.set(m.gebindeId, (summen.get(m.gebindeId) ?? 0) + m.menge);
-  const teile = [...summen]
+  const eintraege = [...summen]
     .filter(([, menge]) => menge !== 0)
-    .map(([id, menge]) => ({ g: index.get(id), id, menge }))
+    .map(([id, menge]) => {
+      const g = index.get(id);
+      return {
+        g,
+        menge,
+        kurz: g ? gebindeKurz(g) : id,
+        lang: g ? gebindeBezeichnung(g, alle) : id,
+      };
+    })
     .sort(
       (a, b) =>
         Number(!!b.g?.unterGebindeId) - Number(!!a.g?.unterGebindeId) ||
-        (a.g?.name ?? a.id).localeCompare(b.g?.name ?? b.id, 'de'),
-    )
-    .map((t) => `${t.menge} × ${t.g?.name ?? t.id}`);
+        (a.g && b.g ? vergleicheGebinde(a.g, b.g, alle) : a.lang.localeCompare(b.lang, 'de')),
+    );
+  const kurzAnzahl = new Map<string, number>();
+  for (const e of eintraege) kurzAnzahl.set(e.kurz, (kurzAnzahl.get(e.kurz) ?? 0) + 1);
+  const teile = eintraege.map(
+    (e) => `${e.menge} × ${(kurzAnzahl.get(e.kurz) ?? 0) > 1 ? e.lang : e.kurz}`,
+  );
   return teile.length === 0 ? 'kein Bestand' : teile.join(', ');
 }
 
@@ -373,11 +511,39 @@ export function gebindeErgaenzen(gebindeIds: string[], alle: Gebinde[]): string[
   return [...ergebnis];
 }
 
-/** German error message if the Gebinde may not be saved with this Untergebinde, otherwise null. */
+type GebindeKombination = Pick<
+  GebindeDaten,
+  'menge' | 'einheit' | 'unterGebindeId' | 'unterAnzahl'
+>;
+
+/** Checks that a Gebinde is either a complete Basisgebinde or a complete Obergebinde. */
+export function gebindeKombinationFehler(
+  g: GebindeKombination,
+): { feld: keyof GebindeKombination; message: string } | null {
+  if (g.unterGebindeId === null) {
+    if (g.unterAnzahl !== null) {
+      return { feld: 'unterAnzahl', message: 'Ein Einzelgebinde hat keine Untergebinde.' };
+    }
+    if (g.menge === null) return { feld: 'menge', message: 'Bitte gib eine Menge an.' };
+    if (g.einheit === null) return { feld: 'einheit', message: 'Bitte wähle eine Einheit.' };
+    return null;
+  }
+  if (g.unterAnzahl === null) {
+    return { feld: 'unterAnzahl', message: 'Bitte gib an, wie viele Untergebinde enthalten sind.' };
+  }
+  if (g.menge !== null || g.einheit !== null) {
+    return { feld: 'menge', message: 'Ein Gebinde mit Untergebinden hat keine eigene Menge.' };
+  }
+  return null;
+}
+
+/** German error message if the Gebinde may not be saved in this form, otherwise null. */
 export function gebindeFehler(
-  neu: { id?: string; unterGebindeId: string | null },
+  neu: GebindeKombination & { id?: string },
   alle: Gebinde[],
 ): string | null {
+  const kombination = gebindeKombinationFehler(neu);
+  if (kombination) return kombination.message;
   if (neu.unterGebindeId === null) return null;
   if (neu.id !== undefined && neu.unterGebindeId === neu.id) {
     return 'Ein Gebinde kann nicht sich selbst enthalten.';
@@ -391,6 +557,24 @@ export function gebindeFehler(
     return 'Dieses Gebinde ist bereits Untergebinde eines anderen Gebindes und kann daher kein eigenes haben.';
   }
   return null;
+}
+
+/** The existing Gebinde with identical attributes (incl. deposit), ignoring `ignoriereId`. */
+export function gebindeDoppelt(
+  neu: GebindeDaten,
+  alle: Gebinde[],
+  ignoriereId?: string,
+): Gebinde | undefined {
+  return alle.find(
+    (g) =>
+      g.id !== ignoriereId &&
+      g.menge === neu.menge &&
+      g.einheit === neu.einheit &&
+      g.verpackungseinheit === neu.verpackungseinheit &&
+      g.pfandCent === neu.pfandCent &&
+      g.unterGebindeId === neu.unterGebindeId &&
+      g.unterAnzahl === neu.unterAnzahl,
+  );
 }
 
 // ---------------------------------------------------------------------------

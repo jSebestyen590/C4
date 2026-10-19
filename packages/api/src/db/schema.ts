@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   date,
   integer,
   pgTable,
@@ -8,7 +9,23 @@ import {
   timestamp,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import type { Anrede, BuchungsArt, MhdArt, MitgliedStatus, Quelle, VorgangTyp } from '@c4/shared';
+import type {
+  Anrede,
+  BuchungsArt,
+  Einheit,
+  MhdArt,
+  MitgliedStatus,
+  Quelle,
+  Verpackungseinheit,
+  VorgangTyp,
+} from '@c4/shared';
+
+/** `numeric` as a JS number (the driver returns numeric values as strings). */
+const dezimal = customType<{ data: number; driverData: string }>({
+  dataType: () => 'numeric(10,3)',
+  fromDriver: (value) => Number(value),
+  toDriver: (value) => String(value),
+});
 
 /** Placeholder table; real domain tables go here. DSQL: no sequences. */
 export const appInfo = pgTable('app_info', {
@@ -97,11 +114,16 @@ export const warengruppen = pgTable('warengruppen', {
 });
 export type WarengruppeRow = typeof warengruppen.$inferSelect;
 
-/** Packaging unit; an Obergebinde contains `unterAnzahl` of its `unterGebindeId`. */
+/**
+ * Packaging unit. A Basisgebinde has `menge` + `einheit`; an Obergebinde instead contains
+ * `unterAnzahl` of its `unterGebindeId`. `pfandCent` null means no deposit.
+ */
 export const gebinde = pgTable('gebinde', {
   id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  pfandCent: integer('pfand_cent').notNull().default(0),
+  menge: dezimal('menge'),
+  einheit: text('einheit').$type<Einheit>(),
+  verpackungseinheit: text('verpackungseinheit').$type<Verpackungseinheit>().notNull(),
+  pfandCent: integer('pfand_cent'),
   unterGebindeId: text('unter_gebinde_id').references((): AnyPgColumn => gebinde.id),
   unterAnzahl: integer('unter_anzahl'),
   archiviert: boolean('archiviert').notNull().default(false),

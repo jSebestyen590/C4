@@ -12,6 +12,9 @@ import type {
 
 // The whole UI is German. Fixed values coming from the backend get their German label here.
 
+// Gebinde units; the labels live in shared because the Gebinde names are formatted there too.
+export { EINHEIT_LABELS, VERPACKUNGSEINHEIT_LABELS } from '@c4/shared';
+
 /** Labels that name a person: one form per way of addressing them (male, female, neutral). */
 export type Gegendert = Record<Anrede, string>;
 

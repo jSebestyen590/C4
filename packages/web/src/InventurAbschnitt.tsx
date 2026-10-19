@@ -98,6 +98,7 @@ export function InventurAbschnitt({
               ware={ware}
               zeile={zeile}
               gebinde={gebindeVonWare(ware, gebinde)}
+              alleGebinde={gebinde}
               soll={(gebindeId, mhd) => soll(ware.id, gebindeId, mhd)}
               aktionen={aktionen}
               onAnzahl={(gebindeId, wert) =>

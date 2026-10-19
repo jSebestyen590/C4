@@ -1,12 +1,13 @@
 import { Anchor, Box, Group, Text, TextInput } from '@mantine/core';
-import { mhdAnzeigen, type Gebinde } from '@c4/shared';
-import { gebindeKurz, mhdAusEingabe, type WareInfo, type Zeile } from './inventurDaten';
+import { gebindeBezeichnung, gebindeKurz, mhdAnzeigen, type Gebinde } from '@c4/shared';
+import { mhdAusEingabe, type WareInfo, type Zeile } from './inventurDaten';
 
 /** One compact table row: Ware (+ MHD) on the left, one small count input per Gebinde on the right. */
 export function InventurZeile({
   ware,
   zeile,
   gebinde,
+  alleGebinde,
   soll,
   aktionen,
   onAnzahl,
@@ -17,6 +18,8 @@ export function InventurZeile({
   zeile: Zeile;
   /** Gebinde of the Ware, Obergebinde first. */
   gebinde: Gebinde[];
+  /** All Gebinde (for the full name when short names collide). */
+  alleGebinde: Gebinde[];
   /** Expected amount for a Gebinde in this row (shown as placeholder). */
   soll: (gebindeId: string, mhd: string | null) => number;
   /** Small links below the label ("+ MHD", "Entfernen"). */
@@ -26,6 +29,12 @@ export function InventurZeile({
   onBlur: () => void;
 }>) {
   const mhd = mhdAusEingabe(zeile.mhd, ware.mhdArt);
+  const bezeichnung = (g: Gebinde) => gebindeBezeichnung(g, alleGebinde);
+  // The short name is enough unless two Gebinde of this Ware share it (e.g. two Kasten types).
+  const beschriftung = (g: Gebinde) =>
+    gebinde.filter((x) => gebindeKurz(x) === gebindeKurz(g)).length > 1
+      ? bezeichnung(g)
+      : gebindeKurz(g);
   const mitMhd = ware.mhdArt !== 'keins';
   const fest = mitMhd && zeile.fest;
   const name = fest ? `${ware.name} · ${mhdAnzeigen(mhd, ware.mhdArt)}` : ware.name;
@@ -75,8 +84,8 @@ export function InventurZeile({
       </Box>
       {gebinde.map((g) => (
         <Box key={g.id} w={68} style={{ flex: 'none' }}>
-          <Text size="10px" c="dimmed" ta="center" lh={1.2} truncate title={g.name}>
-            {gebindeKurz(g.name)}
+          <Text size="10px" c="dimmed" ta="center" lh={1.2} truncate title={bezeichnung(g)}>
+            {beschriftung(g)}
           </Text>
           <TextInput
             size="md"
@@ -85,7 +94,7 @@ export function InventurZeile({
             enterKeyHint="next"
             autoComplete="off"
             data-inventur="anzahl"
-            aria-label={`${name}: ${g.name}`}
+            aria-label={`${name}: ${bezeichnung(g)}`}
             placeholder={String(soll(g.id, mhd))}
             value={zeile.anzahl[g.id] ?? ''}
             styles={{ input: { textAlign: 'center', height: 44, fontSize: 16, paddingInline: 4 } }}

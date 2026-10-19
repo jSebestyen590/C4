@@ -19,6 +19,8 @@ import {
   mhdNormalisieren,
   pfad,
   type BaumKnoten,
+  gebindeBezeichnung,
+  vergleicheGebinde,
   type Gebinde,
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
@@ -59,8 +61,8 @@ export function BuchungModal({
     () =>
       gebinde
         .filter((g) => ware.gebindeIds.includes(g.id) && !g.archiviert)
-        .map((g) => ({ value: g.id, label: g.name }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'de')),
+        .sort((a, b) => vergleicheGebinde(a, b, gebinde))
+        .map((g) => ({ value: g.id, label: gebindeBezeichnung(g, gebinde) })),
     [gebinde, ware.gebindeIds],
   );
   const lagerDaten = useMemo(

@@ -15,7 +15,7 @@ import { notifications } from '@mantine/notifications';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mhdAnzeigen } from '@c4/shared';
+import { gebindeBezeichnung, mhdAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { InventurLeiste } from './InventurLeiste';
 import { jetztLokal } from './inventurDaten';
@@ -83,7 +83,7 @@ export function InventurZusammenfassung({
   const gruppen = useMemo(() => {
     if (!z) return [];
     const wareName = new Map(z.waren.map((w) => [w.id, w]));
-    const gebindeName = new Map(z.gebinde.map((g) => [g.id, g.name]));
+    const gebindeName = new Map(z.gebinde.map((g) => [g.id, gebindeBezeichnung(g, z.gebinde)]));
     const nachKnoten = new Map<string, { pfad: string; waren: Map<string, string[]> }>();
     const sortiert = [...z.zeilen].sort(
       (a, b) =>

@@ -133,7 +133,9 @@ describe('entnahmeZeilen', () => {
   const gebinde: GebindeRow[] = [
     {
       id: 'flasche',
-      name: 'Flasche',
+      menge: 0.5,
+      einheit: 'l',
+      verpackungseinheit: 'flasche',
       pfandCent: 8,
       unterGebindeId: null,
       unterAnzahl: null,
@@ -141,7 +143,9 @@ describe('entnahmeZeilen', () => {
     },
     {
       id: 'kasten',
-      name: 'Kasten',
+      menge: null,
+      einheit: null,
+      verpackungseinheit: 'kasten',
       pfandCent: 150,
       unterGebindeId: 'flasche',
       unterAnzahl: 20,

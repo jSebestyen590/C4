@@ -14,7 +14,13 @@ import {
 import { IconArchive, IconArchiveOff, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { centAnzeigen, gesamtPfandCent } from '@c4/shared';
+import {
+  centAnzeigen,
+  gebindeBezeichnung,
+  gebindeKurz,
+  gebindeSortieren,
+  pfandGesamtCent,
+} from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
@@ -37,13 +43,11 @@ export function GebindeTab() {
   });
   const alle: GebindeEintrag[] = useMemo(() => daten.data ?? [], [daten.data]);
   const sichtbar = useMemo(
-    () =>
-      [...(archiv ? alle : alle.filter((g) => !g.archiviert))].sort((a, b) =>
-        a.name.localeCompare(b.name, 'de'),
-      ),
+    () => gebindeSortieren(archiv ? alle : alle.filter((g) => !g.archiviert), alle),
     [alle, archiv],
   );
-  const index = useMemo(() => new Map(alle.map((g) => [g.id, g])), [alle]);
+  const titel = (g: GebindeEintrag) => gebindeBezeichnung(g, alle);
+  const pfandText = (cent: number | null) => (cent === null ? 'kein Pfand' : centAnzeigen(cent));
 
   const neuLaden = () => qc.invalidateQueries({ queryKey: ['gebinde'] });
   const archivieren = async (g: GebindeEintrag, archiviert: boolean) => {
@@ -57,14 +61,9 @@ export function GebindeTab() {
     onError: (e) => fehlerAnzeigen(e),
   });
 
-  const unterText = (g: GebindeEintrag) =>
-    g.unterGebindeId && g.unterAnzahl
-      ? `${g.unterAnzahl} × ${index.get(g.unterGebindeId)?.name ?? '?'}`
-      : '–';
-
   const menue = (g: GebindeEintrag) => (
     <AktionsMenue
-      label={`Aktionen für ${g.name}`}
+      label={`Aktionen für ${titel(g)}`}
       aktionen={[
         {
           text: 'Bearbeiten',
@@ -122,16 +121,14 @@ export function GebindeTab() {
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Group gap="xs">
                   <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                    {g.name}
+                    {titel(g)}
                   </Text>
                   {archiviertBadge(g)}
                 </Group>
-                <Text size="sm">Pfand: {centAnzeigen(g.pfandCent)}</Text>
+                <Text size="sm">Verpackung: {gebindeKurz(g)}</Text>
+                <Text size="sm">Pfand: {pfandText(g.pfandCent)}</Text>
                 {g.unterGebindeId && (
-                  <>
-                    <Text size="sm">Enthält: {unterText(g)}</Text>
-                    <Text size="sm">Gesamtpfand: {centAnzeigen(gesamtPfandCent(g, alle))}</Text>
-                  </>
+                  <Text size="sm">Gesamtpfand: {pfandText(pfandGesamtCent(g, alle))}</Text>
                 )}
               </Stack>
               {menue(g)}
@@ -145,9 +142,9 @@ export function GebindeTab() {
           <Table verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Name</Table.Th>
+                <Table.Th>Gebinde</Table.Th>
+                <Table.Th>Verpackung</Table.Th>
                 <Table.Th>Pfand</Table.Th>
-                <Table.Th>Untergebinde</Table.Th>
                 <Table.Th>Gesamtpfand</Table.Th>
                 <Table.Th w={60} />
               </Table.Tr>
@@ -157,13 +154,15 @@ export function GebindeTab() {
                 <Table.Tr key={g.id} opacity={g.archiviert ? 0.6 : 1}>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <Text>{g.name}</Text>
+                      <Text>{titel(g)}</Text>
                       {archiviertBadge(g)}
                     </Group>
                   </Table.Td>
-                  <Table.Td>{centAnzeigen(g.pfandCent)}</Table.Td>
-                  <Table.Td>{unterText(g)}</Table.Td>
-                  <Table.Td>{centAnzeigen(gesamtPfandCent(g, alle))}</Table.Td>
+                  <Table.Td>{gebindeKurz(g)}</Table.Td>
+                  <Table.Td>{pfandText(g.pfandCent)}</Table.Td>
+                  <Table.Td>
+                    {g.unterGebindeId ? pfandText(pfandGesamtCent(g, alle)) : '–'}
+                  </Table.Td>
                   <Table.Td>{menue(g)}</Table.Td>
                 </Table.Tr>
               ))}
@@ -178,7 +177,7 @@ export function GebindeTab() {
       {loeschZiel && (
         <LoeschenDialog
           titel="Gebinde löschen"
-          name={loeschZiel.name}
+          name={titel(loeschZiel)}
           onClose={() => setLoeschZiel(null)}
           loeschen={async () => {
             await pruefen(await api.gebinde[':id'].$delete({ param: { id: loeschZiel.id } }));
