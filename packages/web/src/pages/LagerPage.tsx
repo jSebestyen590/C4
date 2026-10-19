@@ -197,7 +197,7 @@ export function LagerPage() {
         leftSection={<IconTags size={18} />}
         w="fit-content"
       >
-        Stammdaten (Warengruppen &amp; Gebinde)
+        Warengruppen &amp; Gebinde
       </Button>
       <Switch
         label="Bestand anzeigen"
