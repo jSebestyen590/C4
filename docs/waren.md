@@ -27,7 +27,7 @@ zeigen sie nur mit `?archiv=1`.
 
 Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen gebildet
 (`gebindeBezeichnung` in `packages/shared/src/waren.ts`). Feste Listen: `EINHEITEN` (l, kg, Stk) und
-`VERPACKUNGSEINHEITEN` (Flasche, Dose, Kasten, Kolli, Fass, Packung), Labels in shared
+`VERPACKUNGSEINHEITEN` (Flasche, Dose, TetraPak, Kasten, Kolli, Fass, Packung), Labels in shared
 (`EINHEIT_LABELS`, `VERPACKUNGSEINHEIT_LABELS`, von `i18n.ts` re-exportiert).
 
 - **Basisgebinde:** `menge` (> 0, höchstens 3 Nachkommastellen), `einheit`, `verpackungseinheit`, optional `pfandCent`

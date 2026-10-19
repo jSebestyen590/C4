@@ -34,11 +34,20 @@ export const EINHEIT_LABELS: Record<Einheit, string> = {
   stk: 'Stk',
 };
 
-export const VERPACKUNGSEINHEITEN = ['flasche', 'dose', 'kasten', 'kolli', 'fass', 'packung'] as const;
+export const VERPACKUNGSEINHEITEN = [
+  'flasche',
+  'dose',
+  'tetrapak',
+  'kasten',
+  'kolli',
+  'fass',
+  'packung',
+] as const;
 export type Verpackungseinheit = (typeof VERPACKUNGSEINHEITEN)[number];
 export const VERPACKUNGSEINHEIT_LABELS: Record<Verpackungseinheit, string> = {
   flasche: 'Flasche',
   dose: 'Dose',
+  tetrapak: 'TetraPak',
   kasten: 'Kasten',
   kolli: 'Kolli',
   fass: 'Fass',
