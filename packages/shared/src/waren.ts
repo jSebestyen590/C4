@@ -4,12 +4,18 @@ import { datumSchema } from './schemas';
 export const MHD_ARTEN = ['keins', 'tag', 'monat'] as const;
 export type MhdArt = (typeof MHD_ARTEN)[number];
 
-export const BUCHUNGS_ARTEN = ['zugang', 'abgang', 'anbruch', 'korrektur'] as const;
+export const BUCHUNGS_ARTEN = ['zugang', 'abgang', 'anbruch', 'korrektur', 'umlagerung'] as const;
 export type BuchungsArt = (typeof BUCHUNGS_ARTEN)[number];
 
-const ANZEIGE_ART: Record<BuchungsArt, number> = { anbruch: 0, zugang: 1, abgang: 2, korrektur: 3 };
+const ANZEIGE_ART: Record<BuchungsArt, number> = {
+  anbruch: 0,
+  zugang: 1,
+  abgang: 2,
+  umlagerung: 3,
+  korrektur: 4,
+};
 
-/** Display order of booking lines in one Vorgang: Anbruch (Obergebinde −, then +), Zugang, Abgang, Korrektur. */
+/** Display order of booking lines in one Vorgang: Anbruch (Obergebinde −, then +), Zugang, Abgang, Umlagerung, Korrektur. */
 export function vergleicheBuchungsZeilen(
   a: { art: BuchungsArt; menge: number },
   b: { art: BuchungsArt; menge: number },
@@ -20,7 +26,7 @@ export function vergleicheBuchungsZeilen(
   );
 }
 
-export const VORGANG_TYPEN = ['einlagerung', 'entnahme', 'inventur'] as const;
+export const VORGANG_TYPEN = ['einlagerung', 'entnahme', 'umlagerung', 'inventur'] as const;
 export type VorgangTyp = (typeof VORGANG_TYPEN)[number];
 
 export const QUELLEN = ['manuell', 'inventur'] as const;
@@ -44,14 +50,18 @@ export const VERPACKUNGSEINHEITEN = [
   'packung',
 ] as const;
 export type Verpackungseinheit = (typeof VERPACKUNGSEINHEITEN)[number];
-export const VERPACKUNGSEINHEIT_LABELS: Record<Verpackungseinheit, string> = {
-  flasche: 'Flasche',
-  dose: 'Dose',
-  tetrapak: 'TetraPak',
-  kasten: 'Kasten',
-  kolli: 'Kolli',
-  fass: 'Fass',
-  packung: 'Packung',
+/** Singular and plural of a Verpackungseinheit; the form follows the amount (see `gebindeKurz`). */
+export const VERPACKUNGSEINHEIT_LABELS: Record<
+  Verpackungseinheit,
+  { einzahl: string; mehrzahl: string }
+> = {
+  flasche: { einzahl: 'Flasche', mehrzahl: 'Flaschen' },
+  dose: { einzahl: 'Dose', mehrzahl: 'Dosen' },
+  tetrapak: { einzahl: 'TetraPak', mehrzahl: 'TetraPaks' },
+  kasten: { einzahl: 'Kasten', mehrzahl: 'Kästen' },
+  kolli: { einzahl: 'Kolli', mehrzahl: 'Kollis' },
+  fass: { einzahl: 'Fass', mehrzahl: 'Fässer' },
+  packung: { einzahl: 'Packung', mehrzahl: 'Packungen' },
 };
 
 /**
@@ -239,6 +249,70 @@ export const entnahmeSchema = z.object({
 });
 export type EntnahmeEingabe = z.input<typeof entnahmeSchema>;
 
+const wareIdSchema = idSchema('Bitte wähle eine Ware.');
+const lagerortIdSchema = idSchema('Bitte wähle einen Lagerort.');
+const gebindeIdSchema = idSchema('Bitte wähle ein Gebinde.');
+const positionen = <T extends z.ZodType>(position: T) =>
+  z.array(position).min(1, 'Bitte gib mindestens eine Position an.');
+
+export const einlagerungenSchema = z.object({
+  zeitpunkt: zeitpunktSchema,
+  kommentar: kommentarSchema,
+  positionen: positionen(
+    z.object({
+      wareId: wareIdSchema,
+      lagerortId: lagerortIdSchema,
+      gebindeId: gebindeIdSchema,
+      mhd: mhdSchema,
+      anzahl: anzahlSchema,
+    }),
+  ),
+});
+export type EinlagerungenEingabe = z.input<typeof einlagerungenSchema>;
+
+export const entnahmenSchema = z.object({
+  zeitpunkt: zeitpunktSchema,
+  kommentar: kommentarSchema,
+  positionen: positionen(
+    z.object({
+      wareId: wareIdSchema,
+      lagerortId: lagerortIdSchema,
+      gebindeId: gebindeIdSchema,
+      anzahl: anzahlSchema,
+    }),
+  ),
+  /** Refill the withdrawn amounts of `lagerortId` from `quelleId` (an Umlagerung). */
+  nachfuellen: z
+    .array(
+      z
+        .object({ lagerortId: lagerortIdSchema, quelleId: idSchema('Bitte wähle eine Quelle.') })
+        .refine((n) => n.lagerortId !== n.quelleId, 'Die Quelle muss ein anderer Platz sein.'),
+    )
+    .default([])
+    .refine(
+      (liste) => eindeutig(liste.map((n) => n.lagerortId)),
+      'Jeder Platz darf nur einmal nachgefüllt werden.',
+    ),
+});
+export type EntnahmenEingabe = z.input<typeof entnahmenSchema>;
+
+export const umlagerungenSchema = z.object({
+  zeitpunkt: zeitpunktSchema,
+  kommentar: kommentarSchema,
+  positionen: positionen(
+    z
+      .object({
+        wareId: wareIdSchema,
+        gebindeId: gebindeIdSchema,
+        anzahl: anzahlSchema,
+        vonId: idSchema('Bitte wähle den Quellplatz.'),
+        nachId: idSchema('Bitte wähle den Zielplatz.'),
+      })
+      .refine((p) => p.vonId !== p.nachId, 'Quelle und Ziel müssen verschieden sein.'),
+  ),
+});
+export type UmlagerungenEingabe = z.input<typeof umlagerungenSchema>;
+
 export const inventurZaehlungSchema = z.object({
   zaehlungen: z.array(
     z.object({
@@ -397,9 +471,18 @@ export function inhaltAnzeigen(g: Pick<Gebinde, 'menge' | 'einheit'>): string {
   return `${mengeAnzeigen(g.menge)}${g.einheit === 'stk' ? ' ' : ''}${EINHEIT_LABELS[g.einheit]}`;
 }
 
-/** Short name used where space is tight: the Verpackungseinheit (`Flasche`, `Kasten`). */
-export function gebindeKurz(g: Pick<Gebinde, 'verpackungseinheit'>): string {
-  return VERPACKUNGSEINHEIT_LABELS[g.verpackungseinheit];
+/**
+ * Short name used where space is tight: the Verpackungseinheit (`Flasche`, `Kasten`). Singular when
+ * `menge` is ±1 or not given, plural otherwise (also for 0).
+ */
+export function gebindeKurz(g: Pick<Gebinde, 'verpackungseinheit'>, menge?: number): string {
+  const l = VERPACKUNGSEINHEIT_LABELS[g.verpackungseinheit];
+  return menge === undefined || Math.abs(menge) === 1 ? l.einzahl : l.mehrzahl;
+}
+
+/** Plural short name for column captions (`Kästen`, `Flaschen`). */
+export function gebindeKurzMehrzahl(g: Pick<Gebinde, 'verpackungseinheit'>): string {
+  return VERPACKUNGSEINHEIT_LABELS[g.verpackungseinheit].mehrzahl;
 }
 
 function basisBezeichnung(g: Gebinde, pfand: boolean): string {
@@ -458,8 +541,8 @@ export function inBasiseinheiten(gebindeId: string, menge: number, alle: Gebinde
 }
 
 /**
- * `9 × Kasten, 13 × Flasche`; Obergebinde first, zero amounts skipped. Short names that occur
- * more than once in the list are replaced by the full Bezeichnung so they stay distinguishable.
+ * `9 Kästen, 13 Flaschen` (`1 Kasten`); Obergebinde first, zero amounts skipped. Short names that
+ * occur more than once in the list are replaced by `2 × <full Bezeichnung>` so they stay distinguishable.
  */
 export function bestandAnzeigen(
   mengen: { gebindeId: string; menge: number }[],
@@ -476,6 +559,7 @@ export function bestandAnzeigen(
         g,
         menge,
         kurz: g ? gebindeKurz(g) : id,
+        kurzMenge: g ? gebindeKurz(g, menge) : id,
         lang: g ? gebindeBezeichnung(g, alle) : id,
       };
     })
@@ -486,8 +570,8 @@ export function bestandAnzeigen(
     );
   const kurzAnzahl = new Map<string, number>();
   for (const e of eintraege) kurzAnzahl.set(e.kurz, (kurzAnzahl.get(e.kurz) ?? 0) + 1);
-  const teile = eintraege.map(
-    (e) => `${e.menge} × ${(kurzAnzahl.get(e.kurz) ?? 0) > 1 ? e.lang : e.kurz}`,
+  const teile = eintraege.map((e) =>
+    (kurzAnzahl.get(e.kurz) ?? 0) > 1 ? `${e.menge} × ${e.lang}` : `${e.menge} ${e.kurzMenge}`,
   );
   return teile.length === 0 ? 'kein Bestand' : teile.join(', ');
 }
@@ -720,6 +804,81 @@ export function entnahmePlanen(eingabe: {
 
   if (rest > 0) zeilen.push({ lagerortId, gebindeId, mhd: null, menge: -rest, art: 'abgang' });
   return zusammenfassen(zeilen);
+}
+
+/**
+ * Plans moving `anzahl` of a Gebinde from the node `vonId` to `nachId`, FIFO at the source only
+ * (not its subtree). Withdrawn lines become negative `umlagerung` lines at the source with a mirrored
+ * positive line (same Gebinde and MHD) at the target; `anbruch` lines stay at the source. Missing stock
+ * goes negative at the source (MHD null) and is mirrored the same way.
+ */
+export function umlagerungPlanen(eingabe: {
+  /** Stock of ONE ware; only the postings AT `vonId` are used. */
+  posten: FifoPosten[];
+  gebinde: Gebinde[];
+  gebindeId: string;
+  anzahl: number;
+  vonId: string;
+  nachId: string;
+}): Buchungszeile[] {
+  const { vonId, nachId } = eingabe;
+  const geplant = entnahmePlanen({
+    posten: eingabe.posten.filter((p) => p.lagerortId === vonId),
+    gebinde: eingabe.gebinde,
+    gebindeId: eingabe.gebindeId,
+    anzahl: eingabe.anzahl,
+    lagerortId: vonId,
+  });
+  const zeilen: Buchungszeile[] = [];
+  for (const z of geplant) {
+    if (z.art === 'abgang') {
+      zeilen.push({ ...z, art: 'umlagerung' });
+      zeilen.push({ ...z, lagerortId: nachId, menge: -z.menge, art: 'umlagerung' });
+    } else {
+      zeilen.push(z);
+    }
+  }
+  return zusammenfassen(zeilen);
+}
+
+/**
+ * Applies planned lines to a stock list (for planning several positions of one request one after
+ * the other). Returns a new list; zero rows are dropped, new keys get `zeitpunkt` as arrival time.
+ */
+export function postenFortschreiben(
+  posten: FifoPosten[],
+  zeilen: Buchungszeile[],
+  zeitpunkt: string,
+): FifoPosten[] {
+  const key = (p: Pick<FifoPosten, 'lagerortId' | 'gebindeId' | 'mhd'>) =>
+    schluessel(p.lagerortId, p.gebindeId, p.mhd);
+  const map = new Map<string, FifoPosten>();
+  for (const p of posten) {
+    map.set(key(p), {
+      lagerortId: p.lagerortId,
+      gebindeId: p.gebindeId,
+      mhd: p.mhd,
+      menge: p.menge,
+      ersterZugang: p.ersterZugang,
+    });
+  }
+  for (const z of zeilen) {
+    const vorhanden = map.get(key(z));
+    if (vorhanden) {
+      // Stock that was empty or negative starts a new arrival.
+      if (z.menge > 0 && vorhanden.menge <= 0) vorhanden.ersterZugang = zeitpunkt;
+      vorhanden.menge += z.menge;
+    } else {
+      map.set(key(z), {
+        lagerortId: z.lagerortId,
+        gebindeId: z.gebindeId,
+        mhd: z.mhd,
+        menge: z.menge,
+        ersterZugang: zeitpunkt,
+      });
+    }
+  }
+  return [...map.values()].filter((p) => p.menge !== 0);
 }
 
 // ---------------------------------------------------------------------------

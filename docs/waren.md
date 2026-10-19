@@ -14,8 +14,8 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 ## Datenmodell
 
 Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
-ein `bestandsvorgang` (Einlagerung, Entnahme, Inventur) hat viele Zeilen. `erstellt_von` ist die Cognito-`sub` ohne
-Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts) und
+ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
+Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
 
 Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansonsten archiviert
@@ -35,9 +35,12 @@ Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen geb
 - **Obergebinde:** `unterGebindeId` + `unterAnzahl` (≥ 2), eigene `verpackungseinheit` und optional eigenes Pfand, keine
   Menge/Einheit. Bezeichnung `20 x 0,5l Flasche 3,10 €` (Pfand = eigenes + Anzahl × Pfand des Untergebindes, `null` zählt
   als 0; ohne jedes Pfand entfällt der Teil). Die eigene Verpackungseinheit steht nicht in der Bezeichnung.
-- **Kurzname** (`gebindeKurz`) ist die Verpackungseinheit („Flasche“, „Kasten“) und steht in Bestandszeilen
-  (`5 × Kasten`) und Inventur-Spaltenköpfen; kommt derselbe Kurzname in einer Zeile mehrfach vor, steht dort stattdessen
-  die volle Bezeichnung. Auswahlfelder, Buchungszeilen, Verlauf und die Gebinde-Liste zeigen immer die volle Bezeichnung.
+- **Kurzname** (`gebindeKurz(g, menge?)`) ist die Verpackungseinheit und steht in Bestandszeilen
+  (`9 Kästen, 13 Flaschen`) und Tabellen-Spaltenköpfen. **Pluralregel:** `VERPACKUNGSEINHEIT_LABELS` hat je Einheit
+  `{ einzahl, mehrzahl }` (Flasche/Flaschen, Dose/Dosen, TetraPak/TetraPaks, Kasten/Kästen, Kolli/Kollis, Fass/Fässer,
+  Packung/Packungen). Bei Menge ±1 steht die Einzahl, sonst die Mehrzahl (auch bei 0); ohne Menge die Einzahl (Auswahlfelder,
+  Bezeichnungen). Spaltenköpfe nutzen `gebindeKurzMehrzahl`. Kommt derselbe Kurzname in einer Zeile mehrfach vor, steht dort
+  stattdessen `2 × <volle Bezeichnung>`. Auswahlfelder, Buchungszeilen, Verlauf und die Gebinde-Liste zeigen immer die volle Bezeichnung.
 - Regeln (`gebindeSchema`, `gebindeFehler`): vollständige Basis- oder Obergebinde-Kombination, nur eine Verschachtelungsebene.
   Identische Gebinde (alle Attribute inkl. Pfand, bei Obergebinden Untergebinde + Anzahl) gibt es nur einmal (409
   „Dieses Gebinde gibt es schon.“, `gebindeDoppelt`). Sortierung: erst Basis-, dann Obergebinde (`gebindeSortieren`).
@@ -51,13 +54,31 @@ danach `pnpm db:migrate`. Alle Waren-Daten gehen verloren.
 
 ## API
 
-| Route                                                                                                                                                                                | Recht             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| `GET /api/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`, `/waren/:id[/bestand\|verlauf\|vorgaenge]`, `/lagerorte/:id/waren`                                                      | `waren:lesen`     |
-| `POST/PUT/DELETE` auf `/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`; `PUT …/:id/archiv`; `PUT /lagerorte/:id/reihenfolge` (`root` = oberste Ebene); `PUT /lagerorte/:id/waren` | `waren:verwalten` |
-| `POST /api/bestand/einlagerung`, `POST /api/bestand/entnahme`, `DELETE /api/bestand/vorgaenge/:id`                                                                                   | `bestand:buchen`  |
-| `GET /api/inventuren[?status=offen]`, `GET /api/inventuren/:id`, `GET …/:id/zusammenfassung[?zeitpunkt=]`                                                                            | `waren:lesen`     |
-| `POST /api/inventuren`, `PUT …/:id/knoten/:lid`, `POST …/:id/abschluss`, `DELETE …/:id`                                                                                              | `bestand:buchen`  |
+| Route                                                                                                                                                                                                  | Recht             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| `GET /api/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`, `/waren/:id[/bestand\|verlauf\|vorgaenge]`, `/lagerorte/:id/waren`                                                                        | `waren:lesen`     |
+| `POST/PUT/DELETE` auf `/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`; `PUT …/:id/archiv`; `PUT /lagerorte/:id/reihenfolge` (`root` = oberste Ebene); `PUT /lagerorte/:id/waren`                   | `waren:verwalten` |
+| `POST /api/bestand/einlagerung`, `POST /api/bestand/entnahme`, `POST /api/bestand/einlagerungen`, `POST /api/bestand/entnahmen`, `POST /api/bestand/umlagerungen`, `DELETE /api/bestand/vorgaenge/:id` | `bestand:buchen`  |
+| `GET /api/lagerorte/bestand` (Bestand aller Plätze: `[{ lagerortId, wareId, gebindeId, menge, fruehestesMhd }]`, über MHD summiert, ohne 0)                                                            | `waren:lesen`     |
+| `GET /api/inventuren[?status=offen]`, `GET /api/inventuren/:id`, `GET …/:id/zusammenfassung[?zeitpunkt=]`                                                                                              | `waren:lesen`     |
+| `POST /api/inventuren`, `PUT …/:id/knoten/:lid`, `POST …/:id/abschluss`, `DELETE …/:id`                                                                                                                | `bestand:buchen`  |
+
+Sammelbuchungen (je ein Request, eine Transaktion, `zeitpunkt`, optional `kommentar`, `positionen` nicht leer, `anzahl` ganze Zahl ≥ 1):
+
+- `POST /bestand/einlagerungen` `{ positionen: [{ wareId, lagerortId, gebindeId, mhd?, anzahl }] }` -> `201 { id }`, ein Vorgang
+  `einlagerung` mit einer `zugang`-Zeile je Position (Prüfung wie bei der Einzel-Einlagerung).
+- `POST /bestand/entnahmen` `{ positionen: [{ wareId, lagerortId, gebindeId, anzahl }], nachfuellen: [{ lagerortId, quelleId }] }`
+  -> `201 { entnahmeId, umlagerungId | null }`. FIFO je Position nur auf dem Platz selbst (nicht im Teilbaum); mehrere Positionen
+  derselben Ware sehen einander. Mit `nachfuellen` entsteht danach ein zweiter Vorgang `umlagerung`, der je Platz, Ware und
+  Gebinde die entnommene Menge aus `quelleId` nachstellt (FIFO an der Quelle, bei Bedarf Anbruch). `quelleId` darf nicht der Platz selbst sein.
+- `POST /bestand/umlagerungen` `{ positionen: [{ wareId, gebindeId, anzahl, vonId, nachId }] }` -> `201 { id }`; `vonId` ≠ `nachId`.
+
+**Umlagerung** (`umlagerungPlanen` in shared): FIFO am Quellplatz (nur dort, kein Teilbaum); die Abgänge werden zu negativen
+`umlagerung`-Zeilen an der Quelle, dazu kommen gespiegelte positive Zeilen am Ziel mit gleichem Gebinde und MHD. Anbruch bleibt an
+der Quelle; fehlender Bestand geht an der Quelle ins Minus (MHD leer) und wird am Ziel gespiegelt. `postenFortschreiben` wendet
+geplante Zeilen auf Bestandsposten an, damit mehrere Positionen nacheinander geplant werden können.
+
+`GET /waren/:id/vorgaenge` liefert je Vorgang `weitereZeilen` (Zeilen anderer Waren im selben Vorgang).
 
 Inventur: pro Lagerort höchstens eine offene (409). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
 Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nur

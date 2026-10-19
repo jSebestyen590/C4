@@ -8,8 +8,11 @@ import {
   heuteBerlin,
   besetzungAnlegenSchema,
   besetzungEingabeSchema,
+  einlagerungenSchema,
   einlagerungSchema,
+  entnahmenSchema,
   entnahmeSchema,
+  umlagerungenSchema,
   gebindeSchema,
   inventurAbschlussSchema,
   inventurStartenSchema,
@@ -527,6 +530,9 @@ export function createApp(deps: AppDeps) {
       .get('/lagerorte', auth, warenLesen, async (c) =>
         c.json(await deps.waren.lagerorte(c.req.query('archiv') === '1')),
       )
+      .get('/lagerorte/bestand', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.lagerortBestand()),
+      )
       .post('/lagerorte', auth, warenVerwalten, zValidator('json', lagerortSchema), async (c) => {
         const id = await deps.waren.lagerortAnlegen(c.req.valid('json')).catch(warenFehler);
         return c.json({ id }, 201);
@@ -765,6 +771,42 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const id = await deps.waren
             .entnehmen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/bestand/einlagerungen',
+        auth,
+        bestandBuchen,
+        zValidator('json', einlagerungenSchema),
+        async (c) => {
+          const id = await deps.waren
+            .einlagerungen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/bestand/entnahmen',
+        auth,
+        bestandBuchen,
+        zValidator('json', entnahmenSchema),
+        async (c) => {
+          const ids = await deps.waren
+            .entnahmen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json(ids, 201);
+        },
+      )
+      .post(
+        '/bestand/umlagerungen',
+        auth,
+        bestandBuchen,
+        zValidator('json', umlagerungenSchema),
+        async (c) => {
+          const id = await deps.waren
+            .umlagerungen(c.req.valid('json'), c.get('user').sub)
             .catch(warenFehler);
           return c.json({ id }, 201);
         },

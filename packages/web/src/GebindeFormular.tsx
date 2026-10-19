@@ -35,7 +35,7 @@ type Art = 'einzel' | 'ober';
 const EINHEIT_DATEN = EINHEITEN.map((e) => ({ value: e, label: EINHEIT_LABELS[e] }));
 const VERPACKUNG_DATEN = VERPACKUNGSEINHEITEN.map((v) => ({
   value: v,
-  label: VERPACKUNGSEINHEIT_LABELS[v],
+  label: VERPACKUNGSEINHEIT_LABELS[v].einzahl,
 }));
 
 const zahl = (v: number | string): number | null => (v === '' ? null : Number(v));

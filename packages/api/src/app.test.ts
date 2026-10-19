@@ -105,6 +105,13 @@ function makeWarenFake() {
     wareVorgaenge: vi.fn(async () => undefined),
     einlagern: vi.fn<WarenStore['einlagern']>(async () => 'v1'),
     entnehmen: vi.fn<WarenStore['entnehmen']>(async () => 'v2'),
+    einlagerungen: vi.fn<WarenStore['einlagerungen']>(async () => 'v4'),
+    entnahmen: vi.fn<WarenStore['entnahmen']>(async () => ({
+      entnahmeId: 'v5',
+      umlagerungId: null,
+    })),
+    umlagerungen: vi.fn<WarenStore['umlagerungen']>(async () => 'v6'),
+    lagerortBestand: vi.fn<WarenStore['lagerortBestand']>(async () => []),
     vorgangLoeschen: vi.fn(async (id: string) => id === 'v1'),
     inventuren: vi.fn(async () => []),
     inventurStarten: vi.fn<WarenStore['inventurStarten']>(async () => 'i1'),
@@ -999,6 +1006,82 @@ describe('posten', () => {
         app.request(`/api/bestand/vorgaenge/${id}`, json('reader-token', 'DELETE'));
       expect((await loeschen('v1')).status).toBe(200);
       expect((await loeschen('nope')).status).toBe(404);
+    });
+
+    it('books several positions at once (Einlagerungen, Entnahmen, Umlagerungen)', async () => {
+      const { app, waren } = makeApp();
+      const post = (url: string, body: unknown) =>
+        app.request(url, json('reader-token', 'POST', body));
+      const pos = { wareId: 'w1', lagerortId: 'l1', gebindeId: 'gb1', anzahl: 2 };
+
+      expect((await post('/api/bestand/einlagerungen', { zeitpunkt, positionen: [] })).status).toBe(
+        400,
+      );
+      const einlagerung = await post('/api/bestand/einlagerungen', {
+        zeitpunkt,
+        kommentar: ' Lieferung ',
+        positionen: [{ ...pos, mhd: '2027-01-15' }],
+      });
+      expect(einlagerung.status).toBe(201);
+      expect(await einlagerung.json()).toEqual({ id: 'v4' });
+      expect(waren.einlagerungen).toHaveBeenCalledWith(
+        expect.objectContaining({ kommentar: 'Lieferung' }),
+        'r',
+      );
+      waren.einlagerungen.mockRejectedValueOnce(new WarenUngueltig('Bitte gib ein MHD an.'));
+      expect(
+        (await post('/api/bestand/einlagerungen', { zeitpunkt, positionen: [pos] })).status,
+      ).toBe(400);
+
+      const gleich = { lagerortId: 'l1', quelleId: 'l1' };
+      expect(
+        (
+          await post('/api/bestand/entnahmen', {
+            zeitpunkt,
+            positionen: [pos],
+            nachfuellen: [gleich],
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (await post('/api/bestand/entnahmen', { zeitpunkt, positionen: [{ ...pos, anzahl: 0 }] }))
+          .status,
+      ).toBe(400);
+      const entnahme = await post('/api/bestand/entnahmen', { zeitpunkt, positionen: [pos] });
+      expect(entnahme.status).toBe(201);
+      expect(await entnahme.json()).toEqual({ entnahmeId: 'v5', umlagerungId: null });
+      expect(waren.entnahmen).toHaveBeenCalledWith(
+        expect.objectContaining({ nachfuellen: [] }),
+        'r',
+      );
+      waren.entnahmen.mockResolvedValueOnce({ entnahmeId: 'v7', umlagerungId: 'v8' });
+      const mit = await post('/api/bestand/entnahmen', {
+        zeitpunkt,
+        positionen: [pos],
+        nachfuellen: [{ lagerortId: 'l1', quelleId: 'l2' }],
+      });
+      expect(await mit.json()).toEqual({ entnahmeId: 'v7', umlagerungId: 'v8' });
+
+      const umlagerung = { wareId: 'w1', gebindeId: 'gb1', anzahl: 1, vonId: 'l1', nachId: 'l2' };
+      expect(
+        (
+          await post('/api/bestand/umlagerungen', {
+            zeitpunkt,
+            positionen: [{ ...umlagerung, nachId: 'l1' }],
+          })
+        ).status,
+      ).toBe(400);
+      const ok = await post('/api/bestand/umlagerungen', { zeitpunkt, positionen: [umlagerung] });
+      expect(ok.status).toBe(201);
+      expect(await ok.json()).toEqual({ id: 'v6' });
+
+      waren.lagerortBestand.mockResolvedValueOnce([
+        { lagerortId: 'l1', wareId: 'w1', gebindeId: 'gb1', menge: 3, fruehestesMhd: null },
+      ]);
+      const bestand = await app.request('/api/lagerorte/bestand', json('reader-token', 'GET'));
+      expect(bestand.status).toBe(200);
+      expect(await bestand.json()).toHaveLength(1);
+      expect((await app.request('/api/lagerorte/bestand')).status).toBe(401);
     });
 
     it('runs the Inventur flow and maps conflicts', async () => {

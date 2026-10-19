@@ -4,7 +4,10 @@ import type { GebindeRow } from './db/schema';
 import {
   einlagerungMhd,
   elternFehler,
+  entnahmenZeilen,
   entnahmeZeilen,
+  lagerortBestandZeilen,
+  umlagerungenZeilen,
   inventurKnotenIds,
   naechstePosition,
   reihenfolgeFehler,
@@ -213,5 +216,115 @@ describe('entnahmeZeilen', () => {
         { lagerortId: 'regal', gebindeId: 'flasche', mhd: null, menge: -5, art: 'abgang' },
       ]),
     );
+  });
+});
+
+describe('entnahmenZeilen / umlagerungenZeilen / lagerortBestandZeilen', () => {
+  const kasten: GebindeRow = {
+    id: 'K',
+    menge: null,
+    einheit: null,
+    verpackungseinheit: 'kasten',
+    pfandCent: null,
+    unterGebindeId: null,
+    unterAnzahl: null,
+    archiviert: false,
+  };
+  const buchung = (lagerortId: string, mhd: string, menge: number, wareId = 'bier'): Buchung => ({
+    vorgangId: 'v',
+    zeitpunkt: '2027-01-01T00:00:00Z',
+    wareId,
+    lagerortId,
+    gebindeId: 'K',
+    mhd,
+    menge,
+    art: 'zugang',
+  });
+  const buchungen = [buchung('KS', '2027-02-01', 1), buchung('BK', '2027-03-01', 10)];
+  const zeitpunkt = '2027-02-01T00:00:00Z';
+
+  it('withdraws on the node and refills from the source', () => {
+    const { entnahme, umlagerung } = entnahmenZeilen({
+      buchungen,
+      gebinde: [kasten],
+      positionen: [{ wareId: 'bier', lagerortId: 'KS', gebindeId: 'K', anzahl: 1 }],
+      nachfuellen: [{ lagerortId: 'KS', quelleId: 'BK' }],
+      zeitpunkt,
+    });
+    expect(entnahme).toEqual([
+      {
+        wareId: 'bier',
+        lagerortId: 'KS',
+        gebindeId: 'K',
+        mhd: '2027-02-01',
+        menge: -1,
+        art: 'abgang',
+      },
+    ]);
+    expect(umlagerung).toEqual([
+      {
+        wareId: 'bier',
+        lagerortId: 'BK',
+        gebindeId: 'K',
+        mhd: '2027-03-01',
+        menge: -1,
+        art: 'umlagerung',
+      },
+      {
+        wareId: 'bier',
+        lagerortId: 'KS',
+        gebindeId: 'K',
+        mhd: '2027-03-01',
+        menge: 1,
+        art: 'umlagerung',
+      },
+    ]);
+  });
+
+  it('does not refill without nachfuellen and sums repeated positions', () => {
+    const ohne = entnahmenZeilen({
+      buchungen,
+      gebinde: [kasten],
+      positionen: [{ wareId: 'bier', lagerortId: 'KS', gebindeId: 'K', anzahl: 1 }],
+      nachfuellen: [],
+      zeitpunkt,
+    });
+    expect(ohne.umlagerung).toEqual([]);
+    const zwei = entnahmenZeilen({
+      buchungen,
+      gebinde: [kasten],
+      positionen: [
+        { wareId: 'bier', lagerortId: 'BK', gebindeId: 'K', anzahl: 1 },
+        { wareId: 'bier', lagerortId: 'BK', gebindeId: 'K', anzahl: 2 },
+      ],
+      nachfuellen: [{ lagerortId: 'BK', quelleId: 'KS' }],
+      zeitpunkt,
+    });
+    expect(zwei.entnahme.map((z) => z.menge)).toEqual([-1, -2]);
+    // The fridge only has 1 Kasten; the remaining 2 go negative there.
+    expect(
+      zwei.umlagerung.filter((z) => z.lagerortId === 'KS').map((z) => `${z.mhd} ${z.menge}`),
+    ).toEqual(['2027-02-01 -1', 'null -2']);
+  });
+
+  it('plans Umlagerungen cumulatively and aggregates the current stock', () => {
+    const zeilen = umlagerungenZeilen({
+      buchungen,
+      gebinde: [kasten],
+      positionen: [
+        { wareId: 'bier', gebindeId: 'K', anzahl: 4, vonId: 'BK', nachId: 'KS' },
+        { wareId: 'bier', gebindeId: 'K', anzahl: 3, vonId: 'BK', nachId: 'X' },
+      ],
+      zeitpunkt,
+    });
+    expect(zeilen.filter((z) => z.lagerortId === 'BK').map((z) => z.menge)).toEqual([-4, -3]);
+    const bestand = lagerortBestandZeilen([
+      ...buchungen,
+      buchung('BK', '2027-01-01', 2),
+      buchung('KS', '2027-02-01', -1),
+    ]);
+    expect(bestand).toEqual([
+      { lagerortId: 'BK', wareId: 'bier', gebindeId: 'K', menge: 12, fruehestesMhd: '2027-01-01' },
+    ]);
   });
 });

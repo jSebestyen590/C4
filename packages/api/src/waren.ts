@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   bestandZu,
@@ -16,6 +16,7 @@ import {
   pfad,
   teilbaumIds,
   tiefensuche,
+  umlagerungPlanen,
   verlauf,
   verlaufSerien,
   vergleicheBuchungsZeilen,
@@ -159,6 +160,147 @@ export function entnahmeZeilen(eingabe: {
   });
 }
 
+type ZeileMitWare = Buchungszeile & { wareId: string };
+
+const alsBuchungen = (zeilen: ZeileMitWare[], zeitpunkt: string, vorgangId: string): Buchung[] =>
+  zeilen.map((z) => ({ ...z, vorgangId, zeitpunkt }));
+
+/** Plans one Umlagerung position against `buchungen` (stock AT `zeitpunkt`, source node only). */
+function umlagerungZeilen(eingabe: {
+  buchungen: Buchung[];
+  gebinde: GebindeRow[];
+  wareId: string;
+  gebindeId: string;
+  anzahl: number;
+  vonId: string;
+  nachId: string;
+  zeitpunkt: string;
+}): ZeileMitWare[] {
+  const posten = bestandZu(
+    eingabe.buchungen.filter((b) => b.wareId === eingabe.wareId),
+    eingabe.zeitpunkt,
+  );
+  return umlagerungPlanen({ ...eingabe, posten }).map((z) => ({ ...z, wareId: eingabe.wareId }));
+}
+
+/**
+ * Lines of several Umlagerungen of one request. Positions are planned one after the other, each
+ * seeing the effect of the previous ones. `buchungen` may contain rows of other wares.
+ */
+export function umlagerungenZeilen(eingabe: {
+  buchungen: Buchung[];
+  gebinde: GebindeRow[];
+  positionen: {
+    wareId: string;
+    gebindeId: string;
+    anzahl: number;
+    vonId: string;
+    nachId: string;
+  }[];
+  zeitpunkt: string;
+}): ZeileMitWare[] {
+  const buchungen = [...eingabe.buchungen];
+  const ergebnis: ZeileMitWare[] = [];
+  for (const position of eingabe.positionen) {
+    const zeilen = umlagerungZeilen({
+      buchungen,
+      gebinde: eingabe.gebinde,
+      zeitpunkt: eingabe.zeitpunkt,
+      ...position,
+    });
+    buchungen.push(...alsBuchungen(zeilen, eingabe.zeitpunkt, 'geplant'));
+    ergebnis.push(...zeilen);
+  }
+  return ergebnis;
+}
+
+/**
+ * Lines of a multi-position withdrawal (FIFO on the chosen node only, not its subtree) plus the
+ * Umlagerung that refills the nodes listed in `nachfuellen` from their source with the withdrawn
+ * amounts per (node, ware, Gebinde). The Umlagerung is planned after the withdrawal.
+ */
+export function entnahmenZeilen(eingabe: {
+  buchungen: Buchung[];
+  gebinde: GebindeRow[];
+  positionen: { wareId: string; lagerortId: string; gebindeId: string; anzahl: number }[];
+  nachfuellen: { lagerortId: string; quelleId: string }[];
+  zeitpunkt: string;
+}): { entnahme: ZeileMitWare[]; umlagerung: ZeileMitWare[] } {
+  const buchungen = [...eingabe.buchungen];
+  const entnahme: ZeileMitWare[] = [];
+  for (const p of eingabe.positionen) {
+    const posten = bestandZu(
+      buchungen.filter((b) => b.wareId === p.wareId),
+      eingabe.zeitpunkt,
+    ).filter((x) => x.lagerortId === p.lagerortId);
+    const zeilen = entnahmePlanen({
+      posten,
+      gebinde: eingabe.gebinde,
+      gebindeId: p.gebindeId,
+      anzahl: p.anzahl,
+      lagerortId: p.lagerortId,
+    }).map((z) => ({ ...z, wareId: p.wareId }));
+    buchungen.push(...alsBuchungen(zeilen, eingabe.zeitpunkt, 'geplant'));
+    entnahme.push(...zeilen);
+  }
+
+  const summen = new Map<
+    string,
+    { wareId: string; lagerortId: string; gebindeId: string; anzahl: number }
+  >();
+  for (const n of eingabe.nachfuellen) {
+    for (const p of eingabe.positionen.filter((x) => x.lagerortId === n.lagerortId)) {
+      const key = `${n.lagerortId}\u0000${p.wareId}\u0000${p.gebindeId}`;
+      const vorhanden = summen.get(key);
+      if (vorhanden) vorhanden.anzahl += p.anzahl;
+      else summen.set(key, { ...p });
+    }
+  }
+  const quelle = new Map(eingabe.nachfuellen.map((n) => [n.lagerortId, n.quelleId]));
+  const umlagerung = umlagerungenZeilen({
+    buchungen,
+    gebinde: eingabe.gebinde,
+    zeitpunkt: eingabe.zeitpunkt,
+    positionen: [...summen.values()].map((x) => ({
+      wareId: x.wareId,
+      gebindeId: x.gebindeId,
+      anzahl: x.anzahl,
+      vonId: quelle.get(x.lagerortId)!,
+      nachId: x.lagerortId,
+    })),
+  });
+  return { entnahme, umlagerung };
+}
+
+/** Current stock per (node, ware, Gebinde), summed over MHD, with the earliest MHD of the positive stock. */
+export interface LagerortBestandZeile {
+  lagerortId: string;
+  wareId: string;
+  gebindeId: string;
+  menge: number;
+  fruehestesMhd: string | null;
+}
+
+export function lagerortBestandZeilen(buchungen: Buchung[]): LagerortBestandZeile[] {
+  const map = new Map<string, LagerortBestandZeile>();
+  for (const p of bestandZu(buchungen)) {
+    const key = `${p.lagerortId}\u0000${p.wareId}\u0000${p.gebindeId}`;
+    const z = map.get(key) ?? {
+      lagerortId: p.lagerortId,
+      wareId: p.wareId,
+      gebindeId: p.gebindeId,
+      menge: 0,
+      fruehestesMhd: null,
+    };
+    z.menge += p.menge;
+    if (p.menge > 0 && p.mhd !== null && (z.fruehestesMhd === null || p.mhd < z.fruehestesMhd)) {
+      z.fruehestesMhd = p.mhd;
+    }
+    map.set(key, z);
+  }
+  return [...map.values()].filter((z) => z.menge !== 0);
+}
+
 /** Ids of the Lagerort and its non-archived descendants in inventory order (preorder, by position). */
 export function inventurKnotenIds(
   lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
@@ -260,6 +402,8 @@ export interface VorgangDetails {
   ersteller: Ersteller | null;
   erstelltAm: string;
   zeilen: BuchungZeile[];
+  /** Rows of other wares in this Vorgang (a deletion would remove them too). */
+  weitereZeilen: number;
 }
 
 export interface WareVerlauf {
@@ -289,6 +433,37 @@ export interface EntnahmeDaten {
   anzahl: number;
   zeitpunkt: string;
   kommentar: string | null;
+}
+
+export interface EinlagerungenDaten {
+  zeitpunkt: string;
+  kommentar: string | null;
+  positionen: {
+    wareId: string;
+    lagerortId: string;
+    gebindeId: string;
+    mhd: string | null;
+    anzahl: number;
+  }[];
+}
+
+export interface EntnahmenDaten {
+  zeitpunkt: string;
+  kommentar: string | null;
+  positionen: { wareId: string; lagerortId: string; gebindeId: string; anzahl: number }[];
+  nachfuellen: { lagerortId: string; quelleId: string }[];
+}
+
+export interface UmlagerungenDaten {
+  zeitpunkt: string;
+  kommentar: string | null;
+  positionen: {
+    wareId: string;
+    gebindeId: string;
+    anzahl: number;
+    vonId: string;
+    nachId: string;
+  }[];
 }
 
 export interface InventurUebersicht {
@@ -375,6 +550,16 @@ export interface WarenStore {
   // Bestand
   einlagern(daten: EinlagerungDaten, sub: string): Promise<string>;
   entnehmen(daten: EntnahmeDaten, sub: string): Promise<string>;
+  /** One Vorgang `einlagerung` with a row per position; returns its id. */
+  einlagerungen(daten: EinlagerungenDaten, sub: string): Promise<string>;
+  /** One Vorgang `entnahme` plus, for `nachfuellen`, one Vorgang `umlagerung` (same transaction). */
+  entnahmen(
+    daten: EntnahmenDaten,
+    sub: string,
+  ): Promise<{ entnahmeId: string; umlagerungId: string | null }>;
+  umlagerungen(daten: UmlagerungenDaten, sub: string): Promise<string>;
+  /** Current stock of every node, non-zero only. */
+  lagerortBestand(): Promise<LagerortBestandZeile[]>;
   vorgangLoeschen(id: string): Promise<boolean>;
   // Inventur
   inventuren(status?: InventurRow['status']): Promise<InventurUebersicht[]>;
@@ -519,6 +704,7 @@ export function createWarenStore(db: Db): WarenStore {
 
   const vorgangDetails = async (
     rows: { vorgang: VorgangRow; buchung: BuchungRow }[],
+    weitere: Map<string, number> = new Map(),
   ): Promise<VorgangDetails[]> => {
     const nachId = new Map<string, VorgangDetails>();
     const ersteller = await erstellerLaden(rows.map((r) => r.vorgang.erstelltVon));
@@ -533,6 +719,7 @@ export function createWarenStore(db: Db): WarenStore {
         ersteller: ersteller.get(v.erstelltVon) ?? null,
         erstelltAm: v.erstelltAm.toISOString(),
         zeilen: [],
+        weitereZeilen: weitere.get(v.id) ?? 0,
       };
       eintrag.zeilen.push({
         id: b.id,
@@ -1031,7 +1218,18 @@ export function createWarenStore(db: Db): WarenStore {
         .innerJoin(bestandsvorgaenge, eq(bestandsvorgaenge.id, bestandsbuchungen.vorgangId))
         .where(eq(bestandsbuchungen.wareId, id))
         .orderBy(desc(bestandsvorgaenge.zeitpunkt));
-      return vorgangDetails(rows);
+      const vorgangIds = [...new Set(rows.map((r) => r.vorgang.id))];
+      const weitere = new Map<string, number>();
+      if (vorgangIds.length > 0) {
+        const andere = await db
+          .select({ vorgangId: bestandsbuchungen.vorgangId })
+          .from(bestandsbuchungen)
+          .where(
+            and(inArray(bestandsbuchungen.vorgangId, vorgangIds), ne(bestandsbuchungen.wareId, id)),
+          );
+        for (const a of andere) weitere.set(a.vorgangId, (weitere.get(a.vorgangId) ?? 0) + 1);
+      }
+      return vorgangDetails(rows, weitere);
     },
 
     // ----- Bestand
@@ -1089,6 +1287,102 @@ export function createWarenStore(db: Db): WarenStore {
           zeilen.map((z) => ({ ...z, wareId: daten.wareId })),
         );
       });
+    },
+    async einlagerungen(daten, sub) {
+      return db.transaction(async (tx) => {
+        const zeilen: ZeileMitWare[] = [];
+        for (const p of daten.positionen) {
+          const ware = await buchbareWare(tx, p.wareId, p.gebindeId);
+          await buchbarerLagerort(tx, p.lagerortId);
+          zeilen.push({
+            wareId: p.wareId,
+            lagerortId: p.lagerortId,
+            gebindeId: p.gebindeId,
+            mhd: einlagerungMhd(p.mhd, ware.mhdArt),
+            menge: p.anzahl,
+            art: 'zugang',
+          });
+        }
+        return vorgangAnlegen(
+          tx,
+          {
+            typ: 'einlagerung',
+            quelle: 'manuell',
+            zeitpunkt: daten.zeitpunkt,
+            kommentar: daten.kommentar,
+            erstelltVon: sub,
+          },
+          zeilen,
+        );
+      });
+    },
+    async entnahmen(daten, sub) {
+      return db.transaction(async (tx) => {
+        for (const p of daten.positionen) {
+          await buchbareWare(tx, p.wareId, p.gebindeId);
+          await buchbarerLagerort(tx, p.lagerortId);
+        }
+        for (const n of daten.nachfuellen) {
+          await buchbarerLagerort(tx, n.lagerortId);
+          await buchbarerLagerort(tx, n.quelleId);
+        }
+        const wareIds = [...new Set(daten.positionen.map((p) => p.wareId))];
+        const [buchungen, alleGebinde] = await Promise.all([
+          buchungenLaden(tx, inListe(bestandsbuchungen.wareId, wareIds)),
+          tx.select().from(gebinde),
+        ]);
+        const { entnahme, umlagerung } = entnahmenZeilen({
+          buchungen,
+          gebinde: alleGebinde,
+          ...daten,
+        });
+        const vorgang = {
+          quelle: 'manuell' as const,
+          zeitpunkt: daten.zeitpunkt,
+          kommentar: daten.kommentar,
+          erstelltVon: sub,
+        };
+        const entnahmeId = await vorgangAnlegen(tx, { typ: 'entnahme', ...vorgang }, entnahme);
+        const umlagerungId =
+          umlagerung.length > 0
+            ? await vorgangAnlegen(tx, { typ: 'umlagerung', ...vorgang }, umlagerung)
+            : null;
+        return { entnahmeId, umlagerungId };
+      });
+    },
+    async umlagerungen(daten, sub) {
+      return db.transaction(async (tx) => {
+        for (const p of daten.positionen) {
+          await buchbareWare(tx, p.wareId, p.gebindeId);
+          await buchbarerLagerort(tx, p.vonId);
+          await buchbarerLagerort(tx, p.nachId);
+        }
+        const wareIds = [...new Set(daten.positionen.map((p) => p.wareId))];
+        const [buchungen, alleGebinde] = await Promise.all([
+          buchungenLaden(tx, inListe(bestandsbuchungen.wareId, wareIds)),
+          tx.select().from(gebinde),
+        ]);
+        const zeilen = umlagerungenZeilen({
+          buchungen,
+          gebinde: alleGebinde,
+          positionen: daten.positionen,
+          zeitpunkt: daten.zeitpunkt,
+        });
+        return vorgangAnlegen(
+          tx,
+          {
+            typ: 'umlagerung',
+            quelle: 'manuell',
+            zeitpunkt: daten.zeitpunkt,
+            kommentar: daten.kommentar,
+            erstelltVon: sub,
+          },
+          zeilen,
+        );
+      });
+    },
+    async lagerortBestand() {
+      return lagerortBestandZeilen(await buchungenLaden(db));
     },
     async vorgangLoeschen(id) {
       return db.transaction(async (tx) => {

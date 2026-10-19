@@ -7,13 +7,19 @@ import {
   centAnzeigen,
   einlagerungSchema,
   entnahmePlanen,
+  einlagerungenSchema,
+  entnahmenSchema,
   entnahmeSchema,
+  postenFortschreiben,
+  umlagerungenSchema,
+  umlagerungPlanen,
   gebindeErgaenzen,
   gebindeFehler,
   gebindeSchema,
   gebindeBezeichnung,
   gebindeDoppelt,
   gebindeKurz,
+  gebindeKurzMehrzahl,
   gebindeSortieren,
   mengeAnzeigen,
   pfandGesamtCent,
@@ -103,14 +109,14 @@ describe('Krosti scenario', () => {
   };
 
   it('plans the FIFO withdrawals and tracks stock', () => {
-    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('10 × Kasten');
+    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('10 Kästen');
 
     expect(schritt(t2, 'F', 7)).toEqual([
       { lagerortId: 'L1', gebindeId: 'K', mhd: '2027-02-01', menge: -1, art: 'anbruch' },
       { lagerortId: 'L1', gebindeId: 'F', mhd: '2027-02-01', menge: 20, art: 'anbruch' },
       { lagerortId: 'L1', gebindeId: 'F', mhd: '2027-02-01', menge: -7, art: 'abgang' },
     ]);
-    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('9 × Kasten, 13 × Flasche');
+    expect(bestandAnzeigen(bestandZu(alle), ALLE)).toBe('9 Kästen, 13 Flaschen');
 
     expect(schritt(t3, 'K', 4)).toEqual([
       { lagerortId: 'L1', gebindeId: 'K', mhd: '2027-02-01', menge: -4, art: 'abgang' },
@@ -429,7 +435,17 @@ describe('Gebinde helpers', () => {
         ],
         ALLE,
       ),
-    ).toBe('9 × Kasten, 13 × Flasche');
+    ).toBe('9 Kästen, 13 Flaschen');
+    expect(
+      bestandAnzeigen(
+        [
+          { gebindeId: 'K', menge: 1 },
+          { gebindeId: 'F', menge: 1 },
+        ],
+        ALLE,
+      ),
+    ).toBe('1 Kasten, 1 Flasche');
+    expect(bestandAnzeigen([{ gebindeId: 'K', menge: -1 }], ALLE)).toBe('-1 Kasten');
     expect(bestandAnzeigen([{ gebindeId: 'K', menge: 0 }], ALLE)).toBe('kein Bestand');
     expect(bestandAnzeigen([], ALLE)).toBe('kein Bestand');
   });
@@ -490,6 +506,11 @@ describe('Gebinde helpers', () => {
     expect(mengeAnzeigen(1500)).toBe('1.500');
     expect(gebindeKurz(K)).toBe('Kasten');
     expect(gebindeKurz(F)).toBe('Flasche');
+    expect(gebindeKurz(K, 1)).toBe('Kasten');
+    expect(gebindeKurz(K, -1)).toBe('Kasten');
+    expect(gebindeKurz(K, 0)).toBe('Kästen');
+    expect(gebindeKurz(K, 9)).toBe('Kästen');
+    expect(gebindeKurzMehrzahl(F)).toBe('Flaschen');
   });
   it('uses full names when short names collide', () => {
     const F2 = basisgebinde('F2', 0.5, 'l', 'flasche', 15);
@@ -503,7 +524,7 @@ describe('Gebinde helpers', () => {
         ],
         alle,
       ),
-    ).toBe('3 × Kasten, 1 × 0,5l Flasche 0,08 €, 2 × 0,5l Flasche 0,15 €');
+    ).toBe('3 Kästen, 1 × 0,5l Flasche 0,08 €, 2 × 0,5l Flasche 0,15 €');
   });
   it('sorts Basisgebinde before Obergebinde', () => {
     const dose = basisgebinde('D', 0.33, 'l', 'dose', 25);
@@ -624,5 +645,158 @@ describe('schemas', () => {
     expect(inventurZaehlungSchema.safeParse({ zaehlungen: [{ ...z, anzahl: -1 }] }).success).toBe(
       false,
     );
+  });
+});
+
+describe('Umlagerung', () => {
+  const t0 = '2027-01-01T00:00:00Z';
+  const t1 = '2027-01-02T00:00:00Z';
+  const posten = (
+    lagerortId: string,
+    gebindeId: string,
+    mhd: string | null,
+    menge: number,
+  ): Parameters<typeof postenFortschreiben>[0][number] => ({
+    lagerortId,
+    gebindeId,
+    mhd,
+    menge,
+    ersterZugang: t0,
+  });
+  const stand = (p: ReturnType<typeof postenFortschreiben>) =>
+    p.map((x) => `${x.lagerortId} ${x.menge} ${x.gebindeId} ${x.mhd}`).sort();
+
+  it('rotates: withdraw from the fridge, refill from the crates with the later MHD', () => {
+    let p = [posten('KS', 'K', '2027-02-01', 1), posten('BK', 'K', '2027-03-01', 10)];
+    const entnahme = entnahmePlanen({
+      posten: p.filter((x) => x.lagerortId === 'KS'),
+      gebinde: ALLE,
+      gebindeId: 'K',
+      anzahl: 1,
+      lagerortId: 'KS',
+    });
+    expect(entnahme).toEqual([
+      { lagerortId: 'KS', gebindeId: 'K', mhd: '2027-02-01', menge: -1, art: 'abgang' },
+    ]);
+    p = postenFortschreiben(p, entnahme, t1);
+    const umlagerung = umlagerungPlanen({
+      posten: p,
+      gebinde: ALLE,
+      gebindeId: 'K',
+      anzahl: 1,
+      vonId: 'BK',
+      nachId: 'KS',
+    });
+    expect(umlagerung).toEqual([
+      { lagerortId: 'BK', gebindeId: 'K', mhd: '2027-03-01', menge: -1, art: 'umlagerung' },
+      { lagerortId: 'KS', gebindeId: 'K', mhd: '2027-03-01', menge: 1, art: 'umlagerung' },
+    ]);
+    expect(stand(postenFortschreiben(p, umlagerung, t1))).toEqual([
+      'BK 9 K 2027-03-01',
+      'KS 1 K 2027-03-01',
+    ]);
+  });
+
+  it('opens a Kasten at the source when refilling Flaschen', () => {
+    const p = [posten('BK', 'K', '2027-03-01', 2), posten('KS', 'F', '2027-02-01', 0)];
+    const z = umlagerungPlanen({
+      posten: p,
+      gebinde: ALLE,
+      gebindeId: 'F',
+      anzahl: 7,
+      vonId: 'BK',
+      nachId: 'KS',
+    });
+    expect(z).toEqual([
+      { lagerortId: 'BK', gebindeId: 'K', mhd: '2027-03-01', menge: -1, art: 'anbruch' },
+      { lagerortId: 'BK', gebindeId: 'F', mhd: '2027-03-01', menge: 20, art: 'anbruch' },
+      { lagerortId: 'BK', gebindeId: 'F', mhd: '2027-03-01', menge: -7, art: 'umlagerung' },
+      { lagerortId: 'KS', gebindeId: 'F', mhd: '2027-03-01', menge: 7, art: 'umlagerung' },
+    ]);
+    expect(stand(postenFortschreiben(p, z, t1))).toEqual([
+      'BK 1 K 2027-03-01',
+      'BK 13 F 2027-03-01',
+      'KS 7 F 2027-03-01',
+    ]);
+  });
+
+  it('ignores stock of other nodes and goes negative without stock', () => {
+    const z = umlagerungPlanen({
+      posten: [posten('ANDERS', 'K', '2027-03-01', 5)],
+      gebinde: ALLE,
+      gebindeId: 'K',
+      anzahl: 2,
+      vonId: 'BK',
+      nachId: 'KS',
+    });
+    expect(z).toEqual([
+      { lagerortId: 'BK', gebindeId: 'K', mhd: null, menge: -2, art: 'umlagerung' },
+      { lagerortId: 'KS', gebindeId: 'K', mhd: null, menge: 2, art: 'umlagerung' },
+    ]);
+  });
+
+  it('lets several positions of the same ware see each other', () => {
+    let p = [posten('BK', 'K', '2027-03-01', 3), posten('BK', 'K', '2027-04-01', 5)];
+    const plane = (anzahl: number, nachId: string) => {
+      const z = umlagerungPlanen({
+        posten: p,
+        gebinde: ALLE,
+        gebindeId: 'K',
+        anzahl,
+        vonId: 'BK',
+        nachId,
+      });
+      p = postenFortschreiben(p, z, t1);
+      return z;
+    };
+    plane(2, 'A');
+    const zweite = plane(2, 'B');
+    // The second position only finds 1 Kasten left of the early MHD and takes the rest from the next.
+    expect(zweite.filter((z) => z.menge < 0).map((z) => `${z.mhd} ${z.menge}`)).toEqual([
+      '2027-03-01 -1',
+      '2027-04-01 -1',
+    ]);
+    expect(stand(p)).toEqual([
+      'A 2 K 2027-03-01',
+      'B 1 K 2027-03-01',
+      'B 1 K 2027-04-01',
+      'BK 4 K 2027-04-01',
+    ]);
+  });
+});
+
+describe('Sammel-Schemas', () => {
+  const zeitpunkt = '2027-01-01T10:00:00.000Z';
+  it('validates Einlagerungen', () => {
+    const pos = { wareId: 'w', lagerortId: 'l', gebindeId: 'g', anzahl: 2 };
+    expect(einlagerungenSchema.safeParse({ zeitpunkt, positionen: [] }).success).toBe(false);
+    expect(
+      einlagerungenSchema.safeParse({ zeitpunkt, positionen: [{ ...pos, anzahl: 0 }] }).success,
+    ).toBe(false);
+    const ok = einlagerungenSchema.parse({ zeitpunkt, positionen: [pos] });
+    expect(ok.kommentar).toBeNull();
+    expect(ok.positionen[0]?.mhd).toBeNull();
+  });
+  it('validates Entnahmen and Nachfüllen', () => {
+    const pos = { wareId: 'w', lagerortId: 'l', gebindeId: 'g', anzahl: 1 };
+    expect(entnahmenSchema.parse({ zeitpunkt, positionen: [pos] }).nachfuellen).toEqual([]);
+    const mit = (nachfuellen: unknown) =>
+      entnahmenSchema.safeParse({ zeitpunkt, positionen: [pos], nachfuellen }).success;
+    expect(mit([{ lagerortId: 'l', quelleId: 'q' }])).toBe(true);
+    expect(mit([{ lagerortId: 'l', quelleId: 'l' }])).toBe(false);
+    expect(
+      mit([
+        { lagerortId: 'l', quelleId: 'q' },
+        { lagerortId: 'l', quelleId: 'r' },
+      ]),
+    ).toBe(false);
+  });
+  it('validates Umlagerungen', () => {
+    const pos = { wareId: 'w', gebindeId: 'g', anzahl: 1, vonId: 'a', nachId: 'b' };
+    expect(umlagerungenSchema.safeParse({ zeitpunkt, positionen: [pos] }).success).toBe(true);
+    expect(
+      umlagerungenSchema.safeParse({ zeitpunkt, positionen: [{ ...pos, nachId: 'a' }] }).success,
+    ).toBe(false);
+    expect(umlagerungenSchema.safeParse({ zeitpunkt, positionen: [] }).success).toBe(false);
   });
 });

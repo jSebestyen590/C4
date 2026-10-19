@@ -1,5 +1,11 @@
 import { Anchor, Box, Group, Text, TextInput } from '@mantine/core';
-import { gebindeBezeichnung, gebindeKurz, mhdAnzeigen, type Gebinde } from '@c4/shared';
+import {
+  gebindeBezeichnung,
+  gebindeKurz,
+  gebindeKurzMehrzahl,
+  mhdAnzeigen,
+  type Gebinde,
+} from '@c4/shared';
 import { mhdAusEingabe, type WareInfo, type Zeile } from './inventurDaten';
 
 /** One compact table row: Ware (+ MHD) on the left, one small count input per Gebinde on the right. */
@@ -34,7 +40,7 @@ export function InventurZeile({
   const beschriftung = (g: Gebinde) =>
     gebinde.filter((x) => gebindeKurz(x) === gebindeKurz(g)).length > 1
       ? bezeichnung(g)
-      : gebindeKurz(g);
+      : gebindeKurzMehrzahl(g);
   const mitMhd = ware.mhdArt !== 'keins';
   const fest = mitMhd && zeile.fest;
   const name = fest ? `${ware.name} · ${mhdAnzeigen(mhd, ware.mhdArt)}` : ware.name;

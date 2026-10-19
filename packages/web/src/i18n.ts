@@ -65,11 +65,13 @@ export const BUCHUNGS_ART_LABELS: Record<BuchungsArt, string> = {
   abgang: 'Abgang',
   anbruch: 'Anbruch',
   korrektur: 'Korrektur',
+  umlagerung: 'Umlagerung',
 };
 
 export const VORGANG_TYP_LABELS: Record<VorgangTyp, string> = {
   einlagerung: 'Einlagerung',
   entnahme: 'Entnahme',
+  umlagerung: 'Umlagerung',
   inventur: 'Inventur',
 };
 
