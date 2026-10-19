@@ -1,37 +1,47 @@
 import { Anchor, Box, Text } from '@mantine/core';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { Gebinde } from '@c4/shared';
 import { InventurWareDialog } from './InventurWareDialog';
-import { InventurZeile } from './InventurZeile';
+import { BestandZeile } from './BestandZeile';
 import {
   gebindeVonWare,
   neueZeile,
-  sollLookup,
-  type KnotenDaten,
   type KnotenZustand,
   type WareInfo,
+  type Zeile,
 } from './inventurDaten';
 
-/** One section of the table: heading with the node path, one row per Ware and MHD, "+ Ware". */
-export function InventurAbschnitt({
-  knoten,
+/**
+ * One section of an editable table (Inventur, Einlagerung): heading with the node path, one row
+ * per Ware and MHD, "+ Ware".
+ */
+export function BestandAbschnitt({
+  pfad,
   zustand,
   waren,
   katalog,
   gebinde,
+  platzhalter,
+  mhdFehler,
+  dauerhaft = true,
   onChange,
   onBlur,
 }: Readonly<{
-  knoten: KnotenDaten;
+  pfad: string;
   zustand: KnotenZustand;
   waren: Map<string, WareInfo>;
   katalog: WareInfo[];
   gebinde: Gebinde[];
+  /** Grey placeholder of an input (the Inventur shows the expected stock). */
+  platzhalter?: (wareId: string, gebindeId: string, mhd: string | null) => string;
+  /** Rows whose MHD input is marked as missing. */
+  mhdFehler?: (zeile: Zeile) => boolean;
+  /** Offer "Dauerhaft in die Liste aufnehmen" when adding a Ware. */
+  dauerhaft?: boolean;
   onChange: (aendern: (alt: KnotenZustand) => KnotenZustand) => void;
-  onBlur: () => void;
+  onBlur?: () => void;
 }>) {
   const [dialog, setDialog] = useState(false);
-  const soll = useMemo(() => sollLookup(knoten.soll), [knoten.soll]);
   const { zeilen } = zustand;
 
   const zeileAendern = (
@@ -49,7 +59,7 @@ export function InventurAbschnitt({
         style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
       >
         <Text size="sm" fw={700} style={{ overflowWrap: 'anywhere' }}>
-          {knoten.pfad}
+          {pfad}
         </Text>
       </Box>
       <Box px="xs">
@@ -93,13 +103,16 @@ export function InventurAbschnitt({
                 })),
             });
           return (
-            <InventurZeile
+            <BestandZeile
               key={zeile.key}
               ware={ware}
               zeile={zeile}
               gebinde={gebindeVonWare(ware, gebinde)}
               alleGebinde={gebinde}
-              soll={(gebindeId, mhd) => soll(ware.id, gebindeId, mhd)}
+              platzhalter={
+                platzhalter && ((gebindeId, mhd) => platzhalter(ware.id, gebindeId, mhd))
+              }
+              mhdFehler={mhdFehler?.(zeile)}
               aktionen={aktionen}
               onAnzahl={(gebindeId, wert) =>
                 zeileAendern(zeile.key, (z) => ({
@@ -124,6 +137,7 @@ export function InventurAbschnitt({
       {dialog && (
         <InventurWareDialog
           katalog={katalog}
+          dauerhaft={dauerhaft}
           vorhanden={new Set(zeilen.map((z) => z.wareId))}
           onClose={() => setDialog(false)}
           onHinzufuegen={(wareId, dauerhaft) => {

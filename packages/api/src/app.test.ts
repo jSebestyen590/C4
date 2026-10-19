@@ -76,6 +76,9 @@ function makeWarenFake() {
     }),
     lagerortReihenfolge: vi.fn<WarenStore['lagerortReihenfolge']>(async () => true),
     lagerortWaren: vi.fn(async (id: string) => (orte.has(id) ? ['w1'] : undefined)),
+    lagerortWarenlisten: vi.fn<WarenStore['lagerortWarenlisten']>(async () => [
+      { lagerortId: 'l1', wareIds: ['w1'] },
+    ]),
     lagerortWarenSetzen: vi.fn<WarenStore['lagerortWarenSetzen']>(async (id) => orte.has(id)),
     warengruppen: vi.fn(async () => []),
     warengruppeAnlegen: vi.fn(async () => 'g1'),
@@ -1082,6 +1085,11 @@ describe('posten', () => {
       expect(bestand.status).toBe(200);
       expect(await bestand.json()).toHaveLength(1);
       expect((await app.request('/api/lagerorte/bestand')).status).toBe(401);
+
+      const listen = await app.request('/api/lagerorte/warenlisten', json('reader-token', 'GET'));
+      expect(listen.status).toBe(200);
+      expect(await listen.json()).toEqual([{ lagerortId: 'l1', wareIds: ['w1'] }]);
+      expect((await app.request('/api/lagerorte/warenlisten')).status).toBe(401);
     });
 
     it('runs the Inventur flow and maps conflicts', async () => {

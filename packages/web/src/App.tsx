@@ -8,6 +8,9 @@ import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { CallbackPage } from './pages/CallbackPage';
 import { HomePage } from './pages/HomePage';
+import { EinlagerungPage } from './pages/EinlagerungPage';
+import { EntnahmePage } from './pages/EntnahmePage';
+import { UmlagerungPage } from './pages/UmlagerungPage';
 import { InventurPage } from './pages/InventurPage';
 import { LagerPage } from './pages/LagerPage';
 import { MitgliedPage } from './pages/MitgliedPage';
@@ -154,6 +157,36 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="bestand:buchen">
                 <RequireUsername>
                   <InventurPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/entnehmen"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <EntnahmePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/einlagern"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <EinlagerungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/umlagern"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <UmlagerungPage />
                 </RequireUsername>
               </Protected>
             }

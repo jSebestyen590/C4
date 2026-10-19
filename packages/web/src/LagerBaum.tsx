@@ -1,4 +1,15 @@
-import { ActionIcon, Badge, Box, Button, Collapse, Group, Paper, Stack, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Collapse,
+  Group,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+} from '@mantine/core';
 import {
   IconArchive,
   IconArchiveOff,
@@ -8,12 +19,16 @@ import {
   IconChevronRight,
   IconClipboardCheck,
   IconEdit,
+  IconArrowsExchange,
   IconListDetails,
+  IconPackageExport,
+  IconPackageImport,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react';
 import type { BaumEintrag } from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
+import type { BestandsAnzeige } from './lagerBestand';
 
 export interface LagerKnoten {
   id: string;
@@ -28,6 +43,8 @@ export interface LagerKnoten {
 export interface LagerKontext {
   darfVerwalten: boolean;
   darfBuchen: boolean;
+  /** Stock lines per node; null while hidden or not loaded. */
+  bestand: Map<string, BestandsAnzeige[]> | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
   eingeklappt: Set<string>;
@@ -36,6 +53,9 @@ export interface LagerKontext {
   bearbeiten: (k: LagerKnoten) => void;
   verschieben: (k: LagerKnoten, richtung: -1 | 1) => void;
   waren: (k: LagerKnoten) => void;
+  entnehmen: (k: LagerKnoten) => void;
+  einlagern: (k: LagerKnoten) => void;
+  umlagern: (k: LagerKnoten) => void;
   inventur: (k: LagerKnoten) => void;
   archivieren: (k: LagerKnoten) => void;
   loeschen: (k: LagerKnoten) => void;
@@ -93,6 +113,20 @@ function LagerZeile({
                 {node.beschreibung}
               </Text>
             )}
+            {ctx.bestand?.get(node.id)?.map((b) => (
+              <Text key={b.wareId} size="sm" lh={1.35} style={{ overflowWrap: 'anywhere' }}>
+                <Text span fw={600} inherit>
+                  {b.name}
+                </Text>
+                : {b.text}
+                {b.mhd && (
+                  <Text span size="xs" c="dimmed">
+                    {' '}
+                    · MHD {b.mhd}
+                  </Text>
+                )}
+              </Text>
+            ))}
           </Stack>
           <AktionsMenue
             label={`Aktionen für ${node.name}`}
@@ -130,11 +164,29 @@ function LagerZeile({
                 sichtbar: ctx.darfVerwalten && !node.archiviert,
               },
               {
+                text: 'Entnehmen',
+                icon: <IconPackageExport size={18} />,
+                onClick: () => ctx.entnehmen(node),
+                sichtbar: inventurMoeglich,
+                trenner: ctx.darfVerwalten,
+              },
+              {
+                text: 'Einlagern',
+                icon: <IconPackageImport size={18} />,
+                onClick: () => ctx.einlagern(node),
+                sichtbar: inventurMoeglich,
+              },
+              {
+                text: 'Umlagern',
+                icon: <IconArrowsExchange size={18} />,
+                onClick: () => ctx.umlagern(node),
+                sichtbar: inventurMoeglich,
+              },
+              {
                 text: inventurText,
                 icon: <IconClipboardCheck size={18} />,
                 onClick: () => ctx.inventur(node),
                 sichtbar: inventurMoeglich,
-                trenner: ctx.darfVerwalten,
               },
               {
                 text: node.archiviert ? 'Wiederherstellen' : 'Archivieren',
@@ -154,25 +206,34 @@ function LagerZeile({
           />
         </Group>
         {tiefe === 0 && inventurMoeglich && (
-          <Box px={8} pb={8}>
+          <Stack gap="xs" px={8} pb={8}>
+            <SimpleGrid cols={2} spacing="xs" maw={{ sm: 420 }}>
+              <Button
+                mih={44}
+                leftSection={<IconPackageExport size={18} />}
+                onClick={() => ctx.entnehmen(node)}
+              >
+                Entnehmen
+              </Button>
+              <Button
+                mih={44}
+                variant="light"
+                leftSection={<IconPackageImport size={18} />}
+                onClick={() => ctx.einlagern(node)}
+              >
+                Einlagern
+              </Button>
+            </SimpleGrid>
             <Button
-              fullWidth
-              hiddenFrom="sm"
-              variant={inventurId ? 'filled' : 'light'}
+              mih={44}
+              w={{ base: '100%', sm: 'fit-content' }}
+              variant={inventurId ? 'filled' : 'default'}
               leftSection={<IconClipboardCheck size={18} />}
               onClick={() => ctx.inventur(node)}
             >
               {inventurText}
             </Button>
-            <Button
-              visibleFrom="sm"
-              variant={inventurId ? 'filled' : 'light'}
-              leftSection={<IconClipboardCheck size={18} />}
-              onClick={() => ctx.inventur(node)}
-            >
-              {inventurText}
-            </Button>
-          </Box>
+          </Stack>
         )}
       </Paper>
       {kinder.length > 0 && (

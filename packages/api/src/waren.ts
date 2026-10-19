@@ -524,6 +524,8 @@ export interface WarenStore {
   /** Orders the children of `parentId` (null = top level). */
   lagerortReihenfolge(parentId: string | null, ids: string[]): Promise<boolean>;
   lagerortWaren(id: string): Promise<string[] | undefined>;
+  /** The Warenliste (ordered ware ids) of every node that has one. */
+  lagerortWarenlisten(): Promise<{ lagerortId: string; wareIds: string[] }[]>;
   lagerortWarenSetzen(id: string, wareIds: string[]): Promise<boolean>;
   // Warengruppen
   warengruppen(mitArchiv: boolean): Promise<WarengruppeRow[]>;
@@ -980,6 +982,13 @@ export function createWarenStore(db: Db): WarenStore {
         .where(eq(lagerortWaren.lagerortId, id))
         .orderBy(asc(lagerortWaren.position));
       return rows.map((r) => r.wareId);
+    },
+    async lagerortWarenlisten() {
+      const rows = await db.select().from(lagerortWaren).orderBy(asc(lagerortWaren.position));
+      const listen = new Map<string, string[]>();
+      for (const r of rows)
+        listen.set(r.lagerortId, [...(listen.get(r.lagerortId) ?? []), r.wareId]);
+      return [...listen].map(([lagerortId, wareIds]) => ({ lagerortId, wareIds }));
     },
     async lagerortWarenSetzen(id, wareIds) {
       return db.transaction(async (tx) => {

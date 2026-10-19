@@ -47,6 +47,7 @@ export function WareHistorie({
     onError: (e) => fehlerAnzeigen(e),
   });
 
+  const weitere = daten.data?.find((v) => v.id === loeschId)?.weitereZeilen ?? 0;
   const liste = [...(daten.data ?? [])].sort((a, b) => b.zeitpunkt.localeCompare(a.zeitpunkt));
 
   return (
@@ -111,6 +112,13 @@ export function WareHistorie({
       )}
       <Modal opened={loeschId !== null} onClose={() => setLoeschId(null)} title="Vorgang löschen">
         <Stack>
+          {weitere > 0 && (
+            <Text fw={600}>
+              Dieser Vorgang enthält auch Buchungen für {weitere} weitere{' '}
+              {weitere === 1 ? 'Zeile' : 'Zeilen'} anderer Waren, die mitgelöscht{' '}
+              {weitere === 1 ? 'wird' : 'werden'}.
+            </Text>
+          )}
           <Text>
             Der Vorgang wird endgültig gelöscht und der Bestand entsprechend zurückgesetzt. Spätere
             Entnahmen werden dabei nicht neu berechnet (FIFO-Aufteilungen bleiben, wie sie gebucht

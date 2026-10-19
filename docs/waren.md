@@ -54,14 +54,14 @@ danach `pnpm db:migrate`. Alle Waren-Daten gehen verloren.
 
 ## API
 
-| Route                                                                                                                                                                                                  | Recht             |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| `GET /api/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`, `/waren/:id[/bestand\|verlauf\|vorgaenge]`, `/lagerorte/:id/waren`                                                                        | `waren:lesen`     |
-| `POST/PUT/DELETE` auf `/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`; `PUT …/:id/archiv`; `PUT /lagerorte/:id/reihenfolge` (`root` = oberste Ebene); `PUT /lagerorte/:id/waren`                   | `waren:verwalten` |
-| `POST /api/bestand/einlagerung`, `POST /api/bestand/entnahme`, `POST /api/bestand/einlagerungen`, `POST /api/bestand/entnahmen`, `POST /api/bestand/umlagerungen`, `DELETE /api/bestand/vorgaenge/:id` | `bestand:buchen`  |
-| `GET /api/lagerorte/bestand` (Bestand aller Plätze: `[{ lagerortId, wareId, gebindeId, menge, fruehestesMhd }]`, über MHD summiert, ohne 0)                                                            | `waren:lesen`     |
-| `GET /api/inventuren[?status=offen]`, `GET /api/inventuren/:id`, `GET …/:id/zusammenfassung[?zeitpunkt=]`                                                                                              | `waren:lesen`     |
-| `POST /api/inventuren`, `PUT …/:id/knoten/:lid`, `POST …/:id/abschluss`, `DELETE …/:id`                                                                                                                | `bestand:buchen`  |
+| Route                                                                                                                                                                                                       | Recht             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `GET /api/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`, `/waren/:id[/bestand\|verlauf\|vorgaenge]`, `/lagerorte/:id/waren`                                                                             | `waren:lesen`     |
+| `POST/PUT/DELETE` auf `/lagerorte`, `/warengruppen`, `/gebinde`, `/waren`; `PUT …/:id/archiv`; `PUT /lagerorte/:id/reihenfolge` (`root` = oberste Ebene); `PUT /lagerorte/:id/waren`                        | `waren:verwalten` |
+| `POST /api/bestand/einlagerung`, `POST /api/bestand/entnahme`, `POST /api/bestand/einlagerungen`, `POST /api/bestand/entnahmen`, `POST /api/bestand/umlagerungen`, `DELETE /api/bestand/vorgaenge/:id`      | `bestand:buchen`  |
+| `GET /api/lagerorte/bestand` (Bestand aller Plätze: `[{ lagerortId, wareId, gebindeId, menge, fruehestesMhd }]`, über MHD summiert, ohne 0), `GET /api/lagerorte/warenlisten` (`[{ lagerortId, wareIds }]`) | `waren:lesen`     |
+| `GET /api/inventuren[?status=offen]`, `GET /api/inventuren/:id`, `GET …/:id/zusammenfassung[?zeitpunkt=]`                                                                                                   | `waren:lesen`     |
+| `POST /api/inventuren`, `PUT …/:id/knoten/:lid`, `POST …/:id/abschluss`, `DELETE …/:id`                                                                                                                     | `bestand:buchen`  |
 
 Sammelbuchungen (je ein Request, eine Transaktion, `zeitpunkt`, optional `kommentar`, `positionen` nicht leer, `anzahl` ganze Zahl ≥ 1):
 
@@ -89,8 +89,33 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
   (Unterebene anlegen, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
-  stattdessen Archivieren angeboten). Mit `bestand:buchen` startet oder setzt man eine Inventur fort (`/lager/inventur/:id`);
-  oberste Knoten zeigen die Schaltfläche direkt. Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur) ist die Zählreihenfolge der Inventur.
+  stattdessen Archivieren angeboten). Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur)
+  ist die Zählreihenfolge der Inventur und die Reihenfolge der Bestandsanzeige.
+  - **Bestand je Platz:** Der Schalter „Bestand anzeigen“ (standardmäßig an, Wahl im `localStorage`) zeigt unter jedem Knoten
+    seinen eigenen Bestand: `Krosti: 9 Kästen, 13 Flaschen · MHD 03.2027` (`bestandAnzeigen`, frühestes MHD klein). Reihenfolge:
+    Waren der Warenliste des Knotens, danach weitere alphabetisch; leere Plätze zeigen nichts. Daten: `GET /lagerorte/bestand`
+    und `GET /lagerorte/warenlisten` (alle Warenlisten in einer Anfrage, `[{ lagerortId, wareIds }]`), Query-Keys
+    `['lagerorte','bestand']` und `['lagerort-waren','alle']`.
+  - **Aktionen (`bestand:buchen`, nicht archiviert):** Das Knotenmenü bietet Entnehmen, Einlagern, Umlagern und Inventur
+    starten/fortsetzen. Oberste Knoten zeigen „Entnehmen“ und „Einlagern“ als Buttons in einer Zeile, darunter „Inventur“.
+- `/lager/:id/entnehmen`, `/lager/:id/einlagern`, `/lager/:id/umlagern` (`bestand:buchen`): Tabellen für den Knoten samt
+  Teilbaum, Handy zuerst; die Bausteine teilt sich die Inventur (`BestandZeile`, `BestandAbschnitt`, `InventurLeiste`,
+  `useEnterWeiter`). Je Platz (Tiefensuche, nicht archivierte) ein Abschnitt, Zahlenfelder mit Zahlentastatur, Enter springt zum
+  nächsten Feld (auch über Plätze), unten Zeitpunkt (jetzt, änderbar), Kommentar und die Leiste mit dem Buchen-Button. Nach dem
+  Buchen: Hinweis, `['waren']` und `['lagerorte','bestand']` neu laden, zurück zu `/lager`.
+  - **Entnehmen** (`EntnahmePage.tsx`): nur Plätze und Waren mit Bestand, eine Zeile je Ware (Warenlisten-Reihenfolge, dann
+    alphabetisch), kein MHD-Feld (FIFO nach MHD je Platz). Je Gebinde ein Feld, wenn es auf dem Platz Bestand hat oder sein
+    Obergebinde (Flaschen aus dem Kasten); Spaltenkopf in der Mehrzahl, grauer Platzhalter = Bestand des Gebindes auf dem Platz.
+    Mehr als verfügbar (Untergebinde: lose + `unterAnzahl` × Obergebinde-Bestand, abzüglich der in der Zeile entnommenen
+    Obergebinde) färbt das Feld orange mit „mehr als Bestand“; Buchen geht trotzdem. **Nachfüllen:** je Platz ein Schalter
+    „Nachfüllen aus“ mit einem beliebigen anderen nicht archivierten Platz; beim Buchen entsteht per `nachfuellen` eine
+    Umlagerung derselben Mengen aus der Quelle (Plätze ohne Menge werden ignoriert). Vor dem Buchen listet ein Dialog die
+    Mengen je Platz und das Nachfüllen. `POST /bestand/entnahmen`.
+  - **Einlagern** (`EinlagerungPage.tsx`): Abschnitte für alle nicht archivierten Plätze, Zeilen je Ware der Warenliste, ohne
+    Platzhalter. MHD-Waren: MHD Pflicht, sobald eine Menge steht (Fehlermeldung vor dem Absenden, Feld rot); „+ MHD“ und
+    „+ Ware“ (ohne „dauerhaft in die Liste“, das braucht `waren:verwalten`). `POST /bestand/einlagerungen`.
+  - **Umlagern** (`UmlagerungPage.tsx`): wie Entnehmen, dazu je Abschnitt ein Pflichtfeld „Nach“ (anderer nicht archivierter
+    Platz). `POST /bestand/umlagerungen`.
 - `/lager/stammdaten`: Tabs „Warengruppen“ (Baum, nach Name sortiert, verschiebbar über die übergeordnete Gruppe) und
   „Gebinde“ (Karten auf dem Handy, Tabelle ab `sm`; Bezeichnung, Verpackung, Pfand, Gesamtpfand; Formular mit Umschalter „Einzelgebinde“ / „Mit Untergebinde“ und Live-Vorschau der Bezeichnung).
 - `WareFelder.tsx`: wiederverwendbares Formular für Waren (Name, Warengruppe, MHD-Art, Gebinde, Aliase).
@@ -100,7 +125,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
   `BuchungModal.tsx`; Entnahme zeigt danach die FIFO-Zeilen), Bestand je Lagerort (`WareBestand.tsx`), Bestandsverlauf als
   Stufendiagramm je Basisgebinde, umschaltbar Gesamt / Je Lager (`WareVerlauf.tsx`; `GET /waren/:id/verlauf` liefert dazu
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,
-  neueste zuerst, mit Löschen (`WareHistorie.tsx`). Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet.
+  neueste zuerst, mit Löschen (`WareHistorie.tsx`). Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet; enthält er Zeilen anderer Waren (`weitereZeilen`, Sammelbuchung), nennt die Bestätigung deren Anzahl, denn sie werden mitgelöscht.
 - `/lager/inventur/:id` (`bestand:buchen`): Inventur als eine kompakte, direkt bearbeitbare Tabelle für das ganze Lager,
   Handy zuerst (`InventurPage.tsx`, `InventurAbschnitt.tsx`, `InventurZeile.tsx`). Je Platz (Tiefensuche) eine Überschrift
   mit dem Pfad, darunter eine Zeile je Ware und MHD: vorbelegt aus dem Soll (eine Zeile je vorhandenem MHD, Anzeige „Name ·

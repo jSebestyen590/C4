@@ -533,6 +533,9 @@ export function createApp(deps: AppDeps) {
       .get('/lagerorte/bestand', auth, warenLesen, async (c) =>
         c.json(await deps.waren.lagerortBestand()),
       )
+      .get('/lagerorte/warenlisten', auth, warenLesen, async (c) =>
+        c.json(await deps.waren.lagerortWarenlisten()),
+      )
       .post('/lagerorte', auth, warenVerwalten, zValidator('json', lagerortSchema), async (c) => {
         const id = await deps.waren.lagerortAnlegen(c.req.valid('json')).catch(warenFehler);
         return c.json({ id }, 201);

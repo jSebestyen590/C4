@@ -6,6 +6,7 @@ import type { WareInfo } from './inventurDaten';
 export function InventurWareDialog({
   katalog,
   vorhanden,
+  dauerhaft: dauerhaftAnbieten = true,
   onHinzufuegen,
   onClose,
 }: Readonly<{
@@ -13,6 +14,8 @@ export function InventurWareDialog({
   katalog: WareInfo[];
   /** Wares already shown on the node. */
   vorhanden: Set<string>;
+  /** Offer the option to add the Ware to the node's Warenliste for good. */
+  dauerhaft?: boolean;
   onHinzufuegen: (wareId: string, dauerhaft: boolean) => void;
   onClose: () => void;
 }>) {
@@ -45,17 +48,22 @@ export function InventurWareDialog({
             );
           }}
         />
-        <Checkbox
-          size="md"
-          label="Dauerhaft in die Liste aufnehmen"
-          checked={dauerhaft}
-          onChange={(e) => setDauerhaft(e.currentTarget.checked)}
-        />
+        {dauerhaftAnbieten && (
+          <Checkbox
+            size="md"
+            label="Dauerhaft in die Liste aufnehmen"
+            checked={dauerhaft}
+            onChange={(e) => setDauerhaft(e.currentTarget.checked)}
+          />
+        )}
         <Group justify="flex-end" grow preventGrowOverflow={false}>
           <Button variant="default" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button disabled={!wareId} onClick={() => wareId && onHinzufuegen(wareId, dauerhaft)}>
+          <Button
+            disabled={!wareId}
+            onClick={() => wareId && onHinzufuegen(wareId, dauerhaftAnbieten && dauerhaft)}
+          >
             Hinzufügen
           </Button>
         </Group>

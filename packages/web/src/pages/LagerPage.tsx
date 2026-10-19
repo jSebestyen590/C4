@@ -7,12 +7,24 @@ import { baumBauen, pfad } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { LagerBaum, type LagerKnoten, type LagerKontext } from '../LagerBaum';
+import { bestandAnzeigeJeKnoten } from '../lagerBestand';
 import { LagerortFormular } from '../LagerortFormular';
 import { LoeschenDialog } from '../LoeschenDialog';
+import { useLagerBestand } from '../useLagerBestand';
 import { WarenlisteModal } from '../WarenlisteModal';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 
 type Formular = { parentId: string | null; lagerort?: LagerKnoten };
+
+const BESTAND_KEY = 'lager.bestandAnzeigen';
+
+function bestandGemerkt(): boolean {
+  try {
+    return localStorage.getItem(BESTAND_KEY) !== 'nein';
+  } catch {
+    return true;
+  }
+}
 
 /** The Lagerort tree: browse, maintain (waren:verwalten) and start inventories (bestand:buchen). */
 export function LagerPage() {
@@ -23,6 +35,7 @@ export function LagerPage() {
   const darfVerwalten = can('waren:verwalten');
   const darfBuchen = can('bestand:buchen');
   const [archiv, setArchiv] = useState(false);
+  const [bestandZeigen, setBestandZeigen] = useState(bestandGemerkt);
   const [eingeklappt, setEingeklappt] = useState<Set<string>>(new Set());
   const [formular, setFormular] = useState<Formular | null>(null);
   const [warenliste, setWarenliste] = useState<LagerKnoten | null>(null);
@@ -37,6 +50,27 @@ export function LagerPage() {
     queryKey: ['inventuren', 'offen'],
     queryFn: async () => unwrap(await api.inventuren.$get({ query: { status: 'offen' } })),
   });
+
+  const lagerBestand = useLagerBestand();
+  const bestandKarte = useMemo(
+    () =>
+      bestandZeigen && lagerBestand.bestandGeladen
+        ? bestandAnzeigeJeKnoten(
+            lagerBestand.bestand,
+            lagerBestand.warenlisten,
+            lagerBestand.waren,
+            lagerBestand.gebinde,
+          )
+        : null,
+    [
+      bestandZeigen,
+      lagerBestand.bestandGeladen,
+      lagerBestand.bestand,
+      lagerBestand.warenlisten,
+      lagerBestand.waren,
+      lagerBestand.gebinde,
+    ],
+  );
 
   const alle: LagerKnoten[] = useMemo(() => lagerorte.data ?? [], [lagerorte.data]);
   const sichtbar = useMemo(
@@ -122,6 +156,7 @@ export function LagerPage() {
   const ctx: LagerKontext = {
     darfVerwalten,
     darfBuchen,
+    bestand: bestandKarte,
     offeneInventuren,
     eingeklappt,
     umschalten: (id) =>
@@ -134,6 +169,9 @@ export function LagerPage() {
     bearbeiten: (k) => setFormular({ parentId: k.parentId, lagerort: k }),
     verschieben,
     waren: setWarenliste,
+    entnehmen: (k) => navigate(`/lager/${encodeURIComponent(k.id)}/entnehmen`),
+    einlagern: (k) => navigate(`/lager/${encodeURIComponent(k.id)}/einlagern`),
+    umlagern: (k) => navigate(`/lager/${encodeURIComponent(k.id)}/umlagern`),
     inventur: (k) => inventurStarten.mutate(k),
     archivieren: (k) => archivMutation.mutate({ k, archiviert: !k.archiviert }),
     loeschen: setLoeschZiel,
@@ -161,6 +199,19 @@ export function LagerPage() {
       >
         Stammdaten (Warengruppen &amp; Gebinde)
       </Button>
+      <Switch
+        label="Bestand anzeigen"
+        checked={bestandZeigen}
+        onChange={(e) => {
+          const an = e.currentTarget.checked;
+          setBestandZeigen(an);
+          try {
+            localStorage.setItem(BESTAND_KEY, an ? 'ja' : 'nein');
+          } catch {
+            // The choice just is not remembered.
+          }
+        }}
+      />
       <Switch
         label="Archivierte Lagerorte anzeigen"
         checked={archiv}

@@ -6,10 +6,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { Gebinde } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { AktionsMenue } from '../AktionsMenue';
-import { InventurAbschnitt } from '../InventurAbschnitt';
+import { BestandAbschnitt } from '../BestandAbschnitt';
+import { useEnterWeiter } from '../useEnterWeiter';
 import { InventurLeiste } from '../InventurLeiste';
 import { InventurZusammenfassung } from '../InventurZusammenfassung';
-import { knotenZustand, type KnotenZustand, type WareInfo } from '../inventurDaten';
+import { knotenZustand, sollLookup, type KnotenZustand, type WareInfo } from '../inventurDaten';
 import { useInventurSpeichern, type SpeicherStatus } from '../useInventurSpeichern';
 import { fehlerAnzeigen, fehlerText, pruefen } from '../warenApi';
 
@@ -31,6 +32,7 @@ export function InventurPage() {
   const [zusammenfassung, setZusammenfassung] = useState(false);
   const [weiter, setWeiter] = useState(false);
   const [verwerfen, setVerwerfen] = useState(false);
+  const enterWeiter = useEnterWeiter('inventur-weiter');
 
   const daten = useQuery({
     queryKey: ['inventuren', id],
@@ -52,6 +54,10 @@ export function InventurPage() {
   }, [daten.data, katalog]);
   const gebinde: Gebinde[] = useMemo(() => daten.data?.gebinde ?? [], [daten.data]);
   const knoten = useMemo(() => daten.data?.knoten ?? [], [daten.data]);
+  const sollLookups = useMemo(
+    () => new Map(knoten.map((k) => [k.lagerortId, sollLookup(k.soll)])),
+    [knoten],
+  );
 
   // The local input state is the source of truth; it is built once from the fresh draft.
   if (zustaende === null && daten.data && !daten.isFetching) {
@@ -146,25 +152,17 @@ export function InventurPage() {
           </Stack>
           <Box
             style={{ flex: 1, border: '1px solid var(--mantine-color-default-border)' }}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-              const ziel = e.target as HTMLElement;
-              if (!ziel.matches('input[data-inventur]')) return;
-              e.preventDefault();
-              const alle = [
-                ...e.currentTarget.querySelectorAll<HTMLElement>('input[data-inventur]'),
-              ];
-              const naechstes = alle[alle.indexOf(ziel) + 1];
-              if (naechstes) naechstes.focus();
-              else document.getElementById('inventur-weiter')?.focus();
-            }}
+            onKeyDown={enterWeiter}
           >
             {knoten.map((k) => {
               const z = zustaende[k.lagerortId];
               return z ? (
-                <InventurAbschnitt
+                <BestandAbschnitt
                   key={k.lagerortId}
-                  knoten={k}
+                  pfad={k.pfad}
+                  platzhalter={(wareId, gebindeId, mhd) =>
+                    String(sollLookups.get(k.lagerortId)?.(wareId, gebindeId, mhd) ?? 0)
+                  }
                   zustand={z}
                   waren={waren}
                   katalog={katalog}
