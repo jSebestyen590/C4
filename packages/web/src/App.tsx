@@ -1,4 +1,4 @@
-import { Alert, Container, Loader } from '@mantine/core';
+import { Alert, Button, Container, Loader, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -56,6 +56,29 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
       return res.json();
     },
   });
+  // Pages query ['me'] themselves; mounting them for an errored query would refetch it, flip it
+  // back to pending, unmount them here and loop endlessly. So stop at the error.
+  if (me.isError || mitglied.isError)
+    return (
+      <Alert color="red" title="Verbindung fehlgeschlagen" m="md">
+        <Stack gap="sm" align="flex-start">
+          <Text size="sm">Dein Profil konnte nicht geladen werden. Versuch es gleich noch einmal.</Text>
+          <Button
+            size="md"
+            mih={44}
+            variant="light"
+            color="red"
+            loading={me.isFetching || mitglied.isFetching}
+            onClick={() => {
+              if (me.isError) void me.refetch();
+              if (mitglied.isError) void mitglied.refetch();
+            }}
+          >
+            Erneut versuchen
+          </Button>
+        </Stack>
+      </Alert>
+    );
   if (me.isPending || mitglied.isPending) return null;
   if (me.data && !me.data.preferredUsername) return <Navigate to="/profil" replace />;
   // Invited users already have a row, but with empty names until they filled in their profile.
