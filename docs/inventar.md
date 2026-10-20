@@ -71,4 +71,21 @@ Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `
 
 ## Oberfläche
 
-Folgt.
+Mobile first; Navigationseintrag „Inventar“ (`inventar:lesen`). Die Seiten lesen die Listen über `useInventar()`
+(`inventarDaten.ts`, Query-Keys `['inventar', 'kategorien' | 'gegenstaende' | 'ifcos']`, Archiviertes inklusive, Filter im Client);
+jede Änderung macht `['inventar']` ungültig.
+
+- `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ (`?ansicht=ifcos`; weitere Ansichten kommen als zusätzliche Segmente), Suche (bei
+  Gegenständen Name, Beschreibung, Ifco und Lagerort-Pfad der Plätze; bei Ifcos Name, Platz, Inhalt), Kategoriefilter inkl.
+  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6× · 3 verliehen“) und ein oranges Badge
+  bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
+- `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
+  (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
+  gesperrt) und Anzahl, Live-Summe gegen Soll. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
+- `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste, „Inhalt bearbeiten“
+  (`IfcoInhaltModal`, `inventar:umraeumen`), Menü wie beim Gegenstand.
+- `/inventar/stammdaten`: Tab „Kategorien“ (Baum). Bearbeiten nur mit `inventar:verwalten`.
+- Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
+  `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
+
+Verleihen, die Ansicht „Verliehen“ und die Lager-Integration folgen.

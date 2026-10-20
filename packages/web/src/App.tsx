@@ -7,7 +7,11 @@ import { unwrap, useApi } from './api';
 import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { CallbackPage } from './pages/CallbackPage';
+import { GegenstandDetailPage } from './pages/GegenstandDetailPage';
 import { HomePage } from './pages/HomePage';
+import { IfcoDetailPage } from './pages/IfcoDetailPage';
+import { InventarPage } from './pages/InventarPage';
+import { InventarStammdatenPage } from './pages/InventarStammdatenPage';
 import { EinlagerungPage } from './pages/EinlagerungPage';
 import { EntnahmePage } from './pages/EntnahmePage';
 import { UmlagerungPage } from './pages/UmlagerungPage';
@@ -62,7 +66,9 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
     return (
       <Alert color="red" title="Verbindung fehlgeschlagen" m="md">
         <Stack gap="sm" align="flex-start">
-          <Text size="sm">Dein Profil konnte nicht geladen werden. Versuch es gleich noch einmal.</Text>
+          <Text size="sm">
+            Dein Profil konnte nicht geladen werden. Versuch es gleich noch einmal.
+          </Text>
           <Button
             size="md"
             mih={44}
@@ -160,6 +166,46 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="waren:lesen">
                 <RequireUsername>
                   <WareDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <InventarPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/stammdaten"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <InventarStammdatenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/gegenstaende/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <GegenstandDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ifcos/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <IfcoDetailPage />
                 </RequireUsername>
               </Protected>
             }

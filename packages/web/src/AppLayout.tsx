@@ -19,6 +19,7 @@ import {
   IconDeviceDesktop,
   IconBuildingWarehouse,
   IconHome,
+  IconBox,
   IconPackage,
   IconLogout,
   IconMoon,
@@ -130,6 +131,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Lager',
       icon: <IconBuildingWarehouse size={20} />,
       show: can('waren:lesen'),
+    },
+    {
+      to: '/inventar',
+      label: 'Inventar',
+      icon: <IconBox size={20} />,
+      show: can('inventar:lesen'),
     },
   ].filter((l) => l.show);
 
