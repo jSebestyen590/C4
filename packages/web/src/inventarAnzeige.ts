@@ -6,7 +6,13 @@ import {
   type BaumKnoten,
   type PlatzZiel,
 } from '@c4/shared';
-import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
+import type {
+  AusleiheEintrag,
+  AusleihePositionEintrag,
+  GegenstandEintrag,
+  IfcoEintrag,
+  KategorieEintrag,
+} from './inventarDaten';
 
 /** Select options for one place: `l:<id>` = Lagerort, `i:<id>` = Ifco. */
 export const zielWert = (z: PlatzZiel): string =>
@@ -99,4 +105,77 @@ export function platzZeilen(
       verliehen: p.verliehen,
     }))
     .sort((a, b) => a.text.localeCompare(b.text, 'de'));
+}
+
+/** A place of a Gegenstand with the amount that can still be lent from there. */
+export interface VerfuegbarerPlatz extends PlatzZiel {
+  anzahl: number;
+  verliehen: number;
+  verfuegbar: number;
+}
+
+/** Places of a Gegenstand with something left to lend (assigned minus lent), sorted by display text. */
+export function verfuegbarePlaetze(
+  g: Pick<GegenstandEintrag, 'plaetze'>,
+  lagerorte: BaumKnoten[],
+  ifcos: IfcoEintrag[],
+): (VerfuegbarerPlatz & { text: string })[] {
+  return g.plaetze
+    .map((p) => ({
+      lagerortId: p.lagerortId,
+      ifcoId: p.ifcoId,
+      anzahl: p.anzahl,
+      verliehen: p.verliehen,
+      verfuegbar: p.anzahl - p.verliehen,
+      text: platzText(lagerorte, ifcos, p),
+    }))
+    .filter((p) => p.verfuegbar > 0)
+    .sort((a, b) => a.text.localeCompare(b.text, 'de'));
+}
+
+/** Amount of a Gegenstand that can still be lent over all its places. */
+export const gesamtVerfuegbar = (g: Pick<GegenstandEintrag, 'plaetze'>): number =>
+  g.plaetze.reduce((s, p) => s + Math.max(0, p.anzahl - p.verliehen), 0);
+
+/** Open Positionen of an Ausleihe. */
+export const offenePositionen = (a: Pick<AusleiheEintrag, 'positionen'>) =>
+  a.positionen.filter((p) => p.zurueckAm === null);
+
+/** `3× Kabeltrommel aus Lager › Regal` */
+export function positionText(
+  p: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl' | 'lagerortId' | 'ifcoId'>,
+  gegenstaende: Pick<GegenstandEintrag, 'id' | 'name'>[],
+  lagerorte: BaumKnoten[],
+  ifcos: IfcoEintrag[],
+): string {
+  const name = gegenstaende.find((g) => g.id === p.gegenstandId)?.name ?? 'Unbekannt';
+  return `${p.anzahl}× ${name} aus ${platzText(lagerorte, ifcos, p)}`;
+}
+
+/** True when the Ausleihe is still open and its planned return date (`YYYY-MM-DD`) is before `heute`. */
+export function ueberfaellig(
+  a: Pick<AusleiheEintrag, 'erledigt' | 'rueckgabeGeplant'>,
+  heute: string,
+): boolean {
+  return !a.erledigt && a.rueckgabeGeplant !== null && a.rueckgabeGeplant < heute;
+}
+
+/** Today as `YYYY-MM-DD` in local time. */
+export function heuteLokal(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+/** `20.10.2026` for a `YYYY-MM-DD` date. */
+export function datumText(datum: string): string {
+  const [j, m, t] = datum.split('-');
+  return `${t}.${m}.${j}`;
+}
+
+/** `datetime-local` value (local time, minutes) of an ISO timestamp. */
+export function isoZuLokal(iso: string): string {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
 }

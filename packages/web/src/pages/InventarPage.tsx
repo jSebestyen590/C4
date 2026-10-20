@@ -28,8 +28,9 @@ import {
   platzZeilen,
 } from '../inventarAnzeige';
 import { useInventar, type GegenstandEintrag, type IfcoEintrag } from '../inventarDaten';
+import { VerlieheneAnsicht } from '../VerlieheneAnsicht';
 
-type Ansicht = 'gegenstaende' | 'ifcos';
+type Ansicht = 'gegenstaende' | 'ifcos' | 'verliehen';
 
 const kartenStil = { color: 'inherit', textDecoration: 'none' } as const;
 
@@ -152,7 +153,9 @@ export function InventarPage() {
   const navigate = useNavigate();
   const darfVerwalten = useAuth().can('inventar:verwalten');
   const [params, setParams] = useSearchParams();
-  const ansicht: Ansicht = params.get('ansicht') === 'ifcos' ? 'ifcos' : 'gegenstaende';
+  const ansichtParam = params.get('ansicht');
+  const ansicht: Ansicht =
+    ansichtParam === 'ifcos' || ansichtParam === 'verliehen' ? ansichtParam : 'gegenstaende';
   const [suche, setSuche] = useState('');
   const [kategorie, setKategorie] = useState<string | null>(null);
   const [archiv, setArchiv] = useState(false);
@@ -214,9 +217,11 @@ export function InventarPage() {
         data={[
           { value: 'gegenstaende', label: 'Gegenstände' },
           { value: 'ifcos', label: 'Ifcos' },
+          { value: 'verliehen', label: 'Verliehen' },
         ]}
       />
-      {darfVerwalten && (
+      {ansicht === 'verliehen' && <VerlieheneAnsicht inv={inv} />}
+      {ansicht !== 'verliehen' && darfVerwalten && (
         <SimpleGrid cols={{ base: 1, xs: 2 }}>
           <Button leftSection={<IconPlus size={18} />} onClick={() => setAnlegen(true)}>
             {imGegenstand ? 'Gegenstand anlegen' : 'Ifco anlegen'}
@@ -231,45 +236,51 @@ export function InventarPage() {
           </Button>
         </SimpleGrid>
       )}
-      <SimpleGrid cols={{ base: 1, sm: imGegenstand ? 2 : 1 }}>
-        <TextInput
-          placeholder={imGegenstand ? 'Name, Ifco oder Platz suchen' : 'Name oder Inhalt suchen'}
-          aria-label="Suche"
-          leftSection={<IconSearch size={18} />}
-          value={suche}
-          onChange={(e) => setSuche(e.currentTarget.value)}
-        />
-        {imGegenstand && (
-          <Select
-            placeholder="Alle Kategorien"
-            aria-label="Kategorie"
-            searchable
-            clearable
-            inputMode="text"
-            nothingFoundMessage="Keine Kategorie gefunden"
-            data={kategorienDaten}
-            value={kategorie}
-            onChange={setKategorie}
+      {ansicht !== 'verliehen' && (
+        <>
+          <SimpleGrid cols={{ base: 1, sm: imGegenstand ? 2 : 1 }}>
+            <TextInput
+              placeholder={
+                imGegenstand ? 'Name, Ifco oder Platz suchen' : 'Name oder Inhalt suchen'
+              }
+              aria-label="Suche"
+              leftSection={<IconSearch size={18} />}
+              value={suche}
+              onChange={(e) => setSuche(e.currentTarget.value)}
+            />
+            {imGegenstand && (
+              <Select
+                placeholder="Alle Kategorien"
+                aria-label="Kategorie"
+                searchable
+                clearable
+                inputMode="text"
+                nothingFoundMessage="Keine Kategorie gefunden"
+                data={kategorienDaten}
+                value={kategorie}
+                onChange={setKategorie}
+              />
+            )}
+          </SimpleGrid>
+          <Switch
+            label="Archivierte anzeigen"
+            checked={archiv}
+            onChange={(e) => setArchiv(e.currentTarget.checked)}
           />
-        )}
-      </SimpleGrid>
-      <Switch
-        label="Archivierte anzeigen"
-        checked={archiv}
-        onChange={(e) => setArchiv(e.currentTarget.checked)}
-      />
-      {inv.laedt && <Loader m="md" aria-label="Inventar wird geladen" />}
-      {inv.fehler && <Alert color="red">Das Inventar konnte nicht geladen werden.</Alert>}
-      {!inv.laedt && !inv.fehler && leer && (
-        <Text c="dimmed">
-          {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine Ifcos gefunden.'}
-        </Text>
+          {inv.laedt && <Loader m="md" aria-label="Inventar wird geladen" />}
+          {inv.fehler && <Alert color="red">Das Inventar konnte nicht geladen werden.</Alert>}
+          {!inv.laedt && !inv.fehler && leer && (
+            <Text c="dimmed">
+              {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine Ifcos gefunden.'}
+            </Text>
+          )}
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+            {imGegenstand
+              ? gegenstaende.map((g) => <GegenstandKarte key={g.id} g={g} inv={inv} />)
+              : ifcos.map((i) => <IfcoKarte key={i.id} ifco={i} inv={inv} />)}
+          </SimpleGrid>
+        </>
       )}
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-        {imGegenstand
-          ? gegenstaende.map((g) => <GegenstandKarte key={g.id} g={g} inv={inv} />)
-          : ifcos.map((i) => <IfcoKarte key={i.id} ifco={i} inv={inv} />)}
-      </SimpleGrid>
       {anlegen && imGegenstand && (
         <GegenstandFormular
           kategorien={inv.kategorien}
@@ -277,7 +288,7 @@ export function InventarPage() {
           onAngelegt={(id) => navigate(`/inventar/gegenstaende/${encodeURIComponent(id)}`)}
         />
       )}
-      {anlegen && !imGegenstand && (
+      {anlegen && ansicht === 'ifcos' && (
         <IfcoFormular
           lagerorte={inv.lagerorte}
           onClose={() => setAnlegen(false)}

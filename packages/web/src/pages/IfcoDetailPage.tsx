@@ -18,6 +18,7 @@ import {
   IconEdit,
   IconListDetails,
   IconSwitchHorizontal,
+  IconTruckDelivery,
   IconTrash,
 } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -187,6 +188,19 @@ export function IfcoDetailPage() {
           onClick={() => setInhalt(true)}
         >
           Inhalt bearbeiten
+        </Button>
+      )}
+      {darfUmraeumen && !ifco.archiviert && (
+        <Button
+          component={Link}
+          to={`/inventar/ausleihen/neu?ifco=${encodeURIComponent(ifco.id)}`}
+          size="lg"
+          mih={48}
+          variant="light"
+          leftSection={<IconTruckDelivery size={20} />}
+          disabled={zeilen.every((z) => z.anzahl - z.verliehen <= 0)}
+        >
+          Ganze Ifco verleihen
         </Button>
       )}
 

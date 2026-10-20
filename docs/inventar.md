@@ -75,7 +75,7 @@ Mobile first; Navigationseintrag „Inventar“ (`inventar:lesen`). Die Seiten l
 (`inventarDaten.ts`, Query-Keys `['inventar', 'kategorien' | 'gegenstaende' | 'ifcos']`, Archiviertes inklusive, Filter im Client);
 jede Änderung macht `['inventar']` ungültig.
 
-- `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ (`?ansicht=ifcos`; weitere Ansichten kommen als zusätzliche Segmente), Suche (bei
+- `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ / „Verliehen“ (`?ansicht=ifcos|verliehen`), Suche (bei
   Gegenständen Name, Beschreibung, Ifco und Lagerort-Pfad der Plätze; bei Ifcos Name, Platz, Inhalt), Kategoriefilter inkl.
   Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6× · 3 verliehen“) und ein oranges Badge
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
@@ -88,4 +88,18 @@ jede Änderung macht `['inventar']` ungültig.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 
-Verleihen, die Ansicht „Verliehen“ und die Lager-Integration folgen.
+- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten (`AusleiheKarte`: an wen, seit wann, geplante Rückgabe – überfällig
+  rot –, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
+  (`inventar:umraeumen`). Daten über `useAusleihen(nurOffen)` / `useAusleihe(id)` (Keys `['inventar','ausleihen',…]`); jede Änderung macht
+  `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und Ifcos nachzieht.
+- `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, Zeitpunkt (jetzt, änderbar), geplante Rückgabe (optional),
+  Kommentar; Gegenstand per Suche hinzufügen, je Platz mit Verfügbarem (zugeordnet minus verliehen, `verfuegbarePlaetze`) ein Zahlenfeld
+  (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze Ifco verleihen“ übernimmt den verfügbaren Inhalt
+  einer Ifco. Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit allen
+  Positionen, danach Weiterleitung zur neuen Ausleihe.
+- `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
+  möglich), zurückgegebene Positionen mit Datum. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Zeitpunkt, geplante Rückgabe, Kommentar)
+  und „Löschen“ (`inventar:umraeumen`).
+- Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
+  (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“.
+- Lager-Seite: zeigt das Inventar je Knoten, siehe [waren.md](./waren.md).

@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Anchor,
   Badge,
   Box,
   Button,
@@ -20,6 +21,7 @@ import {
   IconClipboardCheck,
   IconEdit,
   IconArrowsExchange,
+  IconBox,
   IconListDetails,
   IconPackageExport,
   IconPackageImport,
@@ -27,8 +29,10 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import type { BaumEintrag } from '@c4/shared';
+import { Link } from 'react-router-dom';
 import { AktionsMenue } from './AktionsMenue';
 import type { BestandsAnzeige } from './lagerBestand';
+import type { LagerInventar } from './lagerInventar';
 
 export interface LagerKnoten {
   id: string;
@@ -45,6 +49,8 @@ export interface LagerKontext {
   darfBuchen: boolean;
   /** Stock lines per node; null while hidden or not loaded. */
   bestand: Map<string, BestandsAnzeige[]> | null;
+  /** Inventar (Ifcos, Gegenstände) per node; null while hidden or not loaded. */
+  inventar: Map<string, LagerInventar> | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
   eingeklappt: Set<string>;
@@ -59,6 +65,62 @@ export interface LagerKontext {
   inventur: (k: LagerKnoten) => void;
   archivieren: (k: LagerKnoten) => void;
   loeschen: (k: LagerKnoten) => void;
+}
+
+const inventarZeile = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minHeight: 44,
+  overflowWrap: 'anywhere',
+} as const;
+
+/** Ifcos standing at a node and Gegenstände assigned directly to it, linked to their detail pages. */
+function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }>) {
+  return (
+    <Stack gap={0} mt={4}>
+      {inventar.ifcos.map((i) => (
+        <Anchor
+          key={i.id}
+          component={Link}
+          to={`/inventar/ifcos/${encodeURIComponent(i.id)}`}
+          size="sm"
+          style={inventarZeile}
+        >
+          <IconBox size={16} style={{ flex: 'none' }} />
+          <span>
+            <Text span fw={600} inherit>
+              {i.name}
+            </Text>
+            {' · '}
+            {i.stueck} {i.stueck === 1 ? 'Teil' : 'Teile'}
+          </span>
+        </Anchor>
+      ))}
+      {inventar.gegenstaende.map((g) => (
+        <Anchor
+          key={g.id}
+          component={Link}
+          to={`/inventar/gegenstaende/${encodeURIComponent(g.id)}`}
+          size="sm"
+          style={inventarZeile}
+        >
+          <span>
+            <Text span fw={600} inherit>
+              {g.name}
+            </Text>{' '}
+            {g.anzahl}×
+            {g.verliehen > 0 && (
+              <Text span c="grape" inherit>
+                {' '}
+                · {g.verliehen} verliehen
+              </Text>
+            )}
+          </span>
+        </Anchor>
+      ))}
+    </Stack>
+  );
 }
 
 function LagerZeile({
@@ -127,6 +189,7 @@ function LagerZeile({
                 )}
               </Text>
             ))}
+            {ctx.inventar?.get(node.id) && <InventarListe inventar={ctx.inventar.get(node.id)!} />}
           </Stack>
           <AktionsMenue
             label={`Aktionen für ${node.name}`}

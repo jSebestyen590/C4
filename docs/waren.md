@@ -97,6 +97,10 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     Waren der Warenliste des Knotens, danach weitere alphabetisch; leere Plätze zeigen nichts. Daten: `GET /lagerorte/bestand`
     und `GET /lagerorte/warenlisten` (alle Warenlisten in einer Anfrage, `[{ lagerortId, wareIds }]`), Query-Keys
     `['lagerorte','bestand']` und `['lagerort-waren','alle']`.
+  - **Inventar je Platz** (nur mit `inventar:lesen`, siehe [inventar.md](./inventar.md)): Der Schalter „Inventar anzeigen“ (standardmäßig an,
+    eigene Wahl im `localStorage`, Schlüssel `lager.inventarAnzeigen`) zeigt unter jedem Knoten die dort stehenden Ifcos (`Spanngurtkiste · 12 Teile`)
+    und direkt zugeordnete Gegenstände (`Kabeltrommel 6× · 3 verliehen`) als Links zu den Detailseiten. Berechnung im Client
+    (`inventarJeLagerort`, `lagerInventar.ts`) aus den Listen von `useGegenstaendeUndIfcos()`; archivierte Gegenstände und Ifcos fehlen.
   - **Aktionen (`bestand:buchen`, nicht archiviert):** Das Knotenmenü bietet Entnehmen, Einlagern, Umlagern und Inventur
     starten/fortsetzen. Oberste Knoten zeigen „Entnehmen“ und „Einlagern“ als Buttons in einer Zeile, darunter „Inventur“.
 - `/lager/:id/entnehmen`, `/lager/:id/einlagern`, `/lager/:id/umlagern` (`bestand:buchen`): Tabellen für den Knoten samt

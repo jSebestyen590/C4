@@ -10,6 +10,8 @@ import { CallbackPage } from './pages/CallbackPage';
 import { GegenstandDetailPage } from './pages/GegenstandDetailPage';
 import { HomePage } from './pages/HomePage';
 import { IfcoDetailPage } from './pages/IfcoDetailPage';
+import { AusleiheDetailPage } from './pages/AusleiheDetailPage';
+import { AusleihePage } from './pages/AusleihePage';
 import { InventarPage } from './pages/InventarPage';
 import { InventarStammdatenPage } from './pages/InventarStammdatenPage';
 import { EinlagerungPage } from './pages/EinlagerungPage';
@@ -196,6 +198,26 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="inventar:lesen">
                 <RequireUsername>
                   <GegenstandDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ausleihen/neu"
+            element={
+              <Protected permission="inventar:umraeumen">
+                <RequireUsername>
+                  <AusleihePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ausleihen/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <AusleiheDetailPage />
                 </RequireUsername>
               </Protected>
             }

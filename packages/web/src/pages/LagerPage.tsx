@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { baumBauen, pfad } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { inventarJeLagerort } from '../lagerInventar';
+import { useGegenstaendeUndIfcos } from '../inventarDaten';
 import { LagerBaum, type LagerKnoten, type LagerKontext } from '../LagerBaum';
 import { bestandAnzeigeJeKnoten } from '../lagerBestand';
 import { LagerortFormular } from '../LagerortFormular';
@@ -17,12 +19,22 @@ import { fehlerAnzeigen, pruefen } from '../warenApi';
 type Formular = { parentId: string | null; lagerort?: LagerKnoten };
 
 const BESTAND_KEY = 'lager.bestandAnzeigen';
+const INVENTAR_ANZEIGEN_KEY = 'lager.inventarAnzeigen';
 
-function bestandGemerkt(): boolean {
+/** Remembered on/off choice of a switch; on by default. */
+function gemerkt(key: string): boolean {
   try {
-    return localStorage.getItem(BESTAND_KEY) !== 'nein';
+    return localStorage.getItem(key) !== 'nein';
   } catch {
     return true;
+  }
+}
+
+function merken(key: string, an: boolean): void {
+  try {
+    localStorage.setItem(key, an ? 'ja' : 'nein');
+  } catch {
+    // The choice just is not remembered.
   }
 }
 
@@ -34,8 +46,10 @@ export function LagerPage() {
   const { can } = useAuth();
   const darfVerwalten = can('waren:verwalten');
   const darfBuchen = can('bestand:buchen');
+  const darfInventar = can('inventar:lesen');
   const [archiv, setArchiv] = useState(false);
-  const [bestandZeigen, setBestandZeigen] = useState(bestandGemerkt);
+  const [bestandZeigen, setBestandZeigen] = useState(() => gemerkt(BESTAND_KEY));
+  const [inventarZeigen, setInventarZeigen] = useState(() => gemerkt(INVENTAR_ANZEIGEN_KEY));
   const [eingeklappt, setEingeklappt] = useState<Set<string>>(new Set());
   const [formular, setFormular] = useState<Formular | null>(null);
   const [warenliste, setWarenliste] = useState<LagerKnoten | null>(null);
@@ -69,6 +83,21 @@ export function LagerPage() {
       lagerBestand.warenlisten,
       lagerBestand.waren,
       lagerBestand.gebinde,
+    ],
+  );
+
+  const inventarDaten = useGegenstaendeUndIfcos(darfInventar && inventarZeigen);
+  const inventarKarte = useMemo(
+    () =>
+      darfInventar && inventarZeigen && inventarDaten.geladen
+        ? inventarJeLagerort(inventarDaten.gegenstaende, inventarDaten.ifcos)
+        : null,
+    [
+      darfInventar,
+      inventarZeigen,
+      inventarDaten.geladen,
+      inventarDaten.gegenstaende,
+      inventarDaten.ifcos,
     ],
   );
 
@@ -157,6 +186,7 @@ export function LagerPage() {
     darfVerwalten,
     darfBuchen,
     bestand: bestandKarte,
+    inventar: inventarKarte,
     offeneInventuren,
     eingeklappt,
     umschalten: (id) =>
@@ -205,13 +235,20 @@ export function LagerPage() {
         onChange={(e) => {
           const an = e.currentTarget.checked;
           setBestandZeigen(an);
-          try {
-            localStorage.setItem(BESTAND_KEY, an ? 'ja' : 'nein');
-          } catch {
-            // The choice just is not remembered.
-          }
+          merken(BESTAND_KEY, an);
         }}
       />
+      {darfInventar && (
+        <Switch
+          label="Inventar anzeigen"
+          checked={inventarZeigen}
+          onChange={(e) => {
+            const an = e.currentTarget.checked;
+            setInventarZeigen(an);
+            merken(INVENTAR_ANZEIGEN_KEY, an);
+          }}
+        />
+      )}
       <Switch
         label="Archivierte Lagerorte anzeigen"
         checked={archiv}
