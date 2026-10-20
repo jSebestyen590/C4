@@ -10,7 +10,6 @@
     "migrate": "tsx --env-file-if-exists=.env.local src/db/migrate-cli.ts",
     "reset": "tsx --env-file-if-exists=.env.local src/db/reset-cli.ts",
     "rollback": "tsx --env-file-if-exists=.env.local src/db/rollback-cli.ts",
-    "waren-neu": "tsx --env-file-if-exists=.env.local src/db/waren-neu-cli.ts",
     "seed": "tsx --env-file-if-exists=.env.local src/db/seed.ts"
   },
   "dependencies": {

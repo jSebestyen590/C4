@@ -48,9 +48,9 @@ Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen geb
 
 ## Wartung
 
-Hat sich das Waren-Schema ohne Migration für Bestandsdaten geändert (die Migrationen 0010–0024 werden dann umgeschrieben),
-löscht `CONFIRM_WAREN_RESET=yes pnpm db:waren-neu` nur die Waren-Tabellen samt Migrationseinträgen (Mitglieder und Posten bleiben);
-danach `pnpm db:migrate`. Alle Waren-Daten gehen verloren.
+Ändert sich eine Waren-Migration (0010–0024) nachträglich, nimmt
+`CONFIRM_DB_ROLLBACK=yes pnpm db:rollback --to 0009_vorstandsposten` alle Waren-Migrationen zurück (Mitglieder und Posten
+bleiben, siehe [datenbank.md](./datenbank.md)); danach `pnpm db:migrate`. Alle Waren-Daten gehen verloren.
 
 ## API
 
