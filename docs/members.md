@@ -43,8 +43,10 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die einzige Cognito-Gruppe ist `admin` (`users:manage`). Alles andere folgt aus dem Status.
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
-- Aktuell bekommen alle Status dieselben Rechte. Sobald Features unterschiedliche Rechte brauchen,
-  trägt man sie in `STATUS_PERMISSIONS` ein.
+- Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`). Sobald Features unterschiedliche Rechte
+  brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten` und
+  `inventar:verwalten` haben nur Admins und Posten (siehe [waren.md](./waren.md), [inventar.md](./inventar.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

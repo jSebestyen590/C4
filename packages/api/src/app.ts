@@ -13,7 +13,16 @@ import {
   entnahmenSchema,
   entnahmeSchema,
   umlagerungenSchema,
+  ausleiheAendernSchema,
+  ausleiheSchema,
   gebindeSchema,
+  gegenstandPlaetzeSchema,
+  gegenstandSchema,
+  ifcoInhaltSchema,
+  ifcoPlatzSchema,
+  ifcoSchema,
+  kategorieSchema,
+  rueckgabeSchema,
   inventurAbschlussSchema,
   inventurStartenSchema,
   inventurZaehlungSchema,
@@ -53,6 +62,7 @@ import {
   type PostenStore,
 } from './posten';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
+import type { InventarStore } from './inventar';
 import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
@@ -64,6 +74,7 @@ export interface AppDeps {
   mitglieder: MitgliederStore;
   posten: PostenStore;
   waren: WarenStore;
+  inventar: InventarStore;
   profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
@@ -97,6 +108,9 @@ export function createApp(deps: AppDeps) {
   const warenLesen = requirePermission('waren:lesen');
   const bestandBuchen = requirePermission('bestand:buchen');
   const warenVerwalten = requirePermission('waren:verwalten');
+  const inventarLesen = requirePermission('inventar:lesen');
+  const inventarUmraeumen = requirePermission('inventar:umraeumen');
+  const inventarVerwalten = requirePermission('inventar:verwalten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -902,6 +916,275 @@ export function createApp(deps: AppDeps) {
         gefunden(
           await deps.waren.inventurVerwerfen(c.req.param('id')).catch(warenFehler),
           'Inventur nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      // ----- Inventar: Kategorien
+      .get('/inventar/kategorien', auth, inventarLesen, async (c) =>
+        c.json(await deps.inventar.kategorien(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/inventar/kategorien',
+        auth,
+        inventarVerwalten,
+        zValidator('json', kategorieSchema),
+        async (c) => {
+          const id = await deps.inventar.kategorieAnlegen(c.req.valid('json')).catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/inventar/kategorien/:id',
+        auth,
+        inventarVerwalten,
+        zValidator('json', kategorieSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .kategorieAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Kategorie nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/inventar/kategorien/:id', auth, inventarVerwalten, async (c) => {
+        gefunden(
+          await deps.inventar.kategorieLoeschen(c.req.param('id')).catch(warenFehler),
+          'Kategorie nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/inventar/kategorien/:id/archiv',
+        auth,
+        inventarVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.inventar
+              .kategorieArchivieren(c.req.param('id'), archiviert)
+              .catch(warenFehler),
+            'Kategorie nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      // ----- Inventar: Gegenstände
+      .get('/inventar/gegenstaende', auth, inventarLesen, async (c) =>
+        c.json(await deps.inventar.gegenstaende(c.req.query('archiv') === '1')),
+      )
+      .get('/inventar/gegenstaende/:id', auth, inventarLesen, async (c) =>
+        c.json(
+          gefunden(
+            await deps.inventar.gegenstandHolen(c.req.param('id')),
+            'Gegenstand nicht gefunden',
+          ),
+        ),
+      )
+      .post(
+        '/inventar/gegenstaende',
+        auth,
+        inventarVerwalten,
+        zValidator('json', gegenstandSchema),
+        async (c) => {
+          const id = await deps.inventar.gegenstandAnlegen(c.req.valid('json')).catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/inventar/gegenstaende/:id',
+        auth,
+        inventarVerwalten,
+        zValidator('json', gegenstandSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .gegenstandAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Gegenstand nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/inventar/gegenstaende/:id', auth, inventarVerwalten, async (c) => {
+        gefunden(
+          await deps.inventar.gegenstandLoeschen(c.req.param('id')).catch(warenFehler),
+          'Gegenstand nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/inventar/gegenstaende/:id/archiv',
+        auth,
+        inventarVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.inventar
+              .gegenstandArchivieren(c.req.param('id'), archiviert)
+              .catch(warenFehler),
+            'Gegenstand nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      .put(
+        '/inventar/gegenstaende/:id/plaetze',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', gegenstandPlaetzeSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .gegenstandPlaetzeSetzen(c.req.param('id'), c.req.valid('json').plaetze)
+              .catch(warenFehler),
+            'Gegenstand nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // ----- Inventar: Ifcos
+      .get('/inventar/ifcos', auth, inventarLesen, async (c) =>
+        c.json(await deps.inventar.ifcos(c.req.query('archiv') === '1')),
+      )
+      .get('/inventar/ifcos/:id', auth, inventarLesen, async (c) =>
+        c.json(gefunden(await deps.inventar.ifcoHolen(c.req.param('id')), 'Ifco nicht gefunden')),
+      )
+      .post(
+        '/inventar/ifcos',
+        auth,
+        inventarVerwalten,
+        zValidator('json', ifcoSchema),
+        async (c) => {
+          const id = await deps.inventar.ifcoAnlegen(c.req.valid('json')).catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/inventar/ifcos/:id',
+        auth,
+        inventarVerwalten,
+        zValidator('json', ifcoSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .ifcoAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Ifco nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/inventar/ifcos/:id', auth, inventarVerwalten, async (c) => {
+        gefunden(
+          await deps.inventar.ifcoLoeschen(c.req.param('id')).catch(warenFehler),
+          'Ifco nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/inventar/ifcos/:id/archiv',
+        auth,
+        inventarVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.inventar.ifcoArchivieren(c.req.param('id'), archiviert).catch(warenFehler),
+            'Ifco nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      .put(
+        '/inventar/ifcos/:id/platz',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', ifcoPlatzSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .ifcoPlatzSetzen(c.req.param('id'), c.req.valid('json').lagerortId)
+              .catch(warenFehler),
+            'Ifco nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .put(
+        '/inventar/ifcos/:id/inhalt',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', ifcoInhaltSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .ifcoInhaltSetzen(c.req.param('id'), c.req.valid('json').positionen)
+              .catch(warenFehler),
+            'Ifco nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // ----- Inventar: Ausleihen
+      .get('/inventar/ausleihen', auth, inventarLesen, async (c) =>
+        c.json(await deps.inventar.ausleihen(c.req.query('status') === 'offen')),
+      )
+      .get('/inventar/ausleihen/:id', auth, inventarLesen, async (c) =>
+        c.json(
+          gefunden(await deps.inventar.ausleiheHolen(c.req.param('id')), 'Ausleihe nicht gefunden'),
+        ),
+      )
+      .post(
+        '/inventar/ausleihen',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', ausleiheSchema),
+        async (c) => {
+          const id = await deps.inventar
+            .ausleiheAnlegen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/inventar/ausleihen/:id/rueckgabe',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', rueckgabeSchema),
+        async (c) => {
+          const { positionIds, zurueckAm } = c.req.valid('json');
+          gefunden(
+            await deps.inventar
+              .ausleiheRueckgabe(c.req.param('id'), positionIds, zurueckAm)
+              .catch(warenFehler),
+            'Ausleihe nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .put(
+        '/inventar/ausleihen/:id',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', ausleiheAendernSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .ausleiheAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Ausleihe nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/inventar/ausleihen/:id', auth, inventarUmraeumen, async (c) => {
+        gefunden(
+          await deps.inventar.ausleiheLoeschen(c.req.param('id')).catch(warenFehler),
+          'Ausleihe nicht gefunden',
         );
         return c.json({ ok: true });
       })

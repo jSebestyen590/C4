@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   bestandZu,
@@ -36,9 +36,12 @@ import {
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
+  ausleihePositionen,
   bestandsbuchungen,
   bestandsvorgaenge,
   gebinde,
+  gegenstandPlaetze,
+  ifcos,
   inventurKnoten,
   inventuren,
   inventurZaehlungen,
@@ -75,7 +78,8 @@ export type { GebindeDaten };
 /** Message for a Gebinde that already exists with identical attributes. */
 export const GEBINDE_DOPPELT = 'Dieses Gebinde gibt es schon.';
 
-export type EintragArt = 'Lagerort' | 'Warengruppe' | 'Gebinde' | 'Ware';
+export type EintragArt =
+  'Lagerort' | 'Warengruppe' | 'Gebinde' | 'Ware' | 'Kategorie' | 'Gegenstand' | 'Ifco';
 
 /** `Der Lagerort wird noch verwendet, archiviere ihn stattdessen.` */
 export function verwendetMeldung(art: EintragArt): string {
@@ -84,6 +88,9 @@ export function verwendetMeldung(art: EintragArt): string {
     Warengruppe: ['Die', 'sie'],
     Gebinde: ['Das', 'es'],
     Ware: ['Die', 'sie'],
+    Kategorie: ['Die', 'sie'],
+    Gegenstand: ['Der', 'ihn'],
+    Ifco: ['Die', 'sie'],
   }[art];
   return `${artikel} ${art} wird noch verwendet, archiviere ${pronomen} stattdessen.`;
 }
@@ -585,18 +592,18 @@ export interface WarenStore {
 // ---------------------------------------------------------------------------
 // Store
 
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** What the loaders need; satisfied by the database and by a transaction. */
-type Q = Pick<Db, 'select'>;
+export type Q = Pick<Db, 'select'>;
 
-const sortiert = <T>(liste: T[], schluessel: (t: T) => string) =>
+export const sortiert = <T>(liste: T[], schluessel: (t: T) => string) =>
   [...liste].sort((a, b) => schluessel(a).localeCompare(schluessel(b), 'de'));
 
 const inListe = <T>(spalte: Parameters<typeof inArray>[0], werte: T[]) =>
   werte.length === 0 ? undefined : inArray(spalte, werte as never[]);
 
 /** Whether any row of `tabelle` matches `bedingung`. */
-async function gibtEs(q: Q, tabelle: PgTable, bedingung: SQL | undefined): Promise<boolean> {
+export async function gibtEs(q: Q, tabelle: PgTable, bedingung: SQL | undefined): Promise<boolean> {
   const rows = await q.select().from(tabelle).where(bedingung).limit(1);
   return rows.length > 0;
 }
@@ -914,6 +921,9 @@ export function createWarenStore(db: Db): WarenStore {
           gibtEs(tx, inventuren, eq(inventuren.lagerortId, id)),
           gibtEs(tx, inventurKnoten, eq(inventurKnoten.lagerortId, id)),
           gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.lagerortId, id)),
+          gibtEs(tx, ifcos, eq(ifcos.lagerortId, id)),
+          gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.lagerortId, id)),
+          gibtEs(tx, ausleihePositionen, eq(ausleihePositionen.lagerortId, id)),
         ]);
         if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Lagerort'));
         await tx.delete(lagerorte).where(eq(lagerorte.id, id));
@@ -943,6 +953,28 @@ export function createWarenStore(db: Db): WarenStore {
           if (offen) {
             throw new WarenKonflikt(
               'Für den Lagerort läuft noch eine Inventur. Schließe oder verwirf sie zuerst.',
+            );
+          }
+          const [inventar, verliehen] = await Promise.all([
+            Promise.all([
+              gibtEs(tx, ifcos, inArray(ifcos.lagerortId, ids)),
+              gibtEs(tx, gegenstandPlaetze, inArray(gegenstandPlaetze.lagerortId, ids)),
+            ]),
+            gibtEs(
+              tx,
+              ausleihePositionen,
+              and(
+                isNull(ausleihePositionen.zurueckAm),
+                inArray(ausleihePositionen.lagerortId, ids),
+              ),
+            ),
+          ]);
+          if (inventar.some(Boolean)) {
+            throw new WarenKonflikt('Im Lagerort liegt noch Inventar. Räume es zuerst um.');
+          }
+          if (verliehen) {
+            throw new WarenKonflikt(
+              'Aus dem Lagerort ist noch etwas verliehen. Nimm es zuerst zurück.',
             );
           }
         } else {

@@ -19,8 +19,9 @@ Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählt
 nie neu berechnet; negativer Bestand ist erlaubt.
 
 Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansonsten archiviert
-(`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist;
-dabei wird der Teilbaum archiviert. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
+(`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist und im Teilbaum kein Inventar
+liegt (Ifcos, direkt zugeordnete Gegenstände) und nichts verliehen ist (409, siehe [inventar.md](./inventar.md)); dabei wird der Teilbaum
+archiviert. Löschen prüft zusätzlich, ob Ifcos, Inventar-Plätze oder Ausleihen auf den Lagerort verweisen. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
 zeigen sie nur mit `?archiv=1`.
 
 ## Gebinde

@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  anzahlSchema,
+  beschreibung,
+  eindeutig,
+  idSchema,
+  kommentarSchema,
+  name,
+  parentIdSchema,
+  zeitpunktSchema,
+} from './bausteine';
 import { datumSchema } from './schemas';
 
 export const MHD_ARTEN = ['keins', 'tag', 'monat'] as const;
@@ -115,42 +125,7 @@ export interface Buchungszeile {
 // ---------------------------------------------------------------------------
 // Schemas
 
-const name = (feld = 'einen Namen') =>
-  z.string().trim().min(1, `Bitte gib ${feld} ein.`).max(100, 'Höchstens 100 Zeichen erlaubt.');
-
-const beschreibung = z
-  .string()
-  .trim()
-  .max(2000, 'Höchstens 2000 Zeichen erlaubt.')
-  .transform((v) => (v === '' ? null : v))
-  .nullish()
-  .transform((v) => v ?? null);
-
-const idSchema = (meldung: string) => z.string().min(1, meldung);
-const parentIdSchema = z
-  .string()
-  .min(1)
-  .nullish()
-  .transform((v) => v ?? null);
-
-const anzahlSchema = z
-  .number('Bitte gib eine Anzahl an.')
-  .int('Die Anzahl muss eine ganze Zahl sein.')
-  .min(1, 'Die Anzahl muss mindestens 1 sein.');
-
-const zeitpunktSchema = z.iso.datetime({ offset: true, error: 'Ungültiger Zeitpunkt.' });
-
 const mhdSchema = datumSchema.nullish().transform((v) => v ?? null);
-
-const kommentarSchema = z
-  .string()
-  .trim()
-  .max(500, 'Höchstens 500 Zeichen erlaubt.')
-  .transform((v) => (v === '' ? null : v))
-  .nullish()
-  .transform((v) => v ?? null);
-
-const eindeutig = (ids: string[]) => new Set(ids).size === ids.length;
 
 export const lagerortSchema = z.object({
   name: name(),

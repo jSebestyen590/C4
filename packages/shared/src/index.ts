@@ -1,5 +1,6 @@
 export * from './anrede';
 export * from './datum';
+export * from './inventar';
 export * from './kontakt';
 export * from './posten';
 export * from './roles';

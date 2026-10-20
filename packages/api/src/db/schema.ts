@@ -257,3 +257,80 @@ export const inventurZaehlungen = pgTable('inventur_zaehlungen', {
   mhd: date('mhd', { mode: 'string' }),
   anzahl: integer('anzahl').notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Inventar
+
+/** Tree of categories for Gegenstände (like `warengruppen`). */
+export const inventarKategorien = pgTable('inventar_kategorien', {
+  id: text('id').primaryKey(),
+  parentId: text('parent_id').references((): AnyPgColumn => inventarKategorien.id),
+  name: text('name').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type InventarKategorieRow = typeof inventarKategorien.$inferSelect;
+
+/** A Euronorm box holding Gegenstände; `lagerortId` null = currently without a place. */
+export const ifcos = pgTable('ifcos', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  lagerortId: text('lagerort_id').references(() => lagerorte.id),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type IfcoRow = typeof ifcos.$inferSelect;
+
+/** A durable item of the club; `anzahl` is the target total spread over its Plätze. */
+export const gegenstaende = pgTable('gegenstaende', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  kategorieId: text('kategorie_id')
+    .notNull()
+    .references(() => inventarKategorien.id),
+  anzahl: integer('anzahl').notNull().default(1),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type GegenstandRow = typeof gegenstaende.$inferSelect;
+
+/** Where `anzahl` pieces of a Gegenstand belong: exactly one of `lagerortId` and `ifcoId` is set (CHECK). */
+export const gegenstandPlaetze = pgTable('gegenstand_plaetze', {
+  id: text('id').primaryKey(),
+  gegenstandId: text('gegenstand_id')
+    .notNull()
+    .references(() => gegenstaende.id),
+  lagerortId: text('lagerort_id').references(() => lagerorte.id),
+  ifcoId: text('ifco_id').references(() => ifcos.id),
+  anzahl: integer('anzahl').notNull(),
+});
+export type GegenstandPlatzRow = typeof gegenstandPlaetze.$inferSelect;
+
+export const ausleihen = pgTable('ausleihen', {
+  id: text('id').primaryKey(),
+  /** Free text: person, club or company. */
+  an: text('an').notNull(),
+  ausgeliehenAm: timestamp('ausgeliehen_am', { withTimezone: true }).notNull(),
+  rueckgabeGeplant: date('rueckgabe_geplant', { mode: 'string' }),
+  kommentar: text('kommentar'),
+  /** Cognito sub, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type AusleiheRow = typeof ausleihen.$inferSelect;
+
+/** Origin is a place (exactly one of `lagerortId`/`ifcoId`, CHECK), not a `gegenstandPlaetze` id. */
+export const ausleihePositionen = pgTable('ausleihe_positionen', {
+  id: text('id').primaryKey(),
+  ausleiheId: text('ausleihe_id')
+    .notNull()
+    .references(() => ausleihen.id),
+  gegenstandId: text('gegenstand_id')
+    .notNull()
+    .references(() => gegenstaende.id),
+  lagerortId: text('lagerort_id').references(() => lagerorte.id),
+  ifcoId: text('ifco_id').references(() => ifcos.id),
+  anzahl: integer('anzahl').notNull(),
+  /** Null while the position is still lent out. */
+  zurueckAm: timestamp('zurueck_am', { withTimezone: true }),
+});
+export type AusleihePositionRow = typeof ausleihePositionen.$inferSelect;

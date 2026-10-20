@@ -22,6 +22,7 @@ import {
   type LagerortDaten,
   type WarenStore,
 } from './waren';
+import type { InventarStore } from './inventar';
 import type { GebindeRow, LagerortRow } from './db/schema';
 import {
   AblosungUngueltig,
@@ -125,6 +126,96 @@ function makeWarenFake() {
     inventurVerwerfen: vi.fn(async () => true),
   } satisfies WarenStore;
   return { fake, orte, verwendet };
+}
+
+/** Records the calls; `bekannt` are the ids that exist, `verwendet` the ones that refuse deleting. */
+function makeInventarFake() {
+  const bekannt = new Set(['k1', 'g1', 'i1', 'a1']);
+  const verwendet = new Set<string>();
+  const finde = <T>(id: string, wert: T) => (bekannt.has(id) ? wert : undefined);
+  const setze = (id: string) => bekannt.has(id);
+  const fake = {
+    kategorien: vi.fn(async () => []),
+    kategorieAnlegen: vi.fn<InventarStore['kategorieAnlegen']>(async () => 'k2'),
+    kategorieAktualisieren: vi.fn<InventarStore['kategorieAktualisieren']>(async (id) => setze(id)),
+    kategorieLoeschen: vi.fn(async (id: string) => {
+      if (!bekannt.has(id)) return false;
+      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('Kategorie'));
+      return true;
+    }),
+    kategorieArchivieren: vi.fn<InventarStore['kategorieArchivieren']>(async (id) => setze(id)),
+    gegenstaende: vi.fn<InventarStore['gegenstaende']>(async () => []),
+    gegenstandHolen: vi.fn(async (id: string) =>
+      finde(id, {
+        id,
+        name: 'Kabeltrommel',
+        beschreibung: null,
+        kategorieId: 'k1',
+        anzahl: 10,
+        archiviert: false,
+        plaetze: [],
+        verliehen: 0,
+      }),
+    ),
+    gegenstandAnlegen: vi.fn<InventarStore['gegenstandAnlegen']>(async () => 'g2'),
+    gegenstandAktualisieren: vi.fn<InventarStore['gegenstandAktualisieren']>(async (id) =>
+      setze(id),
+    ),
+    gegenstandLoeschen: vi.fn(async (id: string) => {
+      if (!bekannt.has(id)) return false;
+      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('Gegenstand'));
+      return true;
+    }),
+    gegenstandArchivieren: vi.fn<InventarStore['gegenstandArchivieren']>(async (id) => setze(id)),
+    gegenstandPlaetzeSetzen: vi.fn<InventarStore['gegenstandPlaetzeSetzen']>(async (id) => {
+      if (verwendet.has(id)) throw new WarenKonflikt('Davon sind noch 3 verliehen.');
+      return setze(id);
+    }),
+    ifcos: vi.fn<InventarStore['ifcos']>(async () => []),
+    ifcoHolen: vi.fn(async (id: string) =>
+      finde(id, {
+        id,
+        name: 'Spanngurtkiste',
+        beschreibung: null,
+        lagerortId: null,
+        archiviert: false,
+        inhalt: [],
+      }),
+    ),
+    ifcoAnlegen: vi.fn<InventarStore['ifcoAnlegen']>(async () => 'i2'),
+    ifcoAktualisieren: vi.fn<InventarStore['ifcoAktualisieren']>(async (id) => setze(id)),
+    ifcoLoeschen: vi.fn(async (id: string) => setze(id)),
+    ifcoArchivieren: vi.fn<InventarStore['ifcoArchivieren']>(async (id) => setze(id)),
+    ifcoPlatzSetzen: vi.fn<InventarStore['ifcoPlatzSetzen']>(async (id) => setze(id)),
+    ifcoInhaltSetzen: vi.fn<InventarStore['ifcoInhaltSetzen']>(async (id) => setze(id)),
+    ausleihen: vi.fn<InventarStore['ausleihen']>(async () => []),
+    ausleiheHolen: vi.fn(async (id: string) =>
+      finde(id, {
+        id,
+        an: 'Feuerwehr',
+        ausgeliehenAm: new Date('2026-05-01T10:00:00.000Z'),
+        rueckgabeGeplant: null,
+        kommentar: null,
+        erstelltVon: 'r',
+        erstelltAm: new Date('2026-05-01T10:00:00.000Z'),
+        erledigt: false,
+        positionen: [],
+      }),
+    ),
+    ausleiheAnlegen: vi.fn<InventarStore['ausleiheAnlegen']>(async (daten) => {
+      if (daten.positionen.some((p) => p.anzahl > 5)) {
+        throw new WarenUngueltig('Von „Kabeltrommel“ sind bei „Lager“ nur noch 5 verfügbar.');
+      }
+      return 'a2';
+    }),
+    ausleiheAktualisieren: vi.fn<InventarStore['ausleiheAktualisieren']>(async (id) => setze(id)),
+    ausleiheRueckgabe: vi.fn<InventarStore['ausleiheRueckgabe']>(async (id, positionIds) => {
+      if (positionIds.includes('bereits')) throw new WarenUngueltig('Schon zurückgegeben.');
+      return setze(id);
+    }),
+    ausleiheLoeschen: vi.fn(async (id: string) => setze(id)),
+  } satisfies InventarStore;
+  return { fake, verwendet };
 }
 
 function makeApp(pingDb = async () => {}) {
@@ -235,10 +326,13 @@ function makeApp(pingDb = async () => {}) {
     }),
     aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
     rechteVon: vi.fn(async (sub: string) =>
-      sub === 'v' ? ['posten:bearbeiten' as const, 'waren:verwalten' as const] : [],
+      sub === 'v'
+        ? ['posten:bearbeiten' as const, 'waren:verwalten' as const, 'inventar:verwalten' as const]
+        : [],
     ),
   };
   const { fake: waren, orte, verwendet } = makeWarenFake();
+  const { fake: inventar, verwendet: inventarVerwendet } = makeInventarFake();
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -259,6 +353,7 @@ function makeApp(pingDb = async () => {}) {
     mitglieder,
     posten,
     waren,
+    inventar,
     profilbilder,
     pingDb,
   });
@@ -270,6 +365,8 @@ function makeApp(pingDb = async () => {}) {
     posten,
     profilbilder,
     waren,
+    inventar,
+    inventarVerwendet,
     orte,
     verwendet,
   };
@@ -306,6 +403,8 @@ describe('api', () => {
         'posten:lesen',
         'waren:lesen',
         'bestand:buchen',
+        'inventar:lesen',
+        'inventar:umraeumen',
       ],
     });
   });
@@ -1158,6 +1257,268 @@ describe('posten', () => {
       expect((await app.request('/api/inventuren/i1', json('reader-token', 'DELETE'))).status).toBe(
         200,
       );
+    });
+  });
+});
+
+describe('inventar', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+  const zeitpunkt = '2026-05-01T10:00:00.000Z';
+
+  it('lets everyone read and rearrange, but only Inventar-Verwalter change master data', async () => {
+    const { app, inventar } = makeApp();
+    for (const url of [
+      '/api/inventar/kategorien',
+      '/api/inventar/gegenstaende',
+      '/api/inventar/gegenstaende/g1',
+      '/api/inventar/ifcos',
+      '/api/inventar/ifcos/i1',
+      '/api/inventar/ausleihen',
+      '/api/inventar/ausleihen/a1',
+    ]) {
+      expect((await app.request(url, json('reader-token', 'GET'))).status, url).toBe(200);
+    }
+    for (const [url, method] of [
+      ['/api/inventar/kategorien', 'POST'],
+      ['/api/inventar/kategorien/k1', 'PUT'],
+      ['/api/inventar/kategorien/k1', 'DELETE'],
+      ['/api/inventar/kategorien/k1/archiv', 'PUT'],
+      ['/api/inventar/gegenstaende', 'POST'],
+      ['/api/inventar/gegenstaende/g1', 'PUT'],
+      ['/api/inventar/gegenstaende/g1', 'DELETE'],
+      ['/api/inventar/gegenstaende/g1/archiv', 'PUT'],
+      ['/api/inventar/ifcos', 'POST'],
+      ['/api/inventar/ifcos/i1', 'PUT'],
+      ['/api/inventar/ifcos/i1', 'DELETE'],
+      ['/api/inventar/ifcos/i1/archiv', 'PUT'],
+    ] as const) {
+      const res = await app.request(url, json('reader-token', method, {}));
+      expect(res.status, `${method} ${url}`).toBe(403);
+    }
+    expect(inventar.kategorieAnlegen).not.toHaveBeenCalled();
+    expect(inventar.gegenstandAnlegen).not.toHaveBeenCalled();
+    expect(inventar.ifcoAnlegen).not.toHaveBeenCalled();
+
+    const ok = await app.request(
+      '/api/inventar/kategorien',
+      json('vorstand-token', 'POST', { name: 'Technik' }),
+    );
+    expect(ok.status).toBe(201);
+    expect(await ok.json()).toEqual({ id: 'k2' });
+    expect(inventar.kategorieAnlegen).toHaveBeenCalledWith({ name: 'Technik', parentId: null });
+    const admin = await app.request(
+      '/api/inventar/ifcos',
+      json('admin-token', 'POST', { name: 'Spanngurtkiste' }),
+    );
+    expect(admin.status).toBe(201);
+    expect(inventar.ifcoAnlegen).toHaveBeenCalledWith({
+      name: 'Spanngurtkiste',
+      beschreibung: null,
+      lagerortId: null,
+    });
+  });
+
+  it('requires authentication', async () => {
+    const { app } = makeApp();
+    expect((await app.request('/api/inventar/gegenstaende')).status).toBe(401);
+  });
+
+  it('validates the Gegenstand and defaults the Anzahl to 1', async () => {
+    const { app, inventar } = makeApp();
+    const post = (body: unknown) =>
+      app.request('/api/inventar/gegenstaende', json('admin-token', 'POST', body));
+    expect((await post({ name: 'Beamer' })).status).toBe(400);
+    expect((await post({ name: 'Beamer', kategorieId: 'k1', anzahl: 0 })).status).toBe(400);
+    expect((await post({ name: ' ', kategorieId: 'k1' })).status).toBe(400);
+    expect((await post({ name: 'Beamer', kategorieId: 'k1' })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenCalledWith({
+      name: 'Beamer',
+      beschreibung: null,
+      kategorieId: 'k1',
+      anzahl: 1,
+    });
+  });
+
+  it('maps unknown ids to 404 and used entries to 409', async () => {
+    const { app, inventarVerwendet } = makeApp();
+    expect(
+      (await app.request('/api/inventar/gegenstaende/nix', json('reader-token', 'GET'))).status,
+    ).toBe(404);
+    expect((await app.request('/api/inventar/ifcos/nix', json('reader-token', 'GET'))).status).toBe(
+      404,
+    );
+    expect(
+      (await app.request('/api/inventar/ausleihen/nix', json('reader-token', 'GET'))).status,
+    ).toBe(404);
+    expect(
+      (await app.request('/api/inventar/kategorien/nix', json('admin-token', 'DELETE'))).status,
+    ).toBe(404);
+    inventarVerwendet.add('g1');
+    const res = await app.request('/api/inventar/gegenstaende/g1', json('admin-token', 'DELETE'));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: verwendetMeldung('Gegenstand') });
+  });
+
+  it('archives with the flag from the body', async () => {
+    const { app, inventar } = makeApp();
+    const res = await app.request(
+      '/api/inventar/kategorien/k1/archiv',
+      json('admin-token', 'PUT', { archiviert: true }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ archiviert: true });
+    expect(inventar.kategorieArchivieren).toHaveBeenCalledWith('k1', true);
+  });
+
+  it('replaces Plätze, Ifco-Platz and Ifco-Inhalt for every member', async () => {
+    const { app, inventar, inventarVerwendet } = makeApp();
+    const plaetze = {
+      plaetze: [
+        { lagerortId: 'l1', anzahl: 6 },
+        { ifcoId: 'i1', anzahl: 4 },
+      ],
+    };
+    const put = (url: string, body: unknown, token = 'reader-token') =>
+      app.request(url, json(token, 'PUT', body));
+    expect((await put('/api/inventar/gegenstaende/g1/plaetze', plaetze)).status).toBe(200);
+    expect(inventar.gegenstandPlaetzeSetzen).toHaveBeenCalledWith('g1', [
+      { lagerortId: 'l1', ifcoId: null, anzahl: 6 },
+      { lagerortId: null, ifcoId: 'i1', anzahl: 4 },
+    ]);
+    expect((await put('/api/inventar/gegenstaende/nix/plaetze', plaetze)).status).toBe(404);
+    // Invalid: both targets, no target, zero amount, duplicate target.
+    for (const ungueltig of [
+      [{ lagerortId: 'l1', ifcoId: 'i1', anzahl: 1 }],
+      [{ anzahl: 1 }],
+      [{ lagerortId: 'l1', anzahl: 0 }],
+      [
+        { lagerortId: 'l1', anzahl: 1 },
+        { lagerortId: 'l1', anzahl: 2 },
+      ],
+    ]) {
+      expect(
+        (await put('/api/inventar/gegenstaende/g1/plaetze', { plaetze: ungueltig })).status,
+      ).toBe(400);
+    }
+    inventarVerwendet.add('g1');
+    const konflikt = await put('/api/inventar/gegenstaende/g1/plaetze', { plaetze: [] });
+    expect(konflikt.status).toBe(409);
+    expect(await konflikt.json()).toEqual({ error: 'Davon sind noch 3 verliehen.' });
+
+    expect((await put('/api/inventar/ifcos/i1/platz', { lagerortId: 'l1' })).status).toBe(200);
+    expect(inventar.ifcoPlatzSetzen).toHaveBeenCalledWith('i1', 'l1');
+    expect((await put('/api/inventar/ifcos/i1/platz', { lagerortId: null })).status).toBe(200);
+    expect(inventar.ifcoPlatzSetzen).toHaveBeenLastCalledWith('i1', null);
+    expect((await put('/api/inventar/ifcos/nix/platz', {})).status).toBe(404);
+
+    const inhalt = { positionen: [{ gegenstandId: 'g1', anzahl: 6 }] };
+    expect((await put('/api/inventar/ifcos/i1/inhalt', inhalt)).status).toBe(200);
+    expect(inventar.ifcoInhaltSetzen).toHaveBeenCalledWith('i1', inhalt.positionen);
+    expect(
+      (
+        await put('/api/inventar/ifcos/i1/inhalt', {
+          positionen: [
+            { gegenstandId: 'g1', anzahl: 1 },
+            { gegenstandId: 'g1', anzahl: 2 },
+          ],
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  describe('ausleihen', () => {
+    const position = { gegenstandId: 'g1', lagerortId: 'l1', anzahl: 3 };
+    const ausleihe = {
+      an: 'Feuerwehr Musterdorf',
+      ausgeliehenAm: zeitpunkt,
+      positionen: [position],
+    };
+
+    it('creates an Ausleihe for the caller and returns its id', async () => {
+      const { app, inventar } = makeApp();
+      const res = await app.request(
+        '/api/inventar/ausleihen',
+        json('reader-token', 'POST', ausleihe),
+      );
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ id: 'a2' });
+      expect(inventar.ausleiheAnlegen).toHaveBeenCalledWith(
+        {
+          an: 'Feuerwehr Musterdorf',
+          ausgeliehenAm: zeitpunkt,
+          rueckgabeGeplant: null,
+          kommentar: null,
+          positionen: [{ gegenstandId: 'g1', lagerortId: 'l1', ifcoId: null, anzahl: 3 }],
+        },
+        'r',
+      );
+    });
+
+    it('rejects invalid Ausleihen with 400 and too large amounts with the store message', async () => {
+      const { app } = makeApp();
+      const post = (body: unknown) =>
+        app.request('/api/inventar/ausleihen', json('reader-token', 'POST', body));
+      expect((await post({ ...ausleihe, positionen: [] })).status).toBe(400);
+      expect((await post({ ...ausleihe, an: ' ' })).status).toBe(400);
+      expect(
+        (await post({ ...ausleihe, positionen: [{ ...position, ifcoId: 'i1' }] })).status,
+      ).toBe(400);
+      expect((await post({ ...ausleihe, positionen: [position, position] })).status).toBe(400);
+      expect((await post({ ...ausleihe, ausgeliehenAm: 'gestern' })).status).toBe(400);
+      const zuViel = await post({ ...ausleihe, positionen: [{ ...position, anzahl: 6 }] });
+      expect(zuViel.status).toBe(400);
+      expect(await zuViel.json()).toEqual({
+        error: 'Von „Kabeltrommel“ sind bei „Lager“ nur noch 5 verfügbar.',
+      });
+    });
+
+    it('returns positions, edits the header and deletes', async () => {
+      const { app, inventar } = makeApp();
+      const rueckgabe = (id: string, body: unknown) =>
+        app.request(`/api/inventar/ausleihen/${id}/rueckgabe`, json('reader-token', 'POST', body));
+      expect((await rueckgabe('a1', { positionIds: ['p1'], zurueckAm: zeitpunkt })).status).toBe(
+        200,
+      );
+      expect(inventar.ausleiheRueckgabe).toHaveBeenCalledWith('a1', ['p1'], zeitpunkt);
+      expect((await rueckgabe('nix', { positionIds: ['p1'], zurueckAm: zeitpunkt })).status).toBe(
+        404,
+      );
+      expect((await rueckgabe('a1', { positionIds: [], zurueckAm: zeitpunkt })).status).toBe(400);
+      expect((await rueckgabe('a1', { positionIds: ['p1'] })).status).toBe(400);
+      expect(
+        (await rueckgabe('a1', { positionIds: ['bereits'], zurueckAm: zeitpunkt })).status,
+      ).toBe(400);
+
+      const kopf = { an: 'Verein', ausgeliehenAm: zeitpunkt, rueckgabeGeplant: '2026-05-08' };
+      expect(
+        (await app.request('/api/inventar/ausleihen/a1', json('reader-token', 'PUT', kopf))).status,
+      ).toBe(200);
+      expect(inventar.ausleiheAktualisieren).toHaveBeenCalledWith('a1', {
+        ...kopf,
+        kommentar: null,
+      });
+      expect(
+        (await app.request('/api/inventar/ausleihen/nix', json('reader-token', 'PUT', kopf)))
+          .status,
+      ).toBe(404);
+      expect(
+        (await app.request('/api/inventar/ausleihen/a1', json('reader-token', 'DELETE'))).status,
+      ).toBe(200);
+      expect(
+        (await app.request('/api/inventar/ausleihen/nix', json('reader-token', 'DELETE'))).status,
+      ).toBe(404);
+    });
+
+    it('lists only open Ausleihen with ?status=offen', async () => {
+      const { app, inventar } = makeApp();
+      await app.request('/api/inventar/ausleihen?status=offen', json('reader-token', 'GET'));
+      expect(inventar.ausleihen).toHaveBeenLastCalledWith(true);
+      await app.request('/api/inventar/ausleihen', json('reader-token', 'GET'));
+      expect(inventar.ausleihen).toHaveBeenLastCalledWith(false);
     });
   });
 });

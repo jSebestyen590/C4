@@ -12,8 +12,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Mehrere Statements: `<migration>.down.1.sql`, `<migration>.down.2.sql`, ... Sie laufen in
   numerischer Reihenfolge, jedes als eigene Abfrage.
 - Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 braucht jede Migration eine
-  (ein Test in `rollback.test.ts` prüft das); 0010–0024 (Waren) löschen ihre Tabellen bzw. Indizes,
-  0024 entzieht den Vorstandsposten `waren:verwalten` wieder.
+  (ein Test in `rollback.test.ts` prüft das); 0010–0024 (Waren) und 0025–0031 (Inventar) löschen ihre
+  Tabellen bzw. Indizes, 0024 entzieht den Vorstandsposten `waren:verwalten` wieder, 0031 entzieht ihnen
+  `inventar:verwalten`. Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_waren`.
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 

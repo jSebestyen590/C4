@@ -24,6 +24,15 @@ describe('permissions', () => {
       expect(hasPermission(['admin'], status, 'waren:verwalten')).toBe(true);
     }
   });
+  it('every status may read and rearrange the Inventar, but only extra permissions manage it', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'inventar:lesen')).toBe(true);
+      expect(hasPermission([], status, 'inventar:umraeumen')).toBe(true);
+      expect(hasPermission([], status, 'inventar:verwalten')).toBe(false);
+      expect(hasPermission([], status, 'inventar:verwalten', ['inventar:verwalten'])).toBe(true);
+      expect(hasPermission(['admin'], status, 'inventar:verwalten')).toBe(true);
+    }
+  });
   it('every status may read Posten, but only extra permissions allow editing them', () => {
     for (const status of MITGLIED_STATI) {
       expect(hasPermission([], status, 'posten:lesen')).toBe(true);
