@@ -1,4 +1,4 @@
-import { Alert, Button, Modal, Select, Stack } from '@mantine/core';
+import { Alert, Button, Modal, Stack } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useApi } from './api';
@@ -6,6 +6,7 @@ import { lagerortOptionen } from './inventarAnzeige';
 import { INVENTAR_KEY, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
+import { PfadSelect } from './PfadSelect';
 
 /** Moves an Ifco to another place (or to "ohne Platz"). Mount it only while it should be open. */
 export function IfcoUmstellenModal({
@@ -35,7 +36,7 @@ export function IfcoUmstellenModal({
   return (
     <Modal opened onClose={onClose} title={`${ifco.name} umstellen`}>
       <Stack>
-        <Select
+        <PfadSelect
           label="Neuer Platz"
           placeholder="Ohne Platz"
           searchable

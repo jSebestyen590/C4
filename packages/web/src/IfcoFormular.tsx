@@ -1,4 +1,4 @@
-import { Alert, Button, Modal, Select, Stack, Textarea, TextInput } from '@mantine/core';
+import { Alert, Button, Modal, Stack, Textarea, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import { ifcoSchema } from '@c4/shared';
@@ -7,6 +7,7 @@ import { lagerortOptionen } from './inventarAnzeige';
 import { INVENTAR_KEY, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
+import { PfadSelect } from './PfadSelect';
 
 /** Create or edit an Ifco (name, description, place). Mount it only while it should be open. */
 export function IfcoFormular({
@@ -67,7 +68,7 @@ export function IfcoFormular({
             data-autofocus
             error={fehler}
           />
-          <Select
+          <PfadSelect
             label="Platz"
             placeholder="Ohne Platz"
             searchable

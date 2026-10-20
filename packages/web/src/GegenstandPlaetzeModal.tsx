@@ -6,10 +6,10 @@ import {
   Modal,
   NumberInput,
   Paper,
-  Select,
   Stack,
   Text,
 } from '@mantine/core';
+import { PfadSelect } from './PfadSelect';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -105,7 +105,7 @@ export function GegenstandPlaetzeModal({
         {zeilen.map((z, i) => (
           <Paper key={z.key} withBorder p="sm">
             <Stack gap="xs">
-              <Select
+              <PfadSelect
                 label={`Platz ${i + 1}`}
                 placeholder="Lagerort oder Ifco wählen"
                 searchable
