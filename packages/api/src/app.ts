@@ -26,6 +26,8 @@ import {
   inventurAbschlussSchema,
   inventurStartenSchema,
   inventurZaehlungSchema,
+  boedenHinzufuegenSchema,
+  lagerortAnlegenSchema,
   lagerortReihenfolgeSchema,
   lagerortSchema,
   lagerortWarenSchema,
@@ -550,10 +552,32 @@ export function createApp(deps: AppDeps) {
       .get('/lagerorte/warenlisten', auth, warenLesen, async (c) =>
         c.json(await deps.waren.lagerortWarenlisten()),
       )
-      .post('/lagerorte', auth, warenVerwalten, zValidator('json', lagerortSchema), async (c) => {
-        const id = await deps.waren.lagerortAnlegen(c.req.valid('json')).catch(warenFehler);
-        return c.json({ id }, 201);
-      })
+      .post(
+        '/lagerorte',
+        auth,
+        warenVerwalten,
+        zValidator('json', lagerortAnlegenSchema),
+        async (c) => {
+          const { boeden, ...daten } = c.req.valid('json');
+          const angelegt = await deps.waren.lagerortAnlegen(daten, boeden).catch(warenFehler);
+          return c.json(angelegt, 201);
+        },
+      )
+      .post(
+        '/lagerorte/:id/boeden',
+        auth,
+        warenVerwalten,
+        zValidator('json', boedenHinzufuegenSchema),
+        async (c) => {
+          const boedenIds = gefunden(
+            await deps.waren
+              .boedenHinzufuegen(c.req.param('id'), c.req.valid('json').namen)
+              .catch(warenFehler),
+            'Lagerort nicht gefunden',
+          );
+          return c.json({ boedenIds }, 201);
+        },
+      )
       .put(
         '/lagerorte/:id',
         auth,

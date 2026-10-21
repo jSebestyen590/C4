@@ -13,7 +13,7 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 
 ## Datenmodell
 
-Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
+Migrationen `0010`–`0023` (dazu `0032` für die Lagerort-Art) (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
 ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
@@ -23,6 +23,24 @@ Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansons
 liegt (Ifcos, direkt zugeordnete Gegenstände) und nichts verliehen oder vorgemerkt ist (409, siehe [inventar.md](./inventar.md)); dabei wird der Teilbaum
 archiviert. Löschen prüft zusätzlich, ob Ifcos, Inventar-Plätze oder Ausleihen auf den Lagerort verweisen. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
 zeigen sie nur mit `?archiv=1`.
+
+## Regale und Regalböden
+
+Lagerorte haben eine Art (`lagerorte.art`, Migration `0032`): `null` = normaler Lagerort, `regal` oder `regalboden`
+(`LAGERORT_ARTEN`, Labels Lagerort / Regal / Regalboden in `LAGERORT_ART_LABELS`, über `i18n.ts` verfügbar). Regeln
+(`lagerortArtFehler`, `lagerortArtAenderungFehler`, `kinderArtNach` in shared; Verstöße sind 400 mit deutscher Meldung):
+
+- Unter einem Regal liegen nur Regalböden; ein Regalboden braucht ein Regal als Eltern und hat keine Unterebenen.
+- Ein Regal liegt auf der obersten Ebene oder unter einem normalen Lagerort (nicht unter Regal/Regalboden). Verschieben (`parentId`) prüft dasselbe.
+- Art ändern (`PUT`, fehlendes `art` = unverändert): normal -> Regal nur, wenn keine Unterebene eigene Unterebenen hat
+  (die Unterebenen werden in derselben Transaktion zu Regalböden); Regal -> normal macht die Böden zu normalen Lagerorten;
+  die Art eines Regalbodens lässt sich nicht ändern.
+- Namen der Böden eines Regals sind eindeutig (ohne Groß-/Kleinschreibung), auch beim Umbenennen eines Bodens.
+- `POST /api/lagerorte` mit `art: 'regal'` und `boeden: string[]` (1–50, getrimmt, nicht leer, eindeutig) legt Regal und Böden in
+  einer Transaktion an (Positionen in Reihenfolge) -> `201 { id, boedenIds }`. `POST /api/lagerorte/:id/boeden { namen }`
+  (`waren:verwalten`) hängt Böden an ein Regal an -> `201 { boedenIds }`.
+- Namensvorschlag (`bodenNamen`, zeilenweise): `{r}` = Reihe, `{p}` = Platz in der Reihe, `{n}` = laufende Nummer ab Startnummer;
+  `HR{r}{p}` ergibt HR11, HR12, …, HR21, …. Ohne Platzhalter wird ` {n}` angehängt.
 
 ## Gebinde
 
@@ -89,7 +107,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 ## Oberfläche
 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
-  (Unterebene anlegen, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
+  (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
   stattdessen Archivieren angeboten). Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur)
   ist die Zählreihenfolge der Inventur und die Reihenfolge der Bestandsanzeige.
   - **Bestand je Platz:** Der Schalter „Bestand anzeigen“ (standardmäßig an, Wahl im `localStorage`) zeigt unter jedem Knoten
@@ -101,15 +119,20 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     eigene Wahl im `localStorage`, Schlüssel `lager.inventarAnzeigen`) zeigt unter jedem Knoten die dort stehenden Ifcos (`Spanngurtkiste · 12 Teile`)
     und direkt zugeordnete Gegenstände (`Kabeltrommel 6× · 3 verliehen · 2 vorgemerkt`) als Links zu den Detailseiten. Berechnung im Client
     (`inventarJeLagerort`, `lagerInventar.ts`) aus den Listen von `useGegenstaendeUndIfcos()`; archivierte Gegenstände und Ifcos fehlen.
-  - **Karten und Kacheln:** Knoten mit sichtbaren Unterknoten sind Karten (rekursiv). Blätter unterhalb der obersten Ebene (Stellplätze)
-    erscheinen nach den Karten ihres Elternknotens als Kachelraster (4 / 6 / 8 Spalten ab Handy / `sm` / `md`); oberste Knoten bleiben
-    immer Karten. Beginnen alle Namen eines Rasters mit demselben Wort (`Stellplatz 1` … `Stellplatz 16`), steht es einmal klein über dem
+  - **Karten und Kacheln:** Jeder Knoten ist eine Karte (rekursiv, auch Blätter); Regale tragen ein „Regal“-Abzeichen. Nur die
+    Regalböden eines Regals erscheinen als Kachelraster (4 / 6 / 8 Spalten ab Handy / `sm` / `md`). Beginnen alle Namen eines Rasters mit demselben Wort (`Stellplatz 1` … `Stellplatz 16`), steht es einmal klein über dem
     Raster und die Kacheln zeigen nur den Rest (`kachelBeschriftung`). Eine Kachel zeigt den Namen (max. 2 Zeilen) und einen Zähler: Anzahl der Waren mit Bestand (bei „Bestand anzeigen“)
     plus Ifcos und direkt zugeordnete Gegenstände (bei „Inventar anzeigen“), „–“ wenn leer (grau, gestrichelt); archivierte Kacheln
     sind abgedunkelt, eine offene Inventur zeigt ein kleines Symbol. Tippen öffnet ein Bottom-Drawer mit dem vollen Pfad als Titel,
     Bestand und Inventar wie in der Karte und den Aktionen des Knotenmenüs als volle Buttons (eine gemeinsame Definition,
     `lagerAktionen.tsx`, gleiche Rechte- und Archiv-Regeln; Entnehmen, Einlagern, Umlagern, Inventur stehen oben). Reine Logik:
     `lagerAnsicht.ts` (Karten/Kachel-Aufteilung, Zähler, „belegt“, Aufklapp-Standard).
+  - **Regal anlegen/bearbeiten** (`LagerortFormular.tsx`, `BoedenFelder.tsx`, `BoedenModal.tsx`): Der Dialog „Lager/Unterebene anlegen“
+    hat (wo ein Regal erlaubt ist) den Umschalter „Lagerort“ / „Regal“. Für ein Regal: Reihen (Standard 1), Plätze je Reihe (Standard 5),
+    zusammen höchstens 50, Namensmuster (Standard `Boden {n}`, bei mehreren Reihen `Reihe {r} Platz {p}`), Startnummer (für `{n}`)
+    und die Liste der erzeugten Namen als Eingabefelder, einzeln überschreibbar (Änderung von Muster/Anzahl erzeugt sie neu). „Böden
+    hinzufügen“ nutzt dieselben Felder, `{n}` beginnt nach den vorhandenen Böden. Beim Bearbeiten ist der Umschalter gesperrt (mit Hinweis),
+    wenn die Regeln es nicht erlauben; Regalböden sind einzeln über „Bearbeiten“ umbenennbar.
   - **Auf-/Zuklappen:** Standard: oberste Knoten aufgeklappt, tiefere zugeklappt. Eigene Wahl wird je Knoten im `localStorage`
     gemerkt (Schlüssel `lager.aufgeklappt`, Map Id → aufgeklappt); „Alle aufklappen“ / „Alle zuklappen“ setzen alle Knoten mit
     Unterknoten. Ohne Storage funktioniert die Seite, die Wahl wird dann nicht gemerkt.

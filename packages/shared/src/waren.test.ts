@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   basisGebinde,
+  bodenNamen,
+  bodenNamenFehler,
+  kinderArtNach,
+  lagerortAnlegenSchema,
+  lagerortArtAenderungFehler,
+  lagerortArtFehler,
+  type ArtKnoten,
+  type LagerortArt,
   bestandAnzeigen,
   bestandZu,
   baumBauen,
@@ -798,5 +806,114 @@ describe('Sammel-Schemas', () => {
       umlagerungenSchema.safeParse({ zeitpunkt, positionen: [{ ...pos, nachId: 'a' }] }).success,
     ).toBe(false);
     expect(umlagerungenSchema.safeParse({ zeitpunkt, positionen: [] }).success).toBe(false);
+  });
+});
+
+describe('Regal rules', () => {
+  const k = (id: string, parentId: string | null, art: LagerortArt | null = null): ArtKnoten => ({
+    id,
+    parentId,
+    name: id,
+    art,
+  });
+
+  it('lagerortArtFehler: Regal only holds Regalböden, Böden need a Regal', () => {
+    const regal = { art: 'regal' } as const;
+    const boden = { art: 'regalboden' } as const;
+    const normal = { art: null };
+    expect(lagerortArtFehler(null, null)).toBeNull();
+    expect(lagerortArtFehler('regal', null)).toBeNull();
+    expect(lagerortArtFehler('regal', normal)).toBeNull();
+    expect(lagerortArtFehler(null, normal)).toBeNull();
+    expect(lagerortArtFehler('regalboden', regal)).toBeNull();
+    expect(lagerortArtFehler(null, regal)).toMatch(/nur Regalböden/);
+    expect(lagerortArtFehler('regal', regal)).toMatch(/nur Regalböden/);
+    expect(lagerortArtFehler('regalboden', null)).toMatch(/gehört in ein Regal/);
+    expect(lagerortArtFehler('regalboden', normal)).toMatch(/gehört in ein Regal/);
+    for (const art of [null, 'regal', 'regalboden'] as const) {
+      expect(lagerortArtFehler(art, boden)).toMatch(/keine Unterebenen/);
+    }
+  });
+
+  it('lagerortArtAenderungFehler: Regal needs children without children', () => {
+    const baum = [
+      k('lager', null),
+      k('tief', 'lager'),
+      k('enkel', 'tief'),
+      k('flach', 'lager'),
+      k('blatt', 'flach'),
+    ];
+    const von = (id: string) => baum.find((n) => n.id === id)!;
+    expect(lagerortArtAenderungFehler(von('flach'), 'regal', baum)).toBeNull();
+    expect(lagerortArtAenderungFehler(von('lager'), 'regal', baum)).toMatch(/Unterebenen/);
+    expect(lagerortArtAenderungFehler(von('blatt'), 'regal', baum)).toBeNull(); // no children
+    expect(lagerortArtAenderungFehler(von('flach'), null, baum)).toBeNull(); // unchanged
+    const regal = k('r', null, 'regal');
+    expect(lagerortArtAenderungFehler(regal, null, [regal])).toBeNull();
+    const boden = k('b', 'r', 'regalboden');
+    expect(lagerortArtAenderungFehler(boden, null, [regal, boden])).toMatch(/Regalbodens/);
+    expect(lagerortArtAenderungFehler(boden, 'regal', [regal, boden])).toMatch(/Regalbodens/);
+    expect(lagerortArtAenderungFehler(von('flach'), 'regalboden', baum)).toMatch(
+      /nur in einem Regal/,
+    );
+  });
+
+  it('kinderArtNach: children follow the kind of their parent', () => {
+    expect(kinderArtNach(null, 'regal')).toBe('regalboden');
+    expect(kinderArtNach('regal', null)).toBeNull();
+    expect(kinderArtNach(null, null)).toBeUndefined();
+    expect(kinderArtNach('regal', 'regal')).toBeUndefined();
+  });
+
+  it('bodenNamen fills the pattern row by row', () => {
+    expect(bodenNamen('Boden {n}', 1, 3, 1)).toEqual(['Boden 1', 'Boden 2', 'Boden 3']);
+    expect(bodenNamen('HR{r}{p}', 2, 3, 1)).toEqual([
+      'HR11',
+      'HR12',
+      'HR13',
+      'HR21',
+      'HR22',
+      'HR23',
+    ]);
+    expect(bodenNamen('R{r}P{p} ({n})', 2, 2, 7)).toEqual([
+      'R1P1 (7)',
+      'R1P2 (8)',
+      'R2P1 (9)',
+      'R2P2 (10)',
+    ]);
+    expect(bodenNamen('Boden', 1, 2, 1)).toEqual(['Boden 1', 'Boden 2']); // number appended
+    expect(bodenNamen('Boden {n}', 0, 3, 1)).toEqual([]);
+  });
+
+  it('bodenNamenFehler flags empty and taken names case-insensitively', () => {
+    expect(bodenNamenFehler(['A', 'b', ''], ['B1'])).toEqual([
+      null,
+      null,
+      'Bitte gib einen Namen ein.',
+    ]);
+    expect(bodenNamenFehler(['hr11', 'HR11', 'X'], ['x'])).toEqual([
+      null,
+      expect.stringMatching(/gibt es schon/),
+      expect.stringMatching(/gibt es schon/),
+    ]);
+  });
+
+  it('lagerortAnlegenSchema: a Regal comes with 1–50 unique trimmed Böden', () => {
+    const regal = { name: 'R', art: 'regal' as const };
+    const ok = lagerortAnlegenSchema.safeParse({ ...regal, boeden: [' A ', 'B'] });
+    expect(ok.success && ok.data.boeden).toEqual(['A', 'B']);
+    expect(lagerortAnlegenSchema.safeParse({ name: 'N' }).success).toBe(true);
+    for (const boeden of [
+      [],
+      ['A', 'A'],
+      ['A', ' '],
+      Array.from({ length: 51 }, (_, i) => `B${i}`),
+    ]) {
+      expect(lagerortAnlegenSchema.safeParse({ ...regal, boeden }).success).toBe(false);
+    }
+    expect(lagerortAnlegenSchema.safeParse(regal).success).toBe(false);
+    expect(lagerortAnlegenSchema.safeParse({ name: 'N', boeden: ['A'] }).success).toBe(false);
+    const fuenfzig = Array.from({ length: 50 }, (_, i) => `B${i}`);
+    expect(lagerortAnlegenSchema.safeParse({ ...regal, boeden: fuenfzig }).success).toBe(true);
   });
 });

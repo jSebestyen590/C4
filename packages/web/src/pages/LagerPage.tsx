@@ -19,6 +19,7 @@ import {
 } from '../lagerAnsicht';
 import { LagerKachelDrawer } from '../LagerKachel';
 import { bestandAnzeigeJeKnoten } from '../lagerBestand';
+import { BoedenModal } from '../BoedenModal';
 import { LagerortFormular } from '../LagerortFormular';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { useLagerBestand } from '../useLagerBestand';
@@ -90,6 +91,7 @@ export function LagerPage() {
   const [aufgeklappt, setAufgeklappt] = useState<Aufgeklappt>(aufgeklapptLaden);
   const [kachelId, setKachelId] = useState<string | null>(null);
   const [formular, setFormular] = useState<Formular | null>(null);
+  const [boedenZiel, setBoedenZiel] = useState<LagerKnoten | null>(null);
   const [warenliste, setWarenliste] = useState<LagerKnoten | null>(null);
   const [loeschZiel, setLoeschZiel] = useState<LagerKnoten | null>(null);
 
@@ -255,6 +257,7 @@ export function LagerPage() {
       aufgeklapptSetzen({ ...aufgeklappt, [id]: !istAufgeklappt(id, tiefe, aufgeklappt) }),
     kachelOeffnen: (k) => setKachelId(k.id),
     unterebene: (k) => setFormular({ parentId: k.id }),
+    boeden: setBoedenZiel,
     bearbeiten: (k) => setFormular({ parentId: k.parentId, lagerort: k }),
     kannVerschieben: (k, richtung) => nachbarVon(k, richtung) !== undefined,
     verschieben,
@@ -360,11 +363,21 @@ export function LagerPage() {
       {formular && (
         <LagerortFormular
           lagerort={formular.lagerort}
+          alle={alle}
           parentId={formular.parentId}
           parentPfad={
             formular.parentId && !formular.lagerort ? pfad(alle, formular.parentId) : undefined
           }
           onClose={() => setFormular(null)}
+        />
+      )}
+      {boedenZiel && (
+        <BoedenModal
+          regal={boedenZiel}
+          vorhanden={alle.filter((l) => l.parentId === boedenZiel.id).length}
+          vorhandeneNamen={alle.filter((l) => l.parentId === boedenZiel.id).map((l) => l.name)}
+          pfad={pfad(alle, boedenZiel.id)}
+          onClose={() => setBoedenZiel(null)}
         />
       )}
       {warenliste && <WarenlisteModal lagerort={warenliste} onClose={() => setWarenliste(null)} />}

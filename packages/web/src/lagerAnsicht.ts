@@ -1,4 +1,4 @@
-import type { BaumEintrag, BaumKnoten } from '@c4/shared';
+import type { BaumEintrag, BaumKnoten, LagerortArt } from '@c4/shared';
 import type { BestandsAnzeige } from './lagerBestand';
 import type { LagerInventar } from './lagerInventar';
 
@@ -9,15 +9,15 @@ export interface Belegung {
 }
 
 /**
- * Splits the children of a node: those with children of their own stay cards (recursively), the
- * leaves become tiles. Both keep their order.
+ * Splits the children of a node: Regalböden (the children of a Regal) become tiles, every other
+ * node stays a card (recursively), leaf or not. Both keep their order.
  */
-export function kinderTeilen<T extends BaumKnoten>(
+export function kinderTeilen<T extends BaumKnoten & { art: LagerortArt | null }>(
   kinder: BaumEintrag<T>[],
 ): { karten: BaumEintrag<T>[]; kacheln: BaumEintrag<T>[] } {
   return {
-    karten: kinder.filter((k) => k.kinder.length > 0),
-    kacheln: kinder.filter((k) => k.kinder.length === 0),
+    karten: kinder.filter((k) => k.node.art !== 'regalboden'),
+    kacheln: kinder.filter((k) => k.node.art === 'regalboden'),
   };
 }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  bodenNamenFehler,
   gebindeDoppelt,
+  kinderArtNach,
+  lagerortArtAenderungFehler,
+  lagerortArtFehler,
   tagVorher,
   type AdminUser,
   type MitgliedStatus,
@@ -49,17 +53,73 @@ function makeWarenFake() {
     lagerorte: vi.fn(async (mitArchiv: boolean) =>
       [...orte.values()].filter((l) => mitArchiv || !l.archiviert),
     ),
-    lagerortAnlegen: vi.fn(async (daten: LagerortDaten) => {
-      const id = `l${orte.size + 1}`;
-      orte.set(id, { id, ...daten, position: orte.size, archiviert: false });
-      return id;
+    lagerortAnlegen: vi.fn(async (daten: LagerortDaten, boeden: string[] = []) => {
+      const art = daten.art ?? null;
+      const fehler = lagerortArtFehler(art, orte.get(daten.parentId ?? '') ?? null);
+      if (fehler) throw new WarenUngueltig(fehler);
+      const neu = (name: string, parentId: string | null, a: LagerortRow['art']) => {
+        const id = `l${orte.size + 1}`;
+        orte.set(id, {
+          id,
+          name,
+          beschreibung: null,
+          parentId,
+          art: a,
+          position: orte.size,
+          archiviert: false,
+        });
+        return id;
+      };
+      const id = neu(daten.name, daten.parentId, art);
+      orte.get(id)!.beschreibung = daten.beschreibung;
+      return { id, boedenIds: boeden.map((n) => neu(n, id, 'regalboden')) };
+    }),
+    boedenHinzufuegen: vi.fn(async (id: string, namen: string[]) => {
+      const regal = orte.get(id);
+      if (!regal) return undefined;
+      if (regal.art !== 'regal') throw new WarenUngueltig('Kein Regal.');
+      const fehler = bodenNamenFehler(
+        namen,
+        [...orte.values()].filter((o) => o.parentId === id).map((o) => o.name),
+      ).find(Boolean);
+      if (fehler) throw new WarenUngueltig(fehler);
+      return namen.map((name) => {
+        const neuId = `l${orte.size + 1}`;
+        orte.set(neuId, {
+          id: neuId,
+          name,
+          beschreibung: null,
+          parentId: id,
+          art: 'regalboden',
+          position: orte.size,
+          archiviert: false,
+        });
+        return neuId;
+      });
     }),
     lagerortAktualisieren: vi.fn(async (id: string, daten: LagerortDaten) => {
       const l = orte.get(id);
       if (!l) return false;
       const fehler = zyklusFehler([...orte.values()], id, daten.parentId);
       if (fehler) throw new WarenUngueltig(fehler);
-      orte.set(id, { ...l, ...daten });
+      const art = daten.art === undefined ? l.art : daten.art;
+      const alle = [...orte.values()];
+      const artFehler =
+        lagerortArtAenderungFehler(l, art, alle) ??
+        lagerortArtFehler(art, orte.get(daten.parentId ?? '') ?? null);
+      if (artFehler) throw new WarenUngueltig(artFehler);
+      const kinderArt = kinderArtNach(l.art, art);
+      if (kinderArt !== undefined) {
+        for (const k of alle.filter((o) => o.parentId === id))
+          orte.set(k.id, { ...k, art: kinderArt });
+      }
+      orte.set(id, {
+        ...l,
+        name: daten.name,
+        beschreibung: daten.beschreibung,
+        parentId: daten.parentId,
+        art,
+      });
       return true;
     }),
     lagerortLoeschen: vi.fn(async (id: string) => {
@@ -913,6 +973,7 @@ describe('posten', () => {
       expect((await app.request('/api/lagerorte', json('reader-token', 'GET'))).status).toBe(200);
       for (const [url, method] of [
         ['/api/lagerorte', 'POST'],
+        ['/api/lagerorte/l1/boeden', 'POST'],
         ['/api/lagerorte/l1', 'PUT'],
         ['/api/lagerorte/l1', 'DELETE'],
         ['/api/lagerorte/l1/archiv', 'PUT'],
@@ -950,7 +1011,7 @@ describe('posten', () => {
     });
 
     it('manages Lagerorte: create, update, cycle, 404, conflict on delete, archive, order', async () => {
-      const { app, verwendet, waren } = makeApp();
+      const { app, verwendet, waren, orte } = makeApp();
       const post = async (body: unknown) =>
         app.request('/api/lagerorte', json('admin-token', 'POST', body));
       expect((await post({ name: '  ' })).status).toBe(400);
@@ -959,6 +1020,7 @@ describe('posten', () => {
         id: string;
       };
       expect(regal.id).toBe('l2');
+      expect(orte.get('l2')?.art).toBeNull();
 
       const put = (id: string, body: unknown) =>
         app.request(`/api/lagerorte/${id}`, json('vorstand-token', 'PUT', body));
@@ -1011,6 +1073,127 @@ describe('posten', () => {
       );
       expect(ware.status).toBe(200);
       expect(waren.lagerortWarenSetzen).toHaveBeenCalledWith(lager.id, ['w1', 'w2']);
+    });
+
+    it('creates a Regal with its Regalböden in one request', async () => {
+      const { app, waren, orte } = makeApp();
+      const post = (url: string, body: unknown, token = 'admin-token') =>
+        app.request(url, json(token, 'POST', body));
+      const lager = (await (await post('/api/lagerorte', { name: 'Lager' })).json()) as {
+        id: string;
+      };
+      const res = await post('/api/lagerorte', {
+        name: 'Regal A',
+        parentId: lager.id,
+        art: 'regal',
+        boeden: [' Boden 1 ', 'Boden 2'],
+      });
+      expect(res.status).toBe(201);
+      const angelegt = (await res.json()) as { id: string; boedenIds: string[] };
+      expect(angelegt.boedenIds).toHaveLength(2);
+      expect(waren.lagerortAnlegen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'Regal A', art: 'regal' }),
+        ['Boden 1', 'Boden 2'],
+      );
+      expect(angelegt.boedenIds.map((id) => orte.get(id))).toEqual([
+        expect.objectContaining({ name: 'Boden 1', art: 'regalboden', parentId: angelegt.id }),
+        expect.objectContaining({ name: 'Boden 2', art: 'regalboden', parentId: angelegt.id }),
+      ]);
+
+      const regal = { name: 'R', art: 'regal' };
+      for (const body of [
+        regal, // no Böden
+        { ...regal, boeden: [] },
+        { ...regal, boeden: ['a', 'a'] },
+        { ...regal, boeden: ['a', '  '] },
+        { ...regal, boeden: Array.from({ length: 51 }, (_, i) => `B${i}`) },
+        { name: 'Normal', boeden: ['a'] }, // Böden only come with a Regal
+        { name: 'R', art: 'sonstiges' },
+        { ...regal, parentId: angelegt.id, boeden: ['a'] }, // Regal inside a Regal
+        { name: 'X', parentId: angelegt.id }, // normal below a Regal
+        { name: 'B', art: 'regalboden' }, // Regalboden without a Regal
+      ]) {
+        expect((await post('/api/lagerorte', body)).status, JSON.stringify(body)).toBe(400);
+      }
+      expect(
+        (await post('/api/lagerorte', { ...regal, boeden: ['a'] }, 'reader-token')).status,
+      ).toBe(403);
+      expect((await post('/api/lagerorte', { ...regal, boeden: ['a'] })).status).toBe(201);
+    });
+
+    it('appends Regalböden to a Regal', async () => {
+      const { app, waren } = makeApp();
+      const post = (url: string, body: unknown, token = 'admin-token') =>
+        app.request(url, json(token, 'POST', body));
+      const regal = (await (
+        await post('/api/lagerorte', { name: 'Regal', art: 'regal', boeden: ['Boden 1'] })
+      ).json()) as { id: string };
+      const lager = (await (await post('/api/lagerorte', { name: 'Lager' })).json()) as {
+        id: string;
+      };
+      const res = await post(`/api/lagerorte/${regal.id}/boeden`, {
+        namen: ['Boden 2', 'Boden 3'],
+      });
+      expect(res.status).toBe(201);
+      expect(((await res.json()) as { boedenIds: string[] }).boedenIds).toHaveLength(2);
+      expect(waren.boedenHinzufuegen).toHaveBeenCalledWith(regal.id, ['Boden 2', 'Boden 3']);
+      expect((await post(`/api/lagerorte/${lager.id}/boeden`, { namen: ['x'] })).status).toBe(400);
+      // names already used in the Regal (case-insensitive) are rejected
+      expect((await post(`/api/lagerorte/${regal.id}/boeden`, { namen: ['boden 1'] })).status).toBe(
+        400,
+      );
+      expect((await post(`/api/lagerorte/${regal.id}/boeden`, { namen: ['A', 'a'] })).status).toBe(
+        400,
+      );
+      expect((await post('/api/lagerorte/x/boeden', { namen: ['x'] })).status).toBe(404);
+      expect((await post(`/api/lagerorte/${regal.id}/boeden`, { namen: [] })).status).toBe(400);
+      expect((await post(`/api/lagerorte/${regal.id}/boeden`, { namen: ['a', 'a'] })).status).toBe(
+        400,
+      );
+      expect(
+        (await post(`/api/lagerorte/${regal.id}/boeden`, { namen: ['x'] }, 'reader-token')).status,
+      ).toBe(403);
+    });
+
+    it('keeps the Regal rules when the kind changes or a Lagerort moves', async () => {
+      const { app, orte } = makeApp();
+      const post = async (body: unknown) =>
+        (await (await app.request('/api/lagerorte', json('admin-token', 'POST', body))).json()) as {
+          id: string;
+          boedenIds: string[];
+        };
+      const put = (id: string, body: unknown) =>
+        app.request(`/api/lagerorte/${id}`, json('admin-token', 'PUT', body));
+      const lager = await post({ name: 'Lager' });
+      const tief = await post({ name: 'Tief', parentId: lager.id });
+      await post({ name: 'Enkel', parentId: tief.id });
+      const flach = await post({ name: 'Flach', parentId: lager.id });
+      const blatt = await post({ name: 'Blatt', parentId: flach.id });
+
+      // children with children of their own: no Regal
+      expect((await put(lager.id, { name: 'Lager', art: 'regal' })).status).toBe(400);
+      // otherwise the children become Regalböden
+      expect(
+        (await put(flach.id, { name: 'Flach', parentId: lager.id, art: 'regal' })).status,
+      ).toBe(200);
+      expect(orte.get(flach.id)?.art).toBe('regal');
+      expect(orte.get(blatt.id)?.art).toBe('regalboden');
+      // omitted art keeps the kind
+      expect((await put(flach.id, { name: 'Flach 2', parentId: lager.id })).status).toBe(200);
+      expect(orte.get(flach.id)?.art).toBe('regal');
+      // a Regalboden keeps its kind and stays below a Regal
+      expect((await put(blatt.id, { name: 'Blatt', parentId: flach.id, art: null })).status).toBe(
+        400,
+      );
+      expect((await put(blatt.id, { name: 'Blatt', parentId: lager.id })).status).toBe(400);
+      // no Regal below a Regal, no normal Lagerort below a Regal
+      expect((await put(flach.id, { name: 'Flach', parentId: flach.id })).status).toBe(400);
+      expect((await put(tief.id, { name: 'Tief', parentId: flach.id })).status).toBe(400);
+      // back to a normal Lagerort: the Böden become normal
+      expect((await put(flach.id, { name: 'Flach', parentId: lager.id, art: null })).status).toBe(
+        200,
+      );
+      expect(orte.get(blatt.id)?.art).toBeNull();
     });
 
     it('validates Gebinde and Waren input', async () => {

@@ -13,6 +13,7 @@ import type {
   Anrede,
   BuchungsArt,
   Einheit,
+  LagerortArt,
   MhdArt,
   MitgliedStatus,
   Quelle,
@@ -103,6 +104,8 @@ export const lagerorte = pgTable('lagerorte', {
   beschreibung: text('beschreibung'),
   position: integer('position').notNull().default(0),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** null = normal Lagerort; see `LAGERORT_ARTEN` in shared. */
+  art: text('art').$type<LagerortArt>(),
 });
 export type LagerortRow = typeof lagerorte.$inferSelect;
 

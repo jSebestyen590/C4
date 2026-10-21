@@ -11,7 +11,11 @@ import {
   gebindeKurz,
   gebindeSortieren,
   inventurAbgleich,
+  bodenNamenFehler,
   inventurKorrekturen,
+  kinderArtNach,
+  lagerortArtAenderungFehler,
+  lagerortArtFehler,
   mhdNormalisieren,
   pfad,
   teilbaumIds,
@@ -28,6 +32,7 @@ import {
   type GebindeDaten,
   type InventurIst,
   type InventurZeile,
+  type LagerortArt,
   type MhdArt,
   type MitgliedStatus,
   type VerlaufPunkt,
@@ -360,6 +365,14 @@ export interface LagerortDaten {
   name: string;
   beschreibung: string | null;
   parentId: string | null;
+  /** On create: null/undefined = normal; on update: undefined keeps the kind. */
+  art?: LagerortArt | null;
+}
+
+/** Ids of what a create made: the Lagerort and, for a Regal, its Regalböden in the given order. */
+export interface LagerortAngelegt {
+  id: string;
+  boedenIds: string[];
 }
 
 export interface WarengruppeDaten {
@@ -526,7 +539,10 @@ export interface InventurZusammenfassung {
 export interface WarenStore {
   // Lagerorte
   lagerorte(mitArchiv: boolean): Promise<LagerortRow[]>;
-  lagerortAnlegen(daten: LagerortDaten): Promise<string>;
+  /** `boeden` (names, in order) belong to a Regal and are created with it. */
+  lagerortAnlegen(daten: LagerortDaten, boeden?: string[]): Promise<LagerortAngelegt>;
+  /** Appends Regalböden to a Regal; the new ids, or undefined if the Lagerort does not exist. */
+  boedenHinzufuegen(id: string, namen: string[]): Promise<string[] | undefined>;
   lagerortAktualisieren(id: string, daten: LagerortDaten): Promise<boolean>;
   lagerortLoeschen(id: string): Promise<boolean>;
   /** Archives (or restores) the whole subtree; archiving needs a stock of 0 in the subtree. */
@@ -621,6 +637,27 @@ export const offenLaden = (q: Q, bedingung?: SQL) =>
     .where(and(isNull(ausleihePositionen.zurueckAm), bedingung));
 
 /** `: 3 an Feuerwehr verliehen (seit …)` for the given open positions, or `` without any. */
+/** Inserts Regalböden (as `regalboden`) below `regalId`, positions counting up from `ab`; returns their ids. */
+async function boedenEinfuegen(
+  tx: Tx,
+  regalId: string,
+  namen: string[],
+  ab: number,
+): Promise<string[]> {
+  const ids = namen.map(() => randomUUID());
+  for (const [i, name] of namen.entries()) {
+    await tx.insert(lagerorte).values({
+      id: ids[i]!,
+      name,
+      beschreibung: null,
+      parentId: regalId,
+      art: 'regalboden',
+      position: ab + i,
+    });
+  }
+  return ids;
+}
+
 export const blockiertVon = (offen: Awaited<ReturnType<typeof offenLaden>>): string => {
   const text = blockierungText(blockierungen(offen, null, new Date()));
   return text ? `: ${text}` : '';
@@ -900,18 +937,57 @@ export function createWarenStore(db: Db): WarenStore {
         .filter((l) => mitArchiv || !l.archiviert)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, 'de'));
     },
-    async lagerortAnlegen(daten) {
+    async lagerortAnlegen(daten, boeden = []) {
       return db.transaction(async (tx) => {
         const alle = await tx.select().from(lagerorte);
         const fehler = elternFehler(alle, daten.parentId);
         if (fehler) throw new WarenUngueltig(fehler);
+        const art = daten.art ?? null;
+        const artProblem = lagerortArtFehler(
+          art,
+          alle.find((l) => l.id === daten.parentId) ?? null,
+        );
+        if (artProblem) throw new WarenUngueltig(artProblem);
+        if (art === 'regalboden') {
+          const gleich = bodenNamenFehler(
+            [daten.name],
+            alle.filter((l) => l.parentId === daten.parentId).map((l) => l.name),
+          )[0];
+          if (gleich) throw new WarenUngueltig(gleich);
+        }
         const id = randomUUID();
         await tx.insert(lagerorte).values({
           id,
-          ...daten,
+          name: daten.name,
+          beschreibung: daten.beschreibung,
+          parentId: daten.parentId,
+          art,
           position: naechstePosition(alle.filter((l) => l.parentId === daten.parentId)),
         });
-        return id;
+        const boedenIds = await boedenEinfuegen(tx, id, boeden, 0);
+        return { id, boedenIds };
+      });
+    },
+    async boedenHinzufuegen(id, namen) {
+      return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        const regal = alle.find((l) => l.id === id);
+        if (!regal) return undefined;
+        if (regal.art !== 'regal') {
+          throw new WarenUngueltig('Regalböden lassen sich nur einem Regal hinzufügen.');
+        }
+        if (regal.archiviert) throw new WarenUngueltig('Das Regal ist archiviert.');
+        const fehler = bodenNamenFehler(
+          namen,
+          alle.filter((l) => l.parentId === id).map((l) => l.name),
+        ).find(Boolean);
+        if (fehler) throw new WarenUngueltig(fehler);
+        return boedenEinfuegen(
+          tx,
+          id,
+          namen,
+          naechstePosition(alle.filter((l) => l.parentId === id)),
+        );
       });
     },
     async lagerortAktualisieren(id, daten) {
@@ -921,16 +997,41 @@ export function createWarenStore(db: Db): WarenStore {
         if (!bisher) return false;
         const fehler = zyklusFehler(alle, id, daten.parentId);
         if (fehler) throw new WarenUngueltig(fehler);
+        const art = daten.art === undefined ? bisher.art : daten.art;
+        const artProblem = lagerortArtAenderungFehler(bisher, art, alle);
+        if (artProblem) throw new WarenUngueltig(artProblem);
         let position = bisher.position;
         if (daten.parentId !== bisher.parentId) {
           const elternProblem = elternFehler(alle, daten.parentId);
           if (elternProblem) throw new WarenUngueltig(elternProblem);
           position = naechstePosition(alle.filter((l) => l.parentId === daten.parentId));
         }
+        if (daten.parentId !== bisher.parentId || art !== bisher.art) {
+          const eltern = alle.find((l) => l.id === daten.parentId) ?? null;
+          const stellungProblem = lagerortArtFehler(art, eltern);
+          if (stellungProblem) throw new WarenUngueltig(stellungProblem);
+        }
+        if (art === 'regalboden') {
+          const gleich = bodenNamenFehler(
+            [daten.name],
+            alle.filter((l) => l.parentId === daten.parentId && l.id !== id).map((l) => l.name),
+          )[0];
+          if (gleich) throw new WarenUngueltig(gleich);
+        }
         await tx
           .update(lagerorte)
-          .set({ ...daten, position })
+          .set({
+            name: daten.name,
+            beschreibung: daten.beschreibung,
+            parentId: daten.parentId,
+            art,
+            position,
+          })
           .where(eq(lagerorte.id, id));
+        const kinderArt = kinderArtNach(bisher.art, art);
+        if (kinderArt !== undefined) {
+          await tx.update(lagerorte).set({ art: kinderArt }).where(eq(lagerorte.parentId, id));
+        }
         return true;
       });
     },

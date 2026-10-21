@@ -1,0 +1,1 @@
+ALTER TABLE lagerorte ADD COLUMN IF NOT EXISTS art text;

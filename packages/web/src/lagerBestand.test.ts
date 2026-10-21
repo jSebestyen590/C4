@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Gebinde } from '@c4/shared';
 import type { WareInfo } from './inventurDaten';
+import type { LagerKnoten } from './LagerBaum';
 import {
   ausgangAbschnitte,
   ausgangPositionen,
@@ -43,8 +44,16 @@ const waren = new Map([
   ['b', ware('b', 'Sterni')],
   ['c', ware('c', 'Astra')],
 ]);
-const orte = [
-  { id: 'l', parentId: null, name: 'Lager', beschreibung: null, position: 0, archiviert: false },
+const orte: LagerKnoten[] = [
+  {
+    id: 'l',
+    parentId: null,
+    name: 'Lager',
+    beschreibung: null,
+    position: 0,
+    archiviert: false,
+    art: null,
+  },
   {
     id: 'k1',
     parentId: 'l',
@@ -52,8 +61,17 @@ const orte = [
     beschreibung: null,
     position: 0,
     archiviert: false,
+    art: null,
   },
-  { id: 'k2', parentId: 'l', name: 'Alt', beschreibung: null, position: 1, archiviert: true },
+  {
+    id: 'k2',
+    parentId: 'l',
+    name: 'Alt',
+    beschreibung: null,
+    position: 1,
+    archiviert: true,
+    art: null,
+  },
 ];
 const z = (
   lagerortId: string,

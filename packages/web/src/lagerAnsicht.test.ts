@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { baumBauen } from '@c4/shared';
+import { baumBauen, type LagerortArt } from '@c4/shared';
 import {
   alleSetzen,
   aufgeklapptLesen,
@@ -13,22 +13,28 @@ import {
   type Belegung,
 } from './lagerAnsicht';
 
-const knoten = (id: string, parentId: string | null, position = 0) => ({
+const knoten = (
+  id: string,
+  parentId: string | null,
+  position = 0,
+  art: LagerortArt | null = null,
+) => ({
   id,
   parentId,
   position,
   name: id,
   beschreibung: null,
   archiviert: false,
+  art,
 });
 
 // lager > regal > (s1, s2, s3), lager > kiste (leaf), leer (leaf, top level)
 const baum = baumBauen([
   knoten('lager', null, 0),
-  knoten('regal', 'lager', 0),
-  knoten('s1', 'regal', 0),
-  knoten('s2', 'regal', 1),
-  knoten('s3', 'regal', 2),
+  knoten('regal', 'lager', 0, 'regal'),
+  knoten('s1', 'regal', 0, 'regalboden'),
+  knoten('s2', 'regal', 1, 'regalboden'),
+  knoten('s3', 'regal', 2, 'regalboden'),
   knoten('kiste', 'lager', 1),
   knoten('leer', null, 1),
 ]);
@@ -53,16 +59,27 @@ const belegung: Belegung = {
 };
 
 describe('kinderTeilen', () => {
-  it('puts nodes with children into cards and leaves into tiles, keeping the order', () => {
+  it('turns only the Regalböden into tiles, keeping the order', () => {
     const lager = baum[0]!;
-    const { karten, kacheln } = kinderTeilen(lager.kinder);
-    expect(karten.map((k) => k.node.id)).toEqual(['regal']);
-    expect(kacheln.map((k) => k.node.id)).toEqual(['kiste']);
-    expect(kinderTeilen(baum[0]!.kinder[0]!.kinder).kacheln.map((k) => k.node.id)).toEqual([
-      's1',
-      's2',
-      's3',
+    // a Regal and a plain leaf below the Lager are both cards
+    const oben = kinderTeilen(lager.kinder);
+    expect(oben.karten.map((k) => k.node.id)).toEqual(['regal', 'kiste']);
+    expect(oben.kacheln).toEqual([]);
+    const regal = kinderTeilen(lager.kinder[0]!.kinder);
+    expect(regal.karten).toEqual([]);
+    expect(regal.kacheln.map((k) => k.node.id)).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('keeps nested leaves of normal Lagerorte as cards', () => {
+    const verschachtelt = baumBauen([
+      knoten('a', null),
+      knoten('b', 'a', 0),
+      knoten('c', 'b', 0),
+      knoten('d', 'b', 1),
     ]);
+    const { karten, kacheln } = kinderTeilen(verschachtelt[0]!.kinder[0]!.kinder);
+    expect(karten.map((k) => k.node.id)).toEqual(['c', 'd']);
+    expect(kacheln).toEqual([]);
   });
 });
 

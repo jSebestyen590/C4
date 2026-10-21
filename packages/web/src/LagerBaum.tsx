@@ -14,10 +14,11 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconClipboardCheck,
+  IconLayoutRows,
   IconPackageExport,
   IconPackageImport,
 } from '@tabler/icons-react';
-import type { BaumEintrag } from '@c4/shared';
+import { LAGERORT_ART_LABELS, type BaumEintrag, type LagerortArt } from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
 import { kachelBeschriftung, kinderTeilen, type Belegung } from './lagerAnsicht';
 import { buchenMoeglich, inventurText, lagerAktionen } from './lagerAktionen';
@@ -33,6 +34,8 @@ export interface LagerKnoten {
   beschreibung: string | null;
   position: number;
   archiviert: boolean;
+  /** null = normal Lagerort. */
+  art: LagerortArt | null;
 }
 
 /** Everything the tree needs from the page: permissions, state and the action callbacks. */
@@ -51,6 +54,8 @@ export interface LagerKontext {
   /** Opens the bottom drawer of a tile. */
   kachelOeffnen: (k: LagerKnoten) => void;
   unterebene: (k: LagerKnoten) => void;
+  /** Opens the dialog that appends Regalböden to a Regal. */
+  boeden: (k: LagerKnoten) => void;
   bearbeiten: (k: LagerKnoten) => void;
   kannVerschieben: (k: LagerKnoten, richtung: -1 | 1) => boolean;
   verschieben: (k: LagerKnoten, richtung: -1 | 1) => void;
@@ -102,6 +107,11 @@ function LagerZeile({
               <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
                 {node.name}
               </Text>
+              {node.art === 'regal' && (
+                <Badge variant="light" leftSection={<IconLayoutRows size={12} aria-hidden />}>
+                  {LAGERORT_ART_LABELS.regal}
+                </Badge>
+              )}
               {node.archiviert && (
                 <Badge color="gray" variant="light">
                   Archiviert
@@ -165,17 +175,15 @@ function LagerZeile({
 }
 
 /**
- * Indented, collapsible list of Lagerorte (no tree library). Children with their own children are
- * cards; leaves below the top level are compact tiles after the cards.
+ * Indented, collapsible list of Lagerorte (no tree library). Every node is a card, except the
+ * Regalböden of a Regal: they are compact tiles after the cards.
  */
 export function LagerBaum({
   eintraege,
   tiefe = 0,
   ctx,
 }: Readonly<{ eintraege: BaumEintrag<LagerKnoten>[]; tiefe?: number; ctx: LagerKontext }>) {
-  // Top-level nodes always stay cards, even without children.
-  const { karten, kacheln } =
-    tiefe === 0 ? { karten: eintraege, kacheln: [] } : kinderTeilen(eintraege);
+  const { karten, kacheln } = kinderTeilen(eintraege);
   const belegung = belegungVon(ctx);
   const beschriftung = kachelBeschriftung(kacheln.map((e) => e.node.name));
   return (

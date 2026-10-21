@@ -31,7 +31,13 @@ export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
       text: 'Unterebene anlegen',
       icon: <IconPlus size={18} />,
       onClick: () => ctx.unterebene(node),
-      sichtbar: ctx.darfVerwalten && !node.archiviert,
+      sichtbar: ctx.darfVerwalten && !node.archiviert && node.art === null,
+    },
+    {
+      text: 'Böden hinzufügen',
+      icon: <IconPlus size={18} />,
+      onClick: () => ctx.boeden(node),
+      sichtbar: ctx.darfVerwalten && !node.archiviert && node.art === 'regal',
     },
     {
       text: 'Bearbeiten',

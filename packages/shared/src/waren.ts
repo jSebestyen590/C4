@@ -127,12 +127,47 @@ export interface Buchungszeile {
 
 const mhdSchema = datumSchema.nullish().transform((v) => v ?? null);
 
+/** Special kinds of Lagerort; null (no `art`) is a normal Lagerort. */
+export const LAGERORT_ARTEN = ['regal', 'regalboden'] as const;
+export type LagerortArt = (typeof LAGERORT_ARTEN)[number];
+
+/** German labels of the kinds; a normal Lagerort has no `art` and uses the key `normal`. */
+export const LAGERORT_ART_LABELS: Record<LagerortArt | 'normal', string> = {
+  normal: 'Lagerort',
+  regal: 'Regal',
+  regalboden: 'Regalboden',
+};
+
+export const MAX_BOEDEN = 50;
+
+const bodenNamenSchema = z
+  .array(name('einen Namen für den Regalboden'))
+  .min(1, 'Gib mindestens einen Regalboden an.')
+  .max(MAX_BOEDEN, `Höchstens ${MAX_BOEDEN} Regalböden erlaubt.`)
+  .refine(
+    (namen) => eindeutig(namen.map((n) => n.toLowerCase())),
+    'Jeder Regalboden darf nur einmal vorkommen.',
+  );
+
 export const lagerortSchema = z.object({
   name: name(),
   beschreibung,
   parentId: parentIdSchema,
+  /** On update: undefined keeps the kind. On create: null/undefined = normal Lagerort. */
+  art: z.enum(LAGERORT_ARTEN, 'Ungültige Art.').nullish(),
 });
 export type LagerortEingabe = z.input<typeof lagerortSchema>;
+
+/** Create: a Regal comes with its Regalböden (`boeden`), nothing else may bring them. */
+export const lagerortAnlegenSchema = lagerortSchema
+  .extend({ boeden: bodenNamenSchema.optional() })
+  .refine((l) => (l.art === 'regal') === (l.boeden !== undefined), {
+    message: 'Ein Regal braucht Regalböden, andere Lagerorte nicht.',
+    path: ['boeden'],
+  });
+export type LagerortAnlegenEingabe = z.input<typeof lagerortAnlegenSchema>;
+
+export const boedenHinzufuegenSchema = z.object({ namen: bodenNamenSchema });
 
 export const lagerortReihenfolgeSchema = z.object({
   ids: z
@@ -395,6 +430,105 @@ function vorfahren(nodes: BaumKnoten[], id: string): BaumKnoten[] {
     aktuell = aktuell.parentId === null ? undefined : byId.get(aktuell.parentId);
   }
   return kette;
+}
+
+/** A tree node with its Lagerort kind (null = normal Lagerort). */
+export interface ArtKnoten extends BaumKnoten {
+  art: LagerortArt | null;
+}
+
+/**
+ * German error unless a node of kind `art` may sit below `parent` (null = top level), otherwise
+ * null: a Regal only holds Regalböden, a Regalboden belongs to a Regal and has no children, a Regal
+ * sits on the top level or below a normal Lagerort.
+ */
+export function lagerortArtFehler(
+  art: LagerortArt | null,
+  parent: Pick<ArtKnoten, 'art'> | null,
+): string | null {
+  const elternArt = parent?.art ?? null;
+  if (elternArt === 'regalboden') return 'Ein Regalboden kann keine Unterebenen haben.';
+  if (elternArt === 'regal') {
+    return art === 'regalboden' ? null : 'Unter einem Regal sind nur Regalböden erlaubt.';
+  }
+  if (art === 'regalboden') return 'Ein Regalboden gehört in ein Regal.';
+  return null;
+}
+
+/**
+ * German error unless the kind of `knoten` may change to `neu` (checked against the tree `alle`),
+ * otherwise null. Normal -> Regal needs children without children of their own; a Regalboden
+ * keeps its kind.
+ */
+export function lagerortArtAenderungFehler(
+  knoten: ArtKnoten,
+  neu: LagerortArt | null,
+  alle: ArtKnoten[],
+): string | null {
+  if (neu === knoten.art) return null;
+  if (knoten.art === 'regalboden') return 'Die Art eines Regalbodens lässt sich nicht ändern.';
+  if (neu === 'regalboden') return 'Ein Regalboden entsteht nur in einem Regal.';
+  if (neu === 'regal') {
+    const kinder = alle.filter((n) => n.parentId === knoten.id);
+    if (kinder.some((k) => alle.some((n) => n.parentId === k.id))) {
+      return 'Ein Regal besteht nur aus Regalböden: Die Unterebenen dürfen keine eigenen Unterebenen haben.';
+    }
+  }
+  return null;
+}
+
+/** Kind the children of a node get when its kind changes from `bisher` to `neu`, or undefined if unchanged. */
+export function kinderArtNach(
+  bisher: LagerortArt | null,
+  neu: LagerortArt | null,
+): LagerortArt | null | undefined {
+  if (bisher === neu) return undefined;
+  if (neu === 'regal') return 'regalboden';
+  if (bisher === 'regal') return null;
+  return undefined;
+}
+
+/**
+ * Names of the Regalböden of `reihen` rows with `plaetze` places each, row by row (r=1 p=1..P,
+ * r=2 ...). In `muster` `{r}` is the row, `{p}` the place in the row and `{n}` the running number
+ * over all (starting at `start`). A pattern without any placeholder gets ` {n}` appended.
+ */
+export function bodenNamen(
+  muster: string,
+  reihen: number,
+  plaetze: number,
+  start: number,
+): string[] {
+  const hatPlatzhalter = /\{[rpn]\}/.test(muster);
+  const vorlage = hatPlatzhalter ? muster : `${muster.trimEnd()} {n}`;
+  const namen: string[] = [];
+  for (let r = 1; r <= Math.max(0, reihen); r++) {
+    for (let p = 1; p <= Math.max(0, plaetze); p++) {
+      namen.push(
+        vorlage
+          .replaceAll('{r}', String(r))
+          .replaceAll('{p}', String(p))
+          .replaceAll('{n}', String(start + namen.length))
+          .trim(),
+      );
+    }
+  }
+  return namen;
+}
+
+/**
+ * German error per name (null = fine): empty, or already taken (case-insensitive) by an earlier
+ * name of the list or by one of the `vorhanden` names.
+ */
+export function bodenNamenFehler(namen: string[], vorhanden: string[]): (string | null)[] {
+  const vergeben = new Set(vorhanden.map((n) => n.trim().toLowerCase()));
+  return namen.map((n) => {
+    const key = n.trim().toLowerCase();
+    if (key === '') return 'Bitte gib einen Namen ein.';
+    if (vergeben.has(key)) return 'Diesen Namen gibt es schon im Regal.';
+    vergeben.add(key);
+    return null;
+  });
 }
 
 /** Id of the top-level ancestor (the Lager) of a node; the node itself if unknown. */

@@ -14,7 +14,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 braucht jede Migration eine
   (ein Test in `rollback.test.ts` prüft das); 0010–0024 (Waren) und 0025–0031 (Inventar) löschen ihre
   Tabellen bzw. Indizes, 0024 entzieht den Vorstandsposten `waren:verwalten` wieder, 0031 entzieht ihnen
-  `inventar:verwalten`. Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_waren`.
+  `inventar:verwalten`. Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_waren`. 0032 (`lagerorte.art`) kann die Spalte nicht entfernen, weil
+  Aurora DSQL `ALTER TABLE … DROP COLUMN` nicht unterstützt; die Down-Datei setzt `art` auf `NULL` zurück (die Spalte bleibt, erneutes Migrieren ist
+  wegen `ADD COLUMN IF NOT EXISTS` unproblematisch).
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 

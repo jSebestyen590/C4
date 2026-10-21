@@ -15,6 +15,9 @@ import type {
 // Gebinde units; the labels live in shared because the Gebinde names are formatted there too.
 export { EINHEIT_LABELS, VERPACKUNGSEINHEIT_LABELS } from '@c4/shared';
 
+// Kinds of Lagerort (Lagerort / Regal / Regalboden); the labels live in shared next to the rules.
+export { LAGERORT_ART_LABELS } from '@c4/shared';
+
 /** Labels that name a person: one form per way of addressing them (male, female, neutral). */
 export type Gegendert = Record<Anrede, string>;
 
