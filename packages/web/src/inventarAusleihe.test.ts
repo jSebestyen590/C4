@@ -53,6 +53,10 @@ describe('verfuegbarePlaetze', () => {
       ['Lager › Regal', 2],
     ]);
   });
+  it('can include completely taken places', () => {
+    const r = verfuegbarePlaetze(g1, lagerorte, ifcos, true);
+    expect(r.map((p) => p.verfuegbar)).toEqual([2, 0, 2]);
+  });
   it('sums the available amount', () => {
     expect(gesamtVerfuegbar(g1)).toBe(4);
   });

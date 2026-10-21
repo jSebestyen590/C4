@@ -24,7 +24,7 @@ import { AusleiheKopfFelder, type AusleiheKopf } from '../AusleiheKopfFelder';
 import { BuchungsBestaetigung, type BestaetigungsGruppe } from '../BuchungsBestaetigung';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
-import { datumText, gesamtVerfuegbar, verfuegbarePlaetze } from '../inventarAnzeige';
+import { datumText, verfuegbarePlaetze } from '../inventarAnzeige';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { jetztLokal } from '../inventurDaten';
 import { useEnterWeiter } from '../useEnterWeiter';
@@ -96,7 +96,7 @@ export function AusleihePage() {
   } | null>(null);
 
   const verleihbar = useMemo(
-    () => inv.gegenstaende.filter((g) => !g.archiviert && gesamtVerfuegbar(g) > 0),
+    () => inv.gegenstaende.filter((g) => !g.archiviert && g.plaetze.length > 0),
     [inv.gegenstaende],
   );
 
@@ -108,9 +108,10 @@ export function AusleihePage() {
     for (const p of ifco?.inhalt ?? []) {
       const g = verleihbar.find((x) => x.id === p.gegenstandId);
       const platz = g?.plaetze.find((x) => x.ifcoId === ifcoId);
-      if (!g || !platz || platz.anzahl - platz.verliehen - platz.vorgemerkt <= 0) continue;
+      if (!g || !platz) continue;
       ids.push(g.id);
-      vorgabe[mengeKey(g.id, platz)] = platz.anzahl - platz.verliehen - platz.vorgemerkt;
+      const frei = platz.anzahl - platz.verliehen - platz.vorgemerkt;
+      if (frei > 0) vorgabe[mengeKey(g.id, platz)] = frei;
     }
     return { ids, vorgabe };
   };
@@ -143,7 +144,7 @@ export function AusleihePage() {
 
   const sektionen = gegenstandIds.flatMap((id) => {
     const g = inv.gegenstaende.find((x) => x.id === id);
-    return g ? [{ g, plaetze: verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos) }] : [];
+    return g ? [{ g, plaetze: verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos, true) }] : [];
   });
 
   const menge = (gid: string, ziel: { lagerortId: string | null; ifcoId: string | null }) => {
@@ -281,7 +282,11 @@ export function AusleihePage() {
                   <IconTrash size={20} />
                 </ActionIcon>
               </Group>
-              {plaetze.length === 0 && <Text c="dimmed">Nichts verfügbar.</Text>}
+              {plaetze.every((p) => p.verfuegbar <= 0) && (
+                <Text size="sm" c="dimmed">
+                  Alles verliehen oder vorgemerkt. Du kannst den Gegenstand entfernen.
+                </Text>
+              )}
               {plaetze.map((p) => {
                 const key = mengeKey(g.id, p);
                 const zuViel = menge(g.id, p) > p.verfuegbar;
@@ -309,6 +314,7 @@ export function AusleihePage() {
                       </>
                     }
                     placeholder={String(p.verfuegbar)}
+                    disabled={p.verfuegbar <= 0}
                     allowDecimal={false}
                     allowNegative={false}
                     min={0}

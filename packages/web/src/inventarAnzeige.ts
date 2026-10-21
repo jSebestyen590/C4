@@ -120,11 +120,15 @@ export interface VerfuegbarerPlatz extends PlatzZiel {
   verfuegbar: number;
 }
 
-/** Places of a Gegenstand with something left to lend (assigned minus lent and reserved), sorted by display text. */
+/**
+ * Places of a Gegenstand with something left to lend (assigned minus lent and reserved), sorted by
+ * display text; with `auchVolle` the completely taken places are listed too (`verfuegbar` 0).
+ */
 export function verfuegbarePlaetze(
   g: Pick<GegenstandEintrag, 'plaetze'>,
   lagerorte: BaumKnoten[],
   ifcos: IfcoEintrag[],
+  auchVolle = false,
 ): (VerfuegbarerPlatz & { text: string })[] {
   return g.plaetze
     .map((p) => ({
@@ -136,7 +140,7 @@ export function verfuegbarePlaetze(
       verfuegbar: p.anzahl - p.verliehen - p.vorgemerkt,
       text: platzText(lagerorte, ifcos, p),
     }))
-    .filter((p) => p.verfuegbar > 0)
+    .filter((p) => auchVolle || p.verfuegbar > 0)
     .sort((a, b) => a.text.localeCompare(b.text, 'de'));
 }
 

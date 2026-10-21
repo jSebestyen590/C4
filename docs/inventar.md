@@ -53,7 +53,7 @@ Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstör
   `offenAufteilen`, `ausleiheStatus` in `packages/shared/src/inventar.ts`.
 - **Wer blockiert:** Scheitert eine Prüfung an Verliehenem oder Vorgemerktem (`ausleihFehler`, `verliehenFehler`, Ifco-/Lagerort-Archivieren),
   nennt die Meldung die Ausleihen mit Person und Datum („…nur noch 1 verfügbar: 3 an Feuerwehr verliehen (seit 20.10.2026), 2 an
-  Jugendgruppe vorgemerkt (ab 25.10.2026).“; `blockierungen`/`blockierungText`, Datum dd.MM.yyyy, Europe/Berlin). Auf `AusleihePage` steht dieselbe
+  Jugendgruppe vorgemerkt (ab 25.10.2026).“; `blockierungen`/`blockierungText`, Datum dd.MM.yyyy, Europe/Berlin). Auf `AusleihePage` bleiben auch vollständig verliehene/vorgemerkte Plätze sichtbar (Feld gesperrt, „Verfügbar: 0“), damit man sieht, an wen; ebenso bei „Ganze Ifco verleihen“. Dort steht dieselbe
   Aufstellung (Personen verlinkt) als Hinweis unter dem Mengenfeld, sobald am Platz etwas verliehen oder vorgemerkt ist, und bei Überschreitung
   in der orangen Warnung.
 - **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
