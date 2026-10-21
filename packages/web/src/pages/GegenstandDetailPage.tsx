@@ -29,13 +29,7 @@ import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { GegenstandPlaetzeModal } from '../GegenstandPlaetzeModal';
 import { AusleiheStatus, startText } from '../AusleiheKarte';
-import {
-  gegenstandAbweichung,
-  gesamtVerfuegbar,
-  mengeText,
-  platzZeilen,
-  positionText,
-} from '../inventarAnzeige';
+import { gegenstandAbweichung, mengeText, platzZeilen, positionText } from '../inventarAnzeige';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { zeitAnzeigen } from '../warenAnzeige';
 import { LoeschenDialog } from '../LoeschenDialog';
@@ -264,7 +258,7 @@ export function GegenstandDetailPage() {
           mih={48}
           variant="light"
           leftSection={<IconTruckDelivery size={20} />}
-          disabled={gesamtVerfuegbar(g) === 0}
+          disabled={g.plaetze.length === 0}
         >
           Verleihen
         </Button>
