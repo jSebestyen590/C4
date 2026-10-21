@@ -102,4 +102,5 @@ jede Änderung macht `['inventar']` ungültig.
   und „Löschen“ (`inventar:umraeumen`).
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“.
-- Lager-Seite: zeigt das Inventar je Knoten, siehe [waren.md](./waren.md).
+- Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen Ifcos und direkt zugeordnete
+  Gegenstände im Zähler, eine offene Inventur trägt ein Symbol), siehe [waren.md](./waren.md).

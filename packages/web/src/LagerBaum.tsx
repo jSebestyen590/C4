@@ -1,6 +1,5 @@
 import {
   ActionIcon,
-  Anchor,
   Badge,
   Box,
   Button,
@@ -12,27 +11,20 @@ import {
   Text,
 } from '@mantine/core';
 import {
-  IconArchive,
-  IconArchiveOff,
-  IconArrowDown,
-  IconArrowUp,
   IconChevronDown,
   IconChevronRight,
   IconClipboardCheck,
-  IconEdit,
-  IconArrowsExchange,
-  IconBox,
-  IconListDetails,
   IconPackageExport,
   IconPackageImport,
-  IconPlus,
-  IconTrash,
 } from '@tabler/icons-react';
 import type { BaumEintrag } from '@c4/shared';
-import { Link } from 'react-router-dom';
 import { AktionsMenue } from './AktionsMenue';
+import { kinderTeilen, type Belegung } from './lagerAnsicht';
+import { buchenMoeglich, inventurText, lagerAktionen } from './lagerAktionen';
 import type { BestandsAnzeige } from './lagerBestand';
 import type { LagerInventar } from './lagerInventar';
+import { BestandListe, InventarListe } from './LagerInhalt';
+import { LagerKachel } from './LagerKachel';
 
 export interface LagerKnoten {
   id: string;
@@ -53,10 +45,14 @@ export interface LagerKontext {
   inventar: Map<string, LagerInventar> | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
-  eingeklappt: Set<string>;
-  umschalten: (id: string) => void;
+  /** Whether a node with children is expanded (default by depth, explicit choices win). */
+  aufgeklappt: (id: string, tiefe: number) => boolean;
+  umschalten: (id: string, tiefe: number) => void;
+  /** Opens the bottom drawer of a tile. */
+  kachelOeffnen: (k: LagerKnoten) => void;
   unterebene: (k: LagerKnoten) => void;
   bearbeiten: (k: LagerKnoten) => void;
+  kannVerschieben: (k: LagerKnoten, richtung: -1 | 1) => boolean;
   verschieben: (k: LagerKnoten, richtung: -1 | 1) => void;
   waren: (k: LagerKnoten) => void;
   entnehmen: (k: LagerKnoten) => void;
@@ -67,80 +63,22 @@ export interface LagerKontext {
   loeschen: (k: LagerKnoten) => void;
 }
 
-const inventarZeile = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  minHeight: 44,
-  overflowWrap: 'anywhere',
-} as const;
-
-/** Ifcos standing at a node and Gegenstände assigned directly to it, linked to their detail pages. */
-function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }>) {
-  return (
-    <Stack gap={0} mt={4}>
-      {inventar.ifcos.map((i) => (
-        <Anchor
-          key={i.id}
-          component={Link}
-          to={`/inventar/ifcos/${encodeURIComponent(i.id)}`}
-          size="sm"
-          style={inventarZeile}
-        >
-          <IconBox size={16} style={{ flex: 'none' }} />
-          <span>
-            <Text span fw={600} inherit>
-              {i.name}
-            </Text>
-            {' · '}
-            {i.stueck} {i.stueck === 1 ? 'Teil' : 'Teile'}
-          </span>
-        </Anchor>
-      ))}
-      {inventar.gegenstaende.map((g) => (
-        <Anchor
-          key={g.id}
-          component={Link}
-          to={`/inventar/gegenstaende/${encodeURIComponent(g.id)}`}
-          size="sm"
-          style={inventarZeile}
-        >
-          <span>
-            <Text span fw={600} inherit>
-              {g.name}
-            </Text>{' '}
-            {g.anzahl}×
-            {g.verliehen > 0 && (
-              <Text span c="grape" inherit>
-                {' '}
-                · {g.verliehen} verliehen
-              </Text>
-            )}
-          </span>
-        </Anchor>
-      ))}
-    </Stack>
-  );
-}
+export const belegungVon = (ctx: LagerKontext): Belegung => ({
+  bestand: ctx.bestand,
+  inventar: ctx.inventar,
+});
 
 function LagerZeile({
   eintrag,
   tiefe,
-  index,
-  anzahl,
   ctx,
-}: Readonly<{
-  eintrag: BaumEintrag<LagerKnoten>;
-  tiefe: number;
-  index: number;
-  anzahl: number;
-  ctx: LagerKontext;
-}>) {
+}: Readonly<{ eintrag: BaumEintrag<LagerKnoten>; tiefe: number; ctx: LagerKontext }>) {
   const { node, kinder } = eintrag;
-  const zu = ctx.eingeklappt.has(node.id);
+  const auf = ctx.aufgeklappt(node.id, tiefe);
   const inventurId = ctx.offeneInventuren.get(node.id);
-  const inventurMoeglich = ctx.darfBuchen && !node.archiviert;
-  const inventurText = inventurId ? 'Inventur fortsetzen' : 'Inventur starten';
+  const inventurMoeglich = buchenMoeglich(ctx, node);
+  const bestand = ctx.bestand?.get(node.id);
+  const inventar = ctx.inventar?.get(node.id);
   return (
     <Stack gap="xs">
       <Paper withBorder p={4} opacity={node.archiviert ? 0.6 : 1}>
@@ -150,11 +88,11 @@ function LagerZeile({
               variant="subtle"
               color="gray"
               size={44}
-              aria-label={zu ? `${node.name} aufklappen` : `${node.name} zuklappen`}
-              aria-expanded={!zu}
-              onClick={() => ctx.umschalten(node.id)}
+              aria-label={auf ? `${node.name} zuklappen` : `${node.name} aufklappen`}
+              aria-expanded={auf}
+              onClick={() => ctx.umschalten(node.id, tiefe)}
             >
-              {zu ? <IconChevronRight size={20} /> : <IconChevronDown size={20} />}
+              {auf ? <IconChevronDown size={20} /> : <IconChevronRight size={20} />}
             </ActionIcon>
           ) : (
             <Box w={44} h={44} style={{ flexShrink: 0 }} />
@@ -175,98 +113,10 @@ function LagerZeile({
                 {node.beschreibung}
               </Text>
             )}
-            {ctx.bestand?.get(node.id)?.map((b) => (
-              <Text key={b.wareId} size="sm" lh={1.35} style={{ overflowWrap: 'anywhere' }}>
-                <Text span fw={600} inherit>
-                  {b.name}
-                </Text>
-                : {b.text}
-                {b.mhd && (
-                  <Text span size="xs" c="dimmed">
-                    {' '}
-                    · MHD {b.mhd}
-                  </Text>
-                )}
-              </Text>
-            ))}
-            {ctx.inventar?.get(node.id) && <InventarListe inventar={ctx.inventar.get(node.id)!} />}
+            {bestand && <BestandListe zeilen={bestand} />}
+            {inventar && <InventarListe inventar={inventar} />}
           </Stack>
-          <AktionsMenue
-            label={`Aktionen für ${node.name}`}
-            aktionen={[
-              {
-                text: 'Unterebene anlegen',
-                icon: <IconPlus size={18} />,
-                onClick: () => ctx.unterebene(node),
-                sichtbar: ctx.darfVerwalten && !node.archiviert,
-              },
-              {
-                text: 'Bearbeiten',
-                icon: <IconEdit size={18} />,
-                onClick: () => ctx.bearbeiten(node),
-                sichtbar: ctx.darfVerwalten,
-              },
-              {
-                text: 'Nach oben',
-                icon: <IconArrowUp size={18} />,
-                onClick: () => ctx.verschieben(node, -1),
-                disabled: index === 0,
-                sichtbar: ctx.darfVerwalten,
-              },
-              {
-                text: 'Nach unten',
-                icon: <IconArrowDown size={18} />,
-                onClick: () => ctx.verschieben(node, 1),
-                disabled: index === anzahl - 1,
-                sichtbar: ctx.darfVerwalten,
-              },
-              {
-                text: 'Warenliste bearbeiten',
-                icon: <IconListDetails size={18} />,
-                onClick: () => ctx.waren(node),
-                sichtbar: ctx.darfVerwalten && !node.archiviert,
-              },
-              {
-                text: 'Entnehmen',
-                icon: <IconPackageExport size={18} />,
-                onClick: () => ctx.entnehmen(node),
-                sichtbar: inventurMoeglich,
-                trenner: ctx.darfVerwalten,
-              },
-              {
-                text: 'Einlagern',
-                icon: <IconPackageImport size={18} />,
-                onClick: () => ctx.einlagern(node),
-                sichtbar: inventurMoeglich,
-              },
-              {
-                text: 'Umlagern',
-                icon: <IconArrowsExchange size={18} />,
-                onClick: () => ctx.umlagern(node),
-                sichtbar: inventurMoeglich,
-              },
-              {
-                text: inventurText,
-                icon: <IconClipboardCheck size={18} />,
-                onClick: () => ctx.inventur(node),
-                sichtbar: inventurMoeglich,
-              },
-              {
-                text: node.archiviert ? 'Wiederherstellen' : 'Archivieren',
-                icon: node.archiviert ? <IconArchiveOff size={18} /> : <IconArchive size={18} />,
-                onClick: () => ctx.archivieren(node),
-                sichtbar: ctx.darfVerwalten,
-                trenner: true,
-              },
-              {
-                text: 'Löschen',
-                icon: <IconTrash size={18} />,
-                color: 'red',
-                onClick: () => ctx.loeschen(node),
-                sichtbar: ctx.darfVerwalten,
-              },
-            ]}
-          />
+          <AktionsMenue label={`Aktionen für ${node.name}`} aktionen={lagerAktionen(node, ctx)} />
         </Group>
         {tiefe === 0 && inventurMoeglich && (
           <Stack gap="xs" px={8} pb={8}>
@@ -294,13 +144,13 @@ function LagerZeile({
               leftSection={<IconClipboardCheck size={18} />}
               onClick={() => ctx.inventur(node)}
             >
-              {inventurText}
+              {inventurText(ctx, node)}
             </Button>
           </Stack>
         )}
       </Paper>
       {kinder.length > 0 && (
-        <Collapse expanded={!zu}>
+        <Collapse expanded={auf}>
           <Box
             ml={10}
             pl={8}
@@ -314,24 +164,37 @@ function LagerZeile({
   );
 }
 
-/** Indented, collapsible list of Lagerorte (no tree library). */
+/**
+ * Indented, collapsible list of Lagerorte (no tree library). Children with their own children are
+ * cards; leaves below the top level are compact tiles after the cards.
+ */
 export function LagerBaum({
   eintraege,
   tiefe = 0,
   ctx,
 }: Readonly<{ eintraege: BaumEintrag<LagerKnoten>[]; tiefe?: number; ctx: LagerKontext }>) {
+  // Top-level nodes always stay cards, even without children.
+  const { karten, kacheln } =
+    tiefe === 0 ? { karten: eintraege, kacheln: [] } : kinderTeilen(eintraege);
+  const belegung = belegungVon(ctx);
   return (
     <Stack gap="xs">
-      {eintraege.map((e, i) => (
-        <LagerZeile
-          key={e.node.id}
-          eintrag={e}
-          tiefe={tiefe}
-          index={i}
-          anzahl={eintraege.length}
-          ctx={ctx}
-        />
+      {karten.map((e) => (
+        <LagerZeile key={e.node.id} eintrag={e} tiefe={tiefe} ctx={ctx} />
       ))}
+      {kacheln.length > 0 && (
+        <SimpleGrid cols={{ base: 4, sm: 6, md: 8 }} spacing="xs">
+          {kacheln.map((e) => (
+            <LagerKachel
+              key={e.node.id}
+              node={e.node}
+              belegung={belegung}
+              offeneInventur={ctx.offeneInventuren.has(e.node.id)}
+              onClick={() => ctx.kachelOeffnen(e.node)}
+            />
+          ))}
+        </SimpleGrid>
+      )}
     </Stack>
   );
 }

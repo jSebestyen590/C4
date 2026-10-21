@@ -101,6 +101,21 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     eigene Wahl im `localStorage`, Schlüssel `lager.inventarAnzeigen`) zeigt unter jedem Knoten die dort stehenden Ifcos (`Spanngurtkiste · 12 Teile`)
     und direkt zugeordnete Gegenstände (`Kabeltrommel 6× · 3 verliehen`) als Links zu den Detailseiten. Berechnung im Client
     (`inventarJeLagerort`, `lagerInventar.ts`) aus den Listen von `useGegenstaendeUndIfcos()`; archivierte Gegenstände und Ifcos fehlen.
+  - **Karten und Kacheln:** Knoten mit sichtbaren Unterknoten sind Karten (rekursiv). Blätter unterhalb der obersten Ebene (Stellplätze)
+    erscheinen nach den Karten ihres Elternknotens als Kachelraster (4 / 6 / 8 Spalten ab Handy / `sm` / `md`); oberste Knoten bleiben
+    immer Karten. Eine Kachel zeigt den Namen (max. 2 Zeilen) und einen Zähler: Anzahl der Waren mit Bestand (bei „Bestand anzeigen“)
+    plus Ifcos und direkt zugeordnete Gegenstände (bei „Inventar anzeigen“), „–“ wenn leer (grau, gestrichelt); archivierte Kacheln
+    sind abgedunkelt, eine offene Inventur zeigt ein kleines Symbol. Tippen öffnet ein Bottom-Drawer mit dem vollen Pfad als Titel,
+    Bestand und Inventar wie in der Karte und den Aktionen des Knotenmenüs als volle Buttons (eine gemeinsame Definition,
+    `lagerAktionen.tsx`, gleiche Rechte- und Archiv-Regeln; Entnehmen, Einlagern, Umlagern, Inventur stehen oben). Reine Logik:
+    `lagerAnsicht.ts` (Karten/Kachel-Aufteilung, Zähler, „belegt“, Aufklapp-Standard).
+  - **Auf-/Zuklappen:** Standard: oberste Knoten aufgeklappt, tiefere zugeklappt. Eigene Wahl wird je Knoten im `localStorage`
+    gemerkt (Schlüssel `lager.aufgeklappt`, Map Id → aufgeklappt); „Alle aufklappen“ / „Alle zuklappen“ setzen alle Knoten mit
+    Unterknoten. Ohne Storage funktioniert die Seite, die Wahl wird dann nicht gemerkt.
+  - **„Nur belegte Plätze“** (aus, Schlüssel `lager.nurBelegte`): blendet Knoten ohne Bestand/Inventar aus, wenn auch ihr Teilbaum leer ist
+    (belegt zählt nur, was durch „Bestand“ / „Inventar anzeigen“ gerade sichtbar ist; sind beide aus oder noch nicht geladen, wirkt der
+    Schalter nicht). Wirkt auch bei „Archivierte Lagerorte anzeigen“: leere archivierte Knoten verschwinden dann ebenfalls. Nach oben/unten
+    tauscht mit dem sichtbaren Geschwister, die Anzeige (Karten vor Kacheln) kann davon abweichen.
   - **Aktionen (`bestand:buchen`, nicht archiviert):** Das Knotenmenü bietet Entnehmen, Einlagern, Umlagern und Inventur
     starten/fortsetzen. Oberste Knoten zeigen „Entnehmen“ und „Einlagern“ als Buttons in einer Zeile, darunter „Inventur“.
 - `/lager/:id/entnehmen`, `/lager/:id/einlagern`, `/lager/:id/umlagern` (`bestand:buchen`): Tabellen für den Knoten samt

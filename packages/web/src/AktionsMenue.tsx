@@ -10,6 +10,8 @@ export interface Aktion {
   disabled?: boolean;
   /** Entries that do not apply are left out. */
   sichtbar?: boolean;
+  /** Main action, listed first where actions are shown as buttons. */
+  primaer?: boolean;
   /** Draws a divider above the entry. */
   trenner?: boolean;
 }
