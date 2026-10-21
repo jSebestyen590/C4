@@ -19,7 +19,7 @@ import {
 } from '@tabler/icons-react';
 import type { BaumEintrag } from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
-import { kinderTeilen, type Belegung } from './lagerAnsicht';
+import { kachelBeschriftung, kinderTeilen, type Belegung } from './lagerAnsicht';
 import { buchenMoeglich, inventurText, lagerAktionen } from './lagerAktionen';
 import type { BestandsAnzeige } from './lagerBestand';
 import type { LagerInventar } from './lagerInventar';
@@ -177,23 +177,32 @@ export function LagerBaum({
   const { karten, kacheln } =
     tiefe === 0 ? { karten: eintraege, kacheln: [] } : kinderTeilen(eintraege);
   const belegung = belegungVon(ctx);
+  const beschriftung = kachelBeschriftung(kacheln.map((e) => e.node.name));
   return (
     <Stack gap="xs">
       {karten.map((e) => (
         <LagerZeile key={e.node.id} eintrag={e} tiefe={tiefe} ctx={ctx} />
       ))}
       {kacheln.length > 0 && (
-        <SimpleGrid cols={{ base: 4, sm: 6, md: 8 }} spacing="xs">
-          {kacheln.map((e) => (
-            <LagerKachel
-              key={e.node.id}
-              node={e.node}
-              belegung={belegung}
-              offeneInventur={ctx.offeneInventuren.has(e.node.id)}
-              onClick={() => ctx.kachelOeffnen(e.node)}
-            />
-          ))}
-        </SimpleGrid>
+        <Stack gap={4}>
+          {beschriftung.praefix && (
+            <Text size="xs" c="dimmed" fw={600}>
+              {beschriftung.praefix}
+            </Text>
+          )}
+          <SimpleGrid cols={{ base: 4, sm: 6, md: 8 }} spacing="xs">
+            {kacheln.map((e, i) => (
+              <LagerKachel
+                key={e.node.id}
+                node={e.node}
+                anzeigeName={beschriftung.kurz[i]}
+                belegung={belegung}
+                offeneInventur={ctx.offeneInventuren.has(e.node.id)}
+                onClick={() => ctx.kachelOeffnen(e.node)}
+              />
+            ))}
+          </SimpleGrid>
+        </Stack>
       )}
     </Stack>
   );

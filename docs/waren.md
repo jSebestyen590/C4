@@ -103,7 +103,8 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     (`inventarJeLagerort`, `lagerInventar.ts`) aus den Listen von `useGegenstaendeUndIfcos()`; archivierte Gegenstände und Ifcos fehlen.
   - **Karten und Kacheln:** Knoten mit sichtbaren Unterknoten sind Karten (rekursiv). Blätter unterhalb der obersten Ebene (Stellplätze)
     erscheinen nach den Karten ihres Elternknotens als Kachelraster (4 / 6 / 8 Spalten ab Handy / `sm` / `md`); oberste Knoten bleiben
-    immer Karten. Eine Kachel zeigt den Namen (max. 2 Zeilen) und einen Zähler: Anzahl der Waren mit Bestand (bei „Bestand anzeigen“)
+    immer Karten. Beginnen alle Namen eines Rasters mit demselben Wort (`Stellplatz 1` … `Stellplatz 16`), steht es einmal klein über dem
+    Raster und die Kacheln zeigen nur den Rest (`kachelBeschriftung`). Eine Kachel zeigt den Namen (max. 2 Zeilen) und einen Zähler: Anzahl der Waren mit Bestand (bei „Bestand anzeigen“)
     plus Ifcos und direkt zugeordnete Gegenstände (bei „Inventar anzeigen“), „–“ wenn leer (grau, gestrichelt); archivierte Kacheln
     sind abgedunkelt, eine offene Inventur zeigt ein kleines Symbol. Tippen öffnet ein Bottom-Drawer mit dem vollen Pfad als Titel,
     Bestand und Inventar wie in der Karte und den Aktionen des Knotenmenüs als volle Buttons (eine gemeinsame Definition,

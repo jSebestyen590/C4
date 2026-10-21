@@ -93,3 +93,22 @@ export function aufgeklapptLesen(roh: string | null): Aufgeklappt {
     return {};
   }
 }
+
+/**
+ * Tile labels of one grid: when every name starts with the same word(s) followed by a space
+ * ("Stellplatz 1" … "Stellplatz 16"), that prefix becomes the grid heading and the tiles only
+ * show the rest ("1" … "16"), so short tiles don't break names mid-word. Needs at least two tiles.
+ */
+export function kachelBeschriftung(namen: string[]): { praefix: string | null; kurz: string[] } {
+  if (namen.length < 2) return { praefix: null, kurz: namen };
+  let praefix = namen[0] ?? '';
+  for (const n of namen.slice(1)) {
+    while (praefix && !n.startsWith(praefix)) praefix = praefix.slice(0, -1);
+  }
+  const ende = praefix.lastIndexOf(' ');
+  if (ende <= 0) return { praefix: null, kurz: namen };
+  praefix = praefix.slice(0, ende + 1);
+  const kurz = namen.map((n) => n.slice(praefix.length).trim());
+  if (kurz.some((k) => k === '')) return { praefix: null, kurz: namen };
+  return { praefix: praefix.trim(), kurz };
+}

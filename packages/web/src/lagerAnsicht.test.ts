@@ -3,6 +3,7 @@ import { baumBauen } from '@c4/shared';
 import {
   alleSetzen,
   aufgeklapptLesen,
+  kachelBeschriftung,
   istAufgeklappt,
   istBelegt,
   kachelZaehlerText,
@@ -109,5 +110,33 @@ describe('Aufklappen', () => {
     expect(aufgeklapptLesen('kaputt')).toEqual({});
     expect(aufgeklapptLesen('[1]')).toEqual({});
     expect(aufgeklapptLesen('{"a":true,"b":"x","c":false}')).toEqual({ a: true, c: false });
+  });
+});
+
+describe('kachelBeschriftung', () => {
+  it('moves a shared leading word into the heading', () => {
+    expect(kachelBeschriftung(['Stellplatz 1', 'Stellplatz 2', 'Stellplatz 16'])).toEqual({
+      praefix: 'Stellplatz',
+      kurz: ['1', '2', '16'],
+    });
+    expect(kachelBeschriftung(['Fach oben links', 'Fach oben rechts'])).toEqual({
+      praefix: 'Fach oben',
+      kurz: ['links', 'rechts'],
+    });
+  });
+  it('keeps the names without a shared word or with a single tile', () => {
+    expect(kachelBeschriftung(['Regal 1', 'Kiste'])).toEqual({
+      praefix: null,
+      kurz: ['Regal 1', 'Kiste'],
+    });
+    expect(kachelBeschriftung(['Brett 10', 'Brett 1'])).toEqual({
+      praefix: 'Brett',
+      kurz: ['10', '1'],
+    });
+    expect(kachelBeschriftung(['Brett', 'Brett 2'])).toEqual({
+      praefix: null,
+      kurz: ['Brett', 'Brett 2'],
+    });
+    expect(kachelBeschriftung(['Stellplatz 1'])).toEqual({ praefix: null, kurz: ['Stellplatz 1'] });
   });
 });

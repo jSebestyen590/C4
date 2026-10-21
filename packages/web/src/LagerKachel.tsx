@@ -9,11 +9,14 @@ import type { LagerKnoten, LagerKontext } from './LagerBaum';
 /** Compact tile of a leaf node (Stellplatz): name and a counter of what lies there. */
 export function LagerKachel({
   node,
+  anzeigeName = node.name,
   belegung,
   offeneInventur,
   onClick,
 }: Readonly<{
   node: LagerKnoten;
+  /** Shortened label (without the prefix shown above the grid); defaults to the name. */
+  anzeigeName?: string;
   belegung: Belegung;
   offeneInventur: boolean;
   onClick: () => void;
@@ -58,8 +61,14 @@ export function LagerKachel({
           style={{ position: 'absolute', top: 3, right: 3, color: 'var(--mantine-color-blue-6)' }}
         />
       )}
-      <Text size="xs" fw={600} lh={1.2} lineClamp={2} style={{ overflowWrap: 'anywhere' }}>
-        {node.name}
+      <Text
+        size="xs"
+        fw={600}
+        lh={1.2}
+        lineClamp={2}
+        style={{ overflowWrap: 'break-word', hyphens: 'auto' }}
+      >
+        {anzeigeName}
       </Text>
       <Text size="xs" c="dimmed" lh={1}>
         {kachelZaehlerText(node.id, belegung)}
