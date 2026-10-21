@@ -6,12 +6,18 @@ import { zeitAnzeigen } from './warenAnzeige';
 
 const MAX_POSITIONEN = 4;
 
-/** Status badge of an Ausleihe: Überfällig / Offen / Erledigt. */
+/** Status badge of an Ausleihe: Erledigt / Vorgemerkt / Überfällig / Verliehen. */
 export function AusleiheStatus({ a }: Readonly<{ a: AusleiheEintrag }>) {
   if (a.erledigt)
     return (
       <Badge color="green" variant="light">
         Erledigt
+      </Badge>
+    );
+  if (a.status === 'geplant')
+    return (
+      <Badge color="cyan" variant="light">
+        Vorgemerkt
       </Badge>
     );
   if (ueberfaellig(a, heuteLokal()))
@@ -26,6 +32,10 @@ export function AusleiheStatus({ a }: Readonly<{ a: AusleiheEintrag }>) {
     </Badge>
   );
 }
+
+/** `Seit 20.10.2026 10:00` or, for a Vorgemerkt one, `Ab 25.10.2026 10:00`. */
+export const startText = (a: Pick<AusleiheEintrag, 'status' | 'ausgeliehenAm'>): string =>
+  `${a.status === 'geplant' ? 'Ab' : 'Seit'} ${zeitAnzeigen(a.ausgeliehenAm)}`;
 
 /** Planned return date as text; red when the open Ausleihe is overdue. */
 export function RueckgabeGeplant({ a }: Readonly<{ a: AusleiheEintrag }>) {
@@ -60,7 +70,7 @@ export function AusleiheKarte({
           <AusleiheStatus a={a} />
         </Group>
         <Text size="sm" c="dimmed">
-          Seit {zeitAnzeigen(a.ausgeliehenAm)}
+          {startText(a)}
         </Text>
         <RueckgabeGeplant a={a} />
         {a.positionen.slice(0, MAX_POSITIONEN).map((p) => (

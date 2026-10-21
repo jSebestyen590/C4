@@ -3,7 +3,13 @@ import type { GegenstandEintrag, IfcoEintrag } from './inventarDaten';
 /** The Inventar located at one Lagerort: Ifcos standing there and Gegenstände assigned directly. */
 export interface LagerInventar {
   ifcos: { id: string; name: string; stueck: number }[];
-  gegenstaende: { id: string; name: string; anzahl: number; verliehen: number }[];
+  gegenstaende: {
+    id: string;
+    name: string;
+    anzahl: number;
+    verliehen: number;
+    vorgemerkt: number;
+  }[];
 }
 
 const nachName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'de');
@@ -36,6 +42,7 @@ export function inventarJeLagerort(
         name: g.name,
         anzahl: p.anzahl,
         verliehen: p.verliehen,
+        vorgemerkt: p.vorgemerkt,
       });
     }
   }

@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './auth';
 import { AusleiheKarte } from './AusleiheKarte';
+import { ausleihenSortiert } from './inventarAnzeige';
 import { useAusleihen, type useInventar } from './inventarDaten';
 
-/** The "Verliehen" view of the Inventar page: open Ausleihen as cards, optionally the finished ones too. */
+/** The "Verliehen" view of the Inventar page: open Ausleihen (verliehen first, then vorgemerkt) as cards, optionally the finished ones too. */
 export function VerlieheneAnsicht({ inv }: Readonly<{ inv: ReturnType<typeof useInventar> }>) {
   const darfUmraeumen = useAuth().can('inventar:umraeumen');
   const [auchErledigte, setAuchErledigte] = useState(false);
@@ -15,9 +16,10 @@ export function VerlieheneAnsicht({ inv }: Readonly<{ inv: ReturnType<typeof use
 
   const gefiltert = useMemo(() => {
     const q = suche.trim().toLowerCase();
-    if (!q) return ausleihen;
+    const sortiert = ausleihenSortiert(ausleihen);
+    if (!q) return sortiert;
     const name = (id: string) => inv.gegenstaende.find((g) => g.id === id)?.name ?? '';
-    return ausleihen.filter(
+    return sortiert.filter(
       (a) =>
         a.an.toLowerCase().includes(q) ||
         a.kommentar?.toLowerCase().includes(q) ||
@@ -56,7 +58,9 @@ export function VerlieheneAnsicht({ inv }: Readonly<{ inv: ReturnType<typeof use
       )}
       {!wartet && !fehler && !inv.fehler && gefiltert.length === 0 && (
         <Text c="dimmed">
-          {auchErledigte ? 'Keine Ausleihen gefunden.' : 'Zurzeit ist nichts verliehen.'}
+          {auchErledigte
+            ? 'Keine Ausleihen gefunden.'
+            : 'Zurzeit ist nichts verliehen oder vorgemerkt.'}
         </Text>
       )}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>

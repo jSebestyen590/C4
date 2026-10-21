@@ -17,17 +17,41 @@ const platz = (id: string, lagerortId: string | null, ifcoId: string | null, anz
   anzahl,
 });
 
+const jetzt = new Date('2026-10-21T12:00:00.000Z');
+const vorher = new Date('2026-10-01T00:00:00.000Z');
+const spaeter = new Date('2026-10-25T00:00:00.000Z');
+
 describe('gegenstandDetails', () => {
+  it('counts future Ausleihen as vorgemerkt, not verliehen', () => {
+    const d = gegenstandDetails(
+      g,
+      [platz('p1', 'l5', null, 6)],
+      [
+        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 3, ausgeliehenAm: vorher },
+        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 2, ausgeliehenAm: spaeter },
+      ],
+      jetzt,
+    );
+    expect(d.plaetze[0]).toMatchObject({ verliehen: 3, vorgemerkt: 2 });
+    expect(d).toMatchObject({ verliehen: 3, vorgemerkt: 2 });
+  });
   it('attaches the open lent amount to the place it was lent from', () => {
     const d = gegenstandDetails(
       g,
       [platz('p1', 'l5', null, 6), platz('p2', null, 'i1', 4)],
       [
-        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 3 },
-        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 1 },
-        { gegenstandId: 'g1', lagerortId: null, ifcoId: 'i1', anzahl: 2 },
-        { gegenstandId: 'andere', lagerortId: 'l5', ifcoId: null, anzahl: 9 },
+        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 3, ausgeliehenAm: vorher },
+        { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 1, ausgeliehenAm: vorher },
+        { gegenstandId: 'g1', lagerortId: null, ifcoId: 'i1', anzahl: 2, ausgeliehenAm: vorher },
+        {
+          gegenstandId: 'andere',
+          lagerortId: 'l5',
+          ifcoId: null,
+          anzahl: 9,
+          ausgeliehenAm: vorher,
+        },
       ],
+      jetzt,
     );
     expect(d.plaetze.map((p) => p.verliehen)).toEqual([4, 2]);
     expect(d.verliehen).toBe(6);

@@ -44,12 +44,21 @@ Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstör
 - **Lagerorte:** Löschen prüft zusätzlich Ifcos, Plätze und Ausleihen. Archivieren ist mit Ifcos oder direkt zugeordneten Gegenständen
   im Teilbaum nicht möglich („Im Lagerort liegt noch Inventar. Räume es zuerst um.“) und nicht, solange von dort etwas verliehen ist.
 - **Ausleihe:** Eine Position nennt Gegenstand, Herkunft (Lagerort oder Ifco) und Anzahl. Die Herkunft muss eine bestehende
-  Zuordnung des Gegenstands sein, die Anzahl höchstens zugeordnet minus offen verliehen (`ausleihFehler`, 400 mit Gegenstand und
-  Platz); archivierte Gegenstände sind nicht verleihbar. Die Plätze bleiben beim Verleihen unverändert, die verliehene Menge gilt als
-  „gerade weg“ (`verliehen` je Platz und gesamt). Gegenstand und Herkunft sind je Ausleihe eindeutig.
+  Zuordnung des Gegenstands sein, die Anzahl höchstens zugeordnet minus alle offenen Positionen (verliehen und vorgemerkt,
+  `ausleihFehler`, 400 mit Gegenstand und Platz); archivierte Gegenstände sind nicht verleihbar. Die Plätze bleiben beim Verleihen
+  unverändert. Gegenstand und Herkunft sind je Ausleihe eindeutig.
+- **Vorgemerkt:** Eine offene Position einer Ausleihe mit `ausgeliehenAm` in der Zukunft ist **vorgemerkt**, nicht verliehen; ab
+  `ausgeliehenAm <= jetzt` ist sie **verliehen** („gerade weg“). Vorgemerktes bleibt **reserviert**: Verfügbarkeit, Umräumen und
+  Archivieren zählen verliehen und vorgemerkt zusammen. „Jetzt“ ist die Serverzeit der Anfrage. Aufteilung und Status:
+  `offenAufteilen`, `ausleiheStatus` in `packages/shared/src/inventar.ts`.
+- **Wer blockiert:** Scheitert eine Prüfung an Verliehenem oder Vorgemerktem (`ausleihFehler`, `verliehenFehler`, Ifco-/Lagerort-Archivieren),
+  nennt die Meldung die Ausleihen mit Person und Datum („…nur noch 1 verfügbar: 3 an Feuerwehr verliehen (seit 20.10.2026), 2 an
+  Jugendgruppe vorgemerkt (ab 25.10.2026).“; `blockierungen`/`blockierungText`, Datum dd.MM.yyyy, Europe/Berlin). Auf `AusleihePage` steht dieselbe
+  Aufstellung (Personen verlinkt) als Hinweis unter dem Mengenfeld, sobald am Platz etwas verliehen oder vorgemerkt ist, und bei Überschreitung
+  in der orangen Warnung.
 - **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
   Eine Ausleihe ist `erledigt`, wenn alle Positionen zurück sind. `DELETE` entfernt eine Ausleihe samt Positionen (Fehleintrag).
-- **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`) wird abgelehnt (409 „Davon sind noch 3 verliehen.“).
+- **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`) wird abgelehnt (409 „Davon sind noch 3 verliehen oder vorgemerkt.“).
 - `erstellt_von` einer Ausleihe ist die `sub` der anfragenden Person.
 
 ## API
@@ -64,8 +73,9 @@ Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstör
 | `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id` | `inventar:umraeumen` |
 
 Antworten: `GET /gegenstaende[/:id]` liefert je Gegenstand `plaetze: [{ id, lagerortId, ifcoId, anzahl, verliehen }]` (`verliehen` =
-offene Menge von dieser Herkunft) und `verliehen` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]`; eine
-Ausleihe liefert `erledigt` und `positionen` (mit `zurueckAm`). So rechnet der Client die Lager-Ansicht selbst aus. Unbekannte
+Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von dieser Herkunft) und `verliehen` / `vorgemerkt` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]`; eine
+Ausleihe liefert `erledigt`, `status` (`geplant` = beginnt in der Zukunft, `verliehen`, `erledigt`) und `positionen` (mit `zurueckAm`);
+`?status=offen` liefert geplante und verliehene. So rechnet der Client die Lager-Ansicht selbst aus. Unbekannte
 Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert nur `an`,
 `ausgeliehenAm`, `rueckgabeGeplant` und `kommentar`.
 
@@ -77,7 +87,7 @@ jede Änderung macht `['inventar']` ungültig.
 
 - `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ / „Verliehen“ (`?ansicht=ifcos|verliehen`), Suche (bei
   Gegenständen Name, Beschreibung, Ifco und Lagerort-Pfad der Plätze; bei Ifcos Name, Platz, Inhalt), Kategoriefilter inkl.
-  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6× · 3 verliehen“) und ein oranges Badge
+  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6× · 3 verliehen · 2 vorgemerkt“) und ein oranges Badge
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
@@ -88,19 +98,19 @@ jede Änderung macht `['inventar']` ungültig.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 
-- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten (`AusleiheKarte`: an wen, seit wann, geplante Rückgabe – überfällig
+- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten, verliehene zuerst, dann vorgemerkte nach Beginn (`AusleiheKarte`: an wen, „Seit …“ bzw. bei Vorgemerkten Badge „Vorgemerkt“ und „Ab …“, geplante Rückgabe – überfällig
   rot –, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
   (`inventar:umraeumen`). Daten über `useAusleihen(nurOffen)` / `useAusleihe(id)` (Keys `['inventar','ausleihen',…]`); jede Änderung macht
   `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und Ifcos nachzieht.
 - `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, Zeitpunkt (jetzt, änderbar), geplante Rückgabe (optional),
-  Kommentar; Gegenstand per Suche hinzufügen, je Platz mit Verfügbarem (zugeordnet minus verliehen, `verfuegbarePlaetze`) ein Zahlenfeld
+  Kommentar; Gegenstand per Suche hinzufügen, je Platz mit Verfügbarem (zugeordnet minus verliehen und vorgemerkt, `verfuegbarePlaetze`) ein Zahlenfeld
   (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze Ifco verleihen“ übernimmt den verfügbaren Inhalt
   einer Ifco. Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit allen
   Positionen, danach Weiterleitung zur neuen Ausleihe.
 - `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
-  möglich), zurückgegebene Positionen mit Datum. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Zeitpunkt, geplante Rückgabe, Kommentar)
+  möglich), zurückgegebene Positionen mit Datum. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Zeitpunkt, geplante Rückgabe, Kommentar)
   und „Löschen“ (`inventar:umraeumen`).
-- Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
+- Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“.
 - Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen Ifcos und direkt zugeordnete
   Gegenstände im Zähler, eine offene Inventur trägt ein Symbol), siehe [waren.md](./waren.md).

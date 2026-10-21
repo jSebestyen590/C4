@@ -13,6 +13,12 @@ import {
   platzText,
   rueckgabeSchema,
   verliehenFehler,
+  istVorgemerkt,
+  blockierungText,
+  blockierungen,
+  datumDe,
+  offenAufteilen,
+  ausleiheStatus,
   verliehenJePlatz,
   type Beschriftung,
   type PlatzMenge,
@@ -239,10 +245,74 @@ describe('verliehenFehler', () => {
   });
   it('rejects lowering or removing a place below the lent amount', () => {
     expect(verliehenFehler([menge('g1', { l: 'regal' }, 2)], offen, namen)).toBe(
-      '„Kabeltrommel“ bei „Lager › Regal 1“: Davon sind noch 3 verliehen.',
+      '„Kabeltrommel“ bei „Lager › Regal 1“: Davon sind noch 3 verliehen oder vorgemerkt.',
     );
     expect(verliehenFehler([menge('g1', { i: 'i1' }, 9)], offen, namen)).toContain(
-      'Davon sind noch 3 verliehen.',
+      'Davon sind noch 3 verliehen oder vorgemerkt.',
+    );
+  });
+});
+
+describe('istVorgemerkt / offenAufteilen / ausleiheStatus', () => {
+  const jetzt = new Date('2026-10-21T12:00:00.000Z');
+  it('treats only a start after now as vorgemerkt', () => {
+    expect(istVorgemerkt('2026-10-21T12:00:01.000Z', jetzt)).toBe(true);
+    expect(istVorgemerkt('2026-10-21T12:00:00.000Z', jetzt)).toBe(false);
+    expect(istVorgemerkt(new Date('2026-10-01T00:00:00.000Z'), jetzt)).toBe(false);
+  });
+  it('splits open positions by start', () => {
+    const a = { id: 'a', ausgeliehenAm: '2026-10-01T00:00:00.000Z' };
+    const b = { id: 'b', ausgeliehenAm: new Date('2026-10-25T00:00:00.000Z') };
+    const { verliehen, vorgemerkt } = offenAufteilen([a, b], jetzt);
+    expect(verliehen).toEqual([a]);
+    expect(vorgemerkt).toEqual([b]);
+  });
+  it('derives the Ausleihe status', () => {
+    const offen = [{ zurueckAm: null }];
+    expect(ausleiheStatus('2026-10-25T00:00:00.000Z', offen, jetzt)).toBe('geplant');
+    expect(ausleiheStatus('2026-10-01T00:00:00.000Z', offen, jetzt)).toBe('verliehen');
+    expect(ausleiheStatus('2026-10-01T00:00:00.000Z', [{ zurueckAm: 'x' }, ...offen], jetzt)).toBe(
+      'verliehen',
+    );
+    expect(ausleiheStatus('2026-10-25T00:00:00.000Z', [{ zurueckAm: 'x' }], jetzt)).toBe(
+      'erledigt',
+    );
+  });
+});
+
+describe('Blockierung: who holds the pieces', () => {
+  const jetzt = new Date('2026-10-21T12:00:00.000Z');
+  const pos = (an: string, anzahl: number, ausgeliehenAm: string) => ({
+    ...menge('g1', { l: 'regal' }, anzahl),
+    an,
+    ausleiheId: `a-${an}`,
+    ausgeliehenAm,
+  });
+  const offen = [
+    pos('Jugendgruppe', 2, '2026-10-25T10:00:00.000Z'),
+    pos('Feuerwehr Musterdorf', 3, '2026-10-20T08:00:00.000Z'),
+  ];
+  it('formats dates in German', () => {
+    expect(datumDe('2026-10-20T23:30:00.000Z')).toBe('21.10.2026');
+  });
+  it('lists verliehen first, then vorgemerkt', () => {
+    expect(
+      blockierungText(
+        blockierungen(offen, { gegenstandId: 'g1', lagerortId: 'regal', ifcoId: null }, jetzt),
+      ),
+    ).toBe(
+      '3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026)',
+    );
+  });
+  it('names the borrowers in ausleihFehler', () => {
+    const plaetze = [menge('g1', { l: 'regal' }, 6)];
+    expect(ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 2)], namen, jetzt)).toBe(
+      'Von „Kabeltrommel“ sind bei „Lager › Regal 1“ nur noch 1 verfügbar: 3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026).',
+    );
+  });
+  it('names the borrowers in verliehenFehler', () => {
+    expect(verliehenFehler([menge('g1', { l: 'regal' }, 2)], offen, namen, jetzt)).toBe(
+      '„Kabeltrommel“ bei „Lager › Regal 1“: Davon sind noch 5 verliehen oder vorgemerkt: 3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026).',
     );
   });
 });

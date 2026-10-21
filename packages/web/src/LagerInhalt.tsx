@@ -53,6 +53,12 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
                 · {g.verliehen} verliehen
               </Text>
             )}
+            {g.vorgemerkt > 0 && (
+              <Text span c="cyan" inherit>
+                {' '}
+                · {g.vorgemerkt} vorgemerkt
+              </Text>
+            )}
           </span>
         </Anchor>
       ))}

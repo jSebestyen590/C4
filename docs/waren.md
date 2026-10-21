@@ -20,7 +20,7 @@ nie neu berechnet; negativer Bestand ist erlaubt.
 
 Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansonsten archiviert
 (`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist und im Teilbaum kein Inventar
-liegt (Ifcos, direkt zugeordnete Gegenstände) und nichts verliehen ist (409, siehe [inventar.md](./inventar.md)); dabei wird der Teilbaum
+liegt (Ifcos, direkt zugeordnete Gegenstände) und nichts verliehen oder vorgemerkt ist (409, siehe [inventar.md](./inventar.md)); dabei wird der Teilbaum
 archiviert. Löschen prüft zusätzlich, ob Ifcos, Inventar-Plätze oder Ausleihen auf den Lagerort verweisen. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
 zeigen sie nur mit `?archiv=1`.
 
@@ -99,7 +99,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     `['lagerorte','bestand']` und `['lagerort-waren','alle']`.
   - **Inventar je Platz** (nur mit `inventar:lesen`, siehe [inventar.md](./inventar.md)): Der Schalter „Inventar anzeigen“ (standardmäßig an,
     eigene Wahl im `localStorage`, Schlüssel `lager.inventarAnzeigen`) zeigt unter jedem Knoten die dort stehenden Ifcos (`Spanngurtkiste · 12 Teile`)
-    und direkt zugeordnete Gegenstände (`Kabeltrommel 6× · 3 verliehen`) als Links zu den Detailseiten. Berechnung im Client
+    und direkt zugeordnete Gegenstände (`Kabeltrommel 6× · 3 verliehen · 2 vorgemerkt`) als Links zu den Detailseiten. Berechnung im Client
     (`inventarJeLagerort`, `lagerInventar.ts`) aus den Listen von `useGegenstaendeUndIfcos()`; archivierte Gegenstände und Ifcos fehlen.
   - **Karten und Kacheln:** Knoten mit sichtbaren Unterknoten sind Karten (rekursiv). Blätter unterhalb der obersten Ebene (Stellplätze)
     erscheinen nach den Karten ihres Elternknotens als Kachelraster (4 / 6 / 8 Spalten ab Handy / `sm` / `md`); oberste Knoten bleiben

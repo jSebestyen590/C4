@@ -28,7 +28,7 @@ import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { GegenstandPlaetzeModal } from '../GegenstandPlaetzeModal';
-import { AusleiheStatus } from '../AusleiheKarte';
+import { AusleiheStatus, startText } from '../AusleiheKarte';
 import {
   gegenstandAbweichung,
   gesamtVerfuegbar,
@@ -98,15 +98,23 @@ export function GegenstandDetailPage() {
     .filter((x) => x.eigene.length > 0)
     .map((x) => ({ ...x, offen: x.eigene.some((p) => p.zurueckAm === null) }))
     .sort((x, y) => Number(y.offen) - Number(x.offen));
-  /** Open Ausleihen holding pieces from the given place. */
+  /** Open Ausleihen holding pieces from the given place, with the amount taken from there. */
+  const offenAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
+    ausleihen.flatMap(({ a, eigene }) => {
+      const anzahl = eigene
+        .filter(
+          (p) =>
+            p.zurueckAm === null && p.lagerortId === ziel.lagerortId && p.ifcoId === ziel.ifcoId,
+        )
+        .reduce((s, p) => s + p.anzahl, 0);
+      return anzahl > 0 ? [{ a, anzahl }] : [];
+    });
   const verliehenAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
-    ausleihen.flatMap(({ a, eigene }) =>
-      eigene.some(
-        (p) => p.zurueckAm === null && p.lagerortId === ziel.lagerortId && p.ifcoId === ziel.ifcoId,
-      )
-        ? [a]
-        : [],
-    );
+    offenAn(ziel)
+      .filter((x) => x.a.status !== 'geplant')
+      .map((x) => x.a);
+  const vorgemerktAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
+    offenAn(ziel).filter((x) => x.a.status === 'geplant');
 
   return (
     <Stack maw={900}>
@@ -127,6 +135,11 @@ export function GegenstandDetailPage() {
             {g.verliehen > 0 && (
               <Badge variant="light" color="grape">
                 {g.verliehen} verliehen
+              </Badge>
+            )}
+            {g.vorgemerkt > 0 && (
+              <Badge variant="light" color="cyan">
+                {g.vorgemerkt} vorgemerkt
               </Badge>
             )}
             {abweichung && (
@@ -194,7 +207,7 @@ export function GegenstandDetailPage() {
                   <Text style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{z.text}</Text>
                 )}
                 <Text fw={600} style={{ flex: 'none' }}>
-                  {mengeText(z.anzahl, z.verliehen)}
+                  {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
                 </Text>
               </Group>
               {z.verliehen > 0 && (
@@ -215,6 +228,19 @@ export function GegenstandDetailPage() {
                   )
                 </Text>
               )}
+              {vorgemerktAn(platz).map(({ a, anzahl }) => (
+                <Text key={a.id} size="sm" c="cyan" mt={4} style={{ overflowWrap: 'anywhere' }}>
+                  vorgemerkt: {anzahl} ab {zeitAnzeigen(a.ausgeliehenAm)} (an{' '}
+                  <Anchor
+                    component={Link}
+                    to={`/inventar/ausleihen/${encodeURIComponent(a.id)}`}
+                    inherit
+                  >
+                    {a.an}
+                  </Anchor>
+                  )
+                </Text>
+              ))}
             </Paper>
           );
         })}
@@ -266,7 +292,7 @@ export function GegenstandDetailPage() {
                     <AusleiheStatus a={a} />
                   </Group>
                   <Text size="sm" c="dimmed">
-                    Seit {zeitAnzeigen(a.ausgeliehenAm)}
+                    {startText(a)}
                   </Text>
                   {eigene.map((p) => (
                     <Text

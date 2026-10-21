@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, ne, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, ne, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   bestandZu,
@@ -33,9 +33,12 @@ import {
   type VerlaufPunkt,
   type VerlaufSerie,
   type VerlaufZeile,
+  blockierungText,
+  blockierungen,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
+  ausleihen,
   ausleihePositionen,
   bestandsbuchungen,
   bestandsvorgaenge,
@@ -602,6 +605,27 @@ export const sortiert = <T>(liste: T[], schluessel: (t: T) => string) =>
 const inListe = <T>(spalte: Parameters<typeof inArray>[0], werte: T[]) =>
   werte.length === 0 ? undefined : inArray(spalte, werte as never[]);
 
+/**
+ * Open (not yet returned) Ausleihe-Positionen incl. start and borrower of their Ausleihe, optionally
+ * narrowed by `bedingung`. This counts the ones away now and the reserved ones (start in the future) alike.
+ */
+export const offenLaden = (q: Q, bedingung?: SQL) =>
+  q
+    .select({
+      ...getTableColumns(ausleihePositionen),
+      ausgeliehenAm: ausleihen.ausgeliehenAm,
+      an: ausleihen.an,
+    })
+    .from(ausleihePositionen)
+    .innerJoin(ausleihen, eq(ausleihen.id, ausleihePositionen.ausleiheId))
+    .where(and(isNull(ausleihePositionen.zurueckAm), bedingung));
+
+/** `: 3 an Feuerwehr verliehen (seit …)` for the given open positions, or `` without any. */
+export const blockiertVon = (offen: Awaited<ReturnType<typeof offenLaden>>): string => {
+  const text = blockierungText(blockierungen(offen, null, new Date()));
+  return text ? `: ${text}` : '';
+};
+
 /** Whether any row of `tabelle` matches `bedingung`. */
 export async function gibtEs(q: Q, tabelle: PgTable, bedingung: SQL | undefined): Promise<boolean> {
   const rows = await q.select().from(tabelle).where(bedingung).limit(1);
@@ -955,26 +979,19 @@ export function createWarenStore(db: Db): WarenStore {
               'Für den Lagerort läuft noch eine Inventur. Schließe oder verwirf sie zuerst.',
             );
           }
-          const [inventar, verliehen] = await Promise.all([
+          const [inventar, offenVerliehen] = await Promise.all([
             Promise.all([
               gibtEs(tx, ifcos, inArray(ifcos.lagerortId, ids)),
               gibtEs(tx, gegenstandPlaetze, inArray(gegenstandPlaetze.lagerortId, ids)),
             ]),
-            gibtEs(
-              tx,
-              ausleihePositionen,
-              and(
-                isNull(ausleihePositionen.zurueckAm),
-                inArray(ausleihePositionen.lagerortId, ids),
-              ),
-            ),
+            offenLaden(tx, inArray(ausleihePositionen.lagerortId, ids)),
           ]);
           if (inventar.some(Boolean)) {
             throw new WarenKonflikt('Im Lagerort liegt noch Inventar. Räume es zuerst um.');
           }
-          if (verliehen) {
+          if (offenVerliehen.length > 0) {
             throw new WarenKonflikt(
-              'Aus dem Lagerort ist noch etwas verliehen. Nimm es zuerst zurück.',
+              `Aus dem Lagerort ist noch etwas verliehen oder vorgemerkt${blockiertVon(offenVerliehen)}. Nimm es zuerst zurück.`,
             );
           }
         } else {

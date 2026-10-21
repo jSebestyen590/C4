@@ -61,7 +61,7 @@ function GegenstandKarte({
             )}
           </Text>
           <Text fw={600} style={{ flex: 'none' }}>
-            {mengeText(g.anzahl, g.verliehen)}
+            {mengeText(g.anzahl, g.verliehen, g.vorgemerkt)}
           </Text>
         </Group>
         <Text size="sm" c="dimmed">
@@ -69,7 +69,7 @@ function GegenstandKarte({
         </Text>
         {zeilen.map((z) => (
           <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
-            {z.text} · {mengeText(z.anzahl, z.verliehen)}
+            {z.text} · {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
           </Text>
         ))}
         {zeilen.length === 0 && (

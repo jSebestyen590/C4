@@ -79,9 +79,13 @@ export function zielOptionen(
   ].filter((g) => g.items.length > 0);
 }
 
-/** `6× · 3 verliehen` */
-export function mengeText(anzahl: number, verliehen = 0): string {
-  return verliehen > 0 ? `${anzahl}× · ${verliehen} verliehen` : `${anzahl}×`;
+/** `6× · 3 verliehen · 2 vorgemerkt` */
+export function mengeText(anzahl: number, verliehen = 0, vorgemerkt = 0): string {
+  return [
+    `${anzahl}×`,
+    ...(verliehen > 0 ? [`${verliehen} verliehen`] : []),
+    ...(vorgemerkt > 0 ? [`${vorgemerkt} vorgemerkt`] : []),
+  ].join(' · ');
 }
 
 /** Deviation of a Gegenstand's Plätze from its target, e.g. `2 ohne Platz`; null when it matches. */
@@ -96,13 +100,14 @@ export function platzZeilen(
   g: GegenstandEintrag,
   lagerorte: BaumKnoten[],
   ifcos: IfcoEintrag[],
-): { id: string; text: string; anzahl: number; verliehen: number }[] {
+): { id: string; text: string; anzahl: number; verliehen: number; vorgemerkt: number }[] {
   return g.plaetze
     .map((p) => ({
       id: p.id,
       text: platzText(lagerorte, ifcos, p),
       anzahl: p.anzahl,
       verliehen: p.verliehen,
+      vorgemerkt: p.vorgemerkt,
     }))
     .sort((a, b) => a.text.localeCompare(b.text, 'de'));
 }
@@ -111,10 +116,11 @@ export function platzZeilen(
 export interface VerfuegbarerPlatz extends PlatzZiel {
   anzahl: number;
   verliehen: number;
+  vorgemerkt: number;
   verfuegbar: number;
 }
 
-/** Places of a Gegenstand with something left to lend (assigned minus lent), sorted by display text. */
+/** Places of a Gegenstand with something left to lend (assigned minus lent and reserved), sorted by display text. */
 export function verfuegbarePlaetze(
   g: Pick<GegenstandEintrag, 'plaetze'>,
   lagerorte: BaumKnoten[],
@@ -126,7 +132,8 @@ export function verfuegbarePlaetze(
       ifcoId: p.ifcoId,
       anzahl: p.anzahl,
       verliehen: p.verliehen,
-      verfuegbar: p.anzahl - p.verliehen,
+      vorgemerkt: p.vorgemerkt,
+      verfuegbar: p.anzahl - p.verliehen - p.vorgemerkt,
       text: platzText(lagerorte, ifcos, p),
     }))
     .filter((p) => p.verfuegbar > 0)
@@ -135,7 +142,19 @@ export function verfuegbarePlaetze(
 
 /** Amount of a Gegenstand that can still be lent over all its places. */
 export const gesamtVerfuegbar = (g: Pick<GegenstandEintrag, 'plaetze'>): number =>
-  g.plaetze.reduce((s, p) => s + Math.max(0, p.anzahl - p.verliehen), 0);
+  g.plaetze.reduce((s, p) => s + Math.max(0, p.anzahl - p.verliehen - p.vorgemerkt), 0);
+
+/** Verliehen first, then vorgemerkt by start, then finished ones; the API order (newest first) otherwise. */
+export function ausleihenSortiert<T extends Pick<AusleiheEintrag, 'status' | 'ausgeliehenAm'>>(
+  liste: T[],
+): T[] {
+  const rang = { verliehen: 0, geplant: 1, erledigt: 2 } as const;
+  return [...liste].sort(
+    (a, b) =>
+      rang[a.status] - rang[b.status] ||
+      (a.status === 'geplant' ? a.ausgeliehenAm.localeCompare(b.ausgeliehenAm) : 0),
+  );
+}
 
 /** Open Positionen of an Ausleihe. */
 export const offenePositionen = (a: Pick<AusleiheEintrag, 'positionen'>) =>

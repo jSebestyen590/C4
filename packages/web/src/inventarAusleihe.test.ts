@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ausleihenSortiert,
   gesamtVerfuegbar,
   isoZuLokal,
+  mengeText,
   offenePositionen,
   positionText,
   ueberfaellig,
@@ -35,10 +37,11 @@ const g1: GegenstandEintrag = {
   anzahl: 10,
   archiviert: false,
   verliehen: 5,
+  vorgemerkt: 1,
   plaetze: [
-    { id: 'p1', lagerortId: 'l2', ifcoId: null, anzahl: 6, verliehen: 3 },
-    { id: 'p2', lagerortId: null, ifcoId: 'i1', anzahl: 4, verliehen: 2 },
-    { id: 'p3', lagerortId: 'l1', ifcoId: null, anzahl: 2, verliehen: 2 },
+    { id: 'p1', lagerortId: 'l2', ifcoId: null, anzahl: 6, verliehen: 3, vorgemerkt: 1 },
+    { id: 'p2', lagerortId: null, ifcoId: 'i1', anzahl: 4, verliehen: 2, vorgemerkt: 0 },
+    { id: 'p3', lagerortId: 'l1', ifcoId: null, anzahl: 2, verliehen: 2, vorgemerkt: 0 },
   ],
 };
 
@@ -47,11 +50,11 @@ describe('verfuegbarePlaetze', () => {
     const r = verfuegbarePlaetze(g1, lagerorte, ifcos);
     expect(r.map((p) => [p.text, p.verfuegbar])).toEqual([
       ['Kiste · Lager › Regal', 2],
-      ['Lager › Regal', 3],
+      ['Lager › Regal', 2],
     ]);
   });
   it('sums the available amount', () => {
-    expect(gesamtVerfuegbar(g1)).toBe(5);
+    expect(gesamtVerfuegbar(g1)).toBe(4);
   });
 });
 
@@ -105,10 +108,10 @@ describe('inventarJeLagerort', () => {
     const karte = inventarJeLagerort([g1, { ...g1, id: 'g9', archiviert: true }], ifcos);
     expect(karte.get('l2')).toEqual({
       ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5 }],
-      gegenstaende: [{ id: 'g1', name: 'Kabeltrommel', anzahl: 6, verliehen: 3 }],
+      gegenstaende: [{ id: 'g1', name: 'Kabeltrommel', anzahl: 6, verliehen: 3, vorgemerkt: 1 }],
     });
     expect(karte.get('l1')?.gegenstaende).toEqual([
-      { id: 'g1', name: 'Kabeltrommel', anzahl: 2, verliehen: 2 },
+      { id: 'g1', name: 'Kabeltrommel', anzahl: 2, verliehen: 2, vorgemerkt: 0 },
     ]);
   });
   it('leaves out archived and place-less Ifcos', () => {
@@ -120,5 +123,35 @@ describe('inventarJeLagerort', () => {
       ],
     );
     expect(karte.size).toBe(0);
+  });
+});
+
+describe('mengeText', () => {
+  it('shows verliehen and vorgemerkt separately', () => {
+    expect(mengeText(10)).toBe('10×');
+    expect(mengeText(10, 3)).toBe('10× · 3 verliehen');
+    expect(mengeText(10, 0, 2)).toBe('10× · 2 vorgemerkt');
+    expect(mengeText(10, 3, 2)).toBe('10× · 3 verliehen · 2 vorgemerkt');
+  });
+});
+
+describe('ausleihenSortiert', () => {
+  it('puts verliehen first, then vorgemerkt by start, then erledigt', () => {
+    const a = (
+      id: string,
+      status: 'geplant' | 'verliehen' | 'erledigt',
+      ausgeliehenAm: string,
+    ) => ({
+      id,
+      status,
+      ausgeliehenAm,
+    });
+    const liste = [
+      a('e', 'erledigt', '2026-10-01T00:00:00.000Z'),
+      a('g2', 'geplant', '2026-11-01T00:00:00.000Z'),
+      a('v', 'verliehen', '2026-10-02T00:00:00.000Z'),
+      a('g1', 'geplant', '2026-10-25T00:00:00.000Z'),
+    ];
+    expect(ausleihenSortiert(liste).map((x) => x.id)).toEqual(['v', 'g1', 'g2', 'e']);
   });
 });

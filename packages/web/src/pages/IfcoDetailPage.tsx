@@ -86,7 +86,12 @@ export function IfcoDetailPage() {
     .map((p) => {
       const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
       const platz = g?.plaetze.find((x) => x.ifcoId === ifco.id);
-      return { ...p, name: g?.name ?? 'Unbekannt', verliehen: platz?.verliehen ?? 0 };
+      return {
+        ...p,
+        name: g?.name ?? 'Unbekannt',
+        verliehen: platz?.verliehen ?? 0,
+        vorgemerkt: platz?.vorgemerkt ?? 0,
+      };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
@@ -173,7 +178,7 @@ export function IfcoDetailPage() {
                 {z.name}
               </Anchor>
               <Text fw={600} style={{ flex: 'none' }}>
-                {mengeText(z.anzahl, z.verliehen)}
+                {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
               </Text>
             </Group>
           </Paper>
@@ -198,7 +203,7 @@ export function IfcoDetailPage() {
           mih={48}
           variant="light"
           leftSection={<IconTruckDelivery size={20} />}
-          disabled={zeilen.every((z) => z.anzahl - z.verliehen <= 0)}
+          disabled={zeilen.every((z) => z.anzahl - z.verliehen - z.vorgemerkt <= 0)}
         >
           Ganze Ifco verleihen
         </Button>

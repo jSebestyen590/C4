@@ -155,6 +155,7 @@ function makeInventarFake() {
         archiviert: false,
         plaetze: [],
         verliehen: 0,
+        vorgemerkt: 0,
       }),
     ),
     gegenstandAnlegen: vi.fn<InventarStore['gegenstandAnlegen']>(async () => 'g2'),
@@ -168,7 +169,8 @@ function makeInventarFake() {
     }),
     gegenstandArchivieren: vi.fn<InventarStore['gegenstandArchivieren']>(async (id) => setze(id)),
     gegenstandPlaetzeSetzen: vi.fn<InventarStore['gegenstandPlaetzeSetzen']>(async (id) => {
-      if (verwendet.has(id)) throw new WarenKonflikt('Davon sind noch 3 verliehen.');
+      if (verwendet.has(id))
+        throw new WarenKonflikt('Davon sind noch 3 verliehen oder vorgemerkt.');
       return setze(id);
     }),
     ifcos: vi.fn<InventarStore['ifcos']>(async () => []),
@@ -199,6 +201,7 @@ function makeInventarFake() {
         erstelltVon: 'r',
         erstelltAm: new Date('2026-05-01T10:00:00.000Z'),
         erledigt: false,
+        status: 'verliehen' as const,
         positionen: [],
       }),
     ),
@@ -1407,7 +1410,9 @@ describe('inventar', () => {
     inventarVerwendet.add('g1');
     const konflikt = await put('/api/inventar/gegenstaende/g1/plaetze', { plaetze: [] });
     expect(konflikt.status).toBe(409);
-    expect(await konflikt.json()).toEqual({ error: 'Davon sind noch 3 verliehen.' });
+    expect(await konflikt.json()).toEqual({
+      error: 'Davon sind noch 3 verliehen oder vorgemerkt.',
+    });
 
     expect((await put('/api/inventar/ifcos/i1/platz', { lagerortId: 'l1' })).status).toBe(200);
     expect(inventar.ifcoPlatzSetzen).toHaveBeenCalledWith('i1', 'l1');

@@ -10,13 +10,14 @@ export interface KategorieEintrag {
   archiviert: boolean;
 }
 
-/** An assignment of a Gegenstand to a place; `verliehen` is the open lent amount from there. */
+/** An assignment of a Gegenstand to a place; `verliehen` is the open amount away now, `vorgemerkt` the reserved one (Ausleihe starts later). */
 export interface PlatzEintrag {
   id: string;
   lagerortId: string | null;
   ifcoId: string | null;
   anzahl: number;
   verliehen: number;
+  vorgemerkt: number;
 }
 
 /** A Gegenstand as returned by `GET /inventar/gegenstaende`: master data plus its Plätze. */
@@ -29,8 +30,10 @@ export interface GegenstandEintrag {
   anzahl: number;
   archiviert: boolean;
   plaetze: PlatzEintrag[];
-  /** Total open lent amount. */
+  /** Total open amount that is away now. */
   verliehen: number;
+  /** Total open amount of Ausleihen starting in the future. */
+  vorgemerkt: number;
 }
 
 /** An Ifco as returned by `GET /inventar/ifcos`: master data plus its content. */
@@ -66,6 +69,8 @@ export interface AusleiheEintrag {
   kommentar: string | null;
   /** True when every Position was returned. */
   erledigt: boolean;
+  /** `geplant` = starts in the future (vorgemerkt), `verliehen` = away now, `erledigt` = all back. */
+  status: 'geplant' | 'verliehen' | 'erledigt';
   positionen: AusleihePositionEintrag[];
 }
 

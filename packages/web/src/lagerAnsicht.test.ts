@@ -45,7 +45,10 @@ const belegung: Belegung = {
   ]),
   inventar: new Map([
     ['s2', { ifcos: [{ id: 'i', name: 'I', stueck: 3 }], gegenstaende: [] }],
-    ['s1', { ifcos: [], gegenstaende: [{ id: 'g', name: 'G', anzahl: 2, verliehen: 0 }] }],
+    [
+      's1',
+      { ifcos: [], gegenstaende: [{ id: 'g', name: 'G', anzahl: 2, verliehen: 0, vorgemerkt: 0 }] },
+    ],
   ]),
 };
 

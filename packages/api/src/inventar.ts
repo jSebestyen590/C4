@@ -1,14 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   ausleihFehler,
+  ausleiheStatus,
+  offenAufteilen,
   platzKey,
   platzText,
   teilbaumIds,
   verliehenFehler,
   verliehenJePlatz,
   zielKey,
+  type AusleiheStatus,
   type Beschriftung,
+  type OffenePosition,
   type PlatzMenge,
   type PlatzZiel,
 } from '@c4/shared';
@@ -29,7 +33,9 @@ import {
 } from './db/schema';
 import {
   elternFehler,
+  blockiertVon,
   gibtEs,
+  offenLaden,
   sortiert,
   verwendetMeldung,
   WarenKonflikt,
@@ -80,16 +86,22 @@ export interface AusleiheDaten extends AusleiheKopfDaten {
   positionen: AusleihePositionDaten[];
 }
 
-/** An assignment of a Gegenstand to a place; `verliehen` is the open lent amount from this place. */
+/**
+ * An assignment of a Gegenstand to a place; `verliehen` is the open amount that is away now,
+ * `vorgemerkt` the open amount of Ausleihen that start in the future (still reserved).
+ */
 export interface PlatzDetails extends PlatzDaten {
   id: string;
   verliehen: number;
+  vorgemerkt: number;
 }
 
 export interface GegenstandDetails extends GegenstandRow {
   plaetze: PlatzDetails[];
-  /** Total open lent amount over all places. */
+  /** Total open amount that is away now, over all places. */
   verliehen: number;
+  /** Total open amount of Ausleihen starting in the future. */
+  vorgemerkt: number;
 }
 
 export interface IfcoDetails extends IfcoRow {
@@ -99,6 +111,8 @@ export interface IfcoDetails extends IfcoRow {
 export interface AusleiheDetails extends AusleiheRow {
   /** True when every Position was returned. */
   erledigt: boolean;
+  /** `erledigt`, `geplant` (starts in the future) or `verliehen`. */
+  status: AusleiheStatus;
   positionen: AusleihePositionRow[];
 }
 
@@ -149,24 +163,33 @@ export interface InventarStore {
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested in inventar.test.ts)
 
-/** Plätze with the open lent amount of their place, plus the total lent amount of the Gegenstand. */
+/** Plätze with the open amounts of their place (away now / reserved), plus the totals of the Gegenstand. */
 export function gegenstandDetails(
   g: GegenstandRow,
   plaetze: { id: string; lagerortId: string | null; ifcoId: string | null; anzahl: number }[],
-  offen: PlatzMenge[],
+  offen: OffenePosition[],
+  jetzt: Date = new Date(),
 ): GegenstandDetails {
-  const verliehen = verliehenJePlatz(offen.filter((o) => o.gegenstandId === g.id));
-  const mitVerliehen = plaetze.map(({ id, lagerortId, ifcoId, anzahl }) => ({
-    id,
-    lagerortId,
-    ifcoId,
-    anzahl,
-    verliehen: verliehen.get(platzKey({ gegenstandId: g.id, lagerortId, ifcoId })) ?? 0,
-  }));
+  const eigene = offen.filter((o) => o.gegenstandId === g.id);
+  const teile = offenAufteilen(eigene, jetzt);
+  const verliehen = verliehenJePlatz(teile.verliehen);
+  const vorgemerkt = verliehenJePlatz(teile.vorgemerkt);
+  const mitMengen = plaetze.map(({ id, lagerortId, ifcoId, anzahl }) => {
+    const key = platzKey({ gegenstandId: g.id, lagerortId, ifcoId });
+    return {
+      id,
+      lagerortId,
+      ifcoId,
+      anzahl,
+      verliehen: verliehen.get(key) ?? 0,
+      vorgemerkt: vorgemerkt.get(key) ?? 0,
+    };
+  });
   return {
     ...g,
-    plaetze: mitVerliehen,
-    verliehen: mitVerliehen.reduce((s, p) => s + p.verliehen, 0),
+    plaetze: mitMengen,
+    verliehen: mitMengen.reduce((s, p) => s + p.verliehen, 0),
+    vorgemerkt: mitMengen.reduce((s, p) => s + p.vorgemerkt, 0),
   };
 }
 
@@ -241,13 +264,6 @@ const alsMenge = (gegenstandId: string, p: PlatzDaten): PlatzMenge => ({
   anzahl: p.anzahl,
 });
 
-/** Open (not yet returned) Ausleihe-Positionen, optionally narrowed by `bedingung`. */
-const offenLaden = (q: Q, bedingung?: SQL) =>
-  q
-    .select()
-    .from(ausleihePositionen)
-    .where(and(isNull(ausleihePositionen.zurueckAm), bedingung));
-
 async function kategorieMussNutzbarSein(q: Q, id: string): Promise<void> {
   const [k] = await q.select().from(inventarKategorien).where(eq(inventarKategorien.id, id));
   if (!k) throw new WarenUngueltig('Die Kategorie existiert nicht.');
@@ -305,10 +321,12 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
       .from(ausleihePositionen)
       .where(nurId ? eq(ausleihePositionen.ausleiheId, nurId) : undefined),
   ]);
+  const jetzt = new Date();
   return rows
     .map((a) => {
       const eigene = positionen.filter((p) => p.ausleiheId === a.id);
-      return { ...a, erledigt: eigene.every((p) => p.zurueckAm !== null), positionen: eigene };
+      const status = ausleiheStatus(a.ausgeliehenAm, eigene, jetzt);
+      return { ...a, erledigt: status === 'erledigt', status, positionen: eigene };
     })
     .sort(
       (a, b) => b.ausgeliehenAm.getTime() - a.ausgeliehenAm.getTime() || a.id.localeCompare(b.id),
@@ -522,14 +540,10 @@ export function createInventarStore(db: Db): InventarStore {
         const [ifco] = await tx.select().from(ifcos).where(eq(ifcos.id, id));
         if (!ifco) return false;
         if (archiviert) {
-          const verliehen = await gibtEs(
-            tx,
-            ausleihePositionen,
-            and(eq(ausleihePositionen.ifcoId, id), isNull(ausleihePositionen.zurueckAm)),
-          );
-          if (verliehen) {
+          const offen = await offenLaden(tx, eq(ausleihePositionen.ifcoId, id));
+          if (offen.length > 0) {
             throw new WarenKonflikt(
-              'Aus der Ifco ist noch etwas verliehen. Nimm es zuerst zurück.',
+              `Aus der Ifco ist noch etwas verliehen oder vorgemerkt${blockiertVon(offen)}. Nimm es zuerst zurück.`,
             );
           }
           if (await gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.ifcoId, id))) {

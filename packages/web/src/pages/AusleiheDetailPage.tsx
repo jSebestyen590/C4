@@ -20,7 +20,7 @@ import { platzText, rueckgabeSchema } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { AusleiheBearbeitenModal } from '../AusleiheBearbeitenModal';
-import { AusleiheStatus, RueckgabeGeplant } from '../AusleiheKarte';
+import { AusleiheStatus, RueckgabeGeplant, startText } from '../AusleiheKarte';
 import { useAuth } from '../auth';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { offenePositionen } from '../inventarAnzeige';
@@ -88,6 +88,8 @@ export function AusleiheDetailPage() {
       ),
   );
   const offen = offenePositionen(ausleihe);
+  // A vorgemerkt Ausleihe has not started yet: no Rückgabe, only edit or delete.
+  const darfZurueck = darfUmraeumen && ausleihe.status !== 'geplant';
   const alleGewaehlt = offen.length > 0 && offen.every((p) => gewaehlt.has(p.id));
   const umschalten = (positionId: string) =>
     setGewaehlt((alt) => {
@@ -112,12 +114,12 @@ export function AusleiheDetailPage() {
       <Group justify="space-between" wrap="nowrap" align="flex-start" gap={4}>
         <Stack gap={4} style={{ minWidth: 0 }}>
           <Title order={2} style={{ overflowWrap: 'anywhere' }}>
-            Verliehen an {ausleihe.an}
+            {ausleihe.status === 'geplant' ? 'Vorgemerkt für' : 'Verliehen an'} {ausleihe.an}
           </Title>
           <Group gap="xs">
             <AusleiheStatus a={ausleihe} />
           </Group>
-          <Text size="sm">Seit {zeitAnzeigen(ausleihe.ausgeliehenAm)}</Text>
+          <Text size="sm">{startText(ausleihe)}</Text>
           <RueckgabeGeplant a={ausleihe} />
           {ausleihe.kommentar && (
             <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
@@ -148,7 +150,7 @@ export function AusleiheDetailPage() {
 
       <Group justify="space-between" wrap="wrap">
         <Title order={3}>Positionen</Title>
-        {darfUmraeumen && offen.length > 1 && (
+        {darfZurueck && offen.length > 1 && (
           <Button
             variant="subtle"
             onClick={() => setGewaehlt(alleGewaehlt ? new Set() : new Set(offen.map((p) => p.id)))}
@@ -179,7 +181,7 @@ export function AusleiheDetailPage() {
           );
           return (
             <Paper key={p.id} withBorder p="sm" opacity={p.zurueckAm ? 0.7 : 1}>
-              {p.zurueckAm || !darfUmraeumen ? (
+              {p.zurueckAm || !darfZurueck ? (
                 <Group justify="space-between" wrap="nowrap" gap="xs" mih={44}>
                   {inhalt}
                   {g && (
@@ -210,7 +212,14 @@ export function AusleiheDetailPage() {
         })}
       </Stack>
 
-      {darfUmraeumen && offen.length > 0 && (
+      {darfUmraeumen && ausleihe.status === 'geplant' && (
+        <Text size="sm" c="dimmed">
+          Die Ausleihe beginnt erst am {zeitAnzeigen(ausleihe.ausgeliehenAm)}. Bis dahin sind die
+          Teile vorgemerkt und lassen sich nicht zurückgeben. Du kannst die Ausleihe bearbeiten oder
+          löschen.
+        </Text>
+      )}
+      {darfZurueck && offen.length > 0 && (
         <Paper withBorder p="sm">
           <Stack gap="sm">
             <TextInput

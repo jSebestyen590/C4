@@ -17,14 +17,15 @@ import { IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ausleiheSchema } from '@c4/shared';
+import { Anchor } from '@mantine/core';
+import { ausleiheSchema, blockierungen, type Blockierung, type OffenePosition } from '@c4/shared';
 import { useApi } from '../api';
 import { AusleiheKopfFelder, type AusleiheKopf } from '../AusleiheKopfFelder';
 import { BuchungsBestaetigung, type BestaetigungsGruppe } from '../BuchungsBestaetigung';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
 import { datumText, gesamtVerfuegbar, verfuegbarePlaetze } from '../inventarAnzeige';
-import { INVENTAR_KEY, useInventar } from '../inventarDaten';
+import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { jetztLokal } from '../inventurDaten';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
@@ -36,6 +37,29 @@ const mengeKey = (
   ziel: { lagerortId: string | null; ifcoId: string | null },
 ) => `${gegenstandId}|${zielWert(ziel)}`;
 
+/** Who holds or has reserved pieces: `3 an Feuerwehr verliehen (seit 20.10.2026), 2 an … vorgemerkt (ab …)`, borrowers linked. */
+function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
+  return liste.map((b, i) => (
+    <span key={`${b.ausleiheId}-${b.vorgemerkt}`}>
+      {i > 0 && ', '}
+      {b.anzahl} an{' '}
+      {b.ausleiheId ? (
+        <Anchor
+          component={Link}
+          to={`/inventar/ausleihen/${encodeURIComponent(b.ausleiheId)}`}
+          inherit
+          target="_blank"
+        >
+          {b.an}
+        </Anchor>
+      ) : (
+        b.an
+      )}{' '}
+      {b.vorgemerkt ? `vorgemerkt (ab ${b.datum})` : `verliehen (seit ${b.datum})`}
+    </span>
+  ));
+}
+
 const ORANGE = 'var(--mantine-color-orange-6)';
 
 /** Lend Gegenstände: header data plus, per Gegenstand and place, how many pieces leave. */
@@ -45,6 +69,16 @@ export function AusleihePage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inv = useInventar();
+  const offeneAusleihen = useAusleihen(true).ausleihen;
+  const offenePositionen = useMemo<OffenePosition[]>(
+    () =>
+      offeneAusleihen.flatMap((a) =>
+        a.positionen
+          .filter((p) => p.zurueckAm === null)
+          .map((p) => ({ ...p, ausleiheId: a.id, an: a.an, ausgeliehenAm: a.ausgeliehenAm })),
+      ),
+    [offeneAusleihen],
+  );
   const enterWeiter = useEnterWeiter('verleihen-weiter');
   const [kopf, setKopf] = useState<AusleiheKopf>({
     an: '',
@@ -74,9 +108,9 @@ export function AusleihePage() {
     for (const p of ifco?.inhalt ?? []) {
       const g = verleihbar.find((x) => x.id === p.gegenstandId);
       const platz = g?.plaetze.find((x) => x.ifcoId === ifcoId);
-      if (!g || !platz || platz.anzahl - platz.verliehen <= 0) continue;
+      if (!g || !platz || platz.anzahl - platz.verliehen - platz.vorgemerkt <= 0) continue;
       ids.push(g.id);
-      vorgabe[mengeKey(g.id, platz)] = platz.anzahl - platz.verliehen;
+      vorgabe[mengeKey(g.id, platz)] = platz.anzahl - platz.verliehen - platz.vorgemerkt;
     }
     return { ids, vorgabe };
   };
@@ -164,7 +198,7 @@ export function AusleihePage() {
       {
         titel: `An ${geprueft.data.an}`,
         zeilen: [
-          `Seit ${zeitAnzeigen(iso)}`,
+          `${new Date(iso) > new Date() ? 'Ab' : 'Seit'} ${zeitAnzeigen(iso)}`,
           ...(geprueft.data.rueckgabeGeplant
             ? [`Rückgabe geplant: ${datumText(geprueft.data.rueckgabeGeplant)}`]
             : []),
@@ -251,11 +285,29 @@ export function AusleihePage() {
               {plaetze.map((p) => {
                 const key = mengeKey(g.id, p);
                 const zuViel = menge(g.id, p) > p.verfuegbar;
+                const wer = blockierungen(
+                  offenePositionen,
+                  { gegenstandId: g.id, lagerortId: p.lagerortId, ifcoId: p.ifcoId },
+                  new Date(),
+                );
                 return (
                   <NumberInput
                     key={key}
                     label={`Aus ${p.text}`}
-                    description={`Verfügbar: ${p.verfuegbar}${p.verliehen > 0 ? ` (${p.verliehen} schon verliehen)` : ''}`}
+                    description={
+                      <>
+                        Verfügbar: {p.verfuegbar}
+                        {wer.length > 0 ? (
+                          <>
+                            {' · '}
+                            <Blockiert liste={wer} />
+                          </>
+                        ) : (
+                          p.verliehen + p.vorgemerkt > 0 &&
+                          ` (${p.verliehen + p.vorgemerkt} schon verliehen oder vorgemerkt)`
+                        )}
+                      </>
+                    }
                     placeholder={String(p.verfuegbar)}
                     allowDecimal={false}
                     allowNegative={false}
@@ -263,7 +315,20 @@ export function AusleihePage() {
                     inputMode="numeric"
                     data-zeile
                     value={mengen[key] ?? ''}
-                    error={zuViel ? `Nur ${p.verfuegbar} verfügbar.` : undefined}
+                    error={
+                      zuViel ? (
+                        <>
+                          Nur {p.verfuegbar} verfügbar
+                          {wer.length > 0 ? (
+                            <>
+                              : <Blockiert liste={wer} />.
+                            </>
+                          ) : (
+                            '.'
+                          )}
+                        </>
+                      ) : undefined
+                    }
                     styles={
                       zuViel
                         ? { input: { borderColor: ORANGE }, error: { color: ORANGE } }
