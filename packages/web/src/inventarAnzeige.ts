@@ -346,3 +346,58 @@ export function isoZuLokal(iso: string): string {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 }
+
+export type GegenstandSortierung = 'name' | 'kategorie' | 'anzahl' | 'platz';
+
+export const GEGENSTAND_SORTIERUNGEN: { value: GegenstandSortierung; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'kategorie', label: 'Kategorie' },
+  { value: 'anzahl', label: 'Anzahl' },
+  { value: 'platz', label: 'Platz' },
+];
+
+const deutsch = (a: string, b: string): number => a.localeCompare(b, 'de', { sensitivity: 'base' });
+
+/** German compare where an empty text sorts last. */
+const leerZuletzt = (a: string, b: string): number =>
+  a === b ? 0 : a === '' ? 1 : b === '' ? -1 : deutsch(a, b);
+
+/**
+ * Sorted copy of the Gegenstände. Name: A–Z; Kategorie: by path, then name; Anzahl: most pieces first;
+ * Platz: by the first place path, Gegenstände without a place last. Ties fall back to the name. `umgekehrt` flips the order, but items without a place
+ * stay last.
+ */
+export function gegenstaendeSortieren(
+  liste: GegenstandEintrag[],
+  sortierung: GegenstandSortierung,
+  kontext: { kategorien: BaumKnoten[]; lagerorte: BaumKnoten[]; ifcos: IfcoEintrag[] },
+  umgekehrt = false,
+): GegenstandEintrag[] {
+  const richtung = umgekehrt ? -1 : 1;
+  const erstesZiel = (g: GegenstandEintrag) =>
+    g.plaetze.length === 0 ? '' : (platzZeilen(g, kontext.lagerorte, kontext.ifcos)[0]?.text ?? '');
+  const nachName = (a: GegenstandEintrag, b: GegenstandEintrag) => deutsch(a.name, b.name);
+
+  return [...liste].sort((a, b) => {
+    switch (sortierung) {
+      case 'name':
+        return richtung * nachName(a, b);
+      case 'kategorie':
+        return (
+          richtung *
+          (deutsch(
+            pfad(kontext.kategorien, a.kategorieId),
+            pfad(kontext.kategorien, b.kategorieId),
+          ) || nachName(a, b))
+        );
+      case 'anzahl':
+        // Default is descending, so the normal direction puts the largest first.
+        return richtung * (b.anzahl - a.anzahl || nachName(a, b));
+      case 'platz': {
+        const [x, y] = [erstesZiel(a), erstesZiel(b)];
+        if (x === '' || y === '') return leerZuletzt(x, y) || nachName(a, b);
+        return richtung * (deutsch(x, y) || nachName(a, b));
+      }
+    }
+  });
+}

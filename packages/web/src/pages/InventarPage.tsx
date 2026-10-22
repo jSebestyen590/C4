@@ -10,11 +10,20 @@ import {
   SimpleGrid,
   Stack,
   Switch,
+  Table,
   Text,
   TextInput,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconSettings } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconPlus,
+  IconSearch,
+  IconSelector,
+  IconSettings,
+} from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pfad, platzText, teilbaumIds } from '@c4/shared';
@@ -24,7 +33,10 @@ import { IfcoFormular } from '../IfcoFormular';
 import { typAnzeige } from '../ifcoPlatz';
 import {
   anzahlText,
+  GEGENSTAND_SORTIERUNGEN,
   gegenstandAbweichung,
+  gegenstaendeSortieren,
+  type GegenstandSortierung,
   ifcoAusleiheKurz,
   kategorieOptionen,
   mengeName,
@@ -90,6 +102,154 @@ function GegenstandKarte({
         )}
       </Stack>
     </Paper>
+  );
+}
+
+const gegenstandLink = (id: string) => `/inventar/gegenstaende/${encodeURIComponent(id)}`;
+
+/** Column header that sorts the table; the Select above the list offers the same on phones. */
+function SortKopf({
+  spalte,
+  label,
+  sortierung,
+  umgekehrt,
+  onSort,
+}: Readonly<{
+  spalte: GegenstandSortierung;
+  label: string;
+  sortierung: GegenstandSortierung;
+  umgekehrt: boolean;
+  onSort: (spalte: GegenstandSortierung) => void;
+}>) {
+  const aktiv = sortierung === spalte;
+  const Icon = !aktiv ? IconSelector : umgekehrt ? IconChevronDown : IconChevronUp;
+  return (
+    <Table.Th aria-sort={!aktiv ? 'none' : umgekehrt ? 'descending' : 'ascending'}>
+      <UnstyledButton onClick={() => onSort(spalte)} py="xs" fw={600}>
+        <Group gap={4} wrap="nowrap">
+          {label}
+          <Icon size={16} aria-hidden />
+        </Group>
+      </UnstyledButton>
+    </Table.Th>
+  );
+}
+
+/** Table of Gegenstände from `sm` on; the whole row opens the detail page. */
+function GegenstandTabelle({
+  liste,
+  inv,
+  sortierung,
+  umgekehrt,
+  onSort,
+}: Readonly<{
+  liste: GegenstandEintrag[];
+  inv: ReturnType<typeof useInventar>;
+  sortierung: GegenstandSortierung;
+  umgekehrt: boolean;
+  onSort: (spalte: GegenstandSortierung) => void;
+}>) {
+  const navigate = useNavigate();
+  const kopf = (spalte: GegenstandSortierung, label: string) => (
+    <SortKopf
+      spalte={spalte}
+      label={label}
+      sortierung={sortierung}
+      umgekehrt={umgekehrt}
+      onSort={onSort}
+    />
+  );
+  return (
+    <Table.ScrollContainer minWidth={760} visibleFrom="sm">
+      <Table verticalSpacing="xs">
+        <Table.Thead>
+          <Table.Tr>
+            {kopf('name', 'Name')}
+            {kopf('kategorie', 'Kategorie')}
+            {kopf('anzahl', 'Anzahl')}
+            {kopf('platz', 'Plätze')}
+            <Table.Th>Status</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {liste.map((g) => {
+            const abweichung = gegenstandAbweichung(g);
+            const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
+            return (
+              <Table.Tr
+                key={g.id}
+                opacity={g.archiviert ? 0.6 : 1}
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => {
+                  // The name is a real link (keyboard, middle click); it navigates on its own.
+                  if (!(e.target as HTMLElement).closest('a')) navigate(gegenstandLink(g.id));
+                }}
+              >
+                <Table.Td>
+                  {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+                  <Link to={gegenstandLink(g.id)} style={kartenStil}>
+                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                      {g.name}
+                    </Text>
+                  </Link>
+                  {g.beschreibung && (
+                    <Text size="sm" c="dimmed" lineClamp={1}>
+                      {g.beschreibung}
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                    {pfad(inv.kategorien, g.kategorieId)}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <Text fw={600}>{anzahlText(g.anzahl)}</Text>
+                </Table.Td>
+                <Table.Td>
+                  {zeilen.map((z) => (
+                    <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
+                      {[anzahlText(z.anzahl), z.text].filter(Boolean).join(' ')}
+                      {z.verliehen > 0 && (
+                        <Text span size="xs" c="grape" inherit>
+                          {' · '}
+                          {z.verliehen} verliehen
+                        </Text>
+                      )}
+                      {z.vorgemerkt > 0 && (
+                        <Text span size="xs" c="cyan" inherit>
+                          {' · '}
+                          {z.vorgemerkt} vorgemerkt
+                        </Text>
+                      )}
+                    </Text>
+                  ))}
+                  {zeilen.length === 0 && (
+                    <Text size="sm" c="dimmed">
+                      Kein Platz zugeordnet
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    {abweichung && (
+                      <Badge color="orange" variant="light">
+                        {abweichung}
+                      </Badge>
+                    )}
+                    {g.archiviert && (
+                      <Badge color="gray" variant="light">
+                        Archiviert
+                      </Badge>
+                    )}
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 }
 
@@ -177,7 +337,17 @@ export function InventarPage() {
   const [suche, setSuche] = useState('');
   const [kategorie, setKategorie] = useState<string | null>(null);
   const [archiv, setArchiv] = useState(false);
+  const [sortierung, setSortierung] = useState<GegenstandSortierung>('name');
+  const [umgekehrt, setUmgekehrt] = useState(false);
   const [anlegen, setAnlegen] = useState(false);
+
+  const sortieren = (spalte: GegenstandSortierung) => {
+    if (spalte === sortierung) setUmgekehrt((u) => !u);
+    else {
+      setSortierung(spalte);
+      setUmgekehrt(false);
+    }
+  };
 
   const waehleAnsicht = (wert: string) =>
     setParams(wert === 'gegenstaende' ? {} : { ansicht: wert }, { replace: true });
@@ -190,7 +360,7 @@ export function InventarPage() {
   const gegenstaende = useMemo(() => {
     const ids = kategorie ? new Set(teilbaumIds(inv.kategorien, kategorie)) : null;
     const q = suche.trim().toLowerCase();
-    return inv.gegenstaende
+    const treffer = inv.gegenstaende
       .filter((g) => archiv || !g.archiviert)
       .filter((g) => !ids || ids.has(g.kategorieId))
       .filter((g) => {
@@ -201,9 +371,24 @@ export function InventarPage() {
         return g.plaetze.some((p) =>
           platzText(inv.lagerorte, inv.ifcos, p).toLowerCase().includes(q),
         );
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  }, [inv.gegenstaende, inv.kategorien, inv.lagerorte, inv.ifcos, kategorie, suche, archiv]);
+      });
+    return gegenstaendeSortieren(
+      treffer,
+      sortierung,
+      { kategorien: inv.kategorien, lagerorte: inv.lagerorte, ifcos: inv.ifcos },
+      umgekehrt,
+    );
+  }, [
+    inv.gegenstaende,
+    inv.kategorien,
+    inv.lagerorte,
+    inv.ifcos,
+    kategorie,
+    suche,
+    archiv,
+    sortierung,
+    umgekehrt,
+  ]);
 
   const ifcos = useMemo(() => {
     const q = suche.trim().toLowerCase();
@@ -280,6 +465,21 @@ export function InventarPage() {
               />
             )}
           </SimpleGrid>
+          {imGegenstand && (
+            <Select
+              label="Sortieren nach"
+              data={GEGENSTAND_SORTIERUNGEN}
+              value={sortierung}
+              onChange={(v) => {
+                if (v) {
+                  setSortierung(v as GegenstandSortierung);
+                  setUmgekehrt(false);
+                }
+              }}
+              allowDeselect={false}
+              maw={{ sm: 280 }}
+            />
+          )}
           <Switch
             label="Archivierte anzeigen"
             checked={archiv}
@@ -292,11 +492,30 @@ export function InventarPage() {
               {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine Ifcos gefunden.'}
             </Text>
           )}
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-            {imGegenstand
-              ? gegenstaende.map((g) => <GegenstandKarte key={g.id} g={g} inv={inv} />)
-              : ifcos.map((i) => <IfcoKarte key={i.id} ifco={i} inv={inv} />)}
-          </SimpleGrid>
+          {imGegenstand ? (
+            <>
+              <SimpleGrid cols={1} hiddenFrom="sm">
+                {gegenstaende.map((g) => (
+                  <GegenstandKarte key={g.id} g={g} inv={inv} />
+                ))}
+              </SimpleGrid>
+              {gegenstaende.length > 0 && (
+                <GegenstandTabelle
+                  liste={gegenstaende}
+                  inv={inv}
+                  sortierung={sortierung}
+                  umgekehrt={umgekehrt}
+                  onSort={sortieren}
+                />
+              )}
+            </>
+          ) : (
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+              {ifcos.map((i) => (
+                <IfcoKarte key={i.id} ifco={i} inv={inv} />
+              ))}
+            </SimpleGrid>
+          )}
         </>
       )}
       {anlegen && imGegenstand && (

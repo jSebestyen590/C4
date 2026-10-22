@@ -140,7 +140,7 @@ jede Änderung macht `['inventar']` ungültig.
 
 - `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ / „Verliehen“ (`?ansicht=ifcos|verliehen`), Suche (bei
   Gegenständen Name, Beschreibung, Ifco und Lagerort-Pfad der Plätze; bei Ifcos Name, Platz, Inhalt), Kategoriefilter inkl.
-  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6×“ im Kopf, am Platz „Lager › Regal · 3 verliehen · 2 vorgemerkt“; die Verleih-Hinweise stehen nur an den Plätzen) und ein oranges Badge
+  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Sortierung (Select „Sortieren nach“, Standard Name): Name, Kategorie (Pfad, dann Name), Anzahl (absteigend), Platz (erster Platz, ohne Platz zuletzt), deutsch verglichen (`gegenstaendeSortieren` in `inventarAnzeige.ts`); in der Tabelle sortieren auch die Spaltenköpfe, ein zweiter Klick kehrt um. Auf dem Handy sind es Karten, ab `sm` eine Tabelle (Name mit Beschreibung, Kategorie, Anzahl, Plätze mit „3 verliehen“ in Lila und „2 vorgemerkt“ in Cyan, Status mit Abweichung/Archiviert); die ganze Zeile öffnet den Gegenstand. Karten zeigen Plätze mit Pfad („6×“ im Kopf, am Platz „Lager › Regal · 3 verliehen · 2 vorgemerkt“; die Verleih-Hinweise stehen nur an den Plätzen) und ein oranges Badge
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
