@@ -185,7 +185,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
   `BuchungModal.tsx`; Entnahme zeigt danach die FIFO-Zeilen), Bestand je Lagerort (`WareBestand.tsx`), Bestandsverlauf als
   Stufendiagramm je Basisgebinde, umschaltbar Gesamt / Je Lager (`WareVerlauf.tsx`; `GET /waren/:id/verlauf` liefert dazu
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,
-  neueste zuerst, mit Löschen (`WareHistorie.tsx`). Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet; enthält er Zeilen anderer Waren (`weitereZeilen`, Sammelbuchung), nennt die Bestätigung deren Anzahl, denn sie werden mitgelöscht.
+  neueste zuerst, mit Löschen (`WareHistorie.tsx`); der Ersteller steht als Username (ohne Username „Vorname Nachname“), fett in der Statusfarbe und verlinkt zum Mitglied. `ersteller` in `GET /waren/:id/vorgaenge` und `/inventuren[/:id]` trägt dazu `sub`, `username` und `status`. Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet; enthält er Zeilen anderer Waren (`weitereZeilen`, Sammelbuchung), nennt die Bestätigung deren Anzahl, denn sie werden mitgelöscht.
 - `/lager/inventur/:id` (`bestand:buchen`): Inventur als eine kompakte, direkt bearbeitbare Tabelle für das ganze Lager,
   Handy zuerst (`InventurPage.tsx`, `InventurAbschnitt.tsx`, `InventurZeile.tsx`). Je Platz (Tiefensuche) eine Überschrift
   mit dem Pfad, darunter eine Zeile je Ware und MHD: vorbelegt aus dem Soll (eine Zeile je vorhandenem MHD, Anzeige „Name ·

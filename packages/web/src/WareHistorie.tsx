@@ -1,12 +1,14 @@
-import { Alert, Badge, Button, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTrash } from '@tabler/icons-react';
 import { ActionIcon } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { BaumKnoten, Gebinde } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { QUELLE_LABELS, VORGANG_TYP_LABELS } from './i18n';
+import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 import { fehlerAnzeigen, pruefen } from './warenApi';
 import { zeileText, zeilenSortieren, zeitAnzeigen } from './warenAnzeige';
@@ -68,9 +70,14 @@ export function WareHistorie({
               <Text size="sm" c="dimmed">
                 {zeitAnzeigen(v.zeitpunkt)} ·{' '}
                 {v.ersteller ? (
-                  <StatusName status={v.ersteller.status}>
-                    {`${v.ersteller.vorname} ${v.ersteller.nachname}`.trim()}
-                  </StatusName>
+                  <Anchor
+                    component={Link}
+                    to={mitgliedLink(v.ersteller)}
+                    underline="never"
+                    inherit
+                  >
+                    <StatusName status={v.ersteller.status}>{mitgliedName(v.ersteller)}</StatusName>
+                  </Anchor>
                 ) : (
                   'Unbekannt'
                 )}

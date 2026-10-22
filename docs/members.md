@@ -94,7 +94,7 @@ oder Entfernen werden beide Dateien gelöscht. Keys müssen unter `profilbilder/
 
 Der Username wird auf der Profilseite gewählt (Cognito-Alias, eindeutig, 3–64 Zeichen aus
 `A-Za-z0-9._-`, darf nicht wie eine UUID aussehen). Die Detailseite liegt unter
-`/mitglieder/<username>`. Mitglieder ohne Username sind über ihre `sub` erreichbar. Ändert man auf der
+`/mitglieder/<username>`. Wo ein Mitglied in anderen Seiten (Posten, Verlauf, Ausleihen) erwähnt wird, steht sein Username, fett in der Statusfarbe (`StatusName`) und möglichst verlinkt (`mitgliedLink`); nur ohne Username erscheint „Vorname Nachname“. Mitglieder ohne Username sind über ihre `sub` erreichbar. Ändert man auf der
 eigenen Detailseite den Username, zieht die URL mit.
 
 ## E-Mail ändern

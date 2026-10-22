@@ -2,10 +2,14 @@ import type { Mitglied } from '@c4/shared';
 
 type Namen = Pick<Mitglied, 'username' | 'vorname' | 'nachname' | 'email'>;
 
-const vollerName = (m: Namen) => `${m.vorname} ${m.nachname}`.trim();
+const vollerName = (m: Pick<Namen, 'vorname' | 'nachname'>) => `${m.vorname} ${m.nachname}`.trim();
 
 /** Primary label: the username, then the full name, then the email (not yet activated users). */
 export const anzeigename = (m: Namen) => m.username ?? (vollerName(m) || m.email) ?? '';
+
+/** Label of a member embedded in another DTO: the username, else "Vorname Nachname" (no email there). */
+export const mitgliedName = (m: Pick<Mitglied, 'username' | 'vorname' | 'nachname'>) =>
+  m.username ?? (vollerName(m) || '–');
 
 /** Secondary label: the full name below the username. */
 export const nebenname = (m: Namen) => (m.username ? vollerName(m) : '');

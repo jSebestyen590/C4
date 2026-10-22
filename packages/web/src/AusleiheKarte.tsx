@@ -12,7 +12,7 @@ import {
 } from './inventarAnzeige';
 import type { AusleiheEintrag, useInventar } from './inventarDaten';
 import { StatusName } from './StatusAnzeige';
-import { mitgliedLink } from './mitglied';
+import { mitgliedLink, mitgliedName } from './mitglied';
 
 const MAX_POSITIONEN = 4;
 
@@ -86,7 +86,7 @@ export function OrganisatorZeile({
   if (!o) return null;
   const name = (
     <StatusName status={o.status}>
-      {o.username ?? (`${o.vorname} ${o.nachname}`.trim() || '–')}
+      {mitgliedName(o)}
     </StatusName>
   );
   return (

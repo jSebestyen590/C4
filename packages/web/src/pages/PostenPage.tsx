@@ -27,12 +27,13 @@ import {
 } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { leerePostenWerte, PostenFelder, type PostenWerte } from '../PostenFelder';
 
 /** Username of a holder, falling back to the full name while they have none. */
 export const besetzungName = (b: Besetzung) =>
-  b.mitglied.username ?? (`${b.mitglied.vorname} ${b.mitglied.nachname}`.trim() || '–');
+  mitgliedName(b.mitglied);
 
 const postenLink = (id: string) => `/posten/${encodeURIComponent(id)}`;
 

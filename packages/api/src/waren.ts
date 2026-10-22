@@ -415,6 +415,9 @@ export interface WareDetails extends WareRow {
 
 /** Display data of the member who created something; null for users without a profile. */
 export interface Ersteller {
+  sub: string;
+  /** Cognito username; the store cannot know it, `app.ts` fills it in (null until then). */
+  username: string | null;
   vorname: string;
   nachname: string;
   anrede: Anrede;
@@ -779,7 +782,10 @@ export function createWarenStore(db: Db): WarenStore {
       .from(mitglieder)
       .where(inArray(mitglieder.sub, eindeutig));
     return new Map(
-      rows.map(({ sub, anrede, ...r }) => [sub, { ...r, anrede: anrede ?? 'neutral' }]),
+      rows.map(({ sub, anrede, ...r }) => [
+        sub,
+        { ...r, sub, username: null, anrede: anrede ?? 'neutral' },
+      ]),
     );
   };
 

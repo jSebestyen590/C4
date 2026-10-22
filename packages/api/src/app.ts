@@ -172,6 +172,27 @@ export function createApp(deps: AppDeps) {
     );
   };
 
+  /** Adds the Cognito username to the `ersteller` of Vorgänge/Inventuren (the store only knows the profile row). */
+  const mitErstellerUsernames = async <
+    T extends { ersteller: { sub: string; username: string | null } | null },
+  >(
+    liste: T[],
+  ): Promise<T[]> => {
+    if (!liste.some((e) => e.ersteller)) return liste;
+    const konten = await deps.userAdmin.konten();
+    return liste.map((e) =>
+      e.ersteller
+        ? {
+            ...e,
+            ersteller: {
+              ...e.ersteller,
+              username: konten.get(e.ersteller.sub)?.username ?? null,
+            },
+          }
+        : e,
+    );
+  };
+
   /** Maps a Posten to its DTO; Besetzungen carry the display data of the member. */
   const alsPosten = (
     p: PostenDetails,
@@ -817,7 +838,11 @@ export function createApp(deps: AppDeps) {
         c.json(gefunden(await deps.waren.wareVerlauf(c.req.param('id')), 'Ware nicht gefunden')),
       )
       .get('/waren/:id/vorgaenge', auth, warenLesen, async (c) =>
-        c.json(gefunden(await deps.waren.wareVorgaenge(c.req.param('id')), 'Ware nicht gefunden')),
+        c.json(
+          await mitErstellerUsernames(
+            gefunden(await deps.waren.wareVorgaenge(c.req.param('id')), 'Ware nicht gefunden'),
+          ),
+        ),
       )
       // ----- Bestand
       .post(
@@ -890,7 +915,7 @@ export function createApp(deps: AppDeps) {
         if (status !== undefined && status !== 'offen' && status !== 'abgeschlossen') {
           throw new HTTPException(400, { message: 'Ungültiger Status' });
         }
-        return c.json(await deps.waren.inventuren(status));
+        return c.json(await mitErstellerUsernames(await deps.waren.inventuren(status)));
       })
       .post(
         '/inventuren',
@@ -904,11 +929,13 @@ export function createApp(deps: AppDeps) {
           return c.json({ id }, 201);
         },
       )
-      .get('/inventuren/:id', auth, warenLesen, async (c) =>
-        c.json(
-          gefunden(await deps.waren.inventurHolen(c.req.param('id')), 'Inventur nicht gefunden'),
-        ),
-      )
+      .get('/inventuren/:id', auth, warenLesen, async (c) => {
+        const inventur = gefunden(
+          await deps.waren.inventurHolen(c.req.param('id')),
+          'Inventur nicht gefunden',
+        );
+        return c.json((await mitErstellerUsernames([inventur]))[0]!);
+      })
       .put(
         '/inventuren/:id/knoten/:lid',
         auth,
