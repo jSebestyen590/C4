@@ -104,7 +104,7 @@ describe('inventurKnotenIds', () => {
     expect(inventurKnotenIds(alle, 'alt')).toEqual([]);
   });
 
-  it('leaves out places where Ifcos stand, but keeps empty Ifco-Lagerplätze', () => {
+  it('leaves out places where IFCOs stand, but keeps empty IFCO-Lagerplätze', () => {
     const alle = [
       knoten('regal', null),
       knoten('b1', 'regal', 0),

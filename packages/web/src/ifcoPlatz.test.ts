@@ -68,7 +68,7 @@ describe('platzPasst', () => {
     expect(platzPasst(platz, 'p', ifco('n', 'b'), 'b', stehend, typen).passt).toBe(false);
     expect(platzPasst(platz, 'p', ifco('n', 'b'), 'b', [stehend[0]!], typen).passt).toBe(true);
   });
-  it('does not count the Ifco itself or archived Ifcos', () => {
+  it('does not count the IFCO itself or archived IFCOs', () => {
     expect(platzPasst(platz, 'p', stehend[0]!, 'a', stehend, typen).passt).toBe(true);
     expect(
       platzPasst(platz, 'p', ifco('n', 'a'), 'a', [ifco('i1', 'a', 'p', true), ...stehend], typen)
@@ -79,7 +79,7 @@ describe('platzPasst', () => {
         .passt,
     ).toBe(true);
   });
-  it('ignores Ifcos at other places', () => {
+  it('ignores IFCOs at other places', () => {
     expect(platzPasst(platz, 'p', ifco('n', 'a'), 'a', [ifco('i9', 'c', 'q')], typen).passt).toBe(
       true,
     );
@@ -88,8 +88,8 @@ describe('platzPasst', () => {
 
 describe('texts', () => {
   it('formats counts, types and dimensions', () => {
-    expect(ifcosText(1)).toBe('1 Ifco');
-    expect(ifcosText(2)).toBe('2 Ifcos');
+    expect(ifcosText(1)).toBe('1 IFCO');
+    expect(ifcosText(2)).toBe('2 IFCOs');
     expect(typAnzeige('a', typen)).toBe('6410 · 60×40 · 10 cm');
     expect(typAnzeige(null, typen)).toBe('Ohne Typ');
     expect(ifcoPlatzMasse({ ifcoHoeheCm: null, ifcoStellflaechen: null })).toBeNull();

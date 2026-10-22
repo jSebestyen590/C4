@@ -151,7 +151,7 @@ const bodenNamenSchema = z
   );
 
 /**
- * Ifco-Lagerplatz dimensions for new Regalböden: nothing (normal Böden), one object for all, or one
+ * IFCO-Lagerplatz dimensions for new Regalböden: nothing (normal Böden), one object for all, or one
  * object per Boden in the order of the names.
  */
 export const boedenIfcoPlatzSchema = z
@@ -175,7 +175,7 @@ export const lagerortSchema = z.object({
   /** On update: undefined keeps the kind. On create: null/undefined = normal Lagerort. */
   art: z.enum(LAGERORT_ARTEN, 'Ungültige Art.').nullish(),
   /**
-   * Ifco-Lagerplatz dimensions. On update: undefined keeps them, null unmarks the place. On create:
+   * IFCO-Lagerplatz dimensions. On update: undefined keeps them, null unmarks the place. On create:
    * null/undefined = normal place. Only for a place without children (not a Regal).
    */
   ifcoPlatz: ifcoPlatzMasseSchema.nullish(),
@@ -187,7 +187,7 @@ export const lagerortAnlegenSchema = lagerortSchema
   .extend({
     boeden: bodenNamenSchema.optional(),
     /**
-     * Regal only: makes the new Regalböden Ifco-Lagerplätze. One object applies to all, an array
+     * Regal only: makes the new Regalböden IFCO-Lagerplätze. One object applies to all, an array
      * gives every Boden its own dimensions (same length and order as `boeden`).
      */
     boedenIfcoPlatz: boedenIfcoPlatzSchema,
@@ -206,7 +206,7 @@ export type LagerortAnlegenEingabe = z.input<typeof lagerortAnlegenSchema>;
 export const boedenHinzufuegenSchema = z
   .object({
     namen: bodenNamenSchema,
-    /** Optional: Ifco-Lagerplatz dimensions of the new Böden, one object for all or one per name. */
+    /** Optional: IFCO-Lagerplatz dimensions of the new Böden, one object for all or one per name. */
     ifcoPlatz: boedenIfcoPlatzSchema,
   })
   .refine((b) => !Array.isArray(b.ifcoPlatz) || b.ifcoPlatz.length === b.namen.length, {

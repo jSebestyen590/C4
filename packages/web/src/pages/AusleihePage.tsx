@@ -111,7 +111,7 @@ export function AusleihePage() {
   }
   const [rueckgabeFehler, setRueckgabeFehler] = useState<string | null>(null);
   const [gegenstandIds, setGegenstandIds] = useState<string[]>([]);
-  /** Ifcos added with "Ganze Ifco verleihen"; they count as whole only while their full content is entered. */
+  /** IFCOs added with "Ganze IFCO verleihen"; they count as whole only while their full content is entered. */
   const [ifcoIds, setIfcoIds] = useState<string[]>([]);
   const [mengen, setMengen] = useState<Record<string, number | string>>({});
   const [vorbelegt, setVorbelegt] = useState(false);
@@ -136,7 +136,7 @@ export function AusleihePage() {
   const frei = (gegenstandId: string, platz: PlatzZiel & { anzahl: number }) =>
     verfuegbarImZeitraum(platz, gegenstandId, offenePositionen, zeitraum);
 
-  /** Gegenstände in the content of the given Ifco that can be lent. */
+  /** Gegenstände in the content of the given IFCO that can be lent. */
   const ifcoInhalt = (ifcoId: string) => {
     const ifco = inv.ifcos.find((i) => i.id === ifcoId);
     const ids: string[] = [];
@@ -182,7 +182,7 @@ export function AusleihePage() {
     return [{ g, plaetze }];
   });
 
-  /** Entered amount of a place; without input the default (single piece, whole Ifco) counts. */
+  /** Entered amount of a place; without input the default (single piece, whole IFCO) counts. */
   const mengeWert = (
     g: { id: string; plaetze: unknown[] },
     p: { lagerortId: string | null; ifcoId: string | null; anzahl: number; verfuegbar: number },
@@ -199,7 +199,7 @@ export function AusleihePage() {
     return Number.isFinite(zahl) && zahl > 0 ? zahl : 0;
   };
 
-  /** True while the entered amounts take the complete available content of the Ifco (and it has any). */
+  /** True while the entered amounts take the complete available content of the IFCO (and it has any). */
   const ifcoKomplett = (ifcoId: string) => {
     const inhalt = inv.ifcos.find((i) => i.id === ifcoId)?.inhalt ?? [];
     let etwas = false;
@@ -339,27 +339,27 @@ export function AusleihePage() {
         onChange={(id) => id && hinzufuegen([id])}
       />
       <Select
-        label="Ganze Ifco verleihen"
-        placeholder="Ifco wählen"
+        label="Ganze IFCO verleihen"
+        placeholder="IFCO wählen"
         searchable
         inputMode="text"
-        nothingFoundMessage="Keine Ifco gefunden"
+        nothingFoundMessage="Keine IFCO gefunden"
         data={ifcoOptionen}
         value={null}
         onChange={(id) => {
           if (!id) return;
           const { ids } = ifcoInhalt(id);
           if (ids.length === 0)
-            notifications.show({ color: 'yellow', message: 'In der Ifco ist nichts verfügbar.' });
+            notifications.show({ color: 'yellow', message: 'In der IFCO ist nichts verfügbar.' });
           else hinzufuegen(ids, id);
         }}
       />
 
       {ganzeIfcoIds.length > 0 && (
         <Text size="sm" c="dimmed">
-          Wird als ganze Ifco verliehen:{' '}
+          Wird als ganze IFCO verliehen:{' '}
           {ganzeIfcoIds
-            .map((id) => ifcoGruppeTitel(id, inv.ifcos).replace(' (ganze Ifco)', ''))
+            .map((id) => ifcoGruppeTitel(id, inv.ifcos).replace(' (ganze IFCO)', ''))
             .join(', ')}
         </Text>
       )}

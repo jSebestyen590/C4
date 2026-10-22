@@ -94,19 +94,19 @@ describe('positionText', () => {
       ),
     ).toBe('3× Kabeltrommel aus Lager › Regal');
   });
-  it('leaves out the amount for a single piece and marks a whole Ifco', () => {
+  it('leaves out the amount for a single piece and marks a whole IFCO', () => {
     const p = { gegenstandId: 'g1', anzahl: 1, lagerortId: null, ifcoId: 'i1' };
     expect(positionText(p, [g1], lagerorte, ifcos)).toBe('Kabeltrommel aus Kiste · Lager › Regal');
     expect(positionText({ ...p, anzahl: 2, ganzeIfco: true }, [g1], lagerorte, ifcos)).toBe(
-      '2× Kabeltrommel aus Kiste · Lager › Regal (mit ganzer Ifco)',
+      '2× Kabeltrommel aus Kiste · Lager › Regal (mit ganzer IFCO)',
     );
   });
 });
 
-describe('whole Ifco texts', () => {
+describe('whole IFCO texts', () => {
   it('titles the group and lists the contents compactly', () => {
-    expect(ifcoGruppeTitel('i1', ifcos)).toBe('Kiste (ganze Ifco)');
-    expect(ifcoGruppeTitel('nix', ifcos)).toBe('Unbekannte Ifco (ganze Ifco)');
+    expect(ifcoGruppeTitel('i1', ifcos)).toBe('Kiste (ganze IFCO)');
+    expect(ifcoGruppeTitel('nix', ifcos)).toBe('Unbekannte IFCO (ganze IFCO)');
     expect(
       ifcoInhaltText(
         [
@@ -117,7 +117,7 @@ describe('whole Ifco texts', () => {
       ),
     ).toBe('4× Kabeltrommel, Ratsche');
   });
-  it('says who has the Ifco', () => {
+  it('says who has the IFCO', () => {
     const a = { id: 'a', an: 'Feuerwehr', ausgeliehenAm: '2026-10-20T08:00:00.000Z' };
     expect(ifcoAusleiheText({ ...a, status: 'verliehen' }, new Date('2026-10-21T08:00:00Z'))).toBe(
       'Verliehen an Feuerwehr seit 20.10.2026 10:00',
@@ -164,7 +164,7 @@ describe('isoZuLokal', () => {
 });
 
 describe('inventarJeLagerort', () => {
-  it('groups Ifcos and directly assigned Gegenstände per Lagerort', () => {
+  it('groups IFCOs and directly assigned Gegenstände per Lagerort', () => {
     const karte = inventarJeLagerort([g1, { ...g1, id: 'g9', archiviert: true }], ifcos);
     expect(karte.get('l2')).toEqual({
       ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5, typ: null, ausleihe: null }],
@@ -174,7 +174,7 @@ describe('inventarJeLagerort', () => {
       { id: 'g1', name: 'Kabeltrommel', anzahl: 2, verliehen: 2, vorgemerkt: 0 },
     ]);
   });
-  it('leaves out archived and place-less Ifcos', () => {
+  it('leaves out archived and place-less IFCOs', () => {
     const karte = inventarJeLagerort(
       [],
       [
@@ -306,7 +306,7 @@ describe('standardMenge', () => {
     expect(standardMenge({ ...einzeln, anzahl: 5, verfuegbar: 5 }, 1, false)).toBeUndefined();
     expect(standardMenge({ ...einzeln, verfuegbar: 0 }, 1, false)).toBeUndefined();
   });
-  it('takes the whole available content for a whole Ifco', () => {
+  it('takes the whole available content for a whole IFCO', () => {
     expect(
       standardMenge(
         { ...einzeln, ifcoId: 'i1', lagerortId: null, anzahl: 5, verfuegbar: 3 },

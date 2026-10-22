@@ -37,7 +37,7 @@ export interface GegenstandEintrag {
   vorgemerkt: number;
 }
 
-/** An Ifco type as returned by `GET /inventar/ifco-typen`. */
+/** An IFCO type as returned by `GET /inventar/ifco-typen`. */
 export interface IfcoTypEintrag {
   id: string;
   name: string;
@@ -46,7 +46,7 @@ export interface IfcoTypEintrag {
   archiviert: boolean;
 }
 
-/** The open Ausleihe that lends a whole Ifco. */
+/** The open Ausleihe that lends a whole IFCO. */
 export interface IfcoAusleiheEintrag {
   id: string;
   an: string;
@@ -56,17 +56,17 @@ export interface IfcoAusleiheEintrag {
   ausgeliehenAm: string;
 }
 
-/** An Ifco as returned by `GET /inventar/ifcos`: master data plus its content. */
+/** An IFCO as returned by `GET /inventar/ifcos`: master data plus its content. */
 export interface IfcoEintrag {
   id: string;
   name: string;
   beschreibung: string | null;
   lagerortId: string | null;
   archiviert: boolean;
-  /** Ifco type; null = none (not allowed on an Ifco-Lagerplatz). */
+  /** IFCO type; null = none (not allowed on an IFCO-Lagerplatz). */
   typId: string | null;
   inhalt: { gegenstandId: string; anzahl: number }[];
-  /** Open whole-Ifco Ausleihe, or null. */
+  /** Open whole-IFCO Ausleihe, or null. */
   ausleihe: IfcoAusleiheEintrag | null;
 }
 
@@ -80,7 +80,7 @@ export interface AusleihePositionEintrag {
   anzahl: number;
   /** ISO timestamp; null while the position is still lent out. */
   zurueckAm: string | null;
-  /** True when the position belongs to lending a whole Ifco. */
+  /** True when the position belongs to lending a whole IFCO. */
   ganzeIfco: boolean | null;
 }
 
@@ -120,7 +120,7 @@ export interface AusleiheEintrag {
 /** Query key prefix of everything below Inventar; invalidate it after a mutation. */
 export const INVENTAR_KEY = ['inventar'] as const;
 
-/** Ifco types including archived ones; only fetched when `enabled`. */
+/** IFCO types including archived ones; only fetched when `enabled`. */
 export function useIfcoTypen(enabled = true) {
   const api = useApi();
   const q = useQuery({
@@ -136,7 +136,7 @@ export function useIfcoTypen(enabled = true) {
   };
 }
 
-/** Gegenstände and Ifcos incl. archived ones, e.g. for the Lager page; only fetched when `enabled`. */
+/** Gegenstände and IFCOs incl. archived ones, e.g. for the Lager page; only fetched when `enabled`. */
 export function useGegenstaendeUndIfcos(enabled = true) {
   const api = useApi();
   const gegenstaende = useQuery({
@@ -159,8 +159,8 @@ export function useGegenstaendeUndIfcos(enabled = true) {
 }
 
 /**
- * Ids of the places where (non-archived) Ifcos stand: no Waren can be booked there. Empty while
- * loading or when the Ifcos cannot be read (the API still rejects such bookings).
+ * Ids of the places where (non-archived) IFCOs stand: no Waren can be booked there. Empty while
+ * loading or when the IFCOs cannot be read (the API still rejects such bookings).
  */
 export function useOrteMitIfcos() {
   const api = useApi();
@@ -211,7 +211,7 @@ export function useAusleihe(id: string) {
   };
 }
 
-/** Lagerorte, Kategorien, Gegenstände and Ifcos including archived ones (filter client side). */
+/** Lagerorte, Kategorien, Gegenstände and IFCOs including archived ones (filter client side). */
 export function useInventar() {
   const api = useApi();
   const lagerorte = useQuery({

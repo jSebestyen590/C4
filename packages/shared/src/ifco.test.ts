@@ -22,27 +22,27 @@ describe('ifcosPassen', () => {
     expect(ifcosPassen(platz(20, 1), [])).toBe(true);
   });
 
-  it('stacks two large Ifcos of half the height, but not three', () => {
+  it('stacks two large IFCOs of half the height, but not three', () => {
     expect(ifcosPassen(platz(20, 1), [gross(10), gross(10)])).toBe(true);
     expect(ifcosPassen(platz(20, 1), [gross(10), gross(10), gross(10)])).toBe(false);
   });
 
-  it('lets a large and two small Ifcos share one Stellfläche', () => {
+  it('lets a large and two small IFCOs share one Stellfläche', () => {
     expect(ifcosPassen(platz(20, 1), [gross(10), klein(10), klein(10)])).toBe(true);
   });
 
-  it('rejects when the small Ifcos together exceed one half-column', () => {
+  it('rejects when the small IFCOs together exceed one half-column', () => {
     // half-columns [10 + 10, 10 + 12 = 22]
     expect(ifcosPassen(platz(20, 1), [gross(10), klein(10), klein(12)])).toBe(false);
     expect(ifcosPassen(platz(20, 1.5), [gross(10), klein(10), klein(12)])).toBe(true);
   });
 
-  it('rejects an Ifco that is higher than the place', () => {
+  it('rejects an IFCO that is higher than the place', () => {
     expect(ifcosPassen(platz(20, 1), [klein(20.1)])).toBe(false);
     expect(ifcosPassen(platz(20, 1), [klein(20)])).toBe(true);
   });
 
-  it('needs two half-columns for a large Ifco', () => {
+  it('needs two half-columns for a large IFCO', () => {
     expect(ifcosPassen(platz(20, 0.5), [gross(10)])).toBe(false);
     expect(ifcosPassen(platz(20, 0.5), [klein(10), klein(10)])).toBe(true);
     expect(ifcosPassen(platz(20, 0.5), [klein(10), klein(10), klein(10)])).toBe(false);
@@ -50,7 +50,7 @@ describe('ifcosPassen', () => {
     expect(ifcosPassen(platz(20, 2), [gross(20), gross(20)])).toBe(true);
   });
 
-  it('allows any two half-columns for a large Ifco (position is irrelevant)', () => {
+  it('allows any two half-columns for a large IFCO (position is irrelevant)', () => {
     // 3 half-columns of 20: a large 15 takes columns 1+2, a large 5 takes 3 + the rest of 2.
     expect(ifcosPassen(platz(20, 1.5), [gross(15), gross(5), klein(15)])).toBe(true);
     expect(ifcosPassen(platz(20, 1.5), [gross(15), gross(15)])).toBe(false);
@@ -58,7 +58,7 @@ describe('ifcosPassen', () => {
     expect(ifcosPassen(platz(20, 1.5), [gross(15), gross(15), klein(10)])).toBe(false);
   });
 
-  it('is independent of the order of the Ifcos', () => {
+  it('is independent of the order of the IFCOs', () => {
     const liste = [klein(12), gross(10), klein(10), gross(6), klein(4)];
     const umgekehrt = [...liste].reverse();
     for (const stell of [1, 1.5, 2]) {
@@ -79,14 +79,14 @@ describe('ifcosPassen', () => {
     expect(ifcosPassen(platz(20.2, 0.5), [klein(10.1), klein(10.2)])).toBe(false);
   });
 
-  it('rejects more Ifcos than the cap', () => {
+  it('rejects more IFCOs than the cap', () => {
     const viele = Array.from({ length: MAX_IFCOS_JE_PLATZ + 1 }, () => klein(1));
     expect(ifcosPassen(platz(100, 10), viele)).toBe(false);
     expect(ifcosPassen(platz(100, 10), viele.slice(1))).toBe(true);
   });
 
   it('decides an infeasible full place quickly', () => {
-    // 10 half-columns of 30 cm hold at most one 16 cm Ifco each: 11 never fit (pigeonhole).
+    // 10 half-columns of 30 cm hold at most one 16 cm IFCO each: 11 never fit (pigeonhole).
     const t0 = Date.now();
     const zuViele = [...Array.from({ length: 11 }, () => klein(16)), gross(5), gross(5)];
     expect(ifcosPassen(platz(30, 5), zuViele)).toBe(false);
@@ -104,7 +104,7 @@ describe('nochPlatzFuer', () => {
     { id: 'x', name: 'alt', grundflaeche: 'klein' as const, hoeheCm: 5, archiviert: true },
   ];
 
-  it('counts the further Ifcos per non-archived type', () => {
+  it('counts the further IFCOs per non-archived type', () => {
     expect(nochPlatzFuer(platz(20, 1), [], typen)).toEqual([
       { typId: 'a', anzahl: 2 },
       { typId: 'b', anzahl: 4 },
@@ -112,7 +112,7 @@ describe('nochPlatzFuer', () => {
     ]);
   });
 
-  it('takes the standing Ifcos into account', () => {
+  it('takes the standing IFCOs into account', () => {
     expect(nochPlatzFuer(platz(20, 1), [gross(10)], typen)).toEqual([
       { typId: 'a', anzahl: 1 },
       { typId: 'b', anzahl: 2 },
@@ -160,10 +160,10 @@ describe('ifcoPlatzFehler', () => {
         { name: 'Spanngurtkiste', typ: typ('6410', 'gross', 10) },
         { name: 'Werkzeugkiste', typ: typ('6410', 'gross', 10) },
       ],
-      [{ name: 'Strom-Ifco', typ: typ('6416', 'gross', 16) }],
+      [{ name: 'Strom-IFCO', typ: typ('6416', 'gross', 16) }],
     );
     expect(fehler).toBe(
-      'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), Werkzeugkiste (6410, 10 cm); „Strom-Ifco“ (6416, 16 cm) hat keinen Platz mehr.',
+      'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), Werkzeugkiste (6410, 10 cm); „Strom-IFCO“ (6416, 16 cm) hat keinen Platz mehr.',
     );
   });
 
@@ -191,7 +191,7 @@ describe('texts and schemas', () => {
     );
   });
 
-  it('validates the Ifco type', () => {
+  it('validates the IFCO type', () => {
     expect(
       ifcoTypSchema.safeParse({ name: ' 6410 ', grundflaeche: 'gross', hoeheCm: 10.5 }).data,
     ).toEqual({

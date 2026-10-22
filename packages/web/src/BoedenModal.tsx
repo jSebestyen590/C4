@@ -67,8 +67,8 @@ export function BoedenModal({
           <IfcoPlatzFelder
             wert={ifcoPlatz}
             onChange={setIfcoPlatz}
-            label="Als Ifco-Lagerplätze anlegen"
-            beschreibung="Alle neuen Böden werden Ifco-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
+            label="Als IFCO-Lagerplätze anlegen"
+            beschreibung="Alle neuen Böden werden IFCO-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
             reihen={Number(wert.reihen) || 1}
           />
           {fehler && <Alert color="red">{fehler}</Alert>}

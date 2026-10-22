@@ -114,9 +114,9 @@ export const lagerorte = pgTable('lagerorte', {
   archiviert: boolean('archiviert').notNull().default(false),
   /** null = normal Lagerort; see `LAGERORT_ARTEN` in shared. */
   art: text('art').$type<LagerortArt>(),
-  /** Ifco-Lagerplatz: height of every half-column in cm (null = normal place), see `ifcosPassen` in shared. */
+  /** IFCO-Lagerplatz: height of every half-column in cm (null = normal place), see `ifcosPassen` in shared. */
   ifcoHoeheCm: dezimal1('ifco_hoehe_cm'),
-  /** Ifco-Lagerplatz: number of 60x40 footprints (steps of 0.5); set together with `ifcoHoeheCm`. */
+  /** IFCO-Lagerplatz: number of 60x40 footprints (steps of 0.5); set together with `ifcoHoeheCm`. */
   ifcoStellflaechen: dezimal1('ifco_stellflaechen'),
 });
 export type LagerortRow = typeof lagerorte.$inferSelect;
@@ -285,7 +285,7 @@ export const inventarKategorien = pgTable('inventar_kategorien', {
 });
 export type InventarKategorieRow = typeof inventarKategorien.$inferSelect;
 
-/** Master data of an Ifco kind: footprint and height. */
+/** Master data of an IFCO kind: footprint and height. */
 export const ifcoTypen = pgTable('ifco_typen', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -361,7 +361,7 @@ export const ausleihePositionen = pgTable('ausleihe_positionen', {
   anzahl: integer('anzahl').notNull(),
   /** Null while the position is still lent out. */
   zurueckAm: timestamp('zurueck_am', { withTimezone: true }),
-  /** True when the position belongs to lending a whole Ifco (null/false = single item). */
+  /** True when the position belongs to lending a whole IFCO (null/false = single item). */
   ganzeIfco: boolean('ganze_ifco'),
 });
 export type AusleihePositionRow = typeof ausleihePositionen.$inferSelect;

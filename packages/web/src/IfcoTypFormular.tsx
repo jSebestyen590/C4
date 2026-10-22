@@ -14,7 +14,7 @@ import { useApi } from './api';
 import { INVENTAR_KEY, type IfcoTypEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 
-/** Create or edit an Ifco type (name, footprint, height). Mount it only while it should be open. */
+/** Create or edit an IFCO type (name, footprint, height). Mount it only while it should be open. */
 export function IfcoTypFormular({
   typ,
   onClose,
@@ -57,7 +57,7 @@ export function IfcoTypFormular({
   };
 
   return (
-    <Modal opened onClose={onClose} title={typ ? 'Ifco-Typ bearbeiten' : 'Ifco-Typ anlegen'}>
+    <Modal opened onClose={onClose} title={typ ? 'IFCO-Typ bearbeiten' : 'IFCO-Typ anlegen'}>
       <form onSubmit={onSubmit}>
         <Stack>
           <TextInput

@@ -39,9 +39,9 @@ export interface LagerKnoten {
   archiviert: boolean;
   /** null = normal Lagerort. */
   art: LagerortArt | null;
-  /** Ifco-Lagerplatz: height of every half-column in cm; null = normal Lagerort. */
+  /** IFCO-Lagerplatz: height of every half-column in cm; null = normal Lagerort. */
   ifcoHoeheCm: number | null;
-  /** Ifco-Lagerplatz: number of 60×40 footprints; set together with `ifcoHoeheCm`. */
+  /** IFCO-Lagerplatz: number of 60×40 footprints; set together with `ifcoHoeheCm`. */
   ifcoStellflaechen: number | null;
 }
 
@@ -51,9 +51,9 @@ export interface LagerKontext {
   darfBuchen: boolean;
   /** Stock lines per node; null while hidden or not loaded. */
   bestand: Map<string, BestandsAnzeige[]> | null;
-  /** Inventar (Ifcos, Gegenstände) per node; null while hidden or not loaded. */
+  /** Inventar (IFCOs, Gegenstände) per node; null while hidden or not loaded. */
   inventar: Map<string, LagerInventar> | null;
-  /** Ifcos and Ifco types for the capacity of Ifco-Lagerplätze; null while not loaded. */
+  /** IFCOs and IFCO types for the capacity of IFCO-Lagerplätze; null while not loaded. */
   ifcoDaten: { ifcos: IfcoEintrag[]; typen: IfcoTypEintrag[] } | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
@@ -124,7 +124,7 @@ function LagerZeile({
               )}
               {ifcoPlatz && (
                 <Badge variant="light" leftSection={<IconBox size={12} aria-hidden />}>
-                  Ifco-Lagerplatz
+                  IFCO-Lagerplatz
                 </Badge>
               )}
               {node.archiviert && (

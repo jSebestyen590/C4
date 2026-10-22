@@ -39,7 +39,7 @@ export function EinlagerungPage() {
   const [versucht, setVersucht] = useState(false);
 
   const knoten = useMemo(
-    // Places where Ifcos stand hold no Waren.
+    // Places where IFCOs stand hold no Waren.
     () => tiefensuche(daten.lagerorte, id).filter((k) => !k.archiviert && !mitIfcos.orte.has(k.id)),
     [daten.lagerorte, id, mitIfcos.orte],
   );

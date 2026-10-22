@@ -9,7 +9,7 @@ import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { PfadSelect } from './PfadSelect';
 
-/** Create or edit an Ifco (name, description, place). Mount it only while it should be open. */
+/** Create or edit an IFCO (name, description, place). Mount it only while it should be open. */
 export function IfcoFormular({
   ifco,
   lagerorte,
@@ -21,7 +21,7 @@ export function IfcoFormular({
   /** Set when editing. */
   ifco?: IfcoEintrag;
   lagerorte: LagerKnoten[];
-  /** All Ifcos and types, to tell where the Ifco fits. */
+  /** All IFCOs and types, to tell where the IFCO fits. */
   ifcos: IfcoEintrag[];
   typen: IfcoTypEintrag[];
   onClose: () => void;
@@ -80,7 +80,7 @@ export function IfcoFormular({
   };
 
   return (
-    <Modal opened onClose={onClose} title={ifco ? 'Ifco bearbeiten' : 'Ifco anlegen'}>
+    <Modal opened onClose={onClose} title={ifco ? 'IFCO bearbeiten' : 'IFCO anlegen'}>
       <form onSubmit={onSubmit}>
         <Stack>
           <TextInput
@@ -93,11 +93,11 @@ export function IfcoFormular({
           <Select
             label="Typ"
             placeholder="Ohne Typ"
-            description="Auf einem Ifco-Lagerplatz ist ein Typ nötig."
+            description="Auf einem IFCO-Lagerplatz ist ein Typ nötig."
             searchable
             clearable
             inputMode="text"
-            nothingFoundMessage="Kein Ifco-Typ gefunden"
+            nothingFoundMessage="Kein IFCO-Typ gefunden"
             data={typOptionen}
             value={typId}
             onChange={setTypId}

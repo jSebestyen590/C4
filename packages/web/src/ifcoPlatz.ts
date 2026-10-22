@@ -7,7 +7,7 @@ import {
 } from '@c4/shared';
 import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
 
-/** The Ifco-Lagerplatz dimensions of a Lagerort, null for a normal one. */
+/** The IFCO-Lagerplatz dimensions of a Lagerort, null for a normal one. */
 export function ifcoPlatzMasse(l: {
   ifcoHoeheCm: number | null;
   ifcoStellflaechen: number | null;
@@ -17,21 +17,21 @@ export function ifcoPlatzMasse(l: {
     : null;
 }
 
-/** Non-archived Ifcos standing at a place (archived ones take no space), optionally without one Ifco. */
+/** Non-archived IFCOs standing at a place (archived ones take no space), optionally without one IFCO. */
 export const ifcosAufPlatz = (ifcos: IfcoEintrag[], lagerortId: string, ohneId?: string) =>
   ifcos.filter((i) => i.lagerortId === lagerortId && !i.archiviert && i.id !== ohneId);
 
-/** Footprint and height of an Ifco's type, null without a (known) type. */
+/** Footprint and height of an IFCO's type, null without a (known) type. */
 export function ifcoMass(typId: string | null, typen: IfcoTypEintrag[]): IfcoMass | null {
   return typen.find((t) => t.id === typId) ?? null;
 }
 
-/** Dimensions of the standing Ifcos; those without a type are left out (the API forbids them there). */
+/** Dimensions of the standing IFCOs; those without a type are left out (the API forbids them there). */
 export const stehendeMasse = (stehend: IfcoEintrag[], typen: IfcoTypEintrag[]): IfcoMass[] =>
   stehend.flatMap((i) => ifcoMass(i.typId, typen) ?? []);
 
-/** `2 Ifcos` / `1 Ifco` */
-export const ifcosText = (n: number): string => `${n} ${n === 1 ? 'Ifco' : 'Ifcos'}`;
+/** `2 IFCOs` / `1 IFCO` */
+export const ifcosText = (n: number): string => `${n} ${n === 1 ? 'IFCO' : 'IFCOs'}`;
 
 /** `6410 · 60×40 · 10 cm`, or `Ohne Typ`. */
 export function typAnzeige(typId: string | null, typen: IfcoTypEintrag[]): string {
@@ -60,8 +60,8 @@ export function passtNochText(
 }
 
 /**
- * Whether the Ifco `ifco` (with the type `typId`) fits on the Ifco-Lagerplatz `platz` next to the
- * Ifcos standing there, with a short reason when it does not.
+ * Whether the IFCO `ifco` (with the type `typId`) fits on the IFCO-Lagerplatz `platz` next to the
+ * IFCOs standing there, with a short reason when it does not.
  */
 export function platzPasst(
   platz: IfcoPlatzMasse,

@@ -325,7 +325,7 @@ function IfcoKarte({
   );
 }
 
-/** Where is what? Gegenstände and Ifcos with their places, search, Kategorie filter and archive switch. */
+/** Where is what? Gegenstände and IFCOs with their places, search, Kategorie filter and archive switch. */
 export function InventarPage() {
   const inv = useInventar();
   const navigate = useNavigate();
@@ -367,7 +367,7 @@ export function InventarPage() {
         if (!q) return true;
         if (g.name.toLowerCase().includes(q) || g.beschreibung?.toLowerCase().includes(q))
           return true;
-        // Also find a Gegenstand by the Ifco or the Lagerort it lies in.
+        // Also find a Gegenstand by the IFCO or the Lagerort it lies in.
         return g.plaetze.some((p) =>
           platzText(inv.lagerorte, inv.ifcos, p).toLowerCase().includes(q),
         );
@@ -419,7 +419,7 @@ export function InventarPage() {
         onChange={waehleAnsicht}
         data={[
           { value: 'gegenstaende', label: 'Gegenstände' },
-          { value: 'ifcos', label: 'Ifcos' },
+          { value: 'ifcos', label: 'IFCOs' },
           { value: 'verliehen', label: 'Verliehen' },
         ]}
       />
@@ -427,7 +427,7 @@ export function InventarPage() {
       {ansicht !== 'verliehen' && darfVerwalten && (
         <SimpleGrid cols={{ base: 1, xs: 2 }}>
           <Button leftSection={<IconPlus size={18} />} onClick={() => setAnlegen(true)}>
-            {imGegenstand ? 'Gegenstand anlegen' : 'Ifco anlegen'}
+            {imGegenstand ? 'Gegenstand anlegen' : 'IFCO anlegen'}
           </Button>
           <Button
             variant="default"
@@ -444,7 +444,7 @@ export function InventarPage() {
           <SimpleGrid cols={{ base: 1, sm: imGegenstand ? 2 : 1 }}>
             <TextInput
               placeholder={
-                imGegenstand ? 'Name, Ifco oder Platz suchen' : 'Name oder Inhalt suchen'
+                imGegenstand ? 'Name, IFCO oder Platz suchen' : 'Name oder Inhalt suchen'
               }
               aria-label="Suche"
               leftSection={<IconSearch size={18} />}
@@ -489,7 +489,7 @@ export function InventarPage() {
           {inv.fehler && <Alert color="red">Das Inventar konnte nicht geladen werden.</Alert>}
           {!inv.laedt && !inv.fehler && leer && (
             <Text c="dimmed">
-              {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine Ifcos gefunden.'}
+              {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine IFCOs gefunden.'}
             </Text>
           )}
           {imGegenstand ? (

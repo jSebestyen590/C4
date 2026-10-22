@@ -21,7 +21,7 @@ export function kinderTeilen<T extends BaumKnoten & { art: LagerortArt | null }>
   };
 }
 
-/** Distinct Waren with stock and Inventar entries (Ifcos + directly assigned Gegenstände) of a node. */
+/** Distinct Waren with stock and Inventar entries (IFCOs + directly assigned Gegenstände) of a node. */
 export function zaehler(id: string, b: Belegung): { waren: number; inventar: number } {
   const inv = b.inventar?.get(id);
   return {
@@ -45,8 +45,8 @@ export interface KachelInhalt {
 }
 
 /**
- * Tile content. An Ifco-Lagerplatz with Ifcos names the first Ifco (alphabetical) plus `+N` for the
- * others. Any other node names its only entry (one Ware with stock, one Ifco or one directly assigned
+ * Tile content. An IFCO-Lagerplatz with IFCOs names the first IFCO (alphabetical) plus `+N` for the
+ * others. Any other node names its only entry (one Ware with stock, one IFCO or one directly assigned
  * Gegenstand, among the parts shown) and otherwise shows the counter ("–" when empty).
  */
 export function kachelInhalt(id: string, b: Belegung, istIfcoPlatz: boolean): KachelInhalt {

@@ -5,7 +5,7 @@ import { ifcos, ifcoTypen, type IfcoTypRow, type LagerortRow } from './db/schema
 
 type Q = Pick<Db, 'select'>;
 
-/** Dimensions of an Ifco-Lagerplatz, null for a normal Lagerort. */
+/** Dimensions of an IFCO-Lagerplatz, null for a normal Lagerort. */
 export function ifcoPlatzMasse(
   ort: Pick<LagerortRow, 'ifcoHoeheCm' | 'ifcoStellflaechen'>,
 ): IfcoPlatzMasse | null {
@@ -14,16 +14,16 @@ export function ifcoPlatzMasse(
 }
 
 export interface PlatzPruefung {
-  /** Ifco ids that do not count as standing there (the one that is being moved or edited). */
+  /** IFCO ids that do not count as standing there (the one that is being moved or edited). */
   ohne?: string[];
-  /** Ifcos to add; `typId` null = no type. */
+  /** IFCOs to add; `typId` null = no type. */
   neu?: { name: string; typId: string | null }[];
   /** Replacement dimensions of types whose master data is being edited. */
   typen?: Map<string, IfcoMass>;
 }
 
 /**
- * German error unless the non-archived Ifcos standing on the Ifco-Lagerplatz `ort` (minus
+ * German error unless the non-archived IFCOs standing on the IFCO-Lagerplatz `ort` (minus
  * `optionen.ohne`) plus `optionen.neu` fit within `masse`, otherwise null.
  */
 export async function ifcoPlatzPruefen(

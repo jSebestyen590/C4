@@ -29,7 +29,7 @@ export function LagerKachel({
   const beschreibung = [
     node.name,
     node.archiviert ? 'archiviert' : null,
-    istIfcoPlatz ? 'Ifco-Lagerplatz' : null,
+    istIfcoPlatz ? 'IFCO-Lagerplatz' : null,
     inhalt.titel,
     z.waren > 0 ? `${z.waren} ${z.waren === 1 ? 'Ware' : 'Waren'}` : null,
     z.inventar > 0 ? `${z.inventar} Inventar` : null,

@@ -32,7 +32,7 @@ interface Zeile {
   anzahl: number | string;
 }
 
-/** Edits the whole content of an Ifco: Gegenstand and amount per row. Mount it only while it should be open. */
+/** Edits the whole content of an IFCO: Gegenstand and amount per row. Mount it only while it should be open. */
 export function IfcoInhaltModal({
   ifco,
   gegenstaende,
@@ -100,7 +100,7 @@ export function IfcoInhaltModal({
   return (
     <Modal opened onClose={onClose} title={`Inhalt von ${ifco.name}`}>
       <Stack>
-        {zeilen.length === 0 && <Text c="dimmed">Die Ifco ist leer.</Text>}
+        {zeilen.length === 0 && <Text c="dimmed">Die IFCO ist leer.</Text>}
         {zeilen.map((z, i) => (
           <Paper key={z.key} withBorder p="sm">
             <Stack gap="xs">

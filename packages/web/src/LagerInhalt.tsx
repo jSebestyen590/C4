@@ -16,7 +16,7 @@ const inventarZeile = {
   overflowWrap: 'anywhere',
 } as const;
 
-/** Ifcos standing at a node and Gegenstände assigned directly to it, linked to their detail pages. */
+/** IFCOs standing at a node and Gegenstände assigned directly to it, linked to their detail pages. */
 export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }>) {
   return (
     <Stack gap={0} mt={4}>
@@ -100,7 +100,7 @@ export function BestandListe({ zeilen }: Readonly<{ zeilen: BestandsAnzeige[] }>
   ));
 }
 
-/** Dimensions of an Ifco-Lagerplatz and what still fits there (`Passt noch: 1× 6410 oder 2× 4310` / `Voll`). */
+/** Dimensions of an IFCO-Lagerplatz and what still fits there (`Passt noch: 1× 6410 oder 2× 4310` / `Voll`). */
 export function IfcoPlatzInfo({
   lagerortId,
   masse,
@@ -108,7 +108,7 @@ export function IfcoPlatzInfo({
 }: Readonly<{
   lagerortId: string;
   masse: IfcoPlatzMasse;
-  /** Ifcos and types; null while not loaded. */
+  /** IFCOs and types; null while not loaded. */
   daten: { ifcos: IfcoEintrag[]; typen: IfcoTypEintrag[] } | null;
 }>) {
   return (

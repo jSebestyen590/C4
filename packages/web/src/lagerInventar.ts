@@ -6,14 +6,14 @@ import type {
   IfcoTypEintrag,
 } from './inventarDaten';
 
-/** The Inventar located at one Lagerort: Ifcos standing there and Gegenstände assigned directly. */
+/** The Inventar located at one Lagerort: IFCOs standing there and Gegenstände assigned directly. */
 export interface LagerInventar {
   ifcos: {
     id: string;
     name: string;
     stueck: number;
     typ: string | null;
-    /** Open whole-Ifco Ausleihe, or null. */
+    /** Open whole-IFCO Ausleihe, or null. */
     ausleihe: IfcoAusleiheEintrag | null;
   }[];
   gegenstaende: {
@@ -29,7 +29,7 @@ const typText = (t: IfcoTypEintrag | undefined) => (t ? ifcoTypText(t) : null);
 
 const nachName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'de');
 
-/** Inventar per Lagerort id; archived Gegenstände and Ifcos are left out. */
+/** Inventar per Lagerort id; archived Gegenstände and IFCOs are left out. */
 export function inventarJeLagerort(
   gegenstaende: GegenstandEintrag[],
   ifcos: IfcoEintrag[],

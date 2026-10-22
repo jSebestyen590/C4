@@ -128,7 +128,7 @@ export function LagerPage() {
 
   const alle: LagerKnoten[] = useMemo(() => lagerorte.data ?? [], [lagerorte.data]);
   const hatIfcoPlaetze = useMemo(() => alle.some((l) => l.ifcoHoeheCm !== null), [alle]);
-  // The Ifcos are also needed (without the Inventar switch) to tell what still fits on an Ifco-Lagerplatz.
+  // The IFCOs are also needed (without the Inventar switch) to tell what still fits on an IFCO-Lagerplatz.
   const inventarDaten = useGegenstaendeUndIfcos(darfInventar && (inventarZeigen || hatIfcoPlaetze));
   const inventarKarte = useMemo(
     () =>

@@ -189,7 +189,7 @@ export function AusleiheDetailPage() {
       if (!neu.delete(positionId)) neu.add(positionId);
       return neu;
     });
-  /** Selects all open positions of a whole-Ifco group, or clears them when all are selected. */
+  /** Selects all open positions of a whole-IFCO group, or clears them when all are selected. */
   const gruppeUmschalten = (ids: string[]) =>
     setGewaehlt((alt) => {
       const neu = new Set(alt);

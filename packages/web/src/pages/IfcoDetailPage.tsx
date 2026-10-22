@@ -38,7 +38,7 @@ import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 
-/** Detail of one Ifco: place (movable) and content. */
+/** Detail of one IFCO: place (movable) and content. */
 export function IfcoDetailPage() {
   const { id = '' } = useParams();
   const api = useApi();
@@ -69,19 +69,19 @@ export function IfcoDetailPage() {
     <Anchor component={Link} to="/inventar?ansicht=ifcos" size="sm">
       <Group gap={4} wrap="nowrap">
         <IconChevronLeft size={16} />
-        Alle Ifcos
+        Alle IFCOs
       </Group>
     </Anchor>
   );
 
-  if (inv.laedt) return <Loader m="md" aria-label="Ifco wird geladen" />;
+  if (inv.laedt) return <Loader m="md" aria-label="IFCO wird geladen" />;
   const ifco = inv.ifcos.find((x) => x.id === id);
   if (inv.fehler || !ifco)
     return (
       <Stack>
         {zurueck}
         <Alert color="red">
-          {inv.fehler ? 'Die Ifco konnte nicht geladen werden.' : 'Die Ifco wurde nicht gefunden.'}
+          {inv.fehler ? 'Die IFCO konnte nicht geladen werden.' : 'Die IFCO wurde nicht gefunden.'}
         </Alert>
       </Stack>
     );
@@ -177,7 +177,7 @@ export function IfcoDetailPage() {
             <Text style={{ overflowWrap: 'anywhere' }}>{pfad(inv.lagerorte, ifco.lagerortId)}</Text>
             {platzMasse && (
               <Text size="sm" c="dimmed">
-                Ifco-Lagerplatz · {ifcoPlatzText(platzMasse)}
+                IFCO-Lagerplatz · {ifcoPlatzText(platzMasse)}
               </Text>
             )}
           </Stack>
@@ -199,7 +199,7 @@ export function IfcoDetailPage() {
       )}
 
       <Title order={3}>Inhalt</Title>
-      {zeilen.length === 0 && <Text c="dimmed">Die Ifco ist leer.</Text>}
+      {zeilen.length === 0 && <Text c="dimmed">Die IFCO ist leer.</Text>}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
         {zeilen.map((z) => (
           <Paper key={z.gegenstandId} withBorder p="sm">
@@ -246,7 +246,7 @@ export function IfcoDetailPage() {
           leftSection={<IconTruckDelivery size={20} />}
           disabled={zeilen.every((z) => z.anzahl - z.verliehen - z.vorgemerkt <= 0)}
         >
-          Ganze Ifco verleihen
+          Ganze IFCO verleihen
         </Button>
       )}
 
@@ -278,7 +278,7 @@ export function IfcoDetailPage() {
       )}
       {loeschen && (
         <LoeschenDialog
-          titel="Ifco löschen"
+          titel="IFCO löschen"
           name={ifco.name}
           onClose={() => setLoeschen(false)}
           loeschen={async () => {

@@ -7,7 +7,7 @@ import {
 } from '@c4/shared';
 import { bodenMasse, reihenHoehen } from './ifcoPlatz';
 
-/** Input of the Ifco-Lagerplatz fields; the number fields hold '' while empty. */
+/** Input of the IFCO-Lagerplatz fields; the number fields hold '' while empty. */
 export interface IfcoPlatzWert {
   aktiv: boolean;
   hoeheCm: number | string;
@@ -16,7 +16,7 @@ export interface IfcoPlatzWert {
   reihenHoehen?: Record<number, number | string>;
 }
 
-/** Initial fields; pass the dimensions of an existing Ifco-Lagerplatz to edit it. */
+/** Initial fields; pass the dimensions of an existing IFCO-Lagerplatz to edit it. */
 export const ifcoPlatzStandard = (masse?: IfcoPlatzMasse | null): IfcoPlatzWert => ({
   aktiv: masse != null,
   hoeheCm: masse?.hoeheCm ?? '',
@@ -58,11 +58,11 @@ export function boedenPlatzErgebnis(
   return bodenMasse(proReihe, plaetze);
 }
 
-/** Switch "Ifco-Lagerplatz" with the height (cm) and the number of Stellflächen. */
+/** Switch "IFCO-Lagerplatz" with the height (cm) and the number of Stellflächen. */
 export function IfcoPlatzFelder({
   wert,
   onChange,
-  label = 'Ifco-Lagerplatz',
+  label = 'IFCO-Lagerplatz',
   beschreibung = 'Hier können IFCOs stehen; Höhe und Stellflächen bestimmen, was passt.',
   gesperrt,
   reihen = 1,
@@ -136,7 +136,7 @@ export function IfcoPlatzFelder({
             </SimpleGrid>
           )}
           <Text size="sm" c="dimmed">
-            1 Stellfläche = eine Ifco 60×40; 1,5 = eine große und eine kleine (40×30) nebeneinander.
+            1 Stellfläche = eine IFCO 60×40; 1,5 = eine große und eine kleine (40×30) nebeneinander.
             Die Höhe gilt je Stellfläche.
           </Text>
         </>

@@ -246,7 +246,7 @@ function makeInventarFake() {
     ifcoTypAktualisieren: vi.fn<InventarStore['ifcoTypAktualisieren']>(async (id) => setze(id)),
     ifcoTypLoeschen: vi.fn(async (id: string) => {
       if (!bekannt.has(id)) return false;
-      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('Ifco-Typ'));
+      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('IFCO-Typ'));
       return true;
     }),
     ifcoTypArchivieren: vi.fn<InventarStore['ifcoTypArchivieren']>(async (id) => setze(id)),
@@ -1246,7 +1246,7 @@ describe('posten', () => {
       expect(orte.get(blatt.id)?.art).toBeNull();
     });
 
-    it('validates and passes the Ifco-Lagerplatz dimensions', async () => {
+    it('validates and passes the IFCO-Lagerplatz dimensions', async () => {
       const { app, waren } = makeApp();
       const send = (url: string, method: string, body: unknown) =>
         app.request(url, json('admin-token', method, body));
@@ -1310,7 +1310,7 @@ describe('posten', () => {
       expect(waren.boedenHinzufuegen).toHaveBeenLastCalledWith(regalRes.id, ['B2'], platz);
     });
 
-    it('accepts one Ifco-Lagerplatz per Boden and rejects a wrong count', async () => {
+    it('accepts one IFCO-Lagerplatz per Boden and rejects a wrong count', async () => {
       const { app, waren } = makeApp();
       const send = (url: string, body: unknown) =>
         app.request(url, json('admin-token', 'POST', body));
@@ -1350,7 +1350,7 @@ describe('posten', () => {
       expect(await res.json()).toEqual({ error: 'Regalböden lassen sich nicht verschieben.' });
     });
 
-    it('lets Ifco-Lagerplätze be marked with stock, but keeps Waren and Ifcos apart', async () => {
+    it('lets IFCO-Lagerplätze be marked with stock, but keeps Waren and IFCOs apart', async () => {
       const { app, waren, inventar } = makeApp();
       const send = (url: string, method: string, body: unknown) =>
         app.request(url, json('admin-token', method, body));
@@ -1364,7 +1364,7 @@ describe('posten', () => {
       expect(
         (await send(`/api/lagerorte/${id}`, 'PUT', { name: 'HR11', ifcoPlatz: platz })).status,
       ).toBe(200);
-      // booking Waren onto a place that holds Ifcos is a 400
+      // booking Waren onto a place that holds IFCOs is a 400
       waren.einlagern.mockRejectedValueOnce(new WarenUngueltig(ifcoPlatzHatIfcosFehler('HR11')));
       const buchung = await send('/api/bestand/einlagerung', 'POST', {
         wareId: 'w1',
@@ -1375,16 +1375,16 @@ describe('posten', () => {
       });
       expect(buchung.status).toBe(400);
       expect(await buchung.json()).toEqual({
-        error: 'Auf „HR11“ stehen Ifcos; dort kann gerade keine Ware liegen.',
+        error: 'Auf „HR11“ stehen IFCOs; dort kann gerade keine Ware liegen.',
       });
-      // placing an Ifco onto a place that holds Waren is a 400
+      // placing an IFCO onto a place that holds Waren is a 400
       inventar.ifcoAnlegen.mockRejectedValueOnce(
         new WarenUngueltig(ifcoPlatzHatWareFehler('HR11')),
       );
       const ifco = await send('/api/inventar/ifcos', 'POST', { name: 'Kiste', lagerortId: id });
       expect(ifco.status).toBe(400);
       expect(await ifco.json()).toEqual({
-        error: 'Auf „HR11“ liegt Ware; dort kann keine Ifco stehen.',
+        error: 'Auf „HR11“ liegt Ware; dort kann keine IFCO stehen.',
       });
     });
 
@@ -1706,7 +1706,7 @@ describe('inventar', () => {
     });
   });
 
-  it('manages Ifco-Typen: validates, deletes only unused ones, archives', async () => {
+  it('manages IFCO-Typen: validates, deletes only unused ones, archives', async () => {
     const { app, inventar, inventarVerwendet } = makeApp();
     const typ = { name: ' 6410 ', grundflaeche: 'gross', hoeheCm: 10 };
     const send = (url: string, method: string, body?: unknown) =>
@@ -1735,13 +1735,13 @@ describe('inventar', () => {
     inventarVerwendet.add('t1');
     const used = await send('/api/inventar/ifco-typen/t1', 'DELETE');
     expect(used.status).toBe(409);
-    expect(await used.json()).toEqual({ error: verwendetMeldung('Ifco-Typ') });
+    expect(await used.json()).toEqual({ error: verwendetMeldung('IFCO-Typ') });
     const archiv = await send('/api/inventar/ifco-typen/t1/archiv', 'PUT', { archiviert: true });
     expect(archiv.status).toBe(200);
     expect(inventar.ifcoTypArchivieren).toHaveBeenCalledWith('t1', true);
   });
 
-  it('passes the Ifco type and maps a capacity error to 400', async () => {
+  it('passes the IFCO type and maps a capacity error to 400', async () => {
     const { app, inventar } = makeApp();
     const meldung =
       'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): „X“ (6416, 16 cm) hat keinen Platz.';
@@ -1816,7 +1816,7 @@ describe('inventar', () => {
     expect(inventar.kategorieArchivieren).toHaveBeenCalledWith('k1', true);
   });
 
-  it('replaces Plätze, Ifco-Platz and Ifco-Inhalt for every member', async () => {
+  it('replaces Plätze, IFCO-Platz and IFCO-Inhalt for every member', async () => {
     const { app, inventar, inventarVerwendet } = makeApp();
     const plaetze = {
       plaetze: [

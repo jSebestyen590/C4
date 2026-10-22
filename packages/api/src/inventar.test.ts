@@ -85,9 +85,9 @@ describe('zielFehler', () => {
   });
   it('rejects unknown and archived places', () => {
     expect(zielFehler([lagerort('x')], orte, kisten)).toBe('Der Lagerort existiert nicht.');
-    expect(zielFehler([ifco('x')], orte, kisten)).toBe('Die Ifco existiert nicht.');
+    expect(zielFehler([ifco('x')], orte, kisten)).toBe('Die IFCO existiert nicht.');
     expect(zielFehler([lagerort('l2')], orte, kisten)).toBe('Der Lagerort ist archiviert.');
-    expect(zielFehler([ifco('i2')], orte, kisten)).toBe('Die Ifco ist archiviert.');
+    expect(zielFehler([ifco('i2')], orte, kisten)).toBe('Die IFCO ist archiviert.');
   });
   it('keeps archived places that were already used', () => {
     expect(
@@ -103,7 +103,7 @@ describe('ifcoAusleihen', () => {
     an: `an ${ausleiheId}`,
     ausgeliehenAm,
   });
-  it('marks an Ifco as verliehen or vorgemerkt', () => {
+  it('marks an IFCO as verliehen or vorgemerkt', () => {
     const r = ifcoAusleihen([ganz('i1', 'a1', vorher), ganz('i2', 'a2', spaeter)], jetzt);
     expect(r.get('i1')).toMatchObject({ id: 'a1', status: 'verliehen' });
     expect(r.get('i2')).toMatchObject({ id: 'a2', status: 'geplant', an: 'an a2' });

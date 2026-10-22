@@ -52,7 +52,7 @@ export function PlatzAusleihHinweise({
             <span key={a.id}>
               {i > 0 && ', '}
               <AusleiheLink a={a} />
-              {ganzeIfco && ', mit der ganzen Ifco'}
+              {ganzeIfco && ', mit der ganzen IFCO'}
             </span>
           ))}
           )
@@ -61,7 +61,7 @@ export function PlatzAusleihHinweise({
       {vorgemerkt.map(({ a, anzahl, ganzeIfco }) => (
         <Text key={a.id} size="sm" c="cyan" mt={4} style={{ overflowWrap: 'anywhere' }}>
           vorgemerkt: {anzahl} {seitAbText(a.ausgeliehenAm)} (an <AusleiheLink a={a} />
-          {ganzeIfco && ', mit der ganzen Ifco'})
+          {ganzeIfco && ', mit der ganzen IFCO'})
         </Text>
       ))}
     </>

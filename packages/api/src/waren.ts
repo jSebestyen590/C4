@@ -99,8 +99,8 @@ export type EintragArt =
   | 'Ware'
   | 'Kategorie'
   | 'Gegenstand'
-  | 'Ifco'
-  | 'Ifco-Typ';
+  | 'IFCO'
+  | 'IFCO-Typ';
 
 /** `Der Lagerort wird noch verwendet, archiviere ihn stattdessen.` */
 export function verwendetMeldung(art: EintragArt): string {
@@ -111,8 +111,8 @@ export function verwendetMeldung(art: EintragArt): string {
     Ware: ['Die', 'sie'],
     Kategorie: ['Die', 'sie'],
     Gegenstand: ['Der', 'ihn'],
-    Ifco: ['Die', 'sie'],
-    'Ifco-Typ': ['Der', 'ihn'],
+    IFCO: ['Die', 'sie'],
+    'IFCO-Typ': ['Der', 'ihn'],
   }[art];
   return `${artikel} ${art} wird noch verwendet, archiviere ${pronomen} stattdessen.`;
 }
@@ -339,7 +339,7 @@ export function lagerortBestandZeilen(buchungen: Buchung[]): LagerortBestandZeil
 export function inventurKnotenIds(
   lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
   wurzelId: string,
-  /** Places where Ifcos stand: no Waren can lie there, so there is nothing to count. */
+  /** Places where IFCOs stand: no Waren can lie there, so there is nothing to count. */
   mitIfcos: ReadonlySet<string> = new Set(),
 ): string[] {
   return tiefensuche(
@@ -388,7 +388,7 @@ export interface LagerortDaten {
   parentId: string | null;
   /** On create: null/undefined = normal; on update: undefined keeps the kind. */
   art?: LagerortArt | null;
-  /** Ifco-Lagerplatz dimensions. On create: null/undefined = normal; on update: undefined keeps them, null unmarks. */
+  /** IFCO-Lagerplatz dimensions. On create: null/undefined = normal; on update: undefined keeps them, null unmarks. */
   ifcoPlatz?: IfcoPlatzMasse | null;
 }
 
@@ -569,7 +569,7 @@ export interface WarenStore {
   lagerortAnlegen(
     daten: LagerortDaten,
     boeden?: string[],
-    /** Makes the new Regalböden Ifco-Lagerplätze. */
+    /** Makes the new Regalböden IFCO-Lagerplätze. */
     boedenIfcoPlatz?: IfcoPlatzMasse | IfcoPlatzMasse[] | null,
   ): Promise<LagerortAngelegt>;
   /** Appends Regalböden to a Regal; the new ids, or undefined if the Lagerort does not exist. */
@@ -744,7 +744,7 @@ async function buchbareWare(q: Q, wareId: string, gebindeId: string): Promise<Wa
   return ware;
 }
 
-/** Ids of the places on which non-archived Ifcos stand. */
+/** Ids of the places on which non-archived IFCOs stand. */
 async function ortMitIfcos(q: Q): Promise<Set<string>> {
   const rows = await q
     .select({ lagerortId: ifcos.lagerortId })
@@ -754,8 +754,8 @@ async function ortMitIfcos(q: Q): Promise<Set<string>> {
 }
 
 /**
- * The place must exist and not be archived. Unless it is only withdrawn from (`abgang`), no Ifco
- * may stand on it: Waren and Ifcos do not share a place.
+ * The place must exist and not be archived. Unless it is only withdrawn from (`abgang`), no IFCO
+ * may stand on it: Waren and IFCOs do not share a place.
  */
 async function buchbarerLagerort(q: Q, lagerortId: string, abgang = false): Promise<void> {
   const [l] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
@@ -770,7 +770,7 @@ async function buchbarerLagerort(q: Q, lagerortId: string, abgang = false): Prom
   if (stehend) throw new WarenUngueltig(ifcoPlatzHatIfcosFehler(l.name));
 }
 
-/** Throws `WarenUngueltig` when `eltern` is an Ifco-Lagerplatz: it cannot have children. */
+/** Throws `WarenUngueltig` when `eltern` is an IFCO-Lagerplatz: it cannot have children. */
 function elternKeinIfcoPlatz(
   eltern: Pick<LagerortRow, 'ifcoHoeheCm' | 'ifcoStellflaechen'> | undefined,
 ) {
@@ -1023,7 +1023,7 @@ export function createWarenStore(db: Db): WarenStore {
           if (markieren) throw new WarenUngueltig(markieren);
         }
         if (boedenIfcoPlatz && art !== 'regal') {
-          throw new WarenUngueltig('Ifco-Lagerplätze für Regalböden gibt es nur bei einem Regal.');
+          throw new WarenUngueltig('IFCO-Lagerplätze für Regalböden gibt es nur bei einem Regal.');
         }
         const artProblem = lagerortArtFehler(
           art,

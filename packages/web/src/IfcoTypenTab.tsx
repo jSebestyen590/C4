@@ -11,7 +11,7 @@ import { INVENTAR_KEY, useIfcoTypen, type IfcoTypEintrag } from './inventarDaten
 import { LoeschenDialog } from './LoeschenDialog';
 import { fehlerAnzeigen, pruefen } from './warenApi';
 
-/** Master data of the Ifco types: cards with name, footprint and height. */
+/** Master data of the IFCO types: cards with name, footprint and height. */
 export function IfcoTypenTab() {
   const api = useApi();
   const qc = useQueryClient();
@@ -53,14 +53,14 @@ export function IfcoTypenTab() {
         />
         {darfVerwalten && (
           <Button leftSection={<IconPlus size={18} />} onClick={() => setFormular({})}>
-            Ifco-Typ anlegen
+            IFCO-Typ anlegen
           </Button>
         )}
       </Group>
-      {laedt && <Loader m="md" aria-label="Ifco-Typen werden geladen" />}
-      {fehler && <Alert color="red">Die Ifco-Typen konnten nicht geladen werden.</Alert>}
+      {laedt && <Loader m="md" aria-label="IFCO-Typen werden geladen" />}
+      {fehler && <Alert color="red">Die IFCO-Typen konnten nicht geladen werden.</Alert>}
       {!laedt && !fehler && sichtbar.length === 0 && (
-        <Text c="dimmed">Keine Ifco-Typen vorhanden.</Text>
+        <Text c="dimmed">Keine IFCO-Typen vorhanden.</Text>
       )}
       <Stack gap="xs">
         {sichtbar.map((t) => (
@@ -113,7 +113,7 @@ export function IfcoTypenTab() {
       {formular && <IfcoTypFormular typ={formular.typ} onClose={() => setFormular(null)} />}
       {loeschZiel && (
         <LoeschenDialog
-          titel="Ifco-Typ löschen"
+          titel="IFCO-Typ löschen"
           name={loeschZiel.name}
           onClose={() => setLoeschZiel(null)}
           loeschen={async () => {

@@ -45,12 +45,12 @@ export const ifcoSchema = z.object({
   name: name(),
   beschreibung,
   lagerortId: parentIdSchema,
-  /** Optional Ifco type; required for an Ifco on an Ifco-Lagerplatz. */
+  /** Optional IFCO type; required for an IFCO on an IFCO-Lagerplatz. */
   typId: parentIdSchema,
 });
 export type IfcoEingabe = z.input<typeof ifcoSchema>;
 
-const ZIEL_MELDUNG = 'Bitte wähle genau einen Lagerort oder eine Ifco.';
+const ZIEL_MELDUNG = 'Bitte wähle genau einen Lagerort oder eine IFCO.';
 const genauEinZiel = (p: { lagerortId: string | null; ifcoId: string | null }) =>
   (p.lagerortId === null) !== (p.ifcoId === null);
 
@@ -65,7 +65,7 @@ export const gegenstandPlatzSchema = z
   })
   .refine(genauEinZiel, ZIEL_MELDUNG);
 
-/** Replaces all Plätze of a Gegenstand; each Lagerort/Ifco may appear only once. */
+/** Replaces all Plätze of a Gegenstand; each Lagerort/IFCO may appear only once. */
 export const gegenstandPlaetzeSchema = z.object({
   plaetze: z
     .array(gegenstandPlatzSchema)
@@ -76,7 +76,7 @@ export const gegenstandPlaetzeSchema = z.object({
 });
 export type GegenstandPlaetzeEingabe = z.input<typeof gegenstandPlaetzeSchema>;
 
-/** Replaces the content of an Ifco; each Gegenstand may appear only once. */
+/** Replaces the content of an IFCO; each Gegenstand may appear only once. */
 export const ifcoInhaltSchema = z.object({
   positionen: z
     .array(
@@ -127,13 +127,13 @@ export const ausleihePositionSchema = z
     lagerortId: parentIdSchema,
     ifcoId: parentIdSchema,
     anzahl: anzahlSchema,
-    /** Part of lending a whole Ifco; only valid together with `ifcoId`. */
+    /** Part of lending a whole IFCO; only valid together with `ifcoId`. */
     ganzeIfco: z.literal(true).optional(),
   })
   .refine(genauEinZiel, ZIEL_MELDUNG)
   .refine(
     (p) => !p.ganzeIfco || p.ifcoId !== null,
-    'Eine ganze Ifco braucht eine Ifco als Herkunft.',
+    'Eine ganze IFCO braucht eine IFCO als Herkunft.',
   );
 
 export const ausleiheSchema = z
@@ -200,7 +200,7 @@ export function abweichungText(differenz: number): string | null {
   return null;
 }
 
-/** Display text of a place: `Lager › Regal`, or `Spanngurtkiste · Lager › Regal` for an Ifco. */
+/** Display text of a place: `Lager › Regal`, or `Spanngurtkiste · Lager › Regal` for an IFCO. */
 export function platzText(
   lagerorte: BaumKnoten[],
   ifcos: { id: string; name: string; lagerortId: string | null }[],
@@ -208,7 +208,7 @@ export function platzText(
 ): string {
   if (ziel.lagerortId !== null) return pfad(lagerorte, ziel.lagerortId);
   const ifco = ifcos.find((i) => i.id === ziel.ifcoId);
-  if (!ifco) return 'Unbekannte Ifco';
+  if (!ifco) return 'Unbekannte IFCO';
   return `${ifco.name} · ${ifco.lagerortId === null ? 'ohne Platz' : pfad(lagerorte, ifco.lagerortId)}`;
 }
 
@@ -442,7 +442,7 @@ export function ausleihFehler(
 }
 
 /**
- * German error if the new assignment `neu` of one Gegenstand (or of one Ifco) would drop a place
+ * German error if the new assignment `neu` of one Gegenstand (or of one IFCO) would drop a place
  * below the highest number of pieces occupied at the same time from today on (all open positions;
  * open-ended ones count forever), otherwise null. `offen` may contain other Gegenstände.
  */
@@ -514,20 +514,20 @@ export function gefaehrdungen(
 }
 
 // ---------------------------------------------------------------------------
-// Whole Ifco
+// Whole IFCO
 
-/** A position of an Ausleihe that may belong to a whole-Ifco lending. */
+/** A position of an Ausleihe that may belong to a whole-IFCO lending. */
 export interface IfcoPositionsInfo {
   ifcoId: string | null;
   ganzeIfco?: boolean | null;
 }
 
-/** One entry of a position list: a single position or all positions of one whole-Ifco lending. */
+/** One entry of a position list: a single position or all positions of one whole-IFCO lending. */
 export type PositionsEintrag<T> =
   { art: 'einzeln'; position: T } | { art: 'ifco'; ifcoId: string; positionen: T[] };
 
 /**
- * Groups the positions flagged `ganzeIfco` by their Ifco (one entry per Ifco, at the place of its
+ * Groups the positions flagged `ganzeIfco` by their IFCO (one entry per IFCO, at the place of its
  * first position); all other positions stay single entries. The order is otherwise kept.
  */
 export function positionenGruppieren<T extends IfcoPositionsInfo>(
@@ -552,10 +552,10 @@ export function positionenGruppieren<T extends IfcoPositionsInfo>(
 }
 
 /**
- * German error unless every whole-Ifco lending in `neu` covers the complete available content of its
- * Ifco: all positions of that Ifco are flagged, and each Gegenstand is taken with exactly
- * (assigned in the Ifco minus what is occupied there at the same time during `zeitraum`). `inhalt` holds the
- * assignments of these Ifcos (other Gegenstände included), `offen` the open positions. Otherwise null.
+ * German error unless every whole-IFCO lending in `neu` covers the complete available content of its
+ * IFCO: all positions of that IFCO are flagged, and each Gegenstand is taken with exactly
+ * (assigned in the IFCO minus what is occupied there at the same time during `zeitraum`). `inhalt` holds the
+ * assignments of these IFCOs (other Gegenstände included), `offen` the open positions. Otherwise null.
  */
 export function ganzeIfcoFehler(
   inhalt: PlatzMenge[],
@@ -569,18 +569,18 @@ export function ganzeIfcoFehler(
     const ifco = `„${beschriftung.platz({ lagerortId: null, ifcoId })}“`;
     const eigene = neu.filter((p) => p.ifcoId === ifcoId);
     if (eigene.some((p) => !p.ganzeIfco)) {
-      return `Die Ifco ${ifco} wird ganz verliehen. Alle ihre Positionen müssen zur ganzen Ifco gehören.`;
+      return `Die IFCO ${ifco} wird ganz verliehen. Alle ihre Positionen müssen zur ganzen IFCO gehören.`;
     }
     const frei = new Map<string, number>();
     for (const p of inhalt.filter((x) => x.ifcoId === ifcoId)) {
       const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt);
       if (rest > 0) frei.set(p.gegenstandId, rest);
     }
-    if (frei.size === 0) return `In der Ifco ${ifco} ist nichts verfügbar.`;
+    if (frei.size === 0) return `In der IFCO ${ifco} ist nichts verfügbar.`;
     const genommen = new Map(eigene.map((p) => [p.gegenstandId, p.anzahl]));
     for (const gegenstandId of new Set([...frei.keys(), ...genommen.keys()])) {
       if ((frei.get(gegenstandId) ?? 0) === (genommen.get(gegenstandId) ?? 0)) continue;
-      return `Die Ifco ${ifco} lässt sich nur komplett als ganze Ifco verleihen: von „${beschriftung.gegenstand(gegenstandId)}“ sind ${frei.get(gegenstandId) ?? 0} verfügbar, angegeben sind ${genommen.get(gegenstandId) ?? 0}.`;
+      return `Die IFCO ${ifco} lässt sich nur komplett als ganze IFCO verleihen: von „${beschriftung.gegenstand(gegenstandId)}“ sind ${frei.get(gegenstandId) ?? 0} verfügbar, angegeben sind ${genommen.get(gegenstandId) ?? 0}.`;
     }
   }
   return null;

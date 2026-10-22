@@ -1125,7 +1125,7 @@ export function createApp(deps: AppDeps) {
           return c.json({ ok: true });
         },
       )
-      // ----- Inventar: Ifco-Typen
+      // ----- Inventar: IFCO-Typen
       .get('/inventar/ifco-typen', auth, inventarLesen, async (c) =>
         c.json(await deps.inventar.ifcoTypen(c.req.query('archiv') === '1')),
       )
@@ -1149,7 +1149,7 @@ export function createApp(deps: AppDeps) {
             await deps.inventar
               .ifcoTypAktualisieren(c.req.param('id'), c.req.valid('json'))
               .catch(warenFehler),
-            'Ifco-Typ nicht gefunden',
+            'IFCO-Typ nicht gefunden',
           );
           return c.json({ ok: true });
         },
@@ -1157,7 +1157,7 @@ export function createApp(deps: AppDeps) {
       .delete('/inventar/ifco-typen/:id', auth, inventarVerwalten, async (c) => {
         gefunden(
           await deps.inventar.ifcoTypLoeschen(c.req.param('id')).catch(warenFehler),
-          'Ifco-Typ nicht gefunden',
+          'IFCO-Typ nicht gefunden',
         );
         return c.json({ ok: true });
       })
@@ -1172,17 +1172,17 @@ export function createApp(deps: AppDeps) {
             await deps.inventar
               .ifcoTypArchivieren(c.req.param('id'), archiviert)
               .catch(warenFehler),
-            'Ifco-Typ nicht gefunden',
+            'IFCO-Typ nicht gefunden',
           );
           return c.json({ archiviert });
         },
       )
-      // ----- Inventar: Ifcos
+      // ----- Inventar: IFCOs
       .get('/inventar/ifcos', auth, inventarLesen, async (c) =>
         c.json(await deps.inventar.ifcos(c.req.query('archiv') === '1')),
       )
       .get('/inventar/ifcos/:id', auth, inventarLesen, async (c) =>
-        c.json(gefunden(await deps.inventar.ifcoHolen(c.req.param('id')), 'Ifco nicht gefunden')),
+        c.json(gefunden(await deps.inventar.ifcoHolen(c.req.param('id')), 'IFCO nicht gefunden')),
       )
       .post(
         '/inventar/ifcos',
@@ -1204,7 +1204,7 @@ export function createApp(deps: AppDeps) {
             await deps.inventar
               .ifcoAktualisieren(c.req.param('id'), c.req.valid('json'))
               .catch(warenFehler),
-            'Ifco nicht gefunden',
+            'IFCO nicht gefunden',
           );
           return c.json({ ok: true });
         },
@@ -1212,7 +1212,7 @@ export function createApp(deps: AppDeps) {
       .delete('/inventar/ifcos/:id', auth, inventarVerwalten, async (c) => {
         gefunden(
           await deps.inventar.ifcoLoeschen(c.req.param('id')).catch(warenFehler),
-          'Ifco nicht gefunden',
+          'IFCO nicht gefunden',
         );
         return c.json({ ok: true });
       })
@@ -1225,7 +1225,7 @@ export function createApp(deps: AppDeps) {
           const { archiviert } = c.req.valid('json');
           gefunden(
             await deps.inventar.ifcoArchivieren(c.req.param('id'), archiviert).catch(warenFehler),
-            'Ifco nicht gefunden',
+            'IFCO nicht gefunden',
           );
           return c.json({ archiviert });
         },
@@ -1240,7 +1240,7 @@ export function createApp(deps: AppDeps) {
             await deps.inventar
               .ifcoPlatzSetzen(c.req.param('id'), c.req.valid('json').lagerortId)
               .catch(warenFehler),
-            'Ifco nicht gefunden',
+            'IFCO nicht gefunden',
           );
           return c.json({ ok: true });
         },
@@ -1255,7 +1255,7 @@ export function createApp(deps: AppDeps) {
             await deps.inventar
               .ifcoInhaltSetzen(c.req.param('id'), c.req.valid('json').positionen)
               .catch(warenFehler),
-            'Ifco nicht gefunden',
+            'IFCO nicht gefunden',
           );
           return c.json({ ok: true });
         },

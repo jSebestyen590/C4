@@ -82,7 +82,7 @@ export function LagerortFormular({
     ? (lagerortArtAenderungFehler(lagerort, 'regal', alle) ?? lagerortArtFehler('regal', eltern))
     : lagerortArtFehler('regal', eltern);
   const artWaehlbar = regalSperre === null;
-  // An Ifco-Lagerplatz is a place without children that is not a Regal itself.
+  // An IFCO-Lagerplatz is a place without children that is not a Regal itself.
   const kinderAnzahl = lagerort ? alle.filter((l) => l.parentId === lagerort.id).length : 0;
   const ifcoSperre = ifcoPlatzMarkierenFehler(lagerort?.art ?? null, kinderAnzahl);
 
@@ -142,7 +142,7 @@ export function LagerortFormular({
         boeden: boeden.namen.map((n) => n.trim()),
         boedenIfcoPlatz: typeof boedenPlatz === 'string' ? null : boedenPlatz,
       }),
-      // A Regal is never an Ifco-Lagerplatz itself; a plain place sends its choice (null = normal).
+      // A Regal is never an IFCO-Lagerplatz itself; a plain place sends its choice (null = normal).
       ...(wahl === 'normal' && { ifcoPlatz: typeof platz === 'string' ? null : platz }),
       ...(wahl === 'regal' && lagerort && { ifcoPlatz: null }),
     };
@@ -211,8 +211,8 @@ export function LagerortFormular({
               <IfcoPlatzFelder
                 wert={bodenIfcoPlatz}
                 onChange={setBodenIfcoPlatz}
-                label="Als Ifco-Lagerplätze anlegen"
-                beschreibung="Alle neuen Böden werden Ifco-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
+                label="Als IFCO-Lagerplätze anlegen"
+                beschreibung="Alle neuen Böden werden IFCO-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
                 reihen={Number(boeden.reihen) || 1}
               />
             </>

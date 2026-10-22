@@ -8,7 +8,7 @@ import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { PfadSelect } from './PfadSelect';
 
-/** Moves an Ifco to another place (or to "ohne Platz"). Mount it only while it should be open. */
+/** Moves an IFCO to another place (or to "ohne Platz"). Mount it only while it should be open. */
 export function IfcoUmstellenModal({
   ifco,
   lagerorte,
@@ -18,7 +18,7 @@ export function IfcoUmstellenModal({
 }: Readonly<{
   ifco: IfcoEintrag;
   lagerorte: LagerKnoten[];
-  /** All Ifcos and types, to tell where the Ifco fits. */
+  /** All IFCOs and types, to tell where the IFCO fits. */
   ifcos: IfcoEintrag[];
   typen: IfcoTypEintrag[];
   onClose: () => void;

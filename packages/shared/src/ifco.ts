@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
-// Ifco types and the capacity of Ifco-Lagerplätze (pure, no I/O).
+// IFCO types and the capacity of IFCO-Lagerplätze (pure, no I/O).
 //
 // Model: the floor of a place consists of `2 × stellflaechen` half-columns, each `hoeheCm` high. A
-// small Ifco (40×30) stands in one half-column and uses its height there; a large Ifco (60×40) uses
-// two half-columns, with its height in each of them. A set of Ifcos fits when they can be assigned
+// small IFCO (40×30) stands in one half-column and uses its height there; a large IFCO (60×40) uses
+// two half-columns, with its height in each of them. A set of IFCOs fits when they can be assigned
 // to half-columns so that no half-column's sum of heights exceeds the place height. Which two
-// half-columns a large Ifco takes does not matter (a deliberate simplification: it may rest on two
+// half-columns a large IFCO takes does not matter (a deliberate simplification: it may rest on two
 // half-columns of different heights).
 
 export const IFCO_GRUNDFLAECHEN = ['gross', 'klein'] as const;
@@ -21,9 +21,9 @@ export const IFCO_GRUNDFLAECHE_LABELS: Record<IfcoGrundflaeche, string> = {
 /** Footprint in cm as short text. */
 export const IFCO_MASSE: Record<IfcoGrundflaeche, string> = { gross: '60×40', klein: '40×30' };
 
-/** Most Ifcos the capacity check considers; more never fit. */
+/** Most IFCOs the capacity check considers; more never fit. */
 export const MAX_IFCOS_JE_PLATZ = 30;
-/** Most Stellflächen of one Ifco-Lagerplatz. */
+/** Most Stellflächen of one IFCO-Lagerplatz. */
 export const MAX_STELLFLAECHEN = 10;
 export const MAX_IFCO_HOEHE_CM = 200;
 
@@ -45,7 +45,7 @@ export const ifcoTypSchema = z.object({
 });
 export type IfcoTypEingabe = z.input<typeof ifcoTypSchema>;
 
-/** An Ifco-Lagerplatz as sent when marking a Lagerort: height per half-column and number of 60×40 footprints. */
+/** An IFCO-Lagerplatz as sent when marking a Lagerort: height per half-column and number of 60×40 footprints. */
 export const ifcoPlatzMasseSchema = z.object({
   hoeheCm: hoeheSchema,
   stellflaechen: z
@@ -56,7 +56,7 @@ export const ifcoPlatzMasseSchema = z.object({
 });
 export type IfcoPlatzMasse = z.infer<typeof ifcoPlatzMasseSchema>;
 
-/** Footprint and height of an Ifco (its type). */
+/** Footprint and height of an IFCO (its type). */
 export interface IfcoMass {
   grundflaeche: IfcoGrundflaeche;
   hoeheCm: number;
@@ -83,12 +83,12 @@ export const ifcoTypText = (typ: IfcoMass & { name: string }): string =>
   `${typ.name} · ${IFCO_MASSE[typ.grundflaeche]} · ${zahlText(typ.hoeheCm)} cm`;
 
 interface Teil {
-  /** Number of half-columns the Ifco uses (1 = small, 2 = large). */
+  /** Number of half-columns the IFCO uses (1 = small, 2 = large). */
   breite: 1 | 2;
   h: number;
 }
 
-/** Whether the Ifcos fit onto the place (exact search, see the model above). */
+/** Whether the IFCOs fit onto the place (exact search, see the model above). */
 export function ifcosPassen(platz: IfcoPlatzMasse, ifcos: IfcoMass[]): boolean {
   if (ifcos.length === 0) return true;
   if (ifcos.length > MAX_IFCOS_JE_PLATZ) return false;
@@ -145,7 +145,7 @@ export function ifcosPassen(platz: IfcoPlatzMasse, ifcos: IfcoMass[]): boolean {
 }
 
 /**
- * For every non-archived type the largest number of further Ifcos of that type that still fit next
+ * For every non-archived type the largest number of further IFCOs of that type that still fit next
  * to `vorhanden` (0 = none), in the order of `typen`.
  */
 export function nochPlatzFuer(
@@ -167,7 +167,7 @@ export function nochPlatzFuer(
     });
 }
 
-/** An Ifco as named in messages: `typ` null = no type. */
+/** An IFCO as named in messages: `typ` null = no type. */
 export interface IfcoEintrag {
   name: string;
   typ: (IfcoMass & { name: string }) | null;
@@ -177,9 +177,9 @@ const eintragText = (e: IfcoEintrag & { typ: NonNullable<IfcoEintrag['typ']> }) 
   `${e.typ.name}, ${zahlText(e.typ.hoeheCm)} cm`;
 
 /**
- * German error unless the Ifcos `stehend` (already there) and `neu` (to be added) fit together onto
- * the place, otherwise null. Ifcos are added one by one in this order; those that no longer fit are
- * named. An Ifco without a type is an error of its own.
+ * German error unless the IFCOs `stehend` (already there) and `neu` (to be added) fit together onto
+ * the place, otherwise null. IFCOs are added one by one in this order; those that no longer fit are
+ * named. An IFCO without a type is an error of its own.
  */
 export function ifcoPlatzFehler(
   platzName: string,
@@ -190,7 +190,7 @@ export function ifcoPlatzFehler(
   const alle = [...stehend, ...neu];
   const ohneTyp = alle.find((e) => e.typ === null);
   if (ohneTyp) {
-    return `„${ohneTyp.name}“ hat keinen Typ. Auf einem Ifco-Lagerplatz braucht jede Ifco einen Typ.`;
+    return `„${ohneTyp.name}“ hat keinen Typ. Auf einem IFCO-Lagerplatz braucht jede IFCO einen Typ.`;
   }
   const drauf: (IfcoEintrag & { typ: NonNullable<IfcoEintrag['typ']> })[] = [];
   const keinPlatz: typeof drauf = [];
@@ -216,7 +216,7 @@ export function ifcoPlatzFehler(
   return `${kopf}: ${dort ? `${dort}; ` : ''}${rest}`;
 }
 
-/** Whether an Ifco of the given type fits next to the standing ones (false without a type). */
+/** Whether an IFCO of the given type fits next to the standing ones (false without a type). */
 export function passtIfco(
   platz: IfcoPlatzMasse,
   stehend: IfcoMass[],
@@ -225,22 +225,22 @@ export function passtIfco(
   return ifco !== null && ifcosPassen(platz, [...stehend, ifco]);
 }
 
-/** Waren cannot be booked onto a place while Ifcos stand there. */
+/** Waren cannot be booked onto a place while IFCOs stand there. */
 export const ifcoPlatzHatIfcosFehler = (ort: string): string =>
-  `Auf „${ort}“ stehen Ifcos; dort kann gerade keine Ware liegen.`;
-/** An Ifco cannot be put onto an Ifco-Lagerplatz that holds Waren. */
+  `Auf „${ort}“ stehen IFCOs; dort kann gerade keine Ware liegen.`;
+/** An IFCO cannot be put onto an IFCO-Lagerplatz that holds Waren. */
 export const ifcoPlatzHatWareFehler = (ort: string): string =>
-  `Auf „${ort}“ liegt Ware; dort kann keine Ifco stehen.`;
-export const IFCO_PLATZ_KEINE_KINDER = 'Ein Ifco-Lagerplatz kann keine Unterebenen haben.';
+  `Auf „${ort}“ liegt Ware; dort kann keine IFCO stehen.`;
+export const IFCO_PLATZ_KEINE_KINDER = 'Ein IFCO-Lagerplatz kann keine Unterebenen haben.';
 
 /**
  * German error unless a node of kind `art` with `kinderAnzahl` children may become an
- * Ifco-Lagerplatz, otherwise null. Only a place without children qualifies; a Regal is not one
+ * IFCO-Lagerplatz, otherwise null. Only a place without children qualifies; a Regal is not one
  * itself (its Regalböden are).
  */
 export function ifcoPlatzMarkierenFehler(art: string | null, kinderAnzahl: number): string | null {
   if (art === 'regal')
-    return 'Ein Regal ist selbst kein Ifco-Lagerplatz. Markiere seine Regalböden.';
-  if (kinderAnzahl > 0) return 'Ein Lagerort mit Unterebenen kann kein Ifco-Lagerplatz sein.';
+    return 'Ein Regal ist selbst kein IFCO-Lagerplatz. Markiere seine Regalböden.';
+  if (kinderAnzahl > 0) return 'Ein Lagerort mit Unterebenen kann kein IFCO-Lagerplatz sein.';
   return null;
 }

@@ -24,7 +24,7 @@ import type {
   KategorieEintrag,
 } from './inventarDaten';
 
-/** Select options for one place: `l:<id>` = Lagerort, `i:<id>` = Ifco. */
+/** Select options for one place: `l:<id>` = Lagerort, `i:<id>` = IFCO. */
 export const zielWert = (z: PlatzZiel): string =>
   z.lagerortId !== null ? `l:${z.lagerortId}` : `i:${z.ifcoId}`;
 
@@ -38,9 +38,9 @@ const nachLabel = (a: { label: string }, b: { label: string }) =>
   a.label.localeCompare(b.label, 'de');
 
 /**
- * Place options for an Ifco: like `lagerortOptionen`, but an Ifco-Lagerplatz says `passt` or why
- * the Ifco (with the type `typId`) cannot stand there (`passt nicht` / `Typ nötig`, disabled).
- * `ifco` is the Ifco being edited (its own place does not count against it), undefined for a new one.
+ * Place options for an IFCO: like `lagerortOptionen`, but an IFCO-Lagerplatz says `passt` or why
+ * the IFCO (with the type `typId`) cannot stand there (`passt nicht` / `Typ nötig`, disabled).
+ * `ifco` is the IFCO being edited (its own place does not count against it), undefined for a new one.
  */
 export function ifcoPlatzOptionen(
   lagerorte: LagerKnoten[],
@@ -58,7 +58,7 @@ export function ifcoPlatzOptionen(
       const r = platzPasst(masse, l.id, { id: ifco?.id ?? '' }, typId, ifcos, typen);
       return {
         value: l.id,
-        label: `${label} · Ifco-Lagerplatz, ${r.passt ? 'passt' : r.grund}`,
+        label: `${label} · IFCO-Lagerplatz, ${r.passt ? 'passt' : r.grund}`,
         disabled: !r.passt,
       };
     })
@@ -74,7 +74,7 @@ export function kategorieOptionen(kategorien: KategorieEintrag[], behalten?: str
 }
 
 /**
- * Grouped, searchable targets "Plätze" (Lagerorte) and "Ifcos". Archived targets only when they
+ * Grouped, searchable targets "Plätze" (Lagerorte) and "IFCOs". Archived targets only when they
  * are in `behalten`; targets in `gesperrt` are shown disabled (already used in another row).
  */
 export function zielOptionen(
@@ -102,7 +102,7 @@ export function zielOptionen(
     .sort(nachLabel);
   return [
     { group: 'Plätze', items: plaetze },
-    { group: 'Ifcos', items: kisten },
+    { group: 'IFCOs', items: kisten },
   ].filter((g) => g.items.length > 0);
 }
 
@@ -203,7 +203,7 @@ export function ausleihenSortiert<T extends Pick<AusleiheEintrag, 'status' | 'au
 export const offenePositionen = (a: Pick<AusleiheEintrag, 'positionen'>) =>
   a.positionen.filter((p) => p.zurueckAm === null);
 
-/** `3× Kabeltrommel aus Lager › Regal` (`Kabeltrommel aus …` for a single piece, `… (mit ganzer Ifco)` for a whole Ifco). */
+/** `3× Kabeltrommel aus Lager › Regal` (`Kabeltrommel aus …` for a single piece, `… (mit ganzer IFCO)` for a whole IFCO). */
 export function positionText(
   p: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl' | 'lagerortId' | 'ifcoId'> &
     Partial<Pick<AusleihePositionEintrag, 'ganzeIfco'>>,
@@ -212,15 +212,15 @@ export function positionText(
   ifcos: IfcoEintrag[],
 ): string {
   const name = gegenstaende.find((g) => g.id === p.gegenstandId)?.name ?? 'Unbekannt';
-  return `${mengeName(p.anzahl, name)} aus ${platzText(lagerorte, ifcos, p)}${p.ganzeIfco ? ' (mit ganzer Ifco)' : ''}`;
+  return `${mengeName(p.anzahl, name)} aus ${platzText(lagerorte, ifcos, p)}${p.ganzeIfco ? ' (mit ganzer IFCO)' : ''}`;
 }
 
-/** `Spanngurtkiste (ganze Ifco)` */
+/** `Spanngurtkiste (ganze IFCO)` */
 export function ifcoGruppeTitel(ifcoId: string, ifcos: Pick<IfcoEintrag, 'id' | 'name'>[]): string {
-  return `${ifcos.find((i) => i.id === ifcoId)?.name ?? 'Unbekannte Ifco'} (ganze Ifco)`;
+  return `${ifcos.find((i) => i.id === ifcoId)?.name ?? 'Unbekannte IFCO'} (ganze IFCO)`;
 }
 
-/** Contents of a whole-Ifco lending as one compact line: `6× Spanngurt 6m, Ratsche`, sorted by name. */
+/** Contents of a whole-IFCO lending as one compact line: `6× Spanngurt 6m, Ratsche`, sorted by name. */
 export function ifcoInhaltText(
   positionen: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl'>[],
   gegenstaende: Pick<GegenstandEintrag, 'id' | 'name'>[],
@@ -296,7 +296,7 @@ export function verfuegbarImZeitraum(
 }
 
 /**
- * Default amount for a place on the Verleihen page: the whole available content of an Ifco lent as a
+ * Default amount for a place on the Verleihen page: the whole available content of an IFCO lent as a
  * whole, or the single piece of a Gegenstand that exists once and is available; otherwise nothing.
  */
 export function standardMenge(

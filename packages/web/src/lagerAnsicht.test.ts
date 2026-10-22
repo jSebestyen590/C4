@@ -118,7 +118,7 @@ describe('kachelInhalt', () => {
   });
   const ware = (name: string) => ({ wareId: name, name, text: '1', mhd: '' });
 
-  it('names the first Ifco alphabetically plus +N on an Ifco-Lagerplatz', () => {
+  it('names the first IFCO alphabetically plus +N on an IFCO-Lagerplatz', () => {
     const b: Belegung = {
       bestand: null,
       inventar: new Map([['p', inv(['Zelt', 'Alpha', 'Mitte'])]]),

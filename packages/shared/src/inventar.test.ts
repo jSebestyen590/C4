@@ -51,7 +51,7 @@ const namen: Beschriftung = {
 };
 
 describe('kategorieSchema / gegenstandSchema / ifcoSchema', () => {
-  it('normalises category and Ifco input', () => {
+  it('normalises category and IFCO input', () => {
     expect(kategorieSchema.parse({ name: ' Technik ' })).toEqual({
       name: 'Technik',
       parentId: null,
@@ -79,7 +79,7 @@ describe('kategorieSchema / gegenstandSchema / ifcoSchema', () => {
 });
 
 describe('gegenstandPlaetzeSchema', () => {
-  it('accepts an empty list and places at a Lagerort or an Ifco', () => {
+  it('accepts an empty list and places at a Lagerort or an IFCO', () => {
     expect(gegenstandPlaetzeSchema.safeParse({ plaetze: [] }).success).toBe(true);
     const ok = gegenstandPlaetzeSchema.parse({
       plaetze: [
@@ -189,7 +189,7 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
     ).toBe(false);
     expect(ausleiheAendernSchema.safeParse(ohne).success).toBe(false);
   });
-  it('accepts ganzeIfco only together with an Ifco', () => {
+  it('accepts ganzeIfco only together with an IFCO', () => {
     const inIfco = { gegenstandId: 'g1', ifcoId: 'i1', anzahl: 2, ganzeIfco: true };
     expect(ausleiheSchema.parse({ ...kopf, positionen: [inIfco] }).positionen[0]?.ganzeIfco).toBe(
       true,
@@ -232,7 +232,7 @@ describe('inventarAbweichung / abweichungText', () => {
 });
 
 describe('platzText', () => {
-  it('shows the path of a Lagerort and the Ifco with its place', () => {
+  it('shows the path of a Lagerort and the IFCO with its place', () => {
     expect(platzText(orte, ifcos, { lagerortId: 'regal', ifcoId: null })).toBe('Lager › Regal 1');
     expect(platzText(orte, ifcos, { lagerortId: null, ifcoId: 'i1' })).toBe(
       'Spanngurtkiste · Lager › Regal 1',
@@ -398,7 +398,7 @@ describe('positionenGruppieren', () => {
     ifcoId,
     ganzeIfco,
   });
-  it('groups the positions of a whole Ifco and keeps the rest single', () => {
+  it('groups the positions of a whole IFCO and keeps the rest single', () => {
     const liste = [
       pos('a', null),
       pos('b', 'i1', true),
@@ -441,7 +441,7 @@ describe('ganzeIfcoFehler', () => {
       ganzeIfcoFehler(inhalt, [], [ganz('g1', 3), ganz('g2', 2)], Z, { beschriftung: namen }),
     ).toContain('sind 4 verfügbar, angegeben sind 3');
   });
-  it('rejects unflagged positions of the same Ifco and an empty Ifco', () => {
+  it('rejects unflagged positions of the same IFCO and an empty IFCO', () => {
     expect(
       ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2, false)], Z, {
         beschriftung: namen,
@@ -549,7 +549,7 @@ describe('period based availability', () => {
     expect(r.get('a-Jugend')).toEqual([{ id: 'a-Feuerwehr', an: 'Feuerwehr' }]);
     expect(gefaehrdungen(plaetze, [offen[1]!, offen[2]!], heute).size).toBe(0);
   });
-  it('sums the whole-Ifco content with the same period availability', () => {
+  it('sums the whole-IFCO content with the same period availability', () => {
     const inhalt = [menge('g1', { i: 'i1' }, 4)];
     const offen = [
       {

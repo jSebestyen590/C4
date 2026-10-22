@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { IfcoTypenTab } from '../IfcoTypenTab';
 import { KategorienTab } from '../KategorienTab';
 
-/** Master data of the Inventar: Kategorien (tree) and Ifco types. */
+/** Master data of the Inventar: Kategorien (tree) and IFCO types. */
 export function InventarStammdatenPage() {
   const [tab, setTab] = useState<string | null>('kategorien');
   return (
@@ -23,7 +23,7 @@ export function InventarStammdatenPage() {
             Kategorien
           </Tabs.Tab>
           <Tabs.Tab value="ifco-typen" py="sm">
-            Ifco-Typen
+            IFCO-Typen
           </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="kategorien" pt="md">

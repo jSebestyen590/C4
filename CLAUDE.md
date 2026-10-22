@@ -48,6 +48,9 @@ start; don't add English user-facing strings.
   `labelFuer(labels, value, anrede)` using the `anrede` of the person the text is about; never hardcode
   one form. New texts naming a person need all three forms.
 - Code, identifiers, comments and commit messages stay English.
+- The brand **IFCO** (Euro boxes) is always written in capitals in user-facing texts and docs:
+  "IFCO", plural "IFCOs" (e.g. "IFCO anlegen", "Ganze IFCO verleihen"). Identifiers stay as they are
+  (`ifco`, `IfcoFormular`, `/inventar/ifcos`).
 
 ## Members in the UI
 

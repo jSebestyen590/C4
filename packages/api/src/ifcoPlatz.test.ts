@@ -55,14 +55,14 @@ describe('ifcoPlatzPruefen', () => {
   it('names the place, what stands there and what does not fit', async () => {
     expect(
       await ifcoPlatzPruefen(stub(stehend), ort, masse, {
-        neu: [{ name: 'Strom-Ifco', typId: 't16' }],
+        neu: [{ name: 'Strom-IFCO', typId: 't16' }],
       }),
     ).toBe(
-      'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), Werkzeugkiste (6410, 10 cm); „Strom-Ifco“ (6416, 16 cm) hat keinen Platz mehr.',
+      'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), Werkzeugkiste (6410, 10 cm); „Strom-IFCO“ (6416, 16 cm) hat keinen Platz mehr.',
     );
   });
 
-  it('does not count the Ifco that is being moved', async () => {
+  it('does not count the IFCO that is being moved', async () => {
     expect(
       await ifcoPlatzPruefen(stub(stehend), ort, masse, {
         ohne: ['i1'],
@@ -71,7 +71,7 @@ describe('ifcoPlatzPruefen', () => {
     ).toBeNull();
   });
 
-  it('rejects an Ifco without a type', async () => {
+  it('rejects an IFCO without a type', async () => {
     expect(
       await ifcoPlatzPruefen(stub([]), ort, masse, { neu: [{ name: 'Ohne', typId: null }] }),
     ).toContain('keinen Typ');
@@ -80,7 +80,7 @@ describe('ifcoPlatzPruefen', () => {
     );
   });
 
-  it('checks the standing Ifcos against changed dimensions', async () => {
+  it('checks the standing IFCOs against changed dimensions', async () => {
     const klein = { hoeheCm: 15, stellflaechen: 1 };
     expect(await ifcoPlatzPruefen(stub(stehend), ort, klein)).toContain('Passt nicht auf „HR11“');
     expect(

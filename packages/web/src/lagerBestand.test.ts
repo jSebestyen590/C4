@@ -113,7 +113,7 @@ describe('lagerBestand', () => {
     expect(abschnitte[0]!.waren[0]!.gebinde.map((g) => g.id)).toEqual(['k', 'f']);
   });
 
-  it('still offers an Ifco-Lagerplatz that holds stock (withdrawals are never blocked)', () => {
+  it('still offers an IFCO-Lagerplatz that holds stock (withdrawals are never blocked)', () => {
     const mitIfco = orte.map((o) =>
       o.id === 'k1' ? { ...o, ifcoHoeheCm: 20, ifcoStellflaechen: 1 } : o,
     );

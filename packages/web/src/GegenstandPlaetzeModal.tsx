@@ -30,7 +30,7 @@ interface Zeile {
 }
 
 /**
- * Edits all Plätze of a Gegenstand at once: target (Lagerort or Ifco) and amount per row, with the
+ * Edits all Plätze of a Gegenstand at once: target (Lagerort or IFCO) and amount per row, with the
  * live sum against the target. Mount it only while it should be open.
  */
 export function GegenstandPlaetzeModal({
@@ -146,7 +146,7 @@ export function GegenstandPlaetzeModal({
                 <Stack gap="xs">
                   <PfadSelect
                     label={`Platz ${i + 1}`}
-                    placeholder="Lagerort oder Ifco wählen"
+                    placeholder="Lagerort oder IFCO wählen"
                     searchable
                     inputMode="text"
                     nothingFoundMessage="Nichts gefunden"
