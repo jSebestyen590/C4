@@ -13,6 +13,7 @@ import {
   alleSetzen,
   aufgeklapptLesen,
   istAufgeklappt,
+  zuMerken,
   knotenMitBestand,
   knotenMitKindern,
   nurBelegte,
@@ -90,6 +91,8 @@ export function LagerPage() {
   const [inventarZeigen, setInventarZeigen] = useState(() => gemerkt(INVENTAR_ANZEIGEN_KEY));
   const [nurBelegteZeigen, setNurBelegteZeigen] = useState(() => gemerktAus(NUR_BELEGTE_KEY));
   const [aufgeklappt, setAufgeklappt] = useState<Aufgeklappt>(aufgeklapptLaden);
+  // Regale start collapsed on every visit: their choices live only in memory.
+  const [regalAuf, setRegalAuf] = useState<Aufgeklappt>({});
   const [kachelId, setKachelId] = useState<string | null>(null);
   const [formular, setFormular] = useState<Formular | null>(null);
   const [boedenZiel, setBoedenZiel] = useState<LagerKnoten | null>(null);
@@ -132,6 +135,10 @@ export function LagerPage() {
   );
 
   const alle: LagerKnoten[] = useMemo(() => lagerorte.data ?? [], [lagerorte.data]);
+  const regalIds = useMemo(
+    () => new Set(alle.filter((l) => l.art === 'regal').map((l) => l.id)),
+    [alle],
+  );
   const hatIfcoPlaetze = useMemo(() => alle.some((l) => l.ifcoHoeheCm !== null), [alle]);
   // The IFCOs are also needed (without the Inventar switch) to tell what still fits on an IFCO-Lagerplatz.
   const inventarDaten = useGegenstaendeUndIfcos(darfInventar && (inventarZeigen || hatIfcoPlaetze));
@@ -255,11 +262,29 @@ export function LagerPage() {
   };
 
   const aufgeklapptSetzen = (neu: Aufgeklappt) => {
-    setAufgeklappt(neu);
-    aufgeklapptSpeichern(neu);
+    const gemerkt = zuMerken(neu, regalIds);
+    setAufgeklappt(gemerkt);
+    aufgeklapptSpeichern(gemerkt);
   };
-  const alleAufZu = (auf: boolean) =>
-    aufgeklapptSetzen(alleSetzen(aufgeklappt, knotenMitKindern(gesamtBaum), auf));
+  const istAuf = (id: string, tiefe: number) =>
+    regalIds.has(id) ? (regalAuf[id] ?? false) : istAufgeklappt(id, tiefe, aufgeklappt);
+  const alleAufZu = (auf: boolean) => {
+    const ids = knotenMitKindern(gesamtBaum);
+    setRegalAuf(
+      alleSetzen(
+        regalAuf,
+        ids.filter((id) => regalIds.has(id)),
+        auf,
+      ),
+    );
+    aufgeklapptSetzen(
+      alleSetzen(
+        aufgeklappt,
+        ids.filter((id) => !regalIds.has(id)),
+        auf,
+      ),
+    );
+  };
 
   const ctx: LagerKontext = {
     darfVerwalten,
@@ -269,9 +294,11 @@ export function LagerPage() {
     inventar: inventarKarte,
     ifcoDaten,
     offeneInventuren,
-    aufgeklappt: (id, tiefe) => istAufgeklappt(id, tiefe, aufgeklappt),
+    aufgeklappt: istAuf,
     umschalten: (id, tiefe) =>
-      aufgeklapptSetzen({ ...aufgeklappt, [id]: !istAufgeklappt(id, tiefe, aufgeklappt) }),
+      regalIds.has(id)
+        ? setRegalAuf({ ...regalAuf, [id]: !istAuf(id, tiefe) })
+        : aufgeklapptSetzen({ ...aufgeklappt, [id]: !istAuf(id, tiefe) }),
     kachelOeffnen: (k) => setKachelId(k.id),
     unterebene: (k) => setFormular({ parentId: k.id }),
     boeden: setBoedenZiel,

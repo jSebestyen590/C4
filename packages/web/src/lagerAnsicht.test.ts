@@ -5,6 +5,7 @@ import {
   aufgeklapptLesen,
   kachelBeschriftung,
   istAufgeklappt,
+  zuMerken,
   istBelegt,
   kachelInhalt,
   kachelZaehlerText,
@@ -119,18 +120,23 @@ describe('kachelInhalt', () => {
   });
   const ware = (name: string) => ({ wareId: name, name, text: '1', mhd: '' });
 
-  it('names the first IFCO alphabetically plus +N on an IFCO-Lagerplatz', () => {
-    const b: Belegung = {
-      bestand: null,
-      inventar: new Map([['p', inv(['Zelt', 'Alpha', 'Mitte'])]]),
-    };
-    expect(kachelInhalt('p', b, true)).toEqual({
-      text: 'Alpha',
-      zusatz: '+2',
-      titel: 'Alpha, Mitte, Zelt',
+  it('lists all IFCOs of an IFCO-Lagerplatz that holds only IFCOs', () => {
+    const zwei: Belegung = { bestand: null, inventar: new Map([['p', inv(['Zelt', 'Alpha'])]]) };
+    expect(kachelInhalt('p', zwei, true)).toEqual({
+      text: '',
+      zusatz: null,
+      zeilen: ['Alpha', 'Zelt'],
+      titel: 'Alpha, Zelt',
     });
-    const eine: Belegung = { bestand: null, inventar: new Map([['p', inv(['Alpha'])]]) };
-    expect(kachelInhalt('p', eine, true).zusatz).toBeNull();
+    const vier: Belegung = {
+      bestand: null,
+      inventar: new Map([['p', inv(['D', 'A', 'C', 'B'])]]),
+    };
+    expect(kachelInhalt('p', vier, true).zeilen).toEqual(['A', 'B', '+2']);
+  });
+  it('falls back to the normal rule when loose Gegenstände lie on the IFCO-Lagerplatz', () => {
+    const b: Belegung = { bestand: null, inventar: new Map([['p', inv(['Kiste'], ['Zelt'])]]) };
+    expect(kachelInhalt('p', b, true)).toMatchObject({ text: '2', zeilen: null });
   });
   it('names the only entry of a normal node, whatever it is', () => {
     const waren: Belegung = { bestand: new Map([['n', [ware('Mehl')]]]), inventar: null };
@@ -139,14 +145,22 @@ describe('kachelInhalt', () => {
     expect(kachelInhalt('n', ifcoB, false).text).toBe('Kiste 1');
     // a single Gegenstand with several pieces is still just the name
     const g: Belegung = { bestand: null, inventar: new Map([['n', inv([], ['Zelt'])]]) };
-    expect(kachelInhalt('n', g, false)).toEqual({ text: 'Zelt', zusatz: null, titel: 'Zelt' });
+    expect(kachelInhalt('n', g, false)).toMatchObject({
+      text: 'Zelt',
+      zusatz: null,
+      titel: 'Zelt',
+    });
   });
   it('keeps the counter for two or more entries and a dash when empty', () => {
     const b: Belegung = {
       bestand: new Map([['n', [ware('Mehl')]]]),
       inventar: new Map([['n', inv([], ['Zelt'])]]),
     };
-    expect(kachelInhalt('n', b, false)).toEqual({ text: '2', zusatz: null, titel: 'Mehl, Zelt' });
+    expect(kachelInhalt('n', b, false)).toMatchObject({
+      text: '2',
+      zeilen: null,
+      titel: 'Mehl, Zelt',
+    });
     expect(kachelInhalt('leer', b, false).text).toBe('–');
     expect(kachelInhalt('leer', b, true).titel).toBeNull();
   });
@@ -173,6 +187,11 @@ describe('Aufklappen', () => {
   it('expands top-level nodes and collapses deeper ones by default', () => {
     expect(istAufgeklappt('lager', 0, {})).toBe(true);
     expect(istAufgeklappt('regal', 1, {})).toBe(false);
+  });
+  it('collapses Regale by default at any depth', () => {
+    expect(istAufgeklappt('r', 0, {}, true)).toBe(false);
+    expect(istAufgeklappt('r', 0, { r: true }, true)).toBe(true);
+    expect(zuMerken({ r: true, l: false }, new Set(['r']))).toEqual({ l: false });
   });
   it('lets explicit choices win', () => {
     expect(istAufgeklappt('lager', 0, { lager: false })).toBe(false);

@@ -160,7 +160,8 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     und die Liste der erzeugten Namen als Eingabefelder, einzeln überschreibbar (Änderung von Muster/Anzahl erzeugt sie neu). „Böden
     hinzufügen“ nutzt dieselben Felder, `{n}` beginnt nach den vorhandenen Böden. Beim Bearbeiten ist der Umschalter gesperrt (mit Hinweis),
     wenn die Regeln es nicht erlauben; Regalböden sind einzeln über „Bearbeiten“ umbenennbar.
-  - **Auf-/Zuklappen:** Standard: oberste Knoten aufgeklappt, tiefere zugeklappt. Eigene Wahl wird je Knoten im `localStorage`
+  - **Auf-/Zuklappen:** Standard: oberste Knoten aufgeklappt, tiefere zugeklappt; Regale sind bei jedem Aufruf zugeklappt (ihre Wahl gilt nur bis
+    zum Verlassen der Seite und wird nicht gespeichert, `zuMerken`). Eigene Wahl anderer Knoten wird je Knoten im `localStorage`
     gemerkt (Schlüssel `lager.aufgeklappt`, Map Id → aufgeklappt); „Alle aufklappen“ / „Alle zuklappen“ setzen alle Knoten mit
     Unterknoten. Ohne Storage funktioniert die Seite, die Wahl wird dann nicht gemerkt.
   - **„Nur belegte Plätze“** (aus, Schlüssel `lager.nurBelegte`): blendet Knoten ohne Bestand/Inventar aus, wenn auch ihr Teilbaum leer ist

@@ -154,7 +154,7 @@ jede Änderung macht `['inventar']` ungültig.
   Funktion wie die API, `ifcoPlatz.ts`).
 - Kacheln normaler Böden nennen bei genau einem Eintrag (eine Ware mit Bestand, eine IFCO oder ein direkt zugeordneter Gegenstand, je nach
   Schaltern) dessen Namen statt des Zählers (`kachelInhalt` in `lagerAnsicht.ts`); ab zwei Einträgen bleibt der Zähler.
-- Lager-Seite: IFCO-Lagerplätze tragen ein Kisten-Symbol und zeigen den Namen der IFCO (bei mehreren die alphabetisch erste mit „ +N“, einzeilig gekürzt, alle Namen im Titel); Karte und Drawer nennen „20 cm hoch · 1 Stellfläche“, die
+- Lager-Seite: IFCO-Lagerplätze tragen ein Kisten-Symbol und listen, wenn dort nur IFCOs stehen, alle IFCO-Namen untereinander (alphabetisch, je Zeile gekürzt, ab vier IFCOs zwei Namen und „+N“, alle Namen im Titel); liegen dort auch lose Gegenstände oder Ware, gilt die normale Regel (ein Eintrag mit Namen, sonst Zähler); Karte und Drawer nennen „20 cm hoch · 1 Stellfläche“, die
   stehenden IFCOs mit Typ und „Passt noch: 1× 6410 oder 2× 4310“ bzw. „Voll“ (`passtNochText`). `LagerortFormular` hat den Schalter
   „IFCO-Lagerplatz“ mit Höhe und Stellflächen (gesperrt mit Hinweis bei Unterebenen), beim Regal und im Dialog „Böden hinzufügen“ den
   Schalter „Als IFCO-Lagerplätze anlegen“ (`IfcoPlatzFelder`).

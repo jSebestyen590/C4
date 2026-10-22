@@ -37,37 +37,46 @@ export function kachelZaehlerText(id: string, b: Belegung): string {
   return summe === 0 ? '–' : String(summe);
 }
 
-/** What a tile shows below its name: `text` (truncated by the tile), a fixed `zusatz` like `+2`, full names in `titel`. */
+/**
+ * What a tile shows below its name: either `zeilen` (one truncated line each) or `text` (truncated by
+ * the tile) plus a fixed `zusatz` like `+2`; full names in `titel`.
+ */
 export interface KachelInhalt {
   text: string;
   zusatz: string | null;
+  zeilen: string[] | null;
   titel: string | null;
 }
 
+/** Most IFCO names a tile lists; with more, the last line becomes `+N`. */
+const MAX_IFCO_ZEILEN = 3;
+
 /**
- * Tile content. An IFCO-Lagerplatz with IFCOs names the first IFCO (alphabetical) plus `+N` for the
- * others. Any other node names its only entry (one Ware with stock, one IFCO or one directly assigned
+ * Tile content. An IFCO-Lagerplatz holding only IFCOs lists all of them (alphabetical, usually at
+ * most two; beyond three the last line is `+N`). Any other node, also an IFCO-Lagerplatz with loose
+ * Gegenstände or Ware, names its only entry (one Ware with stock, one IFCO or one directly assigned
  * Gegenstand, among the parts shown) and otherwise shows the counter ("–" when empty).
  */
 export function kachelInhalt(id: string, b: Belegung, istIfcoPlatz: boolean): KachelInhalt {
   const nachName = (a: string, c: string) => a.localeCompare(c, 'de');
   const ifcos = (b.inventar?.get(id)?.ifcos ?? []).map((i) => i.name).sort(nachName);
-  if (istIfcoPlatz && ifcos.length > 0) {
-    return {
-      text: ifcos[0]!,
-      zusatz: ifcos.length > 1 ? `+${ifcos.length - 1}` : null,
-      titel: ifcos.join(', '),
-    };
-  }
-  const namen = [
+  const lose = [
     ...(b.bestand?.get(id) ?? []).map((w) => w.name),
-    ...ifcos,
     ...(b.inventar?.get(id)?.gegenstaende ?? []).map((g) => g.name),
   ];
-  if (namen.length === 1) return { text: namen[0]!, zusatz: null, titel: namen[0]! };
+  if (istIfcoPlatz && ifcos.length > 0 && lose.length === 0) {
+    const zeilen =
+      ifcos.length > MAX_IFCO_ZEILEN
+        ? [...ifcos.slice(0, MAX_IFCO_ZEILEN - 1), `+${ifcos.length - MAX_IFCO_ZEILEN + 1}`]
+        : ifcos;
+    return { text: '', zusatz: null, zeilen, titel: ifcos.join(', ') };
+  }
+  const namen = [...lose, ...ifcos];
+  if (namen.length === 1) return { text: namen[0]!, zusatz: null, zeilen: null, titel: namen[0]! };
   return {
     text: kachelZaehlerText(id, b),
     zusatz: null,
+    zeilen: null,
     titel: namen.length > 0 ? [...namen].sort(nachName).join(', ') : null,
   };
 }
@@ -99,8 +108,18 @@ export function nurBelegte<T extends BaumKnoten>(
 export type Aufgeklappt = Record<string, boolean>;
 
 /** Default: top-level nodes expanded, everything deeper collapsed; an explicit choice wins. */
-export function istAufgeklappt(id: string, tiefe: number, gewaehlt: Aufgeklappt): boolean {
-  return gewaehlt[id] ?? tiefe === 0;
+export function istAufgeklappt(
+  id: string,
+  tiefe: number,
+  gewaehlt: Aufgeklappt,
+  istRegal = false,
+): boolean {
+  return gewaehlt[id] ?? (tiefe === 0 && !istRegal);
+}
+
+/** The choices worth remembering: Regale always start collapsed, so their state is not stored. */
+export function zuMerken(gewaehlt: Aufgeklappt, regalIds: Set<string>): Aufgeklappt {
+  return Object.fromEntries(Object.entries(gewaehlt).filter(([id]) => !regalIds.has(id)));
 }
 
 /** Ids of all nodes that have children. */

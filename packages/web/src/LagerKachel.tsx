@@ -82,16 +82,26 @@ export function LagerKachel({
       >
         {anzeigeName}
       </Text>
-      <Group gap={4} wrap="nowrap" title={inhalt.titel ?? undefined}>
-        <Text size="xs" c="dimmed" lh={1} truncate style={{ flex: 1, minWidth: 0 }}>
-          {inhalt.text}
-        </Text>
-        {inhalt.zusatz && (
-          <Text size="xs" c="dimmed" lh={1} style={{ flexShrink: 0 }}>
-            {inhalt.zusatz}
+      {inhalt.zeilen ? (
+        <Stack gap={2} title={inhalt.titel ?? undefined} style={{ minWidth: 0 }}>
+          {inhalt.zeilen.map((z) => (
+            <Text key={z} size="xs" c="dimmed" lh={1.1} truncate>
+              {z}
+            </Text>
+          ))}
+        </Stack>
+      ) : (
+        <Group gap={4} wrap="nowrap" title={inhalt.titel ?? undefined}>
+          <Text size="xs" c="dimmed" lh={1} truncate style={{ flex: 1, minWidth: 0 }}>
+            {inhalt.text}
           </Text>
-        )}
-      </Group>
+          {inhalt.zusatz && (
+            <Text size="xs" c="dimmed" lh={1} style={{ flexShrink: 0 }}>
+              {inhalt.zusatz}
+            </Text>
+          )}
+        </Group>
+      )}
     </UnstyledButton>
   );
 }
