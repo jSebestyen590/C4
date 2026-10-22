@@ -28,7 +28,7 @@ import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { GegenstandPlaetzeModal } from '../GegenstandPlaetzeModal';
-import { AusleiheStatus, GefaehrdetBadges, startText } from '../AusleiheKarte';
+import { AusleiheStatus, GefaehrdetBadges, ZeitraumKurz } from '../AusleiheKarte';
 import {
   gegenstandAbweichung,
   mengeText,
@@ -291,9 +291,7 @@ export function GegenstandDetailPage() {
                     </Text>
                     <AusleiheStatus a={a} />
                   </Group>
-                  <Text size="sm" c="dimmed">
-                    {startText(a)}
-                  </Text>
+                  <ZeitraumKurz a={a} />
                   <GefaehrdetBadges a={a} />
                   {eigene.map((p) => (
                     <Text

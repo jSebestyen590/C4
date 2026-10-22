@@ -162,8 +162,8 @@ jede Änderung macht `['inventar']` ungültig.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 
-- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten, verliehene zuerst, dann vorgemerkte nach Beginn (`AusleiheKarte`: an wen, „Seit …“ bzw. bei Vorgemerkten Badge „Vorgemerkt“ und „Ab …“, Zeitraum „20.10.–27.10.2026“ – überfällig
-  rot –, Badge „Gefährdet: <an> ist überfällig“, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
+- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten, verliehene zuerst, dann vorgemerkte nach Beginn (`AusleiheKarte`: an wen mit Badge „Verliehen“ / „Vorgemerkt“, darunter kompakt der Zeitraum „25.10.2026 09:00 – 27.10.2026“ (`ZeitraumKurz`;
+  überfällig rot mit „· überfällig“; ohne geplante Rückgabe „Seit …“ / „Ab …“), in der nächsten Zeile der Organisator, Badge „Gefährdet: <an> ist überfällig“, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
   (`inventar:umraeumen`). Daten über `useAusleihen(nurOffen)` / `useAusleihe(id)` (Keys `['inventar','ausleihen',…]`); jede Änderung macht
   `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und Ifcos nachzieht.
 - `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, „Organisiert von“ (durchsuchbare Mitgliederliste, vorbelegt mit dir selbst), Zeitpunkt (jetzt, änderbar), geplante Rückgabe (Pflicht, mit Sternchen),

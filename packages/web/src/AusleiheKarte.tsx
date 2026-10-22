@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { positionenGruppieren } from '@c4/shared';
 import {
   ausleiheZeitraumText,
+  datumText,
   heuteLokal,
   ifcoGruppeTitel,
   ifcoInhaltText,
@@ -13,6 +14,7 @@ import {
 import type { AusleiheEintrag, useInventar } from './inventarDaten';
 import { StatusName } from './StatusAnzeige';
 import { mitgliedLink, mitgliedName } from './mitglied';
+import { zeitAnzeigen } from './warenAnzeige';
 
 const MAX_POSITIONEN = 4;
 
@@ -60,6 +62,28 @@ export function RueckgabeGeplant({ a }: Readonly<{ a: AusleiheEintrag }>) {
   );
 }
 
+/**
+ * Compact period for cards: `25.10.2026 09:00 – 27.10.2026`, red with `· überfällig` when the open
+ * Ausleihe is overdue; `Seit …` / `Ab …` for old Ausleihen without a planned return.
+ */
+export function ZeitraumKurz({
+  a,
+}: Readonly<{ a: Pick<AusleiheEintrag, 'ausgeliehenAm' | 'rueckgabeGeplant' | 'erledigt'> }>) {
+  if (!a.rueckgabeGeplant)
+    return (
+      <Text size="sm" c="dimmed">
+        {startText(a)}
+      </Text>
+    );
+  const rot = ueberfaellig(a, heuteLokal());
+  return (
+    <Text size="sm" c={rot ? 'red' : 'dimmed'} fw={rot ? 600 : 400}>
+      {zeitAnzeigen(a.ausgeliehenAm)} – {datumText(a.rueckgabeGeplant)}
+      {rot && ' · überfällig'}
+    </Text>
+  );
+}
+
 /** Warning badges for a not yet started Ausleihe that an overdue one endangers. */
 export function GefaehrdetBadges({ a }: Readonly<{ a: Pick<AusleiheEintrag, 'gefaehrdetDurch'> }>) {
   if (a.gefaehrdetDurch.length === 0) return null;
@@ -84,11 +108,7 @@ export function OrganisatorZeile({
 }: Readonly<{ a: Pick<AusleiheEintrag, 'organisator'>; verlinkt?: boolean }>) {
   const o = a.organisator;
   if (!o) return null;
-  const name = (
-    <StatusName status={o.status}>
-      {mitgliedName(o)}
-    </StatusName>
-  );
+  const name = <StatusName status={o.status}>{mitgliedName(o)}</StatusName>;
   return (
     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
       Organisiert von{' '}
@@ -130,11 +150,8 @@ export function AusleiheKarte({
           </Text>
           <AusleiheStatus a={a} />
         </Group>
-        <Text size="sm" c="dimmed">
-          {startText(a)}
-        </Text>
+        <ZeitraumKurz a={a} />
         <OrganisatorZeile a={a} />
-        <RueckgabeGeplant a={a} />
         <GefaehrdetBadges a={a} />
         {eintraege.slice(0, MAX_POSITIONEN).map((e) =>
           e.art === 'einzeln' ? (
