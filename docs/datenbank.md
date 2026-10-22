@@ -20,6 +20,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   0033 (`ifco_typen`) löscht die Tabelle. 0034 (`ifcos.typ_id`), 0035 (`lagerorte.ifco_hoehe_cm`) und 0036 (`lagerorte.ifco_stellflaechen`)
   können ihre Spalte aus demselben Grund nicht entfernen; die Down-Dateien setzen die Werte auf `NULL`. `ifcos.typ_id` ist nur Text ohne
   Fremdschlüssel (eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher), der Bezug zu `ifco_typen` wird in der API geprüft.
+  0037 (`ausleihe_positionen.ganze_ifco`) und 0038 (`ausleihen.organisiert_von`) legen ebenfalls nur Spalten an; die Down-Dateien setzen die Werte auf
+  `NULL`. `organisiert_von` ist die Cognito-`sub` ohne Fremdschlüssel, die API prüft, dass sie zu einem Mitglied gehört.
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 

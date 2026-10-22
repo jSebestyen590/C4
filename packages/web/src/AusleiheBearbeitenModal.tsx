@@ -9,7 +9,7 @@ import { isoZuLokal } from './inventarAnzeige';
 import { INVENTAR_KEY, type AusleiheEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 
-/** Edits to whom, when, planned return and Kommentar of an Ausleihe. Mount it only while it should be open. */
+/** Edits to whom, organiser, when, planned return and Kommentar of an Ausleihe. Mount it only while it should be open. */
 export function AusleiheBearbeitenModal({
   ausleihe,
   onClose,
@@ -18,6 +18,7 @@ export function AusleiheBearbeitenModal({
   const qc = useQueryClient();
   const [kopf, setKopf] = useState<AusleiheKopf>({
     an: ausleihe.an,
+    organisiertVon: ausleihe.organisator?.sub ?? ausleihe.organisiertVon ?? '',
     zeitpunkt: isoZuLokal(ausleihe.ausgeliehenAm),
     rueckgabe: ausleihe.rueckgabeGeplant ?? '',
     kommentar: ausleihe.kommentar ?? '',
@@ -38,6 +39,7 @@ export function AusleiheBearbeitenModal({
     if (!iso) return setFehler('Ungültiger Zeitpunkt.');
     const geprueft = ausleiheAendernSchema.safeParse({
       an: kopf.an,
+      organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
       rueckgabeGeplant: kopf.rueckgabe || null,
       kommentar: kopf.kommentar,

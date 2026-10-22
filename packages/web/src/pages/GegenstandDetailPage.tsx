@@ -95,18 +95,15 @@ export function GegenstandDetailPage() {
   /** Open Ausleihen holding pieces from the given place, with the amount taken from there. */
   const offenAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
     ausleihen.flatMap(({ a, eigene }) => {
-      const anzahl = eigene
-        .filter(
-          (p) =>
-            p.zurueckAm === null && p.lagerortId === ziel.lagerortId && p.ifcoId === ziel.ifcoId,
-        )
-        .reduce((s, p) => s + p.anzahl, 0);
-      return anzahl > 0 ? [{ a, anzahl }] : [];
+      const hier = eigene.filter(
+        (p) => p.zurueckAm === null && p.lagerortId === ziel.lagerortId && p.ifcoId === ziel.ifcoId,
+      );
+      const anzahl = hier.reduce((s, p) => s + p.anzahl, 0);
+      const ganzeIfco = hier.length > 0 && hier.every((p) => p.ganzeIfco);
+      return anzahl > 0 ? [{ a, anzahl, ganzeIfco }] : [];
     });
   const verliehenAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
-    offenAn(ziel)
-      .filter((x) => x.a.status !== 'geplant')
-      .map((x) => x.a);
+    offenAn(ziel).filter((x) => x.a.status !== 'geplant');
   const vorgemerktAn = (ziel: { lagerortId: string | null; ifcoId: string | null }) =>
     offenAn(ziel).filter((x) => x.a.status === 'geplant');
 
@@ -125,7 +122,7 @@ export function GegenstandDetailPage() {
             </Text>
           )}
           <Group gap="xs">
-            <Badge variant="light">Soll: {g.anzahl}×</Badge>
+            {g.anzahl !== 1 && <Badge variant="light">Soll: {g.anzahl}×</Badge>}
             {g.verliehen > 0 && (
               <Badge variant="light" color="grape">
                 {g.verliehen} verliehen
@@ -200,14 +197,16 @@ export function GegenstandDetailPage() {
                 ) : (
                   <Text style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{z.text}</Text>
                 )}
-                <Text fw={600} style={{ flex: 'none' }}>
-                  {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
-                </Text>
+                {mengeText(z.anzahl, z.verliehen, z.vorgemerkt) && (
+                  <Text fw={600} style={{ flex: 'none' }}>
+                    {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
+                  </Text>
+                )}
               </Group>
               {z.verliehen > 0 && (
                 <Text size="sm" c="grape" mt={4} style={{ overflowWrap: 'anywhere' }}>
                   verliehen: {z.verliehen} (an{' '}
-                  {verliehenAn(platz).map((a, i) => (
+                  {verliehenAn(platz).map(({ a, ganzeIfco }, i) => (
                     <span key={a.id}>
                       {i > 0 && ', '}
                       <Anchor
@@ -217,12 +216,13 @@ export function GegenstandDetailPage() {
                       >
                         {a.an}
                       </Anchor>
+                      {ganzeIfco && ', mit der ganzen Ifco'}
                     </span>
                   ))}
                   )
                 </Text>
               )}
-              {vorgemerktAn(platz).map(({ a, anzahl }) => (
+              {vorgemerktAn(platz).map(({ a, anzahl, ganzeIfco }) => (
                 <Text key={a.id} size="sm" c="cyan" mt={4} style={{ overflowWrap: 'anywhere' }}>
                   vorgemerkt: {anzahl} ab {zeitAnzeigen(a.ausgeliehenAm)} (an{' '}
                   <Anchor
@@ -232,7 +232,7 @@ export function GegenstandDetailPage() {
                   >
                     {a.an}
                   </Anchor>
-                  )
+                  {ganzeIfco && ', mit der ganzen Ifco'})
                 </Text>
               ))}
             </Paper>

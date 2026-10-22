@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import type { IfcoGrundflaeche } from '@c4/shared';
+import type { Anrede, IfcoGrundflaeche, MitgliedStatus } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import type { LagerKnoten } from './LagerBaum';
 
@@ -46,6 +46,16 @@ export interface IfcoTypEintrag {
   archiviert: boolean;
 }
 
+/** The open Ausleihe that lends a whole Ifco. */
+export interface IfcoAusleiheEintrag {
+  id: string;
+  an: string;
+  /** `geplant` = starts in the future (vorgemerkt), `verliehen` = away now. */
+  status: 'geplant' | 'verliehen';
+  /** ISO timestamp. */
+  ausgeliehenAm: string;
+}
+
 /** An Ifco as returned by `GET /inventar/ifcos`: master data plus its content. */
 export interface IfcoEintrag {
   id: string;
@@ -56,6 +66,8 @@ export interface IfcoEintrag {
   /** Ifco type; null = none (not allowed on an Ifco-Lagerplatz). */
   typId: string | null;
   inhalt: { gegenstandId: string; anzahl: number }[];
+  /** Open whole-Ifco Ausleihe, or null. */
+  ausleihe: IfcoAusleiheEintrag | null;
 }
 
 /** One Position of an Ausleihe: `anzahl` pieces of a Gegenstand taken from a place. */
@@ -68,6 +80,17 @@ export interface AusleihePositionEintrag {
   anzahl: number;
   /** ISO timestamp; null while the position is still lent out. */
   zurueckAm: string | null;
+  /** True when the position belongs to lending a whole Ifco. */
+  ganzeIfco: boolean | null;
+}
+
+/** The Mitglied who organised an Ausleihe. */
+export interface OrganisatorEintrag {
+  sub: string;
+  vorname: string;
+  nachname: string;
+  status: MitgliedStatus;
+  anrede: Anrede;
 }
 
 /** An Ausleihe as returned by `GET /inventar/ausleihen`. */
@@ -79,6 +102,10 @@ export interface AusleiheEintrag {
   /** `YYYY-MM-DD` */
   rueckgabeGeplant: string | null;
   kommentar: string | null;
+  /** Cognito sub of the organising Mitglied (null on older Ausleihen). */
+  organisiertVon: string | null;
+  /** Organising Mitglied; null if unknown. */
+  organisator: OrganisatorEintrag | null;
   /** True when every Position was returned. */
   erledigt: boolean;
   /** `geplant` = starts in the future (vorgemerkt), `verliehen` = away now, `erledigt` = all back. */

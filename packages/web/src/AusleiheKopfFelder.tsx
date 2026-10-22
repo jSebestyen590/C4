@@ -1,9 +1,13 @@
-import { Stack, Textarea, TextInput } from '@mantine/core';
+import { Select, Stack, Textarea, TextInput } from '@mantine/core';
+import { useMemo } from 'react';
 import { DatumFeld } from './DatumFeld';
 import { zeitpunktIso } from './BuchungsFuss';
+import { mitgliedOptionen, useMitgliederListe } from './organisator';
 
 export interface AusleiheKopf {
   an: string;
+  /** `sub` of the organising Mitglied; empty until chosen. */
+  organisiertVon: string;
   /** `datetime-local` value. */
   zeitpunkt: string;
   /** `YYYY-MM-DD` or empty. */
@@ -11,7 +15,7 @@ export interface AusleiheKopf {
   kommentar: string;
 }
 
-/** Header fields of an Ausleihe: to whom, when, planned return date and Kommentar. */
+/** Header fields of an Ausleihe: to whom, organiser, when, planned return date and Kommentar. */
 export function AusleiheKopfFelder({
   kopf,
   onChange,
@@ -21,6 +25,8 @@ export function AusleiheKopfFelder({
   onChange: (teil: Partial<AusleiheKopf>) => void;
   autofocus?: boolean;
 }>) {
+  const mitglieder = useMitgliederListe();
+  const optionen = useMemo(() => mitgliedOptionen(mitglieder.data ?? []), [mitglieder.data]);
   return (
     <Stack gap="sm">
       <TextInput
@@ -30,6 +36,18 @@ export function AusleiheKopfFelder({
         data-autofocus={autofocus ? true : undefined}
         value={kopf.an}
         onChange={(e) => onChange({ an: e.currentTarget.value })}
+      />
+      <Select
+        label="Organisiert von"
+        placeholder="Mitglied suchen"
+        searchable
+        allowDeselect={false}
+        inputMode="text"
+        nothingFoundMessage="Kein Mitglied gefunden"
+        data={optionen}
+        value={kopf.organisiertVon || null}
+        error={mitglieder.isError ? 'Die Mitglieder konnten nicht geladen werden.' : undefined}
+        onChange={(v) => onChange({ organisiertVon: v ?? '' })}
       />
       <TextInput
         label="Zeitpunkt"

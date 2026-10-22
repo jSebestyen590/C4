@@ -7,11 +7,13 @@ import {
   type PlatzZiel,
 } from '@c4/shared';
 import { ifcoPlatzMasse, platzPasst } from './ifcoPlatz';
+import { zeitAnzeigen } from './warenAnzeige';
 import type { LagerKnoten } from './LagerBaum';
 import type {
   AusleiheEintrag,
   AusleihePositionEintrag,
   GegenstandEintrag,
+  IfcoAusleiheEintrag,
   IfcoEintrag,
   IfcoTypEintrag,
   KategorieEintrag,
@@ -99,13 +101,25 @@ export function zielOptionen(
   ].filter((g) => g.items.length > 0);
 }
 
-/** `6× · 3 verliehen · 2 vorgemerkt` */
+/** `6×` for a count of 2 or more; empty for 1 (most Gegenstände exist exactly once). */
+export const anzahlText = (anzahl: number): string => (anzahl === 1 ? '' : `${anzahl}×`);
+
+/** `6× Spanngurt`, or just `Spanngurt` for a single piece. */
+export const mengeName = (anzahl: number, name: string): string =>
+  anzahl === 1 ? name : `${anzahl}× ${name}`;
+
+/**
+ * `6× · 3 verliehen · 2 vorgemerkt`; the count is left out when it is 1 (`3 verliehen`), so the
+ * text is empty for a single piece that is neither lent nor reserved.
+ */
 export function mengeText(anzahl: number, verliehen = 0, vorgemerkt = 0): string {
   return [
-    `${anzahl}×`,
+    anzahlText(anzahl),
     ...(verliehen > 0 ? [`${verliehen} verliehen`] : []),
     ...(vorgemerkt > 0 ? [`${vorgemerkt} vorgemerkt`] : []),
-  ].join(' · ');
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** Deviation of a Gegenstand's Plätze from its target, e.g. `2 ohne Platz`; null when it matches. */
@@ -184,16 +198,54 @@ export function ausleihenSortiert<T extends Pick<AusleiheEintrag, 'status' | 'au
 export const offenePositionen = (a: Pick<AusleiheEintrag, 'positionen'>) =>
   a.positionen.filter((p) => p.zurueckAm === null);
 
-/** `3× Kabeltrommel aus Lager › Regal` */
+/** `3× Kabeltrommel aus Lager › Regal` (`Kabeltrommel aus …` for a single piece, `… (mit ganzer Ifco)` for a whole Ifco). */
 export function positionText(
-  p: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl' | 'lagerortId' | 'ifcoId'>,
+  p: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl' | 'lagerortId' | 'ifcoId'> &
+    Partial<Pick<AusleihePositionEintrag, 'ganzeIfco'>>,
   gegenstaende: Pick<GegenstandEintrag, 'id' | 'name'>[],
   lagerorte: BaumKnoten[],
   ifcos: IfcoEintrag[],
 ): string {
   const name = gegenstaende.find((g) => g.id === p.gegenstandId)?.name ?? 'Unbekannt';
-  return `${p.anzahl}× ${name} aus ${platzText(lagerorte, ifcos, p)}`;
+  return `${mengeName(p.anzahl, name)} aus ${platzText(lagerorte, ifcos, p)}${p.ganzeIfco ? ' (mit ganzer Ifco)' : ''}`;
 }
+
+/** `Spanngurtkiste (ganze Ifco)` */
+export function ifcoGruppeTitel(ifcoId: string, ifcos: Pick<IfcoEintrag, 'id' | 'name'>[]): string {
+  return `${ifcos.find((i) => i.id === ifcoId)?.name ?? 'Unbekannte Ifco'} (ganze Ifco)`;
+}
+
+/** Contents of a whole-Ifco lending as one compact line: `6× Spanngurt 6m, Ratsche`, sorted by name. */
+export function ifcoInhaltText(
+  positionen: Pick<AusleihePositionEintrag, 'gegenstandId' | 'anzahl'>[],
+  gegenstaende: Pick<GegenstandEintrag, 'id' | 'name'>[],
+): string {
+  return positionen
+    .map((p) => ({
+      anzahl: p.anzahl,
+      name: gegenstaende.find((g) => g.id === p.gegenstandId)?.name ?? 'Unbekannt',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    .map((p) => mengeName(p.anzahl, p.name))
+    .join(', ');
+}
+
+/** `Verliehen an Feuerwehr seit 20.10.2026 10:00` / `Vorgemerkt für Feuerwehr ab 25.10.2026 10:00`. */
+export function ifcoAusleiheText(a: IfcoAusleiheEintrag): string {
+  return a.status === 'geplant'
+    ? `Vorgemerkt für ${a.an} ab ${zeitAnzeigen(a.ausgeliehenAm)}`
+    : `Verliehen an ${a.an} seit ${zeitAnzeigen(a.ausgeliehenAm)}`;
+}
+
+/** `verliehen an Feuerwehr` / `vorgemerkt für Feuerwehr` (without the date, for use inside a line). */
+export const ifcoAusleiheZeile = (a: Pick<IfcoAusleiheEintrag, 'an' | 'status'>): string =>
+  a.status === 'geplant' ? `vorgemerkt für ${a.an}` : `verliehen an ${a.an}`;
+
+/** `Verliehen an Feuerwehr` / `Vorgemerkt für Feuerwehr` (without the date, for badges). */
+export const ifcoAusleiheKurz = (a: Pick<IfcoAusleiheEintrag, 'an' | 'status'>): string => {
+  const zeile = ifcoAusleiheZeile(a);
+  return zeile.charAt(0).toUpperCase() + zeile.slice(1);
+};
 
 /** True when the Ausleihe is still open and its planned return date (`YYYY-MM-DD`) is before `heute`. */
 export function ueberfaellig(

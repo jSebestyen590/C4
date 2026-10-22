@@ -23,8 +23,11 @@ import { GegenstandFormular } from '../GegenstandFormular';
 import { IfcoFormular } from '../IfcoFormular';
 import { typAnzeige } from '../ifcoPlatz';
 import {
+  anzahlText,
   gegenstandAbweichung,
+  ifcoAusleiheKurz,
   kategorieOptionen,
+  mengeName,
   mengeText,
   platzZeilen,
 } from '../inventarAnzeige';
@@ -61,16 +64,18 @@ function GegenstandKarte({
               </Text>
             )}
           </Text>
-          <Text fw={600} style={{ flex: 'none' }}>
-            {mengeText(g.anzahl, g.verliehen, g.vorgemerkt)}
-          </Text>
+          {g.anzahl !== 1 && (
+            <Text fw={600} style={{ flex: 'none' }}>
+              {anzahlText(g.anzahl)}
+            </Text>
+          )}
         </Group>
         <Text size="sm" c="dimmed">
           {pfad(inv.kategorien, g.kategorieId)}
         </Text>
         {zeilen.map((z) => (
           <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
-            {z.text} · {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
+            {[z.text, mengeText(z.anzahl, z.verliehen, z.vorgemerkt)].filter(Boolean).join(' · ')}
           </Text>
         ))}
         {zeilen.length === 0 && (
@@ -131,9 +136,18 @@ function IfcoKarte({
             Ohne Platz
           </Badge>
         )}
+        {ifco.ausleihe && (
+          <Badge
+            color={ifco.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
+            variant="light"
+            style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+          >
+            {ifcoAusleiheKurz(ifco.ausleihe)}
+          </Badge>
+        )}
         {inhalt.slice(0, MAX_INHALT).map((p) => (
           <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
-            {p.anzahl}× {p.name}
+            {mengeName(p.anzahl, p.name)}
           </Text>
         ))}
         {inhalt.length > MAX_INHALT && (

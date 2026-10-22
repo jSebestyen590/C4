@@ -1,6 +1,7 @@
 import {
   Alert,
   Anchor,
+  Box,
   Button,
   Checkbox,
   Group,
@@ -14,21 +15,90 @@ import {
 import { notifications } from '@mantine/notifications';
 import { IconArrowBackUp, IconChevronLeft, IconEdit, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { platzText, rueckgabeSchema } from '@c4/shared';
+import {
+  platzText,
+  positionenGruppieren,
+  rueckgabeSchema,
+  type PositionsEintrag,
+} from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { AusleiheBearbeitenModal } from '../AusleiheBearbeitenModal';
-import { AusleiheStatus, RueckgabeGeplant, startText } from '../AusleiheKarte';
+import { AusleiheStatus, OrganisatorZeile, RueckgabeGeplant, startText } from '../AusleiheKarte';
 import { useAuth } from '../auth';
 import { zeitpunktIso } from '../BuchungsFuss';
-import { offenePositionen } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAusleihe, useInventar } from '../inventarDaten';
+import { ifcoGruppeTitel, mengeName, offenePositionen } from '../inventarAnzeige';
+import {
+  INVENTAR_KEY,
+  useAusleihe,
+  useInventar,
+  type AusleihePositionEintrag,
+} from '../inventarDaten';
 import { jetztLokal } from '../inventurDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { fehlerText, pruefen } from '../warenApi';
 import { zeitAnzeigen } from '../warenAnzeige';
+
+/** A row that opens `to` on click or Enter; the optional checkbox (44px wide hit area) toggles without opening. */
+function KlickZeile({
+  to,
+  checkbox,
+  children,
+}: Readonly<{
+  to: string;
+  checkbox?: { checked: boolean; indeterminate?: boolean; label: string; onChange: () => void };
+  children: ReactNode;
+}>) {
+  const navigate = useNavigate();
+  const oeffnen = () => navigate(to);
+  return (
+    <Group
+      wrap="nowrap"
+      gap="xs"
+      mih={44}
+      role="link"
+      tabIndex={0}
+      style={{ cursor: 'pointer' }}
+      onClick={oeffnen}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          oeffnen();
+        }
+      }}
+    >
+      {checkbox && (
+        <Box
+          component="label"
+          onClick={(e: MouseEvent) => e.stopPropagation()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'stretch',
+            flex: 'none',
+            width: 44,
+            minHeight: 44,
+            cursor: 'pointer',
+          }}
+        >
+          <Checkbox
+            size="md"
+            checked={checkbox.checked}
+            indeterminate={checkbox.indeterminate}
+            aria-label={checkbox.label}
+            onChange={checkbox.onChange}
+          />
+        </Box>
+      )}
+      <Stack gap={0} style={{ minWidth: 0, flex: 1 }}>
+        {children}
+      </Stack>
+    </Group>
+  );
+}
 
 /** Detail of one Ausleihe: header, Positionen (return them, fully or partly), edit and delete. */
 export function AusleiheDetailPage() {
@@ -79,14 +149,30 @@ export function AusleiheDetailPage() {
       </Stack>
     );
 
-  const sortiert = [...ausleihe.positionen].sort(
-    (a, b) =>
-      Number(a.zurueckAm !== null) - Number(b.zurueckAm !== null) ||
-      (inv.gegenstaende.find((g) => g.id === a.gegenstandId)?.name ?? '').localeCompare(
-        inv.gegenstaende.find((g) => g.id === b.gegenstandId)?.name ?? '',
-        'de',
-      ),
-  );
+  const gName = (gegenstandId: string) =>
+    inv.gegenstaende.find((g) => g.id === gegenstandId)?.name ?? '';
+  const nachName = (a: AusleihePositionEintrag, b: AusleihePositionEintrag) =>
+    Number(a.zurueckAm !== null) - Number(b.zurueckAm !== null) ||
+    gName(a.gegenstandId).localeCompare(gName(b.gegenstandId), 'de');
+  const eintraege = positionenGruppieren(ausleihe.positionen)
+    .map((e) => (e.art === 'ifco' ? { ...e, positionen: [...e.positionen].sort(nachName) } : e))
+    .sort((a, b) => {
+      const erste = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+        e.art === 'einzeln' ? e.position : e.positionen[0]!;
+      const schluessel = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+        e.art === 'einzeln'
+          ? gName(e.position.gegenstandId)
+          : (inv.ifcos.find((i) => i.id === e.ifcoId)?.name ?? '');
+      const offenRang = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+        e.art === 'einzeln'
+          ? Number(e.position.zurueckAm !== null)
+          : Number(e.positionen.every((p) => p.zurueckAm !== null));
+      return (
+        offenRang(a) - offenRang(b) ||
+        schluessel(a).localeCompare(schluessel(b), 'de') ||
+        nachName(erste(a), erste(b))
+      );
+    });
   const offen = offenePositionen(ausleihe);
   // A vorgemerkt Ausleihe has not started yet: no Rückgabe, only edit or delete.
   const darfZurueck = darfUmraeumen && ausleihe.status !== 'geplant';
@@ -97,6 +183,47 @@ export function AusleiheDetailPage() {
       if (!neu.delete(positionId)) neu.add(positionId);
       return neu;
     });
+  /** Selects all open positions of a whole-Ifco group, or clears them when all are selected. */
+  const gruppeUmschalten = (ids: string[]) =>
+    setGewaehlt((alt) => {
+      const neu = new Set(alt);
+      if (ids.every((id) => neu.has(id))) for (const id of ids) neu.delete(id);
+      else for (const id of ids) neu.add(id);
+      return neu;
+    });
+
+  const positionsZeile = (p: AusleihePositionEintrag, mitHerkunft: boolean) => {
+    const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
+    return (
+      <KlickZeile
+        key={p.id}
+        to={`/inventar/gegenstaende/${encodeURIComponent(p.gegenstandId)}`}
+        checkbox={
+          p.zurueckAm || !darfZurueck
+            ? undefined
+            : {
+                checked: gewaehlt.has(p.id),
+                label: `${g?.name ?? 'Position'} zurückgeben`,
+                onChange: () => umschalten(p.id),
+              }
+        }
+      >
+        <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+          {mengeName(p.anzahl, g?.name ?? 'Unbekannt')}
+        </Text>
+        {mitHerkunft && (
+          <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+            aus {platzText(inv.lagerorte, inv.ifcos, p)}
+          </Text>
+        )}
+        {p.zurueckAm && (
+          <Text size="sm" c="green">
+            Zurück am {zeitAnzeigen(p.zurueckAm)}
+          </Text>
+        )}
+      </KlickZeile>
+    );
+  };
 
   const onZurueckgeben = () => {
     const iso = zeitpunktIso(zurueckAm);
@@ -120,6 +247,7 @@ export function AusleiheDetailPage() {
             <AusleiheStatus a={ausleihe} />
           </Group>
           <Text size="sm">{startText(ausleihe)}</Text>
+          <OrganisatorZeile a={ausleihe} />
           <RueckgabeGeplant a={ausleihe} />
           {ausleihe.kommentar && (
             <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
@@ -160,53 +288,54 @@ export function AusleiheDetailPage() {
         )}
       </Group>
       <Stack gap="xs">
-        {sortiert.map((p) => {
-          const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
-          const name = g?.name ?? 'Unbekannt';
-          const herkunft = platzText(inv.lagerorte, inv.ifcos, p);
-          const inhalt = (
-            <Stack gap={0} style={{ minWidth: 0 }}>
-              <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                {p.anzahl}× {name}
-              </Text>
-              <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                aus {herkunft}
-              </Text>
-              {p.zurueckAm && (
-                <Text size="sm" c="green">
-                  Zurück am {zeitAnzeigen(p.zurueckAm)}
-                </Text>
-              )}
-            </Stack>
-          );
+        {eintraege.map((e) => {
+          if (e.art === 'einzeln') {
+            return (
+              <Paper key={e.position.id} withBorder p="xs" opacity={e.position.zurueckAm ? 0.7 : 1}>
+                {positionsZeile(e.position, true)}
+              </Paper>
+            );
+          }
+          const offeneIds = e.positionen.filter((p) => p.zurueckAm === null).map((p) => p.id);
+          const gewaehlteAnzahl = offeneIds.filter((id) => gewaehlt.has(id)).length;
           return (
-            <Paper key={p.id} withBorder p="sm" opacity={p.zurueckAm ? 0.7 : 1}>
-              {p.zurueckAm || !darfZurueck ? (
-                <Group justify="space-between" wrap="nowrap" gap="xs" mih={44}>
-                  {inhalt}
-                  {g && (
-                    <Anchor
-                      component={Link}
-                      to={`/inventar/gegenstaende/${encodeURIComponent(g.id)}`}
-                      size="sm"
-                      style={{ flex: 'none' }}
-                    >
-                      Gegenstand
-                    </Anchor>
-                  )}
-                </Group>
-              ) : (
-                <Checkbox
-                  checked={gewaehlt.has(p.id)}
-                  onChange={() => umschalten(p.id)}
-                  label={inhalt}
-                  styles={{
-                    root: { minHeight: 44, display: 'flex', alignItems: 'center' },
-                    body: { alignItems: 'center', width: '100%' },
-                    labelWrapper: { minWidth: 0, flex: 1 },
-                  }}
-                />
-              )}
+            <Paper
+              key={`i-${e.ifcoId}`}
+              withBorder
+              p="xs"
+              opacity={offeneIds.length === 0 ? 0.7 : 1}
+            >
+              <Stack gap={0}>
+                <KlickZeile
+                  to={`/inventar/ifcos/${encodeURIComponent(e.ifcoId)}`}
+                  checkbox={
+                    darfZurueck && offeneIds.length > 0
+                      ? {
+                          checked: gewaehlteAnzahl === offeneIds.length,
+                          indeterminate: gewaehlteAnzahl > 0 && gewaehlteAnzahl < offeneIds.length,
+                          label: `${ifcoGruppeTitel(e.ifcoId, inv.ifcos)} zurückgeben`,
+                          onChange: () => gruppeUmschalten(offeneIds),
+                        }
+                      : undefined
+                  }
+                >
+                  <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                    {ifcoGruppeTitel(e.ifcoId, inv.ifcos)}
+                  </Text>
+                </KlickZeile>
+                <Stack
+                  gap={0}
+                  ml={22}
+                  pl="xs"
+                  style={{ borderLeft: '2px solid var(--mantine-color-default-border)' }}
+                >
+                  {e.positionen.map((p) => (
+                    <Box key={p.id} opacity={p.zurueckAm ? 0.7 : 1}>
+                      {positionsZeile(p, false)}
+                    </Box>
+                  ))}
+                </Stack>
+              </Stack>
             </Paper>
           );
         })}

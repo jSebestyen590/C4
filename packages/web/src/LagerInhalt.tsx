@@ -5,6 +5,7 @@ import type { BestandsAnzeige } from './lagerBestand';
 import { ifcoPlatzText, type IfcoPlatzMasse } from '@c4/shared';
 import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
 import { ifcosAufPlatz, passtNochText } from './ifcoPlatz';
+import { anzahlText, ifcoAusleiheZeile } from './inventarAnzeige';
 import type { LagerInventar } from './lagerInventar';
 
 const inventarZeile = {
@@ -32,7 +33,6 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
             <Text span fw={600} inherit>
               {i.name}
             </Text>
-            {' · '}
             {i.typ && (
               <Text span c="dimmed" inherit>
                 {' · '}
@@ -41,6 +41,12 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
             )}
             {' · '}
             {i.stueck} {i.stueck === 1 ? 'Teil' : 'Teile'}
+            {i.ausleihe && (
+              <Text span c={i.ausleihe.status === 'geplant' ? 'cyan' : 'grape'} inherit>
+                {' · '}
+                {ifcoAusleiheZeile(i.ausleihe)}
+              </Text>
+            )}
           </span>
         </Anchor>
       ))}
@@ -55,8 +61,8 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
           <span>
             <Text span fw={600} inherit>
               {g.name}
-            </Text>{' '}
-            {g.anzahl}×
+            </Text>
+            {g.anzahl !== 1 && ` ${anzahlText(g.anzahl)}`}
             {g.verliehen > 0 && (
               <Text span c="grape" inherit>
                 {' '}

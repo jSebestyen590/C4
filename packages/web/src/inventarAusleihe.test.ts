@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  anzahlText,
   ausleihenSortiert,
   gesamtVerfuegbar,
+  ifcoAusleiheKurz,
+  ifcoAusleiheZeile,
+  ifcoAusleiheText,
+  ifcoGruppeTitel,
+  ifcoInhaltText,
   isoZuLokal,
+  mengeName,
   mengeText,
   offenePositionen,
   positionText,
@@ -24,6 +31,7 @@ const ifcos: IfcoEintrag[] = [
     lagerortId: 'l2',
     archiviert: false,
     typId: null,
+    ausleihe: null,
     inhalt: [
       { gegenstandId: 'g1', anzahl: 4 },
       { gegenstandId: 'g2', anzahl: 1 },
@@ -74,6 +82,41 @@ describe('positionText', () => {
       ),
     ).toBe('3× Kabeltrommel aus Lager › Regal');
   });
+  it('leaves out the amount for a single piece and marks a whole Ifco', () => {
+    const p = { gegenstandId: 'g1', anzahl: 1, lagerortId: null, ifcoId: 'i1' };
+    expect(positionText(p, [g1], lagerorte, ifcos)).toBe('Kabeltrommel aus Kiste · Lager › Regal');
+    expect(positionText({ ...p, anzahl: 2, ganzeIfco: true }, [g1], lagerorte, ifcos)).toBe(
+      '2× Kabeltrommel aus Kiste · Lager › Regal (mit ganzer Ifco)',
+    );
+  });
+});
+
+describe('whole Ifco texts', () => {
+  it('titles the group and lists the contents compactly', () => {
+    expect(ifcoGruppeTitel('i1', ifcos)).toBe('Kiste (ganze Ifco)');
+    expect(ifcoGruppeTitel('nix', ifcos)).toBe('Unbekannte Ifco (ganze Ifco)');
+    expect(
+      ifcoInhaltText(
+        [
+          { gegenstandId: 'g2', anzahl: 1 },
+          { gegenstandId: 'g1', anzahl: 4 },
+        ],
+        [g1, { id: 'g2', name: 'Ratsche' }],
+      ),
+    ).toBe('4× Kabeltrommel, Ratsche');
+  });
+  it('says who has the Ifco', () => {
+    const a = { id: 'a', an: 'Feuerwehr', ausgeliehenAm: '2026-10-20T08:00:00.000Z' };
+    expect(ifcoAusleiheText({ ...a, status: 'verliehen' })).toBe(
+      'Verliehen an Feuerwehr seit 20.10.2026 10:00',
+    );
+    expect(ifcoAusleiheText({ ...a, status: 'geplant' })).toBe(
+      'Vorgemerkt für Feuerwehr ab 20.10.2026 10:00',
+    );
+    expect(ifcoAusleiheKurz({ ...a, status: 'verliehen' })).toBe('Verliehen an Feuerwehr');
+    expect(ifcoAusleiheKurz({ ...a, status: 'geplant' })).toBe('Vorgemerkt für Feuerwehr');
+    expect(ifcoAusleiheZeile({ ...a, status: 'verliehen' })).toBe('verliehen an Feuerwehr');
+  });
 });
 
 describe('ueberfaellig', () => {
@@ -112,7 +155,7 @@ describe('inventarJeLagerort', () => {
   it('groups Ifcos and directly assigned Gegenstände per Lagerort', () => {
     const karte = inventarJeLagerort([g1, { ...g1, id: 'g9', archiviert: true }], ifcos);
     expect(karte.get('l2')).toEqual({
-      ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5, typ: null }],
+      ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5, typ: null, ausleihe: null }],
       gegenstaende: [{ id: 'g1', name: 'Kabeltrommel', anzahl: 6, verliehen: 3, vorgemerkt: 1 }],
     });
     expect(karte.get('l1')?.gegenstaende).toEqual([
@@ -137,6 +180,16 @@ describe('mengeText', () => {
     expect(mengeText(10, 3)).toBe('10× · 3 verliehen');
     expect(mengeText(10, 0, 2)).toBe('10× · 2 vorgemerkt');
     expect(mengeText(10, 3, 2)).toBe('10× · 3 verliehen · 2 vorgemerkt');
+  });
+  it('hides the count when it is 1', () => {
+    expect(mengeText(1)).toBe('');
+    expect(mengeText(1, 1)).toBe('1 verliehen');
+    expect(mengeText(1, 0, 1)).toBe('1 vorgemerkt');
+    expect(mengeText(2)).toBe('2×');
+    expect(anzahlText(1)).toBe('');
+    expect(anzahlText(6)).toBe('6×');
+    expect(mengeName(1, 'Beamer')).toBe('Beamer');
+    expect(mengeName(6, 'Spanngurt 6m')).toBe('6× Spanngurt 6m');
   });
 });
 

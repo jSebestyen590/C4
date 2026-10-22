@@ -1,7 +1,16 @@
 import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
 import { Link } from 'react-router-dom';
-import { datumText, heuteLokal, positionText, ueberfaellig } from './inventarAnzeige';
+import { positionenGruppieren } from '@c4/shared';
+import {
+  datumText,
+  heuteLokal,
+  ifcoGruppeTitel,
+  ifcoInhaltText,
+  positionText,
+  ueberfaellig,
+} from './inventarAnzeige';
 import type { AusleiheEintrag, useInventar } from './inventarDaten';
+import { StatusName } from './StatusAnzeige';
 import { zeitAnzeigen } from './warenAnzeige';
 
 const MAX_POSITIONEN = 4;
@@ -48,11 +57,25 @@ export function RueckgabeGeplant({ a }: Readonly<{ a: AusleiheEintrag }>) {
   );
 }
 
+/** `Organisiert von <Name>` with the name in bold and the color of the member's status; nothing if unknown. */
+export function OrganisatorZeile({ a }: Readonly<{ a: Pick<AusleiheEintrag, 'organisator'> }>) {
+  if (!a.organisator) return null;
+  return (
+    <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+      Organisiert von{' '}
+      <StatusName status={a.organisator.status}>
+        {`${a.organisator.vorname} ${a.organisator.nachname}`.trim()}
+      </StatusName>
+    </Text>
+  );
+}
+
 /** Card of one Ausleihe: to whom, since when, planned return and the Positionen. */
 export function AusleiheKarte({
   a,
   inv,
 }: Readonly<{ a: AusleiheEintrag; inv: ReturnType<typeof useInventar> }>) {
+  const eintraege = positionenGruppieren(a.positionen);
   return (
     <Paper
       component={Link}
@@ -72,21 +95,38 @@ export function AusleiheKarte({
         <Text size="sm" c="dimmed">
           {startText(a)}
         </Text>
+        <OrganisatorZeile a={a} />
         <RueckgabeGeplant a={a} />
-        {a.positionen.slice(0, MAX_POSITIONEN).map((p) => (
-          <Text
-            key={p.id}
-            size="sm"
-            c={p.zurueckAm ? 'dimmed' : undefined}
-            style={{ overflowWrap: 'anywhere' }}
-          >
-            {positionText(p, inv.gegenstaende, inv.lagerorte, inv.ifcos)}
-            {p.zurueckAm && ' (zurück)'}
-          </Text>
-        ))}
-        {a.positionen.length > MAX_POSITIONEN && (
+        {eintraege.slice(0, MAX_POSITIONEN).map((e) =>
+          e.art === 'einzeln' ? (
+            <Text
+              key={e.position.id}
+              size="sm"
+              c={e.position.zurueckAm ? 'dimmed' : undefined}
+              style={{ overflowWrap: 'anywhere' }}
+            >
+              {positionText(e.position, inv.gegenstaende, inv.lagerorte, inv.ifcos)}
+              {e.position.zurueckAm && ' (zurück)'}
+            </Text>
+          ) : (
+            <Stack key={`i-${e.ifcoId}`} gap={0}>
+              <Text
+                size="sm"
+                c={e.positionen.every((p) => p.zurueckAm) ? 'dimmed' : undefined}
+                style={{ overflowWrap: 'anywhere' }}
+              >
+                {ifcoGruppeTitel(e.ifcoId, inv.ifcos)}
+                {e.positionen.every((p) => p.zurueckAm) && ' (zurück)'}
+              </Text>
+              <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                {ifcoInhaltText(e.positionen, inv.gegenstaende)}
+              </Text>
+            </Stack>
+          ),
+        )}
+        {eintraege.length > MAX_POSITIONEN && (
           <Text size="sm" c="dimmed">
-            + {a.positionen.length - MAX_POSITIONEN} weitere
+            + {eintraege.length - MAX_POSITIONEN} weitere
           </Text>
         )}
       </Stack>

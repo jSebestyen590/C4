@@ -24,9 +24,10 @@ import { AusleiheKopfFelder, type AusleiheKopf } from '../AusleiheKopfFelder';
 import { BuchungsBestaetigung, type BestaetigungsGruppe } from '../BuchungsBestaetigung';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
-import { datumText, verfuegbarePlaetze } from '../inventarAnzeige';
+import { datumText, ifcoGruppeTitel, mengeName, verfuegbarePlaetze } from '../inventarAnzeige';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { jetztLokal } from '../inventurDaten';
+import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
 import { fehlerText, pruefen } from '../warenApi';
@@ -42,7 +43,7 @@ function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
   return liste.map((b, i) => (
     <span key={`${b.ausleiheId}-${b.vorgemerkt}`}>
       {i > 0 && ', '}
-      {b.anzahl} an{' '}
+      {b.anzahl > 1 && `${b.anzahl} `}an{' '}
       {b.ausleiheId ? (
         <Anchor
           component={Link}
@@ -80,13 +81,29 @@ export function AusleihePage() {
     [offeneAusleihen],
   );
   const enterWeiter = useEnterWeiter('verleihen-weiter');
+  const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(false);
+  const eigeneSub = useEigeneSub();
+  const mitglieder = useMitgliederListe();
   const [kopf, setKopf] = useState<AusleiheKopf>({
     an: '',
+    organisiertVon: '',
     zeitpunkt: jetztLokal(),
     rueckgabe: '',
     kommentar: '',
   });
+  // Preselect the logged-in user as organiser once the Mitglieder are known (unless chosen already).
+  if (
+    kopf.organisiertVon === '' &&
+    !organisatorVorbelegt &&
+    eigeneSub &&
+    mitglieder.data?.some((m) => m.sub === eigeneSub)
+  ) {
+    setOrganisatorVorbelegt(true);
+    setKopf((k) => ({ ...k, organisiertVon: eigeneSub }));
+  }
   const [gegenstandIds, setGegenstandIds] = useState<string[]>([]);
+  /** Ifcos added with "Ganze Ifco verleihen"; they count as whole only while their full content is entered. */
+  const [ifcoIds, setIfcoIds] = useState<string[]>([]);
   const [mengen, setMengen] = useState<Record<string, number | string>>({});
   const [vorbelegt, setVorbelegt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -116,7 +133,8 @@ export function AusleihePage() {
     return { ids, vorgabe };
   };
 
-  const hinzufuegen = (ids: string[], vorgabe: Record<string, number> = {}) => {
+  const hinzufuegen = (ids: string[], vorgabe: Record<string, number> = {}, ifcoId?: string) => {
+    if (ifcoId) setIfcoIds((alt) => (alt.includes(ifcoId) ? alt : [...alt, ifcoId]));
     setGegenstandIds((alt) => [...alt, ...ids.filter((id) => !alt.includes(id))]);
     setMengen((alt) => ({ ...vorgabe, ...alt }));
   };
@@ -129,7 +147,7 @@ export function AusleihePage() {
     if (gegenstandId && verleihbar.some((g) => g.id === gegenstandId)) hinzufuegen([gegenstandId]);
     if (ifcoId) {
       const { ids, vorgabe } = ifcoInhalt(ifcoId);
-      hinzufuegen(ids, vorgabe);
+      hinzufuegen(ids, vorgabe, ifcoId);
     }
   }
 
@@ -152,6 +170,23 @@ export function AusleihePage() {
     const zahl = typeof wert === 'number' ? wert : Number.NaN;
     return Number.isFinite(zahl) && zahl > 0 ? zahl : 0;
   };
+
+  /** True while the entered amounts take the complete available content of the Ifco (and it has any). */
+  const ifcoKomplett = (ifcoId: string) => {
+    const inhalt = inv.ifcos.find((i) => i.id === ifcoId)?.inhalt ?? [];
+    let etwas = false;
+    for (const p of inhalt) {
+      const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
+      const platz = g?.plaetze.find((x) => x.ifcoId === ifcoId);
+      if (!g || !platz) continue;
+      const frei = platz.anzahl - platz.verliehen - platz.vorgemerkt;
+      if (frei <= 0) continue;
+      if (g.archiviert || menge(g.id, platz) !== frei) return false;
+      etwas = true;
+    }
+    return etwas;
+  };
+  const ganzeIfcoIds = ifcoIds.filter(ifcoKomplett);
 
   const verleihen = useMutation({
     mutationFn: async (json: ReturnType<typeof ausleiheSchema.parse>) => {
@@ -176,9 +211,17 @@ export function AusleihePage() {
     const positionen = sektionen.flatMap(({ g, plaetze }) =>
       plaetze.flatMap((p) => {
         const anzahl = menge(g.id, p);
-        return anzahl > 0
-          ? [{ gegenstandId: g.id, lagerortId: p.lagerortId, ifcoId: p.ifcoId, anzahl }]
-          : [];
+        if (anzahl <= 0) return [];
+        const ganz = p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId);
+        return [
+          {
+            gegenstandId: g.id,
+            lagerortId: p.lagerortId,
+            ifcoId: p.ifcoId,
+            anzahl,
+            ...(ganz ? { ganzeIfco: true as const } : {}),
+          },
+        ];
       }),
     );
     const zuViel = sektionen.some(({ g, plaetze }) =>
@@ -187,6 +230,7 @@ export function AusleihePage() {
     if (zuViel) return setFehler('Bei mindestens einem Platz sind nicht so viele verfügbar.');
     const geprueft = ausleiheSchema.safeParse({
       an: kopf.an,
+      organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
       rueckgabeGeplant: kopf.rueckgabe || null,
       kommentar: kopf.kommentar,
@@ -205,10 +249,22 @@ export function AusleihePage() {
             : []),
         ],
       },
+      ...ganzeIfcoIds.map((ifcoId) => ({
+        titel: ifcoGruppeTitel(ifcoId, inv.ifcos),
+        zeilen: geprueft.data.positionen
+          .filter((p) => p.ifcoId === ifcoId)
+          .map((p) =>
+            mengeName(
+              p.anzahl,
+              inv.gegenstaende.find((x) => x.id === p.gegenstandId)?.name ?? 'Unbekannt',
+            ),
+          ),
+      })),
       ...sektionen.flatMap(({ g, plaetze }) => {
         const zeilen = plaetze.flatMap((p) => {
           const anzahl = menge(g.id, p);
-          return anzahl > 0 ? [`${anzahl}× aus ${p.text}`] : [];
+          if (anzahl <= 0 || (p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId))) return [];
+          return [anzahl === 1 ? `Aus ${p.text}` : `${anzahl}× aus ${p.text}`];
         });
         return zeilen.length > 0 ? [{ titel: g.name, zeilen }] : [];
       }),
@@ -260,10 +316,18 @@ export function AusleihePage() {
           const { ids, vorgabe } = ifcoInhalt(id);
           if (ids.length === 0)
             notifications.show({ color: 'yellow', message: 'In der Ifco ist nichts verfügbar.' });
-          else hinzufuegen(ids, vorgabe);
+          else hinzufuegen(ids, vorgabe, id);
         }}
       />
 
+      {ganzeIfcoIds.length > 0 && (
+        <Text size="sm" c="dimmed">
+          Wird als ganze Ifco verliehen:{' '}
+          {ganzeIfcoIds
+            .map((id) => ifcoGruppeTitel(id, inv.ifcos).replace(' (ganze Ifco)', ''))
+            .join(', ')}
+        </Text>
+      )}
       <Stack gap="sm" onKeyDown={enterWeiter}>
         {sektionen.map(({ g, plaetze }) => (
           <Paper key={g.id} withBorder p="sm">

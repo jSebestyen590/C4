@@ -341,6 +341,8 @@ export const ausleihen = pgTable('ausleihen', {
   kommentar: text('kommentar'),
   /** Cognito sub, deliberately without a foreign key. */
   erstelltVon: text('erstellt_von').notNull(),
+  /** Cognito sub of the Mitglied who organised it, no foreign key; null on older rows (then `erstelltVon` counts). */
+  organisiertVon: text('organisiert_von'),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
 });
 export type AusleiheRow = typeof ausleihen.$inferSelect;
@@ -359,5 +361,7 @@ export const ausleihePositionen = pgTable('ausleihe_positionen', {
   anzahl: integer('anzahl').notNull(),
   /** Null while the position is still lent out. */
   zurueckAm: timestamp('zurueck_am', { withTimezone: true }),
+  /** True when the position belongs to lending a whole Ifco (null/false = single item). */
+  ganzeIfco: boolean('ganze_ifco'),
 });
 export type AusleihePositionRow = typeof ausleihePositionen.$inferSelect;

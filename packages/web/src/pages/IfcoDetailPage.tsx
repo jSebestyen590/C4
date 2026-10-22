@@ -32,7 +32,7 @@ import { IfcoFormular } from '../IfcoFormular';
 import { IfcoInhaltModal } from '../IfcoInhaltModal';
 import { IfcoUmstellenModal } from '../IfcoUmstellenModal';
 import { ifcoPlatzMasse, typAnzeige } from '../ifcoPlatz';
-import { mengeText } from '../inventarAnzeige';
+import { ifcoAusleiheText, mengeText } from '../inventarAnzeige';
 import { INVENTAR_KEY, useInventar } from '../inventarDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
@@ -118,11 +118,26 @@ export function IfcoDetailPage() {
               {ifco.beschreibung}
             </Text>
           )}
-          {ifco.archiviert && (
+          {(ifco.archiviert || ifco.ausleihe) && (
             <Group gap="xs">
-              <Badge color="gray" variant="light">
-                Archiviert
-              </Badge>
+              {ifco.archiviert && (
+                <Badge color="gray" variant="light">
+                  Archiviert
+                </Badge>
+              )}
+              {ifco.ausleihe && (
+                <Badge
+                  component={Link}
+                  to={`/inventar/ausleihen/${encodeURIComponent(ifco.ausleihe.id)}`}
+                  color={ifco.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
+                  variant="light"
+                  size="lg"
+                  style={{ cursor: 'pointer', maxWidth: '100%', height: 'auto', minHeight: 28 }}
+                  styles={{ label: { whiteSpace: 'normal', overflowWrap: 'anywhere', padding: 4 } }}
+                >
+                  {ifcoAusleiheText(ifco.ausleihe)}
+                </Badge>
+              )}
             </Group>
           )}
         </Stack>
@@ -194,9 +209,11 @@ export function IfcoDetailPage() {
               >
                 {z.name}
               </Anchor>
-              <Text fw={600} style={{ flex: 'none' }}>
-                {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
-              </Text>
+              {mengeText(z.anzahl, z.verliehen, z.vorgemerkt) && (
+                <Text fw={600} style={{ flex: 'none' }}>
+                  {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
+                </Text>
+              )}
             </Group>
           </Paper>
         ))}

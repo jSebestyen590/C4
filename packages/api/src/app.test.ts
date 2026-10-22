@@ -256,6 +256,7 @@ function makeInventarFake() {
         archiviert: false,
         typId: null,
         inhalt: [],
+        ausleihe: null,
       }),
     ),
     ifcoAnlegen: vi.fn<InventarStore['ifcoAnlegen']>(async () => 'i2'),
@@ -273,10 +274,12 @@ function makeInventarFake() {
         rueckgabeGeplant: null,
         kommentar: null,
         erstelltVon: 'r',
+        organisiertVon: 'r',
         erstelltAm: new Date('2026-05-01T10:00:00.000Z'),
         erledigt: false,
         status: 'verliehen' as const,
         positionen: [],
+        organisator: null,
       }),
     ),
     ausleiheAnlegen: vi.fn<InventarStore['ausleiheAnlegen']>(async (daten) => {
@@ -1765,6 +1768,7 @@ describe('inventar', () => {
     const position = { gegenstandId: 'g1', lagerortId: 'l1', anzahl: 3 };
     const ausleihe = {
       an: 'Feuerwehr Musterdorf',
+      organisiertVon: 'r',
       ausgeliehenAm: zeitpunkt,
       positionen: [position],
     };
@@ -1780,6 +1784,7 @@ describe('inventar', () => {
       expect(inventar.ausleiheAnlegen).toHaveBeenCalledWith(
         {
           an: 'Feuerwehr Musterdorf',
+          organisiertVon: 'r',
           ausgeliehenAm: zeitpunkt,
           rueckgabeGeplant: null,
           kommentar: null,
@@ -1795,6 +1800,10 @@ describe('inventar', () => {
         app.request('/api/inventar/ausleihen', json('reader-token', 'POST', body));
       expect((await post({ ...ausleihe, positionen: [] })).status).toBe(400);
       expect((await post({ ...ausleihe, an: ' ' })).status).toBe(400);
+      expect((await post({ ...ausleihe, organisiertVon: undefined })).status).toBe(400);
+      expect(
+        (await post({ ...ausleihe, positionen: [{ ...position, ganzeIfco: true }] })).status,
+      ).toBe(400);
       expect(
         (await post({ ...ausleihe, positionen: [{ ...position, ifcoId: 'i1' }] })).status,
       ).toBe(400);
@@ -1824,7 +1833,12 @@ describe('inventar', () => {
         (await rueckgabe('a1', { positionIds: ['bereits'], zurueckAm: zeitpunkt })).status,
       ).toBe(400);
 
-      const kopf = { an: 'Verein', ausgeliehenAm: zeitpunkt, rueckgabeGeplant: '2026-05-08' };
+      const kopf = {
+        an: 'Verein',
+        organisiertVon: 'r',
+        ausgeliehenAm: zeitpunkt,
+        rueckgabeGeplant: '2026-05-08',
+      };
       expect(
         (await app.request('/api/inventar/ausleihen/a1', json('reader-token', 'PUT', kopf))).status,
       ).toBe(200);

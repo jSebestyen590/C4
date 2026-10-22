@@ -20,6 +20,8 @@ import {
   offenAufteilen,
   ausleiheStatus,
   verliehenJePlatz,
+  ganzeIfcoFehler,
+  positionenGruppieren,
   type Beschriftung,
   type PlatzMenge,
 } from './inventar';
@@ -124,7 +126,11 @@ describe('ifcoInhaltSchema', () => {
 });
 
 describe('ausleiheSchema / rueckgabeSchema', () => {
-  const kopf = { an: ' Feuerwehr ', ausgeliehenAm: '2026-05-01T10:00:00.000Z' };
+  const kopf = {
+    an: ' Feuerwehr ',
+    organisiertVon: 'sub-1',
+    ausgeliehenAm: '2026-05-01T10:00:00.000Z',
+  };
   it('parses a valid Ausleihe', () => {
     const a = ausleiheSchema.parse({
       ...kopf,
@@ -155,8 +161,31 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
         .success,
     ).toBe(false);
   });
+  it('needs an organiser', () => {
+    const position = { gegenstandId: 'g1', lagerortId: 'regal', anzahl: 1 };
+    const ohne = { an: kopf.an, ausgeliehenAm: kopf.ausgeliehenAm };
+    expect(ausleiheSchema.safeParse({ ...ohne, positionen: [position] }).success).toBe(false);
+    expect(
+      ausleiheSchema.safeParse({ ...kopf, organisiertVon: '', positionen: [position] }).success,
+    ).toBe(false);
+    expect(ausleiheAendernSchema.safeParse(ohne).success).toBe(false);
+  });
+  it('accepts ganzeIfco only together with an Ifco', () => {
+    const inIfco = { gegenstandId: 'g1', ifcoId: 'i1', anzahl: 2, ganzeIfco: true };
+    expect(ausleiheSchema.parse({ ...kopf, positionen: [inIfco] }).positionen[0]?.ganzeIfco).toBe(
+      true,
+    );
+    const amLager = { gegenstandId: 'g1', lagerortId: 'regal', anzahl: 2, ganzeIfco: true };
+    expect(ausleiheSchema.safeParse({ ...kopf, positionen: [amLager] }).success).toBe(false);
+    expect(
+      ausleiheSchema.safeParse({ ...kopf, positionen: [{ ...inIfco, ganzeIfco: false }] }).success,
+    ).toBe(false);
+  });
   it('edits only the header', () => {
-    expect(ausleiheAendernSchema.parse(kopf)).toMatchObject({ an: 'Feuerwehr' });
+    expect(ausleiheAendernSchema.parse(kopf)).toMatchObject({
+      an: 'Feuerwehr',
+      organisiertVon: 'sub-1',
+    });
   });
   it('needs unique, non-empty position ids and a time', () => {
     const zurueckAm = '2026-05-02T10:00:00.000Z';
@@ -316,5 +345,62 @@ describe('Blockierung: who holds the pieces', () => {
     expect(verliehenFehler([menge('g1', { l: 'regal' }, 2)], offen, namen, jetzt)).toBe(
       '„Kabeltrommel“ bei „Lager › Regal 1“: Davon sind noch 5 verliehen oder vorgemerkt: 3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026).',
     );
+  });
+});
+
+describe('positionenGruppieren', () => {
+  const pos = (id: string, ifcoId: string | null, ganzeIfco?: boolean | null) => ({
+    id,
+    ifcoId,
+    ganzeIfco,
+  });
+  it('groups the positions of a whole Ifco and keeps the rest single', () => {
+    const liste = [
+      pos('a', null),
+      pos('b', 'i1', true),
+      pos('c', 'i1', false),
+      pos('d', 'i2', true),
+      pos('e', 'i1', true),
+      pos('f', 'i1', null),
+    ];
+    const r = positionenGruppieren(liste);
+    expect(
+      r.map((e) => (e.art === 'einzeln' ? e.position.id : e.positionen.map((p) => p.id).join('+'))),
+    ).toEqual(['a', 'b+e', 'c', 'd', 'f']);
+    expect(r[1]).toMatchObject({ art: 'ifco', ifcoId: 'i1' });
+  });
+  it('returns nothing for nothing', () => {
+    expect(positionenGruppieren([])).toEqual([]);
+  });
+});
+
+describe('ganzeIfcoFehler', () => {
+  const inhalt = [menge('g1', { i: 'i1' }, 4), menge('g2', { i: 'i1' }, 2)];
+  const ganz = (g: string, anzahl: number, ganzeIfco = true) => ({
+    ...menge(g, { i: 'i1' }, anzahl),
+    ganzeIfco,
+  });
+  it('accepts the complete available content', () => {
+    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2)], namen)).toBeNull();
+  });
+  it('subtracts what is already lent', () => {
+    const offen = [menge('g1', { i: 'i1' }, 1), menge('g2', { i: 'i1' }, 2)];
+    expect(ganzeIfcoFehler(inhalt, offen, [ganz('g1', 3)], namen)).toBeNull();
+  });
+  it('needs every available Gegenstand in full', () => {
+    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4)], namen)).toContain('angegeben sind 0');
+    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 3), ganz('g2', 2)], namen)).toContain(
+      'sind 4 verfügbar, angegeben sind 3',
+    );
+  });
+  it('rejects unflagged positions of the same Ifco and an empty Ifco', () => {
+    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2, false)], namen)).toContain(
+      'Alle ihre Positionen',
+    );
+    const leer = [menge('g1', { i: 'i1' }, 4), menge('g2', { i: 'i1' }, 2)];
+    expect(ganzeIfcoFehler(inhalt, leer, [ganz('g1', 4)], namen)).toContain('nichts verfügbar');
+  });
+  it('ignores lendings without the flag', () => {
+    expect(ganzeIfcoFehler(inhalt, [], [{ ...menge('g1', { i: 'i1' }, 1) }], namen)).toBeNull();
   });
 });

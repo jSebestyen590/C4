@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GegenstandRow } from './db/schema';
-import { gegenstandDetails, zielFehler } from './inventar';
+import { gegenstandDetails, ifcoAusleihen, organisatorVon, zielFehler } from './inventar';
 
 const g: GegenstandRow = {
   id: 'g1',
@@ -93,5 +93,58 @@ describe('zielFehler', () => {
     expect(
       zielFehler([lagerort('l2'), ifco('i2')], orte, kisten, [lagerort('l2'), ifco('i2')]),
     ).toBeNull();
+  });
+});
+
+describe('ifcoAusleihen', () => {
+  const ganz = (ifcoId: string, ausleiheId: string, ausgeliehenAm: Date) => ({
+    ifcoId,
+    ausleiheId,
+    an: `an ${ausleiheId}`,
+    ausgeliehenAm,
+  });
+  it('marks an Ifco as verliehen or vorgemerkt', () => {
+    const r = ifcoAusleihen([ganz('i1', 'a1', vorher), ganz('i2', 'a2', spaeter)], jetzt);
+    expect(r.get('i1')).toMatchObject({ id: 'a1', status: 'verliehen' });
+    expect(r.get('i2')).toMatchObject({ id: 'a2', status: 'geplant', an: 'an a2' });
+    expect(r.has('i3')).toBe(false);
+  });
+  it('prefers the Ausleihe that is away now, then the earliest reserved one', () => {
+    const r = ifcoAusleihen(
+      [ganz('i1', 'spaet', spaeter), ganz('i1', 'jetzt', vorher), ganz('i2', 'b', spaeter)],
+      jetzt,
+    );
+    expect(r.get('i1')?.id).toBe('jetzt');
+    const frueh = new Date('2026-10-23T00:00:00.000Z');
+    const s = ifcoAusleihen([ganz('i1', 'spaet', spaeter), ganz('i1', 'frueh', frueh)], jetzt);
+    expect(s.get('i1')?.id).toBe('frueh');
+  });
+});
+
+describe('organisatorVon', () => {
+  const personen = [
+    {
+      sub: 'a',
+      vorname: 'Anna',
+      nachname: 'Alt',
+      status: 'mitglied' as const,
+      anrede: 'weiblich' as const,
+    },
+    { sub: 'b', vorname: 'Ben', nachname: 'Neu', status: 'anwaerter' as const, anrede: null },
+  ];
+  it('uses organisiertVon and falls back to erstelltVon', () => {
+    expect(organisatorVon({ organisiertVon: 'a', erstelltVon: 'b' }, personen)?.sub).toBe('a');
+    const r = organisatorVon({ organisiertVon: null, erstelltVon: 'b' }, personen);
+    expect(r).toEqual({
+      sub: 'b',
+      vorname: 'Ben',
+      nachname: 'Neu',
+      status: 'anwaerter',
+      anrede: 'neutral',
+    });
+  });
+  it('is null for an unknown person', () => {
+    expect(organisatorVon({ organisiertVon: null, erstelltVon: 'x' }, personen)).toBeNull();
+    expect(organisatorVon({ organisiertVon: 'x', erstelltVon: 'a' }, personen)).toBeNull();
   });
 });

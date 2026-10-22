@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   ausleihFehler,
+  ganzeIfcoFehler,
+  istVorgemerkt,
+  type Anrede,
   type IfcoMass,
+  type MitgliedStatus,
   ausleiheStatus,
   offenAufteilen,
   platzKey,
@@ -27,6 +31,7 @@ import {
   inventarKategorien,
   ifcoTypen,
   lagerorte,
+  mitglieder,
   type IfcoTypRow,
   type AusleihePositionRow,
   type AusleiheRow,
@@ -82,10 +87,14 @@ export interface PlatzDaten extends PlatzZiel {
 
 export interface AusleihePositionDaten extends PlatzDaten {
   gegenstandId: string;
+  /** Part of lending a whole Ifco (needs `ifcoId`). */
+  ganzeIfco?: true;
 }
 
 export interface AusleiheKopfDaten {
   an: string;
+  /** Cognito sub of the organising Mitglied. */
+  organisiertVon: string;
   /** ISO timestamp. */
   ausgeliehenAm: string;
   rueckgabeGeplant: string | null;
@@ -114,8 +123,27 @@ export interface GegenstandDetails extends GegenstandRow {
   vorgemerkt: number;
 }
 
+/** The open Ausleihe that lends a whole Ifco (`geplant` = starts in the future). */
+export interface IfcoAusleihe {
+  id: string;
+  an: string;
+  status: 'geplant' | 'verliehen';
+  ausgeliehenAm: Date;
+}
+
 export interface IfcoDetails extends IfcoRow {
   inhalt: { gegenstandId: string; anzahl: number }[];
+  /** Open whole-Ifco Ausleihe (the one away now first), or null. */
+  ausleihe: IfcoAusleihe | null;
+}
+
+/** The Mitglied who organised an Ausleihe. */
+export interface Organisator {
+  sub: string;
+  vorname: string;
+  nachname: string;
+  status: MitgliedStatus;
+  anrede: Anrede;
 }
 
 export interface AusleiheDetails extends AusleiheRow {
@@ -124,6 +152,8 @@ export interface AusleiheDetails extends AusleiheRow {
   /** `erledigt`, `geplant` (starts in the future) or `verliehen`. */
   status: AusleiheStatus;
   positionen: AusleihePositionRow[];
+  /** Organising Mitglied (`erstelltVon` as fallback); null if neither is a known Mitglied. */
+  organisator: Organisator | null;
 }
 
 /**
@@ -336,8 +366,56 @@ async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetail
   );
 }
 
+/** Per Ifco the open whole-Ifco Ausleihe: the one away now first, else the earliest reserved one. */
+export function ifcoAusleihen(
+  offeneGanze: { ifcoId: string | null; ausleiheId: string; an: string; ausgeliehenAm: Date }[],
+  jetzt: Date = new Date(),
+): Map<string, IfcoAusleihe> {
+  const karte = new Map<string, IfcoAusleihe>();
+  const sortiert = [...offeneGanze].sort(
+    (a, b) => a.ausgeliehenAm.getTime() - b.ausgeliehenAm.getTime(),
+  );
+  for (const p of sortiert) {
+    if (p.ifcoId === null) continue;
+    const geplant = istVorgemerkt(p.ausgeliehenAm, jetzt);
+    const bisher = karte.get(p.ifcoId);
+    // Away now beats reserved; among equals the earliest start wins (sorted ascending).
+    if (bisher && (bisher.status === 'verliehen' || geplant)) continue;
+    karte.set(p.ifcoId, {
+      id: p.ausleiheId,
+      an: p.an,
+      status: geplant ? 'geplant' : 'verliehen',
+      ausgeliehenAm: p.ausgeliehenAm,
+    });
+  }
+  return karte;
+}
+
+/** The organising Mitglied of an Ausleihe: `organisiertVon`, else `erstelltVon`; null if unknown. */
+export function organisatorVon(
+  a: Pick<AusleiheRow, 'organisiertVon' | 'erstelltVon'>,
+  mitgliederListe: {
+    sub: string;
+    vorname: string;
+    nachname: string;
+    status: MitgliedStatus;
+    anrede: Anrede | null;
+  }[],
+): Organisator | null {
+  const m = mitgliederListe.find((x) => x.sub === (a.organisiertVon ?? a.erstelltVon));
+  return m
+    ? {
+        sub: m.sub,
+        vorname: m.vorname,
+        nachname: m.nachname,
+        status: m.status,
+        anrede: m.anrede ?? 'neutral',
+      }
+    : null;
+}
+
 async function ifcosLaden(q: Q, nurId?: string): Promise<IfcoDetails[]> {
-  const [rows, plaetze] = await Promise.all([
+  const [rows, plaetze, ganze] = await Promise.all([
     q
       .select()
       .from(ifcos)
@@ -346,12 +424,28 @@ async function ifcosLaden(q: Q, nurId?: string): Promise<IfcoDetails[]> {
       .select()
       .from(gegenstandPlaetze)
       .where(nurId ? eq(gegenstandPlaetze.ifcoId, nurId) : undefined),
+    offenLaden(
+      q,
+      and(
+        eq(ausleihePositionen.ganzeIfco, true),
+        nurId ? eq(ausleihePositionen.ifcoId, nurId) : undefined,
+      ),
+    ),
   ]);
+  const ausleihenJeIfco = ifcoAusleihen(
+    ganze.map((p) => ({
+      ifcoId: p.ifcoId,
+      ausleiheId: p.ausleiheId,
+      an: p.an,
+      ausgeliehenAm: p.ausgeliehenAm,
+    })),
+  );
   return rows.map((i) => ({
     ...i,
     inhalt: plaetze
       .filter((p) => p.ifcoId === i.id)
       .map((p) => ({ gegenstandId: p.gegenstandId, anzahl: p.anzahl })),
+    ausleihe: ausleihenJeIfco.get(i.id) ?? null,
   }));
 }
 
@@ -366,20 +460,38 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
       .from(ausleihePositionen)
       .where(nurId ? eq(ausleihePositionen.ausleiheId, nurId) : undefined),
   ]);
+  const subs = [...new Set(rows.map((a) => a.organisiertVon ?? a.erstelltVon))];
+  const personen = subs.length
+    ? await q.select().from(mitglieder).where(inListe(mitglieder.sub, subs))
+    : [];
   const jetzt = new Date();
   return rows
     .map((a) => {
       const eigene = positionen.filter((p) => p.ausleiheId === a.id);
       const status = ausleiheStatus(a.ausgeliehenAm, eigene, jetzt);
-      return { ...a, erledigt: status === 'erledigt', status, positionen: eigene };
+      return {
+        ...a,
+        erledigt: status === 'erledigt',
+        status,
+        positionen: eigene,
+        organisator: organisatorVon(a, personen),
+      };
     })
     .sort(
       (a, b) => b.ausgeliehenAm.getTime() - a.ausgeliehenAm.getTime() || a.id.localeCompare(b.id),
     );
 }
 
+/** Throws `WarenUngueltig` unless `sub` belongs to a Mitglied. */
+async function organisatorPruefen(q: Q, sub: string): Promise<void> {
+  if (!(await gibtEs(q, mitglieder, eq(mitglieder.sub, sub)))) {
+    throw new WarenUngueltig('Die organisierende Person ist kein Mitglied.');
+  }
+}
+
 const kopfWerte = (daten: AusleiheKopfDaten) => ({
   an: daten.an,
+  organisiertVon: daten.organisiertVon,
   ausgeliehenAm: new Date(daten.ausgeliehenAm),
   rueckgabeGeplant: daten.rueckgabeGeplant,
   kommentar: daten.kommentar,
@@ -758,6 +870,31 @@ export function createInventarStore(db: Db): InventarStore {
         const neu = daten.positionen.map((p) => alsMenge(p.gegenstandId, p));
         const fehler = await fehlerMitNamen(tx, (b) => ausleihFehler(plaetze, offen, neu, b));
         if (fehler) throw new WarenUngueltig(fehler);
+        await organisatorPruefen(tx, daten.organisiertVon);
+        const ganzeIfcoIds = [
+          ...new Set(daten.positionen.flatMap((p) => (p.ganzeIfco && p.ifcoId ? [p.ifcoId] : []))),
+        ];
+        if (ganzeIfcoIds.length > 0) {
+          const [inhalt, offeneInIfco] = await Promise.all([
+            tx
+              .select()
+              .from(gegenstandPlaetze)
+              .where(inListe(gegenstandPlaetze.ifcoId, ganzeIfcoIds)),
+            offenLaden(tx, inListe(ausleihePositionen.ifcoId, ganzeIfcoIds)),
+          ]);
+          const ganzeFehler = await fehlerMitNamen(tx, (b) =>
+            ganzeIfcoFehler(
+              inhalt.map((p) => alsMenge(p.gegenstandId, p)),
+              offeneInIfco,
+              daten.positionen.map((p) => ({
+                ...alsMenge(p.gegenstandId, p),
+                ganzeIfco: p.ganzeIfco,
+              })),
+              b,
+            ),
+          );
+          if (ganzeFehler) throw new WarenUngueltig(ganzeFehler);
+        }
         const id = randomUUID();
         await tx.insert(ausleihen).values({ id, ...kopfWerte(daten), erstelltVon: sub });
         await tx.insert(ausleihePositionen).values(
@@ -768,6 +905,7 @@ export function createInventarStore(db: Db): InventarStore {
             lagerortId: p.lagerortId,
             ifcoId: p.ifcoId,
             anzahl: p.anzahl,
+            ganzeIfco: p.ganzeIfco ?? null,
           })),
         );
         return id;
@@ -776,6 +914,7 @@ export function createInventarStore(db: Db): InventarStore {
     async ausleiheAktualisieren(id, daten) {
       return db.transaction(async (tx) => {
         if (!(await gibtEs(tx, ausleihen, eq(ausleihen.id, id)))) return false;
+        await organisatorPruefen(tx, daten.organisiertVon);
         await tx.update(ausleihen).set(kopfWerte(daten)).where(eq(ausleihen.id, id));
         return true;
       });

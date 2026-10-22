@@ -1,9 +1,21 @@
 import { ifcoTypText } from '@c4/shared';
-import type { GegenstandEintrag, IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
+import type {
+  GegenstandEintrag,
+  IfcoAusleiheEintrag,
+  IfcoEintrag,
+  IfcoTypEintrag,
+} from './inventarDaten';
 
 /** The Inventar located at one Lagerort: Ifcos standing there and Gegenstände assigned directly. */
 export interface LagerInventar {
-  ifcos: { id: string; name: string; stueck: number; typ: string | null }[];
+  ifcos: {
+    id: string;
+    name: string;
+    stueck: number;
+    typ: string | null;
+    /** Open whole-Ifco Ausleihe, or null. */
+    ausleihe: IfcoAusleiheEintrag | null;
+  }[];
   gegenstaende: {
     id: string;
     name: string;
@@ -36,6 +48,7 @@ export function inventarJeLagerort(
       name: i.name,
       stueck: i.inhalt.reduce((s, p) => s + p.anzahl, 0),
       typ: typText(typen.find((x) => x.id === i.typId)),
+      ausleihe: i.ausleihe,
     });
   }
   for (const g of gegenstaende) {

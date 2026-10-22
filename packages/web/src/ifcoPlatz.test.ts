@@ -28,6 +28,7 @@ const ifco = (
   archiviert,
   typId,
   inhalt: [],
+  ausleihe: null,
 });
 const platz = { hoeheCm: 20, stellflaechen: 1 };
 

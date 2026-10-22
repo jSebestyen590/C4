@@ -16,18 +16,18 @@ wahlweise in **Ifcos** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 
 ## Datenmodell
 
-Migrationen `0025`–`0031` (Ifco-Typen und Ifco-Lagerplätze: `0033`–`0036`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
+Migrationen `0025`–`0031` (Ifco-Typen und Ifco-Lagerplätze: `0033`–`0036`; ganze Ifco und Organisator: `0037`, `0038`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
 das Inventar: `0024_vorstandsposten_waren`).
 
-| Tabelle               | Inhalt                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `inventar_kategorien` | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                                   |
-| `ifco_typen`          | `name` (z. B. „6410“), `grundflaeche` (`gross` 60×40 / `klein` 40×30), `hoehe_cm`, `archiviert`                                |
-| `ifcos`               | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz |
-| `gegenstaende`        | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl, Standard 1), `archiviert`                                   |
-| `gegenstand_plaetze`  | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                   |
-| `ausleihen`           | `an` (Freitext), `ausgeliehen_am`, `rueckgabe_geplant`, `kommentar`, `erstellt_von` (Cognito-`sub` ohne Fremdschlüssel)        |
-| `ausleihe_positionen` | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen)       |
+| Tabelle               | Inhalt                                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inventar_kategorien` | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                                                                                     |
+| `ifco_typen`          | `name` (z. B. „6410“), `grundflaeche` (`gross` 60×40 / `klein` 40×30), `hoehe_cm`, `archiviert`                                                                                  |
+| `ifcos`               | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz                                                   |
+| `gegenstaende`        | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl, Standard 1), `archiviert`                                                                                     |
+| `gegenstand_plaetze`  | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                                                                     |
+| `ausleihen`           | `an` (Freitext), `ausgeliehen_am`, `rueckgabe_geplant`, `kommentar`, `erstellt_von`, `organisiert_von` (Cognito-`sub` ohne Fremdschlüssel)                                       |
+| `ausleihe_positionen` | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen), `ganze_ifco` (true = Teil einer ganz verliehenen Ifco) |
 
 Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstört so die Historie nicht.
 
@@ -73,6 +73,13 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos
   Zuordnung des Gegenstands sein, die Anzahl höchstens zugeordnet minus alle offenen Positionen (verliehen und vorgemerkt,
   `ausleihFehler`, 400 mit Gegenstand und Platz); archivierte Gegenstände sind nicht verleihbar. Die Plätze bleiben beim Verleihen
   unverändert. Gegenstand und Herkunft sind je Ausleihe eindeutig.
+- **Ganze Ifco:** Positionen mit `ganzeIfco: true` (nur mit `ifcoId`) gehören zu einer ganz verliehenen Ifco. Dann müssen alle Positionen dieser
+  Ifco in der Ausleihe so markiert sein und je Gegenstand genau das aktuell Verfügbare nehmen (zugeordnet minus verliehen/vorgemerkt,
+  `ganzeIfcoFehler`; sonst 400, auch wenn nichts verfügbar ist). Die Markierung bleibt an den Positionen; Teilrückgaben einzelner
+  Positionen sind weiter möglich. Eine Ifco mit offener markierter Position gilt als verliehen bzw. vorgemerkt (`ausleihe` an der Ifco, der
+  aktuell verliehenen Ausleihe zuerst). Gruppierung für die Anzeige: `positionenGruppieren` (shared).
+- **Organisator:** Jede Ausleihe hat `organisiertVon` (Pflicht beim Anlegen und Bearbeiten; muss ein bestehendes Mitglied sein, sonst 400).
+  Ältere Ausleihen ohne Wert nutzen `erstellt_von` als Ersatz.
 - **Vorgemerkt:** Eine offene Position einer Ausleihe mit `ausgeliehenAm` in der Zukunft ist **vorgemerkt**, nicht verliehen; ab
   `ausgeliehenAm <= jetzt` ist sie **verliehen** („gerade weg“). Vorgemerktes bleibt **reserviert**: Verfügbarkeit, Umräumen und
   Archivieren zählen verliehen und vorgemerkt zusammen. „Jetzt“ ist die Serverzeit der Anfrage. Aufteilung und Status:
@@ -85,7 +92,7 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos
 - **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
   Eine Ausleihe ist `erledigt`, wenn alle Positionen zurück sind. `DELETE` entfernt eine Ausleihe samt Positionen (Fehleintrag).
 - **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`) wird abgelehnt (409 „Davon sind noch 3 verliehen oder vorgemerkt.“).
-- `erstellt_von` einer Ausleihe ist die `sub` der anfragenden Person.
+- `erstellt_von` einer Ausleihe ist die `sub` der anfragenden Person; wer sie organisiert hat, steht in `organisiert_von`.
 
 ## API
 
@@ -99,10 +106,11 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos
 | `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id` | `inventar:umraeumen` |
 
 Antworten: `GET /gegenstaende[/:id]` liefert je Gegenstand `plaetze: [{ id, lagerortId, ifcoId, anzahl, verliehen }]` (`verliehen` =
-Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von dieser Herkunft) und `verliehen` / `vorgemerkt` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]`; eine
-Ausleihe liefert `erledigt`, `status` (`geplant` = beginnt in der Zukunft, `verliehen`, `erledigt`) und `positionen` (mit `zurueckAm`);
+Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von dieser Herkunft) und `verliehen` / `vorgemerkt` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]` und `ausleihe: { id, an, status, ausgeliehenAm } | null` (offene Ausleihe der ganzen Ifco, `status` `geplant` oder `verliehen`); eine
+Ausleihe liefert `erledigt`, `status` (`geplant` = beginnt in der Zukunft, `verliehen`, `erledigt`), `positionen` (mit `zurueckAm`, `ganzeIfco`) und
+`organisator: { sub, vorname, nachname, status, anrede } | null`;
 `?status=offen` liefert geplante und verliehene. So rechnet der Client die Lager-Ansicht selbst aus. Unbekannte
-Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert nur `an`,
+Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert nur `an`, `organisiertVon`,
 `ausgeliehenAm`, `rueckgabeGeplant` und `kommentar`.
 
 ## Oberfläche
@@ -113,7 +121,7 @@ jede Änderung macht `['inventar']` ungültig.
 
 - `/inventar`: Umschalter „Gegenstände“ / „Ifcos“ / „Verliehen“ (`?ansicht=ifcos|verliehen`), Suche (bei
   Gegenständen Name, Beschreibung, Ifco und Lagerort-Pfad der Plätze; bei Ifcos Name, Platz, Inhalt), Kategoriefilter inkl.
-  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6× · 3 verliehen · 2 vorgemerkt“) und ein oranges Badge
+  Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Karten zeigen Plätze mit Pfad („6×“ im Kopf, am Platz „Lager › Regal · 3 verliehen · 2 vorgemerkt“; die Verleih-Hinweise stehen nur an den Plätzen) und ein oranges Badge
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
@@ -129,6 +137,9 @@ jede Änderung macht `['inventar']` ungültig.
   stehenden Ifcos mit Typ und „Passt noch: 1× 6410 oder 2× 4310“ bzw. „Voll“ (`passtNochText`). `LagerortFormular` hat den Schalter
   „Ifco-Lagerplatz“ mit Höhe und Stellflächen (gesperrt mit Hinweis bei Unterebenen), beim Regal und im Dialog „Böden hinzufügen“ den
   Schalter „Als Ifco-Lagerplätze anlegen“ (`IfcoPlatzFelder`).
+- **Anzahl 1 wird nicht angezeigt:** Die meisten Gegenstände gibt es nur einmal, deshalb steht „1×“ nirgends (Karten, Kopf-Badge „Soll“, Plätze,
+  Ifco-Inhalt, Ausleihe-Positionen, Bestätigungsdialog, Lager-Seite); ab 2 bleibt es („6× Spanngurt 6m“). Zentral in `inventarAnzeige.ts`
+  (`anzahlText`, `mengeName`, `mengeText`, `positionText`). Zahlenfelder bleiben unverändert.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 
@@ -136,15 +147,18 @@ jede Änderung macht `['inventar']` ungültig.
   rot –, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
   (`inventar:umraeumen`). Daten über `useAusleihen(nurOffen)` / `useAusleihe(id)` (Keys `['inventar','ausleihen',…]`); jede Änderung macht
   `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und Ifcos nachzieht.
-- `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, Zeitpunkt (jetzt, änderbar), geplante Rückgabe (optional),
+- `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, „Organisiert von“ (durchsuchbare Mitgliederliste, vorbelegt mit dir selbst), Zeitpunkt (jetzt, änderbar), geplante Rückgabe (optional),
   Kommentar; Gegenstand per Suche hinzufügen, je Platz mit Verfügbarem (zugeordnet minus verliehen und vorgemerkt, `verfuegbarePlaetze`) ein Zahlenfeld
   (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze Ifco verleihen“ übernimmt den verfügbaren Inhalt
-  einer Ifco. Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit allen
+  einer Ifco; sie wird als **ganze Ifco** verliehen, solange der volle verfügbare Inhalt eingetragen bleibt (der Bestätigungsdialog zeigt dann „Spanngurtkiste (ganze Ifco)“, sonst werden die Teile einzeln verliehen). Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit allen
   Positionen, danach Weiterleitung zur neuen Ausleihe.
 - `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
-  möglich), zurückgegebene Positionen mit Datum. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Zeitpunkt, geplante Rückgabe, Kommentar)
+  möglich), zurückgegebene Positionen mit Datum. Die ganze Karte einer Position ist anklickbar (öffnet den Gegenstand, per Tastatur erreichbar); das Häkchen
+  (44 px Trefferfläche) wählt unabhängig davon. Ganz verliehene Ifcos erscheinen als eine Karte „Spanngurtkiste (ganze Ifco)“ (öffnet die Ifco) mit
+  Gruppen-Häkchen für alle offenen Positionen und den Inhalten als Unterliste, einzeln wählbar. Unter der Überschrift steht „Organisiert von <Name>“
+  (Name fett in der Statusfarbe); ebenso auf `AusleiheKarte`, die ganze Ifcos als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Organisator, Zeitpunkt, geplante Rückgabe, Kommentar)
   und „Löschen“ (`inventar:umraeumen`).
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
-  (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“.
+  (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“, bei einer ganz verliehenen Ifco ein Badge „Verliehen an <an> seit …“ bzw. „Vorgemerkt für <an> ab …“ (verlinkt); Ifco-Karten tragen „Verliehen an …“, die Lager-Seite „Spanngurtkiste · … · verliehen an Feuerwehr“. Am Gegenstand steht beim Platz „(…, mit der ganzen Ifco)“.
 - Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen Ifcos und direkt zugeordnete
   Gegenstände im Zähler, eine offene Inventur trägt ein Symbol), siehe [waren.md](./waren.md).
