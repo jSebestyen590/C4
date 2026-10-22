@@ -656,12 +656,12 @@ export const offenLaden = (q: Q, bedingung?: SQL) =>
       ...getTableColumns(ausleihePositionen),
       ausgeliehenAm: ausleihen.ausgeliehenAm,
       an: ausleihen.an,
+      rueckgabeGeplant: ausleihen.rueckgabeGeplant,
     })
     .from(ausleihePositionen)
     .innerJoin(ausleihen, eq(ausleihen.id, ausleihePositionen.ausleiheId))
     .where(and(isNull(ausleihePositionen.zurueckAm), bedingung));
 
-/** `: 3 an Feuerwehr verliehen (seit …)` for the given open positions, or `` without any. */
 /** Inserts Regalböden (as `regalboden`) below `regalId`, positions counting up from `ab`; returns their ids. */
 async function boedenEinfuegen(
   tx: Tx,
@@ -686,6 +686,7 @@ async function boedenEinfuegen(
   return ids;
 }
 
+/** `: 3 an Feuerwehr verliehen (20.10.–27.10.2026)` for the given open positions, or `` without any. */
 export const blockiertVon = (offen: Awaited<ReturnType<typeof offenLaden>>): string => {
   const text = blockierungText(blockierungen(offen, null, new Date()));
   return text ? `: ${text}` : '';

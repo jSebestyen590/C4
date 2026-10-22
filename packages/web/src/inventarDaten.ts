@@ -87,6 +87,8 @@ export interface AusleihePositionEintrag {
 /** The Mitglied who organised an Ausleihe. */
 export interface OrganisatorEintrag {
   sub: string;
+  /** Cognito username; null while the member has none. */
+  username: string | null;
   vorname: string;
   nachname: string;
   status: MitgliedStatus;
@@ -99,7 +101,7 @@ export interface AusleiheEintrag {
   an: string;
   /** ISO timestamp. */
   ausgeliehenAm: string;
-  /** `YYYY-MM-DD` */
+  /** `YYYY-MM-DD`; required for new Ausleihen, null on older ones (then open-ended). */
   rueckgabeGeplant: string | null;
   kommentar: string | null;
   /** Cognito sub of the organising Mitglied (null on older Ausleihen). */
@@ -111,6 +113,8 @@ export interface AusleiheEintrag {
   /** `geplant` = starts in the future (vorgemerkt), `verliehen` = away now, `erledigt` = all back. */
   status: 'geplant' | 'verliehen' | 'erledigt';
   positionen: AusleihePositionEintrag[];
+  /** Overdue Ausleihen that endanger this not yet started one ("gefährdet"); usually empty. */
+  gefaehrdetDurch: { id: string; an: string }[];
 }
 
 /** Query key prefix of everything below Inventar; invalidate it after a mutation. */

@@ -137,6 +137,7 @@ describe('organisatorVon', () => {
     const r = organisatorVon({ organisiertVon: null, erstelltVon: 'b' }, personen);
     expect(r).toEqual({
       sub: 'b',
+      username: null,
       vorname: 'Ben',
       nachname: 'Neu',
       status: 'anwaerter',

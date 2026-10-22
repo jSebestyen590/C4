@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Group,
   Loader,
   NumberInput,
@@ -18,27 +19,42 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Anchor } from '@mantine/core';
-import { ausleiheSchema, blockierungen, type Blockierung, type OffenePosition } from '@c4/shared';
+import {
+  ausleiheSchema,
+  ausleiheTage,
+  blockierungWann,
+  blockierungen,
+  type Blockierung,
+  type PlatzZiel,
+} from '@c4/shared';
 import { useApi } from '../api';
 import { AusleiheKopfFelder, type AusleiheKopf } from '../AusleiheKopfFelder';
 import { BuchungsBestaetigung, type BestaetigungsGruppe } from '../BuchungsBestaetigung';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
-import { datumText, ifcoGruppeTitel, mengeName, verfuegbarePlaetze } from '../inventarAnzeige';
+import {
+  heuteLokal,
+  ifcoGruppeTitel,
+  mengeName,
+  offenePositionenAus,
+  standardMenge,
+  verfuegbarePlaetze,
+  verfuegbarImZeitraum,
+  zeitraumZeile,
+} from '../inventarAnzeige';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { jetztLokal } from '../inventurDaten';
 import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
 import { fehlerText, pruefen } from '../warenApi';
-import { zeitAnzeigen } from '../warenAnzeige';
 
 const mengeKey = (
   gegenstandId: string,
   ziel: { lagerortId: string | null; ifcoId: string | null },
 ) => `${gegenstandId}|${zielWert(ziel)}`;
 
-/** Who holds or has reserved pieces: `3 an Feuerwehr verliehen (seit 20.10.2026), 2 an … vorgemerkt (ab …)`, borrowers linked. */
+/** Who holds or has reserved pieces in the period: `3 an Feuerwehr verliehen (20.10.–27.10.2026), 2 an … vorgemerkt (…)`, borrowers linked. */
 function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
   return liste.map((b, i) => (
     <span key={`${b.ausleiheId}-${b.vorgemerkt}`}>
@@ -56,7 +72,7 @@ function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
       ) : (
         b.an
       )}{' '}
-      {b.vorgemerkt ? `vorgemerkt (ab ${b.datum})` : `verliehen (seit ${b.datum})`}
+      {blockierungWann(b)}
     </span>
   ));
 }
@@ -71,15 +87,7 @@ export function AusleihePage() {
   const [params] = useSearchParams();
   const inv = useInventar();
   const offeneAusleihen = useAusleihen(true).ausleihen;
-  const offenePositionen = useMemo<OffenePosition[]>(
-    () =>
-      offeneAusleihen.flatMap((a) =>
-        a.positionen
-          .filter((p) => p.zurueckAm === null)
-          .map((p) => ({ ...p, ausleiheId: a.id, an: a.an, ausgeliehenAm: a.ausgeliehenAm })),
-      ),
-    [offeneAusleihen],
-  );
+  const offenePositionen = useMemo(() => offenePositionenAus(offeneAusleihen), [offeneAusleihen]);
   const enterWeiter = useEnterWeiter('verleihen-weiter');
   const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(false);
   const eigeneSub = useEigeneSub();
@@ -101,6 +109,7 @@ export function AusleihePage() {
     setOrganisatorVorbelegt(true);
     setKopf((k) => ({ ...k, organisiertVon: eigeneSub }));
   }
+  const [rueckgabeFehler, setRueckgabeFehler] = useState<string | null>(null);
   const [gegenstandIds, setGegenstandIds] = useState<string[]>([]);
   /** Ifcos added with "Ganze Ifco verleihen"; they count as whole only while their full content is entered. */
   const [ifcoIds, setIfcoIds] = useState<string[]>([]);
@@ -117,26 +126,30 @@ export function AusleihePage() {
     [inv.gegenstaende],
   );
 
-  /** Available amount per place of the given Ifco's content, keyed like `mengen`. */
+  /** The days of the chosen period; open-ended while no return day is entered. */
+  const zeitraum = useMemo(() => {
+    const iso = zeitpunktIso(kopf.zeitpunkt);
+    return iso ? ausleiheTage(iso, kopf.rueckgabe || null) : { von: heuteLokal(), bis: null };
+  }, [kopf.zeitpunkt, kopf.rueckgabe]);
+
+  /** Free amount of a place in the chosen period. */
+  const frei = (gegenstandId: string, platz: PlatzZiel & { anzahl: number }) =>
+    verfuegbarImZeitraum(platz, gegenstandId, offenePositionen, zeitraum);
+
+  /** Gegenstände in the content of the given Ifco that can be lent. */
   const ifcoInhalt = (ifcoId: string) => {
     const ifco = inv.ifcos.find((i) => i.id === ifcoId);
     const ids: string[] = [];
-    const vorgabe: Record<string, number> = {};
     for (const p of ifco?.inhalt ?? []) {
       const g = verleihbar.find((x) => x.id === p.gegenstandId);
-      const platz = g?.plaetze.find((x) => x.ifcoId === ifcoId);
-      if (!g || !platz) continue;
-      ids.push(g.id);
-      const frei = platz.anzahl - platz.verliehen - platz.vorgemerkt;
-      if (frei > 0) vorgabe[mengeKey(g.id, platz)] = frei;
+      if (g?.plaetze.some((x) => x.ifcoId === ifcoId)) ids.push(g.id);
     }
-    return { ids, vorgabe };
+    return { ids };
   };
 
-  const hinzufuegen = (ids: string[], vorgabe: Record<string, number> = {}, ifcoId?: string) => {
+  const hinzufuegen = (ids: string[], ifcoId?: string) => {
     if (ifcoId) setIfcoIds((alt) => (alt.includes(ifcoId) ? alt : [...alt, ifcoId]));
     setGegenstandIds((alt) => [...alt, ...ids.filter((id) => !alt.includes(id))]);
-    setMengen((alt) => ({ ...vorgabe, ...alt }));
   };
 
   // Prefill from ?gegenstand= / ?ifco= once the Inventar is loaded.
@@ -146,8 +159,7 @@ export function AusleihePage() {
     const ifcoId = params.get('ifco');
     if (gegenstandId && verleihbar.some((g) => g.id === gegenstandId)) hinzufuegen([gegenstandId]);
     if (ifcoId) {
-      const { ids, vorgabe } = ifcoInhalt(ifcoId);
-      hinzufuegen(ids, vorgabe, ifcoId);
+      hinzufuegen(ifcoInhalt(ifcoId).ids, ifcoId);
     }
   }
 
@@ -162,11 +174,27 @@ export function AusleihePage() {
 
   const sektionen = gegenstandIds.flatMap((id) => {
     const g = inv.gegenstaende.find((x) => x.id === id);
-    return g ? [{ g, plaetze: verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos, true) }] : [];
+    if (!g) return [];
+    const plaetze = verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos, true).map((p) => ({
+      ...p,
+      verfuegbar: frei(g.id, p),
+    }));
+    return [{ g, plaetze }];
   });
 
-  const menge = (gid: string, ziel: { lagerortId: string | null; ifcoId: string | null }) => {
-    const wert = mengen[mengeKey(gid, ziel)];
+  /** Entered amount of a place; without input the default (single piece, whole Ifco) counts. */
+  const mengeWert = (
+    g: { id: string; plaetze: unknown[] },
+    p: { lagerortId: string | null; ifcoId: string | null; anzahl: number; verfuegbar: number },
+  ): number | string | undefined =>
+    mengen[mengeKey(g.id, p)] ??
+    standardMenge(p, g.plaetze.length, p.ifcoId !== null && ifcoIds.includes(p.ifcoId));
+
+  const menge = (
+    g: { id: string; plaetze: unknown[] },
+    p: { lagerortId: string | null; ifcoId: string | null; anzahl: number; verfuegbar: number },
+  ) => {
+    const wert = mengeWert(g, p);
     const zahl = typeof wert === 'number' ? wert : Number.NaN;
     return Number.isFinite(zahl) && zahl > 0 ? zahl : 0;
   };
@@ -179,9 +207,9 @@ export function AusleihePage() {
       const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
       const platz = g?.plaetze.find((x) => x.ifcoId === ifcoId);
       if (!g || !platz) continue;
-      const frei = platz.anzahl - platz.verliehen - platz.vorgemerkt;
-      if (frei <= 0) continue;
-      if (g.archiviert || menge(g.id, platz) !== frei) return false;
+      const verfuegbar = frei(g.id, platz);
+      if (verfuegbar <= 0) continue;
+      if (g.archiviert || menge(g, { ...platz, verfuegbar }) !== verfuegbar) return false;
       etwas = true;
     }
     return etwas;
@@ -210,7 +238,7 @@ export function AusleihePage() {
     if (!iso) return setFehler('Ungültiger Zeitpunkt.');
     const positionen = sektionen.flatMap(({ g, plaetze }) =>
       plaetze.flatMap((p) => {
-        const anzahl = menge(g.id, p);
+        const anzahl = menge(g, p);
         if (anzahl <= 0) return [];
         const ganz = p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId);
         return [
@@ -225,29 +253,29 @@ export function AusleihePage() {
       }),
     );
     const zuViel = sektionen.some(({ g, plaetze }) =>
-      plaetze.some((p) => menge(g.id, p) > p.verfuegbar),
+      plaetze.some((p) => menge(g, p) > p.verfuegbar),
     );
     if (zuViel) return setFehler('Bei mindestens einem Platz sind nicht so viele verfügbar.');
     const geprueft = ausleiheSchema.safeParse({
       an: kopf.an,
       organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
-      rueckgabeGeplant: kopf.rueckgabe || null,
+      rueckgabeGeplant: kopf.rueckgabe || undefined,
       kommentar: kopf.kommentar,
       positionen,
     });
-    if (!geprueft.success)
-      return setFehler(geprueft.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    if (!geprueft.success) {
+      const issues = geprueft.error.issues;
+      setRueckgabeFehler(issues.find((i) => i.path[0] === 'rueckgabeGeplant')?.message ?? null);
+      const anderes = issues.find((i) => i.path[0] !== 'rueckgabeGeplant');
+      return setFehler(anderes ? anderes.message : null);
+    }
     setFehler(null);
+    setRueckgabeFehler(null);
     const gruppen: BestaetigungsGruppe[] = [
       {
         titel: `An ${geprueft.data.an}`,
-        zeilen: [
-          `${new Date(iso) > new Date() ? 'Ab' : 'Seit'} ${zeitAnzeigen(iso)}`,
-          ...(geprueft.data.rueckgabeGeplant
-            ? [`Rückgabe geplant: ${datumText(geprueft.data.rueckgabeGeplant)}`]
-            : []),
-        ],
+        zeilen: [zeitraumZeile(iso, geprueft.data.rueckgabeGeplant)],
       },
       ...ganzeIfcoIds.map((ifcoId) => ({
         titel: ifcoGruppeTitel(ifcoId, inv.ifcos),
@@ -262,7 +290,7 @@ export function AusleihePage() {
       })),
       ...sektionen.flatMap(({ g, plaetze }) => {
         const zeilen = plaetze.flatMap((p) => {
-          const anzahl = menge(g.id, p);
+          const anzahl = menge(g, p);
           if (anzahl <= 0 || (p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId))) return [];
           return [anzahl === 1 ? `Aus ${p.text}` : `${anzahl}× aus ${p.text}`];
         });
@@ -288,7 +316,14 @@ export function AusleihePage() {
           Wähle aus, was du verleihst, und trag je Platz die Anzahl ein.
         </Text>
       </Stack>
-      <AusleiheKopfFelder kopf={kopf} onChange={(t) => setKopf((k) => ({ ...k, ...t }))} />
+      <AusleiheKopfFelder
+        kopf={kopf}
+        onChange={(t) => {
+          setKopf((k) => ({ ...k, ...t }));
+          setRueckgabeFehler(null);
+        }}
+        rueckgabeFehler={rueckgabeFehler}
+      />
 
       <Title order={3}>Was wird verliehen?</Title>
       <Select
@@ -313,10 +348,10 @@ export function AusleihePage() {
         value={null}
         onChange={(id) => {
           if (!id) return;
-          const { ids, vorgabe } = ifcoInhalt(id);
+          const { ids } = ifcoInhalt(id);
           if (ids.length === 0)
             notifications.show({ color: 'yellow', message: 'In der Ifco ist nichts verfügbar.' });
-          else hinzufuegen(ids, vorgabe, id);
+          else hinzufuegen(ids, id);
         }}
       />
 
@@ -348,17 +383,59 @@ export function AusleihePage() {
               </Group>
               {plaetze.every((p) => p.verfuegbar <= 0) && (
                 <Text size="sm" c="dimmed">
-                  Alles verliehen oder vorgemerkt. Du kannst den Gegenstand entfernen.
+                  Im gewählten Zeitraum ist alles verliehen oder vorgemerkt. Du kannst den
+                  Gegenstand entfernen.
                 </Text>
               )}
               {plaetze.map((p) => {
                 const key = mengeKey(g.id, p);
-                const zuViel = menge(g.id, p) > p.verfuegbar;
+                const aktuell = menge(g, p);
+                const zuViel = aktuell > p.verfuegbar;
                 const wer = blockierungen(
                   offenePositionen,
                   { gegenstandId: g.id, lagerortId: p.lagerortId, ifcoId: p.ifcoId },
                   new Date(),
+                  zeitraum,
                 );
+                const hinweis =
+                  wer.length > 0 ? (
+                    <>
+                      {' · '}
+                      <Blockiert liste={wer} />
+                    </>
+                  ) : null;
+                if (p.anzahl === 1) {
+                  // A piece that exists once: no amount to ask for, just lend it or not.
+                  return (
+                    <Checkbox
+                      key={key}
+                      size="md"
+                      label={`Verleihen aus ${p.text}`}
+                      description={
+                        p.verfuegbar > 0 ? (
+                          hinweis && <Blockiert liste={wer} />
+                        ) : (
+                          <>
+                            Nicht verfügbar
+                            {hinweis}
+                          </>
+                        )
+                      }
+                      disabled={p.verfuegbar <= 0}
+                      checked={aktuell > 0}
+                      data-zeile
+                      styles={{
+                        root: { minHeight: 44, display: 'flex', alignItems: 'center' },
+                        body: { alignItems: 'center', width: '100%' },
+                        labelWrapper: { flex: 1, paddingBlock: 6 },
+                      }}
+                      onChange={(e) => {
+                        const an = e.currentTarget.checked;
+                        setMengen((alt) => ({ ...alt, [key]: an ? 1 : 0 }));
+                      }}
+                    />
+                  );
+                }
                 return (
                   <NumberInput
                     key={key}
@@ -366,15 +443,7 @@ export function AusleihePage() {
                     description={
                       <>
                         Verfügbar: {p.verfuegbar}
-                        {wer.length > 0 ? (
-                          <>
-                            {' · '}
-                            <Blockiert liste={wer} />
-                          </>
-                        ) : (
-                          p.verliehen + p.vorgemerkt > 0 &&
-                          ` (${p.verliehen + p.vorgemerkt} schon verliehen oder vorgemerkt)`
-                        )}
+                        {hinweis}
                       </>
                     }
                     placeholder={String(p.verfuegbar)}
@@ -384,7 +453,7 @@ export function AusleihePage() {
                     min={0}
                     inputMode="numeric"
                     data-zeile
-                    value={mengen[key] ?? ''}
+                    value={mengeWert(g, p) ?? ''}
                     error={
                       zuViel ? (
                         <>

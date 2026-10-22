@@ -10,20 +10,23 @@ export interface AusleiheKopf {
   organisiertVon: string;
   /** `datetime-local` value. */
   zeitpunkt: string;
-  /** `YYYY-MM-DD` or empty. */
+  /** `YYYY-MM-DD`; required, empty until chosen. */
   rueckgabe: string;
   kommentar: string;
 }
 
-/** Header fields of an Ausleihe: to whom, organiser, when, planned return date and Kommentar. */
+/** Header fields of an Ausleihe: to whom, organiser, when, planned return day (required) and Kommentar. */
 export function AusleiheKopfFelder({
   kopf,
   onChange,
   autofocus,
+  rueckgabeFehler,
 }: Readonly<{
   kopf: AusleiheKopf;
   onChange: (teil: Partial<AusleiheKopf>) => void;
   autofocus?: boolean;
+  /** Validation message under the return date. */
+  rueckgabeFehler?: string | null;
 }>) {
   const mitglieder = useMitgliederListe();
   const optionen = useMemo(() => mitgliedOptionen(mitglieder.data ?? []), [mitglieder.data]);
@@ -58,7 +61,9 @@ export function AusleiheKopfFelder({
         onChange={(e) => onChange({ zeitpunkt: e.currentTarget.value })}
       />
       <DatumFeld
-        label="Geplante Rückgabe (optional)"
+        label="Geplante Rückgabe"
+        withAsterisk
+        error={rueckgabeFehler ?? undefined}
         value={kopf.rueckgabe}
         styles={{ input: { minWidth: 0 } }}
         onWert={(rueckgabe) => onChange({ rueckgabe })}

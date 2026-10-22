@@ -151,6 +151,27 @@ export function createApp(deps: AppDeps) {
     ...(rollen && { rollen }),
   });
 
+  /** Adds the Cognito username to the organiser of each Ausleihe (the store only knows the profile row). */
+  const mitUsernames = async <
+    T extends { organisator: { sub: string; username: string | null } | null },
+  >(
+    liste: T[],
+  ): Promise<T[]> => {
+    if (!liste.some((a) => a.organisator)) return liste;
+    const konten = await deps.userAdmin.konten();
+    return liste.map((a) =>
+      a.organisator
+        ? {
+            ...a,
+            organisator: {
+              ...a.organisator,
+              username: konten.get(a.organisator.sub)?.username ?? null,
+            },
+          }
+        : a,
+    );
+  };
+
   /** Maps a Posten to its DTO; Besetzungen carry the display data of the member. */
   const alsPosten = (
     p: PostenDetails,
@@ -1214,13 +1235,17 @@ export function createApp(deps: AppDeps) {
       )
       // ----- Inventar: Ausleihen
       .get('/inventar/ausleihen', auth, inventarLesen, async (c) =>
-        c.json(await deps.inventar.ausleihen(c.req.query('status') === 'offen')),
-      )
-      .get('/inventar/ausleihen/:id', auth, inventarLesen, async (c) =>
         c.json(
-          gefunden(await deps.inventar.ausleiheHolen(c.req.param('id')), 'Ausleihe nicht gefunden'),
+          await mitUsernames(await deps.inventar.ausleihen(c.req.query('status') === 'offen')),
         ),
       )
+      .get('/inventar/ausleihen/:id', auth, inventarLesen, async (c) => {
+        const ausleihe = gefunden(
+          await deps.inventar.ausleiheHolen(c.req.param('id')),
+          'Ausleihe nicht gefunden',
+        );
+        return c.json((await mitUsernames([ausleihe]))[0]!);
+      })
       .post(
         '/inventar/ausleihen',
         auth,

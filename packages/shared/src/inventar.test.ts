@@ -21,6 +21,7 @@ import {
   ausleiheStatus,
   verliehenJePlatz,
   ganzeIfcoFehler,
+  gefaehrdungen,
   positionenGruppieren,
   type Beschriftung,
   type PlatzMenge,
@@ -130,7 +131,25 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
     an: ' Feuerwehr ',
     organisiertVon: 'sub-1',
     ausgeliehenAm: '2026-05-01T10:00:00.000Z',
+    rueckgabeGeplant: '2026-05-08',
   };
+  it('requires a return day that is not before the start day', () => {
+    const position = { gegenstandId: 'g1', lagerortId: 'regal', anzahl: 1 };
+    const ohne = { ...kopf, rueckgabeGeplant: undefined };
+    for (const schema of [ausleiheSchema, ausleiheAendernSchema]) {
+      const eingabe = (k: object) => ({ ...k, positionen: [position] });
+      const r = schema.safeParse(eingabe(ohne));
+      expect(r.success).toBe(false);
+      expect(!r.success && r.error.issues[0]?.message).toBe('Bitte gib an, wann es zurückkommt.');
+      expect(schema.safeParse(eingabe({ ...ohne, rueckgabeGeplant: null })).success).toBe(false);
+      expect(schema.safeParse(eingabe({ ...kopf, rueckgabeGeplant: '2026-04-30' })).success).toBe(
+        false,
+      );
+      expect(schema.safeParse(eingabe({ ...kopf, rueckgabeGeplant: '2026-05-01' })).success).toBe(
+        true,
+      );
+    }
+  });
   it('parses a valid Ausleihe', () => {
     const a = ausleiheSchema.parse({
       ...kopf,
@@ -238,32 +257,40 @@ describe('verliehenJePlatz', () => {
   });
 });
 
+/** An open-ended period from the test day on: every open position without return date blocks. */
+const Z = { von: '2026-10-21', bis: null };
+
 describe('ausleihFehler', () => {
   const plaetze = [menge('g1', { l: 'regal' }, 6), menge('g1', { i: 'i1' }, 4)];
   const offen = [menge('g1', { l: 'regal' }, 4)];
   it('allows up to the free amount', () => {
-    expect(ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 2)], namen)).toBeNull();
+    expect(
+      ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 2)], Z, { beschriftung: namen }),
+    ).toBeNull();
     expect(
       ausleihFehler(
         plaetze,
         offen,
         [menge('g1', { l: 'regal' }, 2), menge('g1', { i: 'i1' }, 4)],
-        namen,
+        Z,
+        { beschriftung: namen },
       ),
     ).toBeNull();
   });
   it('names Gegenstand and place when too much is taken', () => {
-    expect(ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 3)], namen)).toBe(
-      'Von „Kabeltrommel“ sind bei „Lager › Regal 1“ nur noch 2 verfügbar.',
-    );
     expect(
-      ausleihFehler(plaetze, [menge('g1', { i: 'i1' }, 4)], [menge('g1', { i: 'i1' }, 1)], namen),
+      ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 3)], Z, { beschriftung: namen }),
+    ).toBe('Von „Kabeltrommel“ sind bei „Lager › Regal 1“ nur noch 2 verfügbar.');
+    expect(
+      ausleihFehler(plaetze, [menge('g1', { i: 'i1' }, 4)], [menge('g1', { i: 'i1' }, 1)], Z, {
+        beschriftung: namen,
+      }),
     ).toBe('Von „Kabeltrommel“ ist bei „Spanngurtkiste · Lager › Regal 1“ nichts mehr verfügbar.');
   });
   it('rejects places the Gegenstand is not assigned to', () => {
-    expect(ausleihFehler(plaetze, [], [menge('g1', { l: 'lager' }, 1)], namen)).toBe(
-      '„Kabeltrommel“ ist nicht bei „Lager“ eingelagert.',
-    );
+    expect(
+      ausleihFehler(plaetze, [], [menge('g1', { l: 'lager' }, 1)], Z, { beschriftung: namen }),
+    ).toBe('„Kabeltrommel“ ist nicht bei „Lager“ eingelagert.');
   });
 });
 
@@ -337,13 +364,30 @@ describe('Blockierung: who holds the pieces', () => {
   });
   it('names the borrowers in ausleihFehler', () => {
     const plaetze = [menge('g1', { l: 'regal' }, 6)];
-    expect(ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 2)], namen, jetzt)).toBe(
+    expect(
+      ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, 2)], Z, {
+        beschriftung: namen,
+        jetzt,
+      }),
+    ).toBe(
       'Von „Kabeltrommel“ sind bei „Lager › Regal 1“ nur noch 1 verfügbar: 3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026).',
     );
   });
   it('names the borrowers in verliehenFehler', () => {
     expect(verliehenFehler([menge('g1', { l: 'regal' }, 2)], offen, namen, jetzt)).toBe(
       '„Kabeltrommel“ bei „Lager › Regal 1“: Davon sind noch 5 verliehen oder vorgemerkt: 3 an Feuerwehr Musterdorf verliehen (seit 20.10.2026), 2 an Jugendgruppe vorgemerkt (ab 25.10.2026).',
+    );
+  });
+  it('counts only the highest simultaneous occupancy in verliehenFehler', () => {
+    const nacheinander = [
+      { ...pos('A', 3, '2026-10-22T10:00:00.000Z'), rueckgabeGeplant: '2026-10-24' },
+      { ...pos('B', 2, '2026-10-24T10:00:00.000Z'), rueckgabeGeplant: '2026-10-26' },
+    ];
+    expect(
+      verliehenFehler([menge('g1', { l: 'regal' }, 3)], nacheinander, namen, jetzt),
+    ).toBeNull();
+    expect(verliehenFehler([menge('g1', { l: 'regal' }, 2)], nacheinander, namen, jetzt)).toContain(
+      'noch 3 verliehen oder vorgemerkt: 3 an A vorgemerkt (22.10.–24.10.2026), 2 an B vorgemerkt (24.10.–26.10.2026)',
     );
   });
 });
@@ -381,26 +425,147 @@ describe('ganzeIfcoFehler', () => {
     ganzeIfco,
   });
   it('accepts the complete available content', () => {
-    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2)], namen)).toBeNull();
+    expect(
+      ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2)], Z, { beschriftung: namen }),
+    ).toBeNull();
   });
   it('subtracts what is already lent', () => {
     const offen = [menge('g1', { i: 'i1' }, 1), menge('g2', { i: 'i1' }, 2)];
-    expect(ganzeIfcoFehler(inhalt, offen, [ganz('g1', 3)], namen)).toBeNull();
+    expect(ganzeIfcoFehler(inhalt, offen, [ganz('g1', 3)], Z, { beschriftung: namen })).toBeNull();
   });
   it('needs every available Gegenstand in full', () => {
-    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4)], namen)).toContain('angegeben sind 0');
-    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 3), ganz('g2', 2)], namen)).toContain(
-      'sind 4 verfügbar, angegeben sind 3',
+    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4)], Z, { beschriftung: namen })).toContain(
+      'angegeben sind 0',
     );
+    expect(
+      ganzeIfcoFehler(inhalt, [], [ganz('g1', 3), ganz('g2', 2)], Z, { beschriftung: namen }),
+    ).toContain('sind 4 verfügbar, angegeben sind 3');
   });
   it('rejects unflagged positions of the same Ifco and an empty Ifco', () => {
-    expect(ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2, false)], namen)).toContain(
-      'Alle ihre Positionen',
-    );
+    expect(
+      ganzeIfcoFehler(inhalt, [], [ganz('g1', 4), ganz('g2', 2, false)], Z, {
+        beschriftung: namen,
+      }),
+    ).toContain('Alle ihre Positionen');
     const leer = [menge('g1', { i: 'i1' }, 4), menge('g2', { i: 'i1' }, 2)];
-    expect(ganzeIfcoFehler(inhalt, leer, [ganz('g1', 4)], namen)).toContain('nichts verfügbar');
+    expect(ganzeIfcoFehler(inhalt, leer, [ganz('g1', 4)], Z, { beschriftung: namen })).toContain(
+      'nichts verfügbar',
+    );
   });
   it('ignores lendings without the flag', () => {
-    expect(ganzeIfcoFehler(inhalt, [], [{ ...menge('g1', { i: 'i1' }, 1) }], namen)).toBeNull();
+    expect(
+      ganzeIfcoFehler(inhalt, [], [{ ...menge('g1', { i: 'i1' }, 1) }], Z, { beschriftung: namen }),
+    ).toBeNull();
+  });
+});
+
+describe('period based availability', () => {
+  const heute = new Date('2026-10-21T12:00:00.000Z');
+  const pos = (
+    an: string,
+    anzahl: number,
+    von: string,
+    rueckgabe: string | null,
+    ausleiheId = `a-${an}`,
+  ) => ({
+    ...menge('g1', { l: 'regal' }, anzahl),
+    an,
+    ausleiheId,
+    ausgeliehenAm: von,
+    rueckgabeGeplant: rueckgabe,
+  });
+  const plaetze = [menge('g1', { l: 'regal' }, 5)];
+  const tage = (von: string, bis: string | null) => ({ von, bis });
+  const fehler = (
+    offen: ReturnType<typeof pos>[],
+    anzahl: number,
+    z: ReturnType<typeof tage>,
+    ohne?: string,
+  ) =>
+    ausleihFehler(plaetze, offen, [menge('g1', { l: 'regal' }, anzahl)], z, {
+      beschriftung: namen,
+      jetzt: heute,
+      ohneAusleiheId: ohne,
+    });
+
+  it('accepts a reservation that does not overlap an existing one', () => {
+    const offen = [pos('Feuerwehr', 5, '2026-10-25T08:00:00.000Z', '2026-10-27')];
+    expect(fehler(offen, 5, tage('2026-10-28', '2026-10-30'))).toBeNull();
+    expect(fehler(offen, 5, tage('2026-10-21', '2026-10-25'))).toBeNull();
+  });
+  it('rejects an overlapping reservation and names only the overlapping Ausleihen with periods', () => {
+    const offen = [
+      pos('Feuerwehr', 3, '2026-10-20T08:00:00.000Z', '2026-10-27'),
+      pos('Jugendgruppe', 2, '2026-10-25T08:00:00.000Z', '2026-10-26'),
+      pos('Spaeter', 1, '2026-11-20T08:00:00.000Z', '2026-11-22'),
+    ];
+    expect(fehler(offen, 3, tage('2026-10-26', '2026-10-28'))).toBe(
+      'Von „Kabeltrommel“ sind bei „Lager › Regal 1“ nur noch 2 verfügbar: 3 an Feuerwehr verliehen (20.10.–27.10.2026).',
+    );
+    expect(fehler(offen, 1, tage('2026-10-25', '2026-10-28'))).toBe(
+      'Von „Kabeltrommel“ ist bei „Lager › Regal 1“ nichts mehr verfügbar: 3 an Feuerwehr verliehen (20.10.–27.10.2026), 2 an Jugendgruppe vorgemerkt (25.10.–26.10.2026).',
+    );
+  });
+  it('lets a new Ausleihe start on the return day of another', () => {
+    const offen = [pos('Feuerwehr', 5, '2026-10-20T08:00:00.000Z', '2026-10-27')];
+    expect(fehler(offen, 5, tage('2026-10-27', '2026-10-29'))).toBeNull();
+    expect(fehler(offen, 1, tage('2026-10-26', '2026-10-29'))).not.toBeNull();
+  });
+  it('leaves out the edited Ausleihe itself', () => {
+    const offen = [pos('Feuerwehr', 5, '2026-10-22T08:00:00.000Z', '2026-10-24', 'eigene')];
+    expect(fehler(offen, 5, tage('2026-10-22', '2026-10-26'))).not.toBeNull();
+    expect(fehler(offen, 5, tage('2026-10-22', '2026-10-26'), 'eigene')).toBeNull();
+  });
+  it('names an overdue Ausleihe as überfällig seit', () => {
+    const offen = [pos('Feuerwehr', 5, '2026-10-10T08:00:00.000Z', '2026-10-15')];
+    expect(fehler(offen, 1, tage('2026-10-21', '2026-10-22'))).toBe(
+      'Von „Kabeltrommel“ ist bei „Lager › Regal 1“ nichts mehr verfügbar: 5 an Feuerwehr verliehen (überfällig seit 15.10.2026).',
+    );
+    expect(fehler(offen, 5, tage('2026-10-22', '2026-10-23'))).toBeNull();
+  });
+  it('treats Ausleihen without return day as open-ended and ignores nothing before today', () => {
+    const offen = [pos('Alt', 4, '2026-10-01T08:00:00.000Z', null)];
+    expect(fehler(offen, 2, tage('2027-03-01', '2027-03-02'))).toContain('nur noch 1 verfügbar');
+  });
+  it('uses the highest simultaneous occupancy, not the sum', () => {
+    const offen = [
+      pos('A', 2, '2026-10-22T08:00:00.000Z', '2026-10-24'),
+      pos('B', 2, '2026-10-24T08:00:00.000Z', '2026-10-26'),
+      pos('C', 1, '2026-10-23T08:00:00.000Z', '2026-10-25'),
+    ];
+    // max over the days: 22: 2, 23: 3, 24: 3, 25: 2 -> 2 free in the window
+    expect(fehler(offen, 2, tage('2026-10-22', '2026-10-26'))).toBeNull();
+    expect(fehler(offen, 3, tage('2026-10-22', '2026-10-26'))).toContain('nur noch 2 verfügbar');
+    expect(fehler(offen, 5, tage('2026-10-26', '2026-10-27'))).toBeNull();
+  });
+  it('flags later Ausleihen as gefährdet by overdue ones that would not fit without them', () => {
+    const offen = [
+      pos('Feuerwehr', 4, '2026-10-10T08:00:00.000Z', '2026-10-15'),
+      pos('Jugend', 2, '2026-10-28T08:00:00.000Z', '2026-10-30'),
+      pos('Verein', 1, '2026-10-28T08:00:00.000Z', '2026-10-30'),
+    ];
+    const r = gefaehrdungen(plaetze, offen, heute);
+    expect([...r.keys()].sort()).toEqual(['a-Jugend', 'a-Verein']);
+    expect(r.get('a-Jugend')).toEqual([{ id: 'a-Feuerwehr', an: 'Feuerwehr' }]);
+    expect(gefaehrdungen(plaetze, [offen[1]!, offen[2]!], heute).size).toBe(0);
+  });
+  it('sums the whole-Ifco content with the same period availability', () => {
+    const inhalt = [menge('g1', { i: 'i1' }, 4)];
+    const offen = [
+      {
+        ...menge('g1', { i: 'i1' }, 4),
+        an: 'X',
+        ausleiheId: 'x',
+        ausgeliehenAm: '2026-10-25T08:00:00.000Z',
+        rueckgabeGeplant: '2026-10-27',
+      },
+    ];
+    const ganz = { ...menge('g1', { i: 'i1' }, 4), ganzeIfco: true };
+    expect(
+      ganzeIfcoFehler(inhalt, offen, [ganz], tage('2026-10-28', '2026-10-29'), { jetzt: heute }),
+    ).toBeNull();
+    expect(
+      ganzeIfcoFehler(inhalt, offen, [ganz], tage('2026-10-26', '2026-10-29'), { jetzt: heute }),
+    ).toContain('nichts verfügbar');
   });
 });

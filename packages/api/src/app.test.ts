@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ausleihFehler,
+  ausleiheTage,
   bodenNamenFehler,
   gebindeDoppelt,
   kinderArtNach,
@@ -271,7 +273,7 @@ function makeInventarFake() {
         id,
         an: 'Feuerwehr',
         ausgeliehenAm: new Date('2026-05-01T10:00:00.000Z'),
-        rueckgabeGeplant: null,
+        rueckgabeGeplant: '2026-05-08',
         kommentar: null,
         erstelltVon: 'r',
         organisiertVon: 'r',
@@ -279,13 +281,41 @@ function makeInventarFake() {
         erledigt: false,
         status: 'verliehen' as const,
         positionen: [],
-        organisator: null,
+        gefaehrdetDurch: [],
+        organisator: {
+          sub: 'r',
+          username: null,
+          vorname: 'Rita',
+          nachname: 'Reader',
+          status: 'mitglied' as const,
+          anrede: 'neutral' as const,
+        },
       }),
     ),
     ausleiheAnlegen: vi.fn<InventarStore['ausleiheAnlegen']>(async (daten) => {
       if (daten.positionen.some((p) => p.anzahl > 5)) {
         throw new WarenUngueltig('Von „Kabeltrommel“ sind bei „Lager“ nur noch 5 verfügbar.');
       }
+      // Seeded reservation of all 5 pieces from 25.10. to 27.10.2026 (the period rules are the shared ones).
+      const fehler = ausleihFehler(
+        [{ gegenstandId: 'g1', lagerortId: 'l1', ifcoId: null, anzahl: 5 }],
+        [
+          {
+            gegenstandId: 'g1',
+            lagerortId: 'l1',
+            ifcoId: null,
+            anzahl: 5,
+            an: 'Jugendgruppe',
+            ausleiheId: 'a9',
+            ausgeliehenAm: '2026-10-25T08:00:00.000Z',
+            rueckgabeGeplant: '2026-10-27',
+          },
+        ],
+        daten.positionen.map((p) => ({ ...p, gegenstandId: p.gegenstandId })),
+        ausleiheTage(daten.ausgeliehenAm, daten.rueckgabeGeplant),
+        { jetzt: new Date('2026-10-22T10:00:00.000Z') },
+      );
+      if (fehler) throw new WarenUngueltig(fehler);
       return 'a2';
     }),
     ausleiheAktualisieren: vi.fn<InventarStore['ausleiheAktualisieren']>(async (id) => setze(id)),
@@ -1770,6 +1800,7 @@ describe('inventar', () => {
       an: 'Feuerwehr Musterdorf',
       organisiertVon: 'r',
       ausgeliehenAm: zeitpunkt,
+      rueckgabeGeplant: '2026-05-08',
       positionen: [position],
     };
 
@@ -1786,7 +1817,7 @@ describe('inventar', () => {
           an: 'Feuerwehr Musterdorf',
           organisiertVon: 'r',
           ausgeliehenAm: zeitpunkt,
-          rueckgabeGeplant: null,
+          rueckgabeGeplant: '2026-05-08',
           kommentar: null,
           positionen: [{ gegenstandId: 'g1', lagerortId: 'l1', ifcoId: null, anzahl: 3 }],
         },
@@ -1809,11 +1840,66 @@ describe('inventar', () => {
       ).toBe(400);
       expect((await post({ ...ausleihe, positionen: [position, position] })).status).toBe(400);
       expect((await post({ ...ausleihe, ausgeliehenAm: 'gestern' })).status).toBe(400);
+      expect((await post({ ...ausleihe, rueckgabeGeplant: '2026-04-30' })).status).toBe(400);
       const zuViel = await post({ ...ausleihe, positionen: [{ ...position, anzahl: 6 }] });
       expect(zuViel.status).toBe(400);
       expect(await zuViel.json()).toEqual({
         error: 'Von „Kabeltrommel“ sind bei „Lager“ nur noch 5 verfügbar.',
       });
+    });
+
+    it('requires a planned return day on create and edit', async () => {
+      const { app, inventar } = makeApp();
+      const ohne = { ...ausleihe, rueckgabeGeplant: undefined };
+      for (const body of [ohne, { ...ohne, rueckgabeGeplant: null }]) {
+        const res = await app.request(
+          '/api/inventar/ausleihen',
+          json('reader-token', 'POST', body),
+        );
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(await res.json())).toContain('Bitte gib an, wann es zurückkommt.');
+      }
+      const kopf = { ...ohne, positionen: undefined };
+      const put = await app.request(
+        '/api/inventar/ausleihen/a1',
+        json('reader-token', 'PUT', kopf),
+      );
+      expect(put.status).toBe(400);
+      expect(JSON.stringify(await put.json())).toContain('Bitte gib an, wann es zurückkommt.');
+      expect(inventar.ausleiheAnlegen).not.toHaveBeenCalled();
+      expect(inventar.ausleiheAktualisieren).not.toHaveBeenCalled();
+    });
+
+    it('accepts a reservation next to an existing one and rejects an overlapping one', async () => {
+      const { app } = makeApp();
+      const post = (von: string, bis: string) =>
+        app.request(
+          '/api/inventar/ausleihen',
+          json('reader-token', 'POST', {
+            ...ausleihe,
+            ausgeliehenAm: `${von}T08:00:00.000Z`,
+            rueckgabeGeplant: bis,
+            positionen: [{ ...position, anzahl: 5 }],
+          }),
+        );
+      expect((await post('2026-10-22', '2026-10-25')).status).toBe(201);
+      expect((await post('2026-10-27', '2026-10-29')).status).toBe(201);
+      const belegt = await post('2026-10-24', '2026-10-26');
+      expect(belegt.status).toBe(400);
+      expect(((await belegt.json()) as { error: string }).error).toContain(
+        '5 an Jugendgruppe vorgemerkt (25.10.–27.10.2026)',
+      );
+    });
+
+    it('shows the organiser with the Cognito username', async () => {
+      const { app, userAdmin } = makeApp();
+      userAdmin.konten.mockResolvedValue(
+        new Map([['r', { sub: 'r', kontoName: 'u1', username: 'rita', aktiviert: true } as Konto]]),
+      );
+      const res = await app.request('/api/inventar/ausleihen/a1', json('reader-token', 'GET'));
+      expect(
+        ((await res.json()) as { organisator: { username: string } }).organisator.username,
+      ).toBe('rita');
     });
 
     it('returns positions, edits the header and deletes', async () => {

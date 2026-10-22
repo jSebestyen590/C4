@@ -28,8 +28,14 @@ import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { GegenstandPlaetzeModal } from '../GegenstandPlaetzeModal';
-import { AusleiheStatus, startText } from '../AusleiheKarte';
-import { gegenstandAbweichung, mengeText, platzZeilen, positionText } from '../inventarAnzeige';
+import { AusleiheStatus, GefaehrdetBadges, startText } from '../AusleiheKarte';
+import {
+  gegenstandAbweichung,
+  mengeText,
+  platzZeilen,
+  positionText,
+  seitAbText,
+} from '../inventarAnzeige';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { zeitAnzeigen } from '../warenAnzeige';
 import { LoeschenDialog } from '../LoeschenDialog';
@@ -224,7 +230,7 @@ export function GegenstandDetailPage() {
               )}
               {vorgemerktAn(platz).map(({ a, anzahl, ganzeIfco }) => (
                 <Text key={a.id} size="sm" c="cyan" mt={4} style={{ overflowWrap: 'anywhere' }}>
-                  vorgemerkt: {anzahl} ab {zeitAnzeigen(a.ausgeliehenAm)} (an{' '}
+                  vorgemerkt: {anzahl} {seitAbText(a.ausgeliehenAm)} (an{' '}
                   <Anchor
                     component={Link}
                     to={`/inventar/ausleihen/${encodeURIComponent(a.id)}`}
@@ -288,6 +294,7 @@ export function GegenstandDetailPage() {
                   <Text size="sm" c="dimmed">
                     {startText(a)}
                   </Text>
+                  <GefaehrdetBadges a={a} />
                   {eigene.map((p) => (
                     <Text
                       key={p.id}

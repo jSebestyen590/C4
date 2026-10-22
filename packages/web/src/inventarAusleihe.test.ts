@@ -6,6 +6,12 @@ import {
   ifcoAusleiheKurz,
   ifcoAusleiheZeile,
   ifcoAusleiheText,
+  offenePositionenAus,
+  seitAbText,
+  standardMenge,
+  startText,
+  verfuegbarImZeitraum,
+  zeitraumZeile,
   ifcoGruppeTitel,
   ifcoInhaltText,
   isoZuLokal,
@@ -16,7 +22,13 @@ import {
   ueberfaellig,
   verfuegbarePlaetze,
 } from './inventarAnzeige';
-import type { AusleihePositionEintrag, GegenstandEintrag, IfcoEintrag } from './inventarDaten';
+import { ausleiheTage } from '@c4/shared';
+import type {
+  AusleiheEintrag,
+  AusleihePositionEintrag,
+  GegenstandEintrag,
+  IfcoEintrag,
+} from './inventarDaten';
 import { inventarJeLagerort } from './lagerInventar';
 
 const lagerorte = [
@@ -107,10 +119,10 @@ describe('whole Ifco texts', () => {
   });
   it('says who has the Ifco', () => {
     const a = { id: 'a', an: 'Feuerwehr', ausgeliehenAm: '2026-10-20T08:00:00.000Z' };
-    expect(ifcoAusleiheText({ ...a, status: 'verliehen' })).toBe(
+    expect(ifcoAusleiheText({ ...a, status: 'verliehen' }, new Date('2026-10-21T08:00:00Z'))).toBe(
       'Verliehen an Feuerwehr seit 20.10.2026 10:00',
     );
-    expect(ifcoAusleiheText({ ...a, status: 'geplant' })).toBe(
+    expect(ifcoAusleiheText({ ...a, status: 'geplant' }, new Date('2026-10-19T08:00:00Z'))).toBe(
       'Vorgemerkt für Feuerwehr ab 20.10.2026 10:00',
     );
     expect(ifcoAusleiheKurz({ ...a, status: 'verliehen' })).toBe('Verliehen an Feuerwehr');
@@ -211,5 +223,97 @@ describe('ausleihenSortiert', () => {
       a('g1', 'geplant', '2026-10-25T00:00:00.000Z'),
     ];
     expect(ausleihenSortiert(liste).map((x) => x.id)).toEqual(['v', 'g1', 'g2', 'e']);
+  });
+});
+
+describe('seit / ab texts', () => {
+  const jetzt = new Date('2026-10-21T12:00:00Z');
+  it('says ab for an Ausleihe that has not started and seit for a started one', () => {
+    expect(seitAbText('2026-10-25T08:00:00Z', jetzt)).toBe('ab 25.10.2026 09:00');
+    expect(seitAbText('2026-10-20T08:00:00Z', jetzt)).toBe('seit 20.10.2026 10:00');
+    expect(seitAbText('2026-10-21T12:00:00Z', jetzt)).toBe('seit 21.10.2026 14:00');
+    expect(startText('2026-10-25T08:00:00Z', jetzt)).toBe('Ab 25.10.2026 09:00');
+    expect(startText('2026-10-20T08:00:00Z', jetzt)).toBe('Seit 20.10.2026 10:00');
+  });
+  it('words the period for the confirmation', () => {
+    expect(zeitraumZeile('2026-10-25T08:00:00Z', '2026-10-27', jetzt)).toBe(
+      'Vom 25.10.2026 09:00 bis 27.10.2026',
+    );
+    expect(zeitraumZeile('2026-10-20T08:00:00Z', '2026-10-27', jetzt)).toBe(
+      'Seit 20.10.2026 10:00 bis 27.10.2026',
+    );
+  });
+});
+
+describe('availability in a period', () => {
+  const ausleihe = (id: string, von: string, bis: string, anzahl: number): AusleiheEintrag => ({
+    id,
+    an: id,
+    ausgeliehenAm: von,
+    rueckgabeGeplant: bis,
+    kommentar: null,
+    organisiertVon: null,
+    organisator: null,
+    erledigt: false,
+    status: 'geplant',
+    gefaehrdetDurch: [],
+    positionen: [
+      {
+        id: `p-${id}`,
+        ausleiheId: id,
+        gegenstandId: 'g1',
+        lagerortId: 'l2',
+        ifcoId: null,
+        anzahl,
+        zurueckAm: null,
+        ganzeIfco: null,
+      },
+    ],
+  });
+  const offen = offenePositionenAus([
+    ausleihe('A', '2026-10-25T08:00:00Z', '2026-10-27', 4),
+    { ...ausleihe('B', '2026-10-20T08:00:00Z', '2026-10-22', 9), positionen: [] },
+  ]);
+  const platz = { lagerortId: 'l2', ifcoId: null, anzahl: 6 };
+  it('only counts overlapping Ausleihen', () => {
+    expect(
+      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-27T08:00:00Z', '2026-10-28')),
+    ).toBe(6);
+    expect(
+      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-26T08:00:00Z', '2026-10-28')),
+    ).toBe(2);
+    expect(
+      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-26T08:00:00Z', null)),
+    ).toBe(2);
+    expect(
+      verfuegbarImZeitraum(
+        { ...platz, anzahl: 3 },
+        'g1',
+        offen,
+        ausleiheTage('2026-10-26T08:00:00Z', null),
+      ),
+    ).toBe(0);
+  });
+});
+
+describe('standardMenge', () => {
+  const einzeln = { lagerortId: 'l2', ifcoId: null, anzahl: 1, verfuegbar: 1 };
+  it('preselects the only piece of a Gegenstand with a single place', () => {
+    expect(standardMenge(einzeln, 1, false)).toBe(1);
+  });
+  it('does not preselect with several places, bigger amounts or when unavailable', () => {
+    expect(standardMenge(einzeln, 2, false)).toBeUndefined();
+    expect(standardMenge({ ...einzeln, anzahl: 5, verfuegbar: 5 }, 1, false)).toBeUndefined();
+    expect(standardMenge({ ...einzeln, verfuegbar: 0 }, 1, false)).toBeUndefined();
+  });
+  it('takes the whole available content for a whole Ifco', () => {
+    expect(
+      standardMenge(
+        { ...einzeln, ifcoId: 'i1', lagerortId: null, anzahl: 5, verfuegbar: 3 },
+        3,
+        true,
+      ),
+    ).toBe(3);
+    expect(standardMenge({ ...einzeln, verfuegbar: 0 }, 1, true)).toBeUndefined();
   });
 });

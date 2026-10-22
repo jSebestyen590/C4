@@ -9,7 +9,7 @@ import { isoZuLokal } from './inventarAnzeige';
 import { INVENTAR_KEY, type AusleiheEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 
-/** Edits to whom, organiser, when, planned return and Kommentar of an Ausleihe. Mount it only while it should be open. */
+/** Edits to whom, organiser, when, planned return (required) and Kommentar of an Ausleihe; a changed period is checked against other Ausleihen. Mount it only while it should be open. */
 export function AusleiheBearbeitenModal({
   ausleihe,
   onClose,
@@ -24,6 +24,7 @@ export function AusleiheBearbeitenModal({
     kommentar: ausleihe.kommentar ?? '',
   });
   const [fehler, setFehler] = useState<string | null>(null);
+  const [rueckgabeFehler, setRueckgabeFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) =>
@@ -41,12 +42,17 @@ export function AusleiheBearbeitenModal({
       an: kopf.an,
       organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
-      rueckgabeGeplant: kopf.rueckgabe || null,
+      rueckgabeGeplant: kopf.rueckgabe || undefined,
       kommentar: kopf.kommentar,
     });
-    if (!geprueft.success)
-      return setFehler(geprueft.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    if (!geprueft.success) {
+      const issues = geprueft.error.issues;
+      setRueckgabeFehler(issues.find((i) => i.path[0] === 'rueckgabeGeplant')?.message ?? null);
+      const anderes = issues.find((i) => i.path[0] !== 'rueckgabeGeplant');
+      return setFehler(anderes ? anderes.message : null);
+    }
     setFehler(null);
+    setRueckgabeFehler(null);
     speichern.mutate(geprueft.data);
   };
 
@@ -55,7 +61,11 @@ export function AusleiheBearbeitenModal({
       <Stack>
         <AusleiheKopfFelder
           kopf={kopf}
-          onChange={(t) => setKopf((k) => ({ ...k, ...t }))}
+          onChange={(t) => {
+            setKopf((k) => ({ ...k, ...t }));
+            setRueckgabeFehler(null);
+          }}
+          rueckgabeFehler={rueckgabeFehler}
           autofocus
         />
         {fehler && <Alert color="red">{fehler}</Alert>}

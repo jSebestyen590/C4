@@ -1,17 +1,18 @@
-import { Badge, Group, Paper, Stack, Text } from '@mantine/core';
+import { Anchor, Badge, Group, Paper, Stack, Text } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { positionenGruppieren } from '@c4/shared';
 import {
-  datumText,
+  ausleiheZeitraumText,
   heuteLokal,
   ifcoGruppeTitel,
   ifcoInhaltText,
   positionText,
+  startText as startTextVon,
   ueberfaellig,
 } from './inventarAnzeige';
 import type { AusleiheEintrag, useInventar } from './inventarDaten';
 import { StatusName } from './StatusAnzeige';
-import { zeitAnzeigen } from './warenAnzeige';
+import { mitgliedLink } from './mitglied';
 
 const MAX_POSITIONEN = 4;
 
@@ -42,30 +43,67 @@ export function AusleiheStatus({ a }: Readonly<{ a: AusleiheEintrag }>) {
   );
 }
 
-/** `Seit 20.10.2026 10:00` or, for a Vorgemerkt one, `Ab 25.10.2026 10:00`. */
-export const startText = (a: Pick<AusleiheEintrag, 'status' | 'ausgeliehenAm'>): string =>
-  `${a.status === 'geplant' ? 'Ab' : 'Seit'} ${zeitAnzeigen(a.ausgeliehenAm)}`;
+/** `Seit 20.10.2026 10:00` or, for one that has not started, `Ab 25.10.2026 10:00`. */
+export const startText = (a: Pick<AusleiheEintrag, 'ausgeliehenAm'>): string =>
+  startTextVon(a.ausgeliehenAm);
 
-/** Planned return date as text; red when the open Ausleihe is overdue. */
+/** The period `Zeitraum: 20.10.–27.10.2026`; red and bold when the open Ausleihe is overdue. */
 export function RueckgabeGeplant({ a }: Readonly<{ a: AusleiheEintrag }>) {
-  if (a.rueckgabeGeplant === null) return null;
+  const zeitraum = ausleiheZeitraumText(a);
+  if (zeitraum === null) return null;
   const rot = ueberfaellig(a, heuteLokal());
   return (
     <Text size="sm" c={rot ? 'red' : 'dimmed'} fw={rot ? 600 : 400}>
-      Rückgabe geplant: {datumText(a.rueckgabeGeplant)}
+      Zeitraum: {zeitraum}
+      {rot && ' (überfällig)'}
     </Text>
   );
 }
 
-/** `Organisiert von <Name>` with the name in bold and the color of the member's status; nothing if unknown. */
-export function OrganisatorZeile({ a }: Readonly<{ a: Pick<AusleiheEintrag, 'organisator'> }>) {
-  if (!a.organisator) return null;
+/** Warning badges for a not yet started Ausleihe that an overdue one endangers. */
+export function GefaehrdetBadges({ a }: Readonly<{ a: Pick<AusleiheEintrag, 'gefaehrdetDurch'> }>) {
+  if (a.gefaehrdetDurch.length === 0) return null;
+  return (
+    <Group gap={4}>
+      {a.gefaehrdetDurch.map((d) => (
+        <Badge key={d.id} color="orange" variant="light" style={{ maxWidth: '100%' }}>
+          Gefährdet: {d.an} ist überfällig
+        </Badge>
+      ))}
+    </Group>
+  );
+}
+
+/**
+ * `Organisiert von <username>` (full name without a username) in bold and the color of the member's
+ * status; nothing if unknown. `verlinkt` links to the member page (not inside another link).
+ */
+export function OrganisatorZeile({
+  a,
+  verlinkt = false,
+}: Readonly<{ a: Pick<AusleiheEintrag, 'organisator'>; verlinkt?: boolean }>) {
+  const o = a.organisator;
+  if (!o) return null;
+  const name = (
+    <StatusName status={o.status}>
+      {o.username ?? (`${o.vorname} ${o.nachname}`.trim() || '–')}
+    </StatusName>
+  );
   return (
     <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
       Organisiert von{' '}
-      <StatusName status={a.organisator.status}>
-        {`${a.organisator.vorname} ${a.organisator.nachname}`.trim()}
-      </StatusName>
+      {verlinkt ? (
+        <Anchor
+          component={Link}
+          to={mitgliedLink({ username: o.username, sub: o.sub })}
+          underline="never"
+          inherit
+        >
+          {name}
+        </Anchor>
+      ) : (
+        name
+      )}
     </Text>
   );
 }
@@ -97,6 +135,7 @@ export function AusleiheKarte({
         </Text>
         <OrganisatorZeile a={a} />
         <RueckgabeGeplant a={a} />
+        <GefaehrdetBadges a={a} />
         {eintraege.slice(0, MAX_POSITIONEN).map((e) =>
           e.art === 'einzeln' ? (
             <Text

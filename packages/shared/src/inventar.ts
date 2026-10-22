@@ -9,7 +9,19 @@ import {
   parentIdSchema,
   zeitpunktSchema,
 } from './bausteine';
-import { datumSchema } from './schemas';
+import { datumAnzeigen, heuteBerlin } from './datum';
+import {
+  ausleiheTage,
+  belegteTage,
+  berlinTag,
+  beginnText,
+  maximaleBelegung,
+  rueckgabeUeberfaellig,
+  ueberschneiden,
+  zeitraumText,
+  type Belegung,
+  type Tage,
+} from './inventarZeitraum';
 import { pfad, type BaumKnoten } from './waren';
 
 // ---------------------------------------------------------------------------
@@ -95,8 +107,18 @@ const ausleiheKopf = {
     .string('Bitte wähle, wer die Ausleihe organisiert.')
     .min(1, 'Bitte wähle, wer die Ausleihe organisiert.'),
   ausgeliehenAm: zeitpunktSchema,
-  rueckgabeGeplant: datumSchema.nullish().transform((v) => v ?? null),
+  /** Required: the day the pieces come back (`YYYY-MM-DD`); that day itself is free again. */
+  rueckgabeGeplant: z.iso.date({ error: 'Bitte gib an, wann es zurückkommt.' }),
   kommentar: kommentarSchema,
+};
+
+/** The planned return day must not lie before the start day (Europe/Berlin). */
+const rueckgabeNachBeginn = (k: { ausgeliehenAm: string; rueckgabeGeplant: string }) =>
+  Number.isNaN(new Date(k.ausgeliehenAm).getTime()) ||
+  k.rueckgabeGeplant >= berlinTag(k.ausgeliehenAm);
+const RUECKGABE_VOR_BEGINN = {
+  message: 'Die Rückgabe kann nicht vor dem Beginn liegen.',
+  path: ['rueckgabeGeplant'],
 };
 
 export const ausleihePositionSchema = z
@@ -114,20 +136,24 @@ export const ausleihePositionSchema = z
     'Eine ganze Ifco braucht eine Ifco als Herkunft.',
   );
 
-export const ausleiheSchema = z.object({
-  ...ausleiheKopf,
-  positionen: z
-    .array(ausleihePositionSchema)
-    .min(1, 'Bitte gib mindestens eine Position an.')
-    .refine(
-      (liste) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`)),
-      'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.',
-    ),
-});
+export const ausleiheSchema = z
+  .object({
+    ...ausleiheKopf,
+    positionen: z
+      .array(ausleihePositionSchema)
+      .min(1, 'Bitte gib mindestens eine Position an.')
+      .refine(
+        (liste) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`)),
+        'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.',
+      ),
+  })
+  .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheEingabe = z.input<typeof ausleiheSchema>;
 
 /** Edits the header of an Ausleihe; the Positionen stay as they are. */
-export const ausleiheAendernSchema = z.object(ausleiheKopf);
+export const ausleiheAendernSchema = z
+  .object(ausleiheKopf)
+  .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheAendernEingabe = z.input<typeof ausleiheAendernSchema>;
 
 export const rueckgabeSchema = z.object({
@@ -197,6 +223,8 @@ export function verliehenJePlatz(offen: PlatzMenge[]): Map<string, number> {
 export interface OffenePosition extends PlatzMenge {
   /** Start of the Ausleihe (ISO string or Date). */
   ausgeliehenAm: Date | string;
+  /** Planned return day (`YYYY-MM-DD`); missing or null = open-ended. */
+  rueckgabeGeplant?: string | null;
   /** Borrower of the Ausleihe; used to say who blocks a place. */
   an?: string;
   ausleiheId?: string;
@@ -211,54 +239,129 @@ export const datumDe = (z: Date | string): string =>
     year: 'numeric',
   });
 
+const zeit = (z: Date | string): number => (z instanceof Date ? z : new Date(z)).getTime();
+
+const hatBeginn = (p: PlatzMenge | OffenePosition): p is OffenePosition => 'ausgeliehenAm' in p;
+
+/** The days a position occupies its pieces; positions without a known start occupy them forever. */
+export function belegungVon(p: PlatzMenge | OffenePosition, heute: string): Belegung {
+  const tage = hatBeginn(p)
+    ? belegteTage(p.ausgeliehenAm, p.rueckgabeGeplant, heute)
+    : belegteTage(undefined, null, heute);
+  return { ...tage, anzahl: p.anzahl };
+}
+
+const heuteVon = (jetzt: Date | string): string => heuteBerlin(new Date(jetzt));
+
+/** Occupancy of the open positions at one place of one Gegenstand. */
+function belegungenAmPlatz(
+  offen: (PlatzMenge | OffenePosition)[],
+  ziel: PlatzZiel & { gegenstandId: string },
+  heute: string,
+  ohneAusleiheId?: string,
+): Belegung[] {
+  const key = platzKey(ziel);
+  return offen
+    .filter(
+      (o) =>
+        platzKey(o) === key &&
+        (ohneAusleiheId === undefined || !hatBeginn(o) || o.ausleiheId !== ohneAusleiheId),
+    )
+    .map((o) => belegungVon(o, heute));
+}
+
+/**
+ * Pieces of a place that are free on every day of `zeitraum`: assigned minus the highest number of
+ * pieces occupied at the same time by the other open positions there. `ohneAusleiheId` leaves out
+ * the Ausleihe being edited.
+ */
+export function freiImZeitraum(
+  zugeordnet: number,
+  offen: (PlatzMenge | OffenePosition)[],
+  ziel: PlatzZiel & { gegenstandId: string },
+  zeitraum: Tage,
+  jetzt: Date | string = new Date(),
+  ohneAusleiheId?: string,
+): number {
+  const belegt = maximaleBelegung(
+    belegungenAmPlatz(offen, ziel, heuteVon(jetzt), ohneAusleiheId),
+    zeitraum,
+  );
+  return zugeordnet - belegt;
+}
+
 /** One borrower who holds (or has reserved) pieces from a place. */
 export interface Blockierung {
   ausleiheId?: string;
   an: string;
   anzahl: number;
   vorgemerkt: boolean;
-  /** `20.10.2026` */
+  /** Start day, `20.10.2026` */
   datum: string;
+  /** Text of the start for open-ended holds: `seit 20.10.2026` / `ab 25.10.2026`. */
+  beginn: string;
+  /** `20.10.–27.10.2026` or null when there is no planned return. */
+  zeitraum: string | null;
+  /** Planned return day is over: `27.10.2026`, else null. */
+  ueberfaelligSeit: string | null;
 }
 
-/** Open positions with a known borrower at the given place of a Gegenstand (`null` = anywhere), as blocking entries (same borrower summed). */
+/**
+ * Open positions with a known borrower at the given place of a Gegenstand (`null` = anywhere), as
+ * blocking entries (same Ausleihe summed). With `zeitraum` only those that occupy a day of it.
+ */
 export function blockierungen(
   offen: OffenePosition[],
   ziel: (PlatzZiel & { gegenstandId: string }) | null,
   jetzt: Date | string,
+  zeitraum?: Tage,
+  ohneAusleiheId?: string,
 ): Blockierung[] {
   const key = ziel && platzKey(ziel);
+  const heute = heuteVon(jetzt);
   const liste: Blockierung[] = [];
   for (const p of offen) {
     if (p.an === undefined || (key !== null && platzKey(p) !== key)) continue;
+    if (ohneAusleiheId !== undefined && p.ausleiheId === ohneAusleiheId) continue;
+    if (zeitraum && !ueberschneiden(belegungVon(p, heute), zeitraum)) continue;
     const vorgemerkt = istVorgemerkt(p.ausgeliehenAm, jetzt);
     const bestehend = liste.find(
       (b) => b.ausleiheId === p.ausleiheId && b.an === p.an && b.vorgemerkt === vorgemerkt,
     );
     if (bestehend) bestehend.anzahl += p.anzahl;
-    else
+    else {
+      const rueckgabe = p.rueckgabeGeplant ?? null;
       liste.push({
         ausleiheId: p.ausleiheId,
         an: p.an,
         anzahl: p.anzahl,
         vorgemerkt,
         datum: datumDe(p.ausgeliehenAm),
+        beginn: beginnTextVon(p.ausgeliehenAm, jetzt),
+        zeitraum: rueckgabe ? zeitraumText(p.ausgeliehenAm, rueckgabe) : null,
+        ueberfaelligSeit:
+          rueckgabe && rueckgabeUeberfaellig(rueckgabe, heute) ? datumAnzeigen(rueckgabe) : null,
       });
+    }
   }
   return liste.sort((a, b) => Number(a.vorgemerkt) - Number(b.vorgemerkt));
 }
 
-/** `3 an Feuerwehr verliehen (seit 20.10.2026), 2 an Jugend vorgemerkt (ab 25.10.2026)`; empty without borrowers. */
-export const blockierungText = (liste: Blockierung[]): string =>
-  liste
-    .map((b) =>
-      b.vorgemerkt
-        ? `${b.anzahl} an ${b.an} vorgemerkt (ab ${b.datum})`
-        : `${b.anzahl} an ${b.an} verliehen (seit ${b.datum})`,
-    )
-    .join(', ');
+/** `seit 20.10.2026` for a start in the past, `ab 25.10.2026` for one in the future (one place for all texts). */
+export const beginnTextVon = (ausgeliehenAm: Date | string, jetzt: Date | string): string =>
+  beginnText(ausgeliehenAm, jetzt, datumDe);
 
-const zeit = (z: Date | string): number => (z instanceof Date ? z : new Date(z)).getTime();
+/**
+ * `3 an Feuerwehr verliehen (20.10.–27.10.2026), 2 an Jugend vorgemerkt (25.10.–26.10.2026)`;
+ * overdue: `… verliehen (überfällig seit 27.10.2026)`; without a return day `(seit 20.10.2026)` /
+ * `(ab 25.10.2026)`. Empty without borrowers.
+ */
+export const blockierungText = (liste: Blockierung[]): string =>
+  liste.map((b) => `${b.anzahl} an ${b.an} ${blockierungWann(b)}`).join(', ');
+
+/** `verliehen (20.10.–27.10.2026)` / `vorgemerkt (überfällig seit …)`: the part of a Blockierung after the borrower. */
+export const blockierungWann = (b: Blockierung): string =>
+  `${b.vorgemerkt ? 'vorgemerkt' : 'verliehen'} (${b.ueberfaelligSeit ? `überfällig seit ${b.ueberfaelligSeit}` : (b.zeitraum ?? b.beginn)})`;
 
 /** True while the Ausleihe starts in the future: its pieces are reserved ("vorgemerkt"), not away yet. */
 export const istVorgemerkt = (ausgeliehenAm: Date | string, jetzt: Date | string): boolean =>
@@ -287,8 +390,6 @@ export function ausleiheStatus(
   return istVorgemerkt(ausgeliehenAm, jetzt) ? 'geplant' : 'verliehen';
 }
 
-const hatBeginn = (p: PlatzMenge | OffenePosition): p is OffenePosition => 'ausgeliehenAm' in p;
-
 /** Names used in the error messages; defaults to the ids. */
 export interface Beschriftung {
   gegenstand: (id: string) => string;
@@ -300,30 +401,40 @@ const OHNE_NAMEN: Beschriftung = {
   platz: (z) => z.lagerortId ?? z.ifcoId ?? '',
 };
 
+export interface AusleihPruefung {
+  beschriftung?: Beschriftung;
+  jetzt?: Date | string;
+  /** The Ausleihe being edited: its own open positions do not count against the new period. */
+  ohneAusleiheId?: string;
+}
+
 /**
- * German error unless each new position takes at most what is assigned at its place minus what is
- * already lent from there (`plaetze` and `offen` may contain other Gegenstände), otherwise null.
+ * German error unless each new position takes at most what is assigned at its place minus the
+ * highest number of pieces the other open positions occupy there at the same time on any day of
+ * `zeitraum` (`plaetze` and `offen` may contain other Gegenstände), otherwise null. Only the
+ * Ausleihen that overlap `zeitraum` are named.
  */
 export function ausleihFehler(
   plaetze: PlatzMenge[],
   offen: (PlatzMenge | OffenePosition)[],
   neu: PlatzMenge[],
-  beschriftung: Beschriftung = OHNE_NAMEN,
-  jetzt: Date | string = new Date(),
+  zeitraum: Tage,
+  { beschriftung = OHNE_NAMEN, jetzt = new Date(), ohneAusleiheId }: AusleihPruefung = {},
 ): string | null {
   const wer = (p: PlatzMenge) => {
-    const text = blockierungText(blockierungen(offen.filter(hatBeginn), p, jetzt));
+    const text = blockierungText(
+      blockierungen(offen.filter(hatBeginn), p, jetzt, zeitraum, ohneAusleiheId),
+    );
     return text ? `: ${text}.` : '.';
   };
   const zugeordnet = verliehenJePlatz(plaetze);
-  const verliehen = verliehenJePlatz(offen);
   for (const [key, anzahl] of verliehenJePlatz(neu)) {
     const p = neu.find((n) => platzKey(n) === key)!;
     const g = `„${beschriftung.gegenstand(p.gegenstandId)}“`;
     const ort = `„${beschriftung.platz(p)}“`;
     const platz = zugeordnet.get(key) ?? 0;
     if (platz === 0) return `${g} ist nicht bei ${ort} eingelagert.`;
-    const frei = platz - (verliehen.get(key) ?? 0);
+    const frei = freiImZeitraum(platz, offen, p, zeitraum, jetzt, ohneAusleiheId);
     if (frei <= 0) return `Von ${g} ist bei ${ort} nichts mehr verfügbar${wer(p)}`;
     if (anzahl > frei) return `Von ${g} sind bei ${ort} nur noch ${frei} verfügbar${wer(p)}`;
   }
@@ -332,7 +443,8 @@ export function ausleihFehler(
 
 /**
  * German error if the new assignment `neu` of one Gegenstand (or of one Ifco) would drop a place
- * below the amount that is still lent from there, otherwise null. `offen` may contain other Gegenstände.
+ * below the highest number of pieces occupied at the same time from today on (all open positions;
+ * open-ended ones count forever), otherwise null. `offen` may contain other Gegenstände.
  */
 export function verliehenFehler(
   neu: PlatzMenge[],
@@ -340,14 +452,65 @@ export function verliehenFehler(
   beschriftung: Beschriftung = OHNE_NAMEN,
   jetzt: Date | string = new Date(),
 ): string | null {
+  const heute = heuteVon(jetzt);
+  const abHeute: Tage = { von: heute, bis: null };
   const zugeordnet = verliehenJePlatz(neu);
-  for (const [key, verliehen] of verliehenJePlatz(offen)) {
-    if ((zugeordnet.get(key) ?? 0) >= verliehen) continue;
+  for (const key of verliehenJePlatz(offen).keys()) {
     const p = offen.find((o) => platzKey(o) === key)!;
-    const wer = blockierungText(blockierungen(offen.filter(hatBeginn), p, jetzt));
-    return `„${beschriftung.gegenstand(p.gegenstandId)}“ bei „${beschriftung.platz(p)}“: Davon sind noch ${verliehen} verliehen oder vorgemerkt${wer ? `: ${wer}` : ''}.`;
+    const belegt = maximaleBelegung(belegungenAmPlatz(offen, p, heute), abHeute);
+    if ((zugeordnet.get(key) ?? 0) >= belegt) continue;
+    const wer = blockierungText(blockierungen(offen.filter(hatBeginn), p, jetzt, abHeute));
+    return `„${beschriftung.gegenstand(p.gegenstandId)}“ bei „${beschriftung.platz(p)}“: Davon sind noch ${belegt} verliehen oder vorgemerkt${wer ? `: ${wer}` : ''}.`;
   }
   return null;
+}
+
+/** An Ausleihe that is overdue and thereby endangers a later one. */
+export interface Gefaehrdung {
+  id: string;
+  an: string;
+}
+
+/**
+ * Per not yet started Ausleihe the overdue open Ausleihen that endanger it ("gefährdet"): at the
+ * same Gegenstand and place, the later one would not fit any more if the overdue pieces (return
+ * day over, still open) never came back, i.e. when they count as occupied for its whole period.
+ * `plaetze` are the assignments, `offen` all open positions (with `ausleiheId` and `an`).
+ */
+export function gefaehrdungen(
+  plaetze: PlatzMenge[],
+  offen: OffenePosition[],
+  jetzt: Date | string = new Date(),
+): Map<string, Gefaehrdung[]> {
+  const heute = heuteVon(jetzt);
+  const zugeordnet = verliehenJePlatz(plaetze);
+  const ueberfaellige = offen.filter(
+    (o) => o.ausleiheId !== undefined && rueckgabeUeberfaellig(o.rueckgabeGeplant, heute),
+  );
+  const ergebnis = new Map<string, Gefaehrdung[]>();
+  if (ueberfaellige.length === 0) return ergebnis;
+  for (const f of offen) {
+    if (f.ausleiheId === undefined || !istVorgemerkt(f.ausgeliehenAm, jetzt)) continue;
+    const key = platzKey(f);
+    const verursacher = ueberfaellige.filter((u) => platzKey(u) === key);
+    if (verursacher.length === 0) continue;
+    const zeitraum = ausleiheTage(f.ausgeliehenAm, f.rueckgabeGeplant);
+    const pessimistisch = offen
+      .filter((o) => platzKey(o) === key && o.ausleiheId !== f.ausleiheId)
+      .map((o) => ({
+        ...belegungVon(o, heute),
+        ...(ueberfaellige.includes(o) ? { bis: null } : {}),
+      }));
+    if ((zugeordnet.get(key) ?? 0) - maximaleBelegung(pessimistisch, zeitraum) >= f.anzahl)
+      continue;
+    const bisher = ergebnis.get(f.ausleiheId) ?? [];
+    for (const u of verursacher) {
+      if (!bisher.some((b) => b.id === u.ausleiheId))
+        bisher.push({ id: u.ausleiheId!, an: u.an ?? '' });
+    }
+    ergebnis.set(f.ausleiheId, bisher);
+  }
+  return ergebnis;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,14 +554,15 @@ export function positionenGruppieren<T extends IfcoPositionsInfo>(
 /**
  * German error unless every whole-Ifco lending in `neu` covers the complete available content of its
  * Ifco: all positions of that Ifco are flagged, and each Gegenstand is taken with exactly
- * (assigned in the Ifco minus what is already lent or reserved from there). `inhalt` holds the
+ * (assigned in the Ifco minus what is occupied there at the same time during `zeitraum`). `inhalt` holds the
  * assignments of these Ifcos (other Gegenstände included), `offen` the open positions. Otherwise null.
  */
 export function ganzeIfcoFehler(
   inhalt: PlatzMenge[],
-  offen: PlatzMenge[],
+  offen: (PlatzMenge | OffenePosition)[],
   neu: (PlatzMenge & IfcoPositionsInfo)[],
-  beschriftung: Beschriftung = OHNE_NAMEN,
+  zeitraum: Tage,
+  { beschriftung = OHNE_NAMEN, jetzt = new Date() }: AusleihPruefung = {},
 ): string | null {
   const ifcoIds = [...new Set(neu.filter((p) => p.ganzeIfco && p.ifcoId).map((p) => p.ifcoId!))];
   for (const ifcoId of ifcoIds) {
@@ -407,10 +571,9 @@ export function ganzeIfcoFehler(
     if (eigene.some((p) => !p.ganzeIfco)) {
       return `Die Ifco ${ifco} wird ganz verliehen. Alle ihre Positionen müssen zur ganzen Ifco gehören.`;
     }
-    const verliehen = verliehenJePlatz(offen);
     const frei = new Map<string, number>();
     for (const p of inhalt.filter((x) => x.ifcoId === ifcoId)) {
-      const rest = p.anzahl - (verliehen.get(platzKey(p)) ?? 0);
+      const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt);
       if (rest > 0) frei.set(p.gegenstandId, rest);
     }
     if (frei.size === 0) return `In der Ifco ${ifco} ist nichts verfügbar.`;

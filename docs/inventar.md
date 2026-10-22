@@ -70,28 +70,46 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos
 - **Lagerorte:** Löschen prüft zusätzlich Ifcos, Plätze und Ausleihen. Archivieren ist mit Ifcos oder direkt zugeordneten Gegenständen
   im Teilbaum nicht möglich („Im Lagerort liegt noch Inventar. Räume es zuerst um.“) und nicht, solange von dort etwas verliehen ist.
 - **Ausleihe:** Eine Position nennt Gegenstand, Herkunft (Lagerort oder Ifco) und Anzahl. Die Herkunft muss eine bestehende
-  Zuordnung des Gegenstands sein, die Anzahl höchstens zugeordnet minus alle offenen Positionen (verliehen und vorgemerkt,
-  `ausleihFehler`, 400 mit Gegenstand und Platz); archivierte Gegenstände sind nicht verleihbar. Die Plätze bleiben beim Verleihen
-  unverändert. Gegenstand und Herkunft sind je Ausleihe eindeutig.
+  Zuordnung des Gegenstands sein, die Anzahl höchstens **zugeordnet minus die höchste gleichzeitige Belegung** durch andere offene
+  Positionen am selben Platz im gewünschten Zeitraum (`ausleihFehler`, 400 mit Gegenstand und Platz); archivierte Gegenstände sind
+  nicht verleihbar. Die Plätze bleiben beim Verleihen unverändert. Gegenstand und Herkunft sind je Ausleihe eindeutig.
+- **Zeitraum (ganze Tage, Europe/Berlin):** `rueckgabeGeplant` (Datum) ist **Pflicht** beim Anlegen und bei `PUT` („Bitte gib an, wann es
+  zurückkommt.“) und darf nicht vor dem Starttag (Berliner Tag von `ausgeliehenAm`) liegen. Eine Ausleihe belegt ihre Teile an den Tagen
+  **[Starttag, Rückgabetag)**: der Rückgabetag ist wieder frei, eine neue Ausleihe darf dort beginnen. Rückgabe am Starttag belegt genau
+  diesen einen Tag. Zurückgegebene Positionen (`zurueckAm`) belegen nichts mehr. Ältere Ausleihen ohne Rückgabedatum sind offen: sie
+  belegen, bis tatsächlich zurückgegeben wird. **Überfällig** (offen, Rückgabetag ≤ heute) belegt weiter bis einschließlich heute
+  (Ende = max(Rückgabetag, heute + 1)); als „überfällig“ angezeigt wird sie ab Rückgabetag < heute.
+  Reine Funktionen in `packages/shared/src/inventarZeitraum.ts` (`ausleiheTage`, `belegteTage`, `maximaleBelegung` als Sweep über Tagesintervalle,
+  `zeitraumText`, `seitAbText`-Grundlage `beginnText`); `freiImZeitraum` und die Prüfungen in `inventar.ts` nutzen sie, ebenso der Client.
+  Beim Ändern der Daten per `PUT` werden die eigenen offenen Positionen erneut gegen alle anderen geprüft (die Ausleihe selbst zählt nicht).
+- **Gefährdet:** Eine noch nicht begonnene Ausleihe ist „gefährdet“, wenn am selben Gegenstand und Platz eine überfällige offene Ausleihe
+  hängt und sie nicht mehr passen würde, falls deren Teile nie zurückkämen (die überfälligen zählen dann für ihren ganzen Zeitraum;
+  `gefaehrdungen` in shared). Die Antwort trägt `gefaehrdetDurch: [{ id, an }]`; Anzeige als Badge „Gefährdet: <an> ist überfällig“.
 - **Ganze Ifco:** Positionen mit `ganzeIfco: true` (nur mit `ifcoId`) gehören zu einer ganz verliehenen Ifco. Dann müssen alle Positionen dieser
-  Ifco in der Ausleihe so markiert sein und je Gegenstand genau das aktuell Verfügbare nehmen (zugeordnet minus verliehen/vorgemerkt,
-  `ganzeIfcoFehler`; sonst 400, auch wenn nichts verfügbar ist). Die Markierung bleibt an den Positionen; Teilrückgaben einzelner
+  Ifco in der Ausleihe so markiert sein und je Gegenstand genau das im Zeitraum Verfügbare nehmen (zugeordnet minus höchste gleichzeitige
+  Belegung, `ganzeIfcoFehler`; sonst 400, auch wenn nichts verfügbar ist). Die Markierung bleibt an den Positionen; Teilrückgaben einzelner
   Positionen sind weiter möglich. Eine Ifco mit offener markierter Position gilt als verliehen bzw. vorgemerkt (`ausleihe` an der Ifco, der
   aktuell verliehenen Ausleihe zuerst). Gruppierung für die Anzeige: `positionenGruppieren` (shared).
 - **Organisator:** Jede Ausleihe hat `organisiertVon` (Pflicht beim Anlegen und Bearbeiten; muss ein bestehendes Mitglied sein, sonst 400).
   Ältere Ausleihen ohne Wert nutzen `erstellt_von` als Ersatz.
 - **Vorgemerkt:** Eine offene Position einer Ausleihe mit `ausgeliehenAm` in der Zukunft ist **vorgemerkt**, nicht verliehen; ab
-  `ausgeliehenAm <= jetzt` ist sie **verliehen** („gerade weg“). Vorgemerktes bleibt **reserviert**: Verfügbarkeit, Umräumen und
-  Archivieren zählen verliehen und vorgemerkt zusammen. „Jetzt“ ist die Serverzeit der Anfrage. Aufteilung und Status:
+  `ausgeliehenAm <= jetzt` ist sie **verliehen** („gerade weg“). Vorgemerktes bleibt **reserviert**: Umräumen und
+  Archivieren zählen verliehen und vorgemerkt zusammen; für die Verfügbarkeit zählt der Zeitraum (siehe oben). Die Anzeige von
+  `verliehen` (jetzt weg) und `vorgemerkt` (beginnt später) bleibt unverändert. „Jetzt“ ist die Serverzeit der Anfrage. Aufteilung und Status:
   `offenAufteilen`, `ausleiheStatus` in `packages/shared/src/inventar.ts`.
-- **Wer blockiert:** Scheitert eine Prüfung an Verliehenem oder Vorgemerktem (`ausleihFehler`, `verliehenFehler`, Ifco-/Lagerort-Archivieren),
-  nennt die Meldung die Ausleihen mit Person und Datum („…nur noch 1 verfügbar: 3 an Feuerwehr verliehen (seit 20.10.2026), 2 an
-  Jugendgruppe vorgemerkt (ab 25.10.2026).“; `blockierungen`/`blockierungText`, Datum dd.MM.yyyy, Europe/Berlin). Auf `AusleihePage` bleiben auch vollständig verliehene/vorgemerkte Plätze sichtbar (Feld gesperrt, „Verfügbar: 0“), damit man sieht, an wen; ebenso bei „Ganze Ifco verleihen“. Dort steht dieselbe
-  Aufstellung (Personen verlinkt) als Hinweis unter dem Mengenfeld, sobald am Platz etwas verliehen oder vorgemerkt ist, und bei Überschreitung
+- **Wer blockiert:** Scheitert eine Prüfung an Verliehenem oder Vorgemerktem, nennt die Meldung nur die Ausleihen, die den angefragten
+  Zeitraum überschneiden, mit Person und Zeitraum („…nur noch 1 verfügbar: 3 an Feuerwehr verliehen (20.10.–27.10.2026), 2 an
+  Jugendgruppe vorgemerkt (25.10.–26.10.2026).“; überfällig: „… verliehen (überfällig seit 27.10.2026)“; ohne Rückgabedatum „(seit
+  20.10.2026)“ bzw. „(ab 25.10.2026)“; `blockierungen`/`blockierungText`). Auf `AusleihePage` bleiben auch im Zeitraum vollständig belegte
+  Plätze sichtbar (Feld gesperrt, „Verfügbar: 0“); dort steht dieselbe Aufstellung (Personen verlinkt) als Hinweis und bei Überschreitung
   in der orangen Warnung.
+- **Seit / ab:** Texte zum Beginn einer Ausleihe laufen über einen Helfer (`beginnText` in shared, `seitAbText` im Web): Beginn in der
+  Zukunft „ab …“, sonst „seit …“ (Karten, Detail, Gegenstand-Notizen, Ifco-Badges, Blockierer-Hinweise).
 - **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
   Eine Ausleihe ist `erledigt`, wenn alle Positionen zurück sind. `DELETE` entfernt eine Ausleihe samt Positionen (Fehleintrag).
-- **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`) wird abgelehnt (409 „Davon sind noch 3 verliehen oder vorgemerkt.“).
+- **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`, ebenso Ifco-Inhalt und Archivieren von Ifco/Lagerort) wird
+  abgelehnt, wenn die Zuordnung unter die höchste gleichzeitige Belegung ab heute fällt (alle offenen Positionen, offene ohne Rückgabedatum zählen
+  für immer; 409 „Davon sind noch 3 verliehen oder vorgemerkt: …“ mit den blockierenden Ausleihen).
 - `erstellt_von` einer Ausleihe ist die `sub` der anfragenden Person; wer sie organisiert hat, steht in `organisiert_von`.
 
 ## API
@@ -108,10 +126,11 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos
 Antworten: `GET /gegenstaende[/:id]` liefert je Gegenstand `plaetze: [{ id, lagerortId, ifcoId, anzahl, verliehen }]` (`verliehen` =
 Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von dieser Herkunft) und `verliehen` / `vorgemerkt` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]` und `ausleihe: { id, an, status, ausgeliehenAm } | null` (offene Ausleihe der ganzen Ifco, `status` `geplant` oder `verliehen`); eine
 Ausleihe liefert `erledigt`, `status` (`geplant` = beginnt in der Zukunft, `verliehen`, `erledigt`), `positionen` (mit `zurueckAm`, `ganzeIfco`) und
-`organisator: { sub, vorname, nachname, status, anrede } | null`;
+`gefaehrdetDurch: [{ id, an }]` und `organisator: { sub, username, vorname, nachname, status, anrede } | null` (`username` aus Cognito, null ohne);
 `?status=offen` liefert geplante und verliehene. So rechnet der Client die Lager-Ansicht selbst aus. Unbekannte
 Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert nur `an`, `organisiertVon`,
-`ausgeliehenAm`, `rueckgabeGeplant` und `kommentar`.
+`ausgeliehenAm`, `rueckgabeGeplant` (Pflicht) und `kommentar` und prüft den neuen Zeitraum gegen andere Ausleihen. Die Liste enthält je Ausleihe `ausgeliehenAm`,
+`rueckgabeGeplant` und die Positionen; der Client rechnet damit die Verfügbarkeit im gewählten Zeitraum selbst (`verfuegbarImZeitraum`).
 
 ## Oberfläche
 
@@ -143,20 +162,22 @@ jede Änderung macht `['inventar']` ungültig.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 
-- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten, verliehene zuerst, dann vorgemerkte nach Beginn (`AusleiheKarte`: an wen, „Seit …“ bzw. bei Vorgemerkten Badge „Vorgemerkt“ und „Ab …“, geplante Rückgabe – überfällig
-  rot –, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
+- Ansicht „Verliehen“ (`VerlieheneAnsicht`): offene Ausleihen als Karten, verliehene zuerst, dann vorgemerkte nach Beginn (`AusleiheKarte`: an wen, „Seit …“ bzw. bei Vorgemerkten Badge „Vorgemerkt“ und „Ab …“, Zeitraum „20.10.–27.10.2026“ – überfällig
+  rot –, Badge „Gefährdet: <an> ist überfällig“, Positionen „3× Kabeltrommel aus Lager › Regal“), Schalter „Auch erledigte anzeigen“, Suche, Button „Verleihen“
   (`inventar:umraeumen`). Daten über `useAusleihen(nurOffen)` / `useAusleihe(id)` (Keys `['inventar','ausleihen',…]`); jede Änderung macht
   `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und Ifcos nachzieht.
-- `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, „Organisiert von“ (durchsuchbare Mitgliederliste, vorbelegt mit dir selbst), Zeitpunkt (jetzt, änderbar), geplante Rückgabe (optional),
-  Kommentar; Gegenstand per Suche hinzufügen, je Platz mit Verfügbarem (zugeordnet minus verliehen und vorgemerkt, `verfuegbarePlaetze`) ein Zahlenfeld
-  (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze Ifco verleihen“ übernimmt den verfügbaren Inhalt
-  einer Ifco; sie wird als **ganze Ifco** verliehen, solange der volle verfügbare Inhalt eingetragen bleibt (der Bestätigungsdialog zeigt dann „Spanngurtkiste (ganze Ifco)“, sonst werden die Teile einzeln verliehen). Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit allen
+- `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, „Organisiert von“ (durchsuchbare Mitgliederliste, vorbelegt mit dir selbst), Zeitpunkt (jetzt, änderbar), geplante Rückgabe (Pflicht, mit Sternchen),
+  Kommentar; Gegenstand per Suche hinzufügen, je Platz das im gewählten Zeitraum Verfügbare (ändert sich mit Zeitpunkt und Rückgabe; ohne Rückgabedatum rechnet die Seite offen) als Zahlenfeld
+  – bei einem Platz mit zugeordneter Anzahl 1 stattdessen ein Schalter „Verleihen aus <Pfad>“ (≥ 44 px, `standardMenge`): hat der Gegenstand nur
+  diesen einen Platz und ist er frei, ist er mit dem Hinzufügen schon gewählt; sonst gesperrt mit Hinweis, wer ihn hat. Ganze Ifcos übernehmen als
+  Standard das Verfügbare (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze Ifco verleihen“ übernimmt den verfügbaren Inhalt
+  einer Ifco; sie wird als **ganze Ifco** verliehen, solange der volle verfügbare Inhalt eingetragen bleibt (der Bestätigungsdialog zeigt dann „Spanngurtkiste (ganze Ifco)“, sonst werden die Teile einzeln verliehen). Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit dem Zeitraum („Vom 25.10.2026 09:00 bis 27.10.2026“ bzw. „Seit … bis …“) und allen
   Positionen, danach Weiterleitung zur neuen Ausleihe.
 - `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
   möglich), zurückgegebene Positionen mit Datum. Die ganze Karte einer Position ist anklickbar (öffnet den Gegenstand, per Tastatur erreichbar); das Häkchen
   (44 px Trefferfläche) wählt unabhängig davon. Ganz verliehene Ifcos erscheinen als eine Karte „Spanngurtkiste (ganze Ifco)“ (öffnet die Ifco) mit
-  Gruppen-Häkchen für alle offenen Positionen und den Inhalten als Unterliste, einzeln wählbar. Unter der Überschrift steht „Organisiert von <Name>“
-  (Name fett in der Statusfarbe); ebenso auf `AusleiheKarte`, die ganze Ifcos als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Organisator, Zeitpunkt, geplante Rückgabe, Kommentar)
+  Gruppen-Häkchen für alle offenen Positionen und den Inhalten als Unterliste, einzeln wählbar. Unter der Überschrift steht „Organisiert von <Username>“
+  (Username, ohne Username „Vorname Nachname“; fett in der Statusfarbe, auf der Detailseite zum Mitglied verlinkt; im Auswahlfeld „username (Vorname Nachname)“); ebenso auf `AusleiheKarte`, die ganze Ifcos als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Organisator, Zeitpunkt, geplante Rückgabe (Pflicht), Kommentar)
   und „Löschen“ (`inventar:umraeumen`).
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). Ifco-Detailseite: „Ganze Ifco verleihen“, bei einer ganz verliehenen Ifco ein Badge „Verliehen an <an> seit …“ bzw. „Vorgemerkt für <an> ab …“ (verlinkt); Ifco-Karten tragen „Verliehen an …“, die Lager-Seite „Spanngurtkiste · … · verliehen an Feuerwehr“. Am Gegenstand steht beim Platz „(…, mit der ganzen Ifco)“.

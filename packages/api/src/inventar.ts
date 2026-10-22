@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   ausleihFehler,
+  ausleiheTage,
+  gefaehrdungen,
   ganzeIfcoFehler,
   istVorgemerkt,
   type Anrede,
@@ -17,6 +19,7 @@ import {
   zielKey,
   type AusleiheStatus,
   type Beschriftung,
+  type Gefaehrdung,
   type OffenePosition,
   type PlatzMenge,
   type PlatzZiel,
@@ -97,7 +100,8 @@ export interface AusleiheKopfDaten {
   organisiertVon: string;
   /** ISO timestamp. */
   ausgeliehenAm: string;
-  rueckgabeGeplant: string | null;
+  /** Required day (`YYYY-MM-DD`) the pieces come back; that day itself is free again. */
+  rueckgabeGeplant: string;
   kommentar: string | null;
 }
 
@@ -140,6 +144,8 @@ export interface IfcoDetails extends IfcoRow {
 /** The Mitglied who organised an Ausleihe. */
 export interface Organisator {
   sub: string;
+  /** Cognito username; the store leaves it null, the route fills it in. */
+  username: string | null;
   vorname: string;
   nachname: string;
   status: MitgliedStatus;
@@ -152,6 +158,11 @@ export interface AusleiheDetails extends AusleiheRow {
   /** `erledigt`, `geplant` (starts in the future) or `verliehen`. */
   status: AusleiheStatus;
   positionen: AusleihePositionRow[];
+  /**
+   * Overdue open Ausleihen that endanger this not yet started one ("gefährdet"): it would no longer
+   * fit if their pieces never came back. Empty otherwise.
+   */
+  gefaehrdetDurch: Gefaehrdung[];
   /** Organising Mitglied (`erstelltVon` as fallback); null if neither is a known Mitglied. */
   organisator: Organisator | null;
 }
@@ -406,6 +417,7 @@ export function organisatorVon(
   return m
     ? {
         sub: m.sub,
+        username: null,
         vorname: m.vorname,
         nachname: m.nachname,
         status: m.status,
@@ -465,6 +477,15 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
     ? await q.select().from(mitglieder).where(inListe(mitglieder.sub, subs))
     : [];
   const jetzt = new Date();
+  const [alleOffen, alllePlaetze] = await Promise.all([
+    offenLaden(q),
+    q.select().from(gegenstandPlaetze),
+  ]);
+  const gefaehrdet = gefaehrdungen(
+    alllePlaetze.map((p) => alsMenge(p.gegenstandId, p)),
+    alleOffen,
+    jetzt,
+  );
   return rows
     .map((a) => {
       const eigene = positionen.filter((p) => p.ausleiheId === a.id);
@@ -474,6 +495,7 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
         erledigt: status === 'erledigt',
         status,
         positionen: eigene,
+        gefaehrdetDurch: gefaehrdet.get(a.id) ?? [],
         organisator: organisatorVon(a, personen),
       };
     })
@@ -868,7 +890,10 @@ export function createInventarStore(db: Db): InventarStore {
           .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds));
         const offen = await offenLaden(tx, inListe(ausleihePositionen.gegenstandId, gegenstandIds));
         const neu = daten.positionen.map((p) => alsMenge(p.gegenstandId, p));
-        const fehler = await fehlerMitNamen(tx, (b) => ausleihFehler(plaetze, offen, neu, b));
+        const zeitraum = ausleiheTage(daten.ausgeliehenAm, daten.rueckgabeGeplant);
+        const fehler = await fehlerMitNamen(tx, (b) =>
+          ausleihFehler(plaetze, offen, neu, zeitraum, { beschriftung: b }),
+        );
         if (fehler) throw new WarenUngueltig(fehler);
         await organisatorPruefen(tx, daten.organisiertVon);
         const ganzeIfcoIds = [
@@ -890,7 +915,8 @@ export function createInventarStore(db: Db): InventarStore {
                 ...alsMenge(p.gegenstandId, p),
                 ganzeIfco: p.ganzeIfco,
               })),
-              b,
+              zeitraum,
+              { beschriftung: b },
             ),
           );
           if (ganzeFehler) throw new WarenUngueltig(ganzeFehler);
@@ -915,6 +941,30 @@ export function createInventarStore(db: Db): InventarStore {
       return db.transaction(async (tx) => {
         if (!(await gibtEs(tx, ausleihen, eq(ausleihen.id, id)))) return false;
         await organisatorPruefen(tx, daten.organisiertVon);
+        // The new period must still fit for the Ausleihe's own open positions (returned ones occupy nothing).
+        const eigene = (
+          await tx.select().from(ausleihePositionen).where(eq(ausleihePositionen.ausleiheId, id))
+        ).filter((p) => p.zurueckAm === null);
+        if (eigene.length > 0) {
+          const gegenstandIds = [...new Set(eigene.map((p) => p.gegenstandId))];
+          const [plaetze, offen] = await Promise.all([
+            tx
+              .select()
+              .from(gegenstandPlaetze)
+              .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds)),
+            offenLaden(tx, inListe(ausleihePositionen.gegenstandId, gegenstandIds)),
+          ]);
+          const fehler = await fehlerMitNamen(tx, (b) =>
+            ausleihFehler(
+              plaetze,
+              offen,
+              eigene.map((p) => alsMenge(p.gegenstandId, p)),
+              ausleiheTage(daten.ausgeliehenAm, daten.rueckgabeGeplant),
+              { beschriftung: b, ohneAusleiheId: id },
+            ),
+          );
+          if (fehler) throw new WarenUngueltig(fehler);
+        }
         await tx.update(ausleihen).set(kopfWerte(daten)).where(eq(ausleihen.id, id));
         return true;
       });

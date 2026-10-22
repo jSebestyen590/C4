@@ -26,7 +26,13 @@ import {
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { AusleiheBearbeitenModal } from '../AusleiheBearbeitenModal';
-import { AusleiheStatus, OrganisatorZeile, RueckgabeGeplant, startText } from '../AusleiheKarte';
+import {
+  AusleiheStatus,
+  GefaehrdetBadges,
+  OrganisatorZeile,
+  RueckgabeGeplant,
+  startText,
+} from '../AusleiheKarte';
 import { useAuth } from '../auth';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { ifcoGruppeTitel, mengeName, offenePositionen } from '../inventarAnzeige';
@@ -247,8 +253,9 @@ export function AusleiheDetailPage() {
             <AusleiheStatus a={ausleihe} />
           </Group>
           <Text size="sm">{startText(ausleihe)}</Text>
-          <OrganisatorZeile a={ausleihe} />
+          <OrganisatorZeile a={ausleihe} verlinkt />
           <RueckgabeGeplant a={ausleihe} />
+          <GefaehrdetBadges a={ausleihe} />
           {ausleihe.kommentar && (
             <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
               {ausleihe.kommentar}

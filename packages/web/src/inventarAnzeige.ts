@@ -1,6 +1,11 @@
 import {
   abweichungText,
+  beginnText,
+  freiImZeitraum,
   inventarAbweichung,
+  zeitraumText,
+  type OffenePosition,
+  type Tage,
   pfad,
   platzText,
   type BaumKnoten,
@@ -230,11 +235,78 @@ export function ifcoInhaltText(
     .join(', ');
 }
 
+/** `seit 20.10.2026 10:00` for a started Ausleihe, `ab 25.10.2026 10:00` for one that has not started (the one place for these texts). */
+export const seitAbText = (ausgeliehenAm: string, jetzt: Date = new Date()): string =>
+  beginnText(ausgeliehenAm, jetzt, (z) => zeitAnzeigen(z instanceof Date ? z.toISOString() : z));
+
+const grossAnfang = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** `Seit 20.10.2026 10:00` / `Ab 25.10.2026 10:00`. */
+export const startText = (ausgeliehenAm: string, jetzt: Date = new Date()): string =>
+  grossAnfang(seitAbText(ausgeliehenAm, jetzt));
+
 /** `Verliehen an Feuerwehr seit 20.10.2026 10:00` / `Vorgemerkt für Feuerwehr ab 25.10.2026 10:00`. */
-export function ifcoAusleiheText(a: IfcoAusleiheEintrag): string {
-  return a.status === 'geplant'
-    ? `Vorgemerkt für ${a.an} ab ${zeitAnzeigen(a.ausgeliehenAm)}`
-    : `Verliehen an ${a.an} seit ${zeitAnzeigen(a.ausgeliehenAm)}`;
+export function ifcoAusleiheText(a: IfcoAusleiheEintrag, jetzt: Date = new Date()): string {
+  return `${a.status === 'geplant' ? `Vorgemerkt für ${a.an}` : `Verliehen an ${a.an}`} ${seitAbText(a.ausgeliehenAm, jetzt)}`;
+}
+
+/** `20.10.–27.10.2026` of an Ausleihe, or null without a planned return. */
+export const ausleiheZeitraumText = (
+  a: Pick<AusleiheEintrag, 'ausgeliehenAm' | 'rueckgabeGeplant'>,
+): string | null => (a.rueckgabeGeplant ? zeitraumText(a.ausgeliehenAm, a.rueckgabeGeplant) : null);
+
+/** Line for the confirmation: `Vom 25.10.2026 10:00 bis 27.10.2026` (not started) / `Seit 20.10.2026 10:00 bis 27.10.2026`. */
+export function zeitraumZeile(
+  ausgeliehenAm: string,
+  rueckgabe: string,
+  jetzt: Date = new Date(),
+): string {
+  const start = zeitAnzeigen(ausgeliehenAm);
+  const ende = datumText(rueckgabe);
+  return new Date(ausgeliehenAm) > jetzt ? `Vom ${start} bis ${ende}` : `Seit ${start} bis ${ende}`;
+}
+
+/** Open positions of all given Ausleihen as `OffenePosition`s (with borrower, start and planned return). */
+export function offenePositionenAus(ausleihen: AusleiheEintrag[]): OffenePosition[] {
+  return ausleihen.flatMap((a) =>
+    a.positionen
+      .filter((p) => p.zurueckAm === null)
+      .map((p) => ({
+        ...p,
+        ausleiheId: a.id,
+        an: a.an,
+        ausgeliehenAm: a.ausgeliehenAm,
+        rueckgabeGeplant: a.rueckgabeGeplant,
+      })),
+  );
+}
+
+/** Pieces of a place that are free on every day of `zeitraum` (never negative). */
+export function verfuegbarImZeitraum(
+  platz: PlatzZiel & { anzahl: number },
+  gegenstandId: string,
+  offen: OffenePosition[],
+  zeitraum: Tage,
+  jetzt: Date = new Date(),
+): number {
+  return Math.max(
+    0,
+    freiImZeitraum(platz.anzahl, offen, { ...platz, gegenstandId }, zeitraum, jetzt),
+  );
+}
+
+/**
+ * Default amount for a place on the Verleihen page: the whole available content of an Ifco lent as a
+ * whole, or the single piece of a Gegenstand that exists once and is available; otherwise nothing.
+ */
+export function standardMenge(
+  platz: PlatzZiel & { anzahl: number; verfuegbar: number },
+  anzahlPlaetze: number,
+  ganzeIfco: boolean,
+): number | undefined {
+  if (platz.verfuegbar <= 0) return undefined;
+  if (ganzeIfco) return platz.verfuegbar;
+  return anzahlPlaetze === 1 && platz.anzahl === 1 ? 1 : undefined;
 }
 
 /** `verliehen an Feuerwehr` / `vorgemerkt für Feuerwehr` (without the date, for use inside a line). */
