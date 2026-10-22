@@ -9,7 +9,7 @@ import {
   parentIdSchema,
   zeitpunktSchema,
 } from './bausteine';
-import { ifcoPlatzMasseSchema } from './ifco';
+import { ifcoPlatzMasseSchema, type IfcoPlatzMasse } from './ifco';
 import { datumSchema } from './schemas';
 
 export const MHD_ARTEN = ['keins', 'tag', 'monat'] as const;
@@ -150,6 +150,24 @@ const bodenNamenSchema = z
     'Jeder Regalboden darf nur einmal vorkommen.',
   );
 
+/**
+ * Ifco-Lagerplatz dimensions for new Regalböden: nothing (normal Böden), one object for all, or one
+ * object per Boden in the order of the names.
+ */
+export const boedenIfcoPlatzSchema = z
+  .union([ifcoPlatzMasseSchema, z.array(ifcoPlatzMasseSchema).min(1).max(MAX_BOEDEN)])
+  .nullish()
+  .transform((v) => v ?? null);
+
+/** The dimensions of Boden number `i` (0-based) for a single object or a per-Boden array. */
+export function bodenIfcoPlatz(
+  platz: IfcoPlatzMasse | IfcoPlatzMasse[] | null | undefined,
+  i: number,
+): IfcoPlatzMasse | null {
+  if (!platz) return null;
+  return Array.isArray(platz) ? (platz[i] ?? null) : platz;
+}
+
 export const lagerortSchema = z.object({
   name: name(),
   beschreibung,
@@ -168,20 +186,33 @@ export type LagerortEingabe = z.input<typeof lagerortSchema>;
 export const lagerortAnlegenSchema = lagerortSchema
   .extend({
     boeden: bodenNamenSchema.optional(),
-    /** Regal only: makes every new Regalboden an Ifco-Lagerplatz with these dimensions. */
-    boedenIfcoPlatz: ifcoPlatzMasseSchema.nullish().transform((v) => v ?? null),
+    /**
+     * Regal only: makes the new Regalböden Ifco-Lagerplätze. One object applies to all, an array
+     * gives every Boden its own dimensions (same length and order as `boeden`).
+     */
+    boedenIfcoPlatz: boedenIfcoPlatzSchema,
   })
   .refine((l) => (l.art === 'regal') === (l.boeden !== undefined), {
     message: 'Ein Regal braucht Regalböden, andere Lagerorte nicht.',
     path: ['boeden'],
-  });
+  })
+  .refine(
+    (l) =>
+      !Array.isArray(l.boedenIfcoPlatz) || l.boedenIfcoPlatz.length === (l.boeden?.length ?? -1),
+    { message: 'Jeder Regalboden braucht genau eine Höhe.', path: ['boedenIfcoPlatz'] },
+  );
 export type LagerortAnlegenEingabe = z.input<typeof lagerortAnlegenSchema>;
 
-export const boedenHinzufuegenSchema = z.object({
-  namen: bodenNamenSchema,
-  /** Optional: makes every new Regalboden an Ifco-Lagerplatz with these dimensions. */
-  ifcoPlatz: ifcoPlatzMasseSchema.nullish().transform((v) => v ?? null),
-});
+export const boedenHinzufuegenSchema = z
+  .object({
+    namen: bodenNamenSchema,
+    /** Optional: Ifco-Lagerplatz dimensions of the new Böden, one object for all or one per name. */
+    ifcoPlatz: boedenIfcoPlatzSchema,
+  })
+  .refine((b) => !Array.isArray(b.ifcoPlatz) || b.ifcoPlatz.length === b.namen.length, {
+    message: 'Jeder Regalboden braucht genau eine Höhe.',
+    path: ['ifcoPlatz'],
+  });
 
 export const lagerortReihenfolgeSchema = z.object({
   ids: z

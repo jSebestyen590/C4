@@ -1,10 +1,11 @@
 import { Alert, Button, Modal, Stack, Text } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
+import type { IfcoPlatzMasse } from '@c4/shared';
 import { useApi } from './api';
 import {
   IfcoPlatzFelder,
-  ifcoPlatzErgebnis,
+  boedenPlatzErgebnis,
   ifcoPlatzStandard,
   type IfcoPlatzWert,
 } from './IfcoPlatzFelder';
@@ -35,7 +36,7 @@ export function BoedenModal({
   const speichern = useMutation({
     mutationFn: async (eingabe: {
       namen: string[];
-      ifcoPlatz: { hoeheCm: number; stellflaechen: number } | null;
+      ifcoPlatz: IfcoPlatzMasse | IfcoPlatzMasse[] | null;
     }) =>
       pruefen(await api.lagerorte[':id'].boeden.$post({ param: { id: regal.id }, json: eingabe })),
     onSuccess: async () => {
@@ -46,7 +47,7 @@ export function BoedenModal({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const platz = ifcoPlatzErgebnis(ifcoPlatz);
+    const platz = boedenPlatzErgebnis(ifcoPlatz, Number(wert.reihen), Number(wert.plaetze));
     const problem =
       boedenGesamtFehler(wert, vorhandeneNamen) ?? (typeof platz === 'string' ? platz : null);
     setFehler(problem);
@@ -67,7 +68,8 @@ export function BoedenModal({
             wert={ifcoPlatz}
             onChange={setIfcoPlatz}
             label="Als Ifco-Lagerplätze anlegen"
-            beschreibung="Alle neuen Böden werden Ifco-Lagerplätze mit derselben Höhe und Stellfläche."
+            beschreibung="Alle neuen Böden werden Ifco-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
+            reihen={Number(wert.reihen) || 1}
           />
           {fehler && <Alert color="red">{fehler}</Alert>}
           {speichern.isError && (

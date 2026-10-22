@@ -53,6 +53,12 @@ describe('reihenfolgeFehler / naechstePosition', () => {
     expect(reihenfolgeFehler(['a', 'b'], ['a'])).not.toBeNull();
     expect(reihenfolgeFehler(['a', 'b'], ['a', 'c'])).not.toBeNull();
   });
+  it('rejects ordering the Regalböden of a Regal', () => {
+    expect(reihenfolgeFehler(['a', 'b'], ['b', 'a'], 'regal')).toBe(
+      'Regalböden lassen sich nicht verschieben.',
+    );
+    expect(reihenfolgeFehler(['a', 'b'], ['b', 'a'], null)).toBeNull();
+  });
   it('appends after the highest position', () => {
     expect(naechstePosition([])).toBe(0);
     expect(naechstePosition([{ position: 0 }, { position: 4 }])).toBe(5);
@@ -98,14 +104,15 @@ describe('inventurKnotenIds', () => {
     expect(inventurKnotenIds(alle, 'alt')).toEqual([]);
   });
 
-  it('leaves out Ifco-Lagerplätze: no Waren lie there', () => {
+  it('leaves out places where Ifcos stand, but keeps empty Ifco-Lagerplätze', () => {
     const alle = [
       knoten('regal', null),
       knoten('b1', 'regal', 0),
       { ...knoten('b2', 'regal', 1), ifcoHoeheCm: 20 },
+      { ...knoten('b3', 'regal', 2), ifcoHoeheCm: 20 },
     ];
-    expect(inventurKnotenIds(alle, 'regal')).toEqual(['regal', 'b1']);
-    expect(inventurKnotenIds(alle, 'b2')).toEqual([]);
+    expect(inventurKnotenIds(alle, 'regal', new Set(['b3']))).toEqual(['regal', 'b1', 'b2']);
+    expect(inventurKnotenIds(alle, 'b3', new Set(['b3']))).toEqual([]);
   });
 });
 

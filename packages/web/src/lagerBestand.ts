@@ -119,7 +119,7 @@ export function ausgangAbschnitte(
   const karte = bestandKarte(zeilen);
   const abschnitte: AusgangAbschnittDaten[] = [];
   for (const k of tiefensuche(lagerorte, rootId)) {
-    if (k.archiviert || k.ifcoHoeheCm !== null) continue;
+    if (k.archiviert) continue;
     const wareIds = new Set(
       zeilen.filter((z) => z.lagerortId === k.id && z.menge > 0).map((z) => z.wareId),
     );

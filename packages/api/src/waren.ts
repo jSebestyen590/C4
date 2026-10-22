@@ -11,7 +11,7 @@ import {
   gebindeKurz,
   gebindeSortieren,
   IFCO_PLATZ_KEINE_KINDER,
-  IFCO_PLATZ_KEINE_WARE,
+  ifcoPlatzHatIfcosFehler,
   ifcoPlatzMarkierenFehler,
   inventurAbgleich,
   bodenNamenFehler,
@@ -33,6 +33,7 @@ import {
   type Buchung,
   type Buchungszeile,
   type GebindeDaten,
+  bodenIfcoPlatz,
   type IfcoPlatzMasse,
   type InventurIst,
   type InventurZeile,
@@ -142,7 +143,12 @@ export function elternFehler(
 }
 
 /** German error unless `ids` is a permutation of the `kinderIds`, otherwise null. */
-export function reihenfolgeFehler(kinderIds: string[], ids: string[]): string | null {
+export function reihenfolgeFehler(
+  kinderIds: string[],
+  ids: string[],
+  elternArt: LagerortArt | null = null,
+): string | null {
+  if (elternArt === 'regal') return 'Regalböden lassen sich nicht verschieben.';
   const erwartet = new Set(kinderIds);
   if (ids.length !== erwartet.size || ids.some((id) => !erwartet.has(id))) {
     return 'Die Reihenfolge muss genau die Einträge dieser Ebene enthalten.';
@@ -331,12 +337,13 @@ export function lagerortBestandZeilen(buchungen: Buchung[]): LagerortBestandZeil
 
 /** Ids of the Lagerort and its non-archived descendants in inventory order (preorder, by position). */
 export function inventurKnotenIds(
-  lagerorteAlle: (BaumKnoten & { archiviert: boolean; ifcoHoeheCm?: number | null })[],
+  lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
   wurzelId: string,
+  /** Places where Ifcos stand: no Waren can lie there, so there is nothing to count. */
+  mitIfcos: ReadonlySet<string> = new Set(),
 ): string[] {
   return tiefensuche(
-    // Ifco-Lagerplätze hold no Waren, so there is nothing to count.
-    lagerorteAlle.filter((l) => !l.archiviert && (l.ifcoHoeheCm ?? null) === null),
+    lagerorteAlle.filter((l) => !l.archiviert && !mitIfcos.has(l.id)),
     wurzelId,
   ).map((l) => l.id);
 }
@@ -563,13 +570,13 @@ export interface WarenStore {
     daten: LagerortDaten,
     boeden?: string[],
     /** Makes the new Regalböden Ifco-Lagerplätze. */
-    boedenIfcoPlatz?: IfcoPlatzMasse | null,
+    boedenIfcoPlatz?: IfcoPlatzMasse | IfcoPlatzMasse[] | null,
   ): Promise<LagerortAngelegt>;
   /** Appends Regalböden to a Regal; the new ids, or undefined if the Lagerort does not exist. */
   boedenHinzufuegen(
     id: string,
     namen: string[],
-    ifcoPlatz?: IfcoPlatzMasse | null,
+    ifcoPlatz?: IfcoPlatzMasse | IfcoPlatzMasse[] | null,
   ): Promise<string[] | undefined>;
   lagerortAktualisieren(id: string, daten: LagerortDaten): Promise<boolean>;
   lagerortLoeschen(id: string): Promise<boolean>;
@@ -671,8 +678,11 @@ async function boedenEinfuegen(
   regalId: string,
   namen: string[],
   ab: number,
-  ifcoPlatz: IfcoPlatzMasse | null = null,
+  ifcoPlatz: IfcoPlatzMasse | IfcoPlatzMasse[] | null = null,
 ): Promise<string[]> {
+  if (Array.isArray(ifcoPlatz) && ifcoPlatz.length !== namen.length) {
+    throw new WarenUngueltig('Jeder Regalboden braucht genau eine Höhe.');
+  }
   const ids = namen.map(() => randomUUID());
   for (const [i, name] of namen.entries()) {
     await tx.insert(lagerorte).values({
@@ -682,8 +692,8 @@ async function boedenEinfuegen(
       parentId: regalId,
       art: 'regalboden',
       position: ab + i,
-      ifcoHoeheCm: ifcoPlatz?.hoeheCm ?? null,
-      ifcoStellflaechen: ifcoPlatz?.stellflaechen ?? null,
+      ifcoHoeheCm: bodenIfcoPlatz(ifcoPlatz, i)?.hoeheCm ?? null,
+      ifcoStellflaechen: bodenIfcoPlatz(ifcoPlatz, i)?.stellflaechen ?? null,
     });
   }
   return ids;
@@ -701,7 +711,7 @@ export async function gibtEs(q: Q, tabelle: PgTable, bedingung: SQL | undefined)
   return rows.length > 0;
 }
 
-async function buchungenLaden(q: Q, bedingung?: SQL): Promise<Buchung[]> {
+export async function buchungenLaden(q: Q, bedingung?: SQL): Promise<Buchung[]> {
   const rows = await q
     .select({
       vorgangId: bestandsbuchungen.vorgangId,
@@ -734,11 +744,30 @@ async function buchbareWare(q: Q, wareId: string, gebindeId: string): Promise<Wa
   return ware;
 }
 
-async function buchbarerLagerort(q: Q, lagerortId: string): Promise<void> {
+/** Ids of the places on which non-archived Ifcos stand. */
+async function ortMitIfcos(q: Q): Promise<Set<string>> {
+  const rows = await q
+    .select({ lagerortId: ifcos.lagerortId })
+    .from(ifcos)
+    .where(eq(ifcos.archiviert, false));
+  return new Set(rows.flatMap((r) => (r.lagerortId ? [r.lagerortId] : [])));
+}
+
+/**
+ * The place must exist and not be archived. Unless it is only withdrawn from (`abgang`), no Ifco
+ * may stand on it: Waren and Ifcos do not share a place.
+ */
+async function buchbarerLagerort(q: Q, lagerortId: string, abgang = false): Promise<void> {
   const [l] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
   if (!l) throw new WarenUngueltig('Der Lagerort existiert nicht.');
   if (l.archiviert) throw new WarenUngueltig('Der Lagerort ist archiviert.');
-  if (ifcoPlatzMasse(l)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
+  if (abgang) return;
+  const stehend = await gibtEs(
+    q,
+    ifcos,
+    and(eq(ifcos.lagerortId, lagerortId), eq(ifcos.archiviert, false)),
+  );
+  if (stehend) throw new WarenUngueltig(ifcoPlatzHatIfcosFehler(l.name));
 }
 
 /** Throws `WarenUngueltig` when `eltern` is an Ifco-Lagerplatz: it cannot have children. */
@@ -890,7 +919,8 @@ export function createWarenStore(db: Db): WarenStore {
     const [inventur] = await q.select().from(inventuren).where(eq(inventuren.id, id));
     if (!inventur) return undefined;
     const alle = await q.select().from(lagerorte);
-    return { inventur, alle, knotenIds: inventurKnotenIds(alle, inventur.lagerortId) };
+    const mitIfcos = await ortMitIfcos(q);
+    return { inventur, alle, knotenIds: inventurKnotenIds(alle, inventur.lagerortId, mitIfcos) };
   };
 
   const nurOffen = (inventur: InventurRow) => {
@@ -970,23 +1000,6 @@ export function createWarenStore(db: Db): WarenStore {
     }
     await tx.insert(wareGebinde).values(gebindeIds.map((gebindeId) => ({ wareId, gebindeId })));
     return wareId;
-  };
-
-  /** Throws `WarenKonflikt` when the place still has Waren stock or a Warenliste (it cannot become an Ifco-Lagerplatz). */
-  const markierenErlaubt = async (q: Q, lagerortId: string): Promise<void> => {
-    const bestand = bestandZu(
-      await buchungenLaden(q, eq(bestandsbuchungen.lagerortId, lagerortId)),
-    );
-    if (bestand.length > 0) {
-      throw new WarenKonflikt(
-        'Auf dem Lagerort liegt noch Ware. Buche sie zuerst aus, dann kannst du ihn als Ifco-Lagerplatz markieren.',
-      );
-    }
-    if (await gibtEs(q, lagerortWaren, eq(lagerortWaren.lagerortId, lagerortId))) {
-      throw new WarenKonflikt(
-        'Der Lagerort hat noch eine Warenliste. Leere sie zuerst, dann kannst du ihn als Ifco-Lagerplatz markieren.',
-      );
-    }
   };
 
   return {
@@ -1076,7 +1089,6 @@ export function createWarenStore(db: Db): WarenStore {
           const kinder = alle.filter((l) => l.parentId === id).length;
           const markieren = ifcoPlatzMarkierenFehler(art, kinder);
           if (markieren) throw new WarenUngueltig(markieren);
-          if (!bisherMasse) await markierenErlaubt(tx, id);
           const passt = await ifcoPlatzPruefen(tx, { id, name: daten.name }, masse);
           if (passt) throw new WarenUngueltig(passt);
         }
@@ -1200,6 +1212,7 @@ export function createWarenStore(db: Db): WarenStore {
         const fehler = reihenfolgeFehler(
           kinder.map((k) => k.id),
           ids,
+          alle.find((l) => l.id === parentId)?.art ?? null,
         );
         if (fehler) throw new WarenUngueltig(fehler);
         for (const [position, id] of ids.entries()) {
@@ -1229,9 +1242,6 @@ export function createWarenStore(db: Db): WarenStore {
       return db.transaction(async (tx) => {
         const [vorhanden] = await tx.select().from(lagerorte).where(eq(lagerorte.id, id));
         if (!vorhanden) return false;
-        if (wareIds.length > 0 && ifcoPlatzMasse(vorhanden)) {
-          throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
-        }
         const bisher = new Set(
           (await tx.select().from(lagerortWaren).where(eq(lagerortWaren.lagerortId, id))).map(
             (r) => r.wareId,
@@ -1510,7 +1520,7 @@ export function createWarenStore(db: Db): WarenStore {
     async entnehmen(daten, sub) {
       return db.transaction(async (tx) => {
         await buchbareWare(tx, daten.wareId, daten.gebindeId);
-        await buchbarerLagerort(tx, daten.lagerortId);
+        await buchbarerLagerort(tx, daten.lagerortId, true);
         const [buchungen, orte, alleGebinde] = await Promise.all([
           buchungenLaden(tx, eq(bestandsbuchungen.wareId, daten.wareId)),
           tx.select().from(lagerorte),
@@ -1567,11 +1577,11 @@ export function createWarenStore(db: Db): WarenStore {
       return db.transaction(async (tx) => {
         for (const p of daten.positionen) {
           await buchbareWare(tx, p.wareId, p.gebindeId);
-          await buchbarerLagerort(tx, p.lagerortId);
+          await buchbarerLagerort(tx, p.lagerortId, true);
         }
         for (const n of daten.nachfuellen) {
           await buchbarerLagerort(tx, n.lagerortId);
-          await buchbarerLagerort(tx, n.quelleId);
+          await buchbarerLagerort(tx, n.quelleId, true);
         }
         const wareIds = [...new Set(daten.positionen.map((p) => p.wareId))];
         const [buchungen, alleGebinde] = await Promise.all([
@@ -1601,7 +1611,7 @@ export function createWarenStore(db: Db): WarenStore {
       return db.transaction(async (tx) => {
         for (const p of daten.positionen) {
           await buchbareWare(tx, p.wareId, p.gebindeId);
-          await buchbarerLagerort(tx, p.vonId);
+          await buchbarerLagerort(tx, p.vonId, true);
           await buchbarerLagerort(tx, p.nachId);
         }
         const wareIds = [...new Set(daten.positionen.map((p) => p.wareId))];
@@ -1717,8 +1727,6 @@ export function createWarenStore(db: Db): WarenStore {
         const kontext = await inventurKontext(tx, id);
         if (!kontext) return false;
         nurOffen(kontext.inventur);
-        const knoten = kontext.alle.find((l) => l.id === lagerortId);
-        if (knoten && ifcoPlatzMasse(knoten)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
         if (!kontext.knotenIds.includes(lagerortId)) {
           throw new WarenUngueltig('Der Lagerort gehört nicht zu dieser Inventur.');
         }

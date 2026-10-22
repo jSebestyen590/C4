@@ -158,6 +158,26 @@ export function useGegenstaendeUndIfcos(enabled = true) {
   };
 }
 
+/**
+ * Ids of the places where (non-archived) Ifcos stand: no Waren can be booked there. Empty while
+ * loading or when the Ifcos cannot be read (the API still rejects such bookings).
+ */
+export function useOrteMitIfcos() {
+  const api = useApi();
+  const q = useQuery({
+    queryKey: ['inventar', 'ifcos', 'aktiv'],
+    queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: {} })),
+    retry: false,
+  });
+  return {
+    orte: useMemo(
+      () => new Set((q.data ?? []).flatMap((i) => (i.lagerortId ? [i.lagerortId] : []))),
+      [q.data],
+    ),
+    laedt: q.isPending,
+  };
+}
+
 /** All Ausleihen (newest first), or only the open ones. */
 export function useAusleihen(nurOffen: boolean) {
   const api = useApi();

@@ -13,6 +13,7 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import type { Aktion } from './AktionsMenue';
+import { ifcosAufPlatz } from './ifcoPlatz';
 import type { LagerKnoten, LagerKontext } from './LagerBaum';
 
 /** Inventur action text of a node: continue an open one or start a new one. */
@@ -21,7 +22,9 @@ export const inventurText = (ctx: LagerKontext, node: LagerKnoten) =>
 
 /** Whether buchen actions (Entnehmen, Einlagern, Umlagern, Inventur) apply to a node. */
 export const buchenMoeglich = (ctx: LagerKontext, node: LagerKnoten) =>
-  ctx.darfBuchen && !node.archiviert && node.ifcoHoeheCm === null;
+  ctx.darfBuchen &&
+  !node.archiviert &&
+  !(ctx.ifcoDaten && ifcosAufPlatz(ctx.ifcoDaten.ifcos, node.id).length > 0);
 
 /** The single definition of the node actions with their permission rules, shared by card menu and tile drawer. */
 export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
@@ -51,20 +54,20 @@ export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
       icon: <IconArrowUp size={18} />,
       onClick: () => ctx.verschieben(node, -1),
       disabled: !ctx.kannVerschieben(node, -1),
-      sichtbar: ctx.darfVerwalten,
+      sichtbar: ctx.darfVerwalten && node.art !== 'regalboden',
     },
     {
       text: 'Nach unten',
       icon: <IconArrowDown size={18} />,
       onClick: () => ctx.verschieben(node, 1),
       disabled: !ctx.kannVerschieben(node, 1),
-      sichtbar: ctx.darfVerwalten,
+      sichtbar: ctx.darfVerwalten && node.art !== 'regalboden',
     },
     {
       text: 'Warenliste bearbeiten',
       icon: <IconListDetails size={18} />,
       onClick: () => ctx.waren(node),
-      sichtbar: ctx.darfVerwalten && !node.archiviert && node.ifcoHoeheCm === null,
+      sichtbar: ctx.darfVerwalten && !node.archiviert,
     },
     {
       text: 'Entnehmen',

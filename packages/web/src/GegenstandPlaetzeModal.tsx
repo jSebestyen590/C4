@@ -65,6 +65,9 @@ export function GegenstandPlaetzeModal({
   );
   const abweichung = abweichungText(summe.differenz);
 
+  // A Gegenstand that exists only once has at most one Platz, chosen without an amount.
+  const einzel = gegenstand.anzahl === 1 && gegenstand.plaetze.length <= 1;
+
   const aendern = (key: number, teil: Partial<Zeile>) =>
     setZeilen((l) => l.map((z) => (z.key === key ? { ...z, ...teil } : z)));
 
@@ -85,6 +88,16 @@ export function GegenstandPlaetzeModal({
   });
 
   const onSpeichern = () => {
+    if (einzel) {
+      const ziel = zeilen[0]?.ziel ?? null;
+      const eingabe = { plaetze: ziel ? [{ ...zielAusWert(ziel), anzahl: 1 }] : [] };
+      const parsed = gegenstandPlaetzeSchema.safeParse(eingabe);
+      if (!parsed.success) {
+        return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+      }
+      setFehler(null);
+      return speichern.mutate(eingabe);
+    }
     if (zeilen.some((z) => !z.ziel)) return setFehler('Bitte wähle für jede Zeile einen Platz.');
     const eingabe = {
       plaetze: zeilen.map((z) => ({
@@ -101,67 +114,95 @@ export function GegenstandPlaetzeModal({
   return (
     <Modal opened onClose={onClose} title={`Plätze von ${gegenstand.name}`}>
       <Stack>
-        {zeilen.length === 0 && <Text c="dimmed">Noch kein Platz zugeordnet.</Text>}
-        {zeilen.map((z, i) => (
-          <Paper key={z.key} withBorder p="sm">
-            <Stack gap="xs">
-              <PfadSelect
-                label={`Platz ${i + 1}`}
-                placeholder="Lagerort oder Ifco wählen"
-                searchable
-                inputMode="text"
-                nothingFoundMessage="Nichts gefunden"
-                data={zielOptionen(
-                  lagerorte,
-                  ifcos,
-                  behalten,
-                  new Set(gewaehlt.filter((w) => w !== z.ziel)),
-                )}
-                value={z.ziel}
-                onChange={(ziel) => aendern(z.key, { ziel })}
-              />
-              <Group align="flex-end" wrap="nowrap" gap="xs">
-                <NumberInput
-                  label="Anzahl"
-                  style={{ flex: 1 }}
-                  allowDecimal={false}
-                  allowNegative={false}
-                  min={1}
-                  inputMode="numeric"
-                  value={z.anzahl}
-                  onChange={(anzahl) => aendern(z.key, { anzahl })}
-                />
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  size={44}
-                  aria-label={`Platz ${i + 1} entfernen`}
-                  onClick={() => setZeilen((l) => l.filter((x) => x.key !== z.key))}
-                >
-                  <IconTrash size={20} />
-                </ActionIcon>
-              </Group>
-            </Stack>
-          </Paper>
-        ))}
-        <Button
-          variant="light"
-          leftSection={<IconPlus size={18} />}
-          onClick={() => setZeilen((l) => [...l, { key: neuerKey(), ziel: null, anzahl: 1 }])}
-        >
-          Platz hinzufügen
-        </Button>
-        <Text size="sm" c={abweichung ? 'orange' : 'dimmed'} role="status">
-          Summe {summe.summe} von {gegenstand.anzahl}
-          {abweichung && ` · ${abweichung}`}
-        </Text>
-        {fehler && <Alert color="red">{fehler}</Alert>}
-        {speichern.isError && (
+        {einzel && (
+          <PfadSelect
+            label="Platz"
+            placeholder="Kein Platz"
+            searchable
+            clearable
+            inputMode="text"
+            nothingFoundMessage="Nichts gefunden"
+            data={zielOptionen(lagerorte, ifcos, behalten, new Set())}
+            value={zeilen[0]?.ziel ?? null}
+            onChange={(ziel) =>
+              setZeilen(ziel ? [{ key: zeilen[0]?.key ?? neuerKey(), ziel, anzahl: 1 }] : [])
+            }
+          />
+        )}
+        {einzel && fehler && <Alert color="red">{fehler}</Alert>}
+        {einzel && speichern.isError && (
           <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>
         )}
-        <Button loading={speichern.isPending} onClick={onSpeichern}>
-          Speichern
-        </Button>
+        {einzel && (
+          <Button loading={speichern.isPending} onClick={onSpeichern}>
+            Speichern
+          </Button>
+        )}
+        {!einzel && zeilen.length === 0 && <Text c="dimmed">Noch kein Platz zugeordnet.</Text>}
+        {!einzel && (
+          <>
+            {zeilen.map((z, i) => (
+              <Paper key={z.key} withBorder p="sm">
+                <Stack gap="xs">
+                  <PfadSelect
+                    label={`Platz ${i + 1}`}
+                    placeholder="Lagerort oder Ifco wählen"
+                    searchable
+                    inputMode="text"
+                    nothingFoundMessage="Nichts gefunden"
+                    data={zielOptionen(
+                      lagerorte,
+                      ifcos,
+                      behalten,
+                      new Set(gewaehlt.filter((w) => w !== z.ziel)),
+                    )}
+                    value={z.ziel}
+                    onChange={(ziel) => aendern(z.key, { ziel })}
+                  />
+                  <Group align="flex-end" wrap="nowrap" gap="xs">
+                    <NumberInput
+                      label="Anzahl"
+                      style={{ flex: 1 }}
+                      allowDecimal={false}
+                      allowNegative={false}
+                      min={1}
+                      inputMode="numeric"
+                      value={z.anzahl}
+                      onChange={(anzahl) => aendern(z.key, { anzahl })}
+                    />
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      size={44}
+                      aria-label={`Platz ${i + 1} entfernen`}
+                      onClick={() => setZeilen((l) => l.filter((x) => x.key !== z.key))}
+                    >
+                      <IconTrash size={20} />
+                    </ActionIcon>
+                  </Group>
+                </Stack>
+              </Paper>
+            ))}
+            <Button
+              variant="light"
+              leftSection={<IconPlus size={18} />}
+              onClick={() => setZeilen((l) => [...l, { key: neuerKey(), ziel: null, anzahl: 1 }])}
+            >
+              Platz hinzufügen
+            </Button>
+            <Text size="sm" c={abweichung ? 'orange' : 'dimmed'} role="status">
+              Summe {summe.summe} von {gegenstand.anzahl}
+              {abweichung && ` · ${abweichung}`}
+            </Text>
+            {fehler && <Alert color="red">{fehler}</Alert>}
+            {speichern.isError && (
+              <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>
+            )}
+            <Button loading={speichern.isPending} onClick={onSpeichern}>
+              Speichern
+            </Button>
+          </>
+        )}
       </Stack>
     </Modal>
   );

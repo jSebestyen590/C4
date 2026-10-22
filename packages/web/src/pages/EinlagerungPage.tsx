@@ -2,7 +2,7 @@ import { Alert, Box, Button } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { einlagerungenSchema, IFCO_PLATZ_KEINE_WARE, pfad, tiefensuche } from '@c4/shared';
+import { einlagerungenSchema, ifcoPlatzHatIfcosFehler, pfad, tiefensuche } from '@c4/shared';
 import { useApi } from '../api';
 import { BestandAbschnitt } from '../BestandAbschnitt';
 import { BuchungsFuss, zeitpunktIso } from '../BuchungsFuss';
@@ -18,6 +18,7 @@ import {
 } from '../inventurDaten';
 import { useBuchungAbschluss } from '../useBuchungAbschluss';
 import { useEnterWeiter } from '../useEnterWeiter';
+import { useOrteMitIfcos } from '../inventarDaten';
 import { useLagerBestand } from '../useLagerBestand';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 
@@ -29,6 +30,7 @@ export function EinlagerungPage() {
   const api = useApi();
   const abschluss = useBuchungAbschluss();
   const daten = useLagerBestand();
+  const mitIfcos = useOrteMitIfcos();
   const enterWeiter = useEnterWeiter('buchen-weiter');
   const [zustaende, setZustaende] = useState<Record<string, KnotenZustand> | null>(null);
   const [zeitpunkt, setZeitpunkt] = useState(jetztLokal);
@@ -37,12 +39,12 @@ export function EinlagerungPage() {
   const [versucht, setVersucht] = useState(false);
 
   const knoten = useMemo(
-    // Ifco-Lagerplätze hold no Waren.
-    () => tiefensuche(daten.lagerorte, id).filter((k) => !k.archiviert && k.ifcoHoeheCm === null),
-    [daten.lagerorte, id],
+    // Places where Ifcos stand hold no Waren.
+    () => tiefensuche(daten.lagerorte, id).filter((k) => !k.archiviert && !mitIfcos.orte.has(k.id)),
+    [daten.lagerorte, id, mitIfcos.orte],
   );
   // The rows come once from the Warenlisten; after that the local state is the source of truth.
-  if (zustaende === null && !daten.laedt && !daten.fehler) {
+  if (zustaende === null && !daten.laedt && !daten.fehler && !mitIfcos.laedt) {
     setZustaende(
       Object.fromEntries(
         knoten.map((k) => [
@@ -112,12 +114,12 @@ export function EinlagerungPage() {
     <BuchungsSeite
       titel={`Einlagern: ${pfad(daten.lagerorte, id)}`}
       hinweis="Trag ein, was du einlagerst. Bei Waren mit MHD ist das Datum Pflicht."
-      laedt={daten.laedt || zustaende === null}
+      laedt={daten.laedt || mitIfcos.laedt || zustaende === null}
       fehler={daten.fehler}
       leer={
         knoten.length === 0
-          ? daten.lagerorte.some((l) => l.id === id && l.ifcoHoeheCm !== null)
-            ? IFCO_PLATZ_KEINE_WARE
+          ? mitIfcos.orte.has(id)
+            ? ifcoPlatzHatIfcosFehler(daten.lagerorte.find((l) => l.id === id)?.name ?? '')
             : 'Dieser Lagerort ist archiviert.'
           : undefined
       }

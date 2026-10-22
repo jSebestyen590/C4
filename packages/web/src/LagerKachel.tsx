@@ -1,10 +1,10 @@
 import { Badge, Button, Drawer, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { IconBox, IconClipboardCheck } from '@tabler/icons-react';
 import { pfad } from '@c4/shared';
-import { istBelegt, kachelZaehlerText, zaehler, type Belegung } from './lagerAnsicht';
+import { istBelegt, kachelInhalt, zaehler, type Belegung } from './lagerAnsicht';
 import { lagerAktionen } from './lagerAktionen';
 import { BestandListe, IfcoPlatzInfo, InventarListe } from './LagerInhalt';
-import { ifcoPlatzMasse, ifcosText } from './ifcoPlatz';
+import { ifcoPlatzMasse } from './ifcoPlatz';
 import type { LagerKnoten, LagerKontext } from './LagerBaum';
 
 /** Compact tile of a leaf node (Stellplatz): name and a counter of what lies there. */
@@ -25,13 +25,12 @@ export function LagerKachel({
   const belegt = istBelegt(node.id, belegung);
   const z = zaehler(node.id, belegung);
   const istIfcoPlatz = ifcoPlatzMasse(node) !== null;
-  const ifcoAnzahl = belegung.inventar?.get(node.id)?.ifcos.length ?? 0;
-  const zaehlerText =
-    istIfcoPlatz && ifcoAnzahl > 0 ? ifcosText(ifcoAnzahl) : kachelZaehlerText(node.id, belegung);
+  const inhalt = kachelInhalt(node.id, belegung, istIfcoPlatz);
   const beschreibung = [
     node.name,
     node.archiviert ? 'archiviert' : null,
     istIfcoPlatz ? 'Ifco-Lagerplatz' : null,
+    inhalt.titel,
     z.waren > 0 ? `${z.waren} ${z.waren === 1 ? 'Ware' : 'Waren'}` : null,
     z.inventar > 0 ? `${z.inventar} Inventar` : null,
     belegt ? null : 'leer',
@@ -83,9 +82,16 @@ export function LagerKachel({
       >
         {anzeigeName}
       </Text>
-      <Text size="xs" c="dimmed" lh={1}>
-        {zaehlerText}
-      </Text>
+      <Group gap={4} wrap="nowrap" title={inhalt.titel ?? undefined}>
+        <Text size="xs" c="dimmed" lh={1} truncate style={{ flex: 1, minWidth: 0 }}>
+          {inhalt.text}
+        </Text>
+        {inhalt.zusatz && (
+          <Text size="xs" c="dimmed" lh={1} style={{ flexShrink: 0 }}>
+            {inhalt.zusatz}
+          </Text>
+        )}
+      </Group>
     </UnstyledButton>
   );
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   basisGebinde,
+  bodenIfcoPlatz,
+  boedenHinzufuegenSchema,
   bodenNamen,
   bodenNamenFehler,
   kinderArtNach,
@@ -915,5 +917,29 @@ describe('Regal rules', () => {
     expect(lagerortAnlegenSchema.safeParse({ name: 'N', boeden: ['A'] }).success).toBe(false);
     const fuenfzig = Array.from({ length: 50 }, (_, i) => `B${i}`);
     expect(lagerortAnlegenSchema.safeParse({ ...regal, boeden: fuenfzig }).success).toBe(true);
+  });
+});
+
+describe('bodenIfcoPlatz / schemas', () => {
+  const a = { hoeheCm: 20, stellflaechen: 1 };
+  const b = { hoeheCm: 30, stellflaechen: 1 };
+  it('picks one object for all or the entry of the Boden', () => {
+    expect(bodenIfcoPlatz(null, 0)).toBeNull();
+    expect(bodenIfcoPlatz(a, 3)).toEqual(a);
+    expect(bodenIfcoPlatz([a, b], 1)).toEqual(b);
+  });
+  it('accepts a single object or an array of matching length', () => {
+    const regal = { name: 'R', art: 'regal' as const, boeden: ['x', 'y'] };
+    expect(lagerortAnlegenSchema.safeParse({ ...regal, boedenIfcoPlatz: a }).success).toBe(true);
+    expect(lagerortAnlegenSchema.safeParse({ ...regal, boedenIfcoPlatz: [a, b] }).success).toBe(
+      true,
+    );
+    expect(lagerortAnlegenSchema.safeParse({ ...regal, boedenIfcoPlatz: [a] }).success).toBe(false);
+    expect(boedenHinzufuegenSchema.safeParse({ namen: ['x'], ifcoPlatz: [a, b] }).success).toBe(
+      false,
+    );
+    expect(
+      boedenHinzufuegenSchema.safeParse({ namen: ['x', 'y'], ifcoPlatz: [a, b] }).success,
+    ).toBe(true);
   });
 });

@@ -38,7 +38,7 @@ Ifcos sind Euronormboxen mit nur **zwei Grundflächen**: groß 60×40 und klein 
 jede Ifco hat optional einen Typ (`typId`). Typ löschen nur ungenutzt (409, sonst archivieren); archivierte Typen sind nicht mehr wählbar.
 
 Ein Lagerort kann **Ifco-Lagerplatz** sein (Felder und Regeln in [waren.md](./waren.md)): `ifcoHoeheCm` und `ifcoStellflaechen`.
-Dort stehen Ifcos (und lose Gegenstände), aber keine Ware.
+Dort stehen Ifcos und lose Gegenstände; Ware kann dort nur liegen, solange keine Ifco dort steht (und umgekehrt, siehe waren.md).
 
 **Kapazitätsmodell** (`packages/shared/src/ifco.ts`, `ifcosPassen`): Der Boden besteht aus `2 × Stellflächen` Halbspalten, jede
 `ifcoHoeheCm` hoch. Eine kleine Ifco belegt eine Halbspalte mit ihrer Höhe, eine große zwei beliebige Halbspalten (Reihenfolge und
@@ -52,7 +52,7 @@ Regeln (alle 400 mit deutscher Meldung, die den Platz, was dort steht und was ni
 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), …; „Strom-Ifco“ (6416, 16 cm) hat keinen Platz mehr.“):
 Ifco anlegen/ändern/umstellen (`PUT /ifcos/:id/platz`) auf einen Ifco-Lagerplatz, Typ einer dort stehenden Ifco ändern, Wiederherstellen
 einer archivierten Ifco, Grundfläche/Höhe eines Typs ändern (jeder Ifco-Lagerplatz mit Ifcos dieses Typs muss danach noch passen),
-Maße eines Ifco-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Ifcos ohne Typ dürfen nicht auf einen Ifco-Lagerplatz.
+Maße eines Ifco-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Zusätzlich ist jede Ifco auf einem Ifco-Lagerplatz mit Warenbestand ≠ 0 400 „Auf „HR11“ liegt Ware; dort kann keine Ifco stehen.“ Ifcos ohne Typ dürfen nicht auf einen Ifco-Lagerplatz.
 Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos unbeschränkt. Die Prüfung steht in
 `packages/api/src/ifcoPlatz.ts` und läuft in den Transaktionen der Stores.
 
@@ -144,15 +144,17 @@ jede Änderung macht `['inventar']` ungültig.
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „Ifco anlegen“ und „Kategorien“.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
-  gesperrt) und Anzahl, Live-Summe gegen Soll. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
+  gesperrt) und Anzahl, Live-Summe gegen Soll. Bei Soll 1 gibt es nur ein Feld „Platz“ (leerbar = „Kein Platz“), ohne Anzahl, Nummerierung, „Platz hinzufügen“ und Summe. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
-  (`IfcoInhaltModal`, `inventar:umraeumen`), Menü wie beim Gegenstand.
+  (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Soll 1 ohne Mengenfeld), Menü wie beim Gegenstand.
 - `/inventar/stammdaten`: Tab „Kategorien“ (Baum) und Tab „Ifco-Typen“ (`IfcoTypenTab`, Karten mit Name und „60×40 · 10 cm“;
   `IfcoTypFormular` mit Umschalter Grundfläche groß/klein und Höhe in cm). Bearbeiten nur mit `inventar:verwalten`.
 - Ifcos: `IfcoFormular` hat ein durchsuchbares Typ-Feld („6410 · 60×40 · 10 cm“); Karten und Detailseite zeigen den Typ. In
   `IfcoFormular` und `IfcoUmstellenModal` zeigen Ifco-Lagerplätze „passt“ bzw. sind mit „passt nicht“ / „Typ nötig“ gesperrt (dieselbe
   Funktion wie die API, `ifcoPlatz.ts`).
-- Lager-Seite: Ifco-Lagerplätze tragen ein Kisten-Symbol und zeigen „2 Ifcos“; Karte und Drawer nennen „20 cm hoch · 1 Stellfläche“, die
+- Kacheln normaler Böden nennen bei genau einem Eintrag (eine Ware mit Bestand, eine Ifco oder ein direkt zugeordneter Gegenstand, je nach
+  Schaltern) dessen Namen statt des Zählers (`kachelInhalt` in `lagerAnsicht.ts`); ab zwei Einträgen bleibt der Zähler.
+- Lager-Seite: Ifco-Lagerplätze tragen ein Kisten-Symbol und zeigen den Namen der Ifco (bei mehreren die alphabetisch erste mit „ +N“, einzeilig gekürzt, alle Namen im Titel); Karte und Drawer nennen „20 cm hoch · 1 Stellfläche“, die
   stehenden Ifcos mit Typ und „Passt noch: 1× 6410 oder 2× 4310“ bzw. „Voll“ (`passtNochText`). `LagerortFormular` hat den Schalter
   „Ifco-Lagerplatz“ mit Höhe und Stellflächen (gesperrt mit Hinweis bei Unterebenen), beim Regal und im Dialog „Böden hinzufügen“ den
   Schalter „Als Ifco-Lagerplätze anlegen“ (`IfcoPlatzFelder`).

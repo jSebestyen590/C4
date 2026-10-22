@@ -6,6 +6,7 @@ import {
   kachelBeschriftung,
   istAufgeklappt,
   istBelegt,
+  kachelInhalt,
   kachelZaehlerText,
   kinderTeilen,
   knotenMitKindern,
@@ -100,6 +101,57 @@ describe('Belegung', () => {
   it('counts only the parts that are shown', () => {
     expect(kachelZaehlerText('s1', { ...belegung, inventar: null })).toBe('2');
     expect(istBelegt('s2', { ...belegung, inventar: null })).toBe(false);
+  });
+});
+
+describe('kachelInhalt', () => {
+  const ifco = (name: string) => ({ id: name, name, stueck: 0, typ: null, ausleihe: null });
+  const inv = (ifcos: string[], gegenstaende: string[] = []) => ({
+    ifcos: ifcos.map(ifco),
+    gegenstaende: gegenstaende.map((name) => ({
+      id: name,
+      name,
+      anzahl: 3,
+      verliehen: 0,
+      vorgemerkt: 0,
+    })),
+  });
+  const ware = (name: string) => ({ wareId: name, name, text: '1', mhd: '' });
+
+  it('names the first Ifco alphabetically plus +N on an Ifco-Lagerplatz', () => {
+    const b: Belegung = {
+      bestand: null,
+      inventar: new Map([['p', inv(['Zelt', 'Alpha', 'Mitte'])]]),
+    };
+    expect(kachelInhalt('p', b, true)).toEqual({
+      text: 'Alpha',
+      zusatz: '+2',
+      titel: 'Alpha, Mitte, Zelt',
+    });
+    const eine: Belegung = { bestand: null, inventar: new Map([['p', inv(['Alpha'])]]) };
+    expect(kachelInhalt('p', eine, true).zusatz).toBeNull();
+  });
+  it('names the only entry of a normal node, whatever it is', () => {
+    const waren: Belegung = { bestand: new Map([['n', [ware('Mehl')]]]), inventar: null };
+    expect(kachelInhalt('n', waren, false).text).toBe('Mehl');
+    const ifcoB: Belegung = { bestand: null, inventar: new Map([['n', inv(['Kiste 1'])]]) };
+    expect(kachelInhalt('n', ifcoB, false).text).toBe('Kiste 1');
+    // a single Gegenstand with several pieces is still just the name
+    const g: Belegung = { bestand: null, inventar: new Map([['n', inv([], ['Zelt'])]]) };
+    expect(kachelInhalt('n', g, false)).toEqual({ text: 'Zelt', zusatz: null, titel: 'Zelt' });
+  });
+  it('keeps the counter for two or more entries and a dash when empty', () => {
+    const b: Belegung = {
+      bestand: new Map([['n', [ware('Mehl')]]]),
+      inventar: new Map([['n', inv([], ['Zelt'])]]),
+    };
+    expect(kachelInhalt('n', b, false)).toEqual({ text: '2', zusatz: null, titel: 'Mehl, Zelt' });
+    expect(kachelInhalt('leer', b, false).text).toBe('–');
+    expect(kachelInhalt('leer', b, true).titel).toBeNull();
+  });
+  it('only counts the parts that are shown', () => {
+    const b: Belegung = { bestand: new Map([['n', [ware('Mehl')]]]), inventar: null };
+    expect(kachelInhalt('n', b, false).text).toBe('Mehl');
   });
 });
 

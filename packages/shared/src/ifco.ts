@@ -225,7 +225,12 @@ export function passtIfco(
   return ifco !== null && ifcosPassen(platz, [...stehend, ifco]);
 }
 
-export const IFCO_PLATZ_KEINE_WARE = 'Auf einem Ifco-Lagerplatz kann keine Ware liegen.';
+/** Waren cannot be booked onto a place while Ifcos stand there. */
+export const ifcoPlatzHatIfcosFehler = (ort: string): string =>
+  `Auf „${ort}“ stehen Ifcos; dort kann gerade keine Ware liegen.`;
+/** An Ifco cannot be put onto an Ifco-Lagerplatz that holds Waren. */
+export const ifcoPlatzHatWareFehler = (ort: string): string =>
+  `Auf „${ort}“ liegt Ware; dort kann keine Ifco stehen.`;
 export const IFCO_PLATZ_KEINE_KINDER = 'Ein Ifco-Lagerplatz kann keine Unterebenen haben.';
 
 /**

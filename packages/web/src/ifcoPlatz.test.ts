@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
-import { ifcoPlatzMasse, ifcosText, passtNochText, platzPasst, typAnzeige } from './ifcoPlatz';
+import {
+  bodenMasse,
+  ifcoPlatzMasse,
+  ifcosText,
+  passtNochText,
+  reihenHoehen,
+  platzPasst,
+  typAnzeige,
+} from './ifcoPlatz';
 
 const typ = (
   id: string,
@@ -86,5 +94,20 @@ describe('texts', () => {
     expect(typAnzeige(null, typen)).toBe('Ohne Typ');
     expect(ifcoPlatzMasse({ ifcoHoeheCm: null, ifcoStellflaechen: null })).toBeNull();
     expect(ifcoPlatzMasse({ ifcoHoeheCm: 20, ifcoStellflaechen: 1 })).toEqual(platz);
+  });
+});
+
+describe('reihenHoehen / bodenMasse', () => {
+  it('lets later Reihen follow the first height unless they were edited', () => {
+    expect(reihenHoehen(20, undefined, 3)).toEqual([20, 20, 20]);
+    expect(reihenHoehen(20, { 3: 35 }, 3)).toEqual([20, 20, 35]);
+    expect(reihenHoehen('', {}, 2)).toEqual(['', '']);
+    expect(reihenHoehen(20, { 2: 30 }, 1)).toEqual([20]);
+  });
+  it('maps the Reihen to the Böden row by row', () => {
+    const a = { hoeheCm: 20, stellflaechen: 1 };
+    const b = { hoeheCm: 30, stellflaechen: 1 };
+    expect(bodenMasse([a, b], 2)).toEqual([a, a, b, b]);
+    expect(bodenMasse([], 3)).toEqual([]);
   });
 });

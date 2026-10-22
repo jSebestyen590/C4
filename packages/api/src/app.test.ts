@@ -11,6 +11,8 @@ import {
   type AdminUser,
   type MitgliedStatus,
   type PostenRecht,
+  ifcoPlatzHatIfcosFehler,
+  ifcoPlatzHatWareFehler,
 } from '@c4/shared';
 import { createApp } from './app';
 import { UsernameTakenError, type Konto } from './admin';
@@ -1306,6 +1308,84 @@ describe('posten', () => {
         ).status,
       ).toBe(201);
       expect(waren.boedenHinzufuegen).toHaveBeenLastCalledWith(regalRes.id, ['B2'], platz);
+    });
+
+    it('accepts one Ifco-Lagerplatz per Boden and rejects a wrong count', async () => {
+      const { app, waren } = makeApp();
+      const send = (url: string, body: unknown) =>
+        app.request(url, json('admin-token', 'POST', body));
+      const a = { hoeheCm: 20, stellflaechen: 1 };
+      const b = { hoeheCm: 30, stellflaechen: 1 };
+      const regal = { name: 'Regal', art: 'regal', boeden: ['R1', 'R2'] };
+      expect((await send('/api/lagerorte', { ...regal, boedenIfcoPlatz: [a, b] })).status).toBe(
+        201,
+      );
+      expect(waren.lagerortAnlegen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'Regal' }),
+        ['R1', 'R2'],
+        [a, b],
+      );
+      expect((await send('/api/lagerorte', { ...regal, boedenIfcoPlatz: [a] })).status).toBe(400);
+      const id = ((await (await send('/api/lagerorte', regal)).json()) as { id: string }).id;
+      expect(
+        (await send(`/api/lagerorte/${id}/boeden`, { namen: ['B3', 'B4'], ifcoPlatz: [a, b] }))
+          .status,
+      ).toBe(201);
+      expect(waren.boedenHinzufuegen).toHaveBeenLastCalledWith(id, ['B3', 'B4'], [a, b]);
+      expect(
+        (await send(`/api/lagerorte/${id}/boeden`, { namen: ['B5'], ifcoPlatz: [a, b] })).status,
+      ).toBe(400);
+    });
+
+    it('rejects reordering the Regalböden of a Regal', async () => {
+      const { app, waren } = makeApp();
+      waren.lagerortReihenfolge.mockRejectedValueOnce(
+        new WarenUngueltig('Regalböden lassen sich nicht verschieben.'),
+      );
+      const res = await app.request(
+        '/api/lagerorte/l1/reihenfolge',
+        json('admin-token', 'PUT', { ids: ['a', 'b'] }),
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Regalböden lassen sich nicht verschieben.' });
+    });
+
+    it('lets Ifco-Lagerplätze be marked with stock, but keeps Waren and Ifcos apart', async () => {
+      const { app, waren, inventar } = makeApp();
+      const send = (url: string, method: string, body: unknown) =>
+        app.request(url, json('admin-token', method, body));
+      // marking a place that holds Waren is no longer rejected by the API layer
+      const id = (
+        (await (await send('/api/lagerorte', 'POST', { name: 'HR11' })).json()) as {
+          id: string;
+        }
+      ).id;
+      const platz = { hoeheCm: 20, stellflaechen: 1 };
+      expect(
+        (await send(`/api/lagerorte/${id}`, 'PUT', { name: 'HR11', ifcoPlatz: platz })).status,
+      ).toBe(200);
+      // booking Waren onto a place that holds Ifcos is a 400
+      waren.einlagern.mockRejectedValueOnce(new WarenUngueltig(ifcoPlatzHatIfcosFehler('HR11')));
+      const buchung = await send('/api/bestand/einlagerung', 'POST', {
+        wareId: 'w1',
+        lagerortId: id,
+        gebindeId: 'gb1',
+        anzahl: 1,
+        zeitpunkt: '2026-05-01T10:00:00.000Z',
+      });
+      expect(buchung.status).toBe(400);
+      expect(await buchung.json()).toEqual({
+        error: 'Auf „HR11“ stehen Ifcos; dort kann gerade keine Ware liegen.',
+      });
+      // placing an Ifco onto a place that holds Waren is a 400
+      inventar.ifcoAnlegen.mockRejectedValueOnce(
+        new WarenUngueltig(ifcoPlatzHatWareFehler('HR11')),
+      );
+      const ifco = await send('/api/inventar/ifcos', 'POST', { name: 'Kiste', lagerortId: id });
+      expect(ifco.status).toBe(400);
+      expect(await ifco.json()).toEqual({
+        error: 'Auf „HR11“ liegt Ware; dort kann keine Ifco stehen.',
+      });
     });
 
     it('validates Gebinde and Waren input', async () => {

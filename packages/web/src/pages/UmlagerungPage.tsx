@@ -19,6 +19,7 @@ import {
 } from '../lagerBestand';
 import { useBuchungAbschluss } from '../useBuchungAbschluss';
 import { useEnterWeiter } from '../useEnterWeiter';
+import { useOrteMitIfcos } from '../inventarDaten';
 import { useLagerBestand } from '../useLagerBestand';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 
@@ -28,6 +29,7 @@ export function UmlagerungPage() {
   const api = useApi();
   const abschluss = useBuchungAbschluss();
   const daten = useLagerBestand();
+  const mitIfcos = useOrteMitIfcos().orte;
   const enterWeiter = useEnterWeiter('buchen-weiter');
   const [eingaben, setEingaben] = useState<Eingaben>({});
   const [ziele, setZiele] = useState<Record<string, string | null>>({});
@@ -53,10 +55,10 @@ export function UmlagerungPage() {
   const zielDaten = useMemo(
     () =>
       daten.lagerorte
-        .filter((l) => !l.archiviert && l.ifcoHoeheCm === null)
+        .filter((l) => !l.archiviert && !mitIfcos.has(l.id))
         .map((l) => ({ value: l.id, label: pfad(daten.lagerorte, l.id) }))
         .sort((a, b) => a.label.localeCompare(b.label, 'de')),
-    [daten.lagerorte],
+    [daten.lagerorte, mitIfcos],
   );
 
   const positionen = ausgangPositionen(abschnitte, eingaben);

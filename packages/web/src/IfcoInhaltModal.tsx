@@ -67,6 +67,9 @@ export function IfcoInhaltModal({
       }))
       .sort((a, b) => a.label.localeCompare(b.label, 'de'));
 
+  // A Gegenstand that exists only once needs no amount.
+  const einzeln = (id: string | null) => gegenstaende.find((g) => g.id === id)?.anzahl === 1;
+
   const aendern = (key: number, teil: Partial<Zeile>) =>
     setZeilen((l) => l.map((z) => (z.key === key ? { ...z, ...teil } : z)));
 
@@ -85,7 +88,7 @@ export function IfcoInhaltModal({
     const eingabe = {
       positionen: zeilen.map((z) => ({
         gegenstandId: z.gegenstandId!,
-        anzahl: typeof z.anzahl === 'number' ? z.anzahl : Number.NaN,
+        anzahl: einzeln(z.gegenstandId) ? 1 : typeof z.anzahl === 'number' ? z.anzahl : Number.NaN,
       })),
     };
     const parsed = ifcoInhaltSchema.safeParse(eingabe);
@@ -111,17 +114,19 @@ export function IfcoInhaltModal({
                 value={z.gegenstandId}
                 onChange={(gegenstandId) => aendern(z.key, { gegenstandId })}
               />
-              <Group align="flex-end" wrap="nowrap" gap="xs">
-                <NumberInput
-                  label="Anzahl"
-                  style={{ flex: 1 }}
-                  allowDecimal={false}
-                  allowNegative={false}
-                  min={1}
-                  inputMode="numeric"
-                  value={z.anzahl}
-                  onChange={(anzahl) => aendern(z.key, { anzahl })}
-                />
+              <Group align="flex-end" wrap="nowrap" gap="xs" justify="flex-end">
+                {!einzeln(z.gegenstandId) && (
+                  <NumberInput
+                    label="Anzahl"
+                    style={{ flex: 1 }}
+                    allowDecimal={false}
+                    allowNegative={false}
+                    min={1}
+                    inputMode="numeric"
+                    value={z.anzahl}
+                    onChange={(anzahl) => aendern(z.key, { anzahl })}
+                  />
+                )}
                 <ActionIcon
                   variant="subtle"
                   color="red"

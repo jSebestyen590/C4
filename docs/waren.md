@@ -30,15 +30,20 @@ Ein Lagerort **ohne Unterebenen** (normales Blatt oder Regalboden, kein Regal) l
 `lagerorte.ifco_hoehe_cm` (> 0, eine Nachkommastelle) und `ifco_stellflaechen` (≥ 0,5 in 0,5er-Schritten; 1 = eine Fläche 60×40) sind
 beide gesetzt (Migrationen `0035`, `0036`), sonst beide `NULL`. In der API: `ifcoPlatz: { hoeheCm, stellflaechen } | null` bei
 `POST`/`PUT /lagerorte` (beim `PUT` heißt fehlend „unverändert“, `null` hebt die Markierung auf), `boedenIfcoPlatz` beim Anlegen eines
-Regals und `ifcoPlatz` bei `POST /lagerorte/:id/boeden` machen alle neuen Böden zu Ifco-Lagerplätzen. Die Antworten enthalten
+Regals und `ifcoPlatz` bei `POST /lagerorte/:id/boeden` machen die neuen Böden zu Ifco-Lagerplätzen: ein Objekt gilt für alle, ein Array
+(`boeden`/`namen` gleich lang, gleiche Reihenfolge, sonst 400) gibt jedem Boden eigene Maße (Höhe je Reihe). Die Antworten enthalten
 `ifcoHoeheCm` und `ifcoStellflaechen`. Was auf einen Ifco-Lagerplatz passt, steht in [inventar.md](./inventar.md).
 
 - Ein Ifco-Lagerplatz kann keine Unterebenen haben (Anlegen oder Verschieben darunter: 400); ein Regal ist selbst keiner.
-- **Keine Ware:** Einlagern, Umlagern (Quelle und Ziel), Entnehmen, Sammelbuchungen, Inventur starten/zählen und eine Warenliste auf einem
-  Ifco-Lagerplatz sind 400 „Auf einem Ifco-Lagerplatz kann keine Ware liegen.“ Inventuren überspringen Ifco-Lagerplätze im Teilbaum.
-- Markieren bei Bestand ≠ 0 oder vorhandener Warenliste: 409. Markieren und Maße ändern prüfen, dass die stehenden Ifcos passen (400).
-- Oberfläche: Die Warenseiten (Einlagern, Entnehmen, Umlagern, `BuchungModal`) bieten Ifco-Lagerplätze nicht an; auf der Lager-Seite
-  fehlen die Buchungsaktionen und die Warenliste.
+- **Ware und Ifcos teilen sich keinen Platz:** Ein Ifco-Lagerplatz legt nur die Kapazität für Ifcos fest und verbietet sonst nichts. Solange
+  **keine** Ifco dort steht, gilt er für Ware wie ein normaler Lagerort (Einlagern, Umlagern-Ziel, Sammelbuchungen, Inventur, Warenliste;
+  Gegenstände sind immer erlaubt). Steht mindestens eine nicht archivierte Ifco dort, sind Buchungen auf den Platz (Einlagern, Umlagern-Ziel,
+  Nachfüllen-Ziel, Inventur starten) 400 „Auf „HR11“ stehen Ifcos; dort kann gerade keine Ware liegen.“; Inventuren überspringen solche
+  Plätze im Teilbaum (`inventurKnotenIds`). Entnehmen und Umlagern-Quelle bleiben möglich. Umgekehrt ist eine Ifco auf einen Ifco-Lagerplatz
+  mit Bestand ≠ 0 zu stellen 400 „Auf „HR11“ liegt Ware; dort kann keine Ifco stehen.“ (siehe [inventar.md](./inventar.md)).
+- Markieren ist auch bei Bestand oder Warenliste erlaubt; es prüft nur, dass die stehenden Ifcos passen (400).
+- Oberfläche: Die Warenseiten (Einlagern, Umlagern-Ziel, `BuchungModal`) und die Buchungsaktionen der Lager-Seite lassen nur Plätze weg, auf
+  denen Ifcos stehen (`useOrteMitIfcos`, auf der Lager-Seite aus der Ifco-Liste).
 
 ## Regale und Regalböden
 
@@ -123,7 +128,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 ## Oberfläche
 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
-  (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten, Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
+  (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten (nicht bei Regalböden), Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
   stattdessen Archivieren angeboten). Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur)
   ist die Zählreihenfolge der Inventur und die Reihenfolge der Bestandsanzeige.
   - **Bestand je Platz:** Der Schalter „Bestand anzeigen“ (standardmäßig an, Wahl im `localStorage`) zeigt unter jedem Knoten
@@ -143,6 +148,12 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     Bestand und Inventar wie in der Karte und den Aktionen des Knotenmenüs als volle Buttons (eine gemeinsame Definition,
     `lagerAktionen.tsx`, gleiche Rechte- und Archiv-Regeln; Entnehmen, Einlagern, Umlagern, Inventur stehen oben). Reine Logik:
     `lagerAnsicht.ts` (Karten/Kachel-Aufteilung, Zähler, „belegt“, Aufklapp-Standard).
+  - **Regalböden sind nicht verschiebbar:** Ihre Reihenfolge ist durch die Namen vorgegeben. `PUT /lagerorte/:id/reihenfolge` mit einem Regal als
+    Eltern ist 400 „Regalböden lassen sich nicht verschieben.“; „Nach oben/unten“ erscheint bei Böden nicht (`lagerAktionen.tsx`). Ein anderes
+    Eltern bekommt ein Boden weiterhin nicht.
+  - **Höhe je Reihe:** Mit „Als Ifco-Lagerplätze anlegen“ und mehreren Reihen erscheint je Reihe ein Feld „Höhe Reihe r (cm)“ (alle folgen
+    dem ersten Wert, bis man sie ändert); die Stellflächen sind gemeinsam. `boedenPlatzErgebnis` (`IfcoPlatzFelder.tsx`) macht daraus das Array
+    pro Boden (`bodenMasse`, Reihe für Reihe wie `bodenNamen`).
   - **Regal anlegen/bearbeiten** (`LagerortFormular.tsx`, `BoedenFelder.tsx`, `BoedenModal.tsx`): Der Dialog „Lager/Unterebene anlegen“
     hat (wo ein Regal erlaubt ist) den Umschalter „Lagerort“ / „Regal“. Für ein Regal: Reihen (Standard 1), Plätze je Reihe (Standard 5),
     zusammen höchstens 50, Namensmuster (Standard `Boden {n}`, bei mehreren Reihen `Reihe {r} Platz {p}`), Startnummer (für `{n}`)

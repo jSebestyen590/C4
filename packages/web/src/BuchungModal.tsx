@@ -24,6 +24,7 @@ import {
   type Gebinde,
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { useOrteMitIfcos } from './inventarDaten';
 import { DatumFeld } from './DatumFeld';
 import { fehlerText, pruefen } from './warenApi';
 import { zeileText } from './warenAnzeige';
@@ -48,7 +49,7 @@ export function BuchungModal({
 }: Readonly<{
   modus: BuchungsModus;
   ware: WareEintrag;
-  lagerorte: (BaumKnoten & { archiviert: boolean; ifcoHoeheCm?: number | null })[];
+  lagerorte: (BaumKnoten & { archiviert: boolean })[];
   gebinde: (Gebinde & { archiviert: boolean })[];
   onClose: () => void;
 }>) {
@@ -56,6 +57,7 @@ export function BuchungModal({
   const qc = useQueryClient();
   const mobil = useMediaQuery('(max-width: 48em)');
   const ein = modus === 'einlagerung';
+  const mitIfcos = useOrteMitIfcos().orte;
 
   const gebindeDaten = useMemo(
     () =>
@@ -68,10 +70,10 @@ export function BuchungModal({
   const lagerDaten = useMemo(
     () =>
       lagerorte
-        .filter((l) => !l.archiviert && (l.ifcoHoeheCm ?? null) === null)
+        .filter((l) => !l.archiviert && !mitIfcos.has(l.id))
         .map((l) => ({ value: l.id, label: pfad(lagerorte, l.id) }))
         .sort((a, b) => a.label.localeCompare(b.label, 'de')),
-    [lagerorte],
+    [lagerorte, mitIfcos],
   );
 
   const [lagerortId, setLagerortId] = useState<string | null>(null);

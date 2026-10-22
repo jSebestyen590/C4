@@ -18,12 +18,14 @@ import {
   ifcoPlatzMarkierenFehler,
   lagerortArtFehler,
   lagerortSchema,
+  type IfcoPlatzMasse,
   type LagerortArt,
 } from '@c4/shared';
 import { useApi } from './api';
 import { BoedenFelder, boedenGesamtFehler, boedenStandard } from './BoedenFelder';
 import {
   IfcoPlatzFelder,
+  boedenPlatzErgebnis,
   ifcoPlatzErgebnis,
   ifcoPlatzStandard,
   type IfcoPlatzWert,
@@ -92,7 +94,7 @@ export function LagerortFormular({
       art?: LagerortArt | null;
       boeden?: string[];
       ifcoPlatz?: { hoeheCm: number; stellflaechen: number } | null;
-      boedenIfcoPlatz?: { hoeheCm: number; stellflaechen: number } | null;
+      boedenIfcoPlatz?: IfcoPlatzMasse | IfcoPlatzMasse[] | null;
     }) => {
       if (lagerort) {
         await pruefen(await api.lagerorte[':id'].$put({ param: { id: lagerort.id }, json }));
@@ -123,7 +125,11 @@ export function LagerortFormular({
       if (problem) return setFehler(problem);
     }
     const platz = ifcoPlatzErgebnis(ifcoPlatz);
-    const boedenPlatz = ifcoPlatzErgebnis(bodenIfcoPlatz);
+    const boedenPlatz = boedenPlatzErgebnis(
+      bodenIfcoPlatz,
+      Number(boeden.reihen),
+      Number(boeden.plaetze),
+    );
     if (typeof platz === 'string' && wahl === 'normal') return setFehler(platz);
     if (typeof boedenPlatz === 'string' && neuesRegal) return setFehler(boedenPlatz);
     const eingabe = {
@@ -206,7 +212,8 @@ export function LagerortFormular({
                 wert={bodenIfcoPlatz}
                 onChange={setBodenIfcoPlatz}
                 label="Als Ifco-Lagerplätze anlegen"
-                beschreibung="Alle neuen Böden werden Ifco-Lagerplätze mit derselben Höhe und Stellfläche."
+                beschreibung="Alle neuen Böden werden Ifco-Lagerplätze; bei mehreren Reihen hat jede Reihe ihre eigene Höhe."
+                reihen={Number(boeden.reihen) || 1}
               />
             </>
           )}

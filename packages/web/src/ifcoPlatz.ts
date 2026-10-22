@@ -78,3 +78,21 @@ export function platzPasst(
     ? { passt: true, grund: null }
     : { passt: false, grund: 'passt nicht' };
 }
+
+/**
+ * Height input of every Reihe: Reihe 1 is `erste`, a later Reihe has its own value when it was
+ * edited (`ueberschrieben`, by 1-based row number) and otherwise follows the first one.
+ */
+export function reihenHoehen(
+  erste: number | string,
+  ueberschrieben: Record<number, number | string> | undefined,
+  reihen: number,
+): (number | string)[] {
+  return Array.from({ length: Math.max(0, reihen) }, (_, i) =>
+    i === 0 ? erste : (ueberschrieben?.[i + 1] ?? erste),
+  );
+}
+
+/** Dimensions per Boden, row by row: every Boden of Reihe r gets `reihenMasse[r - 1]`. */
+export const bodenMasse = (reihenMasse: IfcoPlatzMasse[], plaetze: number): IfcoPlatzMasse[] =>
+  reihenMasse.flatMap((m) => Array.from({ length: Math.max(0, plaetze) }, () => m));

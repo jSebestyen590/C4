@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   ausleihFehler,
+  bestandZu,
+  ifcoPlatzHatWareFehler,
   ausleiheTage,
   gefaehrdungen,
   ganzeIfcoFehler,
@@ -28,6 +30,7 @@ import type { Db } from './db/client';
 import {
   ausleihen,
   ausleihePositionen,
+  bestandsbuchungen,
   gegenstaende,
   gegenstandPlaetze,
   ifcos,
@@ -46,6 +49,7 @@ import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 import {
   elternFehler,
   blockiertVon,
+  buchungenLaden,
   gibtEs,
   offenLaden,
   sortiert,
@@ -349,6 +353,9 @@ async function passtAufPlatz(
   const [ort] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
   const masse = ort && ifcoPlatzMasse(ort);
   if (!ort || !masse) return;
+  // Waren and Ifcos do not share a place: an Ifco cannot go where Waren lie.
+  const bestand = bestandZu(await buchungenLaden(q, eq(bestandsbuchungen.lagerortId, ort.id)));
+  if (bestand.length > 0) throw new WarenUngueltig(ifcoPlatzHatWareFehler(ort.name));
   const fehler = await ifcoPlatzPruefen(q, ort, masse, {
     ohne: ifcoId === null ? [] : [ifcoId],
     neu: [{ name, typId }],

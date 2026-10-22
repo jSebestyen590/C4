@@ -37,6 +37,41 @@ export function kachelZaehlerText(id: string, b: Belegung): string {
   return summe === 0 ? '–' : String(summe);
 }
 
+/** What a tile shows below its name: `text` (truncated by the tile), a fixed `zusatz` like `+2`, full names in `titel`. */
+export interface KachelInhalt {
+  text: string;
+  zusatz: string | null;
+  titel: string | null;
+}
+
+/**
+ * Tile content. An Ifco-Lagerplatz with Ifcos names the first Ifco (alphabetical) plus `+N` for the
+ * others. Any other node names its only entry (one Ware with stock, one Ifco or one directly assigned
+ * Gegenstand, among the parts shown) and otherwise shows the counter ("–" when empty).
+ */
+export function kachelInhalt(id: string, b: Belegung, istIfcoPlatz: boolean): KachelInhalt {
+  const nachName = (a: string, c: string) => a.localeCompare(c, 'de');
+  const ifcos = (b.inventar?.get(id)?.ifcos ?? []).map((i) => i.name).sort(nachName);
+  if (istIfcoPlatz && ifcos.length > 0) {
+    return {
+      text: ifcos[0]!,
+      zusatz: ifcos.length > 1 ? `+${ifcos.length - 1}` : null,
+      titel: ifcos.join(', '),
+    };
+  }
+  const namen = [
+    ...(b.bestand?.get(id) ?? []).map((w) => w.name),
+    ...ifcos,
+    ...(b.inventar?.get(id)?.gegenstaende ?? []).map((g) => g.name),
+  ];
+  if (namen.length === 1) return { text: namen[0]!, zusatz: null, titel: namen[0]! };
+  return {
+    text: kachelZaehlerText(id, b),
+    zusatz: null,
+    titel: namen.length > 0 ? [...namen].sort(nachName).join(', ') : null,
+  };
+}
+
 /** Whether something lies on the node itself (among the parts that are currently shown). */
 export function istBelegt(id: string, b: Belegung): boolean {
   const z = zaehler(id, b);
