@@ -147,3 +147,24 @@ export function kachelBeschriftung(namen: string[]): { praefix: string | null; k
   if (kurz.some((k) => k === '')) return { praefix: null, kurz: namen };
   return { praefix: praefix.trim(), kurz };
 }
+
+/**
+ * Ids of the nodes whose subtree holds Waren stock (any positive amount on the node itself or
+ * below it). Entnehmen and Umlagern only make sense there.
+ */
+export function knotenMitBestand(
+  bestand: { lagerortId: string; menge: number }[],
+  knoten: { id: string; parentId: string | null }[],
+): Set<string> {
+  const eltern = new Map(knoten.map((k) => [k.id, k.parentId]));
+  const ergebnis = new Set<string>();
+  for (const b of bestand) {
+    if (b.menge <= 0) continue;
+    let id: string | null | undefined = b.lagerortId;
+    while (id && !ergebnis.has(id)) {
+      ergebnis.add(id);
+      id = eltern.get(id);
+    }
+  }
+  return ergebnis;
+}

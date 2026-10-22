@@ -57,6 +57,8 @@ export interface LagerKontext {
   ifcoDaten: { ifcos: IfcoEintrag[]; typen: IfcoTypEintrag[] } | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
+  /** Whether the node or anything below it holds Waren stock (true while stock is loading). */
+  hatBestand: (id: string) => boolean;
   /** Whether a node with children is expanded (default by depth, explicit choices win). */
   aufgeklappt: (id: string, tiefe: number) => boolean;
   umschalten: (id: string, tiefe: number) => void;
@@ -148,14 +150,16 @@ function LagerZeile({
         </Group>
         {tiefe === 0 && inventurMoeglich && (
           <Stack gap="xs" px={8} pb={8}>
-            <SimpleGrid cols={2} spacing="xs" maw={{ sm: 420 }}>
-              <Button
-                mih={44}
-                leftSection={<IconPackageExport size={18} />}
-                onClick={() => ctx.entnehmen(node)}
-              >
-                Entnehmen
-              </Button>
+            <SimpleGrid cols={ctx.hatBestand(node.id) ? 2 : 1} spacing="xs" maw={{ sm: 420 }}>
+              {ctx.hatBestand(node.id) && (
+                <Button
+                  mih={44}
+                  leftSection={<IconPackageExport size={18} />}
+                  onClick={() => ctx.entnehmen(node)}
+                >
+                  Entnehmen
+                </Button>
+              )}
               <Button
                 mih={44}
                 variant="light"

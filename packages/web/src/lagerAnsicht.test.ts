@@ -9,6 +9,7 @@ import {
   kachelInhalt,
   kachelZaehlerText,
   kinderTeilen,
+  knotenMitBestand,
   knotenMitKindern,
   nurBelegte,
   type Belegung,
@@ -215,5 +216,23 @@ describe('kachelBeschriftung', () => {
       kurz: ['Brett', 'Brett 2'],
     });
     expect(kachelBeschriftung(['Stellplatz 1'])).toEqual({ praefix: null, kurz: ['Stellplatz 1'] });
+  });
+});
+
+describe('knotenMitBestand', () => {
+  const knoten = [
+    { id: 'lager', parentId: null },
+    { id: 'regal', parentId: 'lager' },
+    { id: 'boden', parentId: 'regal' },
+    { id: 'leer', parentId: 'lager' },
+  ];
+  it('marks the node with stock and all its ancestors', () => {
+    expect(knotenMitBestand([{ lagerortId: 'boden', menge: 3 }], knoten)).toEqual(
+      new Set(['boden', 'regal', 'lager']),
+    );
+  });
+  it('ignores zero and negative amounts', () => {
+    expect(knotenMitBestand([{ lagerortId: 'boden', menge: -2 }], knoten).size).toBe(0);
+    expect(knotenMitBestand([], knoten).has('leer')).toBe(false);
   });
 });

@@ -13,6 +13,7 @@ import {
   alleSetzen,
   aufgeklapptLesen,
   istAufgeklappt,
+  knotenMitBestand,
   knotenMitKindern,
   nurBelegte,
   type Aufgeklappt,
@@ -106,6 +107,10 @@ export function LagerPage() {
   });
 
   const lagerBestand = useLagerBestand();
+  const mitBestand = useMemo(
+    () => knotenMitBestand(lagerBestand.bestand, lagerBestand.lagerorte),
+    [lagerBestand.bestand, lagerBestand.lagerorte],
+  );
   const bestandKarte = useMemo(
     () =>
       bestandZeigen && lagerBestand.bestandGeladen
@@ -259,6 +264,7 @@ export function LagerPage() {
   const ctx: LagerKontext = {
     darfVerwalten,
     darfBuchen,
+    hatBestand: (id) => !lagerBestand.bestandGeladen || mitBestand.has(id),
     bestand: bestandKarte,
     inventar: inventarKarte,
     ifcoDaten,

@@ -169,6 +169,8 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
     tauscht mit dem sichtbaren Geschwister, die Anzeige (Karten vor Kacheln) kann davon abweichen.
   - **Aktionen (`bestand:buchen`, nicht archiviert):** Das Knotenmenü bietet Entnehmen, Einlagern, Umlagern und Inventur
     starten/fortsetzen. Oberste Knoten zeigen „Entnehmen“ und „Einlagern“ als Buttons in einer Zeile, darunter „Inventur“.
+    „Entnehmen“ und „Umlagern“ erscheinen nur, wenn der Knoten samt Teilbaum Waren-Bestand hat (`knotenMitBestand`, unabhängig vom
+    Schalter „Bestand anzeigen“; solange der Bestand lädt, werden sie gezeigt).
 - `/lager/:id/entnehmen`, `/lager/:id/einlagern`, `/lager/:id/umlagern` (`bestand:buchen`): Tabellen für den Knoten samt
   Teilbaum, Handy zuerst; die Bausteine teilt sich die Inventur (`BestandZeile`, `BestandAbschnitt`, `InventurLeiste`,
   `useEnterWeiter`). Je Platz (Tiefensuche, nicht archivierte) ein Abschnitt, Zahlenfelder mit Zahlentastatur, Enter springt zum
