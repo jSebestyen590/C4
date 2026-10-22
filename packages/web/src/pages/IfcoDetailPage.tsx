@@ -32,9 +32,10 @@ import { IfcoFormular } from '../IfcoFormular';
 import { IfcoInhaltModal } from '../IfcoInhaltModal';
 import { IfcoUmstellenModal } from '../IfcoUmstellenModal';
 import { ifcoPlatzMasse, typAnzeige } from '../ifcoPlatz';
-import { ifcoAusleiheText, mengeText } from '../inventarAnzeige';
-import { INVENTAR_KEY, useInventar } from '../inventarDaten';
+import { anzahlText, ifcoAusleiheText } from '../inventarAnzeige';
+import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
+import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 
 /** Detail of one Ifco: place (movable) and content. */
@@ -47,6 +48,7 @@ export function IfcoDetailPage() {
   const darfVerwalten = can('inventar:verwalten');
   const darfUmraeumen = can('inventar:umraeumen');
   const inv = useInventar();
+  const ausleihenDaten = useAusleihen(true);
   const [bearbeiten, setBearbeiten] = useState(false);
   const [umstellen, setUmstellen] = useState(false);
   const [inhalt, setInhalt] = useState(false);
@@ -209,12 +211,17 @@ export function IfcoDetailPage() {
               >
                 {z.name}
               </Anchor>
-              {mengeText(z.anzahl, z.verliehen, z.vorgemerkt) && (
+              {anzahlText(z.anzahl) && (
                 <Text fw={600} style={{ flex: 'none' }}>
-                  {mengeText(z.anzahl, z.verliehen, z.vorgemerkt)}
+                  {anzahlText(z.anzahl)}
                 </Text>
               )}
             </Group>
+            <PlatzAusleihHinweise
+              ausleihen={ausleihenDaten.ausleihen}
+              gegenstandId={z.gegenstandId}
+              ziel={{ lagerortId: null, ifcoId: ifco.id }}
+            />
           </Paper>
         ))}
       </SimpleGrid>

@@ -145,7 +145,7 @@ jede Änderung macht `['inventar']` ungültig.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (Ifcos verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „Ifcos“, bereits gewählte
   gesperrt) und Anzahl, Live-Summe gegen Soll. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
-- `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste, „Inhalt bearbeiten“
+- `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`), Menü wie beim Gegenstand.
 - `/inventar/stammdaten`: Tab „Kategorien“ (Baum) und Tab „Ifco-Typen“ (`IfcoTypenTab`, Karten mit Name und „60×40 · 10 cm“;
   `IfcoTypFormular` mit Umschalter Grundfläche groß/klein und Höhe in cm). Bearbeiten nur mit `inventar:verwalten`.
