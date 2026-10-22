@@ -24,6 +24,22 @@ liegt (Ifcos, direkt zugeordnete Gegenstände) und nichts verliehen oder vorgeme
 archiviert. Löschen prüft zusätzlich, ob Ifcos, Inventar-Plätze oder Ausleihen auf den Lagerort verweisen. Auf archivierte Einträge lässt sich nicht buchen oder sie auswählen (400); Listen
 zeigen sie nur mit `?archiv=1`.
 
+## Ifco-Lagerplätze
+
+Ein Lagerort **ohne Unterebenen** (normales Blatt oder Regalboden, kein Regal) lässt sich als **Ifco-Lagerplatz** markieren:
+`lagerorte.ifco_hoehe_cm` (> 0, eine Nachkommastelle) und `ifco_stellflaechen` (≥ 0,5 in 0,5er-Schritten; 1 = eine Fläche 60×40) sind
+beide gesetzt (Migrationen `0035`, `0036`), sonst beide `NULL`. In der API: `ifcoPlatz: { hoeheCm, stellflaechen } | null` bei
+`POST`/`PUT /lagerorte` (beim `PUT` heißt fehlend „unverändert“, `null` hebt die Markierung auf), `boedenIfcoPlatz` beim Anlegen eines
+Regals und `ifcoPlatz` bei `POST /lagerorte/:id/boeden` machen alle neuen Böden zu Ifco-Lagerplätzen. Die Antworten enthalten
+`ifcoHoeheCm` und `ifcoStellflaechen`. Was auf einen Ifco-Lagerplatz passt, steht in [inventar.md](./inventar.md).
+
+- Ein Ifco-Lagerplatz kann keine Unterebenen haben (Anlegen oder Verschieben darunter: 400); ein Regal ist selbst keiner.
+- **Keine Ware:** Einlagern, Umlagern (Quelle und Ziel), Entnehmen, Sammelbuchungen, Inventur starten/zählen und eine Warenliste auf einem
+  Ifco-Lagerplatz sind 400 „Auf einem Ifco-Lagerplatz kann keine Ware liegen.“ Inventuren überspringen Ifco-Lagerplätze im Teilbaum.
+- Markieren bei Bestand ≠ 0 oder vorhandener Warenliste: 409. Markieren und Maße ändern prüfen, dass die stehenden Ifcos passen (400).
+- Oberfläche: Die Warenseiten (Einlagern, Entnehmen, Umlagern, `BuchungModal`) bieten Ifco-Lagerplätze nicht an; auf der Lager-Seite
+  fehlen die Buchungsaktionen und die Warenliste.
+
 ## Regale und Regalböden
 
 Lagerorte haben eine Art (`lagerorte.art`, Migration `0032`): `null` = normaler Lagerort, `regal` oder `regalboden`

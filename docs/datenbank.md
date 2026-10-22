@@ -17,6 +17,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `inventar:verwalten`. Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_waren`. 0032 (`lagerorte.art`) kann die Spalte nicht entfernen, weil
   Aurora DSQL `ALTER TABLE … DROP COLUMN` nicht unterstützt; die Down-Datei setzt `art` auf `NULL` zurück (die Spalte bleibt, erneutes Migrieren ist
   wegen `ADD COLUMN IF NOT EXISTS` unproblematisch).
+  0033 (`ifco_typen`) löscht die Tabelle. 0034 (`ifcos.typ_id`), 0035 (`lagerorte.ifco_hoehe_cm`) und 0036 (`lagerorte.ifco_stellflaechen`)
+  können ihre Spalte aus demselben Grund nicht entfernen; die Down-Dateien setzen die Werte auf `NULL`. `ifcos.typ_id` ist nur Text ohne
+  Fremdschlüssel (eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher), der Bezug zu `ifco_typen` wird in der API geprüft.
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 

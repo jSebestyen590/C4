@@ -24,13 +24,14 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { pfad } from '@c4/shared';
+import { ifcoPlatzText, pfad } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { IfcoFormular } from '../IfcoFormular';
 import { IfcoInhaltModal } from '../IfcoInhaltModal';
 import { IfcoUmstellenModal } from '../IfcoUmstellenModal';
+import { ifcoPlatzMasse, typAnzeige } from '../ifcoPlatz';
 import { mengeText } from '../inventarAnzeige';
 import { INVENTAR_KEY, useInventar } from '../inventarDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
@@ -82,6 +83,12 @@ export function IfcoDetailPage() {
         </Alert>
       </Stack>
     );
+  const platzMasse = ifco.lagerortId
+    ? (() => {
+        const ort = inv.lagerorte.find((l) => l.id === ifco.lagerortId);
+        return ort ? ifcoPlatzMasse(ort) : null;
+      })()
+    : null;
   const zeilen = ifco.inhalt
     .map((p) => {
       const g = inv.gegenstaende.find((x) => x.id === p.gegenstandId);
@@ -103,6 +110,9 @@ export function IfcoDetailPage() {
           <Title order={2} style={{ overflowWrap: 'anywhere' }}>
             {ifco.name}
           </Title>
+          <Text size="sm" fw={600}>
+            {typAnzeige(ifco.typId, inv.ifcoTypen)}
+          </Text>
           {ifco.beschreibung && (
             <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
               {ifco.beschreibung}
@@ -146,7 +156,14 @@ export function IfcoDetailPage() {
       <Title order={3}>Platz</Title>
       <Paper withBorder p="sm">
         {ifco.lagerortId ? (
-          <Text style={{ overflowWrap: 'anywhere' }}>{pfad(inv.lagerorte, ifco.lagerortId)}</Text>
+          <Stack gap={2}>
+            <Text style={{ overflowWrap: 'anywhere' }}>{pfad(inv.lagerorte, ifco.lagerortId)}</Text>
+            {platzMasse && (
+              <Text size="sm" c="dimmed">
+                Ifco-Lagerplatz · {ifcoPlatzText(platzMasse)}
+              </Text>
+            )}
+          </Stack>
         ) : (
           <Text c="orange">Ohne Platz</Text>
         )}
@@ -210,12 +227,20 @@ export function IfcoDetailPage() {
       )}
 
       {bearbeiten && (
-        <IfcoFormular ifco={ifco} lagerorte={inv.lagerorte} onClose={() => setBearbeiten(false)} />
+        <IfcoFormular
+          ifco={ifco}
+          lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
+          typen={inv.ifcoTypen}
+          onClose={() => setBearbeiten(false)}
+        />
       )}
       {umstellen && (
         <IfcoUmstellenModal
           ifco={ifco}
           lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
+          typen={inv.ifcoTypen}
           onClose={() => setUmstellen(false)}
         />
       )}

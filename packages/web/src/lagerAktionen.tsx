@@ -21,7 +21,7 @@ export const inventurText = (ctx: LagerKontext, node: LagerKnoten) =>
 
 /** Whether buchen actions (Entnehmen, Einlagern, Umlagern, Inventur) apply to a node. */
 export const buchenMoeglich = (ctx: LagerKontext, node: LagerKnoten) =>
-  ctx.darfBuchen && !node.archiviert;
+  ctx.darfBuchen && !node.archiviert && node.ifcoHoeheCm === null;
 
 /** The single definition of the node actions with their permission rules, shared by card menu and tile drawer. */
 export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
@@ -31,7 +31,8 @@ export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
       text: 'Unterebene anlegen',
       icon: <IconPlus size={18} />,
       onClick: () => ctx.unterebene(node),
-      sichtbar: ctx.darfVerwalten && !node.archiviert && node.art === null,
+      sichtbar:
+        ctx.darfVerwalten && !node.archiviert && node.art === null && node.ifcoHoeheCm === null,
     },
     {
       text: 'Böden hinzufügen',
@@ -63,7 +64,7 @@ export function lagerAktionen(node: LagerKnoten, ctx: LagerKontext): Aktion[] {
       text: 'Warenliste bearbeiten',
       icon: <IconListDetails size={18} />,
       onClick: () => ctx.waren(node),
-      sichtbar: ctx.darfVerwalten && !node.archiviert,
+      sichtbar: ctx.darfVerwalten && !node.archiviert && node.ifcoHoeheCm === null,
     },
     {
       text: 'Entnehmen',

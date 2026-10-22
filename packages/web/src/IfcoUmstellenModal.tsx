@@ -2,8 +2,8 @@ import { Alert, Button, Modal, Stack } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useApi } from './api';
-import { lagerortOptionen } from './inventarAnzeige';
-import { INVENTAR_KEY, type IfcoEintrag } from './inventarDaten';
+import { ifcoPlatzOptionen } from './inventarAnzeige';
+import { INVENTAR_KEY, type IfcoEintrag, type IfcoTypEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { PfadSelect } from './PfadSelect';
@@ -12,12 +12,24 @@ import { PfadSelect } from './PfadSelect';
 export function IfcoUmstellenModal({
   ifco,
   lagerorte,
+  ifcos,
+  typen,
   onClose,
-}: Readonly<{ ifco: IfcoEintrag; lagerorte: LagerKnoten[]; onClose: () => void }>) {
+}: Readonly<{
+  ifco: IfcoEintrag;
+  lagerorte: LagerKnoten[];
+  /** All Ifcos and types, to tell where the Ifco fits. */
+  ifcos: IfcoEintrag[];
+  typen: IfcoTypEintrag[];
+  onClose: () => void;
+}>) {
   const api = useApi();
   const qc = useQueryClient();
   const [lagerortId, setLagerortId] = useState<string | null>(ifco.lagerortId);
-  const optionen = useMemo(() => lagerortOptionen(lagerorte, ifco.lagerortId), [lagerorte, ifco]);
+  const optionen = useMemo(
+    () => ifcoPlatzOptionen(lagerorte, ifco, ifco.typId, ifcos, typen),
+    [lagerorte, ifco, ifcos, typen],
+  );
 
   const speichern = useMutation({
     mutationFn: async () =>

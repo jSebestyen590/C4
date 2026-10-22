@@ -26,6 +26,8 @@ const knoten = (
   beschreibung: null,
   archiviert: false,
   art,
+  ifcoHoeheCm: null,
+  ifcoStellflaechen: null,
 });
 
 // lager > regal > (s1, s2, s3), lager > kiste (leaf), leer (leaf, top level)
@@ -50,7 +52,7 @@ const belegung: Belegung = {
     ],
   ]),
   inventar: new Map([
-    ['s2', { ifcos: [{ id: 'i', name: 'I', stueck: 3 }], gegenstaende: [] }],
+    ['s2', { ifcos: [{ id: 'i', name: 'I', stueck: 3, typ: null }], gegenstaende: [] }],
     [
       's1',
       { ifcos: [], gegenstaende: [{ id: 'g', name: 'G', anzahl: 2, verliehen: 0, vorgemerkt: 0 }] },

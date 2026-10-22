@@ -21,6 +21,7 @@ import { pfad, platzText, teilbaumIds } from '@c4/shared';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { IfcoFormular } from '../IfcoFormular';
+import { typAnzeige } from '../ifcoPlatz';
 import {
   gegenstandAbweichung,
   kategorieOptionen,
@@ -117,6 +118,9 @@ function IfcoKarte({
               (archiviert)
             </Text>
           )}
+        </Text>
+        <Text size="sm" c="dimmed">
+          {typAnzeige(ifco.typId, inv.ifcoTypen)}
         </Text>
         {ifco.lagerortId ? (
           <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
@@ -291,6 +295,8 @@ export function InventarPage() {
       {anlegen && ansicht === 'ifcos' && (
         <IfcoFormular
           lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
+          typen={inv.ifcoTypen}
           onClose={() => setAnlegen(false)}
           onAngelegt={(id) => navigate(`/inventar/ifcos/${encodeURIComponent(id)}`)}
         />

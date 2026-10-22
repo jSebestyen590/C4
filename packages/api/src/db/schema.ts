@@ -13,6 +13,7 @@ import type {
   Anrede,
   BuchungsArt,
   Einheit,
+  IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
   MitgliedStatus,
@@ -24,6 +25,13 @@ import type {
 /** `numeric` as a JS number (the driver returns numeric values as strings). */
 const dezimal = customType<{ data: number; driverData: string }>({
   dataType: () => 'numeric(10,3)',
+  fromDriver: (value) => Number(value),
+  toDriver: (value) => String(value),
+});
+
+/** `numeric` with one decimal as a JS number (heights in cm, Stellflächen). */
+const dezimal1 = customType<{ data: number; driverData: string }>({
+  dataType: () => 'numeric(5,1)',
   fromDriver: (value) => Number(value),
   toDriver: (value) => String(value),
 });
@@ -106,6 +114,10 @@ export const lagerorte = pgTable('lagerorte', {
   archiviert: boolean('archiviert').notNull().default(false),
   /** null = normal Lagerort; see `LAGERORT_ARTEN` in shared. */
   art: text('art').$type<LagerortArt>(),
+  /** Ifco-Lagerplatz: height of every half-column in cm (null = normal place), see `ifcosPassen` in shared. */
+  ifcoHoeheCm: dezimal1('ifco_hoehe_cm'),
+  /** Ifco-Lagerplatz: number of 60x40 footprints (steps of 0.5); set together with `ifcoHoeheCm`. */
+  ifcoStellflaechen: dezimal1('ifco_stellflaechen'),
 });
 export type LagerortRow = typeof lagerorte.$inferSelect;
 
@@ -273,6 +285,16 @@ export const inventarKategorien = pgTable('inventar_kategorien', {
 });
 export type InventarKategorieRow = typeof inventarKategorien.$inferSelect;
 
+/** Master data of an Ifco kind: footprint and height. */
+export const ifcoTypen = pgTable('ifco_typen', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  grundflaeche: text('grundflaeche').$type<IfcoGrundflaeche>().notNull(),
+  hoeheCm: dezimal1('hoehe_cm').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type IfcoTypRow = typeof ifcoTypen.$inferSelect;
+
 /** A Euronorm box holding Gegenstände; `lagerortId` null = currently without a place. */
 export const ifcos = pgTable('ifcos', {
   id: text('id').primaryKey(),
@@ -280,6 +302,8 @@ export const ifcos = pgTable('ifcos', {
   beschreibung: text('beschreibung'),
   lagerortId: text('lagerort_id').references(() => lagerorte.id),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Reference to `ifco_typen` without a foreign key (enforced in the API); null = no type. */
+  typId: text('typ_id'),
 });
 export type IfcoRow = typeof ifcos.$inferSelect;
 

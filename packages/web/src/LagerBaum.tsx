@@ -13,6 +13,7 @@ import {
 import {
   IconChevronDown,
   IconChevronRight,
+  IconBox,
   IconClipboardCheck,
   IconLayoutRows,
   IconPackageExport,
@@ -24,7 +25,9 @@ import { kachelBeschriftung, kinderTeilen, type Belegung } from './lagerAnsicht'
 import { buchenMoeglich, inventurText, lagerAktionen } from './lagerAktionen';
 import type { BestandsAnzeige } from './lagerBestand';
 import type { LagerInventar } from './lagerInventar';
-import { BestandListe, InventarListe } from './LagerInhalt';
+import { BestandListe, IfcoPlatzInfo, InventarListe } from './LagerInhalt';
+import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
+import { ifcoPlatzMasse } from './ifcoPlatz';
 import { LagerKachel } from './LagerKachel';
 
 export interface LagerKnoten {
@@ -36,6 +39,10 @@ export interface LagerKnoten {
   archiviert: boolean;
   /** null = normal Lagerort. */
   art: LagerortArt | null;
+  /** Ifco-Lagerplatz: height of every half-column in cm; null = normal Lagerort. */
+  ifcoHoeheCm: number | null;
+  /** Ifco-Lagerplatz: number of 60×40 footprints; set together with `ifcoHoeheCm`. */
+  ifcoStellflaechen: number | null;
 }
 
 /** Everything the tree needs from the page: permissions, state and the action callbacks. */
@@ -46,6 +53,8 @@ export interface LagerKontext {
   bestand: Map<string, BestandsAnzeige[]> | null;
   /** Inventar (Ifcos, Gegenstände) per node; null while hidden or not loaded. */
   inventar: Map<string, LagerInventar> | null;
+  /** Ifcos and Ifco types for the capacity of Ifco-Lagerplätze; null while not loaded. */
+  ifcoDaten: { ifcos: IfcoEintrag[]; typen: IfcoTypEintrag[] } | null;
   /** Lagerort id -> id of its open Inventur. */
   offeneInventuren: Map<string, string>;
   /** Whether a node with children is expanded (default by depth, explicit choices win). */
@@ -84,6 +93,7 @@ function LagerZeile({
   const inventurMoeglich = buchenMoeglich(ctx, node);
   const bestand = ctx.bestand?.get(node.id);
   const inventar = ctx.inventar?.get(node.id);
+  const ifcoPlatz = ifcoPlatzMasse(node);
   return (
     <Stack gap="xs">
       <Paper withBorder p={4} opacity={node.archiviert ? 0.6 : 1}>
@@ -112,12 +122,20 @@ function LagerZeile({
                   {LAGERORT_ART_LABELS.regal}
                 </Badge>
               )}
+              {ifcoPlatz && (
+                <Badge variant="light" leftSection={<IconBox size={12} aria-hidden />}>
+                  Ifco-Lagerplatz
+                </Badge>
+              )}
               {node.archiviert && (
                 <Badge color="gray" variant="light">
                   Archiviert
                 </Badge>
               )}
             </Group>
+            {ifcoPlatz && (
+              <IfcoPlatzInfo lagerortId={node.id} masse={ifcoPlatz} daten={ctx.ifcoDaten} />
+            )}
             {node.beschreibung && (
               <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
                 {node.beschreibung}

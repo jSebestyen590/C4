@@ -1,8 +1,9 @@
-import type { GegenstandEintrag, IfcoEintrag } from './inventarDaten';
+import { ifcoTypText } from '@c4/shared';
+import type { GegenstandEintrag, IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
 
 /** The Inventar located at one Lagerort: Ifcos standing there and Gegenstände assigned directly. */
 export interface LagerInventar {
-  ifcos: { id: string; name: string; stueck: number }[];
+  ifcos: { id: string; name: string; stueck: number; typ: string | null }[];
   gegenstaende: {
     id: string;
     name: string;
@@ -12,12 +13,15 @@ export interface LagerInventar {
   }[];
 }
 
+const typText = (t: IfcoTypEintrag | undefined) => (t ? ifcoTypText(t) : null);
+
 const nachName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'de');
 
 /** Inventar per Lagerort id; archived Gegenstände and Ifcos are left out. */
 export function inventarJeLagerort(
   gegenstaende: GegenstandEintrag[],
   ifcos: IfcoEintrag[],
+  typen: IfcoTypEintrag[] = [],
 ): Map<string, LagerInventar> {
   const karte = new Map<string, LagerInventar>();
   const eintrag = (lagerortId: string) => {
@@ -31,6 +35,7 @@ export function inventarJeLagerort(
       id: i.id,
       name: i.name,
       stueck: i.inhalt.reduce((s, p) => s + p.anzahl, 0),
+      typ: typText(typen.find((x) => x.id === i.typId)),
     });
   }
   for (const g of gegenstaende) {

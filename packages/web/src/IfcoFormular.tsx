@@ -1,10 +1,10 @@
-import { Alert, Button, Modal, Stack, Textarea, TextInput } from '@mantine/core';
+import { Alert, Button, Modal, Select, Stack, Textarea, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
-import { ifcoSchema } from '@c4/shared';
+import { ifcoSchema, ifcoTypText } from '@c4/shared';
 import { useApi } from './api';
-import { lagerortOptionen } from './inventarAnzeige';
-import { INVENTAR_KEY, type IfcoEintrag } from './inventarDaten';
+import { ifcoPlatzOptionen } from './inventarAnzeige';
+import { INVENTAR_KEY, type IfcoEintrag, type IfcoTypEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { PfadSelect } from './PfadSelect';
@@ -13,26 +13,48 @@ import { PfadSelect } from './PfadSelect';
 export function IfcoFormular({
   ifco,
   lagerorte,
+  ifcos,
+  typen,
   onClose,
   onAngelegt,
 }: Readonly<{
   /** Set when editing. */
   ifco?: IfcoEintrag;
   lagerorte: LagerKnoten[];
+  /** All Ifcos and types, to tell where the Ifco fits. */
+  ifcos: IfcoEintrag[];
+  typen: IfcoTypEintrag[];
   onClose: () => void;
   onAngelegt?: (id: string) => void;
 }>) {
   const api = useApi();
   const qc = useQueryClient();
   const [name, setName] = useState(ifco?.name ?? '');
+  const [typId, setTypId] = useState<string | null>(ifco?.typId ?? null);
   const [lagerortId, setLagerortId] = useState<string | null>(ifco?.lagerortId ?? null);
   const [beschreibung, setBeschreibung] = useState(ifco?.beschreibung ?? '');
   const [fehler, setFehler] = useState<string | null>(null);
 
-  const optionen = useMemo(() => lagerortOptionen(lagerorte, ifco?.lagerortId), [lagerorte, ifco]);
+  const optionen = useMemo(
+    () => ifcoPlatzOptionen(lagerorte, ifco, typId, ifcos, typen),
+    [lagerorte, ifco, typId, ifcos, typen],
+  );
+  const typOptionen = useMemo(
+    () =>
+      typen
+        .filter((t) => !t.archiviert || t.id === ifco?.typId)
+        .sort((a, b) => a.name.localeCompare(b.name, 'de', { numeric: true }))
+        .map((t) => ({ value: t.id, label: ifcoTypText(t) })),
+    [typen, ifco],
+  );
 
   const speichern = useMutation({
-    mutationFn: async (json: { name: string; beschreibung: string; lagerortId: string | null }) => {
+    mutationFn: async (json: {
+      name: string;
+      beschreibung: string;
+      lagerortId: string | null;
+      typId: string | null;
+    }) => {
       if (ifco) {
         await pruefen(await api.inventar.ifcos[':id'].$put({ param: { id: ifco.id }, json }));
         return null;
@@ -50,7 +72,7 @@ export function IfcoFormular({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const eingabe = { name, beschreibung, lagerortId };
+    const eingabe = { name, beschreibung, lagerortId, typId };
     const parsed = ifcoSchema.safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
     setFehler(null);
@@ -67,6 +89,18 @@ export function IfcoFormular({
             onChange={(e) => setName(e.currentTarget.value)}
             data-autofocus
             error={fehler}
+          />
+          <Select
+            label="Typ"
+            placeholder="Ohne Typ"
+            description="Auf einem Ifco-Lagerplatz ist ein Typ nötig."
+            searchable
+            clearable
+            inputMode="text"
+            nothingFoundMessage="Kein Ifco-Typ gefunden"
+            data={typOptionen}
+            value={typId}
+            onChange={setTypId}
           />
           <PfadSelect
             label="Platz"

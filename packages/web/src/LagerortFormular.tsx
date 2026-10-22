@@ -15,12 +15,20 @@ import {
   lagerortAnlegenSchema,
   lagerortArtAenderungFehler,
   bodenNamenFehler,
+  ifcoPlatzMarkierenFehler,
   lagerortArtFehler,
   lagerortSchema,
   type LagerortArt,
 } from '@c4/shared';
 import { useApi } from './api';
 import { BoedenFelder, boedenGesamtFehler, boedenStandard } from './BoedenFelder';
+import {
+  IfcoPlatzFelder,
+  ifcoPlatzErgebnis,
+  ifcoPlatzStandard,
+  type IfcoPlatzWert,
+} from './IfcoPlatzFelder';
+import { ifcoPlatzMasse } from './ifcoPlatz';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 
@@ -30,6 +38,8 @@ export interface LagerortBearbeitung {
   beschreibung: string | null;
   parentId: string | null;
   art: LagerortArt | null;
+  ifcoHoeheCm: number | null;
+  ifcoStellflaechen: number | null;
 }
 
 type Wahl = 'normal' | 'regal';
@@ -58,6 +68,10 @@ export function LagerortFormular({
   const [fehler, setFehler] = useState<string | null>(null);
   const [wahl, setWahl] = useState<Wahl>(lagerort?.art === 'regal' ? 'regal' : 'normal');
   const [boeden, setBoeden] = useState(() => boedenStandard());
+  const [ifcoPlatz, setIfcoPlatz] = useState<IfcoPlatzWert>(() =>
+    ifcoPlatzStandard(lagerort && ifcoPlatzMasse(lagerort)),
+  );
+  const [bodenIfcoPlatz, setBodenIfcoPlatz] = useState<IfcoPlatzWert>(() => ifcoPlatzStandard());
 
   const eltern = alle.find((l) => l.id === (lagerort ? lagerort.parentId : parentId)) ?? null;
   const istBoden = lagerort?.art === 'regalboden';
@@ -66,6 +80,9 @@ export function LagerortFormular({
     ? (lagerortArtAenderungFehler(lagerort, 'regal', alle) ?? lagerortArtFehler('regal', eltern))
     : lagerortArtFehler('regal', eltern);
   const artWaehlbar = regalSperre === null;
+  // An Ifco-Lagerplatz is a place without children that is not a Regal itself.
+  const kinderAnzahl = lagerort ? alle.filter((l) => l.parentId === lagerort.id).length : 0;
+  const ifcoSperre = ifcoPlatzMarkierenFehler(lagerort?.art ?? null, kinderAnzahl);
 
   const speichern = useMutation({
     mutationFn: async (json: {
@@ -74,6 +91,8 @@ export function LagerortFormular({
       parentId: string | null;
       art?: LagerortArt | null;
       boeden?: string[];
+      ifcoPlatz?: { hoeheCm: number; stellflaechen: number } | null;
+      boedenIfcoPlatz?: { hoeheCm: number; stellflaechen: number } | null;
     }) => {
       if (lagerort) {
         await pruefen(await api.lagerorte[':id'].$put({ param: { id: lagerort.id }, json }));
@@ -103,13 +122,23 @@ export function LagerortFormular({
       const problem = boedenGesamtFehler(boeden, []);
       if (problem) return setFehler(problem);
     }
+    const platz = ifcoPlatzErgebnis(ifcoPlatz);
+    const boedenPlatz = ifcoPlatzErgebnis(bodenIfcoPlatz);
+    if (typeof platz === 'string' && wahl === 'normal') return setFehler(platz);
+    if (typeof boedenPlatz === 'string' && neuesRegal) return setFehler(boedenPlatz);
     const eingabe = {
       name,
       beschreibung,
       parentId: lagerort ? lagerort.parentId : (parentId ?? null),
       // A Regalboden keeps its kind (omitted); a Lagerort sends the chosen one.
       ...(!istBoden && { art: wahl === 'regal' ? ('regal' as const) : null }),
-      ...(neuesRegal && { boeden: boeden.namen.map((n) => n.trim()) }),
+      ...(neuesRegal && {
+        boeden: boeden.namen.map((n) => n.trim()),
+        boedenIfcoPlatz: typeof boedenPlatz === 'string' ? null : boedenPlatz,
+      }),
+      // A Regal is never an Ifco-Lagerplatz itself; a plain place sends its choice (null = normal).
+      ...(wahl === 'normal' && { ifcoPlatz: typeof platz === 'string' ? null : platz }),
+      ...(wahl === 'regal' && lagerort && { ifcoPlatz: null }),
     };
     const parsed = (lagerort ? lagerortSchema : lagerortAnlegenSchema).safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -170,7 +199,24 @@ export function LagerortFormular({
               )}
             </Stack>
           )}
-          {!lagerort && wahl === 'regal' && <BoedenFelder wert={boeden} onChange={setBoeden} />}
+          {!lagerort && wahl === 'regal' && (
+            <>
+              <BoedenFelder wert={boeden} onChange={setBoeden} />
+              <IfcoPlatzFelder
+                wert={bodenIfcoPlatz}
+                onChange={setBodenIfcoPlatz}
+                label="Als Ifco-Lagerplätze anlegen"
+                beschreibung="Alle neuen Böden werden Ifco-Lagerplätze mit derselben Höhe und Stellfläche."
+              />
+            </>
+          )}
+          {wahl === 'normal' && (
+            <IfcoPlatzFelder
+              wert={ifcoPlatz}
+              onChange={setIfcoPlatz}
+              gesperrt={lagerort ? ifcoSperre : null}
+            />
+          )}
           <Textarea
             label="Beschreibung (optional)"
             autosize

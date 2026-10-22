@@ -2,6 +2,12 @@ import { Alert, Button, Modal, Stack, Text } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { useApi } from './api';
+import {
+  IfcoPlatzFelder,
+  ifcoPlatzErgebnis,
+  ifcoPlatzStandard,
+  type IfcoPlatzWert,
+} from './IfcoPlatzFelder';
 import { BoedenFelder, boedenGesamtFehler, boedenStandard, type BoedenWert } from './BoedenFelder';
 import { fehlerText, pruefen } from './warenApi';
 
@@ -23,13 +29,15 @@ export function BoedenModal({
   const api = useApi();
   const qc = useQueryClient();
   const [wert, setWert] = useState<BoedenWert>(() => boedenStandard(vorhanden + 1));
+  const [ifcoPlatz, setIfcoPlatz] = useState<IfcoPlatzWert>(() => ifcoPlatzStandard());
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
-    mutationFn: async (namen: string[]) =>
-      pruefen(
-        await api.lagerorte[':id'].boeden.$post({ param: { id: regal.id }, json: { namen } }),
-      ),
+    mutationFn: async (eingabe: {
+      namen: string[];
+      ifcoPlatz: { hoeheCm: number; stellflaechen: number } | null;
+    }) =>
+      pruefen(await api.lagerorte[':id'].boeden.$post({ param: { id: regal.id }, json: eingabe })),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['lagerorte'] });
       onClose();
@@ -38,9 +46,13 @@ export function BoedenModal({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const problem = boedenGesamtFehler(wert, vorhandeneNamen);
+    const platz = ifcoPlatzErgebnis(ifcoPlatz);
+    const problem =
+      boedenGesamtFehler(wert, vorhandeneNamen) ?? (typeof platz === 'string' ? platz : null);
     setFehler(problem);
-    if (!problem) speichern.mutate(wert.namen.map((n) => n.trim()));
+    if (!problem && typeof platz !== 'string') {
+      speichern.mutate({ namen: wert.namen.map((n) => n.trim()), ifcoPlatz: platz });
+    }
   };
 
   return (
@@ -51,6 +63,12 @@ export function BoedenModal({
             Zu {pfad}
           </Text>
           <BoedenFelder wert={wert} vorhanden={vorhandeneNamen} onChange={setWert} />
+          <IfcoPlatzFelder
+            wert={ifcoPlatz}
+            onChange={setIfcoPlatz}
+            label="Als Ifco-Lagerplätze anlegen"
+            beschreibung="Alle neuen Böden werden Ifco-Lagerplätze mit derselben Höhe und Stellfläche."
+          />
           {fehler && <Alert color="red">{fehler}</Alert>}
           {speichern.isError && (
             <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>

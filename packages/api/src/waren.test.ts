@@ -97,6 +97,16 @@ describe('inventurKnotenIds', () => {
     expect(inventurKnotenIds(alle, 'a')).toEqual(['a', 'a1']);
     expect(inventurKnotenIds(alle, 'alt')).toEqual([]);
   });
+
+  it('leaves out Ifco-Lagerplätze: no Waren lie there', () => {
+    const alle = [
+      knoten('regal', null),
+      knoten('b1', 'regal', 0),
+      { ...knoten('b2', 'regal', 1), ifcoHoeheCm: 20 },
+    ];
+    expect(inventurKnotenIds(alle, 'regal')).toEqual(['regal', 'b1']);
+    expect(inventurKnotenIds(alle, 'b2')).toEqual([]);
+  });
 });
 
 describe('zaehlungenNormalisieren', () => {

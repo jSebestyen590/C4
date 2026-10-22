@@ -6,11 +6,14 @@ import {
   type BaumKnoten,
   type PlatzZiel,
 } from '@c4/shared';
+import { ifcoPlatzMasse, platzPasst } from './ifcoPlatz';
+import type { LagerKnoten } from './LagerBaum';
 import type {
   AusleiheEintrag,
   AusleihePositionEintrag,
   GegenstandEintrag,
   IfcoEintrag,
+  IfcoTypEintrag,
   KategorieEintrag,
 } from './inventarDaten';
 
@@ -27,14 +30,31 @@ export function zielAusWert(wert: string): PlatzZiel {
 const nachLabel = (a: { label: string }, b: { label: string }) =>
   a.label.localeCompare(b.label, 'de');
 
-/** Lagerort options (path as label); archived ones only when they are `behalten`. */
-export function lagerortOptionen(
-  lagerorte: (BaumKnoten & { archiviert: boolean })[],
-  behalten?: string | null,
+/**
+ * Place options for an Ifco: like `lagerortOptionen`, but an Ifco-Lagerplatz says `passt` or why
+ * the Ifco (with the type `typId`) cannot stand there (`passt nicht` / `Typ nötig`, disabled).
+ * `ifco` is the Ifco being edited (its own place does not count against it), undefined for a new one.
+ */
+export function ifcoPlatzOptionen(
+  lagerorte: LagerKnoten[],
+  ifco: { id: string; lagerortId: string | null } | undefined,
+  typId: string | null,
+  ifcos: IfcoEintrag[],
+  typen: IfcoTypEintrag[],
 ) {
   return lagerorte
-    .filter((l) => !l.archiviert || l.id === behalten)
-    .map((l) => ({ value: l.id, label: pfad(lagerorte, l.id) }))
+    .filter((l) => !l.archiviert || l.id === ifco?.lagerortId)
+    .map((l) => {
+      const label = pfad(lagerorte, l.id);
+      const masse = ifcoPlatzMasse(l);
+      if (!masse) return { value: l.id, label };
+      const r = platzPasst(masse, l.id, { id: ifco?.id ?? '' }, typId, ifcos, typen);
+      return {
+        value: l.id,
+        label: `${label} · Ifco-Lagerplatz, ${r.passt ? 'passt' : r.grund}`,
+        disabled: !r.passt,
+      };
+    })
     .sort(nachLabel);
 }
 

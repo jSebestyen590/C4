@@ -10,6 +10,9 @@ import {
   gebindeFehler,
   gebindeKurz,
   gebindeSortieren,
+  IFCO_PLATZ_KEINE_KINDER,
+  IFCO_PLATZ_KEINE_WARE,
+  ifcoPlatzMarkierenFehler,
   inventurAbgleich,
   bodenNamenFehler,
   inventurKorrekturen,
@@ -30,6 +33,7 @@ import {
   type Buchung,
   type Buchungszeile,
   type GebindeDaten,
+  type IfcoPlatzMasse,
   type InventurIst,
   type InventurZeile,
   type LagerortArt,
@@ -68,6 +72,7 @@ import {
   type WareRow,
   type WarengruppeRow,
 } from './db/schema';
+import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -87,7 +92,14 @@ export type { GebindeDaten };
 export const GEBINDE_DOPPELT = 'Dieses Gebinde gibt es schon.';
 
 export type EintragArt =
-  'Lagerort' | 'Warengruppe' | 'Gebinde' | 'Ware' | 'Kategorie' | 'Gegenstand' | 'Ifco';
+  | 'Lagerort'
+  | 'Warengruppe'
+  | 'Gebinde'
+  | 'Ware'
+  | 'Kategorie'
+  | 'Gegenstand'
+  | 'Ifco'
+  | 'Ifco-Typ';
 
 /** `Der Lagerort wird noch verwendet, archiviere ihn stattdessen.` */
 export function verwendetMeldung(art: EintragArt): string {
@@ -99,6 +111,7 @@ export function verwendetMeldung(art: EintragArt): string {
     Kategorie: ['Die', 'sie'],
     Gegenstand: ['Der', 'ihn'],
     Ifco: ['Die', 'sie'],
+    'Ifco-Typ': ['Der', 'ihn'],
   }[art];
   return `${artikel} ${art} wird noch verwendet, archiviere ${pronomen} stattdessen.`;
 }
@@ -318,11 +331,12 @@ export function lagerortBestandZeilen(buchungen: Buchung[]): LagerortBestandZeil
 
 /** Ids of the Lagerort and its non-archived descendants in inventory order (preorder, by position). */
 export function inventurKnotenIds(
-  lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
+  lagerorteAlle: (BaumKnoten & { archiviert: boolean; ifcoHoeheCm?: number | null })[],
   wurzelId: string,
 ): string[] {
   return tiefensuche(
-    lagerorteAlle.filter((l) => !l.archiviert),
+    // Ifco-Lagerplätze hold no Waren, so there is nothing to count.
+    lagerorteAlle.filter((l) => !l.archiviert && (l.ifcoHoeheCm ?? null) === null),
     wurzelId,
   ).map((l) => l.id);
 }
@@ -367,6 +381,8 @@ export interface LagerortDaten {
   parentId: string | null;
   /** On create: null/undefined = normal; on update: undefined keeps the kind. */
   art?: LagerortArt | null;
+  /** Ifco-Lagerplatz dimensions. On create: null/undefined = normal; on update: undefined keeps them, null unmarks. */
+  ifcoPlatz?: IfcoPlatzMasse | null;
 }
 
 /** Ids of what a create made: the Lagerort and, for a Regal, its Regalböden in the given order. */
@@ -540,9 +556,18 @@ export interface WarenStore {
   // Lagerorte
   lagerorte(mitArchiv: boolean): Promise<LagerortRow[]>;
   /** `boeden` (names, in order) belong to a Regal and are created with it. */
-  lagerortAnlegen(daten: LagerortDaten, boeden?: string[]): Promise<LagerortAngelegt>;
+  lagerortAnlegen(
+    daten: LagerortDaten,
+    boeden?: string[],
+    /** Makes the new Regalböden Ifco-Lagerplätze. */
+    boedenIfcoPlatz?: IfcoPlatzMasse | null,
+  ): Promise<LagerortAngelegt>;
   /** Appends Regalböden to a Regal; the new ids, or undefined if the Lagerort does not exist. */
-  boedenHinzufuegen(id: string, namen: string[]): Promise<string[] | undefined>;
+  boedenHinzufuegen(
+    id: string,
+    namen: string[],
+    ifcoPlatz?: IfcoPlatzMasse | null,
+  ): Promise<string[] | undefined>;
   lagerortAktualisieren(id: string, daten: LagerortDaten): Promise<boolean>;
   lagerortLoeschen(id: string): Promise<boolean>;
   /** Archives (or restores) the whole subtree; archiving needs a stock of 0 in the subtree. */
@@ -643,6 +668,7 @@ async function boedenEinfuegen(
   regalId: string,
   namen: string[],
   ab: number,
+  ifcoPlatz: IfcoPlatzMasse | null = null,
 ): Promise<string[]> {
   const ids = namen.map(() => randomUUID());
   for (const [i, name] of namen.entries()) {
@@ -653,6 +679,8 @@ async function boedenEinfuegen(
       parentId: regalId,
       art: 'regalboden',
       position: ab + i,
+      ifcoHoeheCm: ifcoPlatz?.hoeheCm ?? null,
+      ifcoStellflaechen: ifcoPlatz?.stellflaechen ?? null,
     });
   }
   return ids;
@@ -706,6 +734,14 @@ async function buchbarerLagerort(q: Q, lagerortId: string): Promise<void> {
   const [l] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
   if (!l) throw new WarenUngueltig('Der Lagerort existiert nicht.');
   if (l.archiviert) throw new WarenUngueltig('Der Lagerort ist archiviert.');
+  if (ifcoPlatzMasse(l)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
+}
+
+/** Throws `WarenUngueltig` when `eltern` is an Ifco-Lagerplatz: it cannot have children. */
+function elternKeinIfcoPlatz(
+  eltern: Pick<LagerortRow, 'ifcoHoeheCm' | 'ifcoStellflaechen'> | undefined,
+) {
+  if (eltern && ifcoPlatzMasse(eltern)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_KINDER);
 }
 
 async function vorgangAnlegen(
@@ -929,6 +965,23 @@ export function createWarenStore(db: Db): WarenStore {
     return wareId;
   };
 
+  /** Throws `WarenKonflikt` when the place still has Waren stock or a Warenliste (it cannot become an Ifco-Lagerplatz). */
+  const markierenErlaubt = async (q: Q, lagerortId: string): Promise<void> => {
+    const bestand = bestandZu(
+      await buchungenLaden(q, eq(bestandsbuchungen.lagerortId, lagerortId)),
+    );
+    if (bestand.length > 0) {
+      throw new WarenKonflikt(
+        'Auf dem Lagerort liegt noch Ware. Buche sie zuerst aus, dann kannst du ihn als Ifco-Lagerplatz markieren.',
+      );
+    }
+    if (await gibtEs(q, lagerortWaren, eq(lagerortWaren.lagerortId, lagerortId))) {
+      throw new WarenKonflikt(
+        'Der Lagerort hat noch eine Warenliste. Leere sie zuerst, dann kannst du ihn als Ifco-Lagerplatz markieren.',
+      );
+    }
+  };
+
   return {
     // ----- Lagerorte
     async lagerorte(mitArchiv) {
@@ -937,12 +990,21 @@ export function createWarenStore(db: Db): WarenStore {
         .filter((l) => mitArchiv || !l.archiviert)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name, 'de'));
     },
-    async lagerortAnlegen(daten, boeden = []) {
+    async lagerortAnlegen(daten, boeden = [], boedenIfcoPlatz = null) {
       return db.transaction(async (tx) => {
         const alle = await tx.select().from(lagerorte);
         const fehler = elternFehler(alle, daten.parentId);
         if (fehler) throw new WarenUngueltig(fehler);
+        elternKeinIfcoPlatz(alle.find((l) => l.id === daten.parentId));
         const art = daten.art ?? null;
+        const masse = daten.ifcoPlatz ?? null;
+        if (masse) {
+          const markieren = ifcoPlatzMarkierenFehler(art, 0);
+          if (markieren) throw new WarenUngueltig(markieren);
+        }
+        if (boedenIfcoPlatz && art !== 'regal') {
+          throw new WarenUngueltig('Ifco-Lagerplätze für Regalböden gibt es nur bei einem Regal.');
+        }
         const artProblem = lagerortArtFehler(
           art,
           alle.find((l) => l.id === daten.parentId) ?? null,
@@ -962,13 +1024,15 @@ export function createWarenStore(db: Db): WarenStore {
           beschreibung: daten.beschreibung,
           parentId: daten.parentId,
           art,
+          ifcoHoeheCm: masse?.hoeheCm ?? null,
+          ifcoStellflaechen: masse?.stellflaechen ?? null,
           position: naechstePosition(alle.filter((l) => l.parentId === daten.parentId)),
         });
-        const boedenIds = await boedenEinfuegen(tx, id, boeden, 0);
+        const boedenIds = await boedenEinfuegen(tx, id, boeden, 0, boedenIfcoPlatz);
         return { id, boedenIds };
       });
     },
-    async boedenHinzufuegen(id, namen) {
+    async boedenHinzufuegen(id, namen, ifcoPlatz = null) {
       return db.transaction(async (tx) => {
         const alle = await tx.select().from(lagerorte);
         const regal = alle.find((l) => l.id === id);
@@ -987,6 +1051,7 @@ export function createWarenStore(db: Db): WarenStore {
           id,
           namen,
           naechstePosition(alle.filter((l) => l.parentId === id)),
+          ifcoPlatz,
         );
       });
     },
@@ -998,12 +1063,23 @@ export function createWarenStore(db: Db): WarenStore {
         const fehler = zyklusFehler(alle, id, daten.parentId);
         if (fehler) throw new WarenUngueltig(fehler);
         const art = daten.art === undefined ? bisher.art : daten.art;
+        const bisherMasse = ifcoPlatzMasse(bisher);
+        const masse = daten.ifcoPlatz === undefined ? bisherMasse : daten.ifcoPlatz;
+        if (masse) {
+          const kinder = alle.filter((l) => l.parentId === id).length;
+          const markieren = ifcoPlatzMarkierenFehler(art, kinder);
+          if (markieren) throw new WarenUngueltig(markieren);
+          if (!bisherMasse) await markierenErlaubt(tx, id);
+          const passt = await ifcoPlatzPruefen(tx, { id, name: daten.name }, masse);
+          if (passt) throw new WarenUngueltig(passt);
+        }
         const artProblem = lagerortArtAenderungFehler(bisher, art, alle);
         if (artProblem) throw new WarenUngueltig(artProblem);
         let position = bisher.position;
         if (daten.parentId !== bisher.parentId) {
           const elternProblem = elternFehler(alle, daten.parentId);
           if (elternProblem) throw new WarenUngueltig(elternProblem);
+          elternKeinIfcoPlatz(alle.find((l) => l.id === daten.parentId));
           position = naechstePosition(alle.filter((l) => l.parentId === daten.parentId));
         }
         if (daten.parentId !== bisher.parentId || art !== bisher.art) {
@@ -1025,6 +1101,8 @@ export function createWarenStore(db: Db): WarenStore {
             beschreibung: daten.beschreibung,
             parentId: daten.parentId,
             art,
+            ifcoHoeheCm: masse?.hoeheCm ?? null,
+            ifcoStellflaechen: masse?.stellflaechen ?? null,
             position,
           })
           .where(eq(lagerorte.id, id));
@@ -1144,6 +1222,9 @@ export function createWarenStore(db: Db): WarenStore {
       return db.transaction(async (tx) => {
         const [vorhanden] = await tx.select().from(lagerorte).where(eq(lagerorte.id, id));
         if (!vorhanden) return false;
+        if (wareIds.length > 0 && ifcoPlatzMasse(vorhanden)) {
+          throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
+        }
         const bisher = new Set(
           (await tx.select().from(lagerortWaren).where(eq(lagerortWaren.lagerortId, id))).map(
             (r) => r.wareId,
@@ -1629,6 +1710,8 @@ export function createWarenStore(db: Db): WarenStore {
         const kontext = await inventurKontext(tx, id);
         if (!kontext) return false;
         nurOffen(kontext.inventur);
+        const knoten = kontext.alle.find((l) => l.id === lagerortId);
+        if (knoten && ifcoPlatzMasse(knoten)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_WARE);
         if (!kontext.knotenIds.includes(lagerortId)) {
           throw new WarenUngueltig('Der Lagerort gehört nicht zu dieser Inventur.');
         }

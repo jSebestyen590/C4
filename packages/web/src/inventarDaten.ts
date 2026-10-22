@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import type { IfcoGrundflaeche } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import type { LagerKnoten } from './LagerBaum';
 
@@ -36,6 +37,15 @@ export interface GegenstandEintrag {
   vorgemerkt: number;
 }
 
+/** An Ifco type as returned by `GET /inventar/ifco-typen`. */
+export interface IfcoTypEintrag {
+  id: string;
+  name: string;
+  grundflaeche: IfcoGrundflaeche;
+  hoeheCm: number;
+  archiviert: boolean;
+}
+
 /** An Ifco as returned by `GET /inventar/ifcos`: master data plus its content. */
 export interface IfcoEintrag {
   id: string;
@@ -43,6 +53,8 @@ export interface IfcoEintrag {
   beschreibung: string | null;
   lagerortId: string | null;
   archiviert: boolean;
+  /** Ifco type; null = none (not allowed on an Ifco-Lagerplatz). */
+  typId: string | null;
   inhalt: { gegenstandId: string; anzahl: number }[];
 }
 
@@ -77,6 +89,22 @@ export interface AusleiheEintrag {
 /** Query key prefix of everything below Inventar; invalidate it after a mutation. */
 export const INVENTAR_KEY = ['inventar'] as const;
 
+/** Ifco types including archived ones; only fetched when `enabled`. */
+export function useIfcoTypen(enabled = true) {
+  const api = useApi();
+  const q = useQuery({
+    queryKey: ['inventar', 'ifco-typen'],
+    queryFn: async () => unwrap(await api.inventar['ifco-typen'].$get({ query: { archiv: '1' } })),
+    enabled,
+  });
+  return {
+    typen: useMemo<IfcoTypEintrag[]>(() => q.data ?? [], [q.data]),
+    laedt: q.isPending,
+    fehler: q.isError,
+    geladen: q.isSuccess,
+  };
+}
+
 /** Gegenstände and Ifcos incl. archived ones, e.g. for the Lager page; only fetched when `enabled`. */
 export function useGegenstaendeUndIfcos(enabled = true) {
   const api = useApi();
@@ -90,10 +118,12 @@ export function useGegenstaendeUndIfcos(enabled = true) {
     queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: { archiv: '1' } })),
     enabled,
   });
+  const typen = useIfcoTypen(enabled);
   return {
     gegenstaende: useMemo<GegenstandEintrag[]>(() => gegenstaende.data ?? [], [gegenstaende.data]),
     ifcos: useMemo<IfcoEintrag[]>(() => ifcos.data ?? [], [ifcos.data]),
-    geladen: gegenstaende.isSuccess && ifcos.isSuccess,
+    typen: typen.typen,
+    geladen: gegenstaende.isSuccess && ifcos.isSuccess && typen.geladen,
   };
 }
 
@@ -149,12 +179,24 @@ export function useInventar() {
     queryKey: ['inventar', 'ifcos'],
     queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: { archiv: '1' } })),
   });
+  const typen = useIfcoTypen();
   return {
     lagerorte: useMemo<LagerKnoten[]>(() => lagerorte.data ?? [], [lagerorte.data]),
+    ifcoTypen: typen.typen,
     kategorien: useMemo<KategorieEintrag[]>(() => kategorien.data ?? [], [kategorien.data]),
     gegenstaende: useMemo<GegenstandEintrag[]>(() => gegenstaende.data ?? [], [gegenstaende.data]),
     ifcos: useMemo<IfcoEintrag[]>(() => ifcos.data ?? [], [ifcos.data]),
-    laedt: lagerorte.isPending || kategorien.isPending || gegenstaende.isPending || ifcos.isPending,
-    fehler: lagerorte.isError || kategorien.isError || gegenstaende.isError || ifcos.isError,
+    laedt:
+      lagerorte.isPending ||
+      kategorien.isPending ||
+      gegenstaende.isPending ||
+      ifcos.isPending ||
+      typen.laedt,
+    fehler:
+      lagerorte.isError ||
+      kategorien.isError ||
+      gegenstaende.isError ||
+      ifcos.isError ||
+      typen.fehler,
   };
 }

@@ -57,8 +57,10 @@ describe('kategorieSchema / gegenstandSchema / ifcoSchema', () => {
       name: 'Kiste',
       beschreibung: null,
       lagerortId: null,
+      typId: null,
     });
     expect(ifcoSchema.parse({ name: 'Kiste', lagerortId: 'regal' }).lagerortId).toBe('regal');
+    expect(ifcoSchema.parse({ name: 'Kiste', typId: 't1' }).typId).toBe('t1');
   });
   it('defaults the Anzahl of a Gegenstand to 1 and rejects invalid values', () => {
     expect(gegenstandSchema.parse({ name: 'Beamer', kategorieId: 'k' }).anzahl).toBe(1);

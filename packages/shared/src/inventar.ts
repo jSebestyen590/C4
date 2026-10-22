@@ -33,6 +33,8 @@ export const ifcoSchema = z.object({
   name: name(),
   beschreibung,
   lagerortId: parentIdSchema,
+  /** Optional Ifco type; required for an Ifco on an Ifco-Lagerplatz. */
+  typId: parentIdSchema,
 });
 export type IfcoEingabe = z.input<typeof ifcoSchema>;
 

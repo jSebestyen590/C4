@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   ausleihFehler,
+  type IfcoMass,
   ausleiheStatus,
   offenAufteilen,
   platzKey,
@@ -24,13 +25,16 @@ import {
   gegenstandPlaetze,
   ifcos,
   inventarKategorien,
+  ifcoTypen,
   lagerorte,
+  type IfcoTypRow,
   type AusleihePositionRow,
   type AusleiheRow,
   type GegenstandRow,
   type IfcoRow,
   type InventarKategorieRow,
 } from './db/schema';
+import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 import {
   elternFehler,
   blockiertVon,
@@ -63,6 +67,12 @@ export interface IfcoDaten {
   name: string;
   beschreibung: string | null;
   lagerortId: string | null;
+  /** Ifco type; required on an Ifco-Lagerplatz. */
+  typId: string | null;
+}
+
+export interface IfcoTypDaten extends IfcoMass {
+  name: string;
 }
 
 /** `anzahl` pieces at a place: exactly one of `lagerortId` and `ifcoId` is set. */
@@ -137,6 +147,13 @@ export interface InventarStore {
   gegenstandArchivieren(id: string, archiviert: boolean): Promise<boolean>;
   /** Replaces all Plätze of the Gegenstand. */
   gegenstandPlaetzeSetzen(id: string, plaetze: PlatzDaten[]): Promise<boolean>;
+  // Ifco-Typen
+  ifcoTypen(mitArchiv: boolean): Promise<IfcoTypRow[]>;
+  ifcoTypAnlegen(daten: IfcoTypDaten): Promise<string>;
+  /** Changing footprint or height needs every Ifco-Lagerplatz with Ifcos of this type to still fit. */
+  ifcoTypAktualisieren(id: string, daten: IfcoTypDaten): Promise<boolean>;
+  ifcoTypLoeschen(id: string): Promise<boolean>;
+  ifcoTypArchivieren(id: string, archiviert: boolean): Promise<boolean>;
   // Ifcos
   ifcos(mitArchiv: boolean): Promise<IfcoDetails[]>;
   ifcoHolen(id: string): Promise<IfcoDetails | undefined>;
@@ -268,6 +285,34 @@ async function kategorieMussNutzbarSein(q: Q, id: string): Promise<void> {
   const [k] = await q.select().from(inventarKategorien).where(eq(inventarKategorien.id, id));
   if (!k) throw new WarenUngueltig('Die Kategorie existiert nicht.');
   if (k.archiviert) throw new WarenUngueltig('Die Kategorie ist archiviert.');
+}
+
+async function typMussNutzbarSein(q: Q, id: string): Promise<void> {
+  const [t] = await q.select().from(ifcoTypen).where(eq(ifcoTypen.id, id));
+  if (!t) throw new WarenUngueltig('Der Ifco-Typ existiert nicht.');
+  if (t.archiviert) throw new WarenUngueltig('Der Ifco-Typ ist archiviert.');
+}
+
+/**
+ * Throws `WarenUngueltig` when the target place is an Ifco-Lagerplatz the Ifco (with `typId`) does
+ * not fit on next to what already stands there. `ifcoId` is null for a new Ifco.
+ */
+async function passtAufPlatz(
+  q: Q,
+  ifcoId: string | null,
+  name: string,
+  typId: string | null,
+  lagerortId: string | null,
+): Promise<void> {
+  if (lagerortId === null) return;
+  const [ort] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
+  const masse = ort && ifcoPlatzMasse(ort);
+  if (!ort || !masse) return;
+  const fehler = await ifcoPlatzPruefen(q, ort, masse, {
+    ohne: ifcoId === null ? [] : [ifcoId],
+    neu: [{ name, typId }],
+  });
+  if (fehler) throw new WarenUngueltig(fehler);
 }
 
 async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetails[]> {
@@ -491,6 +536,63 @@ export function createInventarStore(db: Db): InventarStore {
       });
     },
 
+    // ----- Ifco-Typen
+    async ifcoTypen(mitArchiv) {
+      const rows = await db.select().from(ifcoTypen);
+      return sortiert(
+        rows.filter((t) => mitArchiv || !t.archiviert),
+        (t) => t.name,
+      );
+    },
+    async ifcoTypAnlegen(daten) {
+      const id = randomUUID();
+      await db.insert(ifcoTypen).values({ id, ...daten });
+      return id;
+    },
+    async ifcoTypAktualisieren(id, daten) {
+      return db.transaction(async (tx) => {
+        const [bisher] = await tx.select().from(ifcoTypen).where(eq(ifcoTypen.id, id));
+        if (!bisher) return false;
+        if (bisher.grundflaeche !== daten.grundflaeche || bisher.hoeheCm !== daten.hoeheCm) {
+          const stehend = await tx
+            .select()
+            .from(ifcos)
+            .where(and(eq(ifcos.typId, id), eq(ifcos.archiviert, false)));
+          const ortIds = [...new Set(stehend.flatMap((i) => (i.lagerortId ? [i.lagerortId] : [])))];
+          const orte = ortIds.length
+            ? await tx.select().from(lagerorte).where(inListe(lagerorte.id, ortIds))
+            : [];
+          for (const ort of orte) {
+            const masse = ifcoPlatzMasse(ort);
+            if (!masse) continue;
+            const fehler = await ifcoPlatzPruefen(tx, ort, masse, {
+              typen: new Map([[id, daten]]),
+            });
+            if (fehler) throw new WarenUngueltig(fehler);
+          }
+        }
+        await tx.update(ifcoTypen).set(daten).where(eq(ifcoTypen.id, id));
+        return true;
+      });
+    },
+    async ifcoTypLoeschen(id) {
+      return db.transaction(async (tx) => {
+        if (!(await gibtEs(tx, ifcoTypen, eq(ifcoTypen.id, id)))) return false;
+        if (await gibtEs(tx, ifcos, eq(ifcos.typId, id))) {
+          throw new WarenKonflikt(verwendetMeldung('Ifco-Typ'));
+        }
+        await tx.delete(ifcoTypen).where(eq(ifcoTypen.id, id));
+        return true;
+      });
+    },
+    async ifcoTypArchivieren(id, archiviert) {
+      return db.transaction(async (tx) => {
+        if (!(await gibtEs(tx, ifcoTypen, eq(ifcoTypen.id, id)))) return false;
+        await tx.update(ifcoTypen).set({ archiviert }).where(eq(ifcoTypen.id, id));
+        return true;
+      });
+    },
+
     // ----- Ifcos
     async ifcos(mitArchiv) {
       const liste = await ifcosLaden(db);
@@ -507,6 +609,8 @@ export function createInventarStore(db: Db): InventarStore {
         if (daten.lagerortId !== null) {
           await zieleExistieren(tx, [{ lagerortId: daten.lagerortId, ifcoId: null }]);
         }
+        if (daten.typId !== null) await typMussNutzbarSein(tx, daten.typId);
+        await passtAufPlatz(tx, null, daten.name, daten.typId, daten.lagerortId);
         const id = randomUUID();
         await tx.insert(ifcos).values({ id, ...daten });
         return id;
@@ -518,6 +622,16 @@ export function createInventarStore(db: Db): InventarStore {
         if (!bisher) return false;
         if (daten.lagerortId !== null && daten.lagerortId !== bisher.lagerortId) {
           await zieleExistieren(tx, [{ lagerortId: daten.lagerortId, ifcoId: null }]);
+        }
+        if (daten.typId !== null && daten.typId !== bisher.typId) {
+          await typMussNutzbarSein(tx, daten.typId);
+        }
+        // An archived Ifco takes no space; it is checked again when it is restored.
+        if (
+          !bisher.archiviert &&
+          (daten.lagerortId !== bisher.lagerortId || daten.typId !== bisher.typId)
+        ) {
+          await passtAufPlatz(tx, id, daten.name, daten.typId, daten.lagerortId);
         }
         await tx.update(ifcos).set(daten).where(eq(ifcos.id, id));
         return true;
@@ -554,6 +668,7 @@ export function createInventarStore(db: Db): InventarStore {
           if (ort?.archiviert) {
             throw new WarenKonflikt('Der Lagerort ist archiviert. Stelle ihn zuerst wieder her.');
           }
+          await passtAufPlatz(tx, id, ifco.name, ifco.typId, ifco.lagerortId);
         }
         await tx.update(ifcos).set({ archiviert }).where(eq(ifcos.id, id));
         return true;
@@ -566,6 +681,7 @@ export function createInventarStore(db: Db): InventarStore {
         if (ifco.archiviert) throw new WarenUngueltig('Die Ifco ist archiviert.');
         if (lagerortId !== null && lagerortId !== ifco.lagerortId) {
           await zieleExistieren(tx, [{ lagerortId, ifcoId: null }]);
+          await passtAufPlatz(tx, id, ifco.name, ifco.typId, lagerortId);
         }
         await tx.update(ifcos).set({ lagerortId }).where(eq(ifcos.id, id));
         return true;

@@ -57,7 +57,7 @@ export function EntnahmePage() {
   const quellen = useMemo(
     () =>
       daten.lagerorte
-        .filter((l) => !l.archiviert)
+        .filter((l) => !l.archiviert && l.ifcoHoeheCm === null)
         .map((l) => ({ value: l.id, label: pfad(daten.lagerorte, l.id) }))
         .sort((a, b) => a.label.localeCompare(b.label, 'de')),
     [daten.lagerorte],

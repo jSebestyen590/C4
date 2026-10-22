@@ -16,19 +16,45 @@ wahlweise in **Ifcos** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 
 ## Datenmodell
 
-Migrationen `0025`–`0031`, jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
+Migrationen `0025`–`0031` (Ifco-Typen und Ifco-Lagerplätze: `0033`–`0036`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
 das Inventar: `0024_vorstandsposten_waren`).
 
-| Tabelle               | Inhalt                                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `inventar_kategorien` | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                             |
-| `ifcos`               | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `archiviert`; nicht verschachtelbar, höchstens ein Platz      |
-| `gegenstaende`        | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl, Standard 1), `archiviert`                             |
-| `gegenstand_plaetze`  | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                             |
-| `ausleihen`           | `an` (Freitext), `ausgeliehen_am`, `rueckgabe_geplant`, `kommentar`, `erstellt_von` (Cognito-`sub` ohne Fremdschlüssel)  |
-| `ausleihe_positionen` | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen) |
+| Tabelle               | Inhalt                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `inventar_kategorien` | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                                   |
+| `ifco_typen`          | `name` (z. B. „6410“), `grundflaeche` (`gross` 60×40 / `klein` 40×30), `hoehe_cm`, `archiviert`                                |
+| `ifcos`               | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz |
+| `gegenstaende`        | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl, Standard 1), `archiviert`                                   |
+| `gegenstand_plaetze`  | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                   |
+| `ausleihen`           | `an` (Freitext), `ausgeliehen_am`, `rueckgabe_geplant`, `kommentar`, `erstellt_von` (Cognito-`sub` ohne Fremdschlüssel)        |
+| `ausleihe_positionen` | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen)       |
 
 Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstört so die Historie nicht.
+
+## Ifco-Typen und Ifco-Lagerplätze
+
+Ifcos sind Euronormboxen mit nur **zwei Grundflächen**: groß 60×40 und klein 40×30 (zwei kleine = eine große); die Höhe variiert
+(10, 13, 16, 22 cm …). Ein **Ifco-Typ** (Stammdaten, Tab „Ifco-Typen“ unter `/inventar/stammdaten`) hält Name, Grundfläche und Höhe;
+jede Ifco hat optional einen Typ (`typId`). Typ löschen nur ungenutzt (409, sonst archivieren); archivierte Typen sind nicht mehr wählbar.
+
+Ein Lagerort kann **Ifco-Lagerplatz** sein (Felder und Regeln in [waren.md](./waren.md)): `ifcoHoeheCm` und `ifcoStellflaechen`.
+Dort stehen Ifcos (und lose Gegenstände), aber keine Ware.
+
+**Kapazitätsmodell** (`packages/shared/src/ifco.ts`, `ifcosPassen`): Der Boden besteht aus `2 × Stellflächen` Halbspalten, jede
+`ifcoHoeheCm` hoch. Eine kleine Ifco belegt eine Halbspalte mit ihrer Höhe, eine große zwei beliebige Halbspalten (Reihenfolge und
+Lage egal) mit ihrer Höhe in jeder. Es passt, wenn sich alle Ifcos so zuordnen lassen, dass keine Halbspalte ihre Höhe überschreitet
+(exakte Suche mit Backtracking: hohe und große zuerst, gleiche Restkapazitäten nur einmal, gescheiterte Zustände gemerkt; höchstens 30
+Ifcos, mehr passen nie; gerechnet in Zehntel-cm). Eine große Ifco darf also auf zwei Halbspalten **unterschiedlicher Höhe** ruhen – eine
+bewusste Vereinfachung. `nochPlatzFuer` liefert je nicht archiviertem Typ, wie viele weitere noch passen. Archivierte Ifcos belegen
+keinen Platz (sie sind leer).
+
+Regeln (alle 400 mit deutscher Meldung, die den Platz, was dort steht und was nicht passt nennt: „Passt nicht auf „HR11“ (20 cm hoch,
+1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), …; „Strom-Ifco“ (6416, 16 cm) hat keinen Platz mehr.“):
+Ifco anlegen/ändern/umstellen (`PUT /ifcos/:id/platz`) auf einen Ifco-Lagerplatz, Typ einer dort stehenden Ifco ändern, Wiederherstellen
+einer archivierten Ifco, Grundfläche/Höhe eines Typs ändern (jeder Ifco-Lagerplatz mit Ifcos dieses Typs muss danach noch passen),
+Maße eines Ifco-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Ifcos ohne Typ dürfen nicht auf einen Ifco-Lagerplatz.
+Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für Ifcos unbeschränkt. Die Prüfung steht in
+`packages/api/src/ifcoPlatz.ts` und läuft in den Transaktionen der Stores.
 
 ## Regeln
 
@@ -65,9 +91,9 @@ Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstör
 
 | Route                                                                                                                                                         | Recht                |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `GET /api/inventar/kategorien`, `/gegenstaende`, `/gegenstaende/:id`, `/ifcos`, `/ifcos/:id` (Listen mit `?archiv=1`)                                         | `inventar:lesen`     |
+| `GET /api/inventar/kategorien`, `/gegenstaende`, `/gegenstaende/:id`, `/ifcos`, `/ifcos/:id`, `/ifco-typen` (Listen mit `?archiv=1`)                          | `inventar:lesen`     |
 | `GET /api/inventar/ausleihen[?status=offen]`, `GET /api/inventar/ausleihen/:id`                                                                               | `inventar:lesen`     |
-| `POST/PUT/DELETE` auf `/api/inventar/kategorien`, `/gegenstaende`, `/ifcos`; `PUT …/:id/archiv { archiviert }`                                                | `inventar:verwalten` |
+| `POST/PUT/DELETE` auf `/api/inventar/kategorien`, `/gegenstaende`, `/ifcos`, `/ifco-typen`; `PUT …/:id/archiv { archiviert }`                                 | `inventar:verwalten` |
 | `PUT /api/inventar/gegenstaende/:id/plaetze { plaetze: [{ lagerortId?, ifcoId?, anzahl }] }`                                                                  | `inventar:umraeumen` |
 | `PUT /api/inventar/ifcos/:id/platz { lagerortId \| null }`, `PUT /api/inventar/ifcos/:id/inhalt { positionen: [{ gegenstandId, anzahl }] }`                   | `inventar:umraeumen` |
 | `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id` | `inventar:umraeumen` |
@@ -94,7 +120,15 @@ jede Änderung macht `['inventar']` ungültig.
   gesperrt) und Anzahl, Live-Summe gegen Soll. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste, „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`), Menü wie beim Gegenstand.
-- `/inventar/stammdaten`: Tab „Kategorien“ (Baum). Bearbeiten nur mit `inventar:verwalten`.
+- `/inventar/stammdaten`: Tab „Kategorien“ (Baum) und Tab „Ifco-Typen“ (`IfcoTypenTab`, Karten mit Name und „60×40 · 10 cm“;
+  `IfcoTypFormular` mit Umschalter Grundfläche groß/klein und Höhe in cm). Bearbeiten nur mit `inventar:verwalten`.
+- Ifcos: `IfcoFormular` hat ein durchsuchbares Typ-Feld („6410 · 60×40 · 10 cm“); Karten und Detailseite zeigen den Typ. In
+  `IfcoFormular` und `IfcoUmstellenModal` zeigen Ifco-Lagerplätze „passt“ bzw. sind mit „passt nicht“ / „Typ nötig“ gesperrt (dieselbe
+  Funktion wie die API, `ifcoPlatz.ts`).
+- Lager-Seite: Ifco-Lagerplätze tragen ein Kisten-Symbol und zeigen „2 Ifcos“; Karte und Drawer nennen „20 cm hoch · 1 Stellfläche“, die
+  stehenden Ifcos mit Typ und „Passt noch: 1× 6410 oder 2× 4310“ bzw. „Voll“ (`passtNochText`). `LagerortFormular` hat den Schalter
+  „Ifco-Lagerplatz“ mit Höhe und Stellflächen (gesperrt mit Hinweis bei Unterebenen), beim Regal und im Dialog „Böden hinzufügen“ den
+  Schalter „Als Ifco-Lagerplätze anlegen“ (`IfcoPlatzFelder`).
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als
   `BaumKonfiguration`) tragen `WarengruppenTab` und `KategorienTab`. `inventarAnzeige.ts` bündelt Select-Optionen und Anzeigetexte.
 

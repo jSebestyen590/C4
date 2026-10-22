@@ -23,6 +23,7 @@ const ifcos: IfcoEintrag[] = [
     beschreibung: null,
     lagerortId: 'l2',
     archiviert: false,
+    typId: null,
     inhalt: [
       { gegenstandId: 'g1', anzahl: 4 },
       { gegenstandId: 'g2', anzahl: 1 },
@@ -111,7 +112,7 @@ describe('inventarJeLagerort', () => {
   it('groups Ifcos and directly assigned Gegenstände per Lagerort', () => {
     const karte = inventarJeLagerort([g1, { ...g1, id: 'g9', archiviert: true }], ifcos);
     expect(karte.get('l2')).toEqual({
-      ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5 }],
+      ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5, typ: null }],
       gegenstaende: [{ id: 'g1', name: 'Kabeltrommel', anzahl: 6, verliehen: 3, vorgemerkt: 1 }],
     });
     expect(karte.get('l1')?.gegenstaende).toEqual([

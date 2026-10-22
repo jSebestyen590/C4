@@ -48,7 +48,7 @@ export function BuchungModal({
 }: Readonly<{
   modus: BuchungsModus;
   ware: WareEintrag;
-  lagerorte: (BaumKnoten & { archiviert: boolean })[];
+  lagerorte: (BaumKnoten & { archiviert: boolean; ifcoHoeheCm?: number | null })[];
   gebinde: (Gebinde & { archiviert: boolean })[];
   onClose: () => void;
 }>) {
@@ -68,7 +68,7 @@ export function BuchungModal({
   const lagerDaten = useMemo(
     () =>
       lagerorte
-        .filter((l) => !l.archiviert)
+        .filter((l) => !l.archiviert && (l.ifcoHoeheCm ?? null) === null)
         .map((l) => ({ value: l.id, label: pfad(lagerorte, l.id) }))
         .sort((a, b) => a.label.localeCompare(b.label, 'de')),
     [lagerorte],

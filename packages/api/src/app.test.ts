@@ -67,6 +67,8 @@ function makeWarenFake() {
           art: a,
           position: orte.size,
           archiviert: false,
+          ifcoHoeheCm: null,
+          ifcoStellflaechen: null,
         });
         return id;
       };
@@ -93,6 +95,8 @@ function makeWarenFake() {
           art: 'regalboden',
           position: orte.size,
           archiviert: false,
+          ifcoHoeheCm: null,
+          ifcoStellflaechen: null,
         });
         return neuId;
       });
@@ -190,7 +194,7 @@ function makeWarenFake() {
 
 /** Records the calls; `bekannt` are the ids that exist, `verwendet` the ones that refuse deleting. */
 function makeInventarFake() {
-  const bekannt = new Set(['k1', 'g1', 'i1', 'a1']);
+  const bekannt = new Set(['k1', 'g1', 'i1', 'a1', 't1']);
   const verwendet = new Set<string>();
   const finde = <T>(id: string, wert: T) => (bekannt.has(id) ? wert : undefined);
   const setze = (id: string) => bekannt.has(id);
@@ -233,6 +237,15 @@ function makeInventarFake() {
         throw new WarenKonflikt('Davon sind noch 3 verliehen oder vorgemerkt.');
       return setze(id);
     }),
+    ifcoTypen: vi.fn<InventarStore['ifcoTypen']>(async () => []),
+    ifcoTypAnlegen: vi.fn<InventarStore['ifcoTypAnlegen']>(async () => 't2'),
+    ifcoTypAktualisieren: vi.fn<InventarStore['ifcoTypAktualisieren']>(async (id) => setze(id)),
+    ifcoTypLoeschen: vi.fn(async (id: string) => {
+      if (!bekannt.has(id)) return false;
+      if (verwendet.has(id)) throw new WarenKonflikt(verwendetMeldung('Ifco-Typ'));
+      return true;
+    }),
+    ifcoTypArchivieren: vi.fn<InventarStore['ifcoTypArchivieren']>(async (id) => setze(id)),
     ifcos: vi.fn<InventarStore['ifcos']>(async () => []),
     ifcoHolen: vi.fn(async (id: string) =>
       finde(id, {
@@ -241,6 +254,7 @@ function makeInventarFake() {
         beschreibung: null,
         lagerortId: null,
         archiviert: false,
+        typId: null,
         inhalt: [],
       }),
     ),
@@ -1094,6 +1108,7 @@ describe('posten', () => {
       expect(waren.lagerortAnlegen).toHaveBeenLastCalledWith(
         expect.objectContaining({ name: 'Regal A', art: 'regal' }),
         ['Boden 1', 'Boden 2'],
+        null,
       );
       expect(angelegt.boedenIds.map((id) => orte.get(id))).toEqual([
         expect.objectContaining({ name: 'Boden 1', art: 'regalboden', parentId: angelegt.id }),
@@ -1136,7 +1151,7 @@ describe('posten', () => {
       });
       expect(res.status).toBe(201);
       expect(((await res.json()) as { boedenIds: string[] }).boedenIds).toHaveLength(2);
-      expect(waren.boedenHinzufuegen).toHaveBeenCalledWith(regal.id, ['Boden 2', 'Boden 3']);
+      expect(waren.boedenHinzufuegen).toHaveBeenCalledWith(regal.id, ['Boden 2', 'Boden 3'], null);
       expect((await post(`/api/lagerorte/${lager.id}/boeden`, { namen: ['x'] })).status).toBe(400);
       // names already used in the Regal (case-insensitive) are rejected
       expect((await post(`/api/lagerorte/${regal.id}/boeden`, { namen: ['boden 1'] })).status).toBe(
@@ -1194,6 +1209,70 @@ describe('posten', () => {
         200,
       );
       expect(orte.get(blatt.id)?.art).toBeNull();
+    });
+
+    it('validates and passes the Ifco-Lagerplatz dimensions', async () => {
+      const { app, waren } = makeApp();
+      const send = (url: string, method: string, body: unknown) =>
+        app.request(url, json('admin-token', method, body));
+      const platz = { hoeheCm: 20, stellflaechen: 1.5 };
+      expect(
+        (await send('/api/lagerorte', 'POST', { name: 'HR11', ifcoPlatz: platz })).status,
+      ).toBe(201);
+      expect(waren.lagerortAnlegen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'HR11', ifcoPlatz: platz }),
+        undefined,
+        null,
+      );
+      const regal = { name: 'Regal', art: 'regal', boeden: ['Boden 1'], boedenIfcoPlatz: platz };
+      expect((await send('/api/lagerorte', 'POST', regal)).status).toBe(201);
+      expect(waren.lagerortAnlegen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'Regal' }),
+        ['Boden 1'],
+        platz,
+      );
+      for (const ungueltig of [
+        { hoeheCm: 0, stellflaechen: 1 },
+        { hoeheCm: 20, stellflaechen: 0 },
+        { hoeheCm: 20, stellflaechen: 0.25 },
+        { hoeheCm: 20 },
+      ]) {
+        expect(
+          (await send('/api/lagerorte', 'POST', { name: 'X', ifcoPlatz: ungueltig })).status,
+        ).toBe(400);
+      }
+      // Update: undefined keeps, null unmarks.
+      const angelegt = (await (await send('/api/lagerorte', 'POST', { name: 'Platz' })).json()) as {
+        id: string;
+      };
+      expect(
+        (await send(`/api/lagerorte/${angelegt.id}`, 'PUT', { name: 'Platz', ifcoPlatz: platz }))
+          .status,
+      ).toBe(200);
+      expect(waren.lagerortAktualisieren).toHaveBeenLastCalledWith(
+        angelegt.id,
+        expect.objectContaining({ ifcoPlatz: platz }),
+      );
+      await send(`/api/lagerorte/${angelegt.id}`, 'PUT', { name: 'Platz', ifcoPlatz: null });
+      expect(waren.lagerortAktualisieren).toHaveBeenLastCalledWith(
+        angelegt.id,
+        expect.objectContaining({ ifcoPlatz: null }),
+      );
+      await send(`/api/lagerorte/${angelegt.id}`, 'PUT', { name: 'Platz' });
+      expect(waren.lagerortAktualisieren.mock.lastCall?.[1].ifcoPlatz).toBeUndefined();
+      // New Böden of a Regal.
+      const regalRes = (await (await send('/api/lagerorte', 'POST', regal)).json()) as {
+        id: string;
+      };
+      expect(
+        (
+          await send(`/api/lagerorte/${regalRes.id}/boeden`, 'POST', {
+            namen: ['B2'],
+            ifcoPlatz: platz,
+          })
+        ).status,
+      ).toBe(201);
+      expect(waren.boedenHinzufuegen).toHaveBeenLastCalledWith(regalRes.id, ['B2'], platz);
     });
 
     it('validates Gebinde and Waren input', async () => {
@@ -1463,6 +1542,7 @@ describe('inventar', () => {
       '/api/inventar/gegenstaende/g1',
       '/api/inventar/ifcos',
       '/api/inventar/ifcos/i1',
+      '/api/inventar/ifco-typen',
       '/api/inventar/ausleihen',
       '/api/inventar/ausleihen/a1',
     ]) {
@@ -1481,6 +1561,10 @@ describe('inventar', () => {
       ['/api/inventar/ifcos/i1', 'PUT'],
       ['/api/inventar/ifcos/i1', 'DELETE'],
       ['/api/inventar/ifcos/i1/archiv', 'PUT'],
+      ['/api/inventar/ifco-typen', 'POST'],
+      ['/api/inventar/ifco-typen/t1', 'PUT'],
+      ['/api/inventar/ifco-typen/t1', 'DELETE'],
+      ['/api/inventar/ifco-typen/t1/archiv', 'PUT'],
     ] as const) {
       const res = await app.request(url, json('reader-token', method, {}));
       expect(res.status, `${method} ${url}`).toBe(403);
@@ -1505,6 +1589,65 @@ describe('inventar', () => {
       name: 'Spanngurtkiste',
       beschreibung: null,
       lagerortId: null,
+      typId: null,
+    });
+  });
+
+  it('manages Ifco-Typen: validates, deletes only unused ones, archives', async () => {
+    const { app, inventar, inventarVerwendet } = makeApp();
+    const typ = { name: ' 6410 ', grundflaeche: 'gross', hoeheCm: 10 };
+    const send = (url: string, method: string, body?: unknown) =>
+      app.request(url, json('vorstand-token', method, body));
+    const res = await send('/api/inventar/ifco-typen', 'POST', typ);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ id: 't2' });
+    expect(inventar.ifcoTypAnlegen).toHaveBeenCalledWith({
+      name: '6410',
+      grundflaeche: 'gross',
+      hoeheCm: 10,
+    });
+    for (const ungueltig of [
+      { ...typ, hoeheCm: 0 },
+      { ...typ, hoeheCm: 10.25 },
+      { ...typ, grundflaeche: 'mittel' },
+      { ...typ, name: ' ' },
+      { name: 'x' },
+    ]) {
+      expect((await send('/api/inventar/ifco-typen', 'POST', ungueltig)).status).toBe(400);
+    }
+    expect((await send('/api/inventar/ifco-typen/t1', 'PUT', typ)).status).toBe(200);
+    expect((await send('/api/inventar/ifco-typen/nix', 'PUT', typ)).status).toBe(404);
+    expect((await send('/api/inventar/ifco-typen/nix', 'DELETE')).status).toBe(404);
+    expect((await send('/api/inventar/ifco-typen/t1', 'DELETE')).status).toBe(200);
+    inventarVerwendet.add('t1');
+    const used = await send('/api/inventar/ifco-typen/t1', 'DELETE');
+    expect(used.status).toBe(409);
+    expect(await used.json()).toEqual({ error: verwendetMeldung('Ifco-Typ') });
+    const archiv = await send('/api/inventar/ifco-typen/t1/archiv', 'PUT', { archiviert: true });
+    expect(archiv.status).toBe(200);
+    expect(inventar.ifcoTypArchivieren).toHaveBeenCalledWith('t1', true);
+  });
+
+  it('passes the Ifco type and maps a capacity error to 400', async () => {
+    const { app, inventar } = makeApp();
+    const meldung =
+      'Passt nicht auf „HR11“ (20 cm hoch, 1 Stellfläche): „X“ (6416, 16 cm) hat keinen Platz.';
+    inventar.ifcoPlatzSetzen.mockRejectedValueOnce(new WarenUngueltig(meldung));
+    const res = await app.request(
+      '/api/inventar/ifcos/i1/platz',
+      json('reader-token', 'PUT', { lagerortId: 'l1' }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: meldung });
+    await app.request(
+      '/api/inventar/ifcos',
+      json('admin-token', 'POST', { name: 'Kiste', typId: 't1', lagerortId: 'l1' }),
+    );
+    expect(inventar.ifcoAnlegen).toHaveBeenCalledWith({
+      name: 'Kiste',
+      beschreibung: null,
+      lagerortId: 'l1',
+      typId: 't1',
     });
   });
 

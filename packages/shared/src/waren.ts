@@ -9,6 +9,7 @@ import {
   parentIdSchema,
   zeitpunktSchema,
 } from './bausteine';
+import { ifcoPlatzMasseSchema } from './ifco';
 import { datumSchema } from './schemas';
 
 export const MHD_ARTEN = ['keins', 'tag', 'monat'] as const;
@@ -155,19 +156,32 @@ export const lagerortSchema = z.object({
   parentId: parentIdSchema,
   /** On update: undefined keeps the kind. On create: null/undefined = normal Lagerort. */
   art: z.enum(LAGERORT_ARTEN, 'Ungültige Art.').nullish(),
+  /**
+   * Ifco-Lagerplatz dimensions. On update: undefined keeps them, null unmarks the place. On create:
+   * null/undefined = normal place. Only for a place without children (not a Regal).
+   */
+  ifcoPlatz: ifcoPlatzMasseSchema.nullish(),
 });
 export type LagerortEingabe = z.input<typeof lagerortSchema>;
 
 /** Create: a Regal comes with its Regalböden (`boeden`), nothing else may bring them. */
 export const lagerortAnlegenSchema = lagerortSchema
-  .extend({ boeden: bodenNamenSchema.optional() })
+  .extend({
+    boeden: bodenNamenSchema.optional(),
+    /** Regal only: makes every new Regalboden an Ifco-Lagerplatz with these dimensions. */
+    boedenIfcoPlatz: ifcoPlatzMasseSchema.nullish().transform((v) => v ?? null),
+  })
   .refine((l) => (l.art === 'regal') === (l.boeden !== undefined), {
     message: 'Ein Regal braucht Regalböden, andere Lagerorte nicht.',
     path: ['boeden'],
   });
 export type LagerortAnlegenEingabe = z.input<typeof lagerortAnlegenSchema>;
 
-export const boedenHinzufuegenSchema = z.object({ namen: bodenNamenSchema });
+export const boedenHinzufuegenSchema = z.object({
+  namen: bodenNamenSchema,
+  /** Optional: makes every new Regalboden an Ifco-Lagerplatz with these dimensions. */
+  ifcoPlatz: ifcoPlatzMasseSchema.nullish().transform((v) => v ?? null),
+});
 
 export const lagerortReihenfolgeSchema = z.object({
   ids: z

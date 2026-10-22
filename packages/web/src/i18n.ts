@@ -15,6 +15,9 @@ import type {
 // Gebinde units; the labels live in shared because the Gebinde names are formatted there too.
 export { EINHEIT_LABELS, VERPACKUNGSEINHEIT_LABELS } from '@c4/shared';
 
+// Footprints of an Ifco (groß 60×40 / klein 40×30); the labels live in shared next to the capacity rules.
+export { IFCO_GRUNDFLAECHE_LABELS, IFCO_MASSE } from '@c4/shared';
+
 // Kinds of Lagerort (Lagerort / Regal / Regalboden); the labels live in shared next to the rules.
 export { LAGERORT_ART_LABELS } from '@c4/shared';
 

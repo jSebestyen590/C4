@@ -2,7 +2,7 @@ import { Alert, Box, Button } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { einlagerungenSchema, pfad, tiefensuche } from '@c4/shared';
+import { einlagerungenSchema, IFCO_PLATZ_KEINE_WARE, pfad, tiefensuche } from '@c4/shared';
 import { useApi } from '../api';
 import { BestandAbschnitt } from '../BestandAbschnitt';
 import { BuchungsFuss, zeitpunktIso } from '../BuchungsFuss';
@@ -37,7 +37,8 @@ export function EinlagerungPage() {
   const [versucht, setVersucht] = useState(false);
 
   const knoten = useMemo(
-    () => tiefensuche(daten.lagerorte, id).filter((k) => !k.archiviert),
+    // Ifco-Lagerplätze hold no Waren.
+    () => tiefensuche(daten.lagerorte, id).filter((k) => !k.archiviert && k.ifcoHoeheCm === null),
     [daten.lagerorte, id],
   );
   // The rows come once from the Warenlisten; after that the local state is the source of truth.
@@ -113,7 +114,13 @@ export function EinlagerungPage() {
       hinweis="Trag ein, was du einlagerst. Bei Waren mit MHD ist das Datum Pflicht."
       laedt={daten.laedt || zustaende === null}
       fehler={daten.fehler}
-      leer={knoten.length === 0 ? 'Dieser Lagerort ist archiviert.' : undefined}
+      leer={
+        knoten.length === 0
+          ? daten.lagerorte.some((l) => l.id === id && l.ifcoHoeheCm !== null)
+            ? IFCO_PLATZ_KEINE_WARE
+            : 'Dieser Lagerort ist archiviert.'
+          : undefined
+      }
     >
       <Box
         style={{ border: '1px solid var(--mantine-color-default-border)' }}

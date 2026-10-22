@@ -53,6 +53,8 @@ const orte: LagerKnoten[] = [
     position: 0,
     archiviert: false,
     art: null,
+    ifcoHoeheCm: null,
+    ifcoStellflaechen: null,
   },
   {
     id: 'k1',
@@ -62,6 +64,8 @@ const orte: LagerKnoten[] = [
     position: 0,
     archiviert: false,
     art: null,
+    ifcoHoeheCm: null,
+    ifcoStellflaechen: null,
   },
   {
     id: 'k2',
@@ -71,6 +75,8 @@ const orte: LagerKnoten[] = [
     position: 1,
     archiviert: true,
     art: null,
+    ifcoHoeheCm: null,
+    ifcoStellflaechen: null,
   },
 ];
 const z = (
@@ -105,6 +111,15 @@ describe('lagerBestand', () => {
     expect(abschnitte).toHaveLength(1);
     expect(abschnitte[0]!.pfad).toBe('Lager › Kühlschrank');
     expect(abschnitte[0]!.waren[0]!.gebinde.map((g) => g.id)).toEqual(['k', 'f']);
+  });
+
+  it('skips Ifco-Lagerplätze: no Waren lie there', () => {
+    const mitIfco = orte.map((o) =>
+      o.id === 'k1' ? { ...o, ifcoHoeheCm: 20, ifcoStellflaechen: 1 } : o,
+    );
+    expect(
+      ausgangAbschnitte('l', mitIfco, [z('k1', 'a', 'k', 2)], new Map(), waren, gebinde),
+    ).toEqual([]);
   });
 
   it('counts loose bottles plus the content of untaken crates', () => {

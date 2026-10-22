@@ -126,11 +126,14 @@ export function LagerPage() {
     ],
   );
 
-  const inventarDaten = useGegenstaendeUndIfcos(darfInventar && inventarZeigen);
+  const alle: LagerKnoten[] = useMemo(() => lagerorte.data ?? [], [lagerorte.data]);
+  const hatIfcoPlaetze = useMemo(() => alle.some((l) => l.ifcoHoeheCm !== null), [alle]);
+  // The Ifcos are also needed (without the Inventar switch) to tell what still fits on an Ifco-Lagerplatz.
+  const inventarDaten = useGegenstaendeUndIfcos(darfInventar && (inventarZeigen || hatIfcoPlaetze));
   const inventarKarte = useMemo(
     () =>
       darfInventar && inventarZeigen && inventarDaten.geladen
-        ? inventarJeLagerort(inventarDaten.gegenstaende, inventarDaten.ifcos)
+        ? inventarJeLagerort(inventarDaten.gegenstaende, inventarDaten.ifcos, inventarDaten.typen)
         : null,
     [
       darfInventar,
@@ -138,10 +141,17 @@ export function LagerPage() {
       inventarDaten.geladen,
       inventarDaten.gegenstaende,
       inventarDaten.ifcos,
+      inventarDaten.typen,
     ],
   );
+  const ifcoDaten = useMemo(
+    () =>
+      darfInventar && inventarDaten.geladen
+        ? { ifcos: inventarDaten.ifcos, typen: inventarDaten.typen }
+        : null,
+    [darfInventar, inventarDaten.geladen, inventarDaten.ifcos, inventarDaten.typen],
+  );
 
-  const alle: LagerKnoten[] = useMemo(() => lagerorte.data ?? [], [lagerorte.data]);
   const sichtbar = useMemo(
     () => (archiv ? alle : alle.filter((l) => !l.archiviert)),
     [alle, archiv],
@@ -251,6 +261,7 @@ export function LagerPage() {
     darfBuchen,
     bestand: bestandKarte,
     inventar: inventarKarte,
+    ifcoDaten,
     offeneInventuren,
     aufgeklappt: (id, tiefe) => istAufgeklappt(id, tiefe, aufgeklappt),
     umschalten: (id, tiefe) =>

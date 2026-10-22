@@ -2,6 +2,9 @@ import { Anchor, Stack, Text } from '@mantine/core';
 import { IconBox } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import type { BestandsAnzeige } from './lagerBestand';
+import { ifcoPlatzText, type IfcoPlatzMasse } from '@c4/shared';
+import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
+import { ifcosAufPlatz, passtNochText } from './ifcoPlatz';
 import type { LagerInventar } from './lagerInventar';
 
 const inventarZeile = {
@@ -29,6 +32,13 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
             <Text span fw={600} inherit>
               {i.name}
             </Text>
+            {' · '}
+            {i.typ && (
+              <Text span c="dimmed" inherit>
+                {' · '}
+                {i.typ}
+              </Text>
+            )}
             {' · '}
             {i.stueck} {i.stueck === 1 ? 'Teil' : 'Teile'}
           </span>
@@ -82,4 +92,29 @@ export function BestandListe({ zeilen }: Readonly<{ zeilen: BestandsAnzeige[] }>
       )}
     </Text>
   ));
+}
+
+/** Dimensions of an Ifco-Lagerplatz and what still fits there (`Passt noch: 1× 6410 oder 2× 4310` / `Voll`). */
+export function IfcoPlatzInfo({
+  lagerortId,
+  masse,
+  daten,
+}: Readonly<{
+  lagerortId: string;
+  masse: IfcoPlatzMasse;
+  /** Ifcos and types; null while not loaded. */
+  daten: { ifcos: IfcoEintrag[]; typen: IfcoTypEintrag[] } | null;
+}>) {
+  return (
+    <Stack gap={2}>
+      <Text size="sm" fw={600}>
+        {ifcoPlatzText(masse)}
+      </Text>
+      {daten && (
+        <Text size="sm" c="dimmed">
+          {passtNochText(masse, ifcosAufPlatz(daten.ifcos, lagerortId), daten.typen)}
+        </Text>
+      )}
+    </Stack>
+  );
 }

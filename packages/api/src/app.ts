@@ -27,6 +27,7 @@ import {
   inventurStartenSchema,
   inventurZaehlungSchema,
   boedenHinzufuegenSchema,
+  ifcoTypSchema,
   lagerortAnlegenSchema,
   lagerortReihenfolgeSchema,
   lagerortSchema,
@@ -558,8 +559,10 @@ export function createApp(deps: AppDeps) {
         warenVerwalten,
         zValidator('json', lagerortAnlegenSchema),
         async (c) => {
-          const { boeden, ...daten } = c.req.valid('json');
-          const angelegt = await deps.waren.lagerortAnlegen(daten, boeden).catch(warenFehler);
+          const { boeden, boedenIfcoPlatz, ...daten } = c.req.valid('json');
+          const angelegt = await deps.waren
+            .lagerortAnlegen(daten, boeden, boedenIfcoPlatz)
+            .catch(warenFehler);
           return c.json(angelegt, 201);
         },
       )
@@ -571,7 +574,11 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const boedenIds = gefunden(
             await deps.waren
-              .boedenHinzufuegen(c.req.param('id'), c.req.valid('json').namen)
+              .boedenHinzufuegen(
+                c.req.param('id'),
+                c.req.valid('json').namen,
+                c.req.valid('json').ifcoPlatz,
+              )
               .catch(warenFehler),
             'Lagerort nicht gefunden',
           );
@@ -1068,6 +1075,58 @@ export function createApp(deps: AppDeps) {
             'Gegenstand nicht gefunden',
           );
           return c.json({ ok: true });
+        },
+      )
+      // ----- Inventar: Ifco-Typen
+      .get('/inventar/ifco-typen', auth, inventarLesen, async (c) =>
+        c.json(await deps.inventar.ifcoTypen(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/inventar/ifco-typen',
+        auth,
+        inventarVerwalten,
+        zValidator('json', ifcoTypSchema),
+        async (c) => {
+          const id = await deps.inventar.ifcoTypAnlegen(c.req.valid('json')).catch(warenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/inventar/ifco-typen/:id',
+        auth,
+        inventarVerwalten,
+        zValidator('json', ifcoTypSchema),
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .ifcoTypAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(warenFehler),
+            'Ifco-Typ nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/inventar/ifco-typen/:id', auth, inventarVerwalten, async (c) => {
+        gefunden(
+          await deps.inventar.ifcoTypLoeschen(c.req.param('id')).catch(warenFehler),
+          'Ifco-Typ nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/inventar/ifco-typen/:id/archiv',
+        auth,
+        inventarVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.inventar
+              .ifcoTypArchivieren(c.req.param('id'), archiviert)
+              .catch(warenFehler),
+            'Ifco-Typ nicht gefunden',
+          );
+          return c.json({ archiviert });
         },
       )
       // ----- Inventar: Ifcos
