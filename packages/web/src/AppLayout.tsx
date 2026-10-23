@@ -7,9 +7,9 @@ import {
   Menu,
   NavLink,
   Text,
-  Title,
   UnstyledButton,
   type MantineColorScheme,
+  useComputedColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -31,6 +31,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
+import logo from './assets/favicon.png';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
 
@@ -106,6 +107,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
   const { pathname } = useLocation();
   const [opened, { toggle, close }] = useDisclosure(false);
+  const farbschema = useComputedColorScheme('light');
 
   const links = [
     { to: '/', label: 'Startseite', icon: <IconHome size={20} />, show: true },
@@ -160,7 +162,23 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
                 aria-label="Menü"
               />
             )}
-            <Title order={3}>C4</Title>
+            <UnstyledButton component={Link} to="/" aria-label="C4 – zur Startseite" lh={0}>
+              <img
+                src={logo}
+                alt="C4"
+                height={40}
+                width={40}
+                style={{
+                  display: 'block',
+                  // The logo has black parts: give it a light backing in dark mode.
+                  ...(farbschema === 'dark' && {
+                    background: 'white',
+                    borderRadius: 'var(--mantine-radius-sm)',
+                    padding: 2,
+                  }),
+                }}
+              />
+            </UnstyledButton>
           </Group>
           {user && (
             <Group gap="xs" wrap="nowrap">
