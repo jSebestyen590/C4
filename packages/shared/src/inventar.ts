@@ -202,6 +202,29 @@ export function inventarAbweichung(
   return { summe, differenz: summe - soll };
 }
 
+/**
+ * Error when a change would put more pieces of a Gegenstand onto its Plätze than exist (`soll`);
+ * null otherwise. An already over-assigned Gegenstand may still change as long as the sum does not grow.
+ */
+export function zuVielVerteiltFehler(
+  name: string,
+  soll: number,
+  bisher: number,
+  neu: number,
+): string | null {
+  if (neu <= soll || neu <= bisher) return null;
+  return `„${name}“ gibt es nur ${soll}-mal, zugeordnet wären ${neu}. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).`;
+}
+
+/**
+ * Error when the Soll-Anzahl of a Gegenstand is lowered below the pieces already on its Plätze
+ * (`summe`); raising it, even if still too low, is always allowed.
+ */
+export function sollZuKleinFehler(soll: number, bisherSoll: number, summe: number): string | null {
+  if (soll >= summe || soll >= bisherSoll) return null;
+  return `Es sind schon ${summe} Stück zugeordnet. Nimm zuerst an den Plätzen etwas weg.`;
+}
+
 /** `2 ohne Platz` / `1 mehr als Soll`, null when the Plätze match the target. */
 export function abweichungText(differenz: number): string | null {
   if (differenz < 0) return `${-differenz} ohne Platz`;

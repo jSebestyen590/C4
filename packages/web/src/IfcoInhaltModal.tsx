@@ -13,7 +13,7 @@ import {
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { ifcoInhaltSchema, pfad } from '@c4/shared';
+import { ifcoInhaltSchema, pfad, zuVielVerteiltFehler } from '@c4/shared';
 import { useApi } from './api';
 import {
   INVENTAR_KEY,
@@ -70,6 +70,22 @@ export function IfcoInhaltModal({
   // A Gegenstand that exists only once needs no amount.
   const einzeln = (id: string | null) => gegenstaende.find((g) => g.id === id)?.anzahl === 1;
 
+  // Pieces of a Gegenstand on its Plätze outside this IFCO, and on all of them.
+  const verteilt = (g: GegenstandEintrag) => {
+    const gesamt = g.plaetze.reduce((s, p) => s + p.anzahl, 0);
+    const anderswo = g.plaetze
+      .filter((p) => p.ifcoId !== ifco.id)
+      .reduce((s, p) => s + p.anzahl, 0);
+    return { gesamt, anderswo };
+  };
+  /** `Höchstens 4 (von 10)` / `Alle 10 liegen woanders`: what is left for this IFCO. */
+  const freiText = (id: string | null) => {
+    const g = gegenstaende.find((x) => x.id === id);
+    if (!g) return undefined;
+    const frei = g.anzahl - verteilt(g).anderswo;
+    return frei > 0 ? `Höchstens ${frei} (von ${g.anzahl})` : `Alle ${g.anzahl} liegen woanders`;
+  };
+
   const aendern = (key: number, teil: Partial<Zeile>) =>
     setZeilen((l) => l.map((z) => (z.key === key ? { ...z, ...teil } : z)));
 
@@ -93,6 +109,13 @@ export function IfcoInhaltModal({
     };
     const parsed = ifcoInhaltSchema.safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    for (const p of eingabe.positionen) {
+      const g = gegenstaende.find((x) => x.id === p.gegenstandId);
+      if (!g) continue;
+      const { gesamt, anderswo } = verteilt(g);
+      const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, gesamt, anderswo + p.anzahl);
+      if (zuViel) return setFehler(zuViel);
+    }
     setFehler(null);
     speichern.mutate(eingabe);
   };
@@ -118,6 +141,8 @@ export function IfcoInhaltModal({
                 {!einzeln(z.gegenstandId) && (
                   <NumberInput
                     label="Anzahl"
+                    description={freiText(z.gegenstandId)}
+                    inputWrapperOrder={['label', 'input', 'description', 'error']}
                     style={{ flex: 1 }}
                     allowDecimal={false}
                     allowNegative={false}

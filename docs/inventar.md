@@ -69,7 +69,11 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 ## Regeln
 
 - **Soll-Zustand:** Die Plätze sagen, wo etwas hingehört. Es gibt keine Buchungshistorie; Umräumen überschreibt. Die Summe der
-  Plätze darf vom Soll abweichen (`inventarAbweichung`, `abweichungText`: „2 ohne Platz“, „1 mehr als Soll“).
+  Plätze darf das Soll unterschreiten („2 ohne Platz“, `inventarAbweichung`, `abweichungText`), aber nicht überschreiten:
+  `…/plaetze`, `…/inhalt` und Anlegen mit Platz lehnen mehr Stück als vorhanden ab (400, `zuVielVerteiltFehler`; die Formulare
+  prüfen vorab, „Inhalt bearbeiten“ zeigt je Zeile „Höchstens 4 (von 10)“). Ein schon überverteilter Gegenstand („1 mehr als Soll“
+  aus der Zeit vor der Prüfung) lässt sich weiter umräumen, solange die Summe nicht wächst. Das Soll lässt sich nicht unter die
+  zugeordnete Summe senken (400, `sollZuKleinFehler`); Erhöhen geht immer.
 - **Plätze:** `PUT …/plaetze` ersetzt alle Plätze eines Gegenstands, `PUT …/inhalt` alle Zuordnungen einer IFCO, in einer Transaktion.
   Je Gegenstand ist jeder Lagerort/jede IFCO nur einmal erlaubt, Anzahl ≥ 1. Ziele müssen existieren und dürfen nicht archiviert
   sein (400; bereits zugeordnete archivierte Ziele bleiben erlaubt). Ein archivierter Gegenstand behält seine Plätze, ist aber nicht

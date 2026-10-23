@@ -10,7 +10,12 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
-import { gegenstandAnlegenSchema, gegenstandSchema } from '@c4/shared';
+import {
+  gegenstandAnlegenSchema,
+  gegenstandSchema,
+  sollZuKleinFehler,
+  zuVielVerteiltFehler,
+} from '@c4/shared';
 import { useApi } from './api';
 import { kategorieOptionen, zielAusWert, zielOptionen } from './inventarAnzeige';
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
@@ -98,6 +103,15 @@ export function GegenstandFormular({
     };
     const parsed = (gegenstand ? gegenstandSchema : gegenstandAnlegenSchema).safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    const regel = gegenstand
+      ? sollZuKleinFehler(
+          eingabe.anzahl,
+          gegenstand.anzahl,
+          gegenstand.plaetze.reduce((s, p) => s + p.anzahl, 0),
+        )
+      : eingabe.platz &&
+        zuVielVerteiltFehler(eingabe.name.trim(), eingabe.anzahl, 0, eingabe.platz.anzahl);
+    if (regel) return setFehler(regel);
     setFehler(null);
     speichern.mutate(eingabe);
   };

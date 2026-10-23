@@ -18,6 +18,8 @@ import {
   teilbaumIds,
   verliehenFehler,
   verliehenJePlatz,
+  sollZuKleinFehler,
+  zuVielVerteiltFehler,
   zielKey,
   type AusleiheStatus,
   type Beschriftung,
@@ -646,7 +648,11 @@ export function createInventarStore(db: Db): InventarStore {
     async gegenstandAnlegen({ platz, ...daten }) {
       return db.transaction(async (tx) => {
         await kategorieMussNutzbarSein(tx, daten.kategorieId);
-        if (platz) await zieleExistieren(tx, [platz]);
+        if (platz) {
+          await zieleExistieren(tx, [platz]);
+          const fehler = zuVielVerteiltFehler(daten.name, daten.anzahl, 0, platz.anzahl);
+          if (fehler) throw new WarenUngueltig(fehler);
+        }
         const id = randomUUID();
         await tx.insert(gegenstaende).values({ id, ...daten });
         if (platz) {
@@ -667,6 +673,15 @@ export function createInventarStore(db: Db): InventarStore {
         if (!bisher) return false;
         if (daten.kategorieId !== bisher.kategorieId) {
           await kategorieMussNutzbarSein(tx, daten.kategorieId);
+        }
+        if (daten.anzahl < bisher.anzahl) {
+          const plaetze = await tx
+            .select()
+            .from(gegenstandPlaetze)
+            .where(eq(gegenstandPlaetze.gegenstandId, id));
+          const summe = plaetze.reduce((s, p) => s + p.anzahl, 0);
+          const fehler = sollZuKleinFehler(daten.anzahl, bisher.anzahl, summe);
+          if (fehler) throw new WarenUngueltig(fehler);
         }
         await tx.update(gegenstaende).set(daten).where(eq(gegenstaende.id, id));
         return true;
@@ -711,6 +726,13 @@ export function createInventarStore(db: Db): InventarStore {
           .from(gegenstandPlaetze)
           .where(eq(gegenstandPlaetze.gegenstandId, id));
         await zieleExistieren(tx, plaetze, bisher);
+        const zuViel = zuVielVerteiltFehler(
+          g.name,
+          g.anzahl,
+          bisher.reduce((s, p) => s + p.anzahl, 0),
+          plaetze.reduce((s, p) => s + p.anzahl, 0),
+        );
+        if (zuViel) throw new WarenUngueltig(zuViel);
         const offen = await offenLaden(tx, eq(ausleihePositionen.gegenstandId, id));
         const neu = plaetze.map((p) => alsMenge(id, p));
         const fehler = await fehlerMitNamen(tx, (b) => verliehenFehler(neu, offen, b));
@@ -902,6 +924,21 @@ export function createInventarStore(db: Db): InventarStore {
         const vorher = new Set(bisher.map((b) => b.gegenstandId));
         if (rows.some((g) => g.archiviert && !vorher.has(g.id))) {
           throw new WarenUngueltig('Ein Gegenstand ist archiviert.');
+        }
+        // Every Gegenstand in the new content: its other Plätze plus the new amount here.
+        const allePlaetze = gegenstandIds.length
+          ? await tx
+              .select()
+              .from(gegenstandPlaetze)
+              .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds))
+          : [];
+        for (const p of positionen) {
+          const g = rows.find((x) => x.id === p.gegenstandId)!;
+          const eigene = allePlaetze.filter((x) => x.gegenstandId === g.id);
+          const bisherSumme = eigene.reduce((s, x) => s + x.anzahl, 0);
+          const anderswo = eigene.filter((x) => x.ifcoId !== id).reduce((s, x) => s + x.anzahl, 0);
+          const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, bisherSumme, anderswo + p.anzahl);
+          if (zuViel) throw new WarenUngueltig(zuViel);
         }
         const offen = await offenLaden(tx, eq(ausleihePositionen.ifcoId, id));
         const neu = positionen.map((p) =>

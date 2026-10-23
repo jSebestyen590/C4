@@ -13,7 +13,12 @@ import { PfadSelect } from './PfadSelect';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { abweichungText, gegenstandPlaetzeSchema, inventarAbweichung } from '@c4/shared';
+import {
+  abweichungText,
+  gegenstandPlaetzeSchema,
+  inventarAbweichung,
+  zuVielVerteiltFehler,
+} from '@c4/shared';
 import { useApi } from './api';
 import { zielAusWert, zielOptionen, zielWert } from './inventarAnzeige';
 import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
@@ -107,6 +112,13 @@ export function GegenstandPlaetzeModal({
     };
     const parsed = gegenstandPlaetzeSchema.safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    const zuViel = zuVielVerteiltFehler(
+      gegenstand.name,
+      gegenstand.anzahl,
+      inventarAbweichung(gegenstand.anzahl, gegenstand.plaetze).summe,
+      summe.summe,
+    );
+    if (zuViel) return setFehler(zuViel);
     setFehler(null);
     speichern.mutate(eingabe);
   };

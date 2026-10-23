@@ -9,6 +9,8 @@ import {
   ifcoInhaltSchema,
   ifcoSchema,
   inventarAbweichung,
+  sollZuKleinFehler,
+  zuVielVerteiltFehler,
   kategorieSchema,
   platzText,
   rueckgabeSchema,
@@ -212,6 +214,27 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
     expect(rueckgabeSchema.safeParse({ positionIds: [], zurueckAm }).success).toBe(false);
     expect(rueckgabeSchema.safeParse({ positionIds: ['p1', 'p1'], zurueckAm }).success).toBe(false);
     expect(rueckgabeSchema.safeParse({ positionIds: ['p1'], zurueckAm: 'x' }).success).toBe(false);
+  });
+});
+
+describe('zuVielVerteiltFehler / sollZuKleinFehler', () => {
+  it('refuses putting more pieces on places than exist', () => {
+    expect(zuVielVerteiltFehler('Schalter', 10, 8, 10)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 8, 11)).toBe(
+      '„Schalter“ gibt es nur 10-mal, zugeordnet wären 11. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).',
+    );
+  });
+  it('lets an over-assigned Gegenstand change as long as the sum does not grow', () => {
+    expect(zuVielVerteiltFehler('Schalter', 10, 21, 21)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 21, 15)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 21, 22)).not.toBeNull();
+  });
+  it('refuses lowering the Soll below the assigned pieces, but allows raising it', () => {
+    expect(sollZuKleinFehler(8, 10, 9)).toBe(
+      'Es sind schon 9 Stück zugeordnet. Nimm zuerst an den Plätzen etwas weg.',
+    );
+    expect(sollZuKleinFehler(9, 10, 9)).toBeNull();
+    expect(sollZuKleinFehler(15, 10, 21)).toBeNull();
   });
 });
 
