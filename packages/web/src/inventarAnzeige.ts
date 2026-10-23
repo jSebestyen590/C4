@@ -401,3 +401,33 @@ export function gegenstaendeSortieren(
     }
   });
 }
+
+export type IfcoSortierung = 'name' | 'platz';
+
+export const IFCO_SORTIERUNGEN: { value: IfcoSortierung; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'platz', label: 'Standort' },
+];
+
+/**
+ * Sorted copy of the IFCOs. Name: A–Z with numbers in order ("Kiste 2" before "Kiste 10");
+ * Standort: by the path of the Lagerort, IFCOs without a place last. Ties fall back to the name.
+ * `umgekehrt` flips the order, but IFCOs without a place stay last.
+ */
+export function ifcosSortieren(
+  liste: IfcoEintrag[],
+  sortierung: IfcoSortierung,
+  lagerorte: BaumKnoten[],
+  umgekehrt = false,
+): IfcoEintrag[] {
+  const richtung = umgekehrt ? -1 : 1;
+  const name = (a: IfcoEintrag, b: IfcoEintrag) =>
+    a.name.localeCompare(b.name, 'de', { sensitivity: 'base', numeric: true });
+  const ort = (i: IfcoEintrag) => (i.lagerortId ? pfad(lagerorte, i.lagerortId) : '');
+  return [...liste].sort((a, b) => {
+    if (sortierung === 'name') return richtung * name(a, b);
+    const [x, y] = [ort(a), ort(b)];
+    if (x === '' || y === '') return leerZuletzt(x, y) || name(a, b);
+    return richtung * (deutsch(x, y) || name(a, b));
+  });
+}

@@ -85,21 +85,34 @@ export const gegenstandPlaetzeSchema = z.object({
 });
 export type GegenstandPlaetzeEingabe = z.input<typeof gegenstandPlaetzeSchema>;
 
-/** Replaces the content of an IFCO; each Gegenstand may appear only once. */
-export const ifcoInhaltSchema = z.object({
-  positionen: z
-    .array(
-      z.object({
-        gegenstandId: idSchema('Bitte wähle einen Gegenstand.'),
-        anzahl: anzahlSchema,
-      }),
-    )
-    .refine(
-      (liste) => eindeutig(liste.map((p) => p.gegenstandId)),
-      'Jeder Gegenstand darf nur einmal vorkommen. Fasse die Anzahlen zusammen.',
-    ),
-});
+const zielSchema = z
+  .object({ lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+  .refine(genauEinZiel, ZIEL_MELDUNG);
+
+/** Content of an IFCO; each Gegenstand may appear only once. */
+export const ifcoInhaltPositionenSchema = z
+  .array(
+    z.object({
+      gegenstandId: idSchema('Bitte wähle einen Gegenstand.'),
+      anzahl: anzahlSchema,
+      /** Überführung: the pieces added to the IFCO come from this other Platz of the Gegenstand. */
+      herkunft: zielSchema.nullable().default(null),
+    }),
+  )
+  .refine(
+    (liste) => eindeutig(liste.map((p) => p.gegenstandId)),
+    'Jeder Gegenstand darf nur einmal vorkommen. Fasse die Anzahlen zusammen.',
+  );
+
+/** Replaces the content of an IFCO. */
+export const ifcoInhaltSchema = z.object({ positionen: ifcoInhaltPositionenSchema });
 export type IfcoInhaltEingabe = z.input<typeof ifcoInhaltSchema>;
+
+/** Creating an IFCO may fill it right away. */
+export const ifcoAnlegenSchema = ifcoSchema.extend({
+  inhalt: ifcoInhaltPositionenSchema.default([]),
+});
+export type IfcoAnlegenEingabe = z.input<typeof ifcoAnlegenSchema>;
 
 export const ifcoPlatzSchema = z.object({ lagerortId: parentIdSchema });
 
@@ -187,6 +200,65 @@ export interface PlatzZiel {
 export interface PlatzMenge extends PlatzZiel {
   gegenstandId: string;
   anzahl: number;
+}
+
+/** One content row of an IFCO, optionally moved from another Platz (`herkunft`). */
+export interface IfcoInhaltPosition {
+  gegenstandId: string;
+  anzahl: number;
+  herkunft: PlatzZiel | null;
+}
+
+const gleichesZiel = (a: PlatzZiel, b: PlatzZiel) => zielKey(a) === zielKey(b);
+
+/**
+ * Pieces an Überführung takes from `p.herkunft`: what is added to the IFCO `ifcoId` (new amount
+ * minus what lay there before), at most what lies at the Herkunft. `plaetze` are the current
+ * Plätze of the Gegenstand.
+ */
+export function ueberfuehrteMenge(
+  plaetze: PlatzMenge[],
+  ifcoId: string,
+  p: IfcoInhaltPosition,
+): number {
+  if (!p.herkunft) return 0;
+  const eigene = plaetze.filter((x) => x.gegenstandId === p.gegenstandId);
+  const hier = eigene.find((x) => x.ifcoId === ifcoId)?.anzahl ?? 0;
+  const quelle = eigene.find((x) => gleichesZiel(x, p.herkunft!))?.anzahl ?? 0;
+  return Math.max(0, Math.min(p.anzahl - hier, quelle));
+}
+
+/**
+ * New Plätze of all Gegenstände in `plaetze` when the IFCO `ifcoId` gets the content `positionen`:
+ * its own rows are replaced and each Überführung lowers its Herkunft (emptied places disappear).
+ * `ungueltig` names a Gegenstand whose Herkunft is not one of its other Plätze.
+ */
+export function ifcoInhaltAnwenden(
+  plaetze: PlatzMenge[],
+  ifcoId: string,
+  positionen: IfcoInhaltPosition[],
+): { plaetze: PlatzMenge[]; ungueltig: string | null } {
+  for (const p of positionen) {
+    if (!p.herkunft) continue;
+    const da = plaetze.some(
+      (x) =>
+        x.gegenstandId === p.gegenstandId && x.ifcoId !== ifcoId && gleichesZiel(x, p.herkunft!),
+    );
+    if (!da || p.herkunft.ifcoId === ifcoId) return { plaetze, ungueltig: p.gegenstandId };
+  }
+  const neu = plaetze
+    .filter((x) => x.ifcoId !== ifcoId)
+    .map((x) => {
+      const p = positionen.find(
+        (q) => q.gegenstandId === x.gegenstandId && q.herkunft && gleichesZiel(x, q.herkunft),
+      );
+      return p ? { ...x, anzahl: x.anzahl - ueberfuehrteMenge(plaetze, ifcoId, p) } : x;
+    })
+    .filter((x) => x.anzahl > 0);
+  for (const p of positionen) {
+    neu.push({ gegenstandId: p.gegenstandId, lagerortId: null, ifcoId, anzahl: p.anzahl });
+  }
+  return { plaetze: neu, ungueltig: null };
 }
 
 /** Key of a (Gegenstand, place) combination, as used by `verliehenJePlatz`. */

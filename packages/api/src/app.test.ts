@@ -1719,6 +1719,7 @@ describe('inventar', () => {
       beschreibung: null,
       lagerortId: null,
       typId: null,
+      inhalt: [],
     });
   });
 
@@ -1777,6 +1778,7 @@ describe('inventar', () => {
       beschreibung: null,
       lagerortId: 'l1',
       typId: 't1',
+      inhalt: [],
     });
   });
 
@@ -1883,7 +1885,17 @@ describe('inventar', () => {
 
     const inhalt = { positionen: [{ gegenstandId: 'g1', anzahl: 6 }] };
     expect((await put('/api/inventar/ifcos/i1/inhalt', inhalt)).status).toBe(200);
-    expect(inventar.ifcoInhaltSetzen).toHaveBeenCalledWith('i1', inhalt.positionen);
+    expect(inventar.ifcoInhaltSetzen).toHaveBeenCalledWith(
+      'i1',
+      inhalt.positionen.map((p) => ({ ...p, herkunft: null })),
+    );
+    const herkunft = { lagerortId: 'l1', ifcoId: null };
+    await put('/api/inventar/ifcos/i1/inhalt', {
+      positionen: [{ gegenstandId: 'g1', anzahl: 2, herkunft }],
+    });
+    expect(inventar.ifcoInhaltSetzen).toHaveBeenLastCalledWith('i1', [
+      { gegenstandId: 'g1', anzahl: 2, herkunft },
+    ]);
     expect(
       (
         await put('/api/inventar/ifcos/i1/inhalt', {

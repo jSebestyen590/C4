@@ -32,8 +32,7 @@ import { StatusName } from '../StatusAnzeige';
 import { leerePostenWerte, PostenFelder, type PostenWerte } from '../PostenFelder';
 
 /** Username of a holder, falling back to the full name while they have none. */
-export const besetzungName = (b: Besetzung) =>
-  mitgliedName(b.mitglied);
+export const besetzungName = (b: Besetzung) => mitgliedName(b.mitglied);
 
 const postenLink = (id: string) => `/posten/${encodeURIComponent(id)}`;
 

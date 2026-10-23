@@ -279,6 +279,8 @@ export function IfcoDetailPage() {
           ifco={ifco}
           gegenstaende={inv.gegenstaende}
           kategorien={inv.kategorien}
+          lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
           onClose={() => setInhalt(false)}
         />
       )}

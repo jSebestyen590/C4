@@ -18,6 +18,8 @@ import {
   teilbaumIds,
   verliehenFehler,
   verliehenJePlatz,
+  ifcoInhaltAnwenden,
+  type IfcoInhaltPosition,
   sollZuKleinFehler,
   zuVielVerteiltFehler,
   zielKey,
@@ -62,6 +64,7 @@ import {
   WarenUngueltig,
   zyklusFehler,
   type Q,
+  type Tx,
 } from './waren';
 
 // ---------------------------------------------------------------------------
@@ -226,17 +229,15 @@ export interface InventarStore {
   // IFCOs
   ifcos(mitArchiv: boolean): Promise<IfcoDetails[]>;
   ifcoHolen(id: string): Promise<IfcoDetails | undefined>;
-  ifcoAnlegen(daten: IfcoDaten): Promise<string>;
+  /** Creates the IFCO, optionally with its content (like `ifcoInhaltSetzen`). */
+  ifcoAnlegen(daten: IfcoDaten & { inhalt?: IfcoInhaltPosition[] }): Promise<string>;
   ifcoAktualisieren(id: string, daten: IfcoDaten): Promise<boolean>;
   ifcoLoeschen(id: string): Promise<boolean>;
   /** Archiving needs an empty IFCO without open Ausleihe. */
   ifcoArchivieren(id: string, archiviert: boolean): Promise<boolean>;
   ifcoPlatzSetzen(id: string, lagerortId: string | null): Promise<boolean>;
   /** Replaces all assignments with `ifco_id = id`. */
-  ifcoInhaltSetzen(
-    id: string,
-    positionen: { gegenstandId: string; anzahl: number }[],
-  ): Promise<boolean>;
+  ifcoInhaltSetzen(id: string, positionen: IfcoInhaltPosition[]): Promise<boolean>;
   // Ausleihen
   ausleihen(nurOffen: boolean): Promise<AusleiheDetails[]>;
   ausleiheHolen(id: string): Promise<AusleiheDetails | undefined>;
@@ -552,6 +553,74 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
     );
 }
 
+/**
+ * Replaces the content of the IFCO `id` (checked to exist and not be archived) with `positionen`;
+ * an Überführung lowers its Herkunft by the pieces added. No more pieces than exist, nothing below
+ * what is lent from a place.
+ */
+async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[]): Promise<void> {
+  const bisher = await q.select().from(gegenstandPlaetze).where(eq(gegenstandPlaetze.ifcoId, id));
+  const gegenstandIds = positionen.map((p) => p.gegenstandId);
+  const rows = gegenstandIds.length
+    ? await q.select().from(gegenstaende).where(inListe(gegenstaende.id, gegenstandIds))
+    : [];
+  if (rows.length !== gegenstandIds.length) {
+    throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
+  }
+  const vorher = new Set(bisher.map((b) => b.gegenstandId));
+  if (rows.some((g) => g.archiviert && !vorher.has(g.id))) {
+    throw new WarenUngueltig('Ein Gegenstand ist archiviert.');
+  }
+  // All Plätze of every Gegenstand that is or was in the IFCO.
+  const betroffen = [...new Set([...gegenstandIds, ...vorher])];
+  const alt = betroffen.length
+    ? await q
+        .select()
+        .from(gegenstandPlaetze)
+        .where(inListe(gegenstandPlaetze.gegenstandId, betroffen))
+    : [];
+  const altMengen = alt.map((x) => alsMenge(x.gegenstandId, x));
+  const { plaetze: neu, ungueltig } = ifcoInhaltAnwenden(altMengen, id, positionen);
+  if (ungueltig) {
+    const name = rows.find((g) => g.id === ungueltig)?.name ?? 'Der Gegenstand';
+    throw new WarenUngueltig(`„${name}“ liegt nicht an dem Platz, aus dem es überführt werden soll.`);
+  }
+  for (const g of rows) {
+    const summe = (l: PlatzMenge[]) =>
+      l.filter((x) => x.gegenstandId === g.id).reduce((s, x) => s + x.anzahl, 0);
+    const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, summe(altMengen), summe(neu));
+    if (zuViel) throw new WarenUngueltig(zuViel);
+  }
+  const offen = betroffen.length
+    ? await offenLaden(q, inListe(ausleihePositionen.gegenstandId, betroffen))
+    : [];
+  const fehler = await fehlerMitNamen(q, (b) => verliehenFehler(neu, offen, b));
+  if (fehler) throw new WarenKonflikt(fehler);
+  // Lower or remove the Herkünfte, then replace the IFCO's own rows.
+  for (const x of alt.filter((x) => x.ifcoId !== id)) {
+    const danach = neu.find((n) => platzKey(n) === platzKey(x))?.anzahl ?? 0;
+    if (danach === x.anzahl) continue;
+    if (danach === 0) await q.delete(gegenstandPlaetze).where(eq(gegenstandPlaetze.id, x.id));
+    else
+      await q
+        .update(gegenstandPlaetze)
+        .set({ anzahl: danach })
+        .where(eq(gegenstandPlaetze.id, x.id));
+  }
+  await q.delete(gegenstandPlaetze).where(eq(gegenstandPlaetze.ifcoId, id));
+  if (positionen.length > 0) {
+    await q.insert(gegenstandPlaetze).values(
+      positionen.map((p) => ({
+        id: randomUUID(),
+        gegenstandId: p.gegenstandId,
+        lagerortId: null,
+        ifcoId: id,
+        anzahl: p.anzahl,
+      })),
+    );
+  }
+}
+
 async function laufendeAktion(q: Q) {
   const offen = await q.select().from(aufraeumaktionen).where(isNull(aufraeumaktionen.beendetAm));
   return offen.sort((a, b) => b.gestartetAm.getTime() - a.gestartetAm.getTime())[0];
@@ -821,7 +890,7 @@ export function createInventarStore(db: Db): InventarStore {
     async ifcoHolen(id) {
       return (await ifcosLaden(db, id))[0];
     },
-    async ifcoAnlegen(daten) {
+    async ifcoAnlegen({ inhalt = [], ...daten }) {
       return db.transaction(async (tx) => {
         if (daten.lagerortId !== null) {
           await zieleExistieren(tx, [{ lagerortId: daten.lagerortId, ifcoId: null }]);
@@ -830,6 +899,7 @@ export function createInventarStore(db: Db): InventarStore {
         await passtAufPlatz(tx, null, daten.name, daten.typId, daten.lagerortId);
         const id = randomUUID();
         await tx.insert(ifcos).values({ id, ...daten });
+        if (inhalt.length > 0) await inhaltSetzen(tx, id, inhalt);
         return id;
       });
     },
@@ -910,54 +980,7 @@ export function createInventarStore(db: Db): InventarStore {
         const [ifco] = await tx.select().from(ifcos).where(eq(ifcos.id, id));
         if (!ifco) return false;
         if (ifco.archiviert) throw new WarenUngueltig('Die IFCO ist archiviert.');
-        const bisher = await tx
-          .select()
-          .from(gegenstandPlaetze)
-          .where(eq(gegenstandPlaetze.ifcoId, id));
-        const gegenstandIds = positionen.map((p) => p.gegenstandId);
-        const rows = gegenstandIds.length
-          ? await tx.select().from(gegenstaende).where(inListe(gegenstaende.id, gegenstandIds))
-          : [];
-        if (rows.length !== gegenstandIds.length) {
-          throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
-        }
-        const vorher = new Set(bisher.map((b) => b.gegenstandId));
-        if (rows.some((g) => g.archiviert && !vorher.has(g.id))) {
-          throw new WarenUngueltig('Ein Gegenstand ist archiviert.');
-        }
-        // Every Gegenstand in the new content: its other Plätze plus the new amount here.
-        const allePlaetze = gegenstandIds.length
-          ? await tx
-              .select()
-              .from(gegenstandPlaetze)
-              .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds))
-          : [];
-        for (const p of positionen) {
-          const g = rows.find((x) => x.id === p.gegenstandId)!;
-          const eigene = allePlaetze.filter((x) => x.gegenstandId === g.id);
-          const bisherSumme = eigene.reduce((s, x) => s + x.anzahl, 0);
-          const anderswo = eigene.filter((x) => x.ifcoId !== id).reduce((s, x) => s + x.anzahl, 0);
-          const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, bisherSumme, anderswo + p.anzahl);
-          if (zuViel) throw new WarenUngueltig(zuViel);
-        }
-        const offen = await offenLaden(tx, eq(ausleihePositionen.ifcoId, id));
-        const neu = positionen.map((p) =>
-          alsMenge(p.gegenstandId, { lagerortId: null, ifcoId: id, anzahl: p.anzahl }),
-        );
-        const fehler = await fehlerMitNamen(tx, (b) => verliehenFehler(neu, offen, b));
-        if (fehler) throw new WarenKonflikt(fehler);
-        await tx.delete(gegenstandPlaetze).where(eq(gegenstandPlaetze.ifcoId, id));
-        if (positionen.length > 0) {
-          await tx.insert(gegenstandPlaetze).values(
-            positionen.map((p) => ({
-              id: randomUUID(),
-              gegenstandId: p.gegenstandId,
-              lagerortId: null,
-              ifcoId: id,
-              anzahl: p.anzahl,
-            })),
-          );
-        }
+        await inhaltSetzen(tx, id, positionen);
         return true;
       });
     },

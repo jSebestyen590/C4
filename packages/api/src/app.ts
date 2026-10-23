@@ -20,6 +20,7 @@ import {
   aufraeumFertigSchema,
   gegenstandAnlegenSchema,
   gegenstandSchema,
+  ifcoAnlegenSchema,
   ifcoInhaltSchema,
   ifcoPlatzSchema,
   ifcoSchema,
@@ -1203,7 +1204,7 @@ export function createApp(deps: AppDeps) {
         '/inventar/ifcos',
         auth,
         inventarVerwalten,
-        zValidator('json', ifcoSchema),
+        zValidator('json', ifcoAnlegenSchema),
         async (c) => {
           const id = await deps.inventar.ifcoAnlegen(c.req.valid('json')).catch(warenFehler);
           return c.json({ id }, 201);

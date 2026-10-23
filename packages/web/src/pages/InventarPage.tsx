@@ -35,6 +35,9 @@ import { typAnzeige } from '../ifcoPlatz';
 import {
   anzahlText,
   GEGENSTAND_SORTIERUNGEN,
+  IFCO_SORTIERUNGEN,
+  ifcosSortieren,
+  type IfcoSortierung,
   gegenstandAbweichung,
   gegenstaendeSortieren,
   type GegenstandSortierung,
@@ -116,18 +119,18 @@ function GegenstandKarte({
 const gegenstandLink = (id: string) => `/inventar/gegenstaende/${encodeURIComponent(id)}`;
 
 /** Column header that sorts the table; the Select above the list offers the same on phones. */
-function SortKopf({
+function SortKopf<S extends string>({
   spalte,
   label,
   sortierung,
   umgekehrt,
   onSort,
 }: Readonly<{
-  spalte: GegenstandSortierung;
+  spalte: S;
   label: string;
-  sortierung: GegenstandSortierung;
+  sortierung: S;
   umgekehrt: boolean;
-  onSort: (spalte: GegenstandSortierung) => void;
+  onSort: (spalte: S) => void;
 }>) {
   const aktiv = sortierung === spalte;
   const Icon = !aktiv ? IconSelector : umgekehrt ? IconChevronDown : IconChevronUp;
@@ -357,10 +360,141 @@ function IfcoKarte({
   );
 }
 
+const ifcoLink = (id: string) => `/inventar/ifcos/${encodeURIComponent(id)}`;
+
+/**
+ * Table of IFCOs from `sm` on; the whole row opens the IFCO. While clearing up, the last column
+ * holds "Fertig" / "Wieder öffnen".
+ */
+function IfcoTabelle({
+  liste,
+  inv,
+  sortierung,
+  umgekehrt,
+  onSort,
+  aufraeumen,
+}: Readonly<{
+  liste: IfcoEintrag[];
+  inv: ReturnType<typeof useInventar>;
+  sortierung: IfcoSortierung;
+  umgekehrt: boolean;
+  onSort: (spalte: IfcoSortierung) => void;
+  /** Set while an Aufräumaktion runs. */
+  aufraeumen: Map<string, AufraeumFertigEintrag> | null;
+}>) {
+  const navigate = useNavigate();
+  const kopf = (spalte: IfcoSortierung, label: string) => (
+    <SortKopf
+      spalte={spalte}
+      label={label}
+      sortierung={sortierung}
+      umgekehrt={umgekehrt}
+      onSort={onSort}
+    />
+  );
+  const name = (id: string) => inv.gegenstaende.find((g) => g.id === id)?.name ?? 'Unbekannt';
+  return (
+    <Table.ScrollContainer minWidth={760} visibleFrom="sm">
+      <Table verticalSpacing="xs">
+        <Table.Thead>
+          <Table.Tr>
+            {kopf('name', 'Name')}
+            {kopf('platz', 'Standort')}
+            <Table.Th>Inhalt</Table.Th>
+            <Table.Th>Status</Table.Th>
+            {aufraeumen && <Table.Th>Aufräumen</Table.Th>}
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {liste.map((i) => {
+            const inhalt = i.inhalt
+              .map((p) => ({ ...p, name: name(p.gegenstandId) }))
+              .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+            const fertig = aufraeumen?.get(i.id);
+            return (
+              <Table.Tr
+                key={i.id}
+                opacity={i.archiviert || fertig ? 0.6 : 1}
+                style={{ cursor: 'pointer' }}
+                onClick={(e) => {
+                  // Links and buttons in the row act on their own.
+                  if (!(e.target as HTMLElement).closest('a, button')) navigate(ifcoLink(i.id));
+                }}
+              >
+                <Table.Td>
+                  <Link to={ifcoLink(i.id)} style={kartenStil}>
+                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                      {i.name}
+                    </Text>
+                  </Link>
+                  <Text size="sm" c="dimmed">
+                    {typAnzeige(i.typId, inv.ifcoTypen)}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  {i.lagerortId ? (
+                    <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                      {pfad(inv.lagerorte, i.lagerortId)}
+                    </Text>
+                  ) : (
+                    <Badge color="orange" variant="light">
+                      Ohne Platz
+                    </Badge>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  {inhalt.slice(0, MAX_INHALT).map((p) => (
+                    <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
+                      {mengeName(p.anzahl, p.name)}
+                    </Text>
+                  ))}
+                  {inhalt.length > MAX_INHALT && (
+                    <Text size="sm" c="dimmed">
+                      + {inhalt.length - MAX_INHALT} weitere
+                    </Text>
+                  )}
+                  {inhalt.length === 0 && (
+                    <Text size="sm" c="dimmed">
+                      Leer
+                    </Text>
+                  )}
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    {fertig && <FertigBadge f={fertig} />}
+                    {i.ausleihe && (
+                      <Badge
+                        color={i.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
+                        variant="light"
+                        style={{ maxWidth: '100%' }}
+                      >
+                        {ifcoAusleiheKurz(i.ausleihe)}
+                      </Badge>
+                    )}
+                    {i.archiviert && (
+                      <Badge color="gray" variant="light">
+                        Archiviert
+                      </Badge>
+                    )}
+                  </Group>
+                </Table.Td>
+                {aufraeumen && (
+                  <Table.Td>
+                    {!i.archiviert && <FertigKnopf ifcoId={i.id} fertig={!!fertig} />}
+                  </Table.Td>
+                )}
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
 /** Where is what? Gegenstände and IFCOs with their places, search, Kategorie filter and archive switch. */
 export function InventarPage() {
   const inv = useInventar();
-  const navigate = useNavigate();
   const darfVerwalten = useAuth().can('inventar:verwalten');
   const [params, setParams] = useSearchParams();
   const ansichtParam = params.get('ansicht');
@@ -372,8 +506,18 @@ export function InventarPage() {
   const [sortierung, setSortierung] = useState<GegenstandSortierung>('name');
   const [umgekehrt, setUmgekehrt] = useState(false);
   const [anlegen, setAnlegen] = useState(false);
+  const [ifcoSortierung, setIfcoSortierung] = useState<IfcoSortierung>('name');
+  const [ifcoUmgekehrt, setIfcoUmgekehrt] = useState(false);
   const aufraeumen = useAufraeumen();
   const [nurOffen, setNurOffen] = useState(false);
+
+  const ifcosSortierenNach = (spalte: IfcoSortierung) => {
+    if (spalte === ifcoSortierung) setIfcoUmgekehrt((u) => !u);
+    else {
+      setIfcoSortierung(spalte);
+      setIfcoUmgekehrt(false);
+    }
+  };
 
   const sortieren = (spalte: GegenstandSortierung) => {
     if (spalte === sortierung) setUmgekehrt((u) => !u);
@@ -427,7 +571,7 @@ export function InventarPage() {
   const ifcos = useMemo(() => {
     const q = suche.trim().toLowerCase();
     const name = (id: string) => inv.gegenstaende.find((g) => g.id === id)?.name ?? '';
-    return inv.ifcos
+    const treffer = inv.ifcos
       .filter((i) => archiv || !i.archiviert)
       .filter(
         (i) =>
@@ -436,9 +580,9 @@ export function InventarPage() {
           i.beschreibung?.toLowerCase().includes(q) ||
           (i.lagerortId !== null && pfad(inv.lagerorte, i.lagerortId).toLowerCase().includes(q)) ||
           i.inhalt.some((p) => name(p.gegenstandId).toLowerCase().includes(q)),
-      )
-      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  }, [inv.ifcos, inv.gegenstaende, inv.lagerorte, suche, archiv]);
+      );
+    return ifcosSortieren(treffer, ifcoSortierung, inv.lagerorte, ifcoUmgekehrt);
+  }, [inv.ifcos, inv.gegenstaende, inv.lagerorte, suche, archiv, ifcoSortierung, ifcoUmgekehrt]);
 
   // Clearing up covers the non-archived IFCOs; open ones come first, done ones after.
   const zuRaeumen = inv.ifcos.filter((i) => !i.archiviert);
@@ -520,7 +664,7 @@ export function InventarPage() {
               />
             )}
           </SimpleGrid>
-          {imGegenstand && (
+          {imGegenstand ? (
             <Select
               label="Sortieren nach"
               data={GEGENSTAND_SORTIERUNGEN}
@@ -529,6 +673,20 @@ export function InventarPage() {
                 if (v) {
                   setSortierung(v as GegenstandSortierung);
                   setUmgekehrt(false);
+                }
+              }}
+              allowDeselect={false}
+              maw={{ sm: 280 }}
+            />
+          ) : (
+            <Select
+              label="Sortieren nach"
+              data={IFCO_SORTIERUNGEN}
+              value={ifcoSortierung}
+              onChange={(v) => {
+                if (v) {
+                  setIfcoSortierung(v as IfcoSortierung);
+                  setIfcoUmgekehrt(false);
                 }
               }}
               allowDeselect={false}
@@ -569,20 +727,32 @@ export function InventarPage() {
               )}
             </>
           ) : (
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-              {ifcoListe.map((i) => (
-                <IfcoKarte
-                  key={i.id}
-                  ifco={i}
+            <>
+              <SimpleGrid cols={1} hiddenFrom="sm">
+                {ifcoListe.map((i) => (
+                  <IfcoKarte
+                    key={i.id}
+                    ifco={i}
+                    inv={inv}
+                    aufraeumen={
+                      aufraeumen.aktion && !i.archiviert
+                        ? { fertig: aufraeumen.fertig.get(i.id) }
+                        : undefined
+                    }
+                  />
+                ))}
+              </SimpleGrid>
+              {ifcoListe.length > 0 && (
+                <IfcoTabelle
+                  liste={ifcoListe}
                   inv={inv}
-                  aufraeumen={
-                    aufraeumen.aktion && !i.archiviert
-                      ? { fertig: aufraeumen.fertig.get(i.id) }
-                      : undefined
-                  }
+                  sortierung={ifcoSortierung}
+                  umgekehrt={ifcoUmgekehrt}
+                  onSort={ifcosSortierenNach}
+                  aufraeumen={aufraeumen.aktion ? aufraeumen.fertig : null}
                 />
-              ))}
-            </SimpleGrid>
+              )}
+            </>
           )}
         </>
       )}
@@ -599,8 +769,9 @@ export function InventarPage() {
           lagerorte={inv.lagerorte}
           ifcos={inv.ifcos}
           typen={inv.ifcoTypen}
+          gegenstaende={inv.gegenstaende}
+          kategorien={inv.kategorien}
           onClose={() => setAnlegen(false)}
-          onAngelegt={(id) => navigate(`/inventar/ifcos/${encodeURIComponent(id)}`)}
         />
       )}
     </Stack>

@@ -9,6 +9,8 @@ import {
   ifcoInhaltSchema,
   ifcoSchema,
   inventarAbweichung,
+  ifcoInhaltAnwenden,
+  ueberfuehrteMenge,
   sollZuKleinFehler,
   zuVielVerteiltFehler,
   kategorieSchema,
@@ -214,6 +216,55 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
     expect(rueckgabeSchema.safeParse({ positionIds: [], zurueckAm }).success).toBe(false);
     expect(rueckgabeSchema.safeParse({ positionIds: ['p1', 'p1'], zurueckAm }).success).toBe(false);
     expect(rueckgabeSchema.safeParse({ positionIds: ['p1'], zurueckAm: 'x' }).success).toBe(false);
+  });
+});
+
+describe('ifcoInhaltAnwenden / ueberfuehrteMenge', () => {
+  const regal = { lagerortId: 'l1', ifcoId: null };
+  const plaetze = [
+    { gegenstandId: 'g', ...regal, anzahl: 6 },
+    { gegenstandId: 'g', lagerortId: null, ifcoId: 'i', anzahl: 1 },
+    { gegenstandId: 'h', ...regal, anzahl: 2 },
+  ];
+  it('moves the added pieces from the Herkunft and replaces the IFCO rows', () => {
+    const p = { gegenstandId: 'g', anzahl: 4, herkunft: regal };
+    expect(ueberfuehrteMenge(plaetze, 'i', p)).toBe(3);
+    expect(ifcoInhaltAnwenden(plaetze, 'i', [p])).toEqual({
+      plaetze: [
+        { gegenstandId: 'g', ...regal, anzahl: 3 },
+        { gegenstandId: 'h', ...regal, anzahl: 2 },
+        { gegenstandId: 'g', lagerortId: null, ifcoId: 'i', anzahl: 4 },
+      ],
+      ungueltig: null,
+    });
+  });
+  it('takes at most what lies there and drops an emptied place', () => {
+    const p = { gegenstandId: 'h', anzahl: 5, herkunft: regal };
+    expect(ueberfuehrteMenge(plaetze, 'i', p)).toBe(2);
+    const neu = ifcoInhaltAnwenden(plaetze, 'i', [p]).plaetze;
+    expect(neu.filter((x) => x.gegenstandId === 'h')).toEqual([
+      { gegenstandId: 'h', lagerortId: null, ifcoId: 'i', anzahl: 5 },
+    ]);
+  });
+  it('moves nothing without Herkunft or when the amount does not grow', () => {
+    expect(ueberfuehrteMenge(plaetze, 'i', { gegenstandId: 'g', anzahl: 4, herkunft: null })).toBe(
+      0,
+    );
+    expect(ueberfuehrteMenge(plaetze, 'i', { gegenstandId: 'g', anzahl: 1, herkunft: regal })).toBe(
+      0,
+    );
+  });
+  it('flags a Herkunft that is not another Platz of the Gegenstand', () => {
+    const fremd = { lagerortId: 'l9', ifcoId: null };
+    expect(
+      ifcoInhaltAnwenden(plaetze, 'i', [{ gegenstandId: 'g', anzahl: 2, herkunft: fremd }])
+        .ungueltig,
+    ).toBe('g');
+    const selbst = { lagerortId: null, ifcoId: 'i' };
+    expect(
+      ifcoInhaltAnwenden(plaetze, 'i', [{ gegenstandId: 'g', anzahl: 2, herkunft: selbst }])
+        .ungueltig,
+    ).toBe('g');
   });
 });
 

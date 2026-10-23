@@ -71,7 +71,7 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 - **Soll-Zustand:** Die Plätze sagen, wo etwas hingehört. Es gibt keine Buchungshistorie; Umräumen überschreibt. Die Summe der
   Plätze darf das Soll unterschreiten („2 ohne Platz“, `inventarAbweichung`, `abweichungText`), aber nicht überschreiten:
   `…/plaetze`, `…/inhalt` und Anlegen mit Platz lehnen mehr Stück als vorhanden ab (400, `zuVielVerteiltFehler`; die Formulare
-  prüfen vorab, „Inhalt bearbeiten“ zeigt je Zeile „Höchstens 4 (von 10)“). Ein schon überverteilter Gegenstand („1 mehr als Soll“
+  prüfen vorab). Ein schon überverteilter Gegenstand („1 mehr als Soll“
   aus der Zeit vor der Prüfung) lässt sich weiter umräumen, solange die Summe nicht wächst. Das Soll lässt sich nicht unter die
   zugeordnete Summe senken (400, `sollZuKleinFehler`); Erhöhen geht immer.
 - **Plätze:** `PUT …/plaetze` ersetzt alle Plätze eines Gegenstands, `PUT …/inhalt` alle Zuordnungen einer IFCO, in einer Transaktion.
@@ -157,7 +157,9 @@ jede Änderung macht `['inventar']` ungültig.
 - `/inventar`: Umschalter „Gegenstände“ / „IFCOs“ / „Verliehen“ (`?ansicht=ifcos|verliehen`), Suche (bei
   Gegenständen Name, Beschreibung, IFCO und Lagerort-Pfad der Plätze; bei IFCOs Name, Platz, Inhalt), Kategoriefilter inkl.
   Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Sortierung (Select „Sortieren nach“, Standard Name): Name, Kategorie (Pfad, dann Name), Anzahl (absteigend), Platz (erster Platz, ohne Platz zuletzt), deutsch verglichen (`gegenstaendeSortieren` in `inventarAnzeige.ts`); in der Tabelle sortieren auch die Spaltenköpfe, ein zweiter Klick kehrt um. Auf dem Handy sind es Karten, ab `sm` eine Tabelle (Name mit Beschreibung, Kategorie, Anzahl, Plätze mit „3 verliehen“ in Lila und „2 vorgemerkt“ in Cyan, Status mit Abweichung/Archiviert); die ganze Zeile öffnet den Gegenstand. Karten zeigen Plätze mit Pfad („6×“ im Kopf, am Platz „Lager › Regal · 3 verliehen · 2 vorgemerkt“; die Verleih-Hinweise stehen nur an den Plätzen) und ein oranges Badge
-  bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „IFCO anlegen“ und „Kategorien“.
+  bei Abweichung (`inventarAbweichung`/`abweichungText`). IFCOs: auf dem Handy Karten, ab `sm` eine Tabelle (Name mit Typ, Standort,
+  Inhalt, Status; beim Aufräumen eine Spalte mit „Fertig“), sortierbar nach Name (Zahlen der Reihe nach) und Standort (Pfad, ohne
+  Platz zuletzt) über „Sortieren nach“ oder die Spaltenköpfe (`ifcosSortieren`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „IFCO anlegen“ und „Kategorien“.
   „Gegenstand anlegen“ fragt optional gleich einen Platz ab (Lagerort oder IFCO, `POST /gegenstaende` mit
   `platz { lagerortId | ifcoId, anzahl }`, im selben Schritt geprüft und gespeichert); die Anzahl dort ist standardmäßig die ganze
   Soll-Anzahl und folgt ihr, bis man sie ändert (bei Soll 1 ohne Feld). Danach bleibt man auf der Übersicht.
@@ -166,6 +168,14 @@ jede Änderung macht `['inventar']` ungültig.
   gesperrt) und Anzahl, Live-Summe gegen Soll. Bei Soll 1 gibt es nur ein Feld „Platz“ (leerbar = „Kein Platz“), ohne Anzahl, Nummerierung, „Platz hinzufügen“ und Summe. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Soll 1 ohne Mengenfeld), Menü wie beim Gegenstand.
+- **Überführung** (`IfcoInhaltFelder`, `useIfcoInhaltSchritte`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Liegt ein Gegenstand
+  schon an einem anderen Platz, steht unter der Zeile „Liegt schon an: …“. Bekommt die IFCO dadurch mehr Stück, fragt ein zweiter
+  Schritt je Gegenstand „Überführen aus“ (vorgewählt der Platz mit den meisten Stück, oder „Nicht überführen (zusätzlich)“) und
+  zeigt, wie viele von dort kommen. Die API (`positionen[].herkunft { lagerortId | ifcoId }`, `ifcoInhaltAnwenden`,
+  `ueberfuehrteMenge`) senkt die Herkunft in derselben Transaktion um die hinzugekommenen Stück, höchstens um das, was dort liegt
+  (ein geleerter Platz verschwindet); die Herkunft muss ein anderer Platz des Gegenstands sein (400), Verliehenes muss bleiben (409).
+- **IFCO anlegen** (`IfcoFormular`) fragt optional gleich den Inhalt ab (`POST /ifcos` mit `inhalt`, gleiche Regeln wie
+  `PUT …/inhalt`); danach bleibt man auf der Übersicht.
 - `/inventar/stammdaten`: Tab „Kategorien“ (Baum) und Tab „IFCO-Typen“ (`IfcoTypenTab`, Karten mit Name und „60×40 · 10 cm“;
   `IfcoTypFormular` mit Umschalter Grundfläche groß/klein und Höhe in cm). Bearbeiten nur mit `inventar:verwalten`.
 - IFCOs: `IfcoFormular` hat ein durchsuchbares Typ-Feld („6410 · 60×40 · 10 cm“); Karten und Detailseite zeigen den Typ. In

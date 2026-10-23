@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { gegenstaendeSortieren } from './inventarAnzeige';
-import type { GegenstandEintrag } from './inventarDaten';
+import { gegenstaendeSortieren, ifcosSortieren } from './inventarAnzeige';
+import type { GegenstandEintrag, IfcoEintrag } from './inventarDaten';
 
 const kategorien = [
   { id: 'k1', parentId: null, name: 'Technik' },
@@ -65,5 +65,36 @@ describe('gegenstaendeSortieren', () => {
     const kopie = [...liste];
     gegenstaendeSortieren(liste, 'anzahl', kontext);
     expect(liste).toEqual(kopie);
+  });
+});
+
+describe('ifcosSortieren', () => {
+  const ifco = (id: string, name: string, lagerortId: string | null): IfcoEintrag => ({
+    id,
+    name,
+    beschreibung: null,
+    lagerortId,
+    archiviert: false,
+    typId: null,
+    inhalt: [],
+    ausleihe: null,
+  });
+  const liste = [ifco('a', 'Kiste 10', 'l3'), ifco('b', 'Kiste 2', null), ifco('c', 'Zelt', 'l2')];
+  it('sorts by name with numbers in order', () => {
+    expect(ifcosSortieren(liste, 'name', lagerorte).map((i) => i.id)).toEqual(['b', 'a', 'c']);
+    expect(ifcosSortieren(liste, 'name', lagerorte, true).map((i) => i.id)).toEqual([
+      'c',
+      'a',
+      'b',
+    ]);
+  });
+  it('sorts by Standort and keeps IFCOs without a place last', () => {
+    // Keller < Lager › Regal
+    expect(ifcosSortieren(liste, 'platz', lagerorte).map((i) => i.id)).toEqual(['a', 'c', 'b']);
+    expect(ifcosSortieren(liste, 'platz', lagerorte, true).map((i) => i.id)).toEqual([
+      'c',
+      'a',
+      'b',
+    ]);
   });
 });
