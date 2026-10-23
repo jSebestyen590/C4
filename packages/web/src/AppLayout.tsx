@@ -32,6 +32,7 @@ import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import logo from './assets/favicon.png';
+import logoDunkel from './assets/logo-dunkel.png';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
 
@@ -164,19 +165,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
             )}
             <UnstyledButton component={Link} to="/" aria-label="C4 – zur Startseite" lh={0}>
               <img
-                src={logo}
+                // In dark mode the stairs and the shadow are white instead of black.
+                src={farbschema === 'dark' ? logoDunkel : logo}
                 alt="C4"
                 height={40}
                 width={40}
-                style={{
-                  display: 'block',
-                  // The logo has black parts: give it a light backing in dark mode.
-                  ...(farbschema === 'dark' && {
-                    background: 'white',
-                    borderRadius: 'var(--mantine-radius-sm)',
-                    padding: 2,
-                  }),
-                }}
+                style={{ display: 'block' }}
               />
             </UnstyledButton>
           </Group>
