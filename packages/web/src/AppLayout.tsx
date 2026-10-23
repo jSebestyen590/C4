@@ -32,6 +32,7 @@ import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
+import { PullToRefresh } from './PullToRefresh';
 
 const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
   { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
@@ -146,6 +147,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       navbar={{ width: 240, breakpoint: 'md', collapsed: { mobile: !opened, desktop: !user } }}
       padding="md"
     >
+      <PullToRefresh />
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group wrap="nowrap">

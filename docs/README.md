@@ -11,4 +11,10 @@ aktualisiert die zugehörige Seite im selben Change.
 | [inventar.md](./inventar.md)   | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte              |
 | [datenbank.md](./datenbank.md) | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)               |
 
+## Allgemein
+
+- Als App vom Homescreen gestartet (`display: standalone`, v. a. iOS) bietet der Browser kein Neuladen durch Herunterziehen.
+  `PullToRefresh` (in `AppLayout`) ergänzt das nur in diesem Modus: oben auf der Seite herunterziehen, ab 80 px loslassen lädt
+  die Seite neu. Gesten in Dialogen, Drawern, Menüs und beim Ziehen per Drag-and-drop zählen nicht.
+
 Architektur, Einrichtung und Deployment stehen in der `README.md` im Repository-Root.
