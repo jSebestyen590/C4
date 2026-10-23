@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import {
   ausleihFehler,
   bestandZu,
@@ -28,6 +28,8 @@ import {
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
+  aufraeumaktionen,
+  aufraeumIfcos,
   ausleihen,
   ausleihePositionen,
   bestandsbuchungen,
@@ -161,6 +163,21 @@ export interface Organisator {
   anrede: Anrede;
 }
 
+/** An IFCO marked as done in the running Aufräumaktion. */
+export interface AufraeumFertig {
+  ifcoId: string;
+  fertigAm: Date;
+  von: Organisator | null;
+}
+
+/** The running Aufräumaktion with the IFCOs marked as done so far. */
+export interface AufraeumDetails {
+  id: string;
+  gestartetAm: Date;
+  gestartetVon: Organisator | null;
+  fertig: AufraeumFertig[];
+}
+
 export interface AusleiheDetails extends AusleiheRow {
   /** True when every Position was returned. */
   erledigt: boolean;
@@ -225,6 +242,15 @@ export interface InventarStore {
   ausleiheAktualisieren(id: string, daten: AusleiheKopfDaten): Promise<boolean>;
   ausleiheRueckgabe(id: string, positionIds: string[], zurueckAm: string): Promise<boolean>;
   ausleiheLoeschen(id: string): Promise<boolean>;
+  // Aufräumen
+  /** The running Aufräumaktion, null if none. */
+  aufraeumen(): Promise<AufraeumDetails | null>;
+  /** Starts one for everybody; 409 while one is running. */
+  aufraeumenStarten(sub: string): Promise<string>;
+  /** Ends the running one; false if none is running. */
+  aufraeumenBeenden(sub: string): Promise<boolean>;
+  /** Marks (or unmarks) an IFCO as done; false if the IFCO does not exist, 409 without a running one. */
+  aufraeumIfcoSetzen(ifcoId: string, fertig: boolean, sub: string): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +440,14 @@ export function ifcoAusleihen(
   return karte;
 }
 
+/** The Mitglied with the Cognito `sub` as `Organisator` (username filled in by the route); null if unknown. */
+export function mitgliedVon(
+  sub: string,
+  mitgliederListe: Parameters<typeof organisatorVon>[1],
+): Organisator | null {
+  return organisatorVon({ organisiertVon: sub, erstelltVon: sub }, mitgliederListe);
+}
+
 /** The organising Mitglied of an Ausleihe: `organisiertVon`, else `erstelltVon`; null if unknown. */
 export function organisatorVon(
   a: Pick<AusleiheRow, 'organisiertVon' | 'erstelltVon'>,
@@ -514,6 +548,11 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
     .sort(
       (a, b) => b.ausgeliehenAm.getTime() - a.ausgeliehenAm.getTime() || a.id.localeCompare(b.id),
     );
+}
+
+async function laufendeAktion(q: Q) {
+  const offen = await q.select().from(aufraeumaktionen).where(isNull(aufraeumaktionen.beendetAm));
+  return offen.sort((a, b) => b.gestartetAm.getTime() - a.gestartetAm.getTime())[0];
 }
 
 /** Throws `WarenUngueltig` unless `sub` belongs to a Mitglied. */
@@ -801,6 +840,7 @@ export function createInventarStore(db: Db): InventarStore {
           gibtEs(tx, ausleihePositionen, eq(ausleihePositionen.ifcoId, id)),
         ]);
         if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('IFCO'));
+        await tx.delete(aufraeumIfcos).where(eq(aufraeumIfcos.ifcoId, id));
         await tx.delete(ifcos).where(eq(ifcos.id, id));
         return true;
       });
@@ -1022,6 +1062,67 @@ export function createInventarStore(db: Db): InventarStore {
         if (!(await gibtEs(tx, ausleihen, eq(ausleihen.id, id)))) return false;
         await tx.delete(ausleihePositionen).where(eq(ausleihePositionen.ausleiheId, id));
         await tx.delete(ausleihen).where(eq(ausleihen.id, id));
+        return true;
+      });
+    },
+
+    // ----- Aufräumen
+    async aufraeumen() {
+      const aktion = await laufendeAktion(db);
+      if (!aktion) return null;
+      const fertig = await db
+        .select()
+        .from(aufraeumIfcos)
+        .where(eq(aufraeumIfcos.aktionId, aktion.id));
+      const subs = [...new Set([aktion.gestartetVon, ...fertig.map((f) => f.fertigVon)])];
+      const personen = await db.select().from(mitglieder).where(inListe(mitglieder.sub, subs));
+      return {
+        id: aktion.id,
+        gestartetAm: aktion.gestartetAm,
+        gestartetVon: mitgliedVon(aktion.gestartetVon, personen),
+        fertig: fertig.map((f) => ({
+          ifcoId: f.ifcoId,
+          fertigAm: f.fertigAm,
+          von: mitgliedVon(f.fertigVon, personen),
+        })),
+      };
+    },
+    async aufraeumenStarten(sub) {
+      return db.transaction(async (tx) => {
+        if (await laufendeAktion(tx)) throw new WarenKonflikt('Es läuft schon eine Aufräumaktion.');
+        const id = randomUUID();
+        await tx.insert(aufraeumaktionen).values({ id, gestartetVon: sub });
+        return id;
+      });
+    },
+    async aufraeumenBeenden(sub) {
+      return db.transaction(async (tx) => {
+        const aktion = await laufendeAktion(tx);
+        if (!aktion) return false;
+        await tx
+          .update(aufraeumaktionen)
+          .set({ beendetAm: new Date(), beendetVon: sub })
+          .where(eq(aufraeumaktionen.id, aktion.id));
+        return true;
+      });
+    },
+    async aufraeumIfcoSetzen(ifcoId, fertig, sub) {
+      return db.transaction(async (tx) => {
+        const [ifco] = await tx.select().from(ifcos).where(eq(ifcos.id, ifcoId));
+        if (!ifco) return false;
+        const aktion = await laufendeAktion(tx);
+        if (!aktion) throw new WarenKonflikt('Es läuft gerade keine Aufräumaktion.');
+        const hier = and(eq(aufraeumIfcos.aktionId, aktion.id), eq(aufraeumIfcos.ifcoId, ifcoId));
+        if (!fertig) {
+          await tx.delete(aufraeumIfcos).where(hier);
+          return true;
+        }
+        if (ifco.archiviert) throw new WarenUngueltig('Die IFCO ist archiviert.');
+        if (!(await gibtEs(tx, aufraeumIfcos, hier))) {
+          await tx
+            .insert(aufraeumIfcos)
+            .values({ id: randomUUID(), aktionId: aktion.id, ifcoId, fertigVon: sub });
+        }
         return true;
       });
     },

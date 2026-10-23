@@ -1,6 +1,7 @@
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
@@ -43,7 +44,14 @@ import {
   mengeText,
   platzZeilen,
 } from '../inventarAnzeige';
-import { useInventar, type GegenstandEintrag, type IfcoEintrag } from '../inventarDaten';
+import {
+  useAufraeumen,
+  useInventar,
+  type AufraeumFertigEintrag,
+  type GegenstandEintrag,
+  type IfcoEintrag,
+} from '../inventarDaten';
+import { AufraeumHinweis, AufraeumPanel, FertigBadge, FertigKnopf } from '../Aufraeumen';
 import { VerlieheneAnsicht } from '../VerlieheneAnsicht';
 
 type Ansicht = 'gegenstaende' | 'ifcos' | 'verliehen';
@@ -258,69 +266,93 @@ const MAX_INHALT = 4;
 function IfcoKarte({
   ifco,
   inv,
-}: Readonly<{ ifco: IfcoEintrag; inv: ReturnType<typeof useInventar> }>) {
+  aufraeumen,
+}: Readonly<{
+  ifco: IfcoEintrag;
+  inv: ReturnType<typeof useInventar>;
+  /** Set while an Aufräumaktion runs: the done entry of this IFCO, if any. */
+  aufraeumen?: { fertig: AufraeumFertigEintrag | undefined };
+}>) {
   const inhalt = ifco.inhalt
     .map((p) => ({
       ...p,
       name: inv.gegenstaende.find((g) => g.id === p.gegenstandId)?.name ?? 'Unbekannt',
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const link = `/inventar/ifcos/${encodeURIComponent(ifco.id)}`;
+  const fertig = aufraeumen?.fertig;
+  const inhaltAnzeige = (
+    <Stack gap={4}>
+      {fertig && <FertigBadge f={fertig} />}
+      <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+        {ifco.name}
+        {ifco.archiviert && (
+          <Text span c="dimmed" fw={400}>
+            {' '}
+            (archiviert)
+          </Text>
+        )}
+      </Text>
+      <Text size="sm" c="dimmed">
+        {typAnzeige(ifco.typId, inv.ifcoTypen)}
+      </Text>
+      {ifco.lagerortId ? (
+        <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+          {pfad(inv.lagerorte, ifco.lagerortId)}
+        </Text>
+      ) : (
+        <Badge color="orange" variant="light" style={{ alignSelf: 'flex-start' }}>
+          Ohne Platz
+        </Badge>
+      )}
+      {ifco.ausleihe && (
+        <Badge
+          color={ifco.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
+          variant="light"
+          style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+        >
+          {ifcoAusleiheKurz(ifco.ausleihe)}
+        </Badge>
+      )}
+      {inhalt.slice(0, MAX_INHALT).map((p) => (
+        <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
+          {mengeName(p.anzahl, p.name)}
+        </Text>
+      ))}
+      {inhalt.length > MAX_INHALT && (
+        <Text size="sm" c="dimmed">
+          + {inhalt.length - MAX_INHALT} weitere
+        </Text>
+      )}
+      {inhalt.length === 0 && (
+        <Text size="sm" c="dimmed">
+          Leer
+        </Text>
+      )}
+    </Stack>
+  );
+  // While clearing up, the button sits below the link area (no button inside a link).
+  if (aufraeumen)
+    return (
+      <Paper withBorder p="md" opacity={fertig ? 0.6 : 1}>
+        <Stack gap="sm">
+          <Box component={Link} to={link} style={kartenStil}>
+            {inhaltAnzeige}
+          </Box>
+          <FertigKnopf ifcoId={ifco.id} fertig={!!fertig} />
+        </Stack>
+      </Paper>
+    );
   return (
     <Paper
       component={Link}
-      to={`/inventar/ifcos/${encodeURIComponent(ifco.id)}`}
+      to={link}
       withBorder
       p="md"
       opacity={ifco.archiviert ? 0.6 : 1}
       style={kartenStil}
     >
-      <Stack gap={4}>
-        <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-          {ifco.name}
-          {ifco.archiviert && (
-            <Text span c="dimmed" fw={400}>
-              {' '}
-              (archiviert)
-            </Text>
-          )}
-        </Text>
-        <Text size="sm" c="dimmed">
-          {typAnzeige(ifco.typId, inv.ifcoTypen)}
-        </Text>
-        {ifco.lagerortId ? (
-          <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-            {pfad(inv.lagerorte, ifco.lagerortId)}
-          </Text>
-        ) : (
-          <Badge color="orange" variant="light" style={{ alignSelf: 'flex-start' }}>
-            Ohne Platz
-          </Badge>
-        )}
-        {ifco.ausleihe && (
-          <Badge
-            color={ifco.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
-            variant="light"
-            style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
-          >
-            {ifcoAusleiheKurz(ifco.ausleihe)}
-          </Badge>
-        )}
-        {inhalt.slice(0, MAX_INHALT).map((p) => (
-          <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
-            {mengeName(p.anzahl, p.name)}
-          </Text>
-        ))}
-        {inhalt.length > MAX_INHALT && (
-          <Text size="sm" c="dimmed">
-            + {inhalt.length - MAX_INHALT} weitere
-          </Text>
-        )}
-        {inhalt.length === 0 && (
-          <Text size="sm" c="dimmed">
-            Leer
-          </Text>
-        )}
-      </Stack>
+      {inhaltAnzeige}
     </Paper>
   );
 }
@@ -340,6 +372,8 @@ export function InventarPage() {
   const [sortierung, setSortierung] = useState<GegenstandSortierung>('name');
   const [umgekehrt, setUmgekehrt] = useState(false);
   const [anlegen, setAnlegen] = useState(false);
+  const aufraeumen = useAufraeumen();
+  const [nurOffen, setNurOffen] = useState(false);
 
   const sortieren = (spalte: GegenstandSortierung) => {
     if (spalte === sortierung) setUmgekehrt((u) => !u);
@@ -406,8 +440,17 @@ export function InventarPage() {
       .sort((a, b) => a.name.localeCompare(b.name, 'de'));
   }, [inv.ifcos, inv.gegenstaende, inv.lagerorte, suche, archiv]);
 
+  // Clearing up covers the non-archived IFCOs; open ones come first, done ones after.
+  const zuRaeumen = inv.ifcos.filter((i) => !i.archiviert);
+  const fertigZahl = zuRaeumen.filter((i) => aufraeumen.fertig.has(i.id)).length;
+  const ifcoListe = aufraeumen.aktion
+    ? ifcos
+        .filter((i) => !nurOffen || !aufraeumen.fertig.has(i.id))
+        .sort((a, b) => Number(aufraeumen.fertig.has(a.id)) - Number(aufraeumen.fertig.has(b.id)))
+    : ifcos;
+
   const imGegenstand = ansicht === 'gegenstaende';
-  const leer = imGegenstand ? gegenstaende.length === 0 : ifcos.length === 0;
+  const leer = imGegenstand ? gegenstaende.length === 0 : ifcoListe.length === 0;
 
   return (
     <Stack>
@@ -423,6 +466,18 @@ export function InventarPage() {
           { value: 'verliehen', label: 'Verliehen' },
         ]}
       />
+      {aufraeumen.aktion && ansicht !== 'ifcos' && (
+        <AufraeumHinweis gesamt={zuRaeumen.length} fertig={fertigZahl} />
+      )}
+      {ansicht === 'ifcos' && !aufraeumen.laedt && (
+        <AufraeumPanel
+          aktion={aufraeumen.aktion}
+          gesamt={zuRaeumen.length}
+          fertig={fertigZahl}
+          nurOffen={nurOffen}
+          onNurOffen={setNurOffen}
+        />
+      )}
       {ansicht === 'verliehen' && <VerlieheneAnsicht inv={inv} />}
       {ansicht !== 'verliehen' && darfVerwalten && (
         <SimpleGrid cols={{ base: 1, xs: 2 }}>
@@ -489,7 +544,11 @@ export function InventarPage() {
           {inv.fehler && <Alert color="red">Das Inventar konnte nicht geladen werden.</Alert>}
           {!inv.laedt && !inv.fehler && leer && (
             <Text c="dimmed">
-              {imGegenstand ? 'Keine Gegenstände gefunden.' : 'Keine IFCOs gefunden.'}
+              {imGegenstand
+                ? 'Keine Gegenstände gefunden.'
+                : nurOffen && aufraeumen.aktion
+                  ? 'Keine offenen IFCOs.'
+                  : 'Keine IFCOs gefunden.'}
             </Text>
           )}
           {imGegenstand ? (
@@ -511,8 +570,17 @@ export function InventarPage() {
             </>
           ) : (
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-              {ifcos.map((i) => (
-                <IfcoKarte key={i.id} ifco={i} inv={inv} />
+              {ifcoListe.map((i) => (
+                <IfcoKarte
+                  key={i.id}
+                  ifco={i}
+                  inv={inv}
+                  aufraeumen={
+                    aufraeumen.aktion && !i.archiviert
+                      ? { fertig: aufraeumen.fertig.get(i.id) }
+                      : undefined
+                  }
+                />
               ))}
             </SimpleGrid>
           )}

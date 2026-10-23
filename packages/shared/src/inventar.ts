@@ -65,6 +65,9 @@ export const gegenstandPlatzSchema = z
   })
   .refine(genauEinZiel, ZIEL_MELDUNG);
 
+/** Marks (or unmarks) an IFCO as done in the running Aufräumaktion. */
+export const aufraeumFertigSchema = z.object({ fertig: z.boolean() });
+
 /** Creating a Gegenstand may put it straight onto one place. */
 export const gegenstandAnlegenSchema = gegenstandSchema.extend({
   platz: gegenstandPlatzSchema.nullable().default(null),

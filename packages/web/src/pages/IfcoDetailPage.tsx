@@ -33,7 +33,8 @@ import { IfcoInhaltModal } from '../IfcoInhaltModal';
 import { IfcoUmstellenModal } from '../IfcoUmstellenModal';
 import { ifcoPlatzMasse, typAnzeige } from '../ifcoPlatz';
 import { anzahlText, ifcoAusleiheText } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
+import { INVENTAR_KEY, useAufraeumen, useAusleihen, useInventar } from '../inventarDaten';
+import { IfcoAufraeumen } from '../Aufraeumen';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
@@ -49,6 +50,7 @@ export function IfcoDetailPage() {
   const darfUmraeumen = can('inventar:umraeumen');
   const inv = useInventar();
   const ausleihenDaten = useAusleihen(true);
+  const aufraeumen = useAufraeumen();
   const [bearbeiten, setBearbeiten] = useState(false);
   const [umstellen, setUmstellen] = useState(false);
   const [inhalt, setInhalt] = useState(false);
@@ -169,6 +171,10 @@ export function IfcoDetailPage() {
           ]}
         />
       </Group>
+
+      {aufraeumen.aktion && !ifco.archiviert && (
+        <IfcoAufraeumen ifcoId={ifco.id} f={aufraeumen.fertig.get(ifco.id)} />
+      )}
 
       <Title order={3}>Platz</Title>
       <Paper withBorder p="sm">

@@ -326,6 +326,22 @@ function makeInventarFake() {
       return setze(id);
     }),
     ausleiheLoeschen: vi.fn(async (id: string) => setze(id)),
+    aufraeumen: vi.fn<InventarStore['aufraeumen']>(async () => ({
+      id: 'x1',
+      gestartetAm: new Date('2026-05-01T10:00:00Z'),
+      gestartetVon: {
+        sub: 'v',
+        username: null,
+        vorname: 'Vera',
+        nachname: 'Vorstand',
+        status: 'mitglied',
+        anrede: 'neutral',
+      },
+      fertig: [{ ifcoId: 'i1', fertigAm: new Date('2026-05-01T11:00:00Z'), von: null }],
+    })),
+    aufraeumenStarten: vi.fn<InventarStore['aufraeumenStarten']>(async () => 'x2'),
+    aufraeumenBeenden: vi.fn<InventarStore['aufraeumenBeenden']>(async () => true),
+    aufraeumIfcoSetzen: vi.fn<InventarStore['aufraeumIfcoSetzen']>(async (id) => setze(id)),
   } satisfies InventarStore;
   return { fake, verwendet };
 }
@@ -2036,6 +2052,52 @@ describe('inventar', () => {
       expect(inventar.ausleihen).toHaveBeenLastCalledWith(true);
       await app.request('/api/inventar/ausleihen', json('reader-token', 'GET'));
       expect(inventar.ausleihen).toHaveBeenLastCalledWith(false);
+    });
+  });
+
+  describe('aufraeumen', () => {
+    it('shows the running Aufräumaktion with usernames', async () => {
+      const { app, userAdmin } = makeApp();
+      userAdmin.konten.mockResolvedValue(new Map([['v', { username: 'vera' } as Konto]]));
+      const res = await app.request('/api/inventar/aufraeumen', json('reader-token', 'GET'));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        aktion: { gestartetVon: { username: string }; fertig: { ifcoId: string }[] };
+      };
+      expect(body.aktion.gestartetVon.username).toBe('vera');
+      expect(body.aktion.fertig.map((f) => f.ifcoId)).toEqual(['i1']);
+    });
+
+    it('lets everyone start, end and mark IFCOs as the caller', async () => {
+      const { app, inventar } = makeApp();
+      const start = await app.request('/api/inventar/aufraeumen', json('reader-token', 'POST'));
+      expect(start.status).toBe(201);
+      expect(inventar.aufraeumenStarten).toHaveBeenCalledWith('r');
+      const put = (id: string, body: unknown) =>
+        app.request(`/api/inventar/aufraeumen/ifcos/${id}`, json('reader-token', 'PUT', body));
+      expect((await put('i1', { fertig: true })).status).toBe(200);
+      expect(inventar.aufraeumIfcoSetzen).toHaveBeenCalledWith('i1', true, 'r');
+      expect((await put('i1', {})).status).toBe(400);
+      expect((await put('nix', { fertig: false })).status).toBe(404);
+      const ende = await app.request(
+        '/api/inventar/aufraeumen/beenden',
+        json('reader-token', 'POST'),
+      );
+      expect(ende.status).toBe(200);
+      expect(inventar.aufraeumenBeenden).toHaveBeenCalledWith('r');
+    });
+
+    it('maps a second start to 409 and ending without one to 404', async () => {
+      const { app, inventar } = makeApp();
+      inventar.aufraeumenStarten.mockRejectedValueOnce(new WarenKonflikt('läuft schon'));
+      expect(
+        (await app.request('/api/inventar/aufraeumen', json('reader-token', 'POST'))).status,
+      ).toBe(409);
+      inventar.aufraeumenBeenden.mockResolvedValueOnce(false);
+      expect(
+        (await app.request('/api/inventar/aufraeumen/beenden', json('reader-token', 'POST')))
+          .status,
+      ).toBe(404);
     });
   });
 });

@@ -17,6 +17,7 @@ import {
   ausleiheSchema,
   gebindeSchema,
   gegenstandPlaetzeSchema,
+  aufraeumFertigSchema,
   gegenstandAnlegenSchema,
   gegenstandSchema,
   ifcoInhaltSchema,
@@ -66,7 +67,7 @@ import {
   type PostenStore,
 } from './posten';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
-import type { InventarStore } from './inventar';
+import type { AufraeumDetails, InventarStore } from './inventar';
 import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
@@ -171,6 +172,19 @@ export function createApp(deps: AppDeps) {
           }
         : a,
     );
+  };
+
+  /** Adds the Cognito usernames to the members of the running Aufräumaktion. */
+  const aufraeumenMitUsernames = async (a: AufraeumDetails | null) => {
+    if (!a) return null;
+    const konten = await deps.userAdmin.konten();
+    const mit = <T extends { sub: string } | null>(o: T): T =>
+      o && { ...o, username: konten.get(o.sub)?.username ?? null };
+    return {
+      ...a,
+      gestartetVon: mit(a.gestartetVon),
+      fertig: a.fertig.map((f) => ({ ...f, von: mit(f.von) })),
+    };
   };
 
   /** Adds the Cognito username to the `ersteller` of Vorgänge/Inventuren (the store only knows the profile row). */
@@ -1259,6 +1273,37 @@ export function createApp(deps: AppDeps) {
             'IFCO nicht gefunden',
           );
           return c.json({ ok: true });
+        },
+      )
+      // ----- Inventar: Aufräumen
+      .get('/inventar/aufraeumen', auth, inventarLesen, async (c) =>
+        c.json({ aktion: await aufraeumenMitUsernames(await deps.inventar.aufraeumen()) }),
+      )
+      .post('/inventar/aufraeumen', auth, inventarUmraeumen, async (c) => {
+        const id = await deps.inventar.aufraeumenStarten(c.get('user').sub).catch(warenFehler);
+        return c.json({ id }, 201);
+      })
+      .post('/inventar/aufraeumen/beenden', auth, inventarUmraeumen, async (c) => {
+        gefunden(
+          await deps.inventar.aufraeumenBeenden(c.get('user').sub),
+          'Es läuft keine Aufräumaktion',
+        );
+        return c.json({ ok: true });
+      })
+      .put(
+        '/inventar/aufraeumen/ifcos/:id',
+        auth,
+        inventarUmraeumen,
+        zValidator('json', aufraeumFertigSchema),
+        async (c) => {
+          const { fertig } = c.req.valid('json');
+          gefunden(
+            await deps.inventar
+              .aufraeumIfcoSetzen(c.req.param('id'), fertig, c.get('user').sub)
+              .catch(warenFehler),
+            'IFCO nicht gefunden',
+          );
+          return c.json({ fertig });
         },
       )
       // ----- Inventar: Ausleihen

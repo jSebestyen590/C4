@@ -16,7 +16,7 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 
 ## Datenmodell
 
-Migrationen `0025`–`0031` (IFCO-Typen und IFCO-Lagerplätze: `0033`–`0036`; ganze IFCO und Organisator: `0037`, `0038`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
+Migrationen `0025`–`0031` (IFCO-Typen und IFCO-Lagerplätze: `0033`–`0036`; ganze IFCO und Organisator: `0037`, `0038`; Aufräumen: `0039`, `0040`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
 das Inventar: `0024_vorstandsposten_waren`).
 
 | Tabelle               | Inhalt                                                                                                                                                                           |
@@ -55,6 +55,16 @@ einer archivierten IFCO, Grundfläche/Höhe eines Typs ändern (jeder IFCO-Lager
 Maße eines IFCO-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Zusätzlich ist jede IFCO auf einem IFCO-Lagerplatz mit Warenbestand ≠ 0 400 „Auf „HR11“ liegt Ware; dort kann keine IFCO stehen.“ IFCOs ohne Typ dürfen nicht auf einen IFCO-Lagerplatz.
 Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für IFCOs unbeschränkt. Die Prüfung steht in
 `packages/api/src/ifcoPlatz.ts` und läuft in den Transaktionen der Stores.
+
+## Aufräumen
+
+Nach großen Veranstaltungen liegt vieles nicht mehr im Lager oder in der falschen IFCO. Eine **Aufräumaktion** gilt für alle:
+Jede:r mit `inventar:umraeumen` kann sie starten und beenden; es läuft höchstens eine (`aufraeumaktionen`: `gestartet_am`,
+`gestartet_von`, `beendet_am`, `beendet_von`; die `*_von` sind Cognito-`sub`s ohne Fremdschlüssel). Während sie läuft, hakt man
+IFCOs als **fertig** ab (Inhalt richtig sortiert, Platz stimmt), `aufraeum_ifcos` (`aktion_id`, `ifco_id`, `fertig_am`,
+`fertig_von`); „Wieder öffnen“ löscht die Zeile. Abhaken prüft nichts, korrigiert wird wie sonst über „Inhalt bearbeiten“ und
+„Umstellen“. Archivierte IFCOs zählen nicht mit und lassen sich nicht abhaken. Nur IFCOs gehören dazu, keine losen Gegenstände.
+Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 
 ## Regeln
 
@@ -114,14 +124,16 @@ Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für IFCOs
 
 ## API
 
-| Route                                                                                                                                                         | Recht                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `GET /api/inventar/kategorien`, `/gegenstaende`, `/gegenstaende/:id`, `/ifcos`, `/ifcos/:id`, `/ifco-typen` (Listen mit `?archiv=1`)                          | `inventar:lesen`     |
-| `GET /api/inventar/ausleihen[?status=offen]`, `GET /api/inventar/ausleihen/:id`                                                                               | `inventar:lesen`     |
-| `POST/PUT/DELETE` auf `/api/inventar/kategorien`, `/gegenstaende`, `/ifcos`, `/ifco-typen`; `PUT …/:id/archiv { archiviert }`                                 | `inventar:verwalten` |
-| `PUT /api/inventar/gegenstaende/:id/plaetze { plaetze: [{ lagerortId?, ifcoId?, anzahl }] }`                                                                  | `inventar:umraeumen` |
-| `PUT /api/inventar/ifcos/:id/platz { lagerortId \| null }`, `PUT /api/inventar/ifcos/:id/inhalt { positionen: [{ gegenstandId, anzahl }] }`                   | `inventar:umraeumen` |
-| `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id` | `inventar:umraeumen` |
+| Route                                                                                                                                                                                     | Recht                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `GET /api/inventar/kategorien`, `/gegenstaende`, `/gegenstaende/:id`, `/ifcos`, `/ifcos/:id`, `/ifco-typen` (Listen mit `?archiv=1`)                                                      | `inventar:lesen`     |
+| `GET /api/inventar/ausleihen[?status=offen]`, `GET /api/inventar/ausleihen/:id`                                                                                                           | `inventar:lesen`     |
+| `POST/PUT/DELETE` auf `/api/inventar/kategorien`, `/gegenstaende`, `/ifcos`, `/ifco-typen`; `PUT …/:id/archiv { archiviert }`                                                             | `inventar:verwalten` |
+| `PUT /api/inventar/gegenstaende/:id/plaetze { plaetze: [{ lagerortId?, ifcoId?, anzahl }] }`                                                                                              | `inventar:umraeumen` |
+| `PUT /api/inventar/ifcos/:id/platz { lagerortId \| null }`, `PUT /api/inventar/ifcos/:id/inhalt { positionen: [{ gegenstandId, anzahl }] }`                                               | `inventar:umraeumen` |
+| `GET /api/inventar/aufraeumen` (→ `{ aktion: { id, gestartetAm, gestartetVon, fertig: [{ ifcoId, fertigAm, von }] } \| null }`, Mitglieder mit `username`)                                | `inventar:lesen`     |
+| `POST /api/inventar/aufraeumen` (starten, `201`; 409 wenn schon eine läuft), `POST …/aufraeumen/beenden` (404 ohne laufende), `PUT …/aufraeumen/ifcos/:id { fertig }` (409 ohne laufende) | `inventar:umraeumen` |
+| `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id`                             | `inventar:umraeumen` |
 
 Antworten: `GET /gegenstaende[/:id]` liefert je Gegenstand `plaetze: [{ id, lagerortId, ifcoId, anzahl, verliehen }]` (`verliehen` =
 Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von dieser Herkunft) und `verliehen` / `vorgemerkt` gesamt; `GET /ifcos[/:id]` liefert `inhalt: [{ gegenstandId, anzahl }]` und `ausleihe: { id, an, status, ausgeliehenAm } | null` (offene Ausleihe der ganzen IFCO, `status` `geplant` oder `verliehen`); eine
@@ -178,6 +190,12 @@ jede Änderung macht `['inventar']` ungültig.
   Standard das Verfügbare (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze IFCO verleihen“ übernimmt den verfügbaren Inhalt
   einer IFCO; sie wird als **ganze IFCO** verliehen, solange der volle verfügbare Inhalt eingetragen bleibt (der Bestätigungsdialog zeigt dann „Spanngurtkiste (ganze IFCO)“, sonst werden die Teile einzeln verliehen). Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit dem Zeitraum („Vom 25.10.2026 09:00 bis 27.10.2026“ bzw. „Seit … bis …“) und allen
   Positionen, danach Weiterleitung zur neuen Ausleihe.
+- Aufräumen (`Aufraeumen.tsx`, `useAufraeumen`, alle 15 s neu geladen, solange eine Aktion läuft): In der IFCO-Ansicht
+  „Aufräumen starten“ (mit Bestätigung) bzw. während der Aktion ein Kasten mit „12 von 40 fertig“, Fortschrittsbalken, seit wann
+  und von wem gestartet, Schalter „Nur offene IFCOs“ und „Aufräumen beenden“ (Bestätigung nennt die noch offenen). Offene IFCOs
+  stehen oben, fertige darunter abgeblendet mit grünem Badge „Fertig · username“; jede Karte hat unten „Fertig“ / „Wieder öffnen“.
+  Die Ansichten „Gegenstände“ und „Verliehen“ zeigen einen Hinweis mit Link zu den IFCOs, die IFCO-Detailseite einen Kasten mit
+  Status und Knopf.
 - `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
   möglich), zurückgegebene Positionen mit Datum. Die ganze Karte einer Position ist anklickbar (öffnet den Gegenstand, per Tastatur erreichbar); das Häkchen
   (44 px Trefferfläche) wählt unabhängig davon. Ganz verliehene IFCOs erscheinen als eine Karte „Spanngurtkiste (ganze IFCO)“ (öffnet die IFCO) mit

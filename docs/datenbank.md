@@ -22,6 +22,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   Fremdschlüssel (eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher), der Bezug zu `ifco_typen` wird in der API geprüft.
   0037 (`ausleihe_positionen.ganze_ifco`) und 0038 (`ausleihen.organisiert_von`) legen ebenfalls nur Spalten an; die Down-Dateien setzen die Werte auf
   `NULL`. `organisiert_von` ist die Cognito-`sub` ohne Fremdschlüssel, die API prüft, dass sie zu einem Mitglied gehört.
+  0039 (`aufraeumaktionen`) und 0040 (`aufraeum_ifcos`) löschen ihre Tabelle.
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 

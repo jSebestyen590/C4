@@ -117,6 +117,23 @@ export interface AusleiheEintrag {
   gefaehrdetDurch: { id: string; an: string }[];
 }
 
+/** An IFCO marked as done in the running Aufräumaktion. */
+export interface AufraeumFertigEintrag {
+  ifcoId: string;
+  /** ISO timestamp. */
+  fertigAm: string;
+  von: OrganisatorEintrag | null;
+}
+
+/** The running Aufräumaktion as returned by `GET /inventar/aufraeumen`. */
+export interface AufraeumEintrag {
+  id: string;
+  /** ISO timestamp. */
+  gestartetAm: string;
+  gestartetVon: OrganisatorEintrag | null;
+  fertig: AufraeumFertigEintrag[];
+}
+
 /** Query key prefix of everything below Inventar; invalidate it after a mutation. */
 export const INVENTAR_KEY = ['inventar'] as const;
 
@@ -249,5 +266,28 @@ export function useInventar() {
       gegenstaende.isError ||
       ifcos.isError ||
       typen.fehler,
+  };
+}
+
+/** Query key of the running Aufräumaktion (below `INVENTAR_KEY`). */
+export const AUFRAEUMEN_KEY = ['inventar', 'aufraeumen'] as const;
+
+/**
+ * The running Aufräumaktion (null if none) and the done IFCOs by id. While one runs it is refetched
+ * every 15 s, so everybody clearing up at the same time sees the others' progress.
+ */
+export function useAufraeumen() {
+  const api = useApi();
+  const q = useQuery({
+    queryKey: AUFRAEUMEN_KEY,
+    queryFn: async (): Promise<AufraeumEintrag | null> =>
+      (await unwrap(await api.inventar.aufraeumen.$get())).aktion,
+    refetchInterval: (query) => (query.state.data ? 15_000 : false),
+  });
+  const aktion = q.data ?? null;
+  return {
+    aktion,
+    fertig: useMemo(() => new Map((aktion?.fertig ?? []).map((f) => [f.ifcoId, f])), [aktion]),
+    laedt: q.isPending,
   };
 }

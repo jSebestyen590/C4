@@ -365,3 +365,26 @@ export const ausleihePositionen = pgTable('ausleihe_positionen', {
   ganzeIfco: boolean('ganze_ifco'),
 });
 export type AusleihePositionRow = typeof ausleihePositionen.$inferSelect;
+
+/** A clean-up after an event, open while `beendetAm` is null; the `*Von` columns are Cognito subs without a foreign key. */
+export const aufraeumaktionen = pgTable('aufraeumaktionen', {
+  id: text('id').primaryKey(),
+  gestartetAm: timestamp('gestartet_am', { withTimezone: true }).notNull().defaultNow(),
+  gestartetVon: text('gestartet_von').notNull(),
+  beendetAm: timestamp('beendet_am', { withTimezone: true }),
+  beendetVon: text('beendet_von'),
+});
+export type AufraeumaktionRow = typeof aufraeumaktionen.$inferSelect;
+
+/** An IFCO marked as done (sorted and stored correctly) in an Aufräumaktion. */
+export const aufraeumIfcos = pgTable('aufraeum_ifcos', {
+  id: text('id').primaryKey(),
+  aktionId: text('aktion_id')
+    .notNull()
+    .references(() => aufraeumaktionen.id),
+  ifcoId: text('ifco_id')
+    .notNull()
+    .references(() => ifcos.id),
+  fertigAm: timestamp('fertig_am', { withTimezone: true }).notNull().defaultNow(),
+  fertigVon: text('fertig_von').notNull(),
+});
