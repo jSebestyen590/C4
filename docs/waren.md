@@ -13,7 +13,7 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 
 ## Datenmodell
 
-Migrationen `0010`–`0023` (dazu `0032` für die Lagerort-Art) (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
+Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
 ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
@@ -28,7 +28,7 @@ zeigen sie nur mit `?archiv=1`.
 
 Ein Lagerort **ohne Unterebenen** (normales Blatt oder Regalboden, kein Regal) lässt sich als **IFCO-Lagerplatz** markieren:
 `lagerorte.ifco_hoehe_cm` (> 0, eine Nachkommastelle) und `ifco_stellflaechen` (≥ 0,5 in 0,5er-Schritten; 1 = eine Fläche 60×40) sind
-beide gesetzt (Migrationen `0035`, `0036`), sonst beide `NULL`. In der API: `ifcoPlatz: { hoeheCm, stellflaechen } | null` bei
+beide gesetzt, sonst beide `NULL`. In der API: `ifcoPlatz: { hoeheCm, stellflaechen } | null` bei
 `POST`/`PUT /lagerorte` (beim `PUT` heißt fehlend „unverändert“, `null` hebt die Markierung auf), `boedenIfcoPlatz` beim Anlegen eines
 Regals und `ifcoPlatz` bei `POST /lagerorte/:id/boeden` machen die neuen Böden zu IFCO-Lagerplätzen: ein Objekt gilt für alle, ein Array
 (`boeden`/`namen` gleich lang, gleiche Reihenfolge, sonst 400) gibt jedem Boden eigene Maße (Höhe je Reihe). Die Antworten enthalten
@@ -47,7 +47,7 @@ Regals und `ifcoPlatz` bei `POST /lagerorte/:id/boeden` machen die neuen Böden 
 
 ## Regale und Regalböden
 
-Lagerorte haben eine Art (`lagerorte.art`, Migration `0032`): `null` = normaler Lagerort, `regal` oder `regalboden`
+Lagerorte haben eine Art (`lagerorte.art`): `null` = normaler Lagerort, `regal` oder `regalboden`
 (`LAGERORT_ARTEN`, Labels Lagerort / Regal / Regalboden in `LAGERORT_ART_LABELS`, über `i18n.ts` verfügbar). Regeln
 (`lagerortArtFehler`, `lagerortArtAenderungFehler`, `kinderArtNach` in shared; Verstöße sind 400 mit deutscher Meldung):
 

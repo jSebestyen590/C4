@@ -1,4 +1,4 @@
--- Exactly one of lagerort_id (loose at a place) and ifco_id (inside an Ifco) is set.
+-- Exactly one of lagerort_id (loose at a place) and ifco_id (inside an IFCO) is set.
 CREATE TABLE IF NOT EXISTS gegenstand_plaetze (
   id text PRIMARY KEY,
   gegenstand_id text NOT NULL REFERENCES gegenstaende (id),

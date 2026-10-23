@@ -12,12 +12,12 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 - `inventar:lesen` und `inventar:umraeumen` haben alle Status. Umräumen umfasst Plätze ändern, IFCOs umstellen und befüllen sowie
   Verleihen, Zurücknehmen, Bearbeiten und Löschen von Ausleihen (Label „Inventar umräumen und verleihen“).
 - `inventar:verwalten` (Stammdaten: Kategorien, Gegenstände, IFCOs anlegen, ändern, archivieren, löschen) haben Admins und die
-  Vorstandsposten (Migration `0031`); es lässt sich über `POSTEN_RECHTE` auch weiteren Posten geben.
+  Vorstandsposten (Migration `0024`); es lässt sich über `POSTEN_RECHTE` auch weiteren Posten geben.
 
 ## Datenmodell
 
-Migrationen `0025`–`0031` (IFCO-Typen und IFCO-Lagerplätze: `0033`–`0036`; ganze IFCO und Organisator: `0037`, `0038`; Aufräumen: `0039`, `0040`), jeweils ein Statement und eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für
-das Inventar: `0024_vorstandsposten_waren`).
+Migrationen `0025`–`0033` (Aufräumen: `0032`, `0033`; die Rechte der Vorstandsposten in `0024`), jeweils ein Statement und
+eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_rechte`).
 
 | Tabelle               | Inhalt                                                                                                                                                                           |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

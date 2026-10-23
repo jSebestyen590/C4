@@ -70,8 +70,8 @@ Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bez
 
 Migration `0009_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender
 Vorstandsvorsitz (Vize / Vize / Vize) und Buchhaltung (Finanzer / Finanzerin / Finanzer:in) an. Sie haben
-dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`, dazu `waren:verwalten` per Migration `0024` und
-`inventar:verwalten` per Migration `0031`); wer sie besetzt, kann
+dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`, dazu `waren:verwalten` und
+`inventar:verwalten` per Migration `0024`); wer sie besetzt, kann
 also auch Mitglieder einladen sowie Status und Rollen ändern. Die Ids sind fest
 (`vorstandsvorsitz`, `stellvertretender-vorstandsvorsitz`, `buchhaltung`), die Migration ist idempotent.
 

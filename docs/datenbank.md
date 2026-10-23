@@ -12,17 +12,14 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Mehrere Statements: `<migration>.down.1.sql`, `<migration>.down.2.sql`, ... Sie laufen in
   numerischer Reihenfolge, jedes als eigene Abfrage.
 - Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 braucht jede Migration eine
-  (ein Test in `rollback.test.ts` prüft das); 0010–0024 (Waren) und 0025–0031 (Inventar) löschen ihre
-  Tabellen bzw. Indizes, 0024 entzieht den Vorstandsposten `waren:verwalten` wieder, 0031 entzieht ihnen
-  `inventar:verwalten`. Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_waren`. 0032 (`lagerorte.art`) kann die Spalte nicht entfernen, weil
-  Aurora DSQL `ALTER TABLE … DROP COLUMN` nicht unterstützt; die Down-Datei setzt `art` auf `NULL` zurück (die Spalte bleibt, erneutes Migrieren ist
-  wegen `ADD COLUMN IF NOT EXISTS` unproblematisch).
-  0033 (`ifco_typen`) löscht die Tabelle. 0034 (`ifcos.typ_id`), 0035 (`lagerorte.ifco_hoehe_cm`) und 0036 (`lagerorte.ifco_stellflaechen`)
-  können ihre Spalte aus demselben Grund nicht entfernen; die Down-Dateien setzen die Werte auf `NULL`. `ifcos.typ_id` ist nur Text ohne
-  Fremdschlüssel (eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher), der Bezug zu `ifco_typen` wird in der API geprüft.
-  0037 (`ausleihe_positionen.ganze_ifco`) und 0038 (`ausleihen.organisiert_von`) legen ebenfalls nur Spalten an; die Down-Dateien setzen die Werte auf
-  `NULL`. `organisiert_von` ist die Cognito-`sub` ohne Fremdschlüssel, die API prüft, dass sie zu einem Mitglied gehört.
-  0039 (`aufraeumaktionen`) und 0040 (`aufraeum_ifcos`) löschen ihre Tabelle.
+  (ein Test in `rollback.test.ts` prüft das). 0010–0023 (Waren) und 0025–0033 (Inventar) löschen ihre Tabellen bzw.
+  Indizes; 0024 entzieht den Vorstandsposten `waren:verwalten` und `inventar:verwalten` wieder. Rollback-Ziel nur für das
+  Inventar: `0024_vorstandsposten_rechte`.
+- Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
+  dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
+  könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die
+  Werte auf `NULL` setzt; eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher (deshalb ist z. B.
+  `ifcos.typ_id` nur Text, der Bezug zu `ifco_typen` wird in der API geprüft).
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 
