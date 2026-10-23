@@ -142,6 +142,9 @@ jede Änderung macht `['inventar']` ungültig.
   Gegenständen Name, Beschreibung, IFCO und Lagerort-Pfad der Plätze; bei IFCOs Name, Platz, Inhalt), Kategoriefilter inkl.
   Unterkategorien (nur bei Gegenständen), Archiv-Schalter. Sortierung (Select „Sortieren nach“, Standard Name): Name, Kategorie (Pfad, dann Name), Anzahl (absteigend), Platz (erster Platz, ohne Platz zuletzt), deutsch verglichen (`gegenstaendeSortieren` in `inventarAnzeige.ts`); in der Tabelle sortieren auch die Spaltenköpfe, ein zweiter Klick kehrt um. Auf dem Handy sind es Karten, ab `sm` eine Tabelle (Name mit Beschreibung, Kategorie, Anzahl, Plätze mit „3 verliehen“ in Lila und „2 vorgemerkt“ in Cyan, Status mit Abweichung/Archiviert); die ganze Zeile öffnet den Gegenstand. Karten zeigen Plätze mit Pfad („6×“ im Kopf, am Platz „Lager › Regal · 3 verliehen · 2 vorgemerkt“; die Verleih-Hinweise stehen nur an den Plätzen) und ein oranges Badge
   bei Abweichung (`inventarAbweichung`/`abweichungText`). Mit `inventar:verwalten`: „Gegenstand anlegen“ / „IFCO anlegen“ und „Kategorien“.
+  „Gegenstand anlegen“ fragt optional gleich einen Platz ab (Lagerort oder IFCO, `POST /gegenstaende` mit
+  `platz { lagerortId | ifcoId, anzahl }`, im selben Schritt geprüft und gespeichert); die Anzahl dort ist standardmäßig die ganze
+  Soll-Anzahl und folgt ihr, bis man sie ändert (bei Soll 1 ohne Feld). Danach bleibt man auf der Übersicht.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (IFCOs verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „IFCOs“, bereits gewählte
   gesperrt) und Anzahl, Live-Summe gegen Soll. Bei Soll 1 gibt es nur ein Feld „Platz“ (leerbar = „Kein Platz“), ohne Anzahl, Nummerierung, „Platz hinzufügen“ und Summe. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).

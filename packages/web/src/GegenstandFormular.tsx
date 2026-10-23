@@ -10,25 +10,33 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
-import { gegenstandSchema } from '@c4/shared';
+import { gegenstandAnlegenSchema, gegenstandSchema } from '@c4/shared';
 import { useApi } from './api';
-import { kategorieOptionen } from './inventarAnzeige';
-import type { GegenstandEintrag, KategorieEintrag } from './inventarDaten';
+import { kategorieOptionen, zielAusWert, zielOptionen } from './inventarAnzeige';
+import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
+import type { LagerKnoten } from './LagerBaum';
+import { PfadSelect } from './PfadSelect';
 import { INVENTAR_KEY } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 
-/** Create or edit a Gegenstand (the Plätze are edited separately). Mount it only while it should be open. */
+/**
+ * Create or edit a Gegenstand. Creating may put it onto a first place (by default with the whole
+ * Anzahl); afterwards the Plätze are edited separately. Mount it only while it should be open.
+ */
 export function GegenstandFormular({
   gegenstand,
   kategorien,
+  lagerorte = [],
+  ifcos = [],
   onClose,
-  onAngelegt,
 }: Readonly<{
   /** Set when editing. */
   gegenstand?: GegenstandEintrag;
   kategorien: KategorieEintrag[];
+  /** Places offered when creating. */
+  lagerorte?: LagerKnoten[];
+  ifcos?: IfcoEintrag[];
   onClose: () => void;
-  onAngelegt?: (id: string) => void;
 }>) {
   const api = useApi();
   const qc = useQueryClient();
@@ -36,11 +44,19 @@ export function GegenstandFormular({
   const [kategorieId, setKategorieId] = useState<string | null>(gegenstand?.kategorieId ?? null);
   const [anzahl, setAnzahl] = useState<number | string>(gegenstand?.anzahl ?? 1);
   const [beschreibung, setBeschreibung] = useState(gegenstand?.beschreibung ?? '');
+  const [ziel, setZiel] = useState<string | null>(null);
+  // null: follows the Anzahl until changed by hand.
+  const [platzAnzahl, setPlatzAnzahl] = useState<number | string | null>(null);
+  const amPlatz = platzAnzahl ?? anzahl;
   const [fehler, setFehler] = useState<string | null>(null);
 
   const optionen = useMemo(
     () => kategorieOptionen(kategorien, gegenstand?.kategorieId),
     [kategorien, gegenstand],
+  );
+  const platzOptionen = useMemo(
+    () => zielOptionen(lagerorte, ifcos, new Set(), new Set()),
+    [lagerorte, ifcos],
   );
 
   const speichern = useMutation({
@@ -49,21 +65,23 @@ export function GegenstandFormular({
       beschreibung: string;
       kategorieId: string;
       anzahl: number;
+      platz: { lagerortId: string | null; ifcoId: string | null; anzahl: number } | null;
     }) => {
+      const { platz, ...daten } = json;
       if (gegenstand) {
         await pruefen(
-          await api.inventar.gegenstaende[':id'].$put({ param: { id: gegenstand.id }, json }),
+          await api.inventar.gegenstaende[':id'].$put({
+            param: { id: gegenstand.id },
+            json: daten,
+          }),
         );
-        return null;
+      } else {
+        await pruefen(await api.inventar.gegenstaende.$post({ json: { ...daten, platz } }));
       }
-      const res = await api.inventar.gegenstaende.$post({ json });
-      await pruefen(res);
-      return res.ok ? ((await res.json()) as { id: string }).id : null;
     },
-    onSuccess: async (id) => {
+    onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
       onClose();
-      if (id) onAngelegt?.(id);
     },
   });
 
@@ -74,8 +92,11 @@ export function GegenstandFormular({
       beschreibung,
       kategorieId: kategorieId ?? '',
       anzahl: typeof anzahl === 'number' ? anzahl : Number.NaN,
+      platz: ziel
+        ? { ...zielAusWert(ziel), anzahl: typeof amPlatz === 'number' ? amPlatz : Number.NaN }
+        : null,
     };
-    const parsed = gegenstandSchema.safeParse(eingabe);
+    const parsed = (gegenstand ? gegenstandSchema : gegenstandAnlegenSchema).safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
     setFehler(null);
     speichern.mutate(eingabe);
@@ -114,6 +135,30 @@ export function GegenstandFormular({
             value={anzahl}
             onChange={setAnzahl}
           />
+          {!gegenstand && (
+            <PfadSelect
+              label="Platz (optional)"
+              placeholder="Lagerort oder IFCO wählen"
+              searchable
+              clearable
+              inputMode="text"
+              nothingFoundMessage="Nichts gefunden"
+              data={platzOptionen}
+              value={ziel}
+              onChange={setZiel}
+            />
+          )}
+          {!gegenstand && ziel && (anzahl !== 1 || amPlatz !== 1) && (
+            <NumberInput
+              label="Anzahl an diesem Platz"
+              allowDecimal={false}
+              allowNegative={false}
+              min={1}
+              inputMode="numeric"
+              value={amPlatz}
+              onChange={setPlatzAnzahl}
+            />
+          )}
           <Textarea
             label="Beschreibung (optional)"
             autosize

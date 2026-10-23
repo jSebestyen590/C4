@@ -65,6 +65,12 @@ export const gegenstandPlatzSchema = z
   })
   .refine(genauEinZiel, ZIEL_MELDUNG);
 
+/** Creating a Gegenstand may put it straight onto one place. */
+export const gegenstandAnlegenSchema = gegenstandSchema.extend({
+  platz: gegenstandPlatzSchema.nullable().default(null),
+});
+export type GegenstandAnlegenEingabe = z.input<typeof gegenstandAnlegenSchema>;
+
 /** Replaces all Plätze of a Gegenstand; each Lagerort/IFCO may appear only once. */
 export const gegenstandPlaetzeSchema = z.object({
   plaetze: z

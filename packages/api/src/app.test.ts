@@ -1782,7 +1782,13 @@ describe('inventar', () => {
       beschreibung: null,
       kategorieId: 'k1',
       anzahl: 1,
+      platz: null,
     });
+    const platz = { lagerortId: 'l1', ifcoId: null, anzahl: 3 };
+    expect((await post({ name: 'Zelt', kategorieId: 'k1', anzahl: 3, platz })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(expect.objectContaining({ platz }));
+    const zwei = { lagerortId: 'l1', ifcoId: 'i1', anzahl: 1 };
+    expect((await post({ name: 'Zelt', kategorieId: 'k1', platz: zwei })).status).toBe(400);
   });
 
   it('maps unknown ids to 404 and used entries to 409', async () => {

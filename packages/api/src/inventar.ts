@@ -92,6 +92,11 @@ export interface PlatzDaten extends PlatzZiel {
   anzahl: number;
 }
 
+export interface GegenstandAnlegenDaten extends GegenstandDaten {
+  /** Optional first place of the new Gegenstand. */
+  platz: PlatzDaten | null;
+}
+
 export interface AusleihePositionDaten extends PlatzDaten {
   gegenstandId: string;
   /** Part of lending a whole IFCO (needs `ifcoId`). */
@@ -186,7 +191,7 @@ export interface InventarStore {
   // Gegenstände
   gegenstaende(mitArchiv: boolean): Promise<GegenstandDetails[]>;
   gegenstandHolen(id: string): Promise<GegenstandDetails | undefined>;
-  gegenstandAnlegen(daten: GegenstandDaten): Promise<string>;
+  gegenstandAnlegen(daten: GegenstandAnlegenDaten): Promise<string>;
   gegenstandAktualisieren(id: string, daten: GegenstandDaten): Promise<boolean>;
   gegenstandLoeschen(id: string): Promise<boolean>;
   gegenstandArchivieren(id: string, archiviert: boolean): Promise<boolean>;
@@ -599,11 +604,21 @@ export function createInventarStore(db: Db): InventarStore {
     async gegenstandHolen(id) {
       return (await gegenstaendeLaden(db, id))[0];
     },
-    async gegenstandAnlegen(daten) {
+    async gegenstandAnlegen({ platz, ...daten }) {
       return db.transaction(async (tx) => {
         await kategorieMussNutzbarSein(tx, daten.kategorieId);
+        if (platz) await zieleExistieren(tx, [platz]);
         const id = randomUUID();
         await tx.insert(gegenstaende).values({ id, ...daten });
+        if (platz) {
+          await tx.insert(gegenstandPlaetze).values({
+            id: randomUUID(),
+            gegenstandId: id,
+            lagerortId: platz.lagerortId,
+            ifcoId: platz.ifcoId,
+            anzahl: platz.anzahl,
+          });
+        }
         return id;
       });
     },

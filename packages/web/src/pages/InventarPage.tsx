@@ -521,8 +521,9 @@ export function InventarPage() {
       {anlegen && imGegenstand && (
         <GegenstandFormular
           kategorien={inv.kategorien}
+          lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
           onClose={() => setAnlegen(false)}
-          onAngelegt={(id) => navigate(`/inventar/gegenstaende/${encodeURIComponent(id)}`)}
         />
       )}
       {anlegen && ansicht === 'ifcos' && (

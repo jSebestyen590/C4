@@ -17,6 +17,7 @@ import {
   ausleiheSchema,
   gebindeSchema,
   gegenstandPlaetzeSchema,
+  gegenstandAnlegenSchema,
   gegenstandSchema,
   ifcoInhaltSchema,
   ifcoPlatzSchema,
@@ -1066,7 +1067,7 @@ export function createApp(deps: AppDeps) {
         '/inventar/gegenstaende',
         auth,
         inventarVerwalten,
-        zValidator('json', gegenstandSchema),
+        zValidator('json', gegenstandAnlegenSchema),
         async (c) => {
           const id = await deps.inventar.gegenstandAnlegen(c.req.valid('json')).catch(warenFehler);
           return c.json({ id }, 201);
