@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Group,
   Modal,
   Select,
   Stack,
@@ -15,7 +14,7 @@ import { ifcoSchema, ifcoTypText, type IfcoInhaltPosition } from '@c4/shared';
 import { useApi } from './api';
 import { ifcoPlatzOptionen } from './inventarAnzeige';
 import { IfcoInhaltFelder } from './IfcoInhaltFelder';
-import { useIfcoInhaltSchritte } from './IfcoInhaltModal';
+import { useIfcoInhalt } from './IfcoInhaltModal';
 import {
   INVENTAR_KEY,
   type GegenstandEintrag,
@@ -58,7 +57,7 @@ export function IfcoFormular({
   const [lagerortId, setLagerortId] = useState<string | null>(ifco?.lagerortId ?? null);
   const [beschreibung, setBeschreibung] = useState(ifco?.beschreibung ?? '');
   const [fehler, setFehler] = useState<string | null>(null);
-  const inhalt = useIfcoInhaltSchritte(undefined, gegenstaende, lagerorte, ifcos);
+  const inhalt = useIfcoInhalt(undefined, gegenstaende);
 
   const optionen = useMemo(
     () => ifcoPlatzOptionen(lagerorte, ifco, typId, ifcos, typen),
@@ -103,81 +102,72 @@ export function IfcoFormular({
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
     setFehler(null);
     if (ifco) return speichern.mutate({ ...eingabe, inhalt: [] });
-    inhalt.weiter((positionen) => speichern.mutate({ ...eingabe, inhalt: positionen }));
+    const positionen = inhalt.pruefen();
+    if (positionen) speichern.mutate({ ...eingabe, inhalt: positionen });
   };
 
   return (
     <Modal opened onClose={onClose} title={ifco ? 'IFCO bearbeiten' : 'IFCO anlegen'}>
       <form onSubmit={onSubmit}>
         <Stack>
-          {inhalt.ueberfuehren && inhalt.ueberfuehrungFelder}
-          <Stack display={inhalt.ueberfuehren ? 'none' : undefined}>
-            <TextInput
-              label="Name"
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-              data-autofocus
-              error={fehler}
-            />
-            <Select
-              label="Typ"
-              placeholder="Ohne Typ"
-              description="Auf einem IFCO-Lagerplatz ist ein Typ nötig."
-              searchable
-              clearable
-              inputMode="text"
-              nothingFoundMessage="Kein IFCO-Typ gefunden"
-              data={typOptionen}
-              value={typId}
-              onChange={setTypId}
-            />
-            <PfadSelect
-              label="Platz"
-              placeholder="Ohne Platz"
-              searchable
-              clearable
-              inputMode="text"
-              nothingFoundMessage="Kein Lagerort gefunden"
-              data={optionen}
-              value={lagerortId}
-              onChange={setLagerortId}
-            />
-            <Textarea
-              label="Beschreibung (optional)"
-              autosize
-              minRows={2}
-              value={beschreibung}
-              onChange={(e) => setBeschreibung(e.currentTarget.value)}
-            />
-            {!ifco && (
-              <>
-                <Title order={4}>Inhalt (optional)</Title>
-                <IfcoInhaltFelder
-                  zeilen={inhalt.zeilen}
-                  setZeilen={inhalt.setZeilen}
-                  ifco={undefined}
-                  gegenstaende={gegenstaende}
-                  kategorien={kategorien}
-                  lagerorte={lagerorte}
-                  ifcos={ifcos}
-                />
-              </>
-            )}
-          </Stack>
+          <TextInput
+            label="Name"
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+            data-autofocus
+            error={fehler}
+          />
+          <Select
+            label="Typ"
+            placeholder="Ohne Typ"
+            description="Auf einem IFCO-Lagerplatz ist ein Typ nötig."
+            searchable
+            clearable
+            inputMode="text"
+            nothingFoundMessage="Kein IFCO-Typ gefunden"
+            data={typOptionen}
+            value={typId}
+            onChange={setTypId}
+          />
+          <PfadSelect
+            label="Platz"
+            placeholder="Ohne Platz"
+            searchable
+            clearable
+            inputMode="text"
+            nothingFoundMessage="Kein Lagerort gefunden"
+            data={optionen}
+            value={lagerortId}
+            onChange={setLagerortId}
+          />
+          <Textarea
+            label="Beschreibung (optional)"
+            autosize
+            minRows={2}
+            value={beschreibung}
+            onChange={(e) => setBeschreibung(e.currentTarget.value)}
+          />
+          {!ifco && (
+            <>
+              <Title order={4}>Inhalt (optional)</Title>
+              <IfcoInhaltFelder
+                zeilen={inhalt.zeilen}
+                setZeilen={inhalt.setZeilen}
+                ifco={undefined}
+                gegenstaende={gegenstaende}
+                kategorien={kategorien}
+                lagerorte={lagerorte}
+                ifcos={ifcos}
+              />
+            </>
+          )}
           {inhalt.fehler && <Alert color="red">{inhalt.fehler}</Alert>}
           {speichern.isError && (
             <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>
           )}
-          <Group grow>
-            {inhalt.ueberfuehren && (
-              <Button variant="default" onClick={inhalt.zurueck}>
-                Zurück
-              </Button>
-            )}
-            <Button type="submit" loading={speichern.isPending}>
-              {ifco ? 'Speichern' : 'Anlegen'}
-            </Button>
-          </Group>
+          <Button type="submit" loading={speichern.isPending}>
+            {ifco ? 'Speichern' : 'Anlegen'}
+          </Button>
         </Stack>
       </form>
     </Modal>

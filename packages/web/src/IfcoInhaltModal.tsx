@@ -1,18 +1,13 @@
-import { Alert, Button, Group, Modal, Stack } from '@mantine/core';
+import { Alert, Button, Modal, Stack } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { IfcoInhaltPosition } from '@c4/shared';
 import { useApi } from './api';
 import {
-  herkunftVorschlag,
   IfcoInhaltFelder,
   inhaltPruefen,
   inhaltZeilenAus,
-  mitHerkunft,
-  UeberfuehrungFelder,
-  ueberfuehrungenFinden,
   type InhaltZeile,
-  type Ueberfuehrung,
 } from './IfcoInhaltFelder';
 import {
   INVENTAR_KEY,
@@ -24,67 +19,22 @@ import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 
 /**
- * Content and Überführung steps shared by "Inhalt bearbeiten" and "IFCO anlegen": `weiter` checks
- * the rows and either saves right away or first asks where the pieces of Gegenstände that already
- * lie elsewhere come from.
+ * Content rows shared by "Inhalt bearbeiten" and "IFCO anlegen": `pruefen` returns the positions
+ * to send, or null after showing the error.
  */
-export function useIfcoInhaltSchritte(
-  ifco: IfcoEintrag | undefined,
-  gegenstaende: GegenstandEintrag[],
-  lagerorte: LagerKnoten[],
-  ifcos: IfcoEintrag[],
-) {
-  const [zeilen, setZeilen] = useState<InhaltZeile[]>(() => inhaltZeilenAus(ifco));
+export function useIfcoInhalt(ifco: IfcoEintrag | undefined, gegenstaende: GegenstandEintrag[]) {
+  const [zeilen, setZeilen] = useState<InhaltZeile[]>(() => inhaltZeilenAus(ifco, gegenstaende));
   const [fehler, setFehler] = useState<string | null>(null);
-  const [offen, setOffen] = useState<{
-    positionen: IfcoInhaltPosition[];
-    liste: Ueberfuehrung[];
-  } | null>(null);
-  const [herkunft, setHerkunft] = useState<Record<string, string | null>>({});
-
-  /** Calls `speichern` with the final positions, possibly after the Überführung step. */
-  const weiter = (speichern: (positionen: IfcoInhaltPosition[]) => void) => {
-    if (offen) {
-      const r = mitHerkunft(offen.positionen, herkunft, gegenstaende, ifco?.id);
-      if ('fehler' in r) return setFehler(r.fehler);
-      setFehler(null);
-      return speichern(r.positionen);
+  const pruefenUndMelden = (): IfcoInhaltPosition[] | null => {
+    const r = inhaltPruefen(zeilen, gegenstaende, ifco?.id);
+    if ('fehler' in r) {
+      setFehler(r.fehler);
+      return null;
     }
-    const r = inhaltPruefen(zeilen, gegenstaende);
-    if ('fehler' in r) return setFehler(r.fehler);
-    const liste = ueberfuehrungenFinden(r.positionen, gegenstaende, ifco?.id, lagerorte, ifcos);
-    if (liste.length > 0) {
-      setFehler(null);
-      setHerkunft(herkunftVorschlag(liste));
-      return setOffen({ positionen: r.positionen, liste });
-    }
-    const ohne = mitHerkunft(r.positionen, {}, gegenstaende, ifco?.id);
-    if ('fehler' in ohne) return setFehler(ohne.fehler);
     setFehler(null);
-    speichern(ohne.positionen);
+    return r.positionen;
   };
-
-  return {
-    zeilen,
-    setZeilen,
-    fehler,
-    weiter,
-    /** True while the Überführung step is shown. */
-    ueberfuehren: offen !== null,
-    zurueck: () => {
-      setOffen(null);
-      setFehler(null);
-    },
-    ueberfuehrungFelder: offen && (
-      <UeberfuehrungFelder
-        liste={offen.liste}
-        herkunft={herkunft}
-        onHerkunft={(id, key) => setHerkunft((h) => ({ ...h, [id]: key }))}
-        gegenstaende={gegenstaende}
-        ifcoId={ifco?.id}
-      />
-    ),
-  };
+  return { zeilen, setZeilen, fehler, pruefen: pruefenUndMelden };
 }
 
 /** Edits the whole content of an IFCO: Gegenstand and amount per row. Mount it only while it should be open. */
@@ -105,7 +55,7 @@ export function IfcoInhaltModal({
 }>) {
   const api = useApi();
   const qc = useQueryClient();
-  const schritte = useIfcoInhaltSchritte(ifco, gegenstaende, lagerorte, ifcos);
+  const inhalt = useIfcoInhalt(ifco, gegenstaende);
 
   const speichern = useMutation({
     mutationFn: async (positionen: IfcoInhaltPosition[]) =>
@@ -124,36 +74,28 @@ export function IfcoInhaltModal({
   return (
     <Modal opened onClose={onClose} title={`Inhalt von ${ifco.name}`}>
       <Stack>
-        {schritte.ueberfuehren ? (
-          schritte.ueberfuehrungFelder
-        ) : (
-          <IfcoInhaltFelder
-            zeilen={schritte.zeilen}
-            setZeilen={schritte.setZeilen}
-            ifco={ifco}
-            gegenstaende={gegenstaende}
-            kategorien={kategorien}
-            lagerorte={lagerorte}
-            ifcos={ifcos}
-          />
-        )}
-        {schritte.fehler && <Alert color="red">{schritte.fehler}</Alert>}
+        <IfcoInhaltFelder
+          zeilen={inhalt.zeilen}
+          setZeilen={inhalt.setZeilen}
+          ifco={ifco}
+          gegenstaende={gegenstaende}
+          kategorien={kategorien}
+          lagerorte={lagerorte}
+          ifcos={ifcos}
+        />
+        {inhalt.fehler && <Alert color="red">{inhalt.fehler}</Alert>}
         {speichern.isError && (
           <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>
         )}
-        <Group grow>
-          {schritte.ueberfuehren && (
-            <Button variant="default" onClick={schritte.zurueck}>
-              Zurück
-            </Button>
-          )}
-          <Button
-            loading={speichern.isPending}
-            onClick={() => schritte.weiter((p) => speichern.mutate(p))}
-          >
-            Speichern
-          </Button>
-        </Group>
+        <Button
+          loading={speichern.isPending}
+          onClick={() => {
+            const positionen = inhalt.pruefen();
+            if (positionen) speichern.mutate(positionen);
+          }}
+        >
+          Speichern
+        </Button>
       </Stack>
     </Modal>
   );

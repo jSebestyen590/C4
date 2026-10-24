@@ -86,7 +86,7 @@ export function GegenstandDetailPage() {
     );
   const abweichung = gegenstandAbweichung(g);
   const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
-  const summe = inventarAbweichung(g.anzahl, g.plaetze).summe;
+  const summe = inventarAbweichung(g.anzahl, [...g.plaetze, ...g.verbaut]).summe;
   // Ausleihen with a Position of this Gegenstand; those still holding some of it come first.
   const ausleihen = ausleihenDaten.ausleihen
     .map((a) => ({ a, eigene: a.positionen.filter((p) => p.gegenstandId === g.id) }))
@@ -164,7 +164,9 @@ export function GegenstandDetailPage() {
           {summe} von {g.anzahl} zugeordnet
         </Text>
       </Group>
-      {zeilen.length === 0 && <Text c="dimmed">Noch kein Platz zugeordnet.</Text>}
+      {zeilen.length === 0 && g.verbaut.length === 0 && (
+        <Text c="dimmed">Noch kein Platz zugeordnet.</Text>
+      )}
       <Stack gap="xs">
         {zeilen.map((z) => {
           const platz = g.plaetze.find((p) => p.id === z.id)!;
@@ -197,6 +199,23 @@ export function GegenstandDetailPage() {
             </Paper>
           );
         })}
+        {g.verbaut.map((v) => (
+          <Paper key={v.id} withBorder p="sm">
+            <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+              <Stack gap={0} style={{ minWidth: 0 }}>
+                <Text size="xs" c="dimmed">
+                  Fest verbaut
+                </Text>
+                <Text style={{ overflowWrap: 'anywhere' }}>{v.ort}</Text>
+              </Stack>
+              {anzahlText(v.anzahl) && (
+                <Text fw={600} style={{ flex: 'none' }}>
+                  {anzahlText(v.anzahl)}
+                </Text>
+              )}
+            </Group>
+          </Paper>
+        ))}
       </Stack>
       {darfUmraeumen && (
         <Button

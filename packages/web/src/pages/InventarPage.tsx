@@ -46,6 +46,7 @@ import {
   mengeName,
   mengeText,
   platzZeilen,
+  verbautZeilen,
 } from '../inventarAnzeige';
 import {
   useAufraeumen,
@@ -101,7 +102,12 @@ function GegenstandKarte({
             {[z.text, mengeText(z.anzahl, z.verliehen, z.vorgemerkt)].filter(Boolean).join(' · ')}
           </Text>
         ))}
-        {zeilen.length === 0 && (
+        {verbautZeilen(g).map((v) => (
+          <Text key={v.id} size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+            {[v.text, anzahlText(v.anzahl)].filter(Boolean).join(' · ')}
+          </Text>
+        ))}
+        {zeilen.length === 0 && g.verbaut.length === 0 && (
           <Text size="sm" c="dimmed">
             Kein Platz zugeordnet
           </Text>
@@ -235,7 +241,12 @@ function GegenstandTabelle({
                       )}
                     </Text>
                   ))}
-                  {zeilen.length === 0 && (
+                  {verbautZeilen(g).map((v) => (
+                    <Text key={v.id} size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                      {[anzahlText(v.anzahl), v.text].filter(Boolean).join(' ')}
+                    </Text>
+                  ))}
+                  {zeilen.length === 0 && g.verbaut.length === 0 && (
                     <Text size="sm" c="dimmed">
                       Kein Platz zugeordnet
                     </Text>
@@ -545,6 +556,7 @@ export function InventarPage() {
         if (!q) return true;
         if (g.name.toLowerCase().includes(q) || g.beschreibung?.toLowerCase().includes(q))
           return true;
+        if (g.verbaut.some((v) => v.ort.toLowerCase().includes(q))) return true;
         // Also find a Gegenstand by the IFCO or the Lagerort it lies in.
         return g.plaetze.some((p) =>
           platzText(inv.lagerorte, inv.ifcos, p).toLowerCase().includes(q),

@@ -57,6 +57,7 @@ const g1: GegenstandEintrag = {
   kategorieId: 'k',
   anzahl: 10,
   archiviert: false,
+  verbaut: [],
   verliehen: 5,
   vorgemerkt: 1,
   plaetze: [

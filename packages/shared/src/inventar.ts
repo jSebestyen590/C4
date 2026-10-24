@@ -74,7 +74,16 @@ export const gegenstandAnlegenSchema = gegenstandSchema.extend({
 });
 export type GegenstandAnlegenEingabe = z.input<typeof gegenstandAnlegenSchema>;
 
-/** Replaces all Plätze of a Gegenstand; each Lagerort/IFCO may appear only once. */
+/** Pieces built in for good at a place given as free text ("unter der Bar"); not on any Platz. */
+export const verbautSchema = z.object({
+  ort: name('einen Ort'),
+  anzahl: anzahlSchema,
+});
+
+/**
+ * Replaces all Plätze of a Gegenstand (each Lagerort/IFCO only once) and, when given, all its
+ * fixed installations (each Ort only once); `verbaut` missing = unchanged.
+ */
 export const gegenstandPlaetzeSchema = z.object({
   plaetze: z
     .array(gegenstandPlatzSchema)
@@ -82,11 +91,26 @@ export const gegenstandPlaetzeSchema = z.object({
       (liste) => eindeutig(liste.map(zielKey)),
       'Jeder Platz darf nur einmal vorkommen. Fasse die Anzahlen zusammen.',
     ),
+  verbaut: z
+    .array(verbautSchema)
+    .refine(
+      (liste) => eindeutig(liste.map((v) => v.ort.toLowerCase())),
+      'Jeder Ort darf nur einmal vorkommen. Fasse die Anzahlen zusammen.',
+    )
+    .optional(),
 });
 export type GegenstandPlaetzeEingabe = z.input<typeof gegenstandPlaetzeSchema>;
 
-const zielSchema = z
-  .object({ lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+/** A new amount for another Platz of the Gegenstand; 0 removes the Gegenstand from there. */
+const andererPlatzSchema = z
+  .object({
+    lagerortId: parentIdSchema,
+    ifcoId: parentIdSchema,
+    anzahl: z
+      .number('Bitte gib eine Anzahl an.')
+      .int('Die Anzahl muss eine ganze Zahl sein.')
+      .min(0, 'Die Anzahl darf nicht negativ sein.'),
+  })
   .refine(genauEinZiel, ZIEL_MELDUNG);
 
 /** Content of an IFCO; each Gegenstand may appear only once. */
@@ -95,8 +119,11 @@ export const ifcoInhaltPositionenSchema = z
     z.object({
       gegenstandId: idSchema('Bitte wähle einen Gegenstand.'),
       anzahl: anzahlSchema,
-      /** Überführung: the pieces added to the IFCO come from this other Platz of the Gegenstand. */
-      herkunft: zielSchema.nullable().default(null),
+      /** New amounts at other Plätze of the Gegenstand (moving pieces here); unlisted ones stay. */
+      andere: z
+        .array(andererPlatzSchema)
+        .refine((l) => eindeutig(l.map(zielKey)), 'Jeder Platz darf nur einmal vorkommen.')
+        .default([]),
     }),
   )
   .refine(
@@ -202,58 +229,35 @@ export interface PlatzMenge extends PlatzZiel {
   anzahl: number;
 }
 
-/** One content row of an IFCO, optionally moved from another Platz (`herkunft`). */
+/** One content row of an IFCO, with new amounts for other Plätze of the Gegenstand (`andere`). */
 export interface IfcoInhaltPosition {
   gegenstandId: string;
   anzahl: number;
-  herkunft: PlatzZiel | null;
-}
-
-const gleichesZiel = (a: PlatzZiel, b: PlatzZiel) => zielKey(a) === zielKey(b);
-
-/**
- * Pieces an Überführung takes from `p.herkunft`: what is added to the IFCO `ifcoId` (new amount
- * minus what lay there before), at most what lies at the Herkunft. `plaetze` are the current
- * Plätze of the Gegenstand.
- */
-export function ueberfuehrteMenge(
-  plaetze: PlatzMenge[],
-  ifcoId: string,
-  p: IfcoInhaltPosition,
-): number {
-  if (!p.herkunft) return 0;
-  const eigene = plaetze.filter((x) => x.gegenstandId === p.gegenstandId);
-  const hier = eigene.find((x) => x.ifcoId === ifcoId)?.anzahl ?? 0;
-  const quelle = eigene.find((x) => gleichesZiel(x, p.herkunft!))?.anzahl ?? 0;
-  return Math.max(0, Math.min(p.anzahl - hier, quelle));
+  andere: (PlatzZiel & { anzahl: number })[];
 }
 
 /**
  * New Plätze of all Gegenstände in `plaetze` when the IFCO `ifcoId` gets the content `positionen`:
- * its own rows are replaced and each Überführung lowers its Herkunft (emptied places disappear).
- * `ungueltig` names a Gegenstand whose Herkunft is not one of its other Plätze.
+ * its own rows are replaced, each listed other Platz gets its new amount (0 removes it), all other
+ * Plätze stay. `ungueltig` names a Gegenstand whose `andere` lists a Platz it does not lie at.
  */
 export function ifcoInhaltAnwenden(
   plaetze: PlatzMenge[],
   ifcoId: string,
   positionen: IfcoInhaltPosition[],
 ): { plaetze: PlatzMenge[]; ungueltig: string | null } {
+  const neueMenge = new Map<string, number>();
   for (const p of positionen) {
-    if (!p.herkunft) continue;
-    const da = plaetze.some(
-      (x) =>
-        x.gegenstandId === p.gegenstandId && x.ifcoId !== ifcoId && gleichesZiel(x, p.herkunft!),
-    );
-    if (!da || p.herkunft.ifcoId === ifcoId) return { plaetze, ungueltig: p.gegenstandId };
+    for (const a of p.andere) {
+      const key = platzKey({ gegenstandId: p.gegenstandId, ...a });
+      const da = plaetze.some((x) => x.ifcoId !== ifcoId && platzKey(x) === key);
+      if (!da || a.ifcoId === ifcoId) return { plaetze, ungueltig: p.gegenstandId };
+      neueMenge.set(key, a.anzahl);
+    }
   }
   const neu = plaetze
     .filter((x) => x.ifcoId !== ifcoId)
-    .map((x) => {
-      const p = positionen.find(
-        (q) => q.gegenstandId === x.gegenstandId && q.herkunft && gleichesZiel(x, q.herkunft),
-      );
-      return p ? { ...x, anzahl: x.anzahl - ueberfuehrteMenge(plaetze, ifcoId, p) } : x;
-    })
+    .map((x) => ({ ...x, anzahl: neueMenge.get(platzKey(x)) ?? x.anzahl }))
     .filter((x) => x.anzahl > 0);
   for (const p of positionen) {
     neu.push({ gegenstandId: p.gegenstandId, lagerortId: null, ifcoId, anzahl: p.anzahl });
@@ -274,27 +278,42 @@ export function inventarAbweichung(
   return { summe, differenz: summe - soll };
 }
 
+const ZU_VIEL_HINWEIS =
+  'Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).';
+
 /**
- * Error when a change would put more pieces of a Gegenstand onto its Plätze than exist (`soll`);
- * null otherwise. An already over-assigned Gegenstand may still change as long as the sum does not grow.
+ * Error when a change would put more pieces of a Gegenstand onto its Plätze than exist: at most
+ * `soll` minus the `verbaut` (fixed) ones; null otherwise. `bisher`/`neu` are the sums on the
+ * Plätze before and after, `verbautBisher` the fixed ones before. An already over-assigned
+ * Gegenstand may still change as long as Plätze plus fixed ones do not grow.
  */
 export function zuVielVerteiltFehler(
   name: string,
   soll: number,
+  verbaut: number,
   bisher: number,
   neu: number,
+  verbautBisher = verbaut,
 ): string | null {
-  if (neu <= soll || neu <= bisher) return null;
-  return `„${name}“ gibt es nur ${soll}-mal, zugeordnet wären ${neu}. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).`;
+  if (neu + verbaut <= soll || neu + verbaut <= bisher + verbautBisher) return null;
+  if (verbaut === 0) {
+    return `„${name}“ gibt es nur ${soll}-mal, zugeordnet wären ${neu}. ${ZU_VIEL_HINWEIS}`;
+  }
+  const frei = Math.max(0, soll - verbaut);
+  return `„${name}“ gibt es nur ${soll}-mal, ${verbaut} davon fest verbaut: an Plätzen gehen höchstens ${frei}, zugeordnet wären ${neu}. ${ZU_VIEL_HINWEIS}`;
 }
 
+/** Pieces of a Gegenstand that can go onto Plätze: the Soll minus the fixed ones. */
+export const verteilbar = (g: { anzahl: number; verbaut: { anzahl: number }[] }): number =>
+  Math.max(0, g.anzahl - g.verbaut.reduce((s, v) => s + v.anzahl, 0));
+
 /**
- * Error when the Soll-Anzahl of a Gegenstand is lowered below the pieces already on its Plätze
- * (`summe`); raising it, even if still too low, is always allowed.
+ * Error when the Soll-Anzahl of a Gegenstand is lowered below the pieces already on its Plätze or
+ * built in (`summe`); raising it, even if still too low, is always allowed.
  */
 export function sollZuKleinFehler(soll: number, bisherSoll: number, summe: number): string | null {
   if (soll >= summe || soll >= bisherSoll) return null;
-  return `Es sind schon ${summe} Stück zugeordnet. Nimm zuerst an den Plätzen etwas weg.`;
+  return `Es sind schon ${summe} Stück an Plätzen oder fest verbaut. Nimm zuerst dort etwas weg.`;
 }
 
 /** `2 ohne Platz` / `1 mehr als Soll`, null when the Plätze match the target. */

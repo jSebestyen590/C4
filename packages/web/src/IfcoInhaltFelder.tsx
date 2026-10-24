@@ -1,17 +1,14 @@
 import { ActionIcon, Button, Group, NumberInput, Paper, Select, Stack, Text } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import {
-  ifcoInhaltAnwenden,
   ifcoInhaltSchema,
   pfad,
   platzText,
-  ueberfuehrteMenge,
+  verteilbar,
   zielKey,
   zuVielVerteiltFehler,
   type IfcoInhaltPosition,
-  type PlatzMenge,
 } from '@c4/shared';
-import { mengeName } from './inventarAnzeige';
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 
@@ -22,199 +19,106 @@ export interface InhaltZeile {
   key: number;
   gegenstandId: string | null;
   anzahl: number | string;
+  /** New amount per other Platz of the Gegenstand (by `zielKey`). */
+  andere: Record<string, number | string>;
 }
 
-/** Rows for the current content of `ifco` (none for a new IFCO). */
-export const inhaltZeilenAus = (ifco: IfcoEintrag | undefined): InhaltZeile[] =>
-  (ifco?.inhalt ?? []).map((p) => ({
-    key: neuerKey(),
-    gegenstandId: p.gegenstandId,
-    anzahl: p.anzahl,
-  }));
+/** Plätze of `g` outside the IFCO `ifcoId` (all of them for a new IFCO). */
+const anderePlaetze = (g: GegenstandEintrag, ifcoId: string | undefined) =>
+  g.plaetze.filter((p) => p.ifcoId === null || p.ifcoId !== ifcoId);
 
-/** Id used for a new IFCO: none of its Plätze exist yet. */
-const NEU = '';
+const zahl = (v: number | string) => (typeof v === 'number' ? v : 0);
+const summe = (l: { anzahl: number }[]) => l.reduce((s, p) => s + p.anzahl, 0);
+const verbautSumme = (g: GegenstandEintrag) => summe(g.verbaut);
 
-const mengenVon = (gegenstaende: GegenstandEintrag[]): PlatzMenge[] =>
-  gegenstaende.flatMap((g) =>
-    g.plaetze.map((p) => ({
-      gegenstandId: g.id,
-      lagerortId: p.lagerortId,
-      ifcoId: p.ifcoId,
-      anzahl: p.anzahl,
-    })),
-  );
-
-/** Plätze of `g` outside the IFCO `ifcoId`. */
-const anderePlaetze = (g: GegenstandEintrag, ifcoId: string) =>
-  g.plaetze.filter((p) => p.ifcoId !== ifcoId || ifcoId === NEU);
-
-/** The rows as validated positions (without Herkunft yet), or the German error. */
-export function inhaltPruefen(
-  zeilen: InhaltZeile[],
+/** Rows for the current content of `ifco` (none for a new IFCO); other Plätze keep their amounts. */
+export const inhaltZeilenAus = (
+  ifco: IfcoEintrag | undefined,
   gegenstaende: GegenstandEintrag[],
-): { positionen: IfcoInhaltPosition[] } | { fehler: string } {
-  if (zeilen.some((z) => !z.gegenstandId)) {
-    return { fehler: 'Bitte wähle für jede Zeile einen Gegenstand.' };
-  }
-  const einzeln = (id: string) => gegenstaende.find((g) => g.id === id)?.anzahl === 1;
-  const positionen = zeilen.map((z) => ({
-    gegenstandId: z.gegenstandId!,
-    anzahl: einzeln(z.gegenstandId!) ? 1 : typeof z.anzahl === 'number' ? z.anzahl : Number.NaN,
-    herkunft: null,
-  }));
-  const parsed = ifcoInhaltSchema.safeParse({ positionen });
-  if (!parsed.success) return { fehler: parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.' };
-  return { positionen };
-}
-
-/** A Gegenstand that gets more pieces in the IFCO while it already lies elsewhere. */
-export interface Ueberfuehrung {
-  gegenstandId: string;
-  name: string;
-  /** Pieces added to the IFCO. */
-  zuwachs: number;
-  /** Its other Plätze, as `zielKey` values with label. */
-  quellen: { value: string; label: string; anzahl: number }[];
-}
-
-/** The positions that could be an Überführung, i.e. need the hint and a choice of Herkunft. */
-export function ueberfuehrungenFinden(
-  positionen: IfcoInhaltPosition[],
-  gegenstaende: GegenstandEintrag[],
-  ifcoId: string | undefined,
-  lagerorte: LagerKnoten[],
-  ifcos: IfcoEintrag[],
-): Ueberfuehrung[] {
-  const id = ifcoId ?? NEU;
-  return positionen.flatMap((p) => {
+): InhaltZeile[] =>
+  (ifco?.inhalt ?? []).map((p) => {
     const g = gegenstaende.find((x) => x.id === p.gegenstandId);
-    if (!g) return [];
-    const hier = id === NEU ? 0 : (g.plaetze.find((x) => x.ifcoId === id)?.anzahl ?? 0);
-    const quellen = anderePlaetze(g, id).map((x) => ({
-      value: zielKey(x),
-      label: platzText(lagerorte, ifcos, x),
-      anzahl: x.anzahl,
-    }));
-    const zuwachs = p.anzahl - hier;
-    return zuwachs > 0 && quellen.length > 0
-      ? [{ gegenstandId: g.id, name: g.name, zuwachs, quellen }]
-      : [];
+    return {
+      key: neuerKey(),
+      gegenstandId: p.gegenstandId,
+      anzahl: p.anzahl,
+      andere: Object.fromEntries(
+        (g ? anderePlaetze(g, ifco?.id) : []).map((x) => [zielKey(x), x.anzahl]),
+      ),
+    };
   });
-}
 
-/** Default Herkunft per Überführung: the Platz holding the most pieces. */
-export const herkunftVorschlag = (liste: Ueberfuehrung[]): Record<string, string | null> =>
-  Object.fromEntries(
-    liste.map((u) => [
-      u.gegenstandId,
-      [...u.quellen].sort((a, b) => b.anzahl - a.anzahl)[0]!.value,
-    ]),
-  );
+/**
+ * A newly chosen Gegenstand: by default all its pieces come into the IFCO, so its other Plätze
+ * start at 0 (they can be raised again to keep pieces there).
+ */
+const zeileFuer = (
+  key: number,
+  g: GegenstandEintrag | undefined,
+  ifcoId: string | undefined,
+): InhaltZeile => ({
+  key,
+  gegenstandId: g?.id ?? null,
+  anzahl: g ? Math.max(1, verteilbar(g)) : 1,
+  andere: Object.fromEntries((g ? anderePlaetze(g, ifcoId) : []).map((x) => [zielKey(x), 0])),
+});
 
 const zielAusKey = (key: string) =>
   key.startsWith('l:')
     ? { lagerortId: key.slice(2), ifcoId: null }
     : { lagerortId: null, ifcoId: key.slice(2) };
 
+/** Sums of a row: on the Plätze before and after, and the fixed pieces. */
+function zeilenSummen(z: InhaltZeile, g: GegenstandEintrag, ifcoId: string | undefined) {
+  const anderswo = anderePlaetze(g, ifcoId);
+  const hier = ifcoId ? summe(g.plaetze.filter((p) => p.ifcoId === ifcoId)) : 0;
+  const neu =
+    (g.anzahl === 1 ? 1 : zahl(z.anzahl)) +
+    anderswo.reduce((s, p) => s + zahl(z.andere[zielKey(p)] ?? p.anzahl), 0);
+  return { bisher: summe(anderswo) + hier, neu, verbaut: verbautSumme(g) };
+}
+
 /**
- * Positions with the chosen Herkunft, or the German error when the result would put more pieces
- * of a Gegenstand on its Plätze than exist (same rule as the API).
+ * The rows as validated positions with the changed amounts of the other Plätze, or the German
+ * error (same rules as the API: no more pieces on Plätze than exist minus the fixed ones).
  */
-export function mitHerkunft(
-  positionen: IfcoInhaltPosition[],
-  herkunft: Record<string, string | null>,
+export function inhaltPruefen(
+  zeilen: InhaltZeile[],
   gegenstaende: GegenstandEintrag[],
   ifcoId: string | undefined,
 ): { positionen: IfcoInhaltPosition[] } | { fehler: string } {
-  const fertig = positionen.map((p) => {
-    const key = herkunft[p.gegenstandId];
-    return { ...p, herkunft: key ? zielAusKey(key) : null };
+  if (zeilen.some((z) => !z.gegenstandId)) {
+    return { fehler: 'Bitte wähle für jede Zeile einen Gegenstand.' };
+  }
+  const positionen = zeilen.map((z) => {
+    const g = gegenstaende.find((x) => x.id === z.gegenstandId);
+    const andere = (g ? anderePlaetze(g, ifcoId) : []).flatMap((p) => {
+      const wert = z.andere[zielKey(p)];
+      if (wert === undefined || wert === p.anzahl) return [];
+      return [{ ...zielAusKey(zielKey(p)), anzahl: typeof wert === 'number' ? wert : Number.NaN }];
+    });
+    return {
+      gegenstandId: z.gegenstandId!,
+      anzahl: g?.anzahl === 1 ? 1 : typeof z.anzahl === 'number' ? z.anzahl : Number.NaN,
+      andere,
+    };
   });
-  const alt = mengenVon(gegenstaende);
-  const neu = ifcoInhaltAnwenden(alt, ifcoId ?? NEU, fertig).plaetze;
-  for (const p of fertig) {
-    const g = gegenstaende.find((x) => x.id === p.gegenstandId);
+  const parsed = ifcoInhaltSchema.safeParse({ positionen });
+  if (!parsed.success) return { fehler: parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.' };
+  for (const z of zeilen) {
+    const g = gegenstaende.find((x) => x.id === z.gegenstandId);
     if (!g) continue;
-    const summe = (l: PlatzMenge[]) =>
-      l.filter((x) => x.gegenstandId === g.id).reduce((s, x) => s + x.anzahl, 0);
-    const fehler = zuVielVerteiltFehler(g.name, g.anzahl, summe(alt), summe(neu));
+    const s = zeilenSummen(z, g, ifcoId);
+    const fehler = zuVielVerteiltFehler(g.name, g.anzahl, s.verbaut, s.bisher, s.neu);
     if (fehler) return { fehler };
   }
-  return { positionen: fertig };
+  return { positionen };
 }
 
 /**
- * Second step before saving: for every Gegenstand that already lies elsewhere, where the added
- * pieces come from ("Nicht überführen" keeps the other Platz as it is).
+ * Rows of the content: Gegenstand and amount (none for a single-piece Gegenstand) per row, and a
+ * counter for every other Platz the Gegenstand lies at, so pieces move here without a second step.
  */
-export function UeberfuehrungFelder({
-  liste,
-  herkunft,
-  onHerkunft,
-  gegenstaende,
-  ifcoId,
-}: Readonly<{
-  liste: Ueberfuehrung[];
-  herkunft: Record<string, string | null>;
-  onHerkunft: (gegenstandId: string, key: string | null) => void;
-  gegenstaende: GegenstandEintrag[];
-  ifcoId: string | undefined;
-}>) {
-  const alt = mengenVon(gegenstaende);
-  return (
-    <Stack>
-      <Text size="sm">
-        {liste.length === 1 ? 'Dieser Gegenstand liegt' : 'Diese Gegenstände liegen'} schon an einem
-        anderen Platz. Sollen die Stücke von dort in die IFCO überführt werden?
-      </Text>
-      {liste.map((u) => {
-        const key = herkunft[u.gegenstandId] ?? null;
-        const menge = key
-          ? ueberfuehrteMenge(alt, ifcoId ?? NEU, {
-              gegenstandId: u.gegenstandId,
-              anzahl:
-                u.zuwachs +
-                (alt.find((x) => x.ifcoId === ifcoId && x.gegenstandId === u.gegenstandId)
-                  ?.anzahl ?? 0),
-              herkunft: zielAusKey(key),
-            })
-          : 0;
-        const quelle = u.quellen.find((q) => q.value === key);
-        return (
-          <Paper key={u.gegenstandId} withBorder p="sm">
-            <Stack gap="xs">
-              <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                {mengeName(u.zuwachs, u.name)}
-              </Text>
-              <Select
-                label="Überführen aus"
-                allowDeselect={false}
-                data={[
-                  ...u.quellen.map((q) => ({
-                    value: q.value,
-                    label: `${q.label} (${q.anzahl})`,
-                  })),
-                  { value: '', label: 'Nicht überführen (zusätzlich)' },
-                ]}
-                value={key ?? ''}
-                onChange={(v) => onHerkunft(u.gegenstandId, v || null)}
-              />
-              {quelle && (
-                <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                  {menge} von {quelle.anzahl} aus „{quelle.label}“
-                  {menge < u.zuwachs && `, ${u.zuwachs - menge} kommen neu dazu`}.
-                </Text>
-              )}
-            </Stack>
-          </Paper>
-        );
-      })}
-    </Stack>
-  );
-}
-
-/** Rows of the content: Gegenstand and amount (none for a single-piece Gegenstand) per row. */
 export function IfcoInhaltFelder({
   zeilen,
   setZeilen,
@@ -233,7 +137,6 @@ export function IfcoInhaltFelder({
   lagerorte: LagerKnoten[];
   ifcos: IfcoEintrag[];
 }>) {
-  const id = ifco?.id ?? NEU;
   const bisher = new Set((ifco?.inhalt ?? []).map((p) => p.gegenstandId));
   const gewaehlt = zeilen.flatMap((z) => (z.gegenstandId ? [z.gegenstandId] : []));
   const optionen = (eigene: string | null) =>
@@ -254,7 +157,11 @@ export function IfcoInhaltFelder({
       {zeilen.length === 0 && <Text c="dimmed">Die IFCO ist leer.</Text>}
       {zeilen.map((z, i) => {
         const g = finde(z.gegenstandId);
-        const anderswo = g ? anderePlaetze(g, id) : [];
+        const anderswo = g ? anderePlaetze(g, ifco?.id) : [];
+        const s = g ? zeilenSummen(z, g, ifco?.id) : null;
+        const frei = g ? verteilbar(g) : 0;
+        const zuViel = s !== null && s.neu > frei && s.neu + s.verbaut > s.bisher + s.verbaut;
+        const einzeln = g?.anzahl === 1;
         return (
           <Paper key={z.key} withBorder p="sm">
             <Stack gap="xs">
@@ -266,14 +173,18 @@ export function IfcoInhaltFelder({
                 nothingFoundMessage="Kein Gegenstand gefunden"
                 data={optionen(z.gegenstandId)}
                 value={z.gegenstandId}
-                onChange={(gegenstandId) => aendern(z.key, { gegenstandId })}
+                onChange={(gegenstandId) =>
+                  setZeilen((l) =>
+                    l.map((x) =>
+                      x.key === z.key ? zeileFuer(z.key, finde(gegenstandId), ifco?.id) : x,
+                    ),
+                  )
+                }
               />
               <Group align="flex-end" wrap="nowrap" gap="xs" justify="flex-end">
-                {g?.anzahl !== 1 && (
+                {!einzeln && (
                   <NumberInput
-                    label="Anzahl"
-                    description={g ? `Insgesamt ${g.anzahl}` : undefined}
-                    inputWrapperOrder={['label', 'input', 'description', 'error']}
+                    label={anderswo.length > 0 ? 'Anzahl in dieser IFCO' : 'Anzahl'}
                     style={{ flex: 1 }}
                     allowDecimal={false}
                     allowNegative={false}
@@ -293,12 +204,47 @@ export function IfcoInhaltFelder({
                   <IconTrash size={20} />
                 </ActionIcon>
               </Group>
-              {anderswo.length > 0 && (
-                <Text size="sm" c="orange" style={{ overflowWrap: 'anywhere' }}>
-                  Liegt schon an:{' '}
-                  {anderswo
-                    .map((p) => `${platzText(lagerorte, ifcos, p)} (${p.anzahl})`)
-                    .join(', ')}
+              {einzeln && anderswo.length > 0 && (
+                <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                  Kommt von „{platzText(lagerorte, ifcos, anderswo[0]!)}“ hierher.
+                </Text>
+              )}
+              {!einzeln && anderswo.length > 0 && (
+                <Stack gap="xs">
+                  <Text size="sm" fw={600}>
+                    Liegt außerdem an
+                  </Text>
+                  {anderswo.map((p) => {
+                    const key = zielKey(p);
+                    return (
+                      <NumberInput
+                        key={key}
+                        label={platzText(lagerorte, ifcos, p)}
+                        description={`Bisher ${p.anzahl}`}
+                        inputWrapperOrder={['label', 'input', 'description', 'error']}
+                        allowDecimal={false}
+                        allowNegative={false}
+                        min={0}
+                        inputMode="numeric"
+                        value={z.andere[key] ?? p.anzahl}
+                        onChange={(wert) =>
+                          aendern(z.key, { andere: { ...z.andere, [key]: wert } })
+                        }
+                      />
+                    );
+                  })}
+                </Stack>
+              )}
+              {g && s && !einzeln && (
+                <Text
+                  size="sm"
+                  c={zuViel ? 'red' : s.neu < frei ? 'orange' : 'dimmed'}
+                  role="status"
+                >
+                  Verteilt {s.neu} von {frei}
+                  {s.verbaut > 0 && ` (${s.verbaut} fest verbaut)`}
+                  {s.neu > frei && ` · ${s.neu - frei} zu viel`}
+                  {s.neu < frei && ` · ${frei - s.neu} ohne Platz`}
                 </Text>
               )}
             </Stack>
@@ -308,7 +254,7 @@ export function IfcoInhaltFelder({
       <Button
         variant="light"
         leftSection={<IconPlus size={18} />}
-        onClick={() => setZeilen((l) => [...l, { key: neuerKey(), gegenstandId: null, anzahl: 1 }])}
+        onClick={() => setZeilen((l) => [...l, zeileFuer(neuerKey(), undefined, ifco?.id)])}
       >
         Gegenstand hinzufügen
       </Button>

@@ -107,10 +107,10 @@ export function GegenstandFormular({
       ? sollZuKleinFehler(
           eingabe.anzahl,
           gegenstand.anzahl,
-          gegenstand.plaetze.reduce((s, p) => s + p.anzahl, 0),
+          [...gegenstand.plaetze, ...gegenstand.verbaut].reduce((s, p) => s + p.anzahl, 0),
         )
       : eingabe.platz &&
-        zuVielVerteiltFehler(eingabe.name.trim(), eingabe.anzahl, 0, eingabe.platz.anzahl);
+        zuVielVerteiltFehler(eingabe.name.trim(), eingabe.anzahl, 0, 0, eingabe.platz.anzahl);
     if (regel) return setFehler(regel);
     setFehler(null);
     speichern.mutate(eingabe);

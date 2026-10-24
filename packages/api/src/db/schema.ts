@@ -332,6 +332,16 @@ export const gegenstandPlaetze = pgTable('gegenstand_plaetze', {
 });
 export type GegenstandPlatzRow = typeof gegenstandPlaetze.$inferSelect;
 
+/** Pieces of a Gegenstand built in for good at a free-text place; not on any Platz. */
+export const gegenstandVerbaut = pgTable('gegenstand_verbaut', {
+  id: text('id').primaryKey(),
+  gegenstandId: text('gegenstand_id')
+    .notNull()
+    .references(() => gegenstaende.id),
+  ort: text('ort').notNull(),
+  anzahl: integer('anzahl').notNull(),
+});
+
 export const ausleihen = pgTable('ausleihen', {
   id: text('id').primaryKey(),
   /** Free text: person, club or company. */

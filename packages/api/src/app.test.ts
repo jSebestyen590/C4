@@ -222,6 +222,7 @@ function makeInventarFake() {
         anzahl: 10,
         archiviert: false,
         plaetze: [],
+        verbaut: [],
         verliehen: 0,
         vorgemerkt: 0,
       }),
@@ -1851,10 +1852,27 @@ describe('inventar', () => {
     const put = (url: string, body: unknown, token = 'reader-token') =>
       app.request(url, json(token, 'PUT', body));
     expect((await put('/api/inventar/gegenstaende/g1/plaetze', plaetze)).status).toBe(200);
-    expect(inventar.gegenstandPlaetzeSetzen).toHaveBeenCalledWith('g1', [
-      { lagerortId: 'l1', ifcoId: null, anzahl: 6 },
-      { lagerortId: null, ifcoId: 'i1', anzahl: 4 },
-    ]);
+    expect(inventar.gegenstandPlaetzeSetzen).toHaveBeenCalledWith(
+      'g1',
+      [
+        { lagerortId: 'l1', ifcoId: null, anzahl: 6 },
+        { lagerortId: null, ifcoId: 'i1', anzahl: 4 },
+      ],
+      undefined,
+    );
+    expect(
+      (
+        await put('/api/inventar/gegenstaende/g1/plaetze', {
+          plaetze: [],
+          verbaut: [{ ort: ' unter der Bar ', anzahl: 3 }],
+        })
+      ).status,
+    ).toBe(200);
+    expect(inventar.gegenstandPlaetzeSetzen).toHaveBeenLastCalledWith(
+      'g1',
+      [],
+      [{ ort: 'unter der Bar', anzahl: 3 }],
+    );
     expect((await put('/api/inventar/gegenstaende/nix/plaetze', plaetze)).status).toBe(404);
     // Invalid: both targets, no target, zero amount, duplicate target.
     for (const ungueltig of [
@@ -1887,14 +1905,14 @@ describe('inventar', () => {
     expect((await put('/api/inventar/ifcos/i1/inhalt', inhalt)).status).toBe(200);
     expect(inventar.ifcoInhaltSetzen).toHaveBeenCalledWith(
       'i1',
-      inhalt.positionen.map((p) => ({ ...p, herkunft: null })),
+      inhalt.positionen.map((p) => ({ ...p, andere: [] })),
     );
-    const herkunft = { lagerortId: 'l1', ifcoId: null };
+    const andere = [{ lagerortId: 'l1', ifcoId: null, anzahl: 0 }];
     await put('/api/inventar/ifcos/i1/inhalt', {
-      positionen: [{ gegenstandId: 'g1', anzahl: 2, herkunft }],
+      positionen: [{ gegenstandId: 'g1', anzahl: 2, andere }],
     });
     expect(inventar.ifcoInhaltSetzen).toHaveBeenLastCalledWith('i1', [
-      { gegenstandId: 'g1', anzahl: 2, herkunft },
+      { gegenstandId: 'g1', anzahl: 2, andere },
     ]);
     expect(
       (

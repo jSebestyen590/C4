@@ -39,6 +39,7 @@ import {
   bestandsbuchungen,
   gegenstaende,
   gegenstandPlaetze,
+  gegenstandVerbaut,
   ifcos,
   inventarKategorien,
   ifcoTypen,
@@ -135,8 +136,16 @@ export interface PlatzDetails extends PlatzDaten {
   vorgemerkt: number;
 }
 
+/** Pieces built in for good at a free-text place. */
+export interface VerbautDaten {
+  ort: string;
+  anzahl: number;
+}
+
 export interface GegenstandDetails extends GegenstandRow {
   plaetze: PlatzDetails[];
+  /** Fixed installations; they lower the pieces that can go onto Plätze. */
+  verbaut: (VerbautDaten & { id: string })[];
   /** Total open amount that is away now, over all places. */
   verliehen: number;
   /** Total open amount of Ausleihen starting in the future. */
@@ -217,8 +226,12 @@ export interface InventarStore {
   gegenstandAktualisieren(id: string, daten: GegenstandDaten): Promise<boolean>;
   gegenstandLoeschen(id: string): Promise<boolean>;
   gegenstandArchivieren(id: string, archiviert: boolean): Promise<boolean>;
-  /** Replaces all Plätze of the Gegenstand. */
-  gegenstandPlaetzeSetzen(id: string, plaetze: PlatzDaten[]): Promise<boolean>;
+  /** Replaces all Plätze of the Gegenstand and, when given, all its fixed installations. */
+  gegenstandPlaetzeSetzen(
+    id: string,
+    plaetze: PlatzDaten[],
+    verbaut?: VerbautDaten[],
+  ): Promise<boolean>;
   // IFCO-Typen
   ifcoTypen(mitArchiv: boolean): Promise<IfcoTypRow[]>;
   ifcoTypAnlegen(daten: IfcoTypDaten): Promise<string>;
@@ -264,6 +277,7 @@ export function gegenstandDetails(
   g: GegenstandRow,
   plaetze: { id: string; lagerortId: string | null; ifcoId: string | null; anzahl: number }[],
   offen: OffenePosition[],
+  verbaut: (VerbautDaten & { id: string })[] = [],
   jetzt: Date = new Date(),
 ): GegenstandDetails {
   const eigene = offen.filter((o) => o.gegenstandId === g.id);
@@ -284,6 +298,7 @@ export function gegenstandDetails(
   return {
     ...g,
     plaetze: mitMengen,
+    verbaut: verbaut.map(({ id, ort, anzahl }) => ({ id, ort, anzahl })),
     verliehen: mitMengen.reduce((s, p) => s + p.verliehen, 0),
     vorgemerkt: mitMengen.reduce((s, p) => s + p.vorgemerkt, 0),
   };
@@ -398,7 +413,7 @@ async function passtAufPlatz(
 }
 
 async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetails[]> {
-  const [rows, plaetze, offen] = await Promise.all([
+  const [rows, plaetze, offen, verbaut] = await Promise.all([
     q
       .select()
       .from(gegenstaende)
@@ -408,14 +423,31 @@ async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetail
       .from(gegenstandPlaetze)
       .where(nurId ? eq(gegenstandPlaetze.gegenstandId, nurId) : undefined),
     offenLaden(q, nurId ? eq(ausleihePositionen.gegenstandId, nurId) : undefined),
+    q
+      .select()
+      .from(gegenstandVerbaut)
+      .where(nurId ? eq(gegenstandVerbaut.gegenstandId, nurId) : undefined),
   ]);
   return rows.map((g) =>
     gegenstandDetails(
       g,
       plaetze.filter((p) => p.gegenstandId === g.id),
       offen,
+      verbaut
+        .filter((v) => v.gegenstandId === g.id)
+        .sort((a, b) => a.ort.localeCompare(b.ort, 'de')),
     ),
   );
+}
+
+/** Fixed pieces per Gegenstand id (0 when none). */
+async function verbautJeGegenstand(q: Q, ids: string[]): Promise<Map<string, number>> {
+  const rows = ids.length
+    ? await q.select().from(gegenstandVerbaut).where(inListe(gegenstandVerbaut.gegenstandId, ids))
+    : [];
+  const karte = new Map<string, number>();
+  for (const v of rows) karte.set(v.gegenstandId, (karte.get(v.gegenstandId) ?? 0) + v.anzahl);
+  return karte;
 }
 
 /** Per IFCO the open whole-IFCO Ausleihe: the one away now first, else the earliest reserved one. */
@@ -554,9 +586,9 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
 }
 
 /**
- * Replaces the content of the IFCO `id` (checked to exist and not be archived) with `positionen`;
- * an Überführung lowers its Herkunft by the pieces added. No more pieces than exist, nothing below
- * what is lent from a place.
+ * Replaces the content of the IFCO `id` (checked to exist and not be archived) with `positionen`
+ * and sets the listed other Plätze of each Gegenstand to their new amounts (moving pieces here).
+ * No more pieces than exist (minus the fixed ones), nothing below what is lent from a place.
  */
 async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[]): Promise<void> {
   const bisher = await q.select().from(gegenstandPlaetze).where(eq(gegenstandPlaetze.ifcoId, id));
@@ -583,12 +615,14 @@ async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[])
   const { plaetze: neu, ungueltig } = ifcoInhaltAnwenden(altMengen, id, positionen);
   if (ungueltig) {
     const name = rows.find((g) => g.id === ungueltig)?.name ?? 'Der Gegenstand';
-    throw new WarenUngueltig(`„${name}“ liegt nicht an dem Platz, aus dem es überführt werden soll.`);
+    throw new WarenUngueltig(`„${name}“ liegt nicht an allen angegebenen Plätzen.`);
   }
+  const verbaut = await verbautJeGegenstand(q, gegenstandIds);
   for (const g of rows) {
     const summe = (l: PlatzMenge[]) =>
       l.filter((x) => x.gegenstandId === g.id).reduce((s, x) => s + x.anzahl, 0);
-    const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, summe(altMengen), summe(neu));
+    const v = verbaut.get(g.id) ?? 0;
+    const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, v, summe(altMengen), summe(neu));
     if (zuViel) throw new WarenUngueltig(zuViel);
   }
   const offen = betroffen.length
@@ -596,7 +630,7 @@ async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[])
     : [];
   const fehler = await fehlerMitNamen(q, (b) => verliehenFehler(neu, offen, b));
   if (fehler) throw new WarenKonflikt(fehler);
-  // Lower or remove the Herkünfte, then replace the IFCO's own rows.
+  // Update or remove the other Plätze, then replace the IFCO's own rows.
   for (const x of alt.filter((x) => x.ifcoId !== id)) {
     const danach = neu.find((n) => platzKey(n) === platzKey(x))?.anzahl ?? 0;
     if (danach === x.anzahl) continue;
@@ -719,7 +753,7 @@ export function createInventarStore(db: Db): InventarStore {
         await kategorieMussNutzbarSein(tx, daten.kategorieId);
         if (platz) {
           await zieleExistieren(tx, [platz]);
-          const fehler = zuVielVerteiltFehler(daten.name, daten.anzahl, 0, platz.anzahl);
+          const fehler = zuVielVerteiltFehler(daten.name, daten.anzahl, 0, 0, platz.anzahl);
           if (fehler) throw new WarenUngueltig(fehler);
         }
         const id = randomUUID();
@@ -748,7 +782,8 @@ export function createInventarStore(db: Db): InventarStore {
             .select()
             .from(gegenstandPlaetze)
             .where(eq(gegenstandPlaetze.gegenstandId, id));
-          const summe = plaetze.reduce((s, p) => s + p.anzahl, 0);
+          const verbaut = (await verbautJeGegenstand(tx, [id])).get(id) ?? 0;
+          const summe = plaetze.reduce((s, p) => s + p.anzahl, 0) + verbaut;
           const fehler = sollZuKleinFehler(daten.anzahl, bisher.anzahl, summe);
           if (fehler) throw new WarenUngueltig(fehler);
         }
@@ -761,6 +796,7 @@ export function createInventarStore(db: Db): InventarStore {
         if (!(await gibtEs(tx, gegenstaende, eq(gegenstaende.id, id)))) return false;
         const verwendet = await Promise.all([
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.gegenstandId, id)),
+          gibtEs(tx, gegenstandVerbaut, eq(gegenstandVerbaut.gegenstandId, id)),
           gibtEs(tx, ausleihePositionen, eq(ausleihePositionen.gegenstandId, id)),
         ]);
         if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Gegenstand'));
@@ -785,7 +821,7 @@ export function createInventarStore(db: Db): InventarStore {
         return true;
       });
     },
-    async gegenstandPlaetzeSetzen(id, plaetze) {
+    async gegenstandPlaetzeSetzen(id, plaetze, verbaut) {
       return db.transaction(async (tx) => {
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!g) return false;
@@ -795,11 +831,17 @@ export function createInventarStore(db: Db): InventarStore {
           .from(gegenstandPlaetze)
           .where(eq(gegenstandPlaetze.gegenstandId, id));
         await zieleExistieren(tx, plaetze, bisher);
+        const summe = (l: { anzahl: number }[]) => l.reduce((s, p) => s + p.anzahl, 0);
+        const verbautBisher = summe(
+          await tx.select().from(gegenstandVerbaut).where(eq(gegenstandVerbaut.gegenstandId, id)),
+        );
         const zuViel = zuVielVerteiltFehler(
           g.name,
           g.anzahl,
-          bisher.reduce((s, p) => s + p.anzahl, 0),
-          plaetze.reduce((s, p) => s + p.anzahl, 0),
+          verbaut ? summe(verbaut) : verbautBisher,
+          summe(bisher),
+          summe(plaetze),
+          verbautBisher,
         );
         if (zuViel) throw new WarenUngueltig(zuViel);
         const offen = await offenLaden(tx, eq(ausleihePositionen.gegenstandId, id));
@@ -817,6 +859,21 @@ export function createInventarStore(db: Db): InventarStore {
               anzahl: p.anzahl,
             })),
           );
+        }
+        if (verbaut) {
+          await tx.delete(gegenstandVerbaut).where(eq(gegenstandVerbaut.gegenstandId, id));
+          if (verbaut.length > 0) {
+            await tx
+              .insert(gegenstandVerbaut)
+              .values(
+                verbaut.map((v) => ({
+                  id: randomUUID(),
+                  gegenstandId: id,
+                  ort: v.ort,
+                  anzahl: v.anzahl,
+                })),
+              );
+          }
         }
         return true;
       });

@@ -16,7 +16,7 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 
 ## Datenmodell
 
-Migrationen `0025`–`0033` (Aufräumen: `0032`, `0033`; die Rechte der Vorstandsposten in `0024`), jeweils ein Statement und
+Migrationen `0025`–`0034` (Aufräumen: `0032`, `0033`; fest verbaut: `0034`; die Rechte der Vorstandsposten in `0024`), jeweils ein Statement und
 eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_rechte`).
 
 | Tabelle               | Inhalt                                                                                                                                                                           |
@@ -26,6 +26,7 @@ eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für da
 | `ifcos`               | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz                                                   |
 | `gegenstaende`        | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl, Standard 1), `archiviert`                                                                                     |
 | `gegenstand_plaetze`  | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                                                                     |
+| `gegenstand_verbaut`  | `gegenstand_id`, `ort` (Freitext, z. B. „unter der Bar“), `anzahl` ≥ 1: fest verbaute Stück, an keinem Platz, nicht verleihbar                                                   |
 | `ausleihen`           | `an` (Freitext), `ausgeliehen_am`, `rueckgabe_geplant`, `kommentar`, `erstellt_von`, `organisiert_von` (Cognito-`sub` ohne Fremdschlüssel)                                       |
 | `ausleihe_positionen` | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen), `ganze_ifco` (true = Teil einer ganz verliehenen IFCO) |
 
@@ -68,18 +69,21 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 
 ## Regeln
 
-- **Soll-Zustand:** Die Plätze sagen, wo etwas hingehört. Es gibt keine Buchungshistorie; Umräumen überschreibt. Die Summe der
-  Plätze darf das Soll unterschreiten („2 ohne Platz“, `inventarAbweichung`, `abweichungText`), aber nicht überschreiten:
-  `…/plaetze`, `…/inhalt` und Anlegen mit Platz lehnen mehr Stück als vorhanden ab (400, `zuVielVerteiltFehler`; die Formulare
-  prüfen vorab). Ein schon überverteilter Gegenstand („1 mehr als Soll“
-  aus der Zeit vor der Prüfung) lässt sich weiter umräumen, solange die Summe nicht wächst. Das Soll lässt sich nicht unter die
-  zugeordnete Summe senken (400, `sollZuKleinFehler`); Erhöhen geht immer.
+- **Soll-Zustand:** Die Plätze sagen, wo etwas hingehört. Es gibt keine Buchungshistorie; Umräumen überschreibt.
+- **Fest verbaut:** Stück, die dauerhaft eingebaut sind (z. B. 3 von 12 Dreierverteilern „am Drucker“, „unter der Bar“), stehen
+  mit Freitext-Ort und Anzahl in `gegenstand_verbaut`. Sie liegen an keinem Platz und lassen sich nicht verleihen. Auf Plätze
+  verteilbar ist nur das Soll minus die verbauten (`verteilbar`), im Beispiel 9.
+- **Nicht mehr als vorhanden:** Plätze plus fest verbaute dürfen das Soll unterschreiten („2 ohne Platz“, `inventarAbweichung`,
+  `abweichungText`), aber nicht überschreiten: `…/plaetze`, `…/inhalt` und Anlegen mit Platz lehnen das ab (400,
+  `zuVielVerteiltFehler`, mit Hinweis auf die verbauten; die Formulare prüfen vorab). Ein schon überverteilter Gegenstand lässt
+  sich weiter umräumen, solange die Summe nicht wächst. Das Soll lässt sich nicht unter Plätze plus verbaute senken (400,
+  `sollZuKleinFehler`); Erhöhen geht immer.
 - **Plätze:** `PUT …/plaetze` ersetzt alle Plätze eines Gegenstands, `PUT …/inhalt` alle Zuordnungen einer IFCO, in einer Transaktion.
   Je Gegenstand ist jeder Lagerort/jede IFCO nur einmal erlaubt, Anzahl ≥ 1. Ziele müssen existieren und dürfen nicht archiviert
   sein (400; bereits zugeordnete archivierte Ziele bleiben erlaubt). Ein archivierter Gegenstand behält seine Plätze, ist aber nicht
   mehr umräumbar (400). `PUT …/ifcos/:id/platz { lagerortId | null }` stellt die IFCO um.
 - **Löschen** geht nur, wenn nichts verweist (409, sonst archivieren): Kategorie (Unterkategorien, Gegenstände), Gegenstand
-  (Plätze, Ausleihen), IFCO (Inhalt, Ausleihen). **Archivieren:** Kategorie archiviert den Teilbaum (Wiederherstellen braucht
+  (Plätze, fest verbaute, Ausleihen), IFCO (Inhalt, Ausleihen). **Archivieren:** Kategorie archiviert den Teilbaum (Wiederherstellen braucht
   eine nicht archivierte Eltern-Kategorie); IFCO nur leer und ohne offene Ausleihe.
 - **Lagerorte:** Löschen prüft zusätzlich IFCOs, Plätze und Ausleihen. Archivieren ist mit IFCOs oder direkt zugeordneten Gegenständen
   im Teilbaum nicht möglich („Im Lagerort liegt noch Inventar. Räume es zuerst um.“) und nicht, solange von dort etwas verliehen ist.
@@ -133,8 +137,8 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 | `GET /api/inventar/kategorien`, `/gegenstaende`, `/gegenstaende/:id`, `/ifcos`, `/ifcos/:id`, `/ifco-typen` (Listen mit `?archiv=1`)                                                      | `inventar:lesen`     |
 | `GET /api/inventar/ausleihen[?status=offen]`, `GET /api/inventar/ausleihen/:id`                                                                                                           | `inventar:lesen`     |
 | `POST/PUT/DELETE` auf `/api/inventar/kategorien`, `/gegenstaende`, `/ifcos`, `/ifco-typen`; `PUT …/:id/archiv { archiviert }`                                                             | `inventar:verwalten` |
-| `PUT /api/inventar/gegenstaende/:id/plaetze { plaetze: [{ lagerortId?, ifcoId?, anzahl }] }`                                                                                              | `inventar:umraeumen` |
-| `PUT /api/inventar/ifcos/:id/platz { lagerortId \| null }`, `PUT /api/inventar/ifcos/:id/inhalt { positionen: [{ gegenstandId, anzahl }] }`                                               | `inventar:umraeumen` |
+| `PUT /api/inventar/gegenstaende/:id/plaetze { plaetze: [{ lagerortId?, ifcoId?, anzahl }], verbaut?: [{ ort, anzahl }] }` (`verbaut` fehlend = unverändert)                               | `inventar:umraeumen` |
+| `PUT /api/inventar/ifcos/:id/platz { lagerortId \| null }`, `PUT /api/inventar/ifcos/:id/inhalt { positionen: [{ gegenstandId, anzahl, andere?: [{ lagerortId?, ifcoId?, anzahl }] }] }`  | `inventar:umraeumen` |
 | `GET /api/inventar/aufraeumen` (→ `{ aktion: { id, gestartetAm, gestartetVon, fertig: [{ ifcoId, fertigAm, von }] } \| null }`, Mitglieder mit `username`)                                | `inventar:lesen`     |
 | `POST /api/inventar/aufraeumen` (starten, `201`; 409 wenn schon eine läuft), `POST …/aufraeumen/beenden` (404 ohne laufende), `PUT …/aufraeumen/ifcos/:id { fertig }` (409 ohne laufende) | `inventar:umraeumen` |
 | `POST /api/inventar/ausleihen` (→ `201 { id }`), `POST …/ausleihen/:id/rueckgabe { positionIds, zurueckAm }`, `PUT …/ausleihen/:id`, `DELETE …/ausleihen/:id`                             | `inventar:umraeumen` |
@@ -165,15 +169,21 @@ jede Änderung macht `['inventar']` ungültig.
   Soll-Anzahl und folgt ihr, bis man sie ändert (bei Soll 1 ohne Feld). Danach bleibt man auf der Übersicht.
 - `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Plätze mit Pfad und Anzahl (IFCOs verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „IFCOs“, bereits gewählte
-  gesperrt) und Anzahl, Live-Summe gegen Soll. Bei Soll 1 gibt es nur ein Feld „Platz“ (leerbar = „Kein Platz“), ohne Anzahl, Nummerierung, „Platz hinzufügen“ und Summe. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
+  gesperrt) und Anzahl, Live-Summe gegen Soll. Darunter der Abschnitt „Fest verbaut“ (Ort als Freitext, Anzahl, „Fest verbaut hinzufügen“), die Summe zählt beides. Bei Soll 1
+  gibt es nur ein Feld „Platz“ (leerbar = „Kein Platz“) oder mit Häkchen „Fest verbaut“ ein Feld „Ort“. Die Detailseite listet
+  fest verbaute Stück nach den Plätzen; Karten und Tabelle der Übersicht zeigen „fest verbaut: unter der Bar“, die Suche findet
+  auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Soll 1 ohne Mengenfeld), Menü wie beim Gegenstand.
-- **Überführung** (`IfcoInhaltFelder`, `useIfcoInhaltSchritte`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Liegt ein Gegenstand
-  schon an einem anderen Platz, steht unter der Zeile „Liegt schon an: …“. Bekommt die IFCO dadurch mehr Stück, fragt ein zweiter
-  Schritt je Gegenstand „Überführen aus“ (vorgewählt der Platz mit den meisten Stück, oder „Nicht überführen (zusätzlich)“) und
-  zeigt, wie viele von dort kommen. Die API (`positionen[].herkunft { lagerortId | ifcoId }`, `ifcoInhaltAnwenden`,
-  `ueberfuehrteMenge`) senkt die Herkunft in derselben Transaktion um die hinzugekommenen Stück, höchstens um das, was dort liegt
-  (ein geleerter Platz verschwindet); die Herkunft muss ein anderer Platz des Gegenstands sein (400), Verliehenes muss bleiben (409).
+- **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Ein neu gewählter
+  Gegenstand kommt standardmäßig ganz in die IFCO (Anzahl = verteilbar). Liegt er schon an anderen Plätzen, steht darunter
+  „Liegt außerdem an“ mit einem Zähler je Platz („Bisher 5“). Bei einem neu gewählten Gegenstand stehen sie auf 0, bei
+  vorhandenem Inhalt auf dem bisherigen Wert. Darunter „Verteilt 10 von 10“ (orange „… ohne Platz“, rot „… zu viel“). Beim
+  Speichern bekommen die anderen Plätze die neuen Werte, 0 nimmt den Gegenstand dort heraus. Was über die bisherige Summe
+  hinausgeht, kommt neu dazu, solange das Soll reicht. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Soll 1
+  hat kein Mengenfeld; die Zeile sagt „Kommt von „…“ hierher.“ Die API (`positionen[].andere`, `ifcoInhaltAnwenden`) setzt die
+  Plätze in derselben Transaktion; jeder genannte Platz muss ein anderer Platz des Gegenstands sein (400), Verliehenes muss
+  bleiben (409).
 - **IFCO anlegen** (`IfcoFormular`) fragt optional gleich den Inhalt ab (`POST /ifcos` mit `inhalt`, gleiche Regeln wie
   `PUT …/inhalt`); danach bleibt man auf der Übersicht.
 - `/inventar/stammdaten`: Tab „Kategorien“ (Baum) und Tab „IFCO-Typen“ (`IfcoTypenTab`, Karten mit Name und „60×40 · 10 cm“;

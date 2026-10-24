@@ -10,7 +10,7 @@ import {
   ifcoSchema,
   inventarAbweichung,
   ifcoInhaltAnwenden,
-  ueberfuehrteMenge,
+  verteilbar,
   sollZuKleinFehler,
   zuVielVerteiltFehler,
   kategorieSchema,
@@ -83,6 +83,29 @@ describe('kategorieSchema / gegenstandSchema / ifcoSchema', () => {
 });
 
 describe('gegenstandPlaetzeSchema', () => {
+  it('validates the fixed installations', () => {
+    const platz = { lagerortId: 'l1', ifcoId: null, anzahl: 1 };
+    expect(
+      gegenstandPlaetzeSchema.safeParse({
+        plaetze: [platz],
+        verbaut: [{ ort: ' am Drucker ', anzahl: 1 }],
+      }).data?.verbaut,
+    ).toEqual([{ ort: 'am Drucker', anzahl: 1 }]);
+    expect(
+      gegenstandPlaetzeSchema.safeParse({
+        plaetze: [],
+        verbaut: [
+          { ort: 'Bar', anzahl: 1 },
+          { ort: 'bar', anzahl: 2 },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      gegenstandPlaetzeSchema.safeParse({ plaetze: [], verbaut: [{ ort: ' ', anzahl: 1 }] })
+        .success,
+    ).toBe(false);
+  });
+
   it('accepts an empty list and places at a Lagerort or an IFCO', () => {
     expect(gegenstandPlaetzeSchema.safeParse({ plaetze: [] }).success).toBe(true);
     const ok = gegenstandPlaetzeSchema.parse({
@@ -219,70 +242,76 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
   });
 });
 
-describe('ifcoInhaltAnwenden / ueberfuehrteMenge', () => {
-  const regal = { lagerortId: 'l1', ifcoId: null };
-  const plaetze = [
-    { gegenstandId: 'g', ...regal, anzahl: 6 },
-    { gegenstandId: 'g', lagerortId: null, ifcoId: 'i', anzahl: 1 },
-    { gegenstandId: 'h', ...regal, anzahl: 2 },
-  ];
-  it('moves the added pieces from the Herkunft and replaces the IFCO rows', () => {
-    const p = { gegenstandId: 'g', anzahl: 4, herkunft: regal };
-    expect(ueberfuehrteMenge(plaetze, 'i', p)).toBe(3);
-    expect(ifcoInhaltAnwenden(plaetze, 'i', [p])).toEqual({
+describe('ifcoInhaltAnwenden', () => {
+  const kiste = (ifcoId: string, anzahl: number) => ({
+    gegenstandId: 'g',
+    lagerortId: null,
+    ifcoId,
+    anzahl,
+  });
+  const plaetze = [kiste('i1', 5), kiste('i2', 5), { ...kiste('i1', 2), gegenstandId: 'h' }];
+  it('sets the new amounts of the other Plätze and replaces the IFCO rows', () => {
+    const andere = [
+      { lagerortId: null, ifcoId: 'i1', anzahl: 1 },
+      { lagerortId: null, ifcoId: 'i2', anzahl: 2 },
+    ];
+    expect(ifcoInhaltAnwenden(plaetze, 'i3', [{ gegenstandId: 'g', anzahl: 7, andere }])).toEqual({
       plaetze: [
-        { gegenstandId: 'g', ...regal, anzahl: 3 },
-        { gegenstandId: 'h', ...regal, anzahl: 2 },
-        { gegenstandId: 'g', lagerortId: null, ifcoId: 'i', anzahl: 4 },
+        kiste('i1', 1),
+        kiste('i2', 2),
+        { ...kiste('i1', 2), gegenstandId: 'h' },
+        kiste('i3', 7),
       ],
       ungueltig: null,
     });
   });
-  it('takes at most what lies there and drops an emptied place', () => {
-    const p = { gegenstandId: 'h', anzahl: 5, herkunft: regal };
-    expect(ueberfuehrteMenge(plaetze, 'i', p)).toBe(2);
-    const neu = ifcoInhaltAnwenden(plaetze, 'i', [p]).plaetze;
-    expect(neu.filter((x) => x.gegenstandId === 'h')).toEqual([
-      { gegenstandId: 'h', lagerortId: null, ifcoId: 'i', anzahl: 5 },
+  it('drops a Platz set to 0 and keeps unlisted ones', () => {
+    const andere = [{ lagerortId: null, ifcoId: 'i1', anzahl: 0 }];
+    const neu = ifcoInhaltAnwenden(plaetze, 'i3', [{ gegenstandId: 'g', anzahl: 5, andere }]);
+    expect(neu.plaetze.filter((x) => x.gegenstandId === 'g')).toEqual([
+      kiste('i2', 5),
+      kiste('i3', 5),
     ]);
   });
-  it('moves nothing without Herkunft or when the amount does not grow', () => {
-    expect(ueberfuehrteMenge(plaetze, 'i', { gegenstandId: 'g', anzahl: 4, herkunft: null })).toBe(
-      0,
-    );
-    expect(ueberfuehrteMenge(plaetze, 'i', { gegenstandId: 'g', anzahl: 1, herkunft: regal })).toBe(
-      0,
-    );
-  });
-  it('flags a Herkunft that is not another Platz of the Gegenstand', () => {
-    const fremd = { lagerortId: 'l9', ifcoId: null };
+  it('flags a Platz the Gegenstand does not lie at, or the IFCO itself', () => {
+    const fremd = [{ lagerortId: 'l9', ifcoId: null, anzahl: 1 }];
     expect(
-      ifcoInhaltAnwenden(plaetze, 'i', [{ gegenstandId: 'g', anzahl: 2, herkunft: fremd }])
+      ifcoInhaltAnwenden(plaetze, 'i3', [{ gegenstandId: 'g', anzahl: 2, andere: fremd }])
         .ungueltig,
     ).toBe('g');
-    const selbst = { lagerortId: null, ifcoId: 'i' };
+    const selbst = [{ lagerortId: null, ifcoId: 'i1', anzahl: 1 }];
     expect(
-      ifcoInhaltAnwenden(plaetze, 'i', [{ gegenstandId: 'g', anzahl: 2, herkunft: selbst }])
+      ifcoInhaltAnwenden(plaetze, 'i1', [{ gegenstandId: 'g', anzahl: 2, andere: selbst }])
         .ungueltig,
     ).toBe('g');
   });
 });
 
-describe('zuVielVerteiltFehler / sollZuKleinFehler', () => {
+describe('zuVielVerteiltFehler / sollZuKleinFehler / verteilbar', () => {
   it('refuses putting more pieces on places than exist', () => {
-    expect(zuVielVerteiltFehler('Schalter', 10, 8, 10)).toBeNull();
-    expect(zuVielVerteiltFehler('Schalter', 10, 8, 11)).toBe(
+    expect(zuVielVerteiltFehler('Schalter', 10, 0, 8, 10)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 0, 8, 11)).toBe(
       '„Schalter“ gibt es nur 10-mal, zugeordnet wären 11. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).',
     );
   });
+  it('counts the fixed pieces against the Soll', () => {
+    expect(zuVielVerteiltFehler('Dreierverteiler', 12, 3, 0, 9)).toBeNull();
+    expect(zuVielVerteiltFehler('Dreierverteiler', 12, 3, 0, 10)).toBe(
+      '„Dreierverteiler“ gibt es nur 12-mal, 3 davon fest verbaut: an Plätzen gehen höchstens 9, zugeordnet wären 10. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).',
+    );
+    // building more in while the Plätze stay is refused, unless the total does not grow
+    expect(zuVielVerteiltFehler('Dreierverteiler', 12, 4, 9, 9, 3)).not.toBeNull();
+    expect(zuVielVerteiltFehler('Dreierverteiler', 12, 4, 9, 8, 3)).toBeNull();
+    expect(verteilbar({ anzahl: 12, verbaut: [{ anzahl: 1 }, { anzahl: 2 }] })).toBe(9);
+  });
   it('lets an over-assigned Gegenstand change as long as the sum does not grow', () => {
-    expect(zuVielVerteiltFehler('Schalter', 10, 21, 21)).toBeNull();
-    expect(zuVielVerteiltFehler('Schalter', 10, 21, 15)).toBeNull();
-    expect(zuVielVerteiltFehler('Schalter', 10, 21, 22)).not.toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 0, 21, 21)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 0, 21, 15)).toBeNull();
+    expect(zuVielVerteiltFehler('Schalter', 10, 0, 21, 22)).not.toBeNull();
   });
   it('refuses lowering the Soll below the assigned pieces, but allows raising it', () => {
     expect(sollZuKleinFehler(8, 10, 9)).toBe(
-      'Es sind schon 9 Stück zugeordnet. Nimm zuerst an den Plätzen etwas weg.',
+      'Es sind schon 9 Stück an Plätzen oder fest verbaut. Nimm zuerst dort etwas weg.',
     );
     expect(sollZuKleinFehler(9, 10, 9)).toBeNull();
     expect(sollZuKleinFehler(15, 10, 21)).toBeNull();

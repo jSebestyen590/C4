@@ -30,6 +30,7 @@ describe('gegenstandDetails', () => {
         { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 3, ausgeliehenAm: vorher },
         { gegenstandId: 'g1', lagerortId: 'l5', ifcoId: null, anzahl: 2, ausgeliehenAm: spaeter },
       ],
+      [],
       jetzt,
     );
     expect(d.plaetze[0]).toMatchObject({ verliehen: 3, vorgemerkt: 2 });
@@ -51,8 +52,10 @@ describe('gegenstandDetails', () => {
           ausgeliehenAm: vorher,
         },
       ],
+      [{ id: 'v1', ort: 'unter der Bar', anzahl: 2, gegenstandId: 'g1' } as never],
       jetzt,
     );
+    expect(d.verbaut).toEqual([{ id: 'v1', ort: 'unter der Bar', anzahl: 2 }]);
     expect(d.plaetze.map((p) => p.verliehen)).toEqual([4, 2]);
     expect(d.verliehen).toBe(6);
     expect(d.name).toBe('Kabeltrommel');

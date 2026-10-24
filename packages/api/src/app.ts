@@ -1134,7 +1134,11 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           gefunden(
             await deps.inventar
-              .gegenstandPlaetzeSetzen(c.req.param('id'), c.req.valid('json').plaetze)
+              .gegenstandPlaetzeSetzen(
+                c.req.param('id'),
+                c.req.valid('json').plaetze,
+                c.req.valid('json').verbaut,
+              )
               .catch(warenFehler),
             'Gegenstand nicht gefunden',
           );

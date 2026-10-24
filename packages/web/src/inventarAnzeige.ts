@@ -129,10 +129,14 @@ export function mengeText(anzahl: number, verliehen = 0, vorgemerkt = 0): string
 
 /** Deviation of a Gegenstand's Plätze from its target, e.g. `2 ohne Platz`; null when it matches. */
 export function gegenstandAbweichung(
-  g: Pick<GegenstandEintrag, 'anzahl' | 'plaetze'>,
+  g: Pick<GegenstandEintrag, 'anzahl' | 'plaetze' | 'verbaut'>,
 ): string | null {
-  return abweichungText(inventarAbweichung(g.anzahl, g.plaetze).differenz);
+  return abweichungText(inventarAbweichung(g.anzahl, [...g.plaetze, ...g.verbaut]).differenz);
 }
+
+/** Fixed installations as display lines: `fest verbaut: unter der Bar`, with the amount if > 1. */
+export const verbautZeilen = (g: Pick<GegenstandEintrag, 'verbaut'>) =>
+  g.verbaut.map((v) => ({ id: v.id, text: `fest verbaut: ${v.ort}`, anzahl: v.anzahl }));
 
 /** Places of a Gegenstand as display lines, sorted. */
 export function platzZeilen(

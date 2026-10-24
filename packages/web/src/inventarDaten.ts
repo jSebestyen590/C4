@@ -31,6 +31,8 @@ export interface GegenstandEintrag {
   anzahl: number;
   archiviert: boolean;
   plaetze: PlatzEintrag[];
+  /** Pieces built in for good at a free-text Ort; they are on no Platz and cannot be lent. */
+  verbaut: { id: string; ort: string; anzahl: number }[];
   /** Total open amount that is away now. */
   verliehen: number;
   /** Total open amount of Ausleihen starting in the future. */

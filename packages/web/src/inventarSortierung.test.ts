@@ -28,6 +28,7 @@ const gegenstand = (
   verliehen: 0,
   vorgemerkt: 0,
   plaetze: [],
+  verbaut: [],
   ...extra,
 });
 const platz = (lagerortId: string) => ({
