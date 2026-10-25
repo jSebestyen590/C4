@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { datumAnzeigen, rechteZeitraum, tagVorher } from './datum';
+import { datumAnzeigen, heuteBerlin, rechteZeitraum, tagVorher } from './datum';
 
 describe('datumAnzeigen', () => {
   it('formats as dd.MM.yyyy with leading zeros', () => {
@@ -30,5 +30,12 @@ describe('rechteZeitraum', () => {
     expect(rechteZeitraum('2026-03-31', '2026-01-31').von).toBe('2026-02-28');
     expect(rechteZeitraum('2026-03-31', '2026-01-31').bis).toBe('2026-02-28');
     expect(rechteZeitraum('2028-03-31', '2028-01-31').bis).toBe('2028-02-29');
+  });
+});
+
+describe('heuteBerlin', () => {
+  it('uses the Berlin calendar day', () => {
+    expect(heuteBerlin(new Date('2026-06-15T22:30:00Z'))).toBe('2026-06-16');
+    expect(heuteBerlin(new Date('2026-06-15T21:30:00Z'))).toBe('2026-06-15');
   });
 });

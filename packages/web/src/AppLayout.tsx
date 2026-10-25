@@ -7,9 +7,9 @@ import {
   Menu,
   NavLink,
   Text,
-  Title,
   UnstyledButton,
   type MantineColorScheme,
+  useComputedColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -17,7 +17,10 @@ import {
   IconBriefcase,
   IconCheck,
   IconDeviceDesktop,
+  IconBuildingWarehouse,
   IconHome,
+  IconBox,
+  IconPackage,
   IconLogout,
   IconMoon,
   IconSun,
@@ -28,7 +31,10 @@ import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
+import logo from './assets/favicon.png';
+import logoDunkel from './assets/logo-dunkel.png';
 import { useAuth } from './auth';
+import { PullToRefresh } from './PullToRefresh';
 
 const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
   { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
@@ -102,6 +108,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
   const { pathname } = useLocation();
   const [opened, { toggle, close }] = useDisclosure(false);
+  const farbschema = useComputedColorScheme('light');
 
   const links = [
     { to: '/', label: 'Startseite', icon: <IconHome size={20} />, show: true },
@@ -117,6 +124,24 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       icon: <IconBriefcase size={20} />,
       show: can('posten:lesen'),
     },
+    {
+      to: '/waren',
+      label: 'Waren',
+      icon: <IconPackage size={20} />,
+      show: can('waren:lesen'),
+    },
+    {
+      to: '/lager',
+      label: 'Lager',
+      icon: <IconBuildingWarehouse size={20} />,
+      show: can('waren:lesen'),
+    },
+    {
+      to: '/inventar',
+      label: 'Inventar',
+      icon: <IconBox size={20} />,
+      show: can('inventar:lesen'),
+    },
   ].filter((l) => l.show);
 
   return (
@@ -125,6 +150,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       navbar={{ width: 240, breakpoint: 'md', collapsed: { mobile: !opened, desktop: !user } }}
       padding="md"
     >
+      <PullToRefresh />
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group wrap="nowrap">
@@ -137,7 +163,16 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
                 aria-label="Menü"
               />
             )}
-            <Title order={3}>C4</Title>
+            <UnstyledButton component={Link} to="/" aria-label="C4 – zur Startseite" lh={0}>
+              <img
+                // In dark mode the stairs and the shadow are white instead of black.
+                src={farbschema === 'dark' ? logoDunkel : logo}
+                alt="C4"
+                height={40}
+                width={40}
+                style={{ display: 'block' }}
+              />
+            </UnstyledButton>
           </Group>
           {user && (
             <Group gap="xs" wrap="nowrap">

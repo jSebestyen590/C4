@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,5 +78,18 @@ describe('rollback', () => {
     const { pool, query } = fakePool(['0001_a.sql']);
     await expect(rollback(pool, { to: '0009_x' }, dir)).rejects.toThrow(/Unknown rollback target/);
     expect(writes(query)).toEqual([]);
+  });
+});
+
+describe('down files', () => {
+  it('exist for every migration from 0010 on', async () => {
+    const migrations = path.join(import.meta.dirname, 'migrations');
+    const ups = (await readdir(migrations)).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f >= '0010');
+    const downs = await readdir(path.join(migrations, 'down'));
+    const fehlend = ups.filter((f) => {
+      const base = f.replace(/\.sql$/, '');
+      return !downs.some((d) => d === `${base}.down.sql` || d.startsWith(`${base}.down.`));
+    });
+    expect(fehlend).toEqual([]);
   });
 });

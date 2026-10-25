@@ -36,7 +36,8 @@ import { useAuth } from '../auth';
 import { PERMISSION_LABELS } from '../i18n';
 import { DatumFeld } from '../DatumFeld';
 import { PostenFelder, postenWerte, type PostenWerte } from '../PostenFelder';
-import { anzeigename, mitgliedLink } from '../mitglied';
+import { mitgliedLink } from '../mitglied';
+import { mitgliedOptionen } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import { besetzungName } from './PostenPage';
 
@@ -182,7 +183,7 @@ function BesetzungDialog({
             label="Mitglied"
             searchable
             placeholder="Mitglied wählen"
-            data={(mitglieder.data ?? []).map((m) => ({ value: m.sub, label: anzeigename(m) }))}
+            data={mitgliedOptionen(mitglieder.data ?? [])}
             value={sub}
             onChange={setSub}
             nothingFoundMessage="Kein Mitglied gefunden"

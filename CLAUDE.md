@@ -48,3 +48,15 @@ start; don't add English user-facing strings.
   `labelFuer(labels, value, anrede)` using the `anrede` of the person the text is about; never hardcode
   one form. New texts naming a person need all three forms.
 - Code, identifiers, comments and commit messages stay English.
+- The brand **IFCO** (Euro boxes) is always written in capitals in user-facing texts and docs:
+  "IFCO", plural "IFCOs" (e.g. "IFCO anlegen", "Ganze IFCO verleihen"). Identifiers stay as they are
+  (`ifco`, `IfcoFormular`, `/inventar/ifcos`).
+
+## Members in the UI
+
+- A member is always shown by their **username**, unless a page explicitly asks for the real name
+  (e.g. the profile). Fall back to "Vorname Nachname" only when no username is set. Select options
+  that need to be recognisable may show "username (Vorname Nachname)".
+- Every mention of a member is bold and in the color of their status: use `StatusName`
+  (`packages/web/src/StatusAnzeige.tsx`), ideally linking to the member page via `mitgliedLink`.
+  DTOs that embed a member therefore carry `username` and `status`.

@@ -1,4 +1,4 @@
-import { Alert, Container, Loader } from '@mantine/core';
+import { Alert, Button, Container, Loader, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -7,12 +7,26 @@ import { unwrap, useApi } from './api';
 import { AppLayout } from './AppLayout';
 import { useAuth } from './auth';
 import { CallbackPage } from './pages/CallbackPage';
+import { GegenstandDetailPage } from './pages/GegenstandDetailPage';
 import { HomePage } from './pages/HomePage';
+import { IfcoDetailPage } from './pages/IfcoDetailPage';
+import { AusleiheDetailPage } from './pages/AusleiheDetailPage';
+import { AusleihePage } from './pages/AusleihePage';
+import { InventarPage } from './pages/InventarPage';
+import { InventarStammdatenPage } from './pages/InventarStammdatenPage';
+import { EinlagerungPage } from './pages/EinlagerungPage';
+import { EntnahmePage } from './pages/EntnahmePage';
+import { UmlagerungPage } from './pages/UmlagerungPage';
+import { InventurPage } from './pages/InventurPage';
+import { LagerPage } from './pages/LagerPage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
 import { ProfilPage } from './pages/ProfilPage';
+import { StammdatenPage } from './pages/StammdatenPage';
+import { WareDetailPage } from './pages/WareDetailPage';
+import { WarenPage } from './pages/WarenPage';
 
 function Protected({
   children,
@@ -48,6 +62,31 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
       return res.json();
     },
   });
+  // Pages query ['me'] themselves; mounting them for an errored query would refetch it, flip it
+  // back to pending, unmount them here and loop endlessly. So stop at the error.
+  if (me.isError || mitglied.isError)
+    return (
+      <Alert color="red" title="Verbindung fehlgeschlagen" m="md">
+        <Stack gap="sm" align="flex-start">
+          <Text size="sm">
+            Dein Profil konnte nicht geladen werden. Versuch es gleich noch einmal.
+          </Text>
+          <Button
+            size="md"
+            mih={44}
+            variant="light"
+            color="red"
+            loading={me.isFetching || mitglied.isFetching}
+            onClick={() => {
+              if (me.isError) void me.refetch();
+              if (mitglied.isError) void mitglied.refetch();
+            }}
+          >
+            Erneut versuchen
+          </Button>
+        </Stack>
+      </Alert>
+    );
   if (me.isPending || mitglied.isPending) return null;
   if (me.data && !me.data.preferredUsername) return <Navigate to="/profil" replace />;
   // Invited users already have a row, but with empty names until they filled in their profile.
@@ -109,6 +148,146 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="posten:lesen">
                 <RequireUsername>
                   <PostenDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/waren"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <WarenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/waren/:id"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <WareDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <InventarPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/stammdaten"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <InventarStammdatenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/gegenstaende/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <GegenstandDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ausleihen/neu"
+            element={
+              <Protected permission="inventar:umraeumen">
+                <RequireUsername>
+                  <AusleihePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ausleihen/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <AusleiheDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/inventar/ifcos/:id"
+            element={
+              <Protected permission="inventar:lesen">
+                <RequireUsername>
+                  <IfcoDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <LagerPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/inventur/:id"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <InventurPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/entnehmen"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <EntnahmePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/einlagern"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <EinlagerungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/:id/umlagern"
+            element={
+              <Protected permission="bestand:buchen">
+                <RequireUsername>
+                  <UmlagerungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/lager/stammdaten"
+            element={
+              <Protected permission="waren:lesen">
+                <RequireUsername>
+                  <StammdatenPage />
                 </RequireUsername>
               </Protected>
             }

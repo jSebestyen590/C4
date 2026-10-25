@@ -172,7 +172,7 @@ export const profilbildUploadSchema = z.object({
 });
 export type ProfilbildUpload = z.infer<typeof profilbildUploadSchema>;
 
-const datumSchema = z.iso.date();
+export const datumSchema = z.iso.date();
 
 /** The three forms of the holder's title belong together: all set or none. */
 export const postenAktualisierenSchema = z

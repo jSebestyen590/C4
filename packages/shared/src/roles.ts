@@ -13,6 +13,12 @@ export const PERMISSIONS = [
   'profil:bearbeiten',
   'posten:lesen',
   'posten:bearbeiten',
+  'waren:lesen',
+  'bestand:buchen',
+  'waren:verwalten',
+  'inventar:lesen',
+  'inventar:umraeumen',
+  'inventar:verwalten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -20,19 +26,48 @@ export type Permission = (typeof PERMISSIONS)[number];
 export const POSTEN_RECHTE = [
   'users:manage',
   'posten:bearbeiten',
+  'waren:verwalten',
+  'inventar:verwalten',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
 /** Extra permissions of a Cognito group, on top of those of the member's status. */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  admin: ['users:manage', 'posten:bearbeiten'],
+  admin: ['users:manage', 'posten:bearbeiten', 'waren:verwalten', 'inventar:verwalten'],
 };
 
 /** What a member may do, derived from their status (maintained by admins in the member profile). */
 export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> = {
-  anwaerter: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
-  mitglied: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
-  em: ['content:read', 'mitglieder:lesen', 'profil:bearbeiten', 'posten:lesen'],
+  anwaerter: [
+    'content:read',
+    'mitglieder:lesen',
+    'profil:bearbeiten',
+    'posten:lesen',
+    'waren:lesen',
+    'bestand:buchen',
+    'inventar:lesen',
+    'inventar:umraeumen',
+  ],
+  mitglied: [
+    'content:read',
+    'mitglieder:lesen',
+    'profil:bearbeiten',
+    'posten:lesen',
+    'waren:lesen',
+    'bestand:buchen',
+    'inventar:lesen',
+    'inventar:umraeumen',
+  ],
+  em: [
+    'content:read',
+    'mitglieder:lesen',
+    'profil:bearbeiten',
+    'posten:lesen',
+    'waren:lesen',
+    'bestand:buchen',
+    'inventar:lesen',
+    'inventar:umraeumen',
+  ],
 };
 
 /**

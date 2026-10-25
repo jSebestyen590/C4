@@ -43,8 +43,10 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die einzige Cognito-Gruppe ist `admin` (`users:manage`). Alles andere folgt aus dem Status.
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
-- Aktuell bekommen alle Status dieselben Rechte. Sobald Features unterschiedliche Rechte brauchen,
-  trägt man sie in `STATUS_PERMISSIONS` ein.
+- Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`). Sobald Features unterschiedliche Rechte
+  brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten` und
+  `inventar:verwalten` haben nur Admins und Posten (siehe [waren.md](./waren.md), [inventar.md](./inventar.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 
@@ -92,7 +94,7 @@ oder Entfernen werden beide Dateien gelöscht. Keys müssen unter `profilbilder/
 
 Der Username wird auf der Profilseite gewählt (Cognito-Alias, eindeutig, 3–64 Zeichen aus
 `A-Za-z0-9._-`, darf nicht wie eine UUID aussehen). Die Detailseite liegt unter
-`/mitglieder/<username>`. Mitglieder ohne Username sind über ihre `sub` erreichbar. Ändert man auf der
+`/mitglieder/<username>`. Wo ein Mitglied in anderen Seiten (Posten, Verlauf, Ausleihen) erwähnt wird, steht sein Username, fett in der Statusfarbe (`StatusName`) und möglichst verlinkt (`mitgliedLink`); nur ohne Username erscheint „Vorname Nachname“. Mitglieder ohne Username sind über ihre `sub` erreichbar. Ändert man auf der
 eigenen Detailseite den Username, zieht die URL mit.
 
 ## E-Mail ändern

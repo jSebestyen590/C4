@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS bestandsbuchungen_vorgang_idx
