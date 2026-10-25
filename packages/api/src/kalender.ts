@@ -293,6 +293,22 @@ export interface KalenderStore {
   subPerTokenHash(hash: string): Promise<string | undefined>;
   /** The member's own Dienste whose Schicht begins at or after `ab`, ordered by start. */
   meineDienste(sub: string, ab: Date): Promise<MeinDienstDto[]>;
+
+  // ----- Notifications
+  /** Dienste of members in non-cancelled events whose Schicht begins in `von` (incl.) .. `bis` (excl.). */
+  erinnerungsDienste(von: Date, bis: Date): Promise<ErinnerungsDienst[]>;
+}
+
+/** A member's Dienst that may need a reminder. */
+export interface ErinnerungsDienst {
+  dienstId: string;
+  mitgliedSub: string;
+  eventId: string;
+  eventTitel: string;
+  schichtName: string;
+  dienstformName: string;
+  /** ISO instant of the Schicht start. */
+  beginn: string;
 }
 
 /** sha256 hex of a feed token; only this hash is stored. */
@@ -1211,6 +1227,29 @@ export function createKalenderStore(db: Db): KalenderStore {
         .where(and(eq(dienste.mitgliedSub, sub), gte(schichten.beginn, ab)))
         .orderBy(asc(schichten.beginn), asc(dienste.id));
       return rows.map((r) => ({ ...r, beginn: iso(r.beginn), ende: iso(r.ende) }));
+    },
+    async erinnerungsDienste(von, bis) {
+      const rows = await db
+        .select({
+          dienstId: dienste.id,
+          mitgliedSub: dienste.mitgliedSub,
+          eventId: events.id,
+          eventTitel: events.titel,
+          schichtName: schichten.name,
+          dienstformName: dienstformen.name,
+          beginn: schichten.beginn,
+        })
+        .from(dienste)
+        .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
+        .innerJoin(events, eq(events.id, schichten.eventId))
+        .innerJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
+        .where(
+          and(eq(events.abgesagt, false), gte(schichten.beginn, von), lt(schichten.beginn, bis)),
+        )
+        .orderBy(asc(schichten.beginn), asc(dienste.id));
+      return rows.flatMap((r) =>
+        r.mitgliedSub === null ? [] : [{ ...r, mitgliedSub: r.mitgliedSub, beginn: iso(r.beginn) }],
+      );
     },
   };
 }

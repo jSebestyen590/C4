@@ -22,8 +22,6 @@ import { dienstIcsHerunterladen } from '../kalenderIcs';
 import { fehlerAnzeigen, fehlerText } from '../warenApi';
 import { kalenderInvalidieren, useKalenderToken, useMeineDienste } from '../kalenderDaten';
 
-// TODO(phase 5): link to /profil for push notification settings once they exist.
-
 const feedUrl = (token: string) =>
   `${window.location.origin}/api/kalender/feed/${encodeURIComponent(token)}.ics`;
 const webcalUrl = (token: string) => feedUrl(token).replace(/^https?:/, 'webcal:');
@@ -101,6 +99,13 @@ export function KalenderMeinKalenderPage() {
       <Text>
         Abonniere deine Dienste in deiner Kalender-App. Sie erscheinen dort automatisch, auch wenn
         sich etwas ändert oder du dich austrägst. Im Abo stehen nur deine eigenen Dienste.
+      </Text>
+      <Text size="sm" c="dimmed">
+        Erinnerungen per Push stellst du im{' '}
+        <Anchor component={Link} to="/profil" size="sm">
+          Profil
+        </Anchor>{' '}
+        ein.
       </Text>
 
       <Paper withBorder p="md" radius="md">

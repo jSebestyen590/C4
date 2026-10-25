@@ -15,6 +15,8 @@ import {
   ifcoPlatzHatWareFehler,
 } from '@c4/shared';
 import { createApp } from './app';
+import { createBenachrichtigungen, type PushErgebnis } from './benachrichtigungen';
+import { createFakeBenachrichtigungenStore } from './benachrichtigungen.fake';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
 import type { AuthUser } from './auth';
@@ -438,6 +440,7 @@ function makeKalenderFake() {
       async (hash) => [...tokenNachSub].find(([, h]) => h === hash)?.[0],
     ),
     meineDienste: vi.fn<KalenderStore['meineDienste']>(async () => []),
+    erinnerungsDienste: vi.fn<KalenderStore['erinnerungsDienste']>(async () => []),
   } satisfies KalenderStore;
   return { fake, dienste };
 }
@@ -573,6 +576,19 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
     loeschen: vi.fn<(key: string) => Promise<void>>(async () => {}),
   };
+  const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
+    (sub) => ({ sub, status: 'mitglied' }),
+  );
+  const push = createFakeBenachrichtigungenStore(() => pushMitglieder);
+  const pushErgebnis = { wert: 'ok' as PushErgebnis };
+  const gesendet: { endpoint: string; titel: string; text: string; url: string }[] = [];
+  const benachrichtigungen = createBenachrichtigungen({
+    store: push.store,
+    sender: async (abo, n) => {
+      gesendet.push({ endpoint: abo.endpoint, titel: n.titel, text: n.text, url: n.url });
+      return pushErgebnis.wert;
+    },
+  });
   const app = createApp({
     verifyToken: async (token) => {
       const user = users[token];
@@ -586,6 +602,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     waren,
     inventar,
     kalender,
+    benachrichtigungen,
     ...(appUrl && { appUrl }),
     profilbilder,
     pingDb,
@@ -602,6 +619,10 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     inventarVerwendet,
     kalender,
     kalenderDienste,
+    push,
+    pushMitglieder,
+    gesendet,
+    pushErgebnis,
     orte,
     verwendet,
   };
@@ -2761,5 +2782,197 @@ describe('kalender', () => {
     expect(res.status).toBe(200);
     expect(t.kalender.meineDienste).toHaveBeenCalledWith('r', expect.any(Date));
     expect((await t.app.request('/api/me/dienste')).status).toBe(401);
+  });
+
+  describe('push notifications', () => {
+    const abo = (endpoint: string) => ({
+      endpoint,
+      keys: { p256dh: 'p', auth: 'a' },
+    });
+    const ereignis = (id: string, beginn: string) => ({
+      id,
+      titel: 'Offener Abend',
+      beschreibung: null,
+      kategorie: null,
+      beginn,
+      ende: '2026-10-23T22:00:00.000Z',
+      abgesagt: false,
+      fehltHinweisStunden: null,
+      bewertung: 'gruen' as const,
+      schichten: [],
+    });
+
+    it("serves the public key and manages the caller's subscriptions", async () => {
+      const t = makeApp();
+      mitProfil(t);
+      expect((await t.app.request('/api/push/schluessel')).status).toBe(401);
+      const key = await t.app.request('/api/push/schluessel', json('member-token', 'GET'));
+      expect(await key.json()).toEqual({ publicKey: 'public-key' });
+
+      const post = (body: unknown) =>
+        t.app.request('/api/push/abos', json('member-token', 'POST', body));
+      expect((await post({ endpoint: 'kaputt', keys: { p256dh: 'p', auth: 'a' } })).status).toBe(
+        400,
+      );
+      expect((await post(abo('https://push.example/1'))).status).toBe(201);
+      expect((await post(abo('https://push.example/1'))).status).toBe(201);
+      expect(t.push.abos).toHaveLength(1);
+      expect(t.push.abos[0]).toMatchObject({
+        mitgliedSub: 'm2',
+        endpoint: 'https://push.example/1',
+      });
+
+      const del = (token: string) =>
+        t.app.request(
+          '/api/push/abos',
+          json(token, 'DELETE', { endpoint: 'https://push.example/1' }),
+        );
+      await del('reader-token');
+      expect(t.push.abos).toHaveLength(1);
+      expect((await del('member-token')).status).toBe(200);
+      expect(t.push.abos).toHaveLength(0);
+    });
+
+    it('needs a profile for subscriptions and settings', async () => {
+      const t = makeApp();
+      const res = await t.app.request(
+        '/api/push/abos',
+        json('member-token', 'POST', abo('https://push.example/1')),
+      );
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(t.push.abos).toHaveLength(0);
+    });
+
+    it('lists all types with defaults and stores changes', async () => {
+      const t = makeApp();
+      t.pushMitglieder.find((m) => m.sub === 'm2')!.status = 'em';
+      const lesen = async () =>
+        (await (
+          await t.app.request('/api/me/benachrichtigungen', json('member-token', 'GET'))
+        ).json()) as {
+          art: string;
+          aktiv: boolean;
+          minuten: number | null;
+          minutenOptionen: number[] | null;
+        }[];
+      const anfang = await lesen();
+      expect(anfang.map((e) => e.art)).toEqual([
+        'kalender.erinnerung',
+        'kalender.fehlende_dienste',
+        'kalender.aenderung',
+      ]);
+      expect(anfang[0]).toMatchObject({
+        aktiv: true,
+        minuten: 30,
+        minutenOptionen: [15, 30, 60, 120, 1440],
+      });
+      expect(anfang[1]).toMatchObject({ aktiv: false, minuten: null, minutenOptionen: null });
+
+      const put = (body: unknown) =>
+        t.app.request('/api/me/benachrichtigungen', json('member-token', 'PUT', body));
+      expect((await put({ art: 'kalender.erinnerung', aktiv: true, minuten: 60 })).status).toBe(
+        200,
+      );
+      expect((await put({ art: 'kalender.fehlende_dienste', aktiv: true })).status).toBe(200);
+      // Switching off keeps the chosen minutes.
+      expect((await put({ art: 'kalender.erinnerung', aktiv: false })).status).toBe(200);
+      const danach = await lesen();
+      expect(danach[0]).toMatchObject({ aktiv: false, minuten: 60 });
+      expect(danach[1]).toMatchObject({ aktiv: true });
+
+      expect((await put({ art: 'kalender.erinnerung', aktiv: true, minuten: 7 })).status).toBe(400);
+      expect((await put({ art: 'kalender.aenderung', aktiv: true, minuten: 15 })).status).toBe(400);
+      expect((await put({ art: 'gibt.es.nicht', aktiv: true })).status).toBe(400);
+      expect((await t.app.request('/api/me/benachrichtigungen', { method: 'GET' })).status).toBe(
+        401,
+      );
+    });
+
+    it('notifies a removed member, but not the person who removed themself', async () => {
+      const t = makeApp();
+      await t.push.store.aboSpeichern('r', {
+        endpoint: 'https://push.example/r',
+        keys: { p256dh: 'p', auth: 'a' },
+      });
+      t.kalenderDienste.set(
+        'd-r',
+        dienstInfo({ id: 'd-r', mitgliedSub: 'r', eingetragenVon: 'r' }),
+      );
+      t.kalenderDienste.set(
+        'd-r2',
+        dienstInfo({ id: 'd-r2', mitgliedSub: 'r', eingetragenVon: 'r' }),
+      );
+
+      expect(
+        (await t.app.request('/api/kalender/dienste/d-r', json('reader-token', 'DELETE'))).status,
+      ).toBe(200);
+      expect(t.gesendet).toHaveLength(0);
+
+      expect(
+        (await t.app.request('/api/kalender/dienste/d-r2', json('vorstand-token', 'DELETE')))
+          .status,
+      ).toBe(200);
+      expect(t.gesendet).toEqual([
+        {
+          endpoint: 'https://push.example/r',
+          titel: 'Dienst entfernt',
+          text: expect.stringContaining('Du wurdest aus „Betrieb“ bei „Offener Abend“'),
+          url: '/app/kalender/events/e1',
+        },
+      ]);
+    });
+
+    it('notifies Dienst holders about a cancellation, except the actor', async () => {
+      const t = makeApp();
+      for (const sub of ['r', 'v']) {
+        await t.push.store.aboSpeichern(sub, {
+          endpoint: `https://push.example/${sub}`,
+          keys: { p256dh: 'p', auth: 'a' },
+        });
+      }
+      t.kalender.absageSetzen.mockResolvedValueOnce({ geaendert: true, mitgliedSubs: ['r', 'v'] });
+      t.kalender.event.mockResolvedValueOnce(ereignis('e1', '2026-10-23T18:00:00.000Z'));
+      const res = await t.app.request(
+        '/api/kalender/events/e1/absage',
+        json('vorstand-token', 'PUT', { abgesagt: true }),
+      );
+      expect(res.status).toBe(200);
+      expect(t.gesendet.map((g) => g.endpoint)).toEqual(['https://push.example/r']);
+      expect(t.gesendet[0]).toMatchObject({ titel: 'Event abgesagt' });
+      expect(t.gesendet[0]!.text).toContain('Fr, 23.10.');
+
+      // Unchanged state: nothing is sent.
+      t.gesendet.length = 0;
+      t.kalender.absageSetzen.mockResolvedValueOnce({ geaendert: false, mitgliedSubs: ['r'] });
+      await t.app.request(
+        '/api/kalender/events/e1/absage',
+        json('vorstand-token', 'PUT', { abgesagt: true }),
+      );
+      expect(t.gesendet).toHaveLength(0);
+    });
+
+    it('notifies about a moved event and survives push failures', async () => {
+      const t = makeApp();
+      await t.push.store.aboSpeichern('r', {
+        endpoint: 'https://push.example/r',
+        keys: { p256dh: 'p', auth: 'a' },
+      });
+      t.kalender.eventAktualisieren.mockResolvedValueOnce({
+        zeitGeaendert: true,
+        geaenderteSchichten: [],
+        entfernteDienste: [],
+        mitgliedSubs: ['r', 'v'],
+      });
+      t.kalender.event.mockResolvedValueOnce(ereignis('e1', '2026-10-23T18:00:00.000Z'));
+      t.pushErgebnis.wert = 'fehler';
+      const res = await t.app.request(
+        '/api/kalender/events/e1',
+        json('vorstand-token', 'PUT', eventBody),
+      );
+      expect(res.status).toBe(200);
+      expect(t.gesendet).toHaveLength(1);
+      expect(t.gesendet[0]).toMatchObject({ titel: 'Event verschoben' });
+      expect(t.gesendet[0]!.text).toContain('um 20:00 Uhr');
+    });
   });
 });

@@ -77,6 +77,11 @@ Discord lässt sich nicht über den Username verlinken. Ein Bot auf dem Vereinss
 User-IDs auflösen (`GET /guilds/{id}/members/search`). Das ist nicht gebaut und braucht ein Bot-Token
 sowie den Server Members Intent.
 
+## Benachrichtigungen im Profil
+
+Unter dem Profilformular steht der Abschnitt „Benachrichtigungen“ (Push je Gerät, Schalter je Art); siehe
+[benachrichtigungen.md](./benachrichtigungen.md).
+
 ## Profilbilder
 
 Das Bild wird im Profil gewählt und im Browser auf ein Quadrat zugeschnitten (`react-easy-crop`).

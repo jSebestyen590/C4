@@ -29,6 +29,7 @@ import { useAuth } from '../auth';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
+import { Benachrichtigungen } from '../Benachrichtigungen';
 import { EmailAendern } from '../EmailAendern';
 import { KontaktkanalAuswahl } from '../KontaktkanalIcons';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
@@ -329,6 +330,7 @@ export function ProfilFormular({
         </Stack>
       </form>
       {mitglied?.email && <EmailAendern email={mitglied.email} />}
+      {mitglied && <Benachrichtigungen />}
     </Stack>
   );
 }

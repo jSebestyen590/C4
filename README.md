@@ -54,6 +54,10 @@ The deploy roles trust the repository's OIDC `sub` claim, which uses immutable i
 `infra/bootstrap`; a different repo (or a repo transfer) needs its own `sub` (print it with a debug step
 in the workflow). Re-apply `infra/bootstrap` after changing it.
 
+**Re-apply `infra/bootstrap` once before deploying the notification feature** (Web Push): the deploy roles
+need the new `scheduler:*` permission for the EventBridge schedule `c4-<env>-push-job` (every 5 minutes,
+see `docs/benachrichtigungen.md`). Without it the Terraform apply of the environment fails.
+
 Create the GitHub Environments `dev` and `prod` (add required reviewers on `prod`). A push to `main`
 deploys **dev**; pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`) deploys **prod**
 (after the `prod` environment approval). `workflow_dispatch` can deploy either env manually. The

@@ -74,6 +74,38 @@ export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {
   putzen: 'Putzen',
 };
 
+/** Feature areas of the notification settings (key = `bereich` in BENACHRICHTIGUNGS_ARTEN). */
+export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
+  kalender: 'Kalender',
+};
+
+/** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
+export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschreibung: string }> =
+  {
+    'kalender.erinnerung': {
+      titel: 'Erinnerung vor meinem Dienst',
+      beschreibung: 'Eine Nachricht kurz vor dem Beginn deiner Schicht.',
+    },
+    'kalender.fehlende_dienste': {
+      titel: 'Fehlende Dienste',
+      beschreibung: 'Wenn bei einem Event kurz vorher noch Dienste fehlen.',
+    },
+    'kalender.aenderung': {
+      titel: 'Änderungen an meinen Diensten',
+      beschreibung:
+        'Wenn ein Event verschoben oder abgesagt wird oder dein Dienst geändert oder entfernt wird.',
+    },
+  };
+
+/** "15 Minuten vorher", "1 Stunde vorher", "1 Tag vorher". */
+export function minutenVorherLabel(minuten: number): string {
+  if (minuten % 1440 === 0)
+    return minuten === 1440 ? '1 Tag vorher' : `${minuten / 1440} Tage vorher`;
+  if (minuten % 60 === 0)
+    return minuten === 60 ? '1 Stunde vorher' : `${minuten / 60} Stunden vorher`;
+  return `${minuten} Minuten vorher`;
+}
+
 /** Traffic light of a Schicht or event (a cancelled event is gray). */
 export const AMPEL_LABELS: Record<EventBewertung, string> = {
   rot: 'Dienste fehlen',

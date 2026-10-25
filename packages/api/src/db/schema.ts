@@ -574,3 +574,43 @@ export const kalenderTokens = pgTable('kalender_tokens', {
   tokenHash: text('token_hash').notNull(),
   erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** One Web Push subscription per device (generic notification module, see docs/benachrichtigungen.md). */
+export const pushAbos = pgTable('push_abos', {
+  id: text('id').primaryKey(),
+  mitgliedSub: text('mitglied_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A member's setting of one notification type; a missing row means the default of the type. */
+export const benachrichtigungEinstellungen = pgTable(
+  'benachrichtigung_einstellungen',
+  {
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    art: text('art').notNull(),
+    aktiv: boolean('aktiv').notNull(),
+    minuten: integer('minuten'),
+  },
+  (t) => [primaryKey({ columns: [t.mitgliedSub, t.art] })],
+);
+
+/** Dedupe keys of notifications that were already sent. */
+export const pushVersand = pgTable('push_versand', {
+  schluessel: text('schluessel').primaryKey(),
+  gesendet: timestamp('gesendet', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The VAPID key pair (single row), generated lazily by the API. */
+export const pushSchluessel = pgTable('push_schluessel', {
+  id: text('id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});

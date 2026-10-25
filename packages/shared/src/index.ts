@@ -1,4 +1,5 @@
 export * from './anrede';
+export * from './benachrichtigungen';
 export * from './datum';
 export * from './ifco';
 export * from './inventar';

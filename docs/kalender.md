@@ -16,3 +16,12 @@ Events mit Schichten und Diensten. Rechte: `kalender:lesen` (ansehen, sich eintr
 - `GET /api/me/dienste`: eigene kommende Dienste; der Browser erzeugt daraus per `icsErzeugen` die `.ics`-Downloads
   (alle kommenden auf der Mein-Kalender-Seite, einzelne Dienste auf der Event-Seite).
 - Google aktualisiert abonnierte Kalender nur alle paar Stunden.
+
+## Push-Benachrichtigungen
+
+Das allgemeine Modul ist in [benachrichtigungen.md](./benachrichtigungen.md) beschrieben; der Kalender nutzt drei Arten:
+`kalender.erinnerung` (vor der eigenen Schicht, einstellbar), `kalender.fehlende_dienste` (zum Hinweiszeitpunkt des
+Events, wenn es noch rot ist; einmal je Event; für EM standardmäßig aus) und `kalender.aenderung` (Event verschoben,
+abgesagt/wieder aktiv, eigene Schicht geändert oder entfernt, von anderen ausgetragen; die handelnde Person bekommt
+nichts). Einstellungen: Profil, Abschnitt „Benachrichtigungen“; „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben
+stehen in `kalenderBenachrichtigungen.ts`. Auf iPhone/iPad nur über „Zum Home-Bildschirm“ (iOS 16.4+).

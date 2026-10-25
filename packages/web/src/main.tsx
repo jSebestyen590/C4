@@ -44,3 +44,10 @@ createRoot(document.getElementById('root')!).render(
     <Root />
   </StrictMode>,
 );
+
+// Service worker for Web Push (scope /app/). Skipped in `vite dev`, where /app/sw.js is not a stable file.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  navigator.serviceWorker
+    .register('/app/sw.js', { scope: '/app/' })
+    .catch((err: unknown) => console.warn('Service worker registration failed', err));
+}
