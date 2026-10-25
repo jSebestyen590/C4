@@ -562,6 +562,7 @@ describe('api', () => {
         'bestand:buchen',
         'inventar:lesen',
         'inventar:umraeumen',
+        'kalender:lesen',
       ],
     });
   });

@@ -3,6 +3,7 @@ export * from './datum';
 export * from './ifco';
 export * from './inventar';
 export * from './inventarZeitraum';
+export * from './kalender';
 export * from './kontakt';
 export * from './posten';
 export * from './roles';

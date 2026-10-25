@@ -45,6 +45,16 @@ describe('permissions', () => {
       expect(hasPermission(['admin'], status, 'posten:bearbeiten')).toBe(true);
     }
   });
+  it('every status may read the Kalender, but only extra permissions manage or set it up', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'kalender:lesen')).toBe(true);
+      for (const recht of ['events:verwalten', 'kalender:einrichten'] as const) {
+        expect(hasPermission([], status, recht)).toBe(false);
+        expect(hasPermission([], status, recht, [recht])).toBe(true);
+        expect(hasPermission(['admin'], status, recht)).toBe(true);
+      }
+    }
+  });
   it('admins keep the permissions of their status', () => {
     expect(permissionsFor(['admin'], 'em')).toEqual(
       expect.arrayContaining([...STATUS_PERMISSIONS.em, 'users:manage']),

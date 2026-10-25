@@ -55,6 +55,9 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'inventar:lesen': 'Inventar ansehen',
   'inventar:umraeumen': 'Inventar umräumen und verleihen',
   'inventar:verwalten': 'Inventar verwalten',
+  'kalender:lesen': 'Kalender ansehen',
+  'events:verwalten': 'Events verwalten',
+  'kalender:einrichten': 'Kalender einrichten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
