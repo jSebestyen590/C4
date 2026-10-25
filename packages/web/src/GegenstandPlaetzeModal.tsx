@@ -164,7 +164,7 @@ export function GegenstandPlaetzeModal({
 
   if (einzel)
     return (
-      <Modal opened onClose={onClose} title={`Plätze von ${gegenstand.name}`}>
+      <Modal opened onClose={onClose} title={`Platz von ${gegenstand.name}`}>
         <Stack>
           <Checkbox
             size="md"

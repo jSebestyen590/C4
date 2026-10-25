@@ -87,6 +87,8 @@ export function GegenstandDetailPage() {
     );
   const abweichung = gegenstandAbweichung(g);
   const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
+  // A Gegenstand that exists once has one Platz: singular texts, no "1 von 1 zugeordnet".
+  const einzeln = g.anzahl === 1;
   const summe = inventarAbweichung(g.anzahl, [...g.plaetze, ...g.verbaut]).summe;
   // Ausleihen with a Position of this Gegenstand; those still holding some of it come first.
   const ausleihen = ausleihenDaten.ausleihen
@@ -160,10 +162,12 @@ export function GegenstandDetailPage() {
       </Group>
 
       <Group justify="space-between" wrap="wrap">
-        <Title order={3}>Plätze</Title>
-        <Text size="sm" c={abweichung ? 'orange' : 'dimmed'}>
-          {summe} von {g.anzahl} zugeordnet
-        </Text>
+        <Title order={3}>{einzeln ? 'Platz' : 'Plätze'}</Title>
+        {!einzeln && (
+          <Text size="sm" c={abweichung ? 'orange' : 'dimmed'}>
+            {summe} von {g.anzahl} zugeordnet
+          </Text>
+        )}
       </Group>
       {zeilen.length === 0 && g.verbaut.length === 0 && (
         <Text c="dimmed">Noch kein Platz zugeordnet.</Text>
@@ -226,7 +230,7 @@ export function GegenstandDetailPage() {
           disabled={g.archiviert}
           onClick={() => setPlaetze(true)}
         >
-          Plätze ändern
+          {einzeln ? 'Platz ändern' : 'Plätze ändern'}
         </Button>
       )}
       {darfUmraeumen && !g.archiviert && (
