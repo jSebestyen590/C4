@@ -175,9 +175,10 @@ jede Änderung macht `['inventar']` ungültig.
   auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Soll 1 ohne Mengenfeld), Menü wie beim Gegenstand.
-- **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Ein neu gewählter
+- **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne
+  Überschrift; die Anzahl erscheint erst, wenn ein Gegenstand gewählt ist. Ein neu gewählter
   Gegenstand kommt standardmäßig ganz in die IFCO (Anzahl = verteilbar). Liegt er schon an anderen Plätzen, steht darunter
-  „Liegt außerdem an“ mit einem Zähler je Platz („Bisher 5“). Bei einem neu gewählten Gegenstand stehen sie auf 0, bei
+  „Bisher zugeordnet“ mit einem Zähler je Platz („Bisher 5“). Bei einem neu gewählten Gegenstand stehen sie auf 0, bei
   vorhandenem Inhalt auf dem bisherigen Wert. Darunter „Verteilt 10 von 10“ (orange „… ohne Platz“, rot „… zu viel“). Beim
   Speichern bekommen die anderen Plätze die neuen Werte, 0 nimmt den Gegenstand dort heraus. Was über die bisherige Summe
   hinausgeht, kommt neu dazu, solange das Soll reicht. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Soll 1

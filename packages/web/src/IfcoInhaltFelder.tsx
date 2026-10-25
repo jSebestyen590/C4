@@ -165,35 +165,24 @@ export function IfcoInhaltFelder({
         return (
           <Paper key={z.key} withBorder p="sm">
             <Stack gap="xs">
-              <Select
-                label={`Gegenstand ${i + 1}`}
-                placeholder="Gegenstand wählen"
-                searchable
-                inputMode="text"
-                nothingFoundMessage="Kein Gegenstand gefunden"
-                data={optionen(z.gegenstandId)}
-                value={z.gegenstandId}
-                onChange={(gegenstandId) =>
-                  setZeilen((l) =>
-                    l.map((x) =>
-                      x.key === z.key ? zeileFuer(z.key, finde(gegenstandId), ifco?.id) : x,
-                    ),
-                  )
-                }
-              />
-              <Group align="flex-end" wrap="nowrap" gap="xs" justify="flex-end">
-                {!einzeln && (
-                  <NumberInput
-                    label={anderswo.length > 0 ? 'Anzahl in dieser IFCO' : 'Anzahl'}
-                    style={{ flex: 1 }}
-                    allowDecimal={false}
-                    allowNegative={false}
-                    min={1}
-                    inputMode="numeric"
-                    value={z.anzahl}
-                    onChange={(anzahl) => aendern(z.key, { anzahl })}
-                  />
-                )}
+              <Group align="flex-end" wrap="nowrap" gap="xs">
+                <Select
+                  aria-label={`Gegenstand ${i + 1}`}
+                  placeholder="Gegenstand wählen"
+                  searchable
+                  inputMode="text"
+                  nothingFoundMessage="Kein Gegenstand gefunden"
+                  style={{ flex: 1 }}
+                  data={optionen(z.gegenstandId)}
+                  value={z.gegenstandId}
+                  onChange={(gegenstandId) =>
+                    setZeilen((l) =>
+                      l.map((x) =>
+                        x.key === z.key ? zeileFuer(z.key, finde(gegenstandId), ifco?.id) : x,
+                      ),
+                    )
+                  }
+                />
                 <ActionIcon
                   variant="subtle"
                   color="red"
@@ -204,6 +193,17 @@ export function IfcoInhaltFelder({
                   <IconTrash size={20} />
                 </ActionIcon>
               </Group>
+              {g && !einzeln && (
+                <NumberInput
+                  label={anderswo.length > 0 ? 'Anzahl in dieser IFCO' : 'Anzahl'}
+                  allowDecimal={false}
+                  allowNegative={false}
+                  min={1}
+                  inputMode="numeric"
+                  value={z.anzahl}
+                  onChange={(anzahl) => aendern(z.key, { anzahl })}
+                />
+              )}
               {einzeln && anderswo.length > 0 && (
                 <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
                   Kommt von „{platzText(lagerorte, ifcos, anderswo[0]!)}“ hierher.
@@ -212,7 +212,7 @@ export function IfcoInhaltFelder({
               {!einzeln && anderswo.length > 0 && (
                 <Stack gap="xs">
                   <Text size="sm" fw={600}>
-                    Liegt außerdem an
+                    Bisher zugeordnet
                   </Text>
                   {anderswo.map((p) => {
                     const key = zielKey(p);
