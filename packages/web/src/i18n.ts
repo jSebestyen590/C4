@@ -3,10 +3,12 @@ import type {
   BuchungsArt,
   Kontaktkanal,
   MhdArt,
+  EventBewertung,
   MitgliedStatus,
   Permission,
   Quelle,
   Role,
+  SchichtArt,
   VorgangTyp,
 } from '@c4/shared';
 
@@ -64,6 +66,20 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   anwaerter: { maennlich: 'Anwärter', weiblich: 'Anwärterin', neutral: 'Anwärter:in' },
   mitglied: { maennlich: 'Mitglied', weiblich: 'Mitglied', neutral: 'Mitglied' },
   em: { maennlich: 'EM', weiblich: 'EM', neutral: 'EM' },
+};
+
+export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {
+  aufbau: 'Aufbau',
+  betrieb: 'Betrieb',
+  putzen: 'Putzen',
+};
+
+/** Traffic light of a Schicht or event (a cancelled event is gray). */
+export const AMPEL_LABELS: Record<EventBewertung, string> = {
+  rot: 'Dienste fehlen',
+  gelb: 'Wunsch nicht erreicht',
+  gruen: 'Voll besetzt',
+  abgesagt: 'Abgesagt',
 };
 
 export const MHD_ART_LABELS: Record<MhdArt, string> = {

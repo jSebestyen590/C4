@@ -15,6 +15,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconBriefcase,
+  IconCalendar,
   IconCheck,
   IconDeviceDesktop,
   IconBuildingWarehouse,
@@ -117,6 +118,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Mitglieder',
       icon: <IconUsersGroup size={20} />,
       show: can('mitglieder:lesen'),
+    },
+    {
+      to: '/kalender',
+      label: 'Kalender',
+      icon: <IconCalendar size={20} />,
+      show: can('kalender:lesen'),
     },
     {
       to: '/posten',
