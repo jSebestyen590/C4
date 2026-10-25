@@ -9,6 +9,7 @@ import {
   ifcoInhaltSchema,
   ifcoSchema,
   inventarAbweichung,
+  platzVerlustFehler,
   ifcoInhaltAnwenden,
   verteilbar,
   sollZuKleinFehler,
@@ -284,6 +285,19 @@ describe('ifcoInhaltAnwenden', () => {
       ifcoInhaltAnwenden(plaetze, 'i1', [{ gegenstandId: 'g', anzahl: 2, andere: selbst }])
         .ungueltig,
     ).toBe('g');
+  });
+});
+
+describe('platzVerlustFehler', () => {
+  it('refuses taking pieces off their Plätze, allows placing more', () => {
+    expect(platzVerlustFehler('Kabeltrommel', 10, 10)).toBeNull();
+    expect(platzVerlustFehler('Kabeltrommel', 8, 10)).toBeNull();
+    expect(platzVerlustFehler('Kabeltrommel', 10, 7)).toBe(
+      '„Kabeltrommel“: 3 Stück hätten danach keinen Platz mehr. Trage sie an einem anderen Platz ein oder räume über „Plätze ändern“ beim Gegenstand um.',
+    );
+    expect(platzVerlustFehler('Beamer', 1, 0)).toContain(
+      '1 Stück hätte danach keinen Platz mehr. Trage es',
+    );
   });
 });
 

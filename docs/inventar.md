@@ -179,9 +179,12 @@ jede Änderung macht `['inventar']` ungültig.
   Überschrift; die Anzahl erscheint erst, wenn ein Gegenstand gewählt ist. Ein neu gewählter
   Gegenstand kommt standardmäßig ganz in die IFCO (Anzahl = verteilbar). Liegt er schon an anderen Plätzen, steht darunter
   „Bisher zugeordnet“ mit einem Zähler je Platz („Bisher 5“). Bei einem neu gewählten Gegenstand stehen sie auf 0, bei
-  vorhandenem Inhalt auf dem bisherigen Wert. Darunter „Verteilt 10 von 10“ (orange „… ohne Platz“, rot „… zu viel“). Beim
-  Speichern bekommen die anderen Plätze die neuen Werte, 0 nimmt den Gegenstand dort heraus. Was über die bisherige Summe
-  hinausgeht, kommt neu dazu, solange das Soll reicht. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Soll 1
+  vorhandenem Inhalt auf dem bisherigen Wert. Darunter „Verteilt 10 von 10“ (orange „… ohne Platz“ für Stück, die schon vorher
+  keinen Platz hatten; rot „… fehlen“ oder „… zu viel“). Beim Speichern bekommen die anderen Plätze die neuen Werte, 0 nimmt den
+  Gegenstand dort heraus. **Hier wird nur umverteilt** (`platzVerlustFehler`, 400 in der API): Kein Stück darf seinen Platz
+  verlieren, auch nicht durch Entfernen einer Zeile; dazukommen dürfen nur Stück, die bisher keinen Platz hatten. Herausnehmen
+  ohne neuen Platz (z. B. etwas ist kaputt) geht nur über „Plätze ändern“ beim Gegenstand, damit sich das Soll danach senken
+  lässt. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Soll 1
   hat kein Mengenfeld; die Zeile sagt „Kommt von „…“ hierher.“ Die API (`positionen[].andere`, `ifcoInhaltAnwenden`) setzt die
   Plätze in derselben Transaktion; jeder genannte Platz muss ein anderer Platz des Gegenstands sein (400), Verliehenes muss
   bleiben (409).

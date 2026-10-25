@@ -303,6 +303,17 @@ export function zuVielVerteiltFehler(
   return `„${name}“ gibt es nur ${soll}-mal, ${verbaut} davon fest verbaut: an Plätzen gehen höchstens ${frei}, zugeordnet wären ${neu}. ${ZU_VIEL_HINWEIS}`;
 }
 
+/**
+ * Error when assigning to an IFCO would take pieces of a Gegenstand off its Plätze without putting
+ * them elsewhere (`neu` < `bisher`, the sums on all its Plätze); assigning only redistributes, or
+ * places pieces that had no Platz yet. Null otherwise.
+ */
+export function platzVerlustFehler(name: string, bisher: number, neu: number): string | null {
+  if (neu >= bisher) return null;
+  const n = bisher - neu;
+  return `„${name}“: ${n === 1 ? '1 Stück hätte' : `${n} Stück hätten`} danach keinen Platz mehr. Trage ${n === 1 ? 'es' : 'sie'} an einem anderen Platz ein oder räume über „Plätze ändern“ beim Gegenstand um.`;
+}
+
 /** Pieces of a Gegenstand that can go onto Plätze: the Soll minus the fixed ones. */
 export const verteilbar = (g: { anzahl: number; verbaut: { anzahl: number }[] }): number =>
   Math.max(0, g.anzahl - g.verbaut.reduce((s, v) => s + v.anzahl, 0));

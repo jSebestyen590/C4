@@ -22,6 +22,7 @@ import {
   type IfcoInhaltPosition,
   sollZuKleinFehler,
   zuVielVerteiltFehler,
+  platzVerlustFehler,
   zielKey,
   type AusleiheStatus,
   type Beschriftung,
@@ -588,7 +589,8 @@ async function ausleihenLaden(q: Q, nurId?: string): Promise<AusleiheDetails[]> 
 /**
  * Replaces the content of the IFCO `id` (checked to exist and not be archived) with `positionen`
  * and sets the listed other Plätze of each Gegenstand to their new amounts (moving pieces here).
- * No more pieces than exist (minus the fixed ones), nothing below what is lent from a place.
+ * Only redistributes: no piece loses its Platz and none comes beyond what exists (minus the fixed
+ * ones); nothing below what is lent from a place.
  */
 async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[]): Promise<void> {
   const bisher = await q.select().from(gegenstandPlaetze).where(eq(gegenstandPlaetze.ifcoId, id));
@@ -617,13 +619,19 @@ async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[])
     const name = rows.find((g) => g.id === ungueltig)?.name ?? 'Der Gegenstand';
     throw new WarenUngueltig(`„${name}“ liegt nicht an allen angegebenen Plätzen.`);
   }
-  const verbaut = await verbautJeGegenstand(q, gegenstandIds);
-  for (const g of rows) {
+  // Assigning only redistributes: no piece loses its Platz, none beyond what exists.
+  const verbaut = await verbautJeGegenstand(q, betroffen);
+  const alle = betroffen.length
+    ? await q.select().from(gegenstaende).where(inListe(gegenstaende.id, betroffen))
+    : [];
+  for (const g of alle) {
     const summe = (l: PlatzMenge[]) =>
       l.filter((x) => x.gegenstandId === g.id).reduce((s, x) => s + x.anzahl, 0);
     const v = verbaut.get(g.id) ?? 0;
-    const zuViel = zuVielVerteiltFehler(g.name, g.anzahl, v, summe(altMengen), summe(neu));
-    if (zuViel) throw new WarenUngueltig(zuViel);
+    const fehler =
+      platzVerlustFehler(g.name, summe(altMengen), summe(neu)) ??
+      zuVielVerteiltFehler(g.name, g.anzahl, v, summe(altMengen), summe(neu));
+    if (fehler) throw new WarenUngueltig(fehler);
   }
   const offen = betroffen.length
     ? await offenLaden(q, inListe(ausleihePositionen.gegenstandId, betroffen))
@@ -863,16 +871,14 @@ export function createInventarStore(db: Db): InventarStore {
         if (verbaut) {
           await tx.delete(gegenstandVerbaut).where(eq(gegenstandVerbaut.gegenstandId, id));
           if (verbaut.length > 0) {
-            await tx
-              .insert(gegenstandVerbaut)
-              .values(
-                verbaut.map((v) => ({
-                  id: randomUUID(),
-                  gegenstandId: id,
-                  ort: v.ort,
-                  anzahl: v.anzahl,
-                })),
-              );
+            await tx.insert(gegenstandVerbaut).values(
+              verbaut.map((v) => ({
+                id: randomUUID(),
+                gegenstandId: id,
+                ort: v.ort,
+                anzahl: v.anzahl,
+              })),
+            );
           }
         }
         return true;

@@ -7,6 +7,7 @@ import {
   verteilbar,
   zielKey,
   zuVielVerteiltFehler,
+  platzVerlustFehler,
   type IfcoInhaltPosition,
 } from '@c4/shared';
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
@@ -80,7 +81,8 @@ function zeilenSummen(z: InhaltZeile, g: GegenstandEintrag, ifcoId: string | und
 
 /**
  * The rows as validated positions with the changed amounts of the other Plätze, or the German
- * error (same rules as the API: no more pieces on Plätze than exist minus the fixed ones).
+ * error (same rules as the API: only redistribute, so no piece loses its Platz, and no more pieces
+ * on Plätze than exist minus the fixed ones).
  */
 export function inhaltPruefen(
   zeilen: InhaltZeile[],
@@ -109,7 +111,18 @@ export function inhaltPruefen(
     const g = gegenstaende.find((x) => x.id === z.gegenstandId);
     if (!g) continue;
     const s = zeilenSummen(z, g, ifcoId);
-    const fehler = zuVielVerteiltFehler(g.name, g.anzahl, s.verbaut, s.bisher, s.neu);
+    const fehler =
+      platzVerlustFehler(g.name, s.bisher, s.neu) ??
+      zuVielVerteiltFehler(g.name, g.anzahl, s.verbaut, s.bisher, s.neu);
+    if (fehler) return { fehler };
+  }
+  // A Gegenstand removed from the IFCO would lose the pieces that lay here.
+  const gewaehlt = new Set(zeilen.map((z) => z.gegenstandId));
+  for (const g of gegenstaende) {
+    const hier = ifcoId ? summe(g.plaetze.filter((p) => p.ifcoId === ifcoId)) : 0;
+    if (hier === 0 || gewaehlt.has(g.id)) continue;
+    const bisher = summe(g.plaetze);
+    const fehler = platzVerlustFehler(g.name, bisher, bisher - hier);
     if (fehler) return { fehler };
   }
   return { positionen };
@@ -160,7 +173,9 @@ export function IfcoInhaltFelder({
         const anderswo = g ? anderePlaetze(g, ifco?.id) : [];
         const s = g ? zeilenSummen(z, g, ifco?.id) : null;
         const frei = g ? verteilbar(g) : 0;
-        const zuViel = s !== null && s.neu > frei && s.neu + s.verbaut > s.bisher + s.verbaut;
+        // Red: more than exist, or pieces would lose their Platz; orange: some still have none.
+        const zuViel = s !== null && s.neu > Math.max(frei, s.bisher);
+        const fehlen = s !== null && s.neu < s.bisher;
         const einzeln = g?.anzahl === 1;
         return (
           <Paper key={z.key} withBorder p="sm">
@@ -238,13 +253,15 @@ export function IfcoInhaltFelder({
               {g && s && !einzeln && (
                 <Text
                   size="sm"
-                  c={zuViel ? 'red' : s.neu < frei ? 'orange' : 'dimmed'}
+                  c={zuViel || fehlen ? 'red' : s.neu < frei ? 'orange' : 'dimmed'}
                   role="status"
                 >
                   Verteilt {s.neu} von {frei}
                   {s.verbaut > 0 && ` (${s.verbaut} fest verbaut)`}
-                  {s.neu > frei && ` · ${s.neu - frei} zu viel`}
-                  {s.neu < frei && ` · ${frei - s.neu} ohne Platz`}
+                  {zuViel && ` · ${s.neu - Math.max(frei, s.bisher)} zu viel`}
+                  {fehlen &&
+                    ` · ${s.bisher - s.neu} ${s.bisher - s.neu === 1 ? 'fehlt' : 'fehlen'}`}
+                  {!fehlen && s.neu < frei && ` · ${frei - s.neu} ohne Platz`}
                 </Text>
               )}
             </Stack>
