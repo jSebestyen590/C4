@@ -359,13 +359,13 @@ describe('zuVielVerteiltFehler / sollZuKleinFehler / verteilbar', () => {
   it('refuses putting more pieces on places than exist', () => {
     expect(zuVielVerteiltFehler('Schalter', 10, 0, 8, 10)).toBeNull();
     expect(zuVielVerteiltFehler('Schalter', 10, 0, 8, 11)).toBe(
-      '„Schalter“ gibt es nur 10-mal, zugeordnet wären 11. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).',
+      '„Schalter“ gibt es nur 10-mal, zugeordnet wären 11. Nimm zuerst an einem anderen Platz etwas weg oder buche einen Zugang.',
     );
   });
   it('counts the fixed pieces against the Soll', () => {
     expect(zuVielVerteiltFehler('Dreierverteiler', 12, 3, 0, 9)).toBeNull();
     expect(zuVielVerteiltFehler('Dreierverteiler', 12, 3, 0, 10)).toBe(
-      '„Dreierverteiler“ gibt es nur 12-mal, 3 davon fest verbaut: an Plätzen gehen höchstens 9, zugeordnet wären 10. Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).',
+      '„Dreierverteiler“ gibt es nur 12-mal, 3 davon fest verbaut: an Plätzen gehen höchstens 9, zugeordnet wären 10. Nimm zuerst an einem anderen Platz etwas weg oder buche einen Zugang.',
     );
     // building more in while the Plätze stay is refused, unless the total does not grow
     expect(zuVielVerteiltFehler('Dreierverteiler', 12, 4, 9, 9, 3)).not.toBeNull();
@@ -397,7 +397,7 @@ describe('inventarAbweichung / abweichungText', () => {
   });
   it('words the difference', () => {
     expect(abweichungText(-2)).toBe('2 ohne Platz');
-    expect(abweichungText(1)).toBe('1 mehr als Soll');
+    expect(abweichungText(1)).toBe('1 mehr als vorhanden');
     expect(abweichungText(0)).toBeNull();
   });
 });

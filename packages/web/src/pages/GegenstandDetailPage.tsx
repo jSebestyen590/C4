@@ -111,7 +111,6 @@ export function GegenstandDetailPage() {
             </Text>
           )}
           <Group gap="xs">
-            {g.anzahl !== 1 && <Badge variant="light">Soll: {g.anzahl}×</Badge>}
             {g.verliehen > 0 && (
               <Badge variant="light" color="grape">
                 {g.verliehen} verliehen

@@ -1,7 +1,7 @@
 # Inventar
 
 Dauerhaftes Betriebsvermögen des Clubs (Kabeltrommel, Beamer, Pavillons, Spanngurte, ...): **Gegenstände** in einem
-Kategorienbaum, mit einer Soll-Anzahl auf einem oder mehreren **Plätzen** im Lagerort-Baum (siehe [waren.md](./waren.md)),
+Kategorienbaum, mit einer Anzahl (aus dem Verlauf der Zugänge und Abgänge) auf einem oder mehreren **Plätzen** im Lagerort-Baum (siehe [waren.md](./waren.md)),
 wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände lassen sich **verleihen**. Fachlogik
 (Schemas, Abweichung, Verliehen-Prüfungen) liegt in `packages/shared/src/inventar.ts`, Speicherung und Regeln in
 `packages/api/src/inventar.ts`, Routen in `packages/api/src/app.ts` (Abschnitt `Inventar`). Fehlerklassen und Hilfen
@@ -24,7 +24,7 @@ eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für da
 | `inventar_kategorien`   | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                                                                                                   |
 | `ifco_typen`            | `name` (z. B. „6410“), `grundflaeche` (`gross` 60×40 / `klein` 40×30), `hoehe_cm`, `archiviert`                                                                                                |
 | `ifcos`                 | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz                                                                 |
-| `gegenstaende`          | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Soll-Gesamtzahl = Summe des Verlaufs, von der API mitgeführt), `archiviert`                                                                  |
+| `gegenstaende`          | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Gesamtzahl = Summe des Verlaufs, von der API mitgeführt), `archiviert`                                                                       |
 | `gegenstand_bewegungen` | Verlauf: `art` (`zugang`/`abgang`), `grund`, `anzahl` ≥ 1, `datum`, `kommentar`, `ort` (Anzeige-Schnappschuss des Platzes, kein Fremdschlüssel), `erstellt_von` (Cognito-`sub`), `erstellt_am` |
 | `gegenstand_plaetze`    | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                                                                                   |
 | `gegenstand_verbaut`    | `gegenstand_id`, `ort` (Freitext, z. B. „unter der Bar“), `anzahl` ≥ 1: fest verbaute Stück, an keinem Platz, nicht verleihbar                                                                 |
@@ -70,11 +70,12 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
 
 ## Regeln
 
-- **Soll-Zustand:** Die Plätze sagen, wo etwas hingehört. Es gibt keine Buchungshistorie; Umräumen überschreibt.
+- **Plätze:** Sie sagen, wo etwas hingehört. Umräumen überschreibt sie ohne eigene Historie; einen Verlauf haben nur die
+  Zugänge und Abgänge (siehe unten).
 - **Fest verbaut:** Stück, die dauerhaft eingebaut sind (z. B. 3 von 12 Dreierverteilern „am Drucker“, „unter der Bar“), stehen
   mit Freitext-Ort und Anzahl in `gegenstand_verbaut`. Sie liegen an keinem Platz und lassen sich nicht verleihen. Auf Plätze
-  verteilbar ist nur das Soll minus die verbauten (`verteilbar`), im Beispiel 9.
-- **Nicht mehr als vorhanden:** Plätze plus fest verbaute dürfen das Soll unterschreiten („2 ohne Platz“, `inventarAbweichung`,
+  verteilbar ist nur die Anzahl minus die verbauten (`verteilbar`), im Beispiel 9.
+- **Nicht mehr als vorhanden:** Plätze plus fest verbaute dürfen die Anzahl unterschreiten („2 ohne Platz“, `inventarAbweichung`,
   `abweichungText`), aber nicht überschreiten: `…/plaetze`, `…/inhalt` und Anlegen mit Platz lehnen das ab (400,
   `zuVielVerteiltFehler`, mit Hinweis auf die verbauten; die Formulare prüfen vorab). Ein schon überverteilter Gegenstand lässt
   sich weiter umräumen, solange die Summe nicht wächst.
@@ -180,18 +181,18 @@ jede Änderung macht `['inventar']` ungültig.
   gleich einen Platz (Lagerort oder IFCO, `POST /gegenstaende` mit `anzahl`, `grund`, `datum`, `platz { lagerortId | ifcoId, anzahl }`,
   im selben Schritt geprüft und gespeichert); die Anzahl am Platz ist standardmäßig die ganze Anzahl und folgt ihr, bis man sie
   ändert (bei 1 ohne Feld). Danach bleibt man auf der Übersicht. „Bearbeiten“ ändert nur Name, Kategorie und Beschreibung.
-- `/inventar/gegenstaende/:id`: Stammdaten, Soll gegen zugeordnet, Abschnitt **„Verlauf“** (`BewegungVerlauf`, neueste Buchung
+- `/inventar/gegenstaende/:id`: Stammdaten, zugeordnet gegen Anzahl (nicht bei Anzahl 1), Abschnitt **„Verlauf“** (`BewegungVerlauf`, neueste Buchung
   oben: „+7 gekauft“ grün / „−3 verloren“ rot, Datum, „aus …“ / „nach …“, wer gebucht hat, Kommentar; mit `inventar:verwalten`
   die Knöpfe „Zugang“ / „Abgang“ (`BewegungModal`: Anzahl, Grund, Datum, Kommentar, beim Zugang optional ein Platz, beim
   Abgang „Von“ mit „Ohne Platz (n)“, den Plätzen und den fest verbauten, vorgewählt „ohne Platz“ bzw. der größte Platz) und
   Löschen je Buchung mit Bestätigung), Plätze mit Pfad und Anzahl (IFCOs verlinkt). „Plätze ändern“
   (`inventar:umraeumen`, `GegenstandPlaetzeModal`): je Zeile durchsuchbares Ziel (gruppiert „Plätze“ / „IFCOs“, bereits gewählte
-  gesperrt) und Anzahl, Live-Summe gegen Soll. Darunter der Abschnitt „Fest verbaut“ (Ort als Freitext, Anzahl, „Fest verbaut hinzufügen“), die Summe zählt beides. Bei Soll 1
+  gesperrt) und Anzahl, Live-Summe gegen die Anzahl. Darunter der Abschnitt „Fest verbaut“ (Ort als Freitext, Anzahl, „Fest verbaut hinzufügen“), die Summe zählt beides. Bei Anzahl 1
   heißt es „Platz“ / „Platz ändern“ ohne „1 von 1 zugeordnet“, und der Dialog hat nur ein Feld „Platz“ (leerbar = „Kein Platz“) oder mit Häkchen „Fest verbaut“ ein Feld „Ort“. Die Detailseite listet
   fest verbaute Stück nach den Plätzen; Karten und Tabelle der Übersicht zeigen „fest verbaut: unter der Bar“, die Suche findet
   auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
-  (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Soll 1 ohne Mengenfeld), Menü wie beim Gegenstand.
+  (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Anzahl 1 ohne Mengenfeld), Menü wie beim Gegenstand.
 - **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne
   Überschrift; die Anzahl erscheint erst, wenn ein Gegenstand gewählt ist. Ein neu gewählter
   Gegenstand kommt standardmäßig ganz in die IFCO (Anzahl = verteilbar). Liegt er schon an anderen Plätzen, steht darunter
@@ -200,8 +201,8 @@ jede Änderung macht `['inventar']` ungültig.
   keinen Platz hatten; rot „… fehlen“ oder „… zu viel“). Beim Speichern bekommen die anderen Plätze die neuen Werte, 0 nimmt den
   Gegenstand dort heraus. **Hier wird nur umverteilt** (`platzVerlustFehler`, 400 in der API): Kein Stück darf seinen Platz
   verlieren, auch nicht durch Entfernen einer Zeile; dazukommen dürfen nur Stück, die bisher keinen Platz hatten. Herausnehmen
-  ohne neuen Platz (z. B. etwas ist kaputt) geht nur über „Plätze ändern“ beim Gegenstand, damit sich das Soll danach senken
-  lässt. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Soll 1
+  ohne neuen Platz (z. B. etwas ist kaputt) geht nur über „Plätze ändern“ beim Gegenstand, damit danach ein Abgang
+  gebucht werden kann. Einen eigenen Bestätigungsschritt gibt es nicht. Ein Gegenstand mit Anzahl 1
   hat kein Mengenfeld; die Zeile sagt „Kommt von „…“ hierher.“ Die API (`positionen[].andere`, `ifcoInhaltAnwenden`) setzt die
   Plätze in derselben Transaktion; jeder genannte Platz muss ein anderer Platz des Gegenstands sein (400), Verliehenes muss
   bleiben (409).
@@ -218,7 +219,7 @@ jede Änderung macht `['inventar']` ungültig.
   stehenden IFCOs mit Typ und „Passt noch: 1× 6410 oder 2× 4310“ bzw. „Voll“ (`passtNochText`). `LagerortFormular` hat den Schalter
   „IFCO-Lagerplatz“ mit Höhe und Stellflächen (gesperrt mit Hinweis bei Unterebenen), beim Regal und im Dialog „Böden hinzufügen“ den
   Schalter „Als IFCO-Lagerplätze anlegen“ (`IfcoPlatzFelder`).
-- **Anzahl 1 wird nicht angezeigt:** Die meisten Gegenstände gibt es nur einmal, deshalb steht „1×“ nirgends (Karten, Kopf-Badge „Soll“, Plätze,
+- **Anzahl 1 wird nicht angezeigt:** Die meisten Gegenstände gibt es nur einmal, deshalb steht „1×“ nirgends (Karten, Plätze,
   IFCO-Inhalt, Ausleihe-Positionen, Bestätigungsdialog, Lager-Seite); ab 2 bleibt es („6× Spanngurt 6m“). Zentral in `inventarAnzeige.ts`
   (`anzahlText`, `mengeName`, `mengeText`, `positionText`). Zahlenfelder bleiben unverändert.
 - Wiederverwendbar: `BaumVerwaltung`/`BaumKnotenFormular` (Baum aus Name und Eltern; Texte, API-Aufrufe, Query-Keys und Recht als

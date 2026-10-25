@@ -339,7 +339,7 @@ export function inventarAbweichung(
 }
 
 const ZU_VIEL_HINWEIS =
-  'Nimm zuerst an einem anderen Platz etwas weg oder erhöhe die Anzahl (Soll).';
+  'Nimm zuerst an einem anderen Platz etwas weg oder buche einen Zugang.';
 
 /**
  * Error when a change would put more pieces of a Gegenstand onto its Plätze than exist: at most
@@ -398,7 +398,7 @@ export function sollZuKleinFehler(soll: number, bisherSoll: number, summe: numbe
 /** `2 ohne Platz` / `1 mehr als Soll`, null when the Plätze match the target. */
 export function abweichungText(differenz: number): string | null {
   if (differenz < 0) return `${-differenz} ohne Platz`;
-  if (differenz > 0) return `${differenz} mehr als Soll`;
+  if (differenz > 0) return `${differenz} mehr als vorhanden`;
   return null;
 }
 
