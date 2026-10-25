@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { ANREDEN, type Anrede } from './anrede';
+import type { Anrede } from './anrede';
 import { beschreibung, eindeutig, idSchema, name, zeitpunktSchema } from './bausteine';
 import { datumAnzeigen } from './datum';
 import { datumSchema } from './schemas';
-import { MITGLIED_STATI, type MitgliedStatus } from './status';
+import type { MitgliedStatus } from './status';
 
 // ---------------------------------------------------------------------------------------------
 // Europe/Berlin date-time helpers (Intl based, no dependencies)
@@ -396,7 +396,6 @@ export interface StatistikDto {
 }
 
 // Re-exported for convenience of consumers building option lists.
-export { ANREDEN, MITGLIED_STATI };
 
 // ---------------------------------------------------------------------------------------------
 // Ampel (traffic light)
