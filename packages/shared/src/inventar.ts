@@ -44,6 +44,7 @@ export const gegenstandSchema = z.object({
 export const ZUGANG_GRUENDE = ['gekauft', 'ersatz', 'geschenkt', 'gefunden', 'sonstiges'] as const;
 export const ABGANG_GRUENDE = [
   'verloren',
+  'geklaut',
   'kaputt',
   'verkauft',
   'entsorgt',

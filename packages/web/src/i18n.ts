@@ -97,6 +97,7 @@ export const GRUND_LABELS: Record<string, string> = {
   gefunden: 'gefunden',
   bestand: 'Bestand übernommen',
   verloren: 'verloren',
+  geklaut: 'geklaut',
   kaputt: 'kaputt',
   verkauft: 'verkauft',
   entsorgt: 'entsorgt',

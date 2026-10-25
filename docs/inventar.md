@@ -79,7 +79,7 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
   `zuVielVerteiltFehler`, mit Hinweis auf die verbauten; die Formulare prüfen vorab). Ein schon überverteilter Gegenstand lässt
   sich weiter umräumen, solange die Summe nicht wächst.
 - **Verlauf (Zugänge und Abgänge):** Die Anzahl ändert sich nur über Buchungen, z. B. „+7 gekauft“, „−3 verloren“, „−1 kaputt“,
-  „+1 Ersatz beschafft“. Gründe sind fest: Zugang `gekauft`, `ersatz`, `geschenkt`, `gefunden`, `sonstiges`; Abgang `verloren`,
+  „+1 Ersatz beschafft“. Gründe sind fest: Zugang `gekauft`, `ersatz`, `geschenkt`, `gefunden`, `sonstiges`; Abgang `verloren`, `geklaut`,
   `kaputt`, `verkauft`, `entsorgt`, `verschenkt`, `sonstiges` (`ZUGANG_GRUENDE`, `ABGANG_GRUENDE`, Labels in `GRUND_LABELS`),
   dazu Datum (nicht in der Zukunft) und optional ein Kommentar. `bestand` („Bestand übernommen“) schreibt nur Migration `0036`
   für Gegenstände, die es schon gab. Anlegen bucht den ersten Zugang. Ein **Zugang** kann gleich auf einen Platz gehen. Ein
