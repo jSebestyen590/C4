@@ -35,6 +35,7 @@ import {
   EntfernungBestaetigen,
   KalenderKonflikt,
   KalenderUngueltig,
+  tokenHash,
   type DienstInfo,
   type KalenderStore,
 } from './kalender';
@@ -386,6 +387,8 @@ function makeInventarFake() {
 /** Fake of the Kalender store: records calls; Dienste can be seeded to test the removal rules. */
 function makeKalenderFake() {
   const dienste = new Map<string, DienstInfo>();
+  const tokenNachSub = new Map<string, string>();
+  let tokenZaehler = 0;
   const fake = {
     events: vi.fn<KalenderStore['events']>(async () => []),
     event: vi.fn<KalenderStore['event']>(async () => undefined),
@@ -425,11 +428,21 @@ function makeKalenderFake() {
     vorlageAktualisieren: vi.fn<KalenderStore['vorlageAktualisieren']>(async (id) => id === 'v1'),
     vorlageLoeschen: vi.fn<KalenderStore['vorlageLoeschen']>(async (id) => id === 'v1'),
     statistik: vi.fn<KalenderStore['statistik']>(async () => []),
+    tokenErzeugen: vi.fn<KalenderStore['tokenErzeugen']>(async (sub) => {
+      const token = `tok-${++tokenZaehler}`;
+      tokenNachSub.set(sub, tokenHash(token));
+      return token;
+    }),
+    tokenVorhanden: vi.fn<KalenderStore['tokenVorhanden']>(async (sub) => tokenNachSub.has(sub)),
+    subPerTokenHash: vi.fn<KalenderStore['subPerTokenHash']>(
+      async (hash) => [...tokenNachSub].find(([, h]) => h === hash)?.[0],
+    ),
+    meineDienste: vi.fn<KalenderStore['meineDienste']>(async () => []),
   } satisfies KalenderStore;
   return { fake, dienste };
 }
 
-function makeApp(pingDb = async () => {}) {
+function makeApp(pingDb = async () => {}, appUrl?: string) {
   const userAdmin = {
     rollen: vi.fn(async () => new Map<string, string[]>()),
     konten: vi.fn(async () => new Map<string, Konto>()),
@@ -573,6 +586,7 @@ function makeApp(pingDb = async () => {}) {
     waren,
     inventar,
     kalender,
+    ...(appUrl && { appUrl }),
     profilbilder,
     pingDb,
   });
@@ -2680,5 +2694,72 @@ describe('kalender', () => {
     expect(
       (await t.app.request('/api/kalender/vorlagen/v1', json('vorstand-token', 'DELETE'))).status,
     ).toBe(200);
+  });
+
+  it('manages the feed token: lesen right, profile row needed, only the hash is stored', async () => {
+    const t = makeApp();
+    mitProfil(t);
+    const get = () => t.app.request('/api/me/kalender-token', json('reader-token', 'GET'));
+    expect(await (await get()).json()).toEqual({ vorhanden: false });
+    const res = await t.app.request('/api/me/kalender-token', json('reader-token', 'POST'));
+    expect(res.status).toBe(200);
+    const { token } = (await res.json()) as { token: string };
+    expect(token).toBe('tok-1');
+    expect(await (await get()).json()).toEqual({ vorhanden: true });
+    // A new token replaces the old one.
+    const neu = (await (
+      await t.app.request('/api/me/kalender-token', json('reader-token', 'POST'))
+    ).json()) as { token: string };
+    expect(neu.token).not.toBe(token);
+    expect(await t.kalender.subPerTokenHash(tokenHash(token))).toBeUndefined();
+    expect(await t.kalender.subPerTokenHash(tokenHash(neu.token))).toBe('r');
+    expect((await t.app.request('/api/me/kalender-token')).status).toBe(401);
+    // Without a profile row there is nothing to attach the token to.
+    const ohne = makeApp();
+    expect(
+      (await ohne.app.request('/api/me/kalender-token', json('reader-token', 'POST'))).status,
+    ).toBe(404);
+  });
+
+  it('serves the feed without authorization and 404s for unknown tokens', async () => {
+    const t = makeApp(undefined, 'https://c4.example');
+    t.kalender.meineDienste.mockResolvedValue([
+      {
+        id: 'd1',
+        eventId: 'e1',
+        eventTitel: 'Offener Abend',
+        schichtName: 'Betrieb',
+        dienstformName: 'Bardienst',
+        beginn: '2026-06-05T17:00:00.000Z',
+        ende: '2026-06-05T21:00:00.000Z',
+        abgesagt: true,
+      },
+    ]);
+    const token = await t.kalender.tokenErzeugen('r');
+    for (const url of [`/api/kalender/feed/${token}`, `/api/kalender/feed/${token}.ics`]) {
+      const res = await t.app.request(url);
+      expect(res.status, url).toBe(200);
+      expect(res.headers.get('content-type')).toBe('text/calendar; charset=utf-8');
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      const ics = await res.text();
+      expect(ics).toContain('SUMMARY:Bardienst · Offener Abend');
+      expect(ics).toContain('STATUS:CANCELLED');
+      expect(ics).toContain('X-WR-CALNAME:C4 – Meine Dienste');
+      expect(ics).toContain('https://c4.example/app/kalender/events/e1');
+    }
+    const [sub, ab] = t.kalender.meineDienste.mock.calls[0]!;
+    expect(sub).toBe('r');
+    const tage = (Date.now() - ab.getTime()) / 86_400_000;
+    expect(tage).toBeGreaterThan(89.9);
+    expect(tage).toBeLessThan(90.1);
+    expect((await t.app.request('/api/kalender/feed/unbekannt.ics')).status).toBe(404);
+  });
+
+  it("lists the caller's own upcoming Dienste", async () => {
+    const t = makeApp();
+    const res = await t.app.request('/api/me/dienste', json('reader-token', 'GET'));
+    expect(res.status).toBe(200);
+    expect(t.kalender.meineDienste).toHaveBeenCalledWith('r', expect.any(Date));
+    expect((await t.app.request('/api/me/dienste')).status).toBe(401);
   });
 });

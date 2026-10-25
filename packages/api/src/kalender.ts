@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import {
   berlinZuUtc,
@@ -16,6 +16,7 @@ import {
   type EventKategorieEingabe,
   type ExterneDto,
   type ExterneEingabe,
+  type MeinDienstDto,
   type SchichtDto,
   type SchichtEingabe,
   type StatistikZeileDto,
@@ -30,6 +31,7 @@ import {
   events,
   eventVorlagen,
   externe,
+  kalenderTokens,
   mitglieder,
   schichtBedarfe,
   schichten,
@@ -282,7 +284,20 @@ export interface KalenderStore {
 
   // ----- Statistik
   statistik(jahr: number): Promise<StatistikZeileDto[]>;
+
+  // ----- Calendar feed
+  /** Creates a new feed token for the member (replacing the old one) and returns it in plain text. */
+  tokenErzeugen(sub: string): Promise<string>;
+  tokenVorhanden(sub: string): Promise<boolean>;
+  /** The member the feed token hash (see `tokenHash`) belongs to. */
+  subPerTokenHash(hash: string): Promise<string | undefined>;
+  /** The member's own Dienste whose Schicht begins at or after `ab`, ordered by start. */
+  meineDienste(sub: string, ab: Date): Promise<MeinDienstDto[]>;
 }
+
+/** sha256 hex of a feed token; only this hash is stored. */
+export const tokenHash = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
 
 // ---------------------------------------------------------------------------------------------
 // Drizzle implementation
@@ -1152,6 +1167,50 @@ export function createKalenderStore(db: Db): KalenderStore {
         }),
         jahr,
       );
+    },
+
+    async tokenErzeugen(sub) {
+      const token = randomBytes(32).toString('base64url');
+      const werte = { tokenHash: tokenHash(token), erstellt: new Date() };
+      await db
+        .insert(kalenderTokens)
+        .values({ mitgliedSub: sub, ...werte })
+        .onConflictDoUpdate({ target: kalenderTokens.mitgliedSub, set: werte });
+      return token;
+    },
+    async tokenVorhanden(sub) {
+      const [row] = await db
+        .select({ sub: kalenderTokens.mitgliedSub })
+        .from(kalenderTokens)
+        .where(eq(kalenderTokens.mitgliedSub, sub));
+      return row !== undefined;
+    },
+    async subPerTokenHash(hash) {
+      const [row] = await db
+        .select({ sub: kalenderTokens.mitgliedSub })
+        .from(kalenderTokens)
+        .where(eq(kalenderTokens.tokenHash, hash));
+      return row?.sub;
+    },
+    async meineDienste(sub, ab) {
+      const rows = await db
+        .select({
+          id: dienste.id,
+          eventId: events.id,
+          eventTitel: events.titel,
+          abgesagt: events.abgesagt,
+          schichtName: schichten.name,
+          beginn: schichten.beginn,
+          ende: schichten.ende,
+          dienstformName: dienstformen.name,
+        })
+        .from(dienste)
+        .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
+        .innerJoin(events, eq(events.id, schichten.eventId))
+        .innerJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
+        .where(and(eq(dienste.mitgliedSub, sub), gte(schichten.beginn, ab)))
+        .orderBy(asc(schichten.beginn), asc(dienste.id));
+      return rows.map((r) => ({ ...r, beginn: iso(r.beginn), ende: iso(r.ende) }));
     },
   };
 }

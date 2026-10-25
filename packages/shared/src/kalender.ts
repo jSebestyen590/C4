@@ -634,3 +634,39 @@ export function icsErzeugen(termine: readonly IcsTermin[], optionen: IcsOptionen
   zeilen.push('END:VCALENDAR');
   return zeilen.map(icsFalten).join('\r\n') + '\r\n';
 }
+
+// ---------------------------------------------------------------------------------------------
+// Own Dienste as calendar entries (feed and downloads)
+// ---------------------------------------------------------------------------------------------
+
+/** One of the caller's own Dienste with what the calendar entry needs. */
+export interface MeinDienstDto {
+  id: string;
+  eventId: string;
+  eventTitel: string;
+  schichtName: string;
+  dienstformName: string;
+  /** ISO instants of the Schicht. */
+  beginn: string;
+  ende: string;
+  abgesagt: boolean;
+}
+
+/** Turns own Dienste into ICS entries; `ursprung` (e.g. `https://c4.example`) enables the event link. */
+export function dienstTermine(
+  dienste: readonly MeinDienstDto[],
+  ursprung?: string | null,
+): IcsTermin[] {
+  return dienste.map((d) => {
+    const url = ursprung ? `${ursprung}/app/kalender/events/${d.eventId}` : null;
+    return {
+      id: d.id,
+      titel: `${d.dienstformName} · ${d.eventTitel}`,
+      beschreibung: [`Schicht: ${d.schichtName}`, url].filter(Boolean).join('\n'),
+      beginn: d.beginn,
+      ende: d.ende,
+      url,
+      abgesagt: d.abgesagt,
+    };
+  });
+}

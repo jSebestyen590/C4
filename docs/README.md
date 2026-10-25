@@ -9,6 +9,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [posten.md](./posten.md)       | Posten: Verantwortlichkeiten, Besetzungen, Rechte über Posten, Archiv            |
 | [waren.md](./waren.md)         | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte            |
 | [inventar.md](./inventar.md)   | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte              |
+| [kalender.md](./kalender.md)   | Kalender: Events, Dienste, ICS-Abo und Download                                  |
 | [datenbank.md](./datenbank.md) | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)               |
 
 ## Allgemein

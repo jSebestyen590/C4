@@ -565,3 +565,12 @@ export const vorlageBedarfe = pgTable(
   (t) => [primaryKey({ columns: [t.vorlageSchichtId, t.dienstformId] })],
 );
 export type VorlageBedarfRow = typeof vorlageBedarfe.$inferSelect;
+
+/** Secret of the ICS subscription feed per member; only the sha256 hex hash of the token is stored. */
+export const kalenderTokens = pgTable('kalender_tokens', {
+  mitgliedSub: text('mitglied_sub')
+    .primaryKey()
+    .references(() => mitglieder.sub),
+  tokenHash: text('token_hash').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});

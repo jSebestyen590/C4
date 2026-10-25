@@ -5,6 +5,7 @@ import type {
   EventDto,
   EventKategorieDto,
   ExterneDto,
+  MeinDienstDto,
   StatistikDto,
   VorlageDto,
 } from '@c4/shared';
@@ -96,5 +97,24 @@ export function useKalenderStatistik(jahr: number) {
       (await unwrap(
         await api.kalender.statistik.$get({ query: { jahr: String(jahr) } }),
       )) as StatistikDto,
+  });
+}
+
+/** The caller's own upcoming Dienste (also the content of the calendar feed, minus the last 90 days). */
+export function useMeineDienste(enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [KALENDER_KEY, 'meine-dienste'],
+    enabled,
+    queryFn: async () => (await unwrap(await api.me.dienste.$get())) as MeinDienstDto[],
+  });
+}
+
+/** Whether the caller already has a calendar feed token (the token itself is only shown once). */
+export function useKalenderToken() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [KALENDER_KEY, 'token'],
+    queryFn: async () => (await unwrap(await api.me['kalender-token'].$get())).vorhanden,
   });
 }

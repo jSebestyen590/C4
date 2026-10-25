@@ -25,6 +25,7 @@ export function createProductionApp() {
     waren: createWarenStore(db),
     inventar: createInventarStore(db),
     kalender: createKalenderStore(db),
+    ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {
       await pool.query('select 1');

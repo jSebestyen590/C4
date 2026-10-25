@@ -4,6 +4,7 @@ import {
   berlinZuUtc,
   dienstEintragenSchema,
   eventBewertung,
+  dienstTermine,
   eventEingabeSchema,
   icsErzeugen,
   icsFalten,
@@ -352,5 +353,33 @@ describe('icsErzeugen', () => {
     expect(zeilen.map((z, i) => (i === 0 ? z : z.slice(1))).join('')).toBe(lang);
     expect(icsFalten('x'.repeat(75))).toBe('x'.repeat(75));
     expect(icsFalten('x'.repeat(76)).split('\r\n')).toHaveLength(2);
+  });
+});
+
+describe('dienstTermine', () => {
+  const dienst = {
+    id: 'd1',
+    eventId: 'e1',
+    eventTitel: 'Offener Abend',
+    schichtName: 'Barbetrieb',
+    dienstformName: 'Bar',
+    beginn: '2026-06-05T18:00:00.000Z',
+    ende: '2026-06-05T22:00:00.000Z',
+    abgesagt: false,
+  };
+
+  it('names the entry after Dienstform and event and links the event', () => {
+    const [t] = dienstTermine([dienst], 'https://c4.example');
+    expect(t).toMatchObject({
+      id: 'd1',
+      titel: 'Bar · Offener Abend',
+      url: 'https://c4.example/app/kalender/events/e1',
+    });
+    expect(t!.beschreibung).toBe('Schicht: Barbetrieb\nhttps://c4.example/app/kalender/events/e1');
+  });
+
+  it('leaves the link out without an origin', () => {
+    const [t] = dienstTermine([{ ...dienst, abgesagt: true }]);
+    expect(t).toMatchObject({ url: null, beschreibung: 'Schicht: Barbetrieb', abgesagt: true });
   });
 });

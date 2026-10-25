@@ -14,6 +14,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBan,
+  IconCalendarPlus,
   IconChevronLeft,
   IconEdit,
   IconPlayerPlay,
@@ -49,6 +50,7 @@ import {
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
 import { schichtZeitAnzeigen, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
+import { dienstIcsHerunterladen } from '../kalenderIcs';
 import { pruefen } from '../warenApi';
 
 type Dialog =
@@ -252,14 +254,42 @@ export function EventDetailPage() {
                         </Stack>
                         {darfEntfernen(d) &&
                           (eigener ? (
-                            <Button
-                              variant="light"
-                              color="red"
-                              leftSection={<IconUserMinus size={18} />}
-                              onClick={() => setDialog({ art: 'entfernen', dienst: d })}
-                            >
-                              Austragen
-                            </Button>
+                            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                              <ActionIcon
+                                variant="light"
+                                size={44}
+                                aria-label="Zum Kalender hinzufügen"
+                                title="Zum Kalender hinzufügen"
+                                onClick={() =>
+                                  dienstIcsHerunterladen(
+                                    [
+                                      {
+                                        id: d.id,
+                                        eventId: e.id,
+                                        eventTitel: e.titel,
+                                        schichtName: s.name,
+                                        dienstformName:
+                                          dienstformen.nachId.get(d.dienstformId)?.name ?? 'Dienst',
+                                        beginn: s.beginn,
+                                        ende: s.ende,
+                                        abgesagt: e.abgesagt,
+                                      },
+                                    ],
+                                    `dienst-${datumBerlin(s.beginn)}.ics`,
+                                  )
+                                }
+                              >
+                                <IconCalendarPlus size={20} />
+                              </ActionIcon>
+                              <Button
+                                variant="light"
+                                color="red"
+                                leftSection={<IconUserMinus size={18} />}
+                                onClick={() => setDialog({ art: 'entfernen', dienst: d })}
+                              >
+                                Austragen
+                              </Button>
+                            </Group>
                           ) : (
                             <ActionIcon
                               variant="subtle"

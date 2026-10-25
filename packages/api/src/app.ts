@@ -8,6 +8,8 @@ import {
   dienstformEingabeSchema,
   eventEingabeSchema,
   eventKategorieEingabeSchema,
+  dienstTermine,
+  icsErzeugen,
   externeEingabeSchema,
   externeZusammenfuehrenSchema,
   kalenderZeitraumSchema,
@@ -85,6 +87,7 @@ import {
   KalenderKonflikt,
   KalenderUngueltig,
   type BetroffenerDienst,
+  tokenHash,
   type KalenderStore,
 } from './kalender';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
@@ -102,6 +105,8 @@ export interface AppDeps {
   waren: WarenStore;
   inventar: InventarStore;
   kalender: KalenderStore;
+  /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
+  appUrl?: string;
   profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
@@ -120,6 +125,9 @@ async function emailAenderung(aktion: () => Promise<void>): Promise<void> {
     throw err;
   }
 }
+
+/** The feed also contains Dienste that began this many days ago. */
+const FEED_RUECKBLICK_TAGE = 90;
 
 export function createApp(deps: AppDeps) {
   const auth = authenticate(
@@ -1741,6 +1749,32 @@ export function createApp(deps: AppDeps) {
           return c.json({ jahr, zeilen: await personenMitUsernames(zeilen) });
         },
       )
+      // ----- Kalender: ICS feed and own Dienste
+      .get('/me/kalender-token', auth, kalenderLesen, async (c) =>
+        c.json({ vorhanden: await deps.kalender.tokenVorhanden(c.get('user').sub) }),
+      )
+      .post('/me/kalender-token', auth, kalenderLesen, async (c) => {
+        const sub = c.get('user').sub;
+        if (!(await deps.mitglieder.holen(sub)))
+          throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+        return c.json({ token: await deps.kalender.tokenErzeugen(sub) });
+      })
+      .get('/me/dienste', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.meineDienste(c.get('user').sub, new Date())),
+      )
+      // Public on purpose (no `auth`): calendar apps cannot send a bearer token; the secret token
+      // in the URL is the credential. API Gateway needs a matching route without authorizer.
+      .get('/kalender/feed/:token', async (c) => {
+        const token = c.req.param('token').replace(/\.ics$/, '');
+        const sub = await deps.kalender.subPerTokenHash(tokenHash(token));
+        if (!sub) throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        const ab = new Date(Date.now() - FEED_RUECKBLICK_TAGE * 24 * 3600 * 1000);
+        const termine = dienstTermine(await deps.kalender.meineDienste(sub, ab), deps.appUrl);
+        return c.body(icsErzeugen(termine, { kalenderName: 'C4 – Meine Dienste' }), 200, {
+          'Content-Type': 'text/calendar; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+      })
       .onError((err, c) => {
         if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
         console.error(err);

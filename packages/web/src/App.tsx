@@ -24,6 +24,7 @@ import { MitgliederPage } from './pages/MitgliederPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { EventFormularPage } from './pages/EventFormularPage';
 import { KalenderEinrichtungPage } from './pages/KalenderEinrichtungPage';
+import { KalenderMeinKalenderPage } from './pages/KalenderMeinKalenderPage';
 import { KalenderPage } from './pages/KalenderPage';
 import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
@@ -313,6 +314,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="kalender:lesen">
                 <RequireUsername>
                   <KalenderStatistikPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/mein-kalender"
+            element={
+              <Protected permission="kalender:lesen">
+                <RequireUsername>
+                  <KalenderMeinKalenderPage />
                 </RequireUsername>
               </Protected>
             }

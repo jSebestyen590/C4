@@ -18,6 +18,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import {
   IconChevronLeft,
   IconChevronRight,
+  IconCalendarDown,
   IconChartBar,
   IconPlus,
   IconSettings,
@@ -296,6 +297,14 @@ export function KalenderPage() {
             leftSection={<IconChartBar size={18} />}
           >
             Statistik
+          </Button>
+          <Button
+            component={Link}
+            to="/kalender/mein-kalender"
+            variant="default"
+            leftSection={<IconCalendarDown size={18} />}
+          >
+            Mein Kalender
           </Button>
           {can('kalender:einrichten') && (
             <Button

@@ -187,6 +187,10 @@ resource "aws_lambda_function" "api" {
       CLIENT_ID         = aws_cognito_user_pool_client.web.id
       DSQL_ENDPOINT     = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
       PROFILBILD_BUCKET = aws_s3_bucket.profilbilder.bucket
+
+      # Origin for links in the calendar feed. Without a custom domain it is unknown here (the
+      # CloudFront domain would make a dependency cycle), so the feed then carries no links.
+      PUBLIC_URL = local.custom ? "https://${var.domain_name}" : ""
     }
   }
 
@@ -220,6 +224,14 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
 resource "aws_apigatewayv2_route" "health" {
   api_id    = aws_apigatewayv2_api.this.id
   route_key = "GET /api/health"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+# Calendar apps cannot send a bearer token: the secret token in the URL is the credential.
+# More specific than the proxy route below, so it wins.
+resource "aws_apigatewayv2_route" "kalender_feed" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "GET /api/kalender/feed/{token}"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 

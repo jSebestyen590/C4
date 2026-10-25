@@ -64,6 +64,7 @@ export function ZeitpunktFelder({
         value={wert.datum}
         onWert={(datum) => onChange({ ...wert, datum })}
         error={fehler}
+        loeschbar={false}
         style={{ flex: 1, minWidth: 0 }}
       />
       <TextInput
@@ -71,7 +72,7 @@ export function ZeitpunktFelder({
         type="time"
         value={wert.zeit}
         onChange={(e) => onChange({ ...wert, zeit: e.currentTarget.value })}
-        w={140}
+        w={120}
         style={{ flexShrink: 0 }}
       />
     </Group>
