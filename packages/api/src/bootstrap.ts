@@ -7,6 +7,7 @@ import { createDb, createPool } from './db/client';
 import { createMitgliederStore } from './mitglieder';
 import { createPostenStore } from './posten';
 import { createInventarStore } from './inventar';
+import { createKalenderStore } from './kalender';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
 
@@ -23,6 +24,7 @@ export function createProductionApp() {
     posten: createPostenStore(db),
     waren: createWarenStore(db),
     inventar: createInventarStore(db),
+    kalender: createKalenderStore(db),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {
       await pool.query('select 1');

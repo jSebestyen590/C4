@@ -16,6 +16,7 @@ import type {
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
+  SchichtArt,
   MitgliedStatus,
   Quelle,
   Verpackungseinheit,
@@ -418,3 +419,149 @@ export const aufraeumIfcos = pgTable('aufraeum_ifcos', {
   fertigAm: timestamp('fertig_am', { withTimezone: true }).notNull().defaultNow(),
   fertigVon: text('fertig_von').notNull(),
 });
+
+// ---------------------------------------------------------------------------------------------
+// Kalender: Events, Schichten, Dienste (see docs/kalender.md)
+// ---------------------------------------------------------------------------------------------
+
+/** A kind of work in a Schicht, e.g. Bar or Technik. */
+export const dienstformen = pgTable('dienstformen', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type DienstformRow = typeof dienstformen.$inferSelect;
+
+export const eventKategorien = pgTable('event_kategorien', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** Mantine color name. */
+  farbe: text('farbe').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type EventKategorieRow = typeof eventKategorien.$inferSelect;
+
+/** Helpers from outside the club who can be entered into Dienste. */
+export const externe = pgTable('externe', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  kontakt: text('kontakt'),
+  /** Free text, e.g. "Freund:in von X" or "StuK". */
+  quelle: text('quelle'),
+  angelegtVon: text('angelegt_von')
+    .notNull()
+    .references(() => mitglieder.sub),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type ExterneRow = typeof externe.$inferSelect;
+
+export const events = pgTable('events', {
+  id: text('id').primaryKey(),
+  titel: text('titel').notNull(),
+  beschreibung: text('beschreibung'),
+  kategorieId: text('kategorie_id').references(() => eventKategorien.id),
+  beginn: timestamp('beginn', { withTimezone: true }).notNull(),
+  ende: timestamp('ende', { withTimezone: true }).notNull(),
+  abgesagt: boolean('abgesagt').notNull().default(false),
+  /** Hours before the start for the "Dienste fehlen" notice; null = off. */
+  fehltHinweisStunden: integer('fehlt_hinweis_stunden'),
+  /** Cognito sub, deliberately without a foreign key. */
+  angelegtVon: text('angelegt_von').notNull(),
+  angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
+  aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type EventRow = typeof events.$inferSelect;
+
+export const schichten = pgTable('schichten', {
+  id: text('id').primaryKey(),
+  eventId: text('event_id')
+    .notNull()
+    .references(() => events.id),
+  name: text('name').notNull(),
+  art: text('art').$type<SchichtArt>().notNull(),
+  beginn: timestamp('beginn', { withTimezone: true }).notNull(),
+  ende: timestamp('ende', { withTimezone: true }).notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+});
+export type SchichtRow = typeof schichten.$inferSelect;
+
+export const schichtBedarfe = pgTable(
+  'schicht_bedarfe',
+  {
+    schichtId: text('schicht_id')
+      .notNull()
+      .references(() => schichten.id),
+    dienstformId: text('dienstform_id')
+      .notNull()
+      .references(() => dienstformen.id),
+    minimum: integer('minimum').notNull(),
+    wunsch: integer('wunsch').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.schichtId, t.dienstformId] })],
+);
+export type SchichtBedarfRow = typeof schichtBedarfe.$inferSelect;
+
+/** One person in one Schicht; exactly one of `mitgliedSub` / `externId` is set (CHECK). */
+export const dienste = pgTable('dienste', {
+  id: text('id').primaryKey(),
+  schichtId: text('schicht_id')
+    .notNull()
+    .references(() => schichten.id),
+  dienstformId: text('dienstform_id')
+    .notNull()
+    .references(() => dienstformen.id),
+  mitgliedSub: text('mitglied_sub').references(() => mitglieder.sub),
+  externId: text('extern_id').references(() => externe.id),
+  kommentar: text('kommentar'),
+  eingetragenVon: text('eingetragen_von')
+    .notNull()
+    .references(() => mitglieder.sub),
+  eingetragenAm: timestamp('eingetragen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type DienstRow = typeof dienste.$inferSelect;
+
+export const eventVorlagen = pgTable('event_vorlagen', {
+  id: text('id').primaryKey(),
+  titel: text('titel').notNull(),
+  beschreibung: text('beschreibung'),
+  kategorieId: text('kategorie_id').references(() => eventKategorien.id),
+  /** Berlin wall time `HH:MM`. */
+  beginnZeit: text('beginn_zeit').notNull(),
+  endeTagVersatz: integer('ende_tag_versatz').notNull(),
+  endeZeit: text('ende_zeit').notNull(),
+  fehltHinweisStunden: integer('fehlt_hinweis_stunden'),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
+
+export const vorlageSchichten = pgTable('vorlage_schichten', {
+  id: text('id').primaryKey(),
+  vorlageId: text('vorlage_id')
+    .notNull()
+    .references(() => eventVorlagen.id),
+  name: text('name').notNull(),
+  art: text('art').$type<SchichtArt>().notNull(),
+  tagVersatz: integer('tag_versatz').notNull(),
+  beginnZeit: text('beginn_zeit').notNull(),
+  endeTagVersatz: integer('ende_tag_versatz').notNull(),
+  endeZeit: text('ende_zeit').notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+});
+export type VorlageSchichtRow = typeof vorlageSchichten.$inferSelect;
+
+export const vorlageBedarfe = pgTable(
+  'vorlage_bedarfe',
+  {
+    vorlageSchichtId: text('vorlage_schicht_id')
+      .notNull()
+      .references(() => vorlageSchichten.id),
+    dienstformId: text('dienstform_id')
+      .notNull()
+      .references(() => dienstformen.id),
+    minimum: integer('minimum').notNull(),
+    wunsch: integer('wunsch').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.vorlageSchichtId, t.dienstformId] })],
+);
+export type VorlageBedarfRow = typeof vorlageBedarfe.$inferSelect;

@@ -31,6 +31,13 @@ import {
   type WarenStore,
 } from './waren';
 import type { InventarStore } from './inventar';
+import {
+  EntfernungBestaetigen,
+  KalenderKonflikt,
+  KalenderUngueltig,
+  type DienstInfo,
+  type KalenderStore,
+} from './kalender';
 import type { GebindeRow, LagerortRow } from './db/schema';
 import {
   AblosungUngueltig,
@@ -46,6 +53,7 @@ const users: Record<string, AuthUser> = {
   'admin-token': { sub: 'a', groups: ['admin'] },
   'reader-token': { sub: 'r', groups: [] },
   'vorstand-token': { sub: 'v', groups: [] },
+  'member-token': { sub: 'm2', groups: [] },
 };
 
 /** Map-backed fake of the lagerorte/gebinde parts; the rest records its calls. */
@@ -375,6 +383,52 @@ function makeInventarFake() {
   return { fake, verwendet };
 }
 
+/** Fake of the Kalender store: records calls; Dienste can be seeded to test the removal rules. */
+function makeKalenderFake() {
+  const dienste = new Map<string, DienstInfo>();
+  const fake = {
+    events: vi.fn<KalenderStore['events']>(async () => []),
+    event: vi.fn<KalenderStore['event']>(async () => undefined),
+    eventAnlegen: vi.fn<KalenderStore['eventAnlegen']>(async () => 'e1'),
+    eventAktualisieren: vi.fn<KalenderStore['eventAktualisieren']>(async () => ({
+      zeitGeaendert: false,
+      geaenderteSchichten: [],
+      entfernteDienste: [],
+      mitgliedSubs: [],
+    })),
+    eventLoeschen: vi.fn<KalenderStore['eventLoeschen']>(async () => true),
+    absageSetzen: vi.fn<KalenderStore['absageSetzen']>(async () => ({
+      geaendert: true,
+      mitgliedSubs: [],
+    })),
+    dienstEintragen: vi.fn<KalenderStore['dienstEintragen']>(async () => 'd-neu'),
+    dienstHolen: vi.fn(async (id: string) => dienste.get(id)),
+    dienstEntfernen: vi.fn(async (id: string) => dienste.delete(id)),
+    externe: vi.fn<KalenderStore['externe']>(async () => []),
+    externAnlegen: vi.fn<KalenderStore['externAnlegen']>(async () => 'x1'),
+    externAktualisieren: vi.fn<KalenderStore['externAktualisieren']>(async (id) => id === 'x1'),
+    externeZusammenfuehren: vi.fn<KalenderStore['externeZusammenfuehren']>(async (ziel) =>
+      ziel === 'x1' ? { verschoben: 1, verworfen: 0 } : undefined,
+    ),
+    dienstformen: vi.fn<KalenderStore['dienstformen']>(async () => []),
+    dienstformAnlegen: vi.fn<KalenderStore['dienstformAnlegen']>(async () => 'f1'),
+    dienstformAktualisieren: vi.fn<KalenderStore['dienstformAktualisieren']>(
+      async (id) => id === 'f1',
+    ),
+    kategorien: vi.fn<KalenderStore['kategorien']>(async () => []),
+    kategorieAnlegen: vi.fn<KalenderStore['kategorieAnlegen']>(async () => 'k1'),
+    kategorieAktualisieren: vi.fn<KalenderStore['kategorieAktualisieren']>(
+      async (id) => id === 'k1',
+    ),
+    vorlagen: vi.fn<KalenderStore['vorlagen']>(async () => []),
+    vorlageAnlegen: vi.fn<KalenderStore['vorlageAnlegen']>(async () => 'v1'),
+    vorlageAktualisieren: vi.fn<KalenderStore['vorlageAktualisieren']>(async (id) => id === 'v1'),
+    vorlageLoeschen: vi.fn<KalenderStore['vorlageLoeschen']>(async (id) => id === 'v1'),
+    statistik: vi.fn<KalenderStore['statistik']>(async () => []),
+  } satisfies KalenderStore;
+  return { fake, dienste };
+}
+
 function makeApp(pingDb = async () => {}) {
   const userAdmin = {
     rollen: vi.fn(async () => new Map<string, string[]>()),
@@ -484,12 +538,19 @@ function makeApp(pingDb = async () => {}) {
     aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
     rechteVon: vi.fn(async (sub: string) =>
       sub === 'v'
-        ? ['posten:bearbeiten' as const, 'waren:verwalten' as const, 'inventar:verwalten' as const]
+        ? [
+            'posten:bearbeiten' as const,
+            'waren:verwalten' as const,
+            'inventar:verwalten' as const,
+            'events:verwalten' as const,
+            'kalender:einrichten' as const,
+          ]
         : [],
     ),
   };
   const { fake: waren, orte, verwendet } = makeWarenFake();
   const { fake: inventar, verwendet: inventarVerwendet } = makeInventarFake();
+  const { fake: kalender, dienste: kalenderDienste } = makeKalenderFake();
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -511,6 +572,7 @@ function makeApp(pingDb = async () => {}) {
     posten,
     waren,
     inventar,
+    kalender,
     profilbilder,
     pingDb,
   });
@@ -524,6 +586,8 @@ function makeApp(pingDb = async () => {}) {
     waren,
     inventar,
     inventarVerwendet,
+    kalender,
+    kalenderDienste,
     orte,
     verwendet,
   };
@@ -2213,5 +2277,408 @@ describe('inventar', () => {
           .status,
       ).toBe(404);
     });
+  });
+});
+
+describe('kalender', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+  const eventBody = {
+    titel: 'Offener Abend',
+    beginn: '2026-06-05T17:00:00.000Z',
+    ende: '2026-06-05T23:00:00.000Z',
+    schichten: [],
+  };
+  const dienstInfo = (patch: Partial<DienstInfo>): DienstInfo => ({
+    id: 'd1',
+    schichtId: 's1',
+    schichtName: 'Betrieb',
+    schichtBeginn: '2026-06-05T17:00:00.000Z',
+    eventId: 'e1',
+    eventTitel: 'Offener Abend',
+    abgesagt: false,
+    dienstformId: 'f1',
+    mitgliedSub: null,
+    externId: null,
+    eingetragenVon: 'm2',
+    ...patch,
+  });
+  /** Gives every caller a profile row, which entering Dienste and Externe requires. */
+  const mitProfil = (app: ReturnType<typeof makeApp>) =>
+    app.mitglieder.holen.mockImplementation(
+      async (sub: string) =>
+        ({ sub, vorname: 'A', nachname: 'B', status: 'mitglied' }) as MitgliedRow,
+    );
+
+  it('lets everyone read, but only Verwalter and Einrichter write', async () => {
+    const t = makeApp();
+    for (const url of [
+      '/api/kalender/events?von=2026-06-01&bis=2026-06-30',
+      '/api/kalender/externe',
+      '/api/kalender/dienstformen',
+      '/api/kalender/kategorien',
+      '/api/kalender/vorlagen',
+      '/api/kalender/statistik?jahr=2026',
+    ]) {
+      expect((await t.app.request(url, json('reader-token', 'GET'))).status, url).toBe(200);
+    }
+    expect(
+      (await t.app.request('/api/kalender/events/e1', json('reader-token', 'GET'))).status,
+    ).toBe(404);
+    for (const [url, method] of [
+      ['/api/kalender/events', 'POST'],
+      ['/api/kalender/events/e1', 'PUT'],
+      ['/api/kalender/events/e1', 'DELETE'],
+      ['/api/kalender/events/e1/absage', 'PUT'],
+      ['/api/kalender/externe/x1', 'PUT'],
+      ['/api/kalender/externe/zusammenfuehren', 'POST'],
+      ['/api/kalender/dienstformen', 'POST'],
+      ['/api/kalender/dienstformen/f1', 'PUT'],
+      ['/api/kalender/kategorien', 'POST'],
+      ['/api/kalender/kategorien/k1', 'PUT'],
+      ['/api/kalender/vorlagen', 'POST'],
+      ['/api/kalender/vorlagen/v1', 'PUT'],
+      ['/api/kalender/vorlagen/v1', 'DELETE'],
+    ] as const) {
+      const res = await t.app.request(url, json('reader-token', method, {}));
+      expect(res.status, `${method} ${url}`).toBe(403);
+    }
+    expect(t.kalender.eventAnlegen).not.toHaveBeenCalled();
+    expect(t.kalender.dienstformAnlegen).not.toHaveBeenCalled();
+    expect((await t.app.request('/api/kalender/events')).status).toBe(401);
+  });
+
+  it('creates events for Verwalter and rejects invalid input', async () => {
+    const t = makeApp();
+    const post = (token: string, body: unknown) =>
+      t.app.request('/api/kalender/events', json(token, 'POST', body));
+    const ok = await post('vorstand-token', eventBody);
+    expect(ok.status).toBe(201);
+    expect(await ok.json()).toEqual({ id: 'e1' });
+    expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+      expect.objectContaining({ titel: 'Offener Abend', kategorieId: null }),
+      'v',
+    );
+    expect((await post('admin-token', eventBody)).status).toBe(201);
+    expect((await post('admin-token', { ...eventBody, ende: eventBody.beginn })).status).toBe(400);
+    t.kalender.eventAnlegen.mockRejectedValueOnce(
+      new KalenderUngueltig('Die Kategorie gibt es nicht.'),
+    );
+    const res = await post('admin-token', eventBody);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Die Kategorie gibt es nicht.' });
+  });
+
+  it('answers 409 with the affected Dienste when an update needs confirmation', async () => {
+    const t = makeApp();
+    t.kalender.eventAktualisieren.mockRejectedValueOnce(
+      new EntfernungBestaetigen([
+        {
+          dienstId: 'd1',
+          schichtId: 's1',
+          schichtName: 'Betrieb',
+          dienstformId: 'f1',
+          grund: 'schicht',
+          person: {
+            art: 'mitglied',
+            sub: 'm2',
+            username: null,
+            vorname: 'Max',
+            nachname: 'Muster',
+            status: 'mitglied',
+            anrede: 'neutral',
+          },
+        },
+      ]),
+    );
+    t.userAdmin.konten.mockResolvedValue(new Map([['m2', { username: 'max' } as Konto]]));
+    const res = await t.app.request(
+      '/api/kalender/events/e1',
+      json('admin-token', 'PUT', eventBody),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      betroffene: [{ dienstId: 'd1', schichtName: 'Betrieb', person: { username: 'max' } }],
+    });
+    // Confirmed updates pass `bestaetigt` on to the store.
+    const ok = await t.app.request(
+      '/api/kalender/events/e1',
+      json('admin-token', 'PUT', { ...eventBody, bestaetigt: true }),
+    );
+    expect(ok.status).toBe(200);
+    expect(t.kalender.eventAktualisieren).toHaveBeenLastCalledWith(
+      'e1',
+      expect.objectContaining({ bestaetigt: true }),
+    );
+    t.kalender.eventAktualisieren.mockResolvedValueOnce(undefined);
+    expect(
+      (await t.app.request('/api/kalender/events/nope', json('admin-token', 'PUT', eventBody)))
+        .status,
+    ).toBe(404);
+  });
+
+  it('refuses to delete events with Dienste and cancels instead', async () => {
+    const t = makeApp();
+    t.kalender.eventLoeschen.mockRejectedValueOnce(new KalenderKonflikt('Das Event hat Dienste.'));
+    expect(
+      (await t.app.request('/api/kalender/events/e1', json('admin-token', 'DELETE'))).status,
+    ).toBe(409);
+    expect(
+      (await t.app.request('/api/kalender/events/e1', json('admin-token', 'DELETE'))).status,
+    ).toBe(200);
+    t.kalender.eventLoeschen.mockResolvedValueOnce(false);
+    expect(
+      (await t.app.request('/api/kalender/events/e1', json('admin-token', 'DELETE'))).status,
+    ).toBe(404);
+
+    const absage = await t.app.request(
+      '/api/kalender/events/e1/absage',
+      json('vorstand-token', 'PUT', { abgesagt: true }),
+    );
+    expect(absage.status).toBe(200);
+    expect(t.kalender.absageSetzen).toHaveBeenCalledWith('e1', true);
+    expect(
+      (await t.app.request('/api/kalender/events/e1/absage', json('admin-token', 'PUT', {})))
+        .status,
+    ).toBe(400);
+  });
+
+  it('lets members enter themselves and Externe, but others only for Verwalter', async () => {
+    const t = makeApp();
+    mitProfil(t);
+    const post = (token: string, body: unknown) =>
+      t.app.request('/api/kalender/schichten/s1/dienste', json(token, 'POST', body));
+
+    expect((await post('member-token', { dienstformId: 'f1' })).status).toBe(201);
+    expect(t.kalender.dienstEintragen).toHaveBeenLastCalledWith(
+      's1',
+      { dienstformId: 'f1', kommentar: null },
+      'm2',
+    );
+    // Entering oneself explicitly is the same as the default.
+    expect((await post('member-token', { dienstformId: 'f1', mitgliedSub: 'm2' })).status).toBe(
+      201,
+    );
+    expect((await post('member-token', { dienstformId: 'f1', externId: 'x1' })).status).toBe(201);
+
+    const fremd = await post('member-token', { dienstformId: 'f1', mitgliedSub: 'r' });
+    expect(fremd.status).toBe(403);
+    expect(t.kalender.dienstEintragen).toHaveBeenCalledTimes(3);
+    expect((await post('vorstand-token', { dienstformId: 'f1', mitgliedSub: 'r' })).status).toBe(
+      201,
+    );
+    expect(t.kalender.dienstEintragen).toHaveBeenLastCalledWith(
+      's1',
+      { dienstformId: 'f1', kommentar: null, mitgliedSub: 'r' },
+      'v',
+    );
+    expect(
+      (await post('admin-token', { dienstformId: 'f1', mitgliedSub: 'r', externId: 'x1' })).status,
+    ).toBe(400);
+  });
+
+  it('maps the store rules of entering a Dienst to statuses', async () => {
+    const t = makeApp();
+    mitProfil(t);
+    const post = () =>
+      t.app.request(
+        '/api/kalender/schichten/s1/dienste',
+        json('member-token', 'POST', { dienstformId: 'f1' }),
+      );
+    t.kalender.dienstEintragen.mockRejectedValueOnce(
+      new KalenderKonflikt('Das Event ist abgesagt.'),
+    );
+    expect((await post()).status).toBe(409);
+    t.kalender.dienstEintragen.mockRejectedValueOnce(new KalenderUngueltig('Kein Bedarf.'));
+    expect((await post()).status).toBe(400);
+    t.kalender.dienstEintragen.mockResolvedValueOnce(undefined);
+    expect((await post()).status).toBe(404);
+  });
+
+  it('requires a profile to enter Dienste or create Externe', async () => {
+    const t = makeApp();
+    const dienst = await t.app.request(
+      '/api/kalender/schichten/s1/dienste',
+      json('member-token', 'POST', { dienstformId: 'f1' }),
+    );
+    expect(dienst.status).toBe(400);
+    const extern = await t.app.request(
+      '/api/kalender/externe',
+      json('member-token', 'POST', { name: 'Eva' }),
+    );
+    expect(extern.status).toBe(400);
+    expect(t.kalender.dienstEintragen).not.toHaveBeenCalled();
+    expect(t.kalender.externAnlegen).not.toHaveBeenCalled();
+  });
+
+  it('lets everyone create Externe, but archiving needs Einrichten', async () => {
+    const t = makeApp();
+    mitProfil(t);
+    const res = await t.app.request(
+      '/api/kalender/externe',
+      json('member-token', 'POST', { name: 'Eva', quelle: 'StuK', archiviert: true }),
+    );
+    expect(res.status).toBe(201);
+    expect(t.kalender.externAnlegen).toHaveBeenCalledWith(
+      { name: 'Eva', quelle: 'StuK', kontakt: null, archiviert: false },
+      'm2',
+    );
+    const merge = (token: string, body: unknown) =>
+      t.app.request('/api/kalender/externe/zusammenfuehren', json(token, 'POST', body));
+    expect((await merge('member-token', { zielId: 'x1', quelleIds: ['x2'] })).status).toBe(403);
+    const ok = await merge('vorstand-token', { zielId: 'x1', quelleIds: ['x2'] });
+    expect(await ok.json()).toEqual({ verschoben: 1, verworfen: 0 });
+    expect((await merge('vorstand-token', { zielId: 'x1', quelleIds: ['x1'] })).status).toBe(400);
+    expect((await merge('vorstand-token', { zielId: 'x9', quelleIds: ['x2'] })).status).toBe(404);
+  });
+
+  it('removes Dienste only for the person, the enterer of an Externe, or Verwalter', async () => {
+    const t = makeApp();
+    const entfernen = (token: string, id: string) =>
+      t.app.request(`/api/kalender/dienste/${id}`, json(token, 'DELETE'));
+    t.kalenderDienste.set(
+      'eigen',
+      dienstInfo({ id: 'eigen', mitgliedSub: 'm2', eingetragenVon: 'm2' }),
+    );
+    t.kalenderDienste.set(
+      'fremd',
+      dienstInfo({ id: 'fremd', mitgliedSub: 'r', eingetragenVon: 'r' }),
+    );
+    // m2 entered someone else (as Verwalter earlier); that does not give m2 the right to remove it.
+    t.kalenderDienste.set(
+      'von-mir',
+      dienstInfo({ id: 'von-mir', mitgliedSub: 'r', eingetragenVon: 'm2' }),
+    );
+    t.kalenderDienste.set(
+      'extern',
+      dienstInfo({ id: 'extern', externId: 'x1', eingetragenVon: 'm2' }),
+    );
+    t.kalenderDienste.set(
+      'extern2',
+      dienstInfo({ id: 'extern2', externId: 'x1', eingetragenVon: 'm2' }),
+    );
+
+    expect((await entfernen('member-token', 'fremd')).status).toBe(403);
+    expect((await entfernen('member-token', 'von-mir')).status).toBe(403);
+    expect((await entfernen('reader-token', 'extern')).status).toBe(403);
+    expect((await entfernen('member-token', 'eigen')).status).toBe(200);
+    expect((await entfernen('member-token', 'extern')).status).toBe(200);
+    expect((await entfernen('vorstand-token', 'extern2')).status).toBe(200);
+    expect((await entfernen('vorstand-token', 'fremd')).status).toBe(200);
+    expect((await entfernen('vorstand-token', 'fremd')).status).toBe(404);
+    expect(t.kalender.dienstEntfernen).toHaveBeenCalledTimes(4);
+  });
+
+  it('adds Cognito usernames to events and the Statistik', async () => {
+    const t = makeApp();
+    const person = {
+      art: 'mitglied' as const,
+      sub: 'm2',
+      username: null,
+      vorname: 'Max',
+      nachname: 'Muster',
+      status: 'mitglied' as const,
+      anrede: 'neutral' as const,
+    };
+    t.userAdmin.konten.mockResolvedValue(new Map([['m2', { username: 'max' } as Konto]]));
+    t.kalender.event.mockResolvedValueOnce({
+      id: 'e1',
+      titel: 'Offener Abend',
+      beschreibung: null,
+      kategorie: null,
+      beginn: eventBody.beginn,
+      ende: eventBody.ende,
+      abgesagt: false,
+      fehltHinweisStunden: null,
+      bewertung: 'gruen',
+      schichten: [
+        {
+          id: 's1',
+          name: 'Betrieb',
+          art: 'betrieb',
+          beginn: eventBody.beginn,
+          ende: eventBody.ende,
+          bedarfe: [],
+          dienste: [
+            { id: 'd1', dienstformId: 'f1', kommentar: null, eingetragenVon: 'm2', person },
+            {
+              id: 'd2',
+              dienstformId: 'f1',
+              kommentar: null,
+              eingetragenVon: 'm2',
+              person: { art: 'extern', id: 'x1', name: 'Eva', quelle: null },
+            },
+          ],
+        },
+      ],
+    });
+    const res = await t.app.request('/api/kalender/events/e1', json('reader-token', 'GET'));
+    const body = (await res.json()) as { schichten: { dienste: { person: unknown }[] }[] };
+    expect(body.schichten[0]!.dienste[0]!.person).toMatchObject({ username: 'max' });
+    expect(body.schichten[0]!.dienste[1]!.person).toMatchObject({ art: 'extern', name: 'Eva' });
+
+    t.kalender.statistik.mockResolvedValueOnce([{ person, gesamt: 2, nachDienstform: { f1: 2 } }]);
+    const stat = await t.app.request(
+      '/api/kalender/statistik?jahr=2026',
+      json('reader-token', 'GET'),
+    );
+    expect(await stat.json()).toMatchObject({
+      jahr: 2026,
+      zeilen: [{ person: { username: 'max' } }],
+    });
+    expect(
+      (await t.app.request('/api/kalender/statistik?jahr=abc', json('reader-token', 'GET'))).status,
+    ).toBe(400);
+    expect(
+      (
+        await t.app.request(
+          '/api/kalender/events?von=2026-07-01&bis=2026-06-01',
+          json('reader-token', 'GET'),
+        )
+      ).status,
+    ).toBe(400);
+  });
+
+  it('manages Stammdaten for Einrichter', async () => {
+    const t = makeApp();
+    const form = await t.app.request(
+      '/api/kalender/dienstformen',
+      json('vorstand-token', 'POST', { name: 'Bar' }),
+    );
+    expect(form.status).toBe(201);
+    expect(t.kalender.dienstformAnlegen).toHaveBeenCalledWith({ name: 'Bar' });
+    expect(
+      (
+        await t.app.request(
+          '/api/kalender/dienstformen/f9',
+          json('vorstand-token', 'PUT', { name: 'X' }),
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await t.app.request(
+          '/api/kalender/kategorien',
+          json('vorstand-token', 'POST', { name: 'Konzert', farbe: 'red' }),
+        )
+      ).status,
+    ).toBe(201);
+    expect(
+      (
+        await t.app.request(
+          '/api/kalender/kategorien',
+          json('vorstand-token', 'POST', { name: 'Konzert' }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await t.app.request('/api/kalender/vorlagen/v9', json('vorstand-token', 'DELETE'))).status,
+    ).toBe(404);
+    expect(
+      (await t.app.request('/api/kalender/vorlagen/v1', json('vorstand-token', 'DELETE'))).status,
+    ).toBe(200);
   });
 });
