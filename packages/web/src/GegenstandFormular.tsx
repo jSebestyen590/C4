@@ -197,6 +197,7 @@ export function GegenstandFormular({
           )}
           <Textarea
             label="Beschreibung (optional)"
+            placeholder="Seriennummer, Quelle, …"
             autosize
             minRows={2}
             value={beschreibung}
