@@ -332,6 +332,26 @@ export const gegenstandPlaetze = pgTable('gegenstand_plaetze', {
 });
 export type GegenstandPlatzRow = typeof gegenstandPlaetze.$inferSelect;
 
+/**
+ * Zugänge and Abgänge of a Gegenstand; their sum is kept in `gegenstaende.anzahl`. `ort` is a display
+ * snapshot of the Platz (no foreign key), `erstelltVon` a Cognito sub.
+ */
+export const gegenstandBewegungen = pgTable('gegenstand_bewegungen', {
+  id: text('id').primaryKey(),
+  gegenstandId: text('gegenstand_id')
+    .notNull()
+    .references(() => gegenstaende.id),
+  art: text('art').$type<'zugang' | 'abgang'>().notNull(),
+  grund: text('grund').notNull(),
+  anzahl: integer('anzahl').notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  kommentar: text('kommentar'),
+  ort: text('ort'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type GegenstandBewegungRow = typeof gegenstandBewegungen.$inferSelect;
+
 /** Pieces of a Gegenstand built in for good at a free-text place; not on any Platz. */
 export const gegenstandVerbaut = pgTable('gegenstand_verbaut', {
   id: text('id').primaryKey(),

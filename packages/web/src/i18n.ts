@@ -89,6 +89,21 @@ export const QUELLE_LABELS: Record<Quelle, string> = {
   inventur: 'Inventur',
 };
 
+/** Reasons of a Zugang or Abgang of a Gegenstand (`gegenstand_bewegungen.grund`). */
+export const GRUND_LABELS: Record<string, string> = {
+  gekauft: 'gekauft',
+  ersatz: 'Ersatz beschafft',
+  geschenkt: 'geschenkt bekommen',
+  gefunden: 'gefunden',
+  bestand: 'Bestand übernommen',
+  verloren: 'verloren',
+  kaputt: 'kaputt',
+  verkauft: 'verkauft',
+  entsorgt: 'entsorgt',
+  verschenkt: 'verschenkt',
+  sonstiges: 'sonstiges',
+};
+
 /** Cognito user statuses. */
 export const USER_STATUS_LABELS: Record<string, string> = {
   UNCONFIRMED: 'Unbestätigt',

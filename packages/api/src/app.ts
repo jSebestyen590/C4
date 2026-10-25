@@ -18,6 +18,7 @@ import {
   gebindeSchema,
   gegenstandPlaetzeSchema,
   aufraeumFertigSchema,
+  bewegungSchema,
   gegenstandAnlegenSchema,
   gegenstandSchema,
   ifcoAnlegenSchema,
@@ -1084,7 +1085,9 @@ export function createApp(deps: AppDeps) {
         inventarVerwalten,
         zValidator('json', gegenstandAnlegenSchema),
         async (c) => {
-          const id = await deps.inventar.gegenstandAnlegen(c.req.valid('json')).catch(warenFehler);
+          const id = await deps.inventar
+            .gegenstandAnlegen(c.req.valid('json'), c.get('user').sub)
+            .catch(warenFehler);
           return c.json({ id }, 201);
         },
       )
@@ -1141,6 +1144,46 @@ export function createApp(deps: AppDeps) {
               )
               .catch(warenFehler),
             'Gegenstand nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // ----- Inventar: Zugänge und Abgänge
+      .get('/inventar/gegenstaende/:id/bewegungen', auth, inventarLesen, async (c) =>
+        c.json(
+          await mitErstellerUsernames(
+            gefunden(
+              await deps.inventar.bewegungen(c.req.param('id')),
+              'Gegenstand nicht gefunden',
+            ),
+          ),
+        ),
+      )
+      .post(
+        '/inventar/gegenstaende/:id/bewegungen',
+        auth,
+        inventarVerwalten,
+        zValidator('json', bewegungSchema),
+        async (c) => {
+          const id = gefunden(
+            await deps.inventar
+              .bewegungBuchen(c.req.param('id'), c.req.valid('json'), c.get('user').sub)
+              .catch(warenFehler),
+            'Gegenstand nicht gefunden',
+          );
+          return c.json({ id }, 201);
+        },
+      )
+      .delete(
+        '/inventar/gegenstaende/:id/bewegungen/:bewegungId',
+        auth,
+        inventarVerwalten,
+        async (c) => {
+          gefunden(
+            await deps.inventar
+              .bewegungLoeschen(c.req.param('id'), c.req.param('bewegungId'))
+              .catch(warenFehler),
+            'Buchung nicht gefunden',
           );
           return c.json({ ok: true });
         },

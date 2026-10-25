@@ -341,6 +341,34 @@ function makeInventarFake() {
       fertig: [{ ifcoId: 'i1', fertigAm: new Date('2026-05-01T11:00:00Z'), von: null }],
     })),
     aufraeumenStarten: vi.fn<InventarStore['aufraeumenStarten']>(async () => 'x2'),
+    bewegungen: vi.fn<InventarStore['bewegungen']>(async (id) =>
+      finde(id, [
+        {
+          id: 'b1',
+          gegenstandId: id,
+          art: 'zugang' as const,
+          grund: 'gekauft',
+          anzahl: 7,
+          datum: '2026-10-10',
+          kommentar: null,
+          ort: null,
+          erstelltVon: 'v',
+          erstelltAm: new Date('2026-10-10T10:00:00Z'),
+          ersteller: {
+            sub: 'v',
+            username: null,
+            vorname: 'Vera',
+            nachname: 'Vorstand',
+            status: 'mitglied' as const,
+            anrede: 'neutral' as const,
+          },
+        },
+      ]),
+    ),
+    bewegungBuchen: vi.fn<InventarStore['bewegungBuchen']>(async (id) => finde(id, 'b2')),
+    bewegungLoeschen: vi.fn<InventarStore['bewegungLoeschen']>(
+      async (id, bid) => setze(id) && bid === 'b1',
+    ),
     aufraeumenBeenden: vi.fn<InventarStore['aufraeumenBeenden']>(async () => true),
     aufraeumIfcoSetzen: vi.fn<InventarStore['aufraeumIfcoSetzen']>(async (id) => setze(id)),
   } satisfies InventarStore;
@@ -1788,26 +1816,81 @@ describe('inventar', () => {
     expect((await app.request('/api/inventar/gegenstaende')).status).toBe(401);
   });
 
-  it('validates the Gegenstand and defaults the Anzahl to 1', async () => {
+  it('creates a Gegenstand with its first Zugang (Anzahl 1, gekauft by default)', async () => {
     const { app, inventar } = makeApp();
+    const datum = '2026-10-10';
     const post = (body: unknown) =>
       app.request('/api/inventar/gegenstaende', json('admin-token', 'POST', body));
-    expect((await post({ name: 'Beamer' })).status).toBe(400);
-    expect((await post({ name: 'Beamer', kategorieId: 'k1', anzahl: 0 })).status).toBe(400);
-    expect((await post({ name: ' ', kategorieId: 'k1' })).status).toBe(400);
-    expect((await post({ name: 'Beamer', kategorieId: 'k1' })).status).toBe(201);
-    expect(inventar.gegenstandAnlegen).toHaveBeenCalledWith({
-      name: 'Beamer',
-      beschreibung: null,
-      kategorieId: 'k1',
-      anzahl: 1,
-      platz: null,
-    });
+    expect((await post({ name: 'Beamer', datum })).status).toBe(400);
+    expect((await post({ name: 'Beamer', kategorieId: 'k1', anzahl: 0, datum })).status).toBe(400);
+    expect((await post({ name: ' ', kategorieId: 'k1', datum })).status).toBe(400);
+    expect((await post({ name: 'Beamer', kategorieId: 'k1' })).status).toBe(400);
+    expect((await post({ name: 'Beamer', kategorieId: 'k1', datum })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenCalledWith(
+      {
+        name: 'Beamer',
+        beschreibung: null,
+        kategorieId: 'k1',
+        anzahl: 1,
+        grund: 'gekauft',
+        datum,
+        platz: null,
+      },
+      'a',
+    );
     const platz = { lagerortId: 'l1', ifcoId: null, anzahl: 3 };
-    expect((await post({ name: 'Zelt', kategorieId: 'k1', anzahl: 3, platz })).status).toBe(201);
-    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(expect.objectContaining({ platz }));
+    expect(
+      (await post({ name: 'Zelt', kategorieId: 'k1', anzahl: 3, datum, grund: 'geschenkt', platz }))
+        .status,
+    ).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ platz, grund: 'geschenkt' }),
+      'a',
+    );
     const zwei = { lagerortId: 'l1', ifcoId: 'i1', anzahl: 1 };
-    expect((await post({ name: 'Zelt', kategorieId: 'k1', platz: zwei })).status).toBe(400);
+    expect((await post({ name: 'Zelt', kategorieId: 'k1', datum, platz: zwei })).status).toBe(400);
+  });
+
+  it('lists, books and deletes Zugänge and Abgänge', async () => {
+    const { app, inventar, userAdmin } = makeApp();
+    userAdmin.konten.mockResolvedValue(new Map([['v', { username: 'vera' } as Konto]]));
+    const liste = await app.request(
+      '/api/inventar/gegenstaende/g1/bewegungen',
+      json('reader-token', 'GET'),
+    );
+    expect(liste.status).toBe(200);
+    expect(
+      ((await liste.json()) as { ersteller: { username: string } }[])[0]!.ersteller.username,
+    ).toBe('vera');
+    expect(
+      (await app.request('/api/inventar/gegenstaende/nix/bewegungen', json('reader-token', 'GET')))
+        .status,
+    ).toBe(404);
+    const abgang = {
+      art: 'abgang',
+      grund: 'verloren',
+      anzahl: 3,
+      datum: '2026-10-11',
+      von: { art: 'platz', lagerortId: 'l1' },
+    };
+    const post = (token: string, body: unknown) =>
+      app.request('/api/inventar/gegenstaende/g1/bewegungen', json(token, 'POST', body));
+    expect((await post('reader-token', abgang)).status).toBe(403);
+    expect((await post('admin-token', abgang)).status).toBe(201);
+    expect(inventar.bewegungBuchen).toHaveBeenCalledWith(
+      'g1',
+      expect.objectContaining({
+        art: 'abgang',
+        von: { art: 'platz', lagerortId: 'l1', ifcoId: null },
+      }),
+      'a',
+    );
+    expect((await post('admin-token', { ...abgang, grund: 'gekauft' })).status).toBe(400);
+    const loeschen = (token: string, id: string) =>
+      app.request(`/api/inventar/gegenstaende/g1/bewegungen/${id}`, json(token, 'DELETE'));
+    expect((await loeschen('reader-token', 'b1')).status).toBe(403);
+    expect((await loeschen('admin-token', 'b1')).status).toBe(200);
+    expect((await loeschen('admin-token', 'nix')).status).toBe(404);
   });
 
   it('maps unknown ids to 404 and used entries to 409', async () => {

@@ -24,6 +24,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { inventarAbweichung, pfad } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
+import { BewegungVerlauf } from '../BewegungVerlauf';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
@@ -241,6 +242,13 @@ export function GegenstandDetailPage() {
           Verleihen
         </Button>
       )}
+
+      <BewegungVerlauf
+        gegenstand={g}
+        darfVerwalten={darfVerwalten}
+        lagerorte={inv.lagerorte}
+        ifcos={inv.ifcos}
+      />
 
       {ausleihen.length > 0 && (
         <>

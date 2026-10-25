@@ -22,6 +22,9 @@ import {
   type IfcoInhaltPosition,
   sollZuKleinFehler,
   zuVielVerteiltFehler,
+  ohnePlatz,
+  type ABGANG_GRUENDE,
+  type ZUGANG_GRUENDE,
   platzVerlustFehler,
   zielKey,
   type AusleiheStatus,
@@ -39,8 +42,10 @@ import {
   ausleihePositionen,
   bestandsbuchungen,
   gegenstaende,
+  gegenstandBewegungen,
   gegenstandPlaetze,
   gegenstandVerbaut,
+  type GegenstandBewegungRow,
   ifcos,
   inventarKategorien,
   ifcoTypen,
@@ -77,11 +82,11 @@ export interface KategorieDaten {
   parentId: string | null;
 }
 
+/** Master data of a Gegenstand; the amount only changes through Bewegungen. */
 export interface GegenstandDaten {
   name: string;
   beschreibung: string | null;
   kategorieId: string;
-  anzahl: number;
 }
 
 export interface IfcoDaten {
@@ -102,8 +107,40 @@ export interface PlatzDaten extends PlatzZiel {
 }
 
 export interface GegenstandAnlegenDaten extends GegenstandDaten {
+  /** First Zugang: amount, reason and day. */
+  anzahl: number;
+  grund: (typeof ZUGANG_GRUENDE)[number];
+  datum: string;
   /** Optional first place of the new Gegenstand. */
   platz: PlatzDaten | null;
+}
+
+/** Where the pieces of an Abgang come from. */
+export type AbgangVon =
+  { art: 'ohnePlatz' } | ({ art: 'platz' } & PlatzZiel) | { art: 'verbaut'; ort: string };
+
+/** A Zugang (optionally onto a Platz) or an Abgang of a Gegenstand. */
+export type BewegungDaten =
+  | {
+      art: 'zugang';
+      grund: (typeof ZUGANG_GRUENDE)[number];
+      anzahl: number;
+      datum: string;
+      kommentar: string | null;
+      nach: PlatzZiel | null;
+    }
+  | {
+      art: 'abgang';
+      grund: (typeof ABGANG_GRUENDE)[number];
+      anzahl: number;
+      datum: string;
+      kommentar: string | null;
+      von: AbgangVon;
+    };
+
+/** One entry of the history, with the member who booked it (username filled in by the route). */
+export interface BewegungDetails extends GegenstandBewegungRow {
+  ersteller: Organisator | null;
 }
 
 export interface AusleihePositionDaten extends PlatzDaten {
@@ -223,10 +260,21 @@ export interface InventarStore {
   // Gegenstände
   gegenstaende(mitArchiv: boolean): Promise<GegenstandDetails[]>;
   gegenstandHolen(id: string): Promise<GegenstandDetails | undefined>;
-  gegenstandAnlegen(daten: GegenstandAnlegenDaten): Promise<string>;
+  /** Creates the Gegenstand with its first Zugang (booked by `sub`). */
+  gegenstandAnlegen(daten: GegenstandAnlegenDaten, sub: string): Promise<string>;
   gegenstandAktualisieren(id: string, daten: GegenstandDaten): Promise<boolean>;
   gegenstandLoeschen(id: string): Promise<boolean>;
   gegenstandArchivieren(id: string, archiviert: boolean): Promise<boolean>;
+  /** History of the Gegenstand, newest first; undefined if it does not exist. */
+  bewegungen(gegenstandId: string): Promise<BewegungDetails[] | undefined>;
+  /** Books a Zugang or Abgang and adjusts the amount (and the Platz); undefined if not found. */
+  bewegungBuchen(
+    gegenstandId: string,
+    daten: BewegungDaten,
+    sub: string,
+  ): Promise<string | undefined>;
+  /** Removes a wrong booking and reverts its effect on the amount (not on the Plätze). */
+  bewegungLoeschen(gegenstandId: string, bewegungId: string): Promise<boolean>;
   /** Replaces all Plätze of the Gegenstand and, when given, all its fixed installations. */
   gegenstandPlaetzeSetzen(
     id: string,
@@ -756,7 +804,7 @@ export function createInventarStore(db: Db): InventarStore {
     async gegenstandHolen(id) {
       return (await gegenstaendeLaden(db, id))[0];
     },
-    async gegenstandAnlegen({ platz, ...daten }) {
+    async gegenstandAnlegen({ platz, grund, datum, ...daten }, sub) {
       return db.transaction(async (tx) => {
         await kategorieMussNutzbarSein(tx, daten.kategorieId);
         if (platz) {
@@ -766,6 +814,16 @@ export function createInventarStore(db: Db): InventarStore {
         }
         const id = randomUUID();
         await tx.insert(gegenstaende).values({ id, ...daten });
+        await tx.insert(gegenstandBewegungen).values({
+          id: randomUUID(),
+          gegenstandId: id,
+          art: 'zugang',
+          grund,
+          anzahl: daten.anzahl,
+          datum,
+          ort: platz ? (await beschriftungLaden(tx)).platz(platz) : null,
+          erstelltVon: sub,
+        });
         if (platz) {
           await tx.insert(gegenstandPlaetze).values({
             id: randomUUID(),
@@ -785,16 +843,6 @@ export function createInventarStore(db: Db): InventarStore {
         if (daten.kategorieId !== bisher.kategorieId) {
           await kategorieMussNutzbarSein(tx, daten.kategorieId);
         }
-        if (daten.anzahl < bisher.anzahl) {
-          const plaetze = await tx
-            .select()
-            .from(gegenstandPlaetze)
-            .where(eq(gegenstandPlaetze.gegenstandId, id));
-          const verbaut = (await verbautJeGegenstand(tx, [id])).get(id) ?? 0;
-          const summe = plaetze.reduce((s, p) => s + p.anzahl, 0) + verbaut;
-          const fehler = sollZuKleinFehler(daten.anzahl, bisher.anzahl, summe);
-          if (fehler) throw new WarenUngueltig(fehler);
-        }
         await tx.update(gegenstaende).set(daten).where(eq(gegenstaende.id, id));
         return true;
       });
@@ -808,6 +856,8 @@ export function createInventarStore(db: Db): InventarStore {
           gibtEs(tx, ausleihePositionen, eq(ausleihePositionen.gegenstandId, id)),
         ]);
         if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Gegenstand'));
+        // The history belongs to the Gegenstand and goes with it.
+        await tx.delete(gegenstandBewegungen).where(eq(gegenstandBewegungen.gegenstandId, id));
         await tx.delete(gegenstaende).where(eq(gegenstaende.id, id));
         return true;
       });
@@ -826,6 +876,166 @@ export function createInventarStore(db: Db): InventarStore {
           }
         }
         await tx.update(gegenstaende).set({ archiviert }).where(eq(gegenstaende.id, id));
+        return true;
+      });
+    },
+    async bewegungen(gegenstandId) {
+      if (!(await gibtEs(db, gegenstaende, eq(gegenstaende.id, gegenstandId)))) return undefined;
+      const rows = await db
+        .select()
+        .from(gegenstandBewegungen)
+        .where(eq(gegenstandBewegungen.gegenstandId, gegenstandId));
+      const subs = [...new Set(rows.map((b) => b.erstelltVon))];
+      const personen = subs.length
+        ? await db.select().from(mitglieder).where(inListe(mitglieder.sub, subs))
+        : [];
+      return rows
+        .map((b) => ({ ...b, ersteller: mitgliedVon(b.erstelltVon, personen) }))
+        .sort(
+          (a, b) =>
+            b.datum.localeCompare(a.datum) || b.erstelltAm.getTime() - a.erstelltAm.getTime(),
+        );
+    },
+    async bewegungBuchen(gegenstandId, daten, sub) {
+      return db.transaction(async (tx) => {
+        const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, gegenstandId));
+        if (!g) return undefined;
+        if (g.archiviert) throw new WarenUngueltig('Der Gegenstand ist archiviert.');
+        const plaetze = await tx
+          .select()
+          .from(gegenstandPlaetze)
+          .where(eq(gegenstandPlaetze.gegenstandId, gegenstandId));
+        const verbaut = await tx
+          .select()
+          .from(gegenstandVerbaut)
+          .where(eq(gegenstandVerbaut.gegenstandId, gegenstandId));
+        const gleich = (x: PlatzZiel, z: PlatzZiel) => zielKey(x) === zielKey(z);
+        let ort: string | null = null;
+        if (daten.art === 'zugang') {
+          if (daten.nach) {
+            await zieleExistieren(tx, [daten.nach]);
+            ort = (await beschriftungLaden(tx)).platz(daten.nach);
+            const da = plaetze.find((p) => gleich(p, daten.nach!));
+            if (da) {
+              await tx
+                .update(gegenstandPlaetze)
+                .set({ anzahl: da.anzahl + daten.anzahl })
+                .where(eq(gegenstandPlaetze.id, da.id));
+            } else {
+              await tx.insert(gegenstandPlaetze).values({
+                id: randomUUID(),
+                gegenstandId,
+                lagerortId: daten.nach.lagerortId,
+                ifcoId: daten.nach.ifcoId,
+                anzahl: daten.anzahl,
+              });
+            }
+          }
+        } else {
+          if (daten.anzahl > g.anzahl) {
+            throw new WarenUngueltig(`Von „${g.name}“ gibt es nur ${g.anzahl}.`);
+          }
+          const von = daten.von;
+          if (von.art === 'ohnePlatz') {
+            const frei = ohnePlatz({ anzahl: g.anzahl, plaetze, verbaut });
+            if (daten.anzahl > frei) {
+              throw new WarenUngueltig(
+                `Ohne Platz ${frei === 1 ? 'ist nur 1 Stück' : `sind nur ${frei} Stück`}. Wähle den Platz, von dem sie weggehen.`,
+              );
+            }
+          } else if (von.art === 'platz') {
+            const da = plaetze.find((p) => gleich(p, von));
+            ort = (await beschriftungLaden(tx)).platz(von);
+            if (!da || da.anzahl < daten.anzahl) {
+              throw new WarenUngueltig(
+                `An „${ort}“ ${da ? `liegen nur ${da.anzahl}` : 'liegt nichts davon'}.`,
+              );
+            }
+            const offen = await offenLaden(tx, eq(ausleihePositionen.gegenstandId, gegenstandId));
+            const neu = plaetze
+              .map((p) => alsMenge(gegenstandId, p))
+              .map((p) => (gleich(p, von) ? { ...p, anzahl: p.anzahl - daten.anzahl } : p));
+            const fehler = await fehlerMitNamen(tx, (b) => verliehenFehler(neu, offen, b));
+            if (fehler) throw new WarenKonflikt(fehler);
+            if (da.anzahl === daten.anzahl) {
+              await tx.delete(gegenstandPlaetze).where(eq(gegenstandPlaetze.id, da.id));
+            } else {
+              await tx
+                .update(gegenstandPlaetze)
+                .set({ anzahl: da.anzahl - daten.anzahl })
+                .where(eq(gegenstandPlaetze.id, da.id));
+            }
+          } else {
+            const da = verbaut.find((v) => v.ort === von.ort);
+            if (!da || da.anzahl < daten.anzahl) {
+              throw new WarenUngueltig(
+                `Fest verbaut „${von.ort}“ ${da ? `sind nur ${da.anzahl}` : 'gibt es nicht'}.`,
+              );
+            }
+            ort = `fest verbaut: ${von.ort}`;
+            if (da.anzahl === daten.anzahl) {
+              await tx.delete(gegenstandVerbaut).where(eq(gegenstandVerbaut.id, da.id));
+            } else {
+              await tx
+                .update(gegenstandVerbaut)
+                .set({ anzahl: da.anzahl - daten.anzahl })
+                .where(eq(gegenstandVerbaut.id, da.id));
+            }
+          }
+        }
+        const anzahl = g.anzahl + (daten.art === 'zugang' ? daten.anzahl : -daten.anzahl);
+        await tx.update(gegenstaende).set({ anzahl }).where(eq(gegenstaende.id, gegenstandId));
+        const id = randomUUID();
+        await tx.insert(gegenstandBewegungen).values({
+          id,
+          gegenstandId,
+          art: daten.art,
+          grund: daten.grund,
+          anzahl: daten.anzahl,
+          datum: daten.datum,
+          kommentar: daten.kommentar,
+          ort,
+          erstelltVon: sub,
+        });
+        return id;
+      });
+    },
+    async bewegungLoeschen(gegenstandId, bewegungId) {
+      return db.transaction(async (tx) => {
+        const [b] = await tx
+          .select()
+          .from(gegenstandBewegungen)
+          .where(
+            and(
+              eq(gegenstandBewegungen.id, bewegungId),
+              eq(gegenstandBewegungen.gegenstandId, gegenstandId),
+            ),
+          );
+        if (!b) return false;
+        const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, gegenstandId));
+        if (!g) return false;
+        // A removed Abgang brings the pieces back without a Platz; a removed Zugang takes them away.
+        const anzahl = g.anzahl + (b.art === 'zugang' ? -b.anzahl : b.anzahl);
+        if (anzahl < 0) {
+          throw new WarenKonflikt('Danach gäbe es weniger als 0 Stück. Lösche zuerst die Abgänge.');
+        }
+        if (b.art === 'zugang') {
+          const [plaetze, verbaut] = await Promise.all([
+            tx
+              .select()
+              .from(gegenstandPlaetze)
+              .where(eq(gegenstandPlaetze.gegenstandId, gegenstandId)),
+            tx
+              .select()
+              .from(gegenstandVerbaut)
+              .where(eq(gegenstandVerbaut.gegenstandId, gegenstandId)),
+          ]);
+          const summe = [...plaetze, ...verbaut].reduce((s, p) => s + p.anzahl, 0);
+          const fehler = sollZuKleinFehler(anzahl, g.anzahl, summe);
+          if (fehler) throw new WarenKonflikt(fehler);
+        }
+        await tx.delete(gegenstandBewegungen).where(eq(gegenstandBewegungen.id, bewegungId));
+        await tx.update(gegenstaende).set({ anzahl }).where(eq(gegenstaende.id, gegenstandId));
         return true;
       });
     },

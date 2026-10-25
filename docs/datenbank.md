@@ -12,8 +12,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Mehrere Statements: `<migration>.down.1.sql`, `<migration>.down.2.sql`, ... Sie laufen in
   numerischer Reihenfolge, jedes als eigene Abfrage.
 - Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 braucht jede Migration eine
-  (ein Test in `rollback.test.ts` prüft das). 0010–0023 (Waren) und 0025–0034 (Inventar) löschen ihre Tabellen bzw.
-  Indizes; 0024 entzieht den Vorstandsposten `waren:verwalten` und `inventar:verwalten` wieder. Rollback-Ziel nur für das
+  (ein Test in `rollback.test.ts` prüft das). 0010–0023 (Waren) und 0025–0035 (Inventar) löschen ihre Tabellen bzw.
+  Indizes; 0036 löscht nur die Startbuchungen „Bestand übernommen“ wieder; 0024 entzieht den Vorstandsposten `waren:verwalten` und `inventar:verwalten` wieder. Rollback-Ziel nur für das
   Inventar: `0024_vorstandsposten_rechte`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten

@@ -293,3 +293,30 @@ export function useAufraeumen() {
     laedt: q.isPending,
   };
 }
+
+/** One Zugang or Abgang of a Gegenstand as returned by `GET /inventar/gegenstaende/:id/bewegungen`. */
+export interface BewegungEintrag {
+  id: string;
+  art: 'zugang' | 'abgang';
+  grund: string;
+  anzahl: number;
+  /** `YYYY-MM-DD`. */
+  datum: string;
+  kommentar: string | null;
+  /** Display snapshot of the Platz the pieces went to or came from. */
+  ort: string | null;
+  ersteller: OrganisatorEintrag | null;
+}
+
+/** History of a Gegenstand, newest first. */
+export function useBewegungen(gegenstandId: string) {
+  const api = useApi();
+  const q = useQuery({
+    queryKey: ['inventar', 'bewegungen', gegenstandId],
+    queryFn: async (): Promise<BewegungEintrag[]> =>
+      unwrap(
+        await api.inventar.gegenstaende[':id'].bewegungen.$get({ param: { id: gegenstandId } }),
+      ),
+  });
+  return { bewegungen: q.data ?? [], laedt: q.isPending, fehler: q.isError };
+}

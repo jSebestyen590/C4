@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Group,
   Modal,
   NumberInput,
   Select,
@@ -13,9 +14,12 @@ import { useMemo, useState, type SubmitEvent } from 'react';
 import {
   gegenstandAnlegenSchema,
   gegenstandSchema,
-  sollZuKleinFehler,
+  heuteBerlin,
   zuVielVerteiltFehler,
+  ZUGANG_GRUENDE,
 } from '@c4/shared';
+import { DatumFeld } from './DatumFeld';
+import { GRUND_LABELS, label } from './i18n';
 import { useApi } from './api';
 import { kategorieOptionen, zielAusWert, zielOptionen } from './inventarAnzeige';
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
@@ -25,8 +29,9 @@ import { INVENTAR_KEY } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 
 /**
- * Create or edit a Gegenstand. Creating may put it onto a first place (by default with the whole
- * Anzahl); afterwards the Plätze are edited separately. Mount it only while it should be open.
+ * Create or edit a Gegenstand. Creating books the first Zugang (Anzahl, Grund, Datum) and may put it
+ * onto a first place (by default with the whole Anzahl); editing changes only the master data, the
+ * amount changes through Zugänge and Abgänge. Mount it only while it should be open.
  */
 export function GegenstandFormular({
   gegenstand,
@@ -47,7 +52,9 @@ export function GegenstandFormular({
   const qc = useQueryClient();
   const [name, setName] = useState(gegenstand?.name ?? '');
   const [kategorieId, setKategorieId] = useState<string | null>(gegenstand?.kategorieId ?? null);
-  const [anzahl, setAnzahl] = useState<number | string>(gegenstand?.anzahl ?? 1);
+  const [anzahl, setAnzahl] = useState<number | string>(1);
+  const [grund, setGrund] = useState<string>('gekauft');
+  const [datum, setDatum] = useState(heuteBerlin());
   const [beschreibung, setBeschreibung] = useState(gegenstand?.beschreibung ?? '');
   const [ziel, setZiel] = useState<string | null>(null);
   // null: follows the Anzahl until changed by hand.
@@ -70,18 +77,20 @@ export function GegenstandFormular({
       beschreibung: string;
       kategorieId: string;
       anzahl: number;
+      grund: (typeof ZUGANG_GRUENDE)[number];
+      datum: string;
       platz: { lagerortId: string | null; ifcoId: string | null; anzahl: number } | null;
     }) => {
-      const { platz, ...daten } = json;
       if (gegenstand) {
+        const { name, beschreibung, kategorieId } = json;
         await pruefen(
           await api.inventar.gegenstaende[':id'].$put({
             param: { id: gegenstand.id },
-            json: daten,
+            json: { name, beschreibung, kategorieId },
           }),
         );
       } else {
-        await pruefen(await api.inventar.gegenstaende.$post({ json: { ...daten, platz } }));
+        await pruefen(await api.inventar.gegenstaende.$post({ json }));
       }
     },
     onSuccess: async () => {
@@ -97,20 +106,18 @@ export function GegenstandFormular({
       beschreibung,
       kategorieId: kategorieId ?? '',
       anzahl: typeof anzahl === 'number' ? anzahl : Number.NaN,
+      grund: grund as (typeof ZUGANG_GRUENDE)[number],
+      datum,
       platz: ziel
         ? { ...zielAusWert(ziel), anzahl: typeof amPlatz === 'number' ? amPlatz : Number.NaN }
         : null,
     };
     const parsed = (gegenstand ? gegenstandSchema : gegenstandAnlegenSchema).safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
-    const regel = gegenstand
-      ? sollZuKleinFehler(
-          eingabe.anzahl,
-          gegenstand.anzahl,
-          [...gegenstand.plaetze, ...gegenstand.verbaut].reduce((s, p) => s + p.anzahl, 0),
-        )
-      : eingabe.platz &&
-        zuVielVerteiltFehler(eingabe.name.trim(), eingabe.anzahl, 0, 0, eingabe.platz.anzahl);
+    const regel =
+      !gegenstand &&
+      eingabe.platz &&
+      zuVielVerteiltFehler(eingabe.name.trim(), eingabe.anzahl, 0, 0, eingabe.platz.anzahl);
     if (regel) return setFehler(regel);
     setFehler(null);
     speichern.mutate(eingabe);
@@ -140,15 +147,30 @@ export function GegenstandFormular({
             value={kategorieId}
             onChange={setKategorieId}
           />
-          <NumberInput
-            label="Anzahl (Soll)"
-            allowDecimal={false}
-            allowNegative={false}
-            min={1}
-            inputMode="numeric"
-            value={anzahl}
-            onChange={setAnzahl}
-          />
+          {!gegenstand && (
+            <>
+              <NumberInput
+                label="Anzahl"
+                allowDecimal={false}
+                allowNegative={false}
+                min={1}
+                inputMode="numeric"
+                value={anzahl}
+                onChange={setAnzahl}
+              />
+              <Group grow align="flex-start" wrap="wrap">
+                <Select
+                  label="Grund"
+                  allowDeselect={false}
+                  data={ZUGANG_GRUENDE.map((g) => ({ value: g, label: label(GRUND_LABELS, g) }))}
+                  value={grund}
+                  onChange={(v) => v && setGrund(v)}
+                  miw={160}
+                />
+                <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
+              </Group>
+            </>
+          )}
           {!gegenstand && (
             <PfadSelect
               label="Platz (optional)"

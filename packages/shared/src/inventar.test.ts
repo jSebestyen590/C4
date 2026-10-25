@@ -5,10 +5,13 @@ import {
   ausleihFehler,
   ausleiheSchema,
   gegenstandPlaetzeSchema,
+  gegenstandAnlegenSchema,
   gegenstandSchema,
   ifcoInhaltSchema,
   ifcoSchema,
   inventarAbweichung,
+  bewegungSchema,
+  ohnePlatz,
   platzVerlustFehler,
   ifcoInhaltAnwenden,
   verteilbar,
@@ -70,16 +73,21 @@ describe('kategorieSchema / gegenstandSchema / ifcoSchema', () => {
     expect(ifcoSchema.parse({ name: 'Kiste', lagerortId: 'regal' }).lagerortId).toBe('regal');
     expect(ifcoSchema.parse({ name: 'Kiste', typId: 't1' }).typId).toBe('t1');
   });
-  it('defaults the Anzahl of a Gegenstand to 1 and rejects invalid values', () => {
-    expect(gegenstandSchema.parse({ name: 'Beamer', kategorieId: 'k' }).anzahl).toBe(1);
+  it('creates a Gegenstand with a first Zugang (Anzahl 1, gekauft by default)', () => {
+    const tag = '2026-01-10';
     expect(
-      gegenstandSchema.safeParse({ name: 'Beamer', kategorieId: 'k', anzahl: 0 }).success,
-    ).toBe(false);
-    expect(
-      gegenstandSchema.safeParse({ name: 'Beamer', kategorieId: 'k', anzahl: 1.5 }).success,
-    ).toBe(false);
+      gegenstandAnlegenSchema.parse({ name: 'Beamer', kategorieId: 'k', datum: tag }),
+    ).toMatchObject({ anzahl: 1, grund: 'gekauft', platz: null });
+    const ohne = { name: 'Beamer', kategorieId: 'k', datum: tag };
+    expect(gegenstandAnlegenSchema.safeParse({ ...ohne, anzahl: 0 }).success).toBe(false);
+    expect(gegenstandAnlegenSchema.safeParse({ ...ohne, anzahl: 1.5 }).success).toBe(false);
+    expect(gegenstandAnlegenSchema.safeParse({ ...ohne, datum: undefined }).success).toBe(false);
     expect(gegenstandSchema.safeParse({ name: 'Beamer', kategorieId: '' }).success).toBe(false);
     expect(gegenstandSchema.safeParse({ name: ' ', kategorieId: 'k' }).success).toBe(false);
+    // editing never carries the amount
+    expect(
+      gegenstandSchema.parse({ name: 'Beamer', kategorieId: 'k', anzahl: 5 }),
+    ).not.toHaveProperty('anzahl');
   });
 });
 
@@ -285,6 +293,52 @@ describe('ifcoInhaltAnwenden', () => {
       ifcoInhaltAnwenden(plaetze, 'i1', [{ gegenstandId: 'g', anzahl: 2, andere: selbst }])
         .ungueltig,
     ).toBe('g');
+  });
+});
+
+describe('bewegungSchema / ohnePlatz', () => {
+  const tag = '2026-01-10';
+  it('accepts a Zugang with or without Platz and an Abgang with its source', () => {
+    expect(
+      bewegungSchema.parse({ art: 'zugang', grund: 'gekauft', anzahl: 7, datum: tag }),
+    ).toMatchObject({ nach: null, kommentar: null });
+    expect(
+      bewegungSchema.safeParse({
+        art: 'abgang',
+        grund: 'verloren',
+        anzahl: 3,
+        datum: tag,
+        von: { art: 'platz', lagerortId: 'l1' },
+      }).success,
+    ).toBe(true);
+    expect(
+      bewegungSchema.safeParse({
+        art: 'abgang',
+        grund: 'kaputt',
+        anzahl: 1,
+        datum: tag,
+        von: { art: 'verbaut', ort: 'Bar' },
+      }).success,
+    ).toBe(true);
+  });
+  it('rejects wrong reasons, future days and missing sources', () => {
+    expect(
+      bewegungSchema.safeParse({ art: 'zugang', grund: 'verloren', anzahl: 1, datum: tag }).success,
+    ).toBe(false);
+    expect(
+      bewegungSchema.safeParse({ art: 'zugang', grund: 'gekauft', anzahl: 1, datum: '2999-01-01' })
+        .success,
+    ).toBe(false);
+    expect(
+      bewegungSchema.safeParse({ art: 'abgang', grund: 'verloren', anzahl: 1, datum: tag }).success,
+    ).toBe(false);
+    expect(
+      bewegungSchema.safeParse({ art: 'zugang', grund: 'bestand', anzahl: 1, datum: tag }).success,
+    ).toBe(false);
+  });
+  it('counts the pieces without Platz', () => {
+    expect(ohnePlatz({ anzahl: 12, plaetze: [{ anzahl: 5 }], verbaut: [{ anzahl: 3 }] })).toBe(4);
+    expect(ohnePlatz({ anzahl: 2, plaetze: [{ anzahl: 5 }], verbaut: [] })).toBe(0);
   });
 });
 

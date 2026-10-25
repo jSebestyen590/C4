@@ -33,12 +33,30 @@ export const kategorieSchema = z.object({
 });
 export type KategorieEingabe = z.input<typeof kategorieSchema>;
 
+/** Master data of a Gegenstand; its amount only changes through Zugänge and Abgänge. */
 export const gegenstandSchema = z.object({
   name: name(),
   beschreibung,
   kategorieId: idSchema('Bitte wähle eine Kategorie.'),
-  anzahl: anzahlSchema.default(1),
 });
+
+/** Reasons of a Zugang; `bestand` (taken over when the history started) is not selectable. */
+export const ZUGANG_GRUENDE = ['gekauft', 'ersatz', 'geschenkt', 'gefunden', 'sonstiges'] as const;
+export const ABGANG_GRUENDE = [
+  'verloren',
+  'kaputt',
+  'verkauft',
+  'entsorgt',
+  'verschenkt',
+  'sonstiges',
+] as const;
+export type BewegungGrund =
+  (typeof ZUGANG_GRUENDE)[number] | (typeof ABGANG_GRUENDE)[number] | 'bestand';
+
+/** A booking day: `YYYY-MM-DD`, not in the future (Europe/Berlin). */
+const buchungsTag = z.iso
+  .date({ error: 'Bitte gib ein Datum an.' })
+  .refine((d) => d <= heuteBerlin(), 'Das Datum darf nicht in der Zukunft liegen.');
 export type GegenstandEingabe = z.input<typeof gegenstandSchema>;
 
 export const ifcoSchema = z.object({
@@ -68,10 +86,51 @@ export const gegenstandPlatzSchema = z
 /** Marks (or unmarks) an IFCO as done in the running Aufräumaktion. */
 export const aufraeumFertigSchema = z.object({ fertig: z.boolean() });
 
-/** Creating a Gegenstand may put it straight onto one place. */
+/** Creating a Gegenstand books its first Zugang and may put it straight onto one place. */
 export const gegenstandAnlegenSchema = gegenstandSchema.extend({
+  anzahl: anzahlSchema.default(1),
+  grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.').default('gekauft'),
+  datum: buchungsTag,
   platz: gegenstandPlatzSchema.nullable().default(null),
 });
+
+/**
+ * A Zugang (optionally onto a Platz) or an Abgang (from a Platz, from the pieces without a Platz or
+ * from a fixed installation) of a Gegenstand.
+ */
+export const bewegungSchema = z.discriminatedUnion('art', [
+  z.object({
+    art: z.literal('zugang'),
+    grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.'),
+    anzahl: anzahlSchema,
+    datum: buchungsTag,
+    kommentar: kommentarSchema,
+    nach: z
+      .object({ lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+      .refine(genauEinZiel, ZIEL_MELDUNG)
+      .nullable()
+      .default(null),
+  }),
+  z.object({
+    art: z.literal('abgang'),
+    grund: z.enum(ABGANG_GRUENDE, 'Bitte wähle einen Grund.'),
+    anzahl: anzahlSchema,
+    datum: buchungsTag,
+    kommentar: kommentarSchema,
+    von: z.discriminatedUnion(
+      'art',
+      [
+        z.object({ art: z.literal('ohnePlatz') }),
+        z
+          .object({ art: z.literal('platz'), lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+          .refine(genauEinZiel, ZIEL_MELDUNG),
+        z.object({ art: z.literal('verbaut'), ort: z.string().min(1) }),
+      ],
+      'Bitte wähle, von wo die Stück weggehen.',
+    ),
+  }),
+]);
+export type BewegungEingabe = z.input<typeof bewegungSchema>;
 export type GegenstandAnlegenEingabe = z.input<typeof gegenstandAnlegenSchema>;
 
 /** Pieces built in for good at a place given as free text ("unter der Bar"); not on any Platz. */
@@ -313,6 +372,14 @@ export function platzVerlustFehler(name: string, bisher: number, neu: number): s
   const n = bisher - neu;
   return `„${name}“: ${n === 1 ? '1 Stück hätte' : `${n} Stück hätten`} danach keinen Platz mehr. Trage ${n === 1 ? 'es' : 'sie'} an einem anderen Platz ein oder räume über „Plätze ändern“ beim Gegenstand um.`;
 }
+
+/** Pieces of a Gegenstand that are neither on a Platz nor built in (never negative). */
+export const ohnePlatz = (g: {
+  anzahl: number;
+  plaetze: { anzahl: number }[];
+  verbaut: { anzahl: number }[];
+}): number =>
+  Math.max(0, g.anzahl - [...g.plaetze, ...g.verbaut].reduce((s, p) => s + p.anzahl, 0));
 
 /** Pieces of a Gegenstand that can go onto Plätze: the Soll minus the fixed ones. */
 export const verteilbar = (g: { anzahl: number; verbaut: { anzahl: number }[] }): number =>
