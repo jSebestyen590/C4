@@ -23,12 +23,20 @@ function GeraetPush() {
     aktiviertGerade,
     deaktivieren,
     deaktiviertGerade,
+    syncNoetig,
   } = usePushGeraet();
   const [testErgebnis, setTestErgebnis] = useState<
     { geraete: number; ok: number; fehler: number } | 'fehler' | null
   >(null);
   const test = useMutation({
-    mutationFn: async () => unwrap(await api.push.test.$post()),
+    mutationFn: async () => {
+      const ergebnis = await unwrap(await api.push.test.$post());
+      // The server knows no device although this one has a subscription: sync, then retry once.
+      if (ergebnis.geraete === 0 && (await syncNoetig())) {
+        return unwrap(await api.push.test.$post());
+      }
+      return ergebnis;
+    },
     onMutate: () => setTestErgebnis(null),
     onSuccess: setTestErgebnis,
     onError: () => setTestErgebnis('fehler'),

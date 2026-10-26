@@ -1820,6 +1820,19 @@ export function createApp(deps: AppDeps) {
         await deps.benachrichtigungen.aboSpeichern(sub, c.req.valid('json'));
         return c.json({ ok: true }, 201);
       })
+      .get(
+        '/push/abos/status',
+        auth,
+        profilBearbeiten,
+        zValidator('query', pushAboLoeschenSchema),
+        async (c) =>
+          c.json({
+            registriert: await deps.benachrichtigungen.aboRegistriert(
+              c.get('user').sub,
+              c.req.valid('query').endpoint,
+            ),
+          }),
+      )
       .delete(
         '/push/abos',
         auth,

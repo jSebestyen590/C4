@@ -32,7 +32,7 @@ Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, E
 ## API
 
 - `GET /api/push/schluessel` → `{ publicKey }`; `POST /api/push/abos` (Abo des Browsers, Upsert per `endpoint`);
-  `DELETE /api/push/abos` `{ endpoint }`.
+  `DELETE /api/push/abos` `{ endpoint }`; `GET /api/push/abos/status?endpoint=` → `{ registriert }` (nur eigene Abos).
 - `GET /api/me/benachrichtigungen` → alle Arten mit `bereich`, wirksamem `aktiv`/`minuten` und `minutenOptionen`;
   `PUT /api/me/benachrichtigungen` `{ art, aktiv, minuten? }`.
 - `POST /api/push/test` → `{ geraete, ok, fehler }`: Testnachricht an die eigenen Geräte (ohne Dedupe und ohne
@@ -85,6 +85,18 @@ bei Klick die App (`url` der Nachricht). `deploy-env.yml` lädt `sw.js` mit `Cac
   (`sessionStorage`), „Nein danke“ dauerhaft (`localStorage`, `c4.push.nein`). Auf iOS außerhalb des Home-Bildschirm-Modus
   erscheint stattdessen der Hinweis „Zum Home-Bildschirm hinzufügen“ („Verstanden“ = Entscheidung). Nicht auf
   `/benachrichtigungen` selbst.
+
+### Abgleich Gerät und Server
+
+Das Browser-Abo kann den Server überleben (Datenbank zurückgesetzt, Abo nach 410 gelöscht, neue VAPID-Schlüssel). Darum:
+
+- Einmal pro App-Start (nach dem Profil-Gate, `usePushAbgleichBeimStart`): gibt es lokal ein Abo und ist die Erlaubnis
+  erteilt, wird der Server-Schlüssel mit `applicationServerKey` des Abos verglichen (`gleicherSchluessel`). Gleich: Abo
+  erneut per `POST` senden (Upsert). Anders: altes Abo löschen, mit neuem Schlüssel abonnieren, senden. Scheitert das
+  (z. B. iOS verlangt eine Geste), bleibt das Gerät ohne Abo und der Status zeigt „nicht aktiv“. Fehler werden nur geloggt.
+- Der Status „aktiv“ gilt nur, wenn lokales Abo **und** Server-Eintrag (`/push/abos/status`) existieren.
+- „Testbenachrichtigung senden“: meldet der Server 0 Geräte, obwohl lokal ein Abo existiert, läuft der Abgleich und der
+  Test wird einmal wiederholt.
 
 ## iOS
 

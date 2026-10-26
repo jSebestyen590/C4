@@ -54,6 +54,8 @@ export interface BenachrichtigungenStore {
   /** Removes a subscription the push service reported as gone. */
   aboEntfernen(endpoint: string): Promise<void>;
   abosVon(subs: readonly string[]): Promise<PushAbo[]>;
+  /** Whether the member has a subscription with this endpoint. */
+  aboVorhanden(sub: string, endpoint: string): Promise<boolean>;
   /** Members (all when `subs` is undefined) with their status and stored setting of `art`. */
   empfaenger(art: string, subs?: readonly string[]): Promise<Empfaenger[]>;
   /** Status and all stored settings of one member; undefined without profile. */
@@ -93,6 +95,7 @@ export interface Benachrichtigungen {
   publicKey(): Promise<string>;
   aboSpeichern(sub: string, abo: PushAboEingabe): Promise<void>;
   aboLoeschen(sub: string, endpoint: string): Promise<void>;
+  aboRegistriert(sub: string, endpoint: string): Promise<boolean>;
   /** All types with the member's effective values; undefined without profile. */
   einstellungen(sub: string): Promise<EinstellungDto[] | undefined>;
   einstellungSetzen(sub: string, art: string, aktiv: boolean, minuten?: number): Promise<boolean>;
@@ -145,6 +148,7 @@ export function createBenachrichtigungen(deps: {
     },
     aboSpeichern: (sub, abo) => store.aboSpeichern(sub, abo),
     aboLoeschen: (sub, endpoint) => store.aboLoeschen(sub, endpoint),
+    aboRegistriert: (sub, endpoint) => store.aboVorhanden(sub, endpoint),
 
     async einstellungen(sub) {
       const m = await store.mitgliedEinstellungen(sub);
@@ -216,7 +220,7 @@ export function createBenachrichtigungen(deps: {
       const ergebnisse = await liefern(abos, {
         titel: 'Test',
         text: 'Push funktioniert auf diesem Gerät.',
-        url: '/benachrichtigungen',
+        url: '/app/benachrichtigungen',
       });
       return {
         geraete: abos.length,
@@ -287,6 +291,15 @@ export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
 
     async aboEntfernen(endpoint) {
       await db.delete(pushAbos).where(eq(pushAbos.endpoint, endpoint));
+    },
+
+    async aboVorhanden(sub, endpoint) {
+      const zeilen = await db
+        .select({ id: pushAbos.id })
+        .from(pushAbos)
+        .where(and(eq(pushAbos.mitgliedSub, sub), eq(pushAbos.endpoint, endpoint)))
+        .limit(1);
+      return zeilen.length > 0;
     },
 
     async abosVon(subs) {

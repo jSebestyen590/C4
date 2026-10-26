@@ -30,6 +30,8 @@ export function createFakeBenachrichtigungenStore(
       const i = abos.findIndex((a) => a.endpoint === endpoint);
       if (i >= 0) abos.splice(i, 1);
     },
+    aboVorhanden: async (sub, endpoint) =>
+      abos.some((a) => a.mitgliedSub === sub && a.endpoint === endpoint),
     abosVon: async (subs) => abos.filter((a) => subs.includes(a.mitgliedSub)),
     empfaenger: async (art, subs) =>
       mitglieder()

@@ -23,7 +23,12 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const ziel = new URL(event.notification.data?.url ?? '/app/', self.location.origin).href;
+  // Only paths inside the app are served by the SPA; anything else would hit S3 directly.
+  const pfad = event.notification.data?.url ?? '/app/';
+  const ziel = new URL(
+    pfad.startsWith('/app/') ? pfad : `/app${pfad.startsWith('/') ? '' : '/'}${pfad}`,
+    self.location.origin,
+  ).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((fenster) => {
       const offen = fenster.find((c) => c.url.startsWith(self.location.origin + '/app/'));

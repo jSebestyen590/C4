@@ -2835,6 +2835,26 @@ describe('kalender', () => {
       expect(t.push.abos).toHaveLength(0);
     });
 
+    it('reports whether an endpoint is registered for the caller', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const url = 'https://push.example/1';
+      const status = (token: string) =>
+        t.app.request(
+          `/api/push/abos/status?endpoint=${encodeURIComponent(url)}`,
+          json(token, 'GET'),
+        );
+      expect((await status('member-token')).status).toBe(200);
+      expect(await (await status('member-token')).json()).toEqual({ registriert: false });
+      await t.push.store.aboSpeichern('m2', abo(url));
+      expect(await (await status('member-token')).json()).toEqual({ registriert: true });
+      // Another member's endpoint does not count.
+      expect(await (await status('reader-token')).json()).toEqual({ registriert: false });
+      expect(
+        (await t.app.request('/api/push/abos/status', json('member-token', 'GET'))).status,
+      ).toBe(400);
+    });
+
     it('sends a test message to the own devices and reports the result', async () => {
       const t = makeApp();
       mitProfil(t);

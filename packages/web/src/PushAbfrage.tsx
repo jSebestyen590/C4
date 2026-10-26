@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
-import { usePushGeraet } from './usePushGeraet';
+import { usePushAbgleichBeimStart, usePushGeraet } from './usePushGeraet';
 
 const NEIN_KEY = 'c4.push.nein';
 const SPAETER_KEY = 'c4.push.spaeter';
@@ -53,6 +53,7 @@ export function PushAbfrage() {
 
   const profilVorhanden =
     !!me.data?.preferredUsername && !!mitglied.data && mitglied.data.vorname !== '';
+  usePushAbgleichBeimStart(darf && profilVorhanden);
   const entschieden =
     lesen(() => localStorage, NEIN_KEY) || lesen(() => sessionStorage, SPAETER_KEY);
   if (!darf || !profilVorhanden || ausgeblendet || entschieden) return null;
