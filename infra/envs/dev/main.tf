@@ -48,6 +48,9 @@ module "app" {
   allow_localhost_callback = true
   deletion_protection      = false
   budget_email             = "aws@c4-leipzig.de"
+
+  # TEMP: faster push job for testing; remove before merging feature/kalender (default is 5 minutes).
+  push_job_rate = "rate(1 minute)"
 }
 
 output "app" {

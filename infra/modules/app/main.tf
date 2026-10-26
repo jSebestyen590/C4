@@ -308,7 +308,7 @@ resource "aws_iam_role_policy" "scheduler" {
 resource "aws_scheduler_schedule" "push_job" {
   name                = "${local.name}-push-job"
   description         = "Runs the notification job of the API (reminders, missing Dienste)"
-  schedule_expression = "rate(5 minutes)"
+  schedule_expression = var.push_job_rate
 
   flexible_time_window {
     mode = "OFF"
