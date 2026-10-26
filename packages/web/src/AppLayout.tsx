@@ -29,7 +29,7 @@ import {
   IconUsersGroup,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import logo from './assets/favicon.png';
@@ -109,6 +109,8 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
   const { pathname } = useLocation();
   const [opened, { toggle, close }] = useDisclosure(false);
+  // Any navigation (sidebar, profile menu, in-page links) closes the mobile menu.
+  useEffect(close, [pathname, close]);
   const farbschema = useComputedColorScheme('light');
 
   const links = [
