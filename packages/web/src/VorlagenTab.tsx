@@ -16,17 +16,20 @@ import { IconArchive, IconArchiveOff, IconEdit, IconPlus, IconTrash } from '@tab
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { SCHICHT_ART_LABELS } from './i18n';
-import { vorlageEingabeSchema, type VorlageDto } from '@c4/shared';
+import { vorlageEingabeSchema, type VorlageDto, type VorlageEingabe } from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
 import { useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import {
-  bedarfeZuEingabe,
+  bedarfFelder,
+  fehlerAusIssues,
   KopfFelder,
+  neueSchichtWerte,
   neuerKey,
   SchichtListeEditor,
   type KopfWerte,
   type SchichtBasis,
+  type SchichtFehler,
 } from './KalenderFormular';
 import {
   kalenderInvalidieren,
@@ -76,47 +79,39 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
     beginnZeit: s.beginnZeit,
     endeTagVersatz: s.endeTagVersatz,
     endeZeit: s.endeZeit,
-    bedarfe: s.bedarfe.map((b) => ({ ...b })),
+    bedarfe:
+      s.art === 'betrieb' && s.bedarfe.length > 0
+        ? s.bedarfe.map((b) => ({ ...b }))
+        : neueSchichtWerte().bedarfe,
+    minimum: s.art === 'betrieb' ? 1 : s.minimum,
+    wunsch: s.art === 'betrieb' ? 2 : s.wunsch,
   })),
 });
 
-interface VorlageSchichtJson {
-  art: VorlageSchichtForm['art'];
-  tagVersatz: number;
-  beginnZeit: string;
-  endeTagVersatz: number;
-  endeZeit: string;
-  bedarfe: { dienstformId: string; minimum: number; wunsch: number }[];
-}
-
 const zahl = (v: number | ''): number => (v === '' ? 0 : v);
 
-/** Form values -> API input, or a German error text. */
+/** Form values -> API input, or German error texts (general and per Schicht field). */
 function eingabe(
   w: VorlageWerte,
   archiviert: boolean,
-): { fehler: string } | { json: ReturnType<typeof vorlageJson> } {
-  const schichten: VorlageSchichtJson[] = [];
-  for (const s of w.schichten) {
-    const bedarfe = bedarfeZuEingabe(s.bedarfe);
-    if (!bedarfe) return { fehler: 'Bitte wähle bei jedem Bedarf eine Dienstform.' };
-    schichten.push({
-      art: s.art,
-      tagVersatz: zahl(s.tagVersatz),
-      beginnZeit: s.beginnZeit,
-      endeTagVersatz: zahl(s.endeTagVersatz),
-      endeZeit: s.endeZeit,
-      bedarfe,
-    });
-  }
+): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: VorlageEingabe } {
+  const schichten = w.schichten.map((s) => ({
+    tagVersatz: zahl(s.tagVersatz),
+    beginnZeit: s.beginnZeit,
+    endeTagVersatz: zahl(s.endeTagVersatz),
+    endeZeit: s.endeZeit,
+    ...bedarfFelder(s),
+  }));
   const json = vorlageJson(w, schichten, archiviert);
   const geprueft = vorlageEingabeSchema.safeParse(json);
-  if (!geprueft.success)
-    return { fehler: geprueft.error?.issues[0]?.message ?? 'Ungültige Eingabe.' };
-  return { json };
+  if (!geprueft.success) {
+    const { schichten: schichtFehler, allgemein } = fehlerAusIssues(geprueft.error.issues);
+    return { fehler: allgemein ?? 'Ungültige Eingabe.', schichtFehler };
+  }
+  return { json: geprueft.data };
 }
 
-function vorlageJson(w: VorlageWerte, schichten: VorlageSchichtJson[], archiviert: boolean) {
+function vorlageJson<S>(w: VorlageWerte, schichten: S[], archiviert: boolean) {
   return {
     titel: w.titel,
     beschreibung: w.beschreibung,
@@ -136,11 +131,13 @@ function VersatzZeit({
   versatz,
   zeit,
   onChange,
+  fehler,
 }: Readonly<{
   titel: string;
   versatz: number | '';
   zeit: string;
   onChange: (versatz: number | '', zeit: string) => void;
+  fehler?: string;
 }>) {
   return (
     <Stack gap={4}>
@@ -162,6 +159,7 @@ function VersatzZeit({
           label="Uhrzeit"
           type="time"
           value={zeit}
+          error={fehler}
           onChange={(e) => onChange(versatz, e.currentTarget.value)}
           w={140}
           style={{ flexShrink: 0 }}
@@ -181,12 +179,17 @@ function VorlageEditor({
   const kategorien = useEventKategorien();
   const [werte, setWerte] = useState(() => (vorlage ? werteAus(vorlage) : leereVorlage()));
   const [fehler, setFehler] = useState<string | null>(null);
+  const [schichtFehler, setSchichtFehler] = useState<Record<number, SchichtFehler>>({});
   const [laeuft, setLaeuft] = useState(false);
 
   const speichern = async () => {
     const e = eingabe(werte, vorlage?.archiviert ?? false);
-    if ('fehler' in e) return setFehler(e.fehler);
+    if ('fehler' in e) {
+      setSchichtFehler(e.schichtFehler ?? {});
+      return setFehler(e.fehler);
+    }
     setFehler(null);
+    setSchichtFehler({});
     setLaeuft(true);
     try {
       await pruefen(
@@ -236,21 +239,21 @@ function VorlageEditor({
         schichten={werte.schichten}
         onChange={(schichten) => setWerte({ ...werte, schichten })}
         dienstformen={dienstformen.liste}
+        fehler={schichtFehler}
         neu={() => ({
           key: neuerKey(),
-          art: 'betrieb',
+          ...neueSchichtWerte(),
           tagVersatz: 0,
           beginnZeit: werte.beginnZeit,
           endeTagVersatz: werte.endeTagVersatz,
           endeZeit: werte.endeZeit,
-          bedarfe: [],
         })}
         untertitel={(s) =>
           s.beginnZeit && s.endeZeit
             ? `${SCHICHT_ART_LABELS[s.art]} ${s.beginnZeit}–${s.endeZeit}`
             : null
         }
-        zeitFelder={(s, aendern) => (
+        zeitFelder={(s, aendern, f) => (
           <Stack gap="sm">
             <VersatzZeit
               titel="Beginn"
@@ -262,6 +265,7 @@ function VorlageEditor({
               titel="Ende"
               versatz={s.endeTagVersatz}
               zeit={s.endeZeit}
+              fehler={f.endeZeit}
               onChange={(endeTagVersatz, endeZeit) => aendern({ endeTagVersatz, endeZeit })}
             />
           </Stack>

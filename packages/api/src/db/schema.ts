@@ -482,6 +482,9 @@ export const schichten = pgTable('schichten', {
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
   reihenfolge: integer('reihenfolge').notNull().default(0),
+  /** Head count of Aufbau/Putzen; null for Betrieb (see `schichtBedarfe`). */
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
 });
 export type SchichtRow = typeof schichten.$inferSelect;
 
@@ -507,9 +510,8 @@ export const dienste = pgTable('dienste', {
   schichtId: text('schicht_id')
     .notNull()
     .references(() => schichten.id),
-  dienstformId: text('dienstform_id')
-    .notNull()
-    .references(() => dienstformen.id),
+  /** Null for Dienste in Aufbau/Putzen Schichten. */
+  dienstformId: text('dienstform_id').references(() => dienstformen.id),
   mitgliedSub: text('mitglied_sub').references(() => mitglieder.sub),
   externId: text('extern_id').references(() => externe.id),
   kommentar: text('kommentar'),
@@ -545,6 +547,8 @@ export const vorlageSchichten = pgTable('vorlage_schichten', {
   endeTagVersatz: integer('ende_tag_versatz').notNull(),
   endeZeit: text('ende_zeit').notNull(),
   reihenfolge: integer('reihenfolge').notNull().default(0),
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
 });
 export type VorlageSchichtRow = typeof vorlageSchichten.$inferSelect;
 

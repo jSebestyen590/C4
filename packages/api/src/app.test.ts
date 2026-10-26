@@ -2400,6 +2400,30 @@ describe('kalender', () => {
     );
     expect((await post('admin-token', eventBody)).status).toBe(201);
     expect((await post('admin-token', { ...eventBody, ende: eventBody.beginn })).status).toBe(400);
+    const betrieb = {
+      art: 'betrieb',
+      beginn: eventBody.beginn,
+      ende: eventBody.ende,
+      bedarfe: [{ dienstformId: 'f1', minimum: 1, wunsch: 2 }],
+    };
+    const aufbau = { art: 'aufbau', beginn: eventBody.beginn, ende: eventBody.ende };
+    const mitSchicht = (schicht: unknown) => ({ ...eventBody, schichten: [schicht] });
+    expect((await post('admin-token', mitSchicht(betrieb))).status).toBe(201);
+    expect(
+      (await post('admin-token', mitSchicht({ ...aufbau, minimum: 0, wunsch: 2 }))).status,
+    ).toBe(201);
+    // Betrieb without Dienstform or with minimum 0, Aufbau without wish
+    expect((await post('admin-token', mitSchicht({ ...betrieb, bedarfe: [] }))).status).toBe(400);
+    expect(
+      (
+        await post(
+          'admin-token',
+          mitSchicht({ ...betrieb, bedarfe: [{ dienstformId: 'f1', minimum: 0, wunsch: 1 }] }),
+        )
+      ).status,
+    ).toBe(400);
+    const ohneWunsch = await post('admin-token', mitSchicht({ ...aufbau, minimum: 0 }));
+    expect(ohneWunsch.status).toBe(400);
     t.kalender.eventAnlegen.mockRejectedValueOnce(
       new KalenderUngueltig('Die Kategorie gibt es nicht.'),
     );
@@ -2639,6 +2663,8 @@ describe('kalender', () => {
           beginn: eventBody.beginn,
           ende: eventBody.ende,
           bedarfe: [],
+          minimum: null,
+          wunsch: null,
           dienste: [
             { id: 'd1', dienstformId: 'f1', kommentar: null, eingetragenVon: 'm2', person },
             {
@@ -2657,7 +2683,7 @@ describe('kalender', () => {
     expect(body.schichten[0]!.dienste[0]!.person).toMatchObject({ username: 'max' });
     expect(body.schichten[0]!.dienste[1]!.person).toMatchObject({ art: 'extern', name: 'Eva' });
 
-    t.kalender.statistik.mockResolvedValueOnce([{ person, gesamt: 2, nachDienstform: { f1: 2 } }]);
+    t.kalender.statistik.mockResolvedValueOnce([{ person, gesamt: 2, nachSpalte: { f1: 2 } }]);
     const stat = await t.app.request(
       '/api/kalender/statistik?jahr=2026',
       json('reader-token', 'GET'),

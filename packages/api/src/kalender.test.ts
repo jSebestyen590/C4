@@ -20,13 +20,14 @@ const eingabe = (id: string | undefined, formen: string[] = ['bar']): SchichtEin
 const bestehend = [
   {
     id: 's1',
+    art: 'betrieb' as const,
     dienste: [
       { id: 'd1', dienstformId: 'bar' },
       { id: 'd2', dienstformId: 'technik' },
     ],
   },
-  { id: 's2', dienste: [{ id: 'd3', dienstformId: 'bar' }] },
-  { id: 's3', dienste: [] },
+  { id: 's2', art: 'betrieb' as const, dienste: [{ id: 'd3', dienstformId: 'bar' }] },
+  { id: 's3', art: 'betrieb' as const, dienste: [] },
 ];
 
 describe('schichtAbgleich', () => {
@@ -79,6 +80,39 @@ describe('schichtAbgleich', () => {
     expect(() => schichtAbgleich(bestehend, [eingabe('s1'), eingabe('s1')])).toThrow(
       KalenderUngueltig,
     );
+  });
+});
+
+describe('schichtAbgleich art change', () => {
+  const aufbau = (id: string): SchichtEingabe => ({
+    id,
+    art: 'aufbau',
+    beginn: '2026-06-05T15:00:00.000Z',
+    ende: '2026-06-05T17:00:00.000Z',
+    minimum: 1,
+    wunsch: 2,
+  });
+
+  it('keeps the Dienste of a Betrieb that became Aufbau and clears their Dienstform', () => {
+    const r = schichtAbgleich(bestehend, [aufbau('s1'), eingabe('s2'), eingabe('s3')]);
+    expect(r.entfernteDienste).toEqual([]);
+    expect(r.dienstformLeeren).toEqual(['d1', 'd2']);
+  });
+
+  it('removes the Dienste of an Aufbau that became Betrieb unless they match', () => {
+    const alt = [{ id: 'a1', art: 'aufbau' as const, dienste: [{ id: 'x', dienstformId: null }] }];
+    const r = schichtAbgleich(alt, [eingabe('a1')]);
+    expect(r.entfernteDienste).toEqual([
+      { dienstId: 'x', schichtId: 'a1', dienstformId: null, grund: 'bedarf' },
+    ]);
+    expect(r.dienstformLeeren).toEqual([]);
+  });
+
+  it('leaves an Aufbau as Aufbau alone', () => {
+    const alt = [{ id: 'a1', art: 'aufbau' as const, dienste: [{ id: 'x', dienstformId: null }] }];
+    const r = schichtAbgleich(alt, [aufbau('a1')]);
+    expect(r.entfernteDienste).toEqual([]);
+    expect(r.dienstformLeeren).toEqual([]);
   });
 });
 

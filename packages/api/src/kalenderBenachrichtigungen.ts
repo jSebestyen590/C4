@@ -1,4 +1,10 @@
-import { benachrichtigungsArt, heuteBerlin, schichtBezeichnung, type EventDto } from '@c4/shared';
+import {
+  benachrichtigungsArt,
+  heuteBerlin,
+  SCHICHT_ART_BEZEICHNUNG,
+  schichtBezeichnung,
+  type EventDto,
+} from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { BetroffenerDienst, DienstInfo, EventAenderung, KalenderStore } from './kalender';
 
@@ -97,7 +103,10 @@ export async function erinnerungen(
       await benachrichtigungen.senden({
         subs: [k.mitgliedSub],
         art: ERINNERUNG,
-        titel: `${k.dienstformName}-Dienst in ${minutenText(e.minuten)}`,
+        titel:
+          k.schichtArt === 'betrieb' && k.dienstformName
+            ? `${k.dienstformName}-Dienst in ${minutenText(e.minuten)}`
+            : `${SCHICHT_ART_BEZEICHNUNG[k.schichtArt]} in ${minutenText(e.minuten)}`,
         text: `${k.eventTitel} (${wochentagZeit(k.beginn)})`,
         url: eventUrl(k.eventId),
         dedupeSchluessel: `${ERINNERUNG}:${k.dienstId}:${k.beginn}`,

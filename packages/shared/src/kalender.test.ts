@@ -101,6 +101,25 @@ describe('schichtBewertung', () => {
   });
 });
 
+describe('schichtBewertung for Aufbau/Putzen', () => {
+  const anzahl = (minimum: number, wunsch: number, n: number): BewertbareSchicht => ({
+    bedarfe: [],
+    minimum,
+    wunsch,
+    dienste: Array.from({ length: n }, (_, i) => ({
+      dienstformId: null,
+      person: mitglied(`m${i}`),
+    })),
+  });
+  it('counts all Dienste against minimum and wish', () => {
+    expect(schichtBewertung(anzahl(1, 2, 0))).toBe('rot');
+    expect(schichtBewertung(anzahl(1, 2, 1))).toBe('gelb');
+    expect(schichtBewertung(anzahl(1, 2, 2))).toBe('gruen');
+    expect(schichtBewertung(anzahl(0, 2, 0))).toBe('gelb');
+    expect(schichtDetails(anzahl(1, 2, 1)).anzahl).toMatchObject({ vorhanden: 1, bisWunsch: 1 });
+  });
+});
+
 describe('eventBewertung', () => {
   const rot = schicht([['bar', 1, 1]], []);
   const gelb = schicht([['bar', 0, 1]], []);
@@ -155,7 +174,8 @@ describe('ausVorlage', () => {
         beginnZeit: '18:00',
         endeTagVersatz: 0,
         endeZeit: '20:00',
-        bedarfe: [{ dienstformId: 'aufbau', minimum: 1, wunsch: 2 }],
+        minimum: 1,
+        wunsch: 2,
       },
       {
         art: 'putzen',
@@ -163,7 +183,8 @@ describe('ausVorlage', () => {
         beginnZeit: '02:00',
         endeTagVersatz: 1,
         endeZeit: '03:30',
-        bedarfe: [],
+        minimum: 0,
+        wunsch: 1,
       },
     ],
   };
@@ -201,26 +222,29 @@ describe('ueberlappendeSchichten', () => {
 });
 
 describe('statistikZeilen', () => {
-  it('counts per person and Dienstform for the year, skipping cancelled events', () => {
+  it('counts per person and column for the year, skipping cancelled events', () => {
     const a = mitglied('a');
     const x = extern('x');
+    const d = (
+      person: DienstPerson,
+      dienstformId: string | null,
+      schichtBeginn: string,
+      abgesagt = false,
+      schichtArt: 'betrieb' | 'aufbau' | 'putzen' = 'betrieb',
+    ) => ({ person, dienstformId, schichtArt, schichtBeginn, abgesagt });
     const z = statistikZeilen(
       [
-        { person: a, dienstformId: 'bar', schichtBeginn: '2026-03-01T19:00:00Z', abgesagt: false },
-        {
-          person: a,
-          dienstformId: 'technik',
-          schichtBeginn: '2026-04-01T19:00:00Z',
-          abgesagt: false,
-        },
-        { person: a, dienstformId: 'bar', schichtBeginn: '2026-05-01T19:00:00Z', abgesagt: true },
-        { person: a, dienstformId: 'bar', schichtBeginn: '2025-12-31T22:30:00Z', abgesagt: false },
-        { person: x, dienstformId: 'bar', schichtBeginn: '2026-03-02T19:00:00Z', abgesagt: false },
+        d(a, 'bar', '2026-03-01T19:00:00Z'),
+        d(a, 'technik', '2026-04-01T19:00:00Z'),
+        d(a, 'bar', '2026-05-01T19:00:00Z', true),
+        d(a, 'bar', '2025-12-31T22:30:00Z'),
+        d(a, null, '2026-06-01T15:00:00Z', false, 'aufbau'),
+        d(x, 'bar', '2026-03-02T19:00:00Z'),
       ],
       2026,
     );
-    expect(z.map((r) => [r.gesamt, r.nachDienstform])).toEqual([
-      [2, { bar: 1, technik: 1 }],
+    expect(z.map((r) => [r.gesamt, r.nachSpalte])).toEqual([
+      [3, { bar: 1, technik: 1, 'art:aufbau': 1 }],
       [1, { bar: 1 }],
     ]);
   });
@@ -256,6 +280,33 @@ describe('schemas', () => {
       }).success,
     ).toBe(false);
   });
+  it('requires a Dienstform with minimum 1 for Betrieb, with German messages', () => {
+    const leer = schichtEingabeSchema.safeParse({ ...basis, bedarfe: [] });
+    expect(leer.success).toBe(false);
+    expect(leer.error!.issues[0]!.message).toBe(
+      'Eine Betriebs-Schicht braucht mindestens eine Dienstform.',
+    );
+    expect(
+      schichtEingabeSchema.safeParse({
+        ...basis,
+        bedarfe: [{ dienstformId: 'bar', minimum: 0, wunsch: 1 }],
+      }).success,
+    ).toBe(false);
+  });
+  it('validates Aufbau/Putzen head counts', () => {
+    const aufbau = {
+      art: 'aufbau',
+      beginn: basis.beginn,
+      ende: basis.ende,
+      minimum: 0,
+      wunsch: 2,
+    };
+    expect(schichtEingabeSchema.safeParse(aufbau).success).toBe(true);
+    expect(schichtEingabeSchema.safeParse({ ...aufbau, art: 'putzen' }).success).toBe(true);
+    expect(schichtEingabeSchema.safeParse({ ...aufbau, wunsch: 0 }).success).toBe(false);
+    expect(schichtEingabeSchema.safeParse({ ...aufbau, minimum: 3 }).success).toBe(false);
+    expect(schichtEingabeSchema.safeParse({ ...aufbau, wunsch: undefined }).success).toBe(false);
+  });
   it('validates Event and Vorlage input', () => {
     const event = {
       titel: 'Abend',
@@ -276,6 +327,9 @@ describe('schemas', () => {
     expect(vorlageEingabeSchema.safeParse(vorlage).success).toBe(true);
     expect(vorlageEingabeSchema.safeParse({ ...vorlage, beginnZeit: '25:00' }).success).toBe(false);
     expect(vorlageEingabeSchema.safeParse({ ...vorlage, endeZeit: '19:00' }).success).toBe(false);
+  });
+  it('allows Dienst input without Dienstform', () => {
+    expect(dienstEintragenSchema.safeParse({}).success).toBe(true);
   });
   it('allows only one person in Dienst input', () => {
     expect(dienstEintragenSchema.safeParse({ dienstformId: 'bar' }).success).toBe(true);
@@ -376,6 +430,11 @@ describe('dienstTermine', () => {
     expect(t!.beschreibung).toBe(
       'Schicht: Betrieb 20:00–00:00\nhttps://c4.example/app/kalender/events/e1',
     );
+  });
+
+  it('names Aufbau/Putzen entries after the Art', () => {
+    const [t] = dienstTermine([{ ...dienst, schichtArt: 'aufbau', dienstformName: null }]);
+    expect(t!.titel).toBe('Aufbau · Offener Abend');
   });
 
   it('leaves the link out without an origin', () => {

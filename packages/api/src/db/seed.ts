@@ -13,8 +13,6 @@ import {
 const FORMEN = [
   { id: 'dienstform-bar', name: 'Bar' },
   { id: 'dienstform-technik', name: 'Technik' },
-  { id: 'dienstform-aufbau', name: 'Aufbau' },
-  { id: 'dienstform-putzen', name: 'Putzen' },
 ];
 
 const pool = createPool(loadConfig());
@@ -47,6 +45,7 @@ try {
       fehltHinweisStunden: 48,
     })
     .onConflictDoNothing();
+  // Aufbau/Putzen have a head count on the Schicht; the Betrieb needs Dienstformen.
   const schichtenSeed = [
     {
       id: 'vorlage-schicht-aufbau',
@@ -55,9 +54,8 @@ try {
       beginnZeit: '17:30',
       endeTagVersatz: 0,
       endeZeit: '19:00',
-      form: 'dienstform-aufbau',
-      minimum: 2,
-      wunsch: 3,
+      minimum: 1,
+      wunsch: 2,
     },
     {
       id: 'vorlage-schicht-betrieb',
@@ -66,9 +64,8 @@ try {
       beginnZeit: '19:00',
       endeTagVersatz: 1,
       endeZeit: '00:30',
-      form: 'dienstform-bar',
-      minimum: 2,
-      wunsch: 3,
+      minimum: null,
+      wunsch: null,
     },
     {
       id: 'vorlage-schicht-putzen',
@@ -77,9 +74,8 @@ try {
       beginnZeit: '00:30',
       endeTagVersatz: 1,
       endeZeit: '01:30',
-      form: 'dienstform-putzen',
-      minimum: 2,
-      wunsch: 3,
+      minimum: 1,
+      wunsch: 2,
     },
   ] as const;
   await db
@@ -94,19 +90,20 @@ try {
         endeTagVersatz: s.endeTagVersatz,
         endeZeit: s.endeZeit,
         reihenfolge,
+        minimum: s.minimum,
+        wunsch: s.wunsch,
       })),
     )
     .onConflictDoNothing();
   await db
     .insert(vorlageBedarfe)
     .values([
-      ...schichtenSeed.map((s) => ({
-        vorlageSchichtId: s.id,
-        dienstformId: s.form,
-        minimum: s.minimum,
-        wunsch: s.wunsch,
-      })),
-      // The Betrieb needs Technik as well.
+      {
+        vorlageSchichtId: 'vorlage-schicht-betrieb',
+        dienstformId: 'dienstform-bar',
+        minimum: 2,
+        wunsch: 3,
+      },
       {
         vorlageSchichtId: 'vorlage-schicht-betrieb',
         dienstformId: 'dienstform-technik',

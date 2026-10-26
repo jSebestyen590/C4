@@ -9,7 +9,7 @@ import {
   type SchichtDto,
 } from '@c4/shared';
 import { useAuth } from './auth';
-import { AMPEL_LABELS, labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
+import { AMPEL_LABELS, labelFuer, MITGLIED_STATUS_LABELS, SCHICHT_ART_LABELS } from './i18n';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 
@@ -34,6 +34,16 @@ export function AmpelBadge({
 /** Mantine color name of a Kategorie; events without one are gray. */
 export const kategorieFarbe = (k: Pick<EventKategorieDto, 'farbe'> | null): string =>
   k?.farbe ?? 'gray';
+
+/** Name of the Dienst in a Schicht: its Dienstform (Betrieb) or the Art (Aufbau/Putzen). */
+export const dienstName = (
+  schicht: Pick<SchichtDto, 'art'>,
+  dienstformId: string | null,
+  dienstformen: Map<string, DienstformDto>,
+): string =>
+  dienstformId === null
+    ? SCHICHT_ART_LABELS[schicht.art]
+    : (dienstformen.get(dienstformId)?.name ?? 'Dienst');
 
 /** Display name of a person in a Dienst: username (or name) of a member, name of an Externe. */
 export const personAnzeigename = (p: DienstPerson): string =>
@@ -94,6 +104,21 @@ export function FehltInfo({
     } else if (d.bisWunsch > 0) {
       zeilen.push({
         text: `${d.bisWunsch}× ${name} noch gewünscht`,
+        farbe: 'var(--mantine-color-yellow-light-color)',
+      });
+    }
+  }
+  if (details.anzahl) {
+    const a = details.anzahl;
+    const personen = (n: number) => (n === 1 ? 'Person' : 'Personen');
+    if (a.bisMinimum > 0) {
+      zeilen.push({
+        text: `${a.bisMinimum} ${personen(a.bisMinimum)} ${a.bisMinimum === 1 ? 'fehlt' : 'fehlen'} (Wunsch ${a.wunsch})`,
+        farbe: 'red',
+      });
+    } else if (a.bisWunsch > 0) {
+      zeilen.push({
+        text: `${a.bisWunsch} ${personen(a.bisWunsch)} noch gewünscht`,
         farbe: 'var(--mantine-color-yellow-light-color)',
       });
     }

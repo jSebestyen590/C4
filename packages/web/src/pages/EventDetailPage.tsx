@@ -42,6 +42,7 @@ import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DienstEintragenModal, type EintragModus } from '../DienstEintragenModal';
 import {
   AmpelBadge,
+  dienstName,
   FehltInfo,
   kategorieFarbe,
   PersonName,
@@ -51,11 +52,12 @@ import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kale
 import { zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 import { dienstIcsHerunterladen } from '../kalenderIcs';
+import { SCHICHT_ART_LABELS } from '../i18n';
 import { pruefen } from '../warenApi';
 
 type Dialog =
   | { art: 'eintragen'; schicht: SchichtDto; modus: EintragModus }
-  | { art: 'entfernen'; dienst: DienstDto }
+  | { art: 'entfernen'; dienst: DienstDto; schicht: SchichtDto }
   | { art: 'absagen' }
   | { art: 'loeschen' };
 
@@ -191,7 +193,7 @@ export function EventDetailPage() {
         const ich = s.dienste.some(
           (d) => d.person.art === 'mitglied' && d.person.sub === eigeneSub,
         );
-        const ohneBedarf = s.bedarfe.length === 0;
+        const ohneBedarf = s.art === 'betrieb' && s.bedarfe.length === 0;
         const gesperrt = e.abgesagt || ohneBedarf;
         return (
           <Paper key={s.id} withBorder p="sm" radius="md">
@@ -205,8 +207,25 @@ export function EventDetailPage() {
                 {!e.abgesagt && <AmpelBadge bewertung={details.bewertung} size="sm" />}
               </Group>
 
-              {details.dienstformen.length > 0 && (
+              {(details.dienstformen.length > 0 || details.anzahl) && (
                 <Group gap="xs">
+                  {details.anzahl && (
+                    <Badge
+                      variant="light"
+                      color={
+                        details.anzahl.bisMinimum > 0
+                          ? 'red'
+                          : details.anzahl.bisWunsch > 0
+                            ? 'yellow'
+                            : 'green'
+                      }
+                      size="lg"
+                      tt="none"
+                    >
+                      {SCHICHT_ART_LABELS[s.art]} {details.anzahl.vorhanden}/{details.anzahl.wunsch}{' '}
+                      (min. {details.anzahl.minimum})
+                    </Badge>
+                  )}
                   {details.dienstformen.map((d) => (
                     <Badge
                       key={d.dienstformId}
@@ -244,10 +263,18 @@ export function EventDetailPage() {
                           <Text>
                             <PersonName person={d.person} />
                           </Text>
-                          <Text size="sm" c="dimmed">
-                            {dienstformen.nachId.get(d.dienstformId)?.name ?? 'Dienst'}
-                            {d.kommentar ? ` · ${d.kommentar}` : ''}
-                          </Text>
+                          {(d.dienstformId !== null || d.kommentar) && (
+                            <Text size="sm" c="dimmed">
+                              {[
+                                d.dienstformId !== null
+                                  ? dienstName(s, d.dienstformId, dienstformen.nachId)
+                                  : null,
+                                d.kommentar,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </Text>
+                          )}
                         </Stack>
                         {darfEntfernen(d) &&
                           (eigener ? (
@@ -266,7 +293,10 @@ export function EventDetailPage() {
                                         eventTitel: e.titel,
                                         schichtArt: s.art,
                                         dienstformName:
-                                          dienstformen.nachId.get(d.dienstformId)?.name ?? 'Dienst',
+                                          d.dienstformId === null
+                                            ? null
+                                            : (dienstformen.nachId.get(d.dienstformId)?.name ??
+                                              'Dienst'),
                                         beginn: s.beginn,
                                         ende: s.ende,
                                         abgesagt: e.abgesagt,
@@ -282,7 +312,9 @@ export function EventDetailPage() {
                                 variant="light"
                                 color="red"
                                 leftSection={<IconUserMinus size={18} />}
-                                onClick={() => setDialog({ art: 'entfernen', dienst: d })}
+                                onClick={() =>
+                                  setDialog({ art: 'entfernen', dienst: d, schicht: s })
+                                }
                               >
                                 Austragen
                               </Button>
@@ -293,7 +325,7 @@ export function EventDetailPage() {
                               color="red"
                               size={44}
                               aria-label={`${personAnzeigename(d.person)} entfernen`}
-                              onClick={() => setDialog({ art: 'entfernen', dienst: d })}
+                              onClick={() => setDialog({ art: 'entfernen', dienst: d, schicht: s })}
                             >
                               <IconUserMinus size={20} />
                             </ActionIcon>
@@ -377,7 +409,8 @@ export function EventDetailPage() {
         >
           <Text>
             <PersonName person={dialog.dienst.person} verlinken={false} mitQuelle={false} /> wird
-            aus dem Dienst „{dienstformen.nachId.get(dialog.dienst.dienstformId)?.name ?? 'Dienst'}“
+            aus dem Dienst „
+            {dienstName(dialog.schicht, dialog.dienst.dienstformId, dienstformen.nachId)}“
             ausgetragen.
           </Text>
         </BestaetigenDialog>

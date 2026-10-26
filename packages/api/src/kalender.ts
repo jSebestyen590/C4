@@ -3,8 +3,10 @@ import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import {
   berlinZuUtc,
   eventBewertung,
+  SCHICHT_ART_BEZEICHNUNG,
   statistikZeilen,
   type BedarfDto,
+  type BedarfEingabe,
   type DienstDto,
   type DienstEintragen,
   type DienstformDto,
@@ -23,6 +25,7 @@ import {
   type StatistikZeileDto,
   type VorlageDto,
   type VorlageEingabe,
+  type VorlageSchicht,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
@@ -57,7 +60,7 @@ export interface BetroffenerDienst {
   schichtArt: SchichtArt;
   schichtBeginn: string;
   schichtEnde: string;
-  dienstformId: string;
+  dienstformId: string | null;
   person: DienstPerson;
   /** `schicht`: the whole Schicht is removed, `bedarf`: its Bedarf for the Dienstform is removed. */
   grund: 'schicht' | 'bedarf';
@@ -77,13 +80,14 @@ export class EntfernungBestaetigen extends Error {
 /** What the reconciliation needs to know about a stored Schicht. */
 export interface BestehendeSchicht {
   id: string;
-  dienste: { id: string; dienstformId: string }[];
+  art: SchichtArt;
+  dienste: { id: string; dienstformId: string | null }[];
 }
 
 export interface EntferntesDienst {
   dienstId: string;
   schichtId: string;
-  dienstformId: string;
+  dienstformId: string | null;
   grund: 'schicht' | 'bedarf';
 }
 
@@ -94,8 +98,13 @@ export interface SchichtAbgleich {
   behalten: { index: number; id: string; eingabe: SchichtEingabe }[];
   /** Stored Schichten that are not in the input: to delete with their Bedarfe and Dienste. */
   entfernt: string[];
-  /** Dienste that vanish: all of a removed Schicht, and those whose Dienstform lost its Bedarf. */
+  /**
+   * Dienste that vanish: all of a removed Schicht, and those whose Dienstform lost its Bedarf (also
+   * those of an Aufbau/Putzen Schicht that became Betrieb: they have no Dienstform to match).
+   */
   entfernteDienste: EntferntesDienst[];
+  /** Dienste of a Schicht that became Aufbau/Putzen: they stay, their Dienstform is cleared. */
+  dienstformLeeren: string[];
 }
 
 /**
@@ -108,7 +117,13 @@ export function schichtAbgleich(
 ): SchichtAbgleich {
   const nachId = new Map(bestehend.map((s) => [s.id, s]));
   const gesehen = new Set<string>();
-  const ergebnis: SchichtAbgleich = { neu: [], behalten: [], entfernt: [], entfernteDienste: [] };
+  const ergebnis: SchichtAbgleich = {
+    neu: [],
+    behalten: [],
+    entfernt: [],
+    entfernteDienste: [],
+    dienstformLeeren: [],
+  };
   eingabe.forEach((s, index) => {
     if (s.id === undefined) {
       ergebnis.neu.push({ index, eingabe: s });
@@ -119,9 +134,15 @@ export function schichtAbgleich(
     if (gesehen.has(s.id)) throw new KalenderUngueltig('Eine Schicht kommt doppelt vor.');
     gesehen.add(s.id);
     ergebnis.behalten.push({ index, id: s.id, eingabe: s });
+    if (s.art !== 'betrieb') {
+      ergebnis.dienstformLeeren.push(
+        ...alt.dienste.filter((d) => d.dienstformId !== null).map((d) => d.id),
+      );
+      return;
+    }
     const formen = new Set(s.bedarfe.map((b) => b.dienstformId));
     for (const d of alt.dienste) {
-      if (!formen.has(d.dienstformId)) {
+      if (d.dienstformId === null || !formen.has(d.dienstformId)) {
         ergebnis.entfernteDienste.push({
           dienstId: d.id,
           schichtId: alt.id,
@@ -210,7 +231,7 @@ export interface DienstInfo {
   eventId: string;
   eventTitel: string;
   abgesagt: boolean;
-  dienstformId: string;
+  dienstformId: string | null;
   mitgliedSub: string | null;
   externId: string | null;
   eingetragenVon: string;
@@ -315,7 +336,9 @@ export interface ErinnerungsDienst {
   mitgliedSub: string;
   eventId: string;
   eventTitel: string;
-  dienstformName: string;
+  schichtArt: SchichtArt;
+  /** Null for Aufbau/Putzen. */
+  dienstformName: string | null;
   /** ISO instant of the Schicht start. */
   beginn: string;
 }
@@ -428,6 +451,8 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
     art: s.art,
     beginn: iso(s.beginn),
     ende: iso(s.ende),
+    minimum: s.minimum,
+    wunsch: s.wunsch,
     bedarfe: bedarfRows
       .filter((b) => b.schichtId === s.id)
       .sort((a, b) => (formPos.get(a.dienstformId) ?? 0) - (formPos.get(b.dienstformId) ?? 0))
@@ -504,6 +529,14 @@ async function dienstformenMuessenExistieren(
   }
 }
 
+/** The Dienstformen that Schicht or Vorlage-Schicht inputs need (Betrieb only). */
+const dienstformIdsVon = (
+  schichten: readonly ({ art: 'betrieb'; bedarfe: BedarfEingabe[] } | { art: SchichtArt })[],
+) =>
+  schichten.flatMap((s) =>
+    'bedarfe' in s && s.art === 'betrieb' ? s.bedarfe.map((b) => b.dienstformId) : [],
+  );
+
 export function createKalenderStore(db: Db): KalenderStore {
   const schichtenSchreiben = async (
     tx: Tx,
@@ -516,6 +549,8 @@ export function createKalenderStore(db: Db): KalenderStore {
         beginn: new Date(s.beginn),
         ende: new Date(s.ende),
         reihenfolge: index,
+        minimum: s.art === 'betrieb' ? null : s.minimum,
+        wunsch: s.art === 'betrieb' ? null : s.wunsch,
       };
       let id = vorhandeneId;
       if (id === undefined) {
@@ -525,7 +560,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         await tx.update(schichten).set(werte).where(eq(schichten.id, id));
         await tx.delete(schichtBedarfe).where(eq(schichtBedarfe.schichtId, id));
       }
-      if (s.bedarfe.length > 0) {
+      if (s.art === 'betrieb') {
         await tx.insert(schichtBedarfe).values(
           s.bedarfe.map((b) => ({
             schichtId: id,
@@ -550,8 +585,10 @@ export function createKalenderStore(db: Db): KalenderStore {
         endeTagVersatz: s.endeTagVersatz,
         endeZeit: s.endeZeit,
         reihenfolge: index,
+        minimum: s.art === 'betrieb' ? null : s.minimum,
+        wunsch: s.art === 'betrieb' ? null : s.wunsch,
       });
-      if (s.bedarfe.length > 0) {
+      if (s.art === 'betrieb') {
         await tx.insert(vorlageBedarfe).values(
           s.bedarfe.map((b) => ({
             vorlageSchichtId: id,
@@ -578,10 +615,7 @@ export function createKalenderStore(db: Db): KalenderStore {
     async eventAnlegen(daten, von) {
       return db.transaction(async (tx) => {
         await kategorieMussExistieren(tx, daten.kategorieId);
-        await dienstformenMuessenExistieren(
-          tx,
-          daten.schichten.flatMap((s) => s.bedarfe.map((b) => b.dienstformId)),
-        );
+        await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
         if (daten.schichten.some((s) => s.id !== undefined)) {
           throw new KalenderUngueltig('Neue Events haben noch keine Schichten mit Id.');
         }
@@ -624,13 +658,14 @@ export function createKalenderStore(db: Db): KalenderStore {
         await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
         await dienstformenMuessenExistieren(
           tx,
-          daten.schichten.flatMap((s) => s.bedarfe.map((b) => b.dienstformId)),
+          dienstformIdsVon(daten.schichten),
           new Set(bedarfRows.map((b) => b.dienstformId)),
         );
 
         const abgleich = schichtAbgleich(
           schichtRows.map((s) => ({
             id: s.id,
+            art: s.art,
             dienste: dienstRows.filter((d) => d.schichtId === s.id),
           })),
           daten.schichten,
@@ -695,6 +730,12 @@ export function createKalenderStore(db: Db): KalenderStore {
           .where(eq(events.id, id));
         if (entfernteIds.size > 0) {
           await tx.delete(dienste).where(inArray(dienste.id, [...entfernteIds]));
+        }
+        if (abgleich.dienstformLeeren.length > 0) {
+          await tx
+            .update(dienste)
+            .set({ dienstformId: null })
+            .where(inArray(dienste.id, abgleich.dienstformLeeren));
         }
         if (abgleich.entfernt.length > 0) {
           await tx
@@ -812,18 +853,27 @@ export function createKalenderStore(db: Db): KalenderStore {
           if (zeile.abgesagt) {
             throw new KalenderKonflikt('Das Event ist abgesagt. Eintragen ist nicht möglich.');
           }
-          const [bedarf] = await tx
-            .select()
-            .from(schichtBedarfe)
-            .where(
-              and(
-                eq(schichtBedarfe.schichtId, schichtId),
-                eq(schichtBedarfe.dienstformId, daten.dienstformId),
-              ),
-            );
-          if (!bedarf) {
+          if (zeile.schicht.art === 'betrieb') {
+            if (daten.dienstformId === undefined) {
+              throw new KalenderUngueltig('Bitte wähle eine Dienstform.');
+            }
+            const [bedarf] = await tx
+              .select()
+              .from(schichtBedarfe)
+              .where(
+                and(
+                  eq(schichtBedarfe.schichtId, schichtId),
+                  eq(schichtBedarfe.dienstformId, daten.dienstformId),
+                ),
+              );
+            if (!bedarf) {
+              throw new KalenderUngueltig(
+                'Für diese Dienstform gibt es in der Schicht keinen Bedarf.',
+              );
+            }
+          } else if (daten.dienstformId !== undefined) {
             throw new KalenderUngueltig(
-              'Für diese Dienstform gibt es in der Schicht keinen Bedarf.',
+              `${SCHICHT_ART_BEZEICHNUNG[zeile.schicht.art]} hat keine Dienstformen.`,
             );
           }
           const mitgliedSub =
@@ -852,7 +902,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           await tx.insert(dienste).values({
             id,
             schichtId,
-            dienstformId: daten.dienstformId,
+            dienstformId: daten.dienstformId ?? null,
             mitgliedSub,
             externId: mitgliedSub === null ? (daten.externId ?? null) : null,
             kommentar: daten.kommentar,
@@ -1057,29 +1107,34 @@ export function createKalenderStore(db: Db): KalenderStore {
           schichten: schichtRows
             .filter((s) => s.vorlageId === v.id)
             .sort((a, b) => a.reihenfolge - b.reihenfolge)
-            .map((s) => ({
-              art: s.art,
-              tagVersatz: s.tagVersatz,
-              beginnZeit: s.beginnZeit,
-              endeTagVersatz: s.endeTagVersatz,
-              endeZeit: s.endeZeit,
-              bedarfe: bedarfRows
-                .filter((b) => b.vorlageSchichtId === s.id)
-                .map((b) => ({
-                  dienstformId: b.dienstformId,
-                  minimum: b.minimum,
-                  wunsch: b.wunsch,
-                })),
-            })),
+            .map((s): VorlageSchicht => {
+              const zeiten = {
+                tagVersatz: s.tagVersatz,
+                beginnZeit: s.beginnZeit,
+                endeTagVersatz: s.endeTagVersatz,
+                endeZeit: s.endeZeit,
+              };
+              if (s.art !== 'betrieb') {
+                return { art: s.art, ...zeiten, minimum: s.minimum ?? 0, wunsch: s.wunsch ?? 1 };
+              }
+              return {
+                art: 'betrieb',
+                ...zeiten,
+                bedarfe: bedarfRows
+                  .filter((b) => b.vorlageSchichtId === s.id)
+                  .map((b) => ({
+                    dienstformId: b.dienstformId,
+                    minimum: b.minimum,
+                    wunsch: b.wunsch,
+                  })),
+              };
+            }),
         }));
     },
     async vorlageAnlegen(daten) {
       return db.transaction(async (tx) => {
         await kategorieMussExistieren(tx, daten.kategorieId);
-        await dienstformenMuessenExistieren(
-          tx,
-          daten.schichten.flatMap((s) => s.bedarfe.map((b) => b.dienstformId)),
-        );
+        await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
         const id = randomUUID();
         await tx.insert(eventVorlagen).values({
           id,
@@ -1115,7 +1170,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
         await dienstformenMuessenExistieren(
           tx,
-          daten.schichten.flatMap((s) => s.bedarfe.map((b) => b.dienstformId)),
+          dienstformIdsVon(daten.schichten),
           new Set(alteBedarfe.map((b) => b.dienstformId)),
         );
         await tx
@@ -1169,6 +1224,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           dienstformId: dienste.dienstformId,
           mitgliedSub: dienste.mitgliedSub,
           externId: dienste.externId,
+          schichtArt: schichten.art,
           schichtBeginn: schichten.beginn,
           abgesagt: events.abgesagt,
         })
@@ -1193,6 +1249,7 @@ export function createKalenderStore(db: Db): KalenderStore {
                 {
                   person,
                   dienstformId: r.dienstformId,
+                  schichtArt: r.schichtArt,
                   schichtBeginn: iso(r.schichtBeginn),
                   abgesagt: r.abgesagt,
                 },
@@ -1241,7 +1298,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         .from(dienste)
         .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
         .innerJoin(events, eq(events.id, schichten.eventId))
-        .innerJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
+        .leftJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
         .where(and(eq(dienste.mitgliedSub, sub), gte(schichten.beginn, ab)))
         .orderBy(asc(schichten.beginn), asc(dienste.id));
       return rows.map((r) => ({ ...r, beginn: iso(r.beginn), ende: iso(r.ende) }));
@@ -1253,13 +1310,14 @@ export function createKalenderStore(db: Db): KalenderStore {
           mitgliedSub: dienste.mitgliedSub,
           eventId: events.id,
           eventTitel: events.titel,
+          schichtArt: schichten.art,
           dienstformName: dienstformen.name,
           beginn: schichten.beginn,
         })
         .from(dienste)
         .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
         .innerJoin(events, eq(events.id, schichten.eventId))
-        .innerJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
+        .leftJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
         .where(
           and(eq(events.abgesagt, false), gte(schichten.beginn, von), lt(schichten.beginn, bis)),
         )

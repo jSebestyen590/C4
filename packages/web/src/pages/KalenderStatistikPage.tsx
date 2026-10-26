@@ -19,7 +19,7 @@ import { useDienstformen, useKalenderStatistik } from '../kalenderDaten';
 
 const ZURUECK_JAHRE = 6;
 
-/** Dienste per person and Dienstform for one calendar year; cards on phones, table from `sm`. */
+/** Dienste per person, Dienstform, Aufbau and Putzen for one calendar year; cards on phones, table from `sm`. */
 export function KalenderStatistikPage() {
   const aktuell = Number(heuteBerlin().slice(0, 4));
   const [jahr, setJahr] = useState(aktuell);
@@ -28,9 +28,14 @@ export function KalenderStatistikPage() {
 
   const zeilen: StatistikZeileDto[] = statistik.data?.zeilen ?? [];
   // Columns: the active Dienstformen plus archived ones that have Dienste in this year.
-  const spalten = dienstformen.liste.filter(
-    (d) => !d.archiviert || zeilen.some((z) => (z.nachDienstform[d.id] ?? 0) > 0),
-  );
+  const spalten = [
+    ...dienstformen.liste
+      .filter((d) => !d.archiviert || zeilen.some((z) => (z.nachSpalte[d.id] ?? 0) > 0))
+      .map((d) => ({ key: d.id, name: d.name })),
+    // Aufbau and Putzen have no Dienstform and get a column of their own.
+    { key: 'art:aufbau', name: 'Aufbau' },
+    { key: 'art:putzen', name: 'Putzen' },
+  ];
   const jahre = Array.from({ length: ZURUECK_JAHRE + 1 }, (_, i) => String(aktuell - i));
 
   return (
@@ -80,8 +85,8 @@ export function KalenderStatistikPage() {
                 </Group>
                 <Text size="sm" c="dimmed">
                   {spalten
-                    .filter((d) => (z.nachDienstform[d.id] ?? 0) > 0)
-                    .map((d) => `${d.name} ${z.nachDienstform[d.id]}`)
+                    .filter((d) => (z.nachSpalte[d.key] ?? 0) > 0)
+                    .map((d) => `${d.name} ${z.nachSpalte[d.key]}`)
                     .join(' · ')}
                 </Text>
               </Paper>
@@ -94,7 +99,7 @@ export function KalenderStatistikPage() {
                   <Table.Th>Person</Table.Th>
                   <Table.Th ta="right">Gesamt</Table.Th>
                   {spalten.map((d) => (
-                    <Table.Th key={d.id} ta="right">
+                    <Table.Th key={d.key} ta="right">
                       {d.name}
                     </Table.Th>
                   ))}
@@ -110,8 +115,8 @@ export function KalenderStatistikPage() {
                       {z.gesamt}
                     </Table.Td>
                     {spalten.map((d) => (
-                      <Table.Td key={d.id} ta="right">
-                        {z.nachDienstform[d.id] ?? 0}
+                      <Table.Td key={d.key} ta="right">
+                        {z.nachSpalte[d.key] ?? 0}
                       </Table.Td>
                     ))}
                   </Table.Tr>

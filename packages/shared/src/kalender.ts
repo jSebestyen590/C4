@@ -158,10 +158,6 @@ const hinweisStundenSchema = z
   .min(0, 'Die Stunden dürfen nicht negativ sein.')
   .nullish()
   .transform((v) => v ?? null);
-const minimumSchema = z
-  .number('Bitte gib eine Anzahl an.')
-  .int('Die Anzahl muss eine ganze Zahl sein.')
-  .min(0, 'Die Anzahl darf nicht negativ sein.');
 
 export const dienstformEingabeSchema = z.object({
   name: name(),
@@ -217,8 +213,14 @@ export type ExterneZusammenfuehren = z.infer<typeof externeZusammenfuehrenSchema
 export const bedarfEingabeSchema = z
   .object({
     dienstformId: idSchema('Bitte wähle eine Dienstform.'),
-    minimum: minimumSchema,
-    wunsch: minimumSchema,
+    minimum: z
+      .number('Bitte gib eine Anzahl an.')
+      .int('Die Anzahl muss eine ganze Zahl sein.')
+      .min(1, 'Das Minimum muss mindestens 1 sein.'),
+    wunsch: z
+      .number('Bitte gib eine Anzahl an.')
+      .int('Die Anzahl muss eine ganze Zahl sein.')
+      .min(1, 'Der Wunsch muss mindestens 1 sein.'),
   })
   .refine((v) => v.wunsch >= v.minimum, {
     message: 'Der Wunsch darf nicht unter dem Minimum liegen.',
@@ -228,23 +230,52 @@ export type BedarfEingabe = z.infer<typeof bedarfEingabeSchema>;
 
 const bedarfeSchema = z
   .array(bedarfEingabeSchema)
+  .min(1, 'Eine Betriebs-Schicht braucht mindestens eine Dienstform.')
   .refine((b) => eindeutig(b.map((x) => x.dienstformId)), {
     message: 'Jede Dienstform darf nur einmal vorkommen.',
   });
 
-export const schichtEingabeSchema = z
-  .object({
-    /** Set when an existing Schicht is updated; new Schichten have none. */
-    id: idSchema('Ungültige Schicht.').optional(),
-    art: schichtArtSchema,
-    beginn: zeitpunktSchema,
-    ende: zeitpunktSchema,
-    bedarfe: bedarfeSchema,
-  })
-  .refine((v) => new Date(v.ende) > new Date(v.beginn), {
-    message: 'Das Ende muss nach dem Beginn liegen.',
-    path: ['ende'],
-  });
+/** Aufbau/Putzen: no Dienstform, just a head count directly on the Schicht. */
+const anzahlFelder = {
+  art: z.enum(['aufbau', 'putzen']),
+  minimum: z
+    .number('Bitte gib eine Anzahl an.')
+    .int('Die Anzahl muss eine ganze Zahl sein.')
+    .min(0, 'Das Minimum darf nicht negativ sein.'),
+  wunsch: z
+    .number('Bitte gib eine Anzahl an.')
+    .int('Die Anzahl muss eine ganze Zahl sein.')
+    .min(1, 'Der Wunsch muss mindestens 1 sein.'),
+};
+const wunschNichtUnterMinimum = {
+  message: 'Der Wunsch darf nicht unter dem Minimum liegen.',
+  path: ['wunsch'],
+};
+
+const schichtEnde = (v: { beginn: string; ende: string }) => new Date(v.ende) > new Date(v.beginn);
+const schichtEndeFehler = { message: 'Das Ende muss nach dem Beginn liegen.', path: ['ende'] };
+
+export const schichtEingabeSchema = z.discriminatedUnion('art', [
+  z
+    .object({
+      /** Set when an existing Schicht is updated; new Schichten have none. */
+      id: idSchema('Ungültige Schicht.').optional(),
+      art: z.literal('betrieb'),
+      beginn: zeitpunktSchema,
+      ende: zeitpunktSchema,
+      bedarfe: bedarfeSchema,
+    })
+    .refine(schichtEnde, schichtEndeFehler),
+  z
+    .object({
+      id: idSchema('Ungültige Schicht.').optional(),
+      ...anzahlFelder,
+      beginn: zeitpunktSchema,
+      ende: zeitpunktSchema,
+    })
+    .refine(schichtEnde, schichtEndeFehler)
+    .refine((v) => v.wunsch >= v.minimum, wunschNichtUnterMinimum),
+]);
 export type SchichtEingabe = z.infer<typeof schichtEingabeSchema>;
 
 export const eventEingabeSchema = z
@@ -270,21 +301,31 @@ export const eventEingabeSchema = z
   });
 export type EventEingabe = z.infer<typeof eventEingabeSchema>;
 
-export const vorlageSchichtSchema = z
-  .object({
-    art: schichtArtSchema,
-    tagVersatz: versatzSchema,
-    beginnZeit: zeitSchema,
-    endeTagVersatz: versatzSchema,
-    endeZeit: zeitSchema,
-    bedarfe: bedarfeSchema,
-  })
-  .refine(
-    (v) =>
-      v.endeTagVersatz > v.tagVersatz ||
-      (v.endeTagVersatz === v.tagVersatz && v.endeZeit > v.beginnZeit),
-    { message: 'Das Ende muss nach dem Beginn liegen.', path: ['endeZeit'] },
-  );
+const vorlageEnde = (v: {
+  tagVersatz: number;
+  beginnZeit: string;
+  endeTagVersatz: number;
+  endeZeit: string;
+}) =>
+  v.endeTagVersatz > v.tagVersatz ||
+  (v.endeTagVersatz === v.tagVersatz && v.endeZeit > v.beginnZeit);
+const vorlageEndeFehler = { message: 'Das Ende muss nach dem Beginn liegen.', path: ['endeZeit'] };
+const vorlageZeiten = {
+  tagVersatz: versatzSchema,
+  beginnZeit: zeitSchema,
+  endeTagVersatz: versatzSchema,
+  endeZeit: zeitSchema,
+};
+
+export const vorlageSchichtSchema = z.discriminatedUnion('art', [
+  z
+    .object({ art: z.literal('betrieb'), ...vorlageZeiten, bedarfe: bedarfeSchema })
+    .refine(vorlageEnde, vorlageEndeFehler),
+  z
+    .object({ ...anzahlFelder, ...vorlageZeiten })
+    .refine(vorlageEnde, vorlageEndeFehler)
+    .refine((v) => v.wunsch >= v.minimum, wunschNichtUnterMinimum),
+]);
 export type VorlageSchicht = z.infer<typeof vorlageSchichtSchema>;
 
 export const vorlageEingabeSchema = z
@@ -312,7 +353,8 @@ export type VorlageEingabe = z.infer<typeof vorlageEingabeSchema>;
 /** Enter a Dienst: oneself (neither field), another member (`mitgliedSub`) or an Externe (`externId`). */
 export const dienstEintragenSchema = z
   .object({
-    dienstformId: idSchema('Bitte wähle eine Dienstform.'),
+    /** Required for Betrieb Schichten, forbidden for Aufbau/Putzen (checked by the API). */
+    dienstformId: idSchema('Bitte wähle eine Dienstform.').optional(),
     kommentar: z
       .string()
       .trim()
@@ -375,7 +417,8 @@ export type DienstPerson =
 
 export interface DienstDto {
   id: string;
-  dienstformId: string;
+  /** Null for Aufbau/Putzen. */
+  dienstformId: string | null;
   kommentar: string | null;
   /** Sub of the member who entered this Dienst. */
   eingetragenVon: string;
@@ -393,7 +436,11 @@ export interface SchichtDto {
   art: SchichtArt;
   beginn: string;
   ende: string;
+  /** Betrieb only; empty for Aufbau/Putzen. */
   bedarfe: BedarfDto[];
+  /** Aufbau/Putzen only (head count of all Dienste); null for Betrieb. */
+  minimum: number | null;
+  wunsch: number | null;
   dienste: DienstDto[];
 }
 
@@ -418,8 +465,8 @@ export interface VorlageDto extends VorlageEingabe {
 export interface StatistikZeileDto {
   person: DienstPerson;
   gesamt: number;
-  /** Number of Dienste per `dienstformId`. */
-  nachDienstform: Record<string, number>;
+  /** Number of Dienste per column key: a `dienstformId`, `art:aufbau` or `art:putzen`. */
+  nachSpalte: Record<string, number>;
 }
 
 export interface StatistikDto {
@@ -439,7 +486,10 @@ export type EventBewertung = SchichtBewertung | 'abgesagt';
 /** What the Ampel needs to know about a Schicht; satisfied by `SchichtDto`. */
 export interface BewertbareSchicht {
   bedarfe: readonly BedarfDto[];
-  dienste: readonly { dienstformId: string; person: DienstPerson }[];
+  /** Aufbau/Putzen: head count over all Dienste; both null/undefined for Betrieb. */
+  minimum?: number | null;
+  wunsch?: number | null;
+  dienste: readonly { dienstformId: string | null; person: DienstPerson }[];
 }
 
 export interface DienstformFehlt {
@@ -455,6 +505,8 @@ export interface DienstformFehlt {
 
 export interface SchichtDetails {
   bewertung: SchichtBewertung;
+  /** Aufbau/Putzen: the head count against minimum and wish; null for Betrieb. */
+  anzahl: Omit<DienstformFehlt, 'dienstformId'> | null;
   /** One row per Dienstform with a Bedarf, in the order of `bedarfe`. */
   dienstformen: DienstformFehlt[];
   /** An Anwärter:in is entered but no Mitglied/EM (externals do not count) is in the Schicht. */
@@ -477,6 +529,19 @@ export function schichtDetails(schicht: BewertbareSchicht): SchichtDetails {
       bisWunsch: Math.max(0, b.wunsch - vorhanden),
     };
   });
+  const anzahl =
+    schicht.minimum != null && schicht.wunsch != null
+      ? (() => {
+          const vorhanden = schicht.dienste.length;
+          return {
+            minimum: schicht.minimum,
+            wunsch: schicht.wunsch,
+            vorhanden,
+            bisMinimum: Math.max(0, schicht.minimum - vorhanden),
+            bisWunsch: Math.max(0, schicht.wunsch - vorhanden),
+          };
+        })()
+      : null;
   const personen = schicht.dienste.map((d) => d.person);
   const hatAnwaerter = personen.some((p) => p.art === 'mitglied' && p.status === 'anwaerter');
   const hatBegleitung = personen.some(
@@ -484,9 +549,10 @@ export function schichtDetails(schicht: BewertbareSchicht): SchichtDetails {
   );
   const begleitungFehlt = hatAnwaerter && !hatBegleitung;
   let bewertung: SchichtBewertung = 'gruen';
-  if (begleitungFehlt || dienstformen.some((d) => d.bisMinimum > 0)) bewertung = 'rot';
-  else if (dienstformen.some((d) => d.bisWunsch > 0)) bewertung = 'gelb';
-  return { bewertung, dienstformen, begleitungFehlt };
+  const fehlen = [...dienstformen, ...(anzahl ? [anzahl] : [])];
+  if (begleitungFehlt || fehlen.some((d) => d.bisMinimum > 0)) bewertung = 'rot';
+  else if (fehlen.some((d) => d.bisWunsch > 0)) bewertung = 'gelb';
+  return { bewertung, anzahl, dienstformen, begleitungFehlt };
 }
 
 export const schichtBewertung = (schicht: BewertbareSchicht): SchichtBewertung =>
@@ -518,12 +584,13 @@ export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe
     beginn: zeitpunkt(0, vorlage.beginnZeit),
     ende: zeitpunkt(vorlage.endeTagVersatz, vorlage.endeZeit),
     fehltHinweisStunden: vorlage.fehltHinweisStunden,
-    schichten: vorlage.schichten.map((s) => ({
-      art: s.art,
-      beginn: zeitpunkt(s.tagVersatz, s.beginnZeit),
-      ende: zeitpunkt(s.endeTagVersatz, s.endeZeit),
-      bedarfe: s.bedarfe.map((b) => ({ ...b })),
-    })),
+    schichten: vorlage.schichten.map((s): SchichtEingabe => {
+      const beginn = zeitpunkt(s.tagVersatz, s.beginnZeit);
+      const ende = zeitpunkt(s.endeTagVersatz, s.endeZeit);
+      return s.art === 'betrieb'
+        ? { art: s.art, beginn, ende, bedarfe: s.bedarfe.map((b) => ({ ...b })) }
+        : { art: s.art, beginn, ende, minimum: s.minimum, wunsch: s.wunsch };
+    }),
   };
 }
 
@@ -548,6 +615,10 @@ export function ueberlappendeSchichten<T extends { beginn: string; ende: string 
 export const personSchluessel = (p: DienstPerson): string =>
   p.art === 'mitglied' ? `mitglied:${p.sub}` : `extern:${p.id}`;
 
+/** Statistik column of a Dienst: its Dienstform (Betrieb) or `art:aufbau` / `art:putzen`. */
+export const statistikSpalte = (art: SchichtArt, dienstformId: string | null): string =>
+  art === 'betrieb' ? (dienstformId ?? 'art:betrieb') : `art:${art}`;
+
 /**
  * Dienste per person for one calendar year (Berlin, by Schicht start). Dienste of cancelled events
  * do not count. Rows are sorted by total (descending), then by name.
@@ -555,7 +626,8 @@ export const personSchluessel = (p: DienstPerson): string =>
 export function statistikZeilen(
   dienste: readonly {
     person: DienstPerson;
-    dienstformId: string;
+    dienstformId: string | null;
+    schichtArt: SchichtArt;
     schichtBeginn: string;
     abgesagt: boolean;
   }[],
@@ -565,9 +637,10 @@ export function statistikZeilen(
   for (const d of dienste) {
     if (d.abgesagt || statistikJahr(d.schichtBeginn) !== jahr) continue;
     const key = personSchluessel(d.person);
-    const zeile = zeilen.get(key) ?? { person: d.person, gesamt: 0, nachDienstform: {} };
+    const zeile = zeilen.get(key) ?? { person: d.person, gesamt: 0, nachSpalte: {} };
     zeile.gesamt += 1;
-    zeile.nachDienstform[d.dienstformId] = (zeile.nachDienstform[d.dienstformId] ?? 0) + 1;
+    const spalte = statistikSpalte(d.schichtArt, d.dienstformId);
+    zeile.nachSpalte[spalte] = (zeile.nachSpalte[spalte] ?? 0) + 1;
     zeilen.set(key, zeile);
   }
   const anzeigeName = (p: DienstPerson) =>
@@ -676,12 +749,17 @@ export interface MeinDienstDto {
   eventId: string;
   eventTitel: string;
   schichtArt: SchichtArt;
-  dienstformName: string;
+  /** Null for Aufbau/Putzen. */
+  dienstformName: string | null;
   /** ISO instants of the Schicht. */
   beginn: string;
   ende: string;
   abgesagt: boolean;
 }
+
+/** What a Dienst is called: the Dienstform (Betrieb) or the Art (Aufbau/Putzen). */
+export const dienstBezeichnung = (art: SchichtArt, dienstformName: string | null): string =>
+  art === 'betrieb' && dienstformName ? dienstformName : SCHICHT_ART_BEZEICHNUNG[art];
 
 /** Turns own Dienste into ICS entries; `ursprung` (e.g. `https://c4.example`) enables the event link. */
 export function dienstTermine(
@@ -692,7 +770,7 @@ export function dienstTermine(
     const url = ursprung ? `${ursprung}/app/kalender/events/${d.eventId}` : null;
     return {
       id: d.id,
-      titel: `${d.dienstformName} · ${d.eventTitel}`,
+      titel: `${dienstBezeichnung(d.schichtArt, d.dienstformName)} · ${d.eventTitel}`,
       beschreibung: [
         `Schicht: ${schichtBezeichnung({ art: d.schichtArt, beginn: d.beginn, ende: d.ende })}`,
         url,

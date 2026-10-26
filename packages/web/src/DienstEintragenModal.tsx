@@ -32,7 +32,10 @@ const TITEL: Record<EintragModus, string> = {
   mitglied: 'Mitglied eintragen',
 };
 
-/** Choose a Dienstform (limited to the Bedarfe of the Schicht), a comment and, if needed, who. */
+/**
+ * Choose a Dienstform (Betrieb only, limited to the Bedarfe of the Schicht; a single one is preset
+ * and shown as text), a comment and, if needed, who.
+ */
 export function DienstEintragenModal({
   schicht,
   eventBeginn,
@@ -49,6 +52,8 @@ export function DienstEintragenModal({
 }>) {
   const api = useApi();
   const qc = useQueryClient();
+  // Aufbau/Putzen have no Dienstform; a Betrieb with a single Dienstform needs no choice either.
+  const mitDienstform = schicht.art === 'betrieb';
   const optionen = schicht.bedarfe.map((b) => ({
     value: b.dienstformId,
     label: dienstformen.get(b.dienstformId)?.name ?? 'Dienst',
@@ -74,7 +79,7 @@ export function DienstEintragenModal({
   );
 
   const absenden = async () => {
-    if (!dienstformId) return setFehler('Bitte wähle eine Dienstform.');
+    if (mitDienstform && !dienstformId) return setFehler('Bitte wähle eine Dienstform.');
     if (modus === 'mitglied' && !mitgliedSub) return setFehler('Bitte wähle ein Mitglied.');
     if (modus === 'extern' && !neu && !externId) return setFehler('Bitte wähle eine Person.');
     setFehler(null);
@@ -94,7 +99,7 @@ export function DienstEintragenModal({
         await api.kalender.schichten[':id'].dienste.$post({
           param: { id: schicht.id },
           json: {
-            dienstformId,
+            ...(mitDienstform ? { dienstformId: dienstformId! } : {}),
             kommentar,
             ...(modus === 'mitglied' ? { mitgliedSub: mitgliedSub! } : {}),
             ...(modus === 'extern' ? { externId: extern! } : {}),
@@ -188,14 +193,19 @@ export function DienstEintragenModal({
               </Anchor>
             </Stack>
           ))}
-        <Select
-          label="Dienstform"
-          placeholder="Dienstform wählen"
-          data={optionen}
-          value={dienstformId}
-          allowDeselect={false}
-          onChange={setDienstformId}
-        />
+        {mitDienstform &&
+          (optionen.length === 1 ? (
+            <Text>Dienst: {optionen[0]!.label}</Text>
+          ) : (
+            <Select
+              label="Dienstform"
+              placeholder="Dienstform wählen"
+              data={optionen}
+              value={dienstformId}
+              allowDeselect={false}
+              onChange={setDienstformId}
+            />
+          ))}
         <Textarea
           label="Kommentar"
           description="Optional"

@@ -56,58 +56,64 @@ export function DienstformenTab() {
     ...(archiviert === undefined ? {} : { archiviert }),
   });
   return (
-    <KalenderStammdatenTab<DienstformDto, DienstformWerte>
-      anlegenText="Dienstform anlegen"
-      bearbeitenTitel="Dienstform bearbeiten"
-      items={q.data}
-      laedt={q.isPending}
-      fehler={q.isError}
-      zeile={(d) => (
-        <Stack gap={0}>
-          <Text fw={600}>{d.name}</Text>
-          <Text size="sm" c="dimmed">
-            Reihenfolge {d.reihenfolge}
-          </Text>
-        </Stack>
-      )}
-      leer={{ name: '', reihenfolge: '' }}
-      aus={(d) => ({ name: d.name, reihenfolge: d.reihenfolge })}
-      felder={(w, set) => (
-        <>
-          <TextInput
-            label="Name"
-            value={w.name}
-            onChange={(e) => set({ ...w, name: e.currentTarget.value })}
-          />
-          <NumberInput
-            label="Reihenfolge"
-            description="Kleinere Zahlen stehen weiter vorne. Leer = ans Ende."
-            min={0}
-            allowDecimal={false}
-            allowNegative={false}
-            value={w.reihenfolge}
-            onChange={(v) => set({ ...w, reihenfolge: typeof v === 'number' ? v : '' })}
-          />
-        </>
-      )}
-      validieren={(w) => ersteMeldung(dienstformEingabeSchema.safeParse(json(w)))}
-      speichern={async (id, w, d) => {
-        const body = json(w, d?.archiviert);
-        await pruefen(
-          id
-            ? await api.kalender.dienstformen[':id'].$put({ param: { id }, json: body })
-            : await api.kalender.dienstformen.$post({ json: body }),
-        );
-      }}
-      archivieren={async (d, archiviert) =>
-        pruefen(
-          await api.kalender.dienstformen[':id'].$put({
-            param: { id: d.id },
-            json: { name: d.name, reihenfolge: d.reihenfolge, archiviert },
-          }),
-        )
-      }
-    />
+    <Stack gap="sm">
+      <Text size="sm" c="dimmed">
+        Dienstformen gibt es nur für den Betrieb. Aufbau und Putzen brauchen keine Dienstform, dort
+        legst du nur die Anzahl der Personen fest.
+      </Text>
+      <KalenderStammdatenTab<DienstformDto, DienstformWerte>
+        anlegenText="Dienstform anlegen"
+        bearbeitenTitel="Dienstform bearbeiten"
+        items={q.data}
+        laedt={q.isPending}
+        fehler={q.isError}
+        zeile={(d) => (
+          <Stack gap={0}>
+            <Text fw={600}>{d.name}</Text>
+            <Text size="sm" c="dimmed">
+              Reihenfolge {d.reihenfolge}
+            </Text>
+          </Stack>
+        )}
+        leer={{ name: '', reihenfolge: '' }}
+        aus={(d) => ({ name: d.name, reihenfolge: d.reihenfolge })}
+        felder={(w, set) => (
+          <>
+            <TextInput
+              label="Name"
+              value={w.name}
+              onChange={(e) => set({ ...w, name: e.currentTarget.value })}
+            />
+            <NumberInput
+              label="Reihenfolge"
+              description="Kleinere Zahlen stehen weiter vorne. Leer = ans Ende."
+              min={0}
+              allowDecimal={false}
+              allowNegative={false}
+              value={w.reihenfolge}
+              onChange={(v) => set({ ...w, reihenfolge: typeof v === 'number' ? v : '' })}
+            />
+          </>
+        )}
+        validieren={(w) => ersteMeldung(dienstformEingabeSchema.safeParse(json(w)))}
+        speichern={async (id, w, d) => {
+          const body = json(w, d?.archiviert);
+          await pruefen(
+            id
+              ? await api.kalender.dienstformen[':id'].$put({ param: { id }, json: body })
+              : await api.kalender.dienstformen.$post({ json: body }),
+          );
+        }}
+        archivieren={async (d, archiviert) =>
+          pruefen(
+            await api.kalender.dienstformen[':id'].$put({
+              param: { id: d.id },
+              json: { name: d.name, reihenfolge: d.reihenfolge, archiviert },
+            }),
+          )
+        }
+      />
+    </Stack>
   );
 }
 

@@ -33,7 +33,50 @@ export interface SchichtBasis {
   /** Stable key for React, not sent to the API. */
   key: string;
   art: SchichtArt;
+  /** Betrieb: the Bedarf per Dienstform. */
   bedarfe: BedarfForm[];
+  /** Aufbau/Putzen: head count of the Schicht itself. */
+  minimum: number | '';
+  wunsch: number | '';
+}
+
+/** Field errors of one Schicht, keyed by the path inside the Schicht (`bedarfe.0.minimum`, `wunsch`, ...). */
+export type SchichtFehler = Record<string, string>;
+
+/** Defaults of a new Schicht: a Betrieb with its first (still empty) Dienstform row. */
+export const neueSchichtWerte = (): Pick<
+  SchichtBasis,
+  'art' | 'bedarfe' | 'minimum' | 'wunsch'
+> => ({
+  art: 'betrieb',
+  bedarfe: [{ dienstformId: null, minimum: 1, wunsch: 1 }],
+  minimum: 1,
+  wunsch: 2,
+});
+
+/**
+ * Splits validation issues into field errors per Schicht (issues at `schichten.<i>...`) and a
+ * general message for everything else.
+ */
+export function fehlerAusIssues(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): {
+  schichten: Record<number, SchichtFehler>;
+  allgemein: string | null;
+} {
+  const schichten: Record<number, SchichtFehler> = {};
+  let allgemein: string | null = null;
+  for (const issue of issues) {
+    const [kopf, index, ...rest] = issue.path;
+    if (kopf === 'schichten' && typeof index === 'number' && rest.length > 0) {
+      const eintrag = (schichten[index] ??= {});
+      eintrag[rest.map(String).join('.')] ??= issue.message;
+    } else allgemein ??= issue.message;
+  }
+  if (allgemein === null && Object.keys(schichten).length > 0) {
+    allgemein = 'Bitte prüfe die markierten Felder.';
+  }
+  return { schichten, allgemein };
 }
 
 let zaehler = 0;
@@ -82,9 +125,11 @@ export function BedarfeEditor({
   bedarfe,
   onChange,
   dienstformen,
+  fehler = {},
 }: Readonly<{
   bedarfe: BedarfForm[];
   onChange: (b: BedarfForm[]) => void;
+  fehler?: SchichtFehler;
   /** All Dienstformen; archived ones are only offered where they are already chosen. */
   dienstformen: DienstformDto[];
 }>) {
@@ -104,8 +149,13 @@ export function BedarfeEditor({
         Bedarf je Dienstform
       </Text>
       {bedarfe.length === 0 && (
-        <Text size="sm" c="dimmed">
-          Noch kein Bedarf. Ohne Bedarf kann sich niemand in diese Schicht eintragen.
+        <Text size="sm" c={fehler.bedarfe ? 'red' : 'dimmed'}>
+          {fehler.bedarfe ?? 'Eine Betriebs-Schicht braucht mindestens eine Dienstform.'}
+        </Text>
+      )}
+      {bedarfe.length > 0 && fehler.bedarfe && (
+        <Text size="sm" c="red">
+          {fehler.bedarfe}
         </Text>
       )}
       {bedarfe.map((b, i) => (
@@ -117,15 +167,17 @@ export function BedarfeEditor({
               data={optionen(b.dienstformId)}
               value={b.dienstformId}
               allowDeselect={false}
+              error={fehler[`bedarfe.${i}.dienstformId`]}
               onChange={(v) => aendern(i, { dienstformId: v })}
             />
             <Group gap="xs" align="flex-end" wrap="nowrap">
               <NumberInput
                 label="Minimum"
-                min={0}
+                min={1}
                 allowDecimal={false}
                 allowNegative={false}
                 value={b.minimum}
+                error={fehler[`bedarfe.${i}.minimum`]}
                 onChange={(v) => {
                   const minimum = zahl(v);
                   aendern(i, { minimum, wunsch: Math.max(b.wunsch, minimum) });
@@ -138,6 +190,7 @@ export function BedarfeEditor({
                 allowDecimal={false}
                 allowNegative={false}
                 value={b.wunsch}
+                error={fehler[`bedarfe.${i}.wunsch`]}
                 onChange={(v) => aendern(i, { wunsch: zahl(v) })}
                 style={{ flex: 1, minWidth: 0 }}
               />
@@ -168,6 +221,56 @@ export function BedarfeEditor({
   );
 }
 
+/** Minimum and Wunsch of an Aufbau/Putzen Schicht (a head count, no Dienstform). */
+function AnzahlEditor({
+  minimum,
+  wunsch,
+  onChange,
+  fehler,
+}: Readonly<{
+  minimum: number | '';
+  wunsch: number | '';
+  onChange: (patch: { minimum?: number | ''; wunsch?: number | '' }) => void;
+  fehler: SchichtFehler;
+}>) {
+  const wert = (v: string | number): number | '' => (typeof v === 'number' ? v : '');
+  return (
+    <Stack gap="xs">
+      <Text size="sm" fw={500}>
+        Anzahl Personen
+      </Text>
+      <Group gap="xs" align="flex-start" wrap="nowrap">
+        <NumberInput
+          label="Minimum"
+          min={0}
+          allowDecimal={false}
+          allowNegative={false}
+          value={minimum}
+          error={fehler.minimum}
+          onChange={(v) => {
+            const neu = wert(v);
+            onChange({
+              minimum: neu,
+              ...(neu !== '' && wunsch !== '' && wunsch < neu ? { wunsch: neu } : {}),
+            });
+          }}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+        <NumberInput
+          label="Wunsch"
+          min={1}
+          allowDecimal={false}
+          allowNegative={false}
+          value={wunsch}
+          error={fehler.wunsch}
+          onChange={(v) => onChange({ wunsch: wert(v) })}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      </Group>
+    </Stack>
+  );
+}
+
 /** Add, remove and reorder Schichten; `zeitFelder` renders the time fields of one Schicht. */
 export function SchichtListeEditor<T extends SchichtBasis>({
   schichten,
@@ -176,11 +279,14 @@ export function SchichtListeEditor<T extends SchichtBasis>({
   zeitFelder,
   untertitel,
   dienstformen,
+  fehler = {},
 }: Readonly<{
   schichten: T[];
   onChange: (s: T[]) => void;
   neu: () => T;
-  zeitFelder: (s: T, aendern: (patch: Partial<T>) => void) => ReactNode;
+  zeitFelder: (s: T, aendern: (patch: Partial<T>) => void, fehler: SchichtFehler) => ReactNode;
+  /** Field errors per Schicht index. */
+  fehler?: Record<number, SchichtFehler>;
   /** Short description of a Schicht (art + time) shown below its heading; null while incomplete. */
   untertitel?: (s: T) => string | null;
   dienstformen: DienstformDto[];
@@ -250,14 +356,33 @@ export function SchichtListeEditor<T extends SchichtBasis>({
               data={SCHICHT_ARTEN.map((a) => ({ value: a, label: SCHICHT_ART_LABELS[a] }))}
               value={s.art}
               allowDeselect={false}
-              onChange={(v) => v && aendern(i, { art: v as SchichtArt } as Partial<T>)}
+              onChange={(v) => {
+                if (!v) return;
+                const art = v as SchichtArt;
+                aendern(i, {
+                  art,
+                  ...(art === 'betrieb' && s.bedarfe.length === 0
+                    ? { bedarfe: neueSchichtWerte().bedarfe }
+                    : {}),
+                } as Partial<T>);
+              }}
             />
-            {zeitFelder(s, (patch) => aendern(i, patch))}
-            <BedarfeEditor
-              bedarfe={s.bedarfe}
-              dienstformen={dienstformen}
-              onChange={(bedarfe) => aendern(i, { bedarfe } as Partial<T>)}
-            />
+            {zeitFelder(s, (patch) => aendern(i, patch), fehler[i] ?? {})}
+            {s.art === 'betrieb' ? (
+              <BedarfeEditor
+                bedarfe={s.bedarfe}
+                dienstformen={dienstformen}
+                fehler={fehler[i]}
+                onChange={(bedarfe) => aendern(i, { bedarfe } as Partial<T>)}
+              />
+            ) : (
+              <AnzahlEditor
+                minimum={s.minimum}
+                wunsch={s.wunsch}
+                fehler={fehler[i] ?? {}}
+                onChange={(patch) => aendern(i, patch as Partial<T>)}
+              />
+            )}
           </Stack>
         </Paper>
       ))}
@@ -327,12 +452,22 @@ export function KopfFelder({
   );
 }
 
-/** Converts the form's Bedarfe to API input; null while a row has no Dienstform. */
+/** Converts the form's Bedarfe to API input; a row without Dienstform becomes `''` (rejected by validation). */
 export function bedarfeZuEingabe(bedarfe: BedarfForm[]) {
-  if (bedarfe.some((b) => b.dienstformId === null)) return null;
   return bedarfe.map((b) => ({
-    dienstformId: b.dienstformId!,
+    dienstformId: b.dienstformId ?? '',
     minimum: b.minimum,
     wunsch: b.wunsch,
   }));
+}
+
+/** The API shape of a Schicht's Bedarf: per art either `bedarfe` or the head count. */
+export function bedarfFelder(s: Pick<SchichtBasis, 'art' | 'bedarfe' | 'minimum' | 'wunsch'>) {
+  return s.art === 'betrieb'
+    ? { art: s.art, bedarfe: bedarfeZuEingabe(s.bedarfe) }
+    : {
+        art: s.art,
+        minimum: s.minimum === '' ? undefined : s.minimum,
+        wunsch: s.wunsch === '' ? undefined : s.wunsch,
+      };
 }

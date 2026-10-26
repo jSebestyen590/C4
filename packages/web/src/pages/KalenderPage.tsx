@@ -34,7 +34,14 @@ import {
   type DienstformDto,
 } from '@c4/shared';
 import { useAuth } from '../auth';
-import { AMPEL_FARBE, AmpelBadge, FehltInfo, kategorieFarbe, PersonName } from '../KalenderAnzeige';
+import {
+  AMPEL_FARBE,
+  AmpelBadge,
+  dienstName,
+  FehltInfo,
+  kategorieFarbe,
+  PersonName,
+} from '../KalenderAnzeige';
 import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
 import { monatAnzeigen, monatsGrenzen, monatsRaster, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
@@ -59,9 +66,9 @@ function DienstZeilen({
   return (
     <Stack gap={2}>
       {ids.map((id) => (
-        <Text key={id} size="sm">
+        <Text key={id ?? 'art'} size="sm">
           <Text component="span" c="dimmed">
-            {dienstformen.get(id)?.name ?? 'Dienst'}:{' '}
+            {dienstName(schicht, id, dienstformen)}:{' '}
           </Text>
           {schicht.dienste
             .filter((d) => d.dienstformId === id)

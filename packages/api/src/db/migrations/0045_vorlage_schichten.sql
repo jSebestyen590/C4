@@ -8,5 +8,7 @@ CREATE TABLE IF NOT EXISTS vorlage_schichten (
   ende_tag_versatz integer NOT NULL,
   ende_zeit text NOT NULL,
   reihenfolge integer NOT NULL DEFAULT 0,
+  minimum integer,
+  wunsch integer,
   CHECK (art IN ('aufbau', 'betrieb', 'putzen'))
 )

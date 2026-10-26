@@ -27,18 +27,22 @@ import {
   type SchichtArt,
   type DienstPerson,
   type EventDto,
+  type EventEingabe,
   type EventKategorieDto,
   type VorlageDto,
 } from '@c4/shared';
 import { useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
 import {
-  bedarfeZuEingabe,
+  bedarfFelder,
+  fehlerAusIssues,
   KopfFelder,
+  neueSchichtWerte,
   neuerKey,
   SchichtListeEditor,
   ZeitpunktFelder,
   type KopfWerte,
+  type SchichtFehler,
   type SchichtBasis,
   type Zeitpunkt,
 } from '../KalenderFormular';
@@ -72,7 +76,7 @@ interface Betroffener {
   schichtArt: SchichtArt;
   schichtBeginn: string;
   schichtEnde: string;
-  dienstformId: string;
+  dienstformId: string | null;
   person: DienstPerson;
   grund: 'schicht' | 'bedarf';
 }
@@ -94,7 +98,9 @@ interface EventDaten {
     art: EventSchichtForm['art'];
     beginn: string;
     ende: string;
-    bedarfe: { dienstformId: string; minimum: number; wunsch: number }[];
+    bedarfe?: { dienstformId: string; minimum: number; wunsch: number }[];
+    minimum?: number | null;
+    wunsch?: number | null;
   }[];
 }
 
@@ -112,7 +118,12 @@ function werteAus(e: EventDaten): EventWerte {
       art: s.art,
       beginn: zeitpunktAusIso(s.beginn),
       ende: zeitpunktAusIso(s.ende),
-      bedarfe: s.bedarfe.map((b) => ({ ...b })),
+      bedarfe:
+        s.art === 'betrieb' && s.bedarfe?.length
+          ? s.bedarfe.map((b) => ({ ...b }))
+          : neueSchichtWerte().bedarfe,
+      minimum: s.minimum ?? 1,
+      wunsch: s.wunsch ?? 2,
     })),
   };
 }
@@ -139,20 +150,18 @@ function leereWerte(datum: string): EventWerte {
 const zuIso = (z: Zeitpunkt): string | null =>
   z.datum && z.zeit ? berlinZuUtc(z.datum, z.zeit) : null;
 
-/** Form values -> API input; a German error text when something is missing or invalid. */
+/** Form values -> API input; German error texts (general and per Schicht field) when invalid. */
 function eingabeBauen(
   w: EventWerte,
-): { fehler: string } | { json: NonNullable<ReturnType<typeof rohEingabe>> } {
+): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: EventEingabe } {
   const roh = rohEingabe(w);
-  if (!roh)
-    return {
-      fehler:
-        'Bitte gib bei allen Zeiten Datum und Uhrzeit an und wähle bei jedem Bedarf eine Dienstform.',
-    };
+  if (!roh) return { fehler: 'Bitte gib bei allen Zeiten Datum und Uhrzeit an.' };
   const geprueft = eventEingabeSchema.safeParse(roh);
-  if (!geprueft.success)
-    return { fehler: geprueft.error.issues[0]?.message ?? 'Ungültige Eingabe.' };
-  return { json: roh };
+  if (!geprueft.success) {
+    const { schichten, allgemein } = fehlerAusIssues(geprueft.error.issues);
+    return { fehler: allgemein ?? 'Ungültige Eingabe.', schichtFehler: schichten };
+  }
+  return { json: geprueft.data };
 }
 
 function rohEingabe(w: EventWerte) {
@@ -163,9 +172,8 @@ function rohEingabe(w: EventWerte) {
   for (const s of w.schichten) {
     const sb = zuIso(s.beginn);
     const se = zuIso(s.ende);
-    const bedarfe = bedarfeZuEingabe(s.bedarfe);
-    if (!sb || !se || !bedarfe) return null;
-    schichten.push({ id: s.id, art: s.art, beginn: sb, ende: se, bedarfe });
+    if (!sb || !se) return null;
+    schichten.push({ id: s.id, beginn: sb, ende: se, ...bedarfFelder(s) });
   }
   return {
     titel: w.titel,
@@ -194,13 +202,18 @@ function Formular({
   const navigate = useNavigate();
   const [werte, setWerte] = useState(anfang);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [schichtFehler, setSchichtFehler] = useState<Record<number, SchichtFehler>>({});
   const [laeuft, setLaeuft] = useState(false);
   const [betroffene, setBetroffene] = useState<Betroffener[] | null>(null);
 
   const speichern = async (bestaetigt: boolean) => {
     const ergebnis = eingabeBauen(werte);
-    if ('fehler' in ergebnis) return setFehler(ergebnis.fehler);
+    if ('fehler' in ergebnis) {
+      setSchichtFehler(ergebnis.schichtFehler ?? {});
+      return setFehler(ergebnis.fehler);
+    }
     setFehler(null);
+    setSchichtFehler({});
     setLaeuft(true);
     try {
       const json = bestaetigt ? { ...ergebnis.json, bestaetigt: true } : ergebnis.json;
@@ -254,12 +267,12 @@ function Formular({
         schichten={werte.schichten}
         onChange={(schichten) => setWerte({ ...werte, schichten })}
         dienstformen={dienstformen}
+        fehler={schichtFehler}
         neu={() => ({
           key: neuerKey(),
-          art: 'betrieb',
+          ...neueSchichtWerte(),
           beginn: werte.beginn,
           ende: werte.ende,
-          bedarfe: [],
         })}
         untertitel={(s) => {
           const beginn = zuIso(s.beginn);
@@ -268,14 +281,19 @@ function Formular({
             ? schichtBezeichnung({ art: s.art, beginn, ende }, zuIso(werte.beginn) ?? undefined)
             : null;
         }}
-        zeitFelder={(s, aendern) => (
+        zeitFelder={(s, aendern, f) => (
           <Stack gap="xs">
             <ZeitpunktFelder
               label="Beginn"
               wert={s.beginn}
               onChange={(beginn) => aendern({ beginn })}
             />
-            <ZeitpunktFelder label="Ende" wert={s.ende} onChange={(ende) => aendern({ ende })} />
+            <ZeitpunktFelder
+              label="Ende"
+              wert={s.ende}
+              onChange={(ende) => aendern({ ende })}
+              fehler={f.ende}
+            />
           </Stack>
         )}
       />
@@ -315,7 +333,9 @@ function Formular({
                   <PersonName person={b.person} verlinken={false} mitQuelle={false} /> –{' '}
                   {b.grund === 'schicht'
                     ? `Schicht „${schicht}“ entfällt`
-                    : `kein Bedarf mehr für ${form} in „${schicht}“`}
+                    : b.dienstformId === null
+                      ? `Dienst ohne Dienstform passt nicht zur Betriebs-Schicht „${schicht}“`
+                      : `kein Bedarf mehr für ${form} in „${schicht}“`}
                 </Text>
               );
             })}
