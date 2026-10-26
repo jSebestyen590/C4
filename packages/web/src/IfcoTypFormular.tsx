@@ -1,18 +1,11 @@
-import {
-  Alert,
-  Button,
-  Modal,
-  NumberInput,
-  SegmentedControl,
-  Stack,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Button, Modal, SegmentedControl, Stack, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { IFCO_MASSE, ifcoTypSchema, type IfcoGrundflaeche } from '@c4/shared';
 import { useApi } from './api';
 import { INVENTAR_KEY, type IfcoTypEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 /** Create or edit an IFCO type (name, footprint, height). Mount it only while it should be open. */
 export function IfcoTypFormular({
@@ -80,7 +73,7 @@ export function IfcoTypFormular({
               { value: 'klein', label: `Klein ${IFCO_MASSE.klein}` },
             ]}
           />
-          <NumberInput
+          <ZahlFeld
             label="Höhe (cm)"
             value={hoeheCm}
             onChange={setHoeheCm}

@@ -1,4 +1,4 @@
-import { NumberInput, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
+import { SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 import {
   ifcoPlatzMasseSchema,
   MAX_IFCO_HOEHE_CM,
@@ -6,6 +6,7 @@ import {
   type IfcoPlatzMasse,
 } from '@c4/shared';
 import { bodenMasse, reihenHoehen } from './ifcoPlatz';
+import { ZahlFeld } from './ZahlFeld';
 
 /** Input of the IFCO-Lagerplatz fields; the number fields hold '' while empty. */
 export interface IfcoPlatzWert {
@@ -89,7 +90,7 @@ export function IfcoPlatzFelder({
       {wert.aktiv && !gesperrt && (
         <>
           <SimpleGrid cols={2} spacing="sm">
-            <NumberInput
+            <ZahlFeld
               label={reihen > 1 ? 'Höhe Reihe 1 (cm)' : 'Höhe (cm)'}
               value={wert.hoeheCm}
               onChange={(hoeheCm) => onChange({ ...wert, hoeheCm })}
@@ -101,7 +102,7 @@ export function IfcoPlatzFelder({
               allowNegative={false}
               inputMode="decimal"
             />
-            <NumberInput
+            <ZahlFeld
               label="Stellflächen"
               value={wert.stellflaechen}
               onChange={(stellflaechen) => onChange({ ...wert, stellflaechen })}
@@ -117,7 +118,7 @@ export function IfcoPlatzFelder({
           {reihen > 1 && (
             <SimpleGrid cols={2} spacing="sm">
               {hoehen.slice(1).map((h, i) => (
-                <NumberInput
+                <ZahlFeld
                   key={i}
                   label={`Höhe Reihe ${i + 2} (cm)`}
                   value={h}

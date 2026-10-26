@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Button,
   Group,
-  NumberInput,
   Paper,
   Select,
   Stack,
@@ -20,6 +19,7 @@ import {
 } from '@c4/shared';
 import { DatumFeld } from './DatumFeld';
 import { SCHICHT_ART_LABELS } from './i18n';
+import { ZahlFeld } from './ZahlFeld';
 
 // Shared building blocks of the event form and the Vorlage editor.
 
@@ -171,7 +171,7 @@ export function BedarfeEditor({
               onChange={(v) => aendern(i, { dienstformId: v })}
             />
             <Group gap="xs" align="flex-end" wrap="nowrap">
-              <NumberInput
+              <ZahlFeld
                 label="Minimum"
                 min={1}
                 allowDecimal={false}
@@ -184,7 +184,7 @@ export function BedarfeEditor({
                 }}
                 style={{ flex: 1, minWidth: 0 }}
               />
-              <NumberInput
+              <ZahlFeld
                 label="Wunsch"
                 min={b.minimum}
                 allowDecimal={false}
@@ -240,7 +240,7 @@ function AnzahlEditor({
         Anzahl Personen
       </Text>
       <Group gap="xs" align="flex-start" wrap="nowrap">
-        <NumberInput
+        <ZahlFeld
           label="Minimum"
           min={0}
           allowDecimal={false}
@@ -256,7 +256,7 @@ function AnzahlEditor({
           }}
           style={{ flex: 1, minWidth: 0 }}
         />
-        <NumberInput
+        <ZahlFeld
           label="Wunsch"
           min={1}
           allowDecimal={false}
@@ -440,7 +440,7 @@ export function KopfFelder({
         value={werte.kategorieId}
         onChange={(v) => onChange({ ...werte, kategorieId: v })}
       />
-      <NumberInput
+      <ZahlFeld
         label="Fehlende-Dienste-Hinweis (Stunden vorher, leer = aus)"
         min={0}
         allowDecimal={false}

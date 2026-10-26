@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Button,
-  Group,
-  Modal,
-  NumberInput,
-  Select,
-  Stack,
-  Textarea,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Button, Group, Modal, Select, Stack, Textarea, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import {
@@ -27,6 +17,7 @@ import type { LagerKnoten } from './LagerBaum';
 import { PfadSelect } from './PfadSelect';
 import { INVENTAR_KEY } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 /**
  * Create or edit a Gegenstand. Creating books the first Zugang (Anzahl, Grund, Datum) and may put it
@@ -149,7 +140,7 @@ export function GegenstandFormular({
           />
           {!gegenstand && (
             <>
-              <NumberInput
+              <ZahlFeld
                 label="Anzahl"
                 allowDecimal={false}
                 allowNegative={false}
@@ -185,7 +176,7 @@ export function GegenstandFormular({
             />
           )}
           {!gegenstand && ziel && (anzahl !== 1 || amPlatz !== 1) && (
-            <NumberInput
+            <ZahlFeld
               label="Anzahl an diesem Platz"
               allowDecimal={false}
               allowNegative={false}

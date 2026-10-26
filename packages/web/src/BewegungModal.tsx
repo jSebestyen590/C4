@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, NumberInput, Select, Stack, Textarea } from '@mantine/core';
+import { Alert, Button, Group, Modal, Select, Stack, Textarea } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import {
@@ -19,6 +19,7 @@ import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './invent
 import type { LagerKnoten } from './LagerBaum';
 import { PfadSelect } from './PfadSelect';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 const OHNE_PLATZ = 'ohne';
 const VERBAUT = 'v:';
@@ -124,7 +125,7 @@ export function BewegungModal({
       title={`${art === 'zugang' ? 'Zugang' : 'Abgang'}: ${gegenstand.name}`}
     >
       <Stack>
-        <NumberInput
+        <ZahlFeld
           label="Anzahl"
           allowDecimal={false}
           allowNegative={false}

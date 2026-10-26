@@ -1,5 +1,6 @@
-import { NumberInput, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { bodenNamen, bodenNamenFehler, MAX_BOEDEN } from '@c4/shared';
+import { ZahlFeld } from './ZahlFeld';
 
 /** Input of the Regalböden fields; the number fields hold '' while empty. */
 export interface BoedenWert {
@@ -76,7 +77,7 @@ export function BoedenFelder({
   return (
     <Stack gap="sm">
       <SimpleGrid cols={2} spacing="sm">
-        <NumberInput
+        <ZahlFeld
           label="Reihen"
           value={wert.reihen}
           onChange={(reihen) => aendern({ reihen })}
@@ -86,7 +87,7 @@ export function BoedenFelder({
           allowNegative={false}
           inputMode="numeric"
         />
-        <NumberInput
+        <ZahlFeld
           label="Plätze je Reihe"
           value={wert.plaetze}
           onChange={(plaetze) => aendern({ plaetze })}
@@ -103,7 +104,7 @@ export function BoedenFelder({
         value={wert.muster}
         onChange={(e) => aendern({ muster: e.currentTarget.value, musterGeaendert: true })}
       />
-      <NumberInput
+      <ZahlFeld
         label="Startnummer"
         description="Für {n}."
         value={wert.start}

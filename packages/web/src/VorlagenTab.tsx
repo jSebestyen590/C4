@@ -5,7 +5,6 @@ import {
   Button,
   Group,
   Loader,
-  NumberInput,
   Paper,
   Stack,
   Switch,
@@ -38,6 +37,7 @@ import {
   useVorlagen,
 } from './kalenderDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 interface VorlageSchichtForm extends SchichtBasis {
   tagVersatz: number | '';
@@ -145,7 +145,7 @@ function VersatzZeit({
         {titel}
       </Text>
       <Group gap="xs" align="flex-start" wrap="nowrap">
-        <NumberInput
+        <ZahlFeld
           label="Tage danach"
           description="0 = am Tag des Events"
           min={0}

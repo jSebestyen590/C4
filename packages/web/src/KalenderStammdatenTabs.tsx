@@ -5,7 +5,6 @@ import {
   Group,
   Modal,
   MultiSelect,
-  NumberInput,
   Select,
   Stack,
   Text,
@@ -34,6 +33,7 @@ import {
 } from './kalenderDaten';
 import { KalenderStammdatenTab } from './KalenderStammdatenTab';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 const ersteMeldung = (r: { success: boolean; error?: { issues: { message: string }[] } }) =>
   r.success ? null : (r.error?.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -84,7 +84,7 @@ export function DienstformenTab() {
               value={w.name}
               onChange={(e) => set({ ...w, name: e.currentTarget.value })}
             />
-            <NumberInput
+            <ZahlFeld
               label="Reihenfolge"
               description="Kleinere Zahlen stehen weiter vorne. Leer = ans Ende."
               min={0}
