@@ -41,7 +41,7 @@ export function KalenderStatistikPage() {
           Zurück zum Kalender
         </Group>
       </Anchor>
-      <Title order={2}>Statistik</Title>
+      <Title order={2}>Dienstschwein</Title>
       <Select
         label="Jahr"
         data={jahre}
@@ -55,7 +55,7 @@ export function KalenderStatistikPage() {
       </Text>
 
       {statistik.isError || dienstformen.isError ? (
-        <Alert color="red">Die Statistik konnte nicht geladen werden.</Alert>
+        <Alert color="red">Das Dienstschwein konnte nicht geladen werden.</Alert>
       ) : statistik.isPending || dienstformen.isPending ? (
         <Loader m="md" />
       ) : zeilen.length === 0 ? (

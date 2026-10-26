@@ -296,7 +296,7 @@ export function KalenderPage() {
             variant="default"
             leftSection={<IconChartBar size={18} />}
           >
-            Statistik
+            Dienstschwein
           </Button>
           <Button
             component={Link}

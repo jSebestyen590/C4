@@ -393,7 +393,7 @@ export function EventDetailPage() {
         >
           <Text>
             „{e.titel}“ wird abgesagt. Die Einträge bleiben erhalten, zählen aber nicht in der
-            Statistik. Du kannst das Event später wieder aufnehmen.
+            Dienstschwein-Auswertung. Du kannst das Event später wieder aufnehmen.
           </Text>
         </BestaetigenDialog>
       )}
