@@ -1833,6 +1833,9 @@ export function createApp(deps: AppDeps) {
           return c.json({ ok: true });
         },
       )
+      .post('/push/test', auth, profilBearbeiten, async (c) =>
+        c.json(await deps.benachrichtigungen.testSenden(c.get('user').sub)),
+      )
       .get('/me/benachrichtigungen', auth, profilBearbeiten, async (c) =>
         c.json(
           gefunden(

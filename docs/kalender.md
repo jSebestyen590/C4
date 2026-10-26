@@ -62,5 +62,5 @@ Das allgemeine Modul ist in [benachrichtigungen.md](./benachrichtigungen.md) bes
 `kalender.erinnerung` (vor der eigenen Schicht, einstellbar), `kalender.fehlende_dienste` (zum Hinweiszeitpunkt des
 Events, wenn es noch rot ist; einmal je Event; für EM standardmäßig aus) und `kalender.aenderung` (Event verschoben,
 abgesagt/wieder aktiv, eigene Schicht geändert oder entfernt, von anderen ausgetragen; die handelnde Person bekommt
-nichts). Einstellungen: Profil, Abschnitt „Benachrichtigungen“; „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben
+nichts). Einstellungen: Seite „Benachrichtigungen“ (`/benachrichtigungen`); „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben
 stehen in `kalenderBenachrichtigungen.ts`. Auf iPhone/iPad nur über „Zum Home-Bildschirm“ (iOS 16.4+).

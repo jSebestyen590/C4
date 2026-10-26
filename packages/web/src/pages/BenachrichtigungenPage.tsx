@@ -1,44 +1,39 @@
 import { Alert, Button, Loader, Select, Stack, Switch, Text, Title } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import type { EinstellungDto } from '@c4/shared';
-import { unwrap, useApi } from './api';
+import { unwrap, useApi } from '../api';
 import {
   BENACHRICHTIGUNG_ART_LABELS,
   BENACHRICHTIGUNG_BEREICH_LABELS,
   label,
   minutenVorherLabel,
-} from './i18n';
-import { geraetAktivieren, geraetDeaktivieren, pushStatus, type PushStatus } from './pushGeraet';
-import { fehlerAnzeigen } from './warenApi';
+} from '../i18n';
+import { usePushGeraet } from '../usePushGeraet';
+import { fehlerAnzeigen } from '../warenApi';
 
-const STATUS_KEY = ['push-status'];
 const EINSTELLUNGEN_KEY = ['benachrichtigungen'];
 
-/** Push on this device: status and the button to switch it on or off. */
+/** Push on this device: status and the buttons to switch it on or off and to send a test. */
 function GeraetPush() {
   const api = useApi();
-  const qc = useQueryClient();
-  const status = useQuery({ queryKey: STATUS_KEY, queryFn: pushStatus });
-
-  const aktivieren = useMutation({
-    mutationFn: async () => {
-      const { publicKey } = await unwrap(await api.push.schluessel.$get());
-      const abo = await geraetAktivieren(publicKey);
-      if (abo) await unwrap(await api.push.abos.$post({ json: abo }));
-    },
-    onError: (e) => fehlerAnzeigen(e, 'Push konnte nicht aktiviert werden.'),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATUS_KEY }),
-  });
-  const deaktivieren = useMutation({
-    mutationFn: async () => {
-      const endpoint = await geraetDeaktivieren();
-      if (endpoint) await unwrap(await api.push.abos.$delete({ json: { endpoint } }));
-    },
-    onError: (e) => fehlerAnzeigen(e, 'Push konnte nicht deaktiviert werden.'),
-    onSettled: () => qc.invalidateQueries({ queryKey: STATUS_KEY }),
+  const {
+    status: wert,
+    aktivieren,
+    aktiviertGerade,
+    deaktivieren,
+    deaktiviertGerade,
+  } = usePushGeraet();
+  const [testErgebnis, setTestErgebnis] = useState<
+    { geraete: number; ok: number; fehler: number } | 'fehler' | null
+  >(null);
+  const test = useMutation({
+    mutationFn: async () => unwrap(await api.push.test.$post()),
+    onMutate: () => setTestErgebnis(null),
+    onSuccess: setTestErgebnis,
+    onError: () => setTestErgebnis('fehler'),
   });
 
-  const wert: PushStatus = status.data ?? 'laedt';
   return (
     <Stack gap="sm">
       {wert === 'ios-installieren' && (
@@ -68,7 +63,7 @@ function GeraetPush() {
       {wert === 'aus' && <Text>Push ist auf diesem Gerät nicht aktiv.</Text>}
       {wert === 'laedt' && <Loader size="sm" aria-label="Status wird geladen" />}
       {wert === 'aus' && (
-        <Button fullWidth loading={aktivieren.isPending} onClick={() => aktivieren.mutate()}>
+        <Button fullWidth loading={aktiviertGerade} onClick={() => void aktivieren()}>
           Push auf diesem Gerät aktivieren
         </Button>
       )}
@@ -76,12 +71,39 @@ function GeraetPush() {
         <Button
           fullWidth
           variant="default"
-          loading={deaktivieren.isPending}
-          onClick={() => deaktivieren.mutate()}
+          loading={deaktiviertGerade}
+          onClick={() => void deaktivieren()}
         >
           Push auf diesem Gerät deaktivieren
         </Button>
       )}
+      <Button fullWidth variant="light" loading={test.isPending} onClick={() => test.mutate()}>
+        Testbenachrichtigung senden
+      </Button>
+      {testErgebnis === 'fehler' && (
+        <Alert color="red" title="Test fehlgeschlagen">
+          Die Testbenachrichtigung konnte nicht gesendet werden. Versuch es gleich noch einmal.
+        </Alert>
+      )}
+      {testErgebnis && testErgebnis !== 'fehler' && testErgebnis.geraete === 0 && (
+        <Alert color="yellow" title="Kein Gerät aktiviert">
+          Du hast noch kein Gerät für Push aktiviert. Aktiviere es oben auf diesem Gerät.
+        </Alert>
+      )}
+      {testErgebnis &&
+        testErgebnis !== 'fehler' &&
+        testErgebnis.geraete > 0 &&
+        (testErgebnis.ok > 0 ? (
+          <Alert color="green" title="Test gesendet">
+            Die Testbenachrichtigung wurde an {testErgebnis.ok} von {testErgebnis.geraete}{' '}
+            {testErgebnis.geraete === 1 ? 'Gerät' : 'Geräten'} gesendet. Sie sollte gleich ankommen.
+          </Alert>
+        ) : (
+          <Alert color="red" title="Test fehlgeschlagen">
+            Der Push-Dienst hat die Nachricht nicht angenommen. Deaktiviere Push auf diesem Gerät
+            und aktiviere es erneut.
+          </Alert>
+        ))}
     </Stack>
   );
 }
@@ -158,11 +180,10 @@ function Einstellungen() {
   );
 }
 
-/** Profile section "Benachrichtigungen". */
-export function Benachrichtigungen() {
+export function BenachrichtigungenPage() {
   return (
     <Stack maw={520} gap="md">
-      <Title order={3}>Benachrichtigungen</Title>
+      <Title order={2}>Benachrichtigungen</Title>
       <Text size="sm" c="dimmed">
         Push-Nachrichten musst du auf jedem Gerät einzeln aktivieren. Welche Nachrichten du
         bekommst, gilt für alle deine Geräte.

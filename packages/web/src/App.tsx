@@ -29,7 +29,9 @@ import { KalenderPage } from './pages/KalenderPage';
 import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
+import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { ProfilPage } from './pages/ProfilPage';
+import { PushAbfrage } from './PushAbfrage';
 import { StammdatenPage } from './pages/StammdatenPage';
 import { WareDetailPage } from './pages/WareDetailPage';
 import { WarenPage } from './pages/WarenPage';
@@ -376,9 +378,20 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               </Protected>
             }
           />
+          <Route
+            path="/benachrichtigungen"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <RequireUsername>
+                  <BenachrichtigungenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Container>
+      <PushAbfrage />
     </AppLayout>
   );
 }

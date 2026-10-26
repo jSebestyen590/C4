@@ -124,6 +124,43 @@ describe('senden', () => {
     expect(t.versendet).toHaveLength(2);
   });
 
+  it('does not claim the dedupe key while the recipient has no device yet', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    const sendung = {
+      subs: ['a'],
+      art: 'kalender.erinnerung',
+      titel: 'T',
+      text: 'X',
+      url: '/',
+      dedupeSchluessel: 'k1',
+    };
+    expect(await t.b.senden(sendung)).toBe(0);
+    expect(t.versendet).toHaveLength(0);
+    expect(t.versand.has('k1')).toBe(false);
+    await t.abo('a');
+    await t.b.senden(sendung);
+    expect(t.versendet).toHaveLength(1);
+    await t.b.senden(sendung);
+    expect(t.versendet).toHaveLength(1);
+  });
+
+  it('sends a test message to the own devices only, ignoring settings and dedupe', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+    ]);
+    await t.abo('a', 1);
+    await t.abo('a', 2);
+    await t.abo('b');
+    t.ergebnisse.set('https://push.example/a-2', 'fehler');
+    expect(await t.b.testSenden('a')).toEqual({ geraete: 2, ok: 1, fehler: 1 });
+    expect(await t.b.testSenden('nobody')).toEqual({ geraete: 0, ok: 0, fehler: 0 });
+    expect(t.versendet.map((v) => v.endpoint)).toEqual([
+      'https://push.example/a-1',
+      'https://push.example/a-2',
+    ]);
+  });
+
   it('rejects unknown types', async () => {
     const t = setup([]);
     await expect(

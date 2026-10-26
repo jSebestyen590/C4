@@ -4,6 +4,7 @@ import {
   FileInput,
   Group,
   Loader,
+  Modal,
   Select,
   Stack,
   Text,
@@ -13,7 +14,8 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type SubmitEvent } from 'react';
+import { useEffect, useRef, useState, type SubmitEvent } from 'react';
+import { useBlocker } from 'react-router-dom';
 import {
   ANREDEN,
   PROFILBILD_TYPEN,
@@ -29,7 +31,6 @@ import { useAuth } from '../auth';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
-import { Benachrichtigungen } from '../Benachrichtigungen';
 import { EmailAendern } from '../EmailAendern';
 import { KontaktkanalAuswahl } from '../KontaktkanalIcons';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
@@ -114,6 +115,32 @@ export function ProfilFormular({
     onError: () => setBildFehler('Das Bild konnte nicht hochgeladen werden.'),
   });
 
+  // Unsaved changes: compare the current values with those last loaded or saved.
+  const werte = JSON.stringify([
+    username,
+    vorname,
+    nachname,
+    anrede,
+    kanaele,
+    discordName,
+    adresse,
+    telefon,
+    ueberMich,
+    bildKey,
+  ]);
+  const [basis, setBasis] = useState(werte);
+  const dirty = werte !== basis;
+  // Set on a successful save so the navigation it triggers is let through (state isn't updated yet).
+  const gespeichertRef = useRef(false);
+  const blocker = useBlocker(() => dirty && !gespeichertRef.current);
+  useEffect(() => {
+    if (!dirty) return;
+    gespeichertRef.current = false;
+    const handler = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
   const speichern = useMutation({
     mutationFn: async (eingabe: {
       username: string;
@@ -129,6 +156,9 @@ export function ProfilFormular({
     },
     onSuccess: async (_, eingabe) => {
       notifications.show({ color: 'green', message: 'Dein Profil wurde gespeichert.' });
+      // The saved values are the new baseline; let the navigation below through.
+      gespeichertRef.current = true;
+      setBasis(werte);
       // Call before refetching so a page addressed by the old username is not reloaded.
       onGespeichert?.(eingabe.username);
       await Promise.all(
@@ -330,7 +360,25 @@ export function ProfilFormular({
         </Stack>
       </form>
       {mitglied?.email && <EmailAendern email={mitglied.email} />}
-      {mitglied && <Benachrichtigungen />}
+      <Modal
+        opened={blocker.state === 'blocked'}
+        onClose={() => blocker.reset?.()}
+        title="Änderungen verwerfen?"
+        centered
+        padding="md"
+      >
+        <Stack>
+          <Text>
+            Du hast ungespeicherte Änderungen. Wenn du die Seite verlässt, gehen sie verloren.
+          </Text>
+          <Button fullWidth size="md" color="red" onClick={() => blocker.proceed?.()}>
+            Verwerfen
+          </Button>
+          <Button fullWidth size="md" variant="default" onClick={() => blocker.reset?.()}>
+            Weiter bearbeiten
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

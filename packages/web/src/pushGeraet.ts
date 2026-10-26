@@ -10,11 +10,11 @@ export type PushStatus =
   | 'aus'
   | 'an';
 
-const istIos = (): boolean =>
+export const istIos = (): boolean =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-const istStandalone = (): boolean =>
+export const istStandalone = (): boolean =>
   window.matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
@@ -61,11 +61,13 @@ export interface GeraeteAbo {
   keys: { p256dh: string; auth: string };
 }
 
-/** Asks for permission and subscribes this device; returns null when the permission is refused. */
-export async function geraetAktivieren(publicKey: string): Promise<GeraeteAbo | null> {
+/**
+ * Subscribes this device. The permission must already be granted; asking for it has to happen
+ * directly in the click handler (iOS needs the user gesture), see `usePushGeraet`.
+ */
+export async function geraetAbonnieren(publicKey: string): Promise<GeraeteAbo> {
   const reg = await registrierung();
   if (!reg) throw new Error('Kein Service Worker');
-  if ((await Notification.requestPermission()) !== 'granted') return null;
   const abo =
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({

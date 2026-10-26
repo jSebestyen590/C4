@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconBell,
   IconBriefcase,
   IconCalendar,
   IconCheck,
@@ -78,6 +79,16 @@ function ProfilMenue() {
         {darfProfil && (
           <Menu.Item component={Link} to="/profil" leftSection={<IconUser size={18} />} py="sm">
             Mein Profil
+          </Menu.Item>
+        )}
+        {darfProfil && (
+          <Menu.Item
+            component={Link}
+            to="/benachrichtigungen"
+            leftSection={<IconBell size={18} />}
+            py="sm"
+          >
+            Benachrichtigungen
           </Menu.Item>
         )}
         <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>

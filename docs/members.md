@@ -80,8 +80,15 @@ sowie den Server Members Intent.
 
 ## Benachrichtigungen im Profil
 
-Unter dem Profilformular steht der Abschnitt „Benachrichtigungen“ (Push je Gerät, Schalter je Art); siehe
-[benachrichtigungen.md](./benachrichtigungen.md).
+Die Profilseite enthält keine Benachrichtigungs-Einstellungen mehr. Sie liegen auf der eigenen Seite
+`/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“); siehe [benachrichtigungen.md](./benachrichtigungen.md).
+
+## Ungespeicherte Änderungen
+
+Das Profilformular merkt sich die zuletzt geladenen/gespeicherten Werte. Weicht es davon ab, fragt ein Dialog
+„Änderungen verwerfen?“ („Verwerfen“ / „Weiter bearbeiten“) bei jeder Navigation (Menü, Links, Zurück), und der Browser
+warnt beim Schließen/Neuladen. Nach dem Speichern (auch beim Wechsel des Benutzernamens) ist das Formular nicht mehr
+„dirty“. Dafür läuft die App mit `createBrowserRouter` + `RouterProvider` (`useBlocker`).
 
 ## Profilbilder
 

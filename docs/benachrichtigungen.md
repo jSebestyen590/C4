@@ -1,7 +1,7 @@
 # Benachrichtigungen (Web Push)
 
 Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; der Kalender ist nur der erste
-Nutzer. Einstellungen liegen auf der Profilseite (`/profil`, Abschnitt „Benachrichtigungen“).
+Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
 ## Konzept
 
@@ -35,6 +35,8 @@ Nutzer. Einstellungen liegen auf der Profilseite (`/profil`, Abschnitt „Benach
   `DELETE /api/push/abos` `{ endpoint }`.
 - `GET /api/me/benachrichtigungen` → alle Arten mit `bereich`, wirksamem `aktiv`/`minuten` und `minutenOptionen`;
   `PUT /api/me/benachrichtigungen` `{ art, aktiv, minuten? }`.
+- `POST /api/push/test` → `{ geraete, ok, fehler }`: Testnachricht an die eigenen Geräte (ohne Dedupe und ohne
+  Einstellungsfilter).
 - Alle brauchen `profil:bearbeiten` und eine Profilzeile.
 
 ## Versand und Job
@@ -43,7 +45,9 @@ Nutzer. Einstellungen liegen auf der Profilseite (`/profil`, Abschnitt „Benach
 
 - `senden({ subs | 'alle', art, titel, text, url, dedupeSchluessel? })` filtert Empfänger nach ihrer wirksamen
   Einstellung, versendet an alle Geräte (`web-push`, VAPID-Subject = App-URL), löscht Abos bei 404/410 und
-  belegt den Dedupe-Schlüssel (bei reinem Übertragungsfehler wird er wieder freigegeben).
+  belegt den Dedupe-Schlüssel. Ohne Gerät der Empfänger wird nichts gesendet und der Schlüssel **nicht** belegt (sonst
+  käme eine Erinnerung nie mehr, wenn Push erst später aktiviert wird); bei reinem Übertragungsfehler wird er wieder
+  freigegeben. Push-Fehler werden mit Statuscode und Body geloggt (CloudWatch).
 - `registriereAufgabe(name, fn)` / `pushJob(jetzt)`: der Job führt alle registrierten Aufgaben aus; eine fehlerhafte
   Aufgabe stoppt die anderen nicht.
 - `bestEffort(fn)`: für direkten Versand in Routen; Fehler und Timeout (5 s) machen den Request nie kaputt.
@@ -71,12 +75,21 @@ Dienst durch andere entfernt).
 
 `public/sw.js` (Scope `/app/`, in `main.tsx` nur in Produktions-Builds registriert) zeigt Nachrichten an und öffnet
 bei Klick die App (`url` der Nachricht). `deploy-env.yml` lädt `sw.js` mit `Cache-Control: no-cache` hoch.
-`Benachrichtigungen.tsx` / `pushGeraet.ts` steuern Aktivieren/Deaktivieren je Gerät.
+`pushGeraet.ts` (Browser-API) und der Hook `usePushGeraet` steuern Aktivieren/Deaktivieren je Gerät.
+
+- Seite `pages/BenachrichtigungenPage.tsx`: Gerät aktivieren/deaktivieren, Button „Testbenachrichtigung senden“ (zeigt
+  Erfolg, „Kein Gerät aktiviert“ oder Fehler), Schalter/Minuten je Art.
+- Dialog nach dem Login (`PushAbfrage.tsx`, einmal in `App.tsx`): erscheint, wenn das Profil-Gate bestanden ist, auf
+  diesem Gerät kein Push aktiv ist, die Erlaubnis nicht blockiert ist und nicht entschieden wurde. „Aktivieren“ fragt die
+  Erlaubnis direkt im Klick (iOS braucht die Nutzergeste), „Später“ merkt sich das nur für die Sitzung
+  (`sessionStorage`), „Nein danke“ dauerhaft (`localStorage`, `c4.push.nein`). Auf iOS außerhalb des Home-Bildschirm-Modus
+  erscheint stattdessen der Hinweis „Zum Home-Bildschirm hinzufügen“ („Verstanden“ = Entscheidung). Nicht auf
+  `/benachrichtigungen` selbst.
 
 ## iOS
 
 Push geht auf iPhone/iPad erst ab iOS 16.4 und nur, wenn C4 über „Zum Home-Bildschirm“ hinzugefügt und von dort
-geöffnet wurde. Die Profilseite zeigt dazu einen Hinweis. Ist Benachrichtigungen im Browser blockiert, muss das in den
+geöffnet wurde. Die Seite „Benachrichtigungen“ und der Dialog zeigen dazu einen Hinweis. Ist Benachrichtigungen im Browser blockiert, muss das in den
 Browser-/Geräteeinstellungen wieder erlaubt werden.
 
 ## Kosten und Betrieb

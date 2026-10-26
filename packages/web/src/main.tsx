@@ -4,9 +4,9 @@ import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
 import '@mantine/notifications/styles.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import type { AppConfig } from '@c4/shared';
 import { App } from './App';
 import { AuthProvider } from './auth';
@@ -21,17 +21,25 @@ function Root() {
   useEffect(() => {
     loadAppConfig().then(setConfig, (e: unknown) => setError(String(e)));
   }, []);
+  // A data router is required for `useBlocker` (unsaved changes in the profile).
+  const router = useMemo(
+    () =>
+      config
+        ? createBrowserRouter([{ path: '*', element: <App config={config} /> }], {
+            basename: '/app',
+          })
+        : null,
+    [config],
+  );
   return (
     <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications position="top-center" />
       {error ? (
         <Text p="md">Start fehlgeschlagen: {error}</Text>
-      ) : config ? (
+      ) : config && router ? (
         <AuthProvider config={config}>
           <QueryClientProvider client={queryClient}>
-            <BrowserRouter basename="/app">
-              <App config={config} />
-            </BrowserRouter>
+            <RouterProvider router={router} />
           </QueryClientProvider>
         </AuthProvider>
       ) : null}

@@ -2835,6 +2835,16 @@ describe('kalender', () => {
       expect(t.push.abos).toHaveLength(0);
     });
 
+    it('sends a test message to the own devices and reports the result', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const test = (token: string) => t.app.request('/api/push/test', json(token, 'POST'));
+      expect((await t.app.request('/api/push/test', { method: 'POST' })).status).toBe(401);
+      expect(await (await test('member-token')).json()).toEqual({ geraete: 0, ok: 0, fehler: 0 });
+      await t.push.store.aboSpeichern('m2', abo('https://push.example/1'));
+      expect(await (await test('member-token')).json()).toEqual({ geraete: 1, ok: 1, fehler: 0 });
+    });
+
     it('needs a profile for subscriptions and settings', async () => {
       const t = makeApp();
       const res = await t.app.request(

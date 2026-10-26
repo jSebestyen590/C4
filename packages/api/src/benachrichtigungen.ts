@@ -103,6 +103,8 @@ export interface Benachrichtigungen {
   ): Promise<{ sub: string; aktiv: boolean; minuten: number | null }[]>;
   /** Sends to the devices of every recipient whose setting is active; returns the number of recipients. */
   senden(sendung: Sendung): Promise<number>;
+  /** Sends a test message to all of the member's own devices (no dedupe, no setting filter). */
+  testSenden(sub: string): Promise<{ geraete: number; ok: number; fehler: number }>;
   /** Registers a task that runs on every `pushJob`. */
   registriereAufgabe(name: string, aufgabe: (jetzt: Date) => Promise<void>): void;
   /** Runs all registered tasks; one failing task does not stop the others. */
@@ -121,6 +123,21 @@ export function createBenachrichtigungen(deps: {
     if (!art) throw new Error(`Unknown notification type ${key}`);
     return art;
   };
+
+  const liefern = (abos: PushAbo[], nachricht: PushNachricht) =>
+    Promise.all(
+      abos.map(async (abo) => {
+        let ergebnis: PushErgebnis;
+        try {
+          ergebnis = await sender(abo, nachricht);
+        } catch (err) {
+          console.error('Push delivery failed', err);
+          ergebnis = 'fehler';
+        }
+        if (ergebnis === 'gone') await store.aboEntfernen(abo.endpoint).catch(() => {});
+        return ergebnis;
+      }),
+    );
 
   return {
     async publicKey() {
@@ -174,33 +191,38 @@ export function createBenachrichtigungen(deps: {
         (e) => effektiveEinstellung(art, e.status, e.gespeichert).aktiv,
       );
       if (empfaenger.length === 0) return 0;
+      // Without a device nothing can be delivered: don't claim the key, so a later run still sends
+      // once the member has activated push.
+      const abos = await store.abosVon(empfaenger.map((e) => e.sub));
+      if (abos.length === 0) return 0;
       const schluessel = sendung.dedupeSchluessel;
       if (schluessel && !(await store.versandBelegen(schluessel))) return 0;
 
-      const abos = await store.abosVon(empfaenger.map((e) => e.sub));
       const nachricht: PushNachricht = {
         titel: sendung.titel,
         text: sendung.text,
         url: sendung.url,
       };
-      const ergebnisse = await Promise.all(
-        abos.map(async (abo) => {
-          let ergebnis: PushErgebnis;
-          try {
-            ergebnis = await sender(abo, nachricht);
-          } catch (err) {
-            console.error('Push delivery failed', err);
-            ergebnis = 'fehler';
-          }
-          if (ergebnis === 'gone') await store.aboEntfernen(abo.endpoint).catch(() => {});
-          return ergebnis;
-        }),
-      );
+      const ergebnisse = await liefern(abos, nachricht);
       // Nobody could be reached because of a transient error: allow a retry in the next run.
       if (schluessel && ergebnisse.includes('fehler') && !ergebnisse.includes('ok')) {
         await store.versandFreigeben(schluessel).catch(() => {});
       }
       return empfaenger.length;
+    },
+
+    async testSenden(sub) {
+      const abos = await store.abosVon([sub]);
+      const ergebnisse = await liefern(abos, {
+        titel: 'Test',
+        text: 'Push funktioniert auf diesem Gerät.',
+        url: '/benachrichtigungen',
+      });
+      return {
+        geraete: abos.length,
+        ok: ergebnisse.filter((e) => e === 'ok').length,
+        fehler: ergebnisse.filter((e) => e !== 'ok').length,
+      };
     },
 
     registriereAufgabe(name, aufgabe) {
@@ -360,7 +382,9 @@ export function createWebPushSender(store: BenachrichtigungenStore, subject: str
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
       if (status === 404 || status === 410) return 'gone';
-      console.error('Web push failed', status ?? err);
+      const body = (err as { body?: string }).body;
+      console.error('Web push failed', { status, body, endpointHost: new URL(abo.endpoint).host });
+      if (status === undefined) console.error(err);
       return 'fehler';
     }
   };

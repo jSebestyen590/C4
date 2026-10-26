@@ -101,9 +101,9 @@ export function KalenderMeinKalenderPage() {
         sich etwas ändert oder du dich austrägst. Im Abo stehen nur deine eigenen Dienste.
       </Text>
       <Text size="sm" c="dimmed">
-        Erinnerungen per Push stellst du im{' '}
-        <Anchor component={Link} to="/profil" size="sm">
-          Profil
+        Erinnerungen per Push stellst du unter{' '}
+        <Anchor component={Link} to="/benachrichtigungen" size="sm">
+          Benachrichtigungen
         </Anchor>{' '}
         ein.
       </Text>
