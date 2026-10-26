@@ -1,4 +1,4 @@
-import { benachrichtigungsArt, heuteBerlin, type EventDto } from '@c4/shared';
+import { benachrichtigungsArt, heuteBerlin, schichtBezeichnung, type EventDto } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { BetroffenerDienst, DienstInfo, EventAenderung, KalenderStore } from './kalender';
 
@@ -190,15 +190,12 @@ export async function meldeEventAenderung(
     }
   }
   for (const s of aenderung.geaenderteSchichten) {
-    const schicht = event.schichten.find((x) => x.id === s.schichtId);
     for (const sub of s.mitgliedSubs) {
       // The event-level message already tells about the new time.
       if (aenderung.zeitGeaendert) continue;
       hinzu(proSub, sub, {
         titel: 'Schicht geändert',
-        text: schicht
-          ? `Deine Schicht „${s.name}“ bei „${event.titel}“ ist jetzt ${wochentagZeit(schicht.beginn)}–${berlinTeile(schicht.ende).zeit} Uhr.`
-          : `Deine Schicht „${s.name}“ bei „${event.titel}“ wurde geändert.`,
+        text: `Deine Schicht bei „${event.titel}“ ist jetzt ${schichtBezeichnung(s, event.beginn)} Uhr.`,
       });
     }
   }
@@ -206,7 +203,7 @@ export async function meldeEventAenderung(
     if (d.person.art !== 'mitglied') continue;
     hinzu(proSub, d.person.sub, {
       titel: 'Dienst entfernt',
-      text: `Dein Dienst in „${d.schichtName}“ bei „${event.titel}“ entfällt.`,
+      text: `Dein Dienst in der Schicht „${schichtBezeichnung({ art: d.schichtArt, beginn: d.schichtBeginn, ende: d.schichtEnde }, event.beginn)}“ bei „${event.titel}“ entfällt.`,
     });
   }
   await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
@@ -249,7 +246,7 @@ export async function meldeDienstEntfernt(
     subs: [dienst.mitgliedSub],
     art: AENDERUNG,
     titel: 'Dienst entfernt',
-    text: `Du wurdest aus „${dienst.schichtName}“ bei „${dienst.eventTitel}“ (${tagText(dienst.schichtBeginn)}) ausgetragen.`,
+    text: `Du wurdest aus der Schicht „${schichtBezeichnung({ art: dienst.schichtArt, beginn: dienst.schichtBeginn, ende: dienst.schichtEnde })}“ bei „${dienst.eventTitel}“ (${tagText(dienst.schichtBeginn)}) ausgetragen.`,
     url: eventUrl(dienst.eventId),
   });
 }

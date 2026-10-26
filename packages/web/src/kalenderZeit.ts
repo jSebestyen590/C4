@@ -20,13 +20,6 @@ export function zeitraumAnzeigen(beginn: string, ende: string): string {
   return `${tagAnzeigen(beginn)} ${zeitBerlin(beginn)} – ${tagAnzeigen(ende)} ${zeitBerlin(ende)}`;
 }
 
-/** "18:00–20:00"; a date is added when the Schicht is not on `tag` (the event's start day). */
-export function schichtZeitAnzeigen(s: { beginn: string; ende: string }, tag: string): string {
-  const vorne = datumBerlin(s.beginn) === tag ? '' : `${tagAnzeigen(s.beginn)} `;
-  const hinten = datumBerlin(s.ende) === datumBerlin(s.beginn) ? '' : ` (${tagAnzeigen(s.ende)})`;
-  return `${vorne}${zeitBerlin(s.beginn)}–${zeitBerlin(s.ende)}${hinten}`;
-}
-
 /** First and last day (`YYYY-MM-DD`) of a month; `monat` is 0-based. */
 export function monatsGrenzen(jahr: number, monat: number): { erster: string; letzter: string } {
   const f = (d: Date) => d.toISOString().slice(0, 10);

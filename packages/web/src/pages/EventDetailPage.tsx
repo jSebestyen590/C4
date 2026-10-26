@@ -29,6 +29,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   datumBerlin,
   schichtDetails,
+  schichtBezeichnung,
   ueberlappendeSchichten,
   type DienstDto,
   type EventDto,
@@ -39,7 +40,6 @@ import { AktionsMenue } from '../AktionsMenue';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DienstEintragenModal, type EintragModus } from '../DienstEintragenModal';
-import { SCHICHT_ART_LABELS } from '../i18n';
 import {
   AmpelBadge,
   FehltInfo,
@@ -48,7 +48,7 @@ import {
   personAnzeigename,
 } from '../KalenderAnzeige';
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
-import { schichtZeitAnzeigen, zeitraumAnzeigen } from '../kalenderZeit';
+import { zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 import { dienstIcsHerunterladen } from '../kalenderIcs';
 import { pruefen } from '../warenApi';
@@ -90,7 +90,6 @@ export function EventDetailPage() {
   }
   if (event.isPending || dienstformen.isPending) return <Loader m="md" />;
   const e: EventDto = event.data;
-  const tag = datumBerlin(e.beginn);
   const hatDienste = e.schichten.some((s) => s.dienste.length > 0);
 
   const meineSchichten = e.schichten.filter((s) =>
@@ -179,7 +178,8 @@ export function EventDetailPage() {
         <Alert color="yellow" title="Überschneidung">
           {ueberlappungen.map(([a, b]) => (
             <Text key={a.id + b.id} size="sm">
-              Du bist in „{a.name}“ und „{b.name}“ eingetragen, die sich zeitlich überschneiden.
+              Du bist in „{schichtBezeichnung(a, e.beginn)}“ und „{schichtBezeichnung(b, e.beginn)}“
+              eingetragen, die sich zeitlich überschneiden.
             </Text>
           ))}
         </Alert>
@@ -199,10 +199,7 @@ export function EventDetailPage() {
               <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
                 <Stack gap={2} style={{ minWidth: 0 }}>
                   <Text fw={700} size="lg" style={{ overflowWrap: 'anywhere' }}>
-                    {s.name}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    {SCHICHT_ART_LABELS[s.art]} · {schichtZeitAnzeigen(s, tag)} Uhr
+                    {schichtBezeichnung(s, e.beginn)}
                   </Text>
                 </Stack>
                 {!e.abgesagt && <AmpelBadge bewertung={details.bewertung} size="sm" />}
@@ -267,7 +264,7 @@ export function EventDetailPage() {
                                         id: d.id,
                                         eventId: e.id,
                                         eventTitel: e.titel,
-                                        schichtName: s.name,
+                                        schichtArt: s.art,
                                         dienstformName:
                                           dienstformen.nachId.get(d.dienstformId)?.name ?? 'Dienst',
                                         beginn: s.beginn,
@@ -352,6 +349,7 @@ export function EventDetailPage() {
       {dialog?.art === 'eintragen' && (
         <DienstEintragenModal
           schicht={dialog.schicht}
+          eventBeginn={e.beginn}
           modus={dialog.modus}
           dienstformen={dienstformen.nachId}
           onClose={() => setDialog(null)}

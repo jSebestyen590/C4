@@ -21,8 +21,10 @@ import {
   datumBerlin,
   eventEingabeSchema,
   heuteBerlin,
+  schichtBezeichnung,
   zeitBerlin,
   type DienstformDto,
+  type SchichtArt,
   type DienstPerson,
   type EventDto,
   type EventKategorieDto,
@@ -67,7 +69,9 @@ interface EventWerte extends KopfWerte {
 interface Betroffener {
   dienstId: string;
   schichtId: string;
-  schichtName: string;
+  schichtArt: SchichtArt;
+  schichtBeginn: string;
+  schichtEnde: string;
   dienstformId: string;
   person: DienstPerson;
   grund: 'schicht' | 'bedarf';
@@ -87,7 +91,6 @@ interface EventDaten {
   fehltHinweisStunden: number | null;
   schichten: {
     id?: string;
-    name: string;
     art: EventSchichtForm['art'];
     beginn: string;
     ende: string;
@@ -106,7 +109,6 @@ function werteAus(e: EventDaten): EventWerte {
     schichten: e.schichten.map((s) => ({
       key: s.id ?? neuerKey(),
       id: s.id,
-      name: s.name,
       art: s.art,
       beginn: zeitpunktAusIso(s.beginn),
       ende: zeitpunktAusIso(s.ende),
@@ -163,7 +165,7 @@ function rohEingabe(w: EventWerte) {
     const se = zuIso(s.ende);
     const bedarfe = bedarfeZuEingabe(s.bedarfe);
     if (!sb || !se || !bedarfe) return null;
-    schichten.push({ id: s.id, name: s.name, art: s.art, beginn: sb, ende: se, bedarfe });
+    schichten.push({ id: s.id, art: s.art, beginn: sb, ende: se, bedarfe });
   }
   return {
     titel: w.titel,
@@ -254,12 +256,18 @@ function Formular({
         dienstformen={dienstformen}
         neu={() => ({
           key: neuerKey(),
-          name: '',
           art: 'betrieb',
           beginn: werte.beginn,
           ende: werte.ende,
           bedarfe: [],
         })}
+        untertitel={(s) => {
+          const beginn = zuIso(s.beginn);
+          const ende = zuIso(s.ende);
+          return beginn && ende
+            ? schichtBezeichnung({ art: s.art, beginn, ende }, zuIso(werte.beginn) ?? undefined)
+            : null;
+        }}
         zeitFelder={(s, aendern) => (
           <Stack gap="xs">
             <ZeitpunktFelder
@@ -298,12 +306,16 @@ function Formular({
           <Stack gap={4}>
             {betroffene?.map((b) => {
               const form = dienstformen.find((d) => d.id === b.dienstformId)?.name ?? 'Dienst';
+              const schicht = schichtBezeichnung(
+                { art: b.schichtArt, beginn: b.schichtBeginn, ende: b.schichtEnde },
+                zuIso(werte.beginn) ?? undefined,
+              );
               return (
                 <Text key={b.dienstId} size="sm">
                   <PersonName person={b.person} verlinken={false} mitQuelle={false} /> –{' '}
                   {b.grund === 'schicht'
-                    ? `Schicht „${b.schichtName}“ entfällt`
-                    : `kein Bedarf mehr für ${form} in „${b.schichtName}“`}
+                    ? `Schicht „${schicht}“ entfällt`
+                    : `kein Bedarf mehr für ${form} in „${schicht}“`}
                 </Text>
               );
             })}

@@ -168,7 +168,6 @@ const dienst = (patch: Partial<ErinnerungsDienst> = {}): ErinnerungsDienst => ({
   mitgliedSub: 'a',
   eventId: 'e1',
   eventTitel: 'Offener Abend',
-  schichtName: 'Betrieb',
   dienstformName: 'Bar',
   beginn: BEGINN,
   ...patch,
@@ -358,7 +357,6 @@ describe('Änderungen', () => {
       schichten: [
         {
           id: 's1',
-          name: 'Betrieb',
           art: 'betrieb',
           beginn: BEGINN,
           ende: '2026-10-23T22:00:00.000Z',
@@ -372,12 +370,22 @@ describe('Änderungen', () => {
       e,
       {
         ...keine,
-        geaenderteSchichten: [{ schichtId: 's1', name: 'Betrieb', mitgliedSubs: ['a'] }],
+        geaenderteSchichten: [
+          {
+            schichtId: 's1',
+            art: 'betrieb',
+            beginn: '2026-10-23T18:00:00.000Z',
+            ende: '2026-10-23T22:00:00.000Z',
+            mitgliedSubs: ['a'],
+          },
+        ],
         entfernteDienste: [
           {
             dienstId: 'd9',
             schichtId: 's2',
-            schichtName: 'Putzen',
+            schichtArt: 'putzen',
+            schichtBeginn: '2026-10-23T22:00:00.000Z',
+            schichtEnde: '2026-10-24T00:00:00.000Z',
             dienstformId: 'f1',
             person: person('a'),
             grund: 'schicht',
@@ -385,7 +393,9 @@ describe('Änderungen', () => {
           {
             dienstId: 'd10',
             schichtId: 's2',
-            schichtName: 'Putzen',
+            schichtArt: 'putzen',
+            schichtBeginn: '2026-10-23T22:00:00.000Z',
+            schichtEnde: '2026-10-24T00:00:00.000Z',
             dienstformId: 'f1',
             person: { art: 'extern', id: 'x1', name: 'Eva', quelle: null },
             grund: 'schicht',
@@ -395,8 +405,8 @@ describe('Änderungen', () => {
       'actor',
     );
     expect(t.versendet).toHaveLength(1);
-    expect(t.versendet[0]!.text).toContain('Fr 20:00–00:00 Uhr');
-    expect(t.versendet[0]!.text).toContain('Putzen');
+    expect(t.versendet[0]!.text).toContain('Betrieb 20:00–00:00 Uhr');
+    expect(t.versendet[0]!.text).toContain('Putzen Sa 24.10. 00:00–02:00');
   });
 
   it('respects the aenderung setting and reinstatement text', async () => {

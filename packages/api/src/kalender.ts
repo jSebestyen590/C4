@@ -17,6 +17,7 @@ import {
   type ExterneDto,
   type ExterneEingabe,
   type MeinDienstDto,
+  type SchichtArt,
   type SchichtDto,
   type SchichtEingabe,
   type StatistikZeileDto,
@@ -53,7 +54,9 @@ export class KalenderKonflikt extends Error {}
 export interface BetroffenerDienst {
   dienstId: string;
   schichtId: string;
-  schichtName: string;
+  schichtArt: SchichtArt;
+  schichtBeginn: string;
+  schichtEnde: string;
   dienstformId: string;
   person: DienstPerson;
   /** `schicht`: the whole Schicht is removed, `bedarf`: its Bedarf for the Dienstform is removed. */
@@ -201,8 +204,9 @@ export function istEindeutigVerletzt(err: unknown): boolean {
 export interface DienstInfo {
   id: string;
   schichtId: string;
-  schichtName: string;
+  schichtArt: SchichtArt;
   schichtBeginn: string;
+  schichtEnde: string;
   eventId: string;
   eventTitel: string;
   abgesagt: boolean;
@@ -220,7 +224,13 @@ export interface EventAenderung {
   /** The start or end of the event itself changed. */
   zeitGeaendert: boolean;
   /** Schichten that kept their Dienste but changed start or end, with the entered members. */
-  geaenderteSchichten: { schichtId: string; name: string; mitgliedSubs: string[] }[];
+  geaenderteSchichten: {
+    schichtId: string;
+    art: SchichtArt;
+    beginn: string;
+    ende: string;
+    mitgliedSubs: string[];
+  }[];
   /** Dienste that were deleted by the update (confirmed by the caller). */
   entfernteDienste: BetroffenerDienst[];
   /** Everybody with a remaining Dienst in the event. */
@@ -305,7 +315,6 @@ export interface ErinnerungsDienst {
   mitgliedSub: string;
   eventId: string;
   eventTitel: string;
-  schichtName: string;
   dienstformName: string;
   /** ISO instant of the Schicht start. */
   beginn: string;
@@ -416,7 +425,6 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
 
   const alsSchicht = (s: (typeof schichtRows)[number]): SchichtDto => ({
     id: s.id,
-    name: s.name,
     art: s.art,
     beginn: iso(s.beginn),
     ende: iso(s.ende),
@@ -504,7 +512,6 @@ export function createKalenderStore(db: Db): KalenderStore {
   ) => {
     for (const { index, id: vorhandeneId, eingabe: s } of eintraege) {
       const werte = {
-        name: s.name,
         art: s.art,
         beginn: new Date(s.beginn),
         ende: new Date(s.ende),
@@ -537,7 +544,6 @@ export function createKalenderStore(db: Db): KalenderStore {
       await tx.insert(vorlageSchichten).values({
         id,
         vorlageId,
-        name: s.name,
         art: s.art,
         tagVersatz: s.tagVersatz,
         beginnZeit: s.beginnZeit,
@@ -654,12 +660,15 @@ export function createKalenderStore(db: Db): KalenderStore {
               : row?.externId
                 ? personen.externe.get(row.externId)
                 : undefined;
-            if (!person) return [];
+            const schicht = schichtRows.find((x) => x.id === e.schichtId);
+            if (!person || !schicht) return [];
             return [
               {
                 dienstId: e.dienstId,
                 schichtId: e.schichtId,
-                schichtName: schichtRows.find((s) => s.id === e.schichtId)?.name ?? '',
+                schichtArt: schicht.art,
+                schichtBeginn: iso(schicht.beginn),
+                schichtEnde: iso(schicht.ende),
                 dienstformId: e.dienstformId,
                 person,
                 grund: e.grund,
@@ -710,7 +719,15 @@ export function createKalenderStore(db: Db): KalenderStore {
             alt.ende.getTime() !== new Date(b.eingabe.ende).getTime();
           const subs = mitglieder(b.id);
           return geaendert && subs.length > 0
-            ? [{ schichtId: b.id, name: b.eingabe.name, mitgliedSubs: subs }]
+            ? [
+                {
+                  schichtId: b.id,
+                  art: b.eingabe.art,
+                  beginn: b.eingabe.beginn,
+                  ende: b.eingabe.ende,
+                  mitgliedSubs: subs,
+                },
+              ]
             : [];
         });
         return {
@@ -854,8 +871,9 @@ export function createKalenderStore(db: Db): KalenderStore {
       const [r] = await db
         .select({
           dienst: dienste,
-          schichtName: schichten.name,
+          schichtArt: schichten.art,
           schichtBeginn: schichten.beginn,
+          schichtEnde: schichten.ende,
           eventId: events.id,
           eventTitel: events.titel,
           abgesagt: events.abgesagt,
@@ -868,8 +886,9 @@ export function createKalenderStore(db: Db): KalenderStore {
       return {
         id: r.dienst.id,
         schichtId: r.dienst.schichtId,
-        schichtName: r.schichtName,
+        schichtArt: r.schichtArt,
         schichtBeginn: iso(r.schichtBeginn),
+        schichtEnde: iso(r.schichtEnde),
         eventId: r.eventId,
         eventTitel: r.eventTitel,
         abgesagt: r.abgesagt,
@@ -1039,7 +1058,6 @@ export function createKalenderStore(db: Db): KalenderStore {
             .filter((s) => s.vorlageId === v.id)
             .sort((a, b) => a.reihenfolge - b.reihenfolge)
             .map((s) => ({
-              name: s.name,
               art: s.art,
               tagVersatz: s.tagVersatz,
               beginnZeit: s.beginnZeit,
@@ -1215,7 +1233,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           eventId: events.id,
           eventTitel: events.titel,
           abgesagt: events.abgesagt,
-          schichtName: schichten.name,
+          schichtArt: schichten.art,
           beginn: schichten.beginn,
           ende: schichten.ende,
           dienstformName: dienstformen.name,
@@ -1235,7 +1253,6 @@ export function createKalenderStore(db: Db): KalenderStore {
           mitgliedSub: dienste.mitgliedSub,
           eventId: events.id,
           eventTitel: events.titel,
-          schichtName: schichten.name,
           dienstformName: dienstformen.name,
           beginn: schichten.beginn,
         })

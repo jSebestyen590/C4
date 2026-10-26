@@ -2330,8 +2330,9 @@ describe('kalender', () => {
   const dienstInfo = (patch: Partial<DienstInfo>): DienstInfo => ({
     id: 'd1',
     schichtId: 's1',
-    schichtName: 'Betrieb',
+    schichtArt: 'betrieb',
     schichtBeginn: '2026-06-05T17:00:00.000Z',
+    schichtEnde: '2026-06-05T21:00:00.000Z',
     eventId: 'e1',
     eventTitel: 'Offener Abend',
     abgesagt: false,
@@ -2414,7 +2415,9 @@ describe('kalender', () => {
         {
           dienstId: 'd1',
           schichtId: 's1',
-          schichtName: 'Betrieb',
+          schichtArt: 'betrieb',
+          schichtBeginn: '2026-06-05T17:00:00.000Z',
+          schichtEnde: '2026-06-05T21:00:00.000Z',
           dienstformId: 'f1',
           grund: 'schicht',
           person: {
@@ -2436,7 +2439,7 @@ describe('kalender', () => {
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({
-      betroffene: [{ dienstId: 'd1', schichtName: 'Betrieb', person: { username: 'max' } }],
+      betroffene: [{ dienstId: 'd1', schichtArt: 'betrieb', person: { username: 'max' } }],
     });
     // Confirmed updates pass `bestaetigt` on to the store.
     const ok = await t.app.request(
@@ -2632,7 +2635,6 @@ describe('kalender', () => {
       schichten: [
         {
           id: 's1',
-          name: 'Betrieb',
           art: 'betrieb',
           beginn: eventBody.beginn,
           ende: eventBody.ende,
@@ -2749,7 +2751,7 @@ describe('kalender', () => {
         id: 'd1',
         eventId: 'e1',
         eventTitel: 'Offener Abend',
-        schichtName: 'Betrieb',
+        schichtArt: 'betrieb',
         dienstformName: 'Bardienst',
         beginn: '2026-06-05T17:00:00.000Z',
         ende: '2026-06-05T21:00:00.000Z',
@@ -2916,7 +2918,9 @@ describe('kalender', () => {
         {
           endpoint: 'https://push.example/r',
           titel: 'Dienst entfernt',
-          text: expect.stringContaining('Du wurdest aus „Betrieb“ bei „Offener Abend“'),
+          text: expect.stringContaining(
+            'Du wurdest aus der Schicht „Betrieb 19:00–23:00“ bei „Offener Abend“',
+          ),
           url: '/app/kalender/events/e1',
         },
       ]);

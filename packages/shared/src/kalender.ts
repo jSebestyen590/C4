@@ -84,6 +84,41 @@ export function zeitBerlin(iso: string): string {
   return `${zweistellig(w.stunde)}:${zweistellig(w.minute)}`;
 }
 
+/** German label of a Schicht art; the web UI keeps `SCHICHT_ART_LABELS` in sync. */
+export const SCHICHT_ART_BEZEICHNUNG: Record<SchichtArt, string> = {
+  aufbau: 'Aufbau',
+  betrieb: 'Betrieb',
+  putzen: 'Putzen',
+};
+
+const wochentagFormat = new Intl.DateTimeFormat('de-DE', {
+  timeZone: 'Europe/Berlin',
+  weekday: 'short',
+});
+
+/** Short German weekday ("Sa") and date ("11.10.") of an instant in Europe/Berlin. */
+function wochentagDatum(iso: string): string {
+  const tag = wochentagFormat.format(new Date(iso)).replace('.', '');
+  const [, monat, t] = datumBerlin(iso).split('-');
+  return `${tag} ${t}.${monat}.`;
+}
+
+/**
+ * Schichten have no name of their own: "Betrieb 20:00–04:00". When `eventBeginn` is given and the
+ * Schicht starts on another Berlin calendar day, the weekday and date lead the time:
+ * "Putzen Sa 11.10. 11:00–13:00".
+ */
+export function schichtBezeichnung(
+  schicht: { art: SchichtArt; beginn: string; ende: string },
+  eventBeginn?: string,
+): string {
+  const tag =
+    eventBeginn && datumBerlin(schicht.beginn) !== datumBerlin(eventBeginn)
+      ? `${wochentagDatum(schicht.beginn)} `
+      : '';
+  return `${SCHICHT_ART_BEZEICHNUNG[schicht.art]} ${tag}${zeitBerlin(schicht.beginn)}–${zeitBerlin(schicht.ende)}`;
+}
+
 /** Display format `dd.MM.yyyy HH:mm` in Europe/Berlin. */
 export function zeitpunktAnzeigen(iso: string): string {
   return `${datumAnzeigen(datumBerlin(iso))} ${zeitBerlin(iso)}`;
@@ -201,7 +236,6 @@ export const schichtEingabeSchema = z
   .object({
     /** Set when an existing Schicht is updated; new Schichten have none. */
     id: idSchema('Ungültige Schicht.').optional(),
-    name: name(),
     art: schichtArtSchema,
     beginn: zeitpunktSchema,
     ende: zeitpunktSchema,
@@ -238,7 +272,6 @@ export type EventEingabe = z.infer<typeof eventEingabeSchema>;
 
 export const vorlageSchichtSchema = z
   .object({
-    name: name(),
     art: schichtArtSchema,
     tagVersatz: versatzSchema,
     beginnZeit: zeitSchema,
@@ -357,7 +390,6 @@ export interface BedarfDto {
 
 export interface SchichtDto {
   id: string;
-  name: string;
   art: SchichtArt;
   beginn: string;
   ende: string;
@@ -487,7 +519,6 @@ export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe
     ende: zeitpunkt(vorlage.endeTagVersatz, vorlage.endeZeit),
     fehltHinweisStunden: vorlage.fehltHinweisStunden,
     schichten: vorlage.schichten.map((s) => ({
-      name: s.name,
       art: s.art,
       beginn: zeitpunkt(s.tagVersatz, s.beginnZeit),
       ende: zeitpunkt(s.endeTagVersatz, s.endeZeit),
@@ -644,7 +675,7 @@ export interface MeinDienstDto {
   id: string;
   eventId: string;
   eventTitel: string;
-  schichtName: string;
+  schichtArt: SchichtArt;
   dienstformName: string;
   /** ISO instants of the Schicht. */
   beginn: string;
@@ -662,7 +693,12 @@ export function dienstTermine(
     return {
       id: d.id,
       titel: `${d.dienstformName} · ${d.eventTitel}`,
-      beschreibung: [`Schicht: ${d.schichtName}`, url].filter(Boolean).join('\n'),
+      beschreibung: [
+        `Schicht: ${schichtBezeichnung({ art: d.schichtArt, beginn: d.beginn, ende: d.ende })}`,
+        url,
+      ]
+        .filter(Boolean)
+        .join('\n'),
       beginn: d.beginn,
       ende: d.ende,
       url,

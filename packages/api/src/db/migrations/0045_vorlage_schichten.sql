@@ -2,7 +2,6 @@
 CREATE TABLE IF NOT EXISTS vorlage_schichten (
   id text PRIMARY KEY,
   vorlage_id text NOT NULL REFERENCES event_vorlagen (id),
-  name text NOT NULL,
   art text NOT NULL,
   tag_versatz integer NOT NULL,
   beginn_zeit text NOT NULL,

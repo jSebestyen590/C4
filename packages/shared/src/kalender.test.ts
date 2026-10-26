@@ -10,6 +10,7 @@ import {
   icsFalten,
   schichtBewertung,
   schichtDetails,
+  schichtBezeichnung,
   schichtEingabeSchema,
   statistikJahr,
   statistikZeilen,
@@ -149,7 +150,6 @@ describe('ausVorlage', () => {
     fehltHinweisStunden: 24,
     schichten: [
       {
-        name: 'Aufbau',
         art: 'aufbau',
         tagVersatz: 0,
         beginnZeit: '18:00',
@@ -158,7 +158,6 @@ describe('ausVorlage', () => {
         bedarfe: [{ dienstformId: 'aufbau', minimum: 1, wunsch: 2 }],
       },
       {
-        name: 'Putzen',
         art: 'putzen',
         tagVersatz: 1,
         beginnZeit: '02:00',
@@ -229,7 +228,6 @@ describe('statistikZeilen', () => {
 
 describe('schemas', () => {
   const basis = {
-    name: 'Bar',
     art: 'betrieb',
     beginn: '2026-06-05T18:00:00Z',
     ende: '2026-06-05T22:00:00Z',
@@ -361,7 +359,7 @@ describe('dienstTermine', () => {
     id: 'd1',
     eventId: 'e1',
     eventTitel: 'Offener Abend',
-    schichtName: 'Barbetrieb',
+    schichtArt: 'betrieb' as const,
     dienstformName: 'Bar',
     beginn: '2026-06-05T18:00:00.000Z',
     ende: '2026-06-05T22:00:00.000Z',
@@ -375,11 +373,57 @@ describe('dienstTermine', () => {
       titel: 'Bar · Offener Abend',
       url: 'https://c4.example/app/kalender/events/e1',
     });
-    expect(t!.beschreibung).toBe('Schicht: Barbetrieb\nhttps://c4.example/app/kalender/events/e1');
+    expect(t!.beschreibung).toBe(
+      'Schicht: Betrieb 20:00–00:00\nhttps://c4.example/app/kalender/events/e1',
+    );
   });
 
   it('leaves the link out without an origin', () => {
     const [t] = dienstTermine([{ ...dienst, abgesagt: true }]);
-    expect(t).toMatchObject({ url: null, beschreibung: 'Schicht: Barbetrieb', abgesagt: true });
+    expect(t).toMatchObject({
+      url: null,
+      beschreibung: 'Schicht: Betrieb 20:00–00:00',
+      abgesagt: true,
+    });
+  });
+});
+
+describe('schichtBezeichnung', () => {
+  it('labels art and Berlin time', () => {
+    expect(
+      schichtBezeichnung({
+        art: 'betrieb',
+        beginn: '2026-10-23T18:00:00Z',
+        ende: '2026-10-23T20:30:00Z',
+      }),
+    ).toBe('Betrieb 20:00–22:30');
+  });
+
+  it('keeps both times for a Schicht across midnight on the event day', () => {
+    expect(
+      schichtBezeichnung(
+        { art: 'betrieb', beginn: '2026-10-23T18:00:00Z', ende: '2026-10-24T02:00:00Z' },
+        '2026-10-23T16:00:00Z',
+      ),
+    ).toBe('Betrieb 20:00–04:00');
+  });
+
+  it('adds weekday and date when the Schicht starts on another day than the event', () => {
+    expect(
+      schichtBezeichnung(
+        { art: 'putzen', beginn: '2026-10-24T09:00:00Z', ende: '2026-10-24T11:00:00Z' },
+        '2026-10-23T16:00:00Z',
+      ),
+    ).toBe('Putzen Sa 24.10. 11:00–13:00');
+  });
+
+  it('compares Berlin days, not UTC days', () => {
+    // 22:30 UTC on the 23rd is 00:30 Berlin on the 24th.
+    expect(
+      schichtBezeichnung(
+        { art: 'putzen', beginn: '2026-10-23T22:30:00Z', ende: '2026-10-24T00:30:00Z' },
+        '2026-10-23T16:00:00Z',
+      ),
+    ).toBe('Putzen Sa 24.10. 00:30–02:30');
   });
 });

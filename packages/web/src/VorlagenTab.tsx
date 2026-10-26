@@ -15,6 +15,7 @@ import {
 import { IconArchive, IconArchiveOff, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { SCHICHT_ART_LABELS } from './i18n';
 import { vorlageEingabeSchema, type VorlageDto } from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
 import { useApi } from './api';
@@ -70,7 +71,6 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   endeZeit: v.endeZeit,
   schichten: v.schichten.map((s) => ({
     key: neuerKey(),
-    name: s.name,
     art: s.art,
     tagVersatz: s.tagVersatz,
     beginnZeit: s.beginnZeit,
@@ -81,7 +81,6 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
 });
 
 interface VorlageSchichtJson {
-  name: string;
   art: VorlageSchichtForm['art'];
   tagVersatz: number;
   beginnZeit: string;
@@ -102,7 +101,6 @@ function eingabe(
     const bedarfe = bedarfeZuEingabe(s.bedarfe);
     if (!bedarfe) return { fehler: 'Bitte wähle bei jedem Bedarf eine Dienstform.' };
     schichten.push({
-      name: s.name,
       art: s.art,
       tagVersatz: zahl(s.tagVersatz),
       beginnZeit: s.beginnZeit,
@@ -240,7 +238,6 @@ function VorlageEditor({
         dienstformen={dienstformen.liste}
         neu={() => ({
           key: neuerKey(),
-          name: '',
           art: 'betrieb',
           tagVersatz: 0,
           beginnZeit: werte.beginnZeit,
@@ -248,6 +245,11 @@ function VorlageEditor({
           endeZeit: werte.endeZeit,
           bedarfe: [],
         })}
+        untertitel={(s) =>
+          s.beginnZeit && s.endeZeit
+            ? `${SCHICHT_ART_LABELS[s.art]} ${s.beginnZeit}–${s.endeZeit}`
+            : null
+        }
         zeitFelder={(s, aendern) => (
           <Stack gap="sm">
             <VersatzZeit

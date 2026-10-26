@@ -11,7 +11,6 @@ import {
 
 const eingabe = (id: string | undefined, formen: string[] = ['bar']): SchichtEingabe => ({
   ...(id !== undefined && { id }),
-  name: 'Betrieb',
   art: 'betrieb',
   beginn: '2026-06-05T17:00:00.000Z',
   ende: '2026-06-05T22:00:00.000Z',

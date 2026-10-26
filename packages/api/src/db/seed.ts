@@ -50,7 +50,6 @@ try {
   const schichtenSeed = [
     {
       id: 'vorlage-schicht-aufbau',
-      name: 'Aufbau',
       art: 'aufbau',
       tagVersatz: 0,
       beginnZeit: '17:30',
@@ -62,7 +61,6 @@ try {
     },
     {
       id: 'vorlage-schicht-betrieb',
-      name: 'Betrieb',
       art: 'betrieb',
       tagVersatz: 0,
       beginnZeit: '19:00',
@@ -74,7 +72,6 @@ try {
     },
     {
       id: 'vorlage-schicht-putzen',
-      name: 'Putzen',
       art: 'putzen',
       tagVersatz: 1,
       beginnZeit: '00:30',
@@ -91,7 +88,6 @@ try {
       schichtenSeed.map((s, reihenfolge) => ({
         id: s.id,
         vorlageId: 'vorlage-offener-abend',
-        name: s.name,
         art: s.art,
         tagVersatz: s.tagVersatz,
         beginnZeit: s.beginnZeit,

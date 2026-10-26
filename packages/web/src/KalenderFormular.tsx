@@ -32,7 +32,6 @@ export interface BedarfForm {
 export interface SchichtBasis {
   /** Stable key for React, not sent to the API. */
   key: string;
-  name: string;
   art: SchichtArt;
   bedarfe: BedarfForm[];
 }
@@ -175,12 +174,15 @@ export function SchichtListeEditor<T extends SchichtBasis>({
   onChange,
   neu,
   zeitFelder,
+  untertitel,
   dienstformen,
 }: Readonly<{
   schichten: T[];
   onChange: (s: T[]) => void;
   neu: () => T;
   zeitFelder: (s: T, aendern: (patch: Partial<T>) => void) => ReactNode;
+  /** Short description of a Schicht (art + time) shown below its heading; null while incomplete. */
+  untertitel?: (s: T) => string | null;
   dienstformen: DienstformDto[];
 }>) {
   const aendern = (i: number, patch: Partial<T>) =>
@@ -203,7 +205,14 @@ export function SchichtListeEditor<T extends SchichtBasis>({
         <Paper key={s.key} withBorder p="sm" radius="md">
           <Stack gap="sm">
             <Group justify="space-between" wrap="nowrap" gap="xs">
-              <Text fw={600}>Schicht {i + 1}</Text>
+              <div>
+                <Text fw={600}>{i + 1}. Schicht</Text>
+                {untertitel?.(s) && (
+                  <Text size="sm" c="dimmed">
+                    {untertitel(s)}
+                  </Text>
+                )}
+              </div>
               <Group gap={0} wrap="nowrap">
                 <ActionIcon
                   variant="subtle"
@@ -236,11 +245,6 @@ export function SchichtListeEditor<T extends SchichtBasis>({
                 </ActionIcon>
               </Group>
             </Group>
-            <TextInput
-              label="Name"
-              value={s.name}
-              onChange={(e) => aendern(i, { name: e.currentTarget.value } as Partial<T>)}
-            />
             <Select
               label="Art"
               data={SCHICHT_ARTEN.map((a) => ({ value: a, label: SCHICHT_ART_LABELS[a] }))}

@@ -478,7 +478,6 @@ export const schichten = pgTable('schichten', {
   eventId: text('event_id')
     .notNull()
     .references(() => events.id),
-  name: text('name').notNull(),
   art: text('art').$type<SchichtArt>().notNull(),
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
@@ -540,7 +539,6 @@ export const vorlageSchichten = pgTable('vorlage_schichten', {
   vorlageId: text('vorlage_id')
     .notNull()
     .references(() => eventVorlagen.id),
-  name: text('name').notNull(),
   art: text('art').$type<SchichtArt>().notNull(),
   tagVersatz: integer('tag_versatz').notNull(),
   beginnZeit: text('beginn_zeit').notNull(),

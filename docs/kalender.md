@@ -7,14 +7,14 @@ Events mit Schichten und Diensten. Rechte: `kalender:lesen` (ansehen, sich eintr
 
 Migrationen `0037`–`0054`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
-| Tabelle                                                  | Inhalt                                                                                   |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe), archivierbar                                   |
-| `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                     |
-| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, Hinweis-Stunden     |
-| `schichten`, `schicht_bedarfe`                           | Schicht mit Art `aufbau`/`betrieb`/`putzen`; Bedarf je Dienstform mit Minimum und Wunsch |
-| `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform, Kommentar, eingetragen von               |
-| `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen mit Uhrzeit + Tagesversatz (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)       |
+| Tabelle                                                  | Inhalt                                                                                                                                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe), archivierbar                                                                                                                         |
+| `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                           |
+| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, Hinweis-Stunden                                                                                           |
+| `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“); Bedarf je Dienstform mit Minimum und Wunsch |
+| `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform, Kommentar, eingetragen von                                                                                                     |
+| `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen mit Uhrzeit + Tagesversatz (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                                                                                             |
 
 ## Regeln
 

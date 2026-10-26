@@ -28,21 +28,15 @@ import { Link } from 'react-router-dom';
 import {
   datumBerlin,
   heuteBerlin,
+  schichtBezeichnung,
   zeitBerlin,
   type EventDto,
   type DienstformDto,
 } from '@c4/shared';
 import { useAuth } from '../auth';
-import { SCHICHT_ART_LABELS } from '../i18n';
 import { AMPEL_FARBE, AmpelBadge, FehltInfo, kategorieFarbe, PersonName } from '../KalenderAnzeige';
 import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
-import {
-  monatAnzeigen,
-  monatsGrenzen,
-  monatsRaster,
-  schichtZeitAnzeigen,
-  zeitraumAnzeigen,
-} from '../kalenderZeit';
+import { monatAnzeigen, monatsGrenzen, monatsRaster, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -87,7 +81,6 @@ function EventKarte({
   event,
   dienstformen,
 }: Readonly<{ event: EventDto; dienstformen: Map<string, DienstformDto> }>) {
-  const tag = datumBerlin(event.beginn);
   return (
     <Paper
       withBorder
@@ -129,10 +122,7 @@ function EventKarte({
             style={{ borderLeft: '2px solid var(--mantine-color-default-border)' }}
           >
             <Text size="sm" fw={600}>
-              {s.name}{' '}
-              <Text component="span" fw={400} c="dimmed">
-                · {SCHICHT_ART_LABELS[s.art]} · {schichtZeitAnzeigen(s, tag)}
-              </Text>
+              {schichtBezeichnung(s, event.beginn)}
             </Text>
             <DienstZeilen schicht={s} dienstformen={dienstformen} />
             {!event.abgesagt && <FehltInfo schicht={s} dienstformen={dienstformen} />}

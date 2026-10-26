@@ -15,6 +15,7 @@ import { useState } from 'react';
 import {
   KOMMENTAR_MAX,
   externeEingabeSchema,
+  schichtBezeichnung,
   type DienstformDto,
   type SchichtDto,
 } from '@c4/shared';
@@ -34,11 +35,14 @@ const TITEL: Record<EintragModus, string> = {
 /** Choose a Dienstform (limited to the Bedarfe of the Schicht), a comment and, if needed, who. */
 export function DienstEintragenModal({
   schicht,
+  eventBeginn,
   modus,
   dienstformen,
   onClose,
 }: Readonly<{
   schicht: SchichtDto;
+  /** Start of the event, to show the weekday of Schichten on another day. */
+  eventBeginn: string;
   modus: EintragModus;
   dienstformen: Map<string, DienstformDto>;
   onClose: () => void;
@@ -107,7 +111,11 @@ export function DienstEintragenModal({
   };
 
   return (
-    <Modal opened onClose={onClose} title={`${TITEL[modus]}: ${schicht.name}`}>
+    <Modal
+      opened
+      onClose={onClose}
+      title={`${TITEL[modus]}: ${schichtBezeichnung(schicht, eventBeginn)}`}
+    >
       <Stack>
         {modus === 'mitglied' && (
           <Select
