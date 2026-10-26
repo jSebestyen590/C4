@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Loader,
+  Modal,
   Paper,
   SegmentedControl,
   SimpleGrid,
@@ -13,6 +14,7 @@ import {
   Switch,
   Text,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -24,12 +26,14 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
+  datumAnzeigen,
   datumBerlin,
   heuteBerlin,
   schichtBezeichnung,
   zeitBerlin,
+  type EventBewertung,
   type EventDto,
   type DienstformDto,
 } from '@c4/shared';
@@ -42,6 +46,7 @@ import {
   kategorieFarbe,
   PersonName,
 } from '../KalenderAnzeige';
+import { AMPEL_LABELS } from '../i18n';
 import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
 import { monatAnzeigen, monatsGrenzen, monatsRaster, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
@@ -49,6 +54,214 @@ import { useEigeneSub } from '../organisator';
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 type Ansicht = 'liste' | 'monat';
+
+const ANSICHT_KEY = 'kalender.ansicht';
+
+/** Remembered view of this viewer; storage may be unavailable. */
+function ansichtLesen(): Ansicht {
+  try {
+    return localStorage.getItem(ANSICHT_KEY) === 'monat' ? 'monat' : 'liste';
+  } catch {
+    return 'liste';
+  }
+}
+
+function ansichtSpeichern(a: Ansicht) {
+  try {
+    localStorage.setItem(ANSICHT_KEY, a);
+  } catch {
+    // ignore: the choice just is not remembered
+  }
+}
+
+const AMPEL_RANG: Record<EventBewertung, number> = { rot: 3, gelb: 2, gruen: 1, abgesagt: 0 };
+
+/** The worst Bewertung of several events; cancelled only if all are cancelled. */
+const schlechtesteBewertung = (events: EventDto[]): EventBewertung =>
+  events.reduce<EventBewertung>(
+    (w, e) => (AMPEL_RANG[e.bewertung] > AMPEL_RANG[w] ? e.bewertung : w),
+    'abgesagt',
+  );
+
+/** Background of a day: one light Kategorie color, or vertical stripes for several. */
+function tagHintergrund(events: EventDto[]): string {
+  const farben = [...new Set(events.map((e) => kategorieFarbe(e.kategorie)))];
+  const f = (c: string) => `var(--mantine-color-${c}-light)`;
+  if (farben.length === 1) return f(farben[0]!);
+  const stops = farben.map((c, i) => {
+    const von = (i * 100) / farben.length;
+    const bis = ((i + 1) * 100) / farben.length;
+    return `${f(c)} ${von}% ${bis}%`;
+  });
+  return `linear-gradient(to right, ${stops.join(', ')})`;
+}
+
+function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] }>) {
+  const eindeutig = new Map<string, { name: string; farbe: string }>();
+  for (const k of kategorien) {
+    const farbe = kategorieFarbe(k);
+    eindeutig.set(farbe + (k?.name ?? ''), { name: k?.name ?? 'Ohne Kategorie', farbe });
+  }
+  const punkt = (hintergrund: string, rand?: string) => (
+    <Box
+      w={16}
+      h={16}
+      style={{
+        flexShrink: 0,
+        borderRadius: 4,
+        background: hintergrund,
+        border: '1px solid var(--mantine-color-default-border)',
+        borderBottom: rand ? `4px solid ${rand}` : undefined,
+      }}
+    />
+  );
+  return (
+    <Stack gap="xs">
+      <Group gap="md">
+        {(['rot', 'gelb', 'gruen', 'abgesagt'] as const).map((b) => (
+          <Group key={b} gap={6} wrap="nowrap">
+            {punkt('transparent', `var(--mantine-color-${AMPEL_FARBE[b]}-filled)`)}
+            <Text size="xs">{AMPEL_LABELS[b]}</Text>
+          </Group>
+        ))}
+      </Group>
+      {eindeutig.size > 0 && (
+        <Group gap="md">
+          {[...eindeutig.values()].map((k) => (
+            <Group key={k.farbe + k.name} gap={6} wrap="nowrap">
+              {punkt(`var(--mantine-color-${k.farbe}-light)`)}
+              <Text size="xs">{k.name}</Text>
+            </Group>
+          ))}
+        </Group>
+      )}
+      <Text size="xs" c="dimmed">
+        Die Hintergrundfarbe zeigt die Kategorie, der farbige Streifen die Besetzung.
+      </Text>
+    </Stack>
+  );
+}
+
+/** Compact month grid for phones: tap a day to open its event (or choose one). */
+function MonatsRasterKompakt({
+  jahr,
+  monat,
+  events,
+}: Readonly<{ jahr: number; monat: number; events: EventDto[] }>) {
+  const navigate = useNavigate();
+  const [auswahl, setAuswahl] = useState<string | null>(null);
+  const tage = monatsRaster(jahr, monat);
+  const heute = heuteBerlin();
+  const nachTag = useMemo(() => nachTagGruppieren(events), [events]);
+  const imMonat = (t: string) => Number(t.slice(5, 7)) - 1 === monat;
+  const auswahlEvents = auswahl ? (nachTag.get(auswahl) ?? []) : [];
+  const kategorien = events.filter((e) => imMonat(datumBerlin(e.beginn))).map((e) => e.kategorie);
+
+  const antippen = (t: string) => {
+    const liste = nachTag.get(t) ?? [];
+    if (liste.length === 1) void navigate(`/kalender/events/${liste[0]!.id}`);
+    else if (liste.length > 1) setAuswahl(t);
+  };
+
+  return (
+    <Stack gap="md">
+      <SimpleGrid cols={7} spacing={4}>
+        {WOCHENTAGE.map((w) => (
+          <Text key={w} size="xs" fw={700} ta="center" c="dimmed">
+            {w}
+          </Text>
+        ))}
+        {tage.map((t) => {
+          const liste = nachTag.get(t) ?? [];
+          const hat = liste.length > 0;
+          const istHeute = t === heute;
+          const zahl = (
+            <Text size="sm" fw={istHeute || hat ? 700 : 400} c={hat ? undefined : 'dimmed'}>
+              {Number(t.slice(8))}
+            </Text>
+          );
+          const stil = {
+            minWidth: 0,
+            minHeight: 52,
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: imMonat(t) ? 1 : 0.4,
+            outline: istHeute ? '2px solid var(--mantine-primary-color-filled)' : undefined,
+            outlineOffset: istHeute ? -2 : undefined,
+            background: hat ? tagHintergrund(liste) : undefined,
+            border: '1px solid var(--mantine-color-default-border)',
+            borderBottom: hat
+              ? `5px solid var(--mantine-color-${AMPEL_FARBE[schlechtesteBewertung(liste)]}-filled)`
+              : undefined,
+          } as const;
+          if (!hat) {
+            return (
+              <Box key={t} style={stil}>
+                {zahl}
+              </Box>
+            );
+          }
+          return (
+            <UnstyledButton
+              key={t}
+              onClick={() => antippen(t)}
+              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${liste.map((e) => e.titel).join(', ')}`}
+              style={stil}
+            >
+              {zahl}
+            </UnstyledButton>
+          );
+        })}
+      </SimpleGrid>
+      <Legende kategorien={kategorien} />
+      <Modal
+        opened={auswahl !== null}
+        onClose={() => setAuswahl(null)}
+        title={auswahl ? `Events am ${datumAnzeigen(auswahl)}` : ''}
+        centered
+      >
+        <Stack gap="xs">
+          {auswahlEvents.map((e) => (
+            <UnstyledButton
+              key={e.id}
+              onClick={() => void navigate(`/kalender/events/${e.id}`)}
+              p="sm"
+              style={{
+                minHeight: 44,
+                borderRadius: 8,
+                border: '1px solid var(--mantine-color-default-border)',
+                borderLeft: `6px solid var(--mantine-color-${kategorieFarbe(e.kategorie)}-6)`,
+              }}
+            >
+              <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
+                <Stack gap={0} style={{ minWidth: 0 }}>
+                  <Text size="sm" c="dimmed">
+                    {zeitBerlin(e.beginn)}
+                  </Text>
+                  <Text fw={700} td={e.abgesagt ? 'line-through' : undefined}>
+                    {e.titel}
+                  </Text>
+                </Stack>
+                <AmpelBadge bewertung={e.bewertung} />
+              </Group>
+            </UnstyledButton>
+          ))}
+        </Stack>
+      </Modal>
+    </Stack>
+  );
+}
+
+function nachTagGruppieren(events: EventDto[]): Map<string, EventDto[]> {
+  const m = new Map<string, EventDto[]>();
+  for (const e of events) {
+    const t = datumBerlin(e.beginn);
+    m.set(t, [...(m.get(t) ?? []), e]);
+  }
+  return m;
+}
 
 /** Dienste of one Schicht grouped by Dienstform: "Bar: A, B". */
 function DienstZeilen({
@@ -156,16 +369,12 @@ function MonatsRaster({
 }: Readonly<{ jahr: number; monat: number; events: EventDto[] }>) {
   const tage = monatsRaster(jahr, monat);
   const heute = heuteBerlin();
-  const nachTag = useMemo(() => {
-    const m = new Map<string, EventDto[]>();
-    for (const e of events) {
-      const t = datumBerlin(e.beginn);
-      m.set(t, [...(m.get(t) ?? []), e]);
-    }
-    return m;
-  }, [events]);
+  const nachTag = useMemo(() => nachTagGruppieren(events), [events]);
+  const kategorien = events
+    .filter((e) => Number(datumBerlin(e.beginn).slice(5, 7)) - 1 === monat)
+    .map((e) => e.kategorie);
   return (
-    <Stack gap={4}>
+    <Stack gap="md">
       <SimpleGrid cols={7} spacing={4}>
         {WOCHENTAGE.map((w) => (
           <Text key={w} size="sm" fw={700} ta="center" c="dimmed">
@@ -221,15 +430,12 @@ function MonatsRaster({
           );
         })}
       </SimpleGrid>
-      <Text size="xs" c="dimmed">
-        Der Streifen links zeigt die Besetzung: rot = Dienste fehlen, gelb = Wunsch nicht erreicht,
-        grün = voll besetzt, grau = abgesagt.
-      </Text>
+      <Legende kategorien={kategorien} />
     </Stack>
   );
 }
 
-/** Calendar: card list of the events of a month (phone), from `sm` optionally as month grid. */
+/** Calendar: events of a month as card list or month grid (compact on phones, chips from `sm`). */
 export function KalenderPage() {
   const { can } = useAuth();
   const eigeneSub = useEigeneSub();
@@ -238,12 +444,12 @@ export function KalenderPage() {
     jahr: Number(heute.slice(0, 4)),
     monat: Number(heute.slice(5, 7)) - 1,
   });
-  const [ansicht, setAnsicht] = useState<Ansicht>('liste');
+  const [ansicht, setAnsicht] = useState<Ansicht>(ansichtLesen);
   const [nurFehlend, setNurFehlend] = useState(false);
   const [nurMeine, setNurMeine] = useState(false);
   const breit = useMediaQuery('(min-width: 48em)') ?? false;
   const { jahr, monat } = monatState;
-  const raster = ansicht === 'monat' && breit;
+  const raster = ansicht === 'monat';
 
   const tage = monatsRaster(jahr, monat);
   const grenzen = monatsGrenzen(jahr, monat);
@@ -278,7 +484,7 @@ export function KalenderPage() {
   };
 
   return (
-    <Stack maw={raster ? undefined : 900} gap="md">
+    <Stack maw={raster && breit ? undefined : 900} gap="md">
       <Group justify="space-between" align="center">
         <Title order={2}>Kalender</Title>
         <Group gap="xs">
@@ -366,9 +572,11 @@ export function KalenderPage() {
           />
         </Group>
         <SegmentedControl
-          visibleFrom="sm"
           value={ansicht}
-          onChange={(v) => setAnsicht(v as Ansicht)}
+          onChange={(v) => {
+            setAnsicht(v as Ansicht);
+            ansichtSpeichern(v as Ansicht);
+          }}
           data={[
             { value: 'liste', label: 'Liste' },
             { value: 'monat', label: 'Monat' },
@@ -380,8 +588,10 @@ export function KalenderPage() {
         <Alert color="red">Der Kalender konnte nicht geladen werden.</Alert>
       ) : events.isPending ? (
         <Loader m="md" />
-      ) : raster ? (
+      ) : raster && breit ? (
         <MonatsRaster jahr={jahr} monat={monat} events={sichtbar} />
+      ) : raster ? (
+        <MonatsRasterKompakt jahr={jahr} monat={monat} events={sichtbar} />
       ) : listeEvents.length === 0 ? (
         <Text c="dimmed">
           {nurFehlend || nurMeine
