@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Loader,
+  Drawer,
   Modal,
   Paper,
   SegmentedControl,
@@ -142,26 +143,133 @@ function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] 
   );
 }
 
-/** Compact month grid for phones: tap a day to open its event (or choose one). */
+/** Day overview: all events of a day as compact cards, plus a button to create one (with right). */
+function TagesUebersicht({
+  datum,
+  events,
+  ausgeblendet,
+  darfAnlegen,
+  onClose,
+}: Readonly<{
+  datum: string | null;
+  events: EventDto[];
+  ausgeblendet: boolean;
+  darfAnlegen: boolean;
+  onClose: () => void;
+}>) {
+  const navigate = useNavigate();
+  const schmal = !(useMediaQuery('(min-width: 48em)') ?? false);
+  const titel = datum ? datumAnzeigen(datum) : '';
+  const inhalt = (
+    <Stack gap="xs">
+      {events.map((e) => (
+        <UnstyledButton
+          key={e.id}
+          onClick={() => void navigate(`/kalender/events/${e.id}`)}
+          p="sm"
+          style={{
+            minHeight: 44,
+            borderRadius: 8,
+            border: '1px solid var(--mantine-color-default-border)',
+            borderLeft: `6px solid var(--mantine-color-${kategorieFarbe(e.kategorie)}-6)`,
+            opacity: e.abgesagt ? 0.75 : 1,
+          }}
+        >
+          <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
+            <Stack gap={0} style={{ minWidth: 0 }}>
+              <Text size="sm" c="dimmed">
+                {zeitBerlin(e.beginn)}
+              </Text>
+              <Text
+                fw={700}
+                td={e.abgesagt ? 'line-through' : undefined}
+                style={{ overflowWrap: 'anywhere' }}
+              >
+                {e.titel}
+              </Text>
+            </Stack>
+            <AmpelBadge bewertung={e.bewertung} />
+          </Group>
+        </UnstyledButton>
+      ))}
+      {ausgeblendet && (
+        <Text size="sm" c="dimmed">
+          Weitere Events ausgeblendet (Filter)
+        </Text>
+      )}
+      {darfAnlegen && datum && (
+        <Button
+          component={Link}
+          to={`/kalender/events/neu?datum=${datum}`}
+          leftSection={<IconPlus size={18} />}
+          mt="xs"
+        >
+          Event an diesem Tag anlegen
+        </Button>
+      )}
+    </Stack>
+  );
+  return schmal ? (
+    <Drawer
+      opened={datum !== null}
+      onClose={onClose}
+      position="bottom"
+      title={titel}
+      styles={{ content: { paddingBottom: 'env(safe-area-inset-bottom)' } }}
+    >
+      {inhalt}
+    </Drawer>
+  ) : (
+    <Modal opened={datum !== null} onClose={onClose} title={titel} centered>
+      {inhalt}
+    </Modal>
+  );
+}
+
+/** Tap logic shared by both grids: events open the day overview, an empty day goes to "create". */
+function useTagesKlick(alle: EventDto[], darfAnlegen: boolean, nachTag: Map<string, EventDto[]>) {
+  const navigate = useNavigate();
+  const [offen, setOffen] = useState<string | null>(null);
+  const antippen = (t: string) => {
+    if ((nachTag.get(t) ?? []).length > 0) setOffen(t);
+    else if (darfAnlegen) void navigate(`/kalender/events/neu?datum=${t}`);
+  };
+  const sichtbarAm = offen ? (nachTag.get(offen) ?? []) : [];
+  const ausgeblendet = offen
+    ? alle.filter((e) => datumBerlin(e.beginn) === offen).length > sichtbarAm.length
+    : false;
+  const uebersicht = (
+    <TagesUebersicht
+      datum={offen}
+      events={sichtbarAm}
+      ausgeblendet={ausgeblendet}
+      darfAnlegen={darfAnlegen}
+      onClose={() => setOffen(null)}
+    />
+  );
+  return { antippen, uebersicht, klickbar: (t: string) => darfAnlegen || nachTag.has(t) };
+}
+
+/** Compact month grid for phones: tap a day to see its events or to create one. */
 function MonatsRasterKompakt({
   jahr,
   monat,
   events,
-}: Readonly<{ jahr: number; monat: number; events: EventDto[] }>) {
-  const navigate = useNavigate();
-  const [auswahl, setAuswahl] = useState<string | null>(null);
+  alle,
+  darfAnlegen,
+}: Readonly<{
+  jahr: number;
+  monat: number;
+  events: EventDto[];
+  alle: EventDto[];
+  darfAnlegen: boolean;
+}>) {
   const tage = monatsRaster(jahr, monat);
   const heute = heuteBerlin();
   const nachTag = useMemo(() => nachTagGruppieren(events), [events]);
   const imMonat = (t: string) => Number(t.slice(5, 7)) - 1 === monat;
-  const auswahlEvents = auswahl ? (nachTag.get(auswahl) ?? []) : [];
   const kategorien = events.filter((e) => imMonat(datumBerlin(e.beginn))).map((e) => e.kategorie);
-
-  const antippen = (t: string) => {
-    const liste = nachTag.get(t) ?? [];
-    if (liste.length === 1) void navigate(`/kalender/events/${liste[0]!.id}`);
-    else if (liste.length > 1) setAuswahl(t);
-  };
+  const { antippen, uebersicht, klickbar } = useTagesKlick(alle, darfAnlegen, nachTag);
 
   return (
     <Stack gap="md">
@@ -196,7 +304,7 @@ function MonatsRasterKompakt({
               ? `5px solid var(--mantine-color-${AMPEL_FARBE[schlechtesteBewertung(liste)]}-filled)`
               : undefined,
           } as const;
-          if (!hat) {
+          if (!klickbar(t)) {
             return (
               <Box key={t} style={stil}>
                 {zahl}
@@ -207,7 +315,7 @@ function MonatsRasterKompakt({
             <UnstyledButton
               key={t}
               onClick={() => antippen(t)}
-              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${liste.map((e) => e.titel).join(', ')}`}
+              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${hat ? liste.map((e) => e.titel).join(', ') : 'Event anlegen'}`}
               style={stil}
             >
               {zahl}
@@ -216,40 +324,7 @@ function MonatsRasterKompakt({
         })}
       </SimpleGrid>
       <Legende kategorien={kategorien} />
-      <Modal
-        opened={auswahl !== null}
-        onClose={() => setAuswahl(null)}
-        title={auswahl ? `Events am ${datumAnzeigen(auswahl)}` : ''}
-        centered
-      >
-        <Stack gap="xs">
-          {auswahlEvents.map((e) => (
-            <UnstyledButton
-              key={e.id}
-              onClick={() => void navigate(`/kalender/events/${e.id}`)}
-              p="sm"
-              style={{
-                minHeight: 44,
-                borderRadius: 8,
-                border: '1px solid var(--mantine-color-default-border)',
-                borderLeft: `6px solid var(--mantine-color-${kategorieFarbe(e.kategorie)}-6)`,
-              }}
-            >
-              <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
-                <Stack gap={0} style={{ minWidth: 0 }}>
-                  <Text size="sm" c="dimmed">
-                    {zeitBerlin(e.beginn)}
-                  </Text>
-                  <Text fw={700} td={e.abgesagt ? 'line-through' : undefined}>
-                    {e.titel}
-                  </Text>
-                </Stack>
-                <AmpelBadge bewertung={e.bewertung} />
-              </Group>
-            </UnstyledButton>
-          ))}
-        </Stack>
-      </Modal>
+      {uebersicht}
     </Stack>
   );
 }
@@ -366,13 +441,22 @@ function MonatsRaster({
   jahr,
   monat,
   events,
-}: Readonly<{ jahr: number; monat: number; events: EventDto[] }>) {
+  alle,
+  darfAnlegen,
+}: Readonly<{
+  jahr: number;
+  monat: number;
+  events: EventDto[];
+  alle: EventDto[];
+  darfAnlegen: boolean;
+}>) {
   const tage = monatsRaster(jahr, monat);
   const heute = heuteBerlin();
   const nachTag = useMemo(() => nachTagGruppieren(events), [events]);
   const kategorien = events
     .filter((e) => Number(datumBerlin(e.beginn).slice(5, 7)) - 1 === monat)
     .map((e) => e.kategorie);
+  const { antippen, uebersicht, klickbar } = useTagesKlick(alle, darfAnlegen, nachTag);
   return (
     <Stack gap="md">
       <SimpleGrid cols={7} spacing={4}>
@@ -389,9 +473,11 @@ function MonatsRaster({
               withBorder
               p={4}
               mih={104}
+              onClick={klickbar(t) ? () => antippen(t) : undefined}
               style={{
                 opacity: imMonat ? 1 : 0.5,
                 minWidth: 0,
+                cursor: klickbar(t) ? 'pointer' : undefined,
                 outline: t === heute ? '2px solid var(--mantine-primary-color-filled)' : undefined,
               }}
             >
@@ -406,6 +492,7 @@ function MonatsRaster({
                       key={e.id}
                       component={Link}
                       to={`/kalender/events/${e.id}`}
+                      onClick={(ev) => ev.stopPropagation()}
                       title={`${e.titel} (${zeitBerlin(e.beginn)})`}
                       fz={12}
                       lh={1.25}
@@ -431,6 +518,7 @@ function MonatsRaster({
         })}
       </SimpleGrid>
       <Legende kategorien={kategorien} />
+      {uebersicht}
     </Stack>
   );
 }
@@ -589,9 +677,21 @@ export function KalenderPage() {
       ) : events.isPending ? (
         <Loader m="md" />
       ) : raster && breit ? (
-        <MonatsRaster jahr={jahr} monat={monat} events={sichtbar} />
+        <MonatsRaster
+          jahr={jahr}
+          monat={monat}
+          events={sichtbar}
+          alle={events.data ?? []}
+          darfAnlegen={can('events:verwalten')}
+        />
       ) : raster ? (
-        <MonatsRasterKompakt jahr={jahr} monat={monat} events={sichtbar} />
+        <MonatsRasterKompakt
+          jahr={jahr}
+          monat={monat}
+          events={sichtbar}
+          alle={events.data ?? []}
+          darfAnlegen={can('events:verwalten')}
+        />
       ) : listeEvents.length === 0 ? (
         <Text c="dimmed">
           {nurFehlend || nurMeine

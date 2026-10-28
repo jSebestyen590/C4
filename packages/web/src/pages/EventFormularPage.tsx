@@ -14,7 +14,7 @@ import { notifications } from '@mantine/notifications';
 import { IconChevronLeft } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ausVorlage,
   barabendErsetzen,
@@ -363,6 +363,15 @@ function Formular({
   );
 }
 
+/** The `?datum=` preset if it is a real YYYY-MM-DD date, otherwise today. */
+function datumAusSuche(wert: string | null): string {
+  if (wert && /^\d{4}-\d{2}-\d{2}$/.test(wert)) {
+    const d = new Date(`${wert}T00:00:00Z`);
+    if (!Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === wert) return wert;
+  }
+  return heuteBerlin();
+}
+
 /** New event: choose a Vorlage and a date first, then edit everything. */
 function NeuesEvent({
   dienstformen,
@@ -370,7 +379,8 @@ function NeuesEvent({
 }: Readonly<{ dienstformen: DienstformDto[]; kategorien: EventKategorieDto[] }>) {
   const vorlagen = useVorlagen();
   const [vorlageId, setVorlageId] = useState<string | null>(null);
-  const [datum, setDatum] = useState(heuteBerlin());
+  const [suche] = useSearchParams();
+  const [datum, setDatum] = useState(() => datumAusSuche(suche.get('datum')));
   const [anfang, setAnfang] = useState<{
     werte: EventWerte;
     ersetzt?: EventDto;
