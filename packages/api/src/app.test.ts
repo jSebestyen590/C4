@@ -429,6 +429,8 @@ function makeKalenderFake() {
     vorlageAnlegen: vi.fn<KalenderStore['vorlageAnlegen']>(async () => 'v1'),
     vorlageAktualisieren: vi.fn<KalenderStore['vorlageAktualisieren']>(async (id) => id === 'v1'),
     vorlageLoeschen: vi.fn<KalenderStore['vorlageLoeschen']>(async (id) => id === 'v1'),
+    serienTage: vi.fn<KalenderStore['serienTage']>(async () => []),
+    serienTerminAnlegen: vi.fn<KalenderStore['serienTerminAnlegen']>(async () => true),
     statistik: vi.fn<KalenderStore['statistik']>(async () => []),
     tokenErzeugen: vi.fn<KalenderStore['tokenErzeugen']>(async (sub) => {
       const token = `tok-${++tokenZaehler}`;
@@ -2486,6 +2488,24 @@ describe('kalender', () => {
     ).toBe(404);
   });
 
+  it('passes ersetzeSerie on to the store when updating', async () => {
+    const t = makeApp();
+    const res = await t.app.request(
+      '/api/kalender/events/e1',
+      json('admin-token', 'PUT', { ...eventBody, ersetzeSerie: true }),
+    );
+    expect(res.status).toBe(200);
+    expect(t.kalender.eventAktualisieren).toHaveBeenLastCalledWith(
+      'e1',
+      expect.objectContaining({ ersetzeSerie: true }),
+    );
+    const falsch = await t.app.request(
+      '/api/kalender/events/e1',
+      json('admin-token', 'PUT', { ...eventBody, ersetzeSerie: 'ja' }),
+    );
+    expect(falsch.status).toBe(400);
+  });
+
   it('refuses to delete events with Dienste and cancels instead', async () => {
     const t = makeApp();
     t.kalender.eventLoeschen.mockRejectedValueOnce(new KalenderKonflikt('Das Event hat Dienste.'));
@@ -2658,6 +2678,7 @@ describe('kalender', () => {
       beginn: eventBody.beginn,
       ende: eventBody.ende,
       abgesagt: false,
+      serie: null,
       bewertung: 'gruen',
       schichten: [
         {
@@ -2843,6 +2864,7 @@ describe('kalender', () => {
       beginn,
       ende: '2026-10-23T22:00:00.000Z',
       abgesagt: false,
+      serie: null,
       bewertung: 'gruen' as const,
       schichten: [],
     });

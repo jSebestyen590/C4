@@ -108,6 +108,9 @@ export interface Benachrichtigungen {
   senden(sendung: Sendung): Promise<number>;
   /** Sends a test message to all of the member's own devices (no dedupe, no setting filter). */
   testSenden(sub: string): Promise<{ geraete: number; ok: number; fehler: number }>;
+  /** Claims a once-only marker (e.g. a job that runs once per day); false when already claimed. */
+  einmalBelegen(schluessel: string): Promise<boolean>;
+  einmalFreigeben(schluessel: string): Promise<void>;
   /** Registers a task that runs on every `pushJob`. */
   registriereAufgabe(name: string, aufgabe: (jetzt: Date) => Promise<void>): void;
   /** Runs all registered tasks; one failing task does not stop the others. */
@@ -228,6 +231,9 @@ export function createBenachrichtigungen(deps: {
         fehler: ergebnisse.filter((e) => e !== 'ok').length,
       };
     },
+
+    einmalBelegen: (schluessel) => store.versandBelegen(schluessel),
+    einmalFreigeben: (schluessel) => store.versandFreigeben(schluessel),
 
     registriereAufgabe(name, aufgabe) {
       aufgaben.set(name, aufgabe);

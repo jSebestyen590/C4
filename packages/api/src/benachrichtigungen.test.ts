@@ -282,6 +282,7 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   beginn: BEGINN,
   ende: '2026-10-23T22:00:00.000Z',
   abgesagt: false,
+  serie: null,
   schichten: [],
   bewertung: 'rot',
   ...patch,

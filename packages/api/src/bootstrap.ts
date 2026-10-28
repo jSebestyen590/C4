@@ -14,6 +14,7 @@ import {
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
+import { registriereKalenderSerien } from './kalenderSerien';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
 
@@ -31,6 +32,7 @@ export function createProduction() {
   });
   // Features register their job tasks here (see docs/benachrichtigungen.md).
   registriereKalenderAufgaben(benachrichtigungen, kalender);
+  registriereKalenderSerien(benachrichtigungen, kalender);
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin: createCognitoUserAdmin(config.userPoolId, config.region),

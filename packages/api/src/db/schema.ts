@@ -464,12 +464,26 @@ export const events = pgTable('events', {
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
   abgesagt: boolean('abgesagt').notNull().default(false),
-  /** Cognito sub, deliberately without a foreign key. */
-  angelegtVon: text('angelegt_von').notNull(),
+  /** Series the event belongs to (e.g. `barabend`); null for ordinary events. */
+  serie: text('serie'),
+  /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
+  angelegtVon: text('angelegt_von'),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });
 export type EventRow = typeof events.$inferSelect;
+
+/** Days a series already created an event for; never removed, so deleted days are not recreated. */
+export const serienTermine = pgTable(
+  'serien_termine',
+  {
+    serie: text('serie').notNull(),
+    datum: date('datum', { mode: 'string' }).notNull(),
+    eventId: text('event_id'),
+    erzeugt: timestamp('erzeugt', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.serie, t.datum] })],
+);
 
 export const schichten = pgTable('schichten', {
   id: text('id').primaryKey(),

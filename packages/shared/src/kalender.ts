@@ -298,6 +298,8 @@ export const eventEingabeSchema = z
     schichten: z.array(schichtEingabeSchema),
     /** Confirms that Schichten or Bedarfe with Dienste may be removed. */
     bestaetigt: z.boolean().optional(),
+    /** Detaches the event from its series (a Barabend replaced by another event); only on update. */
+    ersetzeSerie: z.boolean().optional(),
   })
   .refine(dauerOk, dauerFehler);
 export type EventEingabe = z.infer<typeof eventEingabeSchema>;
@@ -463,6 +465,8 @@ export interface EventDto {
   beginn: string;
   ende: string;
   abgesagt: boolean;
+  /** Series the event was generated for (e.g. `barabend`), null for ordinary events. */
+  serie: string | null;
   schichten: SchichtDto[];
   bewertung: EventBewertung;
 }
@@ -646,6 +650,66 @@ export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe
       };
     }),
   };
+}
+
+/**
+ * Event input for replacing an existing (generated) Barabend by a Vorlage while keeping its Dienste:
+ * the first Betrieb Schicht of the Vorlage takes over the id of the Barabend's Betrieb Schicht, Dienstformen
+ * with Dienste that the Vorlage lacks are added to its Bedarfe (old minimum/wunsch), and Schichten that
+ * cannot be matched but still have Dienste stay as extra Schichten. Without a Betrieb Schicht in the
+ * Vorlage the old Betrieb Schicht stays as an extra Schicht. The date is the Barabend's.
+ */
+export function barabendErsetzen(
+  barabend: Pick<EventDto, 'beginn' | 'schichten'>,
+  vorlage: VorlageEingabe,
+): EventEingabe {
+  const neu = ausVorlage(vorlage, datumBerlin(barabend.beginn));
+  const alte = [...barabend.schichten].sort(
+    (a, b) => new Date(a.beginn).getTime() - new Date(b.beginn).getTime(),
+  );
+  const altBetrieb = alte.find((s) => s.art === 'betrieb');
+  const ziel = neu.schichten.findIndex((s) => s.art === 'betrieb');
+  const behalten: SchichtEingabe[] = [];
+  const alsEingabe = (s: SchichtDto): SchichtEingabe =>
+    s.art === 'betrieb'
+      ? {
+          id: s.id,
+          art: 'betrieb',
+          beginn: s.beginn,
+          ende: s.ende,
+          bedarfe: s.bedarfe.map((b) => ({ ...b })),
+        }
+      : {
+          id: s.id,
+          art: s.art,
+          beginn: s.beginn,
+          ende: s.ende,
+          minimum: s.minimum ?? 0,
+          wunsch: s.wunsch ?? 1,
+        };
+
+  let schichten = neu.schichten;
+  if (altBetrieb && ziel >= 0) {
+    schichten = neu.schichten.map((s, i) => {
+      if (i !== ziel || s.art !== 'betrieb') return s;
+      const vorhanden = new Set(s.bedarfe.map((b) => b.dienstformId));
+      const mitDiensten = new Set(altBetrieb.dienste.map((d) => d.dienstformId));
+      const ergaenzt = altBetrieb.bedarfe.filter(
+        (b) => mitDiensten.has(b.dienstformId) && !vorhanden.has(b.dienstformId),
+      );
+      return {
+        ...s,
+        id: altBetrieb.id,
+        bedarfe: [...s.bedarfe, ...ergaenzt.map((b) => ({ ...b }))],
+      };
+    });
+  }
+  for (const s of alte) {
+    const verwendet = s === altBetrieb && ziel >= 0;
+    if (verwendet) continue;
+    if (s === altBetrieb || s.dienste.length > 0) behalten.push(alsEingabe(s));
+  }
+  return { ...neu, schichten: [...schichten, ...behalten] };
 }
 
 /** Pairs of Schichten that overlap in time (touching ends do not overlap), by input index. */

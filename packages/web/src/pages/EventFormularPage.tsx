@@ -17,7 +17,9 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ausVorlage,
+  barabendErsetzen,
   berlinZuUtc,
+  datumBerlin,
   betriebDatum,
   eventEingabeSchema,
   heuteBerlin,
@@ -52,6 +54,7 @@ import {
   useDienstformen,
   useEventKategorien,
   useKalenderEvent,
+  useKalenderEvents,
   useVorlagen,
 } from '../kalenderDaten';
 import { ApiFehler, fehlerText, pruefen } from '../warenApi';
@@ -177,11 +180,14 @@ function rohEingabe(w: EventWerte) {
 function Formular({
   anfang,
   eventId,
+  ersetzeSerie = false,
   dienstformen,
   kategorien,
 }: Readonly<{
   anfang: EventWerte;
   eventId?: string;
+  /** Saving detaches the (generated) event from its series, e.g. a Barabend replaced by another event. */
+  ersetzeSerie?: boolean;
   dienstformen: DienstformDto[];
   kategorien: EventKategorieDto[];
 }>) {
@@ -207,7 +213,11 @@ function Formular({
     setSchichtFehler({});
     setLaeuft(true);
     try {
-      const json = bestaetigt ? { ...ergebnis.json, bestaetigt: true } : ergebnis.json;
+      const json = {
+        ...ergebnis.json,
+        ...(bestaetigt && { bestaetigt: true }),
+        ...(ersetzeSerie && { ersetzeSerie: true }),
+      };
       let id = eventId;
       if (eventId) {
         const res = await api.kalender.events[':id'].$put({ param: { id: eventId }, json });
@@ -239,6 +249,11 @@ function Formular({
 
   return (
     <Stack>
+      {ersetzeSerie && (
+        <Alert color="blue">
+          Dieses Event ersetzt den Barabend an diesem Tag. Eingetragene Dienste bleiben erhalten.
+        </Alert>
+      )}
       <KopfFelder
         werte={werte}
         onChange={(k) => setWerte({ ...werte, ...k })}
@@ -356,14 +371,46 @@ function NeuesEvent({
   const vorlagen = useVorlagen();
   const [vorlageId, setVorlageId] = useState<string | null>(null);
   const [datum, setDatum] = useState(heuteBerlin());
-  const [anfang, setAnfang] = useState<EventWerte | null>(null);
+  const [anfang, setAnfang] = useState<{
+    werte: EventWerte;
+    ersetzt?: EventDto;
+  } | null>(null);
+  const [barabendFrage, setBarabendFrage] = useState<EventDto | null>(null);
+  const tagesEvents = useKalenderEvents(datum, datum);
 
   if (anfang) {
-    return <Formular anfang={anfang} dienstformen={dienstformen} kategorien={kategorien} />;
+    return (
+      <Formular
+        anfang={anfang.werte}
+        {...(anfang.ersetzt && { eventId: anfang.ersetzt.id, ersetzeSerie: true })}
+        dienstformen={dienstformen}
+        kategorien={kategorien}
+      />
+    );
   }
+  const vorlage: VorlageDto | undefined = vorlagen.data?.find((v) => v.id === vorlageId);
+  // A planned Barabend (generated series event) on that day can be replaced instead of doubled.
+  const barabend = vorlage
+    ? tagesEvents.data?.find(
+        (e) =>
+          e.serie !== null &&
+          e.serie !== vorlage.id &&
+          !e.abgesagt &&
+          datumBerlin(e.beginn) === datum,
+      )
+    : undefined;
+  const neuAnlegen = () =>
+    setAnfang({ werte: vorlage ? werteAus(ausVorlage(vorlage, datum)) : leereWerte(datum) });
   const weiter = () => {
-    const vorlage: VorlageDto | undefined = vorlagen.data?.find((v) => v.id === vorlageId);
-    setAnfang(vorlage ? werteAus(ausVorlage(vorlage, datum)) : leereWerte(datum));
+    if (barabend) setBarabendFrage(barabend);
+    else neuAnlegen();
+  };
+  const ersetzen = () => {
+    if (!vorlage || !barabendFrage) return;
+    setAnfang({
+      werte: werteAus(barabendErsetzen(barabendFrage, vorlage)),
+      ersetzt: barabendFrage,
+    });
   };
   return (
     <Stack>
@@ -377,9 +424,29 @@ function NeuesEvent({
         disabled={vorlagen.isPending}
       />
       <DatumFeld label="Datum" value={datum} onWert={setDatum} />
-      <Button disabled={!datum} onClick={weiter}>
+      <Button disabled={!datum} loading={tagesEvents.isPending && !!datum} onClick={weiter}>
         Weiter
       </Button>
+
+      <Modal
+        opened={barabendFrage !== null}
+        onClose={() => setBarabendFrage(null)}
+        title="Barabend ersetzen?"
+      >
+        <Stack>
+          <Text size="sm">
+            An diesem Tag ist ein Barabend eingeplant. Möchtest du ihn durch dieses Event ersetzen?
+            Eingetragene Dienste bleiben erhalten.
+          </Text>
+          <Button onClick={ersetzen}>Barabend ersetzen</Button>
+          <Button variant="light" onClick={neuAnlegen}>
+            Zusätzlich anlegen
+          </Button>
+          <Button variant="default" onClick={() => setBarabendFrage(null)}>
+            Abbrechen
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

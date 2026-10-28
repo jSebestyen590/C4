@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ausVorlage,
+  barabendErsetzen,
   betriebDatum,
   erinnerungenEingabeSchema,
   zeitenAus,
@@ -23,6 +24,7 @@ import {
   zeitpunktAnzeigen,
   type BewertbareSchicht,
   type DienstPerson,
+  type EventDto,
   type VorlageEingabe,
 } from './kalender';
 
@@ -548,5 +550,105 @@ describe('schichtBezeichnung', () => {
         '2026-10-23T16:00:00Z',
       ),
     ).toBe('Putzen Sa 24.10. 00:30–02:30');
+  });
+});
+
+describe('barabendErsetzen', () => {
+  const bar = { dienstformId: 'bar', minimum: 1, wunsch: 2 };
+  const barabend = (
+    dienste: { dienstformId: string | null }[],
+    extra: EventDto['schichten'] = [],
+  ) =>
+    ({
+      beginn: '2026-11-02T19:00:00.000Z', // Mo 20:00 Berlin
+      schichten: [
+        {
+          id: 's-betrieb',
+          art: 'betrieb',
+          beginn: '2026-11-02T19:00:00.000Z',
+          ende: '2026-11-03T00:00:00.000Z',
+          bedarfe: [bar, { dienstformId: 'tresen', minimum: 1, wunsch: 3 }],
+          minimum: null,
+          wunsch: null,
+          dienste: dienste.map((d, i) => ({ id: `d${i}`, ...d, person: extern('x') })),
+        },
+        ...extra,
+      ],
+    }) as unknown as Pick<EventDto, 'beginn' | 'schichten'>;
+  const vorlage = (schichten: VorlageEingabe['schichten']): VorlageEingabe => ({
+    titel: 'Karaoke',
+    beschreibung: null,
+    kategorieId: null,
+    beginnZeit: '21:00',
+    endeZeit: '02:00',
+    schichten,
+  });
+  const betrieb = (bedarfe = [{ dienstformId: 'technik', minimum: 1, wunsch: 1 }]) =>
+    ({ art: 'betrieb', beginnZeit: '21:00', endeZeit: '02:00', bedarfe }) as const;
+
+  it('takes the Betrieb id, the times of the Vorlage and the date of the Barabend', () => {
+    const e = barabendErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
+    expect(e.titel).toBe('Karaoke');
+    expect(e.beginn).toBe('2026-11-02T20:00:00.000Z');
+    expect(e.schichten).toHaveLength(1);
+    expect(e.schichten[0]).toMatchObject({
+      id: 's-betrieb',
+      art: 'betrieb',
+      beginn: '2026-11-02T20:00:00.000Z',
+    });
+  });
+
+  it('adds Dienstformen with Dienste that the Vorlage lacks, with their old numbers', () => {
+    const e = barabendErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
+    const s = e.schichten[0]!;
+    if (s.art !== 'betrieb') throw new Error('expected Betrieb');
+    expect(s.bedarfe).toEqual([{ dienstformId: 'technik', minimum: 1, wunsch: 1 }, bar]);
+  });
+
+  it('does not duplicate Dienstformen the Vorlage has and skips those without Dienste', () => {
+    const e = barabendErsetzen(
+      barabend([{ dienstformId: 'bar' }]),
+      vorlage([betrieb([{ dienstformId: 'bar', minimum: 2, wunsch: 4 }])]),
+    );
+    const s = e.schichten[0]!;
+    if (s.art !== 'betrieb') throw new Error('expected Betrieb');
+    expect(s.bedarfe).toEqual([{ dienstformId: 'bar', minimum: 2, wunsch: 4 }]);
+  });
+
+  it('keeps the old Betrieb Schicht as an extra one when the Vorlage has none', () => {
+    const putzen = {
+      art: 'putzen',
+      tagVersatz: 1,
+      beginnZeit: '10:00',
+      endeZeit: '11:00',
+      minimum: 0,
+      wunsch: 1,
+    } as const;
+    const e = barabendErsetzen(barabend([]), vorlage([putzen]));
+    expect(e.schichten.map((s) => s.art)).toEqual(['putzen', 'betrieb']);
+    expect(e.schichten[0]!.id).toBeUndefined();
+    expect(e.schichten[1]).toMatchObject({ id: 's-betrieb', beginn: '2026-11-02T19:00:00.000Z' });
+  });
+
+  it('keeps further old Schichten that have Dienste and drops empty ones', () => {
+    const aufbau = (id: string, anzahl: number) => ({
+      id,
+      art: 'aufbau' as const,
+      beginn: '2026-11-02T16:00:00.000Z',
+      ende: '2026-11-02T18:00:00.000Z',
+      bedarfe: [],
+      minimum: 1,
+      wunsch: 2,
+      dienste: Array.from({ length: anzahl }, (_, i) => ({
+        id: `a${i}`,
+        dienstformId: null,
+        person: extern('y'),
+      })),
+    });
+    const e = barabendErsetzen(
+      barabend([], [aufbau('s-voll', 1), aufbau('s-leer', 0)] as unknown as EventDto['schichten']),
+      vorlage([betrieb()]),
+    );
+    expect(e.schichten.map((s) => s.id)).toEqual(['s-betrieb', 's-voll']);
   });
 });

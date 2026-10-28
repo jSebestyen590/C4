@@ -5,16 +5,17 @@ Events mit Schichten und Diensten. Rechte: `kalender:lesen` (ansehen, sich eintr
 
 ## Datenmodell
 
-Migrationen `0037`–`0054`, `0062`–`0063`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
+Migrationen `0037`–`0054`, `0062`–`0069`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
 | Tabelle                                                  | Inhalt                                                                                                                                                                                                                                           |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe), archivierbar                                                                                                                                                                                           |
 | `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                                                                                             |
-| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`                                                                                                                                                                              |
+| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (z. B. `barabend`, sonst null), `angelegt_von` (null = System)                                                                                                      |
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
 | `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform (nur Betrieb, sonst `null`), Kommentar, eingetragen von                                                                                                                                           |
 | `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen: Event mit Beginn-/End-Uhrzeit, Betrieb-Schichten nur mit Uhrzeiten, Aufbau/Putzen mit `tagVersatz` (ganze Tage relativ zum Event, auch negativ) + Uhrzeiten (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                             |
+| `serien_termine`                                         | Jeder Tag, für den eine Serie (z. B. Barabend) schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`; Migration `0069`                                                                                      |
 | `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag (Migration `0063`)                                                                                                                                 |     |
 
 ## Regeln
@@ -43,6 +44,30 @@ Migrationen `0037`–`0054`, `0062`–`0063`, Code in `packages/api/src/kalender
   und der Liste der Betroffenen, bis `bestaetigt: true` mitkommt. Wechselt die Art einer Schicht mit Einträgen von
   Betrieb zu Aufbau/Putzen, bleiben die Einträge (ihre Dienstform wird geleert); von Aufbau/Putzen zu Betrieb passen sie
   keiner Dienstform und zählen als entfernt (409 bis zur Bestätigung). Löschen nur ohne Einträge, sonst absagen.
+
+## Barabend
+
+Kein besonderes Event ist ein normaler Barabend: montags, mittwochs und sonntags, 20:00–01:00, Dienstform Bar
+(Minimum 1, Wunsch 2). Kategorie, Vorlage und Dienstform legen die Migrationen `0064`–`0068` mit festen Ids an
+(`barabend`, `bar`; Vorlage-Schicht `barabend-betrieb`).
+
+- **Regel im Code:** `SERIEN` in `packages/api/src/kalenderSerien.ts` (Vorlage, Wochentage, Vorlauf 12 Monate). Dort
+  ändert man die Wochentage; bestehende Events bleiben unverändert.
+- **Job:** Die Aufgabe `kalender.serien` (im Push-Job, höchstens einmal pro Berlin-Tag über einen Dedupe-Schlüssel
+  `kalender.serien:<Datum>` in `push_versand`) erzeugt für jeden passenden Tag von heute bis heute + 12 Monate, der noch
+  keinen `serien_termine`-Eintrag hat, ein Event aus der Vorlage (`events.serie = 'barabend'`, `angelegt_von` leer). Eintrag
+  und Event entstehen in einer Transaktion (`ON CONFLICT DO NOTHING`), parallele Läufe doppeln nichts. Pro Lauf höchstens
+  30 Events, der Rest folgt im nächsten Lauf. Vergangene Tage werden nie nachgeholt; fehlt die Vorlage oder ist sie
+  archiviert, entsteht nichts (Log).
+- **Gelöscht bleibt gelöscht:** Der Eintrag in `serien_termine` bleibt bestehen, auch wenn das Event gelöscht, verschoben
+  oder umbenannt wird. Der Tag kommt nie wieder.
+- **Ersetzen:** Im Formular „Event anlegen“ fragt ein Dialog nach Vorlage und Datum, wenn an dem Tag ein nicht abgesagtes
+  Serien-Event liegt: „Barabend ersetzen“ / „Zusätzlich anlegen“ / „Abbrechen“. Ersetzen bearbeitet das bestehende Event mit
+  den Daten der Vorlage (`barabendErsetzen` in Shared): die erste Betriebs-Schicht der Vorlage übernimmt die Id der
+  Barabend-Schicht, Dienstformen mit Einträgen, die der Vorlage fehlen, kommen mit ihren Minimum/Wunsch-Werten in den Bedarf,
+  weitere Schichten mit Einträgen bleiben; hat die Vorlage keine Betriebs-Schicht, bleibt die alte als zusätzliche Schicht.
+  Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
+  entfernt man bewusst etwas, greift die 409-Bestätigung).
 
 ## Seiten
 

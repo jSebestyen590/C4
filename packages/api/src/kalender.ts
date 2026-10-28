@@ -40,6 +40,7 @@ import {
   mitglieder,
   schichtBedarfe,
   schichten,
+  serienTermine,
   vorlageBedarfe,
   vorlageSchichten,
 } from './db/schema';
@@ -282,6 +283,15 @@ export interface KalenderStore {
   /** Undefined when the event does not exist. */
   absageSetzen(id: string, abgesagt: boolean): Promise<AbsageErgebnis | undefined>;
 
+  // ----- Series (see kalenderSerien.ts)
+  /** Dates (`YYYY-MM-DD`) the series already created an event for. */
+  serienTage(serie: string): Promise<string[]>;
+  /**
+   * Records the day for the series and creates the event in one transaction. False (and no event) when
+   * the day was already recorded, so parallel runs never duplicate and deleted days stay deleted.
+   */
+  serienTerminAnlegen(serie: string, datum: string, daten: EventEingabe): Promise<boolean>;
+
   // ----- Dienste
   /** Undefined when the Schicht does not exist. Throws KalenderUngueltig / KalenderKonflikt. */
   dienstEintragen(
@@ -501,6 +511,7 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
       beginn: iso(e.beginn),
       ende: iso(e.ende),
       abgesagt: e.abgesagt,
+      serie: e.serie,
       schichten: alleSchichten,
       bewertung: eventBewertung({ abgesagt: e.abgesagt, schichten: alleSchichten }),
     };
@@ -578,6 +589,36 @@ export function createKalenderStore(db: Db): KalenderStore {
     }
   };
 
+  const eventErzeugen = async (
+    tx: Tx,
+    daten: EventEingabe,
+    von: string | null,
+    serie: string | null,
+    id: string = randomUUID(),
+  ) => {
+    await kategorieMussExistieren(tx, daten.kategorieId);
+    await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
+    if (daten.schichten.some((s) => s.id !== undefined)) {
+      throw new KalenderUngueltig('Neue Events haben noch keine Schichten mit Id.');
+    }
+    await tx.insert(events).values({
+      id,
+      titel: daten.titel,
+      beschreibung: daten.beschreibung,
+      kategorieId: daten.kategorieId,
+      beginn: new Date(daten.beginn),
+      ende: new Date(daten.ende),
+      serie,
+      angelegtVon: von,
+    });
+    await schichtenSchreiben(
+      tx,
+      id,
+      daten.schichten.map((eingabe, index) => ({ index, eingabe })),
+    );
+    return id;
+  };
+
   const vorlageSchreiben = async (tx: Tx, vorlageId: string, daten: VorlageEingabe) => {
     for (const [index, s] of daten.schichten.entries()) {
       const id = randomUUID();
@@ -617,28 +658,26 @@ export function createKalenderStore(db: Db): KalenderStore {
       return (await eventsFuerBedingung(eq(events.id, id)))[0];
     },
     async eventAnlegen(daten, von) {
+      return db.transaction((tx) => eventErzeugen(tx, daten, von, null));
+    },
+    async serienTage(serie) {
+      const rows = await db
+        .select({ datum: serienTermine.datum })
+        .from(serienTermine)
+        .where(eq(serienTermine.serie, serie));
+      return rows.map((r) => r.datum);
+    },
+    async serienTerminAnlegen(serie, datum, daten) {
       return db.transaction(async (tx) => {
-        await kategorieMussExistieren(tx, daten.kategorieId);
-        await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
-        if (daten.schichten.some((s) => s.id !== undefined)) {
-          throw new KalenderUngueltig('Neue Events haben noch keine Schichten mit Id.');
-        }
         const id = randomUUID();
-        await tx.insert(events).values({
-          id,
-          titel: daten.titel,
-          beschreibung: daten.beschreibung,
-          kategorieId: daten.kategorieId,
-          beginn: new Date(daten.beginn),
-          ende: new Date(daten.ende),
-          angelegtVon: von,
-        });
-        await schichtenSchreiben(
-          tx,
-          id,
-          daten.schichten.map((eingabe, index) => ({ index, eingabe })),
-        );
-        return id;
+        const eingefuegt = await tx
+          .insert(serienTermine)
+          .values({ serie, datum, eventId: id })
+          .onConflictDoNothing()
+          .returning({ datum: serienTermine.datum });
+        if (eingefuegt.length === 0) return false;
+        await eventErzeugen(tx, daten, null, serie, id);
+        return true;
       });
     },
     async eventAktualisieren(id, daten) {
@@ -727,6 +766,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             kategorieId: daten.kategorieId,
             beginn: beginnNeu,
             ende: endeNeu,
+            ...(daten.ersetzeSerie === true && { serie: null }),
             aktualisiertAm: new Date(),
           })
           .where(eq(events.id, id));
