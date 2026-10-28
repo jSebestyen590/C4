@@ -18,11 +18,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ausVorlage,
   berlinZuUtc,
-  datumBerlin,
+  betriebDatum,
   eventEingabeSchema,
   heuteBerlin,
   schichtBezeichnung,
-  zeitBerlin,
+  zeitenAus,
+  zeitspanne,
   type DienstformDto,
   type SchichtArt,
   type DienstPerson,
@@ -40,11 +41,10 @@ import {
   neueSchichtWerte,
   neuerKey,
   SchichtListeEditor,
-  ZeitpunktFelder,
+  UhrzeitFelder,
   type KopfWerte,
   type SchichtFehler,
   type SchichtBasis,
-  type Zeitpunkt,
 } from '../KalenderFormular';
 import { PersonName } from '../KalenderAnzeige';
 import {
@@ -59,13 +59,16 @@ import { ApiFehler, fehlerText, pruefen } from '../warenApi';
 interface EventSchichtForm extends SchichtBasis {
   /** Set for Schichten that already exist, so their Dienste are kept. */
   id?: string;
-  beginn: Zeitpunkt;
-  ende: Zeitpunkt;
+  /** Date of an Aufbau/Putzen Schicht; Betrieb Schichten follow the event date. */
+  datum: string;
+  beginnZeit: string;
+  endeZeit: string;
 }
 
 interface EventWerte extends KopfWerte {
-  beginn: Zeitpunkt;
-  ende: Zeitpunkt;
+  datum: string;
+  beginnZeit: string;
+  endeZeit: string;
   schichten: EventSchichtForm[];
 }
 
@@ -81,18 +84,12 @@ interface Betroffener {
   grund: 'schicht' | 'bedarf';
 }
 
-const zeitpunktAusIso = (iso: string): Zeitpunkt => ({
-  datum: datumBerlin(iso),
-  zeit: zeitBerlin(iso),
-});
-
 interface EventDaten {
   titel: string;
   beschreibung: string | null;
   kategorieId: string | null;
   beginn: string;
   ende: string;
-  fehltHinweisStunden: number | null;
   schichten: {
     id?: string;
     art: EventSchichtForm['art'];
@@ -106,18 +103,15 @@ interface EventDaten {
 
 function werteAus(e: EventDaten): EventWerte {
   return {
+    ...zeitenAus(e.beginn, e.ende),
     titel: e.titel,
     beschreibung: e.beschreibung ?? '',
     kategorieId: e.kategorieId,
-    hinweisStunden: e.fehltHinweisStunden ?? '',
-    beginn: zeitpunktAusIso(e.beginn),
-    ende: zeitpunktAusIso(e.ende),
     schichten: e.schichten.map((s) => ({
       key: s.id ?? neuerKey(),
       id: s.id,
       art: s.art,
-      beginn: zeitpunktAusIso(s.beginn),
-      ende: zeitpunktAusIso(s.ende),
+      ...zeitenAus(s.beginn, s.ende),
       bedarfe:
         s.art === 'betrieb' && s.bedarfe?.length
           ? s.bedarfe.map((b) => ({ ...b }))
@@ -129,33 +123,32 @@ function werteAus(e: EventDaten): EventWerte {
 }
 
 const werteAusEvent = (e: EventDto): EventWerte =>
-  werteAus({
-    ...e,
-    kategorieId: e.kategorie?.id ?? null,
-    fehltHinweisStunden: e.fehltHinweisStunden,
-  });
+  werteAus({ ...e, kategorieId: e.kategorie?.id ?? null });
 
 function leereWerte(datum: string): EventWerte {
   return {
     titel: '',
     beschreibung: '',
     kategorieId: null,
-    hinweisStunden: '',
-    beginn: { datum, zeit: '20:00' },
-    ende: { datum, zeit: '23:00' },
+    datum,
+    beginnZeit: '20:00',
+    endeZeit: '23:00',
     schichten: [],
   };
 }
 
-const zuIso = (z: Zeitpunkt): string | null =>
-  z.datum && z.zeit ? berlinZuUtc(z.datum, z.zeit) : null;
+/** Begin and end instants of a Schicht form; Betrieb follows the event date, see `betriebDatum`. */
+function schichtSpanne(w: EventWerte, s: EventSchichtForm) {
+  const datum = s.art === 'betrieb' ? betriebDatum(w.datum, w.beginnZeit, s.beginnZeit) : s.datum;
+  return datum && s.beginnZeit && s.endeZeit ? zeitspanne(datum, s.beginnZeit, s.endeZeit) : null;
+}
 
 /** Form values -> API input; German error texts (general and per Schicht field) when invalid. */
 function eingabeBauen(
   w: EventWerte,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: EventEingabe } {
   const roh = rohEingabe(w);
-  if (!roh) return { fehler: 'Bitte gib bei allen Zeiten Datum und Uhrzeit an.' };
+  if (!roh) return { fehler: 'Bitte gib bei allen Zeiten ein Datum und Uhrzeiten an.' };
   const geprueft = eventEingabeSchema.safeParse(roh);
   if (!geprueft.success) {
     const { schichten, allgemein } = fehlerAusIssues(geprueft.error.issues);
@@ -165,23 +158,18 @@ function eingabeBauen(
 }
 
 function rohEingabe(w: EventWerte) {
-  const beginn = zuIso(w.beginn);
-  const ende = zuIso(w.ende);
-  if (!beginn || !ende) return null;
+  if (!w.datum || !w.beginnZeit || !w.endeZeit) return null;
   const schichten = [];
   for (const s of w.schichten) {
-    const sb = zuIso(s.beginn);
-    const se = zuIso(s.ende);
-    if (!sb || !se) return null;
-    schichten.push({ id: s.id, beginn: sb, ende: se, ...bedarfFelder(s) });
+    const spanne = schichtSpanne(w, s);
+    if (!spanne) return null;
+    schichten.push({ id: s.id, ...spanne, ...bedarfFelder(s) });
   }
   return {
     titel: w.titel,
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
-    beginn,
-    ende,
-    fehltHinweisStunden: w.hinweisStunden === '' ? null : w.hinweisStunden,
+    ...zeitspanne(w.datum, w.beginnZeit, w.endeZeit),
     schichten,
   };
 }
@@ -205,6 +193,9 @@ function Formular({
   const [schichtFehler, setSchichtFehler] = useState<Record<number, SchichtFehler>>({});
   const [laeuft, setLaeuft] = useState(false);
   const [betroffene, setBetroffene] = useState<Betroffener[] | null>(null);
+
+  const eventBeginnIso =
+    werte.datum && werte.beginnZeit ? berlinZuUtc(werte.datum, werte.beginnZeit) : undefined;
 
   const speichern = async (bestaetigt: boolean) => {
     const ergebnis = eingabeBauen(werte);
@@ -253,15 +244,16 @@ function Formular({
         onChange={(k) => setWerte({ ...werte, ...k })}
         kategorien={kategorien}
       />
-      <ZeitpunktFelder
-        label="Beginn"
-        wert={werte.beginn}
-        onChange={(beginn) => setWerte({ ...werte, beginn })}
+      <DatumFeld
+        label="Datum"
+        value={werte.datum}
+        onWert={(datum) => setWerte({ ...werte, datum })}
+        loeschbar={false}
       />
-      <ZeitpunktFelder
-        label="Ende"
-        wert={werte.ende}
-        onChange={(ende) => setWerte({ ...werte, ende })}
+      <UhrzeitFelder
+        beginn={werte.beginnZeit}
+        ende={werte.endeZeit}
+        onChange={(z) => setWerte({ ...werte, ...z })}
       />
       <SchichtListeEditor<EventSchichtForm>
         schichten={werte.schichten}
@@ -271,27 +263,29 @@ function Formular({
         neu={() => ({
           key: neuerKey(),
           ...neueSchichtWerte(),
-          beginn: werte.beginn,
-          ende: werte.ende,
+          datum: werte.datum,
+          beginnZeit: werte.beginnZeit,
+          endeZeit: werte.endeZeit,
         })}
         untertitel={(s) => {
-          const beginn = zuIso(s.beginn);
-          const ende = zuIso(s.ende);
-          return beginn && ende
-            ? schichtBezeichnung({ art: s.art, beginn, ende }, zuIso(werte.beginn) ?? undefined)
-            : null;
+          const spanne = schichtSpanne(werte, s);
+          return spanne ? schichtBezeichnung({ art: s.art, ...spanne }, eventBeginnIso) : null;
         }}
         zeitFelder={(s, aendern, f) => (
           <Stack gap="xs">
-            <ZeitpunktFelder
-              label="Beginn"
-              wert={s.beginn}
-              onChange={(beginn) => aendern({ beginn })}
-            />
-            <ZeitpunktFelder
-              label="Ende"
-              wert={s.ende}
-              onChange={(ende) => aendern({ ende })}
+            {s.art !== 'betrieb' && (
+              <DatumFeld
+                label="Datum"
+                value={s.datum}
+                onWert={(datum) => aendern({ datum })}
+                loeschbar={false}
+              />
+            )}
+            <UhrzeitFelder
+              beginn={s.beginnZeit}
+              ende={s.endeZeit}
+              onChange={aendern}
+              beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
               fehler={f.ende}
             />
           </Stack>
@@ -326,7 +320,7 @@ function Formular({
               const form = dienstformen.find((d) => d.id === b.dienstformId)?.name ?? 'Dienst';
               const schicht = schichtBezeichnung(
                 { art: b.schichtArt, beginn: b.schichtBeginn, ende: b.schichtEnde },
-                zuIso(werte.beginn) ?? undefined,
+                eventBeginnIso,
               );
               return (
                 <Text key={b.dienstId} size="sm">

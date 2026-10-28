@@ -9,6 +9,7 @@ import {
   meldeEventAenderung,
   minutenText,
   registriereKalenderAufgaben,
+  waehleErinnerung,
 } from './kalenderBenachrichtigungen';
 import type { ErinnerungsDienst, EventAenderung, KalenderStore } from './kalender';
 
@@ -281,14 +282,16 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   beginn: BEGINN,
   ende: '2026-10-23T22:00:00.000Z',
   abgesagt: false,
-  fehltHinweisStunden: 24,
   schichten: [],
   bewertung: 'rot',
   ...patch,
 });
 
 describe('fehlende Dienste', () => {
-  const kalender = (liste: EventDto[]) => ({ events: async () => liste });
+  const kalender = (liste: EventDto[], zeitpunkte = [1440]) => ({
+    events: async () => liste,
+    erinnerungen: async () => zeitpunkte,
+  });
   const stundenVorher = (h: number) => new Date(new Date(BEGINN).getTime() - h * 3600_000);
 
   it('sends once per event when the hint time is reached and the event is red', async () => {
@@ -309,14 +312,14 @@ describe('fehlende Dienste', () => {
     expect(t.versendet).toHaveLength(1);
   });
 
-  it('stays quiet for non-red, cancelled, hint-less and started events', async () => {
+  it('stays quiet for non-red, cancelled, reminder-less and started events', async () => {
     const t = setup([{ sub: 'a', status: 'mitglied' }]);
     await t.abo('a');
     const jetzt = stundenVorher(10);
     await fehlendeDienste(t.b, kalender([event({ bewertung: 'gelb' })]), jetzt);
     await fehlendeDienste(t.b, kalender([event({ bewertung: 'gruen' })]), jetzt);
     await fehlendeDienste(t.b, kalender([event({ abgesagt: true })]), jetzt);
-    await fehlendeDienste(t.b, kalender([event({ fehltHinweisStunden: null })]), jetzt);
+    await fehlendeDienste(t.b, kalender([event()], []), jetzt);
     await fehlendeDienste(t.b, kalender([event()]), new Date(BEGINN));
     expect(t.versendet).toHaveLength(0);
   });
@@ -331,14 +334,50 @@ describe('fehlende Dienste', () => {
   });
 });
 
+describe('waehleErinnerung', () => {
+  const beginn = new Date(BEGINN).getTime();
+  const vor = (min: number) => beginn - min * 60_000;
+  const zeitpunkte = [10080, 2880, 1440];
+  it('picks the smallest offset already reached', () => {
+    expect(waehleErinnerung(beginn, vor(10081), zeitpunkte)).toBeUndefined();
+    expect(waehleErinnerung(beginn, vor(10080), zeitpunkte)).toBe(10080);
+    expect(waehleErinnerung(beginn, vor(3000), zeitpunkte)).toBe(10080);
+    expect(waehleErinnerung(beginn, vor(2880), zeitpunkte)).toBe(2880);
+    expect(waehleErinnerung(beginn, vor(1440), zeitpunkte)).toBe(1440);
+    expect(waehleErinnerung(beginn, vor(10), zeitpunkte)).toBe(1440);
+  });
+  it('does not backfill older offsets for short-notice events', () => {
+    // created 5 hours before: only the 1 day offset is picked, not 1 week and 2 days
+    expect(waehleErinnerung(beginn, vor(300), zeitpunkte)).toBe(1440);
+  });
+  it('ignores started events and empty settings', () => {
+    expect(waehleErinnerung(beginn, beginn, zeitpunkte)).toBeUndefined();
+    expect(waehleErinnerung(beginn, vor(10), [])).toBeUndefined();
+  });
+  it('sends each reached offset once across job runs', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    const k = {
+      events: async () => [event()],
+      erinnerungen: async () => zeitpunkte,
+    };
+    await fehlendeDienste(t.b, k, new Date(vor(10000)));
+    await fehlendeDienste(t.b, k, new Date(vor(9990)));
+    expect(t.versendet).toHaveLength(1);
+    await fehlendeDienste(t.b, k, new Date(vor(2000)));
+    expect(t.versendet).toHaveLength(2);
+  });
+});
+
 describe('registriereKalenderAufgaben', () => {
   it('hooks both tasks into the job runner', async () => {
     const t = setup([{ sub: 'a', status: 'mitglied' }]);
     await t.abo('a');
     const store = {
       events: async () => [event()],
+      erinnerungen: async () => [1440],
       erinnerungsDienste: async () => [dienst()],
-    } satisfies Pick<KalenderStore, 'events' | 'erinnerungsDienste'>;
+    } satisfies Pick<KalenderStore, 'events' | 'erinnerungsDienste' | 'erinnerungen'>;
     registriereKalenderAufgaben(t.b, store);
     await t.b.pushJob(new Date(new Date(BEGINN).getTime() - 20 * 60_000));
     expect(t.versendet.map((v) => v.titel).sort()).toEqual([

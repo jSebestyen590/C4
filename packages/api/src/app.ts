@@ -18,6 +18,7 @@ import {
   kalenderZeitraumSchema,
   statistikJahrSchema,
   vorlageEingabeSchema,
+  erinnerungenEingabeSchema,
   emailAendernSchema,
   emailBestaetigenSchema,
   heuteBerlin,
@@ -1772,6 +1773,21 @@ export function createApp(deps: AppDeps) {
         gefunden(await deps.kalender.vorlageLoeschen(c.req.param('id')), 'Vorlage nicht gefunden');
         return c.json({ ok: true });
       })
+      // ----- Kalender: global "Dienste fehlen" reminders
+      .get('/kalender/erinnerungen', auth, kalenderLesen, async (c) =>
+        c.json({ minutenVorher: await deps.kalender.erinnerungen() }),
+      )
+      .put(
+        '/kalender/erinnerungen',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', erinnerungenEingabeSchema),
+        async (c) => {
+          const { minutenVorher } = c.req.valid('json');
+          await deps.kalender.erinnerungenSetzen(minutenVorher);
+          return c.json({ minutenVorher: await deps.kalender.erinnerungen() });
+        },
+      )
       // ----- Kalender: Statistik
       .get(
         '/kalender/statistik',

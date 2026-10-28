@@ -9,7 +9,6 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { IconArchive, IconArchiveOff, IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,6 +25,8 @@ import {
   neueSchichtWerte,
   neuerKey,
   SchichtListeEditor,
+  TagVersatzFeld,
+  UhrzeitFelder,
   type KopfWerte,
   type SchichtBasis,
   type SchichtFehler,
@@ -37,18 +38,16 @@ import {
   useVorlagen,
 } from './kalenderDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
-import { ZahlFeld } from './ZahlFeld';
 
 interface VorlageSchichtForm extends SchichtBasis {
+  /** Days relative to the event date; only for Aufbau/Putzen. */
   tagVersatz: number | '';
   beginnZeit: string;
-  endeTagVersatz: number | '';
   endeZeit: string;
 }
 
 interface VorlageWerte extends KopfWerte {
   beginnZeit: string;
-  endeTagVersatz: number | '';
   endeZeit: string;
   schichten: VorlageSchichtForm[];
 }
@@ -57,9 +56,7 @@ const leereVorlage = (): VorlageWerte => ({
   titel: '',
   beschreibung: '',
   kategorieId: null,
-  hinweisStunden: '',
   beginnZeit: '20:00',
-  endeTagVersatz: 0,
   endeZeit: '23:00',
   schichten: [],
 });
@@ -68,16 +65,13 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   titel: v.titel,
   beschreibung: v.beschreibung ?? '',
   kategorieId: v.kategorieId ?? null,
-  hinweisStunden: v.fehltHinweisStunden ?? '',
   beginnZeit: v.beginnZeit,
-  endeTagVersatz: v.endeTagVersatz,
   endeZeit: v.endeZeit,
   schichten: v.schichten.map((s) => ({
     key: neuerKey(),
     art: s.art,
-    tagVersatz: s.tagVersatz,
+    tagVersatz: s.art === 'betrieb' ? 0 : s.tagVersatz,
     beginnZeit: s.beginnZeit,
-    endeTagVersatz: s.endeTagVersatz,
     endeZeit: s.endeZeit,
     bedarfe:
       s.art === 'betrieb' && s.bedarfe.length > 0
@@ -88,17 +82,14 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   })),
 });
 
-const zahl = (v: number | ''): number => (v === '' ? 0 : v);
-
 /** Form values -> API input, or German error texts (general and per Schicht field). */
 function eingabe(
   w: VorlageWerte,
   archiviert: boolean,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: VorlageEingabe } {
   const schichten = w.schichten.map((s) => ({
-    tagVersatz: zahl(s.tagVersatz),
+    ...(s.art === 'betrieb' ? {} : { tagVersatz: s.tagVersatz === '' ? undefined : s.tagVersatz }),
     beginnZeit: s.beginnZeit,
-    endeTagVersatz: zahl(s.endeTagVersatz),
     endeZeit: s.endeZeit,
     ...bedarfFelder(s),
   }));
@@ -117,56 +108,10 @@ function vorlageJson<S>(w: VorlageWerte, schichten: S[], archiviert: boolean) {
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
     beginnZeit: w.beginnZeit,
-    endeTagVersatz: zahl(w.endeTagVersatz),
     endeZeit: w.endeZeit,
-    fehltHinweisStunden: w.hinweisStunden === '' ? null : w.hinweisStunden,
     schichten,
     archiviert,
   };
-}
-
-/** A day offset and a time of day: "Tage danach" (0 = day of the event) + "Uhrzeit". */
-function VersatzZeit({
-  titel,
-  versatz,
-  zeit,
-  onChange,
-  fehler,
-}: Readonly<{
-  titel: string;
-  versatz: number | '';
-  zeit: string;
-  onChange: (versatz: number | '', zeit: string) => void;
-  fehler?: string;
-}>) {
-  return (
-    <Stack gap={4}>
-      <Text size="sm" fw={500}>
-        {titel}
-      </Text>
-      <Group gap="xs" align="flex-start" wrap="nowrap">
-        <ZahlFeld
-          label="Tage danach"
-          description="0 = am Tag des Events"
-          min={0}
-          allowDecimal={false}
-          allowNegative={false}
-          value={versatz}
-          onChange={(v) => onChange(typeof v === 'number' ? v : '', zeit)}
-          style={{ flex: 1, minWidth: 0 }}
-        />
-        <TextInput
-          label="Uhrzeit"
-          type="time"
-          value={zeit}
-          error={fehler}
-          onChange={(e) => onChange(versatz, e.currentTarget.value)}
-          w={140}
-          style={{ flexShrink: 0 }}
-        />
-      </Group>
-    </Stack>
-  );
 }
 
 function VorlageEditor({
@@ -223,17 +168,10 @@ function VorlageEditor({
         onChange={(k) => setWerte({ ...werte, ...k })}
         kategorien={kategorien.liste}
       />
-      <TextInput
-        label="Beginn (Uhrzeit)"
-        type="time"
-        value={werte.beginnZeit}
-        onChange={(e) => setWerte({ ...werte, beginnZeit: e.currentTarget.value })}
-      />
-      <VersatzZeit
-        titel="Ende"
-        versatz={werte.endeTagVersatz}
-        zeit={werte.endeZeit}
-        onChange={(endeTagVersatz, endeZeit) => setWerte({ ...werte, endeTagVersatz, endeZeit })}
+      <UhrzeitFelder
+        beginn={werte.beginnZeit}
+        ende={werte.endeZeit}
+        onChange={(z) => setWerte({ ...werte, ...z })}
       />
       <SchichtListeEditor<VorlageSchichtForm>
         schichten={werte.schichten}
@@ -245,7 +183,6 @@ function VorlageEditor({
           ...neueSchichtWerte(),
           tagVersatz: 0,
           beginnZeit: werte.beginnZeit,
-          endeTagVersatz: werte.endeTagVersatz,
           endeZeit: werte.endeZeit,
         })}
         untertitel={(s) =>
@@ -254,19 +191,20 @@ function VorlageEditor({
             : null
         }
         zeitFelder={(s, aendern, f) => (
-          <Stack gap="sm">
-            <VersatzZeit
-              titel="Beginn"
-              versatz={s.tagVersatz}
-              zeit={s.beginnZeit}
-              onChange={(tagVersatz, beginnZeit) => aendern({ tagVersatz, beginnZeit })}
-            />
-            <VersatzZeit
-              titel="Ende"
-              versatz={s.endeTagVersatz}
-              zeit={s.endeZeit}
+          <Stack gap="xs">
+            {s.art !== 'betrieb' && (
+              <TagVersatzFeld
+                wert={s.tagVersatz}
+                onChange={(tagVersatz) => aendern({ tagVersatz })}
+                fehler={f.tagVersatz}
+              />
+            )}
+            <UhrzeitFelder
+              beginn={s.beginnZeit}
+              ende={s.endeZeit}
+              onChange={aendern}
+              beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
               fehler={f.endeZeit}
-              onChange={(endeTagVersatz, endeZeit) => aendern({ endeTagVersatz, endeZeit })}
             />
           </Stack>
         )}

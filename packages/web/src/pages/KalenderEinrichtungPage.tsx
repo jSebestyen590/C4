@@ -3,6 +3,7 @@ import { IconChevronLeft } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DienstformenTab, EventKategorienTab, ExterneTab } from '../KalenderStammdatenTabs';
+import { ErinnerungenTab } from '../ErinnerungenTab';
 import { VorlagenTab } from '../VorlagenTab';
 
 /** Master data of the calendar: Dienstformen, Kategorien, Vorlagen and Externe. */
@@ -31,6 +32,9 @@ export function KalenderEinrichtungPage() {
           <Tabs.Tab value="externe" py="sm" px="xs">
             Externe
           </Tabs.Tab>
+          <Tabs.Tab value="erinnerungen" py="sm" px="xs">
+            Erinnerungen
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="dienstformen" pt="md">
           <DienstformenTab />
@@ -43,6 +47,9 @@ export function KalenderEinrichtungPage() {
         </Tabs.Panel>
         <Tabs.Panel value="externe" pt="md">
           <ExterneTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="erinnerungen" pt="md">
+          <ErinnerungenTab />
         </Tabs.Panel>
       </Tabs>
     </Stack>

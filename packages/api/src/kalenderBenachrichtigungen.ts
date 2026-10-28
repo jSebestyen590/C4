@@ -15,9 +15,6 @@ const ERINNERUNG = 'kalender.erinnerung';
 const FEHLENDE_DIENSTE = 'kalender.fehlende_dienste';
 const AENDERUNG = 'kalender.aenderung';
 
-/** Events further ahead than this are not checked for missing Dienste. */
-const FEHLT_VORLAUF_TAGE = 31;
-
 type Sender = Pick<Benachrichtigungen, 'senden'>;
 
 const eventUrl = (eventId: string) => `/app/kalender/events/${eventId}`;
@@ -66,7 +63,7 @@ export function minutenText(minuten: number): string {
 /** Registers the calendar's tasks with the generic job runner. */
 export function registriereKalenderAufgaben(
   benachrichtigungen: Benachrichtigungen,
-  kalender: Pick<KalenderStore, 'events' | 'erinnerungsDienste'>,
+  kalender: Pick<KalenderStore, 'events' | 'erinnerungsDienste' | 'erinnerungen'>,
 ): void {
   benachrichtigungen.registriereAufgabe('kalender.erinnerungen', (jetzt) =>
     erinnerungen(benachrichtigungen, kalender, jetzt),
@@ -117,20 +114,36 @@ export async function erinnerungen(
   }
 }
 
-/** Once per event: the hint time is reached and the event is still red. */
+/**
+ * The reminder to send now for an event beginning at `beginn`: the smallest offset already reached
+ * (`beginn - m <= jetzt < beginn`). Older, missed offsets are never made up for. `undefined` when
+ * the event has started or no offset is reached yet.
+ */
+export function waehleErinnerung(
+  beginn: number,
+  jetzt: number,
+  minutenVorher: readonly number[],
+): number | undefined {
+  if (jetzt >= beginn) return undefined;
+  const erreicht = minutenVorher.filter((m) => beginn - m * 60_000 <= jetzt);
+  return erreicht.length > 0 ? Math.min(...erreicht) : undefined;
+}
+
+/** Once per event and reached reminder time (global setting) while the event is still red. */
 export async function fehlendeDienste(
   benachrichtigungen: Benachrichtigungen,
-  kalender: Pick<KalenderStore, 'events'>,
+  kalender: Pick<KalenderStore, 'events' | 'erinnerungen'>,
   jetzt: Date,
 ): Promise<void> {
-  const bis = heuteBerlin(new Date(jetzt.getTime() + FEHLT_VORLAUF_TAGE * 24 * 3600_000));
+  const zeitpunkte = await kalender.erinnerungen();
+  if (zeitpunkte.length === 0) return;
+  const vorlaufMs = Math.max(...zeitpunkte) * 60_000;
+  const bis = heuteBerlin(new Date(jetzt.getTime() + vorlaufMs));
   const events = await kalender.events(heuteBerlin(jetzt), bis);
   for (const event of events) {
-    if (event.abgesagt || event.fehltHinweisStunden === null) continue;
-    const beginn = new Date(event.beginn).getTime();
-    if (jetzt.getTime() >= beginn) continue;
-    if (beginn - event.fehltHinweisStunden * 3600_000 > jetzt.getTime()) continue;
-    if (event.bewertung !== 'rot') continue;
+    if (event.abgesagt || event.bewertung !== 'rot') continue;
+    const minuten = waehleErinnerung(new Date(event.beginn).getTime(), jetzt.getTime(), zeitpunkte);
+    if (minuten === undefined) continue;
     try {
       await benachrichtigungen.senden({
         subs: 'alle',
@@ -138,7 +151,7 @@ export async function fehlendeDienste(
         titel: 'Es fehlen noch Dienste',
         text: `Für „${event.titel}“ am ${tagText(event.beginn)} fehlen noch Dienste.`,
         url: eventUrl(event.id),
-        dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}`,
+        dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}`,
       });
     } catch (err) {
       console.error('Missing-Dienste notification failed', err);

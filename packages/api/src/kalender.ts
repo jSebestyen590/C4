@@ -34,6 +34,7 @@ import {
   eventKategorien,
   events,
   eventVorlagen,
+  kalenderFehltErinnerungen,
   externe,
   kalenderTokens,
   mitglieder,
@@ -313,6 +314,11 @@ export interface KalenderStore {
   vorlageAktualisieren(id: string, daten: VorlageEingabe): Promise<boolean>;
   vorlageLoeschen(id: string): Promise<boolean>;
 
+  // ----- Global "Dienste fehlen" reminders
+  /** Minutes before the event begin, sorted descending. */
+  erinnerungen(): Promise<number[]>;
+  erinnerungenSetzen(minutenVorher: readonly number[]): Promise<void>;
+
   // ----- Statistik
   statistik(jahr: number): Promise<StatistikZeileDto[]>;
 
@@ -495,7 +501,6 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
       beginn: iso(e.beginn),
       ende: iso(e.ende),
       abgesagt: e.abgesagt,
-      fehltHinweisStunden: e.fehltHinweisStunden,
       schichten: alleSchichten,
       bewertung: eventBewertung({ abgesagt: e.abgesagt, schichten: alleSchichten }),
     };
@@ -580,9 +585,8 @@ export function createKalenderStore(db: Db): KalenderStore {
         id,
         vorlageId,
         art: s.art,
-        tagVersatz: s.tagVersatz,
+        tagVersatz: s.art === 'betrieb' ? 0 : s.tagVersatz,
         beginnZeit: s.beginnZeit,
-        endeTagVersatz: s.endeTagVersatz,
         endeZeit: s.endeZeit,
         reihenfolge: index,
         minimum: s.art === 'betrieb' ? null : s.minimum,
@@ -627,7 +631,6 @@ export function createKalenderStore(db: Db): KalenderStore {
           kategorieId: daten.kategorieId,
           beginn: new Date(daten.beginn),
           ende: new Date(daten.ende),
-          fehltHinweisStunden: daten.fehltHinweisStunden,
           angelegtVon: von,
         });
         await schichtenSchreiben(
@@ -724,7 +727,6 @@ export function createKalenderStore(db: Db): KalenderStore {
             kategorieId: daten.kategorieId,
             beginn: beginnNeu,
             ende: endeNeu,
-            fehltHinweisStunden: daten.fehltHinweisStunden,
             aktualisiertAm: new Date(),
           })
           .where(eq(events.id, id));
@@ -1100,22 +1102,21 @@ export function createKalenderStore(db: Db): KalenderStore {
           beschreibung: v.beschreibung,
           kategorieId: v.kategorieId,
           beginnZeit: v.beginnZeit,
-          endeTagVersatz: v.endeTagVersatz,
           endeZeit: v.endeZeit,
-          fehltHinweisStunden: v.fehltHinweisStunden,
           archiviert: v.archiviert,
           schichten: schichtRows
             .filter((s) => s.vorlageId === v.id)
             .sort((a, b) => a.reihenfolge - b.reihenfolge)
             .map((s): VorlageSchicht => {
-              const zeiten = {
-                tagVersatz: s.tagVersatz,
-                beginnZeit: s.beginnZeit,
-                endeTagVersatz: s.endeTagVersatz,
-                endeZeit: s.endeZeit,
-              };
+              const zeiten = { beginnZeit: s.beginnZeit, endeZeit: s.endeZeit };
               if (s.art !== 'betrieb') {
-                return { art: s.art, ...zeiten, minimum: s.minimum ?? 0, wunsch: s.wunsch ?? 1 };
+                return {
+                  art: s.art,
+                  tagVersatz: s.tagVersatz,
+                  ...zeiten,
+                  minimum: s.minimum ?? 0,
+                  wunsch: s.wunsch ?? 1,
+                };
               }
               return {
                 art: 'betrieb',
@@ -1142,9 +1143,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           beschreibung: daten.beschreibung,
           kategorieId: daten.kategorieId,
           beginnZeit: daten.beginnZeit,
-          endeTagVersatz: daten.endeTagVersatz,
           endeZeit: daten.endeZeit,
-          fehltHinweisStunden: daten.fehltHinweisStunden,
           archiviert: daten.archiviert ?? false,
         });
         await vorlageSchreiben(tx, id, daten);
@@ -1180,9 +1179,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             beschreibung: daten.beschreibung,
             kategorieId: daten.kategorieId,
             beginnZeit: daten.beginnZeit,
-            endeTagVersatz: daten.endeTagVersatz,
             endeZeit: daten.endeZeit,
-            fehltHinweisStunden: daten.fehltHinweisStunden,
             ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
           })
           .where(eq(eventVorlagen.id, id));
@@ -1192,6 +1189,20 @@ export function createKalenderStore(db: Db): KalenderStore {
         }
         await vorlageSchreiben(tx, id, daten);
         return true;
+      });
+    },
+    async erinnerungen() {
+      const rows = await db.select().from(kalenderFehltErinnerungen);
+      return rows.map((r) => r.minutenVorher).sort((a, b) => b - a);
+    },
+    async erinnerungenSetzen(minutenVorher) {
+      await db.transaction(async (tx) => {
+        await tx.delete(kalenderFehltErinnerungen);
+        await tx
+          .insert(kalenderFehltErinnerungen)
+          .values(
+            [...new Set(minutenVorher)].map((m) => ({ id: `erinnerung-${m}`, minutenVorher: m })),
+          );
       });
     },
     async vorlageLoeschen(id) {

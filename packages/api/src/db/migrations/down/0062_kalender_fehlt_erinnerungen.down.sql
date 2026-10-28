@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS kalender_fehlt_erinnerungen

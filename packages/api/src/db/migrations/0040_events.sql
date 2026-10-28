@@ -7,10 +7,8 @@ CREATE TABLE IF NOT EXISTS events (
   beginn timestamptz NOT NULL,
   ende timestamptz NOT NULL,
   abgesagt boolean NOT NULL DEFAULT false,
-  fehlt_hinweis_stunden integer,
   angelegt_von text NOT NULL,
   angelegt_am timestamptz NOT NULL DEFAULT now(),
   aktualisiert_am timestamptz NOT NULL DEFAULT now(),
-  CHECK (ende > beginn),
-  CHECK (fehlt_hinweis_stunden IS NULL OR fehlt_hinweis_stunden >= 0)
+  CHECK (ende > beginn)
 )

@@ -148,16 +148,12 @@ export const KOMMENTAR_MAX = 200;
 const zeitSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
+/** Days relative to the event date (Aufbau/Putzen in a Vorlage); may be negative. */
 const versatzSchema = z
   .number('Bitte gib eine Zahl an.')
   .int('Bitte gib eine ganze Zahl an.')
-  .min(0, 'Der Versatz darf nicht negativ sein.');
-const hinweisStundenSchema = z
-  .number()
-  .int('Bitte gib ganze Stunden an.')
-  .min(0, 'Die Stunden dürfen nicht negativ sein.')
-  .nullish()
-  .transform((v) => v ?? null);
+  .min(-365, 'Der Versatz ist zu groß.')
+  .max(365, 'Der Versatz ist zu groß.');
 
 export const dienstformEingabeSchema = z.object({
   name: name(),
@@ -252,8 +248,18 @@ const wunschNichtUnterMinimum = {
   path: ['wunsch'],
 };
 
-const schichtEnde = (v: { beginn: string; ende: string }) => new Date(v.ende) > new Date(v.beginn);
-const schichtEndeFehler = { message: 'Das Ende muss nach dem Beginn liegen.', path: ['ende'] };
+/** A Schicht or Event never lasts longer than 24 hours. */
+export const MAX_DAUER_MS = 24 * 3600_000;
+const dauerOk = (v: { beginn: string; ende: string }) => {
+  const dauer = new Date(v.ende).getTime() - new Date(v.beginn).getTime();
+  return dauer > 0 && dauer <= MAX_DAUER_MS;
+};
+const dauerFehler = {
+  message: 'Das Ende muss nach dem Beginn liegen und darf höchstens 24 Stunden danach sein.',
+  path: ['ende'],
+};
+const schichtEnde = dauerOk;
+const schichtEndeFehler = dauerFehler;
 
 export const schichtEingabeSchema = z.discriminatedUnion('art', [
   z
@@ -289,65 +295,70 @@ export const eventEingabeSchema = z
       .transform((v) => v ?? null),
     beginn: zeitpunktSchema,
     ende: zeitpunktSchema,
-    /** Hours before the start at which a "Dienste fehlen" notice goes out; null = off. */
-    fehltHinweisStunden: hinweisStundenSchema,
     schichten: z.array(schichtEingabeSchema),
     /** Confirms that Schichten or Bedarfe with Dienste may be removed. */
     bestaetigt: z.boolean().optional(),
   })
-  .refine((v) => new Date(v.ende) > new Date(v.beginn), {
-    message: 'Das Ende muss nach dem Beginn liegen.',
-    path: ['ende'],
-  });
+  .refine(dauerOk, dauerFehler);
 export type EventEingabe = z.infer<typeof eventEingabeSchema>;
 
-const vorlageEnde = (v: {
-  tagVersatz: number;
-  beginnZeit: string;
-  endeTagVersatz: number;
-  endeZeit: string;
-}) =>
-  v.endeTagVersatz > v.tagVersatz ||
-  (v.endeTagVersatz === v.tagVersatz && v.endeZeit > v.beginnZeit);
-const vorlageEndeFehler = { message: 'Das Ende muss nach dem Beginn liegen.', path: ['endeZeit'] };
-const vorlageZeiten = {
-  tagVersatz: versatzSchema,
-  beginnZeit: zeitSchema,
-  endeTagVersatz: versatzSchema,
-  endeZeit: zeitSchema,
-};
+/** Global "Dienste fehlen" reminders: how many minutes before the event begin a notice goes out. */
+export const ERINNERUNG_MIN_MINUTEN = 15;
+export const ERINNERUNG_MAX_MINUTEN = 30 * 24 * 60;
+export const ERINNERUNG_MAX_ANZAHL = 20;
+export const erinnerungenEingabeSchema = z.object({
+  minutenVorher: z
+    .array(
+      z
+        .number('Bitte gib eine Zahl an.')
+        .int('Bitte gib eine ganze Zahl an.')
+        .min(ERINNERUNG_MIN_MINUTEN, 'Ein Zeitpunkt muss mindestens 15 Minuten vorher liegen.')
+        .max(ERINNERUNG_MAX_MINUTEN, 'Ein Zeitpunkt darf höchstens 30 Tage vorher liegen.'),
+    )
+    .min(1, 'Mindestens ein Zeitpunkt ist nötig.')
+    .max(ERINNERUNG_MAX_ANZAHL, 'Es sind höchstens 20 Zeitpunkte möglich.')
+    .refine((a) => new Set(a).size === a.length, {
+      message: 'Jeder Zeitpunkt darf nur einmal vorkommen.',
+    }),
+});
+export type ErinnerungenEingabe = z.infer<typeof erinnerungenEingabeSchema>;
+export interface ErinnerungenDto {
+  /** Sorted descending (earliest reminder first). */
+  minutenVorher: number[];
+}
 
+/** Aufbau/Putzen in a Vorlage: day relative to the event date plus times (end <= begin = next day). */
 export const vorlageSchichtSchema = z.discriminatedUnion('art', [
+  z.object({
+    art: z.literal('betrieb'),
+    beginnZeit: zeitSchema,
+    endeZeit: zeitSchema,
+    bedarfe: bedarfeSchema,
+  }),
   z
-    .object({ art: z.literal('betrieb'), ...vorlageZeiten, bedarfe: bedarfeSchema })
-    .refine(vorlageEnde, vorlageEndeFehler),
-  z
-    .object({ ...anzahlFelder, ...vorlageZeiten })
-    .refine(vorlageEnde, vorlageEndeFehler)
+    .object({
+      ...anzahlFelder,
+      tagVersatz: versatzSchema,
+      beginnZeit: zeitSchema,
+      endeZeit: zeitSchema,
+    })
     .refine((v) => v.wunsch >= v.minimum, wunschNichtUnterMinimum),
 ]);
 export type VorlageSchicht = z.infer<typeof vorlageSchichtSchema>;
 
-export const vorlageEingabeSchema = z
-  .object({
-    titel: name('einen Titel'),
-    beschreibung,
-    kategorieId: z
-      .string()
-      .min(1)
-      .nullish()
-      .transform((v) => v ?? null),
-    beginnZeit: zeitSchema,
-    endeTagVersatz: versatzSchema,
-    endeZeit: zeitSchema,
-    fehltHinweisStunden: hinweisStundenSchema,
-    schichten: z.array(vorlageSchichtSchema),
-    archiviert: z.boolean().optional(),
-  })
-  .refine((v) => v.endeTagVersatz > 0 || v.endeZeit > v.beginnZeit, {
-    message: 'Das Ende muss nach dem Beginn liegen.',
-    path: ['endeZeit'],
-  });
+export const vorlageEingabeSchema = z.object({
+  titel: name('einen Titel'),
+  beschreibung,
+  kategorieId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+  beginnZeit: zeitSchema,
+  endeZeit: zeitSchema,
+  schichten: z.array(vorlageSchichtSchema),
+  archiviert: z.boolean().optional(),
+});
 export type VorlageEingabe = z.infer<typeof vorlageEingabeSchema>;
 
 /** Enter a Dienst: oneself (neither field), another member (`mitgliedSub`) or an Externe (`externId`). */
@@ -452,7 +463,6 @@ export interface EventDto {
   beginn: string;
   ende: string;
   abgesagt: boolean;
-  fehltHinweisStunden: number | null;
   schichten: SchichtDto[];
   bewertung: EventBewertung;
 }
@@ -574,22 +584,66 @@ export function eventBewertung(event: {
 // Vorlage -> Event, overlap, Statistik
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Berlin wall times -> instants. `ende <= beginn` means the next day, so 20:00-20:00 lasts 24 hours.
+ * Works on wall clock days, so daylight saving time is handled by `berlinZuUtc`.
+ */
+export function zeitspanne(
+  datum: string,
+  beginnZeit: string,
+  endeZeit: string,
+): { beginn: string; ende: string } {
+  return {
+    beginn: berlinZuUtc(datum, beginnZeit),
+    ende: berlinZuUtc(endeZeit > beginnZeit ? datum : tageDazu(datum, 1), endeZeit),
+  };
+}
+
+/** Inverse of `zeitspanne`: date and wall times of the begin and end instants. */
+export function zeitenAus(
+  beginn: string,
+  ende: string,
+): { datum: string; beginnZeit: string; endeZeit: string } {
+  return { datum: datumBerlin(beginn), beginnZeit: zeitBerlin(beginn), endeZeit: zeitBerlin(ende) };
+}
+
+/** Date after `datum` (`YYYY-MM-DD`) by `tage` days (may be negative). */
+export const datumPlusTage = (datum: string, tage: number): string => tageDazu(datum, tage);
+
+/**
+ * Date of a Betrieb Schicht: the event date, or the next day when it starts earlier than the event
+ * (event 20:00, Schicht 00:00-02:00 lies after midnight).
+ */
+export function betriebDatum(
+  eventDatum: string,
+  eventBeginnZeit: string,
+  schichtBeginnZeit: string,
+): string {
+  return schichtBeginnZeit < eventBeginnZeit ? tageDazu(eventDatum, 1) : eventDatum;
+}
+
 /** Builds an Event input from a Vorlage for a start date; times are Berlin wall times incl. DST. */
 export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe {
-  const zeitpunkt = (versatz: number, zeit: string) => berlinZuUtc(tageDazu(datum, versatz), zeit);
   return {
     titel: vorlage.titel,
     beschreibung: vorlage.beschreibung,
     kategorieId: vorlage.kategorieId,
-    beginn: zeitpunkt(0, vorlage.beginnZeit),
-    ende: zeitpunkt(vorlage.endeTagVersatz, vorlage.endeZeit),
-    fehltHinweisStunden: vorlage.fehltHinweisStunden,
+    ...zeitspanne(datum, vorlage.beginnZeit, vorlage.endeZeit),
     schichten: vorlage.schichten.map((s): SchichtEingabe => {
-      const beginn = zeitpunkt(s.tagVersatz, s.beginnZeit);
-      const ende = zeitpunkt(s.endeTagVersatz, s.endeZeit);
-      return s.art === 'betrieb'
-        ? { art: s.art, beginn, ende, bedarfe: s.bedarfe.map((b) => ({ ...b })) }
-        : { art: s.art, beginn, ende, minimum: s.minimum, wunsch: s.wunsch };
+      if (s.art === 'betrieb') {
+        const tag = betriebDatum(datum, vorlage.beginnZeit, s.beginnZeit);
+        return {
+          art: s.art,
+          ...zeitspanne(tag, s.beginnZeit, s.endeZeit),
+          bedarfe: s.bedarfe.map((b) => ({ ...b })),
+        };
+      }
+      return {
+        art: s.art,
+        ...zeitspanne(tageDazu(datum, s.tagVersatz), s.beginnZeit, s.endeZeit),
+        minimum: s.minimum,
+        wunsch: s.wunsch,
+      };
     }),
   };
 }

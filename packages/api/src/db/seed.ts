@@ -40,9 +40,7 @@ try {
       beschreibung: null,
       kategorieId: 'kategorie-offener-abend',
       beginnZeit: '19:00',
-      endeTagVersatz: 1,
       endeZeit: '02:00',
-      fehltHinweisStunden: 48,
     })
     .onConflictDoNothing();
   // Aufbau/Putzen have a head count on the Schicht; the Betrieb needs Dienstformen.
@@ -52,7 +50,6 @@ try {
       art: 'aufbau',
       tagVersatz: 0,
       beginnZeit: '17:30',
-      endeTagVersatz: 0,
       endeZeit: '19:00',
       minimum: 1,
       wunsch: 2,
@@ -62,7 +59,6 @@ try {
       art: 'betrieb',
       tagVersatz: 0,
       beginnZeit: '19:00',
-      endeTagVersatz: 1,
       endeZeit: '00:30',
       minimum: null,
       wunsch: null,
@@ -72,7 +68,6 @@ try {
       art: 'putzen',
       tagVersatz: 1,
       beginnZeit: '00:30',
-      endeTagVersatz: 1,
       endeZeit: '01:30',
       minimum: 1,
       wunsch: 2,
@@ -87,7 +82,6 @@ try {
         art: s.art,
         tagVersatz: s.tagVersatz,
         beginnZeit: s.beginnZeit,
-        endeTagVersatz: s.endeTagVersatz,
         endeZeit: s.endeZeit,
         reihenfolge,
         minimum: s.minimum,

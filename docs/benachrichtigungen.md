@@ -14,11 +14,11 @@ Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, E
   gelten für alle Geräte der Person.
 - Aktuelle Arten:
 
-| Art                         | Wann                                                                                                     | Standard           |
-| --------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------ |
-| `kalender.erinnerung`       | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                             | an, 30 Minuten     |
-| `kalender.fehlende_dienste` | `beginn − fehltHinweisStunden` erreicht und Event noch rot; einmal je Event, an alle                     | an, **für EM aus** |
-| `kalender.aenderung`        | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, ausgetragen | an                 |
+| Art                         | Wann                                                                                                                            | Standard           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `kalender.erinnerung`       | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                                                    | an, 30 Minuten     |
+| `kalender.fehlende_dienste` | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle | an, **für EM aus** |
+| `kalender.aenderung`        | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, ausgetragen                        | an                 |
 
 ## Tabellen
 
@@ -67,8 +67,8 @@ Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, E
 ## Kalender-Arten
 
 `packages/api/src/kalenderBenachrichtigungen.ts`: Erinnerungen (Schichten der nächsten 24 h, je Person nach ihrer
-Minutenangabe; Schlüssel `kalender.erinnerung:<dienstId>:<beginn>`), fehlende Dienste (Events der nächsten 31 Tage;
-Schlüssel `kalender.fehlende_dienste:<eventId>`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
+Minutenangabe; Schlüssel `kalender.erinnerung:<dienstId>:<beginn>`), fehlende Dienste (Events bis zum größten globalen Zeitpunkt; je Event der kleinste bereits erreichte
+Zeitpunkt `m` in Minuten, ältere werden nicht nachgeholt; Schlüssel `kalender.fehlende_dienste:<eventId>:<m>`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
 Dienst durch andere entfernt).
 
 ## Web

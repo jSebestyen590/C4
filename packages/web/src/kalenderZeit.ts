@@ -56,3 +56,17 @@ const monatFormat = new Intl.DateTimeFormat('de-DE', {
 });
 export const monatAnzeigen = (jahr: number, monat: number): string =>
   monatFormat.format(new Date(Date.UTC(jahr, monat, 1)));
+
+const EINHEITEN = [
+  { minuten: 7 * 24 * 60, eins: 'Woche', viele: 'Wochen' },
+  { minuten: 24 * 60, eins: 'Tag', viele: 'Tage' },
+  { minuten: 60, eins: 'Stunde', viele: 'Stunden' },
+  { minuten: 1, eins: 'Minute', viele: 'Minuten' },
+] as const;
+
+/** "1 Woche vorher", "2 Tage vorher", "3 Stunden vorher": the largest unit that divides evenly. */
+export function erinnerungText(minuten: number): string {
+  const einheit = EINHEITEN.find((e) => minuten % e.minuten === 0) ?? EINHEITEN[3];
+  const anzahl = minuten / einheit.minuten;
+  return `${anzahl} ${anzahl === 1 ? einheit.eins : einheit.viele} vorher`;
+}

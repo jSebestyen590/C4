@@ -2,6 +2,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type {
   DienstformDto,
+  ErinnerungenDto,
   EventDto,
   EventKategorieDto,
   ExterneDto,
@@ -116,5 +117,14 @@ export function useKalenderToken() {
   return useQuery({
     queryKey: [KALENDER_KEY, 'token'],
     queryFn: async () => (await unwrap(await api.me['kalender-token'].$get())).vorhanden,
+  });
+}
+
+/** Global "Dienste fehlen" reminders (minutes before the event begin, sorted descending). */
+export function useErinnerungen() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [KALENDER_KEY, 'erinnerungen'],
+    queryFn: async () => (await unwrap(await api.kalender.erinnerungen.$get())) as ErinnerungenDto,
   });
 }

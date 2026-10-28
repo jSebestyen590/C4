@@ -441,6 +441,8 @@ function makeKalenderFake() {
     ),
     meineDienste: vi.fn<KalenderStore['meineDienste']>(async () => []),
     erinnerungsDienste: vi.fn<KalenderStore['erinnerungsDienste']>(async () => []),
+    erinnerungen: vi.fn<KalenderStore['erinnerungen']>(async () => [10080, 2880, 1440]),
+    erinnerungenSetzen: vi.fn<KalenderStore['erinnerungenSetzen']>(async () => undefined),
   } satisfies KalenderStore;
   return { fake, dienste };
 }
@@ -2357,6 +2359,7 @@ describe('kalender', () => {
       '/api/kalender/dienstformen',
       '/api/kalender/kategorien',
       '/api/kalender/vorlagen',
+      '/api/kalender/erinnerungen',
       '/api/kalender/statistik?jahr=2026',
     ]) {
       expect((await t.app.request(url, json('reader-token', 'GET'))).status, url).toBe(200);
@@ -2378,6 +2381,7 @@ describe('kalender', () => {
       ['/api/kalender/vorlagen', 'POST'],
       ['/api/kalender/vorlagen/v1', 'PUT'],
       ['/api/kalender/vorlagen/v1', 'DELETE'],
+      ['/api/kalender/erinnerungen', 'PUT'],
     ] as const) {
       const res = await t.app.request(url, json('reader-token', method, {}));
       expect(res.status, `${method} ${url}`).toBe(403);
@@ -2654,7 +2658,6 @@ describe('kalender', () => {
       beginn: eventBody.beginn,
       ende: eventBody.ende,
       abgesagt: false,
-      fehltHinweisStunden: null,
       bewertung: 'gruen',
       schichten: [
         {
@@ -2745,6 +2748,21 @@ describe('kalender', () => {
     ).toBe(200);
   });
 
+  it('reads and replaces the global reminders', async () => {
+    const t = makeApp();
+    const put = (body: unknown) =>
+      t.app.request('/api/kalender/erinnerungen', json('vorstand-token', 'PUT', body));
+    expect(
+      await (await t.app.request('/api/kalender/erinnerungen', json('reader-token', 'GET'))).json(),
+    ).toEqual({ minutenVorher: [10080, 2880, 1440] });
+    for (const bad of [[], [14], [43201], [60, 60], Array.from({ length: 21 }, (_, i) => 15 + i)]) {
+      expect((await put({ minutenVorher: bad })).status).toBe(400);
+    }
+    expect(t.kalender.erinnerungenSetzen).not.toHaveBeenCalled();
+    expect((await put({ minutenVorher: [180, 2880] })).status).toBe(200);
+    expect(t.kalender.erinnerungenSetzen).toHaveBeenCalledWith([180, 2880]);
+  });
+
   it('manages the feed token: lesen right, profile row needed, only the hash is stored', async () => {
     const t = makeApp();
     mitProfil(t);
@@ -2825,7 +2843,6 @@ describe('kalender', () => {
       beginn,
       ende: '2026-10-23T22:00:00.000Z',
       abgesagt: false,
-      fehltHinweisStunden: null,
       bewertung: 'gruen' as const,
       schichten: [],
     });

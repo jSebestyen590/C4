@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ausVorlage,
+  betriebDatum,
+  erinnerungenEingabeSchema,
+  zeitenAus,
+  zeitspanne,
   berlinZuUtc,
   dienstEintragenSchema,
   eventBewertung,
@@ -158,46 +162,85 @@ describe('Berlin time', () => {
   });
 });
 
+describe('zeitspanne', () => {
+  it('keeps the end on the same day when it is later', () => {
+    const z = zeitspanne('2026-06-05', '20:00', '21:00');
+    expect(z).toEqual({ beginn: '2026-06-05T18:00:00.000Z', ende: '2026-06-05T19:00:00.000Z' });
+  });
+  it('moves the end to the next day when it is not later', () => {
+    expect(zeitspanne('2026-06-05', '20:00', '01:00').ende).toBe('2026-06-05T23:00:00.000Z');
+    expect(zeitspanne('2026-06-05', '20:00', '19:00').ende).toBe('2026-06-06T17:00:00.000Z');
+    const gleich = zeitspanne('2026-06-05', '20:00', '20:00');
+    expect(new Date(gleich.ende).getTime() - new Date(gleich.beginn).getTime()).toBe(24 * 3600_000);
+  });
+  it('handles daylight saving time', () => {
+    // night of 2026-10-24 to 25 has 25 hours: 20:00 -> 20:00 is 25 h, so use a shorter span
+    const herbst = zeitspanne('2026-10-24', '20:00', '03:00');
+    expect(herbst.ende).toBe('2026-10-25T02:00:00.000Z');
+    const fruehling = zeitspanne('2026-03-28', '20:00', '03:00');
+    expect(fruehling.ende).toBe('2026-03-29T01:00:00.000Z');
+  });
+  it('is inverted by zeitenAus', () => {
+    const z = zeitspanne('2026-06-05', '20:00', '01:00');
+    expect(zeitenAus(z.beginn, z.ende)).toEqual({
+      datum: '2026-06-05',
+      beginnZeit: '20:00',
+      endeZeit: '01:00',
+    });
+  });
+});
+
+describe('betriebDatum', () => {
+  it('moves earlier start times to the next day', () => {
+    expect(betriebDatum('2026-06-05', '20:00', '00:00')).toBe('2026-06-06');
+    expect(betriebDatum('2026-06-05', '20:00', '19:59')).toBe('2026-06-06');
+    expect(betriebDatum('2026-06-05', '20:00', '20:00')).toBe('2026-06-05');
+    expect(betriebDatum('2026-06-05', '20:00', '22:00')).toBe('2026-06-05');
+  });
+});
+
 describe('ausVorlage', () => {
   const vorlage: VorlageEingabe = {
     titel: 'Offener Abend',
     beschreibung: null,
     kategorieId: 'k1',
     beginnZeit: '20:00',
-    endeTagVersatz: 1,
     endeZeit: '02:00',
-    fehltHinweisStunden: 24,
     schichten: [
       {
         art: 'aufbau',
-        tagVersatz: 0,
+        tagVersatz: -1,
         beginnZeit: '18:00',
-        endeTagVersatz: 0,
         endeZeit: '20:00',
         minimum: 1,
         wunsch: 2,
       },
       {
+        art: 'betrieb',
+        beginnZeit: '00:00',
+        endeZeit: '02:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
         art: 'putzen',
-        tagVersatz: 1,
-        beginnZeit: '02:00',
-        endeTagVersatz: 1,
-        endeZeit: '03:30',
+        tagVersatz: 2,
+        beginnZeit: '10:00',
+        endeZeit: '11:30',
         minimum: 0,
         wunsch: 1,
       },
     ],
   };
-  it('applies day offsets and Berlin time across the autumn switch', () => {
-    const e = ausVorlage(vorlage, '2026-10-24');
-    expect(e.beginn).toBe('2026-10-24T18:00:00.000Z');
-    // 2026-10-25 02:00 is ambiguous; the first (summer time) occurrence is used
-    expect(e.ende).toBe('2026-10-25T00:00:00.000Z');
-    expect(e.schichten[0]!.beginn).toBe('2026-10-24T16:00:00.000Z');
-    expect(e.schichten[1]!.beginn).toBe('2026-10-25T00:00:00.000Z');
-    expect(e.schichten[1]!.ende).toBe('2026-10-25T02:30:00.000Z');
+  it('applies day offsets and Berlin time', () => {
+    const e = ausVorlage(vorlage, '2026-06-05');
+    expect(e.beginn).toBe('2026-06-05T18:00:00.000Z');
+    expect(e.ende).toBe('2026-06-06T00:00:00.000Z');
+    expect(e.schichten[0]!.beginn).toBe('2026-06-04T16:00:00.000Z');
+    // Betrieb starting before the event start lies on the next day
+    expect(e.schichten[1]!.beginn).toBe('2026-06-05T22:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-06-06T00:00:00.000Z');
+    expect(e.schichten[2]!.beginn).toBe('2026-06-07T08:00:00.000Z');
     expect(e.kategorieId).toBe('k1');
-    expect(e.fehltHinweisStunden).toBe(24);
   });
   it('applies the spring switch', () => {
     const e = ausVorlage(vorlage, '2026-03-28');
@@ -207,6 +250,20 @@ describe('ausVorlage', () => {
   });
   it('yields valid Event input', () => {
     expect(eventEingabeSchema.safeParse(ausVorlage(vorlage, '2026-06-05')).success).toBe(true);
+  });
+});
+
+describe('erinnerungenEingabeSchema', () => {
+  it('validates the reminder list', () => {
+    const ok = (minutenVorher: number[]) =>
+      erinnerungenEingabeSchema.safeParse({ minutenVorher }).success;
+    expect(ok([10080, 2880, 1440])).toBe(true);
+    expect(ok([])).toBe(false);
+    expect(ok([14])).toBe(false);
+    expect(ok([43201])).toBe(false);
+    expect(ok([60, 60])).toBe(false);
+    expect(ok([1.5 * 60, 90.5])).toBe(false);
+    expect(ok(Array.from({ length: 21 }, (_, i) => 15 + i))).toBe(false);
   });
 });
 
@@ -314,19 +371,26 @@ describe('schemas', () => {
       ende: '2026-06-06T00:00:00Z',
       schichten: [basis],
     };
-    expect(eventEingabeSchema.parse(event).fehltHinweisStunden).toBeNull();
+    expect(eventEingabeSchema.safeParse(event).success).toBe(true);
     expect(eventEingabeSchema.safeParse({ ...event, ende: event.beginn }).success).toBe(false);
-    expect(eventEingabeSchema.safeParse({ ...event, fehltHinweisStunden: -1 }).success).toBe(false);
+    expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-06-06T18:00:00Z' }).success).toBe(
+      true,
+    );
+    expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-06-06T18:01:00Z' }).success).toBe(
+      false,
+    );
+    expect(schichtEingabeSchema.safeParse({ ...basis, ende: '2026-06-07T18:00:00Z' }).success).toBe(
+      false,
+    );
     const vorlage = {
       titel: 'V',
       beginnZeit: '20:00',
-      endeTagVersatz: 0,
       endeZeit: '23:00',
       schichten: [],
     };
     expect(vorlageEingabeSchema.safeParse(vorlage).success).toBe(true);
     expect(vorlageEingabeSchema.safeParse({ ...vorlage, beginnZeit: '25:00' }).success).toBe(false);
-    expect(vorlageEingabeSchema.safeParse({ ...vorlage, endeZeit: '19:00' }).success).toBe(false);
+    expect(vorlageEingabeSchema.safeParse({ ...vorlage, endeZeit: '19:00' }).success).toBe(true);
   });
   it('allows Dienst input without Dienstform', () => {
     expect(dienstEintragenSchema.safeParse({}).success).toBe(true);

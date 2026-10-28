@@ -464,8 +464,6 @@ export const events = pgTable('events', {
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
   abgesagt: boolean('abgesagt').notNull().default(false),
-  /** Hours before the start for the "Dienste fehlen" notice; null = off. */
-  fehltHinweisStunden: integer('fehlt_hinweis_stunden'),
   /** Cognito sub, deliberately without a foreign key. */
   angelegtVon: text('angelegt_von').notNull(),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
@@ -529,9 +527,7 @@ export const eventVorlagen = pgTable('event_vorlagen', {
   kategorieId: text('kategorie_id').references(() => eventKategorien.id),
   /** Berlin wall time `HH:MM`. */
   beginnZeit: text('beginn_zeit').notNull(),
-  endeTagVersatz: integer('ende_tag_versatz').notNull(),
   endeZeit: text('ende_zeit').notNull(),
-  fehltHinweisStunden: integer('fehlt_hinweis_stunden'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
@@ -544,7 +540,6 @@ export const vorlageSchichten = pgTable('vorlage_schichten', {
   art: text('art').$type<SchichtArt>().notNull(),
   tagVersatz: integer('tag_versatz').notNull(),
   beginnZeit: text('beginn_zeit').notNull(),
-  endeTagVersatz: integer('ende_tag_versatz').notNull(),
   endeZeit: text('ende_zeit').notNull(),
   reihenfolge: integer('reihenfolge').notNull().default(0),
   minimum: integer('minimum'),
@@ -615,4 +610,10 @@ export const pushSchluessel = pgTable('push_schluessel', {
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
   erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
+export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {
+  id: text('id').primaryKey(),
+  minutenVorher: integer('minuten_vorher').notNull(),
 });

@@ -17,7 +17,6 @@ import {
   type EventKategorieDto,
   type SchichtArt,
 } from '@c4/shared';
-import { DatumFeld } from './DatumFeld';
 import { SCHICHT_ART_LABELS } from './i18n';
 import { ZahlFeld } from './ZahlFeld';
 
@@ -82,42 +81,63 @@ export function fehlerAusIssues(
 let zaehler = 0;
 export const neuerKey = (): string => `neu-${++zaehler}`;
 
-/** A wall clock time in Europe/Berlin as edited in the form. */
-export interface Zeitpunkt {
-  datum: string;
-  zeit: string;
+/** Begin and end time of day; an end at or before the begin means the next day. */
+export function UhrzeitFelder({
+  beginn,
+  ende,
+  onChange,
+  beginnNaechsterTag = false,
+  fehler,
+}: Readonly<{
+  beginn: string;
+  ende: string;
+  onChange: (zeiten: { beginnZeit: string; endeZeit: string }) => void;
+  /** The begin already lies on the next day (Betrieb Schicht earlier than the event start). */
+  beginnNaechsterTag?: boolean;
+  fehler?: string;
+}>) {
+  const endeNaechsterTag = beginn !== '' && ende !== '' && ende <= beginn;
+  return (
+    <Stack gap={4}>
+      <Group gap="xs" align="flex-end" wrap="nowrap" grow>
+        <TextInput
+          label={beginnNaechsterTag ? 'Beginn (nächster Tag)' : 'Beginn'}
+          type="time"
+          value={beginn}
+          onChange={(e) => onChange({ beginnZeit: e.currentTarget.value, endeZeit: ende })}
+          style={{ minWidth: 0 }}
+        />
+        <TextInput
+          label={endeNaechsterTag ? 'Ende (nächster Tag)' : 'Ende'}
+          type="time"
+          value={ende}
+          error={fehler}
+          onChange={(e) => onChange({ beginnZeit: beginn, endeZeit: e.currentTarget.value })}
+          style={{ minWidth: 0 }}
+        />
+      </Group>
+    </Stack>
+  );
 }
 
-export function ZeitpunktFelder({
-  label,
+/** Day offset relative to the event date (Vorlage, Aufbau/Putzen); negative = days before. */
+export function TagVersatzFeld({
   wert,
   onChange,
   fehler,
-}: Readonly<{
-  label: string;
-  wert: Zeitpunkt;
-  onChange: (w: Zeitpunkt) => void;
-  fehler?: string;
-}>) {
+}: Readonly<{ wert: number | ''; onChange: (v: number | '') => void; fehler?: string }>) {
   return (
-    <Group gap="xs" align="flex-start" wrap="nowrap">
-      <DatumFeld
-        label={label}
-        value={wert.datum}
-        onWert={(datum) => onChange({ ...wert, datum })}
-        error={fehler}
-        loeschbar={false}
-        style={{ flex: 1, minWidth: 0 }}
-      />
-      <TextInput
-        label="Uhrzeit"
-        type="time"
-        value={wert.zeit}
-        onChange={(e) => onChange({ ...wert, zeit: e.currentTarget.value })}
-        w={120}
-        style={{ flexShrink: 0 }}
-      />
-    </Group>
+    <ZahlFeld
+      label="Tag relativ zum Event"
+      description="0 = am Tag des Events, −1 = ein Tag davor, 2 = zwei Tage danach"
+      allowDecimal={false}
+      allowNegative
+      min={-365}
+      max={365}
+      value={wert}
+      error={fehler}
+      onChange={(v) => onChange(typeof v === 'number' ? v : '')}
+    />
   );
 }
 
@@ -401,11 +421,9 @@ export interface KopfWerte {
   titel: string;
   beschreibung: string;
   kategorieId: string | null;
-  /** Hours before the start; '' = off. */
-  hinweisStunden: number | '';
 }
 
-/** Title, description, Kategorie and the "missing Dienste" notice; shared by event and Vorlage. */
+/** Title, description and Kategorie; shared by event and Vorlage. */
 export function KopfFelder({
   werte,
   onChange,
@@ -439,14 +457,6 @@ export function KopfFelder({
           .map((k) => ({ value: k.id, label: k.archiviert ? `${k.name} (archiviert)` : k.name }))}
         value={werte.kategorieId}
         onChange={(v) => onChange({ ...werte, kategorieId: v })}
-      />
-      <ZahlFeld
-        label="Fehlende-Dienste-Hinweis (Stunden vorher, leer = aus)"
-        min={0}
-        allowDecimal={false}
-        allowNegative={false}
-        value={werte.hinweisStunden}
-        onChange={(v) => onChange({ ...werte, hinweisStunden: typeof v === 'number' ? v : '' })}
       />
     </Stack>
   );
