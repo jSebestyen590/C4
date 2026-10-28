@@ -95,6 +95,10 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       beschreibung:
         'Wenn ein Event verschoben oder abgesagt wird oder dein Dienst geändert oder entfernt wird.',
     },
+    'kalender.teilnahme_erinnerung': {
+      titel: 'Erinnerung vor einem Event, an dem ich teilnehme',
+      beschreibung: 'Eine Nachricht kurz vor dem Beginn eines Events, bei dem du dabei bist.',
+    },
   };
 
 /** "15 Minuten vorher", "1 Stunde vorher", "1 Tag vorher". */

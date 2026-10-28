@@ -12,6 +12,7 @@ import {
   eventEingabeSchema,
   eventKategorieEingabeSchema,
   dienstTermine,
+  eventTermine,
   icsErzeugen,
   externeEingabeSchema,
   externeZusammenfuehrenSchema,
@@ -340,11 +341,15 @@ export function createApp(deps: AppDeps) {
   };
 
   const eventsMitUsernames = async (liste: EventDto[]): Promise<EventDto[]> => {
-    const alle = liste.flatMap((e) => e.schichten.flatMap((s) => s.dienste));
+    const alle = liste.flatMap((e) => [...e.schichten.flatMap((s) => s.dienste), ...e.teilnahmen]);
     if (!alle.some((d) => d.person.art === 'mitglied')) return liste;
     const konten = await deps.userAdmin.konten();
     return liste.map((e) => ({
       ...e,
+      teilnahmen: e.teilnahmen.map((t) => ({
+        ...t,
+        person: { ...t.person, username: konten.get(t.person.sub)?.username ?? null },
+      })),
       schichten: e.schichten.map((s) => ({
         ...s,
         dienste: s.dienste.map((d) =>
@@ -1516,12 +1521,14 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const { von, bis } = c.req.valid('query');
           if (von > bis) throw new HTTPException(400, { message: 'Ungültiger Zeitraum' });
-          return c.json(await eventsMitUsernames(await deps.kalender.events(von, bis)));
+          return c.json(
+            await eventsMitUsernames(await deps.kalender.events(von, bis, c.get('user').sub)),
+          );
         },
       )
       .get('/kalender/events/:id', auth, kalenderLesen, async (c) => {
         const event = gefunden(
-          await deps.kalender.event(c.req.param('id')),
+          await deps.kalender.event(c.req.param('id'), c.get('user').sub),
           'Event nicht gefunden',
         );
         return c.json((await eventsMitUsernames([event]))[0]!);
@@ -1588,6 +1595,7 @@ export function createApp(deps: AppDeps) {
                   event,
                   abgesagt,
                   ergebnis.mitgliedSubs,
+                  ergebnis.teilnehmerSubs,
                   akteur,
                 );
               }
@@ -1596,6 +1604,42 @@ export function createApp(deps: AppDeps) {
           return c.json({ abgesagt });
         },
       )
+      // Own participation: everybody can change only their own answer.
+      .put(
+        '/kalender/events/:id/teilnahme',
+        auth,
+        kalenderLesen,
+        zValidator('json', z.object({ teilnahme: z.boolean() })),
+        async (c) => {
+          const sub = c.get('user').sub;
+          await eigenesProfilMussExistieren(sub);
+          const { teilnahme } = c.req.valid('json');
+          gefunden(
+            await deps.kalender
+              .teilnahmeSetzen(c.req.param('id'), sub, teilnahme)
+              .catch(kalenderFehler),
+            'Event nicht gefunden',
+          );
+          return c.json({ teilnahme });
+        },
+      )
+      // Adds the event to / removes it from the caller's own calendar feed.
+      .put('/kalender/events/:id/abo', auth, kalenderLesen, async (c) => {
+        const sub = c.get('user').sub;
+        await eigenesProfilMussExistieren(sub);
+        gefunden(
+          await deps.kalender.eventAboSetzen(c.req.param('id'), sub, true),
+          'Event nicht gefunden',
+        );
+        return c.json({ imAbo: true });
+      })
+      .delete('/kalender/events/:id/abo', auth, kalenderLesen, async (c) => {
+        gefunden(
+          await deps.kalender.eventAboSetzen(c.req.param('id'), c.get('user').sub, false),
+          'Event nicht gefunden',
+        );
+        return c.json({ imAbo: false });
+      })
       .delete('/kalender/events/:id', auth, eventsVerwalten, async (c) => {
         gefunden(
           await deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),
@@ -1810,9 +1854,6 @@ export function createApp(deps: AppDeps) {
           throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
         return c.json({ token: await deps.kalender.tokenErzeugen(sub) });
       })
-      .get('/me/dienste', auth, kalenderLesen, async (c) =>
-        c.json(await deps.kalender.meineDienste(c.get('user').sub, new Date())),
-      )
       // Public on purpose (no `auth`): calendar apps cannot send a bearer token; the secret token
       // in the URL is the credential. API Gateway needs a matching route without authorizer.
       .get('/kalender/feed/:token', async (c) => {
@@ -1820,8 +1861,15 @@ export function createApp(deps: AppDeps) {
         const sub = await deps.kalender.subPerTokenHash(tokenHash(token));
         if (!sub) throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
         const ab = new Date(Date.now() - FEED_RUECKBLICK_TAGE * 24 * 3600 * 1000);
-        const termine = dienstTermine(await deps.kalender.meineDienste(sub, ab), deps.appUrl);
-        return c.body(icsErzeugen(termine, { kalenderName: 'C4 – Meine Dienste' }), 200, {
+        const [dienste, eventListe] = await Promise.all([
+          deps.kalender.meineDienste(sub, ab),
+          deps.kalender.meineEvents(sub, ab),
+        ]);
+        const termine = [
+          ...dienstTermine(dienste, deps.appUrl),
+          ...eventTermine(eventListe, deps.appUrl),
+        ];
+        return c.body(icsErzeugen(termine, { kalenderName: 'C4 – Mein Kalender' }), 200, {
           'Content-Type': 'text/calendar; charset=utf-8',
           'Cache-Control': 'no-store',
         });

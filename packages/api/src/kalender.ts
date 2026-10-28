@@ -1,10 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import {
   berlinZuUtc,
   eventBewertung,
   SCHICHT_ART_BEZEICHNUNG,
   statistikZeilen,
+  teilnahmeKreisKodieren,
+  teilnahmeKreisLesen,
+  teilnahmeZustand,
   type BedarfDto,
   type BedarfEingabe,
   type DienstDto,
@@ -19,10 +22,14 @@ import {
   type ExterneDto,
   type ExterneEingabe,
   type MeinDienstDto,
+  type MeinEventDto,
   type SchichtArt,
   type SchichtDto,
   type SchichtEingabe,
   type StatistikZeileDto,
+  type TeilnahmeAntwort,
+  type TeilnahmeDto,
+  type TeilnahmeKreis,
   type VorlageDto,
   type VorlageEingabe,
   type VorlageSchicht,
@@ -33,11 +40,14 @@ import {
   dienstformen,
   eventKategorien,
   events,
+  eventTeilnahmen,
   eventVorlagen,
+  kalenderEventAbos,
   kalenderFehltErinnerungen,
   externe,
   kalenderTokens,
   mitglieder,
+  type MitgliedRow,
   schichtBedarfe,
   schichten,
   serienTermine,
@@ -258,6 +268,8 @@ export interface EventAenderung {
   entfernteDienste: BetroffenerDienst[];
   /** Everybody with a remaining Dienst in the event. */
   mitgliedSubs: string[];
+  /** Everybody who takes part in the event after the update. */
+  teilnehmerSubs: string[];
 }
 
 export interface AbsageErgebnis {
@@ -265,13 +277,18 @@ export interface AbsageErgebnis {
   geaendert: boolean;
   /** Members with a Dienst in the event. */
   mitgliedSubs: string[];
+  /** Members who take part in the event. */
+  teilnehmerSubs: string[];
 }
 
 export interface KalenderStore {
   // ----- Events
-  /** Events overlapping the Berlin dates `von`..`bis` (inclusive), ordered by start. */
-  events(von: string, bis: string): Promise<EventDto[]>;
-  event(id: string): Promise<EventDto | undefined>;
+  /**
+   * Events overlapping the Berlin dates `von`..`bis` (inclusive), ordered by start. `sub` is the
+   * caller, for `ichNehmeTeil` and `imAbo`.
+   */
+  events(von: string, bis: string, sub?: string): Promise<EventDto[]>;
+  event(id: string, sub?: string): Promise<EventDto | undefined>;
   eventAnlegen(daten: EventEingabe, von: string): Promise<string>;
   /**
    * Reconciles the Schicht tree. Throws EntfernungBestaetigen when Dienste would be deleted and
@@ -282,6 +299,15 @@ export interface KalenderStore {
   eventLoeschen(id: string): Promise<boolean>;
   /** Undefined when the event does not exist. */
   absageSetzen(id: string, abgesagt: boolean): Promise<AbsageErgebnis | undefined>;
+
+  // ----- Participation and event subscription
+  /**
+   * Sets the member's own answer. Undefined when the event does not exist; throws KalenderKonflikt
+   * for cancelled events and events without participation.
+   */
+  teilnahmeSetzen(eventId: string, sub: string, teilnahme: boolean): Promise<true | undefined>;
+  /** Adds the event to / removes it from the member's feed. False when the event does not exist. */
+  eventAboSetzen(eventId: string, sub: string, abonniert: boolean): Promise<boolean>;
 
   // ----- Series (see kalenderSerien.ts)
   /** Dates (`YYYY-MM-DD`) the series already created an event for. */
@@ -340,10 +366,23 @@ export interface KalenderStore {
   subPerTokenHash(hash: string): Promise<string | undefined>;
   /** The member's own Dienste whose Schicht begins at or after `ab`, ordered by start. */
   meineDienste(sub: string, ab: Date): Promise<MeinDienstDto[]>;
+  /** Events ending at or after `ab` that the member takes part in or added to their feed, by start. */
+  meineEvents(sub: string, ab: Date): Promise<MeinEventDto[]>;
 
   // ----- Notifications
   /** Dienste of members in non-cancelled events whose Schicht begins in `von` (incl.) .. `bis` (excl.). */
   erinnerungsDienste(von: Date, bis: Date): Promise<ErinnerungsDienst[]>;
+  /** Members taking part in non-cancelled events beginning in `von` (incl.) .. `bis` (excl.). */
+  erinnerungsTeilnahmen(von: Date, bis: Date): Promise<ErinnerungsTeilnahme[]>;
+}
+
+/** A member's participation that may need a reminder. */
+export interface ErinnerungsTeilnahme {
+  eventId: string;
+  eventTitel: string;
+  mitgliedSub: string;
+  /** ISO instant of the event start. */
+  beginn: string;
 }
 
 /** A member's Dienst that may need a reminder. */
@@ -374,6 +413,80 @@ type Q = Pick<Db, 'select'>;
 const iso = (d: Date) => d.toISOString();
 const einzigartig = <T>(werte: readonly T[]) => [...new Set(werte)];
 
+const mitgliedPerson = (m: MitgliedRow) => ({
+  art: 'mitglied' as const,
+  sub: m.sub,
+  username: null,
+  vorname: m.vorname,
+  nachname: m.nachname,
+  status: m.status,
+  anrede: m.anrede ?? ('neutral' as const),
+});
+
+/** A member with a relation to an event's participation. */
+interface TeilnahmeZeile {
+  mitglied: MitgliedRow;
+  zustand: TeilnahmeAntwort;
+  eingeladen: boolean;
+}
+
+/**
+ * Participation of the given events (only those with a circle): everybody in the circle, invited or
+ * with an own answer, with the computed state. The circle is evaluated against the current members.
+ */
+async function teilnahmenLaden(
+  q: Q,
+  eventRows: readonly { id: string; teilnahmeStatus: string | null }[],
+): Promise<Map<string, TeilnahmeZeile[]>> {
+  const ergebnis = new Map<string, TeilnahmeZeile[]>();
+  const aktive = eventRows.flatMap((e) => {
+    const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
+    return kreis ? [{ id: e.id, kreis }] : [];
+  });
+  if (aktive.length === 0) return ergebnis;
+  const rows = await q
+    .select()
+    .from(eventTeilnahmen)
+    .where(
+      inArray(
+        eventTeilnahmen.eventId,
+        aktive.map((a) => a.id),
+      ),
+    );
+  const stati = einzigartig(aktive.flatMap((a) => a.kreis));
+  const subs = einzigartig(rows.map((r) => r.mitgliedSub));
+  const bedingung = or(
+    stati.length > 0 ? inArray(mitglieder.status, stati) : undefined,
+    subs.length > 0 ? inArray(mitglieder.sub, subs) : undefined,
+  );
+  const mRows = bedingung ? await q.select().from(mitglieder).where(bedingung) : [];
+  const nachEvent = new Map(rows.map((r) => [`${r.eventId}:${r.mitgliedSub}`, r] as const));
+  for (const { id, kreis } of aktive) {
+    const zeilen: TeilnahmeZeile[] = [];
+    for (const m of mRows) {
+      const row = nachEvent.get(`${id}:${m.sub}`);
+      const zustand = teilnahmeZustand({
+        kreis,
+        status: m.status,
+        eingeladen: row?.eingeladen ?? false,
+        antwort: row?.antwort ?? null,
+      });
+      if (zustand) zeilen.push({ mitglied: m, zustand, eingeladen: row?.eingeladen ?? false });
+    }
+    ergebnis.set(id, zeilen);
+  }
+  return ergebnis;
+}
+
+/** Subs of the members who take part (state `teilnahme`) in an event. */
+async function teilnehmerSubs(
+  q: Q,
+  event: { id: string; teilnahmeStatus: string | null },
+): Promise<string[]> {
+  const zeilen = (await teilnahmenLaden(q, [event])).get(event.id) ?? [];
+  return zeilen.filter((z) => z.zustand === 'teilnahme').map((z) => z.mitglied.sub);
+}
+
 /** Members and Externe by id, as the `DienstPerson` shown in DTOs (usernames are added by the app). */
 async function personenLaden(
   q: Q,
@@ -395,20 +508,7 @@ async function personenLaden(
       : [],
   ]);
   return {
-    mitglieder: new Map(
-      mRows.map((m) => [
-        m.sub,
-        {
-          art: 'mitglied' as const,
-          sub: m.sub,
-          username: null,
-          vorname: m.vorname,
-          nachname: m.nachname,
-          status: m.status,
-          anrede: m.anrede ?? 'neutral',
-        },
-      ]),
-    ),
+    mitglieder: new Map(mRows.map((m) => [m.sub, mitgliedPerson(m)])),
     externe: new Map(
       eRows.map((e) => [
         e.id,
@@ -419,7 +519,11 @@ async function personenLaden(
 }
 
 /** Loads events (matching `bedingung`) with Schichten, Bedarfe, Dienste and the Ampel. */
-async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<EventDto[]> {
+async function eventsLaden(
+  q: Q,
+  bedingung: ReturnType<typeof and>,
+  sub?: string,
+): Promise<EventDto[]> {
   const eventRows = await q
     .select({
       event: events,
@@ -432,6 +536,24 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
     .orderBy(asc(events.beginn), asc(events.id));
   if (eventRows.length === 0) return [];
   const eventIds = eventRows.map((r) => r.event.id);
+  const [teilnahmen, aboRows] = await Promise.all([
+    teilnahmenLaden(
+      q,
+      eventRows.map((r) => r.event),
+    ),
+    sub
+      ? q
+          .select({ eventId: kalenderEventAbos.eventId })
+          .from(kalenderEventAbos)
+          .where(
+            and(
+              eq(kalenderEventAbos.mitgliedSub, sub),
+              inArray(kalenderEventAbos.eventId, eventIds),
+            ),
+          )
+      : [],
+  ]);
+  const abonniert = new Set(aboRows.map((a) => a.eventId));
   const schichtRows = await q
     .select()
     .from(schichten)
@@ -499,6 +621,8 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
   });
 
   return eventRows.map(({ event: e, kategorieName, kategorieFarbe }) => {
+    const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
+    const zeilen = teilnahmen.get(e.id) ?? [];
     const alleSchichten = schichtRows.filter((s) => s.eventId === e.id).map(alsSchicht);
     return {
       id: e.id,
@@ -514,6 +638,17 @@ async function eventsLaden(q: Q, bedingung: ReturnType<typeof and>): Promise<Eve
       serie: e.serie,
       schichten: alleSchichten,
       bewertung: eventBewertung({ abgesagt: e.abgesagt, schichten: alleSchichten }),
+      teilnahmeStatus: kreis,
+      teilnahmen: zeilen.map((z): TeilnahmeDto => ({
+        person: mitgliedPerson(z.mitglied),
+        zustand: z.zustand,
+        eingeladen: z.eingeladen,
+      })),
+      ichNehmeTeil:
+        kreis === null || !sub
+          ? null
+          : zeilen.some((z) => z.mitglied.sub === sub && z.zustand === 'teilnahme'),
+      imAbo: abonniert.has(e.id),
     };
   });
 }
@@ -589,6 +724,53 @@ export function createKalenderStore(db: Db): KalenderStore {
     }
   };
 
+  /** The circle to store: invited people without a circle imply the empty circle (by invitation only). */
+  const kreisFuer = (daten: { teilnahmeStatus: TeilnahmeKreis; eingeladen: readonly string[] }) =>
+    daten.teilnahmeStatus ?? (daten.eingeladen.length > 0 ? [] : null);
+
+  /** Writes the individual invitations (the circle itself is a column of the event). */
+  const teilnahmeSchreiben = async (
+    tx: Tx,
+    eventId: string,
+    daten: { teilnahmeStatus: TeilnahmeKreis; eingeladen: readonly string[] },
+  ) => {
+    if (kreisFuer(daten) === null) {
+      await tx.delete(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, eventId));
+      return;
+    }
+    if (daten.eingeladen.length > 0) {
+      const gefunden = await tx
+        .select({ sub: mitglieder.sub })
+        .from(mitglieder)
+        .where(inArray(mitglieder.sub, [...daten.eingeladen]));
+      if (gefunden.length !== daten.eingeladen.length) {
+        throw new KalenderUngueltig('Eine eingeladene Person gibt es nicht.');
+      }
+    }
+    const bisher = await tx
+      .select()
+      .from(eventTeilnahmen)
+      .where(eq(eventTeilnahmen.eventId, eventId));
+    for (const r of bisher) {
+      if (!r.eingeladen || daten.eingeladen.includes(r.mitgliedSub)) continue;
+      const bedingung = and(
+        eq(eventTeilnahmen.eventId, eventId),
+        eq(eventTeilnahmen.mitgliedSub, r.mitgliedSub),
+      );
+      if (r.antwort === null) await tx.delete(eventTeilnahmen).where(bedingung);
+      else await tx.update(eventTeilnahmen).set({ eingeladen: false }).where(bedingung);
+    }
+    for (const sub of daten.eingeladen) {
+      await tx
+        .insert(eventTeilnahmen)
+        .values({ eventId, mitgliedSub: sub, eingeladen: true })
+        .onConflictDoUpdate({
+          target: [eventTeilnahmen.eventId, eventTeilnahmen.mitgliedSub],
+          set: { eingeladen: true, geaendertAm: new Date() },
+        });
+    }
+  };
+
   const eventErzeugen = async (
     tx: Tx,
     daten: EventEingabe,
@@ -609,8 +791,10 @@ export function createKalenderStore(db: Db): KalenderStore {
       beginn: new Date(daten.beginn),
       ende: new Date(daten.ende),
       serie,
+      teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
       angelegtVon: von,
     });
+    await teilnahmeSchreiben(tx, id, daten);
     await schichtenSchreiben(
       tx,
       id,
@@ -646,16 +830,17 @@ export function createKalenderStore(db: Db): KalenderStore {
     }
   };
 
-  const eventsFuerBedingung = (bedingung: ReturnType<typeof and>) => eventsLaden(db, bedingung);
+  const eventsFuerBedingung = (bedingung: ReturnType<typeof and>, sub?: string) =>
+    eventsLaden(db, bedingung, sub);
 
   return {
     // ----- Events
-    async events(von, bis) {
+    async events(von, bis, sub) {
       const { start, ende } = zeitraumGrenzen(von, bis);
-      return eventsFuerBedingung(and(lt(events.beginn, ende), gte(events.ende, start)));
+      return eventsFuerBedingung(and(lt(events.beginn, ende), gte(events.ende, start)), sub);
     },
-    async event(id) {
-      return (await eventsFuerBedingung(eq(events.id, id)))[0];
+    async event(id, sub) {
+      return (await eventsFuerBedingung(eq(events.id, id), sub))[0];
     },
     async eventAnlegen(daten, von) {
       return db.transaction((tx) => eventErzeugen(tx, daten, von, null));
@@ -766,10 +951,12 @@ export function createKalenderStore(db: Db): KalenderStore {
             kategorieId: daten.kategorieId,
             beginn: beginnNeu,
             ende: endeNeu,
+            teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
             ...(daten.ersetzeSerie === true && { serie: null }),
             aktualisiertAm: new Date(),
           })
           .where(eq(events.id, id));
+        await teilnahmeSchreiben(tx, id, daten);
         if (entfernteIds.size > 0) {
           await tx.delete(dienste).where(inArray(dienste.id, [...entfernteIds]));
         }
@@ -824,6 +1011,10 @@ export function createKalenderStore(db: Db): KalenderStore {
               !entfernteIds.has(d.id) && d.mitgliedSub ? [d.mitgliedSub] : [],
             ),
           ),
+          teilnehmerSubs: await teilnehmerSubs(tx, {
+            id,
+            teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
+          }),
         };
       });
     },
@@ -851,6 +1042,8 @@ export function createKalenderStore(db: Db): KalenderStore {
           await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, schichtIds));
           await tx.delete(schichten).where(eq(schichten.eventId, id));
         }
+        await tx.delete(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, id));
+        await tx.delete(kalenderEventAbos).where(eq(kalenderEventAbos.eventId, id));
         await tx.delete(events).where(eq(events.id, id));
         return true;
       });
@@ -878,8 +1071,49 @@ export function createKalenderStore(db: Db): KalenderStore {
         return {
           geaendert: bisher.abgesagt !== abgesagt,
           mitgliedSubs: einzigartig(rows.flatMap((r) => (r.sub ? [r.sub] : []))),
+          teilnehmerSubs: await teilnehmerSubs(tx, bisher),
         };
       });
+    },
+
+    // ----- Participation and event subscription
+    async teilnahmeSetzen(eventId, sub, teilnahme) {
+      const [event] = await db.select().from(events).where(eq(events.id, eventId));
+      if (!event) return undefined;
+      if (event.abgesagt) {
+        throw new KalenderKonflikt(
+          'Das Event ist abgesagt. Die Teilnahme lässt sich nicht ändern.',
+        );
+      }
+      if (teilnahmeKreisLesen(event.teilnahmeStatus) === null) {
+        throw new KalenderKonflikt('Für dieses Event ist keine Teilnahme vorgesehen.');
+      }
+      const antwort: TeilnahmeAntwort = teilnahme ? 'teilnahme' : 'absage';
+      await db
+        .insert(eventTeilnahmen)
+        .values({ eventId, mitgliedSub: sub, antwort })
+        .onConflictDoUpdate({
+          target: [eventTeilnahmen.eventId, eventTeilnahmen.mitgliedSub],
+          set: { antwort, geaendertAm: new Date() },
+        });
+      return true;
+    },
+    async eventAboSetzen(eventId, sub, abonniert) {
+      const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId));
+      if (!event) return false;
+      if (abonniert) {
+        await db
+          .insert(kalenderEventAbos)
+          .values({ mitgliedSub: sub, eventId })
+          .onConflictDoNothing();
+      } else {
+        await db
+          .delete(kalenderEventAbos)
+          .where(
+            and(eq(kalenderEventAbos.mitgliedSub, sub), eq(kalenderEventAbos.eventId, eventId)),
+          );
+      }
+      return true;
     },
 
     // ----- Dienste
@@ -1143,6 +1377,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           kategorieId: v.kategorieId,
           beginnZeit: v.beginnZeit,
           endeZeit: v.endeZeit,
+          teilnahmeStatus: teilnahmeKreisLesen(v.teilnahmeStatus),
           archiviert: v.archiviert,
           schichten: schichtRows
             .filter((s) => s.vorlageId === v.id)
@@ -1184,6 +1419,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           kategorieId: daten.kategorieId,
           beginnZeit: daten.beginnZeit,
           endeZeit: daten.endeZeit,
+          teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
           archiviert: daten.archiviert ?? false,
         });
         await vorlageSchreiben(tx, id, daten);
@@ -1220,6 +1456,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             kategorieId: daten.kategorieId,
             beginnZeit: daten.beginnZeit,
             endeZeit: daten.endeZeit,
+            teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
             ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
           })
           .where(eq(eventVorlagen.id, id));
@@ -1353,6 +1590,70 @@ export function createKalenderStore(db: Db): KalenderStore {
         .where(and(eq(dienste.mitgliedSub, sub), gte(schichten.beginn, ab)))
         .orderBy(asc(schichten.beginn), asc(dienste.id));
       return rows.map((r) => ({ ...r, beginn: iso(r.beginn), ende: iso(r.ende) }));
+    },
+    async meineEvents(sub, ab) {
+      const aboIds = (
+        await db
+          .select({ eventId: kalenderEventAbos.eventId })
+          .from(kalenderEventAbos)
+          .where(eq(kalenderEventAbos.mitgliedSub, sub))
+      ).map((a) => a.eventId);
+      const rows = await db
+        .select()
+        .from(events)
+        .where(
+          and(
+            gte(events.ende, ab),
+            or(
+              isNotNull(events.teilnahmeStatus),
+              aboIds.length > 0 ? inArray(events.id, aboIds) : undefined,
+            ),
+          ),
+        )
+        .orderBy(asc(events.beginn), asc(events.id));
+      const teilnahmen = await teilnahmenLaden(db, rows);
+      const abonniert = new Set(aboIds);
+      return rows
+        .filter(
+          (e) =>
+            abonniert.has(e.id) ||
+            (teilnahmen.get(e.id) ?? []).some(
+              (z) => z.mitglied.sub === sub && z.zustand === 'teilnahme',
+            ),
+        )
+        .map((e) => ({
+          id: e.id,
+          titel: e.titel,
+          beschreibung: e.beschreibung,
+          beginn: iso(e.beginn),
+          ende: iso(e.ende),
+          abgesagt: e.abgesagt,
+        }));
+    },
+    async erinnerungsTeilnahmen(von, bis) {
+      const rows = await db
+        .select()
+        .from(events)
+        .where(
+          and(
+            eq(events.abgesagt, false),
+            isNotNull(events.teilnahmeStatus),
+            gte(events.beginn, von),
+            lt(events.beginn, bis),
+          ),
+        )
+        .orderBy(asc(events.beginn), asc(events.id));
+      const teilnahmen = await teilnahmenLaden(db, rows);
+      return rows.flatMap((e) =>
+        (teilnahmen.get(e.id) ?? [])
+          .filter((z) => z.zustand === 'teilnahme')
+          .map((z) => ({
+            eventId: e.id,
+            eventTitel: e.titel,
+            mitgliedSub: z.mitglied.sub,
+            beginn: iso(e.beginn),
+          })),
+      );
     },
     async erinnerungsDienste(von, bis) {
       const rows = await db

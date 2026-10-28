@@ -6,7 +6,6 @@ import type {
   EventDto,
   EventKategorieDto,
   ExterneDto,
-  MeinDienstDto,
   StatistikDto,
   VorlageDto,
 } from '@c4/shared';
@@ -98,16 +97,6 @@ export function useKalenderStatistik(jahr: number) {
       (await unwrap(
         await api.kalender.statistik.$get({ query: { jahr: String(jahr) } }),
       )) as StatistikDto,
-  });
-}
-
-/** The caller's own upcoming Dienste (also the content of the calendar feed, minus the last 90 days). */
-export function useMeineDienste(enabled = true) {
-  const api = useApi();
-  return useQuery({
-    queryKey: [KALENDER_KEY, 'meine-dienste'],
-    enabled,
-    queryFn: async () => (await unwrap(await api.me.dienste.$get())) as MeinDienstDto[],
   });
 }
 

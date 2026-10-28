@@ -18,6 +18,7 @@ import type {
   MhdArt,
   SchichtArt,
   MitgliedStatus,
+  TeilnahmeAntwort,
   Quelle,
   Verpackungseinheit,
   VorgangTyp,
@@ -466,6 +467,8 @@ export const events = pgTable('events', {
   abgesagt: boolean('abgesagt').notNull().default(false),
   /** Series the event belongs to (e.g. `barabend`); null for ordinary events. */
   serie: text('serie'),
+  /** Participation circle: null = no participation, else comma-separated member statuses ('' = by invitation only). */
+  teilnahmeStatus: text('teilnahme_status'),
   /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
   angelegtVon: text('angelegt_von'),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
@@ -483,6 +486,37 @@ export const serienTermine = pgTable(
     erzeugt: timestamp('erzeugt', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.serie, t.datum] })],
+);
+
+/** Individual participation: invited by a manager and/or the member's own answer (null/'teilnahme'/'absage'). */
+export const eventTeilnahmen = pgTable(
+  'event_teilnahmen',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    antwort: text('antwort').$type<TeilnahmeAntwort>(),
+    eingeladen: boolean('eingeladen').notNull().default(false),
+    geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.mitgliedSub] })],
+);
+
+/** Events a member added to their own calendar feed. */
+export const kalenderEventAbos = pgTable(
+  'kalender_event_abos',
+  {
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+  },
+  (t) => [primaryKey({ columns: [t.mitgliedSub, t.eventId] })],
 );
 
 export const schichten = pgTable('schichten', {
@@ -542,6 +576,8 @@ export const eventVorlagen = pgTable('event_vorlagen', {
   /** Berlin wall time `HH:MM`. */
   beginnZeit: text('beginn_zeit').notNull(),
   endeZeit: text('ende_zeit').notNull(),
+  /** Participation circle handed to events (same encoding as `events.teilnahmeStatus`). */
+  teilnahmeStatus: text('teilnahme_status'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventVorlageRow = typeof eventVorlagen.$inferSelect;

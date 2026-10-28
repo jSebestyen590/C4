@@ -5,6 +5,7 @@ import {
   type DienstformDto,
   type DienstPerson,
   type EventBewertung,
+  type EventDto,
   type EventKategorieDto,
   type SchichtDto,
 } from '@c4/shared';
@@ -27,6 +28,22 @@ export function AmpelBadge({
   return (
     <Badge color={AMPEL_FARBE[bewertung]} variant="light" size={size} style={{ flexShrink: 0 }}>
       {AMPEL_LABELS[bewertung]}
+    </Badge>
+  );
+}
+
+/** "Du nimmst teil" or "Teilnahme" for an event with participation; nothing without. */
+export function TeilnahmeBadge({
+  event,
+}: Readonly<{ event: Pick<EventDto, 'teilnahmeStatus' | 'ichNehmeTeil'> }>) {
+  if (event.teilnahmeStatus === null) return null;
+  return event.ichNehmeTeil ? (
+    <Badge color="green" variant="light" size="sm" tt="none">
+      Du nimmst teil
+    </Badge>
+  ) : (
+    <Badge color="gray" variant="outline" size="sm" tt="none">
+      Teilnahme
     </Badge>
   );
 }

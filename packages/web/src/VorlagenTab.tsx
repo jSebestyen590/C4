@@ -37,6 +37,13 @@ import {
   useEventKategorien,
   useVorlagen,
 } from './kalenderDaten';
+import {
+  keineTeilnahme,
+  TeilnahmeFelder,
+  teilnahmeKreisAus,
+  teilnahmeWerteAus,
+  type TeilnahmeWerte,
+} from './TeilnahmeFelder';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
 
 interface VorlageSchichtForm extends SchichtBasis {
@@ -49,6 +56,7 @@ interface VorlageSchichtForm extends SchichtBasis {
 interface VorlageWerte extends KopfWerte {
   beginnZeit: string;
   endeZeit: string;
+  teilnahme: TeilnahmeWerte;
   schichten: VorlageSchichtForm[];
 }
 
@@ -58,6 +66,7 @@ const leereVorlage = (): VorlageWerte => ({
   kategorieId: null,
   beginnZeit: '20:00',
   endeZeit: '23:00',
+  teilnahme: keineTeilnahme(),
   schichten: [],
 });
 
@@ -67,6 +76,7 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   kategorieId: v.kategorieId ?? null,
   beginnZeit: v.beginnZeit,
   endeZeit: v.endeZeit,
+  teilnahme: teilnahmeWerteAus(v.teilnahmeStatus),
   schichten: v.schichten.map((s) => ({
     key: neuerKey(),
     art: s.art,
@@ -109,6 +119,7 @@ function vorlageJson<S>(w: VorlageWerte, schichten: S[], archiviert: boolean) {
     kategorieId: w.kategorieId,
     beginnZeit: w.beginnZeit,
     endeZeit: w.endeZeit,
+    teilnahmeStatus: teilnahmeKreisAus(w.teilnahme),
     schichten,
     archiviert,
   };
@@ -172,6 +183,11 @@ function VorlageEditor({
         beginn={werte.beginnZeit}
         ende={werte.endeZeit}
         onChange={(z) => setWerte({ ...werte, ...z })}
+      />
+      <TeilnahmeFelder
+        werte={werte.teilnahme}
+        onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
+        mitEinladung={false}
       />
       <SchichtListeEditor<VorlageSchichtForm>
         schichten={werte.schichten}

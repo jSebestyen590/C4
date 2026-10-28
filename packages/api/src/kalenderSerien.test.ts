@@ -67,6 +67,7 @@ const vorlage = (patch: Partial<VorlageDto> = {}): VorlageDto => ({
   kategorieId: 'barabend',
   beginnZeit: '20:00',
   endeZeit: '01:00',
+  teilnahmeStatus: null,
   archiviert: false,
   schichten: [
     {

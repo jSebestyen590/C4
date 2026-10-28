@@ -46,6 +46,7 @@ import {
   FehltInfo,
   kategorieFarbe,
   PersonName,
+  TeilnahmeBadge,
 } from '../KalenderAnzeige';
 import { AMPEL_LABELS } from '../i18n';
 import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
@@ -188,7 +189,10 @@ function TagesUebersicht({
                 {e.titel}
               </Text>
             </Stack>
-            <AmpelBadge bewertung={e.bewertung} />
+            <Stack gap={4} align="flex-end">
+              <AmpelBadge bewertung={e.bewertung} />
+              <TeilnahmeBadge event={e} />
+            </Stack>
           </Group>
         </UnstyledButton>
       ))}
@@ -408,7 +412,10 @@ function EventKarte({
               </Text>
             )}
           </Stack>
-          <AmpelBadge bewertung={event.bewertung} />
+          <Stack gap={4} align="flex-end">
+            <AmpelBadge bewertung={event.bewertung} />
+            <TeilnahmeBadge event={event} />
+          </Stack>
         </Group>
         {event.schichten.map((s) => (
           <Box
@@ -552,6 +559,7 @@ export function KalenderPage() {
         if (nurFehlend && (e.bewertung === 'gruen' || e.bewertung === 'abgesagt')) return false;
         if (
           nurMeine &&
+          !e.ichNehmeTeil &&
           !e.schichten.some((s) =>
             s.dienste.some((d) => d.person.art === 'mitglied' && d.person.sub === eigeneSub),
           )

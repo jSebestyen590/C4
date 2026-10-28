@@ -32,6 +32,7 @@ import {
   type EventDto,
   type EventEingabe,
   type EventKategorieDto,
+  type TeilnahmeKreis,
   type VorlageDto,
 } from '@c4/shared';
 import { useApi } from '../api';
@@ -49,6 +50,14 @@ import {
   type SchichtBasis,
 } from '../KalenderFormular';
 import { PersonName } from '../KalenderAnzeige';
+import {
+  eingeladeneAus,
+  keineTeilnahme,
+  TeilnahmeFelder,
+  teilnahmeKreisAus,
+  teilnahmeWerteAus,
+  type TeilnahmeWerte,
+} from '../TeilnahmeFelder';
 import {
   kalenderInvalidieren,
   useDienstformen,
@@ -72,6 +81,7 @@ interface EventWerte extends KopfWerte {
   datum: string;
   beginnZeit: string;
   endeZeit: string;
+  teilnahme: TeilnahmeWerte;
   schichten: EventSchichtForm[];
 }
 
@@ -93,6 +103,9 @@ interface EventDaten {
   kategorieId: string | null;
   beginn: string;
   ende: string;
+  teilnahmeStatus: TeilnahmeKreis;
+  /** Subs of the individually invited members. */
+  eingeladen: readonly string[];
   schichten: {
     id?: string;
     art: EventSchichtForm['art'];
@@ -110,6 +123,7 @@ function werteAus(e: EventDaten): EventWerte {
     titel: e.titel,
     beschreibung: e.beschreibung ?? '',
     kategorieId: e.kategorieId,
+    teilnahme: teilnahmeWerteAus(e.teilnahmeStatus, e.eingeladen),
     schichten: e.schichten.map((s) => ({
       key: s.id ?? neuerKey(),
       id: s.id,
@@ -126,7 +140,11 @@ function werteAus(e: EventDaten): EventWerte {
 }
 
 const werteAusEvent = (e: EventDto): EventWerte =>
-  werteAus({ ...e, kategorieId: e.kategorie?.id ?? null });
+  werteAus({
+    ...e,
+    kategorieId: e.kategorie?.id ?? null,
+    eingeladen: e.teilnahmen.filter((t) => t.eingeladen).map((t) => t.person.sub),
+  });
 
 function leereWerte(datum: string): EventWerte {
   return {
@@ -136,6 +154,7 @@ function leereWerte(datum: string): EventWerte {
     datum,
     beginnZeit: '20:00',
     endeZeit: '23:00',
+    teilnahme: keineTeilnahme(),
     schichten: [],
   };
 }
@@ -173,6 +192,8 @@ function rohEingabe(w: EventWerte) {
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
     ...zeitspanne(w.datum, w.beginnZeit, w.endeZeit),
+    teilnahmeStatus: teilnahmeKreisAus(w.teilnahme),
+    eingeladen: eingeladeneAus(w.teilnahme),
     schichten,
   };
 }
@@ -269,6 +290,10 @@ function Formular({
         beginn={werte.beginnZeit}
         ende={werte.endeZeit}
         onChange={(z) => setWerte({ ...werte, ...z })}
+      />
+      <TeilnahmeFelder
+        werte={werte.teilnahme}
+        onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
       />
       <SchichtListeEditor<EventSchichtForm>
         schichten={werte.schichten}

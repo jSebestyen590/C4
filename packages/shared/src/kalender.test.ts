@@ -11,6 +11,11 @@ import {
   eventBewertung,
   dienstTermine,
   eventEingabeSchema,
+  eventTermine,
+  teilnahmeKreisKodieren,
+  teilnahmeKreisLesen,
+  teilnahmeZustand,
+  teilnehmend,
   icsErzeugen,
   icsFalten,
   schichtBewertung,
@@ -208,6 +213,7 @@ describe('ausVorlage', () => {
     kategorieId: 'k1',
     beginnZeit: '20:00',
     endeZeit: '02:00',
+    teilnahmeStatus: ['mitglied', 'em'],
     schichten: [
       {
         art: 'aufbau',
@@ -581,6 +587,7 @@ describe('barabendErsetzen', () => {
     kategorieId: null,
     beginnZeit: '21:00',
     endeZeit: '02:00',
+    teilnahmeStatus: null,
     schichten,
   });
   const betrieb = (bedarfe = [{ dienstformId: 'technik', minimum: 1, wunsch: 1 }]) =>
@@ -650,5 +657,89 @@ describe('barabendErsetzen', () => {
       vorlage([betrieb()]),
     );
     expect(e.schichten.map((s) => s.id)).toEqual(['s-betrieb', 's-voll']);
+  });
+});
+
+describe('Teilnahme', () => {
+  const basis = {
+    kreis: ['mitglied', 'em'],
+    status: 'mitglied',
+    eingeladen: false,
+    antwort: null,
+  } as const;
+
+  it('takes part when the status is in the circle, unless declined', () => {
+    expect(teilnahmeZustand(basis)).toBe('teilnahme');
+    expect(teilnehmend({ ...basis, status: 'anwaerter' })).toBe(false);
+    expect(teilnahmeZustand({ ...basis, status: 'anwaerter' })).toBeNull();
+    expect(teilnahmeZustand({ ...basis, antwort: 'absage' })).toBe('absage');
+  });
+
+  it('includes invited people and self-signed people outside the circle', () => {
+    const aussen = { ...basis, status: 'anwaerter' } as const;
+    expect(teilnehmend({ ...aussen, eingeladen: true })).toBe(true);
+    expect(teilnehmend({ ...aussen, antwort: 'teilnahme' })).toBe(true);
+    expect(teilnahmeZustand({ ...aussen, eingeladen: true, antwort: 'absage' })).toBe('absage');
+    expect(teilnahmeZustand({ ...aussen, antwort: 'absage' })).toBe('absage');
+  });
+
+  it('has no participation without a circle and evaluates the circle dynamically', () => {
+    expect(teilnahmeZustand({ ...basis, kreis: null, eingeladen: true })).toBeNull();
+    expect(teilnahmeZustand({ ...basis, kreis: [], eingeladen: false })).toBeNull();
+    // A member who joins later with a matching status is included without any record.
+    expect(
+      teilnehmend({ kreis: ['anwaerter'], status: 'anwaerter', eingeladen: false, antwort: null }),
+    ).toBe(true);
+  });
+
+  it('encodes and decodes the circle', () => {
+    expect(teilnahmeKreisKodieren(null)).toBeNull();
+    expect(teilnahmeKreisKodieren([])).toBe('');
+    expect(teilnahmeKreisKodieren(['em', 'anwaerter'])).toBe('anwaerter,em');
+    expect(teilnahmeKreisLesen(null)).toBeNull();
+    expect(teilnahmeKreisLesen('')).toEqual([]);
+    expect(teilnahmeKreisLesen('mitglied,em,quatsch')).toEqual(['mitglied', 'em']);
+  });
+
+  it('validates the circle and invitations of an event', () => {
+    const roh = {
+      titel: 'Plenum',
+      beginn: '2026-06-05T18:00:00.000Z',
+      ende: '2026-06-05T20:00:00.000Z',
+      schichten: [],
+    };
+    const ok = eventEingabeSchema.parse(roh);
+    expect(ok.teilnahmeStatus).toBeNull();
+    expect(ok.eingeladen).toEqual([]);
+    expect(
+      eventEingabeSchema.parse({ ...roh, teilnahmeStatus: ['em'], eingeladen: ['a'] }),
+    ).toMatchObject({
+      teilnahmeStatus: ['em'],
+      eingeladen: ['a'],
+    });
+    expect(eventEingabeSchema.safeParse({ ...roh, teilnahmeStatus: ['chef'] }).success).toBe(false);
+    expect(eventEingabeSchema.safeParse({ ...roh, eingeladen: ['a', 'a'] }).success).toBe(false);
+  });
+
+  it('turns events into ICS entries with their own UID', () => {
+    const ics = icsErzeugen(
+      eventTermine(
+        [
+          {
+            id: 'e1',
+            titel: 'Plenum',
+            beschreibung: 'Wichtig',
+            beginn: '2026-06-05T18:00:00.000Z',
+            ende: '2026-06-05T20:00:00.000Z',
+            abgesagt: true,
+          },
+        ],
+        'https://c4.example',
+      ),
+    );
+    expect(ics).toContain('UID:event-e1@c4-leipzig.de');
+    expect(ics).toContain('SUMMARY:Plenum');
+    expect(ics).toContain('URL:https://c4.example/app/kalender/events/e1');
+    expect(ics).toContain('STATUS:CANCELLED');
   });
 });

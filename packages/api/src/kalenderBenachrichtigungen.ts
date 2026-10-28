@@ -12,6 +12,7 @@ import type { BetroffenerDienst, DienstInfo, EventAenderung, KalenderStore } fro
 // messages for changes that are sent directly from the routes. The module itself is generic.
 
 const ERINNERUNG = 'kalender.erinnerung';
+const TEILNAHME_ERINNERUNG = 'kalender.teilnahme_erinnerung';
 const FEHLENDE_DIENSTE = 'kalender.fehlende_dienste';
 const AENDERUNG = 'kalender.aenderung';
 
@@ -63,10 +64,16 @@ export function minutenText(minuten: number): string {
 /** Registers the calendar's tasks with the generic job runner. */
 export function registriereKalenderAufgaben(
   benachrichtigungen: Benachrichtigungen,
-  kalender: Pick<KalenderStore, 'events' | 'erinnerungsDienste' | 'erinnerungen'>,
+  kalender: Pick<
+    KalenderStore,
+    'events' | 'erinnerungsDienste' | 'erinnerungsTeilnahmen' | 'erinnerungen'
+  >,
 ): void {
   benachrichtigungen.registriereAufgabe('kalender.erinnerungen', (jetzt) =>
     erinnerungen(benachrichtigungen, kalender, jetzt),
+  );
+  benachrichtigungen.registriereAufgabe('kalender.teilnahme_erinnerungen', (jetzt) =>
+    teilnahmeErinnerungen(benachrichtigungen, kalender, jetzt),
   );
   benachrichtigungen.registriereAufgabe('kalender.fehlende_dienste', (jetzt) =>
     fehlendeDienste(benachrichtigungen, kalender, jetzt),
@@ -110,6 +117,46 @@ export async function erinnerungen(
       });
     } catch (err) {
       console.error('Reminder failed', err);
+    }
+  }
+}
+
+/** Reminder `minuten` before the start of an event the member takes part in (their own setting). */
+export async function teilnahmeErinnerungen(
+  benachrichtigungen: Benachrichtigungen,
+  kalender: Pick<KalenderStore, 'erinnerungsTeilnahmen'>,
+  jetzt: Date,
+): Promise<void> {
+  const art = benachrichtigungsArt(TEILNAHME_ERINNERUNG);
+  const fenster = Math.max(0, ...(art?.minuten?.optionen ?? [])) * 60_000;
+  const kandidaten = await kalender.erinnerungsTeilnahmen(
+    jetzt,
+    new Date(jetzt.getTime() + fenster),
+  );
+  if (kandidaten.length === 0) return;
+  const einstellungen = new Map(
+    (
+      await benachrichtigungen.empfaengerEinstellungen(TEILNAHME_ERINNERUNG, [
+        ...new Set(kandidaten.map((k) => k.mitgliedSub)),
+      ])
+    ).map((e) => [e.sub, e]),
+  );
+  for (const k of kandidaten) {
+    const e = einstellungen.get(k.mitgliedSub);
+    if (!e?.aktiv || e.minuten === null) continue;
+    const beginn = new Date(k.beginn).getTime();
+    if (beginn - e.minuten * 60_000 > jetzt.getTime() || beginn <= jetzt.getTime()) continue;
+    try {
+      await benachrichtigungen.senden({
+        subs: [k.mitgliedSub],
+        art: TEILNAHME_ERINNERUNG,
+        titel: `${k.eventTitel} in ${minutenText(e.minuten)}`,
+        text: `Du nimmst teil (${wochentagZeit(k.beginn)}).`,
+        url: eventUrl(k.eventId),
+        dedupeSchluessel: `${TEILNAHME_ERINNERUNG}:${k.eventId}:${k.mitgliedSub}:${k.beginn}`,
+      });
+    } catch (err) {
+      console.error('Participation reminder failed', err);
     }
   }
 }
@@ -204,7 +251,7 @@ export async function meldeEventAenderung(
 ): Promise<void> {
   const proSub = new Map<string, Zeile[]>();
   if (aenderung.zeitGeaendert) {
-    for (const sub of aenderung.mitgliedSubs) {
+    for (const sub of new Set([...aenderung.mitgliedSubs, ...aenderung.teilnehmerSubs])) {
       hinzu(proSub, sub, {
         titel: 'Event verschoben',
         text: `„${event.titel}“ ist jetzt am ${tagText(event.beginn)} um ${berlinTeile(event.beginn).zeit} Uhr.`,
@@ -231,12 +278,16 @@ export async function meldeEventAenderung(
   await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
 }
 
-/** Cancellation or reinstatement of an event, for everybody with a Dienst except the actor. */
+/**
+ * Cancellation or reinstatement of an event, for everybody with a Dienst or taking part except the
+ * actor. Members with a Dienst get the Dienst text.
+ */
 export async function meldeAbsage(
   sender: Sender,
   event: Pick<EventDto, 'id' | 'titel' | 'beginn'>,
   abgesagt: boolean,
   mitgliedSubs: readonly string[],
+  teilnehmerSubs: readonly string[],
   akteur: string,
 ): Promise<void> {
   const zeile: Zeile = abgesagt
@@ -248,13 +299,18 @@ export async function meldeAbsage(
         titel: 'Event findet statt',
         text: `„${event.titel}“ am ${tagText(event.beginn)} findet doch statt. Dein Dienst gilt wieder.`,
       };
-  await proPersonSenden(
-    sender,
-    event.id,
-    event.titel,
-    new Map(mitgliedSubs.map((sub) => [sub, [zeile]])),
-    akteur,
-  );
+  const teilnahmeZeile: Zeile = abgesagt
+    ? {
+        titel: 'Event abgesagt',
+        text: `„${event.titel}“ am ${tagText(event.beginn)} wurde abgesagt.`,
+      }
+    : {
+        titel: 'Event findet statt',
+        text: `„${event.titel}“ am ${tagText(event.beginn)} findet doch statt.`,
+      };
+  const proSub = new Map<string, Zeile[]>(teilnehmerSubs.map((sub) => [sub, [teilnahmeZeile]]));
+  for (const sub of mitgliedSubs) proSub.set(sub, [zeile]);
+  await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
 }
 
 /** A member was removed from a Dienst by somebody else. */

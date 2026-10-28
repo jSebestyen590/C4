@@ -400,11 +400,13 @@ function makeKalenderFake() {
       geaenderteSchichten: [],
       entfernteDienste: [],
       mitgliedSubs: [],
+      teilnehmerSubs: [],
     })),
     eventLoeschen: vi.fn<KalenderStore['eventLoeschen']>(async () => true),
     absageSetzen: vi.fn<KalenderStore['absageSetzen']>(async () => ({
       geaendert: true,
       mitgliedSubs: [],
+      teilnehmerSubs: [],
     })),
     dienstEintragen: vi.fn<KalenderStore['dienstEintragen']>(async () => 'd-neu'),
     dienstHolen: vi.fn(async (id: string) => dienste.get(id)),
@@ -442,6 +444,10 @@ function makeKalenderFake() {
       async (hash) => [...tokenNachSub].find(([, h]) => h === hash)?.[0],
     ),
     meineDienste: vi.fn<KalenderStore['meineDienste']>(async () => []),
+    meineEvents: vi.fn<KalenderStore['meineEvents']>(async () => []),
+    teilnahmeSetzen: vi.fn<KalenderStore['teilnahmeSetzen']>(async () => true),
+    eventAboSetzen: vi.fn<KalenderStore['eventAboSetzen']>(async () => true),
+    erinnerungsTeilnahmen: vi.fn<KalenderStore['erinnerungsTeilnahmen']>(async () => []),
     erinnerungsDienste: vi.fn<KalenderStore['erinnerungsDienste']>(async () => []),
     erinnerungen: vi.fn<KalenderStore['erinnerungen']>(async () => [10080, 2880, 1440]),
     erinnerungenSetzen: vi.fn<KalenderStore['erinnerungenSetzen']>(async () => undefined),
@@ -2680,6 +2686,10 @@ describe('kalender', () => {
       abgesagt: false,
       serie: null,
       bewertung: 'gruen',
+      teilnahmeStatus: null,
+      teilnahmen: [],
+      ichNehmeTeil: null,
+      imAbo: false,
       schichten: [
         {
           id: 's1',
@@ -2832,7 +2842,7 @@ describe('kalender', () => {
       const ics = await res.text();
       expect(ics).toContain('SUMMARY:Bardienst · Offener Abend');
       expect(ics).toContain('STATUS:CANCELLED');
-      expect(ics).toContain('X-WR-CALNAME:C4 – Meine Dienste');
+      expect(ics).toContain('X-WR-CALNAME:C4 – Mein Kalender');
       expect(ics).toContain('https://c4.example/app/kalender/events/e1');
     }
     const [sub, ab] = t.kalender.meineDienste.mock.calls[0]!;
@@ -2843,12 +2853,150 @@ describe('kalender', () => {
     expect((await t.app.request('/api/kalender/feed/unbekannt.ics')).status).toBe(404);
   });
 
-  it("lists the caller's own upcoming Dienste", async () => {
+  it('puts participation and subscribed events into the feed next to the Dienste', async () => {
+    const t = makeApp(undefined, 'https://c4.example');
+    t.kalender.meineEvents.mockResolvedValue([
+      {
+        id: 'e2',
+        titel: 'Plenum',
+        beschreibung: null,
+        beginn: '2026-06-06T17:00:00.000Z',
+        ende: '2026-06-06T19:00:00.000Z',
+        abgesagt: false,
+      },
+    ]);
+    const token = await t.kalender.tokenErzeugen('r');
+    const ics = await (await t.app.request(`/api/kalender/feed/${token}`)).text();
+    expect(ics).toContain('UID:event-e2@c4-leipzig.de');
+    expect(ics).toContain('DTSTART:20260606T170000Z');
+    expect(ics).toContain('SUMMARY:Plenum');
+    expect(t.kalender.meineEvents).toHaveBeenCalledWith('r', expect.any(Date));
+  });
+
+  it('removes the one-off Dienste download route', async () => {
     const t = makeApp();
-    const res = await t.app.request('/api/me/dienste', json('reader-token', 'GET'));
-    expect(res.status).toBe(200);
-    expect(t.kalender.meineDienste).toHaveBeenCalledWith('r', expect.any(Date));
-    expect((await t.app.request('/api/me/dienste')).status).toBe(401);
+    expect((await t.app.request('/api/me/dienste', json('reader-token', 'GET'))).status).toBe(404);
+  });
+
+  describe('Teilnahme und Event-Abo', () => {
+    it('lets everyone change only their own participation, with a profile row', async () => {
+      const t = makeApp();
+      const put = (token: string, body: unknown) =>
+        t.app.request('/api/kalender/events/e1/teilnahme', json(token, 'PUT', body));
+      expect((await put('reader-token', { teilnahme: false })).status).toBe(400);
+      mitProfil(t);
+      const res = await put('reader-token', { teilnahme: false });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ teilnahme: false });
+      expect(t.kalender.teilnahmeSetzen).toHaveBeenCalledWith('e1', 'r', false);
+      expect((await put('reader-token', { teilnahme: 'ja' })).status).toBe(400);
+      expect(
+        (await t.app.request('/api/kalender/events/e1/teilnahme', { method: 'PUT' })).status,
+      ).toBe(401);
+    });
+
+    it('maps missing events and conflicts', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const put = () =>
+        t.app.request(
+          '/api/kalender/events/e1/teilnahme',
+          json('reader-token', 'PUT', { teilnahme: true }),
+        );
+      t.kalender.teilnahmeSetzen.mockResolvedValueOnce(undefined);
+      expect((await put()).status).toBe(404);
+      t.kalender.teilnahmeSetzen.mockRejectedValueOnce(
+        new KalenderKonflikt('Das Event ist abgesagt.'),
+      );
+      expect((await put()).status).toBe(409);
+    });
+
+    it('adds and removes an event in the own feed', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const put = await t.app.request('/api/kalender/events/e1/abo', json('reader-token', 'PUT'));
+      expect(await put.json()).toEqual({ imAbo: true });
+      expect(t.kalender.eventAboSetzen).toHaveBeenLastCalledWith('e1', 'r', true);
+      const del = await t.app.request(
+        '/api/kalender/events/e1/abo',
+        json('reader-token', 'DELETE'),
+      );
+      expect(await del.json()).toEqual({ imAbo: false });
+      expect(t.kalender.eventAboSetzen).toHaveBeenLastCalledWith('e1', 'r', false);
+      t.kalender.eventAboSetzen.mockResolvedValueOnce(false);
+      expect(
+        (await t.app.request('/api/kalender/events/x/abo', json('reader-token', 'DELETE'))).status,
+      ).toBe(404);
+    });
+
+    it('passes the caller to the event reads and adds usernames to the list', async () => {
+      const t = makeApp();
+      t.userAdmin.konten.mockResolvedValue(new Map([['m2', { username: 'max' } as Konto]]));
+      const einEvent = {
+        id: 'e1',
+        titel: 'Plenum',
+        beschreibung: null,
+        kategorie: null,
+        beginn: eventBody.beginn,
+        ende: eventBody.ende,
+        abgesagt: false,
+        serie: null,
+        bewertung: 'gruen' as const,
+        schichten: [],
+        teilnahmeStatus: ['mitglied' as const],
+        teilnahmen: [
+          {
+            person: {
+              art: 'mitglied' as const,
+              sub: 'm2',
+              username: null,
+              vorname: 'Max',
+              nachname: 'Muster',
+              status: 'mitglied' as const,
+              anrede: 'neutral' as const,
+            },
+            zustand: 'teilnahme' as const,
+            eingeladen: false,
+          },
+        ],
+        ichNehmeTeil: true,
+        imAbo: false,
+      };
+      t.kalender.event.mockResolvedValueOnce(einEvent);
+      const res = await t.app.request('/api/kalender/events/e1', json('reader-token', 'GET'));
+      expect(t.kalender.event).toHaveBeenCalledWith('e1', 'r');
+      expect(((await res.json()) as typeof einEvent).teilnahmen[0]!.person.username).toBe('max');
+      await t.app.request(
+        '/api/kalender/events?von=2026-06-01&bis=2026-06-30',
+        json('reader-token', 'GET'),
+      );
+      expect(t.kalender.events).toHaveBeenCalledWith('2026-06-01', '2026-06-30', 'r');
+    });
+
+    it('accepts the circle and invitations on create', async () => {
+      const t = makeApp();
+      const res = await t.app.request(
+        '/api/kalender/events',
+        json('vorstand-token', 'POST', {
+          ...eventBody,
+          teilnahmeStatus: ['em'],
+          eingeladen: ['m2'],
+        }),
+      );
+      expect(res.status).toBe(201);
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({ teilnahmeStatus: ['em'], eingeladen: ['m2'] }),
+        expect.any(String),
+      );
+      expect(
+        (
+          await t.app.request(
+            '/api/kalender/events',
+            json('vorstand-token', 'POST', { ...eventBody, teilnahmeStatus: ['chef'] }),
+          )
+        ).status,
+      ).toBe(400);
+    });
   });
 
   describe('push notifications', () => {
@@ -2867,6 +3015,10 @@ describe('kalender', () => {
       serie: null,
       bewertung: 'gruen' as const,
       schichten: [],
+      teilnahmeStatus: null,
+      teilnahmen: [],
+      ichNehmeTeil: null,
+      imAbo: false,
     });
 
     it("serves the public key and manages the caller's subscriptions", async () => {
@@ -2957,6 +3109,7 @@ describe('kalender', () => {
         'kalender.erinnerung',
         'kalender.fehlende_dienste',
         'kalender.aenderung',
+        'kalender.teilnahme_erinnerung',
       ]);
       expect(anfang[0]).toMatchObject({
         aktiv: true,
@@ -3029,7 +3182,11 @@ describe('kalender', () => {
           keys: { p256dh: 'p', auth: 'a' },
         });
       }
-      t.kalender.absageSetzen.mockResolvedValueOnce({ geaendert: true, mitgliedSubs: ['r', 'v'] });
+      t.kalender.absageSetzen.mockResolvedValueOnce({
+        geaendert: true,
+        mitgliedSubs: ['r', 'v'],
+        teilnehmerSubs: [],
+      });
       t.kalender.event.mockResolvedValueOnce(ereignis('e1', '2026-10-23T18:00:00.000Z'));
       const res = await t.app.request(
         '/api/kalender/events/e1/absage',
@@ -3042,7 +3199,11 @@ describe('kalender', () => {
 
       // Unchanged state: nothing is sent.
       t.gesendet.length = 0;
-      t.kalender.absageSetzen.mockResolvedValueOnce({ geaendert: false, mitgliedSubs: ['r'] });
+      t.kalender.absageSetzen.mockResolvedValueOnce({
+        geaendert: false,
+        mitgliedSubs: ['r'],
+        teilnehmerSubs: [],
+      });
       await t.app.request(
         '/api/kalender/events/e1/absage',
         json('vorstand-token', 'PUT', { abgesagt: true }),
@@ -3061,6 +3222,7 @@ describe('kalender', () => {
         geaenderteSchichten: [],
         entfernteDienste: [],
         mitgliedSubs: ['r', 'v'],
+        teilnehmerSubs: [],
       });
       t.kalender.event.mockResolvedValueOnce(ereignis('e1', '2026-10-23T18:00:00.000Z'));
       t.pushErgebnis.wert = 'fehler';

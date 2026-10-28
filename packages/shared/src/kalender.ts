@@ -3,7 +3,7 @@ import type { Anrede } from './anrede';
 import { beschreibung, eindeutig, idSchema, name, zeitpunktSchema } from './bausteine';
 import { datumAnzeigen } from './datum';
 import { datumSchema } from './schemas';
-import type { MitgliedStatus } from './status';
+import { MITGLIED_STATI, type MitgliedStatus } from './status';
 
 // ---------------------------------------------------------------------------------------------
 // Europe/Berlin date-time helpers (Intl based, no dependencies)
@@ -144,6 +144,55 @@ export type SchichtArt = (typeof SCHICHT_ARTEN)[number];
 export const schichtArtSchema = z.enum(SCHICHT_ARTEN);
 
 export const KOMMENTAR_MAX = 200;
+
+// ---------------------------------------------------------------------------------------------
+// Teilnahme (participation in an event, not a Dienst)
+// ---------------------------------------------------------------------------------------------
+
+export const TEILNAHME_ANTWORTEN = ['teilnahme', 'absage'] as const;
+export type TeilnahmeAntwort = (typeof TEILNAHME_ANTWORTEN)[number];
+
+/** Participation circle of an event: null = no participation at all, [] = only invited / self-signed people. */
+export type TeilnahmeKreis = MitgliedStatus[] | null;
+
+/** Stored form of a circle (`events.teilnahme_status`): comma-separated statuses, '' for the empty circle. */
+export function teilnahmeKreisKodieren(kreis: readonly MitgliedStatus[] | null): string | null {
+  return kreis === null ? null : MITGLIED_STATI.filter((s) => kreis.includes(s)).join(',');
+}
+
+/** Inverse of `teilnahmeKreisKodieren`; unknown statuses are ignored. */
+export function teilnahmeKreisLesen(gespeichert: string | null | undefined): TeilnahmeKreis {
+  if (gespeichert === null || gespeichert === undefined) return null;
+  return MITGLIED_STATI.filter((s) => gespeichert.split(',').includes(s));
+}
+
+/**
+ * State of a member for an event: `teilnahme` / `absage`, or null when the event has no relation to
+ * them (no circle, or neither in the circle nor invited nor own answer). In the circle, invited or
+ * having signed up means taking part, unless the member declined (`absage`). The circle is evaluated
+ * dynamically, so members who join later with a matching status are included automatically.
+ */
+export function teilnahmeZustand(p: {
+  kreis: readonly MitgliedStatus[] | null;
+  status: MitgliedStatus;
+  eingeladen: boolean;
+  antwort: TeilnahmeAntwort | null;
+}): TeilnahmeAntwort | null {
+  if (p.kreis === null) return null;
+  const bezug = p.kreis.includes(p.status) || p.eingeladen || p.antwort === 'teilnahme';
+  if (!bezug && p.antwort === null) return null;
+  return p.antwort === 'absage' ? 'absage' : 'teilnahme';
+}
+
+/** Whether the member takes part in the event (see `teilnahmeZustand`). */
+export const teilnehmend = (p: Parameters<typeof teilnahmeZustand>[0]): boolean =>
+  teilnahmeZustand(p) === 'teilnahme';
+
+const teilnahmeStatusSchema = z
+  .array(z.enum(MITGLIED_STATI))
+  .refine((a) => eindeutig(a), { message: 'Doppelte Einträge.' })
+  .nullish()
+  .transform((v) => v ?? null);
 
 const zeitSchema = z
   .string()
@@ -296,6 +345,15 @@ export const eventEingabeSchema = z
     beginn: zeitpunktSchema,
     ende: zeitpunktSchema,
     schichten: z.array(schichtEingabeSchema),
+    /** Participation circle (null = none); see `TeilnahmeKreis`. */
+    teilnahmeStatus: teilnahmeStatusSchema,
+    /** Subs of members invited individually. */
+    eingeladen: z
+      .array(idSchema('Ungültiges Mitglied.'))
+      .max(500, 'Zu viele Personen.')
+      .refine((a) => eindeutig(a), { message: 'Doppelte Einträge.' })
+      .optional()
+      .transform((v) => v ?? []),
     /** Confirms that Schichten or Bedarfe with Dienste may be removed. */
     bestaetigt: z.boolean().optional(),
     /** Detaches the event from its series (a Barabend replaced by another event); only on update. */
@@ -359,6 +417,7 @@ export const vorlageEingabeSchema = z.object({
   beginnZeit: zeitSchema,
   endeZeit: zeitSchema,
   schichten: z.array(vorlageSchichtSchema),
+  teilnahmeStatus: teilnahmeStatusSchema,
   archiviert: z.boolean().optional(),
 });
 export type VorlageEingabe = z.infer<typeof vorlageEingabeSchema>;
@@ -457,6 +516,14 @@ export interface SchichtDto {
   dienste: DienstDto[];
 }
 
+/** A member with a relation to an event's participation (in the circle, invited or answered). */
+export interface TeilnahmeDto {
+  person: Extract<DienstPerson, { art: 'mitglied' }>;
+  zustand: TeilnahmeAntwort;
+  /** Invited individually by a manager. */
+  eingeladen: boolean;
+}
+
 export interface EventDto {
   id: string;
   titel: string;
@@ -469,6 +536,14 @@ export interface EventDto {
   serie: string | null;
   schichten: SchichtDto[];
   bewertung: EventBewertung;
+  /** Participation circle; null = the event has no participation. */
+  teilnahmeStatus: TeilnahmeKreis;
+  /** Everybody with a relation to the participation, taking part or declined. */
+  teilnahmen: TeilnahmeDto[];
+  /** Whether the caller takes part; null without participation (or when the caller is unknown). */
+  ichNehmeTeil: boolean | null;
+  /** The caller added the event to their calendar feed. */
+  imAbo: boolean;
 }
 
 export interface VorlageDto extends VorlageEingabe {
@@ -632,6 +707,8 @@ export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe
     titel: vorlage.titel,
     beschreibung: vorlage.beschreibung,
     kategorieId: vorlage.kategorieId,
+    teilnahmeStatus: vorlage.teilnahmeStatus,
+    eingeladen: [],
     ...zeitspanne(datum, vorlage.beginnZeit, vorlage.endeZeit),
     schichten: vorlage.schichten.map((s): SchichtEingabe => {
       if (s.art === 'betrieb') {
@@ -774,8 +851,10 @@ export function statistikZeilen(
 // ---------------------------------------------------------------------------------------------
 
 export interface IcsTermin {
-  /** Dienst id; the UID becomes `dienst-<id>@c4-leipzig.de`. */
+  /** Dienst or event id; the UID becomes `<art>-<id>@c4-leipzig.de`. */
   id: string;
+  /** Kind of entry; defaults to `dienst`. */
+  art?: 'dienst' | 'event';
   titel: string;
   beschreibung?: string | null;
   /** ISO instants. */
@@ -842,7 +921,7 @@ export function icsErzeugen(termine: readonly IcsTermin[], optionen: IcsOptionen
   for (const t of termine) {
     zeilen.push(
       'BEGIN:VEVENT',
-      `UID:dienst-${t.id}@c4-leipzig.de`,
+      `UID:${t.art ?? 'dienst'}-${t.id}@c4-leipzig.de`,
       `DTSTAMP:${stempel}`,
       `DTSTART:${icsZeit(new Date(t.beginn))}`,
       `DTEND:${icsZeit(new Date(t.ende))}`,
@@ -858,7 +937,7 @@ export function icsErzeugen(termine: readonly IcsTermin[], optionen: IcsOptionen
 }
 
 // ---------------------------------------------------------------------------------------------
-// Own Dienste as calendar entries (feed and downloads)
+// Own Dienste and events as calendar entries (feed)
 // ---------------------------------------------------------------------------------------------
 
 /** One of the caller's own Dienste with what the calendar entry needs. */
@@ -899,6 +978,37 @@ export function dienstTermine(
       ende: d.ende,
       url,
       abgesagt: d.abgesagt,
+    };
+  });
+}
+
+/** An event in the caller's feed: they take part in it or added it to their calendar. */
+export interface MeinEventDto {
+  id: string;
+  titel: string;
+  beschreibung: string | null;
+  /** ISO instants of the whole event. */
+  beginn: string;
+  ende: string;
+  abgesagt: boolean;
+}
+
+/** Turns events into ICS entries (whole event time); `ursprung` enables the event link. */
+export function eventTermine(
+  eventListe: readonly MeinEventDto[],
+  ursprung?: string | null,
+): IcsTermin[] {
+  return eventListe.map((e) => {
+    const url = ursprung ? `${ursprung}/app/kalender/events/${e.id}` : null;
+    return {
+      id: e.id,
+      art: 'event',
+      titel: e.titel,
+      beschreibung: [e.beschreibung, url].filter(Boolean).join('\n'),
+      beginn: e.beginn,
+      ende: e.ende,
+      url,
+      abgesagt: e.abgesagt,
     };
   });
 }

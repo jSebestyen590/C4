@@ -11,16 +11,14 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconCheck, IconChevronLeft, IconCopy, IconDownload } from '@tabler/icons-react';
+import { IconCheck, IconChevronLeft, IconCopy } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { datumBerlin } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { BestaetigenDialog } from '../BestaetigenDialog';
-import { dienstIcsHerunterladen } from '../kalenderIcs';
-import { fehlerAnzeigen, fehlerText } from '../warenApi';
-import { kalenderInvalidieren, useKalenderToken, useMeineDienste } from '../kalenderDaten';
+import { fehlerAnzeigen } from '../warenApi';
+import { kalenderInvalidieren, useKalenderToken } from '../kalenderDaten';
 
 const feedUrl = (token: string) =>
   `${window.location.origin}/api/kalender/feed/${encodeURIComponent(token)}.ics`;
@@ -44,17 +42,15 @@ function KopierenButton({ wert, text }: Readonly<{ wert: string; text: string }>
   );
 }
 
-/** Subscribe to the own Dienste in a calendar app, or download them once as `.ics`. */
+/** Subscribe to the own Dienste and events in a calendar app. */
 export function KalenderMeinKalenderPage() {
   const api = useApi();
   const qc = useQueryClient();
   const vorhanden = useKalenderToken();
-  const meineDienste = useMeineDienste(false);
   // The plain token only exists right after creation; the server keeps just its hash.
   const [token, setToken] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [neuFragen, setNeuFragen] = useState(false);
-  const [ladeFehler, setLadeFehler] = useState<string | null>(null);
 
   const erzeugen = async () => {
     const res = await unwrap(await api.me['kalender-token'].$post());
@@ -73,20 +69,6 @@ export function KalenderMeinKalenderPage() {
     }
   };
 
-  const herunterladen = async () => {
-    setLadeFehler(null);
-    try {
-      const dienste = (await meineDienste.refetch({ throwOnError: true })).data ?? [];
-      if (dienste.length === 0) {
-        setLadeFehler('Du bist aktuell in keinen kommenden Diensten eingetragen.');
-        return;
-      }
-      dienstIcsHerunterladen(dienste, `dienste-${datumBerlin(new Date().toISOString())}.ics`);
-    } catch (e) {
-      setLadeFehler(fehlerText(e));
-    }
-  };
-
   return (
     <Stack maw={700} gap="md">
       <Anchor component={Link} to="/kalender" size="sm">
@@ -97,8 +79,10 @@ export function KalenderMeinKalenderPage() {
       </Anchor>
       <Title order={2}>Mein Kalender</Title>
       <Text>
-        Abonniere deine Dienste in deiner Kalender-App. Sie erscheinen dort automatisch, auch wenn
-        sich etwas ändert oder du dich austrägst. Im Abo stehen nur deine eigenen Dienste.
+        Abonniere deinen Kalender in deiner Kalender-App. Alles erscheint dort automatisch, auch
+        wenn sich etwas ändert oder du dich austrägst. Im Abo stehen deine eigenen Dienste, Events,
+        an denen du teilnimmst, und Events, die du auf der Event-Seite zu deinem Kalender-Abo
+        hinzugefügt hast.
       </Text>
       <Text size="sm" c="dimmed">
         Erinnerungen per Push stellst du unter{' '}
@@ -120,7 +104,7 @@ export function KalenderMeinKalenderPage() {
               <Alert color="green" title="Dein Abo-Link">
                 Kopiere den Link jetzt und füge ihn in deiner Kalender-App ein. Aus
                 Sicherheits­gründen wird er nur dieses eine Mal angezeigt. Wer den Link hat, sieht
-                deine Dienste, gib ihn also nicht weiter.
+                deinen Kalender, gib ihn also nicht weiter.
               </Alert>
               <TextInput
                 label="Link zum Abonnieren"
@@ -164,29 +148,6 @@ export function KalenderMeinKalenderPage() {
               </Button>
             </>
           )}
-        </Stack>
-      </Paper>
-
-      <Paper withBorder p="md" radius="md">
-        <Stack gap="sm">
-          <Title order={4}>Einmaliger Download</Title>
-          <Text>
-            Du kannst deine kommenden Dienste auch einmalig als Datei herunterladen und in deinen
-            Kalender importieren. Die Datei aktualisiert sich nicht.
-          </Text>
-          {ladeFehler && <Alert color="yellow">{ladeFehler}</Alert>}
-          <Button
-            variant="default"
-            leftSection={<IconDownload size={18} />}
-            h="auto"
-            mih={44}
-            py="xs"
-            styles={{ label: { whiteSpace: 'normal', textAlign: 'center' } }}
-            loading={meineDienste.isFetching}
-            onClick={() => void herunterladen()}
-          >
-            Alle kommenden Dienste als .ics herunterladen
-          </Button>
         </Stack>
       </Paper>
 

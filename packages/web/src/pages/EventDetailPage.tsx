@@ -14,7 +14,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBan,
-  IconCalendarPlus,
   IconChevronLeft,
   IconEdit,
   IconPlayerPlay,
@@ -27,7 +26,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  datumBerlin,
   schichtDetails,
   schichtBezeichnung,
   ueberlappendeSchichten,
@@ -51,7 +49,7 @@ import {
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
 import { zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
-import { dienstIcsHerunterladen } from '../kalenderIcs';
+import { EventAboButton, EventTeilnahme } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
 import { pruefen } from '../warenApi';
 
@@ -176,6 +174,8 @@ export function EventDetailPage() {
         </Alert>
       )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
+      <EventAboButton event={e} />
+      <EventTeilnahme event={e} />
       {ueberlappungen.length > 0 && (
         <Alert color="yellow" title="Überschneidung">
           {ueberlappungen.map(([a, b]) => (
@@ -279,35 +279,6 @@ export function EventDetailPage() {
                         {darfEntfernen(d) &&
                           (eigener ? (
                             <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                              <ActionIcon
-                                variant="light"
-                                size={44}
-                                aria-label="Zum Kalender hinzufügen"
-                                title="Zum Kalender hinzufügen"
-                                onClick={() =>
-                                  dienstIcsHerunterladen(
-                                    [
-                                      {
-                                        id: d.id,
-                                        eventId: e.id,
-                                        eventTitel: e.titel,
-                                        schichtArt: s.art,
-                                        dienstformName:
-                                          d.dienstformId === null
-                                            ? null
-                                            : (dienstformen.nachId.get(d.dienstformId)?.name ??
-                                              'Dienst'),
-                                        beginn: s.beginn,
-                                        ende: s.ende,
-                                        abgesagt: e.abgesagt,
-                                      },
-                                    ],
-                                    `dienst-${datumBerlin(s.beginn)}.ics`,
-                                  )
-                                }
-                              >
-                                <IconCalendarPlus size={20} />
-                              </ActionIcon>
                               <Button
                                 variant="light"
                                 color="red"

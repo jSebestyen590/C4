@@ -9,9 +9,15 @@ import {
   meldeEventAenderung,
   minutenText,
   registriereKalenderAufgaben,
+  teilnahmeErinnerungen,
   waehleErinnerung,
 } from './kalenderBenachrichtigungen';
-import type { ErinnerungsDienst, EventAenderung, KalenderStore } from './kalender';
+import type {
+  ErinnerungsDienst,
+  ErinnerungsTeilnahme,
+  EventAenderung,
+  KalenderStore,
+} from './kalender';
 
 function setup(mitglieder: { sub: string; status: MitgliedStatus }[]) {
   const fake = createFakeBenachrichtigungenStore(() => mitglieder);
@@ -285,6 +291,10 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   serie: null,
   schichten: [],
   bewertung: 'rot',
+  teilnahmeStatus: null,
+  teilnahmen: [],
+  ichNehmeTeil: null,
+  imAbo: false,
   ...patch,
 });
 
@@ -370,6 +380,54 @@ describe('waehleErinnerung', () => {
   });
 });
 
+describe('Teilnahme-Erinnerungen', () => {
+  const minutenVorher = (m: number) => new Date(new Date(BEGINN).getTime() - m * 60_000);
+  const teilnahme = (patch: Partial<ErinnerungsTeilnahme> = {}): ErinnerungsTeilnahme => ({
+    eventId: 'e1',
+    eventTitel: 'Plenum',
+    mitgliedSub: 'a',
+    beginn: BEGINN,
+    ...patch,
+  });
+  const store = (liste: ErinnerungsTeilnahme[]) => ({
+    erinnerungsTeilnahmen: async (von: Date, bis: Date) =>
+      liste.filter((d) => new Date(d.beginn) >= von && new Date(d.beginn) < bis),
+  });
+
+  it('reminds participants once, at the default of 60 minutes', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    const kalender = store([teilnahme()]);
+    await teilnahmeErinnerungen(t.b, kalender, minutenVorher(61));
+    expect(t.versendet).toHaveLength(0);
+    await teilnahmeErinnerungen(t.b, kalender, minutenVorher(60));
+    await teilnahmeErinnerungen(t.b, kalender, minutenVorher(30));
+    expect(t.versendet).toHaveLength(1);
+    expect(t.versendet[0]).toMatchObject({
+      titel: 'Plenum in 1 Stunde',
+      text: 'Du nimmst teil (Fr 20:00).',
+      url: '/app/kalender/events/e1',
+    });
+  });
+
+  it('follows the own setting and sends nothing to people who switched it off', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+    ]);
+    await t.abo('a');
+    await t.abo('b');
+    await t.store.einstellungSetzen('a', 'kalender.teilnahme_erinnerung', true, 15);
+    await t.store.einstellungSetzen('b', 'kalender.teilnahme_erinnerung', false, 60);
+    const kalender = store([teilnahme(), teilnahme({ mitgliedSub: 'b' })]);
+    await teilnahmeErinnerungen(t.b, kalender, minutenVorher(30));
+    expect(t.versendet).toHaveLength(0);
+    await teilnahmeErinnerungen(t.b, kalender, minutenVorher(15));
+    expect(t.versendet.map((v) => v.endpoint)).toEqual(['https://push.example/a-1']);
+    expect(t.versendet[0]!.titel).toBe('Plenum in 15 Minuten');
+  });
+});
+
 describe('registriereKalenderAufgaben', () => {
   it('hooks both tasks into the job runner', async () => {
     const t = setup([{ sub: 'a', status: 'mitglied' }]);
@@ -378,7 +436,11 @@ describe('registriereKalenderAufgaben', () => {
       events: async () => [event()],
       erinnerungen: async () => [1440],
       erinnerungsDienste: async () => [dienst()],
-    } satisfies Pick<KalenderStore, 'events' | 'erinnerungsDienste' | 'erinnerungen'>;
+      erinnerungsTeilnahmen: async () => [],
+    } satisfies Pick<
+      KalenderStore,
+      'events' | 'erinnerungsDienste' | 'erinnerungsTeilnahmen' | 'erinnerungen'
+    >;
     registriereKalenderAufgaben(t.b, store);
     await t.b.pushJob(new Date(new Date(BEGINN).getTime() - 20 * 60_000));
     expect(t.versendet.map((v) => v.titel).sort()).toEqual([
@@ -394,6 +456,7 @@ describe('Änderungen', () => {
     geaenderteSchichten: [],
     entfernteDienste: [],
     mitgliedSubs: [],
+    teilnehmerSubs: [],
   };
   const person = (sub: string) =>
     ({
@@ -422,6 +485,43 @@ describe('Änderungen', () => {
     expect(t.versendet.map((v) => v.endpoint)).toEqual(['https://push.example/a-1']);
     expect(t.versendet[0]).toMatchObject({ titel: 'Event verschoben' });
     expect(t.versendet[0]!.text).toContain('Fr, 23.10. um 20:00 Uhr');
+  });
+
+  it('tells participants about a moved event once, even with a Dienst', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+      { sub: 'actor', status: 'mitglied' },
+    ]);
+    for (const s of ['a', 'b', 'actor']) await t.abo(s);
+    await meldeEventAenderung(
+      t.b,
+      event(),
+      { ...keine, zeitGeaendert: true, mitgliedSubs: ['a'], teilnehmerSubs: ['a', 'b', 'actor'] },
+      'actor',
+    );
+    expect(t.versendet.map((v) => v.endpoint).sort()).toEqual([
+      'https://push.example/a-1',
+      'https://push.example/b-1',
+    ]);
+    // Changes without a time change do not bother participants.
+    t.versendet.length = 0;
+    await meldeEventAenderung(t.b, event(), { ...keine, teilnehmerSubs: ['a'] }, 'actor');
+    expect(t.versendet).toHaveLength(0);
+  });
+
+  it('tells participants about a cancellation without mentioning a Dienst', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+    ]);
+    await t.abo('a');
+    await t.abo('b');
+    await meldeAbsage(t.b, event(), true, ['a'], ['a', 'b'], 'actor');
+    const text = (sub: string) => t.versendet.find((v) => v.endpoint.endsWith(`${sub}-1`))!.text;
+    expect(text('a')).toContain('Dein Dienst entfällt');
+    expect(text('b')).toContain('wurde abgesagt.');
+    expect(text('b')).not.toContain('Dienst');
   });
 
   it('notifies about a changed Schicht and combines it with a removed Dienst', async () => {
@@ -497,7 +597,7 @@ describe('Änderungen', () => {
     await t.abo('a');
     await t.abo('b');
     await t.store.einstellungSetzen('b', 'kalender.aenderung', false, null);
-    await meldeAbsage(t.b, event(), false, ['a', 'b'], 'actor');
+    await meldeAbsage(t.b, event(), false, ['a', 'b'], [], 'actor');
     expect(t.versendet).toHaveLength(1);
     expect(t.versendet[0]).toMatchObject({ titel: 'Event findet statt' });
   });

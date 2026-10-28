@@ -35,6 +35,12 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     standardAktiv: true,
     minuten: null,
   },
+  {
+    key: 'kalender.teilnahme_erinnerung',
+    bereich: 'kalender',
+    standardAktiv: true,
+    minuten: { standard: 60, optionen: [15, 30, 60, 120, 1440] },
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];
