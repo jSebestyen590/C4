@@ -6,6 +6,7 @@ import {
   faelligeTage,
   monateDazu,
   registriereKalenderSerien,
+  serieSofortErzeugen,
   serienErzeugen,
 } from './kalenderSerien';
 import type { KalenderStore } from './kalender';
@@ -237,5 +238,38 @@ describe('registriereKalenderSerien', () => {
     await b.pushJob(new Date(MI.getTime() + 60_000));
     expect(f.events.size).toBeGreaterThan(0);
     err.mockRestore();
+  });
+});
+
+describe('serieSofortErzeugen', () => {
+  it('creates at most 40 days, then the job continues', async () => {
+    const f = fakeStore();
+    expect(await serieSofortErzeugen(f.store, 'barabend', MI)).toBe(40);
+    expect(f.events.size).toBe(40);
+    expect(f.events.get('2026-10-28')).toMatchObject({ titel: 'Barabend' });
+    expect(await serienErzeugen(f.store, MI, 1000)).toEqual({ erzeugt: 117, rest: false });
+  });
+
+  it('stops when the time budget is used up', async () => {
+    const f = fakeStore();
+    let t = 0;
+    const uhr = () => (t += 1000);
+    expect(await serieSofortErzeugen(f.store, 'barabend', MI, { budgetMs: 5000, uhr })).toBe(4);
+  });
+
+  it('is idempotent and ignores inactive series and unknown ids', async () => {
+    const f = fakeStore();
+    await serieSofortErzeugen(f.store, 'barabend', MI, { maxTage: 5 });
+    expect(await serieSofortErzeugen(f.store, 'barabend', MI, { maxTage: 5 })).toBe(5);
+    expect(f.events.size).toBe(10);
+    expect(await serieSofortErzeugen(f.store, 'gibts-nicht', MI)).toBe(0);
+    const aus = fakeStore(vorlage(), [{ ...barabend, aktiv: false }]);
+    expect(await serieSofortErzeugen(aus.store, 'barabend', MI)).toBe(0);
+  });
+
+  it('creates nothing when the Vorlage is missing', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const f = fakeStore(null);
+    expect(await serieSofortErzeugen(f.store, 'barabend', MI)).toBe(0);
   });
 });

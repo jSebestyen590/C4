@@ -70,3 +70,21 @@ export function erinnerungText(minuten: number): string {
   const anzahl = minuten / einheit.minuten;
   return `${anzahl} ${anzahl === 1 ? einheit.eins : einheit.viele} vorher`;
 }
+
+const MONAT_MUSTER = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/** Parses the `monat` query value `YYYY-MM` into year and 0-based month; `null` if absent or invalid. */
+export function monatAusSuche(wert: string | null): { jahr: number; monat: number } | null {
+  const m = MONAT_MUSTER.exec(wert ?? '');
+  return m ? { jahr: Number(m[1]), monat: Number(m[2]) - 1 } : null;
+}
+
+/** `YYYY-MM` for the `monat` query value. */
+export const monatSuche = (jahr: number, monat: number): string =>
+  `${jahr}-${String(monat + 1).padStart(2, '0')}`;
+
+/** Link to the calendar showing the month of a date (`YYYY-MM-DD`); plain `/kalender` without a valid date. */
+export const kalenderLink = (datum: string | null | undefined): string => {
+  const monat = datum?.slice(0, 7) ?? '';
+  return MONAT_MUSTER.test(monat) ? `/kalender?monat=${monat}` : '/kalender';
+};

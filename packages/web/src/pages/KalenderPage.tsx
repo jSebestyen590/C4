@@ -27,7 +27,7 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   datumAnzeigen,
   datumBerlin,
@@ -52,7 +52,14 @@ import {
 } from '../KalenderAnzeige';
 import { AMPEL_LABELS } from '../i18n';
 import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
-import { monatAnzeigen, monatsGrenzen, monatsRaster, zeitraumAnzeigen } from '../kalenderZeit';
+import {
+  monatAnzeigen,
+  monatAusSuche,
+  monatsGrenzen,
+  monatsRaster,
+  monatSuche,
+  zeitraumAnzeigen,
+} from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 
 const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -554,10 +561,16 @@ export function KalenderPage() {
   const { can } = useAuth();
   const eigeneSub = useEigeneSub();
   const heute = heuteBerlin();
-  const [monatState, setMonat] = useState({
-    jahr: Number(heute.slice(0, 4)),
-    monat: Number(heute.slice(5, 7)) - 1,
-  });
+  // The month lives in the URL (`?monat=YYYY-MM`, absent = current month), so Back from an event returns to it.
+  const [suche, setSuche] = useSearchParams();
+  const aktuell = { jahr: Number(heute.slice(0, 4)), monat: Number(heute.slice(5, 7)) - 1 };
+  const monatState = monatAusSuche(suche.get('monat')) ?? aktuell;
+  const setMonat = (ziel: { jahr: number; monat: number }) => {
+    const next = new URLSearchParams(suche);
+    if (ziel.jahr === aktuell.jahr && ziel.monat === aktuell.monat) next.delete('monat');
+    else next.set('monat', monatSuche(ziel.jahr, ziel.monat));
+    setSuche(next, { replace: true });
+  };
   const [ansicht, setAnsicht] = useState<Ansicht>(ansichtLesen);
   const [nurFehlend, setNurFehlend] = useState(false);
   const [nurMeine, setNurMeine] = useState(false);
@@ -650,14 +663,7 @@ export function KalenderPage() {
           <Text fw={700} size="lg" ta="center">
             {monatAnzeigen(jahr, monat)}
           </Text>
-          <Anchor
-            component="button"
-            type="button"
-            size="sm"
-            onClick={() =>
-              setMonat({ jahr: Number(heute.slice(0, 4)), monat: Number(heute.slice(5, 7)) - 1 })
-            }
-          >
+          <Anchor component="button" type="button" size="sm" onClick={() => setMonat(aktuell)}>
             Heute
           </Anchor>
         </Stack>

@@ -37,6 +37,7 @@ import {
   type TeilnahmeKreis,
   type VorlageDto,
 } from '@c4/shared';
+import { kalenderLink } from '../kalenderZeit';
 import { useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
 import {
@@ -366,7 +367,7 @@ function Formular({
         <Button
           variant="default"
           component={Link}
-          to={eventId ? `/kalender/events/${eventId}` : '/kalender'}
+          to={eventId ? `/kalender/events/${eventId}` : kalenderLink(werte.datum)}
         >
           Abbrechen
         </Button>
@@ -544,6 +545,7 @@ function NeuesEvent({
 /** `/kalender/events/neu` and `/kalender/events/:id/bearbeiten`. */
 export function EventFormularPage() {
   const { id } = useParams();
+  const [suche] = useSearchParams();
   const event = useKalenderEvent(id);
   const dienstformen = useDienstformen();
   const kategorien = useEventKategorien();
@@ -552,7 +554,11 @@ export function EventFormularPage() {
   const fehler = event.isError || dienstformen.isError || kategorien.isError;
   return (
     <Stack maw={700}>
-      <Anchor component={Link} to={id ? `/kalender/events/${id}` : '/kalender'} size="sm">
+      <Anchor
+        component={Link}
+        to={id ? `/kalender/events/${id}` : kalenderLink(suche.get('datum'))}
+        size="sm"
+      >
         <Group gap={4} wrap="nowrap">
           <IconChevronLeft size={16} />
           {id ? 'Zurück zum Event' : 'Zurück zum Kalender'}

@@ -2884,6 +2884,67 @@ describe('kalender', () => {
       expect(t.kalender.serieAnlegen).toHaveBeenCalledOnce();
     });
 
+    it('creates the due events right away and never fails the save because of it', async () => {
+      const t = makeApp();
+      t.kalender.serien.mockResolvedValue([
+        {
+          id: 'plenum',
+          name: 'Plenum',
+          vorlageId: 'v1',
+          regel: 'woechentlich',
+          wochentage: [0, 1, 2, 3, 4, 5, 6],
+          wochen: [],
+          startDatum: '2020-01-01',
+          endDatum: null,
+          aktiv: true,
+        },
+      ]);
+      t.kalender.vorlagen.mockResolvedValue([
+        {
+          id: 'v1',
+          titel: 'Plenum',
+          beschreibung: null,
+          kategorieId: 'k1',
+          beginnZeit: '20:00',
+          endeZeit: '22:00',
+          teilnahmeStatus: null,
+          archiviert: false,
+          schichten: [],
+        },
+      ]);
+      const post = await t.app.request(
+        '/api/kalender/serien',
+        json('vorstand-token', 'POST', serie),
+      );
+      expect(post.status).toBe(201);
+      expect(await post.json()).toEqual({ id: 'plenum', erzeugt: 40 });
+      expect(t.kalender.serienTerminAnlegen).toHaveBeenCalledTimes(40);
+      const put = await t.app.request(
+        '/api/kalender/serien/plenum',
+        json('vorstand-token', 'PUT', serie),
+      );
+      expect(await put.json()).toMatchObject({ ok: true, erzeugt: 40 });
+      const an = await t.app.request(
+        '/api/kalender/serien/plenum/aktiv',
+        json('vorstand-token', 'PUT', { aktiv: true }),
+      );
+      expect(await an.json()).toEqual({ aktiv: true, erzeugt: 40 });
+      const aus = await t.app.request(
+        '/api/kalender/serien/plenum/aktiv',
+        json('vorstand-token', 'PUT', { aktiv: false }),
+      );
+      expect(await aus.json()).toEqual({ aktiv: false, erzeugt: 0 });
+      // A failing generation is logged and the save still succeeds.
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      t.kalender.serien.mockRejectedValue(new Error('db down'));
+      const kaputt = await t.app.request(
+        '/api/kalender/serien',
+        json('vorstand-token', 'POST', serie),
+      );
+      expect(kaputt.status).toBe(201);
+      expect(await kaputt.json()).toEqual({ id: 'plenum', erzeugt: 0 });
+    });
+
     it('asks (409 with counts) before changing, then applies either variant', async () => {
       const t = makeApp();
       t.kalender.serieAktualisieren.mockRejectedValueOnce(new SerieBetroffen(5, 2));

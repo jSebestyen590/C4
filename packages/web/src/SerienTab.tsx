@@ -122,6 +122,9 @@ function WahlButtons<T extends number>({
   );
 }
 
+const erzeugtText = (text: string, n: number) =>
+  n > 0 ? `${text} ${n} ${n === 1 ? 'Termin' : 'Termine'} angelegt.` : text;
+
 type Nachfrage = {
   art: 'speichern' | 'aktiv' | 'loeschen';
   serie: SerieListeDto;
@@ -152,7 +155,7 @@ export function SerienTab() {
     serie: SerieListeDto,
     werte: SerieWerte | undefined,
     aufruf: () => Promise<Response>,
-  ): Promise<boolean> => {
+  ): Promise<{ erzeugt: number } | null> => {
     const res = await aufruf();
     if (res.status === 409) {
       const body = (await res.clone().json()) as Partial<SerieBetroffenDto>;
@@ -167,12 +170,13 @@ export function SerienTab() {
             angepasst: body.angepasst ?? 0,
           },
         });
-        return false;
+        return null;
       }
     }
     await pruefen(res);
     await kalenderInvalidieren(qc);
-    return true;
+    const body = (await res.json().catch(() => null)) as { erzeugt?: number } | null;
+    return { erzeugt: body?.erzeugt ?? 0 };
   };
 
   const speichern = async (
@@ -199,14 +203,19 @@ export function SerienTab() {
               }) as Promise<Response>,
           )
         : await (async () => {
-            await pruefen(await api.kalender.serien.$post({ json }));
+            const res = await api.kalender.serien.$post({ json });
+            await pruefen(res);
             await kalenderInvalidieren(qc);
-            return true;
+            const body = (await res.json()) as { erzeugt?: number };
+            return { erzeugt: body.erzeugt ?? 0 };
           })();
       if (fertig) {
         setBearbeiten(null);
         setNachfrage(null);
-        notifications.show({ color: 'green', message: 'Die Serie wurde gespeichert.' });
+        notifications.show({
+          color: 'green',
+          message: erzeugtText('Die Serie wurde gespeichert.', fertig.erzeugt),
+        });
       }
     } catch (e) {
       setNachfrage(null);
@@ -232,7 +241,14 @@ export function SerienTab() {
             json: { aktiv, ...(bestehende && { bestehende }) },
           }) as Promise<Response>,
       );
-      if (fertig) setNachfrage(null);
+      if (fertig) {
+        setNachfrage(null);
+        if (aktiv && fertig.erzeugt > 0)
+          notifications.show({
+            color: 'green',
+            message: erzeugtText('Die Serie ist aktiv.', fertig.erzeugt),
+          });
+      }
     } catch (e) {
       setNachfrage(null);
       fehlerAnzeigen(e);

@@ -102,7 +102,7 @@ import {
   type KalenderStore,
 } from './kalender';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
-import { serienMarkeFreigeben } from './kalenderSerien';
+import { serieSofortErzeugen, serienMarkeFreigeben } from './kalenderSerien';
 import {
   meldeAbsage,
   meldeDienstEntfernt,
@@ -331,6 +331,16 @@ export function createApp(deps: AppDeps) {
     if (err instanceof KalenderUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof KalenderKonflikt) throw new HTTPException(409, { message: err.message });
     throw err;
+  };
+
+  /** Creates the due events of a just saved series in the request; never fails the save. */
+  const serieSofort = async (id: string): Promise<number> => {
+    try {
+      return await serieSofortErzeugen(deps.kalender, id);
+    } catch (err) {
+      console.error(`Series ${id}: immediate event creation failed`, err);
+      return 0;
+    }
   };
 
   /** Runs a series change; a change that affects future events answers 409 with the counts. */
@@ -1862,7 +1872,7 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const id = await deps.kalender.serieAnlegen(c.req.valid('json')).catch(kalenderFehler);
           await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
-          return c.json({ id }, 201);
+          return c.json({ id, erzeugt: await serieSofort(id) }, 201);
         },
       )
       .put(
@@ -1875,7 +1885,7 @@ export function createApp(deps: AppDeps) {
           return (
             (await serienAenderung(c, () =>
               deps.kalender.serieAktualisieren(c.req.param('id'), daten, bestehende),
-            )) ?? c.json({ ok: true })
+            )) ?? c.json({ ok: true, erzeugt: await serieSofort(c.req.param('id')) })
           );
         },
       )
@@ -1889,7 +1899,7 @@ export function createApp(deps: AppDeps) {
           return (
             (await serienAenderung(c, () =>
               deps.kalender.serieAktivSetzen(c.req.param('id'), aktiv, bestehende),
-            )) ?? c.json({ aktiv })
+            )) ?? c.json({ aktiv, erzeugt: aktiv ? await serieSofort(c.req.param('id')) : 0 })
           );
         },
       )

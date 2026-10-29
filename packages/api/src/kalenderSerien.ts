@@ -78,6 +78,40 @@ export async function serienErzeugen(
   return { erzeugt, rest: false };
 }
 
+/** Days handled synchronously when a series is saved (Lambda timeout is 15 s, one transaction per event). */
+export const MAX_TAGE_SOFORT = 40;
+/** Time budget in ms for the synchronous part of saving a series. */
+export const BUDGET_SOFORT_MS = 10_000;
+
+/**
+ * Creates the due events of one series right away (after saving it), at most `maxTage` days and until
+ * `budgetMs` has passed; the job creates the rest. Returns the number of created events.
+ */
+export async function serieSofortErzeugen(
+  kalender: SerienStore,
+  serieId: string,
+  jetzt: Date = new Date(),
+  { maxTage = MAX_TAGE_SOFORT, budgetMs = BUDGET_SOFORT_MS, uhr = Date.now } = {},
+): Promise<number> {
+  const start = uhr();
+  const serie = (await kalender.serien()).find((s) => s.id === serieId);
+  if (!serie?.aktiv) return 0;
+  const vorlage = (await kalender.vorlagen(false)).find((v) => v.id === serie.vorlageId);
+  if (!vorlage) {
+    console.error(`Series ${serie.id}: Vorlage ${serie.vorlageId} is missing or archived`);
+    return 0;
+  }
+  const kategorie = (await kalender.kategorien(true)).find((k) => k.id === vorlage.kategorieId);
+  const vorhanden = new Set(await kalender.serienTage(serie.id));
+  let erzeugt = 0;
+  for (const datum of faelligeTage(serie, heuteBerlin(jetzt), vorhanden).slice(0, maxTage)) {
+    if (uhr() - start >= budgetMs) break;
+    if (await kalender.serienTerminAnlegen(serie.id, datum, ausVorlage(vorlage, datum, kategorie)))
+      erzeugt += 1;
+  }
+  return erzeugt;
+}
+
 const markeSchluessel = (jetzt: Date) => `kalender.serien:${heuteBerlin(jetzt)}`;
 
 /** Lets the job run again today, e.g. after a series was created or changed, so new days appear soon. */

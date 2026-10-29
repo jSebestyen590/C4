@@ -26,6 +26,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  datumBerlin,
   schichtDetails,
   schichtBezeichnung,
   ueberlappendeSchichten,
@@ -48,7 +49,7 @@ import {
   personAnzeigename,
 } from '../KalenderAnzeige';
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
-import { zeitraumAnzeigen } from '../kalenderZeit';
+import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 import { EventAboButton, EventTeilnahme } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
@@ -74,7 +75,11 @@ export function EventDetailPage() {
   const verwalten = can('events:verwalten');
 
   const rueckweg = (
-    <Anchor component={Link} to="/kalender" size="sm">
+    <Anchor
+      component={Link}
+      to={kalenderLink(event.data ? datumBerlin(event.data.beginn) : null)}
+      size="sm"
+    >
       <Group gap={4} wrap="nowrap">
         <IconChevronLeft size={16} />
         Zurück zum Kalender
@@ -409,7 +414,7 @@ export function EventDetailPage() {
           onClose={() => setDialog(null)}
           onBestaetigt={async () => {
             await pruefen(await api.kalender.events[':id'].$delete({ param: { id: e.id } }));
-            void navigate('/kalender', { replace: true });
+            void navigate(kalenderLink(datumBerlin(e.beginn)), { replace: true });
             await kalenderInvalidieren(qc);
           }}
         >
