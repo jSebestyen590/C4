@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   ausVorlage,
-  barabendErsetzen,
+  serieEventErsetzen,
   berlinZuUtc,
   datumBerlin,
   betriebDatum,
@@ -67,6 +67,7 @@ import {
   useEventKategorien,
   useKalenderEvent,
   useKalenderEvents,
+  useSerien,
   useVorlagen,
 } from '../kalenderDaten';
 import { ApiFehler, fehlerText, pruefen } from '../warenApi';
@@ -213,13 +214,16 @@ function Formular({
   anfang,
   eventId,
   ersetzeSerie = false,
+  serieName,
   dienstformen,
   kategorien,
 }: Readonly<{
   anfang: EventWerte;
   eventId?: string;
-  /** Saving detaches the (generated) event from its series, e.g. a Barabend replaced by another event. */
+  /** Saving detaches the (generated) event from its series, e.g. a planned event replaced by another event. */
   ersetzeSerie?: boolean;
+  /** Name of the series the replaced event belonged to. */
+  serieName?: string;
   dienstformen: DienstformDto[];
   kategorien: EventKategorieDto[];
 }>) {
@@ -288,7 +292,8 @@ function Formular({
     <Stack>
       {ersetzeSerie && (
         <Alert color="blue">
-          Dieses Event ersetzt den Barabend an diesem Tag. Eingetragene Dienste bleiben erhalten.
+          Dieses Event ersetzt {serieName ? `„${serieName}“` : 'das Serien-Event'} an diesem Tag.
+          Eingetragene Dienste bleiben erhalten.
         </Alert>
       )}
       <KopfFelder
@@ -451,14 +456,18 @@ function NeuesEvent({
     werte: EventWerte;
     ersetzt?: EventDto;
   } | null>(null);
-  const [barabendFrage, setBarabendFrage] = useState<EventDto | null>(null);
+  const [serienFrage, setSerienFrage] = useState<EventDto | null>(null);
   const tagesEvents = useKalenderEvents(datum, datum);
+  const serien = useSerien();
+  const serieNameVon = (e?: EventDto) =>
+    serien.data?.find((x) => x.id === e?.serie)?.name ?? 'Serie';
 
   if (anfang) {
     return (
       <Formular
         anfang={anfang.werte}
         {...(anfang.ersetzt && { eventId: anfang.ersetzt.id, ersetzeSerie: true })}
+        serieName={serieNameVon(anfang.ersetzt)}
         dienstformen={dienstformen}
         kategorien={kategorien}
       />
@@ -466,14 +475,14 @@ function NeuesEvent({
   }
   const vorlage: VorlageDto | undefined = vorlagen.data?.find((v) => v.id === vorlageId);
   const vorlageKategorie = kategorien.find((k) => k.id === vorlage?.kategorieId);
-  // A planned Barabend (generated series event) on that day can be replaced instead of doubled,
+  // A planned series event on that day can be replaced instead of doubled,
   // but only by a Dienste Vorlage: a participation event simply is added next to it.
-  const barabend =
+  const serienEvent =
     vorlage && vorlageKategorie?.art !== 'teilnahme'
       ? tagesEvents.data?.find(
           (e) =>
             e.serie !== null &&
-            e.serie !== vorlage.id &&
+            serien.data?.find((x) => x.id === e.serie)?.vorlageId !== vorlage.id &&
             !e.abgesagt &&
             datumBerlin(e.beginn) === datum,
         )
@@ -483,14 +492,14 @@ function NeuesEvent({
       werte: vorlage ? werteAus(ausVorlage(vorlage, datum, vorlageKategorie)) : leereWerte(datum),
     });
   const weiter = () => {
-    if (barabend) setBarabendFrage(barabend);
+    if (serienEvent) setSerienFrage(serienEvent);
     else neuAnlegen();
   };
   const ersetzen = () => {
-    if (!vorlage || !barabendFrage) return;
+    if (!vorlage || !serienFrage) return;
     setAnfang({
-      werte: werteAus(barabendErsetzen(barabendFrage, vorlage, vorlageKategorie)),
-      ersetzt: barabendFrage,
+      werte: werteAus(serieEventErsetzen(serienFrage, vorlage, vorlageKategorie)),
+      ersetzt: serienFrage,
     });
   };
   return (
@@ -510,20 +519,20 @@ function NeuesEvent({
       </Button>
 
       <Modal
-        opened={barabendFrage !== null}
-        onClose={() => setBarabendFrage(null)}
-        title="Barabend ersetzen?"
+        opened={serienFrage !== null}
+        onClose={() => setSerienFrage(null)}
+        title={`${serieNameVon(serienFrage ?? undefined)} ersetzen?`}
       >
         <Stack>
           <Text size="sm">
-            An diesem Tag ist ein Barabend eingeplant. Möchtest du ihn durch dieses Event ersetzen?
-            Eingetragene Dienste bleiben erhalten.
+            An diesem Tag ist „{serieNameVon(serienFrage ?? undefined)}“ eingeplant. Möchtest du das
+            Event durch dieses ersetzen? Eingetragene Dienste bleiben erhalten.
           </Text>
-          <Button onClick={ersetzen}>Barabend ersetzen</Button>
+          <Button onClick={ersetzen}>Ersetzen</Button>
           <Button variant="light" onClick={neuAnlegen}>
             Zusätzlich anlegen
           </Button>
-          <Button variant="default" onClick={() => setBarabendFrage(null)}>
+          <Button variant="default" onClick={() => setSerienFrage(null)}>
             Abbrechen
           </Button>
         </Stack>

@@ -6,6 +6,7 @@ import type {
   EventDto,
   EventKategorieDto,
   ExterneDto,
+  SerieListeDto,
   StatistikDto,
   VorlageDto,
 } from '@c4/shared';
@@ -115,5 +116,14 @@ export function useErinnerungen() {
   return useQuery({
     queryKey: [KALENDER_KEY, 'erinnerungen'],
     queryFn: async () => (await unwrap(await api.kalender.erinnerungen.$get())) as ErinnerungenDto,
+  });
+}
+
+/** All event series with the number of their future events. */
+export function useSerien() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [KALENDER_KEY, 'serien'],
+    queryFn: async () => (await unwrap(await api.kalender.serien.$get())) as SerieListeDto[],
   });
 }

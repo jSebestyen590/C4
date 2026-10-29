@@ -767,7 +767,7 @@ export function ausVorlage(
  * cannot be matched but still have Dienste stay as extra Schichten. Without a Betrieb Schicht in the
  * Vorlage the old Betrieb Schicht stays as an extra Schicht. The date is the Barabend's.
  */
-export function barabendErsetzen(
+export function serieEventErsetzen(
   barabend: Pick<EventDto, 'beginn' | 'schichten'>,
   vorlage: VorlageEingabe,
   kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'>,
@@ -1043,4 +1043,169 @@ export function eventTermine(
       abgesagt: e.abgesagt,
     };
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Series (recurring events generated from a Vorlage)
+// ---------------------------------------------------------------------------------------------
+
+export const SERIEN_REGELN = ['woechentlich', 'monatlich'] as const;
+export type SerienRegel = (typeof SERIEN_REGELN)[number];
+
+/** Weekdays in display order (Monday first); values are `Date#getUTCDay` numbers (0 = Sunday). */
+export const WOCHENTAGE_REIHENFOLGE = [1, 2, 3, 4, 5, 6, 0] as const;
+export const WOCHENTAG_KURZ: Record<number, string> = {
+  0: 'So',
+  1: 'Mo',
+  2: 'Di',
+  3: 'Mi',
+  4: 'Do',
+  5: 'Fr',
+  6: 'Sa',
+};
+/** Week numbers of a monthly series; -1 = the last such weekday of the month. */
+export const SERIEN_WOCHEN = [1, 2, 3, 4, -1] as const;
+
+const serieBasis = z.object({
+  name: name(),
+  vorlageId: idSchema('Bitte wähle eine Vorlage.'),
+  regel: z.enum(SERIEN_REGELN, 'Bitte wähle eine Regel.'),
+  wochentage: z
+    .array(z.number().int().min(0).max(6))
+    .min(1, 'Bitte wähle mindestens einen Wochentag.'),
+  /** Only used by `monatlich`; ignored (emptied) for `woechentlich`. */
+  wochen: z.array(z.number().int().min(-1).max(4)).default([]),
+  startDatum: datumSchema,
+  endDatum: datumSchema.nullish().transform((v) => v ?? null),
+});
+
+type SerieRoh = z.infer<typeof serieBasis>;
+
+const serieNormalisieren = <T extends SerieRoh>(v: T, ctx: z.RefinementCtx): T => {
+  if (v.regel === 'monatlich' && (v.wochen.length === 0 || v.wochen.includes(0))) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Bitte wähle mindestens eine Woche im Monat.',
+      path: ['wochen'],
+    });
+  }
+  if (v.endDatum !== null && v.endDatum < v.startDatum) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Das Ende darf nicht vor dem Start liegen.',
+      path: ['endDatum'],
+    });
+  }
+  const sortiert = (liste: number[]) => [...new Set(liste)].sort((a, b) => a - b);
+  return {
+    ...v,
+    wochentage: sortiert(v.wochentage),
+    wochen: v.regel === 'monatlich' ? sortiert(v.wochen) : [],
+  };
+};
+
+export const serieEingabeSchema = serieBasis.transform(serieNormalisieren);
+export type SerieEingabe = z.output<typeof serieEingabeSchema>;
+
+/** What to do with the future events of a series that were generated before a change. */
+export const SERIEN_BESTEHENDE = ['anpassen', 'behalten'] as const;
+export type SerienBestehende = (typeof SERIEN_BESTEHENDE)[number];
+export const serienBestehendeSchema = z.enum(SERIEN_BESTEHENDE);
+
+export const serieAendernSchema = serieBasis
+  .extend({ bestehende: serienBestehendeSchema.optional() })
+  .transform(serieNormalisieren);
+
+export const serieAktivSchema = z.object({
+  aktiv: z.boolean(),
+  bestehende: serienBestehendeSchema.optional(),
+});
+
+export interface SerieDto {
+  /** Slug of the first name, fixed when the series is renamed; stored in `events.serie`. */
+  id: string;
+  name: string;
+  vorlageId: string;
+  regel: SerienRegel;
+  wochentage: number[];
+  wochen: number[];
+  startDatum: string;
+  endDatum: string | null;
+  aktiv: boolean;
+}
+
+export interface SerieListeDto extends SerieDto {
+  /** Events of the series that begin in the future. */
+  kuenftig: number;
+  /** Of those: still as generated (not edited, cancelled, no Dienste or answers). */
+  unveraendert: number;
+}
+
+/** Body of the 409 answer when a series change affects future events and `bestehende` is missing. */
+export interface SerieBetroffenDto {
+  error: string;
+  unveraendert: number;
+  angepasst: number;
+}
+
+const WOCHE_TEXT: Record<number, string> = { 1: '1.', 2: '2.', 3: '3.', 4: '4.', [-1]: 'letzten' };
+
+/** Short German description of the rule, e.g. "Mo, Mi, So" or "1. und 3. Di im Monat". */
+export function serieRegelText(serie: Pick<SerieDto, 'regel' | 'wochentage' | 'wochen'>): string {
+  const tage = WOCHENTAGE_REIHENFOLGE.filter((t) => serie.wochentage.includes(t)).map(
+    (t) => WOCHENTAG_KURZ[t]!,
+  );
+  if (serie.regel === 'woechentlich') return tage.join(', ');
+  const wochen = [...serie.wochen].sort((a, b) => (a === -1 ? 1 : b === -1 ? -1 : a - b));
+  const w = wochen.map((n) => WOCHE_TEXT[n] ?? `${n}.`);
+  const woche = w.length > 1 ? `${w.slice(0, -1).join(', ')} und ${w.at(-1)}` : (w[0] ?? '');
+  return `${woche} ${tage.join('/')} im Monat`;
+}
+
+/** Slug of a name for a series id: lowercase, umlauts transliterated, other characters become `-`. */
+export function serieSlug(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replaceAll('ä', 'ae')
+    .replaceAll('ö', 'oe')
+    .replaceAll('ü', 'ue')
+    .replaceAll('ß', 'ss')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug === '' ? 'serie' : slug;
+}
+
+/** Unique series id for `text`: the slug, or the slug with `-2`, `-3`, ... when it is taken. */
+export function serieIdAus(text: string, vergeben: ReadonlySet<string>): string {
+  const basis = serieSlug(text);
+  if (!vergeben.has(basis)) return basis;
+  for (let n = 2; ; n++) if (!vergeben.has(`${basis}-${n}`)) return `${basis}-${n}`;
+}
+
+/**
+ * Calendar dates `YYYY-MM-DD` from `von` to `bis` (inclusive) on which the series has an event, ascending.
+ * Works on calendar dates, so daylight saving time does not matter. Honors the series' own start and end.
+ */
+export function serienTage(
+  serie: Pick<SerieDto, 'regel' | 'wochentage' | 'wochen' | 'startDatum' | 'endDatum'>,
+  von: string,
+  bis: string,
+): string[] {
+  const start = von > serie.startDatum ? von : serie.startDatum;
+  const ende = serie.endDatum !== null && serie.endDatum < bis ? serie.endDatum : bis;
+  const tage: string[] = [];
+  for (let tag = start; tag <= ende; tag = tageDazu(tag, 1)) {
+    const [j, m, t] = tag.split('-').map(Number) as [number, number, number];
+    if (!serie.wochentage.includes(new Date(Date.UTC(j, m - 1, t)).getUTCDay())) continue;
+    if (serie.regel === 'monatlich') {
+      const imMonat = new Date(Date.UTC(j, m, 0)).getUTCDate();
+      const nummer = Math.ceil(t / 7);
+      const letzter = t + 7 > imMonat;
+      if (!serie.wochen.includes(nummer) && !(letzter && serie.wochen.includes(-1))) continue;
+    }
+    tage.push(tag);
+  }
+  return tage;
 }

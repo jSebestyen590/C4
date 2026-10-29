@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EventEingabe, VorlageDto } from '@c4/shared';
+import type { EventEingabe, SerieDto, VorlageDto } from '@c4/shared';
 import { createBenachrichtigungen } from './benachrichtigungen';
 import { createFakeBenachrichtigungenStore } from './benachrichtigungen.fake';
 import {
@@ -7,16 +7,21 @@ import {
   monateDazu,
   registriereKalenderSerien,
   serienErzeugen,
-  wochentagVon,
-  type Serie,
 } from './kalenderSerien';
 import type { KalenderStore } from './kalender';
 
-const barabend: Serie = {
+const wochentagVon = (datum: string) => new Date(`${datum}T00:00:00Z`).getUTCDay();
+
+const barabend: SerieDto = {
   id: 'barabend',
+  name: 'Barabend',
   vorlageId: 'barabend',
+  regel: 'woechentlich',
   wochentage: [1, 3, 0],
-  vorlaufMonate: 12,
+  wochen: [],
+  startDatum: '2026-01-01',
+  endDatum: null,
+  aktiv: true,
 };
 
 describe('faelligeTage', () => {
@@ -43,7 +48,7 @@ describe('faelligeTage', () => {
   });
 
   it('keeps the weekdays across the changes to and from daylight saving time', () => {
-    const tage = faelligeTage({ wochentage: [0], vorlaufMonate: 12 }, '2026-03-20', new Set());
+    const tage = faelligeTage({ ...barabend, wochentage: [0] }, '2026-03-20', new Set());
     // Sundays around the switches on 2026-03-29 and 2026-10-25.
     expect(tage).toContain('2026-03-29');
     expect(tage).toContain('2026-10-25');
@@ -51,10 +56,26 @@ describe('faelligeTage', () => {
     expect(tage).toHaveLength(52);
   });
 
+  it('starts at the series start and stops at its end', () => {
+    const tage = faelligeTage(
+      { ...barabend, startDatum: '2026-11-10', endDatum: '2026-11-20' },
+      '2026-10-28',
+      new Set(),
+    );
+    expect(tage).toEqual(['2026-11-11', '2026-11-15', '2026-11-16', '2026-11-18']);
+  });
+
+  it('supports monthly series: first Tuesday of the month', () => {
+    const plenum: SerieDto = { ...barabend, regel: 'monatlich', wochentage: [2], wochen: [1] };
+    const tage = faelligeTage(plenum, '2026-10-28', new Set());
+    expect(tage.slice(0, 3)).toEqual(['2026-11-03', '2026-12-01', '2027-01-05']);
+    expect(tage).toHaveLength(12);
+  });
+
   it('includes the end date and clamps month ends', () => {
     expect(monateDazu('2026-01-31', 1)).toBe('2026-02-28');
     expect(monateDazu('2024-02-29', 12)).toBe('2025-02-28');
-    expect(faelligeTage({ wochentage: [3], vorlaufMonate: 12 }, '2026-10-28', new Set())).toContain(
+    expect(faelligeTage({ ...barabend, wochentage: [3] }, '2026-10-28', new Set())).toContain(
       '2027-10-27',
     );
   });
@@ -81,11 +102,23 @@ const vorlage = (patch: Partial<VorlageDto> = {}): VorlageDto => ({
 });
 
 /** In-memory store: serien_termine rows stay when an event is deleted or renamed. */
-function fakeStore(v: VorlageDto | null = vorlage()) {
+function fakeStore(v: VorlageDto | null = vorlage(), serien: SerieDto[] = [barabend]) {
   const termine = new Set<string>();
   const events = new Map<string, EventEingabe>();
   const store = {
     vorlagen: vi.fn(async () => (v ? [v] : [])),
+    kategorien: vi.fn(async () => [
+      {
+        id: 'barabend',
+        name: 'Barabend',
+        farbe: 'blue',
+        art: 'dienste' as const,
+        teilnahmeStatus: null,
+        archiviert: false,
+        benutzt: true,
+      },
+    ]),
+    serien: vi.fn(async () => serien),
     serienTage: vi.fn(async () => [...termine]),
     serienTerminAnlegen: vi.fn(async (_serie: string, datum: string, daten: EventEingabe) => {
       if (termine.has(datum)) return false;
@@ -93,7 +126,10 @@ function fakeStore(v: VorlageDto | null = vorlage()) {
       events.set(datum, daten);
       return true;
     }),
-  } satisfies Pick<KalenderStore, 'vorlagen' | 'serienTage' | 'serienTerminAnlegen'>;
+  } satisfies Pick<
+    KalenderStore,
+    'vorlagen' | 'kategorien' | 'serien' | 'serienTage' | 'serienTerminAnlegen'
+  >;
   return { store, termine, events };
 }
 
@@ -102,7 +138,7 @@ const MI = new Date('2026-10-28T10:00:00Z');
 describe('serienErzeugen', () => {
   it('creates the events from the Vorlage with Berlin times', async () => {
     const f = fakeStore();
-    const r = await serienErzeugen(f.store, MI, [barabend], 1000);
+    const r = await serienErzeugen(f.store, MI, 1000);
     expect(r).toEqual({ erzeugt: 157, rest: false });
     expect(f.events.get('2026-10-28')).toMatchObject({
       titel: 'Barabend',
@@ -115,8 +151,8 @@ describe('serienErzeugen', () => {
 
   it('does not create anything twice', async () => {
     const f = fakeStore();
-    await serienErzeugen(f.store, MI, [barabend], 1000);
-    expect(await serienErzeugen(f.store, MI, [barabend], 1000)).toEqual({
+    await serienErzeugen(f.store, MI, 1000);
+    expect(await serienErzeugen(f.store, MI, 1000)).toEqual({
       erzeugt: 0,
       rest: false,
     });
@@ -124,11 +160,11 @@ describe('serienErzeugen', () => {
 
   it('rolls forward with the date but never recreates a deleted day or a renamed event', async () => {
     const f = fakeStore();
-    await serienErzeugen(f.store, MI, [barabend], 1000);
+    await serienErzeugen(f.store, MI, 1000);
     // The event of 2026-11-02 is deleted, the one of 2026-11-04 renamed (still recorded in serien_termine).
     f.events.delete('2026-11-02');
     f.events.set('2026-11-04', { ...f.events.get('2026-11-04')!, titel: 'Karaoke' });
-    const r = await serienErzeugen(f.store, new Date('2026-11-03T10:00:00Z'), [barabend], 1000);
+    const r = await serienErzeugen(f.store, new Date('2026-11-03T10:00:00Z'), 1000);
     expect(f.events.has('2026-11-02')).toBe(false);
     expect(f.events.get('2026-11-04')!.titel).toBe('Karaoke');
     // Only the new end of the window (2027-10-28 .. 2027-11-03 on the series' weekdays) is added.
@@ -137,14 +173,29 @@ describe('serienErzeugen', () => {
 
   it('stops at the cap and reports the rest', async () => {
     const f = fakeStore();
-    expect(await serienErzeugen(f.store, MI, [barabend], 10)).toEqual({ erzeugt: 10, rest: true });
+    expect(await serienErzeugen(f.store, MI, 10)).toEqual({ erzeugt: 10, rest: true });
     expect(f.events.size).toBe(10);
+  });
+
+  it('skips inactive series and creates events for several series', async () => {
+    const aus = fakeStore(vorlage(), [{ ...barabend, aktiv: false }]);
+    expect(await serienErzeugen(aus.store, MI)).toEqual({ erzeugt: 0, rest: false });
+    const plenum: SerieDto = {
+      ...barabend,
+      id: 'plenum',
+      regel: 'monatlich',
+      wochentage: [2],
+      wochen: [1],
+    };
+    const zwei = fakeStore(vorlage(), [plenum]);
+    expect(await serienErzeugen(zwei.store, MI)).toEqual({ erzeugt: 12, rest: false });
+    expect(zwei.store.serienTerminAnlegen.mock.calls[0]![0]).toBe('plenum');
   });
 
   it('creates nothing and logs when the Vorlage is missing or archived', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const f = fakeStore(null);
-    expect(await serienErzeugen(f.store, MI, [barabend])).toEqual({ erzeugt: 0, rest: false });
+    expect(await serienErzeugen(f.store, MI)).toEqual({ erzeugt: 0, rest: false });
     expect(f.events.size).toBe(0);
     expect(log).toHaveBeenCalledOnce();
     log.mockRestore();

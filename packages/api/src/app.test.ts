@@ -37,6 +37,7 @@ import {
   EntfernungBestaetigen,
   KalenderKonflikt,
   KalenderUngueltig,
+  SerieBetroffen,
   tokenHash,
   type DienstInfo,
   type KalenderStore,
@@ -431,6 +432,12 @@ function makeKalenderFake() {
     vorlageAnlegen: vi.fn<KalenderStore['vorlageAnlegen']>(async () => 'v1'),
     vorlageAktualisieren: vi.fn<KalenderStore['vorlageAktualisieren']>(async (id) => id === 'v1'),
     vorlageLoeschen: vi.fn<KalenderStore['vorlageLoeschen']>(async (id) => id === 'v1'),
+    serien: vi.fn<KalenderStore['serien']>(async () => []),
+    serienMitAnzahl: vi.fn<KalenderStore['serienMitAnzahl']>(async () => []),
+    serieAnlegen: vi.fn<KalenderStore['serieAnlegen']>(async () => 'plenum'),
+    serieAktualisieren: vi.fn<KalenderStore['serieAktualisieren']>(async (id) => id === 'plenum'),
+    serieAktivSetzen: vi.fn<KalenderStore['serieAktivSetzen']>(async (id) => id === 'plenum'),
+    serieLoeschen: vi.fn<KalenderStore['serieLoeschen']>(async (id) => id === 'plenum'),
     serienTage: vi.fn<KalenderStore['serienTage']>(async () => []),
     serienTerminAnlegen: vi.fn<KalenderStore['serienTerminAnlegen']>(async () => true),
     statistik: vi.fn<KalenderStore['statistik']>(async () => []),
@@ -2368,6 +2375,7 @@ describe('kalender', () => {
       '/api/kalender/dienstformen',
       '/api/kalender/kategorien',
       '/api/kalender/vorlagen',
+      '/api/kalender/serien',
       '/api/kalender/erinnerungen',
       '/api/kalender/statistik?jahr=2026',
     ]) {
@@ -2390,6 +2398,10 @@ describe('kalender', () => {
       ['/api/kalender/vorlagen', 'POST'],
       ['/api/kalender/vorlagen/v1', 'PUT'],
       ['/api/kalender/vorlagen/v1', 'DELETE'],
+      ['/api/kalender/serien', 'POST'],
+      ['/api/kalender/serien/plenum', 'PUT'],
+      ['/api/kalender/serien/plenum/aktiv', 'PUT'],
+      ['/api/kalender/serien/plenum', 'DELETE'],
       ['/api/kalender/erinnerungen', 'PUT'],
     ] as const) {
       const res = await t.app.request(url, json('reader-token', method, {}));
@@ -2847,6 +2859,73 @@ describe('kalender', () => {
     expect(
       (await t.app.request('/api/kalender/vorlagen/v1', json('vorstand-token', 'DELETE'))).status,
     ).toBe(200);
+  });
+
+  describe('Serien', () => {
+    const serie = {
+      name: 'Plenum',
+      vorlageId: 'v1',
+      regel: 'monatlich',
+      wochentage: [2],
+      wochen: [1],
+      startDatum: '2026-11-01',
+      endDatum: null,
+    };
+
+    it('creates a series and rejects invalid rules', async () => {
+      const t = makeApp();
+      const post = (body: unknown) =>
+        t.app.request('/api/kalender/serien', json('vorstand-token', 'POST', body));
+      expect((await post(serie)).status).toBe(201);
+      expect(t.kalender.serieAnlegen).toHaveBeenCalledOnce();
+      expect((await post({ ...serie, wochen: [] })).status).toBe(400);
+      expect((await post({ ...serie, wochentage: [] })).status).toBe(400);
+      expect((await post({ ...serie, endDatum: '2026-10-01' })).status).toBe(400);
+      expect(t.kalender.serieAnlegen).toHaveBeenCalledOnce();
+    });
+
+    it('asks (409 with counts) before changing, then applies either variant', async () => {
+      const t = makeApp();
+      t.kalender.serieAktualisieren.mockRejectedValueOnce(new SerieBetroffen(5, 2));
+      const put = (body: unknown, id = 'plenum') =>
+        t.app.request(`/api/kalender/serien/${id}`, json('vorstand-token', 'PUT', body));
+      const res = await put(serie);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ unveraendert: 5, angepasst: 2 });
+      expect((await put({ ...serie, bestehende: 'anpassen' })).status).toBe(200);
+      expect(t.kalender.serieAktualisieren).toHaveBeenLastCalledWith(
+        'plenum',
+        expect.objectContaining({ name: 'Plenum', wochen: [1] }),
+        'anpassen',
+      );
+      expect((await put({ ...serie, bestehende: 'behalten' })).status).toBe(200);
+      expect(t.kalender.serieAktualisieren).toHaveBeenLastCalledWith(
+        'plenum',
+        expect.anything(),
+        'behalten',
+      );
+      expect((await put({ ...serie, bestehende: 'alles' })).status).toBe(400);
+      expect((await put(serie, 'x')).status).toBe(404);
+    });
+
+    it('asks before turning off or deleting, with both variants', async () => {
+      const t = makeApp();
+      t.kalender.serieAktivSetzen.mockRejectedValueOnce(new SerieBetroffen(3, 0));
+      t.kalender.serieLoeschen.mockRejectedValueOnce(new SerieBetroffen(3, 1));
+      const aktiv = (body: unknown) =>
+        t.app.request('/api/kalender/serien/plenum/aktiv', json('vorstand-token', 'PUT', body));
+      const loeschen = (query = '') =>
+        t.app.request(`/api/kalender/serien/plenum${query}`, json('vorstand-token', 'DELETE'));
+      expect((await aktiv({ aktiv: false })).status).toBe(409);
+      expect((await aktiv({ aktiv: false, bestehende: 'anpassen' })).status).toBe(200);
+      expect(t.kalender.serieAktivSetzen).toHaveBeenLastCalledWith('plenum', false, 'anpassen');
+      expect((await loeschen()).status).toBe(409);
+      expect((await loeschen('?bestehende=behalten')).status).toBe(200);
+      expect(t.kalender.serieLoeschen).toHaveBeenLastCalledWith('plenum', 'behalten');
+      expect((await loeschen('?bestehende=anpassen')).status).toBe(200);
+      expect(t.kalender.serieLoeschen).toHaveBeenLastCalledWith('plenum', 'anpassen');
+      expect((await loeschen('?bestehende=x')).status).toBe(400);
+    });
   });
 
   it('reads and replaces the global reminders', async () => {

@@ -1,23 +1,13 @@
-import { ausVorlage, datumPlusTage, heuteBerlin, type EventEingabe } from '@c4/shared';
+import { ausVorlage, heuteBerlin, serienTage, type EventEingabe, type SerieDto } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { KalenderStore } from './kalender';
 
-// Series generate events from a Vorlage on fixed weekdays, rolling `vorlaufMonate` ahead. Every day a
-// series has ever created an event for stays in `serien_termine`, so a deleted, moved or renamed event is
-// never created again. To change the weekdays or the Vorlage, edit SERIEN (existing events stay).
+// Series generate events from a Vorlage by a configurable rule (see `serienTage` in shared), rolling
+// `VORLAUF_MONATE` ahead. Every day a series has ever created an event for stays in `serien_termine`, so a
+// deleted, moved or renamed event is never created again.
 
-export interface Serie {
-  /** Stored in `events.serie` and `serien_termine.serie`. */
-  id: string;
-  vorlageId: string;
-  /** 0 = Sunday ... 6 = Saturday (`Date#getUTCDay` of the calendar date). */
-  wochentage: readonly number[];
-  vorlaufMonate: number;
-}
-
-export const SERIEN: readonly Serie[] = [
-  { id: 'barabend', vorlageId: 'barabend', wochentage: [1, 3, 0], vorlaufMonate: 12 },
-];
+/** How far ahead events are created. */
+export const VORLAUF_MONATE = 12;
 
 /** At most this many events are created per job run; the rest follows in the next run. */
 export const MAX_PRO_LAUF = 30;
@@ -35,24 +25,24 @@ export function monateDazu(datum: string, monate: number): string {
 }
 
 /**
- * Berlin dates from `heute` to `heute` + Vorlauf (inclusive) on the series' weekdays that have no
- * `serien_termine` entry yet, ascending. Past days are never made up for. Works on calendar dates, so
- * daylight saving time does not matter.
+ * Berlin dates from `heute` (or the series' start) to `heute` + Vorlauf (or the series' end) on which the
+ * series has an event and that have no `serien_termine` entry yet, ascending. Past days are never made
+ * up for.
  */
 export function faelligeTage(
-  serie: Pick<Serie, 'wochentage' | 'vorlaufMonate'>,
+  serie: Pick<SerieDto, 'regel' | 'wochentage' | 'wochen' | 'startDatum' | 'endDatum'>,
   heute: string,
   vorhanden: ReadonlySet<string>,
 ): string[] {
-  const bis = monateDazu(heute, serie.vorlaufMonate);
-  const tage: string[] = [];
-  for (let tag = heute; tag <= bis; tag = datumPlusTage(tag, 1)) {
-    if (serie.wochentage.includes(wochentagVon(tag)) && !vorhanden.has(tag)) tage.push(tag);
-  }
-  return tage;
+  return serienTage(serie, heute, monateDazu(heute, VORLAUF_MONATE)).filter(
+    (tag) => !vorhanden.has(tag),
+  );
 }
 
-type SerienStore = Pick<KalenderStore, 'vorlagen' | 'serienTage' | 'serienTerminAnlegen'>;
+type SerienStore = Pick<
+  KalenderStore,
+  'vorlagen' | 'kategorien' | 'serien' | 'serienTage' | 'serienTerminAnlegen'
+>;
 
 /**
  * Creates the missing events of all series. Returns the number of created events and whether days are
@@ -61,27 +51,41 @@ type SerienStore = Pick<KalenderStore, 'vorlagen' | 'serienTage' | 'serienTermin
 export async function serienErzeugen(
   kalender: SerienStore,
   jetzt: Date,
-  serien: readonly Serie[] = SERIEN,
   max = MAX_PRO_LAUF,
 ): Promise<{ erzeugt: number; rest: boolean }> {
   const heute = heuteBerlin(jetzt);
+  const serien = (await kalender.serien()).filter((s) => s.aktiv);
+  if (serien.length === 0) return { erzeugt: 0, rest: false };
+  const vorlagen = await kalender.vorlagen(false);
+  const kategorien = await kalender.kategorien(true);
   let erzeugt = 0;
   for (const serie of serien) {
-    const vorlage = (await kalender.vorlagen(false)).find((v) => v.id === serie.vorlageId);
+    const vorlage = vorlagen.find((v) => v.id === serie.vorlageId);
     if (!vorlage) {
       console.error(
         `Series ${serie.id}: Vorlage ${serie.vorlageId} is missing or archived, no events created`,
       );
       continue;
     }
+    const kategorie = kategorien.find((k) => k.id === vorlage.kategorieId);
     const vorhanden = new Set(await kalender.serienTage(serie.id));
     for (const datum of faelligeTage(serie, heute, vorhanden)) {
       if (erzeugt >= max) return { erzeugt, rest: true };
-      const daten: EventEingabe = ausVorlage(vorlage, datum);
+      const daten: EventEingabe = ausVorlage(vorlage, datum, kategorie);
       if (await kalender.serienTerminAnlegen(serie.id, datum, daten)) erzeugt += 1;
     }
   }
   return { erzeugt, rest: false };
+}
+
+const markeSchluessel = (jetzt: Date) => `kalender.serien:${heuteBerlin(jetzt)}`;
+
+/** Lets the job run again today, e.g. after a series was created or changed, so new days appear soon. */
+export async function serienMarkeFreigeben(
+  benachrichtigungen: Pick<Benachrichtigungen, 'einmalFreigeben'>,
+  jetzt = new Date(),
+): Promise<void> {
+  await benachrichtigungen.einmalFreigeben(markeSchluessel(jetzt));
 }
 
 /** Registers the `kalender.serien` job task: runs once per Berlin day (or until everything is created). */
@@ -93,7 +97,7 @@ export function registriereKalenderSerien(
   kalender: SerienStore,
 ): void {
   benachrichtigungen.registriereAufgabe('kalender.serien', async (jetzt) => {
-    const schluessel = `kalender.serien:${heuteBerlin(jetzt)}`;
+    const schluessel = markeSchluessel(jetzt);
     if (!(await benachrichtigungen.einmalBelegen(schluessel))) return;
     try {
       const { erzeugt, rest } = await serienErzeugen(kalender, jetzt);

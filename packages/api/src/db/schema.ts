@@ -469,8 +469,10 @@ export const events = pgTable('events', {
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
   abgesagt: boolean('abgesagt').notNull().default(false),
-  /** Series the event belongs to (e.g. `barabend`); null for ordinary events. */
+  /** Series the event belongs to (id of a `kalender_serien` row); null for ordinary events. */
   serie: text('serie'),
+  /** True once a series event was edited by hand or cancelled; such events are left alone when the series changes. */
+  serieAngepasst: boolean('serie_angepasst'),
   /** Participation circle: null = no participation, else comma-separated member statuses ('' = by invitation only). */
   teilnahmeStatus: text('teilnahme_status'),
   /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
@@ -479,6 +481,26 @@ export const events = pgTable('events', {
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });
 export type EventRow = typeof events.$inferSelect;
+
+/** Configurable event series (see kalenderSerien.ts). The id is a slug of the first name and stays fixed. */
+export const kalenderSerien = pgTable('kalender_serien', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  vorlageId: text('vorlage_id')
+    .notNull()
+    .references(() => eventVorlagen.id),
+  /** `woechentlich` or `monatlich`. */
+  regel: text('regel').notNull(),
+  /** Comma-separated weekdays, 0 = Sunday ... 6 = Saturday. */
+  wochentage: text('wochentage').notNull(),
+  /** Monthly only: comma-separated weeks 1..4 or -1 (last); empty for weekly. */
+  wochen: text('wochen').notNull().default(''),
+  startDatum: date('start_datum', { mode: 'string' }).notNull(),
+  endDatum: date('end_datum', { mode: 'string' }),
+  aktiv: boolean('aktiv').notNull().default(true),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+export type KalenderSerieRow = typeof kalenderSerien.$inferSelect;
 
 /** Days a series already created an event for; never removed, so deleted days are not recreated. */
 export const serienTermine = pgTable(

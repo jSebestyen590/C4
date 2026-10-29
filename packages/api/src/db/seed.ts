@@ -16,8 +16,7 @@ try {
     .values({ key: 'seeded', value: new Date().toISOString() })
     .onConflictDoNothing();
 
-  // Kalender: Dienstformen. Bar and the Barabend Kategorie/Vorlage come from migrations 0064-0068; Bar is
-  // listed here with the same id so a seed run never duplicates it.
+  // Kalender: Dienstformen (Kategorien, Vorlagen and Serien are set up in the Einrichtung).
   await db
     .insert(dienstformen)
     .values(FORMEN.map((f, reihenfolge) => ({ ...f, reihenfolge })))

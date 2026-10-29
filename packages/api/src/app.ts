@@ -19,6 +19,10 @@ import {
   kalenderZeitraumSchema,
   statistikJahrSchema,
   vorlageEingabeSchema,
+  serieAendernSchema,
+  serieAktivSchema,
+  serieEingabeSchema,
+  serienBestehendeSchema,
   erinnerungenEingabeSchema,
   emailAendernSchema,
   emailBestaetigenSchema,
@@ -91,12 +95,14 @@ import {
   EntfernungBestaetigen,
   KalenderKonflikt,
   KalenderUngueltig,
+  SerieBetroffen,
   type BetroffenerDienst,
   type EventAenderung,
   tokenHash,
   type KalenderStore,
 } from './kalender';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
+import { serienMarkeFreigeben } from './kalenderSerien';
 import {
   meldeAbsage,
   meldeDienstEntfernt,
@@ -325,6 +331,27 @@ export function createApp(deps: AppDeps) {
     if (err instanceof KalenderUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof KalenderKonflikt) throw new HTTPException(409, { message: err.message });
     throw err;
+  };
+
+  /** Runs a series change; a change that affects future events answers 409 with the counts. */
+  const serienAenderung = async (
+    c: { json: (body: unknown, status: 409) => Response },
+    aktion: () => Promise<boolean>,
+  ): Promise<Response | null> => {
+    try {
+      gefunden(await aktion(), 'Serie nicht gefunden');
+    } catch (err) {
+      if (err instanceof SerieBetroffen) {
+        return c.json(
+          { error: err.message, unveraendert: err.unveraendert, angepasst: err.angepasst },
+          409,
+        );
+      }
+      return kalenderFehler(err);
+    }
+    // New days should show up right away, not tomorrow.
+    await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
+    return null;
   };
 
   /** Adds the Cognito usernames to members in Kalender DTOs (the store only knows the profile row). */
@@ -1817,9 +1844,65 @@ export function createApp(deps: AppDeps) {
         },
       )
       .delete('/kalender/vorlagen/:id', auth, kalenderEinrichten, async (c) => {
-        gefunden(await deps.kalender.vorlageLoeschen(c.req.param('id')), 'Vorlage nicht gefunden');
+        gefunden(
+          await deps.kalender.vorlageLoeschen(c.req.param('id')).catch(kalenderFehler),
+          'Vorlage nicht gefunden',
+        );
         return c.json({ ok: true });
       })
+      // ----- Kalender: Serien
+      .get('/kalender/serien', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.serienMitAnzahl()),
+      )
+      .post(
+        '/kalender/serien',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieEingabeSchema),
+        async (c) => {
+          const id = await deps.kalender.serieAnlegen(c.req.valid('json')).catch(kalenderFehler);
+          await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/kalender/serien/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieAendernSchema),
+        async (c) => {
+          const { bestehende, ...daten } = c.req.valid('json');
+          return (
+            (await serienAenderung(c, () =>
+              deps.kalender.serieAktualisieren(c.req.param('id'), daten, bestehende),
+            )) ?? c.json({ ok: true })
+          );
+        },
+      )
+      .put(
+        '/kalender/serien/:id/aktiv',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieAktivSchema),
+        async (c) => {
+          const { aktiv, bestehende } = c.req.valid('json');
+          return (
+            (await serienAenderung(c, () =>
+              deps.kalender.serieAktivSetzen(c.req.param('id'), aktiv, bestehende),
+            )) ?? c.json({ aktiv })
+          );
+        },
+      )
+      .delete(
+        '/kalender/serien/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('query', z.object({ bestehende: serienBestehendeSchema.optional() })),
+        async (c) =>
+          (await serienAenderung(c, () =>
+            deps.kalender.serieLoeschen(c.req.param('id'), c.req.valid('query').bestehende),
+          )) ?? c.json({ ok: true }),
+      )
       // ----- Kalender: global "Dienste fehlen" reminders
       .get('/kalender/erinnerungen', auth, kalenderLesen, async (c) =>
         c.json({ minutenVorher: await deps.kalender.erinnerungen() }),

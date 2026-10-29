@@ -5,18 +5,19 @@ Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, sie
 
 ## Datenmodell
 
-Migrationen `0037`–`0054`, `0062`–`0078`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
+Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0080`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
 | Tabelle                                                  | Inhalt                                                                                                                                                                                                                                           |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe, `art` `dienste`/`teilnahme`, Standard-Kreis `teilnahme_status`; `0076`–`0078`), archivierbar                                                                                                            |
 | `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                                                                                             |
-| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (z. B. `barabend`, sonst null), `angelegt_von` (null = System)                                                                                                      |
+| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (Id einer Serie, sonst null), `serie_angepasst`, `angelegt_von` (null = System)                                                                                     |
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
 | `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform (nur Betrieb, sonst `null`), Kommentar, eingetragen von                                                                                                                                           |
 | `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen: Event mit Beginn-/End-Uhrzeit, Betrieb-Schichten nur mit Uhrzeiten, Aufbau/Putzen mit `tagVersatz` (ganze Tage relativ zum Event, auch negativ) + Uhrzeiten (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                             |
 | `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`) und Events im eigenen Kalender-Abo (Migrationen `0072`–`0075`)                                                                                                  |
-| `serien_termine`                                         | Jeder Tag, für den eine Serie (z. B. Barabend) schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`; Migration `0069`                                                                                      |
+| `kalender_serien`                                        | Serien: Name, Vorlage, Regel, Wochentage, Wochen, Start/Ende, `aktiv`; Id = Slug des ersten Namens (`0079`)                                                                                                                                      |
+| `serien_termine`                                         | Jeder Tag, für den eine Serie schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`; Migration `0069`                                                                                                       |
 | `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag (Migration `0063`)                                                                                                                                 |     |
 
 ## Regeln
@@ -46,29 +47,42 @@ Migrationen `0037`–`0054`, `0062`–`0078`, Code in `packages/api/src/kalender
   Betrieb zu Aufbau/Putzen, bleiben die Einträge (ihre Dienstform wird geleert); von Aufbau/Putzen zu Betrieb passen sie
   keiner Dienstform und zählen als entfernt (409 bis zur Bestätigung). Löschen nur ohne Einträge, sonst absagen.
 
-## Barabend
+## Terminserien
 
-Kein besonderes Event ist ein normaler Barabend: montags, mittwochs und sonntags, 20:00–01:00, Dienstform Bar
-(Minimum 1, Wunsch 2). Kategorie, Vorlage und Dienstform legen die Migrationen `0064`–`0068` mit festen Ids an
-(`barabend`, `bar`; Vorlage-Schicht `barabend-betrieb`).
+Serien erzeugen Events aus einer Vorlage nach einer Regel, z. B. ein Barabend montags, mittwochs und sonntags oder ein
+Plenum am 1. Dienstag im Monat. Sie werden in der Einrichtung (Tab „Serien“, auf dem Handy per Auswahlfeld) angelegt;
+nichts davon ist im Code oder in Migrationen festgelegt (Kategorien, Vorlagen und Serien legt man selbst an).
 
-- **Regel im Code:** `SERIEN` in `packages/api/src/kalenderSerien.ts` (Vorlage, Wochentage, Vorlauf 12 Monate). Dort
-  ändert man die Wochentage; bestehende Events bleiben unverändert.
-- **Job:** Die Aufgabe `kalender.serien` (im Push-Job, höchstens einmal pro Berlin-Tag über einen Dedupe-Schlüssel
-  `kalender.serien:<Datum>` in `push_versand`) erzeugt für jeden passenden Tag von heute bis heute + 12 Monate, der noch
-  keinen `serien_termine`-Eintrag hat, ein Event aus der Vorlage (`events.serie = 'barabend'`, `angelegt_von` leer). Eintrag
-  und Event entstehen in einer Transaktion (`ON CONFLICT DO NOTHING`), parallele Läufe doppeln nichts. Pro Lauf höchstens
-  30 Events, der Rest folgt im nächsten Lauf. Vergangene Tage werden nie nachgeholt; fehlt die Vorlage oder ist sie
-  archiviert, entsteht nichts (Log).
-- **Gelöscht bleibt gelöscht:** Der Eintrag in `serien_termine` bleibt bestehen, auch wenn das Event gelöscht, verschoben
-  oder umbenannt wird. Der Tag kommt nie wieder.
+- **Regel:** `woechentlich` (Wochentage) oder `monatlich` (Wochentage × Wochen 1., 2., 3., 4. oder letzte), dazu Start und
+  optional Ende. Reine Funktion `serienTage(serie, von, bis)` in Shared (Kalendertage, Sommerzeit egal). Vorlauf fest 12 Monate.
+- **Id:** Slug des Namens beim Anlegen (`Barabend` → `barabend`, bei Kollision `-2`, `-3`); bleibt beim Umbenennen gleich.
+  `events.serie` und `serien_termine.serie` tragen diese Id. Legt man eine Serie mit dem Namen einer gelöschten Serie an,
+  übernimmt sie deren Events und Tage.
+- **Job:** Die Aufgabe `kalender.serien` (im Push-Job, höchstens einmal pro Berlin-Tag über den Dedupe-Schlüssel
+  `kalender.serien:<Datum>` in `push_versand`) erzeugt für jede aktive Serie jeden fälligen Tag von max(heute, Start) bis
+  min(heute + 12 Monate, Ende), der noch keinen `serien_termine`-Eintrag hat, ein Event aus der Vorlage (mit der Kategorie
+  der Vorlage, `angelegt_von` leer). Eintrag und Event entstehen in einer Transaktion (`ON CONFLICT DO NOTHING`). Pro Lauf
+  höchstens 30 Events. Vergangene Tage werden nie nachgeholt; fehlt die Vorlage oder ist sie archiviert, entsteht nichts
+  (Log). Nach Anlegen oder Ändern einer Serie wird der Tages-Schlüssel freigegeben, neue Tage kommen mit dem nächsten Lauf.
+- **Gelöscht bleibt gelöscht:** Der Eintrag in `serien_termine` bleibt, auch wenn das Event gelöscht, verschoben oder
+  umbenannt wird. Der Tag kommt nie wieder (außer die Serie räumt ihn selbst ab, s. u.).
+- **Unverändert:** Ein künftiges Serien-Event gilt als unverändert, wenn `serie_angepasst` nicht gesetzt ist (wird beim
+  Bearbeiten von Hand und beim Absagen/Wiederaufnehmen gesetzt) und es keine Dienste und keine Teilnahme-Einträge hat.
+- **Routen** (Lesen `kalender:lesen`, Schreiben `kalender:einrichten`): `GET /api/kalender/serien` (mit `kuenftig` und
+  `unveraendert`), `POST`, `PUT /serien/:id`, `PUT /serien/:id/aktiv` `{ aktiv, bestehende? }`, `DELETE /serien/:id?bestehende=`.
+  Ändert sich die Regel (Vorlage, Regel, Tage, Start, Ende), wird die Serie ausgeschaltet oder gelöscht und es gibt künftige
+  Events, antwortet die API mit 409 `{ error, unveraendert, angepasst }`, bis `bestehende` kommt: `anpassen` löscht die
+  unveränderten künftigen Events, die nach der neuen Regel nicht mehr vorkommen (samt `serien_termine`-Eintrag), und
+  überschreibt die übrigen aus der Vorlage (beim Ausschalten/Löschen werden alle unveränderten gelöscht); `behalten` lässt alles
+  Bestehende, nur neue Tage folgen der neuen Regel. Angepasste Events, Events mit Einträgen und vergangene Events bleiben immer.
+  Eine Vorlage, die eine Serie benutzt, lässt sich nicht löschen (409).
 - **Ersetzen:** Im Formular „Event anlegen“ fragt ein Dialog nach Vorlage und Datum, wenn an dem Tag ein nicht abgesagtes
-  Serien-Event liegt: „Barabend ersetzen“ / „Zusätzlich anlegen“ / „Abbrechen“. Ersetzen bearbeitet das bestehende Event mit
-  den Daten der Vorlage (`barabendErsetzen` in Shared): die erste Betriebs-Schicht der Vorlage übernimmt die Id der
-  Barabend-Schicht, Dienstformen mit Einträgen, die der Vorlage fehlen, kommen mit ihren Minimum/Wunsch-Werten in den Bedarf,
-  weitere Schichten mit Einträgen bleiben; hat die Vorlage keine Betriebs-Schicht, bleibt die alte als zusätzliche Schicht.
-  Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
-  entfernt man bewusst etwas, greift die 409-Bestätigung).
+  Serien-Event liegt: „<Serienname> ersetzen?“ mit „Ersetzen“ / „Zusätzlich anlegen“ / „Abbrechen“. Ersetzen bearbeitet das
+  bestehende Event mit den Daten der Vorlage (`serieEventErsetzen` in Shared): die erste Betriebs-Schicht der Vorlage übernimmt
+  die Id der bisherigen Betriebs-Schicht, Dienstformen mit Einträgen, die der Vorlage fehlen, kommen mit ihren Minimum/Wunsch-Werten
+  in den Bedarf, weitere Schichten mit Einträgen bleiben; hat die Vorlage keine Betriebs-Schicht, bleibt die alte als zusätzliche
+  Schicht. Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
+  entfernt man bewusst etwas, greift die 409-Bestätigung). Eine Teilnahme-Vorlage ersetzt nichts, beide Events bleiben.
 
 ## Event-Art (Dienste oder Teilnahme)
 
@@ -76,7 +90,7 @@ Ein Event hat **entweder** Dienste (Schichten) **oder** Teilnahme, nie beides. D
 Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; die Spalte bleibt wegen DSQL nullable, `null` und Bestand ohne
 Kategorie gelten als Dienste).
 
-- **Kategorie:** `art` (`dienste`/`teilnahme`, Pflicht; vorhandene Kategorien inkl. `barabend` sind Dienste, Migration `0077`) und
+- **Kategorie:** `art` (`dienste`/`teilnahme`, Pflicht; vorhandene Kategorien sind Dienste, Migration `0077`) und
   bei Teilnahme der Standard-Kreis `teilnahmeStatus` (Pflicht, `[]` = niemand vorab). Die Art lässt sich nur ändern, solange
   kein Event die Kategorie benutzt (`benutzt` im DTO; sonst 409 „Die Kategorie wird von Events benutzt.“).
 - **API-Prüfung:** Dienste-Kategorie: kein Kreis, keine Eingeladenen (400). Teilnahme-Kategorie: keine Schichten (400); ohne
@@ -84,8 +98,8 @@ Kategorie gelten als Dienste).
 - **Wechsel der Art** am Event (andere Kategorie): Würden Dienste (Schichten fallen weg) oder Teilnahmen (Antworten, Einladungen)
   gelöscht, antwortet `PUT` mit 409 `{ error, betroffene, teilnahmen }`, bis `bestaetigt: true` mitkommt. Dann werden sie gelöscht.
 - **Vorlagen:** `ausVorlage(vorlage, datum, kategorie)` erzeugt bei Teilnahme keine Schichten und nimmt den Kreis der Vorlage,
-  sonst den der Kategorie. Das Barabend-Ersetzen bietet nur Dienste-Vorlagen an; bei einer Teilnahme-Vorlage an einem
-  Barabend-Tag bleiben beide Events.
+  sonst den der Kategorie. Das Serien-Ersetzen bietet nur Dienste-Vorlagen an; bei einer Teilnahme-Vorlage an einem
+  Serien-Tag bleiben beide Events.
 - **Anzeige:** Teilnahme-Events haben keine Ampel und keine Schichten und werden vom Job „Dienste fehlen“ übersprungen. Statt der
   Ampel steht „x nehmen teil“, im Monatsraster ein grauer Streifen (Legende: „Teilnahme“). Formular und Vorlagen-Editor zeigen
   je nach Art der gewählten Kategorie den Schicht-Editor oder den Abschnitt Teilnahme (vorbelegt mit dem Standard-Kreis).
@@ -120,7 +134,7 @@ Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**
 | `/kalender/events/:id`                 | Schichten, Bedarfe, Ein-/Austragen, Externe, Teilnahme, „In mein Kalender-Abo“                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `/kalender/events/neu`, `…/bearbeiten` | Formular mit Vorlage + Datum (`?datum=YYYY-MM-DD` belegt es vor, sonst heute), Schicht-Editor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `/kalender/statistik`                  | **Dienstschwein**: Dienste je Person (inkl. Externe) und Dienstform pro Kalenderjahr, dazu die Spalten Aufbau und Putzen (`nachSpalte`: Dienstform-Id, `art:aufbau`, `art:putzen`)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `/kalender/einrichtung`                | Dienstformen, Kategorien, Vorlagen, Externe (Zusammenführen), Erinnerungen (Tab: Zeitpunkte für „Dienste fehlen“ als „1 Woche vorher“ usw., hinzufügen mit Zahl + Einheit)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `/kalender/einrichtung`                | Dienstformen, Kategorien, Vorlagen, Serien, Externe (Zusammenführen), Erinnerungen (Tab: Zeitpunkte für „Dienste fehlen“ als „1 Woche vorher“ usw., hinzufügen mit Zahl + Einheit)                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `/kalender/mein-kalender`              | Kalender-Abo (siehe unten)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Das Dienstschwein zählt jeden Eintrag einmal, nach dem Jahr des Schichtbeginns (Europe/Berlin); abgesagte Events

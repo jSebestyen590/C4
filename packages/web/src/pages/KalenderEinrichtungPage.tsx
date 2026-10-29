@@ -1,12 +1,22 @@
-import { Anchor, Group, Stack, Tabs, Title } from '@mantine/core';
+import { Anchor, Group, Select, Stack, Tabs, Title } from '@mantine/core';
 import { IconChevronLeft } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DienstformenTab, EventKategorienTab, ExterneTab } from '../KalenderStammdatenTabs';
 import { ErinnerungenTab } from '../ErinnerungenTab';
+import { SerienTab } from '../SerienTab';
 import { VorlagenTab } from '../VorlagenTab';
 
-/** Master data of the calendar: Dienstformen, Kategorien, Vorlagen and Externe. */
+const TABS = [
+  { value: 'dienstformen', label: 'Dienstformen' },
+  { value: 'kategorien', label: 'Kategorien' },
+  { value: 'vorlagen', label: 'Vorlagen' },
+  { value: 'serien', label: 'Serien' },
+  { value: 'externe', label: 'Externe' },
+  { value: 'erinnerungen', label: 'Erinnerungen' },
+];
+
+/** Master data of the calendar: Dienstformen, Kategorien, Vorlagen, Serien, Externe and Erinnerungen. */
 export function KalenderEinrichtungPage() {
   const [tab, setTab] = useState<string | null>('dienstformen');
   return (
@@ -19,22 +29,20 @@ export function KalenderEinrichtungPage() {
       </Anchor>
       <Title order={2}>Kalender einrichten</Title>
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
-        <Tabs.List grow>
-          <Tabs.Tab value="dienstformen" py="sm" px="xs">
-            Dienstformen
-          </Tabs.Tab>
-          <Tabs.Tab value="kategorien" py="sm" px="xs">
-            Kategorien
-          </Tabs.Tab>
-          <Tabs.Tab value="vorlagen" py="sm" px="xs">
-            Vorlagen
-          </Tabs.Tab>
-          <Tabs.Tab value="externe" py="sm" px="xs">
-            Externe
-          </Tabs.Tab>
-          <Tabs.Tab value="erinnerungen" py="sm" px="xs">
-            Erinnerungen
-          </Tabs.Tab>
+        <Select
+          hiddenFrom="sm"
+          aria-label="Bereich"
+          allowDeselect={false}
+          data={TABS}
+          value={tab}
+          onChange={setTab}
+        />
+        <Tabs.List grow visibleFrom="sm">
+          {TABS.map((t) => (
+            <Tabs.Tab key={t.value} value={t.value} py="sm" px="xs">
+              {t.label}
+            </Tabs.Tab>
+          ))}
         </Tabs.List>
         <Tabs.Panel value="dienstformen" pt="md">
           <DienstformenTab />
@@ -44,6 +52,9 @@ export function KalenderEinrichtungPage() {
         </Tabs.Panel>
         <Tabs.Panel value="vorlagen" pt="md">
           <VorlagenTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="serien" pt="md">
+          <SerienTab />
         </Tabs.Panel>
         <Tabs.Panel value="externe" pt="md">
           <ExterneTab />

@@ -1,7 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import {
+  ausVorlage,
   berlinZuUtc,
+  datumBerlin,
+  serieIdAus,
+  serienTage as regelTage,
   eventBewertung,
   SCHICHT_ART_BEZEICHNUNG,
   statistikZeilen,
@@ -25,6 +29,10 @@ import {
   type MeinDienstDto,
   type MeinEventDto,
   type SchichtArt,
+  type SerieDto,
+  type SerieEingabe,
+  type SerieListeDto,
+  type SerienBestehende,
   type SchichtDto,
   type SchichtEingabe,
   type StatistikZeileDto,
@@ -45,6 +53,8 @@ import {
   eventVorlagen,
   kalenderEventAbos,
   kalenderFehltErinnerungen,
+  kalenderSerien,
+  type KalenderSerieRow,
   externe,
   kalenderTokens,
   mitglieder,
@@ -65,6 +75,18 @@ export class KalenderUngueltig extends Error {}
 
 /** The request conflicts with the current state (HTTP 409). The message is user-facing. */
 export class KalenderKonflikt extends Error {}
+
+/** A series change affects future events; the caller has to say what happens to them (HTTP 409). */
+export class SerieBetroffen extends Error {
+  constructor(
+    /** Future events still as generated. */
+    readonly unveraendert: number,
+    /** Future events that were adjusted or have Dienste/answers and stay in any case. */
+    readonly angepasst: number,
+  ) {
+    super('Die Serie hat künftige Events.');
+  }
+}
 
 /** A Dienst that an event update would delete. */
 export interface BetroffenerDienst {
@@ -322,6 +344,27 @@ export interface KalenderStore {
    * the day was already recorded, so parallel runs never duplicate and deleted days stay deleted.
    */
   serienTerminAnlegen(serie: string, datum: string, daten: EventEingabe): Promise<boolean>;
+
+  /** All series, ordered by name. */
+  serien(): Promise<SerieDto[]>;
+  /** All series with the number of their future events. */
+  serienMitAnzahl(): Promise<SerieListeDto[]>;
+  /** Creates the series; its id is a unique slug of the name. Throws KalenderUngueltig. */
+  serieAnlegen(daten: SerieEingabe): Promise<string>;
+  /**
+   * Changes the series. When the rule changes and future events exist, throws SerieBetroffen unless
+   * `bestehende` is given: `anpassen` deletes the unchanged future events that no longer fit and updates the
+   * others from the Vorlage, `behalten` leaves all events. False when missing.
+   */
+  serieAktualisieren(
+    id: string,
+    daten: SerieEingabe,
+    bestehende?: SerienBestehende,
+  ): Promise<boolean>;
+  /** Turning a series off with future events works like `serieAktualisieren` (`anpassen` deletes the unchanged ones). */
+  serieAktivSetzen(id: string, aktiv: boolean, bestehende?: SerienBestehende): Promise<boolean>;
+  /** Deleting works like turning off, and removes the series' `serien_termine`. */
+  serieLoeschen(id: string, bestehende?: SerienBestehende): Promise<boolean>;
 
   // ----- Dienste
   /** Undefined when the Schicht does not exist. Throws KalenderUngueltig / KalenderKonflikt. */
@@ -876,7 +919,298 @@ export function createKalenderStore(db: Db): KalenderStore {
   const eventsFuerBedingung = (bedingung: ReturnType<typeof and>, sub?: string) =>
     eventsLaden(db, bedingung, sub);
 
-  return {
+  /** `handarbeit`: an edit by a person, which marks a series event as adjusted. */
+  const aktualisieren = (
+    id: string,
+    daten: EventEingabe,
+    handarbeit: boolean,
+  ): Promise<EventAenderung | undefined> =>
+    db.transaction(async (tx) => {
+      const [bisher] = await tx.select().from(events).where(eq(events.id, id));
+      if (!bisher) return undefined;
+      const schichtRows = await tx.select().from(schichten).where(eq(schichten.eventId, id));
+      const schichtIds = schichtRows.map((s) => s.id);
+      const [dienstRows, bedarfRows] =
+        schichtIds.length > 0
+          ? await Promise.all([
+              tx.select().from(dienste).where(inArray(dienste.schichtId, schichtIds)),
+              tx.select().from(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, schichtIds)),
+            ])
+          : [[], []];
+
+      const kategorie = await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
+      const kreis = artPruefen(kategorie, daten);
+      await dienstformenMuessenExistieren(
+        tx,
+        dienstformIdsVon(daten.schichten),
+        new Set(bedarfRows.map((b) => b.dienstformId)),
+      );
+
+      const abgleich = schichtAbgleich(
+        schichtRows.map((s) => ({
+          id: s.id,
+          art: s.art,
+          dienste: dienstRows.filter((d) => d.schichtId === s.id),
+        })),
+        daten.schichten,
+      );
+
+      let entfernte: BetroffenerDienst[] = [];
+      if (abgleich.entfernteDienste.length > 0) {
+        const personen = await personenLaden(
+          tx,
+          einzigartig(
+            abgleich.entfernteDienste.flatMap((e) => {
+              const sub = dienstRows.find((d) => d.id === e.dienstId)?.mitgliedSub;
+              return sub ? [sub] : [];
+            }),
+          ),
+          einzigartig(
+            abgleich.entfernteDienste.flatMap((e) => {
+              const extern = dienstRows.find((d) => d.id === e.dienstId)?.externId;
+              return extern ? [extern] : [];
+            }),
+          ),
+        );
+        entfernte = abgleich.entfernteDienste.flatMap((e) => {
+          const row = dienstRows.find((d) => d.id === e.dienstId);
+          const person = row?.mitgliedSub
+            ? personen.mitglieder.get(row.mitgliedSub)
+            : row?.externId
+              ? personen.externe.get(row.externId)
+              : undefined;
+          const schicht = schichtRows.find((x) => x.id === e.schichtId);
+          if (!person || !schicht) return [];
+          return [
+            {
+              dienstId: e.dienstId,
+              schichtId: e.schichtId,
+              schichtArt: schicht.art,
+              schichtBeginn: iso(schicht.beginn),
+              schichtEnde: iso(schicht.ende),
+              dienstformId: e.dienstformId,
+              person,
+              grund: e.grund,
+            },
+          ];
+        });
+      }
+
+      // Switching to a Dienste Kategorie deletes all individual answers and invitations.
+      let verlorene: TeilnahmeDto[] = [];
+      if (kreis === null) {
+        const alte = await tx.select().from(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, id));
+        const personen = await personenLaden(
+          tx,
+          alte.map((r) => r.mitgliedSub),
+          [],
+        );
+        verlorene = alte.flatMap((r): TeilnahmeDto[] => {
+          const person = personen.mitglieder.get(r.mitgliedSub);
+          return person?.art === 'mitglied'
+            ? [{ person, zustand: r.antwort ?? 'teilnahme', eingeladen: r.eingeladen }]
+            : [];
+        });
+      }
+      if ((entfernte.length > 0 || verlorene.length > 0) && daten.bestaetigt !== true) {
+        throw new EntfernungBestaetigen(entfernte, verlorene);
+      }
+
+      const entfernteIds = new Set(abgleich.entfernteDienste.map((e) => e.dienstId));
+      const beginnNeu = new Date(daten.beginn);
+      const endeNeu = new Date(daten.ende);
+      await tx
+        .update(events)
+        .set({
+          titel: daten.titel,
+          beschreibung: daten.beschreibung,
+          kategorieId: daten.kategorieId,
+          beginn: beginnNeu,
+          ende: endeNeu,
+          teilnahmeStatus: teilnahmeKreisKodieren(kreis),
+          ...(daten.ersetzeSerie === true && { serie: null }),
+          ...(handarbeit &&
+            bisher.serie !== null &&
+            daten.ersetzeSerie !== true && { serieAngepasst: true }),
+          aktualisiertAm: new Date(),
+        })
+        .where(eq(events.id, id));
+      await teilnahmeSchreiben(tx, id, kreis, daten);
+      if (entfernteIds.size > 0) {
+        await tx.delete(dienste).where(inArray(dienste.id, [...entfernteIds]));
+      }
+      if (abgleich.dienstformLeeren.length > 0) {
+        await tx
+          .update(dienste)
+          .set({ dienstformId: null })
+          .where(inArray(dienste.id, abgleich.dienstformLeeren));
+      }
+      if (abgleich.entfernt.length > 0) {
+        await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, abgleich.entfernt));
+        await tx.delete(schichten).where(inArray(schichten.id, abgleich.entfernt));
+      }
+      await schichtenSchreiben(tx, id, [...abgleich.behalten, ...abgleich.neu]);
+
+      const mitglieder = (schichtId: string) =>
+        einzigartig(
+          dienstRows.flatMap((d) =>
+            d.schichtId === schichtId && !entfernteIds.has(d.id) && d.mitgliedSub
+              ? [d.mitgliedSub]
+              : [],
+          ),
+        );
+      const geaenderteSchichten = abgleich.behalten.flatMap((b) => {
+        const alt = schichtRows.find((s) => s.id === b.id)!;
+        const geaendert =
+          alt.beginn.getTime() !== new Date(b.eingabe.beginn).getTime() ||
+          alt.ende.getTime() !== new Date(b.eingabe.ende).getTime();
+        const subs = mitglieder(b.id);
+        return geaendert && subs.length > 0
+          ? [
+              {
+                schichtId: b.id,
+                art: b.eingabe.art,
+                beginn: b.eingabe.beginn,
+                ende: b.eingabe.ende,
+                mitgliedSubs: subs,
+              },
+            ]
+          : [];
+      });
+      return {
+        zeitGeaendert:
+          bisher.beginn.getTime() !== beginnNeu.getTime() ||
+          bisher.ende.getTime() !== endeNeu.getTime(),
+        geaenderteSchichten,
+        entfernteDienste: entfernte,
+        mitgliedSubs: einzigartig(
+          dienstRows.flatMap((d) =>
+            !entfernteIds.has(d.id) && d.mitgliedSub ? [d.mitgliedSub] : [],
+          ),
+        ),
+        teilnehmerSubs: await teilnehmerSubs(tx, {
+          id,
+          teilnahmeStatus: teilnahmeKreisKodieren(kreis),
+        }),
+      };
+    });
+
+  // ----- Series
+  const zahlen = (text: string): number[] => (text === '' ? [] : text.split(',').map(Number));
+  const serieDto = (r: KalenderSerieRow): SerieDto => ({
+    id: r.id,
+    name: r.name,
+    vorlageId: r.vorlageId,
+    regel: r.regel === 'monatlich' ? 'monatlich' : 'woechentlich',
+    wochentage: zahlen(r.wochentage),
+    wochen: zahlen(r.wochen),
+    startDatum: r.startDatum,
+    endDatum: r.endDatum,
+    aktiv: r.aktiv,
+  });
+  const serieWerte = (d: SerieEingabe) => ({
+    name: d.name,
+    vorlageId: d.vorlageId,
+    regel: d.regel,
+    wochentage: d.wochentage.join(','),
+    wochen: d.wochen.join(','),
+    startDatum: d.startDatum,
+    endDatum: d.endDatum,
+  });
+  const serienLesen = async (): Promise<SerieDto[]> =>
+    (await db.select().from(kalenderSerien))
+      .map(serieDto)
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+  interface KuenftigesSerienEvent {
+    id: string;
+    serie: string;
+    /** Berlin date of the event begin. */
+    datum: string;
+    /** Still as generated: not edited or cancelled, no Dienste, no answers or invitations. */
+    unveraendert: boolean;
+  }
+  /** Events of a series (all series without `serieId`) that begin after `jetzt`. */
+  const kuenftigeSerienEvents = async (
+    serieId: string | undefined,
+    jetzt: Date,
+  ): Promise<KuenftigesSerienEvent[]> => {
+    const rows = await db
+      .select({
+        id: events.id,
+        serie: events.serie,
+        beginn: events.beginn,
+        angepasst: events.serieAngepasst,
+      })
+      .from(events)
+      .where(
+        and(
+          gte(events.beginn, jetzt),
+          serieId === undefined ? isNotNull(events.serie) : eq(events.serie, serieId),
+        ),
+      );
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.id);
+    const schichtRows = await db
+      .select({ id: schichten.id, eventId: schichten.eventId })
+      .from(schichten)
+      .where(inArray(schichten.eventId, ids));
+    const mitDiensten = new Set<string>();
+    if (schichtRows.length > 0) {
+      const dienstRows = await db
+        .select({ schichtId: dienste.schichtId })
+        .from(dienste)
+        .where(
+          inArray(
+            dienste.schichtId,
+            schichtRows.map((s) => s.id),
+          ),
+        );
+      const mit = new Set(dienstRows.map((d) => d.schichtId));
+      for (const s of schichtRows) if (mit.has(s.id)) mitDiensten.add(s.eventId);
+    }
+    const mitAntworten = new Set(
+      (
+        await db
+          .select({ eventId: eventTeilnahmen.eventId })
+          .from(eventTeilnahmen)
+          .where(inArray(eventTeilnahmen.eventId, ids))
+      ).map((t) => t.eventId),
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      serie: r.serie ?? '',
+      datum: datumBerlin(r.beginn.toISOString()),
+      unveraendert: r.angepasst !== true && !mitDiensten.has(r.id) && !mitAntworten.has(r.id),
+    }));
+  };
+  const pruefeBetroffene = (kuenftig: KuenftigesSerienEvent[], bestehende?: SerienBestehende) => {
+    if (kuenftig.length > 0 && bestehende === undefined) {
+      const unveraendert = kuenftig.filter((e) => e.unveraendert).length;
+      throw new SerieBetroffen(unveraendert, kuenftig.length - unveraendert);
+    }
+  };
+  /** Deletes the events and their `serien_termine` (the days become free again); skips events that gained Dienste meanwhile. */
+  const serienEventsLoeschen = async (liste: KuenftigesSerienEvent[]) => {
+    for (const e of liste) {
+      try {
+        await store.eventLoeschen(e.id);
+      } catch (err) {
+        if (err instanceof KalenderKonflikt) continue;
+        throw err;
+      }
+      await db.delete(serienTermine).where(eq(serienTermine.eventId, e.id));
+    }
+  };
+  const vorlageMussExistieren = async (id: string) => {
+    const [v] = await db
+      .select({ archiviert: eventVorlagen.archiviert })
+      .from(eventVorlagen)
+      .where(eq(eventVorlagen.id, id));
+    if (!v || v.archiviert) throw new KalenderUngueltig('Die Vorlage gibt es nicht.');
+  };
+
+  const store: KalenderStore = {
     // ----- Events
     async events(von, bis, sub) {
       const { start, ende } = zeitraumGrenzen(von, bis);
@@ -908,181 +1242,93 @@ export function createKalenderStore(db: Db): KalenderStore {
         return true;
       });
     },
-    async eventAktualisieren(id, daten) {
-      return db.transaction(async (tx) => {
-        const [bisher] = await tx.select().from(events).where(eq(events.id, id));
-        if (!bisher) return undefined;
-        const schichtRows = await tx.select().from(schichten).where(eq(schichten.eventId, id));
-        const schichtIds = schichtRows.map((s) => s.id);
-        const [dienstRows, bedarfRows] =
-          schichtIds.length > 0
-            ? await Promise.all([
-                tx.select().from(dienste).where(inArray(dienste.schichtId, schichtIds)),
-                tx
-                  .select()
-                  .from(schichtBedarfe)
-                  .where(inArray(schichtBedarfe.schichtId, schichtIds)),
-              ])
-            : [[], []];
-
-        const kategorie = await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
-        const kreis = artPruefen(kategorie, daten);
-        await dienstformenMuessenExistieren(
-          tx,
-          dienstformIdsVon(daten.schichten),
-          new Set(bedarfRows.map((b) => b.dienstformId)),
-        );
-
-        const abgleich = schichtAbgleich(
-          schichtRows.map((s) => ({
-            id: s.id,
-            art: s.art,
-            dienste: dienstRows.filter((d) => d.schichtId === s.id),
-          })),
-          daten.schichten,
-        );
-
-        let entfernte: BetroffenerDienst[] = [];
-        if (abgleich.entfernteDienste.length > 0) {
-          const personen = await personenLaden(
-            tx,
-            einzigartig(
-              abgleich.entfernteDienste.flatMap((e) => {
-                const sub = dienstRows.find((d) => d.id === e.dienstId)?.mitgliedSub;
-                return sub ? [sub] : [];
-              }),
-            ),
-            einzigartig(
-              abgleich.entfernteDienste.flatMap((e) => {
-                const extern = dienstRows.find((d) => d.id === e.dienstId)?.externId;
-                return extern ? [extern] : [];
-              }),
-            ),
-          );
-          entfernte = abgleich.entfernteDienste.flatMap((e) => {
-            const row = dienstRows.find((d) => d.id === e.dienstId);
-            const person = row?.mitgliedSub
-              ? personen.mitglieder.get(row.mitgliedSub)
-              : row?.externId
-                ? personen.externe.get(row.externId)
-                : undefined;
-            const schicht = schichtRows.find((x) => x.id === e.schichtId);
-            if (!person || !schicht) return [];
-            return [
-              {
-                dienstId: e.dienstId,
-                schichtId: e.schichtId,
-                schichtArt: schicht.art,
-                schichtBeginn: iso(schicht.beginn),
-                schichtEnde: iso(schicht.ende),
-                dienstformId: e.dienstformId,
-                person,
-                grund: e.grund,
-              },
-            ];
-          });
-        }
-
-        // Switching to a Dienste Kategorie deletes all individual answers and invitations.
-        let verlorene: TeilnahmeDto[] = [];
-        if (kreis === null) {
-          const alte = await tx
-            .select()
-            .from(eventTeilnahmen)
-            .where(eq(eventTeilnahmen.eventId, id));
-          const personen = await personenLaden(
-            tx,
-            alte.map((r) => r.mitgliedSub),
-            [],
-          );
-          verlorene = alte.flatMap((r): TeilnahmeDto[] => {
-            const person = personen.mitglieder.get(r.mitgliedSub);
-            return person?.art === 'mitglied'
-              ? [{ person, zustand: r.antwort ?? 'teilnahme', eingeladen: r.eingeladen }]
-              : [];
-          });
-        }
-        if ((entfernte.length > 0 || verlorene.length > 0) && daten.bestaetigt !== true) {
-          throw new EntfernungBestaetigen(entfernte, verlorene);
-        }
-
-        const entfernteIds = new Set(abgleich.entfernteDienste.map((e) => e.dienstId));
-        const beginnNeu = new Date(daten.beginn);
-        const endeNeu = new Date(daten.ende);
-        await tx
-          .update(events)
-          .set({
-            titel: daten.titel,
-            beschreibung: daten.beschreibung,
-            kategorieId: daten.kategorieId,
-            beginn: beginnNeu,
-            ende: endeNeu,
-            teilnahmeStatus: teilnahmeKreisKodieren(kreis),
-            ...(daten.ersetzeSerie === true && { serie: null }),
-            aktualisiertAm: new Date(),
-          })
-          .where(eq(events.id, id));
-        await teilnahmeSchreiben(tx, id, kreis, daten);
-        if (entfernteIds.size > 0) {
-          await tx.delete(dienste).where(inArray(dienste.id, [...entfernteIds]));
-        }
-        if (abgleich.dienstformLeeren.length > 0) {
-          await tx
-            .update(dienste)
-            .set({ dienstformId: null })
-            .where(inArray(dienste.id, abgleich.dienstformLeeren));
-        }
-        if (abgleich.entfernt.length > 0) {
-          await tx
-            .delete(schichtBedarfe)
-            .where(inArray(schichtBedarfe.schichtId, abgleich.entfernt));
-          await tx.delete(schichten).where(inArray(schichten.id, abgleich.entfernt));
-        }
-        await schichtenSchreiben(tx, id, [...abgleich.behalten, ...abgleich.neu]);
-
-        const mitglieder = (schichtId: string) =>
-          einzigartig(
-            dienstRows.flatMap((d) =>
-              d.schichtId === schichtId && !entfernteIds.has(d.id) && d.mitgliedSub
-                ? [d.mitgliedSub]
-                : [],
-            ),
-          );
-        const geaenderteSchichten = abgleich.behalten.flatMap((b) => {
-          const alt = schichtRows.find((s) => s.id === b.id)!;
-          const geaendert =
-            alt.beginn.getTime() !== new Date(b.eingabe.beginn).getTime() ||
-            alt.ende.getTime() !== new Date(b.eingabe.ende).getTime();
-          const subs = mitglieder(b.id);
-          return geaendert && subs.length > 0
-            ? [
-                {
-                  schichtId: b.id,
-                  art: b.eingabe.art,
-                  beginn: b.eingabe.beginn,
-                  ende: b.eingabe.ende,
-                  mitgliedSubs: subs,
-                },
-              ]
-            : [];
-        });
+    async serien() {
+      return serienLesen();
+    },
+    async serienMitAnzahl() {
+      const liste = await serienLesen();
+      const kuenftig = await kuenftigeSerienEvents(undefined, new Date());
+      return liste.map((s) => {
+        const eigene = kuenftig.filter((e) => e.serie === s.id);
         return {
-          zeitGeaendert:
-            bisher.beginn.getTime() !== beginnNeu.getTime() ||
-            bisher.ende.getTime() !== endeNeu.getTime(),
-          geaenderteSchichten,
-          entfernteDienste: entfernte,
-          mitgliedSubs: einzigartig(
-            dienstRows.flatMap((d) =>
-              !entfernteIds.has(d.id) && d.mitgliedSub ? [d.mitgliedSub] : [],
-            ),
-          ),
-          teilnehmerSubs: await teilnehmerSubs(tx, {
-            id,
-            teilnahmeStatus: teilnahmeKreisKodieren(kreis),
-          }),
+          ...s,
+          kuenftig: eigene.length,
+          unveraendert: eigene.filter((e) => e.unveraendert).length,
         };
       });
+    },
+    async serieAnlegen(daten) {
+      await vorlageMussExistieren(daten.vorlageId);
+      const vergeben = new Set(
+        (await db.select({ id: kalenderSerien.id }).from(kalenderSerien)).map((r) => r.id),
+      );
+      // Events and days of a series that no longer exists keep their id, so a new series with the same
+      // name takes them over.
+      const id = serieIdAus(daten.name, vergeben);
+      await db.insert(kalenderSerien).values({ id, ...serieWerte(daten), aktiv: true });
+      return id;
+    },
+    async serieAktualisieren(id, daten, bestehende) {
+      const [alt] = await db.select().from(kalenderSerien).where(eq(kalenderSerien.id, id));
+      if (!alt) return false;
+      await vorlageMussExistieren(daten.vorlageId);
+      const bisher = serieDto(alt);
+      const regelGeaendert =
+        bisher.vorlageId !== daten.vorlageId ||
+        bisher.regel !== daten.regel ||
+        bisher.wochentage.join() !== daten.wochentage.join() ||
+        bisher.wochen.join() !== daten.wochen.join() ||
+        bisher.startDatum !== daten.startDatum ||
+        bisher.endDatum !== daten.endDatum;
+      const kuenftig = regelGeaendert ? await kuenftigeSerienEvents(id, new Date()) : [];
+      pruefeBetroffene(kuenftig, bestehende);
+      await db.update(kalenderSerien).set(serieWerte(daten)).where(eq(kalenderSerien.id, id));
+      if (bestehende !== 'anpassen') return true;
+      const unveraendert = kuenftig.filter((e) => e.unveraendert);
+      const regel = { ...daten };
+      const passt = (e: KuenftigesSerienEvent) => regelTage(regel, e.datum, e.datum).length > 0;
+      await serienEventsLoeschen(unveraendert.filter((e) => !passt(e)));
+      const bleiben = unveraendert.filter(passt);
+      if (bleiben.length > 0) {
+        const [vorlage] = (await store.vorlagen(false)).filter((v) => v.id === daten.vorlageId);
+        const kategorie = (await store.kategorien(true)).find((k) => k.id === vorlage?.kategorieId);
+        if (vorlage) {
+          for (const e of bleiben) {
+            try {
+              await aktualisieren(e.id, ausVorlage(vorlage, e.datum, kategorie), false);
+            } catch (err) {
+              if (err instanceof EntfernungBestaetigen) continue;
+              throw err;
+            }
+          }
+        }
+      }
+      return true;
+    },
+    async serieAktivSetzen(id, aktiv, bestehende) {
+      const [alt] = await db.select().from(kalenderSerien).where(eq(kalenderSerien.id, id));
+      if (!alt) return false;
+      const ausschalten = !aktiv && alt.aktiv;
+      const kuenftig = ausschalten ? await kuenftigeSerienEvents(id, new Date()) : [];
+      pruefeBetroffene(kuenftig, bestehende);
+      await db.update(kalenderSerien).set({ aktiv }).where(eq(kalenderSerien.id, id));
+      if (bestehende === 'anpassen')
+        await serienEventsLoeschen(kuenftig.filter((e) => e.unveraendert));
+      return true;
+    },
+    async serieLoeschen(id, bestehende) {
+      const [alt] = await db.select().from(kalenderSerien).where(eq(kalenderSerien.id, id));
+      if (!alt) return false;
+      const kuenftig = await kuenftigeSerienEvents(id, new Date());
+      pruefeBetroffene(kuenftig, bestehende);
+      if (bestehende === 'anpassen')
+        await serienEventsLoeschen(kuenftig.filter((e) => e.unveraendert));
+      await db.delete(serienTermine).where(eq(serienTermine.serie, id));
+      await db.delete(kalenderSerien).where(eq(kalenderSerien.id, id));
+      return true;
+    },
+    async eventAktualisieren(id, daten) {
+      return aktualisieren(id, daten, true);
     },
     async eventLoeschen(id) {
       return db.transaction(async (tx) => {
@@ -1131,7 +1377,11 @@ export function createKalenderStore(db: Db): KalenderStore {
         if (bisher.abgesagt !== abgesagt) {
           await tx
             .update(events)
-            .set({ abgesagt, aktualisiertAm: new Date() })
+            .set({
+              abgesagt,
+              aktualisiertAm: new Date(),
+              ...(bisher.serie !== null && { serieAngepasst: true }),
+            })
             .where(eq(events.id, id));
         }
         return {
@@ -1605,6 +1855,13 @@ export function createKalenderStore(db: Db): KalenderStore {
           .from(eventVorlagen)
           .where(eq(eventVorlagen.id, id));
         if (!vorhanden) return false;
+        const benutzt = await tx
+          .select({ id: kalenderSerien.id })
+          .from(kalenderSerien)
+          .where(eq(kalenderSerien.vorlageId, id))
+          .limit(1);
+        if (benutzt.length > 0)
+          throw new KalenderKonflikt('Die Vorlage wird von einer Serie benutzt.');
         const ids = (
           await tx
             .select({ id: vorlageSchichten.id })
@@ -1795,4 +2052,5 @@ export function createKalenderStore(db: Db): KalenderStore {
       );
     },
   };
+  return store;
 }

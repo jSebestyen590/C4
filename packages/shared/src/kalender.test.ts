@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   ausVorlage,
-  barabendErsetzen,
+  serieAendernSchema,
+  serieEingabeSchema,
+  serieIdAus,
+  serieRegelText,
+  serieSlug,
+  serienTage,
+  serieEventErsetzen,
   betriebDatum,
   erinnerungenEingabeSchema,
   zeitenAus,
@@ -565,7 +571,7 @@ describe('schichtBezeichnung', () => {
   });
 });
 
-describe('barabendErsetzen', () => {
+describe('serieEventErsetzen', () => {
   const bar = { dienstformId: 'bar', minimum: 1, wunsch: 2 };
   const barabend = (
     dienste: { dienstformId: string | null }[],
@@ -600,7 +606,7 @@ describe('barabendErsetzen', () => {
     ({ art: 'betrieb', beginnZeit: '21:00', endeZeit: '02:00', bedarfe }) as const;
 
   it('takes the Betrieb id, the times of the Vorlage and the date of the Barabend', () => {
-    const e = barabendErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
+    const e = serieEventErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
     expect(e.titel).toBe('Karaoke');
     expect(e.beginn).toBe('2026-11-02T20:00:00.000Z');
     expect(e.schichten).toHaveLength(1);
@@ -612,14 +618,14 @@ describe('barabendErsetzen', () => {
   });
 
   it('adds Dienstformen with Dienste that the Vorlage lacks, with their old numbers', () => {
-    const e = barabendErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
+    const e = serieEventErsetzen(barabend([{ dienstformId: 'bar' }]), vorlage([betrieb()]));
     const s = e.schichten[0]!;
     if (s.art !== 'betrieb') throw new Error('expected Betrieb');
     expect(s.bedarfe).toEqual([{ dienstformId: 'technik', minimum: 1, wunsch: 1 }, bar]);
   });
 
   it('does not duplicate Dienstformen the Vorlage has and skips those without Dienste', () => {
-    const e = barabendErsetzen(
+    const e = serieEventErsetzen(
       barabend([{ dienstformId: 'bar' }]),
       vorlage([betrieb([{ dienstformId: 'bar', minimum: 2, wunsch: 4 }])]),
     );
@@ -637,7 +643,7 @@ describe('barabendErsetzen', () => {
       minimum: 0,
       wunsch: 1,
     } as const;
-    const e = barabendErsetzen(barabend([]), vorlage([putzen]));
+    const e = serieEventErsetzen(barabend([]), vorlage([putzen]));
     expect(e.schichten.map((s) => s.art)).toEqual(['putzen', 'betrieb']);
     expect(e.schichten[0]!.id).toBeUndefined();
     expect(e.schichten[1]).toMatchObject({ id: 's-betrieb', beginn: '2026-11-02T19:00:00.000Z' });
@@ -658,7 +664,7 @@ describe('barabendErsetzen', () => {
         person: extern('y'),
       })),
     });
-    const e = barabendErsetzen(
+    const e = serieEventErsetzen(
       barabend([], [aufbau('s-voll', 1), aufbau('s-leer', 0)] as unknown as EventDto['schichten']),
       vorlage([betrieb()]),
     );
@@ -813,5 +819,122 @@ describe('eventKategorieEingabeSchema', () => {
       teilnahmeStatus: ['mitglied'],
     });
     expect(ok.teilnahmeStatus).toBeNull();
+  });
+});
+
+describe('serienTage', () => {
+  const woechentlich = {
+    regel: 'woechentlich' as const,
+    wochentage: [1, 3, 0],
+    wochen: [],
+    startDatum: '2026-01-01',
+    endDatum: null,
+  };
+  const monatlich = (wochentage: number[], wochen: number[]) => ({
+    ...woechentlich,
+    regel: 'monatlich' as const,
+    wochentage,
+    wochen,
+  });
+
+  it('lists the weekdays of a week range, honoring start and end', () => {
+    // 2026-10-28 is a Wednesday.
+    expect(serienTage(woechentlich, '2026-10-28', '2026-11-04')).toEqual([
+      '2026-10-28',
+      '2026-11-01',
+      '2026-11-02',
+      '2026-11-04',
+    ]);
+    expect(
+      serienTage({ ...woechentlich, startDatum: '2026-11-02' }, '2026-10-28', '2026-11-04'),
+    ).toEqual(['2026-11-02', '2026-11-04']);
+    expect(
+      serienTage({ ...woechentlich, endDatum: '2026-11-01' }, '2026-10-28', '2026-11-04'),
+    ).toEqual(['2026-10-28', '2026-11-01']);
+  });
+
+  it('keeps the weekday across daylight saving time', () => {
+    const tage = serienTage({ ...woechentlich, wochentage: [0] }, '2026-03-20', '2027-03-19');
+    expect(tage).toContain('2026-03-29');
+    expect(tage).toContain('2026-10-25');
+    expect(tage).toHaveLength(52);
+  });
+
+  it('finds the n-th weekday of a month', () => {
+    // First Tuesday: 2026-11-03, 2026-12-01; third Tuesday: 2026-11-17.
+    expect(serienTage(monatlich([2], [1]), '2026-11-01', '2026-12-31')).toEqual([
+      '2026-11-03',
+      '2026-12-01',
+    ]);
+    expect(serienTage(monatlich([2], [1, 3]), '2026-11-01', '2026-11-30')).toEqual([
+      '2026-11-03',
+      '2026-11-17',
+    ]);
+  });
+
+  it('finds the last weekday, also at month ends, and has no fifth weekday for 1..4', () => {
+    // November 2026 has five Mondays (2, 9, 16, 23, 30); the last is the 30th.
+    expect(serienTage(monatlich([1], [-1]), '2026-11-01', '2026-11-30')).toEqual(['2026-11-30']);
+    expect(serienTage(monatlich([1], [4]), '2026-11-01', '2026-11-30')).toEqual(['2026-11-23']);
+    // February 2027 ends on a Sunday (28th): the last Sunday is the 28th, the last Monday the 22nd.
+    expect(serienTage(monatlich([0], [-1]), '2027-02-01', '2027-02-28')).toEqual(['2027-02-28']);
+    expect(serienTage(monatlich([1], [-1]), '2027-02-01', '2027-02-28')).toEqual(['2027-02-22']);
+    // A month with a 4th weekday that is also the last (28 days).
+    expect(serienTage(monatlich([1], [4, -1]), '2027-02-01', '2027-02-28')).toEqual(['2027-02-22']);
+  });
+});
+
+describe('Serien-Eingabe', () => {
+  const basis = {
+    name: ' Plenum ',
+    vorlageId: 'v1',
+    regel: 'monatlich',
+    wochentage: [2, 2],
+    wochen: [3, 1],
+    startDatum: '2026-11-01',
+    endDatum: null,
+  };
+
+  it('normalizes and validates', () => {
+    const r = serieEingabeSchema.parse(basis);
+    expect(r).toMatchObject({ name: 'Plenum', wochentage: [2], wochen: [1, 3] });
+    expect(serieEingabeSchema.parse({ ...basis, regel: 'woechentlich' }).wochen).toEqual([]);
+    expect(serieAendernSchema.parse({ ...basis, bestehende: 'anpassen' }).bestehende).toBe(
+      'anpassen',
+    );
+  });
+
+  it('rejects missing weekdays, weeks and a reversed range', () => {
+    expect(serieEingabeSchema.safeParse({ ...basis, wochentage: [] }).success).toBe(false);
+    expect(serieEingabeSchema.safeParse({ ...basis, wochen: [] }).success).toBe(false);
+    expect(serieEingabeSchema.safeParse({ ...basis, endDatum: '2026-10-01' }).success).toBe(false);
+    expect(serieEingabeSchema.safeParse({ ...basis, endDatum: '2026-11-01' }).success).toBe(true);
+  });
+
+  it('describes the rule in German', () => {
+    expect(serieRegelText({ regel: 'woechentlich', wochentage: [1, 3, 0], wochen: [] })).toBe(
+      'Mo, Mi, So',
+    );
+    expect(serieRegelText({ regel: 'monatlich', wochentage: [2], wochen: [1, 3] })).toBe(
+      '1. und 3. Di im Monat',
+    );
+    expect(serieRegelText({ regel: 'monatlich', wochentage: [5], wochen: [-1] })).toBe(
+      'letzten Fr im Monat',
+    );
+  });
+});
+
+describe('serieSlug / serieIdAus', () => {
+  it('makes lowercase ASCII slugs', () => {
+    expect(serieSlug('Barabend')).toBe('barabend');
+    expect(serieSlug('Große Küchen-Öffnung & Co.')).toBe('grosse-kuechen-oeffnung-co');
+    expect(serieSlug('  Café  ')).toBe('cafe');
+    expect(serieSlug('!!!')).toBe('serie');
+  });
+
+  it('appends a counter when the id is taken', () => {
+    expect(serieIdAus('Barabend', new Set())).toBe('barabend');
+    expect(serieIdAus('Barabend', new Set(['barabend']))).toBe('barabend-2');
+    expect(serieIdAus('Barabend', new Set(['barabend', 'barabend-2']))).toBe('barabend-3');
   });
 });
