@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type pg from 'pg';
+import { mitWiederholung } from './migrate';
 
 const MIGRATIONS_DIR = path.join(import.meta.dirname, 'migrations');
 
@@ -70,8 +71,10 @@ export async function rollback(
     throw new Error(`Missing down migration for: ${missing.join(', ')} (expected in ${downDir})`);
 
   for (const name of toRollBack) {
-    for (const sql of plan.get(name)!) await pool.query(sql);
-    await pool.query('DELETE FROM schema_migrations WHERE name = $1', [name]);
+    for (const sql of plan.get(name)!) await mitWiederholung(() => pool.query(sql));
+    await mitWiederholung(() =>
+      pool.query('DELETE FROM schema_migrations WHERE name = $1', [name]),
+    );
   }
   return toRollBack;
 }
