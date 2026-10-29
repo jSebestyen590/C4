@@ -22,6 +22,13 @@ Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0082`, Code in `packages
 
 ## Regeln
 
+- **Titel:** Optional (Schema: leer/fehlend = `''`, die Spalte `titel` bleibt `NOT NULL`, daher keine Migration). Ohne Titel gilt der
+  Name der Kategorie, sonst „Event“ (`eventTitel(event, kategorie)` in Shared). `EventDto.anzeigeTitel` trägt das Ergebnis und gilt für Kalender,
+  Event-Seite, Push, ICS (`SUMMARY`, Feed) und Vorlagenlisten (`vorlageTitel`); `titel` bleibt der eingegebene Wert fürs Formular
+  („Titel (optional)“, Platzhalter = Kategoriename). Vorlagen: ebenso optional, daraus erzeugte Events behalten den leeren Titel. Die Kartenliste zeigt die
+  Kategorie als Zusatzzeile nur bei vorhandenem Titel.
+- **Zeitangabe in Listen:** Kalenderkarten zeigen „Sa, 01.11. 20:00 – 01:00“ (`zeitraumKurz`, ohne Jahr, Ende nur als Uhrzeit); die Event-Seite
+  zeigt weiter das volle Datum.
 - **Zeiten:** Events und Schichten dauern höchstens 24 Stunden (Schema-Prüfung: Ende > Beginn, Dauer ≤ 24 h).
   Eingegeben werden nur Uhrzeiten (`zeitspanne(datum, beginnZeit, endeZeit)`, Europe/Berlin): liegt das Ende bei oder
   vor dem Beginn, gilt der nächste Tag (20:00–01:00 → nächster Tag, 20:00–20:00 = 24 h); die Formulare zeigen dann
@@ -37,8 +44,10 @@ Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0082`, Code in `packages
   Aufbau/Putzen ohne Dienstform (mit Dienstform 400); mehr als der Wunsch geht immer. Im Dialog entfällt das
   Dienstform-Feld bei Aufbau/Putzen und bei Betrieb mit genau einer Dienstform („Dienst: Bar“ als Text, vorbelegt). Ein Dienst je Person und
   Schicht (409). Überlappende Schichten sind nur ein Hinweis. Bei abgesagten Events kein Eintragen.
-- Sich selbst ein-/austragen geht jederzeit (auch rückwirkend). Externe anlegen und eintragen darf jede:r; ihren
-  Eintrag entfernen, wer ihn eingetragen hat oder `events:verwalten`. Andere Mitglieder nur mit `events:verwalten`.
+- Sich selbst ein-/austragen geht jederzeit (auch rückwirkend). **Jede:r mit `kalender:lesen` darf jedes Mitglied mit Profilzeile
+  eintragen (Button „Mitglied eintragen“, Mitgliederliste per `GET /api/mitglieder`) und jedes Mitglied austragen** (400 ohne Profilzeile).
+  Externe anlegen und eintragen darf jede:r; ihren Eintrag entfernen, wer ihn eingetragen hat oder `events:verwalten`.
+  Wer ein anderes Mitglied ein- oder austrägt, löst einen Push an dieses Mitglied aus (siehe „Push-Benachrichtigungen“).
 - **Ampel** (`schichtBewertung`): rot = eine Dienstform (bei Aufbau/Putzen: die Anzahl aller Einträge) unter Minimum oder Anwärter:in ohne Mitglied/EM in derselben
   Schicht (Externe zählen nicht als Begleitung, Anwärter:innen zählen zum Bedarf); gelb = Wunsch nicht erreicht;
   grün = alles erfüllt. Ein Event hat die schlechteste Farbe seiner Schichten, abgesagt = grau.
@@ -187,6 +196,7 @@ eindeutig). Pro Event gibt es keine eigene Einstellung mehr.
 Das allgemeine Modul ist in [benachrichtigungen.md](./benachrichtigungen.md) beschrieben; der Kalender nutzt vier Arten:
 `kalender.erinnerung` (vor der eigenen Schicht, einstellbar; Titel „Bar-Dienst in 30 Minuten“, bei Aufbau/Putzen „Aufbau in 30 Minuten“), `kalender.fehlende_dienste` (zu den globalen Zeitpunkten
 vor Beginn, solange das Event rot ist; je Event und Zeitpunkt einmal, nur der kleinste bereits erreichte, nie rückwirkend; für EM standardmäßig aus) und `kalender.aenderung` (Event verschoben,
-abgesagt/wieder aktiv, eigene Schicht geändert oder entfernt, von anderen ausgetragen; die handelnde Person bekommt
-nichts) und `kalender.teilnahme_erinnerung` (vor einem Event, an dem man teilnimmt, einstellbar, Standard 60 Minuten). Einstellungen: Seite „Benachrichtigungen“ (`/benachrichtigungen`); „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben
+abgesagt/wieder aktiv, eigene Schicht geändert oder entfernt, von anderen ein- oder ausgetragen; die handelnde Person bekommt
+nichts). Ein- und Austragen durch andere: „Leonard hat dich für die 20-Uhr-Schicht bei „Barabend“ am 01.11. eingetragen.“ bzw. „… aus der 20-Uhr-Schicht … ausgetragen.“
+(Betrieb: „die/der 20-Uhr-Schicht“, Aufbau: „den/dem Aufbau“, Putzen: „das/dem Putzen“; die handelnde Person als Benutzername, sonst Vorname; Titel „Du wurdest eingetragen/ausgetragen“; Link zum Event) und `kalender.teilnahme_erinnerung` (vor einem Event, an dem man teilnimmt, einstellbar, Standard 60 Minuten). Einstellungen: Seite „Benachrichtigungen“ (`/benachrichtigungen`); „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben
 stehen in `kalenderBenachrichtigungen.ts`. Auf iPhone/iPad nur über „Zum Home-Bildschirm“ (iOS 16.4+).

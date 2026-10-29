@@ -68,6 +68,7 @@ import {
   kalenderInvalidieren,
   useDienstformen,
   useEventKategorien,
+  vorlageTitel,
   useKalenderEvent,
   useKalenderEvents,
   useSerien,
@@ -536,7 +537,10 @@ function NeuesEvent({
         label="Vorlage"
         placeholder="Ohne Vorlage"
         clearable
-        data={(vorlagen.data ?? []).map((v) => ({ value: v.id, label: v.titel }))}
+        data={(vorlagen.data ?? []).map((v) => ({
+          value: v.id,
+          label: vorlageTitel(v, kategorien),
+        }))}
         value={vorlageId}
         onChange={setVorlageId}
         disabled={vorlagen.isPending}

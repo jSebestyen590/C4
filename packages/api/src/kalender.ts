@@ -19,6 +19,7 @@ import {
   type DienstformDto,
   type DienstformEingabe,
   type DienstPerson,
+  eventTitel,
   type EventDto,
   type EventEingabe,
   type EventArt,
@@ -269,6 +270,8 @@ export interface DienstInfo {
   schichtEnde: string;
   eventId: string;
   eventTitel: string;
+  /** ISO instant of the event start. */
+  eventBeginn: string;
   abgesagt: boolean;
   dienstformId: string | null;
   mitgliedSub: string | null;
@@ -568,6 +571,8 @@ async function personenLaden(
   };
 }
 
+const titelKategorie = (name: string | null | undefined) => (name ? { name } : null);
+
 /** Loads events (matching `bedingung`) with Schichten, Bedarfe, Dienste and the Ampel. */
 async function eventsLaden(
   q: Q,
@@ -681,6 +686,7 @@ async function eventsLaden(
     return {
       id: e.id,
       titel: e.titel,
+      anzeigeTitel: eventTitel(e, kategorieName === null ? null : { name: kategorieName }),
       beschreibung: e.beschreibung,
       kategorie:
         e.kategorieId && kategorieName !== null && kategorieFarbe !== null
@@ -1591,12 +1597,15 @@ export function createKalenderStore(db: Db): KalenderStore {
           schichtBeginn: schichten.beginn,
           schichtEnde: schichten.ende,
           eventId: events.id,
-          eventTitel: events.titel,
+          eventTitelRoh: events.titel,
+          eventBeginn: events.beginn,
+          kategorieName: eventKategorien.name,
           abgesagt: events.abgesagt,
         })
         .from(dienste)
         .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
         .innerJoin(events, eq(events.id, schichten.eventId))
+        .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
         .where(eq(dienste.id, id));
       if (!r) return undefined;
       return {
@@ -1606,7 +1615,8 @@ export function createKalenderStore(db: Db): KalenderStore {
         schichtBeginn: iso(r.schichtBeginn),
         schichtEnde: iso(r.schichtEnde),
         eventId: r.eventId,
-        eventTitel: r.eventTitel,
+        eventTitel: eventTitel({ titel: r.eventTitelRoh }, titelKategorie(r.kategorieName)),
+        eventBeginn: iso(r.eventBeginn),
         abgesagt: r.abgesagt,
         dienstformId: r.dienst.dienstformId,
         mitgliedSub: r.dienst.mitgliedSub,
@@ -2004,7 +2014,8 @@ export function createKalenderStore(db: Db): KalenderStore {
         .select({
           id: dienste.id,
           eventId: events.id,
-          eventTitel: events.titel,
+          eventTitelRoh: events.titel,
+          kategorieName: eventKategorien.name,
           abgesagt: events.abgesagt,
           schichtArt: schichten.art,
           beginn: schichten.beginn,
@@ -2014,10 +2025,16 @@ export function createKalenderStore(db: Db): KalenderStore {
         .from(dienste)
         .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
         .innerJoin(events, eq(events.id, schichten.eventId))
+        .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
         .leftJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
         .where(and(eq(dienste.mitgliedSub, sub), gte(schichten.beginn, ab)))
         .orderBy(asc(schichten.beginn), asc(dienste.id));
-      return rows.map((r) => ({ ...r, beginn: iso(r.beginn), ende: iso(r.ende) }));
+      return rows.map(({ eventTitelRoh, kategorieName, ...r }) => ({
+        ...r,
+        eventTitel: eventTitel({ titel: eventTitelRoh }, titelKategorie(kategorieName)),
+        beginn: iso(r.beginn),
+        ende: iso(r.ende),
+      }));
     },
     async meineEvents(sub, ab) {
       const aboIds = (
@@ -2026,9 +2043,10 @@ export function createKalenderStore(db: Db): KalenderStore {
           .from(kalenderEventAbos)
           .where(eq(kalenderEventAbos.mitgliedSub, sub))
       ).map((a) => a.eventId);
-      const rows = await db
-        .select()
+      const zeilen = await db
+        .select({ e: events, kategorieName: eventKategorien.name })
         .from(events)
+        .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
         .where(
           and(
             gte(events.ende, ab),
@@ -2040,6 +2058,8 @@ export function createKalenderStore(db: Db): KalenderStore {
           ),
         )
         .orderBy(asc(events.beginn), asc(events.id));
+      const rows = zeilen.map((z) => z.e);
+      const kategorien = new Map(zeilen.map((z) => [z.e.id, z.kategorieName]));
       const teilnahmen = await teilnahmenLaden(db, rows);
       const abonniert = new Set(aboIds);
       return rows
@@ -2053,7 +2073,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         )
         .map((e) => ({
           id: e.id,
-          titel: e.titel,
+          titel: eventTitel(e, titelKategorie(kategorien.get(e.id))),
           beschreibung: e.beschreibung,
           beginn: iso(e.beginn),
           ende: iso(e.ende),
@@ -2061,9 +2081,10 @@ export function createKalenderStore(db: Db): KalenderStore {
         }));
     },
     async erinnerungsTeilnahmen(von, bis) {
-      const rows = await db
-        .select()
+      const zeilen = await db
+        .select({ e: events, kategorieName: eventKategorien.name })
         .from(events)
+        .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
         .where(
           and(
             eq(events.abgesagt, false),
@@ -2073,13 +2094,15 @@ export function createKalenderStore(db: Db): KalenderStore {
           ),
         )
         .orderBy(asc(events.beginn), asc(events.id));
+      const rows = zeilen.map((z) => z.e);
+      const kategorien = new Map(zeilen.map((z) => [z.e.id, z.kategorieName]));
       const teilnahmen = await teilnahmenLaden(db, rows);
       return rows.flatMap((e) =>
         (teilnahmen.get(e.id) ?? [])
           .filter((z) => z.zustand === 'teilnahme')
           .map((z) => ({
             eventId: e.id,
-            eventTitel: e.titel,
+            eventTitel: eventTitel(e, titelKategorie(kategorien.get(e.id))),
             mitgliedSub: z.mitglied.sub,
             beginn: iso(e.beginn),
           })),
@@ -2091,7 +2114,8 @@ export function createKalenderStore(db: Db): KalenderStore {
           dienstId: dienste.id,
           mitgliedSub: dienste.mitgliedSub,
           eventId: events.id,
-          eventTitel: events.titel,
+          eventTitelRoh: events.titel,
+          kategorieName: eventKategorien.name,
           schichtArt: schichten.art,
           dienstformName: dienstformen.name,
           beginn: schichten.beginn,
@@ -2099,13 +2123,23 @@ export function createKalenderStore(db: Db): KalenderStore {
         .from(dienste)
         .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
         .innerJoin(events, eq(events.id, schichten.eventId))
+        .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
         .leftJoin(dienstformen, eq(dienstformen.id, dienste.dienstformId))
         .where(
           and(eq(events.abgesagt, false), gte(schichten.beginn, von), lt(schichten.beginn, bis)),
         )
         .orderBy(asc(schichten.beginn), asc(dienste.id));
-      return rows.flatMap((r) =>
-        r.mitgliedSub === null ? [] : [{ ...r, mitgliedSub: r.mitgliedSub, beginn: iso(r.beginn) }],
+      return rows.flatMap(({ eventTitelRoh, kategorieName, ...r }) =>
+        r.mitgliedSub === null
+          ? []
+          : [
+              {
+                ...r,
+                eventTitel: eventTitel({ titel: eventTitelRoh }, titelKategorie(kategorieName)),
+                mitgliedSub: r.mitgliedSub,
+                beginn: iso(r.beginn),
+              },
+            ],
       );
     },
   };

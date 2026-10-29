@@ -2354,6 +2354,7 @@ describe('kalender', () => {
     schichtEnde: '2026-06-05T21:00:00.000Z',
     eventId: 'e1',
     eventTitel: 'Offener Abend',
+    eventBeginn: '2026-06-05T17:00:00.000Z',
     abgesagt: false,
     dienstformId: 'f1',
     mitgliedSub: null,
@@ -2597,7 +2598,7 @@ describe('kalender', () => {
     ).toBe(400);
   });
 
-  it('lets members enter themselves and Externe, but others only for Verwalter', async () => {
+  it('lets every member enter themselves, Externe and other members with a profile', async () => {
     const t = makeApp();
     mitProfil(t);
     const post = (token: string, body: unknown) =>
@@ -2615,9 +2616,15 @@ describe('kalender', () => {
     );
     expect((await post('member-token', { dienstformId: 'f1', externId: 'x1' })).status).toBe(201);
 
+    // Others may be entered by anybody (formerly only Verwalter).
     const fremd = await post('member-token', { dienstformId: 'f1', mitgliedSub: 'r' });
-    expect(fremd.status).toBe(403);
-    expect(t.kalender.dienstEintragen).toHaveBeenCalledTimes(3);
+    expect(fremd.status).toBe(201);
+    expect(t.kalender.dienstEintragen).toHaveBeenLastCalledWith(
+      's1',
+      { dienstformId: 'f1', kommentar: null, mitgliedSub: 'r' },
+      'm2',
+    );
+    expect(t.kalender.dienstEintragen).toHaveBeenCalledTimes(4);
     expect((await post('vorstand-token', { dienstformId: 'f1', mitgliedSub: 'r' })).status).toBe(
       201,
     );
@@ -2629,6 +2636,26 @@ describe('kalender', () => {
     expect(
       (await post('admin-token', { dienstformId: 'f1', mitgliedSub: 'r', externId: 'x1' })).status,
     ).toBe(400);
+  });
+
+  it('rejects entering a member without a profile row and callers without kalender:lesen', async () => {
+    const t = makeApp();
+    mitProfil(t);
+    t.mitglieder.holen.mockImplementation(async (sub: string) =>
+      sub === 'ohne'
+        ? undefined
+        : ({ sub, vorname: 'A', nachname: 'B', status: 'mitglied' } as MitgliedRow),
+    );
+    const res = await t.app.request(
+      '/api/kalender/schichten/s1/dienste',
+      json('member-token', 'POST', { dienstformId: 'f1', mitgliedSub: 'ohne' }),
+    );
+    expect(res.status).toBe(400);
+    expect(t.kalender.dienstEintragen).not.toHaveBeenCalled();
+    const ohneToken = await t.app.request('/api/kalender/schichten/s1/dienste', {
+      method: 'POST',
+    });
+    expect(ohneToken.status).toBe(401);
   });
 
   it('maps the store rules of entering a Dienst to statuses', async () => {
@@ -2686,7 +2713,7 @@ describe('kalender', () => {
     expect((await merge('vorstand-token', { zielId: 'x9', quelleIds: ['x2'] })).status).toBe(404);
   });
 
-  it('removes Dienste only for the person, the enterer of an Externe, or Verwalter', async () => {
+  it('lets every member remove members, but Externe only the enterer or Verwalter', async () => {
     const t = makeApp();
     const entfernen = (token: string, id: string) =>
       t.app.request(`/api/kalender/dienste/${id}`, json(token, 'DELETE'));
@@ -2698,7 +2725,6 @@ describe('kalender', () => {
       'fremd',
       dienstInfo({ id: 'fremd', mitgliedSub: 'r', eingetragenVon: 'r' }),
     );
-    // m2 entered someone else (as Verwalter earlier); that does not give m2 the right to remove it.
     t.kalenderDienste.set(
       'von-mir',
       dienstInfo({ id: 'von-mir', mitgliedSub: 'r', eingetragenVon: 'm2' }),
@@ -2712,15 +2738,14 @@ describe('kalender', () => {
       dienstInfo({ id: 'extern2', externId: 'x1', eingetragenVon: 'm2' }),
     );
 
-    expect((await entfernen('member-token', 'fremd')).status).toBe(403);
-    expect((await entfernen('member-token', 'von-mir')).status).toBe(403);
     expect((await entfernen('reader-token', 'extern')).status).toBe(403);
+    expect((await entfernen('member-token', 'fremd')).status).toBe(200);
+    expect((await entfernen('member-token', 'von-mir')).status).toBe(200);
     expect((await entfernen('member-token', 'eigen')).status).toBe(200);
     expect((await entfernen('member-token', 'extern')).status).toBe(200);
     expect((await entfernen('vorstand-token', 'extern2')).status).toBe(200);
-    expect((await entfernen('vorstand-token', 'fremd')).status).toBe(200);
     expect((await entfernen('vorstand-token', 'fremd')).status).toBe(404);
-    expect(t.kalender.dienstEntfernen).toHaveBeenCalledTimes(4);
+    expect(t.kalender.dienstEntfernen).toHaveBeenCalledTimes(5);
   });
 
   it('adds Cognito usernames to events and the Statistik', async () => {
@@ -2738,6 +2763,7 @@ describe('kalender', () => {
     t.kalender.event.mockResolvedValueOnce({
       id: 'e1',
       titel: 'Offener Abend',
+      anzeigeTitel: 'Offener Abend',
       beschreibung: null,
       kategorie: null,
       art: 'dienste' as const,
@@ -3151,6 +3177,7 @@ describe('kalender', () => {
       const einEvent = {
         id: 'e1',
         titel: 'Plenum',
+        anzeigeTitel: 'Plenum',
         beschreibung: null,
         kategorie: null,
         art: 'dienste' as const,
@@ -3225,6 +3252,7 @@ describe('kalender', () => {
     const ereignis = (id: string, beginn: string) => ({
       id,
       titel: 'Offener Abend',
+      anzeigeTitel: 'Offener Abend',
       beschreibung: null,
       kategorie: null,
       art: 'dienste' as const,
@@ -3360,6 +3388,8 @@ describe('kalender', () => {
 
     it('notifies a removed member, but not the person who removed themself', async () => {
       const t = makeApp();
+      mitProfil(t);
+      t.userAdmin.konten.mockResolvedValue(new Map([['v', { username: 'leonard' } as Konto]]));
       await t.push.store.aboSpeichern('r', {
         endpoint: 'https://push.example/r',
         keys: { p256dh: 'p', auth: 'a' },
@@ -3385,13 +3415,46 @@ describe('kalender', () => {
       expect(t.gesendet).toEqual([
         {
           endpoint: 'https://push.example/r',
-          titel: 'Dienst entfernt',
-          text: expect.stringContaining(
-            'Du wurdest aus der Schicht „Betrieb 19:00–23:00“ bei „Offener Abend“',
-          ),
+          titel: 'Du wurdest ausgetragen',
+          text: 'leonard hat dich aus der 19-Uhr-Schicht bei „Offener Abend“ am 05.06. ausgetragen.',
           url: '/app/kalender/events/e1',
         },
       ]);
+    });
+
+    it('notifies a member entered by somebody else (username, else Vorname), not oneself', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      await t.push.store.aboSpeichern('r', {
+        endpoint: 'https://push.example/r',
+        keys: { p256dh: 'p', auth: 'a' },
+      });
+      const eintragen = (token: string, body: unknown) =>
+        t.app.request('/api/kalender/schichten/s1/dienste', json(token, 'POST', body));
+      t.kalenderDienste.set(
+        'd-neu',
+        dienstInfo({ id: 'd-neu', mitgliedSub: 'r', schichtArt: 'aufbau', dienstformId: null }),
+      );
+
+      // Without a username the actor's Vorname is used.
+      expect(
+        (await eintragen('member-token', { dienstformId: 'f1', mitgliedSub: 'r' })).status,
+      ).toBe(201);
+      expect(t.gesendet).toEqual([
+        {
+          endpoint: 'https://push.example/r',
+          titel: 'Du wurdest eingetragen',
+          text: 'A hat dich für den Aufbau bei „Offener Abend“ am 05.06. eingetragen.',
+          url: '/app/kalender/events/e1',
+        },
+      ]);
+
+      // Entering oneself or an Externe sends nothing.
+      t.gesendet.length = 0;
+      await eintragen('reader-token', { dienstformId: 'f1', mitgliedSub: 'r' });
+      await eintragen('reader-token', { dienstformId: 'f1' });
+      await eintragen('reader-token', { dienstformId: 'f1', externId: 'x1' });
+      expect(t.gesendet).toHaveLength(0);
     });
 
     it('notifies Dienst holders about a cancellation, except the actor', async () => {

@@ -34,7 +34,13 @@ import {
 import { useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import { DatumFeld } from './DatumFeld';
-import { kalenderInvalidieren, useSerien, useVorlagen } from './kalenderDaten';
+import {
+  kalenderInvalidieren,
+  useEventKategorien,
+  useSerien,
+  useVorlagen,
+  vorlageTitel,
+} from './kalenderDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
 
 const REGEL_LABELS: Record<SerienRegel, string> = {
@@ -138,6 +144,7 @@ export function SerienTab() {
   const qc = useQueryClient();
   const serien = useSerien();
   const vorlagen = useVorlagen();
+  const kategorien = useEventKategorien();
   const [bearbeiten, setBearbeiten] = useState<{
     serie: SerieListeDto | null;
     werte: SerieWerte;
@@ -147,7 +154,10 @@ export function SerienTab() {
   const [nachfrage, setNachfrage] = useState<Nachfrage | null>(null);
   const [loeschen, setLoeschen] = useState<SerieListeDto | null>(null);
 
-  const vorlageTitel = (id: string) => vorlagen.data?.find((v) => v.id === id)?.titel ?? '?';
+  const vorlageName = (id: string) => {
+    const v = vorlagen.data?.find((x) => x.id === id);
+    return v ? vorlageTitel(v, kategorien.liste) : '?';
+  };
 
   /** Runs an API call; a 409 with counts opens the question instead of failing. */
   const ausfuehren = async (
@@ -314,7 +324,7 @@ export function SerienTab() {
                 </Text>
                 <Text size="sm">{serieRegelText(s)}</Text>
                 <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                  Vorlage: {vorlageTitel(s.vorlageId)}
+                  Vorlage: {vorlageName(s.vorlageId)}
                 </Text>
               </Stack>
               <Group gap={0} wrap="nowrap">
@@ -365,7 +375,10 @@ export function SerienTab() {
           <SerieFormular
             werte={bearbeiten.werte}
             onChange={(werte) => setBearbeiten({ ...bearbeiten, werte })}
-            vorlagen={(vorlagen.data ?? []).map((v) => ({ value: v.id, label: v.titel }))}
+            vorlagen={(vorlagen.data ?? []).map((v) => ({
+              value: v.id,
+              label: vorlageTitel(v, kategorien.liste),
+            }))}
             meldung={meldung}
             laeuft={laeuft}
             onAbbrechen={() => setBearbeiten(null)}

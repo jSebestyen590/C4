@@ -464,7 +464,9 @@ export function KopfFelder({
         )}
       </Stack>
       <TextInput
-        label="Titel"
+        label="Titel (optional)"
+        description="Ohne Titel wird der Name der Kategorie angezeigt."
+        placeholder={gewaehlt?.name ?? 'Name der Kategorie'}
         value={werte.titel}
         onChange={(e) => onChange({ ...werte, titel: e.currentTarget.value })}
       />

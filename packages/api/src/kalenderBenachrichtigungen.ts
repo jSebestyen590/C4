@@ -4,6 +4,7 @@ import {
   SCHICHT_ART_BEZEICHNUNG,
   schichtBezeichnung,
   type EventDto,
+  type SchichtArt,
 } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { BetroffenerDienst, DienstInfo, EventAenderung, KalenderStore } from './kalender';
@@ -196,7 +197,7 @@ export async function fehlendeDienste(
       const nachricht = {
         art: FEHLENDE_DIENSTE,
         titel: 'Es fehlen noch Dienste',
-        text: `Für „${event.titel}“ am ${tagText(event.beginn)} fehlen noch Dienste.`,
+        text: `Für „${event.anzeigeTitel}“ am ${tagText(event.beginn)} fehlen noch Dienste.`,
         url: eventUrl(event.id),
       };
       // The responsible person gets the notice regardless of their setting, and only once.
@@ -273,7 +274,7 @@ export async function meldeEventAenderung(
     ])) {
       hinzu(proSub, sub, {
         titel: 'Event verschoben',
-        text: `„${event.titel}“ ist jetzt am ${tagText(event.beginn)} um ${berlinTeile(event.beginn).zeit} Uhr.`,
+        text: `„${event.anzeigeTitel}“ ist jetzt am ${tagText(event.beginn)} um ${berlinTeile(event.beginn).zeit} Uhr.`,
       });
     }
   }
@@ -283,7 +284,7 @@ export async function meldeEventAenderung(
       if (aenderung.zeitGeaendert) continue;
       hinzu(proSub, sub, {
         titel: 'Schicht geändert',
-        text: `Deine Schicht bei „${event.titel}“ ist jetzt ${schichtBezeichnung(s, event.beginn)} Uhr.`,
+        text: `Deine Schicht bei „${event.anzeigeTitel}“ ist jetzt ${schichtBezeichnung(s, event.beginn)} Uhr.`,
       });
     }
   }
@@ -291,19 +292,19 @@ export async function meldeEventAenderung(
     if (d.person.art !== 'mitglied') continue;
     hinzu(proSub, d.person.sub, {
       titel: 'Dienst entfernt',
-      text: `Dein Dienst in der Schicht „${schichtBezeichnung({ art: d.schichtArt, beginn: d.schichtBeginn, ende: d.schichtEnde }, event.beginn)}“ bei „${event.titel}“ entfällt.`,
+      text: `Dein Dienst in der Schicht „${schichtBezeichnung({ art: d.schichtArt, beginn: d.schichtBeginn, ende: d.schichtEnde }, event.beginn)}“ bei „${event.anzeigeTitel}“ entfällt.`,
     });
   }
   // Newly responsible.
   if (aenderung.verantwortlichNeu) {
     hinzu(proSub, aenderung.verantwortlichNeu, verantwortlichZeile(event));
   }
-  await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
+  await proPersonSenden(sender, event.id, event.anzeigeTitel, proSub, akteur);
 }
 
-const verantwortlichZeile = (event: Pick<EventDto, 'titel' | 'beginn'>): Zeile => ({
+const verantwortlichZeile = (event: Pick<EventDto, 'anzeigeTitel' | 'beginn'>): Zeile => ({
   titel: 'Du bist verantwortlich',
-  text: `Du bist verantwortlich für „${event.titel}“ (${tagText(event.beginn)}).`,
+  text: `Du bist verantwortlich für „${event.anzeigeTitel}“ (${tagText(event.beginn)}).`,
 });
 
 /**
@@ -312,7 +313,8 @@ const verantwortlichZeile = (event: Pick<EventDto, 'titel' | 'beginn'>): Zeile =
  */
 export async function meldeAbsage(
   sender: Sender,
-  event: Pick<EventDto, 'id' | 'titel' | 'beginn'> & Partial<Pick<EventDto, 'verantwortlich'>>,
+  event: Pick<EventDto, 'id' | 'anzeigeTitel' | 'beginn'> &
+    Partial<Pick<EventDto, 'verantwortlich'>>,
   abgesagt: boolean,
   mitgliedSubs: readonly string[],
   teilnehmerSubs: readonly string[],
@@ -321,39 +323,65 @@ export async function meldeAbsage(
   const zeile: Zeile = abgesagt
     ? {
         titel: 'Event abgesagt',
-        text: `„${event.titel}“ am ${tagText(event.beginn)} wurde abgesagt. Dein Dienst entfällt.`,
+        text: `„${event.anzeigeTitel}“ am ${tagText(event.beginn)} wurde abgesagt. Dein Dienst entfällt.`,
       }
     : {
         titel: 'Event findet statt',
-        text: `„${event.titel}“ am ${tagText(event.beginn)} findet doch statt. Dein Dienst gilt wieder.`,
+        text: `„${event.anzeigeTitel}“ am ${tagText(event.beginn)} findet doch statt. Dein Dienst gilt wieder.`,
       };
   const teilnahmeZeile: Zeile = abgesagt
     ? {
         titel: 'Event abgesagt',
-        text: `„${event.titel}“ am ${tagText(event.beginn)} wurde abgesagt.`,
+        text: `„${event.anzeigeTitel}“ am ${tagText(event.beginn)} wurde abgesagt.`,
       }
     : {
         titel: 'Event findet statt',
-        text: `„${event.titel}“ am ${tagText(event.beginn)} findet doch statt.`,
+        text: `„${event.anzeigeTitel}“ am ${tagText(event.beginn)} findet doch statt.`,
       };
   const proSub = new Map<string, Zeile[]>(teilnehmerSubs.map((sub) => [sub, [teilnahmeZeile]]));
   if (event.verantwortlich) proSub.set(event.verantwortlich.sub, [teilnahmeZeile]);
   for (const sub of mitgliedSubs) proSub.set(sub, [zeile]);
-  await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
+  await proPersonSenden(sender, event.id, event.anzeigeTitel, proSub, akteur);
 }
 
-/** A member was removed from a Dienst by somebody else. */
-export async function meldeDienstEntfernt(
+/** "die 20-Uhr-Schicht" / "den Aufbau" / "das Putzen" (accusative, after "für"). */
+export function schichtAkkusativ(art: SchichtArt, beginn: string): string {
+  if (art === 'aufbau') return 'den Aufbau';
+  if (art === 'putzen') return 'das Putzen';
+  const zeit = berlinTeile(beginn).zeit;
+  return `die ${zeit.endsWith(':00') ? String(Number(zeit.slice(0, 2))) : zeit}-Uhr-Schicht`;
+}
+
+/** Dative, after "aus": "der 20-Uhr-Schicht" / "dem Aufbau" / "dem Putzen". */
+export function schichtDativ(art: SchichtArt, beginn: string): string {
+  return schichtAkkusativ(art, beginn)
+    .replace(/^die /, 'der ')
+    .replace(/^(den|das) /, 'dem ');
+}
+
+/**
+ * Somebody else entered a member into a Dienst or removed them from it: "Leonard hat dich für die
+ * 20-Uhr-Schicht bei „Barabend“ am 01.11. eingetragen". `akteur.name` is the actor's username, else Vorname.
+ */
+export async function meldeDienstDurchAndere(
   sender: Sender,
-  dienst: DienstInfo,
-  akteur: string,
+  dienst: Pick<
+    DienstInfo,
+    'mitgliedSub' | 'eventId' | 'eventTitel' | 'eventBeginn' | 'schichtArt' | 'schichtBeginn'
+  >,
+  eingetragen: boolean,
+  akteur: { sub: string; name: string },
 ): Promise<void> {
-  if (!dienst.mitgliedSub || dienst.mitgliedSub === akteur) return;
+  if (!dienst.mitgliedSub || dienst.mitgliedSub === akteur.sub) return;
+  const t = berlinTeile(dienst.eventBeginn);
+  const wo = `bei „${dienst.eventTitel}“ am ${t.tag}.${t.monat}.`;
   await sender.senden({
     subs: [dienst.mitgliedSub],
     art: AENDERUNG,
-    titel: 'Dienst entfernt',
-    text: `Du wurdest aus der Schicht „${schichtBezeichnung({ art: dienst.schichtArt, beginn: dienst.schichtBeginn, ende: dienst.schichtEnde })}“ bei „${dienst.eventTitel}“ (${tagText(dienst.schichtBeginn)}) ausgetragen.`,
+    titel: eingetragen ? 'Du wurdest eingetragen' : 'Du wurdest ausgetragen',
+    text: eingetragen
+      ? `${akteur.name} hat dich für ${schichtAkkusativ(dienst.schichtArt, dienst.schichtBeginn)} ${wo} eingetragen.`
+      : `${akteur.name} hat dich aus ${schichtDativ(dienst.schichtArt, dienst.schichtBeginn)} ${wo} ausgetragen.`,
     url: eventUrl(dienst.eventId),
   });
 }

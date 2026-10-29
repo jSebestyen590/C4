@@ -59,7 +59,7 @@ import {
   monatsGrenzen,
   monatsRaster,
   monatSuche,
-  zeitraumAnzeigen,
+  zeitraumKurz,
 } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 
@@ -217,7 +217,7 @@ function TagesUebersicht({
                   td={e.abgesagt ? 'line-through' : undefined}
                   style={{ overflowWrap: 'anywhere' }}
                 >
-                  {e.titel}
+                  {e.anzeigeTitel}
                 </Text>
               </Stack>
               <Stack gap={4} align="flex-end">
@@ -355,7 +355,7 @@ function MonatsRasterKompakt({
             <UnstyledButton
               key={t}
               onClick={() => antippen(t)}
-              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${hat ? liste.map((e) => e.titel).join(', ') : 'Event anlegen'}`}
+              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${hat ? liste.map((e) => e.anzeigeTitel).join(', ') : 'Event anlegen'}`}
               style={stil}
             >
               {zahl}
@@ -430,7 +430,7 @@ function EventKarte({
         <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
           <Stack gap={0} style={{ minWidth: 0 }}>
             <Text size="sm" c="dimmed">
-              {zeitraumAnzeigen(event.beginn, event.ende)}
+              {zeitraumKurz(event.beginn, event.ende)}
             </Text>
             <Anchor
               component={Link}
@@ -440,9 +440,9 @@ function EventKarte({
               td={event.abgesagt ? 'line-through' : undefined}
               style={{ overflowWrap: 'anywhere' }}
             >
-              {event.titel}
+              {event.anzeigeTitel}
             </Anchor>
-            {event.kategorie && (
+            {event.kategorie && event.titel && (
               <Text size="xs" c="dimmed">
                 {event.kategorie.name}
               </Text>
@@ -541,7 +541,7 @@ function MonatsRaster({
                       component={Link}
                       to={`/kalender/events/${e.id}`}
                       onClick={(ev) => ev.stopPropagation()}
-                      title={`${e.titel} (${zeitBerlin(e.beginn)})`}
+                      title={`${e.anzeigeTitel} (${zeitBerlin(e.beginn)})`}
                       fz={12}
                       lh={1.25}
                       px={4}
@@ -556,7 +556,7 @@ function MonatsRaster({
                         overflowWrap: 'anywhere',
                       }}
                     >
-                      {zeitBerlin(e.beginn)} {e.titel}
+                      {zeitBerlin(e.beginn)} {e.anzeigeTitel}
                     </Anchor>
                   );
                 })}

@@ -6,6 +6,8 @@ import {
   erinnerungen,
   fehlendeDienste,
   meldeAbsage,
+  schichtAkkusativ,
+  schichtDativ,
   meldeEventAenderung,
   minutenText,
   registriereKalenderAufgaben,
@@ -283,6 +285,7 @@ describe('Erinnerungen', () => {
 const event = (patch: Partial<EventDto> = {}): EventDto => ({
   id: 'e1',
   titel: 'Offener Abend',
+  anzeigeTitel: 'Offener Abend',
   beschreibung: null,
   kategorie: null,
   art: 'dienste' as const,
@@ -588,6 +591,31 @@ describe('Änderungen', () => {
       'actor',
     );
     expect(t.versendet).toHaveLength(0);
+  });
+
+  it('names the Schicht naturally for entered and removed members', () => {
+    const abend = '2026-10-23T18:00:00.000Z';
+    expect(schichtAkkusativ('betrieb', abend)).toBe('die 20-Uhr-Schicht');
+    expect(schichtDativ('betrieb', abend)).toBe('der 20-Uhr-Schicht');
+    expect(schichtAkkusativ('betrieb', '2026-10-23T18:30:00.000Z')).toBe('die 20:30-Uhr-Schicht');
+    expect(schichtAkkusativ('aufbau', abend)).toBe('den Aufbau');
+    expect(schichtDativ('aufbau', abend)).toBe('dem Aufbau');
+    expect(schichtAkkusativ('putzen', abend)).toBe('das Putzen');
+    expect(schichtDativ('putzen', abend)).toBe('dem Putzen');
+  });
+
+  it('uses the display title (Kategorie name) in event texts', async () => {
+    const t = setup([{ sub: 'v', status: 'mitglied' }]);
+    await t.abo('v');
+    await meldeAbsage(
+      t.b,
+      event({ titel: '', anzeigeTitel: 'Barabend', verantwortlich: verantwortliche('v') }),
+      true,
+      [],
+      [],
+      'actor',
+    );
+    expect(t.versendet[0]!.text).toContain('„Barabend“');
   });
 
   it('tells the responsible person about a cancellation', async () => {

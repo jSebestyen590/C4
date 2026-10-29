@@ -41,6 +41,7 @@ import {
   kalenderInvalidieren,
   useDienstformen,
   useEventKategorien,
+  vorlageTitel,
   useVorlagen,
 } from './kalenderDaten';
 import {
@@ -315,7 +316,7 @@ export function VorlagenTab() {
           <Group justify="space-between" wrap="nowrap" gap="xs">
             <Stack gap={0} style={{ minWidth: 0 }}>
               <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                {v.titel}
+                {vorlageTitel(v, kategorien.liste)}
               </Text>
               <Text size="sm" c="dimmed">
                 {v.beginnZeit}–{v.endeZeit} Uhr ·{' '}
@@ -332,7 +333,7 @@ export function VorlagenTab() {
               )}
             </Stack>
             <AktionsMenue
-              label={`Aktionen für ${v.titel}`}
+              label={`Aktionen für ${vorlageTitel(v, kategorien.liste)}`}
               aktionen={[
                 {
                   text: 'Bearbeiten',
@@ -369,7 +370,8 @@ export function VorlagenTab() {
           }}
         >
           <Text>
-            „{loeschen.titel}“ wird gelöscht. Bereits angelegte Events bleiben unverändert.
+            „{vorlageTitel(loeschen, kategorien.liste)}“ wird gelöscht. Bereits angelegte Events
+            bleiben unverändert.
           </Text>
         </BestaetigenDialog>
       )}

@@ -351,9 +351,17 @@ export const schichtEingabeSchema = z.discriminatedUnion('art', [
 ]);
 export type SchichtEingabe = z.infer<typeof schichtEingabeSchema>;
 
+/** Optional title (empty = the Kategorie's name is shown instead, see `eventTitel`); stored as ''. */
+const titelOptional = z
+  .string()
+  .trim()
+  .max(100, 'Höchstens 100 Zeichen erlaubt.')
+  .nullish()
+  .transform((v) => v ?? '');
+
 export const eventEingabeSchema = z
   .object({
-    titel: name('einen Titel'),
+    titel: titelOptional,
     beschreibung,
     kategorieId: kategoriePflicht,
     beginn: zeitpunktSchema,
@@ -423,7 +431,7 @@ export const vorlageSchichtSchema = z.discriminatedUnion('art', [
 export type VorlageSchicht = z.infer<typeof vorlageSchichtSchema>;
 
 export const vorlageEingabeSchema = z.object({
-  titel: name('einen Titel'),
+  titel: titelOptional,
   beschreibung,
   kategorieId: kategoriePflicht,
   beginnZeit: zeitSchema,
@@ -543,7 +551,10 @@ export interface TeilnahmeDto {
 
 export interface EventDto {
   id: string;
+  /** As entered; may be empty. Show `anzeigeTitel` instead. */
   titel: string;
+  /** What to show: the title, else the Kategorie's name (`eventTitel`). */
+  anzeigeTitel: string;
   beschreibung: string | null;
   kategorie: Pick<EventKategorieDto, 'id' | 'name' | 'farbe'> | null;
   /** From the Kategorie; events without one (legacy) count as `dienste`. */
@@ -565,6 +576,14 @@ export interface EventDto {
   ichNehmeTeil: boolean | null;
   /** The caller added the event to their calendar feed. */
   imAbo: boolean;
+}
+
+/** Title to display: the entered title, else the Kategorie's name, else "Event". */
+export function eventTitel(
+  event: { titel?: string | null },
+  kategorie?: { name: string } | null,
+): string {
+  return event.titel?.trim() || kategorie?.name || 'Event';
 }
 
 export interface VorlageDto extends VorlageEingabe {

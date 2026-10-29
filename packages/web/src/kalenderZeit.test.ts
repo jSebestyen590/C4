@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { erinnerungText } from './kalenderZeit';
+import { erinnerungText, zeitraumKurz } from './kalenderZeit';
 
 describe('erinnerungText', () => {
   it('uses the largest unit that divides evenly, singular and plural', () => {
@@ -12,5 +12,19 @@ describe('erinnerungText', () => {
     expect(erinnerungText(90)).toBe('90 Minuten vorher');
     expect(erinnerungText(15)).toBe('15 Minuten vorher');
     expect(erinnerungText(4320 + 60)).toBe('73 Stunden vorher');
+  });
+});
+
+describe('zeitraumKurz', () => {
+  it('shows weekday and day without year, the end only as a time', () => {
+    expect(zeitraumKurz('2026-11-01T19:00:00.000Z', '2026-11-02T00:00:00.000Z')).toBe(
+      'So, 01.11. 20:00 – 01:00',
+    );
+  });
+
+  it('keeps the same format within one day', () => {
+    expect(zeitraumKurz('2026-10-31T19:00:00.000Z', '2026-10-31T22:00:00.000Z')).toBe(
+      'Sa, 31.10. 20:00 – 23:00',
+    );
   });
 });

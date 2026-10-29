@@ -1,14 +1,15 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import type {
-  DienstformDto,
-  ErinnerungenDto,
-  EventDto,
-  EventKategorieDto,
-  ExterneDto,
-  SerieListeDto,
-  StatistikDto,
-  VorlageDto,
+import {
+  eventTitel,
+  type DienstformDto,
+  type ErinnerungenDto,
+  type EventDto,
+  type EventKategorieDto,
+  type ExterneDto,
+  type SerieListeDto,
+  type StatistikDto,
+  type VorlageDto,
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
 
@@ -53,6 +54,13 @@ export function useDienstformen() {
   const aktive = useMemo(() => liste.filter((d) => !d.archiviert), [liste]);
   return { ...q, liste, nachId, aktive };
 }
+
+/** A Vorlage's title for lists; without one the Kategorie's name. */
+export const vorlageTitel = (v: VorlageDto, kategorien: readonly EventKategorieDto[]): string =>
+  eventTitel(
+    v,
+    kategorien.find((k) => k.id === v.kategorieId),
+  );
 
 export function useEventKategorien() {
   const api = useApi();

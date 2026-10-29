@@ -20,6 +20,15 @@ export function zeitraumAnzeigen(beginn: string, ende: string): string {
   return `${tagAnzeigen(beginn)} ${zeitBerlin(beginn)} – ${tagAnzeigen(ende)} ${zeitBerlin(ende)}`;
 }
 
+/**
+ * Short range for lists: "Sa, 01.11. 20:00 – 01:00" (no year, the end only as a time since events last
+ * at most 24 hours).
+ */
+export function zeitraumKurz(beginn: string, ende: string): string {
+  const tag = `${wochentag(beginn)}, ${datumAnzeigen(datumBerlin(beginn)).slice(0, 6)}`;
+  return `${tag} ${zeitBerlin(beginn)} – ${zeitBerlin(ende)}`;
+}
+
 /** First and last day (`YYYY-MM-DD`) of a month; `monat` is 0-based. */
 export function monatsGrenzen(jahr: number, monat: number): { erster: string; letzter: string } {
   const f = (d: Date) => d.toISOString().slice(0, 10);

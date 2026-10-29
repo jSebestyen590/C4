@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ausVorlage,
+  eventTitel,
   serieAendernSchema,
   serieEingabeSchema,
   serieIdAus,
@@ -379,6 +380,30 @@ describe('schemas', () => {
     expect(schichtEingabeSchema.safeParse({ ...aufbau, wunsch: 0 }).success).toBe(false);
     expect(schichtEingabeSchema.safeParse({ ...aufbau, minimum: 3 }).success).toBe(false);
     expect(schichtEingabeSchema.safeParse({ ...aufbau, wunsch: undefined }).success).toBe(false);
+  });
+  it('allows an empty or missing title and falls back to the Kategorie name', () => {
+    const event = {
+      kategorieId: 'k1',
+      beginn: '2026-06-05T18:00:00Z',
+      ende: '2026-06-06T00:00:00Z',
+      schichten: [],
+    };
+    expect(eventEingabeSchema.parse(event).titel).toBe('');
+    expect(eventEingabeSchema.parse({ ...event, titel: '  ' }).titel).toBe('');
+    expect(eventEingabeSchema.parse({ ...event, titel: ' Abend ' }).titel).toBe('Abend');
+    expect(eventTitel({ titel: '' }, { name: 'Barabend' })).toBe('Barabend');
+    expect(eventTitel({ titel: 'Sommerfest' }, { name: 'Barabend' })).toBe('Sommerfest');
+    expect(eventTitel({ titel: '' }, null)).toBe('Event');
+    const vorlage = vorlageEingabeSchema.parse({
+      kategorieId: 'k1',
+      beginnZeit: '20:00',
+      endeZeit: '23:00',
+      schichten: [],
+      teilnahmeStatus: null,
+    });
+    expect(vorlage.titel).toBe('');
+    // An event created from a Vorlage without title keeps the empty title.
+    expect(ausVorlage(vorlage, '2026-06-05').titel).toBe('');
   });
   it('validates Event and Vorlage input', () => {
     const event = {

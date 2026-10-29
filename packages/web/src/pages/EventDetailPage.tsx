@@ -103,10 +103,9 @@ export function EventDetailPage() {
   );
   const ueberlappungen = ueberlappendeSchichten(meineSchichten);
 
+  // Every member may remove any member's Dienst; Externe only who entered them (or managers).
   const darfEntfernen = (d: DienstDto) =>
-    verwalten ||
-    (d.person.art === 'mitglied' && d.person.sub === eigeneSub) ||
-    (d.person.art === 'extern' && d.eingetragenVon === eigeneSub);
+    d.person.art === 'mitglied' || verwalten || d.eingetragenVon === eigeneSub;
 
   const absageSetzen = async (abgesagt: boolean) => {
     await pruefen(
@@ -129,7 +128,7 @@ export function EventDetailPage() {
             td={e.abgesagt ? 'line-through' : undefined}
             style={{ overflowWrap: 'anywhere' }}
           >
-            {e.titel}
+            {e.anzeigeTitel}
           </Title>
           <Text>{zeitraumAnzeigen(e.beginn, e.ende)} Uhr</Text>
           <Group gap="xs">
@@ -336,16 +335,14 @@ export function EventDetailPage() {
                 >
                   Externe eintragen
                 </Button>
-                {verwalten && (
-                  <Button
-                    variant="default"
-                    leftSection={<IconUserPlus size={18} />}
-                    disabled={gesperrt}
-                    onClick={() => setDialog({ art: 'eintragen', schicht: s, modus: 'mitglied' })}
-                  >
-                    Mitglied eintragen
-                  </Button>
-                )}
+                <Button
+                  variant="default"
+                  leftSection={<IconUserPlus size={18} />}
+                  disabled={gesperrt}
+                  onClick={() => setDialog({ art: 'eintragen', schicht: s, modus: 'mitglied' })}
+                >
+                  Mitglied eintragen
+                </Button>
               </Group>
               {ich && !e.abgesagt && (
                 <Text size="sm" c="dimmed">
@@ -407,8 +404,8 @@ export function EventDetailPage() {
           onBestaetigt={() => absageSetzen(true)}
         >
           <Text>
-            „{e.titel}“ wird abgesagt. Die Einträge bleiben erhalten, zählen aber nicht in der
-            Dienstschwein-Auswertung. Du kannst das Event später wieder aufnehmen.
+            „{e.anzeigeTitel}“ wird abgesagt. Die Einträge bleiben erhalten, zählen aber nicht in
+            der Dienstschwein-Auswertung. Du kannst das Event später wieder aufnehmen.
           </Text>
         </BestaetigenDialog>
       )}
@@ -423,7 +420,9 @@ export function EventDetailPage() {
             await kalenderInvalidieren(qc);
           }}
         >
-          <Text>„{e.titel}“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.</Text>
+          <Text>
+            „{e.anzeigeTitel}“ wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.
+          </Text>
         </BestaetigenDialog>
       )}
     </Stack>

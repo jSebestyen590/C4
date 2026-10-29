@@ -105,7 +105,7 @@ import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
 import { serieSofortErzeugen, serienMarkeFreigeben } from './kalenderSerien';
 import {
   meldeAbsage,
-  meldeDienstEntfernt,
+  meldeDienstDurchAndere,
   meldeEventAenderung,
 } from './kalenderBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
@@ -417,6 +417,15 @@ export function createApp(deps: AppDeps) {
   const gefunden = <T>(wert: T | false | undefined, meldung: string): T => {
     if (wert === false || wert === undefined) throw new HTTPException(404, { message: meldung });
     return wert;
+  };
+
+  /** The acting member for push texts: username, else Vorname. */
+  const akteurMitName = async (sub: string): Promise<{ sub: string; name: string }> => {
+    const [konten, profil] = await Promise.all([
+      deps.userAdmin.konten(),
+      deps.mitglieder.holen(sub),
+    ]);
+    return { sub, name: konten.get(sub)?.username || profil?.vorname || 'Jemand' };
   };
 
   /** Besetzungen may only name members that already have a profile row. */
@@ -1699,12 +1708,8 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const daten = c.req.valid('json');
           const sub = c.get('user').sub;
+          // Everybody with `kalender:lesen` may enter any member that has a profile row.
           if (daten.mitgliedSub !== undefined && daten.mitgliedSub !== sub) {
-            if (!c.get('permissions').includes('events:verwalten')) {
-              throw new HTTPException(403, {
-                message: 'Du darfst keine anderen Mitglieder eintragen.',
-              });
-            }
             await mitgliedMussExistieren(daten.mitgliedSub);
           }
           await eigenesProfilMussExistieren(sub);
@@ -1714,6 +1719,19 @@ export function createApp(deps: AppDeps) {
               .catch(kalenderFehler),
             'Schicht nicht gefunden',
           );
+          if (daten.mitgliedSub !== undefined && daten.mitgliedSub !== sub) {
+            await bestEffort(async () => {
+              const dienst = await deps.kalender.dienstHolen(id);
+              if (dienst) {
+                await meldeDienstDurchAndere(
+                  deps.benachrichtigungen,
+                  dienst,
+                  true,
+                  await akteurMitName(sub),
+                );
+              }
+            });
+          }
           return c.json({ id }, 201);
         },
       )
@@ -1723,15 +1741,26 @@ export function createApp(deps: AppDeps) {
           'Dienst nicht gefunden',
         );
         const sub = c.get('user').sub;
+        // Any member's Dienst may be removed by anybody; an Externe's entry only by who entered it
+        // or with `events:verwalten`.
         const erlaubt =
+          dienst.mitgliedSub !== null ||
           c.get('permissions').includes('events:verwalten') ||
-          dienst.mitgliedSub === sub ||
-          (dienst.externId !== null && dienst.eingetragenVon === sub);
+          dienst.eingetragenVon === sub;
         if (!erlaubt) {
           throw new HTTPException(403, { message: 'Du darfst diesen Dienst nicht entfernen.' });
         }
         gefunden(await deps.kalender.dienstEntfernen(dienst.id), 'Dienst nicht gefunden');
-        await bestEffort(() => meldeDienstEntfernt(deps.benachrichtigungen, dienst, sub));
+        if (dienst.mitgliedSub !== null && dienst.mitgliedSub !== sub) {
+          await bestEffort(async () =>
+            meldeDienstDurchAndere(
+              deps.benachrichtigungen,
+              dienst,
+              false,
+              await akteurMitName(sub),
+            ),
+          );
+        }
         return c.json({ ok: true });
       })
       // ----- Kalender: Externe
