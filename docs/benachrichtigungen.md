@@ -14,12 +14,12 @@ Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, E
   gelten für alle Geräte der Person.
 - Aktuelle Arten:
 
-| Art                             | Wann                                                                                                                                                | Standard           |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `kalender.erinnerung`           | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                                                                        | an, 30 Minuten     |
-| `kalender.fehlende_dienste`     | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle                     | an, **für EM aus** |
-| `kalender.aenderung`            | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, ausgetragen; auch Teilnehmende bei Verschiebung/Absage | an                 |
-| `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                         | an, 60 Minuten     |
+| Art                             | Wann                                                                                                                                                                                         | Standard           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `kalender.erinnerung`           | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                                                                                                                 | an, 30 Minuten     |
+| `kalender.fehlende_dienste`     | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle                                                              | an, **für EM aus** |
+| `kalender.aenderung`            | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, ausgetragen; auch Teilnehmende und Verantwortliche bei Verschiebung/Absage; neu Verantwortliche | an                 |
+| `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                  | an, 60 Minuten     |
 
 ## Tabellen
 
@@ -70,7 +70,7 @@ Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, E
 `packages/api/src/kalenderBenachrichtigungen.ts`: Erinnerungen (Schichten der nächsten 24 h, je Person nach ihrer
 Minutenangabe; Schlüssel `kalender.erinnerung:<dienstId>:<beginn>`), Teilnahme-Erinnerungen (Events mit effektiver Teilnahme,
 nicht abgesagt; Schlüssel `kalender.teilnahme_erinnerung:<eventId>:<sub>:<beginn>`), fehlende Dienste (Events bis zum größten globalen Zeitpunkt; je Event der kleinste bereits erreichte
-Zeitpunkt `m` in Minuten, ältere werden nicht nachgeholt; Schlüssel `kalender.fehlende_dienste:<eventId>:<m>`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
+Zeitpunkt `m` in Minuten, ältere werden nicht nachgeholt; Schlüssel `kalender.fehlende_dienste:<eventId>:<m>`; die verantwortliche Person bekommt den Hinweis unabhängig von ihrer Einstellung mit Schlüssel `…:<m>:verantwortlich`, siehe `Sendung.ohneEinstellung`/`ausser`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
 Dienst durch andere entfernt).
 
 ## Web

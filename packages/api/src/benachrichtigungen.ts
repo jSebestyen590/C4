@@ -89,6 +89,10 @@ export interface Sendung {
   url: string;
   /** Sends at most once per key (e.g. `kalender.erinnerung:<dienst>:<beginn>`). */
   dedupeSchluessel?: string;
+  /** Sends regardless of the recipients' settings of `art` (a device is still required). */
+  ohneEinstellung?: boolean;
+  /** Members left out, e.g. because they get an own message. */
+  ausser?: readonly string[];
 }
 
 export interface Benachrichtigungen {
@@ -194,8 +198,12 @@ export function createBenachrichtigungen(deps: {
       const art = artOderFehler(sendung.art);
       const subs = sendung.subs === 'alle' ? undefined : [...new Set(sendung.subs)];
       if (subs && subs.length === 0) return 0;
+      const ausgenommen = new Set(sendung.ausser ?? []);
       const empfaenger = (await store.empfaenger(sendung.art, subs)).filter(
-        (e) => effektiveEinstellung(art, e.status, e.gespeichert).aktiv,
+        (e) =>
+          !ausgenommen.has(e.sub) &&
+          (sendung.ohneEinstellung === true ||
+            effektiveEinstellung(art, e.status, e.gespeichert).aktiv),
       );
       if (empfaenger.length === 0) return 0;
       // Without a device nothing can be delivered: don't claim the key, so a later run still sends

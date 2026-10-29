@@ -55,6 +55,7 @@ import {
   type SchichtBasis,
 } from '../KalenderFormular';
 import { PersonName } from '../KalenderAnzeige';
+import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import {
   eingeladeneAus,
   keineTeilnahme,
@@ -88,6 +89,7 @@ interface EventWerte extends KopfWerte {
   beginnZeit: string;
   endeZeit: string;
   teilnahme: TeilnahmeWerte;
+  verantwortlichSub: string | null;
   schichten: EventSchichtForm[];
 }
 
@@ -118,6 +120,7 @@ interface EventDaten {
   teilnahmeStatus: TeilnahmeKreis;
   /** Subs of the individually invited members. */
   eingeladen: readonly string[];
+  verantwortlichSub?: string | null;
   schichten: {
     id?: string;
     art: EventSchichtForm['art'];
@@ -136,6 +139,7 @@ function werteAus(e: EventDaten): EventWerte {
     beschreibung: e.beschreibung ?? '',
     kategorieId: e.kategorieId,
     teilnahme: teilnahmeWerteAus(e.teilnahmeStatus, e.eingeladen),
+    verantwortlichSub: e.verantwortlichSub ?? null,
     schichten: e.schichten.map((s) => ({
       key: s.id ?? neuerKey(),
       id: s.id,
@@ -155,6 +159,7 @@ const werteAusEvent = (e: EventDto): EventWerte =>
   werteAus({
     ...e,
     kategorieId: e.kategorie?.id ?? null,
+    verantwortlichSub: e.verantwortlich?.sub ?? null,
     eingeladen: e.teilnahmen.filter((t) => t.eingeladen).map((t) => t.person.sub),
   });
 
@@ -167,6 +172,7 @@ function leereWerte(datum: string): EventWerte {
     beginnZeit: '20:00',
     endeZeit: '23:00',
     teilnahme: keineTeilnahme(),
+    verantwortlichSub: null,
     schichten: [],
   };
 }
@@ -208,6 +214,7 @@ function rohEingabe(w: EventWerte, art: EventArt | null) {
     ...zeitspanne(w.datum, w.beginnZeit, w.endeZeit),
     teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     eingeladen: art === 'teilnahme' ? eingeladeneAus(w.teilnahme) : [],
+    verantwortlichSub: w.verantwortlichSub,
     schichten,
   };
 }
@@ -238,6 +245,7 @@ function Formular({
   const [laeuft, setLaeuft] = useState(false);
   const [entfernung, setEntfernung] = useState<Entfernung | null>(null);
   const art = kategorien.find((k) => k.id === werte.kategorieId)?.art ?? null;
+  const mitglieder = useMitgliederListe();
 
   const eventBeginnIso =
     werte.datum && werte.beginnZeit ? berlinZuUtc(werte.datum, werte.beginnZeit) : undefined;
@@ -314,6 +322,17 @@ function Formular({
         beginn={werte.beginnZeit}
         ende={werte.endeZeit}
         onChange={(z) => setWerte({ ...werte, ...z })}
+      />
+      <Select
+        label="Verantwortlich (optional)"
+        description="Bekommt das Event im Kalender-Abo und Hinweise zu Änderungen und fehlenden Diensten."
+        placeholder="Niemand"
+        searchable
+        clearable
+        data={mitgliedOptionen(mitglieder.data ?? [])}
+        value={werte.verantwortlichSub}
+        onChange={(verantwortlichSub) => setWerte({ ...werte, verantwortlichSub })}
+        nothingFoundMessage="Niemand gefunden"
       />
       {art === null && (
         <Text size="sm" c="dimmed">
@@ -502,11 +521,12 @@ function NeuesEvent({
   const ersetzen = () => {
     if (!serienFrage) return;
     setAnfang({
-      werte: werteAus(
-        vorlage
+      werte: werteAus({
+        ...(vorlage
           ? serieEventErsetzen(serienFrage, vorlage, vorlageKategorie)
-          : serieEventNeutral(serienFrage),
-      ),
+          : serieEventNeutral(serienFrage)),
+        verantwortlichSub: serienFrage.verantwortlich?.sub ?? null,
+      }),
       ersetzt: serienFrage,
     });
   };

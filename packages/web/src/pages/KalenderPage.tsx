@@ -225,6 +225,11 @@ function TagesUebersicht({
                 <TeilnahmeBadge event={e} />
               </Stack>
             </Group>
+            {e.verantwortlich && (
+              <Text size="sm" c="dimmed">
+                Verantwortlich: <PersonName person={e.verantwortlich} verlinken={false} />
+              </Text>
+            )}
             <DiensteKurz event={e} dienstformen={dienstformen.nachId} />
           </Stack>
         </UnstyledButton>
@@ -442,6 +447,11 @@ function EventKarte({
                 {event.kategorie.name}
               </Text>
             )}
+            {event.verantwortlich && (
+              <Text size="xs" c="dimmed">
+                Verantwortlich: <PersonName person={event.verantwortlich} />
+              </Text>
+            )}
           </Stack>
           <Stack gap={4} align="flex-end">
             <EventStatusBadge event={event} />
@@ -597,6 +607,7 @@ export function KalenderPage() {
         if (
           nurMeine &&
           !e.ichNehmeTeil &&
+          e.verantwortlich?.sub !== eigeneSub &&
           !e.schichten.some((s) =>
             s.dienste.some((d) => d.person.art === 'mitglied' && d.person.sub === eigeneSub),
           )

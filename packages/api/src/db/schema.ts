@@ -475,6 +475,8 @@ export const events = pgTable('events', {
   serieAngepasst: boolean('serie_angepasst'),
   /** Participation circle: null = no participation, else comma-separated member statuses ('' = by invitation only). */
   teilnahmeStatus: text('teilnahme_status'),
+  /** Responsible member (optional); checked by the API, deliberately without a foreign key. */
+  verantwortlichSub: text('verantwortlich_sub'),
   /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
   angelegtVon: text('angelegt_von'),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),

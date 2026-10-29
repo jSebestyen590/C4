@@ -368,6 +368,8 @@ export const eventEingabeSchema = z
       .refine((a) => eindeutig(a), { message: 'Doppelte Einträge.' })
       .optional()
       .transform((v) => v ?? []),
+    /** Sub of the responsible member; null = nobody. Left out = unchanged on update (series updates). */
+    verantwortlichSub: idSchema('Ungültiges Mitglied.').nullable().optional(),
     /** Confirms that Schichten or Bedarfe with Dienste may be removed. */
     bestaetigt: z.boolean().optional(),
     /** Detaches the event from its series (a Barabend replaced by another event); only on update. */
@@ -555,6 +557,8 @@ export interface EventDto {
   bewertung: EventBewertung;
   /** Participation circle; null = the event has no participation. */
   teilnahmeStatus: TeilnahmeKreis;
+  /** The member responsible for the event (optional); `username` is added by the app. */
+  verantwortlich: Extract<DienstPerson, { art: 'mitglied' }> | null;
   /** Everybody with a relation to the participation, taking part or declined. */
   teilnahmen: TeilnahmeDto[];
   /** Whether the caller takes part; null without participation (or when the caller is unknown). */

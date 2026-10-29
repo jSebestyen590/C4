@@ -297,6 +297,8 @@ export interface EventAenderung {
   mitgliedSubs: string[];
   /** Everybody who takes part in the event after the update. */
   teilnehmerSubs: string[];
+  /** The responsible member if the update newly set them (not the same person as before), else null. */
+  verantwortlichNeu: string | null;
 }
 
 export interface AbsageErgebnis {
@@ -624,7 +626,10 @@ async function eventsLaden(
   ]);
   const personen = await personenLaden(
     q,
-    einzigartig(dienstRows.flatMap((d) => (d.mitgliedSub ? [d.mitgliedSub] : []))),
+    einzigartig([
+      ...dienstRows.flatMap((d) => (d.mitgliedSub ? [d.mitgliedSub] : [])),
+      ...eventRows.flatMap((r) => (r.event.verantwortlichSub ? [r.event.verantwortlichSub] : [])),
+    ]),
     einzigartig(dienstRows.flatMap((d) => (d.externId ? [d.externId] : []))),
   );
   const formPos = new Map(
@@ -688,6 +693,7 @@ async function eventsLaden(
       serie: e.serie,
       schichten: alleSchichten,
       bewertung: eventBewertung({ abgesagt: e.abgesagt, schichten: alleSchichten }),
+      verantwortlich: verantwortlicheR(e.verantwortlichSub, personen.mitglieder),
       teilnahmeStatus: kreis,
       teilnahmen: zeilen.map((z): TeilnahmeDto => ({
         person: mitgliedPerson(z.mitglied),
@@ -703,6 +709,14 @@ async function eventsLaden(
   });
 }
 
+const verantwortlicheR = (
+  sub: string | null,
+  personen: Map<string, DienstPerson>,
+): EventDto['verantwortlich'] => {
+  const person = sub ? personen.get(sub) : undefined;
+  return person?.art === 'mitglied' ? person : null;
+};
+
 const artVon = (k: { art: string | null } | null | undefined): EventArt =>
   k?.art === 'teilnahme' ? 'teilnahme' : 'dienste';
 
@@ -710,6 +724,16 @@ const artVon = (k: { art: string | null } | null | undefined): EventArt =>
 export interface KategorieInfo {
   art: EventArt;
   teilnahmeStatus: TeilnahmeKreis;
+}
+
+/** The responsible member must have a profile row. */
+async function verantwortlicheRPruefen(q: Q, sub: string | null | undefined): Promise<void> {
+  if (!sub) return;
+  const [m] = await q
+    .select({ sub: mitglieder.sub })
+    .from(mitglieder)
+    .where(eq(mitglieder.sub, sub));
+  if (!m) throw new KalenderUngueltig('Die verantwortliche Person gibt es nicht.');
 }
 
 /** Returns the Kategorie; throws unless it exists (and is not archived, unless it is `bisherige`). */
@@ -875,6 +899,7 @@ export function createKalenderStore(db: Db): KalenderStore {
     const kategorie = await kategorieMussExistieren(tx, daten.kategorieId);
     const kreis = artPruefen(kategorie, daten);
     await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
+    await verantwortlicheRPruefen(tx, daten.verantwortlichSub);
     if (daten.schichten.some((s) => s.id !== undefined)) {
       throw new KalenderUngueltig('Neue Events haben noch keine Schichten mit Id.');
     }
@@ -887,6 +912,7 @@ export function createKalenderStore(db: Db): KalenderStore {
       ende: new Date(daten.ende),
       serie,
       teilnahmeStatus: teilnahmeKreisKodieren(kreis),
+      verantwortlichSub: daten.verantwortlichSub ?? null,
       angelegtVon: von,
     });
     await teilnahmeSchreiben(tx, id, kreis, daten);
@@ -967,6 +993,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         new Set(bedarfRows.map((b) => b.dienstformId)),
       );
 
+      await verantwortlicheRPruefen(tx, daten.verantwortlichSub);
       const abgleich = schichtAbgleich(
         schichtRows.map((s) => ({
           id: s.id,
@@ -1049,6 +1076,9 @@ export function createKalenderStore(db: Db): KalenderStore {
           beginn: beginnNeu,
           ende: endeNeu,
           teilnahmeStatus: teilnahmeKreisKodieren(kreis),
+          ...(daten.verantwortlichSub !== undefined && {
+            verantwortlichSub: daten.verantwortlichSub,
+          }),
           ...(daten.ersetzeSerie === true && { serie: null }),
           ...(handarbeit &&
             bisher.serie !== null &&
@@ -1113,6 +1143,10 @@ export function createKalenderStore(db: Db): KalenderStore {
           id,
           teilnahmeStatus: teilnahmeKreisKodieren(kreis),
         }),
+        verantwortlichNeu:
+          daten.verantwortlichSub && daten.verantwortlichSub !== bisher.verantwortlichSub
+            ? daten.verantwortlichSub
+            : null,
       };
     });
 
@@ -2000,6 +2034,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             gte(events.ende, ab),
             or(
               isNotNull(events.teilnahmeStatus),
+              eq(events.verantwortlichSub, sub),
               aboIds.length > 0 ? inArray(events.id, aboIds) : undefined,
             ),
           ),
@@ -2011,6 +2046,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         .filter(
           (e) =>
             abonniert.has(e.id) ||
+            e.verantwortlichSub === sub ||
             (teilnahmen.get(e.id) ?? []).some(
               (z) => z.mitglied.sub === sub && z.zustand === 'teilnahme',
             ),

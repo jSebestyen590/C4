@@ -192,12 +192,26 @@ export async function fehlendeDienste(
     const minuten = waehleErinnerung(new Date(event.beginn).getTime(), jetzt.getTime(), zeitpunkte);
     if (minuten === undefined) continue;
     try {
-      await benachrichtigungen.senden({
-        subs: 'alle',
+      const verantwortlich = event.verantwortlich?.sub;
+      const nachricht = {
         art: FEHLENDE_DIENSTE,
         titel: 'Es fehlen noch Dienste',
         text: `Für „${event.titel}“ am ${tagText(event.beginn)} fehlen noch Dienste.`,
         url: eventUrl(event.id),
+      };
+      // The responsible person gets the notice regardless of their setting, and only once.
+      if (verantwortlich) {
+        await benachrichtigungen.senden({
+          ...nachricht,
+          subs: [verantwortlich],
+          ohneEinstellung: true,
+          dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}:verantwortlich`,
+        });
+      }
+      await benachrichtigungen.senden({
+        ...nachricht,
+        subs: 'alle',
+        ...(verantwortlich && { ausser: [verantwortlich] }),
         dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}`,
       });
     } catch (err) {
@@ -251,7 +265,12 @@ export async function meldeEventAenderung(
 ): Promise<void> {
   const proSub = new Map<string, Zeile[]>();
   if (aenderung.zeitGeaendert) {
-    for (const sub of new Set([...aenderung.mitgliedSubs, ...aenderung.teilnehmerSubs])) {
+    const verantwortlich = event.verantwortlich ? [event.verantwortlich.sub] : [];
+    for (const sub of new Set([
+      ...aenderung.mitgliedSubs,
+      ...aenderung.teilnehmerSubs,
+      ...verantwortlich,
+    ])) {
       hinzu(proSub, sub, {
         titel: 'Event verschoben',
         text: `„${event.titel}“ ist jetzt am ${tagText(event.beginn)} um ${berlinTeile(event.beginn).zeit} Uhr.`,
@@ -275,8 +294,17 @@ export async function meldeEventAenderung(
       text: `Dein Dienst in der Schicht „${schichtBezeichnung({ art: d.schichtArt, beginn: d.schichtBeginn, ende: d.schichtEnde }, event.beginn)}“ bei „${event.titel}“ entfällt.`,
     });
   }
+  // Newly responsible.
+  if (aenderung.verantwortlichNeu) {
+    hinzu(proSub, aenderung.verantwortlichNeu, verantwortlichZeile(event));
+  }
   await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
 }
+
+const verantwortlichZeile = (event: Pick<EventDto, 'titel' | 'beginn'>): Zeile => ({
+  titel: 'Du bist verantwortlich',
+  text: `Du bist verantwortlich für „${event.titel}“ (${tagText(event.beginn)}).`,
+});
 
 /**
  * Cancellation or reinstatement of an event, for everybody with a Dienst or taking part except the
@@ -284,7 +312,7 @@ export async function meldeEventAenderung(
  */
 export async function meldeAbsage(
   sender: Sender,
-  event: Pick<EventDto, 'id' | 'titel' | 'beginn'>,
+  event: Pick<EventDto, 'id' | 'titel' | 'beginn'> & Partial<Pick<EventDto, 'verantwortlich'>>,
   abgesagt: boolean,
   mitgliedSubs: readonly string[],
   teilnehmerSubs: readonly string[],
@@ -309,6 +337,7 @@ export async function meldeAbsage(
         text: `„${event.titel}“ am ${tagText(event.beginn)} findet doch statt.`,
       };
   const proSub = new Map<string, Zeile[]>(teilnehmerSubs.map((sub) => [sub, [teilnahmeZeile]]));
+  if (event.verantwortlich) proSub.set(event.verantwortlich.sub, [teilnahmeZeile]);
   for (const sub of mitgliedSubs) proSub.set(sub, [zeile]);
   await proPersonSenden(sender, event.id, event.titel, proSub, akteur);
 }

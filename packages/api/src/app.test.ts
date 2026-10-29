@@ -402,6 +402,7 @@ function makeKalenderFake() {
       entfernteDienste: [],
       mitgliedSubs: [],
       teilnehmerSubs: [],
+      verantwortlichNeu: null,
     })),
     eventLoeschen: vi.fn<KalenderStore['eventLoeschen']>(async () => true),
     absageSetzen: vi.fn<KalenderStore['absageSetzen']>(async () => ({
@@ -2748,6 +2749,7 @@ describe('kalender', () => {
       teilnahmeStatus: null,
       teilnahmen: [],
       ichNehmeTeil: null,
+      verantwortlich: person,
       imAbo: false,
       schichten: [
         {
@@ -2772,9 +2774,13 @@ describe('kalender', () => {
       ],
     });
     const res = await t.app.request('/api/kalender/events/e1', json('reader-token', 'GET'));
-    const body = (await res.json()) as { schichten: { dienste: { person: unknown }[] }[] };
+    const body = (await res.json()) as {
+      verantwortlich: unknown;
+      schichten: { dienste: { person: unknown }[] }[];
+    };
     expect(body.schichten[0]!.dienste[0]!.person).toMatchObject({ username: 'max' });
     expect(body.schichten[0]!.dienste[1]!.person).toMatchObject({ art: 'extern', name: 'Eva' });
+    expect(body).toMatchObject({ verantwortlich: { sub: 'm2', username: 'max' } });
 
     t.kalender.statistik.mockResolvedValueOnce([{ person, gesamt: 2, nachSpalte: { f1: 2 } }]);
     const stat = await t.app.request(
@@ -3171,6 +3177,7 @@ describe('kalender', () => {
           },
         ],
         ichNehmeTeil: true,
+        verantwortlich: null,
         imAbo: false,
       };
       t.kalender.event.mockResolvedValueOnce(einEvent);
@@ -3230,6 +3237,7 @@ describe('kalender', () => {
       teilnahmeStatus: null,
       teilnahmen: [],
       ichNehmeTeil: null,
+      verantwortlich: null,
       imAbo: false,
     });
 
@@ -3435,6 +3443,7 @@ describe('kalender', () => {
         entfernteDienste: [],
         mitgliedSubs: ['r', 'v'],
         teilnehmerSubs: [],
+        verantwortlichNeu: null,
       });
       t.kalender.event.mockResolvedValueOnce(ereignis('e1', '2026-10-23T18:00:00.000Z'));
       t.pushErgebnis.wert = 'fehler';

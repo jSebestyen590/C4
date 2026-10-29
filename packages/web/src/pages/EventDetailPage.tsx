@@ -179,6 +179,11 @@ export function EventDetailPage() {
           Dieses Event findet nicht statt. Man kann sich nicht mehr eintragen.
         </Alert>
       )}
+      {e.verantwortlich && (
+        <Text>
+          Verantwortlich: <PersonName person={e.verantwortlich} />
+        </Text>
+      )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
       {e.art === 'teilnahme' && <EventTeilnahme event={e} />}

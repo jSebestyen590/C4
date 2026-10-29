@@ -293,11 +293,23 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   schichten: [],
   bewertung: 'rot',
   teilnahmeStatus: null,
+  verantwortlich: null,
   teilnahmen: [],
   ichNehmeTeil: null,
   imAbo: false,
   ...patch,
 });
+
+const verantwortliche = (sub: string) =>
+  ({
+    art: 'mitglied',
+    sub,
+    username: sub,
+    vorname: 'V',
+    nachname: 'N',
+    status: 'em',
+    anrede: 'neutral',
+  }) as const;
 
 describe('fehlende Dienste', () => {
   const kalender = (liste: EventDto[], zeitpunkte = [1440]) => ({
@@ -321,6 +333,35 @@ describe('fehlende Dienste', () => {
     expect(t.versendet.map((v) => v.endpoint)).toEqual(['https://push.example/a-1']);
     expect(t.versendet[0]!.text).toBe('Für „Offener Abend“ am Fr, 23.10. fehlen noch Dienste.');
     await fehlendeDienste(t.b, k, stundenVorher(12));
+    expect(t.versendet).toHaveLength(1);
+  });
+
+  it('tells the responsible person regardless of their setting, and only once', async () => {
+    // EM has the setting off by default.
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'v', status: 'em' },
+    ]);
+    await t.abo('a');
+    await t.abo('v');
+    const k = kalender([event({ verantwortlich: verantwortliche('v') })]);
+    await fehlendeDienste(t.b, k, stundenVorher(24));
+    expect(t.versendet.map((v) => v.endpoint).sort()).toEqual([
+      'https://push.example/a-1',
+      'https://push.example/v-1',
+    ]);
+    await fehlendeDienste(t.b, k, stundenVorher(12));
+    expect(t.versendet).toHaveLength(2);
+  });
+
+  it('sends the responsible person only one notice when their setting is on', async () => {
+    const t = setup([{ sub: 'v', status: 'mitglied' }]);
+    await t.abo('v');
+    await fehlendeDienste(
+      t.b,
+      kalender([event({ verantwortlich: verantwortliche('v') })]),
+      stundenVorher(24),
+    );
     expect(t.versendet).toHaveLength(1);
   });
 
@@ -458,6 +499,7 @@ describe('Änderungen', () => {
     entfernteDienste: [],
     mitgliedSubs: [],
     teilnehmerSubs: [],
+    verantwortlichNeu: null,
   };
   const person = (sub: string) =>
     ({
@@ -509,6 +551,51 @@ describe('Änderungen', () => {
     t.versendet.length = 0;
     await meldeEventAenderung(t.b, event(), { ...keine, teilnehmerSubs: ['a'] }, 'actor');
     expect(t.versendet).toHaveLength(0);
+  });
+
+  it('tells the responsible person about changes and about being newly responsible', async () => {
+    const t = setup([
+      { sub: 'v', status: 'mitglied' },
+      { sub: 'n', status: 'mitglied' },
+      { sub: 'actor', status: 'mitglied' },
+    ]);
+    for (const s of ['v', 'n', 'actor']) await t.abo(s);
+    await meldeEventAenderung(
+      t.b,
+      event({ verantwortlich: verantwortliche('v') }),
+      { ...keine, zeitGeaendert: true },
+      'actor',
+    );
+    expect(t.versendet.map((v) => [v.endpoint, v.titel])).toEqual([
+      ['https://push.example/v-1', 'Event verschoben'],
+    ]);
+    t.versendet.length = 0;
+    await meldeEventAenderung(
+      t.b,
+      event({ verantwortlich: verantwortliche('n') }),
+      { ...keine, verantwortlichNeu: 'n' },
+      'actor',
+    );
+    expect(t.versendet).toHaveLength(1);
+    expect(t.versendet[0]).toMatchObject({ titel: 'Du bist verantwortlich' });
+    expect(t.versendet[0]!.text).toBe('Du bist verantwortlich für „Offener Abend“ (Fr, 23.10.).');
+    // Not when they set it themselves.
+    t.versendet.length = 0;
+    await meldeEventAenderung(
+      t.b,
+      event({ verantwortlich: verantwortliche('actor') }),
+      { ...keine, verantwortlichNeu: 'actor' },
+      'actor',
+    );
+    expect(t.versendet).toHaveLength(0);
+  });
+
+  it('tells the responsible person about a cancellation', async () => {
+    const t = setup([{ sub: 'v', status: 'mitglied' }]);
+    await t.abo('v');
+    await meldeAbsage(t.b, event({ verantwortlich: verantwortliche('v') }), true, [], [], 'actor');
+    expect(t.versendet).toHaveLength(1);
+    expect(t.versendet[0]).toMatchObject({ titel: 'Event abgesagt' });
   });
 
   it('tells participants about a cancellation without mentioning a Dienst', async () => {

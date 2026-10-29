@@ -5,13 +5,13 @@ Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, sie
 
 ## Datenmodell
 
-Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0080`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
+Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0082`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
 | Tabelle                                                  | Inhalt                                                                                                                                                                                                                                           |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe, `art` `dienste`/`teilnahme`, Standard-Kreis `teilnahme_status`; `0076`–`0078`), archivierbar                                                                                                            |
 | `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                                                                                             |
-| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (Id einer Serie, sonst null), `serie_angepasst`, `angelegt_von` (null = System)                                                                                     |
+| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (Id einer Serie, sonst null), `serie_angepasst`, `verantwortlich_sub` (optional, Migrationen `0081`–`0082`), `angelegt_von` (null = System)                         |
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
 | `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform (nur Betrieb, sonst `null`), Kommentar, eingetragen von                                                                                                                                           |
 | `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen: Event mit Beginn-/End-Uhrzeit, Betrieb-Schichten nur mit Uhrzeiten, Aufbau/Putzen mit `tagVersatz` (ganze Tage relativ zum Event, auch negativ) + Uhrzeiten (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                             |
@@ -128,6 +128,21 @@ Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**
 - **Push:** Art `kalender.teilnahme_erinnerung` (Standard 60 Minuten vorher) für Teilnehmende nicht abgesagter Events;
   `kalender.aenderung` geht bei Verschiebung, Absage und Wiederaufnahme auch an Teilnehmende (nicht an die handelnde
   Person). Neu Eingeladene bekommen keine eigene Benachrichtigung.
+
+## Verantwortliche:r
+
+Ein Event hat optional **genau eine verantwortliche Person** (nur Mitglieder, keine Externen; nicht in Vorlagen und Serien).
+Setzen und ändern mit `events:verwalten` im Event-Formular (Feld „Verantwortlich (optional)“, Select „username (Vorname Nachname)“,
+leerbar); `events.verantwortlich_sub` ohne Fremdschlüssel, die API prüft ein vorhandenes Profil (sonst 400). Beim Aktualisieren
+durch eine Serie bleibt der Wert unverändert (Eingabe ohne `verantwortlichSub`).
+
+- **Anzeige:** `EventDto.verantwortlich` (Mitglied mit `username`, `status`, `anrede`, sonst `null`). Event-Seite „Verantwortlich:
+  <Name>“, Kalender-Karten und Tagesübersicht eine kurze Zeile; „Nur meine“ schließt Events mit eigener Verantwortung ein.
+- **Kalender-Abo:** Verantwortliche haben das Event automatisch im Feed (wie übernommene Events, nur einmal).
+- **Push:** `kalender.aenderung` bei Verschiebung, Absage und Wiederaufnahme geht auch an die verantwortliche Person (nicht an
+  die handelnde). Wer neu eingetragen wird (nicht durch sich selbst), bekommt „Du bist verantwortlich für …“. Die Hinweise
+  „Fehlende Dienste“ gehen an sie **unabhängig** von ihrer Einstellung (ein Push-Gerät ist nötig), mit eigenem Schlüssel
+  `kalender.fehlende_dienste:<eventId>:<m>:verantwortlich`; die allgemeine Sendung lässt sie aus.
 
 ## Seiten
 
