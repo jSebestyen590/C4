@@ -2333,6 +2333,7 @@ describe('kalender', () => {
   });
   const eventBody = {
     titel: 'Offener Abend',
+    kategorieId: 'k1',
     beginn: '2026-06-05T17:00:00.000Z',
     ende: '2026-06-05T23:00:00.000Z',
     schichten: [],
@@ -2407,7 +2408,7 @@ describe('kalender', () => {
     expect(ok.status).toBe(201);
     expect(await ok.json()).toEqual({ id: 'e1' });
     expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
-      expect.objectContaining({ titel: 'Offener Abend', kategorieId: null }),
+      expect.objectContaining({ titel: 'Offener Abend', kategorieId: 'k1' }),
       'v',
     );
     expect((await post('admin-token', eventBody)).status).toBe(201);
@@ -2442,6 +2443,51 @@ describe('kalender', () => {
     const res = await post('admin-token', eventBody);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'Die Kategorie gibt es nicht.' });
+  });
+
+  it('requires a Kategorie for events', async () => {
+    const t = makeApp();
+    const ohne: Record<string, unknown> = { ...eventBody };
+    delete ohne.kategorieId;
+    for (const body of [ohne, { ...eventBody, kategorieId: '' }]) {
+      expect(
+        (await t.app.request('/api/kalender/events', json('admin-token', 'POST', body))).status,
+      ).toBe(400);
+    }
+  });
+
+  it('answers 409 with the affected participations when the kind changes', async () => {
+    const t = makeApp();
+    t.kalender.eventAktualisieren.mockRejectedValueOnce(
+      new EntfernungBestaetigen(
+        [],
+        [
+          {
+            zustand: 'teilnahme',
+            eingeladen: true,
+            person: {
+              art: 'mitglied',
+              sub: 'm2',
+              username: null,
+              vorname: 'Max',
+              nachname: 'Muster',
+              status: 'mitglied',
+              anrede: 'neutral',
+            },
+          },
+        ],
+      ),
+    );
+    t.userAdmin.konten.mockResolvedValue(new Map([['m2', { username: 'max' } as Konto]]));
+    const res = await t.app.request(
+      '/api/kalender/events/e1',
+      json('admin-token', 'PUT', eventBody),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      betroffene: [],
+      teilnahmen: [{ zustand: 'teilnahme', person: { username: 'max' } }],
+    });
   });
 
   it('answers 409 with the affected Dienste when an update needs confirmation', async () => {
@@ -2681,6 +2727,7 @@ describe('kalender', () => {
       titel: 'Offener Abend',
       beschreibung: null,
       kategorie: null,
+      art: 'dienste' as const,
       beginn: eventBody.beginn,
       ende: eventBody.ende,
       abgesagt: false,
@@ -2759,10 +2806,33 @@ describe('kalender', () => {
       (
         await t.app.request(
           '/api/kalender/kategorien',
-          json('vorstand-token', 'POST', { name: 'Konzert', farbe: 'red' }),
+          json('vorstand-token', 'POST', { name: 'Konzert', farbe: 'red', art: 'dienste' }),
         )
       ).status,
     ).toBe(201);
+    // Without a kind, or a Teilnahme Kategorie without default circle
+    for (const body of [
+      { name: 'Konzert', farbe: 'red' },
+      { name: 'Plenum', farbe: 'red', art: 'teilnahme' },
+    ]) {
+      expect(
+        (await t.app.request('/api/kalender/kategorien', json('vorstand-token', 'POST', body)))
+          .status,
+      ).toBe(400);
+    }
+    const plenum = {
+      name: 'Plenum',
+      farbe: 'red',
+      art: 'teilnahme',
+      teilnahmeStatus: ['mitglied'],
+    };
+    expect(
+      (await t.app.request('/api/kalender/kategorien', json('vorstand-token', 'POST', plenum)))
+        .status,
+    ).toBe(201);
+    expect(t.kalender.kategorieAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ art: 'teilnahme', teilnahmeStatus: ['mitglied'] }),
+    );
     expect(
       (
         await t.app.request(
@@ -2937,6 +3007,7 @@ describe('kalender', () => {
         titel: 'Plenum',
         beschreibung: null,
         kategorie: null,
+        art: 'dienste' as const,
         beginn: eventBody.beginn,
         ende: eventBody.ende,
         abgesagt: false,
@@ -3009,6 +3080,7 @@ describe('kalender', () => {
       titel: 'Offener Abend',
       beschreibung: null,
       kategorie: null,
+      art: 'dienste' as const,
       beginn,
       ende: '2026-10-23T22:00:00.000Z',
       abgesagt: false,

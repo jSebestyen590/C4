@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { SchichtEingabe } from '@c4/shared';
 import {
+  artPruefen,
+  type KategorieInfo,
   istEindeutigVerletzt,
   jahrGrenzen,
   KalenderUngueltig,
@@ -165,5 +167,30 @@ describe('istEindeutigVerletzt', () => {
     expect(istEindeutigVerletzt({ code: '23503' })).toBe(false);
     expect(istEindeutigVerletzt(new Error('x'))).toBe(false);
     expect(istEindeutigVerletzt(null)).toBe(false);
+  });
+});
+
+describe('artPruefen', () => {
+  const dienste = { art: 'dienste', teilnahmeStatus: null } as const;
+  const teilnahme: KategorieInfo = { art: 'teilnahme', teilnahmeStatus: ['mitglied', 'em'] };
+  const ohne = { schichten: [], teilnahmeStatus: null, eingeladen: [] };
+
+  it('allows Schichten and no participation for a Dienste Kategorie', () => {
+    expect(artPruefen(dienste, { ...ohne, schichten: [{}] })).toBeNull();
+    expect(() => artPruefen(dienste, { ...ohne, teilnahmeStatus: [] })).toThrow(
+      'Events mit Diensten haben keine Teilnahme.',
+    );
+    expect(() => artPruefen(dienste, { ...ohne, eingeladen: ['m1'] })).toThrow(
+      'Events mit Diensten haben keine Teilnahme.',
+    );
+  });
+
+  it('forbids Schichten and falls back to the default circle for a Teilnahme Kategorie', () => {
+    expect(() => artPruefen(teilnahme, { ...ohne, schichten: [{}] })).toThrow(
+      'Events mit Teilnahme haben keine Schichten.',
+    );
+    expect(artPruefen(teilnahme, ohne)).toEqual(['mitglied', 'em']);
+    expect(artPruefen(teilnahme, { ...ohne, teilnahmeStatus: [] })).toEqual([]);
+    expect(artPruefen({ art: 'teilnahme', teilnahmeStatus: null }, ohne)).toEqual([]);
   });
 });

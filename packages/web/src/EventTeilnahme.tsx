@@ -48,7 +48,7 @@ export function EventTeilnahme({ event: e }: Readonly<{ event: EventDto }>) {
   const api = useApi();
   const qc = useQueryClient();
   const [laeuft, setLaeuft] = useState(false);
-  if (e.teilnahmeStatus === null) return null;
+  if (e.art !== 'teilnahme' || e.teilnahmeStatus === null) return null;
   const dabei = e.teilnahmen.filter((t) => t.zustand === 'teilnahme');
   const abgesagt = e.teilnahmen.filter((t) => t.zustand === 'absage');
   const ich = e.ichNehmeTeil === true;

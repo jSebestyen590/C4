@@ -12,12 +12,14 @@ import {
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import {
+  MITGLIED_STATI,
   SCHICHT_ARTEN,
   type DienstformDto,
   type EventKategorieDto,
   type SchichtArt,
 } from '@c4/shared';
-import { SCHICHT_ART_LABELS } from './i18n';
+import { EVENT_ART_LABELS, SCHICHT_ART_LABELS } from './i18n';
+import { teilnahmeWerteAus, type TeilnahmeWerte } from './TeilnahmeFelder';
 import { ZahlFeld } from './ZahlFeld';
 
 // Shared building blocks of the event form and the Vorlage editor.
@@ -434,8 +436,33 @@ export function KopfFelder({
   /** All Kategorien; an archived one is only offered while it is selected. */
   kategorien: EventKategorieDto[];
 }>) {
+  const gewaehlt = kategorien.find((k) => k.id === werte.kategorieId);
   return (
     <Stack>
+      <Stack gap={4}>
+        <Select
+          label="Kategorie"
+          description="Die Kategorie legt fest, ob das Event Dienste oder Teilnahme hat."
+          placeholder="Kategorie wählen"
+          withAsterisk
+          allowDeselect={false}
+          data={kategorien
+            .filter((k) => !k.archiviert || k.id === werte.kategorieId)
+            .map((k) => ({
+              value: k.id,
+              label: `${k.name}${k.archiviert ? ' (archiviert)' : ''} · ${EVENT_ART_LABELS[k.art]}`,
+            }))}
+          value={werte.kategorieId}
+          onChange={(v) => onChange({ ...werte, kategorieId: v })}
+        />
+        {gewaehlt && (
+          <Text size="sm" c="dimmed">
+            {gewaehlt.art === 'dienste'
+              ? 'Dieses Event hat Schichten und Dienste.'
+              : 'Dieses Event hat Teilnehmende statt Diensten.'}
+          </Text>
+        )}
+      </Stack>
       <TextInput
         label="Titel"
         value={werte.titel}
@@ -447,16 +474,6 @@ export function KopfFelder({
         minRows={2}
         value={werte.beschreibung}
         onChange={(e) => onChange({ ...werte, beschreibung: e.currentTarget.value })}
-      />
-      <Select
-        label="Kategorie"
-        placeholder="Keine Kategorie"
-        clearable
-        data={kategorien
-          .filter((k) => !k.archiviert || k.id === werte.kategorieId)
-          .map((k) => ({ value: k.id, label: k.archiviert ? `${k.name} (archiviert)` : k.name }))}
-        value={werte.kategorieId}
-        onChange={(v) => onChange({ ...werte, kategorieId: v })}
       />
     </Stack>
   );
@@ -480,4 +497,23 @@ export function bedarfFelder(s: Pick<SchichtBasis, 'art' | 'bedarfe' | 'minimum'
         minimum: s.minimum === '' ? undefined : s.minimum,
         wunsch: s.wunsch === '' ? undefined : s.wunsch,
       };
+}
+
+/**
+ * Form state after the Kategorie changed: choosing a participation Kategorie preloads its default
+ * circle (keeping the individually invited people).
+ */
+export function teilnahmeNachKategorie<
+  W extends { kategorieId: string | null; teilnahme: TeilnahmeWerte },
+>(alt: W, neu: W, kategorien: readonly EventKategorieDto[]): W {
+  if (neu.kategorieId === alt.kategorieId) return neu;
+  const k = kategorien.find((x) => x.id === neu.kategorieId);
+  if (k?.art !== 'teilnahme') return neu;
+  return {
+    ...neu,
+    teilnahme: {
+      ...teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
+      eingeladen: neu.teilnahme.eingeladen,
+    },
+  };
 }

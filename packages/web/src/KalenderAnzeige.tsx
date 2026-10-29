@@ -32,21 +32,52 @@ export function AmpelBadge({
   );
 }
 
-/** "Du nimmst teil" or "Teilnahme" for an event with participation; nothing without. */
+/** "Du nimmst teil" for a participation event the caller takes part in; nothing otherwise. */
 export function TeilnahmeBadge({
   event,
-}: Readonly<{ event: Pick<EventDto, 'teilnahmeStatus' | 'ichNehmeTeil'> }>) {
-  if (event.teilnahmeStatus === null) return null;
-  return event.ichNehmeTeil ? (
+}: Readonly<{ event: Pick<EventDto, 'art' | 'ichNehmeTeil'> }>) {
+  if (event.art !== 'teilnahme' || !event.ichNehmeTeil) return null;
+  return (
     <Badge color="green" variant="light" size="sm" tt="none">
       Du nimmst teil
     </Badge>
-  ) : (
-    <Badge color="gray" variant="outline" size="sm" tt="none">
-      Teilnahme
+  );
+}
+
+/** Number of members taking part in a participation event. */
+export const teilnehmerAnzahl = (e: Pick<EventDto, 'teilnahmen'>): number =>
+  e.teilnahmen.filter((t) => t.zustand === 'teilnahme').length;
+
+/**
+ * Status badge of an event: the Ampel for events with Dienste, "x nehmen teil" for events with
+ * participation (they have no Ampel); cancelled events are gray in both cases.
+ */
+export function EventStatusBadge({
+  event,
+  size,
+}: Readonly<{
+  event: Pick<EventDto, 'art' | 'bewertung' | 'abgesagt' | 'teilnahmen'>;
+  size?: 'sm' | 'md';
+}>) {
+  if (event.art !== 'teilnahme' || event.abgesagt) {
+    return <AmpelBadge bewertung={event.bewertung} size={size} />;
+  }
+  const n = teilnehmerAnzahl(event);
+  return (
+    <Badge color="gray" variant="light" size={size} tt="none" style={{ flexShrink: 0 }}>
+      {n === 1 ? '1 nimmt teil' : `${n} nehmen teil`}
     </Badge>
   );
 }
+
+/** Neutral bar color of participation events in the month grid (they have no Ampel). */
+export const TEILNAHME_BALKEN = 'var(--mantine-color-gray-4)';
+
+/** Mantine CSS color of the Ampel bar of one event: the Ampel, or neutral for participation. */
+export const balkenFarbe = (e: Pick<EventDto, 'art' | 'bewertung' | 'abgesagt'>): string =>
+  e.art === 'teilnahme' && !e.abgesagt
+    ? TEILNAHME_BALKEN
+    : `var(--mantine-color-${AMPEL_FARBE[e.bewertung]}-filled)`;
 
 /** Mantine color name of a Kategorie; events without one are gray. */
 export const kategorieFarbe = (k: Pick<EventKategorieDto, 'farbe'> | null): string =>

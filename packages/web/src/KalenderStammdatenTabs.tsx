@@ -3,8 +3,10 @@ import {
   Button,
   ColorSwatch,
   Group,
+  Badge,
   Modal,
   MultiSelect,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -19,12 +21,22 @@ import { useState } from 'react';
 import {
   dienstformEingabeSchema,
   eventKategorieEingabeSchema,
+  MITGLIED_STATI,
   externeEingabeSchema,
+  EVENT_ARTEN,
   type DienstformDto,
+  type EventArt,
   type EventKategorieDto,
   type ExterneDto,
 } from '@c4/shared';
 import { useApi } from './api';
+import { EVENT_ART_LABELS } from './i18n';
+import {
+  TeilnahmeFelder,
+  teilnahmeKreisAus,
+  teilnahmeWerteAus,
+  type TeilnahmeWerte,
+} from './TeilnahmeFelder';
 import {
   kalenderInvalidieren,
   useDienstformen,
@@ -164,7 +176,17 @@ export function FarbWahl({
 interface KategorieWerte {
   name: string;
   farbe: string;
+  art: EventArt;
+  /** Default circle; only sent for `teilnahme`. */
+  teilnahme: TeilnahmeWerte;
 }
+
+const kategorieJson = (w: KategorieWerte) => ({
+  name: w.name,
+  farbe: w.farbe,
+  art: w.art,
+  teilnahmeStatus: w.art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
+});
 
 export function EventKategorienTab() {
   const api = useApi();
@@ -179,12 +201,29 @@ export function EventKategorienTab() {
       zeile={(k) => (
         <Group gap="sm" wrap="nowrap">
           <ColorSwatch color={`var(--mantine-color-${k.farbe}-6)`} size={22} />
-          <Text fw={600}>{k.name}</Text>
+          <Stack gap={2} align="flex-start" style={{ minWidth: 0 }}>
+            <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+              {k.name}
+            </Text>
+            <Badge variant="light" color={k.art === 'teilnahme' ? 'teal' : 'gray'} tt="none">
+              {EVENT_ART_LABELS[k.art]}
+            </Badge>
+          </Stack>
         </Group>
       )}
-      leer={{ name: '', farbe: 'indigo' }}
-      aus={(k) => ({ name: k.name, farbe: k.farbe })}
-      felder={(w, set) => (
+      leer={{
+        name: '',
+        farbe: 'indigo',
+        art: 'dienste',
+        teilnahme: teilnahmeWerteAus([...MITGLIED_STATI]),
+      }}
+      aus={(k) => ({
+        name: k.name,
+        farbe: k.farbe,
+        art: k.art,
+        teilnahme: teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
+      })}
+      felder={(w, set, k) => (
         <>
           <TextInput
             label="Name"
@@ -192,11 +231,39 @@ export function EventKategorienTab() {
             onChange={(e) => set({ ...w, name: e.currentTarget.value })}
           />
           <FarbWahl wert={w.farbe} onChange={(farbe) => set({ ...w, farbe })} />
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Art
+            </Text>
+            <SegmentedControl
+              fullWidth
+              data={EVENT_ARTEN.map((a) => ({ value: a, label: EVENT_ART_LABELS[a] }))}
+              value={w.art}
+              disabled={k?.benutzt === true}
+              onChange={(art) => set({ ...w, art: art as EventArt })}
+            />
+            <Text size="sm" c="dimmed">
+              {k?.benutzt
+                ? 'Die Art lässt sich nicht mehr ändern, weil Events diese Kategorie benutzen.'
+                : w.art === 'dienste'
+                  ? 'Events dieser Kategorie haben Schichten und Dienste.'
+                  : 'Events dieser Kategorie haben Teilnehmende statt Diensten.'}
+            </Text>
+          </Stack>
+          {w.art === 'teilnahme' && (
+            <TeilnahmeFelder
+              titel="Standard-Kreis"
+              label="Wer nimmt standardmäßig teil?"
+              mitEinladung={false}
+              werte={w.teilnahme}
+              onChange={(teilnahme) => set({ ...w, teilnahme })}
+            />
+          )}
         </>
       )}
-      validieren={(w) => ersteMeldung(eventKategorieEingabeSchema.safeParse(w))}
+      validieren={(w) => ersteMeldung(eventKategorieEingabeSchema.safeParse(kategorieJson(w)))}
       speichern={async (id, w, k) => {
-        const body = { ...w, archiviert: k?.archiviert ?? false };
+        const body = { ...kategorieJson(w), archiviert: k?.archiviert ?? false };
         await pruefen(
           id
             ? await api.kalender.kategorien[':id'].$put({ param: { id }, json: body })
@@ -207,7 +274,13 @@ export function EventKategorienTab() {
         pruefen(
           await api.kalender.kategorien[':id'].$put({
             param: { id: k.id },
-            json: { name: k.name, farbe: k.farbe, archiviert },
+            json: {
+              name: k.name,
+              farbe: k.farbe,
+              art: k.art,
+              teilnahmeStatus: k.teilnahmeStatus,
+              archiviert,
+            },
           }),
         )
       }

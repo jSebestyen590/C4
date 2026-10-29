@@ -439,6 +439,10 @@ export const eventKategorien = pgTable('event_kategorien', {
   name: text('name').notNull(),
   /** Mantine color name. */
   farbe: text('farbe').notNull(),
+  /** `dienste` or `teilnahme`; null (legacy rows) counts as `dienste`. */
+  art: text('art'),
+  /** Default participation circle of a `teilnahme` category (same coding as `events.teilnahmeStatus`). */
+  teilnahmeStatus: text('teilnahme_status'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;

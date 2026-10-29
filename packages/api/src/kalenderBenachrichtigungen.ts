@@ -188,7 +188,7 @@ export async function fehlendeDienste(
   const bis = heuteBerlin(new Date(jetzt.getTime() + vorlaufMs));
   const events = await kalender.events(heuteBerlin(jetzt), bis);
   for (const event of events) {
-    if (event.abgesagt || event.bewertung !== 'rot') continue;
+    if (event.abgesagt || event.art === 'teilnahme' || event.bewertung !== 'rot') continue;
     const minuten = waehleErinnerung(new Date(event.beginn).getTime(), jetzt.getTime(), zeitpunkte);
     if (minuten === undefined) continue;
     try {

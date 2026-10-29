@@ -1,15 +1,15 @@
 # Kalender
 
-Events mit Schichten und Diensten. Rechte: `kalender:lesen` (ansehen, sich eintragen), `events:verwalten`
+Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, siehe „Event-Art“). Rechte: `kalender:lesen` (ansehen, sich eintragen), `events:verwalten`
 (Events anlegen, ändern, absagen), `kalender:einrichten` (Dienstformen, Kategorien, Vorlagen, Externe).
 
 ## Datenmodell
 
-Migrationen `0037`–`0054`, `0062`–`0075`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
+Migrationen `0037`–`0054`, `0062`–`0078`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
 | Tabelle                                                  | Inhalt                                                                                                                                                                                                                                           |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe), archivierbar                                                                                                                                                                                           |
+| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe, `art` `dienste`/`teilnahme`, Standard-Kreis `teilnahme_status`; `0076`–`0078`), archivierbar                                                                                                            |
 | `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                                                                                             |
 | `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (z. B. `barabend`, sonst null), `angelegt_von` (null = System)                                                                                                      |
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
@@ -70,15 +70,34 @@ Kein besonderes Event ist ein normaler Barabend: montags, mittwochs und sonntags
   Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
   entfernt man bewusst etwas, greift die 409-Bestätigung).
 
+## Event-Art (Dienste oder Teilnahme)
+
+Ein Event hat **entweder** Dienste (Schichten) **oder** Teilnahme, nie beides. Die Art legt die **Kategorie** fest, die für
+Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; die Spalte bleibt wegen DSQL nullable, `null` und Bestand ohne
+Kategorie gelten als Dienste).
+
+- **Kategorie:** `art` (`dienste`/`teilnahme`, Pflicht; vorhandene Kategorien inkl. `barabend` sind Dienste, Migration `0077`) und
+  bei Teilnahme der Standard-Kreis `teilnahmeStatus` (Pflicht, `[]` = niemand vorab). Die Art lässt sich nur ändern, solange
+  kein Event die Kategorie benutzt (`benutzt` im DTO; sonst 409 „Die Kategorie wird von Events benutzt.“).
+- **API-Prüfung:** Dienste-Kategorie: kein Kreis, keine Eingeladenen (400). Teilnahme-Kategorie: keine Schichten (400); ohne
+  `teilnahmeStatus` gilt der Standard der Kategorie. Dienste eintragen bei Teilnahme-Events und Teilnahme setzen bei Dienste-Events: 409.
+- **Wechsel der Art** am Event (andere Kategorie): Würden Dienste (Schichten fallen weg) oder Teilnahmen (Antworten, Einladungen)
+  gelöscht, antwortet `PUT` mit 409 `{ error, betroffene, teilnahmen }`, bis `bestaetigt: true` mitkommt. Dann werden sie gelöscht.
+- **Vorlagen:** `ausVorlage(vorlage, datum, kategorie)` erzeugt bei Teilnahme keine Schichten und nimmt den Kreis der Vorlage,
+  sonst den der Kategorie. Das Barabend-Ersetzen bietet nur Dienste-Vorlagen an; bei einer Teilnahme-Vorlage an einem
+  Barabend-Tag bleiben beide Events.
+- **Anzeige:** Teilnahme-Events haben keine Ampel und keine Schichten und werden vom Job „Dienste fehlen“ übersprungen. Statt der
+  Ampel steht „x nehmen teil“, im Monatsraster ein grauer Streifen (Legende: „Teilnahme“). Formular und Vorlagen-Editor zeigen
+  je nach Art der gewählten Kategorie den Schicht-Editor oder den Abschnitt Teilnahme (vorbelegt mit dem Standard-Kreis).
+
 ## Teilnahme
 
-Events können Teilnehmende haben. Das ist **kein Dienst**, keine Schicht und zählt nicht im Dienstschwein.
+Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**, keine Schicht und zählt nicht im Dienstschwein.
 
 - **Kreis** (`events.teilnahme_status`, Migration `0070`; Vorlagen: `event_vorlagen.teilnahme_status`, `0071`, `ausVorlage`
-  übernimmt ihn): `null` = keine Teilnahme, sonst kommaseparierte Status (`anwaerter,mitglied,em` = alle Mitglieder,
-  leer = niemand vorab). Im Formular (und Vorlagen-Editor, Abschnitt „Teilnahme“): Keine Teilnahme / Alle Mitglieder / Nach
-  Status / Niemand vorab, dazu bei Events „Einzelne Personen einladen“ (`eingeladen: string[]` mit Subs; ohne Kreis aber
-  mit Eingeladenen wird der Kreis „niemand vorab“). Wird die Teilnahme ausgeschaltet, löscht das API alle Einzelsätze.
+  übernimmt ihn): `null` = keine Teilnahme (Dienste-Event), sonst kommaseparierte Status (`anwaerter,mitglied,em` = alle Mitglieder,
+  leer = niemand vorab). Im Formular (und Vorlagen-Editor, Abschnitt „Teilnahme“, nur bei Teilnahme-Kategorie): Alle Mitglieder / Nach
+  Status / Niemand vorab, dazu bei Events „Einzelne Personen einladen“ (`eingeladen: string[]` mit Subs).
 - **Effektive Teilnahme** (`teilnahmeZustand` / `teilnehmend` in Shared): (Status im Kreis ODER eingeladen ODER eigene
   Antwort `teilnahme`) UND keine Antwort `absage`. Der Kreis wird bei jeder Abfrage **dynamisch** gegen die aktuellen
   Mitglieder ausgewertet, spätere Neumitglieder mit passendem Status sind bei künftigen Events automatisch dabei.

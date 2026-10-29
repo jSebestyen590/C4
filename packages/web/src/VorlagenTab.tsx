@@ -14,7 +14,12 @@ import { IconArchive, IconArchiveOff, IconEdit, IconPlus, IconTrash } from '@tab
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { SCHICHT_ART_LABELS } from './i18n';
-import { vorlageEingabeSchema, type VorlageDto, type VorlageEingabe } from '@c4/shared';
+import {
+  vorlageEingabeSchema,
+  type EventArt,
+  type VorlageDto,
+  type VorlageEingabe,
+} from '@c4/shared';
 import { AktionsMenue } from './AktionsMenue';
 import { useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
@@ -26,6 +31,7 @@ import {
   neuerKey,
   SchichtListeEditor,
   TagVersatzFeld,
+  teilnahmeNachKategorie,
   UhrzeitFelder,
   type KopfWerte,
   type SchichtBasis,
@@ -73,7 +79,7 @@ const leereVorlage = (): VorlageWerte => ({
 const werteAus = (v: VorlageDto): VorlageWerte => ({
   titel: v.titel,
   beschreibung: v.beschreibung ?? '',
-  kategorieId: v.kategorieId ?? null,
+  kategorieId: v.kategorieId || null,
   beginnZeit: v.beginnZeit,
   endeZeit: v.endeZeit,
   teilnahme: teilnahmeWerteAus(v.teilnahmeStatus),
@@ -96,14 +102,15 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
 function eingabe(
   w: VorlageWerte,
   archiviert: boolean,
+  art: EventArt | null,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: VorlageEingabe } {
-  const schichten = w.schichten.map((s) => ({
+  const schichten = (art === 'teilnahme' ? [] : w.schichten).map((s) => ({
     ...(s.art === 'betrieb' ? {} : { tagVersatz: s.tagVersatz === '' ? undefined : s.tagVersatz }),
     beginnZeit: s.beginnZeit,
     endeZeit: s.endeZeit,
     ...bedarfFelder(s),
   }));
-  const json = vorlageJson(w, schichten, archiviert);
+  const json = vorlageJson(w, schichten, archiviert, art);
   const geprueft = vorlageEingabeSchema.safeParse(json);
   if (!geprueft.success) {
     const { schichten: schichtFehler, allgemein } = fehlerAusIssues(geprueft.error.issues);
@@ -112,14 +119,19 @@ function eingabe(
   return { json: geprueft.data };
 }
 
-function vorlageJson<S>(w: VorlageWerte, schichten: S[], archiviert: boolean) {
+function vorlageJson<S>(
+  w: VorlageWerte,
+  schichten: S[],
+  archiviert: boolean,
+  art: EventArt | null,
+) {
   return {
     titel: w.titel,
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
     beginnZeit: w.beginnZeit,
     endeZeit: w.endeZeit,
-    teilnahmeStatus: teilnahmeKreisAus(w.teilnahme),
+    teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     schichten,
     archiviert,
   };
@@ -139,7 +151,7 @@ function VorlageEditor({
   const [laeuft, setLaeuft] = useState(false);
 
   const speichern = async () => {
-    const e = eingabe(werte, vorlage?.archiviert ?? false);
+    const e = eingabe(werte, vorlage?.archiviert ?? false, art);
     if ('fehler' in e) {
       setSchichtFehler(e.schichtFehler ?? {});
       return setFehler(e.fehler);
@@ -162,6 +174,7 @@ function VorlageEditor({
     }
   };
 
+  const art = kategorien.liste.find((k) => k.id === werte.kategorieId)?.art ?? null;
   if (dienstformen.isPending || kategorien.isPending) return <Loader m="md" />;
   if (dienstformen.isError || kategorien.isError)
     return <Alert color="red">Die Daten konnten nicht geladen werden.</Alert>;
@@ -176,7 +189,9 @@ function VorlageEditor({
       </Text>
       <KopfFelder
         werte={werte}
-        onChange={(k) => setWerte({ ...werte, ...k })}
+        onChange={(k) =>
+          setWerte(teilnahmeNachKategorie(werte, { ...werte, ...k }, kategorien.liste))
+        }
         kategorien={kategorien.liste}
       />
       <UhrzeitFelder
@@ -184,47 +199,56 @@ function VorlageEditor({
         ende={werte.endeZeit}
         onChange={(z) => setWerte({ ...werte, ...z })}
       />
-      <TeilnahmeFelder
-        werte={werte.teilnahme}
-        onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
-        mitEinladung={false}
-      />
-      <SchichtListeEditor<VorlageSchichtForm>
-        schichten={werte.schichten}
-        onChange={(schichten) => setWerte({ ...werte, schichten })}
-        dienstformen={dienstformen.liste}
-        fehler={schichtFehler}
-        neu={() => ({
-          key: neuerKey(),
-          ...neueSchichtWerte(),
-          tagVersatz: 0,
-          beginnZeit: werte.beginnZeit,
-          endeZeit: werte.endeZeit,
-        })}
-        untertitel={(s) =>
-          s.beginnZeit && s.endeZeit
-            ? `${SCHICHT_ART_LABELS[s.art]} ${s.beginnZeit}–${s.endeZeit}`
-            : null
-        }
-        zeitFelder={(s, aendern, f) => (
-          <Stack gap="xs">
-            {s.art !== 'betrieb' && (
-              <TagVersatzFeld
-                wert={s.tagVersatz}
-                onChange={(tagVersatz) => aendern({ tagVersatz })}
-                fehler={f.tagVersatz}
+      {art === null && (
+        <Text size="sm" c="dimmed">
+          Wähle eine Kategorie. Danach erscheinen je nach Art die Schichten oder die Teilnahme.
+        </Text>
+      )}
+      {art === 'teilnahme' && (
+        <TeilnahmeFelder
+          werte={werte.teilnahme}
+          onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
+          mitEinladung={false}
+        />
+      )}
+      {art === 'dienste' && (
+        <SchichtListeEditor<VorlageSchichtForm>
+          schichten={werte.schichten}
+          onChange={(schichten) => setWerte({ ...werte, schichten })}
+          dienstformen={dienstformen.liste}
+          fehler={schichtFehler}
+          neu={() => ({
+            key: neuerKey(),
+            ...neueSchichtWerte(),
+            tagVersatz: 0,
+            beginnZeit: werte.beginnZeit,
+            endeZeit: werte.endeZeit,
+          })}
+          untertitel={(s) =>
+            s.beginnZeit && s.endeZeit
+              ? `${SCHICHT_ART_LABELS[s.art]} ${s.beginnZeit}–${s.endeZeit}`
+              : null
+          }
+          zeitFelder={(s, aendern, f) => (
+            <Stack gap="xs">
+              {s.art !== 'betrieb' && (
+                <TagVersatzFeld
+                  wert={s.tagVersatz}
+                  onChange={(tagVersatz) => aendern({ tagVersatz })}
+                  fehler={f.tagVersatz}
+                />
+              )}
+              <UhrzeitFelder
+                beginn={s.beginnZeit}
+                ende={s.endeZeit}
+                onChange={aendern}
+                beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
+                fehler={f.endeZeit}
               />
-            )}
-            <UhrzeitFelder
-              beginn={s.beginnZeit}
-              ende={s.endeZeit}
-              onChange={aendern}
-              beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
-              fehler={f.endeZeit}
-            />
-          </Stack>
-        )}
-      />
+            </Stack>
+          )}
+        />
+      )}
       {fehler && <Alert color="red">{fehler}</Alert>}
       <Group grow preventGrowOverflow={false}>
         <Button variant="default" onClick={onFertig}>
@@ -243,6 +267,9 @@ export function VorlagenTab() {
   const api = useApi();
   const qc = useQueryClient();
   const q = useVorlagen(true);
+  const kategorien = useEventKategorien();
+  const artVon = (kategorieId: string): EventArt | null =>
+    kategorien.liste.find((k) => k.id === kategorieId)?.art ?? null;
   const [archivZeigen, setArchivZeigen] = useState(false);
   const [editor, setEditor] = useState<{ vorlage: VorlageDto | null } | null>(null);
   const [loeschen, setLoeschen] = useState<VorlageDto | null>(null);
@@ -253,7 +280,8 @@ export function VorlagenTab() {
 
   const archivWechseln = async (v: VorlageDto) => {
     try {
-      const e = eingabe(werteAus(v), !v.archiviert);
+      if (kategorien.isPending) throw new Error('Die Kategorien werden noch geladen.');
+      const e = eingabe(werteAus(v), !v.archiviert, artVon(v.kategorieId));
       if ('fehler' in e) throw new Error(e.fehler);
       await pruefen(await api.kalender.vorlagen[':id'].$put({ param: { id: v.id }, json: e.json }));
       await kalenderInvalidieren(qc);
@@ -290,8 +318,10 @@ export function VorlagenTab() {
                 {v.titel}
               </Text>
               <Text size="sm" c="dimmed">
-                {v.beginnZeit}–{v.endeZeit} Uhr · {v.schichten.length}{' '}
-                {v.schichten.length === 1 ? 'Schicht' : 'Schichten'}
+                {v.beginnZeit}–{v.endeZeit} Uhr ·{' '}
+                {artVon(v.kategorieId) === 'teilnahme'
+                  ? 'Teilnahme'
+                  : `${v.schichten.length} ${v.schichten.length === 1 ? 'Schicht' : 'Schichten'}`}
               </Text>
               {v.archiviert && (
                 <div>

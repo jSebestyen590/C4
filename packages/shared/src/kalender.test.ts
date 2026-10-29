@@ -25,6 +25,7 @@ import {
   statistikJahr,
   statistikZeilen,
   ueberlappendeSchichten,
+  eventKategorieEingabeSchema,
   vorlageEingabeSchema,
   zeitpunktAnzeigen,
   type BewertbareSchicht,
@@ -375,12 +376,16 @@ describe('schemas', () => {
   it('validates Event and Vorlage input', () => {
     const event = {
       titel: 'Abend',
+      kategorieId: 'k1',
       beginn: '2026-06-05T18:00:00Z',
       ende: '2026-06-06T00:00:00Z',
       schichten: [basis],
     };
     expect(eventEingabeSchema.safeParse(event).success).toBe(true);
     expect(eventEingabeSchema.safeParse({ ...event, ende: event.beginn }).success).toBe(false);
+    // The Kategorie is required
+    expect(eventEingabeSchema.safeParse({ ...event, kategorieId: null }).success).toBe(false);
+    expect(eventEingabeSchema.safeParse({ ...event, kategorieId: '' }).success).toBe(false);
     expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-06-06T18:00:00Z' }).success).toBe(
       true,
     );
@@ -392,6 +397,7 @@ describe('schemas', () => {
     );
     const vorlage = {
       titel: 'V',
+      kategorieId: 'k1',
       beginnZeit: '20:00',
       endeZeit: '23:00',
       schichten: [],
@@ -584,7 +590,7 @@ describe('barabendErsetzen', () => {
   const vorlage = (schichten: VorlageEingabe['schichten']): VorlageEingabe => ({
     titel: 'Karaoke',
     beschreibung: null,
-    kategorieId: null,
+    kategorieId: 'k1',
     beginnZeit: '21:00',
     endeZeit: '02:00',
     teilnahmeStatus: null,
@@ -704,6 +710,7 @@ describe('Teilnahme', () => {
   it('validates the circle and invitations of an event', () => {
     const roh = {
       titel: 'Plenum',
+      kategorieId: 'k1',
       beginn: '2026-06-05T18:00:00.000Z',
       ende: '2026-06-05T20:00:00.000Z',
       schichten: [],
@@ -741,5 +748,70 @@ describe('Teilnahme', () => {
     expect(ics).toContain('SUMMARY:Plenum');
     expect(ics).toContain('URL:https://c4.example/app/kalender/events/e1');
     expect(ics).toContain('STATUS:CANCELLED');
+  });
+});
+
+describe('ausVorlage with a Kategorie', () => {
+  const vorlage: VorlageEingabe = {
+    titel: 'Plenum',
+    beschreibung: null,
+    kategorieId: 'k1',
+    beginnZeit: '19:00',
+    endeZeit: '21:00',
+    teilnahmeStatus: null,
+    schichten: [{ art: 'betrieb', beginnZeit: '19:00', endeZeit: '21:00', bedarfe: [] }],
+  };
+
+  it('drops Schichten and uses the default circle for Teilnahme', () => {
+    const e = ausVorlage(vorlage, '2026-11-02', {
+      art: 'teilnahme',
+      teilnahmeStatus: ['mitglied'],
+    });
+    expect(e.schichten).toEqual([]);
+    expect(e.teilnahmeStatus).toEqual(['mitglied']);
+  });
+
+  it('prefers the circle of the Vorlage', () => {
+    const e = ausVorlage({ ...vorlage, teilnahmeStatus: [] }, '2026-11-02', {
+      art: 'teilnahme',
+      teilnahmeStatus: ['mitglied'],
+    });
+    expect(e.teilnahmeStatus).toEqual([]);
+  });
+
+  it('keeps Schichten and has no circle for Dienste', () => {
+    const e = ausVorlage(vorlage, '2026-11-02', { art: 'dienste', teilnahmeStatus: null });
+    expect(e.schichten).toHaveLength(1);
+    expect(e.teilnahmeStatus).toBeNull();
+  });
+});
+
+describe('eventKategorieEingabeSchema', () => {
+  const basis = { name: 'Plenum', farbe: 'teal' };
+
+  it('requires the kind and a default circle for Teilnahme', () => {
+    expect(eventKategorieEingabeSchema.safeParse(basis).success).toBe(false);
+    expect(eventKategorieEingabeSchema.safeParse({ ...basis, art: 'teilnahme' }).success).toBe(
+      false,
+    );
+    const ok = eventKategorieEingabeSchema.parse({
+      ...basis,
+      art: 'teilnahme',
+      teilnahmeStatus: ['mitglied'],
+    });
+    expect(ok.teilnahmeStatus).toEqual(['mitglied']);
+    expect(
+      eventKategorieEingabeSchema.parse({ ...basis, art: 'teilnahme', teilnahmeStatus: [] })
+        .teilnahmeStatus,
+    ).toEqual([]);
+  });
+
+  it('drops the circle of a Dienste Kategorie', () => {
+    const ok = eventKategorieEingabeSchema.parse({
+      ...basis,
+      art: 'dienste',
+      teilnahmeStatus: ['mitglied'],
+    });
+    expect(ok.teilnahmeStatus).toBeNull();
   });
 });

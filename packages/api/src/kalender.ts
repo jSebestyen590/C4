@@ -17,6 +17,7 @@ import {
   type DienstPerson,
   type EventDto,
   type EventEingabe,
+  type EventArt,
   type EventKategorieDto,
   type EventKategorieEingabe,
   type ExterneDto,
@@ -78,10 +79,14 @@ export interface BetroffenerDienst {
   grund: 'schicht' | 'bedarf';
 }
 
-/** An event update would delete Dienste and was not confirmed (HTTP 409 with the list). */
+/** An event update would delete Dienste or participations and was not confirmed (HTTP 409 with the lists). */
 export class EntfernungBestaetigen extends Error {
-  constructor(readonly betroffene: BetroffenerDienst[]) {
-    super('Dabei werden Dienste entfernt. Bitte bestätige das.');
+  constructor(
+    readonly betroffene: BetroffenerDienst[],
+    /** Members with an answer or invitation that the update would delete. */
+    readonly teilnahmen: TeilnahmeDto[] = [],
+  ) {
+    super('Dabei werden Dienste oder Teilnahmen entfernt. Bitte bestätige das.');
   }
 }
 
@@ -529,6 +534,7 @@ async function eventsLaden(
       event: events,
       kategorieName: eventKategorien.name,
       kategorieFarbe: eventKategorien.farbe,
+      kategorieArt: eventKategorien.art,
     })
     .from(events)
     .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
@@ -620,7 +626,7 @@ async function eventsLaden(
       }),
   });
 
-  return eventRows.map(({ event: e, kategorieName, kategorieFarbe }) => {
+  return eventRows.map(({ event: e, kategorieName, kategorieFarbe, kategorieArt }) => {
     const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
     const zeilen = teilnahmen.get(e.id) ?? [];
     const alleSchichten = schichtRows.filter((s) => s.eventId === e.id).map(alsSchicht);
@@ -632,6 +638,7 @@ async function eventsLaden(
         e.kategorieId && kategorieName !== null && kategorieFarbe !== null
           ? { id: e.kategorieId, name: kategorieName, farbe: kategorieFarbe }
           : null,
+      art: artVon({ art: kategorieArt }),
       beginn: iso(e.beginn),
       ende: iso(e.ende),
       abgesagt: e.abgesagt,
@@ -653,13 +660,51 @@ async function eventsLaden(
   });
 }
 
-/** Throws unless the Kategorie exists (and is not archived, unless it is `bisherige`). */
-async function kategorieMussExistieren(q: Q, id: string | null, bisherige?: string | null) {
-  if (id === null) return;
+const artVon = (k: { art: string | null } | null | undefined): EventArt =>
+  k?.art === 'teilnahme' ? 'teilnahme' : 'dienste';
+
+/** A Kategorie with its resolved kind and default circle. */
+export interface KategorieInfo {
+  art: EventArt;
+  teilnahmeStatus: TeilnahmeKreis;
+}
+
+/** Returns the Kategorie; throws unless it exists (and is not archived, unless it is `bisherige`). */
+async function kategorieMussExistieren(
+  q: Q,
+  id: string,
+  bisherige?: string | null,
+): Promise<KategorieInfo> {
   const [k] = await q.select().from(eventKategorien).where(eq(eventKategorien.id, id));
   if (!k || (k.archiviert && id !== bisherige)) {
     throw new KalenderUngueltig('Die Kategorie gibt es nicht.');
   }
+  return { art: artVon(k), teilnahmeStatus: teilnahmeKreisLesen(k.teilnahmeStatus) };
+}
+
+/**
+ * Checks the input against the Kategorie's kind: Dienste events have no participation, participation
+ * events no Schichten. Returns the circle to store (null for Dienste; for participation the given circle,
+ * else the Kategorie's default).
+ */
+export function artPruefen(
+  kategorie: KategorieInfo,
+  daten: {
+    schichten: readonly unknown[];
+    teilnahmeStatus: TeilnahmeKreis;
+    eingeladen?: readonly string[];
+  },
+): TeilnahmeKreis {
+  if (kategorie.art === 'dienste') {
+    if (daten.teilnahmeStatus !== null || (daten.eingeladen?.length ?? 0) > 0) {
+      throw new KalenderUngueltig('Events mit Diensten haben keine Teilnahme.');
+    }
+    return null;
+  }
+  if (daten.schichten.length > 0) {
+    throw new KalenderUngueltig('Events mit Teilnahme haben keine Schichten.');
+  }
+  return daten.teilnahmeStatus ?? kategorie.teilnahmeStatus ?? [];
 }
 
 /** Throws unless every Dienstform exists (archived ones only when listed in `erlaubt`). */
@@ -724,17 +769,14 @@ export function createKalenderStore(db: Db): KalenderStore {
     }
   };
 
-  /** The circle to store: invited people without a circle imply the empty circle (by invitation only). */
-  const kreisFuer = (daten: { teilnahmeStatus: TeilnahmeKreis; eingeladen: readonly string[] }) =>
-    daten.teilnahmeStatus ?? (daten.eingeladen.length > 0 ? [] : null);
-
   /** Writes the individual invitations (the circle itself is a column of the event). */
   const teilnahmeSchreiben = async (
     tx: Tx,
     eventId: string,
-    daten: { teilnahmeStatus: TeilnahmeKreis; eingeladen: readonly string[] },
+    kreis: TeilnahmeKreis,
+    daten: { eingeladen: readonly string[] },
   ) => {
-    if (kreisFuer(daten) === null) {
+    if (kreis === null) {
       await tx.delete(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, eventId));
       return;
     }
@@ -778,7 +820,8 @@ export function createKalenderStore(db: Db): KalenderStore {
     serie: string | null,
     id: string = randomUUID(),
   ) => {
-    await kategorieMussExistieren(tx, daten.kategorieId);
+    const kategorie = await kategorieMussExistieren(tx, daten.kategorieId);
+    const kreis = artPruefen(kategorie, daten);
     await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
     if (daten.schichten.some((s) => s.id !== undefined)) {
       throw new KalenderUngueltig('Neue Events haben noch keine Schichten mit Id.');
@@ -791,10 +834,10 @@ export function createKalenderStore(db: Db): KalenderStore {
       beginn: new Date(daten.beginn),
       ende: new Date(daten.ende),
       serie,
-      teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
+      teilnahmeStatus: teilnahmeKreisKodieren(kreis),
       angelegtVon: von,
     });
-    await teilnahmeSchreiben(tx, id, daten);
+    await teilnahmeSchreiben(tx, id, kreis, daten);
     await schichtenSchreiben(
       tx,
       id,
@@ -882,7 +925,8 @@ export function createKalenderStore(db: Db): KalenderStore {
               ])
             : [[], []];
 
-        await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
+        const kategorie = await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
+        const kreis = artPruefen(kategorie, daten);
         await dienstformenMuessenExistieren(
           tx,
           dienstformIdsVon(daten.schichten),
@@ -937,7 +981,29 @@ export function createKalenderStore(db: Db): KalenderStore {
               },
             ];
           });
-          if (daten.bestaetigt !== true) throw new EntfernungBestaetigen(entfernte);
+        }
+
+        // Switching to a Dienste Kategorie deletes all individual answers and invitations.
+        let verlorene: TeilnahmeDto[] = [];
+        if (kreis === null) {
+          const alte = await tx
+            .select()
+            .from(eventTeilnahmen)
+            .where(eq(eventTeilnahmen.eventId, id));
+          const personen = await personenLaden(
+            tx,
+            alte.map((r) => r.mitgliedSub),
+            [],
+          );
+          verlorene = alte.flatMap((r): TeilnahmeDto[] => {
+            const person = personen.mitglieder.get(r.mitgliedSub);
+            return person?.art === 'mitglied'
+              ? [{ person, zustand: r.antwort ?? 'teilnahme', eingeladen: r.eingeladen }]
+              : [];
+          });
+        }
+        if ((entfernte.length > 0 || verlorene.length > 0) && daten.bestaetigt !== true) {
+          throw new EntfernungBestaetigen(entfernte, verlorene);
         }
 
         const entfernteIds = new Set(abgleich.entfernteDienste.map((e) => e.dienstId));
@@ -951,12 +1017,12 @@ export function createKalenderStore(db: Db): KalenderStore {
             kategorieId: daten.kategorieId,
             beginn: beginnNeu,
             ende: endeNeu,
-            teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
+            teilnahmeStatus: teilnahmeKreisKodieren(kreis),
             ...(daten.ersetzeSerie === true && { serie: null }),
             aktualisiertAm: new Date(),
           })
           .where(eq(events.id, id));
-        await teilnahmeSchreiben(tx, id, daten);
+        await teilnahmeSchreiben(tx, id, kreis, daten);
         if (entfernteIds.size > 0) {
           await tx.delete(dienste).where(inArray(dienste.id, [...entfernteIds]));
         }
@@ -1013,7 +1079,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           ),
           teilnehmerSubs: await teilnehmerSubs(tx, {
             id,
-            teilnahmeStatus: teilnahmeKreisKodieren(kreisFuer(daten)),
+            teilnahmeStatus: teilnahmeKreisKodieren(kreis),
           }),
         };
       });
@@ -1078,6 +1144,14 @@ export function createKalenderStore(db: Db): KalenderStore {
 
     // ----- Participation and event subscription
     async teilnahmeSetzen(eventId, sub, teilnahme) {
+      const istTeilnahmeEvent = async (e: { kategorieId: string | null }) => {
+        if (e.kategorieId === null) return false;
+        const [k] = await db
+          .select()
+          .from(eventKategorien)
+          .where(eq(eventKategorien.id, e.kategorieId));
+        return artVon(k) === 'teilnahme';
+      };
       const [event] = await db.select().from(events).where(eq(events.id, eventId));
       if (!event) return undefined;
       if (event.abgesagt) {
@@ -1085,7 +1159,10 @@ export function createKalenderStore(db: Db): KalenderStore {
           'Das Event ist abgesagt. Die Teilnahme lässt sich nicht ändern.',
         );
       }
-      if (teilnahmeKreisLesen(event.teilnahmeStatus) === null) {
+      if (
+        teilnahmeKreisLesen(event.teilnahmeStatus) === null ||
+        !(await istTeilnahmeEvent(event))
+      ) {
         throw new KalenderKonflikt('Für dieses Event ist keine Teilnahme vorgesehen.');
       }
       const antwort: TeilnahmeAntwort = teilnahme ? 'teilnahme' : 'absage';
@@ -1121,11 +1198,19 @@ export function createKalenderStore(db: Db): KalenderStore {
       try {
         return await db.transaction(async (tx) => {
           const [zeile] = await tx
-            .select({ schicht: schichten, abgesagt: events.abgesagt })
+            .select({
+              schicht: schichten,
+              abgesagt: events.abgesagt,
+              kategorieArt: eventKategorien.art,
+            })
             .from(schichten)
             .innerJoin(events, eq(events.id, schichten.eventId))
+            .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
             .where(eq(schichten.id, schichtId));
           if (!zeile) return undefined;
+          if (artVon({ art: zeile.kategorieArt }) === 'teilnahme') {
+            throw new KalenderKonflikt('Bei Events mit Teilnahme gibt es keine Dienste.');
+          }
           if (zeile.abgesagt) {
             throw new KalenderKonflikt('Das Event ist abgesagt. Eintragen ist nicht möglich.');
           }
@@ -1334,10 +1419,24 @@ export function createKalenderStore(db: Db): KalenderStore {
       return rows.length > 0;
     },
     async kategorien(mitArchiv) {
-      const rows = await db.select().from(eventKategorien);
+      const [rows, benutzt] = await Promise.all([
+        db.select().from(eventKategorien),
+        db.selectDistinct({ id: events.kategorieId }).from(events),
+      ]);
+      const benutzteIds = new Set(benutzt.map((b) => b.id));
       return rows
         .filter((k) => mitArchiv || !k.archiviert)
-        .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+        .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+        .map((k): EventKategorieDto => ({
+          id: k.id,
+          name: k.name,
+          farbe: k.farbe,
+          art: artVon(k),
+          teilnahmeStatus:
+            artVon(k) === 'teilnahme' ? teilnahmeKreisLesen(k.teilnahmeStatus) : null,
+          benutzt: benutzteIds.has(k.id),
+          archiviert: k.archiviert,
+        }));
     },
     async kategorieAnlegen(daten) {
       const id = randomUUID();
@@ -1345,21 +1444,38 @@ export function createKalenderStore(db: Db): KalenderStore {
         id,
         name: daten.name,
         farbe: daten.farbe,
+        art: daten.art,
+        teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
         archiviert: daten.archiviert ?? false,
       });
       return id;
     },
     async kategorieAktualisieren(id, daten) {
-      const rows = await db
-        .update(eventKategorien)
-        .set({
-          name: daten.name,
-          farbe: daten.farbe,
-          ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
-        })
-        .where(eq(eventKategorien.id, id))
-        .returning({ id: eventKategorien.id });
-      return rows.length > 0;
+      return db.transaction(async (tx) => {
+        const [bisher] = await tx.select().from(eventKategorien).where(eq(eventKategorien.id, id));
+        if (!bisher) return false;
+        if (artVon(bisher) !== daten.art) {
+          const benutzt = await tx
+            .select({ id: events.id })
+            .from(events)
+            .where(eq(events.kategorieId, id))
+            .limit(1);
+          if (benutzt.length > 0) {
+            throw new KalenderKonflikt('Die Kategorie wird von Events benutzt.');
+          }
+        }
+        await tx
+          .update(eventKategorien)
+          .set({
+            name: daten.name,
+            farbe: daten.farbe,
+            art: daten.art,
+            teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
+            ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
+          })
+          .where(eq(eventKategorien.id, id));
+        return true;
+      });
     },
     async vorlagen(mitArchiv) {
       const [rows, schichtRows, bedarfRows] = await Promise.all([
@@ -1374,7 +1490,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           id: v.id,
           titel: v.titel,
           beschreibung: v.beschreibung,
-          kategorieId: v.kategorieId,
+          kategorieId: v.kategorieId ?? '',
           beginnZeit: v.beginnZeit,
           endeZeit: v.endeZeit,
           teilnahmeStatus: teilnahmeKreisLesen(v.teilnahmeStatus),
@@ -1409,7 +1525,7 @@ export function createKalenderStore(db: Db): KalenderStore {
     },
     async vorlageAnlegen(daten) {
       return db.transaction(async (tx) => {
-        await kategorieMussExistieren(tx, daten.kategorieId);
+        artPruefen(await kategorieMussExistieren(tx, daten.kategorieId), daten);
         await dienstformenMuessenExistieren(tx, dienstformIdsVon(daten.schichten));
         const id = randomUUID();
         await tx.insert(eventVorlagen).values({
@@ -1442,7 +1558,7 @@ export function createKalenderStore(db: Db): KalenderStore {
                 .from(vorlageBedarfe)
                 .where(inArray(vorlageBedarfe.vorlageSchichtId, alteIds))
             : [];
-        await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
+        artPruefen(await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId), daten);
         await dienstformenMuessenExistieren(
           tx,
           dienstformIdsVon(daten.schichten),

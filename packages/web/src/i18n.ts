@@ -8,6 +8,7 @@ import type {
   Permission,
   Quelle,
   Role,
+  EventArt,
   SchichtArt,
   VorgangTyp,
 } from '@c4/shared';
@@ -66,6 +67,12 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   anwaerter: { maennlich: 'Anwärter', weiblich: 'Anwärterin', neutral: 'Anwärter:in' },
   mitglied: { maennlich: 'Mitglied', weiblich: 'Mitglied', neutral: 'Mitglied' },
   em: { maennlich: 'EM', weiblich: 'EM', neutral: 'EM' },
+};
+
+/** Kind of an event Kategorie: events have either Dienste (Schichten) or participants. */
+export const EVENT_ART_LABELS: Record<EventArt, string> = {
+  dienste: 'Dienste',
+  teilnahme: 'Teilnahme',
 };
 
 export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {

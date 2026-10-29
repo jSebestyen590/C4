@@ -43,7 +43,7 @@ export function KalenderStammdatenTab<T extends { id: string; archiviert: boolea
   zeile: (t: T) => ReactNode;
   leer: W;
   aus: (t: T) => W;
-  felder: (w: W, setW: (w: W) => void) => ReactNode;
+  felder: (w: W, setW: (w: W) => void, eintrag: T | null) => ReactNode;
   /** German error text, or null if the values are fine. */
   validieren: (w: W) => string | null;
   speichern: (id: string | null, w: W, t: T | null) => Promise<void>;
@@ -149,7 +149,11 @@ export function KalenderStammdatenTab<T extends { id: string; archiviert: boolea
       >
         {bearbeiten && (
           <Stack>
-            {felder(bearbeiten.werte, (werte) => setBearbeiten({ ...bearbeiten, werte }))}
+            {felder(
+              bearbeiten.werte,
+              (werte) => setBearbeiten({ ...bearbeiten, werte }),
+              bearbeiten.eintrag,
+            )}
             {meldung && <Alert color="red">{meldung}</Alert>}
             <Group grow preventGrowOverflow={false}>
               <Button variant="default" onClick={() => setBearbeiten(null)}>

@@ -41,6 +41,7 @@ import { DienstEintragenModal, type EintragModus } from '../DienstEintragenModal
 import {
   AmpelBadge,
   dienstName,
+  EventStatusBadge,
   FehltInfo,
   kategorieFarbe,
   PersonName,
@@ -127,7 +128,7 @@ export function EventDetailPage() {
           </Title>
           <Text>{zeitraumAnzeigen(e.beginn, e.ende)} Uhr</Text>
           <Group gap="xs">
-            <AmpelBadge bewertung={e.bewertung} />
+            <EventStatusBadge event={e} />
             {e.kategorie && (
               <Badge color={kategorieFarbe(e.kategorie)} variant="outline">
                 {e.kategorie.name}
@@ -175,7 +176,7 @@ export function EventDetailPage() {
       )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
-      <EventTeilnahme event={e} />
+      {e.art === 'teilnahme' && <EventTeilnahme event={e} />}
       {ueberlappungen.length > 0 && (
         <Alert color="yellow" title="Überschneidung">
           {ueberlappungen.map(([a, b]) => (
@@ -187,8 +188,10 @@ export function EventDetailPage() {
         </Alert>
       )}
 
-      {e.schichten.length === 0 && <Text c="dimmed">Dieses Event hat keine Schichten.</Text>}
-      {e.schichten.map((s) => {
+      {e.art === 'dienste' && e.schichten.length === 0 && (
+        <Text c="dimmed">Dieses Event hat keine Schichten.</Text>
+      )}
+      {(e.art === 'dienste' ? e.schichten : []).map((s) => {
         const details = schichtDetails(s);
         const ich = s.dienste.some(
           (d) => d.person.art === 'mitglied' && d.person.sub === eigeneSub,

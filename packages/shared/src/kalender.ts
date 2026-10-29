@@ -194,6 +194,15 @@ const teilnahmeStatusSchema = z
   .nullish()
   .transform((v) => v ?? null);
 
+/** An event has either Dienste (Schichten) or participants, decided by its Kategorie. */
+export const EVENT_ARTEN = ['dienste', 'teilnahme'] as const;
+export type EventArt = (typeof EVENT_ARTEN)[number];
+export const eventArtSchema = z.enum(EVENT_ARTEN, 'Bitte wähle die Art der Kategorie.');
+
+const kategoriePflicht = z
+  .string('Bitte wähle eine Kategorie.')
+  .min(1, 'Bitte wähle eine Kategorie.');
+
 const zeitSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
@@ -211,12 +220,21 @@ export const dienstformEingabeSchema = z.object({
 });
 export type DienstformEingabe = z.infer<typeof dienstformEingabeSchema>;
 
-export const eventKategorieEingabeSchema = z.object({
-  name: name(),
-  /** Mantine color name, e.g. `grape`. */
-  farbe: z.string().trim().min(1, 'Bitte wähle eine Farbe.').max(30),
-  archiviert: z.boolean().optional(),
-});
+export const eventKategorieEingabeSchema = z
+  .object({
+    name: name(),
+    /** Mantine color name, e.g. `grape`. */
+    farbe: z.string().trim().min(1, 'Bitte wähle eine Farbe.').max(30),
+    art: eventArtSchema,
+    /** Default participation circle; required for `teilnahme`, ignored (null) for `dienste`. */
+    teilnahmeStatus: teilnahmeStatusSchema,
+    archiviert: z.boolean().optional(),
+  })
+  .refine((v) => v.art !== 'teilnahme' || v.teilnahmeStatus !== null, {
+    message: 'Bitte lege den Standard-Kreis fest.',
+    path: ['teilnahmeStatus'],
+  })
+  .transform((v) => (v.art === 'dienste' ? { ...v, teilnahmeStatus: null } : v));
 export type EventKategorieEingabe = z.infer<typeof eventKategorieEingabeSchema>;
 
 export const externeEingabeSchema = z.object({
@@ -337,15 +355,11 @@ export const eventEingabeSchema = z
   .object({
     titel: name('einen Titel'),
     beschreibung,
-    kategorieId: z
-      .string()
-      .min(1)
-      .nullish()
-      .transform((v) => v ?? null),
+    kategorieId: kategoriePflicht,
     beginn: zeitpunktSchema,
     ende: zeitpunktSchema,
     schichten: z.array(schichtEingabeSchema),
-    /** Participation circle (null = none); see `TeilnahmeKreis`. */
+    /** Participation circle; null = the Kategorie's default (`teilnahme`) or none (`dienste`). */
     teilnahmeStatus: teilnahmeStatusSchema,
     /** Subs of members invited individually. */
     eingeladen: z
@@ -409,11 +423,7 @@ export type VorlageSchicht = z.infer<typeof vorlageSchichtSchema>;
 export const vorlageEingabeSchema = z.object({
   titel: name('einen Titel'),
   beschreibung,
-  kategorieId: z
-    .string()
-    .min(1)
-    .nullish()
-    .transform((v) => v ?? null),
+  kategorieId: kategoriePflicht,
   beginnZeit: zeitSchema,
   endeZeit: zeitSchema,
   schichten: z.array(vorlageSchichtSchema),
@@ -464,6 +474,11 @@ export interface EventKategorieDto {
   name: string;
   /** Mantine color name. */
   farbe: string;
+  art: EventArt;
+  /** Default participation circle (`teilnahme` only, else null). */
+  teilnahmeStatus: TeilnahmeKreis;
+  /** At least one event uses the Kategorie, so its `art` cannot change. */
+  benutzt: boolean;
   archiviert: boolean;
 }
 
@@ -529,6 +544,8 @@ export interface EventDto {
   titel: string;
   beschreibung: string | null;
   kategorie: Pick<EventKategorieDto, 'id' | 'name' | 'farbe'> | null;
+  /** From the Kategorie; events without one (legacy) count as `dienste`. */
+  art: EventArt;
   beginn: string;
   ende: string;
   abgesagt: boolean;
@@ -701,16 +718,30 @@ export function betriebDatum(
   return schichtBeginnZeit < eventBeginnZeit ? tageDazu(eventDatum, 1) : eventDatum;
 }
 
-/** Builds an Event input from a Vorlage for a start date; times are Berlin wall times incl. DST. */
-export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe {
+/**
+ * Builds an Event input from a Vorlage for a start date; times are Berlin wall times incl. DST.
+ * With the Vorlage's Kategorie, a `teilnahme` event gets no Schichten and the Vorlage's circle (else the
+ * Kategorie's), a `dienste` event gets no circle.
+ */
+export function ausVorlage(
+  vorlage: VorlageEingabe,
+  datum: string,
+  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'>,
+): EventEingabe {
+  const teilnahme = kategorie?.art === 'teilnahme';
+  const dienste = kategorie?.art === 'dienste';
   return {
     titel: vorlage.titel,
     beschreibung: vorlage.beschreibung,
     kategorieId: vorlage.kategorieId,
-    teilnahmeStatus: vorlage.teilnahmeStatus,
+    teilnahmeStatus: teilnahme
+      ? (vorlage.teilnahmeStatus ?? kategorie.teilnahmeStatus ?? [])
+      : dienste
+        ? null
+        : vorlage.teilnahmeStatus,
     eingeladen: [],
     ...zeitspanne(datum, vorlage.beginnZeit, vorlage.endeZeit),
-    schichten: vorlage.schichten.map((s): SchichtEingabe => {
+    schichten: (teilnahme ? [] : vorlage.schichten).map((s): SchichtEingabe => {
       if (s.art === 'betrieb') {
         const tag = betriebDatum(datum, vorlage.beginnZeit, s.beginnZeit);
         return {
@@ -739,8 +770,9 @@ export function ausVorlage(vorlage: VorlageEingabe, datum: string): EventEingabe
 export function barabendErsetzen(
   barabend: Pick<EventDto, 'beginn' | 'schichten'>,
   vorlage: VorlageEingabe,
+  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'>,
 ): EventEingabe {
-  const neu = ausVorlage(vorlage, datumBerlin(barabend.beginn));
+  const neu = ausVorlage(vorlage, datumBerlin(barabend.beginn), kategorie);
   const alte = [...barabend.schichten].sort(
     (a, b) => new Date(a.beginn).getTime() - new Date(b.beginn).getTime(),
   );

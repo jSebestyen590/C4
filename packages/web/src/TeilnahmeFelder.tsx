@@ -57,8 +57,7 @@ const MODUS_OPTIONEN: { value: TeilnahmeModus; label: string }[] = [
   { value: 'eingeladen', label: 'Niemand vorab' },
 ];
 
-const MODUS_HINWEIS: Record<TeilnahmeModus, string> = {
-  keine: 'Das Event hat keine Teilnahmeliste.',
+const MODUS_HINWEIS: Record<Exclude<TeilnahmeModus, 'keine'>, string> = {
   alle: 'Alle Mitglieder nehmen teil. Auch später dazukommende Mitglieder sind automatisch dabei.',
   status:
     'Mitglieder mit diesem Status nehmen teil. Auch später dazukommende Mitglieder mit passendem Status sind automatisch dabei.',
@@ -70,27 +69,33 @@ export function TeilnahmeFelder({
   werte,
   onChange,
   mitEinladung = true,
+  titel = 'Teilnahme',
+  label = 'Wer nimmt teil?',
 }: Readonly<{
   werte: TeilnahmeWerte;
   onChange: (w: TeilnahmeWerte) => void;
   mitEinladung?: boolean;
+  /** Heading; null for none (e.g. inside a dialog). */
+  titel?: string | null;
+  label?: string;
 }>) {
   const mitglieder = useMitgliederListe();
+  const modus = werte.modus === 'keine' ? 'alle' : werte.modus;
   return (
     <Stack gap="xs">
-      <Title order={4}>Teilnahme</Title>
+      {titel && <Title order={4}>{titel}</Title>}
       <Select
-        label="Wer nimmt teil?"
+        label={label}
         allowDeselect={false}
-        data={MODUS_OPTIONEN}
-        value={werte.modus}
+        // The Kategorie decides that there is participation, so "Keine Teilnahme" is never offered.
+        data={MODUS_OPTIONEN.filter((o) => o.value !== 'keine')}
+        value={modus}
         onChange={(v) => v && onChange({ ...werte, modus: v as TeilnahmeModus })}
       />
       <Text size="sm" c="dimmed">
-        {MODUS_HINWEIS[werte.modus]}
-        {werte.modus !== 'keine' && ' Wer dabei ist, kann sich selbst austragen.'}
+        {MODUS_HINWEIS[modus]} Wer dabei ist, kann sich selbst austragen.
       </Text>
-      {werte.modus === 'status' && (
+      {modus === 'status' && (
         <Checkbox.Group
           label="Status"
           value={werte.status}
@@ -108,7 +113,7 @@ export function TeilnahmeFelder({
           </Stack>
         </Checkbox.Group>
       )}
-      {mitEinladung && (werte.modus === 'status' || werte.modus === 'eingeladen') && (
+      {mitEinladung && (modus === 'status' || modus === 'eingeladen') && (
         <MultiSelect
           label="Einzelne Personen einladen"
           placeholder={werte.eingeladen.length === 0 ? 'Personen wählen' : undefined}

@@ -41,11 +41,13 @@ import {
 import { useAuth } from '../auth';
 import {
   AMPEL_FARBE,
-  AmpelBadge,
+  balkenFarbe,
   dienstName,
+  EventStatusBadge,
   FehltInfo,
   kategorieFarbe,
   PersonName,
+  TEILNAHME_BALKEN,
   TeilnahmeBadge,
 } from '../KalenderAnzeige';
 import { AMPEL_LABELS } from '../i18n';
@@ -84,6 +86,20 @@ const schlechtesteBewertung = (events: EventDto[]): EventBewertung =>
     (w, e) => (AMPEL_RANG[e.bewertung] > AMPEL_RANG[w] ? e.bewertung : w),
     'abgesagt',
   );
+
+/**
+ * Bar color of a day: the worst Ampel of its events with Dienste; neutral if it only has (uncancelled)
+ * participation events, gray if everything is cancelled.
+ */
+function tagBalkenFarbe(events: EventDto[]): string {
+  const mitAmpel = events.filter((e) => e.art === 'dienste');
+  if (mitAmpel.length > 0) {
+    return `var(--mantine-color-${AMPEL_FARBE[schlechtesteBewertung(mitAmpel)]}-filled)`;
+  }
+  return events.some((e) => !e.abgesagt)
+    ? TEILNAHME_BALKEN
+    : `var(--mantine-color-${AMPEL_FARBE.abgesagt}-filled)`;
+}
 
 /** Background of a day: one light Kategorie color, or vertical stripes for several. */
 function tagHintergrund(events: EventDto[]): string {
@@ -126,6 +142,10 @@ function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] 
             <Text size="xs">{AMPEL_LABELS[b]}</Text>
           </Group>
         ))}
+        <Group gap={6} wrap="nowrap">
+          {punkt('transparent', TEILNAHME_BALKEN)}
+          <Text size="xs">Teilnahme</Text>
+        </Group>
       </Group>
       {eindeutig.size > 0 && (
         <Group gap="md">
@@ -138,7 +158,8 @@ function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] 
         </Group>
       )}
       <Text size="xs" c="dimmed">
-        Die Hintergrundfarbe zeigt die Kategorie, der farbige Streifen die Besetzung.
+        Die Hintergrundfarbe zeigt die Kategorie, der Streifen die Besetzung. Events mit Teilnahme
+        haben keine Ampel und einen grauen Streifen.
       </Text>
     </Stack>
   );
@@ -190,7 +211,7 @@ function TagesUebersicht({
               </Text>
             </Stack>
             <Stack gap={4} align="flex-end">
-              <AmpelBadge bewertung={e.bewertung} />
+              <EventStatusBadge event={e} />
               <TeilnahmeBadge event={e} />
             </Stack>
           </Group>
@@ -304,9 +325,7 @@ function MonatsRasterKompakt({
             outlineOffset: istHeute ? -2 : undefined,
             background: hat ? tagHintergrund(liste) : undefined,
             border: '1px solid var(--mantine-color-default-border)',
-            borderBottom: hat
-              ? `5px solid var(--mantine-color-${AMPEL_FARBE[schlechtesteBewertung(liste)]}-filled)`
-              : undefined,
+            borderBottom: hat ? `5px solid ${tagBalkenFarbe(liste)}` : undefined,
           } as const;
           if (!klickbar(t)) {
             return (
@@ -413,11 +432,11 @@ function EventKarte({
             )}
           </Stack>
           <Stack gap={4} align="flex-end">
-            <AmpelBadge bewertung={event.bewertung} />
+            <EventStatusBadge event={event} />
             <TeilnahmeBadge event={event} />
           </Stack>
         </Group>
-        {event.schichten.map((s) => (
+        {(event.art === 'dienste' ? event.schichten : []).map((s) => (
           <Box
             key={s.id}
             pl="xs"
@@ -437,7 +456,7 @@ function EventKarte({
           fullWidth
           hiddenFrom="sm"
         >
-          {event.abgesagt ? 'Details' : 'Details und eintragen'}
+          {event.abgesagt || event.art === 'teilnahme' ? 'Details' : 'Details und eintragen'}
         </Button>
       </Stack>
     </Paper>
@@ -511,7 +530,7 @@ function MonatsRaster({
                         borderRadius: 4,
                         background: `var(--mantine-color-${farbe}-light)`,
                         color: `var(--mantine-color-${farbe}-light-color)`,
-                        borderLeft: `4px solid var(--mantine-color-${AMPEL_FARBE[e.bewertung]}-filled)`,
+                        borderLeft: `4px solid ${balkenFarbe(e)}`,
                         overflowWrap: 'anywhere',
                       }}
                     >

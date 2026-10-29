@@ -1561,7 +1561,8 @@ export function createApp(deps: AppDeps) {
           } catch (err) {
             if (err instanceof EntfernungBestaetigen) {
               const betroffene: BetroffenerDienst[] = await personenMitUsernames(err.betroffene);
-              return c.json({ error: err.message, betroffene }, 409);
+              const teilnahmen = await personenMitUsernames(err.teilnahmen);
+              return c.json({ error: err.message, betroffene, teilnahmen }, 409);
             }
             return kalenderFehler(err);
           }
@@ -1779,7 +1780,9 @@ export function createApp(deps: AppDeps) {
         zValidator('json', eventKategorieEingabeSchema),
         async (c) => {
           gefunden(
-            await deps.kalender.kategorieAktualisieren(c.req.param('id'), c.req.valid('json')),
+            await deps.kalender
+              .kategorieAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(kalenderFehler),
             'Kategorie nicht gefunden',
           );
           return c.json({ ok: true });

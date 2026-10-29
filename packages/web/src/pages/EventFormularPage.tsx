@@ -32,6 +32,8 @@ import {
   type EventDto,
   type EventEingabe,
   type EventKategorieDto,
+  type EventArt,
+  type TeilnahmeDto,
   type TeilnahmeKreis,
   type VorlageDto,
 } from '@c4/shared';
@@ -44,6 +46,7 @@ import {
   neueSchichtWerte,
   neuerKey,
   SchichtListeEditor,
+  teilnahmeNachKategorie,
   UhrzeitFelder,
   type KopfWerte,
   type SchichtFehler,
@@ -95,6 +98,12 @@ interface Betroffener {
   dienstformId: string | null;
   person: DienstPerson;
   grund: 'schicht' | 'bedarf';
+}
+
+/** What saving would delete (the API answers 409 with these lists). */
+interface Entfernung {
+  dienste: Betroffener[];
+  teilnahmen: TeilnahmeDto[];
 }
 
 interface EventDaten {
@@ -168,8 +177,9 @@ function schichtSpanne(w: EventWerte, s: EventSchichtForm) {
 /** Form values -> API input; German error texts (general and per Schicht field) when invalid. */
 function eingabeBauen(
   w: EventWerte,
+  art: EventArt | null,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: EventEingabe } {
-  const roh = rohEingabe(w);
+  const roh = rohEingabe(w, art);
   if (!roh) return { fehler: 'Bitte gib bei allen Zeiten ein Datum und Uhrzeiten an.' };
   const geprueft = eventEingabeSchema.safeParse(roh);
   if (!geprueft.success) {
@@ -179,10 +189,11 @@ function eingabeBauen(
   return { json: geprueft.data };
 }
 
-function rohEingabe(w: EventWerte) {
+/** Only what the Kategorie's kind allows is sent: Schichten for Dienste, the circle for Teilnahme. */
+function rohEingabe(w: EventWerte, art: EventArt | null) {
   if (!w.datum || !w.beginnZeit || !w.endeZeit) return null;
   const schichten = [];
-  for (const s of w.schichten) {
+  for (const s of art === 'teilnahme' ? [] : w.schichten) {
     const spanne = schichtSpanne(w, s);
     if (!spanne) return null;
     schichten.push({ id: s.id, ...spanne, ...bedarfFelder(s) });
@@ -192,8 +203,8 @@ function rohEingabe(w: EventWerte) {
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
     ...zeitspanne(w.datum, w.beginnZeit, w.endeZeit),
-    teilnahmeStatus: teilnahmeKreisAus(w.teilnahme),
-    eingeladen: eingeladeneAus(w.teilnahme),
+    teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
+    eingeladen: art === 'teilnahme' ? eingeladeneAus(w.teilnahme) : [],
     schichten,
   };
 }
@@ -219,13 +230,14 @@ function Formular({
   const [fehler, setFehler] = useState<string | null>(null);
   const [schichtFehler, setSchichtFehler] = useState<Record<number, SchichtFehler>>({});
   const [laeuft, setLaeuft] = useState(false);
-  const [betroffene, setBetroffene] = useState<Betroffener[] | null>(null);
+  const [entfernung, setEntfernung] = useState<Entfernung | null>(null);
+  const art = kategorien.find((k) => k.id === werte.kategorieId)?.art ?? null;
 
   const eventBeginnIso =
     werte.datum && werte.beginnZeit ? berlinZuUtc(werte.datum, werte.beginnZeit) : undefined;
 
   const speichern = async (bestaetigt: boolean) => {
-    const ergebnis = eingabeBauen(werte);
+    const ergebnis = eingabeBauen(werte, art);
     if ('fehler' in ergebnis) {
       setSchichtFehler(ergebnis.schichtFehler ?? {});
       return setFehler(ergebnis.fehler);
@@ -243,9 +255,13 @@ function Formular({
       if (eventId) {
         const res = await api.kalender.events[':id'].$put({ param: { id: eventId }, json });
         if (res.status === 409) {
-          const body = (await res.json()) as { error: string; betroffene?: Betroffener[] };
-          if (body.betroffene?.length) {
-            setBetroffene(body.betroffene);
+          const body = (await res.json()) as {
+            error: string;
+            betroffene?: Betroffener[];
+            teilnahmen?: TeilnahmeDto[];
+          };
+          if (body.betroffene?.length || body.teilnahmen?.length) {
+            setEntfernung({ dienste: body.betroffene ?? [], teilnahmen: body.teilnahmen ?? [] });
             return;
           }
           throw new ApiFehler(409, body.error);
@@ -257,11 +273,11 @@ function Formular({
         id = ((await res.json()) as { id: string }).id;
       }
       await kalenderInvalidieren(qc);
-      setBetroffene(null);
+      setEntfernung(null);
       notifications.show({ color: 'green', message: 'Das Event wurde gespeichert.' });
       void navigate(`/kalender/events/${id}`);
     } catch (e) {
-      setBetroffene(null);
+      setEntfernung(null);
       setFehler(fehlerText(e, 'Das Event konnte nicht gespeichert werden.'));
     } finally {
       setLaeuft(false);
@@ -277,7 +293,7 @@ function Formular({
       )}
       <KopfFelder
         werte={werte}
-        onChange={(k) => setWerte({ ...werte, ...k })}
+        onChange={(k) => setWerte(teilnahmeNachKategorie(werte, { ...werte, ...k }, kategorien))}
         kategorien={kategorien}
       />
       <DatumFeld
@@ -291,46 +307,55 @@ function Formular({
         ende={werte.endeZeit}
         onChange={(z) => setWerte({ ...werte, ...z })}
       />
-      <TeilnahmeFelder
-        werte={werte.teilnahme}
-        onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
-      />
-      <SchichtListeEditor<EventSchichtForm>
-        schichten={werte.schichten}
-        onChange={(schichten) => setWerte({ ...werte, schichten })}
-        dienstformen={dienstformen}
-        fehler={schichtFehler}
-        neu={() => ({
-          key: neuerKey(),
-          ...neueSchichtWerte(),
-          datum: werte.datum,
-          beginnZeit: werte.beginnZeit,
-          endeZeit: werte.endeZeit,
-        })}
-        untertitel={(s) => {
-          const spanne = schichtSpanne(werte, s);
-          return spanne ? schichtBezeichnung({ art: s.art, ...spanne }, eventBeginnIso) : null;
-        }}
-        zeitFelder={(s, aendern, f) => (
-          <Stack gap="xs">
-            {s.art !== 'betrieb' && (
-              <DatumFeld
-                label="Datum"
-                value={s.datum}
-                onWert={(datum) => aendern({ datum })}
-                loeschbar={false}
+      {art === null && (
+        <Text size="sm" c="dimmed">
+          Wähle eine Kategorie. Danach erscheinen je nach Art die Schichten oder die Teilnahme.
+        </Text>
+      )}
+      {art === 'teilnahme' && (
+        <TeilnahmeFelder
+          werte={werte.teilnahme}
+          onChange={(teilnahme) => setWerte({ ...werte, teilnahme })}
+        />
+      )}
+      {art === 'dienste' && (
+        <SchichtListeEditor<EventSchichtForm>
+          schichten={werte.schichten}
+          onChange={(schichten) => setWerte({ ...werte, schichten })}
+          dienstformen={dienstformen}
+          fehler={schichtFehler}
+          neu={() => ({
+            key: neuerKey(),
+            ...neueSchichtWerte(),
+            datum: werte.datum,
+            beginnZeit: werte.beginnZeit,
+            endeZeit: werte.endeZeit,
+          })}
+          untertitel={(s) => {
+            const spanne = schichtSpanne(werte, s);
+            return spanne ? schichtBezeichnung({ art: s.art, ...spanne }, eventBeginnIso) : null;
+          }}
+          zeitFelder={(s, aendern, f) => (
+            <Stack gap="xs">
+              {s.art !== 'betrieb' && (
+                <DatumFeld
+                  label="Datum"
+                  value={s.datum}
+                  onWert={(datum) => aendern({ datum })}
+                  loeschbar={false}
+                />
+              )}
+              <UhrzeitFelder
+                beginn={s.beginnZeit}
+                ende={s.endeZeit}
+                onChange={aendern}
+                beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
+                fehler={f.ende}
               />
-            )}
-            <UhrzeitFelder
-              beginn={s.beginnZeit}
-              ende={s.endeZeit}
-              onChange={aendern}
-              beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
-              fehler={f.ende}
-            />
-          </Stack>
-        )}
-      />
+            </Stack>
+          )}
+        />
+      )}
       {fehler && <Alert color="red">{fehler}</Alert>}
       <Group grow preventGrowOverflow={false}>
         <Button
@@ -346,17 +371,23 @@ function Formular({
       </Group>
 
       <Modal
-        opened={betroffene !== null}
-        onClose={() => setBetroffene(null)}
-        title="Dienste werden entfernt"
+        opened={entfernung !== null}
+        onClose={() => setEntfernung(null)}
+        title={
+          entfernung?.dienste.length && entfernung.teilnahmen.length
+            ? 'Dienste und Teilnahmen werden entfernt'
+            : entfernung?.teilnahmen.length
+              ? 'Teilnahmen werden entfernt'
+              : 'Dienste werden entfernt'
+        }
       >
         <Stack>
           <Text size="sm">
-            Wenn du speicherst, verlieren diese Personen ihren Dienst. Sie bekommen eine
-            Benachrichtigung, sobald das eingeschaltet ist.
+            Wenn du speicherst, verlieren diese Personen ihren Dienst bzw. ihre Teilnahme. Sie
+            bekommen eine Benachrichtigung, sobald das eingeschaltet ist.
           </Text>
           <Stack gap={4}>
-            {betroffene?.map((b) => {
+            {entfernung?.dienste.map((b) => {
               const form = dienstformen.find((d) => d.id === b.dienstformId)?.name ?? 'Dienst';
               const schicht = schichtBezeichnung(
                 { art: b.schichtArt, beginn: b.schichtBeginn, ende: b.schichtEnde },
@@ -373,9 +404,19 @@ function Formular({
                 </Text>
               );
             })}
+            {entfernung?.teilnahmen.map((t) => (
+              <Text key={t.person.sub} size="sm">
+                <PersonName person={t.person} verlinken={false} mitQuelle={false} /> –{' '}
+                {t.zustand === 'absage'
+                  ? 'Absage entfällt'
+                  : t.eingeladen
+                    ? 'Einladung entfällt'
+                    : 'Teilnahme entfällt'}
+              </Text>
+            ))}
           </Stack>
           <Group grow preventGrowOverflow={false}>
-            <Button variant="default" onClick={() => setBetroffene(null)}>
+            <Button variant="default" onClick={() => setEntfernung(null)}>
               Abbrechen
             </Button>
             <Button color="red" loading={laeuft} onClick={() => void speichern(true)}>
@@ -424,18 +465,23 @@ function NeuesEvent({
     );
   }
   const vorlage: VorlageDto | undefined = vorlagen.data?.find((v) => v.id === vorlageId);
-  // A planned Barabend (generated series event) on that day can be replaced instead of doubled.
-  const barabend = vorlage
-    ? tagesEvents.data?.find(
-        (e) =>
-          e.serie !== null &&
-          e.serie !== vorlage.id &&
-          !e.abgesagt &&
-          datumBerlin(e.beginn) === datum,
-      )
-    : undefined;
+  const vorlageKategorie = kategorien.find((k) => k.id === vorlage?.kategorieId);
+  // A planned Barabend (generated series event) on that day can be replaced instead of doubled,
+  // but only by a Dienste Vorlage: a participation event simply is added next to it.
+  const barabend =
+    vorlage && vorlageKategorie?.art !== 'teilnahme'
+      ? tagesEvents.data?.find(
+          (e) =>
+            e.serie !== null &&
+            e.serie !== vorlage.id &&
+            !e.abgesagt &&
+            datumBerlin(e.beginn) === datum,
+        )
+      : undefined;
   const neuAnlegen = () =>
-    setAnfang({ werte: vorlage ? werteAus(ausVorlage(vorlage, datum)) : leereWerte(datum) });
+    setAnfang({
+      werte: vorlage ? werteAus(ausVorlage(vorlage, datum, vorlageKategorie)) : leereWerte(datum),
+    });
   const weiter = () => {
     if (barabend) setBarabendFrage(barabend);
     else neuAnlegen();
@@ -443,7 +489,7 @@ function NeuesEvent({
   const ersetzen = () => {
     if (!vorlage || !barabendFrage) return;
     setAnfang({
-      werte: werteAus(barabendErsetzen(barabendFrage, vorlage)),
+      werte: werteAus(barabendErsetzen(barabendFrage, vorlage, vorlageKategorie)),
       ersetzt: barabendFrage,
     });
   };
