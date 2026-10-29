@@ -750,6 +750,15 @@ export function artPruefen(
   return daten.teilnahmeStatus ?? kategorie.teilnahmeStatus ?? [];
 }
 
+/** Replacing a series event never involves participation: neither the old nor the new Kategorie may be Teilnahme. */
+export function serieErsetzenPruefen(neu: KategorieInfo, bisher?: KategorieInfo | null): void {
+  if (neu.art === 'teilnahme' || bisher?.art === 'teilnahme') {
+    throw new KalenderUngueltig(
+      'Ein Serien-Event kann nur durch ein Event mit Diensten ersetzt werden, nicht durch eines mit Teilnahme.',
+    );
+  }
+}
+
 /** Throws unless every Dienstform exists (archived ones only when listed in `erlaubt`). */
 async function dienstformenMuessenExistieren(
   q: Q,
@@ -940,6 +949,18 @@ export function createKalenderStore(db: Db): KalenderStore {
 
       const kategorie = await kategorieMussExistieren(tx, daten.kategorieId, bisher.kategorieId);
       const kreis = artPruefen(kategorie, daten);
+      if (daten.ersetzeSerie === true) {
+        const [alteKategorie] = bisher.kategorieId
+          ? await tx
+              .select()
+              .from(eventKategorien)
+              .where(eq(eventKategorien.id, bisher.kategorieId))
+          : [];
+        serieErsetzenPruefen(
+          kategorie,
+          alteKategorie ? { art: artVon(alteKategorie), teilnahmeStatus: null } : null,
+        );
+      }
       await dienstformenMuessenExistieren(
         tx,
         dienstformIdsVon(daten.schichten),

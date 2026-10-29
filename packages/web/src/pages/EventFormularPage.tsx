@@ -18,6 +18,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ausVorlage,
   serieEventErsetzen,
+  serieEventNeutral,
   berlinZuUtc,
   datumBerlin,
   betriebDatum,
@@ -294,13 +295,14 @@ function Formular({
       {ersetzeSerie && (
         <Alert color="blue">
           Dieses Event ersetzt {serieName ? `„${serieName}“` : 'das Serien-Event'} an diesem Tag.
-          Eingetragene Dienste bleiben erhalten.
+          Eingetragene Dienste bleiben erhalten. Es sind nur Kategorien mit Diensten wählbar, ein
+          Serien-Event wird nie zu einem Event mit Teilnahme.
         </Alert>
       )}
       <KopfFelder
         werte={werte}
         onChange={(k) => setWerte(teilnahmeNachKategorie(werte, { ...werte, ...k }, kategorien))}
-        kategorien={kategorien}
+        kategorien={ersetzeSerie ? kategorien.filter((k) => k.art !== 'teilnahme') : kategorien}
       />
       <DatumFeld
         label="Datum"
@@ -476,14 +478,15 @@ function NeuesEvent({
   }
   const vorlage: VorlageDto | undefined = vorlagen.data?.find((v) => v.id === vorlageId);
   const vorlageKategorie = kategorien.find((k) => k.id === vorlage?.kategorieId);
-  // A planned series event on that day can be replaced instead of doubled,
-  // but only by a Dienste Vorlage: a participation event simply is added next to it.
+  // A planned series event on that day can be replaced instead of doubled. Only Dienste events are
+  // ever replaced, and only by a Dienste Vorlage (or by a free event): participation is never involved.
   const serienEvent =
-    vorlage && vorlageKategorie?.art !== 'teilnahme'
+    vorlageKategorie?.art !== 'teilnahme'
       ? tagesEvents.data?.find(
           (e) =>
             e.serie !== null &&
-            serien.data?.find((x) => x.id === e.serie)?.vorlageId !== vorlage.id &&
+            e.art !== 'teilnahme' &&
+            (!vorlage || serien.data?.find((x) => x.id === e.serie)?.vorlageId !== vorlage.id) &&
             !e.abgesagt &&
             datumBerlin(e.beginn) === datum,
         )
@@ -497,9 +500,13 @@ function NeuesEvent({
     else neuAnlegen();
   };
   const ersetzen = () => {
-    if (!vorlage || !serienFrage) return;
+    if (!serienFrage) return;
     setAnfang({
-      werte: werteAus(serieEventErsetzen(serienFrage, vorlage, vorlageKategorie)),
+      werte: werteAus(
+        vorlage
+          ? serieEventErsetzen(serienFrage, vorlage, vorlageKategorie)
+          : serieEventNeutral(serienFrage),
+      ),
       ersetzt: serienFrage,
     });
   };

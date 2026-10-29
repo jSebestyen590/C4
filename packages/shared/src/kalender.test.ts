@@ -8,6 +8,7 @@ import {
   serieSlug,
   serienTage,
   serieEventErsetzen,
+  serieEventNeutral,
   betriebDatum,
   erinnerungenEingabeSchema,
   zeitenAus,
@@ -936,5 +937,63 @@ describe('serieSlug / serieIdAus', () => {
     expect(serieIdAus('Barabend', new Set())).toBe('barabend');
     expect(serieIdAus('Barabend', new Set(['barabend']))).toBe('barabend-2');
     expect(serieIdAus('Barabend', new Set(['barabend', 'barabend-2']))).toBe('barabend-3');
+  });
+});
+
+describe('serieEventNeutral', () => {
+  const event = {
+    beginn: '2026-11-02T19:00:00.000Z',
+    ende: '2026-11-03T00:00:00.000Z',
+    schichten: [
+      {
+        id: 'putzen',
+        art: 'putzen',
+        beginn: '2026-11-03T08:00:00.000Z',
+        ende: '2026-11-03T10:00:00.000Z',
+        bedarfe: [],
+        minimum: 1,
+        wunsch: 2,
+        dienste: [],
+      },
+      {
+        id: 'betrieb',
+        art: 'betrieb',
+        beginn: '2026-11-02T19:00:00.000Z',
+        ende: '2026-11-03T00:00:00.000Z',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+        minimum: null,
+        wunsch: null,
+        dienste: [{ id: 'd1' }],
+      },
+    ],
+  } as unknown as EventDto;
+
+  it('has no title or Kategorie, the times of the event and all Schichten with their ids', () => {
+    const e = serieEventNeutral(event);
+    expect(e).toMatchObject({
+      titel: '',
+      kategorieId: null,
+      beginn: event.beginn,
+      ende: event.ende,
+      teilnahmeStatus: null,
+      eingeladen: [],
+    });
+    expect(e.schichten).toEqual([
+      {
+        id: 'betrieb',
+        art: 'betrieb',
+        beginn: '2026-11-02T19:00:00.000Z',
+        ende: '2026-11-03T00:00:00.000Z',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
+        id: 'putzen',
+        art: 'putzen',
+        beginn: '2026-11-03T08:00:00.000Z',
+        ende: '2026-11-03T10:00:00.000Z',
+        minimum: 1,
+        wunsch: 2,
+      },
+    ]);
   });
 });

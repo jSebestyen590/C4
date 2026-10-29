@@ -760,6 +760,47 @@ export function ausVorlage(
   };
 }
 
+/** Schicht of an existing event as input (keeps its id, so entered Dienste stay). */
+const schichtAlsEingabe = (s: SchichtDto): SchichtEingabe =>
+  s.art === 'betrieb'
+    ? {
+        id: s.id,
+        art: 'betrieb',
+        beginn: s.beginn,
+        ende: s.ende,
+        bedarfe: s.bedarfe.map((b) => ({ ...b })),
+      }
+    : {
+        id: s.id,
+        art: s.art,
+        beginn: s.beginn,
+        ende: s.ende,
+        minimum: s.minimum ?? 0,
+        wunsch: s.wunsch ?? 1,
+      };
+
+/**
+ * Neutral draft for replacing a series event without a Vorlage: no title and no Kategorie yet, the times
+ * of the series event, and all its Schichten with their ids so that nothing (entered Dienste) is lost.
+ */
+export function serieEventNeutral(
+  event: Pick<EventDto, 'beginn' | 'ende' | 'schichten'>,
+): Omit<EventEingabe, 'kategorieId'> & { kategorieId: null } {
+  const alte = [...event.schichten].sort(
+    (a, b) => new Date(a.beginn).getTime() - new Date(b.beginn).getTime(),
+  );
+  return {
+    titel: '',
+    beschreibung: null,
+    kategorieId: null,
+    beginn: event.beginn,
+    ende: event.ende,
+    teilnahmeStatus: null,
+    eingeladen: [],
+    schichten: alte.map(schichtAlsEingabe),
+  };
+}
+
 /**
  * Event input for replacing an existing (generated) Barabend by a Vorlage while keeping its Dienste:
  * the first Betrieb Schicht of the Vorlage takes over the id of the Barabend's Betrieb Schicht, Dienstformen
@@ -779,24 +820,6 @@ export function serieEventErsetzen(
   const altBetrieb = alte.find((s) => s.art === 'betrieb');
   const ziel = neu.schichten.findIndex((s) => s.art === 'betrieb');
   const behalten: SchichtEingabe[] = [];
-  const alsEingabe = (s: SchichtDto): SchichtEingabe =>
-    s.art === 'betrieb'
-      ? {
-          id: s.id,
-          art: 'betrieb',
-          beginn: s.beginn,
-          ende: s.ende,
-          bedarfe: s.bedarfe.map((b) => ({ ...b })),
-        }
-      : {
-          id: s.id,
-          art: s.art,
-          beginn: s.beginn,
-          ende: s.ende,
-          minimum: s.minimum ?? 0,
-          wunsch: s.wunsch ?? 1,
-        };
-
   let schichten = neu.schichten;
   if (altBetrieb && ziel >= 0) {
     schichten = neu.schichten.map((s, i) => {
@@ -816,7 +839,7 @@ export function serieEventErsetzen(
   for (const s of alte) {
     const verwendet = s === altBetrieb && ziel >= 0;
     if (verwendet) continue;
-    if (s === altBetrieb || s.dienste.length > 0) behalten.push(alsEingabe(s));
+    if (s === altBetrieb || s.dienste.length > 0) behalten.push(schichtAlsEingabe(s));
   }
   return { ...neu, schichten: [...schichten, ...behalten] };
 }

@@ -7,6 +7,7 @@ import {
   jahrGrenzen,
   KalenderUngueltig,
   schichtAbgleich,
+  serieErsetzenPruefen,
   zeitraumGrenzen,
   zusammenfuehrenPlan,
 } from './kalender';
@@ -192,5 +193,19 @@ describe('artPruefen', () => {
     expect(artPruefen(teilnahme, ohne)).toEqual(['mitglied', 'em']);
     expect(artPruefen(teilnahme, { ...ohne, teilnahmeStatus: [] })).toEqual([]);
     expect(artPruefen({ art: 'teilnahme', teilnahmeStatus: null }, ohne)).toEqual([]);
+  });
+});
+
+describe('serieErsetzenPruefen', () => {
+  const dienste: KategorieInfo = { art: 'dienste', teilnahmeStatus: null };
+  const teilnahme: KategorieInfo = { art: 'teilnahme', teilnahmeStatus: [] };
+
+  it('only allows replacing a Dienste event by a Dienste event', () => {
+    expect(() => serieErsetzenPruefen(dienste, dienste)).not.toThrow();
+    expect(() => serieErsetzenPruefen(dienste, null)).not.toThrow();
+    expect(() => serieErsetzenPruefen(teilnahme, dienste)).toThrow(
+      'nicht durch eines mit Teilnahme',
+    );
+    expect(() => serieErsetzenPruefen(dienste, teilnahme)).toThrow(KalenderUngueltig);
   });
 });
