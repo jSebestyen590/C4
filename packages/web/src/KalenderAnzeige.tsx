@@ -1,6 +1,8 @@
 import { Anchor, Badge, Stack, Text } from '@mantine/core';
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  schichtBezeichnung,
   schichtDetails,
   type DienstformDto,
   type DienstPerson,
@@ -180,6 +182,65 @@ export function FehltInfo({
           {z.text}
         </Text>
       ))}
+    </Stack>
+  );
+}
+
+/**
+ * Compact Dienste overview of an event for the day overview: one line per Schicht with the entered
+ * people (not linked, the card itself is the tap target) and a summary of what is still missing.
+ */
+export function DiensteKurz({
+  event,
+  dienstformen,
+}: Readonly<{ event: EventDto; dienstformen: Map<string, DienstformDto> }>) {
+  if (event.abgesagt || event.art === 'teilnahme' || event.schichten.length === 0) return null;
+  const details = event.schichten.map((s) => schichtDetails(s));
+  const fehlt = details.flatMap((d) => [...d.dienstformen, ...(d.anzahl ? [d.anzahl] : [])]);
+  const bisMinimum = fehlt.reduce((n, d) => n + d.bisMinimum, 0);
+  const bisWunsch = fehlt.reduce((n, d) => n + d.bisWunsch, 0);
+  const begleitungIdx = details.findIndex((d) => d.begleitungFehlt);
+  const farbe =
+    bisMinimum > 0 || begleitungIdx >= 0
+      ? 'red'
+      : bisWunsch > 0
+        ? 'var(--mantine-color-yellow-light-color)'
+        : 'green';
+  const zusammenfassung =
+    bisMinimum === 0 && bisWunsch === 0
+      ? 'Voll besetzt'
+      : `Fehlen noch: ${bisMinimum} bis Minimum, ${bisWunsch} bis Wunsch`;
+  return (
+    <Stack gap={2} w="100%">
+      {event.schichten.map((s) => (
+        <Text key={s.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
+          <Text component="span" c="dimmed">
+            {schichtBezeichnung(s, event.beginn)}:{' '}
+          </Text>
+          {s.dienste.length === 0 && (
+            <Text component="span" c="dimmed">
+              niemand
+            </Text>
+          )}
+          {s.dienste.map((d, i) => (
+            <Fragment key={d.id}>
+              {i > 0 && ', '}
+              <PersonName person={d.person} mitQuelle verlinken={false} />
+              {d.dienstformId !== null && s.art === 'betrieb' && (
+                <Text component="span" c="dimmed">
+                  {' '}
+                  ({dienstformen.get(d.dienstformId)?.name ?? 'Dienst'})
+                </Text>
+              )}
+            </Fragment>
+          ))}
+        </Text>
+      ))}
+      <Text size="sm" fw={600} c={farbe}>
+        {zusammenfassung}
+        {begleitungIdx >= 0 &&
+          ` · ${begleitungText(event.schichten[begleitungIdx]!).split(' (')[0]}`}
+      </Text>
     </Stack>
   );
 }

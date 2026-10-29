@@ -43,6 +43,7 @@ import {
   AMPEL_FARBE,
   balkenFarbe,
   dienstName,
+  DiensteKurz,
   EventStatusBadge,
   FehltInfo,
   kategorieFarbe,
@@ -187,6 +188,7 @@ function TagesUebersicht({
   onClose: () => void;
 }>) {
   const navigate = useNavigate();
+  const dienstformen = useDienstformen();
   const schmal = !(useMediaQuery('(min-width: 48em)') ?? false);
   const titel = datum ? datumAnzeigen(datum) : '';
   const inhalt = (
@@ -204,24 +206,27 @@ function TagesUebersicht({
             opacity: e.abgesagt ? 0.75 : 1,
           }}
         >
-          <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
-            <Stack gap={0} style={{ minWidth: 0 }}>
-              <Text size="sm" c="dimmed">
-                {zeitBerlin(e.beginn)}
-              </Text>
-              <Text
-                fw={700}
-                td={e.abgesagt ? 'line-through' : undefined}
-                style={{ overflowWrap: 'anywhere' }}
-              >
-                {e.titel}
-              </Text>
-            </Stack>
-            <Stack gap={4} align="flex-end">
-              <EventStatusBadge event={e} />
-              <TeilnahmeBadge event={e} />
-            </Stack>
-          </Group>
+          <Stack gap={6} align="stretch">
+            <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
+              <Stack gap={0} style={{ minWidth: 0 }}>
+                <Text size="sm" c="dimmed">
+                  {zeitBerlin(e.beginn)}
+                </Text>
+                <Text
+                  fw={700}
+                  td={e.abgesagt ? 'line-through' : undefined}
+                  style={{ overflowWrap: 'anywhere' }}
+                >
+                  {e.titel}
+                </Text>
+              </Stack>
+              <Stack gap={4} align="flex-end">
+                <EventStatusBadge event={e} />
+                <TeilnahmeBadge event={e} />
+              </Stack>
+            </Group>
+            <DiensteKurz event={e} dienstformen={dienstformen.nachId} />
+          </Stack>
         </UnstyledButton>
       ))}
       {ausgeblendet && (
