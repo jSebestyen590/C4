@@ -205,6 +205,16 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = ["arn:aws:lambda:${local.region}:${local.account}:function:c4-${each.key}-*"]
       },
       {
+        # EventBridge Scheduler runs the push job of the API Lambda (infra/modules/app).
+        Sid    = "Scheduler"
+        Effect = "Allow"
+        Action = ["scheduler:*"]
+        Resource = [
+          "arn:aws:scheduler:${local.region}:${local.account}:schedule/default/c4-${each.key}-*",
+          "arn:aws:scheduler:${local.region}:${local.account}:schedule-group/default",
+        ]
+      },
+      {
         Sid    = "Logs"
         Effect = "Allow"
         Action = ["logs:*"]

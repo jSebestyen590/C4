@@ -3,10 +3,13 @@ import type {
   BuchungsArt,
   Kontaktkanal,
   MhdArt,
+  EventBewertung,
   MitgliedStatus,
   Permission,
   Quelle,
   Role,
+  EventArt,
+  SchichtArt,
   VorgangTyp,
 } from '@c4/shared';
 
@@ -55,12 +58,71 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'inventar:lesen': 'Inventar ansehen',
   'inventar:umraeumen': 'Inventar umräumen und verleihen',
   'inventar:verwalten': 'Inventar verwalten',
+  'kalender:lesen': 'Kalender ansehen',
+  'events:verwalten': 'Events verwalten',
+  'kalender:einrichten': 'Kalender einrichten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   anwaerter: { maennlich: 'Anwärter', weiblich: 'Anwärterin', neutral: 'Anwärter:in' },
   mitglied: { maennlich: 'Mitglied', weiblich: 'Mitglied', neutral: 'Mitglied' },
   em: { maennlich: 'EM', weiblich: 'EM', neutral: 'EM' },
+};
+
+/** Kind of an event Kategorie: events have either Dienste (Schichten) or participants. */
+export const EVENT_ART_LABELS: Record<EventArt, string> = {
+  dienste: 'Dienste',
+  teilnahme: 'Teilnahme',
+};
+
+export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {
+  aufbau: 'Aufbau',
+  betrieb: 'Betrieb',
+  putzen: 'Putzen',
+};
+
+/** Feature areas of the notification settings (key = `bereich` in BENACHRICHTIGUNGS_ARTEN). */
+export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
+  kalender: 'Kalender',
+};
+
+/** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
+export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschreibung: string }> =
+  {
+    'kalender.erinnerung': {
+      titel: 'Erinnerung vor meinem Dienst',
+      beschreibung: 'Eine Nachricht kurz vor dem Beginn deiner Schicht.',
+    },
+    'kalender.fehlende_dienste': {
+      titel: 'Fehlende Dienste',
+      beschreibung: 'Wenn bei einem Event kurz vorher noch Dienste fehlen.',
+    },
+    'kalender.aenderung': {
+      titel: 'Änderungen an meinen Diensten',
+      beschreibung:
+        'Wenn ein Event verschoben oder abgesagt wird oder dein Dienst geändert oder entfernt wird.',
+    },
+    'kalender.teilnahme_erinnerung': {
+      titel: 'Erinnerung vor einem Event, an dem ich teilnehme',
+      beschreibung: 'Eine Nachricht kurz vor dem Beginn eines Events, bei dem du dabei bist.',
+    },
+  };
+
+/** "15 Minuten vorher", "1 Stunde vorher", "1 Tag vorher". */
+export function minutenVorherLabel(minuten: number): string {
+  if (minuten % 1440 === 0)
+    return minuten === 1440 ? '1 Tag vorher' : `${minuten / 1440} Tage vorher`;
+  if (minuten % 60 === 0)
+    return minuten === 60 ? '1 Stunde vorher' : `${minuten / 60} Stunden vorher`;
+  return `${minuten} Minuten vorher`;
+}
+
+/** Traffic light of a Schicht or event (a cancelled event is gray). */
+export const AMPEL_LABELS: Record<EventBewertung, string> = {
+  rot: 'Dienste fehlen',
+  gelb: 'Wunsch nicht erreicht',
+  gruen: 'Voll besetzt',
+  abgesagt: 'Abgesagt',
 };
 
 export const MHD_ART_LABELS: Record<MhdArt, string> = {

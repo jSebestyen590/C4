@@ -8,11 +8,14 @@ import { IconX } from '@tabler/icons-react';
 export function DatumFeld({
   value,
   onWert,
+  loeschbar = true,
   ...rest
 }: Readonly<
   Omit<TextInputProps, 'type' | 'value' | 'onChange'> & {
     value: string;
     onWert: (wert: string) => void;
+    /** Shows the clear button (default); turn off for required dates, which also saves width. */
+    loeschbar?: boolean;
   }
 >) {
   return (
@@ -21,10 +24,10 @@ export function DatumFeld({
       type="date"
       value={value}
       onChange={(e) => onWert(e.currentTarget.value)}
-      rightSectionWidth={44}
+      rightSectionWidth={loeschbar ? 44 : undefined}
       rightSectionPointerEvents="all"
       rightSection={
-        value ? (
+        loeschbar && value ? (
           <ActionIcon
             variant="subtle"
             color="gray"

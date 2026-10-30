@@ -13,10 +13,13 @@ import type {
   Anrede,
   BuchungsArt,
   Einheit,
+  EventArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
+  SchichtArt,
   MitgliedStatus,
+  TeilnahmeAntwort,
   Quelle,
   Verpackungseinheit,
   VorgangTyp,
@@ -417,4 +420,285 @@ export const aufraeumIfcos = pgTable('aufraeum_ifcos', {
     .references(() => ifcos.id),
   fertigAm: timestamp('fertig_am', { withTimezone: true }).notNull().defaultNow(),
   fertigVon: text('fertig_von').notNull(),
+});
+
+// ---------------------------------------------------------------------------------------------
+// Kalender: Events, Schichten, Dienste (see docs/kalender.md)
+// ---------------------------------------------------------------------------------------------
+
+/** A kind of work in a Schicht, e.g. Bar or Technik. */
+export const dienstformen = pgTable('dienstformen', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type DienstformRow = typeof dienstformen.$inferSelect;
+
+export const eventKategorien = pgTable('event_kategorien', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** Mantine color name. */
+  farbe: text('farbe').notNull(),
+  /** `dienste` or `teilnahme` (CHECK). */
+  art: text('art').$type<EventArt>().notNull(),
+  /** Default participation circle of a `teilnahme` category (same coding as `events.teilnahmeStatus`). */
+  teilnahmeStatus: text('teilnahme_status'),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type EventKategorieRow = typeof eventKategorien.$inferSelect;
+
+/** Helpers from outside the club who can be entered into Dienste. */
+export const externe = pgTable('externe', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  kontakt: text('kontakt'),
+  /** Free text, e.g. "Freund:in von X" or "StuK". */
+  quelle: text('quelle'),
+  angelegtVon: text('angelegt_von')
+    .notNull()
+    .references(() => mitglieder.sub),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type ExterneRow = typeof externe.$inferSelect;
+
+export const events = pgTable('events', {
+  id: text('id').primaryKey(),
+  /** Null (or '') = no title: the Kategorie's name is shown instead. */
+  titel: text('titel'),
+  beschreibung: text('beschreibung'),
+  kategorieId: text('kategorie_id')
+    .notNull()
+    .references(() => eventKategorien.id),
+  beginn: timestamp('beginn', { withTimezone: true }).notNull(),
+  ende: timestamp('ende', { withTimezone: true }).notNull(),
+  abgesagt: boolean('abgesagt').notNull().default(false),
+  /** Series the event belongs to (id of a `kalender_serien` row); null for ordinary events. */
+  serie: text('serie'),
+  /** True once a series event was edited by hand or cancelled; such events are left alone when the series changes. */
+  serieAngepasst: boolean('serie_angepasst'),
+  /** Participation circle: null = no participation, else comma-separated member statuses ('' = by invitation only). */
+  teilnahmeStatus: text('teilnahme_status'),
+  /** Responsible member (optional). */
+  verantwortlichSub: text('verantwortlich_sub').references(() => mitglieder.sub),
+  /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
+  angelegtVon: text('angelegt_von'),
+  angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
+  aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type EventRow = typeof events.$inferSelect;
+
+/** Configurable event series (see kalenderSerien.ts). The id is a slug of the first name and stays fixed. */
+export const kalenderSerien = pgTable('kalender_serien', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  vorlageId: text('vorlage_id')
+    .notNull()
+    .references(() => eventVorlagen.id),
+  /** `woechentlich` or `monatlich`. */
+  regel: text('regel').notNull(),
+  /** Comma-separated weekdays, 0 = Sunday ... 6 = Saturday. */
+  wochentage: text('wochentage').notNull(),
+  /** Monthly only: comma-separated weeks 1..4 or -1 (last); empty for weekly. */
+  wochen: text('wochen').notNull().default(''),
+  startDatum: date('start_datum', { mode: 'string' }).notNull(),
+  endDatum: date('end_datum', { mode: 'string' }),
+  aktiv: boolean('aktiv').notNull().default(true),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+export type KalenderSerieRow = typeof kalenderSerien.$inferSelect;
+
+/** Days a series already created an event for; never removed, so deleted days are not recreated. */
+export const serienTermine = pgTable(
+  'serien_termine',
+  {
+    serie: text('serie').notNull(),
+    datum: date('datum', { mode: 'string' }).notNull(),
+    eventId: text('event_id'),
+    erzeugt: timestamp('erzeugt', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.serie, t.datum] })],
+);
+
+/** Individual participation: invited by a manager and/or the member's own answer (null/'teilnahme'/'absage'). */
+export const eventTeilnahmen = pgTable(
+  'event_teilnahmen',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    antwort: text('antwort').$type<TeilnahmeAntwort>(),
+    eingeladen: boolean('eingeladen').notNull().default(false),
+    geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.mitgliedSub] })],
+);
+
+/** Events a member added to their own calendar feed. */
+export const kalenderEventAbos = pgTable(
+  'kalender_event_abos',
+  {
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+  },
+  (t) => [primaryKey({ columns: [t.mitgliedSub, t.eventId] })],
+);
+
+export const schichten = pgTable('schichten', {
+  id: text('id').primaryKey(),
+  eventId: text('event_id')
+    .notNull()
+    .references(() => events.id),
+  art: text('art').$type<SchichtArt>().notNull(),
+  beginn: timestamp('beginn', { withTimezone: true }).notNull(),
+  ende: timestamp('ende', { withTimezone: true }).notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+  /** Head count of Aufbau/Putzen; null for Betrieb (see `schichtBedarfe`). */
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
+});
+export type SchichtRow = typeof schichten.$inferSelect;
+
+export const schichtBedarfe = pgTable(
+  'schicht_bedarfe',
+  {
+    schichtId: text('schicht_id')
+      .notNull()
+      .references(() => schichten.id),
+    dienstformId: text('dienstform_id')
+      .notNull()
+      .references(() => dienstformen.id),
+    minimum: integer('minimum').notNull(),
+    wunsch: integer('wunsch').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.schichtId, t.dienstformId] })],
+);
+export type SchichtBedarfRow = typeof schichtBedarfe.$inferSelect;
+
+/** One person in one Schicht; exactly one of `mitgliedSub` / `externId` is set (CHECK). */
+export const dienste = pgTable('dienste', {
+  id: text('id').primaryKey(),
+  schichtId: text('schicht_id')
+    .notNull()
+    .references(() => schichten.id),
+  /** Null for Dienste in Aufbau/Putzen Schichten. */
+  dienstformId: text('dienstform_id').references(() => dienstformen.id),
+  mitgliedSub: text('mitglied_sub').references(() => mitglieder.sub),
+  externId: text('extern_id').references(() => externe.id),
+  kommentar: text('kommentar'),
+  eingetragenVon: text('eingetragen_von')
+    .notNull()
+    .references(() => mitglieder.sub),
+  eingetragenAm: timestamp('eingetragen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type DienstRow = typeof dienste.$inferSelect;
+
+export const eventVorlagen = pgTable('event_vorlagen', {
+  id: text('id').primaryKey(),
+  /** Null (or '') = no title. */
+  titel: text('titel'),
+  beschreibung: text('beschreibung'),
+  kategorieId: text('kategorie_id')
+    .notNull()
+    .references(() => eventKategorien.id),
+  /** Berlin wall time `HH:MM`. */
+  beginnZeit: text('beginn_zeit').notNull(),
+  endeZeit: text('ende_zeit').notNull(),
+  /** Participation circle handed to events (same encoding as `events.teilnahmeStatus`). */
+  teilnahmeStatus: text('teilnahme_status'),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
+
+export const vorlageSchichten = pgTable('vorlage_schichten', {
+  id: text('id').primaryKey(),
+  vorlageId: text('vorlage_id')
+    .notNull()
+    .references(() => eventVorlagen.id),
+  art: text('art').$type<SchichtArt>().notNull(),
+  tagVersatz: integer('tag_versatz').notNull(),
+  beginnZeit: text('beginn_zeit').notNull(),
+  endeZeit: text('ende_zeit').notNull(),
+  reihenfolge: integer('reihenfolge').notNull().default(0),
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
+});
+export type VorlageSchichtRow = typeof vorlageSchichten.$inferSelect;
+
+export const vorlageBedarfe = pgTable(
+  'vorlage_bedarfe',
+  {
+    vorlageSchichtId: text('vorlage_schicht_id')
+      .notNull()
+      .references(() => vorlageSchichten.id),
+    dienstformId: text('dienstform_id')
+      .notNull()
+      .references(() => dienstformen.id),
+    minimum: integer('minimum').notNull(),
+    wunsch: integer('wunsch').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.vorlageSchichtId, t.dienstformId] })],
+);
+export type VorlageBedarfRow = typeof vorlageBedarfe.$inferSelect;
+
+/** Secret of the ICS subscription feed per member; only the sha256 hex hash of the token is stored. */
+export const kalenderTokens = pgTable('kalender_tokens', {
+  mitgliedSub: text('mitglied_sub')
+    .primaryKey()
+    .references(() => mitglieder.sub),
+  tokenHash: text('token_hash').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One Web Push subscription per device (generic notification module, see docs/benachrichtigungen.md). */
+export const pushAbos = pgTable('push_abos', {
+  id: text('id').primaryKey(),
+  mitgliedSub: text('mitglied_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A member's setting of one notification type; a missing row means the default of the type. */
+export const benachrichtigungEinstellungen = pgTable(
+  'benachrichtigung_einstellungen',
+  {
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    art: text('art').notNull(),
+    aktiv: boolean('aktiv').notNull(),
+    minuten: integer('minuten'),
+  },
+  (t) => [primaryKey({ columns: [t.mitgliedSub, t.art] })],
+);
+
+/** Dedupe keys of notifications that were already sent. */
+export const pushVersand = pgTable('push_versand', {
+  schluessel: text('schluessel').primaryKey(),
+  gesendet: timestamp('gesendet', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The VAPID key pair (single row), generated lazily by the API. */
+export const pushSchluessel = pgTable('push_schluessel', {
+  id: text('id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  privateKey: text('private_key').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
+export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {
+  id: text('id').primaryKey(),
+  minutenVorher: integer('minuten_vorher').notNull(),
 });

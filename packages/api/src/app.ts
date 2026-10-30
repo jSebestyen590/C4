@@ -1,8 +1,29 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import {
   createUserSchema,
+  einstellungSchema,
+  pushAboLoeschenSchema,
+  pushAboSchema,
+  dienstEintragenSchema,
+  dienstformEingabeSchema,
+  eventEingabeSchema,
+  eventKategorieEingabeSchema,
+  dienstTermine,
+  eventTermine,
+  icsErzeugen,
+  externeEingabeSchema,
+  externeZusammenfuehrenSchema,
+  kalenderZeitraumSchema,
+  statistikJahrSchema,
+  vorlageEingabeSchema,
+  serieAendernSchema,
+  serieAktivSchema,
+  serieEingabeSchema,
+  serienBestehendeSchema,
+  erinnerungenEingabeSchema,
   emailAendernSchema,
   emailBestaetigenSchema,
   heuteBerlin,
@@ -46,6 +67,8 @@ import {
   setGroupsSchema,
   setMitgliedStatusSchema,
   setUsernameSchema,
+  type DienstPerson,
+  type EventDto,
   type Health,
   type Me,
   type Mitglied,
@@ -68,6 +91,23 @@ import {
   type PostenDetails,
   type PostenStore,
 } from './posten';
+import {
+  EntfernungBestaetigen,
+  KalenderKonflikt,
+  KalenderUngueltig,
+  SerieBetroffen,
+  type BetroffenerDienst,
+  type EventAenderung,
+  tokenHash,
+  type KalenderStore,
+} from './kalender';
+import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
+import { serieSofortErzeugen, serienMarkeFreigeben } from './kalenderSerien';
+import {
+  meldeAbsage,
+  meldeDienstDurchAndere,
+  meldeEventAenderung,
+} from './kalenderBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
 import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
@@ -82,6 +122,10 @@ export interface AppDeps {
   posten: PostenStore;
   waren: WarenStore;
   inventar: InventarStore;
+  kalender: KalenderStore;
+  benachrichtigungen: Benachrichtigungen;
+  /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
+  appUrl?: string;
   profilbilder: Profilbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
@@ -101,6 +145,9 @@ async function emailAenderung(aktion: () => Promise<void>): Promise<void> {
   }
 }
 
+/** The feed also contains Dienste that began this many days ago. */
+const FEED_RUECKBLICK_TAGE = 90;
+
 export function createApp(deps: AppDeps) {
   const auth = authenticate(
     deps.verifyToken,
@@ -118,6 +165,9 @@ export function createApp(deps: AppDeps) {
   const inventarLesen = requirePermission('inventar:lesen');
   const inventarUmraeumen = requirePermission('inventar:umraeumen');
   const inventarVerwalten = requirePermission('inventar:verwalten');
+  const kalenderLesen = requirePermission('kalender:lesen');
+  const eventsVerwalten = requirePermission('events:verwalten');
+  const kalenderEinrichten = requirePermission('kalender:einrichten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -276,10 +326,106 @@ export function createApp(deps: AppDeps) {
     throw err;
   };
 
+  /** Maps the Kalender store's domain errors to 400 (invalid) and 409 (conflict). */
+  const kalenderFehler = (err: unknown): never => {
+    if (err instanceof KalenderUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof KalenderKonflikt) throw new HTTPException(409, { message: err.message });
+    throw err;
+  };
+
+  /** Creates the due events of a just saved series in the request; never fails the save. */
+  const serieSofort = async (id: string): Promise<number> => {
+    try {
+      return await serieSofortErzeugen(deps.kalender, id);
+    } catch (err) {
+      console.error(`Series ${id}: immediate event creation failed`, err);
+      return 0;
+    }
+  };
+
+  /** Runs a series change; a change that affects future events answers 409 with the counts. */
+  const serienAenderung = async (
+    c: { json: (body: unknown, status: 409) => Response },
+    aktion: () => Promise<boolean>,
+  ): Promise<Response | null> => {
+    try {
+      gefunden(await aktion(), 'Serie nicht gefunden');
+    } catch (err) {
+      if (err instanceof SerieBetroffen) {
+        return c.json(
+          { error: err.message, unveraendert: err.unveraendert, angepasst: err.angepasst },
+          409,
+        );
+      }
+      return kalenderFehler(err);
+    }
+    // New days should show up right away, not tomorrow.
+    await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
+    return null;
+  };
+
+  /** Adds the Cognito usernames to members in Kalender DTOs (the store only knows the profile row). */
+  const personenMitUsernames = async <T extends { person: DienstPerson }>(
+    liste: T[],
+  ): Promise<T[]> => {
+    if (!liste.some((e) => e.person.art === 'mitglied')) return liste;
+    const konten = await deps.userAdmin.konten();
+    return liste.map((e) =>
+      e.person.art === 'mitglied'
+        ? { ...e, person: { ...e.person, username: konten.get(e.person.sub)?.username ?? null } }
+        : e,
+    );
+  };
+
+  const eventsMitUsernames = async (liste: EventDto[]): Promise<EventDto[]> => {
+    const alle = liste.flatMap((e) => [...e.schichten.flatMap((s) => s.dienste), ...e.teilnahmen]);
+    if (!alle.some((d) => d.person.art === 'mitglied') && !liste.some((e) => e.verantwortlich)) {
+      return liste;
+    }
+    const konten = await deps.userAdmin.konten();
+    return liste.map((e) => ({
+      ...e,
+      verantwortlich: e.verantwortlich
+        ? { ...e.verantwortlich, username: konten.get(e.verantwortlich.sub)?.username ?? null }
+        : null,
+      teilnahmen: e.teilnahmen.map((t) => ({
+        ...t,
+        person: { ...t.person, username: konten.get(t.person.sub)?.username ?? null },
+      })),
+      schichten: e.schichten.map((s) => ({
+        ...s,
+        dienste: s.dienste.map((d) =>
+          d.person.art === 'mitglied'
+            ? {
+                ...d,
+                person: { ...d.person, username: konten.get(d.person.sub)?.username ?? null },
+              }
+            : d,
+        ),
+      })),
+    }));
+  };
+
+  /** Dienste and Externe reference the entering member's profile row. */
+  const eigenesProfilMussExistieren = async (sub: string) => {
+    if (!(await deps.mitglieder.holen(sub))) {
+      throw new HTTPException(400, { message: 'Bitte lege zuerst dein Profil an.' });
+    }
+  };
+
   /** 404 unless the store found the entry (`false` / `undefined` mean it does not exist). */
   const gefunden = <T>(wert: T | false | undefined, meldung: string): T => {
     if (wert === false || wert === undefined) throw new HTTPException(404, { message: meldung });
     return wert;
+  };
+
+  /** The acting member for push texts: username, else Vorname. */
+  const akteurMitName = async (sub: string): Promise<{ sub: string; name: string }> => {
+    const [konten, profil] = await Promise.all([
+      deps.userAdmin.konten(),
+      deps.mitglieder.holen(sub),
+    ]);
+    return { sub, name: konten.get(sub)?.username || profil?.vorname || 'Jemand' };
   };
 
   /** Besetzungen may only name members that already have a profile row. */
@@ -1417,6 +1563,508 @@ export function createApp(deps: AppDeps) {
         );
         return c.json({ ok: true });
       })
+      // ----- Kalender: Events
+      .get(
+        '/kalender/events',
+        auth,
+        kalenderLesen,
+        zValidator('query', kalenderZeitraumSchema),
+        async (c) => {
+          const { von, bis } = c.req.valid('query');
+          if (von > bis) throw new HTTPException(400, { message: 'Ungültiger Zeitraum' });
+          return c.json(
+            await eventsMitUsernames(await deps.kalender.events(von, bis, c.get('user').sub)),
+          );
+        },
+      )
+      .get('/kalender/events/:id', auth, kalenderLesen, async (c) => {
+        const event = gefunden(
+          await deps.kalender.event(c.req.param('id'), c.get('user').sub),
+          'Event nicht gefunden',
+        );
+        return c.json((await eventsMitUsernames([event]))[0]!);
+      })
+      .post(
+        '/kalender/events',
+        auth,
+        eventsVerwalten,
+        zValidator('json', eventEingabeSchema),
+        async (c) => {
+          const id = await deps.kalender
+            .eventAnlegen(c.req.valid('json'), c.get('user').sub)
+            .catch(kalenderFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/kalender/events/:id',
+        auth,
+        eventsVerwalten,
+        zValidator('json', eventEingabeSchema),
+        async (c) => {
+          let aenderung: EventAenderung;
+          const id = c.req.param('id');
+          try {
+            aenderung = gefunden(
+              await deps.kalender.eventAktualisieren(id, c.req.valid('json')),
+              'Event nicht gefunden',
+            );
+          } catch (err) {
+            if (err instanceof EntfernungBestaetigen) {
+              const betroffene: BetroffenerDienst[] = await personenMitUsernames(err.betroffene);
+              const teilnahmen = await personenMitUsernames(err.teilnahmen);
+              return c.json({ error: err.message, betroffene, teilnahmen }, 409);
+            }
+            return kalenderFehler(err);
+          }
+          const akteur = c.get('user').sub;
+          await bestEffort(async () => {
+            const event = await deps.kalender.event(id);
+            if (event) await meldeEventAenderung(deps.benachrichtigungen, event, aenderung, akteur);
+          });
+          return c.json({ ok: true });
+        },
+      )
+      .put(
+        '/kalender/events/:id/absage',
+        auth,
+        eventsVerwalten,
+        zValidator('json', z.object({ abgesagt: z.boolean() })),
+        async (c) => {
+          const { abgesagt } = c.req.valid('json');
+          const id = c.req.param('id');
+          const ergebnis = gefunden(
+            await deps.kalender.absageSetzen(id, abgesagt),
+            'Event nicht gefunden',
+          );
+          if (ergebnis.geaendert) {
+            const akteur = c.get('user').sub;
+            await bestEffort(async () => {
+              const event = await deps.kalender.event(id);
+              if (event) {
+                await meldeAbsage(
+                  deps.benachrichtigungen,
+                  event,
+                  abgesagt,
+                  ergebnis.mitgliedSubs,
+                  ergebnis.teilnehmerSubs,
+                  akteur,
+                );
+              }
+            });
+          }
+          return c.json({ abgesagt });
+        },
+      )
+      // Own participation: everybody can change only their own answer.
+      .put(
+        '/kalender/events/:id/teilnahme',
+        auth,
+        kalenderLesen,
+        zValidator('json', z.object({ teilnahme: z.boolean() })),
+        async (c) => {
+          const sub = c.get('user').sub;
+          await eigenesProfilMussExistieren(sub);
+          const { teilnahme } = c.req.valid('json');
+          gefunden(
+            await deps.kalender
+              .teilnahmeSetzen(c.req.param('id'), sub, teilnahme)
+              .catch(kalenderFehler),
+            'Event nicht gefunden',
+          );
+          return c.json({ teilnahme });
+        },
+      )
+      // Adds the event to / removes it from the caller's own calendar feed.
+      .put('/kalender/events/:id/abo', auth, kalenderLesen, async (c) => {
+        const sub = c.get('user').sub;
+        await eigenesProfilMussExistieren(sub);
+        gefunden(
+          await deps.kalender.eventAboSetzen(c.req.param('id'), sub, true),
+          'Event nicht gefunden',
+        );
+        return c.json({ imAbo: true });
+      })
+      .delete('/kalender/events/:id/abo', auth, kalenderLesen, async (c) => {
+        gefunden(
+          await deps.kalender.eventAboSetzen(c.req.param('id'), c.get('user').sub, false),
+          'Event nicht gefunden',
+        );
+        return c.json({ imAbo: false });
+      })
+      .delete('/kalender/events/:id', auth, eventsVerwalten, async (c) => {
+        gefunden(
+          await deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),
+          'Event nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      // ----- Kalender: Dienste
+      .post(
+        '/kalender/schichten/:id/dienste',
+        auth,
+        kalenderLesen,
+        zValidator('json', dienstEintragenSchema),
+        async (c) => {
+          const daten = c.req.valid('json');
+          const sub = c.get('user').sub;
+          // Everybody with `kalender:lesen` may enter any member that has a profile row.
+          if (daten.mitgliedSub !== undefined && daten.mitgliedSub !== sub) {
+            await mitgliedMussExistieren(daten.mitgliedSub);
+          }
+          await eigenesProfilMussExistieren(sub);
+          const id = gefunden(
+            await deps.kalender
+              .dienstEintragen(c.req.param('id'), daten, sub)
+              .catch(kalenderFehler),
+            'Schicht nicht gefunden',
+          );
+          if (daten.mitgliedSub !== undefined && daten.mitgliedSub !== sub) {
+            await bestEffort(async () => {
+              const dienst = await deps.kalender.dienstHolen(id);
+              if (dienst) {
+                await meldeDienstDurchAndere(
+                  deps.benachrichtigungen,
+                  dienst,
+                  true,
+                  await akteurMitName(sub),
+                );
+              }
+            });
+          }
+          return c.json({ id }, 201);
+        },
+      )
+      .delete('/kalender/dienste/:id', auth, kalenderLesen, async (c) => {
+        const dienst = gefunden(
+          await deps.kalender.dienstHolen(c.req.param('id')),
+          'Dienst nicht gefunden',
+        );
+        const sub = c.get('user').sub;
+        // Any member's Dienst may be removed by anybody; an Externe's entry only by who entered it
+        // or with `events:verwalten`.
+        const erlaubt =
+          dienst.mitgliedSub !== null ||
+          c.get('permissions').includes('events:verwalten') ||
+          dienst.eingetragenVon === sub;
+        if (!erlaubt) {
+          throw new HTTPException(403, { message: 'Du darfst diesen Dienst nicht entfernen.' });
+        }
+        gefunden(await deps.kalender.dienstEntfernen(dienst.id), 'Dienst nicht gefunden');
+        if (dienst.mitgliedSub !== null && dienst.mitgliedSub !== sub) {
+          await bestEffort(async () =>
+            meldeDienstDurchAndere(
+              deps.benachrichtigungen,
+              dienst,
+              false,
+              await akteurMitName(sub),
+            ),
+          );
+        }
+        return c.json({ ok: true });
+      })
+      // ----- Kalender: Externe
+      .get('/kalender/externe', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.externe(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/kalender/externe',
+        auth,
+        kalenderLesen,
+        zValidator('json', externeEingabeSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          await eigenesProfilMussExistieren(sub);
+          const id = await deps.kalender.externAnlegen(
+            { ...c.req.valid('json'), archiviert: false },
+            sub,
+          );
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/kalender/externe/zusammenfuehren',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', externeZusammenfuehrenSchema),
+        async (c) => {
+          const { zielId, quelleIds } = c.req.valid('json');
+          const ergebnis = gefunden(
+            await deps.kalender.externeZusammenfuehren(zielId, quelleIds).catch(kalenderFehler),
+            'Ziel nicht gefunden',
+          );
+          return c.json(ergebnis);
+        },
+      )
+      .put(
+        '/kalender/externe/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', externeEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.kalender.externAktualisieren(c.req.param('id'), c.req.valid('json')),
+            'Person nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // ----- Kalender: Dienstformen, Kategorien, Vorlagen
+      .get('/kalender/dienstformen', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.dienstformen(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/kalender/dienstformen',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', dienstformEingabeSchema),
+        async (c) =>
+          c.json({ id: await deps.kalender.dienstformAnlegen(c.req.valid('json')) }, 201),
+      )
+      .put(
+        '/kalender/dienstformen/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', dienstformEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.kalender.dienstformAktualisieren(c.req.param('id'), c.req.valid('json')),
+            'Dienstform nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .get('/kalender/kategorien', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.kategorien(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/kalender/kategorien',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', eventKategorieEingabeSchema),
+        async (c) => c.json({ id: await deps.kalender.kategorieAnlegen(c.req.valid('json')) }, 201),
+      )
+      .put(
+        '/kalender/kategorien/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', eventKategorieEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.kalender
+              .kategorieAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(kalenderFehler),
+            'Kategorie nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .get('/kalender/vorlagen', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.vorlagen(c.req.query('archiv') === '1')),
+      )
+      .post(
+        '/kalender/vorlagen',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', vorlageEingabeSchema),
+        async (c) => {
+          const id = await deps.kalender.vorlageAnlegen(c.req.valid('json')).catch(kalenderFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/kalender/vorlagen/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', vorlageEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.kalender
+              .vorlageAktualisieren(c.req.param('id'), c.req.valid('json'))
+              .catch(kalenderFehler),
+            'Vorlage nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/kalender/vorlagen/:id', auth, kalenderEinrichten, async (c) => {
+        gefunden(
+          await deps.kalender.vorlageLoeschen(c.req.param('id')).catch(kalenderFehler),
+          'Vorlage nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
+      // ----- Kalender: Serien
+      .get('/kalender/serien', auth, kalenderLesen, async (c) =>
+        c.json(await deps.kalender.serienMitAnzahl()),
+      )
+      .post(
+        '/kalender/serien',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieEingabeSchema),
+        async (c) => {
+          const id = await deps.kalender.serieAnlegen(c.req.valid('json')).catch(kalenderFehler);
+          await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
+          return c.json({ id, erzeugt: await serieSofort(id) }, 201);
+        },
+      )
+      .put(
+        '/kalender/serien/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieAendernSchema),
+        async (c) => {
+          const { bestehende, ...daten } = c.req.valid('json');
+          return (
+            (await serienAenderung(c, () =>
+              deps.kalender.serieAktualisieren(c.req.param('id'), daten, bestehende),
+            )) ?? c.json({ ok: true, erzeugt: await serieSofort(c.req.param('id')) })
+          );
+        },
+      )
+      .put(
+        '/kalender/serien/:id/aktiv',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', serieAktivSchema),
+        async (c) => {
+          const { aktiv, bestehende } = c.req.valid('json');
+          return (
+            (await serienAenderung(c, () =>
+              deps.kalender.serieAktivSetzen(c.req.param('id'), aktiv, bestehende),
+            )) ?? c.json({ aktiv, erzeugt: aktiv ? await serieSofort(c.req.param('id')) : 0 })
+          );
+        },
+      )
+      .delete(
+        '/kalender/serien/:id',
+        auth,
+        kalenderEinrichten,
+        zValidator('query', z.object({ bestehende: serienBestehendeSchema.optional() })),
+        async (c) =>
+          (await serienAenderung(c, () =>
+            deps.kalender.serieLoeschen(c.req.param('id'), c.req.valid('query').bestehende),
+          )) ?? c.json({ ok: true }),
+      )
+      // ----- Kalender: global "Dienste fehlen" reminders
+      .get('/kalender/erinnerungen', auth, kalenderLesen, async (c) =>
+        c.json({ minutenVorher: await deps.kalender.erinnerungen() }),
+      )
+      .put(
+        '/kalender/erinnerungen',
+        auth,
+        kalenderEinrichten,
+        zValidator('json', erinnerungenEingabeSchema),
+        async (c) => {
+          const { minutenVorher } = c.req.valid('json');
+          await deps.kalender.erinnerungenSetzen(minutenVorher);
+          return c.json({ minutenVorher: await deps.kalender.erinnerungen() });
+        },
+      )
+      // ----- Kalender: Statistik
+      .get(
+        '/kalender/statistik',
+        auth,
+        kalenderLesen,
+        zValidator('query', statistikJahrSchema),
+        async (c) => {
+          const { jahr } = c.req.valid('query');
+          const zeilen = await deps.kalender.statistik(jahr);
+          return c.json({ jahr, zeilen: await personenMitUsernames(zeilen) });
+        },
+      )
+      // ----- Kalender: ICS feed and own Dienste
+      .get('/me/kalender-token', auth, kalenderLesen, async (c) =>
+        c.json({ vorhanden: await deps.kalender.tokenVorhanden(c.get('user').sub) }),
+      )
+      .post('/me/kalender-token', auth, kalenderLesen, async (c) => {
+        const sub = c.get('user').sub;
+        if (!(await deps.mitglieder.holen(sub)))
+          throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+        return c.json({ token: await deps.kalender.tokenErzeugen(sub) });
+      })
+      // Public on purpose (no `auth`): calendar apps cannot send a bearer token; the secret token
+      // in the URL is the credential. API Gateway needs a matching route without authorizer.
+      .get('/kalender/feed/:token', async (c) => {
+        const token = c.req.param('token').replace(/\.ics$/, '');
+        const sub = await deps.kalender.subPerTokenHash(tokenHash(token));
+        if (!sub) throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        const ab = new Date(Date.now() - FEED_RUECKBLICK_TAGE * 24 * 3600 * 1000);
+        const [dienste, eventListe] = await Promise.all([
+          deps.kalender.meineDienste(sub, ab),
+          deps.kalender.meineEvents(sub, ab),
+        ]);
+        const termine = [
+          ...dienstTermine(dienste, deps.appUrl),
+          ...eventTermine(eventListe, deps.appUrl),
+        ];
+        return c.body(icsErzeugen(termine, { kalenderName: 'C4 – Mein Kalender' }), 200, {
+          'Content-Type': 'text/calendar; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+      })
+      // ----- Push notifications (generic module, see docs/benachrichtigungen.md)
+      .get('/push/schluessel', auth, profilBearbeiten, async (c) =>
+        c.json({ publicKey: await deps.benachrichtigungen.publicKey() }),
+      )
+      .post('/push/abos', auth, profilBearbeiten, zValidator('json', pushAboSchema), async (c) => {
+        const sub = c.get('user').sub;
+        await eigenesProfilMussExistieren(sub);
+        await deps.benachrichtigungen.aboSpeichern(sub, c.req.valid('json'));
+        return c.json({ ok: true }, 201);
+      })
+      .get(
+        '/push/abos/status',
+        auth,
+        profilBearbeiten,
+        zValidator('query', pushAboLoeschenSchema),
+        async (c) =>
+          c.json({
+            registriert: await deps.benachrichtigungen.aboRegistriert(
+              c.get('user').sub,
+              c.req.valid('query').endpoint,
+            ),
+          }),
+      )
+      .delete(
+        '/push/abos',
+        auth,
+        profilBearbeiten,
+        zValidator('json', pushAboLoeschenSchema),
+        async (c) => {
+          await deps.benachrichtigungen.aboLoeschen(
+            c.get('user').sub,
+            c.req.valid('json').endpoint,
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .post('/push/test', auth, profilBearbeiten, async (c) =>
+        c.json(await deps.benachrichtigungen.testSenden(c.get('user').sub)),
+      )
+      .get('/me/benachrichtigungen', auth, profilBearbeiten, async (c) =>
+        c.json(
+          gefunden(
+            await deps.benachrichtigungen.einstellungen(c.get('user').sub),
+            'Mitglied nicht gefunden',
+          ),
+        ),
+      )
+      .put(
+        '/me/benachrichtigungen',
+        auth,
+        profilBearbeiten,
+        zValidator('json', einstellungSchema),
+        async (c) => {
+          const { art, aktiv, minuten } = c.req.valid('json');
+          gefunden(
+            await deps.benachrichtigungen.einstellungSetzen(c.get('user').sub, art, aktiv, minuten),
+            'Mitglied nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
       .onError((err, c) => {
         if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
         console.error(err);

@@ -277,14 +277,28 @@ describe('availability in a period', () => {
   ]);
   const platz = { lagerortId: 'l2', ifcoId: null, anzahl: 6 };
   it('only counts overlapping Ausleihen', () => {
+    // Fixed 'now' before all periods, so the result does not depend on the current date.
+    const jetzt = new Date('2026-10-24T12:00:00Z');
     expect(
-      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-27T08:00:00Z', '2026-10-28')),
+      verfuegbarImZeitraum(
+        platz,
+        'g1',
+        offen,
+        ausleiheTage('2026-10-27T08:00:00Z', '2026-10-28'),
+        jetzt,
+      ),
     ).toBe(6);
     expect(
-      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-26T08:00:00Z', '2026-10-28')),
+      verfuegbarImZeitraum(
+        platz,
+        'g1',
+        offen,
+        ausleiheTage('2026-10-26T08:00:00Z', '2026-10-28'),
+        jetzt,
+      ),
     ).toBe(2);
     expect(
-      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-26T08:00:00Z', null)),
+      verfuegbarImZeitraum(platz, 'g1', offen, ausleiheTage('2026-10-26T08:00:00Z', null), jetzt),
     ).toBe(2);
     expect(
       verfuegbarImZeitraum(
@@ -292,6 +306,7 @@ describe('availability in a period', () => {
         'g1',
         offen,
         ausleiheTage('2026-10-26T08:00:00Z', null),
+        jetzt,
       ),
     ).toBe(0);
   });

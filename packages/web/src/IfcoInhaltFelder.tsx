@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Group, NumberInput, Paper, Select, Stack, Text } from '@mantine/core';
+import { ActionIcon, Button, Group, Paper, Select, Stack, Text } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import {
   ifcoInhaltSchema,
@@ -12,6 +12,7 @@ import {
 } from '@c4/shared';
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
+import { ZahlFeld } from './ZahlFeld';
 
 let keyZaehler = 0;
 const neuerKey = () => keyZaehler++;
@@ -209,7 +210,7 @@ export function IfcoInhaltFelder({
                 </ActionIcon>
               </Group>
               {g && !einzeln && (
-                <NumberInput
+                <ZahlFeld
                   label={anderswo.length > 0 ? 'Anzahl in dieser IFCO' : 'Anzahl'}
                   allowDecimal={false}
                   allowNegative={false}
@@ -232,7 +233,7 @@ export function IfcoInhaltFelder({
                   {anderswo.map((p) => {
                     const key = zielKey(p);
                     return (
-                      <NumberInput
+                      <ZahlFeld
                         key={key}
                         label={platzText(lagerorte, ifcos, p)}
                         description={`Bisher ${p.anzahl}`}

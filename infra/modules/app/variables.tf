@@ -44,3 +44,9 @@ variable "budget_limit_usd" {
   type    = number
   default = 20
 }
+
+variable "push_job_rate" {
+  type        = string
+  default     = "rate(5 minutes)"
+  description = "How often EventBridge Scheduler runs the notification job (reminders, missing Dienste)."
+}

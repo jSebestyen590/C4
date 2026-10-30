@@ -14,7 +14,9 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconBell,
   IconBriefcase,
+  IconCalendar,
   IconCheck,
   IconDeviceDesktop,
   IconBuildingWarehouse,
@@ -28,7 +30,7 @@ import {
   IconUsersGroup,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import logo from './assets/favicon.png';
@@ -79,6 +81,16 @@ function ProfilMenue() {
             Mein Profil
           </Menu.Item>
         )}
+        {darfProfil && (
+          <Menu.Item
+            component={Link}
+            to="/benachrichtigungen"
+            leftSection={<IconBell size={18} />}
+            py="sm"
+          >
+            Benachrichtigungen
+          </Menu.Item>
+        )}
         <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>
           Darstellung
         </Text>
@@ -108,6 +120,8 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
   const { pathname } = useLocation();
   const [opened, { toggle, close }] = useDisclosure(false);
+  // Any navigation (sidebar, profile menu, in-page links) closes the mobile menu.
+  useEffect(close, [pathname, close]);
   const farbschema = useComputedColorScheme('light');
 
   const links = [
@@ -117,6 +131,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Mitglieder',
       icon: <IconUsersGroup size={20} />,
       show: can('mitglieder:lesen'),
+    },
+    {
+      to: '/kalender',
+      label: 'Kalender',
+      icon: <IconCalendar size={20} />,
+      show: can('kalender:lesen'),
     },
     {
       to: '/posten',

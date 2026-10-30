@@ -21,9 +21,17 @@ import { InventurPage } from './pages/InventurPage';
 import { LagerPage } from './pages/LagerPage';
 import { MitgliedPage } from './pages/MitgliedPage';
 import { MitgliederPage } from './pages/MitgliederPage';
+import { EventDetailPage } from './pages/EventDetailPage';
+import { EventFormularPage } from './pages/EventFormularPage';
+import { KalenderEinrichtungPage } from './pages/KalenderEinrichtungPage';
+import { KalenderMeinKalenderPage } from './pages/KalenderMeinKalenderPage';
+import { KalenderPage } from './pages/KalenderPage';
+import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
+import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { ProfilPage } from './pages/ProfilPage';
+import { PushAbfrage } from './PushAbfrage';
 import { StammdatenPage } from './pages/StammdatenPage';
 import { WareDetailPage } from './pages/WareDetailPage';
 import { WarenPage } from './pages/WarenPage';
@@ -293,6 +301,76 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             }
           />
           <Route
+            path="/kalender"
+            element={
+              <Protected permission="kalender:lesen">
+                <RequireUsername>
+                  <KalenderPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/statistik"
+            element={
+              <Protected permission="kalender:lesen">
+                <RequireUsername>
+                  <KalenderStatistikPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/mein-kalender"
+            element={
+              <Protected permission="kalender:lesen">
+                <RequireUsername>
+                  <KalenderMeinKalenderPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/einrichtung"
+            element={
+              <Protected permission="kalender:einrichten">
+                <RequireUsername>
+                  <KalenderEinrichtungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/events/neu"
+            element={
+              <Protected permission="events:verwalten">
+                <RequireUsername>
+                  <EventFormularPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/events/:id"
+            element={
+              <Protected permission="kalender:lesen">
+                <RequireUsername>
+                  <EventDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/kalender/events/:id/bearbeiten"
+            element={
+              <Protected permission="events:verwalten">
+                <RequireUsername>
+                  <EventFormularPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
             path="/profil"
             element={
               <Protected permission="profil:bearbeiten">
@@ -300,9 +378,20 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               </Protected>
             }
           />
+          <Route
+            path="/benachrichtigungen"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <RequireUsername>
+                  <BenachrichtigungenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Container>
+      <PushAbfrage />
     </AppLayout>
   );
 }

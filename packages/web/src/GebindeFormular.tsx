@@ -3,7 +3,6 @@ import {
   Button,
   Group,
   Modal,
-  NumberInput,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -27,6 +26,7 @@ import {
 import { useApi } from './api';
 import { EINHEIT_LABELS, VERPACKUNGSEINHEIT_LABELS } from './i18n';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 export type GebindeEintrag = Gebinde & { archiviert: boolean };
 
@@ -128,9 +128,9 @@ export function GebindeFormular({
           />
           {art === 'einzel' ? (
             <SimpleGrid cols={2}>
-              <NumberInput
+              <ZahlFeld
                 label="Menge"
-                placeholder="z. B. 0,5"
+                placeholder="0,5"
                 decimalSeparator=","
                 thousandSeparator="."
                 decimalScale={3}
@@ -163,7 +163,7 @@ export function GebindeFormular({
                 searchable
                 nothingFoundMessage="Kein Einzelgebinde vorhanden."
               />
-              <NumberInput
+              <ZahlFeld
                 label="Anzahl Untergebinde"
                 allowDecimal={false}
                 allowNegative={false}
@@ -182,7 +182,7 @@ export function GebindeFormular({
             onChange={setVerpackung}
             allowDeselect={false}
           />
-          <NumberInput
+          <ZahlFeld
             label={
               art === 'ober' ? 'Pfand der Verpackung in € (optional)' : 'Pfand in € (optional)'
             }

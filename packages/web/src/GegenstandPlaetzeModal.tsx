@@ -5,7 +5,6 @@ import {
   Checkbox,
   Group,
   Modal,
-  NumberInput,
   Paper,
   Stack,
   Text,
@@ -27,6 +26,7 @@ import { zielAusWert, zielOptionen, zielWert } from './inventarAnzeige';
 import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 let keyZaehler = 0;
 const neuerKey = () => keyZaehler++;
@@ -227,7 +227,7 @@ export function GegenstandPlaetzeModal({
                 onChange={(ziel) => aendern(z.key, { ziel })}
               />
               <Group align="flex-end" wrap="nowrap" gap="xs">
-                <NumberInput
+                <ZahlFeld
                   label="Anzahl"
                   style={{ flex: 1 }}
                   allowDecimal={false}
@@ -274,7 +274,7 @@ export function GegenstandPlaetzeModal({
                 onChange={(e) => verbautAendern(v.key, { ort: e.currentTarget.value })}
               />
               <Group align="flex-end" wrap="nowrap" gap="xs">
-                <NumberInput
+                <ZahlFeld
                   label="Anzahl"
                   style={{ flex: 1 }}
                   allowDecimal={false}

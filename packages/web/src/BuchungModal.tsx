@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Button,
-  Modal,
-  NumberInput,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from '@mantine/core';
+import { Alert, Button, Modal, Select, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -29,6 +19,7 @@ import { DatumFeld } from './DatumFeld';
 import { fehlerText, pruefen } from './warenApi';
 import { zeileText } from './warenAnzeige';
 import type { WareEintrag } from './warenDaten';
+import { ZahlFeld } from './ZahlFeld';
 
 export type BuchungsModus = 'einlagerung' | 'entnahme';
 
@@ -179,7 +170,7 @@ export function BuchungModal({
             value={gebindeId}
             onChange={setGebindeId}
           />
-          <NumberInput
+          <ZahlFeld
             label="Anzahl"
             allowDecimal={false}
             allowNegative={false}

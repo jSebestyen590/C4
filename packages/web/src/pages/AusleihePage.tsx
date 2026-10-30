@@ -6,7 +6,6 @@ import {
   Checkbox,
   Group,
   Loader,
-  NumberInput,
   Paper,
   Select,
   Stack,
@@ -48,6 +47,7 @@ import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
 import { fehlerText, pruefen } from '../warenApi';
+import { ZahlFeld } from '../ZahlFeld';
 
 const mengeKey = (
   gegenstandId: string,
@@ -437,7 +437,7 @@ export function AusleihePage() {
                   );
                 }
                 return (
-                  <NumberInput
+                  <ZahlFeld
                     key={key}
                     label={`Aus ${p.text}`}
                     description={

@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS benachrichtigung_einstellungen

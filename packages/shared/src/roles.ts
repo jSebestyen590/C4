@@ -19,6 +19,9 @@ export const PERMISSIONS = [
   'inventar:lesen',
   'inventar:umraeumen',
   'inventar:verwalten',
+  'kalender:lesen',
+  'events:verwalten',
+  'kalender:einrichten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -28,12 +31,21 @@ export const POSTEN_RECHTE = [
   'posten:bearbeiten',
   'waren:verwalten',
   'inventar:verwalten',
+  'events:verwalten',
+  'kalender:einrichten',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
 /** Extra permissions of a Cognito group, on top of those of the member's status. */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  admin: ['users:manage', 'posten:bearbeiten', 'waren:verwalten', 'inventar:verwalten'],
+  admin: [
+    'users:manage',
+    'posten:bearbeiten',
+    'waren:verwalten',
+    'inventar:verwalten',
+    'events:verwalten',
+    'kalender:einrichten',
+  ],
 };
 
 /** What a member may do, derived from their status (maintained by admins in the member profile). */
@@ -47,6 +59,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'bestand:buchen',
     'inventar:lesen',
     'inventar:umraeumen',
+    'kalender:lesen',
   ],
   mitglied: [
     'content:read',
@@ -57,6 +70,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'bestand:buchen',
     'inventar:lesen',
     'inventar:umraeumen',
+    'kalender:lesen',
   ],
   em: [
     'content:read',
@@ -67,6 +81,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'bestand:buchen',
     'inventar:lesen',
     'inventar:umraeumen',
+    'kalender:lesen',
   ],
 };
 

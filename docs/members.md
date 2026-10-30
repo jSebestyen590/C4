@@ -44,9 +44,10 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
-  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`). Sobald Features unterschiedliche Rechte
-  brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten` und
-  `inventar:verwalten` haben nur Admins und Posten (siehe [waren.md](./waren.md), [inventar.md](./inventar.md)).
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`). Sobald Features unterschiedliche Rechte
+  brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
+  `inventar:verwalten`, `events:verwalten` und `kalender:einrichten` haben nur Admins und Posten (siehe [waren.md](./waren.md),
+  [inventar.md](./inventar.md), [kalender.md](./kalender.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 
@@ -76,6 +77,18 @@ gilt `+49`, nicht lesbare Nummern ergeben keinen Link). Code: `packages/shared/s
 Discord lässt sich nicht über den Username verlinken. Ein Bot auf dem Vereinsserver könnte Namen in
 User-IDs auflösen (`GET /guilds/{id}/members/search`). Das ist nicht gebaut und braucht ein Bot-Token
 sowie den Server Members Intent.
+
+## Benachrichtigungen im Profil
+
+Die Profilseite enthält keine Benachrichtigungs-Einstellungen mehr. Sie liegen auf der eigenen Seite
+`/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“); siehe [benachrichtigungen.md](./benachrichtigungen.md).
+
+## Ungespeicherte Änderungen
+
+Das Profilformular merkt sich die zuletzt geladenen/gespeicherten Werte. Weicht es davon ab, fragt ein Dialog
+„Änderungen verwerfen?“ („Verwerfen“ / „Weiter bearbeiten“) bei jeder Navigation (Menü, Links, Zurück), und der Browser
+warnt beim Schließen/Neuladen. Nach dem Speichern (auch beim Wechsel des Benutzernamens) ist das Formular nicht mehr
+„dirty“. Dafür läuft die App mit `createBrowserRouter` + `RouterProvider` (`useBlocker`).
 
 ## Profilbilder
 
