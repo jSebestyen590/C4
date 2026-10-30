@@ -19,12 +19,13 @@ hinzugefügte Spalten sind deshalb nullable.
 | `discord_name`                     | Discord-Username, nur zur Anzeige.                                                |
 | `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                         |
 | `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900.  |
-| `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: Geburtstag ist für andere unsichtbar. |
+| `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung. |
 
 **Geburtstag:** Im Profil (`/profil`, `DatumFeld` + Schalter „Geburtstag im Kalender anzeigen“, ohne Datum
 deaktiviert) pflegbar. `PUT /api/me/mitglied` muss immer beide Felder senden, sonst werden sie zurückgesetzt. Andere
-Mitglieder bekommen `geburtsdatum` nur, wenn `geburtstag_im_kalender` an ist (sonst `null`); die eigene Seite zeigt
-es immer. Die Detailseite eines Mitglieds zeigt „Geburtstag“, wenn das Datum sichtbar ist. Kalender und Erinnerung:
+Mitglieder bekommen `geburtsdatum` immer (Profil und Detailseite zeigen „Geburtstag“, sobald gesetzt);
+`geburtstag_im_kalender` steuert nur Kalender und Erinnerung. Drei Stufen: kein Datum / nur im Profil / Profil, Kalender
+und Erinnerung. Kalender und Erinnerung:
 `docs/kalender.md`, `docs/benachrichtigungen.md`.
 
 **Username** (Cognito `preferred_username`) und **E-Mail** kommen aus Cognito und werden nicht

@@ -364,7 +364,7 @@ export function ProfilFormular({
           <Switch
             size="md"
             label="Geburtstag im Kalender anzeigen"
-            description="Andere sehen deinen Geburtstag im Kalender und können daran erinnert werden."
+            description="Dein Geburtsdatum steht immer in deinem Profil. Eingeschaltet erscheint dein Geburtstag auch im Kalender und andere werden daran erinnert."
             disabled={!geburtsdatum}
             checked={imKalender}
             onChange={(e) => setImKalender(e.currentTarget.checked)}

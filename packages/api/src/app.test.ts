@@ -866,10 +866,10 @@ describe('api', () => {
       ).json()) as { sub: string; geburtsdatum: string | null; geburtstagImKalender: boolean }[];
       const nach = (sub: string) => liste.find((m) => m.sub === sub);
       expect(nach('m1')).toMatchObject({ geburtsdatum: '1990-05-17', geburtstagImKalender: true });
-      expect(nach('m3')).toMatchObject({ geburtsdatum: null, geburtstagImKalender: false });
+      expect(nach('m3')).toMatchObject({ geburtsdatum: '1991-06-18', geburtstagImKalender: false });
       expect(nach('r')).toMatchObject({ geburtsdatum: '1992-07-19' });
       const einzeln = await app.request('/api/mitglieder/m3', json('reader-token', 'GET'));
-      expect(await einzeln.json()).toMatchObject({ geburtsdatum: null });
+      expect(await einzeln.json()).toMatchObject({ geburtsdatum: '1991-06-18' });
     });
 
     it("only saves to the caller's own row and rejects foreign picture keys", async () => {
@@ -3693,7 +3693,7 @@ describe('kalender: Geburtstage', () => {
     ]);
   });
 
-  it('includes the own hidden birthday never: hidden means hidden for everybody', async () => {
+  it('includes the own hidden birthday never: hidden from the calendar even though the profile shows it', async () => {
     const t = makeApp();
     await t.mitglieder.speichern(
       'r',

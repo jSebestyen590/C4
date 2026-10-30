@@ -184,7 +184,6 @@ export function createApp(deps: AppDeps) {
     konto: Konto | undefined,
     rollen?: string[],
     posten: AktuellerPosten[] = [],
-    eigenes = true,
   ): Promise<Mitglied> => ({
     sub,
     vorname: row?.vorname ?? '',
@@ -206,8 +205,8 @@ export function createApp(deps: AppDeps) {
     profilbildGrossUrl: row?.profilbildKey
       ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
       : null,
-    // Others only see the birthday when the member shows it in the calendar.
-    geburtsdatum: eigenes || geburtstagSichtbar(row) ? (row?.geburtsdatum ?? null) : null,
+    // Always visible; `geburtstagImKalender` only controls calendar and notifications.
+    geburtsdatum: row?.geburtsdatum ?? null,
     geburtstagImKalender: row?.geburtstagImKalender ?? true,
     posten: posten.map((p) => ({
       id: p.id,
@@ -448,7 +447,7 @@ export function createApp(deps: AppDeps) {
   };
 
   /** All members: every profile row plus every enabled account that has no profile yet. */
-  const alleMitglieder = async (mitRollen: boolean, betrachter: string): Promise<Mitglied[]> => {
+  const alleMitglieder = async (mitRollen: boolean): Promise<Mitglied[]> => {
     const [rows, konten, rollen, posten] = await Promise.all([
       deps.mitglieder.alle(),
       deps.userAdmin.konten(),
@@ -468,7 +467,6 @@ export function createApp(deps: AppDeps) {
           konten.get(s),
           rollen && (rollen.get(s) ?? []),
           posten.get(s),
-          s === betrachter,
         ),
       ),
     );
@@ -595,17 +593,12 @@ export function createApp(deps: AppDeps) {
           c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
       )
       .get('/mitglieder', auth, mitgliederLesen, async (c) =>
-        c.json(
-          await alleMitglieder(c.get('permissions').includes('users:manage'), c.get('user').sub),
-        ),
+        c.json(await alleMitglieder(c.get('permissions').includes('users:manage'))),
       )
       // `kennung` is the username; members that have none yet are addressed by their sub.
       .get('/mitglieder/:kennung', auth, mitgliederLesen, async (c) => {
         const kennung = c.req.param('kennung');
-        const liste = await alleMitglieder(
-          c.get('permissions').includes('users:manage'),
-          c.get('user').sub,
-        );
+        const liste = await alleMitglieder(c.get('permissions').includes('users:manage'));
         const mitglied =
           liste.find((m) => m.sub === kennung) ??
           liste.find((m) => m.username?.toLowerCase() === kennung.toLowerCase());
