@@ -392,6 +392,7 @@ describe('schemas', () => {
     expect(eventEingabeSchema.parse({ ...event, titel: '  ' }).titel).toBe('');
     expect(eventEingabeSchema.parse({ ...event, titel: ' Abend ' }).titel).toBe('Abend');
     expect(eventTitel({ titel: '' }, { name: 'Barabend' })).toBe('Barabend');
+    expect(eventTitel({ titel: null }, { name: 'Barabend' })).toBe('Barabend');
     expect(eventTitel({ titel: 'Sommerfest' }, { name: 'Barabend' })).toBe('Sommerfest');
     expect(eventTitel({ titel: '' }, null)).toBe('Event');
     const vorlage = vorlageEingabeSchema.parse({

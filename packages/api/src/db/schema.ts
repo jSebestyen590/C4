@@ -13,6 +13,7 @@ import type {
   Anrede,
   BuchungsArt,
   Einheit,
+  EventArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -439,8 +440,8 @@ export const eventKategorien = pgTable('event_kategorien', {
   name: text('name').notNull(),
   /** Mantine color name. */
   farbe: text('farbe').notNull(),
-  /** `dienste` or `teilnahme`; null (legacy rows) counts as `dienste`. */
-  art: text('art'),
+  /** `dienste` or `teilnahme` (CHECK). */
+  art: text('art').$type<EventArt>().notNull(),
   /** Default participation circle of a `teilnahme` category (same coding as `events.teilnahmeStatus`). */
   teilnahmeStatus: text('teilnahme_status'),
   archiviert: boolean('archiviert').notNull().default(false),
@@ -463,9 +464,12 @@ export type ExterneRow = typeof externe.$inferSelect;
 
 export const events = pgTable('events', {
   id: text('id').primaryKey(),
-  titel: text('titel').notNull(),
+  /** Null (or '') = no title: the Kategorie's name is shown instead. */
+  titel: text('titel'),
   beschreibung: text('beschreibung'),
-  kategorieId: text('kategorie_id').references(() => eventKategorien.id),
+  kategorieId: text('kategorie_id')
+    .notNull()
+    .references(() => eventKategorien.id),
   beginn: timestamp('beginn', { withTimezone: true }).notNull(),
   ende: timestamp('ende', { withTimezone: true }).notNull(),
   abgesagt: boolean('abgesagt').notNull().default(false),
@@ -475,8 +479,8 @@ export const events = pgTable('events', {
   serieAngepasst: boolean('serie_angepasst'),
   /** Participation circle: null = no participation, else comma-separated member statuses ('' = by invitation only). */
   teilnahmeStatus: text('teilnahme_status'),
-  /** Responsible member (optional); checked by the API, deliberately without a foreign key. */
-  verantwortlichSub: text('verantwortlich_sub'),
+  /** Responsible member (optional). */
+  verantwortlichSub: text('verantwortlich_sub').references(() => mitglieder.sub),
   /** Cognito sub, deliberately without a foreign key; null for events created by the system. */
   angelegtVon: text('angelegt_von'),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
@@ -598,9 +602,12 @@ export type DienstRow = typeof dienste.$inferSelect;
 
 export const eventVorlagen = pgTable('event_vorlagen', {
   id: text('id').primaryKey(),
-  titel: text('titel').notNull(),
+  /** Null (or '') = no title. */
+  titel: text('titel'),
   beschreibung: text('beschreibung'),
-  kategorieId: text('kategorie_id').references(() => eventKategorien.id),
+  kategorieId: text('kategorie_id')
+    .notNull()
+    .references(() => eventKategorien.id),
   /** Berlin wall time `HH:MM`. */
   beginnZeit: text('beginn_zeit').notNull(),
   endeZeit: text('ende_zeit').notNull(),

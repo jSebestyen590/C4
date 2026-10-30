@@ -5,24 +5,24 @@ Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, sie
 
 ## Datenmodell
 
-Migrationen `0037`–`0054`, `0062`–`0063`, `0069`–`0082`, Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
+Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinnerungen, Rechte der Vorstandsposten; Push-Tabellen `0066`–`0070` siehe `benachrichtigungen.md`), Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.
 
 | Tabelle                                                  | Inhalt                                                                                                                                                                                                                                           |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe, `art` `dienste`/`teilnahme`, Standard-Kreis `teilnahme_status`; `0076`–`0078`), archivierbar                                                                                                            |
+| `dienstformen`, `event_kategorien`                       | Stammdaten (Kategorie mit Mantine-Farbe, `art` `dienste`/`teilnahme`, Standard-Kreis `teilnahme_status`), archivierbar                                                                                                                           |
 | `externe`                                                | Gastdienste: Name, Kontakt, Quelle (z. B. „Freund:in von X“, „StuK“)                                                                                                                                                                             |
-| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (Id einer Serie, sonst null), `serie_angepasst`, `verantwortlich_sub` (optional, Migrationen `0081`–`0082`), `angelegt_von` (null = System)                         |
+| `events`                                                 | Titel, Beschreibung, Kategorie, Beginn, avisiertes Ende, `abgesagt`, `serie` (Id einer Serie, sonst null), `serie_angepasst`, `verantwortlich_sub` (optional), `angelegt_von` (null = System)                                                    |
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
 | `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform (nur Betrieb, sonst `null`), Kommentar, eingetragen von                                                                                                                                           |
 | `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen: Event mit Beginn-/End-Uhrzeit, Betrieb-Schichten nur mit Uhrzeiten, Aufbau/Putzen mit `tagVersatz` (ganze Tage relativ zum Event, auch negativ) + Uhrzeiten (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                             |
-| `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`) und Events im eigenen Kalender-Abo (Migrationen `0072`–`0075`)                                                                                                  |
-| `kalender_serien`                                        | Serien: Name, Vorlage, Regel, Wochentage, Wochen, Start/Ende, `aktiv`; Id = Slug des ersten Namens (`0079`)                                                                                                                                      |
-| `serien_termine`                                         | Jeder Tag, für den eine Serie schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`; Migration `0069`                                                                                                       |
-| `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag (Migration `0063`)                                                                                                                                 |     |
+| `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`) und Events im eigenen Kalender-Abo                                                                                                                              |
+| `kalender_serien`                                        | Serien: Name, Vorlage, Regel, Wochentage, Wochen, Start/Ende, `aktiv`; Id = Slug des ersten Namens                                                                                                                                               |
+| `serien_termine`                                         | Jeder Tag, für den eine Serie schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`                                                                                                                         |
+| `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag                                                                                                                                                    |     |
 
 ## Regeln
 
-- **Titel:** Optional (Schema: leer/fehlend = `''`, die Spalte `titel` bleibt `NOT NULL`, daher keine Migration). Ohne Titel gilt der
+- **Titel:** Optional (Schema: leer/fehlend wird als `NULL` gespeichert, `''` zählt ebenfalls als „kein Titel“; `titel` in `events` und `event_vorlagen` ist nullable, das DTO liefert `''`). Ohne Titel gilt der
   Name der Kategorie, sonst „Event“ (`eventTitel(event, kategorie)` in Shared). `EventDto.anzeigeTitel` trägt das Ergebnis und gilt für Kalender,
   Event-Seite, Push, ICS (`SUMMARY`, Feed) und Vorlagenlisten (`vorlageTitel`); `titel` bleibt der eingegebene Wert fürs Formular
   („Titel (optional)“, Platzhalter = Kategoriename). Vorlagen: ebenso optional, daraus erzeugte Events behalten den leeren Titel. Die Kartenliste zeigt die
@@ -99,10 +99,9 @@ nichts davon ist im Code oder in Migrationen festgelegt (Kategorien, Vorlagen un
 ## Event-Art (Dienste oder Teilnahme)
 
 Ein Event hat **entweder** Dienste (Schichten) **oder** Teilnahme, nie beides. Die Art legt die **Kategorie** fest, die für
-Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; die Spalte bleibt wegen DSQL nullable, `null` und Bestand ohne
-Kategorie gelten als Dienste).
+Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; `kategorie_id` ist `NOT NULL`).
 
-- **Kategorie:** `art` (`dienste`/`teilnahme`, Pflicht; vorhandene Kategorien sind Dienste, Migration `0077`) und
+- **Kategorie:** `art` (`dienste`/`teilnahme`, Pflicht, `NOT NULL` mit CHECK) und
   bei Teilnahme der Standard-Kreis `teilnahmeStatus` (Pflicht, `[]` = niemand vorab). Die Art lässt sich nur ändern, solange
   kein Event die Kategorie benutzt (`benutzt` im DTO; sonst 409 „Die Kategorie wird von Events benutzt.“).
 - **API-Prüfung:** Dienste-Kategorie: kein Kreis, keine Eingeladenen (400). Teilnahme-Kategorie: keine Schichten (400); ohne
@@ -120,7 +119,7 @@ Kategorie gelten als Dienste).
 
 Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**, keine Schicht und zählt nicht im Dienstschwein.
 
-- **Kreis** (`events.teilnahme_status`, Migration `0070`; Vorlagen: `event_vorlagen.teilnahme_status`, `0071`, `ausVorlage`
+- **Kreis** (`events.teilnahme_status`, Vorlagen: `event_vorlagen.teilnahme_status`, `ausVorlage`
   übernimmt ihn): `null` = keine Teilnahme (Dienste-Event), sonst kommaseparierte Status (`anwaerter,mitglied,em` = alle Mitglieder,
   leer = niemand vorab). Im Formular (und Vorlagen-Editor, Abschnitt „Teilnahme“, nur bei Teilnahme-Kategorie): Alle Mitglieder / Nach
   Status / Niemand vorab, dazu bei Events „Einzelne Personen einladen“ (`eingeladen: string[]` mit Subs).

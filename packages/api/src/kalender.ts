@@ -685,7 +685,7 @@ async function eventsLaden(
     const alleSchichten = schichtRows.filter((s) => s.eventId === e.id).map(alsSchicht);
     return {
       id: e.id,
-      titel: e.titel,
+      titel: e.titel ?? '',
       anzeigeTitel: eventTitel(e, kategorieName === null ? null : { name: kategorieName }),
       beschreibung: e.beschreibung,
       kategorie:
@@ -911,7 +911,7 @@ export function createKalenderStore(db: Db): KalenderStore {
     }
     await tx.insert(events).values({
       id,
-      titel: daten.titel,
+      titel: daten.titel || null,
       beschreibung: daten.beschreibung,
       kategorieId: daten.kategorieId,
       beginn: new Date(daten.beginn),
@@ -1076,7 +1076,7 @@ export function createKalenderStore(db: Db): KalenderStore {
       await tx
         .update(events)
         .set({
-          titel: daten.titel,
+          titel: daten.titel || null,
           beschreibung: daten.beschreibung,
           kategorieId: daten.kategorieId,
           beginn: beginnNeu,
@@ -1800,10 +1800,10 @@ export function createKalenderStore(db: Db): KalenderStore {
       ]);
       return rows
         .filter((v) => mitArchiv || !v.archiviert)
-        .sort((a, b) => a.titel.localeCompare(b.titel, 'de'))
+        .sort((a, b) => (a.titel ?? '').localeCompare(b.titel ?? '', 'de'))
         .map((v): VorlageDto => ({
           id: v.id,
-          titel: v.titel,
+          titel: v.titel ?? '',
           beschreibung: v.beschreibung,
           kategorieId: v.kategorieId ?? '',
           beginnZeit: v.beginnZeit,
@@ -1845,7 +1845,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         const id = randomUUID();
         await tx.insert(eventVorlagen).values({
           id,
-          titel: daten.titel,
+          titel: daten.titel || null,
           beschreibung: daten.beschreibung,
           kategorieId: daten.kategorieId,
           beginnZeit: daten.beginnZeit,
@@ -1882,7 +1882,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         await tx
           .update(eventVorlagen)
           .set({
-            titel: daten.titel,
+            titel: daten.titel || null,
             beschreibung: daten.beschreibung,
             kategorieId: daten.kategorieId,
             beginnZeit: daten.beginnZeit,

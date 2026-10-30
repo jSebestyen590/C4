@@ -3,6 +3,8 @@
 Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; der Kalender ist nur der erste
 Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
+Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`.
+
 ## Konzept
 
 - **Arten** stehen in der Registry `BENACHRICHTIGUNGS_ARTEN` (`packages/shared/src/benachrichtigungen.ts`):

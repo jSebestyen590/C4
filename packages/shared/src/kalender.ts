@@ -351,7 +351,7 @@ export const schichtEingabeSchema = z.discriminatedUnion('art', [
 ]);
 export type SchichtEingabe = z.infer<typeof schichtEingabeSchema>;
 
-/** Optional title (empty = the Kategorie's name is shown instead, see `eventTitel`); stored as ''. */
+/** Optional title (empty = the Kategorie's name is shown instead, see `eventTitel`); stored as NULL. */
 const titelOptional = z
   .string()
   .trim()
