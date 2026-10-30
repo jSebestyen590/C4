@@ -22,6 +22,7 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `kalender.fehlende_dienste`     | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle                                                                                    | an, **für EM aus** |
 | `kalender.aenderung`            | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, von anderen ein- oder ausgetragen; auch Teilnehmende und Verantwortliche bei Verschiebung/Absage; neu Verantwortliche | an                 |
 | `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                                        | an, 60 Minuten     |
+| `geburtstag.erinnerung`         | Ein Mitglied hat Geburtstag: am Tag selbst oder 1/2/3/5/7 Tage vorher (`minuten` = Tage in Minuten: 0/1440/2880/4320/7200/10080), ab 9 Uhr (Berlin)                                                                | an, am Tag selbst  |
 
 ## Tabellen
 
@@ -74,6 +75,12 @@ Minutenangabe; Schlüssel `kalender.erinnerung:<dienstId>:<beginn>`), Teilnahme-
 nicht abgesagt; Schlüssel `kalender.teilnahme_erinnerung:<eventId>:<sub>:<beginn>`), fehlende Dienste (Events bis zum größten globalen Zeitpunkt; je Event der kleinste bereits erreichte
 Zeitpunkt `m` in Minuten, ältere werden nicht nachgeholt; Schlüssel `kalender.fehlende_dienste:<eventId>:<m>`; die verantwortliche Person bekommt den Hinweis unabhängig von ihrer Einstellung mit Schlüssel `…:<m>:verantwortlich`, siehe `Sendung.ohneEinstellung`/`ausser`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
 Dienst durch andere eingetragen oder entfernt, `meldeDienstDurchAndere`).
+
+## Geburtstage
+
+`packages/api/src/geburtstagBenachrichtigungen.ts` (Job-Aufgabe, in `bootstrap.ts` registriert): Text „<Name> wird heute/morgen/in n
+Tagen y Jahre alt.“, Dedupe-Schlüssel `geburtstag.erinnerung:<geburtstagsSub>:<datum>:<empfaengerSub>`. Keine Nachricht, wenn das Mitglied
+seinen Geburtstag ausblendet (`geburtstag_im_kalender` aus), und nie an die Person selbst. Die Einstellung „Am Tag selbst“ ist `minuten` = 0.
 
 ## Web
 

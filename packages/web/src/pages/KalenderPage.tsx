@@ -36,6 +36,7 @@ import {
   zeitBerlin,
   type EventBewertung,
   type EventDto,
+  type GeburtstagDto,
   type DienstformDto,
 } from '@c4/shared';
 import { useAuth } from '../auth';
@@ -52,7 +53,9 @@ import {
   TeilnahmeBadge,
 } from '../KalenderAnzeige';
 import { AMPEL_LABELS } from '../i18n';
-import { useDienstformen, useKalenderEvents } from '../kalenderDaten';
+import { useDienstformen, useGeburtstage, useKalenderEvents } from '../kalenderDaten';
+import { mitgliedLink, mitgliedName } from '../mitglied';
+import { StatusName } from '../StatusAnzeige';
 import {
   monatAnzeigen,
   monatAusSuche,
@@ -122,6 +125,72 @@ function tagHintergrund(events: EventDto[]): string {
   return `linear-gradient(to right, ${stops.join(', ')})`;
 }
 
+const GEBURTSTAG_FARBE = 'var(--mantine-color-green-6)';
+
+const alterText = (alter: number) => (alter === 1 ? '1 Jahr' : `${alter} Jahre`);
+
+function geburtstageNachTag(liste: GeburtstagDto[]): Map<string, GeburtstagDto[]> {
+  const m = new Map<string, GeburtstagDto[]>();
+  for (const g of liste) m.set(g.datum, [...(m.get(g.datum) ?? []), g]);
+  return m;
+}
+
+/** Small green dot marking a day with birthdays (distinct from event chips, Ampel bars and stripes). */
+function GeburtstagPunkt({ size = 8 }: Readonly<{ size?: number }>) {
+  return (
+    <Box
+      role="img"
+      aria-label="Geburtstag"
+      title="Geburtstag"
+      w={size}
+      h={size}
+      style={{ flexShrink: 0, borderRadius: '50%', background: GEBURTSTAG_FARBE }}
+    />
+  );
+}
+
+/** "🎂 name wird 30 Jahre alt", name linked to the member page in the color of their status. */
+function GeburtstagText({ geburtstag }: Readonly<{ geburtstag: GeburtstagDto }>) {
+  const m = geburtstag.mitglied;
+  return (
+    <Text component="span" size="sm" style={{ overflowWrap: 'anywhere' }}>
+      <span aria-hidden="true">🎂 </span>
+      <Anchor component={Link} to={mitgliedLink(m)} underline="hover" inherit>
+        <StatusName status={m.status}>{mitgliedName(m)}</StatusName>
+      </Anchor>{' '}
+      wird {alterText(geburtstag.alter)} alt
+    </Text>
+  );
+}
+
+function GeburtstagZeile({
+  geburtstag,
+  mitDatum = false,
+}: Readonly<{ geburtstag: GeburtstagDto; mitDatum?: boolean }>) {
+  return (
+    <Group
+      justify="space-between"
+      wrap="nowrap"
+      gap="xs"
+      px="sm"
+      py={6}
+      style={{
+        minHeight: 44,
+        borderRadius: 8,
+        background: 'var(--mantine-color-green-light)',
+        borderLeft: `6px solid ${GEBURTSTAG_FARBE}`,
+      }}
+    >
+      <GeburtstagText geburtstag={geburtstag} />
+      {mitDatum && (
+        <Text size="sm" c="dimmed" style={{ flexShrink: 0 }}>
+          {datumAnzeigen(geburtstag.datum)}
+        </Text>
+      )}
+    </Group>
+  );
+}
+
 function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] }>) {
   const eindeutig = new Map<string, { name: string; farbe: string }>();
   for (const k of kategorien) {
@@ -154,6 +223,10 @@ function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] 
           {punkt('transparent', TEILNAHME_BALKEN)}
           <Text size="xs">Teilnahme</Text>
         </Group>
+        <Group gap={6} wrap="nowrap">
+          <GeburtstagPunkt />
+          <Text size="xs">Geburtstag</Text>
+        </Group>
       </Group>
       {eindeutig.size > 0 && (
         <Group gap="md">
@@ -173,16 +246,18 @@ function Legende({ kategorien }: Readonly<{ kategorien: EventDto['kategorie'][] 
   );
 }
 
-/** Day overview: all events of a day as compact cards, plus a button to create one (with right). */
+/** Day overview: birthdays, then all events of a day as compact cards, plus a button to create one (with right). */
 function TagesUebersicht({
   datum,
   events,
+  geburtstage,
   ausgeblendet,
   darfAnlegen,
   onClose,
 }: Readonly<{
   datum: string | null;
   events: EventDto[];
+  geburtstage: GeburtstagDto[];
   ausgeblendet: boolean;
   darfAnlegen: boolean;
   onClose: () => void;
@@ -193,6 +268,9 @@ function TagesUebersicht({
   const titel = datum ? datumAnzeigen(datum) : '';
   const inhalt = (
     <Stack gap="xs">
+      {geburtstage.map((g) => (
+        <GeburtstagZeile key={g.mitglied.sub} geburtstag={g} />
+      ))}
       {events.map((e) => (
         <UnstyledButton
           key={e.id}
@@ -268,12 +346,17 @@ function TagesUebersicht({
   );
 }
 
-/** Tap logic shared by both grids: events open the day overview, an empty day goes to "create". */
-function useTagesKlick(alle: EventDto[], darfAnlegen: boolean, nachTag: Map<string, EventDto[]>) {
+/** Tap logic shared by both grids: events or birthdays open the day overview, an empty day goes to "create". */
+function useTagesKlick(
+  alle: EventDto[],
+  darfAnlegen: boolean,
+  nachTag: Map<string, EventDto[]>,
+  geburtstageTag: Map<string, GeburtstagDto[]>,
+) {
   const navigate = useNavigate();
   const [offen, setOffen] = useState<string | null>(null);
   const antippen = (t: string) => {
-    if ((nachTag.get(t) ?? []).length > 0) setOffen(t);
+    if ((nachTag.get(t) ?? []).length > 0 || geburtstageTag.has(t)) setOffen(t);
     else if (darfAnlegen) void navigate(`/kalender/events/neu?datum=${t}`);
   };
   const sichtbarAm = offen ? (nachTag.get(offen) ?? []) : [];
@@ -284,12 +367,17 @@ function useTagesKlick(alle: EventDto[], darfAnlegen: boolean, nachTag: Map<stri
     <TagesUebersicht
       datum={offen}
       events={sichtbarAm}
+      geburtstage={offen ? (geburtstageTag.get(offen) ?? []) : []}
       ausgeblendet={ausgeblendet}
       darfAnlegen={darfAnlegen}
       onClose={() => setOffen(null)}
     />
   );
-  return { antippen, uebersicht, klickbar: (t: string) => darfAnlegen || nachTag.has(t) };
+  return {
+    antippen,
+    uebersicht,
+    klickbar: (t: string) => darfAnlegen || nachTag.has(t) || geburtstageTag.has(t),
+  };
 }
 
 /** Compact month grid for phones: tap a day to see its events or to create one. */
@@ -298,12 +386,14 @@ function MonatsRasterKompakt({
   monat,
   events,
   alle,
+  geburtstage,
   darfAnlegen,
 }: Readonly<{
   jahr: number;
   monat: number;
   events: EventDto[];
   alle: EventDto[];
+  geburtstage: GeburtstagDto[];
   darfAnlegen: boolean;
 }>) {
   const tage = monatsRaster(jahr, monat);
@@ -311,7 +401,13 @@ function MonatsRasterKompakt({
   const nachTag = useMemo(() => nachTagGruppieren(events), [events]);
   const imMonat = (t: string) => Number(t.slice(5, 7)) - 1 === monat;
   const kategorien = events.filter((e) => imMonat(datumBerlin(e.beginn))).map((e) => e.kategorie);
-  const { antippen, uebersicht, klickbar } = useTagesKlick(alle, darfAnlegen, nachTag);
+  const geburtstageTag = useMemo(() => geburtstageNachTag(geburtstage), [geburtstage]);
+  const { antippen, uebersicht, klickbar } = useTagesKlick(
+    alle,
+    darfAnlegen,
+    nachTag,
+    geburtstageTag,
+  );
 
   return (
     <Stack gap="md">
@@ -324,11 +420,15 @@ function MonatsRasterKompakt({
         {tage.map((t) => {
           const liste = nachTag.get(t) ?? [];
           const hat = liste.length > 0;
+          const feiert = geburtstageTag.has(t);
           const istHeute = t === heute;
           const zahl = (
-            <Text size="sm" fw={istHeute || hat ? 700 : 400} c={hat ? undefined : 'dimmed'}>
-              {Number(t.slice(8))}
-            </Text>
+            <Stack gap={2} align="center">
+              <Text size="sm" fw={istHeute || hat ? 700 : 400} c={hat ? undefined : 'dimmed'}>
+                {Number(t.slice(8))}
+              </Text>
+              {feiert && <GeburtstagPunkt />}
+            </Stack>
           );
           const stil = {
             minWidth: 0,
@@ -355,7 +455,7 @@ function MonatsRasterKompakt({
             <UnstyledButton
               key={t}
               onClick={() => antippen(t)}
-              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${hat ? liste.map((e) => e.anzeigeTitel).join(', ') : 'Event anlegen'}`}
+              aria-label={`${Number(t.slice(8))}. ${monatAnzeigen(jahr, Number(t.slice(5, 7)) - 1).split(' ')[0]}: ${hat || feiert ? [...liste.map((e) => e.anzeigeTitel), ...(feiert ? ['Geburtstag'] : [])].join(', ') : 'Event anlegen'}`}
               style={stil}
             >
               {zahl}
@@ -490,12 +590,14 @@ function MonatsRaster({
   monat,
   events,
   alle,
+  geburtstage,
   darfAnlegen,
 }: Readonly<{
   jahr: number;
   monat: number;
   events: EventDto[];
   alle: EventDto[];
+  geburtstage: GeburtstagDto[];
   darfAnlegen: boolean;
 }>) {
   const tage = monatsRaster(jahr, monat);
@@ -504,7 +606,13 @@ function MonatsRaster({
   const kategorien = events
     .filter((e) => Number(datumBerlin(e.beginn).slice(5, 7)) - 1 === monat)
     .map((e) => e.kategorie);
-  const { antippen, uebersicht, klickbar } = useTagesKlick(alle, darfAnlegen, nachTag);
+  const geburtstageTag = useMemo(() => geburtstageNachTag(geburtstage), [geburtstage]);
+  const { antippen, uebersicht, klickbar } = useTagesKlick(
+    alle,
+    darfAnlegen,
+    nachTag,
+    geburtstageTag,
+  );
   return (
     <Stack gap="md">
       <SimpleGrid cols={7} spacing={4}>
@@ -529,9 +637,12 @@ function MonatsRaster({
                 outline: t === heute ? '2px solid var(--mantine-primary-color-filled)' : undefined,
               }}
             >
-              <Text size="xs" fw={t === heute ? 700 : 400} c="dimmed">
-                {Number(t.slice(8))}
-              </Text>
+              <Group justify="space-between" wrap="nowrap" gap={4}>
+                <Text size="xs" fw={t === heute ? 700 : 400} c="dimmed">
+                  {Number(t.slice(8))}
+                </Text>
+                {geburtstageTag.has(t) && <GeburtstagPunkt size={10} />}
+              </Group>
               <Stack gap={2}>
                 {(nachTag.get(t) ?? []).map((e) => {
                   const farbe = kategorieFarbe(e.kategorie);
@@ -598,6 +709,7 @@ export function KalenderPage() {
   const von = raster ? tage[0]! : grenzen.erster;
   const bis = raster ? tage[tage.length - 1]! : grenzen.letzter;
   const events = useKalenderEvents(von, bis);
+  const geburtstage = useGeburtstage(von, bis);
   const dienstformen = useDienstformen();
 
   const sichtbar = useMemo(
@@ -621,6 +733,20 @@ export function KalenderPage() {
   const listeEvents = sichtbar.filter(
     (e) => datumBerlin(e.beginn) >= grenzen.erster && datumBerlin(e.beginn) <= grenzen.letzter,
   );
+
+  // Birthdays are no events: "missing Dienste" hides them, "Nur meine" keeps them.
+  const geburtstageSichtbar = useMemo(
+    () => (nurFehlend ? [] : (geburtstage.data ?? [])),
+    [geburtstage.data, nurFehlend],
+  );
+  const geburtstageListe = geburtstageSichtbar.filter(
+    (g) => g.datum >= grenzen.erster && g.datum <= grenzen.letzter,
+  );
+  // Events and birthdays in date order; a birthday comes before the events of its day.
+  const listenEintraege = [
+    ...listeEvents.map((e) => ({ datum: datumBerlin(e.beginn), rang: 1, event: e })),
+    ...geburtstageListe.map((g) => ({ datum: g.datum, rang: 0, geburtstag: g })),
+  ].sort((a, b) => a.datum.localeCompare(b.datum) || a.rang - b.rang);
 
   const verschieben = (delta: number) => {
     const d = new Date(Date.UTC(jahr, monat + delta, 1));
@@ -731,6 +857,7 @@ export function KalenderPage() {
           monat={monat}
           events={sichtbar}
           alle={events.data ?? []}
+          geburtstage={geburtstageSichtbar}
           darfAnlegen={can('events:verwalten')}
         />
       ) : raster ? (
@@ -739,9 +866,10 @@ export function KalenderPage() {
           monat={monat}
           events={sichtbar}
           alle={events.data ?? []}
+          geburtstage={geburtstageSichtbar}
           darfAnlegen={can('events:verwalten')}
         />
-      ) : listeEvents.length === 0 ? (
+      ) : listenEintraege.length === 0 ? (
         <Text c="dimmed">
           {nurFehlend || nurMeine
             ? 'Keine passenden Events in diesem Monat.'
@@ -749,9 +877,21 @@ export function KalenderPage() {
         </Text>
       ) : (
         <Stack gap="sm">
-          {listeEvents.map((e) => (
-            <EventKarte key={e.id} event={e} dienstformen={dienstformen.nachId} />
-          ))}
+          {listenEintraege.map((eintrag) =>
+            'event' in eintrag ? (
+              <EventKarte
+                key={eintrag.event.id}
+                event={eintrag.event}
+                dienstformen={dienstformen.nachId}
+              />
+            ) : (
+              <GeburtstagZeile
+                key={`${eintrag.geburtstag.datum}-${eintrag.geburtstag.mitglied.sub}`}
+                geburtstag={eintrag.geburtstag}
+                mitDatum
+              />
+            ),
+          )}
         </Stack>
       )}
     </Stack>
