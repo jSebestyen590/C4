@@ -14,6 +14,8 @@ export interface BenachrichtigungsArt {
   standardAktiv: boolean | Record<MitgliedStatus, boolean>;
   /** Configurable minutes (e.g. "before the Schicht"); null when the type has no such setting. */
   minuten: { standard: number; optionen: readonly number[] } | null;
+  /** False for types nobody may switch off (always active); default true. */
+  abschaltbar?: boolean;
 }
 
 export const BENACHRICHTIGUNGS_ARTEN = [
@@ -48,6 +50,13 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     // Lead time in whole days, stored as minutes; 0 = on the day itself.
     minuten: { standard: 0, optionen: [0, 1440, 2880, 4320, 7200, 10080] },
   },
+  {
+    key: 'schluessel.uebergabe',
+    bereich: 'schluessel',
+    standardAktiv: true,
+    minuten: null,
+    abschaltbar: false,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];
@@ -66,6 +75,9 @@ export function benachrichtigungsArt(key: string): BenachrichtigungsArt | undefi
 }
 
 /** A stored setting; `minuten` is null for types without minutes. */
+/** Whether members may switch the type off. */
+export const istAbschaltbar = (art: BenachrichtigungsArt) => art.abschaltbar !== false;
+
 export interface GespeicherteEinstellung {
   aktiv: boolean;
   minuten: number | null;
@@ -85,12 +97,14 @@ export function effektiveEinstellung(
 ): EffektiveEinstellung {
   const standardAktiv =
     typeof art.standardAktiv === 'boolean' ? art.standardAktiv : art.standardAktiv[status];
-  if (!art.minuten) return { aktiv: gespeichert?.aktiv ?? standardAktiv, minuten: null };
+  // Types that cannot be switched off ignore a stored "off".
+  const aktiv = istAbschaltbar(art) ? (gespeichert?.aktiv ?? standardAktiv) : true;
+  if (!art.minuten) return { aktiv, minuten: null };
   const gueltig =
     gespeichert?.minuten != null && art.minuten.optionen.includes(gespeichert.minuten)
       ? gespeichert.minuten
       : art.minuten.standard;
-  return { aktiv: gespeichert?.aktiv ?? standardAktiv, minuten: gueltig };
+  return { aktiv, minuten: gueltig };
 }
 
 /** One row of `GET /api/me/benachrichtigungen`. */
@@ -98,6 +112,8 @@ export interface EinstellungDto {
   art: string;
   bereich: string;
   aktiv: boolean;
+  /** False when the type is always active. */
+  abschaltbar: boolean;
   minuten: number | null;
   /** Selectable minutes; null when the type has no minutes setting. */
   minutenOptionen: readonly number[] | null;
@@ -123,8 +139,15 @@ export const einstellungSchema = z
     minuten: z.number().int().nonnegative().optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.minuten === undefined) return;
     const art = benachrichtigungsArt(v.art);
+    if (!v.aktiv && art && !istAbschaltbar(art)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['aktiv'],
+        message: 'Diese Benachrichtigung kann nicht ausgeschaltet werden.',
+      });
+    }
+    if (v.minuten === undefined) return;
     if (!art?.minuten) {
       ctx.addIssue({ code: 'custom', path: ['minuten'], message: 'Hier gibt es keine Minuten.' });
     } else if (!art.minuten.optionen.includes(v.minuten)) {

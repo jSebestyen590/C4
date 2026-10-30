@@ -706,3 +706,34 @@ export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', 
   id: text('id').primaryKey(),
   minutenVorher: integer('minuten_vorher').notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Schlüssel
+
+/** Club key; the holder is a member (`halterSub`), a person without the app (`halterName`) or nobody. */
+export const schluessel = pgTable('schluessel', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  beschreibung: text('beschreibung'),
+  halterSub: text('halter_sub').references(() => mitglieder.sub),
+  halterName: text('halter_name'),
+  halterSeit: timestamp('halter_seit', { withTimezone: true }),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+export type SchluesselRow = typeof schluessel.$inferSelect;
+
+/** Newest handovers per key (older ones are deleted by the API). */
+export const schluesselUebergaben = pgTable('schluessel_uebergaben', {
+  id: text('id').primaryKey(),
+  schluesselId: text('schluessel_id')
+    .notNull()
+    .references(() => schluessel.id),
+  vonSub: text('von_sub').references(() => mitglieder.sub),
+  vonName: text('von_name'),
+  anSub: text('an_sub').references(() => mitglieder.sub),
+  anName: text('an_name'),
+  /** Cognito sub, deliberately without a foreign key. */
+  eingetragenVon: text('eingetragen_von').notNull(),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
+});
+export type UebergabeRow = typeof schluesselUebergaben.$inferSelect;

@@ -18,6 +18,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Die Kalender-Migrationen `0037`–`0070` (Namen `*_kalender_*`, `*_push_*`) sind eine zusammengelegte, lückenlose Fassung
   der früheren Migrationen 0037–0082. `migrations.test.ts` prüft für 0037 und höher: genau ein Statement je Datei, eine
   Down-Datei je Migration, keine Lücken.
+- 0073–0075 (Schlüssel) löschen ihre Tabellen bzw. ihren Index, 0076 entzieht den Vorstandsposten
+  `schluessel:verwalten` wieder; Rollback-Ziel nur für die Schlüssel: `0072_mitglieder_geburtstag_im_kalender`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

@@ -77,6 +77,13 @@ import {
   type Mitglied,
   type Posten,
   bezeichnungFuer,
+  schluesselAnlegenSchema,
+  schluesselEingabeSchema,
+  uebergabeSchema,
+  type Halter,
+  type HalterDto,
+  type SchluesselDetailDto,
+  type SchluesselDto,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import {
@@ -113,6 +120,8 @@ import {
 } from './kalenderBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
+import { UebergabeKonflikt, type SchluesselDaten, type SchluesselStore } from './schluessel';
+import { meldeUebergabe } from './schluesselBenachrichtigungen';
 import {
   geburtstagSichtbar,
   kanaeleLesen,
@@ -131,6 +140,7 @@ export interface AppDeps {
   waren: WarenStore;
   inventar: InventarStore;
   kalender: KalenderStore;
+  schluessel: SchluesselStore;
   benachrichtigungen: Benachrichtigungen;
   /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
   appUrl?: string;
@@ -176,6 +186,8 @@ export function createApp(deps: AppDeps) {
   const kalenderLesen = requirePermission('kalender:lesen');
   const eventsVerwalten = requirePermission('events:verwalten');
   const kalenderEinrichten = requirePermission('kalender:einrichten');
+  const schluesselLesen = requirePermission('schluessel:lesen');
+  const schluesselVerwalten = requirePermission('schluessel:verwalten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -374,6 +386,54 @@ export function createApp(deps: AppDeps) {
     await bestEffort(() => serienMarkeFreigeben(deps.benachrichtigungen));
     return null;
   };
+
+  const schluesselFehler = (err: unknown): never => {
+    if (err instanceof UebergabeKonflikt) {
+      throw new HTTPException(409, {
+        message: 'Der Schlüssel wurde inzwischen anders eingetragen. Lade die Seite neu.',
+      });
+    }
+    throw err;
+  };
+
+  /** Display data of key holders and the names used in the Übergabe messages. */
+  const schluesselMitglieder = async () => {
+    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
+    const zeilen = new Map(rows.map((r) => [r.sub, r]));
+    const halter = (h: Halter): HalterDto => {
+      if (h?.art !== 'mitglied') return h;
+      const zeile = zeilen.get(h.sub);
+      return {
+        art: 'mitglied',
+        sub: h.sub,
+        username: konten.get(h.sub)?.username ?? null,
+        vorname: zeile?.vorname ?? '',
+        nachname: zeile?.nachname ?? '',
+        status: zeile?.status ?? 'anwaerter',
+        anrede: zeile?.anrede ?? 'neutral',
+      };
+    };
+    const name = (sub: string) => {
+      const zeile = zeilen.get(sub);
+      return (
+        konten.get(sub)?.username ??
+        (`${zeile?.vorname ?? ''} ${zeile?.nachname ?? ''}`.trim() || 'Jemand')
+      );
+    };
+    return { halter, name };
+  };
+
+  const alsSchluesselDto = (
+    s: SchluesselDaten,
+    halter: (h: Halter) => HalterDto,
+  ): SchluesselDto => ({
+    id: s.id,
+    name: s.name,
+    beschreibung: s.beschreibung,
+    archiviert: s.archiviert,
+    halter: halter(s.halter),
+    halterSeit: s.halterSeit?.toISOString() ?? null,
+  });
 
   /** Adds the Cognito usernames to members in Kalender DTOs (the store only knows the profile row). */
   const personenMitUsernames = async <T extends { person: DienstPerson }>(
@@ -759,6 +819,123 @@ export function createApp(deps: AppDeps) {
             throw new HTTPException(404, { message: 'Posten nicht gefunden' });
           }
           return c.json({ rechte });
+        },
+      )
+      // ----- Schlüssel
+      .get('/schluessel', auth, schluesselLesen, async (c) => {
+        const mitArchiv = c.req.query('archiv') === '1';
+        if (mitArchiv && !c.get('permissions').includes('schluessel:verwalten')) {
+          throw new HTTPException(403, { message: 'Forbidden' });
+        }
+        const [liste, m] = await Promise.all([
+          deps.schluessel.alle(mitArchiv),
+          schluesselMitglieder(),
+        ]);
+        return c.json(liste.map((s) => alsSchluesselDto(s, m.halter)));
+      })
+      .get('/schluessel/:id', auth, schluesselLesen, async (c) => {
+        const s = await deps.schluessel.holen(c.req.param('id'));
+        if (!s || (s.archiviert && !c.get('permissions').includes('schluessel:verwalten'))) {
+          throw new HTTPException(404, { message: 'Schlüssel nicht gefunden' });
+        }
+        const m = await schluesselMitglieder();
+        const dto: SchluesselDetailDto = {
+          ...alsSchluesselDto(s, m.halter),
+          uebergaben: s.uebergaben.map((u) => ({
+            id: u.id,
+            von: m.halter(u.von),
+            an: m.halter(u.an),
+            eingetragenVon: m.halter({ art: 'mitglied', sub: u.eingetragenVon }),
+            zeitpunkt: u.zeitpunkt.toISOString(),
+          })),
+        };
+        return c.json(dto);
+      })
+      .post(
+        '/schluessel',
+        auth,
+        schluesselVerwalten,
+        zValidator('json', schluesselAnlegenSchema),
+        async (c) => {
+          const daten = c.req.valid('json');
+          const akteur = c.get('user').sub;
+          if (daten.halter?.art === 'mitglied') await mitgliedMussExistieren(daten.halter.sub);
+          const id = await deps.schluessel.anlegen(daten, akteur);
+          if (daten.halter) {
+            const halter = daten.halter;
+            await bestEffort(async () => {
+              const m = await schluesselMitglieder();
+              await meldeUebergabe(deps.benachrichtigungen, {
+                schluessel: { id, name: daten.name },
+                von: null,
+                an: halter,
+                akteur,
+                name: m.name,
+              });
+            });
+          }
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/schluessel/:id',
+        auth,
+        schluesselVerwalten,
+        zValidator('json', schluesselEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.schluessel.aktualisieren(c.req.param('id'), c.req.valid('json')),
+            'Schlüssel nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .put(
+        '/schluessel/:id/archiv',
+        auth,
+        schluesselVerwalten,
+        zValidator('json', postenArchivierenSchema),
+        async (c) => {
+          const { archiviert } = c.req.valid('json');
+          gefunden(
+            await deps.schluessel.archivieren(c.req.param('id'), archiviert),
+            'Schlüssel nicht gefunden',
+          );
+          return c.json({ archiviert });
+        },
+      )
+      .post(
+        '/schluessel/:id/uebergaben',
+        auth,
+        schluesselLesen,
+        zValidator('json', uebergabeSchema),
+        async (c) => {
+          const { von, an } = c.req.valid('json');
+          const akteur = c.get('user').sub;
+          if (an === null && !c.get('permissions').includes('schluessel:verwalten')) {
+            throw new HTTPException(403, {
+              message: 'Nur die Schlüsselverwaltung kann einen Schlüssel ohne Halter eintragen.',
+            });
+          }
+          await eigenesProfilMussExistieren(akteur);
+          if (an?.art === 'mitglied') await mitgliedMussExistieren(an.sub);
+          const s = gefunden(
+            await deps.schluessel
+              .uebergeben(c.req.param('id'), { von, an }, akteur)
+              .catch(schluesselFehler),
+            'Schlüssel nicht gefunden',
+          );
+          const m = await schluesselMitglieder();
+          await bestEffort(() =>
+            meldeUebergabe(deps.benachrichtigungen, {
+              schluessel: s,
+              von,
+              an,
+              akteur,
+              name: m.name,
+            }),
+          );
+          return c.json(alsSchluesselDto(s, m.halter));
         },
       )
       // ----- Waren: Lagerorte

@@ -22,6 +22,8 @@ export const PERMISSIONS = [
   'kalender:lesen',
   'events:verwalten',
   'kalender:einrichten',
+  'schluessel:lesen',
+  'schluessel:verwalten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -33,6 +35,7 @@ export const POSTEN_RECHTE = [
   'inventar:verwalten',
   'events:verwalten',
   'kalender:einrichten',
+  'schluessel:verwalten',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
@@ -45,6 +48,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'inventar:verwalten',
     'events:verwalten',
     'kalender:einrichten',
+    'schluessel:verwalten',
   ],
 };
 
@@ -60,6 +64,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'inventar:lesen',
     'inventar:umraeumen',
     'kalender:lesen',
+    'schluessel:lesen',
   ],
   mitglied: [
     'content:read',
@@ -71,6 +76,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'inventar:lesen',
     'inventar:umraeumen',
     'kalender:lesen',
+    'schluessel:lesen',
   ],
   em: [
     'content:read',
@@ -82,6 +88,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'inventar:lesen',
     'inventar:umraeumen',
     'kalender:lesen',
+    'schluessel:lesen',
   ],
 };
 

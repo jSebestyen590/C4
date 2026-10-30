@@ -53,10 +53,10 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
-  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`). Sobald Features unterschiedliche Rechte
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`). Sobald Features unterschiedliche Rechte
   brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
-  `inventar:verwalten`, `events:verwalten` und `kalender:einrichten` haben nur Admins und Posten (siehe [waren.md](./waren.md),
-  [inventar.md](./inventar.md), [kalender.md](./kalender.md)).
+  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten` und `schluessel:verwalten` haben nur Admins und Posten (siehe
+  [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

@@ -21,6 +21,7 @@ import {
   IconDeviceDesktop,
   IconBuildingWarehouse,
   IconHome,
+  IconKey,
   IconBox,
   IconPackage,
   IconLogout,
@@ -143,6 +144,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Posten',
       icon: <IconBriefcase size={20} />,
       show: can('posten:lesen'),
+    },
+    {
+      to: '/schluessel',
+      label: 'Schlüssel',
+      icon: <IconKey size={20} />,
+      show: can('schluessel:lesen'),
     },
     {
       to: '/waren',

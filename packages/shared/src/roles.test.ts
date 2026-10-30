@@ -55,6 +55,16 @@ describe('permissions', () => {
       }
     }
   });
+  it('every status may see and hand over keys, but only extra permissions manage them', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'schluessel:lesen')).toBe(true);
+      expect(hasPermission([], status, 'schluessel:verwalten')).toBe(false);
+      expect(hasPermission([], status, 'schluessel:verwalten', ['schluessel:verwalten'])).toBe(
+        true,
+      );
+      expect(hasPermission(['admin'], status, 'schluessel:verwalten')).toBe(true);
+    }
+  });
   it('admins keep the permissions of their status', () => {
     expect(permissionsFor(['admin'], 'em')).toEqual(
       expect.arrayContaining([...STATUS_PERMISSIONS.em, 'users:manage']),

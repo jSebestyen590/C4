@@ -1,7 +1,7 @@
 # Benachrichtigungen (Web Push)
 
-Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; der Kalender ist nur der erste
-Nutzer. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
+Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; Nutzer sind der Kalender, Geburtstage und die
+Schlüssel. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
 Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`.
 
@@ -9,20 +9,23 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 
 - **Arten** stehen in der Registry `BENACHRICHTIGUNGS_ARTEN` (`packages/shared/src/benachrichtigungen.ts`):
   `key` (`<bereich>.<name>`), `bereich`, `standardAktiv` (`boolean` oder je Status `Record<MitgliedStatus, boolean>`),
-  `minuten` (`{ standard, optionen }` oder `null`).
+  `minuten` (`{ standard, optionen }` oder `null`), optional `abschaltbar` (Standard `true`).
+- **Nicht abschaltbar** (`abschaltbar: false`): die Art ist immer aktiv, gespeicherte Zeilen werden ignoriert,
+  `PUT /api/me/benachrichtigungen` mit `aktiv: false` gibt 400; die Seite `/benachrichtigungen` zeigt den Schalter gesperrt („Immer aktiv.“).
 - **Pro Person** wird je Art gespeichert, ob sie aktiv ist (und ggf. wie viele Minuten). Fehlt eine Zeile, gilt der
   Standard (`effektiveEinstellung(art, status, gespeichert)`).
 - **Push pro Gerät**: jedes Gerät muss Push selbst aktivieren (Berechtigungsabfrage des Browsers); die Arten-Einstellungen
   gelten für alle Geräte der Person.
 - Aktuelle Arten:
 
-| Art                             | Wann                                                                                                                                                                                                               | Standard           |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
-| `kalender.erinnerung`           | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                                                                                                                                       | an, 30 Minuten     |
-| `kalender.fehlende_dienste`     | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle                                                                                    | an, **für EM aus** |
-| `kalender.aenderung`            | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, von anderen ein- oder ausgetragen; auch Teilnehmende und Verantwortliche bei Verschiebung/Absage; neu Verantwortliche | an                 |
-| `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                                        | an, 60 Minuten     |
-| `geburtstag.erinnerung`         | Ein Mitglied hat Geburtstag: am Tag selbst oder 1/2/3/5/7 Tage vorher (`minuten` = Tage in Minuten: 0/1440/2880/4320/7200/10080), ab 9 Uhr (Berlin)                                                                | an, am Tag selbst  |
+| Art                             | Wann                                                                                                                                                                                                               | Standard              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `kalender.erinnerung`           | X Minuten vor Beginn der eigenen Schicht (15/30/60/120/1440)                                                                                                                                                       | an, 30 Minuten        |
+| `kalender.fehlende_dienste`     | Globaler Zeitpunkt (`/kalender/einrichtung` → Erinnerungen) erreicht und Event noch rot; je Event und Zeitpunkt einmal, an alle                                                                                    | an, **für EM aus**    |
+| `kalender.aenderung`            | Eigener Dienst betroffen: Event verschoben/abgesagt/wieder aktiv, Schicht geändert/entfernt, von anderen ein- oder ausgetragen; auch Teilnehmende und Verantwortliche bei Verschiebung/Absage; neu Verantwortliche | an                    |
+| `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                                        | an, 60 Minuten        |
+| `geburtstag.erinnerung`         | Ein Mitglied hat Geburtstag: am Tag selbst oder 1/2/3/5/7 Tage vorher (`minuten` = Tage in Minuten: 0/1440/2880/4320/7200/10080), ab 9 Uhr (Berlin)                                                                | an, am Tag selbst     |
+| `schluessel.uebergabe`          | Jemand anderes trägt eine Übergabe an dich oder von dir ein (siehe [schluessel.md](./schluessel.md))                                                                                                               | an, nicht abschaltbar |
 
 ## Tabellen
 
@@ -37,7 +40,7 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 
 - `GET /api/push/schluessel` → `{ publicKey }`; `POST /api/push/abos` (Abo des Browsers, Upsert per `endpoint`);
   `DELETE /api/push/abos` `{ endpoint }`; `GET /api/push/abos/status?endpoint=` → `{ registriert }` (nur eigene Abos).
-- `GET /api/me/benachrichtigungen` → alle Arten mit `bereich`, wirksamem `aktiv`/`minuten` und `minutenOptionen`;
+- `GET /api/me/benachrichtigungen` → alle Arten mit `bereich`, wirksamem `aktiv`/`minuten`, `abschaltbar` und `minutenOptionen`;
   `PUT /api/me/benachrichtigungen` `{ art, aktiv, minuten? }`.
 - `POST /api/push/test` → `{ geraete, ok, fehler }`: Testnachricht an die eigenen Geräte (ohne Dedupe und ohne
   Einstellungsfilter).

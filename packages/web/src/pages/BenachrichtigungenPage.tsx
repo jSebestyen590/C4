@@ -154,8 +154,13 @@ function Einstellungen() {
                   <Switch
                     size="md"
                     label={texte?.titel ?? e.art}
-                    description={texte?.beschreibung}
+                    description={
+                      e.abschaltbar
+                        ? texte?.beschreibung
+                        : `${texte?.beschreibung ?? ''} Immer aktiv.`.trim()
+                    }
                     checked={e.aktiv}
+                    disabled={!e.abschaltbar}
                     onChange={(ev) =>
                       speichern.mutate({
                         art: e.art,
