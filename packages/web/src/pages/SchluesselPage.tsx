@@ -16,19 +16,22 @@ import {
 import { IconPlus } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { datumAnzeigen, datumBerlin, type SchluesselDto } from '@c4/shared';
+import { datumAnzeigen, datumBerlin, zeitBerlin, type SchluesselDto } from '@c4/shared';
 import { useAuth } from '../auth';
 import { useEigeneSub } from '../organisator';
 import { SchluesselAktionen } from '../SchluesselAktionen';
 import { SchluesselFormular } from '../SchluesselFormular';
 import { HalterName, istHalter, schluesselLink, useSchluesselListe } from '../schluesselDaten';
 
-/** "bei <Halter> seit <Datum>". */
+/** `30.10.2026 20:15` (Berlin time). */
+const seitAnzeigen = (iso: string) => `${datumAnzeigen(datumBerlin(iso))} ${zeitBerlin(iso)}`;
+
+/** "Seit <Datum> <Uhrzeit> bei <Halter>"; just "Bei <Halter>" without a recorded Übergabe. */
 export function HalterZeile({ schluessel }: Readonly<{ schluessel: SchluesselDto }>) {
   return (
     <Text>
-      Bei <HalterName halter={schluessel.halter} />
-      {schluessel.halterSeit && ` seit ${datumAnzeigen(datumBerlin(schluessel.halterSeit))}`}
+      {schluessel.halterSeit ? `Seit ${seitAnzeigen(schluessel.halterSeit)} bei ` : 'Bei '}
+      <HalterName halter={schluessel.halter} />
     </Text>
   );
 }
@@ -121,7 +124,7 @@ function SchluesselTabelle({
               <Table.Td>
                 <HalterName halter={s.halter} />
               </Table.Td>
-              <Table.Td>{s.halterSeit ? datumAnzeigen(datumBerlin(s.halterSeit)) : '–'}</Table.Td>
+              <Table.Td>{s.halterSeit ? seitAnzeigen(s.halterSeit) : '–'}</Table.Td>
               <Table.Td>
                 <Text lineClamp={2} style={{ whiteSpace: 'pre-line' }}>
                   {s.beschreibung}
