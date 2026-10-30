@@ -48,6 +48,14 @@ describe('effektiveEinstellung', () => {
       effektiveEinstellung(erinnerung, 'mitglied', { aktiv: false, minuten: null }).minuten,
     ).toBe(30);
   });
+
+  it('keeps types that cannot be switched off always active', () => {
+    const uebergabe = art('schluessel.uebergabe');
+    expect(effektiveEinstellung(uebergabe, 'em').aktiv).toBe(true);
+    expect(effektiveEinstellung(uebergabe, 'mitglied', { aktiv: false, minuten: null }).aktiv).toBe(
+      true,
+    );
+  });
 });
 
 describe('registry', () => {
@@ -111,6 +119,12 @@ describe('schemas', () => {
     ).toBe(false);
     expect(einstellungSchema.safeParse({ art: 'unbekannt', aktiv: true }).success).toBe(false);
     expect(einstellungSchema.safeParse({ art: 'kalender.aenderung', aktiv: false }).success).toBe(
+      true,
+    );
+    expect(einstellungSchema.safeParse({ art: 'schluessel.uebergabe', aktiv: false }).success).toBe(
+      false,
+    );
+    expect(einstellungSchema.safeParse({ art: 'schluessel.uebergabe', aktiv: true }).success).toBe(
       true,
     );
   });

@@ -5,6 +5,7 @@ import {
   benachrichtigungsArt,
   BENACHRICHTIGUNGS_ARTEN,
   effektiveEinstellung,
+  istAbschaltbar,
   type EinstellungDto,
   type GespeicherteEinstellung,
   type MitgliedStatus,
@@ -166,6 +167,7 @@ export function createBenachrichtigungen(deps: {
           art: art.key,
           bereich: art.bereich,
           aktiv: e.aktiv,
+          abschaltbar: istAbschaltbar(art),
           minuten: e.minuten,
           minutenOptionen: art.minuten?.optionen ?? null,
         };

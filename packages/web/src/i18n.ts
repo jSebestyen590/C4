@@ -61,6 +61,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'kalender:lesen': 'Kalender ansehen',
   'events:verwalten': 'Events verwalten',
   'kalender:einrichten': 'Kalender einrichten',
+  'schluessel:lesen': 'Schlüssel ansehen und übergeben',
+  'schluessel:verwalten': 'Schlüssel verwalten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -85,6 +87,7 @@ export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {
 export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   kalender: 'Kalender',
   geburtstag: 'Geburtstage',
+  schluessel: 'Schlüssel',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -111,6 +114,10 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       titel: 'Geburtstage von Mitgliedern',
       beschreibung:
         'Eine Nachricht, wenn ein Mitglied Geburtstag hat. Nur für Mitglieder, die ihren Geburtstag im Kalender zeigen.',
+    },
+    'schluessel.uebergabe': {
+      titel: 'Schlüsselübergaben',
+      beschreibung: 'Wenn jemand eine Übergabe eines Schlüssels an dich oder von dir einträgt.',
     },
   };
 

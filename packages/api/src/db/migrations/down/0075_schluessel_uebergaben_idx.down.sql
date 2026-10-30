@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS schluessel_uebergaben_schluessel_idx

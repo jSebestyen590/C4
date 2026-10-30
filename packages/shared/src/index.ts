@@ -10,5 +10,6 @@ export * from './kontakt';
 export * from './posten';
 export * from './roles';
 export * from './schemas';
+export * from './schluessel';
 export * from './status';
 export * from './waren';

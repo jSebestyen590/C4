@@ -30,6 +30,8 @@ import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
 import { PostenPage } from './pages/PostenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
+import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
+import { SchluesselPage } from './pages/SchluesselPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { PushAbfrage } from './PushAbfrage';
 import { StammdatenPage } from './pages/StammdatenPage';
@@ -156,6 +158,26 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="posten:lesen">
                 <RequireUsername>
                   <PostenDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/schluessel"
+            element={
+              <Protected permission="schluessel:lesen">
+                <RequireUsername>
+                  <SchluesselPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/schluessel/:id"
+            element={
+              <Protected permission="schluessel:lesen">
+                <RequireUsername>
+                  <SchluesselDetailPage />
                 </RequireUsername>
               </Protected>
             }

@@ -16,6 +16,7 @@ import { createKalenderStore } from './kalender';
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
+import { createSchluesselStore } from './schluessel';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
 
@@ -46,6 +47,7 @@ export function createProduction() {
     waren: createWarenStore(db),
     inventar: createInventarStore(db),
     kalender,
+    schluessel: createSchluesselStore(db),
     benachrichtigungen,
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),

@@ -39,7 +39,8 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
   stehen die Rechte aus `POSTEN_RECHTE` (`packages/shared/src/roles.ts`: `users:manage`, `posten:bearbeiten`,
-  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`); weitere Rechte trägt man dort ein.
+  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`); weitere Rechte
+  trägt man dort ein.
 - Es gibt keine eigene Vorstandsrolle: Archivierte Posten sehen und reaktivieren alle mit `posten:bearbeiten`.
 
 ## Seiten und API
@@ -71,7 +72,8 @@ Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bez
 Migration `0009_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender
 Vorstandsvorsitz (Vize / Vize / Vize) und Buchhaltung (Finanzer / Finanzerin / Finanzer:in) an. Sie haben
 dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`, dazu `waren:verwalten` und
-`inventar:verwalten` per Migration `0024`, `events:verwalten` und `kalender:einrichten` per Migration `0065`); wer sie besetzt, kann
+`inventar:verwalten` per Migration `0024`, `events:verwalten` und `kalender:einrichten` per Migration `0065`,
+`schluessel:verwalten` per Migration `0076`); wer sie besetzt, kann
 also auch Mitglieder einladen sowie Status und Rollen ändern. Die Ids sind fest
 (`vorstandsvorsitz`, `stellvertretender-vorstandsvorsitz`, `buchhaltung`), die Migration ist idempotent.
 

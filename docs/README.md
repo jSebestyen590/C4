@@ -10,6 +10,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [waren.md](./waren.md)                           | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte            |
 | [inventar.md](./inventar.md)                     | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte              |
 | [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo          |
+| [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung             |
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                          |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)               |
 
