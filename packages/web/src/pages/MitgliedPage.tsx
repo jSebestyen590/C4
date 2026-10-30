@@ -1,6 +1,7 @@
 import { Alert, Anchor, Badge, Group, Loader, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { datumAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
@@ -112,6 +113,14 @@ export function MitgliedPage() {
                 Telefonnummer
               </Text>
               <Text>{m.telefon}</Text>
+            </div>
+          )}
+          {m.geburtsdatum && (
+            <div>
+              <Text size="sm" c="dimmed">
+                Geburtstag
+              </Text>
+              <Text>{datumAnzeigen(m.geburtsdatum)}</Text>
             </div>
           )}
           {m.adresse && (

@@ -7,6 +7,7 @@ import {
   Modal,
   Select,
   Stack,
+  Switch,
   Text,
   Textarea,
   TextInput,
@@ -19,6 +20,7 @@ import { useBlocker } from 'react-router-dom';
 import {
   ANREDEN,
   PROFILBILD_TYPEN,
+  heuteBerlin,
   mitgliedAktualisierenSchema,
   setUsernameSchema,
   type Anrede,
@@ -26,6 +28,7 @@ import {
   type Mitglied,
 } from '@c4/shared';
 import { ANREDE_LABELS } from '../i18n';
+import { DatumFeld } from '../DatumFeld';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { PostenLinks } from '../PostenAnzeige';
@@ -39,7 +42,14 @@ import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 
 type Fehler = Partial<
   Record<
-    'username' | 'vorname' | 'nachname' | 'adresse' | 'telefon' | 'ueberMich' | 'discordName',
+    | 'username'
+    | 'vorname'
+    | 'nachname'
+    | 'adresse'
+    | 'telefon'
+    | 'ueberMich'
+    | 'discordName'
+    | 'geburtsdatum',
     string
   >
 >;
@@ -70,6 +80,8 @@ export function ProfilFormular({
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
+  const [geburtsdatum, setGeburtsdatum] = useState(mitglied?.geburtsdatum ?? '');
+  const [imKalender, setImKalender] = useState(mitglied?.geburtstagImKalender ?? true);
   const [bildKey, setBildKey] = useState<string | null>(mitglied?.profilbildKey ?? null);
   const [bildUrl, setBildUrl] = useState<string | null>(mitglied?.profilbildUrl ?? null);
   const [bildGrossUrl, setBildGrossUrl] = useState<string | null>(
@@ -127,6 +139,8 @@ export function ProfilFormular({
     telefon,
     ueberMich,
     bildKey,
+    geburtsdatum,
+    imKalender,
   ]);
   const [basis, setBasis] = useState(werte);
   const dirty = werte !== basis;
@@ -184,6 +198,8 @@ export function ProfilFormular({
       telefon,
       ueberMich,
       profilbildKey: bildKey,
+      geburtsdatum: geburtsdatum || null,
+      geburtstagImKalender: imKalender,
     });
     if (!usernameGeprueft.success || !parsed.success) {
       const neu: Fehler = {};
@@ -335,6 +351,23 @@ export function ProfilFormular({
             value={telefon}
             onChange={(e) => setTelefon(e.currentTarget.value)}
             error={fehler.telefon}
+          />
+          <DatumFeld
+            size="md"
+            label="Geburtsdatum (optional)"
+            autoComplete="bday"
+            max={heuteBerlin()}
+            value={geburtsdatum}
+            onWert={setGeburtsdatum}
+            error={fehler.geburtsdatum}
+          />
+          <Switch
+            size="md"
+            label="Geburtstag im Kalender anzeigen"
+            description="Dein Geburtsdatum steht immer in deinem Profil. Eingeschaltet erscheint dein Geburtstag auch im Kalender und andere werden daran erinnert."
+            disabled={!geburtsdatum}
+            checked={imKalender}
+            onChange={(e) => setImKalender(e.currentTarget.checked)}
           />
           <Textarea
             size="md"

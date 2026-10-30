@@ -16,6 +16,9 @@ import {
   icsErzeugen,
   externeEingabeSchema,
   externeZusammenfuehrenSchema,
+  geburtstageZeitraumSchema,
+  geburtstageZwischen,
+  type GeburtstagDto,
   kalenderZeitraumSchema,
   statistikJahrSchema,
   vorlageEingabeSchema,
@@ -110,7 +113,12 @@ import {
 } from './kalenderBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
-import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
+import {
+  geburtstagSichtbar,
+  kanaeleLesen,
+  kanaeleSchreiben,
+  type MitgliederStore,
+} from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
 
@@ -197,6 +205,9 @@ export function createApp(deps: AppDeps) {
     profilbildGrossUrl: row?.profilbildKey
       ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
       : null,
+    // Always visible; `geburtstagImKalender` only controls calendar and notifications.
+    geburtsdatum: row?.geburtsdatum ?? null,
+    geburtstagImKalender: row?.geburtstagImKalender ?? true,
     posten: posten.map((p) => ({
       id: p.id,
       name: p.name,
@@ -624,6 +635,8 @@ export function createApp(deps: AppDeps) {
               telefon: null,
               ueberMich: null,
               profilbildKey: null,
+              geburtsdatum: null,
+              geburtstagImKalender: null,
             },
             status,
           );
@@ -1574,6 +1587,41 @@ export function createApp(deps: AppDeps) {
           if (von > bis) throw new HTTPException(400, { message: 'Ungültiger Zeitraum' });
           return c.json(
             await eventsMitUsernames(await deps.kalender.events(von, bis, c.get('user').sub)),
+          );
+        },
+      )
+      // Birthdays of members who show them in the calendar (see `geburtstagSichtbar`).
+      .get(
+        '/kalender/geburtstage',
+        auth,
+        kalenderLesen,
+        zValidator('query', geburtstageZeitraumSchema),
+        async (c) => {
+          const { von, bis } = c.req.valid('query');
+          const [rows, konten] = await Promise.all([
+            deps.mitglieder.alle(),
+            deps.userAdmin.konten(),
+          ]);
+          const sichtbar = rows.flatMap((r) =>
+            r.geburtsdatum !== null && geburtstagSichtbar(r)
+              ? [{ ...r, geburtsdatum: r.geburtsdatum }]
+              : [],
+          );
+          return c.json(
+            geburtstageZwischen(sichtbar, von, bis).map(
+              ({ datum, alter, person }): GeburtstagDto => ({
+                datum,
+                alter,
+                mitglied: {
+                  sub: person.sub,
+                  username: konten.get(person.sub)?.username ?? null,
+                  vorname: person.vorname,
+                  nachname: person.nachname,
+                  status: person.status,
+                  anrede: person.anrede ?? 'neutral',
+                },
+              }),
+            ),
           );
         },
       )

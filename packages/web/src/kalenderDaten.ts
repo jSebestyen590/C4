@@ -7,6 +7,7 @@ import {
   type EventDto,
   type EventKategorieDto,
   type ExterneDto,
+  type GeburtstagDto,
   type SerieListeDto,
   type StatistikDto,
   type VorlageDto,
@@ -26,6 +27,18 @@ export function useKalenderEvents(von: string, bis: string) {
     queryKey: [KALENDER_KEY, 'events', von, bis],
     queryFn: async () =>
       (await unwrap(await api.kalender.events.$get({ query: { von, bis } }))) as EventDto[],
+  });
+}
+
+/** Birthdays of members within `von`..`bis` (`YYYY-MM-DD`, inclusive; at most 400 days). */
+export function useGeburtstage(von: string, bis: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [KALENDER_KEY, 'geburtstage', von, bis],
+    queryFn: async () =>
+      (await unwrap(
+        await api.kalender.geburtstage.$get({ query: { von, bis } }),
+      )) as GeburtstagDto[],
   });
 }
 

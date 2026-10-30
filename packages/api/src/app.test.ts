@@ -801,7 +801,75 @@ describe('api', () => {
         telefon: null,
         ueberMich: 'Hallo',
         profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: true,
       });
+    });
+
+    it('saves and returns the birthday fields and validates the date', async () => {
+      const { app, mitglieder } = makeApp();
+      const put = (body: unknown) =>
+        app.request('/api/me/mitglied', json('reader-token', 'PUT', body));
+      expect((await put({ ...gueltig, geburtsdatum: '1990-02-30' })).status).toBe(400);
+      expect((await put({ ...gueltig, geburtsdatum: '1899-12-31' })).status).toBe(400);
+      expect((await put({ ...gueltig, geburtsdatum: '2999-01-01' })).status).toBe(400);
+      expect((await put({ ...gueltig, geburtsdatum: '17.05.1990' })).status).toBe(400);
+      const res = await put({
+        ...gueltig,
+        geburtsdatum: '1990-05-17',
+        geburtstagImKalender: false,
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        geburtsdatum: '1990-05-17',
+        geburtstagImKalender: false,
+      });
+      expect(mitglieder.speichern).toHaveBeenCalledWith(
+        'r',
+        expect.objectContaining({ geburtsdatum: '1990-05-17', geburtstagImKalender: false }),
+      );
+      // The own profile always shows the date, even when it is hidden from others.
+      const eigenes = await app.request('/api/me/mitglied', json('reader-token', 'GET'));
+      expect(await eigenes.json()).toMatchObject({ geburtsdatum: '1990-05-17' });
+    });
+
+    it("shows other members' birthday only when they show it in the calendar", async () => {
+      const { app, mitglieder } = makeApp();
+      const basis = {
+        vorname: 'V',
+        nachname: 'N',
+        anrede: null,
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+      };
+      await mitglieder.speichern('m1', {
+        ...basis,
+        geburtsdatum: '1990-05-17',
+        geburtstagImKalender: null,
+      });
+      await mitglieder.speichern('m3', {
+        ...basis,
+        geburtsdatum: '1991-06-18',
+        geburtstagImKalender: false,
+      });
+      await mitglieder.speichern('r', {
+        ...basis,
+        geburtsdatum: '1992-07-19',
+        geburtstagImKalender: false,
+      });
+      const liste = (await (
+        await app.request('/api/mitglieder', json('reader-token', 'GET'))
+      ).json()) as { sub: string; geburtsdatum: string | null; geburtstagImKalender: boolean }[];
+      const nach = (sub: string) => liste.find((m) => m.sub === sub);
+      expect(nach('m1')).toMatchObject({ geburtsdatum: '1990-05-17', geburtstagImKalender: true });
+      expect(nach('m3')).toMatchObject({ geburtsdatum: '1991-06-18', geburtstagImKalender: false });
+      expect(nach('r')).toMatchObject({ geburtsdatum: '1992-07-19' });
+      const einzeln = await app.request('/api/mitglieder/m3', json('reader-token', 'GET'));
+      expect(await einzeln.json()).toMatchObject({ geburtsdatum: '1991-06-18' });
     });
 
     it("only saves to the caller's own row and rejects foreign picture keys", async () => {
@@ -1044,6 +1112,8 @@ describe('posten', () => {
       telefon: null,
       ueberMich: null,
       profilbildKey: null,
+      geburtsdatum: null,
+      geburtstagImKalender: null,
     });
     expect((await post()).status).toBe(201);
     const bad = { mitgliedSub: 'm1', start: '2026-02-01', ende: '2026-01-01' };
@@ -1090,6 +1160,8 @@ describe('posten', () => {
         telefon: null,
         ueberMich: null,
         profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
       });
     }
     userAdmin.konten.mockResolvedValue(new Map());
@@ -1125,6 +1197,8 @@ describe('posten', () => {
       telefon: null,
       ueberMich: null,
       profilbildKey: null,
+      geburtsdatum: null,
+      geburtstagImKalender: null,
     };
     await mitglieder.speichern('m1', leer);
     await mitglieder.speichern('m2', leer);
@@ -1159,6 +1233,8 @@ describe('posten', () => {
       telefon: null,
       ueberMich: null,
       profilbildKey: null,
+      geburtsdatum: null,
+      geburtstagImKalender: null,
     });
     const res = await app.request('/api/posten', json('vorstand-token', 'POST', { name: 'Kasse' }));
     const { id } = (await res.json()) as { id: string };
@@ -3358,7 +3434,35 @@ describe('kalender', () => {
         'kalender.fehlende_dienste',
         'kalender.aenderung',
         'kalender.teilnahme_erinnerung',
+        'geburtstag.erinnerung',
       ]);
+      expect(anfang[4]).toMatchObject({
+        aktiv: true,
+        minuten: 0,
+        minutenOptionen: [0, 1440, 2880, 4320, 7200, 10080],
+      });
+      // 0 (on the day) is a valid, storable lead time.
+      expect(
+        (
+          await t.app.request(
+            '/api/me/benachrichtigungen',
+            json('member-token', 'PUT', {
+              art: 'geburtstag.erinnerung',
+              aktiv: true,
+              minuten: 1440,
+            }),
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await t.app.request(
+            '/api/me/benachrichtigungen',
+            json('member-token', 'PUT', { art: 'geburtstag.erinnerung', aktiv: true, minuten: 0 }),
+          )
+        ).status,
+      ).toBe(200);
+      expect((await lesen())[4]).toMatchObject({ aktiv: true, minuten: 0 });
       expect(anfang[0]).toMatchObject({
         aktiv: true,
         minuten: 30,
@@ -3519,5 +3623,91 @@ describe('kalender', () => {
       expect(t.gesendet[0]).toMatchObject({ titel: 'Event verschoben' });
       expect(t.gesendet[0]!.text).toContain('um 20:00 Uhr');
     });
+  });
+});
+
+describe('kalender: Geburtstage', () => {
+  const get = (app: ReturnType<typeof makeApp>['app'], query: string, token = 'reader-token') =>
+    app.request(`/api/kalender/geburtstage${query}`, { headers: bearer(token) });
+  const profil = (extra: Partial<MitgliedDaten>): MitgliedDaten => ({
+    vorname: 'Eva',
+    nachname: 'Muster',
+    anrede: 'weiblich',
+    kontaktkanaele: null,
+    discordName: null,
+    adresse: null,
+    telefon: null,
+    ueberMich: null,
+    profilbildKey: null,
+    geburtsdatum: null,
+    geburtstagImKalender: null,
+    ...extra,
+  });
+
+  it('requires authentication', async () => {
+    expect((await makeApp().app.request('/api/kalender/geburtstage')).status).toBe(401);
+  });
+
+  it('lists visible birthdays in the range with age and username', async () => {
+    const t = makeApp();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map([['m1', { sub: 'm1', username: 'eva' } as Konto]]),
+    );
+    await t.mitglieder.speichern('m1', profil({ geburtsdatum: '1990-06-20' }));
+    await t.mitglieder.speichern(
+      'm3',
+      profil({ vorname: 'Max', geburtsdatum: '1985-06-10', geburtstagImKalender: true }),
+    );
+    await t.mitglieder.speichern(
+      'm4',
+      profil({ vorname: 'Hidden', geburtsdatum: '1985-06-12', geburtstagImKalender: false }),
+    );
+    await t.mitglieder.speichern('m5', profil({ vorname: 'Ohne' }));
+    const res = await get(t.app, '?von=2026-06-01&bis=2026-06-30');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      {
+        datum: '2026-06-10',
+        alter: 41,
+        mitglied: {
+          sub: 'm3',
+          username: null,
+          vorname: 'Max',
+          nachname: 'Muster',
+          status: 'anwaerter',
+          anrede: 'weiblich',
+        },
+      },
+      {
+        datum: '2026-06-20',
+        alter: 36,
+        mitglied: {
+          sub: 'm1',
+          username: 'eva',
+          vorname: 'Eva',
+          nachname: 'Muster',
+          status: 'anwaerter',
+          anrede: 'weiblich',
+        },
+      },
+    ]);
+  });
+
+  it('includes the own hidden birthday never: hidden from the calendar even though the profile shows it', async () => {
+    const t = makeApp();
+    await t.mitglieder.speichern(
+      'r',
+      profil({ geburtsdatum: '1990-06-20', geburtstagImKalender: false }),
+    );
+    expect(await (await get(t.app, '?von=2026-06-01&bis=2026-06-30')).json()).toEqual([]);
+  });
+
+  it('validates the range', async () => {
+    const { app } = makeApp();
+    expect((await get(app, '')).status).toBe(400);
+    expect((await get(app, '?von=2026-06-01&bis=2026-06-31')).status).toBe(400);
+    expect((await get(app, '?von=2026-06-10&bis=2026-06-01')).status).toBe(400);
+    expect((await get(app, '?von=2026-01-01&bis=2027-02-05')).status).toBe(200);
+    expect((await get(app, '?von=2026-01-01&bis=2027-02-06')).status).toBe(400);
   });
 });

@@ -59,6 +59,10 @@ export const mitglieder = pgTable('mitglieder', {
   telefon: text('telefon'),
   ueberMich: text('ueber_mich'),
   profilbildKey: text('profilbild_key'),
+  /** Date of birth; optional. */
+  geburtsdatum: date('geburtsdatum', { mode: 'string' }),
+  /** Whether other members see the birthday; null (never chosen) counts as true. */
+  geburtstagImKalender: boolean('geburtstag_im_kalender'),
   status: text('status').$type<MitgliedStatus>().notNull().default('anwaerter'),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });

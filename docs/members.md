@@ -9,15 +9,24 @@ Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`00
 pro Migration nur ein DDL-Statement und kein `ALTER ... SET NOT NULL`. Fremdschlüssel sind erlaubt. Später
 hinzugefügte Spalten sind deshalb nullable.
 
-| Spalte                             | Hinweise                                                                   |
-| ---------------------------------- | -------------------------------------------------------------------------- |
-| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen). |
-| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.           |
-| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                 |
-| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                       |
-| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).               |
-| `discord_name`                     | Discord-Username, nur zur Anzeige.                                         |
-| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                  |
+| Spalte                             | Hinweise                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).        |
+| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.                  |
+| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                        |
+| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                              |
+| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                      |
+| `discord_name`                     | Discord-Username, nur zur Anzeige.                                                |
+| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                         |
+| `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900.  |
+| `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung. |
+
+**Geburtstag:** Im Profil (`/profil`, `DatumFeld` + Schalter „Geburtstag im Kalender anzeigen“, ohne Datum
+deaktiviert) pflegbar. `PUT /api/me/mitglied` muss immer beide Felder senden, sonst werden sie zurückgesetzt. Andere
+Mitglieder bekommen `geburtsdatum` immer (Profil und Detailseite zeigen „Geburtstag“, sobald gesetzt);
+`geburtstag_im_kalender` steuert nur Kalender und Erinnerung. Drei Stufen: kein Datum / nur im Profil / Profil, Kalender
+und Erinnerung. Kalender und Erinnerung:
+`docs/kalender.md`, `docs/benachrichtigungen.md`.
 
 **Username** (Cognito `preferred_username`) und **E-Mail** kommen aus Cognito und werden nicht
 gespeichert. Die Mitgliederliste ist die Vereinigung aller Profilzeilen und aller aktivierten
