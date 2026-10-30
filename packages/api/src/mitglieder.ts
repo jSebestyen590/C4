@@ -17,6 +17,10 @@ export const kanaeleSchreiben = (kanaele: readonly Kontaktkanal[]): string | nul
   return wert === '' ? null : wert;
 };
 
+/** Whether other members may see the birthday: only an explicit "no" hides it. */
+export const geburtstagSichtbar = (row: Pick<MitgliedRow, 'geburtstagImKalender'> | undefined) =>
+  row?.geburtstagImKalender !== false;
+
 export interface MitgliederStore {
   holen(sub: string): Promise<MitgliedRow | undefined>;
   alle(): Promise<MitgliedRow[]>;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { POSTEN_RECHTE, roleSchema } from './roles';
 import { ANREDEN } from './anrede';
+import { heuteBerlin } from './datum';
 import { KONTAKTKANAELE } from './kontakt';
 import { MITGLIED_STATI } from './status';
 
@@ -104,6 +105,15 @@ export const mitgliedAktualisierenSchema = z.object({
   ueberMich: optionalerText(2000),
   /** Object key returned by POST /api/me/profilbild; null removes the picture. */
   profilbildKey: z.string().max(300).nullable().default(null),
+  /** Date of birth `YYYY-MM-DD`; optional, not in the future, not before 1900. */
+  geburtsdatum: z.iso
+    .date({ error: 'Bitte gib ein gültiges Datum an.' })
+    .refine((d) => d >= '1900-01-01', 'Das Geburtsdatum darf nicht vor 1900 liegen.')
+    .refine((d) => d <= heuteBerlin(), 'Das Geburtsdatum darf nicht in der Zukunft liegen.')
+    .nullable()
+    .default(null),
+  /** Whether other members see the birthday in the calendar (and get notified about it). */
+  geburtstagImKalender: z.boolean().default(true),
 });
 export type MitgliedAktualisieren = z.input<typeof mitgliedAktualisierenSchema>;
 
@@ -138,6 +148,10 @@ export const mitgliedSchema = z.object({
   profilbildUrl: z.string().nullable(),
   /** Short-lived presigned URL of the large picture (up to 512 px), shown when opened. */
   profilbildGrossUrl: z.string().nullable(),
+  /** `YYYY-MM-DD`. Other members only get it when the member shows the birthday in the calendar. */
+  geburtsdatum: z.string().nullable(),
+  /** Whether the birthday is shown in the calendar to other members. */
+  geburtstagImKalender: z.boolean(),
   /** Roles of the member; only sent to administrators. */
   rollen: z.array(z.string()).optional(),
   /** Posten the member currently holds (not archived, started, not ended). */

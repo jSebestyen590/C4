@@ -1,6 +1,7 @@
 export * from './anrede';
 export * from './benachrichtigungen';
 export * from './datum';
+export * from './geburtstag';
 export * from './ifco';
 export * from './inventar';
 export * from './inventarZeitraum';

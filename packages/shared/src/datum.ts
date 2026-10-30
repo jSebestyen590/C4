@@ -11,6 +11,13 @@ export function tagVorher(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The date `tage` days after an ISO date (`YYYY-MM-DD`); negative values go back. */
+export function tagNachher(iso: string, tage: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + tage);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Shifts an ISO date by whole months; the day is clamped to the target month's length. */
 function monateVerschieben(iso: string, monate: number): string {
   const [jahr, monat, tag] = iso.split('-').map(Number) as [number, number, number];

@@ -14,6 +14,7 @@ import {
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
+import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
@@ -33,11 +34,14 @@ export function createProduction() {
   // Features register their job tasks here (see docs/benachrichtigungen.md).
   registriereKalenderAufgaben(benachrichtigungen, kalender);
   registriereKalenderSerien(benachrichtigungen, kalender);
+  const userAdmin = createCognitoUserAdmin(config.userPoolId, config.region);
+  const mitglieder = createMitgliederStore(db);
+  registriereGeburtstagAufgaben(benachrichtigungen, mitglieder, userAdmin);
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
-    userAdmin: createCognitoUserAdmin(config.userPoolId, config.region),
+    userAdmin,
     emailAenderung: createCognitoEmailAenderung(config.region),
-    mitglieder: createMitgliederStore(db),
+    mitglieder,
     posten: createPostenStore(db),
     waren: createWarenStore(db),
     inventar: createInventarStore(db),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { datumAnzeigen, heuteBerlin, rechteZeitraum, tagVorher } from './datum';
+import { datumAnzeigen, heuteBerlin, rechteZeitraum, tagNachher, tagVorher } from './datum';
 
 describe('datumAnzeigen', () => {
   it('formats as dd.MM.yyyy with leading zeros', () => {
@@ -13,6 +13,14 @@ describe('tagVorher', () => {
     expect(tagVorher('2026-03-01')).toBe('2026-02-28');
     expect(tagVorher('2028-03-01')).toBe('2028-02-29');
     expect(tagVorher('2026-01-01')).toBe('2025-12-31');
+  });
+});
+
+describe('tagNachher', () => {
+  it('adds days across month and year boundaries', () => {
+    expect(tagNachher('2026-12-30', 3)).toBe('2027-01-02');
+    expect(tagNachher('2028-02-28', 1)).toBe('2028-02-29');
+    expect(tagNachher('2026-03-01', -1)).toBe('2026-02-28');
   });
 });
 

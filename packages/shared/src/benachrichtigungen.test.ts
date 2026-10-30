@@ -61,6 +61,32 @@ describe('registry', () => {
   });
 });
 
+describe('zero minutes (birthday on the day)', () => {
+  const geburtstag = art('geburtstag.erinnerung');
+  it('keeps a stored 0 instead of falling back to the default', () => {
+    expect(
+      effektiveEinstellung(geburtstag, 'mitglied', { aktiv: true, minuten: 1440 }).minuten,
+    ).toBe(1440);
+    expect(effektiveEinstellung(geburtstag, 'mitglied', { aktiv: true, minuten: 0 }).minuten).toBe(
+      0,
+    );
+    expect(effektiveEinstellung(geburtstag, 'mitglied', null)).toEqual({ aktiv: true, minuten: 0 });
+  });
+  it('accepts 0 in the settings schema only where it is an option', () => {
+    expect(
+      einstellungSchema.safeParse({ art: 'geburtstag.erinnerung', aktiv: true, minuten: 0 })
+        .success,
+    ).toBe(true);
+    expect(
+      einstellungSchema.safeParse({ art: 'kalender.erinnerung', aktiv: true, minuten: 0 }).success,
+    ).toBe(false);
+    expect(
+      einstellungSchema.safeParse({ art: 'geburtstag.erinnerung', aktiv: true, minuten: -1 })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe('schemas', () => {
   it('accepts a browser subscription', () => {
     const ok = pushAboSchema.safeParse({

@@ -16,6 +16,9 @@ import {
   icsErzeugen,
   externeEingabeSchema,
   externeZusammenfuehrenSchema,
+  geburtstageZeitraumSchema,
+  geburtstageZwischen,
+  type GeburtstagDto,
   kalenderZeitraumSchema,
   statistikJahrSchema,
   vorlageEingabeSchema,
@@ -110,7 +113,12 @@ import {
 } from './kalenderBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
-import { kanaeleLesen, kanaeleSchreiben, type MitgliederStore } from './mitglieder';
+import {
+  geburtstagSichtbar,
+  kanaeleLesen,
+  kanaeleSchreiben,
+  type MitgliederStore,
+} from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
 import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
 
@@ -176,6 +184,7 @@ export function createApp(deps: AppDeps) {
     konto: Konto | undefined,
     rollen?: string[],
     posten: AktuellerPosten[] = [],
+    eigenes = true,
   ): Promise<Mitglied> => ({
     sub,
     vorname: row?.vorname ?? '',
@@ -197,6 +206,9 @@ export function createApp(deps: AppDeps) {
     profilbildGrossUrl: row?.profilbildKey
       ? await deps.profilbilder.anzeigeUrl(row.profilbildKey)
       : null,
+    // Others only see the birthday when the member shows it in the calendar.
+    geburtsdatum: eigenes || geburtstagSichtbar(row) ? (row?.geburtsdatum ?? null) : null,
+    geburtstagImKalender: row?.geburtstagImKalender ?? true,
     posten: posten.map((p) => ({
       id: p.id,
       name: p.name,
@@ -436,7 +448,7 @@ export function createApp(deps: AppDeps) {
   };
 
   /** All members: every profile row plus every enabled account that has no profile yet. */
-  const alleMitglieder = async (mitRollen: boolean): Promise<Mitglied[]> => {
+  const alleMitglieder = async (mitRollen: boolean, betrachter: string): Promise<Mitglied[]> => {
     const [rows, konten, rollen, posten] = await Promise.all([
       deps.mitglieder.alle(),
       deps.userAdmin.konten(),
@@ -456,6 +468,7 @@ export function createApp(deps: AppDeps) {
           konten.get(s),
           rollen && (rollen.get(s) ?? []),
           posten.get(s),
+          s === betrachter,
         ),
       ),
     );
@@ -582,12 +595,17 @@ export function createApp(deps: AppDeps) {
           c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
       )
       .get('/mitglieder', auth, mitgliederLesen, async (c) =>
-        c.json(await alleMitglieder(c.get('permissions').includes('users:manage'))),
+        c.json(
+          await alleMitglieder(c.get('permissions').includes('users:manage'), c.get('user').sub),
+        ),
       )
       // `kennung` is the username; members that have none yet are addressed by their sub.
       .get('/mitglieder/:kennung', auth, mitgliederLesen, async (c) => {
         const kennung = c.req.param('kennung');
-        const liste = await alleMitglieder(c.get('permissions').includes('users:manage'));
+        const liste = await alleMitglieder(
+          c.get('permissions').includes('users:manage'),
+          c.get('user').sub,
+        );
         const mitglied =
           liste.find((m) => m.sub === kennung) ??
           liste.find((m) => m.username?.toLowerCase() === kennung.toLowerCase());
@@ -624,6 +642,8 @@ export function createApp(deps: AppDeps) {
               telefon: null,
               ueberMich: null,
               profilbildKey: null,
+              geburtsdatum: null,
+              geburtstagImKalender: null,
             },
             status,
           );
@@ -1574,6 +1594,41 @@ export function createApp(deps: AppDeps) {
           if (von > bis) throw new HTTPException(400, { message: 'Ungültiger Zeitraum' });
           return c.json(
             await eventsMitUsernames(await deps.kalender.events(von, bis, c.get('user').sub)),
+          );
+        },
+      )
+      // Birthdays of members who show them in the calendar (see `geburtstagSichtbar`).
+      .get(
+        '/kalender/geburtstage',
+        auth,
+        kalenderLesen,
+        zValidator('query', geburtstageZeitraumSchema),
+        async (c) => {
+          const { von, bis } = c.req.valid('query');
+          const [rows, konten] = await Promise.all([
+            deps.mitglieder.alle(),
+            deps.userAdmin.konten(),
+          ]);
+          const sichtbar = rows.flatMap((r) =>
+            r.geburtsdatum !== null && geburtstagSichtbar(r)
+              ? [{ ...r, geburtsdatum: r.geburtsdatum }]
+              : [],
+          );
+          return c.json(
+            geburtstageZwischen(sichtbar, von, bis).map(
+              ({ datum, alter, person }): GeburtstagDto => ({
+                datum,
+                alter,
+                mitglied: {
+                  sub: person.sub,
+                  username: konten.get(person.sub)?.username ?? null,
+                  vorname: person.vorname,
+                  nachname: person.nachname,
+                  status: person.status,
+                  anrede: person.anrede ?? 'neutral',
+                },
+              }),
+            ),
           );
         },
       )

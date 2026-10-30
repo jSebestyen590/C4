@@ -41,6 +41,13 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     standardAktiv: true,
     minuten: { standard: 60, optionen: [15, 30, 60, 120, 1440] },
   },
+  {
+    key: 'geburtstag.erinnerung',
+    bereich: 'geburtstag',
+    standardAktiv: true,
+    // Lead time in whole days, stored as minutes; 0 = on the day itself.
+    minuten: { standard: 0, optionen: [0, 1440, 2880, 4320, 7200, 10080] },
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];
@@ -113,7 +120,7 @@ export const einstellungSchema = z
   .object({
     art: z.enum(BENACHRICHTIGUNGS_ART_KEYS, 'Unbekannte Benachrichtigung.'),
     aktiv: z.boolean(),
-    minuten: z.number().int().positive().optional(),
+    minuten: z.number().int().nonnegative().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.minuten === undefined) return;
