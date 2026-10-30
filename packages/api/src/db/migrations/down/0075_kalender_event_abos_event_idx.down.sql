@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS kalender_event_abos_event_idx

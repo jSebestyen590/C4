@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS dienste_schicht_mitglied_idx

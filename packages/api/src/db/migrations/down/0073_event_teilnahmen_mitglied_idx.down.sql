@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS event_teilnahmen_mitglied_idx
