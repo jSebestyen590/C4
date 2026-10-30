@@ -56,10 +56,10 @@ Migrationen `0073`–`0076`, Code in `packages/api/src/schluessel.ts`, Schemas i
 
 ## Seiten und API
 
-| Seite             | Zweck                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `/schluessel`     | Karten: „Deine Schlüssel“ oben, dann alle anderen mit Halter und Aktionen; Verwaltung: Anlegen, Archiv |
-| `/schluessel/:id` | Halter, Aktionen, Verlauf der letzten 10 Übergaben; Verwaltung: Bearbeiten, Archivieren                |
+| Seite             | Zweck                                                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/schluessel`     | Handy: Karten; ab `sm` Tabelle (Name, bei, seit, Beschreibung, Aktionen; ganze Zeile klickbar). „Deine Schlüssel“ oben, dann alle anderen; Verwaltung: Anlegen, Archiv |
+| `/schluessel/:id` | „Zurück zur Liste“, Halter, Aktionen, Verlauf der letzten 10 Übergaben; Verwaltung: Bearbeiten, Archivieren                                                            |
 
 Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verwaltung über „Übergabe eintragen“ ein.
 

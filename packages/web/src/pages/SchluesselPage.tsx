@@ -9,12 +9,13 @@ import {
   SimpleGrid,
   Stack,
   Switch,
+  Table,
   Text,
   Title,
 } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { datumAnzeigen, datumBerlin, type SchluesselDto } from '@c4/shared';
 import { useAuth } from '../auth';
 import { useEigeneSub } from '../organisator';
@@ -68,6 +69,75 @@ function SchluesselKarte({
   );
 }
 
+/** Table from `sm` upward (like Mitglieder and Posten); the whole row opens the key. */
+function SchluesselTabelle({
+  schluessel,
+  personenVorschlaege,
+}: Readonly<{ schluessel: SchluesselDto[]; personenVorschlaege: string[] }>) {
+  const navigate = useNavigate();
+  return (
+    <Table.ScrollContainer minWidth={760} visibleFrom="sm">
+      <Table verticalSpacing="xs">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Schlüssel</Table.Th>
+            <Table.Th>Bei</Table.Th>
+            <Table.Th>Seit</Table.Th>
+            <Table.Th>Beschreibung</Table.Th>
+            <Table.Th />
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {schluessel.map((s) => (
+            <Table.Tr
+              key={s.id}
+              opacity={s.archiviert ? 0.6 : 1}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                // Links and buttons act on their own; dialogs render in a portal outside the row.
+                const ziel = e.target as HTMLElement;
+                if (!e.currentTarget.contains(ziel) || ziel.closest('a, button')) return;
+                navigate(schluesselLink(s.id));
+              }}
+            >
+              <Table.Td>
+                <Group gap="xs" wrap="nowrap">
+                  {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+                  <Link
+                    to={schluesselLink(s.id)}
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                  >
+                    <Text component="span" fw={600} style={{ overflowWrap: 'anywhere' }}>
+                      {s.name}
+                    </Text>
+                  </Link>
+                  {s.archiviert && (
+                    <Badge color="gray" variant="light">
+                      Archiviert
+                    </Badge>
+                  )}
+                </Group>
+              </Table.Td>
+              <Table.Td>
+                <HalterName halter={s.halter} />
+              </Table.Td>
+              <Table.Td>{s.halterSeit ? datumAnzeigen(datumBerlin(s.halterSeit)) : '–'}</Table.Td>
+              <Table.Td>
+                <Text lineClamp={2} style={{ whiteSpace: 'pre-line' }}>
+                  {s.beschreibung}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <SchluesselAktionen schluessel={s} personenVorschlaege={personenVorschlaege} />
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
 /** Names of persons without the app that held a key, as suggestions for the next Übergabe. */
 export const personenNamen = (liste: SchluesselDto[]) =>
   [...new Set(liste.flatMap((s) => (s.halter?.art === 'person' ? [s.halter.name] : [])))].sort(
@@ -86,12 +156,16 @@ export function SchluesselPage() {
   const eigene = daten.filter((s) => istHalter(s.halter, eigeneSub));
   const andere = daten.filter((s) => !istHalter(s.halter, eigeneSub));
   const vorschlaege = useMemo(() => personenNamen(daten), [daten]);
+  // Cards on phones, a table from `sm` upward.
   const karten = (schluessel: SchluesselDto[]) => (
-    <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-      {schluessel.map((s) => (
-        <SchluesselKarte key={s.id} schluessel={s} personenVorschlaege={vorschlaege} />
-      ))}
-    </SimpleGrid>
+    <>
+      <SimpleGrid cols={1} hiddenFrom="sm">
+        {schluessel.map((s) => (
+          <SchluesselKarte key={s.id} schluessel={s} personenVorschlaege={vorschlaege} />
+        ))}
+      </SimpleGrid>
+      <SchluesselTabelle schluessel={schluessel} personenVorschlaege={vorschlaege} />
+    </>
   );
 
   return (

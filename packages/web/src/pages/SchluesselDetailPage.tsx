@@ -1,8 +1,19 @@
-import { Alert, Badge, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { IconArchive, IconArchiveOff, IconArrowRight, IconPencil } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { SCHLUESSEL_VERLAUF_MAX, zeitpunktAnzeigen, type UebergabeDto } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -51,9 +62,19 @@ export function SchluesselDetailPage() {
   const schluessel = useSchluessel(id);
   const [dialog, setDialog] = useState<'bearbeiten' | 'archiv' | null>(null);
 
+  const zurueck = (
+    <Anchor component={Link} to="/schluessel" size="sm">
+      ← Zurück zur Liste
+    </Anchor>
+  );
   if (schluessel.isPending) return <Loader m="md" aria-label="Schlüssel wird geladen" />;
   if (schluessel.isError) {
-    return <Alert color="red">Der Schlüssel konnte nicht geladen werden.</Alert>;
+    return (
+      <Stack maw={720}>
+        {zurueck}
+        <Alert color="red">Der Schlüssel konnte nicht geladen werden.</Alert>
+      </Stack>
+    );
   }
   const s = schluessel.data;
   const vorschlaege = personenNamen([
@@ -63,6 +84,7 @@ export function SchluesselDetailPage() {
 
   return (
     <Stack maw={720}>
+      {zurueck}
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <Title order={2} style={{ overflowWrap: 'anywhere' }}>
           {s.name}
