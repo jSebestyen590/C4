@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Anrede } from './anrede';
 import { beschreibung, eindeutig } from './bausteine';
 import { datumAnzeigen, heuteBerlin, tagNachher } from './datum';
-import { bedarfEingabeSchema } from './kalender';
+import { bedarfEingabeSchema, eventSpanne, type EventDauer } from './kalender';
 import { datumSchema } from './schemas';
 import { MITGLIED_STATI, type MitgliedStatus } from './status';
 
@@ -72,11 +72,18 @@ const uhrzeitSchema = z
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
 
 /** A date to pick in a scheduling poll; the times only when they are set per date. */
-export const optionTerminSchema = z.object({
-  datum: datumSchema,
-  beginn: uhrzeitSchema.nullable(),
-  ende: uhrzeitSchema.nullable(),
-});
+export const optionTerminSchema = z
+  .object({
+    datum: datumSchema,
+    /** Last day for multi-day and whole-day Kategorien; null for one-day ones and Vorlagen. */
+    bis: datumSchema.nullish().transform((v) => v ?? null),
+    beginn: uhrzeitSchema.nullable(),
+    ende: uhrzeitSchema.nullable(),
+  })
+  .refine((t) => t.bis === null || t.bis >= t.datum, {
+    message: 'Das Ende liegt vor dem Beginn.',
+    path: ['bis'],
+  });
 export type OptionTermin = z.infer<typeof optionTerminSchema>;
 
 const optionSchema = z
@@ -93,39 +100,157 @@ const optionSchema = z
   });
 
 /**
- * Scheduling poll: the answers are dates, and the creator turns one of them into an event of
- * `kategorieId`. Times are the same for all dates unless `jeTermin`. Dienste Kategorien need a
- * `bedarf`: one Betrieb Schicht with that Dienstform, everybody who agreed is entered there.
+ * Scheduling poll: the answers are dates, and the creator turns one of them into an event, either
+ * from a Vorlage (times, Schichten and Bedarf from there; the answers are start dates) or of
+ * `kategorieId`. Times are the same for all dates unless `jeTermin`; whole-day Kategorien have none.
+ * Dienste Kategorien without a Vorlage need a `bedarf`: one Betrieb Schicht with that Dienstform.
+ * What depends on the Kategorie is checked by `terminDauerFehler`.
  */
-export const umfrageTerminSchema = z
-  .object({
-    kategorieId: z.string('Bitte wähle eine Kategorie.').min(1, 'Bitte wähle eine Kategorie.'),
-    jeTermin: z.boolean(),
-    beginn: uhrzeitSchema.nullable(),
-    ende: uhrzeitSchema.nullable(),
-    bedarf: bedarfEingabeSchema.nullable(),
-  })
-  .superRefine((t, ctx) => {
-    if (!t.jeTermin && (t.beginn === null || t.ende === null)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: [t.beginn === null ? 'beginn' : 'ende'],
-        message: 'Bitte gib Beginn und Ende an.',
-      });
-    }
-  });
+export const umfrageTerminSchema = z.object({
+  kategorieId: z.string('Bitte wähle eine Kategorie.').min(1, 'Bitte wähle eine Kategorie.'),
+  vorlageId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+  jeTermin: z.boolean(),
+  beginn: uhrzeitSchema.nullable(),
+  ende: uhrzeitSchema.nullable(),
+  bedarf: bedarfEingabeSchema.nullable(),
+});
 export type UmfrageTermin = z.infer<typeof umfrageTerminSchema>;
+
+/**
+ * Drops what the Kategorie (or Vorlage) decides itself: with a Vorlage times, end dates and Bedarf
+ * come from it; whole days have no times; one-day Kategorien no end dates.
+ */
+export function terminNormalisieren<O extends { termin: OptionTermin | null }>(
+  termin: UmfrageTermin,
+  optionen: readonly O[],
+  dauer: EventDauer,
+): { termin: UmfrageTermin; optionen: O[] } {
+  const vorlage = termin.vorlageId !== null;
+  const ohneZeiten = vorlage || dauer === 'ganztaegig';
+  const ohneBis = vorlage || dauer === 'eintaegig';
+  return {
+    termin: {
+      ...termin,
+      jeTermin: ohneZeiten ? false : termin.jeTermin,
+      beginn: ohneZeiten ? null : termin.beginn,
+      ende: ohneZeiten ? null : termin.ende,
+      bedarf: vorlage ? null : termin.bedarf,
+    },
+    optionen: optionen.map((o) =>
+      o.termin
+        ? {
+            ...o,
+            termin: {
+              datum: o.termin.datum,
+              bis: ohneBis ? null : o.termin.bis,
+              beginn: ohneZeiten ? null : o.termin.beginn,
+              ende: ohneZeiten ? null : o.termin.ende,
+            },
+          }
+        : o,
+    ),
+  };
+}
+
+/** German error when the (normalized) dates do not fit the Kategorie's `dauer`, else null. */
+export function terminDauerFehler(
+  termin: UmfrageTermin,
+  optionen: readonly { termin: OptionTermin | null }[],
+  dauer: EventDauer,
+): string | null {
+  if (termin.vorlageId !== null) return null;
+  if (dauer !== 'ganztaegig') {
+    const fehlt = termin.jeTermin
+      ? optionen.some((o) => !o.termin?.beginn || !o.termin.ende)
+      : !termin.beginn || !termin.ende;
+    if (fehlt) {
+      return termin.jeTermin
+        ? 'Bitte gib bei jedem Termin Beginn und Ende an.'
+        : 'Bitte gib Beginn und Ende an.';
+    }
+  }
+  if (dauer !== 'eintaegig' && optionen.some((o) => !o.termin?.bis)) {
+    return 'Bitte gib bei jedem Termin das Ende an.';
+  }
+  return null;
+}
+
+/** Begin and end of the event for a date (without a Vorlage). */
+export function terminSpanne(
+  termin: Pick<UmfrageTermin, 'jeTermin' | 'beginn' | 'ende'>,
+  option: OptionTermin,
+  dauer: EventDauer,
+): { beginn: string; ende: string } {
+  const zeiten = terminZeiten(termin, option);
+  return eventSpanne(dauer, {
+    datum: option.datum,
+    bis: option.bis ?? option.datum,
+    beginnZeit: zeiten.beginn,
+    endeZeit: zeiten.ende,
+  });
+}
+
+/** One place to enter people: a Dienstform with its Bedarf in a Betrieb Schicht. */
+export interface DienstPlatz {
+  schichtId: string;
+  dienstformId: string;
+  minimum: number;
+  wunsch: number;
+}
+
+/** The Bedarf of several Dienstformen (and Schichten) as one: summed Minimum and Wunsch. */
+export const bedarfZusammen = (plaetze: readonly Omit<DienstPlatz, 'schichtId'>[]) => ({
+  minimum: plaetze.reduce((n, p) => n + p.minimum, 0),
+  wunsch: plaetze.reduce((n, p) => n + p.wunsch, 0),
+  dienstformIds: [...new Set(plaetze.map((p) => p.dienstformId))],
+});
+
+/**
+ * Distributes members over the places in order: first up to every Minimum, then up to every
+ * Wunsch, the rest one after the other (more than the Wunsch is always fine).
+ */
+export function dienstVerteilung(
+  plaetze: readonly DienstPlatz[],
+  subs: readonly string[],
+): { sub: string; platz: DienstPlatz }[] {
+  if (plaetze.length === 0) return [];
+  const belegt = plaetze.map(() => 0);
+  const ergebnis: { sub: string; platz: DienstPlatz }[] = [];
+  const naechster = (grenze: (p: DienstPlatz) => number) =>
+    plaetze.findIndex((p, i) => belegt[i]! < grenze(p));
+  for (const sub of subs) {
+    let i = naechster((p) => p.minimum);
+    if (i < 0) i = naechster((p) => p.wunsch);
+    if (i < 0) i = ergebnis.length % plaetze.length;
+    belegt[i]!++;
+    ergebnis.push({ sub, platz: plaetze[i]! });
+  }
+  return ergebnis;
+}
 
 /** Question of a scheduling poll when none is given. */
 export const TERMIN_FRAGE = 'Welche Termine passen dir?';
 
 const wochentagFormat = new Intl.DateTimeFormat('de-DE', { weekday: 'short', timeZone: 'UTC' });
 
-/** "Di, 11.11.2026" or "Di, 11.11.2026, 19:00–21:00". */
+/**
+ * "Di, 11.11.2026", "Di, 11.11.2026, 19:00–21:00", "Fr, 10.07.2026 – So, 12.07.2026" or
+ * "Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00".
+ */
 export function terminText(t: OptionTermin): string {
-  const tag = wochentagFormat.format(new Date(`${t.datum}T12:00:00Z`)).replace('.', '');
-  const zeit = t.beginn && t.ende ? `, ${t.beginn}–${t.ende}` : '';
-  return `${tag}, ${datumAnzeigen(t.datum)}${zeit}`;
+  const tag = (datum: string) =>
+    `${wochentagFormat.format(new Date(`${datum}T12:00:00Z`)).replace('.', '')}, ${datumAnzeigen(datum)}`;
+  const zeiten = t.beginn !== null && t.ende !== null;
+  if (t.bis !== null && t.bis !== t.datum) {
+    return zeiten
+      ? `${tag(t.datum)} ${t.beginn} – ${tag(t.bis)} ${t.ende}`
+      : `${tag(t.datum)} – ${tag(t.bis)}`;
+  }
+  return `${tag(t.datum)}${zeiten ? `, ${t.beginn}–${t.ende}` : ''}`;
 }
 
 /** Wall times of a date: its own ones, else those of the poll. */
@@ -291,9 +416,9 @@ export type UmfrageEingabe = z.input<typeof umfrageEingabeSchema>;
 
 /** Times per date only with `jeTermin`; otherwise those of the poll apply. */
 const zeitenNachModus = (o: OptionTermin, t: UmfrageTermin): OptionTermin =>
-  t.jeTermin ? o : { datum: o.datum, beginn: null, ende: null };
+  t.jeTermin ? o : { datum: o.datum, bis: o.bis, beginn: null, ende: null };
 
-const terminSchluessel = (o: OptionTermin) => `${o.datum} ${o.beginn ?? ''}`;
+const terminSchluessel = (o: OptionTermin) => `${o.datum} ${o.beginn ?? ''} ${o.bis ?? ''}`;
 
 /** Rules of a scheduling poll: one question of dates, not anonymous, a title for the event. */
 function terminFehler(
@@ -305,12 +430,6 @@ function terminFehler(
   t: UmfrageTermin,
 ): { path: (string | number)[]; message: string }[] {
   const fehler: { path: (string | number)[]; message: string }[] = [];
-  if (u.titel === '') {
-    fehler.push({
-      path: ['titel'],
-      message: 'Bitte gib einen Titel ein, er wird der Titel des Events.',
-    });
-  }
   if (u.anonym) {
     fehler.push({
       path: ['anonym'],
@@ -328,11 +447,6 @@ function terminFehler(
   for (const [i, o] of optionen.entries()) {
     if (!o.termin) {
       fehler.push({ path: ['fragen', 0, 'optionen', i], message: 'Bitte gib ein Datum an.' });
-    } else if (t.jeTermin && (o.termin.beginn === null || o.termin.ende === null)) {
-      fehler.push({
-        path: ['fragen', 0, 'optionen', i],
-        message: 'Bitte gib bei jedem Termin Beginn und Ende an.',
-      });
     }
   }
   const schluessel = optionen.flatMap((o) =>
@@ -369,6 +483,8 @@ export interface FrageRegeln {
   optionIds: readonly string[];
   freitext: boolean;
   maxAntworten: number | null;
+  /** No answer is an answer too ("an keinem Termin" in scheduling polls). */
+  leerErlaubt?: boolean;
 }
 
 /** German error message when the ballot does not fit the questions, else null. */
@@ -384,7 +500,10 @@ export function stimmzettelFehler(
   for (const [i, f] of fragen.entries()) {
     const a = antworten.get(f.id);
     const anzahl = (a?.optionIds.length ?? 0) + (a?.freitext ? 1 : 0);
-    if (anzahl === 0) return `Bitte beantworte Frage ${i + 1}.`;
+    if (anzahl === 0) {
+      if (f.leerErlaubt) continue;
+      return `Bitte beantworte Frage ${i + 1}.`;
+    }
     if (a!.optionIds.some((o) => !f.optionIds.includes(o))) {
       return 'Die Umfrage hat sich geändert. Bitte lade sie neu.';
     }
@@ -431,7 +550,7 @@ export function ungueltigNachAenderung(
       if (f.maxAntworten !== null && rest > f.maxAntworten) {
         zuFrage.forEach((s) => loeschen.add(s.id));
         erneut.add(sub);
-      } else if (ungueltig.length > 0 || zuFrage.length === 0) {
+      } else if (ungueltig.length > 0 || (zuFrage.length === 0 && !f.leerErlaubt)) {
         erneut.add(sub);
       }
     }
@@ -560,6 +679,8 @@ export interface UmfrageFrageDto {
   freitext: boolean;
   maxAntworten: number | null;
   optionen: UmfrageOptionDto[];
+  /** Scheduling polls: members who can make none of the dates (count, names if public); else null. */
+  keiner: { anzahl: number; personen: UmfragePerson[] | null } | null;
   /** Free texts; null when hidden. `person` is null in anonymous polls. */
   freitexte: { text: string; person: UmfragePerson | null }[] | null;
 }
@@ -580,6 +701,10 @@ export interface UmfrageDetailDto extends UmfrageListeDto {
   hatStimmen: boolean;
   /** Scheduling polls only, else null. */
   termin: UmfrageTermin | null;
+  /** Scheduling polls: how the event's dates work (from its Kategorie). */
+  terminDauer: EventDauer | null;
+  /** Scheduling polls with Dienste: the Bedarf of all Dienstformen together (names for display). */
+  terminBedarf: { minimum: number; wunsch: number; dienstformen: string[] } | null;
   /** The event created from the poll and the date it was created for. */
   eventId: string | null;
   eventOptionId: string | null;

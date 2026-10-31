@@ -449,6 +449,8 @@ export const eventKategorien = pgTable('event_kategorien', {
   art: text('art').$type<EventArt>().notNull(),
   /** Default participation circle of a `teilnahme` category (same coding as `events.teilnahmeStatus`). */
   teilnahmeStatus: text('teilnahme_status'),
+  /** `eintaegig` (null), `mehrtaegig` or `ganztaegig`. */
+  dauer: text('dauer'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;
@@ -618,6 +620,8 @@ export const eventVorlagen = pgTable('event_vorlagen', {
   endeZeit: text('ende_zeit').notNull(),
   /** Participation circle handed to events (same encoding as `events.teilnahmeStatus`). */
   teilnahmeStatus: text('teilnahme_status'),
+  /** Days of multi-day and whole-day events (null = 1). */
+  tage: integer('tage'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
@@ -837,6 +841,8 @@ export const umfrageTermine = pgTable('umfrage_termine', {
     .primaryKey()
     .references(() => umfragen.id),
   kategorieId: text('kategorie_id').notNull(),
+  /** Event created from this Vorlage (its Kategorie is `kategorieId`); null = Kategorie and Bedarf. */
+  vorlageId: text('vorlage_id'),
   jeTermin: boolean('je_termin').notNull(),
   beginn: text('beginn'),
   ende: text('ende'),
@@ -853,6 +859,8 @@ export const umfrageOptionTermine = pgTable('umfrage_option_termine', {
     .primaryKey()
     .references(() => umfrageOptionen.id),
   datum: date('datum', { mode: 'string' }).notNull(),
+  /** Last day of a multi-day date; null for one-day Kategorien. */
+  bis: date('bis', { mode: 'string' }),
   beginn: text('beginn'),
   ende: text('ende'),
 });

@@ -33,16 +33,31 @@ Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/be
 
 Eine Umfrage mit `termin` (Schalter „Terminfindung“ im Formular, `umfrageTerminSchema`) sucht einen Termin für ein Event.
 
-- **Aufbau**: genau eine Frage, ihre Antworten sind Daten (`umfrage_option_termine`). Den Antworttext erzeugt das Schema
-  (`terminText`, z. B. „Di, 11.11.2026“ oder mit eigener Uhrzeit „Di, 11.11.2026, 19:00–21:00“), die Daten werden sortiert.
-  Man kreuzt alle passenden Termine an (beliebig viele, kein Freitext). Ohne Frage gilt „Welche Termine passen dir?“. Der
-  Titel ist Pflicht, er wird der Titel des Events. Terminumfragen sind nie anonym.
-- **Uhrzeit**: entweder eine für alle Termine (`beginn`/`ende` am Termin) oder je Termin (`jeTermin`, dann an jeder Antwort).
-  Liegt das Ende vor dem Beginn, gilt der nächste Tag (`zeitspanne`).
-- **Kategorie** (`kategorieId`, aktiv): bei einer Teilnahme-Kategorie werden die Zustimmenden eingeladen (Kreis „niemand
-  vorab“). Bei einer Dienste-Kategorie ist ein `bedarf` Pflicht (Dienstform, Minimum, Wunsch): das Event bekommt eine
-  Betrieb-Schicht über die ganze Zeit mit diesem Bedarf, die Zustimmenden werden mit der Dienstform eingetragen. Fehlen
-  danach Dienste, erinnert der Kalender wie bei jedem Event („Dienste fehlen“). Die API prüft Kategorie und Dienstform (400).
+- **Aufbau**: genau eine Frage, ihre Antworten sind Termine (`umfrage_option_termine`). Den Antworttext erzeugt die API
+  (`terminText`, z. B. „Di, 11.11.2026“, „Di, 11.11.2026, 19:00–21:00“ oder „Fr, 10.07.2026 – So, 12.07.2026“), die
+  Termine werden sortiert. Man kreuzt alle passenden Termine an (beliebig viele, kein Freitext) oder **„An keinem der
+  Termine“**: eine Stimme ohne Antwort (`leerErlaubt`), sie zählt als abgestimmt (keine Erinnerungen) und erscheint im
+  Ergebnis als „An keinem der Termine“ (`keiner`, mit Namen bei öffentlichen Umfragen). Ohne Frage gilt „Welche Termine
+  passen dir?“. Terminumfragen sind nie anonym.
+- **Titel**: optional. Leer übernimmt die API den Titel der Vorlage, sonst den Namen der Kategorie. Ein so übernommener
+  Titel bleibt im Event leer (bzw. der der Vorlage), damit es der Kategorie folgt.
+- **Quelle**: entweder eine **Kategorie** (`kategorieId`) oder eine **Vorlage** (`vorlageId`, Migration `0092`; ihre Kategorie
+  wird gespeichert). `terminNormalisieren` verwirft, was Kategorie oder Vorlage selbst festlegen, `terminDauerFehler`
+  prüft den Rest (400).
+- **Uhrzeit und Dauer** (ohne Vorlage, nach der Dauer der Kategorie):
+  - eintägig: eine Uhrzeit für alle Termine (`beginn`/`ende`) oder je Termin (`jeTermin`); Ende vor Beginn = nächster Tag.
+  - mehrtägig: jede Antwort ist ein Zeitraum (`bis`, Migration `0091`) mit Uhrzeiten wie oben.
+  - ganztägig: jede Antwort ist ein Zeitraum ohne Uhrzeiten.
+  - Mit Vorlage sind die Antworten nur Starttage; Uhrzeiten, Anzahl der Tage, Schichten und Bedarf kommen aus der Vorlage.
+- **Kategorie ohne Vorlage**: bei Teilnahme werden die Zustimmenden eingeladen (Kreis „niemand vorab“). Bei Diensten ist ein
+  `bedarf` Pflicht (Dienstform, Minimum, Wunsch): das Event bekommt eine Betrieb-Schicht ab Beginn (höchstens 24 Stunden)
+  mit diesem Bedarf.
+- **Vorlage**: das Event entsteht mit `ausVorlage` (alle Schichten); Titel und Beschreibung der Umfrage gehen vor. Bei
+  Teilnahme werden die Zustimmenden eingeladen. Bei Diensten zeigt die Umfrage den Bedarf aller Dienstformen zusammen
+  (`bedarfZusammen`, z. B. „mindestens 2, am liebsten 3 (Tresen, Kasse)“, `terminBedarf` im DTO); die Zustimmenden wählen
+  keine Dienstform, sondern werden beim Anlegen der Reihe nach auf die Plätze aller Betrieb-Schichten verteilt
+  (`dienstVerteilung`: erst bis zu jedem Minimum, dann bis zu jedem Wunsch, der Rest reihum).
+- Fehlen danach Dienste, erinnert der Kalender wie bei jedem Event („Dienste fehlen“).
 - **Event anlegen**: `POST /api/umfragen/:id/event` `{ optionId }`, erst wenn die Umfrage beendet ist (abgelaufen oder
   vorzeitig, sonst 409). Darf die Person, die die Umfrage erstellt hat, und wer `umfragen:verwalten` hat, **auch ohne
   `events:verwalten`**. Gewählt werden kann jeder Termin, nicht nur der mit den meisten Stimmen. Eingetragen wird, wer
@@ -87,7 +102,7 @@ Siehe [benachrichtigungen.md](./benachrichtigungen.md), Code in `packages/api/sr
 
 ## Datenmodell
 
-Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
+Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0092`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
 in `packages/shared/src/umfragen.ts`.
 
 | Tabelle                  | Inhalt                                                                                                                                                          |

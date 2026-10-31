@@ -132,6 +132,18 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
           personen: namen ? stimmen.map((s) => personVon(k, s.sub)) : null,
         };
       }),
+      keiner:
+        u.termin && sichtbar
+          ? (() => {
+              const subs = [...gueltig].filter(
+                (sub) => !u.stimmen.some((s) => s.sub === sub && s.frageId === f.id),
+              );
+              return {
+                anzahl: subs.length,
+                personen: namen ? subs.map((sub) => personVon(k, sub)) : null,
+              };
+            })()
+          : null,
       freitexte: sichtbar
         ? zaehlend
             .filter((s) => s.frageId === f.id && s.freitext !== null)
@@ -148,6 +160,8 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
     }),
     hatStimmen: u.abgaben.length > 0,
     termin: u.termin,
+    terminDauer: null,
+    terminBedarf: null,
     eventId: u.eventId,
     eventOptionId: u.eventOptionId,
     darfEventAnlegen:

@@ -34,6 +34,7 @@ import {
   type MitgliedStatus,
   type UmfrageDetailDto,
   type UmfrageErgebnisse,
+  type EventKategorieDto,
   type UmfrageKreis,
 } from '@c4/shared';
 import { unwrap, useApi } from '../api';
@@ -42,10 +43,11 @@ import { DatumFeld } from '../DatumFeld';
 import { labelFuer, MITGLIED_STATUS_LABELS, UMFRAGE_ERGEBNISSE_LABELS } from '../i18n';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { erinnerungLabel, umfrageLink, umfragenInvalidieren, useUmfrage } from '../umfrageDaten';
-import { useEventKategorien } from '../kalenderDaten';
+import { useEventKategorien, useVorlagen } from '../kalenderDaten';
 import {
   neueTerminWerte,
   terminEingabeAus,
+  terminKategorie,
   terminWerteAus,
   UmfrageTerminFelder,
   type TerminWerte,
@@ -137,7 +139,7 @@ const werteAus = (u: UmfrageDetailDto): Werte => ({
 });
 
 /** The body for the API; empty options are left out. `art` is that of the event Kategorie. */
-const eingabeAus = (w: Werte, art?: 'dienste' | 'teilnahme') => ({
+const eingabeAus = (w: Werte, kategorie?: EventKategorieDto) => ({
   titel: w.titel,
   beschreibung: w.beschreibung,
   endetAm: w.endetAm,
@@ -156,7 +158,7 @@ const eingabeAus = (w: Werte, art?: 'dienste' | 'teilnahme') => ({
       .filter((o) => o.text.trim() !== '')
       .map((o) => ({ ...(o.id && { id: o.id }), text: o.text })),
   })),
-  ...(w.termin ? { anonym: false, ...terminEingabeAus(w.termin, art) } : { termin: null }),
+  ...(w.termin ? { anonym: false, ...terminEingabeAus(w.termin, kategorie) } : { termin: null }),
 });
 
 /** Moves the entry at `i` by `richtung` (-1 up, 1 down). */
@@ -419,12 +421,22 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
   const set = <K extends keyof Werte>(k: K, v: Werte[K]) => setW((alt) => ({ ...alt, [k]: v }));
 
   const kategorien = useEventKategorien();
+  const vorlagen = useVorlagen();
   const speichern = async (bestaetigt = false) => {
-    const art = kategorien.liste.find((k) => k.id === w.termin?.kategorieId)?.art;
-    if (w.termin && art === 'dienste' && !w.termin.dienstformId) {
+    const kategorie = w.termin
+      ? terminKategorie(w.termin, kategorien.liste, vorlagen.data ?? [])
+      : undefined;
+    if (w.termin?.quelle === 'vorlage' && !w.termin.vorlageId) {
+      return setFehler('Bitte wähle eine Vorlage.');
+    }
+    if (
+      w.termin?.quelle === 'kategorie' &&
+      kategorie?.art === 'dienste' &&
+      !w.termin.dienstformId
+    ) {
       return setFehler('Bitte wähle die Dienstform.');
     }
-    const json = eingabeAus(w, art);
+    const json = eingabeAus(w, kategorie);
     const parsed = umfrageEingabeSchema.safeParse(json);
     if (!parsed.success) {
       return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -487,12 +499,12 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           placeholder="z. B. Sommerfest 2027"
           description={
             w.termin
-              ? 'Wird der Titel des Events.'
+              ? 'Wird der Titel des Events. Leer lassen: Titel der Vorlage oder Name der Kategorie.'
               : w.fragen.length === 1
                 ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
                 : undefined
           }
-          required={w.termin !== null || w.fragen.length > 1}
+          required={w.termin === null && w.fragen.length > 1}
           value={w.titel}
           onChange={(e) => set('titel', e.currentTarget.value)}
         />

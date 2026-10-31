@@ -9,6 +9,7 @@ import type {
   Quelle,
   Role,
   EventArt,
+  EventDauer,
   SchichtArt,
   UmfrageErgebnisse,
   VorgangTyp,
@@ -78,6 +79,22 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
 export const EVENT_ART_LABELS: Record<EventArt, string> = {
   dienste: 'Dienste',
   teilnahme: 'Teilnahme',
+};
+
+/** How long the events of a Kategorie last. */
+export const EVENT_DAUER_LABELS: Record<EventDauer, { titel: string; beschreibung: string }> = {
+  eintaegig: {
+    titel: 'Eintägig',
+    beschreibung: 'Datum mit Beginn und Ende, höchstens 24 Stunden.',
+  },
+  mehrtaegig: {
+    titel: 'Mehrtägig',
+    beschreibung: 'Start- und Enddatum, jeweils mit Uhrzeit (z. B. ein Wochenende).',
+  },
+  ganztaegig: {
+    titel: 'Ganztägig',
+    beschreibung: 'Nur Start- und Enddatum, ohne Uhrzeiten (z. B. eine Fahrt).',
+  },
 };
 
 export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {

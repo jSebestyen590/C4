@@ -156,6 +156,7 @@ async function inhaltSchreiben(tx: Tx, id: string, d: UmfrageSpeichern) {
   // The created event stays attached when the settings change.
   const termin = {
     kategorieId: d.termin.kategorieId,
+    vorlageId: d.termin.vorlageId,
     jeTermin: d.termin.jeTermin,
     beginn: d.termin.beginn,
     ende: d.termin.ende,
@@ -182,6 +183,7 @@ const terminAus = (t: TerminRow | undefined): UmfrageTermin | null =>
   t
     ? {
         kategorieId: t.kategorieId,
+        vorlageId: t.vorlageId,
         jeTermin: t.jeTermin,
         beginn: t.beginn,
         ende: t.ende,
@@ -285,7 +287,7 @@ export function createUmfragenStore(db: Db): UmfragenStore {
                 return {
                   id: o.id,
                   text: o.text,
-                  termin: t ? { datum: t.datum, beginn: t.beginn, ende: t.ende } : null,
+                  termin: t ? { datum: t.datum, bis: t.bis, beginn: t.beginn, ende: t.ende } : null,
                 };
               }),
           })),

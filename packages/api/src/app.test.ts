@@ -2923,6 +2923,7 @@ describe('kalender', () => {
       beschreibung: null,
       kategorie: null,
       art: 'dienste' as const,
+      dauer: 'eintaegig' as const,
       beginn: eventBody.beginn,
       ende: eventBody.ende,
       abgesagt: false,
@@ -3096,6 +3097,7 @@ describe('kalender', () => {
           beginnZeit: '20:00',
           endeZeit: '22:00',
           teilnahmeStatus: null,
+          tage: 1,
           archiviert: false,
           schichten: [],
         },
@@ -3337,6 +3339,7 @@ describe('kalender', () => {
         beschreibung: null,
         kategorie: null,
         art: 'dienste' as const,
+        dauer: 'eintaegig' as const,
         beginn: eventBody.beginn,
         ende: eventBody.ende,
         abgesagt: false,
@@ -3412,6 +3415,7 @@ describe('kalender', () => {
       beschreibung: null,
       kategorie: null,
       art: 'dienste' as const,
+      dauer: 'eintaegig' as const,
       beginn,
       ende: '2026-10-23T22:00:00.000Z',
       abgesagt: false,
@@ -4274,6 +4278,7 @@ describe('umfragen', () => {
       farbe: 'blue',
       art,
       teilnahmeStatus: art === 'teilnahme' ? [] : null,
+      dauer: 'eintaegig' as const,
       benutzt: false,
       archiviert: false,
     });
@@ -4374,7 +4379,16 @@ describe('umfragen', () => {
         kategorieId: 'bar',
         bedarf: { dienstformId: 'tresen', minimum: 2, wunsch: 3 },
       });
-      d.kalender.event.mockResolvedValueOnce({ id: 'e1', schichten: [{ id: 's1' }] } as EventDto);
+      d.kalender.event.mockResolvedValueOnce({
+        id: 'e1',
+        schichten: [
+          {
+            id: 's1',
+            art: 'betrieb',
+            bedarfe: [{ dienstformId: 'tresen', minimum: 2, wunsch: 3 }],
+          },
+        ],
+      } as unknown as EventDto);
       await d.app.request(`/api/umfragen/${d.id}/beenden`, json('vorstand-token', 'POST'));
       expect((await d.festlegen('vorstand-token', d.b.id)).status).toBe(201);
       expect(d.kalender.eventAnlegen).toHaveBeenCalledWith(
@@ -4398,6 +4412,163 @@ describe('umfragen', () => {
       expect(eingetragen).toEqual([
         ['s1', 'm2', 'tresen'],
         ['s1', 'r', 'tresen'],
+      ]);
+    });
+
+    it('takes the title from the Kategorie and lets members answer "none of the dates"', async () => {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue([kategorie('sitzung', 'teilnahme')]);
+      const res = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', {
+          ...terminUmfrage({ kategorieId: 'sitzung' }),
+          titel: '',
+        }),
+      );
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      const { body } = await t.holen(id, 'member-token');
+      expect(body.titel).toBe('sitzung');
+      const frage = body.fragen[0]!;
+      expect(
+        (await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [] }])).status,
+      ).toBe(200);
+      const danach = (await t.holen(id, 'vorstand-token')).body;
+      expect(danach.abgestimmt).toBe(false);
+      expect(danach.abgaben).toBe(1);
+      expect(danach.fragen[0]!.keiner).toMatchObject({
+        anzahl: 1,
+        personen: [expect.objectContaining({ sub: 'm2' })],
+      });
+      await t.app.request(`/api/umfragen/${id}/beenden`, json('vorstand-token', 'POST'));
+      await t.app.request(
+        `/api/umfragen/${id}/event`,
+        json('vorstand-token', 'POST', { optionId: frage.optionen[0]!.id }),
+      );
+      // The title came from the Kategorie, so the event keeps following it.
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({ titel: '', eingeladen: [] }),
+        'v',
+      );
+    });
+
+    it('needs an end date per answer for multi-day Kategorien', async () => {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue([
+        { ...kategorie('fahrt', 'teilnahme'), dauer: 'ganztaegig' as const },
+      ]);
+      const ohneBis = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', terminUmfrage({ kategorieId: 'fahrt' })),
+      );
+      expect(ohneBis.status).toBe(400);
+      const body = terminUmfrage({ kategorieId: 'fahrt' }) as unknown as {
+        fragen: { optionen: { termin: Record<string, unknown> }[] }[];
+      };
+      body.fragen[0]!.optionen.forEach((o) => (o.termin.bis = '2099-01-13'));
+      const res = await t.app.request('/api/umfragen', json('vorstand-token', 'POST', body));
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      const u = (await t.holen(id, 'member-token')).body;
+      expect(u.fragen[0]!.optionen[0]!.text).toBe('Sa, 10.01.2099 – Di, 13.01.2099');
+      expect(u.terminDauer).toBe('ganztaegig');
+    });
+
+    it('creates the event from a Vorlage and spreads everybody over its Dienstformen', async () => {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue([kategorie('bar', 'dienste')]);
+      t.kalender.dienstformen.mockResolvedValue([
+        { id: 'tresen', name: 'Tresen', reihenfolge: 1, archiviert: false },
+        { id: 'kasse', name: 'Kasse', reihenfolge: 2, archiviert: false },
+      ]);
+      t.kalender.vorlagen.mockResolvedValue([
+        {
+          id: 'barabend',
+          titel: 'Barabend',
+          beschreibung: 'Aus der Vorlage',
+          kategorieId: 'bar',
+          beginnZeit: '20:00',
+          endeZeit: '01:00',
+          teilnahmeStatus: null,
+          tage: 1,
+          archiviert: false,
+          schichten: [
+            {
+              art: 'betrieb',
+              beginnZeit: '20:00',
+              endeZeit: '01:00',
+              bedarfe: [
+                { dienstformId: 'tresen', minimum: 1, wunsch: 2 },
+                { dienstformId: 'kasse', minimum: 1, wunsch: 1 },
+              ],
+            },
+          ],
+        },
+      ]);
+      const res = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', {
+          ...terminUmfrage({
+            kategorieId: 'egal',
+            vorlageId: 'barabend',
+            beginn: null,
+            ende: null,
+          }),
+          titel: '',
+        }),
+      );
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      const u = (await t.holen(id, 'member-token')).body;
+      expect(u).toMatchObject({
+        titel: 'Barabend',
+        termin: { kategorieId: 'bar', vorlageId: 'barabend' },
+        terminBedarf: { minimum: 2, wunsch: 3, dienstformen: ['Tresen', 'Kasse'] },
+      });
+      const frage = u.fragen[0]!;
+      await t.abstimmen(id, 'member-token', [
+        { frageId: frage.id, optionIds: [frage.optionen[0]!.id] },
+      ]);
+      await t.abstimmen(id, 'reader-token', [
+        { frageId: frage.id, optionIds: [frage.optionen[0]!.id] },
+      ]);
+      await t.app.request(`/api/umfragen/${id}/beenden`, json('vorstand-token', 'POST'));
+      t.kalender.event.mockResolvedValueOnce({
+        id: 'e1',
+        schichten: [
+          {
+            id: 's1',
+            art: 'betrieb',
+            bedarfe: [
+              { dienstformId: 'tresen', minimum: 1, wunsch: 2 },
+              { dienstformId: 'kasse', minimum: 1, wunsch: 1 },
+            ],
+          },
+        ],
+      } as unknown as EventDto);
+      expect(
+        (
+          await t.app.request(
+            `/api/umfragen/${id}/event`,
+            json('vorstand-token', 'POST', { optionId: frage.optionen[0]!.id }),
+          )
+        ).status,
+      ).toBe(201);
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          titel: 'Barabend',
+          beschreibung: 'Aus der Vorlage',
+          kategorieId: 'bar',
+          beginn: '2099-01-10T19:00:00.000Z',
+          ende: '2099-01-11T00:00:00.000Z',
+        }),
+        'v',
+      );
+      expect(
+        t.kalender.dienstEintragen.mock.calls.map(([, d]) => [d.mitgliedSub, d.dienstformId]),
+      ).toEqual([
+        ['m2', 'tresen'],
+        ['r', 'kasse'],
       ]);
     });
   });

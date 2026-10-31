@@ -31,6 +31,7 @@ import { useApi } from '../api';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { UMFRAGE_ERGEBNISSE_LABELS } from '../i18n';
 import { PersonLink, umfragenInvalidieren, useUmfrage } from '../umfrageDaten';
+import { bedarfText } from '../UmfrageTerminFelder';
 import { fehlerText, pruefen } from '../warenApi';
 import { laufzeitText, UmfrageBadges } from './UmfragenPage';
 
@@ -40,6 +41,8 @@ const FREITEXT = '__freitext__';
 interface Antwort {
   optionIds: string[];
   freitext: string | null;
+  /** Scheduling polls: none of the dates fits. */
+  keiner?: boolean;
 }
 
 /** Names separated by commas, each as a linked member mention. */
@@ -65,21 +68,26 @@ function FrageEingabe({
   gesperrt,
   einzeln,
   titel,
+  keinerMoeglich = false,
 }: Readonly<{
   frage: UmfrageFrageDto;
   nr: number;
   einzeln: boolean;
   titel: string;
+  /** Offers "an keinem der Termine" (scheduling polls). */
+  keinerMoeglich?: boolean;
   antwort: Antwort;
   onChange: (a: Antwort) => void;
   gesperrt: boolean;
 }>) {
   const max = frage.maxAntworten ?? moeglicheAntworten(frage);
   const gewaehlt = [...antwort.optionIds, ...(antwort.freitext !== null ? [FREITEXT] : [])];
+  // Picking a date clears "an keinem der Termine".
   const setzen = (werte: string[]) =>
     onChange({
       optionIds: werte.filter((w) => w !== FREITEXT),
       freitext: werte.includes(FREITEXT) ? (antwort.freitext ?? '') : null,
+      keiner: false,
     });
   const optionen = [
     ...frage.optionen.map((o) => ({ value: o.id, label: o.text })),
@@ -147,6 +155,21 @@ function FrageEingabe({
           onChange={(e) => onChange({ ...antwort, freitext: e.currentTarget.value })}
         />
       )}
+      {keinerMoeglich && (
+        <Checkbox
+          size="md"
+          label="An keinem der Termine"
+          disabled={gesperrt}
+          checked={antwort.keiner === true}
+          onChange={(e) =>
+            onChange(
+              e.currentTarget.checked
+                ? { optionIds: [], freitext: null, keiner: true }
+                : { ...antwort, keiner: false },
+            )
+          }
+        />
+      )}
     </Stack>
   );
 }
@@ -209,6 +232,19 @@ function FrageErgebnis({
           </Stack>
         );
       })}
+      {frage.keiner && frage.keiner.anzahl > 0 && (
+        <Stack gap={4}>
+          <Group justify="space-between" wrap="nowrap" gap="xs">
+            <Text c="dimmed">An keinem der Termine</Text>
+            <Text c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+              {frage.keiner.anzahl} {frage.keiner.anzahl === 1 ? 'Person' : 'Personen'}
+            </Text>
+          </Group>
+          {frage.keiner.personen && frage.keiner.personen.length > 0 && (
+            <Personen personen={frage.keiner.personen} />
+          )}
+        </Stack>
+      )}
       {frage.freitexte && frage.freitexte.length > 0 && (
         <Stack gap={4}>
           <Text size="sm" fw={600}>
@@ -266,7 +302,15 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
   const qc = useQueryClient();
   const [antworten, setAntworten] = useState<Record<string, Antwort>>(() =>
     Object.fromEntries(
-      u.meineAntworten.map((a) => [a.frageId, { optionIds: a.optionIds, freitext: a.freitext }]),
+      u.meineAntworten.map((a) => [
+        a.frageId,
+        {
+          optionIds: a.optionIds,
+          freitext: a.freitext,
+          // A valid vote without any date means "an keinem der Termine".
+          keiner: u.termin !== null && u.abgestimmt && a.optionIds.length === 0,
+        },
+      ]),
     ),
   );
   const [bearbeiten, setBearbeiten] = useState(!u.abgestimmt);
@@ -274,6 +318,15 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
   const [laeuft, setLaeuft] = useState(false);
 
   const absenden = async () => {
+    const offen =
+      u.termin &&
+      u.fragen.some((f) => {
+        const a = antworten[f.id];
+        return !a?.keiner && (a?.optionIds.length ?? 0) === 0;
+      });
+    if (offen) {
+      return setFehler('Kreuze die passenden Termine an oder wähle „An keinem der Termine“.');
+    }
     setFehler(null);
     setLaeuft(true);
     try {
@@ -323,6 +376,7 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
             gesperrt={!bearbeiten}
             einzeln={u.fragen.length === 1}
             titel={u.titel}
+            keinerMoeglich={u.termin !== null}
           />
         ))}
         {fehler && <Alert color="red">{fehler}</Alert>}
@@ -422,6 +476,11 @@ export function UmfragePage() {
             </Button>
           </Stack>
         </Alert>
+      )}
+      {u.terminBedarf && (
+        <Text size="sm">
+          {bedarfText(u.terminBedarf)}. Wer für den festgelegten Termin stimmt, wird eingetragen.
+        </Text>
       )}
       {u.termin && !u.eventId && u.darfBearbeiten && (
         <Text size="sm" c="dimmed">

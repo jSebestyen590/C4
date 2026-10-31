@@ -84,9 +84,16 @@ import {
   umfrageEingabeSchema,
   umfrageLaeuft,
   ungueltigNachAenderung,
+  ausVorlage,
+  bedarfZusammen,
+  dienstVerteilung,
+  MAX_DAUER_MS,
+  terminDauerFehler,
+  terminNormalisieren,
+  terminSpanne,
+  terminText,
   terminWahlSchema,
-  terminZeiten,
-  zeitspanne,
+  type EventEingabe,
   type UmfrageTermin,
   schluesselEingabeSchema,
   uebergabeSchema,
@@ -476,30 +483,98 @@ export function createApp(deps: AppDeps) {
     };
   };
 
-  /** The event settings of a scheduling poll must fit an active Kategorie (and Dienstform). */
-  const terminPruefen = async (termin: UmfrageTermin | null) => {
-    if (!termin) return;
-    const kategorie = (await deps.kalender.kategorien(false)).find(
-      (k) => k.id === termin.kategorieId,
+  /** Kategorie and Vorlage behind a scheduling poll; with a Vorlage its Kategorie counts. */
+  const terminQuellen = async (termin: UmfrageTermin, nurAktive: boolean) => {
+    const [kategorien, vorlagen] = await Promise.all([
+      deps.kalender.kategorien(!nurAktive),
+      termin.vorlageId ? deps.kalender.vorlagen(!nurAktive) : Promise.resolve([]),
+    ]);
+    const vorlage = termin.vorlageId ? vorlagen.find((v) => v.id === termin.vorlageId) : null;
+    const kategorie = kategorien.find(
+      (k) => k.id === (vorlage ? vorlage.kategorieId : termin.kategorieId),
     );
+    return { vorlage: vorlage ?? null, kategorie: kategorie ?? null };
+  };
+
+  /**
+   * Fits a scheduling poll to its Kategorie (or Vorlage): drops what they decide themselves,
+   * checks the rest and fills an empty title with the Vorlage's or Kategorie's name.
+   */
+  const terminVorbereiten = async (
+    e: z.output<typeof umfrageEingabeSchema>,
+  ): Promise<z.output<typeof umfrageEingabeSchema>> => {
+    if (!e.termin) return e;
+    const { vorlage, kategorie } = await terminQuellen(e.termin, true);
+    if (e.termin.vorlageId && !vorlage) {
+      throw new HTTPException(400, { message: 'Unbekannte Vorlage.' });
+    }
     if (!kategorie) throw new HTTPException(400, { message: 'Unbekannte Kategorie.' });
-    if (kategorie.art === 'teilnahme' && termin.bedarf) {
+    const [frage] = e.fragen;
+    const n = terminNormalisieren(
+      { ...e.termin, kategorieId: kategorie.id },
+      frage!.optionen,
+      kategorie.dauer,
+    );
+    const fehler = terminDauerFehler(n.termin, n.optionen, kategorie.dauer);
+    if (fehler) throw new HTTPException(400, { message: fehler });
+    if (!vorlage && kategorie.art === 'teilnahme' && n.termin.bedarf) {
       throw new HTTPException(400, {
         message: 'Bei einer Teilnahme-Kategorie gibt es keine Dienste.',
       });
     }
-    if (kategorie.art === 'dienste') {
-      if (!termin.bedarf) {
+    if (!vorlage && kategorie.art === 'dienste') {
+      if (!n.termin.bedarf) {
         throw new HTTPException(400, {
           message:
             'Bitte wähle die Dienstform und wie viele es mindestens und am liebsten sein sollen.',
         });
       }
       const dienstform = (await deps.kalender.dienstformen(false)).some(
-        (d) => d.id === termin.bedarf!.dienstformId,
+        (d) => d.id === n.termin.bedarf!.dienstformId,
       );
       if (!dienstform) throw new HTTPException(400, { message: 'Unbekannte Dienstform.' });
     }
+    return {
+      ...e,
+      titel: e.titel || vorlage?.titel || kategorie.name,
+      termin: n.termin,
+      fragen: [
+        {
+          ...frage!,
+          optionen: n.optionen.map((o) => ({
+            ...o,
+            text: o.termin ? terminText(o.termin) : o.text,
+          })),
+        },
+      ],
+    };
+  };
+
+  /** Dauer and Bedarf of a scheduling poll for display (all Dienstformen of a Vorlage together). */
+  const terminAnzeige = async (termin: UmfrageTermin) => {
+    const [{ vorlage, kategorie }, dienstformen] = await Promise.all([
+      terminQuellen(termin, false),
+      deps.kalender.dienstformen(true),
+    ]);
+    const plaetze = vorlage
+      ? vorlage.schichten.flatMap((s) => (s.art === 'betrieb' ? s.bedarfe : []))
+      : termin.bedarf
+        ? [termin.bedarf]
+        : [];
+    const zusammen = bedarfZusammen(plaetze);
+    return {
+      terminDauer: kategorie?.dauer ?? null,
+      terminBedarf:
+        kategorie?.art === 'dienste' && plaetze.length > 0
+          ? {
+              minimum: zusammen.minimum,
+              wunsch: zusammen.wunsch,
+              dienstformen: zusammen.dienstformIds.map(
+                (id) => dienstformen.find((d) => d.id === id)?.name ?? id,
+              ),
+            }
+          : null,
+    };
   };
 
   /** Display data of key holders and the names used in the Übergabe messages. */
@@ -1058,7 +1133,8 @@ export function createApp(deps: AppDeps) {
       .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
         const a = umfrageAufrufer(c);
         const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
-        return c.json(alsDetailDto(u, k, a));
+        const dto = alsDetailDto(u, k, a);
+        return c.json(u.termin ? { ...dto, ...(await terminAnzeige(u.termin)) } : dto);
       })
       .post(
         '/umfragen',
@@ -1068,8 +1144,7 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const sub = c.get('user').sub;
           await eigenesProfilMussExistieren(sub);
-          const eingabe = c.req.valid('json');
-          await terminPruefen(eingabe.termin);
+          const eingabe = await terminVorbereiten(c.req.valid('json'));
           const id = await deps.umfragen.anlegen(umfrageSpeichern(eingabe), sub);
           await bestEffort(async () => {
             const [u, k, akteur] = await Promise.all([
@@ -1094,16 +1169,19 @@ export function createApp(deps: AppDeps) {
           if (!umfrageLaeuft(u)) {
             throw new HTTPException(409, { message: 'Die Umfrage ist beendet.' });
           }
-          const eingabe = c.req.valid('json');
+          const eingabe = await terminVorbereiten(c.req.valid('json'));
           if (eingabe.anonym !== u.anonym && u.abgaben.length > 0) {
             throw new HTTPException(400, {
               message: 'Nach der ersten Stimme lässt sich „anonym“ nicht mehr ändern.',
             });
           }
-          await terminPruefen(eingabe.termin);
           const daten = umfrageSpeichern(eingabe, u);
           const aenderung = ungueltigNachAenderung(
-            daten.fragen.map((f) => ({ ...f, optionIds: f.optionen.map((o) => o.id) })),
+            daten.fragen.map((f) => ({
+              ...f,
+              optionIds: f.optionen.map((o) => o.id),
+              leerErlaubt: daten.termin !== null,
+            })),
             u.stimmen,
             u.abgaben.map((x) => x.sub),
           );
@@ -1181,17 +1259,12 @@ export function createApp(deps: AppDeps) {
           const { optionId } = c.req.valid('json');
           const option = u.fragen[0]?.optionen.find((o) => o.id === optionId);
           if (!option?.termin) throw new HTTPException(400, { message: 'Unbekannter Termin.' });
-          const kategorie = (await deps.kalender.kategorien(false)).find(
-            (x) => x.id === termin.kategorieId,
-          );
-          if (!kategorie) {
+          const { vorlage, kategorie } = await terminQuellen(termin, true);
+          if (!kategorie || (termin.vorlageId && !vorlage)) {
             throw new HTTPException(409, {
-              message:
-                'Die Kategorie gibt es nicht mehr. Bearbeite die Umfrage nicht, sondern lege das Event im Kalender an.',
+              message: `${vorlage || !termin.vorlageId ? 'Die Kategorie' : 'Die Vorlage'} gibt es nicht mehr. Lege das Event im Kalender an.`,
             });
           }
-          const zeiten = terminZeiten(termin, option.termin);
-          const { beginn, ende } = zeitspanne(option.termin.datum, zeiten.beginn, zeiten.ende);
           const gueltig = gueltigAbgestimmt(u);
           const vorhanden = new Set(k.mitglieder.map((m) => m.sub));
           const zustimmende = [
@@ -1203,33 +1276,53 @@ export function createApp(deps: AppDeps) {
                 .map((s) => s.sub),
             ),
           ];
-          const dienste = kategorie.art === 'dienste' && termin.bedarf;
-          const eventId = await deps.kalender
-            .eventAnlegen(
-              eventEingabeSchema.parse({
-                titel: u.titel,
-                beschreibung: u.beschreibung,
-                kategorieId: kategorie.id,
-                beginn,
-                ende,
-                schichten: dienste
-                  ? [{ art: 'betrieb', beginn, ende, bedarfe: [termin.bedarf] }]
+          // A title taken over from the Vorlage or Kategorie stays empty, so the event follows them.
+          const vorgabe = vorlage?.titel || kategorie.name;
+          const titel = u.titel === vorgabe ? (vorlage?.titel ?? '') : u.titel;
+          const teilnahme = kategorie.art === 'teilnahme';
+          let eingabe: EventEingabe;
+          if (vorlage) {
+            const ausDerVorlage = ausVorlage(vorlage, option.termin.datum, kategorie);
+            eingabe = {
+              ...ausDerVorlage,
+              titel,
+              beschreibung: u.beschreibung ?? ausDerVorlage.beschreibung,
+              teilnahmeStatus: teilnahme ? [] : null,
+              eingeladen: teilnahme ? zustimmende : [],
+            };
+          } else {
+            const { beginn, ende } = terminSpanne(termin, option.termin, kategorie.dauer);
+            // One Schicht from the start, at most 24 hours (multi-day events get more by hand).
+            const schichtEnde = new Date(
+              Math.min(new Date(ende).getTime(), new Date(beginn).getTime() + MAX_DAUER_MS),
+            ).toISOString();
+            eingabe = eventEingabeSchema.parse({
+              titel,
+              beschreibung: u.beschreibung,
+              kategorieId: kategorie.id,
+              beginn,
+              ende,
+              schichten:
+                !teilnahme && termin.bedarf
+                  ? [{ art: 'betrieb', beginn, ende: schichtEnde, bedarfe: [termin.bedarf] }]
                   : [],
-                teilnahmeStatus: dienste ? null : [],
-                eingeladen: dienste ? [] : zustimmende,
-              }),
-              a.sub,
-            )
-            .catch(kalenderFehler);
+              teilnahmeStatus: teilnahme ? [] : null,
+              eingeladen: teilnahme ? zustimmende : [],
+            });
+          }
+          const eventId = await deps.kalender.eventAnlegen(eingabe, a.sub).catch(kalenderFehler);
           await deps.umfragen.eventSetzen(u.id, eventId, option.id);
-          if (dienste) {
-            const schicht = (await deps.kalender.event(eventId))?.schichten[0];
-            for (const sub of zustimmende) {
-              if (!schicht) break;
+          if (!teilnahme) {
+            // Everybody who agreed gets one Dienst: first up to every Minimum, then every Wunsch.
+            const schichten = (await deps.kalender.event(eventId))?.schichten ?? [];
+            const plaetze = schichten.flatMap((sch) =>
+              sch.art === 'betrieb' ? sch.bedarfe.map((b) => ({ schichtId: sch.id, ...b })) : [],
+            );
+            for (const { sub, platz } of dienstVerteilung(plaetze, zustimmende)) {
               await deps.kalender
                 .dienstEintragen(
-                  schicht.id,
-                  { dienstformId: termin.bedarf!.dienstformId, kommentar: null, mitgliedSub: sub },
+                  platz.schichtId,
+                  { dienstformId: platz.dienstformId, kommentar: null, mitgliedSub: sub },
                   a.sub,
                 )
                 .catch((err: unknown) => console.error('Poll: entering a Dienst failed', err));
@@ -1266,7 +1359,11 @@ export function createApp(deps: AppDeps) {
           await eigenesProfilMussExistieren(a.sub);
           const zettel = c.req.valid('json');
           const fehler = stimmzettelFehler(
-            u.fragen.map((f) => ({ ...f, optionIds: f.optionen.map((o) => o.id) })),
+            u.fragen.map((f) => ({
+              ...f,
+              optionIds: f.optionen.map((o) => o.id),
+              leerErlaubt: u.termin !== null,
+            })),
             zettel,
           );
           if (fehler) throw new HTTPException(400, { message: fehler });

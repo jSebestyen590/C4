@@ -6,6 +6,7 @@ import {
   Badge,
   Modal,
   MultiSelect,
+  Radio,
   SegmentedControl,
   Select,
   Stack,
@@ -24,13 +25,15 @@ import {
   MITGLIED_STATI,
   externeEingabeSchema,
   EVENT_ARTEN,
+  EVENT_DAUERN,
   type DienstformDto,
   type EventArt,
+  type EventDauer,
   type EventKategorieDto,
   type ExterneDto,
 } from '@c4/shared';
 import { useApi } from './api';
-import { EVENT_ART_LABELS } from './i18n';
+import { EVENT_ART_LABELS, EVENT_DAUER_LABELS } from './i18n';
 import {
   TeilnahmeFelder,
   teilnahmeKreisAus,
@@ -177,6 +180,7 @@ interface KategorieWerte {
   name: string;
   farbe: string;
   art: EventArt;
+  dauer: EventDauer;
   /** Default circle; only sent for `teilnahme`. */
   teilnahme: TeilnahmeWerte;
 }
@@ -185,6 +189,7 @@ const kategorieJson = (w: KategorieWerte) => ({
   name: w.name,
   farbe: w.farbe,
   art: w.art,
+  dauer: w.dauer,
   teilnahmeStatus: w.art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
 });
 
@@ -205,9 +210,16 @@ export function EventKategorienTab() {
             <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
               {k.name}
             </Text>
-            <Badge variant="light" color={k.art === 'teilnahme' ? 'teal' : 'gray'} tt="none">
-              {EVENT_ART_LABELS[k.art]}
-            </Badge>
+            <Group gap={6}>
+              <Badge variant="light" color={k.art === 'teilnahme' ? 'teal' : 'gray'} tt="none">
+                {EVENT_ART_LABELS[k.art]}
+              </Badge>
+              {k.dauer !== 'eintaegig' && (
+                <Badge variant="outline" color="gray" tt="none">
+                  {EVENT_DAUER_LABELS[k.dauer].titel}
+                </Badge>
+              )}
+            </Group>
           </Stack>
         </Group>
       )}
@@ -215,12 +227,14 @@ export function EventKategorienTab() {
         name: '',
         farbe: 'indigo',
         art: 'dienste',
+        dauer: 'eintaegig',
         teilnahme: teilnahmeWerteAus([...MITGLIED_STATI]),
       }}
       aus={(k) => ({
         name: k.name,
         farbe: k.farbe,
         art: k.art,
+        dauer: k.dauer,
         teilnahme: teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
       })}
       felder={(w, set, k) => (
@@ -250,6 +264,28 @@ export function EventKategorienTab() {
                   : 'Events dieser Kategorie haben Teilnehmende statt Diensten.'}
             </Text>
           </Stack>
+          <Radio.Group
+            label="Dauer der Events"
+            value={w.dauer}
+            onChange={(v) => set({ ...w, dauer: v as EventDauer })}
+          >
+            <Stack gap="sm" mt="xs">
+              {EVENT_DAUERN.map((d) => (
+                <Radio
+                  key={d}
+                  value={d}
+                  size="md"
+                  label={EVENT_DAUER_LABELS[d].titel}
+                  description={EVENT_DAUER_LABELS[d].beschreibung}
+                />
+              ))}
+            </Stack>
+          </Radio.Group>
+          {k && k.dauer !== w.dauer && k.benutzt && (
+            <Text size="sm" c="dimmed">
+              Bestehende Events behalten ihre Zeiten. Erst beim Bearbeiten gelten die neuen Regeln.
+            </Text>
+          )}
           {w.art === 'teilnahme' && (
             <TeilnahmeFelder
               titel="Standard-Kreis"
@@ -278,6 +314,7 @@ export function EventKategorienTab() {
               name: k.name,
               farbe: k.farbe,
               art: k.art,
+              dauer: k.dauer,
               teilnahmeStatus: k.teilnahmeStatus,
               archiviert,
             },

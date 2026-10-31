@@ -90,6 +90,7 @@ const vorlage = (patch: Partial<VorlageDto> = {}): VorlageDto => ({
   beginnZeit: '20:00',
   endeZeit: '01:00',
   teilnahmeStatus: null,
+  tage: 1,
   archiviert: false,
   schichten: [
     {
@@ -115,6 +116,7 @@ function fakeStore(v: VorlageDto | null = vorlage(), serien: SerieDto[] = [barab
         farbe: 'blue',
         art: 'dienste' as const,
         teilnahmeStatus: null,
+        dauer: 'eintaegig' as const,
         archiviert: false,
         benutzt: true,
       },

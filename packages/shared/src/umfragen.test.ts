@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bedarfZusammen,
+  dienstVerteilung,
   ergebnisseSichtbar,
   erinnerungenKodieren,
   erinnerungenLesen,
@@ -7,6 +9,10 @@ import {
   kreisVon,
   leererKreis,
   stimmzettelFehler,
+  terminDauerFehler,
+  terminNormalisieren,
+  terminSpanne,
+  terminText,
   umfrageEingabeSchema,
   umfrageLaeuft,
   ungueltigNachAenderung,
@@ -275,36 +281,28 @@ describe('Terminumfragen', () => {
     const frage = u.fragen[0]!;
     expect(frage.text).toBe('Welche Termine passen dir?');
     expect(frage).toMatchObject({ freitext: false, maxAntworten: null });
+    expect(u.termin).toMatchObject({ vorlageId: null });
     // Without own times per date the given ones are dropped.
     expect(frage.optionen.map((o) => [o.text, o.termin])).toEqual([
-      ['Mi, 11.11.2026', { datum: '2026-11-11', beginn: null, ende: null }],
-      ['Do, 12.11.2026', { datum: '2026-11-12', beginn: null, ende: null }],
+      ['Mi, 11.11.2026', { datum: '2026-11-11', bis: null, beginn: null, ende: null }],
+      ['Do, 12.11.2026', { datum: '2026-11-12', bis: null, beginn: null, ende: null }],
     ]);
   });
 
-  it('shows the times per date when chosen and needs them for every date', () => {
-    const jeTermin = { ...termin, jeTermin: true, beginn: null, ende: null };
-    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ termin: jeTermin })).success).toBe(false);
-    const u = umfrageEingabeSchema.parse(
-      terminUmfrage({
-        termin: jeTermin,
-        fragen: [
-          {
-            text: 'Wann?',
-            freitext: false,
-            maxAntworten: null,
-            optionen: [
-              { text: '', termin: { datum: '2026-11-11', beginn: '18:00', ende: '20:00' } },
-            ],
-          },
-        ],
-      }),
+  it('writes date ranges and times into the answer', () => {
+    expect(terminText({ datum: '2026-11-11', bis: null, beginn: '18:00', ende: '20:00' })).toBe(
+      'Mi, 11.11.2026, 18:00–20:00',
     );
-    expect(u.fragen[0]!.optionen[0]!.text).toBe('Mi, 11.11.2026, 18:00–20:00');
+    expect(terminText({ datum: '2026-07-10', bis: '2026-07-12', beginn: null, ende: null })).toBe(
+      'Fr, 10.07.2026 – So, 12.07.2026',
+    );
+    expect(
+      terminText({ datum: '2026-07-10', bis: '2026-07-12', beginn: '18:00', ende: '14:00' }),
+    ).toBe('Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00');
   });
 
-  it('needs a title, one question, unique dates and no anonymity', () => {
-    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ titel: '' })).success).toBe(false);
+  it('needs one question, unique dates and no anonymity, but no title', () => {
+    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ titel: '' })).success).toBe(true);
     expect(umfrageEingabeSchema.safeParse(terminUmfrage({ anonym: true })).success).toBe(false);
     const doppelt = terminUmfrage();
     doppelt.fragen[0]!.optionen[1]!.termin!.datum = '2026-11-12';
@@ -317,5 +315,78 @@ describe('Terminumfragen', () => {
   it('allows dates only in scheduling polls', () => {
     const ohne = terminUmfrage({ termin: null });
     expect(umfrageEingabeSchema.safeParse(ohne).success).toBe(false);
+  });
+
+  it('checks times and end dates against the Kategorie', () => {
+    const o = (bis: string | null, beginn: string | null = null, ende: string | null = null) => ({
+      termin: { datum: '2026-07-10', bis, beginn, ende },
+    });
+    const t = { ...termin, vorlageId: null };
+    expect(terminDauerFehler(t, [o(null)], 'eintaegig')).toBeNull();
+    expect(terminDauerFehler({ ...t, beginn: null }, [o(null)], 'eintaegig')).toMatch(/Beginn/);
+    expect(terminDauerFehler(t, [o(null)], 'mehrtaegig')).toMatch(/Ende/);
+    expect(terminDauerFehler({ ...t, jeTermin: true }, [o('2026-07-12')], 'mehrtaegig')).toMatch(
+      /jedem Termin/,
+    );
+    expect(
+      terminDauerFehler({ ...t, beginn: null, ende: null }, [o('2026-07-12')], 'ganztaegig'),
+    ).toBeNull();
+    expect(terminDauerFehler({ ...t, vorlageId: 'v' }, [o(null)], 'mehrtaegig')).toBeNull();
+    const n = terminNormalisieren(
+      { ...t, vorlageId: 'v', bedarf: { dienstformId: 'd', minimum: 1, wunsch: 1 } },
+      [o('2026-07-12', '10:00', '12:00')],
+      'mehrtaegig',
+    );
+    expect(n.termin).toMatchObject({ beginn: null, ende: null, bedarf: null });
+    expect(n.optionen[0]!.termin).toEqual({
+      datum: '2026-07-10',
+      bis: null,
+      beginn: null,
+      ende: null,
+    });
+    expect(
+      terminSpanne(
+        { jeTermin: false, beginn: null, ende: null },
+        o('2026-07-12').termin,
+        'ganztaegig',
+      ),
+    ).toEqual({ beginn: '2026-07-09T22:00:00.000Z', ende: '2026-07-12T22:00:00.000Z' });
+  });
+
+  it('allows answering "none of the dates"', () => {
+    const regel: FrageRegeln = {
+      id: 'f',
+      optionIds: ['a'],
+      freitext: false,
+      maxAntworten: null,
+      leerErlaubt: true,
+    };
+    expect(stimmzettelFehler([regel], { antworten: [] })).toBeNull();
+    expect(ungueltigNachAenderung([regel], [], ['u']).erneut).toEqual([]);
+  });
+});
+
+describe('dienstVerteilung', () => {
+  const p = (dienstformId: string, minimum: number, wunsch: number) => ({
+    schichtId: 's',
+    dienstformId,
+    minimum,
+    wunsch,
+  });
+  it('fills every Minimum first, then every Wunsch, then the rest in turn', () => {
+    const plaetze = [p('bar', 1, 2), p('kasse', 1, 1)];
+    expect(bedarfZusammen(plaetze)).toEqual({
+      minimum: 2,
+      wunsch: 3,
+      dienstformIds: ['bar', 'kasse'],
+    });
+    const v = dienstVerteilung(plaetze, ['a', 'b', 'c', 'd']);
+    expect(v.map((x) => [x.sub, x.platz.dienstformId])).toEqual([
+      ['a', 'bar'],
+      ['b', 'kasse'],
+      ['c', 'bar'],
+      ['d', 'kasse'],
+    ]);
+    expect(dienstVerteilung([], ['a'])).toEqual([]);
   });
 });
