@@ -326,13 +326,46 @@ export const umfrageEingabeSchema = z
       .max(UMFRAGE_FRAGEN_MAX, 'Zu viele Fragen.'),
     /** Set for scheduling polls (see `umfrageTerminSchema`). */
     termin: umfrageTerminSchema.nullish().transform((v) => v ?? null),
+    /**
+     * Scheduling without an event: one question whose answers are free texts (e.g. "Mo abends"),
+     * any number can be picked or "an keinem der Termine"; nothing becomes an event.
+     */
+    terminFrei: z
+      .boolean()
+      .optional()
+      .transform((v) => v ?? false),
     /** Editing: confirms that votes become invalid (otherwise 409). */
     bestaetigt: z.boolean().optional(),
   })
   .superRefine((u, ctx) => {
     if (u.termin) {
+      if (u.terminFrei) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['terminFrei'],
+          message: 'Eine freie Terminfindung hat keine Kategorie und keine Vorlage.',
+        });
+      }
       terminFehler(u, u.termin).forEach((issue) => ctx.addIssue({ code: 'custom', ...issue }));
       return;
+    }
+    if (u.terminFrei) {
+      if (u.titel === '') {
+        ctx.addIssue({ code: 'custom', path: ['titel'], message: 'Bitte gib einen Titel ein.' });
+      }
+      if (u.fragen.length !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fragen'],
+          message: 'Eine Terminfindung hat genau eine Frage.',
+        });
+      } else if (u.fragen[0]!.optionen.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fragen', 0, 'optionen'],
+          message: 'Lege mindestens einen Termin an.',
+        });
+      }
     }
     if (u.fragen.some((f) => f.optionen.some((o) => o.termin !== null))) {
       ctx.addIssue({
@@ -383,6 +416,15 @@ export const umfrageEingabeSchema = z
     }
   })
   .transform((u) => {
+    if (u.terminFrei) {
+      const [frage] = u.fragen;
+      return {
+        ...u,
+        fragen: [
+          { ...frage!, text: frage!.text || TERMIN_FRAGE, freitext: false, maxAntworten: null },
+        ],
+      };
+    }
     if (u.termin) {
       const termin = u.termin;
       const [frage] = u.fragen;
@@ -660,6 +702,8 @@ export interface UmfrageListeDto {
   kreisGroesse: number;
   /** Scheduling poll (see `umfrageTerminSchema`). */
   terminumfrage: boolean;
+  /** Scheduling without an event (free-text dates). */
+  terminFrei: boolean;
 }
 
 export interface UmfrageOptionDto {

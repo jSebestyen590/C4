@@ -390,3 +390,35 @@ describe('dienstVerteilung', () => {
     expect(dienstVerteilung([], ['a'])).toEqual([]);
   });
 });
+
+describe('freie Terminfindung', () => {
+  const frei = (extra: Partial<UmfrageEingabe> = {}) =>
+    eingabe({
+      terminFrei: true,
+      fragen: [
+        {
+          text: '',
+          freitext: true,
+          maxAntworten: 1,
+          optionen: [{ text: 'Mo abends' }, { text: 'Sa 14 Uhr' }],
+        },
+      ],
+      ...extra,
+    });
+  it('allows several free-text dates and needs a title', () => {
+    const u = umfrageEingabeSchema.parse(frei());
+    expect(u.fragen[0]).toMatchObject({
+      text: 'Welche Termine passen dir?',
+      freitext: false,
+      maxAntworten: null,
+    });
+    expect(umfrageEingabeSchema.safeParse(frei({ titel: '' })).success).toBe(false);
+    expect(
+      umfrageEingabeSchema.safeParse(
+        frei({
+          termin: { kategorieId: 'k', jeTermin: false, beginn: null, ende: null, bedarf: null },
+        }),
+      ).success,
+    ).toBe(false);
+  });
+});

@@ -4,6 +4,21 @@ Jedes Mitglied kann Umfragen erstellen. Eine Umfrage hat eine oder mehrere Frage
 eigene Antwort (Freitext), ein Ablaufdatum und zwei Personenkreise: wer abstimmen **muss** und wer abstimmen **darf**.
 Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/bearbeiten`.
 
+## Formular
+
+Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, danach erscheint das passende Formular
+(„Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest.
+
+| Typ                       | Inhalt                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| Frage oder Fragen         | Eigene Fragen mit Antworten, Freitext und Anzahl wählbarer Antworten                    |
+| Terminfindung             | Termine als Daten, das Event entsteht aus einer Kategorie (siehe „Terminfindung“)       |
+| Terminfindung aus Vorlage | Termine als Starttage, das Event entsteht aus einer Vorlage                             |
+| Terminfindung ohne Event  | Termine als freier Text (`terminFrei`, Migration `0093`), daraus entsteht nie ein Event |
+
+Die freie Terminfindung hat genau eine Frage, beliebig viele Termine sind wählbar, „An keinem der Termine“ geht wie bei
+der Terminfindung, der Titel ist Pflicht. `POST /api/umfragen/:id/event` antwortet mit 400.
+
 ## Regeln
 
 - **Laufzeit**: bis zum Ende von `endet_am` (Europe/Berlin, `umfrageLaeuft`). Das Datum darf nicht in der Vergangenheit
@@ -102,7 +117,7 @@ Siehe [benachrichtigungen.md](./benachrichtigungen.md), Code in `packages/api/sr
 
 ## Datenmodell
 
-Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0092`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
+Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0093`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
 in `packages/shared/src/umfragen.ts`.
 
 | Tabelle                  | Inhalt                                                                                                                                                          |

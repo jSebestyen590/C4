@@ -4571,5 +4571,36 @@ describe('umfragen', () => {
         ['r', 'kasse'],
       ]);
     });
+
+    it('lets members answer "none" in a free scheduling poll, which never becomes an event', async () => {
+      const t = await setup();
+      const res = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', {
+          ...umfrage({ endetAm: '2099-01-31' }),
+          terminFrei: true,
+          fragen: [
+            { text: '', freitext: false, maxAntworten: 1, optionen: [{ text: 'Mo abends' }] },
+          ],
+        }),
+      );
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      const { body } = await t.holen(id, 'member-token');
+      expect(body).toMatchObject({ terminFrei: true, terminumfrage: true, termin: null });
+      const frage = body.fragen[0]!;
+      expect(
+        (await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [] }])).status,
+      ).toBe(200);
+      expect((await t.holen(id, 'member-token')).body.fragen[0]!.keiner).toMatchObject({
+        anzahl: 1,
+      });
+      await t.app.request(`/api/umfragen/${id}/beenden`, json('vorstand-token', 'POST'));
+      const event = await t.app.request(
+        `/api/umfragen/${id}/event`,
+        json('vorstand-token', 'POST', { optionId: frage.optionen[0]!.id }),
+      );
+      expect(event.status).toBe(400);
+    });
   });
 });

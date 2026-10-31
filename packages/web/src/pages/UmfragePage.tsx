@@ -98,7 +98,7 @@ function FrageEingabe({
   const hinweis =
     max === 1
       ? undefined
-      : frage.optionen.some((o) => o.termin)
+      : keinerMoeglich
         ? 'Kreuze alle Termine an, die dir passen.'
         : frage.maxAntworten === null
           ? 'Mehrere Antworten möglich.'
@@ -308,7 +308,7 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
           optionIds: a.optionIds,
           freitext: a.freitext,
           // A valid vote without any date means "an keinem der Termine".
-          keiner: u.termin !== null && u.abgestimmt && a.optionIds.length === 0,
+          keiner: u.terminumfrage && u.abgestimmt && a.optionIds.length === 0,
         },
       ]),
     ),
@@ -319,7 +319,7 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
 
   const absenden = async () => {
     const offen =
-      u.termin &&
+      u.terminumfrage &&
       u.fragen.some((f) => {
         const a = antworten[f.id];
         return !a?.keiner && (a?.optionIds.length ?? 0) === 0;
@@ -376,7 +376,7 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
             gesperrt={!bearbeiten}
             einzeln={u.fragen.length === 1}
             titel={u.titel}
-            keinerMoeglich={u.termin !== null}
+            keinerMoeglich={u.terminumfrage}
           />
         ))}
         {fehler && <Alert color="red">{fehler}</Alert>}

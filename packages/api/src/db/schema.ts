@@ -765,6 +765,8 @@ export const umfragen = pgTable('umfragen', {
   /** Comma-separated days before the end. */
   erinnerungenPflicht: text('erinnerungen_pflicht').notNull().default(''),
   erinnerungenOptional: text('erinnerungen_optional').notNull().default(''),
+  /** Scheduling without an event (null = false). */
+  terminFrei: boolean('termin_frei'),
 });
 export type UmfrageRow = typeof umfragen.$inferSelect;
 

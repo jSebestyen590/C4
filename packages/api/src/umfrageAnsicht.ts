@@ -90,7 +90,8 @@ export function alsListeDto(
     darfLoeschen: a.verwaltung,
     abgaben: gueltig.size,
     kreisGroesse: new Set([...kreis.keys(), ...gueltig]).size,
-    terminumfrage: u.termin !== null,
+    terminumfrage: u.termin !== null || u.terminFrei,
+    terminFrei: u.terminFrei,
   };
 }
 
@@ -133,7 +134,7 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
         };
       }),
       keiner:
-        u.termin && sichtbar
+        (u.termin || u.terminFrei) && sichtbar
           ? (() => {
               const subs = [...gueltig].filter(
                 (sub) => !u.stimmen.some((s) => s.sub === sub && s.frageId === f.id),

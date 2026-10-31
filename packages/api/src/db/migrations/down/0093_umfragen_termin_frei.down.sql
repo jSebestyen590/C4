@@ -1,0 +1,1 @@
+ALTER TABLE umfragen DROP COLUMN IF EXISTS termin_frei

@@ -3,7 +3,6 @@ import {
   Button,
   Group,
   Paper,
-  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -224,16 +223,7 @@ export function UmfrageTerminFelder({
 
   return (
     <Stack gap="sm">
-      <SegmentedControl
-        fullWidth
-        size="md"
-        data={[
-          { value: 'kategorie', label: 'Kategorie' },
-          { value: 'vorlage', label: 'Vorlage' },
-        ]}
-        value={werte.quelle}
-        onChange={(v) => set('quelle', v as TerminWerte['quelle'])}
-      />
+      {/* Kategorie or Vorlage is chosen with the kind of poll before the form. */}
       {werte.quelle === 'vorlage' ? (
         <>
           <Select

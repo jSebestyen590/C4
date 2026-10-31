@@ -480,6 +480,7 @@ export function createApp(deps: AppDeps) {
         };
       }),
       termin: e.termin,
+      terminFrei: e.terminFrei,
     };
   };
 
@@ -1180,7 +1181,7 @@ export function createApp(deps: AppDeps) {
             daten.fragen.map((f) => ({
               ...f,
               optionIds: f.optionen.map((o) => o.id),
-              leerErlaubt: daten.termin !== null,
+              leerErlaubt: daten.termin !== null || daten.terminFrei,
             })),
             u.stimmen,
             u.abgaben.map((x) => x.sub),
@@ -1362,7 +1363,7 @@ export function createApp(deps: AppDeps) {
             u.fragen.map((f) => ({
               ...f,
               optionIds: f.optionen.map((o) => o.id),
-              leerErlaubt: u.termin !== null,
+              leerErlaubt: u.termin !== null || u.terminFrei,
             })),
             zettel,
           );

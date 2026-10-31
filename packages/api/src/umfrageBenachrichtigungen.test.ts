@@ -30,6 +30,7 @@ async function setup() {
       erinnerungenOptional: [3],
       fragen: [{ id: 'f', text: 'Ja?', freitext: false, maxAntworten: 1, optionen: [] }],
       termin: null,
+      terminFrei: false,
     },
     'x',
   );

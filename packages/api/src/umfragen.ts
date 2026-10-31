@@ -50,6 +50,8 @@ export interface UmfrageSpeichern {
   fragen: UmfrageFrage[];
   /** Scheduling polls only. */
   termin: UmfrageTermin | null;
+  /** Scheduling without an event: free-text dates, "an keinem der Termine" allowed. */
+  terminFrei: boolean;
 }
 
 export interface Abgabe {
@@ -116,6 +118,7 @@ const zeileSpalten = (d: UmfrageSpeichern) => ({
   optionalStatus: teilnahmeKreisKodieren(d.optional.status) ?? '',
   erinnerungenPflicht: erinnerungenKodieren(d.erinnerungenPflicht),
   erinnerungenOptional: erinnerungenKodieren(d.erinnerungenOptional),
+  terminFrei: d.terminFrei,
 });
 
 /** Writes circles, questions and options; existing ids are updated, new ones inserted. */
@@ -223,6 +226,7 @@ function alsDaten(
     fragen,
     abgaben,
     termin: terminAus(termin),
+    terminFrei: row.terminFrei ?? false,
     eventId: termin?.eventId ?? null,
     eventOptionId: termin?.optionId ?? null,
   };

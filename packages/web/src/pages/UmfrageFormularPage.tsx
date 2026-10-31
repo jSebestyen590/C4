@@ -16,10 +16,20 @@ import {
   Textarea,
   TextInput,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
-import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconCalendarEvent,
+  IconCalendarQuestion,
+  IconListCheck,
+  IconPlus,
+  IconTemplate,
+  IconTrash,
+} from '@tabler/icons-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   heuteBerlin,
@@ -87,7 +97,45 @@ const neueFrage = (): FrageWert => ({
   ],
 });
 
+/** Kind of poll, chosen before the form: questions, or scheduling with or without an event. */
+export type UmfrageTyp = 'fragen' | 'termin' | 'termin_vorlage' | 'termin_frei';
+
+export const UMFRAGE_TYPEN: { typ: UmfrageTyp; titel: string; beschreibung: string }[] = [
+  {
+    typ: 'fragen',
+    titel: 'Frage oder Fragen',
+    beschreibung: 'Eigene Fragen mit festen Antworten und auf Wunsch eigenen Antworten.',
+  },
+  {
+    typ: 'termin',
+    titel: 'Terminfindung',
+    beschreibung:
+      'Die Antworten sind Termine. Den gewählten Termin legst du danach als Event einer Kategorie an.',
+  },
+  {
+    typ: 'termin_vorlage',
+    titel: 'Terminfindung aus Vorlage',
+    beschreibung:
+      'Wie Terminfindung, das Event entsteht aus einer Vorlage mit ihren Zeiten und Schichten.',
+  },
+  {
+    typ: 'termin_frei',
+    titel: 'Terminfindung ohne Event',
+    beschreibung: 'Termine als freier Text (z. B. „Mo abends“). Daraus entsteht kein Event.',
+  },
+];
+
+const typVon = (u: UmfrageDetailDto): UmfrageTyp =>
+  u.termin
+    ? u.termin.vorlageId
+      ? 'termin_vorlage'
+      : 'termin'
+    : u.terminFrei
+      ? 'termin_frei'
+      : 'fragen';
+
 interface Werte {
+  typ: UmfrageTyp;
   titel: string;
   beschreibung: string;
   endetAm: string;
@@ -102,7 +150,11 @@ interface Werte {
   termin: TerminWerte | null;
 }
 
-const neueWerte = (): Werte => ({
+/** A free scheduling poll is one question whose answers are the dates as text. */
+const neueFreieFrage = (): FrageWert => ({ ...neueFrage(), alle: true });
+
+const neueWerte = (typ: UmfrageTyp): Werte => ({
+  typ,
   titel: '',
   beschreibung: '',
   endetAm: tagNachher(heuteBerlin(), 14),
@@ -112,11 +164,15 @@ const neueWerte = (): Werte => ({
   optional: leererKreis(),
   erinnerungenPflicht: [...UMFRAGE_ERINNERUNG_STANDARD.pflicht],
   erinnerungenOptional: [...UMFRAGE_ERINNERUNG_STANDARD.optional],
-  fragen: [neueFrage()],
-  termin: null,
+  fragen: [typ === 'termin_frei' ? neueFreieFrage() : neueFrage()],
+  termin:
+    typ === 'termin' || typ === 'termin_vorlage'
+      ? { ...neueTerminWerte(), quelle: typ === 'termin_vorlage' ? 'vorlage' : 'kategorie' }
+      : null,
 });
 
 const werteAus = (u: UmfrageDetailDto): Werte => ({
+  typ: typVon(u),
   titel: u.titel,
   beschreibung: u.beschreibung ?? '',
   endetAm: u.endetAm,
@@ -158,8 +214,94 @@ const eingabeAus = (w: Werte, kategorie?: EventKategorieDto) => ({
       .filter((o) => o.text.trim() !== '')
       .map((o) => ({ ...(o.id && { id: o.id }), text: o.text })),
   })),
+  terminFrei: w.typ === 'termin_frei',
   ...(w.termin ? { anonym: false, ...terminEingabeAus(w.termin, kategorie) } : { termin: null }),
 });
+
+/** Dates of a scheduling poll without an event: one text per date. */
+function FreieTermineEditor({
+  frage,
+  onChange,
+}: Readonly<{ frage: FrageWert; onChange: (f: FrageWert) => void }>) {
+  return (
+    <Stack gap="xs">
+      <Text size="sm" c="dimmed">
+        Gib die Termine als Text an. Alle kreuzen an, was ihnen passt, oder „An keinem der Termine“.
+      </Text>
+      {frage.optionen.map((o, i) => (
+        <Group key={o.key} gap="xs" wrap="nowrap">
+          <TextInput
+            size="md"
+            style={{ flex: 1 }}
+            aria-label={`Termin ${i + 1}`}
+            placeholder={i === 0 ? 'z. B. Mo, 17.11. abends' : `Termin ${i + 1}`}
+            value={o.text}
+            onChange={(e) =>
+              onChange({
+                ...frage,
+                optionen: frage.optionen.map((x, j) =>
+                  j === i ? { ...x, text: e.currentTarget.value } : x,
+                ),
+              })
+            }
+          />
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size={44}
+            aria-label={`Termin ${i + 1} entfernen`}
+            disabled={frage.optionen.length === 1}
+            onClick={() =>
+              onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
+            }
+          >
+            <IconTrash size={20} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button
+        variant="default"
+        leftSection={<IconPlus size={18} />}
+        onClick={() =>
+          onChange({ ...frage, optionen: [...frage.optionen, { key: neuerKey(), text: '' }] })
+        }
+      >
+        Termin hinzufügen
+      </Button>
+    </Stack>
+  );
+}
+
+/** First step of a new poll: what kind of poll it is. */
+function TypWahl({ onWahl }: Readonly<{ onWahl: (typ: UmfrageTyp) => void }>) {
+  return (
+    <Stack gap="sm">
+      <Text>Was möchtest du erstellen?</Text>
+      {UMFRAGE_TYPEN.map((t) => (
+        <UnstyledButton key={t.typ} onClick={() => onWahl(t.typ)}>
+          <Paper withBorder p="md" mih={44}>
+            <Group gap="sm" wrap="nowrap" align="flex-start">
+              {TYP_ICONS[t.typ]}
+              <Stack gap={2}>
+                <Text fw={600}>{t.titel}</Text>
+                <Text size="sm" c="dimmed">
+                  {t.beschreibung}
+                </Text>
+              </Stack>
+            </Group>
+          </Paper>
+        </UnstyledButton>
+      ))}
+    </Stack>
+  );
+}
+
+const TYP_ICONS: Record<UmfrageTyp, ReactNode> = {
+  fragen: <IconListCheck size={26} />,
+  termin: <IconCalendarEvent size={26} />,
+  termin_vorlage: <IconTemplate size={26} />,
+  termin_frei: <IconCalendarQuestion size={26} />,
+};
 
 /** Moves the entry at `i` by `richtung` (-1 up, 1 down). */
 function verschieben<T>(liste: T[], i: number, richtung: -1 | 1): T[] {
@@ -410,11 +552,11 @@ function FrageEditor({
   );
 }
 
-function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
+function Formular({ umfrage, typ }: Readonly<{ umfrage?: UmfrageDetailDto; typ: UmfrageTyp }>) {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [w, setW] = useState<Werte>(() => (umfrage ? werteAus(umfrage) : neueWerte()));
+  const [w, setW] = useState<Werte>(() => (umfrage ? werteAus(umfrage) : neueWerte(typ)));
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const [betroffene, setBetroffene] = useState<number | null>(null);
@@ -496,15 +638,17 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
         <TextInput
           size="md"
           label="Titel"
-          placeholder="z. B. Sommerfest 2027"
+          placeholder={w.typ === 'fragen' ? 'z. B. Sommerfest 2027' : 'z. B. Nächste Sitzung'}
           description={
-            w.termin
-              ? 'Wird der Titel des Events. Leer lassen: Titel der Vorlage oder Name der Kategorie.'
-              : w.fragen.length === 1
-                ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
-                : undefined
+            w.typ === 'termin_vorlage'
+              ? 'Wird der Titel des Events. Leer lassen: Titel der Vorlage.'
+              : w.typ === 'termin'
+                ? 'Wird der Titel des Events. Leer lassen: Name der Kategorie.'
+                : w.typ === 'fragen' && w.fragen.length === 1
+                  ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
+                  : undefined
           }
-          required={w.termin === null && w.fragen.length > 1}
+          required={w.typ === 'termin_frei' || (w.typ === 'fragen' && w.fragen.length > 1)}
           value={w.titel}
           onChange={(e) => set('titel', e.currentTarget.value)}
         />
@@ -526,20 +670,19 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           onWert={(v) => set('endetAm', v)}
         />
 
-        <Switch
-          size="md"
-          mt="md"
-          label="Terminfindung"
-          description="Die Antworten sind Termine. Nach dem Ende legst du einen davon als Event an."
-          checked={w.termin !== null}
-          onChange={(e) => set('termin', e.currentTarget.checked ? neueTerminWerte() : null)}
-        />
         {w.termin ? (
           <>
             <Title order={3} mt="md">
               Termine
             </Title>
             <UmfrageTerminFelder werte={w.termin} onChange={(t) => set('termin', t)} />
+          </>
+        ) : w.typ === 'termin_frei' ? (
+          <>
+            <Title order={3} mt="md">
+              Termine
+            </Title>
+            <FreieTermineEditor frage={w.fragen[0]!} onChange={(f) => setFrage(0, f)} />
           </>
         ) : (
           <>
@@ -673,20 +816,32 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
 export function UmfrageFormularPage() {
   const { id } = useParams();
   const umfrage = useUmfrage(id);
+  // New polls start with the choice of their kind; the form follows it.
+  const [typ, setTyp] = useState<UmfrageTyp | null>(null);
   return (
     <Stack maw={720}>
       <Anchor component={Link} to={id ? umfrageLink(id) : '/umfragen'} size="sm">
         ← Zurück
       </Anchor>
       <Title order={2}>{id ? 'Umfrage bearbeiten' : 'Umfrage erstellen'}</Title>
+      {!id && !typ && <TypWahl onWahl={setTyp} />}
+      {!id && typ && (
+        <Group justify="space-between" wrap="nowrap" gap="xs">
+          <Text fw={600}>{UMFRAGE_TYPEN.find((t) => t.typ === typ)?.titel}</Text>
+          <Button variant="subtle" onClick={() => setTyp(null)}>
+            Anderen Typ wählen
+          </Button>
+        </Group>
+      )}
       {id && umfrage.isPending && <Loader m="md" aria-label="Umfrage wird geladen" />}
       {id && umfrage.isError && <Alert color="red">Die Umfrage konnte nicht geladen werden.</Alert>}
       {id && umfrage.data && !umfrage.data.darfBearbeiten && (
         <Alert color="red">Du darfst diese Umfrage nicht bearbeiten.</Alert>
       )}
-      {(!id || umfrage.data?.darfBearbeiten) && (
-        <Formular key={umfrage.data?.id ?? 'neu'} umfrage={umfrage.data} />
+      {id && umfrage.data?.darfBearbeiten && (
+        <Formular key={umfrage.data.id} umfrage={umfrage.data} typ={typVon(umfrage.data)} />
       )}
+      {!id && typ && <Formular key={typ} typ={typ} />}
     </Stack>
   );
 }
