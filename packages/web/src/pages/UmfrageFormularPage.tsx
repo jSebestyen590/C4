@@ -160,11 +160,14 @@ function KreisFelder({
   titel,
   hinweis,
   kreis,
+  anderer,
   onChange,
 }: Readonly<{
   titel: string;
   hinweis: string;
   kreis: UmfrageKreis;
+  /** The other circle: what is chosen there cannot be chosen here. */
+  anderer: UmfrageKreis;
   onChange: (k: UmfrageKreis) => void;
 }>) {
   const api = useApi();
@@ -190,6 +193,7 @@ function KreisFelder({
               key={s}
               value={s}
               size="md"
+              disabled={anderer.status.includes(s)}
               label={labelFuer(MITGLIED_STATUS_LABELS, s, 'neutral')}
             />
           ))}
@@ -204,7 +208,9 @@ function KreisFelder({
         clearable
         hidePickedOptions
         nothingFoundMessage="Kein Posten gefunden"
-        data={(posten.data ?? []).map((p) => ({ value: p.id, label: p.name }))}
+        data={(posten.data ?? [])
+          .filter((p) => !anderer.posten.includes(p.id))
+          .map((p) => ({ value: p.id, label: p.name }))}
         value={kreis.posten}
         onChange={(v) => onChange({ ...kreis, posten: v })}
       />
@@ -216,7 +222,9 @@ function KreisFelder({
         clearable
         hidePickedOptions
         nothingFoundMessage="Niemand gefunden"
-        data={mitgliedOptionen(mitglieder.data ?? [])}
+        data={mitgliedOptionen(
+          (mitglieder.data ?? []).filter((m) => !anderer.personen.includes(m.sub)),
+        )}
         value={kreis.personen}
         onChange={(v) => onChange({ ...kreis, personen: v })}
       />
@@ -315,7 +323,8 @@ function FrageEditor({
           size="md"
           label="Frage"
           placeholder="z. B. Wann soll das Sommerfest sein?"
-          required
+          // A single question may be left empty; the title is used instead.
+          required={anzahl > 1}
           autosize
           minRows={1}
           value={frage.text}
@@ -458,7 +467,12 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           size="md"
           label="Titel"
           placeholder="z. B. Sommerfest 2027"
-          required
+          description={
+            w.fragen.length === 1
+              ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
+              : undefined
+          }
+          required={w.fragen.length > 1}
           value={w.titel}
           onChange={(e) => set('titel', e.currentTarget.value)}
         />
@@ -514,6 +528,7 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           titel="Müssen abstimmen"
           hinweis="Bekommen alle Erinnerungen, auch wenn sie Umfrage-Erinnerungen ausgeschaltet haben."
           kreis={w.pflicht}
+          anderer={w.optional}
           onChange={(k) => set('pflicht', k)}
         />
         <ErinnerungFelder
@@ -523,8 +538,9 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
         />
         <KreisFelder
           titel="Dürfen abstimmen"
-          hinweis="Optional. Wer in beiden Kreisen ist, muss abstimmen."
+          hinweis="Optional. Was oben gewählt ist, lässt sich hier nicht wählen. Wer über verschiedene Wege in beiden Kreisen landet (z. B. Posten und Status), muss abstimmen."
           kreis={w.optional}
+          anderer={w.pflicht}
           onChange={(k) => set('optional', k)}
         />
         <ErinnerungFelder

@@ -4081,6 +4081,27 @@ describe('umfragen', () => {
     expect(t.gesendet).toHaveLength(2);
   });
 
+  it('uses the question as title of a poll with a single question', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31', titel: '' });
+    const { body } = await t.holen(id, 'member-token');
+    expect(body.titel).toBe('Wann?');
+    expect(body.fragen[0]!.text).toBe('Wann?');
+  });
+
+  it('rejects a status that votes both mandatorily and optionally', async () => {
+    const t = await setup();
+    const res = await t.app.request(
+      '/api/umfragen',
+      json(
+        'vorstand-token',
+        'POST',
+        umfrage({ optional: { status: ['mitglied', 'em'], posten: [], personen: [] } }),
+      ),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('rejects an end date in the past', async () => {
     const t = await setup();
     const res = await t.app.request(

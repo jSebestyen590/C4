@@ -61,9 +61,13 @@ function FrageEingabe({
   antwort,
   onChange,
   gesperrt,
+  einzeln,
+  titel,
 }: Readonly<{
   frage: UmfrageFrageDto;
   nr: number;
+  einzeln: boolean;
+  titel: string;
   antwort: Antwort;
   onChange: (a: Antwort) => void;
   gesperrt: boolean;
@@ -79,7 +83,8 @@ function FrageEingabe({
     ...frage.optionen.map((o) => ({ value: o.id, label: o.text })),
     ...(frage.freitext ? [{ value: FREITEXT, label: 'Eigene Antwort' }] : []),
   ];
-  const label = `${nr}. ${frage.text}`;
+  // A single question repeating the title needs no label of its own.
+  const label = einzeln ? (frage.text === titel ? undefined : frage.text) : `${nr}. ${frage.text}`;
   const hinweis =
     max === 1
       ? undefined
@@ -92,6 +97,7 @@ function FrageEingabe({
       {max === 1 ? (
         <Radio.Group
           label={label}
+          aria-label={label ?? frage.text}
           value={gewaehlt[0] ?? null}
           onChange={(v) => setzen([v])}
           styles={{ label: { fontSize: 'var(--mantine-font-size-md)', fontWeight: 600 } }}
@@ -105,6 +111,7 @@ function FrageEingabe({
       ) : (
         <Checkbox.Group
           label={label}
+          aria-label={label ?? frage.text}
           description={hinweis}
           value={gewaehlt}
           onChange={setzen}
@@ -145,12 +152,20 @@ function FrageErgebnis({
   frage,
   nr,
   abgaben,
-}: Readonly<{ frage: UmfrageFrageDto; nr: number; abgaben: number }>) {
+  einzeln,
+  titel,
+}: Readonly<{
+  frage: UmfrageFrageDto;
+  nr: number;
+  abgaben: number;
+  einzeln: boolean;
+  titel: string;
+}>) {
   return (
     <Stack gap="xs">
-      <Text fw={600}>
-        {nr}. {frage.text}
-      </Text>
+      {!(einzeln && frage.text === titel) && (
+        <Text fw={600}>{einzeln ? frage.text : `${nr}. ${frage.text}`}</Text>
+      )}
       {frage.optionen.map((o) => {
         const anzahl = o.stimmen ?? 0;
         return (
@@ -278,6 +293,8 @@ function Abstimmung({ u }: Readonly<{ u: UmfrageDetailDto }>) {
             antwort={antworten[f.id] ?? { optionIds: [], freitext: null }}
             onChange={(a) => setAntworten((alt) => ({ ...alt, [f.id]: a }))}
             gesperrt={!bearbeiten}
+            einzeln={u.fragen.length === 1}
+            titel={u.titel}
           />
         ))}
         {fehler && <Alert color="red">{fehler}</Alert>}
@@ -372,7 +389,14 @@ export function UmfragePage() {
       </Title>
       {u.ergebnisseSichtbar ? (
         u.fragen.map((f, i) => (
-          <FrageErgebnis key={f.id} frage={f} nr={i + 1} abgaben={u.abgaben} />
+          <FrageErgebnis
+            key={f.id}
+            frage={f}
+            nr={i + 1}
+            abgaben={u.abgaben}
+            einzeln={u.fragen.length === 1}
+            titel={u.titel}
+          />
         ))
       ) : (
         <Text c="dimmed">

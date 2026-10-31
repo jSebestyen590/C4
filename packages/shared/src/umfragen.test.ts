@@ -58,6 +58,42 @@ describe('umfrageEingabeSchema', () => {
     });
     expect(umfrageEingabeSchema.safeParse(zuViele).success).toBe(false);
   });
+  it('takes title or question from the other one when there is a single question', () => {
+    const frage = eingabe().fragen[0]!;
+    const ohneTitel = umfrageEingabeSchema.parse(eingabe({ titel: '' }));
+    expect(ohneTitel.titel).toBe('Wann?');
+    const ohneFrage = umfrageEingabeSchema.parse(eingabe({ fragen: [{ ...frage, text: ' ' }] }));
+    expect(ohneFrage.fragen[0]!.text).toBe('Sommerfest');
+    const lang = umfrageEingabeSchema.parse(
+      eingabe({ titel: '', fragen: [{ ...frage, text: 'x'.repeat(300) }] }),
+    );
+    expect(lang.titel).toHaveLength(200);
+    expect(lang.titel.endsWith('…')).toBe(true);
+    expect(
+      umfrageEingabeSchema.safeParse(eingabe({ titel: '', fragen: [{ ...frage, text: '' }] }))
+        .success,
+    ).toBe(false);
+  });
+  it('needs title and questions when there are several questions', () => {
+    const frage = eingabe().fragen[0]!;
+    expect(
+      umfrageEingabeSchema.safeParse(eingabe({ titel: '', fragen: [frage, frage] })).success,
+    ).toBe(false);
+    expect(
+      umfrageEingabeSchema.safeParse(eingabe({ fragen: [frage, { ...frage, text: '' }] })).success,
+    ).toBe(false);
+  });
+  it('lets nobody vote both mandatorily and optionally', () => {
+    for (const optional of [
+      { status: ['mitglied' as const], posten: [], personen: [] },
+      { status: [], posten: [], personen: ['x'] },
+    ]) {
+      const r = umfrageEingabeSchema.safeParse(
+        eingabe({ pflicht: { status: ['mitglied'], posten: [], personen: ['x'] }, optional }),
+      );
+      expect(r.success).toBe(false);
+    }
+  });
   it('rejects duplicate options and unknown reminder days', () => {
     const doppelt = eingabe({
       fragen: [

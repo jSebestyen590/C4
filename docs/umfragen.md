@@ -9,11 +9,15 @@ Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/be
 - **Laufzeit**: bis zum Ende von `endet_am` (Europe/Berlin, `umfrageLaeuft`). Das Datum darf nicht in der Vergangenheit
   liegen. Die Person, die die Umfrage erstellt hat, kann sie **vorzeitig beenden** (`beendet_am`). Beendete Umfragen lassen
   sich nicht mehr bearbeiten und nicht wieder öffnen.
+- **Titel und Frage**: Hat eine Umfrage genau eine Frage, reicht Titel oder Frage; das Leere wird aus dem anderen übernommen
+  (Titel höchstens 200 Zeichen, eine längere Frage wird als Titel mit „…“ gekürzt). Die Seite zeigt eine Frage, die dem Titel
+  gleicht, nicht noch einmal. Bei mehreren Fragen sind Titel und alle Fragen Pflicht.
 - **Fragen**: höchstens 20, je Frage höchstens 30 Antworten. `freitext` erlaubt eine eigene Antwort, sie zählt als eine
   Antwort. `maxAntworten` (1 bis Anzahl Antworten, `null` = beliebig viele) begrenzt die Auswahl je Person.
 - **Kreise** (`UmfrageKreis`): Status, Posten (wer ihn gerade innehat) und einzelne Personen, je für „Pflicht“ und
-  „Optional“. Ausgewertet wird **dynamisch** gegen die aktuellen Mitglieder und Besetzungen (`kreisVon`); wer in beiden
-  Kreisen ist, gilt als Pflicht.
+  „Optional“. Derselbe Status, Posten oder dieselbe Person darf nicht in beiden Kreisen stehen (400, im Formular nicht
+  wählbar). Ausgewertet wird **dynamisch** gegen die aktuellen Mitglieder und Besetzungen (`kreisVon`); wer in beiden
+  Kreisen landet (z. B. über einen Posten und den Status), gilt als Pflicht.
 - **Sehen** darf eine Umfrage, wer in einem Kreis ist, schon abgestimmt hat, sie erstellt hat oder `umfragen:verwalten` hat.
   Allen anderen antwortet das API mit 404. **Abstimmen** darf nur, wer in einem Kreis ist.
 - **Stimme**: ein Stimmzettel für alle Fragen (`PUT /api/umfragen/:id/stimme`), jede Frage muss beantwortet sein

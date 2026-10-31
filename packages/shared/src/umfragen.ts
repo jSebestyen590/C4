@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Anrede } from './anrede';
-import { beschreibung, eindeutig, name } from './bausteine';
+import { beschreibung, eindeutig } from './bausteine';
 import { heuteBerlin, tagNachher } from './datum';
 import { datumSchema } from './schemas';
 import { MITGLIED_STATI, type MitgliedStatus } from './status';
@@ -17,6 +17,12 @@ export const UMFRAGE_ERINNERUNG_STANDARD = { pflicht: [7, 3, 1], optional: [3] }
 
 export const UMFRAGE_FRAGEN_MAX = 20;
 export const UMFRAGE_OPTIONEN_MAX = 30;
+export const UMFRAGE_TITEL_MAX = 200;
+export const UMFRAGE_FRAGE_MAX = 500;
+
+/** A title taken over from a long question is cut to the allowed length. */
+const titelAus = (frage: string) =>
+  frage.length <= UMFRAGE_TITEL_MAX ? frage : `${frage.slice(0, UMFRAGE_TITEL_MAX - 1)}…`;
 
 /** A circle: statuses, holders of Posten and individual members (subs). */
 export interface UmfrageKreis {
@@ -38,6 +44,13 @@ export const umfrageKreisSchema = z.object({
   posten: idListe,
   personen: idListe,
 });
+
+/** Who votes either has to or may, never both. */
+const KREIS_DOPPELT = {
+  status: 'Ein Status kann nur verpflichtend oder optional abstimmen, nicht beides.',
+  posten: 'Ein Posten kann nur verpflichtend oder optional abstimmen, nicht beides.',
+  personen: 'Eine Person kann nur verpflichtend oder optional abstimmen, nicht beides.',
+} as const;
 
 const kreisLeer = (k: UmfrageKreis) =>
   k.status.length === 0 && k.posten.length === 0 && k.personen.length === 0;
@@ -66,11 +79,8 @@ const optionSchema = z.object({
 export const umfrageFrageSchema = z
   .object({
     id: z.string().min(1).optional(),
-    text: z
-      .string()
-      .trim()
-      .min(1, 'Bitte gib eine Frage ein.')
-      .max(500, 'Höchstens 500 Zeichen erlaubt.'),
+    /** May be empty in a poll with a single question; then the title is the question. */
+    text: z.string().trim().max(UMFRAGE_FRAGE_MAX, 'Höchstens 500 Zeichen erlaubt.'),
     freitext: z.boolean(),
     /** How many answers a member may pick (a free text counts as one); null = all. */
     maxAntworten: z.number().int().min(1, 'Mindestens 1.').nullable(),
@@ -106,10 +116,16 @@ export type UmfrageFrageEingabe = z.input<typeof umfrageFrageSchema>;
 export const moeglicheAntworten = (f: { optionen: readonly unknown[]; freitext: boolean }) =>
   f.optionen.length + (f.freitext ? 1 : 0);
 
-/** Body of `POST /api/umfragen` and `PUT /api/umfragen/:id`. */
+/**
+ * Body of `POST /api/umfragen` and `PUT /api/umfragen/:id`. With a single question, either the
+ * title or the question may be left empty; the other one is used for both.
+ */
 export const umfrageEingabeSchema = z
   .object({
-    titel: name('einen Titel'),
+    titel: z
+      .string()
+      .trim()
+      .max(UMFRAGE_TITEL_MAX, `Höchstens ${UMFRAGE_TITEL_MAX} Zeichen erlaubt.`),
     beschreibung,
     endetAm: datumSchema,
     anonym: z.boolean(),
@@ -126,6 +142,35 @@ export const umfrageEingabeSchema = z
     bestaetigt: z.boolean().optional(),
   })
   .superRefine((u, ctx) => {
+    const einzeln = u.fragen.length === 1;
+    if (u.titel === '' && !(einzeln && u.fragen[0]!.text !== '')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['titel'],
+        message: einzeln
+          ? 'Bitte gib einen Titel oder die Frage ein.'
+          : 'Bitte gib einen Titel ein.',
+      });
+    }
+    for (const [i, f] of u.fragen.entries()) {
+      if (f.text === '' && !(einzeln && u.titel !== '')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fragen', i, 'text'],
+          message: 'Bitte gib eine Frage ein.',
+        });
+      }
+    }
+    for (const teil of ['status', 'posten', 'personen'] as const) {
+      const pflicht: readonly string[] = u.pflicht[teil];
+      if (u.optional[teil].some((x) => pflicht.includes(x))) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['optional', teil],
+          message: KREIS_DOPPELT[teil],
+        });
+      }
+    }
     if (kreisLeer(u.pflicht) && kreisLeer(u.optional)) {
       ctx.addIssue({
         code: 'custom',
@@ -137,6 +182,15 @@ export const umfrageEingabeSchema = z
     if (!eindeutig(ids)) {
       ctx.addIssue({ code: 'custom', path: ['fragen'], message: 'Doppelte Einträge.' });
     }
+  })
+  .transform((u) => {
+    if (u.fragen.length !== 1) return u;
+    const [frage] = u.fragen;
+    return {
+      ...u,
+      titel: u.titel || titelAus(frage!.text),
+      fragen: [{ ...frage!, text: frage!.text || u.titel }],
+    };
   });
 export type UmfrageEingabe = z.input<typeof umfrageEingabeSchema>;
 
