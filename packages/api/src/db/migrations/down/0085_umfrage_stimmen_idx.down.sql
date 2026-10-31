@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS umfrage_stimmen_umfrage_idx

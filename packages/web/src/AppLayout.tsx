@@ -22,6 +22,7 @@ import {
   IconBuildingWarehouse,
   IconHome,
   IconKey,
+  IconListCheck,
   IconBox,
   IconPackage,
   IconLogout,
@@ -150,6 +151,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Schlüssel',
       icon: <IconKey size={20} />,
       show: can('schluessel:lesen'),
+    },
+    {
+      to: '/umfragen',
+      label: 'Umfragen',
+      icon: <IconListCheck size={20} />,
+      show: can('umfragen:lesen'),
     },
     {
       to: '/waren',

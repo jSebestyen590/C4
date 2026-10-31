@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
@@ -78,6 +79,11 @@ import {
   type Posten,
   bezeichnungFuer,
   schluesselAnlegenSchema,
+  stimmzettelFehler,
+  stimmzettelSchema,
+  umfrageEingabeSchema,
+  umfrageLaeuft,
+  ungueltigNachAenderung,
   schluesselEingabeSchema,
   uebergabeSchema,
   type Halter,
@@ -122,6 +128,17 @@ import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
 import { UebergabeKonflikt, type SchluesselDaten, type SchluesselStore } from './schluessel';
 import { meldeUebergabe } from './schluesselBenachrichtigungen';
+import type { UmfrageDaten, UmfrageSpeichern, UmfragenStore } from './umfragen';
+import {
+  alsDetailDto,
+  alsListeDto,
+  darfBearbeiten,
+  darfSehen,
+  kreisDerUmfrage,
+  ladeKontext,
+  type Aufrufer,
+} from './umfrageAnsicht';
+import { meldeErneutAbstimmen, meldeNeueUmfrage } from './umfrageBenachrichtigungen';
 import {
   geburtstagSichtbar,
   kanaeleLesen,
@@ -141,6 +158,7 @@ export interface AppDeps {
   inventar: InventarStore;
   kalender: KalenderStore;
   schluessel: SchluesselStore;
+  umfragen: UmfragenStore;
   benachrichtigungen: Benachrichtigungen;
   /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
   appUrl?: string;
@@ -188,6 +206,8 @@ export function createApp(deps: AppDeps) {
   const kalenderEinrichten = requirePermission('kalender:einrichten');
   const schluesselLesen = requirePermission('schluessel:lesen');
   const schluesselVerwalten = requirePermission('schluessel:verwalten');
+  const umfragenLesen = requirePermission('umfragen:lesen');
+  const umfragenVerwalten = requirePermission('umfragen:verwalten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -394,6 +414,59 @@ export function createApp(deps: AppDeps) {
       });
     }
     throw err;
+  };
+
+  const umfrageAufrufer = (c: {
+    get(k: 'user'): { sub: string };
+    get(k: 'permissions'): string[];
+  }): Aufrufer => ({
+    sub: c.get('user').sub,
+    verwaltung: c.get('permissions').includes('umfragen:verwalten'),
+  });
+
+  const umfrageKontext = () => ladeKontext(deps);
+
+  /** The poll if the caller may see it; 404 otherwise, so other polls stay hidden. */
+  const sichtbareUmfrage = async (id: string, a: Aufrufer) => {
+    const [u, k] = await Promise.all([deps.umfragen.holen(id), umfrageKontext()]);
+    if (!u || !darfSehen(u, kreisDerUmfrage(u, k), a)) {
+      throw new HTTPException(404, { message: 'Umfrage nicht gefunden' });
+    }
+    return { u, k };
+  };
+
+  /** Validated input with ids: existing questions and options keep theirs, new ones get one. */
+  const umfrageSpeichern = (
+    e: z.output<typeof umfrageEingabeSchema>,
+    bestehend?: UmfrageDaten,
+  ): UmfrageSpeichern => {
+    if (e.endetAm < heuteBerlin()) {
+      throw new HTTPException(400, { message: 'Das Ablaufdatum liegt in der Vergangenheit.' });
+    }
+    return {
+      titel: e.titel,
+      beschreibung: e.beschreibung,
+      endetAm: e.endetAm,
+      anonym: e.anonym,
+      ergebnisse: e.ergebnisse,
+      pflicht: e.pflicht,
+      optional: e.optional,
+      erinnerungenPflicht: e.erinnerungenPflicht,
+      erinnerungenOptional: e.erinnerungenOptional,
+      fragen: e.fragen.map((f) => {
+        const alt = bestehend?.fragen.find((x) => x.id === f.id);
+        return {
+          id: alt?.id ?? randomUUID(),
+          text: f.text,
+          freitext: f.freitext,
+          maxAntworten: f.maxAntworten,
+          optionen: f.optionen.map((o) => ({
+            id: alt?.optionen.find((x) => x.id === o.id)?.id ?? randomUUID(),
+            text: o.text,
+          })),
+        };
+      }),
+    };
   };
 
   /** Display data of key holders and the names used in the Übergabe messages. */
@@ -936,6 +1009,152 @@ export function createApp(deps: AppDeps) {
             }),
           );
           return c.json(alsSchluesselDto(s, m.halter));
+        },
+      )
+      // ----- Umfragen
+      .get('/umfragen', auth, umfragenLesen, async (c) => {
+        const a = umfrageAufrufer(c);
+        const [liste, k] = await Promise.all([deps.umfragen.alle(), umfrageKontext()]);
+        return c.json(
+          liste.flatMap((u) => {
+            const kreis = kreisDerUmfrage(u, k);
+            return darfSehen(u, kreis, a) ? [alsListeDto(u, k, a, kreis)] : [];
+          }),
+        );
+      })
+      .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
+        const a = umfrageAufrufer(c);
+        const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
+        return c.json(alsDetailDto(u, k, a));
+      })
+      .post(
+        '/umfragen',
+        auth,
+        umfragenLesen,
+        zValidator('json', umfrageEingabeSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          await eigenesProfilMussExistieren(sub);
+          const id = await deps.umfragen.anlegen(umfrageSpeichern(c.req.valid('json')), sub);
+          await bestEffort(async () => {
+            const [u, k, akteur] = await Promise.all([
+              deps.umfragen.holen(id),
+              umfrageKontext(),
+              akteurMitName(sub),
+            ]);
+            if (u) await meldeNeueUmfrage(deps.benachrichtigungen, u, k, akteur);
+          });
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/umfragen/:id',
+        auth,
+        umfragenLesen,
+        zValidator('json', umfrageEingabeSchema),
+        async (c) => {
+          const a = umfrageAufrufer(c);
+          const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
+          if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
+          if (!umfrageLaeuft(u)) {
+            throw new HTTPException(409, { message: 'Die Umfrage ist beendet.' });
+          }
+          const eingabe = c.req.valid('json');
+          if (eingabe.anonym !== u.anonym && u.abgaben.length > 0) {
+            throw new HTTPException(400, {
+              message: 'Nach der ersten Stimme lässt sich „anonym“ nicht mehr ändern.',
+            });
+          }
+          const daten = umfrageSpeichern(eingabe, u);
+          const aenderung = ungueltigNachAenderung(
+            daten.fragen.map((f) => ({ ...f, optionIds: f.optionen.map((o) => o.id) })),
+            u.stimmen,
+            u.abgaben.map((x) => x.sub),
+          );
+          const schonOffen = new Set(u.abgaben.filter((x) => x.erneutNoetig).map((x) => x.sub));
+          const betroffen = aenderung.erneut.filter((s) => !schonOffen.has(s));
+          if (betroffen.length > 0 && !eingabe.bestaetigt) {
+            return c.json(
+              {
+                error: 'Durch die Änderung müssen einige erneut abstimmen.',
+                betroffene: betroffen.length,
+              },
+              409,
+            );
+          }
+          gefunden(
+            await deps.umfragen.aktualisieren(u.id, daten, aenderung),
+            'Umfrage nicht gefunden',
+          );
+          await bestEffort(async () => {
+            const neu = await deps.umfragen.holen(u.id);
+            if (!neu) return;
+            const vorher = kreisDerUmfrage(u, k);
+            const hinzu = new Set(
+              [...kreisDerUmfrage(neu, k).keys()].filter((s) => !vorher.has(s)),
+            );
+            await Promise.all([
+              meldeErneutAbstimmen(
+                deps.benachrichtigungen,
+                neu,
+                betroffen.filter((s) => s !== a.sub),
+              ),
+              hinzu.size > 0
+                ? meldeNeueUmfrage(
+                    deps.benachrichtigungen,
+                    neu,
+                    k,
+                    await akteurMitName(a.sub),
+                    hinzu,
+                  )
+                : undefined,
+            ]);
+          });
+          return c.json({ ok: true });
+        },
+      )
+      .post('/umfragen/:id/beenden', auth, umfragenLesen, async (c) => {
+        const a = umfrageAufrufer(c);
+        const { u } = await sichtbareUmfrage(c.req.param('id'), a);
+        if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
+        if (!umfrageLaeuft(u))
+          throw new HTTPException(409, { message: 'Die Umfrage ist beendet.' });
+        await deps.umfragen.beenden(u.id, new Date());
+        return c.json({ ok: true });
+      })
+      .delete('/umfragen/:id', auth, umfragenVerwalten, async (c) => {
+        gefunden(await deps.umfragen.loeschen(c.req.param('id')), 'Umfrage nicht gefunden');
+        return c.json({ ok: true });
+      })
+      .put(
+        '/umfragen/:id/stimme',
+        auth,
+        umfragenLesen,
+        zValidator('json', stimmzettelSchema),
+        async (c) => {
+          const a = umfrageAufrufer(c);
+          const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
+          if (!kreisDerUmfrage(u, k).has(a.sub)) {
+            throw new HTTPException(403, { message: 'Du bist bei dieser Umfrage nicht gefragt.' });
+          }
+          if (!umfrageLaeuft(u))
+            throw new HTTPException(409, { message: 'Die Umfrage ist beendet.' });
+          await eigenesProfilMussExistieren(a.sub);
+          const zettel = c.req.valid('json');
+          const fehler = stimmzettelFehler(
+            u.fragen.map((f) => ({ ...f, optionIds: f.optionen.map((o) => o.id) })),
+            zettel,
+          );
+          if (fehler) throw new HTTPException(400, { message: fehler });
+          await deps.umfragen.abstimmen(
+            u.id,
+            a.sub,
+            zettel.antworten.flatMap((x) => [
+              ...x.optionIds.map((optionId) => ({ frageId: x.frageId, optionId, freitext: null })),
+              ...(x.freitext ? [{ frageId: x.frageId, optionId: null, freitext: x.freitext }] : []),
+            ]),
+          );
+          return c.json({ ok: true });
         },
       )
       // ----- Waren: Lagerorte

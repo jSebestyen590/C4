@@ -32,6 +32,9 @@ import { PostenPage } from './pages/PostenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
 import { SchluesselPage } from './pages/SchluesselPage';
+import { UmfrageFormularPage } from './pages/UmfrageFormularPage';
+import { UmfragePage } from './pages/UmfragePage';
+import { UmfragenPage } from './pages/UmfragenPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { PushAbfrage } from './PushAbfrage';
 import { StammdatenPage } from './pages/StammdatenPage';
@@ -178,6 +181,46 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="schluessel:lesen">
                 <RequireUsername>
                   <SchluesselDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/umfragen"
+            element={
+              <Protected permission="umfragen:lesen">
+                <RequireUsername>
+                  <UmfragenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/umfragen/neu"
+            element={
+              <Protected permission="umfragen:lesen">
+                <RequireUsername>
+                  <UmfrageFormularPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/umfragen/:id"
+            element={
+              <Protected permission="umfragen:lesen">
+                <RequireUsername>
+                  <UmfragePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/umfragen/:id/bearbeiten"
+            element={
+              <Protected permission="umfragen:lesen">
+                <RequireUsername>
+                  <UmfrageFormularPage />
                 </RequireUsername>
               </Protected>
             }

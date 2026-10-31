@@ -73,4 +73,12 @@ describe('permissions', () => {
   it('unknown groups grant nothing beyond the status', () => {
     expect(permissionsFor(['whatever'], 'anwaerter')).toEqual([...STATUS_PERMISSIONS.anwaerter]);
   });
+  it('every status may run polls, but only extra permissions manage all of them', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'umfragen:lesen')).toBe(true);
+      expect(hasPermission([], status, 'umfragen:verwalten')).toBe(false);
+      expect(hasPermission([], status, 'umfragen:verwalten', ['umfragen:verwalten'])).toBe(true);
+      expect(hasPermission(['admin'], status, 'umfragen:verwalten')).toBe(true);
+    }
+  });
 });

@@ -1,7 +1,7 @@
 # Benachrichtigungen (Web Push)
 
-Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; Nutzer sind der Kalender, Geburtstage und die
-Schlüssel. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
+Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; Nutzer sind der Kalender, Geburtstage, die
+Schlüssel und die Umfragen. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
 Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`.
 
@@ -26,6 +26,9 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                                        | an, 60 Minuten        |
 | `geburtstag.erinnerung`         | Ein Mitglied hat Geburtstag: am Tag selbst oder 1/2/3/5/7 Tage vorher (`minuten` = Tage in Minuten: 0/1440/2880/4320/7200/10080), ab 9 Uhr (Berlin)                                                                | an, am Tag selbst     |
 | `schluessel.uebergabe`          | Jemand anderes trägt eine Übergabe an dich oder von dir ein (siehe [schluessel.md](./schluessel.md))                                                                                                               | an, nicht abschaltbar |
+| `umfrage.neu`                   | Eine Umfrage wurde erstellt, bei der du abstimmen musst oder darfst (siehe [umfragen.md](./umfragen.md))                                                                                                           | an                    |
+| `umfrage.erinnerung`            | Ab 9 Uhr an den gewählten Tagen vor Ende einer Umfrage, ohne gültige Stimme; im Pflicht-Kreis unabhängig von der Einstellung                                                                                       | an                    |
+| `umfrage.erneut_abstimmen`      | Eine Änderung an der Umfrage macht deine Stimme ungültig                                                                                                                                                           | an, nicht abschaltbar |
 
 ## Tabellen
 
@@ -78,6 +81,11 @@ Minutenangabe; Schlüssel `kalender.erinnerung:<dienstId>:<beginn>`), Teilnahme-
 nicht abgesagt; Schlüssel `kalender.teilnahme_erinnerung:<eventId>:<sub>:<beginn>`), fehlende Dienste (Events bis zum größten globalen Zeitpunkt; je Event der kleinste bereits erreichte
 Zeitpunkt `m` in Minuten, ältere werden nicht nachgeholt; Schlüssel `kalender.fehlende_dienste:<eventId>:<m>`; die verantwortliche Person bekommt den Hinweis unabhängig von ihrer Einstellung mit Schlüssel `…:<m>:verantwortlich`, siehe `Sendung.ohneEinstellung`/`ausser`) und die Änderungsmeldungen aus den Routen (Event ändern, Absage,
 Dienst durch andere eingetragen oder entfernt, `meldeDienstDurchAndere`).
+
+## Umfragen
+
+`packages/api/src/umfrageBenachrichtigungen.ts`: neue Umfrage und erneut abstimmen direkt aus den Routen, Erinnerungen als
+Job-Aufgabe (in `bootstrap.ts` registriert). Details in [umfragen.md](./umfragen.md).
 
 ## Geburtstage
 

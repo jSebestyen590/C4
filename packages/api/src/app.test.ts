@@ -7,7 +7,10 @@ import {
   kinderArtNach,
   lagerortArtAenderungFehler,
   lagerortArtFehler,
+  heuteBerlin,
+  tagNachher,
   tagVorher,
+  type UmfrageDetailDto,
   type AdminUser,
   type MitgliedStatus,
   type PostenRecht,
@@ -56,6 +59,7 @@ import {
   type PostenDetails,
 } from './posten';
 import { UebergabeKonflikt, type SchluesselDetails, type SchluesselStore } from './schluessel';
+import { createFakeUmfragenStore } from './umfragen.fake';
 
 /** Map-backed fake of the key store with the same conflict and history rules as the real one. */
 function makeSchluesselFake() {
@@ -652,6 +656,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: inventar, verwendet: inventarVerwendet } = makeInventarFake();
   const { fake: kalender, dienste: kalenderDienste } = makeKalenderFake();
   const { fake: schluessel } = makeSchluesselFake();
+  const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -688,6 +693,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     inventar,
     kalender,
     schluessel,
+    umfragen,
     benachrichtigungen,
     ...(appUrl && { appUrl }),
     profilbilder,
@@ -706,6 +712,8 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     kalender,
     kalenderDienste,
     schluessel,
+    umfragen,
+    umfragenListe,
     push,
     pushMitglieder,
     gesendet,
@@ -750,6 +758,7 @@ describe('api', () => {
         'inventar:umraeumen',
         'kalender:lesen',
         'schluessel:lesen',
+        'umfragen:lesen',
       ],
     });
   });
@@ -3506,6 +3515,9 @@ describe('kalender', () => {
         'kalender.teilnahme_erinnerung',
         'geburtstag.erinnerung',
         'schluessel.uebergabe',
+        'umfrage.neu',
+        'umfrage.erinnerung',
+        'umfrage.erneut_abstimmen',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
       expect(
@@ -3967,5 +3979,268 @@ describe('schluessel', () => {
     ).json()) as { uebergaben: { eingetragenVon: { username: string } }[] };
     expect(detail.uebergaben).toHaveLength(SCHLUESSEL_VERLAUF_MAX);
     expect(detail.uebergaben[0]!.eingetragenVon).toMatchObject({ username: 'user-a' });
+  });
+});
+
+describe('umfragen', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const endetAm = tagNachher(heuteBerlin(), 10);
+  const umfrage = (extra: Record<string, unknown> = {}) => ({
+    titel: 'Sommerfest',
+    beschreibung: null,
+    endetAm,
+    anonym: false,
+    ergebnisse: 'sofort',
+    pflicht: { status: ['mitglied'], posten: [], personen: [] },
+    optional: { status: ['em'], posten: [], personen: [] },
+    erinnerungenPflicht: [3],
+    erinnerungenOptional: [],
+    fragen: [
+      {
+        text: 'Wann?',
+        freitext: true,
+        maxAntworten: 1,
+        optionen: [{ text: 'Samstag' }, { text: 'Sonntag' }],
+      },
+    ],
+    ...extra,
+  });
+
+  /** Profiles for a, r, v, m2 (usernames user-<sub>): m2 is Mitglied, r EM, the others Anwärter. */
+  async function setup() {
+    const t = makeApp();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map(
+        ['a', 'r', 'v', 'm2'].map((sub) => [
+          sub,
+          { sub, kontoName: sub, username: `user-${sub}`, aktiviert: true, enabled: true },
+        ]),
+      ),
+    );
+    for (const sub of ['a', 'r', 'v', 'm2']) {
+      await t.mitglieder.speichern(sub, {
+        vorname: 'A',
+        nachname: 'B',
+        anrede: 'neutral',
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
+      });
+      await t.push.store.aboSpeichern(sub, {
+        endpoint: `https://push.example/${sub}`,
+        keys: { p256dh: 'p', auth: 'a' },
+      });
+    }
+    await t.mitglieder.statusSetzen('m2', 'mitglied');
+    await t.mitglieder.statusSetzen('r', 'em');
+    const anlegen = async (extra: Record<string, unknown> = {}) => {
+      const res = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', umfrage(extra)),
+      );
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { id: string }).id;
+    };
+    const holen = async (id: string, token: string) => {
+      const res = await t.app.request(`/api/umfragen/${id}`, json(token, 'GET'));
+      return { status: res.status, body: (await res.json()) as UmfrageDetailDto };
+    };
+    const abstimmen = (id: string, token: string, antworten: unknown) =>
+      t.app.request(`/api/umfragen/${id}/stimme`, json(token, 'PUT', { antworten }));
+    return { ...t, anlegen, holen, abstimmen };
+  }
+
+  it('tells both circles about a new poll, but not the creator', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31' });
+    expect(t.gesendet).toEqual(
+      expect.arrayContaining([
+        {
+          endpoint: 'https://push.example/m2',
+          titel: 'Neue Umfrage',
+          text: 'user-v fragt: „Sommerfest“. Bitte stimme bis 31.01.2099 ab.',
+          url: `/app/umfragen/${id}`,
+        },
+        {
+          endpoint: 'https://push.example/r',
+          titel: 'Neue Umfrage',
+          text: 'user-v fragt: „Sommerfest“. Du kannst bis 31.01.2099 abstimmen.',
+          url: `/app/umfragen/${id}`,
+        },
+      ]),
+    );
+    expect(t.gesendet).toHaveLength(2);
+  });
+
+  it('rejects an end date in the past', async () => {
+    const t = await setup();
+    const res = await t.app.request(
+      '/api/umfragen',
+      json('vorstand-token', 'POST', umfrage({ endetAm: '2020-01-01' })),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('shows a poll only to its circles, the creator and the Verwaltung', async () => {
+    const t = await setup();
+    const id = await t.anlegen({
+      endetAm: '2099-01-31',
+      pflicht: { status: [], posten: [], personen: ['m2'] },
+      optional: { status: [], posten: [], personen: [] },
+    });
+    expect((await t.holen(id, 'member-token')).body.meinKreis).toBe('pflicht');
+    expect((await t.holen(id, 'vorstand-token')).body.darfBearbeiten).toBe(true);
+    expect((await t.holen(id, 'admin-token')).body.darfLoeschen).toBe(true);
+    expect((await t.holen(id, 'reader-token')).status).toBe(404);
+    const liste = await t.app.request('/api/umfragen', json('reader-token', 'GET'));
+    expect(await liste.json()).toEqual([]);
+  });
+
+  it('checks the ballot and counts the votes', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31' });
+    const { body } = await t.holen(id, 'member-token');
+    const frage = body.fragen[0]!;
+    const [sa] = frage.optionen;
+    expect(
+      (
+        await t.abstimmen(id, 'member-token', [
+          { frageId: frage.id, optionIds: [sa!.id], freitext: 'x' },
+        ])
+      ).status,
+    ).toBe(400);
+    expect(
+      (await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [sa!.id] }])).status,
+    ).toBe(200);
+    expect(
+      (await t.abstimmen(id, 'vorstand-token', [{ frageId: frage.id, optionIds: [sa!.id] }]))
+        .status,
+    ).toBe(403);
+    const nachher = (await t.holen(id, 'reader-token')).body;
+    expect(nachher.abgaben).toBe(1);
+    expect(nachher.fragen[0]!.optionen[0]).toMatchObject({
+      stimmen: 1,
+      personen: [expect.objectContaining({ sub: 'm2', username: 'user-m2' })],
+    });
+    expect(nachher.teilnehmende).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ rolle: 'pflicht', abgestimmt: true }),
+        expect.objectContaining({ rolle: 'optional', abgestimmt: false }),
+      ]),
+    );
+  });
+
+  it('never reveals who voted in an anonymous poll', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31', anonym: true });
+    const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+    await t.abstimmen(id, 'member-token', [
+      { frageId: frage.id, optionIds: [], freitext: 'Geheim' },
+    ]);
+    const { body } = await t.holen(id, 'admin-token');
+    expect(body.teilnehmende).toBeNull();
+    expect(body.fragen[0]!.optionen[0]!.personen).toBeNull();
+    expect(body.fragen[0]!.freitexte).toEqual([{ text: 'Geheim', person: null }]);
+    expect(JSON.stringify(body)).not.toContain('m2');
+    const res = await t.app.request(
+      `/api/umfragen/${id}`,
+      json('vorstand-token', 'PUT', umfrage({ endetAm: '2099-01-31', anonym: false })),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('hides the results until the end when chosen, except for the creator', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31', ergebnisse: 'nach_ende' });
+    const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+    await t.abstimmen(id, 'member-token', [
+      { frageId: frage.id, optionIds: [frage.optionen[0]!.id] },
+    ]);
+    expect((await t.holen(id, 'member-token')).body.fragen[0]!.optionen[0]!.stimmen).toBeNull();
+    expect((await t.holen(id, 'vorstand-token')).body.fragen[0]!.optionen[0]!.stimmen).toBe(1);
+    await t.app.request(`/api/umfragen/${id}/beenden`, json('vorstand-token', 'POST'));
+    expect((await t.holen(id, 'member-token')).body.fragen[0]!.optionen[0]!.stimmen).toBe(1);
+    expect(
+      (
+        await t.abstimmen(id, 'member-token', [
+          { frageId: frage.id, optionIds: [frage.optionen[0]!.id] },
+        ])
+      ).status,
+    ).toBe(409);
+  });
+
+  it('asks voters of a removed option to vote again after confirming', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31' });
+    const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+    const [sa, so] = frage.optionen;
+    await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [sa!.id] }]);
+    await t.abstimmen(id, 'reader-token', [{ frageId: frage.id, optionIds: [so!.id] }]);
+    t.gesendet.length = 0;
+    const geaendert = umfrage({
+      endetAm: '2099-01-31',
+      fragen: [
+        {
+          id: frage.id,
+          text: 'Wann?',
+          freitext: true,
+          maxAntworten: 1,
+          optionen: [{ id: so!.id, text: 'Sonntag' }],
+        },
+      ],
+    });
+    const ohne = await t.app.request(
+      `/api/umfragen/${id}`,
+      json('vorstand-token', 'PUT', geaendert),
+    );
+    expect(ohne.status).toBe(409);
+    expect(await ohne.json()).toMatchObject({ betroffene: 1 });
+    const mit = await t.app.request(
+      `/api/umfragen/${id}`,
+      json('vorstand-token', 'PUT', { ...geaendert, bestaetigt: true }),
+    );
+    expect(mit.status).toBe(200);
+    expect(t.gesendet).toEqual([
+      {
+        endpoint: 'https://push.example/m2',
+        titel: 'Bitte stimme erneut ab',
+        text: '„Sommerfest“ wurde geändert, deine Stimme zählt so nicht mehr.',
+        url: `/app/umfragen/${id}`,
+      },
+    ]);
+    const m2 = (await t.holen(id, 'member-token')).body;
+    expect(m2).toMatchObject({ abgestimmt: false, erneutNoetig: true });
+    expect((await t.holen(id, 'reader-token')).body).toMatchObject({
+      abgestimmt: true,
+      abgaben: 1,
+    });
+  });
+
+  it('lets only the creator and the Verwaltung edit, and only the Verwaltung delete', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31' });
+    const body = umfrage({ endetAm: '2099-01-31', titel: 'Neu' });
+    expect(
+      (await t.app.request(`/api/umfragen/${id}`, json('member-token', 'PUT', body))).status,
+    ).toBe(403);
+    expect(
+      (await t.app.request(`/api/umfragen/${id}`, json('admin-token', 'PUT', body))).status,
+    ).toBe(200);
+    expect(
+      (await t.app.request(`/api/umfragen/${id}`, json('vorstand-token', 'DELETE'))).status,
+    ).toBe(403);
+    expect((await t.app.request(`/api/umfragen/${id}`, json('admin-token', 'DELETE'))).status).toBe(
+      200,
+    );
+    expect(t.umfragenListe.size).toBe(0);
   });
 });

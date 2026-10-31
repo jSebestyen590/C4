@@ -57,6 +57,26 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     minuten: null,
     abschaltbar: false,
   },
+  {
+    key: 'umfrage.neu',
+    bereich: 'umfrage',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    // Members of the mandatory circle get reminders regardless of this setting.
+    key: 'umfrage.erinnerung',
+    bereich: 'umfrage',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    key: 'umfrage.erneut_abstimmen',
+    bereich: 'umfrage',
+    standardAktiv: true,
+    minuten: null,
+    abschaltbar: false,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

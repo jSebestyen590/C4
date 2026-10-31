@@ -17,6 +17,9 @@ import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
 import { createSchluesselStore } from './schluessel';
+import { ladeKontext } from './umfrageAnsicht';
+import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
+import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
 
@@ -38,16 +41,22 @@ export function createProduction() {
   const userAdmin = createCognitoUserAdmin(config.userPoolId, config.region);
   const mitglieder = createMitgliederStore(db);
   registriereGeburtstagAufgaben(benachrichtigungen, mitglieder, userAdmin);
+  const posten = createPostenStore(db);
+  const umfragen = createUmfragenStore(db);
+  registriereUmfrageAufgaben(benachrichtigungen, umfragen, (jetzt) =>
+    ladeKontext({ mitglieder, userAdmin, posten }, jetzt),
+  );
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
     emailAenderung: createCognitoEmailAenderung(config.region),
     mitglieder,
-    posten: createPostenStore(db),
+    posten,
     waren: createWarenStore(db),
     inventar: createInventarStore(db),
     kalender,
     schluessel: createSchluesselStore(db),
+    umfragen,
     benachrichtigungen,
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),

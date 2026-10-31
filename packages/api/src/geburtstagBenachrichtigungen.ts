@@ -1,4 +1,10 @@
-import { benachrichtigungsArt, geburtstageZwischen, heuteBerlin, tagNachher } from '@c4/shared';
+import {
+  benachrichtigungsArt,
+  geburtstageZwischen,
+  heuteBerlin,
+  stundeBerlin,
+  tagNachher,
+} from '@c4/shared';
 import type { Konto } from './admin';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import { geburtstagSichtbar, type MitgliederStore } from './mitglieder';
@@ -9,17 +15,6 @@ const ART = 'geburtstag.erinnerung';
 /** Berlin local hour from which reminders go out. */
 const AB_UHR = 9;
 const TAG_MINUTEN = 1440;
-
-const berlinStunde = (jetzt: Date): number =>
-  Number(
-    new Intl.DateTimeFormat('de-DE', {
-      timeZone: 'Europe/Berlin',
-      hour: '2-digit',
-      hourCycle: 'h23',
-    })
-      .formatToParts(jetzt)
-      .find((t) => t.type === 'hour')?.value ?? 0,
-  );
 
 function wannText(tage: number): string {
   if (tage === 0) return 'heute';
@@ -52,7 +47,7 @@ export async function geburtstagErinnerungen(
   userAdmin: { konten(): Promise<Map<string, Pick<Konto, 'username'>>> },
   jetzt: Date,
 ): Promise<void> {
-  if (berlinStunde(jetzt) < AB_UHR) return;
+  if (stundeBerlin(jetzt) < AB_UHR) return;
   const optionen = benachrichtigungsArt(ART)?.minuten?.optionen ?? [];
   const maxTage = Math.floor(Math.max(0, ...optionen) / TAG_MINUTEN);
   const heute = heuteBerlin(jetzt);
