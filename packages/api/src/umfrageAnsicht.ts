@@ -90,6 +90,7 @@ export function alsListeDto(
     darfLoeschen: a.verwaltung,
     abgaben: gueltig.size,
     kreisGroesse: new Set([...kreis.keys(), ...gueltig]).size,
+    terminumfrage: u.termin !== null,
   };
 }
 
@@ -126,6 +127,7 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
         return {
           id: o.id,
           text: o.text,
+          termin: o.termin,
           stimmen: sichtbar ? stimmen.length : null,
           personen: namen ? stimmen.map((s) => personVon(k, s.sub)) : null,
         };
@@ -145,6 +147,11 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
       };
     }),
     hatStimmen: u.abgaben.length > 0,
+    termin: u.termin,
+    eventId: u.eventId,
+    eventOptionId: u.eventOptionId,
+    darfEventAnlegen:
+      u.termin !== null && u.eventId === null && !liste.laeuft && liste.darfBearbeiten,
     teilnehmende: u.anonym
       ? null
       : [...kreis.entries()].map(([sub, rolle]) => ({

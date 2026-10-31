@@ -84,6 +84,10 @@ import {
   umfrageEingabeSchema,
   umfrageLaeuft,
   ungueltigNachAenderung,
+  terminWahlSchema,
+  terminZeiten,
+  zeitspanne,
+  type UmfrageTermin,
   schluesselEingabeSchema,
   uebergabeSchema,
   type Halter,
@@ -134,11 +138,12 @@ import {
   alsListeDto,
   darfBearbeiten,
   darfSehen,
+  gueltigAbgestimmt,
   kreisDerUmfrage,
   ladeKontext,
   type Aufrufer,
 } from './umfrageAnsicht';
-import { meldeErneutAbstimmen, meldeNeueUmfrage } from './umfrageBenachrichtigungen';
+import { meldeErneutAbstimmen, meldeNeueUmfrage, meldeTermin } from './umfrageBenachrichtigungen';
 import {
   geburtstagSichtbar,
   kanaeleLesen,
@@ -463,10 +468,38 @@ export function createApp(deps: AppDeps) {
           optionen: f.optionen.map((o) => ({
             id: alt?.optionen.find((x) => x.id === o.id)?.id ?? randomUUID(),
             text: o.text,
+            termin: o.termin,
           })),
         };
       }),
+      termin: e.termin,
     };
+  };
+
+  /** The event settings of a scheduling poll must fit an active Kategorie (and Dienstform). */
+  const terminPruefen = async (termin: UmfrageTermin | null) => {
+    if (!termin) return;
+    const kategorie = (await deps.kalender.kategorien(false)).find(
+      (k) => k.id === termin.kategorieId,
+    );
+    if (!kategorie) throw new HTTPException(400, { message: 'Unbekannte Kategorie.' });
+    if (kategorie.art === 'teilnahme' && termin.bedarf) {
+      throw new HTTPException(400, {
+        message: 'Bei einer Teilnahme-Kategorie gibt es keine Dienste.',
+      });
+    }
+    if (kategorie.art === 'dienste') {
+      if (!termin.bedarf) {
+        throw new HTTPException(400, {
+          message:
+            'Bitte wähle die Dienstform und wie viele es mindestens und am liebsten sein sollen.',
+        });
+      }
+      const dienstform = (await deps.kalender.dienstformen(false)).some(
+        (d) => d.id === termin.bedarf!.dienstformId,
+      );
+      if (!dienstform) throw new HTTPException(400, { message: 'Unbekannte Dienstform.' });
+    }
   };
 
   /** Display data of key holders and the names used in the Übergabe messages. */
@@ -1035,7 +1068,9 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const sub = c.get('user').sub;
           await eigenesProfilMussExistieren(sub);
-          const id = await deps.umfragen.anlegen(umfrageSpeichern(c.req.valid('json')), sub);
+          const eingabe = c.req.valid('json');
+          await terminPruefen(eingabe.termin);
+          const id = await deps.umfragen.anlegen(umfrageSpeichern(eingabe), sub);
           await bestEffort(async () => {
             const [u, k, akteur] = await Promise.all([
               deps.umfragen.holen(id),
@@ -1065,6 +1100,7 @@ export function createApp(deps: AppDeps) {
               message: 'Nach der ersten Stimme lässt sich „anonym“ nicht mehr ändern.',
             });
           }
+          await terminPruefen(eingabe.termin);
           const daten = umfrageSpeichern(eingabe, u);
           const aenderung = ungueltigNachAenderung(
             daten.fragen.map((f) => ({ ...f, optionIds: f.optionen.map((o) => o.id) })),
@@ -1122,6 +1158,94 @@ export function createApp(deps: AppDeps) {
         await deps.umfragen.beenden(u.id, new Date());
         return c.json({ ok: true });
       })
+      .post(
+        '/umfragen/:id/event',
+        auth,
+        umfragenLesen,
+        zValidator('json', terminWahlSchema),
+        async (c) => {
+          const a = umfrageAufrufer(c);
+          const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
+          if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
+          const termin = u.termin;
+          if (!termin) throw new HTTPException(400, { message: 'Das ist keine Terminumfrage.' });
+          if (umfrageLaeuft(u)) {
+            throw new HTTPException(409, { message: 'Beende die Umfrage zuerst.' });
+          }
+          // A deleted event may be created again.
+          if (u.eventId && (await deps.kalender.event(u.eventId))) {
+            throw new HTTPException(409, {
+              message: 'Aus dieser Umfrage gibt es schon ein Event.',
+            });
+          }
+          const { optionId } = c.req.valid('json');
+          const option = u.fragen[0]?.optionen.find((o) => o.id === optionId);
+          if (!option?.termin) throw new HTTPException(400, { message: 'Unbekannter Termin.' });
+          const kategorie = (await deps.kalender.kategorien(false)).find(
+            (x) => x.id === termin.kategorieId,
+          );
+          if (!kategorie) {
+            throw new HTTPException(409, {
+              message:
+                'Die Kategorie gibt es nicht mehr. Bearbeite die Umfrage nicht, sondern lege das Event im Kalender an.',
+            });
+          }
+          const zeiten = terminZeiten(termin, option.termin);
+          const { beginn, ende } = zeitspanne(option.termin.datum, zeiten.beginn, zeiten.ende);
+          const gueltig = gueltigAbgestimmt(u);
+          const vorhanden = new Set(k.mitglieder.map((m) => m.sub));
+          const zustimmende = [
+            ...new Set(
+              u.stimmen
+                .filter(
+                  (s) => s.optionId === option.id && gueltig.has(s.sub) && vorhanden.has(s.sub),
+                )
+                .map((s) => s.sub),
+            ),
+          ];
+          const dienste = kategorie.art === 'dienste' && termin.bedarf;
+          const eventId = await deps.kalender
+            .eventAnlegen(
+              eventEingabeSchema.parse({
+                titel: u.titel,
+                beschreibung: u.beschreibung,
+                kategorieId: kategorie.id,
+                beginn,
+                ende,
+                schichten: dienste
+                  ? [{ art: 'betrieb', beginn, ende, bedarfe: [termin.bedarf] }]
+                  : [],
+                teilnahmeStatus: dienste ? null : [],
+                eingeladen: dienste ? [] : zustimmende,
+              }),
+              a.sub,
+            )
+            .catch(kalenderFehler);
+          await deps.umfragen.eventSetzen(u.id, eventId, option.id);
+          if (dienste) {
+            const schicht = (await deps.kalender.event(eventId))?.schichten[0];
+            for (const sub of zustimmende) {
+              if (!schicht) break;
+              await deps.kalender
+                .dienstEintragen(
+                  schicht.id,
+                  { dienstformId: termin.bedarf!.dienstformId, kommentar: null, mitgliedSub: sub },
+                  a.sub,
+                )
+                .catch((err: unknown) => console.error('Poll: entering a Dienst failed', err));
+            }
+          }
+          await bestEffort(() =>
+            meldeTermin(
+              deps.benachrichtigungen,
+              { titel: u.titel, eventId, text: option.text },
+              [...kreisDerUmfrage(u, k).keys()].filter((s) => s !== a.sub),
+              new Set(zustimmende),
+            ),
+          );
+          return c.json({ eventId }, 201);
+        },
+      )
       .delete('/umfragen/:id', auth, umfragenVerwalten, async (c) => {
         gefunden(await deps.umfragen.loeschen(c.req.param('id')), 'Umfrage nicht gefunden');
         return c.json({ ok: true });

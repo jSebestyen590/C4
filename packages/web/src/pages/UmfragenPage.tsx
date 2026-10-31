@@ -45,6 +45,11 @@ export function UmfrageBadges({ u }: Readonly<{ u: UmfrageListeDto }>) {
           Bitte erneut abstimmen
         </Badge>
       )}
+      {u.terminumfrage && (
+        <Badge color="violet" variant="light">
+          Terminfindung
+        </Badge>
+      )}
       {u.anonym && (
         <Badge color="gray" variant="outline">
           Anonym

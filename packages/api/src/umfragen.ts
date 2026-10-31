@@ -5,9 +5,11 @@ import {
   erinnerungenLesen,
   teilnahmeKreisKodieren,
   teilnahmeKreisLesen,
+  type OptionTermin,
   type Stimme,
   type UmfrageErgebnisse,
   type UmfrageKreis,
+  type UmfrageTermin,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
@@ -15,8 +17,10 @@ import {
   umfrageFragen,
   umfrageKreis,
   umfrageOptionen,
+  umfrageOptionTermine,
   umfragen,
   umfrageStimmen,
+  umfrageTermine,
   type UmfrageRow,
 } from './db/schema';
 
@@ -28,7 +32,8 @@ export interface UmfrageFrage {
   text: string;
   freitext: boolean;
   maxAntworten: number | null;
-  optionen: { id: string; text: string }[];
+  /** `termin` is the date of the answer in scheduling polls, else null. */
+  optionen: { id: string; text: string; termin: OptionTermin | null }[];
 }
 
 /** What is stored when creating or editing; all questions and options carry their (new) ids. */
@@ -43,6 +48,8 @@ export interface UmfrageSpeichern {
   erinnerungenPflicht: number[];
   erinnerungenOptional: number[];
   fragen: UmfrageFrage[];
+  /** Scheduling polls only. */
+  termin: UmfrageTermin | null;
 }
 
 export interface Abgabe {
@@ -57,6 +64,9 @@ export interface UmfrageDaten extends UmfrageSpeichern {
   erstelltAm: Date;
   beendetAm: Date | null;
   abgaben: Abgabe[];
+  /** The event created from a scheduling poll, and the answer it was created for. */
+  eventId: string | null;
+  eventOptionId: string | null;
 }
 
 export interface UmfrageDetails extends UmfrageDaten {
@@ -79,6 +89,8 @@ export interface UmfragenStore {
   ): Promise<boolean>;
   beenden(id: string, zeitpunkt: Date): Promise<boolean>;
   loeschen(id: string): Promise<boolean>;
+  /** Records the event created from the chosen date. False when the poll has no scheduling settings. */
+  eventSetzen(id: string, eventId: string, optionId: string): Promise<boolean>;
   /** Replaces the member's answers and records a valid vote. */
   abstimmen(
     id: string,
@@ -132,15 +144,60 @@ async function inhaltSchreiben(tx: Tx, id: string, d: UmfrageSpeichern) {
         .insert(umfrageOptionen)
         .values({ id: o.id, frageId: f.id, position: opos, text: o.text })
         .onConflictDoUpdate({ target: umfrageOptionen.id, set: { position: opos, text: o.text } });
+      await tx.delete(umfrageOptionTermine).where(eq(umfrageOptionTermine.optionId, o.id));
+      if (o.termin) await tx.insert(umfrageOptionTermine).values({ optionId: o.id, ...o.termin });
     }
   }
+
+  if (!d.termin) {
+    await tx.delete(umfrageTermine).where(eq(umfrageTermine.umfrageId, id));
+    return;
+  }
+  // The created event stays attached when the settings change.
+  const termin = {
+    kategorieId: d.termin.kategorieId,
+    jeTermin: d.termin.jeTermin,
+    beginn: d.termin.beginn,
+    ende: d.termin.ende,
+    dienstformId: d.termin.bedarf?.dienstformId ?? null,
+    minimum: d.termin.bedarf?.minimum ?? null,
+    wunsch: d.termin.bedarf?.wunsch ?? null,
+  };
+  await tx
+    .insert(umfrageTermine)
+    .values({ umfrageId: id, ...termin })
+    .onConflictDoUpdate({ target: umfrageTermine.umfrageId, set: termin });
 }
+
+/** Deletes options together with their dates. */
+async function optionenLoeschen(tx: Tx, ids: readonly string[]) {
+  if (ids.length === 0) return;
+  await tx.delete(umfrageOptionTermine).where(inArray(umfrageOptionTermine.optionId, [...ids]));
+  await tx.delete(umfrageOptionen).where(inArray(umfrageOptionen.id, [...ids]));
+}
+
+type TerminRow = typeof umfrageTermine.$inferSelect;
+
+const terminAus = (t: TerminRow | undefined): UmfrageTermin | null =>
+  t
+    ? {
+        kategorieId: t.kategorieId,
+        jeTermin: t.jeTermin,
+        beginn: t.beginn,
+        ende: t.ende,
+        bedarf:
+          t.dienstformId !== null && t.minimum !== null && t.wunsch !== null
+            ? { dienstformId: t.dienstformId, minimum: t.minimum, wunsch: t.wunsch }
+            : null,
+      }
+    : null;
 
 function alsDaten(
   row: UmfrageRow,
   kreis: { pflicht: boolean; art: 'posten' | 'person'; ref: string }[],
   fragen: UmfrageFrage[],
   abgaben: Abgabe[],
+  termin: TerminRow | undefined,
 ): UmfrageDaten {
   const kreisVon = (pflicht: boolean, status: string): UmfrageKreis => ({
     status: teilnahmeKreisLesen(status) ?? [],
@@ -163,6 +220,9 @@ function alsDaten(
     erinnerungenOptional: erinnerungenLesen(row.erinnerungenOptional),
     fragen,
     abgaben,
+    termin: terminAus(termin),
+    eventId: termin?.eventId ?? null,
+    eventOptionId: termin?.optionId ?? null,
   };
 }
 
@@ -171,7 +231,7 @@ export function createUmfragenStore(db: Db): UmfragenStore {
   async function vervollstaendigen(rows: UmfrageRow[]): Promise<UmfrageDaten[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
-    const [kreis, fragen, abgaben] = await Promise.all([
+    const [kreis, fragen, abgaben, termine] = await Promise.all([
       db.select().from(umfrageKreis).where(inArray(umfrageKreis.umfrageId, ids)),
       db
         .select()
@@ -179,6 +239,7 @@ export function createUmfragenStore(db: Db): UmfragenStore {
         .where(inArray(umfrageFragen.umfrageId, ids))
         .orderBy(asc(umfrageFragen.position)),
       db.select().from(umfrageAbgaben).where(inArray(umfrageAbgaben.umfrageId, ids)),
+      db.select().from(umfrageTermine).where(inArray(umfrageTermine.umfrageId, ids)),
     ]);
     const optionen =
       fragen.length === 0
@@ -193,6 +254,19 @@ export function createUmfragenStore(db: Db): UmfragenStore {
               ),
             )
             .orderBy(asc(umfrageOptionen.position));
+    const optionTermine =
+      optionen.length === 0 || termine.length === 0
+        ? []
+        : await db
+            .select()
+            .from(umfrageOptionTermine)
+            .where(
+              inArray(
+                umfrageOptionTermine.optionId,
+                optionen.map((o) => o.id),
+              ),
+            );
+    const terminVon = new Map(optionTermine.map((t) => [t.optionId, t]));
     return rows.map((r) =>
       alsDaten(
         r,
@@ -206,7 +280,14 @@ export function createUmfragenStore(db: Db): UmfragenStore {
             maxAntworten: f.maxAntworten,
             optionen: optionen
               .filter((o) => o.frageId === f.id)
-              .map((o) => ({ id: o.id, text: o.text })),
+              .map((o) => {
+                const t = terminVon.get(o.id);
+                return {
+                  id: o.id,
+                  text: o.text,
+                  termin: t ? { datum: t.datum, beginn: t.beginn, ende: t.ende } : null,
+                };
+              }),
           })),
         abgaben
           .filter((a) => a.umfrageId === r.id)
@@ -215,6 +296,7 @@ export function createUmfragenStore(db: Db): UmfragenStore {
             abgegebenAm: a.abgegebenAm,
             erneutNoetig: a.erneutNoetig,
           })),
+        termine.find((t) => t.umfrageId === r.id),
       ),
     );
   }
@@ -280,14 +362,19 @@ export function createUmfragenStore(db: Db): UmfragenStore {
         const optionIds = daten.fragen.flatMap((f) => f.optionen.map((o) => o.id));
         if (alteFragen.length > 0) {
           const alteIds = alteFragen.map((f) => f.id);
-          await tx
-            .delete(umfrageOptionen)
+          const weggefallen = await tx
+            .select({ id: umfrageOptionen.id })
+            .from(umfrageOptionen)
             .where(
               and(
                 inArray(umfrageOptionen.frageId, alteIds),
                 optionIds.length > 0 ? notInArray(umfrageOptionen.id, optionIds) : undefined,
               ),
             );
+          await optionenLoeschen(
+            tx,
+            weggefallen.map((o) => o.id),
+          );
           const weg = alteIds.filter((f) => !fragenIds.includes(f));
           if (weg.length > 0) await tx.delete(umfrageFragen).where(inArray(umfrageFragen.id, weg));
         }
@@ -325,21 +412,38 @@ export function createUmfragenStore(db: Db): UmfragenStore {
         await tx.delete(umfrageStimmen).where(eq(umfrageStimmen.umfrageId, id));
         await tx.delete(umfrageAbgaben).where(eq(umfrageAbgaben.umfrageId, id));
         if (fragen.length > 0) {
-          await tx.delete(umfrageOptionen).where(
-            inArray(
-              umfrageOptionen.frageId,
-              fragen.map((f) => f.id),
-            ),
+          const optionen = await tx
+            .select({ id: umfrageOptionen.id })
+            .from(umfrageOptionen)
+            .where(
+              inArray(
+                umfrageOptionen.frageId,
+                fragen.map((f) => f.id),
+              ),
+            );
+          await optionenLoeschen(
+            tx,
+            optionen.map((o) => o.id),
           );
         }
         await tx.delete(umfrageFragen).where(eq(umfrageFragen.umfrageId, id));
         await tx.delete(umfrageKreis).where(eq(umfrageKreis.umfrageId, id));
+        await tx.delete(umfrageTermine).where(eq(umfrageTermine.umfrageId, id));
         const rows = await tx
           .delete(umfragen)
           .where(eq(umfragen.id, id))
           .returning({ id: umfragen.id });
         return rows.length > 0;
       });
+    },
+
+    async eventSetzen(id, eventId, optionId) {
+      const rows = await db
+        .update(umfrageTermine)
+        .set({ eventId, optionId })
+        .where(eq(umfrageTermine.umfrageId, id))
+        .returning({ id: umfrageTermine.umfrageId });
+      return rows.length > 0;
     },
 
     async abstimmen(id, sub, antworten) {

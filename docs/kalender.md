@@ -96,6 +96,8 @@ nichts davon ist im Code oder in Migrationen festgelegt (Kategorien, Vorlagen un
   Schicht. Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
   entfernt man bewusst etwas, greift die 409-Bestätigung). Eine Teilnahme-Vorlage ersetzt nichts, beide Events bleiben. Die Frage erscheint auch bei „Ohne Vorlage“: „Ersetzen“ öffnet dann das Formular des Serien-Events mit leerem Titel und leerer Kategorie, den Zeiten und allen Schichten samt Einträgen (`serieEventNeutral`). Serien-Events mit Teilnahme werden nie ersetzt (keine Frage), im Formular sind beim Ersetzen nur Kategorien mit Diensten wählbar, und `PUT` mit `ersetzeSerie: true` antwortet bei einer Teilnahme-Kategorie (neu oder bisher) mit 400.
 
+Events können auch aus einer Terminumfrage entstehen (siehe [umfragen.md](./umfragen.md#terminfindung)).
+
 ## Event-Art (Dienste oder Teilnahme)
 
 Ein Event hat **entweder** Dienste (Schichten) **oder** Teilnahme, nie beides. Die Art legt die **Kategorie** fest, die für

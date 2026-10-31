@@ -10,6 +10,7 @@ import {
   heuteBerlin,
   tagNachher,
   tagVorher,
+  type EventDto,
   type UmfrageDetailDto,
   type AdminUser,
   type MitgliedStatus,
@@ -3517,6 +3518,7 @@ describe('kalender', () => {
         'schluessel.uebergabe',
         'umfrage.neu',
         'umfrage.erinnerung',
+        'umfrage.termin',
         'umfrage.erneut_abstimmen',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
@@ -4263,5 +4265,140 @@ describe('umfragen', () => {
       200,
     );
     expect(t.umfragenListe.size).toBe(0);
+  });
+
+  describe('Terminumfragen', () => {
+    const kategorie = (id: string, art: 'dienste' | 'teilnahme') => ({
+      id,
+      name: id,
+      farbe: 'blue',
+      art,
+      teilnahmeStatus: art === 'teilnahme' ? [] : null,
+      benutzt: false,
+      archiviert: false,
+    });
+    const terminUmfrage = (termin: Record<string, unknown>) =>
+      umfrage({
+        endetAm: '2099-01-31',
+        titel: 'Sitzung',
+        termin: { jeTermin: false, beginn: '19:00', ende: '21:00', bedarf: null, ...termin },
+        fragen: [
+          {
+            text: '',
+            freitext: false,
+            maxAntworten: null,
+            optionen: [
+              { text: '', termin: { datum: '2099-01-10', beginn: null, ende: null } },
+              { text: '', termin: { datum: '2099-01-11', beginn: null, ende: null } },
+            ],
+          },
+        ],
+      });
+
+    async function terminSetup(termin: Record<string, unknown>) {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue([
+        kategorie('sitzung', 'teilnahme'),
+        kategorie('bar', 'dienste'),
+      ]);
+      t.kalender.dienstformen.mockResolvedValue([
+        { id: 'tresen', name: 'Tresen', reihenfolge: 1, archiviert: false },
+      ]);
+      const res = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', terminUmfrage(termin)),
+      );
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+      const [a, b] = frage.optionen;
+      await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [a!.id, b!.id] }]);
+      await t.abstimmen(id, 'reader-token', [{ frageId: frage.id, optionIds: [b!.id] }]);
+      t.gesendet.length = 0;
+      const festlegen = (token: string, optionId: string) =>
+        t.app.request(`/api/umfragen/${id}/event`, json(token, 'POST', { optionId }));
+      return { ...t, id, a: a!, b: b!, festlegen };
+    }
+
+    it('creates a participation event with everybody who agreed, once the poll ended', async () => {
+      const t = await terminSetup({ kategorieId: 'sitzung' });
+      expect(t.a.text).toBe('Sa, 10.01.2099');
+      expect((await t.festlegen('vorstand-token', t.a.id)).status).toBe(409);
+      await t.app.request(`/api/umfragen/${t.id}/beenden`, json('vorstand-token', 'POST'));
+      expect((await t.festlegen('member-token', t.a.id)).status).toBe(403);
+      // Not the date with the most votes: the creator decides.
+      const res = await t.festlegen('vorstand-token', t.a.id);
+      expect(res.status).toBe(201);
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          titel: 'Sitzung',
+          kategorieId: 'sitzung',
+          beginn: '2099-01-10T18:00:00.000Z',
+          ende: '2099-01-10T20:00:00.000Z',
+          schichten: [],
+          teilnahmeStatus: [],
+          eingeladen: ['m2'],
+        }),
+        'v',
+      );
+      expect(t.gesendet).toEqual(
+        expect.arrayContaining([
+          {
+            endpoint: 'https://push.example/m2',
+            titel: 'Termin steht fest',
+            text: '„Sitzung“: Sa, 10.01.2099. Du bist eingetragen.',
+            url: '/app/kalender/events/e1',
+          },
+          expect.objectContaining({
+            endpoint: 'https://push.example/r',
+            text: '„Sitzung“: Sa, 10.01.2099.',
+          }),
+        ]),
+      );
+      const { body } = await t.holen(t.id, 'vorstand-token');
+      expect(body).toMatchObject({ eventId: 'e1', eventOptionId: t.a.id, darfEventAnlegen: false });
+      t.kalender.event.mockResolvedValue({ id: 'e1' } as EventDto);
+      expect((await t.festlegen('vorstand-token', t.b.id)).status).toBe(409);
+    });
+
+    it('creates one Betrieb Schicht with the Bedarf and enters everybody who agreed', async () => {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue([kategorie('bar', 'dienste')]);
+      const ohne = await t.app.request(
+        '/api/umfragen',
+        json('vorstand-token', 'POST', terminUmfrage({ kategorieId: 'bar' })),
+      );
+      expect(ohne.status).toBe(400);
+
+      const d = await terminSetup({
+        kategorieId: 'bar',
+        bedarf: { dienstformId: 'tresen', minimum: 2, wunsch: 3 },
+      });
+      d.kalender.event.mockResolvedValueOnce({ id: 'e1', schichten: [{ id: 's1' }] } as EventDto);
+      await d.app.request(`/api/umfragen/${d.id}/beenden`, json('vorstand-token', 'POST'));
+      expect((await d.festlegen('vorstand-token', d.b.id)).status).toBe(201);
+      expect(d.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schichten: [
+            expect.objectContaining({
+              art: 'betrieb',
+              bedarfe: [{ dienstformId: 'tresen', minimum: 2, wunsch: 3 }],
+            }),
+          ],
+          teilnahmeStatus: null,
+          eingeladen: [],
+        }),
+        'v',
+      );
+      const eingetragen = d.kalender.dienstEintragen.mock.calls.map(([schicht, daten]) => [
+        schicht,
+        daten.mitgliedSub,
+        daten.dienstformId,
+      ]);
+      expect(eingetragen).toEqual([
+        ['s1', 'm2', 'tresen'],
+        ['s1', 'r', 'tresen'],
+      ]);
+    });
   });
 });

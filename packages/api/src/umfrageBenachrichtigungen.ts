@@ -73,6 +73,28 @@ export async function meldeErneutAbstimmen(
   });
 }
 
+/**
+ * Tells the circles of a scheduling poll which date became the event; those who agreed to it are
+ * entered in the event.
+ */
+export async function meldeTermin(
+  sender: Sender,
+  t: { titel: string; eventId: string; text: string },
+  subs: readonly string[],
+  eingetragen: ReadonlySet<string>,
+): Promise<void> {
+  const nachricht = (dabei: boolean) => ({
+    art: 'umfrage.termin',
+    titel: 'Termin steht fest',
+    text: `„${t.titel}“: ${t.text}.${dabei ? ' Du bist eingetragen.' : ''}`,
+    url: `/app/kalender/events/${t.eventId}`,
+  });
+  await Promise.all([
+    sender.senden({ subs: subs.filter((s) => eingetragen.has(s)), ...nachricht(true) }),
+    sender.senden({ subs: subs.filter((s) => !eingetragen.has(s)), ...nachricht(false) }),
+  ]);
+}
+
 /** Registers the reminder task with the generic job runner. */
 export function registriereUmfrageAufgaben(
   benachrichtigungen: Benachrichtigungen,

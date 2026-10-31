@@ -244,3 +244,78 @@ describe('erinnerungHeute', () => {
     expect(erinnerungenLesen('')).toEqual([]);
   });
 });
+
+describe('Terminumfragen', () => {
+  const termin = {
+    kategorieId: 'sitzung',
+    jeTermin: false,
+    beginn: '19:00',
+    ende: '21:00',
+    bedarf: null,
+  };
+  const terminUmfrage = (extra: Partial<UmfrageEingabe> = {}) =>
+    eingabe({
+      termin,
+      fragen: [
+        {
+          text: '',
+          freitext: true,
+          maxAntworten: 1,
+          optionen: [
+            { text: '', termin: { datum: '2026-11-12', beginn: null, ende: null } },
+            { text: '', termin: { datum: '2026-11-11', beginn: '18:00', ende: '20:00' } },
+          ],
+        },
+      ],
+      ...extra,
+    });
+
+  it('sorts the dates, generates their texts and allows several picks', () => {
+    const u = umfrageEingabeSchema.parse(terminUmfrage());
+    const frage = u.fragen[0]!;
+    expect(frage.text).toBe('Welche Termine passen dir?');
+    expect(frage).toMatchObject({ freitext: false, maxAntworten: null });
+    // Without own times per date the given ones are dropped.
+    expect(frage.optionen.map((o) => [o.text, o.termin])).toEqual([
+      ['Mi, 11.11.2026', { datum: '2026-11-11', beginn: null, ende: null }],
+      ['Do, 12.11.2026', { datum: '2026-11-12', beginn: null, ende: null }],
+    ]);
+  });
+
+  it('shows the times per date when chosen and needs them for every date', () => {
+    const jeTermin = { ...termin, jeTermin: true, beginn: null, ende: null };
+    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ termin: jeTermin })).success).toBe(false);
+    const u = umfrageEingabeSchema.parse(
+      terminUmfrage({
+        termin: jeTermin,
+        fragen: [
+          {
+            text: 'Wann?',
+            freitext: false,
+            maxAntworten: null,
+            optionen: [
+              { text: '', termin: { datum: '2026-11-11', beginn: '18:00', ende: '20:00' } },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(u.fragen[0]!.optionen[0]!.text).toBe('Mi, 11.11.2026, 18:00–20:00');
+  });
+
+  it('needs a title, one question, unique dates and no anonymity', () => {
+    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ titel: '' })).success).toBe(false);
+    expect(umfrageEingabeSchema.safeParse(terminUmfrage({ anonym: true })).success).toBe(false);
+    const doppelt = terminUmfrage();
+    doppelt.fragen[0]!.optionen[1]!.termin!.datum = '2026-11-12';
+    expect(umfrageEingabeSchema.safeParse(doppelt).success).toBe(false);
+    const zwei = terminUmfrage();
+    zwei.fragen.push(eingabe().fragen[0]!);
+    expect(umfrageEingabeSchema.safeParse(zwei).success).toBe(false);
+  });
+
+  it('allows dates only in scheduling polls', () => {
+    const ohne = terminUmfrage({ termin: null });
+    expect(umfrageEingabeSchema.safeParse(ohne).success).toBe(false);
+  });
+});

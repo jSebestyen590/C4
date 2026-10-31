@@ -29,6 +29,7 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `umfrage.neu`                   | Eine Umfrage wurde erstellt, bei der du abstimmen musst oder darfst (siehe [umfragen.md](./umfragen.md))                                                                                                           | an                    |
 | `umfrage.erinnerung`            | Ab 9 Uhr an den gewählten Tagen vor Ende einer Umfrage, ohne gültige Stimme; im Pflicht-Kreis unabhängig von der Einstellung                                                                                       | an                    |
 | `umfrage.erneut_abstimmen`      | Eine Änderung an der Umfrage macht deine Stimme ungültig                                                                                                                                                           | an, nicht abschaltbar |
+| `umfrage.termin`                | Aus einer Terminumfrage wurde ein Event angelegt; sagt, ob du eingetragen bist                                                                                                                                     | an                    |
 
 ## Tabellen
 

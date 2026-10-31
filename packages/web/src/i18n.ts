@@ -132,6 +132,11 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       beschreibung:
         'Morgens vor dem Ende einer Umfrage, solange du nicht abgestimmt hast. Bei Umfragen, bei denen du abstimmen musst, kommen sie immer.',
     },
+    'umfrage.termin': {
+      titel: 'Termin steht fest',
+      beschreibung:
+        'Wenn aus einer Terminumfrage ein Event angelegt wurde, und ob du dort eingetragen bist.',
+    },
     'umfrage.erneut_abstimmen': {
       titel: 'Erneut abstimmen',
       beschreibung: 'Wenn eine Umfrage so geändert wurde, dass deine Stimme nicht mehr zählt.',

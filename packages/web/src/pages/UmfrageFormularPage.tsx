@@ -42,6 +42,14 @@ import { DatumFeld } from '../DatumFeld';
 import { labelFuer, MITGLIED_STATUS_LABELS, UMFRAGE_ERGEBNISSE_LABELS } from '../i18n';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { erinnerungLabel, umfrageLink, umfragenInvalidieren, useUmfrage } from '../umfrageDaten';
+import { useEventKategorien } from '../kalenderDaten';
+import {
+  neueTerminWerte,
+  terminEingabeAus,
+  terminWerteAus,
+  UmfrageTerminFelder,
+  type TerminWerte,
+} from '../UmfrageTerminFelder';
 import { ZahlFeld } from '../ZahlFeld';
 import { ApiFehler, fehlerText } from '../warenApi';
 
@@ -88,6 +96,8 @@ interface Werte {
   erinnerungenPflicht: number[];
   erinnerungenOptional: number[];
   fragen: FrageWert[];
+  /** Set for scheduling polls; then `fragen` is not used. */
+  termin: TerminWerte | null;
 }
 
 const neueWerte = (): Werte => ({
@@ -101,6 +111,7 @@ const neueWerte = (): Werte => ({
   erinnerungenPflicht: [...UMFRAGE_ERINNERUNG_STANDARD.pflicht],
   erinnerungenOptional: [...UMFRAGE_ERINNERUNG_STANDARD.optional],
   fragen: [neueFrage()],
+  termin: null,
 });
 
 const werteAus = (u: UmfrageDetailDto): Werte => ({
@@ -122,10 +133,11 @@ const werteAus = (u: UmfrageDetailDto): Werte => ({
     maxAntworten: f.maxAntworten ?? 1,
     optionen: f.optionen.map((o) => ({ key: neuerKey(), id: o.id, text: o.text })),
   })),
+  termin: terminWerteAus(u),
 });
 
-/** The body for the API; empty options are left out. */
-const eingabeAus = (w: Werte) => ({
+/** The body for the API; empty options are left out. `art` is that of the event Kategorie. */
+const eingabeAus = (w: Werte, art?: 'dienste' | 'teilnahme') => ({
   titel: w.titel,
   beschreibung: w.beschreibung,
   endetAm: w.endetAm,
@@ -144,6 +156,7 @@ const eingabeAus = (w: Werte) => ({
       .filter((o) => o.text.trim() !== '')
       .map((o) => ({ ...(o.id && { id: o.id }), text: o.text })),
   })),
+  ...(w.termin ? { anonym: false, ...terminEingabeAus(w.termin, art) } : { termin: null }),
 });
 
 /** Moves the entry at `i` by `richtung` (-1 up, 1 down). */
@@ -405,8 +418,13 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
   const [betroffene, setBetroffene] = useState<number | null>(null);
   const set = <K extends keyof Werte>(k: K, v: Werte[K]) => setW((alt) => ({ ...alt, [k]: v }));
 
+  const kategorien = useEventKategorien();
   const speichern = async (bestaetigt = false) => {
-    const json = eingabeAus(w);
+    const art = kategorien.liste.find((k) => k.id === w.termin?.kategorieId)?.art;
+    if (w.termin && art === 'dienste' && !w.termin.dienstformId) {
+      return setFehler('Bitte wähle die Dienstform.');
+    }
+    const json = eingabeAus(w, art);
     const parsed = umfrageEingabeSchema.safeParse(json);
     if (!parsed.success) {
       return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -468,11 +486,13 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           label="Titel"
           placeholder="z. B. Sommerfest 2027"
           description={
-            w.fragen.length === 1
-              ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
-              : undefined
+            w.termin
+              ? 'Wird der Titel des Events.'
+              : w.fragen.length === 1
+                ? 'Bei nur einer Frage reicht Titel oder Frage, das andere wird übernommen.'
+                : undefined
           }
-          required={w.fragen.length > 1}
+          required={w.termin !== null || w.fragen.length > 1}
           value={w.titel}
           onChange={(e) => set('titel', e.currentTarget.value)}
         />
@@ -494,32 +514,51 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           onWert={(v) => set('endetAm', v)}
         />
 
-        <Title order={3} mt="md">
-          Fragen
-        </Title>
-        {w.fragen.map((f, i) => (
-          <FrageEditor
-            key={f.key}
-            frage={f}
-            nr={i + 1}
-            anzahl={w.fragen.length}
-            onChange={(neu) => setFrage(i, neu)}
-            onEntfernen={() =>
-              set(
-                'fragen',
-                w.fragen.filter((_, j) => j !== i),
-              )
-            }
-            onVerschieben={(r) => set('fragen', verschieben(w.fragen, i, r))}
-          />
-        ))}
-        <Button
-          variant="default"
-          leftSection={<IconPlus size={18} />}
-          onClick={() => set('fragen', [...w.fragen, neueFrage()])}
-        >
-          Frage hinzufügen
-        </Button>
+        <Switch
+          size="md"
+          mt="md"
+          label="Terminfindung"
+          description="Die Antworten sind Termine. Nach dem Ende legst du einen davon als Event an."
+          checked={w.termin !== null}
+          onChange={(e) => set('termin', e.currentTarget.checked ? neueTerminWerte() : null)}
+        />
+        {w.termin ? (
+          <>
+            <Title order={3} mt="md">
+              Termine
+            </Title>
+            <UmfrageTerminFelder werte={w.termin} onChange={(t) => set('termin', t)} />
+          </>
+        ) : (
+          <>
+            <Title order={3} mt="md">
+              Fragen
+            </Title>
+            {w.fragen.map((f, i) => (
+              <FrageEditor
+                key={f.key}
+                frage={f}
+                nr={i + 1}
+                anzahl={w.fragen.length}
+                onChange={(neu) => setFrage(i, neu)}
+                onEntfernen={() =>
+                  set(
+                    'fragen',
+                    w.fragen.filter((_, j) => j !== i),
+                  )
+                }
+                onVerschieben={(r) => set('fragen', verschieben(w.fragen, i, r))}
+              />
+            ))}
+            <Button
+              variant="default"
+              leftSection={<IconPlus size={18} />}
+              onClick={() => set('fragen', [...w.fragen, neueFrage()])}
+            >
+              Frage hinzufügen
+            </Button>
+          </>
+        )}
 
         <Title order={3} mt="md">
           Wer stimmt ab?
@@ -556,12 +595,14 @@ function Formular({ umfrage }: Readonly<{ umfrage?: UmfrageDetailDto }>) {
           size="md"
           label="Anonym"
           description={
-            umfrage?.hatStimmen
-              ? 'Lässt sich nach der ersten Stimme nicht mehr ändern.'
-              : 'Niemand sieht, wer abgestimmt hat oder was, auch du nicht.'
+            w.termin
+              ? 'Terminumfragen sind nicht anonym, sonst lässt sich niemand eintragen.'
+              : umfrage?.hatStimmen
+                ? 'Lässt sich nach der ersten Stimme nicht mehr ändern.'
+                : 'Niemand sieht, wer abgestimmt hat oder was, auch du nicht.'
           }
-          disabled={umfrage?.hatStimmen}
-          checked={w.anonym}
+          disabled={umfrage?.hatStimmen || w.termin !== null}
+          checked={w.anonym && w.termin === null}
           onChange={(e) => set('anonym', e.currentTarget.checked)}
         />
         <Radio.Group

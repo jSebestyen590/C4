@@ -71,6 +71,12 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     minuten: null,
   },
   {
+    key: 'umfrage.termin',
+    bereich: 'umfrage',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
     key: 'umfrage.erneut_abstimmen',
     bereich: 'umfrage',
     standardAktiv: true,

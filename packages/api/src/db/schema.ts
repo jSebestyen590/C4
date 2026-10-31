@@ -830,3 +830,29 @@ export const umfrageStimmen = pgTable('umfrage_stimmen', {
   optionId: text('option_id').references(() => umfrageOptionen.id),
   freitext: text('freitext'),
 });
+
+/** Scheduling poll settings; `eventId`/`optionId` once the chosen date became an event. */
+export const umfrageTermine = pgTable('umfrage_termine', {
+  umfrageId: text('umfrage_id')
+    .primaryKey()
+    .references(() => umfragen.id),
+  kategorieId: text('kategorie_id').notNull(),
+  jeTermin: boolean('je_termin').notNull(),
+  beginn: text('beginn'),
+  ende: text('ende'),
+  dienstformId: text('dienstform_id'),
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
+  eventId: text('event_id'),
+  optionId: text('option_id'),
+});
+
+/** The date of an answer in a scheduling poll. */
+export const umfrageOptionTermine = pgTable('umfrage_option_termine', {
+  optionId: text('option_id')
+    .primaryKey()
+    .references(() => umfrageOptionen.id),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  beginn: text('beginn'),
+  ende: text('ende'),
+});

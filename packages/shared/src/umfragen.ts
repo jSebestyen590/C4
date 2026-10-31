@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Anrede } from './anrede';
 import { beschreibung, eindeutig } from './bausteine';
-import { heuteBerlin, tagNachher } from './datum';
+import { datumAnzeigen, heuteBerlin, tagNachher } from './datum';
+import { bedarfEingabeSchema } from './kalender';
 import { datumSchema } from './schemas';
 import { MITGLIED_STATI, type MitgliedStatus } from './status';
 
@@ -66,14 +67,74 @@ const erinnerungenSchema = z
   )
   .refine((a) => eindeutig(a.map(String)), { message: 'Doppelte Einträge.' });
 
-const optionSchema = z.object({
-  /** Set for options that already exist (editing); new options have none. */
-  id: z.string().min(1).optional(),
-  text: z
-    .string()
-    .trim()
-    .min(1, 'Bitte gib eine Antwort ein.')
-    .max(200, 'Höchstens 200 Zeichen erlaubt.'),
+const uhrzeitSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
+
+/** A date to pick in a scheduling poll; the times only when they are set per date. */
+export const optionTerminSchema = z.object({
+  datum: datumSchema,
+  beginn: uhrzeitSchema.nullable(),
+  ende: uhrzeitSchema.nullable(),
+});
+export type OptionTermin = z.infer<typeof optionTerminSchema>;
+
+const optionSchema = z
+  .object({
+    /** Set for options that already exist (editing); new options have none. */
+    id: z.string().min(1).optional(),
+    /** Generated from `termin` in scheduling polls. */
+    text: z.string().trim().max(200, 'Höchstens 200 Zeichen erlaubt.'),
+    termin: optionTerminSchema.nullish().transform((v) => v ?? null),
+  })
+  .refine((o) => o.text !== '' || o.termin !== null, {
+    message: 'Bitte gib eine Antwort ein.',
+    path: ['text'],
+  });
+
+/**
+ * Scheduling poll: the answers are dates, and the creator turns one of them into an event of
+ * `kategorieId`. Times are the same for all dates unless `jeTermin`. Dienste Kategorien need a
+ * `bedarf`: one Betrieb Schicht with that Dienstform, everybody who agreed is entered there.
+ */
+export const umfrageTerminSchema = z
+  .object({
+    kategorieId: z.string('Bitte wähle eine Kategorie.').min(1, 'Bitte wähle eine Kategorie.'),
+    jeTermin: z.boolean(),
+    beginn: uhrzeitSchema.nullable(),
+    ende: uhrzeitSchema.nullable(),
+    bedarf: bedarfEingabeSchema.nullable(),
+  })
+  .superRefine((t, ctx) => {
+    if (!t.jeTermin && (t.beginn === null || t.ende === null)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [t.beginn === null ? 'beginn' : 'ende'],
+        message: 'Bitte gib Beginn und Ende an.',
+      });
+    }
+  });
+export type UmfrageTermin = z.infer<typeof umfrageTerminSchema>;
+
+/** Question of a scheduling poll when none is given. */
+export const TERMIN_FRAGE = 'Welche Termine passen dir?';
+
+const wochentagFormat = new Intl.DateTimeFormat('de-DE', { weekday: 'short', timeZone: 'UTC' });
+
+/** "Di, 11.11.2026" or "Di, 11.11.2026, 19:00–21:00". */
+export function terminText(t: OptionTermin): string {
+  const tag = wochentagFormat.format(new Date(`${t.datum}T12:00:00Z`)).replace('.', '');
+  const zeit = t.beginn && t.ende ? `, ${t.beginn}–${t.ende}` : '';
+  return `${tag}, ${datumAnzeigen(t.datum)}${zeit}`;
+}
+
+/** Wall times of a date: its own ones, else those of the poll. */
+export const terminZeiten = (
+  termin: Pick<UmfrageTermin, 'jeTermin' | 'beginn' | 'ende'>,
+  option: OptionTermin,
+): { beginn: string; ende: string } => ({
+  beginn: (termin.jeTermin ? option.beginn : termin.beginn) ?? '00:00',
+  ende: (termin.jeTermin ? option.ende : termin.ende) ?? '00:00',
 });
 
 export const umfrageFrageSchema = z
@@ -94,7 +155,7 @@ export const umfrageFrageSchema = z
         message: 'Lege mindestens eine Antwort an oder erlaube Freitext.',
       });
     }
-    const texte = f.optionen.map((o) => o.text.toLowerCase());
+    const texte = f.optionen.filter((o) => o.text !== '').map((o) => o.text.toLowerCase());
     if (!eindeutig(texte)) {
       ctx.addIssue({ code: 'custom', path: ['optionen'], message: 'Antworten doppelt.' });
     }
@@ -138,10 +199,23 @@ export const umfrageEingabeSchema = z
       .array(umfrageFrageSchema)
       .min(1, 'Lege mindestens eine Frage an.')
       .max(UMFRAGE_FRAGEN_MAX, 'Zu viele Fragen.'),
+    /** Set for scheduling polls (see `umfrageTerminSchema`). */
+    termin: umfrageTerminSchema.nullish().transform((v) => v ?? null),
     /** Editing: confirms that votes become invalid (otherwise 409). */
     bestaetigt: z.boolean().optional(),
   })
   .superRefine((u, ctx) => {
+    if (u.termin) {
+      terminFehler(u, u.termin).forEach((issue) => ctx.addIssue({ code: 'custom', ...issue }));
+      return;
+    }
+    if (u.fragen.some((f) => f.optionen.some((o) => o.termin !== null))) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fragen'],
+        message: 'Termine gibt es nur bei Terminumfragen.',
+      });
+    }
     const einzeln = u.fragen.length === 1;
     if (u.titel === '' && !(einzeln && u.fragen[0]!.text !== '')) {
       ctx.addIssue({
@@ -184,6 +258,27 @@ export const umfrageEingabeSchema = z
     }
   })
   .transform((u) => {
+    if (u.termin) {
+      const termin = u.termin;
+      const [frage] = u.fragen;
+      // Dates in order; the answer text is generated, so it always matches the date.
+      const optionen = [...frage!.optionen]
+        .map((o) => ({ ...o, termin: zeitenNachModus(o.termin!, termin) }))
+        .sort((a, b) => terminSchluessel(a.termin).localeCompare(terminSchluessel(b.termin)))
+        .map((o) => ({ ...o, text: terminText(o.termin) }));
+      return {
+        ...u,
+        fragen: [
+          {
+            ...frage!,
+            text: frage!.text || TERMIN_FRAGE,
+            freitext: false,
+            maxAntworten: null,
+            optionen,
+          },
+        ],
+      };
+    }
     if (u.fragen.length !== 1) return u;
     const [frage] = u.fragen;
     return {
@@ -193,6 +288,61 @@ export const umfrageEingabeSchema = z
     };
   });
 export type UmfrageEingabe = z.input<typeof umfrageEingabeSchema>;
+
+/** Times per date only with `jeTermin`; otherwise those of the poll apply. */
+const zeitenNachModus = (o: OptionTermin, t: UmfrageTermin): OptionTermin =>
+  t.jeTermin ? o : { datum: o.datum, beginn: null, ende: null };
+
+const terminSchluessel = (o: OptionTermin) => `${o.datum} ${o.beginn ?? ''}`;
+
+/** Rules of a scheduling poll: one question of dates, not anonymous, a title for the event. */
+function terminFehler(
+  u: {
+    titel: string;
+    anonym: boolean;
+    fragen: readonly { optionen: readonly { termin: OptionTermin | null }[] }[];
+  },
+  t: UmfrageTermin,
+): { path: (string | number)[]; message: string }[] {
+  const fehler: { path: (string | number)[]; message: string }[] = [];
+  if (u.titel === '') {
+    fehler.push({
+      path: ['titel'],
+      message: 'Bitte gib einen Titel ein, er wird der Titel des Events.',
+    });
+  }
+  if (u.anonym) {
+    fehler.push({
+      path: ['anonym'],
+      message: 'Eine Terminumfrage kann nicht anonym sein, sonst lässt sich niemand eintragen.',
+    });
+  }
+  if (u.fragen.length !== 1) {
+    fehler.push({ path: ['fragen'], message: 'Eine Terminumfrage hat genau eine Frage.' });
+    return fehler;
+  }
+  const optionen = u.fragen[0]!.optionen;
+  if (optionen.length === 0) {
+    fehler.push({ path: ['fragen', 0, 'optionen'], message: 'Lege mindestens einen Termin an.' });
+  }
+  for (const [i, o] of optionen.entries()) {
+    if (!o.termin) {
+      fehler.push({ path: ['fragen', 0, 'optionen', i], message: 'Bitte gib ein Datum an.' });
+    } else if (t.jeTermin && (o.termin.beginn === null || o.termin.ende === null)) {
+      fehler.push({
+        path: ['fragen', 0, 'optionen', i],
+        message: 'Bitte gib bei jedem Termin Beginn und Ende an.',
+      });
+    }
+  }
+  const schluessel = optionen.flatMap((o) =>
+    o.termin ? [terminSchluessel(zeitenNachModus(o.termin, t))] : [],
+  );
+  if (!eindeutig(schluessel)) {
+    fehler.push({ path: ['fragen', 0, 'optionen'], message: 'Ein Termin ist doppelt.' });
+  }
+  return fehler;
+}
 
 /** Body of `PUT /api/umfragen/:id/stimme`: one answer per question. */
 export const stimmzettelSchema = z.object({
@@ -389,11 +539,15 @@ export interface UmfrageListeDto {
   /** Members with a valid vote, and members in the circles. */
   abgaben: number;
   kreisGroesse: number;
+  /** Scheduling poll (see `umfrageTerminSchema`). */
+  terminumfrage: boolean;
 }
 
 export interface UmfrageOptionDto {
   id: string;
   text: string;
+  /** The date in scheduling polls, else null. */
+  termin: OptionTermin | null;
   /** Null when the results are hidden. */
   stimmen: number | null;
   /** Who picked it; null when hidden or anonymous. */
@@ -424,6 +578,18 @@ export interface UmfrageDetailDto extends UmfrageListeDto {
   meineAntworten: { frageId: string; optionIds: string[]; freitext: string | null }[];
   /** True once anyone voted (then `anonym` cannot change any more). */
   hatStimmen: boolean;
+  /** Scheduling polls only, else null. */
+  termin: UmfrageTermin | null;
+  /** The event created from the poll and the date it was created for. */
+  eventId: string | null;
+  eventOptionId: string | null;
+  /** Ended scheduling poll without an event, and the caller is the creator or Verwaltung. */
+  darfEventAnlegen: boolean;
   /** Members of the circles with their vote state; null in anonymous polls. */
   teilnehmende: { person: UmfragePerson; rolle: KreisRolle; abgestimmt: boolean }[] | null;
 }
+
+/** Body of `POST /api/umfragen/:id/event`: the date that becomes the event. */
+export const terminWahlSchema = z.object({
+  optionId: z.string().min(1, 'Bitte wähle einen Termin.'),
+});

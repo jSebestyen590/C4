@@ -20,6 +20,8 @@ export function createFakeUmfragenStore() {
         erstellerSub: ersteller,
         erstelltAm: new Date(),
         beendetAm: null,
+        eventId: null,
+        eventOptionId: null,
         abgaben: [],
         stimmen: [],
       });
@@ -40,6 +42,13 @@ export function createFakeUmfragenStore() {
     },
     async loeschen(id) {
       return liste.delete(id);
+    },
+    async eventSetzen(id, eventId, optionId) {
+      const u = liste.get(id);
+      if (!u?.termin) return false;
+      u.eventId = eventId;
+      u.eventOptionId = optionId;
+      return true;
     },
     async abstimmen(id, sub, antworten) {
       const u = liste.get(id)!;

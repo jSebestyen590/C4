@@ -1,6 +1,7 @@
 import {
   Alert,
   Anchor,
+  Badge,
   Button,
   Checkbox,
   Group,
@@ -14,7 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPencil, IconPlayerStop, IconTrash } from '@tabler/icons-react';
+import { IconCalendarPlus, IconPencil, IconPlayerStop, IconTrash } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -22,6 +23,7 @@ import {
   moeglicheAntworten,
   type UmfrageDetailDto,
   type UmfrageFrageDto,
+  type UmfrageOptionDto,
   type UmfragePerson,
 } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
@@ -88,9 +90,11 @@ function FrageEingabe({
   const hinweis =
     max === 1
       ? undefined
-      : frage.maxAntworten === null
-        ? 'Mehrere Antworten möglich.'
-        : `Bis zu ${max} Antworten.`;
+      : frage.optionen.some((o) => o.termin)
+        ? 'Kreuze alle Termine an, die dir passen.'
+        : frage.maxAntworten === null
+          ? 'Mehrere Antworten möglich.'
+          : `Bis zu ${max} Antworten.`;
 
   return (
     <Stack gap="xs">
@@ -154,12 +158,18 @@ function FrageErgebnis({
   abgaben,
   einzeln,
   titel,
+  festgelegt,
+  onFestlegen,
 }: Readonly<{
   frage: UmfrageFrageDto;
   nr: number;
   abgaben: number;
   einzeln: boolean;
   titel: string;
+  /** Scheduling polls: the answer that became the event. */
+  festgelegt?: string | null;
+  /** Scheduling polls: offers to turn an answer into the event. */
+  onFestlegen?: (option: UmfrageOptionDto) => void;
 }>) {
   return (
     <Stack gap="xs">
@@ -176,8 +186,26 @@ function FrageErgebnis({
                 {anzahl} {anzahl === 1 ? 'Stimme' : 'Stimmen'}
               </Text>
             </Group>
-            <Progress value={abgaben === 0 ? 0 : (anzahl / abgaben) * 100} size="lg" />
+            <Progress
+              value={abgaben === 0 ? 0 : (anzahl / abgaben) * 100}
+              size="lg"
+              color={festgelegt === o.id ? 'green' : undefined}
+            />
             {o.personen && o.personen.length > 0 && <Personen personen={o.personen} />}
+            {festgelegt === o.id && (
+              <Badge color="green" variant="light">
+                Festgelegter Termin
+              </Badge>
+            )}
+            {onFestlegen && (
+              <Button
+                variant="light"
+                leftSection={<IconCalendarPlus size={18} />}
+                onClick={() => onFestlegen(o)}
+              >
+                Als Termin festlegen
+              </Button>
+            )}
           </Stack>
         );
       })}
@@ -320,6 +348,7 @@ export function UmfragePage() {
   const navigate = useNavigate();
   const umfrage = useUmfrage(id);
   const [dialog, setDialog] = useState<'beenden' | 'loeschen' | null>(null);
+  const [festlegen, setFestlegen] = useState<UmfrageOptionDto | null>(null);
 
   const zurueck = (
     <Anchor component={Link} to="/umfragen" size="sm">
@@ -382,6 +411,26 @@ export function UmfragePage() {
       </Text>
       {u.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{u.beschreibung}</Text>}
 
+      {u.termin && u.eventId && (
+        <Alert color="green" title="Termin steht fest">
+          <Stack gap="xs">
+            <Text size="sm">
+              {u.fragen[0]?.optionen.find((o) => o.id === u.eventOptionId)?.text}
+            </Text>
+            <Button component={Link} to={`/kalender/events/${u.eventId}`} variant="white">
+              Zum Event
+            </Button>
+          </Stack>
+        </Alert>
+      )}
+      {u.termin && !u.eventId && u.darfBearbeiten && (
+        <Text size="sm" c="dimmed">
+          {u.laeuft
+            ? 'Wenn die Umfrage beendet ist (oder du sie vorzeitig beendest), legst du hier einen der Termine als Event an.'
+            : 'Lege unten einen der Termine als Event an. Es muss nicht der mit den meisten Stimmen sein.'}
+        </Text>
+      )}
+
       {darfAbstimmen && <Abstimmung key={`${u.id}-${u.abgestimmt}-${u.erneutNoetig}`} u={u} />}
 
       <Title order={3} mt="md">
@@ -396,6 +445,8 @@ export function UmfragePage() {
             abgaben={u.abgaben}
             einzeln={u.fragen.length === 1}
             titel={u.titel}
+            festgelegt={u.eventOptionId}
+            onFestlegen={u.darfEventAnlegen ? setFestlegen : undefined}
           />
         ))
       ) : (
@@ -413,6 +464,32 @@ export function UmfragePage() {
 
       <Teilnehmende u={u} />
 
+      {festlegen && (
+        <BestaetigenDialog
+          titel="Termin festlegen"
+          bestaetigenText="Event anlegen"
+          color="green"
+          onClose={() => setFestlegen(null)}
+          onBestaetigt={async () => {
+            const res = await api.umfragen[':id'].event.$post({
+              param: { id: u.id },
+              json: { optionId: festlegen.id },
+            });
+            await pruefen(res);
+            const { eventId } = (await res.json()) as { eventId: string };
+            await umfragenInvalidieren(qc);
+            navigate(`/kalender/events/${eventId}`);
+          }}
+        >
+          <Text>
+            „{u.titel}“ wird am {festlegen.text} im Kalender angelegt.{' '}
+            {festlegen.stimmen === 1
+              ? 'Die Person, die zugestimmt hat, wird eingetragen.'
+              : `Die ${festlegen.stimmen ?? 0} Personen, die zugestimmt haben, werden eingetragen.`}{' '}
+            Alle bekommen eine Nachricht.
+          </Text>
+        </BestaetigenDialog>
+      )}
       {dialog === 'beenden' && (
         <BestaetigenDialog
           titel="Umfrage beenden"
