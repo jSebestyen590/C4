@@ -7,7 +7,8 @@ Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/be
 ## Formular
 
 Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, danach erscheint das passende Formular
-(„Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest.
+(„Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest. Antworten und freie Termine lassen sich am Griff
+per Drag-and-drop umsortieren (`SortierbareListe`, `@hello-pangea/dnd`); Termine mit Datum sortiert die App selbst.
 
 | Typ                       | Inhalt                                                                                  |
 | ------------------------- | --------------------------------------------------------------------------------------- |

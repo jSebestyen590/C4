@@ -62,6 +62,7 @@ import {
   UmfrageTerminFelder,
   type TerminWerte,
 } from '../UmfrageTerminFelder';
+import { SortierbareListe } from '../SortierbareListe';
 import { ZahlFeld } from '../ZahlFeld';
 import { ApiFehler, fehlerText } from '../warenApi';
 
@@ -228,37 +229,43 @@ function FreieTermineEditor({
       <Text size="sm" c="dimmed">
         Gib die Termine als Text an. Alle kreuzen an, was ihnen passt, oder „An keinem der Termine“.
       </Text>
-      {frage.optionen.map((o, i) => (
-        <Group key={o.key} gap="xs" wrap="nowrap">
-          <TextInput
-            size="md"
-            style={{ flex: 1 }}
-            aria-label={`Termin ${i + 1}`}
-            placeholder={i === 0 ? 'z. B. Mo, 17.11. abends' : `Termin ${i + 1}`}
-            value={o.text}
-            onChange={(e) =>
-              onChange({
-                ...frage,
-                optionen: frage.optionen.map((x, j) =>
-                  j === i ? { ...x, text: e.currentTarget.value } : x,
-                ),
-              })
-            }
-          />
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            size={44}
-            aria-label={`Termin ${i + 1} entfernen`}
-            disabled={frage.optionen.length === 1}
-            onClick={() =>
-              onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
-            }
-          >
-            <IconTrash size={20} />
-          </ActionIcon>
-        </Group>
-      ))}
+      <SortierbareListe
+        eintraege={frage.optionen}
+        onChange={(optionen) => onChange({ ...frage, optionen })}
+        griffLabel={(i) => `Termin ${i + 1} verschieben`}
+        zeile={(o, i, griff) => (
+          <Group gap={4} wrap="nowrap">
+            {griff}
+            <TextInput
+              size="md"
+              style={{ flex: 1 }}
+              aria-label={`Termin ${i + 1}`}
+              placeholder={i === 0 ? 'z. B. Mo, 17.11. abends' : `Termin ${i + 1}`}
+              value={o.text}
+              onChange={(e) =>
+                onChange({
+                  ...frage,
+                  optionen: frage.optionen.map((x, j) =>
+                    j === i ? { ...x, text: e.currentTarget.value } : x,
+                  ),
+                })
+              }
+            />
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              size={44}
+              aria-label={`Termin ${i + 1} entfernen`}
+              disabled={frage.optionen.length === 1}
+              onClick={() =>
+                onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
+              }
+            >
+              <IconTrash size={20} />
+            </ActionIcon>
+          </Group>
+        )}
+      />
       <Button
         variant="default"
         leftSection={<IconPlus size={18} />}
@@ -491,29 +498,35 @@ function FrageEditor({
           <Text size="sm" fw={500}>
             Antworten
           </Text>
-          {frage.optionen.map((o, i) => (
-            <Group key={o.key} gap="xs" wrap="nowrap">
-              <TextInput
-                size="md"
-                style={{ flex: 1 }}
-                aria-label={`Antwort ${i + 1}`}
-                placeholder={`Antwort ${i + 1}`}
-                value={o.text}
-                onChange={(e) => setOption(i, e.currentTarget.value)}
-              />
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                size={44}
-                aria-label={`Antwort ${i + 1} entfernen`}
-                onClick={() =>
-                  onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
-                }
-              >
-                <IconTrash size={20} />
-              </ActionIcon>
-            </Group>
-          ))}
+          <SortierbareListe
+            eintraege={frage.optionen}
+            onChange={(optionen) => onChange({ ...frage, optionen })}
+            griffLabel={(i) => `Antwort ${i + 1} verschieben`}
+            zeile={(o, i, griff) => (
+              <Group gap={4} wrap="nowrap">
+                {griff}
+                <TextInput
+                  size="md"
+                  style={{ flex: 1 }}
+                  aria-label={`Antwort ${i + 1}`}
+                  placeholder={`Antwort ${i + 1}`}
+                  value={o.text}
+                  onChange={(e) => setOption(i, e.currentTarget.value)}
+                />
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  size={44}
+                  aria-label={`Antwort ${i + 1} entfernen`}
+                  onClick={() =>
+                    onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
+                  }
+                >
+                  <IconTrash size={20} />
+                </ActionIcon>
+              </Group>
+            )}
+          />
           <Button
             variant="default"
             leftSection={<IconPlus size={18} />}
