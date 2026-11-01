@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS trichter_teilnahmen_mitglied_idx

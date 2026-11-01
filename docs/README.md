@@ -12,6 +12,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo          |
 | [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung             |
 | [umfragen.md](./umfragen.md)                     | Umfragen: Fragen, Pflicht- und optionale Kreise, Anonymität, Erinnerungen        |
+| [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung |
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                          |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)               |
 

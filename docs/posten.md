@@ -39,7 +39,7 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
   stehen die Rechte aus `POSTEN_RECHTE` (`packages/shared/src/roles.ts`: `users:manage`, `posten:bearbeiten`,
-  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`); weitere Rechte
+  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`); weitere Rechte
   trägt man dort ein.
 - Es gibt keine eigene Vorstandsrolle: Archivierte Posten sehen und reaktivieren alle mit `posten:bearbeiten`.
 

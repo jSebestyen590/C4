@@ -67,6 +67,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'schluessel:verwalten': 'Schlüssel verwalten',
   'umfragen:lesen': 'Umfragen ansehen, erstellen und abstimmen',
   'umfragen:verwalten': 'Alle Umfragen verwalten',
+  'trichter:lesen': 'Trichter sehen und Durchgänge eintragen',
+  'trichter:verwalten': 'Trichter verwalten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -258,3 +260,16 @@ export const labelFuer = (
   value: string,
   anrede: Anrede,
 ): string => labels[value]?.[anrede] ?? value;
+
+// Trichterkönig:in: the lines of the Trichter header, one per way of addressing the king.
+export const TRICHTER_KOENIG_JAHR_LABELS: Gegendert = {
+  maennlich: 'ist im laufenden Jahr Trichterkönig',
+  weiblich: 'ist im laufenden Jahr Trichterkönigin',
+  neutral: 'ist im laufenden Jahr Trichterkönig:in',
+};
+
+export const TRICHTER_KOENIG_EWIG_LABELS: Gegendert = {
+  maennlich: 'ist ewiger Trichterkönig',
+  weiblich: 'ist ewige Trichterkönigin',
+  neutral: 'ist ewige:r Trichterkönig:in',
+};
