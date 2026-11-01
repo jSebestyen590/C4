@@ -1,1 +1,1 @@
-ALTER TABLE umfrage_option_termine DROP COLUMN IF EXISTS bis
+UPDATE umfrage_option_termine SET bis = NULL

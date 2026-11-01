@@ -249,7 +249,7 @@ function alsDaten(
     fragen,
     abgaben,
     termin: terminAus(termin),
-    terminFrei: row.terminFrei ?? false,
+    terminFrei: row.terminFrei,
     eventId: termin?.eventId ?? null,
     eventOptionId: termin?.optionId ?? null,
   };

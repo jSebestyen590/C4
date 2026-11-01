@@ -1,1 +1,1 @@
-ALTER TABLE umfragen DROP COLUMN IF EXISTS termin_frei
+UPDATE umfragen SET termin_frei = NULL

@@ -1,6 +1,6 @@
 -- Polls (see docs/umfragen.md). A poll runs until the end of endet_am (Europe/Berlin) unless
 -- beendet_am is set. Circles by status are comma-separated like events.teilnahme_status,
--- reminders are comma-separated days before the end.
+-- reminders are comma-separated days before the end. termin_frei: scheduling without an event.
 CREATE TABLE IF NOT EXISTS umfragen (
   id text PRIMARY KEY,
   titel text NOT NULL,
@@ -14,5 +14,6 @@ CREATE TABLE IF NOT EXISTS umfragen (
   pflicht_status text NOT NULL DEFAULT '',
   optional_status text NOT NULL DEFAULT '',
   erinnerungen_pflicht text NOT NULL DEFAULT '',
-  erinnerungen_optional text NOT NULL DEFAULT ''
+  erinnerungen_optional text NOT NULL DEFAULT '',
+  termin_frei boolean NOT NULL DEFAULT false
 )

@@ -9,7 +9,7 @@ Tabelle (Umfrage, Status, Läuft bis, Abgestimmt, Erstellt von). Die ganze Kache
 Umfragen kommen auf einmal (`GET /api/umfragen`), beendete seitenweise zu je 20, neueste zuerst („Ältere laden“,
 `GET /api/umfragen/beendet?nach=<Position>`, Antwort `{ umfragen, weiter }`). Weil die Sichtbarkeit erst in der API geprüft
 wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird nach `erstellt_am`, `id` (Index Migration
-`0095`). Der Erinnerungs-Job liest nur laufende Umfragen.
+`0091`). Der Erinnerungs-Job liest nur laufende Umfragen.
 
 ## Formular
 
@@ -18,12 +18,12 @@ Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, 
 umsortieren (`SortierbareListe`, `@hello-pangea/dnd`); Termine sortiert die App selbst. Bei der Terminfindung mit Event
 steht die Kategorie bzw. Vorlage ganz oben im Formular (`TerminQuelleFelder`), weil sie die übrigen Felder bestimmt.
 
-| Typ                       | Inhalt                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| Frage oder Fragen         | Eigene Fragen mit Antworten, Freitext und Anzahl wählbarer Antworten                     |
-| Terminfindung             | Termine als Daten, das Event entsteht aus einer Kategorie (siehe „Terminfindung“)        |
-| Terminfindung aus Vorlage | Termine als Starttage, das Event entsteht aus einer Vorlage                              |
-| Terminfindung ohne Event  | Termine als Datum mit optionaler Uhrzeit (`terminFrei`, Migration `0093`), nie ein Event |
+| Typ                       | Inhalt                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| Frage oder Fragen         | Eigene Fragen mit Antworten, Freitext und Anzahl wählbarer Antworten              |
+| Terminfindung             | Termine als Daten, das Event entsteht aus einer Kategorie (siehe „Terminfindung“) |
+| Terminfindung aus Vorlage | Termine als Starttage, das Event entsteht aus einer Vorlage                       |
+| Terminfindung ohne Event  | Termine als Datum mit optionaler Uhrzeit (`terminFrei`), nie ein Event            |
 
 Die freie Terminfindung hat genau eine Frage, beliebig viele Termine sind wählbar, „An keinem der Termine“ geht wie bei
 der Terminfindung, der Titel ist Pflicht. Jeder Termin ist ein Tag (`umfrage_option_termine`, ohne `bis`) mit optionalem
@@ -60,20 +60,20 @@ Eine Umfrage mit `termin` (Schalter „Terminfindung“ im Formular, `umfrageTer
 
 - **Aufbau**: genau eine Frage, ihre Antworten sind Termine (`umfrage_option_termine`). Den Antworttext erzeugt die API
   (`terminText`, z. B. „Di, 11.11.2026“, „Di, 11.11.2026, 19:00–21:00“ oder „Fr, 10.07.2026 – So, 12.07.2026“), die
-  Termine werden sortiert. Jeder Termin kann einen optionalen **Namen** haben (`name`, höchstens 60 Zeichen, Migration
-  `0094`), der hinter dem Datum steht: „Sa, 07.11.2026 · StuK“. Dasselbe Datum darf mit verschiedenen Namen mehrfach
+  Termine werden sortiert. Jeder Termin kann einen optionalen **Namen** haben (`name`, höchstens 60 Zeichen, Spalte
+  `name`), der hinter dem Datum steht: „Sa, 07.11.2026 · StuK“. Dasselbe Datum darf mit verschiedenen Namen mehrfach
   vorkommen. Man kreuzt alle passenden Termine an (beliebig viele, kein Freitext) oder **„An keinem der
   Termine“**: eine Stimme ohne Antwort (`leerErlaubt`), sie zählt als abgestimmt (keine Erinnerungen) und erscheint im
   Ergebnis als „An keinem der Termine“ (`keiner`, mit Namen bei öffentlichen Umfragen). Ohne Frage gilt „Welche Termine
   passen dir?“. Terminumfragen sind nie anonym.
 - **Titel**: optional. Leer übernimmt die API den Titel der Vorlage, sonst den Namen der Kategorie. Ein so übernommener
   Titel bleibt im Event leer (bzw. der der Vorlage), damit es der Kategorie folgt.
-- **Quelle**: entweder eine **Kategorie** (`kategorieId`) oder eine **Vorlage** (`vorlageId`, Migration `0092`; ihre Kategorie
+- **Quelle**: entweder eine **Kategorie** (`kategorieId`) oder eine **Vorlage** (`vorlageId`; ihre Kategorie
   wird gespeichert). `terminNormalisieren` verwirft, was Kategorie oder Vorlage selbst festlegen, `terminDauerFehler`
   prüft den Rest (400).
 - **Uhrzeit und Dauer** (ohne Vorlage, nach der Dauer der Kategorie):
   - eintägig: eine Uhrzeit für alle Termine (`beginn`/`ende`) oder je Termin (`jeTermin`); Ende vor Beginn = nächster Tag.
-  - mehrtägig: jede Antwort ist ein Zeitraum (`bis`, Migration `0091`) mit Uhrzeiten wie oben. Im Formular wählt man
+  - mehrtägig: jede Antwort ist ein Zeitraum (`bis`) mit Uhrzeiten wie oben. Im Formular wählt man
     den Zeitraum in einem Feld (`ZeitraumFeld`, `@mantine/dates`): im Kalender erst den ersten, dann den letzten Tag.
   - ganztägig: jede Antwort ist ein Zeitraum ohne Uhrzeiten.
   - Mit Vorlage sind die Antworten nur Starttage; Uhrzeiten, Anzahl der Tage, Schichten und Bedarf kommen aus der Vorlage.
@@ -130,7 +130,7 @@ Siehe [benachrichtigungen.md](./benachrichtigungen.md), Code in `packages/api/sr
 
 ## Datenmodell
 
-Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0094`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
+Migrationen `0077`–`0091` (Tabellen `0077`–`0082`, Indizes `0083`–`0085` und `0091`, Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, Dauer der Kategorien und Tage der Vorlagen: `0089`–`0090`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
 in `packages/shared/src/umfragen.ts`.
 
 | Tabelle                  | Inhalt                                                                                                                                                          |
