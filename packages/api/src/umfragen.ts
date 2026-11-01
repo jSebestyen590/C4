@@ -261,7 +261,7 @@ export function createUmfragenStore(db: Db): UmfragenStore {
             )
             .orderBy(asc(umfrageOptionen.position));
     const optionTermine =
-      optionen.length === 0 || termine.length === 0
+      optionen.length === 0 || (termine.length === 0 && !rows.some((r) => r.terminFrei))
         ? []
         : await db
             .select()

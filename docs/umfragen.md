@@ -7,18 +7,20 @@ Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/be
 ## Formular
 
 Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, danach erscheint das passende Formular
-(„Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest. Antworten und freie Termine lassen sich am Griff
-per Drag-and-drop umsortieren (`SortierbareListe`, `@hello-pangea/dnd`); Termine mit Datum sortiert die App selbst.
+(„Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest. Antworten lassen sich am Griff per Drag-and-drop
+umsortieren (`SortierbareListe`, `@hello-pangea/dnd`); Termine sortiert die App selbst. Bei der Terminfindung mit Event
+steht die Kategorie bzw. Vorlage ganz oben im Formular (`TerminQuelleFelder`), weil sie die übrigen Felder bestimmt.
 
-| Typ                       | Inhalt                                                                                  |
-| ------------------------- | --------------------------------------------------------------------------------------- |
-| Frage oder Fragen         | Eigene Fragen mit Antworten, Freitext und Anzahl wählbarer Antworten                    |
-| Terminfindung             | Termine als Daten, das Event entsteht aus einer Kategorie (siehe „Terminfindung“)       |
-| Terminfindung aus Vorlage | Termine als Starttage, das Event entsteht aus einer Vorlage                             |
-| Terminfindung ohne Event  | Termine als freier Text (`terminFrei`, Migration `0093`), daraus entsteht nie ein Event |
+| Typ                       | Inhalt                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------- |
+| Frage oder Fragen         | Eigene Fragen mit Antworten, Freitext und Anzahl wählbarer Antworten                     |
+| Terminfindung             | Termine als Daten, das Event entsteht aus einer Kategorie (siehe „Terminfindung“)        |
+| Terminfindung aus Vorlage | Termine als Starttage, das Event entsteht aus einer Vorlage                              |
+| Terminfindung ohne Event  | Termine als Datum mit optionaler Uhrzeit (`terminFrei`, Migration `0093`), nie ein Event |
 
 Die freie Terminfindung hat genau eine Frage, beliebig viele Termine sind wählbar, „An keinem der Termine“ geht wie bei
-der Terminfindung, der Titel ist Pflicht. `POST /api/umfragen/:id/event` antwortet mit 400.
+der Terminfindung, der Titel ist Pflicht. Jeder Termin ist ein Tag (`umfrage_option_termine`, ohne `bis`) mit optionalem
+Beginn und Ende (beide oder keins, `freieTerminFehler`) und optionalem Namen; den Antworttext erzeugt `terminText`. `POST /api/umfragen/:id/event` antwortet mit 400.
 
 ## Regeln
 

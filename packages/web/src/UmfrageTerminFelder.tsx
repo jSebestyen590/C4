@@ -60,7 +60,7 @@ export interface TerminWerte {
   termine: TerminDatum[];
 }
 
-const neuesDatum = (datum: string, vorher?: TerminDatum): TerminDatum => ({
+export const neuesDatum = (datum: string, vorher?: TerminDatum): TerminDatum => ({
   key: neuerKey(),
   datum,
   bis: datum,
@@ -169,10 +169,13 @@ export function terminEingabeAus(t: TerminWerte, kategorie: EventKategorieDto | 
 function ZeitFelder({
   beginn,
   ende,
+  optional = false,
   onChange,
 }: Readonly<{
   beginn: string;
   ende: string;
+  /** Labels the fields as optional. */
+  optional?: boolean;
   onChange: (z: { beginn: string; ende: string }) => void;
 }>) {
   return (
@@ -180,14 +183,14 @@ function ZeitFelder({
       <TextInput
         size="md"
         type="time"
-        label="Beginn"
+        label={optional ? 'Beginn (optional)' : 'Beginn'}
         value={beginn}
         onChange={(e) => onChange({ beginn: e.currentTarget.value, ende })}
       />
       <TextInput
         size="md"
         type="time"
-        label="Ende"
+        label={optional ? 'Ende (optional)' : 'Ende'}
         value={ende}
         onChange={(e) => onChange({ beginn, ende: e.currentTarget.value })}
       />
@@ -199,8 +202,8 @@ function ZeitFelder({
 export const bedarfText = (b: { minimum: number; wunsch: number; dienstformen: string[] }) =>
   `Bedarf: mindestens ${b.minimum}, am liebsten ${b.wunsch} (${b.dienstformen.join(', ')})`;
 
-/** Source (Kategorie or Vorlage), times, Bedarf and the dates to choose from. */
-export function UmfrageTerminFelder({
+/** Source of the event (Kategorie or Vorlage) and its Bedarf; it decides the other fields. */
+export function TerminQuelleFelder({
   werte,
   onChange,
 }: Readonly<{ werte: TerminWerte; onChange: (t: TerminWerte) => void }>) {
@@ -212,16 +215,8 @@ export function UmfrageTerminFelder({
   const vorlage =
     werte.quelle === 'vorlage' ? vorlagenListe.find((v) => v.id === werte.vorlageId) : undefined;
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
-  const mitZeiten = werte.quelle === 'kategorie' && dauer !== 'ganztaegig';
-  const mitBis = werte.quelle === 'kategorie' && dauer !== 'eintaegig';
   const set = <K extends keyof TerminWerte>(k: K, v: TerminWerte[K]) =>
     onChange({ ...werte, [k]: v });
-  const setDatum = (i: number, d: Partial<TerminDatum>) =>
-    set(
-      'termine',
-      werte.termine.map((x, j) => (j === i ? { ...x, ...d } : x)),
-    );
-  const letztes = werte.termine.at(-1)?.datum || heuteBerlin();
 
   // The Bedarf of all Dienstformen of the Vorlage, shown as one.
   const vorlageBedarf = vorlage
@@ -328,7 +323,26 @@ export function UmfrageTerminFelder({
           </Stack>
         </Paper>
       )}
+    </Stack>
+  );
+}
 
+/** Times and the dates to choose from; what they need follows the Kategorie or Vorlage. */
+export function UmfrageTerminFelder({
+  werte,
+  onChange,
+}: Readonly<{ werte: TerminWerte; onChange: (t: TerminWerte) => void }>) {
+  const kategorien = useEventKategorien();
+  const vorlagen = useVorlagen();
+  const kategorie = terminKategorie(werte, kategorien.liste, vorlagen.data ?? []);
+  const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
+  const mitZeiten = werte.quelle === 'kategorie' && dauer !== 'ganztaegig';
+  const mitBis = werte.quelle === 'kategorie' && dauer !== 'eintaegig';
+  const set = <K extends keyof TerminWerte>(k: K, v: TerminWerte[K]) =>
+    onChange({ ...werte, [k]: v });
+
+  return (
+    <Stack gap="sm">
       {mitZeiten && (
         <>
           <Switch
@@ -352,10 +366,43 @@ export function UmfrageTerminFelder({
         </>
       )}
 
+      <TerminListe
+        termine={werte.termine}
+        onChange={(termine) => set('termine', termine)}
+        mitBis={mitBis}
+        mitZeiten={mitZeiten && werte.jeTermin}
+      />
+    </Stack>
+  );
+}
+
+/**
+ * The dates of a scheduling poll, each with an optional name: a day or a range (`mitBis`), with
+ * own times when `mitZeiten`.
+ */
+export function TerminListe({
+  termine,
+  onChange,
+  mitBis,
+  mitZeiten,
+  zeitenOptional = false,
+}: Readonly<{
+  termine: TerminDatum[];
+  onChange: (termine: TerminDatum[]) => void;
+  mitBis: boolean;
+  mitZeiten: boolean;
+  /** Times may stay empty (scheduling without an event). */
+  zeitenOptional?: boolean;
+}>) {
+  const setDatum = (i: number, d: Partial<TerminDatum>) =>
+    onChange(termine.map((x, j) => (j === i ? { ...x, ...d } : x)));
+  const letztes = termine.at(-1)?.datum || heuteBerlin();
+  return (
+    <Stack gap="sm">
       <Text size="sm" fw={500}>
         Mögliche Termine
       </Text>
-      {werte.termine.map((d, i) => (
+      {termine.map((d, i) => (
         <Paper key={d.key} withBorder p="sm">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
@@ -382,19 +429,19 @@ export function UmfrageTerminFelder({
                 color="red"
                 size={44}
                 aria-label={`Termin ${i + 1} entfernen`}
-                disabled={werte.termine.length === 1}
-                onClick={() =>
-                  set(
-                    'termine',
-                    werte.termine.filter((_, j) => j !== i),
-                  )
-                }
+                disabled={termine.length === 1}
+                onClick={() => onChange(termine.filter((_, j) => j !== i))}
               >
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            {mitZeiten && werte.jeTermin && (
-              <ZeitFelder beginn={d.beginn} ende={d.ende} onChange={(z) => setDatum(i, z)} />
+            {mitZeiten && (
+              <ZeitFelder
+                beginn={d.beginn}
+                ende={d.ende}
+                optional={zeitenOptional}
+                onChange={(z) => setDatum(i, z)}
+              />
             )}
             <TextInput
               size="md"
@@ -410,12 +457,7 @@ export function UmfrageTerminFelder({
       <Button
         variant="default"
         leftSection={<IconPlus size={18} />}
-        onClick={() =>
-          set('termine', [
-            ...werte.termine,
-            neuesDatum(tagNachher(letztes, 1), werte.termine.at(-1)),
-          ])
-        }
+        onClick={() => onChange([...termine, neuesDatum(tagNachher(letztes, 1), termine.at(-1))])}
       >
         Termin hinzufügen
       </Button>

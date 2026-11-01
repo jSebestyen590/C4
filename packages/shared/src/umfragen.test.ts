@@ -417,18 +417,25 @@ describe('freie Terminfindung', () => {
           text: '',
           freitext: true,
           maxAntworten: 1,
-          optionen: [{ text: 'Mo abends' }, { text: 'Sa 14 Uhr' }],
+          optionen: [
+            { text: '', termin: { datum: '2026-11-21', beginn: '14:00', ende: '18:00' } },
+            { text: '', termin: { datum: '2026-11-16', beginn: null, ende: null, name: 'StuK' } },
+          ],
         },
       ],
       ...extra,
     });
-  it('allows several free-text dates and needs a title', () => {
+  it('allows several dates with optional times and needs a title', () => {
     const u = umfrageEingabeSchema.parse(frei());
     expect(u.fragen[0]).toMatchObject({
       text: 'Welche Termine passen dir?',
       freitext: false,
       maxAntworten: null,
     });
+    expect(u.fragen[0]!.optionen.map((o) => o.text)).toEqual([
+      'Mo, 16.11.2026 · StuK',
+      'Sa, 21.11.2026, 14:00–18:00',
+    ]);
     expect(umfrageEingabeSchema.safeParse(frei({ titel: '' })).success).toBe(false);
     expect(
       umfrageEingabeSchema.safeParse(
@@ -437,5 +444,18 @@ describe('freie Terminfindung', () => {
         }),
       ).success,
     ).toBe(false);
+  });
+
+  it('needs a date per answer and both times or none', () => {
+    const mit = (optionen: UmfrageEingabe['fragen'][number]['optionen']) =>
+      umfrageEingabeSchema.safeParse(
+        frei({ fragen: [{ text: '', freitext: false, maxAntworten: null, optionen }] }),
+      ).success;
+    expect(mit([{ text: 'Mo abends' }])).toBe(false);
+    expect(mit([{ text: '', termin: { datum: '2026-11-16', beginn: '19:00', ende: null } }])).toBe(
+      false,
+    );
+    const tag = { text: '', termin: { datum: '2026-11-16', beginn: null, ende: null } };
+    expect(mit([tag, tag])).toBe(false);
   });
 });

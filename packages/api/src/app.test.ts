@@ -4580,7 +4580,14 @@ describe('umfragen', () => {
           ...umfrage({ endetAm: '2099-01-31' }),
           terminFrei: true,
           fragen: [
-            { text: '', freitext: false, maxAntworten: 1, optionen: [{ text: 'Mo abends' }] },
+            {
+              text: '',
+              freitext: false,
+              maxAntworten: 1,
+              optionen: [
+                { text: '', termin: { datum: '2099-01-12', beginn: '19:00', ende: '21:00' } },
+              ],
+            },
           ],
         }),
       );
@@ -4589,6 +4596,10 @@ describe('umfragen', () => {
       const { body } = await t.holen(id, 'member-token');
       expect(body).toMatchObject({ terminFrei: true, terminumfrage: true, termin: null });
       const frage = body.fragen[0]!;
+      expect(frage.optionen[0]).toMatchObject({
+        text: 'Mo, 12.01.2099, 19:00–21:00',
+        termin: { datum: '2099-01-12', beginn: '19:00', ende: '21:00' },
+      });
       expect(
         (await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [] }])).status,
       ).toBe(200);

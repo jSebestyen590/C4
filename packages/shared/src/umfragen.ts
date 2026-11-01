@@ -342,8 +342,8 @@ export const umfrageEingabeSchema = z
     /** Set for scheduling polls (see `umfrageTerminSchema`). */
     termin: umfrageTerminSchema.nullish().transform((v) => v ?? null),
     /**
-     * Scheduling without an event: one question whose answers are free texts (e.g. "Mo abends"),
-     * any number can be picked or "an keinem der Termine"; nothing becomes an event.
+     * Scheduling without an event: one question whose answers are dates (optionally with times
+     * and a name), any number can be picked or "an keinem der Termine"; nothing becomes an event.
      */
     terminFrei: z
       .boolean()
@@ -374,15 +374,13 @@ export const umfrageEingabeSchema = z
           path: ['fragen'],
           message: 'Eine Terminfindung hat genau eine Frage.',
         });
-      } else if (u.fragen[0]!.optionen.length === 0) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['fragen', 0, 'optionen'],
-          message: 'Lege mindestens einen Termin an.',
-        });
+      } else {
+        freieTerminFehler(u.fragen[0]!.optionen).forEach((issue) =>
+          ctx.addIssue({ code: 'custom', ...issue }),
+        );
       }
     }
-    if (u.fragen.some((f) => f.optionen.some((o) => o.termin !== null))) {
+    if (!u.terminFrei && u.fragen.some((f) => f.optionen.some((o) => o.termin !== null))) {
       ctx.addIssue({
         code: 'custom',
         path: ['fragen'],
@@ -433,10 +431,21 @@ export const umfrageEingabeSchema = z
   .transform((u) => {
     if (u.terminFrei) {
       const [frage] = u.fragen;
+      // Like scheduling with an event: dates in order, the text is generated from them.
+      const optionen = [...frage!.optionen]
+        .map((o) => ({ ...o, termin: { ...o.termin!, bis: null } }))
+        .sort((a, b) => terminSchluessel(a.termin).localeCompare(terminSchluessel(b.termin)))
+        .map((o) => ({ ...o, text: terminText(o.termin) }));
       return {
         ...u,
         fragen: [
-          { ...frage!, text: frage!.text || TERMIN_FRAGE, freitext: false, maxAntworten: null },
+          {
+            ...frage!,
+            text: frage!.text || TERMIN_FRAGE,
+            freitext: false,
+            maxAntworten: null,
+            optionen,
+          },
         ],
       };
     }
@@ -470,6 +479,29 @@ export const umfrageEingabeSchema = z
     };
   });
 export type UmfrageEingabe = z.input<typeof umfrageEingabeSchema>;
+
+/** Dates of a scheduling poll without an event: a date each, times optional but both or none. */
+function freieTerminFehler(
+  optionen: readonly { termin: OptionTermin | null }[],
+): { path: (string | number)[]; message: string }[] {
+  const pfad = ['fragen', 0, 'optionen'];
+  if (optionen.length === 0) return [{ path: pfad, message: 'Lege mindestens einen Termin an.' }];
+  const fehler: { path: (string | number)[]; message: string }[] = [];
+  for (const [i, o] of optionen.entries()) {
+    if (!o.termin) fehler.push({ path: [...pfad, i], message: 'Bitte gib ein Datum an.' });
+    else if ((o.termin.beginn === null) !== (o.termin.ende === null)) {
+      fehler.push({
+        path: [...pfad, i],
+        message: `Gib bei Termin ${i + 1} Beginn und Ende an oder keine Uhrzeit.`,
+      });
+    }
+  }
+  const schluessel = optionen.flatMap((o) =>
+    o.termin ? [terminSchluessel({ ...o.termin, bis: null })] : [],
+  );
+  if (!eindeutig(schluessel)) fehler.push({ path: pfad, message: 'Ein Termin ist doppelt.' });
+  return fehler;
+}
 
 /** Times per date only with `jeTermin`; otherwise those of the poll apply. */
 const zeitenNachModus = (o: OptionTermin, t: UmfrageTermin): OptionTermin =>

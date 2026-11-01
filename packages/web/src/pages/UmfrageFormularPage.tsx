@@ -55,11 +55,15 @@ import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { erinnerungLabel, umfrageLink, umfragenInvalidieren, useUmfrage } from '../umfrageDaten';
 import { useEventKategorien, useVorlagen } from '../kalenderDaten';
 import {
+  neuesDatum,
   neueTerminWerte,
+  TerminListe,
+  TerminQuelleFelder,
   terminEingabeAus,
   terminKategorie,
   terminWerteAus,
   UmfrageTerminFelder,
+  type TerminDatum,
   type TerminWerte,
 } from '../UmfrageTerminFelder';
 import { SortierbareListe } from '../SortierbareListe';
@@ -122,7 +126,8 @@ export const UMFRAGE_TYPEN: { typ: UmfrageTyp; titel: string; beschreibung: stri
   {
     typ: 'termin_frei',
     titel: 'Terminfindung ohne Event',
-    beschreibung: 'Termine als freier Text (z. B. „Mo abends“). Daraus entsteht kein Event.',
+    beschreibung:
+      'Termine mit Datum und auf Wunsch Uhrzeit, zum Beispiel für ein Treffen. Daraus entsteht kein Event.',
   },
 ];
 
@@ -149,10 +154,9 @@ interface Werte {
   fragen: FrageWert[];
   /** Set for scheduling polls; then `fragen` is not used. */
   termin: TerminWerte | null;
+  /** Dates of a scheduling poll without an event (`fragen` holds only the question's id). */
+  freieTermine: TerminDatum[];
 }
-
-/** A free scheduling poll is one question whose answers are the dates as text. */
-const neueFreieFrage = (): FrageWert => ({ ...neueFrage(), alle: true });
 
 const neueWerte = (typ: UmfrageTyp): Werte => ({
   typ,
@@ -165,11 +169,12 @@ const neueWerte = (typ: UmfrageTyp): Werte => ({
   optional: leererKreis(),
   erinnerungenPflicht: [...UMFRAGE_ERINNERUNG_STANDARD.pflicht],
   erinnerungenOptional: [...UMFRAGE_ERINNERUNG_STANDARD.optional],
-  fragen: [typ === 'termin_frei' ? neueFreieFrage() : neueFrage()],
+  fragen: [neueFrage()],
   termin:
     typ === 'termin' || typ === 'termin_vorlage'
       ? { ...neueTerminWerte(), quelle: typ === 'termin_vorlage' ? 'vorlage' : 'kategorie' }
       : null,
+  freieTermine: [neuesDatum(tagNachher(heuteBerlin(), 7))],
 });
 
 const werteAus = (u: UmfrageDetailDto): Werte => ({
@@ -193,7 +198,47 @@ const werteAus = (u: UmfrageDetailDto): Werte => ({
     optionen: f.optionen.map((o) => ({ key: neuerKey(), id: o.id, text: o.text })),
   })),
   termin: terminWerteAus(u),
+  freieTermine: u.terminFrei
+    ? (u.fragen[0]?.optionen ?? []).flatMap((o) =>
+        o.termin
+          ? [
+              {
+                key: neuerKey(),
+                id: o.id,
+                datum: o.termin.datum,
+                bis: o.termin.datum,
+                beginn: o.termin.beginn ?? '',
+                ende: o.termin.ende ?? '',
+                name: o.termin.name ?? '',
+              },
+            ]
+          : [],
+      )
+    : [],
 });
+
+/** The single question of a scheduling poll without an event, its answers from the dates. */
+const freieFrageAus = (w: Werte) => [
+  {
+    ...(w.fragen[0]?.id && { id: w.fragen[0].id }),
+    text: '',
+    freitext: false,
+    maxAntworten: null,
+    optionen: w.freieTermine
+      .filter((d) => d.datum !== '')
+      .map((d) => ({
+        ...(d.id && { id: d.id }),
+        text: '',
+        termin: {
+          datum: d.datum,
+          bis: null,
+          beginn: d.beginn || null,
+          ende: d.ende || null,
+          name: d.name.trim() || null,
+        },
+      })),
+  },
+];
 
 /** The body for the API; empty options are left out. `art` is that of the event Kategorie. */
 const eingabeAus = (w: Werte, kategorie?: EventKategorieDto) => ({
@@ -206,78 +251,21 @@ const eingabeAus = (w: Werte, kategorie?: EventKategorieDto) => ({
   optional: w.optional,
   erinnerungenPflicht: w.erinnerungenPflicht,
   erinnerungenOptional: w.erinnerungenOptional,
-  fragen: w.fragen.map((f) => ({
-    ...(f.id && { id: f.id }),
-    text: f.text,
-    freitext: f.freitext,
-    maxAntworten: f.alle ? null : f.maxAntworten,
-    optionen: f.optionen
-      .filter((o) => o.text.trim() !== '')
-      .map((o) => ({ ...(o.id && { id: o.id }), text: o.text })),
-  })),
+  fragen:
+    w.typ === 'termin_frei'
+      ? freieFrageAus(w)
+      : w.fragen.map((f) => ({
+          ...(f.id && { id: f.id }),
+          text: f.text,
+          freitext: f.freitext,
+          maxAntworten: f.alle ? null : f.maxAntworten,
+          optionen: f.optionen
+            .filter((o) => o.text.trim() !== '')
+            .map((o) => ({ ...(o.id && { id: o.id }), text: o.text })),
+        })),
   terminFrei: w.typ === 'termin_frei',
   ...(w.termin ? { anonym: false, ...terminEingabeAus(w.termin, kategorie) } : { termin: null }),
 });
-
-/** Dates of a scheduling poll without an event: one text per date. */
-function FreieTermineEditor({
-  frage,
-  onChange,
-}: Readonly<{ frage: FrageWert; onChange: (f: FrageWert) => void }>) {
-  return (
-    <Stack gap="xs">
-      <Text size="sm" c="dimmed">
-        Gib die Termine als Text an. Alle kreuzen an, was ihnen passt, oder „An keinem der Termine“.
-      </Text>
-      <SortierbareListe
-        eintraege={frage.optionen}
-        onChange={(optionen) => onChange({ ...frage, optionen })}
-        griffLabel={(i) => `Termin ${i + 1} verschieben`}
-        zeile={(o, i, griff) => (
-          <Group gap={4} wrap="nowrap">
-            {griff}
-            <TextInput
-              size="md"
-              style={{ flex: 1 }}
-              aria-label={`Termin ${i + 1}`}
-              placeholder={i === 0 ? 'z. B. Mo, 17.11. abends' : `Termin ${i + 1}`}
-              value={o.text}
-              onChange={(e) =>
-                onChange({
-                  ...frage,
-                  optionen: frage.optionen.map((x, j) =>
-                    j === i ? { ...x, text: e.currentTarget.value } : x,
-                  ),
-                })
-              }
-            />
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              size={44}
-              aria-label={`Termin ${i + 1} entfernen`}
-              disabled={frage.optionen.length === 1}
-              onClick={() =>
-                onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })
-              }
-            >
-              <IconTrash size={20} />
-            </ActionIcon>
-          </Group>
-        )}
-      />
-      <Button
-        variant="default"
-        leftSection={<IconPlus size={18} />}
-        onClick={() =>
-          onChange({ ...frage, optionen: [...frage.optionen, { key: neuerKey(), text: '' }] })
-        }
-      >
-        Termin hinzufügen
-      </Button>
-    </Stack>
-  );
-}
 
 /** First step of a new poll: what kind of poll it is. */
 function TypWahl({ onWahl }: Readonly<{ onWahl: (typ: UmfrageTyp) => void }>) {
@@ -648,6 +636,8 @@ function Formular({ umfrage, typ }: Readonly<{ umfrage?: UmfrageDetailDto; typ: 
       }}
     >
       <Stack>
+        {/* The Kategorie or Vorlage decides what the rest of the form asks for. */}
+        {w.termin && <TerminQuelleFelder werte={w.termin} onChange={(t) => set('termin', t)} />}
         <TextInput
           size="md"
           label="Titel"
@@ -695,7 +685,16 @@ function Formular({ umfrage, typ }: Readonly<{ umfrage?: UmfrageDetailDto; typ: 
             <Title order={3} mt="md">
               Termine
             </Title>
-            <FreieTermineEditor frage={w.fragen[0]!} onChange={(f) => setFrage(0, f)} />
+            <Text size="sm" c="dimmed">
+              Alle kreuzen an, was ihnen passt, oder „An keinem der Termine“.
+            </Text>
+            <TerminListe
+              termine={w.freieTermine}
+              onChange={(t) => set('freieTermine', t)}
+              mitBis={false}
+              mitZeiten
+              zeitenOptional
+            />
           </>
         ) : (
           <>
