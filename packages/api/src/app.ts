@@ -9,6 +9,7 @@ import {
   pushAboLoeschenSchema,
   pushAboSchema,
   dienstEintragenSchema,
+  verfuegbarkeitSchema,
   dienstformEingabeSchema,
   eventEingabeSchema,
   eventKategorieEingabeSchema,
@@ -134,6 +135,7 @@ import {
 } from './posten';
 import {
   EntfernungBestaetigen,
+  VerfuegbarkeitBestaetigen,
   KalenderKonflikt,
   KalenderUngueltig,
   SerieBetroffen,
@@ -2595,6 +2597,35 @@ export function createApp(deps: AppDeps) {
           return c.json({ teilnahme });
         },
       )
+      // Own availability for a Dienste event: an absage ("nicht verfügbar") for the whole event.
+      .put(
+        '/kalender/events/:id/verfuegbarkeit',
+        auth,
+        kalenderLesen,
+        zValidator('json', verfuegbarkeitSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          await eigenesProfilMussExistieren(sub);
+          const { verfuegbar, bestaetigt } = c.req.valid('json');
+          try {
+            gefunden(
+              await deps.kalender.verfuegbarkeitSetzen(
+                c.req.param('id'),
+                sub,
+                verfuegbar,
+                bestaetigt === true,
+              ),
+              'Event nicht gefunden',
+            );
+          } catch (err) {
+            if (err instanceof VerfuegbarkeitBestaetigen) {
+              return c.json({ error: err.message, dienste: err.dienste }, 409);
+            }
+            return kalenderFehler(err);
+          }
+          return c.json({ verfuegbar });
+        },
+      )
       // Adds the event to / removes it from the caller's own calendar feed.
       .put('/kalender/events/:id/abo', auth, kalenderLesen, async (c) => {
         const sub = c.get('user').sub;
@@ -2633,7 +2664,7 @@ export function createApp(deps: AppDeps) {
             await mitgliedMussExistieren(daten.mitgliedSub);
           }
           await eigenesProfilMussExistieren(sub);
-          const id = gefunden(
+          const { id, absageAufgehoben } = gefunden(
             await deps.kalender
               .dienstEintragen(c.req.param('id'), daten, sub)
               .catch(kalenderFehler),
@@ -2652,7 +2683,7 @@ export function createApp(deps: AppDeps) {
               }
             });
           }
-          return c.json({ id }, 201);
+          return c.json({ id, absageAufgehoben }, 201);
         },
       )
       .delete('/kalender/dienste/:id', auth, kalenderLesen, async (c) => {

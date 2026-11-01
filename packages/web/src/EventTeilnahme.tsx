@@ -1,4 +1,4 @@
-import { Alert, Anchor, Button, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconCalendarMinus,
@@ -10,14 +10,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MITGLIED_STATI, type EventDto, type TeilnahmeDto } from '@c4/shared';
+import { BestaetigenDialog } from './BestaetigenDialog';
 import { useApi } from './api';
 import { labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
 import { PersonName, personAnzeigename } from './KalenderAnzeige';
 import { kalenderInvalidieren, useKalenderToken } from './kalenderDaten';
-import { fehlerAnzeigen, pruefen } from './warenApi';
-
-const nachName = (a: TeilnahmeDto, b: TeilnahmeDto) =>
-  personAnzeigename(a.person).localeCompare(personAnzeigename(b.person), 'de');
+import { ApiFehler, fehlerAnzeigen, pruefen } from './warenApi';
 
 /** "Alle Mitglieder", "Anwärter:in und Mitglied" ... or "nur eingeladene Personen". */
 function kreisText(kreis: NonNullable<EventDto['teilnahmeStatus']>): string {
@@ -28,16 +26,25 @@ function kreisText(kreis: NonNullable<EventDto['teilnahmeStatus']>): string {
 }
 
 function Liste({ titel, eintraege }: Readonly<{ titel: string; eintraege: TeilnahmeDto[] }>) {
-  if (eintraege.length === 0) return null;
+  return <PersonenListe titel={titel} personen={eintraege.map((t) => t.person)} />;
+}
+
+function PersonenListe({
+  titel,
+  personen,
+}: Readonly<{ titel: string; personen: TeilnahmeDto['person'][] }>) {
+  if (personen.length === 0) return null;
   return (
     <Stack gap={4}>
       <Text fw={600}>
-        {titel} ({eintraege.length})
+        {titel} ({personen.length})
       </Text>
       <Group gap="md">
-        {[...eintraege].sort(nachName).map((t) => (
-          <PersonName key={t.person.sub} person={t.person} />
-        ))}
+        {[...personen]
+          .sort((a, b) => personAnzeigename(a).localeCompare(personAnzeigename(b), 'de'))
+          .map((p) => (
+            <PersonName key={p.sub} person={p} />
+          ))}
       </Group>
     </Stack>
   );
@@ -51,7 +58,7 @@ export function EventTeilnahme({ event: e }: Readonly<{ event: EventDto }>) {
   if (e.art !== 'teilnahme' || e.teilnahmeStatus === null) return null;
   const dabei = e.teilnahmen.filter((t) => t.zustand === 'teilnahme');
   const abgesagt = e.teilnahmen.filter((t) => t.zustand === 'absage');
-  const ich = e.ichNehmeTeil === true;
+  const meine = e.meineTeilnahme;
 
   const setzen = async (teilnahme: boolean) => {
     setLaeuft(true);
@@ -65,7 +72,7 @@ export function EventTeilnahme({ event: e }: Readonly<{ event: EventDto }>) {
       await kalenderInvalidieren(qc);
       notifications.show({
         color: 'green',
-        message: teilnahme ? 'Du nimmst jetzt teil.' : 'Du nimmst nicht mehr teil.',
+        message: teilnahme ? 'Du nimmst jetzt teil.' : 'Du hast abgesagt.',
       });
     } catch (err) {
       fehlerAnzeigen(err);
@@ -83,30 +90,40 @@ export function EventTeilnahme({ event: e }: Readonly<{ event: EventDto }>) {
         </Text>
         {!e.abgesagt && (
           <Stack gap="xs">
-            <Text fw={700} c={ich ? 'green' : 'dimmed'}>
-              {ich ? 'Du nimmst teil' : 'Du nimmst nicht teil'}
+            <Text
+              fw={700}
+              c={meine === 'teilnahme' ? 'green' : meine === 'absage' ? 'red' : 'dimmed'}
+            >
+              {meine === 'teilnahme'
+                ? 'Du nimmst teil'
+                : meine === 'absage'
+                  ? 'Du hast abgesagt'
+                  : 'Du hast noch nicht geantwortet'}
             </Text>
-            {ich ? (
-              <Button
-                variant="light"
-                color="red"
-                leftSection={<IconUserMinus size={18} />}
-                loading={laeuft}
-                fullWidth
-                onClick={() => void setzen(false)}
-              >
-                Ich nehme nicht teil
-              </Button>
-            ) : (
-              <Button
-                leftSection={<IconUserCheck size={18} />}
-                loading={laeuft}
-                fullWidth
-                onClick={() => void setzen(true)}
-              >
-                Ich nehme teil
-              </Button>
-            )}
+            <SimpleGrid cols={{ base: 1, sm: meine === null ? 2 : 1 }} spacing="xs">
+              {meine !== 'teilnahme' && (
+                <Button
+                  leftSection={<IconUserCheck size={18} />}
+                  loading={laeuft}
+                  fullWidth
+                  onClick={() => void setzen(true)}
+                >
+                  {meine === 'absage' ? 'Ich nehme doch teil' : 'Ich nehme teil'}
+                </Button>
+              )}
+              {meine !== 'absage' && (
+                <Button
+                  variant="light"
+                  color="red"
+                  leftSection={<IconUserMinus size={18} />}
+                  loading={laeuft}
+                  fullWidth
+                  onClick={() => void setzen(false)}
+                >
+                  Ich kann nicht
+                </Button>
+              )}
+            </SimpleGrid>
           </Stack>
         )}
         {dabei.length === 0 && abgesagt.length === 0 && (
@@ -118,6 +135,86 @@ export function EventTeilnahme({ event: e }: Readonly<{ event: EventDto }>) {
         <Liste titel="Abgesagt" eintraege={abgesagt} />
       </Stack>
     </Paper>
+  );
+}
+
+/**
+ * Dienste events: "Ich bin nicht verfügbar" for the whole event (cancels the own Dienste after a
+ * confirmation) and the list of everybody who is unavailable.
+ */
+export function EventVerfuegbarkeit({ event: e }: Readonly<{ event: EventDto }>) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const [laeuft, setLaeuft] = useState(false);
+  const [dienste, setDienste] = useState<{ anzahl: number; text: string } | null>(null);
+  if (e.art !== 'dienste') return null;
+  const nicht = e.ichBinNichtVerfuegbar;
+
+  const senden = async (verfuegbar: boolean, bestaetigt: boolean) => {
+    const res = await api.kalender.events[':id'].verfuegbarkeit.$put({
+      param: { id: e.id },
+      json: { verfuegbar, ...(bestaetigt && { bestaetigt: true }) },
+    });
+    if (res.status === 409) {
+      const body = (await res.json()) as { error: string; dienste?: number };
+      if (typeof body.dienste === 'number') {
+        setDienste({ anzahl: body.dienste, text: body.error });
+        return;
+      }
+      throw new ApiFehler(409, body.error);
+    }
+    await pruefen(res);
+    setDienste(null);
+    await kalenderInvalidieren(qc);
+    notifications.show({
+      color: 'green',
+      message: verfuegbar
+        ? 'Du bist wieder verfügbar.'
+        : 'Du bist als nicht verfügbar eingetragen.',
+    });
+  };
+
+  const wechseln = async (verfuegbar: boolean) => {
+    setLaeuft(true);
+    try {
+      await senden(verfuegbar, false);
+    } catch (err) {
+      fehlerAnzeigen(err);
+    } finally {
+      setLaeuft(false);
+    }
+  };
+
+  return (
+    <Stack gap="xs">
+      {!e.abgesagt && (
+        <Stack gap="xs">
+          {nicht && <Text fw={700}>Du bist nicht verfügbar</Text>}
+          <Button
+            variant="light"
+            color={nicht ? 'green' : 'red'}
+            leftSection={nicht ? <IconUserCheck size={18} /> : <IconUserMinus size={18} />}
+            loading={laeuft}
+            fullWidth
+            maw={{ sm: 320 }}
+            onClick={() => void wechseln(nicht)}
+          >
+            {nicht ? 'Ich bin doch verfügbar' : 'Ich bin nicht verfügbar'}
+          </Button>
+        </Stack>
+      )}
+      <PersonenListe titel="Nicht verfügbar" personen={e.nichtVerfuegbar} />
+      {dienste && (
+        <BestaetigenDialog
+          titel="Nicht verfügbar"
+          bestaetigenText="Austragen und absagen"
+          onClose={() => setDienste(null)}
+          onBestaetigt={() => senden(false, true)}
+        >
+          <Text>{dienste.text}</Text>
+        </BestaetigenDialog>
+      )}
+    </Stack>
   );
 }
 

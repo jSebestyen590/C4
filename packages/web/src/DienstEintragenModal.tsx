@@ -10,6 +10,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
@@ -17,10 +18,12 @@ import {
   externeEingabeSchema,
   schichtBezeichnung,
   type DienstformDto,
+  type EventDto,
   type SchichtDto,
 } from '@c4/shared';
 import { useApi } from './api';
 import { kalenderInvalidieren, useExterne } from './kalenderDaten';
+import { personAnzeigename } from './KalenderAnzeige';
 import { mitgliedOptionen, useMitgliederListe } from './organisator';
 import { fehlerText, pruefen } from './warenApi';
 
@@ -41,6 +44,7 @@ export function DienstEintragenModal({
   eventBeginn,
   modus,
   dienstformen,
+  nichtVerfuegbar,
   onClose,
 }: Readonly<{
   schicht: SchichtDto;
@@ -48,6 +52,8 @@ export function DienstEintragenModal({
   eventBeginn: string;
   modus: EintragModus;
   dienstformen: Map<string, DienstformDto>;
+  /** Members who declared themselves unavailable for the event. */
+  nichtVerfuegbar: EventDto['nichtVerfuegbar'];
   onClose: () => void;
 }>) {
   const api = useApi();
@@ -78,6 +84,9 @@ export function DienstEintragenModal({
     schicht.dienste.flatMap((d) => (d.person.art === 'extern' ? [d.person.id] : [])),
   );
 
+  const abgesagtSubs = new Set(nichtVerfuegbar.map((p) => p.sub));
+  const gewaehlteAbsage = mitgliedSub ? nichtVerfuegbar.find((p) => p.sub === mitgliedSub) : null;
+
   const absenden = async () => {
     if (mitDienstform && !dienstformId) return setFehler('Bitte wähle eine Dienstform.');
     if (modus === 'mitglied' && !mitgliedSub) return setFehler('Bitte wähle ein Mitglied.');
@@ -95,18 +104,26 @@ export function DienstEintragenModal({
         await pruefen(res);
         extern = ((await res.json()) as { id: string }).id;
       }
-      await pruefen(
-        await api.kalender.schichten[':id'].dienste.$post({
-          param: { id: schicht.id },
-          json: {
-            ...(mitDienstform ? { dienstformId: dienstformId! } : {}),
-            kommentar,
-            ...(modus === 'mitglied' ? { mitgliedSub: mitgliedSub! } : {}),
-            ...(modus === 'extern' ? { externId: extern! } : {}),
-          },
-        }),
-      );
+      const res = await api.kalender.schichten[':id'].dienste.$post({
+        param: { id: schicht.id },
+        json: {
+          ...(mitDienstform ? { dienstformId: dienstformId! } : {}),
+          kommentar,
+          ...(modus === 'mitglied' ? { mitgliedSub: mitgliedSub! } : {}),
+          ...(modus === 'extern' ? { externId: extern! } : {}),
+        },
+      });
+      await pruefen(res);
+      const antwort = (await res.json()) as { absageAufgehoben?: boolean };
       await kalenderInvalidieren(qc);
+      if (antwort.absageAufgehoben && modus === 'selbst') {
+        notifications.show({ color: 'green', message: 'Deine Absage wurde aufgehoben.' });
+      } else if (antwort.absageAufgehoben && gewaehlteAbsage) {
+        notifications.show({
+          color: 'green',
+          message: `Die Absage von ${personAnzeigename(gewaehlteAbsage)} wurde aufgehoben.`,
+        });
+      }
       onClose();
     } catch (e) {
       setFehler(fehlerText(e, 'Der Eintrag war nicht möglich.'));
@@ -129,11 +146,19 @@ export function DienstEintragenModal({
             searchable
             data={mitgliedOptionen(
               (mitglieder.data ?? []).filter((m) => !bereitsEingetragen.has(m.sub)),
+            ).map((o) =>
+              abgesagtSubs.has(o.value) ? { ...o, label: `${o.label} (nicht verfügbar)` } : o,
             )}
             value={mitgliedSub}
             onChange={setMitgliedSub}
             nothingFoundMessage="Niemand gefunden"
           />
+        )}
+        {gewaehlteAbsage && (
+          <Alert color="yellow">
+            {personAnzeigename(gewaehlteAbsage)} hat sich für dieses Event als nicht verfügbar
+            gemeldet. Wenn du die Person einträgst, wird die Absage aufgehoben.
+          </Alert>
         )}
         {modus === 'extern' &&
           (neu ? (

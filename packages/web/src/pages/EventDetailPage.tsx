@@ -51,7 +51,7 @@ import {
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
 import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
-import { EventAboButton, EventTeilnahme } from '../EventTeilnahme';
+import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
 import { pruefen } from '../warenApi';
 
@@ -362,8 +362,11 @@ export function EventDetailPage() {
         );
       })}
 
+      <EventVerfuegbarkeit event={e} />
+
       {dialog?.art === 'eintragen' && (
         <DienstEintragenModal
+          nichtVerfuegbar={e.nichtVerfuegbar}
           schicht={dialog.schicht}
           eventBeginn={e.beginn}
           modus={dialog.modus}

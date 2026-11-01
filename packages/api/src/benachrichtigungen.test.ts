@@ -300,6 +300,9 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   verantwortlich: null,
   teilnahmen: [],
   ichNehmeTeil: null,
+  meineTeilnahme: null,
+  nichtVerfuegbar: [],
+  ichBinNichtVerfuegbar: false,
   imAbo: false,
   ...patch,
 });
@@ -366,6 +369,37 @@ describe('fehlende Dienste', () => {
       kalender([event({ verantwortlich: verantwortliche('v') })]),
       stundenVorher(24),
     );
+    expect(t.versendet).toHaveLength(1);
+  });
+
+  it('does not tell members who declared themselves unavailable', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+    ]);
+    await t.abo('a');
+    await t.abo('b');
+    await fehlendeDienste(
+      t.b,
+      kalender([event({ nichtVerfuegbar: [verantwortliche('b')] })]),
+      stundenVorher(24),
+    );
+    expect(t.versendet.map((v) => v.endpoint)).toEqual(['https://push.example/a-1']);
+  });
+
+  it('does not tell an unavailable responsible person either', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'v', status: 'mitglied' },
+    ]);
+    await t.abo('a');
+    await t.abo('v');
+    const k = kalender([
+      event({ verantwortlich: verantwortliche('v'), nichtVerfuegbar: [verantwortliche('v')] }),
+    ]);
+    await fehlendeDienste(t.b, k, stundenVorher(24));
+    expect(t.versendet.map((v) => v.endpoint)).toEqual(['https://push.example/a-1']);
+    await fehlendeDienste(t.b, k, stundenVorher(12));
     expect(t.versendet).toHaveLength(1);
   });
 

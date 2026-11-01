@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNotNull, lt, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, ne, or } from 'drizzle-orm';
 import {
   ausVorlage,
   berlinZuUtc,
@@ -113,6 +113,24 @@ export class EntfernungBestaetigen extends Error {
     readonly teilnahmen: TeilnahmeDto[] = [],
   ) {
     super('Dabei werden Dienste oder Teilnahmen entfernt. Bitte bestätige das.');
+  }
+}
+
+/**
+ * Whether a stored answer counts as an entry that makes a series event "changed": every answer of
+ * a `teilnahme` event, but not the absage ("nicht verfügbar") of a Dienste event.
+ */
+export const zaehltAlsEintrag = (antwort: TeilnahmeAntwort | null, teilnahmeEvent: boolean) =>
+  teilnahmeEvent || antwort !== 'absage';
+
+/** Declaring oneself unavailable would delete the member's own Dienste and was not confirmed (HTTP 409). */
+export class VerfuegbarkeitBestaetigen extends Error {
+  constructor(readonly dienste: number) {
+    super(
+      dienste === 1
+        ? 'Du bist für einen Dienst eingetragen. Wenn du dich als nicht verfügbar meldest, wirst du ausgetragen.'
+        : `Du bist für ${dienste} Dienste eingetragen. Wenn du dich als nicht verfügbar meldest, wirst du ausgetragen.`,
+    );
   }
 }
 
@@ -341,6 +359,18 @@ export interface KalenderStore {
    * for cancelled events and events without participation.
    */
   teilnahmeSetzen(eventId: string, sub: string, teilnahme: boolean): Promise<true | undefined>;
+  /**
+   * Own availability for a `dienste` event: `verfuegbar: false` stores an absage ("nicht verfügbar"),
+   * `true` removes it. Undefined when the event does not exist; throws KalenderKonflikt for cancelled
+   * events and `teilnahme` events, and `VerfuegbarkeitBestaetigen` while the member has Dienste in the
+   * event and `bestaetigt` is not true (they are then deleted together with the absage).
+   */
+  verfuegbarkeitSetzen(
+    eventId: string,
+    sub: string,
+    verfuegbar: boolean,
+    bestaetigt: boolean,
+  ): Promise<true | undefined>;
   /** Adds the event to / removes it from the member's feed. False when the event does not exist. */
   eventAboSetzen(eventId: string, sub: string, abonniert: boolean): Promise<boolean>;
 
@@ -380,7 +410,7 @@ export interface KalenderStore {
     schichtId: string,
     daten: DienstEintragen,
     eingetragenVon: string,
-  ): Promise<string | undefined>;
+  ): Promise<{ id: string; absageAufgehoben: boolean } | undefined>;
   dienstHolen(id: string): Promise<DienstInfo | undefined>;
   dienstEntfernen(id: string): Promise<boolean>;
 
@@ -534,6 +564,26 @@ async function teilnahmenLaden(
   return ergebnis;
 }
 
+/**
+ * Members who declared themselves unavailable (`absage`) for the given `dienste` events (those
+ * without a circle). `teilnahme` events keep their absagen in `teilnahmenLaden`.
+ */
+async function absagenLaden(
+  q: Q,
+  eventRows: readonly { id: string; teilnahmeStatus: string | null }[],
+): Promise<Map<string, MitgliedRow[]>> {
+  const ergebnis = new Map<string, MitgliedRow[]>();
+  const ids = eventRows.filter((e) => e.teilnahmeStatus === null).map((e) => e.id);
+  if (ids.length === 0) return ergebnis;
+  const rows = await q
+    .select({ eventId: eventTeilnahmen.eventId, mitglied: mitglieder })
+    .from(eventTeilnahmen)
+    .innerJoin(mitglieder, eq(mitglieder.sub, eventTeilnahmen.mitgliedSub))
+    .where(and(inArray(eventTeilnahmen.eventId, ids), eq(eventTeilnahmen.antwort, 'absage')));
+  for (const r of rows) ergebnis.set(r.eventId, [...(ergebnis.get(r.eventId) ?? []), r.mitglied]);
+  return ergebnis;
+}
+
 /** Subs of the members who take part (state `teilnahme`) in an event. */
 async function teilnehmerSubs(
   q: Q,
@@ -596,8 +646,12 @@ async function eventsLaden(
     .orderBy(asc(events.beginn), asc(events.id));
   if (eventRows.length === 0) return [];
   const eventIds = eventRows.map((r) => r.event.id);
-  const [teilnahmen, aboRows] = await Promise.all([
+  const [teilnahmen, absagen, aboRows] = await Promise.all([
     teilnahmenLaden(
+      q,
+      eventRows.map((r) => r.event),
+    ),
+    absagenLaden(
       q,
       eventRows.map((r) => r.event),
     ),
@@ -687,6 +741,16 @@ async function eventsLaden(
     ({ event: e, kategorieName, kategorieFarbe, kategorieArt, kategorieDauer }) => {
       const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
       const zeilen = teilnahmen.get(e.id) ?? [];
+      const nichtVerfuegbar = (absagen.get(e.id) ?? [])
+        .map(mitgliedPerson)
+        .sort(
+          (a, b) =>
+            a.nachname.localeCompare(b.nachname, 'de') || a.vorname.localeCompare(b.vorname, 'de'),
+        );
+      const meineTeilnahme: TeilnahmeAntwort | null =
+        kreis === null || !sub
+          ? null
+          : (zeilen.find((z) => z.mitglied.sub === sub)?.zustand ?? null);
       const alleSchichten = schichtRows.filter((s) => s.eventId === e.id).map(alsSchicht);
       return {
         id: e.id,
@@ -712,10 +776,10 @@ async function eventsLaden(
           zustand: z.zustand,
           eingeladen: z.eingeladen,
         })),
-        ichNehmeTeil:
-          kreis === null || !sub
-            ? null
-            : zeilen.some((z) => z.mitglied.sub === sub && z.zustand === 'teilnahme'),
+        ichNehmeTeil: kreis === null || !sub ? null : meineTeilnahme === 'teilnahme',
+        meineTeilnahme,
+        nichtVerfuegbar,
+        ichBinNichtVerfuegbar: !!sub && nichtVerfuegbar.some((p) => p.sub === sub),
         imAbo: abonniert.has(e.id),
       };
     },
@@ -885,7 +949,19 @@ export function createKalenderStore(db: Db): KalenderStore {
     daten: { eingeladen: readonly string[] },
   ) => {
     if (kreis === null) {
-      await tx.delete(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, eventId));
+      // A Dienste event keeps the absagen ("nicht verfügbar"), everything else goes.
+      await tx
+        .delete(eventTeilnahmen)
+        .where(
+          and(
+            eq(eventTeilnahmen.eventId, eventId),
+            or(isNull(eventTeilnahmen.antwort), ne(eventTeilnahmen.antwort, 'absage')),
+          ),
+        );
+      await tx
+        .update(eventTeilnahmen)
+        .set({ eingeladen: false })
+        .where(and(eq(eventTeilnahmen.eventId, eventId), eq(eventTeilnahmen.eingeladen, true)));
       return;
     }
     if (daten.eingeladen.length > 0) {
@@ -1078,7 +1154,10 @@ export function createKalenderStore(db: Db): KalenderStore {
       // Switching to a Dienste Kategorie deletes all individual answers and invitations.
       let verlorene: TeilnahmeDto[] = [];
       if (kreis === null) {
-        const alte = await tx.select().from(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, id));
+        // Absagen stay (they mean the same for a Dienste event); only answers and invitations are lost.
+        const alte = (
+          await tx.select().from(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, id))
+        ).filter((r) => r.antwort !== 'absage' || r.eingeladen);
         const personen = await personenLaden(
           tx,
           alte.map((r) => r.mitgliedSub),
@@ -1227,6 +1306,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         serie: events.serie,
         beginn: events.beginn,
         angepasst: events.serieAngepasst,
+        teilnahmeStatus: events.teilnahmeStatus,
       })
       .from(events)
       .where(
@@ -1255,13 +1335,17 @@ export function createKalenderStore(db: Db): KalenderStore {
       const mit = new Set(dienstRows.map((d) => d.schichtId));
       for (const s of schichtRows) if (mit.has(s.id)) mitDiensten.add(s.eventId);
     }
+    // An absage ("nicht verfügbar") of a Dienste event is no entry: the event stays unchanged.
+    const mitTeilnahme = new Set(rows.filter((r) => r.teilnahmeStatus !== null).map((r) => r.id));
     const mitAntworten = new Set(
       (
         await db
-          .select({ eventId: eventTeilnahmen.eventId })
+          .select({ eventId: eventTeilnahmen.eventId, antwort: eventTeilnahmen.antwort })
           .from(eventTeilnahmen)
           .where(inArray(eventTeilnahmen.eventId, ids))
-      ).map((t) => t.eventId),
+      )
+        .filter((t) => zaehltAlsEintrag(t.antwort, mitTeilnahme.has(t.eventId)))
+        .map((t) => t.eventId),
     );
     return rows.map((r) => ({
       id: r.id,
@@ -1511,6 +1595,56 @@ export function createKalenderStore(db: Db): KalenderStore {
         });
       return true;
     },
+    async verfuegbarkeitSetzen(eventId, sub, verfuegbar, bestaetigt) {
+      return db.transaction(async (tx) => {
+        const [zeile] = await tx
+          .select({ event: events, kategorieArt: eventKategorien.art })
+          .from(events)
+          .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
+          .where(eq(events.id, eventId));
+        if (!zeile) return undefined;
+        if (zeile.event.abgesagt) {
+          throw new KalenderKonflikt(
+            'Das Event ist abgesagt. Die Verfügbarkeit lässt sich nicht ändern.',
+          );
+        }
+        if (artVon({ art: zeile.kategorieArt }) === 'teilnahme') {
+          throw new KalenderKonflikt(
+            'Bei Events mit Teilnahme gibst du an, ob du teilnimmst, nicht ob du verfügbar bist.',
+          );
+        }
+        const bedingung = and(
+          eq(eventTeilnahmen.eventId, eventId),
+          eq(eventTeilnahmen.mitgliedSub, sub),
+        );
+        if (verfuegbar) {
+          await tx.delete(eventTeilnahmen).where(bedingung);
+          return true;
+        }
+        const eigene = await tx
+          .select({ id: dienste.id })
+          .from(dienste)
+          .innerJoin(schichten, eq(schichten.id, dienste.schichtId))
+          .where(and(eq(schichten.eventId, eventId), eq(dienste.mitgliedSub, sub)));
+        if (eigene.length > 0 && !bestaetigt) throw new VerfuegbarkeitBestaetigen(eigene.length);
+        if (eigene.length > 0) {
+          await tx.delete(dienste).where(
+            inArray(
+              dienste.id,
+              eigene.map((d) => d.id),
+            ),
+          );
+        }
+        await tx
+          .insert(eventTeilnahmen)
+          .values({ eventId, mitgliedSub: sub, antwort: 'absage' })
+          .onConflictDoUpdate({
+            target: [eventTeilnahmen.eventId, eventTeilnahmen.mitgliedSub],
+            set: { antwort: 'absage', eingeladen: false, geaendertAm: new Date() },
+          });
+        return true;
+      });
+    },
     async eventAboSetzen(eventId, sub, abonniert) {
       const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId));
       if (!event) return false;
@@ -1537,6 +1671,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             .select({
               schicht: schichten,
               abgesagt: events.abgesagt,
+              eventId: events.id,
               kategorieArt: eventKategorien.art,
             })
             .from(schichten)
@@ -1605,7 +1740,22 @@ export function createKalenderStore(db: Db): KalenderStore {
             kommentar: daten.kommentar,
             eingetragenVon,
           });
-          return id;
+          // Entering a member withdraws their absage ("nicht verfügbar") for the event.
+          let absageAufgehoben = false;
+          if (mitgliedSub !== null) {
+            const geloescht = await tx
+              .delete(eventTeilnahmen)
+              .where(
+                and(
+                  eq(eventTeilnahmen.eventId, zeile.eventId),
+                  eq(eventTeilnahmen.mitgliedSub, mitgliedSub),
+                  eq(eventTeilnahmen.antwort, 'absage'),
+                ),
+              )
+              .returning({ sub: eventTeilnahmen.mitgliedSub });
+            absageAufgehoben = geloescht.length > 0;
+          }
+          return { id, absageAufgehoben };
         });
       } catch (err) {
         if (istEindeutigVerletzt(err)) {

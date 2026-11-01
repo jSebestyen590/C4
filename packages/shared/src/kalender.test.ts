@@ -16,6 +16,7 @@ import {
   zeitspanne,
   berlinZuUtc,
   dienstEintragenSchema,
+  verfuegbarkeitSchema,
   eventBewertung,
   dienstTermine,
   eventDauerFehler,
@@ -464,6 +465,20 @@ describe('schemas', () => {
     expect(
       dienstEintragenSchema.safeParse({ dienstformId: 'bar', kommentar: 'x'.repeat(201) }).success,
     ).toBe(false);
+  });
+});
+
+describe('verfuegbarkeitSchema', () => {
+  it('needs verfuegbar and allows bestaetigt', () => {
+    expect(verfuegbarkeitSchema.safeParse({ verfuegbar: false }).success).toBe(true);
+    expect(verfuegbarkeitSchema.safeParse({ verfuegbar: false, bestaetigt: true }).success).toBe(
+      true,
+    );
+    expect(verfuegbarkeitSchema.safeParse({}).success).toBe(false);
+    expect(verfuegbarkeitSchema.safeParse({ verfuegbar: 'ja' }).success).toBe(false);
+    expect(verfuegbarkeitSchema.safeParse({ verfuegbar: true, bestaetigt: 'x' }).success).toBe(
+      false,
+    );
   });
 });
 
