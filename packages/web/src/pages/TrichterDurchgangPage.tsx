@@ -138,7 +138,11 @@ export function TrichterDurchgangPage() {
             <MultiSelect
               size="md"
               label="Teilnehmende"
-              description={trichter ? `bis zu ${trichter.auslaesse} Personen` : undefined}
+              description={
+                trichter
+                  ? `bis zu ${trichter.auslaesse} ${trichter.auslaesse === 1 ? 'Person' : 'Personen'}`
+                  : undefined
+              }
               placeholder="Mitglieder auswählen"
               required
               searchable
@@ -147,7 +151,8 @@ export function TrichterDurchgangPage() {
               // Once every outlet is taken the others are greyed out instead of looking pickable.
               data={
                 trichter && teilnehmende.length >= trichter.auslaesse
-                  ? optionen.map((o) => ({ ...o, disabled: true }))
+                  ? // Picked ones stay enabled, otherwise their chips lose the remove button.
+                    optionen.map((o) => ({ ...o, disabled: !teilnehmende.includes(o.value) }))
                   : optionen
               }
               value={teilnehmende}
