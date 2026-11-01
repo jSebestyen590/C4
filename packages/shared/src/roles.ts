@@ -26,6 +26,8 @@ export const PERMISSIONS = [
   'schluessel:verwalten',
   'umfragen:lesen',
   'umfragen:verwalten',
+  'trichter:lesen',
+  'trichter:verwalten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -39,6 +41,7 @@ export const POSTEN_RECHTE = [
   'kalender:einrichten',
   'schluessel:verwalten',
   'umfragen:verwalten',
+  'trichter:verwalten',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
@@ -53,6 +56,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'kalender:einrichten',
     'schluessel:verwalten',
     'umfragen:verwalten',
+    'trichter:verwalten',
   ],
 };
 
@@ -70,6 +74,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'kalender:lesen',
     'schluessel:lesen',
     'umfragen:lesen',
+    'trichter:lesen',
   ],
   mitglied: [
     'content:read',
@@ -83,6 +88,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'kalender:lesen',
     'schluessel:lesen',
     'umfragen:lesen',
+    'trichter:lesen',
   ],
   em: [
     'content:read',
@@ -96,6 +102,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'kalender:lesen',
     'schluessel:lesen',
     'umfragen:lesen',
+    'trichter:lesen',
   ],
 };
 

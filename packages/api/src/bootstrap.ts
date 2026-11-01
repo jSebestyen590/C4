@@ -19,6 +19,7 @@ import { registriereKalenderSerien } from './kalenderSerien';
 import { createSchluesselStore } from './schluessel';
 import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
+import { createTrichterStore } from './trichter';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
@@ -57,6 +58,7 @@ export function createProduction() {
     kalender,
     schluessel: createSchluesselStore(db),
     umfragen,
+    trichter: createTrichterStore(db),
     benachrichtigungen,
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),

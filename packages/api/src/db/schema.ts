@@ -868,3 +868,43 @@ export const umfrageOptionTermine = pgTable('umfrage_option_termine', {
   /** Optional name shown with the date. */
   name: text('name'),
 });
+
+// ---------------------------------------------------------------------------
+// Trichter
+
+/** A funnel; volume in whole millilitres. Archived ones stay in the ranking. */
+export const trichter = pgTable('trichter', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  volumenMl: integer('volumen_ml').notNull(),
+  auslaesse: integer('auslaesse').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrichterRow = typeof trichter.$inferSelect;
+
+/** One funnel session; `volumenMl` is the total, shared by the participants. */
+export const trichterDurchgaenge = pgTable('trichter_durchgaenge', {
+  id: text('id').primaryKey(),
+  trichterId: text('trichter_id')
+    .notNull()
+    .references(() => trichter.id),
+  volumenMl: integer('volumen_ml').notNull(),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
+  /** Cognito sub, deliberately without a foreign key. */
+  eingetragenVon: text('eingetragen_von').notNull(),
+  eingetragenAm: timestamp('eingetragen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrichterDurchgangRow = typeof trichterDurchgaenge.$inferSelect;
+
+export const trichterTeilnahmen = pgTable(
+  'trichter_teilnahmen',
+  {
+    durchgangId: text('durchgang_id')
+      .notNull()
+      .references(() => trichterDurchgaenge.id),
+    // No foreign key: accounts without a profile row may take part too.
+    mitgliedSub: text('mitglied_sub').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.durchgangId, t.mitgliedSub] })],
+);

@@ -24,6 +24,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   ihre Indizes, 0086 entzieht den Vorstandsposten `umfragen:verwalten` wieder. 0089–0090 fügen `event_kategorien.dauer`
   und `event_vorlagen.tage` per `ALTER` hinzu; ihre Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Umfragen:
   `0076_schluessel_vorstandsposten_rechte`.
+- 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:
+  `0091_umfragen_erstellt_idx`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

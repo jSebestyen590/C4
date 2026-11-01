@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS trichter_durchgaenge_zeitpunkt_idx

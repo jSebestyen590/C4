@@ -34,6 +34,9 @@ import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
 import { SchluesselPage } from './pages/SchluesselPage';
 import { UmfrageFormularPage } from './pages/UmfrageFormularPage';
 import { UmfragePage } from './pages/UmfragePage';
+import { TrichterDurchgangPage } from './pages/TrichterDurchgangPage';
+import { TrichterPage } from './pages/TrichterPage';
+import { TrichterVerwaltungPage } from './pages/TrichterVerwaltungPage';
 import { UmfragenPage } from './pages/UmfragenPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { PushAbfrage } from './PushAbfrage';
@@ -181,6 +184,36 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="schluessel:lesen">
                 <RequireUsername>
                   <SchluesselDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/trichter"
+            element={
+              <Protected permission="trichter:lesen">
+                <RequireUsername>
+                  <TrichterPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/trichter/neu"
+            element={
+              <Protected permission="trichter:lesen">
+                <RequireUsername>
+                  <TrichterDurchgangPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/trichter/verwaltung"
+            element={
+              <Protected permission="trichter:verwalten">
+                <RequireUsername>
+                  <TrichterVerwaltungPage />
                 </RequireUsername>
               </Protected>
             }

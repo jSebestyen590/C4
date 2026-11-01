@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
+  IconBeer,
   IconBell,
   IconBriefcase,
   IconCalendar,
@@ -157,6 +158,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Umfragen',
       icon: <IconListCheck size={20} />,
       show: can('umfragen:lesen'),
+    },
+    {
+      to: '/trichter',
+      label: 'Trichter',
+      icon: <IconBeer size={20} />,
+      show: can('trichter:lesen'),
     },
     {
       to: '/waren',
