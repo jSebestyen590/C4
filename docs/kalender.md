@@ -42,6 +42,8 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
 - **Dauer der Kategorie** (`event_kategorien.dauer`, Migration `0089`, `EVENT_DAUERN`, null = eintägig):
   - **Eintägig:** Datum mit Beginn und Ende, höchstens 24 Stunden (wie bisher).
   - **Mehrtägig:** Start- und Enddatum, jeweils mit Uhrzeit (`eventSpanne`), höchstens 31 Tage.
+    Im Formular wählt man den Zeitraum in einem Feld (`ZeitraumFeld`: im Kalender erst erster, dann letzter Tag),
+    darunter die Uhrzeiten für Beginn und Ende; bei ganztägig genauso, nur ohne Uhrzeiten.
   - **Ganztägig:** nur erster und letzter Tag; gespeichert von 00:00 des ersten bis 00:00 nach dem letzten Tag (Berlin),
     andere Zeiten lehnt die API ab. Anzeige ohne Uhrzeit („Fr, 10.07. – So, 12.07.“ bzw. „ganztägig“), im ICS-Abo als
     Ganztagstermin (`DTSTART;VALUE=DATE`).

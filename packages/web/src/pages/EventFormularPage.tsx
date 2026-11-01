@@ -44,6 +44,7 @@ import {
 import { kalenderLink } from '../kalenderZeit';
 import { useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
+import { ZeitraumFeld } from '../ZeitraumFeld';
 import {
   bedarfFelder,
   fehlerAusIssues,
@@ -269,25 +270,20 @@ function EventDatumFelder({
   if (dauer === 'ganztaegig') {
     const letzterTag = datumPlusTage(werte.bis, -1);
     return (
-      <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-        <DatumFeld
-          label="Erster Tag"
-          value={werte.datum}
-          loeschbar={false}
-          onWert={(datum) =>
-            onChange(datenNachDauer({ ...werte, datum, beginnZeit: '00:00' }, dauer))
-          }
-        />
-        <DatumFeld
-          label="Letzter Tag"
-          value={letzterTag < werte.datum ? werte.datum : letzterTag}
-          min={werte.datum}
-          loeschbar={false}
-          onWert={(tag) =>
-            tag && onChange({ ...werte, bis: datumPlusTage(tag, 1), endeZeit: '00:00' })
-          }
-        />
-      </Group>
+      <ZeitraumFeld
+        label="Zeitraum"
+        von={werte.datum}
+        bis={letzterTag < werte.datum ? werte.datum : letzterTag}
+        onWert={({ von, bis }) =>
+          onChange({
+            ...werte,
+            datum: von,
+            bis: datumPlusTage(bis, 1),
+            beginnZeit: '00:00',
+            endeZeit: '00:00',
+          })
+        }
+      />
     );
   }
   if (dauer === 'mehrtaegig') {
@@ -302,24 +298,15 @@ function EventDatumFelder({
     );
     return (
       <Stack gap="xs">
+        <ZeitraumFeld
+          label="Zeitraum"
+          von={werte.datum}
+          bis={werte.bis < werte.datum ? werte.datum : werte.bis}
+          onWert={({ von, bis }) => onChange({ ...werte, datum: von, bis })}
+        />
         <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-          <DatumFeld
-            label="Beginn"
-            value={werte.datum}
-            loeschbar={false}
-            onWert={(datum) => onChange(datenNachDauer({ ...werte, datum }, dauer))}
-          />
-          {zeit('Uhrzeit', werte.beginnZeit, (beginnZeit) => onChange({ ...werte, beginnZeit }))}
-        </Group>
-        <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-          <DatumFeld
-            label="Ende"
-            value={werte.bis}
-            min={werte.datum}
-            loeschbar={false}
-            onWert={(bis) => onChange({ ...werte, bis })}
-          />
-          {zeit('Uhrzeit', werte.endeZeit, (endeZeit) => onChange({ ...werte, endeZeit }))}
+          {zeit('Beginn', werte.beginnZeit, (beginnZeit) => onChange({ ...werte, beginnZeit }))}
+          {zeit('Ende', werte.endeZeit, (endeZeit) => onChange({ ...werte, endeZeit }))}
         </Group>
       </Stack>
     );
