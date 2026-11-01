@@ -903,9 +903,8 @@ export const trichterTeilnahmen = pgTable(
     durchgangId: text('durchgang_id')
       .notNull()
       .references(() => trichterDurchgaenge.id),
-    mitgliedSub: text('mitglied_sub')
-      .notNull()
-      .references(() => mitglieder.sub),
+    // No foreign key: accounts without a profile row may take part too.
+    mitgliedSub: text('mitglied_sub').notNull(),
   },
   (t) => [primaryKey({ columns: [t.durchgangId, t.mitgliedSub] })],
 );

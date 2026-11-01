@@ -4771,6 +4771,17 @@ describe('trichter', () => {
     expect((await t.eintragen('member-token', { teilnehmende: ['a', 'a'] })).status).toBe(400);
     expect((await t.eintragen('member-token', { teilnehmende: [] })).status).toBe(400);
     expect((await t.eintragen('member-token', { teilnehmende: ['fremd'] })).status).toBe(400);
+    // An enabled account without a profile row may take part; a disabled one may not.
+    const konten = await t.userAdmin.konten();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map([
+        ...konten,
+        ['neu', { sub: 'neu', kontoName: 'neu', username: 'neu', aktiviert: false, enabled: true }],
+        ['aus', { sub: 'aus', kontoName: 'aus', username: 'aus', aktiviert: true, enabled: false }],
+      ]),
+    );
+    expect((await t.eintragen('member-token', { teilnehmende: ['aus'] })).status).toBe(400);
+    expect((await t.eintragen('member-token', { teilnehmende: ['neu'] })).status).toBe(201);
     expect(
       (
         await t.eintragen('member-token', {

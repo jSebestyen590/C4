@@ -35,11 +35,11 @@ für alle Zeiten.
 
 Migrationen `0092`–`0096`, Code in `packages/api/src/trichter.ts`, Schemas und Wertung in `packages/shared/src/trichter.ts`.
 
-| Tabelle                | Inhalt                                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------------------------- |
-| `trichter`             | `id`, `name`, `volumen_ml`, `auslaesse`, `archiviert`                                                |
-| `trichter_durchgaenge` | `trichter_id`, `volumen_ml` (gesamt), `zeitpunkt`, `eingetragen_von` (sub ohne FK), `eingetragen_am` |
-| `trichter_teilnahmen`  | `durchgang_id`, `mitglied_sub` → `mitglieder` (zusammengesetzter Schlüssel)                          |
+| Tabelle                | Inhalt                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `trichter`             | `id`, `name`, `volumen_ml`, `auslaesse`, `archiviert`                                                      |
+| `trichter_durchgaenge` | `trichter_id`, `volumen_ml` (gesamt), `zeitpunkt`, `eingetragen_von` (sub ohne FK), `eingetragen_am`       |
+| `trichter_teilnahmen`  | `durchgang_id`, `mitglied_sub` (ohne Fremdschlüssel, auch Konten ohne Profil; zusammengesetzter Schlüssel) |
 
 0095 und 0096 sind Indizes (`zeitpunkt, id` bzw. `mitglied_sub`); ihre Down-Dateien löschen sie wieder, die der Tabellen
 löschen die Tabellen.

@@ -1312,7 +1312,15 @@ export function createApp(deps: AppDeps) {
             });
           }
           await eigenesProfilMussExistieren(sub);
-          for (const s of eingabe.teilnehmende) await mitgliedMussExistieren(s);
+          // Like the member list: profile rows plus enabled accounts that have no profile yet.
+          const [rows, konten] = await Promise.all([
+            deps.mitglieder.alle(),
+            deps.userAdmin.konten(),
+          ]);
+          const profile = new Set(rows.map((r) => r.sub));
+          if (eingabe.teilnehmende.some((s) => !profile.has(s) && !konten.get(s)?.enabled)) {
+            throw new HTTPException(400, { message: 'Mitglied nicht gefunden.' });
+          }
           const id = await deps.trichter.durchgangAnlegen({
             trichterId: t.id,
             volumenMl,

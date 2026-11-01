@@ -144,7 +144,12 @@ export function TrichterDurchgangPage() {
               searchable
               hidePickedOptions
               nothingFoundMessage="Niemand gefunden"
-              data={optionen}
+              // Once every outlet is taken the others are greyed out instead of looking pickable.
+              data={
+                trichter && teilnehmende.length >= trichter.auslaesse
+                  ? optionen.map((o) => ({ ...o, disabled: true }))
+                  : optionen
+              }
               value={teilnehmende}
               onChange={setTeilnehmende}
               maxValues={trichter?.auslaesse}
