@@ -1,12 +1,23 @@
-import type { UmfrageDetails, UmfragenStore } from './umfragen';
+import type { UmfrageDetails, UmfragenCursor, UmfragenStore } from './umfragen';
+
+const beendet = (u: UmfrageDetails, heute: string) => u.beendetAm !== null || u.endetAm < heute;
+/** Newest first; positive when `a` comes after `b`. */
+const vergleich = (a: UmfragenCursor, b: UmfragenCursor) =>
+  b.erstelltAm.getTime() - a.erstelltAm.getTime() || b.id.localeCompare(a.id);
+const neuesteZuerst = (l: UmfrageDetails[]) => l.sort(vergleich);
 
 /** Map-backed poll store for tests, with the same vote rules as the real one. */
 export function createFakeUmfragenStore() {
   const liste = new Map<string, UmfrageDetails>();
   let naechste = 1;
   const store: UmfragenStore = {
-    async alle() {
-      return [...liste.values()].sort((a, b) => b.erstelltAm.getTime() - a.erstelltAm.getTime());
+    async laufende(heute) {
+      return neuesteZuerst([...liste.values()].filter((u) => !beendet(u, heute)));
+    },
+    async beendete(heute, limit, nach) {
+      return neuesteZuerst([...liste.values()].filter((u) => beendet(u, heute)))
+        .filter((u) => !nach || vergleich(u, nach) > 0)
+        .slice(0, limit);
     },
     async holen(id) {
       const u = liste.get(id);

@@ -94,6 +94,7 @@ import {
   terminText,
   terminWahlSchema,
   type EventEingabe,
+  type UmfrageListeDto,
   type UmfrageTermin,
   schluesselEingabeSchema,
   uebergabeSchema,
@@ -139,7 +140,7 @@ import { WarenKonflikt, WarenUngueltig, type WarenStore } from './waren';
 import type { AufraeumDetails, InventarStore } from './inventar';
 import { UebergabeKonflikt, type SchluesselDaten, type SchluesselStore } from './schluessel';
 import { meldeUebergabe } from './schluesselBenachrichtigungen';
-import type { UmfrageDaten, UmfrageSpeichern, UmfragenStore } from './umfragen';
+import type { UmfrageDaten, UmfragenCursor, UmfrageSpeichern, UmfragenStore } from './umfragen';
 import {
   alsDetailDto,
   alsListeDto,
@@ -195,6 +196,21 @@ async function emailAenderung(aktion: () => Promise<void>): Promise<void> {
 
 /** The feed also contains Dienste that began this many days ago. */
 const FEED_RUECKBLICK_TAGE = 90;
+/** Ended polls per page, and how many are read from the database at once to fill one. */
+export const UMFRAGEN_SEITE = 20;
+const UMFRAGEN_STAPEL = 50;
+
+/** "2026-11-01T09:00:00.000Z_<id>" */
+const cursorSchreiben = (c: UmfragenCursor) => `${c.erstelltAm.toISOString()}_${c.id}`;
+function cursorLesen(wert: string | undefined): UmfragenCursor | undefined {
+  if (!wert) return undefined;
+  const trenner = wert.indexOf('_');
+  const erstelltAm = new Date(wert.slice(0, trenner));
+  if (trenner < 0 || Number.isNaN(erstelltAm.getTime())) {
+    throw new HTTPException(400, { message: 'Ungültige Position.' });
+  }
+  return { erstelltAm, id: wert.slice(trenner + 1) };
+}
 
 export function createApp(deps: AppDeps) {
   const auth = authenticate(
@@ -1123,13 +1139,42 @@ export function createApp(deps: AppDeps) {
       // ----- Umfragen
       .get('/umfragen', auth, umfragenLesen, async (c) => {
         const a = umfrageAufrufer(c);
-        const [liste, k] = await Promise.all([deps.umfragen.alle(), umfrageKontext()]);
+        const [liste, k] = await Promise.all([
+          deps.umfragen.laufende(heuteBerlin()),
+          umfrageKontext(),
+        ]);
         return c.json(
           liste.flatMap((u) => {
             const kreis = kreisDerUmfrage(u, k);
             return darfSehen(u, kreis, a) ? [alsListeDto(u, k, a, kreis)] : [];
           }),
         );
+      })
+      // Ended polls page by page; `weiter` is the cursor of the next page (null: no more).
+      .get('/umfragen/beendet', auth, umfragenLesen, async (c) => {
+        const a = umfrageAufrufer(c);
+        const heute = heuteBerlin();
+        const k = await umfrageKontext();
+        let nach = cursorLesen(c.req.query('nach'));
+        const seite: { dto: UmfrageListeDto; cursor: UmfragenCursor }[] = [];
+        // Visibility is checked here, so read on until the page and one more are found.
+        for (;;) {
+          const stapel = await deps.umfragen.beendete(heute, UMFRAGEN_STAPEL, nach);
+          for (const u of stapel) {
+            const kreis = kreisDerUmfrage(u, k);
+            nach = { erstelltAm: u.erstelltAm, id: u.id };
+            if (darfSehen(u, kreis, a))
+              seite.push({ dto: alsListeDto(u, k, a, kreis), cursor: nach });
+            if (seite.length > UMFRAGEN_SEITE) break;
+          }
+          if (seite.length > UMFRAGEN_SEITE || stapel.length < UMFRAGEN_STAPEL) break;
+        }
+        const umfragen = seite.slice(0, UMFRAGEN_SEITE);
+        const letzte = umfragen.at(-1)?.cursor;
+        return c.json({
+          umfragen: umfragen.map((e) => e.dto),
+          weiter: seite.length > UMFRAGEN_SEITE && letzte ? cursorSchreiben(letzte) : null,
+        });
       })
       .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
         const a = umfrageAufrufer(c);

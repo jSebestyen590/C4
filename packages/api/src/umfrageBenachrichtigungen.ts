@@ -98,7 +98,7 @@ export async function meldeTermin(
 /** Registers the reminder task with the generic job runner. */
 export function registriereUmfrageAufgaben(
   benachrichtigungen: Benachrichtigungen,
-  store: Pick<UmfragenStore, 'alle'>,
+  store: Pick<UmfragenStore, 'laufende'>,
   kontext: (jetzt: Date) => Promise<UmfrageKontext>,
 ): void {
   benachrichtigungen.registriereAufgabe('umfrage.erinnerungen', (jetzt) =>
@@ -112,13 +112,13 @@ export function registriereUmfrageAufgaben(
  */
 export async function umfrageErinnerungen(
   sender: Sender,
-  store: Pick<UmfragenStore, 'alle'>,
+  store: Pick<UmfragenStore, 'laufende'>,
   kontext: (jetzt: Date) => Promise<UmfrageKontext>,
   jetzt: Date,
 ): Promise<void> {
   if (stundeBerlin(jetzt) < AB_UHR) return;
   const heute = heuteBerlin(jetzt);
-  const faellig = (await store.alle()).filter((u) => u.beendetAm === null && u.endetAm >= heute);
+  const faellig = await store.laufende(heute);
   if (faellig.length === 0) return;
   const k = await kontext(jetzt);
 

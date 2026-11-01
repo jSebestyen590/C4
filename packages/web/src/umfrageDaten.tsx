@@ -1,5 +1,5 @@
 import { Anchor } from '@mantine/core';
-import { useQuery, type QueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import type { UmfrageDetailDto, UmfrageListeDto, UmfragePerson } from '@c4/shared';
 import { unwrap, useApi } from './api';
@@ -14,11 +14,26 @@ export const umfragenInvalidieren = (qc: QueryClient) =>
 
 export const umfrageLink = (id: string) => `/umfragen/${encodeURIComponent(id)}`;
 
+/** Running polls the caller may see. */
 export function useUmfragen() {
   const api = useApi();
   return useQuery({
     queryKey: [UMFRAGEN_KEY, 'liste'],
     queryFn: async () => (await unwrap(await api.umfragen.$get())) as UmfrageListeDto[],
+  });
+}
+
+/** Ended polls the caller may see, newest first, page by page. */
+export function useBeendeteUmfragen() {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: [UMFRAGEN_KEY, 'beendet'],
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) =>
+      (await unwrap(
+        await api.umfragen.beendet.$get({ query: pageParam ? { nach: pageParam } : {} }),
+      )) as { umfragen: UmfrageListeDto[]; weiter: string | null },
+    getNextPageParam: (seite) => seite.weiter,
   });
 }
 

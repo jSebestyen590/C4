@@ -1,5 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, notInArray } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  notInArray,
+  or,
+} from 'drizzle-orm';
 import {
   erinnerungenKodieren,
   erinnerungenLesen,
@@ -75,9 +87,20 @@ export interface UmfrageDetails extends UmfrageDaten {
   stimmen: Stimme[];
 }
 
+/** Position in the list of ended polls: the last one returned. */
+export interface UmfragenCursor {
+  erstelltAm: Date;
+  id: string;
+}
+
 export interface UmfragenStore {
-  /** All polls with their questions and who voted (without the answers), newest first. */
-  alle(): Promise<UmfrageDaten[]>;
+  /**
+   * Polls still running on `heute` (Berlin) with their questions and who voted (without the
+   * answers), newest first.
+   */
+  laufende(heute: string): Promise<UmfrageDaten[]>;
+  /** Up to `limit` polls that ended before or on `heute`, newest first, after `nach`. */
+  beendete(heute: string, limit: number, nach?: UmfragenCursor): Promise<UmfrageDaten[]>;
   holen(id: string): Promise<UmfrageDetails | undefined>;
   anlegen(daten: UmfrageSpeichern, ersteller: string): Promise<string>;
   /**
@@ -310,10 +333,32 @@ export function createUmfragenStore(db: Db): UmfragenStore {
   }
 
   return {
-    async alle() {
-      const rows = await db.select().from(umfragen);
-      const daten = await vervollstaendigen(rows);
-      return daten.sort((a, b) => b.erstelltAm.getTime() - a.erstelltAm.getTime());
+    async laufende(heute) {
+      const rows = await db
+        .select()
+        .from(umfragen)
+        .where(and(isNull(umfragen.beendetAm), gte(umfragen.endetAm, heute)))
+        .orderBy(desc(umfragen.erstelltAm), desc(umfragen.id));
+      return vervollstaendigen(rows);
+    },
+
+    async beendete(heute, limit, nach) {
+      const rows = await db
+        .select()
+        .from(umfragen)
+        .where(
+          and(
+            or(isNotNull(umfragen.beendetAm), lt(umfragen.endetAm, heute)),
+            nach &&
+              or(
+                lt(umfragen.erstelltAm, nach.erstelltAm),
+                and(eq(umfragen.erstelltAm, nach.erstelltAm), lt(umfragen.id, nach.id)),
+              ),
+          ),
+        )
+        .orderBy(desc(umfragen.erstelltAm), desc(umfragen.id))
+        .limit(limit);
+      return vervollstaendigen(rows);
     },
 
     async holen(id) {

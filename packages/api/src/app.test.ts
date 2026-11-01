@@ -4132,6 +4132,52 @@ describe('umfragen', () => {
     expect(await liste.json()).toEqual([]);
   });
 
+  it('lists running polls and pages through the ended ones the caller may see', async () => {
+    const t = await setup();
+    const laufend = await t.anlegen({ endetAm: '2099-01-31' });
+    const ids: string[] = [];
+    for (let i = 0; i < 27; i++) {
+      // Every fifth poll is only for a, so the member does not see it.
+      const nurA = i % 5 === 0;
+      const id = await t.anlegen({
+        endetAm: '2099-01-31',
+        ...(nurA && {
+          pflicht: { status: [], posten: [], personen: ['a'] },
+          optional: { status: [], posten: [], personen: [] },
+        }),
+      });
+      await t.app.request(`/api/umfragen/${id}/beenden`, json('vorstand-token', 'POST'));
+      t.umfragenListe.get(id)!.erstelltAm = new Date(Date.UTC(2026, 0, 1, 0, i));
+      if (!nurA) ids.push(id);
+    }
+    const laufende = (await (
+      await t.app.request('/api/umfragen', json('member-token', 'GET'))
+    ).json()) as { id: string }[];
+    expect(laufende.map((u) => u.id)).toEqual([laufend]);
+
+    const seite = async (nach?: string) => {
+      const res = await t.app.request(
+        `/api/umfragen/beendet${nach ? `?nach=${encodeURIComponent(nach)}` : ''}`,
+        json('member-token', 'GET'),
+      );
+      expect(res.status).toBe(200);
+      return (await res.json()) as { umfragen: { id: string }[]; weiter: string | null };
+    };
+    const erste = await seite();
+    expect(erste.umfragen).toHaveLength(20);
+    expect(erste.weiter).not.toBeNull();
+    const zweite = await seite(erste.weiter!);
+    expect(zweite.weiter).toBeNull();
+    // Newest first, each visible poll exactly once.
+    expect([...erste.umfragen, ...zweite.umfragen].map((u) => u.id)).toEqual(ids.reverse());
+
+    const kaputt = await t.app.request(
+      '/api/umfragen/beendet?nach=kaputt',
+      json('member-token', 'GET'),
+    );
+    expect(kaputt.status).toBe(400);
+  });
+
   it('checks the ballot and counts the votes', async () => {
     const t = await setup();
     const id = await t.anlegen({ endetAm: '2099-01-31' });

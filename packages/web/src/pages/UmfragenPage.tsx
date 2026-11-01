@@ -14,7 +14,7 @@ import {
 import { IconPlus } from '@tabler/icons-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { datumAnzeigen, type UmfrageListeDto } from '@c4/shared';
-import { PersonLink, umfrageLink, useUmfragen } from '../umfrageDaten';
+import { PersonLink, umfrageLink, useBeendeteUmfragen, useUmfragen } from '../umfrageDaten';
 
 /** Badges for the caller's state: mandatory/optional, voted, vote again, anonymous, ended. */
 export function UmfrageBadges({ u }: Readonly<{ u: UmfrageListeDto }>) {
@@ -154,13 +154,19 @@ function Abschnitt({ titel, liste }: Readonly<{ titel: string; liste: UmfrageLis
   );
 }
 
-/** Polls the caller may see: open ones for them first, then running and ended ones. */
+/**
+ * Polls the caller may see: open ones for them first, then running ones, then the ended ones page
+ * by page.
+ */
 export function UmfragenPage() {
   const liste = useUmfragen();
+  const beendete = useBeendeteUmfragen();
+  // A poll may end while the page is open; it then shows up among the running ones until reload.
   const daten = liste.data ?? [];
   const offen = daten.filter((u) => u.laeuft && u.meinKreis !== null && !u.abgestimmt);
-  const laufend = daten.filter((u) => u.laeuft && !offen.includes(u));
-  const beendet = daten.filter((u) => !u.laeuft);
+  const laufend = daten.filter((u) => !offen.includes(u));
+  const beendet = beendete.data?.pages.flatMap((p) => p.umfragen) ?? [];
+  const leer = liste.data && beendete.data && daten.length === 0 && beendet.length === 0;
 
   return (
     <Stack>
@@ -172,10 +178,22 @@ export function UmfragenPage() {
       </Group>
       {liste.isPending && <Loader m="md" aria-label="Umfragen werden geladen" />}
       {liste.isError && <Alert color="red">Die Umfragen konnten nicht geladen werden.</Alert>}
-      {liste.data && daten.length === 0 && <Text c="dimmed">Noch keine Umfragen.</Text>}
+      {leer && <Text c="dimmed">Noch keine Umfragen.</Text>}
       <Abschnitt titel="Offen für dich" liste={offen} />
       <Abschnitt titel="Laufend" liste={laufend} />
       <Abschnitt titel="Beendet" liste={beendet} />
+      {beendete.isError && (
+        <Alert color="red">Die beendeten Umfragen konnten nicht geladen werden.</Alert>
+      )}
+      {beendete.hasNextPage && (
+        <Button
+          variant="default"
+          loading={beendete.isFetchingNextPage}
+          onClick={() => void beendete.fetchNextPage()}
+        >
+          Ältere laden
+        </Button>
+      )}
     </Stack>
   );
 }

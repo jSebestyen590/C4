@@ -5,7 +5,11 @@ eigene Antwort (Freitext), ein Ablaufdatum und zwei Personenkreise: wer abstimme
 Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/bearbeiten`.
 
 Die Liste gliedert sich in „Offen für dich“, „Laufend“ und „Beendet“. Auf dem Handy zeigt sie Kacheln, ab `sm` eine
-Tabelle (Umfrage, Status, Läuft bis, Abgestimmt, Erstellt von). Die ganze Kachel bzw. Zeile öffnet die Umfrage.
+Tabelle (Umfrage, Status, Läuft bis, Abgestimmt, Erstellt von). Die ganze Kachel bzw. Zeile öffnet die Umfrage. Laufende
+Umfragen kommen auf einmal (`GET /api/umfragen`), beendete seitenweise zu je 20, neueste zuerst („Ältere laden“,
+`GET /api/umfragen/beendet?nach=<Position>`, Antwort `{ umfragen, weiter }`). Weil die Sichtbarkeit erst in der API geprüft
+wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird nach `erstellt_am`, `id` (Index Migration
+`0095`). Der Erinnerungs-Job liest nur laufende Umfragen.
 
 ## Formular
 
@@ -147,5 +151,5 @@ in `packages/shared/src/umfragen.ts`.
 
 ## API
 
-`GET /api/umfragen` (`UmfrageListeDto[]`), `GET /api/umfragen/:id` (`UmfrageDetailDto`), `POST /api/umfragen`,
+`GET /api/umfragen` (laufende, `UmfrageListeDto[]`), `GET /api/umfragen/beendet` (seitenweise), `GET /api/umfragen/:id` (`UmfrageDetailDto`), `POST /api/umfragen`,
 `PUT /api/umfragen/:id`, `POST /api/umfragen/:id/beenden`, `POST /api/umfragen/:id/event`, `DELETE /api/umfragen/:id`, `PUT /api/umfragen/:id/stimme`.
