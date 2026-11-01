@@ -708,7 +708,10 @@ export function createApp(deps: AppDeps) {
 
   const eventsMitUsernames = async (liste: EventDto[]): Promise<EventDto[]> => {
     const alle = liste.flatMap((e) => [...e.schichten.flatMap((s) => s.dienste), ...e.teilnahmen]);
-    if (!alle.some((d) => d.person.art === 'mitglied') && !liste.some((e) => e.verantwortlich)) {
+    if (
+      !alle.some((d) => d.person.art === 'mitglied') &&
+      !liste.some((e) => e.verantwortlich || e.nichtVerfuegbar.length > 0)
+    ) {
       return liste;
     }
     const konten = await deps.userAdmin.konten();
@@ -720,6 +723,10 @@ export function createApp(deps: AppDeps) {
       teilnahmen: e.teilnahmen.map((t) => ({
         ...t,
         person: { ...t.person, username: konten.get(t.person.sub)?.username ?? null },
+      })),
+      nichtVerfuegbar: e.nichtVerfuegbar.map((p) => ({
+        ...p,
+        username: konten.get(p.sub)?.username ?? null,
       })),
       schichten: e.schichten.map((s) => ({
         ...s,
