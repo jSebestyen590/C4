@@ -289,6 +289,7 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   beschreibung: null,
   kategorie: null,
   art: 'dienste' as const,
+  dauer: 'eintaegig' as const,
   beginn: BEGINN,
   ende: '2026-10-23T22:00:00.000Z',
   abgesagt: false,

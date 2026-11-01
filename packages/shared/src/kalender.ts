@@ -199,6 +199,15 @@ export const EVENT_ARTEN = ['dienste', 'teilnahme'] as const;
 export type EventArt = (typeof EVENT_ARTEN)[number];
 export const eventArtSchema = z.enum(EVENT_ARTEN, 'Bitte wähle die Art der Kategorie.');
 
+/**
+ * How long the events of a Kategorie last: one day (begin and end time, at most 24 hours), several
+ * days (start and end date with times) or whole days (start and end date, no times).
+ */
+export const EVENT_DAUERN = ['eintaegig', 'mehrtaegig', 'ganztaegig'] as const;
+export type EventDauer = (typeof EVENT_DAUERN)[number];
+/** A multi-day event lasts at most this many days. */
+export const MAX_EVENT_TAGE = 31;
+
 const kategoriePflicht = z
   .string('Bitte wähle eine Kategorie.')
   .min(1, 'Bitte wähle eine Kategorie.');
@@ -228,6 +237,11 @@ export const eventKategorieEingabeSchema = z
     art: eventArtSchema,
     /** Default participation circle; required for `teilnahme`, ignored (null) for `dienste`. */
     teilnahmeStatus: teilnahmeStatusSchema,
+    /** Left out = `eintaegig`. */
+    dauer: z
+      .enum(EVENT_DAUERN, 'Bitte wähle die Dauer.')
+      .optional()
+      .transform((v) => v ?? 'eintaegig'),
     archiviert: z.boolean().optional(),
   })
   .refine((v) => v.art !== 'teilnahme' || v.teilnahmeStatus !== null, {
@@ -328,6 +342,68 @@ const dauerFehler = {
 const schichtEnde = dauerOk;
 const schichtEndeFehler = dauerFehler;
 
+/** The schema allows every Kategorie's longest events; `eventDauerFehler` checks the Kategorie. */
+const eventDauerOk = (v: { beginn: string; ende: string }) => {
+  const dauer = new Date(v.ende).getTime() - new Date(v.beginn).getTime();
+  return dauer > 0 && dauer <= MAX_EVENT_TAGE * 24 * 3600_000;
+};
+const eventDauerFehlerMeldung = {
+  message: `Das Ende muss nach dem Beginn liegen und darf höchstens ${MAX_EVENT_TAGE} Tage danach sein.`,
+  path: ['ende'],
+};
+
+/** German error when the event's times do not fit the Kategorie's `dauer`, else null. */
+export function eventDauerFehler(dauer: EventDauer, beginn: string, ende: string): string | null {
+  const ms = new Date(ende).getTime() - new Date(beginn).getTime();
+  if (dauer === 'eintaegig' && ms > MAX_DAUER_MS) {
+    return 'Events dieser Kategorie dauern höchstens 24 Stunden.';
+  }
+  if (dauer === 'ganztaegig' && (zeitBerlin(beginn) !== '00:00' || zeitBerlin(ende) !== '00:00')) {
+    return 'Ganztägige Events beginnen und enden um Mitternacht.';
+  }
+  return null;
+}
+
+/**
+ * Begin and end of an event from what the form shows for the Kategorie's `dauer`: one day with
+ * times (end at or before begin = next day), start and end date with times, or whole days from
+ * `datum` to `bis` (both included).
+ */
+export function eventSpanne(
+  dauer: EventDauer,
+  t: { datum: string; bis: string; beginnZeit: string; endeZeit: string },
+): { beginn: string; ende: string } {
+  if (dauer === 'ganztaegig') {
+    return {
+      beginn: berlinZuUtc(t.datum, '00:00'),
+      ende: berlinZuUtc(tageDazu(t.bis, 1), '00:00'),
+    };
+  }
+  if (dauer === 'mehrtaegig') {
+    return { beginn: berlinZuUtc(t.datum, t.beginnZeit), ende: berlinZuUtc(t.bis, t.endeZeit) };
+  }
+  return zeitspanne(t.datum, t.beginnZeit, t.endeZeit);
+}
+
+/** Inverse of `eventSpanne`; `bis` is the last day (for whole days the day before the end). */
+export function eventZeitenAus(
+  dauer: EventDauer,
+  beginn: string,
+  ende: string,
+): { datum: string; bis: string; beginnZeit: string; endeZeit: string } {
+  const datum = datumBerlin(beginn);
+  const bis =
+    dauer === 'ganztaegig' && zeitBerlin(ende) === '00:00'
+      ? tageDazu(datumBerlin(ende), -1)
+      : datumBerlin(ende);
+  return {
+    datum,
+    bis: bis < datum ? datum : bis,
+    beginnZeit: zeitBerlin(beginn),
+    endeZeit: zeitBerlin(ende),
+  };
+}
+
 export const schichtEingabeSchema = z.discriminatedUnion('art', [
   z
     .object({
@@ -383,7 +459,7 @@ export const eventEingabeSchema = z
     /** Detaches the event from its series (a Barabend replaced by another event); only on update. */
     ersetzeSerie: z.boolean().optional(),
   })
-  .refine(dauerOk, dauerFehler);
+  .refine(eventDauerOk, eventDauerFehlerMeldung);
 export type EventEingabe = z.infer<typeof eventEingabeSchema>;
 
 /** Global "Dienste fehlen" reminders: how many minutes before the event begin a notice goes out. */
@@ -438,9 +514,19 @@ export const vorlageEingabeSchema = z.object({
   endeZeit: zeitSchema,
   schichten: z.array(vorlageSchichtSchema),
   teilnahmeStatus: teilnahmeStatusSchema,
+  /** Number of days for multi-day and whole-day Kategorien (the end lies on the last one); default 1. */
+  tage: z
+    .number('Bitte gib eine Zahl an.')
+    .int('Bitte gib eine ganze Zahl an.')
+    .min(1, 'Mindestens 1 Tag.')
+    .max(MAX_EVENT_TAGE, `Höchstens ${MAX_EVENT_TAGE} Tage.`)
+    .optional()
+    .transform((v) => v ?? 1),
   archiviert: z.boolean().optional(),
 });
 export type VorlageEingabe = z.infer<typeof vorlageEingabeSchema>;
+/** A Vorlage as `ausVorlage` needs it; `tage` defaults to 1. */
+export type VorlageDaten = Omit<VorlageEingabe, 'tage'> & { tage?: number };
 
 /** Enter a Dienst: oneself (neither field), another member (`mitgliedSub`) or an Externe (`externId`). */
 export const dienstEintragenSchema = z
@@ -487,6 +573,7 @@ export interface EventKategorieDto {
   art: EventArt;
   /** Default participation circle (`teilnahme` only, else null). */
   teilnahmeStatus: TeilnahmeKreis;
+  dauer: EventDauer;
   /** At least one event uses the Kategorie, so its `art` cannot change. */
   benutzt: boolean;
   archiviert: boolean;
@@ -559,6 +646,8 @@ export interface EventDto {
   kategorie: Pick<EventKategorieDto, 'id' | 'name' | 'farbe'> | null;
   /** From the Kategorie; events without one (legacy) count as `dienste`. */
   art: EventArt;
+  /** From the Kategorie; `ganztaegig` events are shown and exported without times. */
+  dauer: EventDauer;
   beginn: string;
   ende: string;
   abgesagt: boolean;
@@ -747,9 +836,10 @@ export function betriebDatum(
  * Kategorie's), a `dienste` event gets no circle.
  */
 export function ausVorlage(
-  vorlage: VorlageEingabe,
+  vorlage: VorlageDaten,
   datum: string,
-  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'>,
+  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'> &
+    Partial<Pick<EventKategorieDto, 'dauer'>>,
 ): EventEingabe {
   const teilnahme = kategorie?.art === 'teilnahme';
   const dienste = kategorie?.art === 'dienste';
@@ -763,7 +853,12 @@ export function ausVorlage(
         ? null
         : vorlage.teilnahmeStatus,
     eingeladen: [],
-    ...zeitspanne(datum, vorlage.beginnZeit, vorlage.endeZeit),
+    ...eventSpanne(kategorie?.dauer ?? 'eintaegig', {
+      datum,
+      bis: tageDazu(datum, Math.max(1, vorlage.tage ?? 1) - 1),
+      beginnZeit: vorlage.beginnZeit,
+      endeZeit: vorlage.endeZeit,
+    }),
     schichten: (teilnahme ? [] : vorlage.schichten).map((s): SchichtEingabe => {
       if (s.art === 'betrieb') {
         const tag = betriebDatum(datum, vorlage.beginnZeit, s.beginnZeit);
@@ -833,8 +928,9 @@ export function serieEventNeutral(
  */
 export function serieEventErsetzen(
   barabend: Pick<EventDto, 'beginn' | 'schichten'>,
-  vorlage: VorlageEingabe,
-  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'>,
+  vorlage: VorlageDaten,
+  kategorie?: Pick<EventKategorieDto, 'art' | 'teilnahmeStatus'> &
+    Partial<Pick<EventKategorieDto, 'dauer'>>,
 ): EventEingabe {
   const neu = ausVorlage(vorlage, datumBerlin(barabend.beginn), kategorie);
   const alte = [...barabend.schichten].sort(
@@ -940,6 +1036,8 @@ export interface IcsTermin {
   ende: string;
   url?: string | null;
   abgesagt?: boolean;
+  /** Whole days: DTSTART/DTEND as dates (Berlin), DTEND the day after the last one. */
+  ganztaegig?: boolean;
 }
 
 export interface IcsOptionen {
@@ -1001,8 +1099,12 @@ export function icsErzeugen(termine: readonly IcsTermin[], optionen: IcsOptionen
       'BEGIN:VEVENT',
       `UID:${t.art ?? 'dienst'}-${t.id}@c4-leipzig.de`,
       `DTSTAMP:${stempel}`,
-      `DTSTART:${icsZeit(new Date(t.beginn))}`,
-      `DTEND:${icsZeit(new Date(t.ende))}`,
+      ...(t.ganztaegig
+        ? [
+            `DTSTART;VALUE=DATE:${datumBerlin(t.beginn).replace(/-/g, '')}`,
+            `DTEND;VALUE=DATE:${datumBerlin(t.ende).replace(/-/g, '')}`,
+          ]
+        : [`DTSTART:${icsZeit(new Date(t.beginn))}`, `DTEND:${icsZeit(new Date(t.ende))}`]),
       `SUMMARY:${icsText(t.titel)}`,
     );
     if (t.beschreibung) zeilen.push(`DESCRIPTION:${icsText(t.beschreibung)}`);
@@ -1069,6 +1171,8 @@ export interface MeinEventDto {
   beginn: string;
   ende: string;
   abgesagt: boolean;
+  /** Whole days (Kategorie `ganztaegig`): exported as dates without times. */
+  ganztaegig?: boolean;
 }
 
 /** Turns events into ICS entries (whole event time); `ursprung` enables the event link. */
@@ -1087,6 +1191,7 @@ export function eventTermine(
       ende: e.ende,
       url,
       abgesagt: e.abgesagt,
+      ganztaegig: e.ganztaegig ?? false,
     };
   });
 }

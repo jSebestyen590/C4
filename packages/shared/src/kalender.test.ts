@@ -18,7 +18,10 @@ import {
   dienstEintragenSchema,
   eventBewertung,
   dienstTermine,
+  eventDauerFehler,
   eventEingabeSchema,
+  eventSpanne,
+  eventZeitenAus,
   eventTermine,
   teilnahmeKreisKodieren,
   teilnahmeKreisLesen,
@@ -39,7 +42,7 @@ import {
   type BewertbareSchicht,
   type DienstPerson,
   type EventDto,
-  type VorlageEingabe,
+  type VorlageDaten,
 } from './kalender';
 
 const mitglied = (sub: string, status: 'anwaerter' | 'mitglied' | 'em' = 'mitglied') =>
@@ -216,7 +219,7 @@ describe('betriebDatum', () => {
 });
 
 describe('ausVorlage', () => {
-  const vorlage: VorlageEingabe = {
+  const vorlage: VorlageDaten = {
     titel: 'Offener Abend',
     beschreibung: null,
     kategorieId: 'k1',
@@ -422,7 +425,11 @@ describe('schemas', () => {
     expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-06-06T18:00:00Z' }).success).toBe(
       true,
     );
+    // Longer than a day only for multi-day Kategorien (checked with `eventDauerFehler`), at most 31 days.
     expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-06-06T18:01:00Z' }).success).toBe(
+      true,
+    );
+    expect(eventEingabeSchema.safeParse({ ...event, ende: '2026-07-07T18:00:00Z' }).success).toBe(
       false,
     );
     expect(schichtEingabeSchema.safeParse({ ...basis, ende: '2026-06-07T18:00:00Z' }).success).toBe(
@@ -620,7 +627,7 @@ describe('serieEventErsetzen', () => {
         ...extra,
       ],
     }) as unknown as Pick<EventDto, 'beginn' | 'schichten'>;
-  const vorlage = (schichten: VorlageEingabe['schichten']): VorlageEingabe => ({
+  const vorlage = (schichten: VorlageDaten['schichten']): VorlageDaten => ({
     titel: 'Karaoke',
     beschreibung: null,
     kategorieId: 'k1',
@@ -785,7 +792,7 @@ describe('Teilnahme', () => {
 });
 
 describe('ausVorlage with a Kategorie', () => {
-  const vorlage: VorlageEingabe = {
+  const vorlage: VorlageDaten = {
     titel: 'Plenum',
     beschreibung: null,
     kategorieId: 'k1',
@@ -1021,5 +1028,67 @@ describe('serieEventNeutral', () => {
         wunsch: 2,
       },
     ]);
+  });
+});
+
+describe('Dauer der Kategorie', () => {
+  it('limits one-day events to 24 hours and keeps whole days at midnight', () => {
+    expect(
+      eventDauerFehler('eintaegig', '2026-06-05T18:00:00Z', '2026-06-06T18:00:00Z'),
+    ).toBeNull();
+    expect(eventDauerFehler('eintaegig', '2026-06-05T18:00:00Z', '2026-06-06T18:01:00Z')).toMatch(
+      /24 Stunden/,
+    );
+    expect(
+      eventDauerFehler('mehrtaegig', '2026-06-05T18:00:00Z', '2026-06-08T10:00:00Z'),
+    ).toBeNull();
+    const ganz = eventSpanne('ganztaegig', {
+      datum: '2026-07-10',
+      bis: '2026-07-12',
+      beginnZeit: '',
+      endeZeit: '',
+    });
+    expect(ganz).toEqual({ beginn: '2026-07-09T22:00:00.000Z', ende: '2026-07-12T22:00:00.000Z' });
+    expect(eventDauerFehler('ganztaegig', ganz.beginn, ganz.ende)).toBeNull();
+    expect(eventDauerFehler('ganztaegig', '2026-07-10T08:00:00Z', ganz.ende)).toMatch(
+      /Mitternacht/,
+    );
+  });
+
+  it('turns form values into begin and end and back', () => {
+    const mehr = eventSpanne('mehrtaegig', {
+      datum: '2026-07-10',
+      bis: '2026-07-12',
+      beginnZeit: '18:00',
+      endeZeit: '14:00',
+    });
+    expect(mehr).toEqual({ beginn: '2026-07-10T16:00:00.000Z', ende: '2026-07-12T12:00:00.000Z' });
+    expect(eventZeitenAus('mehrtaegig', mehr.beginn, mehr.ende)).toEqual({
+      datum: '2026-07-10',
+      bis: '2026-07-12',
+      beginnZeit: '18:00',
+      endeZeit: '14:00',
+    });
+    expect(
+      eventZeitenAus('ganztaegig', '2026-07-09T22:00:00.000Z', '2026-07-12T22:00:00.000Z').bis,
+    ).toBe('2026-07-12');
+  });
+
+  it('creates multi-day events from a Vorlage with its number of days', () => {
+    const e = ausVorlage(
+      {
+        titel: 'Fahrt',
+        beschreibung: null,
+        kategorieId: 'k',
+        beginnZeit: '00:00',
+        endeZeit: '00:00',
+        schichten: [],
+        teilnahmeStatus: [],
+        tage: 3,
+      },
+      '2026-07-10',
+      { art: 'teilnahme', teilnahmeStatus: [], dauer: 'ganztaegig' },
+    );
+    expect([e.beginn, e.ende]).toEqual(['2026-07-09T22:00:00.000Z', '2026-07-12T22:00:00.000Z']);
   });
 });

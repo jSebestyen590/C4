@@ -9,16 +9,16 @@ Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`00
 pro Migration nur ein DDL-Statement und kein `ALTER ... SET NOT NULL`. Fremdschlüssel sind erlaubt. Später
 hinzugefügte Spalten sind deshalb nullable.
 
-| Spalte                             | Hinweise                                                                          |
-| ---------------------------------- | --------------------------------------------------------------------------------- |
-| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).        |
-| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.                  |
-| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                        |
-| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                              |
-| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                      |
-| `discord_name`                     | Discord-Username, nur zur Anzeige.                                                |
-| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                         |
-| `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900.  |
+| Spalte                             | Hinweise                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).       |
+| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.                 |
+| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                       |
+| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                             |
+| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                     |
+| `discord_name`                     | Discord-Username, nur zur Anzeige.                                               |
+| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                        |
+| `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900. |
 | `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung. |
 
 **Geburtstag:** Im Profil (`/profil`, `DatumFeld` + Schalter „Geburtstag im Kalender anzeigen“, ohne Datum
@@ -53,10 +53,11 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
-  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`). Sobald Features unterschiedliche Rechte
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`). Sobald Features unterschiedliche Rechte
   brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
-  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten` und `schluessel:verwalten` haben nur Admins und Posten (siehe
-  [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md)).
+  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten` und `umfragen:verwalten` haben nur Admins und Posten (siehe
+  [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md),
+  [umfragen.md](./umfragen.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

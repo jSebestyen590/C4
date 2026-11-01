@@ -130,7 +130,10 @@ export function EventDetailPage() {
           >
             {e.anzeigeTitel}
           </Title>
-          <Text>{zeitraumAnzeigen(e.beginn, e.ende)} Uhr</Text>
+          <Text>
+            {zeitraumAnzeigen(e.beginn, e.ende, e.dauer)}
+            {e.dauer === 'ganztaegig' ? '' : ' Uhr'}
+          </Text>
           <Group gap="xs">
             <EventStatusBadge event={e} />
             {e.kategorie && (

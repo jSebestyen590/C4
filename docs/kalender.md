@@ -29,12 +29,30 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
   Kategorie als Zusatzzeile nur bei vorhandenem Titel.
 - **Zeitangabe in Listen:** Kalenderkarten zeigen „Sa, 01.11. 20:00 – 01:00“ (`zeitraumKurz`, ohne Jahr, Ende nur als Uhrzeit); die Event-Seite
   zeigt weiter das volle Datum.
-- **Zeiten:** Events und Schichten dauern höchstens 24 Stunden (Schema-Prüfung: Ende > Beginn, Dauer ≤ 24 h).
-  Eingegeben werden nur Uhrzeiten (`zeitspanne(datum, beginnZeit, endeZeit)`, Europe/Berlin): liegt das Ende bei oder
+- **Zeiten:** Schichten dauern höchstens 24 Stunden (Schema-Prüfung: Ende > Beginn, Dauer ≤ 24 h). Wie lange ein Event
+  dauern darf, legt seine Kategorie fest (siehe „Dauer der Kategorie“); das Schema lässt höchstens 31 Tage zu
+  (`MAX_EVENT_TAGE`), die API prüft die Kategorie (`eventDauerFehler`, 400).
+  Bei eintägigen Events werden nur Uhrzeiten eingegeben (`zeitspanne(datum, beginnZeit, endeZeit)`, Europe/Berlin): liegt das Ende bei oder
   vor dem Beginn, gilt der nächste Tag (20:00–01:00 → nächster Tag, 20:00–20:00 = 24 h); die Formulare zeigen dann
-  „(nächster Tag)“. `zeitenAus` ist die Umkehrung fürs Bearbeiten. Betrieb-Schichten haben kein eigenes Datum: es ist das
+  „(nächster Tag)“. `zeitenAus` ist die Umkehrung fürs Bearbeiten. Betrieb-Schichten haben bei eintägigen Events kein eigenes Datum: es ist das
   Event-Datum, bei einem Beginn vor dem Event-Beginn der nächste Tag (`betriebDatum`; Event 20:00, Schicht 00:00–02:00
-  → nächster Tag). Aufbau/Putzen haben ein eigenes Datum (im Event) bzw. einen Tagesversatz (in der Vorlage).
+  → nächster Tag). Aufbau/Putzen haben ein eigenes Datum (im Event) bzw. einen Tagesversatz (in der Vorlage). Bei
+  mehrtägigen und ganztägigen Events hat jede Schicht ein eigenes Datum.
+
+- **Dauer der Kategorie** (`event_kategorien.dauer`, Migration `0089`, `EVENT_DAUERN`, null = eintägig):
+  - **Eintägig:** Datum mit Beginn und Ende, höchstens 24 Stunden (wie bisher).
+  - **Mehrtägig:** Start- und Enddatum, jeweils mit Uhrzeit (`eventSpanne`), höchstens 31 Tage.
+    Im Formular wählt man den Zeitraum in einem Feld (`ZeitraumFeld`: im Kalender erst erster, dann letzter Tag),
+    darunter die Uhrzeiten für Beginn und Ende; bei ganztägig genauso, nur ohne Uhrzeiten.
+  - **Ganztägig:** nur erster und letzter Tag; gespeichert von 00:00 des ersten bis 00:00 nach dem letzten Tag (Berlin),
+    andere Zeiten lehnt die API ab. Anzeige ohne Uhrzeit („Fr, 10.07. – So, 12.07.“ bzw. „ganztägig“), im ICS-Abo als
+    Ganztagstermin (`DTSTART;VALUE=DATE`).
+  - Die Dauer lässt sich jederzeit ändern; bestehende Events behalten ihre Zeiten, erst beim Bearbeiten gelten die neuen
+    Regeln. `EventDto.dauer` kommt aus der Kategorie.
+  - Mehrtägige und ganztägige Events erscheinen im Monatsraster an jedem Tag (`eventTage`), in der Liste am ersten Tag
+    (oder am Monatsanfang, wenn sie im Vormonat begonnen haben). Eintägige Events über Mitternacht bleiben am Starttag.
+  - **Vorlagen** haben dafür `tage` (Migration `0090`, Standard 1): die Zahl der Tage; das Ende liegt auf dem letzten Tag.
+    Ganztägige Vorlagen haben keine Uhrzeiten. `ausVorlage` berücksichtigt `tage` und die Dauer der Kategorie.
 
 - **Bedarf je Art:** Betrieb braucht mindestens eine Dienstform, je Dienstform Minimum ≥ 1 und Wunsch ≥ Minimum.
   Aufbau/Putzen haben keine Dienstform, nur eine Anzahl (Minimum ≥ 0, Wunsch ≥ 1, Wunsch ≥ Minimum); die Dienstformen
@@ -95,6 +113,8 @@ nichts davon ist im Code oder in Migrationen festgelegt (Kategorien, Vorlagen un
   in den Bedarf, weitere Schichten mit Einträgen bleiben; hat die Vorlage keine Betriebs-Schicht, bleibt die alte als zusätzliche
   Schicht. Gespeichert wird per `PUT` mit `ersetzeSerie: true`, das `events.serie` auf null setzt (die Einträge bleiben dran;
   entfernt man bewusst etwas, greift die 409-Bestätigung). Eine Teilnahme-Vorlage ersetzt nichts, beide Events bleiben. Die Frage erscheint auch bei „Ohne Vorlage“: „Ersetzen“ öffnet dann das Formular des Serien-Events mit leerem Titel und leerer Kategorie, den Zeiten und allen Schichten samt Einträgen (`serieEventNeutral`). Serien-Events mit Teilnahme werden nie ersetzt (keine Frage), im Formular sind beim Ersetzen nur Kategorien mit Diensten wählbar, und `PUT` mit `ersetzeSerie: true` antwortet bei einer Teilnahme-Kategorie (neu oder bisher) mit 400.
+
+Events können auch aus einer Terminumfrage entstehen (siehe [umfragen.md](./umfragen.md#terminfindung)).
 
 ## Event-Art (Dienste oder Teilnahme)
 

@@ -62,6 +62,7 @@ import {
   monatsGrenzen,
   monatsRaster,
   monatSuche,
+  eventTage,
   zeitraumKurz,
 } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
@@ -361,7 +362,7 @@ function useTagesKlick(
   };
   const sichtbarAm = offen ? (nachTag.get(offen) ?? []) : [];
   const ausgeblendet = offen
-    ? alle.filter((e) => datumBerlin(e.beginn) === offen).length > sichtbarAm.length
+    ? alle.filter((e) => eventTage(e).includes(offen)).length > sichtbarAm.length
     : false;
   const uebersicht = (
     <TagesUebersicht
@@ -472,8 +473,7 @@ function MonatsRasterKompakt({
 function nachTagGruppieren(events: EventDto[]): Map<string, EventDto[]> {
   const m = new Map<string, EventDto[]>();
   for (const e of events) {
-    const t = datumBerlin(e.beginn);
-    m.set(t, [...(m.get(t) ?? []), e]);
+    for (const t of eventTage(e)) m.set(t, [...(m.get(t) ?? []), e]);
   }
   return m;
 }
@@ -530,7 +530,7 @@ function EventKarte({
         <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
           <Stack gap={0} style={{ minWidth: 0 }}>
             <Text size="sm" c="dimmed">
-              {zeitraumKurz(event.beginn, event.ende)}
+              {zeitraumKurz(event.beginn, event.ende, event.dauer)}
             </Text>
             <Anchor
               component={Link}
@@ -730,9 +730,11 @@ export function KalenderPage() {
     [events.data, nurFehlend, nurMeine, eigeneSub],
   );
   // The list shows the selected month only; the grid also shows the neighbouring days.
-  const listeEvents = sichtbar.filter(
-    (e) => datumBerlin(e.beginn) >= grenzen.erster && datumBerlin(e.beginn) <= grenzen.letzter,
-  );
+  // Multi-day events that started in the previous month are listed at the start of this one.
+  const listeEvents = sichtbar.filter((e) => {
+    const tage = eventTage(e);
+    return tage[0]! <= grenzen.letzter && tage.at(-1)! >= grenzen.erster;
+  });
 
   // Birthdays are no events: "missing Dienste" hides them, "Nur meine" keeps them.
   const geburtstageSichtbar = useMemo(
@@ -744,7 +746,11 @@ export function KalenderPage() {
   );
   // Events and birthdays in date order; a birthday comes before the events of its day.
   const listenEintraege = [
-    ...listeEvents.map((e) => ({ datum: datumBerlin(e.beginn), rang: 1, event: e })),
+    ...listeEvents.map((e) => ({
+      datum: datumBerlin(e.beginn) < grenzen.erster ? grenzen.erster : datumBerlin(e.beginn),
+      rang: 1,
+      event: e,
+    })),
     ...geburtstageListe.map((g) => ({ datum: g.datum, rang: 0, geburtstag: g })),
   ].sort((a, b) => a.datum.localeCompare(b.datum) || a.rang - b.rang);
 

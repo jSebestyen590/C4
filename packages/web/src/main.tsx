@@ -1,7 +1,10 @@
 import { MantineProvider, Text } from '@mantine/core';
+import { DatesProvider } from '@mantine/dates';
 import { Notifications } from '@mantine/notifications';
+import 'dayjs/locale/de';
 import '@mantine/core/styles.css';
 import '@mantine/charts/styles.css';
+import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, useEffect, useMemo, useState } from 'react';
@@ -33,16 +36,18 @@ function Root() {
   );
   return (
     <MantineProvider theme={theme} defaultColorScheme="auto">
-      <Notifications position="top-center" />
-      {error ? (
-        <Text p="md">Start fehlgeschlagen: {error}</Text>
-      ) : config && router ? (
-        <AuthProvider config={config}>
-          <QueryClientProvider client={queryClient}>
-            <RouterProvider router={router} />
-          </QueryClientProvider>
-        </AuthProvider>
-      ) : null}
+      <DatesProvider settings={{ locale: 'de', firstDayOfWeek: 1 }}>
+        <Notifications position="top-center" />
+        {error ? (
+          <Text p="md">Start fehlgeschlagen: {error}</Text>
+        ) : config && router ? (
+          <AuthProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+              <RouterProvider router={router} />
+            </QueryClientProvider>
+          </AuthProvider>
+        ) : null}
+      </DatesProvider>
     </MantineProvider>
   );
 }

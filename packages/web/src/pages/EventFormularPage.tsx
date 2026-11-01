@@ -8,6 +8,7 @@ import {
   Select,
   Stack,
   Text,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +23,7 @@ import {
   berlinZuUtc,
   datumBerlin,
   betriebDatum,
+  datumPlusTage,
   eventEingabeSchema,
   heuteBerlin,
   schichtBezeichnung,
@@ -34,6 +36,7 @@ import {
   type EventEingabe,
   type EventKategorieDto,
   type EventArt,
+  type EventDauer,
   type TeilnahmeDto,
   type TeilnahmeKreis,
   type VorlageDto,
@@ -41,6 +44,7 @@ import {
 import { kalenderLink } from '../kalenderZeit';
 import { useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
+import { ZeitraumFeld } from '../ZeitraumFeld';
 import {
   bedarfFelder,
   fehlerAusIssues,
@@ -87,6 +91,11 @@ interface EventSchichtForm extends SchichtBasis {
 
 interface EventWerte extends KopfWerte {
   datum: string;
+  /**
+   * Calendar date of the end instant; only used for multi-day Kategorien. For whole days it is the
+   * day after the last one (the event ends at midnight).
+   */
+  bis: string;
   beginnZeit: string;
   endeZeit: string;
   teilnahme: TeilnahmeWerte;
@@ -136,6 +145,7 @@ interface EventDaten {
 function werteAus(e: EventDaten): EventWerte {
   return {
     ...zeitenAus(e.beginn, e.ende),
+    bis: datumBerlin(e.ende),
     titel: e.titel,
     beschreibung: e.beschreibung ?? '',
     kategorieId: e.kategorieId,
@@ -170,6 +180,7 @@ function leereWerte(datum: string): EventWerte {
     beschreibung: '',
     kategorieId: null,
     datum,
+    bis: datum,
     beginnZeit: '20:00',
     endeZeit: '23:00',
     teilnahme: keineTeilnahme(),
@@ -178,18 +189,43 @@ function leereWerte(datum: string): EventWerte {
   };
 }
 
-/** Begin and end instants of a Schicht form; Betrieb follows the event date, see `betriebDatum`. */
-function schichtSpanne(w: EventWerte, s: EventSchichtForm) {
-  const datum = s.art === 'betrieb' ? betriebDatum(w.datum, w.beginnZeit, s.beginnZeit) : s.datum;
+/**
+ * Begin and end instants of a Schicht form; in one-day events Betrieb follows the event date (see
+ * `betriebDatum`), otherwise every Schicht has its own date.
+ */
+function schichtSpanne(w: EventWerte, s: EventSchichtForm, dauer: EventDauer) {
+  const datum =
+    s.art === 'betrieb' && dauer === 'eintaegig'
+      ? betriebDatum(w.datum, w.beginnZeit, s.beginnZeit)
+      : s.datum;
   return datum && s.beginnZeit && s.endeZeit ? zeitspanne(datum, s.beginnZeit, s.endeZeit) : null;
+}
+
+/** Begin and end of the event as the Kategorie's `dauer` shows them. */
+function eventZeiten(w: EventWerte, dauer: EventDauer) {
+  if (dauer === 'eintaegig') return zeitspanne(w.datum, w.beginnZeit, w.endeZeit);
+  if (dauer === 'ganztaegig') {
+    return { beginn: berlinZuUtc(w.datum, '00:00'), ende: berlinZuUtc(w.bis, '00:00') };
+  }
+  return { beginn: berlinZuUtc(w.datum, w.beginnZeit), ende: berlinZuUtc(w.bis, w.endeZeit) };
+}
+
+/** Keeps the end after the start when the Kategorie (and so the kind of dates) changes. */
+function datenNachDauer(w: EventWerte, dauer: EventDauer): EventWerte {
+  if (dauer === 'ganztaegig') {
+    return { ...w, bis: w.bis > w.datum ? w.bis : datumPlusTage(w.datum, 1) };
+  }
+  if (dauer === 'mehrtaegig' && w.bis < w.datum) return { ...w, bis: w.datum };
+  return w;
 }
 
 /** Form values -> API input; German error texts (general and per Schicht field) when invalid. */
 function eingabeBauen(
   w: EventWerte,
   art: EventArt | null,
+  dauer: EventDauer,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: EventEingabe } {
-  const roh = rohEingabe(w, art);
+  const roh = rohEingabe(w, art, dauer);
   if (!roh) return { fehler: 'Bitte gib bei allen Zeiten ein Datum und Uhrzeiten an.' };
   const geprueft = eventEingabeSchema.safeParse(roh);
   if (!geprueft.success) {
@@ -200,11 +236,13 @@ function eingabeBauen(
 }
 
 /** Only what the Kategorie's kind allows is sent: Schichten for Dienste, the circle for Teilnahme. */
-function rohEingabe(w: EventWerte, art: EventArt | null) {
-  if (!w.datum || !w.beginnZeit || !w.endeZeit) return null;
+function rohEingabe(w: EventWerte, art: EventArt | null, dauer: EventDauer) {
+  if (!w.datum) return null;
+  if (dauer === 'ganztaegig' ? !w.bis : !w.beginnZeit || !w.endeZeit) return null;
+  if (dauer === 'mehrtaegig' && !w.bis) return null;
   const schichten = [];
   for (const s of art === 'teilnahme' ? [] : w.schichten) {
-    const spanne = schichtSpanne(w, s);
+    const spanne = schichtSpanne(w, s, dauer);
     if (!spanne) return null;
     schichten.push({ id: s.id, ...spanne, ...bedarfFelder(s) });
   }
@@ -212,12 +250,82 @@ function rohEingabe(w: EventWerte, art: EventArt | null) {
     titel: w.titel,
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
-    ...zeitspanne(w.datum, w.beginnZeit, w.endeZeit),
+    ...eventZeiten(w, dauer),
     teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     eingeladen: art === 'teilnahme' ? eingeladeneAus(w.teilnahme) : [],
     verantwortlichSub: w.verantwortlichSub,
     schichten,
   };
+}
+
+/**
+ * Date and times of the event for the Kategorie's `dauer`: one date with times, start and end date
+ * with times, or first and last day.
+ */
+function EventDatumFelder({
+  werte,
+  dauer,
+  onChange,
+}: Readonly<{ werte: EventWerte; dauer: EventDauer; onChange: (w: EventWerte) => void }>) {
+  if (dauer === 'ganztaegig') {
+    const letzterTag = datumPlusTage(werte.bis, -1);
+    return (
+      <ZeitraumFeld
+        label="Zeitraum"
+        von={werte.datum}
+        bis={letzterTag < werte.datum ? werte.datum : letzterTag}
+        onWert={({ von, bis }) =>
+          onChange({
+            ...werte,
+            datum: von,
+            bis: datumPlusTage(bis, 1),
+            beginnZeit: '00:00',
+            endeZeit: '00:00',
+          })
+        }
+      />
+    );
+  }
+  if (dauer === 'mehrtaegig') {
+    const zeit = (label: string, wert: string, setzen: (v: string) => void) => (
+      <TextInput
+        label={label}
+        type="time"
+        value={wert}
+        onChange={(e) => setzen(e.currentTarget.value)}
+        style={{ minWidth: 0 }}
+      />
+    );
+    return (
+      <Stack gap="xs">
+        <ZeitraumFeld
+          label="Zeitraum"
+          von={werte.datum}
+          bis={werte.bis < werte.datum ? werte.datum : werte.bis}
+          onWert={({ von, bis }) => onChange({ ...werte, datum: von, bis })}
+        />
+        <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
+          {zeit('Beginn', werte.beginnZeit, (beginnZeit) => onChange({ ...werte, beginnZeit }))}
+          {zeit('Ende', werte.endeZeit, (endeZeit) => onChange({ ...werte, endeZeit }))}
+        </Group>
+      </Stack>
+    );
+  }
+  return (
+    <>
+      <DatumFeld
+        label="Datum"
+        value={werte.datum}
+        onWert={(datum) => onChange({ ...werte, datum })}
+        loeschbar={false}
+      />
+      <UhrzeitFelder
+        beginn={werte.beginnZeit}
+        ende={werte.endeZeit}
+        onChange={(z) => onChange({ ...werte, ...z })}
+      />
+    </>
+  );
 }
 
 function Formular({
@@ -246,13 +354,14 @@ function Formular({
   const [laeuft, setLaeuft] = useState(false);
   const [entfernung, setEntfernung] = useState<Entfernung | null>(null);
   const art = kategorien.find((k) => k.id === werte.kategorieId)?.art ?? null;
+  const dauer = kategorien.find((k) => k.id === werte.kategorieId)?.dauer ?? 'eintaegig';
   const mitglieder = useMitgliederListe();
 
   const eventBeginnIso =
     werte.datum && werte.beginnZeit ? berlinZuUtc(werte.datum, werte.beginnZeit) : undefined;
 
   const speichern = async (bestaetigt: boolean) => {
-    const ergebnis = eingabeBauen(werte, art);
+    const ergebnis = eingabeBauen(werte, art, dauer);
     if ('fehler' in ergebnis) {
       setSchichtFehler(ergebnis.schichtFehler ?? {});
       return setFehler(ergebnis.fehler);
@@ -310,20 +419,14 @@ function Formular({
       )}
       <KopfFelder
         werte={werte}
-        onChange={(k) => setWerte(teilnahmeNachKategorie(werte, { ...werte, ...k }, kategorien))}
+        onChange={(k) => {
+          const neu = teilnahmeNachKategorie(werte, { ...werte, ...k }, kategorien);
+          const neueDauer = kategorien.find((x) => x.id === neu.kategorieId)?.dauer ?? 'eintaegig';
+          setWerte(datenNachDauer(neu, neueDauer));
+        }}
         kategorien={ersetzeSerie ? kategorien.filter((k) => k.art !== 'teilnahme') : kategorien}
       />
-      <DatumFeld
-        label="Datum"
-        value={werte.datum}
-        onWert={(datum) => setWerte({ ...werte, datum })}
-        loeschbar={false}
-      />
-      <UhrzeitFelder
-        beginn={werte.beginnZeit}
-        ende={werte.endeZeit}
-        onChange={(z) => setWerte({ ...werte, ...z })}
-      />
+      <EventDatumFelder werte={werte} dauer={dauer} onChange={setWerte} />
       <Select
         label="Verantwortlich (optional)"
         description="Bekommt das Event im Kalender-Abo und Hinweise zu Änderungen und fehlenden Diensten."
@@ -356,16 +459,16 @@ function Formular({
             key: neuerKey(),
             ...neueSchichtWerte(),
             datum: werte.datum,
-            beginnZeit: werte.beginnZeit,
-            endeZeit: werte.endeZeit,
+            beginnZeit: dauer === 'ganztaegig' ? '10:00' : werte.beginnZeit,
+            endeZeit: dauer === 'ganztaegig' ? '18:00' : werte.endeZeit,
           })}
           untertitel={(s) => {
-            const spanne = schichtSpanne(werte, s);
+            const spanne = schichtSpanne(werte, s, dauer);
             return spanne ? schichtBezeichnung({ art: s.art, ...spanne }, eventBeginnIso) : null;
           }}
           zeitFelder={(s, aendern, f) => (
             <Stack gap="xs">
-              {s.art !== 'betrieb' && (
+              {(s.art !== 'betrieb' || dauer !== 'eintaegig') && (
                 <DatumFeld
                   label="Datum"
                   value={s.datum}
@@ -377,7 +480,9 @@ function Formular({
                 beginn={s.beginnZeit}
                 ende={s.endeZeit}
                 onChange={aendern}
-                beginnNaechsterTag={s.art === 'betrieb' && s.beginnZeit < werte.beginnZeit}
+                beginnNaechsterTag={
+                  s.art === 'betrieb' && dauer === 'eintaegig' && s.beginnZeit < werte.beginnZeit
+                }
                 fehler={f.ende}
               />
             </Stack>

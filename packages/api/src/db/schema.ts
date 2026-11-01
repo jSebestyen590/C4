@@ -21,6 +21,7 @@ import type {
   MitgliedStatus,
   TeilnahmeAntwort,
   Quelle,
+  UmfrageErgebnisse,
   Verpackungseinheit,
   VorgangTyp,
 } from '@c4/shared';
@@ -448,6 +449,8 @@ export const eventKategorien = pgTable('event_kategorien', {
   art: text('art').$type<EventArt>().notNull(),
   /** Default participation circle of a `teilnahme` category (same coding as `events.teilnahmeStatus`). */
   teilnahmeStatus: text('teilnahme_status'),
+  /** `eintaegig` (null), `mehrtaegig` or `ganztaegig`. */
+  dauer: text('dauer'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;
@@ -617,6 +620,8 @@ export const eventVorlagen = pgTable('event_vorlagen', {
   endeZeit: text('ende_zeit').notNull(),
   /** Participation circle handed to events (same encoding as `events.teilnahmeStatus`). */
   teilnahmeStatus: text('teilnahme_status'),
+  /** Days of multi-day and whole-day events (null = 1). */
+  tage: integer('tage'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
@@ -737,3 +742,129 @@ export const schluesselUebergaben = pgTable('schluessel_uebergaben', {
   zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
 });
 export type UebergabeRow = typeof schluesselUebergaben.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Umfragen
+
+/** A poll; runs until the end of `endetAm` (Berlin) unless `beendetAm` is set. */
+export const umfragen = pgTable('umfragen', {
+  id: text('id').primaryKey(),
+  titel: text('titel').notNull(),
+  beschreibung: text('beschreibung'),
+  erstellerSub: text('ersteller_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  endetAm: date('endet_am', { mode: 'string' }).notNull(),
+  beendetAm: timestamp('beendet_am', { withTimezone: true }),
+  anonym: boolean('anonym').notNull(),
+  ergebnisse: text('ergebnisse').$type<UmfrageErgebnisse>().notNull(),
+  /** Comma-separated statuses of the circles. */
+  pflichtStatus: text('pflicht_status').notNull().default(''),
+  optionalStatus: text('optional_status').notNull().default(''),
+  /** Comma-separated days before the end. */
+  erinnerungenPflicht: text('erinnerungen_pflicht').notNull().default(''),
+  erinnerungenOptional: text('erinnerungen_optional').notNull().default(''),
+  /** Scheduling without an event. */
+  terminFrei: boolean('termin_frei').notNull().default(false),
+});
+export type UmfrageRow = typeof umfragen.$inferSelect;
+
+/** Posten (`art` posten, `ref` = Posten id) and members (`art` person, `ref` = sub) in a circle. */
+export const umfrageKreis = pgTable(
+  'umfrage_kreis',
+  {
+    umfrageId: text('umfrage_id')
+      .notNull()
+      .references(() => umfragen.id),
+    pflicht: boolean('pflicht').notNull(),
+    art: text('art').$type<'posten' | 'person'>().notNull(),
+    ref: text('ref').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.umfrageId, t.pflicht, t.art, t.ref] })],
+);
+
+export const umfrageFragen = pgTable('umfrage_fragen', {
+  id: text('id').primaryKey(),
+  umfrageId: text('umfrage_id')
+    .notNull()
+    .references(() => umfragen.id),
+  position: integer('position').notNull(),
+  text: text('text').notNull(),
+  freitext: boolean('freitext').notNull(),
+  /** Null = all answers may be picked. */
+  maxAntworten: integer('max_antworten'),
+});
+
+export const umfrageOptionen = pgTable('umfrage_optionen', {
+  id: text('id').primaryKey(),
+  frageId: text('frage_id')
+    .notNull()
+    .references(() => umfrageFragen.id),
+  position: integer('position').notNull(),
+  text: text('text').notNull(),
+});
+
+/** Who voted; `erneutNoetig` once an edit invalidated the vote. */
+export const umfrageAbgaben = pgTable(
+  'umfrage_abgaben',
+  {
+    umfrageId: text('umfrage_id')
+      .notNull()
+      .references(() => umfragen.id),
+    mitgliedSub: text('mitglied_sub')
+      .notNull()
+      .references(() => mitglieder.sub),
+    abgegebenAm: timestamp('abgegeben_am', { withTimezone: true }).notNull().defaultNow(),
+    erneutNoetig: boolean('erneut_noetig').notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.umfrageId, t.mitgliedSub] })],
+);
+
+/** One answer: an option, or a free text when `optionId` is null. */
+export const umfrageStimmen = pgTable('umfrage_stimmen', {
+  id: text('id').primaryKey(),
+  umfrageId: text('umfrage_id')
+    .notNull()
+    .references(() => umfragen.id),
+  frageId: text('frage_id')
+    .notNull()
+    .references(() => umfrageFragen.id),
+  mitgliedSub: text('mitglied_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  optionId: text('option_id').references(() => umfrageOptionen.id),
+  freitext: text('freitext'),
+});
+
+/** Scheduling poll settings; `eventId`/`optionId` once the chosen date became an event. */
+export const umfrageTermine = pgTable('umfrage_termine', {
+  umfrageId: text('umfrage_id')
+    .primaryKey()
+    .references(() => umfragen.id),
+  kategorieId: text('kategorie_id').notNull(),
+  /** Event created from this Vorlage (its Kategorie is `kategorieId`); null = Kategorie and Bedarf. */
+  vorlageId: text('vorlage_id'),
+  jeTermin: boolean('je_termin').notNull(),
+  beginn: text('beginn'),
+  ende: text('ende'),
+  dienstformId: text('dienstform_id'),
+  minimum: integer('minimum'),
+  wunsch: integer('wunsch'),
+  eventId: text('event_id'),
+  optionId: text('option_id'),
+});
+
+/** The date of an answer in a scheduling poll. */
+export const umfrageOptionTermine = pgTable('umfrage_option_termine', {
+  optionId: text('option_id')
+    .primaryKey()
+    .references(() => umfrageOptionen.id),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  /** Last day of a multi-day date; null for one-day Kategorien. */
+  bis: date('bis', { mode: 'string' }),
+  beginn: text('beginn'),
+  ende: text('ende'),
+  /** Optional name shown with the date. */
+  name: text('name'),
+});

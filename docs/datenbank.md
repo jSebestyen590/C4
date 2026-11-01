@@ -20,6 +20,10 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   Down-Datei je Migration, keine Lücken.
 - 0073–0075 (Schlüssel) löschen ihre Tabellen bzw. ihren Index, 0076 entzieht den Vorstandsposten
   `schluessel:verwalten` wieder; Rollback-Ziel nur für die Schlüssel: `0072_mitglieder_geburtstag_im_kalender`.
+- 0077–0091 (Umfragen, zusammengelegt vor dem Merge): 0077–0082 und 0087–0088 löschen ihre Tabellen, 0083–0085 und 0091
+  ihre Indizes, 0086 entzieht den Vorstandsposten `umfragen:verwalten` wieder. 0089–0090 fügen `event_kategorien.dauer`
+  und `event_vorlagen.tage` per `ALTER` hinzu; ihre Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Umfragen:
+  `0076_schluessel_vorstandsposten_rechte`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

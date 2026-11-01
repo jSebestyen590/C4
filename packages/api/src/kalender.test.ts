@@ -173,7 +173,11 @@ describe('istEindeutigVerletzt', () => {
 
 describe('artPruefen', () => {
   const dienste = { art: 'dienste', teilnahmeStatus: null } as const;
-  const teilnahme: KategorieInfo = { art: 'teilnahme', teilnahmeStatus: ['mitglied', 'em'] };
+  const teilnahme: KategorieInfo = {
+    art: 'teilnahme',
+    teilnahmeStatus: ['mitglied', 'em'],
+    dauer: 'eintaegig',
+  };
   const ohne = { schichten: [], teilnahmeStatus: null, eingeladen: [] };
 
   it('allows Schichten and no participation for a Dienste Kategorie', () => {
@@ -197,8 +201,8 @@ describe('artPruefen', () => {
 });
 
 describe('serieErsetzenPruefen', () => {
-  const dienste: KategorieInfo = { art: 'dienste', teilnahmeStatus: null };
-  const teilnahme: KategorieInfo = { art: 'teilnahme', teilnahmeStatus: [] };
+  const dienste: KategorieInfo = { art: 'dienste', teilnahmeStatus: null, dauer: 'eintaegig' };
+  const teilnahme: KategorieInfo = { art: 'teilnahme', teilnahmeStatus: [], dauer: 'eintaegig' };
 
   it('only allows replacing a Dienste event by a Dienste event', () => {
     expect(() => serieErsetzenPruefen(dienste, dienste)).not.toThrow();

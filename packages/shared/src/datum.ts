@@ -49,3 +49,15 @@ export function rechteZeitraum(
 /** Today as `YYYY-MM-DD` in the club's time zone; dates are compared as plain strings. */
 export const heuteBerlin = (jetzt = new Date()): string =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
+
+/** Hour of the day (0–23) in the club's time zone, e.g. for messages that go out in the morning. */
+export const stundeBerlin = (jetzt = new Date()): number =>
+  Number(
+    new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(jetzt)
+      .find((t) => t.type === 'hour')?.value ?? 0,
+  );

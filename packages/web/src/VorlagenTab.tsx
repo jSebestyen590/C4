@@ -15,8 +15,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { SCHICHT_ART_LABELS } from './i18n';
 import {
+  MAX_EVENT_TAGE,
   vorlageEingabeSchema,
   type EventArt,
+  type EventDauer,
   type VorlageDto,
   type VorlageEingabe,
 } from '@c4/shared';
@@ -52,6 +54,7 @@ import {
   type TeilnahmeWerte,
 } from './TeilnahmeFelder';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
+import { ZahlFeld } from './ZahlFeld';
 
 interface VorlageSchichtForm extends SchichtBasis {
   /** Days relative to the event date; only for Aufbau/Putzen. */
@@ -63,6 +66,8 @@ interface VorlageSchichtForm extends SchichtBasis {
 interface VorlageWerte extends KopfWerte {
   beginnZeit: string;
   endeZeit: string;
+  /** Days of multi-day and whole-day Kategorien. */
+  tage: number;
   teilnahme: TeilnahmeWerte;
   schichten: VorlageSchichtForm[];
 }
@@ -73,6 +78,7 @@ const leereVorlage = (): VorlageWerte => ({
   kategorieId: null,
   beginnZeit: '20:00',
   endeZeit: '23:00',
+  tage: 1,
   teilnahme: keineTeilnahme(),
   schichten: [],
 });
@@ -83,6 +89,7 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   kategorieId: v.kategorieId || null,
   beginnZeit: v.beginnZeit,
   endeZeit: v.endeZeit,
+  tage: v.tage,
   teilnahme: teilnahmeWerteAus(v.teilnahmeStatus),
   schichten: v.schichten.map((s) => ({
     key: neuerKey(),
@@ -104,6 +111,7 @@ function eingabe(
   w: VorlageWerte,
   archiviert: boolean,
   art: EventArt | null,
+  dauer: EventDauer,
 ): { fehler: string; schichtFehler?: Record<number, SchichtFehler> } | { json: VorlageEingabe } {
   const schichten = (art === 'teilnahme' ? [] : w.schichten).map((s) => ({
     ...(s.art === 'betrieb' ? {} : { tagVersatz: s.tagVersatz === '' ? undefined : s.tagVersatz }),
@@ -111,7 +119,7 @@ function eingabe(
     endeZeit: s.endeZeit,
     ...bedarfFelder(s),
   }));
-  const json = vorlageJson(w, schichten, archiviert, art);
+  const json = vorlageJson(w, schichten, archiviert, art, dauer);
   const geprueft = vorlageEingabeSchema.safeParse(json);
   if (!geprueft.success) {
     const { schichten: schichtFehler, allgemein } = fehlerAusIssues(geprueft.error.issues);
@@ -125,13 +133,16 @@ function vorlageJson<S>(
   schichten: S[],
   archiviert: boolean,
   art: EventArt | null,
+  dauer: EventDauer = 'eintaegig',
 ) {
+  const ganz = dauer === 'ganztaegig';
   return {
     titel: w.titel,
     beschreibung: w.beschreibung,
     kategorieId: w.kategorieId,
-    beginnZeit: w.beginnZeit,
-    endeZeit: w.endeZeit,
+    beginnZeit: ganz ? '00:00' : w.beginnZeit,
+    endeZeit: ganz ? '00:00' : w.endeZeit,
+    tage: dauer === 'eintaegig' ? 1 : w.tage,
     teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     schichten,
     archiviert,
@@ -152,7 +163,7 @@ function VorlageEditor({
   const [laeuft, setLaeuft] = useState(false);
 
   const speichern = async () => {
-    const e = eingabe(werte, vorlage?.archiviert ?? false, art);
+    const e = eingabe(werte, vorlage?.archiviert ?? false, art, dauer);
     if ('fehler' in e) {
       setSchichtFehler(e.schichtFehler ?? {});
       return setFehler(e.fehler);
@@ -176,6 +187,7 @@ function VorlageEditor({
   };
 
   const art = kategorien.liste.find((k) => k.id === werte.kategorieId)?.art ?? null;
+  const dauer = kategorien.liste.find((k) => k.id === werte.kategorieId)?.dauer ?? 'eintaegig';
   if (dienstformen.isPending || kategorien.isPending) return <Loader m="md" />;
   if (dienstformen.isError || kategorien.isError)
     return <Alert color="red">Die Daten konnten nicht geladen werden.</Alert>;
@@ -195,11 +207,28 @@ function VorlageEditor({
         }
         kategorien={kategorien.liste}
       />
-      <UhrzeitFelder
-        beginn={werte.beginnZeit}
-        ende={werte.endeZeit}
-        onChange={(z) => setWerte({ ...werte, ...z })}
-      />
+      {dauer !== 'ganztaegig' && (
+        <UhrzeitFelder
+          beginn={werte.beginnZeit}
+          ende={werte.endeZeit}
+          onChange={(z) => setWerte({ ...werte, ...z })}
+        />
+      )}
+      {dauer !== 'eintaegig' && (
+        <ZahlFeld
+          label="Tage"
+          description={
+            dauer === 'ganztaegig'
+              ? 'Wie viele Tage das Event dauert, vom ersten bis zum letzten Tag.'
+              : 'Über wie viele Tage es geht: das Ende liegt auf dem letzten Tag.'
+          }
+          min={1}
+          max={MAX_EVENT_TAGE}
+          allowDecimal={false}
+          value={werte.tage}
+          onChange={(v) => setWerte({ ...werte, tage: typeof v === 'number' ? v : 1 })}
+        />
+      )}
       {art === null && (
         <Text size="sm" c="dimmed">
           Wähle eine Kategorie. Danach erscheinen je nach Art die Schichten oder die Teilnahme.
@@ -282,7 +311,12 @@ export function VorlagenTab() {
   const archivWechseln = async (v: VorlageDto) => {
     try {
       if (kategorien.isPending) throw new Error('Die Kategorien werden noch geladen.');
-      const e = eingabe(werteAus(v), !v.archiviert, artVon(v.kategorieId));
+      const e = eingabe(
+        werteAus(v),
+        !v.archiviert,
+        artVon(v.kategorieId),
+        kategorien.liste.find((k) => k.id === v.kategorieId)?.dauer ?? 'eintaegig',
+      );
       if ('fehler' in e) throw new Error(e.fehler);
       await pruefen(await api.kalender.vorlagen[':id'].$put({ param: { id: v.id }, json: e.json }));
       await kalenderInvalidieren(qc);
@@ -319,7 +353,7 @@ export function VorlagenTab() {
                 {vorlageTitel(v, kategorien.liste)}
               </Text>
               <Text size="sm" c="dimmed">
-                {v.beginnZeit}–{v.endeZeit} Uhr ·{' '}
+                {v.tage > 1 ? `${v.tage} Tage` : `${v.beginnZeit}–${v.endeZeit} Uhr`} ·{' '}
                 {artVon(v.kategorieId) === 'teilnahme'
                   ? 'Teilnahme'
                   : `${v.schichten.length} ${v.schichten.length === 1 ? 'Schicht' : 'Schichten'}`}

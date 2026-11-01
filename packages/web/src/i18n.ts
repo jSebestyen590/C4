@@ -9,7 +9,9 @@ import type {
   Quelle,
   Role,
   EventArt,
+  EventDauer,
   SchichtArt,
+  UmfrageErgebnisse,
   VorgangTyp,
 } from '@c4/shared';
 
@@ -63,6 +65,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'kalender:einrichten': 'Kalender einrichten',
   'schluessel:lesen': 'Schlüssel ansehen und übergeben',
   'schluessel:verwalten': 'Schlüssel verwalten',
+  'umfragen:lesen': 'Umfragen ansehen, erstellen und abstimmen',
+  'umfragen:verwalten': 'Alle Umfragen verwalten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -77,6 +81,22 @@ export const EVENT_ART_LABELS: Record<EventArt, string> = {
   teilnahme: 'Teilnahme',
 };
 
+/** How long the events of a Kategorie last. */
+export const EVENT_DAUER_LABELS: Record<EventDauer, { titel: string; beschreibung: string }> = {
+  eintaegig: {
+    titel: 'Eintägig',
+    beschreibung: 'Datum mit Beginn und Ende, höchstens 24 Stunden.',
+  },
+  mehrtaegig: {
+    titel: 'Mehrtägig',
+    beschreibung: 'Start- und Enddatum, jeweils mit Uhrzeit (z. B. ein Wochenende).',
+  },
+  ganztaegig: {
+    titel: 'Ganztägig',
+    beschreibung: 'Nur Start- und Enddatum, ohne Uhrzeiten (z. B. eine Fahrt).',
+  },
+};
+
 export const SCHICHT_ART_LABELS: Record<SchichtArt, string> = {
   aufbau: 'Aufbau',
   betrieb: 'Betrieb',
@@ -88,6 +108,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   kalender: 'Kalender',
   geburtstag: 'Geburtstage',
   schluessel: 'Schlüssel',
+  umfrage: 'Umfragen',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -119,7 +140,41 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       titel: 'Schlüsselübergaben',
       beschreibung: 'Wenn jemand eine Übergabe eines Schlüssels an dich oder von dir einträgt.',
     },
+    'umfrage.neu': {
+      titel: 'Neue Umfragen',
+      beschreibung: 'Wenn jemand eine Umfrage erstellt, bei der du abstimmen sollst oder kannst.',
+    },
+    'umfrage.erinnerung': {
+      titel: 'Erinnerungen an Umfragen',
+      beschreibung:
+        'Morgens vor dem Ende einer Umfrage, solange du nicht abgestimmt hast. Bei Umfragen, bei denen du abstimmen musst, kommen sie immer.',
+    },
+    'umfrage.termin': {
+      titel: 'Termin steht fest',
+      beschreibung:
+        'Wenn aus einer Terminumfrage ein Event angelegt wurde, und ob du dort eingetragen bist.',
+    },
+    'umfrage.erneut_abstimmen': {
+      titel: 'Erneut abstimmen',
+      beschreibung: 'Wenn eine Umfrage so geändert wurde, dass deine Stimme nicht mehr zählt.',
+    },
   };
+
+/** When the voters see the results of a poll. */
+export const UMFRAGE_ERGEBNISSE_LABELS: Record<
+  UmfrageErgebnisse,
+  { titel: string; beschreibung: string }
+> = {
+  sofort: { titel: 'Sofort', beschreibung: 'Alle sehen den Zwischenstand jederzeit.' },
+  nach_abstimmung: {
+    titel: 'Nach der eigenen Stimme',
+    beschreibung: 'Den Zwischenstand sieht, wer schon abgestimmt hat.',
+  },
+  nach_ende: {
+    titel: 'Erst nach dem Ende',
+    beschreibung: 'Bis dahin sieht nur, wer die Umfrage verwaltet, die Ergebnisse.',
+  },
+};
 
 /** "Am Tag selbst", "15 Minuten vorher", "1 Stunde vorher", "1 Tag vorher". */
 export function minutenVorherLabel(minuten: number): string {
