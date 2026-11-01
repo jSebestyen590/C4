@@ -46,7 +46,7 @@ export function TrichterVerwaltungPage() {
           Zurück zum Trichter
         </Group>
       </Anchor>
-      <Group justify="space-between" wrap="nowrap">
+      <Group justify="space-between" gap="sm">
         <Title order={2}>Trichter verwalten</Title>
         <Button size="md" leftSection={<IconPlus size={18} />} onClick={() => setBearbeiten('neu')}>
           Trichter anlegen
