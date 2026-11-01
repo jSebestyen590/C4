@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -8,13 +7,14 @@ import {
   Paper,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   Title,
 } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { datumAnzeigen, type UmfrageListeDto } from '@c4/shared';
-import { umfrageLink, useUmfragen } from '../umfrageDaten';
+import { PersonLink, umfrageLink, useUmfragen } from '../umfrageDaten';
 
 /** Badges for the caller's state: mandatory/optional, voted, vote again, anonymous, ended. */
 export function UmfrageBadges({ u }: Readonly<{ u: UmfrageListeDto }>) {
@@ -63,20 +63,21 @@ export function UmfrageBadges({ u }: Readonly<{ u: UmfrageListeDto }>) {
 export const laufzeitText = (u: UmfrageListeDto) =>
   u.laeuft ? `läuft bis ${datumAnzeigen(u.endetAm)}` : 'beendet';
 
+/** Card on phones; the whole card opens the poll. */
 function UmfrageKarte({ u }: Readonly<{ u: UmfrageListeDto }>) {
   return (
-    <Paper withBorder p="md" opacity={u.laeuft ? 1 : 0.75}>
+    <Paper
+      component={Link}
+      to={umfrageLink(u.id)}
+      withBorder
+      p="md"
+      opacity={u.laeuft ? 1 : 0.75}
+      style={{ color: 'inherit', textDecoration: 'none' }}
+    >
       <Stack gap="xs">
-        <Anchor
-          component={Link}
-          to={umfrageLink(u.id)}
-          fw={600}
-          c="inherit"
-          underline="hover"
-          style={{ overflowWrap: 'anywhere' }}
-        >
+        <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
           {u.titel}
-        </Anchor>
+        </Text>
         <UmfrageBadges u={u} />
         <Text size="sm" c="dimmed">
           {laufzeitText(u)} · {u.abgaben} von {u.kreisGroesse} abgestimmt
@@ -86,16 +87,69 @@ function UmfrageKarte({ u }: Readonly<{ u: UmfrageListeDto }>) {
   );
 }
 
+/** Table from `sm` upward (like Mitglieder and Schlüssel); the whole row opens the poll. */
+function UmfrageTabelle({ liste }: Readonly<{ liste: UmfrageListeDto[] }>) {
+  const navigate = useNavigate();
+  return (
+    <Table.ScrollContainer minWidth={720} visibleFrom="sm">
+      <Table verticalSpacing="xs">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Umfrage</Table.Th>
+            <Table.Th>Status</Table.Th>
+            <Table.Th>Läuft bis</Table.Th>
+            <Table.Th>Abgestimmt</Table.Th>
+            <Table.Th>Erstellt von</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {liste.map((u) => (
+            <Table.Tr
+              key={u.id}
+              opacity={u.laeuft ? 1 : 0.75}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                // Links (e.g. the creator) act on their own.
+                if ((e.target as HTMLElement).closest('a')) return;
+                navigate(umfrageLink(u.id));
+              }}
+            >
+              <Table.Td>
+                {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+                <Link to={umfrageLink(u.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <Text component="span" fw={600} style={{ overflowWrap: 'anywhere' }}>
+                    {u.titel}
+                  </Text>
+                </Link>
+              </Table.Td>
+              <Table.Td>
+                <UmfrageBadges u={u} />
+              </Table.Td>
+              <Table.Td>{u.laeuft ? datumAnzeigen(u.endetAm) : 'beendet'}</Table.Td>
+              <Table.Td>
+                {u.abgaben} von {u.kreisGroesse}
+              </Table.Td>
+              <Table.Td>{u.ersteller ? <PersonLink person={u.ersteller} /> : '–'}</Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
 function Abschnitt({ titel, liste }: Readonly<{ titel: string; liste: UmfrageListeDto[] }>) {
   if (liste.length === 0) return null;
+  // Cards on phones, a table from `sm` upward.
   return (
     <>
       <Title order={3}>{titel}</Title>
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+      <SimpleGrid cols={1} spacing="sm" hiddenFrom="sm">
         {liste.map((u) => (
           <UmfrageKarte key={u.id} u={u} />
         ))}
       </SimpleGrid>
+      <UmfrageTabelle liste={liste} />
     </>
   );
 }

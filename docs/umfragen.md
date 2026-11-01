@@ -4,6 +4,9 @@ Jedes Mitglied kann Umfragen erstellen. Eine Umfrage hat eine oder mehrere Frage
 eigene Antwort (Freitext), ein Ablaufdatum und zwei Personenkreise: wer abstimmen **muss** und wer abstimmen **darf**.
 Seiten: `/umfragen` (Liste), `/umfragen/neu`, `/umfragen/:id`, `/umfragen/:id/bearbeiten`.
 
+Die Liste gliedert sich in „Offen für dich“, „Laufend“ und „Beendet“. Auf dem Handy zeigt sie Kacheln, ab `sm` eine
+Tabelle (Umfrage, Status, Läuft bis, Abgestimmt, Erstellt von). Die ganze Kachel bzw. Zeile öffnet die Umfrage.
+
 ## Formular
 
 Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, danach erscheint das passende Formular
