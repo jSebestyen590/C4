@@ -15,7 +15,7 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
 | `schichten`, `schicht_bedarfe`                           | Schicht nur mit Zeit + Art `aufbau`/`betrieb`/`putzen` (kein Name, Anzeige per `schichtBezeichnung`, z. B. „Betrieb 20:00–04:00“). Betrieb: Bedarf je Dienstform mit Minimum und Wunsch. Aufbau/Putzen: `minimum`/`wunsch` direkt an der Schicht |
 | `dienste`                                                | Eintrag: Mitglied **oder** Externe, Dienstform (nur Betrieb, sonst `null`), Kommentar, eingetragen von                                                                                                                                           |
 | `event_vorlagen`, `vorlage_schichten`, `vorlage_bedarfe` | Vorlagen: Event mit Beginn-/End-Uhrzeit, Betrieb-Schichten nur mit Uhrzeiten, Aufbau/Putzen mit `tagVersatz` (ganze Tage relativ zum Event, auch negativ) + Uhrzeiten (`ausVorlage`, Europe/Berlin inkl. Sommerzeit)                             |
-| `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`) und Events im eigenen Kalender-Abo                                                                                                                              |
+| `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`); bei Dienste-Events steht hier nur `absage` („nicht verfügbar“) und Events im eigenen Kalender-Abo                                                              |
 | `kalender_serien`                                        | Serien: Name, Vorlage, Regel, Wochentage, Wochen, Start/Ende, `aktiv`; Id = Slug des ersten Namens                                                                                                                                               |
 | `serien_termine`                                         | Jeder Tag, für den eine Serie schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`                                                                                                                         |
 | `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag                                                                                                                                                    |     |
@@ -147,15 +147,39 @@ Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**
   Antwort `teilnahme`) UND keine Antwort `absage`. Der Kreis wird bei jeder Abfrage **dynamisch** gegen die aktuellen
   Mitglieder ausgewertet, spätere Neumitglieder mit passendem Status sind bei künftigen Events automatisch dabei.
 - **Selbst entscheiden:** `PUT /api/kalender/events/:id/teilnahme` `{ teilnahme: boolean }` (`kalender:lesen`, Profilzeile
-  nötig, nur für sich selbst). 409 bei abgesagten Events und Events ohne Teilnahme. Wer im Kreis ist, trägt sich aus („Ich
-  nehme nicht teil“), alle anderen tragen sich ein („Ich nehme teil“).
+  nötig, nur für sich selbst). 409 bei abgesagten Events und Events ohne Teilnahme. `teilnahme: false` speichert eine Absage,
+  auch für Personen außerhalb des Kreises. Die Event-Seite kennt drei Zustände (`meineTeilnahme`): „Du nimmst teil“ + „Ich kann
+  nicht“, „Du hast abgesagt“ + „Ich nehme doch teil“, „Du hast noch nicht geantwortet“ + beide Buttons.
 - **Anzeige:** `EventDto` hat `teilnahmeStatus`, `teilnahmen` (alle Mitglieder mit Bezug: Person, Zustand
-  `teilnahme`/`absage`, `eingeladen`), `ichNehmeTeil` (`null` ohne Teilnahme) und `imAbo`. Die Event-Seite zeigt eine Liste
+  `teilnahme`/`absage`, `eingeladen`), `ichNehmeTeil` (`null` ohne Teilnahme), `meineTeilnahme` (`teilnahme`/`absage`/`null`) und `imAbo`. Die Event-Seite zeigt eine Liste
   „Nehmen teil“ und „Abgesagt“ (für alle sichtbar), Kalender-Karten ein Badge „Du nimmst teil“/„Teilnahme“; „Nur meine“
   schließt Events mit eigener Teilnahme ein. `GET /kalender/events[/:id]` kennt dafür den Aufrufer.
 - **Push:** Art `kalender.teilnahme_erinnerung` (Standard 60 Minuten vorher) für Teilnehmende nicht abgesagter Events;
   `kalender.aenderung` geht bei Verschiebung, Absage und Wiederaufnahme auch an Teilnehmende (nicht an die handelnde
   Person). Neu Eingeladene bekommen keine eigene Benachrichtigung.
+
+## Absage (nicht verfügbar)
+
+Bei Dienste-Events kann man sich für das **ganze Event** als nicht verfügbar melden. So ist dokumentiert, wer abgesagt hat.
+Gespeichert wird das in `event_teilnahmen` mit `antwort = 'absage'` (`eingeladen = false`); „wieder verfügbar“ löscht die Zeile.
+
+- **Route:** `PUT /api/kalender/events/:id/verfuegbarkeit` `{ verfuegbar: boolean, bestaetigt?: boolean }` (`kalender:lesen`,
+  Profilzeile nötig, nur für sich selbst), Antwort `{ verfuegbar }`. 409 bei abgesagten Events und Teilnahme-Events (dafür gibt es
+  `…/teilnahme`).
+- **Bestätigung:** Hat man in dem Event eigene Dienste, antwortet die Route auf `verfuegbar: false` mit 409
+  `{ error, dienste: n }`. Die Event-Seite zeigt den Text im Dialog („Austragen und absagen“) und sendet erneut mit
+  `bestaetigt: true`; dann werden die eigenen Dienste gelöscht und die Absage gesetzt.
+- **Eintragen hebt die Absage auf:** `POST /schichten/:id/dienste` löscht die Absage der eingetragenen Person (auch wenn andere
+  sie eintragen) und antwortet `201 { id, absageAufgehoben }`. Der Eintragen-Dialog markiert Absagen in der Mitgliederauswahl mit
+  „(nicht verfügbar)“, warnt bei der Auswahl und meldet „Deine Absage wurde aufgehoben.“
+- **Anzeige:** `EventDto.nichtVerfuegbar` (Mitglieder, nur Dienste-Events), `ichBinNichtVerfuegbar`. Die Event-Seite zeigt unter den
+  Schichten den Button „Ich bin nicht verfügbar“ / „Ich bin doch verfügbar“ und für alle die Liste „Nicht verfügbar (n)“; bei
+  abgesagten Events nur die Liste.
+- **Serien:** Absagen zählen bei Dienste-Events nicht als Eintrag, das Event bleibt „unverändert“ (nicht „angepasst“). Wird es von der
+  Serie gelöscht, gehen seine Absagen mit.
+- **Wechsel der Art:** Dienste → Teilnahme behält die Absagen als Teilnahme-Absagen (kein Eintrag in der 409-Liste); Teilnahme →
+  Dienste entfernt Teilnahmen und Einladungen wie bisher, Absagen bleiben.
+- **Push:** „Dienste fehlen“ geht nicht an Personen, die für das Event abgesagt haben (auch nicht an die verantwortliche Person).
 
 ## Verantwortliche:r
 
@@ -228,7 +252,7 @@ eindeutig). Pro Event gibt es keine eigene Einstellung mehr.
 
 Das allgemeine Modul ist in [benachrichtigungen.md](./benachrichtigungen.md) beschrieben; der Kalender nutzt vier Arten:
 `kalender.erinnerung` (vor der eigenen Schicht, einstellbar; Titel „Bar-Dienst in 30 Minuten“, bei Aufbau/Putzen „Aufbau in 30 Minuten“), `kalender.fehlende_dienste` (zu den globalen Zeitpunkten
-vor Beginn, solange das Event rot ist; je Event und Zeitpunkt einmal, nur der kleinste bereits erreichte, nie rückwirkend; für EM standardmäßig aus) und `kalender.aenderung` (Event verschoben,
+vor Beginn, solange das Event rot ist; je Event und Zeitpunkt einmal, nur der kleinste bereits erreichte, nie rückwirkend; für EM standardmäßig aus; nicht an Personen, die für das Event nicht verfügbar sind) und `kalender.aenderung` (Event verschoben,
 abgesagt/wieder aktiv, eigene Schicht geändert oder entfernt, von anderen ein- oder ausgetragen; die handelnde Person bekommt
 nichts). Ein- und Austragen durch andere: „Leonard hat dich für die 20-Uhr-Schicht bei „Barabend“ am 01.11. eingetragen.“ bzw. „… aus der 20-Uhr-Schicht … ausgetragen.“
 (Betrieb: „die/der 20-Uhr-Schicht“, Aufbau: „den/dem Aufbau“, Putzen: „das/dem Putzen“; die handelnde Person als Benutzername, sonst Vorname; Titel „Du wurdest eingetragen/ausgetragen“; Link zum Event) und `kalender.teilnahme_erinnerung` (vor einem Event, an dem man teilnimmt, einstellbar, Standard 60 Minuten). Einstellungen: Seite „Benachrichtigungen“ (`/benachrichtigungen`); „Mein Kalender“ verlinkt dorthin. Die Job-Aufgaben

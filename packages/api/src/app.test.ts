@@ -45,6 +45,7 @@ import type { InventarStore } from './inventar';
 import {
   EntfernungBestaetigen,
   KalenderKonflikt,
+  VerfuegbarkeitBestaetigen,
   KalenderUngueltig,
   SerieBetroffen,
   tokenHash,
@@ -484,7 +485,10 @@ function makeKalenderFake() {
       mitgliedSubs: [],
       teilnehmerSubs: [],
     })),
-    dienstEintragen: vi.fn<KalenderStore['dienstEintragen']>(async () => 'd-neu'),
+    dienstEintragen: vi.fn<KalenderStore['dienstEintragen']>(async () => ({
+      id: 'd-neu',
+      absageAufgehoben: false,
+    })),
     dienstHolen: vi.fn(async (id: string) => dienste.get(id)),
     dienstEntfernen: vi.fn(async (id: string) => dienste.delete(id)),
     externe: vi.fn<KalenderStore['externe']>(async () => []),
@@ -528,6 +532,7 @@ function makeKalenderFake() {
     meineDienste: vi.fn<KalenderStore['meineDienste']>(async () => []),
     meineEvents: vi.fn<KalenderStore['meineEvents']>(async () => []),
     teilnahmeSetzen: vi.fn<KalenderStore['teilnahmeSetzen']>(async () => true),
+    verfuegbarkeitSetzen: vi.fn<KalenderStore['verfuegbarkeitSetzen']>(async () => true),
     eventAboSetzen: vi.fn<KalenderStore['eventAboSetzen']>(async () => true),
     erinnerungsTeilnahmen: vi.fn<KalenderStore['erinnerungsTeilnahmen']>(async () => []),
     erinnerungsDienste: vi.fn<KalenderStore['erinnerungsDienste']>(async () => []),
@@ -2787,6 +2792,14 @@ describe('kalender', () => {
       'm2',
     );
     expect(t.kalender.dienstEintragen).toHaveBeenCalledTimes(4);
+    // Entering a member who had declared themselves unavailable tells the UI the absage is gone.
+    t.kalender.dienstEintragen.mockResolvedValueOnce({ id: 'd-neu', absageAufgehoben: true });
+    const aufgehoben = await post('member-token', { dienstformId: 'f1' });
+    expect(await aufgehoben.json()).toEqual({ id: 'd-neu', absageAufgehoben: true });
+    t.kalender.dienstEintragen.mockResolvedValueOnce({ id: 'd-neu', absageAufgehoben: true });
+    const fremdAufgehoben = await post('member-token', { dienstformId: 'f1', mitgliedSub: 'r' });
+    expect(await fremdAufgehoben.json()).toEqual({ id: 'd-neu', absageAufgehoben: true });
+
     expect((await post('vorstand-token', { dienstformId: 'f1', mitgliedSub: 'r' })).status).toBe(
       201,
     );
@@ -2938,6 +2951,9 @@ describe('kalender', () => {
       teilnahmeStatus: null,
       teilnahmen: [],
       ichNehmeTeil: null,
+      meineTeilnahme: null,
+      nichtVerfuegbar: [],
+      ichBinNichtVerfuegbar: false,
       verantwortlich: person,
       imAbo: false,
       schichten: [
@@ -3317,6 +3333,75 @@ describe('kalender', () => {
       expect((await put()).status).toBe(409);
     });
 
+    it('stores an absage for a Teilnahme event even outside the circle', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const res = await t.app.request(
+        '/api/kalender/events/e1/teilnahme',
+        json('reader-token', 'PUT', { teilnahme: false }),
+      );
+      expect(res.status).toBe(200);
+      expect(t.kalender.teilnahmeSetzen).toHaveBeenCalledWith('e1', 'r', false);
+    });
+
+    it('lets everyone set only their own availability, with a profile row', async () => {
+      const t = makeApp();
+      const put = (token: string, body: unknown) =>
+        t.app.request('/api/kalender/events/e1/verfuegbarkeit', json(token, 'PUT', body));
+      expect((await put('reader-token', { verfuegbar: false })).status).toBe(400);
+      mitProfil(t);
+      const res = await put('reader-token', { verfuegbar: false });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ verfuegbar: false });
+      expect(t.kalender.verfuegbarkeitSetzen).toHaveBeenLastCalledWith('e1', 'r', false, false);
+      await put('reader-token', { verfuegbar: false, bestaetigt: true });
+      expect(t.kalender.verfuegbarkeitSetzen).toHaveBeenLastCalledWith('e1', 'r', false, true);
+      await put('reader-token', { verfuegbar: true });
+      expect(t.kalender.verfuegbarkeitSetzen).toHaveBeenLastCalledWith('e1', 'r', true, false);
+      expect((await put('reader-token', { verfuegbar: 'ja' })).status).toBe(400);
+      expect((await put('reader-token', {})).status).toBe(400);
+      expect(
+        (await t.app.request('/api/kalender/events/e1/verfuegbarkeit', { method: 'PUT' })).status,
+      ).toBe(401);
+    });
+
+    it('asks for confirmation when the absage would remove own Dienste', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const put = (body: unknown) =>
+        t.app.request('/api/kalender/events/e1/verfuegbarkeit', json('reader-token', 'PUT', body));
+      t.kalender.verfuegbarkeitSetzen.mockRejectedValueOnce(new VerfuegbarkeitBestaetigen(2));
+      const res = await put({ verfuegbar: false });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error:
+          'Du bist für 2 Dienste eingetragen. Wenn du dich als nicht verfügbar meldest, wirst du ausgetragen.',
+        dienste: 2,
+      });
+      // Confirmed: the store removes the Dienste and stores the absage.
+      expect((await put({ verfuegbar: false, bestaetigt: true })).status).toBe(200);
+    });
+
+    it('maps missing events and conflicts of the availability', async () => {
+      const t = makeApp();
+      mitProfil(t);
+      const put = () =>
+        t.app.request(
+          '/api/kalender/events/e1/verfuegbarkeit',
+          json('reader-token', 'PUT', { verfuegbar: false }),
+        );
+      t.kalender.verfuegbarkeitSetzen.mockResolvedValueOnce(undefined);
+      expect((await put()).status).toBe(404);
+      t.kalender.verfuegbarkeitSetzen.mockRejectedValueOnce(
+        new KalenderKonflikt('Das Event ist abgesagt.'),
+      );
+      expect((await put()).status).toBe(409);
+      t.kalender.verfuegbarkeitSetzen.mockRejectedValueOnce(
+        new KalenderKonflikt('Bei Events mit Teilnahme …'),
+      );
+      expect((await put()).status).toBe(409);
+    });
+
     it('adds and removes an event in the own feed', async () => {
       const t = makeApp();
       mitProfil(t);
@@ -3369,6 +3454,9 @@ describe('kalender', () => {
           },
         ],
         ichNehmeTeil: true,
+        meineTeilnahme: 'teilnahme' as const,
+        nichtVerfuegbar: [],
+        ichBinNichtVerfuegbar: false,
         verantwortlich: null,
         imAbo: false,
       };
@@ -3431,6 +3519,9 @@ describe('kalender', () => {
       teilnahmeStatus: null,
       teilnahmen: [],
       ichNehmeTeil: null,
+      meineTeilnahme: null,
+      nichtVerfuegbar: [],
+      ichBinNichtVerfuegbar: false,
       verantwortlich: null,
       imAbo: false,
     });

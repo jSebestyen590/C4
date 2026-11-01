@@ -8,6 +8,8 @@ import {
   KalenderUngueltig,
   schichtAbgleich,
   serieErsetzenPruefen,
+  VerfuegbarkeitBestaetigen,
+  zaehltAlsEintrag,
   zeitraumGrenzen,
   zusammenfuehrenPlan,
 } from './kalender';
@@ -211,5 +213,22 @@ describe('serieErsetzenPruefen', () => {
       'nicht durch eines mit Teilnahme',
     );
     expect(() => serieErsetzenPruefen(dienste, teilnahme)).toThrow(KalenderUngueltig);
+  });
+});
+
+describe('zaehltAlsEintrag', () => {
+  it('ignores the absage of a Dienste event but counts every answer of a Teilnahme event', () => {
+    expect(zaehltAlsEintrag('absage', false)).toBe(false);
+    expect(zaehltAlsEintrag('absage', true)).toBe(true);
+    expect(zaehltAlsEintrag('teilnahme', false)).toBe(true);
+    expect(zaehltAlsEintrag(null, false)).toBe(true);
+  });
+});
+
+describe('VerfuegbarkeitBestaetigen', () => {
+  it('names the number of Dienste', () => {
+    expect(new VerfuegbarkeitBestaetigen(1).dienste).toBe(1);
+    expect(new VerfuegbarkeitBestaetigen(1).message).toContain('einen Dienst');
+    expect(new VerfuegbarkeitBestaetigen(3).message).toContain('3 Dienste');
   });
 });

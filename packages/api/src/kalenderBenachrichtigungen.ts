@@ -194,6 +194,8 @@ export async function fehlendeDienste(
     if (minuten === undefined) continue;
     try {
       const verantwortlich = event.verantwortlich?.sub;
+      // Members who declared themselves unavailable for the event are never reminded.
+      const nichtVerfuegbar = event.nichtVerfuegbar.map((p) => p.sub);
       const nachricht = {
         art: FEHLENDE_DIENSTE,
         titel: 'Es fehlen noch Dienste',
@@ -201,7 +203,7 @@ export async function fehlendeDienste(
         url: eventUrl(event.id),
       };
       // The responsible person gets the notice regardless of their setting, and only once.
-      if (verantwortlich) {
+      if (verantwortlich && !nichtVerfuegbar.includes(verantwortlich)) {
         await benachrichtigungen.senden({
           ...nachricht,
           subs: [verantwortlich],
@@ -212,7 +214,7 @@ export async function fehlendeDienste(
       await benachrichtigungen.senden({
         ...nachricht,
         subs: 'alle',
-        ...(verantwortlich && { ausser: [verantwortlich] }),
+        ausser: [...new Set([...(verantwortlich ? [verantwortlich] : []), ...nichtVerfuegbar])],
         dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}`,
       });
     } catch (err) {

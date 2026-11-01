@@ -636,6 +636,13 @@ export interface TeilnahmeDto {
   eingeladen: boolean;
 }
 
+/** Own availability for a `dienste` event: `verfuegbar: false` stores an absage (and removes own Dienste once confirmed). */
+export const verfuegbarkeitSchema = z.object({
+  verfuegbar: z.boolean(),
+  bestaetigt: z.boolean().optional(),
+});
+export type VerfuegbarkeitEingabe = z.infer<typeof verfuegbarkeitSchema>;
+
 export interface EventDto {
   id: string;
   /** As entered; may be empty. Show `anzeigeTitel` instead. */
@@ -661,8 +668,17 @@ export interface EventDto {
   verantwortlich: Extract<DienstPerson, { art: 'mitglied' }> | null;
   /** Everybody with a relation to the participation, taking part or declined. */
   teilnahmen: TeilnahmeDto[];
-  /** Whether the caller takes part; null without participation (or when the caller is unknown). */
+  /** Whether the caller takes part; null without participation (or when the caller is unknown). Derived from `meineTeilnahme`. */
   ichNehmeTeil: boolean | null;
+  /**
+   * The caller's state for a `teilnahme` event; null = no answer and not in the circle, or not a
+   * `teilnahme` event / unknown caller.
+   */
+  meineTeilnahme: TeilnahmeAntwort | null;
+  /** `dienste` events only: members who declared themselves unavailable for the whole event. */
+  nichtVerfuegbar: Extract<DienstPerson, { art: 'mitglied' }>[];
+  /** The caller is in `nichtVerfuegbar`. */
+  ichBinNichtVerfuegbar: boolean;
   /** The caller added the event to their calendar feed. */
   imAbo: boolean;
 }
