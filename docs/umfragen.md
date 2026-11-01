@@ -51,7 +51,9 @@ Eine Umfrage mit `termin` (Schalter „Terminfindung“ im Formular, `umfrageTer
 
 - **Aufbau**: genau eine Frage, ihre Antworten sind Termine (`umfrage_option_termine`). Den Antworttext erzeugt die API
   (`terminText`, z. B. „Di, 11.11.2026“, „Di, 11.11.2026, 19:00–21:00“ oder „Fr, 10.07.2026 – So, 12.07.2026“), die
-  Termine werden sortiert. Man kreuzt alle passenden Termine an (beliebig viele, kein Freitext) oder **„An keinem der
+  Termine werden sortiert. Jeder Termin kann einen optionalen **Namen** haben (`name`, höchstens 60 Zeichen, Migration
+  `0094`), der hinter dem Datum steht: „Sa, 07.11.2026 · StuK“. Dasselbe Datum darf mit verschiedenen Namen mehrfach
+  vorkommen. Man kreuzt alle passenden Termine an (beliebig viele, kein Freitext) oder **„An keinem der
   Termine“**: eine Stimme ohne Antwort (`leerErlaubt`), sie zählt als abgestimmt (keine Erinnerungen) und erscheint im
   Ergebnis als „An keinem der Termine“ (`keiner`, mit Namen bei öffentlichen Umfragen). Ohne Frage gilt „Welche Termine
   passen dir?“. Terminumfragen sind nie anonym.
@@ -62,7 +64,8 @@ Eine Umfrage mit `termin` (Schalter „Terminfindung“ im Formular, `umfrageTer
   prüft den Rest (400).
 - **Uhrzeit und Dauer** (ohne Vorlage, nach der Dauer der Kategorie):
   - eintägig: eine Uhrzeit für alle Termine (`beginn`/`ende`) oder je Termin (`jeTermin`); Ende vor Beginn = nächster Tag.
-  - mehrtägig: jede Antwort ist ein Zeitraum (`bis`, Migration `0091`) mit Uhrzeiten wie oben.
+  - mehrtägig: jede Antwort ist ein Zeitraum (`bis`, Migration `0091`) mit Uhrzeiten wie oben. Im Formular wählt man
+    den Zeitraum in einem Feld (`ZeitraumFeld`, `@mantine/dates`): im Kalender erst den ersten, dann den letzten Tag.
   - ganztägig: jede Antwort ist ein Zeitraum ohne Uhrzeiten.
   - Mit Vorlage sind die Antworten nur Starttage; Uhrzeiten, Anzahl der Tage, Schichten und Bedarf kommen aus der Vorlage.
 - **Kategorie ohne Vorlage**: bei Teilnahme werden die Zustimmenden eingeladen (Kreis „niemand vorab“). Bei Diensten ist ein
@@ -118,7 +121,7 @@ Siehe [benachrichtigungen.md](./benachrichtigungen.md), Code in `packages/api/sr
 
 ## Datenmodell
 
-Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0093`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
+Migrationen `0077`–`0085` (Rechte der Vorstandsposten: `0086`, Terminfindung: `0087`–`0088`, `0091`–`0094`), Store in `packages/api/src/umfragen.ts`, DTOs in `packages/api/src/umfrageAnsicht.ts`, Regeln
 in `packages/shared/src/umfragen.ts`.
 
 | Tabelle                  | Inhalt                                                                                                                                                          |
@@ -129,7 +132,7 @@ in `packages/shared/src/umfragen.ts`.
 | `umfrage_optionen`       | Feste Antworten einer Frage (`position`, `text`)                                                                                                                |
 | `umfrage_abgaben`        | Wer abgestimmt hat (`abgegeben_am`, `erneut_noetig`)                                                                                                            |
 | `umfrage_termine`        | Terminfindung: Kategorie, Uhrzeiten, Bedarf, entstandenes Event (`event_id`, `option_id`)                                                                       |
-| `umfrage_option_termine` | Datum (und ggf. Uhrzeit) einer Antwort                                                                                                                          |
+| `umfrage_option_termine` | Datum (ggf. Uhrzeit und Name) einer Antwort                                                                                                                     |
 | `umfrage_stimmen`        | Einzelne Antworten: `option_id` oder `freitext`                                                                                                                 |
 
 ## Rechte

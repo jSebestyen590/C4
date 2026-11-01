@@ -865,4 +865,6 @@ export const umfrageOptionTermine = pgTable('umfrage_option_termine', {
   bis: date('bis', { mode: 'string' }),
   beginn: text('beginn'),
   ende: text('ende'),
+  /** Optional name shown with the date. */
+  name: text('name'),
 });

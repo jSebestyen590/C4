@@ -71,6 +71,8 @@ const uhrzeitSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
 
+export const UMFRAGE_TERMIN_NAME_MAX = 60;
+
 /** A date to pick in a scheduling poll; the times only when they are set per date. */
 export const optionTerminSchema = z
   .object({
@@ -79,6 +81,13 @@ export const optionTerminSchema = z
     bis: datumSchema.nullish().transform((v) => v ?? null),
     beginn: uhrzeitSchema.nullable(),
     ende: uhrzeitSchema.nullable(),
+    /** Optional name shown with the date, e.g. "StuK". */
+    name: z
+      .string()
+      .trim()
+      .max(UMFRAGE_TERMIN_NAME_MAX, `Höchstens ${UMFRAGE_TERMIN_NAME_MAX} Zeichen erlaubt.`)
+      .nullish()
+      .transform((v) => v || null),
   })
   .refine((t) => t.bis === null || t.bis >= t.datum, {
     message: 'Das Ende liegt vor dem Beginn.',
@@ -149,6 +158,7 @@ export function terminNormalisieren<O extends { termin: OptionTermin | null }>(
               bis: ohneBis ? null : o.termin.bis,
               beginn: ohneZeiten ? null : o.termin.beginn,
               ende: ohneZeiten ? null : o.termin.ende,
+              name: o.termin.name,
             },
           }
         : o,
@@ -239,9 +249,14 @@ const wochentagFormat = new Intl.DateTimeFormat('de-DE', { weekday: 'short', tim
 
 /**
  * "Di, 11.11.2026", "Di, 11.11.2026, 19:00–21:00", "Fr, 10.07.2026 – So, 12.07.2026" or
- * "Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00".
+ * "Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00", followed by the name ("Di, 11.11.2026 · StuK").
  */
 export function terminText(t: OptionTermin): string {
+  const datum = terminDatumText(t);
+  return t.name ? `${datum} · ${t.name}` : datum;
+}
+
+function terminDatumText(t: OptionTermin): string {
   const tag = (datum: string) =>
     `${wochentagFormat.format(new Date(`${datum}T12:00:00Z`)).replace('.', '')}, ${datumAnzeigen(datum)}`;
   const zeiten = t.beginn !== null && t.ende !== null;
@@ -458,9 +473,10 @@ export type UmfrageEingabe = z.input<typeof umfrageEingabeSchema>;
 
 /** Times per date only with `jeTermin`; otherwise those of the poll apply. */
 const zeitenNachModus = (o: OptionTermin, t: UmfrageTermin): OptionTermin =>
-  t.jeTermin ? o : { datum: o.datum, bis: o.bis, beginn: null, ende: null };
+  t.jeTermin ? o : { datum: o.datum, bis: o.bis, beginn: null, ende: null, name: o.name };
 
-const terminSchluessel = (o: OptionTermin) => `${o.datum} ${o.beginn ?? ''} ${o.bis ?? ''}`;
+const terminSchluessel = (o: OptionTermin) =>
+  `${o.datum} ${o.beginn ?? ''} ${o.bis ?? ''} ${(o.name ?? '').toLowerCase()}`;
 
 /** Rules of a scheduling poll: one question of dates, not anonymous, a title for the event. */
 function terminFehler(

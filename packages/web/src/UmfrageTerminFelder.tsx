@@ -14,12 +14,14 @@ import {
   bedarfZusammen,
   heuteBerlin,
   tagNachher,
+  UMFRAGE_TERMIN_NAME_MAX,
   type EventDauer,
   type EventKategorieDto,
   type UmfrageDetailDto,
   type VorlageDto,
 } from '@c4/shared';
 import { DatumFeld } from './DatumFeld';
+import { ZeitraumFeld } from './ZeitraumFeld';
 import { EVENT_ART_LABELS, EVENT_DAUER_LABELS } from './i18n';
 import { useDienstformen, useEventKategorien, useVorlagen, vorlageTitel } from './kalenderDaten';
 import { ZahlFeld } from './ZahlFeld';
@@ -38,6 +40,8 @@ export interface TerminDatum {
   bis: string;
   beginn: string;
   ende: string;
+  /** Optional name shown with the date. */
+  name: string;
 }
 
 export interface TerminWerte {
@@ -62,6 +66,7 @@ const neuesDatum = (datum: string, vorher?: TerminDatum): TerminDatum => ({
   bis: datum,
   beginn: vorher?.beginn ?? '',
   ende: vorher?.ende ?? '',
+  name: '',
 });
 
 export const neueTerminWerte = (): TerminWerte => ({
@@ -98,6 +103,7 @@ export function terminWerteAus(u: UmfrageDetailDto): TerminWerte | null {
       bis: o.termin?.bis ?? o.termin?.datum ?? '',
       beginn: o.termin?.beginn ?? '',
       ende: o.termin?.ende ?? '',
+      name: o.termin?.name ?? '',
     })),
   };
 }
@@ -152,6 +158,7 @@ export function terminEingabeAus(t: TerminWerte, kategorie: EventKategorieDto | 
               bis: !vorlage && dauer !== 'eintaegig' ? d.bis || d.datum : null,
               beginn: zeit(d.beginn),
               ende: zeit(d.ende),
+              name: d.name.trim() || null,
             },
           })),
       },
@@ -352,14 +359,24 @@ export function UmfrageTerminFelder({
         <Paper key={d.key} withBorder p="sm">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
-              <DatumFeld
-                size="md"
-                style={{ flex: 1 }}
-                label={mitBis ? `Termin ${i + 1}: von` : `Termin ${i + 1}`}
-                loeschbar={false}
-                value={d.datum}
-                onWert={(datum) => setDatum(i, { datum, bis: d.bis < datum ? datum : d.bis })}
-              />
+              {mitBis ? (
+                <ZeitraumFeld
+                  style={{ flex: 1 }}
+                  label={`Termin ${i + 1}`}
+                  von={d.datum}
+                  bis={d.bis}
+                  onWert={({ von, bis }) => setDatum(i, { datum: von, bis })}
+                />
+              ) : (
+                <DatumFeld
+                  size="md"
+                  style={{ flex: 1 }}
+                  label={`Termin ${i + 1}`}
+                  loeschbar={false}
+                  value={d.datum}
+                  onWert={(datum) => setDatum(i, { datum, bis: d.bis < datum ? datum : d.bis })}
+                />
+              )}
               <ActionIcon
                 variant="subtle"
                 color="red"
@@ -376,19 +393,17 @@ export function UmfrageTerminFelder({
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            {mitBis && (
-              <DatumFeld
-                size="md"
-                label="bis"
-                loeschbar={false}
-                min={d.datum}
-                value={d.bis}
-                onWert={(bis) => setDatum(i, { bis })}
-              />
-            )}
             {mitZeiten && werte.jeTermin && (
               <ZeitFelder beginn={d.beginn} ende={d.ende} onChange={(z) => setDatum(i, z)} />
             )}
+            <TextInput
+              size="md"
+              label="Name (optional)"
+              placeholder="z. B. StuK"
+              maxLength={UMFRAGE_TERMIN_NAME_MAX}
+              value={d.name}
+              onChange={(e) => setDatum(i, { name: e.currentTarget.value })}
+            />
           </Stack>
         </Paper>
       ))}

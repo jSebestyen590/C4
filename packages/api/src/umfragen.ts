@@ -291,7 +291,9 @@ export function createUmfragenStore(db: Db): UmfragenStore {
                 return {
                   id: o.id,
                   text: o.text,
-                  termin: t ? { datum: t.datum, bis: t.bis, beginn: t.beginn, ende: t.ende } : null,
+                  termin: t
+                    ? { datum: t.datum, bis: t.bis, beginn: t.beginn, ende: t.ende, name: t.name }
+                    : null,
                 };
               }),
           })),

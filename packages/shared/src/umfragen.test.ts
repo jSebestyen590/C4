@@ -284,21 +284,37 @@ describe('Terminumfragen', () => {
     expect(u.termin).toMatchObject({ vorlageId: null });
     // Without own times per date the given ones are dropped.
     expect(frage.optionen.map((o) => [o.text, o.termin])).toEqual([
-      ['Mi, 11.11.2026', { datum: '2026-11-11', bis: null, beginn: null, ende: null }],
-      ['Do, 12.11.2026', { datum: '2026-11-12', bis: null, beginn: null, ende: null }],
+      ['Mi, 11.11.2026', { datum: '2026-11-11', bis: null, beginn: null, ende: null, name: null }],
+      ['Do, 12.11.2026', { datum: '2026-11-12', bis: null, beginn: null, ende: null, name: null }],
     ]);
   });
 
-  it('writes date ranges and times into the answer', () => {
-    expect(terminText({ datum: '2026-11-11', bis: null, beginn: '18:00', ende: '20:00' })).toBe(
-      'Mi, 11.11.2026, 18:00–20:00',
+  it('writes date ranges, times and the name into the answer', () => {
+    const t = (bis: string | null, beginn: string | null, ende: string | null, name = null) => ({
+      datum: bis === null ? '2026-11-11' : '2026-07-10',
+      bis,
+      beginn,
+      ende,
+      name,
+    });
+    expect(terminText(t(null, '18:00', '20:00'))).toBe('Mi, 11.11.2026, 18:00–20:00');
+    expect(terminText(t('2026-07-12', null, null))).toBe('Fr, 10.07.2026 – So, 12.07.2026');
+    expect(terminText(t('2026-07-12', '18:00', '14:00'))).toBe(
+      'Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00',
     );
-    expect(terminText({ datum: '2026-07-10', bis: '2026-07-12', beginn: null, ende: null })).toBe(
-      'Fr, 10.07.2026 – So, 12.07.2026',
-    );
-    expect(
-      terminText({ datum: '2026-07-10', bis: '2026-07-12', beginn: '18:00', ende: '14:00' }),
-    ).toBe('Fr, 10.07.2026 18:00 – So, 12.07.2026 14:00');
+    expect(terminText({ ...t(null, null, null), name: 'StuK' })).toBe('Mi, 11.11.2026 · StuK');
+  });
+
+  it('keeps names and allows one date twice with different names', () => {
+    const u = terminUmfrage();
+    u.fragen[0]!.optionen[0]!.termin!.name = '  StuK ';
+    u.fragen[0]!.optionen[1]!.termin!.datum = u.fragen[0]!.optionen[0]!.termin!.datum;
+    u.fragen[0]!.optionen[1]!.termin!.name = 'TV';
+    const r = umfrageEingabeSchema.parse(u);
+    expect(r.fragen[0]!.optionen.map((o) => o.termin?.name)).toEqual(['StuK', 'TV']);
+    expect(r.fragen[0]!.optionen[0]!.text).toMatch(/ · StuK$/);
+    u.fragen[0]!.optionen[1]!.termin!.name = 'stuk';
+    expect(umfrageEingabeSchema.safeParse(u).success).toBe(false);
   });
 
   it('needs one question, unique dates and no anonymity, but no title', () => {
@@ -319,7 +335,7 @@ describe('Terminumfragen', () => {
 
   it('checks times and end dates against the Kategorie', () => {
     const o = (bis: string | null, beginn: string | null = null, ende: string | null = null) => ({
-      termin: { datum: '2026-07-10', bis, beginn, ende },
+      termin: { datum: '2026-07-10', bis, beginn, ende, name: null },
     });
     const t = { ...termin, vorlageId: null };
     expect(terminDauerFehler(t, [o(null)], 'eintaegig')).toBeNull();
@@ -343,6 +359,7 @@ describe('Terminumfragen', () => {
       bis: null,
       beginn: null,
       ende: null,
+      name: null,
     });
     expect(
       terminSpanne(
