@@ -9,6 +9,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -73,9 +74,17 @@ export function MitgliederPage() {
   const [suche, setSuche] = useState('');
   const [sortierung, setSortierung] = useState<Sortierung>('username');
   const [aufsteigend, setAufsteigend] = useState(true);
+  const [mitDeaktivierten, setMitDeaktivierten] = useState(false);
+  const zeigeDeaktivierte = istAdmin && mitDeaktivierten;
+  // Own cache entry: the default `['mitglieder']` list feeds the pickers and must never contain deactivated members.
   const mitglieder = useQuery({
-    queryKey: ['mitglieder'],
-    queryFn: async () => unwrap(await api.mitglieder.$get()),
+    queryKey: zeigeDeaktivierte ? ['mitglieder', { deaktivierte: true }] : ['mitglieder'],
+    queryFn: async () =>
+      unwrap(
+        zeigeDeaktivierte
+          ? await api.mitglieder.$get({ query: { deaktivierte: '1' } } as never)
+          : await api.mitglieder.$get(),
+      ),
   });
 
   const sortieren = (spalte: Sortierung) => {
@@ -114,6 +123,14 @@ export function MitgliederPage() {
           w={{ base: '100%', sm: 280 }}
         />
       </Flex>
+      {istAdmin && (
+        <Switch
+          label="Deaktivierte anzeigen"
+          size="md"
+          checked={mitDeaktivierten}
+          onChange={(e) => setMitDeaktivierten(e.currentTarget.checked)}
+        />
+      )}
       <Select
         hiddenFrom="sm"
         label="Sortieren nach"
@@ -134,7 +151,7 @@ export function MitgliederPage() {
       )}
       <SimpleGrid cols={1} hiddenFrom="sm">
         {treffer.map((m) => (
-          <Paper key={m.sub} withBorder p="md">
+          <Paper key={m.sub} withBorder p="md" style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
             <Stack gap="xs">
               {/* Only the upper part links to the detail page; the contact icons are links themselves. */}
               <Link
@@ -159,7 +176,12 @@ export function MitgliederPage() {
                         {nebenname(m)}
                       </Text>
                     )}
-                    {!m.aktiviert && (
+                    {m.deaktiviert && (
+                      <Badge color="gray" variant="light" mt={4}>
+                        Deaktiviert
+                      </Badge>
+                    )}
+                    {!m.aktiviert && !m.deaktiviert && (
                       <Badge color="yellow" variant="light" mt={4}>
                         Noch nicht aktiviert
                       </Badge>
@@ -205,7 +227,7 @@ export function MitgliederPage() {
             </Table.Thead>
             <Table.Tbody>
               {treffer.map((m) => (
-                <Table.Tr key={m.sub}>
+                <Table.Tr key={m.sub} style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
@@ -213,7 +235,12 @@ export function MitgliederPage() {
                       <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
                         <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
                       </Link>
-                      {!m.aktiviert && (
+                      {m.deaktiviert && (
+                        <Badge color="gray" variant="light">
+                          Deaktiviert
+                        </Badge>
+                      )}
+                      {!m.aktiviert && !m.deaktiviert && (
                         <Badge color="yellow" variant="light">
                           Noch nicht aktiviert
                         </Badge>

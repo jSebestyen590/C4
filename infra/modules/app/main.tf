@@ -163,6 +163,9 @@ resource "aws_iam_role_policy" "lambda" {
           "cognito-idp:ListUsersInGroup",
           "cognito-idp:AdminAddUserToGroup",
           "cognito-idp:AdminRemoveUserFromGroup",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminUserGlobalSignOut",
         ]
         Resource = aws_cognito_user_pool.this.arn
       },

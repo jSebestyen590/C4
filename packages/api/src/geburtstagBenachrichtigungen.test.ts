@@ -21,13 +21,18 @@ const zeile = (sub: string, extra: Partial<MitgliedRow> = {}): MitgliedRow => ({
   geburtsdatum: null,
   geburtstagImKalender: null,
   status: 'mitglied',
+  deaktiviertAm: null,
   aktualisiertAm: new Date(),
   ...extra,
 });
 
 function setup(zeilen: MitgliedRow[], usernames: Record<string, string> = {}) {
   const fake = createFakeBenachrichtigungenStore(() =>
-    zeilen.map((z) => ({ sub: z.sub, status: z.status as MitgliedStatus })),
+    zeilen.map((z) => ({
+      sub: z.sub,
+      status: z.status as MitgliedStatus,
+      deaktiviert: !!z.deaktiviertAm,
+    })),
   );
   const versendet: { endpoint: string; titel: string; text: string; url: string }[] = [];
   const b = createBenachrichtigungen({
@@ -133,6 +138,17 @@ describe('geburtstagErinnerungen', () => {
     await t.abo('x');
     await t.run(MORGENS_10);
     expect(t.versendet).toHaveLength(0);
+  });
+
+  it('sends nothing about a deactivated member and nothing to a deactivated recipient', async () => {
+    const weg = setup([geburtstagskind({ deaktiviertAm: new Date() }), zeile('x')]);
+    await weg.abo('x');
+    await weg.run(MORGENS_10);
+    expect(weg.versendet).toHaveLength(0);
+    const empfaenger = setup([geburtstagskind(), zeile('x', { deaktiviertAm: new Date() })]);
+    await empfaenger.abo('x');
+    await empfaenger.run(MORGENS_10);
+    expect(empfaenger.versendet).toHaveLength(0);
   });
 
   it('respects a deactivated setting', async () => {

@@ -3,7 +3,10 @@ import { KONTAKTKANAELE, type Kontaktkanal, type MitgliedStatus } from '@c4/shar
 import type { Db } from './db/client';
 import { mitglieder, type MitgliedRow } from './db/schema';
 
-export type MitgliedDaten = Omit<MitgliedRow, 'sub' | 'aktualisiertAm' | 'status'>;
+export type MitgliedDaten = Omit<
+  MitgliedRow,
+  'sub' | 'aktualisiertAm' | 'status' | 'deaktiviertAm'
+>;
 
 /** Comma-separated database value -> known channels in their canonical order. */
 export const kanaeleLesen = (wert: string | null): Kontaktkanal[] => {
@@ -28,7 +31,16 @@ export interface MitgliederStore {
   speichern(sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus): Promise<void>;
   /** Admin only. Returns false when the member has no profile row yet. */
   statusSetzen(sub: string, status: MitgliedStatus): Promise<boolean>;
+  /**
+   * Admin only. Sets or clears `deaktiviert_am`. A member without a profile row gets an empty one
+   * (default status), like in the invite flow.
+   */
+  deaktiviertSetzen(sub: string, deaktiviert: boolean): Promise<void>;
 }
+
+/** Whether the profile row belongs to a deactivated account. */
+export const istDeaktiviert = (row: Pick<MitgliedRow, 'deaktiviertAm'> | undefined) =>
+  !!row?.deaktiviertAm;
 
 export function createMitgliederStore(db: Db): MitgliederStore {
   return {
@@ -53,6 +65,17 @@ export function createMitgliederStore(db: Db): MitgliederStore {
         .where(eq(mitglieder.sub, sub))
         .returning({ sub: mitglieder.sub });
       return rows.length > 0;
+    },
+    async deaktiviertSetzen(sub, deaktiviert) {
+      const jetzt = new Date();
+      const deaktiviertAm = deaktiviert ? jetzt : null;
+      await db
+        .insert(mitglieder)
+        .values({ sub, vorname: '', nachname: '', deaktiviertAm })
+        .onConflictDoUpdate({
+          target: mitglieder.sub,
+          set: { deaktiviertAm, aktualisiertAm: jetzt },
+        });
     },
   };
 }

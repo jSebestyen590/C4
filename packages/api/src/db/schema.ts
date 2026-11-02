@@ -65,6 +65,8 @@ export const mitglieder = pgTable('mitglieder', {
   /** Whether other members see the birthday; null (never chosen) counts as true. */
   geburtstagImKalender: boolean('geburtstag_im_kalender'),
   status: text('status').$type<MitgliedStatus>().notNull().default('anwaerter'),
+  /** Set when an admin deactivated the account; null = active. */
+  deaktiviertAm: timestamp('deaktiviert_am', { withTimezone: true }),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });
 export type MitgliedRow = typeof mitglieder.$inferSelect;

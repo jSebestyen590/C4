@@ -1,10 +1,13 @@
 import {
   AdminAddUserToGroupCommand,
   AdminCreateUserCommand,
+  AdminDisableUserCommand,
+  AdminEnableUserCommand,
   AdminGetUserCommand,
   AdminUpdateUserAttributesCommand,
   AdminListGroupsForUserCommand,
   AdminRemoveUserFromGroupCommand,
+  AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
   ListUsersCommand,
   ListUsersInGroupCommand,
@@ -37,6 +40,8 @@ export interface UserAdmin {
   /** Throws UsernameTakenError when another user already uses the name. */
   setPreferredUsername(username: string, preferred: string): Promise<void>;
   setGroups(username: string, groups: string[]): Promise<string[]>;
+  /** Disabling also signs the user out everywhere (refresh tokens); enabling only re-allows the login. */
+  setEnabled(kontoName: string, enabled: boolean): Promise<void>;
 }
 
 export function createCognitoUserAdmin(userPoolId: string, region: string): UserAdmin {
@@ -148,6 +153,20 @@ export function createCognitoUserAdmin(userPoolId: string, region: string): User
         }
         throw err;
       }
+    },
+    async setEnabled(kontoName, enabled) {
+      if (enabled) {
+        await client.send(
+          new AdminEnableUserCommand({ UserPoolId: userPoolId, Username: kontoName }),
+        );
+        return;
+      }
+      await client.send(
+        new AdminDisableUserCommand({ UserPoolId: userPoolId, Username: kontoName }),
+      );
+      await client.send(
+        new AdminUserGlobalSignOutCommand({ UserPoolId: userPoolId, Username: kontoName }),
+      );
     },
     async setGroups(username, groups) {
       const current = await groupsOf(username);

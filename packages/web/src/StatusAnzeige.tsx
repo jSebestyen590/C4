@@ -10,6 +10,7 @@ const BADGE_FARBE: Record<MitgliedStatus, string> = {
   anwaerter: 'orange',
   mitglied: 'green',
   em: 'gray',
+  extern: 'blue',
 };
 
 /** [light, dark] shade of the username per status; both keep enough contrast on their background. */
@@ -17,6 +18,7 @@ const NAME_FARBE: Record<MitgliedStatus, [string, string]> = {
   anwaerter: ['orange.9', 'orange.4'],
   mitglied: ['green.9', 'green.4'],
   em: ['gray.7', 'gray.5'],
+  extern: ['blue.9', 'blue.4'],
 };
 
 /** Text color for a member's username, matching the active light/dark mode. */

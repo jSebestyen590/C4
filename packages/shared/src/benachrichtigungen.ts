@@ -28,7 +28,7 @@ export const BENACHRICHTIGUNGS_ARTEN = [
   {
     key: 'kalender.fehlende_dienste',
     bereich: 'kalender',
-    standardAktiv: { anwaerter: true, mitglied: true, em: false },
+    standardAktiv: { anwaerter: true, mitglied: true, em: false, extern: true },
     minuten: null,
   },
   {

@@ -21,7 +21,7 @@ import type {
   KalenderStore,
 } from './kalender';
 
-function setup(mitglieder: { sub: string; status: MitgliedStatus }[]) {
+function setup(mitglieder: { sub: string; status: MitgliedStatus; deaktiviert?: boolean }[]) {
   const fake = createFakeBenachrichtigungenStore(() => mitglieder);
   const versendet: { endpoint: string; titel: string; text: string; url: string }[] = [];
   const ergebnisse = new Map<string, PushErgebnis>();
@@ -41,6 +41,24 @@ function setup(mitglieder: { sub: string; status: MitgliedStatus }[]) {
 }
 
 describe('senden', () => {
+  it('never delivers to deactivated members, whether named or addressed to everybody', async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied', deaktiviert: true },
+    ]);
+    await t.abo('a');
+    await t.abo('b');
+    const eingabe = { art: 'kalender.aenderung', titel: 'T', text: 'X', url: '/app/x' };
+    expect(await t.b.senden({ ...eingabe, subs: ['a', 'b'] })).toBe(1);
+    expect(await t.b.senden({ ...eingabe, subs: 'alle' })).toBe(1);
+    expect(t.versendet.map((v) => v.endpoint)).toEqual([
+      'https://push.example/a-1',
+      'https://push.example/a-1',
+    ]);
+    // the subscription of the deactivated member stays stored
+    expect(t.abos.some((a) => a.mitgliedSub === 'b')).toBe(true);
+  });
+
   it('sends to every device of recipients with an active setting', async () => {
     const t = setup([
       { sub: 'a', status: 'mitglied' },

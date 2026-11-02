@@ -1,5 +1,6 @@
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { DeaktiviertSeite } from './DeaktiviertSeite';
 import { meSchema, type AppConfig, type Permission } from '@c4/shared';
 
 export interface AuthState {
@@ -12,6 +13,8 @@ export interface AuthState {
   getAccessToken: () => string | null;
   /** Exchanges the refresh token for a new access token; null if that is not possible. */
   refreshAccessToken: () => Promise<string | null>;
+  /** Replaces the app with the lock page; called when any API request reports a deactivated account. */
+  kontoDeaktiviert: () => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -51,6 +54,8 @@ export function AuthProvider({
   const [ready, setReady] = useState(false);
   // Effective permissions as computed by the API (status + groups); null until loaded.
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
+  // Set when the API answers 403 `deaktiviert`; the app is then replaced by a lock page.
+  const [deaktiviert, setDeaktiviert] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -75,7 +80,16 @@ export function AuthProvider({
   useEffect(() => {
     if (!accessToken) return;
     void fetch('/api/me', { headers: { authorization: `Bearer ${accessToken}` } })
-      .then(async (res) => meSchema.parse(await res.json()).permissions as Permission[])
+      .then(async (res) => {
+        if (res.status === 403) {
+          const body = (await res.json().catch(() => null)) as { deaktiviert?: boolean } | null;
+          if (body?.deaktiviert) {
+            setDeaktiviert(true);
+            return [];
+          }
+        }
+        return meSchema.parse(await res.json()).permissions as Permission[];
+      })
       .catch(() => [])
       .then(setPermissions);
   }, [accessToken]);
@@ -100,11 +114,13 @@ export function AuthProvider({
         if (!user?.refresh_token) return null;
         return (await manager.signinSilent().catch(() => null))?.access_token ?? null;
       },
+      kontoDeaktiviert: () => setDeaktiviert(true),
     };
   }, [user, manager, config, permissions]);
 
   // Wait for the permissions so protected pages do not flash "no access".
   if (!ready || (user && permissions === null)) return null;
+  if (user && deaktiviert) return <DeaktiviertSeite onAbmelden={value.logout} />;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

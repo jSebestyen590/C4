@@ -11,6 +11,16 @@ export interface AuthUser {
 }
 export type TokenVerifier = (token: string) => Promise<AuthUser>;
 
+/** What the profile row says about the member's access. */
+export interface Profil {
+  status: MitgliedStatus;
+  deaktiviert: boolean;
+}
+
+/** Thrown (as cause of the 403) for deactivated accounts; the error body then carries `deaktiviert: true`. */
+export const DEAKTIVIERT = 'deaktiviert';
+export const DEAKTIVIERT_MELDUNG = 'Dein Account ist deaktiviert.';
+
 export type AuthEnv = {
   Variables: { user: AuthUser; accessToken: string; permissions: Permission[] };
 };
@@ -38,11 +48,12 @@ export function createCognitoVerifier(
 /**
  * Verifies the token and derives the effective permissions from the member's status (database), the
  * token's groups and the permissions of the Posten the member currently holds (database). A member
- * without a profile row counts as a candidate.
+ * without a profile row counts as a candidate. Deactivated members are rejected with 403 (the access
+ * token stays valid for up to an hour after Cognito disabled the account, so the database decides).
  */
 export function authenticate(
   verify: TokenVerifier,
-  statusOf: (sub: string) => Promise<MitgliedStatus | undefined>,
+  profilOf: (sub: string) => Promise<Profil | undefined>,
   postenRechteOf: (sub: string) => Promise<Permission[]>,
 ) {
   return createMiddleware<AuthEnv>(async (c, next) => {
@@ -56,8 +67,11 @@ export function authenticate(
       throw new HTTPException(401, { message: 'Invalid token' });
     }
     const user = c.get('user');
-    const [status, extra] = await Promise.all([statusOf(user.sub), postenRechteOf(user.sub)]);
-    c.set('permissions', permissionsFor(user.groups, status ?? 'anwaerter', extra));
+    const [profil, extra] = await Promise.all([profilOf(user.sub), postenRechteOf(user.sub)]);
+    if (profil?.deaktiviert) {
+      throw new HTTPException(403, { message: DEAKTIVIERT_MELDUNG, cause: DEAKTIVIERT });
+    }
+    c.set('permissions', permissionsFor(user.groups, profil?.status ?? 'anwaerter', extra));
     await next();
   });
 }

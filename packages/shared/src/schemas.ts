@@ -69,6 +69,19 @@ export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
 export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
 export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;
 
+export const setMitgliedAktivSchema = z.object({ aktiv: z.boolean() });
+export type SetMitgliedAktivInput = z.infer<typeof setMitgliedAktivSchema>;
+
+/** What an admin still has to sort out before deactivating a member (nothing is changed automatically). */
+export interface DeaktivierenVorschau {
+  /** Future Dienste (from today, Berlin time). */
+  dienste: { eventId: string; titel: string; datum: string }[];
+  /** Posten the member currently holds. */
+  posten: { id: string; name: string }[];
+  /** Keys the member currently holds. */
+  schluessel: { id: string; name: string }[];
+}
+
 export const createUserSchema = z.object({
   email: z.email(),
   groups: z.array(roleSchema).default([]),
@@ -152,6 +165,8 @@ export const mitgliedSchema = z.object({
   geburtsdatum: z.string().nullable(),
   /** Whether the birthday is shown in the calendar to other members. */
   geburtstagImKalender: z.boolean(),
+  /** True when an admin deactivated the account (no login, hidden from lists and circles). */
+  deaktiviert: z.boolean(),
   /** Roles of the member; only sent to administrators. */
   rollen: z.array(z.string()).optional(),
   /** Posten the member currently holds (not archived, started, not ended). */

@@ -65,6 +65,12 @@ describe('permissions', () => {
       expect(hasPermission(['admin'], status, 'schluessel:verwalten')).toBe(true);
     }
   });
+  it('extern has the same permissions as anwaerter, from its own list', () => {
+    expect(STATUS_PERMISSIONS.extern).toEqual(STATUS_PERMISSIONS.anwaerter);
+    expect(STATUS_PERMISSIONS.extern).not.toBe(STATUS_PERMISSIONS.anwaerter);
+    expect(hasPermission([], 'extern', 'kalender:lesen')).toBe(true);
+    expect(hasPermission([], 'extern', 'events:verwalten')).toBe(false);
+  });
   it('admins keep the permissions of their status', () => {
     expect(permissionsFor(['admin'], 'em')).toEqual(
       expect.arrayContaining([...STATUS_PERMISSIONS.em, 'users:manage']),

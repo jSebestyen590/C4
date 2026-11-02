@@ -69,6 +69,25 @@ describe('umfrageErinnerungen', () => {
     ]);
   });
 
+  it('leaves deactivated members out of the circles', async () => {
+    const t = await setup();
+    const sender = { senden: vi.fn(async (s: Sendung) => (t.gesendet.push(s), 1)) };
+    const k = kontext(new Date('2026-11-03T08:00:00Z'));
+    const mitDeaktiviertem: UmfrageKontext = {
+      ...k,
+      mitglieder: k.mitglieder.map((m) =>
+        m.sub === 'n' ? { ...m, deaktiviertAm: new Date() } : m,
+      ),
+    };
+    await umfrageErinnerungen(
+      sender,
+      t.store,
+      async () => mitDeaktiviertem,
+      new Date('2026-11-03T08:00:00Z'),
+    );
+    expect(t.gesendet.map((s) => s.subs)).toEqual([['m']]);
+  });
+
   it('skips ended polls and days without a reminder', async () => {
     const t = await setup();
     await t.lauf('2026-11-05T10:00:00Z');

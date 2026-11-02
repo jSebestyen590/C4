@@ -75,6 +75,7 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   anwaerter: { maennlich: 'Anwärter', weiblich: 'Anwärterin', neutral: 'Anwärter:in' },
   mitglied: { maennlich: 'Mitglied', weiblich: 'Mitglied', neutral: 'Mitglied' },
   em: { maennlich: 'EM', weiblich: 'EM', neutral: 'EM' },
+  extern: { maennlich: 'Externer', weiblich: 'Externe', neutral: 'Externe:r' },
 };
 
 /** Kind of an event Kategorie: events have either Dienste (Schichten) or participants. */
