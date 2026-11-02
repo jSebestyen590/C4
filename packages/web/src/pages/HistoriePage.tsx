@@ -139,7 +139,7 @@ function MitgliedBlock({
   }
 
   return (
-    <Stack gap="xs" className="zs-block">
+    <Stack gap={4} className="zs-block">
       <Text component="div" size="lg">
         <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
           <StatusName status={m.status}>{anzeigename(m)}</StatusName>
@@ -290,7 +290,7 @@ function PostenAnsicht({ ids, posten }: Readonly<{ ids: string[]; posten: Posten
             };
           });
         return (
-          <Stack key={p.id} gap="xs" className="zs-block">
+          <Stack key={p.id} gap={4} className="zs-block">
             <Title order={4}>
               <Link
                 to={`/posten/${encodeURIComponent(p.id)}`}
@@ -391,7 +391,9 @@ export function HistoriePage() {
   return (
     <Stack>
       <ZeitstrahlStyle />
-      <Title order={2}>Historie</Title>
+      <Title order={2} data-druck="aus">
+        Historie
+      </Title>
       <Stack data-druck="aus">
         <SegmentedControl
           size="md"

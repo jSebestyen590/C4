@@ -1,5 +1,5 @@
 import { Box, Tooltip } from '@mantine/core';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
   balkenPosition,
   mantineFarbe,
@@ -25,19 +25,28 @@ export interface ZeitZeile {
   balken: ZeitBalken[];
 }
 
-const LABEL_BREITE = 140;
 const ZEILE_HOEHE = 28;
 const BALKEN_HOEHE = 20;
+const ACHSE_HOEHE = 18;
 
 /** Layout and print rules shared by all timelines; render once per page. */
 export const ZEITSTRAHL_CSS = `
-.zs-chart { min-width: var(--zs-min); }
-@page { size: A4 landscape; margin: 10mm; }
+.zs-inner {
+  display: grid;
+  /* The label column is only as wide as its longest label, capped so long names wrap. */
+  grid-template-columns: fit-content(96px) minmax(var(--zs-min), 1fr);
+}
+@media (min-width: 36em) {
+  .zs-inner { grid-template-columns: fit-content(200px) minmax(var(--zs-min), 1fr); }
+}
+/* No margin: browsers then leave out their own header and footer (URL, date, page number). */
+@page { size: A4 landscape; margin: 0; }
 @media print {
+  body { padding: 10mm; }
   .mantine-AppShell-header, .mantine-AppShell-navbar, [data-druck="aus"] { display: none !important; }
   .mantine-AppShell-main { padding: 0 !important; }
-  .zs-scroll { overflow: visible !important; }
-  .zs-chart, .zs-inner { min-width: 0 !important; }
+  .zs-scroll { overflow: visible !important; padding-bottom: 0 !important; }
+  .zs-inner { --zs-min: 0px !important; }
   .zs-block { break-inside: avoid; }
   .mantine-Tooltip-tooltip { display: none !important; }
   * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -80,7 +89,7 @@ function Balken({ b, bereich }: Readonly<{ b: ZeitBalken; bereich: Bereich }>) {
         aria-label={b.titel}
         style={{
           position: 'absolute',
-          top: (ZEILE_HOEHE - BALKEN_HOEHE) / 2,
+          top: `calc(50% - ${BALKEN_HOEHE / 2}px)`,
           height: BALKEN_HOEHE,
           left: `${links}%`,
           width: `${breite}%`,
@@ -109,13 +118,11 @@ export function Zeitstrahl({
   zeilen,
   beschriftung,
 }: Readonly<{ bereich: Bereich; zeilen: ZeitZeile[]; beschriftung: string }>) {
-  const zeilenStil = { display: 'flex', alignItems: 'stretch', minHeight: ZEILE_HOEHE } as const;
+  const linie = '1px solid var(--mantine-color-default-border)';
   const labelStil = {
     position: 'sticky',
     left: 0,
     zIndex: 2,
-    flex: `0 0 ${LABEL_BREITE}px`,
-    width: LABEL_BREITE,
     boxSizing: 'border-box',
     paddingRight: 8,
     background: 'var(--mantine-color-body)',
@@ -125,6 +132,11 @@ export function Zeitstrahl({
     lineHeight: 1.2,
     minWidth: 0,
   } as const;
+  // Lines above the first and below the last row frame the chart.
+  const rand = (i: number) => ({
+    borderTop: linie,
+    ...(i === zeilen.length - 1 ? { borderBottom: linie } : {}),
+  });
   return (
     <Box
       className="zs-scroll"
@@ -137,49 +149,42 @@ export function Zeitstrahl({
         className="zs-inner"
         style={{
           width: '100%',
-          minWidth: `calc(${LABEL_BREITE}px + var(--zs-min))`,
-          // Needs a definite px value in calc(); set per instance.
+          // Needs a definite px value; set per instance.
           ['--zs-min' as string]: `${mindestBreite(bereich)}px`,
         }}
       >
-        <div style={zeilenStil}>
-          <div style={{ ...labelStil, zIndex: 3 }} />
-          <div className="zs-chart" style={{ flex: 1, position: 'relative', height: 22 }}>
-            {ticks(bereich).map((t) => (
-              <Box
-                key={t.prozent}
-                style={{
-                  position: 'absolute',
-                  left: `${t.prozent}%`,
-                  paddingLeft: 3,
-                  fontSize: 'var(--mantine-font-size-xs)',
-                  color: 'var(--mantine-color-dimmed)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {t.label}
-              </Box>
-            ))}
-          </div>
+        <div style={{ ...labelStil, zIndex: 3 }} />
+        <div style={{ position: 'relative', height: ACHSE_HOEHE }}>
+          {ticks(bereich).map((t) => (
+            <Box
+              key={t.prozent}
+              style={{
+                position: 'absolute',
+                left: `${t.prozent}%`,
+                bottom: 2,
+                paddingLeft: 3,
+                fontSize: 'var(--mantine-font-size-xs)',
+                lineHeight: 1,
+                color: 'var(--mantine-color-dimmed)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t.label}
+            </Box>
+          ))}
         </div>
-        {zeilen.map((z) => (
-          <div
-            key={z.key}
-            style={{
-              ...zeilenStil,
-              borderTop: '1px solid var(--mantine-color-default-border)',
-            }}
-          >
-            <div style={labelStil}>
+        {zeilen.map((z, i) => (
+          <Fragment key={z.key}>
+            <div style={{ ...labelStil, ...rand(i) }}>
               <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{z.label}</div>
             </div>
-            <div className="zs-chart" style={{ flex: 1, position: 'relative' }}>
+            <div style={{ position: 'relative', minHeight: ZEILE_HOEHE, ...rand(i) }}>
               <Gitter bereich={bereich} />
               {z.balken.map((b) => (
                 <Balken key={`${b.von}-${b.bis}-${b.farbe}`} b={b} bereich={bereich} />
               ))}
             </div>
-          </div>
+          </Fragment>
         ))}
       </Box>
     </Box>

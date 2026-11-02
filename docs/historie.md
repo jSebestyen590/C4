@@ -32,10 +32,11 @@ nach zwölf Personen beginnt die Palette von vorn). Gemeinsamer Bereich für all
 
 - Jeder Balken hat einen Tooltip (Hover, Fokus, Berühren), z. B. „Kassenwart · Mitglied · 06.11.2012 – 31.12.2019“ oder „… · seit 06.11.2012“;
   derselbe Text ist das `aria-label` des fokussierbaren Balkens.
-- Achse mit Jahresmarken (Monatsmarken bei Bereichen unter zwei Jahren). Positionen sind Prozent des Bereichs. Auf dem Handy scrollt nur der Zeitstrahl
-  waagerecht (Namensspalte bleibt stehen), nicht die Seite.
+- Achse mit Jahresmarken (Monatsmarken unter zwei Jahren, Marken am 1. und 15. unter vier Monaten). Positionen sind Prozent des Bereichs. Auf dem
+  Handy scrollt nur der Zeitstrahl waagerecht (Namensspalte bleibt stehen), nicht die Seite.
+- Die Namensspalte ist so breit wie der längste Name, höchstens 96 px auf dem Handy und 200 px ab `sm`; längere Namen brechen um.
 
 ## Drucken
 
-„Drucken“ ruft `window.print()` auf. Das Druck-CSS (`ZEITSTRAHL_CSS`) setzt A4 quer mit 10 mm Rand, blendet Kopfzeile, Menü und alles mit
-`data-druck="aus"` aus, hebt Scrollbereich und Mindestbreite auf (der Zeitstrahl füllt die Seitenbreite), erhält Farben und vermeidet Seitenumbrüche in Blöcken.
+„Drucken“ ruft `window.print()` auf. Das Druck-CSS (`ZEITSTRAHL_CSS`) setzt A4 quer ohne Seitenrand (dann lassen Browser ihre eigene
+Kopf- und Fußzeile mit URL und Seitenzahl weg) und 10 mm Innenabstand, blendet Kopfzeile, Menü, Seitentitel und alles mit `data-druck="aus"` aus, hebt Scrollbereich und Mindestbreite auf (der Zeitstrahl füllt die Seitenbreite), erhält Farben und vermeidet Seitenumbrüche in Blöcken.
