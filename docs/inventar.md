@@ -55,7 +55,8 @@ mit eigener Anzahl, eigenem Verlauf, eigenen Plätzen (auch in IFCOs) und Auslei
   400). Jedes Teil bekommt Anzahl = Anzahl × `anzahlJe`, Kategorie, Grund und Datum des Gegenstands und den angegebenen Platz,
   sonst den Platz des Gegenstands, sonst keinen; alles in einer Transaktion.
 - **Löschen** mit Teilen: 409. **Archivieren** archiviert die Teile mit; ein Teil lässt sich nur wiederherstellen, wenn sein
-  übergeordneter Gegenstand nicht archiviert ist (409).
+  übergeordneter Gegenstand nicht archiviert ist (409). Nach dem Löschen eines Teils landet man auf der Seite des übergeordneten
+  Gegenstands.
 - **Status** (`teileStatus` in shared): komplette Sätze = Minimum über die Bestandteile von ⌊verliehen / je⌋. „Verliehen“, wenn
   alle Sätze komplett verliehen sind und nichts übrig ist, sonst „Teilweise verliehen“, sobald irgendein Teil verliehen ist; ebenso
   „Vorgemerkt“ / „Teilweise vorgemerkt“. `saetzeVerfuegbar` liefert die im Zeitraum verfügbaren kompletten Sätze.
