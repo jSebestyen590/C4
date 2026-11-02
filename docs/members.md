@@ -161,7 +161,7 @@ hat, muss sich neu anmelden.
 | Seite                | Wer                | Zweck                                                                                                                                                                              |
 | -------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                                                                            |
-| `/mitglieder`        | `mitglieder:lesen` | Übersicht „Anzahl je Status“ (ohne Deaktivierte), Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links; Admins sehen Rollen und laden ein |
+| `/mitglieder`        | `mitglieder:lesen` | Übersicht „Anzahl je Status“ (ohne Deaktivierte), Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links, ohne Berechtigungen; Admins laden ein |
 | `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account                                                                                                    |
 
 | Route                                                                         | Hinweise                                                                                      |

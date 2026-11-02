@@ -25,7 +25,6 @@ import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { PostenLinks } from '../PostenAnzeige';
-import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { BADGE_FARBE, StatusBadge, StatusName } from '../StatusAnzeige';
 import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
@@ -219,13 +218,12 @@ export function MitgliederPage() {
               </Link>
               <PostenLinks posten={m.posten} />
               <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
-              {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
           </Paper>
         ))}
       </SimpleGrid>
       {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={istAdmin ? 1100 : 880} visibleFrom="sm">
+        <Table.ScrollContainer minWidth={880} visibleFrom="sm">
           <Table verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -244,7 +242,6 @@ export function MitgliederPage() {
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
                 <Table.Th>Kontakt</Table.Th>
-                {istAdmin && <Table.Th>Berechtigungen</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -286,11 +283,6 @@ export function MitgliederPage() {
                       groesse={36}
                     />
                   </Table.Td>
-                  {istAdmin && (
-                    <Table.Td>
-                      <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />
-                    </Table.Td>
-                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>
