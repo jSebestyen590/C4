@@ -486,7 +486,8 @@ export function GegenstandDetailPage() {
           loeschen={async () => {
             await pruefen(await api.inventar.gegenstaende[':id'].$delete({ param: { id } }));
             await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
-            navigate('/inventar');
+            // A deleted part leads back to its parent, anything else to the overview.
+            navigate(g.teilVon ? gegenstandLink(g.teilVon) : '/inventar');
           }}
           archivieren={() => archivieren(true)}
         />

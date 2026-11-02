@@ -87,7 +87,6 @@ export function GegenstandFormular({
   const [ziel, setZiel] = useState<string | null>(null);
   // null: follows the Anzahl until changed by hand.
   const [platzAnzahl, setPlatzAnzahl] = useState<number | string | null>(null);
-  const amPlatz = platzAnzahl ?? anzahl;
   const [fehler, setFehler] = useState<string | null>(null);
   const [teile, setTeile] = useState<TeilZeile[]>([]);
   const [teilFehler, setTeilFehler] = useState<Record<number, string>>({});
@@ -100,6 +99,14 @@ export function GegenstandFormular({
     [kategorien, gegenstand],
   );
   const eltern = gegenstaende.find((x) => x.id === teilVon);
+  // A new part has no amount of its own to enter: its parent's amount times the pieces per parent piece.
+  const gesamt: number | string =
+    teilVon === null
+      ? anzahl
+      : typeof anzahlJe === 'number'
+        ? (eltern?.anzahl ?? 1) * anzahlJe
+        : '';
+  const amPlatz = platzAnzahl ?? gesamt;
   const platzOptionen = useMemo(
     () => zielOptionen(lagerorte, ifcos, new Set(), new Set()),
     [lagerorte, ifcos],
@@ -152,7 +159,7 @@ export function GegenstandFormular({
       teilVon,
       virtuell: teilVon === null && virtuell,
       anzahlJe: teilVon !== null ? (typeof anzahlJe === 'number' ? anzahlJe : Number.NaN) : null,
-      anzahl: typeof anzahl === 'number' ? anzahl : Number.NaN,
+      anzahl: typeof gesamt === 'number' ? gesamt : Number.NaN,
       grund: istTeil ? undefined : (grund as (typeof ZUGANG_GRUENDE)[number]),
       datum: istTeil ? undefined : datum,
       teile:
@@ -232,6 +239,11 @@ export function GegenstandFormular({
               inputMode="numeric"
               value={anzahlJe}
               onChange={setAnzahlJe}
+              description={
+                !gegenstand && typeof gesamt === 'number' && gesamt !== 1
+                  ? `Gesamt: ${gesamt}`
+                  : undefined
+              }
             />
           )}
           {teilVon === null && (
@@ -242,7 +254,7 @@ export function GegenstandFormular({
               onChange={(e) => setVirtuell(e.currentTarget.checked)}
             />
           )}
-          {!gegenstand && (
+          {!gegenstand && teilVon === null && (
             <>
               <ZahlFeld
                 label="Anzahl"
@@ -253,19 +265,17 @@ export function GegenstandFormular({
                 value={anzahl}
                 onChange={setAnzahl}
               />
-              {teilVon === null && (
-                <Group grow align="flex-start" wrap="wrap">
-                  <Select
-                    label="Grund"
-                    allowDeselect={false}
-                    data={ZUGANG_GRUENDE.map((g) => ({ value: g, label: label(GRUND_LABELS, g) }))}
-                    value={grund}
-                    onChange={(v) => v && setGrund(v)}
-                    miw={160}
-                  />
-                  <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
-                </Group>
-              )}
+              <Group grow align="flex-start" wrap="wrap">
+                <Select
+                  label="Grund"
+                  allowDeselect={false}
+                  data={ZUGANG_GRUENDE.map((g) => ({ value: g, label: label(GRUND_LABELS, g) }))}
+                  value={grund}
+                  onChange={(v) => v && setGrund(v)}
+                  miw={160}
+                />
+                <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
+              </Group>
             </>
           )}
           {!gegenstand && !virtuell && (
@@ -281,7 +291,7 @@ export function GegenstandFormular({
               onChange={setZiel}
             />
           )}
-          {!gegenstand && !virtuell && ziel && (anzahl !== 1 || amPlatz !== 1) && (
+          {!gegenstand && !virtuell && ziel && (gesamt !== 1 || amPlatz !== 1) && (
             <ZahlFeld
               label="Anzahl an diesem Platz"
               allowDecimal={false}
