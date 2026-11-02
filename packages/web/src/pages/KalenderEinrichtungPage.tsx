@@ -1,11 +1,10 @@
-import { Anchor, Group, Select, Stack, Tabs, Title } from '@mantine/core';
-import { IconChevronLeft } from '@tabler/icons-react';
+import { Select, Stack, Tabs, Title } from '@mantine/core';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { DienstformenTab, EventKategorienTab, ExterneTab } from '../KalenderStammdatenTabs';
 import { ErinnerungenTab } from '../ErinnerungenTab';
 import { SerienTab } from '../SerienTab';
 import { VorlagenTab } from '../VorlagenTab';
+import { ZurueckLink } from '../ZurueckLink';
 
 const TABS = [
   { value: 'dienstformen', label: 'Dienstformen' },
@@ -21,12 +20,7 @@ export function KalenderEinrichtungPage() {
   const [tab, setTab] = useState<string | null>('dienstformen');
   return (
     <Stack maw={900}>
-      <Anchor component={Link} to="/kalender" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Kalender
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/kalender">Zurück zum Kalender</ZurueckLink>
       <Title order={2}>Kalender einrichten</Title>
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Select

@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -13,13 +12,13 @@ import {
   Title,
   UnstyledButton,
 } from '@mantine/core';
-import { IconChevronLeft, IconPlus } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import type { TrichterDto } from '@c4/shared';
 import { TrichterFormular } from '../TrichterFormular';
 import { literAnzeigen } from '../trichterAnzeige';
 import { useTrichterListe } from '../trichterDaten';
+import { ZurueckLink } from '../ZurueckLink';
 
 const auslaesseText = (n: number) => `${n} ${n === 1 ? 'Auslass' : 'Auslässe'}`;
 
@@ -40,12 +39,7 @@ export function TrichterVerwaltungPage() {
 
   return (
     <Stack maw={900}>
-      <Anchor component={Link} to="/trichter" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Trichter
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/trichter">Zurück zum Trichter</ZurueckLink>
       <Group justify="space-between" gap="sm">
         <Title order={2}>Trichter verwalten</Title>
         <Button size="md" leftSection={<IconPlus size={18} />} onClick={() => setBearbeiten('neu')}>

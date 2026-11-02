@@ -35,12 +35,13 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigationType } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import logo from './assets/favicon.png';
 import logoDunkel from './assets/logo-dunkel.png';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
+import { ortMerken } from './zurueckVerlauf';
 
 const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
   { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
@@ -122,7 +123,10 @@ function ProfilMenue() {
  */
 export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { user, can, logout } = useAuth();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
+  // Runs during render so the pages' back links (rendered below) already see this navigation.
+  ortMerken(location, useNavigationType());
   const [opened, { toggle, close }] = useDisclosure(false);
   // Any navigation (sidebar, profile menu, in-page links) closes the mobile menu.
   useEffect(close, [pathname, close]);

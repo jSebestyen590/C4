@@ -22,5 +22,11 @@ aktualisiert die zugehörige Seite im selben Change.
 - Als App vom Homescreen gestartet (`display: standalone`, v. a. iOS) bietet der Browser kein Neuladen durch Herunterziehen.
   `PullToRefresh` (in `AppLayout`) ergänzt das nur in diesem Modus: oben auf der Seite herunterziehen, ab 80 px loslassen lädt
   die Seite neu. Gesten in Dialogen, Drawern, Menüs und beim Ziehen per Drag-and-drop zählen nicht.
+- **Zurück-Links** oben auf Unterseiten (`ZurueckLink`) führen dorthin zurück, wo man herkam (Browser-History, Filter und
+  Scrollposition bleiben), z. B. vom Teil zum Obergegenstand. `AppLayout` merkt sich je History-Eintrag die Vorseite
+  (`zurueckVerlauf.ts`, in `sessionStorage`, übersteht Neuladen). Einträge derselben Seite werden übersprungen. Ohne Vorseite
+  in der App (Deep-Link, neuer Tab) gilt das feste Ziel der Seite, z. B. die Liste bzw. beim Teil der Obergegenstand. Das Label
+  nennt das feste Ziel, wenn die Vorseite genau dieses ist, sonst lautet es „Zurück“. Formulare ersetzen sich nach dem
+  Speichern per `replace` durch die gespeicherte Seite, damit „Zurück“ nicht ins Formular führt.
 
 Architektur, Einrichtung und Deployment stehen in der `README.md` im Repository-Root.

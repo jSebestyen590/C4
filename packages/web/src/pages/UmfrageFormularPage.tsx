@@ -614,7 +614,7 @@ function Formular({ umfrage, typ }: Readonly<{ umfrage?: UmfrageDetailDto; typ: 
         id = ((await res.json()) as { id: string }).id;
       }
       await umfragenInvalidieren(qc);
-      navigate(umfrageLink(id!));
+      navigate(umfrageLink(id!), { replace: true });
     } catch (e) {
       setFehler(fehlerText(e));
     } finally {
