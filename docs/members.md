@@ -34,6 +34,13 @@ gespeichert. Die Mitgliederliste ist die Vereinigung aller Profilzeilen und alle
 Cognito-Konten. Mitglieder, die ihre Aktivierung noch nicht abgeschlossen haben oder noch keine Zeile
 haben, erscheinen also ebenfalls.
 
+## Statuswechsel
+
+Üblich ist Anwärter:in → Mitglied → EM, Schritt für Schritt. Zu Externe:r kann man jederzeit wechseln, und Externe
+können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/shared/src/status.ts`). Jeder andere Wechsel
+(Stufe übersprungen, zurück) ist erlaubt, aber das Statusfeld fragt vorher mit einer Warnung nach. Das API prüft die
+Reihenfolge nicht.
+
 ## Mitglieder anlegen
 
 Ein Admin lädt ein Mitglied per E-Mail ein (`POST /api/admin/users`). Dabei entstehen das Cognito-Konto
