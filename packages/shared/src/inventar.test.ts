@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   abweichungText,
+  saetzeVerfuegbar,
+  teilAbweichung,
+  teilSoll,
+  teileStatus,
+  teileVon,
+  type TeilQuelle,
   ausleiheAendernSchema,
   ausleihFehler,
   ausleiheSchema,
@@ -738,5 +744,106 @@ describe('period based availability', () => {
     expect(
       ganzeIfcoFehler(inhalt, offen, [ganz], tage('2026-10-26', '2026-10-29'), { jetzt: heute }),
     ).toContain('nichts verfügbar');
+  });
+});
+
+describe('Gegenstände with parts', () => {
+  const basis = { name: 'Winkel', kategorieId: 'k1' };
+  it('requires anzahlJe for a part and drops it otherwise', () => {
+    expect(gegenstandSchema.safeParse({ ...basis, teilVon: 'g1' }).success).toBe(false);
+    expect(gegenstandSchema.safeParse({ ...basis, teilVon: 'g1', anzahlJe: 0 }).success).toBe(
+      false,
+    );
+    expect(gegenstandSchema.parse({ ...basis, teilVon: 'g1', anzahlJe: 12 })).toMatchObject({
+      teilVon: 'g1',
+      anzahlJe: 12,
+      virtuell: false,
+    });
+    expect(gegenstandSchema.parse({ ...basis, anzahlJe: 12 })).toMatchObject({
+      teilVon: null,
+      anzahlJe: null,
+    });
+  });
+  it('does not allow a virtual part', () => {
+    const r = gegenstandSchema.safeParse({ ...basis, teilVon: 'g1', anzahlJe: 2, virtuell: true });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe('Ein Teil kann nicht virtuell sein.');
+  });
+  it('does not allow a Platz for a virtual Gegenstand', () => {
+    const anlegen = { ...basis, datum: '2020-01-01', virtuell: true };
+    expect(gegenstandAnlegenSchema.safeParse(anlegen).success).toBe(true);
+    const r = gegenstandAnlegenSchema.safeParse({
+      ...anlegen,
+      platz: { lagerortId: 'l1', anzahl: 1 },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe('Ein virtueller Gegenstand hat keinen eigenen Platz.');
+  });
+
+  const g = (id: string, anzahl: number, extra: Partial<TeilQuelle> = {}): TeilQuelle => ({
+    id,
+    anzahl,
+    virtuell: false,
+    teilVon: null,
+    anzahlJe: null,
+    verliehen: 0,
+    vorgemerkt: 0,
+    plaetze: [],
+    ...extra,
+  });
+  const part = (id: string, anzahl: number, je: number, extra: Partial<TeilQuelle> = {}) =>
+    g(id, anzahl, { teilVon: 'p', anzahlJe: je, ...extra });
+
+  it('finds parts and computes target and difference', () => {
+    const alle = [g('p', 3, { virtuell: true }), part('w', 30, 12), g('x', 1)];
+    expect(teileVon(alle, 'p').map((t) => t.id)).toEqual(['w']);
+    expect(teilSoll(alle[0]!, alle[1]!)).toBe(36);
+    expect(teilAbweichung(alle[0]!, alle[1]!)).toBe(-6);
+    expect(teilSoll(alle[0]!, g('y', 1))).toBe(3);
+  });
+
+  it('counts lent sets over the parts of a virtual parent', () => {
+    const eltern = g('p', 3, { virtuell: true });
+    const alles = [part('plane', 3, 1), part('winkel', 36, 12)];
+    expect(teileStatus(eltern, alles).status).toBeNull();
+    const zwei = [
+      { ...alles[0]!, verliehen: 2 },
+      { ...alles[1]!, verliehen: 24 },
+    ];
+    expect(teileStatus(eltern, zwei)).toMatchObject({
+      verliehen: { saetze: 2, teilweise: false },
+      status: 'teilweise',
+    });
+    const alle = [
+      { ...alles[0]!, verliehen: 3 },
+      { ...alles[1]!, verliehen: 36 },
+    ];
+    expect(teileStatus(eltern, alle).status).toBe('verliehen');
+    // One Winkel missing: only 2 complete sets, the rest is loose.
+    const fehlt = [alle[0]!, { ...alle[1]!, verliehen: 35 }];
+    expect(teileStatus(eltern, fehlt)).toMatchObject({
+      verliehen: { saetze: 2, teilweise: true },
+      status: 'teilweise',
+    });
+  });
+
+  it('includes a non-virtual parent as a component and reports reservations', () => {
+    const eltern = g('p', 2, { verliehen: 1, vorgemerkt: 2 });
+    const teile = [part('w', 8, 4, { verliehen: 8, vorgemerkt: 8 })];
+    expect(teileStatus(eltern, teile)).toMatchObject({
+      verliehen: { saetze: 1, teilweise: true },
+      status: 'teilweise',
+      vorgemerkt: { saetze: 2, teilweise: false },
+      vorgemerktStatus: 'vorgemerkt',
+    });
+  });
+
+  it('counts available sets', () => {
+    const eltern = g('p', 3, { virtuell: true });
+    const teile = [part('plane', 3, 1), part('winkel', 36, 12)];
+    const frei = (t: TeilQuelle) => ({ plane: 3, winkel: 30 })[t.id as 'plane' | 'winkel'];
+    expect(saetzeVerfuegbar(eltern, teile, frei)).toBe(2);
+    expect(saetzeVerfuegbar(eltern, [], frei)).toBe(0);
+    expect(saetzeVerfuegbar(g('p', 3), [], () => 5)).toBe(5);
   });
 });

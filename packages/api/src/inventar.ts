@@ -87,6 +87,12 @@ export interface GegenstandDaten {
   name: string;
   beschreibung: string | null;
   kategorieId: string;
+  /** Parent Gegenstand when this one is a part ("Teil"); parts have no parts of their own. */
+  teilVon: string | null;
+  /** Virtual: has an amount but no Plätze, fixed installations or Ausleihen. */
+  virtuell: boolean;
+  /** Pieces per piece of the parent; set exactly when `teilVon` is set. */
+  anzahlJe: number | null;
 }
 
 export interface IfcoDaten {
@@ -180,7 +186,9 @@ export interface VerbautDaten {
   anzahl: number;
 }
 
-export interface GegenstandDetails extends GegenstandRow {
+export interface GegenstandDetails extends Omit<GegenstandRow, 'virtuell'> {
+  /** Never null for the client: an unset column counts as false. */
+  virtuell: boolean;
   plaetze: PlatzDetails[];
   /** Fixed installations; they lower the pieces that can go onto Plätze. */
   verbaut: (VerbautDaten & { id: string })[];
@@ -346,6 +354,7 @@ export function gegenstandDetails(
   });
   return {
     ...g,
+    virtuell: g.virtuell ?? false,
     plaetze: mitMengen,
     verbaut: verbaut.map(({ id, ort, anzahl }) => ({ id, ort, anzahl })),
     verliehen: mitMengen.reduce((s, p) => s + p.verliehen, 0),
@@ -459,6 +468,34 @@ async function passtAufPlatz(
     neu: [{ name, typId }],
   });
   if (fehler) throw new WarenUngueltig(fehler);
+}
+
+const virtuellFehler = (name: string) => `„${name}“ ist virtuell und hat keine eigenen Plätze.`;
+
+/**
+ * Throws `WarenUngueltig` unless `teilVon` can be the parent of the Gegenstand `id` (null for a
+ * new one): it exists, is not archived, is not the Gegenstand itself and is no part itself, and the
+ * Gegenstand has no parts of its own (only one level).
+ */
+async function elternMussPassen(
+  q: Q,
+  id: string | null,
+  name: string,
+  teilVon: string,
+): Promise<void> {
+  if (teilVon === id)
+    throw new WarenUngueltig('Ein Gegenstand kann nicht Teil von sich selbst sein.');
+  const [eltern] = await q.select().from(gegenstaende).where(eq(gegenstaende.id, teilVon));
+  if (!eltern) throw new WarenUngueltig('Der übergeordnete Gegenstand existiert nicht.');
+  if (eltern.archiviert) throw new WarenUngueltig('Der übergeordnete Gegenstand ist archiviert.');
+  if (eltern.teilVon !== null) {
+    throw new WarenUngueltig(
+      `„${eltern.name}“ ist selbst ein Teil; Teile können keine Teile haben.`,
+    );
+  }
+  if (id !== null && (await gibtEs(q, gegenstaende, eq(gegenstaende.teilVon, id)))) {
+    throw new WarenUngueltig(`„${name}“ hat selbst Teile und kann deshalb kein Teil sein.`);
+  }
 }
 
 async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetails[]> {
@@ -649,6 +686,8 @@ async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[])
   if (rows.length !== gegenstandIds.length) {
     throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
   }
+  const virtuell = rows.find((g) => g.virtuell);
+  if (virtuell) throw new WarenUngueltig(virtuellFehler(virtuell.name));
   const vorher = new Set(bisher.map((b) => b.gegenstandId));
   if (rows.some((g) => g.archiviert && !vorher.has(g.id))) {
     throw new WarenUngueltig('Ein Gegenstand ist archiviert.');
@@ -807,6 +846,11 @@ export function createInventarStore(db: Db): InventarStore {
     async gegenstandAnlegen({ platz, grund, datum, ...daten }, sub) {
       return db.transaction(async (tx) => {
         await kategorieMussNutzbarSein(tx, daten.kategorieId);
+        if (daten.virtuell && daten.teilVon !== null) {
+          throw new WarenUngueltig('Ein Teil kann nicht virtuell sein.');
+        }
+        if (daten.teilVon !== null) await elternMussPassen(tx, null, daten.name, daten.teilVon);
+        if (daten.virtuell && platz) throw new WarenUngueltig(virtuellFehler(daten.name));
         if (platz) {
           await zieleExistieren(tx, [platz]);
           const fehler = zuVielVerteiltFehler(daten.name, daten.anzahl, 0, 0, platz.anzahl);
@@ -843,13 +887,39 @@ export function createInventarStore(db: Db): InventarStore {
         if (daten.kategorieId !== bisher.kategorieId) {
           await kategorieMussNutzbarSein(tx, daten.kategorieId);
         }
+        if (daten.virtuell && daten.teilVon !== null) {
+          throw new WarenUngueltig('Ein Teil kann nicht virtuell sein.');
+        }
+        if (daten.teilVon !== null && daten.teilVon !== bisher.teilVon) {
+          await elternMussPassen(tx, id, daten.name, daten.teilVon);
+        }
+        if (daten.virtuell && !bisher.virtuell) {
+          const belegt = await Promise.all([
+            gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.gegenstandId, id)),
+            gibtEs(tx, gegenstandVerbaut, eq(gegenstandVerbaut.gegenstandId, id)),
+            gibtEs(
+              tx,
+              ausleihePositionen,
+              and(eq(ausleihePositionen.gegenstandId, id), isNull(ausleihePositionen.zurueckAm)),
+            ),
+          ]);
+          if (belegt.some(Boolean)) {
+            throw new WarenKonflikt(
+              `„${bisher.name}“ hat noch Plätze, fest verbaute Stück oder offene Ausleihen und kann deshalb nicht virtuell werden. Räume sie zuerst weg.`,
+            );
+          }
+        }
         await tx.update(gegenstaende).set(daten).where(eq(gegenstaende.id, id));
         return true;
       });
     },
     async gegenstandLoeschen(id) {
       return db.transaction(async (tx) => {
-        if (!(await gibtEs(tx, gegenstaende, eq(gegenstaende.id, id)))) return false;
+        const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
+        if (!g) return false;
+        if (await gibtEs(tx, gegenstaende, eq(gegenstaende.teilVon, id))) {
+          throw new WarenKonflikt(`„${g.name}“ hat noch Teile. Löse oder lösche sie zuerst.`);
+        }
         const verwendet = await Promise.all([
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.gegenstandId, id)),
           gibtEs(tx, gegenstandVerbaut, eq(gegenstandVerbaut.gegenstandId, id)),
@@ -866,6 +936,17 @@ export function createInventarStore(db: Db): InventarStore {
       return db.transaction(async (tx) => {
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!g) return false;
+        if (!archiviert && g.teilVon !== null) {
+          const [eltern] = await tx
+            .select()
+            .from(gegenstaende)
+            .where(eq(gegenstaende.id, g.teilVon));
+          if (eltern?.archiviert) {
+            throw new WarenKonflikt(
+              'Der übergeordnete Gegenstand ist archiviert. Stelle ihn zuerst wieder her.',
+            );
+          }
+        }
         if (!archiviert) {
           const [k] = await tx
             .select()
@@ -876,6 +957,10 @@ export function createInventarStore(db: Db): InventarStore {
           }
         }
         await tx.update(gegenstaende).set({ archiviert }).where(eq(gegenstaende.id, id));
+        // Archiving a parent archives its parts with it.
+        if (archiviert) {
+          await tx.update(gegenstaende).set({ archiviert }).where(eq(gegenstaende.teilVon, id));
+        }
         return true;
       });
     },
@@ -911,6 +996,9 @@ export function createInventarStore(db: Db): InventarStore {
           .where(eq(gegenstandVerbaut.gegenstandId, gegenstandId));
         const gleich = (x: PlatzZiel, z: PlatzZiel) => zielKey(x) === zielKey(z);
         let ort: string | null = null;
+        if (g.virtuell && (daten.art === 'zugang' ? daten.nach : daten.von.art !== 'ohnePlatz')) {
+          throw new WarenUngueltig(virtuellFehler(g.name));
+        }
         if (daten.art === 'zugang') {
           if (daten.nach) {
             await zieleExistieren(tx, [daten.nach]);
@@ -1044,6 +1132,9 @@ export function createInventarStore(db: Db): InventarStore {
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!g) return false;
         if (g.archiviert) throw new WarenUngueltig('Der Gegenstand ist archiviert.');
+        if (g.virtuell && (plaetze.length > 0 || (verbaut?.length ?? 0) > 0)) {
+          throw new WarenUngueltig(virtuellFehler(g.name));
+        }
         const bisher = await tx
           .select()
           .from(gegenstandPlaetze)
@@ -1278,6 +1369,12 @@ export function createInventarStore(db: Db): InventarStore {
         }
         if (rows.some((g) => g.archiviert)) {
           throw new WarenUngueltig('Ein Gegenstand ist archiviert und lässt sich nicht verleihen.');
+        }
+        const virtuell = rows.find((g) => g.virtuell);
+        if (virtuell) {
+          throw new WarenUngueltig(
+            `„${virtuell.name}“ ist virtuell und lässt sich nicht verleihen.`,
+          );
         }
         const plaetze = await tx
           .select()

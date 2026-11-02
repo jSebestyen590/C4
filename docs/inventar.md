@@ -2,7 +2,7 @@
 
 Dauerhaftes Betriebsvermögen des Clubs (Kabeltrommel, Beamer, Pavillons, Spanngurte, ...): **Gegenstände** in einem
 Kategorienbaum, mit einer Anzahl (aus dem Verlauf der Zugänge und Abgänge) auf einem oder mehreren **Plätzen** im Lagerort-Baum (siehe [waren.md](./waren.md)),
-wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände lassen sich **verleihen**. Fachlogik
+wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände lassen sich **verleihen** und können aus **Teilen** bestehen (siehe unten). Fachlogik
 (Schemas, Abweichung, Verliehen-Prüfungen) liegt in `packages/shared/src/inventar.ts`, Speicherung und Regeln in
 `packages/api/src/inventar.ts`, Routen in `packages/api/src/app.ts` (Abschnitt `Inventar`). Fehlerklassen und Hilfen
 (`WarenUngueltig` → 400, `WarenKonflikt` → 409) kommen aus `packages/api/src/waren.ts`.
@@ -17,14 +17,15 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 ## Datenmodell
 
 Migrationen `0025`–`0036` (Aufräumen: `0032`, `0033`; fest verbaut: `0034`; Verlauf: `0035`, Startbuchungen `0036`; die Rechte der Vorstandsposten in `0024`), jeweils ein Statement und
-eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_rechte`).
+eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für das Inventar: `0024_vorstandsposten_rechte`). Teile: `0101`–`0103`
+(Spalten per `ALTER`, Down-Dateien leeren nur die Werte; Rollback-Ziel: `0100_mitglied_status_verlauf_bestand`).
 
 | Tabelle                 | Inhalt                                                                                                                                                                                         |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `inventar_kategorien`   | Baum (`parent_id`, `name`, `archiviert`), wie `warengruppen`                                                                                                                                   |
 | `ifco_typen`            | `name` (z. B. „6410“), `grundflaeche` (`gross` 60×40 / `klein` 40×30), `hoehe_cm`, `archiviert`                                                                                                |
 | `ifcos`                 | `name`, `beschreibung`, `lagerort_id` (null = ohne Platz), `typ_id` (optional), `archiviert`; nicht verschachtelbar, ein Platz                                                                 |
-| `gegenstaende`          | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Gesamtzahl = Summe des Verlaufs, von der API mitgeführt), `archiviert`                                                                       |
+| `gegenstaende`          | `name`, `beschreibung`, `kategorie_id`, `anzahl` (Gesamtzahl = Summe des Verlaufs, von der API mitgeführt), `archiviert`; `teil_von` (Id des übergeordneten Gegenstands, ohne Fremdschlüssel), `virtuell` (null = nein), `anzahl_je` (Stück je übergeordnetem Stück, nur bei Teilen) |
 | `gegenstand_bewegungen` | Verlauf: `art` (`zugang`/`abgang`), `grund`, `anzahl` ≥ 1, `datum`, `kommentar`, `ort` (Anzeige-Schnappschuss des Platzes, kein Fremdschlüssel), `erstellt_von` (Cognito-`sub`), `erstellt_am` |
 | `gegenstand_plaetze`    | `gegenstand_id`, entweder `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1                                                                                                                   |
 | `gegenstand_verbaut`    | `gegenstand_id`, `ort` (Freitext, z. B. „unter der Bar“), `anzahl` ≥ 1: fest verbaute Stück, an keinem Platz, nicht verleihbar                                                                 |
@@ -32,6 +33,25 @@ eine Down-Datei (siehe [datenbank.md](./datenbank.md); Rollback-Ziel nur für da
 | `ausleihe_positionen`   | `ausleihe_id`, `gegenstand_id`, Herkunft `lagerort_id` oder `ifco_id` (CHECK), `anzahl` ≥ 1, `zurueck_am` (null = offen), `ganze_ifco` (true = Teil einer ganz verliehenen IFCO)               |
 
 Die Herkunft einer Position ist ein Ort, keine Zuordnungs-Id; Umräumen zerstört so die Historie nicht.
+
+## Teile
+
+Ein Gegenstand kann aus **Teilen** bestehen (Pavillon → Plane, 4 Seitenteile, Gestänge, 12 Winkel). Teile sind normale Gegenstände
+mit eigener Anzahl, eigenem Verlauf, eigenen Plätzen (auch in IFCOs) und Ausleihen; `teilVon` nennt den übergeordneten Gegenstand.
+
+- **Eine Ebene:** Ein Teil hat keine Teile, gehört zu genau einem Gegenstand und kann nicht Teil von sich selbst sein; ein Gegenstand
+  mit Teilen kann kein Teil werden; der übergeordnete muss existieren und darf nicht archiviert sein (alles 400).
+- **Anzahl je Stück:** Jedes Teil trägt `anzahlJe` (Pflicht). Soll des Teils = Anzahl des übergeordneten × `anzahlJe` (3 Pavillons ×
+  12 Winkel = 36, `teilSoll`, `teilAbweichung` in shared); eine Abweichung wird nur angezeigt, nichts wird automatisch gebucht.
+- **Virtuell:** Ein virtueller Gegenstand hat Anzahl und Verlauf, aber nie Plätze oder fest verbaute Stück und lässt sich nicht selbst
+  verleihen. Abgelehnt werden (400) Plätze, IFCO-Inhalt, Zugang mit Platz, Abgang von Platz oder verbaut, Anlegen mit Platz und
+  Ausleihe-Positionen. Ein Teil kann nicht virtuell sein. Umstellen auf virtuell geht nur ohne Plätze, verbaute Stück und offene
+  Ausleihen (409). Ein nicht virtueller übergeordneter Gegenstand zählt selbst als Bestandteil (je 1).
+- **Löschen** mit Teilen: 409. **Archivieren** archiviert die Teile mit; ein Teil lässt sich nur wiederherstellen, wenn sein
+  übergeordneter Gegenstand nicht archiviert ist (409).
+- **Status** (`teileStatus` in shared): komplette Sätze = Minimum über die Bestandteile von ⌊verliehen / je⌋. „Verliehen“, wenn
+  alle Sätze komplett verliehen sind und nichts übrig ist, sonst „Teilweise verliehen“, sobald irgendein Teil verliehen ist; ebenso
+  „Vorgemerkt“ / „Teilweise vorgemerkt“. `saetzeVerfuegbar` liefert die im Zeitraum verfügbaren kompletten Sätze.
 
 ## IFCO-Typen und IFCO-Lagerplätze
 
@@ -250,5 +270,24 @@ jede Änderung macht `['inventar']` ungültig.
   und „Löschen“ (`inventar:umraeumen`).
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). IFCO-Detailseite: „Ganze IFCO verleihen“, bei einer ganz verliehenen IFCO ein Badge „Verliehen an <an> seit …“ bzw. „Vorgemerkt für <an> ab …“ (verlinkt); IFCO-Karten tragen „Verliehen an …“, die Lager-Seite „Spanngurtkiste · … · verliehen an Feuerwehr“. Am Gegenstand steht beim Platz „(…, mit der ganzen IFCO)“.
+- **Teile in der Oberfläche:**
+  - `GegenstandFormular` hat den Schalter „Nur virtuell“ (blendet den Platz aus) und „Teil von (optional)“ (durchsuchbar, nur
+    erlaubte Gegenstände) mit „Anzahl je <Name>“.
+  - `/inventar` hat den Schalter „Teile anzeigen“ (Standard aus). Ist er aus, fehlen Teile in der Liste; die Suche findet über ein
+    Teil (Name, Beschreibung, Platz, verbaut) den übergeordneten Gegenstand. Übergeordnete zeigen „Virtuell · 5 Teile“ bzw.
+    „5 Teile“ und `TeileStatusBadges`: „Verliehen“ / „Teilweise verliehen“, „Vorgemerkt“ / „Teilweise vorgemerkt“, bei Anzahl > 1
+    „2 von 3 verliehen“. Teile tragen „Teil von Pavillon“.
+  - Die Detailseite eines übergeordneten Gegenstands hat den Abschnitt „Teile“: Karten mit „12 je Pavillon · 34 von 36 · 2 fehlen“
+    (orange bei Abweichung), Plätzen und Verleih-Hinweisen, dazu „Teil anlegen“. Virtuelle haben keine Plätze; `BewegungModal`
+    bietet dort keinen Platz an. Die Ausleihen-Liste enthält auch die der Teile. Ein Teil zeigt „Teil von <Pavillon> · 12 je
+    Pavillon“.
+  - Auf `AusleihePage` steht ein übergeordneter Gegenstand als „Pavillon (5 Teile)“ in der Suche. Er kommt als Gruppe mit allen
+    verfügbaren Bestandteilen hinzu (je 1 Satz, `mengeVerteilen` in `inventarTeile.ts`: größter verfügbarer Platz zuerst), bei
+    Anzahl > 1 mit Feld „Anzahl Pavillon“. Jedes Teil bleibt einzeln änderbar oder entfernbar (teilweise verleihen).
+  - Bestätigung, `AusleiheKarte` und `AusleiheDetailPage` gruppieren Positionen von Teilen unter „Pavillon (komplett)“ /
+    „2× Pavillon (komplett)“ / „Pavillon (teilweise)“ (`teileGruppieren`), die Detailseite mit Gruppen-Häkchen. Ganze IFCOs haben
+    Vorrang.
+  - Lager-Seite: Teile erscheinen an ihren Plätzen mit „· Teil von Pavillon“.
+- Bei Gesamtanzahl 1 steht „verliehen“ / „vorgemerkt“ ohne Zahl (Übersicht, Detailseite, `PlatzAusleihHinweise`, Lager).
 - Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen IFCOs und direkt zugeordnete
   Gegenstände im Zähler, eine offene Inventur trägt ein Symbol), siehe [waren.md](./waren.md).

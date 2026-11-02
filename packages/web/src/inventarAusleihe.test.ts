@@ -19,10 +19,15 @@ import {
   mengeText,
   offenePositionen,
   positionText,
+  teilMengeText,
+  teileStatusBadges,
+  teileZaehlText,
   ueberfaellig,
   verfuegbarePlaetze,
+  verliehenText,
+  vorgemerktText,
 } from './inventarAnzeige';
-import { ausleiheTage } from '@c4/shared';
+import { ausleiheTage, type TeileStatus } from '@c4/shared';
 import type {
   AusleiheEintrag,
   AusleihePositionEintrag,
@@ -57,6 +62,9 @@ const g1: GegenstandEintrag = {
   kategorieId: 'k',
   anzahl: 10,
   archiviert: false,
+  teilVon: null,
+  virtuell: false,
+  anzahlJe: null,
   verbaut: [],
   verliehen: 5,
   vorgemerkt: 1,
@@ -169,11 +177,34 @@ describe('inventarJeLagerort', () => {
     const karte = inventarJeLagerort([g1, { ...g1, id: 'g9', archiviert: true }], ifcos);
     expect(karte.get('l2')).toEqual({
       ifcos: [{ id: 'i1', name: 'Kiste', stueck: 5, typ: null, ausleihe: null }],
-      gegenstaende: [{ id: 'g1', name: 'Kabeltrommel', anzahl: 6, verliehen: 3, vorgemerkt: 1 }],
+      gegenstaende: [
+        {
+          id: 'g1',
+          name: 'Kabeltrommel',
+          anzahl: 6,
+          gesamt: 10,
+          verliehen: 3,
+          vorgemerkt: 1,
+          teilVon: null,
+        },
+      ],
     });
     expect(karte.get('l1')?.gegenstaende).toEqual([
-      { id: 'g1', name: 'Kabeltrommel', anzahl: 2, verliehen: 2, vorgemerkt: 0 },
+      {
+        id: 'g1',
+        name: 'Kabeltrommel',
+        anzahl: 2,
+        gesamt: 10,
+        verliehen: 2,
+        vorgemerkt: 0,
+        teilVon: null,
+      },
     ]);
+  });
+  it('names the parent of a part', () => {
+    const teil = { ...g1, id: 'g8', name: 'Winkel', teilVon: 'g1', anzahlJe: 4 };
+    const karte = inventarJeLagerort([g1, teil], ifcos);
+    expect(karte.get('l1')?.gegenstaende.find((x) => x.id === 'g8')?.teilVon).toBe('Kabeltrommel');
   });
   it('leaves out archived and place-less IFCOs', () => {
     const karte = inventarJeLagerort(
@@ -193,6 +224,14 @@ describe('mengeText', () => {
     expect(mengeText(10, 3)).toBe('10× · 3 verliehen');
     expect(mengeText(10, 0, 2)).toBe('10× · 2 vorgemerkt');
     expect(mengeText(10, 3, 2)).toBe('10× · 3 verliehen · 2 vorgemerkt');
+  });
+  it('drops the lent and reserved counts for a Gegenstand that exists once', () => {
+    expect(mengeText(1, 1, 0, true)).toBe('verliehen');
+    expect(mengeText(1, 0, 1, true)).toBe('vorgemerkt');
+    expect(mengeText(3, 1, 0, false)).toBe('3× · 1 verliehen');
+    expect(verliehenText(2)).toBe('2 verliehen');
+    expect(verliehenText(1, true)).toBe('verliehen');
+    expect(vorgemerktText(1, true)).toBe('vorgemerkt');
   });
   it('hides the count when it is 1', () => {
     expect(mengeText(1)).toBe('');
@@ -331,5 +370,65 @@ describe('standardMenge', () => {
       ),
     ).toBe(3);
     expect(standardMenge({ ...einzeln, verfuegbar: 0 }, 1, true)).toBeUndefined();
+  });
+});
+
+describe('teileStatusBadges', () => {
+  const rest = { saetze: 0, teilweise: false };
+  const status = (over: Partial<TeileStatus>): TeileStatus => ({
+    verliehen: rest,
+    vorgemerkt: rest,
+    status: null,
+    vorgemerktStatus: null,
+    ...over,
+  });
+  it('shows nothing without lending', () => {
+    expect(teileStatusBadges({ anzahl: 1 }, status({}))).toEqual([]);
+  });
+  it('shows complete lending without numbers', () => {
+    expect(
+      teileStatusBadges(
+        { anzahl: 3 },
+        status({ status: 'verliehen', verliehen: { saetze: 3, teilweise: false } }),
+      ),
+    ).toEqual([{ text: 'Verliehen', color: 'grape', voll: true }]);
+  });
+  it('shows partial lending with sets only when the parent exists more than once', () => {
+    const teilweise = status({ status: 'teilweise', verliehen: { saetze: 2, teilweise: true } });
+    expect(teileStatusBadges({ anzahl: 3 }, teilweise)[0]?.text).toBe(
+      '2 von 3 verliehen · teilweise',
+    );
+    expect(teileStatusBadges({ anzahl: 1 }, teilweise)[0]?.text).toBe('Teilweise verliehen');
+    expect(teileStatusBadges({ anzahl: 1 }, status({ vorgemerktStatus: 'teilweise' }))).toEqual([
+      { text: 'Teilweise vorgemerkt', color: 'cyan', voll: false },
+    ]);
+  });
+});
+
+describe('teileZaehlText', () => {
+  it('counts the parts, marking virtual ones', () => {
+    expect(teileZaehlText(5, true)).toBe('Virtuell · 5 Teile');
+    expect(teileZaehlText(1)).toBe('1 Teil');
+  });
+});
+
+describe('teilMengeText', () => {
+  const pavillon = { anzahl: 3, name: 'Pavillon' };
+  it('shows the count per parent and the target', () => {
+    expect(teilMengeText(pavillon, { anzahl: 36, anzahlJe: 12 })).toBe(
+      '12 je Pavillon · 36 von 36',
+    );
+  });
+  it('names a deviation', () => {
+    expect(teilMengeText(pavillon, { anzahl: 34, anzahlJe: 12 })).toBe(
+      '12 je Pavillon · 34 von 36 · 2 fehlen',
+    );
+    expect(teilMengeText(pavillon, { anzahl: 37, anzahlJe: 12 })).toContain('1 zu viel');
+  });
+  it('shows nothing for a single part of a single parent that is complete', () => {
+    expect(teilMengeText({ anzahl: 1, name: 'Pavillon' }, { anzahl: 1, anzahlJe: 1 })).toBeNull();
+    expect(teilMengeText({ anzahl: 1, name: 'Pavillon' }, { anzahl: 0, anzahlJe: 1 })).toBe(
+      '0 von 1 · 1 fehlt',
+    );
   });
 });

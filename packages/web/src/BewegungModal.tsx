@@ -147,17 +147,20 @@ export function BewegungModal({
           <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
         </Group>
         {art === 'zugang' ? (
-          <PfadSelect
-            label="Platz (optional)"
-            placeholder="Ohne Platz"
-            searchable
-            clearable
-            inputMode="text"
-            nothingFoundMessage="Nichts gefunden"
-            data={zielOptionen(lagerorte, ifcos, new Set(), new Set())}
-            value={nach}
-            onChange={setNach}
-          />
+          // A virtual Gegenstand never has a Platz.
+          !gegenstand.virtuell && (
+            <PfadSelect
+              label="Platz (optional)"
+              placeholder="Ohne Platz"
+              searchable
+              clearable
+              inputMode="text"
+              nothingFoundMessage="Nichts gefunden"
+              data={zielOptionen(lagerorte, ifcos, new Set(), new Set())}
+              value={nach}
+              onChange={setNach}
+            />
+          )
         ) : (
           <Select
             label="Von"

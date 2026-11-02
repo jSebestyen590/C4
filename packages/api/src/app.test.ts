@@ -313,6 +313,9 @@ function makeInventarFake() {
         kategorieId: 'k1',
         anzahl: 10,
         archiviert: false,
+        teilVon: null,
+        virtuell: false,
+        anzahlJe: null,
         plaetze: [],
         verbaut: [],
         verliehen: 0,
@@ -2211,6 +2214,9 @@ describe('inventar', () => {
         grund: 'gekauft',
         datum,
         platz: null,
+        teilVon: null,
+        virtuell: false,
+        anzahlJe: null,
       },
       'a',
     );
@@ -2225,6 +2231,33 @@ describe('inventar', () => {
     );
     const zwei = { lagerortId: 'l1', ifcoId: 'i1', anzahl: 1 };
     expect((await post({ name: 'Zelt', kategorieId: 'k1', datum, platz: zwei })).status).toBe(400);
+  });
+
+  it('validates parts and virtual Gegenstände when creating', async () => {
+    const { app, inventar } = makeApp();
+    const datum = '2026-10-10';
+    const post = (body: unknown) =>
+      app.request('/api/inventar/gegenstaende', json('admin-token', 'POST', body));
+    const basis = { name: 'Winkel', kategorieId: 'k1', datum };
+    // A part needs pieces per parent, and cannot be virtual.
+    expect((await post({ ...basis, teilVon: 'g1' })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 0 })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 4, virtuell: true })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 12 })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ teilVon: 'g1', anzahlJe: 12, virtuell: false }),
+      'a',
+    );
+    // anzahlJe without a parent is dropped.
+    expect((await post({ ...basis, anzahlJe: 3 })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ teilVon: null, anzahlJe: null }),
+      'a',
+    );
+    // A virtual Gegenstand has no Platz of its own.
+    const platz = { lagerortId: 'l1', ifcoId: null, anzahl: 1 };
+    expect((await post({ ...basis, virtuell: true, platz })).status).toBe(400);
+    expect((await post({ ...basis, virtuell: true })).status).toBe(201);
   });
 
   it('lists, books and deletes Zugänge and Abgänge', async () => {

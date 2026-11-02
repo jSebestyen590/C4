@@ -37,6 +37,12 @@ export interface GegenstandEintrag {
   verliehen: number;
   /** Total open amount of Ausleihen starting in the future. */
   vorgemerkt: number;
+  /** Id of the parent when this Gegenstand is a part ("Teil"), else null. */
+  teilVon: string | null;
+  /** Virtual: has an amount but no Plätze; it exists only through its parts. */
+  virtuell: boolean;
+  /** Pieces of this part per piece of its parent (parts only). */
+  anzahlJe: number | null;
 }
 
 /** An IFCO type as returned by `GET /inventar/ifco-typen`. */

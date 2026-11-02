@@ -1,4 +1,14 @@
-import { Alert, Button, Group, Modal, Select, Stack, Textarea, TextInput } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Select,
+  Stack,
+  Switch,
+  Textarea,
+  TextInput,
+} from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import {
@@ -15,20 +25,24 @@ import { kategorieOptionen, zielAusWert, zielOptionen } from './inventarAnzeige'
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { PfadSelect } from './PfadSelect';
-import { INVENTAR_KEY } from './inventarDaten';
+import { INVENTAR_KEY, useInventar } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
 
 /**
  * Create or edit a Gegenstand. Creating books the first Zugang (Anzahl, Grund, Datum) and may put it
  * onto a first place (by default with the whole Anzahl); editing changes only the master data, the
- * amount changes through Zugänge and Abgänge. Mount it only while it should be open.
+ * amount changes through Zugänge and Abgänge. A Gegenstand can be a part of another one ("Teil von",
+ * with the pieces per parent piece) or virtual (only its parts exist). Mount it only while it
+ * should be open.
  */
 export function GegenstandFormular({
   gegenstand,
   kategorien,
   lagerorte = [],
   ifcos = [],
+  teilVon: teilVonVorgabe,
+  kategorieId: kategorieVorgabe,
   onClose,
 }: Readonly<{
   /** Set when editing. */
@@ -37,12 +51,24 @@ export function GegenstandFormular({
   /** Places offered when creating. */
   lagerorte?: LagerKnoten[];
   ifcos?: IfcoEintrag[];
+  /** Preselected parent when creating a part. */
+  teilVon?: string;
+  /** Preselected Kategorie when creating (e.g. the parent's). */
+  kategorieId?: string;
   onClose: () => void;
 }>) {
   const api = useApi();
   const qc = useQueryClient();
   const [name, setName] = useState(gegenstand?.name ?? '');
-  const [kategorieId, setKategorieId] = useState<string | null>(gegenstand?.kategorieId ?? null);
+  const { gegenstaende } = useInventar();
+  const [kategorieId, setKategorieId] = useState<string | null>(
+    gegenstand?.kategorieId ?? kategorieVorgabe ?? null,
+  );
+  const [teilVon, setTeilVon] = useState<string | null>(
+    gegenstand?.teilVon ?? teilVonVorgabe ?? null,
+  );
+  const [anzahlJe, setAnzahlJe] = useState<number | string>(gegenstand?.anzahlJe ?? 1);
+  const [virtuell, setVirtuell] = useState(gegenstand?.virtuell ?? false);
   const [anzahl, setAnzahl] = useState<number | string>(1);
   const [grund, setGrund] = useState<string>('gekauft');
   const [datum, setDatum] = useState(heuteBerlin());
@@ -57,6 +83,22 @@ export function GegenstandFormular({
     () => kategorieOptionen(kategorien, gegenstand?.kategorieId),
     [kategorien, gegenstand],
   );
+  // An item that has parts cannot become a part itself.
+  const hatTeile = !!gegenstand && gegenstaende.some((x) => x.teilVon === gegenstand.id);
+  const elternOptionen = useMemo(
+    () =>
+      gegenstaende
+        .filter(
+          (x) =>
+            x.teilVon === null &&
+            x.id !== gegenstand?.id &&
+            (!x.archiviert || x.id === gegenstand?.teilVon || x.id === teilVonVorgabe),
+        )
+        .map((x) => ({ value: x.id, label: x.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'de')),
+    [gegenstaende, gegenstand, teilVonVorgabe],
+  );
+  const eltern = gegenstaende.find((x) => x.id === teilVon);
   const platzOptionen = useMemo(
     () => zielOptionen(lagerorte, ifcos, new Set(), new Set()),
     [lagerorte, ifcos],
@@ -67,17 +109,20 @@ export function GegenstandFormular({
       name: string;
       beschreibung: string;
       kategorieId: string;
+      teilVon: string | null;
+      virtuell: boolean;
+      anzahlJe: number | null;
       anzahl: number;
       grund: (typeof ZUGANG_GRUENDE)[number];
       datum: string;
       platz: { lagerortId: string | null; ifcoId: string | null; anzahl: number } | null;
     }) => {
       if (gegenstand) {
-        const { name, beschreibung, kategorieId } = json;
+        const { name, beschreibung, kategorieId, teilVon, virtuell, anzahlJe } = json;
         await pruefen(
           await api.inventar.gegenstaende[':id'].$put({
             param: { id: gegenstand.id },
-            json: { name, beschreibung, kategorieId },
+            json: { name, beschreibung, kategorieId, teilVon, virtuell, anzahlJe },
           }),
         );
       } else {
@@ -96,12 +141,16 @@ export function GegenstandFormular({
       name,
       beschreibung,
       kategorieId: kategorieId ?? '',
+      teilVon,
+      virtuell: teilVon === null && virtuell,
+      anzahlJe: teilVon !== null ? (typeof anzahlJe === 'number' ? anzahlJe : Number.NaN) : null,
       anzahl: typeof anzahl === 'number' ? anzahl : Number.NaN,
       grund: grund as (typeof ZUGANG_GRUENDE)[number],
       datum,
-      platz: ziel
-        ? { ...zielAusWert(ziel), anzahl: typeof amPlatz === 'number' ? amPlatz : Number.NaN }
-        : null,
+      platz:
+        ziel && !virtuell
+          ? { ...zielAusWert(ziel), anzahl: typeof amPlatz === 'number' ? amPlatz : Number.NaN }
+          : null,
     };
     const parsed = (gegenstand ? gegenstandSchema : gegenstandAnlegenSchema).safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -138,6 +187,41 @@ export function GegenstandFormular({
             value={kategorieId}
             onChange={setKategorieId}
           />
+          {!hatTeile && !virtuell && (
+            <Select
+              label="Teil von (optional)"
+              placeholder="Kein übergeordneter Gegenstand"
+              searchable
+              clearable
+              inputMode="text"
+              nothingFoundMessage="Nichts gefunden"
+              data={elternOptionen}
+              value={teilVon}
+              onChange={(v) => {
+                setTeilVon(v);
+                if (v) setVirtuell(false);
+              }}
+            />
+          )}
+          {teilVon !== null && (
+            <ZahlFeld
+              label={`Anzahl je ${eltern?.name ?? 'übergeordnetem Gegenstand'}`}
+              allowDecimal={false}
+              allowNegative={false}
+              min={1}
+              inputMode="numeric"
+              value={anzahlJe}
+              onChange={setAnzahlJe}
+            />
+          )}
+          {teilVon === null && (
+            <Switch
+              label="Nur virtuell"
+              description="Besteht nur aus seinen Teilen und hat keinen eigenen Platz."
+              checked={virtuell}
+              onChange={(e) => setVirtuell(e.currentTarget.checked)}
+            />
+          )}
           {!gegenstand && (
             <>
               <ZahlFeld
@@ -162,7 +246,7 @@ export function GegenstandFormular({
               </Group>
             </>
           )}
-          {!gegenstand && (
+          {!gegenstand && !virtuell && (
             <PfadSelect
               label="Platz (optional)"
               placeholder="Lagerort oder IFCO wählen"
@@ -175,7 +259,7 @@ export function GegenstandFormular({
               onChange={setZiel}
             />
           )}
-          {!gegenstand && ziel && (anzahl !== 1 || amPlatz !== 1) && (
+          {!gegenstand && !virtuell && ziel && (anzahl !== 1 || amPlatz !== 1) && (
             <ZahlFeld
               label="Anzahl an diesem Platz"
               allowDecimal={false}

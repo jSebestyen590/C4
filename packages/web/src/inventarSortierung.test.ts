@@ -28,6 +28,9 @@ const gegenstand = (
   verliehen: 0,
   vorgemerkt: 0,
   plaetze: [],
+  teilVon: null,
+  virtuell: false,
+  anzahlJe: null,
   verbaut: [],
   ...extra,
 });

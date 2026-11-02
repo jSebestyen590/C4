@@ -339,6 +339,12 @@ export const gegenstaende = pgTable('gegenstaende', {
     .references(() => inventarKategorien.id),
   anzahl: integer('anzahl').notNull().default(1),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Parent Gegenstand when this one is a part ("Teil"); reference without a foreign key (enforced in the API). */
+  teilVon: text('teil_von'),
+  /** Virtual: has an amount but never Plätze, fixed installations or Ausleihen (null = false). */
+  virtuell: boolean('virtuell'),
+  /** Pieces of this part per piece of its parent; set exactly when `teilVon` is set. */
+  anzahlJe: integer('anzahl_je'),
 });
 export type GegenstandRow = typeof gegenstaende.$inferSelect;
 

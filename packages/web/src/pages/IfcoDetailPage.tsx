@@ -227,6 +227,7 @@ export function IfcoDetailPage() {
               ausleihen={ausleihenDaten.ausleihen}
               gegenstandId={z.gegenstandId}
               ziel={{ lagerortId: null, ifcoId: ifco.id }}
+              einzeln={inv.gegenstaende.find((x) => x.id === z.gegenstandId)?.anzahl === 1}
             />
           </Paper>
         ))}

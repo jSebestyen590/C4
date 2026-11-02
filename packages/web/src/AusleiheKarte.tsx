@@ -14,6 +14,7 @@ import {
 import type { AusleiheEintrag, useInventar } from './inventarDaten';
 import { StatusName } from './StatusAnzeige';
 import { mitgliedLink, mitgliedName } from './mitglied';
+import { teileGruppeTitel, teileGruppieren } from './inventarTeile';
 import { zeitAnzeigen } from './warenAnzeige';
 
 const MAX_POSITIONEN = 4;
@@ -133,7 +134,7 @@ export function AusleiheKarte({
   a,
   inv,
 }: Readonly<{ a: AusleiheEintrag; inv: ReturnType<typeof useInventar> }>) {
-  const eintraege = positionenGruppieren(a.positionen);
+  const eintraege = teileGruppieren(positionenGruppieren(a.positionen), inv.gegenstaende);
   return (
     <Paper
       component={Link}
@@ -164,6 +165,23 @@ export function AusleiheKarte({
               {positionText(e.position, inv.gegenstaende, inv.lagerorte, inv.ifcos)}
               {e.position.zurueckAm && ' (zurück)'}
             </Text>
+          ) : e.art === 'teile' ? (
+            <Stack key={`t-${e.elternId}`} gap={0}>
+              <Text
+                size="sm"
+                c={e.positionen.every((p) => p.zurueckAm) ? 'dimmed' : undefined}
+                style={{ overflowWrap: 'anywhere' }}
+              >
+                {teileGruppeTitel(
+                  inv.gegenstaende.find((g) => g.id === e.elternId)?.name ?? 'Unbekannt',
+                  e.saetze,
+                )}
+                {e.positionen.every((p) => p.zurueckAm) && ' (zurück)'}
+              </Text>
+              <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                {ifcoInhaltText(e.positionen, inv.gegenstaende)}
+              </Text>
+            </Stack>
           ) : (
             <Stack key={`i-${e.ifcoId}`} gap={0}>
               <Text

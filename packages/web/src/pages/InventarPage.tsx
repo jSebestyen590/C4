@@ -28,11 +28,13 @@ import {
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { pfad, platzText, teilbaumIds } from '@c4/shared';
+import { TeileStatusBadges } from '../TeileStatusBadges';
 import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { IfcoFormular } from '../IfcoFormular';
 import { typAnzeige } from '../ifcoPlatz';
 import {
+  aktiveTeile,
   anzahlText,
   GEGENSTAND_SORTIERUNGEN,
   IFCO_SORTIERUNGEN,
@@ -46,7 +48,10 @@ import {
   mengeName,
   mengeText,
   platzZeilen,
+  teileZaehlText,
   verbautZeilen,
+  verliehenText,
+  vorgemerktText,
 } from '../inventarAnzeige';
 import {
   useAufraeumen,
@@ -62,12 +67,18 @@ type Ansicht = 'gegenstaende' | 'ifcos' | 'verliehen';
 
 const kartenStil = { color: 'inherit', textDecoration: 'none' } as const;
 
+/** Name of the parent when `g` is a part, else null. */
+const elternName = (alle: GegenstandEintrag[], g: GegenstandEintrag): string | null =>
+  g.teilVon ? (alle.find((x) => x.id === g.teilVon)?.name ?? null) : null;
+
 function GegenstandKarte({
   g,
   inv,
 }: Readonly<{ g: GegenstandEintrag; inv: ReturnType<typeof useInventar> }>) {
   const abweichung = gegenstandAbweichung(g);
   const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
+  const teile = aktiveTeile(inv.gegenstaende, g.id);
+  const eltern = elternName(inv.gegenstaende, g);
   return (
     <Paper
       component={Link}
@@ -94,12 +105,19 @@ function GegenstandKarte({
             </Text>
           )}
         </Group>
+        {eltern && (
+          <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+            Teil von {eltern}
+          </Text>
+        )}
         <Text size="sm" c="dimmed">
           {pfad(inv.kategorien, g.kategorieId)}
         </Text>
         {zeilen.map((z) => (
           <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
-            {[z.text, mengeText(z.anzahl, z.verliehen, z.vorgemerkt)].filter(Boolean).join(' · ')}
+            {[z.text, mengeText(z.anzahl, z.verliehen, z.vorgemerkt, g.anzahl === 1)]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
         ))}
         {verbautZeilen(g).map((v) => (
@@ -107,15 +125,25 @@ function GegenstandKarte({
             {[v.text, anzahlText(v.anzahl)].filter(Boolean).join(' · ')}
           </Text>
         ))}
-        {zeilen.length === 0 && g.verbaut.length === 0 && (
+        {zeilen.length === 0 && g.verbaut.length === 0 && !g.virtuell && (
           <Text size="sm" c="dimmed">
             Kein Platz zugeordnet
           </Text>
         )}
-        {abweichung && (
-          <Badge color="orange" variant="light" style={{ alignSelf: 'flex-start' }}>
-            {abweichung}
-          </Badge>
+        {teile.length > 0 && (
+          <Text size="sm" c="dimmed">
+            {teileZaehlText(teile.length, g.virtuell)}
+          </Text>
+        )}
+        {(abweichung || teile.length > 0) && (
+          <Group gap={4}>
+            {teile.length > 0 && <TeileStatusBadges eltern={g} teile={teile} />}
+            {abweichung && (
+              <Badge color="orange" variant="light">
+                {abweichung}
+              </Badge>
+            )}
+          </Group>
         )}
       </Stack>
     </Paper>
@@ -192,6 +220,8 @@ function GegenstandTabelle({
           {liste.map((g) => {
             const abweichung = gegenstandAbweichung(g);
             const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
+            const teile = aktiveTeile(inv.gegenstaende, g.id);
+            const eltern = elternName(inv.gegenstaende, g);
             return (
               <Table.Tr
                 key={g.id}
@@ -209,6 +239,11 @@ function GegenstandTabelle({
                       {g.name}
                     </Text>
                   </Link>
+                  {eltern && (
+                    <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                      Teil von {eltern}
+                    </Text>
+                  )}
                   {g.beschreibung && (
                     <Text size="sm" c="dimmed" lineClamp={1}>
                       {g.beschreibung}
@@ -230,13 +265,13 @@ function GegenstandTabelle({
                       {z.verliehen > 0 && (
                         <Text span size="xs" c="grape" inherit>
                           {' · '}
-                          {z.verliehen} verliehen
+                          {verliehenText(z.verliehen, g.anzahl === 1)}
                         </Text>
                       )}
                       {z.vorgemerkt > 0 && (
                         <Text span size="xs" c="cyan" inherit>
                           {' · '}
-                          {z.vorgemerkt} vorgemerkt
+                          {vorgemerktText(z.vorgemerkt, g.anzahl === 1)}
                         </Text>
                       )}
                     </Text>
@@ -246,14 +281,20 @@ function GegenstandTabelle({
                       {[anzahlText(v.anzahl), v.text].filter(Boolean).join(' ')}
                     </Text>
                   ))}
-                  {zeilen.length === 0 && g.verbaut.length === 0 && (
+                  {zeilen.length === 0 && g.verbaut.length === 0 && !g.virtuell && (
                     <Text size="sm" c="dimmed">
                       Kein Platz zugeordnet
+                    </Text>
+                  )}
+                  {teile.length > 0 && (
+                    <Text size="sm" c="dimmed">
+                      {teileZaehlText(teile.length, g.virtuell)}
                     </Text>
                   )}
                 </Table.Td>
                 <Table.Td>
                   <Group gap={4}>
+                    {teile.length > 0 && <TeileStatusBadges eltern={g} teile={teile} />}
                     {abweichung && (
                       <Badge color="orange" variant="light">
                         {abweichung}
@@ -514,6 +555,7 @@ export function InventarPage() {
   const [suche, setSuche] = useState('');
   const [kategorie, setKategorie] = useState<string | null>(null);
   const [archiv, setArchiv] = useState(false);
+  const [teileAnzeigen, setTeileAnzeigen] = useState(false);
   const [sortierung, setSortierung] = useState<GegenstandSortierung>('name');
   const [umgekehrt, setUmgekehrt] = useState(false);
   const [anlegen, setAnlegen] = useState(false);
@@ -549,17 +591,25 @@ export function InventarPage() {
   const gegenstaende = useMemo(() => {
     const ids = kategorie ? new Set(teilbaumIds(inv.kategorien, kategorie)) : null;
     const q = suche.trim().toLowerCase();
+    const sucheTrifft = (g: GegenstandEintrag) => {
+      if (g.name.toLowerCase().includes(q) || g.beschreibung?.toLowerCase().includes(q))
+        return true;
+      if (g.verbaut.some((v) => v.ort.toLowerCase().includes(q))) return true;
+      // Also find a Gegenstand by the IFCO or the Lagerort it lies in.
+      return g.plaetze.some((p) =>
+        platzText(inv.lagerorte, inv.ifcos, p).toLowerCase().includes(q),
+      );
+    };
     const treffer = inv.gegenstaende
       .filter((g) => archiv || !g.archiviert)
+      .filter((g) => teileAnzeigen || g.teilVon === null)
       .filter((g) => !ids || ids.has(g.kategorieId))
       .filter((g) => {
         if (!q) return true;
-        if (g.name.toLowerCase().includes(q) || g.beschreibung?.toLowerCase().includes(q))
-          return true;
-        if (g.verbaut.some((v) => v.ort.toLowerCase().includes(q))) return true;
-        // Also find a Gegenstand by the IFCO or the Lagerort it lies in.
-        return g.plaetze.some((p) =>
-          platzText(inv.lagerorte, inv.ifcos, p).toLowerCase().includes(q),
+        if (sucheTrifft(g)) return true;
+        // A parent is also found by its parts, even while the parts themselves are hidden.
+        return inv.gegenstaende.some(
+          (t) => t.teilVon === g.id && (archiv || !t.archiviert) && sucheTrifft(t),
         );
       });
     return gegenstaendeSortieren(
@@ -576,6 +626,7 @@ export function InventarPage() {
     kategorie,
     suche,
     archiv,
+    teileAnzeigen,
     sortierung,
     umgekehrt,
   ]);
@@ -705,11 +756,20 @@ export function InventarPage() {
               maw={{ sm: 280 }}
             />
           )}
-          <Switch
-            label="Archivierte anzeigen"
-            checked={archiv}
-            onChange={(e) => setArchiv(e.currentTarget.checked)}
-          />
+          <Group gap="lg">
+            <Switch
+              label="Archivierte anzeigen"
+              checked={archiv}
+              onChange={(e) => setArchiv(e.currentTarget.checked)}
+            />
+            {imGegenstand && (
+              <Switch
+                label="Teile anzeigen"
+                checked={teileAnzeigen}
+                onChange={(e) => setTeileAnzeigen(e.currentTarget.checked)}
+              />
+            )}
+          </Group>
           {inv.laedt && <Loader m="md" aria-label="Inventar wird geladen" />}
           {inv.fehler && <Alert color="red">Das Inventar konnte nicht geladen werden.</Alert>}
           {!inv.laedt && !inv.fehler && leer && (

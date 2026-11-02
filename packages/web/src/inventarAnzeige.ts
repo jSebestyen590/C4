@@ -8,8 +8,11 @@ import {
   type Tage,
   pfad,
   platzText,
+  teilAbweichung,
+  teilSoll,
   type BaumKnoten,
   type PlatzZiel,
+  type TeileStatus,
 } from '@c4/shared';
 import { ifcoPlatzMasse, platzPasst } from './ifcoPlatz';
 import { zeitAnzeigen } from './warenAnzeige';
@@ -113,24 +116,101 @@ export const anzahlText = (anzahl: number): string => (anzahl === 1 ? '' : `${an
 export const mengeName = (anzahl: number, name: string): string =>
   anzahl === 1 ? name : `${anzahl}× ${name}`;
 
+/** `3 verliehen`, or just `verliehen` when the Gegenstand exists once (`einzeln`). */
+export const verliehenText = (anzahl: number, einzeln = false): string =>
+  einzeln ? 'verliehen' : `${anzahl} verliehen`;
+
+/** `2 vorgemerkt`, or just `vorgemerkt` when the Gegenstand exists once (`einzeln`). */
+export const vorgemerktText = (anzahl: number, einzeln = false): string =>
+  einzeln ? 'vorgemerkt' : `${anzahl} vorgemerkt`;
+
 /**
  * `6× · 3 verliehen · 2 vorgemerkt`; the count is left out when it is 1 (`3 verliehen`), so the
- * text is empty for a single piece that is neither lent nor reserved.
+ * text is empty for a single piece that is neither lent nor reserved. With `einzeln` (the whole
+ * Gegenstand exists once) the lent and reserved counts are left out too: `verliehen`.
  */
-export function mengeText(anzahl: number, verliehen = 0, vorgemerkt = 0): string {
+export function mengeText(anzahl: number, verliehen = 0, vorgemerkt = 0, einzeln = false): string {
   return [
     anzahlText(anzahl),
-    ...(verliehen > 0 ? [`${verliehen} verliehen`] : []),
-    ...(vorgemerkt > 0 ? [`${vorgemerkt} vorgemerkt`] : []),
+    ...(verliehen > 0 ? [verliehenText(verliehen, einzeln)] : []),
+    ...(vorgemerkt > 0 ? [vorgemerktText(vorgemerkt, einzeln)] : []),
   ]
     .filter(Boolean)
     .join(' · ');
 }
 
+/** A status badge of a parent made of parts. */
+export interface TeileBadge {
+  text: string;
+  color: 'grape' | 'cyan';
+  /** Filled variant ("light") for complete, outline for partial. */
+  voll: boolean;
+}
+
+/**
+ * Lent / reserved badges of a parent with parts. Complete: `Verliehen`; partial: `Teilweise
+ * verliehen`, or `2 von 3 verliehen` when some complete sets are away (`· teilweise` if loose
+ * parts are away beyond them). A parent that exists once never shows numbers.
+ */
+export function teileStatusBadges(eltern: { anzahl: number }, status: TeileStatus): TeileBadge[] {
+  const badge = (
+    art: 'verliehen' | 'vorgemerkt',
+    s: 'verliehen' | 'vorgemerkt' | 'teilweise' | null,
+    a: TeileStatus['verliehen'],
+  ): TeileBadge[] => {
+    if (!s) return [];
+    const color = art === 'verliehen' ? 'grape' : 'cyan';
+    const gross = art === 'verliehen' ? 'Verliehen' : 'Vorgemerkt';
+    if (s !== 'teilweise') return [{ text: gross, color, voll: true }];
+    if (eltern.anzahl > 1 && a.saetze >= 1) {
+      const text = `${a.saetze} von ${eltern.anzahl} ${art}${a.teilweise ? ' · teilweise' : ''}`;
+      return [{ text, color, voll: false }];
+    }
+    return [{ text: `Teilweise ${art}`, color, voll: false }];
+  };
+  return [
+    ...badge('verliehen', status.status, status.verliehen),
+    ...badge('vorgemerkt', status.vorgemerktStatus, status.vorgemerkt),
+  ];
+}
+
+/** The non-archived parts of the Gegenstand `elternId`, in the order of `alle`. */
+export const aktiveTeile = (alle: GegenstandEintrag[], elternId: string): GegenstandEintrag[] =>
+  alle.filter((g) => g.teilVon === elternId && !g.archiviert);
+
+/** `Virtuell · 5 Teile` / `5 Teile` / `1 Teil`. */
+export const teileZaehlText = (anzahl: number, virtuell = false): string =>
+  `${virtuell ? 'Virtuell · ' : ''}${anzahl} ${anzahl === 1 ? 'Teil' : 'Teile'}`;
+
+/**
+ * Amount line of a part: `12 je Pavillon · 36 von 36`, or `34 von 36 · 2 fehlen` / `… · 1 zu viel`
+ * on deviation. Without deviation and with a single piece in total (`soll` 1) the line is null:
+ * a part that exists once per single parent needs no count.
+ */
+export function teilMengeText(
+  eltern: { anzahl: number; name: string },
+  teil: { anzahl: number; anzahlJe: number | null },
+): string | null {
+  const soll = teilSoll(eltern, teil);
+  const abw = teilAbweichung(eltern, teil);
+  const je = teil.anzahlJe ?? 1;
+  const jeText = je === 1 && eltern.anzahl === 1 ? null : `${je} je ${eltern.name}`;
+  const abwText =
+    abw === 0
+      ? soll === 1
+        ? null
+        : `${teil.anzahl} von ${soll}`
+      : `${teil.anzahl} von ${soll} · ${abw < 0 ? (abw === -1 ? '1 fehlt' : `${-abw} fehlen`) : `${abw} zu viel`}`;
+  return [jeText, abwText].filter(Boolean).join(' · ') || null;
+}
+
 /** Deviation of a Gegenstand's Plätze from its target, e.g. `2 ohne Platz`; null when it matches. */
 export function gegenstandAbweichung(
-  g: Pick<GegenstandEintrag, 'anzahl' | 'plaetze' | 'verbaut'>,
+  g: Pick<GegenstandEintrag, 'anzahl' | 'plaetze' | 'verbaut'> &
+    Partial<Pick<GegenstandEintrag, 'virtuell'>>,
 ): string | null {
+  // A virtual Gegenstand never has Plätze, so there is nothing to deviate from.
+  if (g.virtuell) return null;
   return abweichungText(inventarAbweichung(g.anzahl, [...g.plaetze, ...g.verbaut]).differenz);
 }
 

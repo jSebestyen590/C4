@@ -28,6 +28,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `0091_umfragen_erstellt_idx`.
 - 0098–0100 (Status-Verlauf): 0098 löscht die Tabelle, 0099 den Index, 0100 löscht nur die Startbuchungen ohne Datum
   wieder. Rollback-Ziel nur für den Status-Verlauf: `0097_mitglieder_deaktiviert_am`.
+- 0101–0103 (Inventar-Teile) fügen `gegenstaende.teil_von`, `virtuell` und `anzahl_je` per `ALTER` hinzu; ihre Down-Dateien
+  leeren nur die Werte. Rollback-Ziel nur für die Teile: `0100_mitglied_status_verlauf_bestand`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

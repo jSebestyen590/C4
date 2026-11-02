@@ -5,7 +5,7 @@ import type { BestandsAnzeige } from './lagerBestand';
 import { ifcoPlatzText, type IfcoPlatzMasse } from '@c4/shared';
 import type { IfcoEintrag, IfcoTypEintrag } from './inventarDaten';
 import { ifcosAufPlatz, passtNochText } from './ifcoPlatz';
-import { anzahlText, ifcoAusleiheZeile } from './inventarAnzeige';
+import { anzahlText, ifcoAusleiheZeile, verliehenText, vorgemerktText } from './inventarAnzeige';
 import type { LagerInventar } from './lagerInventar';
 
 const inventarZeile = {
@@ -66,13 +66,19 @@ export function InventarListe({ inventar }: Readonly<{ inventar: LagerInventar }
             {g.verliehen > 0 && (
               <Text span c="grape" inherit>
                 {' '}
-                · {g.verliehen} verliehen
+                · {verliehenText(g.verliehen, g.gesamt === 1)}
               </Text>
             )}
             {g.vorgemerkt > 0 && (
               <Text span c="cyan" inherit>
                 {' '}
-                · {g.vorgemerkt} vorgemerkt
+                · {vorgemerktText(g.vorgemerkt, g.gesamt === 1)}
+              </Text>
+            )}
+            {g.teilVon && (
+              <Text span c="dimmed" inherit>
+                {' '}
+                · Teil von {g.teilVon}
               </Text>
             )}
           </span>
