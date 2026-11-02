@@ -1,5 +1,15 @@
 import { Box, Tooltip } from '@mantine/core';
-import { Fragment, type ReactNode } from 'react';
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   balkenPosition,
   mantineFarbe,
@@ -33,12 +43,13 @@ const ACHSE_HOEHE = 18;
 export const ZEITSTRAHL_CSS = `
 .zs-inner {
   display: grid;
-  /* The label column is as wide as its longest label; .zs-label caps it so long names wrap. */
-  grid-template-columns: max-content minmax(var(--zs-min), 1fr);
+  /* As wide as the longest label; inside a ZeitstrahlGruppe the widest label of all charts. */
+  grid-template-columns: var(--zs-label, max-content) minmax(var(--zs-min), 1fr);
 }
-.zs-label { max-width: 96px; }
+/* Caps a label so long names wrap instead of widening the column. */
+.zs-label-text { display: inline-block; max-width: 88px; }
 @media (min-width: 36em) {
-  .zs-label { max-width: 200px; }
+  .zs-label-text { max-width: 192px; }
 }
 /* No margin: browsers then leave out their own header and footer (URL, date, page number). */
 @page { size: A4 landscape; margin: 0; }
@@ -56,6 +67,52 @@ export const ZEITSTRAHL_CSS = `
 
 export function ZeitstrahlStyle() {
   return <style>{ZEITSTRAHL_CSS}</style>;
+}
+
+/** Collects the natural label width of each chart in a group. */
+const GruppenContext = createContext<((id: string, breite: number) => void) | null>(null);
+
+/** Gives all charts inside the same label column width, so their time axes line up. */
+export function ZeitstrahlGruppe({ children }: Readonly<{ children: ReactNode }>) {
+  const [breiten, setBreiten] = useState<Record<string, number>>({});
+  const melden = useCallback(
+    (id: string, breite: number) =>
+      setBreiten((alt) => (alt[id] === breite ? alt : { ...alt, [id]: breite })),
+    [],
+  );
+  const max = Math.max(0, ...Object.values(breiten));
+  return (
+    <GruppenContext.Provider value={melden}>
+      <div style={max > 0 ? { ['--zs-label' as string]: `${max}px` } : undefined}>{children}</div>
+    </GruppenContext.Provider>
+  );
+}
+
+/**
+ * Reports the widest label of this chart to the surrounding group. Labels are inline blocks, so
+ * their width does not depend on the column width and the measurement cannot feed back on itself.
+ */
+function useLabelBreite(zeilen: readonly ZeitZeile[]) {
+  const melden = useContext(GruppenContext);
+  const id = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const grid = ref.current;
+    if (!melden || !grid) return;
+    const messen = () => {
+      const texte = [...grid.querySelectorAll<HTMLElement>('.zs-label-text')];
+      // + 8px right padding of the label cell.
+      melden(id, Math.ceil(Math.max(0, ...texte.map((t) => t.getBoundingClientRect().width))) + 8);
+    };
+    messen();
+    const beobachter = new ResizeObserver(messen);
+    grid.querySelectorAll('.zs-label-text').forEach((t) => beobachter.observe(t));
+    return () => {
+      beobachter.disconnect();
+      melden(id, 0);
+    };
+  }, [melden, id, zeilen]);
+  return ref;
 }
 
 function Gitter({ bereich }: Readonly<{ bereich: Bereich }>) {
@@ -119,6 +176,7 @@ export function Zeitstrahl({
   zeilen,
   beschriftung,
 }: Readonly<{ bereich: Bereich; zeilen: ZeitZeile[]; beschriftung: string }>) {
+  const gridRef = useLabelBreite(zeilen);
   const linie = '1px solid var(--mantine-color-default-border)';
   const labelStil = {
     position: 'sticky',
@@ -147,6 +205,7 @@ export function Zeitstrahl({
       aria-label={beschriftung}
     >
       <Box
+        ref={gridRef}
         className="zs-inner"
         style={{
           width: '100%',
@@ -154,7 +213,7 @@ export function Zeitstrahl({
           ['--zs-min' as string]: `${mindestBreite(bereich)}px`,
         }}
       >
-        <div className="zs-label" style={{ ...labelStil, zIndex: 3 }} />
+        <div style={{ ...labelStil, zIndex: 3 }} />
         <div style={{ position: 'relative', height: ACHSE_HOEHE }}>
           {ticks(bereich).map((t) => (
             <Box
@@ -176,8 +235,11 @@ export function Zeitstrahl({
         </div>
         {zeilen.map((z, i) => (
           <Fragment key={z.key}>
-            <div className="zs-label" style={{ ...labelStil, ...rand(i) }}>
-              <div style={{ minWidth: 0, overflowWrap: 'break-word', hyphens: 'auto' }}>
+            <div style={{ ...labelStil, ...rand(i) }}>
+              <div
+                className="zs-label-text"
+                style={{ minWidth: 0, overflowWrap: 'break-word', hyphens: 'auto' }}
+              >
                 {z.label}
               </div>
             </div>

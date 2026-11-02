@@ -29,7 +29,7 @@ import { useAuth } from '../auth';
 import { labelFuer, MITGLIED_STATUS_LABELS } from '../i18n';
 import { anzeigename, mitgliedLink, mitgliedName, nebenname } from '../mitglied';
 import { BADGE_FARBE, StatusName } from '../StatusAnzeige';
-import { Zeitstrahl, ZeitstrahlStyle, type ZeitZeile } from '../Zeitstrahl';
+import { Zeitstrahl, ZeitstrahlGruppe, ZeitstrahlStyle, type ZeitZeile } from '../Zeitstrahl';
 import {
   besetzungSegmente,
   fruehestes,
@@ -445,7 +445,11 @@ export function HistoriePage() {
             : 'Wähle einen oder mehrere Posten, um zu sehen, wer sie wann innehatte.'}
         </Text>
       )}
-      {!auswahlLeer && ansicht === 'mitglieder' && <MitgliederAnsicht kennungen={kennungen} />}
+      {!auswahlLeer && ansicht === 'mitglieder' && (
+        <ZeitstrahlGruppe>
+          <MitgliederAnsicht kennungen={kennungen} />
+        </ZeitstrahlGruppe>
+      )}
       {!auswahlLeer && ansicht === 'posten' && posten.isPending && (
         <Loader aria-label="Posten werden geladen" />
       )}
@@ -453,7 +457,9 @@ export function HistoriePage() {
         <Alert color="red">Die Posten konnten nicht geladen werden.</Alert>
       )}
       {!auswahlLeer && ansicht === 'posten' && posten.data && (
-        <PostenAnsicht ids={postenIds} posten={posten.data} />
+        <ZeitstrahlGruppe>
+          <PostenAnsicht ids={postenIds} posten={posten.data} />
+        </ZeitstrahlGruppe>
       )}
     </Stack>
   );

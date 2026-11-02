@@ -34,7 +34,7 @@ nach zwölf Personen beginnt die Palette von vorn). Gemeinsamer Bereich für all
   derselbe Text ist das `aria-label` des fokussierbaren Balkens.
 - Achse mit Jahresmarken (Monatsmarken unter zwei Jahren, Marken am 1. und 15. unter vier Monaten). Positionen sind Prozent des Bereichs. Auf dem
   Handy scrollt nur der Zeitstrahl waagerecht (Namensspalte bleibt stehen), nicht die Seite.
-- Die Namensspalte ist so breit wie der längste Name, höchstens 96 px auf dem Handy und 200 px ab `sm`; längere Namen brechen um.
+- Die Namensspalte ist so breit wie der längste Name aller Diagramme der Ansicht (damit die Zeitachsen untereinander stehen), höchstens 96 px auf dem Handy und 200 px ab `sm`; längere Namen brechen um.
 
 ## Drucken
 
