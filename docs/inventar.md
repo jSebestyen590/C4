@@ -49,8 +49,8 @@ mit eigener Anzahl, eigenem Verlauf, eigenen Plätzen (auch in IFCOs) und Auslei
   Ausleihen (409). Ein nicht virtueller übergeordneter Gegenstand zählt selbst als Bestandteil (je 1).
 - **Gekoppelt:** Ein Teil hat keine eigene Kategorie: Es übernimmt die des übergeordneten Gegenstands, auch beim späteren
   Zuordnen, und ändert sich mit ihr. Beim Anlegen eines Teils übernimmt der erste Zugang Grund und Datum vom ältesten Zugang des
-  übergeordneten Gegenstands (sonst „gekauft“, heute). Danach hat das Teil eigene Zugänge und Abgänge; Anzahl und `anzahlJe` sind
-  unabhängig voneinander.
+  übergeordneten Gegenstands (sonst „gekauft“, heute). Seine Anzahl ist beim Anlegen Anzahl des übergeordneten × `anzahlJe`;
+  danach hat das Teil eigene Zugänge und Abgänge, Anzahl und `anzahlJe` hängen nicht mehr zusammen.
 - **Mit Teilen anlegen:** `POST /gegenstaende` nimmt `teile: [{ name, anzahlJe, platz? }]` (nicht bei einem Teil; doppelte Namen
   400). Jedes Teil bekommt Anzahl = Anzahl × `anzahlJe`, Kategorie, Grund und Datum des Gegenstands und den angegebenen Platz,
   sonst den Platz des Gegenstands, sonst keinen; alles in einer Transaktion.
@@ -299,7 +299,8 @@ jede Änderung macht `['inventar']` ungültig.
     Vorrang.
   - Beim Anlegen (kein Teil) gibt es den Abschnitt „Teile (optional)“: je Zeile Name, „Anzahl je <Name>“, optional Platz
     (Standard: Platz des Gegenstands) und „Gesamt: N“. Ein Teil zeigt statt der Kategorie die des übergeordneten Gegenstands
-    und fragt beim Anlegen weder Grund noch Datum; „Anzahl“ und „Anzahl je …“ sind unabhängig.
+    und fragt beim Anlegen („Teil anlegen“) weder Grund noch Datum noch eine eigene Anzahl: nur „Anzahl je …“ mit „Gesamt: N“
+    darunter; die Anzahl am Platz folgt dem Gesamt.
   - Lager-Seite: Teile erscheinen an ihren Plätzen mit „· Teil von Pavillon“.
 - Bei Gesamtanzahl 1 steht „verliehen“ / „vorgemerkt“ ohne Zahl (Übersicht, Detailseite, `PlatzAusleihHinweise`, Lager).
 - Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen IFCOs und direkt zugeordnete
