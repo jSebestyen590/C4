@@ -330,6 +330,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             }
           />
           <Route
+            path="/inventar/ausleihen/:id/bearbeiten"
+            element={
+              <Protected permission="inventar:umraeumen">
+                <RequireUsername>
+                  <AusleihePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
             path="/inventar/ausleihen/:id"
             element={
               <Protected permission="inventar:lesen">

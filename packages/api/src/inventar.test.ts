@@ -9,6 +9,9 @@ const g: GegenstandRow = {
   kategorieId: 'k',
   anzahl: 10,
   archiviert: false,
+  teilVon: null,
+  virtuell: null,
+  anzahlJe: null,
 };
 const platz = (id: string, lagerortId: string | null, ifcoId: string | null, anzahl: number) => ({
   id,

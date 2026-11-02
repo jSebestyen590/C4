@@ -33,12 +33,21 @@ const AusleiheLink = ({ a }: Readonly<{ a: AusleiheEintrag }>) => (
 /**
  * Lending notes below a place line: `verliehen: 3 (an Feuerwehr)` and one line per reservation
  * `vorgemerkt: 2 ab 25.10.2026 10:00 (an Jugendgruppe)`, each borrower linked to its Ausleihe.
+ * With `einzeln` (the Gegenstand exists once) the numbers are left out: `verliehen (an Feuerwehr)`,
+ * `vorgemerkt ab 25.10.2026 10:00 (an Jugendgruppe)`.
  */
 export function PlatzAusleihHinweise({
   ausleihen,
   gegenstandId,
   ziel,
-}: Readonly<{ ausleihen: AusleiheEintrag[]; gegenstandId: string; ziel: Ziel }>) {
+  einzeln = false,
+}: Readonly<{
+  ausleihen: AusleiheEintrag[];
+  gegenstandId: string;
+  ziel: Ziel;
+  /** True when the Gegenstand exists exactly once in total. */
+  einzeln?: boolean;
+}>) {
   const offen = offenAnPlatz(ausleihen, gegenstandId, ziel);
   const verliehen = offen.filter((x) => x.a.status !== 'geplant');
   const vorgemerkt = offen.filter((x) => x.a.status === 'geplant');
@@ -47,7 +56,7 @@ export function PlatzAusleihHinweise({
     <>
       {summe > 0 && (
         <Text size="sm" c="grape" mt={4} style={{ overflowWrap: 'anywhere' }}>
-          verliehen: {summe} (an{' '}
+          verliehen{einzeln ? '' : `: ${summe}`} (an{' '}
           {verliehen.map(({ a, ganzeIfco }, i) => (
             <span key={a.id}>
               {i > 0 && ', '}
@@ -60,7 +69,8 @@ export function PlatzAusleihHinweise({
       )}
       {vorgemerkt.map(({ a, anzahl, ganzeIfco }) => (
         <Text key={a.id} size="sm" c="cyan" mt={4} style={{ overflowWrap: 'anywhere' }}>
-          vorgemerkt: {anzahl} {seitAbText(a.ausgeliehenAm)} (an <AusleiheLink a={a} />
+          vorgemerkt{einzeln ? '' : `: ${anzahl}`} {seitAbText(a.ausgeliehenAm)} (an{' '}
+          <AusleiheLink a={a} />
           {ganzeIfco && ', mit der ganzen IFCO'})
         </Text>
       ))}

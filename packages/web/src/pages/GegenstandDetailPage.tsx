@@ -16,6 +16,7 @@ import {
   IconChevronLeft,
   IconEdit,
   IconMapPin,
+  IconPlus,
   IconTruckDelivery,
   IconTrash,
 } from '@tabler/icons-react';
@@ -30,12 +31,23 @@ import { useAuth } from '../auth';
 import { GegenstandFormular } from '../GegenstandFormular';
 import { GegenstandPlaetzeModal } from '../GegenstandPlaetzeModal';
 import { AusleiheStatus, GefaehrdetBadges, ZeitraumKurz } from '../AusleiheKarte';
-import { anzahlText, gegenstandAbweichung, platzZeilen, positionText } from '../inventarAnzeige';
+import {
+  anzahlText,
+  gegenstandAbweichung,
+  platzZeilen,
+  positionText,
+  teilMengeText,
+  verliehenText,
+  vorgemerktText,
+} from '../inventarAnzeige';
+import { TeileStatusBadges } from '../TeileStatusBadges';
 import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
 import { zeitAnzeigen } from '../warenAnzeige';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+
+const gegenstandLink = (id: string) => `/inventar/gegenstaende/${encodeURIComponent(id)}`;
 
 /** Detail of one Gegenstand: master data, target vs. assigned amount and the Plätze. */
 export function GegenstandDetailPage() {
@@ -51,6 +63,7 @@ export function GegenstandDetailPage() {
   const [bearbeiten, setBearbeiten] = useState(false);
   const [plaetze, setPlaetze] = useState(false);
   const [loeschen, setLoeschen] = useState(false);
+  const [teilAnlegen, setTeilAnlegen] = useState(false);
 
   const archivieren = async (archiviert: boolean) => {
     await pruefen(
@@ -90,9 +103,19 @@ export function GegenstandDetailPage() {
   // A Gegenstand that exists once has one Platz: singular texts, no "1 von 1 zugeordnet".
   const einzeln = g.anzahl === 1;
   const summe = inventarAbweichung(g.anzahl, [...g.plaetze, ...g.verbaut]).summe;
-  // Ausleihen with a Position of this Gegenstand; those still holding some of it come first.
+  const eltern = g.teilVon ? inv.gegenstaende.find((x) => x.id === g.teilVon) : undefined;
+  const alleTeile = inv.gegenstaende
+    .filter((x) => x.teilVon === g.id)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const teile = alleTeile.filter((x) => !x.archiviert);
+  const hatTeile = alleTeile.length > 0;
+  // A parent can be lent when it (unless virtual) or one of its parts has a Platz.
+  const verleihbar =
+    (!g.virtuell && g.plaetze.length > 0) || teile.some((t) => t.plaetze.length > 0);
+  // Ausleihen with a Position of this Gegenstand or of its parts; those still holding some of it come first.
+  const ids = new Set([g.id, ...alleTeile.map((t) => t.id)]);
   const ausleihen = ausleihenDaten.ausleihen
-    .map((a) => ({ a, eigene: a.positionen.filter((p) => p.gegenstandId === g.id) }))
+    .map((a) => ({ a, eigene: a.positionen.filter((p) => ids.has(p.gegenstandId)) }))
     .filter((x) => x.eigene.length > 0)
     .map((x) => ({ ...x, offen: x.eigene.some((p) => p.zurueckAm === null) }))
     .sort((x, y) => Number(y.offen) - Number(x.offen));
@@ -110,16 +133,40 @@ export function GegenstandDetailPage() {
               {g.beschreibung}
             </Text>
           )}
+          {eltern && (
+            <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+              Teil von{' '}
+              <Anchor
+                component={Link}
+                to={`/inventar/gegenstaende/${encodeURIComponent(eltern.id)}`}
+                inherit
+              >
+                {eltern.name}
+              </Anchor>
+              {teilMengeText(eltern, g) && (
+                <Text span c="dimmed" inherit>
+                  {' · '}
+                  {teilMengeText(eltern, g)}
+                </Text>
+              )}
+            </Text>
+          )}
           <Group gap="xs">
-            {g.verliehen > 0 && (
-              <Badge variant="light" color="grape">
-                {g.verliehen} verliehen
-              </Badge>
-            )}
-            {g.vorgemerkt > 0 && (
-              <Badge variant="light" color="cyan">
-                {g.vorgemerkt} vorgemerkt
-              </Badge>
+            {hatTeile ? (
+              <TeileStatusBadges eltern={g} teile={teile} />
+            ) : (
+              <>
+                {g.verliehen > 0 && (
+                  <Badge variant="light" color="grape">
+                    {verliehenText(g.verliehen, einzeln)}
+                  </Badge>
+                )}
+                {g.vorgemerkt > 0 && (
+                  <Badge variant="light" color="cyan">
+                    {vorgemerktText(g.vorgemerkt, einzeln)}
+                  </Badge>
+                )}
+              </>
             )}
             {abweichung && (
               <Badge variant="light" color="orange">
@@ -160,77 +207,189 @@ export function GegenstandDetailPage() {
         />
       </Group>
 
-      <Group justify="space-between" wrap="wrap">
-        <Title order={3}>{einzeln ? 'Platz' : 'Plätze'}</Title>
-        {!einzeln && (
-          <Text size="sm" c={abweichung ? 'orange' : 'dimmed'}>
-            {summe} von {g.anzahl} zugeordnet
-          </Text>
-        )}
-      </Group>
-      {zeilen.length === 0 && g.verbaut.length === 0 && (
-        <Text c="dimmed">Noch kein Platz zugeordnet.</Text>
+      {(hatTeile || g.virtuell) && (
+        <>
+          <Group justify="space-between" wrap="wrap">
+            <Title order={3}>Teile</Title>
+            {teile.length > 0 && (
+              <Text size="sm" c="dimmed">
+                {teile.length} {teile.length === 1 ? 'Teil' : 'Teile'}
+              </Text>
+            )}
+          </Group>
+          {alleTeile.length === 0 && <Text c="dimmed">Noch keine Teile angelegt.</Text>}
+          <Stack gap="xs">
+            {alleTeile.map((t) => {
+              const mengen = teilMengeText(g, t);
+              const abw = t.anzahl !== g.anzahl * (t.anzahlJe ?? 1);
+              return (
+                <Paper
+                  key={t.id}
+                  withBorder
+                  p="sm"
+                  opacity={t.archiviert ? 0.6 : 1}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(e) => {
+                    // Links inside the card act on their own.
+                    if (!(e.target as HTMLElement).closest('a')) navigate(gegenstandLink(t.id));
+                  }}
+                >
+                  <Stack gap={2}>
+                    <Anchor
+                      component={Link}
+                      to={gegenstandLink(t.id)}
+                      fw={600}
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {t.name}
+                      {t.archiviert && ' (archiviert)'}
+                    </Anchor>
+                    {mengen && (
+                      <Text size="sm" c={abw ? 'orange' : 'dimmed'}>
+                        {mengen}
+                      </Text>
+                    )}
+                    {platzZeilen(t, inv.lagerorte, inv.ifcos).map((z) => {
+                      const platz = t.plaetze.find((p) => p.id === z.id)!;
+                      const ifco = platz.ifcoId
+                        ? inv.ifcos.find((i) => i.id === platz.ifcoId)
+                        : undefined;
+                      return (
+                        <div key={z.id}>
+                          <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                            {ifco ? (
+                              <Anchor
+                                component={Link}
+                                to={`/inventar/ifcos/${encodeURIComponent(ifco.id)}`}
+                                size="sm"
+                                style={{ overflowWrap: 'anywhere', minWidth: 0 }}
+                              >
+                                {z.text}
+                              </Anchor>
+                            ) : (
+                              <Text size="sm" style={{ overflowWrap: 'anywhere', minWidth: 0 }}>
+                                {z.text}
+                              </Text>
+                            )}
+                            {anzahlText(z.anzahl) && (
+                              <Text size="sm" fw={600} style={{ flex: 'none' }}>
+                                {anzahlText(z.anzahl)}
+                              </Text>
+                            )}
+                          </Group>
+                          <PlatzAusleihHinweise
+                            ausleihen={ausleihenDaten.ausleihen}
+                            gegenstandId={t.id}
+                            ziel={platz}
+                            einzeln={t.anzahl === 1}
+                          />
+                        </div>
+                      );
+                    })}
+                    {t.plaetze.length === 0 && (
+                      <Text size="sm" c="dimmed">
+                        Kein Platz zugeordnet
+                      </Text>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Stack>
+          {darfVerwalten && !g.archiviert && (
+            <Button
+              size="lg"
+              mih={48}
+              variant="default"
+              leftSection={<IconPlus size={20} />}
+              onClick={() => setTeilAnlegen(true)}
+            >
+              Teil anlegen
+            </Button>
+          )}
+        </>
       )}
-      <Stack gap="xs">
-        {zeilen.map((z) => {
-          const platz = g.plaetze.find((p) => p.id === z.id)!;
-          const ifco = platz.ifcoId ? inv.ifcos.find((i) => i.id === platz.ifcoId) : undefined;
-          return (
-            <Paper key={z.id} withBorder p="sm">
-              <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-                {ifco ? (
-                  <Anchor
-                    component={Link}
-                    to={`/inventar/ifcos/${encodeURIComponent(ifco.id)}`}
-                    style={{ overflowWrap: 'anywhere', minWidth: 0 }}
-                  >
-                    {z.text}
-                  </Anchor>
-                ) : (
-                  <Text style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{z.text}</Text>
-                )}
-                {anzahlText(z.anzahl) && (
-                  <Text fw={600} style={{ flex: 'none' }}>
-                    {anzahlText(z.anzahl)}
-                  </Text>
-                )}
-              </Group>
-              <PlatzAusleihHinweise
-                ausleihen={ausleihenDaten.ausleihen}
-                gegenstandId={g.id}
-                ziel={platz}
-              />
-            </Paper>
-          );
-        })}
-        {g.verbaut.map((v) => (
-          <Paper key={v.id} withBorder p="sm">
-            <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-              <Stack gap={0} style={{ minWidth: 0 }}>
-                <Text size="xs" c="dimmed">
-                  Fest verbaut
-                </Text>
-                <Text style={{ overflowWrap: 'anywhere' }}>{v.ort}</Text>
-              </Stack>
-              {anzahlText(v.anzahl) && (
-                <Text fw={600} style={{ flex: 'none' }}>
-                  {anzahlText(v.anzahl)}
-                </Text>
-              )}
-            </Group>
-          </Paper>
-        ))}
-      </Stack>
-      {darfUmraeumen && (
-        <Button
-          size="lg"
-          mih={48}
-          leftSection={<IconMapPin size={20} />}
-          disabled={g.archiviert}
-          onClick={() => setPlaetze(true)}
-        >
-          {einzeln ? 'Platz ändern' : 'Plätze ändern'}
-        </Button>
+
+      {g.virtuell ? (
+        <Text size="sm" c="dimmed">
+          Virtuell: besteht nur aus seinen Teilen.
+        </Text>
+      ) : (
+        <>
+          <Group justify="space-between" wrap="wrap">
+            <Title order={3}>{einzeln ? 'Platz' : 'Plätze'}</Title>
+            {!einzeln && (
+              <Text size="sm" c={abweichung ? 'orange' : 'dimmed'}>
+                {summe} von {g.anzahl} zugeordnet
+              </Text>
+            )}
+          </Group>
+          {zeilen.length === 0 && g.verbaut.length === 0 && (
+            <Text c="dimmed">Noch kein Platz zugeordnet.</Text>
+          )}
+          <Stack gap="xs">
+            {zeilen.map((z) => {
+              const platz = g.plaetze.find((p) => p.id === z.id)!;
+              const ifco = platz.ifcoId ? inv.ifcos.find((i) => i.id === platz.ifcoId) : undefined;
+              return (
+                <Paper key={z.id} withBorder p="sm">
+                  <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                    {ifco ? (
+                      <Anchor
+                        component={Link}
+                        to={`/inventar/ifcos/${encodeURIComponent(ifco.id)}`}
+                        style={{ overflowWrap: 'anywhere', minWidth: 0 }}
+                      >
+                        {z.text}
+                      </Anchor>
+                    ) : (
+                      <Text style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{z.text}</Text>
+                    )}
+                    {anzahlText(z.anzahl) && (
+                      <Text fw={600} style={{ flex: 'none' }}>
+                        {anzahlText(z.anzahl)}
+                      </Text>
+                    )}
+                  </Group>
+                  <PlatzAusleihHinweise
+                    ausleihen={ausleihenDaten.ausleihen}
+                    gegenstandId={g.id}
+                    ziel={platz}
+                    einzeln={einzeln}
+                  />
+                </Paper>
+              );
+            })}
+            {g.verbaut.map((v) => (
+              <Paper key={v.id} withBorder p="sm">
+                <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                  <Stack gap={0} style={{ minWidth: 0 }}>
+                    <Text size="xs" c="dimmed">
+                      Fest verbaut
+                    </Text>
+                    <Text style={{ overflowWrap: 'anywhere' }}>{v.ort}</Text>
+                  </Stack>
+                  {anzahlText(v.anzahl) && (
+                    <Text fw={600} style={{ flex: 'none' }}>
+                      {anzahlText(v.anzahl)}
+                    </Text>
+                  )}
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+          {darfUmraeumen && (
+            <Button
+              size="lg"
+              mih={48}
+              leftSection={<IconMapPin size={20} />}
+              disabled={g.archiviert}
+              onClick={() => setPlaetze(true)}
+            >
+              {einzeln ? 'Platz ändern' : 'Plätze ändern'}
+            </Button>
+          )}
+        </>
       )}
       {darfUmraeumen && !g.archiviert && (
         <Button
@@ -240,7 +399,7 @@ export function GegenstandDetailPage() {
           mih={48}
           variant="light"
           leftSection={<IconTruckDelivery size={20} />}
-          disabled={g.plaetze.length === 0}
+          disabled={!verleihbar}
         >
           Verleihen
         </Button>
@@ -294,6 +453,16 @@ export function GegenstandDetailPage() {
         </>
       )}
 
+      {teilAnlegen && (
+        <GegenstandFormular
+          kategorien={inv.kategorien}
+          lagerorte={inv.lagerorte}
+          ifcos={inv.ifcos}
+          teilVon={g.id}
+          kategorieId={g.kategorieId}
+          onClose={() => setTeilAnlegen(false)}
+        />
+      )}
       {bearbeiten && (
         <GegenstandFormular
           gegenstand={g}

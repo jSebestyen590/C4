@@ -19,9 +19,14 @@ export interface LagerInventar {
   gegenstaende: {
     id: string;
     name: string;
+    /** Amount at this Lagerort. */
     anzahl: number;
+    /** Total amount of the Gegenstand (1 = lent / reserved shown without numbers). */
+    gesamt: number;
     verliehen: number;
     vorgemerkt: number;
+    /** Name of the parent when the Gegenstand is a part, else null. */
+    teilVon: string | null;
   }[];
 }
 
@@ -59,8 +64,10 @@ export function inventarJeLagerort(
         id: g.id,
         name: g.name,
         anzahl: p.anzahl,
+        gesamt: g.anzahl,
         verliehen: p.verliehen,
         vorgemerkt: p.vorgemerkt,
+        teilVon: g.teilVon ? (gegenstaende.find((x) => x.id === g.teilVon)?.name ?? null) : null,
       });
     }
   }

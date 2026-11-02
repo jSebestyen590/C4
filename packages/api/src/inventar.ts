@@ -7,6 +7,7 @@ import {
   ausleiheTage,
   gefaehrdungen,
   ganzeIfcoFehler,
+  heuteBerlin,
   istVorgemerkt,
   type Anrede,
   type IfcoMass,
@@ -86,7 +87,14 @@ export interface KategorieDaten {
 export interface GegenstandDaten {
   name: string;
   beschreibung: string | null;
-  kategorieId: string;
+  /** Required unless `teilVon` is set: a part always takes its parent's category (the store resolves it). */
+  kategorieId: string | null;
+  /** Parent Gegenstand when this one is a part ("Teil"); parts have no parts of their own. */
+  teilVon: string | null;
+  /** Virtual: has an amount but no Plätze, fixed installations or Ausleihen. */
+  virtuell: boolean;
+  /** Pieces per piece of the parent; set exactly when `teilVon` is set. */
+  anzahlJe: number | null;
 }
 
 export interface IfcoDaten {
@@ -106,13 +114,23 @@ export interface PlatzDaten extends PlatzZiel {
   anzahl: number;
 }
 
+/** A part created together with its parent. */
+export interface TeilAnlegenDaten {
+  name: string;
+  anzahlJe: number;
+  /** Place of the part (it gets all its pieces there); null = the parent's place, if any. */
+  platz: PlatzZiel | null;
+}
+
 export interface GegenstandAnlegenDaten extends GegenstandDaten {
-  /** First Zugang: amount, reason and day. */
+  /** First Zugang: amount, reason and day. A part may omit reason and day: it takes its parent's oldest Zugang. */
   anzahl: number;
-  grund: (typeof ZUGANG_GRUENDE)[number];
-  datum: string;
+  grund?: (typeof ZUGANG_GRUENDE)[number];
+  datum?: string;
   /** Optional first place of the new Gegenstand. */
   platz: PlatzDaten | null;
+  /** Parts created in the same transaction (not allowed for a part). */
+  teile?: TeilAnlegenDaten[];
 }
 
 /** Where the pieces of an Abgang come from. */
@@ -164,6 +182,11 @@ export interface AusleiheDaten extends AusleiheKopfDaten {
   positionen: AusleihePositionDaten[];
 }
 
+/** Header edit; `positionen` replaces the open Positionen (missing = unchanged). */
+export interface AusleiheAendernDaten extends AusleiheKopfDaten {
+  positionen?: AusleihePositionDaten[];
+}
+
 /**
  * An assignment of a Gegenstand to a place; `verliehen` is the open amount that is away now,
  * `vorgemerkt` the open amount of Ausleihen that start in the future (still reserved).
@@ -180,7 +203,9 @@ export interface VerbautDaten {
   anzahl: number;
 }
 
-export interface GegenstandDetails extends GegenstandRow {
+export interface GegenstandDetails extends Omit<GegenstandRow, 'virtuell'> {
+  /** Never null for the client: an unset column counts as false. */
+  virtuell: boolean;
   plaetze: PlatzDetails[];
   /** Fixed installations; they lower the pieces that can go onto Plätze. */
   verbaut: (VerbautDaten & { id: string })[];
@@ -304,7 +329,7 @@ export interface InventarStore {
   ausleihen(nurOffen: boolean): Promise<AusleiheDetails[]>;
   ausleiheHolen(id: string): Promise<AusleiheDetails | undefined>;
   ausleiheAnlegen(daten: AusleiheDaten, sub: string): Promise<string>;
-  ausleiheAktualisieren(id: string, daten: AusleiheKopfDaten): Promise<boolean>;
+  ausleiheAktualisieren(id: string, daten: AusleiheAendernDaten): Promise<boolean>;
   ausleiheRueckgabe(id: string, positionIds: string[], zurueckAm: string): Promise<boolean>;
   ausleiheLoeschen(id: string): Promise<boolean>;
   // Aufräumen
@@ -346,6 +371,7 @@ export function gegenstandDetails(
   });
   return {
     ...g,
+    virtuell: g.virtuell ?? false,
     plaetze: mitMengen,
     verbaut: verbaut.map(({ id, ort, anzahl }) => ({ id, ort, anzahl })),
     verliehen: mitMengen.reduce((s, p) => s + p.verliehen, 0),
@@ -460,6 +486,105 @@ async function passtAufPlatz(
   });
   if (fehler) throw new WarenUngueltig(fehler);
 }
+
+const virtuellFehler = (name: string) => `„${name}“ ist virtuell und hat keine eigenen Plätze.`;
+
+/**
+ * Throws `WarenUngueltig` unless `teilVon` can be the parent of the Gegenstand `id` (null for a
+ * new one): it exists, is not archived, is not the Gegenstand itself and is no part itself, and the
+ * Gegenstand has no parts of its own (only one level).
+ */
+async function elternMussPassen(
+  q: Q,
+  id: string | null,
+  name: string,
+  teilVon: string,
+): Promise<GegenstandRow> {
+  if (teilVon === id)
+    throw new WarenUngueltig('Ein Gegenstand kann nicht Teil von sich selbst sein.');
+  const [eltern] = await q.select().from(gegenstaende).where(eq(gegenstaende.id, teilVon));
+  if (!eltern) throw new WarenUngueltig('Der übergeordnete Gegenstand existiert nicht.');
+  if (eltern.archiviert) throw new WarenUngueltig('Der übergeordnete Gegenstand ist archiviert.');
+  if (eltern.teilVon !== null) {
+    throw new WarenUngueltig(
+      `„${eltern.name}“ ist selbst ein Teil; Teile können keine Teile haben.`,
+    );
+  }
+  if (id !== null && (await gibtEs(q, gegenstaende, eq(gegenstaende.teilVon, id)))) {
+    throw new WarenUngueltig(`„${name}“ hat selbst Teile und kann deshalb kein Teil sein.`);
+  }
+  return eltern;
+}
+
+const KATEGORIE_FEHLT = 'Bitte wähle eine Kategorie.';
+
+/**
+ * Validates the Ausleihe positions like a new Ausleihe would be (Gegenstand usable, assignment at
+ * the origin, availability over the period, whole-IFCO rules). `ohneAusleiheId` leaves out the
+ * Ausleihe being edited. Without `vollstaendig` only the availability is checked.
+ */
+async function positionenPruefen(
+  q: Q,
+  positionen: AusleihePositionDaten[],
+  kopf: AusleiheKopfDaten,
+  { ohneAusleiheId, vollstaendig = true }: { ohneAusleiheId?: string; vollstaendig?: boolean } = {},
+): Promise<void> {
+  const gegenstandIds = [...new Set(positionen.map((p) => p.gegenstandId))];
+  if (vollstaendig) {
+    const rows = await q.select().from(gegenstaende).where(inListe(gegenstaende.id, gegenstandIds));
+    if (rows.length !== gegenstandIds.length) {
+      throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
+    }
+    if (rows.some((g) => g.archiviert)) {
+      throw new WarenUngueltig('Ein Gegenstand ist archiviert und lässt sich nicht verleihen.');
+    }
+    const virtuell = rows.find((g) => g.virtuell);
+    if (virtuell) {
+      throw new WarenUngueltig(`„${virtuell.name}“ ist virtuell und lässt sich nicht verleihen.`);
+    }
+  }
+  const plaetze = await q
+    .select()
+    .from(gegenstandPlaetze)
+    .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds));
+  const offen = await offenLaden(q, inListe(ausleihePositionen.gegenstandId, gegenstandIds));
+  const neu = positionen.map((p) => alsMenge(p.gegenstandId, p));
+  const zeitraum = ausleiheTage(kopf.ausgeliehenAm, kopf.rueckgabeGeplant);
+  const fehler = await fehlerMitNamen(q, (b) =>
+    ausleihFehler(plaetze, offen, neu, zeitraum, { beschriftung: b, ohneAusleiheId }),
+  );
+  if (fehler) throw new WarenUngueltig(fehler);
+  if (!vollstaendig) return;
+  const ganzeIfcoIds = [
+    ...new Set(positionen.flatMap((p) => (p.ganzeIfco && p.ifcoId ? [p.ifcoId] : []))),
+  ];
+  if (ganzeIfcoIds.length > 0) {
+    const [inhalt, offeneInIfco] = await Promise.all([
+      q.select().from(gegenstandPlaetze).where(inListe(gegenstandPlaetze.ifcoId, ganzeIfcoIds)),
+      offenLaden(q, inListe(ausleihePositionen.ifcoId, ganzeIfcoIds)),
+    ]);
+    const ganzeFehler = await fehlerMitNamen(q, (b) =>
+      ganzeIfcoFehler(
+        inhalt.map((p) => alsMenge(p.gegenstandId, p)),
+        offeneInIfco,
+        positionen.map((p) => ({ ...alsMenge(p.gegenstandId, p), ganzeIfco: p.ganzeIfco })),
+        zeitraum,
+        { beschriftung: b, ohneAusleiheId },
+      ),
+    );
+    if (ganzeFehler) throw new WarenUngueltig(ganzeFehler);
+  }
+}
+
+const positionWerte = (ausleiheId: string, p: AusleihePositionDaten) => ({
+  id: randomUUID(),
+  ausleiheId,
+  gegenstandId: p.gegenstandId,
+  lagerortId: p.lagerortId,
+  ifcoId: p.ifcoId,
+  anzahl: p.anzahl,
+  ganzeIfco: p.ganzeIfco ?? null,
+});
 
 async function gegenstaendeLaden(q: Q, nurId?: string): Promise<GegenstandDetails[]> {
   const [rows, plaetze, offen, verbaut] = await Promise.all([
@@ -649,6 +774,8 @@ async function inhaltSetzen(q: Tx, id: string, positionen: IfcoInhaltPosition[])
   if (rows.length !== gegenstandIds.length) {
     throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
   }
+  const virtuell = rows.find((g) => g.virtuell);
+  if (virtuell) throw new WarenUngueltig(virtuellFehler(virtuell.name));
   const vorher = new Set(bisher.map((b) => b.gegenstandId));
   if (rows.some((g) => g.archiviert && !vorher.has(g.id))) {
     throw new WarenUngueltig('Ein Gegenstand ist archiviert.');
@@ -804,34 +931,95 @@ export function createInventarStore(db: Db): InventarStore {
     async gegenstandHolen(id) {
       return (await gegenstaendeLaden(db, id))[0];
     },
-    async gegenstandAnlegen({ platz, grund, datum, ...daten }, sub) {
+    async gegenstandAnlegen({ platz, grund, datum, teile = [], ...daten }, sub) {
       return db.transaction(async (tx) => {
-        await kategorieMussNutzbarSein(tx, daten.kategorieId);
+        if (daten.virtuell && daten.teilVon !== null) {
+          throw new WarenUngueltig('Ein Teil kann nicht virtuell sein.');
+        }
+        if (daten.teilVon !== null && teile.length > 0) {
+          throw new WarenUngueltig('Ein Teil kann keine Teile haben.');
+        }
+        let kategorieId = daten.kategorieId;
+        if (daten.teilVon !== null) {
+          const eltern = await elternMussPassen(tx, null, daten.name, daten.teilVon);
+          kategorieId = eltern.kategorieId;
+          if (grund === undefined || datum === undefined) {
+            const [erster] = (
+              await tx
+                .select()
+                .from(gegenstandBewegungen)
+                .where(
+                  and(
+                    eq(gegenstandBewegungen.gegenstandId, eltern.id),
+                    eq(gegenstandBewegungen.art, 'zugang'),
+                  ),
+                )
+            ).sort((x, y) => x.datum.localeCompare(y.datum));
+            grund ??= erster ? (erster.grund as (typeof ZUGANG_GRUENDE)[number]) : undefined;
+            datum ??= erster?.datum;
+          }
+        } else {
+          if (!kategorieId) throw new WarenUngueltig(KATEGORIE_FEHLT);
+          await kategorieMussNutzbarSein(tx, kategorieId);
+        }
+        const zugangGrund = grund ?? 'gekauft';
+        const zugangDatum = datum ?? heuteBerlin();
+        if (daten.virtuell && platz) throw new WarenUngueltig(virtuellFehler(daten.name));
         if (platz) {
           await zieleExistieren(tx, [platz]);
           const fehler = zuVielVerteiltFehler(daten.name, daten.anzahl, 0, 0, platz.anzahl);
           if (fehler) throw new WarenUngueltig(fehler);
         }
-        const id = randomUUID();
-        await tx.insert(gegenstaende).values({ id, ...daten });
-        await tx.insert(gegenstandBewegungen).values({
-          id: randomUUID(),
-          gegenstandId: id,
-          art: 'zugang',
-          grund,
-          anzahl: daten.anzahl,
-          datum,
-          ort: platz ? (await beschriftungLaden(tx)).platz(platz) : null,
-          erstelltVon: sub,
-        });
-        if (platz) {
-          await tx.insert(gegenstandPlaetze).values({
+        const beschriftung = platz || teile.length > 0 ? await beschriftungLaden(tx) : null;
+        const neuAnlegen = async (
+          werte: GegenstandDaten & { kategorieId: string },
+          anzahl: number,
+          ziel: PlatzDaten | null,
+        ): Promise<string> => {
+          const id = randomUUID();
+          await tx.insert(gegenstaende).values({ id, ...werte, anzahl });
+          await tx.insert(gegenstandBewegungen).values({
             id: randomUUID(),
             gegenstandId: id,
-            lagerortId: platz.lagerortId,
-            ifcoId: platz.ifcoId,
-            anzahl: platz.anzahl,
+            art: 'zugang',
+            grund: zugangGrund,
+            anzahl,
+            datum: zugangDatum,
+            ort: ziel && beschriftung ? beschriftung.platz(ziel) : null,
+            erstelltVon: sub,
           });
+          if (ziel) {
+            await tx.insert(gegenstandPlaetze).values({
+              id: randomUUID(),
+              gegenstandId: id,
+              lagerortId: ziel.lagerortId,
+              ifcoId: ziel.ifcoId,
+              anzahl: ziel.anzahl,
+            });
+          }
+          return id;
+        };
+        // kategorieId is resolved above (parent's for a part, validated otherwise).
+        const id = await neuAnlegen({ ...daten, kategorieId: kategorieId! }, daten.anzahl, platz);
+        if (teile.length > 0) {
+          const ziele = teile.flatMap((t) => (t.platz ? [t.platz] : []));
+          if (ziele.length > 0) await zieleExistieren(tx, ziele);
+          for (const t of teile) {
+            const anzahl = daten.anzahl * t.anzahlJe;
+            const ziel = t.platz ?? (platz && !daten.virtuell ? platz : null);
+            await neuAnlegen(
+              {
+                name: t.name,
+                beschreibung: null,
+                kategorieId: kategorieId!,
+                teilVon: id,
+                virtuell: false,
+                anzahlJe: t.anzahlJe,
+              },
+              anzahl,
+              ziel && { lagerortId: ziel.lagerortId, ifcoId: ziel.ifcoId, anzahl },
+            );
+          }
         }
         return id;
       });
@@ -840,16 +1028,57 @@ export function createInventarStore(db: Db): InventarStore {
       return db.transaction(async (tx) => {
         const [bisher] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!bisher) return false;
-        if (daten.kategorieId !== bisher.kategorieId) {
-          await kategorieMussNutzbarSein(tx, daten.kategorieId);
+        if (daten.virtuell && daten.teilVon !== null) {
+          throw new WarenUngueltig('Ein Teil kann nicht virtuell sein.');
         }
-        await tx.update(gegenstaende).set(daten).where(eq(gegenstaende.id, id));
+        let kategorieId = daten.kategorieId;
+        if (daten.teilVon !== null) {
+          // A part always lives in its parent's category.
+          const eltern =
+            daten.teilVon !== bisher.teilVon
+              ? await elternMussPassen(tx, id, daten.name, daten.teilVon)
+              : (await tx.select().from(gegenstaende).where(eq(gegenstaende.id, daten.teilVon)))[0];
+          kategorieId = eltern ? eltern.kategorieId : bisher.kategorieId;
+        } else {
+          if (!kategorieId) throw new WarenUngueltig(KATEGORIE_FEHLT);
+          if (kategorieId !== bisher.kategorieId) await kategorieMussNutzbarSein(tx, kategorieId);
+        }
+        if (daten.virtuell && !bisher.virtuell) {
+          const belegt = await Promise.all([
+            gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.gegenstandId, id)),
+            gibtEs(tx, gegenstandVerbaut, eq(gegenstandVerbaut.gegenstandId, id)),
+            gibtEs(
+              tx,
+              ausleihePositionen,
+              and(eq(ausleihePositionen.gegenstandId, id), isNull(ausleihePositionen.zurueckAm)),
+            ),
+          ]);
+          if (belegt.some(Boolean)) {
+            throw new WarenKonflikt(
+              `„${bisher.name}“ hat noch Plätze, fest verbaute Stück oder offene Ausleihen und kann deshalb nicht virtuell werden. Räume sie zuerst weg.`,
+            );
+          }
+        }
+        await tx
+          .update(gegenstaende)
+          .set({ ...daten, kategorieId: kategorieId! })
+          .where(eq(gegenstaende.id, id));
+        if (kategorieId !== bisher.kategorieId) {
+          await tx
+            .update(gegenstaende)
+            .set({ kategorieId: kategorieId! })
+            .where(eq(gegenstaende.teilVon, id));
+        }
         return true;
       });
     },
     async gegenstandLoeschen(id) {
       return db.transaction(async (tx) => {
-        if (!(await gibtEs(tx, gegenstaende, eq(gegenstaende.id, id)))) return false;
+        const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
+        if (!g) return false;
+        if (await gibtEs(tx, gegenstaende, eq(gegenstaende.teilVon, id))) {
+          throw new WarenKonflikt(`„${g.name}“ hat noch Teile. Löse oder lösche sie zuerst.`);
+        }
         const verwendet = await Promise.all([
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.gegenstandId, id)),
           gibtEs(tx, gegenstandVerbaut, eq(gegenstandVerbaut.gegenstandId, id)),
@@ -866,6 +1095,17 @@ export function createInventarStore(db: Db): InventarStore {
       return db.transaction(async (tx) => {
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!g) return false;
+        if (!archiviert && g.teilVon !== null) {
+          const [eltern] = await tx
+            .select()
+            .from(gegenstaende)
+            .where(eq(gegenstaende.id, g.teilVon));
+          if (eltern?.archiviert) {
+            throw new WarenKonflikt(
+              'Der übergeordnete Gegenstand ist archiviert. Stelle ihn zuerst wieder her.',
+            );
+          }
+        }
         if (!archiviert) {
           const [k] = await tx
             .select()
@@ -876,6 +1116,10 @@ export function createInventarStore(db: Db): InventarStore {
           }
         }
         await tx.update(gegenstaende).set({ archiviert }).where(eq(gegenstaende.id, id));
+        // Archiving a parent archives its parts with it.
+        if (archiviert) {
+          await tx.update(gegenstaende).set({ archiviert }).where(eq(gegenstaende.teilVon, id));
+        }
         return true;
       });
     },
@@ -911,6 +1155,9 @@ export function createInventarStore(db: Db): InventarStore {
           .where(eq(gegenstandVerbaut.gegenstandId, gegenstandId));
         const gleich = (x: PlatzZiel, z: PlatzZiel) => zielKey(x) === zielKey(z);
         let ort: string | null = null;
+        if (g.virtuell && (daten.art === 'zugang' ? daten.nach : daten.von.art !== 'ohnePlatz')) {
+          throw new WarenUngueltig(virtuellFehler(g.name));
+        }
         if (daten.art === 'zugang') {
           if (daten.nach) {
             await zieleExistieren(tx, [daten.nach]);
@@ -1044,6 +1291,9 @@ export function createInventarStore(db: Db): InventarStore {
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, id));
         if (!g) return false;
         if (g.archiviert) throw new WarenUngueltig('Der Gegenstand ist archiviert.');
+        if (g.virtuell && (plaetze.length > 0 || (verbaut?.length ?? 0) > 0)) {
+          throw new WarenUngueltig(virtuellFehler(g.name));
+        }
         const bisher = await tx
           .select()
           .from(gegenstandPlaetze)
@@ -1268,97 +1518,51 @@ export function createInventarStore(db: Db): InventarStore {
     },
     async ausleiheAnlegen(daten, sub) {
       return db.transaction(async (tx) => {
-        const gegenstandIds = [...new Set(daten.positionen.map((p) => p.gegenstandId))];
-        const rows = await tx
-          .select()
-          .from(gegenstaende)
-          .where(inListe(gegenstaende.id, gegenstandIds));
-        if (rows.length !== gegenstandIds.length) {
-          throw new WarenUngueltig('Ein Gegenstand existiert nicht.');
-        }
-        if (rows.some((g) => g.archiviert)) {
-          throw new WarenUngueltig('Ein Gegenstand ist archiviert und lässt sich nicht verleihen.');
-        }
-        const plaetze = await tx
-          .select()
-          .from(gegenstandPlaetze)
-          .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds));
-        const offen = await offenLaden(tx, inListe(ausleihePositionen.gegenstandId, gegenstandIds));
-        const neu = daten.positionen.map((p) => alsMenge(p.gegenstandId, p));
-        const zeitraum = ausleiheTage(daten.ausgeliehenAm, daten.rueckgabeGeplant);
-        const fehler = await fehlerMitNamen(tx, (b) =>
-          ausleihFehler(plaetze, offen, neu, zeitraum, { beschriftung: b }),
-        );
-        if (fehler) throw new WarenUngueltig(fehler);
+        await positionenPruefen(tx, daten.positionen, daten);
         await organisatorPruefen(tx, daten.organisiertVon);
-        const ganzeIfcoIds = [
-          ...new Set(daten.positionen.flatMap((p) => (p.ganzeIfco && p.ifcoId ? [p.ifcoId] : []))),
-        ];
-        if (ganzeIfcoIds.length > 0) {
-          const [inhalt, offeneInIfco] = await Promise.all([
-            tx
-              .select()
-              .from(gegenstandPlaetze)
-              .where(inListe(gegenstandPlaetze.ifcoId, ganzeIfcoIds)),
-            offenLaden(tx, inListe(ausleihePositionen.ifcoId, ganzeIfcoIds)),
-          ]);
-          const ganzeFehler = await fehlerMitNamen(tx, (b) =>
-            ganzeIfcoFehler(
-              inhalt.map((p) => alsMenge(p.gegenstandId, p)),
-              offeneInIfco,
-              daten.positionen.map((p) => ({
-                ...alsMenge(p.gegenstandId, p),
-                ganzeIfco: p.ganzeIfco,
-              })),
-              zeitraum,
-              { beschriftung: b },
-            ),
-          );
-          if (ganzeFehler) throw new WarenUngueltig(ganzeFehler);
-        }
         const id = randomUUID();
         await tx.insert(ausleihen).values({ id, ...kopfWerte(daten), erstelltVon: sub });
-        await tx.insert(ausleihePositionen).values(
-          daten.positionen.map((p) => ({
-            id: randomUUID(),
-            ausleiheId: id,
-            gegenstandId: p.gegenstandId,
-            lagerortId: p.lagerortId,
-            ifcoId: p.ifcoId,
-            anzahl: p.anzahl,
-            ganzeIfco: p.ganzeIfco ?? null,
-          })),
-        );
+        await tx
+          .insert(ausleihePositionen)
+          .values(daten.positionen.map((p) => positionWerte(id, p)));
         return id;
       });
     },
-    async ausleiheAktualisieren(id, daten) {
+    async ausleiheAktualisieren(id, { positionen, ...daten }) {
       return db.transaction(async (tx) => {
         if (!(await gibtEs(tx, ausleihen, eq(ausleihen.id, id)))) return false;
         await organisatorPruefen(tx, daten.organisiertVon);
-        // The new period must still fit for the Ausleihe's own open positions (returned ones occupy nothing).
-        const eigene = (
-          await tx.select().from(ausleihePositionen).where(eq(ausleihePositionen.ausleiheId, id))
-        ).filter((p) => p.zurueckAm === null);
-        if (eigene.length > 0) {
-          const gegenstandIds = [...new Set(eigene.map((p) => p.gegenstandId))];
-          const [plaetze, offen] = await Promise.all([
-            tx
-              .select()
-              .from(gegenstandPlaetze)
-              .where(inListe(gegenstandPlaetze.gegenstandId, gegenstandIds)),
-            offenLaden(tx, inListe(ausleihePositionen.gegenstandId, gegenstandIds)),
-          ]);
-          const fehler = await fehlerMitNamen(tx, (b) =>
-            ausleihFehler(
-              plaetze,
-              offen,
-              eigene.map((p) => alsMenge(p.gegenstandId, p)),
-              ausleiheTage(daten.ausgeliehenAm, daten.rueckgabeGeplant),
-              { beschriftung: b, ohneAusleiheId: id },
-            ),
+        const alle = await tx
+          .select()
+          .from(ausleihePositionen)
+          .where(eq(ausleihePositionen.ausleiheId, id));
+        const eigene = alle.filter((p) => p.zurueckAm === null);
+        if (positionen) {
+          if (positionen.length === 0 && eigene.length === alle.length) {
+            throw new WarenUngueltig('Bitte gib mindestens eine Position an.');
+          }
+          if (positionen.length > 0) {
+            await positionenPruefen(tx, positionen, daten, { ohneAusleiheId: id });
+          }
+          if (eigene.length > 0) {
+            await tx.delete(ausleihePositionen).where(
+              inListe(
+                ausleihePositionen.id,
+                eigene.map((p) => p.id),
+              ),
+            );
+          }
+          if (positionen.length > 0) {
+            await tx.insert(ausleihePositionen).values(positionen.map((p) => positionWerte(id, p)));
+          }
+        } else if (eigene.length > 0) {
+          // The new period must still fit for the Ausleihe's own open positions (returned ones occupy nothing).
+          await positionenPruefen(
+            tx,
+            eigene.map((p) => ({ ...p, ganzeIfco: undefined })),
+            daten,
+            { ohneAusleiheId: id, vollstaendig: false },
           );
-          if (fehler) throw new WarenUngueltig(fehler);
         }
         await tx.update(ausleihen).set(kopfWerte(daten)).where(eq(ausleihen.id, id));
         return true;

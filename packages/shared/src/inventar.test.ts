@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   abweichungText,
+  saetzeVerfuegbar,
+  teilAbweichung,
+  teilSoll,
+  teileStatus,
+  teileVon,
+  type TeilQuelle,
   ausleiheAendernSchema,
   ausleihFehler,
   ausleiheSchema,
@@ -185,6 +191,22 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
         true,
       );
     }
+  });
+  it('lets an Ausleihe edit its Positionen', () => {
+    const position = { gegenstandId: 'g1', lagerortId: 'regal', anzahl: 2 };
+    expect(ausleiheAendernSchema.parse(kopf).positionen).toBeUndefined();
+    expect(ausleiheAendernSchema.parse({ ...kopf, positionen: [position] }).positionen).toEqual([
+      { ...position, ifcoId: null },
+    ]);
+    // An empty list parses (the API decides whether returned Positionen remain).
+    expect(ausleiheAendernSchema.parse({ ...kopf, positionen: [] }).positionen).toEqual([]);
+    expect(
+      ausleiheAendernSchema.safeParse({ ...kopf, positionen: [position, position] }).success,
+    ).toBe(false);
+    expect(
+      ausleiheAendernSchema.safeParse({ ...kopf, positionen: [{ ...position, ifcoId: 'i1' }] })
+        .success,
+    ).toBe(false);
   });
   it('parses a valid Ausleihe', () => {
     const a = ausleiheSchema.parse({
@@ -738,5 +760,161 @@ describe('period based availability', () => {
     expect(
       ganzeIfcoFehler(inhalt, offen, [ganz], tage('2026-10-26', '2026-10-29'), { jetzt: heute }),
     ).toContain('nichts verfügbar');
+  });
+});
+
+describe('Gegenstände with parts', () => {
+  const basis = { name: 'Winkel', kategorieId: 'k1' };
+  it('requires anzahlJe for a part and drops it otherwise', () => {
+    expect(gegenstandSchema.safeParse({ ...basis, teilVon: 'g1' }).success).toBe(false);
+    expect(gegenstandSchema.safeParse({ ...basis, teilVon: 'g1', anzahlJe: 0 }).success).toBe(
+      false,
+    );
+    expect(gegenstandSchema.parse({ ...basis, teilVon: 'g1', anzahlJe: 12 })).toMatchObject({
+      teilVon: 'g1',
+      anzahlJe: 12,
+      virtuell: false,
+    });
+    expect(gegenstandSchema.parse({ ...basis, anzahlJe: 12 })).toMatchObject({
+      teilVon: null,
+      anzahlJe: null,
+    });
+  });
+  it('needs no category, reason or day for a part, but for anything else', () => {
+    const teil = { name: 'Winkel', teilVon: 'g1', anzahlJe: 4 };
+    const r = gegenstandAnlegenSchema.parse(teil);
+    expect(r).toMatchObject({ kategorieId: null, teile: [] });
+    expect(r.grund).toBeUndefined();
+    expect(r.datum).toBeUndefined();
+    expect(gegenstandSchema.parse(teil).kategorieId).toBeNull();
+    expect(gegenstandSchema.parse({ ...teil, kategorieId: '' }).kategorieId).toBeNull();
+    const ohneKategorie = gegenstandAnlegenSchema.safeParse({ name: 'Zelt', datum: '2020-01-01' });
+    expect(ohneKategorie.error?.issues[0]?.message).toBe('Bitte wähle eine Kategorie.');
+    expect(gegenstandSchema.safeParse({ name: 'Zelt' }).success).toBe(false);
+    expect(gegenstandAnlegenSchema.safeParse({ name: 'Zelt', kategorieId: 'k1' }).success).toBe(
+      false,
+    );
+    expect(
+      gegenstandAnlegenSchema.parse({ name: 'Zelt', kategorieId: 'k1', datum: '2020-01-01' }).grund,
+    ).toBe('gekauft');
+  });
+  it('validates the parts created together with a Gegenstand', () => {
+    const zelt = { name: 'Pavillon', kategorieId: 'k1', datum: '2020-01-01' };
+    const ok = gegenstandAnlegenSchema.parse({
+      ...zelt,
+      teile: [
+        { name: 'Plane', anzahlJe: 1 },
+        { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1' } },
+      ],
+    });
+    expect(ok.teile).toEqual([
+      { name: 'Plane', anzahlJe: 1, platz: null },
+      { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1', ifcoId: null } },
+    ]);
+    const teile = (t: unknown[]) => gegenstandAnlegenSchema.safeParse({ ...zelt, teile: t });
+    expect(teile([{ name: 'Plane' }]).success).toBe(false);
+    expect(teile([{ name: 'Plane', anzahlJe: 0 }]).success).toBe(false);
+    expect(teile([{ name: ' ', anzahlJe: 1 }]).success).toBe(false);
+    expect(
+      teile([{ name: 'Plane', anzahlJe: 1, platz: { lagerortId: 'l1', ifcoId: 'i1' } }]).success,
+    ).toBe(false);
+    expect(
+      teile([{ name: 'Plane', anzahlJe: 1, platz: { lagerortId: null, ifcoId: null } }]).success,
+    ).toBe(false);
+    expect(
+      teile([
+        { name: 'Plane', anzahlJe: 1 },
+        { name: 'PLANE', anzahlJe: 2 },
+      ]).success,
+    ).toBe(false);
+    const teilMitTeilen = gegenstandAnlegenSchema.safeParse({
+      name: 'Winkel',
+      teilVon: 'g1',
+      anzahlJe: 2,
+      teile: [{ name: 'Schraube', anzahlJe: 1 }],
+    });
+    expect(teilMitTeilen.error?.issues[0]?.message).toBe('Ein Teil kann keine Teile haben.');
+  });
+  it('does not allow a virtual part', () => {
+    const r = gegenstandSchema.safeParse({ ...basis, teilVon: 'g1', anzahlJe: 2, virtuell: true });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe('Ein Teil kann nicht virtuell sein.');
+  });
+  it('does not allow a Platz for a virtual Gegenstand', () => {
+    const anlegen = { ...basis, datum: '2020-01-01', virtuell: true };
+    expect(gegenstandAnlegenSchema.safeParse(anlegen).success).toBe(true);
+    const r = gegenstandAnlegenSchema.safeParse({
+      ...anlegen,
+      platz: { lagerortId: 'l1', anzahl: 1 },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe('Ein virtueller Gegenstand hat keinen eigenen Platz.');
+  });
+
+  const g = (id: string, anzahl: number, extra: Partial<TeilQuelle> = {}): TeilQuelle => ({
+    id,
+    anzahl,
+    virtuell: false,
+    teilVon: null,
+    anzahlJe: null,
+    verliehen: 0,
+    vorgemerkt: 0,
+    plaetze: [],
+    ...extra,
+  });
+  const part = (id: string, anzahl: number, je: number, extra: Partial<TeilQuelle> = {}) =>
+    g(id, anzahl, { teilVon: 'p', anzahlJe: je, ...extra });
+
+  it('finds parts and computes target and difference', () => {
+    const alle = [g('p', 3, { virtuell: true }), part('w', 30, 12), g('x', 1)];
+    expect(teileVon(alle, 'p').map((t) => t.id)).toEqual(['w']);
+    expect(teilSoll(alle[0]!, alle[1]!)).toBe(36);
+    expect(teilAbweichung(alle[0]!, alle[1]!)).toBe(-6);
+    expect(teilSoll(alle[0]!, g('y', 1))).toBe(3);
+  });
+
+  it('counts lent sets over the parts of a virtual parent', () => {
+    const eltern = g('p', 3, { virtuell: true });
+    const alles = [part('plane', 3, 1), part('winkel', 36, 12)];
+    expect(teileStatus(eltern, alles).status).toBeNull();
+    const zwei = [
+      { ...alles[0]!, verliehen: 2 },
+      { ...alles[1]!, verliehen: 24 },
+    ];
+    expect(teileStatus(eltern, zwei)).toMatchObject({
+      verliehen: { saetze: 2, teilweise: false },
+      status: 'teilweise',
+    });
+    const alle = [
+      { ...alles[0]!, verliehen: 3 },
+      { ...alles[1]!, verliehen: 36 },
+    ];
+    expect(teileStatus(eltern, alle).status).toBe('verliehen');
+    // One Winkel missing: only 2 complete sets, the rest is loose.
+    const fehlt = [alle[0]!, { ...alle[1]!, verliehen: 35 }];
+    expect(teileStatus(eltern, fehlt)).toMatchObject({
+      verliehen: { saetze: 2, teilweise: true },
+      status: 'teilweise',
+    });
+  });
+
+  it('includes a non-virtual parent as a component and reports reservations', () => {
+    const eltern = g('p', 2, { verliehen: 1, vorgemerkt: 2 });
+    const teile = [part('w', 8, 4, { verliehen: 8, vorgemerkt: 8 })];
+    expect(teileStatus(eltern, teile)).toMatchObject({
+      verliehen: { saetze: 1, teilweise: true },
+      status: 'teilweise',
+      vorgemerkt: { saetze: 2, teilweise: false },
+      vorgemerktStatus: 'vorgemerkt',
+    });
+  });
+
+  it('counts available sets', () => {
+    const eltern = g('p', 3, { virtuell: true });
+    const teile = [part('plane', 3, 1), part('winkel', 36, 12)];
+    const frei = (t: TeilQuelle) => ({ plane: 3, winkel: 30 })[t.id as 'plane' | 'winkel'];
+    expect(saetzeVerfuegbar(eltern, teile, frei)).toBe(2);
+    expect(saetzeVerfuegbar(eltern, [], frei)).toBe(0);
+    expect(saetzeVerfuegbar(g('p', 3), [], () => 5)).toBe(5);
   });
 });

@@ -313,6 +313,9 @@ function makeInventarFake() {
         kategorieId: 'k1',
         anzahl: 10,
         archiviert: false,
+        teilVon: null,
+        virtuell: false,
+        anzahlJe: null,
         plaetze: [],
         verbaut: [],
         verliehen: 0,
@@ -2211,6 +2214,10 @@ describe('inventar', () => {
         grund: 'gekauft',
         datum,
         platz: null,
+        teilVon: null,
+        virtuell: false,
+        anzahlJe: null,
+        teile: [],
       },
       'a',
     );
@@ -2225,6 +2232,84 @@ describe('inventar', () => {
     );
     const zwei = { lagerortId: 'l1', ifcoId: 'i1', anzahl: 1 };
     expect((await post({ name: 'Zelt', kategorieId: 'k1', datum, platz: zwei })).status).toBe(400);
+  });
+
+  it('validates parts and virtual Gegenstände when creating', async () => {
+    const { app, inventar } = makeApp();
+    const datum = '2026-10-10';
+    const post = (body: unknown) =>
+      app.request('/api/inventar/gegenstaende', json('admin-token', 'POST', body));
+    const basis = { name: 'Winkel', kategorieId: 'k1', datum };
+    // A part needs pieces per parent, and cannot be virtual.
+    expect((await post({ ...basis, teilVon: 'g1' })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 0 })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 4, virtuell: true })).status).toBe(400);
+    expect((await post({ ...basis, teilVon: 'g1', anzahlJe: 12 })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ teilVon: 'g1', anzahlJe: 12, virtuell: false }),
+      'a',
+    );
+    // anzahlJe without a parent is dropped.
+    expect((await post({ ...basis, anzahlJe: 3 })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ teilVon: null, anzahlJe: null }),
+      'a',
+    );
+    // A virtual Gegenstand has no Platz of its own.
+    const platz = { lagerortId: 'l1', ifcoId: null, anzahl: 1 };
+    expect((await post({ ...basis, virtuell: true, platz })).status).toBe(400);
+    expect((await post({ ...basis, virtuell: true })).status).toBe(201);
+  });
+
+  it('creates parts without category, reason and day, and parts together with their parent', async () => {
+    const { app, inventar } = makeApp();
+    const datum = '2026-10-10';
+    const post = (body: unknown) =>
+      app.request('/api/inventar/gegenstaende', json('admin-token', 'POST', body));
+    // A part needs no category, reason or day.
+    expect((await post({ name: 'Winkel', teilVon: 'g1', anzahlJe: 12, anzahl: 5 })).status).toBe(
+      201,
+    );
+    const teilDaten = inventar.gegenstandAnlegen.mock.lastCall?.[0];
+    expect(teilDaten).toMatchObject({ kategorieId: null, teilVon: 'g1', anzahl: 5 });
+    expect(teilDaten?.grund).toBeUndefined();
+    expect(teilDaten?.datum).toBeUndefined();
+    // Everything else still does.
+    expect((await post({ name: 'Zelt', datum })).status).toBe(400);
+    expect((await post({ name: 'Zelt', kategorieId: 'k1' })).status).toBe(400);
+    // Parts together with the parent.
+    const teile = [
+      { name: 'Plane', anzahlJe: 1 },
+      { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1' } },
+    ];
+    const zelt = { name: 'Pavillon', kategorieId: 'k1', datum, anzahl: 3 };
+    expect((await post({ ...zelt, teile })).status).toBe(201);
+    expect(inventar.gegenstandAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        teile: [
+          { name: 'Plane', anzahlJe: 1, platz: null },
+          { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1', ifcoId: null } },
+        ],
+      }),
+      'a',
+    );
+    expect((await post({ ...zelt, teile: [{ name: 'Plane' }] })).status).toBe(400);
+    expect((await post({ ...zelt, teile: [{ name: ' ', anzahlJe: 1 }] })).status).toBe(400);
+    expect(
+      (
+        await post({
+          ...zelt,
+          teile: [{ name: 'Plane', anzahlJe: 1, platz: { lagerortId: 'l1', ifcoId: 'i1' } }],
+        })
+      ).status,
+    ).toBe(400);
+    const doppelt = [
+      { name: 'Plane', anzahlJe: 1 },
+      { name: 'plane ', anzahlJe: 2 },
+    ];
+    expect((await post({ ...zelt, teile: doppelt })).status).toBe(400);
+    // A part cannot have parts.
+    expect((await post({ ...zelt, teilVon: 'g1', anzahlJe: 1, teile })).status).toBe(400);
   });
 
   it('lists, books and deletes Zugänge and Abgänge', async () => {
@@ -2523,6 +2608,21 @@ describe('inventar', () => {
         ...kopf,
         kommentar: null,
       });
+      // The open Positionen can be replaced together with the header.
+      const position = { gegenstandId: 'g1', lagerortId: 'l1', anzahl: 2 };
+      const mitPositionen = (positionen: unknown) =>
+        app.request(
+          '/api/inventar/ausleihen/a1',
+          json('reader-token', 'PUT', { ...kopf, positionen }),
+        );
+      expect((await mitPositionen([position])).status).toBe(200);
+      expect(inventar.ausleiheAktualisieren).toHaveBeenLastCalledWith('a1', {
+        ...kopf,
+        kommentar: null,
+        positionen: [{ ...position, ifcoId: null }],
+      });
+      expect((await mitPositionen([position, position])).status).toBe(400);
+      expect((await mitPositionen([{ ...position, lagerortId: null }])).status).toBe(400);
       expect(
         (await app.request('/api/inventar/ausleihen/nix', json('reader-token', 'PUT', kopf)))
           .status,

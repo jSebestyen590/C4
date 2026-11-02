@@ -33,12 +33,73 @@ export const kategorieSchema = z.object({
 });
 export type KategorieEingabe = z.input<typeof kategorieSchema>;
 
-/** Master data of a Gegenstand; its amount only changes through Zugänge and Abgänge. */
-export const gegenstandSchema = z.object({
+const anzahlJeFeld = z
+  .number('Bitte gib an, wie viele Stück je übergeordnetem Gegenstand dazugehören.')
+  .int('Die Anzahl muss eine ganze Zahl sein.')
+  .min(1, 'Die Anzahl muss mindestens 1 sein.');
+
+/** Fields of a Gegenstand's master data; its amount only changes through Zugänge and Abgänge. */
+const gegenstandFelder = z.object({
   name: name(),
   beschreibung,
-  kategorieId: idSchema('Bitte wähle eine Kategorie.'),
+  /** Required, except for a part: that always takes its parent's category (the API resolves it). */
+  kategorieId: z
+    .string()
+    .nullish()
+    .transform((v) => (v ? v : null)),
+  /** Id of the parent Gegenstand when this one is a part ("Teil"), else null. */
+  teilVon: parentIdSchema,
+  /** A virtual Gegenstand has an amount but never Plätze, fixed installations or Ausleihen. */
+  virtuell: z.boolean().default(false),
+  /** Pieces of this part per piece of its parent; required for a part, ignored (null) otherwise. */
+  anzahlJe: anzahlJeFeld.nullish().transform((v) => v ?? null),
 });
+
+/**
+ * Rules for parts: `anzahlJe` needs `teilVon`, a part cannot be virtual, and everything but a part
+ * needs a category.
+ */
+function teilRegeln(
+  g: {
+    kategorieId: string | null;
+    teilVon: string | null;
+    virtuell: boolean;
+    anzahlJe: number | null;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (g.teilVon === null && g.kategorieId === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['kategorieId'],
+      message: 'Bitte wähle eine Kategorie.',
+    });
+  }
+  if (g.teilVon !== null && g.anzahlJe === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['anzahlJe'],
+      message: 'Bitte gib an, wie viele Stück je übergeordnetem Gegenstand dazugehören.',
+    });
+  }
+  if (g.teilVon !== null && g.virtuell) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['virtuell'],
+      message: 'Ein Teil kann nicht virtuell sein.',
+    });
+  }
+}
+
+/** `anzahlJe` only makes sense for a part. */
+const anzahlJeNormalisieren = <T extends { teilVon: string | null; anzahlJe: number | null }>(
+  g: T,
+): T => (g.teilVon === null && g.anzahlJe !== null ? { ...g, anzahlJe: null } : g);
+
+/** Master data of a Gegenstand; its amount only changes through Zugänge and Abgänge. */
+export const gegenstandSchema = gegenstandFelder
+  .superRefine(teilRegeln)
+  .transform(anzahlJeNormalisieren);
 
 /** Reasons of a Zugang; `bestand` (taken over when the history started) is not selectable. */
 export const ZUGANG_GRUENDE = ['gekauft', 'ersatz', 'geschenkt', 'gefunden', 'sonstiges'] as const;
@@ -87,13 +148,61 @@ export const gegenstandPlatzSchema = z
 /** Marks (or unmarks) an IFCO as done in the running Aufräumaktion. */
 export const aufraeumFertigSchema = z.object({ fertig: z.boolean() });
 
-/** Creating a Gegenstand books its first Zugang and may put it straight onto one place. */
-export const gegenstandAnlegenSchema = gegenstandSchema.extend({
-  anzahl: anzahlSchema.default(1),
-  grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.').default('gekauft'),
-  datum: buchungsTag,
-  platz: gegenstandPlatzSchema.nullable().default(null),
+/** A part created together with its parent: it takes the parent's category, reason and day. */
+export const teilAnlegenSchema = z.object({
+  name: name(),
+  anzahlJe: anzahlJeFeld,
+  /** Optional place (without amount: the part gets parent's amount x `anzahlJe`); default: the parent's place. */
+  platz: z
+    .object({ lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+    .refine(genauEinZiel, ZIEL_MELDUNG)
+    .nullish()
+    .transform((v) => v ?? null),
 });
+export type TeilAnlegenEingabe = z.input<typeof teilAnlegenSchema>;
+
+/**
+ * Creating a Gegenstand books its first Zugang and may put it straight onto one place. A part
+ * (`teilVon`) needs neither category, reason nor day (it takes them from its parent). `teile`
+ * creates parts in the same go.
+ */
+export const gegenstandAnlegenSchema = gegenstandFelder
+  .extend({
+    anzahl: anzahlSchema.default(1),
+    grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.').optional(),
+    datum: buchungsTag.optional(),
+    platz: gegenstandPlatzSchema.nullable().default(null),
+    teile: z.array(teilAnlegenSchema).default([]),
+  })
+  .superRefine((g, ctx) => {
+    teilRegeln(g, ctx);
+    if (g.teilVon === null && g.datum === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['datum'], message: 'Bitte gib ein Datum an.' });
+    }
+    if (g.teilVon !== null && g.teile.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teile'],
+        message: 'Ein Teil kann keine Teile haben.',
+      });
+    }
+    if (!eindeutig(g.teile.map((t) => t.name.toLowerCase()))) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teile'],
+        message: 'Jedes Teil darf nur einmal vorkommen.',
+      });
+    }
+    if (g.virtuell && g.platz !== null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['platz'],
+        message: 'Ein virtueller Gegenstand hat keinen eigenen Platz.',
+      });
+    }
+  })
+  .transform(anzahlJeNormalisieren)
+  .transform((g) => (g.teilVon === null ? { ...g, grund: g.grund ?? ('gekauft' as const) } : g));
 
 /**
  * A Zugang (optionally onto a Platz) or an Abgang (from a Platz, from the pieces without a Platz or
@@ -245,23 +354,36 @@ export const ausleihePositionSchema = z
     'Eine ganze IFCO braucht eine IFCO als Herkunft.',
   );
 
+const positionenEindeutig = (
+  liste: { gegenstandId: string; lagerortId: string | null; ifcoId: string | null }[],
+) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`));
+const POSITIONEN_EINDEUTIG =
+  'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.';
+
 export const ausleiheSchema = z
   .object({
     ...ausleiheKopf,
     positionen: z
       .array(ausleihePositionSchema)
       .min(1, 'Bitte gib mindestens eine Position an.')
-      .refine(
-        (liste) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`)),
-        'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.',
-      ),
+      .refine(positionenEindeutig, POSITIONEN_EINDEUTIG),
   })
   .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheEingabe = z.input<typeof ausleiheSchema>;
 
-/** Edits the header of an Ausleihe; the Positionen stay as they are. */
+/**
+ * Edits the header of an Ausleihe. `positionen` (optional) replaces its open Positionen; missing =
+ * unchanged. The list may only be empty when the Ausleihe already has returned Positionen (the
+ * API checks that).
+ */
 export const ausleiheAendernSchema = z
-  .object(ausleiheKopf)
+  .object({
+    ...ausleiheKopf,
+    positionen: z
+      .array(ausleihePositionSchema)
+      .refine(positionenEindeutig, POSITIONEN_EINDEUTIG)
+      .optional(),
+  })
   .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheAendernEingabe = z.input<typeof ausleiheAendernSchema>;
 
@@ -338,8 +460,7 @@ export function inventarAbweichung(
   return { summe, differenz: summe - soll };
 }
 
-const ZU_VIEL_HINWEIS =
-  'Nimm zuerst an einem anderen Platz etwas weg oder buche einen Zugang.';
+const ZU_VIEL_HINWEIS = 'Nimm zuerst an einem anderen Platz etwas weg oder buche einen Zugang.';
 
 /**
  * Error when a change would put more pieces of a Gegenstand onto its Plätze than exist: at most
@@ -400,6 +521,122 @@ export function abweichungText(differenz: number): string | null {
   if (differenz < 0) return `${-differenz} ohne Platz`;
   if (differenz > 0) return `${differenz} mehr als vorhanden`;
   return null;
+}
+
+/**
+ * What the part functions need of a Gegenstand; both the API's `GegenstandDetails` and the web's
+ * `GegenstandEintrag` satisfy it.
+ */
+export interface TeilQuelle {
+  id: string;
+  anzahl: number;
+  /** Virtual: the amount exists only on paper, there is nothing to lend or to put on a Platz. */
+  virtuell: boolean;
+  /** Id of the parent when this Gegenstand is a part. */
+  teilVon: string | null;
+  /** Pieces per piece of the parent (parts only). */
+  anzahlJe: number | null;
+  /** Open amount that is away now / reserved for the future (all places). */
+  verliehen: number;
+  vorgemerkt: number;
+  plaetze: { anzahl: number }[];
+}
+
+/** The parts of the Gegenstand `elternId`, in the order of `alle`. */
+export const teileVon = <T extends Pick<TeilQuelle, 'teilVon'>>(alle: T[], elternId: string): T[] =>
+  alle.filter((g) => g.teilVon === elternId);
+
+/** Target amount of a part: pieces of the parent times pieces per parent (12 Winkel je Pavillon x 3 = 36). */
+export const teilSoll = (
+  eltern: Pick<TeilQuelle, 'anzahl'>,
+  teil: Pick<TeilQuelle, 'anzahlJe'>,
+): number => eltern.anzahl * (teil.anzahlJe ?? 1);
+
+/** Actual minus target amount of a part: negative = too few, positive = too many. */
+export const teilAbweichung = (
+  eltern: Pick<TeilQuelle, 'anzahl'>,
+  teil: Pick<TeilQuelle, 'anzahl' | 'anzahlJe'>,
+): number => teil.anzahl - teilSoll(eltern, teil);
+
+/**
+ * The components that make up one set: every part (with its `anzahlJe` per set) and, unless it is
+ * virtual, the parent itself (one per set).
+ */
+function bestandteile<T extends TeilQuelle>(eltern: T, teile: T[]): { teil: T; je: number }[] {
+  return [
+    ...(eltern.virtuell ? [] : [{ teil: eltern, je: 1 }]),
+    ...teile.map((teil) => ({ teil, je: teil.anzahlJe ?? 1 })),
+  ];
+}
+
+/** Complete sets among the amounts given per component, and whether some pieces are left over. */
+function saetzeZaehlen<T extends TeilQuelle>(
+  komponenten: { teil: T; je: number }[],
+  menge: (g: T) => number,
+): { saetze: number; teilweise: boolean } {
+  if (komponenten.length === 0) return { saetze: 0, teilweise: false };
+  const saetze = Math.min(...komponenten.map((k) => Math.floor(menge(k.teil) / k.je)));
+  return { saetze, teilweise: komponenten.some((k) => menge(k.teil) > saetze * k.je) };
+}
+
+/** Status of a parent made of parts for one kind of lending. */
+export interface TeileAusleihe {
+  /** Complete sets (all components, each in its `anzahlJe`) that are lent / reserved. */
+  saetze: number;
+  /** Some component is lent / reserved beyond the complete sets (a loose part). */
+  teilweise: boolean;
+}
+
+/** Lent and reserved status of a parent with parts, see `teileStatus`. */
+export interface TeileStatus {
+  verliehen: TeileAusleihe;
+  vorgemerkt: TeileAusleihe;
+  /**
+   * `verliehen` when all sets of the parent are lent and nothing is left over, `teilweise` when
+   * anything is lent but not all complete sets, null when nothing is lent.
+   */
+  status: 'verliehen' | 'teilweise' | null;
+  /** Like `status` for the reserved amounts. */
+  vorgemerktStatus: 'vorgemerkt' | 'teilweise' | null;
+}
+
+/**
+ * Lending status of a parent with its `teile`. The components are the parts and, if the parent is
+ * not virtual, the parent itself; the complete sets lent are the minimum over the components of
+ * lent / `anzahlJe` (rounded down), so one missing Winkel makes a Pavillon only partly lent.
+ */
+export function teileStatus<T extends TeilQuelle>(eltern: T, teile: T[]): TeileStatus {
+  const komponenten = bestandteile(eltern, teile);
+  const verliehen = saetzeZaehlen(komponenten, (g) => g.verliehen);
+  const vorgemerkt = saetzeZaehlen(komponenten, (g) => g.vorgemerkt);
+  const gesamt = (a: TeileAusleihe, menge: (g: T) => number) =>
+    komponenten.some((k) => menge(k.teil) > 0)
+      ? a.saetze > 0 && a.saetze >= eltern.anzahl && !a.teilweise
+        ? 'voll'
+        : 'teilweise'
+      : null;
+  const v = gesamt(verliehen, (g) => g.verliehen);
+  const m = gesamt(vorgemerkt, (g) => g.vorgemerkt);
+  return {
+    verliehen,
+    vorgemerkt,
+    status: v === 'voll' ? 'verliehen' : v,
+    vorgemerktStatus: m === 'voll' ? 'vorgemerkt' : m,
+  };
+}
+
+/**
+ * Complete sets that are available: the minimum over the components of available / `anzahlJe`
+ * (rounded down), with `frei` giving the available amount of one component; 0 without components.
+ */
+export function saetzeVerfuegbar<T extends TeilQuelle>(
+  eltern: T,
+  teile: T[],
+  frei: (g: T) => number,
+): number {
+  const komponenten = bestandteile(eltern, teile);
+  if (komponenten.length === 0) return 0;
+  return Math.max(0, Math.min(...komponenten.map((k) => Math.floor(frei(k.teil) / k.je))));
 }
 
 /** Display text of a place: `Lager › Regal`, or `Spanngurtkiste · Lager › Regal` for an IFCO. */
@@ -764,7 +1001,7 @@ export function ganzeIfcoFehler(
   offen: (PlatzMenge | OffenePosition)[],
   neu: (PlatzMenge & IfcoPositionsInfo)[],
   zeitraum: Tage,
-  { beschriftung = OHNE_NAMEN, jetzt = new Date() }: AusleihPruefung = {},
+  { beschriftung = OHNE_NAMEN, jetzt = new Date(), ohneAusleiheId }: AusleihPruefung = {},
 ): string | null {
   const ifcoIds = [...new Set(neu.filter((p) => p.ganzeIfco && p.ifcoId).map((p) => p.ifcoId!))];
   for (const ifcoId of ifcoIds) {
@@ -775,7 +1012,7 @@ export function ganzeIfcoFehler(
     }
     const frei = new Map<string, number>();
     for (const p of inhalt.filter((x) => x.ifcoId === ifcoId)) {
-      const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt);
+      const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt, ohneAusleiheId);
       if (rest > 0) frei.set(p.gegenstandId, rest);
     }
     if (frei.size === 0) return `In der IFCO ${ifco} ist nichts verfügbar.`;

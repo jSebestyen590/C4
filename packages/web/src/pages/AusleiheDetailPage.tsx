@@ -17,12 +17,7 @@ import { IconArrowBackUp, IconChevronLeft, IconEdit, IconTrash } from '@tabler/i
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  platzText,
-  positionenGruppieren,
-  rueckgabeSchema,
-  type PositionsEintrag,
-} from '@c4/shared';
+import { platzText, positionenGruppieren, rueckgabeSchema } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { AusleiheBearbeitenModal } from '../AusleiheBearbeitenModal';
@@ -42,6 +37,7 @@ import {
   useInventar,
   type AusleihePositionEintrag,
 } from '../inventarDaten';
+import { teileGruppeTitel, teileGruppieren, type TeileEintrag } from '../inventarTeile';
 import { jetztLokal } from '../inventurDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { fehlerText, pruefen } from '../warenApi';
@@ -160,16 +156,18 @@ export function AusleiheDetailPage() {
   const nachName = (a: AusleihePositionEintrag, b: AusleihePositionEintrag) =>
     Number(a.zurueckAm !== null) - Number(b.zurueckAm !== null) ||
     gName(a.gegenstandId).localeCompare(gName(b.gegenstandId), 'de');
-  const eintraege = positionenGruppieren(ausleihe.positionen)
-    .map((e) => (e.art === 'ifco' ? { ...e, positionen: [...e.positionen].sort(nachName) } : e))
+  const eintraege = teileGruppieren(positionenGruppieren(ausleihe.positionen), inv.gegenstaende)
+    .map((e) => (e.art === 'einzeln' ? e : { ...e, positionen: [...e.positionen].sort(nachName) }))
     .sort((a, b) => {
-      const erste = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+      const erste = (e: TeileEintrag<AusleihePositionEintrag>) =>
         e.art === 'einzeln' ? e.position : e.positionen[0]!;
-      const schluessel = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+      const schluessel = (e: TeileEintrag<AusleihePositionEintrag>) =>
         e.art === 'einzeln'
           ? gName(e.position.gegenstandId)
-          : (inv.ifcos.find((i) => i.id === e.ifcoId)?.name ?? '');
-      const offenRang = (e: PositionsEintrag<AusleihePositionEintrag>) =>
+          : e.art === 'teile'
+            ? gName(e.elternId)
+            : (inv.ifcos.find((i) => i.id === e.ifcoId)?.name ?? '');
+      const offenRang = (e: TeileEintrag<AusleihePositionEintrag>) =>
         e.art === 'einzeln'
           ? Number(e.position.zurueckAm !== null)
           : Number(e.positionen.every((p) => p.zurueckAm !== null));
@@ -268,7 +266,10 @@ export function AusleiheDetailPage() {
             {
               text: 'Bearbeiten',
               icon: <IconEdit size={18} />,
-              onClick: () => setBearbeiten(true),
+              onClick: () =>
+                ausleihe.erledigt
+                  ? setBearbeiten(true)
+                  : navigate(`/inventar/ausleihen/${encodeURIComponent(id)}/bearbeiten`),
               sichtbar: darfUmraeumen,
             },
             {
@@ -303,31 +304,35 @@ export function AusleiheDetailPage() {
               </Paper>
             );
           }
+          const istTeile = e.art === 'teile';
+          const gruppeKey = istTeile ? `t-${e.elternId}` : `i-${e.ifcoId}`;
+          const gruppeTitel = istTeile
+            ? teileGruppeTitel(gName(e.elternId) || 'Unbekannt', e.saetze)
+            : ifcoGruppeTitel(e.ifcoId, inv.ifcos);
           const offeneIds = e.positionen.filter((p) => p.zurueckAm === null).map((p) => p.id);
           const gewaehlteAnzahl = offeneIds.filter((id) => gewaehlt.has(id)).length;
           return (
-            <Paper
-              key={`i-${e.ifcoId}`}
-              withBorder
-              p="xs"
-              opacity={offeneIds.length === 0 ? 0.7 : 1}
-            >
+            <Paper key={gruppeKey} withBorder p="xs" opacity={offeneIds.length === 0 ? 0.7 : 1}>
               <Stack gap={0}>
                 <KlickZeile
-                  to={`/inventar/ifcos/${encodeURIComponent(e.ifcoId)}`}
+                  to={
+                    istTeile
+                      ? `/inventar/gegenstaende/${encodeURIComponent(e.elternId)}`
+                      : `/inventar/ifcos/${encodeURIComponent(e.ifcoId)}`
+                  }
                   checkbox={
                     darfZurueck && offeneIds.length > 0
                       ? {
                           checked: gewaehlteAnzahl === offeneIds.length,
                           indeterminate: gewaehlteAnzahl > 0 && gewaehlteAnzahl < offeneIds.length,
-                          label: `${ifcoGruppeTitel(e.ifcoId, inv.ifcos)} zurückgeben`,
+                          label: `${gruppeTitel} zurückgeben`,
                           onChange: () => gruppeUmschalten(offeneIds),
                         }
                       : undefined
                   }
                 >
                   <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                    {ifcoGruppeTitel(e.ifcoId, inv.ifcos)}
+                    {gruppeTitel}
                   </Text>
                 </KlickZeile>
                 <Stack
@@ -338,7 +343,7 @@ export function AusleiheDetailPage() {
                 >
                   {e.positionen.map((p) => (
                     <Box key={p.id} opacity={p.zurueckAm ? 0.7 : 1}>
-                      {positionsZeile(p, false)}
+                      {positionsZeile(p, istTeile)}
                     </Box>
                   ))}
                 </Stack>

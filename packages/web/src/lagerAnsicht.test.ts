@@ -61,7 +61,12 @@ const belegung: Belegung = {
     ],
     [
       's1',
-      { ifcos: [], gegenstaende: [{ id: 'g', name: 'G', anzahl: 2, verliehen: 0, vorgemerkt: 0 }] },
+      {
+        ifcos: [],
+        gegenstaende: [
+          { id: 'g', name: 'G', anzahl: 2, gesamt: 2, verliehen: 0, vorgemerkt: 0, teilVon: null },
+        ],
+      },
     ],
   ]),
 };
@@ -114,8 +119,10 @@ describe('kachelInhalt', () => {
       id: name,
       name,
       anzahl: 3,
+      gesamt: 3,
       verliehen: 0,
       vorgemerkt: 0,
+      teilVon: null,
     })),
   });
   const ware = (name: string) => ({ wareId: name, name, text: '1', mhd: '' });

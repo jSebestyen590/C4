@@ -37,6 +37,12 @@ export interface GegenstandEintrag {
   verliehen: number;
   /** Total open amount of Ausleihen starting in the future. */
   vorgemerkt: number;
+  /** Id of the parent when this Gegenstand is a part ("Teil"), else null. */
+  teilVon: string | null;
+  /** Virtual: has an amount but no Plätze; it exists only through its parts. */
+  virtuell: boolean;
+  /** Pieces of this part per piece of its parent (parts only). */
+  anzahlJe: number | null;
 }
 
 /** An IFCO type as returned by `GET /inventar/ifco-typen`. */
@@ -213,10 +219,11 @@ export function useAusleihen(nurOffen: boolean) {
 }
 
 /** One Ausleihe; `nichtGefunden` when the API answered 404. */
-export function useAusleihe(id: string) {
+export function useAusleihe(id: string, aktiv = true) {
   const api = useApi();
   const q = useQuery({
     queryKey: ['inventar', 'ausleihen', 'eine', id],
+    enabled: aktiv,
     queryFn: async () => {
       const res = await api.inventar.ausleihen[':id'].$get({ param: { id } });
       if (res.status === 404) return null;

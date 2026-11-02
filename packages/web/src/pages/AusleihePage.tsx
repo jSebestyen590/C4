@@ -16,13 +16,16 @@ import { notifications } from '@mantine/notifications';
 import { IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Anchor } from '@mantine/core';
 import {
+  ausleiheAendernSchema,
   ausleiheSchema,
   ausleiheTage,
   blockierungWann,
   blockierungen,
+  saetzeVerfuegbar,
+  teileVon,
   type Blockierung,
   type PlatzZiel,
 } from '@c4/shared';
@@ -33,20 +36,29 @@ import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
 import {
   heuteLokal,
+  isoZuLokal,
   ifcoGruppeTitel,
   mengeName,
   offenePositionenAus,
+  positionText,
   standardMenge,
   verfuegbarePlaetze,
   verfuegbarImZeitraum,
   zeitraumZeile,
 } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
+import { INVENTAR_KEY, useAusleihe, useAusleihen, useInventar } from '../inventarDaten';
+import {
+  ausleiheVorbelegung,
+  mengeVerteilen,
+  teileGruppeTitel,
+  teileSaetze,
+} from '../inventarTeile';
 import { jetztLokal } from '../inventurDaten';
 import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
 import { fehlerText, pruefen } from '../warenApi';
+import { zeitAnzeigen } from '../warenAnzeige';
 import { ZahlFeld } from '../ZahlFeld';
 
 const mengeKey = (
@@ -79,17 +91,35 @@ function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
 
 const ORANGE = 'var(--mantine-color-orange-6)';
 
-/** Lend Gegenstände: header data plus, per Gegenstand and place, how many pieces leave. */
+/**
+ * Lend Gegenstände: header data plus, per Gegenstand and place, how many pieces leave. Under
+ * `/inventar/ausleihen/:id/bearbeiten` it edits the open positions of an existing Ausleihe instead.
+ */
 export function AusleihePage() {
+  const { id: bearbeitenId } = useParams();
+  const bearbeiten = bearbeitenId !== undefined;
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inv = useInventar();
-  const offeneAusleihen = useAusleihen(true).ausleihen;
-  const offenePositionen = useMemo(() => offenePositionenAus(offeneAusleihen), [offeneAusleihen]);
+  const { ausleihen: offeneAusleihen, laedt: ausleihenLaden } = useAusleihen(true);
+  const {
+    ausleihe: bearbeitete,
+    laedt: bearbeiteteLaedt,
+    fehler: bearbeiteteFehler,
+  } = useAusleihe(bearbeitenId ?? '', bearbeiten);
+  // While editing, the own open positions must not block themselves.
+  const offenePositionen = useMemo(
+    () =>
+      offenePositionenAus(offeneAusleihen).filter(
+        (p) => !bearbeiten || p.ausleiheId !== bearbeitenId,
+      ),
+    [offeneAusleihen, bearbeiten, bearbeitenId],
+  );
+  const bereitsZurueck = (bearbeitete?.positionen ?? []).filter((p) => p.zurueckAm !== null);
   const enterWeiter = useEnterWeiter('verleihen-weiter');
-  const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(false);
+  const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(bearbeiten);
   const eigeneSub = useEigeneSub();
   const mitglieder = useMitgliederListe();
   const [kopf, setKopf] = useState<AusleiheKopf>({
@@ -113,16 +143,19 @@ export function AusleihePage() {
   const [gegenstandIds, setGegenstandIds] = useState<string[]>([]);
   /** IFCOs added with "Ganze IFCO verleihen"; they count as whole only while their full content is entered. */
   const [ifcoIds, setIfcoIds] = useState<string[]>([]);
+  /** Parents added as a group of parts, and the number of sets (parent pieces) chosen for each. */
+  const [gruppen, setGruppen] = useState<string[]>([]);
+  const [saetze, setSaetze] = useState<Record<string, number | string>>({});
   const [mengen, setMengen] = useState<Record<string, number | string>>({});
   const [vorbelegt, setVorbelegt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [bestaetigung, setBestaetigung] = useState<{
-    daten: ReturnType<typeof ausleiheSchema.parse>;
+    daten: ReturnType<typeof ausleiheAendernSchema.parse>;
     gruppen: BestaetigungsGruppe[];
   } | null>(null);
 
   const verleihbar = useMemo(
-    () => inv.gegenstaende.filter((g) => !g.archiviert && g.plaetze.length > 0),
+    () => inv.gegenstaende.filter((g) => !g.archiviert && !g.virtuell && g.plaetze.length > 0),
     [inv.gegenstaende],
   );
 
@@ -147,17 +180,124 @@ export function AusleihePage() {
     return { ids };
   };
 
+  /** Parents with parts (not archived): offered as a group. */
+  const eltern = useMemo(
+    () =>
+      inv.gegenstaende.filter(
+        (g) => !g.archiviert && inv.gegenstaende.some((x) => x.teilVon === g.id),
+      ),
+    [inv.gegenstaende],
+  );
+
+  /** The lendable components of a parent: itself (unless virtual) first, then its parts. */
+  const komponenten = (elternId: string) => {
+    const e = inv.gegenstaende.find((g) => g.id === elternId);
+    if (!e) return [];
+    return [e, ...teileVon(inv.gegenstaende, elternId)].filter((g) =>
+      verleihbar.some((v) => v.id === g.id),
+    );
+  };
+
+  /** Available pieces of a Gegenstand over all its places in the chosen period. */
+  const gesamtFrei = (g: (typeof inv.gegenstaende)[number]) =>
+    g.archiviert
+      ? 0
+      : verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos, true).reduce(
+          (s, p) => s + Math.max(0, frei(g.id, p)),
+          0,
+        );
+
+  /** Amounts per place key for `n` sets of a component: n x anzahlJe, most available place first. */
+  const mengenFuer = (g: (typeof inv.gegenstaende)[number], elternId: string, n: number) =>
+    mengeVerteilen(
+      verfuegbarePlaetze(g, inv.lagerorte, inv.ifcos, true).map((p) => ({
+        key: mengeKey(g.id, p),
+        verfuegbar: frei(g.id, p),
+      })),
+      n * (g.id === elternId ? 1 : (g.anzahlJe ?? 1)),
+    );
+
+  /** Adds a parent as a group: all its lendable components with the amounts for one set. */
+  const gruppeHinzufuegen = (elternId: string) => {
+    const komp = komponenten(elternId);
+    if (komp.length === 0) return;
+    const neu = komp.filter((g) => !gegenstandIds.includes(g.id));
+    setGruppen((alt) => (alt.includes(elternId) ? alt : [...alt, elternId]));
+    setMengen((alt) => Object.assign({}, alt, ...neu.map((g) => mengenFuer(g, elternId, 1))));
+    setGegenstandIds((alt) => [...alt, ...neu.map((g) => g.id).filter((id) => !alt.includes(id))]);
+  };
+
+  /** Sets the number of sets of a group and re-sets the amounts of its components. */
+  const saetzeSetzen = (elternId: string, n: number) => {
+    setSaetze((alt) => ({ ...alt, [elternId]: n }));
+    setMengen((alt) =>
+      Object.assign(
+        {},
+        alt,
+        ...komponenten(elternId)
+          .filter((g) => gegenstandIds.includes(g.id))
+          .map((g) => mengenFuer(g, elternId, n)),
+      ),
+    );
+  };
+
+  const gruppeEntfernen = (elternId: string) => {
+    const ids = komponenten(elternId).map((g) => g.id);
+    setGruppen((alt) => alt.filter((x) => x !== elternId));
+    setGegenstandIds((alt) => alt.filter((x) => !ids.includes(x)));
+  };
+
+  /** Parent id of the group a Gegenstand is shown in, if any. */
+  const gruppeVon = (g: { id: string; teilVon: string | null }): string | null => {
+    if (g.teilVon !== null && gruppen.includes(g.teilVon)) return g.teilVon;
+    return gruppen.includes(g.id) ? g.id : null;
+  };
+
+  const anzahlSaetze = (elternId: string): number => {
+    const w = saetze[elternId];
+    return typeof w === 'number' && w >= 1 ? w : 1;
+  };
+
+  /** Adds a Gegenstand as a group when it has parts, else as a single section. */
+  const auswaehlen = (id: string) => {
+    if (eltern.some((e) => e.id === id)) gruppeHinzufuegen(id);
+    else hinzufuegen([id]);
+  };
+
   const hinzufuegen = (ids: string[], ifcoId?: string) => {
     if (ifcoId) setIfcoIds((alt) => (alt.includes(ifcoId) ? alt : [...alt, ifcoId]));
     setGegenstandIds((alt) => [...alt, ...ids.filter((id) => !alt.includes(id))]);
   };
 
-  // Prefill from ?gegenstand= / ?ifco= once the Inventar is loaded.
-  if (!vorbelegt && !inv.laedt && !inv.fehler) {
+  // Prefill from ?gegenstand= / ?ifco= once the Inventar and the open Ausleihen (for the free amounts) are loaded.
+  const bereit = !inv.laedt && !inv.fehler && !ausleihenLaden;
+  if (bearbeiten && !vorbelegt && bereit && !bearbeiteteLaedt && bearbeitete) {
+    // Edit mode: reproduce the header and the open positions of the Ausleihe.
+    setVorbelegt(true);
+    setKopf({
+      an: bearbeitete.an,
+      organisiertVon: bearbeitete.organisator?.sub ?? bearbeitete.organisiertVon ?? '',
+      zeitpunkt: isoZuLokal(bearbeitete.ausgeliehenAm),
+      rueckgabe: bearbeitete.rueckgabeGeplant ?? '',
+      kommentar: bearbeitete.kommentar ?? '',
+    });
+    const v = ausleiheVorbelegung(
+      bearbeitete.positionen.filter((p) => p.zurueckAm === null),
+      inv.gegenstaende,
+      mengeKey,
+    );
+    setGegenstandIds(v.gegenstandIds);
+    setMengen(v.mengen);
+    setIfcoIds(v.ifcoIds);
+    setGruppen(v.gruppen);
+    setSaetze(v.saetze);
+  } else if (!bearbeiten && !vorbelegt && bereit) {
     setVorbelegt(true);
     const gegenstandId = params.get('gegenstand');
     const ifcoId = params.get('ifco');
-    if (gegenstandId && verleihbar.some((g) => g.id === gegenstandId)) hinzufuegen([gegenstandId]);
+    if (gegenstandId && eltern.some((e) => e.id === gegenstandId)) gruppeHinzufuegen(gegenstandId);
+    else if (gegenstandId && verleihbar.some((g) => g.id === gegenstandId))
+      hinzufuegen([gegenstandId]);
     if (ifcoId) {
       hinzufuegen(ifcoInhalt(ifcoId).ids, ifcoId);
     }
@@ -187,8 +327,11 @@ export function AusleihePage() {
     g: { id: string; plaetze: unknown[] },
     p: { lagerortId: string | null; ifcoId: string | null; anzahl: number; verfuegbar: number },
   ): number | string | undefined =>
-    mengen[mengeKey(g.id, p)] ??
-    standardMenge(p, g.plaetze.length, p.ifcoId !== null && ifcoIds.includes(p.ifcoId));
+    // A place with nothing free is locked; an amount entered earlier (or a group default) must not block sending.
+    p.verfuegbar <= 0
+      ? 0
+      : (mengen[mengeKey(g.id, p)] ??
+        standardMenge(p, g.plaetze.length, p.ifcoId !== null && ifcoIds.includes(p.ifcoId)));
 
   const menge = (
     g: { id: string; plaetze: unknown[] },
@@ -217,19 +360,32 @@ export function AusleihePage() {
   const ganzeIfcoIds = ifcoIds.filter(ifcoKomplett);
 
   const verleihen = useMutation({
-    mutationFn: async (json: ReturnType<typeof ausleiheSchema.parse>) => {
-      const res = await api.inventar.ausleihen.$post({ json });
+    mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) => {
+      if (bearbeiten) {
+        await pruefen(
+          await api.inventar.ausleihen[':id'].$put({ param: { id: bearbeitenId }, json }),
+        );
+        return bearbeitenId;
+      }
+      const res = await api.inventar.ausleihen.$post({
+        json: { ...json, positionen: json.positionen ?? [] },
+      });
       await pruefen(res);
       return ((await res.json()) as { id: string }).id;
     },
     onSuccess: async (id) => {
       await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
-      notifications.show({ color: 'green', message: 'Die Ausleihe wurde angelegt.' });
+      notifications.show({
+        color: 'green',
+        message: bearbeiten ? 'Die Änderungen wurden gespeichert.' : 'Die Ausleihe wurde angelegt.',
+      });
       navigate(`/inventar/ausleihen/${encodeURIComponent(id)}`);
     },
     onError: (e) => {
       setBestaetigung(null);
-      setFehler(fehlerText(e, 'Verleihen fehlgeschlagen.'));
+      setFehler(
+        fehlerText(e, bearbeiten ? 'Speichern fehlgeschlagen.' : 'Verleihen fehlgeschlagen.'),
+      );
     },
   });
 
@@ -256,7 +412,9 @@ export function AusleihePage() {
       plaetze.some((p) => menge(g, p) > p.verfuegbar),
     );
     if (zuViel) return setFehler('Bei mindestens einem Platz sind nicht so viele verfügbar.');
-    const geprueft = ausleiheSchema.safeParse({
+    if (bearbeiten && positionen.length === 0 && bereitsZurueck.length === 0)
+      return setFehler('Bitte wähle mindestens einen Gegenstand.');
+    const geprueft = (bearbeiten ? ausleiheAendernSchema : ausleiheSchema).safeParse({
       an: kopf.an,
       organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
@@ -272,14 +430,14 @@ export function AusleihePage() {
     }
     setFehler(null);
     setRueckgabeFehler(null);
-    const gruppen: BestaetigungsGruppe[] = [
+    const bestGruppen: BestaetigungsGruppe[] = [
       {
         titel: `An ${geprueft.data.an}`,
         zeilen: [zeitraumZeile(iso, geprueft.data.rueckgabeGeplant)],
       },
       ...ganzeIfcoIds.map((ifcoId) => ({
         titel: ifcoGruppeTitel(ifcoId, inv.ifcos),
-        zeilen: geprueft.data.positionen
+        zeilen: (geprueft.data.positionen ?? [])
           .filter((p) => p.ifcoId === ifcoId)
           .map((p) =>
             mengeName(
@@ -288,7 +446,35 @@ export function AusleihePage() {
             ),
           ),
       })),
+      ...gruppen.flatMap((elternId) => {
+        const e = inv.gegenstaende.find((g) => g.id === elternId);
+        const positionen = (geprueft.data.positionen ?? []).filter(
+          (p) =>
+            !(p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId)) &&
+            gruppeVon(
+              inv.gegenstaende.find((g) => g.id === p.gegenstandId) ?? { id: '', teilVon: null },
+            ) === elternId,
+        );
+        if (!e || positionen.length === 0) return [];
+        const summe = (id: string) =>
+          (geprueft.data.positionen ?? [])
+            .filter((p) => p.gegenstandId === id)
+            .reduce((s, p) => s + p.anzahl, 0);
+        return [
+          {
+            titel: teileGruppeTitel(
+              e.name,
+              teileSaetze(e, inv.gegenstaende, summe),
+              anzahlSaetze(elternId),
+            ),
+            zeilen: positionen.map((p) =>
+              positionText(p, inv.gegenstaende, inv.lagerorte, inv.ifcos),
+            ),
+          },
+        ];
+      }),
       ...sektionen.flatMap(({ g, plaetze }) => {
+        if (gruppeVon(g) !== null) return [];
         const zeilen = plaetze.flatMap((p) => {
           const anzahl = menge(g, p);
           if (anzahl <= 0 || (p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId))) return [];
@@ -297,10 +483,151 @@ export function AusleihePage() {
         return zeilen.length > 0 ? [{ titel: g.name, zeilen }] : [];
       }),
     ];
-    setBestaetigung({ daten: geprueft.data, gruppen });
+    setBestaetigung({ daten: geprueft.data, gruppen: bestGruppen });
   };
 
-  if (inv.laedt) return <Loader m="md" aria-label="Inventar wird geladen" />;
+  /** What the page shows: single sections and groups (at the place of their first section). */
+  const anzeige = (() => {
+    const liste: (
+      | { art: 'einzeln'; sektion: (typeof sektionen)[number] }
+      | { art: 'gruppe'; elternId: string; sektionen: typeof sektionen }
+    )[] = [];
+    for (const sektion of sektionen) {
+      const von = gruppeVon(sektion.g);
+      if (von === null) liste.push({ art: 'einzeln', sektion });
+      else if (!liste.some((e) => e.art === 'gruppe' && e.elternId === von))
+        liste.push({
+          art: 'gruppe',
+          elternId: von,
+          sektionen: sektionen.filter((x) => gruppeVon(x.g) === von),
+        });
+    }
+    return liste;
+  })();
+
+  const sektionKarte = ({
+    g,
+    plaetze,
+  }: {
+    g: (typeof sektionen)[number]['g'];
+    plaetze: (typeof sektionen)[number]['plaetze'];
+  }) => (
+    <Paper key={g.id} withBorder p="sm">
+      <Stack gap="xs">
+        <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+          <Text fw={600} style={{ overflowWrap: 'anywhere', minWidth: 0 }}>
+            {g.name}
+          </Text>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size={44}
+            aria-label={`${g.name} entfernen`}
+            onClick={() => setGegenstandIds((alt) => alt.filter((x) => x !== g.id))}
+          >
+            <IconTrash size={20} />
+          </ActionIcon>
+        </Group>
+        {plaetze.every((p) => p.verfuegbar <= 0) && (
+          <Text size="sm" c="dimmed">
+            Im gewählten Zeitraum ist alles verliehen oder vorgemerkt. Du kannst den Gegenstand
+            entfernen.
+          </Text>
+        )}
+        {plaetze.map((p) => {
+          const key = mengeKey(g.id, p);
+          const aktuell = menge(g, p);
+          const zuViel = aktuell > p.verfuegbar;
+          const wer = blockierungen(
+            offenePositionen,
+            { gegenstandId: g.id, lagerortId: p.lagerortId, ifcoId: p.ifcoId },
+            new Date(),
+            zeitraum,
+          );
+          const hinweis =
+            wer.length > 0 ? (
+              <>
+                {' · '}
+                <Blockiert liste={wer} />
+              </>
+            ) : null;
+          if (p.anzahl === 1) {
+            // A piece that exists once: no amount to ask for, just lend it or not.
+            return (
+              <Checkbox
+                key={key}
+                size="md"
+                label={`Verleihen aus ${p.text}`}
+                description={
+                  p.verfuegbar > 0 ? (
+                    hinweis && <Blockiert liste={wer} />
+                  ) : (
+                    <>
+                      Nicht verfügbar
+                      {hinweis}
+                    </>
+                  )
+                }
+                disabled={p.verfuegbar <= 0}
+                checked={aktuell > 0}
+                data-zeile
+                styles={{
+                  root: { minHeight: 44, display: 'flex', alignItems: 'center' },
+                  body: { alignItems: 'center', width: '100%' },
+                  labelWrapper: { flex: 1, paddingBlock: 6 },
+                }}
+                onChange={(e) => {
+                  const an = e.currentTarget.checked;
+                  setMengen((alt) => ({ ...alt, [key]: an ? 1 : 0 }));
+                }}
+              />
+            );
+          }
+          return (
+            <ZahlFeld
+              key={key}
+              label={`Aus ${p.text}`}
+              description={
+                <>
+                  Verfügbar: {p.verfuegbar}
+                  {hinweis}
+                </>
+              }
+              placeholder={String(p.verfuegbar)}
+              disabled={p.verfuegbar <= 0}
+              allowDecimal={false}
+              allowNegative={false}
+              min={0}
+              inputMode="numeric"
+              data-zeile
+              value={mengeWert(g, p) ?? ''}
+              error={
+                zuViel ? (
+                  <>
+                    Nur {p.verfuegbar} verfügbar
+                    {wer.length > 0 ? (
+                      <>
+                        : <Blockiert liste={wer} />.
+                      </>
+                    ) : (
+                      '.'
+                    )}
+                  </>
+                ) : undefined
+              }
+              styles={
+                zuViel ? { input: { borderColor: ORANGE }, error: { color: ORANGE } } : undefined
+              }
+              onChange={(wert) => setMengen((alt) => ({ ...alt, [key]: wert }))}
+            />
+          );
+        })}
+      </Stack>
+    </Paper>
+  );
+
+  if (inv.laedt || (bearbeiten && bearbeiteteLaedt))
+    return <Loader m="md" aria-label="Inventar wird geladen" />;
   if (inv.fehler)
     return (
       <Alert m="md" color="red">
@@ -308,12 +635,26 @@ export function AusleihePage() {
       </Alert>
     );
 
+  if (bearbeiten && (bearbeiteteFehler || !bearbeitete))
+    return (
+      <Alert m="md" color="red">
+        {bearbeiteteFehler
+          ? 'Die Ausleihe konnte nicht geladen werden.'
+          : 'Die Ausleihe wurde nicht gefunden.'}
+      </Alert>
+    );
+  const zurueckLink = bearbeiten
+    ? `/inventar/ausleihen/${encodeURIComponent(bearbeitenId)}`
+    : '/inventar?ansicht=verliehen';
+
   return (
     <Stack maw={900} mih="calc(100dvh - 60px)" gap="md">
       <Stack gap={2}>
-        <Title order={2}>Verleihen</Title>
+        <Title order={2}>{bearbeiten ? 'Ausleihe bearbeiten' : 'Verleihen'}</Title>
         <Text size="sm" c="dimmed">
-          Wähle aus, was du verleihst, und trag je Platz die Anzahl ein.
+          {bearbeiten
+            ? 'Ändere die Angaben und was verliehen wird. Bereits zurückgegebene Positionen bleiben unverändert.'
+            : 'Wähle aus, was du verleihst, und trag je Platz die Anzahl ein.'}
         </Text>
       </Stack>
       <AusleiheKopfFelder
@@ -332,11 +673,22 @@ export function AusleihePage() {
         searchable
         inputMode="text"
         nothingFoundMessage="Kein verleihbarer Gegenstand gefunden"
-        data={verleihbar
-          .map((g) => ({ value: g.id, label: g.name, disabled: gegenstandIds.includes(g.id) }))
-          .sort((a, b) => a.label.localeCompare(b.label, 'de'))}
+        data={[
+          ...verleihbar
+            .filter((g) => !eltern.some((e) => e.id === g.id))
+            .map((g) => ({ value: g.id, label: g.name, disabled: gegenstandIds.includes(g.id) })),
+          ...eltern.map((e) => {
+            const teile = inv.gegenstaende.filter((x) => x.teilVon === e.id).length;
+            const komp = komponenten(e.id);
+            return {
+              value: e.id,
+              label: `${e.name} (${teile === 1 ? '1 Teil' : `${teile} Teile`})`,
+              disabled: komp.length === 0 || komp.every((g) => gegenstandIds.includes(g.id)),
+            };
+          }),
+        ].sort((a, b) => a.label.localeCompare(b.label, 'de'))}
         value={null}
-        onChange={(id) => id && hinzufuegen([id])}
+        onChange={(id) => id && auswaehlen(id)}
       />
       <Select
         label="Ganze IFCO verleihen"
@@ -364,124 +716,66 @@ export function AusleihePage() {
         </Text>
       )}
       <Stack gap="sm" onKeyDown={enterWeiter}>
-        {sektionen.map(({ g, plaetze }) => (
-          <Paper key={g.id} withBorder p="sm">
-            <Stack gap="xs">
-              <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-                <Text fw={600} style={{ overflowWrap: 'anywhere', minWidth: 0 }}>
-                  {g.name}
-                </Text>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  size={44}
-                  aria-label={`${g.name} entfernen`}
-                  onClick={() => setGegenstandIds((alt) => alt.filter((x) => x !== g.id))}
-                >
-                  <IconTrash size={20} />
-                </ActionIcon>
-              </Group>
-              {plaetze.every((p) => p.verfuegbar <= 0) && (
-                <Text size="sm" c="dimmed">
-                  Im gewählten Zeitraum ist alles verliehen oder vorgemerkt. Du kannst den
-                  Gegenstand entfernen.
-                </Text>
-              )}
-              {plaetze.map((p) => {
-                const key = mengeKey(g.id, p);
-                const aktuell = menge(g, p);
-                const zuViel = aktuell > p.verfuegbar;
-                const wer = blockierungen(
-                  offenePositionen,
-                  { gegenstandId: g.id, lagerortId: p.lagerortId, ifcoId: p.ifcoId },
-                  new Date(),
-                  zeitraum,
-                );
-                const hinweis =
-                  wer.length > 0 ? (
-                    <>
-                      {' · '}
-                      <Blockiert liste={wer} />
-                    </>
-                  ) : null;
-                if (p.anzahl === 1) {
-                  // A piece that exists once: no amount to ask for, just lend it or not.
-                  return (
-                    <Checkbox
-                      key={key}
-                      size="md"
-                      label={`Verleihen aus ${p.text}`}
-                      description={
-                        p.verfuegbar > 0 ? (
-                          hinweis && <Blockiert liste={wer} />
-                        ) : (
-                          <>
-                            Nicht verfügbar
-                            {hinweis}
-                          </>
-                        )
-                      }
-                      disabled={p.verfuegbar <= 0}
-                      checked={aktuell > 0}
-                      data-zeile
-                      styles={{
-                        root: { minHeight: 44, display: 'flex', alignItems: 'center' },
-                        body: { alignItems: 'center', width: '100%' },
-                        labelWrapper: { flex: 1, paddingBlock: 6 },
-                      }}
-                      onChange={(e) => {
-                        const an = e.currentTarget.checked;
-                        setMengen((alt) => ({ ...alt, [key]: an ? 1 : 0 }));
-                      }}
-                    />
-                  );
-                }
-                return (
+        {anzeige.map((e) => {
+          if (e.art === 'einzeln') return sektionKarte(e.sektion);
+          const el = inv.gegenstaende.find((x) => x.id === e.elternId)!;
+          const verfuegbareSaetze = saetzeVerfuegbar(
+            el,
+            teileVon(inv.gegenstaende, el.id),
+            gesamtFrei,
+          );
+          return (
+            <Paper key={`g-${e.elternId}`} withBorder p="sm">
+              <Stack gap="sm">
+                <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
+                  <Text fw={700} style={{ overflowWrap: 'anywhere', minWidth: 0 }}>
+                    {el.name}
+                  </Text>
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    size={44}
+                    aria-label={`${el.name} mit allen Teilen entfernen`}
+                    onClick={() => gruppeEntfernen(el.id)}
+                  >
+                    <IconTrash size={20} />
+                  </ActionIcon>
+                </Group>
+                {el.anzahl > 1 && (
                   <ZahlFeld
-                    key={key}
-                    label={`Aus ${p.text}`}
-                    description={
-                      <>
-                        Verfügbar: {p.verfuegbar}
-                        {hinweis}
-                      </>
-                    }
-                    placeholder={String(p.verfuegbar)}
-                    disabled={p.verfuegbar <= 0}
+                    label={`Anzahl ${el.name}`}
+                    description={`Verfügbar: ${verfuegbareSaetze} komplett`}
                     allowDecimal={false}
                     allowNegative={false}
-                    min={0}
+                    min={1}
+                    max={el.anzahl}
                     inputMode="numeric"
-                    data-zeile
-                    value={mengeWert(g, p) ?? ''}
-                    error={
-                      zuViel ? (
-                        <>
-                          Nur {p.verfuegbar} verfügbar
-                          {wer.length > 0 ? (
-                            <>
-                              : <Blockiert liste={wer} />.
-                            </>
-                          ) : (
-                            '.'
-                          )}
-                        </>
-                      ) : undefined
-                    }
-                    styles={
-                      zuViel
-                        ? { input: { borderColor: ORANGE }, error: { color: ORANGE } }
-                        : undefined
-                    }
-                    onChange={(wert) => setMengen((alt) => ({ ...alt, [key]: wert }))}
+                    value={saetze[el.id] ?? 1}
+                    onChange={(wert) => {
+                      if (typeof wert === 'number')
+                        saetzeSetzen(el.id, Math.min(el.anzahl, Math.max(1, wert)));
+                      else setSaetze((alt) => ({ ...alt, [el.id]: wert }));
+                    }}
                   />
-                );
-              })}
-            </Stack>
-          </Paper>
-        ))}
+                )}
+                {e.sektionen.map(sektionKarte)}
+              </Stack>
+            </Paper>
+          );
+        })}
       </Stack>
       {sektionen.length === 0 && <Text c="dimmed">Noch nichts ausgewählt.</Text>}
+      {bereitsZurueck.length > 0 && (
+        <Stack gap={4} opacity={0.7} data-testid="bereits-zurueck">
+          <Title order={4}>Bereits zurückgegeben</Title>
+          {bereitsZurueck.map((p) => (
+            <Text key={p.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
+              {positionText(p, inv.gegenstaende, inv.lagerorte, inv.ifcos)} · zurück am{' '}
+              {zeitAnzeigen(p.zurueckAm!)}
+            </Text>
+          ))}
+        </Stack>
+      )}
 
       <Box style={{ flex: 1 }} />
       {fehler && (
@@ -490,24 +784,18 @@ export function AusleihePage() {
         </Alert>
       )}
       <InventurLeiste>
-        <Button
-          variant="default"
-          size="md"
-          mih={48}
-          component={Link}
-          to="/inventar?ansicht=verliehen"
-        >
+        <Button variant="default" size="md" mih={48} component={Link} to={zurueckLink}>
           Abbrechen
         </Button>
         <Button id="verleihen-weiter" size="md" mih={48} onClick={absenden}>
-          Verleihen
+          {bearbeiten ? 'Speichern' : 'Verleihen'}
         </Button>
       </InventurLeiste>
       {bestaetigung && (
         <BuchungsBestaetigung
-          titel="Verleihen bestätigen"
+          titel={bearbeiten ? 'Änderungen speichern' : 'Verleihen bestätigen'}
           gruppen={bestaetigung.gruppen}
-          buchenText="Verleihen"
+          buchenText={bearbeiten ? 'Speichern' : 'Verleihen'}
           laedt={verleihen.isPending}
           onBuchen={() => verleihen.mutate(bestaetigung.daten)}
           onClose={() => setBestaetigung(null)}
