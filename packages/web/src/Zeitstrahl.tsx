@@ -46,6 +46,8 @@ export const ZEITSTRAHL_CSS = `
   /* As wide as the longest label; inside a ZeitstrahlGruppe the widest label of all charts. */
   grid-template-columns: var(--zs-label, max-content) minmax(var(--zs-min), 1fr);
 }
+/* A fling that hits the start or end must not chain to the page (pull-to-refresh, swipe back). */
+.zs-scroll { overscroll-behavior: contain; }
 /* Caps a label so long names wrap instead of widening the column. */
 .zs-label-text { display: inline-block; max-width: 88px; }
 @media (min-width: 36em) {
