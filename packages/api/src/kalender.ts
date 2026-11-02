@@ -545,7 +545,13 @@ async function teilnahmenLaden(
     stati.length > 0 ? inArray(mitglieder.status, stati) : undefined,
     subs.length > 0 ? inArray(mitglieder.sub, subs) : undefined,
   );
-  const mRows = bedingung ? await q.select().from(mitglieder).where(bedingung) : [];
+  // Deactivated members drop out of every circle.
+  const mRows = bedingung
+    ? await q
+        .select()
+        .from(mitglieder)
+        .where(and(bedingung, isNull(mitglieder.deaktiviertAm)))
+    : [];
   const nachEvent = new Map(rows.map((r) => [`${r.eventId}:${r.mitgliedSub}`, r] as const));
   for (const { id, kreis } of aktive) {
     const zeilen: TeilnahmeZeile[] = [];
@@ -964,19 +970,24 @@ export function createKalenderStore(db: Db): KalenderStore {
         .where(and(eq(eventTeilnahmen.eventId, eventId), eq(eventTeilnahmen.eingeladen, true)));
       return;
     }
+    const bisher = await tx
+      .select()
+      .from(eventTeilnahmen)
+      .where(eq(eventTeilnahmen.eventId, eventId));
     if (daten.eingeladen.length > 0) {
       const gefunden = await tx
-        .select({ sub: mitglieder.sub })
+        .select({ sub: mitglieder.sub, deaktiviertAm: mitglieder.deaktiviertAm })
         .from(mitglieder)
         .where(inArray(mitglieder.sub, [...daten.eingeladen]));
       if (gefunden.length !== daten.eingeladen.length) {
         throw new KalenderUngueltig('Eine eingeladene Person gibt es nicht.');
       }
+      // Already invited people may stay, even if they were deactivated since.
+      const schonEingeladen = new Set(bisher.filter((r) => r.eingeladen).map((r) => r.mitgliedSub));
+      if (gefunden.some((m) => m.deaktiviertAm && !schonEingeladen.has(m.sub))) {
+        throw new KalenderUngueltig('Das Mitglied ist deaktiviert.');
+      }
     }
-    const bisher = await tx
-      .select()
-      .from(eventTeilnahmen)
-      .where(eq(eventTeilnahmen.eventId, eventId));
     for (const r of bisher) {
       if (!r.eingeladen || daten.eingeladen.includes(r.mitgliedSub)) continue;
       const bedingung = and(

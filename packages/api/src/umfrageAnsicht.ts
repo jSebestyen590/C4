@@ -20,6 +20,8 @@ export interface UmfrageKontext {
     vorname: string;
     nachname: string;
     anrede: Anrede | null;
+    /** Set for deactivated members: they keep their name in old entries but drop out of all circles. */
+    deaktiviertAm?: Date | null;
   }[];
   usernames: ReadonlyMap<string, string | null>;
   /** Current holders per Posten id. */
@@ -46,7 +48,11 @@ export function personVon(k: UmfrageKontext, sub: string): UmfragePerson {
 }
 
 export const kreisDerUmfrage = (u: UmfrageDaten, k: UmfrageKontext): Map<string, KreisRolle> =>
-  kreisVon(u, k.mitglieder, k.postenInhaber);
+  kreisVon(
+    u,
+    k.mitglieder.filter((m) => !m.deaktiviertAm),
+    k.postenInhaber,
+  );
 
 /** Subs with a vote that still counts. */
 export const gueltigAbgestimmt = (u: UmfrageDaten): Set<string> =>

@@ -31,6 +31,7 @@ import {
   erinnerungenEingabeSchema,
   emailAendernSchema,
   emailBestaetigenSchema,
+  datumBerlin,
   heuteBerlin,
   besetzungAnlegenSchema,
   besetzungEingabeSchema,
@@ -70,12 +71,14 @@ import {
   postenRechteSetzenSchema,
   profilbildAnfrageSchema,
   setGroupsSchema,
+  setMitgliedAktivSchema,
   setMitgliedStatusSchema,
   setUsernameSchema,
   type DienstPerson,
   type EventDto,
   type Health,
   type Me,
+  type DeaktivierenVorschau,
   type Mitglied,
   type Posten,
   bezeichnungFuer,
@@ -171,11 +174,18 @@ import { meldeErneutAbstimmen, meldeNeueUmfrage, meldeTermin } from './umfrageBe
 import {
   geburtstagSichtbar,
   kanaeleLesen,
+  istDeaktiviert,
   kanaeleSchreiben,
   type MitgliederStore,
 } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
-import { authenticate, requirePermission, type AuthEnv, type TokenVerifier } from './auth';
+import {
+  authenticate,
+  DEAKTIVIERT,
+  requirePermission,
+  type AuthEnv,
+  type TokenVerifier,
+} from './auth';
 
 export interface AppDeps {
   verifyToken: TokenVerifier;
@@ -229,10 +239,15 @@ function cursorLesen(wert: string | undefined): UmfragenCursor | undefined {
   return { erstelltAm, id: wert.slice(trenner + 1) };
 }
 
+const MITGLIED_DEAKTIVIERT = 'Das Mitglied ist deaktiviert.';
+
 export function createApp(deps: AppDeps) {
   const auth = authenticate(
     deps.verifyToken,
-    async (sub) => (await deps.mitglieder.holen(sub))?.status,
+    async (sub) => {
+      const row = await deps.mitglieder.holen(sub);
+      return row && { status: row.status, deaktiviert: istDeaktiviert(row) };
+    },
     (sub) => deps.posten.rechteVon(sub),
   );
   const adminOnly = requirePermission('users:manage');
@@ -272,6 +287,7 @@ export function createApp(deps: AppDeps) {
     discordName: row?.discordName ?? null,
     username: konto?.username ?? null,
     status: row?.status ?? 'anwaerter',
+    deaktiviert: istDeaktiviert(row),
     email: konto?.email ?? null,
     aktiviert: konto?.aktiviert ?? true,
     adresse: row?.adresse ?? null,
@@ -766,13 +782,26 @@ export function createApp(deps: AppDeps) {
 
   /** Besetzungen may only name members that already have a profile row. */
   const mitgliedMussExistieren = async (sub: string) => {
-    if (!(await deps.mitglieder.holen(sub))) {
-      throw new HTTPException(400, { message: 'Mitglied hat noch kein Profil' });
+    const row = await deps.mitglieder.holen(sub);
+    if (!row) throw new HTTPException(400, { message: 'Mitglied hat noch kein Profil' });
+    if (istDeaktiviert(row)) throw new HTTPException(400, { message: MITGLIED_DEAKTIVIERT });
+  };
+
+  /** 400 when one of the members is deactivated (unknown subs are left to the store). */
+  const personenAktivPruefen = async (subs: readonly string[]) => {
+    if (subs.length === 0) return;
+    const rows = await deps.mitglieder.alle();
+    const deaktiviert = new Set(rows.filter(istDeaktiviert).map((r) => r.sub));
+    if (subs.some((s) => deaktiviert.has(s))) {
+      throw new HTTPException(400, { message: MITGLIED_DEAKTIVIERT });
     }
   };
 
   /** All members: every profile row plus every enabled account that has no profile yet. */
-  const alleMitglieder = async (mitRollen: boolean): Promise<Mitglied[]> => {
+  const alleMitglieder = async (
+    mitRollen: boolean,
+    mitDeaktivierten: boolean,
+  ): Promise<Mitglied[]> => {
     const [rows, konten, rollen, posten] = await Promise.all([
       deps.mitglieder.alle(),
       deps.userAdmin.konten(),
@@ -781,7 +810,7 @@ export function createApp(deps: AppDeps) {
     ]);
     const nachSub = new Map(rows.map((r) => [r.sub, r]));
     const subs = [
-      ...rows.map((r) => r.sub),
+      ...rows.filter((r) => mitDeaktivierten || !istDeaktiviert(r)).map((r) => r.sub),
       ...[...konten.values()].filter((k) => k.enabled && !nachSub.has(k.sub)).map((k) => k.sub),
     ];
     const liste = await Promise.all(
@@ -917,13 +946,17 @@ export function createApp(deps: AppDeps) {
         async (c) =>
           c.json(await deps.profilbilder.uploadVorbereiten(c.get('user').sub, c.req.valid('json'))),
       )
-      .get('/mitglieder', auth, mitgliederLesen, async (c) =>
-        c.json(await alleMitglieder(c.get('permissions').includes('users:manage'))),
-      )
+      .get('/mitglieder', auth, mitgliederLesen, async (c) => {
+        const verwaltet = c.get('permissions').includes('users:manage');
+        // Deactivated members are only listed on request, and only for admins.
+        const mitDeaktivierten = verwaltet && c.req.query('deaktivierte') === '1';
+        return c.json(await alleMitglieder(verwaltet, mitDeaktivierten));
+      })
       // `kennung` is the username; members that have none yet are addressed by their sub.
       .get('/mitglieder/:kennung', auth, mitgliederLesen, async (c) => {
         const kennung = c.req.param('kennung');
-        const liste = await alleMitglieder(c.get('permissions').includes('users:manage'));
+        // Deactivated members stay reachable: links from old Dienste, Trichter and the Verlauf point here.
+        const liste = await alleMitglieder(c.get('permissions').includes('users:manage'), true);
         const mitglied =
           liste.find((m) => m.sub === kennung) ??
           liste.find((m) => m.username?.toLowerCase() === kennung.toLowerCase());
@@ -937,10 +970,62 @@ export function createApp(deps: AppDeps) {
         zValidator('json', setMitgliedStatusSchema),
         async (c) => {
           const { status } = c.req.valid('json');
+          if (istDeaktiviert(await deps.mitglieder.holen(c.req.param('sub')))) {
+            throw new HTTPException(409, {
+              message: 'Der Status eines deaktivierten Accounts kann nicht geändert werden.',
+            });
+          }
           if (!(await deps.mitglieder.statusSetzen(c.req.param('sub'), status))) {
             throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
           }
           return c.json({ status });
+        },
+      )
+      // What is still open for the member; shown before deactivating. Nothing is changed.
+      .get('/admin/mitglieder/:sub/deaktivieren-vorschau', auth, adminOnly, async (c) => {
+        const sub = c.req.param('sub');
+        const heute = heuteBerlin();
+        const [dienste, posten, schluessel] = await Promise.all([
+          deps.kalender.meineDienste(sub, new Date(Date.now() - 24 * 3600 * 1000)),
+          deps.posten.aktuelleNachMitglied(heute),
+          deps.schluessel.alle(false),
+        ]);
+        const gesehen = new Set<string>();
+        const vorschau: DeaktivierenVorschau = {
+          dienste: dienste.flatMap((d) => {
+            const datum = datumBerlin(d.beginn);
+            const schluesselDienst = `${d.eventId}|${datum}`;
+            if (d.abgesagt || datum < heute || gesehen.has(schluesselDienst)) return [];
+            gesehen.add(schluesselDienst);
+            return [{ eventId: d.eventId, titel: d.eventTitel, datum }];
+          }),
+          posten: (posten.get(sub) ?? []).map((p) => ({ id: p.id, name: p.name })),
+          schluessel: schluessel
+            .filter((s) => s.halter?.art === 'mitglied' && s.halter.sub === sub)
+            .map((s) => ({ id: s.id, name: s.name })),
+        };
+        return c.json(vorschau);
+      })
+      // Deactivate / reactivate. The database decides (see `authenticate`); Cognito only blocks the login.
+      .put(
+        '/admin/mitglieder/:sub/aktiv',
+        auth,
+        adminOnly,
+        zValidator('json', setMitgliedAktivSchema),
+        async (c) => {
+          const sub = c.req.param('sub');
+          const { aktiv } = c.req.valid('json');
+          if (sub === c.get('user').sub && !aktiv) {
+            throw new HTTPException(400, { message: 'Du kannst dich nicht selbst deaktivieren.' });
+          }
+          const [row, konto] = await Promise.all([
+            deps.mitglieder.holen(sub),
+            deps.userAdmin.konten().then((k) => k.get(sub)),
+          ]);
+          if (!row && !konto) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+          await deps.mitglieder.deaktiviertSetzen(sub, !aktiv);
+          if (konto) await deps.userAdmin.setEnabled(konto.kontoName, aktiv);
+          return c.json({ aktiv });
         },
       )
       .post('/admin/users', auth, adminOnly, zValidator('json', createUserSchema), async (c) => {
@@ -1330,6 +1415,10 @@ export function createApp(deps: AppDeps) {
           if (eingabe.teilnehmende.some((s) => !profile.has(s) && !konten.get(s)?.enabled)) {
             throw new HTTPException(400, { message: 'Mitglied nicht gefunden.' });
           }
+          const deaktiviert = new Set(rows.filter(istDeaktiviert).map((r) => r.sub));
+          if (eingabe.teilnehmende.some((s) => deaktiviert.has(s))) {
+            throw new HTTPException(400, { message: MITGLIED_DEAKTIVIERT });
+          }
           const id = await deps.trichter.durchgangAnlegen({
             trichterId: t.id,
             volumenMl,
@@ -1409,6 +1498,7 @@ export function createApp(deps: AppDeps) {
           const sub = c.get('user').sub;
           await eigenesProfilMussExistieren(sub);
           const eingabe = await terminVorbereiten(c.req.valid('json'));
+          await personenAktivPruefen([...eingabe.pflicht.personen, ...eingabe.optional.personen]);
           const id = await deps.umfragen.anlegen(umfrageSpeichern(eingabe), sub);
           await bestEffort(async () => {
             const [u, k, akteur] = await Promise.all([
@@ -1434,6 +1524,13 @@ export function createApp(deps: AppDeps) {
             throw new HTTPException(409, { message: 'Die Umfrage ist beendet.' });
           }
           const eingabe = await terminVorbereiten(c.req.valid('json'));
+          // Persons already in the circle may stay, even if they were deactivated since.
+          const bisher = new Set([...u.pflicht.personen, ...u.optional.personen]);
+          await personenAktivPruefen(
+            [...eingabe.pflicht.personen, ...eingabe.optional.personen].filter(
+              (p) => !bisher.has(p),
+            ),
+          );
           if (eingabe.anonym !== u.anonym && u.abgaben.length > 0) {
             throw new HTTPException(400, {
               message: 'Nach der ersten Stimme lässt sich „anonym“ nicht mehr ändern.',
@@ -2484,7 +2581,7 @@ export function createApp(deps: AppDeps) {
             deps.userAdmin.konten(),
           ]);
           const sichtbar = rows.flatMap((r) =>
-            r.geburtsdatum !== null && geburtstagSichtbar(r)
+            r.geburtsdatum !== null && geburtstagSichtbar(r) && !istDeaktiviert(r)
               ? [{ ...r, geburtsdatum: r.geburtsdatum }]
               : [],
           );
@@ -3024,7 +3121,12 @@ export function createApp(deps: AppDeps) {
         },
       )
       .onError((err, c) => {
-        if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+        if (err instanceof HTTPException) {
+          if (err.cause === DEAKTIVIERT) {
+            return c.json({ error: err.message, deaktiviert: true }, err.status);
+          }
+          return c.json({ error: err.message }, err.status);
+        }
         console.error(err);
         return c.json({ error: 'Internal server error' }, 500);
       })

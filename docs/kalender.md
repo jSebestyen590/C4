@@ -67,8 +67,10 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
   Externe anlegen und eintragen darf jede:r; ihren Eintrag entfernen, wer ihn eingetragen hat oder `events:verwalten`.
   Wer ein anderes Mitglied ein- oder austrägt, löst einen Push an dieses Mitglied aus (siehe „Push-Benachrichtigungen“).
 - **Ampel** (`schichtBewertung`): rot = eine Dienstform (bei Aufbau/Putzen: die Anzahl aller Einträge) unter Minimum oder Anwärter:in ohne Mitglied/EM in derselben
-  Schicht (Externe zählen nicht als Begleitung, Anwärter:innen zählen zum Bedarf); gelb = Wunsch nicht erreicht;
+  Schicht (Externe zählen nicht als Begleitung, Anwärter:innen zählen zum Bedarf; Mitglieder mit dem Status Externe:r sind neutral: sie brauchen keine Begleitung und sind keine); gelb = Wunsch nicht erreicht;
   grün = alles erfüllt. Ein Event hat die schlechteste Farbe seiner Schichten, abgesagt = grau.
+- Deaktivierte Mitglieder (siehe [members.md](./members.md)) fallen aus allen Kreisen und Push-Empfänger:innen heraus.
+- Deaktivierte Mitglieder (siehe [members.md](./members.md)) fallen aus allen Kreisen und Push-Empfänger:innen heraus.
 - Ändern eines Events behält die Einträge; entfernt es Schichten oder Bedarfe mit Einträgen, antwortet das API mit 409
   und der Liste der Betroffenen, bis `bestaetigt: true` mitkommt. Wechselt die Art einer Schicht mit Einträgen von
   Betrieb zu Aufbau/Putzen, bleiben die Einträge (ihre Dienstform wird geleert); von Aufbau/Putzen zu Betrieb passen sie

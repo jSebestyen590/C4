@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { generateVAPIDKeys, sendNotification } from 'web-push';
 import {
   benachrichtigungsArt,
@@ -343,7 +343,13 @@ export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
             eq(benachrichtigungEinstellungen.art, art),
           ),
         )
-        .where(subs ? inArray(mitglieder.sub, [...subs]) : undefined);
+        .where(
+          and(
+            // Subscriptions of deactivated members stay stored but are never served.
+            isNull(mitglieder.deaktiviertAm),
+            subs ? inArray(mitglieder.sub, [...subs]) : undefined,
+          ),
+        );
       return rows.map((r) => ({
         sub: r.sub,
         status: r.status,

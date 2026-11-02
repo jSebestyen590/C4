@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { MitgliedStatus } from './status';
 import {
   ausVorlage,
   eventTitel,
@@ -46,7 +47,7 @@ import {
   type VorlageDaten,
 } from './kalender';
 
-const mitglied = (sub: string, status: 'anwaerter' | 'mitglied' | 'em' = 'mitglied') =>
+const mitglied = (sub: string, status: MitgliedStatus = 'mitglied') =>
   ({
     art: 'mitglied',
     sub,
@@ -109,6 +110,16 @@ describe('schichtBewertung', () => {
       [dienst('bar', mitglied('a', 'anwaerter')), dienst('bar', extern('x'))],
     );
     expect(schichtBewertung(s)).toBe('rot');
+  });
+  it('treats a member with status extern as neutral: needs no companion and is none', () => {
+    const allein = schicht([['bar', 1, 1]], [dienst('bar', mitglied('x', 'extern'))]);
+    expect(schichtDetails(allein).begleitungFehlt).toBe(false);
+    expect(schichtBewertung(allein)).toBe('gruen');
+    const mitAnwaerter = schicht(
+      [['bar', 2, 2]],
+      [dienst('bar', mitglied('a', 'anwaerter')), dienst('bar', mitglied('x', 'extern'))],
+    );
+    expect(schichtDetails(mitAnwaerter).begleitungFehlt).toBe(true);
   });
   it('counts Anwaerter towards the Bedarf', () => {
     const s = schicht(

@@ -43,6 +43,7 @@ Beginn und Ende (beide oder keins, `freieTerminFehler`) und optionalem Namen; de
   „Optional“. Derselbe Status, Posten oder dieselbe Person darf nicht in beiden Kreisen stehen (400, im Formular nicht
   wählbar). Ausgewertet wird **dynamisch** gegen die aktuellen Mitglieder und Besetzungen (`kreisVon`); wer in beiden
   Kreisen landet (z. B. über einen Posten und den Status), gilt als Pflicht.
+- Deaktivierte Mitglieder fallen aus den Kreisen heraus (und bekommen keine Pushes); bereits abgegebene Stimmen bleiben gezählt.
 - **Sehen** darf eine Umfrage, wer in einem Kreis ist, schon abgestimmt hat, sie erstellt hat oder `umfragen:verwalten` hat.
   Allen anderen antwortet das API mit 404. **Abstimmen** darf nur, wer in einem Kreis ist.
 - **Stimme**: ein Stimmzettel für alle Fragen (`PUT /api/umfragen/:id/stimme`), jede Frage muss beantwortet sein

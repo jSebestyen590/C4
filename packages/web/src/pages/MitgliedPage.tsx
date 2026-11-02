@@ -7,6 +7,7 @@ import { useAuth } from '../auth';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
+import { DeaktivierenFeld } from '../DeaktivierenFeld';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
@@ -40,6 +41,7 @@ export function MitgliedPage() {
       <Anchor component={Link} to="/mitglieder" size="sm">
         ← Zurück zur Liste
       </Anchor>
+      {m?.deaktiviert && <Alert color="gray">Dieser Account ist deaktiviert.</Alert>}
       {!m && <Alert color="yellow">Dieses Mitglied wurde nicht gefunden.</Alert>}
       {m && m.sub === me.data.sub && can('profil:bearbeiten') && (
         <ProfilFormular
@@ -76,10 +78,11 @@ export function MitgliedPage() {
               )}
             </div>
           </Group>
-          <StatusFeld sub={m.sub} status={m.status} anrede={m.anrede} />
+          <StatusFeld sub={m.sub} status={m.status} anrede={m.anrede} deaktiviert={m.deaktiviert} />
           {can('users:manage') && (
             <RollenFeld sub={m.sub} rollen={m.rollen ?? []} anrede={m.anrede} />
           )}
+          {can('users:manage') && m.sub !== me.data.sub && <DeaktivierenFeld mitglied={m} />}
           {m.posten.length > 0 && (
             <div>
               <Text size="sm" c="dimmed" mb={4}>

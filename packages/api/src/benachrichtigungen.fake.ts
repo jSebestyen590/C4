@@ -3,7 +3,7 @@ import type { BenachrichtigungenStore, PushAbo } from './benachrichtigungen';
 
 /** In-memory store for tests. `mitglieder` supplies the members (with status) at call time. */
 export function createFakeBenachrichtigungenStore(
-  mitglieder: () => readonly { sub: string; status: MitgliedStatus }[],
+  mitglieder: () => readonly { sub: string; status: MitgliedStatus; deaktiviert?: boolean }[],
 ) {
   const abos: PushAbo[] = [];
   const einstellungen = new Map<string, GespeicherteEinstellung>(); // key: `${sub}|${art}`
@@ -35,7 +35,7 @@ export function createFakeBenachrichtigungenStore(
     abosVon: async (subs) => abos.filter((a) => subs.includes(a.mitgliedSub)),
     empfaenger: async (art, subs) =>
       mitglieder()
-        .filter((m) => !subs || subs.includes(m.sub))
+        .filter((m) => !m.deaktiviert && (!subs || subs.includes(m.sub)))
         .map((m) => ({
           sub: m.sub,
           status: m.status,

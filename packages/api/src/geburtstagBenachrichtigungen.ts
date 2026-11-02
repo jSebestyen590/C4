@@ -7,7 +7,7 @@ import {
 } from '@c4/shared';
 import type { Konto } from './admin';
 import type { Benachrichtigungen } from './benachrichtigungen';
-import { geburtstagSichtbar, type MitgliederStore } from './mitglieder';
+import { geburtstagSichtbar, istDeaktiviert, type MitgliederStore } from './mitglieder';
 
 // Birthday reminders: "<name> wird morgen 30 Jahre alt." See docs/benachrichtigungen.md.
 
@@ -54,7 +54,7 @@ export async function geburtstagErinnerungen(
 
   const rows = await mitglieder.alle();
   const sichtbar = rows.flatMap((r) =>
-    r.geburtsdatum !== null && geburtstagSichtbar(r)
+    r.geburtsdatum !== null && geburtstagSichtbar(r) && !istDeaktiviert(r)
       ? [{ ...r, geburtsdatum: r.geburtsdatum }]
       : [],
   );

@@ -9,6 +9,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -24,9 +25,10 @@ import { useAuth } from '../auth';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { PostenLinks } from '../PostenAnzeige';
-import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
-import { StatusBadge, StatusName } from '../StatusAnzeige';
+import { BADGE_FARBE, StatusBadge, StatusName } from '../StatusAnzeige';
+import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
+import { MITGLIED_STATI, type Mitglied } from '@c4/shared';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
 const SORTIERUNGEN: { value: Sortierung; label: string }[] = [
@@ -67,15 +69,42 @@ function SortKopf({
   );
 }
 
+/** How many active accounts each status has; deactivated accounts are not counted. */
+function StatusUebersicht({ mitglieder }: Readonly<{ mitglieder: readonly Mitglied[] }>) {
+  const aktive = mitglieder.filter((m) => !m.deaktiviert);
+  return (
+    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs" aria-label="Anzahl je Status">
+      {MITGLIED_STATI.map((status) => (
+        <Paper key={status} withBorder radius="md" p="sm">
+          <Text fz="xl" fw={700} c={BADGE_FARBE[status]} lh={1.2}>
+            {aktive.filter((m) => m.status === status).length}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {MITGLIED_STATUS_MEHRZAHL[status]}
+          </Text>
+        </Paper>
+      ))}
+    </SimpleGrid>
+  );
+}
+
 export function MitgliederPage() {
   const api = useApi();
   const istAdmin = useAuth().can('users:manage');
   const [suche, setSuche] = useState('');
   const [sortierung, setSortierung] = useState<Sortierung>('username');
   const [aufsteigend, setAufsteigend] = useState(true);
+  const [mitDeaktivierten, setMitDeaktivierten] = useState(false);
+  const zeigeDeaktivierte = istAdmin && mitDeaktivierten;
+  // Own cache entry: the default `['mitglieder']` list feeds the pickers and must never contain deactivated members.
   const mitglieder = useQuery({
-    queryKey: ['mitglieder'],
-    queryFn: async () => unwrap(await api.mitglieder.$get()),
+    queryKey: zeigeDeaktivierte ? ['mitglieder', { deaktivierte: true }] : ['mitglieder'],
+    queryFn: async () =>
+      unwrap(
+        zeigeDeaktivierte
+          ? await api.mitglieder.$get({ query: { deaktivierte: '1' } } as never)
+          : await api.mitglieder.$get(),
+      ),
   });
 
   const sortieren = (spalte: Sortierung) => {
@@ -114,6 +143,15 @@ export function MitgliederPage() {
           w={{ base: '100%', sm: 280 }}
         />
       </Flex>
+      {mitglieder.data && <StatusUebersicht mitglieder={mitglieder.data} />}
+      {istAdmin && (
+        <Switch
+          label="Deaktivierte anzeigen"
+          size="md"
+          checked={mitDeaktivierten}
+          onChange={(e) => setMitDeaktivierten(e.currentTarget.checked)}
+        />
+      )}
       <Select
         hiddenFrom="sm"
         label="Sortieren nach"
@@ -134,7 +172,7 @@ export function MitgliederPage() {
       )}
       <SimpleGrid cols={1} hiddenFrom="sm">
         {treffer.map((m) => (
-          <Paper key={m.sub} withBorder p="md">
+          <Paper key={m.sub} withBorder p="md" style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
             <Stack gap="xs">
               {/* Only the upper part links to the detail page; the contact icons are links themselves. */}
               <Link
@@ -159,7 +197,12 @@ export function MitgliederPage() {
                         {nebenname(m)}
                       </Text>
                     )}
-                    {!m.aktiviert && (
+                    {m.deaktiviert && (
+                      <Badge color="gray" variant="light" mt={4}>
+                        Deaktiviert
+                      </Badge>
+                    )}
+                    {!m.aktiviert && !m.deaktiviert && (
                       <Badge color="yellow" variant="light" mt={4}>
                         Noch nicht aktiviert
                       </Badge>
@@ -175,13 +218,12 @@ export function MitgliederPage() {
               </Link>
               <PostenLinks posten={m.posten} />
               <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
-              {istAdmin && <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />}
             </Stack>
           </Paper>
         ))}
       </SimpleGrid>
       {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={istAdmin ? 1100 : 880} visibleFrom="sm">
+        <Table.ScrollContainer minWidth={880} visibleFrom="sm">
           <Table verticalSpacing="xs">
             <Table.Thead>
               <Table.Tr>
@@ -200,12 +242,11 @@ export function MitgliederPage() {
                 <Table.Th>E-Mail</Table.Th>
                 <Table.Th>Telefon</Table.Th>
                 <Table.Th>Kontakt</Table.Th>
-                {istAdmin && <Table.Th>Berechtigungen</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {treffer.map((m) => (
-                <Table.Tr key={m.sub}>
+                <Table.Tr key={m.sub} style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
                   <Table.Td>
                     <Group gap="sm" wrap="nowrap">
                       <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
@@ -213,7 +254,12 @@ export function MitgliederPage() {
                       <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
                         <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
                       </Link>
-                      {!m.aktiviert && (
+                      {m.deaktiviert && (
+                        <Badge color="gray" variant="light">
+                          Deaktiviert
+                        </Badge>
+                      )}
+                      {!m.aktiviert && !m.deaktiviert && (
                         <Badge color="yellow" variant="light">
                           Noch nicht aktiviert
                         </Badge>
@@ -237,11 +283,6 @@ export function MitgliederPage() {
                       groesse={36}
                     />
                   </Table.Td>
-                  {istAdmin && (
-                    <Table.Td>
-                      <RollenBadges rollen={m.rollen ?? []} anrede={m.anrede} />
-                    </Table.Td>
-                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>

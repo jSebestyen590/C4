@@ -1,15 +1,23 @@
 import { Badge, Select, Stack, Text, Title, useComputedColorScheme } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { MITGLIED_STATI, type Anrede, type MitgliedStatus } from '@c4/shared';
+import { useState } from 'react';
+import {
+  MITGLIED_STATI,
+  statusUebergangUeblich,
+  type Anrede,
+  type MitgliedStatus,
+} from '@c4/shared';
 import { useApi } from './api';
+import { BestaetigenDialog } from './BestaetigenDialog';
 import { useAuth } from './auth';
 import { labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
 
-const BADGE_FARBE: Record<MitgliedStatus, string> = {
+export const BADGE_FARBE: Record<MitgliedStatus, string> = {
   anwaerter: 'orange',
   mitglied: 'green',
   em: 'gray',
+  extern: 'blue',
 };
 
 /** [light, dark] shade of the username per status; both keep enough contrast on their background. */
@@ -17,6 +25,7 @@ const NAME_FARBE: Record<MitgliedStatus, [string, string]> = {
   anwaerter: ['orange.9', 'orange.4'],
   mitglied: ['green.9', 'green.4'],
   em: ['gray.7', 'gray.5'],
+  extern: ['blue.9', 'blue.4'],
 };
 
 /** Text color for a member's username, matching the active light/dark mode. */
@@ -67,10 +76,13 @@ export function StatusFeld({
   sub,
   status,
   anrede,
-}: Readonly<{ sub: string; status: MitgliedStatus; anrede: Anrede }>) {
+  deaktiviert = false,
+}: Readonly<{ sub: string; status: MitgliedStatus; anrede: Anrede; deaktiviert?: boolean }>) {
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
+  // A change outside Anwärter -> Mitglied -> EM (or to Externe:r) waits here for confirmation.
+  const [warnung, setWarnung] = useState<MitgliedStatus | null>(null);
   const setzen = useMutation({
     mutationFn: async (neu: MitgliedStatus) => {
       const res = await api.admin.mitglieder[':sub'].status.$put({
@@ -107,17 +119,49 @@ export function StatusFeld({
         </div>
       </Stack>
     );
+  const name = (s: MitgliedStatus) => labelFuer(MITGLIED_STATUS_LABELS, s, anrede);
   return (
-    <Select
-      label="Status"
-      data={MITGLIED_STATI.map((s) => ({
-        value: s,
-        label: labelFuer(MITGLIED_STATUS_LABELS, s, anrede),
-      }))}
-      value={status}
-      allowDeselect={false}
-      disabled={setzen.isPending}
-      onChange={(v) => v && setzen.mutate(v as MitgliedStatus)}
-    />
+    <>
+      <Select
+        label="Status"
+        data={MITGLIED_STATI.map((s) => ({
+          value: s,
+          label: labelFuer(MITGLIED_STATUS_LABELS, s, anrede),
+        }))}
+        value={status}
+        allowDeselect={false}
+        // The status of a deactivated account is frozen (the API answers 409).
+        description={
+          deaktiviert ? 'Aktiviere den Account wieder, um den Status zu ändern.' : undefined
+        }
+        disabled={deaktiviert || setzen.isPending}
+        onChange={(v) => {
+          if (!v) return;
+          const neu = v as MitgliedStatus;
+          if (statusUebergangUeblich(status, neu)) setzen.mutate(neu);
+          else setWarnung(neu);
+        }}
+      />
+      {warnung && (
+        <BestaetigenDialog
+          titel="Ungewöhnlicher Statuswechsel"
+          bestaetigenText="Trotzdem ändern"
+          color="orange"
+          onClose={() => setWarnung(null)}
+          onBestaetigt={async () => {
+            await setzen.mutateAsync(warnung);
+          }}
+        >
+          <Text>
+            Üblich ist die Reihenfolge {name('anwaerter')} → {name('mitglied')} → {name('em')}, ohne
+            Stufen zu überspringen. {name('extern')} geht jederzeit.
+          </Text>
+          <Text>
+            Der Wechsel von <b>{name(status)}</b> zu <b>{name(warnung)}</b> weicht davon ab. Willst
+            du den Status trotzdem ändern?
+          </Text>
+        </BestaetigenDialog>
+      )}
+    </>
   );
 }

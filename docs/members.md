@@ -12,7 +12,7 @@ hinzugefügte Spalten sind deshalb nullable.
 | Spalte                             | Hinweise                                                                         |
 | ---------------------------------- | -------------------------------------------------------------------------------- |
 | `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).       |
-| `status`                           | `anwaerter` (Standard), `mitglied`, `em`. Nur Admins ändern ihn.                 |
+| `status`                           | `anwaerter` (Standard), `mitglied`, `em`, `extern`. Nur Admins ändern ihn.       |
 | `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                       |
 | `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                             |
 | `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                     |
@@ -20,6 +20,7 @@ hinzugefügte Spalten sind deshalb nullable.
 | `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                        |
 | `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900. |
 | `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung. |
+| `deaktiviert_am`                   | Zeitstempel, null = aktiv (Migration `0097`), siehe „Accounts deaktivieren“.     |
 
 **Geburtstag:** Im Profil (`/profil`, `DatumFeld` + Schalter „Geburtstag im Kalender anzeigen“, ohne Datum
 deaktiviert) pflegbar. `PUT /api/me/mitglied` muss immer beide Felder senden, sonst werden sie zurückgesetzt. Andere
@@ -32,6 +33,13 @@ und Erinnerung. Kalender und Erinnerung:
 gespeichert. Die Mitgliederliste ist die Vereinigung aller Profilzeilen und aller aktivierten
 Cognito-Konten. Mitglieder, die ihre Aktivierung noch nicht abgeschlossen haben oder noch keine Zeile
 haben, erscheinen also ebenfalls.
+
+## Statuswechsel
+
+Üblich ist Anwärter:in → Mitglied → EM, Schritt für Schritt. Zu Externe:r kann man jederzeit wechseln, und Externe
+können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/shared/src/status.ts`). Jeder andere Wechsel
+(Stufe übersprungen, zurück) ist erlaubt, aber das Statusfeld fragt vorher mit einer Warnung nach. Das API prüft die
+Reihenfolge nicht.
 
 ## Mitglieder anlegen
 
@@ -52,6 +60,7 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die einzige Cognito-Gruppe ist `admin` (`users:manage`). Alles andere folgt aus dem Status.
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
+- **Externe** (`extern`) haben vorerst dieselben Rechte wie Anwärter:innen (eigene Liste in `STATUS_PERMISSIONS`, damit sie sich später ändern lässt).
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
   `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`, `trichter:lesen`). Sobald Features unterschiedliche Rechte
   brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
@@ -60,6 +69,26 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
   [umfragen.md](./umfragen.md), [trichter.md](./trichter.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
+
+## Accounts deaktivieren
+
+Admins (`users:manage`) können Accounts deaktivieren und wieder aktivieren (Detailseite `/mitglieder/<name>`, Buttons
+„Account deaktivieren“ / „Account wieder aktivieren“). Das eigene Konto lässt sich nicht deaktivieren (400).
+
+- **Wahrheit ist die Spalte `deaktiviert_am`.** Das API prüft sie bei jedem Request, denn Cognito-Access-Tokens bleiben bis zu
+  1 h gültig. Ein deaktivierter Account bekommt auf jeder Route 403 `{ error, deaktiviert: true }`; die Web-App zeigt dann
+  statt der App die Seite „Account deaktiviert“ (`DeaktiviertSeite`, nur „Abmelden“).
+- Zusätzlich wird der Cognito-Nutzer deaktiviert (`AdminDisableUser`) und überall abgemeldet (`AdminUserGlobalSignOut`);
+  Aktivieren ruft `AdminEnableUser`.
+- Der **Status** eines deaktivierten Accounts ist eingefroren: `PUT /api/admin/mitglieder/:sub/status` antwortet mit 409,
+  das Statusfeld ist gesperrt, bis der Account wieder aktiv ist.
+- **Herausgefiltert** werden Deaktivierte aus der Mitgliederliste (außer `?deaktivierte=1` für Admins, Schalter „Deaktivierte
+  anzeigen“, ausgegraut mit Badge „Deaktiviert“), allen Auswahlfeldern, den Personenkreisen (Kalender, Umfragen), den
+  Pushes und den Geburtstagen. `GET /api/mitglieder/:kennung` liefert sie weiter, damit Links aus der Historie funktionieren.
+- Alte Einträge (Dienste, Trichter, Verlauf, Umfragen) behalten den Namen.
+- Der Bestätigungsdialog lädt die Vorschau und listet „Noch offen“: künftige Dienste, Posten und gehaltene Schlüssel.
+  **Automatisch ändert sich nichts**; die Admins räumen das selbst auf.
+- Neue Einträge für Deaktivierte (Dienst, Trichter-Teilnahme, Schlüsselübergabe) lehnt das API mit 400 ab.
 
 ## Gegenderte Texte
 
@@ -129,21 +158,23 @@ hat, muss sich neu anmelden.
 
 ## Seiten und API
 
-| Seite                | Wer                | Zweck                                                                                                                            |
-| -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                          |
-| `/mitglieder`        | `mitglieder:lesen` | Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links; Admins sehen Rollen und laden ein |
-| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status und Rollen                                                        |
+| Seite                | Wer                | Zweck                                                                                                                                                                              |
+| -------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                                                                            |
+| `/mitglieder`        | `mitglieder:lesen` | Übersicht „Anzahl je Status“ (ohne Deaktivierte), Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links, ohne Berechtigungen; Admins laden ein |
+| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account                                                                                                    |
 
-| Route                                                                         | Hinweise                                      |
-| ----------------------------------------------------------------------------- | --------------------------------------------- |
-| `GET/PUT /api/me/mitglied`                                                    | Eigenes Profil                                |
-| `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Über Cognito                                  |
-| `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)        |
-| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle    |
-| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                         |
-| `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; die eigene Admin-Rolle bleibt erhalten |
-| `POST /api/admin/users`                                                       | Admin; Einladung samt Profilzeile             |
+| Route                                                                         | Hinweise                                                                                      |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET/PUT /api/me/mitglied`                                                    | Eigenes Profil                                                                                |
+| `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Über Cognito                                                                                  |
+| `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)                                                        |
+| `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle; `?deaktivierte=1` (Admin) nimmt Deaktivierte dazu |
+| `GET /api/admin/mitglieder/:sub/deaktivieren-vorschau`                        | Admin; offene Dienste, Posten, Schlüssel                                                      |
+| `PUT /api/admin/mitglieder/:sub/aktiv`                                        | Admin; Body `{ aktiv }`, 400 bei sich selbst                                                  |
+| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                                                                         |
+| `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; die eigene Admin-Rolle bleibt erhalten                                                 |
+| `POST /api/admin/users`                                                       | Admin; Einladung samt Profilzeile                                                             |
 
 Die Lambda braucht die Cognito-Berechtigungen aus `infra/modules/app/main.tf`, darunter
 `ListUsersInGroup` für die Rollenspalte.
