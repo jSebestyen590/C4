@@ -280,8 +280,9 @@ jede Änderung macht `['inventar']` ungültig.
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). IFCO-Detailseite: „Ganze IFCO verleihen“, bei einer ganz verliehenen IFCO ein Badge „Verliehen an <an> seit …“ bzw. „Vorgemerkt für <an> ab …“ (verlinkt); IFCO-Karten tragen „Verliehen an …“, die Lager-Seite „Spanngurtkiste · … · verliehen an Feuerwehr“. Am Gegenstand steht beim Platz „(…, mit der ganzen IFCO)“.
 - **Teile in der Oberfläche:**
-  - `GegenstandFormular` hat den Schalter „Nur virtuell“ (blendet den Platz aus) und „Teil von (optional)“ (durchsuchbar, nur
-    erlaubte Gegenstände) mit „Anzahl je <Name>“.
+  - `GegenstandFormular` hat den Schalter „Nur virtuell“ (blendet den Platz aus). Ein Teil entsteht nur über den
+    übergeordneten Gegenstand („Teil anlegen“ auf der Detailseite oder die Teile-Zeilen beim Anlegen); das Formular hat
+    kein Feld „Teil von“, bei einem Teil aber „Anzahl je <Name>“. „Teil hinzufügen“ setzt den Fokus in das neue Namensfeld.
   - `/inventar` hat den Schalter „Teile anzeigen“ (Standard aus). Ist er aus, fehlen Teile in der Liste; die Suche findet über ein
     Teil (Name, Beschreibung, Platz, verbaut) den übergeordneten Gegenstand. Übergeordnete zeigen „Virtuell · 5 Teile“ bzw.
     „5 Teile“ und `TeileStatusBadges`: „Verliehen“ / „Teilweise verliehen“, „Vorgemerkt“ / „Teilweise vorgemerkt“, bei Anzahl > 1

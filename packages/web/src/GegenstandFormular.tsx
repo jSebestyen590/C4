@@ -45,9 +45,9 @@ interface TeilZeile {
 /**
  * Create or edit a Gegenstand. Creating books the first Zugang (Anzahl, Grund, Datum) and may put it
  * onto a first place (by default with the whole Anzahl); editing changes only the master data, the
- * amount changes through Zugänge and Abgänge. A Gegenstand can be a part of another one ("Teil von",
- * with the pieces per parent piece) or virtual (only its parts exist). Mount it only while it
- * should be open.
+ * amount changes through Zugänge and Abgänge. A part is only created from its parent ("Teil anlegen",
+ * `teilVon`) and asks for the pieces per parent piece; a Gegenstand can also be virtual (only its
+ * parts exist). Mount it only while it should be open.
  */
 export function GegenstandFormular({
   gegenstand,
@@ -77,9 +77,7 @@ export function GegenstandFormular({
   const [kategorieId, setKategorieId] = useState<string | null>(
     gegenstand?.kategorieId ?? kategorieVorgabe ?? null,
   );
-  const [teilVon, setTeilVon] = useState<string | null>(
-    gegenstand?.teilVon ?? teilVonVorgabe ?? null,
-  );
+  const teilVon = gegenstand?.teilVon ?? teilVonVorgabe ?? null;
   const [anzahlJe, setAnzahlJe] = useState<number | string>(gegenstand?.anzahlJe ?? 1);
   const [virtuell, setVirtuell] = useState(gegenstand?.virtuell ?? false);
   const [anzahl, setAnzahl] = useState<number | string>(1);
@@ -94,25 +92,12 @@ export function GegenstandFormular({
   const [teile, setTeile] = useState<TeilZeile[]>([]);
   const [teilFehler, setTeilFehler] = useState<Record<number, string>>({});
   const naechsterKey = useRef(0);
+  // Key of the part row just added; its name field takes the focus once rendered.
+  const fokusKey = useRef<number | null>(null);
 
   const optionen = useMemo(
     () => kategorieOptionen(kategorien, gegenstand?.kategorieId),
     [kategorien, gegenstand],
-  );
-  // An item that has parts cannot become a part itself.
-  const hatTeile = !!gegenstand && gegenstaende.some((x) => x.teilVon === gegenstand.id);
-  const elternOptionen = useMemo(
-    () =>
-      gegenstaende
-        .filter(
-          (x) =>
-            x.teilVon === null &&
-            x.id !== gegenstand?.id &&
-            (!x.archiviert || x.id === gegenstand?.teilVon || x.id === teilVonVorgabe),
-        )
-        .map((x) => ({ value: x.id, label: x.name }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'de')),
-    [gegenstaende, gegenstand, teilVonVorgabe],
   );
   const eltern = gegenstaende.find((x) => x.id === teilVon);
   const platzOptionen = useMemo(
@@ -238,22 +223,6 @@ export function GegenstandFormular({
               Gegenstand)
             </Text>
           )}
-          {!hatTeile && !virtuell && (
-            <Select
-              label="Teil von (optional)"
-              placeholder="Kein übergeordneter Gegenstand"
-              searchable
-              clearable
-              inputMode="text"
-              nothingFoundMessage="Nichts gefunden"
-              data={elternOptionen}
-              value={teilVon}
-              onChange={(v) => {
-                setTeilVon(v);
-                if (v) setVirtuell(false);
-              }}
-            />
-          )}
           {teilVon !== null && (
             <ZahlFeld
               label={`Anzahl je ${eltern?.name ?? 'übergeordnetem Gegenstand'}`}
@@ -348,6 +317,12 @@ export function GegenstandFormular({
                           placeholder="Name des Teils"
                           value={t.name}
                           error={teilFehler[t.key]}
+                          ref={(el) => {
+                            if (el && fokusKey.current === t.key) {
+                              fokusKey.current = null;
+                              el.focus();
+                            }
+                          }}
                           onChange={(e) => aendern({ name: e.currentTarget.value })}
                         />
                         <ActionIcon
@@ -398,12 +373,11 @@ export function GegenstandFormular({
                 variant="light"
                 size="md"
                 fullWidth
-                onClick={() =>
-                  setTeile((alle) => [
-                    ...alle,
-                    { key: naechsterKey.current++, name: '', anzahlJe: 1, ziel: null },
-                  ])
-                }
+                onClick={() => {
+                  const key = naechsterKey.current++;
+                  fokusKey.current = key;
+                  setTeile((alle) => [...alle, { key, name: '', anzahlJe: 1, ziel: null }]);
+                }}
               >
                 Teil hinzufügen
               </Button>
