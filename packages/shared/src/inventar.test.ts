@@ -192,6 +192,22 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
       );
     }
   });
+  it('lets an Ausleihe edit its Positionen', () => {
+    const position = { gegenstandId: 'g1', lagerortId: 'regal', anzahl: 2 };
+    expect(ausleiheAendernSchema.parse(kopf).positionen).toBeUndefined();
+    expect(ausleiheAendernSchema.parse({ ...kopf, positionen: [position] }).positionen).toEqual([
+      { ...position, ifcoId: null },
+    ]);
+    // An empty list parses (the API decides whether returned Positionen remain).
+    expect(ausleiheAendernSchema.parse({ ...kopf, positionen: [] }).positionen).toEqual([]);
+    expect(
+      ausleiheAendernSchema.safeParse({ ...kopf, positionen: [position, position] }).success,
+    ).toBe(false);
+    expect(
+      ausleiheAendernSchema.safeParse({ ...kopf, positionen: [{ ...position, ifcoId: 'i1' }] })
+        .success,
+    ).toBe(false);
+  });
   it('parses a valid Ausleihe', () => {
     const a = ausleiheSchema.parse({
       ...kopf,
@@ -763,6 +779,61 @@ describe('Gegenstände with parts', () => {
       teilVon: null,
       anzahlJe: null,
     });
+  });
+  it('needs no category, reason or day for a part, but for anything else', () => {
+    const teil = { name: 'Winkel', teilVon: 'g1', anzahlJe: 4 };
+    const r = gegenstandAnlegenSchema.parse(teil);
+    expect(r).toMatchObject({ kategorieId: null, teile: [] });
+    expect(r.grund).toBeUndefined();
+    expect(r.datum).toBeUndefined();
+    expect(gegenstandSchema.parse(teil).kategorieId).toBeNull();
+    expect(gegenstandSchema.parse({ ...teil, kategorieId: '' }).kategorieId).toBeNull();
+    const ohneKategorie = gegenstandAnlegenSchema.safeParse({ name: 'Zelt', datum: '2020-01-01' });
+    expect(ohneKategorie.error?.issues[0]?.message).toBe('Bitte wähle eine Kategorie.');
+    expect(gegenstandSchema.safeParse({ name: 'Zelt' }).success).toBe(false);
+    expect(gegenstandAnlegenSchema.safeParse({ name: 'Zelt', kategorieId: 'k1' }).success).toBe(
+      false,
+    );
+    expect(
+      gegenstandAnlegenSchema.parse({ name: 'Zelt', kategorieId: 'k1', datum: '2020-01-01' }).grund,
+    ).toBe('gekauft');
+  });
+  it('validates the parts created together with a Gegenstand', () => {
+    const zelt = { name: 'Pavillon', kategorieId: 'k1', datum: '2020-01-01' };
+    const ok = gegenstandAnlegenSchema.parse({
+      ...zelt,
+      teile: [
+        { name: 'Plane', anzahlJe: 1 },
+        { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1' } },
+      ],
+    });
+    expect(ok.teile).toEqual([
+      { name: 'Plane', anzahlJe: 1, platz: null },
+      { name: 'Winkel', anzahlJe: 12, platz: { lagerortId: 'l1', ifcoId: null } },
+    ]);
+    const teile = (t: unknown[]) => gegenstandAnlegenSchema.safeParse({ ...zelt, teile: t });
+    expect(teile([{ name: 'Plane' }]).success).toBe(false);
+    expect(teile([{ name: 'Plane', anzahlJe: 0 }]).success).toBe(false);
+    expect(teile([{ name: ' ', anzahlJe: 1 }]).success).toBe(false);
+    expect(
+      teile([{ name: 'Plane', anzahlJe: 1, platz: { lagerortId: 'l1', ifcoId: 'i1' } }]).success,
+    ).toBe(false);
+    expect(
+      teile([{ name: 'Plane', anzahlJe: 1, platz: { lagerortId: null, ifcoId: null } }]).success,
+    ).toBe(false);
+    expect(
+      teile([
+        { name: 'Plane', anzahlJe: 1 },
+        { name: 'PLANE', anzahlJe: 2 },
+      ]).success,
+    ).toBe(false);
+    const teilMitTeilen = gegenstandAnlegenSchema.safeParse({
+      name: 'Winkel',
+      teilVon: 'g1',
+      anzahlJe: 2,
+      teile: [{ name: 'Schraube', anzahlJe: 1 }],
+    });
+    expect(teilMitTeilen.error?.issues[0]?.message).toBe('Ein Teil kann keine Teile haben.');
   });
   it('does not allow a virtual part', () => {
     const r = gegenstandSchema.safeParse({ ...basis, teilVon: 'g1', anzahlJe: 2, virtuell: true });

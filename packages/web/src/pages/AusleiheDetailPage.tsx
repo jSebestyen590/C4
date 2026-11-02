@@ -266,7 +266,10 @@ export function AusleiheDetailPage() {
             {
               text: 'Bearbeiten',
               icon: <IconEdit size={18} />,
-              onClick: () => setBearbeiten(true),
+              onClick: () =>
+                ausleihe.erledigt
+                  ? setBearbeiten(true)
+                  : navigate(`/inventar/ausleihen/${encodeURIComponent(id)}/bearbeiten`),
               sichtbar: darfUmraeumen,
             },
             {

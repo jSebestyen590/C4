@@ -1,20 +1,25 @@
 import {
+  ActionIcon,
   Alert,
   Button,
   Group,
   Modal,
+  Paper,
   Select,
   Stack,
   Switch,
+  Text,
   Textarea,
   TextInput,
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type SubmitEvent } from 'react';
+import { IconTrash } from '@tabler/icons-react';
+import { useMemo, useRef, useState, type SubmitEvent } from 'react';
 import {
   gegenstandAnlegenSchema,
   gegenstandSchema,
   heuteBerlin,
+  pfad,
   zuVielVerteiltFehler,
   ZUGANG_GRUENDE,
 } from '@c4/shared';
@@ -28,6 +33,14 @@ import { PfadSelect } from './PfadSelect';
 import { INVENTAR_KEY, useInventar } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
+
+/** One part row of the create form (a part created together with its parent). */
+interface TeilZeile {
+  key: number;
+  name: string;
+  anzahlJe: number | string;
+  ziel: string | null;
+}
 
 /**
  * Create or edit a Gegenstand. Creating books the first Zugang (Anzahl, Grund, Datum) and may put it
@@ -78,6 +91,9 @@ export function GegenstandFormular({
   const [platzAnzahl, setPlatzAnzahl] = useState<number | string | null>(null);
   const amPlatz = platzAnzahl ?? anzahl;
   const [fehler, setFehler] = useState<string | null>(null);
+  const [teile, setTeile] = useState<TeilZeile[]>([]);
+  const [teilFehler, setTeilFehler] = useState<Record<number, string>>({});
+  const naechsterKey = useRef(0);
 
   const optionen = useMemo(
     () => kategorieOptionen(kategorien, gegenstand?.kategorieId),
@@ -108,14 +124,19 @@ export function GegenstandFormular({
     mutationFn: async (json: {
       name: string;
       beschreibung: string;
-      kategorieId: string;
+      kategorieId: string | null;
       teilVon: string | null;
       virtuell: boolean;
       anzahlJe: number | null;
       anzahl: number;
-      grund: (typeof ZUGANG_GRUENDE)[number];
-      datum: string;
+      grund?: (typeof ZUGANG_GRUENDE)[number];
+      datum?: string;
       platz: { lagerortId: string | null; ifcoId: string | null; anzahl: number } | null;
+      teile: {
+        name: string;
+        anzahlJe: number;
+        platz: { lagerortId: string | null; ifcoId: string | null } | null;
+      }[];
     }) => {
       if (gegenstand) {
         const { name, beschreibung, kategorieId, teilVon, virtuell, anzahlJe } = json;
@@ -137,23 +158,46 @@ export function GegenstandFormular({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const istTeil = teilVon !== null;
     const eingabe = {
       name,
       beschreibung,
-      kategorieId: kategorieId ?? '',
+      // A part always takes its parent's category (the API resolves it).
+      kategorieId: istTeil ? null : (kategorieId ?? ''),
       teilVon,
       virtuell: teilVon === null && virtuell,
       anzahlJe: teilVon !== null ? (typeof anzahlJe === 'number' ? anzahlJe : Number.NaN) : null,
       anzahl: typeof anzahl === 'number' ? anzahl : Number.NaN,
-      grund: grund as (typeof ZUGANG_GRUENDE)[number],
-      datum,
+      grund: istTeil ? undefined : (grund as (typeof ZUGANG_GRUENDE)[number]),
+      datum: istTeil ? undefined : datum,
+      teile:
+        istTeil || gegenstand
+          ? []
+          : teile.map((t) => ({
+              name: t.name,
+              anzahlJe: typeof t.anzahlJe === 'number' ? t.anzahlJe : Number.NaN,
+              platz: t.ziel ? zielAusWert(t.ziel) : null,
+            })),
       platz:
         ziel && !virtuell
           ? { ...zielAusWert(ziel), anzahl: typeof amPlatz === 'number' ? amPlatz : Number.NaN }
           : null,
     };
     const parsed = (gegenstand ? gegenstandSchema : gegenstandAnlegenSchema).safeParse(eingabe);
-    if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+    if (!parsed.success) {
+      // Errors inside a part row belong to that row, the rest goes to the alert.
+      const zeilen: Record<number, string> = {};
+      let allgemein: string | null = null;
+      for (const issue of parsed.error.issues) {
+        const [feld, index] = issue.path;
+        const zeile = feld === 'teile' && typeof index === 'number' ? teile[index] : undefined;
+        if (zeile) zeilen[zeile.key] ??= issue.message;
+        else allgemein ??= issue.message;
+      }
+      setTeilFehler(zeilen);
+      return setFehler(allgemein ?? (Object.keys(zeilen).length ? null : 'Ungültige Eingabe.'));
+    }
+    setTeilFehler({});
     const regel =
       !gegenstand &&
       eingabe.platz &&
@@ -177,16 +221,23 @@ export function GegenstandFormular({
             onChange={(e) => setName(e.currentTarget.value)}
             data-autofocus
           />
-          <Select
-            label="Kategorie"
-            placeholder="Kategorie wählen"
-            searchable
-            inputMode="text"
-            nothingFoundMessage="Keine Kategorie gefunden"
-            data={optionen}
-            value={kategorieId}
-            onChange={setKategorieId}
-          />
+          {teilVon === null ? (
+            <Select
+              label="Kategorie"
+              placeholder="Kategorie wählen"
+              searchable
+              inputMode="text"
+              nothingFoundMessage="Keine Kategorie gefunden"
+              data={optionen}
+              value={kategorieId}
+              onChange={setKategorieId}
+            />
+          ) : (
+            <Text size="sm" c="dimmed">
+              Kategorie: {eltern ? pfad(kategorien, eltern.kategorieId) : '–'} (vom übergeordneten
+              Gegenstand)
+            </Text>
+          )}
           {!hatTeile && !virtuell && (
             <Select
               label="Teil von (optional)"
@@ -233,17 +284,19 @@ export function GegenstandFormular({
                 value={anzahl}
                 onChange={setAnzahl}
               />
-              <Group grow align="flex-start" wrap="wrap">
-                <Select
-                  label="Grund"
-                  allowDeselect={false}
-                  data={ZUGANG_GRUENDE.map((g) => ({ value: g, label: label(GRUND_LABELS, g) }))}
-                  value={grund}
-                  onChange={(v) => v && setGrund(v)}
-                  miw={160}
-                />
-                <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
-              </Group>
+              {teilVon === null && (
+                <Group grow align="flex-start" wrap="wrap">
+                  <Select
+                    label="Grund"
+                    allowDeselect={false}
+                    data={ZUGANG_GRUENDE.map((g) => ({ value: g, label: label(GRUND_LABELS, g) }))}
+                    value={grund}
+                    onChange={(v) => v && setGrund(v)}
+                    miw={160}
+                  />
+                  <DatumFeld label="Datum" value={datum} onWert={setDatum} miw={160} />
+                </Group>
+              )}
             </>
           )}
           {!gegenstand && !virtuell && (
@@ -269,6 +322,92 @@ export function GegenstandFormular({
               value={amPlatz}
               onChange={setPlatzAnzahl}
             />
+          )}
+          {!gegenstand && teilVon === null && (
+            <Stack gap="xs">
+              <div>
+                <Text size="sm" fw={500}>
+                  Teile (optional)
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Teile übernehmen Kategorie und Beschaffung von diesem Gegenstand.
+                </Text>
+              </div>
+              {teile.map((t, i) => {
+                const je = typeof t.anzahlJe === 'number' ? t.anzahlJe : 1;
+                const gesamt = (typeof anzahl === 'number' ? anzahl : 1) * je;
+                const aendern = (teil: Partial<TeilZeile>) =>
+                  setTeile((alle) => alle.map((x) => (x.key === t.key ? { ...x, ...teil } : x)));
+                return (
+                  <Paper key={t.key} withBorder p="sm" radius="md">
+                    <Stack gap="xs">
+                      <Group justify="space-between" wrap="nowrap" align="flex-end">
+                        <TextInput
+                          style={{ flex: 1 }}
+                          label={`Teil ${i + 1}`}
+                          placeholder="Name des Teils"
+                          value={t.name}
+                          error={teilFehler[t.key]}
+                          onChange={(e) => aendern({ name: e.currentTarget.value })}
+                        />
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          size={44}
+                          aria-label="Teil entfernen"
+                          mb={teilFehler[t.key] ? 22 : 0}
+                          onClick={() => setTeile((alle) => alle.filter((x) => x.key !== t.key))}
+                        >
+                          <IconTrash size={20} />
+                        </ActionIcon>
+                      </Group>
+                      <ZahlFeld
+                        label={`Anzahl je ${name.trim() || 'Stück'}`}
+                        allowDecimal={false}
+                        allowNegative={false}
+                        min={1}
+                        inputMode="numeric"
+                        value={t.anzahlJe}
+                        onChange={(v) => aendern({ anzahlJe: v })}
+                      />
+                      {!virtuell && (
+                        <PfadSelect
+                          label="Platz (optional)"
+                          placeholder={
+                            ziel ? `Platz wie ${name.trim() || 'Gegenstand'}` : 'Ohne Platz'
+                          }
+                          searchable
+                          clearable
+                          inputMode="text"
+                          nothingFoundMessage="Nichts gefunden"
+                          data={platzOptionen}
+                          value={t.ziel}
+                          onChange={(v) => aendern({ ziel: v })}
+                        />
+                      )}
+                      {gesamt !== 1 && (
+                        <Text size="xs" c="dimmed">
+                          Gesamt: {gesamt}
+                        </Text>
+                      )}
+                    </Stack>
+                  </Paper>
+                );
+              })}
+              <Button
+                variant="light"
+                size="md"
+                fullWidth
+                onClick={() =>
+                  setTeile((alle) => [
+                    ...alle,
+                    { key: naechsterKey.current++, name: '', anzahlJe: 1, ziel: null },
+                  ])
+                }
+              >
+                Teil hinzufügen
+              </Button>
+            </Stack>
           )}
           <Textarea
             label="Beschreibung (optional)"

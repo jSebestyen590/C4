@@ -93,3 +93,67 @@ export function teileGruppieren<
   }
   return ergebnis;
 }
+
+/** Page state that reproduces the open positions of an Ausleihe on `AusleihePage`. */
+export interface AusleiheVorbelegung {
+  gegenstandIds: string[];
+  mengen: Record<string, number>;
+  /** IFCOs lent as a whole. */
+  ifcoIds: string[];
+  /** Parents shown as a group of parts. */
+  gruppen: string[];
+  /** Sets (parent pieces) covered per group, at least 1. */
+  saetze: Record<string, number>;
+}
+
+/**
+ * Builds the page state for editing an Ausleihe from its open positions. `mengeKey` names the
+ * amount of a place (as used by the page); amounts of equal keys add up.
+ */
+export function ausleiheVorbelegung<
+  P extends {
+    gegenstandId: string;
+    lagerortId: string | null;
+    ifcoId: string | null;
+    anzahl: number;
+    ganzeIfco: boolean | null;
+  },
+  G extends TeilQuelle,
+>(
+  positionen: P[],
+  gegenstaende: G[],
+  mengeKey: (
+    gegenstandId: string,
+    ziel: { lagerortId: string | null; ifcoId: string | null },
+  ) => string,
+): AusleiheVorbelegung {
+  const ergebnis: AusleiheVorbelegung = {
+    gegenstandIds: [],
+    mengen: {},
+    ifcoIds: [],
+    gruppen: [],
+    saetze: {},
+  };
+  for (const p of positionen) {
+    if (!ergebnis.gegenstandIds.includes(p.gegenstandId))
+      ergebnis.gegenstandIds.push(p.gegenstandId);
+    const key = mengeKey(p.gegenstandId, p);
+    ergebnis.mengen[key] = (ergebnis.mengen[key] ?? 0) + p.anzahl;
+    if (p.ganzeIfco && p.ifcoId && !ergebnis.ifcoIds.includes(p.ifcoId))
+      ergebnis.ifcoIds.push(p.ifcoId);
+    // Whole-IFCO positions win over parts: they are not shown as a group.
+    if (p.ganzeIfco) continue;
+    const g = gegenstaende.find((x) => x.id === p.gegenstandId);
+    if (!g) continue;
+    const elternId = g.teilVon ?? (gegenstaende.some((x) => x.teilVon === g.id) ? g.id : null);
+    if (elternId !== null && !ergebnis.gruppen.includes(elternId)) ergebnis.gruppen.push(elternId);
+  }
+  for (const elternId of ergebnis.gruppen) {
+    const eltern = gegenstaende.find((g) => g.id === elternId);
+    if (!eltern) continue;
+    const summe = (id: string) =>
+      positionen.filter((p) => p.gegenstandId === id).reduce((s, p) => s + p.anzahl, 0);
+    ergebnis.saetze[elternId] = Math.max(1, teileSaetze(eltern, gegenstaende, summe));
+  }
+  return ergebnis;
+}

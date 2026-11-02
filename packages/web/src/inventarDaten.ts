@@ -219,10 +219,11 @@ export function useAusleihen(nurOffen: boolean) {
 }
 
 /** One Ausleihe; `nichtGefunden` when the API answered 404. */
-export function useAusleihe(id: string) {
+export function useAusleihe(id: string, aktiv = true) {
   const api = useApi();
   const q = useQuery({
     queryKey: ['inventar', 'ausleihen', 'eine', id],
+    enabled: aktiv,
     queryFn: async () => {
       const res = await api.inventar.ausleihen[':id'].$get({ param: { id } });
       if (res.status === 404) return null;

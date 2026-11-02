@@ -33,29 +33,48 @@ export const kategorieSchema = z.object({
 });
 export type KategorieEingabe = z.input<typeof kategorieSchema>;
 
+const anzahlJeFeld = z
+  .number('Bitte gib an, wie viele Stück je übergeordnetem Gegenstand dazugehören.')
+  .int('Die Anzahl muss eine ganze Zahl sein.')
+  .min(1, 'Die Anzahl muss mindestens 1 sein.');
+
 /** Fields of a Gegenstand's master data; its amount only changes through Zugänge and Abgänge. */
 const gegenstandFelder = z.object({
   name: name(),
   beschreibung,
-  kategorieId: idSchema('Bitte wähle eine Kategorie.'),
+  /** Required, except for a part: that always takes its parent's category (the API resolves it). */
+  kategorieId: z
+    .string()
+    .nullish()
+    .transform((v) => (v ? v : null)),
   /** Id of the parent Gegenstand when this one is a part ("Teil"), else null. */
   teilVon: parentIdSchema,
   /** A virtual Gegenstand has an amount but never Plätze, fixed installations or Ausleihen. */
   virtuell: z.boolean().default(false),
   /** Pieces of this part per piece of its parent; required for a part, ignored (null) otherwise. */
-  anzahlJe: z
-    .number('Bitte gib an, wie viele Stück je übergeordnetem Gegenstand dazugehören.')
-    .int('Die Anzahl muss eine ganze Zahl sein.')
-    .min(1, 'Die Anzahl muss mindestens 1 sein.')
-    .nullish()
-    .transform((v) => v ?? null),
+  anzahlJe: anzahlJeFeld.nullish().transform((v) => v ?? null),
 });
 
-/** Rules for parts: `anzahlJe` needs `teilVon`, and a part cannot be virtual. */
+/**
+ * Rules for parts: `anzahlJe` needs `teilVon`, a part cannot be virtual, and everything but a part
+ * needs a category.
+ */
 function teilRegeln(
-  g: { teilVon: string | null; virtuell: boolean; anzahlJe: number | null },
+  g: {
+    kategorieId: string | null;
+    teilVon: string | null;
+    virtuell: boolean;
+    anzahlJe: number | null;
+  },
   ctx: z.RefinementCtx,
 ): void {
+  if (g.teilVon === null && g.kategorieId === null) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['kategorieId'],
+      message: 'Bitte wähle eine Kategorie.',
+    });
+  }
   if (g.teilVon !== null && g.anzahlJe === null) {
     ctx.addIssue({
       code: 'custom',
@@ -129,16 +148,51 @@ export const gegenstandPlatzSchema = z
 /** Marks (or unmarks) an IFCO as done in the running Aufräumaktion. */
 export const aufraeumFertigSchema = z.object({ fertig: z.boolean() });
 
-/** Creating a Gegenstand books its first Zugang and may put it straight onto one place. */
+/** A part created together with its parent: it takes the parent's category, reason and day. */
+export const teilAnlegenSchema = z.object({
+  name: name(),
+  anzahlJe: anzahlJeFeld,
+  /** Optional place (without amount: the part gets parent's amount x `anzahlJe`); default: the parent's place. */
+  platz: z
+    .object({ lagerortId: parentIdSchema, ifcoId: parentIdSchema })
+    .refine(genauEinZiel, ZIEL_MELDUNG)
+    .nullish()
+    .transform((v) => v ?? null),
+});
+export type TeilAnlegenEingabe = z.input<typeof teilAnlegenSchema>;
+
+/**
+ * Creating a Gegenstand books its first Zugang and may put it straight onto one place. A part
+ * (`teilVon`) needs neither category, reason nor day (it takes them from its parent). `teile`
+ * creates parts in the same go.
+ */
 export const gegenstandAnlegenSchema = gegenstandFelder
   .extend({
     anzahl: anzahlSchema.default(1),
-    grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.').default('gekauft'),
-    datum: buchungsTag,
+    grund: z.enum(ZUGANG_GRUENDE, 'Bitte wähle einen Grund.').optional(),
+    datum: buchungsTag.optional(),
     platz: gegenstandPlatzSchema.nullable().default(null),
+    teile: z.array(teilAnlegenSchema).default([]),
   })
   .superRefine((g, ctx) => {
     teilRegeln(g, ctx);
+    if (g.teilVon === null && g.datum === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['datum'], message: 'Bitte gib ein Datum an.' });
+    }
+    if (g.teilVon !== null && g.teile.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teile'],
+        message: 'Ein Teil kann keine Teile haben.',
+      });
+    }
+    if (!eindeutig(g.teile.map((t) => t.name.toLowerCase()))) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['teile'],
+        message: 'Jedes Teil darf nur einmal vorkommen.',
+      });
+    }
     if (g.virtuell && g.platz !== null) {
       ctx.addIssue({
         code: 'custom',
@@ -147,7 +201,8 @@ export const gegenstandAnlegenSchema = gegenstandFelder
       });
     }
   })
-  .transform(anzahlJeNormalisieren);
+  .transform(anzahlJeNormalisieren)
+  .transform((g) => (g.teilVon === null ? { ...g, grund: g.grund ?? ('gekauft' as const) } : g));
 
 /**
  * A Zugang (optionally onto a Platz) or an Abgang (from a Platz, from the pieces without a Platz or
@@ -299,23 +354,36 @@ export const ausleihePositionSchema = z
     'Eine ganze IFCO braucht eine IFCO als Herkunft.',
   );
 
+const positionenEindeutig = (
+  liste: { gegenstandId: string; lagerortId: string | null; ifcoId: string | null }[],
+) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`));
+const POSITIONEN_EINDEUTIG =
+  'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.';
+
 export const ausleiheSchema = z
   .object({
     ...ausleiheKopf,
     positionen: z
       .array(ausleihePositionSchema)
       .min(1, 'Bitte gib mindestens eine Position an.')
-      .refine(
-        (liste) => eindeutig(liste.map((p) => `${p.gegenstandId}\u0000${zielKey(p)}`)),
-        'Jeder Gegenstand darf je Platz nur einmal vorkommen. Fasse die Anzahlen zusammen.',
-      ),
+      .refine(positionenEindeutig, POSITIONEN_EINDEUTIG),
   })
   .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheEingabe = z.input<typeof ausleiheSchema>;
 
-/** Edits the header of an Ausleihe; the Positionen stay as they are. */
+/**
+ * Edits the header of an Ausleihe. `positionen` (optional) replaces its open Positionen; missing =
+ * unchanged. The list may only be empty when the Ausleihe already has returned Positionen (the
+ * API checks that).
+ */
 export const ausleiheAendernSchema = z
-  .object(ausleiheKopf)
+  .object({
+    ...ausleiheKopf,
+    positionen: z
+      .array(ausleihePositionSchema)
+      .refine(positionenEindeutig, POSITIONEN_EINDEUTIG)
+      .optional(),
+  })
   .refine(rueckgabeNachBeginn, RUECKGABE_VOR_BEGINN);
 export type AusleiheAendernEingabe = z.input<typeof ausleiheAendernSchema>;
 
@@ -933,7 +1001,7 @@ export function ganzeIfcoFehler(
   offen: (PlatzMenge | OffenePosition)[],
   neu: (PlatzMenge & IfcoPositionsInfo)[],
   zeitraum: Tage,
-  { beschriftung = OHNE_NAMEN, jetzt = new Date() }: AusleihPruefung = {},
+  { beschriftung = OHNE_NAMEN, jetzt = new Date(), ohneAusleiheId }: AusleihPruefung = {},
 ): string | null {
   const ifcoIds = [...new Set(neu.filter((p) => p.ganzeIfco && p.ifcoId).map((p) => p.ifcoId!))];
   for (const ifcoId of ifcoIds) {
@@ -944,7 +1012,7 @@ export function ganzeIfcoFehler(
     }
     const frei = new Map<string, number>();
     for (const p of inhalt.filter((x) => x.ifcoId === ifcoId)) {
-      const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt);
+      const rest = freiImZeitraum(p.anzahl, offen, p, zeitraum, jetzt, ohneAusleiheId);
       if (rest > 0) frei.set(p.gegenstandId, rest);
     }
     if (frei.size === 0) return `In der IFCO ${ifco} ist nichts verfügbar.`;

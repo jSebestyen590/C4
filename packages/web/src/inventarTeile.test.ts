@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { TeilQuelle } from '@c4/shared';
-import { mengeVerteilen, teileGruppeTitel, teileGruppieren } from './inventarTeile';
+import {
+  ausleiheVorbelegung,
+  mengeVerteilen,
+  teileGruppeTitel,
+  teileGruppieren,
+} from './inventarTeile';
 
 describe('mengeVerteilen', () => {
   it('fills the place with the most available first', () => {
@@ -81,5 +86,49 @@ describe('teileGruppieren', () => {
     expect(r).toHaveLength(2);
     expect(r[0]).toMatchObject({ art: 'teile', saetze: 1 });
     expect(r[1]).toBe(ifco);
+  });
+});
+
+describe('ausleiheVorbelegung', () => {
+  const alle = [
+    g('p', { virtuell: true, anzahl: 2 }),
+    g('w', { teilVon: 'p', anzahlJe: 12 }),
+    g('d', { teilVon: 'p', anzahlJe: 1 }),
+    g('x'),
+    g('y'),
+  ];
+  const key = (id: string, z: { lagerortId: string | null; ifcoId: string | null }) =>
+    `${id}|${z.lagerortId ?? ''}|${z.ifcoId ?? ''}`;
+  const p = (gegenstandId: string, anzahl: number, extra: Record<string, unknown> = {}) => ({
+    gegenstandId,
+    anzahl,
+    lagerortId: 'l' as string | null,
+    ifcoId: null as string | null,
+    ganzeIfco: false as boolean | null,
+    ...extra,
+  });
+
+  it('collects ids, amounts, groups and sets', () => {
+    const r = ausleiheVorbelegung([p('w', 24), p('d', 2), p('x', 3)], alle, key);
+    expect(r.gegenstandIds).toEqual(['w', 'd', 'x']);
+    expect(r.mengen).toEqual({ 'w|l|': 24, 'd|l|': 2, 'x|l|': 3 });
+    expect(r.gruppen).toEqual(['p']);
+    expect(r.saetze).toEqual({ p: 2 });
+    expect(r.ifcoIds).toEqual([]);
+  });
+  it('uses at least one set for an incomplete group', () => {
+    expect(ausleiheVorbelegung([p('w', 12)], alle, key).saetze).toEqual({ p: 1 });
+  });
+  it('marks whole IFCOs and keeps them out of groups', () => {
+    const r = ausleiheVorbelegung(
+      [
+        p('y', 2, { lagerortId: null, ifcoId: 'i', ganzeIfco: true }),
+        p('w', 12, { lagerortId: null, ifcoId: 'i', ganzeIfco: true }),
+      ],
+      alle,
+      key,
+    );
+    expect(r.ifcoIds).toEqual(['i']);
+    expect(r.gruppen).toEqual([]);
   });
 });

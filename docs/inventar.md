@@ -47,6 +47,13 @@ mit eigener Anzahl, eigenem Verlauf, eigenen Plätzen (auch in IFCOs) und Auslei
   verleihen. Abgelehnt werden (400) Plätze, IFCO-Inhalt, Zugang mit Platz, Abgang von Platz oder verbaut, Anlegen mit Platz und
   Ausleihe-Positionen. Ein Teil kann nicht virtuell sein. Umstellen auf virtuell geht nur ohne Plätze, verbaute Stück und offene
   Ausleihen (409). Ein nicht virtueller übergeordneter Gegenstand zählt selbst als Bestandteil (je 1).
+- **Gekoppelt:** Ein Teil hat keine eigene Kategorie: Es übernimmt die des übergeordneten Gegenstands, auch beim späteren
+  Zuordnen, und ändert sich mit ihr. Beim Anlegen eines Teils übernimmt der erste Zugang Grund und Datum vom ältesten Zugang des
+  übergeordneten Gegenstands (sonst „gekauft“, heute). Danach hat das Teil eigene Zugänge und Abgänge; Anzahl und `anzahlJe` sind
+  unabhängig voneinander.
+- **Mit Teilen anlegen:** `POST /gegenstaende` nimmt `teile: [{ name, anzahlJe, platz? }]` (nicht bei einem Teil; doppelte Namen
+  400). Jedes Teil bekommt Anzahl = Anzahl × `anzahlJe`, Kategorie, Grund und Datum des Gegenstands und den angegebenen Platz,
+  sonst den Platz des Gegenstands, sonst keinen; alles in einer Transaktion.
 - **Löschen** mit Teilen: 409. **Archivieren** archiviert die Teile mit; ein Teil lässt sich nur wiederherstellen, wenn sein
   übergeordneter Gegenstand nicht archiviert ist (409).
 - **Status** (`teileStatus` in shared): komplette Sätze = Minimum über die Bestandteile von ⌊verliehen / je⌋. „Verliehen“, wenn
@@ -181,8 +188,10 @@ Menge, die jetzt weg ist, `vorgemerkt` = offene Menge zukünftiger Ausleihen von
 Ausleihe liefert `erledigt`, `status` (`geplant` = beginnt in der Zukunft, `verliehen`, `erledigt`), `positionen` (mit `zurueckAm`, `ganzeIfco`) und
 `gefaehrdetDurch: [{ id, an }]` und `organisator: { sub, username, vorname, nachname, status, anrede } | null` (`username` aus Cognito, null ohne);
 `?status=offen` liefert geplante und verliehene. So rechnet der Client die Lager-Ansicht selbst aus. Unbekannte
-Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert nur `an`, `organisiertVon`,
-`ausgeliehenAm`, `rueckgabeGeplant` (Pflicht) und `kommentar` und prüft den neuen Zeitraum gegen andere Ausleihen. Die Liste enthält je Ausleihe `ausgeliehenAm`,
+Ids sind 404, ungültige Eingaben und verletzte Fachregeln 400, Konflikte 409. `PUT /ausleihen/:id` ändert `an`, `organisiertVon`,
+`ausgeliehenAm`, `rueckgabeGeplant` (Pflicht) und `kommentar` und prüft den neuen Zeitraum gegen andere Ausleihen. Mit `positionen`
+ersetzt es zusätzlich alle offenen Positionen (gleiche Prüfungen wie beim Anlegen, die eigenen offenen Positionen zählen nicht);
+zurückgegebene bleiben unverändert, eine leere Liste geht nur, wenn es zurückgegebene gibt. Die Liste enthält je Ausleihe `ausgeliehenAm`,
 `rueckgabeGeplant` und die Positionen; der Client rechnet damit die Verfügbarkeit im gewählten Zeitraum selbst (`verfuegbarImZeitraum`).
 
 ## Oberfläche
@@ -266,7 +275,7 @@ jede Änderung macht `['inventar']` ungültig.
   möglich), zurückgegebene Positionen mit Datum. Die ganze Karte einer Position ist anklickbar (öffnet den Gegenstand, per Tastatur erreichbar); das Häkchen
   (44 px Trefferfläche) wählt unabhängig davon. Ganz verliehene IFCOs erscheinen als eine Karte „Spanngurtkiste (ganze IFCO)“ (öffnet die IFCO) mit
   Gruppen-Häkchen für alle offenen Positionen und den Inhalten als Unterliste, einzeln wählbar. Unter der Überschrift steht „Organisiert von <Username>“
-  (Username, ohne Username „Vorname Nachname“; fett in der Statusfarbe, auf der Detailseite zum Mitglied verlinkt; im Auswahlfeld „username (Vorname Nachname)“); ebenso auf `AusleiheKarte`, die ganze IFCOs als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“ (`AusleiheBearbeitenModal`: an, Organisator, Zeitpunkt, geplante Rückgabe (Pflicht), Kommentar)
+  (Username, ohne Username „Vorname Nachname“; fett in der Statusfarbe, auf der Detailseite zum Mitglied verlinkt; im Auswahlfeld „username (Vorname Nachname)“); ebenso auf `AusleiheKarte`, die ganze IFCOs als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“: bei nicht erledigten Ausleihen die Seite `/inventar/ausleihen/:id/bearbeiten` (`AusleihePage` im Bearbeiten-Modus: Kopf und offene Positionen vorbelegt, eigene Positionen blockieren sich nicht, zurückgegebene stehen read-only unter „Bereits zurückgegeben“, Bestätigung „Änderungen speichern“), bei erledigten `AusleiheBearbeitenModal` (an, Organisator, Zeitpunkt, geplante Rückgabe (Pflicht), Kommentar)
   und „Löschen“ (`inventar:umraeumen`).
 - Gegenstand-Detailseite: je Platz „verliehen: 3 (an …)“ und „vorgemerkt: 2 ab 25.10.2026 10:00 (an …)“ mit Link, Liste der Ausleihen des Gegenstands (offene zuerst), Button „Verleihen“
   (nicht archiviert, nur solange etwas verfügbar ist). IFCO-Detailseite: „Ganze IFCO verleihen“, bei einer ganz verliehenen IFCO ein Badge „Verliehen an <an> seit …“ bzw. „Vorgemerkt für <an> ab …“ (verlinkt); IFCO-Karten tragen „Verliehen an …“, die Lager-Seite „Spanngurtkiste · … · verliehen an Feuerwehr“. Am Gegenstand steht beim Platz „(…, mit der ganzen IFCO)“.
@@ -287,6 +296,9 @@ jede Änderung macht `['inventar']` ungültig.
   - Bestätigung, `AusleiheKarte` und `AusleiheDetailPage` gruppieren Positionen von Teilen unter „Pavillon (komplett)“ /
     „2× Pavillon (komplett)“ / „Pavillon (teilweise)“ (`teileGruppieren`), die Detailseite mit Gruppen-Häkchen. Ganze IFCOs haben
     Vorrang.
+  - Beim Anlegen (kein Teil) gibt es den Abschnitt „Teile (optional)“: je Zeile Name, „Anzahl je <Name>“, optional Platz
+    (Standard: Platz des Gegenstands) und „Gesamt: N“. Ein Teil zeigt statt der Kategorie die des übergeordneten Gegenstands
+    und fragt beim Anlegen weder Grund noch Datum; „Anzahl“ und „Anzahl je …“ sind unabhängig.
   - Lager-Seite: Teile erscheinen an ihren Plätzen mit „· Teil von Pavillon“.
 - Bei Gesamtanzahl 1 steht „verliehen“ / „vorgemerkt“ ohne Zahl (Übersicht, Detailseite, `PlatzAusleihHinweise`, Lager).
 - Lager-Seite: zeigt das Inventar je Knoten (in Karten und im Drawer von Stellplatz-Kacheln; bei Kacheln zählen IFCOs und direkt zugeordnete

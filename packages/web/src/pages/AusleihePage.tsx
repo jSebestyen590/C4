@@ -16,9 +16,10 @@ import { notifications } from '@mantine/notifications';
 import { IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Anchor } from '@mantine/core';
 import {
+  ausleiheAendernSchema,
   ausleiheSchema,
   ausleiheTage,
   blockierungWann,
@@ -35,6 +36,7 @@ import { zeitpunktIso } from '../BuchungsFuss';
 import { InventurLeiste } from '../InventurLeiste';
 import {
   heuteLokal,
+  isoZuLokal,
   ifcoGruppeTitel,
   mengeName,
   offenePositionenAus,
@@ -44,13 +46,19 @@ import {
   verfuegbarImZeitraum,
   zeitraumZeile,
 } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
-import { mengeVerteilen, teileGruppeTitel, teileSaetze } from '../inventarTeile';
+import { INVENTAR_KEY, useAusleihe, useAusleihen, useInventar } from '../inventarDaten';
+import {
+  ausleiheVorbelegung,
+  mengeVerteilen,
+  teileGruppeTitel,
+  teileSaetze,
+} from '../inventarTeile';
 import { jetztLokal } from '../inventurDaten';
 import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { useEnterWeiter } from '../useEnterWeiter';
 import { zielWert } from '../inventarAnzeige';
 import { fehlerText, pruefen } from '../warenApi';
+import { zeitAnzeigen } from '../warenAnzeige';
 import { ZahlFeld } from '../ZahlFeld';
 
 const mengeKey = (
@@ -83,17 +91,35 @@ function Blockiert({ liste }: Readonly<{ liste: Blockierung[] }>) {
 
 const ORANGE = 'var(--mantine-color-orange-6)';
 
-/** Lend Gegenstände: header data plus, per Gegenstand and place, how many pieces leave. */
+/**
+ * Lend Gegenstände: header data plus, per Gegenstand and place, how many pieces leave. Under
+ * `/inventar/ausleihen/:id/bearbeiten` it edits the open positions of an existing Ausleihe instead.
+ */
 export function AusleihePage() {
+  const { id: bearbeitenId } = useParams();
+  const bearbeiten = bearbeitenId !== undefined;
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inv = useInventar();
   const { ausleihen: offeneAusleihen, laedt: ausleihenLaden } = useAusleihen(true);
-  const offenePositionen = useMemo(() => offenePositionenAus(offeneAusleihen), [offeneAusleihen]);
+  const {
+    ausleihe: bearbeitete,
+    laedt: bearbeiteteLaedt,
+    fehler: bearbeiteteFehler,
+  } = useAusleihe(bearbeitenId ?? '', bearbeiten);
+  // While editing, the own open positions must not block themselves.
+  const offenePositionen = useMemo(
+    () =>
+      offenePositionenAus(offeneAusleihen).filter(
+        (p) => !bearbeiten || p.ausleiheId !== bearbeitenId,
+      ),
+    [offeneAusleihen, bearbeiten, bearbeitenId],
+  );
+  const bereitsZurueck = (bearbeitete?.positionen ?? []).filter((p) => p.zurueckAm !== null);
   const enterWeiter = useEnterWeiter('verleihen-weiter');
-  const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(false);
+  const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(bearbeiten);
   const eigeneSub = useEigeneSub();
   const mitglieder = useMitgliederListe();
   const [kopf, setKopf] = useState<AusleiheKopf>({
@@ -124,7 +150,7 @@ export function AusleihePage() {
   const [vorbelegt, setVorbelegt] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [bestaetigung, setBestaetigung] = useState<{
-    daten: ReturnType<typeof ausleiheSchema.parse>;
+    daten: ReturnType<typeof ausleiheAendernSchema.parse>;
     gruppen: BestaetigungsGruppe[];
   } | null>(null);
 
@@ -244,7 +270,28 @@ export function AusleihePage() {
   };
 
   // Prefill from ?gegenstand= / ?ifco= once the Inventar and the open Ausleihen (for the free amounts) are loaded.
-  if (!vorbelegt && !inv.laedt && !inv.fehler && !ausleihenLaden) {
+  const bereit = !inv.laedt && !inv.fehler && !ausleihenLaden;
+  if (bearbeiten && !vorbelegt && bereit && !bearbeiteteLaedt && bearbeitete) {
+    // Edit mode: reproduce the header and the open positions of the Ausleihe.
+    setVorbelegt(true);
+    setKopf({
+      an: bearbeitete.an,
+      organisiertVon: bearbeitete.organisator?.sub ?? bearbeitete.organisiertVon ?? '',
+      zeitpunkt: isoZuLokal(bearbeitete.ausgeliehenAm),
+      rueckgabe: bearbeitete.rueckgabeGeplant ?? '',
+      kommentar: bearbeitete.kommentar ?? '',
+    });
+    const v = ausleiheVorbelegung(
+      bearbeitete.positionen.filter((p) => p.zurueckAm === null),
+      inv.gegenstaende,
+      mengeKey,
+    );
+    setGegenstandIds(v.gegenstandIds);
+    setMengen(v.mengen);
+    setIfcoIds(v.ifcoIds);
+    setGruppen(v.gruppen);
+    setSaetze(v.saetze);
+  } else if (!bearbeiten && !vorbelegt && bereit) {
     setVorbelegt(true);
     const gegenstandId = params.get('gegenstand');
     const ifcoId = params.get('ifco');
@@ -313,19 +360,32 @@ export function AusleihePage() {
   const ganzeIfcoIds = ifcoIds.filter(ifcoKomplett);
 
   const verleihen = useMutation({
-    mutationFn: async (json: ReturnType<typeof ausleiheSchema.parse>) => {
-      const res = await api.inventar.ausleihen.$post({ json });
+    mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) => {
+      if (bearbeiten) {
+        await pruefen(
+          await api.inventar.ausleihen[':id'].$put({ param: { id: bearbeitenId }, json }),
+        );
+        return bearbeitenId;
+      }
+      const res = await api.inventar.ausleihen.$post({
+        json: { ...json, positionen: json.positionen ?? [] },
+      });
       await pruefen(res);
       return ((await res.json()) as { id: string }).id;
     },
     onSuccess: async (id) => {
       await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
-      notifications.show({ color: 'green', message: 'Die Ausleihe wurde angelegt.' });
+      notifications.show({
+        color: 'green',
+        message: bearbeiten ? 'Die Änderungen wurden gespeichert.' : 'Die Ausleihe wurde angelegt.',
+      });
       navigate(`/inventar/ausleihen/${encodeURIComponent(id)}`);
     },
     onError: (e) => {
       setBestaetigung(null);
-      setFehler(fehlerText(e, 'Verleihen fehlgeschlagen.'));
+      setFehler(
+        fehlerText(e, bearbeiten ? 'Speichern fehlgeschlagen.' : 'Verleihen fehlgeschlagen.'),
+      );
     },
   });
 
@@ -352,7 +412,9 @@ export function AusleihePage() {
       plaetze.some((p) => menge(g, p) > p.verfuegbar),
     );
     if (zuViel) return setFehler('Bei mindestens einem Platz sind nicht so viele verfügbar.');
-    const geprueft = ausleiheSchema.safeParse({
+    if (bearbeiten && positionen.length === 0 && bereitsZurueck.length === 0)
+      return setFehler('Bitte wähle mindestens einen Gegenstand.');
+    const geprueft = (bearbeiten ? ausleiheAendernSchema : ausleiheSchema).safeParse({
       an: kopf.an,
       organisiertVon: kopf.organisiertVon,
       ausgeliehenAm: iso,
@@ -375,7 +437,7 @@ export function AusleihePage() {
       },
       ...ganzeIfcoIds.map((ifcoId) => ({
         titel: ifcoGruppeTitel(ifcoId, inv.ifcos),
-        zeilen: geprueft.data.positionen
+        zeilen: (geprueft.data.positionen ?? [])
           .filter((p) => p.ifcoId === ifcoId)
           .map((p) =>
             mengeName(
@@ -386,7 +448,7 @@ export function AusleihePage() {
       })),
       ...gruppen.flatMap((elternId) => {
         const e = inv.gegenstaende.find((g) => g.id === elternId);
-        const positionen = geprueft.data.positionen.filter(
+        const positionen = (geprueft.data.positionen ?? []).filter(
           (p) =>
             !(p.ifcoId !== null && ganzeIfcoIds.includes(p.ifcoId)) &&
             gruppeVon(
@@ -395,7 +457,7 @@ export function AusleihePage() {
         );
         if (!e || positionen.length === 0) return [];
         const summe = (id: string) =>
-          geprueft.data.positionen
+          (geprueft.data.positionen ?? [])
             .filter((p) => p.gegenstandId === id)
             .reduce((s, p) => s + p.anzahl, 0);
         return [
@@ -564,7 +626,8 @@ export function AusleihePage() {
     </Paper>
   );
 
-  if (inv.laedt) return <Loader m="md" aria-label="Inventar wird geladen" />;
+  if (inv.laedt || (bearbeiten && bearbeiteteLaedt))
+    return <Loader m="md" aria-label="Inventar wird geladen" />;
   if (inv.fehler)
     return (
       <Alert m="md" color="red">
@@ -572,12 +635,26 @@ export function AusleihePage() {
       </Alert>
     );
 
+  if (bearbeiten && (bearbeiteteFehler || !bearbeitete))
+    return (
+      <Alert m="md" color="red">
+        {bearbeiteteFehler
+          ? 'Die Ausleihe konnte nicht geladen werden.'
+          : 'Die Ausleihe wurde nicht gefunden.'}
+      </Alert>
+    );
+  const zurueckLink = bearbeiten
+    ? `/inventar/ausleihen/${encodeURIComponent(bearbeitenId)}`
+    : '/inventar?ansicht=verliehen';
+
   return (
     <Stack maw={900} mih="calc(100dvh - 60px)" gap="md">
       <Stack gap={2}>
-        <Title order={2}>Verleihen</Title>
+        <Title order={2}>{bearbeiten ? 'Ausleihe bearbeiten' : 'Verleihen'}</Title>
         <Text size="sm" c="dimmed">
-          Wähle aus, was du verleihst, und trag je Platz die Anzahl ein.
+          {bearbeiten
+            ? 'Ändere die Angaben und was verliehen wird. Bereits zurückgegebene Positionen bleiben unverändert.'
+            : 'Wähle aus, was du verleihst, und trag je Platz die Anzahl ein.'}
         </Text>
       </Stack>
       <AusleiheKopfFelder
@@ -688,6 +765,17 @@ export function AusleihePage() {
         })}
       </Stack>
       {sektionen.length === 0 && <Text c="dimmed">Noch nichts ausgewählt.</Text>}
+      {bereitsZurueck.length > 0 && (
+        <Stack gap={4} opacity={0.7} data-testid="bereits-zurueck">
+          <Title order={4}>Bereits zurückgegeben</Title>
+          {bereitsZurueck.map((p) => (
+            <Text key={p.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
+              {positionText(p, inv.gegenstaende, inv.lagerorte, inv.ifcos)} · zurück am{' '}
+              {zeitAnzeigen(p.zurueckAm!)}
+            </Text>
+          ))}
+        </Stack>
+      )}
 
       <Box style={{ flex: 1 }} />
       {fehler && (
@@ -696,24 +784,18 @@ export function AusleihePage() {
         </Alert>
       )}
       <InventurLeiste>
-        <Button
-          variant="default"
-          size="md"
-          mih={48}
-          component={Link}
-          to="/inventar?ansicht=verliehen"
-        >
+        <Button variant="default" size="md" mih={48} component={Link} to={zurueckLink}>
           Abbrechen
         </Button>
         <Button id="verleihen-weiter" size="md" mih={48} onClick={absenden}>
-          Verleihen
+          {bearbeiten ? 'Speichern' : 'Verleihen'}
         </Button>
       </InventurLeiste>
       {bestaetigung && (
         <BuchungsBestaetigung
-          titel="Verleihen bestätigen"
+          titel={bearbeiten ? 'Änderungen speichern' : 'Verleihen bestätigen'}
           gruppen={bestaetigung.gruppen}
-          buchenText="Verleihen"
+          buchenText={bearbeiten ? 'Speichern' : 'Verleihen'}
           laedt={verleihen.isPending}
           onBuchen={() => verleihen.mutate(bestaetigung.daten)}
           onClose={() => setBestaetigung(null)}
