@@ -71,6 +71,18 @@ export const mitglieder = pgTable('mitglieder', {
 });
 export type MitgliedRow = typeof mitglieder.$inferSelect;
 
+/** Status history of a member; `ab` is the first day, null = start unknown. `mitglieder.status` mirrors the newest. */
+export const mitgliedStatusVerlauf = pgTable('mitglied_status_verlauf', {
+  id: text('id').primaryKey(),
+  mitgliedSub: text('mitglied_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  status: text('status').$type<MitgliedStatus>().notNull(),
+  ab: date('ab', { mode: 'string' }),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type StatusVerlaufRow = typeof mitgliedStatusVerlauf.$inferSelect;
+
 /** A responsibility of the club, held by one or more members (see `postenBesetzungen`). */
 export const posten = pgTable('posten', {
   id: text('id').primaryKey(),

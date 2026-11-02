@@ -67,6 +67,8 @@ export class AblosungUngueltig extends Error {}
 /** A member would hold the same Posten twice at the same time. */
 export class BesetzungUeberschneidung extends Error {}
 
+export type BesetzungMitPosten = BesetzungRow & { postenName: string };
+
 export interface PostenStore {
   alle(mitArchiv: boolean): Promise<PostenDetails[]>;
   holen(id: string): Promise<PostenDetails | undefined>;
@@ -87,6 +89,8 @@ export interface PostenStore {
   besetzungAendern(postenId: string, id: string, daten: BesetzungDaten): Promise<boolean>;
   besetzungLoeschen(postenId: string, id: string): Promise<boolean>;
   /** Current, non-archived Posten per member `sub`. */
+  /** All Besetzungen of a member (also of archived Posten), oldest start first. */
+  besetzungenVon(sub: string): Promise<BesetzungMitPosten[]>;
   aktuelleNachMitglied(heute?: string): Promise<Map<string, AktuellerPosten[]>>;
   /** Permissions granted by the Posten the member currently holds. */
   rechteVon(sub: string, heute?: string): Promise<Permission[]>;
@@ -245,6 +249,15 @@ export function createPostenStore(db: Db): PostenStore {
         .where(and(eq(postenBesetzungen.id, id), eq(postenBesetzungen.postenId, postenId)))
         .returning({ id: postenBesetzungen.id });
       return rows.length > 0;
+    },
+    async besetzungenVon(sub) {
+      const rows = await db
+        .select({ b: postenBesetzungen, postenName: posten.name })
+        .from(postenBesetzungen)
+        .innerJoin(posten, eq(posten.id, postenBesetzungen.postenId))
+        .where(eq(postenBesetzungen.mitgliedSub, sub))
+        .orderBy(postenBesetzungen.startDatum);
+      return rows.map((r) => ({ ...r.b, postenName: r.postenName }));
     },
     async aktuelleNachMitglied(heute = heuteBerlin()) {
       const rows = await db

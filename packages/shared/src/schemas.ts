@@ -4,6 +4,7 @@ import { ANREDEN } from './anrede';
 import { heuteBerlin } from './datum';
 import { KONTAKTKANAELE } from './kontakt';
 import { MITGLIED_STATI } from './status';
+import { statusAbSchema } from './statusVerlauf';
 
 export const anredeSchema = z.enum(ANREDEN);
 
@@ -66,7 +67,11 @@ export const nachnameSchema = pflichtText('deinen Nachnamen', 100);
 
 export const mitgliedStatusSchema = z.enum(MITGLIED_STATI);
 
-export const setMitgliedStatusSchema = z.object({ status: mitgliedStatusSchema });
+export const setMitgliedStatusSchema = z.object({
+  status: mitgliedStatusSchema,
+  /** First day of the new status; defaults to today. */
+  ab: statusAbSchema.optional(),
+});
 export type SetMitgliedStatusInput = z.infer<typeof setMitgliedStatusSchema>;
 
 export const setMitgliedAktivSchema = z.object({ aktiv: z.boolean() });

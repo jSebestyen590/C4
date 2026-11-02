@@ -7,6 +7,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | ------------------------------------------------ | -------------------------------------------------------------------------------- |
 | [members.md](./members.md)                       | Mitglieder: Profil, Status, Rechte, Kontaktkanäle, Profilbilder, Mitgliederliste |
 | [posten.md](./posten.md)                         | Posten: Verantwortlichkeiten, Besetzungen, Rechte über Posten, Archiv            |
+| [historie.md](./historie.md)                     | Historie: Zeitstrahl von Status und Posten je Mitglied bzw. Posten, Drucken      |
 | [waren.md](./waren.md)                           | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte            |
 | [inventar.md](./inventar.md)                     | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte              |
 | [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo          |

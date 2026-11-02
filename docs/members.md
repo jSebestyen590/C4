@@ -41,6 +41,23 @@ können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/share
 (Stufe übersprungen, zurück) ist erlaubt, aber das Statusfeld fragt vorher mit einer Warnung nach. Das API prüft die
 Reihenfolge nicht.
 
+## Status-Historie
+
+Jeder Statuswechsel steht mit Datum in der Tabelle `mitglied_status_verlauf` (Migrationen `0098`–`0100`; Code in
+`packages/shared/src/statusVerlauf.ts`). Die Spalte `mitglieder.status` ist davon **abgeleitet**: Sie zeigt den jüngsten
+Eintrag und wird bei jeder Änderung des Verlaufs nachgezogen.
+
+- **Altbestand:** Die Migration legt für jedes Mitglied einen Eintrag mit dem bisherigen Status ohne Datum an. Das Datum
+  ist unbekannt und erscheint als „seit ?“; Admins können es nachtragen.
+- **Anzeige:** Auf der Detailseite (und im eigenen Profil) zeigt „Status-Historie“ eine Timeline („ab 09.10.2012“ + Status)
+  und die **Dauer der Mitgliedschaft**: alle Tage mit Status „Mitglied“ bis heute bzw. bis zur Deaktivierung (Zeiträume
+  ohne Datum zählen nicht, „1 Tag“ im Singular). Der Link „Im Zeitstrahl ansehen“ öffnet [die Historie](./historie.md).
+- **Bearbeiten (Admins, `users:manage`):** Je Eintrag Bearbeiten und Löschen, dazu „Eintrag hinzufügen“ (Status, Datum
+  Pflicht und nicht in der Zukunft). Bei deaktivierten Accounts ist die Historie gesperrt (409). Das API lehnt ein
+  doppeltes Datum ab (409) sowie das Löschen des letzten Eintrags (400).
+- **Statusfeld:** Nach der Wahl eines neuen Status fragt der Dialog „Status ändern“ nach dem Datum „Ab“ (Standard heute)
+  und zeigt dort auch die Warnung bei ungewöhnlichen Wechseln.
+
 ## Mitglieder anlegen
 
 Ein Admin lädt ein Mitglied per E-Mail ein (`POST /api/admin/users`). Dabei entstehen das Cognito-Konto
@@ -158,11 +175,12 @@ hat, muss sich neu anmelden.
 
 ## Seiten und API
 
-| Seite                | Wer                | Zweck                                                                                                                                                                              |
-| -------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                                                                            |
+| Seite                | Wer                | Zweck                                                                                                                                                                                  |
+| -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                                                                                |
 | `/mitglieder`        | `mitglieder:lesen` | Übersicht „Anzahl je Status“ (ohne Deaktivierte), Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links, ohne Berechtigungen; Admins laden ein |
-| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account                                                                                                    |
+| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account und die Status-Historie                                                                                |
+| `/historie`          | `mitglieder:lesen` | Zeitstrahl von Status und Posten, siehe [historie.md](./historie.md)                                                                                                                   |
 
 | Route                                                                         | Hinweise                                                                                      |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -172,7 +190,10 @@ hat, muss sich neu anmelden.
 | `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle; `?deaktivierte=1` (Admin) nimmt Deaktivierte dazu |
 | `GET /api/admin/mitglieder/:sub/deaktivieren-vorschau`                        | Admin; offene Dienste, Posten, Schlüssel                                                      |
 | `PUT /api/admin/mitglieder/:sub/aktiv`                                        | Admin; Body `{ aktiv }`, 400 bei sich selbst                                                  |
-| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin                                                                                         |
+| `PUT /api/admin/mitglieder/:sub/status`                                       | Admin; Body `{ status, ab? }` (`ab` Standard heute, nicht in der Zukunft)                     |
+| `GET /api/mitglieder/:kennung/historie`                                       | `mitglieder:lesen`; Status-Verlauf, Besetzungen, `deaktiviertAm` (auch für Deaktivierte)      |
+| `POST /api/admin/mitglieder/:sub/status-verlauf`                              | Admin; `{ status, ab }`, 201 mit dem Verlauf                                                  |
+| `PUT/DELETE /api/admin/mitglieder/:sub/status-verlauf/:id`                    | Admin; 409 bei deaktiviertem Account oder doppeltem Datum, 400 beim letzten Eintrag           |
 | `PUT /api/admin/mitglieder/:sub/rollen`                                       | Admin; die eigene Admin-Rolle bleibt erhalten                                                 |
 | `POST /api/admin/users`                                                       | Admin; Einladung samt Profilzeile                                                             |
 
