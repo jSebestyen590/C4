@@ -46,9 +46,36 @@ const MONATE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 
 
 /** Ranges shorter than this many days get a tick per month instead of per year. */
 const MONATS_SCHWELLE_TAGE = 730;
+/** Ranges shorter than this many days get ticks on the 1st and 15th of each month. */
+const HALBMONATS_SCHWELLE_TAGE = 120;
 
-/** Year ticks (month ticks for ranges below two years) at the first day of each period. */
+/** Ticks on the 1st and 15th of each month, labelled "1. Nov" / "15. Okt". */
+function halbmonatsTicks(bereich: Bereich): Tick[] {
+  const gesamt = bereichTage(bereich);
+  const ergebnis: Tick[] = [];
+  let [j, m] = bereich.von.split('-').map(Number) as [number, number];
+  const pad = (n: number) => String(n).padStart(2, '0');
+  for (;;) {
+    for (const t of [1, 15]) {
+      const iso = `${j}-${pad(m)}-${pad(t)}`;
+      if (iso > bereich.bis) return ergebnis;
+      if (iso >= bereich.von)
+        ergebnis.push({
+          prozent: ((tagNummer(iso) - tagNummer(bereich.von)) / gesamt) * 100,
+          label: `${t}. ${MONATE[m - 1]}`,
+        });
+    }
+    m++;
+    if (m > 12) {
+      m = 1;
+      j++;
+    }
+  }
+}
+
+/** Year ticks (month ticks below two years, half-month ticks below four months). */
 export function ticks(bereich: Bereich): Tick[] {
+  if (bereichTage(bereich) < HALBMONATS_SCHWELLE_TAGE) return halbmonatsTicks(bereich);
   const monatlich = bereichTage(bereich) < MONATS_SCHWELLE_TAGE;
   const gesamt = bereichTage(bereich);
   const ergebnis: Tick[] = [];
@@ -75,6 +102,7 @@ export function ticks(bereich: Bereich): Tick[] {
 /** Minimum width of the chart area in px so ticks stay readable; the chart scrolls horizontally below. */
 export function mindestBreite(bereich: Bereich): number {
   const tage = bereichTage(bereich);
+  if (tage < HALBMONATS_SCHWELLE_TAGE) return Math.ceil((tage / 15) * 56);
   return tage < MONATS_SCHWELLE_TAGE
     ? Math.ceil((tage / 30.4) * 44)
     : Math.ceil((tage / 365.25) * 72);
@@ -138,3 +166,7 @@ export function personenFarben(
 /** The earliest of the given dates, or `fallback` when there are none. */
 export const fruehestes = (daten: readonly string[], fallback: string): string =>
   daten.reduce((min, d) => (d < min ? d : min), daten[0] ?? fallback);
+
+/** The latest of the given dates, but never before `minimum`. */
+export const spaetestes = (daten: readonly string[], minimum: string): string =>
+  daten.reduce((max, d) => (d > max ? d : max), minimum);

@@ -34,6 +34,7 @@ import {
   besetzungSegmente,
   fruehestes,
   mantineFarbe,
+  spaetestes,
   personenFarben,
   zeitraumText,
 } from '../zeitstrahlLogik';
@@ -89,6 +90,11 @@ function MitgliedBlock({
   const ende = historie.deaktiviertAm ?? heute;
   const offen = historie.deaktiviertAm === null;
   const zeitraeume = statusZeitraeume(historie.statusVerlauf, ende);
+  // For Besetzungen planned beyond today the current status is assumed to continue.
+  const zeitraeumePosten =
+    offen && zeitraeume.length > 0 && bereich.bis > ende
+      ? [...zeitraeume.slice(0, -1), { ...zeitraeume.at(-1)!, bis: bereich.bis }]
+      : zeitraeume;
   const name = (s: MitgliedStatus) => labelFuer(MITGLIED_STATUS_LABELS, s, m.anrede);
 
   const statusZeile: ZeitZeile = {
@@ -114,7 +120,7 @@ function MitgliedBlock({
       label: b.postenName,
       balken: [],
     };
-    for (const seg of besetzungSegmente(b.start, bis, zeitraeume)) {
+    for (const seg of besetzungSegmente(b.start, bis, zeitraeumePosten)) {
       const bisOffen = offen && b.ende === null && seg.bis === bis;
       zeile.balken.push({
         von: seg.von,
@@ -191,7 +197,12 @@ function MitgliederAnsicht({ kennungen }: Readonly<{ kennungen: string[] }>) {
     ...p.historie.besetzungen.map((b) => b.start),
   ]);
   const von = fruehestes(daten, tagNachher(heute, -365));
-  const bereich = { von, bis: heute };
+  // Besetzungen may already have a planned end after today.
+  const bis = spaetestes(
+    personen.flatMap((p) => p.historie.besetzungen.flatMap((b) => (b.ende ? [b.ende] : []))),
+    heute,
+  );
+  const bereich = { von, bis };
   return (
     <Stack gap="xl">
       {personen.map((p) => (
@@ -222,7 +233,13 @@ function PostenAnsicht({ ids, posten }: Readonly<{ ids: string[]; posten: Posten
     alle.map((a) => a.start),
     tagNachher(heute, -365),
   );
-  const bereich = { von, bis: heute };
+  const bereich = {
+    von,
+    bis: spaetestes(
+      gewaehlt.flatMap((p) => p.besetzungen.flatMap((b) => (b.ende ? [b.ende] : []))),
+      heute,
+    ),
+  };
   const personen = new Map<string, Posten['besetzungen'][number]['mitglied'] & { sub: string }>();
   for (const p of gewaehlt)
     for (const b of p.besetzungen)

@@ -126,7 +126,13 @@ export function Zeitstrahl({
     minWidth: 0,
   } as const;
   return (
-    <Box className="zs-scroll" style={{ overflowX: 'auto' }} role="group" aria-label={beschriftung}>
+    <Box
+      className="zs-scroll"
+      // Room for overlay scrollbars, so they do not cover the last row.
+      style={{ overflowX: 'auto', paddingBottom: 12 }}
+      role="group"
+      aria-label={beschriftung}
+    >
       <Box
         className="zs-inner"
         style={{

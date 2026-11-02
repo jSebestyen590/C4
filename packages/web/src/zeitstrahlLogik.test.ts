@@ -4,6 +4,7 @@ import {
   besetzungSegmente,
   MITGLIED_PALETTE,
   personenFarben,
+  spaetestes,
   ticks,
   zeitraumText,
 } from './zeitstrahlLogik';
@@ -18,8 +19,15 @@ describe('zeitstrahl', () => {
   it('uses year ticks for long ranges and month ticks for short ones', () => {
     const jahre = ticks({ von: '2012-06-01', bis: '2015-03-01' });
     expect(jahre.map((t) => t.label)).toEqual(['2013', '2014', '2015']);
-    const monate = ticks({ von: '2025-11-15', bis: '2026-02-10' });
-    expect(monate.map((t) => t.label)).toEqual(['Dez', 'Jan 2026', 'Feb']);
+    const monate = ticks({ von: '2025-11-15', bis: '2026-04-10' });
+    expect(monate.map((t) => t.label)).toEqual(['Dez', 'Jan 2026', 'Feb', 'Mär', 'Apr']);
+    const halbmonate = ticks({ von: '2026-10-20', bis: '2026-11-20' });
+    expect(halbmonate.map((t) => t.label)).toEqual(['1. Nov', '15. Nov']);
+  });
+
+  it('extends the range end to planned end dates, never before the minimum', () => {
+    expect(spaetestes(['2026-12-31', '2026-01-01'], '2026-11-02')).toBe('2026-12-31');
+    expect(spaetestes([], '2026-11-02')).toBe('2026-11-02');
   });
 
   it('splits a Besetzung at status changes and marks unknown stretches', () => {
