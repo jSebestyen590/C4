@@ -90,7 +90,7 @@ export function AusleihePage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inv = useInventar();
-  const offeneAusleihen = useAusleihen(true).ausleihen;
+  const { ausleihen: offeneAusleihen, laedt: ausleihenLaden } = useAusleihen(true);
   const offenePositionen = useMemo(() => offenePositionenAus(offeneAusleihen), [offeneAusleihen]);
   const enterWeiter = useEnterWeiter('verleihen-weiter');
   const [organisatorVorbelegt, setOrganisatorVorbelegt] = useState(false);
@@ -243,8 +243,8 @@ export function AusleihePage() {
     setGegenstandIds((alt) => [...alt, ...ids.filter((id) => !alt.includes(id))]);
   };
 
-  // Prefill from ?gegenstand= / ?ifco= once the Inventar is loaded.
-  if (!vorbelegt && !inv.laedt && !inv.fehler) {
+  // Prefill from ?gegenstand= / ?ifco= once the Inventar and the open Ausleihen (for the free amounts) are loaded.
+  if (!vorbelegt && !inv.laedt && !inv.fehler && !ausleihenLaden) {
     setVorbelegt(true);
     const gegenstandId = params.get('gegenstand');
     const ifcoId = params.get('ifco');
@@ -280,8 +280,11 @@ export function AusleihePage() {
     g: { id: string; plaetze: unknown[] },
     p: { lagerortId: string | null; ifcoId: string | null; anzahl: number; verfuegbar: number },
   ): number | string | undefined =>
-    mengen[mengeKey(g.id, p)] ??
-    standardMenge(p, g.plaetze.length, p.ifcoId !== null && ifcoIds.includes(p.ifcoId));
+    // A place with nothing free is locked; an amount entered earlier (or a group default) must not block sending.
+    p.verfuegbar <= 0
+      ? 0
+      : (mengen[mengeKey(g.id, p)] ??
+        standardMenge(p, g.plaetze.length, p.ifcoId !== null && ifcoIds.includes(p.ifcoId)));
 
   const menge = (
     g: { id: string; plaetze: unknown[] },

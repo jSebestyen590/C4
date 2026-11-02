@@ -211,9 +211,11 @@ export function GegenstandDetailPage() {
         <>
           <Group justify="space-between" wrap="wrap">
             <Title order={3}>Teile</Title>
-            <Text size="sm" c="dimmed">
-              {teile.length} {teile.length === 1 ? 'Teil' : 'Teile'}
-            </Text>
+            {teile.length > 0 && (
+              <Text size="sm" c="dimmed">
+                {teile.length} {teile.length === 1 ? 'Teil' : 'Teile'}
+              </Text>
+            )}
           </Group>
           {alleTeile.length === 0 && <Text c="dimmed">Noch keine Teile angelegt.</Text>}
           <Stack gap="xs">
