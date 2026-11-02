@@ -970,6 +970,11 @@ export function createApp(deps: AppDeps) {
         zValidator('json', setMitgliedStatusSchema),
         async (c) => {
           const { status } = c.req.valid('json');
+          if (istDeaktiviert(await deps.mitglieder.holen(c.req.param('sub')))) {
+            throw new HTTPException(409, {
+              message: 'Der Status eines deaktivierten Accounts kann nicht geändert werden.',
+            });
+          }
           if (!(await deps.mitglieder.statusSetzen(c.req.param('sub'), status))) {
             throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
           }

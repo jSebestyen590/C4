@@ -5108,6 +5108,21 @@ describe('accounts deaktivieren', () => {
     expect(t.userAdmin.setEnabled).toHaveBeenLastCalledWith('konto-m2', true);
   });
 
+  it('refuses to change the status of a deactivated account', async () => {
+    const t = await setup();
+    const setze = (status: string) =>
+      t.app.request('/api/admin/mitglieder/m2/status', json('admin-token', 'PUT', { status }));
+    await t.aktiv('admin-token', 'm2', false);
+    const res = await setze('em');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'Der Status eines deaktivierten Accounts kann nicht geändert werden.',
+    });
+    expect((await t.mitglieder.holen('m2'))?.status).toBe('anwaerter');
+    await t.aktiv('admin-token', 'm2', true);
+    expect((await setze('em')).status).toBe(200);
+  });
+
   it('creates an empty row when the member has none yet', async () => {
     const t = makeApp();
     t.userAdmin.konten.mockResolvedValue(

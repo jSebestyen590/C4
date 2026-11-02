@@ -6,7 +6,7 @@ import { useApi } from './api';
 import { useAuth } from './auth';
 import { labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
 
-const BADGE_FARBE: Record<MitgliedStatus, string> = {
+export const BADGE_FARBE: Record<MitgliedStatus, string> = {
   anwaerter: 'orange',
   mitglied: 'green',
   em: 'gray',
@@ -69,7 +69,8 @@ export function StatusFeld({
   sub,
   status,
   anrede,
-}: Readonly<{ sub: string; status: MitgliedStatus; anrede: Anrede }>) {
+  deaktiviert = false,
+}: Readonly<{ sub: string; status: MitgliedStatus; anrede: Anrede; deaktiviert?: boolean }>) {
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -118,7 +119,11 @@ export function StatusFeld({
       }))}
       value={status}
       allowDeselect={false}
-      disabled={setzen.isPending}
+      // The status of a deactivated account is frozen (the API answers 409).
+      description={
+        deaktiviert ? 'Aktiviere den Account wieder, um den Status zu ändern.' : undefined
+      }
+      disabled={deaktiviert || setzen.isPending}
       onChange={(v) => v && setzen.mutate(v as MitgliedStatus)}
     />
   );

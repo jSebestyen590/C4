@@ -27,7 +27,9 @@ import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenBadges } from '../RollenAnzeige';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
-import { StatusBadge, StatusName } from '../StatusAnzeige';
+import { BADGE_FARBE, StatusBadge, StatusName } from '../StatusAnzeige';
+import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
+import { MITGLIED_STATI, type Mitglied } from '@c4/shared';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
 const SORTIERUNGEN: { value: Sortierung; label: string }[] = [
@@ -65,6 +67,25 @@ function SortKopf({
         </Group>
       </UnstyledButton>
     </Table.Th>
+  );
+}
+
+/** How many active accounts each status has; deactivated accounts are not counted. */
+function StatusUebersicht({ mitglieder }: Readonly<{ mitglieder: readonly Mitglied[] }>) {
+  const aktive = mitglieder.filter((m) => !m.deaktiviert);
+  return (
+    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs" aria-label="Anzahl je Status">
+      {MITGLIED_STATI.map((status) => (
+        <Paper key={status} withBorder radius="md" p="sm">
+          <Text fz="xl" fw={700} c={BADGE_FARBE[status]} lh={1.2}>
+            {aktive.filter((m) => m.status === status).length}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {MITGLIED_STATUS_MEHRZAHL[status]}
+          </Text>
+        </Paper>
+      ))}
+    </SimpleGrid>
   );
 }
 
@@ -123,6 +144,7 @@ export function MitgliederPage() {
           w={{ base: '100%', sm: 280 }}
         />
       </Flex>
+      {mitglieder.data && <StatusUebersicht mitglieder={mitglieder.data} />}
       {istAdmin && (
         <Switch
           label="Deaktivierte anzeigen"

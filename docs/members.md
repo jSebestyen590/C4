@@ -73,6 +73,8 @@ Admins (`users:manage`) können Accounts deaktivieren und wieder aktivieren (Det
   statt der App die Seite „Account deaktiviert“ (`DeaktiviertSeite`, nur „Abmelden“).
 - Zusätzlich wird der Cognito-Nutzer deaktiviert (`AdminDisableUser`) und überall abgemeldet (`AdminUserGlobalSignOut`);
   Aktivieren ruft `AdminEnableUser`.
+- Der **Status** eines deaktivierten Accounts ist eingefroren: `PUT /api/admin/mitglieder/:sub/status` antwortet mit 409,
+  das Statusfeld ist gesperrt, bis der Account wieder aktiv ist.
 - **Herausgefiltert** werden Deaktivierte aus der Mitgliederliste (außer `?deaktivierte=1` für Admins, Schalter „Deaktivierte
   anzeigen“, ausgegraut mit Badge „Deaktiviert“), allen Auswahlfeldern, den Personenkreisen (Kalender, Umfragen), den
   Pushes und den Geburtstagen. `GET /api/mitglieder/:kennung` liefert sie weiter, damit Links aus der Historie funktionieren.
@@ -149,11 +151,11 @@ hat, muss sich neu anmelden.
 
 ## Seiten und API
 
-| Seite                | Wer                | Zweck                                                                                                                            |
-| -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                          |
-| `/mitglieder`        | `mitglieder:lesen` | Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links; Admins sehen Rollen und laden ein |
-| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account                                                  |
+| Seite                | Wer                | Zweck                                                                                                                                                                              |
+| -------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/profil`            | jedes Mitglied     | Eigenes Profil bearbeiten (auch Gate beim ersten Login)                                                                                                                            |
+| `/mitglieder`        | `mitglieder:lesen` | Übersicht „Anzahl je Status“ (ohne Deaktivierte), Liste (Kacheln auf dem Handy, sortierbare Tabelle ab `sm`) mit den aktuellen Posten als Links; Admins sehen Rollen und laden ein |
+| `/mitglieder/<name>` | `mitglieder:lesen` | Detail; die eigene Seite ist bearbeitbar; Admins ändern Status, Rollen, Account                                                                                                    |
 
 | Route                                                                         | Hinweise                                                                                      |
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |

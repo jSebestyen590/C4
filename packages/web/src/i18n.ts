@@ -78,6 +78,14 @@ export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
   extern: { maennlich: 'Externer', weiblich: 'Externe', neutral: 'Externe:r' },
 };
 
+/** Plural of each status, used for counts („3 Anwärter:innen“). */
+export const MITGLIED_STATUS_MEHRZAHL: Record<MitgliedStatus, string> = {
+  anwaerter: 'Anwärter:innen',
+  mitglied: 'Mitglieder',
+  em: 'EMs',
+  extern: 'Externe',
+};
+
 /** Kind of an event Kategorie: events have either Dienste (Schichten) or participants. */
 export const EVENT_ART_LABELS: Record<EventArt, string> = {
   dienste: 'Dienste',
