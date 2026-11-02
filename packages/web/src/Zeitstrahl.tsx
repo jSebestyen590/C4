@@ -33,11 +33,12 @@ const ACHSE_HOEHE = 18;
 export const ZEITSTRAHL_CSS = `
 .zs-inner {
   display: grid;
-  /* The label column is only as wide as its longest label, capped so long names wrap. */
-  grid-template-columns: fit-content(96px) minmax(var(--zs-min), 1fr);
+  /* The label column is as wide as its longest label; .zs-label caps it so long names wrap. */
+  grid-template-columns: max-content minmax(var(--zs-min), 1fr);
 }
+.zs-label { max-width: 96px; }
 @media (min-width: 36em) {
-  .zs-inner { grid-template-columns: fit-content(200px) minmax(var(--zs-min), 1fr); }
+  .zs-label { max-width: 200px; }
 }
 /* No margin: browsers then leave out their own header and footer (URL, date, page number). */
 @page { size: A4 landscape; margin: 0; }
@@ -153,7 +154,7 @@ export function Zeitstrahl({
           ['--zs-min' as string]: `${mindestBreite(bereich)}px`,
         }}
       >
-        <div style={{ ...labelStil, zIndex: 3 }} />
+        <div className="zs-label" style={{ ...labelStil, zIndex: 3 }} />
         <div style={{ position: 'relative', height: ACHSE_HOEHE }}>
           {ticks(bereich).map((t) => (
             <Box
@@ -175,8 +176,10 @@ export function Zeitstrahl({
         </div>
         {zeilen.map((z, i) => (
           <Fragment key={z.key}>
-            <div style={{ ...labelStil, ...rand(i) }}>
-              <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{z.label}</div>
+            <div className="zs-label" style={{ ...labelStil, ...rand(i) }}>
+              <div style={{ minWidth: 0, overflowWrap: 'break-word', hyphens: 'auto' }}>
+                {z.label}
+              </div>
             </div>
             <div style={{ position: 'relative', minHeight: ZEILE_HOEHE, ...rand(i) }}>
               <Gitter bereich={bereich} />
