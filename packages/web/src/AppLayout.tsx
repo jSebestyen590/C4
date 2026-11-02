@@ -27,6 +27,7 @@ import {
   IconBox,
   IconPackage,
   IconLogout,
+  IconTimeline,
   IconMoon,
   IconSun,
   IconUser,
@@ -133,6 +134,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       to: '/mitglieder',
       label: 'Mitglieder',
       icon: <IconUsersGroup size={20} />,
+      show: can('mitglieder:lesen'),
+    },
+    {
+      to: '/historie',
+      label: 'Historie',
+      icon: <IconTimeline size={20} />,
       show: can('mitglieder:lesen'),
     },
     {

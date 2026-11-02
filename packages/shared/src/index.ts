@@ -12,6 +12,7 @@ export * from './roles';
 export * from './schemas';
 export * from './schluessel';
 export * from './status';
+export * from './statusVerlauf';
 export * from './trichter';
 export * from './umfragen';
 export * from './waren';

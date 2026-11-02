@@ -61,6 +61,8 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
 Mitgliederliste und -detail führen die aktuellen Posten eines Mitglieds als Links auf (Feld `posten`
 in `GET /api/mitglieder`).
 
+Wer einen Posten wann innehatte, zeigt die Posten-Ansicht der [Historie](./historie.md) (`/historie?ansicht=posten`) als Zeitstrahl.
+
 Datumswerte erscheinen überall als `dd.MM.yyyy` (`datumAnzeigen` in `packages/shared/src/datum.ts`).
 
 Mitglieder werden überall mit ihrem Username (ohne Username „Vorname Nachname“), fett und in der Farbe ihres Status genannt (`StatusName` in `packages/web/src/StatusAnzeige.tsx`). Auf der Postenübersicht und im Übernahme-Dialog sind die Namen nicht verlinkt (dort ist die Zeile bzw. das Feld selbst bedienbar); auf der Detailseite führen die Besetzungen zum Mitglied. Im Auswahlfeld „Mitglied“ steht „username (Vorname Nachname)“.

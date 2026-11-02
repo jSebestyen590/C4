@@ -21,6 +21,7 @@ import {
   geburtstageZeitraumSchema,
   geburtstageZwischen,
   type GeburtstagDto,
+  type MitgliedHistorie,
   kalenderZeitraumSchema,
   statistikJahrSchema,
   vorlageEingabeSchema,
@@ -73,6 +74,7 @@ import {
   setGroupsSchema,
   setMitgliedAktivSchema,
   setMitgliedStatusSchema,
+  statusEintragEingabeSchema,
   setUsernameSchema,
   type DienstPerson,
   type EventDto,
@@ -176,6 +178,8 @@ import {
   kanaeleLesen,
   istDeaktiviert,
   kanaeleSchreiben,
+  LetzterStatusEintrag,
+  StatusDatumDoppelt,
   type MitgliederStore,
 } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
@@ -765,6 +769,34 @@ export function createApp(deps: AppDeps) {
     }
   };
 
+  /** 409 for a deactivated account: its status (history) is frozen. */
+  const statusVerlaufBearbeitbar = async (sub: string) => {
+    if (istDeaktiviert(await deps.mitglieder.holen(sub))) {
+      throw new HTTPException(409, {
+        message: 'Der Account ist deaktiviert, der Status kann nicht geändert werden.',
+      });
+    }
+  };
+
+  /** Maps the store's status history errors to HTTP errors. */
+  const statusVerlaufSchreiben = async <T>(aktion: () => Promise<T>): Promise<T> => {
+    try {
+      return await aktion();
+    } catch (err) {
+      if (err instanceof StatusDatumDoppelt) {
+        throw new HTTPException(409, {
+          message: 'Für dieses Datum gibt es schon einen Statuseintrag.',
+        });
+      }
+      if (err instanceof LetzterStatusEintrag) {
+        throw new HTTPException(400, {
+          message: 'Der letzte Statuseintrag kann nicht gelöscht werden.',
+        });
+      }
+      throw err;
+    }
+  };
+
   /** 404 unless the store found the entry (`false` / `undefined` mean it does not exist). */
   const gefunden = <T>(wert: T | false | undefined, meldung: string): T => {
     if (wert === false || wert === undefined) throw new HTTPException(404, { message: meldung });
@@ -963,19 +995,85 @@ export function createApp(deps: AppDeps) {
         if (!mitglied) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
         return c.json(mitglied);
       })
+      // Status history, Posten and deactivation date of a member (same visibility as the member itself).
+      .get('/mitglieder/:kennung/historie', auth, mitgliederLesen, async (c) => {
+        const kennung = c.req.param('kennung');
+        const liste = await alleMitglieder(c.get('permissions').includes('users:manage'), true);
+        const mitglied =
+          liste.find((m) => m.sub === kennung) ??
+          liste.find((m) => m.username?.toLowerCase() === kennung.toLowerCase());
+        if (!mitglied) throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
+        const [verlauf, besetzungen, row] = await Promise.all([
+          deps.mitglieder.statusVerlauf(mitglied.sub),
+          deps.posten.besetzungenVon(mitglied.sub),
+          deps.mitglieder.holen(mitglied.sub),
+        ]);
+        const historie: MitgliedHistorie = {
+          statusVerlauf: verlauf,
+          besetzungen: besetzungen.map((b) => ({
+            postenId: b.postenId,
+            postenName: b.postenName,
+            start: b.startDatum,
+            ende: b.endDatum,
+          })),
+          deaktiviertAm: row?.deaktiviertAm ? heuteBerlin(row.deaktiviertAm) : null,
+        };
+        return c.json(historie);
+      })
+      .post(
+        '/admin/mitglieder/:sub/status-verlauf',
+        auth,
+        adminOnly,
+        zValidator('json', statusEintragEingabeSchema),
+        async (c) => {
+          const sub = c.req.param('sub');
+          await statusVerlaufBearbeitbar(sub);
+          const id = await statusVerlaufSchreiben(() =>
+            deps.mitglieder.statusEintragAnlegen(sub, c.req.valid('json')),
+          );
+          gefunden(id, 'Mitglied nicht gefunden');
+          return c.json(await deps.mitglieder.statusVerlauf(sub), 201);
+        },
+      )
+      .put(
+        '/admin/mitglieder/:sub/status-verlauf/:id',
+        auth,
+        adminOnly,
+        zValidator('json', statusEintragEingabeSchema),
+        async (c) => {
+          const sub = c.req.param('sub');
+          await statusVerlaufBearbeitbar(sub);
+          gefunden(
+            await statusVerlaufSchreiben(() =>
+              deps.mitglieder.statusEintragAendern(sub, c.req.param('id'), c.req.valid('json')),
+            ),
+            'Eintrag nicht gefunden',
+          );
+          return c.json(await deps.mitglieder.statusVerlauf(sub));
+        },
+      )
+      .delete('/admin/mitglieder/:sub/status-verlauf/:id', auth, adminOnly, async (c) => {
+        const sub = c.req.param('sub');
+        await statusVerlaufBearbeitbar(sub);
+        gefunden(
+          await statusVerlaufSchreiben(() =>
+            deps.mitglieder.statusEintragLoeschen(sub, c.req.param('id')),
+          ),
+          'Eintrag nicht gefunden',
+        );
+        return c.json(await deps.mitglieder.statusVerlauf(sub));
+      })
       .put(
         '/admin/mitglieder/:sub/status',
         auth,
         adminOnly,
         zValidator('json', setMitgliedStatusSchema),
         async (c) => {
-          const { status } = c.req.valid('json');
-          if (istDeaktiviert(await deps.mitglieder.holen(c.req.param('sub')))) {
-            throw new HTTPException(409, {
-              message: 'Der Status eines deaktivierten Accounts kann nicht geändert werden.',
-            });
-          }
-          if (!(await deps.mitglieder.statusSetzen(c.req.param('sub'), status))) {
+          const { status, ab } = c.req.valid('json');
+          await statusVerlaufBearbeitbar(c.req.param('sub'));
+          if (
+            !(await deps.mitglieder.statusSetzen(c.req.param('sub'), status, ab ?? heuteBerlin()))
+          ) {
             throw new HTTPException(404, { message: 'Mitglied nicht gefunden' });
           }
           return c.json({ status });

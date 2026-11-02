@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS mitglied_status_verlauf_mitglied_idx

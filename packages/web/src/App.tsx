@@ -37,6 +37,7 @@ import { UmfragePage } from './pages/UmfragePage';
 import { TrichterDurchgangPage } from './pages/TrichterDurchgangPage';
 import { TrichterPage } from './pages/TrichterPage';
 import { TrichterVerwaltungPage } from './pages/TrichterVerwaltungPage';
+import { HistoriePage } from './pages/HistoriePage';
 import { UmfragenPage } from './pages/UmfragenPage';
 import { ProfilPage } from './pages/ProfilPage';
 import { PushAbfrage } from './PushAbfrage';
@@ -134,6 +135,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="mitglieder:lesen">
                 <RequireUsername>
                   <MitgliederPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/historie"
+            element={
+              <Protected permission="mitglieder:lesen">
+                <RequireUsername>
+                  <HistoriePage />
                 </RequireUsername>
               </Protected>
             }

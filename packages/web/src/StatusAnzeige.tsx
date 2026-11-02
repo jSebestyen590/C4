@@ -1,17 +1,31 @@
-import { Badge, Select, Stack, Text, Title, useComputedColorScheme } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Select,
+  Stack,
+  Text,
+  Title,
+  useComputedColorScheme,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
+  heuteBerlin,
   MITGLIED_STATI,
   statusUebergangUeblich,
   type Anrede,
   type MitgliedStatus,
 } from '@c4/shared';
 import { useApi } from './api';
-import { BestaetigenDialog } from './BestaetigenDialog';
+import { DatumFeld } from './DatumFeld';
+import { historieAktualisieren } from './historieDaten';
 import { useAuth } from './auth';
 import { labelFuer, MITGLIED_STATUS_LABELS } from './i18n';
+import { fehlerText, pruefen } from './warenApi';
 
 export const BADGE_FARBE: Record<MitgliedStatus, string> = {
   anwaerter: 'orange',
@@ -81,31 +95,27 @@ export function StatusFeld({
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
-  // A change outside Anwärter -> Mitglied -> EM (or to Externe:r) waits here for confirmation.
-  const [warnung, setWarnung] = useState<MitgliedStatus | null>(null);
+  // The chosen status waits in a dialog for its start date (and a warning if the change is unusual).
+  const [neuerStatus, setNeuerStatus] = useState<MitgliedStatus | null>(null);
+  const [ab, setAb] = useState(heuteBerlin());
+  const [fehler, setFehler] = useState<string | null>(null);
   const setzen = useMutation({
-    mutationFn: async (neu: MitgliedStatus) => {
-      const res = await api.admin.mitglieder[':sub'].status.$put({
-        param: { sub },
-        json: { status: neu },
-      });
+    mutationFn: async (daten: { status: MitgliedStatus; ab: string }) => {
+      const res = await api.admin.mitglieder[':sub'].status.$put({ param: { sub }, json: daten });
       if (res.status === 404) throw new Error('kein-profil');
-      if (!res.ok) throw new Error('fehler');
+      await pruefen(res);
     },
     onSuccess: async () => {
-      await Promise.all(
-        ['mitglieder', 'mitglied'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
-      );
+      await historieAktualisieren(qc);
       notifications.show({ color: 'green', message: 'Der Status wurde gespeichert.' });
+      setNeuerStatus(null);
     },
     onError: (err) =>
-      notifications.show({
-        color: 'red',
-        message:
-          err.message === 'kein-profil'
-            ? 'Der Status kann erst geändert werden, wenn das Mitglied sein Profil angelegt hat.'
-            : 'Der Status konnte nicht gespeichert werden.',
-      }),
+      setFehler(
+        err.message === 'kein-profil'
+          ? 'Der Status kann erst geändert werden, wenn das Mitglied sein Profil angelegt hat.'
+          : fehlerText(err, 'Der Status konnte nicht gespeichert werden.'),
+      ),
   });
 
   if (!can('users:manage'))
@@ -134,33 +144,62 @@ export function StatusFeld({
         description={
           deaktiviert ? 'Aktiviere den Account wieder, um den Status zu ändern.' : undefined
         }
-        disabled={deaktiviert || setzen.isPending}
+        disabled={deaktiviert}
         onChange={(v) => {
           if (!v) return;
-          const neu = v as MitgliedStatus;
-          if (statusUebergangUeblich(status, neu)) setzen.mutate(neu);
-          else setWarnung(neu);
+          setAb(heuteBerlin());
+          setFehler(null);
+          setNeuerStatus(v as MitgliedStatus);
         }}
       />
-      {warnung && (
-        <BestaetigenDialog
-          titel="Ungewöhnlicher Statuswechsel"
-          bestaetigenText="Trotzdem ändern"
-          color="orange"
-          onClose={() => setWarnung(null)}
-          onBestaetigt={async () => {
-            await setzen.mutateAsync(warnung);
-          }}
-        >
-          <Text>
-            Üblich ist die Reihenfolge {name('anwaerter')} → {name('mitglied')} → {name('em')}, ohne
-            Stufen zu überspringen. {name('extern')} geht jederzeit.
-          </Text>
-          <Text>
-            Der Wechsel von <b>{name(status)}</b> zu <b>{name(warnung)}</b> weicht davon ab. Willst
-            du den Status trotzdem ändern?
-          </Text>
-        </BestaetigenDialog>
+      {neuerStatus && (
+        <Modal opened onClose={() => setNeuerStatus(null)} title="Status ändern">
+          <form
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              // Rendered inside the profile form's React tree (portal): keep the submit from reaching it.
+              e.stopPropagation();
+              setFehler(null);
+              if (!ab) return setFehler('Bitte gib ein Datum an.');
+              setzen.mutate({ status: neuerStatus, ab });
+            }}
+          >
+            <Stack>
+              <Text>
+                Neuer Status: <b>{name(neuerStatus)}</b>
+              </Text>
+              {!statusUebergangUeblich(status, neuerStatus) && (
+                <Alert color="orange" title="Ungewöhnlicher Statuswechsel">
+                  Üblich ist die Reihenfolge {name('anwaerter')} → {name('mitglied')} → {name('em')}
+                  , ohne Stufen zu überspringen. {name('extern')} geht jederzeit. Der Wechsel von{' '}
+                  <b>{name(status)}</b> zu <b>{name(neuerStatus)}</b> weicht davon ab.
+                </Alert>
+              )}
+              <DatumFeld
+                label="Ab"
+                required
+                loeschbar={false}
+                max={heuteBerlin()}
+                value={ab}
+                onWert={setAb}
+              />
+              {fehler && <Alert color="red">{fehler}</Alert>}
+              <Group grow preventGrowOverflow={false}>
+                <Button variant="default" onClick={() => setNeuerStatus(null)}>
+                  Abbrechen
+                </Button>
+                <Button
+                  type="submit"
+                  color={statusUebergangUeblich(status, neuerStatus) ? undefined : 'orange'}
+                  loading={setzen.isPending}
+                >
+                  {statusUebergangUeblich(status, neuerStatus) ? 'Ändern' : 'Trotzdem ändern'}
+                </Button>
+              </Group>
+            </Stack>
+          </form>
+        </Modal>
       )}
     </>
   );

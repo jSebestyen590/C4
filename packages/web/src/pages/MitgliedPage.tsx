@@ -11,6 +11,7 @@ import { DeaktivierenFeld } from '../DeaktivierenFeld';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
+import { StatusHistorie } from '../StatusHistorie';
 import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
@@ -91,6 +92,12 @@ export function MitgliedPage() {
               <PostenLinks posten={m.posten} />
             </div>
           )}
+          <StatusHistorie
+            sub={m.sub}
+            username={m.username}
+            anrede={m.anrede}
+            deaktiviert={m.deaktiviert}
+          />
           {m.email && (
             <div>
               <Text size="sm" c="dimmed">

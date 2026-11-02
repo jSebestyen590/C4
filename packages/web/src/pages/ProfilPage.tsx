@@ -32,6 +32,7 @@ import { DatumFeld } from '../DatumFeld';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { PostenLinks } from '../PostenAnzeige';
+import { StatusHistorie } from '../StatusHistorie';
 import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld } from '../StatusAnzeige';
 import { EmailAendern } from '../EmailAendern';
@@ -232,6 +233,14 @@ export function ProfilFormular({
               </Text>
               <PostenLinks posten={mitglied.posten} />
             </div>
+          )}
+          {mitglied && (
+            <StatusHistorie
+              sub={mitglied.sub}
+              username={mitglied.username}
+              anrede={mitglied.anrede}
+              deaktiviert={mitglied.deaktiviert}
+            />
           )}
           {mitglied?.rollen && can('users:manage') && (
             <RollenFeld sub={mitglied.sub} rollen={mitglied.rollen} anrede={mitglied.anrede} />
