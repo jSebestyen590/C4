@@ -16,6 +16,7 @@ import {
   IconBan,
   IconChevronLeft,
   IconEdit,
+  IconPhoto,
   IconPlayerPlay,
   IconTrash,
   IconUserMinus,
@@ -53,7 +54,7 @@ import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
 import { useEigeneSub } from '../organisator';
 import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
-import { pruefen } from '../warenApi';
+import { fehlerAnzeigen, pruefen } from '../warenApi';
 
 type Dialog =
   | { art: 'eintragen'; schicht: SchichtDto; modus: EintragModus }
@@ -72,6 +73,7 @@ export function EventDetailPage() {
   const event = useKalenderEvent(id);
   const dienstformen = useDienstformen();
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [ordnerLaeuft, setOrdnerLaeuft] = useState(false);
   const verwalten = can('events:verwalten');
 
   const rueckweg = (
@@ -116,6 +118,21 @@ export function EventDetailPage() {
       color: 'green',
       message: abgesagt ? 'Das Event wurde abgesagt.' : 'Das Event findet wieder statt.',
     });
+  };
+
+  const ordnerAnlegen = async () => {
+    setOrdnerLaeuft(true);
+    try {
+      await pruefen(
+        await api.kalender.events[':id']['bilder-ordner'].$post({ param: { id: e.id } }),
+      );
+      await kalenderInvalidieren(qc);
+      notifications.show({ color: 'green', message: 'Bilder-Ordner angelegt.' });
+    } catch (err) {
+      fehlerAnzeigen(err);
+    } finally {
+      setOrdnerLaeuft(false);
+    }
   };
 
   return (
@@ -188,6 +205,34 @@ export function EventDetailPage() {
       )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
+      {e.bilderOrdnerUrl ? (
+        <Group>
+          <Button
+            variant="default"
+            component="a"
+            href={e.bilderOrdnerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            leftSection={<IconPhoto size={18} />}
+          >
+            Bilder
+          </Button>
+        </Group>
+      ) : (
+        can('bilder:lesen') &&
+        !e.abgesagt && (
+          <Group>
+            <Button
+              variant="default"
+              leftSection={<IconPhoto size={18} />}
+              loading={ordnerLaeuft}
+              onClick={() => void ordnerAnlegen()}
+            >
+              Bilder-Ordner anlegen
+            </Button>
+          </Group>
+        )
+      )}
       {e.art === 'teilnahme' && <EventTeilnahme event={e} />}
       {ueberlappungen.length > 0 && (
         <Alert color="yellow" title="Überschneidung">

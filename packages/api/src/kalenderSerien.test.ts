@@ -91,6 +91,7 @@ const vorlage = (patch: Partial<VorlageDto> = {}): VorlageDto => ({
   endeZeit: '01:00',
   teilnahmeStatus: null,
   tage: 1,
+  bilderOrdner: false,
   archiviert: false,
   schichten: [
     {

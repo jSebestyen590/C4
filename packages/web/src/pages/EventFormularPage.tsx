@@ -2,6 +2,7 @@ import {
   Alert,
   Anchor,
   Button,
+  Checkbox,
   Group,
   Loader,
   Modal,
@@ -101,6 +102,8 @@ interface EventWerte extends KopfWerte {
   teilnahme: TeilnahmeWerte;
   verantwortlichSub: string | null;
   schichten: EventSchichtForm[];
+  /** Create the OneDrive photo folder on save (only offered while the event has none). */
+  bilderOrdner: boolean;
 }
 
 /** A Dienst that saving would delete (the API answers 409 with this list). */
@@ -131,6 +134,7 @@ interface EventDaten {
   /** Subs of the individually invited members. */
   eingeladen: readonly string[];
   verantwortlichSub?: string | null;
+  bilderOrdner?: boolean;
   schichten: {
     id?: string;
     art: EventSchichtForm['art'];
@@ -151,6 +155,7 @@ function werteAus(e: EventDaten): EventWerte {
     kategorieId: e.kategorieId,
     teilnahme: teilnahmeWerteAus(e.teilnahmeStatus, e.eingeladen),
     verantwortlichSub: e.verantwortlichSub ?? null,
+    bilderOrdner: e.bilderOrdner ?? false,
     schichten: e.schichten.map((s) => ({
       key: s.id ?? neuerKey(),
       id: s.id,
@@ -185,6 +190,7 @@ function leereWerte(datum: string): EventWerte {
     endeZeit: '23:00',
     teilnahme: keineTeilnahme(),
     verantwortlichSub: null,
+    bilderOrdner: false,
     schichten: [],
   };
 }
@@ -254,6 +260,7 @@ function rohEingabe(w: EventWerte, art: EventArt | null, dauer: EventDauer) {
     teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     eingeladen: art === 'teilnahme' ? eingeladeneAus(w.teilnahme) : [],
     verantwortlichSub: w.verantwortlichSub,
+    ...(w.bilderOrdner && { bilderOrdner: true }),
     schichten,
   };
 }
@@ -333,6 +340,7 @@ function Formular({
   eventId,
   ersetzeSerie = false,
   serieName,
+  bilderOrdnerUrl,
   dienstformen,
   kategorien,
 }: Readonly<{
@@ -342,6 +350,8 @@ function Formular({
   ersetzeSerie?: boolean;
   /** Name of the series the replaced event belonged to. */
   serieName?: string;
+  /** Existing OneDrive photo folder of the edited event. */
+  bilderOrdnerUrl?: string | null;
   dienstformen: DienstformDto[];
   kategorien: EventKategorieDto[];
 }>) {
@@ -376,6 +386,7 @@ function Formular({
         ...(ersetzeSerie && { ersetzeSerie: true }),
       };
       let id = eventId;
+      let bilderHinweis: string | undefined;
       if (eventId) {
         const res = await api.kalender.events[':id'].$put({ param: { id: eventId }, json });
         if (res.status === 409) {
@@ -391,14 +402,18 @@ function Formular({
           throw new ApiFehler(409, body.error);
         }
         await pruefen(res);
+        bilderHinweis = ((await res.json()) as { bilderHinweis?: string }).bilderHinweis;
       } else {
         const res = await api.kalender.events.$post({ json });
         await pruefen(res);
-        id = ((await res.json()) as { id: string }).id;
+        const body = (await res.json()) as { id: string; bilderHinweis?: string };
+        id = body.id;
+        bilderHinweis = body.bilderHinweis;
       }
       await kalenderInvalidieren(qc);
       setEntfernung(null);
       notifications.show({ color: 'green', message: 'Das Event wurde gespeichert.' });
+      if (bilderHinweis) notifications.show({ color: 'yellow', message: bilderHinweis });
       void navigate(`/kalender/events/${id}`);
     } catch (e) {
       setEntfernung(null);
@@ -487,6 +502,26 @@ function Formular({
               />
             </Stack>
           )}
+        />
+      )}
+      {bilderOrdnerUrl ? (
+        <Stack gap={2}>
+          <Text size="sm">
+            Bilder-Ordner:{' '}
+            <Anchor href={bilderOrdnerUrl} target="_blank" rel="noopener noreferrer">
+              In OneDrive öffnen
+            </Anchor>
+          </Text>
+          <Text size="sm" c="dimmed">
+            Name und Datum des Ordners werden beim Speichern angepasst.
+          </Text>
+        </Stack>
+      ) : (
+        <Checkbox
+          size="md"
+          label="Bilder-Ordner in OneDrive anlegen"
+          checked={werte.bilderOrdner}
+          onChange={(ev) => setWerte({ ...werte, bilderOrdner: ev.currentTarget.checked })}
         />
       )}
       {fehler && <Alert color="red">{fehler}</Alert>}
@@ -596,6 +631,7 @@ function NeuesEvent({
         anfang={anfang.werte}
         {...(anfang.ersetzt && { eventId: anfang.ersetzt.id, ersetzeSerie: true })}
         serieName={serieNameVon(anfang.ersetzt)}
+        bilderOrdnerUrl={anfang.ersetzt?.bilderOrdnerUrl}
         dienstformen={dienstformen}
         kategorien={kategorien}
       />
@@ -618,7 +654,12 @@ function NeuesEvent({
       : undefined;
   const neuAnlegen = () =>
     setAnfang({
-      werte: vorlage ? werteAus(ausVorlage(vorlage, datum, vorlageKategorie)) : leereWerte(datum),
+      werte: vorlage
+        ? {
+            ...werteAus(ausVorlage(vorlage, datum, vorlageKategorie)),
+            bilderOrdner: vorlage.bilderOrdner ?? false,
+          }
+        : leereWerte(datum),
     });
   const weiter = () => {
     if (serienEvent) setSerienFrage(serienEvent);
@@ -709,6 +750,7 @@ export function EventFormularPage() {
         <Formular
           anfang={werteAusEvent(event.data!)}
           eventId={id}
+          bilderOrdnerUrl={event.data!.bilderOrdnerUrl}
           dienstformen={dienstformen.liste}
           kategorien={kategorien.liste}
         />

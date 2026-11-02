@@ -18,6 +18,7 @@ import {
   IconBell,
   IconBriefcase,
   IconCalendar,
+  IconPhoto,
   IconCheck,
   IconDeviceDesktop,
   IconBuildingWarehouse,
@@ -147,6 +148,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Kalender',
       icon: <IconCalendar size={20} />,
       show: can('kalender:lesen'),
+    },
+    {
+      to: '/bilder',
+      label: 'Bilder',
+      icon: <IconPhoto size={20} />,
+      show: can('bilder:lesen'),
     },
     {
       to: '/posten',

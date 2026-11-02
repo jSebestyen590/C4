@@ -28,6 +28,7 @@ export const PERMISSIONS = [
   'umfragen:verwalten',
   'trichter:lesen',
   'trichter:verwalten',
+  'bilder:lesen',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -75,6 +76,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'schluessel:lesen',
     'umfragen:lesen',
     'trichter:lesen',
+    'bilder:lesen',
   ],
   extern: [
     'content:read',
@@ -89,6 +91,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'schluessel:lesen',
     'umfragen:lesen',
     'trichter:lesen',
+    'bilder:lesen',
   ],
   mitglied: [
     'content:read',
@@ -103,6 +106,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'schluessel:lesen',
     'umfragen:lesen',
     'trichter:lesen',
+    'bilder:lesen',
   ],
   em: [
     'content:read',
@@ -117,6 +121,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'schluessel:lesen',
     'umfragen:lesen',
     'trichter:lesen',
+    'bilder:lesen',
   ],
 };
 

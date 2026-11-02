@@ -458,6 +458,8 @@ export const eventEingabeSchema = z
     bestaetigt: z.boolean().optional(),
     /** Detaches the event from its series (a Barabend replaced by another event); only on update. */
     ersetzeSerie: z.boolean().optional(),
+    /** Creates the OneDrive photo folder of the event when it has none yet (see bilder.ts). */
+    bilderOrdner: z.boolean().optional(),
   })
   .refine(eventDauerOk, eventDauerFehlerMeldung);
 export type EventEingabe = z.infer<typeof eventEingabeSchema>;
@@ -522,11 +524,19 @@ export const vorlageEingabeSchema = z.object({
     .max(MAX_EVENT_TAGE, `Höchstens ${MAX_EVENT_TAGE} Tage.`)
     .optional()
     .transform((v) => v ?? 1),
+  /** Events from this Vorlage get a OneDrive photo folder by default (the form's checkbox is preset). */
+  bilderOrdner: z
+    .boolean()
+    .optional()
+    .transform((v) => v ?? false),
   archiviert: z.boolean().optional(),
 });
 export type VorlageEingabe = z.infer<typeof vorlageEingabeSchema>;
-/** A Vorlage as `ausVorlage` needs it; `tage` defaults to 1. */
-export type VorlageDaten = Omit<VorlageEingabe, 'tage'> & { tage?: number };
+/** A Vorlage as `ausVorlage` needs it; `tage` defaults to 1, `bilderOrdner` is not used. */
+export type VorlageDaten = Omit<VorlageEingabe, 'tage' | 'bilderOrdner'> & {
+  tage?: number;
+  bilderOrdner?: boolean;
+};
 
 /** Enter a Dienst: oneself (neither field), another member (`mitgliedSub`) or an Externe (`externId`). */
 export const dienstEintragenSchema = z
@@ -681,6 +691,8 @@ export interface EventDto {
   ichBinNichtVerfuegbar: boolean;
   /** The caller added the event to their calendar feed. */
   imAbo: boolean;
+  /** Link to the event's OneDrive photo folder; null = none. */
+  bilderOrdnerUrl: string | null;
 }
 
 /** Title to display: the entered title, else the Kategorie's name, else "Event". */

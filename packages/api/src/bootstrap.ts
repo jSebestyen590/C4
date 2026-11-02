@@ -13,6 +13,7 @@ import {
   createWebPushSender,
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
+import { createOneDrive, createOneDriveStore, registriereOneDriveAufgaben } from './onedrive';
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
@@ -47,6 +48,8 @@ export function createProduction() {
   registriereUmfrageAufgaben(benachrichtigungen, umfragen, (jetzt) =>
     ladeKontext({ mitglieder, userAdmin, posten }, jetzt),
   );
+  const onedrive = createOneDrive({ store: createOneDriveStore(db) });
+  registriereOneDriveAufgaben(benachrichtigungen, onedrive);
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
@@ -60,6 +63,7 @@ export function createProduction() {
     umfragen,
     trichter: createTrichterStore(db),
     benachrichtigungen,
+    onedrive,
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {
