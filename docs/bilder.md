@@ -49,7 +49,18 @@ Client-ID, Client-Secret, Basisordner, Tokens, Konto, verbunden von/am, Fehler. 
 
 ### Einrichtung (einmalig)
 
-1. Im [Azure-Portal](https://portal.azure.com) mit dem Vereins-Microsoft-Konto anmelden, **Microsoft Entra ID → App-Registrierungen → Neue Registrierung**:
+Die App-Registrierung ist nur der Ausweis der C4-App bei Microsoft. Sie muss nicht im Konto liegen, dem der OneDrive gehört;
+auf den OneDrive greift C4 erst zu, wenn sich jemand mit diesem Konto in Schritt 4 anmeldet.
+
+0. **Verzeichnis (Entra-Mandant) anlegen, falls das Konto keines hat.** Private Microsoft-Konten (auch in Microsoft Family)
+   haben anfangs kein eigenes Verzeichnis. Das Portal meldet dann nach der Anmeldung „Interaktion erforderlich“ mit
+   `AADSTS16000 … does not exist in tenant 'Microsoft Services'`. Abhilfe: mit demselben Konto ein kostenloses Azure-Konto
+   anlegen (https://azure.microsoft.com/free; Telefonnummer und Kreditkarte nur zur Identitätsprüfung, ohne Upgrade auf
+   „Nutzungsbasierte Bezahlung“ fallen keine Kosten an). Dabei entsteht ein „Standardverzeichnis“ mit dem Konto als
+   Administrator. Endet später das kostenlose Abonnement, bleiben Verzeichnis und App-Registrierung bestehen (Entra ID Free).
+   Kinderkonten einer Family sind für Azure gesperrt.
+1. Im [Entra Admin Center](https://entra.microsoft.com) (oder [Azure-Portal](https://portal.azure.com)) anmelden, ggf. oben
+   rechts ins Standardverzeichnis wechseln, **Anwendungen → App-Registrierungen → Neue Registrierung**:
    - Name z. B. „C4“, Kontotyp **Nur persönliche Microsoft-Konten**.
    - Umleitungs-URI, Plattform **Web**: `https://www.c4-leipzig.de/app/bilder/einrichtung`. Unter
      „Authentifizierung“ zusätzlich `https://dev.c4-leipzig.de/app/bilder/einrichtung` und für lokal
