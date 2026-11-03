@@ -754,6 +754,13 @@ export const bilderFreigaben = pgTable('bilder_freigaben', {
   erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Last snapshot of the OneDrive folder list (row id `liste`, `daten` = JSON array of id/name/webUrl). */
+export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
+  id: text('id').primaryKey(),
+  daten: text('daten').notNull(),
+  stand: timestamp('stand', { withTimezone: true }).notNull(),
+});
+
 /** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
 export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {
   id: text('id').primaryKey(),

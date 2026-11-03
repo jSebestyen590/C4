@@ -35,6 +35,10 @@ export interface BilderListeDto {
   /** False when OneDrive is not connected; the list is empty then. */
   verbunden: boolean;
   ordner: BilderOrdnerDto[];
+  /** ISO instant of the folder list; null when there is no snapshot yet. */
+  stand: string | null;
+  /** True when the list is the stored snapshot, false when it was read from OneDrive just now. */
+  ausCache: boolean;
 }
 
 export interface OneDriveStatusDto {

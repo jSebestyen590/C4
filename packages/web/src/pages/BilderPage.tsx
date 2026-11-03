@@ -25,6 +25,18 @@ import { bilderDatum, bilderNachJahr } from '../bilderAnzeige';
 import { useBilderOrdner } from '../bilderDaten';
 import { useBilderTeilen } from '../bilderTeilen';
 
+/** "dd.mm. HH:mm" in Berlin time of an ISO instant. */
+const standText = (iso: string) =>
+  new Date(iso)
+    .toLocaleString('de-DE', {
+      timeZone: 'Europe/Berlin',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    .replace(',', '');
+
 /** Link that opens the folder: the sharing link opens the OneDrive app on phones. */
 const ordnerLink = (o: BilderOrdnerDto) => o.freigabeUrl ?? o.webUrl;
 
@@ -154,11 +166,12 @@ export function BilderPage() {
   const { can } = useAuth();
   const istAdmin = can('users:manage');
   const liste = useBilderOrdner();
+  const stand = liste.daten?.stand ? standText(liste.daten.stand) : null;
   const [suche, setSuche] = useState('');
   const [anlegen, setAnlegen] = useState(false);
 
-  const verbunden = liste.data?.verbunden ?? false;
-  const alle = useMemo(() => liste.data?.ordner ?? [], [liste.data]);
+  const verbunden = liste.daten?.verbunden ?? false;
+  const alle = useMemo(() => liste.daten?.ordner ?? [], [liste.daten]);
   const gefiltert = useMemo(
     () => (suche.trim() ? alle.filter((o) => bilderSuche(o, suche)) : alle),
     [alle, suche],
@@ -190,9 +203,15 @@ export function BilderPage() {
           )}
         </Group>
       </Group>
-      {liste.isPending && <Loader m="md" aria-label="Bilder werden geladen" />}
-      {liste.isError && <Alert color="red">Die Ordner konnten nicht geladen werden.</Alert>}
-      {liste.data && !verbunden && (
+      {liste.laedt && <Loader m="md" aria-label="Bilder werden geladen" />}
+      {liste.fehler && <Alert color="red">Die Ordner konnten nicht geladen werden.</Alert>}
+      {verbunden && liste.aktualisierenFehlgeschlagen && (
+        <Alert color="yellow">
+          Aktualisieren fehlgeschlagen
+          {stand ? `, du siehst den Stand von ${stand}.` : '.'}
+        </Alert>
+      )}
+      {liste.daten && !verbunden && (
         <Alert color="yellow">
           <Text>OneDrive ist nicht verbunden.</Text>
           {istAdmin && (
@@ -212,7 +231,16 @@ export function BilderPage() {
             value={suche}
             onChange={(e) => setSuche(e.currentTarget.value)}
           />
-          {alle.length === 0 && <Text c="dimmed">Noch keine Ordner.</Text>}
+          {/* Fixed height so the list does not jump when the indicator comes and goes. */}
+          <Group gap="xs" wrap="nowrap" mih={20} aria-live="polite">
+            {liste.aktualisiert && <Loader size="xs" aria-label="Wird aktualisiert" />}
+            <Text size="xs" c="dimmed">
+              {liste.aktualisiert && 'Wird aktualisiert …'}
+              {liste.aktualisiert && liste.ausCache && stand && ' · '}
+              {liste.ausCache && stand && `Stand: ${stand}`}
+            </Text>
+          </Group>
+          {alle.length === 0 && !liste.aktualisiert && <Text c="dimmed">Noch keine Ordner.</Text>}
           {alle.length > 0 && gefiltert.length === 0 && <Text c="dimmed">Keine Treffer.</Text>}
           {gruppen.map((g) => (
             <Stack key={g.jahr} gap="xs">

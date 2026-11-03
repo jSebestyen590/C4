@@ -39,13 +39,29 @@ Link; 404 → `OrdnerFehlt`). **Alle mit dem Link können die Bilder ansehen**, 
 
 - Cache: Tabelle `bilder_freigaben` (`ordner_id`, `url`, `erstellt`), Store `FreigabenStore` in `onedrive.ts`. Die Zeile
   fällt weg, wenn der Ordner gelöscht wird (`loeschenWennLeer`).
-- `GET /api/bilder/ordner` füllt `freigabeUrl` aus dem Cache und legt fehlende Links an (6 parallel, höchstens ca. 5 s;
-  der Rest bleibt `null` und kommt beim nächsten Laden). Fehler je Ordner werden nur geloggt.
+- `GET /api/bilder/ordner` füllt `freigabeUrl` nur aus dem Cache und legt keine Links an (das macht die Liste langsam).
+  Fehlende Links legt die Job-Aufgabe `bilder.freigaben` an (Push-Job, alle 5 Minuten): für die Ordner des Listen-Snapshots
+  (siehe unten), 6 parallel, höchstens ca. 8 s je Lauf, der Rest beim nächsten Lauf; ohne Verbindung passiert nichts.
+  Fehler je Ordner werden nur geloggt.
 - Neue Ordner (Anlegen-Dialog, Event-Ordner) bekommen ihren Link sofort; schlägt das fehl, bleibt er `null`.
 - `EventDto.bilderOrdnerUrl` ist der Freigabelink des Ordners, sonst die `webUrl`; `bilderOrdnerId` ist die OneDrive-ID.
 - Seiten öffnen `freigabeUrl ?? webUrl`. Der **Teilen**-Button (Bilder-Seite je Ordner, Event-Seite neben „Bilder“) teilt den
   Link über `navigator.share` (Abbruch still), sonst in die Zwischenablage mit Hinweis. Ist der Link bekannt, wird sofort
   geteilt (iOS verlangt die Geste); sonst fordert die Seite ihn zuerst per `POST /api/bilder/ordner/:id/freigabe` an.
+
+## Ladezeit: Snapshot der Ordnerliste
+
+Die Ordner live aus OneDrive zu lesen (rund 400 Ordner, seitenweise) dauert. Deshalb speichert jede Live-Antwort die rohe
+Liste (`id`, `name`, `webUrl`) als Snapshot in `bilder_ordner_cache` (eine Zeile `liste`, `daten` als JSON-Text, `stand`),
+Store `OrdnerCacheStore` in `onedrive.ts`. Event-Verknüpfung (`eventId`) und `freigabeUrl` kommen beim Lesen immer frisch
+aus der Datenbank, nicht aus dem Snapshot. Anlegen (Dialog, Event-Ordner) fügt den Ordner dem Snapshot hinzu, Umbenennen
+und Löschen des Event-Ordners ändern ihn; ohne Snapshot passiert nichts. Alles andere korrigiert der nächste Live-Abruf.
+
+Die Seite (`useBilderOrdner` in `bilderDaten.ts`) startet zwei Abfragen: `?quelle=cache` (Snapshot, schnell) und live. Gezeigt
+wird die Live-Liste, bis dahin der Snapshot; zusätzlich merkt sich der Browser die letzte Liste in `localStorage`
+(`c4.bilder.liste`), sodass auch der erste Aufbau sofort Daten hat. Solange die Live-Abfrage läuft, zeigt die Seite
+„Wird aktualisiert …“ (bei Snapshot-Daten mit „Stand: dd.mm. HH:mm“); schlägt sie fehl, erscheint ein gelber Hinweis. Nur ohne
+jede Daten gibt es den Ladekreis. Nach „Ordner anlegen“ werden beide Abfragen neu geladen.
 
 ## Events und Vorlagen
 
@@ -102,7 +118,9 @@ zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an di
 
 ## API
 
-- `GET /api/bilder/ordner` → `{ verbunden, ordner: [{ id, name, webUrl, freigabeUrl, von, bis, eventName, genauigkeit, eventId }] }` (neueste zuerst)
+- `GET /api/bilder/ordner` → `{ verbunden, ordner: [{ id, name, webUrl, freigabeUrl, von, bis, eventName, genauigkeit, eventId }], stand, ausCache }`
+  (neueste zuerst). Live aus OneDrive (speichert den Snapshot; `stand` = jetzt, `ausCache: false`); mit `?quelle=cache` sofort
+  der gespeicherte Snapshot (`ausCache: true`, `stand` ISO oder `null` und `ordner: []` ohne Snapshot).
 - `POST /api/bilder/ordner` `{ eventName, von, bis? }` → 201; 409 bei vorhandenem Namen, 503 ohne Verbindung
 - `POST /api/bilder/ordner/:id/freigabe` (`bilder:lesen`) → `{ url }` (legt den Link an und cached ihn); 404 ohne Ordner, 503 ohne Verbindung
 - `POST /api/kalender/events/:id/bilder-ordner` → `{ bilderOrdnerUrl }` (409, wenn schon einer existiert)
@@ -111,4 +129,4 @@ zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an di
 
 ## Datenbank
 
-Migrationen `0104`–`0107` (siehe `datenbank.md`).
+Migrationen `0104`–`0109` (siehe `datenbank.md`).

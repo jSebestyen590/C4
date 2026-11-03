@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { OneDriveStatusDto } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { Db } from './db/client';
-import { bilderFreigaben, onedriveVerbindung } from './db/schema';
+import { bilderFreigaben, bilderOrdnerCache, onedriveVerbindung } from './db/schema';
 
 // Access to the club's OneDrive photo folders through Microsoft Graph (delegated, personal account,
 // confidential client). The connection (client id/secret, tokens) lives in one DB row, see docs/bilder.md.
@@ -164,6 +164,54 @@ export function createFreigabenStore(db: Db): FreigabenStore {
       await db.delete(bilderFreigaben).where(eq(bilderFreigaben.ordnerId, ordnerId));
     },
   };
+}
+
+/** Last snapshot of the folder list (table `bilder_ordner_cache`, one row). */
+export interface OrdnerCacheStore {
+  lesen(): Promise<{ ordner: OneDriveOrdner[]; stand: Date } | null>;
+  schreiben(ordner: readonly OneDriveOrdner[], stand: Date): Promise<void>;
+}
+
+const LISTE_ID = 'liste';
+
+export function createOrdnerCacheStore(db: Db): OrdnerCacheStore {
+  return {
+    async lesen() {
+      const [row] = await db
+        .select()
+        .from(bilderOrdnerCache)
+        .where(eq(bilderOrdnerCache.id, LISTE_ID));
+      if (!row) return null;
+      try {
+        return { ordner: JSON.parse(row.daten) as OneDriveOrdner[], stand: row.stand };
+      } catch {
+        return null;
+      }
+    },
+    async schreiben(ordner, stand) {
+      const daten = JSON.stringify(ordner);
+      await db
+        .insert(bilderOrdnerCache)
+        .values({ id: LISTE_ID, daten, stand })
+        .onConflictDoUpdate({ target: bilderOrdnerCache.id, set: { daten, stand } });
+    },
+  };
+}
+
+/** In-memory store for tests. */
+export function createMemoryOrdnerCacheStore(): OrdnerCacheStore & {
+  stand: { ordner: OneDriveOrdner[]; stand: Date } | null;
+} {
+  const store = {
+    stand: null as { ordner: OneDriveOrdner[]; stand: Date } | null,
+    async lesen() {
+      return store.stand && { ordner: [...store.stand.ordner], stand: store.stand.stand };
+    },
+    async schreiben(ordner: readonly OneDriveOrdner[], stand: Date) {
+      store.stand = { ordner: [...ordner], stand };
+    },
+  };
+  return store;
 }
 
 /** In-memory store for tests. */
@@ -592,10 +640,60 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
   };
 }
 
-/** Registers the job task that keeps the refresh token alive. */
+/** Time budget and parallelism of one run of the job that creates missing sharing links. */
+export const FREIGABE_ZEITBUDGET_MS = 8000;
+export const FREIGABE_PARALLEL = 6;
+
+/**
+ * Creates the missing anonymous sharing links of the folders in the list snapshot (limited by the time
+ * budget; the rest follows on the next run). Does nothing when OneDrive is not connected or there is no
+ * snapshot. Errors per folder are only logged.
+ */
+export async function freigabenNachziehen(
+  deps: {
+    onedrive: Pick<OneDrive, 'status' | 'freigabeLink'>;
+    ordnerCache: OrdnerCacheStore;
+    freigaben: FreigabenStore;
+  },
+  zeitbudgetMs = FREIGABE_ZEITBUDGET_MS,
+): Promise<number> {
+  if (!(await deps.onedrive.status()).verbunden) return 0;
+  const snapshot = await deps.ordnerCache.lesen();
+  if (!snapshot) return 0;
+  const links = await deps.freigaben.alle();
+  const warteschlange = snapshot.ordner.filter((o) => !links.has(o.id)).map((o) => o.id);
+  const frist = Date.now() + zeitbudgetMs;
+  let angelegt = 0;
+  const arbeiter = async () => {
+    for (let id = warteschlange.shift(); id !== undefined; id = warteschlange.shift()) {
+      if (Date.now() >= frist) return;
+      try {
+        await deps.freigaben.setzen(id, await deps.onedrive.freigabeLink(id));
+        angelegt += 1;
+      } catch (err) {
+        if (err instanceof NichtVerbunden) return;
+        console.error(`OneDrive sharing link of folder ${id} failed`, err);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: FREIGABE_PARALLEL }, arbeiter));
+  return angelegt;
+}
+
+/** Registers the job tasks: keeps the refresh token alive and (optionally) creates missing sharing links. */
 export function registriereOneDriveAufgaben(
   benachrichtigungen: Pick<Benachrichtigungen, 'registriereAufgabe'>,
   onedrive: Pick<OneDrive, 'tokenPflegen'>,
+  bilder?: {
+    onedrive: Pick<OneDrive, 'status' | 'freigabeLink'>;
+    ordnerCache: OrdnerCacheStore;
+    freigaben: FreigabenStore;
+  },
 ): void {
   benachrichtigungen.registriereAufgabe('onedrive.token', (jetzt) => onedrive.tokenPflegen(jetzt));
+  if (bilder) {
+    benachrichtigungen.registriereAufgabe('bilder.freigaben', async () => {
+      await freigabenNachziehen(bilder);
+    });
+  }
 }

@@ -70,7 +70,11 @@ import {
 } from './posten';
 import { UebergabeKonflikt, type SchluesselDetails, type SchluesselStore } from './schluessel';
 import { createFakeOneDrive } from './onedrive.fake';
-import { createMemoryFreigabenStore } from './onedrive';
+import {
+  createMemoryFreigabenStore,
+  createMemoryOrdnerCacheStore,
+  freigabenNachziehen,
+} from './onedrive';
 import { createFakeTrichterStore } from './trichter.fake';
 import { createFakeUmfragenStore } from './umfragen.fake';
 
@@ -774,6 +778,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: kalender, dienste: kalenderDienste, bilder: kalenderBilder } = makeKalenderFake();
   const onedrive = createFakeOneDrive();
   const freigaben = createMemoryFreigabenStore();
+  const ordnerCache = createMemoryOrdnerCacheStore();
   const { fake: schluessel } = makeSchluesselFake();
   const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const { store: trichter } = createFakeTrichterStore();
@@ -818,6 +823,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     benachrichtigungen,
     onedrive,
     freigaben,
+    ordnerCache,
     ...(appUrl && { appUrl }),
     profilbilder,
     pingDb,
@@ -837,6 +843,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     kalenderBilder,
     onedrive,
     freigaben,
+    ordnerCache,
     schluessel,
     umfragen,
     umfragenListe,
@@ -5830,6 +5837,8 @@ describe('bilder', () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
         verbunden: true,
+        stand: expect.any(String),
+        ausCache: false,
         ordner: [
           {
             id: neu.id,
@@ -5839,7 +5848,7 @@ describe('bilder', () => {
             bis: '2026-07-20',
             eventName: 'Festival',
             genauigkeit: 'tag',
-            freigabeUrl: `https://1drv.ms/f/${neu.id}`,
+            freigabeUrl: null,
             eventId: 'e9',
           },
           expect.objectContaining({ name: '2025-06-14_Alt', eventId: null, bis: '2025-06-14' }),
@@ -5853,7 +5862,7 @@ describe('bilder', () => {
       });
     });
 
-    it('uses cached sharing links and creates only the missing ones', async () => {
+    it('uses cached sharing links and creates no links while listing', async () => {
       const t = makeApp();
       const a = t.onedrive.hinzufuegen('2025-06-14_A');
       const b = t.onedrive.hinzufuegen('2025-06-15_B');
@@ -5861,27 +5870,111 @@ describe('bilder', () => {
       const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
       const ordner = ((await res.json()) as { ordner: BilderOrdnerDto[] }).ordner;
       expect(ordner.find((o) => o.id === a.id)?.freigabeUrl).toBe('https://1drv.ms/f/cached');
-      expect(ordner.find((o) => o.id === b.id)?.freigabeUrl).toBe(`https://1drv.ms/f/${b.id}`);
-      expect(t.onedrive.freigaben).toBe(1);
-      expect(t.freigaben.karte.get(b.id)).toBe(`https://1drv.ms/f/${b.id}`);
+      expect(ordner.find((o) => o.id === b.id)?.freigabeUrl).toBeNull();
+      expect(t.onedrive.freigaben).toBe(0);
     });
 
-    it('logs a failing link and lists the folder with freigabeUrl null', async () => {
-      const t = makeApp();
-      const a = t.onedrive.hinzufuegen('2025-06-14_A');
-      const b = t.onedrive.hinzufuegen('2025-06-15_B');
-      const echt = t.onedrive.freigabeLink;
-      t.onedrive.freigabeLink = async (id) => {
-        if (id === a.id) throw new Error('kaputt');
-        return echt(id);
-      };
-      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
-      log.mockRestore();
-      expect(res.status).toBe(200);
-      const ordner = ((await res.json()) as { ordner: BilderOrdnerDto[] }).ordner;
-      expect(ordner.find((o) => o.id === a.id)?.freigabeUrl).toBeNull();
-      expect(ordner.find((o) => o.id === b.id)?.freigabeUrl).toBe(`https://1drv.ms/f/${b.id}`);
+    describe('Snapshot (quelle=cache)', () => {
+      const lesen = async (t: ReturnType<typeof makeApp>, quelle = '?quelle=cache') =>
+        (await (
+          await t.app.request(`/api/bilder/ordner${quelle}`, json('reader-token', 'GET'))
+        ).json()) as {
+          verbunden: boolean;
+          ordner: BilderOrdnerDto[];
+          stand: string | null;
+          ausCache: boolean;
+        };
+
+      it('is empty without a snapshot and does not ask OneDrive', async () => {
+        const t = makeApp();
+        t.onedrive.hinzufuegen('2025-06-14_A');
+        t.onedrive.zustand.ausfall = true;
+        expect(await lesen(t)).toEqual({
+          verbunden: true,
+          ordner: [],
+          stand: null,
+          ausCache: true,
+        });
+      });
+
+      it('reports verbunden: false from the status', async () => {
+        const t = makeApp();
+        t.onedrive.zustand.verbunden = false;
+        expect(await lesen(t)).toEqual({
+          verbunden: false,
+          ordner: [],
+          stand: null,
+          ausCache: true,
+        });
+      });
+
+      it('returns the list stored by the live load, with fresh event and link data', async () => {
+        const t = makeApp();
+        const a = t.onedrive.hinzufuegen('2025-06-14_A');
+        t.onedrive.hinzufuegen('2025-06-15_B');
+        const live = await lesen(t, '');
+        expect(live.ausCache).toBe(false);
+        // OneDrive is not asked for the snapshot; links and events changed after the live load show up.
+        t.onedrive.zustand.ausfall = true;
+        t.kalenderBilder.set('e5', { id: a.id, url: a.webUrl });
+        t.freigaben.karte.set(a.id, 'https://1drv.ms/f/neu');
+        const cache = await lesen(t);
+        expect(cache).toMatchObject({ verbunden: true, ausCache: true, stand: live.stand });
+        expect(cache.ordner.map((o) => o.name)).toEqual(['2025-06-15_B', '2025-06-14_A']);
+        expect(cache.ordner.find((o) => o.id === a.id)).toMatchObject({
+          eventId: 'e5',
+          freigabeUrl: 'https://1drv.ms/f/neu',
+        });
+      });
+
+      it('shows a folder created with POST at once', async () => {
+        const t = makeApp();
+        t.onedrive.hinzufuegen('2025-06-14_A');
+        await lesen(t, '');
+        await t.app.request(
+          '/api/bilder/ordner',
+          json('reader-token', 'POST', { eventName: 'Neu', von: '2026-05-01' }),
+        );
+        const cache = await lesen(t);
+        expect(cache.ordner.map((o) => o.name)).toEqual(['2026-05-01_Neu', '2025-06-14_A']);
+      });
+    });
+
+    describe('Job bilder.freigaben', () => {
+      it('creates the missing links of the snapshot folders', async () => {
+        const t = makeApp();
+        const a = t.onedrive.hinzufuegen('2025-06-14_A');
+        const b = t.onedrive.hinzufuegen('2025-06-15_B');
+        t.freigaben.karte.set(a.id, 'https://1drv.ms/f/cached');
+        await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
+        const deps = { onedrive: t.onedrive, ordnerCache: t.ordnerCache, freigaben: t.freigaben };
+        expect(await freigabenNachziehen(deps)).toBe(1);
+        expect(t.onedrive.freigaben).toBe(1);
+        expect(t.freigaben.karte.get(b.id)).toBe(`https://1drv.ms/f/${b.id}`);
+        expect(await freigabenNachziehen(deps)).toBe(0);
+      });
+
+      it('respects the time budget, logs failures and does nothing when not connected', async () => {
+        const t = makeApp();
+        const a = t.onedrive.hinzufuegen('2025-06-14_A');
+        const b = t.onedrive.hinzufuegen('2025-06-15_B');
+        await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
+        const deps = { onedrive: t.onedrive, ordnerCache: t.ordnerCache, freigaben: t.freigaben };
+        expect(await freigabenNachziehen(deps, 0)).toBe(0);
+        const echt = t.onedrive.freigabeLink;
+        t.onedrive.freigabeLink = async (id) => {
+          if (id === a.id) throw new Error('kaputt');
+          return echt(id);
+        };
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        expect(await freigabenNachziehen(deps)).toBe(1);
+        log.mockRestore();
+        expect(t.freigaben.karte.has(a.id)).toBe(false);
+        expect(t.freigaben.karte.has(b.id)).toBe(true);
+        t.onedrive.zustand.verbunden = false;
+        t.freigaben.karte.clear();
+        expect(await freigabenNachziehen(deps)).toBe(0);
+      });
     });
 
     it('reports the precision of year and month folders', async () => {
@@ -5901,7 +5994,12 @@ describe('bilder', () => {
       t.onedrive.zustand.verbunden = false;
       const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ verbunden: false, ordner: [] });
+      expect(await res.json()).toEqual({
+        verbunden: false,
+        ordner: [],
+        stand: null,
+        ausCache: false,
+      });
     });
 
     it('requires authentication and answers 502 when OneDrive fails', async () => {
