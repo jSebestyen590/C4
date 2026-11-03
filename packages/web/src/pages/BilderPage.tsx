@@ -15,7 +15,14 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconSettings, IconShare } from '@tabler/icons-react';
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconPlus,
+  IconSearch,
+  IconSettings,
+  IconShare,
+} from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { bilderSuche, type BilderOrdnerDto } from '@c4/shared';
@@ -58,14 +65,17 @@ function EventBadge({ eventId }: Readonly<{ eventId: string }>) {
 }
 
 /** Share button; does not open the folder it sits on. */
-function TeilenKnopf({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
+function TeilenKnopf({
+  ordner,
+  size = 'xl',
+}: Readonly<{ ordner: BilderOrdnerDto; size?: 'lg' | 'xl' }>) {
   const teilen = useBilderTeilen();
   return (
     <Tooltip label="Teilen">
       <ActionIcon
         variant="subtle"
         color="gray"
-        size="xl"
+        size={size}
         aria-label={`${ordner.eventName} teilen`}
         style={{ flexShrink: 0 }}
         onClick={(e) => {
@@ -114,7 +124,14 @@ function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
 function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
   return (
     <Table.ScrollContainer minWidth={480} visibleFrom="sm">
-      <Table verticalSpacing="xs" highlightOnHover>
+      <Table verticalSpacing="xs" highlightOnHover layout="fixed">
+        {/* Same widths in every year table; the Event column takes the rest. */}
+        <colgroup>
+          <col style={{ width: '12rem' }} />
+          <col />
+          <col style={{ width: '6rem' }} />
+          <col style={{ width: '4rem' }} />
+        </colgroup>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Datum</Table.Th>
@@ -151,7 +168,7 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
               </Table.Td>
               <Table.Td ta="right">{o.eventId && <EventBadge eventId={o.eventId} />}</Table.Td>
               <Table.Td ta="right">
-                <TeilenKnopf ordner={o} />
+                <TeilenKnopf ordner={o} size="lg" />
               </Table.Td>
             </Table.Tr>
           ))}
@@ -160,6 +177,12 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
     </Table.ScrollContainer>
   );
 }
+
+const gruppenId = (i: number) => `bilder-gruppe-${i}`;
+
+/** Smooth-scrolls the heading of the year group at index `i` into view. */
+const springeZu = (i: number) =>
+  document.getElementById(gruppenId(i))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 /** The photo folders of the events in OneDrive, newest first, grouped by year. */
 export function BilderPage() {
@@ -179,7 +202,7 @@ export function BilderPage() {
   const gruppen = useMemo(() => bilderNachJahr(gefiltert), [gefiltert]);
 
   return (
-    <Stack>
+    <Stack maw="60rem">
       <Group justify="space-between" wrap="nowrap" gap="xs">
         <Title order={2}>Bilder</Title>
         <Group gap="xs" wrap="nowrap">
@@ -242,17 +265,49 @@ export function BilderPage() {
           </Group>
           {alle.length === 0 && !liste.aktualisiert && <Text c="dimmed">Noch keine Ordner.</Text>}
           {alle.length > 0 && gefiltert.length === 0 && <Text c="dimmed">Keine Treffer.</Text>}
-          {gruppen.map((g) => (
-            <Stack key={g.jahr} gap="xs">
-              <Title order={3}>{g.jahr}</Title>
-              <SimpleGrid cols={1} hiddenFrom="sm">
-                {g.ordner.map((o) => (
-                  <BilderKarte key={o.id} ordner={o} />
-                ))}
-              </SimpleGrid>
-              <BilderTabelle ordner={g.ordner} />
-            </Stack>
-          ))}
+          {gruppen.map((g, i) => {
+            const darueber = gruppen[i - 1]?.jahr;
+            const darunter = gruppen[i + 1]?.jahr;
+            return (
+              <Stack key={g.jahr} gap="xs">
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Title order={3} id={gruppenId(i)} style={{ scrollMarginTop: 72 }}>
+                    {g.jahr}
+                  </Title>
+                  <Group gap="xs" wrap="nowrap">
+                    <Tooltip label={`Zu ${darueber ?? 'darüber'}`}>
+                      <ActionIcon
+                        variant="default"
+                        size="xl"
+                        aria-label={`Zu ${darueber ?? 'darüber'}`}
+                        disabled={i === 0}
+                        onClick={() => springeZu(i - 1)}
+                      >
+                        <IconChevronUp size={20} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={`Zu ${darunter ?? 'darunter'}`}>
+                      <ActionIcon
+                        variant="default"
+                        size="xl"
+                        aria-label={`Zu ${darunter ?? 'darunter'}`}
+                        disabled={i === gruppen.length - 1}
+                        onClick={() => springeZu(i + 1)}
+                      >
+                        <IconChevronDown size={20} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Group>
+                <SimpleGrid cols={1} hiddenFrom="sm">
+                  {g.ordner.map((o) => (
+                    <BilderKarte key={o.id} ordner={o} />
+                  ))}
+                </SimpleGrid>
+                <BilderTabelle ordner={g.ordner} />
+              </Stack>
+            );
+          })}
         </>
       )}
       {anlegen && <BilderOrdnerModal onClose={() => setAnlegen(false)} />}
