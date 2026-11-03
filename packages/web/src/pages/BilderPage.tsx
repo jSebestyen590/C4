@@ -3,7 +3,9 @@ import {
   ActionIcon,
   Anchor,
   Badge,
+  Box,
   Button,
+  Collapse,
   Group,
   Loader,
   Paper,
@@ -14,15 +16,17 @@ import {
   TextInput,
   Title,
   Tooltip,
+  UnstyledButton,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconChevronDown,
-  IconChevronUp,
   IconPlus,
   IconSearch,
   IconSettings,
   IconShare,
 } from '@tabler/icons-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { bilderSuche, type BilderOrdnerDto } from '@c4/shared';
@@ -178,12 +182,6 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
   );
 }
 
-const gruppenId = (i: number) => `bilder-gruppe-${i}`;
-
-/** Smooth-scrolls the heading of the year group at index `i` into view. */
-const springeZu = (i: number) =>
-  document.getElementById(gruppenId(i))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
 /** The photo folders of the events in OneDrive, newest first, grouped by year. */
 export function BilderPage() {
   const { can } = useAuth();
@@ -192,6 +190,13 @@ export function BilderPage() {
   const stand = liste.daten?.stand ? standText(liste.daten.stand) : null;
   const [suche, setSuche] = useState('');
   const [anlegen, setAnlegen] = useState(false);
+  // Explicit user toggles by group key; groups without an entry follow the initial rule.
+  const [umgeschaltet, setUmgeschaltet] = useState<Record<string, boolean>>({});
+  const theme = useMantineTheme();
+  // Read synchronously so phones do not flash expanded groups on the first render.
+  const telefon = useMediaQuery(`(max-width: calc(${theme.breakpoints.sm} - 0.0625em))`, false, {
+    getInitialValueInEffect: false,
+  });
 
   const verbunden = liste.daten?.verbunden ?? false;
   const alle = useMemo(() => liste.daten?.ordner ?? [], [liste.daten]);
@@ -200,6 +205,15 @@ export function BilderPage() {
     [alle, suche],
   );
   const gruppen = useMemo(() => bilderNachJahr(gefiltert), [gefiltert]);
+  // Initial rule is based on all groups, not the filtered ones.
+  const startOffen = useMemo(() => {
+    const keys = bilderNachJahr(alle).map((g) => g.jahr);
+    const aktuell = String(new Date().getFullYear());
+    const offen = keys.includes(aktuell) ? aktuell : keys[0];
+    return (jahr: string) => !telefon || jahr === offen;
+  }, [alle, telefon]);
+  const sucht = suche.trim() !== '';
+  const istOffen = (jahr: string) => sucht || (umgeschaltet[jahr] ?? startOffen(jahr));
 
   return (
     <Stack maw="60rem">
@@ -265,46 +279,49 @@ export function BilderPage() {
           </Group>
           {alle.length === 0 && !liste.aktualisiert && <Text c="dimmed">Noch keine Ordner.</Text>}
           {alle.length > 0 && gefiltert.length === 0 && <Text c="dimmed">Keine Treffer.</Text>}
-          {gruppen.map((g, i) => {
-            const darueber = gruppen[i - 1]?.jahr;
-            const darunter = gruppen[i + 1]?.jahr;
+          {gruppen.map((g) => {
+            const offen = istOffen(g.jahr);
+            const regionId = `bilder-gruppe-${g.jahr.replace(/\W/g, '-')}`;
             return (
-              <Stack key={g.jahr} gap="xs">
-                <Group justify="space-between" wrap="nowrap" gap="xs">
-                  <Title order={3} id={gruppenId(i)} style={{ scrollMarginTop: 72 }}>
-                    {g.jahr}
-                  </Title>
-                  <Group gap="xs" wrap="nowrap">
-                    <Tooltip label={`Zu ${darueber ?? 'darüber'}`}>
-                      <ActionIcon
-                        variant="default"
-                        size="xl"
-                        aria-label={`Zu ${darueber ?? 'darüber'}`}
-                        disabled={i === 0}
-                        onClick={() => springeZu(i - 1)}
-                      >
-                        <IconChevronUp size={20} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label={`Zu ${darunter ?? 'darunter'}`}>
-                      <ActionIcon
-                        variant="default"
-                        size="xl"
-                        aria-label={`Zu ${darunter ?? 'darunter'}`}
-                        disabled={i === gruppen.length - 1}
-                        onClick={() => springeZu(i + 1)}
-                      >
-                        <IconChevronDown size={20} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                </Group>
-                <SimpleGrid cols={1} hiddenFrom="sm">
-                  {g.ordner.map((o) => (
-                    <BilderKarte key={o.id} ordner={o} />
-                  ))}
-                </SimpleGrid>
-                <BilderTabelle ordner={g.ordner} />
+              <Stack key={g.jahr} gap={0}>
+                <Title order={3}>
+                  <UnstyledButton
+                    w="100%"
+                    mih={44}
+                    aria-expanded={offen}
+                    aria-controls={regionId}
+                    onClick={() => {
+                      if (!sucht) setUmgeschaltet((u) => ({ ...u, [g.jahr]: !offen }));
+                    }}
+                  >
+                    <Group justify="space-between" wrap="nowrap" gap="xs">
+                      <Group gap="xs" wrap="nowrap" align="baseline">
+                        <span>{g.jahr}</span>
+                        <Text span size="sm" fw={400} c="dimmed">
+                          {g.ordner.length} Ordner
+                        </Text>
+                      </Group>
+                      <IconChevronDown
+                        size={20}
+                        style={{
+                          flexShrink: 0,
+                          transition: 'transform 200ms ease',
+                          transform: offen ? 'rotate(180deg)' : 'none',
+                        }}
+                      />
+                    </Group>
+                  </UnstyledButton>
+                </Title>
+                <Collapse expanded={offen} id={regionId}>
+                  <Box pt="xs">
+                    <SimpleGrid cols={1} hiddenFrom="sm">
+                      {g.ordner.map((o) => (
+                        <BilderKarte key={o.id} ordner={o} />
+                      ))}
+                    </SimpleGrid>
+                    <BilderTabelle ordner={g.ordner} />
+                  </Box>
+                </Collapse>
               </Stack>
             );
           })}
