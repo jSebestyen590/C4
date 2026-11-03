@@ -163,6 +163,7 @@ import {
   OneDriveFehler,
   OrdnerExistiert,
   OrdnerFehlt,
+  type FreigabenStore,
   type OneDrive,
 } from './onedrive';
 import { serieSofortErzeugen, serienMarkeFreigeben } from './kalenderSerien';
@@ -220,6 +221,8 @@ export interface AppDeps {
   trichter: TrichterStore;
   benachrichtigungen: Benachrichtigungen;
   onedrive: OneDrive;
+  /** Cache of the anonymous sharing links of the photo folders. */
+  freigaben: FreigabenStore;
   /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
   appUrl?: string;
   profilbilder: Profilbilder;
@@ -486,18 +489,54 @@ export function createApp(deps: AppDeps) {
     if (err instanceof NichtVerbunden)
       throw new HTTPException(503, { message: 'OneDrive ist nicht verbunden.' });
     if (err instanceof OrdnerExistiert) throw new HTTPException(409, { message: err.message });
+    if (err instanceof OrdnerFehlt) throw new HTTPException(404, { message: err.message });
     if (err instanceof NichtKonfiguriert || err instanceof OneDriveFehler)
       throw new HTTPException(400, { message: err.message });
     console.error('OneDrive request failed', err);
     throw new HTTPException(502, { message: 'OneDrive ist gerade nicht erreichbar.' });
   };
 
-  /** Creates the event's folder and links it; throws the OneDrive errors. */
+  /** Creates the folder's anonymous sharing link (Microsoft returns the existing one) and caches it. */
+  const freigabeErstellen = async (ordnerId: string): Promise<string> => {
+    const url = await deps.onedrive.freigabeLink(ordnerId);
+    await deps.freigaben.setzen(ordnerId, url);
+    return url;
+  };
+
+  /** Like `freigabeErstellen`, but a failure is only logged and gives null. */
+  const freigabeVersuchen = async (ordnerId: string): Promise<string | null> => {
+    try {
+      return await freigabeErstellen(ordnerId);
+    } catch (err) {
+      console.error(`OneDrive sharing link of folder ${ordnerId} failed`, err);
+      return null;
+    }
+  };
+
+  /** Time budget and parallelism for creating missing sharing links while listing the folders. */
+  const FREIGABE_ZEITBUDGET_MS = 5000;
+  const FREIGABE_PARALLEL = 6;
+
+  /** Creates the missing links (limited by the budget); the folders left over are filled on later loads. */
+  const freigabenNachziehen = async (ids: readonly string[], links: Map<string, string>) => {
+    const frist = Date.now() + FREIGABE_ZEITBUDGET_MS;
+    const warteschlange = [...ids];
+    const arbeiter = async () => {
+      for (let id = warteschlange.shift(); id !== undefined; id = warteschlange.shift()) {
+        if (Date.now() >= frist) return;
+        const url = await freigabeVersuchen(id);
+        if (url) links.set(id, url);
+      }
+    };
+    await Promise.all(Array.from({ length: FREIGABE_PARALLEL }, arbeiter));
+  };
+
+  /** Creates the event's folder and links it; throws the OneDrive errors. Returns the link to open it. */
   const eventOrdnerAnlegen = async (event: EventDto): Promise<string> => {
     const { von, bis, eventName } = eventOrdnerDaten(event);
     const ordner = await deps.onedrive.ordnerAnlegen(ordnerName(von, bis, eventName));
     await deps.kalender.bilderOrdnerSetzen(event.id, { id: ordner.id, url: ordner.webUrl });
-    return ordner.webUrl;
+    return (await freigabeVersuchen(ordner.id)) ?? ordner.webUrl;
   };
 
   /** German hint for a OneDrive failure while saving an event; never throws. */
@@ -560,7 +599,8 @@ export function createApp(deps: AppDeps) {
   const bilderOrdnerAufraeumen = async (ordnerIds: readonly string[]) => {
     for (const id of ordnerIds) {
       try {
-        await deps.onedrive.loeschenWennLeer(id);
+        const ergebnis = await deps.onedrive.loeschenWennLeer(id);
+        if (ergebnis !== 'nicht-leer') await deps.freigaben.loeschen(id);
       } catch (err) {
         console.error(`OneDrive folder ${id} could not be cleaned up`, err);
       }
@@ -3016,6 +3056,14 @@ export function createApp(deps: AppDeps) {
         const events = new Map(
           (await deps.kalender.bilderOrdnerZuordnung()).map((z) => [z.ordnerId, z.eventId]),
         );
+        const links = await deps.freigaben.alle().catch((err) => {
+          console.error('Reading the sharing link cache failed', err);
+          return new Map<string, string>();
+        });
+        await freigabenNachziehen(
+          ordner.filter((o) => !links.has(o.id)).map((o) => o.id),
+          links,
+        );
         const liste: BilderOrdnerDto[] = ordner.map((o) => {
           const geparst = ordnerNameParsen(o.name);
           return {
@@ -3025,6 +3073,8 @@ export function createApp(deps: AppDeps) {
             von: geparst?.von ?? null,
             bis: geparst?.bis ?? null,
             eventName: geparst?.eventName ?? o.name,
+            genauigkeit: geparst?.genauigkeit ?? 'tag',
+            freigabeUrl: links.get(o.id) ?? null,
             eventId: events.get(o.id) ?? null,
           };
         });
@@ -3048,12 +3098,19 @@ export function createApp(deps: AppDeps) {
               von: geparst?.von ?? von,
               bis: geparst?.bis ?? bis ?? von,
               eventName: geparst?.eventName ?? eventName,
+              genauigkeit: geparst?.genauigkeit ?? 'tag',
+              freigabeUrl: await freigabeVersuchen(ordner.id),
               eventId: null,
             } satisfies BilderOrdnerDto,
             201,
           );
         },
       )
+      // Anonymous read-only sharing link of a folder (created and cached on first use).
+      .post('/bilder/ordner/:id/freigabe', auth, bilderLesen, async (c) => {
+        const url = await freigabeErstellen(c.req.param('id')).catch(onedriveFehler);
+        return c.json({ url });
+      })
       // ----- Bilder: OneDrive connection (admins)
       .get('/bilder/verbindung', auth, adminOnly, async (c) => c.json(await deps.onedrive.status()))
       .put(

@@ -30,7 +30,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   wieder. Rollback-Ziel nur für den Status-Verlauf: `0097_mitglieder_deaktiviert_am`.
 - 0101–0103 (Inventar-Teile) fügen `gegenstaende.teil_von`, `virtuell` und `anzahl_je` per `ALTER` hinzu; ihre Down-Dateien
   leeren nur die Werte. Rollback-Ziel nur für die Teile: `0100_mitglied_status_verlauf_bestand`.
-- 0104–0107 (Bilder): 0104 löscht die Tabelle `onedrive_verbindung`; 0105–0107 fügen `events.bilder_ordner_id`,
+- 0104–0108 (Bilder): 0104 löscht die Tabelle `onedrive_verbindung`, 0108 die Tabelle `bilder_freigaben`; 0105–0107 fügen `events.bilder_ordner_id`,
   `events.bilder_ordner_url` und `event_vorlagen.bilder_ordner` per `ALTER` hinzu, ihre Down-Dateien leeren nur die Werte.
   Rollback-Ziel nur für die Bilder: `0103_gegenstaende_anzahl_je`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`

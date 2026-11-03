@@ -7,18 +7,45 @@ nach Eventname und Datum; ein Klick öffnet den Ordner in OneDrive. Unterordner 
 
 ## Namensschema
 
-| Form                    | Beispiel                          |
-| ----------------------- | --------------------------------- |
-| Ein Tag                 | `2025-06-14_Sommerfest`           |
-| Range im selben Monat   | `2025-07-18-20_Festival`          |
-| Range über Monatsgrenze | `2025-07-30-08-02_Festival`       |
-| Range über Jahresgrenze | `2025-12-30-2026-01-02_Silvester` |
+| Form                    | Beispiel                          | Genauigkeit |
+| ----------------------- | --------------------------------- | ----------- |
+| Ein Tag                 | `2025-06-14_Sommerfest`           | `tag`       |
+| Range im selben Monat   | `2025-07-18-20_Festival`          | `tag`       |
+| Range über Monatsgrenze | `2025-07-30-08-02_Festival`       | `tag`       |
+| Range über Jahresgrenze | `2025-12-30-2026-01-02_Silvester` | `tag`       |
+| Nur ein Datum / Range   | `2025-06-14`, `2025-07-18-20`     | `tag`       |
+| Monat                   | `2025-07_Urlaub`, `2025-07`       | `monat`     |
+| Jahr                    | `2025_Archiv`, `2025`             | `jahr`      |
 
-`ordnerNameParsen` / `ordnerName` in `packages/shared/src/bilder.ts`. Erzeugt wird immer die kürzeste Form; Zeichen, die
-OneDrive nicht erlaubt (`" * : < > ? / \ |`), sowie Punkte und Leerzeichen am Ende fallen weg. Ordner ohne passendes
-Datum erscheinen trotzdem (unter „Ohne Datum“, mit Rohnamen). Die Suche (`bilderSuche`) verknüpft mehrere Wörter mit UND;
-ein Wort trifft den Eventnamen oder ein Datum (`2025-06-14`, `2025-06`, `2025`, `14.06.2025`, `14.06.`), bei einer Range
-jeden Tag dazwischen.
+`ordnerNameParsen` / `ordnerName` in `packages/shared/src/bilder.ts`. Ein Name nur aus Datum (oder `YYYY`/`YYYY-MM`)
+zeigt den Rohnamen als Eventnamen. Bei `monat`/`jahr` spannen `von`/`bis` den ganzen Monat bzw. das ganze Jahr
+(`genauigkeit` im DTO); die Seite zeigt „Juli 2025“ bzw. „2025“. Zur Anzeige werden Unterstriche im Eventnamen zu
+Leerzeichen (mehrfache Leerzeichen zusammengefasst); der Ordnername in OneDrive und `name` bleiben unverändert.
+
+Erzeugt wird immer die kürzeste Tagesform, und Leerzeichen im Eventnamen werden zu Unterstrichen
+(`2026-05-01_Erster_Mai`); das gilt für Event-Ordner, das Umbenennen (ein Ordner mit dem Soll-Namen wird nicht angefasst)
+und „Ordner anlegen“ samt Vorschau. Zeichen, die OneDrive nicht erlaubt (`" * : < > ? / \ |`), sowie Punkte und Leerzeichen
+am Ende fallen weg. Ordner ohne passendes Datum erscheinen trotzdem (unter „Ohne Datum“, mit Rohnamen). Die Suche
+(`bilderSuche`) verknüpft mehrere Wörter mit UND; ein Wort trifft den Eventnamen oder ein Datum (`2025-06-14`, `2025-06`,
+`2025`, `14.06.2025`, `14.06.`), bei einer Range jeden Tag dazwischen. Jahres-/Monatsordner treffen nur Jahres- bzw.
+Monatswörter, keine Einzeltage. Sortierung: `von` absteigend, bei gleichem `von` der genauere zuerst.
+
+## Freigabelinks und Teilen
+
+Die Ordner-Links von OneDrive (`onedrive.live.com/?cid=…&id=…`) öffnet iOS nur im Browser. Nur `1drv.ms`-Links übergibt iOS
+an die OneDrive-App. Deshalb gibt es pro Ordner einen anonymen Lese-Link: `POST /me/drive/items/{id}/createLink` mit
+`{ type: 'view', scope: 'anonymous' }` (`OneDrive.freigabeLink`; Microsoft liefert bei erneutem Aufruf den vorhandenen
+Link; 404 → `OrdnerFehlt`). **Alle mit dem Link können die Bilder ansehen**, ändern können sie nichts.
+
+- Cache: Tabelle `bilder_freigaben` (`ordner_id`, `url`, `erstellt`), Store `FreigabenStore` in `onedrive.ts`. Die Zeile
+  fällt weg, wenn der Ordner gelöscht wird (`loeschenWennLeer`).
+- `GET /api/bilder/ordner` füllt `freigabeUrl` aus dem Cache und legt fehlende Links an (6 parallel, höchstens ca. 5 s;
+  der Rest bleibt `null` und kommt beim nächsten Laden). Fehler je Ordner werden nur geloggt.
+- Neue Ordner (Anlegen-Dialog, Event-Ordner) bekommen ihren Link sofort; schlägt das fehl, bleibt er `null`.
+- `EventDto.bilderOrdnerUrl` ist der Freigabelink des Ordners, sonst die `webUrl`; `bilderOrdnerId` ist die OneDrive-ID.
+- Seiten öffnen `freigabeUrl ?? webUrl`. Der **Teilen**-Button (Bilder-Seite je Ordner, Event-Seite neben „Bilder“) teilt den
+  Link über `navigator.share` (Abbruch still), sonst in die Zwischenablage mit Hinweis. Ist der Link bekannt, wird sofort
+  geteilt (iOS verlangt die Geste); sonst fordert die Seite ihn zuerst per `POST /api/bilder/ordner/:id/freigabe` an.
 
 ## Events und Vorlagen
 
@@ -33,7 +60,7 @@ jeden Tag dazwischen.
   sonst bleibt er.
 - Fehler von OneDrive (nicht verbunden, Netz, Namenskonflikt) lassen das Speichern oder Löschen des Events nie scheitern;
   die Antwort trägt dann `bilderHinweis`, das Formular zeigt ihn an.
-- Spalten `events.bilder_ordner_id`, `events.bilder_ordner_url` (DTO `bilderOrdnerUrl`).
+- Spalten `events.bilder_ordner_id`, `events.bilder_ordner_url` (DTO `bilderOrdnerUrl`, `bilderOrdnerId`).
 
 ## Verbindung zu OneDrive
 
@@ -75,8 +102,9 @@ zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an di
 
 ## API
 
-- `GET /api/bilder/ordner` → `{ verbunden, ordner: [{ id, name, webUrl, von, bis, eventName, eventId }] }` (neueste zuerst)
+- `GET /api/bilder/ordner` → `{ verbunden, ordner: [{ id, name, webUrl, freigabeUrl, von, bis, eventName, genauigkeit, eventId }] }` (neueste zuerst)
 - `POST /api/bilder/ordner` `{ eventName, von, bis? }` → 201; 409 bei vorhandenem Namen, 503 ohne Verbindung
+- `POST /api/bilder/ordner/:id/freigabe` (`bilder:lesen`) → `{ url }` (legt den Link an und cached ihn); 404 ohne Ordner, 503 ohne Verbindung
 - `POST /api/kalender/events/:id/bilder-ordner` → `{ bilderOrdnerUrl }` (409, wenn schon einer existiert)
 - Verbindung (`users:manage`): `GET`/`PUT`/`DELETE /api/bilder/verbindung`, `POST /api/bilder/verbindung/login`
   `{ redirectUri, state }` → `{ url }`, `POST /api/bilder/verbindung/code` `{ code, redirectUri }`

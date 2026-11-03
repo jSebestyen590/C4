@@ -323,6 +323,7 @@ const event = (patch: Partial<EventDto> = {}): EventDto => ({
   ichBinNichtVerfuegbar: false,
   imAbo: false,
   bilderOrdnerUrl: null,
+  bilderOrdnerId: null,
   ...patch,
 });
 

@@ -42,7 +42,12 @@ export function BilderOrdnerModal({ onClose }: Readonly<{ onClose: () => void }>
         message: (
           <Stack gap={4}>
             <Text size="sm">Ordner angelegt.</Text>
-            <Anchor href={ordner.webUrl} target="_blank" rel="noopener" size="sm">
+            <Anchor
+              href={ordner.freigabeUrl ?? ordner.webUrl}
+              target="_blank"
+              rel="noopener"
+              size="sm"
+            >
               In OneDrive öffnen
             </Anchor>
           </Stack>

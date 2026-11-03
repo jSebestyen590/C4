@@ -1,5 +1,6 @@
 import {
   Alert,
+  ActionIcon,
   Anchor,
   Badge,
   Button,
@@ -12,8 +13,9 @@ import {
   Text,
   TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
-import { IconPlus, IconSearch, IconSettings } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconSettings, IconShare } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { bilderSuche, type BilderOrdnerDto } from '@c4/shared';
@@ -21,6 +23,10 @@ import { useAuth } from '../auth';
 import { BilderOrdnerModal } from '../BilderOrdnerModal';
 import { bilderDatum, bilderNachJahr } from '../bilderAnzeige';
 import { useBilderOrdner } from '../bilderDaten';
+import { useBilderTeilen } from '../bilderTeilen';
+
+/** Link that opens the folder: the sharing link opens the OneDrive app on phones. */
+const ordnerLink = (o: BilderOrdnerDto) => o.freigabeUrl ?? o.webUrl;
 
 const eventLink = (id: string) => `/kalender/events/${encodeURIComponent(id)}`;
 
@@ -39,21 +45,44 @@ function EventBadge({ eventId }: Readonly<{ eventId: string }>) {
   );
 }
 
+/** Share button; does not open the folder it sits on. */
+function TeilenKnopf({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
+  const teilen = useBilderTeilen();
+  return (
+    <Tooltip label="Teilen">
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size="xl"
+        aria-label={`${ordner.eventName} teilen`}
+        style={{ flexShrink: 0 }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void teilen(ordner.id, ordner.eventName, ordner.freigabeUrl);
+        }}
+      >
+        <IconShare size={20} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
 function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
-  const datum = bilderDatum(ordner.von, ordner.bis);
+  const datum = bilderDatum(ordner.von, ordner.bis, ordner.genauigkeit);
   return (
     <Paper
       withBorder
       p="md"
       component="a"
-      href={ordner.webUrl}
+      href={ordnerLink(ordner)}
       target="_blank"
       rel="noopener"
       style={{ color: 'inherit', textDecoration: 'none' }}
     >
-      <Group justify="space-between" wrap="nowrap" align="flex-start" gap="xs">
-        <Stack gap={2} style={{ minWidth: 0 }}>
-          <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+      <Group justify="space-between" wrap="nowrap" align="center" gap="xs">
+        <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+          <Text fw={700} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
             {ordner.eventName}
           </Text>
           {datum && (
@@ -63,6 +92,7 @@ function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
           )}
         </Stack>
         {ordner.eventId && <EventBadge eventId={ordner.eventId} />}
+        <TeilenKnopf ordner={ordner} />
       </Group>
     </Paper>
   );
@@ -78,6 +108,7 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
             <Table.Th>Datum</Table.Th>
             <Table.Th>Event</Table.Th>
             <Table.Th />
+            <Table.Th />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -87,16 +118,16 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
               style={{ cursor: 'pointer' }}
               onClick={(e) => {
                 if ((e.target as HTMLElement).closest('a')) return;
-                window.open(o.webUrl, '_blank', 'noopener');
+                window.open(ordnerLink(o), '_blank', 'noopener');
               }}
             >
               <Table.Td style={{ whiteSpace: 'nowrap' }}>
-                {bilderDatum(o.von, o.bis) ?? '–'}
+                {bilderDatum(o.von, o.bis, o.genauigkeit) ?? '–'}
               </Table.Td>
               <Table.Td>
                 {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
                 <a
-                  href={o.webUrl}
+                  href={ordnerLink(o)}
                   target="_blank"
                   rel="noopener"
                   style={{ color: 'inherit', textDecoration: 'none' }}
@@ -107,6 +138,9 @@ function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
                 </a>
               </Table.Td>
               <Table.Td ta="right">{o.eventId && <EventBadge eventId={o.eventId} />}</Table.Td>
+              <Table.Td ta="right">
+                <TeilenKnopf ordner={o} />
+              </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -133,18 +167,21 @@ export function BilderPage() {
 
   return (
     <Stack>
-      <Group justify="space-between" wrap="nowrap">
+      <Group justify="space-between" wrap="nowrap" gap="xs">
         <Title order={2}>Bilder</Title>
         <Group gap="xs" wrap="nowrap">
           {istAdmin && (
-            <Button
-              component={Link}
-              to="/bilder/einrichtung"
-              variant="default"
-              leftSection={<IconSettings size={18} />}
-            >
-              Einrichtung
-            </Button>
+            <Tooltip label="Einrichtung">
+              <ActionIcon
+                component={Link}
+                to="/bilder/einrichtung"
+                variant="default"
+                size="xl"
+                aria-label="Einrichtung"
+              >
+                <IconSettings size={20} />
+              </ActionIcon>
+            </Tooltip>
           )}
           {verbunden && (
             <Button leftSection={<IconPlus size={18} />} onClick={() => setAnlegen(true)}>

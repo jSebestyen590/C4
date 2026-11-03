@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { OneDriveStatusDto } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { Db } from './db/client';
-import { onedriveVerbindung } from './db/schema';
+import { bilderFreigaben, onedriveVerbindung } from './db/schema';
 
 // Access to the club's OneDrive photo folders through Microsoft Graph (delegated, personal account,
 // confidential client). The connection (client id/secret, tokens) lives in one DB row, see docs/bilder.md.
@@ -86,6 +86,11 @@ export interface OneDrive {
   ordnerAnlegen(name: string): Promise<OneDriveOrdner>;
   /** Throws `OrdnerFehlt` (404) or `OrdnerExistiert` (409). */
   umbenennen(id: string, name: string): Promise<OneDriveOrdner>;
+  /**
+   * Anonymous read-only sharing link (`1drv.ms`, opens the OneDrive app on phones). Microsoft returns
+   * the existing link when there is one. Throws `OrdnerFehlt` (404).
+   */
+  freigabeLink(id: string): Promise<string>;
   /** Deletes the folder (to the OneDrive recycle bin) only if it has no content. */
   loeschenWennLeer(id: string): Promise<'geloescht' | 'nicht-leer' | 'fehlt'>;
   /** Job task: renews the refresh token at most once a day; does nothing when not connected. */
@@ -131,6 +136,49 @@ export function createOneDriveStore(db: Db): OneDriveStore {
         .insert(onedriveVerbindung)
         .values({ id: VERBINDUNG_ID, ...daten })
         .onConflictDoUpdate({ target: onedriveVerbindung.id, set: daten });
+    },
+  };
+}
+
+/** Cache of the sharing links per OneDrive folder id (table `bilder_freigaben`). */
+export interface FreigabenStore {
+  /** Folder id -> sharing link. */
+  alle(): Promise<Map<string, string>>;
+  setzen(ordnerId: string, url: string): Promise<void>;
+  loeschen(ordnerId: string): Promise<void>;
+}
+
+export function createFreigabenStore(db: Db): FreigabenStore {
+  return {
+    async alle() {
+      const rows = await db.select().from(bilderFreigaben);
+      return new Map(rows.map((r) => [r.ordnerId, r.url]));
+    },
+    async setzen(ordnerId, url) {
+      await db
+        .insert(bilderFreigaben)
+        .values({ ordnerId, url })
+        .onConflictDoUpdate({ target: bilderFreigaben.ordnerId, set: { url } });
+    },
+    async loeschen(ordnerId) {
+      await db.delete(bilderFreigaben).where(eq(bilderFreigaben.ordnerId, ordnerId));
+    },
+  };
+}
+
+/** In-memory store for tests. */
+export function createMemoryFreigabenStore(): FreigabenStore & { karte: Map<string, string> } {
+  const karte = new Map<string, string>();
+  return {
+    karte,
+    async alle() {
+      return new Map(karte);
+    },
+    async setzen(ordnerId, url) {
+      karte.set(ordnerId, url);
+    },
+    async loeschen(ordnerId) {
+      karte.delete(ordnerId);
     },
   };
 }
@@ -498,6 +546,18 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
       if (res.status === 409) throw new OrdnerExistiert(name);
       if (!res.ok) throw await graphFehler(res);
       return alsOrdner((await res.json()) as GraphItem);
+    },
+
+    async freigabeLink(id) {
+      const res = await graph('POST', `/me/drive/items/${encodeURIComponent(id)}/createLink`, {
+        type: 'view',
+        scope: 'anonymous',
+      });
+      if (res.status === 404) throw new OrdnerFehlt();
+      if (!res.ok) throw await graphFehler(res);
+      const link = (await res.json()) as { link?: { webUrl?: string } };
+      if (!link.link?.webUrl) throw new Error('OneDrive createLink response without link');
+      return link.link.webUrl;
     },
 
     async loeschenWennLeer(id) {

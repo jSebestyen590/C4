@@ -1,11 +1,32 @@
-import { datumAnzeigen, type BilderOrdnerDto } from '@c4/shared';
+import { datumAnzeigen, type BilderOrdnerDto, type OrdnerGenauigkeit } from '@c4/shared';
 
 /**
  * German date text of a photo folder: `14.06.2025`, `18.–20.07.2025`, `30.07.–02.08.2025`,
- * `30.12.2025–02.01.2026`; null for folders without a date.
+ * `30.12.2025–02.01.2026`, `Juli 2025` / `2025` for month / year precision; null for folders without a date.
  */
-export function bilderDatum(von: string | null, bis: string | null): string | null {
+const MONATE = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
+export function bilderDatum(
+  von: string | null,
+  bis: string | null,
+  genauigkeit: OrdnerGenauigkeit = 'tag',
+): string | null {
   if (von === null) return null;
+  if (genauigkeit === 'jahr') return von.slice(0, 4);
+  if (genauigkeit === 'monat') return `${MONATE[Number(von.slice(5, 7)) - 1]} ${von.slice(0, 4)}`;
   if (bis === null || bis <= von) return datumAnzeigen(von);
   const [vj, vm, vt] = von.split('-') as [string, string, string];
   const [bj, bm] = bis.split('-') as [string, string, string];

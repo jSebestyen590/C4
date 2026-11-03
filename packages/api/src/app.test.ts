@@ -16,6 +16,7 @@ import {
   tagNachher,
   tagVorher,
   type DurchgaengeSeiteDto,
+  type BilderOrdnerDto,
   type EventDto,
   type TrichterUebersichtDto,
   type UmfrageDetailDto,
@@ -69,6 +70,7 @@ import {
 } from './posten';
 import { UebergabeKonflikt, type SchluesselDetails, type SchluesselStore } from './schluessel';
 import { createFakeOneDrive } from './onedrive.fake';
+import { createMemoryFreigabenStore } from './onedrive';
 import { createFakeTrichterStore } from './trichter.fake';
 import { createFakeUmfragenStore } from './umfragen.fake';
 
@@ -771,6 +773,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: inventar, verwendet: inventarVerwendet } = makeInventarFake();
   const { fake: kalender, dienste: kalenderDienste, bilder: kalenderBilder } = makeKalenderFake();
   const onedrive = createFakeOneDrive();
+  const freigaben = createMemoryFreigabenStore();
   const { fake: schluessel } = makeSchluesselFake();
   const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const { store: trichter } = createFakeTrichterStore();
@@ -814,6 +817,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     trichter,
     benachrichtigungen,
     onedrive,
+    freigaben,
     ...(appUrl && { appUrl }),
     profilbilder,
     pingDb,
@@ -832,6 +836,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     kalenderDienste,
     kalenderBilder,
     onedrive,
+    freigaben,
     schluessel,
     umfragen,
     umfragenListe,
@@ -3168,6 +3173,7 @@ describe('kalender', () => {
       verantwortlich: person,
       imAbo: false,
       bilderOrdnerUrl: null,
+      bilderOrdnerId: null,
       schichten: [
         {
           id: 's1',
@@ -3673,6 +3679,7 @@ describe('kalender', () => {
         verantwortlich: null,
         imAbo: false,
         bilderOrdnerUrl: null,
+        bilderOrdnerId: null,
       };
       t.kalender.event.mockResolvedValueOnce(einEvent);
       const res = await t.app.request('/api/kalender/events/e1', json('reader-token', 'GET'));
@@ -3739,6 +3746,7 @@ describe('kalender', () => {
       verantwortlich: null,
       imAbo: false,
       bilderOrdnerUrl: null,
+      bilderOrdnerId: null,
     });
 
     it("serves the public key and manages the caller's subscriptions", async () => {
@@ -5798,6 +5806,7 @@ describe('bilder', () => {
       verantwortlich: null,
       imAbo: false,
       bilderOrdnerUrl: null,
+      bilderOrdnerId: null,
       ...patch,
     }) as EventDto;
   const eventBody = {
@@ -5829,6 +5838,8 @@ describe('bilder', () => {
             von: '2026-07-18',
             bis: '2026-07-20',
             eventName: 'Festival',
+            genauigkeit: 'tag',
+            freigabeUrl: `https://1drv.ms/f/${neu.id}`,
             eventId: 'e9',
           },
           expect.objectContaining({ name: '2025-06-14_Alt', eventId: null, bis: '2025-06-14' }),
@@ -5840,6 +5851,49 @@ describe('bilder', () => {
           }),
         ],
       });
+    });
+
+    it('uses cached sharing links and creates only the missing ones', async () => {
+      const t = makeApp();
+      const a = t.onedrive.hinzufuegen('2025-06-14_A');
+      const b = t.onedrive.hinzufuegen('2025-06-15_B');
+      t.freigaben.karte.set(a.id, 'https://1drv.ms/f/cached');
+      const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
+      const ordner = ((await res.json()) as { ordner: BilderOrdnerDto[] }).ordner;
+      expect(ordner.find((o) => o.id === a.id)?.freigabeUrl).toBe('https://1drv.ms/f/cached');
+      expect(ordner.find((o) => o.id === b.id)?.freigabeUrl).toBe(`https://1drv.ms/f/${b.id}`);
+      expect(t.onedrive.freigaben).toBe(1);
+      expect(t.freigaben.karte.get(b.id)).toBe(`https://1drv.ms/f/${b.id}`);
+    });
+
+    it('logs a failing link and lists the folder with freigabeUrl null', async () => {
+      const t = makeApp();
+      const a = t.onedrive.hinzufuegen('2025-06-14_A');
+      const b = t.onedrive.hinzufuegen('2025-06-15_B');
+      const echt = t.onedrive.freigabeLink;
+      t.onedrive.freigabeLink = async (id) => {
+        if (id === a.id) throw new Error('kaputt');
+        return echt(id);
+      };
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
+      log.mockRestore();
+      expect(res.status).toBe(200);
+      const ordner = ((await res.json()) as { ordner: BilderOrdnerDto[] }).ordner;
+      expect(ordner.find((o) => o.id === a.id)?.freigabeUrl).toBeNull();
+      expect(ordner.find((o) => o.id === b.id)?.freigabeUrl).toBe(`https://1drv.ms/f/${b.id}`);
+    });
+
+    it('reports the precision of year and month folders', async () => {
+      const t = makeApp();
+      t.onedrive.hinzufuegen('2025_Archiv');
+      t.onedrive.hinzufuegen('2025-07');
+      const res = await t.app.request('/api/bilder/ordner', json('reader-token', 'GET'));
+      const ordner = ((await res.json()) as { ordner: BilderOrdnerDto[] }).ordner;
+      expect(ordner.map((o) => [o.name, o.genauigkeit])).toEqual([
+        ['2025-07', 'monat'],
+        ['2025_Archiv', 'jahr'],
+      ]);
     });
 
     it('answers verbunden: false when OneDrive is not connected', async () => {
@@ -5883,6 +5937,21 @@ describe('bilder', () => {
       ]);
     });
 
+    it('puts underscores between the words and caches the sharing link', async () => {
+      const t = makeApp();
+      const res = await t.app.request(
+        '/api/bilder/ordner',
+        json('reader-token', 'POST', { eventName: 'Erster Mai', von: '2026-05-01' }),
+      );
+      const dto = (await res.json()) as BilderOrdnerDto;
+      expect(dto).toMatchObject({
+        name: '2026-05-01_Erster_Mai',
+        eventName: 'Erster Mai',
+        freigabeUrl: `https://1drv.ms/f/${dto.id}`,
+      });
+      expect(t.freigaben.karte.get(dto.id)).toBe(dto.freigabeUrl);
+    });
+
     it('answers 409 for an existing name, 503 when not connected and 400 for bad input', async () => {
       const t = makeApp();
       t.onedrive.hinzufuegen('2026-06-14_Sommerfest');
@@ -5904,6 +5973,37 @@ describe('bilder', () => {
       const nicht = await t.app.request('/api/bilder/ordner', json('reader-token', 'POST', body));
       expect(nicht.status).toBe(503);
       expect(await nicht.json()).toEqual({ error: 'OneDrive ist nicht verbunden.' });
+    });
+  });
+
+  describe('Freigabe', () => {
+    it('creates, caches and returns the sharing link for every member', async () => {
+      const t = makeApp();
+      const o = t.onedrive.hinzufuegen('2025-06-14_A');
+      const res = await t.app.request(
+        `/api/bilder/ordner/${o.id}/freigabe`,
+        json('reader-token', 'POST'),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: `https://1drv.ms/f/${o.id}` });
+      expect(t.freigaben.karte.get(o.id)).toBe(`https://1drv.ms/f/${o.id}`);
+    });
+
+    it('answers 401, 503 and 404', async () => {
+      const t = makeApp();
+      const o = t.onedrive.hinzufuegen('2025-06-14_A');
+      const url = `/api/bilder/ordner/${o.id}/freigabe`;
+      expect((await t.app.request(url, { method: 'POST' })).status).toBe(401);
+      expect(
+        (
+          await t.app.request(
+            '/api/bilder/ordner/gibtsnicht/freigabe',
+            json('reader-token', 'POST'),
+          )
+        ).status,
+      ).toBe(404);
+      t.onedrive.zustand.verbunden = false;
+      expect((await t.app.request(url, json('reader-token', 'POST'))).status).toBe(503);
     });
   });
 
@@ -6055,6 +6155,16 @@ describe('bilder', () => {
       expect(t.kalenderBilder.get('e1')?.url).toBe('alt');
     });
 
+    it('does not rename an underscore folder of an event with spaces in its title', async () => {
+      const t = makeApp();
+      const alt = t.onedrive.hinzufuegen('2026-06-14_Erster_Mai');
+      t.kalenderBilder.set('e1', { id: alt.id, url: 'alt' });
+      speichern(t, bilderEvent({ anzeigeTitel: 'Erster Mai' }));
+      await t.app.request('/api/kalender/events/e1', json('admin-token', 'PUT', eventBody));
+      expect(t.onedrive.ordner.get(alt.id)?.name).toBe('2026-06-14_Erster_Mai');
+      expect(t.kalenderBilder.get('e1')?.url).toBe('alt');
+    });
+
     it('drops the link when the folder is gone and hints on a name clash', async () => {
       const t = makeApp();
       t.kalenderBilder.set('e1', { id: 'weg', url: 'u' });
@@ -6123,6 +6233,8 @@ describe('bilder', () => {
       const voll = t.onedrive.hinzufuegen('2026-06-15_Voll', 3);
       t.kalenderBilder.set('e1', { id: leer.id, url: 'u' });
       t.kalenderBilder.set('e2', { id: voll.id, url: 'u' });
+      t.freigaben.karte.set(leer.id, 'https://1drv.ms/f/leer');
+      t.freigaben.karte.set(voll.id, 'https://1drv.ms/f/voll');
       t.kalender.eventLoeschen.mockImplementation(async (id) => {
         t.kalenderBilder.delete(id);
         return true;
@@ -6131,10 +6243,12 @@ describe('bilder', () => {
         (await t.app.request('/api/kalender/events/e1', json('admin-token', 'DELETE'))).status,
       ).toBe(200);
       expect(t.onedrive.ordner.has(leer.id)).toBe(false);
+      expect(t.freigaben.karte.has(leer.id)).toBe(false);
       expect(
         (await t.app.request('/api/kalender/events/e2', json('admin-token', 'DELETE'))).status,
       ).toBe(200);
       expect(t.onedrive.ordner.has(voll.id)).toBe(true);
+      expect(t.freigaben.karte.has(voll.id)).toBe(true);
     });
 
     it('keeps folders when deleting fails and ignores OneDrive errors when deleting', async () => {
@@ -6185,7 +6299,8 @@ describe('bilder', () => {
       expect(res.status).toBe(201);
       const ordner = [...t.onedrive.ordner.values()][0]!;
       expect(ordner.name).toBe('2026-06-14_Sommerfest');
-      expect(await res.json()).toEqual({ bilderOrdnerUrl: ordner.webUrl });
+      expect(await res.json()).toEqual({ bilderOrdnerUrl: `https://1drv.ms/f/${ordner.id}` });
+      expect(t.freigaben.karte.get(ordner.id)).toBe(`https://1drv.ms/f/${ordner.id}`);
       expect(t.kalenderBilder.get('e1')?.id).toBe(ordner.id);
 
       const nochmal = await t.app.request(

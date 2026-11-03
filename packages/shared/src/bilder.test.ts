@@ -16,6 +16,7 @@ describe('ordnerNameParsen', () => {
       von: '2025-06-14',
       bis: '2025-06-14',
       eventName: 'Sommerfest',
+      genauigkeit: 'tag',
     });
   });
   it('parses a range in one month', () => {
@@ -36,15 +37,51 @@ describe('ordnerNameParsen', () => {
       bis: '2026-01-02',
     });
   });
-  it('keeps underscores and spaces in the event name', () => {
-    expect(ordnerNameParsen('2025-06-14_Open Air_Teil 2')?.eventName).toBe('Open Air_Teil 2');
+  it('shows underscores as spaces and collapses whitespace', () => {
+    expect(ordnerNameParsen('2025-06-14_Open_Air__Teil 2')?.eventName).toBe('Open Air Teil 2');
+    expect(ordnerNameParsen('2026-05-01_Erster_Mai')?.eventName).toBe('Erster Mai');
+  });
+  it('parses a name that is only a date', () => {
+    expect(ordnerNameParsen('2025-06-14')).toEqual({
+      von: '2025-06-14',
+      bis: '2025-06-14',
+      eventName: '2025-06-14',
+      genauigkeit: 'tag',
+    });
+    expect(ordnerNameParsen('2025-07-18-20')).toMatchObject({ bis: '2025-07-20' });
+    expect(ordnerNameParsen('2025-07-30-08-02')).toMatchObject({
+      von: '2025-07-30',
+      bis: '2025-08-02',
+      eventName: '2025-07-30-08-02',
+    });
+  });
+  it('parses year and month precision', () => {
+    expect(ordnerNameParsen('2025_Archiv_Fotos')).toEqual({
+      von: '2025-01-01',
+      bis: '2025-12-31',
+      eventName: 'Archiv Fotos',
+      genauigkeit: 'jahr',
+    });
+    expect(ordnerNameParsen('2024-02_Winter')).toEqual({
+      von: '2024-02-01',
+      bis: '2024-02-29',
+      eventName: 'Winter',
+      genauigkeit: 'monat',
+    });
+    expect(ordnerNameParsen('2025')).toMatchObject({ genauigkeit: 'jahr', eventName: '2025' });
+    expect(ordnerNameParsen('2025-07')).toMatchObject({
+      genauigkeit: 'monat',
+      bis: '2025-07-31',
+      eventName: '2025-07',
+    });
+    expect(ordnerNameParsen('2025-13_X')).toBeNull();
+    expect(ordnerNameParsen('2025_')).toBeNull();
   });
   it('rejects names without a valid date or name', () => {
     expect(ordnerNameParsen('Sommerfest')).toBeNull();
     expect(ordnerNameParsen('2025-02-30_X')).toBeNull();
     expect(ordnerNameParsen('2025-07-20-18_X')).toBeNull();
     expect(ordnerNameParsen('2025-07-31-02-30_X')).toBeNull();
-    expect(ordnerNameParsen('2025-06-14')).toBeNull();
     expect(ordnerNameParsen('2025-06-14_')).toBeNull();
     expect(ordnerNameParsen('2025-06-14 Fest')).toBeNull();
   });
@@ -59,8 +96,11 @@ describe('ordnerName', () => {
   });
   it('removes forbidden characters and trailing dots and spaces', () => {
     expect(ordnerName('2025-06-14', '2025-06-14', ' A/B: "C"? * <D>|\\ ... ')).toBe(
-      '2025-06-14_AB C D',
+      '2025-06-14_AB_C_D',
     );
+  });
+  it('puts underscores between the words', () => {
+    expect(ordnerName('2026-05-01', '2026-05-01', ' Erster   Mai ')).toBe('2026-05-01_Erster_Mai');
   });
   it('round-trips with the parser', () => {
     for (const [von, bis] of [
@@ -73,6 +113,7 @@ describe('ordnerName', () => {
         von,
         bis,
         eventName: 'Ein Event',
+        genauigkeit: 'tag',
       });
     }
   });
@@ -160,7 +201,18 @@ const o = (
   von: string | null,
   bis: string | null,
   eventName: string,
-): BilderOrdnerDto => ({ id: name, name, webUrl: 'u', von, bis, eventName, eventId: null });
+  genauigkeit: BilderOrdnerDto['genauigkeit'] = 'tag',
+): BilderOrdnerDto => ({
+  id: name,
+  name,
+  webUrl: 'u',
+  von,
+  bis,
+  eventName,
+  genauigkeit,
+  freigabeUrl: null,
+  eventId: null,
+});
 
 describe('bilderSuche', () => {
   const fest = o('2025-06-14_Sommerfest', '2025-06-14', '2025-06-14', 'Sommerfest');
@@ -195,6 +247,16 @@ describe('bilderSuche', () => {
     expect(bilderSuche(fest, 'sommer 2025')).toBe(true);
     expect(bilderSuche(fest, 'sommer 2024')).toBe(false);
   });
+  it('matches year and month folders only by year and month words', () => {
+    const jahr = o('2025_Archiv', '2025-01-01', '2025-12-31', 'Archiv', 'jahr');
+    const monat = o('2025-07_Mix', '2025-07-01', '2025-07-31', 'Mix', 'monat');
+    for (const t of ['2025']) expect(bilderSuche(jahr, t), t).toBe(true);
+    for (const t of ['2025-06', '14.06.2025', '14.06.', '2025-06-14', '6.2025'])
+      expect(bilderSuche(jahr, t), t).toBe(false);
+    for (const t of ['2025', '2025-07', '7.2025']) expect(bilderSuche(monat, t), t).toBe(true);
+    for (const t of ['2025-07-14', '14.07.2025', '14.07.', '2025-08'])
+      expect(bilderSuche(monat, t), t).toBe(false);
+  });
   it('matches folders without a date by raw name only', () => {
     expect(bilderSuche(ohne, 'alte')).toBe(true);
     expect(bilderSuche(ohne, '2025')).toBe(false);
@@ -215,5 +277,13 @@ describe('bilderSortieren', () => {
       'a',
       'b',
     ]);
+  });
+  it('puts the more precise folder first on the same start', () => {
+    const l = [
+      o('2025_J', '2025-01-01', '2025-12-31', 'J', 'jahr'),
+      o('2025-01_M', '2025-01-01', '2025-01-31', 'M', 'monat'),
+      o('2025-01-01_T', '2025-01-01', '2025-01-01', 'T'),
+    ];
+    expect(bilderSortieren(l).map((x) => x.eventName)).toEqual(['T', 'M', 'J']);
   });
 });

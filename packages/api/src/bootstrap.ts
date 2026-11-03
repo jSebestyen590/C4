@@ -13,7 +13,12 @@ import {
   createWebPushSender,
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
-import { createOneDrive, createOneDriveStore, registriereOneDriveAufgaben } from './onedrive';
+import {
+  createFreigabenStore,
+  createOneDrive,
+  createOneDriveStore,
+  registriereOneDriveAufgaben,
+} from './onedrive';
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
@@ -64,6 +69,7 @@ export function createProduction() {
     trichter: createTrichterStore(db),
     benachrichtigungen,
     onedrive,
+    freigaben: createFreigabenStore(db),
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     pingDb: async () => {

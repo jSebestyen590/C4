@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -16,6 +17,7 @@ import {
   IconEdit,
   IconPhoto,
   IconPlayerPlay,
+  IconShare,
   IconTrash,
   IconUserMinus,
   IconUserPlus,
@@ -49,6 +51,7 @@ import {
 } from '../KalenderAnzeige';
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
 import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
+import { useBilderTeilen } from '../bilderTeilen';
 import { useEigeneSub } from '../organisator';
 import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
@@ -72,6 +75,7 @@ export function EventDetailPage() {
   const event = useKalenderEvent(id);
   const dienstformen = useDienstformen();
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const bilderTeilen = useBilderTeilen();
   const [ordnerLaeuft, setOrdnerLaeuft] = useState(false);
   const verwalten = can('events:verwalten');
 
@@ -198,7 +202,7 @@ export function EventDetailPage() {
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
       {e.bilderOrdnerUrl ? (
-        <Group>
+        <Group gap="xs">
           <Button
             variant="default"
             component="a"
@@ -209,6 +213,20 @@ export function EventDetailPage() {
           >
             Bilder
           </Button>
+          {e.bilderOrdnerId && (
+            <Tooltip label="Teilen">
+              <ActionIcon
+                variant="default"
+                size="xl"
+                aria-label="Bilder teilen"
+                onClick={() =>
+                  void bilderTeilen(e.bilderOrdnerId!, e.anzeigeTitel, e.bilderOrdnerUrl)
+                }
+              >
+                <IconShare size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       ) : (
         can('bilder:lesen') &&

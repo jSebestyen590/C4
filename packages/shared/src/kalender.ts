@@ -691,8 +691,10 @@ export interface EventDto {
   ichBinNichtVerfuegbar: boolean;
   /** The caller added the event to their calendar feed. */
   imAbo: boolean;
-  /** Link to the event's OneDrive photo folder; null = none. */
+  /** Link to the event's OneDrive photo folder (the read-only sharing link when there is one); null = none. */
   bilderOrdnerUrl: string | null;
+  /** OneDrive id of the photo folder; null = none. */
+  bilderOrdnerId: string | null;
 }
 
 /** Title to display: the entered title, else the Kategorie's name, else "Event". */

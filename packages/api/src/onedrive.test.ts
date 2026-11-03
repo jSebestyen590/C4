@@ -306,6 +306,19 @@ describe('folders', () => {
     await expect(od.umbenennen('doppelt', 'N')).rejects.toBeInstanceOf(OrdnerExistiert);
   });
 
+  it('creates an anonymous read-only sharing link and maps 404', async () => {
+    const { od, m } = setup((a) =>
+      a.url.includes('weg') ? json(404) : json(201, { link: { webUrl: 'https://1drv.ms/f/abc' } }),
+    );
+    expect(await od.freigabeLink('x!1')).toBe('https://1drv.ms/f/abc');
+    expect(m.aufrufe[0]).toMatchObject({ methode: 'POST' });
+    expect(m.aufrufe[0]?.url).toBe(
+      'https://graph.microsoft.com/v1.0/me/drive/items/x!1/createLink',
+    );
+    expect(JSON.parse(m.aufrufe[0]?.body ?? '{}')).toEqual({ type: 'view', scope: 'anonymous' });
+    await expect(od.freigabeLink('weg')).rejects.toBeInstanceOf(OrdnerFehlt);
+  });
+
   it('deletes only empty folders', async () => {
     const { od, m } = setup((a) => {
       if (a.methode === 'DELETE') return json(204);

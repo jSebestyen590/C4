@@ -10,6 +10,11 @@ describe('bilderDatum', () => {
     expect(bilderDatum('2025-07-30', '2025-08-02')).toBe('30.07.–02.08.2025');
     expect(bilderDatum('2025-12-30', '2026-01-02')).toBe('30.12.2025–02.01.2026');
   });
+  it('formats year and month precision', () => {
+    expect(bilderDatum('2025-01-01', '2025-12-31', 'jahr')).toBe('2025');
+    expect(bilderDatum('2025-07-01', '2025-07-31', 'monat')).toBe('Juli 2025');
+    expect(bilderDatum('2025-03-01', '2025-03-31', 'monat')).toBe('März 2025');
+  });
   it('returns null without a date', () => {
     expect(bilderDatum(null, null)).toBeNull();
   });
@@ -22,6 +27,8 @@ const ordner = (name: string, von: string | null): BilderOrdnerDto => ({
   von,
   bis: von,
   eventName: name,
+  genauigkeit: 'tag',
+  freigabeUrl: null,
   eventId: null,
 });
 

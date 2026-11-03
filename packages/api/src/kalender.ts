@@ -52,6 +52,7 @@ import {
   dienste,
   dienstformen,
   eventKategorien,
+  bilderFreigaben,
   events,
   eventTeilnahmen,
   eventVorlagen,
@@ -651,9 +652,11 @@ async function eventsLaden(
       kategorieFarbe: eventKategorien.farbe,
       kategorieArt: eventKategorien.art,
       kategorieDauer: eventKategorien.dauer,
+      freigabeUrl: bilderFreigaben.url,
     })
     .from(events)
     .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
+    .leftJoin(bilderFreigaben, eq(bilderFreigaben.ordnerId, events.bilderOrdnerId))
     .where(bedingung)
     .orderBy(asc(events.beginn), asc(events.id));
   if (eventRows.length === 0) return [];
@@ -750,7 +753,7 @@ async function eventsLaden(
   });
 
   return eventRows.map(
-    ({ event: e, kategorieName, kategorieFarbe, kategorieArt, kategorieDauer }) => {
+    ({ event: e, kategorieName, kategorieFarbe, kategorieArt, kategorieDauer, freigabeUrl }) => {
       const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
       const zeilen = teilnahmen.get(e.id) ?? [];
       const nichtVerfuegbar = (absagen.get(e.id) ?? [])
@@ -793,7 +796,9 @@ async function eventsLaden(
         nichtVerfuegbar,
         ichBinNichtVerfuegbar: !!sub && nichtVerfuegbar.some((p) => p.sub === sub),
         imAbo: abonniert.has(e.id),
-        bilderOrdnerUrl: e.bilderOrdnerUrl ?? null,
+        // The anonymous sharing link opens the OneDrive app on phones; the plain web URL does not.
+        bilderOrdnerUrl: freigabeUrl ?? e.bilderOrdnerUrl ?? null,
+        bilderOrdnerId: e.bilderOrdnerId ?? null,
       };
     },
   );

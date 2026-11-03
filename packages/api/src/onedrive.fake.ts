@@ -68,11 +68,14 @@ export function createFakeOneDrive(start: { verbunden?: boolean; ordner?: string
     /** Codes handed to `codeEinloesen`. */
     codes: string[];
     tokenGepflegt: number;
+    /** Number of `freigabeLink` calls. */
+    freigaben: number;
   } = {
     ordner,
     zustand,
     codes: [],
     tokenGepflegt: 0,
+    freigaben: 0,
     hinzufuegen: neu,
     async status() {
       return status();
@@ -121,6 +124,12 @@ export function createFakeOneDrive(start: { verbunden?: boolean; ordner?: string
       o.name = name;
       o.webUrl = `https://onedrive.example/${encodeURIComponent(name)}`;
       return alsOrdner(o);
+    },
+    async freigabeLink(id) {
+      pruefen();
+      if (!ordner.has(id)) throw new OrdnerFehlt();
+      onedrive.freigaben += 1;
+      return `https://1drv.ms/f/${id}`;
     },
     async loeschenWennLeer(id) {
       pruefen();

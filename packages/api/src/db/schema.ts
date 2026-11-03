@@ -747,6 +747,13 @@ export const onedriveVerbindung = pgTable('onedrive_verbindung', {
   tokenErneuertAm: timestamp('token_erneuert_am', { withTimezone: true }),
 });
 
+/** Cached anonymous read-only sharing links of the OneDrive photo folders (key: OneDrive item id). */
+export const bilderFreigaben = pgTable('bilder_freigaben', {
+  ordnerId: text('ordner_id').primaryKey(),
+  url: text('url').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
 export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {
   id: text('id').primaryKey(),
