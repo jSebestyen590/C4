@@ -13,7 +13,6 @@ import {
 import {
   IconArchive,
   IconArchiveOff,
-  IconChevronLeft,
   IconEdit,
   IconMapPin,
   IconPlus,
@@ -46,6 +45,7 @@ import { zeitAnzeigen } from '../warenAnzeige';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 const gegenstandLink = (id: string) => `/inventar/gegenstaende/${encodeURIComponent(id)}`;
 
@@ -76,14 +76,7 @@ export function GegenstandDetailPage() {
     onError: (e) => fehlerAnzeigen(e),
   });
 
-  const zurueck = (
-    <Anchor component={Link} to="/inventar" size="sm">
-      <Group gap={4} wrap="nowrap">
-        <IconChevronLeft size={16} />
-        Zurück zum Inventar
-      </Group>
-    </Anchor>
-  );
+  const zurueck = <ZurueckLink to="/inventar">Zurück zum Inventar</ZurueckLink>;
 
   if (inv.laedt) return <Loader m="md" aria-label="Gegenstand wird geladen" />;
   const g = inv.gegenstaende.find((x) => x.id === id);
@@ -121,7 +114,11 @@ export function GegenstandDetailPage() {
     .sort((x, y) => Number(y.offen) - Number(x.offen));
   return (
     <Stack maw={900}>
-      {zurueck}
+      {eltern ? (
+        <ZurueckLink to={gegenstandLink(eltern.id)}>Zurück zu {eltern.name}</ZurueckLink>
+      ) : (
+        zurueck
+      )}
       <Group justify="space-between" wrap="nowrap" align="flex-start" gap={4}>
         <Stack gap={4} style={{ minWidth: 0 }}>
           <Title order={2} style={{ overflowWrap: 'anywhere' }}>

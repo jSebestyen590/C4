@@ -3,7 +3,6 @@ import {
   Anchor,
   Button,
   CopyButton,
-  Group,
   Loader,
   Paper,
   Stack,
@@ -11,7 +10,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconCheck, IconChevronLeft, IconCopy } from '@tabler/icons-react';
+import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -19,6 +18,7 @@ import { unwrap, useApi } from '../api';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { fehlerAnzeigen } from '../warenApi';
 import { kalenderInvalidieren, useKalenderToken } from '../kalenderDaten';
+import { ZurueckLink } from '../ZurueckLink';
 
 const feedUrl = (token: string) =>
   `${window.location.origin}/api/kalender/feed/${encodeURIComponent(token)}.ics`;
@@ -71,12 +71,7 @@ export function KalenderMeinKalenderPage() {
 
   return (
     <Stack maw={700} gap="md">
-      <Anchor component={Link} to="/kalender" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Kalender
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/kalender">Zurück zum Kalender</ZurueckLink>
       <Title order={2}>Mein Kalender</Title>
       <Text>
         Abonniere deinen Kalender in deiner Kalender-App. Alles erscheint dort automatisch, auch

@@ -14,7 +14,6 @@ import {
 import {
   IconArchive,
   IconArchiveOff,
-  IconChevronLeft,
   IconEdit,
   IconListDetails,
   IconSwitchHorizontal,
@@ -38,6 +37,7 @@ import { IfcoAufraeumen } from '../Aufraeumen';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** Detail of one IFCO: place (movable) and content. */
 export function IfcoDetailPage() {
@@ -67,14 +67,7 @@ export function IfcoDetailPage() {
     onError: (e) => fehlerAnzeigen(e),
   });
 
-  const zurueck = (
-    <Anchor component={Link} to="/inventar?ansicht=ifcos" size="sm">
-      <Group gap={4} wrap="nowrap">
-        <IconChevronLeft size={16} />
-        Alle IFCOs
-      </Group>
-    </Anchor>
-  );
+  const zurueck = <ZurueckLink to="/inventar?ansicht=ifcos">Alle IFCOs</ZurueckLink>;
 
   if (inv.laedt) return <Loader m="md" aria-label="IFCO wird geladen" />;
   const ifco = inv.ifcos.find((x) => x.id === id);

@@ -13,7 +13,6 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconChevronLeft } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -80,6 +79,7 @@ import {
   useVorlagen,
 } from '../kalenderDaten';
 import { ApiFehler, fehlerText, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 interface EventSchichtForm extends SchichtBasis {
   /** Set for Schichten that already exist, so their Dienste are kept. */
@@ -414,7 +414,7 @@ function Formular({
       setEntfernung(null);
       notifications.show({ color: 'green', message: 'Das Event wurde gespeichert.' });
       if (bilderHinweis) notifications.show({ color: 'yellow', message: bilderHinweis });
-      void navigate(`/kalender/events/${id}`);
+      void navigate(`/kalender/events/${id}`, { replace: true });
     } catch (e) {
       setEntfernung(null);
       setFehler(fehlerText(e, 'Das Event konnte nicht gespeichert werden.'));
@@ -731,16 +731,9 @@ export function EventFormularPage() {
   const fehler = event.isError || dienstformen.isError || kategorien.isError;
   return (
     <Stack maw={700}>
-      <Anchor
-        component={Link}
-        to={id ? `/kalender/events/${id}` : kalenderLink(suche.get('datum'))}
-        size="sm"
-      >
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          {id ? 'Zurück zum Event' : 'Zurück zum Kalender'}
-        </Group>
-      </Anchor>
+      <ZurueckLink to={id ? `/kalender/events/${id}` : kalenderLink(suche.get('datum'))}>
+        {id ? 'Zurück zum Event' : 'Zurück zum Kalender'}
+      </ZurueckLink>
       <Title order={2}>{id ? 'Event bearbeiten' : 'Event anlegen'}</Title>
       {fehler ? (
         <Alert color="red">Die Daten konnten nicht geladen werden.</Alert>

@@ -1,21 +1,9 @@
-import {
-  Alert,
-  Anchor,
-  Group,
-  Loader,
-  Paper,
-  Select,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from '@mantine/core';
-import { IconChevronLeft } from '@tabler/icons-react';
+import { Alert, Group, Loader, Paper, Select, Stack, Table, Text, Title } from '@mantine/core';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { heuteBerlin, type StatistikZeileDto } from '@c4/shared';
 import { PersonName } from '../KalenderAnzeige';
 import { useDienstformen, useKalenderStatistik } from '../kalenderDaten';
+import { ZurueckLink } from '../ZurueckLink';
 
 const ZURUECK_JAHRE = 6;
 
@@ -40,12 +28,7 @@ export function KalenderStatistikPage() {
 
   return (
     <Stack maw={900}>
-      <Anchor component={Link} to="/kalender" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Kalender
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/kalender">Zurück zum Kalender</ZurueckLink>
       <Title order={2}>Dienstschwein</Title>
       <Select
         label="Jahr"

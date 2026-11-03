@@ -2,7 +2,6 @@ import {
   Alert,
   Anchor,
   Button,
-  Group,
   Loader,
   MultiSelect,
   Select,
@@ -14,7 +13,6 @@ import {
 import { DateTimePicker } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconChevronLeft } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -27,6 +25,7 @@ import { ZahlFeld } from '../ZahlFeld';
 import { jePersonMl, literAnzeigen, trichterOptionLabel } from '../trichterAnzeige';
 import { trichterInvalidieren, useTrichterListe } from '../trichterDaten';
 import { fehlerText, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** Records a Durchgang: funnel, participants (not oneself), shared volume and time. */
 export function TrichterDurchgangPage() {
@@ -100,12 +99,7 @@ export function TrichterDurchgangPage() {
   const laden = trichterListe.isPending || mitglieder.isPending;
   return (
     <Stack maw={600}>
-      <Anchor component={Link} to="/trichter" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Trichter
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/trichter">Zurück zum Trichter</ZurueckLink>
       <Title order={2}>Trichtern eintragen</Title>
       {laden && <Loader m="md" />}
       {(trichterListe.isError || mitglieder.isError) && (

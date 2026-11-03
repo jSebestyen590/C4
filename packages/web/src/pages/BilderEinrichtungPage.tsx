@@ -1,8 +1,6 @@
 import {
   Alert,
-  Anchor,
   Button,
-  Group,
   Loader,
   Paper,
   PasswordInput,
@@ -12,15 +10,15 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconChevronLeft } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { datumAnzeigen, datumBerlin, type OneDriveStatusDto } from '@c4/shared';
 import { useApi } from '../api';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { bilderInvalidieren, useOneDriveStatus } from '../bilderDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 const STATE_KEY = 'bilder-oauth-state';
 
@@ -184,12 +182,7 @@ export function BilderEinrichtungPage() {
   const daten = status.data;
   return (
     <Stack maw={600}>
-      <Anchor component={Link} to="/bilder" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zu den Bildern
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/bilder">Zurück zu den Bildern</ZurueckLink>
       <Title order={2}>Bilder einrichten</Title>
       {status.isPending && <Loader m="md" aria-label="Status wird geladen" />}
       {status.isError && <Alert color="red">Der Status konnte nicht geladen werden.</Alert>}

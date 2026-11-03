@@ -1,21 +1,15 @@
-import { Anchor, Group, Stack, Tabs, Title } from '@mantine/core';
-import { IconChevronLeft } from '@tabler/icons-react';
+import { Stack, Tabs, Title } from '@mantine/core';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { GebindeTab } from '../GebindeTab';
 import { WarengruppenTab } from '../WarengruppenTab';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** Master data of the Lager: Warengruppen (tree) and Gebinde. */
 export function StammdatenPage() {
   const [tab, setTab] = useState<string | null>('warengruppen');
   return (
     <Stack maw={900}>
-      <Anchor component={Link} to="/lager" size="sm">
-        <Group gap={4} wrap="nowrap">
-          <IconChevronLeft size={16} />
-          Zurück zum Lager
-        </Group>
-      </Anchor>
+      <ZurueckLink to="/lager">Zurück zum Lager</ZurueckLink>
       <Title order={2}>Stammdaten</Title>
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List grow>
