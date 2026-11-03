@@ -12,6 +12,13 @@ import {
   verfuegbarkeitSchema,
   dienstformEingabeSchema,
   eventEingabeSchema,
+  bilderOrdnerAnlegenSchema,
+  bilderSortieren,
+  eventOrdnerDaten,
+  ordnerName,
+  ordnerNameParsen,
+  type BilderListeDto,
+  type BilderOrdnerDto,
   eventKategorieEingabeSchema,
   dienstTermine,
   eventTermine,
@@ -150,6 +157,17 @@ import {
   type KalenderStore,
 } from './kalender';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
+import {
+  NichtKonfiguriert,
+  NichtVerbunden,
+  OneDriveFehler,
+  OrdnerExistiert,
+  OrdnerFehlt,
+  type FreigabenStore,
+  type OneDrive,
+  type OneDriveOrdner,
+  type OrdnerCacheStore,
+} from './onedrive';
 import { serieSofortErzeugen, serienMarkeFreigeben } from './kalenderSerien';
 import {
   meldeAbsage,
@@ -204,6 +222,11 @@ export interface AppDeps {
   umfragen: UmfragenStore;
   trichter: TrichterStore;
   benachrichtigungen: Benachrichtigungen;
+  onedrive: OneDrive;
+  /** Cache of the anonymous sharing links of the photo folders. */
+  freigaben: FreigabenStore;
+  /** Last snapshot of the folder list, shown at once while the live list loads. */
+  ordnerCache: OrdnerCacheStore;
   /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
   appUrl?: string;
   profilbilder: Profilbilder;
@@ -274,6 +297,7 @@ export function createApp(deps: AppDeps) {
   const umfragenVerwalten = requirePermission('umfragen:verwalten');
   const trichterLesen = requirePermission('trichter:lesen');
   const trichterVerwalten = requirePermission('trichter:verwalten');
+  const bilderLesen = requirePermission('bilder:lesen');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -453,13 +477,196 @@ export function createApp(deps: AppDeps) {
     }
   };
 
+  // ----- Bilder (OneDrive photo folders, see docs/bilder.md)
+
+  /** Redirect URI of the OneDrive login: the SPA page, on the app's own origin or the local dev server. */
+  const redirectUriPruefen = (uri: string) => {
+    const ende = '/app/bilder/einrichtung';
+    const ok =
+      uri.endsWith(ende) &&
+      (!deps.appUrl || uri.startsWith(deps.appUrl) || uri === `http://localhost:5173${ende}`);
+    if (!ok) throw new HTTPException(400, { message: 'Ungültige Weiterleitungsadresse.' });
+  };
+
+  /** Maps OneDrive errors to HTTP statuses for routes that talk to OneDrive directly. */
+  const onedriveFehler = (err: unknown): never => {
+    if (err instanceof NichtVerbunden)
+      throw new HTTPException(503, { message: 'OneDrive ist nicht verbunden.' });
+    if (err instanceof OrdnerExistiert) throw new HTTPException(409, { message: err.message });
+    if (err instanceof OrdnerFehlt) throw new HTTPException(404, { message: err.message });
+    if (err instanceof NichtKonfiguriert || err instanceof OneDriveFehler)
+      throw new HTTPException(400, { message: err.message });
+    console.error('OneDrive request failed', err);
+    throw new HTTPException(502, { message: 'OneDrive ist gerade nicht erreichbar.' });
+  };
+
+  /** Creates the folder's anonymous sharing link (Microsoft returns the existing one) and caches it. */
+  const freigabeErstellen = async (ordnerId: string): Promise<string> => {
+    const url = await deps.onedrive.freigabeLink(ordnerId);
+    await deps.freigaben.setzen(ordnerId, url);
+    return url;
+  };
+
+  /** Like `freigabeErstellen`, but a failure is only logged and gives null. */
+  const freigabeVersuchen = async (ordnerId: string): Promise<string | null> => {
+    try {
+      return await freigabeErstellen(ordnerId);
+    } catch (err) {
+      console.error(`OneDrive sharing link of folder ${ordnerId} failed`, err);
+      return null;
+    }
+  };
+
+  /**
+   * Changes the stored folder list snapshot (add, rename, remove an entry) so it stays current without a
+   * live load. Keeps its `stand`; without a snapshot nothing is stored (it would look complete). Never throws.
+   */
+  const ordnerCacheAendern = async (
+    aendern: (liste: OneDriveOrdner[]) => OneDriveOrdner[],
+  ): Promise<void> => {
+    try {
+      const snapshot = await deps.ordnerCache.lesen();
+      if (snapshot) await deps.ordnerCache.schreiben(aendern(snapshot.ordner), snapshot.stand);
+    } catch (err) {
+      console.error('Updating the folder list cache failed', err);
+    }
+  };
+  const ordnerCacheEinfuegen = (ordner: OneDriveOrdner) =>
+    ordnerCacheAendern((liste) => [...liste.filter((o) => o.id !== ordner.id), ordner]);
+
+  /** Builds the DTO list; event links and sharing links come fresh from the DB, not from the snapshot. */
+  const bilderListe = async (ordner: readonly OneDriveOrdner[]): Promise<BilderOrdnerDto[]> => {
+    const [zuordnung, links] = await Promise.all([
+      deps.kalender.bilderOrdnerZuordnung(),
+      deps.freigaben.alle().catch((err) => {
+        console.error('Reading the sharing link cache failed', err);
+        return new Map<string, string>();
+      }),
+    ]);
+    const events = new Map(zuordnung.map((z) => [z.ordnerId, z.eventId]));
+    return bilderSortieren(
+      ordner.map((o) => {
+        const geparst = ordnerNameParsen(o.name);
+        return {
+          id: o.id,
+          name: o.name,
+          webUrl: o.webUrl,
+          von: geparst?.von ?? null,
+          bis: geparst?.bis ?? null,
+          eventName: geparst?.eventName ?? o.name,
+          genauigkeit: geparst?.genauigkeit ?? 'tag',
+          freigabeUrl: links.get(o.id) ?? null,
+          eventId: events.get(o.id) ?? null,
+        } satisfies BilderOrdnerDto;
+      }),
+    );
+  };
+
+  /** Creates the event's folder and links it; throws the OneDrive errors. Returns the link to open it. */
+  const eventOrdnerAnlegen = async (event: EventDto): Promise<string> => {
+    const { von, bis, eventName } = eventOrdnerDaten(event);
+    const ordner = await deps.onedrive.ordnerAnlegen(ordnerName(von, bis, eventName));
+    await deps.kalender.bilderOrdnerSetzen(event.id, { id: ordner.id, url: ordner.webUrl });
+    await ordnerCacheEinfuegen(ordner);
+    return (await freigabeVersuchen(ordner.id)) ?? ordner.webUrl;
+  };
+
+  /** German hint for a OneDrive failure while saving an event; never throws. */
+  const bilderHinweisFuer = (err: unknown, was: 'angelegt' | 'umbenannt'): string => {
+    if (err instanceof NichtVerbunden)
+      return `OneDrive ist nicht verbunden, der Bilder-Ordner wurde nicht ${was}.`;
+    if (err instanceof OrdnerExistiert)
+      return `${err.message} Der Bilder-Ordner wurde nicht ${was}.`;
+    console.error('OneDrive folder of an event failed', err);
+    return `Der Bilder-Ordner konnte nicht ${was} werden, OneDrive ist gerade nicht erreichbar.`;
+  };
+
+  /**
+   * After an event was saved: creates its folder when asked for and it has none, renames it when
+   * name or date changed. OneDrive trouble never fails the save; it comes back as a German hint.
+   */
+  const bilderOrdnerAbgleichen = async (
+    eventId: string,
+    anlegen: boolean,
+  ): Promise<string | undefined> => {
+    let was: 'angelegt' | 'umbenannt' = 'angelegt';
+    try {
+      const [event, verknuepft] = await Promise.all([
+        deps.kalender.event(eventId),
+        deps.kalender.bilderOrdner(eventId),
+      ]);
+      if (!event) return undefined;
+      if (verknuepft) {
+        was = 'umbenannt';
+        const { von, bis, eventName } = eventOrdnerDaten(event);
+        const soll = ordnerName(von, bis, eventName);
+        try {
+          const aktuell = (await deps.onedrive.ordnerListen()).find((o) => o.id === verknuepft.id);
+          if (!aktuell) throw new OrdnerFehlt();
+          if (aktuell.name !== soll) {
+            const neu = await deps.onedrive.umbenennen(verknuepft.id, soll);
+            await deps.kalender.bilderOrdnerSetzen(eventId, { id: neu.id, url: neu.webUrl });
+            await ordnerCacheEinfuegen(neu);
+          }
+          return undefined;
+        } catch (err) {
+          if (!(err instanceof OrdnerFehlt)) return bilderHinweisFuer(err, was);
+          // The folder is gone in OneDrive: drop the link, make a new folder if one is wanted.
+          await deps.kalender.bilderOrdnerSetzen(eventId, null);
+          await ordnerCacheAendern((liste) => liste.filter((o) => o.id !== verknuepft.id));
+          if (!anlegen) {
+            return 'Der Bilder-Ordner existiert in OneDrive nicht mehr, die Verknüpfung wurde entfernt.';
+          }
+          was = 'angelegt';
+        }
+      } else if (!anlegen) {
+        return undefined;
+      }
+      await eventOrdnerAnlegen(event);
+      return undefined;
+    } catch (err) {
+      return bilderHinweisFuer(err, was);
+    }
+  };
+
+  /** Deletes the folders of removed events if they are empty; errors are only logged. */
+  const bilderOrdnerAufraeumen = async (ordnerIds: readonly string[]) => {
+    for (const id of ordnerIds) {
+      try {
+        const ergebnis = await deps.onedrive.loeschenWennLeer(id);
+        if (ergebnis !== 'nicht-leer') {
+          await deps.freigaben.loeschen(id);
+          await ordnerCacheAendern((liste) => liste.filter((o) => o.id !== id));
+        }
+      } catch (err) {
+        console.error(`OneDrive folder ${id} could not be cleaned up`, err);
+      }
+    }
+  };
+
+  /**
+   * Runs a change that may delete events (event delete, series changes) and cleans up the folders of
+   * the events that are gone afterwards.
+   */
+  const mitOrdnerAufraeumen = async <T>(aktion: () => Promise<T>): Promise<T> => {
+    const vorher = await deps.kalender.bilderOrdnerZuordnung();
+    const ergebnis = await aktion();
+    if (vorher.length > 0) {
+      const nachher = new Set((await deps.kalender.bilderOrdnerZuordnung()).map((z) => z.eventId));
+      await bilderOrdnerAufraeumen(
+        vorher.filter((z) => !nachher.has(z.eventId)).map((z) => z.ordnerId),
+      );
+    }
+    return ergebnis;
+  };
+
   /** Runs a series change; a change that affects future events answers 409 with the counts. */
   const serienAenderung = async (
     c: { json: (body: unknown, status: 409) => Response },
     aktion: () => Promise<boolean>,
   ): Promise<Response | null> => {
     try {
-      gefunden(await aktion(), 'Serie nicht gefunden');
+      gefunden(await mitOrdnerAufraeumen(aktion), 'Serie nicht gefunden');
     } catch (err) {
       if (err instanceof SerieBetroffen) {
         return c.json(
@@ -2714,10 +2921,14 @@ export function createApp(deps: AppDeps) {
         eventsVerwalten,
         zValidator('json', eventEingabeSchema),
         async (c) => {
+          const daten = c.req.valid('json');
           const id = await deps.kalender
-            .eventAnlegen(c.req.valid('json'), c.get('user').sub)
+            .eventAnlegen(daten, c.get('user').sub)
             .catch(kalenderFehler);
-          return c.json({ id }, 201);
+          const bilderHinweis = daten.bilderOrdner
+            ? await bilderOrdnerAbgleichen(id, true)
+            : undefined;
+          return c.json({ id, ...(bilderHinweis && { bilderHinweis }) }, 201);
         },
       )
       .put(
@@ -2728,9 +2939,10 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           let aenderung: EventAenderung;
           const id = c.req.param('id');
+          const daten = c.req.valid('json');
           try {
             aenderung = gefunden(
-              await deps.kalender.eventAktualisieren(id, c.req.valid('json')),
+              await deps.kalender.eventAktualisieren(id, daten),
               'Event nicht gefunden',
             );
           } catch (err) {
@@ -2746,7 +2958,8 @@ export function createApp(deps: AppDeps) {
             const event = await deps.kalender.event(id);
             if (event) await meldeEventAenderung(deps.benachrichtigungen, event, aenderung, akteur);
           });
-          return c.json({ ok: true });
+          const bilderHinweis = await bilderOrdnerAbgleichen(id, daten.bilderOrdner === true);
+          return c.json({ ok: true, ...(bilderHinweis && { bilderHinweis }) });
         },
       )
       .put(
@@ -2847,10 +3060,167 @@ export function createApp(deps: AppDeps) {
       })
       .delete('/kalender/events/:id', auth, eventsVerwalten, async (c) => {
         gefunden(
-          await deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),
+          await mitOrdnerAufraeumen(() =>
+            deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),
+          ),
           'Event nicht gefunden',
         );
         return c.json({ ok: true });
+      })
+      // Everybody may create the photo folder of an existing event (not only event managers).
+      .post('/kalender/events/:id/bilder-ordner', auth, bilderLesen, async (c) => {
+        const event = gefunden(
+          await deps.kalender.event(c.req.param('id')),
+          'Event nicht gefunden',
+        );
+        if (await deps.kalender.bilderOrdner(event.id)) {
+          throw new HTTPException(409, { message: 'Das Event hat schon einen Bilder-Ordner.' });
+        }
+        const bilderOrdnerUrl = await eventOrdnerAnlegen(event).catch(onedriveFehler);
+        return c.json({ bilderOrdnerUrl }, 201);
+      })
+      // ----- Bilder
+      // `?quelle=cache` answers with the stored snapshot at once; without it the list is read from OneDrive
+      // (and stored as the new snapshot). Sharing links are created by a job, not here.
+      .get(
+        '/bilder/ordner',
+        auth,
+        bilderLesen,
+        zValidator('query', z.object({ quelle: z.enum(['cache']).optional() })),
+        async (c) => {
+          if (c.req.valid('query').quelle === 'cache') {
+            const [status, snapshot] = await Promise.all([
+              deps.onedrive.status(),
+              deps.ordnerCache.lesen(),
+            ]);
+            return c.json({
+              verbunden: status.verbunden,
+              ordner: snapshot && status.verbunden ? await bilderListe(snapshot.ordner) : [],
+              stand: snapshot && status.verbunden ? snapshot.stand.toISOString() : null,
+              ausCache: true,
+            } satisfies BilderListeDto);
+          }
+          let ordner;
+          try {
+            ordner = await deps.onedrive.ordnerListen();
+          } catch (err) {
+            if (err instanceof NichtVerbunden) {
+              return c.json({
+                verbunden: false,
+                ordner: [],
+                stand: null,
+                ausCache: false,
+              } satisfies BilderListeDto);
+            }
+            return onedriveFehler(err);
+          }
+          const stand = new Date();
+          await deps.ordnerCache.schreiben(ordner, stand).catch((err) => {
+            console.error('Storing the folder list cache failed', err);
+          });
+          return c.json({
+            verbunden: true,
+            ordner: await bilderListe(ordner),
+            stand: stand.toISOString(),
+            ausCache: false,
+          } satisfies BilderListeDto);
+        },
+      )
+      .post(
+        '/bilder/ordner',
+        auth,
+        bilderLesen,
+        zValidator('json', bilderOrdnerAnlegenSchema),
+        async (c) => {
+          const { eventName, von, bis } = c.req.valid('json');
+          const name = ordnerName(von, bis ?? von, eventName);
+          const ordner = await deps.onedrive.ordnerAnlegen(name).catch(onedriveFehler);
+          await ordnerCacheEinfuegen(ordner);
+          const geparst = ordnerNameParsen(ordner.name);
+          return c.json(
+            {
+              id: ordner.id,
+              name: ordner.name,
+              webUrl: ordner.webUrl,
+              von: geparst?.von ?? von,
+              bis: geparst?.bis ?? bis ?? von,
+              eventName: geparst?.eventName ?? eventName,
+              genauigkeit: geparst?.genauigkeit ?? 'tag',
+              freigabeUrl: await freigabeVersuchen(ordner.id),
+              eventId: null,
+            } satisfies BilderOrdnerDto,
+            201,
+          );
+        },
+      )
+      // Anonymous read-only sharing link of a folder (created and cached on first use).
+      .post('/bilder/ordner/:id/freigabe', auth, bilderLesen, async (c) => {
+        const url = await freigabeErstellen(c.req.param('id')).catch(onedriveFehler);
+        return c.json({ url });
+      })
+      // ----- Bilder: OneDrive connection (admins)
+      .get('/bilder/verbindung', auth, adminOnly, async (c) => c.json(await deps.onedrive.status()))
+      .put(
+        '/bilder/verbindung',
+        auth,
+        adminOnly,
+        zValidator(
+          'json',
+          z.object({
+            clientId: z.string().trim().min(1, 'Bitte gib die Client-ID an.').max(200),
+            clientSecret: z
+              .string()
+              .trim()
+              .max(500)
+              .optional()
+              .transform((v) => v || undefined),
+            basisPfad: z.string().trim().max(300).default(''),
+          }),
+        ),
+        async (c) => {
+          const { clientSecret, ...rest } = c.req.valid('json');
+          const akteur = await akteurMitName(c.get('user').sub);
+          await deps.onedrive
+            .konfigurieren({ ...rest, ...(clientSecret && { clientSecret }) }, akteur.name)
+            .catch(onedriveFehler);
+          return c.json(await deps.onedrive.status());
+        },
+      )
+      .post(
+        '/bilder/verbindung/login',
+        auth,
+        adminOnly,
+        zValidator(
+          'json',
+          z.object({ redirectUri: z.string().max(500), state: z.string().min(8).max(200) }),
+        ),
+        async (c) => {
+          const { redirectUri, state } = c.req.valid('json');
+          redirectUriPruefen(redirectUri);
+          const url = await deps.onedrive.loginUrl(redirectUri, state).catch(onedriveFehler);
+          return c.json({ url });
+        },
+      )
+      .post(
+        '/bilder/verbindung/code',
+        auth,
+        adminOnly,
+        zValidator(
+          'json',
+          z.object({ code: z.string().min(1).max(4000), redirectUri: z.string().max(500) }),
+        ),
+        async (c) => {
+          const { code, redirectUri } = c.req.valid('json');
+          redirectUriPruefen(redirectUri);
+          const akteur = await akteurMitName(c.get('user').sub);
+          return c.json(
+            await deps.onedrive.codeEinloesen(code, redirectUri, akteur.name).catch(onedriveFehler),
+          );
+        },
+      )
+      .delete('/bilder/verbindung', auth, adminOnly, async (c) => {
+        await deps.onedrive.trennen();
+        return c.json(await deps.onedrive.status());
       })
       // ----- Kalender: Dienste
       .post(

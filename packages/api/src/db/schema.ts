@@ -512,6 +512,9 @@ export const events = pgTable('events', {
   angelegtVon: text('angelegt_von'),
   angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
+  /** OneDrive photo folder of the event (id and link); null = none. */
+  bilderOrdnerId: text('bilder_ordner_id'),
+  bilderOrdnerUrl: text('bilder_ordner_url'),
 });
 export type EventRow = typeof events.$inferSelect;
 
@@ -642,6 +645,8 @@ export const eventVorlagen = pgTable('event_vorlagen', {
   teilnahmeStatus: text('teilnahme_status'),
   /** Days of multi-day and whole-day events (null = 1). */
   tage: integer('tage'),
+  /** Events from the Vorlage get a OneDrive photo folder by default (null = no). */
+  bilderOrdner: boolean('bilder_ordner'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventVorlageRow = typeof eventVorlagen.$inferSelect;
@@ -724,6 +729,36 @@ export const pushSchluessel = pgTable('push_schluessel', {
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
   erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** OneDrive connection of the club (single row, id `onedrive`); see onedrive.ts. */
+export const onedriveVerbindung = pgTable('onedrive_verbindung', {
+  id: text('id').primaryKey(),
+  clientId: text('client_id'),
+  clientSecret: text('client_secret'),
+  basisPfad: text('basis_pfad').notNull().default('Cloud4/Bilder'),
+  refreshToken: text('refresh_token'),
+  accessToken: text('access_token'),
+  accessAblauf: timestamp('access_ablauf', { withTimezone: true }),
+  konto: text('konto'),
+  verbundenVon: text('verbunden_von'),
+  verbundenAm: timestamp('verbunden_am', { withTimezone: true }),
+  fehler: text('fehler'),
+  tokenErneuertAm: timestamp('token_erneuert_am', { withTimezone: true }),
+});
+
+/** Cached anonymous read-only sharing links of the OneDrive photo folders (key: OneDrive item id). */
+export const bilderFreigaben = pgTable('bilder_freigaben', {
+  ordnerId: text('ordner_id').primaryKey(),
+  url: text('url').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Last snapshot of the OneDrive folder list (row id `liste`, `daten` = JSON array of id/name/webUrl). */
+export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
+  id: text('id').primaryKey(),
+  daten: text('daten').notNull(),
+  stand: timestamp('stand', { withTimezone: true }).notNull(),
 });
 
 /** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */

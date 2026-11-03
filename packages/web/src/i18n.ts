@@ -69,6 +69,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'umfragen:verwalten': 'Alle Umfragen verwalten',
   'trichter:lesen': 'Trichter sehen und Durchgänge eintragen',
   'trichter:verwalten': 'Trichter verwalten',
+  'bilder:lesen': 'Bilder ansehen und Ordner anlegen',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {

@@ -9,12 +9,15 @@ import {
   Stack,
   Text,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconBan,
   IconEdit,
+  IconPhoto,
   IconPlayerPlay,
+  IconShare,
   IconTrash,
   IconUserMinus,
   IconUserPlus,
@@ -48,10 +51,11 @@ import {
 } from '../KalenderAnzeige';
 import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kalenderDaten';
 import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
+import { useBilderTeilen } from '../bilderTeilen';
 import { useEigeneSub } from '../organisator';
 import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
-import { pruefen } from '../warenApi';
+import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
 type Dialog =
@@ -71,6 +75,8 @@ export function EventDetailPage() {
   const event = useKalenderEvent(id);
   const dienstformen = useDienstformen();
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const bilderTeilen = useBilderTeilen();
+  const [ordnerLaeuft, setOrdnerLaeuft] = useState(false);
   const verwalten = can('events:verwalten');
 
   const rueckweg = (
@@ -108,6 +114,21 @@ export function EventDetailPage() {
       color: 'green',
       message: abgesagt ? 'Das Event wurde abgesagt.' : 'Das Event findet wieder statt.',
     });
+  };
+
+  const ordnerAnlegen = async () => {
+    setOrdnerLaeuft(true);
+    try {
+      await pruefen(
+        await api.kalender.events[':id']['bilder-ordner'].$post({ param: { id: e.id } }),
+      );
+      await kalenderInvalidieren(qc);
+      notifications.show({ color: 'green', message: 'Bilder-Ordner angelegt.' });
+    } catch (err) {
+      fehlerAnzeigen(err);
+    } finally {
+      setOrdnerLaeuft(false);
+    }
   };
 
   return (
@@ -180,6 +201,48 @@ export function EventDetailPage() {
       )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
+      {e.bilderOrdnerUrl ? (
+        <Group gap="xs">
+          <Button
+            variant="default"
+            component="a"
+            href={e.bilderOrdnerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            leftSection={<IconPhoto size={18} />}
+          >
+            Bilder
+          </Button>
+          {e.bilderOrdnerId && (
+            <Tooltip label="Teilen">
+              <ActionIcon
+                variant="default"
+                size="xl"
+                aria-label="Bilder teilen"
+                onClick={() =>
+                  void bilderTeilen(e.bilderOrdnerId!, e.anzeigeTitel, e.bilderOrdnerUrl)
+                }
+              >
+                <IconShare size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      ) : (
+        can('bilder:lesen') &&
+        !e.abgesagt && (
+          <Group>
+            <Button
+              variant="default"
+              leftSection={<IconPhoto size={18} />}
+              loading={ordnerLaeuft}
+              onClick={() => void ordnerAnlegen()}
+            >
+              Bilder-Ordner anlegen
+            </Button>
+          </Group>
+        )
+      )}
       {e.art === 'teilnahme' && <EventTeilnahme event={e} />}
       {ueberlappungen.length > 0 && (
         <Alert color="yellow" title="Überschneidung">

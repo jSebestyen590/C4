@@ -3,6 +3,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Group,
   Loader,
   Paper,
@@ -70,6 +71,7 @@ interface VorlageWerte extends KopfWerte {
   tage: number;
   teilnahme: TeilnahmeWerte;
   schichten: VorlageSchichtForm[];
+  bilderOrdner: boolean;
 }
 
 const leereVorlage = (): VorlageWerte => ({
@@ -81,6 +83,7 @@ const leereVorlage = (): VorlageWerte => ({
   tage: 1,
   teilnahme: keineTeilnahme(),
   schichten: [],
+  bilderOrdner: false,
 });
 
 const werteAus = (v: VorlageDto): VorlageWerte => ({
@@ -90,6 +93,7 @@ const werteAus = (v: VorlageDto): VorlageWerte => ({
   beginnZeit: v.beginnZeit,
   endeZeit: v.endeZeit,
   tage: v.tage,
+  bilderOrdner: v.bilderOrdner ?? false,
   teilnahme: teilnahmeWerteAus(v.teilnahmeStatus),
   schichten: v.schichten.map((s) => ({
     key: neuerKey(),
@@ -145,6 +149,7 @@ function vorlageJson<S>(
     tage: dauer === 'eintaegig' ? 1 : w.tage,
     teilnahmeStatus: art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
     schichten,
+    bilderOrdner: w.bilderOrdner,
     archiviert,
   };
 }
@@ -279,6 +284,13 @@ function VorlageEditor({
           )}
         />
       )}
+      <Checkbox
+        size="md"
+        label="Bilder-Ordner anlegen"
+        description="Beim Anlegen eines Events aus dieser Vorlage ist „Bilder-Ordner in OneDrive anlegen“ vorausgewählt."
+        checked={werte.bilderOrdner}
+        onChange={(e) => setWerte({ ...werte, bilderOrdner: e.currentTarget.checked })}
+      />
       {fehler && <Alert color="red">{fehler}</Alert>}
       <Group grow preventGrowOverflow={false}>
         <Button variant="default" onClick={onFertig}>

@@ -183,6 +183,12 @@ Gespeichert wird das in `event_teilnahmen` mit `antwort = 'absage'` (`eingeladen
   Dienste entfernt Teilnahmen und Einladungen wie bisher, Absagen bleiben.
 - **Push:** „Dienste fehlen“ geht nicht an Personen, die für das Event abgesagt haben (auch nicht an die verantwortliche Person).
 
+## Bilder-Ordner
+
+Ein Event kann einen Ordner in OneDrive (`Cloud4/Bilder/Datum_Event`) haben: Checkbox im Formular (Vorgabe aus der Vorlage,
+`event_vorlagen.bilder_ordner`; Serien-Events nie automatisch) oder Button auf der Event-Seite. Umbenennen bei geänderten
+Titel/Datum, Löschen nur wenn leer. Details in `bilder.md`.
+
 ## Verantwortliche:r
 
 Ein Event hat optional **genau eine verantwortliche Person** (nur Mitglieder, keine Externen; nicht in Vorlagen und Serien).

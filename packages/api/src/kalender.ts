@@ -52,6 +52,7 @@ import {
   dienste,
   dienstformen,
   eventKategorien,
+  bilderFreigaben,
   events,
   eventTeilnahmen,
   eventVorlagen,
@@ -350,6 +351,12 @@ export interface KalenderStore {
   eventAktualisieren(id: string, daten: EventEingabe): Promise<EventAenderung | undefined>;
   /** False when missing; throws KalenderKonflikt while Dienste exist. */
   eventLoeschen(id: string): Promise<boolean>;
+  /** The event's OneDrive photo folder; null = none, undefined when the event does not exist. */
+  bilderOrdner(id: string): Promise<{ id: string; url: string } | null | undefined>;
+  /** Links the event to a photo folder (`null` removes the link). False when the event does not exist. */
+  bilderOrdnerSetzen(id: string, ordner: { id: string; url: string } | null): Promise<boolean>;
+  /** All events that have a photo folder (event id, OneDrive folder id). */
+  bilderOrdnerZuordnung(): Promise<{ eventId: string; ordnerId: string }[]>;
   /** Undefined when the event does not exist. */
   absageSetzen(id: string, abgesagt: boolean): Promise<AbsageErgebnis | undefined>;
 
@@ -645,9 +652,11 @@ async function eventsLaden(
       kategorieFarbe: eventKategorien.farbe,
       kategorieArt: eventKategorien.art,
       kategorieDauer: eventKategorien.dauer,
+      freigabeUrl: bilderFreigaben.url,
     })
     .from(events)
     .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
+    .leftJoin(bilderFreigaben, eq(bilderFreigaben.ordnerId, events.bilderOrdnerId))
     .where(bedingung)
     .orderBy(asc(events.beginn), asc(events.id));
   if (eventRows.length === 0) return [];
@@ -744,7 +753,7 @@ async function eventsLaden(
   });
 
   return eventRows.map(
-    ({ event: e, kategorieName, kategorieFarbe, kategorieArt, kategorieDauer }) => {
+    ({ event: e, kategorieName, kategorieFarbe, kategorieArt, kategorieDauer, freigabeUrl }) => {
       const kreis = teilnahmeKreisLesen(e.teilnahmeStatus);
       const zeilen = teilnahmen.get(e.id) ?? [];
       const nichtVerfuegbar = (absagen.get(e.id) ?? [])
@@ -787,6 +796,9 @@ async function eventsLaden(
         nichtVerfuegbar,
         ichBinNichtVerfuegbar: !!sub && nichtVerfuegbar.some((p) => p.sub === sub),
         imAbo: abonniert.has(e.id),
+        // The anonymous sharing link opens the OneDrive app on phones; the plain web URL does not.
+        bilderOrdnerUrl: freigabeUrl ?? e.bilderOrdnerUrl ?? null,
+        bilderOrdnerId: e.bilderOrdnerId ?? null,
       };
     },
   );
@@ -1541,6 +1553,31 @@ export function createKalenderStore(db: Db): KalenderStore {
         return true;
       });
     },
+    async bilderOrdner(id) {
+      const [e] = await db
+        .select({ id: events.bilderOrdnerId, url: events.bilderOrdnerUrl })
+        .from(events)
+        .where(eq(events.id, id));
+      if (!e) return undefined;
+      return e.id && e.url ? { id: e.id, url: e.url } : null;
+    },
+    async bilderOrdnerSetzen(id, ordner) {
+      const geaendert = await db
+        .update(events)
+        .set({ bilderOrdnerId: ordner?.id ?? null, bilderOrdnerUrl: ordner?.url ?? null })
+        .where(eq(events.id, id))
+        .returning({ id: events.id });
+      return geaendert.length > 0;
+    },
+    async bilderOrdnerZuordnung() {
+      const rows = await db
+        .select({ eventId: events.id, ordnerId: events.bilderOrdnerId })
+        .from(events)
+        .where(isNotNull(events.bilderOrdnerId));
+      return rows.flatMap((r) =>
+        r.ordnerId ? [{ eventId: r.eventId, ordnerId: r.ordnerId }] : [],
+      );
+    },
     async absageSetzen(id, abgesagt) {
       return db.transaction(async (tx) => {
         const [bisher] = await tx.select().from(events).where(eq(events.id, id));
@@ -2000,6 +2037,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           endeZeit: v.endeZeit,
           teilnahmeStatus: teilnahmeKreisLesen(v.teilnahmeStatus),
           tage: v.tage ?? 1,
+          bilderOrdner: v.bilderOrdner ?? false,
           archiviert: v.archiviert,
           schichten: schichtRows
             .filter((s) => s.vorlageId === v.id)
@@ -2043,6 +2081,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           endeZeit: daten.endeZeit,
           teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
           tage: daten.tage,
+          bilderOrdner: daten.bilderOrdner,
           archiviert: daten.archiviert ?? false,
         });
         await vorlageSchreiben(tx, id, daten);
@@ -2081,6 +2120,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             endeZeit: daten.endeZeit,
             teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
             tage: daten.tage,
+            bilderOrdner: daten.bilderOrdner,
             ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
           })
           .where(eq(eventVorlagen.id, id));

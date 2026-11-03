@@ -87,4 +87,9 @@ describe('permissions', () => {
       expect(hasPermission(['admin'], status, 'umfragen:verwalten')).toBe(true);
     }
   });
+  it('every status may see Bilder and create folders', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'bilder:lesen')).toBe(true);
+    }
+  });
 });
