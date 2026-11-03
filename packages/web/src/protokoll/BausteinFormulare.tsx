@@ -83,7 +83,7 @@ export function EventFormular({
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
   const dienstformName = (id: string) => dienstformen.nachId.get(id)?.name ?? 'Dienstform';
   const vorlageText = daten.vorlageId
-    ? `Vorlage: ${vorlage?.titel || kategorie?.name || 'gelöscht'}`
+    ? `Vorlage: ${vorlage?.titel || kategorie?.name || (vorlagen.isPending ? '…' : 'gelöscht')}`
     : 'Ohne Vorlage';
 
   if (!editierbar) {
@@ -145,14 +145,14 @@ export function EventFormular({
       />
       <Group grow {...zweiSpalten}>
         <DatumFeld
-          label={mehrtaegig || !vorlage ? 'Von' : 'Datum'}
+          label={mehrtaegig || !daten.vorlageId ? 'Von' : 'Datum'}
           data-fokus="datum"
           loeschbar={false}
           value={daten.datum ?? ''}
           onWert={(datum) => aendern((d) => eventDatumSetzen(d, datum || null, dauer, tage))}
           style={{ minWidth: 0 }}
         />
-        {(mehrtaegig || !vorlage || daten.bisDatum) && (
+        {(mehrtaegig || !daten.vorlageId || daten.bisDatum) && (
           <DatumFeld
             label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
             value={daten.bisDatum ?? ''}
