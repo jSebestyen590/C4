@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Box,
   Button,
   Checkbox,
@@ -13,10 +12,10 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowBackUp, IconChevronLeft, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconArrowBackUp, IconEdit, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { platzText, positionenGruppieren, rueckgabeSchema } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
@@ -42,6 +41,7 @@ import { jetztLokal } from '../inventurDaten';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { fehlerText, pruefen } from '../warenApi';
 import { zeitAnzeigen } from '../warenAnzeige';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** A row that opens `to` on click or Enter; the optional checkbox (44px wide hit area) toggles without opening. */
 function KlickZeile({
@@ -129,14 +129,7 @@ export function AusleiheDetailPage() {
     onError: (e) => setRueckFehler(fehlerText(e, 'Zurückgeben fehlgeschlagen.')),
   });
 
-  const zurueck = (
-    <Anchor component={Link} to="/inventar?ansicht=verliehen" size="sm">
-      <Group gap={4} wrap="nowrap">
-        <IconChevronLeft size={16} />
-        Alle Ausleihen
-      </Group>
-    </Anchor>
-  );
+  const zurueck = <ZurueckLink to="/inventar?ansicht=verliehen">Alle Ausleihen</ZurueckLink>;
 
   if (laedt || inv.laedt) return <Loader m="md" aria-label="Ausleihe wird geladen" />;
   if (fehler || inv.fehler || !ausleihe)

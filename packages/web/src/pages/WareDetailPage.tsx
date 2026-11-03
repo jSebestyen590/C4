@@ -1,19 +1,7 @@
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Button,
-  Group,
-  Loader,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Alert, Badge, Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import {
   IconArchive,
   IconArchiveOff,
-  IconChevronLeft,
   IconEdit,
   IconMinus,
   IconPlus,
@@ -21,7 +9,7 @@ import {
 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { gebindeBezeichnung, pfad } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { unwrap, useApi } from '../api';
@@ -35,6 +23,7 @@ import { WareHistorie } from '../WareHistorie';
 import { WareVerlauf } from '../WareVerlauf';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { useWarenStammdaten, type WareEintrag } from '../warenDaten';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** Detail of one Ware: master data, bookings, current stock, stock chart and history. */
 export function WareDetailPage() {
@@ -64,14 +53,7 @@ export function WareDetailPage() {
     onError: (e) => fehlerAnzeigen(e),
   });
 
-  const zurueck = (
-    <Anchor component={Link} to="/waren" size="sm">
-      <Group gap={4} wrap="nowrap">
-        <IconChevronLeft size={16} />
-        Alle Waren
-      </Group>
-    </Anchor>
-  );
+  const zurueck = <ZurueckLink to="/waren">Alle Waren</ZurueckLink>;
 
   if (daten.isPending || stamm.laedt) return <Loader m="md" aria-label="Ware wird geladen" />;
   if (daten.isError || stamm.fehler)

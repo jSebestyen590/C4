@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -14,7 +13,6 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBan,
-  IconChevronLeft,
   IconEdit,
   IconPlayerPlay,
   IconTrash,
@@ -24,7 +22,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   datumBerlin,
   schichtDetails,
@@ -54,6 +52,7 @@ import { useEigeneSub } from '../organisator';
 import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
 import { pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 type Dialog =
   | { art: 'eintragen'; schicht: SchichtDto; modus: EintragModus }
@@ -75,16 +74,9 @@ export function EventDetailPage() {
   const verwalten = can('events:verwalten');
 
   const rueckweg = (
-    <Anchor
-      component={Link}
-      to={kalenderLink(event.data ? datumBerlin(event.data.beginn) : null)}
-      size="sm"
-    >
-      <Group gap={4} wrap="nowrap">
-        <IconChevronLeft size={16} />
-        Zurück zum Kalender
-      </Group>
-    </Anchor>
+    <ZurueckLink to={kalenderLink(event.data ? datumBerlin(event.data.beginn) : null)}>
+      Zurück zum Kalender
+    </ZurueckLink>
   );
   if (event.isError || dienstformen.isError) {
     return (
