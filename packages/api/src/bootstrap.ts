@@ -26,6 +26,7 @@ import { registriereKalenderSerien } from './kalenderSerien';
 import { createSchluesselStore } from './schluessel';
 import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
+import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
@@ -70,6 +71,7 @@ export function createProduction() {
     schluessel: createSchluesselStore(db),
     umfragen,
     trichter: createTrichterStore(db),
+    protokolle: createProtokolleStore(db),
     benachrichtigungen,
     onedrive,
     freigaben,

@@ -1,5 +1,19 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, ne, or } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  or,
+} from 'drizzle-orm';
 import {
   ausVorlage,
   berlinZuUtc,
@@ -64,6 +78,7 @@ import {
   kalenderTokens,
   mitglieder,
   type MitgliedRow,
+  protokolle,
   schichtBedarfe,
   schichten,
   serienTermine,
@@ -335,6 +350,20 @@ export interface AbsageErgebnis {
   teilnehmerSubs: string[];
 }
 
+/** An event in brief, as the minutes (Protokolle) need it. */
+export interface EventKurz {
+  id: string;
+  /** What to show: the title, else the Kategorie's name. */
+  titel: string;
+  /** ISO instants. */
+  beginn: string;
+  ende: string;
+  abgesagt: boolean;
+  kategorie: { id: string; name: string; farbe: string } | null;
+  /** The Kategorie is a "Sitzung mit Protokoll". */
+  protokoll: boolean;
+}
+
 export interface KalenderStore {
   // ----- Events
   /**
@@ -351,6 +380,15 @@ export interface KalenderStore {
   eventAktualisieren(id: string, daten: EventEingabe): Promise<EventAenderung | undefined>;
   /** False when missing; throws KalenderKonflikt while Dienste exist. */
   eventLoeschen(id: string): Promise<boolean>;
+  /** The given events in brief (unknown ids are left out). */
+  eventsKurz(ids: readonly string[]): Promise<EventKurz[]>;
+  /**
+   * Events of Kategorien with `protokoll` that are not cancelled and begin at or before `bis`, newest
+   * first, at most `limit`, without the events in `ausser` (those that already have minutes).
+   */
+  sitzungen(bis: Date, limit: number, ausser: readonly string[]): Promise<EventKurz[]>;
+  /** The members' own answers (`teilnahme`/`absage`) to the event, by member sub; no entry = no answer. */
+  teilnahmeAntworten(eventId: string): Promise<Record<string, TeilnahmeAntwort>>;
   /** The event's OneDrive photo folder; null = none, undefined when the event does not exist. */
   bilderOrdner(id: string): Promise<{ id: string; url: string } | null | undefined>;
   /** Links the event to a photo folder (`null` removes the link). False when the event does not exist. */
@@ -1359,6 +1397,15 @@ export function createKalenderStore(db: Db): KalenderStore {
       for (const s of schichtRows) if (mit.has(s.id)) mitDiensten.add(s.eventId);
     }
     // An absage ("nicht verfügbar") of a Dienste event is no entry: the event stays unchanged.
+    // Events with minutes are never touched by a series change.
+    const mitProtokoll = new Set(
+      (
+        await db
+          .select({ eventId: protokolle.eventId })
+          .from(protokolle)
+          .where(inArray(protokolle.eventId, ids))
+      ).map((p) => p.eventId),
+    );
     const mitTeilnahme = new Set(rows.filter((r) => r.teilnahmeStatus !== null).map((r) => r.id));
     const mitAntworten = new Set(
       (
@@ -1374,7 +1421,11 @@ export function createKalenderStore(db: Db): KalenderStore {
       id: r.id,
       serie: r.serie ?? '',
       datum: datumBerlin(r.beginn.toISOString()),
-      unveraendert: r.angepasst !== true && !mitDiensten.has(r.id) && !mitAntworten.has(r.id),
+      unveraendert:
+        r.angepasst !== true &&
+        !mitDiensten.has(r.id) &&
+        !mitAntworten.has(r.id) &&
+        !mitProtokoll.has(r.id),
     }));
   };
   const pruefeBetroffene = (kuenftig: KuenftigesSerienEvent[], bestehende?: SerienBestehende) => {
@@ -1401,6 +1452,29 @@ export function createKalenderStore(db: Db): KalenderStore {
       .from(eventVorlagen)
       .where(eq(eventVorlagen.id, id));
     if (!v || v.archiviert) throw new KalenderUngueltig('Die Vorlage gibt es nicht.');
+  };
+
+  /** Events (with the Kategorie, if any) matching the condition, newest first; `limit` caps the number. */
+  const eventsKurzLesen = async (
+    bedingung: ReturnType<typeof and>,
+    limit?: number,
+  ): Promise<EventKurz[]> => {
+    const abfrage = db
+      .select({ e: events, k: eventKategorien })
+      .from(events)
+      .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
+      .where(bedingung)
+      .orderBy(desc(events.beginn), desc(events.id));
+    const rows = await (limit === undefined ? abfrage : abfrage.limit(limit));
+    return rows.map(({ e, k }) => ({
+      id: e.id,
+      titel: eventTitel(e, k),
+      beginn: e.beginn.toISOString(),
+      ende: e.ende.toISOString(),
+      abgesagt: e.abgesagt,
+      kategorie: k && { id: k.id, name: k.name, farbe: k.farbe },
+      protokoll: k !== null && artVon(k) === 'teilnahme' && k.protokoll === true,
+    }));
   };
 
   const store: KalenderStore = {
@@ -1530,6 +1604,11 @@ export function createKalenderStore(db: Db): KalenderStore {
           .from(events)
           .where(eq(events.id, id));
         if (!vorhanden) return false;
+        const [protokoll] = await tx
+          .select({ id: protokolle.id })
+          .from(protokolle)
+          .where(eq(protokolle.eventId, id));
+        if (protokoll) throw new KalenderKonflikt('Zu dieser Sitzung gibt es ein Protokoll.');
         const schichtIds = (
           await tx.select({ id: schichten.id }).from(schichten).where(eq(schichten.eventId, id))
         ).map((s) => s.id);
@@ -1552,6 +1631,30 @@ export function createKalenderStore(db: Db): KalenderStore {
         await tx.delete(events).where(eq(events.id, id));
         return true;
       });
+    },
+    async eventsKurz(ids) {
+      if (ids.length === 0) return [];
+      return eventsKurzLesen(inArray(events.id, [...ids]));
+    },
+    async sitzungen(bis, limit, ausser) {
+      return eventsKurzLesen(
+        and(
+          eq(eventKategorien.protokoll, true),
+          eq(events.abgesagt, false),
+          lte(events.beginn, bis),
+          ausser.length > 0 ? notInArray(events.id, [...ausser]) : undefined,
+        ),
+        limit,
+      );
+    },
+    async teilnahmeAntworten(eventId) {
+      const rows = await db
+        .select({ sub: eventTeilnahmen.mitgliedSub, antwort: eventTeilnahmen.antwort })
+        .from(eventTeilnahmen)
+        .where(eq(eventTeilnahmen.eventId, eventId));
+      const antworten: Record<string, TeilnahmeAntwort> = {};
+      for (const r of rows) if (r.antwort) antworten[r.sub] = r.antwort;
+      return antworten;
     },
     async bilderOrdner(id) {
       const [e] = await db
@@ -1973,6 +2076,7 @@ export function createKalenderStore(db: Db): KalenderStore {
           teilnahmeStatus:
             artVon(k) === 'teilnahme' ? teilnahmeKreisLesen(k.teilnahmeStatus) : null,
           dauer: dauerVon(k),
+          protokoll: artVon(k) === 'teilnahme' && k.protokoll === true,
           benutzt: benutzteIds.has(k.id),
           archiviert: k.archiviert,
         }));
@@ -1986,6 +2090,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         art: daten.art,
         teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
         dauer: daten.dauer,
+        protokoll: daten.protokoll,
         archiviert: daten.archiviert ?? false,
       });
       return id;
@@ -2013,6 +2118,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
             // Existing events keep their times; only new and edited ones follow the new `dauer`.
             dauer: daten.dauer,
+            protokoll: daten.protokoll,
             ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
           })
           .where(eq(eventKategorien.id, id));

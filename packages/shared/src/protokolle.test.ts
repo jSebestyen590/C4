@@ -1,0 +1,424 @@
+import { describe, expect, it } from 'vitest';
+import {
+  BAUSTEIN_TYPEN,
+  PROTOKOLL_MAX_BYTES,
+  PROTOKOLL_MAX_TIEFE,
+  bausteinErzeugen,
+  bausteinLeer,
+  beschlussErgebnisVorschlag,
+  protokollAnlegenSchema,
+  protokollDokumentPruefen,
+  protokollDokumentSchema,
+  protokollEventIds,
+  protokollKopfLeer,
+  protokollKopfSchema,
+  protokollLeer,
+  protokollSpeichernSchema,
+  protokollVorschlag,
+  teilnahmeAbleiten,
+  type BausteinKnoten,
+  type ProtokollDokument,
+  type ProtokollEventInfo,
+  type ProtokollKnoten,
+} from './protokolle';
+
+const absatz = (text: string): ProtokollKnoten => ({
+  type: 'paragraph',
+  content: [{ type: 'text', text }],
+});
+
+function dokument(teile: {
+  vergangenes?: ProtokollKnoten[];
+  gegenwaertiges?: ProtokollKnoten[];
+  zukuenftiges?: ProtokollKnoten[];
+}): ProtokollDokument {
+  const doc = protokollLeer();
+  doc.content[0]!.content = teile.vergangenes ?? [{ type: 'paragraph' }];
+  doc.content[1]!.content = teile.gegenwaertiges ?? [{ type: 'paragraph' }];
+  doc.content[2]!.content = teile.zukuenftiges ?? [{ type: 'paragraph' }];
+  return doc;
+}
+
+const eventBaustein = (
+  daten: Partial<ReturnType<typeof bausteinLeer<'bausteinEvent'>>>,
+  text = '',
+): BausteinKnoten<'bausteinEvent'> =>
+  bausteinErzeugen('bausteinEvent', { ...bausteinLeer('bausteinEvent'), ...daten }, [absatz(text)]);
+
+const info = (beginn: string, ende: string, extra: Partial<ProtokollEventInfo> = {}) => ({
+  titel: 'Barabend',
+  beginn,
+  ende,
+  abgesagt: false,
+  ...extra,
+});
+
+describe('protokollLeer', () => {
+  it('has the three sections in order, each with an empty paragraph', () => {
+    const doc = protokollLeer();
+    expect(doc.content.map((a) => a.attrs?.art)).toEqual([
+      'vergangenes',
+      'gegenwaertiges',
+      'zukuenftiges',
+    ]);
+    expect(doc.content.every((a) => a.content?.length === 1)).toBe(true);
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+});
+
+describe('protokollDokumentPruefen', () => {
+  it('accepts valid Bausteine of every type with free text', () => {
+    const doc = dokument({
+      vergangenes: [bausteinErzeugen('bausteinVergangenesEvent')],
+      gegenwaertiges: [
+        bausteinErzeugen('bausteinAnwaerter'),
+        bausteinErzeugen('bausteinBeschluss'),
+      ],
+      zukuenftiges: [eventBaustein({ name: 'Barabend', datum: '2026-12-01' }, 'Text')],
+    });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+    expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it('knows empty defaults for every Baustein type', () => {
+    for (const typ of BAUSTEIN_TYPEN) {
+      const doc = dokument({ gegenwaertiges: [bausteinErzeugen(typ)] });
+      expect(protokollDokumentPruefen(doc), typ).toBeNull();
+    }
+  });
+
+  it('rejects documents that are not exactly the three sections in order', () => {
+    expect(protokollDokumentPruefen(null)).not.toBeNull();
+    expect(protokollDokumentPruefen({ type: 'doc', content: [] })).not.toBeNull();
+    const doc = protokollLeer();
+    expect(protokollDokumentPruefen({ ...doc, content: [...doc.content].reverse() })).toMatch(
+      /Reihenfolge/,
+    );
+    expect(protokollDokumentPruefen({ ...doc, content: doc.content.slice(0, 2) })).not.toBeNull();
+    expect(protokollDokumentPruefen({ type: 'page', content: doc.content })).not.toBeNull();
+  });
+
+  it('rejects nested sections and nested docs', () => {
+    const doc = dokument({
+      gegenwaertiges: [{ type: 'abschnitt', attrs: { art: 'vergangenes' } }],
+    });
+    expect(protokollDokumentPruefen(doc)).not.toBeNull();
+  });
+
+  it('validates Bausteine strictly', () => {
+    const kaputt = (aendern: (b: BausteinKnoten<'bausteinBeschluss'>) => void) => {
+      const b = bausteinErzeugen('bausteinBeschluss');
+      aendern(b);
+      return protokollDokumentPruefen(dokument({ gegenwaertiges: [b] }));
+    };
+    expect(kaputt((b) => (b.attrs.daten.ja = -1))).not.toBeNull();
+    expect(kaputt((b) => (b.attrs.daten.nein = 1.5))).not.toBeNull();
+    expect(kaputt((b) => (b.attrs.id = 'keine-uuid'))).not.toBeNull();
+    expect(
+      kaputt((b) => ((b.attrs.daten as unknown as { extra: number }).extra = 1)),
+    ).not.toBeNull();
+    expect(
+      kaputt((b) => ((b.attrs.daten as unknown as { ergebnis: string }).ergebnis = 'vielleicht')),
+    ).not.toBeNull();
+    expect(kaputt((b) => ((b as { attrs?: unknown }).attrs = undefined))).not.toBeNull();
+    const ev = eventBaustein({ datum: '31.12.2026' as never });
+    expect(protokollDokumentPruefen(dokument({ zukuenftiges: [ev] }))).not.toBeNull();
+    const zeit = eventBaustein({ beginnZeit: '25:00' });
+    expect(protokollDokumentPruefen(dokument({ zukuenftiges: [zeit] }))).not.toBeNull();
+  });
+
+  it('accepts drafts with empty fields', () => {
+    const ev = eventBaustein({ name: '', datum: null, beginnZeit: null });
+    expect(protokollDokumentPruefen(dokument({ zukuenftiges: [ev] }))).toBeNull();
+  });
+
+  it('allows unknown node types as generic nodes', () => {
+    const doc = dokument({
+      gegenwaertiges: [
+        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Titel' }] },
+        {
+          type: 'bulletList',
+          content: [{ type: 'listItem', content: [absatz('x')] }],
+        },
+        { type: 'somethingNew', attrs: { a: 1 } },
+      ],
+    });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('rejects malformed generic nodes', () => {
+    expect(
+      protokollDokumentPruefen(dokument({ gegenwaertiges: [{ type: 5 } as never] })),
+    ).not.toBeNull();
+    expect(
+      protokollDokumentPruefen(dokument({ gegenwaertiges: [{ type: 'p', text: 5 } as never] })),
+    ).not.toBeNull();
+    expect(
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [{ type: 'p', content: 'x' } as never] }),
+      ),
+    ).not.toBeNull();
+    expect(
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [{ type: 'p', marks: [{ type: 3 }] } as never] }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it('limits the depth', () => {
+    const tief = (n: number): ProtokollKnoten =>
+      n === 0 ? { type: 'paragraph' } : { type: 'blockquote', content: [tief(n - 1)] };
+    // abschnitt = depth 1, so the chain below it may have PROTOKOLL_MAX_TIEFE - 1 levels.
+    expect(
+      protokollDokumentPruefen(dokument({ gegenwaertiges: [tief(PROTOKOLL_MAX_TIEFE - 2)] })),
+    ).toBeNull();
+    expect(
+      protokollDokumentPruefen(dokument({ gegenwaertiges: [tief(PROTOKOLL_MAX_TIEFE)] })),
+    ).toMatch(/verschachtelt/);
+  });
+
+  it('limits the size', () => {
+    const gross = absatz('x'.repeat(PROTOKOLL_MAX_BYTES));
+    expect(protokollDokumentPruefen(dokument({ gegenwaertiges: [gross] }))).toMatch(/zu groß/);
+  });
+});
+
+describe('beschlussErgebnisVorschlag', () => {
+  it('suggests the majority, a tie is rejected, no votes give nothing', () => {
+    expect(beschlussErgebnisVorschlag(5, 2)).toBe('angenommen');
+    expect(beschlussErgebnisVorschlag(2, 5)).toBe('abgelehnt');
+    expect(beschlussErgebnisVorschlag(3, 3)).toBe('abgelehnt');
+    expect(beschlussErgebnisVorschlag(0, 0)).toBeNull();
+  });
+});
+
+describe('teilnahmeAbleiten', () => {
+  it('maps the answer to the attendance', () => {
+    expect(teilnahmeAbleiten('teilnahme')).toBe('anwesend');
+    expect(teilnahmeAbleiten('absage')).toBe('entschuldigt');
+    expect(teilnahmeAbleiten(null)).toBe('unentschuldigt');
+  });
+});
+
+describe('protokollKopfSchema', () => {
+  it('fills defaults and keeps the overrides', () => {
+    expect(protokollKopfSchema.parse({})).toEqual(protokollKopfLeer());
+    const kopf = protokollKopfSchema.parse({
+      teilnahme: { a: 'verspaetet' },
+      ems: ['e1'],
+      gaeste: 'Gast',
+    });
+    expect(kopf).toMatchObject({ teilnahme: { a: 'verspaetet' }, ems: ['e1'], gaeste: 'Gast' });
+  });
+  it('rejects unknown attendance values and fields', () => {
+    expect(protokollKopfSchema.safeParse({ teilnahme: { a: 'da' } }).success).toBe(false);
+    expect(protokollKopfSchema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('input schemas', () => {
+  it('lets inhalt and kopf out when creating', () => {
+    expect(protokollAnlegenSchema.safeParse({ eventId: 'e1' }).success).toBe(true);
+    expect(protokollAnlegenSchema.safeParse({ eventId: '' }).success).toBe(false);
+    expect(
+      protokollAnlegenSchema.safeParse({ eventId: 'e1', inhalt: { type: 'doc' } }).success,
+    ).toBe(false);
+  });
+  it('needs inhalt, kopf and version when saving', () => {
+    const ok = { inhalt: protokollLeer(), kopf: protokollKopfLeer(), version: 1 };
+    expect(protokollSpeichernSchema.safeParse(ok).success).toBe(true);
+    expect(protokollSpeichernSchema.safeParse({ ...ok, version: 0 }).success).toBe(false);
+    expect(protokollSpeichernSchema.safeParse({ ...ok, version: undefined }).success).toBe(false);
+  });
+});
+
+describe('protokollVorschlag', () => {
+  const sitzung = '2026-11-10';
+  const bausteine = (doc: ProtokollDokument, abschnitt: number) =>
+    (doc.content[abschnitt]!.content ?? []).filter((k) => k.type.startsWith('baustein'));
+
+  it('is empty without a previous protocol', () => {
+    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes: null, events: {} })).toEqual(
+      protokollLeer(),
+    );
+  });
+
+  it('turns past events into Vergangenes Event blocks, sorted by date, with empty text', () => {
+    const letztes = dokument({
+      gegenwaertiges: [
+        eventBaustein({ name: 'Spät', datum: '2026-11-05', eventId: 'e2' }, 'Rückblick'),
+        eventBaustein({ name: 'Früh', datum: '2026-11-02', eventId: 'e1' }),
+        eventBaustein({ name: 'Ohne Datum' }),
+      ],
+    });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    const vergangen = bausteine(doc, 0);
+    expect(vergangen.map((v) => v.type)).toEqual([
+      'bausteinVergangenesEvent',
+      'bausteinVergangenesEvent',
+    ]);
+    expect(vergangen.map((v) => v.attrs?.daten)).toEqual([
+      { eventId: 'e1', name: 'Früh', datum: '2026-11-02' },
+      { eventId: 'e2', name: 'Spät', datum: '2026-11-05' },
+    ]);
+    expect(vergangen[0]!.content).toEqual([{ type: 'paragraph' }]);
+    // The block without a date has no end yet: it stays upcoming.
+    expect(bausteine(doc, 2).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
+      'Ohne Datum',
+    ]);
+    expect(bausteine(doc, 1)).toEqual([]);
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('uses the end date of multi-day events and treats the Sitzung day as not yet past', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Lager', datum: '2026-11-07', bisDatum: '2026-11-12' }),
+        eventBaustein({ name: 'Heute', datum: sitzung }),
+        eventBaustein({ name: 'Gestern', datum: '2026-11-09' }),
+      ],
+    });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    expect(bausteine(doc, 0).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
+      'Gestern',
+    ]);
+    expect(bausteine(doc, 2).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
+      'Lager',
+      'Heute',
+    ]);
+  });
+
+  it('keeps future events with their text and new ids', () => {
+    const original = eventBaustein({ name: 'Barabend', datum: '2026-12-01' }, 'Wer macht Musik?');
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: dokument({ zukuenftiges: [original] }),
+      events: {},
+    });
+    const kopie = bausteine(doc, 2)[0]!;
+    expect(kopie.content).toEqual([absatz('Wer macht Musik?')]);
+    expect(kopie.attrs?.daten).toEqual(original.attrs.daten);
+    expect(kopie.attrs?.id).not.toBe(original.attrs.id);
+    expect(kopie).not.toBe(original);
+  });
+
+  it('refreshes name, dates and times from the calendar', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein(
+          {
+            name: 'Alt',
+            datum: '2026-12-01',
+            beginnZeit: '19:00',
+            endeZeit: '23:00',
+            eventId: 'e1',
+          },
+          'Text',
+        ),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      // 2026-12-05 is winter time: 20:00Z = 21:00 Berlin
+      events: new Map([
+        ['e1', info('2026-12-05T20:00:00.000Z', '2026-12-06T00:30:00.000Z', { titel: 'Neu' })],
+      ]),
+    });
+    expect(bausteine(doc, 2)[0]!.attrs?.daten).toMatchObject({
+      name: 'Neu',
+      datum: '2026-12-05',
+      bisDatum: '2026-12-06',
+      beginnZeit: '21:00',
+      endeZeit: '01:30',
+      eventId: 'e1',
+    });
+    expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('Text')]);
+  });
+
+  it('classifies by the refreshed date: a moved event may become past or future', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Verschoben', datum: '2026-12-01', eventId: 'e1' }),
+        eventBaustein({ name: 'Vorgezogen', datum: '2026-12-01', eventId: 'e2' }),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      events: {
+        e1: info('2026-11-20T18:00:00.000Z', '2026-11-20T21:00:00.000Z'),
+        e2: info('2026-11-03T18:00:00.000Z', '2026-11-03T21:00:00.000Z'),
+      },
+    });
+    expect(bausteine(doc, 0).map((b) => (b.attrs?.daten as { eventId: string }).eventId)).toEqual([
+      'e2',
+    ]);
+    expect(bausteine(doc, 2).map((b) => (b.attrs?.daten as { eventId: string }).eventId)).toEqual([
+      'e1',
+    ]);
+  });
+
+  it('drops cancelled events and keeps events that are gone from the calendar as written', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Abgesagt', datum: '2026-12-01', eventId: 'e1' }),
+        eventBaustein({ name: 'Gelöscht', datum: '2026-12-02', eventId: 'e2' }),
+        eventBaustein({ name: 'Abgesagt vorbei', datum: '2026-11-01', eventId: 'e3' }),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      events: {
+        e1: info('2026-12-01T18:00:00.000Z', '2026-12-01T21:00:00.000Z', { abgesagt: true }),
+        e3: info('2026-11-01T18:00:00.000Z', '2026-11-01T21:00:00.000Z', { abgesagt: true }),
+      },
+    });
+    expect(bausteine(doc, 0)).toEqual([]);
+    expect(bausteine(doc, 2).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
+      'Gelöscht',
+    ]);
+  });
+
+  it('removes duplicates by eventId but keeps blocks without one', () => {
+    const letztes = dokument({
+      vergangenes: [eventBaustein({ name: 'Doppelt', datum: '2026-12-01', eventId: 'e1' }, 'A')],
+      zukuenftiges: [
+        eventBaustein({ name: 'Doppelt', datum: '2026-12-01', eventId: 'e1' }, 'B'),
+        eventBaustein({ name: 'Frei', datum: '2026-12-03' }),
+        eventBaustein({ name: 'Frei', datum: '2026-12-03' }),
+      ],
+    });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    expect(bausteine(doc, 2)).toHaveLength(3);
+    expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('A')]);
+  });
+
+  it('ignores the old Vergangenes Event, Anwärter and Beschluss blocks', () => {
+    const letztes = dokument({
+      vergangenes: [bausteinErzeugen('bausteinVergangenesEvent')],
+      gegenwaertiges: [
+        bausteinErzeugen('bausteinAnwaerter'),
+        bausteinErzeugen('bausteinBeschluss'),
+      ],
+    });
+    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} })).toEqual(
+      protokollLeer(),
+    );
+  });
+});
+
+describe('protokollEventIds', () => {
+  it('lists the calendar events of the Event blocks once each', () => {
+    const doc = dokument({
+      vergangenes: [eventBaustein({ eventId: 'e1' })],
+      zukuenftiges: [
+        eventBaustein({ eventId: 'e1' }),
+        eventBaustein({ eventId: 'e2' }),
+        eventBaustein({}),
+      ],
+    });
+    expect(protokollEventIds(doc)).toEqual(['e1', 'e2']);
+  });
+});

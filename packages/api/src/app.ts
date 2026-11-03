@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -128,6 +128,21 @@ import {
   type TrichterDto,
   type TrichterMitgliedDto,
   type TrichterUebersichtDto,
+  protokollAnlegenSchema,
+  protokollDokumentPruefen,
+  protokollEventIds,
+  protokollKopfLeer,
+  protokollKopfSchema,
+  protokollLeer,
+  protokollSpeichernSchema,
+  protokollStatusSchema,
+  protokollVorschlag,
+  type ProtokollDokument,
+  type ProtokollDto,
+  type ProtokollKopf,
+  type ProtokollListeEintragDto,
+  type ProtokollSitzungDto,
+  type ProtokollVorschlagDto,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import {
@@ -154,6 +169,7 @@ import {
   type BetroffenerDienst,
   type EventAenderung,
   tokenHash,
+  type EventKurz,
   type KalenderStore,
 } from './kalender';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
@@ -179,6 +195,20 @@ import type { AufraeumDetails, InventarStore } from './inventar';
 import { UebergabeKonflikt, type SchluesselDaten, type SchluesselStore } from './schluessel';
 import { meldeUebergabe } from './schluesselBenachrichtigungen';
 import type { DurchgangDaten, TrichterDaten, TrichterStore } from './trichter';
+import {
+  ProtokollAbgeschlossen,
+  ProtokollExistiert,
+  ProtokollVeraltet,
+  type ProtokollDaten,
+  type ProtokollStore,
+} from './protokolle';
+import {
+  kopfAbschliessen,
+  kopfWiederOeffnen,
+  mitgliedDto,
+  protokollListen,
+  type ProtokollMitglied,
+} from './protokolleAnsicht';
 import type { UmfrageDaten, UmfragenCursor, UmfrageSpeichern, UmfragenStore } from './umfragen';
 import {
   alsDetailDto,
@@ -221,6 +251,7 @@ export interface AppDeps {
   schluessel: SchluesselStore;
   umfragen: UmfragenStore;
   trichter: TrichterStore;
+  protokolle: ProtokollStore;
   benachrichtigungen: Benachrichtigungen;
   onedrive: OneDrive;
   /** Cache of the anonymous sharing links of the photo folders. */
@@ -266,6 +297,9 @@ function cursorLesen(wert: string | undefined): UmfragenCursor | undefined {
   return { erstelltAm, id: wert.slice(trenner + 1) };
 }
 
+/** How many Sitzungen without protocol the "new protocol" page offers. */
+const PROTOKOLL_SITZUNGEN_MAX = 20;
+
 const MITGLIED_DEAKTIVIERT = 'Das Mitglied ist deaktiviert.';
 
 export function createApp(deps: AppDeps) {
@@ -298,6 +332,8 @@ export function createApp(deps: AppDeps) {
   const trichterLesen = requirePermission('trichter:lesen');
   const trichterVerwalten = requirePermission('trichter:verwalten');
   const bilderLesen = requirePermission('bilder:lesen');
+  const protokolleLesen = requirePermission('protokolle:lesen');
+  const protokolleSchreiben = requirePermission('protokolle:schreiben');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -878,6 +914,126 @@ export function createApp(deps: AppDeps) {
     halter: halter(s.halter),
     halterSeit: s.halterSeit?.toISOString() ?? null,
   });
+
+  // ----- Protokolle: helpers
+
+  /** All members as the minutes show them (usernames come from Cognito). */
+  const protokollMitglieder = async (): Promise<ProtokollMitglied[]> => {
+    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
+    return rows.map((r) => ({
+      sub: r.sub,
+      username: konten.get(r.sub)?.username ?? null,
+      vorname: r.vorname,
+      nachname: r.nachname,
+      status: r.status,
+      anrede: r.anrede ?? 'neutral',
+      deaktiviert: istDeaktiviert(r),
+    }));
+  };
+
+  /** Stored text -> document; a damaged one reads as an empty document. */
+  const protokollInhaltLesen = (text: string): ProtokollDokument => {
+    try {
+      const doc: unknown = JSON.parse(text);
+      return protokollDokumentPruefen(doc) === null ? (doc as ProtokollDokument) : protokollLeer();
+    } catch {
+      return protokollLeer();
+    }
+  };
+
+  /** Stored text -> header; a damaged one reads as an empty header. */
+  const protokollKopfLesen = (text: string): ProtokollKopf => {
+    try {
+      const kopf = protokollKopfSchema.safeParse(JSON.parse(text));
+      return kopf.success ? kopf.data : protokollKopfLeer();
+    } catch {
+      return protokollKopfLeer();
+    }
+  };
+
+  /** The event must exist, be a Sitzung with protocol and not be cancelled (400 otherwise). */
+  const sitzungPruefen = async (eventId: string): Promise<EventKurz> => {
+    const [event] = await deps.kalender.eventsKurz([eventId]);
+    if (!event) throw new HTTPException(400, { message: 'Die Sitzung gibt es nicht.' });
+    if (!event.protokoll) {
+      throw new HTTPException(400, {
+        message:
+          'Zu diesem Event gibt es keine Protokolle. Die Kategorie ist keine Sitzung mit Protokoll.',
+      });
+    }
+    if (event.abgesagt) throw new HTTPException(400, { message: 'Die Sitzung ist abgesagt.' });
+    return event;
+  };
+
+  /** Pre-filled document and header for a new protocol: from the latest protocol of an earlier Sitzung. */
+  const protokollVorschlagFuer = async (sitzung: EventKurz): Promise<ProtokollVorschlagDto> => {
+    const alle = await deps.protokolle.alle();
+    const events = await deps.kalender.eventsKurz(alle.map((p) => p.eventId));
+    const beginn = (id: string) => Date.parse(events.find((e) => e.id === id)?.beginn ?? '');
+    const davor = alle
+      .filter((p) => p.eventId !== sitzung.id && beginn(p.eventId) < Date.parse(sitzung.beginn))
+      .sort((a, b) => beginn(b.eventId) - beginn(a.eventId));
+    const letztes = davor[0] && (await deps.protokolle.holen(davor[0].id));
+    if (!letztes) return { inhalt: protokollLeer(), kopf: protokollKopfLeer() };
+    const dokument = protokollInhaltLesen(letztes.inhalt);
+    const kalender = await deps.kalender.eventsKurz(protokollEventIds(dokument));
+    return {
+      inhalt: protokollVorschlag({
+        sitzungDatum: datumBerlin(sitzung.beginn),
+        letztes: dokument,
+        events: Object.fromEntries(
+          kalender.map((e) => [
+            e.id,
+            { titel: e.titel, beginn: e.beginn, ende: e.ende, abgesagt: e.abgesagt },
+          ]),
+        ),
+      }),
+      kopf: protokollKopfLeer(),
+    };
+  };
+
+  const alsProtokollDto = async (p: ProtokollDaten): Promise<ProtokollDto> => {
+    const [[event], mitglieder, antworten] = await Promise.all([
+      deps.kalender.eventsKurz([p.eventId]),
+      protokollMitglieder(),
+      deps.kalender.teilnahmeAntworten(p.eventId),
+    ]);
+    const kopf = protokollKopfLesen(p.kopf);
+    const von = mitglieder.find((m) => m.sub === p.geaendertVon);
+    return {
+      id: p.id,
+      eventId: p.eventId,
+      sitzung: {
+        id: p.eventId,
+        titel: event?.titel ?? 'Sitzung',
+        beginn: event?.beginn ?? p.erstelltAm.toISOString(),
+        kategorie: event?.kategorie ?? null,
+      },
+      inhalt: protokollInhaltLesen(p.inhalt),
+      kopf,
+      status: p.status,
+      version: p.version,
+      ...protokollListen(kopf, p.status, mitglieder, antworten),
+      geaendertAm: p.geaendertAm.toISOString(),
+      geaendertVon: von ? mitgliedDto(von) : null,
+    };
+  };
+
+  /** Maps the protocol store's conflicts to 409 (an outdated version also tells the current one). */
+  const protokollKonflikt = (err: unknown, c: Context): Response => {
+    if (err instanceof ProtokollVeraltet) {
+      return c.json({ error: err.message, version: err.version }, 409);
+    }
+    if (err instanceof ProtokollAbgeschlossen || err instanceof ProtokollExistiert) {
+      throw new HTTPException(409, {
+        message:
+          err instanceof ProtokollExistiert
+            ? 'Für diese Sitzung gibt es schon ein Protokoll.'
+            : err.message,
+      });
+    }
+    throw err;
+  };
 
   /** Display data of members in Trichter DTOs; unknown members get a placeholder. */
   const trichterMitglieder = async () => {
@@ -1593,6 +1749,175 @@ export function createApp(deps: AppDeps) {
           return c.json(alsSchluesselDto(s, m.halter));
         },
       )
+      // ----- Protokolle
+      .get('/protokolle', auth, protokolleLesen, async (c) => {
+        const [alle, mitglieder] = await Promise.all([
+          deps.protokolle.alle(),
+          protokollMitglieder(),
+        ]);
+        const events = await deps.kalender.eventsKurz(alle.map((p) => p.eventId));
+        const liste = alle.map((p): ProtokollListeEintragDto => {
+          const event = events.find((e) => e.id === p.eventId);
+          const von = mitglieder.find((m) => m.sub === p.geaendertVon);
+          const beginn = event?.beginn ?? p.erstelltAm.toISOString();
+          return {
+            id: p.id,
+            eventId: p.eventId,
+            titel: event?.titel ?? 'Sitzung',
+            beginn,
+            status: p.status,
+            geaendertAm: p.geaendertAm.toISOString(),
+            geaendertVon: von ? mitgliedDto(von) : null,
+          };
+        });
+        return c.json(liste.sort((a, b) => Date.parse(b.beginn) - Date.parse(a.beginn)));
+      })
+      // Sitzungen a protocol can still be started for: up to tomorrow, newest first.
+      .get('/protokolle/sitzungen', auth, protokolleSchreiben, async (c) => {
+        const vorhandene = (await deps.protokolle.alle()).map((p) => p.eventId);
+        const bis = new Date(Date.now() + 24 * 3600_000);
+        const sitzungen = await deps.kalender.sitzungen(bis, PROTOKOLL_SITZUNGEN_MAX, vorhandene);
+        return c.json(
+          sitzungen.map((e): ProtokollSitzungDto => ({
+            id: e.id,
+            titel: e.titel,
+            beginn: e.beginn,
+            kategorie: e.kategorie,
+          })),
+        );
+      })
+      .get(
+        '/protokolle/vorschlag',
+        auth,
+        protokolleSchreiben,
+        zValidator('query', z.object({ eventId: z.string().min(1) })),
+        async (c) => {
+          const sitzung = await sitzungPruefen(c.req.valid('query').eventId);
+          return c.json(await protokollVorschlagFuer(sitzung));
+        },
+      )
+      .post(
+        '/protokolle',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollAnlegenSchema),
+        async (c) => {
+          const eingabe = c.req.valid('json');
+          const sitzung = await sitzungPruefen(eingabe.eventId);
+          if (await deps.protokolle.nachEvent(sitzung.id)) {
+            throw new HTTPException(409, {
+              message: 'Für diese Sitzung gibt es schon ein Protokoll.',
+            });
+          }
+          const vorschlag =
+            eingabe.inhalt && eingabe.kopf ? undefined : await protokollVorschlagFuer(sitzung);
+          const inhalt = eingabe.inhalt ?? vorschlag!.inhalt;
+          const kopf = {
+            ...(eingabe.kopf ?? vorschlag!.kopf),
+            schnappschuss: null,
+            emsSchnappschuss: null,
+          };
+          try {
+            const id = await deps.protokolle.anlegen(
+              { eventId: sitzung.id, inhalt: JSON.stringify(inhalt), kopf: JSON.stringify(kopf) },
+              c.get('user').sub,
+            );
+            return c.json({ id }, 201);
+          } catch (err) {
+            return protokollKonflikt(err, c);
+          }
+        },
+      )
+      .get('/protokolle/:id', auth, protokolleLesen, async (c) => {
+        const p = gefunden(
+          await deps.protokolle.holen(c.req.param('id')),
+          'Protokoll nicht gefunden',
+        );
+        return c.json(await alsProtokollDto(p));
+      })
+      .put(
+        '/protokolle/:id',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollSpeichernSchema),
+        async (c) => {
+          const { inhalt, kopf, version } = c.req.valid('json');
+          try {
+            const ergebnis = gefunden(
+              await deps.protokolle.speichern(
+                c.req.param('id'),
+                {
+                  inhalt: JSON.stringify(inhalt),
+                  // The snapshot is the API's business: a draft never has one.
+                  kopf: JSON.stringify({ ...kopf, schnappschuss: null, emsSchnappschuss: null }),
+                  version,
+                },
+                c.get('user').sub,
+              ),
+              'Protokoll nicht gefunden',
+            );
+            return c.json({
+              version: ergebnis.version,
+              geaendertAm: ergebnis.geaendertAm.toISOString(),
+            });
+          } catch (err) {
+            return protokollKonflikt(err, c);
+          }
+        },
+      )
+      // Closing freezes who took part; reopening drops the snapshot again.
+      .put(
+        '/protokolle/:id/status',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollStatusSchema),
+        async (c) => {
+          const { status } = c.req.valid('json');
+          const p = gefunden(
+            await deps.protokolle.holen(c.req.param('id')),
+            'Protokoll nicht gefunden',
+          );
+          if (p.status === status) {
+            return c.json({ status, version: p.version, geaendertAm: p.geaendertAm.toISOString() });
+          }
+          const kopf = protokollKopfLesen(p.kopf);
+          const neuerKopf =
+            status === 'abgeschlossen'
+              ? kopfAbschliessen(
+                  kopf,
+                  await protokollMitglieder(),
+                  await deps.kalender.teilnahmeAntworten(p.eventId),
+                )
+              : kopfWiederOeffnen(kopf);
+          try {
+            const ergebnis = gefunden(
+              await deps.protokolle.statusSetzen(
+                p.id,
+                status,
+                JSON.stringify(neuerKopf),
+                p.version,
+                c.get('user').sub,
+              ),
+              'Protokoll nicht gefunden',
+            );
+            return c.json({
+              status,
+              version: ergebnis.version,
+              geaendertAm: ergebnis.geaendertAm.toISOString(),
+            });
+          } catch (err) {
+            return protokollKonflikt(err, c);
+          }
+        },
+      )
+      .delete('/protokolle/:id', auth, protokolleSchreiben, async (c) => {
+        try {
+          gefunden(await deps.protokolle.loeschen(c.req.param('id')), 'Protokoll nicht gefunden');
+        } catch (err) {
+          return protokollKonflikt(err, c);
+        }
+        return c.json({ ok: true });
+      })
       // ----- Trichter
       .get('/trichter', auth, trichterLesen, async (c) => {
         const mitArchiv = c.req.query('archiviert') === '1';
@@ -3059,6 +3384,9 @@ export function createApp(deps: AppDeps) {
         return c.json({ imAbo: false });
       })
       .delete('/kalender/events/:id', auth, eventsVerwalten, async (c) => {
+        if (await deps.protokolle.nachEvent(c.req.param('id'))) {
+          throw new HTTPException(409, { message: 'Zu dieser Sitzung gibt es ein Protokoll.' });
+        }
         gefunden(
           await mitOrdnerAufraeumen(() =>
             deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),

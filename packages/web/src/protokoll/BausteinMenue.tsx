@@ -1,0 +1,95 @@
+import { Button, Menu, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { IconPlus } from '@tabler/icons-react';
+import type { Editor } from '@tiptap/react';
+import { useState } from 'react';
+import { bausteinEinfuegen } from './einfuegen';
+import { SlashListe } from './SlashListe';
+import {
+  bausteinEintraege,
+  slashEintraege,
+  type SlashDaten,
+  type SlashEintrag,
+} from './slashLogik';
+import { SlashIcon } from './symbole';
+
+type Liste = 'vorlagen' | 'events';
+
+/**
+ * Toolbar button "Baustein": the same choices as the slash menu (the "/" is awkward on phone keyboards).
+ * Event and Vergangenes Event open a searchable list of Vorlagen / past events in a modal.
+ */
+export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; daten: SlashDaten }>) {
+  const [liste, setListe] = useState<Liste | null>(null);
+  const [suche, setSuche] = useState('');
+
+  const waehlen = (e: SlashEintrag) => {
+    if (e.aktion.art === 'weiter') {
+      setSuche('');
+      setListe(e.aktion.text.startsWith('event') ? 'vorlagen' : 'events');
+      return;
+    }
+    setListe(null);
+    bausteinEinfuegen(editor, e.aktion.wahl);
+  };
+
+  const eintraege = liste
+    ? slashEintraege(`${liste === 'vorlagen' ? 'event' : 'vergangenes'} ${suche}`, daten)
+    : [];
+
+  return (
+    <>
+      <Menu position="bottom-start" withinPortal width={300}>
+        <Menu.Target>
+          <Button
+            variant="default"
+            size="md"
+            leftSection={<IconPlus size={18} />}
+            aria-label="Baustein einfügen"
+            // Keeps the cursor position of the editor.
+            onMouseDown={(ev) => ev.preventDefault()}
+          >
+            Baustein
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          {bausteinEintraege('').map((e) => (
+            <Menu.Item
+              key={e.schluessel}
+              leftSection={<SlashIcon symbol={e.symbol} />}
+              mih={48}
+              onClick={() => waehlen(e)}
+            >
+              <Text size="sm" fw={600}>
+                {e.titel}
+              </Text>
+              <Text size="xs" c="dimmed" style={{ whiteSpace: 'normal' }}>
+                {e.beschreibung}
+              </Text>
+            </Menu.Item>
+          ))}
+        </Menu.Dropdown>
+      </Menu>
+      <Modal
+        opened={liste !== null}
+        onClose={() => setListe(null)}
+        title={liste === 'vorlagen' ? 'Event einfügen' : 'Vergangenes Event einfügen'}
+      >
+        <Stack gap="xs">
+          <TextInput
+            placeholder={liste === 'vorlagen' ? 'Vorlage suchen' : 'Event suchen'}
+            value={suche}
+            onChange={(e) => setSuche(e.currentTarget.value)}
+            data-autofocus
+          />
+          {eintraege.length > 0 ? (
+            <SlashListe eintraege={eintraege} onWaehlen={waehlen} />
+          ) : (
+            <Text size="sm" c="dimmed">
+              Nichts gefunden
+            </Text>
+          )}
+        </Stack>
+      </Modal>
+    </>
+  );
+}

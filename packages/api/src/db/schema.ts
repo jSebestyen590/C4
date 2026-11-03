@@ -471,6 +471,8 @@ export const eventKategorien = pgTable('event_kategorien', {
   teilnahmeStatus: text('teilnahme_status'),
   /** `eintaegig` (null), `mehrtaegig` or `ganztaegig`. */
   dauer: text('dauer'),
+  /** Meetings of this category get minutes (`teilnahme` categories only); null = no. */
+  protokoll: boolean('protokoll'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;
@@ -760,6 +762,25 @@ export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
   daten: text('daten').notNull(),
   stand: timestamp('stand', { withTimezone: true }).notNull(),
 });
+
+/** Meeting minutes of one event (see docs/protokolle.md); `inhalt` is the TipTap document and `kopf` the header, both JSON text. */
+export const protokolle = pgTable('protokolle', {
+  id: text('id').primaryKey(),
+  /** Event of a Kategorie with `protokoll`; unique, deliberately without a foreign key (checked in the API). */
+  eventId: text('event_id').notNull(),
+  inhalt: text('inhalt').notNull(),
+  kopf: text('kopf').notNull(),
+  /** `entwurf` or `abgeschlossen` (CHECK). */
+  status: text('status').$type<'entwurf' | 'abgeschlossen'>().notNull().default('entwurf'),
+  /** Counts saves, for optimistic locking. */
+  version: integer('version').notNull().default(1),
+  /** Cognito subs, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von'),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  geaendertVon: text('geaendert_von'),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type ProtokollRow = typeof protokolle.$inferSelect;
 
 /** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
 export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {

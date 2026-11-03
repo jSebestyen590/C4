@@ -92,4 +92,14 @@ describe('permissions', () => {
       expect(hasPermission([], status, 'bilder:lesen')).toBe(true);
     }
   });
+  it('every status may read Protokolle, but only extra permissions write them', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'protokolle:lesen')).toBe(true);
+      expect(hasPermission([], status, 'protokolle:schreiben')).toBe(false);
+      expect(hasPermission([], status, 'protokolle:schreiben', ['protokolle:schreiben'])).toBe(
+        true,
+      );
+      expect(hasPermission(['admin'], status, 'protokolle:schreiben')).toBe(true);
+    }
+  });
 });

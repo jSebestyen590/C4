@@ -6,6 +6,8 @@ import type {
   EventBewertung,
   MitgliedStatus,
   Permission,
+  ProtokollStatus,
+  ProtokollTeilnahmeWert,
   Quelle,
   Role,
   EventArt,
@@ -70,6 +72,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'trichter:lesen': 'Trichter sehen und Durchgänge eintragen',
   'trichter:verwalten': 'Trichter verwalten',
   'bilder:lesen': 'Bilder ansehen und Ordner anlegen',
+  'protokolle:lesen': 'Protokolle lesen',
+  'protokolle:schreiben': 'Protokolle schreiben',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -282,4 +286,24 @@ export const TRICHTER_KOENIG_EWIG_LABELS: Gegendert = {
   maennlich: 'ist ewiger Trichterkönig',
   weiblich: 'ist ewige Trichterkönigin',
   neutral: 'ist ewige:r Trichterkönig:in',
+};
+
+// Protokolle: attendance in full words (legend, summary) and in short words (segmented control).
+export const PROTOKOLL_TEILNAHME_LABELS: Record<ProtokollTeilnahmeWert, string> = {
+  anwesend: 'anwesend',
+  verspaetet: 'verspätet',
+  entschuldigt: 'entschuldigt',
+  unentschuldigt: 'unentschuldigt',
+};
+
+export const PROTOKOLL_TEILNAHME_KURZ: Record<ProtokollTeilnahmeWert, string> = {
+  anwesend: 'da',
+  verspaetet: 'spät',
+  entschuldigt: 'entsch.',
+  unentschuldigt: 'fehlt',
+};
+
+export const PROTOKOLL_STATUS_LABELS: Record<ProtokollStatus, string> = {
+  entwurf: 'Entwurf',
+  abgeschlossen: 'Abgeschlossen',
 };

@@ -29,6 +29,8 @@ export const PERMISSIONS = [
   'trichter:lesen',
   'trichter:verwalten',
   'bilder:lesen',
+  'protokolle:lesen',
+  'protokolle:schreiben',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -43,6 +45,7 @@ export const POSTEN_RECHTE = [
   'schluessel:verwalten',
   'umfragen:verwalten',
   'trichter:verwalten',
+  'protokolle:schreiben',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
@@ -58,6 +61,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'schluessel:verwalten',
     'umfragen:verwalten',
     'trichter:verwalten',
+    'protokolle:schreiben',
   ],
 };
 
@@ -77,6 +81,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'umfragen:lesen',
     'trichter:lesen',
     'bilder:lesen',
+    'protokolle:lesen',
   ],
   extern: [
     'content:read',
@@ -92,6 +97,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'umfragen:lesen',
     'trichter:lesen',
     'bilder:lesen',
+    'protokolle:lesen',
   ],
   mitglied: [
     'content:read',
@@ -107,6 +113,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'umfragen:lesen',
     'trichter:lesen',
     'bilder:lesen',
+    'protokolle:lesen',
   ],
   em: [
     'content:read',
@@ -122,6 +129,7 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'umfragen:lesen',
     'trichter:lesen',
     'bilder:lesen',
+    'protokolle:lesen',
   ],
 };
 

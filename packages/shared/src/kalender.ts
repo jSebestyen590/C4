@@ -242,11 +242,20 @@ export const eventKategorieEingabeSchema = z
       .enum(EVENT_DAUERN, 'Bitte wähle die Dauer.')
       .optional()
       .transform((v) => v ?? 'eintaegig'),
+    /** Meetings of this Kategorie get minutes ("Sitzung mit Protokoll"); `teilnahme` only. Left out = false. */
+    protokoll: z
+      .boolean()
+      .optional()
+      .transform((v) => v ?? false),
     archiviert: z.boolean().optional(),
   })
   .refine((v) => v.art !== 'teilnahme' || v.teilnahmeStatus !== null, {
     message: 'Bitte lege den Standard-Kreis fest.',
     path: ['teilnahmeStatus'],
+  })
+  .refine((v) => v.art === 'teilnahme' || !v.protokoll, {
+    message: 'Nur Kategorien mit Teilnahme können eine Sitzung mit Protokoll sein.',
+    path: ['protokoll'],
   })
   .transform((v) => (v.art === 'dienste' ? { ...v, teilnahmeStatus: null } : v));
 export type EventKategorieEingabe = z.infer<typeof eventKategorieEingabeSchema>;
@@ -584,6 +593,8 @@ export interface EventKategorieDto {
   /** Default participation circle (`teilnahme` only, else null). */
   teilnahmeStatus: TeilnahmeKreis;
   dauer: EventDauer;
+  /** Meetings of this Kategorie get minutes (`teilnahme` only, else false). */
+  protokoll: boolean;
   /** At least one event uses the Kategorie, so its `art` cannot change. */
   benutzt: boolean;
   archiviert: boolean;

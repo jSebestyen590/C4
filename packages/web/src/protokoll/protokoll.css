@@ -1,0 +1,101 @@
+/* Minutes editor: sections, Baustein cards, slash menu, print. */
+
+.protokoll-editor .ProseMirror {
+  padding: var(--mantine-spacing-sm);
+  min-height: 12rem;
+}
+
+@media (min-width: 48em) {
+  .protokoll-editor .ProseMirror {
+    padding: var(--mantine-spacing-md);
+  }
+}
+
+.protokoll-abschnitt + .protokoll-abschnitt {
+  margin-top: var(--mantine-spacing-xl);
+}
+
+.protokoll-abschnitt-titel {
+  font-size: var(--mantine-h3-font-size);
+  font-weight: 700;
+  line-height: 1.3;
+  padding-bottom: 4px;
+  margin-bottom: var(--mantine-spacing-xs);
+  border-bottom: 2px solid var(--mantine-primary-color-filled);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.protokoll-baustein {
+  margin: var(--mantine-spacing-xs) 0 var(--mantine-spacing-sm);
+  break-inside: avoid;
+}
+
+.protokoll-baustein-text {
+  min-width: 0;
+  outline: none;
+}
+
+.protokoll-baustein-text > :last-child {
+  margin-bottom: 0;
+}
+
+.protokoll-baustein-text p.is-empty::before,
+.protokoll-baustein-text p.is-editor-empty::before {
+  color: var(--mantine-color-placeholder);
+}
+
+/* Empty text blocks keep a line to click into. */
+.protokoll-editor .ProseMirror p {
+  min-height: 1.5em;
+}
+
+.protokoll-toolbar {
+  /* Above the inputs of the Baustein cards (Mantine gives every div in the content z-index 2). */
+  z-index: 5;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  scrollbar-width: none;
+}
+
+.protokoll-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.protokoll-toolbar > * {
+  flex: 0 0 auto;
+}
+
+.protokoll-slash-eintrag[data-gewaehlt] {
+  background-color: var(--mantine-primary-color-light);
+}
+
+@media (hover: hover) {
+  .protokoll-slash-eintrag:hover {
+    background-color: var(--mantine-primary-color-light-hover);
+  }
+}
+
+@media print {
+  .protokoll-nicht-drucken,
+  .protokoll-editor [data-sticky] {
+    display: none !important;
+  }
+
+  .protokoll-editor {
+    border: none !important;
+  }
+
+  .protokoll-editor .ProseMirror {
+    padding: 0;
+  }
+
+  .protokoll-abschnitt {
+    break-before: auto;
+  }
+
+  .protokoll-abschnitt-titel {
+    break-after: avoid;
+  }
+}

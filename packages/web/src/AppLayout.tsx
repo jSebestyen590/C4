@@ -18,6 +18,7 @@ import {
   IconBell,
   IconBriefcase,
   IconCalendar,
+  IconNotes,
   IconPhoto,
   IconCheck,
   IconDeviceDesktop,
@@ -158,6 +159,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Bilder',
       icon: <IconPhoto size={20} />,
       show: can('bilder:lesen'),
+    },
+    {
+      to: '/protokolle',
+      label: 'Protokolle',
+      icon: <IconNotes size={20} />,
+      show: can('protokolle:lesen'),
     },
     {
       to: '/posten',

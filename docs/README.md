@@ -11,6 +11,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [waren.md](./waren.md)                           | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte            |
 | [inventar.md](./inventar.md)                     | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte              |
 | [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo          |
+| [protokolle.md](./protokolle.md)                 | Protokolle: Sitzungen, Kopf mit Teilnahme, Dokument mit Bausteinen, Autosave     |
 | [bilder.md](./bilder.md)                         | Bilder: OneDrive-Ordner der Events, Suche, Ordner anlegen, Verbindung            |
 | [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung             |
 | [umfragen.md](./umfragen.md)                     | Umfragen: Fragen, Pflicht- und optionale Kreise, Anonymität, Erinnerungen        |

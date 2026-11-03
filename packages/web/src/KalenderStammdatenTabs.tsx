@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   ColorSwatch,
   Group,
   Badge,
@@ -183,6 +184,8 @@ interface KategorieWerte {
   dauer: EventDauer;
   /** Default circle; only sent for `teilnahme`. */
   teilnahme: TeilnahmeWerte;
+  /** "Sitzung mit Protokoll"; only for `teilnahme`. */
+  protokoll: boolean;
 }
 
 const kategorieJson = (w: KategorieWerte) => ({
@@ -191,6 +194,7 @@ const kategorieJson = (w: KategorieWerte) => ({
   art: w.art,
   dauer: w.dauer,
   teilnahmeStatus: w.art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
+  protokoll: w.art === 'teilnahme' && w.protokoll,
 });
 
 export function EventKategorienTab() {
@@ -214,6 +218,11 @@ export function EventKategorienTab() {
               <Badge variant="light" color={k.art === 'teilnahme' ? 'teal' : 'gray'} tt="none">
                 {EVENT_ART_LABELS[k.art]}
               </Badge>
+              {k.protokoll && (
+                <Badge variant="light" color="indigo" tt="none">
+                  Protokoll
+                </Badge>
+              )}
               {k.dauer !== 'eintaegig' && (
                 <Badge variant="outline" color="gray" tt="none">
                   {EVENT_DAUER_LABELS[k.dauer].titel}
@@ -229,6 +238,7 @@ export function EventKategorienTab() {
         art: 'dienste',
         dauer: 'eintaegig',
         teilnahme: teilnahmeWerteAus([...MITGLIED_STATI]),
+        protokoll: false,
       }}
       aus={(k) => ({
         name: k.name,
@@ -236,6 +246,7 @@ export function EventKategorienTab() {
         art: k.art,
         dauer: k.dauer,
         teilnahme: teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
+        protokoll: k.protokoll,
       })}
       felder={(w, set, k) => (
         <>
@@ -287,6 +298,15 @@ export function EventKategorienTab() {
             </Text>
           )}
           {w.art === 'teilnahme' && (
+            <Checkbox
+              size="md"
+              label="Sitzung mit Protokoll"
+              description="Zu Events dieser Kategorie kann ein Protokoll geschrieben werden."
+              checked={w.protokoll}
+              onChange={(e) => set({ ...w, protokoll: e.currentTarget.checked })}
+            />
+          )}
+          {w.art === 'teilnahme' && (
             <TeilnahmeFelder
               titel="Standard-Kreis"
               label="Wer nimmt standardmäßig teil?"
@@ -316,6 +336,7 @@ export function EventKategorienTab() {
               art: k.art,
               dauer: k.dauer,
               teilnahmeStatus: k.teilnahmeStatus,
+              protokoll: k.protokoll,
               archiviert,
             },
           }),
