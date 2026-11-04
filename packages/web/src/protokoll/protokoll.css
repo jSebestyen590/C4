@@ -118,3 +118,24 @@
     break-after: avoid;
   }
 }
+
+/* Anwesenheit (Erscheint / Geht): a slim row with the quorum and an unobtrusive note. */
+.protokoll-anwesenheit {
+  padding: var(--mantine-spacing-xs);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.protokoll-anwesenheit-text {
+  font-size: var(--mantine-font-size-sm);
+}
+
+.protokoll-editor .protokoll-anwesenheit-text p.is-empty::before,
+.protokoll-editor .protokoll-anwesenheit-text p.is-editor-empty::before {
+  content: 'Bemerkung (optional)';
+}
+
+/* No note and nothing to type: no empty line. */
+.protokoll-ohne-text .protokoll-anwesenheit-text {
+  display: none;
+}

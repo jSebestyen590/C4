@@ -1,7 +1,18 @@
-import { Alert, Anchor, Badge, Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  SegmentedControl,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLock, IconLockOpen, IconPrinter, IconTrash } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ProtokollDokument, ProtokollDto, ProtokollKopf as KopfDaten } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
@@ -9,6 +20,9 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
+import { effektiveTeilnahme } from '../protokoll/anwesenheit';
+import { mitLiveKopf } from '../protokoll/dokumentDaten';
+import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokoll, useProtokollLoeschen, useProtokollStatus } from '../protokollDaten';
 import { PROTOKOLL_DRUCK_CSS, ProtokollKopf } from '../ProtokollKopf';
@@ -47,6 +61,7 @@ function SpeicherZeile({
 }
 
 type Dialog = 'abschliessen' | 'loeschen' | null;
+type Ansicht = 'bearbeiten' | 'dokument';
 
 /** The loaded protocol; remounted (via `key`) whenever the server version replaces the local state. */
 function ProtokollAnsicht({
@@ -60,6 +75,11 @@ function ProtokollAnsicht({
   const editierbar = darfSchreiben && entwurf;
 
   const [kopf, setKopf] = useState<KopfDaten>(dto.kopf);
+  const [inhalt, setInhalt] = useState<ProtokollDokument>(dto.inhalt);
+  // Live attendance (incl. local Kopf overrides) for the quorum in the editor.
+  const teilnahme = useMemo(() => effektiveTeilnahme(dto, kopf), [dto, kopf]);
+  const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
+  const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [ladeNeu, setLadeNeu] = useState(false);
   const status = useProtokollStatus();
@@ -77,7 +97,21 @@ function ProtokollAnsicht({
     setKopf(k);
     aendern({ kopf: k });
   };
-  const inhaltAendern = (doc: ProtokollDokument) => aendern({ inhalt: doc });
+  const inhaltAendern = (doc: ProtokollDokument) => {
+    setInhalt(doc);
+    aendern({ inhalt: doc });
+  };
+
+  /** Readers and closed protocols only have the document view; writers print it, too. */
+  const dokumentSichtbar = !editierbar || ansicht === 'dokument';
+  // Prints after the render that switched to the document view.
+  useEffect(() => {
+    if (druckAuftrag > 0) window.print();
+  }, [druckAuftrag]);
+  const drucken = () => {
+    setAnsicht('dokument');
+    setDruckAuftrag((n) => n + 1);
+  };
 
   /** Saves pending changes first, then changes the status; the refetch remounts this view. */
   const statusSetzen = async (neu: 'entwurf' | 'abgeschlossen') => {
@@ -103,7 +137,7 @@ function ProtokollAnsicht({
       <div data-druck="aus">
         <ZurueckLink to="/protokolle">Protokolle</ZurueckLink>
       </div>
-      <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+      <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs" data-druck="aus">
         <Stack gap={2} style={{ minWidth: 0 }}>
           <Title order={2} style={{ overflowWrap: 'anywhere' }}>
             {dto.sitzung.titel}
@@ -137,11 +171,7 @@ function ProtokollAnsicht({
               Wieder öffnen
             </Button>
           )}
-          <Button
-            variant="default"
-            leftSection={<IconPrinter size={18} />}
-            onClick={() => window.print()}
-          >
+          <Button variant="default" leftSection={<IconPrinter size={18} />} onClick={drucken}>
             Drucken
           </Button>
           <AktionsMenue
@@ -160,11 +190,7 @@ function ProtokollAnsicht({
       )}
       {!darfSchreiben && (
         <Group data-druck="aus">
-          <Button
-            variant="default"
-            leftSection={<IconPrinter size={18} />}
-            onClick={() => window.print()}
-          >
+          <Button variant="default" leftSection={<IconPrinter size={18} />} onClick={drucken}>
             Drucken
           </Button>
         </Group>
@@ -200,14 +226,45 @@ function ProtokollAnsicht({
         </div>
       )}
 
-      <ProtokollKopf dto={dto} kopf={kopf} editierbar={editierbar} onChange={kopfAendern} />
+      {editierbar && (
+        <div data-druck="aus">
+          <SegmentedControl
+            fullWidth
+            size="md"
+            value={ansicht}
+            onChange={(v) => setAnsicht(v as Ansicht)}
+            data={[
+              { value: 'bearbeiten', label: 'Bearbeiten' },
+              { value: 'dokument', label: 'Dokument' },
+            ]}
+          />
+        </div>
+      )}
 
-      <ProtokollEditor
-        inhalt={dto.inhalt}
-        editierbar={editierbar}
-        onChange={inhaltAendern}
-        sitzungBeginn={dto.sitzung.beginn}
-      />
+      {editierbar && (
+        // Stays mounted (only hidden) in the document view, so the editor keeps its state.
+        <Stack style={{ display: dokumentSichtbar ? 'none' : undefined }}>
+          <ProtokollKopf dto={dto} kopf={kopf} editierbar={editierbar} onChange={kopfAendern} />
+          <ProtokollEditor
+            inhalt={dto.inhalt}
+            editierbar={editierbar}
+            onChange={inhaltAendern}
+            sitzungBeginn={dto.sitzung.beginn}
+            art={dto.sitzung.art}
+            teilnahme={teilnahme}
+          />
+        </Stack>
+      )}
+      {dokumentSichtbar && (
+        <ProtokollDokumentAnsicht
+          eingabe={{
+            inhalt,
+            kopf,
+            ...mitLiveKopf(dto, kopf),
+            sitzung: dto.sitzung,
+          }}
+        />
+      )}
 
       {dialog === 'abschliessen' && (
         <BestaetigenDialog

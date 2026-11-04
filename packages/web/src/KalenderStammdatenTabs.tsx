@@ -32,9 +32,16 @@ import {
   type EventDauer,
   type EventKategorieDto,
   type ExterneDto,
+  PROTOKOLL_ARTEN,
+  type ProtokollArt,
 } from '@c4/shared';
 import { useApi } from './api';
-import { EVENT_ART_LABELS, EVENT_DAUER_LABELS } from './i18n';
+import {
+  EVENT_ART_LABELS,
+  EVENT_DAUER_LABELS,
+  PROTOKOLL_ART_BESCHREIBUNG,
+  PROTOKOLL_ART_LABELS,
+} from './i18n';
 import {
   TeilnahmeFelder,
   teilnahmeKreisAus,
@@ -186,6 +193,8 @@ interface KategorieWerte {
   teilnahme: TeilnahmeWerte;
   /** "Sitzung mit Protokoll"; only for `teilnahme`. */
   protokoll: boolean;
+  /** Kind of Sitzung (quorum rule); only sent with `protokoll`. */
+  protokollArt: ProtokollArt;
 }
 
 const kategorieJson = (w: KategorieWerte) => ({
@@ -195,6 +204,7 @@ const kategorieJson = (w: KategorieWerte) => ({
   dauer: w.dauer,
   teilnahmeStatus: w.art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
   protokoll: w.art === 'teilnahme' && w.protokoll,
+  protokollArt: w.protokoll ? w.protokollArt : 'sitzung',
 });
 
 export function EventKategorienTab() {
@@ -239,6 +249,7 @@ export function EventKategorienTab() {
         dauer: 'eintaegig',
         teilnahme: teilnahmeWerteAus([...MITGLIED_STATI]),
         protokoll: false,
+        protokollArt: 'sitzung',
       }}
       aus={(k) => ({
         name: k.name,
@@ -247,6 +258,7 @@ export function EventKategorienTab() {
         dauer: k.dauer,
         teilnahme: teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
         protokoll: k.protokoll,
+        protokollArt: k.protokollArt,
       })}
       felder={(w, set, k) => (
         <>
@@ -306,6 +318,24 @@ export function EventKategorienTab() {
               onChange={(e) => set({ ...w, protokoll: e.currentTarget.checked })}
             />
           )}
+          {w.art === 'teilnahme' && w.protokoll && (
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>
+                Art
+              </Text>
+              <SegmentedControl
+                size="md"
+                fullWidth
+                aria-label="Art der Sitzung"
+                value={w.protokollArt}
+                onChange={(v) => set({ ...w, protokollArt: v as ProtokollArt })}
+                data={PROTOKOLL_ARTEN.map((a) => ({ value: a, label: PROTOKOLL_ART_LABELS[a] }))}
+              />
+              <Text size="sm" c="dimmed">
+                {PROTOKOLL_ART_BESCHREIBUNG[w.protokollArt]}
+              </Text>
+            </Stack>
+          )}
           {w.art === 'teilnahme' && (
             <TeilnahmeFelder
               titel="Standard-Kreis"
@@ -337,6 +367,7 @@ export function EventKategorienTab() {
               dauer: k.dauer,
               teilnahmeStatus: k.teilnahmeStatus,
               protokoll: k.protokoll,
+              protokollArt: k.protokollArt,
               archiviert,
             },
           }),

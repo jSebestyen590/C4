@@ -4669,6 +4669,7 @@ describe('umfragen', () => {
       teilnahmeStatus: art === 'teilnahme' ? [] : null,
       dauer: 'eintaegig' as const,
       protokoll: false,
+      protokollArt: 'sitzung' as const,
       benutzt: false,
       archiviert: false,
     });
@@ -6490,6 +6491,7 @@ describe('protokolle', () => {
     abgesagt: false,
     kategorie: sitzungsKategorie,
     protokoll: true,
+    protokollArt: 'sitzung',
     ...extra,
   });
 
@@ -6647,6 +6649,7 @@ describe('protokolle', () => {
         titel: 'Sitzung',
         beginn: '2026-11-03T18:00:00.000Z',
         kategorie: sitzungsKategorie,
+        art: 'sitzung',
       },
     ]);
     const [bis, limit, ausser] = t.kalender.sitzungen.mock.calls[0]!;
@@ -6821,11 +6824,132 @@ describe('protokolle', () => {
       `/api/protokolle/${id}`,
       json('admin-token', 'PUT', {
         inhalt: dto.inhalt,
-        kopf: { ...dto.kopf, schnappschuss: { r: 'anwesend' }, emsSchnappschuss: ['e1'] },
+        kopf: {
+          ...dto.kopf,
+          schnappschuss: { r: 'anwesend' },
+          emsSchnappschuss: ['e1'],
+          statusSchnappschuss: { r: 'mitglied' },
+          artSchnappschuss: 'sitzung',
+        },
         version: 1,
       }),
     );
-    expect((await t.holen(id)).kopf).toMatchObject({ schnappschuss: null, emsSchnappschuss: null });
+    expect((await t.holen(id)).kopf).toMatchObject({
+      schnappschuss: null,
+      emsSchnappschuss: null,
+      statusSchnappschuss: null,
+      artSchnappschuss: null,
+    });
+  });
+
+  it('sets the Protokollführung to the creator unless the input has one', async () => {
+    const t = await setup();
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+    const dto = await t.holen(id);
+    expect(dto.kopf).toMatchObject({
+      protokollfuehrung: 'a',
+      sitzungsleitung: null,
+      eroeffnung: '',
+    });
+    expect(dto.sitzung.art).toBe('sitzung');
+    // Snapshots from the input are dropped, an explicit Protokollführung stays.
+    const id2 = (
+      await (
+        await t.anlegen('admin-token', {
+          eventId: 's2',
+          inhalt: protokollLeer(),
+          kopf: {
+            ...protokollKopfLeer(),
+            protokollfuehrung: 'm2',
+            sitzungsleitung: 'r',
+            eroeffnung: '19:30',
+            verspaetung: { r: '20:15' },
+            statusSchnappschuss: { r: 'mitglied' },
+            artSchnappschuss: 'mitgliederversammlung',
+          },
+        })
+      ).json()
+    ).id as string;
+    expect((await t.holen(id2)).kopf).toMatchObject({
+      protokollfuehrung: 'm2',
+      sitzungsleitung: 'r',
+      eroeffnung: '19:30',
+      verspaetung: { r: '20:15' },
+      statusSchnappschuss: null,
+      artSchnappschuss: null,
+    });
+    // Invalid times are refused.
+    expect(
+      (
+        await t.anlegen('admin-token', {
+          eventId: 's2',
+          inhalt: protokollLeer(),
+          kopf: { ...protokollKopfLeer(), eroeffnung: '25:00' },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it('still loads a kopf stored before the new fields existed', async () => {
+    const t = await setup();
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+    const p = t.protokollListe.get(id)!;
+    t.protokollListe.set(id, {
+      ...p,
+      kopf: JSON.stringify({ teilnahme: { r: 'anwesend' }, ems: null, gaeste: 'Gast' }),
+    });
+    const dto = await t.holen(id);
+    expect(dto.kopf).toEqual({
+      ...protokollKopfLeer(),
+      teilnahme: { r: 'anwesend' },
+      gaeste: 'Gast',
+    });
+    expect(dto.teilnahme.find((x) => x.sub === 'r')?.wert).toBe('anwesend');
+  });
+
+  it('freezes member status and art when closing and drops them when reopening', async () => {
+    const t = await setup();
+    t.events.set('s1', {
+      ...t.events.get('s1')!,
+      protokollArt: 'mitgliederversammlung',
+    });
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+    expect((await t.holen(id)).sitzung.art).toBe('mitgliederversammlung');
+    const status = (wert: string) =>
+      t.app.request(`/api/protokolle/${id}/status`, json('admin-token', 'PUT', { status: wert }));
+    expect((await status('abgeschlossen')).status).toBe(200);
+    let dto = await t.holen(id);
+    expect(dto.kopf.statusSchnappschuss).toEqual({
+      a: 'anwaerter',
+      m2: 'mitglied',
+      r: 'anwaerter',
+      v: 'anwaerter',
+    });
+    expect(dto.kopf.artSchnappschuss).toBe('mitgliederversammlung');
+
+    // Later changes of the status and of the Kategorie do not touch the closed protocol.
+    await t.mitglieder.statusSetzen('m2', 'anwaerter');
+    await t.mitglieder.statusSetzen('r', 'mitglied');
+    t.events.set('s1', { ...t.events.get('s1')!, protokollArt: 'sitzung' });
+    dto = await t.holen(id);
+    expect(dto.sitzung.art).toBe('mitgliederversammlung');
+    expect(dto.teilnahme.map((p) => [p.sub, p.status])).toEqual([
+      ['a', 'anwaerter'],
+      ['m2', 'mitglied'],
+      ['r', 'anwaerter'],
+      ['v', 'anwaerter'],
+    ]);
+
+    expect((await status('entwurf')).status).toBe(200);
+    dto = await t.holen(id);
+    expect(dto.kopf).toMatchObject({
+      statusSchnappschuss: null,
+      artSchnappschuss: null,
+      schnappschuss: null,
+    });
+    expect(dto.sitzung.art).toBe('sitzung');
+    expect(dto.teilnahme.find((p) => p.sub === 'm2')?.status).toBe('anwaerter');
+    expect(dto.teilnahme.find((p) => p.sub === 'r')?.status).toBe('mitglied');
   });
 
   it('freezes the attendance when closing and releases it when reopening', async () => {
@@ -6948,6 +7072,44 @@ describe('protokolle', () => {
         )
       ).status,
     ).toBe(400);
+  });
+
+  it('stores the art of a Sitzung at the Kategorie', async () => {
+    const t = makeApp();
+    const post = (body: Record<string, unknown>) =>
+      t.app.request('/api/kalender/kategorien', json('admin-token', 'POST', body));
+    const mv = {
+      name: 'MV',
+      farbe: 'red',
+      art: 'teilnahme',
+      teilnahmeStatus: ['mitglied'],
+      protokoll: true,
+    };
+    expect((await post({ ...mv, protokollArt: 'mitgliederversammlung' })).status).toBe(201);
+    expect(t.kalender.kategorieAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ protokoll: true, protokollArt: 'mitgliederversammlung' }),
+    );
+    expect((await post(mv)).status).toBe(201);
+    expect(t.kalender.kategorieAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ protokollArt: 'sitzung' }),
+    );
+    // Without the Sitzung flag the art falls back to 'sitzung'.
+    expect(
+      (await post({ ...mv, protokoll: false, protokollArt: 'mitgliederversammlung' })).status,
+    ).toBe(201);
+    expect(t.kalender.kategorieAnlegen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ protokoll: false, protokollArt: 'sitzung' }),
+    );
+    expect((await post({ ...mv, protokollArt: 'vollversammlung' })).status).toBe(400);
+    const put = await t.app.request(
+      '/api/kalender/kategorien/k1',
+      json('admin-token', 'PUT', { ...mv, protokollArt: 'mitgliederversammlung' }),
+    );
+    expect(put.status).toBe(200);
+    expect(t.kalender.kategorieAktualisieren).toHaveBeenLastCalledWith(
+      'k1',
+      expect.objectContaining({ protokollArt: 'mitgliederversammlung' }),
+    );
   });
 
   it('adds the permissions to the Posten rights', async () => {

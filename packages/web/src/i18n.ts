@@ -6,6 +6,7 @@ import type {
   EventBewertung,
   MitgliedStatus,
   Permission,
+  ProtokollArt,
   ProtokollStatus,
   ProtokollTeilnahmeWert,
   Quelle,
@@ -301,6 +302,18 @@ export const PROTOKOLL_TEILNAHME_KURZ: Record<ProtokollTeilnahmeWert, string> = 
   verspaetet: 'spät',
   entschuldigt: 'entsch.',
   unentschuldigt: 'fehlt',
+};
+
+/** Kind of Sitzung (quorum rule). */
+export const PROTOKOLL_ART_LABELS: Record<ProtokollArt, string> = {
+  sitzung: 'Sitzung',
+  mitgliederversammlung: 'Mitgliederversammlung',
+};
+
+/** Short explanation of the quorum rule of each kind. */
+export const PROTOKOLL_ART_BESCHREIBUNG: Record<ProtokollArt, string> = {
+  sitzung: 'Beschlussfähig mit mehr als der Hälfte der Mitglieder.',
+  mitgliederversammlung: 'Beschlussfähig mit mehr als zwei Dritteln der Mitglieder.',
 };
 
 export const PROTOKOLL_STATUS_LABELS: Record<ProtokollStatus, string> = {

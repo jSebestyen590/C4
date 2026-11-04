@@ -2,6 +2,7 @@ import {
   teilnahmeAbleiten,
   type Anrede,
   type MitgliedStatus,
+  type ProtokollArt,
   type ProtokollEmDto,
   type ProtokollKopf,
   type ProtokollMitgliedDto,
@@ -68,6 +69,7 @@ export function protokollListen(
         : (ueberschreibung ?? abgeleitet);
       return {
         ...mitgliedDto(m),
+        status: geschlossen ? (kopf.statusSchnappschuss?.[m.sub] ?? m.status) : m.status,
         abgeleitet,
         wert,
         ueberschrieben: ueberschreibung !== undefined && ueberschreibung !== abgeleitet,
@@ -94,24 +96,48 @@ export function protokollListen(
   return { teilnahme, ems };
 }
 
-/** The kopf of a protocol that is being closed: the current lists frozen into the snapshot. */
+/** Art of the Sitzung: frozen once closed, else the current one of the Kategorie. */
+export const protokollArtVon = (
+  kopf: ProtokollKopf,
+  status: ProtokollStatus,
+  aktuell: ProtokollArt,
+): ProtokollArt => (status === 'abgeschlossen' ? (kopf.artSchnappschuss ?? aktuell) : aktuell);
+
+/**
+ * The kopf of a protocol that is being closed: the current lists frozen into the snapshot, together
+ * with the member status of everybody in the attendance and the art of the Sitzung.
+ */
 export function kopfAbschliessen(
   kopf: ProtokollKopf,
   mitglieder: readonly ProtokollMitglied[],
   antworten: Readonly<Record<string, TeilnahmeAntwort>>,
+  art: ProtokollArt,
 ): ProtokollKopf {
-  const entwurf = { ...kopf, schnappschuss: null, emsSchnappschuss: null };
+  const entwurf = {
+    ...kopf,
+    schnappschuss: null,
+    emsSchnappschuss: null,
+    statusSchnappschuss: null,
+    artSchnappschuss: null,
+  };
   const { teilnahme, ems } = protokollListen(entwurf, 'entwurf', mitglieder, antworten);
   return {
     ...entwurf,
     schnappschuss: Object.fromEntries(teilnahme.map((t) => [t.sub, t.wert])),
     emsSchnappschuss: ems.filter((e) => e.ausgewaehlt).map((e) => e.sub),
+    statusSchnappschuss: Object.fromEntries(teilnahme.map((t) => [t.sub, t.status])),
+    artSchnappschuss: art,
   };
 }
 
-/** The kopf of a reopened protocol: the snapshot is dropped, the draft follows the event again. */
-export const kopfWiederOeffnen = (kopf: ProtokollKopf): ProtokollKopf => ({
+/** Kopf without any snapshot (a draft never carries one). */
+export const kopfOhneSchnappschuss = (kopf: ProtokollKopf): ProtokollKopf => ({
   ...kopf,
   schnappschuss: null,
   emsSchnappschuss: null,
+  statusSchnappschuss: null,
+  artSchnappschuss: null,
 });
+
+/** The kopf of a reopened protocol: the snapshot is dropped, the draft follows the event again. */
+export const kopfWiederOeffnen = kopfOhneSchnappschuss;

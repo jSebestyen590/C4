@@ -39,6 +39,7 @@ import {
   EVENT_DAUERN,
   eventDauerFehler,
   type EventArt,
+  type ProtokollArt,
   type EventDauer,
   type EventKategorieDto,
   type EventKategorieEingabe,
@@ -362,6 +363,8 @@ export interface EventKurz {
   kategorie: { id: string; name: string; farbe: string } | null;
   /** The Kategorie is a "Sitzung mit Protokoll". */
   protokoll: boolean;
+  /** Kind of Sitzung ('sitzung' when the Kategorie has no `protokoll`). */
+  protokollArt: ProtokollArt;
 }
 
 export interface KalenderStore {
@@ -852,6 +855,9 @@ const verantwortlicheR = (
 
 const artVon = (k: { art: string | null } | null | undefined): EventArt =>
   k?.art === 'teilnahme' ? 'teilnahme' : 'dienste';
+
+const protokollArtVon = (k: { protokollArt: string | null } | null | undefined): ProtokollArt =>
+  k?.protokollArt === 'mitgliederversammlung' ? 'mitgliederversammlung' : 'sitzung';
 
 /** A Kategorie with its resolved kind and default circle. */
 export interface KategorieInfo {
@@ -1474,6 +1480,7 @@ export function createKalenderStore(db: Db): KalenderStore {
       abgesagt: e.abgesagt,
       kategorie: k && { id: k.id, name: k.name, farbe: k.farbe },
       protokoll: k !== null && artVon(k) === 'teilnahme' && k.protokoll === true,
+      protokollArt: protokollArtVon(k),
     }));
   };
 
@@ -2077,6 +2084,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             artVon(k) === 'teilnahme' ? teilnahmeKreisLesen(k.teilnahmeStatus) : null,
           dauer: dauerVon(k),
           protokoll: artVon(k) === 'teilnahme' && k.protokoll === true,
+          protokollArt: protokollArtVon(k),
           benutzt: benutzteIds.has(k.id),
           archiviert: k.archiviert,
         }));
@@ -2091,6 +2099,7 @@ export function createKalenderStore(db: Db): KalenderStore {
         teilnahmeStatus: teilnahmeKreisKodieren(daten.teilnahmeStatus),
         dauer: daten.dauer,
         protokoll: daten.protokoll,
+        protokollArt: daten.protokoll ? daten.protokollArt : null,
         archiviert: daten.archiviert ?? false,
       });
       return id;
@@ -2119,6 +2128,7 @@ export function createKalenderStore(db: Db): KalenderStore {
             // Existing events keep their times; only new and edited ones follow the new `dauer`.
             dauer: daten.dauer,
             protokoll: daten.protokoll,
+            protokollArt: daten.protokoll ? daten.protokollArt : null,
             ...(daten.archiviert !== undefined && { archiviert: daten.archiviert }),
           })
           .where(eq(eventKategorien.id, id));

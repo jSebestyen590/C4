@@ -10,6 +10,7 @@ export * from './kalender';
 export * from './kontakt';
 export * from './posten';
 export * from './protokolle';
+export * from './protokollAnwesenheit';
 export * from './roles';
 export * from './schemas';
 export * from './schluessel';

@@ -2,6 +2,7 @@ import {
   bausteinLeer,
   type BausteinDatenVon,
   type BausteinEventDaten,
+  type AnwesenheitArt,
   type BausteinTyp,
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
@@ -21,7 +22,15 @@ export type SlashAktion =
   | { art: 'zitat' };
 
 export type SlashSymbol =
-  'event' | 'vergangenes' | 'anwaerter' | 'beschluss' | 'vorlage' | 'ohne' | 'zitat';
+  | 'event'
+  | 'vergangenes'
+  | 'anwaerter'
+  | 'beschluss'
+  | 'erscheint'
+  | 'geht'
+  | 'vorlage'
+  | 'ohne'
+  | 'zitat';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -47,12 +56,28 @@ export interface SlashVergangenes {
   daten: BausteinVergangenesEventDaten;
 }
 
+/** A person of the attendance list, selectable for /erscheint and /geht. */
+export interface SlashPerson {
+  sub: string;
+  /** Username, else the full name. */
+  titel: string;
+  /** Full name and status. */
+  beschreibung: string;
+  mitglied: boolean;
+  /** Counts as present at the opening (`anwesend` / `verspaetet`). */
+  da: boolean;
+}
+
 export interface SlashDaten {
   vorlagen: readonly SlashVorlage[];
   vergangene: readonly SlashVergangenes[];
+  /** The attendance list. */
+  personen?: readonly SlashPerson[];
+  /** Time to prefill a new Anwesenheit block (`HH:MM`, '' = none); called on every list build. */
+  uhrzeit?: () => string;
 }
 
-export type SlashStufe = 'bausteine' | 'vorlagen' | 'events';
+export type SlashStufe = 'bausteine' | 'vorlagen' | 'events' | AnwesenheitArt;
 
 /** Lower case, umlauts spelled out (`Anwärter` = `anwaerter`), single spaces. */
 export function normalisieren(text: string): string {
@@ -74,6 +99,12 @@ export function slashStufe(query: string): { stufe: SlashStufe; filter: string }
   if (wort === 'event') return { stufe: 'vorlagen', filter: rest.trim() };
   if (wort === 'vergangenes' || wort === 'vergangen') {
     return { stufe: 'events', filter: rest.replace(/^event ?/, '').trim() };
+  }
+  if (wort === 'erscheint' || wort === 'erscheinen' || wort === 'kommt') {
+    return { stufe: 'erscheint', filter: rest.trim() };
+  }
+  if (wort === 'geht' || wort === 'gehen' || wort === 'verlaesst') {
+    return { stufe: 'geht', filter: rest.trim() };
   }
   return { stufe: 'bausteine', filter: q.trim() };
 }
@@ -125,6 +156,22 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
       art: 'einfuegen',
       wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
     },
+  },
+  {
+    schluessel: 'erscheint',
+    titel: 'Erscheint',
+    beschreibung: 'Ein Mitglied kommt während der Sitzung dazu',
+    symbol: 'erscheint',
+    woerter: ['erscheint', 'erscheinen', 'kommt', 'ankunft', 'verspaetet'],
+    aktion: { art: 'weiter', text: 'erscheint ' },
+  },
+  {
+    schluessel: 'geht',
+    titel: 'Geht',
+    beschreibung: 'Ein Mitglied verlässt die Sitzung',
+    symbol: 'geht',
+    woerter: ['geht', 'gehen', 'verlaesst', 'verlassen'],
+    aktion: { art: 'weiter', text: 'geht ' },
   },
   {
     schluessel: 'zitat',
@@ -217,10 +264,48 @@ export function vergangenesEintraege(
   return eintraege;
 }
 
+/**
+ * Second stage of "Erscheint" / "Geht": the people of the attendance list matching the filter. Those
+ * who can still arrive (not present at the opening) come first for Erscheint, the present ones first for
+ * Geht; then members before the rest, then by name.
+ */
+export function personEintraege(
+  art: AnwesenheitArt,
+  personen: readonly SlashPerson[],
+  filter: string,
+  uhrzeit: string,
+): SlashEintrag[] {
+  const rang = (p: SlashPerson) => (p.da === (art === 'geht') ? 0 : 1);
+  return personen
+    .filter((p) => enthaelt(`${p.titel} ${p.beschreibung}`, filter))
+    .sort(
+      (a, b) =>
+        rang(a) - rang(b) ||
+        Number(b.mitglied) - Number(a.mitglied) ||
+        a.titel.localeCompare(b.titel, 'de'),
+    )
+    .map((p) => ({
+      schluessel: `person-${art}-${p.sub}`,
+      titel: p.titel,
+      beschreibung: p.beschreibung,
+      symbol: art,
+      aktion: {
+        art: 'einfuegen' as const,
+        wahl: {
+          typ: 'bausteinAnwesenheit' as const,
+          daten: { art, sub: p.sub, uhrzeit },
+        },
+      },
+    }));
+}
+
 /** All items for what was typed after the "/". */
 export function slashEintraege(query: string, daten: SlashDaten): SlashEintrag[] {
   const { stufe, filter } = slashStufe(query);
   if (stufe === 'vorlagen') return vorlageEintraege(daten.vorlagen, filter);
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
+  if (stufe === 'erscheint' || stufe === 'geht') {
+    return personEintraege(stufe, daten.personen ?? [], filter, daten.uhrzeit?.() ?? '');
+  }
   return bausteinEintraege(filter);
 }

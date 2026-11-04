@@ -5,9 +5,10 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ProtokollDokument } from '@c4/shared';
+import { anwesenheitsVerlauf, type ProtokollArt, type ProtokollDokument } from '@c4/shared';
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
+import type { AnwesenheitPerson } from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
@@ -53,13 +54,23 @@ export function ProtokollEditor({
   editierbar,
   onChange,
   sitzungBeginn,
+  art,
+  teilnahme,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
   onChange?: (dokument: ProtokollDokument) => void;
   sitzungBeginn: string;
+  /** Art of the Sitzung (quorum rule). */
+  art: ProtokollArt;
+  /** The attendance list with the values that count right now (live, incl. Kopf overrides). */
+  teilnahme: readonly AnwesenheitPerson[];
 }>) {
-  const slashDaten = useSlashDaten();
+  const slashDaten = useSlashDaten(sitzungBeginn, teilnahme);
+  // The document as the quorum needs it (a little behind the typing).
+  const [dokument, setDokument] = useState(inhalt);
+  const dokumentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(dokumentTimer.current), []);
   const slashDatenRef = useRef(slashDaten);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -130,19 +141,34 @@ export function ProtokollEditor({
         autolink: true,
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
-      Placeholder.configure({ placeholder: 'Schreib etwas oder tippe / für einen Baustein oder ein Zitat' }),
+      Placeholder.configure({
+        placeholder: 'Schreib etwas oder tippe / für einen Baustein oder ein Zitat',
+      }),
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
       slashErweiterung(steuerung),
     ],
     content: dokumentNormalisieren(inhalt, editierbar),
     editable: editierbar,
-    onUpdate: ({ editor: e }) => onChangeRef.current?.(e.getJSON() as ProtokollDokument),
+    onUpdate: ({ editor: e }) => {
+      const json = e.getJSON() as ProtokollDokument;
+      onChangeRef.current?.(json);
+      clearTimeout(dokumentTimer.current);
+      dokumentTimer.current = setTimeout(() => setDokument(json), 200);
+    },
   });
 
   useEditableSync(editor, editierbar);
 
-  const kontext = useMemo(() => ({ sitzungBeginn }), [sitzungBeginn]);
+  const kontext = useMemo(
+    () => ({
+      sitzungBeginn,
+      art,
+      teilnahme,
+      verlauf: anwesenheitsVerlauf(dokument, { art, teilnahme }),
+    }),
+    [sitzungBeginn, art, teilnahme, dokument],
+  );
 
   return (
     <ProtokollKontext.Provider value={kontext}>

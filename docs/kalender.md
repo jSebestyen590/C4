@@ -139,7 +139,7 @@ Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; `kategorie_id` ist `
 - **Sitzung mit Protokoll:** Eine Teilnahme-Kategorie kann das Häkchen `protokoll` tragen (Spalte `event_kategorien.protokoll`,
   Badge „Protokoll“ in der Einrichtung; Dienste-Kategorien: 400). Zu Events dieser Kategorie lassen sich Protokolle schreiben,
   siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll lässt sich nicht löschen (409), und Serienänderungen
-  löschen oder ersetzen es nie.
+  löschen oder ersetzen es nie. Mit dem Häkchen wählt man die **Art** (`protokollArt`: Sitzung = mehr als die Hälfte, Mitgliederversammlung = mehr als zwei Drittel der Mitglieder beschlussfähig).
 
 ## Teilnahme
 

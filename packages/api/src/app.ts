@@ -204,7 +204,9 @@ import {
 } from './protokolle';
 import {
   kopfAbschliessen,
+  kopfOhneSchnappschuss,
   kopfWiederOeffnen,
+  protokollArtVon,
   mitgliedDto,
   protokollListen,
   type ProtokollMitglied,
@@ -1008,6 +1010,7 @@ export function createApp(deps: AppDeps) {
         titel: event?.titel ?? 'Sitzung',
         beginn: event?.beginn ?? p.erstelltAm.toISOString(),
         kategorie: event?.kategorie ?? null,
+        art: protokollArtVon(kopf, p.status, event?.protokollArt ?? 'sitzung'),
       },
       inhalt: protokollInhaltLesen(p.inhalt),
       kopf,
@@ -1783,6 +1786,7 @@ export function createApp(deps: AppDeps) {
             titel: e.titel,
             beginn: e.beginn,
             kategorie: e.kategorie,
+            art: e.protokollArt,
           })),
         );
       })
@@ -1812,10 +1816,10 @@ export function createApp(deps: AppDeps) {
           const vorschlag =
             eingabe.inhalt && eingabe.kopf ? undefined : await protokollVorschlagFuer(sitzung);
           const inhalt = eingabe.inhalt ?? vorschlag!.inhalt;
+          const vorKopf = kopfOhneSchnappschuss(eingabe.kopf ?? vorschlag!.kopf);
           const kopf = {
-            ...(eingabe.kopf ?? vorschlag!.kopf),
-            schnappschuss: null,
-            emsSchnappschuss: null,
+            ...vorKopf,
+            protokollfuehrung: vorKopf.protokollfuehrung ?? c.get('user').sub,
           };
           try {
             const id = await deps.protokolle.anlegen(
@@ -1849,7 +1853,7 @@ export function createApp(deps: AppDeps) {
                 {
                   inhalt: JSON.stringify(inhalt),
                   // The snapshot is the API's business: a draft never has one.
-                  kopf: JSON.stringify({ ...kopf, schnappschuss: null, emsSchnappschuss: null }),
+                  kopf: JSON.stringify(kopfOhneSchnappschuss(kopf)),
                   version,
                 },
                 c.get('user').sub,
@@ -1887,6 +1891,7 @@ export function createApp(deps: AppDeps) {
                   kopf,
                   await protokollMitglieder(),
                   await deps.kalender.teilnahmeAntworten(p.eventId),
+                  (await deps.kalender.eventsKurz([p.eventId]))[0]?.protokollArt ?? 'sitzung',
                 )
               : kopfWiederOeffnen(kopf);
           try {

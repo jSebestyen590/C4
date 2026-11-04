@@ -1,5 +1,8 @@
 import {
+  bausteinErzeugen,
   beschlussErgebnisVorschlag,
+  datumBerlin,
+  zeitBerlin,
   type BausteinBeschlussDaten,
   type BausteinEventDaten,
   type BausteinTyp,
@@ -168,7 +171,17 @@ export function stimmeSetzen(
 // Focus after inserting
 // ---------------------------------------------------------------------------------------------
 
-export type FokusZiel = 'name' | 'datum' | 'vorname' | 'nachname' | 'antrag' | 'text';
+export type FokusZiel =
+  | 'name'
+  | 'datum'
+  | 'vorname'
+  | 'nachname'
+  | 'antrag'
+  | 'person'
+  /** Into the free text of the Baustein. */
+  | 'text'
+  /** Behind the Baustein (it is a one-liner, the user continues below it). */
+  | 'nach';
 
 /** The first empty field of a new Baustein (`text` = the free text when all fields are filled). */
 export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
@@ -184,7 +197,36 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
       return leer('vorname') ? 'vorname' : leer('nachname') ? 'nachname' : 'text';
     case 'bausteinBeschluss':
       return leer('antrag') ? 'antrag' : 'text';
+    case 'bausteinAnwesenheit':
+      return leer('sub') ? 'person' : 'nach';
   }
+}
+
+/** Free text of a new Baustein: Event and Vergangenes Event start with an empty bullet list. */
+export function notizenVorlage(typ: BausteinTyp): ProtokollKnoten[] {
+  if (typ === 'bausteinEvent' || typ === 'bausteinVergangenesEvent') {
+    return [
+      {
+        type: 'bulletList',
+        content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+      },
+    ];
+  }
+  return [{ type: 'paragraph' }];
+}
+
+/** The document node of a new Baustein with its starting free text. */
+export function bausteinNeu(typ: BausteinTyp, daten: unknown): ProtokollKnoten {
+  return bausteinErzeugen(typ, daten as never, notizenVorlage(typ));
+}
+
+/**
+ * Time to prefill a new Anwesenheit block: the current Berlin time `HH:MM` when the Sitzung is today,
+ * else '' (the minutes are written up later).
+ */
+export function anwesenheitUhrzeit(sitzungBeginn: string, jetzt: Date = new Date()): string {
+  const iso = jetzt.toISOString();
+  return datumBerlin(iso) === datumBerlin(sitzungBeginn) ? zeitBerlin(iso) : '';
 }
 
 // ---------------------------------------------------------------------------------------------

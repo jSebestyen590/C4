@@ -3,6 +3,8 @@ import {
   IconCalendarEvent,
   IconGavel,
   IconHistory,
+  IconLogin2,
+  IconLogout2,
   IconQuote,
   IconTemplate,
   IconUserPlus,
@@ -20,6 +22,10 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconUserPlus size={size} />;
     case 'beschluss':
       return <IconGavel size={size} />;
+    case 'erscheint':
+      return <IconLogin2 size={size} />;
+    case 'geht':
+      return <IconLogout2 size={size} />;
     case 'vorlage':
       return <IconTemplate size={size} />;
     case 'zitat':
@@ -34,6 +40,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinVergangenesEvent: 'vergangenes',
   bausteinAnwaerter: 'anwaerter',
   bausteinBeschluss: 'beschluss',
+  bausteinAnwesenheit: 'erscheint',
 };
 
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
@@ -41,4 +48,5 @@ export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinVergangenesEvent: 'Vergangenes Event',
   bausteinAnwaerter: 'Neue:r Anwärter:in',
   bausteinBeschluss: 'Beschluss',
+  bausteinAnwesenheit: 'Anwesenheit',
 };

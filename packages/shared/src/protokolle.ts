@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import type { Anrede } from './anrede';
-import { datumBerlin, vorlageSchichtSchema, zeitBerlin } from './kalender';
+import {
+  PROTOKOLL_ARTEN,
+  datumBerlin,
+  vorlageSchichtSchema,
+  zeitBerlin,
+  type ProtokollArt,
+} from './kalender';
 import { datumSchema } from './schemas';
-import type { MitgliedStatus } from './status';
+import { MITGLIED_STATI, type MitgliedStatus } from './status';
 
 // Meeting minutes (see docs/protokolle.md). The document is TipTap JSON; shared does not depend on
 // TipTap, it only knows the node shapes it has to validate.
@@ -33,6 +39,7 @@ export const BAUSTEIN_TYPEN = [
   'bausteinVergangenesEvent',
   'bausteinAnwaerter',
   'bausteinBeschluss',
+  'bausteinAnwesenheit',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
 
@@ -47,6 +54,10 @@ const zeitSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).')
   .nullable();
+/** Clock time `HH:MM`, or '' while nothing is entered. */
+export const uhrzeitOderLeerSchema = z
+  .string()
+  .regex(/^(([01]\d|2[0-3]):[0-5]\d)?$/, 'Bitte gib eine Uhrzeit an (HH:MM).');
 const idOderNull = z.string().max(100).nullable();
 const stimmen = z
   .number('Bitte gib eine Zahl an.')
@@ -96,11 +107,23 @@ export const bausteinBeschlussDatenSchema = z.strictObject({
 });
 export type BausteinBeschlussDaten = z.infer<typeof bausteinBeschlussDatenSchema>;
 
+export const ANWESENHEIT_ARTEN = ['erscheint', 'geht'] as const;
+export type AnwesenheitArt = (typeof ANWESENHEIT_ARTEN)[number];
+
+/** A member arrives (`erscheint`) or leaves (`geht`) during the Sitzung; in a draft `sub` may still be null. */
+export const bausteinAnwesenheitDatenSchema = z.strictObject({
+  art: z.enum(ANWESENHEIT_ARTEN),
+  sub: idOderNull,
+  uhrzeit: uhrzeitOderLeerSchema,
+});
+export type BausteinAnwesenheitDaten = z.infer<typeof bausteinAnwesenheitDatenSchema>;
+
 export interface BausteinDatenVon {
   bausteinEvent: BausteinEventDaten;
   bausteinVergangenesEvent: BausteinVergangenesEventDaten;
   bausteinAnwaerter: BausteinAnwaerterDaten;
   bausteinBeschluss: BausteinBeschlussDaten;
+  bausteinAnwesenheit: BausteinAnwesenheitDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -108,6 +131,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinVergangenesEvent: bausteinVergangenesEventDatenSchema,
   bausteinAnwaerter: bausteinAnwaerterDatenSchema,
   bausteinBeschluss: bausteinBeschlussDatenSchema,
+  bausteinAnwesenheit: bausteinAnwesenheitDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -132,6 +156,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
       return { vorname: '', nachname: '', email: null };
     case 'bausteinBeschluss':
       return { antrag: '', ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+    case 'bausteinAnwesenheit':
+      return { art: 'erscheint', sub: null, uhrzeit: '' };
   }
 }
 
@@ -316,6 +342,18 @@ export const protokollKopfSchema = z.strictObject({
   schnappschuss: z.record(subSchluessel, teilnahmeWertSchema).nullable().default(null),
   /** The chosen EMs as frozen when the protocol was closed (set by the API). */
   emsSchnappschuss: z.array(subSchluessel).max(500).nullable().default(null),
+  /** Member status of everybody in the attendance as frozen when closed (set by the API). */
+  statusSchnappschuss: z.record(subSchluessel, z.enum(MITGLIED_STATI)).nullable().default(null),
+  /** Art of the Sitzung as frozen when closed (set by the API). */
+  artSchnappschuss: z.enum(PROTOKOLL_ARTEN).nullable().default(null),
+  /** Who chaired the Sitzung. */
+  sitzungsleitung: subSchluessel.nullable().default(null),
+  /** Who took the minutes; the API sets the creator when a new protocol has none. */
+  protokollfuehrung: subSchluessel.nullable().default(null),
+  /** Time the Sitzung was opened ('' = not entered). */
+  eroeffnung: uhrzeitOderLeerSchema.default(''),
+  /** Time a late member (attendance `verspaetet`) arrived. */
+  verspaetung: z.record(subSchluessel, uhrzeitOderLeerSchema).default({}),
 });
 export type ProtokollKopf = z.infer<typeof protokollKopfSchema>;
 
@@ -326,6 +364,12 @@ export const protokollKopfLeer = (): ProtokollKopf => ({
   gaeste: '',
   schnappschuss: null,
   emsSchnappschuss: null,
+  statusSchnappschuss: null,
+  artSchnappschuss: null,
+  sitzungsleitung: null,
+  protokollfuehrung: null,
+  eroeffnung: '',
+  verspaetung: {},
 });
 
 /** Attendance derived from the member's own answer to the Sitzung event: yes = anwesend, no = entschuldigt, none = unentschuldigt. */
@@ -509,6 +553,8 @@ export interface ProtokollDto {
     /** ISO instant. */
     beginn: string;
     kategorie: { id: string; name: string; farbe: string } | null;
+    /** Art of the Sitzung (frozen once closed). */
+    art: ProtokollArt;
   };
   inhalt: ProtokollDokument;
   kopf: ProtokollKopf;
@@ -528,6 +574,7 @@ export interface ProtokollSitzungDto {
   titel: string;
   beginn: string;
   kategorie: { id: string; name: string; farbe: string } | null;
+  art: ProtokollArt;
 }
 
 export interface ProtokollVorschlagDto {

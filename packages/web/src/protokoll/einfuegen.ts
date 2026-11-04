@@ -1,7 +1,7 @@
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
-import { BAUSTEIN_TYPEN, bausteinErzeugen, type ProtokollKnoten } from '@c4/shared';
-import { ersterLeererFeld } from './bausteinLogik';
+import { BAUSTEIN_TYPEN, type ProtokollKnoten } from '@c4/shared';
+import { bausteinNeu, ersterLeererFeld } from './bausteinLogik';
 import type { BausteinWahl } from './slashLogik';
 
 export interface TextBereich {
@@ -58,7 +58,7 @@ export function bausteinEinfuegen(
     von = bis = $pos.after(container);
   }
 
-  const json: ProtokollKnoten = bausteinErzeugen(wahl.typ, wahl.daten as never);
+  const json: ProtokollKnoten = bausteinNeu(wahl.typ, wahl.daten);
   const knoten = state.schema.nodeFromJSON(json);
   tr.replaceWith(von, bis, knoten);
   view.dispatch(tr.scrollIntoView());
@@ -82,6 +82,16 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
   let versuche = 0;
   const schritt = () => {
     if (editor.isDestroyed) return;
+    if (ziel === 'nach') {
+      const knoten = editor.state.doc.nodeAt(pos);
+      if (!knoten) return;
+      const ende = Math.min(pos + knoten.nodeSize, editor.state.doc.content.size);
+      editor.view.dispatch(
+        editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(ende), 1)),
+      );
+      editor.view.focus();
+      return;
+    }
     if (ziel === 'text') {
       const knoten = editor.state.doc.nodeAt(pos);
       if (!knoten) return;

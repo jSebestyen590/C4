@@ -473,6 +473,8 @@ export const eventKategorien = pgTable('event_kategorien', {
   dauer: text('dauer'),
   /** Meetings of this category get minutes (`teilnahme` categories only); null = no. */
   protokoll: boolean('protokoll'),
+  /** Kind of Sitzung for categories with `protokoll`: `sitzung` (null) or `mitgliederversammlung`. */
+  protokollArt: text('protokoll_art'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;

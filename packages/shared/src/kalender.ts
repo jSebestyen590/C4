@@ -229,6 +229,10 @@ export const dienstformEingabeSchema = z.object({
 });
 export type DienstformEingabe = z.infer<typeof dienstformEingabeSchema>;
 
+/** Kind of a Sitzung; decides the quorum rule (see `beschlussfaehigkeit`). Set at the event Kategorie. */
+export const PROTOKOLL_ARTEN = ['sitzung', 'mitgliederversammlung'] as const;
+export type ProtokollArt = (typeof PROTOKOLL_ARTEN)[number];
+
 export const eventKategorieEingabeSchema = z
   .object({
     name: name(),
@@ -247,6 +251,8 @@ export const eventKategorieEingabeSchema = z
       .boolean()
       .optional()
       .transform((v) => v ?? false),
+    /** Kind of Sitzung (quorum rule) for a Kategorie with `protokoll`; stored as 'sitzung' otherwise. */
+    protokollArt: z.enum(PROTOKOLL_ARTEN).default('sitzung'),
     archiviert: z.boolean().optional(),
   })
   .refine((v) => v.art !== 'teilnahme' || v.teilnahmeStatus !== null, {
@@ -257,7 +263,11 @@ export const eventKategorieEingabeSchema = z
     message: 'Nur Kategorien mit Teilnahme können eine Sitzung mit Protokoll sein.',
     path: ['protokoll'],
   })
-  .transform((v) => (v.art === 'dienste' ? { ...v, teilnahmeStatus: null } : v));
+  .transform((v) => ({
+    ...v,
+    teilnahmeStatus: v.art === 'dienste' ? null : v.teilnahmeStatus,
+    protokollArt: v.protokoll ? v.protokollArt : ('sitzung' as const),
+  }));
 export type EventKategorieEingabe = z.infer<typeof eventKategorieEingabeSchema>;
 
 export const externeEingabeSchema = z.object({
@@ -595,6 +605,8 @@ export interface EventKategorieDto {
   dauer: EventDauer;
   /** Meetings of this Kategorie get minutes (`teilnahme` only, else false). */
   protokoll: boolean;
+  /** Kind of Sitzung of a Kategorie with `protokoll` ('sitzung' otherwise). */
+  protokollArt: ProtokollArt;
   /** At least one event uses the Kategorie, so its `art` cannot change. */
   benutzt: boolean;
   archiviert: boolean;

@@ -25,6 +25,12 @@ const daten: SlashDaten = {
       daten: { eventId: 'e1', name: 'Sommerfest', datum: '2026-06-01' },
     },
   ],
+  personen: [
+    { sub: 'a', titel: 'Anna', beschreibung: 'Anna Alt · Mitglied', mitglied: true, da: true },
+    { sub: 'j', titel: 'Julia', beschreibung: 'Julia Jung · Mitglied', mitglied: true, da: false },
+    { sub: 'e', titel: 'Emil', beschreibung: 'Emil Eck · EM', mitglied: false, da: false },
+  ],
+  uhrzeit: () => '21:15',
 };
 const titel = (q: string) => slashEintraege(q, daten).map((e) => e.titel);
 
@@ -47,7 +53,15 @@ describe('slashStufe', () => {
 
 describe('first stage', () => {
   it('lists everything without a query', () => {
-    expect(titel('')).toEqual(['Event', 'Vergangenes Event', 'Anwärter:in', 'Beschluss', 'Zitat']);
+    expect(titel('')).toEqual([
+      'Event',
+      'Vergangenes Event',
+      'Anwärter:in',
+      'Beschluss',
+      'Erscheint',
+      'Geht',
+      'Zitat',
+    ]);
   });
   it('filters by name prefix, word prefix and alias', () => {
     expect(titel('ev')).toEqual(['Event', 'Vergangenes Event']);
@@ -96,5 +110,33 @@ describe('second stage', () => {
   it('lists past events', () => {
     expect(titel('vergangenes ')).toEqual(['Ohne Kalender-Event', 'Sommerfest']);
     expect(titel('vergangenes event som')).toEqual(['Sommerfest']);
+  });
+});
+
+describe('Erscheint and Geht', () => {
+  it('finds them by name and alias and switches stage', () => {
+    expect(titel('erschei')).toEqual(['Erscheint']);
+    expect(titel('kommt')).toEqual(['Erscheint']);
+    expect(titel('verlässt')).toEqual(['Geht']);
+    expect(slashEintraege('geh', daten)[0]?.aktion).toEqual({ art: 'weiter', text: 'geht ' });
+    expect(slashStufe('erscheint jul')).toEqual({ stufe: 'erscheint', filter: 'jul' });
+    expect(slashStufe('Geht ')).toEqual({ stufe: 'geht', filter: '' });
+  });
+  it('lists those not yet present first for Erscheint, present ones first for Geht', () => {
+    expect(titel('erscheint ')).toEqual(['Julia', 'Emil', 'Anna']);
+    expect(titel('geht ')).toEqual(['Anna', 'Julia', 'Emil']);
+  });
+  it('filters by username and full name', () => {
+    expect(titel('erscheint jul')).toEqual(['Julia']);
+    expect(titel('geht alt')).toEqual(['Anna']);
+  });
+  it('creates the Anwesenheit block with person and time', () => {
+    expect(slashEintraege('erscheint jul', daten)[0]?.aktion).toEqual({
+      art: 'einfuegen',
+      wahl: {
+        typ: 'bausteinAnwesenheit',
+        daten: { art: 'erscheint', sub: 'j', uhrzeit: '21:15' },
+      },
+    });
   });
 });

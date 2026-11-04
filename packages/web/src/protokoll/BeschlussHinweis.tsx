@@ -1,0 +1,33 @@
+import { Alert, Stack, Text } from '@mantine/core';
+import { IconAlertTriangle } from '@tabler/icons-react';
+import type { BausteinBeschlussDaten } from '@c4/shared';
+import { mitgliedernText } from './anwesenheit';
+import { useProtokollKontext } from './kontext';
+
+/** Under a Beschluss: who was present at that point, and warnings about quorum and vote count. */
+export function BeschlussHinweis({
+  id,
+  daten,
+}: Readonly<{ id: string; daten: BausteinBeschlussDaten }>) {
+  const { verlauf } = useProtokollKontext();
+  const stand = verlauf.bausteine[id];
+  if (!stand || stand.gesamt === 0) return null;
+  const stimmen = daten.ja + daten.nein + daten.enthaltung;
+  return (
+    <Stack gap={4}>
+      <Text size="xs" c="dimmed">
+        Anwesend: {stand.anwesend} von {mitgliedernText(stand.gesamt)} (nötig: {stand.mindestens})
+      </Text>
+      {!stand.beschlussfaehig && (
+        <Text size="sm" fw={600} c="red">
+          Nicht beschlussfähig
+        </Text>
+      )}
+      {stimmen > stand.anwesend && (
+        <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
+          Mehr Stimmen als anwesende Mitglieder
+        </Alert>
+      )}
+    </Stack>
+  );
+}

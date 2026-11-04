@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { vorlageSchichtSchema, type VorlageSchicht } from '@c4/shared';
+import { bausteinLeer, vorlageSchichtSchema, type VorlageSchicht } from '@c4/shared';
 import {
   anzahlSetzen,
   bedarfSetzen,
@@ -14,6 +14,9 @@ import {
   stimmeSetzen,
   vergangeneEvents,
   zeitWert,
+  anwesenheitUhrzeit,
+  bausteinNeu,
+  notizenVorlage,
 } from './bausteinLogik';
 
 const betrieb: VorlageSchicht = {
@@ -227,5 +230,35 @@ describe('Event lists', () => {
   it('lists upcoming events soonest first', () => {
     const r = kommendeEvents(events, '2026-05-01T18:00:00Z').map((x) => x.id);
     expect(r).toEqual(['sitzung', 'spaeter']);
+  });
+});
+
+describe('new Bausteine', () => {
+  it('start Event and Vergangenes Event with an empty bullet list', () => {
+    for (const typ of ['bausteinEvent', 'bausteinVergangenesEvent'] as const) {
+      expect(notizenVorlage(typ)).toEqual([
+        { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }] },
+      ]);
+    }
+    expect(bausteinNeu('bausteinEvent', bausteinLeer('bausteinEvent')).content?.[0]?.type).toBe(
+      'bulletList',
+    );
+  });
+  it('start the others with an empty paragraph', () => {
+    expect(notizenVorlage('bausteinBeschluss')).toEqual([{ type: 'paragraph' }]);
+    expect(notizenVorlage('bausteinAnwesenheit')).toEqual([{ type: 'paragraph' }]);
+  });
+  it('focuses the person or goes behind a filled Anwesenheit', () => {
+    expect(ersterLeererFeld('bausteinAnwesenheit', { art: 'geht', sub: null, uhrzeit: '' })).toBe(
+      'person',
+    );
+    expect(ersterLeererFeld('bausteinAnwesenheit', { art: 'geht', sub: 'x', uhrzeit: '' })).toBe(
+      'nach',
+    );
+  });
+  it('prefills the time only on the day of the Sitzung (Berlin)', () => {
+    const jetzt = new Date('2026-06-01T19:15:00Z');
+    expect(anwesenheitUhrzeit('2026-06-01T17:00:00Z', jetzt)).toBe('21:15');
+    expect(anwesenheitUhrzeit('2026-05-20T17:00:00Z', jetzt)).toBe('');
   });
 });

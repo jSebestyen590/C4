@@ -119,6 +119,7 @@ function fakeStore(v: VorlageDto | null = vorlage(), serien: SerieDto[] = [barab
         teilnahmeStatus: null,
         dauer: 'eintaegig' as const,
         protokoll: false,
+        protokollArt: 'sitzung' as const,
         archiviert: false,
         benutzt: true,
       },

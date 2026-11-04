@@ -10,7 +10,7 @@ Zukünftiges), in dem Text und **Bausteine** stehen. Rechte: `protokolle:lesen` 
 
 Tabelle `protokolle`: `id`, `event_id` (eindeutig), `inhalt` (Text, TipTap-JSON), `kopf` (Text, JSON), `status`
 (`entwurf`/`abgeschlossen`), `version` (zählt bei jeder Änderung hoch), `erstellt_von/_am`, `geaendert_von/_am`. Migrationen
-`0110`–`0112` (siehe [datenbank.md](./datenbank.md)); `event_kategorien.protokoll` ist das Sitzungs-Häkchen.
+`0110`–`0113` (siehe [datenbank.md](./datenbank.md)); `event_kategorien.protokoll` ist das Sitzungs-Häkchen, `event_kategorien.protokoll_art` die Art der Sitzung.
 
 Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt TipTap nicht, nur die Knotenformen), Store
 `packages/api/src/protokolle.ts`, Listen und Schnappschuss `protokolleAnsicht.ts`, Routen in `app.ts`, Web unter
@@ -21,6 +21,11 @@ Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt
 - Eine Kategorie mit Teilnahme bekommt in der Kalender-Einrichtung das Häkchen **„Sitzung mit Protokoll“**
   (`event_kategorien.protokoll`; für Dienste-Kategorien 400). Events dieser Kategorie sind Sitzungen. Siehe auch
   [kalender.md](./kalender.md).
+- **Art der Sitzung** (`protokollArt` an der Kategorie, `sitzung` oder `mitgliederversammlung`, Standard `sitzung`) bestimmt
+  die Beschlussfähigkeit: Sitzung = mehr als die Hälfte der Mitglieder, Mitgliederversammlung = mehr als zwei Drittel.
+  Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer `anwesend` ist, zählt ab Beginn,
+  wer `verspaetet` ist, ab seinem Baustein „Erscheint“; „Geht“ nimmt ihn wieder heraus (`anwesenheitsVerlauf` in
+  `packages/shared/src/protokollAnwesenheit.ts`).
 - Je Event gibt es höchstens ein Protokoll (eindeutiger Index; ein zweites gibt 409). Abgesagte Events und Events anderer
   Kategorien nimmt die API nicht an (400).
 - **Löschschutz:** Ein Event mit Protokoll lässt sich nicht löschen (409); erst das Protokoll löschen (nur im Entwurf).
@@ -40,7 +45,15 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
 - **EMs:** Auswahl aus den aktiven EM-Mitgliedern plus Freitext (`emsFreitext`). Ohne Auswahl (`ems: null`) gelten die EMs mit
   Zusage; wer ausgewählt wird, ersetzt diese Ableitung.
 - **Gäste:** nur Freitext.
-- **Schnappschuss:** „Abschließen“ friert Teilnahme und gewählte EMs ein (`schnappschuss`, `emsSchnappschuss`). Danach zeigt
+- **Sitzungsleitung, Protokollführung** (`sitzungsleitung`, `protokollfuehrung`, je ein Mitglied oder leer; beim Anlegen
+  wird die Protokollführung auf die anlegende Person gesetzt), **Eröffnung** (`eroeffnung`, `HH:MM`) und die **Uhrzeit des
+  Eintreffens** verspäteter Mitglieder (`verspaetung`, Mitglied → `HH:MM`). Im Formular sind „Sitzungsleitung“ und
+  „Protokoll“ durchsuchbare Auswahlfelder („username (Vorname Nachname)“), „Eröffnung“ ein Zeitfeld; bei `verspaetet`
+  erscheint daneben „ab ... Uhr“ (entfällt beim Wechsel auf einen anderen Wert). Lesend steht alles als Text im Kopf.
+- **Beschlussfähigkeit:** Der Kopf zeigt live „Beschlussfähig: 13 von 25 Mitgliedern anwesend (nötig: 13)“ (rot: „Nicht
+  beschlussfähig“) aus der Teilnahme zu Beginn und der Art der Sitzung.
+- **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden und die Art der Sitzung ein
+  (`schnappschuss`, `emsSchnappschuss`, `statusSchnappschuss`, `artSchnappschuss`). Danach zeigt
   das Protokoll genau diese Personen und Werte; spätere Zu- oder Absagen, Statuswechsel oder Deaktivierungen ändern sie nicht.
   „Wieder öffnen“ verwirft den Schnappschuss, der Entwurf folgt wieder dem Event. Den Schnappschuss setzt nur die API, ein
   Speichern des Entwurfs löscht ihn.
@@ -59,6 +72,7 @@ Karten.
 | Baustein (Knoten)                              | Felder                                                                                                                                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Event (`bausteinEvent`)                        | Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kalender-Event (`eventId`, mit Link „Im Kalender“) |
+| Anwesenheit (`bausteinAnwesenheit`)            | Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional); kommt nicht in den Vorschlag fürs nächste Protokoll                                                                                 |
 | Vergangenes Event (`bausteinVergangenesEvent`) | Kalender-Event (`eventId`) oder Name und Datum von Hand                                                                                                                                                      |
 | Anwärter:in (`bausteinAnwaerter`)              | Vorname, Nachname, E-Mail (optional)                                                                                                                                                                         |
 | Beschluss (`bausteinBeschluss`)                | Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag)            |
@@ -71,6 +85,31 @@ Zeiten und Anzahlen (Minimum, Wunsch) ändern, Schichten lassen sich nicht hinzu
 Vorlage bestimmt die Dienstformen. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei
 mehrtägigen.
 
+## Dokumentansicht
+
+Das fertige Protokoll wie früher in Word (`ProtokollDokumentAnsicht`, Ableitung in `protokoll/dokumentDaten.ts`, getestet).
+Schreibende sehen im Entwurf den Umschalter „Bearbeiten“ / „Dokument“ (der Editor bleibt dabei erhalten, die Ansicht zeigt den
+aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschlossene Protokolle zeigen nur das Dokument.
+
+- **Titel:** `<Titel der Sitzung> TT.MM.JJJJ` (Datum in Berlin).
+- **Kopfzeilen:** „Anwesende Mitglieder“ (anwesend und verspätet; Verspätete mit „(21:00 Uhr)“ aus dem Kopf, sonst aus dem
+  Baustein „Anwesenheit“, sonst „(verspätet)“; wer fehlt, aber einen Baustein „erscheint“ hat, zählt auch hier), „Fehlende
+  Mitglieder (entschuldigt)“, „(unentschuldigt)“ (immer sichtbar), „EMs“, „Anwärter:innen“ und „Gäste“ (nur wenn gefüllt),
+  „Sitzungsleitung“, „Protokoll“. Namen: Benutzername, fett in der Farbe des Status (`StatusName`).
+- **Eröffnung:** „<Leitung> eröffnet die Sitzung um 20:04 Uhr.“ (Mitgliederversammlung entsprechend), nur mit Uhrzeit „Die Sitzung
+  wird um 20:04 Uhr eröffnet.“, ohne beides entfällt der Satz. Danach die **Beschlussfähigkeit** („13 von 25 Mitgliedern
+  anwesend, nötig sind mindestens 13 (mehr als die Hälfte)“); „nicht beschlussfähig“ steht rot.
+- **Abschnitte** als große Überschrift in der Primärfarbe (leere zeigen nur die Überschrift), darin Text mit Absätzen,
+  Überschriften, Listen (zweite Ebene „○“), fett, kursiv, Links. Ein **Zitat** ist rechtsbündig und kursiv, eine Zeile mit
+  „–“/„—“ davor (Quelle) steht aufrecht.
+- **Event:** Überschrift `11.02. Superbowl` (bei mehreren Tagen von–bis), dann der Punkt „Verantwortlich: @Name“ (nur wenn
+  gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift, Notizen.
+  **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail).
+- **Beschluss:** eingerückter Block „Beschluss: Antrag“, „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
+  Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig).
+- **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Person entfällt sie); ändert
+  sich dadurch die Beschlussfähigkeit, folgt fett „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.
+
 ## Slash-Befehle und Button „Baustein“
 
 - `/` im Dokument öffnet das Menü der Bausteine; Weitertippen filtert (`/ev`, auch Aliasse wie `/rueckblick`, Umlaute
@@ -80,6 +119,14 @@ mehrtägigen.
   Kalender-Event“ und die vergangenen, nicht abgesagten Events der letzten rund drei Monate vor der Sitzung (die Sitzung selbst
   nicht).
 - Anwärter:in und Beschluss werden direkt eingefügt.
+- **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
+  Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
+  Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = jetzt,
+  wenn die Sitzung heute ist, sonst leer); der Cursor springt dahinter. Der Baustein ist eine Zeile (Person, erscheint/geht,
+  Uhrzeit) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
+  sowie einer optionalen Bemerkung. Ein **Beschluss** zeigt „Anwesend: x von y Mitgliedern (nötig: z)“, bei fehlender
+  Beschlussfähigkeit rot „Nicht beschlussfähig“ und bei mehr Stimmen als Anwesenden eine gelbe Warnung.
+- **Notizen** neuer Event- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
 - **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
   einfach eine weitere Zeile. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
@@ -115,15 +162,17 @@ existiert:
 - **Abschließen / Wieder öffnen:** Der Dialog erklärt das Einfrieren der Teilnahme. Vorher wird gespeichert. Ein
   abgeschlossenes Protokoll ist schreibgeschützt (409 bei `PUT`/`DELETE`).
 - **Löschen** nur im Entwurf (Menü „Weitere Aktionen“ mit Bestätigung).
-- **Drucken:** Button für alle; Druck-CSS blendet Bedienelemente aus (`PROTOKOLL_DRUCK_CSS`, `data-druck="aus"`).
+- **Drucken:** Button für alle; druckt die [Dokumentansicht](#dokumentansicht) (Schreibende wechseln dafür automatisch dorthin).
+  Das Druck-CSS blendet Bedienelemente und Seitentitel aus (`PROTOKOLL_DRUCK_CSS`, `data-druck="aus"`); Überschriften behalten
+  ihre Farbe und stehen nie allein am Seitenende (`break-after: avoid`).
 
 ## Seiten
 
-| Seite              | Recht                  | Inhalt                                                                                                                                                 |
-| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/protokolle`      | `protokolle:lesen`     | Nach Jahr gruppiert, Karten (Handy) bzw. Tabelle (ab `sm`), ganze Karte/Zeile klickbar; Badge „Entwurf“; Button „Neues Protokoll“ nur mit Schreibrecht |
-| `/protokolle/neu`  | `protokolle:schreiben` | Sitzung wählen (Events mit Sitzungs-Kategorie ohne Protokoll, bis morgen, höchstens 20, jüngste vorgewählt), „Protokoll anlegen“ mit Vorbelegung       |
-| `/protokolle/<id>` | `protokolle:lesen`     | Schreibende bearbeiten Kopf und Dokument; alle anderen und abgeschlossene Protokolle sehen alles schreibgeschützt                                      |
+| Seite              | Recht                  | Inhalt                                                                                                                                                        |
+| ------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/protokolle`      | `protokolle:lesen`     | Nach Jahr gruppiert, Karten (Handy) bzw. Tabelle (ab `sm`), ganze Karte/Zeile klickbar; Badge „Entwurf“; Button „Neues Protokoll“ nur mit Schreibrecht        |
+| `/protokolle/neu`  | `protokolle:schreiben` | Sitzung wählen (Events mit Sitzungs-Kategorie ohne Protokoll, bis morgen, höchstens 20, jüngste vorgewählt), „Protokoll anlegen“ mit Vorbelegung              |
+| `/protokolle/<id>` | `protokolle:lesen`     | Schreibende eines Entwurfs wechseln zwischen „Bearbeiten“ (Kopf und Editor) und „Dokument“; alle anderen und abgeschlossene Protokolle sehen nur das Dokument |
 
 ## API
 

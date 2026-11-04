@@ -9,7 +9,7 @@ import {
   useEditorState,
   type ReactNodeViewProps,
 } from '@tiptap/react';
-import { useState, type ComponentType } from 'react';
+import { useState, type ComponentType, type ReactElement } from 'react';
 import {
   type BausteinAnwaerterDaten,
   type BausteinBeschlussDaten,
@@ -19,6 +19,9 @@ import {
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
+import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
+import { BeschlussHinweis } from './BeschlussHinweis';
+import { FORMULAR_ATTRIBUT } from './formular';
 import {
   AnwaerterFormular,
   BeschlussFormular,
@@ -27,9 +30,6 @@ import {
   type FormularProps,
 } from './BausteinFormulare';
 import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
-
-/** Marks the form area: events from in here belong to the inputs, not to ProseMirror. */
-const FORMULAR_ATTRIBUT = 'data-baustein-formular';
 
 /** Content allowed in the free text; no Bausteine inside Bausteine. */
 const FREITEXT = '(paragraph | heading | bulletList | orderedList | blockquote)+';
@@ -88,6 +88,12 @@ function BausteinAnsicht<T extends BausteinTyp>({
                 )}
               </Group>
               <Formular daten={daten} aendern={aendern} editierbar={editierbar} />
+              {typ === 'bausteinBeschluss' && (
+                <BeschlussHinweis
+                  id={node.attrs.id as string}
+                  daten={daten as unknown as BausteinBeschlussDaten}
+                />
+              )}
               {(editierbar || hatText) && (
                 <Text size="xs" c="dimmed" fw={500}>
                   Notizen
@@ -127,10 +133,7 @@ const parseJson = (el: HTMLElement, attribut: string): unknown => {
   }
 };
 
-function bausteinKnoten<T extends BausteinTyp>(
-  typ: T,
-  Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>,
-) {
+function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) => ReactElement) {
   return Node.create({
     name: typ,
     group: 'block',
@@ -165,38 +168,56 @@ function bausteinKnoten<T extends BausteinTyp>(
     },
 
     addNodeView() {
-      return ReactNodeViewRenderer(
-        (props) => <BausteinAnsicht typ={typ} Formular={Formular} props={props} />,
-        {
-          stopEvent: ({ event }) =>
-            event.target instanceof Element &&
-            event.target.closest(`[${FORMULAR_ATTRIBUT}]`) !== null,
-        },
-      );
+      return ReactNodeViewRenderer(ansicht, {
+        stopEvent: ({ event }) =>
+          event.target instanceof Element &&
+          event.target.closest(`[${FORMULAR_ATTRIBUT}]`) !== null,
+      });
     },
   });
 }
 
-export const BausteinEventKnoten = bausteinKnoten<'bausteinEvent'>(
+/** A Baustein drawn as a card with a title, a form and the free text "Notizen". */
+const karte =
+  <T extends BausteinTyp>(
+    typ: T,
+    Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>,
+  ): ((props: ReactNodeViewProps) => ReactElement) =>
+  (props) => <BausteinAnsicht typ={typ} Formular={Formular} props={props} />;
+
+export const BausteinEventKnoten = bausteinKnoten(
   'bausteinEvent',
-  EventFormular as ComponentType<FormularProps<BausteinEventDaten>>,
+  karte('bausteinEvent', EventFormular as ComponentType<FormularProps<BausteinEventDaten>>),
 );
-export const BausteinVergangenesEventKnoten = bausteinKnoten<'bausteinVergangenesEvent'>(
+export const BausteinVergangenesEventKnoten = bausteinKnoten(
   'bausteinVergangenesEvent',
-  VergangenesEventFormular as ComponentType<FormularProps<BausteinVergangenesEventDaten>>,
+  karte(
+    'bausteinVergangenesEvent',
+    VergangenesEventFormular as ComponentType<FormularProps<BausteinVergangenesEventDaten>>,
+  ),
 );
-export const BausteinAnwaerterKnoten = bausteinKnoten<'bausteinAnwaerter'>(
+export const BausteinAnwaerterKnoten = bausteinKnoten(
   'bausteinAnwaerter',
-  AnwaerterFormular as ComponentType<FormularProps<BausteinAnwaerterDaten>>,
+  karte(
+    'bausteinAnwaerter',
+    AnwaerterFormular as ComponentType<FormularProps<BausteinAnwaerterDaten>>,
+  ),
 );
-export const BausteinBeschlussKnoten = bausteinKnoten<'bausteinBeschluss'>(
+export const BausteinBeschlussKnoten = bausteinKnoten(
   'bausteinBeschluss',
-  BeschlussFormular as ComponentType<FormularProps<BausteinBeschlussDaten>>,
+  karte(
+    'bausteinBeschluss',
+    BeschlussFormular as ComponentType<FormularProps<BausteinBeschlussDaten>>,
+  ),
 );
+export const BausteinAnwesenheitKnoten = bausteinKnoten('bausteinAnwesenheit', (props) => (
+  <AnwesenheitAnsicht props={props} />
+));
 
 export const BAUSTEIN_KNOTEN = [
   BausteinEventKnoten,
   BausteinVergangenesEventKnoten,
   BausteinAnwaerterKnoten,
   BausteinBeschlussKnoten,
+  BausteinAnwesenheitKnoten,
 ];

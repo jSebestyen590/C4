@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { datumAnzeigen, datumBerlin, type EventDto } from '@c4/shared';
+import { slashPersonen, type AnwesenheitPerson } from './anwesenheit';
 import {
+  anwesenheitUhrzeit,
   eventDatenAusVorlage,
   ereignisFenster,
   kommendeEvents,
@@ -11,8 +13,9 @@ import type { SlashDaten } from './slashLogik';
 import { useEventKategorien, useKalenderEvents, useVorlagen, vorlageTitel } from '../kalenderDaten';
 
 /** Calendar events around the Sitzung, split into past and upcoming (one shared query). */
-export function useProtokollEvents() {
-  const { sitzungBeginn } = useProtokollKontext();
+export function useProtokollEvents(beginn?: string) {
+  const kontext = useProtokollKontext();
+  const sitzungBeginn = beginn ?? kontext.sitzungBeginn;
   const { von, bis } = ereignisFenster(datumBerlin(sitzungBeginn));
   const q = useKalenderEvents(von, bis);
   const events = q.data;
@@ -30,12 +33,15 @@ export function useProtokollEvents() {
 export const eventDatumText = (e: Pick<EventDto, 'beginn'>): string =>
   datumAnzeigen(datumBerlin(e.beginn));
 
-/** Data of the slash menu: active Vorlagen and past events, with the Baustein fields they create. */
-export function useSlashDaten(): SlashDaten {
+/** Data of the slash menu: active Vorlagen, past events and the attendance list, with the Baustein fields they create. */
+export function useSlashDaten(
+  sitzungBeginn: string,
+  teilnahme: readonly AnwesenheitPerson[],
+): SlashDaten {
   const vorlagen = useVorlagen();
   const kategorien = useEventKategorien();
-  const events = useProtokollEvents();
-  return useMemo(
+  const events = useProtokollEvents(sitzungBeginn);
+  const basis = useMemo(
     () => ({
       vorlagen: (vorlagen.data ?? []).map((v) => {
         const titel = vorlageTitel(v, kategorien.liste);
@@ -55,5 +61,14 @@ export function useSlashDaten(): SlashDaten {
       })),
     }),
     [vorlagen.data, kategorien.liste, events.vergangene],
+  );
+  const personen = useMemo(() => slashPersonen(teilnahme), [teilnahme]);
+  return useMemo(
+    () => ({
+      ...basis,
+      personen,
+      uhrzeit: () => anwesenheitUhrzeit(sitzungBeginn),
+    }),
+    [basis, personen, sitzungBeginn],
   );
 }

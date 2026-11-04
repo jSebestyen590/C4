@@ -7,12 +7,20 @@ import { SlashListe } from './SlashListe';
 import {
   bausteinEintraege,
   slashEintraege,
+  slashStufe,
   type SlashDaten,
   type SlashEintrag,
 } from './slashLogik';
 import { SlashIcon } from './symbole';
 
-type Liste = 'vorlagen' | 'events';
+type Liste = 'vorlagen' | 'events' | 'erscheint' | 'geht';
+
+const LISTEN: Record<Liste, { wort: string; titel: string; suche: string }> = {
+  vorlagen: { wort: 'event', titel: 'Event einfügen', suche: 'Vorlage suchen' },
+  events: { wort: 'vergangenes', titel: 'Vergangenes Event einfügen', suche: 'Event suchen' },
+  erscheint: { wort: 'erscheint', titel: 'Erscheint einfügen', suche: 'Person suchen' },
+  geht: { wort: 'geht', titel: 'Geht einfügen', suche: 'Person suchen' },
+};
 
 /**
  * Toolbar button "Baustein": the same choices as the slash menu (the "/" is awkward on phone keyboards).
@@ -25,7 +33,8 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
   const waehlen = (e: SlashEintrag) => {
     if (e.aktion.art === 'weiter') {
       setSuche('');
-      setListe(e.aktion.text.startsWith('event') ? 'vorlagen' : 'events');
+      const { stufe } = slashStufe(e.aktion.text);
+      if (stufe !== 'bausteine') setListe(stufe);
       return;
     }
     setListe(null);
@@ -36,9 +45,7 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
     bausteinEinfuegen(editor, e.aktion.wahl);
   };
 
-  const eintraege = liste
-    ? slashEintraege(`${liste === 'vorlagen' ? 'event' : 'vergangenes'} ${suche}`, daten)
-    : [];
+  const eintraege = liste ? slashEintraege(`${LISTEN[liste].wort} ${suche}`, daten) : [];
 
   return (
     <>
@@ -76,11 +83,11 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
       <Modal
         opened={liste !== null}
         onClose={() => setListe(null)}
-        title={liste === 'vorlagen' ? 'Event einfügen' : 'Vergangenes Event einfügen'}
+        title={liste ? LISTEN[liste].titel : ''}
       >
         <Stack gap="xs">
           <TextInput
-            placeholder={liste === 'vorlagen' ? 'Vorlage suchen' : 'Event suchen'}
+            placeholder={liste ? LISTEN[liste].suche : ''}
             value={suche}
             onChange={(e) => setSuche(e.currentTarget.value)}
             data-autofocus
