@@ -2,7 +2,7 @@ import { Button, Menu, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import type { Editor } from '@tiptap/react';
 import { useState } from 'react';
-import { bausteinEinfuegen } from './einfuegen';
+import { bausteinEinfuegen, zitatEinfuegen } from './einfuegen';
 import { SlashListe } from './SlashListe';
 import {
   bausteinEintraege,
@@ -29,6 +29,10 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
       return;
     }
     setListe(null);
+    if (e.aktion.art === 'zitat') {
+      zitatEinfuegen(editor);
+      return;
+    }
     bausteinEinfuegen(editor, e.aktion.wahl);
   };
 

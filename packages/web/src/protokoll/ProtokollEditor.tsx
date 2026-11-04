@@ -1,4 +1,5 @@
 import { RichTextEditor, type RichTextEditorLabels } from '@mantine/tiptap';
+import Blockquote from '@tiptap/extension-blockquote';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, type Editor } from '@tiptap/react';
@@ -27,6 +28,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
   h3ControlLabel: 'Zwischenüberschrift',
   bulletListControlLabel: 'Aufzählung',
   orderedListControlLabel: 'Nummerierte Liste',
+  blockquoteControlLabel: 'Zitat',
   linkControlLabel: 'Link einfügen',
   unlinkControlLabel: 'Link entfernen',
   undoControlLabel: 'Rückgängig',
@@ -110,8 +112,9 @@ export function ProtokollEditor({
       StarterKit.configure({
         document: false,
         heading: { levels: [2, 3] },
-        // Not part of the minutes (and `trailingNode` would append a paragraph after the last section).
+        // Replaced by the Blockquote below (quotes hold paragraphs only).
         blockquote: false,
+        // Not part of the minutes (and `trailingNode` would append a paragraph after the last section).
         code: false,
         codeBlock: false,
         horizontalRule: false,
@@ -120,12 +123,14 @@ export function ProtokollEditor({
         link: false,
         trailingNode: false,
       }),
+      // Quotes hold plain paragraphs only (the default `block+` would let Bausteine nest inside).
+      Blockquote.extend({ content: 'paragraph+' }),
       Link.configure({
         openOnClick: 'whenNotEditable',
         autolink: true,
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
-      Placeholder.configure({ placeholder: 'Schreib etwas oder tippe / für einen Baustein' }),
+      Placeholder.configure({ placeholder: 'Schreib etwas oder tippe / für einen Baustein oder ein Zitat' }),
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
       slashErweiterung(steuerung),
@@ -170,6 +175,7 @@ export function ProtokollEditor({
             <RichTextEditor.ControlsGroup>
               <RichTextEditor.BulletList />
               <RichTextEditor.OrderedList />
+              <RichTextEditor.Blockquote />
             </RichTextEditor.ControlsGroup>
             <RichTextEditor.ControlsGroup>
               <RichTextEditor.Link />

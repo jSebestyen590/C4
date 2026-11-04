@@ -50,6 +50,25 @@
   min-height: 1.5em;
 }
 
+/* Quotes: in sections and in the free text of Baustein cards, edit and read-only mode, print. */
+.protokoll-editor .ProseMirror blockquote {
+  margin: var(--mantine-spacing-xs) 0;
+  padding: 2px 0 2px var(--mantine-spacing-sm);
+  border-left: 4px solid var(--mantine-primary-color-filled);
+  color: var(--mantine-color-dimmed);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+
+.protokoll-editor .ProseMirror blockquote p {
+  margin: 0;
+}
+
+.protokoll-editor .ProseMirror blockquote p + p {
+  margin-top: var(--mantine-spacing-xs);
+}
+
 .protokoll-toolbar {
   /* Above the inputs of the Baustein cards (Mantine gives every div in the content z-index 2). */
   z-index: 5;

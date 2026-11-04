@@ -80,6 +80,10 @@ mehrtägigen.
   Kalender-Event“ und die vergangenen, nicht abgesagten Events der letzten rund drei Monate vor der Sitzung (die Sitzung selbst
   nicht).
 - Anwärter:in und Beschluss werden direkt eingefügt.
+- **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
+  nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
+  einfach eine weitere Zeile. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
+  prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).
 - Der Baustein kommt hinter den aktuellen Block (ein leerer Absatz wird ersetzt, im Freitext eines Bausteins dahinter; keine
   Verschachtelung). Der **Cursor springt ins erste leere Feld** (Event: Name, dann Datum, Beschluss: Antrag, sonst der
   Freitext).

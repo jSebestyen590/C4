@@ -15,9 +15,13 @@ export type BausteinWahl = {
 
 export type SlashAktion =
   /** Replace the typed text by `/text` (switches to the second stage). */
-  { art: 'weiter'; text: string } | { art: 'einfuegen'; wahl: BausteinWahl };
+  | { art: 'weiter'; text: string }
+  | { art: 'einfuegen'; wahl: BausteinWahl }
+  /** Turn the current paragraph into a quote (works at the cursor, also inside a Baustein's text). */
+  | { art: 'zitat' };
 
-export type SlashSymbol = 'event' | 'vergangenes' | 'anwaerter' | 'beschluss' | 'vorlage' | 'ohne';
+export type SlashSymbol =
+  'event' | 'vergangenes' | 'anwaerter' | 'beschluss' | 'vorlage' | 'ohne' | 'zitat';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -122,9 +126,17 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
       wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
     },
   },
+  {
+    schluessel: 'zitat',
+    titel: 'Zitat',
+    beschreibung: 'Zitat einfügen',
+    symbol: 'zitat',
+    woerter: ['zitat', 'quote', 'blockquote'],
+    aktion: { art: 'zitat' },
+  },
 ];
 
-/** Items of the first stage: the Bausteine whose name or alias starts with the filter. */
+/** Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter. */
 export function bausteinEintraege(filter: string): SlashEintrag[] {
   const f = normalisieren(filter).trim();
   return SLASH_DEFINITIONEN.filter((d) => {

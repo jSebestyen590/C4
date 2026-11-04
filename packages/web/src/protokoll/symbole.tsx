@@ -3,6 +3,7 @@ import {
   IconCalendarEvent,
   IconGavel,
   IconHistory,
+  IconQuote,
   IconTemplate,
   IconUserPlus,
 } from '@tabler/icons-react';
@@ -21,6 +22,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconGavel size={size} />;
     case 'vorlage':
       return <IconTemplate size={size} />;
+    case 'zitat':
+      return <IconQuote size={size} />;
     case 'ohne':
       return <IconBan size={size} />;
   }

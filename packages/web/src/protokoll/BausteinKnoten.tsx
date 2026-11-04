@@ -32,7 +32,7 @@ import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 const FORMULAR_ATTRIBUT = 'data-baustein-formular';
 
 /** Content allowed in the free text; no Bausteine inside Bausteine. */
-const FREITEXT = '(paragraph | heading | bulletList | orderedList)+';
+const FREITEXT = '(paragraph | heading | bulletList | orderedList | blockquote)+';
 
 function BausteinAnsicht<T extends BausteinTyp>({
   typ,

@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/react';
 import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion } from '@tiptap/suggestion';
 import { BAUSTEIN_TYPEN } from '@c4/shared';
-import { bausteinEinfuegen } from './einfuegen';
+import { bausteinEinfuegen, zitatEinfuegen } from './einfuegen';
 import { slashEintraege, type SlashDaten, type SlashEintrag } from './slashLogik';
 import type { SlashZustand } from './SlashPopup';
 
@@ -17,7 +17,7 @@ export interface SlashSteuerung {
 const bausteinNamen: readonly string[] = BAUSTEIN_TYPEN;
 
 /**
- * Slash menu: "/" opens a list of Bausteine that filters while typing. Only in a paragraph that lies
+ * Slash menu: "/" opens a list of Bausteine and "Zitat" that filters while typing. Only in a paragraph that lies
  * directly in a section or in the free text of a Baustein. Spaces stay part of the query so the second
  * stage ("/event bar") works.
  */
@@ -48,6 +48,8 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
                 tr.insertText(text, range.from, range.to);
                 return true;
               });
+            } else if (props.aktion.art === 'zitat') {
+              zitatEinfuegen(editor, range);
             } else {
               bausteinEinfuegen(editor, props.aktion.wahl, range);
             }

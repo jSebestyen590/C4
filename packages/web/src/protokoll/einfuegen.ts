@@ -102,3 +102,15 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
   };
   setTimeout(schritt, 0);
 }
+
+/**
+ * Turns the paragraph at the cursor into a quote (after deleting `loeschen`, e.g. the typed "/query") and
+ * keeps the cursor inside it. Unlike Bausteine this works wherever the cursor is, also in a Baustein's
+ * free text. Already inside a quote: only deletes the query. One transaction = one undo step.
+ */
+export function zitatEinfuegen(editor: Editor, loeschen?: TextBereich): void {
+  const kette = editor.chain().focus();
+  if (loeschen) kette.deleteRange(loeschen);
+  if (!editor.isActive('blockquote')) kette.setParagraph().wrapIn('blockquote');
+  kette.scrollIntoView().run();
+}

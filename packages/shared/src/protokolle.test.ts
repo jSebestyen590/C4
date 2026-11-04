@@ -80,6 +80,14 @@ describe('protokollDokumentPruefen', () => {
     expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
   });
 
+  it('accepts quotes in a section and in the free text of a Baustein', () => {
+    const zitat: ProtokollKnoten = { type: 'blockquote', content: [absatz('Zitat')] };
+    const baustein = bausteinErzeugen('bausteinBeschluss', undefined, [absatz('Text'), zitat]);
+    const doc = dokument({ vergangenes: [zitat], gegenwaertiges: [baustein] });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+    expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
+  });
+
   it('knows empty defaults for every Baustein type', () => {
     for (const typ of BAUSTEIN_TYPEN) {
       const doc = dokument({ gegenwaertiges: [bausteinErzeugen(typ)] });

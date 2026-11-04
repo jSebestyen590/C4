@@ -47,7 +47,7 @@ describe('slashStufe', () => {
 
 describe('first stage', () => {
   it('lists everything without a query', () => {
-    expect(titel('')).toEqual(['Event', 'Vergangenes Event', 'Anwärter:in', 'Beschluss']);
+    expect(titel('')).toEqual(['Event', 'Vergangenes Event', 'Anwärter:in', 'Beschluss', 'Zitat']);
   });
   it('filters by name prefix, word prefix and alias', () => {
     expect(titel('ev')).toEqual(['Event', 'Vergangenes Event']);
@@ -56,6 +56,15 @@ describe('first stage', () => {
     expect(titel('anwaerter')).toEqual(['Anwärter:in']);
     expect(titel('abstimm')).toEqual(['Beschluss']);
     expect(titel('xyz')).toEqual([]);
+  });
+  it('finds Zitat by name and alias and applies it at the cursor', () => {
+    expect(titel('zit')).toEqual(['Zitat']);
+    expect(titel('quote')).toEqual(['Zitat']);
+    expect(titel('block')).toEqual(['Zitat']);
+    expect(slashEintraege('zit', daten)[0]).toMatchObject({
+      symbol: 'zitat',
+      aktion: { art: 'zitat' },
+    });
   });
   it('switches stage on Enter for Event and Vergangenes Event', () => {
     const [event, vergangen] = slashEintraege('ev', daten);
