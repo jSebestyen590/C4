@@ -1,7 +1,8 @@
 import Blockquote from '@tiptap/extension-blockquote';
 import { getSchema } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { EditorState } from '@tiptap/pm/state';
+import { history, undo, undoDepth } from '@tiptap/pm/history';
+import { EditorState, type Plugin } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { describe, expect, it } from 'vitest';
 import { bausteinErzeugen, type BausteinTyp, type ProtokollKnoten } from '@c4/shared';
@@ -14,7 +15,7 @@ import {
   gliederungZiel,
   type GliederungZiel,
 } from './gliederung';
-import { AbschnittKnoten, ProtokollDokumentKnoten } from './schema';
+import { AbschnittKnoten, ProtokollAbsicherung, ProtokollDokumentKnoten } from './schema';
 
 const schema = getSchema([
   ProtokollDokumentKnoten,
@@ -276,5 +277,47 @@ describe('bausteinInGliederungVerschieben', () => {
     it('carries the nested Bausteine along', () => {
       expect(verschieben(n(), 'p', { abschnitt: 2, index: 0 })).toBe('q top _ | _ | p(k1 k2) _');
     });
+  });
+});
+
+describe('undo of a Gliederung move', () => {
+  it('is one undo step with the history and the structure guard plugins', () => {
+    const A = '11111111-1111-4111-8111-111111111111';
+    const B = '22222222-2222-4222-8222-222222222222';
+    const basis = zustand([event(A, 'A'), event(B, 'B'), absatz()], [absatz()], [absatz()]);
+    const plugins = [
+      history(),
+      ...(ProtokollAbsicherung.config.addProseMirrorPlugins as () => Plugin[]).call({}),
+    ];
+    const start = EditorState.create({ doc: basis.doc, plugins });
+    const tr = bausteinInGliederungVerschieben(start, A, { abschnitt: 1, index: 0 })!;
+    const bewegt = start.apply(tr);
+    expect(form(bewegt.doc)).toBe(`${B} _ | ${A} _ | _`);
+    expect(undoDepth(bewegt)).toBe(1);
+    let rueck = bewegt;
+    expect(undo(bewegt, (t) => (rueck = bewegt.apply(t)))).toBe(true);
+    expect(form(rueck.doc)).toBe(form(start.doc));
+  });
+});
+
+describe('gliederungZiel with a drag starting right behind a collapsed slot', () => {
+  it('moving the Abstimmung one step up from [Event, slot, Abstimmung] nests it into the Event', () => {
+    const s = zustand([event('e', 'E'), abstimmung('a', 'A'), absatz()], [absatz()], [absatz()]);
+    const rows = gliederungZeilen(gliederungBauen(s.doc), 'a');
+    expect(rows.map((z) => z.key)).toEqual([
+      'abschnitt:0',
+      'e',
+      'notizen:e',
+      'a',
+      'abschnitt:1',
+      'abschnitt:2',
+    ]);
+    // The Abstimmung is at index 3; one step up is index 2 (the slot's old index).
+    expect(gliederungZiel(rows, 'a', 2)).toEqual({ elternId: 'e', index: 0 });
+    // Two steps up (over the Event) is top-level before it.
+    expect(gliederungZiel(rows, 'a', 1)).toEqual({ abschnitt: 0, index: 0 });
+    // Without the drag state the slot is collapsed: the same index then means "top-level behind the Event".
+    const zu = gliederungZeilen(gliederungBauen(s.doc), null);
+    expect(gliederungZiel(zu, 'a', 2)).toEqual({ abschnitt: 0, index: 1 });
   });
 });

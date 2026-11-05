@@ -82,7 +82,10 @@ export function Gliederung({
   const ende = ({ draggableId, destination }: DropResult) => {
     try {
       if (!destination) return;
-      const ziel = gliederungZiel(zeilen, draggableId, destination.index);
+      // Derived from the document and the dragged id, not from render state: the responder may still
+      // hold the closure of an earlier render (then the notes slots would count as collapsed).
+      const aktuell = gliederungZeilen(gliederungBauen(editor.state.doc, personName), draggableId);
+      const ziel = gliederungZiel(aktuell, draggableId, destination.index);
       if (!ziel) return;
       const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
       if (tr) editor.view.dispatch(tr);
