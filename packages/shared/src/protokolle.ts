@@ -604,6 +604,14 @@ export const protokollAktionErgebnisSchema = z.strictObject({
   am: z.string().max(40),
   /** Sub of the member who ran it. */
   von: z.string().max(100),
+  /** The Aktion's own text when it ran (it is not computed any more once its effect is in the document). */
+  aktionText: z.string().max(2000).default(''),
+  bausteinId: z.string().max(200).default(''),
+  art: z.string().max(100).default(''),
+  /** The calendar event concerned. */
+  eventId: z.string().max(200).nullable().default(null),
+  /** The members concerned. */
+  subs: z.array(z.string().max(100)).max(500).default([]),
 });
 export type ProtokollAktionErgebnis = z.infer<typeof protokollAktionErgebnisSchema>;
 
@@ -705,6 +713,8 @@ export interface ProtokollVorschlagEingabe {
   letztes: ProtokollDokument | null;
   /** Events of the calendar from the previous Sitzung on (and the ones the previous protocol points to). */
   kalender?: readonly ProtokollKalenderEvent[];
+  /** Kategorie of the Vorlagen by id: fills `kategorieId` of copied Event blocks that have none (old data). */
+  vorlageKategorien?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -812,6 +822,10 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
       } else if (daten.eventId) {
         mitId.push({ daten, content: kopie(ohneAbstimmungen(knoten.content)) });
       } else {
+        if (!daten.kategorieId && daten.vorlageId) {
+          const kategorieId = eingabe.vorlageKategorien?.[daten.vorlageId];
+          if (kategorieId) daten = { ...daten, kategorieId };
+        }
         ohneId.push(
           bausteinErzeugen('bausteinEvent', daten, kopie(ohneAbstimmungen(knoten.content))),
         );

@@ -320,6 +320,9 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
 | `em.status`          | Neues EM mit `sub`                                    | ohne Abstimmung oder angenommen → `em`, abgelehnt → `extern`, ab Sitzungsdatum; laufende Abstimmung ohne Ergebnis nicht ausführbar                                                                                                                                                                |
 | `wahl.posten`        | Wahl mit Posten aus der Liste, „Gilt ab“ und Ergebnis | Für jede gewählte Person ohne laufende Besetzung eine Besetzung ab „Gilt ab“; die offenen Besetzungen Nicht-Wiedergewählter enden am Vortag (`ablosung`), Wiedergewählte behalten ihre. Offene Stichwahl oder fehlendes Ergebnis: nicht ausführbar                                                |
 
+- **Kategorie-Fallback:** Hat ein Event-Baustein keine `kategorieId` (Altdaten), aber eine `vorlageId`, gilt die Kategorie der
+  Vorlage: in `event.anlegen` (Kontext `vorlageKategorien`), beim Übernehmen aus dem vorigen Protokoll (`protokollVorschlag`) und
+  als angezeigter Wert im Event-Formular (die Hilfe unter „Kategorie“ erscheint nur ohne Kategorie).
 - **Sitzungsdatum:** Liegt die Sitzung in der Zukunft, gilt heute (Statusdatum darf nicht in der Zukunft liegen).
 - **Schon erledigt:** Hat die Aktion keine Wirkung mehr (Status schon erreicht, Besetzung schon da, Event entspricht dem Baustein),
   ist sie nicht ausführbar mit dem Grund „Bereits erledigt“ (`erledigt: true`). Das macht Wieder öffnen und erneutes Abschließen
@@ -332,10 +335,12 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
   **einem** Schritt gespeichert (eine Version). Der Schnappschuss der Teilnahme zeigt den Stand vor den Aktionen. Das Protokoll wird
   auch geschlossen, wenn Aktionen scheitern. Hat jemand dazwischen gespeichert, wird auf dem neueren Stand erneut geschrieben,
   damit die Rückschreibungen nicht verloren gehen. Unbekannte, nicht ausführbare und erledigte Ids ergeben `uebersprungen`.
-- **Ergebnisse:** `kopf.aktionen` (Standard `{}`) hält je Id `{ status: 'erledigt'|'fehler', text, am, von }`; `PUT /protokolle/:id`
+- **Ergebnisse:** `kopf.aktionen` (Standard `{}`) hält je Id `{ status: 'erledigt'|'fehler', text, am, von, aktionText, bausteinId, art, eventId, subs }`
+  (`aktionText` = Text der Aktion beim Ausführen; ältere Einträge ohne diese Felder bleiben gültig); `PUT /protokolle/:id`
   behält die gespeicherten Ergebnisse, egal was der Editor sendet. `GET .../aktionen` liefert je Aktion `zustand` (`offen`,
   `erledigt`, `fehler`, `nicht_ausfuehrbar`), `ergebnis` und `personen` (für `StatusName`); gespeicherte Ergebnisse von Aktionen,
-  die nicht mehr berechnet werden (z. B. das angelegte Event), stehen am Ende.
+  die nicht mehr berechnet werden (z. B. das angelegte Event), erscheinen mit ihrem ursprünglichen Text als „erledigt“ (Ergebnis als
+  Nebentext, Event-Link, Personen) an der Stelle ihres Bausteins in der Dokumentreihenfolge; ist der Baustein weg, stehen sie am Ende.
 - **Erneut versuchen:** `POST .../aktionen` für ein abgeschlossenes Protokoll wiederholt gescheiterte oder offene Aktionen; die
   Rückschreibung in den Inhalt ist serverseitig erlaubt.
 - **Abschließen-Dialog (Web):** Nach dem Speichern des Entwurfs lädt der Dialog `GET .../aktionen` (Ladeanzeige, „Abschließen“ so lange

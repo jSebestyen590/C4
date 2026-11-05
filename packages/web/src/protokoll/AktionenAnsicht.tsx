@@ -145,7 +145,18 @@ export function AktionenKarte({
 }
 
 function AktionZustand({ aktion }: Readonly<{ aktion: ProtokollAktionDto }>): ReactNode {
-  if (aktion.zustand === 'erledigt') return <Erledigt />;
+  if (aktion.zustand === 'erledigt') {
+    return (
+      <>
+        <Erledigt />
+        {aktion.ergebnis && (
+          <Text size="sm" c="dimmed">
+            {aktion.ergebnis.text}
+          </Text>
+        )}
+      </>
+    );
+  }
   if (aktion.zustand === 'fehler') {
     return (
       <Text size="sm" c="red">

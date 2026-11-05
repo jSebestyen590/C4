@@ -129,6 +129,7 @@ import {
   type TrichterMitgliedDto,
   type TrichterUebersichtDto,
   aktionenMitZustand,
+  bausteinIdsInReihenfolge,
   datumPlusTage,
   protokollAktionen,
   protokollAktionenAusfuehrenSchema,
@@ -1007,9 +1008,10 @@ export function createApp(deps: AppDeps) {
       ? datumBerlin(letzteBeginn)
       : datumPlusTage(sitzungDatum, -VORSCHLAG_FENSTER_TAGE);
     const bis = datumPlusTage(sitzungDatum, 3 * 366);
-    const [liste, kategorien] = await Promise.all([
+    const [liste, kategorien, vorlagen] = await Promise.all([
       deps.kalender.events(von, bis),
       deps.kalender.kategorien(true),
+      deps.kalender.vorlagen(true),
     ]);
     const sitzungKategorien = new Set(kategorien.filter((k) => k.protokoll).map((k) => k.id));
     // Events the previous protocol points to that lie outside of the period.
@@ -1042,6 +1044,7 @@ export function createApp(deps: AppDeps) {
         letzteSitzungBeginn: letzteBeginn ?? null,
         letztes: dokument,
         kalender,
+        vorlageKategorien: Object.fromEntries(vorlagen.map((v) => [v.id, v.kategorieId])),
       }),
       kopf: protokollKopfLeer(),
     };
@@ -1139,13 +1142,15 @@ export function createApp(deps: AppDeps) {
       protokollMitglieder(),
     ]);
     const nachSub = new Map(mitglieder.map((m) => [m.sub, m]));
-    return aktionenMitZustand(liste, kopf.aktionen).map((a) => ({
-      ...a,
-      personen: a.subs.flatMap((sub) => {
-        const m = nachSub.get(sub);
-        return m ? [mitgliedDto(m)] : [];
+    return aktionenMitZustand(liste, kopf.aktionen, bausteinIdsInReihenfolge(dokument)).map(
+      (a) => ({
+        ...a,
+        personen: a.subs.flatMap((sub) => {
+          const m = nachSub.get(sub);
+          return m ? [mitgliedDto(m)] : [];
+        }),
       }),
-    }));
+    );
   };
 
   /**

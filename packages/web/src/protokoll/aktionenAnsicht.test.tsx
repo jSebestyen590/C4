@@ -65,6 +65,11 @@ const liste: ProtokollAktionDto[] = [
       text: 'Posten nicht gefunden',
       am: '2026-01-01T00:00:00Z',
       von: 'x',
+      aktionText: '',
+      bausteinId: 'e',
+      art: 'wahl.posten',
+      eventId: null,
+      subs: [],
     },
   },
 ];
@@ -128,5 +133,40 @@ describe('AktionenKarte', () => {
     expect(html).toContain('Erneut versuchen');
     expect(html).toContain('Nicht ausführbar: Keine Person gewählt');
     expect(html).toContain('Fehlgeschlagen: Posten nicht gefunden');
+  });
+
+  it('shows a done Aktion with its text, the result message and the event link', () => {
+    const html = rendern(
+      <AktionenKarte
+        aktionen={[
+          {
+            ...basis,
+            id: 'z:event.anlegen',
+            art: 'event.anlegen',
+            text: 'Event „Test“ am 20.11.2026 im Kalender anlegen',
+            zustand: 'erledigt',
+            erledigt: true,
+            eventId: 'ev9',
+            ergebnis: {
+              status: 'erledigt',
+              text: 'Event im Kalender angelegt.',
+              am: '2026-01-01T00:00:00Z',
+              von: 'x',
+              aktionText: '',
+              bausteinId: 'z',
+              art: 'event.anlegen',
+              eventId: 'ev9',
+              subs: [],
+            },
+          },
+        ]}
+        laeuftId={null}
+        gesperrt={false}
+        onAusfuehren={() => undefined}
+      />,
+    );
+    expect(html).toContain('Event „Test“ am 20.11.2026 im Kalender anlegen');
+    expect(html).toContain('Event im Kalender angelegt.');
+    expect(html).toContain('/kalender/events/ev9');
   });
 });

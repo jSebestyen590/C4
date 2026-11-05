@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AKTION_BEREITS_ERLEDIGT,
   aktionenMitZustand,
+  bausteinIdsInReihenfolge,
   protokollAktionen,
   type AktionEventKontext,
   type ProtokollAktionenKontext,
@@ -447,11 +448,12 @@ describe('aktionenMitZustand', () => {
   const b = baustein('bausteinEm', { sub: 'p' });
   const liste = () => protokollAktionen(dok(b), kontext({ personen: { p: person('mitglied') } }));
   const am = '2026-11-10T20:00:00.000Z';
+  const basis = { am, von: 'u', aktionText: '', bausteinId: '', art: '', eventId: null, subs: [] };
 
   it('is open without a stored result and failed after a failure', () => {
     expect(aktionenMitZustand(liste(), {})[0]).toMatchObject({ zustand: 'offen', ergebnis: null });
     const id = liste()[0]!.id;
-    const gespeichert = { [id]: { status: 'fehler' as const, text: 'Kaputt', am, von: 'u' } };
+    const gespeichert = { [id]: { ...basis, status: 'fehler' as const, text: 'Kaputt' } };
     expect(aktionenMitZustand(liste(), gespeichert)[0]).toMatchObject({
       zustand: 'fehler',
       ergebnis: { text: 'Kaputt' },
@@ -469,7 +471,7 @@ describe('aktionenMitZustand', () => {
   it('lists stored results of Aktionen that are not computed any more', () => {
     const id = `${b.attrs.id}:event.anlegen`;
     const gespeichert = {
-      [id]: { status: 'erledigt' as const, text: 'Event angelegt', am, von: 'u' },
+      [id]: { ...basis, status: 'erledigt' as const, text: 'Event angelegt' },
     };
     const alle = aktionenMitZustand([], { ...gespeichert, kaputt: gespeichert[id]! });
     expect(alle).toHaveLength(1);
@@ -482,5 +484,61 @@ describe('aktionenMitZustand', () => {
       ausfuehrbar: false,
       text: 'Event angelegt',
     });
+  });
+
+  it('shows stored results with their Aktion text, event and persons, in document order', () => {
+    const e = baustein('bausteinEm', { sub: 'p' });
+    const z = baustein('bausteinEm', { sub: 'q' });
+    const ev = baustein('bausteinEvent', { ...eventDaten, eventId: 'ev1' });
+    const dokument = dok(e, ev, z);
+    const live = protokollAktionen(
+      dokument,
+      kontext({ personen: { p: person('mitglied'), q: person('mitglied') } }),
+    );
+    const gespeichert = {
+      [`${ev.attrs.id}:event.anlegen`]: {
+        ...basis,
+        status: 'erledigt' as const,
+        text: 'Event im Kalender angelegt.',
+        aktionText: 'Event „Test“ am 20.11.2026 im Kalender anlegen',
+        bausteinId: ev.attrs.id,
+        eventId: 'ev1',
+        subs: ['p'],
+      },
+      'weg:event.anlegen': {
+        ...basis,
+        status: 'erledigt' as const,
+        text: 'Event im Kalender angelegt.',
+        aktionText: 'Gelöschter Baustein',
+        bausteinId: 'weg',
+      },
+    };
+    const alle = aktionenMitZustand(live, gespeichert, bausteinIdsInReihenfolge(dokument));
+    expect(alle.map((a) => a.text)).toEqual([
+      live[0]!.text,
+      'Event „Test“ am 20.11.2026 im Kalender anlegen',
+      live[1]!.text,
+      'Gelöschter Baustein',
+    ]);
+    expect(alle[1]).toMatchObject({
+      zustand: 'erledigt',
+      eventId: 'ev1',
+      subs: ['p'],
+      ergebnis: { text: 'Event im Kalender angelegt.' },
+    });
+  });
+});
+
+describe('Kategorie of the Vorlage', () => {
+  it('is the fallback for Event blocks without kategorieId', () => {
+    const b = baustein('bausteinEvent', { ...eventDaten, kategorieId: null, vorlageId: 'v1' });
+    const [a] = protokollAktionen(
+      dok(b),
+      kontext({ kategorien: dienstKategorien, vorlageKategorien: { v1: 'k2' } }),
+    );
+    expect(a).toMatchObject({ ausfuehrbar: true });
+    expect(a!.plan).toMatchObject({ eingabe: { kategorieId: 'k2' } });
+    const [ohne] = protokollAktionen(dok(b), kontext({ kategorien: dienstKategorien }));
+    expect(ohne).toMatchObject({ ausfuehrbar: false, grund: 'Die Kategorie fehlt.' });
   });
 });

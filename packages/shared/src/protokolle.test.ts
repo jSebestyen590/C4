@@ -427,6 +427,23 @@ describe('protokollVorschlag', () => {
     expect(protokollDokumentPruefen(doc)).toBeNull();
   });
 
+  it('fills kategorieId of copied Event blocks without eventId from their Vorlage', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Alt', datum: '2026-12-01', vorlageId: 'v1' }),
+        eventBaustein({ name: 'Eigen', datum: '2026-12-02', vorlageId: 'v1', kategorieId: 'k9' }),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      vorlageKategorien: { v1: 'k2' },
+    });
+    expect(
+      bausteine(doc, 2).map((b) => (b.attrs?.daten as { kategorieId: string }).kategorieId),
+    ).toEqual(['k2', 'k9']);
+  });
+
   it('uses the end date of multi-day events and treats the Sitzung day as not yet past', () => {
     const letztes = dokument({
       zukuenftiges: [

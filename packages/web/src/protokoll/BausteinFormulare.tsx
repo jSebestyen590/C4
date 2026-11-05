@@ -132,6 +132,7 @@ export function EventFormular({
   const kategorie = kategorien.liste.find(
     (k) => k.id === (daten.kategorieId ?? vorlage?.kategorieId),
   );
+  const kategorieWert = daten.kategorieId ?? vorlage?.kategorieId ?? null;
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
   const dienstformName = (id: string) => dienstformen.nachId.get(id)?.name ?? 'Dienstform';
   const vorlageText = daten.vorlageId
@@ -264,12 +265,17 @@ export function EventFormular({
       )}
       <Select
         label="Kategorie"
-        description="Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann."
+        description={
+          kategorieWert
+            ? undefined
+            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
+        }
         placeholder="Keine Kategorie"
         searchable
-        clearable
+        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
+        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
         data={kategorieOptionen}
-        value={daten.kategorieId}
+        value={kategorieWert}
         onChange={(kategorieId) => aendern((d) => ({ ...d, kategorieId }))}
         nothingFoundMessage="Keine Kategorie gefunden"
       />

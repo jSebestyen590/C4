@@ -97,6 +97,8 @@ export interface ProtokollAktionenKontext {
   /** The events the Event blocks point to, by id (missing = deleted). */
   events: Readonly<Record<string, AktionEventKontext>>;
   kategorien: Readonly<Record<string, AktionKategorieKontext>>;
+  /** Kategorie of the Vorlagen by id: the fallback for Event blocks without `kategorieId` (old data). */
+  vorlageKategorien?: Readonly<Record<string, string>>;
   /** Status of the people the blocks mention, by sub. */
   personen: Readonly<Record<string, AktionPersonKontext>>;
   /** The Posten the Wahl blocks pick, by id. */
@@ -205,12 +207,20 @@ const bereitsErledigt = (text: string, rest: Partial<Eintrag> = {}): Eintrag => 
   ...rest,
 });
 
+/** Kategorie of an Event block: its own, else the one of its Vorlage (old data has none). */
+function eventKategorieId(daten: BausteinEventDaten, k: ProtokollAktionenKontext): string | null {
+  return (
+    daten.kategorieId ?? (daten.vorlageId ? (k.vorlageKategorien?.[daten.vorlageId] ?? null) : null)
+  );
+}
+
 function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): Eintrag {
   const name = daten.name.trim();
   const text = `Event${name ? ` „${name}“` : ''}${daten.datum ? ` am ${datumAnzeigen(daten.datum)}` : ''} im Kalender anlegen`;
   if (!daten.datum) return nichtAusfuehrbar(text, 'Das Datum fehlt.');
-  if (!daten.kategorieId) return nichtAusfuehrbar(text, 'Die Kategorie fehlt.');
-  const kategorie = k.kategorien[daten.kategorieId];
+  const kategorieId = eventKategorieId(daten, k);
+  if (!kategorieId) return nichtAusfuehrbar(text, 'Die Kategorie fehlt.');
+  const kategorie = k.kategorien[kategorieId];
   if (!kategorie) return nichtAusfuehrbar(text, 'Die Kategorie gibt es nicht mehr.');
   if (kategorie.dauer !== 'ganztaegig' && (!daten.beginnZeit || !daten.endeZeit)) {
     return nichtAusfuehrbar(text, 'Die Uhrzeit fehlt.');
@@ -221,7 +231,7 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
       {
         titel: name,
         beschreibung: null,
-        kategorieId: daten.kategorieId,
+        kategorieId,
         beginnZeit: daten.beginnZeit ?? '00:00',
         endeZeit: daten.endeZeit ?? '00:00',
         schichten: daten.schichten,
@@ -533,14 +543,28 @@ export interface ProtokollAktionDto extends ProtokollAktionAnsicht {
   personen: ProtokollMitgliedDto[];
 }
 
+/** Ids of the Bausteine of a document in document order (also the ones inside other Bausteine). */
+export function bausteinIdsInReihenfolge(dokument: ProtokollDokument): string[] {
+  const ids: string[] = [];
+  const gehe = (knoten: ProtokollKnoten) => {
+    const id = istObjekt(knoten.attrs) ? knoten.attrs.id : undefined;
+    if (typeof id === 'string' && knoten.type.startsWith('baustein')) ids.push(id);
+    for (const kind of knoten.content ?? []) gehe(kind);
+  };
+  gehe(dokument);
+  return ids;
+}
+
 /**
  * The computed Aktionen with the results stored in the Kopf. Results of Aktionen that are not
  * computed any more (their effect changed the document, e.g. a created event) are listed as well,
- * after the computed ones.
+ * with the text they had when they ran, in the order of their Bausteine in `reihenfolge` (ids of the
+ * Bausteine in document order); the ones whose Baustein is gone come last.
  */
 export function aktionenMitZustand(
   liste: readonly ProtokollAktion[],
   gespeichert: Readonly<Record<string, ProtokollAktionErgebnis>>,
+  reihenfolge: readonly string[] = liste.map((a) => a.bausteinId),
 ): ProtokollAktionAnsicht[] {
   const ansichten = liste.map((aktion): ProtokollAktionAnsicht => {
     const a: Omit<ProtokollAktion, 'plan'> & { plan?: unknown } = { ...aktion };
@@ -556,25 +580,42 @@ export function aktionenMitZustand(
     return { ...a, zustand, ergebnis };
   });
   const bekannt = new Set(liste.map((a) => a.id));
+  const weitere: ProtokollAktionAnsicht[] = [];
   for (const [id, ergebnis] of Object.entries(gespeichert)) {
     if (bekannt.has(id)) continue;
     const i = id.indexOf(':');
     const art = id.slice(i + 1);
     if (i < 0 || !(AKTION_ARTEN as readonly string[]).includes(art)) continue;
-    ansichten.push({
+    weitere.push({
       id,
-      bausteinId: id.slice(0, i),
+      bausteinId: ergebnis.bausteinId || id.slice(0, i),
       art: art as AktionArt,
-      text: ergebnis.text,
+      text: ergebnis.aktionText || ergebnis.text,
       ausfuehrbar: false,
       erledigt: ergebnis.status === 'erledigt',
-      eventId: null,
-      subs: [],
+      eventId: ergebnis.eventId,
+      subs: ergebnis.subs,
       zustand: ergebnis.status,
       ergebnis,
     });
   }
-  return ansichten;
+  if (weitere.length === 0) return ansichten;
+  // Merge: every stored one goes behind the last entry whose Baustein is not after its own.
+  const platz = new Map(reihenfolge.map((id, i) => [id, i] as const));
+  const position = (a: ProtokollAktionAnsicht): number => platz.get(a.bausteinId) ?? Infinity;
+  const ergebnisListe = [...ansichten];
+  for (const w of weitere) {
+    let stelle = ergebnisListe.length;
+    if (position(w) !== Infinity) {
+      stelle = ergebnisListe.findIndex((a) => position(a) >= position(w));
+      if (stelle < 0) stelle = ergebnisListe.length;
+      // Entries of Bausteine that are gone stay at the end.
+      const ende = ergebnisListe.findIndex((a) => position(a) === Infinity);
+      if (ende >= 0 && stelle > ende) stelle = ende;
+    }
+    ergebnisListe.splice(stelle, 0, w);
+  }
+  return ergebnisListe;
 }
 
 /** Outcome of one Aktion that was asked to run. */

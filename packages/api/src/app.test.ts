@@ -7529,6 +7529,60 @@ describe('protokolle', () => {
       // The list now shows what was done.
       const { aktionen } = await t.aktionenLesen();
       expect(aktionen.every((a) => a.zustand === 'erledigt')).toBe(true);
+
+      // The created event is not computed any more: its entry keeps the original text and the
+      // event, and stands where its Baustein is (before the change of `e9`).
+      expect(aktionen.map((a) => a.id)).toEqual([
+        t.ids.einladung,
+        t.ids.aufnahme,
+        t.ids.wahl,
+        t.ids.neu,
+        t.ids.aender,
+      ]);
+      expect(aktionen[3]).toMatchObject({
+        art: 'event.anlegen',
+        text: expect.stringContaining('Sommerfest'),
+        eventId: 'e-neu',
+        ergebnis: { text: 'Event im Kalender angelegt.' },
+      });
+    });
+
+    it('creates events of old blocks without kategorieId from the Kategorie of their Vorlage', async () => {
+      const t = await aktionenSetup();
+      t.kalender.vorlagen.mockResolvedValue([
+        {
+          id: 'v1',
+          titel: 'Barabend',
+          kategorieId: 'kd',
+          archiviert: false,
+          schichten: [],
+        } as never,
+      ]);
+      const alt = bausteinErzeugen('bausteinEvent', {
+        ...bausteinLeer('bausteinEvent'),
+        name: 'Altes Fest',
+        datum: '2026-12-12',
+        beginnZeit: '18:00',
+        endeZeit: '23:00',
+        vorlageId: 'v1',
+        kategorieId: null,
+      });
+      const doc = protokollLeer();
+      doc.content[2]!.content = [alt];
+      const dto = await t.holen(t.id);
+      const res = await t.app.request(
+        `/api/protokolle/${t.id}`,
+        json('admin-token', 'PUT', { inhalt: doc, kopf: dto.kopf, version: dto.version }),
+      );
+      expect(res.status).toBe(200);
+      const { aktionen } = await t.aktionenLesen();
+      expect(aktionen).toHaveLength(1);
+      expect(aktionen[0]).toMatchObject({ zustand: 'offen', ausfuehrbar: true });
+      await t.schliessen([aktionen[0]!.id]);
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({ titel: 'Altes Fest', kategorieId: 'kd' }),
+        'v',
+      );
     });
 
     it('does not run anything twice when the protocol is reopened and closed again', async () => {

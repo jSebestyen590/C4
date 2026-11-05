@@ -25,7 +25,10 @@ import { AblosungUngueltig, BesetzungUeberschneidung, type PostenStore } from '.
 // areas the Aktionen touch. That is deliberate and limited to the protocol routes.
 
 export interface AktionenDeps {
-  kalender: Pick<KalenderStore, 'event' | 'kategorien' | 'eventAnlegen' | 'eventAktualisieren'>;
+  kalender: Pick<
+    KalenderStore,
+    'event' | 'kategorien' | 'vorlagen' | 'eventAnlegen' | 'eventAktualisieren'
+  >;
   mitglieder: Pick<MitgliederStore, 'alle' | 'holen' | 'speichern' | 'statusSetzen'>;
   userAdmin: Pick<UserAdmin, 'createUser'>;
   posten: Pick<PostenStore, 'holen' | 'besetzungAnlegen'>;
@@ -104,9 +107,10 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     heute: string,
   ): Promise<ProtokollAktionenKontext> {
     const postenIds = postenIdsVon(dokument);
-    const [events, kategorien, personen, posten] = await Promise.all([
+    const [events, kategorien, vorlagen, personen, posten] = await Promise.all([
       Promise.all(protokollEventIds(dokument).map((id) => deps.kalender.event(id))),
       deps.kalender.kategorien(true),
+      deps.kalender.vorlagen(true),
       deps.mitglieder.alle(),
       Promise.all(postenIds.map((id) => deps.posten.holen(id))),
     ]);
@@ -145,6 +149,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
           { art: k.art, dauer: k.dauer, teilnahmeStatus: k.teilnahmeStatus },
         ]),
       ),
+      vorlageKategorien: Object.fromEntries(vorlagen.map((v) => [v.id, v.kategorieId])),
       personen: Object.fromEntries(
         personen.map((r) => [r.sub, { status: r.status, deaktiviert: istDeaktiviert(r) }]),
       ),
@@ -297,7 +302,19 @@ export function createProtokollAktionen(deps: AktionenDeps) {
         status = 'fehler';
       }
       ausgaenge.push({ ...kopf, ...{ status, meldung } });
-      ergebnisse[a.id] = { status, text: meldung, am: new Date().toISOString(), von: akteur };
+      ergebnisse[a.id] = {
+        status,
+        text: meldung,
+        am: new Date().toISOString(),
+        von: akteur,
+        aktionText: a.text,
+        bausteinId: a.bausteinId,
+        art: a.art,
+        eventId:
+          patches.find((p) => p.bausteinId === a.bausteinId && p.feld === 'eventId')?.wert ??
+          a.eventId,
+        subs: a.subs,
+      };
     }
     for (const id of gewollt) {
       const i = id.indexOf(':');
