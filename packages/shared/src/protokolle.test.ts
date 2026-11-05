@@ -113,6 +113,75 @@ describe('protokollDokumentPruefen', () => {
     expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
   });
 
+  it('checks Meinungsbild and Aufnahme strictly', () => {
+    const pruefen = (typ: 'bausteinMeinungsbild' | 'bausteinAufnahme', daten: unknown) =>
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [bausteinErzeugen(typ, daten as never)] }),
+      );
+    expect(bausteinLeer('bausteinMeinungsbild')).toEqual({
+      frage: '',
+      optionen: [
+        { text: 'Ja', stimmen: 0 },
+        { text: 'Nein', stimmen: 0 },
+        { text: 'Enthaltung', stimmen: 0 },
+      ],
+    });
+    // Fresh arrays on every call.
+    expect(bausteinLeer('bausteinMeinungsbild').optionen).not.toBe(
+      bausteinLeer('bausteinMeinungsbild').optionen,
+    );
+    const ok = { frage: 'Ernst oder Spaß?', optionen: [{ text: 'Ernst', stimmen: 4 }] };
+    expect(pruefen('bausteinMeinungsbild', ok)).toBeNull();
+    expect(pruefen('bausteinMeinungsbild', { ...ok, extra: 1 })).not.toBeNull();
+    expect(pruefen('bausteinMeinungsbild', { ...ok, frage: 'x'.repeat(501) })).not.toBeNull();
+    expect(
+      pruefen('bausteinMeinungsbild', { ...ok, optionen: [{ text: 'x'.repeat(101), stimmen: 0 }] }),
+    ).not.toBeNull();
+    expect(
+      pruefen('bausteinMeinungsbild', { ...ok, optionen: [{ text: 'a', stimmen: -1 }] }),
+    ).not.toBeNull();
+    expect(
+      pruefen('bausteinMeinungsbild', { ...ok, optionen: [{ text: 'a', stimmen: 1.5 }] }),
+    ).not.toBeNull();
+    const dreizehn = Array.from({ length: 13 }, () => ({ text: 'a', stimmen: 0 }));
+    expect(pruefen('bausteinMeinungsbild', { ...ok, optionen: dreizehn })).not.toBeNull();
+    expect(pruefen('bausteinMeinungsbild', { ...ok, optionen: dreizehn.slice(1) })).toBeNull();
+
+    const stimmen = { ja: 5, nein: 1, enthaltung: 0, ergebnis: 'angenommen' };
+    expect(pruefen('bausteinAufnahme', { sub: 'a', name: '', abstimmung: stimmen })).toBeNull();
+    expect(pruefen('bausteinAufnahme', { sub: null, name: 'Max', abstimmung: stimmen })).toBeNull();
+    expect(pruefen('bausteinAufnahme', { sub: null, name: 'Max' })).not.toBeNull();
+    expect(
+      pruefen('bausteinAufnahme', { sub: null, name: 'Max', abstimmung: null }),
+    ).not.toBeNull();
+    expect(
+      pruefen('bausteinAufnahme', { sub: null, name: 'x'.repeat(201), abstimmung: stimmen }),
+    ).not.toBeNull();
+  });
+
+  it('accepts an Abstimmung and a Meinungsbild inside the free text of another Baustein', () => {
+    const ereignis = bausteinErzeugen('bausteinEvent', bausteinLeer('bausteinEvent'), [
+      absatz('Text'),
+      bausteinErzeugen('bausteinBeschluss'),
+      bausteinErzeugen('bausteinMeinungsbild'),
+      { type: 'paragraph' },
+    ]);
+    const doc = dokument({ zukuenftiges: [ereignis] });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+    expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
+    // Still checked strictly inside.
+    const kaputt = bausteinErzeugen('bausteinBeschluss', { antrag: 1 } as never);
+    expect(
+      protokollDokumentPruefen(
+        dokument({
+          zukuenftiges: [
+            bausteinErzeugen('bausteinEvent', bausteinLeer('bausteinEvent'), [kaputt]),
+          ],
+        }),
+      ),
+    ).not.toBeNull();
+  });
+
   it('knows empty defaults for every Baustein type', () => {
     for (const typ of BAUSTEIN_TYPEN) {
       const doc = dokument({ gegenwaertiges: [bausteinErzeugen(typ)] });
@@ -333,6 +402,25 @@ describe('protokollVorschlag', () => {
     expect(kopie.attrs?.daten).toEqual(original.attrs.daten);
     expect(kopie.attrs?.id).not.toBe(original.attrs.id);
     expect(kopie).not.toBe(original);
+  });
+
+  it('does not carry Abstimmung and Meinungsbild blocks inside an event over', () => {
+    const original = bausteinErzeugen('bausteinEvent', bausteinLeer('bausteinEvent'), [
+      absatz('Text'),
+      bausteinErzeugen('bausteinBeschluss'),
+      bausteinErzeugen('bausteinMeinungsbild'),
+    ]);
+    const nur = bausteinErzeugen('bausteinEvent', bausteinLeer('bausteinEvent'), [
+      bausteinErzeugen('bausteinBeschluss'),
+    ]);
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: dokument({ zukuenftiges: [original, nur] }),
+      events: {},
+    });
+    const [a, b] = bausteine(doc, 2);
+    expect(a!.content).toEqual([absatz('Text')]);
+    expect(b!.content).toEqual([{ type: 'paragraph' }]);
   });
 
   it('refreshes name, dates and times from the calendar', () => {

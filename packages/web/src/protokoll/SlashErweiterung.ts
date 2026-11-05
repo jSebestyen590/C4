@@ -1,8 +1,13 @@
 import { Extension } from '@tiptap/react';
 import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion } from '@tiptap/suggestion';
-import { BAUSTEIN_TYPEN } from '@c4/shared';
-import { bausteinEinfuegen, zitatEinfuegen } from './einfuegen';
+import {
+  bausteinEinfuegen,
+  imListenpunkt,
+  imVerschachtelbaren,
+  slashErlaubt,
+  zitatEinfuegen,
+} from './einfuegen';
 import { slashEintraege, type SlashDaten, type SlashEintrag } from './slashLogik';
 import type { SlashZustand } from './SlashPopup';
 
@@ -14,11 +19,9 @@ export interface SlashSteuerung {
   taste: (ereignis: KeyboardEvent) => boolean;
 }
 
-const bausteinNamen: readonly string[] = BAUSTEIN_TYPEN;
-
 /**
  * Slash menu: "/" opens a list of Bausteine and "Zitat" that filters while typing. Only in a paragraph that lies
- * directly in a section or in the free text of a Baustein. Spaces stay part of the query so the second
+ * directly in a section or in the free text of a Baustein, or in a list item there (not in quotes). Spaces stay part of the query so the second
  * stage ("/event bar") works.
  */
 export function slashErweiterung(steuerung: SlashSteuerung) {
@@ -33,14 +36,15 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
           char: '/',
           allowSpaces: true,
           startOfLine: false,
-          allow: ({ editor, state, range }) => {
-            if (!editor.isEditable) return false;
-            const $pos = state.doc.resolve(range.from);
-            if ($pos.parent.type.name !== 'paragraph' || $pos.depth < 1) return false;
-            const aussen = $pos.node($pos.depth - 1).type.name;
-            return aussen === 'abschnitt' || bausteinNamen.includes(aussen);
-          },
-          items: ({ query }) => slashEintraege(query, steuerung.daten()),
+          allow: ({ editor, state, range }) =>
+            editor.isEditable && slashErlaubt(state.doc.resolve(range.from)),
+          items: ({ query, editor }) =>
+            slashEintraege(
+              query,
+              steuerung.daten(),
+              imVerschachtelbaren(editor.state),
+              imListenpunkt(editor.state),
+            ),
           command: ({ editor, range, props }) => {
             if (props.aktion.art === 'weiter') {
               const text = `/${props.aktion.text}`;

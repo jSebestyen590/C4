@@ -57,7 +57,9 @@ describe('first stage', () => {
       'Event',
       'Vergangenes Event',
       'Anwärter:in',
-      'Beschluss',
+      'Aufnahme',
+      'Abstimmung',
+      'Meinungsbild',
       'Neues EM',
       'Erscheint',
       'Geht',
@@ -69,7 +71,11 @@ describe('first stage', () => {
     expect(titel('verg')).toEqual(['Vergangenes Event']);
     expect(titel('anwärter')).toEqual(['Anwärter:in']);
     expect(titel('anwaerter')).toEqual(['Anwärter:in']);
-    expect(titel('abstimm')).toEqual(['Beschluss']);
+    expect(titel('abstimm')).toEqual(['Abstimmung']);
+    expect(titel('beschluss')).toEqual(['Abstimmung']);
+    expect(titel('mein')).toEqual(['Meinungsbild']);
+    expect(titel('stimmungsbild')).toEqual(['Meinungsbild']);
+    expect(titel('aufn')).toEqual(['Aufnahme']);
     expect(titel('em')).toEqual(['Neues EM']);
     expect(titel('ehrenmitglied')).toEqual(['Neues EM']);
     expect(titel('neues em')).toEqual(['Neues EM']);
@@ -89,7 +95,38 @@ describe('first stage', () => {
     expect(event?.aktion).toEqual({ art: 'weiter', text: 'event ' });
     expect(vergangen?.aktion).toEqual({ art: 'weiter', text: 'vergangenes ' });
   });
-  it('inserts Anwärter and Beschluss directly', () => {
+  it('inserts Abstimmung, Meinungsbild and Aufnahme directly with empty fields', () => {
+    expect(slashEintraege('abstimm', daten)[0]?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinBeschluss' },
+    });
+    expect(slashEintraege('mein', daten)[0]?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: {
+        typ: 'bausteinMeinungsbild',
+        daten: { frage: '', optionen: [{ text: 'Ja' }, { text: 'Nein' }, { text: 'Enthaltung' }] },
+      },
+    });
+    expect(slashEintraege('aufn', daten)[0]?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinAufnahme', daten: { sub: null, abstimmung: { ja: 0 } } },
+    });
+  });
+  it('leaves out Abstimmung and Meinungsbild inside one of them', () => {
+    const innen = slashEintraege('', daten, true).map((e) => e.titel);
+    expect(innen).not.toContain('Abstimmung');
+    expect(innen).not.toContain('Meinungsbild');
+    expect(innen).toContain('Aufnahme');
+    expect(innen).toContain('Zitat');
+    expect(slashEintraege('abstimm', daten, true)).toEqual([]);
+    expect(slashEintraege('stimmungsbild', daten, true)).toEqual([]);
+  });
+  it('leaves out the quote inside a list item', () => {
+    expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Zitat');
+    expect(slashEintraege('zit', daten, false, true)).toEqual([]);
+    expect(slashEintraege('zit', daten)).toHaveLength(1);
+  });
+  it('inserts Anwärter and Abstimmung directly', () => {
     const [a] = slashEintraege('anw', daten);
     expect(a?.aktion).toMatchObject({ art: 'einfuegen', wahl: { typ: 'bausteinAnwaerter' } });
     const [em] = slashEintraege('em', daten);

@@ -1,5 +1,5 @@
 import { ActionIcon, Group, Paper, Stack, Text } from '@mantine/core';
-import { IconTrash } from '@tabler/icons-react';
+import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
 import {
   mergeAttributes,
   Node,
@@ -11,30 +11,42 @@ import {
 } from '@tiptap/react';
 import { useState, type ComponentType, type ReactElement } from 'react';
 import {
+  istBausteinInNotizen,
   type BausteinAnwaerterDaten,
+  type BausteinAufnahmeDaten,
   type BausteinBeschlussDaten,
   type BausteinDatenVon,
   type BausteinEmDaten,
   type BausteinEventDaten,
+  type BausteinMeinungsbildDaten,
   type BausteinTyp,
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
-import { BeschlussHinweis } from './BeschlussHinweis';
+import { BeschlussHinweis, MeinungsbildHinweis } from './BeschlussHinweis';
 import { FORMULAR_ATTRIBUT } from './formular';
 import {
   AnwaerterFormular,
+  AufnahmeFormular,
   BeschlussFormular,
   EmFormular,
   EventFormular,
+  MeinungsbildFormular,
   VergangenesEventFormular,
   type FormularProps,
 } from './BausteinFormulare';
+import { blockVerschieben, type Richtung } from './verschieben';
 import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 
-/** Content allowed in the free text; no Bausteine inside Bausteine. */
-const FREITEXT = '(paragraph | heading | bulletList | orderedList | blockquote)+';
+/** Text content allowed in the free text of every Baustein. */
+const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote';
+/**
+ * Free text of a Baustein: text, and an Abstimmung / Meinungsbild (group `innerbaustein`) at the cursor.
+ * Those two take plain text only, so there are no Bausteine inside Bausteine beyond that one level.
+ */
+const FREITEXT = `(${TEXT} | innerbaustein)+`;
+const FREITEXT_NUR_TEXT = `(${TEXT})+`;
 
 function BausteinAnsicht<T extends BausteinTyp>({
   typ,
@@ -48,6 +60,23 @@ function BausteinAnsicht<T extends BausteinTyp>({
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
   const [loeschen, setLoeschen] = useState(false);
+  const kannVerschieben = useEditorState({
+    editor,
+    selector: (s) => {
+      const pos = getPos();
+      const geht = (r: Richtung) =>
+        pos !== undefined && blockVerschieben(s.editor.state, pos, r) !== null;
+      return { hoch: geht('hoch'), runter: geht('runter') };
+    },
+    equalityFn: (a, b) => !!b && a.hoch === b.hoch && a.runter === b.runter,
+  });
+  const verschieben = (richtung: Richtung) => {
+    const pos = getPos();
+    if (pos === undefined) return;
+    const tr = blockVerschieben(editor.state, pos, richtung);
+    if (tr) editor.view.dispatch(tr);
+    editor.view.focus();
+  };
   const daten = node.attrs.daten as BausteinDatenVon[T];
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
@@ -77,16 +106,40 @@ function BausteinAnsicht<T extends BausteinTyp>({
                   </Text>
                 </Group>
                 {editierbar && (
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    size={44}
-                    className="protokoll-nicht-drucken"
-                    aria-label={`${BAUSTEIN_TITEL[typ]} entfernen`}
-                    onClick={() => setLoeschen(true)}
-                  >
-                    <IconTrash size={20} />
-                  </ActionIcon>
+                  <Group gap={0} wrap="nowrap" className="protokoll-nicht-drucken">
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size={44}
+                      aria-label={`${BAUSTEIN_TITEL[typ]} nach oben verschieben`}
+                      title="Nach oben verschieben"
+                      disabled={!kannVerschieben.hoch}
+                      onClick={() => verschieben('hoch')}
+                    >
+                      <IconArrowUp size={20} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      size={44}
+                      aria-label={`${BAUSTEIN_TITEL[typ]} nach unten verschieben`}
+                      title="Nach unten verschieben"
+                      disabled={!kannVerschieben.runter}
+                      onClick={() => verschieben('runter')}
+                    >
+                      <IconArrowDown size={20} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      size={44}
+                      className="protokoll-nicht-drucken"
+                      aria-label={`${BAUSTEIN_TITEL[typ]} entfernen`}
+                      onClick={() => setLoeschen(true)}
+                    >
+                      <IconTrash size={20} />
+                    </ActionIcon>
+                  </Group>
                 )}
               </Group>
               <Formular daten={daten} aendern={aendern} editierbar={editierbar} />
@@ -95,6 +148,15 @@ function BausteinAnsicht<T extends BausteinTyp>({
                   id={node.attrs.id as string}
                   daten={daten as unknown as BausteinBeschlussDaten}
                 />
+              )}
+              {typ === 'bausteinAufnahme' && (
+                <BeschlussHinweis
+                  id={node.attrs.id as string}
+                  daten={(daten as unknown as BausteinAufnahmeDaten).abstimmung}
+                />
+              )}
+              {typ === 'bausteinMeinungsbild' && (
+                <MeinungsbildHinweis id={node.attrs.id as string} />
               )}
               {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).abstimmung && (
                 <BeschlussHinweis
@@ -144,8 +206,8 @@ const parseJson = (el: HTMLElement, attribut: string): unknown => {
 function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) => ReactElement) {
   return Node.create({
     name: typ,
-    group: 'block',
-    content: FREITEXT,
+    group: istBausteinInNotizen(typ) ? 'block innerbaustein' : 'block',
+    content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT,
     isolating: true,
     defining: true,
     draggable: false,
@@ -218,6 +280,20 @@ export const BausteinBeschlussKnoten = bausteinKnoten(
     BeschlussFormular as ComponentType<FormularProps<BausteinBeschlussDaten>>,
   ),
 );
+export const BausteinMeinungsbildKnoten = bausteinKnoten(
+  'bausteinMeinungsbild',
+  karte(
+    'bausteinMeinungsbild',
+    MeinungsbildFormular as ComponentType<FormularProps<BausteinMeinungsbildDaten>>,
+  ),
+);
+export const BausteinAufnahmeKnoten = bausteinKnoten(
+  'bausteinAufnahme',
+  karte(
+    'bausteinAufnahme',
+    AufnahmeFormular as ComponentType<FormularProps<BausteinAufnahmeDaten>>,
+  ),
+);
 export const BausteinEmKnoten = bausteinKnoten(
   'bausteinEm',
   karte('bausteinEm', EmFormular as ComponentType<FormularProps<BausteinEmDaten>>),
@@ -233,4 +309,6 @@ export const BAUSTEIN_KNOTEN = [
   BausteinBeschlussKnoten,
   BausteinEmKnoten,
   BausteinAnwesenheitKnoten,
+  BausteinMeinungsbildKnoten,
+  BausteinAufnahmeKnoten,
 ];

@@ -38,13 +38,23 @@ export interface AnwesenheitsEingabe {
   art: ProtokollArt;
   /** Everybody in the attendance list. Only status `mitglied` counts. */
   teilnahme: ReadonlyArray<{ sub: string; status: MitgliedStatus; wert: ProtokollTeilnahmeWert }>;
+  /** The EMs who count as present (chosen in the Kopf). Only used for the head count of a Meinungsbild. */
+  ems?: ReadonlyArray<{ sub: string }>;
 }
 
 export interface AnwesenheitsVerlauf {
   /** Quorum at the opening. */
   start: Beschlussfaehigkeit;
-  /** Quorum at each `bausteinAnwesenheit` (after applying it), `bausteinBeschluss` and `bausteinEm`, by Baustein id. */
+  /**
+   * Quorum at each `bausteinAnwesenheit` (after applying it), `bausteinBeschluss`, `bausteinEm` and
+   * `bausteinAufnahme`, by Baustein id.
+   */
   bausteine: Record<string, Beschlussfaehigkeit & { wechsel: boolean }>;
+  /**
+   * Number of people present (every status plus the chosen EMs, guests are free text and not counted)
+   * at each `bausteinMeinungsbild`, by Baustein id.
+   */
+  anwesendePersonen: Record<string, number>;
 }
 
 /** Baustein nodes in document order, also those inside other Bausteine (a parent comes before its children). */
@@ -57,7 +67,8 @@ function inReihenfolge(knoten: ProtokollKnoten, besuch: (k: ProtokollKnoten) => 
  * Who is present where in the document. At the opening the members with attendance `anwesend`
  * count; `verspaetet` members only from their `erscheint` block on. A `geht` block removes a present
  * member. Blocks for somebody who is not a Mitglied (Anwärter:in, EM, unknown) or that change
- * nothing leave the count alone; blocks without a person are ignored.
+ * nothing leave the member count alone; blocks without a person are ignored. The head count of
+ * all people (for a Meinungsbild) follows `erscheint` / `geht` blocks of any person.
  */
 export function anwesenheitsVerlauf(
   dokument: ProtokollDokument,
@@ -67,28 +78,45 @@ export function anwesenheitsVerlauf(
   const alle = new Set(mitglieder.map((t) => t.sub));
   const da = new Set(mitglieder.filter((t) => t.wert === 'anwesend').map((t) => t.sub));
   const stand = () => beschlussfaehigkeit(eingabe.art, alle.size, da.size);
+  // Everybody present, whatever the status: attendance `anwesend` plus the chosen EMs.
+  const personen = new Set([
+    ...eingabe.teilnahme.filter((t) => t.wert === 'anwesend').map((t) => t.sub),
+    ...(eingabe.ems ?? []).map((e) => e.sub),
+  ]);
 
   const start = stand();
   let aktuell = start;
   const bausteine: AnwesenheitsVerlauf['bausteine'] = {};
+  const anwesendePersonen: AnwesenheitsVerlauf['anwesendePersonen'] = {};
 
   inReihenfolge(dokument, (knoten) => {
     const id = knoten.attrs?.id;
     if (typeof id !== 'string') return;
     if (knoten.type === 'bausteinAnwesenheit') {
       const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
-      if (daten.success && daten.data.sub !== null && alle.has(daten.data.sub)) {
-        if (daten.data.art === 'erscheint') da.add(daten.data.sub);
-        else da.delete(daten.data.sub);
+      if (daten.success && daten.data.sub !== null) {
+        const erscheint = daten.data.art === 'erscheint';
+        if (alle.has(daten.data.sub)) {
+          if (erscheint) da.add(daten.data.sub);
+          else da.delete(daten.data.sub);
+        }
+        if (erscheint) personen.add(daten.data.sub);
+        else personen.delete(daten.data.sub);
       }
       const neu = stand();
       bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
       aktuell = neu;
-    } else if (knoten.type === 'bausteinBeschluss' || knoten.type === 'bausteinEm') {
+    } else if (
+      knoten.type === 'bausteinBeschluss' ||
+      knoten.type === 'bausteinEm' ||
+      knoten.type === 'bausteinAufnahme'
+    ) {
       bausteine[id] = { ...aktuell, wechsel: false };
+    } else if (knoten.type === 'bausteinMeinungsbild') {
+      anwesendePersonen[id] = personen.size;
     }
   });
-  return { start, bausteine };
+  return { start, bausteine, anwesendePersonen };
 }
 
 /** Per member the time of the first `erscheint` block that has one (for "Julia (21:00 Uhr)"). */

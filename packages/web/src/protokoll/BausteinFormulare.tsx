@@ -1,7 +1,10 @@
 import {
   Anchor,
+  ActionIcon,
   Badge,
+  Button,
   Group,
+  Paper,
   Select,
   SegmentedControl,
   SimpleGrid,
@@ -9,26 +12,39 @@ import {
   Switch,
   Text,
 } from '@mantine/core';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
   datumBerlin,
+  MEINUNGSBILD_MAX_OPTIONEN,
   type BausteinAnwaerterDaten,
+  type BausteinAufnahmeDaten,
   type BausteinBeschlussDaten,
   type BausteinEmDaten,
   type BausteinEmAbstimmung,
   type BausteinEventDaten,
+  type BausteinMeinungsbildDaten,
   type BausteinVergangenesEventDaten,
   type EventDauer,
+  type ProtokollMitgliedDto,
 } from '@c4/shared';
-import { emKandidaten, personenOptionen } from './anwesenheit';
+import { aufnahmeOptionen, emKandidaten, personenOptionen } from './anwesenheit';
 import { useProtokollKontext } from './kontext';
 import { DatumFeld } from '../DatumFeld';
 import { useDienstformen, useEventKategorien, useVorlagen } from '../kalenderDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
-import { eventBisSetzen, eventDatumSetzen, stimmeSetzen, zeitWert } from './bausteinLogik';
+import {
+  eventBisSetzen,
+  eventDatumSetzen,
+  optionEntfernen,
+  optionHinzufuegen,
+  optionSetzen,
+  stimmeSetzen,
+  zeitWert,
+} from './bausteinLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
 import { SchichtEditor, SchichtListe } from './SchichtEditor';
@@ -375,6 +391,42 @@ export function AnwaerterFormular({
   );
 }
 
+/** A person of the app (bold in the color of their status, linked) or the free-text name. */
+function PersonOderName({
+  person,
+  name,
+}: Readonly<{ person: ProtokollMitgliedDto | undefined; name: string }>) {
+  return (
+    <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+      {person ? (
+        <Anchor component={Link} to={mitgliedLink(person)} underline="never">
+          <StatusName status={person.status}>
+            {person.username ?? (`${person.vorname} ${person.nachname}`.trim() || '–')}
+          </StatusName>
+        </Anchor>
+      ) : (
+        name || 'Person offen'
+      )}
+    </Text>
+  );
+}
+
+/** Read-only vote: result badge and the counts. */
+function StimmenAnzeige({ a }: Readonly<{ a: BausteinEmAbstimmung }>) {
+  return (
+    <Group gap="xs">
+      {a.ergebnis && (
+        <Badge color={a.ergebnis === 'angenommen' ? 'green' : 'red'} size="lg">
+          {a.ergebnis === 'angenommen' ? 'Angenommen' : 'Abgelehnt'}
+        </Badge>
+      )}
+      <Text size="sm">
+        Ja {a.ja} · Nein {a.nein} · Enthaltung {a.enthaltung}
+      </Text>
+    </Group>
+  );
+}
+
 /** Ja / Nein / Enthaltung and the Ergebnis (suggested from the votes, can be overridden). */
 function StimmenFelder<T extends BausteinEmAbstimmung>({
   daten,
@@ -435,16 +487,7 @@ export function BeschlussFormular({
         <Text style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
           {daten.antrag || 'Antrag offen'}
         </Text>
-        <Group gap="xs">
-          {daten.ergebnis && (
-            <Badge color={daten.ergebnis === 'angenommen' ? 'green' : 'red'} size="lg">
-              {daten.ergebnis === 'angenommen' ? 'Angenommen' : 'Abgelehnt'}
-            </Badge>
-          )}
-          <Text size="sm">
-            Ja {daten.ja} · Nein {daten.nein} · Enthaltung {daten.enthaltung}
-          </Text>
-        </Group>
+        <StimmenAnzeige a={daten} />
       </Stack>
     );
   }
@@ -484,29 +527,8 @@ export function EmFormular({
     const name = daten.name.trim();
     return (
       <Stack gap={4}>
-        <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
-          {person ? (
-            <Anchor component={Link} to={mitgliedLink(person)} underline="never">
-              <StatusName status={person.status}>
-                {person.username ?? (`${person.vorname} ${person.nachname}`.trim() || '–')}
-              </StatusName>
-            </Anchor>
-          ) : (
-            name || 'Person offen'
-          )}
-        </Text>
-        {a && (
-          <Group gap="xs">
-            {a.ergebnis && (
-              <Badge color={a.ergebnis === 'angenommen' ? 'green' : 'red'} size="lg">
-                {a.ergebnis === 'angenommen' ? 'Angenommen' : 'Abgelehnt'}
-              </Badge>
-            )}
-            <Text size="sm">
-              Ja {a.ja} · Nein {a.nein} · Enthaltung {a.enthaltung}
-            </Text>
-          </Group>
-        )}
+        <PersonOderName person={person} name={name} />
+        {a && <StimmenAnzeige a={a} />}
       </Stack>
     );
   }
@@ -559,6 +581,144 @@ export function EmFormular({
           }
         />
       )}
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Aufnahme
+// ---------------------------------------------------------------------------------------------
+
+export function AufnahmeFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinAufnahmeDaten>>) {
+  const { teilnahme, ems } = useProtokollKontext();
+  const personen = emKandidaten(teilnahme, ems);
+  const person = personen.find((p) => p.sub === daten.sub);
+
+  if (!editierbar) {
+    return (
+      <Stack gap={4}>
+        <PersonOderName person={person} name={daten.name.trim()} />
+        <StimmenAnzeige a={daten.abstimmung} />
+      </Stack>
+    );
+  }
+  const status = new Map(personen.map((p) => [p.sub, p.status]));
+  return (
+    <Stack gap="xs">
+      <Select
+        label="Person"
+        placeholder="Person wählen"
+        data-fokus="person"
+        size="md"
+        searchable
+        clearable
+        nothingFoundMessage="Niemand gefunden"
+        data={aufnahmeOptionen(personen)}
+        value={daten.sub}
+        onChange={(sub) => aendern((d) => ({ ...d, sub }))}
+        renderOption={({ option }) => {
+          const s = status.get(option.value);
+          return s ? (
+            <StatusName status={s}>{option.label}</StatusName>
+          ) : (
+            <span>{option.label}</span>
+          );
+        }}
+      />
+      {daten.sub === null && (
+        <LokalText
+          label="Name (falls nicht in der App)"
+          autoComplete="off"
+          wert={daten.name}
+          maxLength={200}
+          onWert={(name) => aendern((d) => ({ ...d, name }))}
+        />
+      )}
+      <StimmenFelder
+        daten={daten.abstimmung}
+        aendern={(f) => aendern((d) => ({ ...d, abstimmung: f(d.abstimmung) }))}
+      />
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Meinungsbild
+// ---------------------------------------------------------------------------------------------
+
+export function MeinungsbildFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinMeinungsbildDaten>>) {
+  if (!editierbar) {
+    const optionen = daten.optionen.filter((o) => o.text.trim() !== '');
+    return (
+      <Stack gap={4}>
+        <Text fw={700} style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+          {daten.frage || 'Frage offen'}
+        </Text>
+        {optionen.length > 0 && (
+          <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+            {optionen.map((o) => `${o.text} ${o.stimmen}`).join(' · ')}
+          </Text>
+        )}
+      </Stack>
+    );
+  }
+  return (
+    <Stack gap="xs">
+      <LokalText
+        label="Frage"
+        data-fokus="frage"
+        autoComplete="off"
+        wert={daten.frage}
+        maxLength={500}
+        onWert={(frage) => aendern((d) => ({ ...d, frage }))}
+      />
+      {daten.optionen.map((o, i) => (
+        <Paper key={i} withBorder p="xs" radius="md">
+          <Stack gap="xs">
+            <Group gap="xs" wrap="nowrap" align="flex-end">
+              <LokalText
+                label={`Option ${i + 1}`}
+                autoComplete="off"
+                wert={o.text}
+                maxLength={100}
+                style={{ flex: 1, minWidth: 0 }}
+                onWert={(text) => aendern((d) => optionSetzen(d, i, { text }))}
+              />
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size={44}
+                aria-label={`Option ${i + 1} entfernen`}
+                onClick={() => aendern((d) => optionEntfernen(d, i))}
+              >
+                <IconTrash size={20} />
+              </ActionIcon>
+            </Group>
+            <LokalZahl
+              label="Stimmen"
+              wert={o.stimmen}
+              onWert={(stimmen) => aendern((d) => optionSetzen(d, i, { stimmen }))}
+            />
+          </Stack>
+        </Paper>
+      ))}
+      <Button
+        variant="default"
+        size="md"
+        leftSection={<IconPlus size={18} />}
+        disabled={daten.optionen.length >= MEINUNGSBILD_MAX_OPTIONEN}
+        onClick={() => aendern((d) => optionHinzufuegen(d))}
+      >
+        Option hinzufügen
+      </Button>
     </Stack>
   );
 }

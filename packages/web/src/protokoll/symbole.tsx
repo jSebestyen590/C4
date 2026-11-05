@@ -1,6 +1,7 @@
 import {
   IconBan,
   IconCalendarEvent,
+  IconChartBar,
   IconGavel,
   IconHistory,
   IconLogin2,
@@ -8,6 +9,7 @@ import {
   IconCrown,
   IconQuote,
   IconTemplate,
+  IconUserCheck,
   IconUserPlus,
 } from '@tabler/icons-react';
 import type { BausteinTyp } from '@c4/shared';
@@ -23,6 +25,10 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconUserPlus size={size} />;
     case 'beschluss':
       return <IconGavel size={size} />;
+    case 'aufnahme':
+      return <IconUserCheck size={size} />;
+    case 'meinungsbild':
+      return <IconChartBar size={size} />;
     case 'em':
       return <IconCrown size={size} />;
     case 'erscheint':
@@ -45,13 +51,17 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinBeschluss: 'beschluss',
   bausteinEm: 'em',
   bausteinAnwesenheit: 'erscheint',
+  bausteinMeinungsbild: 'meinungsbild',
+  bausteinAufnahme: 'aufnahme',
 };
 
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinEvent: 'Event',
   bausteinVergangenesEvent: 'Vergangenes Event',
   bausteinAnwaerter: 'Neue:r Anwärter:in',
-  bausteinBeschluss: 'Beschluss',
+  bausteinBeschluss: 'Abstimmung',
   bausteinEm: 'Neues EM',
   bausteinAnwesenheit: 'Anwesenheit',
+  bausteinMeinungsbild: 'Meinungsbild',
+  bausteinAufnahme: 'Aufnahme',
 };

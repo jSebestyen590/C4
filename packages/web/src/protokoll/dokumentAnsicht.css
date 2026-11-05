@@ -109,6 +109,16 @@
   margin: 0;
 }
 
+.pk-dok-klein {
+  font-size: 0.85em;
+  color: var(--mantine-color-dimmed);
+}
+
+/* An Abstimmung / Meinungsbild inside the notes of another Baustein: indented like the list items. */
+.pk-dok-innen {
+  margin-left: 1.6em;
+}
+
 .pk-dok-warnung {
   color: var(--mantine-color-red-7);
   font-weight: 700;

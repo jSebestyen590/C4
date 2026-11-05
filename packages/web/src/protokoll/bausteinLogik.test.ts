@@ -9,6 +9,10 @@ import {
   eventDatenAusVorlage,
   eventDatumSetzen,
   kommendeEvents,
+  optionEntfernen,
+  optionHinzufuegen,
+  optionSetzen,
+  personenAnwesendText,
   schichtKurz,
   schichtZeitSetzen,
   stimmeSetzen,
@@ -164,6 +168,33 @@ describe('stimmeSetzen', () => {
   });
 });
 
+describe('Meinungsbild options', () => {
+  const daten = bausteinLeer('bausteinMeinungsbild');
+  it('adds an empty option up to 12', () => {
+    const mehr = optionHinzufuegen(daten);
+    expect(mehr.optionen).toHaveLength(4);
+    expect(mehr.optionen[3]).toEqual({ text: '', stimmen: 0 });
+    let voll = daten;
+    for (let i = 0; i < 20; i++) voll = optionHinzufuegen(voll);
+    expect(voll.optionen).toHaveLength(12);
+    expect(optionHinzufuegen(voll)).toBe(voll);
+  });
+  it('removes an option by index', () => {
+    expect(optionEntfernen(daten, 1).optionen.map((o) => o.text)).toEqual(['Ja', 'Enthaltung']);
+  });
+  it('sets text and votes of one option, ignoring invalid counts', () => {
+    const a = optionSetzen(daten, 0, { text: 'Ernst', stimmen: 4 });
+    expect(a.optionen[0]).toEqual({ text: 'Ernst', stimmen: 4 });
+    expect(a.optionen[1]).toEqual({ text: 'Nein', stimmen: 0 });
+    expect(optionSetzen(daten, 0, { stimmen: -1 })).toBe(daten);
+    expect(optionSetzen(daten, 0, { stimmen: 1.5 })).toBe(daten);
+  });
+  it('words the head count', () => {
+    expect(personenAnwesendText(1)).toBe('Anwesend: 1 Person (ohne Gäste)');
+    expect(personenAnwesendText(12)).toBe('Anwesend: 12 Personen (ohne Gäste)');
+  });
+});
+
 describe('ersterLeererFeld', () => {
   it('picks Datum when a Vorlage filled the name, else Name', () => {
     expect(ersterLeererFeld('bausteinEvent', { name: 'Bar', datum: null })).toBe('datum');
@@ -185,6 +216,12 @@ describe('ersterLeererFeld', () => {
       'person',
     );
     expect(ersterLeererFeld('bausteinEm', { sub: 'a', name: '', abstimmung: null })).toBe('text');
+    expect(ersterLeererFeld('bausteinMeinungsbild', { frage: '', optionen: [] })).toBe('frage');
+    expect(ersterLeererFeld('bausteinMeinungsbild', { frage: 'Ernst?', optionen: [] })).toBe(
+      'text',
+    );
+    expect(ersterLeererFeld('bausteinAufnahme', { sub: null, name: '' })).toBe('person');
+    expect(ersterLeererFeld('bausteinAufnahme', { sub: 'a', name: '' })).toBe('text');
   });
 });
 
@@ -251,6 +288,8 @@ describe('new Bausteine', () => {
   it('start the others with an empty paragraph', () => {
     expect(notizenVorlage('bausteinBeschluss')).toEqual([{ type: 'paragraph' }]);
     expect(notizenVorlage('bausteinAnwesenheit')).toEqual([{ type: 'paragraph' }]);
+    expect(notizenVorlage('bausteinMeinungsbild')).toEqual([{ type: 'paragraph' }]);
+    expect(notizenVorlage('bausteinAufnahme')).toEqual([{ type: 'paragraph' }]);
   });
   it('focuses the person or goes behind a filled Anwesenheit', () => {
     expect(ersterLeererFeld('bausteinAnwesenheit', { art: 'geht', sub: null, uhrzeit: '' })).toBe(

@@ -3,7 +3,9 @@ import { protokollKopfLeer, type ProtokollKnoten, type ProtokollKopf } from '@c4
 import {
   anwesenheitZeile,
   beschlussfaehigkeitText,
+  aufnahmeZeilen,
   beschlussZeilen,
+  meinungsbildZeilen,
   datumLang,
   dokumentKopf,
   dokumentTitel,
@@ -169,6 +171,40 @@ describe('Texte', () => {
       beschlussZeilen({ antrag: 'x', ja: 1, nein: 0, enthaltung: 0, ergebnis: null }, undefined)
         .stimmen,
     ).toBe('Ja 1 · Nein 0 · Enthaltung 0');
+  });
+
+  it('Aufnahme lines look like an Abstimmung', () => {
+    const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
+    const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
+    expect(aufnahmeZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({
+      name: '',
+      sub: 'a',
+      stimmen: 'Ja 8 · Nein 3 · Enthaltung 2 – angenommen',
+      anwesend: '(13 von 25 Mitgliedern anwesend)',
+      nichtBeschlussfaehig: false,
+    });
+    const nicht = { ...stand, anwesend: 10, beschlussfaehig: false };
+    expect(aufnahmeZeilen({ sub: null, name: ' Max ', abstimmung }, nicht)).toMatchObject({
+      name: 'Max',
+      sub: null,
+      nichtBeschlussfaehig: true,
+    });
+  });
+
+  it('Meinungsbild lines skip options without a text', () => {
+    expect(
+      meinungsbildZeilen({
+        frage: ' Ernst oder Spaß? ',
+        optionen: [
+          { text: 'Ernst', stimmen: 4 },
+          { text: ' ', stimmen: 9 },
+          { text: 'Spaß', stimmen: 3 },
+          { text: 'Enthaltung', stimmen: 2 },
+        ],
+      }),
+    ).toEqual({ frage: 'Ernst oder Spaß?', optionen: 'Ernst 4 · Spaß 3 · Enthaltung 2' });
+    expect(meinungsbildZeilen({ frage: '', optionen: [] }).optionen).toBe('');
+    expect(meinungsbildZeilen(null)).toEqual({ frage: '', optionen: '' });
   });
 
   it('Neues EM lines', () => {

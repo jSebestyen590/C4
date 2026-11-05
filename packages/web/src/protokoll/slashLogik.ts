@@ -1,5 +1,6 @@
 import {
   bausteinLeer,
+  istBausteinInNotizen,
   type BausteinDatenVon,
   type BausteinEventDaten,
   type AnwesenheitArt,
@@ -26,6 +27,8 @@ export type SlashSymbol =
   | 'vergangenes'
   | 'anwaerter'
   | 'beschluss'
+  | 'meinungsbild'
+  | 'aufnahme'
   | 'em'
   | 'erscheint'
   | 'geht'
@@ -148,14 +151,36 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     },
   },
   {
+    schluessel: 'aufnahme',
+    titel: 'Aufnahme',
+    beschreibung: 'Aufnahme einer Anwärter:in als Mitglied, mit Abstimmung',
+    symbol: 'aufnahme',
+    woerter: ['aufnahme', 'aufnehmen', 'mitglied'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinAufnahme', daten: bausteinLeer('bausteinAufnahme') },
+    },
+  },
+  {
     schluessel: 'beschluss',
-    titel: 'Beschluss',
-    beschreibung: 'Antrag mit Abstimmung und Ergebnis',
+    titel: 'Abstimmung',
+    beschreibung: 'Antrag mit Abstimmung der Mitglieder und Ergebnis',
     symbol: 'beschluss',
-    woerter: ['beschluss', 'abstimmung', 'antrag'],
+    woerter: ['abstimmung', 'beschluss', 'antrag'],
     aktion: {
       art: 'einfuegen',
       wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
+    },
+  },
+  {
+    schluessel: 'meinungsbild',
+    titel: 'Meinungsbild',
+    beschreibung: 'Unverbindliche Umfrage unter allen Anwesenden',
+    symbol: 'meinungsbild',
+    woerter: ['meinungsbild', 'stimmungsbild', 'umfrage'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinMeinungsbild', daten: bausteinLeer('bausteinMeinungsbild') },
     },
   },
   {
@@ -195,10 +220,25 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
   },
 ];
 
-/** Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter. */
-export function bausteinEintraege(filter: string): SlashEintrag[] {
+/**
+ * Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter.
+ * `ohneVerschachtelt` leaves out Abstimmung and Meinungsbild (the cursor is inside one of them: they
+ * cannot be nested in each other); `ohneZitat` leaves out the quote (the cursor is in a list item).
+ */
+export function bausteinEintraege(
+  filter: string,
+  ohneVerschachtelt = false,
+  ohneZitat = false,
+): SlashEintrag[] {
   const f = normalisieren(filter).trim();
   return SLASH_DEFINITIONEN.filter((d) => {
+    if (
+      ohneVerschachtelt &&
+      d.aktion.art === 'einfuegen' &&
+      istBausteinInNotizen(d.aktion.wahl.typ)
+    )
+      return false;
+    if (ohneZitat && d.aktion.art === 'zitat') return false;
     if (f === '') return true;
     const namen = [normalisieren(d.titel), ...normalisieren(d.titel).split(' '), ...d.woerter];
     return namen.some((n) => n.startsWith(f));
@@ -312,12 +352,17 @@ export function personEintraege(
 }
 
 /** All items for what was typed after the "/". */
-export function slashEintraege(query: string, daten: SlashDaten): SlashEintrag[] {
+export function slashEintraege(
+  query: string,
+  daten: SlashDaten,
+  ohneVerschachtelt = false,
+  ohneZitat = false,
+): SlashEintrag[] {
   const { stufe, filter } = slashStufe(query);
   if (stufe === 'vorlagen') return vorlageEintraege(daten.vorlagen, filter);
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
   if (stufe === 'erscheint' || stufe === 'geht') {
     return personEintraege(stufe, daten.personen ?? [], filter, daten.uhrzeit?.() ?? '');
   }
-  return bausteinEintraege(filter);
+  return bausteinEintraege(filter, ohneVerschachtelt, ohneZitat);
 }

@@ -283,6 +283,67 @@ describe('bausteinAnwesenheit', () => {
   });
 });
 
+describe('Aufnahme, Meinungsbild and nested blocks', () => {
+  it('records the quorum at an Aufnahme block', () => {
+    const a = bausteinErzeugen('bausteinAufnahme');
+    const v = anwesenheitsVerlauf(doc(anw('geht', 'm0'), a), {
+      art: 'sitzung',
+      teilnahme: mitglieder(3),
+    });
+    expect(v.bausteine[a.attrs.id]).toMatchObject({ anwesend: 2, wechsel: false });
+    expect(v.anwesendePersonen).toEqual({});
+  });
+
+  it('counts everybody present at a Meinungsbild (all statuses, chosen EMs)', () => {
+    const vorher = bausteinErzeugen('bausteinMeinungsbild');
+    const nachher = bausteinErzeugen('bausteinMeinungsbild');
+    const teilnahme: T[] = [
+      ...mitglieder(2),
+      { sub: 'v', status: 'mitglied', wert: 'verspaetet' },
+      { sub: 'e', status: 'mitglied', wert: 'entschuldigt' },
+      { sub: 'a1', status: 'anwaerter', wert: 'anwesend' },
+      { sub: 'a2', status: 'anwaerter', wert: 'verspaetet' },
+    ];
+    const v = anwesenheitsVerlauf(
+      doc(
+        vorher,
+        anw('erscheint', 'v'),
+        anw('erscheint', 'a2'),
+        anw('erscheint', 'a2'),
+        anw('geht', 'a1'),
+        anw('geht', 'm0'),
+        nachher,
+      ),
+      { art: 'sitzung', teilnahme, ems: [{ sub: 'em1' }] },
+    );
+    expect(v.anwesendePersonen[vorher.attrs.id]).toBe(4);
+    expect(v.anwesendePersonen[nachher.attrs.id]).toBe(4);
+    // No quorum entry for it.
+    expect(v.bausteine[vorher.attrs.id]).toBeUndefined();
+  });
+
+  it('gives a nested Abstimmung and Meinungsbild their state in document order', () => {
+    const teilnahme: T[] = [...mitglieder(1), { sub: 'v', status: 'mitglied', wert: 'verspaetet' }];
+    const abstimmung = bausteinErzeugen('bausteinBeschluss');
+    const meinung = bausteinErzeugen('bausteinMeinungsbild');
+    const innen = anw('erscheint', 'v');
+    const abstimmung2 = bausteinErzeugen('bausteinBeschluss');
+    const ereignis = bausteinErzeugen('bausteinEvent', undefined, [
+      { type: 'paragraph' },
+      abstimmung,
+      meinung,
+      innen,
+      abstimmung2,
+    ]);
+    const nachher = bausteinErzeugen('bausteinBeschluss');
+    const v = anwesenheitsVerlauf(doc(ereignis, nachher), { art: 'sitzung', teilnahme });
+    expect(v.bausteine[abstimmung.attrs.id]!.anwesend).toBe(1);
+    expect(v.anwesendePersonen[meinung.attrs.id]).toBe(1);
+    expect(v.bausteine[abstimmung2.attrs.id]!.anwesend).toBe(2);
+    expect(v.bausteine[nachher.attrs.id]!.anwesend).toBe(2);
+  });
+});
+
 describe('protokollKopfSchema additions', () => {
   it('reads an old kopf without the new fields', () => {
     const kopf = protokollKopfSchema.parse({ teilnahme: { a: 'anwesend' }, gaeste: 'x' });

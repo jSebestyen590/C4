@@ -41,8 +41,18 @@ export const BAUSTEIN_TYPEN = [
   'bausteinBeschluss',
   'bausteinEm',
   'bausteinAnwesenheit',
+  'bausteinMeinungsbild',
+  'bausteinAufnahme',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
+
+/**
+ * Bausteine that may also stand inside the free text ("Notizen") of another Baustein (at the cursor),
+ * but never inside each other. All other Bausteine are top-level only.
+ */
+export const BAUSTEINE_IN_NOTIZEN = ['bausteinBeschluss', 'bausteinMeinungsbild'] as const;
+export const istBausteinInNotizen = (typ: string): boolean =>
+  (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
 
 export const PROTOKOLL_MAX_TIEFE = 30;
 export const PROTOKOLL_MAX_BYTES = 500 * 1024;
@@ -136,6 +146,27 @@ export const bausteinAnwesenheitDatenSchema = z.strictObject({
 });
 export type BausteinAnwesenheitDaten = z.infer<typeof bausteinAnwesenheitDatenSchema>;
 
+/**
+ * A Meinungsbild (non-binding opinion poll, everybody present may vote, no quorum): a question and
+ * options with their vote counts.
+ */
+export const MEINUNGSBILD_MAX_OPTIONEN = 12;
+export const bausteinMeinungsbildDatenSchema = z.strictObject({
+  frage: z.string().max(500),
+  optionen: z
+    .array(z.strictObject({ text: z.string().max(100), stimmen }))
+    .max(MEINUNGSBILD_MAX_OPTIONEN),
+});
+export type BausteinMeinungsbildDaten = z.infer<typeof bausteinMeinungsbildDatenSchema>;
+
+/** The admission of an Anwärter:in as Mitglied: a person (`sub`) or a free-text `name`, always with a vote. */
+export const bausteinAufnahmeDatenSchema = z.strictObject({
+  sub: idOderNull,
+  name: z.string().max(200),
+  abstimmung: bausteinEmAbstimmungSchema,
+});
+export type BausteinAufnahmeDaten = z.infer<typeof bausteinAufnahmeDatenSchema>;
+
 export interface BausteinDatenVon {
   bausteinEvent: BausteinEventDaten;
   bausteinVergangenesEvent: BausteinVergangenesEventDaten;
@@ -143,6 +174,8 @@ export interface BausteinDatenVon {
   bausteinBeschluss: BausteinBeschlussDaten;
   bausteinEm: BausteinEmDaten;
   bausteinAnwesenheit: BausteinAnwesenheitDaten;
+  bausteinMeinungsbild: BausteinMeinungsbildDaten;
+  bausteinAufnahme: BausteinAufnahmeDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -152,6 +185,8 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinBeschluss: bausteinBeschlussDatenSchema,
   bausteinEm: bausteinEmDatenSchema,
   bausteinAnwesenheit: bausteinAnwesenheitDatenSchema,
+  bausteinMeinungsbild: bausteinMeinungsbildDatenSchema,
+  bausteinAufnahme: bausteinAufnahmeDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -180,6 +215,17 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
       return { sub: null, name: '', abstimmung: null };
     case 'bausteinAnwesenheit':
       return { art: 'erscheint', sub: null, uhrzeit: '' };
+    case 'bausteinMeinungsbild':
+      return {
+        frage: '',
+        optionen: ['Ja', 'Nein', 'Enthaltung'].map((text) => ({ text, stimmen: 0 })),
+      };
+    case 'bausteinAufnahme':
+      return {
+        sub: null,
+        name: '',
+        abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: null },
+      };
   }
 }
 
@@ -439,6 +485,12 @@ function eventBausteine(
 
 const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
 
+/** The free text without Abstimmung / Meinungsbild blocks (their votes belong to one Sitzung). */
+function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnoten[] {
+  const rest = (content ?? []).filter((k) => !istBausteinInNotizen(k.type));
+  return rest.length > 0 ? rest : [leererAbsatz()];
+}
+
 /**
  * Pre-filled document for the next Sitzung from the previous protocol. Every Event block of the
  * previous protocol (any section) is looked at after refreshing it from the calendar (name, dates,
@@ -484,7 +536,7 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
       });
     } else {
       zukuenftig.push(
-        bausteinErzeugen('bausteinEvent', daten, kopie(knoten.content ?? [leererAbsatz()])),
+        bausteinErzeugen('bausteinEvent', daten, kopie(ohneAbstimmungen(knoten.content))),
       );
     }
   }

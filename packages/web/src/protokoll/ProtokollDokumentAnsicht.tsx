@@ -5,6 +5,7 @@ import {
   bausteinAnwaerterDatenSchema,
   bausteinEventDatenSchema,
   bausteinVergangenesEventDatenSchema,
+  BAUSTEIN_TYPEN,
   vergangenesUeberschrift,
   type ProtokollKnoten,
 } from '@c4/shared';
@@ -12,7 +13,9 @@ import { StatusName } from '../StatusAnzeige';
 import './dokumentAnsicht.css';
 import {
   anwesenheitZeile,
+  aufnahmeZeilen,
   beschlussZeilen,
+  meinungsbildZeilen,
   emZeilen,
   beschlussfaehigkeitText,
   dokumentKopf,
@@ -119,6 +122,14 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           )}
         </blockquote>
       );
+    case 'bausteinBeschluss':
+    case 'bausteinMeinungsbild':
+      // An Abstimmung / Meinungsbild inside the free text of another Baustein.
+      return (
+        <div className="pk-dok-innen">
+          <Baustein k={k} ctx={ctx} />
+        </div>
+      );
     default:
       return <Kinder liste={k.content} ctx={ctx} />;
   }
@@ -157,6 +168,25 @@ function Notizen({
 
 function PersonName({ p }: Readonly<{ p: Person }>) {
   return <StatusName status={p.status}>{p.name}</StatusName>;
+}
+
+/** The vote line and the quorum line ("(13 von 25 Mitgliedern anwesend) – nicht beschlussfähig"). */
+function Stimmzeilen({
+  stimmen,
+  anwesend,
+  nicht,
+}: Readonly<{ stimmen: string; anwesend: string; nicht: boolean }>) {
+  return (
+    <>
+      {stimmen && <p>{stimmen}</p>}
+      {(anwesend || nicht) && (
+        <p>
+          {anwesend}
+          {nicht && <span className="pk-dok-warnung"> – nicht beschlussfähig</span>}
+        </p>
+      )}
+    </>
+  );
 }
 
 function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
@@ -212,18 +242,45 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       <>
         <div className="pk-dok-beschluss">
           <p>
-            <strong>Beschluss:</strong> {z.antrag}
+            <strong>Abstimmung:</strong> {z.antrag}
           </p>
-          {z.stimmen && <p>{z.stimmen}</p>}
-          {(z.anwesend || z.nichtBeschlussfaehig) && (
-            <p>
-              {z.anwesend}
-              {z.nichtBeschlussfaehig && (
-                <span className="pk-dok-warnung"> – nicht beschlussfähig</span>
-              )}
-            </p>
-          )}
+          <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
         </div>
+        <Notizen knoten={k.content} ctx={ctx} />
+      </>
+    );
+  }
+  if (k.type === 'bausteinMeinungsbild') {
+    const z = meinungsbildZeilen(daten);
+    return (
+      <>
+        <div className="pk-dok-beschluss">
+          <p>
+            <strong>Meinungsbild:</strong> {z.frage}
+          </p>
+          {z.optionen && <p>{z.optionen}</p>}
+          <p className="pk-dok-klein">(nicht bindend)</p>
+        </div>
+        <Notizen knoten={k.content} ctx={ctx} />
+      </>
+    );
+  }
+  if (k.type === 'bausteinAufnahme') {
+    const z = aufnahmeZeilen(daten, ctx.verlauf.bausteine[id]);
+    const p = z.sub ? ctx.person(z.sub) : null;
+    return (
+      <>
+        <h3 className="pk-dok-h2">
+          Aufnahme
+          {p ? (
+            <>
+              : <PersonName p={p} />
+            </>
+          ) : (
+            z.name && `: ${z.name}`
+          )}
+        </h3>
+        <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
         <Notizen knoten={k.content} ctx={ctx} />
       </>
     );
@@ -277,14 +334,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   return <Kinder liste={k.content} ctx={ctx} />;
 }
 
-const BAUSTEINE = new Set([
-  'bausteinEvent',
-  'bausteinVergangenesEvent',
-  'bausteinAnwaerter',
-  'bausteinBeschluss',
-  'bausteinEm',
-  'bausteinAnwesenheit',
-]);
+const BAUSTEINE = new Set<string>(BAUSTEIN_TYPEN);
 
 function Abschnitt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   const art = k.attrs?.art as keyof typeof ABSCHNITT_TITEL;
@@ -336,7 +386,11 @@ function Zeile({ label, children }: Readonly<{ label: string; children?: ReactNo
 export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>) {
   const kopf = dokumentKopf(eingabe);
   const art = eingabe.sitzung.art;
-  const verlauf = anwesenheitsVerlauf(eingabe.inhalt, { art, teilnahme: eingabe.teilnahme });
+  const verlauf = anwesenheitsVerlauf(eingabe.inhalt, {
+    art,
+    teilnahme: eingabe.teilnahme,
+    ems: eingabe.ems.filter((m) => m.ausgewaehlt),
+  });
   const alle = [...eingabe.teilnahme, ...eingabe.ems];
   const ctx: Kontext = {
     eingabe,

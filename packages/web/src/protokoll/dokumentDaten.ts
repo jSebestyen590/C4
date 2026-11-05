@@ -1,10 +1,13 @@
 import {
   anwesenheitsVerlauf,
   bausteinAnwesenheitDatenSchema,
+  bausteinAufnahmeDatenSchema,
   bausteinBeschlussDatenSchema,
+  bausteinMeinungsbildDatenSchema,
   bausteinEmDatenSchema,
   erscheintUhrzeiten,
   heuteBerlin,
+  type BausteinEmAbstimmung,
   type Beschlussfaehigkeit,
   type MitgliedStatus,
   type ProtokollArt,
@@ -131,7 +134,11 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     const m = sub === null ? undefined : alle.find((x) => x.sub === sub);
     return m ? person(m) : null;
   };
-  const verlauf = anwesenheitsVerlauf(e.inhalt, { art: e.sitzung.art, teilnahme: e.teilnahme });
+  const verlauf = anwesenheitsVerlauf(e.inhalt, {
+    art: e.sitzung.art,
+    teilnahme: e.teilnahme,
+    ems: e.ems.filter((m) => m.ausgewaehlt),
+  });
 
   return {
     titel: dokumentTitel(e.sitzung),
@@ -219,6 +226,14 @@ export function anwesenheitZeile(
   };
 }
 
+/** "Ja 8 · Nein 3 · Enthaltung 2 – angenommen". */
+export function stimmenText(a: BausteinEmAbstimmung): string {
+  const ergebnis = a.ergebnis
+    ? ` – ${a.ergebnis === 'angenommen' ? 'angenommen' : 'abgelehnt'}`
+    : '';
+  return `Ja ${a.ja} · Nein ${a.nein} · Enthaltung ${a.enthaltung}${ergebnis}`;
+}
+
 export interface BeschlussZeilen {
   antrag: string;
   stimmen: string;
@@ -233,14 +248,56 @@ export function beschlussZeilen(
 ): BeschlussZeilen {
   const d = bausteinBeschlussDatenSchema.safeParse(daten);
   const b = d.success ? d.data : null;
-  const ergebnis = b?.ergebnis
-    ? ` – ${b.ergebnis === 'angenommen' ? 'angenommen' : 'abgelehnt'}`
-    : '';
   return {
     antrag: b?.antrag.trim() ?? '',
-    stimmen: b ? `Ja ${b.ja} · Nein ${b.nein} · Enthaltung ${b.enthaltung}${ergebnis}` : '',
+    stimmen: b ? stimmenText(b) : '',
     anwesend: stand ? `(${anwesendText(stand)})` : '',
     nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,
+  };
+}
+
+export interface AufnahmeZeilen {
+  /** Free-text name (used when the Baustein has no `sub`), trimmed. */
+  name: string;
+  sub: string | null;
+  /** Same lines as the vote of an Abstimmung. */
+  stimmen: string;
+  /** "(13 von 25 Mitgliedern anwesend)" or '' */
+  anwesend: string;
+  nichtBeschlussfaehig: boolean;
+}
+
+/** Lines of a `bausteinAufnahme` (the vote is always there). */
+export function aufnahmeZeilen(
+  daten: unknown,
+  stand: Beschlussfaehigkeit | undefined,
+): AufnahmeZeilen {
+  const d = bausteinAufnahmeDatenSchema.safeParse(daten);
+  return {
+    name: d.success ? d.data.name.trim() : '',
+    sub: d.success ? d.data.sub : null,
+    stimmen: d.success ? stimmenText(d.data.abstimmung) : '',
+    anwesend: stand ? `(${anwesendText(stand)})` : '',
+    nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,
+  };
+}
+
+export interface MeinungsbildZeilen {
+  frage: string;
+  /** "Ja 4 · Nein 3 · Enthaltung 2" (options without a text left out) or '' */
+  optionen: string;
+}
+
+/** Lines of a `bausteinMeinungsbild`. */
+export function meinungsbildZeilen(daten: unknown): MeinungsbildZeilen {
+  const d = bausteinMeinungsbildDatenSchema.safeParse(daten);
+  if (!d.success) return { frage: '', optionen: '' };
+  return {
+    frage: d.data.frage.trim(),
+    optionen: d.data.optionen
+      .filter((o) => o.text.trim() !== '')
+      .map((o) => `${o.text.trim()} ${o.stimmen}`)
+      .join(' · '),
   };
 }
 
@@ -258,16 +315,11 @@ export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined)
   const d = bausteinEmDatenSchema.safeParse(daten);
   if (!d.success) return { name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
   const { sub, name, abstimmung: a } = d.data;
-  const ergebnis = a?.ergebnis
-    ? ` – ${a.ergebnis === 'angenommen' ? 'angenommen' : 'abgelehnt'}`
-    : '';
   const anwesend = stand ? ` (${anwesendText(stand)})` : '';
   return {
     name: name.trim(),
     sub,
-    abstimmung: a
-      ? `Abstimmung: Ja ${a.ja} · Nein ${a.nein} · Enthaltung ${a.enthaltung}${ergebnis}${anwesend}`
-      : '',
+    abstimmung: a ? `Abstimmung: ${stimmenText(a)}${anwesend}` : '',
     nichtBeschlussfaehig: a !== null && stand !== undefined && !stand.beschlussfaehig,
   };
 }

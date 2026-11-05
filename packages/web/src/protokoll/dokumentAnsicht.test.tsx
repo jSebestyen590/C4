@@ -97,4 +97,75 @@ describe('ProtokollDokumentAnsicht', () => {
     // Verantwortlich is the first item of the existing bullet list
     expect(html).toMatch(/<ul><li>Verantwortlich: @<span[^>]*>Niklas<\/span><\/li><li><p>notes/);
   });
+
+  it('renders Abstimmung, Meinungsbild and Aufnahme, also inside the notes of an Event', () => {
+    const abstimmung: ProtokollKnoten = {
+      type: 'bausteinBeschluss',
+      attrs: {
+        id: 'x1',
+        daten: { antrag: 'Neuer Tresen', ja: 1, nein: 0, enthaltung: 0, ergebnis: 'angenommen' },
+      },
+      content: [text('Notiz zur Abstimmung')],
+    };
+    const meinung: ProtokollKnoten = {
+      type: 'bausteinMeinungsbild',
+      attrs: {
+        id: 'x2',
+        daten: {
+          frage: 'Ernst oder Spaß?',
+          optionen: [
+            { text: 'Ernst', stimmen: 4 },
+            { text: '', stimmen: 1 },
+            { text: 'Spaß', stimmen: 3 },
+          ],
+        },
+      },
+      content: [{ type: 'paragraph' }],
+    };
+    const aufnahme: ProtokollKnoten = {
+      type: 'bausteinAufnahme',
+      attrs: {
+        id: 'x3',
+        daten: {
+          sub: null,
+          name: 'Max Neu',
+          abstimmung: { ja: 1, nein: 0, enthaltung: 0, ergebnis: 'angenommen' },
+        },
+      },
+      content: [text('Herzlich willkommen')],
+    };
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const event = zukuenftiges!.content![0]!;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          { ...gegenwaertiges!, content: [aufnahme, abstimmung, { type: 'paragraph' }] },
+          {
+            ...zukuenftiges!,
+            content: [{ ...event, content: [liste('notes'), meinung, { type: 'paragraph' }] }],
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    expect(html).toContain('<strong>Abstimmung:</strong> Neuer Tresen');
+    expect(html).not.toContain('Beschluss:');
+    expect(html).toContain('Ja 1 · Nein 0 · Enthaltung 0 – angenommen');
+    expect(html).toContain('(1 von 1 Mitgliedern anwesend)');
+    expect(html).toContain('Aufnahme: Max Neu');
+    expect(html).toContain('Herzlich willkommen');
+    // Nested Meinungsbild: inside the Event's notes, indented, options without a text skipped.
+    expect(html).toContain('<div class="pk-dok-innen"><div class="pk-dok-beschluss">');
+    expect(html).toContain('<strong>Meinungsbild:</strong> Ernst oder Spaß?');
+    expect(html).toContain('Ernst 4 · Spaß 3');
+    expect(html).toContain('(nicht bindend)');
+    expect(html.indexOf('notes')).toBeLessThan(html.indexOf('Meinungsbild:'));
+  });
 });

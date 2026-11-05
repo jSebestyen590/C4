@@ -13,6 +13,7 @@ import {
 } from '@c4/shared';
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
+import { BlockVerschieben } from './verschieben';
 import type { AnwesenheitPerson } from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { dokumentNormalisieren } from './bausteinLogik';
@@ -71,8 +72,8 @@ export function ProtokollEditor({
   art: ProtokollArt;
   /** The attendance list with the values that count right now (live, incl. Kopf overrides). */
   teilnahme: readonly AnwesenheitPerson[];
-  /** The active EMs (selectable in a Neues EM block). */
-  ems?: readonly ProtokollMitgliedDto[];
+  /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
+  ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
 }>) {
   const slashDaten = useSlashDaten(sitzungBeginn, teilnahme);
   // The document as the quorum needs it (a little behind the typing).
@@ -154,6 +155,7 @@ export function ProtokollEditor({
       }),
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
+      BlockVerschieben,
       slashErweiterung(steuerung),
     ],
     content: dokumentNormalisieren(inhalt, editierbar),
@@ -174,7 +176,11 @@ export function ProtokollEditor({
       art,
       teilnahme,
       ems,
-      verlauf: anwesenheitsVerlauf(dokument, { art, teilnahme }),
+      verlauf: anwesenheitsVerlauf(dokument, {
+        art,
+        teilnahme,
+        ems: ems.filter((e) => e.ausgewaehlt),
+      }),
     }),
     [sitzungBeginn, art, teilnahme, ems, dokument],
   );

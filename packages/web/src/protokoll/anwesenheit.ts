@@ -67,6 +67,23 @@ export function emKandidaten(
   return [...teilnahme, ...ems].filter((p) => !gesehen.has(p.sub) && gesehen.add(p.sub));
 }
 
+/**
+ * Options of the person select of an Aufnahme: the Anwärter:innen of the attendance list first, then
+ * everybody else (members, EMs), each group sorted; empty groups are left out.
+ */
+export function aufnahmeOptionen(
+  personen: readonly ProtokollMitgliedDto[],
+): { group: string; items: { value: string; label: string }[] }[] {
+  const optionen = personenOptionen(personen);
+  const status = new Map(personen.map((p) => [p.sub, p.status]));
+  const anwaerter = optionen.filter((o) => status.get(o.value) === 'anwaerter');
+  const weitere = optionen.filter((o) => status.get(o.value) !== 'anwaerter');
+  return [
+    { group: 'Anwärter:innen', items: anwaerter },
+    { group: 'Weitere Personen', items: weitere },
+  ].filter((g) => g.items.length > 0);
+}
+
 /** The persons as the second stage of /erscheint and /geht lists them. */
 export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPerson[] {
   return personen.map((p) => {

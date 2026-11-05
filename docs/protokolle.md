@@ -25,7 +25,8 @@ Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt
   die Beschlussfähigkeit: Sitzung = mehr als die Hälfte der Mitglieder, Mitgliederversammlung = mehr als zwei Drittel.
   Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer `anwesend` ist, zählt ab Beginn,
   wer `verspaetet` ist, ab seinem Baustein „Erscheint“; „Geht“ nimmt ihn wieder heraus (`anwesenheitsVerlauf` in
-  `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jedem Beschluss und Neuen EM festhält).
+  `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jeder Abstimmung, Aufnahme und jedem Neuen EM festhält; für das Meinungsbild zählt es alle Anwesenden
+  (jeder Status plus gewählte EMs, Gäste sind Freitext und zählen nicht) als `anwesendePersonen`).
 - Je Event gibt es höchstens ein Protokoll (eindeutiger Index; ein zweites gibt 409). Abgesagte Events und Events anderer
   Kategorien nimmt die API nicht an (400).
 - **Löschschutz:** Ein Event mit Protokoll lässt sich nicht löschen (409); erst das Protokoll löschen (nur im Entwurf).
@@ -69,14 +70,21 @@ Ein **Baustein** ist ein Block mit Feldern (Formular im Dokument) und einem Frei
 Formatierung). Jeder hat eine stabile `id` (UUID, bei Kopien neu vergeben) und `daten`. Lesende sehen Bausteine als kompakte
 Karten.
 
-| Baustein (Knoten)                              | Felder                                                                                                                                                                                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Event (`bausteinEvent`)                        | Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event) |
-| Anwesenheit (`bausteinAnwesenheit`)            | Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional); kommt nicht in den Vorschlag fürs nächste Protokoll                                                                                                                                 |
-| Vergangenes Event (`bausteinVergangenesEvent`) | Kalender-Event (`eventId`) oder Name und Datum von Hand                                                                                                                                                                                                      |
-| Anwärter:in (`bausteinAnwaerter`)              | Vorname, Nachname, E-Mail (optional)                                                                                                                                                                                                                         |
-| Beschluss (`bausteinBeschluss`)                | Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag)                                                            |
-| Neues EM (`bausteinEm`)                        | Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie beim Beschluss, sonst `null`)                                                                                     |
+| Baustein (Knoten)                              | Felder                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Event (`bausteinEvent`)                        | Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event)                                                 |
+| Anwesenheit (`bausteinAnwesenheit`)            | Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional); kommt nicht in den Vorschlag fürs nächste Protokoll                                                                                                                                                                                 |
+| Vergangenes Event (`bausteinVergangenesEvent`) | Kalender-Event (`eventId`) oder Name und Datum von Hand                                                                                                                                                                                                                                                      |
+| Anwärter:in (`bausteinAnwaerter`)              | Vorname, Nachname, E-Mail (optional)                                                                                                                                                                                                                                                                         |
+| Abstimmung (`bausteinBeschluss`)               | Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag); nur Mitglieder stimmen, verbindlich. Der Knotenname bleibt `bausteinBeschluss` (alte Daten gelten weiter) |
+| Neues EM (`bausteinEm`)                        | Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`)                                                                                                                                 |
+| Aufnahme (`bausteinAufnahme`)                  | Person (`sub`, zuerst die Anwärter:innen der Teilnahmeliste) oder Name als Freitext (`name`, nur ohne `sub`), `abstimmung` immer vorhanden (Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, Beschlussfähigkeit wie dort)                                                                         |
+| Meinungsbild (`bausteinMeinungsbild`)          | Frage (`frage`, höchstens 500 Zeichen), Optionen (`optionen`: Text höchstens 100 Zeichen und Stimmen, höchstens 12; neu: Ja / Nein / Enthaltung). Unverbindlich, alle Anwesenden stimmen, keine Beschlussfähigkeit                                                                                           |
+
+**Abstimmung und Meinungsbild in anderen Bausteinen:** Diese beiden (`BAUSTEINE_IN_NOTIZEN`) lassen sich auch in den Notizen
+eines anderen Bausteins (z. B. eines Events) an der Cursor-Stelle einfügen, nicht ineinander. Alle anderen Bausteine bleiben
+auf oberster Ebene. Im Editor erlaubt das die Knotengruppe `innerbaustein` (`BausteinKnoten.tsx`); steht so ein Baustein am
+Ende der Notizen, kommt ein leerer Absatz dahinter. `protokollVorschlag` übernimmt sie nicht ins nächste Protokoll.
 
 Die Feld-Schemata (`BAUSTEIN_DATEN_SCHEMAS`) prüft die API streng, im Entwurf dürfen Felder leer sein. Das übrige Dokument
 prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500 KB).
@@ -85,6 +93,17 @@ prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500
 Zeiten und Anzahlen (Minimum, Wunsch) ändern, Schichten lassen sich nicht hinzufügen oder entfernen (höchstens 20), und die
 Vorlage bestimmt die Dienstformen. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei
 mehrtägigen.
+
+## Verschieben
+
+Jeder Baustein hat im Kopf die Pfeile „Nach oben“ / „Nach unten verschieben“ (nur im Bearbeiten-Modus, deaktiviert, wenn
+kein Zug möglich ist). Mit `Alt`+`↑` / `Alt`+`↓` verschiebst du den Block am Cursor (Absatz, Überschrift, ganze Liste,
+Zitat oder Baustein; im Notizen-Text eines Bausteins den Block darin). Logik: `protokoll/verschieben.ts`.
+
+- Ein Block tauscht mit seinem Nachbarn. Der leere Schluss-Absatz eines Abschnitts zählt nicht als Nachbar.
+- Am Rand eines Abschnitts wandert der Block in den vorigen (ans Ende) bzw. nächsten Abschnitt (an den Anfang); im ersten
+  bzw. letzten Abschnitt geht es nicht weiter.
+- Blöcke in den Notizen eines Bausteins bleiben dort.
 
 ## Dokumentansicht
 
@@ -109,8 +128,14 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   `StatusName`, sonst der Freitext-Name); mit Abstimmung die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
   25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
   danach die Notizen.
-- **Beschluss:** eingerückter Block „Beschluss: Antrag“, „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
+- **Abstimmung:** eingerückter Block „Abstimmung: Antrag“, „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
   Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig).
+- **Aufnahme:** Überschrift „Aufnahme: <Name>“ (Person als `StatusName`, sonst Freitext oder nur „Aufnahme“), dann die
+  Stimmzeilen genau wie bei der Abstimmung, dann die Notizen.
+- **Meinungsbild:** Block „Meinungsbild: Frage“, „Ja 4 · Nein 3 · Enthaltung 2“ (Optionen ohne Text entfallen), klein „(nicht
+  bindend)“, dann die Notizen.
+- **Verschachtelt:** Eine Abstimmung oder ein Meinungsbild in den Notizen eines anderen Bausteins steht dort, eingerückt wie die
+  übrigen Notizen, an der Stelle im Text.
 - **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Person entfällt sie); ändert
   sich dadurch die Beschlussfähigkeit, folgt fett „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.
 
@@ -122,15 +147,18 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   Die Vorlage füllt Name, Uhrzeiten, Dauer und Dienste, das Datum bleibt leer. `/vergangenes` + Enter zeigt „Ohne
   Kalender-Event“ und die vergangenen, nicht abgesagten Events der letzten rund drei Monate vor der Sitzung (die Sitzung selbst
   nicht).
-- Anwärter:in, Beschluss und Neues EM (`/em`, `/ehrenmitglied`) werden direkt eingefügt. Beim Neuen EM springt der Cursor ins Feld
+- Anwärter:in, Aufnahme, Abstimmung (`/abstimmung`, Alias `/beschluss`), Meinungsbild (`/meinungsbild`, Alias `/stimmungsbild`)
+  und Neues EM (`/em`, `/ehrenmitglied`) werden direkt eingefügt. Bei der Aufnahme springt der Cursor ins Feld „Person“, beim
+  Meinungsbild ins Feld „Frage“; das Meinungsbild zeigt „Anwesend: x Personen (ohne Gäste)“ (nur Info). Innerhalb einer
+  Abstimmung oder eines Meinungsbilds bietet das Menü diese beiden nicht an. Beim Neuen EM springt der Cursor ins Feld
   „Person“ (durchsuchbar, Teilnahmeliste und EMs; ohne Person erscheint „Name (falls nicht in der App)“); der Schalter „Abstimmung“
-  blendet Ja / Nein / Enthaltung und Ergebnis wie beim Beschluss samt Hinweis zur Beschlussfähigkeit ein.
+  blendet Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung samt Hinweis zur Beschlussfähigkeit ein.
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
   Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = jetzt,
   wenn die Sitzung heute ist, sonst leer); der Cursor springt dahinter. Der Baustein ist eine Zeile (Person, erscheint/geht,
   Uhrzeit) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
-  sowie einer optionalen Bemerkung. Ein **Beschluss** zeigt „Anwesend: x von y Mitgliedern (nötig: z)“, bei fehlender
+  sowie einer optionalen Bemerkung. Eine **Abstimmung** (und eine Aufnahme) zeigt „Anwesend: x von y Mitgliedern (nötig: z)“, bei fehlender
   Beschlussfähigkeit rot „Nicht beschlussfähig“ und bei mehr Stimmen als Anwesenden eine gelbe Warnung.
 - **Notizen** neuer Event- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
 - **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
@@ -138,7 +166,13 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   einfach eine weitere Zeile. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
   prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).
 - Der Baustein kommt hinter den aktuellen Block (ein leerer Absatz wird ersetzt, im Freitext eines Bausteins dahinter; keine
-  Verschachtelung). Der **Cursor springt ins erste leere Feld** (Event: Name, dann Datum, Beschluss: Antrag, sonst der
+  Verschachtelung). Abstimmung und Meinungsbild kommen dagegen in die Notizen am Cursor (leerer Absatz ersetzt, sonst hinter
+  dem aktuellen Block dort).
+  `/` öffnet das Menü auch in Listenpunkten (Aufzählung und nummerierte Liste, auch in den Notizen eines Bausteins), nicht in
+  Zitaten; der Eintrag „Zitat“ entfällt dort. Ein leerer letzter Listenpunkt (der Rest des getippten `/…`) wird vor dem Einfügen
+  entfernt, bei einem einzigen Punkt die ganze Liste (in den Notizen bleibt dann ein leerer Absatz, es sei denn Abstimmung oder
+  Meinungsbild ersetzen die Liste). Abstimmung und Meinungsbild kommen direkt hinter die Liste, alle anderen Bausteine nach
+  den üblichen Regeln hinter den Block des Abschnitts. Der **Cursor springt ins erste leere Feld** (Event: Name, dann Datum, Abstimmung: Antrag, Meinungsbild: Frage, Aufnahme: Person, sonst der
   Freitext).
 - Auf dem Handy ist `/` umständlich: Die Werkzeugleiste (klebt unter dem Header) hat den Button **„Baustein“** mit demselben
   Menü, dazu fett, kursiv, Überschriften, Listen, Link, Rückgängig/Wiederholen.

@@ -78,6 +78,7 @@ function ProtokollAnsicht({
   const [inhalt, setInhalt] = useState<ProtokollDokument>(dto.inhalt);
   // Live attendance (incl. local Kopf overrides) for the quorum in the editor.
   const teilnahme = useMemo(() => effektiveTeilnahme(dto, kopf), [dto, kopf]);
+  const ems = useMemo(() => mitLiveKopf(dto, kopf).ems, [dto, kopf]);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -252,7 +253,7 @@ function ProtokollAnsicht({
             sitzungBeginn={dto.sitzung.beginn}
             art={dto.sitzung.art}
             teilnahme={teilnahme}
-            ems={dto.ems}
+            ems={ems}
           />
         </Stack>
       )}

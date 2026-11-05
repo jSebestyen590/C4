@@ -2,8 +2,10 @@ import {
   bausteinErzeugen,
   beschlussErgebnisVorschlag,
   datumBerlin,
+  MEINUNGSBILD_MAX_OPTIONEN,
   zeitBerlin,
   type BausteinBeschlussDaten,
+  type BausteinMeinungsbildDaten,
   type BausteinEventDaten,
   type BausteinTyp,
   type EventDauer,
@@ -171,6 +173,40 @@ export function stimmeSetzen<T extends Stimmen>(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Meinungsbild
+// ---------------------------------------------------------------------------------------------
+
+/** A new empty option at the end (at most `MEINUNGSBILD_MAX_OPTIONEN`). */
+export function optionHinzufuegen(daten: BausteinMeinungsbildDaten): BausteinMeinungsbildDaten {
+  if (daten.optionen.length >= MEINUNGSBILD_MAX_OPTIONEN) return daten;
+  return { ...daten, optionen: [...daten.optionen, { text: '', stimmen: 0 }] };
+}
+
+export function optionEntfernen(
+  daten: BausteinMeinungsbildDaten,
+  index: number,
+): BausteinMeinungsbildDaten {
+  return { ...daten, optionen: daten.optionen.filter((_, i) => i !== index) };
+}
+
+/** Changes the text or the vote count of one option; a negative or fractional count is ignored. */
+export function optionSetzen(
+  daten: BausteinMeinungsbildDaten,
+  index: number,
+  neu: { text?: string; stimmen?: number },
+): BausteinMeinungsbildDaten {
+  if (neu.stimmen !== undefined && (!ganz(neu.stimmen) || neu.stimmen < 0)) return daten;
+  return {
+    ...daten,
+    optionen: daten.optionen.map((o, i) => (i === index ? { ...o, ...neu } : o)),
+  };
+}
+
+/** "Anwesend: 1 Person" / "Anwesend: 12 Personen (ohne Gäste)" under a Meinungsbild. */
+export const personenAnwesendText = (n: number): string =>
+  `Anwesend: ${n} ${n === 1 ? 'Person' : 'Personen'} (ohne Gäste)`;
+
+// ---------------------------------------------------------------------------------------------
 // Focus after inserting
 // ---------------------------------------------------------------------------------------------
 
@@ -180,6 +216,7 @@ export type FokusZiel =
   | 'vorname'
   | 'nachname'
   | 'antrag'
+  | 'frage'
   | 'person'
   /** Into the free text of the Baustein. */
   | 'text'
@@ -201,7 +238,10 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
     case 'bausteinBeschluss':
       return leer('antrag') ? 'antrag' : 'text';
     case 'bausteinEm':
+    case 'bausteinAufnahme':
       return leer('sub') && leer('name') ? 'person' : 'text';
+    case 'bausteinMeinungsbild':
+      return leer('frage') ? 'frage' : 'text';
     case 'bausteinAnwesenheit':
       return leer('sub') ? 'person' : 'nach';
   }

@@ -1,7 +1,12 @@
 import { Extension, mergeAttributes, Node } from '@tiptap/react';
 import { Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { BAUSTEIN_TYPEN, PROTOKOLL_ABSCHNITTE, type ProtokollAbschnitt } from '@c4/shared';
+import {
+  BAUSTEIN_TYPEN,
+  PROTOKOLL_ABSCHNITTE,
+  istBausteinInNotizen,
+  type ProtokollAbschnitt,
+} from '@c4/shared';
 
 // Document structure of the minutes: exactly three fixed sections, each holding text blocks and Bausteine.
 
@@ -77,11 +82,19 @@ export function abschnitteIntakt(doc: PmNode): boolean {
   return true;
 }
 
-/** Adds an empty paragraph to every section that does not end with a text block. Returns whether it did. */
+/**
+ * Adds an empty paragraph to every section that does not end with a text block, and to every Baustein
+ * whose free text ends with an Abstimmung / Meinungsbild (a place to type after it). Returns whether it did.
+ */
 export function absatzAmEndeEinfuegen(tr: Transaction): boolean {
   const stellen: number[] = [];
-  tr.doc.forEach((abschnitt, abschnittPos) => {
-    if (!abschnitt.lastChild?.isTextblock) stellen.push(abschnittPos + abschnitt.nodeSize - 1);
+  tr.doc.descendants((node, pos) => {
+    if (node.type.name === 'abschnitt') {
+      if (!node.lastChild?.isTextblock) stellen.push(pos + node.nodeSize - 1);
+    } else if (node.lastChild && istBausteinInNotizen(node.lastChild.type.name)) {
+      stellen.push(pos + node.nodeSize - 1);
+    }
+    return true;
   });
   // Bottom up, so the earlier positions stay valid.
   for (const pos of stellen.sort((a, b) => b - a)) {

@@ -12,7 +12,7 @@ export interface ProtokollKontextWert {
   teilnahme: readonly AnwesenheitPerson[];
   /** The active EMs (candidates for a Neues EM block next to the attendance list). */
   ems: readonly ProtokollMitgliedDto[];
-  /** Quorum at the opening and at each Anwesenheit / Beschluss / Neues EM block of the current document. */
+  /** Quorum at the opening and at each Anwesenheit / Abstimmung / Neues EM / Aufnahme block of the current document. */
   verlauf: AnwesenheitsVerlauf;
 }
 
@@ -21,7 +21,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   art: 'sitzung',
   teilnahme: [],
   ems: [],
-  verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {} },
+  verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },
 });
 
 export const useProtokollKontext = (): ProtokollKontextWert => useContext(ProtokollKontext);

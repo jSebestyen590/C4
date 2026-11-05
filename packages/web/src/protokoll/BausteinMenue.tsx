@@ -2,7 +2,7 @@ import { Button, Menu, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import type { Editor } from '@tiptap/react';
 import { useState } from 'react';
-import { bausteinEinfuegen, zitatEinfuegen } from './einfuegen';
+import { bausteinEinfuegen, imListenpunkt, imVerschachtelbaren, zitatEinfuegen } from './einfuegen';
 import { SlashListe } from './SlashListe';
 import {
   bausteinEintraege,
@@ -29,6 +29,9 @@ const LISTEN: Record<Liste, { wort: string; titel: string; suche: string }> = {
 export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; daten: SlashDaten }>) {
   const [liste, setListe] = useState<Liste | null>(null);
   const [suche, setSuche] = useState('');
+  // Inside an Abstimmung / Meinungsbild neither of them can be inserted.
+  const [ohneVerschachtelt, setOhneVerschachtelt] = useState(false);
+  const [ohneZitat, setOhneZitat] = useState(false);
 
   const waehlen = (e: SlashEintrag) => {
     if (e.aktion.art === 'weiter') {
@@ -49,7 +52,15 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
 
   return (
     <>
-      <Menu position="bottom-start" withinPortal width={300}>
+      <Menu
+        position="bottom-start"
+        withinPortal
+        width={300}
+        onOpen={() => {
+          setOhneVerschachtelt(imVerschachtelbaren(editor.state));
+          setOhneZitat(imListenpunkt(editor.state));
+        }}
+      >
         <Menu.Target>
           <Button
             variant="default"
@@ -63,7 +74,7 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
-          {bausteinEintraege('').map((e) => (
+          {bausteinEintraege('', ohneVerschachtelt, ohneZitat).map((e) => (
             <Menu.Item
               key={e.schluessel}
               leftSection={<SlashIcon symbol={e.symbol} />}
