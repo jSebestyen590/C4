@@ -53,9 +53,16 @@ function Mitglied({ sub }: Readonly<{ sub: string }>) {
   );
 }
 
+/** Opens in a new tab, so writing the protocol isn't interrupted. */
 function KalenderLink({ eventId }: Readonly<{ eventId: string }>) {
   return (
-    <Anchor component={Link} to={`/kalender/events/${encodeURIComponent(eventId)}`} size="sm">
+    <Anchor
+      component={Link}
+      to={`/kalender/events/${encodeURIComponent(eventId)}`}
+      target="_blank"
+      rel="noopener"
+      size="sm"
+    >
       Im Kalender öffnen
     </Anchor>
   );
