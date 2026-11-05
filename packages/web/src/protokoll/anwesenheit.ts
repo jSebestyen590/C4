@@ -6,6 +6,7 @@ import {
   type ProtokollKopf,
   type ProtokollMitgliedDto,
   type ProtokollTeilnahmeWert,
+  zeitBerlin,
 } from '@c4/shared';
 import { MITGLIED_STATUS_LABELS, labelFuer } from '../i18n';
 import { mitgliedOptionen } from '../organisator';
@@ -98,4 +99,29 @@ export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPers
       da: p.wert === 'anwesend' || p.wert === 'verspaetet',
     };
   });
+}
+
+/** Current Berlin time `HH:MM`: the default of a new Erscheint / Geht block. */
+export function anwesenheitUhrzeit(jetzt: Date = new Date()): string {
+  return zeitBerlin(jetzt.toISOString());
+}
+
+/** Whether somebody with this attendance counts as absent at the opening (so an arrival makes them late). */
+export const fehltZuBeginn = (wert: ProtokollTeilnahmeWert): boolean =>
+  wert === 'entschuldigt' || wert === 'unentschuldigt';
+
+/**
+ * The Kopf after somebody arrived (Erscheint block with this person): a person who is absent at the
+ * opening gets the override `verspaetet`. Returns `null` when nothing changes (unknown person, already
+ * present or late, closed protocol).
+ */
+export function kopfNachErscheinen(
+  dto: ProtokollDto,
+  kopf: ProtokollKopf,
+  sub: string,
+): ProtokollKopf | null {
+  if (dto.status !== 'entwurf') return null;
+  const person = dto.teilnahme.find((t) => t.sub === sub);
+  if (!person || !fehltZuBeginn(wertVon(person, kopf, true))) return null;
+  return { ...kopf, teilnahme: { ...kopf.teilnahme, [sub]: 'verspaetet' } };
 }

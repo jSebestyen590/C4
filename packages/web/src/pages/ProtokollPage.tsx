@@ -12,7 +12,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconLock, IconLockOpen, IconPrinter, IconTrash } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ProtokollDokument, ProtokollDto, ProtokollKopf as KopfDaten } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
@@ -20,7 +20,7 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
-import { effektiveTeilnahme } from '../protokoll/anwesenheit';
+import { effektiveTeilnahme, kopfNachErscheinen } from '../protokoll/anwesenheit';
 import { mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
@@ -94,10 +94,24 @@ function ProtokollAnsicht({
     aktiv: editierbar,
   });
 
+  // The latest Kopf, also between renders (several changes in one tick must not overwrite each other).
+  const kopfRef = useRef(kopf);
   const kopfAendern = (k: KopfDaten) => {
+    kopfRef.current = k;
     setKopf(k);
     aendern({ kopf: k });
   };
+  /** Somebody arrived (Erscheint block): an absent person becomes "spät" in the Kopf. */
+  const erscheint = useCallback(
+    (sub: string) => {
+      const neu = kopfNachErscheinen(dto, kopfRef.current, sub);
+      if (!neu) return;
+      kopfRef.current = neu;
+      setKopf(neu);
+      aendern({ kopf: neu });
+    },
+    [dto, aendern],
+  );
   const inhaltAendern = (doc: ProtokollDokument) => {
     setInhalt(doc);
     aendern({ inhalt: doc });
@@ -254,6 +268,7 @@ function ProtokollAnsicht({
             art={dto.sitzung.art}
             teilnahme={teilnahme}
             ems={ems}
+            onErscheint={erscheint}
           />
         </Stack>
       )}

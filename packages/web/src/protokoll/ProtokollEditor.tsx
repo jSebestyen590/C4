@@ -1,10 +1,13 @@
+import { Box, Button, Drawer, useMantineTheme } from '@mantine/core';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { RichTextEditor, type RichTextEditorLabels } from '@mantine/tiptap';
+import { IconListTree } from '@tabler/icons-react';
 import Blockquote from '@tiptap/extension-blockquote';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   anwesenheitsVerlauf,
   type ProtokollArt,
@@ -16,8 +19,10 @@ import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { BlockVerschieben } from './verschieben';
 import type { AnwesenheitPerson } from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
+import { Gliederung } from './GliederungBaum';
 import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
+import { mitgliedName } from '../mitglied';
 import { ProtokollKontext } from './kontext';
 import {
   absatzAmEndeEinfuegen,
@@ -63,6 +68,7 @@ export function ProtokollEditor({
   art,
   teilnahme,
   ems = [],
+  onErscheint,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -74,8 +80,16 @@ export function ProtokollEditor({
   teilnahme: readonly AnwesenheitPerson[];
   /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
   ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
+  /** A person arrived (Erscheint block with a person inserted or set); not called when read-only. */
+  onErscheint?: (sub: string) => void;
 }>) {
-  const slashDaten = useSlashDaten(sitzungBeginn, teilnahme);
+  const onErscheintRef = useRef(onErscheint);
+  useEffect(() => {
+    onErscheintRef.current = onErscheint;
+  });
+  const erscheint = useCallback((sub: string) => onErscheintRef.current?.(sub), []);
+  const basisDaten = useSlashDaten(sitzungBeginn, teilnahme);
+  const slashDaten = useMemo(() => ({ ...basisDaten, erscheint }), [basisDaten, erscheint]);
   // The document as the quorum needs it (a little behind the typing).
   const [dokument, setDokument] = useState(inhalt);
   const dokumentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -170,66 +184,126 @@ export function ProtokollEditor({
 
   useEditableSync(editor, editierbar);
 
+  // The outline sits beside the editor from `lg` (the app's own sidebar takes the left from `md`),
+  // below that it slides in from the right.
+  const theme = useMantineTheme();
+  const breit = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false);
+  const [gliederungOffen, { open: oeffnen, close: schliessen }] = useDisclosure(false);
+  const personName = useCallback(
+    (sub: string) => {
+      const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
+      return m ? mitgliedName(m) : undefined;
+    },
+    [teilnahme, ems],
+  );
+
   const kontext = useMemo(
     () => ({
       sitzungBeginn,
       art,
       teilnahme,
       ems,
+      onErscheint: erscheint,
       verlauf: anwesenheitsVerlauf(dokument, {
         art,
         teilnahme,
         ems: ems.filter((e) => e.ausgewaehlt),
       }),
     }),
-    [sitzungBeginn, art, teilnahme, ems, dokument],
+    [sitzungBeginn, art, teilnahme, ems, dokument, erscheint],
   );
 
   return (
     <ProtokollKontext.Provider value={kontext}>
-      <RichTextEditor
-        editor={editor}
-        labels={LABELS}
-        className="protokoll-editor"
-        withTypographyStyles
-        styles={{
-          root: editierbar ? undefined : { border: 'none' },
-          control: { width: 44, height: 44 },
-          content: { background: 'transparent' },
-        }}
-      >
-        {editierbar && editor && (
-          <RichTextEditor.Toolbar
-            sticky
-            stickyOffset={`calc(${HEADER_HOEHE}px + env(safe-area-inset-top))`}
-            className="protokoll-toolbar protokoll-nicht-drucken"
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--mantine-spacing-md)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <RichTextEditor
+            editor={editor}
+            labels={LABELS}
+            className="protokoll-editor"
+            withTypographyStyles
+            styles={{
+              root: editierbar ? undefined : { border: 'none' },
+              control: { width: 44, height: 44 },
+              content: { background: 'transparent' },
+            }}
           >
-            <BausteinMenue editor={editor} daten={slashDaten} />
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.Bold />
-              <RichTextEditor.Italic />
-            </RichTextEditor.ControlsGroup>
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.H2 />
-              <RichTextEditor.H3 />
-            </RichTextEditor.ControlsGroup>
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.BulletList />
-              <RichTextEditor.OrderedList />
-              <RichTextEditor.Blockquote />
-            </RichTextEditor.ControlsGroup>
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.Link />
-              <RichTextEditor.Unlink />
-            </RichTextEditor.ControlsGroup>
-            <RichTextEditor.ControlsGroup>
-              <RichTextEditor.Undo />
-              <RichTextEditor.Redo />
-            </RichTextEditor.ControlsGroup>
-          </RichTextEditor.Toolbar>
+            {editierbar && editor && (
+              <RichTextEditor.Toolbar
+                sticky
+                stickyOffset={`calc(${HEADER_HOEHE}px + env(safe-area-inset-top))`}
+                className="protokoll-toolbar protokoll-nicht-drucken"
+              >
+                <BausteinMenue editor={editor} daten={slashDaten} />
+                {!breit && (
+                  <Button
+                    variant="default"
+                    size="md"
+                    leftSection={<IconListTree size={18} />}
+                    onClick={oeffnen}
+                    // Keeps the cursor position of the editor.
+                    onMouseDown={(ev) => ev.preventDefault()}
+                  >
+                    Gliederung
+                  </Button>
+                )}
+                <RichTextEditor.ControlsGroup>
+                  <RichTextEditor.Bold />
+                  <RichTextEditor.Italic />
+                </RichTextEditor.ControlsGroup>
+                <RichTextEditor.ControlsGroup>
+                  <RichTextEditor.H2 />
+                  <RichTextEditor.H3 />
+                </RichTextEditor.ControlsGroup>
+                <RichTextEditor.ControlsGroup>
+                  <RichTextEditor.BulletList />
+                  <RichTextEditor.OrderedList />
+                  <RichTextEditor.Blockquote />
+                </RichTextEditor.ControlsGroup>
+                <RichTextEditor.ControlsGroup>
+                  <RichTextEditor.Link />
+                  <RichTextEditor.Unlink />
+                </RichTextEditor.ControlsGroup>
+                <RichTextEditor.ControlsGroup>
+                  <RichTextEditor.Undo />
+                  <RichTextEditor.Redo />
+                </RichTextEditor.ControlsGroup>
+              </RichTextEditor.Toolbar>
+            )}
+            <RichTextEditor.Content />
+          </RichTextEditor>
+        </div>
+        {editierbar && editor && breit && (
+          <Box
+            component="aside"
+            className="protokoll-nicht-drucken"
+            aria-label="Gliederung"
+            style={{
+              flex: '0 0 19rem',
+              position: 'sticky',
+              top: `calc(${HEADER_HOEHE}px + env(safe-area-inset-top) + var(--mantine-spacing-xs))`,
+              maxHeight: `calc(100dvh - ${HEADER_HOEHE}px - env(safe-area-inset-top) - 2 * var(--mantine-spacing-md))`,
+              overflowY: 'auto',
+              padding: 'var(--mantine-spacing-xs)',
+              border: '1px solid var(--mantine-color-default-border)',
+              borderRadius: 'var(--mantine-radius-md)',
+            }}
+          >
+            <Gliederung editor={editor} personName={personName} />
+          </Box>
         )}
-        <RichTextEditor.Content />
-      </RichTextEditor>
+      </div>
+      {editierbar && editor && !breit && (
+        <Drawer
+          opened={gliederungOffen}
+          onClose={schliessen}
+          position="right"
+          size="min(24rem, 100%)"
+          title="Gliederung"
+        >
+          <Gliederung editor={editor} personName={personName} onGewaehlt={schliessen} />
+        </Drawer>
+      )}
       {editierbar && <SlashPopup zustand={slash} auswahl={auswahl} onZeiger={setAuswahl} />}
     </ProtokollKontext.Provider>
   );

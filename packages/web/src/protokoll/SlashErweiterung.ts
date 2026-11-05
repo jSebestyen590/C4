@@ -8,7 +8,7 @@ import {
   slashErlaubt,
   zitatEinfuegen,
 } from './einfuegen';
-import { slashEintraege, type SlashDaten, type SlashEintrag } from './slashLogik';
+import { erscheintPerson, slashEintraege, type SlashDaten, type SlashEintrag } from './slashLogik';
 import type { SlashZustand } from './SlashPopup';
 
 /** What the editor component gives the extension (all callbacks read current values, they never go stale). */
@@ -56,6 +56,8 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               zitatEinfuegen(editor, range);
             } else {
               bausteinEinfuegen(editor, props.aktion.wahl, range);
+              const sub = erscheintPerson(props.aktion.wahl);
+              if (sub) steuerung.daten().erscheint?.(sub);
             }
           },
           render: () => {

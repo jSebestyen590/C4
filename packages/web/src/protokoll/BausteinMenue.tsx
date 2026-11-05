@@ -6,6 +6,7 @@ import { bausteinEinfuegen, imListenpunkt, imVerschachtelbaren, zitatEinfuegen }
 import { SlashListe } from './SlashListe';
 import {
   bausteinEintraege,
+  erscheintPerson,
   slashEintraege,
   slashStufe,
   type SlashDaten,
@@ -46,6 +47,8 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
       return;
     }
     bausteinEinfuegen(editor, e.aktion.wahl);
+    const sub = erscheintPerson(e.aktion.wahl);
+    if (sub) daten.erscheint?.(sub);
   };
 
   const eintraege = liste ? slashEintraege(`${LISTEN[liste].wort} ${suche}`, daten) : [];

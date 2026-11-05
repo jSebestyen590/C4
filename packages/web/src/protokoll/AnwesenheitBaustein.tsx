@@ -21,7 +21,7 @@ import { ANWESENHEIT_ARTEN, type AnwesenheitArt, type BausteinAnwesenheitDaten }
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { mitgliedLink } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
-import { mitgliedernText, personenOptionen } from './anwesenheit';
+import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesenheit';
 import { istZeit } from './bausteinLogik';
 import { FORMULAR_ATTRIBUT } from './formular';
 import { useProtokollKontext } from './kontext';
@@ -37,7 +37,7 @@ const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht
 export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
-  const { teilnahme, verlauf } = useProtokollKontext();
+  const { teilnahme, verlauf, onErscheint } = useProtokollKontext();
   const [loeschen, setLoeschen] = useState(false);
   const daten = node.attrs.daten as BausteinAnwesenheitDaten;
   const id = node.attrs.id as string;
@@ -90,7 +90,14 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 nothingFoundMessage="Niemand gefunden"
                 data={optionen}
                 value={daten.sub}
-                onChange={(sub) => aendern((d) => ({ ...d, sub }))}
+                onChange={(sub) => {
+                  aendern((d) => ({
+                    ...d,
+                    sub,
+                    uhrzeit: sub && !d.uhrzeit ? anwesenheitUhrzeit() : d.uhrzeit,
+                  }));
+                  if (sub && daten.art === 'erscheint') onErscheint?.(sub);
+                }}
                 style={{ flex: '1 1 11rem', minWidth: 0 }}
                 renderOption={({ option }) => {
                   const s = status.get(option.value);

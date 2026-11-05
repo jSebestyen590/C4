@@ -1,13 +1,11 @@
 import {
   bausteinErzeugen,
   beschlussErgebnisVorschlag,
-  datumBerlin,
   MEINUNGSBILD_MAX_OPTIONEN,
   WAHL_MAX_ANZAHL,
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
   wahlErgebnis,
-  zeitBerlin,
   type BausteinBeschlussDaten,
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
@@ -360,15 +358,6 @@ export function notizenVorlage(typ: BausteinTyp): ProtokollKnoten[] {
 /** The document node of a new Baustein with its starting free text. */
 export function bausteinNeu(typ: BausteinTyp, daten: unknown): ProtokollKnoten {
   return bausteinErzeugen(typ, daten as never, notizenVorlage(typ));
-}
-
-/**
- * Time to prefill a new Anwesenheit block: the current Berlin time `HH:MM` when the Sitzung is today,
- * else '' (the minutes are written up later).
- */
-export function anwesenheitUhrzeit(sitzungBeginn: string, jetzt: Date = new Date()): string {
-  const iso = jetzt.toISOString();
-  return datumBerlin(iso) === datumBerlin(sitzungBeginn) ? zeitBerlin(iso) : '';
 }
 
 // ---------------------------------------------------------------------------------------------

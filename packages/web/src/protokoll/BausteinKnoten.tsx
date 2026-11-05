@@ -1,5 +1,5 @@
 import { ActionIcon, Group, Paper, Stack, Text } from '@mantine/core';
-import { IconArrowDown, IconArrowUp, IconTrash } from '@tabler/icons-react';
+import { IconTrash } from '@tabler/icons-react';
 import {
   mergeAttributes,
   Node,
@@ -38,7 +38,6 @@ import {
   VergangenesEventFormular,
   type FormularProps,
 } from './BausteinFormulare';
-import { blockVerschieben, type Richtung } from './verschieben';
 import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 
 /** Text content allowed in the free text of every Baustein. */
@@ -62,23 +61,6 @@ function BausteinAnsicht<T extends BausteinTyp>({
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
   const [loeschen, setLoeschen] = useState(false);
-  const kannVerschieben = useEditorState({
-    editor,
-    selector: (s) => {
-      const pos = getPos();
-      const geht = (r: Richtung) =>
-        pos !== undefined && blockVerschieben(s.editor.state, pos, r) !== null;
-      return { hoch: geht('hoch'), runter: geht('runter') };
-    },
-    equalityFn: (a, b) => !!b && a.hoch === b.hoch && a.runter === b.runter,
-  });
-  const verschieben = (richtung: Richtung) => {
-    const pos = getPos();
-    if (pos === undefined) return;
-    const tr = blockVerschieben(editor.state, pos, richtung);
-    if (tr) editor.view.dispatch(tr);
-    editor.view.focus();
-  };
   const daten = node.attrs.daten as BausteinDatenVon[T];
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
@@ -109,28 +91,6 @@ function BausteinAnsicht<T extends BausteinTyp>({
                 </Group>
                 {editierbar && (
                   <Group gap={0} wrap="nowrap" className="protokoll-nicht-drucken">
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      size={44}
-                      aria-label={`${BAUSTEIN_TITEL[typ]} nach oben verschieben`}
-                      title="Nach oben verschieben"
-                      disabled={!kannVerschieben.hoch}
-                      onClick={() => verschieben('hoch')}
-                    >
-                      <IconArrowUp size={20} />
-                    </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      size={44}
-                      aria-label={`${BAUSTEIN_TITEL[typ]} nach unten verschieben`}
-                      title="Nach unten verschieben"
-                      disabled={!kannVerschieben.runter}
-                      onClick={() => verschieben('runter')}
-                    >
-                      <IconArrowDown size={20} />
-                    </ActionIcon>
                     <ActionIcon
                       variant="subtle"
                       color="red"

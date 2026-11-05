@@ -51,6 +51,7 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
   Eintreffens** verspäteter Mitglieder (`verspaetung`, Mitglied → `HH:MM`). Im Formular sind „Sitzungsleitung“ und
   „Protokoll“ durchsuchbare Auswahlfelder („username (Vorname Nachname)“), „Eröffnung“ ein Zeitfeld; bei `verspaetet`
   erscheint daneben „ab ... Uhr“ (entfällt beim Wechsel auf einen anderen Wert). Lesend steht alles als Text im Kopf.
+- **Automatisch spät:** Ein Baustein „Erscheint“ mit Person setzt im Entwurf eine fehlende Person (entschuldigt/unentschuldigt) im Kopf auf `verspaetet`, siehe Slash-Befehle.
 - **Beschlussfähigkeit:** Der Kopf zeigt live „Beschlussfähig: 13 von 25 Mitgliedern anwesend (nötig: 13)“ (rot: „Nicht
   beschlussfähig“) aus der Teilnahme zu Beginn und der Art der Sitzung.
 - **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden und die Art der Sitzung ein
@@ -105,16 +106,23 @@ Zeiten und Anzahlen (Minimum, Wunsch) ändern, Schichten lassen sich nicht hinzu
 Vorlage bestimmt die Dienstformen. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei
 mehrtägigen.
 
-## Verschieben
+## Gliederung (Verschieben)
 
-Jeder Baustein hat im Kopf die Pfeile „Nach oben“ / „Nach unten verschieben“ (nur im Bearbeiten-Modus, deaktiviert, wenn
-kein Zug möglich ist). Mit `Alt`+`↑` / `Alt`+`↓` verschiebst du den Block am Cursor (Absatz, Überschrift, ganze Liste,
-Zitat oder Baustein; im Notizen-Text eines Bausteins den Block darin). Logik: `protokoll/verschieben.ts`.
+Im Bearbeiten-Modus zeigt die **Gliederung** (`protokoll/GliederungBaum.tsx`, Logik und Tests in `protokoll/gliederung.ts`) alle
+Bausteine als Baum: die drei Abschnitte, darunter ihre Bausteine in Dokument-Reihenfolge (Freitext fehlt), darunter die
+Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), eingerückt. Jeder Eintrag zeigt Symbol und Kurztitel
+(z. B. „11.02. Superbowl“, „Abstimmung: …“, „Wahl: …“, „<Name> erscheint“). Ein Tipp scrollt den Editor zum Baustein.
 
-- Ein Block tauscht mit seinem Nachbarn. Der leere Schluss-Absatz eines Abschnitts zählt nicht als Nachbar.
-- Am Rand eines Abschnitts wandert der Block in den vorigen (ans Ende) bzw. nächsten Abschnitt (an den Anfang); im ersten
-  bzw. letzten Abschnitt geht es nicht weiter.
-- Blöcke in den Notizen eines Bausteins bleiben dort.
+- **Layout:** Ab `lg` steht die Gliederung als mitlaufende Spalte rechts neben dem Editor. Darunter gibt es in der Werkzeugleiste
+  den Knopf „Gliederung“; er öffnet sie als Schublade von rechts (ein Wisch vom rechten Rand ist nicht eingebaut).
+- **Verschieben:** Am Griff ziehen (am Handy lange drücken, dann ziehen). Ein Baustein darf in jeden Abschnitt (auch in einen
+  leeren) und an jede Stelle der Liste. Abstimmung, Meinungsbild und Wahl dürfen zusätzlich in die Notizen eines anderen
+  Bausteins (nicht in eine Abstimmung, ein Meinungsbild oder eine Wahl) und von dort wieder auf Abschnittsebene. Alle anderen
+  Bausteine lassen sich nicht in Notizen ablegen. Ein Baustein nimmt seine Notizen samt verschachtelten Bausteinen mit.
+- **Position:** „Als i-ter“ heißt direkt vor dem i-ten Baustein der Liste, am Ende hinter dem letzten Baustein bzw. (leere
+  Liste) vor dem leeren Schluss-Absatz. Freitext bleibt, wo er ist. Der Zug ist **eine** Transaktion (Einfügen + Löschen):
+  Rückgängig macht ihn in einem Schritt rückgängig, das Autospeichern greift wie sonst; die drei Abschnitte bleiben intakt.
+- `Alt`+`↑` / `Alt`+`↓` verschiebt weiterhin den Block am Cursor um einen Platz (`protokoll/verschieben.ts`).
 
 ## Dokumentansicht
 
@@ -169,11 +177,15 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   blendet Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung samt Hinweis zur Beschlussfähigkeit ein.
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
   Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
-  Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = jetzt,
-  wenn die Sitzung heute ist, sonst leer); der Cursor springt dahinter. Der Baustein ist eine Zeile (Person, erscheint/geht,
+  Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = aktuelle
+  Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter. Der Baustein ist eine Zeile (Person, erscheint/geht,
   Uhrzeit) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
   sowie einer optionalen Bemerkung. Eine **Abstimmung** (und eine Aufnahme, Wahl) zeigt „Anwesend: x von y Mitgliedern“, bei fehlender
   Beschlussfähigkeit rot „Nicht beschlussfähig“ und bei mehr Stimmen als Anwesenden eine gelbe Warnung.
+  **Erscheint setzt den Kopf:** Bekommt ein Erscheint-Baustein eine Person (beim Einfügen oder später im Formular) und gilt sie im Kopf
+  als `entschuldigt` oder `unentschuldigt` (abgeleitet oder überschrieben), setzt das die Überschreibung `verspaetet`
+  (`kopfNachErscheinen` in `protokoll/anwesenheit.ts`); „anwesend“ und „verspätet“ bleiben unberührt, `verspaetung` wird nicht gesetzt
+  (die Zeit kommt aus dem Baustein). Entfernen des Bausteins oder „Geht“ ändern den Kopf nicht.
 - **Notizen** neuer Event- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
 - **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist

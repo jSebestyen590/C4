@@ -27,7 +27,6 @@ import {
   zuvieleWahlStimmen,
   vergangeneEvents,
   zeitWert,
-  anwesenheitUhrzeit,
   bausteinNeu,
   notizenVorlage,
 } from './bausteinLogik';
@@ -382,10 +381,5 @@ describe('new Bausteine', () => {
     expect(ersterLeererFeld('bausteinAnwesenheit', { art: 'geht', sub: 'x', uhrzeit: '' })).toBe(
       'nach',
     );
-  });
-  it('prefills the time only on the day of the Sitzung (Berlin)', () => {
-    const jetzt = new Date('2026-06-01T19:15:00Z');
-    expect(anwesenheitUhrzeit('2026-06-01T17:00:00Z', jetzt)).toBe('21:15');
-    expect(anwesenheitUhrzeit('2026-05-20T17:00:00Z', jetzt)).toBe('');
   });
 });

@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { datumAnzeigen, datumBerlin, type EventDto } from '@c4/shared';
-import { slashPersonen, type AnwesenheitPerson } from './anwesenheit';
+import { anwesenheitUhrzeit, slashPersonen, type AnwesenheitPerson } from './anwesenheit';
 import {
-  anwesenheitUhrzeit,
   eventDatenAusVorlage,
   ereignisFenster,
   kommendeEvents,
@@ -67,8 +66,8 @@ export function useSlashDaten(
     () => ({
       ...basis,
       personen,
-      uhrzeit: () => anwesenheitUhrzeit(sitzungBeginn),
+      uhrzeit: () => anwesenheitUhrzeit(),
     }),
-    [basis, personen, sitzungBeginn],
+    [basis, personen],
   );
 }

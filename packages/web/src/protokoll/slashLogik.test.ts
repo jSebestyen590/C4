@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { bausteinLeer } from '@c4/shared';
-import { normalisieren, slashEintraege, slashStufe, type SlashDaten } from './slashLogik';
+import {
+  erscheintPerson,
+  normalisieren,
+  slashEintraege,
+  slashStufe,
+  type SlashDaten,
+} from './slashLogik';
 
 const daten: SlashDaten = {
   vorlagen: [
@@ -193,5 +199,12 @@ describe('Erscheint and Geht', () => {
         daten: { art: 'erscheint', sub: 'j', uhrzeit: '21:15' },
       },
     });
+  });
+  it('names the person of an Erscheint block only', () => {
+    const wahl = (art: 'erscheint' | 'geht', sub: string | null) =>
+      ({ typ: 'bausteinAnwesenheit', daten: { art, sub, uhrzeit: '' } }) as const;
+    expect(erscheintPerson(wahl('erscheint', 'j'))).toBe('j');
+    expect(erscheintPerson(wahl('erscheint', null))).toBeNull();
+    expect(erscheintPerson(wahl('geht', 'j'))).toBeNull();
   });
 });
