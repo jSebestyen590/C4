@@ -27,6 +27,14 @@ import { BAUSTEIN_SYMBOL, SlashIcon } from './symbole';
 /** Space above the editor content that the sticky app header and toolbar cover. */
 const SCROLL_ABSTAND = 136;
 
+/** Scrolls the page to the Baustein `id` in the mounted editor (nothing if it is not on the page). */
+export function zuBausteinIdScrollen(id: string): void {
+  const el = document.querySelector<HTMLElement>(`[data-baustein][data-id="${CSS.escape(id)}"]`);
+  if (!el) return;
+  el.style.scrollMarginTop = `${SCROLL_ABSTAND}px`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 /** Scrolls the editor to the Baustein `id`. */
 export function zuBausteinScrollen(editor: Editor, id: string): void {
   const fund = findeBaustein(editor.state.doc, id);

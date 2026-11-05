@@ -1,5 +1,10 @@
 import { createContext, useContext } from 'react';
-import type { AnwesenheitsVerlauf, ProtokollArt, ProtokollMitgliedDto } from '@c4/shared';
+import type {
+  AnwesenheitsVerlauf,
+  ProtokollArt,
+  ProtokollMitgliedDto,
+  StimmenPruefung,
+} from '@c4/shared';
 import { quorumBeiEroeffnung, type AnwesenheitPerson } from './anwesenheit';
 
 /** What the Baustein node views need to know about the document they live in. */
@@ -14,6 +19,8 @@ export interface ProtokollKontextWert {
   ems: readonly ProtokollMitgliedDto[];
   /** Quorum at the opening and at each Anwesenheit / Abstimmung / Neues EM / Aufnahme block of the current document. */
   verlauf: AnwesenheitsVerlauf;
+  /** Vote count checks of the binding votes (Abstimmung, Wahl rounds) against the members present. */
+  stimmen: readonly StimmenPruefung[];
   /** A person got an Erscheint / Geht block: lets the page lock them to "da" in the Kopf. Editable documents only. */
   onAnwesenheit?: (sub: string) => void;
 }
@@ -24,6 +31,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   teilnahme: [],
   ems: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },
+  stimmen: [],
 });
 
 export const useProtokollKontext = (): ProtokollKontextWert => useContext(ProtokollKontext);

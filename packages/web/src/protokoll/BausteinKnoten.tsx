@@ -25,7 +25,7 @@ import {
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
-import { BeschlussHinweis, MeinungsbildHinweis, WahlHinweis } from './BeschlussHinweis';
+import { BeschlussHinweis, MeinungsbildHinweis } from './BeschlussHinweis';
 import { FORMULAR_ATTRIBUT } from './formular';
 import {
   AnwaerterFormular,
@@ -77,7 +77,11 @@ function BausteinAnsicht<T extends BausteinTyp>({
 
   const hatText = node.textContent.trim() !== '';
   return (
-    <NodeViewWrapper className="protokoll-baustein" data-baustein={typ}>
+    <NodeViewWrapper
+      className="protokoll-baustein"
+      data-baustein={typ}
+      data-id={node.attrs.id as string}
+    >
       <Paper withBorder p="sm" radius="md" shadow={props.selected ? 'sm' : undefined}>
         <Stack gap="xs">
           <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
@@ -105,32 +109,14 @@ function BausteinAnsicht<T extends BausteinTyp>({
                 )}
               </Group>
               <Formular daten={daten} aendern={aendern} editierbar={editierbar} />
-              {typ === 'bausteinBeschluss' && (
-                <BeschlussHinweis
-                  id={node.attrs.id as string}
-                  daten={daten as unknown as BausteinBeschlussDaten}
-                />
-              )}
-              {typ === 'bausteinAufnahme' && (
-                <BeschlussHinweis
-                  id={node.attrs.id as string}
-                  daten={(daten as unknown as BausteinAufnahmeDaten).abstimmung}
-                />
-              )}
-              {typ === 'bausteinWahl' && (
-                <WahlHinweis
-                  id={node.attrs.id as string}
-                  daten={daten as unknown as BausteinWahlDaten}
-                />
-              )}
+              {typ === 'bausteinBeschluss' && <BeschlussHinweis id={node.attrs.id as string} />}
+              {typ === 'bausteinAufnahme' && <BeschlussHinweis id={node.attrs.id as string} />}
+              {typ === 'bausteinWahl' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinMeinungsbild' && (
                 <MeinungsbildHinweis id={node.attrs.id as string} />
               )}
               {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).abstimmung && (
-                <BeschlussHinweis
-                  id={node.attrs.id as string}
-                  daten={(daten as unknown as BausteinEmDaten).abstimmung!}
-                />
+                <BeschlussHinweis id={node.attrs.id as string} />
               )}
               {(editierbar || hatText) && (
                 <Text size="xs" c="dimmed" fw={500}>

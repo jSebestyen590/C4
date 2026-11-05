@@ -35,6 +35,7 @@ import {
   bausteinLeer,
   protokollKopfLeer,
   protokollLeer,
+  type ProtokollKnoten,
 } from '@c4/shared';
 import { createApp } from './app';
 import { createBenachrichtigungen, type PushErgebnis } from './benachrichtigungen';
@@ -7016,6 +7017,66 @@ describe('protokolle', () => {
     expect(dto.teilnahme.find((p) => p.sub === 'v')?.wert).toBe('anwesend');
     expect((await status('admin-token', 'entwurf')).status).toBe(200);
     expect((await status('admin-token', 'offen')).status).toBe(400);
+  });
+
+  it('only closes when every Abstimmung and Wahl has as many votes as members present', async () => {
+    const t = await setup();
+    t.antworten.m2 = 'teilnahme'; // the only Mitglied, so one member is present
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+    const status = () =>
+      t.app.request(
+        `/api/protokolle/${id}/status`,
+        json('admin-token', 'PUT', { status: 'abgeschlossen' }),
+      );
+    const speichern = async (...bausteine: ProtokollKnoten[]) => {
+      const dto = await t.holen(id);
+      const inhalt = protokollLeer();
+      inhalt.content[1]!.content = [...bausteine, { type: 'paragraph' }];
+      const res = await t.app.request(
+        `/api/protokolle/${id}`,
+        json('admin-token', 'PUT', { inhalt, kopf: dto.kopf, version: dto.version }),
+      );
+      expect(res.status).toBe(200);
+    };
+    const beschluss = (ja: number) =>
+      bausteinErzeugen('bausteinBeschluss', {
+        ...bausteinLeer('bausteinBeschluss'),
+        antrag: 'Bier',
+        ja,
+      });
+    const wahl = (stimmen: number) =>
+      bausteinErzeugen('bausteinWahl', {
+        ...bausteinLeer('bausteinWahl'),
+        posten: 'Kasse',
+        anzahl: 2,
+        kandidaten: [{ id: 'k1', sub: 'm2', name: '', stimmen }],
+      });
+    const meinungsbild = bausteinErzeugen('bausteinMeinungsbild', {
+      frage: 'Pizza?',
+      optionen: [{ text: 'Ja', stimmen: 40 }],
+    });
+
+    // Too many votes for one present member.
+    await speichern(beschluss(2));
+    let res = await status();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(
+      'Abstimmung „Bier“: 2 Stimmen, aber 1 Mitglied anwesend.',
+    );
+    expect((await t.holen(id)).status).toBe('entwurf');
+
+    // A Wahl: one member, two votes (anzahl 2).
+    await speichern(beschluss(1), wahl(1));
+    res = await status();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(
+      'Wahl „Kasse“: 1 Stimme, erwartet 2 (1 Mitglied × 2 Stimmen).',
+    );
+
+    // Everything correct, a Meinungsbild with any count is ignored.
+    await speichern(beschluss(1), wahl(2), meinungsbild);
+    expect((await status()).status).toBe(200);
+    expect((await t.holen(id)).status).toBe('abgeschlossen');
   });
 
   it('suggests the next Sitzung live in a draft, freezes it on closing and restores it on reopening', async () => {

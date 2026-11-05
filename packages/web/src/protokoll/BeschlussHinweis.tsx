@@ -1,80 +1,52 @@
-import { Alert, Stack, Text } from '@mantine/core';
-import { IconAlertTriangle } from '@tabler/icons-react';
-import { wahlErgebnis, type BausteinBeschlussDaten, type BausteinWahlDaten } from '@c4/shared';
-
-type Stimmen = Pick<BausteinBeschlussDaten, 'ja' | 'nein' | 'enthaltung'>;
+import { Stack, Text } from '@mantine/core';
+import { stimmenHinweisText } from '@c4/shared';
 import { mitgliedernText } from './anwesenheit';
-import { personenAnwesendText, zuvieleWahlStimmen } from './bausteinLogik';
+import { personenAnwesendText } from './bausteinLogik';
 import { useProtokollKontext } from './kontext';
 
-/** Under an Abstimmung (or the vote of a Neues EM / Aufnahme): who was present at that point, and warnings about quorum and vote count. */
-export function BeschlussHinweis({ id, daten }: Readonly<{ id: string; daten: Stimmen }>) {
-  const { verlauf } = useProtokollKontext();
-  const stand = verlauf.bausteine[id];
-  if (!stand || stand.gesamt === 0) return null;
-  const stimmen = daten.ja + daten.nein + daten.enthaltung;
+/** "Stimmen: 4 von 5" per vote / Wahl round of the Baustein; orange when the count does not match. */
+function StimmenZeilen({ id }: Readonly<{ id: string }>) {
+  const { stimmen } = useProtokollKontext();
   return (
-    <Stack gap={4}>
-      <Text size="xs" c="dimmed">
-        Anwesend: {stand.anwesend} von {mitgliedernText(stand.gesamt)}
-      </Text>
-      {!stand.beschlussfaehig && (
-        <Text size="sm" fw={600} c="red">
-          Nicht beschlussfähig
-        </Text>
-      )}
-      {stimmen > stand.anwesend && (
-        <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
-          Mehr Stimmen als anwesende Mitglieder
-        </Alert>
-      )}
-    </Stack>
+    <>
+      {stimmen
+        .filter((p) => p.bausteinId === id)
+        .map((p) => (
+          <Text
+            key={p.runde}
+            size={p.ok ? 'xs' : 'sm'}
+            fw={p.ok ? undefined : 600}
+            c={p.ok ? 'dimmed' : 'orange.8'}
+          >
+            {stimmenHinweisText(p)}
+            {!p.ok && ' – sie müssen zur Anzahl der Anwesenden passen'}
+          </Text>
+        ))}
+    </>
   );
 }
 
-/** Under a Wahl: who was present, the quorum, and a warning when a round has too many votes. */
-export function WahlHinweis({ id, daten }: Readonly<{ id: string; daten: BausteinWahlDaten }>) {
+/**
+ * Under an Abstimmung (or the vote of a Neues EM / Aufnahme) and under a Wahl: who was present at
+ * that point, the quorum, and whether the vote count matches the members present (needed to close).
+ */
+export function BeschlussHinweis({ id }: Readonly<{ id: string }>) {
   const { verlauf } = useProtokollKontext();
   const stand = verlauf.bausteine[id];
-  if (!stand || stand.gesamt === 0) return null;
-  const { runden } = wahlErgebnis(daten);
-  const summe = (stimmen: number[], enthaltung: number) =>
-    stimmen.reduce((a, b) => a + b, 0) + enthaltung;
-  const zuviele =
-    zuvieleWahlStimmen(
-      summe(
-        daten.kandidaten.map((k) => k.stimmen),
-        daten.enthaltung,
-      ),
-      stand.anwesend,
-      daten.anzahl,
-    ) ||
-    runden.some((r, i) => {
-      const s = daten.stichwahlen[i]!;
-      return zuvieleWahlStimmen(
-        summe(
-          r.kandidaten.map((k) => s.stimmen[k] ?? 0),
-          s.enthaltung,
-        ),
-        stand.anwesend,
-        r.plaetze,
-      );
-    });
+  if (!stand) return null;
   return (
     <Stack gap={4}>
-      <Text size="xs" c="dimmed">
-        Anwesend: {stand.anwesend} von {mitgliedernText(stand.gesamt)}
-      </Text>
-      {!stand.beschlussfaehig && (
+      {stand.gesamt > 0 && (
+        <Text size="xs" c="dimmed">
+          Anwesend: {stand.anwesend} von {mitgliedernText(stand.gesamt)}
+        </Text>
+      )}
+      {stand.gesamt > 0 && !stand.beschlussfaehig && (
         <Text size="sm" fw={600} c="red">
           Nicht beschlussfähig
         </Text>
       )}
-      {zuviele && (
-        <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
-          Mehr Stimmen als anwesende Mitglieder
-        </Alert>
-      )}
+      <StimmenZeilen id={id} />
     </Stack>
   );
 }

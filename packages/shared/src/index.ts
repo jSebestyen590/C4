@@ -11,6 +11,7 @@ export * from './kontakt';
 export * from './posten';
 export * from './protokolle';
 export * from './protokollAnwesenheit';
+export * from './protokollStimmen';
 export * from './roles';
 export * from './schemas';
 export * from './schluessel';

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   anwesenheitsZeiten,
+  stimmenPruefen,
   type ProtokollDokument,
   type ProtokollDto,
   type ProtokollKopf as KopfDaten,
@@ -25,6 +26,8 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
+import { mitgliedName } from '../mitglied';
+import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
 import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
@@ -86,6 +89,20 @@ function ProtokollAnsicht({
   const zeiten = useMemo(() => anwesenheitsZeiten(inhalt), [inhalt]);
   const teilnahme = useMemo(() => effektiveTeilnahme(dto, kopf, zeiten), [dto, kopf, zeiten]);
   const ems = useMemo(() => mitLiveKopf(dto, kopf).ems, [dto, kopf]);
+  // Binding votes that do not match the members present: they block closing.
+  const stimmenProbleme = useMemo(
+    () =>
+      stimmenPruefen(inhalt, {
+        art: dto.sitzung.art,
+        teilnahme,
+        ems: ems.filter((e) => e.ausgewaehlt),
+        personName: (sub) => {
+          const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
+          return m ? mitgliedName(m) : undefined;
+        },
+      }).problems,
+    [inhalt, dto.sitzung.art, teilnahme, ems],
+  );
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -141,6 +158,14 @@ function ProtokollAnsicht({
       throw new ApiFehler(0, 'Das Protokoll konnte nicht gespeichert werden.');
     }
     await status.mutateAsync({ id: dto.id, status: neu });
+  };
+
+  /** Closes the dialog, shows the editor and scrolls to the Baustein with the wrong vote count. */
+  const zuBaustein = (id: string) => {
+    setDialog(null);
+    setAnsicht('bearbeiten');
+    // Wait until the dialog has closed and released the page scroll.
+    setTimeout(() => zuBausteinIdScrollen(id), 350);
   };
 
   const wiederOeffnen = async () => {
@@ -309,6 +334,7 @@ function ProtokollAnsicht({
           titel="Protokoll abschließen"
           color="blue"
           bestaetigenText="Abschließen"
+          gesperrt={stimmenProbleme.length > 0}
           onClose={() => setDialog(null)}
           onBestaetigt={() => statusSetzen('abgeschlossen')}
         >
@@ -316,6 +342,29 @@ function ProtokollAnsicht({
             Beim Abschließen wird die Teilnahme eingefroren: Spätere Zu- oder Absagen ändern sie
             nicht mehr. Das Protokoll lässt sich nicht mehr bearbeiten, bis du es wieder öffnest.
           </Text>
+          {stimmenProbleme.length > 0 && (
+            <Alert color="orange" title="Die Stimmen passen nicht zur Anwesenheit">
+              <Stack gap="xs" align="flex-start">
+                <Text size="sm">
+                  Jede Abstimmung und Wahl braucht genau so viele Stimmen, wie Mitglieder anwesend
+                  waren. Korrigiere diese Stellen, dann kannst du abschließen:
+                </Text>
+                {stimmenProbleme.map((p, i) => (
+                  <Anchor
+                    key={`${p.bausteinId}-${i}`}
+                    component="button"
+                    type="button"
+                    size="sm"
+                    ta="left"
+                    style={{ minHeight: 44, overflowWrap: 'anywhere' }}
+                    onClick={() => zuBaustein(p.bausteinId)}
+                  >
+                    {p.text}
+                  </Anchor>
+                ))}
+              </Stack>
+            </Alert>
+          )}
         </BestaetigenDialog>
       )}
       {dialog === 'loeschen' && (

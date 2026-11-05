@@ -130,6 +130,7 @@ import {
   type TrichterUebersichtDto,
   protokollAnlegenSchema,
   protokollDokumentPruefen,
+  stimmenPruefen,
   protokollEventIds,
   protokollKopfLeer,
   protokollKopfSchema,
@@ -1910,16 +1911,37 @@ export function createApp(deps: AppDeps) {
           const kopf = protokollKopfLesen(p.kopf);
           const [event] =
             status === 'abgeschlossen' ? await deps.kalender.eventsKurz([p.eventId]) : [];
-          const neuerKopf =
-            status === 'abgeschlossen'
-              ? kopfAbschliessen(
-                  kopf,
-                  await protokollMitglieder(),
-                  await deps.kalender.teilnahmeAntworten(p.eventId),
-                  event?.protokollArt ?? 'sitzung',
-                  (await naechsteSitzungenLesen(event?.beginn))[0] ?? null,
-                )
-              : kopfWiederOeffnen(kopf);
+          let neuerKopf: ProtokollKopf;
+          if (status === 'abgeschlossen') {
+            const mitglieder = await protokollMitglieder();
+            const antworten = await deps.kalender.teilnahmeAntworten(p.eventId);
+            const art = event?.protokollArt ?? 'sitzung';
+            neuerKopf = kopfAbschliessen(
+              kopf,
+              mitglieder,
+              antworten,
+              art,
+              (await naechsteSitzungenLesen(event?.beginn))[0] ?? null,
+            );
+            // Every binding vote needs as many votes as members present (see docs/protokolle.md).
+            const listen = protokollListen(neuerKopf, 'abgeschlossen', mitglieder, antworten);
+            const { problems } = stimmenPruefen(protokollInhaltLesen(p.inhalt), {
+              art,
+              teilnahme: listen.teilnahme,
+              ems: listen.ems.filter((e) => e.ausgewaehlt),
+              personName: (sub) => {
+                const m = mitglieder.find((x) => x.sub === sub);
+                return m && (m.username || `${m.vorname} ${m.nachname}`.trim());
+              },
+            });
+            if (problems.length > 0) {
+              throw new HTTPException(400, {
+                message: `Das Protokoll lässt sich nicht abschließen, die Stimmen passen nicht zur Anwesenheit: ${problems.map((x) => x.text).join(' ')}`,
+              });
+            }
+          } else {
+            neuerKopf = kopfWiederOeffnen(kopf);
+          }
           try {
             const ergebnis = gefunden(
               await deps.protokolle.statusSetzen(

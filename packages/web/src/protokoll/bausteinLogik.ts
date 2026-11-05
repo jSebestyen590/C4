@@ -257,6 +257,17 @@ export function wahlAnzahlSetzen(daten: BausteinWahlDaten, anzahl: number): Baus
   return { ...daten, anzahl };
 }
 
+/** Sets the votes each present member has; out-of-range values leave the Wahl as it is. */
+export function wahlStimmenProPersonSetzen(
+  daten: BausteinWahlDaten,
+  stimmenProPerson: number,
+): BausteinWahlDaten {
+  if (!ganz(stimmenProPerson) || stimmenProPerson < 1 || stimmenProPerson > WAHL_MAX_ANZAHL) {
+    return daten;
+  }
+  return { ...daten, stimmenProPerson };
+}
+
 /** Appends the runoff round the tie needs (nothing when no round is needed or one is there already). */
 export function stichwahlHinzufuegen(daten: BausteinWahlDaten): BausteinWahlDaten {
   const offen = wahlErgebnis(daten).offen;
@@ -294,10 +305,6 @@ export function stichwahlSetzen(
 export function ueberzaehligeStichwahlenEntfernen(daten: BausteinWahlDaten): BausteinWahlDaten {
   return stichwahlEntfernen(daten, wahlErgebnis(daten).runden.length);
 }
-
-/** Whether a round has more votes than present members could give (each has up to `plaetze` votes). */
-export const zuvieleWahlStimmen = (summe: number, anwesend: number, plaetze: number): boolean =>
-  summe > anwesend * plaetze;
 
 // ---------------------------------------------------------------------------------------------
 // Focus after inserting

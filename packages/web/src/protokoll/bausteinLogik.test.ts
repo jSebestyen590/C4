@@ -24,7 +24,7 @@ import {
   stichwahlSetzen,
   ueberzaehligeStichwahlenEntfernen,
   wahlAnzahlSetzen,
-  zuvieleWahlStimmen,
+  wahlStimmenProPersonSetzen,
   vergangeneEvents,
   zeitWert,
   bausteinNeu,
@@ -247,6 +247,14 @@ describe('Wahl', () => {
     expect(wahlAnzahlSetzen(leer, 21)).toBe(leer);
   });
 
+  it('sets the votes per person between 1 and 20 and keeps null until then', () => {
+    expect(leer.stimmenProPerson).toBeNull();
+    expect(wahlStimmenProPersonSetzen(leer, 2).stimmenProPerson).toBe(2);
+    expect(wahlStimmenProPersonSetzen(leer, 0)).toBe(leer);
+    expect(wahlStimmenProPersonSetzen(leer, 21)).toBe(leer);
+    expect(wahlStimmenProPersonSetzen(leer, 1.5)).toBe(leer);
+  });
+
   it('adds a Stichwahl only when a tie needs one, and removes it with the later ones', () => {
     const klar = mit([5, 3]);
     expect(stichwahlHinzufuegen(klar)).toBe(klar);
@@ -268,12 +276,6 @@ describe('Wahl', () => {
     expect(ueberzaehligeStichwahlenEntfernen(d).stichwahlen).toEqual([]);
     const noetig = { ...mit([3, 3]), stichwahlen: [{ stimmen: { k0: 1 }, enthaltung: 0 }] };
     expect(ueberzaehligeStichwahlenEntfernen(noetig)).toEqual(noetig);
-  });
-
-  it('warns when a round has more votes than the present members can give', () => {
-    expect(zuvieleWahlStimmen(4, 4, 1)).toBe(false);
-    expect(zuvieleWahlStimmen(5, 4, 1)).toBe(true);
-    expect(zuvieleWahlStimmen(8, 4, 2)).toBe(false);
   });
 
   it('focuses the Posten first', () => {

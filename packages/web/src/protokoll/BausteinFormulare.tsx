@@ -26,6 +26,7 @@ import {
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
   wahlErgebnis,
+  wahlStimmenProPerson,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
   type BausteinBeschlussDaten,
@@ -61,6 +62,7 @@ import {
   stimmeSetzen,
   ueberzaehligeStichwahlenEntfernen,
   wahlAnzahlSetzen,
+  wahlStimmenProPersonSetzen,
   zeitWert,
 } from './bausteinLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
@@ -907,6 +909,13 @@ export function WahlFormular({
         min={1}
         max={WAHL_MAX_ANZAHL}
         onWert={(n) => aendern((d) => wahlAnzahlSetzen(d, n))}
+      />
+      <LokalZahl
+        label="Stimmen pro Person"
+        wert={wahlStimmenProPerson(daten)}
+        min={1}
+        max={WAHL_MAX_ANZAHL}
+        onWert={(n) => aendern((d) => wahlStimmenProPersonSetzen(d, n))}
       />
       {daten.kandidaten.map((k, i) => (
         <Paper key={k.id} withBorder p="xs" radius="md">

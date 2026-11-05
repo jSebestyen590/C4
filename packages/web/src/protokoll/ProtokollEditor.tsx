@@ -10,6 +10,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   anwesenheitsVerlauf,
+  stimmenPruefen,
   type ProtokollArt,
   type ProtokollDokument,
   type ProtokollMitgliedDto,
@@ -209,6 +210,11 @@ export function ProtokollEditor({
         teilnahme,
         ems: ems.filter((e) => e.ausgewaehlt),
       }),
+      stimmen: stimmenPruefen(dokument, {
+        art,
+        teilnahme,
+        ems: ems.filter((e) => e.ausgewaehlt),
+      }).pruefungen,
     }),
     [sitzungBeginn, art, teilnahme, ems, dokument, anwesenheit],
   );

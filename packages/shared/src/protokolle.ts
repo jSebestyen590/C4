@@ -221,11 +221,18 @@ export const bausteinWahlDatenSchema = z.strictObject({
     .regex(/^(\d{4}-\d{2}-\d{2})?$/, 'Bitte gib ein Datum an.')
     .default(''),
   anzahl: z.number().int().min(1).max(WAHL_MAX_ANZAHL),
+  /** Votes each present member has; null = same as `anzahl` (and in old data). */
+  stimmenProPerson: z.number().int().min(1).max(WAHL_MAX_ANZAHL).nullable().default(null),
   kandidaten: z.array(bausteinWahlKandidatSchema).max(WAHL_MAX_KANDIDATEN),
   enthaltung: stimmen,
   stichwahlen: z.array(bausteinWahlStichwahlSchema).max(WAHL_MAX_STICHWAHLEN),
 });
 export type BausteinWahlDaten = z.infer<typeof bausteinWahlDatenSchema>;
+
+/** Votes each present member has in the main round of a Wahl: `stimmenProPerson`, else `anzahl`. */
+export const wahlStimmenProPerson = (
+  daten: Pick<BausteinWahlDaten, 'anzahl' | 'stimmenProPerson'>,
+): number => daten.stimmenProPerson ?? daten.anzahl;
 
 export interface WahlRunde {
   /** The candidates the round is about (the ones the previous round left tied). */
@@ -352,6 +359,7 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         postenId: null,
         gueltigAb: '',
         anzahl: 1,
+        stimmenProPerson: null,
         kandidaten: [],
         enthaltung: 0,
         stichwahlen: [],
