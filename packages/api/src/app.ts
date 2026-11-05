@@ -134,12 +134,14 @@ import {
   protokollKopfLeer,
   protokollKopfSchema,
   protokollLeer,
+  protokollDokumentNormalisieren,
   protokollSpeichernSchema,
   protokollStatusSchema,
   protokollVorschlag,
   type ProtokollDokument,
   type ProtokollDto,
   type ProtokollKopf,
+  type ProtokollNaechsteSitzungVorschlag,
   type ProtokollListeEintragDto,
   type ProtokollSitzungDto,
   type ProtokollVorschlagDto,
@@ -206,6 +208,7 @@ import {
   kopfAbschliessen,
   kopfOhneSchnappschuss,
   kopfWiederOeffnen,
+  naechsteSitzungVorschlagVon,
   protokollArtVon,
   mitgliedDto,
   protokollListen,
@@ -301,6 +304,8 @@ function cursorLesen(wert: string | undefined): UmfragenCursor | undefined {
 
 /** How many Sitzungen without protocol the "new protocol" page offers. */
 const PROTOKOLL_SITZUNGEN_MAX = 20;
+/** Upcoming Sitzungen offered as "next Sitzung" in the editor. */
+const PROTOKOLL_NAECHSTE_SITZUNGEN_MAX = 10;
 
 const MITGLIED_DEAKTIVIERT = 'Das Mitglied ist deaktiviert.';
 
@@ -937,7 +942,9 @@ export function createApp(deps: AppDeps) {
   const protokollInhaltLesen = (text: string): ProtokollDokument => {
     try {
       const doc: unknown = JSON.parse(text);
-      return protokollDokumentPruefen(doc) === null ? (doc as ProtokollDokument) : protokollLeer();
+      return protokollDokumentPruefen(doc) === null
+        ? protokollDokumentNormalisieren(doc as ProtokollDokument)
+        : protokollLeer();
     } catch {
       return protokollLeer();
     }
@@ -994,6 +1001,18 @@ export function createApp(deps: AppDeps) {
     };
   };
 
+  /** The next Sitzungen (any art, not cancelled) after the given start, earliest first. */
+  const naechsteSitzungenLesen = async (
+    beginn: string | undefined,
+  ): Promise<ProtokollNaechsteSitzungVorschlag[]> => {
+    if (!beginn) return [];
+    const events = await deps.kalender.kommendeSitzungen(
+      new Date(beginn),
+      PROTOKOLL_NAECHSTE_SITZUNGEN_MAX,
+    );
+    return events.map((e) => ({ eventId: e.id, titel: e.titel, beginn: e.beginn }));
+  };
+
   const alsProtokollDto = async (p: ProtokollDaten): Promise<ProtokollDto> => {
     const [[event], mitglieder, antworten] = await Promise.all([
       deps.kalender.eventsKurz([p.eventId]),
@@ -1001,6 +1020,8 @@ export function createApp(deps: AppDeps) {
       deps.kalender.teilnahmeAntworten(p.eventId),
     ]);
     const kopf = protokollKopfLesen(p.kopf);
+    const geschlossen = p.status === 'abgeschlossen' && kopf.naechsteSitzungSchnappschuss !== null;
+    const naechste = geschlossen ? [] : await naechsteSitzungenLesen(event?.beginn);
     const von = mitglieder.find((m) => m.sub === p.geaendertVon);
     return {
       id: p.id,
@@ -1016,6 +1037,8 @@ export function createApp(deps: AppDeps) {
       kopf,
       status: p.status,
       version: p.version,
+      naechsteSitzungVorschlag: naechsteSitzungVorschlagVon(kopf, p.status, naechste[0] ?? null),
+      naechsteSitzungen: p.status === 'entwurf' ? naechste : [],
       ...protokollListen(kopf, p.status, mitglieder, antworten),
       geaendertAm: p.geaendertAm.toISOString(),
       geaendertVon: von ? mitgliedDto(von) : null,
@@ -1885,13 +1908,16 @@ export function createApp(deps: AppDeps) {
             return c.json({ status, version: p.version, geaendertAm: p.geaendertAm.toISOString() });
           }
           const kopf = protokollKopfLesen(p.kopf);
+          const [event] =
+            status === 'abgeschlossen' ? await deps.kalender.eventsKurz([p.eventId]) : [];
           const neuerKopf =
             status === 'abgeschlossen'
               ? kopfAbschliessen(
                   kopf,
                   await protokollMitglieder(),
                   await deps.kalender.teilnahmeAntworten(p.eventId),
-                  (await deps.kalender.eventsKurz([p.eventId]))[0]?.protokollArt ?? 'sitzung',
+                  event?.protokollArt ?? 'sitzung',
+                  (await naechsteSitzungenLesen(event?.beginn))[0] ?? null,
                 )
               : kopfWiederOeffnen(kopf);
           try {

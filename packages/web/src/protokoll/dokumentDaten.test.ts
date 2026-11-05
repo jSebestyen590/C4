@@ -14,6 +14,8 @@ import {
   eroeffnungSatz,
   istQuellenzeile,
   mitLiveKopf,
+  naechsteSitzungSatz,
+  naechsteSitzungWert,
   ohneLeereEnden,
   type DokumentEingabe,
 } from './dokumentDaten';
@@ -314,5 +316,33 @@ describe('Hilfen', () => {
     expect(
       mitLiveKopf({ teilnahme: t, ems: [], status: 'abgeschlossen' }, kopf).teilnahme[0]?.wert,
     ).toBe('anwesend');
+  });
+});
+
+describe('naechsteSitzung', () => {
+  const vorschlag = { eventId: 'e9', titel: 'Sitzung', beginn: '2026-11-10T19:00:00.000Z' };
+
+  it('takes the calendar suggestion while automatic (Berlin time)', () => {
+    const w = naechsteSitzungWert(protokollKopfLeer(), vorschlag);
+    expect(w).toEqual({ eventId: 'e9', datum: '2026-11-10', uhrzeit: '20:00' });
+    expect(naechsteSitzungSatz(w)).toBe(
+      'Die nächste Sitzung findet am Dienstag, 10.11.2026 um 20:00 Uhr statt.',
+    );
+    expect(naechsteSitzungWert(protokollKopfLeer(), null)).toBeNull();
+    expect(naechsteSitzungSatz(null)).toBeNull();
+  });
+
+  it('lets the override win and leaves out an unknown time or date', () => {
+    const kopf = (datum: string, uhrzeit: string) => ({
+      ...protokollKopfLeer(),
+      naechsteSitzung: { eventId: null, datum, uhrzeit },
+    });
+    expect(naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-01', ''), vorschlag))).toBe(
+      'Die nächste Sitzung findet am Dienstag, 01.12.2026 statt.',
+    );
+    expect(naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-02', '19:30'), vorschlag))).toBe(
+      'Die nächste Sitzung findet am Mittwoch, 02.12.2026 um 19:30 Uhr statt.',
+    );
+    expect(naechsteSitzungWert(kopf('', ''), vorschlag)).toBeNull();
   });
 });

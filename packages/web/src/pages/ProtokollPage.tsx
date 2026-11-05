@@ -28,6 +28,7 @@ import { tagAnzeigen } from '../kalenderZeit';
 import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
+import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokoll, useProtokollLoeschen, useProtokollStatus } from '../protokollDaten';
 import { PROTOKOLL_DRUCK_CSS, ProtokollKopf } from '../ProtokollKopf';
@@ -282,6 +283,13 @@ function ProtokollAnsicht({
             ems={ems}
             onAnwesenheit={anwesenheit}
           />
+          <NaechsteSitzungKarte
+            kopf={kopf}
+            vorschlag={dto.naechsteSitzungVorschlag}
+            optionen={dto.naechsteSitzungen}
+            editierbar={editierbar}
+            onChange={kopfAendern}
+          />
         </Stack>
       )}
       {dokumentSichtbar && (
@@ -291,6 +299,7 @@ function ProtokollAnsicht({
             kopf,
             ...mitLiveKopf(dto, kopf),
             sitzung: dto.sitzung,
+            naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
           }}
         />
       )}

@@ -2,6 +2,7 @@ import {
   bausteinErzeugen,
   beschlussErgebnisVorschlag,
   MEINUNGSBILD_MAX_OPTIONEN,
+  protokollDokumentNormalisieren,
   WAHL_MAX_ANZAHL,
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
@@ -377,20 +378,22 @@ function ohneAnwesenheitText(knoten: ProtokollKnoten): ProtokollKnoten {
 }
 
 /**
- * The document as the editor needs it: every section has content, and (when `absatzAmEnde`) ends with a
+ * The document as the editor needs it: all four sections (an old one gets an empty "Sonstiges"), every section has content, and (when `absatzAmEnde`) ends with a
  * text block, so there is always a place to type after a Baustein. Returns a copy.
  */
 export function dokumentNormalisieren(
   dokument: ProtokollDokument,
   absatzAmEnde: boolean,
 ): ProtokollDokument {
-  const abschnitte = dokument.content.map((abschnitt): ProtokollKnoten => {
-    const inhalt = (abschnitt.content ?? []).map(ohneAnwesenheitText);
-    const letzter = inhalt[inhalt.length - 1];
-    if (!letzter || (absatzAmEnde && !TEXTBLOECKE.has(letzter.type)))
-      inhalt.push({ type: 'paragraph' });
-    return { ...abschnitt, content: inhalt };
-  });
+  const abschnitte = protokollDokumentNormalisieren(dokument).content.map(
+    (abschnitt): ProtokollKnoten => {
+      const inhalt = (abschnitt.content ?? []).map(ohneAnwesenheitText);
+      const letzter = inhalt[inhalt.length - 1];
+      if (!letzter || (absatzAmEnde && !TEXTBLOECKE.has(letzter.type)))
+        inhalt.push({ type: 'paragraph' });
+      return { ...abschnitt, content: inhalt };
+    },
+  );
   return { ...dokument, content: abschnitte };
 }
 

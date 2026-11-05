@@ -8,22 +8,23 @@ import {
   type ProtokollAbschnitt,
 } from '@c4/shared';
 
-// Document structure of the minutes: exactly three fixed sections, each holding text blocks and Bausteine.
+// Document structure of the minutes: four fixed sections, each holding text blocks and Bausteine.
 
 export const ABSCHNITT_TITEL: Record<ProtokollAbschnitt, string> = {
   vergangenes: 'Vergangenes',
   gegenwaertiges: 'Gegenwärtiges',
   zukuenftiges: 'Zukünftiges',
+  sonstiges: 'Sonstiges',
 };
 
 const istAbschnittArt = (art: unknown): art is ProtokollAbschnitt =>
   (PROTOKOLL_ABSCHNITTE as readonly string[]).includes(art as string);
 
-/** The document is exactly the three sections. */
+/** The document is exactly the four sections (old documents get an empty "Sonstiges" on loading). */
 export const ProtokollDokumentKnoten = Node.create({
   name: 'doc',
   topNode: true,
-  content: 'abschnitt{3}',
+  content: 'abschnitt{4}',
 });
 
 /**
@@ -72,7 +73,7 @@ export const AbschnittKnoten = Node.create({
   },
 });
 
-/** Whether the document still has the three sections in the fixed order. */
+/** Whether the document still has the four sections in the fixed order. */
 export function abschnitteIntakt(doc: PmNode): boolean {
   if (doc.childCount !== PROTOKOLL_ABSCHNITTE.length) return false;
   for (let i = 0; i < doc.childCount; i++) {

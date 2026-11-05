@@ -1,8 +1,8 @@
 # Protokolle
 
 Sitzungsprotokolle der Mitgliederversammlungen und Sitzungen. Ein Protokoll gehört zu genau einem Sitzungs-Event und besteht
-aus dem **Kopf** (Teilnahme, EMs, Gäste) und einem **Dokument** mit drei festen Abschnitten (Vergangenes, Gegenwärtiges,
-Zukünftiges), in dem Text und **Bausteine** stehen. Rechte: `protokolle:lesen` (alle Status: ansehen, drucken),
+aus dem **Kopf** (Teilnahme, EMs, Gäste) und einem **Dokument** mit vier festen Abschnitten (Vergangenes, Gegenwärtiges,
+Zukünftiges, Sonstiges), in dem Text und **Bausteine** stehen. Rechte: `protokolle:lesen` (alle Status: ansehen, drucken),
 `protokolle:schreiben` (anlegen, bearbeiten, abschließen, löschen). Das Schreibrecht geben Admins immer, sonst ein Posten
 (`POSTEN_RECHTE`, siehe [posten.md](./posten.md)).
 
@@ -59,17 +59,26 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
   als `anwesend`, setzt das die Überschreibung `anwesend` (`kopfNachAnwesenheit`), siehe Slash-Befehle.
 - **Beschlussfähigkeit:** Der Kopf zeigt live „Beschlussfähig: 13 von 25 Mitgliedern anwesend (nötig: 13)“ (rot: „Nicht
   beschlussfähig“) aus der Teilnahme zu Beginn (ohne die, die später per Erscheint kommen) und der Art der Sitzung.
-- **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden und die Art der Sitzung ein
-  (`schnappschuss`, `emsSchnappschuss`, `statusSchnappschuss`, `artSchnappschuss`). Danach zeigt
+- **Nächste Sitzung** (`naechsteSitzung`): `null` = automatisch, sonst `{ eventId, datum, uhrzeit }` von Hand. Automatisch ist die
+  erste nicht abgesagte Sitzung nach dieser (jede Kategorie mit Häkchen „Sitzung mit Protokoll“, jede Art; live aus dem Kalender,
+  `kommendeSitzungen`). Im Bearbeiten-Modus steht unter dem Editor die Karte „Nächste Sitzung“
+  (`protokoll/NaechsteSitzungKarte.tsx`, nicht Teil des Dokuments): Wert „Di, 10.11.2026, 20:00 · Sitzung (aus dem Kalender)“ mit „Im Kalender
+  öffnen“ (neuer Tab); „Ändern“ blendet eine Auswahl der kommenden Sitzungen oder Datum und Uhrzeit ein, „Automatisch“ setzt zurück.
+- **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden, die Art der Sitzung und den
+  automatischen Vorschlag für die nächste Sitzung ein
+  (`schnappschuss`, `emsSchnappschuss`, `statusSchnappschuss`, `artSchnappschuss`, `naechsteSitzungSchnappschuss`). Danach zeigt
   das Protokoll genau diese Personen und Werte; spätere Zu- oder Absagen, Statuswechsel oder Deaktivierungen ändern sie nicht.
   „Wieder öffnen“ verwirft den Schnappschuss, der Entwurf folgt wieder dem Event. Den Schnappschuss setzt nur die API, ein
   Speichern des Entwurfs löscht ihn.
 
 ## Dokument und Bausteine
 
-Das Dokument (TipTap, `@mantine/tiptap`) besteht aus genau drei Abschnitten mit fester Überschrift. Sie lassen sich weder
+Das Dokument (TipTap, `@mantine/tiptap`) besteht aus genau vier Abschnitten mit fester Überschrift (Vergangenes, Gegenwärtiges,
+Zukünftiges, Sonstiges). Sie lassen sich weder
 löschen, verschieben noch umbenennen (auch nicht durch Alles-markieren + Löschen oder Einfügen; der Editor lehnt solche
-Änderungen ab, die API prüft Anzahl und Reihenfolge). In einem Abschnitt stehen Absätze, Überschriften (Ebene 2 und 3),
+Änderungen ab, die API prüft Anzahl und Reihenfolge). **Sonstiges** ist optional: Im Editor immer da, in der Dokumentansicht nur mit
+Inhalt. Ältere Dokumente haben nur drei Abschnitte; beim Lesen (API, Editor) kommt ein leeres Sonstiges dazu
+(`protokollDokumentNormalisieren`), die Prüfung nimmt drei oder vier. In einem Abschnitt stehen Absätze, Überschriften (Ebene 2 und 3),
 Listen, Links, fett und kursiv sowie Bausteine. Am Ende jedes Abschnitts bleibt ein leerer Absatz.
 
 Ein **Baustein** ist ein Block mit Feldern (Formular im Dokument) und einem Freitext darunter (normaler Text mit
@@ -114,7 +123,7 @@ mehrtägigen.
 ## Gliederung (Verschieben)
 
 Im Bearbeiten-Modus zeigt die **Gliederung** (`protokoll/GliederungBaum.tsx`, Logik und Tests in `protokoll/gliederung.ts`) alle
-Bausteine als Baum: die drei Abschnitte, darunter ihre Bausteine in Dokument-Reihenfolge (Freitext fehlt), darunter die
+Bausteine als Baum: die vier Abschnitte, darunter ihre Bausteine in Dokument-Reihenfolge (Freitext fehlt), darunter die
 Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), eingerückt. Jeder Eintrag zeigt Symbol und Kurztitel
 (z. B. „11.02. Superbowl“, „Abstimmung: …“, „Wahl: …“, „<Name> erscheint“). Ein Tipp scrollt den Editor zum Baustein.
 
@@ -136,7 +145,7 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), einge
   geklappt.“ und die Gliederung bleibt bedienbar.
 - **Position:** „Als i-ter“ heißt direkt vor dem i-ten Baustein der Liste, am Ende hinter dem letzten Baustein bzw. (leere
   Liste) vor dem leeren Schluss-Absatz. Freitext bleibt, wo er ist. Der Zug ist **eine** Transaktion (Einfügen + Löschen):
-  Rückgängig macht ihn in einem Schritt rückgängig, das Autospeichern greift wie sonst; die drei Abschnitte bleiben intakt.
+  Rückgängig macht ihn in einem Schritt rückgängig, das Autospeichern greift wie sonst; die vier Abschnitte bleiben intakt.
 - `Alt`+`↑` / `Alt`+`↓` verschiebt weiterhin den Block am Cursor um einen Platz (`protokoll/verschieben.ts`).
 
 ## Dokumentansicht
@@ -144,6 +153,7 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), einge
 Das fertige Protokoll wie früher in Word (`ProtokollDokumentAnsicht`, Ableitung in `protokoll/dokumentDaten.ts`, getestet).
 Schreibende sehen im Entwurf den Umschalter „Bearbeiten“ / „Dokument“ (der Editor bleibt dabei erhalten, die Ansicht zeigt den
 aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschlossene Protokolle zeigen nur das Dokument.
+Das Dokument ist höchstens etwa so breit wie eine A4-Seite (21 cm) und steht mittig.
 
 - **Titel:** `<Titel der Sitzung> TT.MM.JJJJ` (Datum in Berlin).
 - **Kopfzeilen:** „Anwesende Mitglieder“ (alle „da“, auch die aus Erscheint/Geht-Bausteinen, mit „(ab 21:00 Uhr)“, „(bis 22:10 Uhr)“
@@ -154,7 +164,7 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
 - **Eröffnung:** „<Leitung> eröffnet die Sitzung um 20:04 Uhr.“ (Mitgliederversammlung entsprechend), nur mit Uhrzeit „Die Sitzung
   wird um 20:04 Uhr eröffnet.“, ohne beides entfällt der Satz. Danach die **Beschlussfähigkeit** („13 von 25 Mitgliedern
   anwesend, nötig sind mindestens 13 (mehr als die Hälfte)“); „nicht beschlussfähig“ steht rot.
-- **Abschnitte** als große Überschrift in der Primärfarbe (leere zeigen nur die Überschrift), darin Text mit Absätzen,
+- **Abschnitte** als große Überschrift in der Primärfarbe (leere zeigen nur die Überschrift, ein leeres Sonstiges entfällt ganz), darin Text mit Absätzen,
   Überschriften, Listen (zweite Ebene „○“), fett, kursiv, Links. Ein **Zitat** ist rechtsbündig und kursiv, eine Zeile mit
   „–“/„—“ davor (Quelle) steht aufrecht.
 - **Event:** Überschrift `11.02. Superbowl` (bei mehreren Tagen von–bis), dann der Punkt „Verantwortlich: @Name“ (nur wenn
@@ -174,6 +184,9 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   „nicht beschlussfähig“), dann die Notizen. Personen als `StatusName`.
 - **Verschachtelt:** Eine Abstimmung, ein Meinungsbild oder eine Wahl in den Notizen eines anderen Bausteins steht dort, eingerückt wie die
   übrigen Notizen, an der Stelle im Text.
+- **Nächste Sitzung:** letzte Zeile nach allen Abschnitten: „Die nächste Sitzung findet am Dienstag, 10.11.2026 um 20:00 Uhr statt.“
+  (ohne Uhrzeit „… am Dienstag, 10.11.2026 statt.“, Berliner Zeit, Wochentag ausgeschrieben; ist nichts bekannt, entfällt sie).
+  Es gilt der Wert von Hand aus dem Kopf, sonst der automatische Vorschlag (`naechsteSitzungWert`).
 - **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Uhrzeit „Strobi geht.“, ohne Person entfällt sie); ändert
   sich dadurch die Beschlussfähigkeit, folgt fett „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.
 
@@ -221,7 +234,7 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
 ## Vorbelegung eines neuen Protokolls
 
 `protokollVorschlag` (Shared, getestet) baut das Dokument aus dem letzten Protokoll einer **früheren** Sitzung; Kopf und
-Gegenwärtiges starten leer. Ohne Vorgänger sind alle drei Abschnitte leer. Gelesen werden alle Event-Bausteine des
+Gegenwärtiges starten leer. Ohne Vorgänger sind alle vier Abschnitte leer; Sonstiges wird nie übernommen. Gelesen werden alle Event-Bausteine des
 Vorgängers (jeder Abschnitt), aktualisiert mit den heutigen Kalenderdaten (Name, Datum, Uhrzeiten), soweit das Event noch
 existiert:
 
@@ -257,16 +270,16 @@ existiert:
 
 ## API
 
-| Route                            | Recht                  | Inhalt                                                                                                             |
-| -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/protokolle`            | `protokolle:lesen`     | Liste: Id, Sitzung (Titel, Beginn), Status, zuletzt geändert (neueste Sitzung zuerst)                              |
-| `GET /api/protokolle/:id`        | `protokolle:lesen`     | Inhalt, Kopf, `version`, Teilnahme- und EM-Listen (live abgeleitet, abgeschlossen aus Schnappschuss)               |
-| `GET /api/protokolle/sitzungen`  | `protokolle:schreiben` | Sitzungen ohne Protokoll                                                                                           |
-| `GET /api/protokolle/vorschlag`  | `protokolle:schreiben` | `?eventId=` → vorbelegtes `{ inhalt, kopf }`                                                                       |
-| `POST /api/protokolle`           | `protokolle:schreiben` | `{ eventId, inhalt?, kopf? }` → 201 `{ id }`; ohne `inhalt`/`kopf` gilt die Vorbelegung; 409 bei zweitem Protokoll |
-| `PUT /api/protokolle/:id`        | `protokolle:schreiben` | `{ inhalt, kopf, version }` → `{ version, geaendertAm }`; 409 bei veralteter Version oder abgeschlossen            |
-| `PUT /api/protokolle/:id/status` | `protokolle:schreiben` | `{ status }` (`entwurf`/`abgeschlossen`): Abschließen friert die Teilnahme ein, Wieder öffnen löst sie             |
-| `DELETE /api/protokolle/:id`     | `protokolle:schreiben` | nur im Entwurf (409 sonst)                                                                                         |
+| Route                            | Recht                  | Inhalt                                                                                                                                                                                                                                                                                           |
+| -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/protokolle`            | `protokolle:lesen`     | Liste: Id, Sitzung (Titel, Beginn), Status, zuletzt geändert (neueste Sitzung zuerst)                                                                                                                                                                                                            |
+| `GET /api/protokolle/:id`        | `protokolle:lesen`     | Inhalt, Kopf, `version`, Teilnahme- und EM-Listen (live abgeleitet, abgeschlossen aus Schnappschuss), `naechsteSitzungVorschlag` (`{ eventId, titel, beginn }` oder `null`; live, abgeschlossen eingefroren), `naechsteSitzungen` (kommende Sitzungen zur Auswahl, höchstens 10, nur im Entwurf) |
+| `GET /api/protokolle/sitzungen`  | `protokolle:schreiben` | Sitzungen ohne Protokoll                                                                                                                                                                                                                                                                         |
+| `GET /api/protokolle/vorschlag`  | `protokolle:schreiben` | `?eventId=` → vorbelegtes `{ inhalt, kopf }`                                                                                                                                                                                                                                                     |
+| `POST /api/protokolle`           | `protokolle:schreiben` | `{ eventId, inhalt?, kopf? }` → 201 `{ id }`; ohne `inhalt`/`kopf` gilt die Vorbelegung; 409 bei zweitem Protokoll                                                                                                                                                                               |
+| `PUT /api/protokolle/:id`        | `protokolle:schreiben` | `{ inhalt, kopf, version }` → `{ version, geaendertAm }`; 409 bei veralteter Version oder abgeschlossen                                                                                                                                                                                          |
+| `PUT /api/protokolle/:id/status` | `protokolle:schreiben` | `{ status }` (`entwurf`/`abgeschlossen`): Abschließen friert die Teilnahme ein, Wieder öffnen löst sie                                                                                                                                                                                           |
+| `DELETE /api/protokolle/:id`     | `protokolle:schreiben` | nur im Entwurf (409 sonst)                                                                                                                                                                                                                                                                       |
 
 `DELETE /api/kalender/events/:id` antwortet 409, solange das Event ein Protokoll hat.
 

@@ -508,6 +508,7 @@ function makeKalenderFake() {
     eventLoeschen: vi.fn<KalenderStore['eventLoeschen']>(async () => true),
     eventsKurz: vi.fn<KalenderStore['eventsKurz']>(async () => []),
     sitzungen: vi.fn<KalenderStore['sitzungen']>(async () => []),
+    kommendeSitzungen: vi.fn<KalenderStore['kommendeSitzungen']>(async () => []),
     teilnahmeAntworten: vi.fn<KalenderStore['teilnahmeAntworten']>(async () => ({})),
     bilderOrdner: vi.fn<KalenderStore['bilderOrdner']>(async (id) => bilder.get(id) ?? null),
     bilderOrdnerSetzen: vi.fn<KalenderStore['bilderOrdnerSetzen']>(async (id, ordner) => {
@@ -6795,7 +6796,7 @@ describe('protokolle', () => {
     expect((await t.holen(id)).inhalt).toEqual(inhalt);
 
     const kaputt = protokollLeer();
-    kaputt.content.pop();
+    kaputt.content.splice(1);
     expect((await put('admin-token', { inhalt: kaputt, kopf: dto.kopf, version: 2 })).status).toBe(
       400,
     );
@@ -7015,6 +7016,96 @@ describe('protokolle', () => {
     expect(dto.teilnahme.find((p) => p.sub === 'v')?.wert).toBe('anwesend');
     expect((await status('admin-token', 'entwurf')).status).toBe(200);
     expect((await status('admin-token', 'offen')).status).toBe(400);
+  });
+
+  it('suggests the next Sitzung live in a draft, freezes it on closing and restores it on reopening', async () => {
+    const t = await setup();
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+    const status = (wert: string) =>
+      t.app.request(`/api/protokolle/${id}/status`, json('admin-token', 'PUT', { status: wert }));
+    // No later Sitzung known.
+    let dto = await t.holen(id);
+    expect(dto.naechsteSitzungVorschlag).toBeNull();
+    expect(dto.naechsteSitzungen).toEqual([]);
+    expect(dto.kopf.naechsteSitzung).toBeNull();
+
+    t.kalender.kommendeSitzungen.mockResolvedValue([
+      sitzung('s2', '2026-11-03T18:00:00.000Z'),
+      sitzung('s4', '2026-12-01T19:00:00.000Z', {
+        titel: 'MV',
+        protokollArt: 'mitgliederversammlung',
+      }),
+    ]);
+    dto = await t.holen(id);
+    const [nach, limit] = t.kalender.kommendeSitzungen.mock.calls.at(-1)!;
+    expect(nach.toISOString()).toBe('2026-10-06T17:00:00.000Z');
+    expect(limit).toBe(10);
+    const s2 = { eventId: 's2', titel: 'Sitzung', beginn: '2026-11-03T18:00:00.000Z' };
+    expect(dto.naechsteSitzungVorschlag).toEqual(s2);
+    expect(dto.naechsteSitzungen.map((e) => e.eventId)).toEqual(['s2', 's4']);
+
+    // An override is stored as written and does not change the suggestion.
+    const kopf = {
+      ...dto.kopf,
+      naechsteSitzung: { eventId: null, datum: '2026-11-17', uhrzeit: '20:00' },
+    };
+    const put = await t.app.request(
+      `/api/protokolle/${id}`,
+      json('admin-token', 'PUT', { inhalt: dto.inhalt, kopf, version: dto.version }),
+    );
+    expect(put.status).toBe(200);
+    dto = await t.holen(id);
+    expect(dto.kopf.naechsteSitzung).toEqual(kopf.naechsteSitzung);
+    expect(dto.naechsteSitzungVorschlag).toEqual(s2);
+    const kaputt = await t.app.request(
+      `/api/protokolle/${id}`,
+      json('admin-token', 'PUT', {
+        inhalt: dto.inhalt,
+        kopf: { ...kopf, naechsteSitzung: { eventId: null, datum: 'morgen', uhrzeit: '' } },
+        version: dto.version,
+      }),
+    );
+    expect(kaputt.status).toBe(400);
+
+    // Closing freezes the suggestion; later calendar changes do not matter.
+    expect((await status('abgeschlossen')).status).toBe(200);
+    t.kalender.kommendeSitzungen.mockResolvedValue([sitzung('s5', '2026-10-20T18:00:00.000Z')]);
+    dto = await t.holen(id);
+    expect(dto.naechsteSitzungVorschlag).toEqual(s2);
+    expect(dto.naechsteSitzungen).toEqual([]);
+    expect(dto.kopf.naechsteSitzung).toEqual(kopf.naechsteSitzung);
+
+    // Reopening is automatic again.
+    expect((await status('entwurf')).status).toBe(200);
+    dto = await t.holen(id);
+    expect(dto.kopf.naechsteSitzungSchnappschuss).toBeNull();
+    expect(dto.naechsteSitzungVorschlag).toMatchObject({ eventId: 's5' });
+  });
+
+  it('adds the empty section Sonstiges to documents stored with three sections', async () => {
+    const t = await setup();
+    const alt = protokollLeer();
+    alt.content.pop();
+    const id = (
+      await (
+        await t.anlegen('admin-token', { eventId: 's1', inhalt: alt, kopf: protokollKopfLeer() })
+      ).json()
+    ).id as string;
+    const dto = await t.holen(id);
+    expect(dto.inhalt.content.map((a) => a.attrs?.art)).toEqual([
+      'vergangenes',
+      'gegenwaertiges',
+      'zukuenftiges',
+      'sonstiges',
+    ]);
+    const zwei = protokollLeer();
+    zwei.content.splice(2);
+    const res = await t.anlegen('admin-token', {
+      eventId: 's2',
+      inhalt: zwei,
+      kopf: protokollKopfLeer(),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('deletes drafts', async () => {

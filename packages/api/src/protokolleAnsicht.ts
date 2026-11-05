@@ -7,6 +7,7 @@ import {
   type ProtokollEmDto,
   type ProtokollKopf,
   type ProtokollMitgliedDto,
+  type ProtokollNaechsteSitzungVorschlag,
   type ProtokollStatus,
   type ProtokollTeilnahmeDto,
   type ProtokollTeilnahmeWert,
@@ -106,6 +107,16 @@ export const protokollArtVon = (
   aktuell: ProtokollArt,
 ): ProtokollArt => (status === 'abgeschlossen' ? (kopf.artSchnappschuss ?? aktuell) : aktuell);
 
+/** The calendar's suggestion for the next Sitzung: frozen once closed (if frozen), else the live one. */
+export const naechsteSitzungVorschlagVon = (
+  kopf: ProtokollKopf,
+  status: ProtokollStatus,
+  live: ProtokollNaechsteSitzungVorschlag | null,
+): ProtokollNaechsteSitzungVorschlag | null =>
+  status === 'abgeschlossen' && kopf.naechsteSitzungSchnappschuss
+    ? kopf.naechsteSitzungSchnappschuss.vorschlag
+    : live;
+
 /**
  * The kopf of a protocol that is being closed: the current lists frozen into the snapshot, together
  * with the member status of everybody in the attendance and the art of the Sitzung.
@@ -115,6 +126,7 @@ export function kopfAbschliessen(
   mitglieder: readonly ProtokollMitglied[],
   antworten: Readonly<Record<string, TeilnahmeAntwort>>,
   art: ProtokollArt,
+  naechsteSitzung: ProtokollNaechsteSitzungVorschlag | null,
 ): ProtokollKopf {
   const entwurf = {
     ...kopf,
@@ -122,6 +134,7 @@ export function kopfAbschliessen(
     emsSchnappschuss: null,
     statusSchnappschuss: null,
     artSchnappschuss: null,
+    naechsteSitzungSchnappschuss: null,
   };
   const { teilnahme, ems } = protokollListen(entwurf, 'entwurf', mitglieder, antworten);
   return {
@@ -130,6 +143,7 @@ export function kopfAbschliessen(
     emsSchnappschuss: ems.filter((e) => e.ausgewaehlt).map((e) => e.sub),
     statusSchnappschuss: Object.fromEntries(teilnahme.map((t) => [t.sub, t.status])),
     artSchnappschuss: art,
+    naechsteSitzungSchnappschuss: { vorschlag: naechsteSitzung },
   };
 }
 
@@ -140,6 +154,7 @@ export const kopfOhneSchnappschuss = (kopf: ProtokollKopf): ProtokollKopf => ({
   emsSchnappschuss: null,
   statusSchnappschuss: null,
   artSchnappschuss: null,
+  naechsteSitzungSchnappschuss: null,
 });
 
 /** The kopf of a reopened protocol: the snapshot is dropped, the draft follows the event again. */

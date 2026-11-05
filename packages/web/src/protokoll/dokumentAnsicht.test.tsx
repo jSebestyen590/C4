@@ -219,4 +219,44 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(fertig).toContain('(1 von 1 Mitgliedern anwesend)');
     expect(fertig).not.toContain('Noch offen');
   });
+
+  it('shows Sonstiges only with content and ends with the next Sitzung', () => {
+    const render = (e: DokumentEingabe) =>
+      renderToStaticMarkup(
+        <MantineProvider>
+          <ProtokollDokumentAnsicht eingabe={e} />
+        </MantineProvider>,
+      );
+    const sonstiges = (content: ProtokollKnoten[]): ProtokollKnoten => ({
+      type: 'abschnitt',
+      attrs: { art: 'sonstiges' },
+      content,
+    });
+    const mit = (a: ProtokollKnoten, extra: Partial<DokumentEingabe> = {}): DokumentEingabe => ({
+      ...eingabe,
+      ...extra,
+      inhalt: { type: 'doc', content: [...eingabe.inhalt.content, a] },
+    });
+
+    const leer = render(mit(sonstiges([{ type: 'paragraph' }])));
+    expect(leer).not.toContain('Sonstiges');
+    expect(leer).not.toContain('Die nächste Sitzung');
+    // An old document with three sections renders, too.
+    expect(render(eingabe)).not.toContain('Sonstiges');
+
+    const voll = render(
+      mit(sonstiges([text('Grillen im Sommer'), { type: 'paragraph' }]), {
+        naechsteSitzungVorschlag: {
+          eventId: 'e9',
+          titel: 'Sitzung',
+          beginn: '2024-02-13T19:00:00.000Z',
+        },
+      }),
+    );
+    expect(voll).toContain('>Sonstiges<');
+    expect(voll).toContain('Grillen im Sommer');
+    const satz = 'Die nächste Sitzung findet am Dienstag, 13.02.2024 um 20:00 Uhr statt.';
+    expect(voll).toContain(satz);
+    expect(voll.indexOf(satz)).toBeGreaterThan(voll.indexOf('Grillen im Sommer'));
+  });
 });

@@ -17,8 +17,18 @@ import { MITGLIED_STATI, type MitgliedStatus } from './status';
 // Constants
 // ---------------------------------------------------------------------------------------------
 
-/** The three fixed sections of every document, in this order. */
-export const PROTOKOLL_ABSCHNITTE = ['vergangenes', 'gegenwaertiges', 'zukuenftiges'] as const;
+/**
+ * The fixed sections of every document, in this order. "Sonstiges" is optional: documents stored
+ * before it existed have only the first three (`PROTOKOLL_ABSCHNITTE_ALT`).
+ */
+export const PROTOKOLL_ABSCHNITTE = [
+  'vergangenes',
+  'gegenwaertiges',
+  'zukuenftiges',
+  'sonstiges',
+] as const;
+/** Number of sections of old documents (without "Sonstiges"). */
+export const PROTOKOLL_ABSCHNITTE_ALT = 3;
 export type ProtokollAbschnitt = (typeof PROTOKOLL_ABSCHNITTE)[number];
 
 /** Attendance of a member (anwesend, verspätet, entschuldigt, unentschuldigt). */
@@ -359,7 +369,7 @@ export interface ProtokollKnoten {
 
 export interface ProtokollDokument extends ProtokollKnoten {
   type: 'doc';
-  /** Exactly three `abschnitt` nodes, in the order of `PROTOKOLL_ABSCHNITTE`. */
+  /** The `abschnitt` nodes in the order of `PROTOKOLL_ABSCHNITTE` (old documents lack the last one). */
   content: ProtokollKnoten[];
 }
 
@@ -392,7 +402,7 @@ const istBausteinTyp = (typ: string): typ is BausteinTyp =>
 const istObjekt = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/** A document with the three empty sections. */
+/** A document with the four empty sections. */
 export function protokollLeer(): ProtokollDokument {
   return {
     type: 'doc',
@@ -401,6 +411,18 @@ export function protokollLeer(): ProtokollDokument {
       attrs: { art },
       content: [leererAbsatz()],
     })),
+  };
+}
+
+/** The document with all four sections: an old one (three sections) gets an empty "Sonstiges". */
+export function protokollDokumentNormalisieren(dokument: ProtokollDokument): ProtokollDokument {
+  if (dokument.content.length !== PROTOKOLL_ABSCHNITTE_ALT) return dokument;
+  return {
+    ...dokument,
+    content: [
+      ...dokument.content,
+      { type: 'abschnitt', attrs: { art: 'sonstiges' }, content: [leererAbsatz()] },
+    ],
   };
 }
 
@@ -463,7 +485,7 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
 }
 
 /**
- * Checks a document: exactly three `abschnitt` nodes in the fixed order, depth at most
+ * Checks a document: three (old) or four `abschnitt` nodes in the fixed order, depth at most
  * `PROTOKOLL_MAX_TIEFE`, Baustein nodes strictly (id and fields), all other node types as generic
  * nodes, serialized size at most `PROTOKOLL_MAX_BYTES`. Returns an error message, null when valid.
  */
@@ -471,8 +493,11 @@ export function protokollDokumentPruefen(dokument: unknown): string | null {
   if (!istObjekt(dokument) || dokument.type !== 'doc' || !Array.isArray(dokument.content)) {
     return 'Das Protokoll ist ungültig.';
   }
-  if (dokument.content.length !== PROTOKOLL_ABSCHNITTE.length) {
-    return 'Das Protokoll braucht genau die Abschnitte Vergangenes, Gegenwärtiges und Zukünftiges.';
+  if (
+    dokument.content.length !== PROTOKOLL_ABSCHNITTE.length &&
+    dokument.content.length !== PROTOKOLL_ABSCHNITTE_ALT
+  ) {
+    return 'Das Protokoll braucht die Abschnitte Vergangenes, Gegenwärtiges, Zukünftiges und Sonstiges.';
   }
   for (const [i, abschnitt] of dokument.content.entries()) {
     const art =
@@ -513,6 +538,30 @@ export const protokollDokumentSchema = z
 const subSchluessel = z.string().min(1).max(100);
 const teilnahmeWertSchema = z.enum(PROTOKOLL_TEILNAHME);
 
+/** The next Sitzung as the calendar suggests it (the first Sitzung after this one). */
+export const protokollNaechsteSitzungVorschlagSchema = z.strictObject({
+  eventId: z.string().min(1).max(100),
+  titel: z.string().max(500),
+  /** ISO instant. */
+  beginn: z.string().max(40),
+});
+export type ProtokollNaechsteSitzungVorschlag = z.infer<
+  typeof protokollNaechsteSitzungVorschlagSchema
+>;
+
+/** The next Sitzung entered by hand (instead of the calendar's suggestion). */
+export const protokollNaechsteSitzungSchema = z.strictObject({
+  /** A calendar event picked from the upcoming Sitzungen; null = just a date. */
+  eventId: z.string().min(1).max(100).nullable(),
+  /** Berlin date `YYYY-MM-DD`, '' = not entered. */
+  datum: z
+    .string()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, 'Bitte gib ein Datum an.')
+    .default(''),
+  uhrzeit: uhrzeitOderLeerSchema.default(''),
+});
+export type ProtokollNaechsteSitzung = z.infer<typeof protokollNaechsteSitzungSchema>;
+
 export const protokollKopfSchema = z.strictObject({
   /** Overrides only; everybody else follows the answers to the Sitzung event. */
   teilnahme: z.record(subSchluessel, teilnahmeWertSchema).default({}),
@@ -528,6 +577,16 @@ export const protokollKopfSchema = z.strictObject({
   statusSchnappschuss: z.record(subSchluessel, z.enum(MITGLIED_STATI)).nullable().default(null),
   /** Art of the Sitzung as frozen when closed (set by the API). */
   artSchnappschuss: z.enum(PROTOKOLL_ARTEN).nullable().default(null),
+  /** The next Sitzung entered by hand; null = automatic (the first Sitzung after this one in the calendar). */
+  naechsteSitzung: protokollNaechsteSitzungSchema.nullable().default(null),
+  /**
+   * The automatic next Sitzung as frozen when closed (set by the API): `{ vorschlag }` with the
+   * suggestion (null = there was none); null = nothing frozen (a draft, or closed before this existed).
+   */
+  naechsteSitzungSchnappschuss: z
+    .strictObject({ vorschlag: protokollNaechsteSitzungVorschlagSchema.nullable() })
+    .nullable()
+    .default(null),
   /** Who chaired the Sitzung. */
   sitzungsleitung: subSchluessel.nullable().default(null),
   /** Who took the minutes; the API sets the creator when a new protocol has none. */
@@ -548,6 +607,8 @@ export const protokollKopfLeer = (): ProtokollKopf => ({
   emsSchnappschuss: null,
   statusSchnappschuss: null,
   artSchnappschuss: null,
+  naechsteSitzung: null,
+  naechsteSitzungSchnappschuss: null,
   sitzungsleitung: null,
   protokollfuehrung: null,
   eroeffnung: '',
@@ -611,7 +672,7 @@ function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnot
  * times of events that still exist): cancelled events are dropped, events that ended before the
  * Sitzung become "Vergangenes Event" blocks (sorted by date, empty text), all others stay in
  * "Zukünftiges" with their text. Events that no longer exist in the calendar are kept as written.
- * Blocks with the same `eventId` appear once; all copies get new ids. "Gegenwärtiges" stays empty.
+ * Blocks with the same `eventId` appear once; all copies get new ids. "Gegenwärtiges" and "Sonstiges" stay empty.
  */
 export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): ProtokollDokument {
   if (!eingabe.letztes) return protokollLeer();
@@ -675,6 +736,7 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
       ),
       abschnitt('gegenwaertiges', []),
       abschnitt('zukuenftiges', zukuenftig),
+      abschnitt('sonstiges', []),
     ],
   };
 }
@@ -748,6 +810,13 @@ export interface ProtokollDto {
   kopf: ProtokollKopf;
   status: ProtokollStatus;
   version: number;
+  /**
+   * The first not-cancelled Sitzung (any art) after this one (live in a draft, frozen once closed);
+   * null = none known. It counts while `kopf.naechsteSitzung` is null.
+   */
+  naechsteSitzungVorschlag: ProtokollNaechsteSitzungVorschlag | null;
+  /** Upcoming Sitzungen after this one to pick from, earliest first (drafts only, else empty). */
+  naechsteSitzungen: ProtokollNaechsteSitzungVorschlag[];
   /** Active Anwärter:innen and Mitglieder (everybody who was there once closed). */
   teilnahme: ProtokollTeilnahmeDto[];
   /** Active EMs. */

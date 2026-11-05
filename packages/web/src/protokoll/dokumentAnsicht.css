@@ -5,6 +5,10 @@
   line-height: 1.55;
   overflow-wrap: anywhere;
   min-width: 0;
+  /* About the width of an A4 page; narrower screens use their full width. */
+  max-width: 21cm;
+  width: 100%;
+  margin-inline: auto;
 }
 
 .pk-dok p {

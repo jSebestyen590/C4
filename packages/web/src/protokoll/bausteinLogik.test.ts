@@ -344,6 +344,17 @@ describe('dokumentNormalisieren', () => {
     });
     expect(anw.content).toHaveLength(1);
   });
+  it('appends an empty Sonstiges to an old document with three sections', () => {
+    const n = dokumentNormalisieren(doc, true);
+    expect(n.content.map((a) => a.attrs?.art)).toEqual([
+      'vergangenes',
+      'gegenwaertiges',
+      'zukuenftiges',
+      'sonstiges',
+    ]);
+    expect(n.content[3]?.content).toEqual([{ type: 'paragraph' }]);
+    expect(doc.content).toHaveLength(3);
+  });
   it('only fills empty sections in read-only mode', () => {
     const n = dokumentNormalisieren(doc, false);
     expect(n.content[0]?.content).toEqual([baustein]);

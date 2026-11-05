@@ -24,6 +24,8 @@ import {
   eroeffnungSatz,
   istLeererAbsatz,
   istQuellenzeile,
+  naechsteSitzungSatz,
+  naechsteSitzungWert,
   ohneLeereEnden,
   personName,
   type DokumentEingabe,
@@ -417,6 +419,8 @@ function Abschnitt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   const inhalt = ohneLeereEnden(k.content).filter(
     (c, i, alle) => !(istLeererAbsatz(c) && alle.length === 1),
   );
+  // "Sonstiges" is optional: it only shows with content.
+  if (art === 'sonstiges' && inhalt.length === 0) return null;
   return (
     <section>
       {titel && <h2 className="pk-dok-h1">{titel}</h2>}
@@ -455,7 +459,7 @@ function Zeile({ label, children }: Readonly<{ label: string; children?: ReactNo
 }
 
 /**
- * The finished document of the minutes: title, attendance lines, opening, quorum and the three
+ * The finished document of the minutes: title, attendance lines, opening, quorum and the four
  * sections with the Bausteine as text. Everything is derived from the given (live) data.
  */
 export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>) {
@@ -479,6 +483,9 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
   const bf = kopf.beschlussfaehigkeit
     ? beschlussfaehigkeitText(art, kopf.beschlussfaehigkeit)
     : null;
+  const naechste = naechsteSitzungSatz(
+    naechsteSitzungWert(eingabe.kopf, eingabe.naechsteSitzungVorschlag),
+  );
   const emsVorhanden = kopf.ems.length > 0 || kopf.emsFreitext !== '';
 
   return (
@@ -533,6 +540,7 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
       {eingabe.inhalt.content.map((a, i) => (
         <Abschnitt key={i} k={a} ctx={ctx} />
       ))}
+      {naechste && <p data-testid="naechste-sitzung">{naechste}</p>}
     </article>
   );
 }

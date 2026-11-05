@@ -55,7 +55,7 @@ describe('editor schema', () => {
     ]);
     const doc = schema.nodeFromJSON({
       type: 'doc',
-      content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges'].map((art, i) => ({
+      content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges', 'sonstiges'].map((art, i) => ({
         type: 'abschnitt',
         attrs: { art },
         content: i === 1 ? [ereignis, { type: 'paragraph' }] : [{ type: 'paragraph' }],

@@ -12,6 +12,8 @@ import {
   teilnahmeMitBloecken,
   teilnahmeNormalisiert,
   heuteBerlin,
+  datumBerlin,
+  zeitBerlin,
   type BausteinEmAbstimmung,
   type Beschlussfaehigkeit,
   type MitgliedStatus,
@@ -20,6 +22,7 @@ import {
   type ProtokollDto,
   type ProtokollKnoten,
   type ProtokollKopf,
+  type ProtokollNaechsteSitzungVorschlag,
   type ProtokollTeilnahmeWert,
 } from '@c4/shared';
 
@@ -32,6 +35,50 @@ export interface DokumentEingabe {
   teilnahme: ProtokollDto['teilnahme'];
   ems: ProtokollDto['ems'];
   sitzung: { titel: string; beginn: string; art: ProtokollArt };
+  /** The calendar's suggestion for the next Sitzung (counts while `kopf.naechsteSitzung` is null). */
+  naechsteSitzungVorschlag?: ProtokollNaechsteSitzungVorschlag | null;
+}
+
+/** The next Sitzung that counts: Berlin date, time ('' = unknown) and the calendar event, if any. */
+export interface NaechsteSitzungWert {
+  eventId: string | null;
+  datum: string;
+  uhrzeit: string;
+}
+
+/**
+ * The next Sitzung: the Kopf's override if there is one (null without a date), else the calendar's
+ * suggestion. Null = nothing known.
+ */
+export function naechsteSitzungWert(
+  kopf: Pick<ProtokollKopf, 'naechsteSitzung'>,
+  vorschlag: ProtokollNaechsteSitzungVorschlag | null | undefined,
+): NaechsteSitzungWert | null {
+  const von = kopf.naechsteSitzung;
+  if (von) return von.datum ? { ...von } : null;
+  if (!vorschlag) return null;
+  return {
+    eventId: vorschlag.eventId,
+    datum: datumBerlin(vorschlag.beginn),
+    uhrzeit: zeitBerlin(vorschlag.beginn),
+  };
+}
+
+/** `Dienstag, 11.11.2026` of a Berlin date `YYYY-MM-DD`. */
+export function datumMitWochentag(datum: string): string {
+  const [j, m, t] = datum.split('-');
+  const wochentag = new Date(`${datum}T12:00:00Z`).toLocaleDateString('de-DE', {
+    weekday: 'long',
+    timeZone: 'UTC',
+  });
+  return `${wochentag}, ${t}.${m}.${j}`;
+}
+
+/** Closing sentence: "Die nächste Sitzung findet am Dienstag, 11.11.2026 um 20:00 Uhr statt."; null if unknown. */
+export function naechsteSitzungSatz(wert: NaechsteSitzungWert | null): string | null {
+  if (!wert?.datum) return null;
+  const um = wert.uhrzeit ? ` um ${wert.uhrzeit} Uhr` : '';
+  return `Die nächste Sitzung findet am ${datumMitWochentag(wert.datum)}${um} statt.`;
 }
 
 /** A member as shown in the document (`StatusName`), with an optional note like "(ab 21:00 Uhr)". */

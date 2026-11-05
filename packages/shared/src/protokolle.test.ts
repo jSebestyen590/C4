@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BAUSTEIN_TYPEN,
+  PROTOKOLL_ABSCHNITTE,
   PROTOKOLL_MAX_BYTES,
   PROTOKOLL_MAX_TIEFE,
   bausteinErzeugen,
@@ -8,6 +9,7 @@ import {
   beschlussErgebnisVorschlag,
   wahlErgebnis,
   protokollAnlegenSchema,
+  protokollDokumentNormalisieren,
   protokollDokumentPruefen,
   protokollDokumentSchema,
   protokollEventIds,
@@ -56,15 +58,46 @@ const info = (beginn: string, ende: string, extra: Partial<ProtokollEventInfo> =
 });
 
 describe('protokollLeer', () => {
-  it('has the three sections in order, each with an empty paragraph', () => {
+  it('has the four sections in order, each with an empty paragraph', () => {
     const doc = protokollLeer();
     expect(doc.content.map((a) => a.attrs?.art)).toEqual([
       'vergangenes',
       'gegenwaertiges',
       'zukuenftiges',
+      'sonstiges',
     ]);
     expect(doc.content.every((a) => a.content?.length === 1)).toBe(true);
     expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+});
+
+describe('protokollDokumentNormalisieren', () => {
+  it('appends an empty Sonstiges to an old document with three sections and leaves others alone', () => {
+    const alt = protokollLeer();
+    alt.content.pop();
+    const neu = protokollDokumentNormalisieren(alt);
+    expect(neu.content.map((a) => a.attrs?.art)).toEqual([...PROTOKOLL_ABSCHNITTE]);
+    expect(protokollDokumentPruefen(neu)).toBeNull();
+    expect(alt.content).toHaveLength(3);
+    const voll = protokollLeer();
+    expect(protokollDokumentNormalisieren(voll)).toBe(voll);
+  });
+});
+
+describe('protokollKopfSchema', () => {
+  it('reads old JSON with an automatic next Sitzung and validates an override', () => {
+    const alt = protokollKopfSchema.parse({});
+    expect(alt.naechsteSitzung).toBeNull();
+    expect(alt.naechsteSitzungSchnappschuss).toBeNull();
+    expect(
+      protokollKopfSchema.safeParse({
+        naechsteSitzung: { eventId: null, datum: '2026-11-11', uhrzeit: '20:00' },
+      }).success,
+    ).toBe(true);
+    expect(
+      protokollKopfSchema.safeParse({ naechsteSitzung: { eventId: null, datum: '11.11.' } })
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -199,6 +232,7 @@ describe('protokollDokumentPruefen', () => {
       /Reihenfolge/,
     );
     expect(protokollDokumentPruefen({ ...doc, content: doc.content.slice(0, 2) })).not.toBeNull();
+    expect(protokollDokumentPruefen({ ...doc, content: doc.content.slice(0, 3) })).toBeNull();
     expect(protokollDokumentPruefen({ type: 'page', content: doc.content })).not.toBeNull();
   });
 
@@ -373,6 +407,12 @@ describe('protokollVorschlag', () => {
       'Ohne Datum',
     ]);
     expect(bausteine(doc, 1)).toEqual([]);
+    // Sonstiges starts empty and is not copied.
+    expect(doc.content[3]).toEqual({
+      type: 'abschnitt',
+      attrs: { art: 'sonstiges' },
+      content: [{ type: 'paragraph' }],
+    });
     expect(protokollDokumentPruefen(doc)).toBeNull();
   });
 

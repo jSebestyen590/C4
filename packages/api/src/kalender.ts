@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -390,6 +391,11 @@ export interface KalenderStore {
    * first, at most `limit`, without the events in `ausser` (those that already have minutes).
    */
   sitzungen(bis: Date, limit: number, ausser: readonly string[]): Promise<EventKurz[]>;
+  /**
+   * Events of Kategorien with `protokoll` (any art) that are not cancelled and begin after `nach`,
+   * earliest first, at most `limit`.
+   */
+  kommendeSitzungen(nach: Date, limit: number): Promise<EventKurz[]>;
   /** The members' own answers (`teilnahme`/`absage`) to the event, by member sub; no entry = no answer. */
   teilnahmeAntworten(eventId: string): Promise<Record<string, TeilnahmeAntwort>>;
   /** The event's OneDrive photo folder; null = none, undefined when the event does not exist. */
@@ -1464,13 +1470,18 @@ export function createKalenderStore(db: Db): KalenderStore {
   const eventsKurzLesen = async (
     bedingung: ReturnType<typeof and>,
     limit?: number,
+    aufsteigend = false,
   ): Promise<EventKurz[]> => {
     const abfrage = db
       .select({ e: events, k: eventKategorien })
       .from(events)
       .leftJoin(eventKategorien, eq(eventKategorien.id, events.kategorieId))
       .where(bedingung)
-      .orderBy(desc(events.beginn), desc(events.id));
+      .orderBy(
+        ...(aufsteigend
+          ? [asc(events.beginn), asc(events.id)]
+          : [desc(events.beginn), desc(events.id)]),
+      );
     const rows = await (limit === undefined ? abfrage : abfrage.limit(limit));
     return rows.map(({ e, k }) => ({
       id: e.id,
@@ -1652,6 +1663,17 @@ export function createKalenderStore(db: Db): KalenderStore {
           ausser.length > 0 ? notInArray(events.id, [...ausser]) : undefined,
         ),
         limit,
+      );
+    },
+    async kommendeSitzungen(nach, limit) {
+      return eventsKurzLesen(
+        and(
+          eq(eventKategorien.protokoll, true),
+          eq(events.abgesagt, false),
+          gt(events.beginn, nach),
+        ),
+        limit,
+        true,
       );
     },
     async teilnahmeAntworten(eventId) {

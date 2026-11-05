@@ -45,7 +45,7 @@ const anwaerter = (id: string, vorname: string) =>
 const zustand = (...abschnitte: ProtokollKnoten[][]): EditorState => {
   const doc = schema.nodeFromJSON({
     type: 'doc',
-    content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges'].map((art, i) => ({
+    content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges', 'sonstiges'].map((art, i) => ({
       type: 'abschnitt',
       attrs: { art },
       content: abschnitte[i] ?? [absatz()],
@@ -62,7 +62,10 @@ const form = (doc: PmNode): string => {
     const kinder = k.children.filter((c) => c.type.name.startsWith('baustein'));
     return `${k.attrs.id as string}${kinder.length ? `(${kinder.map(knoten).join(' ')})` : ''}`;
   };
-  return doc.children.map((a) => a.children.map(knoten).join(' ')).join(' | ');
+  // The empty "Sonstiges" at the end is left out to keep the expectations short.
+  const abschnitte = doc.children.map((a) => a.children.map(knoten).join(' '));
+  if (abschnitte.length === 4 && abschnitte[3] === '_') abschnitte.pop();
+  return abschnitte.join(' | ');
 };
 const verschieben = (s: EditorState, id: string, ziel: GliederungZiel) => {
   const tr = bausteinInGliederungVerschieben(s, id, ziel);
@@ -79,13 +82,19 @@ describe('gliederungBauen', () => {
       [anwaerter('w1', 'Anna'), absatz('y'), absatz()],
     );
     const baum = gliederungBauen(s.doc);
-    expect(baum.map((a) => a.titel)).toEqual(['Vergangenes', 'Gegenwärtiges', 'Zukünftiges']);
+    expect(baum.map((a) => a.titel)).toEqual([
+      'Vergangenes',
+      'Gegenwärtiges',
+      'Zukünftiges',
+      'Sonstiges',
+    ]);
     expect(baum[0]!.eintraege.map((e) => e.titel)).toEqual(['11.02. Superbowl']);
     expect(baum[0]!.eintraege[0]!.kinder.map((e) => e.titel)).toEqual(['Abstimmung: Mehr Bier']);
     expect(baum[0]!.eintraege[0]!.kannEnthalten).toBe(true);
     expect(baum[0]!.eintraege[0]!.kinder[0]!.verschachtelbar).toBe(true);
     expect(baum[1]!.eintraege.map((e) => e.titel)).toEqual(['Anna X']);
     expect(baum[2]!.eintraege).toEqual([]);
+    expect(baum[3]!.eintraege).toEqual([]);
   });
 });
 
@@ -151,6 +160,7 @@ describe('gliederungZiel (flat drop index to target)', () => {
       'abschnitt:2',
       'd',
       'notizen:d',
+      'abschnitt:3',
     ];
     for (const id of [null, 'p', 'q', 'top', 'k1', 'd']) expect(keys(id)).toEqual(alle);
     expect(zu(null)).toEqual(['notizen:p', 'notizen:q', 'notizen:d']);
@@ -184,7 +194,8 @@ describe('gliederungZiel (flat drop index to target)', () => {
   it('drops between sections: behind a header goes first, before a header goes last', () => {
     expect(vor('q', 'abschnitt:2')).toBe('p(k1 k2) top _ | q _ | d _');
     expect(vor('q', 'd')).toBe('p(k1 k2) top _ | _ | q d _');
-    expect(vor('q', null)).toBe('p(k1 k2) top _ | _ | d q _');
+    // The end of the list is the end of the last section, "Sonstiges".
+    expect(vor('q', null)).toBe('p(k1 k2) top _ | _ | d _ | q _');
     expect(vor('d', 'abschnitt:1')).toBe('p(k1 k2) q top d _ | _ | _');
     expect(vor('d', 'p')).toBe('d p(k1 k2) q top _ | _ | _');
   });
@@ -193,14 +204,14 @@ describe('gliederungZiel (flat drop index to target)', () => {
     expect(vor('d', 'k2')).toBe('p(k1 k2) d q top _ | _ | _');
     expect(vor('d', 'k1')).toBe('p(k1 k2) d q top _ | _ | _');
   });
-  it('keeps the three sections intact for any drop position', () => {
+  it('keeps the four sections intact for any drop position', () => {
     for (const id of ['p', 'q', 'top', 'k1', 'd']) {
       const rows = gliederungZeilen(baum(), id);
       for (let i = 0; i < rows.length; i++) {
         const z = gliederungZiel(rows, id, i);
         if (!z) continue;
         const tr = bausteinInGliederungVerschieben(state(), id, z);
-        if (tr) expect(state().apply(tr).doc.childCount).toBe(3);
+        if (tr) expect(state().apply(tr).doc.childCount).toBe(4);
       }
     }
   });
@@ -311,6 +322,7 @@ describe('gliederungZiel with a drag starting right behind a collapsed slot', ()
       'a',
       'abschnitt:1',
       'abschnitt:2',
+      'abschnitt:3',
     ]);
     // The Abstimmung is at index 3; one step up is index 2 (the slot's old index).
     expect(gliederungZiel(rows, 'a', 2)).toEqual({ elternId: 'e', index: 0 });
