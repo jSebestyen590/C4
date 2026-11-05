@@ -58,6 +58,15 @@ export function personenOptionen(
   return mitgliedOptionen(personen.map((p) => ({ ...p, email: '' })));
 }
 
+/** Persons selectable in a Neues EM block: the attendance list plus the EMs, each person once. */
+export function emKandidaten(
+  teilnahme: readonly ProtokollMitgliedDto[],
+  ems: readonly ProtokollMitgliedDto[],
+): ProtokollMitgliedDto[] {
+  const gesehen = new Set<string>();
+  return [...teilnahme, ...ems].filter((p) => !gesehen.has(p.sub) && gesehen.add(p.sub));
+}
+
 /** The persons as the second stage of /erscheint and /geht lists them. */
 export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPerson[] {
   return personen.map((p) => {

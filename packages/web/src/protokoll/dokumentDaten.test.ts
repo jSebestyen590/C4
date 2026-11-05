@@ -7,6 +7,7 @@ import {
   datumLang,
   dokumentKopf,
   dokumentTitel,
+  emZeilen,
   eroeffnungSatz,
   istQuellenzeile,
   mitLiveKopf,
@@ -168,6 +169,29 @@ describe('Texte', () => {
       beschlussZeilen({ antrag: 'x', ja: 1, nein: 0, enthaltung: 0, ergebnis: null }, undefined)
         .stimmen,
     ).toBe('Ja 1 · Nein 0 · Enthaltung 0');
+  });
+
+  it('Neues EM lines', () => {
+    const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
+    const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
+    expect(emZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({
+      name: '',
+      sub: 'a',
+      abstimmung:
+        'Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)',
+      nichtBeschlussfaehig: false,
+    });
+    const nicht = { ...stand, anwesend: 10, beschlussfaehig: false };
+    expect(emZeilen({ sub: null, name: ' Gast ', abstimmung }, nicht)).toMatchObject({
+      name: 'Gast',
+      nichtBeschlussfaehig: true,
+    });
+    expect(emZeilen({ sub: 'a', name: '', abstimmung: null }, nicht)).toEqual({
+      name: '',
+      sub: 'a',
+      abstimmung: '',
+      nichtBeschlussfaehig: false,
+    });
   });
 });
 

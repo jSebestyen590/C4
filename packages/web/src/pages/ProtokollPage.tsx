@@ -252,6 +252,7 @@ function ProtokollAnsicht({
             sitzungBeginn={dto.sitzung.beginn}
             art={dto.sitzung.art}
             teilnahme={teilnahme}
+            ems={dto.ems}
           />
         </Stack>
       )}

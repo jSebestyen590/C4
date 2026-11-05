@@ -14,6 +14,7 @@ import {
   type BausteinAnwaerterDaten,
   type BausteinBeschlussDaten,
   type BausteinDatenVon,
+  type BausteinEmDaten,
   type BausteinEventDaten,
   type BausteinTyp,
   type BausteinVergangenesEventDaten,
@@ -25,6 +26,7 @@ import { FORMULAR_ATTRIBUT } from './formular';
 import {
   AnwaerterFormular,
   BeschlussFormular,
+  EmFormular,
   EventFormular,
   VergangenesEventFormular,
   type FormularProps,
@@ -92,6 +94,12 @@ function BausteinAnsicht<T extends BausteinTyp>({
                 <BeschlussHinweis
                   id={node.attrs.id as string}
                   daten={daten as unknown as BausteinBeschlussDaten}
+                />
+              )}
+              {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).abstimmung && (
+                <BeschlussHinweis
+                  id={node.attrs.id as string}
+                  daten={(daten as unknown as BausteinEmDaten).abstimmung!}
                 />
               )}
               {(editierbar || hatText) && (
@@ -210,6 +218,10 @@ export const BausteinBeschlussKnoten = bausteinKnoten(
     BeschlussFormular as ComponentType<FormularProps<BausteinBeschlussDaten>>,
   ),
 );
+export const BausteinEmKnoten = bausteinKnoten(
+  'bausteinEm',
+  karte('bausteinEm', EmFormular as ComponentType<FormularProps<BausteinEmDaten>>),
+);
 export const BausteinAnwesenheitKnoten = bausteinKnoten('bausteinAnwesenheit', (props) => (
   <AnwesenheitAnsicht props={props} />
 ));
@@ -219,5 +231,6 @@ export const BAUSTEIN_KNOTEN = [
   BausteinVergangenesEventKnoten,
   BausteinAnwaerterKnoten,
   BausteinBeschlussKnoten,
+  BausteinEmKnoten,
   BausteinAnwesenheitKnoten,
 ];

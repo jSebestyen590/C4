@@ -39,6 +39,7 @@ export const BAUSTEIN_TYPEN = [
   'bausteinVergangenesEvent',
   'bausteinAnwaerter',
   'bausteinBeschluss',
+  'bausteinEm',
   'bausteinAnwesenheit',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
@@ -107,6 +108,23 @@ export const bausteinBeschlussDatenSchema = z.strictObject({
 });
 export type BausteinBeschlussDaten = z.infer<typeof bausteinBeschlussDatenSchema>;
 
+/** The vote of a "Neues EM" block (same counts and result as a Beschluss, optional as a whole). */
+export const bausteinEmAbstimmungSchema = z.strictObject({
+  ja: stimmen,
+  nein: stimmen,
+  enthaltung: stimmen,
+  ergebnis: z.enum(BESCHLUSS_ERGEBNISSE).nullable(),
+});
+export type BausteinEmAbstimmung = z.infer<typeof bausteinEmAbstimmungSchema>;
+
+/** A new Ehrenmitglied: a person of the app (`sub`) or a free-text `name` (used only without `sub`). */
+export const bausteinEmDatenSchema = z.strictObject({
+  sub: idOderNull,
+  name: z.string().max(200),
+  abstimmung: bausteinEmAbstimmungSchema.nullable(),
+});
+export type BausteinEmDaten = z.infer<typeof bausteinEmDatenSchema>;
+
 export const ANWESENHEIT_ARTEN = ['erscheint', 'geht'] as const;
 export type AnwesenheitArt = (typeof ANWESENHEIT_ARTEN)[number];
 
@@ -123,6 +141,7 @@ export interface BausteinDatenVon {
   bausteinVergangenesEvent: BausteinVergangenesEventDaten;
   bausteinAnwaerter: BausteinAnwaerterDaten;
   bausteinBeschluss: BausteinBeschlussDaten;
+  bausteinEm: BausteinEmDaten;
   bausteinAnwesenheit: BausteinAnwesenheitDaten;
 }
 
@@ -131,6 +150,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinVergangenesEvent: bausteinVergangenesEventDatenSchema,
   bausteinAnwaerter: bausteinAnwaerterDatenSchema,
   bausteinBeschluss: bausteinBeschlussDatenSchema,
+  bausteinEm: bausteinEmDatenSchema,
   bausteinAnwesenheit: bausteinAnwesenheitDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
@@ -156,6 +176,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
       return { vorname: '', nachname: '', email: null };
     case 'bausteinBeschluss':
       return { antrag: '', ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+    case 'bausteinEm':
+      return { sub: null, name: '', abstimmung: null };
     case 'bausteinAnwesenheit':
       return { art: 'erscheint', sub: null, uhrzeit: '' };
   }

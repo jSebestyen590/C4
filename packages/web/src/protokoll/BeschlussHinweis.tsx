@@ -1,14 +1,13 @@
 import { Alert, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import type { BausteinBeschlussDaten } from '@c4/shared';
+
+type Stimmen = Pick<BausteinBeschlussDaten, 'ja' | 'nein' | 'enthaltung'>;
 import { mitgliedernText } from './anwesenheit';
 import { useProtokollKontext } from './kontext';
 
-/** Under a Beschluss: who was present at that point, and warnings about quorum and vote count. */
-export function BeschlussHinweis({
-  id,
-  daten,
-}: Readonly<{ id: string; daten: BausteinBeschlussDaten }>) {
+/** Under a Beschluss (or the vote of a Neues EM): who was present at that point, and warnings about quorum and vote count. */
+export function BeschlussHinweis({ id, daten }: Readonly<{ id: string; daten: Stimmen }>) {
   const { verlauf } = useProtokollKontext();
   const stand = verlauf.bausteine[id];
   if (!stand || stand.gesamt === 0) return null;

@@ -5,7 +5,12 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { anwesenheitsVerlauf, type ProtokollArt, type ProtokollDokument } from '@c4/shared';
+import {
+  anwesenheitsVerlauf,
+  type ProtokollArt,
+  type ProtokollDokument,
+  type ProtokollMitgliedDto,
+} from '@c4/shared';
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import type { AnwesenheitPerson } from './anwesenheit';
@@ -56,6 +61,7 @@ export function ProtokollEditor({
   sitzungBeginn,
   art,
   teilnahme,
+  ems = [],
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -65,6 +71,8 @@ export function ProtokollEditor({
   art: ProtokollArt;
   /** The attendance list with the values that count right now (live, incl. Kopf overrides). */
   teilnahme: readonly AnwesenheitPerson[];
+  /** The active EMs (selectable in a Neues EM block). */
+  ems?: readonly ProtokollMitgliedDto[];
 }>) {
   const slashDaten = useSlashDaten(sitzungBeginn, teilnahme);
   // The document as the quorum needs it (a little behind the typing).
@@ -165,9 +173,10 @@ export function ProtokollEditor({
       sitzungBeginn,
       art,
       teilnahme,
+      ems,
       verlauf: anwesenheitsVerlauf(dokument, { art, teilnahme }),
     }),
-    [sitzungBeginn, art, teilnahme, dokument],
+    [sitzungBeginn, art, teilnahme, ems, dokument],
   );
 
   return (

@@ -26,6 +26,7 @@ export type SlashSymbol =
   | 'vergangenes'
   | 'anwaerter'
   | 'beschluss'
+  | 'em'
   | 'erscheint'
   | 'geht'
   | 'vorlage'
@@ -155,6 +156,17 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     aktion: {
       art: 'einfuegen',
       wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
+    },
+  },
+  {
+    schluessel: 'em',
+    titel: 'Neues EM',
+    beschreibung: 'Neues Ehrenmitglied, optional mit Abstimmung',
+    symbol: 'em',
+    woerter: ['em', 'ehrenmitglied', 'neues em'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinEm', daten: bausteinLeer('bausteinEm') },
     },
   },
   {

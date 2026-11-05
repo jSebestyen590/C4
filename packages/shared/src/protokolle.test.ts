@@ -73,11 +73,36 @@ describe('protokollDokumentPruefen', () => {
       gegenwaertiges: [
         bausteinErzeugen('bausteinAnwaerter'),
         bausteinErzeugen('bausteinBeschluss'),
+        bausteinErzeugen('bausteinEm'),
+        bausteinErzeugen('bausteinEm', {
+          sub: 'a',
+          name: '',
+          abstimmung: { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' },
+        }),
       ],
       zukuenftiges: [eventBaustein({ name: 'Barabend', datum: '2026-12-01' }, 'Text')],
     });
     expect(protokollDokumentPruefen(doc)).toBeNull();
     expect(protokollDokumentSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it('checks the fields of a Neues EM block strictly', () => {
+    const em = (daten: unknown) =>
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [bausteinErzeugen('bausteinEm', daten as never)] }),
+      );
+    const ok = { ja: 1, nein: 0, enthaltung: 0, ergebnis: null };
+    expect(em({ sub: null, name: 'Gast', abstimmung: ok })).toBeNull();
+    expect(em({ sub: null, name: '', abstimmung: { ...ok, ergebnis: 'x' } })).not.toBeNull();
+    expect(em({ sub: null, name: '', abstimmung: { ...ok, ja: -1 } })).not.toBeNull();
+    expect(em({ sub: null, name: '', abstimmung: { ...ok, extra: 1 } })).not.toBeNull();
+    expect(em({ sub: null, name: 'x'.repeat(201), abstimmung: null })).not.toBeNull();
+    expect(em({ sub: null, name: '' })).not.toBeNull();
+    expect(bausteinErzeugen('bausteinEm').attrs.daten).toEqual({
+      sub: null,
+      name: '',
+      abstimmung: null,
+    });
   });
 
   it('accepts quotes in a section and in the free text of a Baustein', () => {
@@ -403,12 +428,13 @@ describe('protokollVorschlag', () => {
     expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('A')]);
   });
 
-  it('ignores the old Vergangenes Event, Anwärter and Beschluss blocks', () => {
+  it('ignores the old Vergangenes Event, Anwärter, Neues EM and Beschluss blocks', () => {
     const letztes = dokument({
       vergangenes: [bausteinErzeugen('bausteinVergangenesEvent')],
       gegenwaertiges: [
         bausteinErzeugen('bausteinAnwaerter'),
         bausteinErzeugen('bausteinBeschluss'),
+        bausteinErzeugen('bausteinEm'),
       ],
     });
     expect(protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} })).toEqual(

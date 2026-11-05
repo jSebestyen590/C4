@@ -181,6 +181,10 @@ describe('ersterLeererFeld', () => {
       'vorname',
     );
     expect(ersterLeererFeld('bausteinBeschluss', { antrag: '' })).toBe('antrag');
+    expect(ersterLeererFeld('bausteinEm', { sub: null, name: '', abstimmung: null })).toBe(
+      'person',
+    );
+    expect(ersterLeererFeld('bausteinEm', { sub: 'a', name: '', abstimmung: null })).toBe('text');
   });
 });
 

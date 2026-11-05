@@ -6,6 +6,7 @@ import {
   SegmentedControl,
   SimpleGrid,
   Stack,
+  Switch,
   Text,
 } from '@mantine/core';
 import { Link } from 'react-router-dom';
@@ -14,10 +15,14 @@ import {
   datumBerlin,
   type BausteinAnwaerterDaten,
   type BausteinBeschlussDaten,
+  type BausteinEmDaten,
+  type BausteinEmAbstimmung,
   type BausteinEventDaten,
   type BausteinVergangenesEventDaten,
   type EventDauer,
 } from '@c4/shared';
+import { emKandidaten, personenOptionen } from './anwesenheit';
+import { useProtokollKontext } from './kontext';
 import { DatumFeld } from '../DatumFeld';
 import { useDienstformen, useEventKategorien, useVorlagen } from '../kalenderDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
@@ -363,6 +368,51 @@ export function AnwaerterFormular({
   );
 }
 
+/** Ja / Nein / Enthaltung and the Ergebnis (suggested from the votes, can be overridden). */
+function StimmenFelder<T extends BausteinEmAbstimmung>({
+  daten,
+  aendern,
+}: Readonly<{ daten: T; aendern: (f: (alt: T) => T) => void }>) {
+  return (
+    <>
+      <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="xs">
+        <LokalZahl
+          label="Ja"
+          wert={daten.ja}
+          onWert={(w) => aendern((d) => stimmeSetzen(d, 'ja', w))}
+        />
+        <LokalZahl
+          label="Nein"
+          wert={daten.nein}
+          onWert={(w) => aendern((d) => stimmeSetzen(d, 'nein', w))}
+        />
+        <LokalZahl
+          label="Enthaltung"
+          wert={daten.enthaltung}
+          onWert={(w) => aendern((d) => stimmeSetzen(d, 'enthaltung', w))}
+        />
+      </SimpleGrid>
+      <Stack gap={4}>
+        <Text size="sm" fw={500}>
+          Ergebnis
+        </Text>
+        <SegmentedControl
+          fullWidth
+          size="md"
+          value={daten.ergebnis ?? ''}
+          data={[
+            { value: 'angenommen', label: 'Angenommen' },
+            { value: 'abgelehnt', label: 'Abgelehnt' },
+          ]}
+          onChange={(v) =>
+            aendern((d) => ({ ...d, ergebnis: v === 'angenommen' || v === 'abgelehnt' ? v : null }))
+          }
+        />
+      </Stack>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Beschluss
 // ---------------------------------------------------------------------------------------------
@@ -402,40 +452,106 @@ export function BeschlussFormular({
         wert={daten.antrag}
         onWert={(antrag) => aendern((d) => ({ ...d, antrag }))}
       />
-      <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="xs">
-        <LokalZahl
-          label="Ja"
-          wert={daten.ja}
-          onWert={(w) => aendern((d) => stimmeSetzen(d, 'ja', w))}
-        />
-        <LokalZahl
-          label="Nein"
-          wert={daten.nein}
-          onWert={(w) => aendern((d) => stimmeSetzen(d, 'nein', w))}
-        />
-        <LokalZahl
-          label="Enthaltung"
-          wert={daten.enthaltung}
-          onWert={(w) => aendern((d) => stimmeSetzen(d, 'enthaltung', w))}
-        />
-      </SimpleGrid>
+      <StimmenFelder daten={daten} aendern={aendern} />
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Neues EM
+// ---------------------------------------------------------------------------------------------
+
+const KEINE_ABSTIMMUNG: BausteinEmAbstimmung = { ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+
+export function EmFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinEmDaten>>) {
+  const { teilnahme, ems } = useProtokollKontext();
+  const personen = emKandidaten(teilnahme, ems);
+  const person = personen.find((p) => p.sub === daten.sub);
+  const a = daten.abstimmung;
+
+  if (!editierbar) {
+    const name = daten.name.trim();
+    return (
       <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          Ergebnis
+        <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+          {person ? (
+            <Anchor component={Link} to={mitgliedLink(person)} underline="never">
+              <StatusName status={person.status}>
+                {person.username ?? (`${person.vorname} ${person.nachname}`.trim() || '–')}
+              </StatusName>
+            </Anchor>
+          ) : (
+            name || 'Person offen'
+          )}
         </Text>
-        <SegmentedControl
-          fullWidth
-          size="md"
-          value={daten.ergebnis ?? ''}
-          data={[
-            { value: 'angenommen', label: 'Angenommen' },
-            { value: 'abgelehnt', label: 'Abgelehnt' },
-          ]}
-          onChange={(v) =>
-            aendern((d) => ({ ...d, ergebnis: v === 'angenommen' || v === 'abgelehnt' ? v : null }))
+        {a && (
+          <Group gap="xs">
+            {a.ergebnis && (
+              <Badge color={a.ergebnis === 'angenommen' ? 'green' : 'red'} size="lg">
+                {a.ergebnis === 'angenommen' ? 'Angenommen' : 'Abgelehnt'}
+              </Badge>
+            )}
+            <Text size="sm">
+              Ja {a.ja} · Nein {a.nein} · Enthaltung {a.enthaltung}
+            </Text>
+          </Group>
+        )}
+      </Stack>
+    );
+  }
+  const status = new Map(personen.map((p) => [p.sub, p.status]));
+  return (
+    <Stack gap="xs">
+      <Select
+        label="Person"
+        placeholder="Person wählen"
+        data-fokus="person"
+        size="md"
+        searchable
+        clearable
+        nothingFoundMessage="Niemand gefunden"
+        data={personenOptionen(personen)}
+        value={daten.sub}
+        onChange={(sub) => aendern((d) => ({ ...d, sub }))}
+        renderOption={({ option }) => {
+          const s = status.get(option.value);
+          return s ? (
+            <StatusName status={s}>{option.label}</StatusName>
+          ) : (
+            <span>{option.label}</span>
+          );
+        }}
+      />
+      {daten.sub === null && (
+        <LokalText
+          label="Name (falls nicht in der App)"
+          autoComplete="off"
+          wert={daten.name}
+          maxLength={200}
+          onWert={(name) => aendern((d) => ({ ...d, name }))}
+        />
+      )}
+      <Switch
+        size="md"
+        label="Abstimmung"
+        checked={a !== null}
+        onChange={(e) => {
+          const an = e.currentTarget.checked;
+          aendern((d) => ({ ...d, abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null }));
+        }}
+      />
+      {a && (
+        <StimmenFelder
+          daten={a}
+          aendern={(f) =>
+            aendern((d) => ({ ...d, abstimmung: d.abstimmung ? f(d.abstimmung) : d.abstimmung }))
           }
         />
-      </Stack>
+      )}
     </Stack>
   );
 }

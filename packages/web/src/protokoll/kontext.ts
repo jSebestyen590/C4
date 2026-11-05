@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AnwesenheitsVerlauf, ProtokollArt } from '@c4/shared';
+import type { AnwesenheitsVerlauf, ProtokollArt, ProtokollMitgliedDto } from '@c4/shared';
 import { quorumBeiEroeffnung, type AnwesenheitPerson } from './anwesenheit';
 
 /** What the Baustein node views need to know about the document they live in. */
@@ -10,7 +10,9 @@ export interface ProtokollKontextWert {
   art: ProtokollArt;
   /** Everybody in the attendance list with the attendance that currently counts. */
   teilnahme: readonly AnwesenheitPerson[];
-  /** Quorum at the opening and at each Anwesenheit / Beschluss block of the current document. */
+  /** The active EMs (candidates for a Neues EM block next to the attendance list). */
+  ems: readonly ProtokollMitgliedDto[];
+  /** Quorum at the opening and at each Anwesenheit / Beschluss / Neues EM block of the current document. */
   verlauf: AnwesenheitsVerlauf;
 }
 
@@ -18,6 +20,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   sitzungBeginn: new Date().toISOString(),
   art: 'sitzung',
   teilnahme: [],
+  ems: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {} },
 });
 

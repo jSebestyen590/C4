@@ -43,7 +43,7 @@ export interface AnwesenheitsEingabe {
 export interface AnwesenheitsVerlauf {
   /** Quorum at the opening. */
   start: Beschlussfaehigkeit;
-  /** Quorum at each `bausteinAnwesenheit` (after applying it) and `bausteinBeschluss`, by Baustein id. */
+  /** Quorum at each `bausteinAnwesenheit` (after applying it), `bausteinBeschluss` and `bausteinEm`, by Baustein id. */
   bausteine: Record<string, Beschlussfaehigkeit & { wechsel: boolean }>;
 }
 
@@ -84,7 +84,7 @@ export function anwesenheitsVerlauf(
       const neu = stand();
       bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
       aktuell = neu;
-    } else if (knoten.type === 'bausteinBeschluss') {
+    } else if (knoten.type === 'bausteinBeschluss' || knoten.type === 'bausteinEm') {
       bausteine[id] = { ...aktuell, wechsel: false };
     }
   });

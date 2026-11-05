@@ -58,6 +58,7 @@ describe('first stage', () => {
       'Vergangenes Event',
       'Anwärter:in',
       'Beschluss',
+      'Neues EM',
       'Erscheint',
       'Geht',
       'Zitat',
@@ -69,6 +70,9 @@ describe('first stage', () => {
     expect(titel('anwärter')).toEqual(['Anwärter:in']);
     expect(titel('anwaerter')).toEqual(['Anwärter:in']);
     expect(titel('abstimm')).toEqual(['Beschluss']);
+    expect(titel('em')).toEqual(['Neues EM']);
+    expect(titel('ehrenmitglied')).toEqual(['Neues EM']);
+    expect(titel('neues em')).toEqual(['Neues EM']);
     expect(titel('xyz')).toEqual([]);
   });
   it('finds Zitat by name and alias and applies it at the cursor', () => {
@@ -88,6 +92,11 @@ describe('first stage', () => {
   it('inserts Anwärter and Beschluss directly', () => {
     const [a] = slashEintraege('anw', daten);
     expect(a?.aktion).toMatchObject({ art: 'einfuegen', wahl: { typ: 'bausteinAnwaerter' } });
+    const [em] = slashEintraege('em', daten);
+    expect(em?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinEm', daten: { sub: null, name: '', abstimmung: null } },
+    });
   });
 });
 

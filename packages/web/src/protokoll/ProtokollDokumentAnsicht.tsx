@@ -13,6 +13,7 @@ import './dokumentAnsicht.css';
 import {
   anwesenheitZeile,
   beschlussZeilen,
+  emZeilen,
   beschlussfaehigkeitText,
   dokumentKopf,
   eroeffnungSatz,
@@ -227,6 +228,33 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       </>
     );
   }
+  if (k.type === 'bausteinEm') {
+    const z = emZeilen(daten, ctx.verlauf.bausteine[id]);
+    const p = z.sub ? ctx.person(z.sub) : null;
+    return (
+      <>
+        <h3 className="pk-dok-h2">
+          Neues EM
+          {p ? (
+            <>
+              : <PersonName p={p} />
+            </>
+          ) : (
+            z.name && `: ${z.name}`
+          )}
+        </h3>
+        {z.abstimmung && (
+          <p>
+            {z.abstimmung}
+            {z.nichtBeschlussfaehig && (
+              <span className="pk-dok-warnung"> – nicht beschlussfähig</span>
+            )}
+          </p>
+        )}
+        <Notizen knoten={k.content} ctx={ctx} />
+      </>
+    );
+  }
   if (k.type === 'bausteinAnwesenheit') {
     const z = anwesenheitZeile(daten, art, ctx.verlauf.bausteine[id]);
     if (!z) return null;
@@ -254,6 +282,7 @@ const BAUSTEINE = new Set([
   'bausteinVergangenesEvent',
   'bausteinAnwaerter',
   'bausteinBeschluss',
+  'bausteinEm',
   'bausteinAnwesenheit',
 ]);
 

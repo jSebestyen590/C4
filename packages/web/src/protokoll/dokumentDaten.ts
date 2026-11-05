@@ -2,6 +2,7 @@ import {
   anwesenheitsVerlauf,
   bausteinAnwesenheitDatenSchema,
   bausteinBeschlussDatenSchema,
+  bausteinEmDatenSchema,
   erscheintUhrzeiten,
   heuteBerlin,
   type Beschlussfaehigkeit,
@@ -240,6 +241,34 @@ export function beschlussZeilen(
     stimmen: b ? `Ja ${b.ja} · Nein ${b.nein} · Enthaltung ${b.enthaltung}${ergebnis}` : '',
     anwesend: stand ? `(${anwesendText(stand)})` : '',
     nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,
+  };
+}
+
+export interface EmZeilen {
+  /** Free-text name (used when the Baustein has no `sub`), trimmed. */
+  name: string;
+  sub: string | null;
+  /** "Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)" or '' without a vote. */
+  abstimmung: string;
+  nichtBeschlussfaehig: boolean;
+}
+
+/** Lines of a `bausteinEm`; the vote line only exists when there is a vote. */
+export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined): EmZeilen {
+  const d = bausteinEmDatenSchema.safeParse(daten);
+  if (!d.success) return { name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+  const { sub, name, abstimmung: a } = d.data;
+  const ergebnis = a?.ergebnis
+    ? ` – ${a.ergebnis === 'angenommen' ? 'angenommen' : 'abgelehnt'}`
+    : '';
+  const anwesend = stand ? ` (${anwesendText(stand)})` : '';
+  return {
+    name: name.trim(),
+    sub,
+    abstimmung: a
+      ? `Abstimmung: Ja ${a.ja} · Nein ${a.nein} · Enthaltung ${a.enthaltung}${ergebnis}${anwesend}`
+      : '',
+    nichtBeschlussfaehig: a !== null && stand !== undefined && !stand.beschlussfaehig,
   };
 }
 

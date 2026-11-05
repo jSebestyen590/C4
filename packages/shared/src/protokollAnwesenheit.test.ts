@@ -259,6 +259,28 @@ describe('bausteinAnwesenheit', () => {
     expect(JSON.stringify(v)).not.toContain('bausteinAnwesenheit');
     expect(JSON.stringify(v)).not.toContain('bausteinBeschluss');
   });
+
+  it('records the quorum at each Neues EM block without a change', () => {
+    const em = bausteinErzeugen('bausteinEm');
+    const d = doc(em, anw('geht', 'm0'), bausteinErzeugen('bausteinEm'));
+    const t = mitglieder(3);
+    const v = anwesenheitsVerlauf(d, { art: 'sitzung', teilnahme: t });
+    expect(v.bausteine[em.attrs!.id as string]).toMatchObject({
+      anwesend: 3,
+      beschlussfaehig: true,
+      wechsel: false,
+    });
+    const spaeter = d.content[1]!.content![2]!;
+    expect(v.bausteine[spaeter.attrs!.id as string]).toMatchObject({
+      anwesend: 2,
+      wechsel: false,
+    });
+    const nicht = anwesenheitsVerlauf(doc(em), {
+      art: 'sitzung',
+      teilnahme: mitglieder(3, 'entschuldigt'),
+    });
+    expect(nicht.bausteine[em.attrs!.id as string]).toMatchObject({ beschlussfaehig: false });
+  });
 });
 
 describe('protokollKopfSchema additions', () => {

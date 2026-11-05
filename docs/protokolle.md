@@ -25,7 +25,7 @@ Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt
   die Beschlussfähigkeit: Sitzung = mehr als die Hälfte der Mitglieder, Mitgliederversammlung = mehr als zwei Drittel.
   Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer `anwesend` ist, zählt ab Beginn,
   wer `verspaetet` ist, ab seinem Baustein „Erscheint“; „Geht“ nimmt ihn wieder heraus (`anwesenheitsVerlauf` in
-  `packages/shared/src/protokollAnwesenheit.ts`).
+  `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jedem Beschluss und Neuen EM festhält).
 - Je Event gibt es höchstens ein Protokoll (eindeutiger Index; ein zweites gibt 409). Abgesagte Events und Events anderer
   Kategorien nimmt die API nicht an (400).
 - **Löschschutz:** Ein Event mit Protokoll lässt sich nicht löschen (409); erst das Protokoll löschen (nur im Entwurf).
@@ -76,6 +76,7 @@ Karten.
 | Vergangenes Event (`bausteinVergangenesEvent`) | Kalender-Event (`eventId`) oder Name und Datum von Hand                                                                                                                                                      |
 | Anwärter:in (`bausteinAnwaerter`)              | Vorname, Nachname, E-Mail (optional)                                                                                                                                                                         |
 | Beschluss (`bausteinBeschluss`)                | Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag)            |
+| Neues EM (`bausteinEm`)                        | Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie beim Beschluss, sonst `null`)                                     |
 
 Die Feld-Schemata (`BAUSTEIN_DATEN_SCHEMAS`) prüft die API streng, im Entwurf dürfen Felder leer sein. Das übrige Dokument
 prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500 KB).
@@ -104,7 +105,10 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   „–“/„—“ davor (Quelle) steht aufrecht.
 - **Event:** Überschrift `11.02. Superbowl` (bei mehreren Tagen von–bis), dann der Punkt „Verantwortlich: @Name“ (nur wenn
   gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift, Notizen.
-  **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail).
+  **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail). **Neues EM:** Überschrift „Neues EM: <Name>“ (Person als
+  `StatusName`, sonst der Freitext-Name); mit Abstimmung die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
+  25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
+  danach die Notizen.
 - **Beschluss:** eingerückter Block „Beschluss: Antrag“, „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
   Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig).
 - **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Person entfällt sie); ändert
@@ -118,7 +122,9 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   Die Vorlage füllt Name, Uhrzeiten, Dauer und Dienste, das Datum bleibt leer. `/vergangenes` + Enter zeigt „Ohne
   Kalender-Event“ und die vergangenen, nicht abgesagten Events der letzten rund drei Monate vor der Sitzung (die Sitzung selbst
   nicht).
-- Anwärter:in und Beschluss werden direkt eingefügt.
+- Anwärter:in, Beschluss und Neues EM (`/em`, `/ehrenmitglied`) werden direkt eingefügt. Beim Neuen EM springt der Cursor ins Feld
+  „Person“ (durchsuchbar, Teilnahmeliste und EMs; ohne Person erscheint „Name (falls nicht in der App)“); der Schalter „Abstimmung“
+  blendet Ja / Nein / Enthaltung und Ergebnis wie beim Beschluss samt Hinweis zur Beschlussfähigkeit ein.
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
   Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = jetzt,

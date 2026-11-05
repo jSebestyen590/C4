@@ -149,16 +149,19 @@ export function schichtKurz(s: VorlageSchicht, dienstformName: (id: string) => s
 // Beschluss
 // ---------------------------------------------------------------------------------------------
 
+/** The vote fields of a Beschluss and of the optional vote of a Neues EM. */
+type Stimmen = Pick<BausteinBeschlussDaten, 'ja' | 'nein' | 'enthaltung' | 'ergebnis'>;
+
 /**
  * Sets one vote count. The Ergebnis follows the suggestion (`beschlussErgebnisVorschlag`) as long as the
  * user has not chosen on their own: that is the case when it is empty or equal to what the old votes
  * suggested. A manual choice that differs from the suggestion is kept.
  */
-export function stimmeSetzen(
-  daten: BausteinBeschlussDaten,
+export function stimmeSetzen<T extends Stimmen>(
+  daten: T,
   feld: 'ja' | 'nein' | 'enthaltung',
   wert: number,
-): BausteinBeschlussDaten {
+): T {
   if (!ganz(wert) || wert < 0) return daten;
   const folgt =
     daten.ergebnis === null || daten.ergebnis === beschlussErgebnisVorschlag(daten.ja, daten.nein);
@@ -197,6 +200,8 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
       return leer('vorname') ? 'vorname' : leer('nachname') ? 'nachname' : 'text';
     case 'bausteinBeschluss':
       return leer('antrag') ? 'antrag' : 'text';
+    case 'bausteinEm':
+      return leer('sub') && leer('name') ? 'person' : 'text';
     case 'bausteinAnwesenheit':
       return leer('sub') ? 'person' : 'nach';
   }
