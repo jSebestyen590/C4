@@ -61,13 +61,27 @@ export function createFakeProtokolleStore() {
       });
       return { version: p.version, geaendertAm: p.geaendertAm };
     },
-    async statusSetzen(id, status, kopf, version, von) {
+    async statusSetzen(id, status, kopf, version, von, inhalt) {
       const p = liste.get(id);
       if (!p) return undefined;
       if (p.version !== version) throw new ProtokollVeraltet(p.version);
       Object.assign(p, {
         status,
         kopf,
+        ...(inhalt === undefined ? {} : { inhalt }),
+        version: p.version + 1,
+        geaendertVon: von,
+        geaendertAm: new Date(),
+      });
+      return { version: p.version, geaendertAm: p.geaendertAm };
+    },
+    async ergebnisSpeichern(id, daten, von) {
+      const p = liste.get(id);
+      if (!p) return undefined;
+      if (p.version !== daten.version) throw new ProtokollVeraltet(p.version);
+      Object.assign(p, {
+        inhalt: daten.inhalt,
+        kopf: daten.kopf,
         version: p.version + 1,
         geaendertVon: von,
         geaendertAm: new Date(),

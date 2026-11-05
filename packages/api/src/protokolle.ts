@@ -59,6 +59,18 @@ export interface ProtokollStore {
     kopf: string,
     version: number,
     von: string,
+    /** Also replaces the document (what the Aktionen wrote back); left out = unchanged. */
+    inhalt?: string,
+  ): Promise<ProtokollSpeicherErgebnis | undefined>;
+  /**
+   * Replaces document and `kopf` of a protocol in any status (the results of Aktionen, see
+   * docs/protokolle.md) if `version` is the stored one. Undefined when missing; throws
+   * ProtokollVeraltet for another version.
+   */
+  ergebnisSpeichern(
+    id: string,
+    daten: { inhalt: string; kopf: string; version: number },
+    von: string,
   ): Promise<ProtokollSpeicherErgebnis | undefined>;
   /** False when missing; throws ProtokollAbgeschlossen for closed protocols. */
   loeschen(id: string): Promise<boolean>;
@@ -154,8 +166,18 @@ export function createProtokolleStore(db: Db): ProtokollStore {
       return aendern(id, daten.version, true, { inhalt: daten.inhalt, kopf: daten.kopf }, von);
     },
 
-    statusSetzen(id, status, kopf, version, von) {
-      return aendern(id, version, false, { status, kopf }, von);
+    statusSetzen(id, status, kopf, version, von, inhalt) {
+      return aendern(
+        id,
+        version,
+        false,
+        { status, kopf, ...(inhalt === undefined ? {} : { inhalt }) },
+        von,
+      );
+    },
+
+    ergebnisSpeichern(id, daten, von) {
+      return aendern(id, daten.version, false, { inhalt: daten.inhalt, kopf: daten.kopf }, von);
     },
 
     async loeschen(id) {

@@ -128,6 +128,16 @@ import {
   type TrichterDto,
   type TrichterMitgliedDto,
   type TrichterUebersichtDto,
+  aktionenMitZustand,
+  datumPlusTage,
+  protokollAktionen,
+  protokollAktionenAusfuehrenSchema,
+  VORSCHLAG_FENSTER_TAGE,
+  type ProtokollAktionDto,
+  type ProtokollAktionenAntwort,
+  type ProtokollAktionenAusfuehrenAntwort,
+  type ProtokollKalenderEvent,
+  type ProtokollStatusAntwort,
   protokollAnlegenSchema,
   protokollDokumentPruefen,
   stimmenPruefen,
@@ -205,6 +215,7 @@ import {
   type ProtokollDaten,
   type ProtokollStore,
 } from './protokolle';
+import { createProtokollAktionen, rueckschreiben, type Rueckschreibung } from './protokollAktionen';
 import {
   kopfAbschliessen,
   kopfOhneSchnappschuss,
@@ -975,7 +986,10 @@ export function createApp(deps: AppDeps) {
     return event;
   };
 
-  /** Pre-filled document and header for a new protocol: from the latest protocol of an earlier Sitzung. */
+  /**
+   * Pre-filled document and header for a new protocol: the calendar from the previous Sitzung on (and
+   * the events the latest protocol of an earlier Sitzung points to) plus that protocol's notes.
+   */
   const protokollVorschlagFuer = async (sitzung: EventKurz): Promise<ProtokollVorschlagDto> => {
     const alle = await deps.protokolle.alle();
     const events = await deps.kalender.eventsKurz(alle.map((p) => p.eventId));
@@ -984,19 +998,50 @@ export function createApp(deps: AppDeps) {
       .filter((p) => p.eventId !== sitzung.id && beginn(p.eventId) < Date.parse(sitzung.beginn))
       .sort((a, b) => beginn(b.eventId) - beginn(a.eventId));
     const letztes = davor[0] && (await deps.protokolle.holen(davor[0].id));
-    if (!letztes) return { inhalt: protokollLeer(), kopf: protokollKopfLeer() };
-    const dokument = protokollInhaltLesen(letztes.inhalt);
-    const kalender = await deps.kalender.eventsKurz(protokollEventIds(dokument));
+    const dokument = letztes ? protokollInhaltLesen(letztes.inhalt) : null;
+    const letzteBeginn = davor[0]
+      ? events.find((e) => e.id === davor[0]!.eventId)?.beginn
+      : undefined;
+    const sitzungDatum = datumBerlin(sitzung.beginn);
+    const von = letzteBeginn
+      ? datumBerlin(letzteBeginn)
+      : datumPlusTage(sitzungDatum, -VORSCHLAG_FENSTER_TAGE);
+    const bis = datumPlusTage(sitzungDatum, 3 * 366);
+    const [liste, kategorien] = await Promise.all([
+      deps.kalender.events(von, bis),
+      deps.kalender.kategorien(true),
+    ]);
+    const sitzungKategorien = new Set(kategorien.filter((k) => k.protokoll).map((k) => k.id));
+    // Events the previous protocol points to that lie outside of the period.
+    const bekannt = new Set(liste.map((e) => e.id));
+    const weitere = dokument
+      ? await Promise.all(
+          protokollEventIds(dokument)
+            .filter((id) => !bekannt.has(id))
+            .map((id) => deps.kalender.event(id)),
+        )
+      : [];
+    const kalender = [...liste, ...weitere.flatMap((e) => (e ? [e] : []))].map(
+      (e): ProtokollKalenderEvent => ({
+        id: e.id,
+        titel: e.anzeigeTitel,
+        beginn: e.beginn,
+        ende: e.ende,
+        abgesagt: e.abgesagt,
+        kategorieId: e.kategorie?.id ?? null,
+        dauer: e.dauer,
+        serie: e.serie,
+        sitzung: e.kategorie !== null && sitzungKategorien.has(e.kategorie.id),
+        verantwortlichSub: e.verantwortlich?.sub ?? null,
+        schichten: e.schichten,
+      }),
+    );
     return {
       inhalt: protokollVorschlag({
-        sitzungDatum: datumBerlin(sitzung.beginn),
+        sitzungDatum,
+        letzteSitzungBeginn: letzteBeginn ?? null,
         letztes: dokument,
-        events: Object.fromEntries(
-          kalender.map((e) => [
-            e.id,
-            { titel: e.titel, beginn: e.beginn, ende: e.ende, abgesagt: e.abgesagt },
-          ]),
-        ),
+        kalender,
       }),
       kopf: protokollKopfLeer(),
     };
@@ -1060,6 +1105,81 @@ export function createApp(deps: AppDeps) {
       });
     }
     throw err;
+  };
+
+  // ----- Protokolle: Aktionen beim Abschließen (see docs/protokolle.md)
+
+  const aktionenLaufer = createProtokollAktionen({
+    kalender: deps.kalender,
+    mitglieder: deps.mitglieder,
+    userAdmin: deps.userAdmin,
+    posten: deps.posten,
+    eventGeaendert: async (id, aenderung, akteur) => {
+      const event = await deps.kalender.event(id);
+      if (event) await meldeEventAenderung(deps.benachrichtigungen, event, aenderung, akteur);
+    },
+  });
+
+  /** The Aktionen the stored document of a protocol implies, with their plans. */
+  const aktionenBerechnen = async (p: ProtokollDaten, dokument: ProtokollDokument) => {
+    const [event] = await deps.kalender.eventsKurz([p.eventId]);
+    const sitzungDatum = datumBerlin(event?.beginn ?? p.erstelltAm.toISOString());
+    const kontext = await aktionenLaufer.kontextLesen(dokument, sitzungDatum, heuteBerlin());
+    return protokollAktionen(dokument, kontext);
+  };
+
+  /** The Aktionen as the web shows them: state, stored result and the members concerned. */
+  const aktionenDtos = async (
+    p: ProtokollDaten,
+    dokument: ProtokollDokument,
+    kopf: ProtokollKopf,
+  ): Promise<ProtokollAktionDto[]> => {
+    const [liste, mitglieder] = await Promise.all([
+      aktionenBerechnen(p, dokument),
+      protokollMitglieder(),
+    ]);
+    const nachSub = new Map(mitglieder.map((m) => [m.sub, m]));
+    return aktionenMitZustand(liste, kopf.aktionen).map((a) => ({
+      ...a,
+      personen: a.subs.flatMap((sub) => {
+        const m = nachSub.get(sub);
+        return m ? [mitgliedDto(m)] : [];
+      }),
+    }));
+  };
+
+  /**
+   * Writes after Aktionen ran (their effects cannot be undone): when somebody saved in the meantime,
+   * the write is tried again on the newer state, so that the written-back ids are not lost.
+   */
+  const nachAktionenSchreiben = async <T>(
+    p: ProtokollDaten,
+    schreiben: (stand: ProtokollDaten) => Promise<T>,
+    nochmal = true,
+  ): Promise<T> => {
+    let stand = p;
+    for (let versuch = 0; ; versuch++) {
+      try {
+        return await schreiben(stand);
+      } catch (err) {
+        if (!nochmal || !(err instanceof ProtokollVeraltet) || versuch >= 2) throw err;
+        stand = gefunden(await deps.protokolle.holen(p.id), 'Protokoll nicht gefunden');
+      }
+    }
+  };
+
+  /** Document and kopf with the results of Aktionen written back. */
+  const mitErgebnissen = (
+    stand: ProtokollDaten,
+    patches: readonly Rueckschreibung[],
+    ergebnisse: ProtokollKopf['aktionen'],
+  ) => {
+    const kopf = protokollKopfLesen(stand.kopf);
+    return {
+      kopf,
+      inhalt: rueckschreiben(protokollInhaltLesen(stand.inhalt), patches),
+      aktionen: { ...kopf.aktionen, ...ergebnisse },
+    };
   };
 
   /** Display data of members in Trichter DTOs; unknown members get a placeholder. */
@@ -1843,6 +1963,7 @@ export function createApp(deps: AppDeps) {
           const vorKopf = kopfOhneSchnappschuss(eingabe.kopf ?? vorschlag!.kopf);
           const kopf = {
             ...vorKopf,
+            aktionen: {},
             protokollfuehrung: vorKopf.protokollfuehrung ?? c.get('user').sub,
           };
           try {
@@ -1870,14 +1991,21 @@ export function createApp(deps: AppDeps) {
         zValidator('json', protokollSpeichernSchema),
         async (c) => {
           const { inhalt, kopf, version } = c.req.valid('json');
+          const gespeichert = gefunden(
+            await deps.protokolle.holen(c.req.param('id')),
+            'Protokoll nicht gefunden',
+          );
           try {
             const ergebnis = gefunden(
               await deps.protokolle.speichern(
                 c.req.param('id'),
                 {
                   inhalt: JSON.stringify(inhalt),
-                  // The snapshot is the API's business: a draft never has one.
-                  kopf: JSON.stringify(kopfOhneSchnappschuss(kopf)),
+                  // The snapshot and the results of Aktionen are the API's business.
+                  kopf: JSON.stringify({
+                    ...kopfOhneSchnappschuss(kopf),
+                    aktionen: protokollKopfLesen(gespeichert.kopf).aktionen,
+                  }),
                   version,
                 },
                 c.get('user').sub,
@@ -1900,67 +2028,179 @@ export function createApp(deps: AppDeps) {
         protokolleSchreiben,
         zValidator('json', protokollStatusSchema),
         async (c) => {
-          const { status } = c.req.valid('json');
+          const { status, aktionen: aktionenIds = [] } = c.req.valid('json');
+          const akteur = c.get('user').sub;
           const p = gefunden(
             await deps.protokolle.holen(c.req.param('id')),
             'Protokoll nicht gefunden',
           );
-          if (p.status === status) {
-            return c.json({ status, version: p.version, geaendertAm: p.geaendertAm.toISOString() });
-          }
+          const antwort = (
+            ergebnis: { version: number; geaendertAm: Date },
+            ausgaenge: ProtokollStatusAntwort['aktionen'] = [],
+          ): ProtokollStatusAntwort => ({
+            status,
+            version: ergebnis.version,
+            geaendertAm: ergebnis.geaendertAm.toISOString(),
+            aktionen: ausgaenge,
+          });
+          if (p.status === status)
+            return c.json(antwort({ version: p.version, geaendertAm: p.geaendertAm }));
           const kopf = protokollKopfLesen(p.kopf);
-          const [event] =
-            status === 'abgeschlossen' ? await deps.kalender.eventsKurz([p.eventId]) : [];
-          let neuerKopf: ProtokollKopf;
-          if (status === 'abgeschlossen') {
-            const mitglieder = await protokollMitglieder();
-            const antworten = await deps.kalender.teilnahmeAntworten(p.eventId);
-            const art = event?.protokollArt ?? 'sitzung';
-            neuerKopf = kopfAbschliessen(
-              kopf,
-              mitglieder,
-              antworten,
-              art,
-              (await naechsteSitzungenLesen(event?.beginn))[0] ?? null,
-            );
-            // Every binding vote needs as many votes as members present (see docs/protokolle.md).
-            const listen = protokollListen(neuerKopf, 'abgeschlossen', mitglieder, antworten);
-            const { problems } = stimmenPruefen(protokollInhaltLesen(p.inhalt), {
-              art,
-              teilnahme: listen.teilnahme,
-              ems: listen.ems.filter((e) => e.ausgewaehlt),
-              personName: (sub) => {
-                const m = mitglieder.find((x) => x.sub === sub);
-                return m && (m.username || `${m.vorname} ${m.nachname}`.trim());
-              },
-            });
-            if (problems.length > 0) {
-              throw new HTTPException(400, {
-                message: `Das Protokoll lässt sich nicht abschließen, die Stimmen passen nicht zur Anwesenheit: ${problems.map((x) => x.text).join(' ')}`,
-              });
+          if (status === 'entwurf') {
+            try {
+              const ergebnis = gefunden(
+                await deps.protokolle.statusSetzen(
+                  p.id,
+                  status,
+                  JSON.stringify(kopfWiederOeffnen(kopf)),
+                  p.version,
+                  akteur,
+                ),
+                'Protokoll nicht gefunden',
+              );
+              return c.json(antwort(ergebnis));
+            } catch (err) {
+              return protokollKonflikt(err, c);
             }
-          } else {
-            neuerKopf = kopfWiederOeffnen(kopf);
           }
-          try {
-            const ergebnis = gefunden(
-              await deps.protokolle.statusSetzen(
-                p.id,
-                status,
-                JSON.stringify(neuerKopf),
-                p.version,
-                c.get('user').sub,
-              ),
-              'Protokoll nicht gefunden',
-            );
-            return c.json({
-              status,
-              version: ergebnis.version,
-              geaendertAm: ergebnis.geaendertAm.toISOString(),
+
+          const [event] = await deps.kalender.eventsKurz([p.eventId]);
+          const mitglieder = await protokollMitglieder();
+          const antworten = await deps.kalender.teilnahmeAntworten(p.eventId);
+          const art = event?.protokollArt ?? 'sitzung';
+          const naechste = (await naechsteSitzungenLesen(event?.beginn))[0] ?? null;
+          // The snapshot shows the state before the Aktionen change members or events.
+          const abschliessen = (k: ProtokollKopf) =>
+            kopfAbschliessen(k, mitglieder, antworten, art, naechste);
+          const neuerKopf = abschliessen(kopf);
+          // Every binding vote needs as many votes as members present (see docs/protokolle.md).
+          const dokument = protokollInhaltLesen(p.inhalt);
+          const listen = protokollListen(neuerKopf, 'abgeschlossen', mitglieder, antworten);
+          const { problems } = stimmenPruefen(dokument, {
+            art,
+            teilnahme: listen.teilnahme,
+            ems: listen.ems.filter((e) => e.ausgewaehlt),
+            personName: (sub) => {
+              const m = mitglieder.find((x) => x.sub === sub);
+              return m && (m.username || `${m.vorname} ${m.nachname}`.trim());
+            },
+          });
+          if (problems.length > 0) {
+            throw new HTTPException(400, {
+              message: `Das Protokoll lässt sich nicht abschließen, die Stimmen passen nicht zur Anwesenheit: ${problems.map((x) => x.text).join(' ')}`,
             });
+          }
+
+          // The chosen Aktionen run one by one, a failure does not stop the others or the closing.
+          const lauf =
+            aktionenIds.length > 0
+              ? await aktionenLaufer.laufen(
+                  await aktionenBerechnen(p, dokument),
+                  aktionenIds,
+                  akteur,
+                )
+              : { ausgaenge: [], patches: [], ergebnisse: {} };
+          const wirkung = lauf.patches.length > 0 || Object.keys(lauf.ergebnisse).length > 0;
+          try {
+            const ergebnis = await nachAktionenSchreiben(
+              p,
+              async (stand) => {
+                const frisch =
+                  stand === p ? neuerKopf : abschliessen(protokollKopfLesen(stand.kopf));
+                const neu = mitErgebnissen(stand, lauf.patches, lauf.ergebnisse);
+                return gefunden(
+                  await deps.protokolle.statusSetzen(
+                    p.id,
+                    status,
+                    JSON.stringify({
+                      ...frisch,
+                      aktionen: { ...frisch.aktionen, ...neu.aktionen },
+                    }),
+                    stand.version,
+                    akteur,
+                    lauf.patches.length > 0 ? JSON.stringify(neu.inhalt) : undefined,
+                  ),
+                  'Protokoll nicht gefunden',
+                );
+              },
+              wirkung,
+            );
+            return c.json(antwort(ergebnis, lauf.ausgaenge));
           } catch (err) {
             return protokollKonflikt(err, c);
           }
+        },
+      )
+      .get('/protokolle/:id/aktionen', auth, protokolleSchreiben, async (c) => {
+        const p = gefunden(
+          await deps.protokolle.holen(c.req.param('id')),
+          'Protokoll nicht gefunden',
+        );
+        const antwort: ProtokollAktionenAntwort = {
+          aktionen: await aktionenDtos(
+            p,
+            protokollInhaltLesen(p.inhalt),
+            protokollKopfLesen(p.kopf),
+          ),
+        };
+        return c.json(antwort);
+      })
+      // Runs Aktionen again (failed or open ones) for a closed protocol.
+      .post(
+        '/protokolle/:id/aktionen',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollAktionenAusfuehrenSchema),
+        async (c) => {
+          const akteur = c.get('user').sub;
+          const p = gefunden(
+            await deps.protokolle.holen(c.req.param('id')),
+            'Protokoll nicht gefunden',
+          );
+          if (p.status !== 'abgeschlossen') {
+            throw new HTTPException(409, {
+              message: 'Die Aktionen laufen beim Abschließen des Protokolls.',
+            });
+          }
+          const lauf = await aktionenLaufer.laufen(
+            await aktionenBerechnen(p, protokollInhaltLesen(p.inhalt)),
+            c.req.valid('json').aktionen,
+            akteur,
+          );
+          let version = p.version;
+          if (lauf.patches.length > 0 || Object.keys(lauf.ergebnisse).length > 0) {
+            try {
+              const ergebnis = await nachAktionenSchreiben(p, async (stand) => {
+                const neu = mitErgebnissen(stand, lauf.patches, lauf.ergebnisse);
+                return gefunden(
+                  await deps.protokolle.ergebnisSpeichern(
+                    p.id,
+                    {
+                      inhalt: JSON.stringify(neu.inhalt),
+                      kopf: JSON.stringify({ ...neu.kopf, aktionen: neu.aktionen }),
+                      version: stand.version,
+                    },
+                    akteur,
+                  ),
+                  'Protokoll nicht gefunden',
+                );
+              });
+              version = ergebnis.version;
+            } catch (err) {
+              return protokollKonflikt(err, c);
+            }
+          }
+          const neu = gefunden(await deps.protokolle.holen(p.id), 'Protokoll nicht gefunden');
+          const antwort: ProtokollAktionenAusfuehrenAntwort = {
+            version,
+            ergebnisse: lauf.ausgaenge,
+            aktionen: await aktionenDtos(
+              neu,
+              protokollInhaltLesen(neu.inhalt),
+              protokollKopfLesen(neu.kopf),
+            ),
+          };
+          return c.json(antwort);
         },
       )
       .delete('/protokolle/:id', auth, protokolleSchreiben, async (c) => {

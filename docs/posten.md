@@ -69,6 +69,11 @@ Mitglieder werden überall mit ihrem Username (ohne Username „Vorname Nachname
 
 Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bezeichnung>“ (Bezeichnung nach der `anrede` des Mitglieds, Datum = Start der Besetzung), eine Zeile pro aktueller Besetzung. In der Tabelle ist die ganze Zeile klickbar.
 
+Besetzungen entstehen auch aus **Wahlen in Protokollen**: Beim Abschließen legt die Aktion `wahl.posten` für die Gewählten
+Besetzungen ab „Gilt ab“ an, die offenen Besetzungen Nicht-Wiedergewählter enden am Vortag (Ablösung), Wiedergewählte behalten
+ihre. Das läuft mit dem Recht `protokolle:schreiben`, ohne `posten:bearbeiten`; siehe
+[protokolle.md](./protokolle.md#aktionen-beim-abschließen).
+
 ## Vorstandsposten
 
 Migration `0009_vorstandsposten.sql` legt Vorstandsvorsitz (Chef / Chefin / Chef:in), Stellvertretender

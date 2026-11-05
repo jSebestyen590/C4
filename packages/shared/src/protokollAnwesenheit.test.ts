@@ -327,7 +327,7 @@ describe('bausteinAnwesenheit', () => {
   it('is not copied into the suggestion for the next protocol', () => {
     const d = doc(anw('erscheint', 'a', '21:00'), beschluss());
     d.content[2]!.content = [anw('geht', 'b', '22:00'), { type: 'paragraph' }];
-    const v = protokollVorschlag({ sitzungDatum: '2026-11-03', letztes: d, events: {} });
+    const v = protokollVorschlag({ sitzungDatum: '2026-11-03', letztes: d });
     expect(JSON.stringify(v)).not.toContain('bausteinAnwesenheit');
     expect(JSON.stringify(v)).not.toContain('bausteinBeschluss');
   });

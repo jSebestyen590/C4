@@ -29,7 +29,11 @@ import {
   SCHLUESSEL_VERLAUF_MAX,
   type Halter,
   type ProtokollDokument,
+  type EventKategorieDto,
+  type ProtokollAktionenAntwort,
+  type ProtokollAktionenAusfuehrenAntwort,
   type ProtokollDto,
+  type ProtokollStatusAntwort,
   type ProtokollListeEintragDto,
   bausteinErzeugen,
   bausteinLeer,
@@ -613,22 +617,24 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     const aktuell = aktuellerStatus(statusVerlaufSortieren(verlauf.get(sub) ?? []));
     if (row && aktuell) zeilen.set(sub, { ...row, status: aktuell.status });
   };
-  const ersterEintrag = (sub: string, status: MitgliedStatus) =>
-    verlauf.set(sub, [{ id: `s${++eintragNr}`, status, ab: heuteBerlin() }]);
+  const ersterEintrag = (sub: string, status: MitgliedStatus, ab = heuteBerlin()) =>
+    verlauf.set(sub, [{ id: `s${++eintragNr}`, status, ab }]);
   const mitglieder = {
     holen: vi.fn(async (sub: string) => zeilen.get(sub)),
     alle: vi.fn(async () => [...zeilen.values()]),
-    speichern: vi.fn(async (sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus) => {
-      const neu = !zeilen.has(sub);
-      zeilen.set(sub, {
-        sub,
-        ...daten,
-        status: zeilen.get(sub)?.status ?? statusNeu ?? 'anwaerter',
-        deaktiviertAm: zeilen.get(sub)?.deaktiviertAm ?? null,
-        aktualisiertAm: new Date(),
-      });
-      if (neu) ersterEintrag(sub, zeilen.get(sub)!.status);
-    }),
+    speichern: vi.fn(
+      async (sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus, ab?: string) => {
+        const neu = !zeilen.has(sub);
+        zeilen.set(sub, {
+          sub,
+          ...daten,
+          status: zeilen.get(sub)?.status ?? statusNeu ?? 'anwaerter',
+          deaktiviertAm: zeilen.get(sub)?.deaktiviertAm ?? null,
+          aktualisiertAm: new Date(),
+        });
+        if (neu) ersterEintrag(sub, zeilen.get(sub)!.status, ab);
+      },
+    ),
     statusSetzen: vi.fn(async (sub: string, status: MitgliedStatus, ab: string = heuteBerlin()) => {
       if (!zeilen.has(sub)) return false;
       const liste = verlauf.get(sub) ?? [];
@@ -7272,5 +7278,410 @@ describe('protokolle', () => {
     expect(me.permissions).toEqual(
       expect.arrayContaining(['protokolle:lesen', 'protokolle:schreiben']),
     );
+  });
+
+  describe('Aktionen', () => {
+    const kategorien: EventKategorieDto[] = [
+      {
+        id: 'k1',
+        name: 'Sitzung',
+        farbe: 'red',
+        art: 'teilnahme',
+        teilnahmeStatus: ['mitglied'],
+        dauer: 'eintaegig',
+        protokoll: true,
+        protokollArt: 'sitzung',
+        benutzt: true,
+        archiviert: false,
+      },
+      {
+        id: 'kd',
+        name: 'Barabend',
+        farbe: 'blue',
+        art: 'dienste',
+        teilnahmeStatus: null,
+        dauer: 'eintaegig',
+        protokoll: false,
+        protokollArt: 'sitzung',
+        benutzt: true,
+        archiviert: false,
+      },
+    ];
+    const bestehend = {
+      id: 'e9',
+      titel: 'Altes Event',
+      anzeigeTitel: 'Altes Event',
+      beschreibung: null,
+      kategorie: { id: 'kd', name: 'Barabend', farbe: 'blue' },
+      art: 'dienste',
+      dauer: 'eintaegig',
+      beginn: '2026-12-01T18:00:00.000Z',
+      ende: '2026-12-01T21:00:00.000Z',
+      abgesagt: false,
+      serie: null,
+      schichten: [],
+      teilnahmeStatus: null,
+      verantwortlich: null,
+      teilnahmen: [],
+    } as unknown as EventDto;
+
+    /**
+     * A protocol of Sitzung `s1` (2026-10-06) with one block per Aktion: new event, change of `e9`,
+     * invitation, Aufnahme of `r`, Wahl of `m2` for the Posten `p1`. `m2` is present (one vote each).
+     */
+    async function aktionenSetup() {
+      const t = await setup();
+      t.antworten.m2 = 'teilnahme';
+      // `r` has been Anwärter:in since long before the Sitzung (the new profile's entry starts today).
+      await t.mitglieder.statusEintragAnlegen('r', { status: 'anwaerter', ab: '2026-01-01' });
+      for (const e of await t.mitglieder.statusVerlauf('r')) {
+        if (e.ab !== '2026-01-01') await t.mitglieder.statusEintragLoeschen('r', e.id);
+      }
+      t.kalender.kategorien.mockResolvedValue(kategorien);
+      let e9 = bestehend;
+      t.kalender.event.mockImplementation(async (id) => (id === 'e9' ? e9 : undefined));
+      t.kalender.eventAktualisieren.mockImplementation(async (_id, daten) => {
+        e9 = { ...e9, titel: daten.titel, anzeigeTitel: daten.titel };
+        return {
+          zeitGeaendert: false,
+          geaenderteSchichten: [],
+          entfernteDienste: [],
+          mitgliedSubs: [],
+          teilnehmerSubs: [],
+          verantwortlichNeu: null,
+        };
+      });
+      t.kalender.eventAnlegen.mockResolvedValue('e-neu');
+      t.userAdmin.createUser.mockResolvedValue({
+        username: 'uuid-neu',
+        sub: 'uuid-neu',
+        email: 'neu@example.de',
+        status: 'FORCE_CHANGE_PASSWORD',
+        enabled: true,
+        groups: [],
+      });
+      const postenId = await t.posten.anlegen({ name: 'Kasse', beschreibung: null } as never);
+      const stimme = { ja: 1, nein: 0, enthaltung: 0 };
+      const doc = protokollLeer();
+      const bausteine = {
+        neu: bausteinErzeugen('bausteinEvent', {
+          ...bausteinLeer('bausteinEvent'),
+          name: 'Sommerfest',
+          datum: '2026-12-12',
+          beginnZeit: '18:00',
+          endeZeit: '23:00',
+          kategorieId: 'kd',
+        }),
+        aender: bausteinErzeugen('bausteinEvent', {
+          ...bausteinLeer('bausteinEvent'),
+          name: 'Neuer Name',
+          datum: '2026-12-01',
+          beginnZeit: '19:00',
+          endeZeit: '22:00',
+          kategorieId: 'kd',
+          eventId: 'e9',
+        }),
+        einladung: bausteinErzeugen('bausteinAnwaerter', {
+          vorname: 'Neu',
+          nachname: 'Mensch',
+          email: 'neu@example.de',
+          sub: null,
+        }),
+        aufnahme: bausteinErzeugen('bausteinAufnahme', {
+          ...bausteinLeer('bausteinAufnahme'),
+          sub: 'r',
+          abstimmung: { ...stimme, ergebnis: 'angenommen' },
+        }),
+        wahl: bausteinErzeugen('bausteinWahl', {
+          ...bausteinLeer('bausteinWahl'),
+          posten: 'Kasse',
+          postenId,
+          gueltigAb: '2026-11-01',
+          kandidaten: [{ id: 'c1', sub: 'm2', name: 'M', stimmen: 1 }],
+        }),
+      };
+      doc.content[1]!.content = [bausteine.einladung, bausteine.aufnahme, bausteine.wahl];
+      doc.content[2]!.content = [bausteine.neu, bausteine.aender];
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1', inhalt: doc })).json())
+        .id as string;
+      const aktionId = (b: { attrs: { id: string } }, art: string) => `${b.attrs.id}:${art}`;
+      const ids = {
+        neu: aktionId(bausteine.neu, 'event.anlegen'),
+        aender: aktionId(bausteine.aender, 'event.aendern'),
+        einladung: aktionId(bausteine.einladung, 'anwaerter.einladen'),
+        aufnahme: aktionId(bausteine.aufnahme, 'aufnahme.status'),
+        wahl: aktionId(bausteine.wahl, 'wahl.posten'),
+      };
+      const alleIds = Object.values(ids);
+      const aktionenLesen = async (token = 'vorstand-token') =>
+        (await (
+          await t.app.request(`/api/protokolle/${id}/aktionen`, json(token, 'GET'))
+        ).json()) as ProtokollAktionenAntwort;
+      const schliessen = (aktionen?: string[], token = 'vorstand-token') =>
+        t.app.request(
+          `/api/protokolle/${id}/status`,
+          json(token, 'PUT', { status: 'abgeschlossen', aktionen }),
+        );
+      const oeffnen = () =>
+        t.app.request(
+          `/api/protokolle/${id}/status`,
+          json('vorstand-token', 'PUT', { status: 'entwurf' }),
+        );
+      const wiederholen = (aktionen: string[], token = 'vorstand-token') =>
+        t.app.request(`/api/protokolle/${id}/aktionen`, json(token, 'POST', { aktionen }));
+      return { ...t, id, ids, alleIds, postenId, aktionenLesen, schliessen, oeffnen, wiederholen };
+    }
+
+    it('lists the Aktionen of the stored document for writers only', async () => {
+      const t = await aktionenSetup();
+      const { aktionen } = await t.aktionenLesen();
+      expect(aktionen.map((a) => [a.art, a.zustand, a.ausfuehrbar])).toEqual([
+        ['anwaerter.einladen', 'offen', true],
+        ['aufnahme.status', 'offen', true],
+        ['wahl.posten', 'offen', true],
+        ['event.anlegen', 'offen', true],
+        ['event.aendern', 'offen', true],
+      ]);
+      expect(aktionen.map((a) => a.id)).toEqual([
+        t.ids.einladung,
+        t.ids.aufnahme,
+        t.ids.wahl,
+        t.ids.neu,
+        t.ids.aender,
+      ]);
+      expect(aktionen[1]!.personen).toMatchObject([
+        { sub: 'r', username: 'user-r', status: 'anwaerter' },
+      ]);
+      expect('plan' in aktionen[0]!).toBe(false);
+      for (const token of ['reader-token', 'member-token']) {
+        const res = await t.app.request(`/api/protokolle/${t.id}/aktionen`, json(token, 'GET'));
+        expect(res.status).toBe(403);
+        expect((await t.wiederholen(t.alleIds, token)).status).toBe(403);
+      }
+      expect(
+        (await t.app.request('/api/protokolle/gibtsnicht/aktionen', json('admin-token', 'GET')))
+          .status,
+      ).toBe(404);
+    });
+
+    it('closes with the chosen Aktionen using only the right protocolle:schreiben', async () => {
+      const t = await aktionenSetup();
+      // The writer cannot manage events, members or Posten through the normal routes.
+      expect(
+        (
+          await t.app.request(
+            '/api/kalender/events',
+            json('vorstand-token', 'POST', { titel: 'x' }),
+          )
+        ).status,
+      ).toBe(403);
+
+      const res = await t.schliessen(t.alleIds);
+      expect(res.status).toBe(200);
+      const antwort = (await res.json()) as ProtokollStatusAntwort;
+      expect(antwort).toMatchObject({ status: 'abgeschlossen', version: 2 });
+      expect(antwort.aktionen.map((a) => [a.art, a.status])).toEqual([
+        ['anwaerter.einladen', 'erledigt'],
+        ['aufnahme.status', 'erledigt'],
+        ['wahl.posten', 'erledigt'],
+        ['event.anlegen', 'erledigt'],
+        ['event.aendern', 'erledigt'],
+      ]);
+
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          titel: 'Sommerfest',
+          kategorieId: 'kd',
+          beginn: '2026-12-12T17:00:00.000Z',
+          ende: '2026-12-12T22:00:00.000Z',
+        }),
+        'v',
+      );
+      expect(t.kalender.eventAktualisieren).toHaveBeenCalledWith(
+        'e9',
+        expect.objectContaining({ titel: 'Neuer Name', kategorieId: 'kd' }),
+      );
+      expect(t.userAdmin.createUser).toHaveBeenCalledWith('neu@example.de', []);
+      expect(t.mitglieder.speichern).toHaveBeenCalledWith(
+        'uuid-neu',
+        expect.objectContaining({ vorname: 'Neu', nachname: 'Mensch' }),
+        'anwaerter',
+        '2026-10-06',
+      );
+      expect(t.mitglieder.statusSetzen).toHaveBeenCalledWith('r', 'mitglied', '2026-10-06');
+      expect(t.posten.besetzungAnlegen).toHaveBeenCalledWith(
+        t.postenId,
+        { mitgliedSub: 'm2', start: '2026-11-01', ende: null },
+        [],
+      );
+
+      // The ids are written back into the document (one save, one version) and the results kept.
+      const dto = await t.holen(t.id);
+      expect(dto.status).toBe('abgeschlossen');
+      expect(dto.version).toBe(2);
+      expect(JSON.stringify(dto.inhalt)).toContain('"eventId":"e-neu"');
+      expect(JSON.stringify(dto.inhalt)).toContain('"sub":"uuid-neu"');
+      expect(Object.keys(dto.kopf.aktionen).sort()).toEqual([...t.alleIds].sort());
+      expect(dto.kopf.aktionen[t.ids.neu]).toMatchObject({ status: 'erledigt', von: 'v' });
+      // The snapshot shows the status before the Aufnahme.
+      expect(dto.kopf.statusSchnappschuss?.r).toBe('anwaerter');
+
+      // The list now shows what was done.
+      const { aktionen } = await t.aktionenLesen();
+      expect(aktionen.every((a) => a.zustand === 'erledigt')).toBe(true);
+    });
+
+    it('does not run anything twice when the protocol is reopened and closed again', async () => {
+      const t = await aktionenSetup();
+      await t.schliessen(t.alleIds);
+      expect((await t.oeffnen()).status).toBe(200);
+      expect((await t.aktionenLesen()).aktionen.every((a) => a.zustand === 'erledigt')).toBe(true);
+      const antwort = (await (await t.schliessen(t.alleIds)).json()) as ProtokollStatusAntwort;
+      expect(antwort.aktionen.map((a) => a.status)).toEqual(Array(5).fill('uebersprungen'));
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledTimes(1);
+      expect(t.userAdmin.createUser).toHaveBeenCalledTimes(1);
+      expect(
+        t.mitglieder.statusSetzen.mock.calls.filter((c) => c[0] === 'r' && c[2] === '2026-10-06'),
+      ).toHaveLength(1);
+      expect(t.posten.besetzungAnlegen).toHaveBeenCalledTimes(1);
+      expect(t.kalender.eventAktualisieren).toHaveBeenCalledTimes(1);
+      // Nothing recorded earlier is lost.
+      expect(Object.keys((await t.holen(t.id)).kopf.aktionen)).toHaveLength(5);
+    });
+
+    it('closes although an Aktion fails and lets it run again later', async () => {
+      const t = await aktionenSetup();
+      t.kalender.eventAnlegen.mockRejectedValueOnce(new KalenderUngueltig('Kaputtes Event'));
+      t.kalender.eventAktualisieren.mockRejectedValueOnce(new EntfernungBestaetigen([], []));
+      const antwort = (await (await t.schliessen(t.alleIds)).json()) as ProtokollStatusAntwort;
+      const nach = Object.fromEntries(antwort.aktionen.map((a) => [a.art, a]));
+      expect(nach['event.anlegen']).toMatchObject({ status: 'fehler', meldung: 'Kaputtes Event' });
+      expect(nach['event.aendern']).toMatchObject({ status: 'fehler' });
+      expect(nach['event.aendern']!.meldung).toContain('Dienste');
+      expect(nach['wahl.posten']!.status).toBe('erledigt');
+      const dto = await t.holen(t.id);
+      expect(dto.status).toBe('abgeschlossen');
+      expect(dto.kopf.aktionen[t.ids.neu]).toMatchObject({
+        status: 'fehler',
+        text: 'Kaputtes Event',
+      });
+      expect(JSON.stringify(dto.inhalt)).not.toContain('e-neu');
+
+      const { aktionen } = await t.aktionenLesen();
+      expect(aktionen.filter((a) => a.zustand === 'fehler').map((a) => a.id)).toEqual([
+        t.ids.neu,
+        t.ids.aender,
+      ]);
+
+      // Retry for the closed protocol: the id is written back and the version counts up.
+      const res = await t.wiederholen([t.ids.neu, t.ids.einladung, 'x:unbekannt']);
+      expect(res.status).toBe(200);
+      const wieder = (await res.json()) as ProtokollAktionenAusfuehrenAntwort;
+      expect(wieder.ergebnisse.map((e) => [e.id, e.status])).toEqual([
+        [t.ids.neu, 'erledigt'],
+        [t.ids.einladung, 'uebersprungen'],
+        ['x:unbekannt', 'uebersprungen'],
+      ]);
+      expect(wieder.version).toBe(3);
+      expect(wieder.aktionen.find((a) => a.id === t.ids.neu)).toMatchObject({
+        zustand: 'erledigt',
+      });
+      const nachher = await t.holen(t.id);
+      expect(nachher.version).toBe(3);
+      expect(JSON.stringify(nachher.inhalt)).toContain('"eventId":"e-neu"');
+      expect(nachher.kopf.aktionen[t.ids.neu]).toMatchObject({ status: 'erledigt' });
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports an email address that is taken and does not create a profile', async () => {
+      const t = await aktionenSetup();
+      t.userAdmin.createUser.mockRejectedValueOnce(
+        Object.assign(new Error('exists'), { name: 'AliasExistsException' }),
+      );
+      const antwort = (await (
+        await t.schliessen([t.ids.einladung])
+      ).json()) as ProtokollStatusAntwort;
+      expect(antwort.aktionen).toMatchObject([
+        { art: 'anwaerter.einladen', status: 'fehler', meldung: 'E-Mail-Adresse bereits vergeben' },
+      ]);
+      expect(t.mitglieder.speichern.mock.calls.filter((c) => c[0] === 'uuid-neu')).toEqual([]);
+    });
+
+    it('closes without Aktionen when none are chosen and only retries closed protocols', async () => {
+      const t = await aktionenSetup();
+      expect((await t.wiederholen(t.alleIds)).status).toBe(409);
+      const antwort = (await (await t.schliessen()).json()) as ProtokollStatusAntwort;
+      expect(antwort.aktionen).toEqual([]);
+      expect(t.kalender.eventAnlegen).not.toHaveBeenCalled();
+      expect((await t.holen(t.id)).kopf.aktionen).toEqual({});
+      expect((await t.wiederholen([])).status).toBe(400);
+    });
+
+    it('skips Aktionen that cannot run and keeps the results when a draft is saved', async () => {
+      const t = await aktionenSetup();
+      const dto = await t.holen(t.id);
+      // The Sitzung date is over, but the Posten does not exist any more.
+      t.posten.holen.mockResolvedValueOnce(undefined);
+      const antwort = (await (
+        await t.schliessen([t.ids.wahl, t.ids.neu])
+      ).json()) as ProtokollStatusAntwort;
+      expect(antwort.aktionen.map((a) => [a.art, a.status])).toEqual([
+        ['wahl.posten', 'uebersprungen'],
+        ['event.anlegen', 'erledigt'],
+      ]);
+      expect(antwort.aktionen[0]!.meldung).toBe('Den Posten gibt es nicht mehr.');
+      await t.oeffnen();
+      const offen = await t.holen(t.id);
+      expect(Object.keys(offen.kopf.aktionen)).toEqual([t.ids.neu]);
+      // The editor sends back its own kopf; the results stay.
+      const put = await t.app.request(
+        `/api/protokolle/${t.id}`,
+        json('vorstand-token', 'PUT', {
+          inhalt: offen.inhalt,
+          kopf: { ...dto.kopf, aktionen: {} },
+          version: offen.version,
+        }),
+      );
+      expect(put.status).toBe(200);
+      expect(Object.keys((await t.holen(t.id)).kopf.aktionen)).toEqual([t.ids.neu]);
+    });
+
+    it('pre-fills a new protocol from the calendar', async () => {
+      const t = await setup();
+      t.kalender.kategorien.mockResolvedValue(kategorien);
+      const ereignis = (id: string, beginn: string, extra: object = {}) =>
+        ({
+          ...bestehend,
+          id,
+          titel: id,
+          anzeigeTitel: id,
+          beginn,
+          ende: new Date(Date.parse(beginn) + 3 * 3600_000).toISOString(),
+          ...extra,
+        }) as EventDto;
+      t.kalender.events.mockResolvedValue([
+        ereignis('vorbei', '2026-10-20T18:00:00.000Z'),
+        ereignis('kommt', '2026-11-20T18:00:00.000Z', { verantwortlich: { sub: 'm2' } }),
+        ereignis('serie', '2026-11-21T18:00:00.000Z', { serie: 'barabend' }),
+        ereignis('sitzung', '2026-11-22T18:00:00.000Z', {
+          kategorie: { id: 'k1', name: 'Sitzung', farbe: 'red' },
+        }),
+        ereignis('abgesagt', '2026-11-23T18:00:00.000Z', { abgesagt: true }),
+      ]);
+      const vorschlag = (await (
+        await t.app.request('/api/protokolle/vorschlag?eventId=s2', json('admin-token', 'GET'))
+      ).json()) as { inhalt: ProtokollDokument };
+      const ids = (i: number) =>
+        vorschlag.inhalt.content[i]!.content!.map(
+          (k) => (k.attrs?.daten as { eventId?: string } | undefined)?.eventId,
+        );
+      expect(ids(0)).toEqual(['vorbei']);
+      expect(ids(2)).toEqual(['kommt']);
+      expect(vorschlag.inhalt.content[2]!.content![0]).toMatchObject({
+        attrs: { daten: { name: 'kommt', kategorieId: 'kd', verantwortlichSub: 'm2' } },
+      });
+      // The calendar is asked from the earlier Sitzung on, or for 92 days without one.
+      expect(t.kalender.events).toHaveBeenLastCalledWith('2026-08-03', expect.any(String));
+    });
   });
 });

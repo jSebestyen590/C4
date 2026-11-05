@@ -141,6 +141,13 @@ Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; `kategorie_id` ist `
   siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll lässt sich nicht löschen (409), und Serienänderungen
   löschen oder ersetzen es nie. Mit dem Häkchen wählt man die **Art** (`protokollArt`: Sitzung = mehr als die Hälfte, Mitgliederversammlung = mehr als zwei Drittel der Mitglieder beschlussfähig).
 
+**Events aus Protokollen:** Neue Protokolle starten mit Bausteinen für die Events seit der letzten Sitzung und alle kommenden
+(ohne Serien-Events und Sitzungen). Beim Abschließen legen Event-Bausteine ohne `eventId` Events an (`event.anlegen`) und
+ändern Event-Bausteine, die vom Kalender abweichen, das Event (`event.aendern`), mit dem Recht `protokolle:schreiben` und ohne
+`events:verwalten`. Würden dabei Dienste mit Eintragungen wegfallen, schlägt die Aktion fehl. Siehe
+[protokolle.md](./protokolle.md#aktionen-beim-abschließen). Die Dienste eines Events im Vorlage-Format liefert
+`schichtenAusEvent` (Umkehrung von `ausVorlage`).
+
 ## Teilnahme
 
 Events mit einer Teilnahme-Kategorie haben Teilnehmende. Das ist **kein Dienst**, keine Schicht und zählt nicht im Dienstschwein.

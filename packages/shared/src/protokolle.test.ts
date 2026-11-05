@@ -23,7 +23,7 @@ import {
   type BausteinWahlDaten,
   bausteinWahlDatenSchema,
   type ProtokollDokument,
-  type ProtokollEventInfo,
+  type ProtokollKalenderEvent,
   type ProtokollKnoten,
 } from './protokolle';
 
@@ -50,11 +50,23 @@ const eventBaustein = (
 ): BausteinKnoten<'bausteinEvent'> =>
   bausteinErzeugen('bausteinEvent', { ...bausteinLeer('bausteinEvent'), ...daten }, [absatz(text)]);
 
-const info = (beginn: string, ende: string, extra: Partial<ProtokollEventInfo> = {}) => ({
+const kal = (
+  id: string,
+  beginn: string,
+  ende: string,
+  extra: Partial<ProtokollKalenderEvent> = {},
+): ProtokollKalenderEvent => ({
+  id,
   titel: 'Barabend',
   beginn,
   ende,
   abgesagt: false,
+  kategorieId: 'k1',
+  dauer: 'eintaegig',
+  serie: null,
+  sitzung: false,
+  verantwortlichSub: null,
+  schichten: [],
   ...extra,
 });
 
@@ -379,9 +391,7 @@ describe('protokollVorschlag', () => {
     (doc.content[abschnitt]!.content ?? []).filter((k) => k.type.startsWith('baustein'));
 
   it('is empty without a previous protocol', () => {
-    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes: null, events: {} })).toEqual(
-      protokollLeer(),
-    );
+    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes: null })).toEqual(protokollLeer());
   });
 
   it('turns past events into Vergangenes Event blocks, sorted by date, with empty text', () => {
@@ -392,7 +402,7 @@ describe('protokollVorschlag', () => {
         eventBaustein({ name: 'Ohne Datum' }),
       ],
     });
-    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes });
     const vergangen = bausteine(doc, 0);
     expect(vergangen.map((v) => v.type)).toEqual([
       'bausteinVergangenesEvent',
@@ -425,7 +435,7 @@ describe('protokollVorschlag', () => {
         eventBaustein({ name: 'Gestern', datum: '2026-11-09' }),
       ],
     });
-    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes });
     expect(bausteine(doc, 0).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
       'Gestern',
     ]);
@@ -440,7 +450,6 @@ describe('protokollVorschlag', () => {
     const doc = protokollVorschlag({
       sitzungDatum: sitzung,
       letztes: dokument({ zukuenftiges: [original] }),
-      events: {},
     });
     const kopie = bausteine(doc, 2)[0]!;
     expect(kopie.content).toEqual([absatz('Wer macht Musik?')]);
@@ -461,7 +470,6 @@ describe('protokollVorschlag', () => {
     const doc = protokollVorschlag({
       sitzungDatum: sitzung,
       letztes: dokument({ zukuenftiges: [original, nur] }),
-      events: {},
     });
     const [a, b] = bausteine(doc, 2);
     expect(a!.content).toEqual([absatz('Text')]);
@@ -476,7 +484,6 @@ describe('protokollVorschlag', () => {
     const doc = protokollVorschlag({
       sitzungDatum: sitzung,
       letztes: dokument({ zukuenftiges: [original] }),
-      events: {},
     });
     expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('Text')]);
   });
@@ -500,9 +507,9 @@ describe('protokollVorschlag', () => {
       sitzungDatum: sitzung,
       letztes,
       // 2026-12-05 is winter time: 20:00Z = 21:00 Berlin
-      events: new Map([
-        ['e1', info('2026-12-05T20:00:00.000Z', '2026-12-06T00:30:00.000Z', { titel: 'Neu' })],
-      ]),
+      kalender: [
+        kal('e1', '2026-12-05T20:00:00.000Z', '2026-12-06T00:30:00.000Z', { titel: 'Neu' }),
+      ],
     });
     expect(bausteine(doc, 2)[0]!.attrs?.daten).toMatchObject({
       name: 'Neu',
@@ -525,10 +532,10 @@ describe('protokollVorschlag', () => {
     const doc = protokollVorschlag({
       sitzungDatum: sitzung,
       letztes,
-      events: {
-        e1: info('2026-11-20T18:00:00.000Z', '2026-11-20T21:00:00.000Z'),
-        e2: info('2026-11-03T18:00:00.000Z', '2026-11-03T21:00:00.000Z'),
-      },
+      kalender: [
+        kal('e1', '2026-11-20T18:00:00.000Z', '2026-11-20T21:00:00.000Z'),
+        kal('e2', '2026-11-03T18:00:00.000Z', '2026-11-03T21:00:00.000Z'),
+      ],
     });
     expect(bausteine(doc, 0).map((b) => (b.attrs?.daten as { eventId: string }).eventId)).toEqual([
       'e2',
@@ -549,10 +556,10 @@ describe('protokollVorschlag', () => {
     const doc = protokollVorschlag({
       sitzungDatum: sitzung,
       letztes,
-      events: {
-        e1: info('2026-12-01T18:00:00.000Z', '2026-12-01T21:00:00.000Z', { abgesagt: true }),
-        e3: info('2026-11-01T18:00:00.000Z', '2026-11-01T21:00:00.000Z', { abgesagt: true }),
-      },
+      kalender: [
+        kal('e1', '2026-12-01T18:00:00.000Z', '2026-12-01T21:00:00.000Z', { abgesagt: true }),
+        kal('e3', '2026-11-01T18:00:00.000Z', '2026-11-01T21:00:00.000Z', { abgesagt: true }),
+      ],
     });
     expect(bausteine(doc, 0)).toEqual([]);
     expect(bausteine(doc, 2).map((b) => (b.attrs?.daten as { name: string }).name)).toEqual([
@@ -569,7 +576,7 @@ describe('protokollVorschlag', () => {
         eventBaustein({ name: 'Frei', datum: '2026-12-03' }),
       ],
     });
-    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes });
     expect(bausteine(doc, 2)).toHaveLength(3);
     expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('A')]);
   });
@@ -583,9 +590,212 @@ describe('protokollVorschlag', () => {
         bausteinErzeugen('bausteinEm'),
       ],
     });
-    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes, events: {} })).toEqual(
-      protokollLeer(),
-    );
+    expect(protokollVorschlag({ sitzungDatum: sitzung, letztes })).toEqual(protokollLeer());
+  });
+});
+
+describe('protokollVorschlag from the calendar', () => {
+  // Sitzung on 2026-11-10; the previous one began on 2026-10-13 at 19:00 (Berlin, CEST).
+  const sitzung = '2026-11-10';
+  const letzte = '2026-10-13T17:00:00.000Z';
+  const bausteine = (doc: ProtokollDokument, abschnitt: number) =>
+    (doc.content[abschnitt]!.content ?? []).filter((k) => k.type.startsWith('baustein'));
+  const namen = (doc: ProtokollDokument, abschnitt: number) =>
+    bausteine(doc, abschnitt).map((b) => (b.attrs?.daten as { name: string }).name);
+  const ids = (doc: ProtokollDokument, abschnitt: number) =>
+    bausteine(doc, abschnitt).map((b) => (b.attrs?.daten as { eventId: string }).eventId);
+
+  it('takes past events since the last Sitzung and all upcoming ones, sorted, without a protocol', () => {
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes: null,
+      kalender: [
+        kal('alt', '2026-10-12T17:00:00.000Z', '2026-10-12T20:00:00.000Z', {
+          titel: 'Vor der Sitzung',
+        }),
+        kal('v2', '2026-11-05T17:00:00.000Z', '2026-11-05T20:00:00.000Z', { titel: 'Spät' }),
+        kal('v1', '2026-10-20T17:00:00.000Z', '2026-10-20T20:00:00.000Z', { titel: 'Früh' }),
+        kal('z2', '2027-03-01T17:00:00.000Z', '2027-03-01T20:00:00.000Z', { titel: 'Fern' }),
+        kal('z1', '2026-11-20T17:00:00.000Z', '2026-11-20T20:00:00.000Z', { titel: 'Nah' }),
+      ],
+    });
+    expect(ids(doc, 0)).toEqual(['v1', 'v2']);
+    expect(ids(doc, 2)).toEqual(['z1', 'z2']);
+    expect(bausteine(doc, 0).every((b) => b.type === 'bausteinVergangenesEvent')).toBe(true);
+    expect(bausteine(doc, 2)[0]!.attrs?.daten).toMatchObject({
+      name: 'Nah',
+      datum: '2026-11-20',
+      beginnZeit: '18:00',
+      endeZeit: '21:00',
+      kategorieId: 'k1',
+      eventId: 'z1',
+    });
+    // New events start with an empty list.
+    expect(bausteine(doc, 2)[0]!.content).toEqual([
+      { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }] },
+    ]);
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('uses a window of 92 days without a previous Sitzung', () => {
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: null,
+      kalender: [
+        kal('weit', '2026-07-01T17:00:00.000Z', '2026-07-01T20:00:00.000Z'),
+        kal('knapp', '2026-08-10T17:00:00.000Z', '2026-08-10T20:00:00.000Z'),
+      ],
+    });
+    expect(ids(doc, 0)).toEqual(['knapp']);
+  });
+
+  it('puts an event that spans the Sitzung day into Zukünftiges', () => {
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes: null,
+      kalender: [kal('lager', '2026-11-08T08:00:00.000Z', '2026-11-12T10:00:00.000Z')],
+    });
+    expect(ids(doc, 0)).toEqual([]);
+    expect(ids(doc, 2)).toEqual(['lager']);
+    expect(bausteine(doc, 2)[0]!.attrs?.daten).toMatchObject({
+      datum: '2026-11-08',
+      bisDatum: '2026-11-12',
+    });
+  });
+
+  it('leaves out cancelled events, series events and Sitzungen', () => {
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes: null,
+      kalender: [
+        kal('abgesagt', '2026-11-20T17:00:00.000Z', '2026-11-20T20:00:00.000Z', { abgesagt: true }),
+        kal('serie', '2026-11-21T17:00:00.000Z', '2026-11-21T20:00:00.000Z', { serie: 'barabend' }),
+        kal('sitzung', '2026-11-22T17:00:00.000Z', '2026-11-22T20:00:00.000Z', { sitzung: true }),
+        kal('normal', '2026-11-23T17:00:00.000Z', '2026-11-23T20:00:00.000Z'),
+      ],
+    });
+    expect(ids(doc, 2)).toEqual(['normal']);
+  });
+
+  it('keeps a series event the previous protocol mentions, once, with its notes', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Barabend', datum: '2026-11-21', eventId: 'serie' }, 'Notiz'),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes,
+      kalender: [
+        kal('serie', '2026-11-21T17:00:00.000Z', '2026-11-21T20:00:00.000Z', { serie: 'barabend' }),
+      ],
+    });
+    expect(ids(doc, 2)).toEqual(['serie']);
+    expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('Notiz')]);
+  });
+
+  it('lets the calendar win but keeps the notes and does not repeat events', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein(
+          {
+            name: 'Alt',
+            datum: '2026-12-01',
+            eventId: 'e1',
+            kategorieId: 'alt',
+            verantwortlichSub: 'x',
+          },
+          'Meine Notiz',
+        ),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes,
+      kalender: [
+        kal('e1', '2026-12-05T17:00:00.000Z', '2026-12-05T20:00:00.000Z', {
+          titel: 'Neu',
+          kategorieId: 'k2',
+          verantwortlichSub: 'y',
+          schichten: [
+            {
+              art: 'betrieb',
+              beginn: '2026-12-05T17:00:00.000Z',
+              ende: '2026-12-05T20:00:00.000Z',
+              bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(bausteine(doc, 2)).toHaveLength(1);
+    const b = bausteine(doc, 2)[0]!;
+    expect(b.attrs?.daten).toMatchObject({
+      name: 'Neu',
+      datum: '2026-12-05',
+      kategorieId: 'k2',
+      verantwortlichSub: 'y',
+      schichten: [
+        {
+          art: 'betrieb',
+          beginnZeit: '18:00',
+          endeZeit: '21:00',
+          bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+        },
+      ],
+    });
+    expect(b.content).toEqual([absatz('Meine Notiz')]);
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('keeps past blocks of the previous protocol and blocks without eventId at the end', () => {
+    const letztes = dokument({
+      zukuenftiges: [
+        eventBaustein({ name: 'Frei', datum: '2026-11-11' }),
+        eventBaustein({ name: 'Vorbei', datum: '2026-11-02', eventId: 'v' }),
+      ],
+    });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letzteSitzungBeginn: letzte,
+      letztes,
+      kalender: [
+        kal('spaet', '2026-12-24T17:00:00.000Z', '2026-12-24T20:00:00.000Z', { titel: 'Spät' }),
+        kal('v', '2026-11-02T17:00:00.000Z', '2026-11-02T20:00:00.000Z', { titel: 'Vorbei' }),
+        kal('frueh', '2026-11-12T17:00:00.000Z', '2026-11-12T20:00:00.000Z', { titel: 'Früh' }),
+      ],
+    });
+    expect(ids(doc, 0)).toEqual(['v']);
+    expect(namen(doc, 2)).toEqual(['Früh', 'Spät', 'Frei']);
+  });
+
+  it('keeps an event gone from the calendar as written', () => {
+    const letztes = dokument({
+      zukuenftiges: [eventBaustein({ name: 'Gelöscht', datum: '2026-12-02', eventId: 'weg' }, 'T')],
+    });
+    const doc = protokollVorschlag({ sitzungDatum: sitzung, letztes, kalender: [] });
+    expect(namen(doc, 2)).toEqual(['Gelöscht']);
+  });
+
+  it('leaves out whole-day times and treats the last day as the end', () => {
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: null,
+      kalender: [
+        kal('g', '2026-11-19T23:00:00.000Z', '2026-11-21T23:00:00.000Z', { dauer: 'ganztaegig' }),
+      ],
+    });
+    expect(bausteine(doc, 2)[0]!.attrs?.daten).toMatchObject({
+      datum: '2026-11-20',
+      bisDatum: '2026-11-21',
+      beginnZeit: null,
+      endeZeit: null,
+    });
   });
 });
 

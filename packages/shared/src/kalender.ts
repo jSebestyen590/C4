@@ -931,8 +931,52 @@ export function ausVorlage(
   };
 }
 
+/** The Schicht of an event as `schichtenAusEvent` needs it. */
+export type SchichtQuelle = Pick<SchichtDto, 'art' | 'beginn' | 'ende'> &
+  Partial<Pick<SchichtDto, 'bedarfe' | 'minimum' | 'wunsch'>>;
+
+const tageZwischen = (von: string, bis: string): number =>
+  Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Schichten of an existing event in the format of a Vorlage (inverse of the Schicht part of
+ * `ausVorlage`): Berlin wall times, Aufbau/Putzen with the day offset to the event's first day.
+ * Betrieb Schichten without a Bedarf are left out (a Vorlage cannot hold them). Sorted by begin.
+ */
+export function schichtenAusEvent(
+  eventBeginn: string,
+  schichten: readonly SchichtQuelle[],
+): VorlageSchicht[] {
+  const eventTag = datumBerlin(eventBeginn);
+  const sortiert = [...schichten].sort((a, b) => Date.parse(a.beginn) - Date.parse(b.beginn));
+  const ergebnis: VorlageSchicht[] = [];
+  for (const s of sortiert) {
+    const beginnZeit = zeitBerlin(s.beginn);
+    const endeZeit = zeitBerlin(s.ende);
+    if (s.art === 'betrieb') {
+      const bedarfe = (s.bedarfe ?? []).map((b) => ({
+        dienstformId: b.dienstformId,
+        minimum: b.minimum,
+        wunsch: b.wunsch,
+      }));
+      if (bedarfe.length === 0) continue;
+      ergebnis.push({ art: 'betrieb', beginnZeit, endeZeit, bedarfe });
+    } else {
+      ergebnis.push({
+        art: s.art,
+        tagVersatz: tageZwischen(eventTag, datumBerlin(s.beginn)),
+        beginnZeit,
+        endeZeit,
+        minimum: s.minimum ?? 0,
+        wunsch: Math.max(1, s.wunsch ?? 1, s.minimum ?? 0),
+      });
+    }
+  }
+  return ergebnis;
+}
+
 /** Schicht of an existing event as input (keeps its id, so entered Dienste stay). */
-const schichtAlsEingabe = (s: SchichtDto): SchichtEingabe =>
+export const schichtAlsEingabe = (s: SchichtDto): SchichtEingabe =>
   s.art === 'betrieb'
     ? {
         id: s.id,

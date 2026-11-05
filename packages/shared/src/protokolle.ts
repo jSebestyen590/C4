@@ -2,10 +2,13 @@ import { z } from 'zod';
 import type { Anrede } from './anrede';
 import {
   PROTOKOLL_ARTEN,
-  datumBerlin,
+  datumPlusTage,
+  eventZeitenAus,
+  schichtenAusEvent,
   vorlageSchichtSchema,
-  zeitBerlin,
+  type EventDauer,
   type ProtokollArt,
+  type SchichtQuelle,
 } from './kalender';
 import { datumSchema } from './schemas';
 import { MITGLIED_STATI, type MitgliedStatus } from './status';
@@ -114,6 +117,8 @@ export const bausteinEventDatenSchema = z.strictObject({
   verantwortlichSub: idOderNull,
   /** Set once the event exists in the calendar. */
   eventId: idOderNull,
+  /** Kategorie of the event (needed to create it); null = not chosen (and in old data). */
+  kategorieId: idOderNull.default(null),
 });
 export type BausteinEventDaten = z.infer<typeof bausteinEventDatenSchema>;
 
@@ -128,6 +133,8 @@ export const bausteinAnwaerterDatenSchema = z.strictObject({
   vorname: z.string().max(100),
   nachname: z.string().max(100),
   email: z.string().max(200).nullable(),
+  /** The account created by the invitation (set when the Aktion ran); null = not invited yet. */
+  sub: idOderNull.default(null),
 });
 export type BausteinAnwaerterDaten = z.infer<typeof bausteinAnwaerterDatenSchema>;
 
@@ -337,11 +344,12 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         schichten: [],
         verantwortlichSub: null,
         eventId: null,
+        kategorieId: null,
       };
     case 'bausteinVergangenesEvent':
       return { eventId: null, name: '', datum: null };
     case 'bausteinAnwaerter':
-      return { vorname: '', nachname: '', email: null };
+      return { vorname: '', nachname: '', email: null, sub: null };
     case 'bausteinBeschluss':
       return { antrag: '', ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
     case 'bausteinEm':
@@ -586,6 +594,19 @@ export const protokollNaechsteSitzungSchema = z.strictObject({
 });
 export type ProtokollNaechsteSitzung = z.infer<typeof protokollNaechsteSitzungSchema>;
 
+/** The result of an Aktion run when closing (see `protokollAktionen`), kept in the Kopf by Aktion id. */
+export const AKTION_ERGEBNIS_STATI = ['erledigt', 'fehler'] as const;
+export const protokollAktionErgebnisSchema = z.strictObject({
+  status: z.enum(AKTION_ERGEBNIS_STATI),
+  /** What was done, or why it failed. */
+  text: z.string().max(2000),
+  /** ISO instant. */
+  am: z.string().max(40),
+  /** Sub of the member who ran it. */
+  von: z.string().max(100),
+});
+export type ProtokollAktionErgebnis = z.infer<typeof protokollAktionErgebnisSchema>;
+
 export const protokollKopfSchema = z.strictObject({
   /** Overrides only; everybody else follows the answers to the Sitzung event. */
   teilnahme: z.record(subSchluessel, teilnahmeWertSchema).default({}),
@@ -619,6 +640,8 @@ export const protokollKopfSchema = z.strictObject({
   eroeffnung: uhrzeitOderLeerSchema.default(''),
   /** Legacy (no longer written or shown): time a late member arrived. */
   verspaetung: z.record(subSchluessel, uhrzeitOderLeerSchema).default({}),
+  /** Results of the Aktionen run when closing, by Aktion id; written by the API only. */
+  aktionen: z.record(z.string().max(200), protokollAktionErgebnisSchema).default({}),
 });
 export type ProtokollKopf = z.infer<typeof protokollKopfSchema>;
 
@@ -637,6 +660,7 @@ export const protokollKopfLeer = (): ProtokollKopf => ({
   protokollfuehrung: null,
   eroeffnung: '',
   verspaetung: {},
+  aktionen: {},
 });
 
 /** Attendance derived from the member's own answer to the Sitzung event: yes = anwesend, no = entschuldigt, none = unentschuldigt. */
@@ -652,21 +676,60 @@ export function teilnahmeAbleiten(
 // Suggestion for a new protocol
 // ---------------------------------------------------------------------------------------------
 
-/** The calendar event behind a Baustein, as `protokollVorschlag` needs it (ISO instants). */
-export interface ProtokollEventInfo {
+/** A calendar event as `protokollVorschlag` needs it (ISO instants; `titel` is what the calendar shows). */
+export interface ProtokollKalenderEvent {
+  id: string;
   titel: string;
   beginn: string;
   ende: string;
   abgesagt: boolean;
+  kategorieId: string | null;
+  dauer: EventDauer;
+  /** Series the event was generated for; null = ordinary event. */
+  serie: string | null;
+  /** The event is a Sitzung (its Kategorie has minutes). */
+  sitzung: boolean;
+  verantwortlichSub: string | null;
+  schichten: readonly SchichtQuelle[];
 }
+
+/** Without a previous protocol the past events of this many days before the Sitzung are offered. */
+export const VORSCHLAG_FENSTER_TAGE = 92;
 
 export interface ProtokollVorschlagEingabe {
   /** Berlin date (`YYYY-MM-DD`) of the new Sitzung. */
   sitzungDatum: string;
+  /** ISO begin of the Sitzung of the previous protocol; null = none (a window of 92 days counts). */
+  letzteSitzungBeginn?: string | null;
   /** Document of the previous protocol; null = there is none. */
   letztes: ProtokollDokument | null;
-  /** Current calendar data by event id. */
-  events: ReadonlyMap<string, ProtokollEventInfo> | Readonly<Record<string, ProtokollEventInfo>>;
+  /** Events of the calendar from the previous Sitzung on (and the ones the previous protocol points to). */
+  kalender?: readonly ProtokollKalenderEvent[];
+}
+
+/**
+ * The fields of an Event block as the calendar has them: name, dates, times, Kategorie, responsible
+ * member and Schichten (in the Vorlage format). `basis` supplies what the calendar does not know
+ * (`vorlageId`).
+ */
+export function eventDatenAusKalender(
+  e: ProtokollKalenderEvent,
+  basis?: BausteinEventDaten,
+): BausteinEventDaten {
+  const zeiten = eventZeitenAus(e.dauer, e.beginn, e.ende);
+  const ganztaegig = e.dauer === 'ganztaegig';
+  return {
+    vorlageId: basis?.vorlageId ?? null,
+    name: e.titel,
+    datum: zeiten.datum,
+    bisDatum: zeiten.bis !== zeiten.datum ? zeiten.bis : null,
+    beginnZeit: ganztaegig ? null : zeiten.beginnZeit,
+    endeZeit: ganztaegig ? null : zeiten.endeZeit,
+    schichten: schichtenAusEvent(e.beginn, e.schichten),
+    verantwortlichSub: e.verantwortlichSub,
+    eventId: e.id,
+    kategorieId: e.kategorieId,
+  };
 }
 
 /** All `bausteinEvent` nodes anywhere in the node (not looking inside Bausteine). */
@@ -690,62 +753,100 @@ function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnot
   return rest.length > 0 ? rest : [leererAbsatz()];
 }
 
+const emptyBulletList = (): ProtokollKnoten => ({
+  type: 'bulletList',
+  content: [{ type: 'listItem', content: [leererAbsatz()] }],
+});
+
+/** Sort key of an Event block: date, then begin time; blocks without a date last. */
+const eventSortierung = (a: BausteinEventDaten, b: BausteinEventDaten): number => {
+  if (a.datum !== b.datum) {
+    if (a.datum === null) return 1;
+    if (b.datum === null) return -1;
+    return a.datum < b.datum ? -1 : 1;
+  }
+  return (a.beginnZeit ?? '').localeCompare(b.beginnZeit ?? '');
+};
+
 /**
- * Pre-filled document for the next Sitzung from the previous protocol. Every Event block of the
- * previous protocol (any section) is looked at after refreshing it from the calendar (name, dates,
- * times of events that still exist): cancelled events are dropped, events that ended before the
- * Sitzung become "Vergangenes Event" blocks (sorted by date, empty text), all others stay in
- * "Zukünftiges" with their text. Events that no longer exist in the calendar are kept as written.
- * Blocks with the same `eventId` appear once; all copies get new ids. "Gegenwärtiges" and "Sonstiges" stay empty.
+ * Pre-filled document for a new protocol, from the calendar and the previous protocol.
+ *
+ * - "Vergangenes": a "Vergangenes Event" block for every calendar event that began after the previous
+ *   Sitzung (without one: within the last 92 days) and ended before the day of the Sitzung, plus the
+ *   past Event blocks of the previous protocol, sorted by date.
+ * - "Zukünftiges": an Event block for every calendar event that ends on or after the day of the
+ *   Sitzung (no upper limit), plus the upcoming Event blocks of the previous protocol, sorted by date.
+ *   Event blocks of the previous protocol without an `eventId` stay as written at the end.
+ * - Left out of the calendar: cancelled events, series events and Sitzungen; an event the previous
+ *   protocol already mentions is kept anyway. Every `eventId` appears once.
+ * - The calendar wins: name, dates, times, Kategorie, responsible member and Schichten come from the
+ *   calendar. The notes (free text of the block, without votes) come from the previous protocol; new
+ *   events get an empty list. Events gone from the calendar are kept as written.
+ * "Gegenwärtiges" and "Sonstiges" stay empty; all blocks get new ids.
  */
 export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): ProtokollDokument {
-  if (!eingabe.letztes) return protokollLeer();
-  const info = (id: string): ProtokollEventInfo | undefined =>
-    eingabe.events instanceof Map
-      ? eingabe.events.get(id)
-      : (eingabe.events as Record<string, ProtokollEventInfo>)[id];
-
+  const kalender = new Map((eingabe.kalender ?? []).map((e) => [e.id, e]));
   const gesehen = new Set<string>();
-  const vergangen: { daten: BausteinVergangenesEventDaten }[] = [];
-  const zukuenftig: BausteinKnoten<'bausteinEvent'>[] = [];
+  const vergangen: BausteinVergangenesEventDaten[] = [];
+  const mitId: { daten: BausteinEventDaten; content: ProtokollKnoten[] }[] = [];
+  const ohneId: BausteinKnoten<'bausteinEvent'>[] = [];
 
-  for (const knoten of eventBausteine(eingabe.letztes)) {
-    const geparst = bausteinEventDatenSchema.safeParse(knoten.attrs?.daten);
-    if (!geparst.success) continue;
-    const daten = geparst.data;
-    const kalender = daten.eventId ? info(daten.eventId) : undefined;
-    if (kalender?.abgesagt) continue;
-    if (daten.eventId) {
-      if (gesehen.has(daten.eventId)) continue;
-      gesehen.add(daten.eventId);
-    }
-    if (kalender) {
-      const von = datumBerlin(kalender.beginn);
-      const bis = datumBerlin(kalender.ende);
-      daten.name = kalender.titel || daten.name;
-      daten.datum = von;
-      daten.bisDatum = bis !== von ? bis : null;
-      if (daten.beginnZeit !== null) daten.beginnZeit = zeitBerlin(kalender.beginn);
-      if (daten.endeZeit !== null) daten.endeZeit = zeitBerlin(kalender.ende);
-    }
-    const ende = daten.bisDatum ?? daten.datum;
-    if (ende !== null && ende < eingabe.sitzungDatum) {
-      vergangen.push({
-        daten: { eventId: daten.eventId, name: daten.name, datum: daten.datum },
-      });
-    } else {
-      zukuenftig.push(
-        bausteinErzeugen('bausteinEvent', daten, kopie(ohneAbstimmungen(knoten.content))),
-      );
+  if (eingabe.letztes) {
+    for (const knoten of eventBausteine(eingabe.letztes)) {
+      const geparst = bausteinEventDatenSchema.safeParse(knoten.attrs?.daten);
+      if (!geparst.success) continue;
+      let daten = geparst.data;
+      const aktuell = daten.eventId ? kalender.get(daten.eventId) : undefined;
+      if (aktuell?.abgesagt) {
+        gesehen.add(aktuell.id);
+        continue;
+      }
+      if (daten.eventId) {
+        if (gesehen.has(daten.eventId)) continue;
+        gesehen.add(daten.eventId);
+      }
+      if (aktuell) daten = eventDatenAusKalender(aktuell, daten);
+      const ende = daten.bisDatum ?? daten.datum;
+      if (ende !== null && ende < eingabe.sitzungDatum) {
+        vergangen.push({ eventId: daten.eventId, name: daten.name, datum: daten.datum });
+      } else if (daten.eventId) {
+        mitId.push({ daten, content: kopie(ohneAbstimmungen(knoten.content)) });
+      } else {
+        ohneId.push(
+          bausteinErzeugen('bausteinEvent', daten, kopie(ohneAbstimmungen(knoten.content))),
+        );
+      }
     }
   }
 
+  const fensterBeginn = eingabe.letzteSitzungBeginn
+    ? Date.parse(eingabe.letzteSitzungBeginn)
+    : null;
+  const fensterTag = datumPlusTage(eingabe.sitzungDatum, -VORSCHLAG_FENSTER_TAGE);
+  for (const e of eingabe.kalender ?? []) {
+    if (gesehen.has(e.id)) continue;
+    if (e.abgesagt || e.serie !== null || e.sitzung) continue;
+    const daten = eventDatenAusKalender(e);
+    const ende = daten.bisDatum ?? daten.datum!;
+    if (ende >= eingabe.sitzungDatum) {
+      gesehen.add(e.id);
+      mitId.push({ daten, content: [emptyBulletList()] });
+      continue;
+    }
+    const imFenster =
+      fensterBeginn !== null ? Date.parse(e.beginn) > fensterBeginn : daten.datum! >= fensterTag;
+    if (!imFenster) continue;
+    gesehen.add(e.id);
+    vergangen.push({ eventId: e.id, name: e.titel, datum: daten.datum });
+  }
+
   vergangen.sort((a, b) => {
-    if (a.daten.datum === b.daten.datum) return 0;
-    if (a.daten.datum === null) return 1;
-    if (b.daten.datum === null) return -1;
-    return a.daten.datum < b.daten.datum ? -1 : 1;
+    if (a.datum === b.datum) return 0;
+    if (a.datum === null) return 1;
+    if (b.datum === null) return -1;
+    return a.datum < b.datum ? -1 : 1;
   });
+  mitId.sort((a, b) => eventSortierung(a.daten, b.daten));
   const abschnitt = (art: ProtokollAbschnitt, inhalt: ProtokollKnoten[]): ProtokollKnoten => ({
     type: 'abschnitt',
     attrs: { art },
@@ -756,10 +857,13 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
     content: [
       abschnitt(
         'vergangenes',
-        vergangen.map((v) => bausteinErzeugen('bausteinVergangenesEvent', v.daten)),
+        vergangen.map((v) => bausteinErzeugen('bausteinVergangenesEvent', v)),
       ),
       abschnitt('gegenwaertiges', []),
-      abschnitt('zukuenftiges', zukuenftig),
+      abschnitt('zukuenftiges', [
+        ...mitId.map((m) => bausteinErzeugen('bausteinEvent', m.daten, m.content)),
+        ...ohneId,
+      ]),
       abschnitt('sonstiges', []),
     ],
   };
@@ -879,5 +983,15 @@ export const protokollSpeichernSchema = z.object({
 });
 export type ProtokollSpeichern = z.infer<typeof protokollSpeichernSchema>;
 
-export const protokollStatusSchema = z.object({ status: z.enum(PROTOKOLL_STATI) });
+const aktionIdsSchema = z.array(z.string().min(1).max(200)).max(200);
+
+export const protokollStatusSchema = z.object({
+  status: z.enum(PROTOKOLL_STATI),
+  /** Ids of the Aktionen (see `protokollAktionen`) to run when closing; left out = none. */
+  aktionen: aktionIdsSchema.optional(),
+});
 export type ProtokollStatusEingabe = z.infer<typeof protokollStatusSchema>;
+
+/** Ids of the Aktionen to run (again) for a protocol, open or closed. */
+export const protokollAktionenAusfuehrenSchema = z.object({ aktionen: aktionIdsSchema.min(1) });
+export type ProtokollAktionenAusfuehren = z.infer<typeof protokollAktionenAusfuehrenSchema>;

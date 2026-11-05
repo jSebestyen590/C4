@@ -39,7 +39,8 @@ const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
  * empty. Whole-day Kategorien have no times; `teilnahme` Kategorien have no Schichten (as `ausVorlage`).
  */
 export function eventDatenAusVorlage(
-  vorlage: Pick<VorlageDto, 'id' | 'beginnZeit' | 'endeZeit' | 'schichten'>,
+  vorlage: Pick<VorlageDto, 'id' | 'beginnZeit' | 'endeZeit' | 'schichten'> &
+    Partial<Pick<VorlageDto, 'kategorieId'>>,
   kategorie: Pick<EventKategorieDto, 'art' | 'dauer'> | undefined,
   titel: string,
 ): BausteinEventDaten {
@@ -54,6 +55,7 @@ export function eventDatenAusVorlage(
     schichten: kategorie?.art === 'teilnahme' ? [] : kopie(vorlage.schichten),
     verantwortlichSub: null,
     eventId: null,
+    kategorieId: vorlage.kategorieId ?? null,
   };
 }
 
