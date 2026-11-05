@@ -10,6 +10,7 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd';
 import { useEditorState, type Editor } from '@tiptap/react';
+import { flushSync } from 'react-dom';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Griff } from '../SortierbareListe';
 import {
@@ -57,6 +58,8 @@ const ziehStil = (stil: CSSProperties | undefined, zieht: boolean): CSSPropertie
  * Outline of the minutes: the Bausteine per section, nested ones indented below their parent. A tap
  * scrolls the editor to the Baustein; the grip moves it (between sections, into and out of notes).
  */
+const zu = (z: GliederungZeile): boolean => 'eingeklappt' in z && z.eingeklappt;
+
 export function Gliederung({
   editor,
   personName,
@@ -75,7 +78,7 @@ export function Gliederung({
   const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
 
   // Set before pangea measures the list, so the rows of the drag are the ones that get measured.
-  const vorErfassen = (s: BeforeCapture) => setGezogenId(s.draggableId);
+  const vorErfassen = (s: BeforeCapture) => flushSync(() => setGezogenId(s.draggableId));
   const ende = ({ draggableId, destination }: DropResult) => {
     try {
       if (!destination) return;
@@ -179,10 +182,20 @@ export function Gliederung({
                   key={z.key}
                   draggableId={z.key}
                   index={i}
-                  isDragDisabled={z.art === 'abschnitt' || z.art === 'notizen'}
+                  isDragDisabled={z.art === 'abschnitt' || z.art === 'notizen' || zu(z)}
                 >
                   {(drag, dragSnap) => (
-                    <div ref={drag.innerRef} {...drag.draggableProps}>
+                    <div
+                      ref={drag.innerRef}
+                      {...drag.draggableProps}
+                      style={
+                        zu(z)
+                          ? { ...drag.draggableProps.style, height: 0, overflow: 'hidden' }
+                          : drag.draggableProps.style
+                      }
+                      aria-hidden={zu(z) || undefined}
+                      inert={zu(z)}
+                    >
                       {inhalt(z, drag, dragSnap)}
                     </div>
                   )}

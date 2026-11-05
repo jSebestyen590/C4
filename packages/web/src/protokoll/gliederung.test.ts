@@ -123,7 +123,11 @@ describe('gliederungZiel (flat drop index to target)', () => {
       [anwaerter('d', 'D'), absatz()],
     );
   const baum = () => gliederungBauen(state().doc);
-  const keys = (id: string) => gliederungZeilen(baum(), id).map((z) => z.key);
+  const keys = (id: string | null) => gliederungZeilen(baum(), id).map((z) => z.key);
+  const zu = (id: string | null) =>
+    gliederungZeilen(baum(), id)
+      .filter((z) => 'eingeklappt' in z && z.eingeklappt)
+      .map((z) => z.key);
   /** Drops `id` directly above the row `vor` (null: at the very end) and returns the new document. */
   const vor = (id: string, vorKey: string | null) => {
     const rest = gliederungZeilen(baum(), id).filter((z) => z.key !== id);
@@ -132,19 +136,8 @@ describe('gliederungZiel (flat drop index to target)', () => {
     return z && verschieben(state(), id, z);
   };
 
-  it('lists headers, Bausteine, nested rows and (while dragging a nestable one) notes slots', () => {
-    expect(keys('q')).toEqual([
-      'abschnitt:0',
-      'p',
-      'k1',
-      'k2',
-      'q',
-      'top',
-      'abschnitt:1',
-      'abschnitt:2',
-      'd',
-    ]);
-    expect(keys('top')).toEqual([
+  it('always has the same rows; only the collapsed ones differ', () => {
+    const alle = [
       'abschnitt:0',
       'p',
       'k1',
@@ -157,10 +150,23 @@ describe('gliederungZiel (flat drop index to target)', () => {
       'abschnitt:2',
       'd',
       'notizen:d',
-    ]);
-    // A dragged parent leaves its nested rows at home.
-    expect(keys('p')).toEqual(['abschnitt:0', 'p', 'q', 'top', 'abschnitt:1', 'abschnitt:2', 'd']);
-    expect(gliederungZeilen(baum()).some((z) => z.art === 'notizen')).toBe(false);
+    ];
+    for (const id of [null, 'p', 'q', 'top', 'k1', 'd']) expect(keys(id)).toEqual(alle);
+    expect(zu(null)).toEqual(['notizen:p', 'notizen:q', 'notizen:d']);
+    expect(zu('top')).toEqual([]);
+    expect(zu('q')).toEqual(['notizen:p', 'notizen:q', 'notizen:d']);
+    // A dragged parent collapses its nested rows.
+    expect(zu('p')).toEqual(['k1', 'k2', 'notizen:p', 'notizen:q', 'notizen:d']);
+  });
+  it('never gives attendance a notes slot', () => {
+    const b = gliederungBauen(
+      zustand([
+        baustein('bausteinAnwesenheit', 'w', { art: 'erscheint' }, []),
+        abstimmung('top', 'T'),
+        absatz(),
+      ]).doc,
+    );
+    expect(gliederungZeilen(b, 'top').map((z) => z.key)).not.toContain('notizen:w');
   });
   it('nests before a nested row and at the end via the notes slot', () => {
     expect(vor('top', 'k1')).toBe('p(top k1 k2) q _ | _ | d _');

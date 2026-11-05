@@ -125,9 +125,11 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), einge
   Bausteins (nicht in eine Abstimmung, ein Meinungsbild oder eine Wahl) und von dort wieder auf Abschnittsebene. Alle anderen
   Bausteine lassen sich nicht in Notizen ablegen. Ein Baustein nimmt seine Notizen samt verschachtelten Bausteinen mit.
 - **Technik:** Die Gliederung ist **eine** flache Liste (ein `Droppable`): Abschnittskopf (nicht ziehbar), Baustein, verschachtelter
-  Baustein (eingerückt). Beim Ziehen eines verschachtelbaren Bausteins kommt hinter jedem Baustein, der Notizen haben darf, eine
-  Zeile „In die Notizen“ dazu; beim Ziehen eines Bausteins mit Notizen sind dessen verschachtelte Zeilen ausgeblendet. Das Ziel
-  ergibt sich aus der Zeile **direkt darunter** (`gliederungZiel` in `gliederung.ts`, getestet): ist es ein verschachtelter
+  Baustein (eingerückt). Die Menge der Zeilen ist immer gleich (pangea erlaubt kein Hinzufügen/Entfernen während des Ziehens); nicht nutzbare Zeilen
+  haben Höhe 0 (`inert`). Hinter jedem Baustein mit Notizen (nicht Abstimmung/Meinungsbild/Wahl/Anwesenheit) steht eine Zeile „In die
+  Notizen“, die nur beim Ziehen eines verschachtelbaren Bausteins aufgeklappt ist; die verschachtelten Zeilen eines gezogenen
+  Bausteins sind eingeklappt. Das Ziel
+  ergibt sich aus der ersten aufgeklappten Zeile **darunter** (`gliederungZiel` in `gliederung.ts`, getestet): ist es ein verschachtelter
   Baustein, kommt der gezogene davor in dessen Notizen (bei „In die Notizen“ ans Ende); nicht verschachtelbare Bausteine landen
   stattdessen direkt hinter dem Eltern-Baustein. Sonst steht er auf Abschnittsebene in dem Abschnitt der Zeile darüber (direkt
   unter dem Abschnittskopf: an erster Stelle), vor dem nächsten Baustein. Schlägt der Zug fehl, erscheint „Verschieben hat nicht

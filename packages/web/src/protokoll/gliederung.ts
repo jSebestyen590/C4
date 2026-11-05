@@ -116,7 +116,8 @@ function eintrag(
     typ,
     titel: gliederungTitel(typ, node.attrs.daten, personName),
     verschachtelbar: istBausteinInNotizen(typ),
-    kannEnthalten: !istBausteinInNotizen(typ),
+    // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl are nested ones themselves.
+    kannEnthalten: !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit' && !node.type.isLeaf,
     kinder,
   };
 }
@@ -154,13 +155,23 @@ export type GliederungZeile =
       abschnitt: number;
       elternId: string;
       eintrag: GliederungEintrag;
+      /** Rendered with zero height (its parent is being dragged). */
+      eingeklappt: boolean;
     }
-  | { art: 'notizen'; key: string; abschnitt: number; elternId: string };
+  | {
+      art: 'notizen';
+      key: string;
+      abschnitt: number;
+      elternId: string;
+      /** Rendered with zero height (nothing nestable is being dragged). */
+      eingeklappt: boolean;
+    };
 
 /**
- * The flat rows of the outline. While a Baustein `gezogenId` is dragged, its own nested Bausteine are
- * left out, and for a nestable one every Baustein that may hold others gets a "notes" slot row behind its
- * nested Bausteine.
+ * The flat rows of the outline. The set of rows is constant (pangea does not allow adding or removing
+ * Draggables during a drag): every nested Baustein and every notes slot is always there. Rows that
+ * are not usable are flagged `eingeklappt` (rendered with zero height): the nested rows of the Baustein
+ * `gezogenId` being dragged, and all notes slots unless a nestable Baustein is dragged.
  */
 export function gliederungZeilen(
   baum: GliederungAbschnitt[],
@@ -173,20 +184,30 @@ export function gliederungZeilen(
     zeilen.push({ art: 'abschnitt', key: `abschnitt:${i}`, abschnitt: i, titel: a.titel });
     for (const e of a.eintraege) {
       zeilen.push({ art: 'baustein', key: e.id, abschnitt: i, eintrag: e });
-      if (e.id !== gezogenId) {
-        for (const k of e.kinder)
-          zeilen.push({ art: 'kind', key: k.id, abschnitt: i, elternId: e.id, eintrag: k });
-      }
-      if (gezogen?.verschachtelbar && e.kannEnthalten)
-        zeilen.push({ art: 'notizen', key: `notizen:${e.id}`, abschnitt: i, elternId: e.id });
+      for (const k of e.kinder)
+        zeilen.push({
+          art: 'kind',
+          key: k.id,
+          abschnitt: i,
+          elternId: e.id,
+          eintrag: k,
+          eingeklappt: e.id === gezogenId,
+        });
+      if (e.kannEnthalten)
+        zeilen.push({
+          art: 'notizen',
+          key: `notizen:${e.id}`,
+          abschnitt: i,
+          elternId: e.id,
+          eingeklappt: !gezogen?.verschachtelbar,
+        });
     }
   });
   return zeilen;
 }
 
 /**
- * Target of dropping the row `gezogenId` at the flat index `index` of `zeilen` (the list as rendered
- * during the drag; `index` is the final position of the dragged row). Looks at the rows directly above and
+ * Target of dropping the row `gezogenId` at the flat index `index` of `zeilen` (the full, constant list; `index` is the final position of the dragged row). Looks at the rows directly above and
  * below the dropped row:
  * - below is a nested row or a notes slot of a parent and the dragged Baustein is nestable: nested into
  *   that parent, before that nested row (at the end for the slot);
@@ -204,12 +225,15 @@ export function gliederungZiel(
   if (gezogen?.art !== 'baustein' && gezogen?.art !== 'kind') return null;
   const rest = zeilen.filter((z) => z !== gezogen);
   const pos = Math.max(0, Math.min(index, rest.length));
-  const unten = rest[pos];
+  // Collapsed rows do not exist for the target; `index` still counts them.
+  const unten = rest.slice(pos).find((z) => !('eingeklappt' in z && z.eingeklappt));
   const oben = rest[pos - 1];
 
   if (unten && (unten.art === 'kind' || unten.art === 'notizen')) {
     if (gezogen.eintrag.verschachtelbar) {
-      const geschwister = rest.filter((z) => z.art === 'kind' && z.elternId === unten.elternId);
+      const geschwister = rest.filter(
+        (z) => z.art === 'kind' && !z.eingeklappt && z.elternId === unten.elternId,
+      );
       const n = unten.art === 'kind' ? geschwister.indexOf(unten) : geschwister.length;
       return { elternId: unten.elternId, index: n };
     }
