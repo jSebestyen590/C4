@@ -1,22 +1,25 @@
 import { Box, Text, UnstyledButton } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   DragDropContext,
   Draggable,
   Droppable,
-  type DragStart,
+  type BeforeCapture,
+  type DraggableProvided,
+  type DraggableStateSnapshot,
   type DropResult,
 } from '@hello-pangea/dnd';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Griff } from '../SortierbareListe';
 import {
-  abschnittDroppableId,
   bausteinInGliederungVerschieben,
   findeBaustein,
   gliederungBauen,
-  notizenDroppableId,
-  zielVonDroppable,
+  gliederungZeilen,
+  gliederungZiel,
   type GliederungEintrag,
+  type GliederungZeile,
 } from './gliederung';
 import { BAUSTEIN_SYMBOL, SlashIcon } from './symbole';
 
@@ -67,22 +70,25 @@ export function Gliederung({
 }>) {
   const doc = useEditorState({ editor, selector: (s) => s.editor.state.doc });
   const baum = useMemo(() => gliederungBauen(doc, personName), [doc, personName]);
-  // The Baustein being dragged: decides where it may be dropped.
-  const [gezogen, setGezogen] = useState<GliederungEintrag | null>(null);
+  // Id of the Baustein being dragged: it decides which rows exist (notes slots, hidden nested rows).
+  const [gezogenId, setGezogenId] = useState<string | null>(null);
+  const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
 
-  const start = (s: DragStart) =>
-    setGezogen(
-      baum
-        .flatMap((a) => a.eintraege.flatMap((e) => [e, ...e.kinder]))
-        .find((e) => e.id === s.draggableId) ?? null,
-    );
+  // Set before pangea measures the list, so the rows of the drag are the ones that get measured.
+  const vorErfassen = (s: BeforeCapture) => setGezogenId(s.draggableId);
   const ende = ({ draggableId, destination }: DropResult) => {
-    setGezogen(null);
-    if (!destination) return;
-    const ziel = zielVonDroppable(destination.droppableId, destination.index);
-    if (!ziel) return;
-    const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
-    if (tr) editor.view.dispatch(tr);
+    try {
+      if (!destination) return;
+      const ziel = gliederungZiel(zeilen, draggableId, destination.index);
+      if (!ziel) return;
+      const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
+      if (tr) editor.view.dispatch(tr);
+    } catch (fehler) {
+      console.error('Gliederung: Verschieben fehlgeschlagen', fehler);
+      notifications.show({ color: 'red', message: 'Verschieben hat nicht geklappt.' });
+    } finally {
+      setGezogenId(null);
+    }
   };
   const waehlen = (id: string) => {
     onGewaehlt?.();
@@ -90,7 +96,7 @@ export function Gliederung({
     setTimeout(() => zuBausteinScrollen(editor, id), onGewaehlt ? 300 : 0);
   };
 
-  const zeile = (e: GliederungEintrag, griff: ReactNode) => (
+  const eintragZeile = (e: GliederungEintrag, griff: ReactNode) => (
     <Box style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
       {griff}
       <UnstyledButton
@@ -114,101 +120,78 @@ export function Gliederung({
     </Box>
   );
 
+  const inhalt = (
+    z: GliederungZeile,
+    drag: DraggableProvided,
+    dragSnap: DraggableStateSnapshot,
+  ): ReactNode => {
+    switch (z.art) {
+      case 'abschnitt':
+        return (
+          <Text
+            fw={700}
+            size="sm"
+            mt={z.abschnitt === 0 ? 0 : 'sm'}
+            mb={4}
+            {...drag.dragHandleProps}
+          >
+            {z.titel}
+          </Text>
+        );
+      case 'notizen':
+        return (
+          <div {...drag.dragHandleProps} style={{ marginLeft: 28 }}>
+            <div style={platzhalterStil(false)}>
+              <Text size="xs" c="dimmed">
+                In die Notizen
+              </Text>
+            </div>
+          </div>
+        );
+      case 'baustein':
+      case 'kind': {
+        const e = z.eintrag;
+        return (
+          <div
+            style={{
+              ...ziehStil(undefined, dragSnap.isDragging),
+              marginLeft: z.art === 'kind' ? 28 : 0,
+            }}
+          >
+            {eintragZeile(
+              e,
+              <Griff props={drag.dragHandleProps} label={`${e.titel} verschieben`} />,
+            )}
+          </div>
+        );
+      }
+    }
+  };
+
   return (
-    <DragDropContext onDragStart={start} onDragEnd={ende}>
+    <DragDropContext onBeforeCapture={vorErfassen} onDragEnd={ende}>
       <nav aria-label="Gliederung">
-        {baum.map((abschnitt, i) => (
-          <Box key={abschnitt.art} mb="sm">
-            <Text fw={700} size="sm" mb={4}>
-              {abschnitt.titel}
-            </Text>
-            <Droppable droppableId={abschnittDroppableId(i)}>
-              {(drop, snap) => (
-                <div
-                  ref={drop.innerRef}
-                  {...drop.droppableProps}
-                  style={
-                    abschnitt.eintraege.length === 0 && gezogen
-                      ? platzhalterStil(snap.isDraggingOver)
-                      : { minHeight: 8 }
-                  }
+        <Droppable droppableId="gliederung">
+          {(drop) => (
+            <div ref={drop.innerRef} {...drop.droppableProps}>
+              {zeilen.map((z, i) => (
+                <Draggable
+                  key={z.key}
+                  draggableId={z.key}
+                  index={i}
+                  isDragDisabled={z.art === 'abschnitt' || z.art === 'notizen'}
                 >
-                  {abschnitt.eintraege.map((e, j) => (
-                    <Draggable key={e.id} draggableId={e.id} index={j}>
-                      {(drag, dragSnap) => (
-                        <div
-                          ref={drag.innerRef}
-                          {...drag.draggableProps}
-                          style={ziehStil(drag.draggableProps.style, dragSnap.isDragging)}
-                        >
-                          {zeile(
-                            e,
-                            <Griff props={drag.dragHandleProps} label={`${e.titel} verschieben`} />,
-                          )}
-                          {(e.kinder.length > 0 ||
-                            (gezogen?.verschachtelbar && e.kannEnthalten)) && (
-                            <Droppable
-                              droppableId={notizenDroppableId(e.id)}
-                              isDropDisabled={!gezogen?.verschachtelbar || !e.kannEnthalten}
-                            >
-                              {(innen, innenSnap) => (
-                                <div
-                                  ref={innen.innerRef}
-                                  {...innen.droppableProps}
-                                  style={{
-                                    marginLeft: 28,
-                                    ...(e.kinder.length === 0
-                                      ? platzhalterStil(innenSnap.isDraggingOver)
-                                      : undefined),
-                                  }}
-                                >
-                                  {e.kinder.map((k, n) => (
-                                    <Draggable key={k.id} draggableId={k.id} index={n}>
-                                      {(kd, kdSnap) => (
-                                        <div
-                                          ref={kd.innerRef}
-                                          {...kd.draggableProps}
-                                          style={ziehStil(
-                                            kd.draggableProps.style,
-                                            kdSnap.isDragging,
-                                          )}
-                                        >
-                                          {zeile(
-                                            k,
-                                            <Griff
-                                              props={kd.dragHandleProps}
-                                              label={`${k.titel} verschieben`}
-                                            />,
-                                          )}
-                                        </div>
-                                      )}
-                                    </Draggable>
-                                  ))}
-                                  {innen.placeholder}
-                                  {e.kinder.length === 0 && (
-                                    <Text size="xs" c="dimmed">
-                                      In die Notizen
-                                    </Text>
-                                  )}
-                                </div>
-                              )}
-                            </Droppable>
-                          )}
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {drop.placeholder}
-                  {abschnitt.eintraege.length === 0 && (
-                    <Text size="xs" c="dimmed">
-                      {gezogen ? 'Hier ablegen' : 'Keine Bausteine'}
-                    </Text>
+                  {(drag, dragSnap) => (
+                    <div ref={drag.innerRef} {...drag.draggableProps}>
+                      {inhalt(z, drag, dragSnap)}
+                    </div>
                   )}
-                </div>
-              )}
-            </Droppable>
-          </Box>
-        ))}
+                </Draggable>
+              ))}
+              {drop.placeholder}
+            </div>
+          )}
+        </Droppable>
       </nav>
     </DragDropContext>
   );

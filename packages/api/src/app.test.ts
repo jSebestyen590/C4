@@ -6696,7 +6696,7 @@ describe('protokolle', () => {
     dto = await t.holen(id);
     expect(dto.teilnahme.find((p) => p.sub === 'r')).toMatchObject({
       abgeleitet: 'entschuldigt',
-      wert: 'verspaetet',
+      wert: 'anwesend',
       ueberschrieben: true,
     });
     expect(dto.ems.map((e) => [e.sub, e.ausgewaehlt])).toEqual([
@@ -6978,7 +6978,7 @@ describe('protokolle', () => {
       a: 'unentschuldigt',
       m2: 'anwesend',
       r: 'unentschuldigt',
-      v: 'verspaetet',
+      v: 'anwesend',
     });
     expect(dto.kopf.emsSchnappschuss).toEqual(['e1']);
 
@@ -6991,7 +6991,7 @@ describe('protokolle', () => {
       ['a', 'unentschuldigt'],
       ['m2', 'anwesend'],
       ['r', 'unentschuldigt'],
-      ['v', 'verspaetet'],
+      ['v', 'anwesend'],
     ]);
     expect(dto.teilnahme.find((p) => p.sub === 'r')?.abgeleitet).toBe('anwesend');
     expect(dto.ems.map((e) => [e.sub, e.ausgewaehlt])).toEqual([['e1', true]]);
@@ -7012,7 +7012,7 @@ describe('protokolle', () => {
     expect(dto.status).toBe('entwurf');
     expect(dto.kopf).toMatchObject({ schnappschuss: null, emsSchnappschuss: null });
     expect(dto.teilnahme.find((p) => p.sub === 'r')?.wert).toBe('anwesend');
-    expect(dto.teilnahme.find((p) => p.sub === 'v')?.wert).toBe('verspaetet');
+    expect(dto.teilnahme.find((p) => p.sub === 'v')?.wert).toBe('anwesend');
     expect((await status('admin-token', 'entwurf')).status).toBe(200);
     expect((await status('admin-token', 'offen')).status).toBe(400);
   });

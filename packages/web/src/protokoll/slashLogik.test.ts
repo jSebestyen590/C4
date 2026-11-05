@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bausteinLeer } from '@c4/shared';
 import {
-  erscheintPerson,
+  anwesenheitPerson,
   normalisieren,
   slashEintraege,
   slashStufe,
@@ -203,8 +203,8 @@ describe('Erscheint and Geht', () => {
   it('names the person of an Erscheint block only', () => {
     const wahl = (art: 'erscheint' | 'geht', sub: string | null) =>
       ({ typ: 'bausteinAnwesenheit', daten: { art, sub, uhrzeit: '' } }) as const;
-    expect(erscheintPerson(wahl('erscheint', 'j'))).toBe('j');
-    expect(erscheintPerson(wahl('erscheint', null))).toBeNull();
-    expect(erscheintPerson(wahl('geht', 'j'))).toBeNull();
+    expect(anwesenheitPerson(wahl('erscheint', 'j'))).toBe('j');
+    expect(anwesenheitPerson(wahl('erscheint', null))).toBeNull();
+    expect(anwesenheitPerson(wahl('geht', 'j'))).toBe('j');
   });
 });

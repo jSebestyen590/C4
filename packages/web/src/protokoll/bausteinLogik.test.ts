@@ -325,6 +325,25 @@ describe('dokumentNormalisieren', () => {
     expect(n.content[2]?.content).toEqual([{ type: 'paragraph' }]);
     expect(doc.content[1]?.content).toBeUndefined();
   });
+  it('drops the note paragraph of old Anwesenheit blocks, also inside other Bausteine', () => {
+    const anw = { type: 'bausteinAnwesenheit', attrs: {}, content: [{ type: 'paragraph' }] };
+    const event = { type: 'bausteinEvent', attrs: {}, content: [{ type: 'paragraph' }, anw] };
+    const alt = {
+      ...doc,
+      content: [
+        { type: 'abschnitt', attrs: { art: 'vergangenes' }, content: [anw, { type: 'paragraph' }] },
+        { type: 'abschnitt', attrs: { art: 'gegenwaertiges' }, content: [event] },
+        doc.content[2]!,
+      ],
+    };
+    const n = dokumentNormalisieren(alt, true);
+    expect(n.content[0]?.content?.[0]).toEqual({ type: 'bausteinAnwesenheit', attrs: {} });
+    expect(n.content[1]?.content?.[0]?.content?.[1]).toEqual({
+      type: 'bausteinAnwesenheit',
+      attrs: {},
+    });
+    expect(anw.content).toHaveLength(1);
+  });
   it('only fills empty sections in read-only mode', () => {
     const n = dokumentNormalisieren(doc, false);
     expect(n.content[0]?.content).toEqual([baustein]);

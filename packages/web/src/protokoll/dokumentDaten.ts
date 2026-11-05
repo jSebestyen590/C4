@@ -7,7 +7,10 @@ import {
   bausteinEmDatenSchema,
   bausteinWahlDatenSchema,
   wahlErgebnis,
-  erscheintUhrzeiten,
+  anwesenheitsZeitText,
+  anwesenheitsZeiten,
+  teilnahmeMitBloecken,
+  teilnahmeNormalisiert,
   heuteBerlin,
   type BausteinEmAbstimmung,
   type Beschlussfaehigkeit,
@@ -31,7 +34,7 @@ export interface DokumentEingabe {
   sitzung: { titel: string; beginn: string; art: ProtokollArt };
 }
 
-/** A member as shown in the document (`StatusName`), with an optional note like "(21:00 Uhr)". */
+/** A member as shown in the document (`StatusName`), with an optional note like "(ab 21:00 Uhr)". */
 export interface Person {
   sub: string;
   name: string;
@@ -76,26 +79,15 @@ export function mitLiveKopf(
 ): Pick<ProtokollDto, 'teilnahme' | 'ems'> {
   if (dto.status !== 'entwurf') return { teilnahme: dto.teilnahme, ems: dto.ems };
   return {
-    teilnahme: dto.teilnahme.map((t) => ({ ...t, wert: kopf.teilnahme[t.sub] ?? t.abgeleitet })),
+    teilnahme: dto.teilnahme.map((t) => ({
+      ...t,
+      wert: teilnahmeNormalisiert(kopf.teilnahme[t.sub] ?? t.abgeleitet),
+    })),
     ems: dto.ems.map((e) => ({
       ...e,
       ausgewaehlt: kopf.ems === null ? e.abgeleitet : kopf.ems.includes(e.sub),
     })),
   };
-}
-
-/** Members with an `erscheint` Baustein (also without a time). */
-export function erscheintSubs(dokument: ProtokollKnoten): Set<string> {
-  const subs = new Set<string>();
-  const gehe = (k: ProtokollKnoten) => {
-    if (k.type === 'bausteinAnwesenheit') {
-      const d = bausteinAnwesenheitDatenSchema.safeParse(k.attrs?.daten);
-      if (d.success && d.data.art === 'erscheint' && d.data.sub !== null) subs.add(d.data.sub);
-    }
-    k.content?.forEach(gehe);
-  };
-  gehe(dokument);
-  return subs;
 }
 
 export interface DokumentKopfDaten {
@@ -113,23 +105,18 @@ export interface DokumentKopfDaten {
   beschlussfaehigkeit: Beschlussfaehigkeit | null;
 }
 
-const WERT_DA: ProtokollTeilnahmeWert[] = ['anwesend', 'verspaetet'];
-
 export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
-  const erscheint = erscheintSubs(e.inhalt);
-  const zeiten = erscheintUhrzeiten(e.inhalt);
-  const kamSpaeter = (t: DokumentEingabe['teilnahme'][number]) =>
-    t.wert === 'verspaetet' || (!WERT_DA.includes(t.wert) && erscheint.has(t.sub));
-  const zusatz = (t: DokumentEingabe['teilnahme'][number]): string => {
-    if (!kamSpaeter(t)) return '';
-    const zeit = e.kopf.verspaetung[t.sub] || zeiten[t.sub];
-    return zeit ? `(${zeit} Uhr)` : '(verspätet)';
+  const zeiten = anwesenheitsZeiten(e.inhalt);
+  // Old `verspaetet` and people with an Erscheint / Geht block count as "da".
+  const teilnahme = teilnahmeMitBloecken(e.teilnahme, e.inhalt);
+  const zusatz = (t: { sub: string }): string => {
+    const text = anwesenheitsZeitText(zeiten[t.sub], ' Uhr');
+    return text ? `(${text})` : '';
   };
-  const da = e.teilnahme.filter((t) => WERT_DA.includes(t.wert) || erscheint.has(t.sub));
-  const mitglieder = (liste: typeof e.teilnahme) =>
+  const da = teilnahme.filter((t) => t.wert === 'anwesend');
+  const mitglieder = (liste: typeof teilnahme) =>
     liste.filter((t) => t.status === 'mitglied').map((t) => person(t, zusatz(t)));
-  const fehlend = (wert: ProtokollTeilnahmeWert) =>
-    e.teilnahme.filter((t) => t.wert === wert && !erscheint.has(t.sub));
+  const fehlend = (wert: ProtokollTeilnahmeWert) => teilnahme.filter((t) => t.wert === wert);
 
   const alle: Namen[] = [...e.teilnahme, ...e.ems];
   const finde = (sub: string | null): Person | null => {
@@ -138,7 +125,7 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
   };
   const verlauf = anwesenheitsVerlauf(e.inhalt, {
     art: e.sitzung.art,
-    teilnahme: e.teilnahme,
+    teilnahme,
     ems: e.ems.filter((m) => m.ausgewaehlt),
   });
 

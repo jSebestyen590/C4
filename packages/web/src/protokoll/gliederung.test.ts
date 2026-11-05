@@ -10,7 +10,8 @@ import {
   bausteinInGliederungVerschieben,
   gliederungBauen,
   gliederungTitel,
-  zielVonDroppable,
+  gliederungZeilen,
+  gliederungZiel,
   type GliederungZiel,
 } from './gliederung';
 import { AbschnittKnoten, ProtokollDokumentKnoten } from './schema';
@@ -109,12 +110,92 @@ describe('gliederungTitel', () => {
   });
 });
 
-describe('zielVonDroppable', () => {
-  it('parses section and notes ids', () => {
-    expect(zielVonDroppable('abschnitt:2', 1)).toEqual({ abschnitt: 2, index: 1 });
-    expect(zielVonDroppable('notizen:abc', 0)).toEqual({ elternId: 'abc', index: 0 });
-    expect(zielVonDroppable('abschnitt:5', 0)).toBeNull();
-    expect(zielVonDroppable('x', 0)).toBeNull();
+describe('gliederungZiel (flat drop index to target)', () => {
+  const state = () =>
+    zustand(
+      [
+        event('p', 'P', [absatz(), abstimmung('k1', '1'), abstimmung('k2', '2'), absatz()]),
+        event('q', 'Q'),
+        abstimmung('top', 'T'),
+        absatz(),
+      ],
+      [absatz()],
+      [anwaerter('d', 'D'), absatz()],
+    );
+  const baum = () => gliederungBauen(state().doc);
+  const keys = (id: string) => gliederungZeilen(baum(), id).map((z) => z.key);
+  /** Drops `id` directly above the row `vor` (null: at the very end) and returns the new document. */
+  const vor = (id: string, vorKey: string | null) => {
+    const rest = gliederungZeilen(baum(), id).filter((z) => z.key !== id);
+    const i = vorKey === null ? rest.length : rest.findIndex((z) => z.key === vorKey);
+    const z = gliederungZiel(gliederungZeilen(baum(), id), id, i);
+    return z && verschieben(state(), id, z);
+  };
+
+  it('lists headers, Bausteine, nested rows and (while dragging a nestable one) notes slots', () => {
+    expect(keys('q')).toEqual([
+      'abschnitt:0',
+      'p',
+      'k1',
+      'k2',
+      'q',
+      'top',
+      'abschnitt:1',
+      'abschnitt:2',
+      'd',
+    ]);
+    expect(keys('top')).toEqual([
+      'abschnitt:0',
+      'p',
+      'k1',
+      'k2',
+      'notizen:p',
+      'q',
+      'notizen:q',
+      'top',
+      'abschnitt:1',
+      'abschnitt:2',
+      'd',
+      'notizen:d',
+    ]);
+    // A dragged parent leaves its nested rows at home.
+    expect(keys('p')).toEqual(['abschnitt:0', 'p', 'q', 'top', 'abschnitt:1', 'abschnitt:2', 'd']);
+    expect(gliederungZeilen(baum()).some((z) => z.art === 'notizen')).toBe(false);
+  });
+  it('nests before a nested row and at the end via the notes slot', () => {
+    expect(vor('top', 'k1')).toBe('p(top k1 k2) q _ | _ | d _');
+    expect(vor('top', 'k2')).toBe('p(k1 top k2) q _ | _ | d _');
+    expect(vor('top', 'notizen:p')).toBe('p(k1 k2 top) q _ | _ | d _');
+    expect(vor('top', 'notizen:q')).toBe('p(k1 k2) q(top) _ | _ | d _');
+  });
+  it('moves out of a parent to top-level and between parents', () => {
+    expect(vor('k1', 'q')).toBe('p(k2) k1 q top _ | _ | d _');
+    expect(vor('k1', 'abschnitt:1')).toBe('p(k2) q top k1 _ | _ | d _');
+    expect(vor('k1', 'notizen:q')).toBe('p(k2) q(k1) top _ | _ | d _');
+    expect(vor('k2', 'k1')).toBe('p(k2 k1) q top _ | _ | d _');
+  });
+  it('drops between sections: behind a header goes first, before a header goes last', () => {
+    expect(vor('q', 'abschnitt:2')).toBe('p(k1 k2) top _ | q _ | d _');
+    expect(vor('q', 'd')).toBe('p(k1 k2) top _ | _ | q d _');
+    expect(vor('q', null)).toBe('p(k1 k2) top _ | _ | d q _');
+    expect(vor('d', 'abschnitt:1')).toBe('p(k1 k2) q top d _ | _ | _');
+    expect(vor('d', 'p')).toBe('d p(k1 k2) q top _ | _ | _');
+  });
+  it('a non-nestable Baustein cannot nest: it lands right behind the parent', () => {
+    expect(vor('q', 'k1')).toBeNull(); // already right behind its parent
+    expect(vor('d', 'k2')).toBe('p(k1 k2) d q top _ | _ | _');
+    expect(vor('d', 'k1')).toBe('p(k1 k2) d q top _ | _ | _');
+  });
+  it('keeps the three sections intact for any drop position', () => {
+    for (const id of ['p', 'q', 'top', 'k1', 'd']) {
+      const rows = gliederungZeilen(baum(), id);
+      for (let i = 0; i < rows.length; i++) {
+        const z = gliederungZiel(rows, id, i);
+        if (!z) continue;
+        const tr = bausteinInGliederungVerschieben(state(), id, z);
+        if (tr) expect(state().apply(tr).doc.childCount).toBe(3);
+      }
+    }
   });
 });
 

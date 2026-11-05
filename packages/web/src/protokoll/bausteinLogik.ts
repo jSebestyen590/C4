@@ -355,7 +355,7 @@ export function notizenVorlage(typ: BausteinTyp): ProtokollKnoten[] {
   return [{ type: 'paragraph' }];
 }
 
-/** The document node of a new Baustein with its starting free text. */
+/** The document node of a new Baustein with its starting free text (none for Anwesenheit). */
 export function bausteinNeu(typ: BausteinTyp, daten: unknown): ProtokollKnoten {
   return bausteinErzeugen(typ, daten as never, notizenVorlage(typ));
 }
@@ -366,6 +366,16 @@ export function bausteinNeu(typ: BausteinTyp, daten: unknown): ProtokollKnoten {
 
 const TEXTBLOECKE = new Set(['paragraph', 'heading']);
 
+/** Old Anwesenheit blocks stored a (note) paragraph; they have no free text any more. Returns a copy. */
+function ohneAnwesenheitText(knoten: ProtokollKnoten): ProtokollKnoten {
+  if (knoten.type === 'bausteinAnwesenheit') {
+    const rest = { ...knoten };
+    delete rest.content;
+    return rest;
+  }
+  return knoten.content ? { ...knoten, content: knoten.content.map(ohneAnwesenheitText) } : knoten;
+}
+
 /**
  * The document as the editor needs it: every section has content, and (when `absatzAmEnde`) ends with a
  * text block, so there is always a place to type after a Baustein. Returns a copy.
@@ -375,7 +385,7 @@ export function dokumentNormalisieren(
   absatzAmEnde: boolean,
 ): ProtokollDokument {
   const abschnitte = dokument.content.map((abschnitt): ProtokollKnoten => {
-    const inhalt = [...(abschnitt.content ?? [])];
+    const inhalt = (abschnitt.content ?? []).map(ohneAnwesenheitText);
     const letzter = inhalt[inhalt.length - 1];
     if (!letzter || (absatzAmEnde && !TEXTBLOECKE.has(letzter.type)))
       inhalt.push({ type: 'paragraph' });

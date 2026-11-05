@@ -3,6 +3,7 @@ import {
   bausteinAnwesenheitDatenSchema,
   type ProtokollDokument,
   type ProtokollKnoten,
+  teilnahmeNormalisiert,
   type ProtokollTeilnahmeWert,
 } from './protokolle';
 import type { MitgliedStatus } from './status';
@@ -63,24 +64,88 @@ function inReihenfolge(knoten: ProtokollKnoten, besuch: (k: ProtokollKnoten) => 
   for (const kind of knoten.content ?? []) inReihenfolge(kind, besuch);
 }
 
+/** Times of the Anwesenheit blocks of one person: first `erscheint` with a time, last `geht` with a time ('' = none). */
+export interface AnwesenheitsZeit {
+  ab: string;
+  bis: string;
+}
+
+/**
+ * Per person with at least one Anwesenheit block (with a person) the times from the blocks, in
+ * document order: `ab` = first `erscheint` that has a time, `bis` = last `geht` that has a time.
+ * These people are locked to "da" in the Kopf.
+ */
+export function anwesenheitsZeiten(dokument: ProtokollDokument): Record<string, AnwesenheitsZeit> {
+  const zeiten: Record<string, AnwesenheitsZeit> = {};
+  inReihenfolge(dokument, (knoten) => {
+    if (knoten.type !== 'bausteinAnwesenheit') return;
+    const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
+    if (!daten.success || daten.data.sub === null) return;
+    const { sub, art, uhrzeit } = daten.data;
+    const z = (zeiten[sub] ??= { ab: '', bis: '' });
+    if (art === 'erscheint') {
+      if (z.ab === '') z.ab = uhrzeit;
+    } else if (uhrzeit !== '') {
+      z.bis = uhrzeit;
+    }
+  });
+  return zeiten;
+}
+
+/** "ab 21:00" / "bis 22:10" / "ab 21:00 · bis 22:10"; '' without times. `suffix` is appended to each time (" Uhr"). */
+export function anwesenheitsZeitText(z: AnwesenheitsZeit | undefined, suffix = ''): string {
+  if (!z) return '';
+  return [z.ab && `ab ${z.ab}${suffix}`, z.bis && `bis ${z.bis}${suffix}`]
+    .filter(Boolean)
+    .join(suffix ? ', ' : ' · ');
+}
+
+/** `verspaetet` becomes `anwesend`, people with an Anwesenheit block count as `anwesend` (they are locked to "da"). */
+export function teilnahmeMitBloecken<T extends { sub: string; wert: ProtokollTeilnahmeWert }>(
+  teilnahme: readonly T[],
+  dokument: ProtokollDokument,
+): T[] {
+  const zeiten = anwesenheitsZeiten(dokument);
+  return teilnahme.map((t) => ({
+    ...t,
+    wert: t.sub in zeiten ? 'anwesend' : teilnahmeNormalisiert(t.wert),
+  }));
+}
+
 /**
  * Who is present where in the document. At the opening the members with attendance `anwesend`
- * count; `verspaetet` members only from their `erscheint` block on. A `geht` block removes a present
- * member. Blocks for somebody who is not a Mitglied (Anwärter:in, EM, unknown) or that change
- * nothing leave the member count alone; blocks without a person are ignored. The head count of
- * all people (for a Meinungsbild) follows `erscheint` / `geht` blocks of any person.
+ * (`verspaetet` in old data counts as `anwesend`) count, except those whose first Anwesenheit block
+ * is an `erscheint` (they arrive later); members whose first block is `geht` count at the opening.
+ * Then the blocks are applied: `erscheint` adds a member, `geht` removes one. Blocks for somebody
+ * who is not a Mitglied (Anwärter:in, EM, unknown) or that change nothing leave the member count
+ * alone; blocks without a person are ignored. The head count of all people (for a Meinungsbild)
+ * follows the same rules for every status.
  */
 export function anwesenheitsVerlauf(
   dokument: ProtokollDokument,
   eingabe: AnwesenheitsEingabe,
 ): AnwesenheitsVerlauf {
-  const mitglieder = eingabe.teilnahme.filter((t) => t.status === 'mitglied');
+  // People whose first block is `erscheint` are not there at the opening.
+  const spaeter = new Set<string>();
+  const gesehen = new Set<string>();
+  inReihenfolge(dokument, (knoten) => {
+    if (knoten.type !== 'bausteinAnwesenheit') return;
+    const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
+    if (!daten.success || daten.data.sub === null || gesehen.has(daten.data.sub)) return;
+    gesehen.add(daten.data.sub);
+    if (daten.data.art === 'erscheint') spaeter.add(daten.data.sub);
+  });
+  const teilnahme = teilnahmeMitBloecken(eingabe.teilnahme, dokument);
+
+  const mitglieder = teilnahme.filter((t) => t.status === 'mitglied');
   const alle = new Set(mitglieder.map((t) => t.sub));
-  const da = new Set(mitglieder.filter((t) => t.wert === 'anwesend').map((t) => t.sub));
+  const da = new Set(
+    mitglieder.filter((t) => t.wert === 'anwesend' && !spaeter.has(t.sub)).map((t) => t.sub),
+  );
   const stand = () => beschlussfaehigkeit(eingabe.art, alle.size, da.size);
   // Everybody present, whatever the status: attendance `anwesend` plus the chosen EMs.
   const personen = new Set([
-    ...eingabe.teilnahme.filter((t) => t.wert === 'anwesend').map((t) => t.sub),
+    ...teilnahme.filter((t) => t.wert === 'anwesend' && !spaeter.has(t.sub)).map((t) => t.sub),
     ...(eingabe.ems ?? []).map((e) => e.sub),
   ]);
 
@@ -118,19 +183,6 @@ export function anwesenheitsVerlauf(
     }
   });
   return { start, bausteine, anwesendePersonen };
-}
-
-/** Per member the time of the first `erscheint` block that has one (for "Julia (21:00 Uhr)"). */
-export function erscheintUhrzeiten(dokument: ProtokollDokument): Record<string, string> {
-  const zeiten: Record<string, string> = {};
-  inReihenfolge(dokument, (knoten) => {
-    if (knoten.type !== 'bausteinAnwesenheit') return;
-    const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
-    if (!daten.success || daten.data.art !== 'erscheint') return;
-    const { sub, uhrzeit } = daten.data;
-    if (sub !== null && uhrzeit !== '' && !(sub in zeiten)) zeiten[sub] = uhrzeit;
-  });
-  return zeiten;
 }
 
 // ---------------------------------------------------------------------------------------------

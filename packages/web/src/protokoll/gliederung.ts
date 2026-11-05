@@ -144,16 +144,91 @@ export function gliederungBauen(
 export type GliederungZiel =
   { abschnitt: number; index: number } | { elternId: string; index: number };
 
-export const abschnittDroppableId = (i: number): string => `abschnitt:${i}`;
-export const notizenDroppableId = (id: string): string => `notizen:${id}`;
+/** A row of the flat outline list (one Droppable): section header, Baustein, nested Baustein or notes slot. */
+export type GliederungZeile =
+  | { art: 'abschnitt'; key: string; abschnitt: number; titel: string }
+  | { art: 'baustein'; key: string; abschnitt: number; eintrag: GliederungEintrag }
+  | {
+      art: 'kind';
+      key: string;
+      abschnitt: number;
+      elternId: string;
+      eintrag: GliederungEintrag;
+    }
+  | { art: 'notizen'; key: string; abschnitt: number; elternId: string };
 
-/** Parses a droppable id of the outline into a target (`index` is filled by the caller). */
-export function zielVonDroppable(droppableId: string, index: number): GliederungZiel | null {
-  const [art, ...rest] = droppableId.split(':');
-  const wert = rest.join(':');
-  if (art === 'abschnitt' && /^[0-2]$/.test(wert)) return { abschnitt: Number(wert), index };
-  if (art === 'notizen' && wert) return { elternId: wert, index };
-  return null;
+/**
+ * The flat rows of the outline. While a Baustein `gezogenId` is dragged, its own nested Bausteine are
+ * left out, and for a nestable one every Baustein that may hold others gets a "notes" slot row behind its
+ * nested Bausteine.
+ */
+export function gliederungZeilen(
+  baum: GliederungAbschnitt[],
+  gezogenId: string | null = null,
+): GliederungZeile[] {
+  const alle = baum.flatMap((a) => a.eintraege.flatMap((e) => [e, ...e.kinder]));
+  const gezogen = gezogenId ? alle.find((e) => e.id === gezogenId) : undefined;
+  const zeilen: GliederungZeile[] = [];
+  baum.forEach((a, i) => {
+    zeilen.push({ art: 'abschnitt', key: `abschnitt:${i}`, abschnitt: i, titel: a.titel });
+    for (const e of a.eintraege) {
+      zeilen.push({ art: 'baustein', key: e.id, abschnitt: i, eintrag: e });
+      if (e.id !== gezogenId) {
+        for (const k of e.kinder)
+          zeilen.push({ art: 'kind', key: k.id, abschnitt: i, elternId: e.id, eintrag: k });
+      }
+      if (gezogen?.verschachtelbar && e.kannEnthalten)
+        zeilen.push({ art: 'notizen', key: `notizen:${e.id}`, abschnitt: i, elternId: e.id });
+    }
+  });
+  return zeilen;
+}
+
+/**
+ * Target of dropping the row `gezogenId` at the flat index `index` of `zeilen` (the list as rendered
+ * during the drag; `index` is the final position of the dragged row). Looks at the rows directly above and
+ * below the dropped row:
+ * - below is a nested row or a notes slot of a parent and the dragged Baustein is nestable: nested into
+ *   that parent, before that nested row (at the end for the slot);
+ * - otherwise top-level in the section of the row above (a section header: first position), before the
+ *   next top-level Baustein; a non-nestable one dropped above a nested row goes right behind its parent.
+ */
+export function gliederungZiel(
+  zeilen: GliederungZeile[],
+  gezogenId: string,
+  index: number,
+): GliederungZiel | null {
+  const gezogen = zeilen.find(
+    (z) => z.art !== 'abschnitt' && z.art !== 'notizen' && z.key === gezogenId,
+  );
+  if (gezogen?.art !== 'baustein' && gezogen?.art !== 'kind') return null;
+  const rest = zeilen.filter((z) => z !== gezogen);
+  const pos = Math.max(0, Math.min(index, rest.length));
+  const unten = rest[pos];
+  const oben = rest[pos - 1];
+
+  if (unten && (unten.art === 'kind' || unten.art === 'notizen')) {
+    if (gezogen.eintrag.verschachtelbar) {
+      const geschwister = rest.filter((z) => z.art === 'kind' && z.elternId === unten.elternId);
+      const n = unten.art === 'kind' ? geschwister.indexOf(unten) : geschwister.length;
+      return { elternId: unten.elternId, index: n };
+    }
+    // Not nestable: top-level directly behind the parent.
+    const elternPos = rest.findIndex((z) => z.art === 'baustein' && z.key === unten.elternId);
+    if (elternPos < 0) return null;
+    return {
+      abschnitt: unten.abschnitt,
+      index: rest
+        .slice(0, elternPos + 1)
+        .filter((z) => z.art === 'baustein' && z.abschnitt === unten.abschnitt).length,
+    };
+  }
+  const abschnitt = oben?.abschnitt ?? 0;
+  return {
+    abschnitt,
+    index: rest.slice(0, pos).filter((z) => z.art === 'baustein' && z.abschnitt === abschnitt)
+      .length,
+  };
 }
 
 interface Fund {

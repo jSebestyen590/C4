@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { protokollKopfLeer, type ProtokollDto, type ProtokollTeilnahmeWert } from '@c4/shared';
-import { anwesenheitUhrzeit, fehltZuBeginn, kopfNachErscheinen } from './anwesenheit';
+import { anwesenheitUhrzeit, fehltZuBeginn, kopfNachAnwesenheit, wertVon } from './anwesenheit';
 
 const person = (sub: string, abgeleitet: ProtokollTeilnahmeWert) => ({
   sub,
@@ -32,29 +32,40 @@ describe('anwesenheitUhrzeit', () => {
   });
 });
 
-describe('kopfNachErscheinen', () => {
+describe('kopfNachAnwesenheit', () => {
   const kopf = protokollKopfLeer();
-  it('marks absent people as late', () => {
+  it('locks absent people to "da"', () => {
     expect(fehltZuBeginn('entschuldigt')).toBe(true);
-    expect(kopfNachErscheinen(dto(), kopf, 'e')?.teilnahme).toEqual({ e: 'verspaetet' });
-    expect(kopfNachErscheinen(dto(), kopf, 'u')?.teilnahme).toEqual({ u: 'verspaetet' });
+    expect(kopfNachAnwesenheit(dto(), kopf, 'e')?.teilnahme).toEqual({ e: 'anwesend' });
+    expect(kopfNachAnwesenheit(dto(), kopf, 'u')?.teilnahme).toEqual({ u: 'anwesend' });
   });
   it('keeps other overrides and does not touch verspaetung', () => {
     const k = { ...kopf, teilnahme: { a: 'entschuldigt' as const } };
-    const neu = kopfNachErscheinen(dto(), k, 'u');
-    expect(neu?.teilnahme).toEqual({ a: 'entschuldigt', u: 'verspaetet' });
+    const neu = kopfNachAnwesenheit(dto(), k, 'u');
+    expect(neu?.teilnahme).toEqual({ a: 'entschuldigt', u: 'anwesend' });
     expect(neu?.verspaetung).toEqual({});
   });
   it('uses overridden values', () => {
     expect(
-      kopfNachErscheinen(dto(), { ...kopf, teilnahme: { a: 'unentschuldigt' } }, 'a'),
+      kopfNachAnwesenheit(dto(), { ...kopf, teilnahme: { a: 'unentschuldigt' } }, 'a'),
     ).not.toBeNull();
-    expect(kopfNachErscheinen(dto(), { ...kopf, teilnahme: { e: 'anwesend' } }, 'e')).toBeNull();
+    expect(kopfNachAnwesenheit(dto(), { ...kopf, teilnahme: { e: 'anwesend' } }, 'e')).toBeNull();
   });
-  it('changes nothing for present or late people, unknown people or closed protocols', () => {
-    expect(kopfNachErscheinen(dto(), kopf, 'a')).toBeNull();
-    expect(kopfNachErscheinen(dto(), kopf, 'v')).toBeNull();
-    expect(kopfNachErscheinen(dto(), kopf, 'zzz')).toBeNull();
-    expect(kopfNachErscheinen(dto('abgeschlossen'), kopf, 'e')).toBeNull();
+  it('changes nothing for present people (old "verspaetet" counts as present), unknown people or closed protocols', () => {
+    expect(kopfNachAnwesenheit(dto(), kopf, 'a')).toBeNull();
+    expect(kopfNachAnwesenheit(dto(), kopf, 'v')).toBeNull();
+    expect(kopfNachAnwesenheit(dto(), kopf, 'zzz')).toBeNull();
+    expect(kopfNachAnwesenheit(dto('abgeschlossen'), kopf, 'e')).toBeNull();
+  });
+});
+
+describe('wertVon', () => {
+  const t = dto().teilnahme[2]!; // entschuldigt
+  it('normalises verspaetet and locks people with blocks to anwesend', () => {
+    const v = dto().teilnahme[1]!;
+    expect(wertVon(v, protokollKopfLeer(), true)).toBe('anwesend');
+    expect(wertVon(t, protokollKopfLeer(), true)).toBe('entschuldigt');
+    expect(wertVon(t, protokollKopfLeer(), true, { e: { ab: '21:00', bis: '' } })).toBe('anwesend');
+    expect(wertVon({ ...v, wert: 'verspaetet' }, protokollKopfLeer(), false)).toBe('anwesend');
   });
 });

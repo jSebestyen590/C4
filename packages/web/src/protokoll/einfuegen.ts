@@ -1,5 +1,5 @@
 import type { Node as PmNode, ResolvedPos } from '@tiptap/pm/model';
-import { Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
+import { TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
 import {
   BAUSTEIN_TYPEN,
@@ -223,9 +223,13 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
       const knoten = editor.state.doc.nodeAt(pos);
       if (!knoten) return;
       const ende = Math.min(pos + knoten.nodeSize, editor.state.doc.content.size);
-      editor.view.dispatch(
-        editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(ende), 1)),
-      );
+      const tr = editor.state.tr;
+      // Behind the block: its next paragraph, or a new one if something else follows.
+      if (!tr.doc.resolve(ende).nodeAfter?.isTextblock) {
+        tr.insert(ende, editor.state.schema.nodes.paragraph!.create());
+      }
+      tr.setSelection(TextSelection.near(tr.doc.resolve(ende + 1), -1));
+      editor.view.dispatch(tr.scrollIntoView());
       editor.view.focus();
       return;
     }

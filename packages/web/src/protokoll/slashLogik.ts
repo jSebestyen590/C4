@@ -69,7 +69,7 @@ export interface SlashPerson {
   /** Full name and status. */
   beschreibung: string;
   mitglied: boolean;
-  /** Counts as present at the opening (`anwesend` / `verspaetet`). */
+  /** Counts as present at the opening (`anwesend`). */
   da: boolean;
 }
 
@@ -80,15 +80,14 @@ export interface SlashDaten {
   personen?: readonly SlashPerson[];
   /** Time to prefill a new Anwesenheit block (`HH:MM`, '' = none); called on every list build. */
   uhrzeit?: () => string;
-  /** Called after an Erscheint block with a person was inserted (updates the Kopf). */
-  erscheint?: (sub: string) => void;
+  /** Called after an Erscheint / Geht block with a person was inserted (locks the person to "da" in the Kopf). */
+  anwesenheit?: (sub: string) => void;
 }
 
-/** The person of a chosen Erscheint block, else null (Geht, other Bausteine, no person). */
-export function erscheintPerson(wahl: BausteinWahl): string | null {
+/** The person of a chosen Erscheint / Geht block, else null (other Bausteine, no person). */
+export function anwesenheitPerson(wahl: BausteinWahl): string | null {
   if (wahl.typ !== 'bausteinAnwesenheit') return null;
-  const d = wahl.daten;
-  return d.art === 'erscheint' && d.sub ? d.sub : null;
+  return wahl.daten.sub || null;
 }
 
 export type SlashStufe = 'bausteine' | 'vorlagen' | 'events' | AnwesenheitArt;

@@ -34,6 +34,7 @@ const m = (sub: string, username: string | null, wert: string, status = 'mitglie
 const anw = (id: string, art: string, sub: string, uhrzeit = ''): ProtokollKnoten => ({
   type: 'bausteinAnwesenheit',
   attrs: { id, daten: { art, sub, uhrzeit } },
+  // Old documents still carry the (unused) note paragraph.
   content: [{ type: 'paragraph' }],
 });
 
@@ -69,36 +70,53 @@ describe('Titel', () => {
 });
 
 describe('dokumentKopf', () => {
-  it('groups attendance, late arrivals get a time', () => {
+  it('groups attendance; people with blocks get their times', () => {
     const k = dokumentKopf(eingabe([anw('a', 'erscheint', '2', '21:00')]));
+    // julia is "verspaetet" in old data and counts as da.
     expect(k.anwesende.map((p) => `${p.name} ${p.zusatz}`.trim())).toEqual([
       'leo',
-      'julia (21:00 Uhr)',
+      'julia (ab 21:00 Uhr)',
     ]);
     expect(k.entschuldigt.map((p) => p.name)).toEqual(['V3 N3', 'strobi']);
     expect(k.unentschuldigt.map((p) => p.name)).toEqual(['ida']);
     expect(k.anwaerter.map((p) => p.name)).toEqual(['arne']);
   });
 
-  it('prefers the Kopf time, falls back to "(verspätet)"', () => {
-    expect(dokumentKopf(eingabe([], { verspaetung: { '2': '20:30' } })).anwesende[1]?.zusatz).toBe(
-      '(20:30 Uhr)',
+  it('shows ab, bis or both, from the first erscheint and the last geht', () => {
+    const zusatz = (knoten: ProtokollKnoten[]) =>
+      dokumentKopf(eingabe(knoten)).anwesende.find((p) => p.name === 'leo')?.zusatz;
+    expect(zusatz([])).toBe('');
+    expect(zusatz([anw('a', 'erscheint', '1', '21:00')])).toBe('(ab 21:00 Uhr)');
+    expect(zusatz([anw('a', 'geht', '1', '22:10')])).toBe('(bis 22:10 Uhr)');
+    expect(zusatz([anw('a', 'erscheint', '1', '21:00'), anw('b', 'geht', '1', '22:10')])).toBe(
+      '(ab 21:00 Uhr, bis 22:10 Uhr)',
     );
-    expect(dokumentKopf(eingabe()).anwesende[1]?.zusatz).toBe('(verspätet)');
+    expect(zusatz([anw('a', 'geht', '1', '')])).toBe('');
   });
 
-  it('counts an absent member with an erscheint block as present', () => {
+  it('shows Anwärter:innen with times, too, and ignores the legacy Kopf time', () => {
+    const k = dokumentKopf(
+      eingabe([anw('a', 'erscheint', '6', '21:30')], { verspaetung: { '1': '20:30' } }),
+    );
+    expect(k.anwaerter[0]?.zusatz).toBe('(ab 21:30 Uhr)');
+    expect(k.anwesende[0]?.zusatz).toBe('');
+  });
+
+  it('counts an absent member with a block as present (old data)', () => {
+    for (const art of ['erscheint', 'geht']) {
+      const k = dokumentKopf(eingabe([anw('a', art, '5', '22:00')]));
+      expect(k.anwesende.map((p) => p.name)).toContain('strobi');
+      expect(k.entschuldigt.map((p) => p.name)).not.toContain('strobi');
+    }
     const k = dokumentKopf(eingabe([anw('a', 'erscheint', '5', '22:00')]));
-    expect(k.anwesende.map((p) => p.name)).toContain('strobi');
-    expect(k.entschuldigt.map((p) => p.name)).not.toContain('strobi');
-    expect(k.anwesende.find((p) => p.name === 'strobi')?.zusatz).toBe('(22:00 Uhr)');
+    expect(k.anwesende.find((p) => p.name === 'strobi')?.zusatz).toBe('(ab 22:00 Uhr)');
   });
 
   it('resolves Sitzungsleitung and Protokoll, quorum from the opening', () => {
     const k = dokumentKopf(eingabe([], { sitzungsleitung: '1', protokollfuehrung: '999' }));
     expect(k.leitung?.name).toBe('leo');
     expect(k.protokoll).toBeNull();
-    expect(k.beschlussfaehigkeit).toMatchObject({ gesamt: 5, anwesend: 1, mindestens: 3 });
+    expect(k.beschlussfaehigkeit).toMatchObject({ gesamt: 5, anwesend: 2, mindestens: 3 });
   });
 });
 
@@ -146,6 +164,9 @@ describe('Texte', () => {
     expect(
       anwesenheitZeile({ art: 'geht', sub: '2', uhrzeit: '' }, 'sitzung', undefined)?.nach,
     ).toBe(' geht.');
+    expect(
+      anwesenheitZeile({ art: 'geht', sub: '2', uhrzeit: '22:10' }, 'sitzung', undefined)?.nach,
+    ).toBe(' geht um 22:10 Uhr.');
     expect(
       anwesenheitZeile({ art: 'geht', sub: null, uhrzeit: '' }, 'sitzung', undefined),
     ).toBeNull();

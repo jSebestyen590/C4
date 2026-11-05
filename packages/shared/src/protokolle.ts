@@ -30,6 +30,13 @@ export const PROTOKOLL_TEILNAHME = [
 ] as const;
 export type ProtokollTeilnahmeWert = (typeof PROTOKOLL_TEILNAHME)[number];
 
+/** The three values shown and chosen in the UI; `verspaetet` is only kept in old data. */
+export const PROTOKOLL_TEILNAHME_WAHL = ['anwesend', 'entschuldigt', 'unentschuldigt'] as const;
+
+/** Old data: `verspaetet` counts as `anwesend` everywhere. */
+export const teilnahmeNormalisiert = (wert: ProtokollTeilnahmeWert): ProtokollTeilnahmeWert =>
+  wert === 'verspaetet' ? 'anwesend' : wert;
+
 export const PROTOKOLL_STATI = ['entwurf', 'abgeschlossen'] as const;
 export type ProtokollStatus = (typeof PROTOKOLL_STATI)[number];
 
@@ -366,12 +373,16 @@ const neueId = (): string => globalThis.crypto.randomUUID();
 
 const leererAbsatz = (): ProtokollKnoten => ({ type: 'paragraph' });
 
-/** A new Baustein node with a fresh id; `content` is the free text (default: one empty paragraph). */
+/**
+ * A new Baustein node with a fresh id; `content` is the free text (default: one empty paragraph).
+ * `bausteinAnwesenheit` has no free text and never gets content.
+ */
 export function bausteinErzeugen<T extends BausteinTyp>(
   typ: T,
   daten: BausteinDatenVon[T] = bausteinLeer(typ),
   content: ProtokollKnoten[] = [leererAbsatz()],
 ): BausteinKnoten<T> {
+  if (typ === 'bausteinAnwesenheit') return { type: typ, attrs: { id: neueId(), daten } } as never;
   return { type: typ, attrs: { id: neueId(), daten }, content };
 }
 
@@ -523,7 +534,7 @@ export const protokollKopfSchema = z.strictObject({
   protokollfuehrung: subSchluessel.nullable().default(null),
   /** Time the Sitzung was opened ('' = not entered). */
   eroeffnung: uhrzeitOderLeerSchema.default(''),
-  /** Time a late member (attendance `verspaetet`) arrived. */
+  /** Legacy (no longer written or shown): time a late member arrived. */
   verspaetung: z.record(subSchluessel, uhrzeitOderLeerSchema).default({}),
 });
 export type ProtokollKopf = z.infer<typeof protokollKopfSchema>;

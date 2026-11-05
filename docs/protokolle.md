@@ -23,8 +23,9 @@ Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt
   [kalender.md](./kalender.md).
 - **Art der Sitzung** (`protokollArt` an der Kategorie, `sitzung` oder `mitgliederversammlung`, Standard `sitzung`) bestimmt
   die Beschlussfähigkeit: Sitzung = mehr als die Hälfte der Mitglieder, Mitgliederversammlung = mehr als zwei Drittel.
-  Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer `anwesend` ist, zählt ab Beginn,
-  wer `verspaetet` ist, ab seinem Baustein „Erscheint“; „Geht“ nimmt ihn wieder heraus (`anwesenheitsVerlauf` in
+  Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer „da“ (`anwesend`) ist, zählt ab Beginn,
+  **außer** wenn sein erster Anwesenheits-Baustein (in Dokument-Reihenfolge) ein „Erscheint“ ist: Dann zählt er erst ab diesem
+  Baustein. Wessen erster Baustein „Geht“ ist, zählt zu Beginn mit; „Geht“ nimmt ihn heraus, „Erscheint“ holt ihn wieder dazu (`anwesenheitsVerlauf` in
   `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jeder Abstimmung, Aufnahme und jedem Neuen EM festhält; für das Meinungsbild zählt es alle Anwesenden
   (jeder Status plus gewählte EMs, Gäste sind Freitext und zählen nicht) als `anwesendePersonen`).
 - Je Event gibt es höchstens ein Protokoll (eindeutiger Index; ein zweites gibt 409). Abgesagte Events und Events anderer
@@ -36,8 +37,12 @@ Code: Typen, Prüfung, Vorbelegung in `packages/shared/src/protokolle.ts` (kennt
 
 Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als JSON).
 
-- **Teilnahme** aller aktiven Anwärter:innen und Mitglieder (ohne Deaktivierte und Externe) mit den Werten `anwesend`,
-  `verspaetet`, `entschuldigt`, `unentschuldigt` (Anzeige „da / spät / entsch. / fehlt“).
+- **Teilnahme** aller aktiven Anwärter:innen und Mitglieder (ohne Deaktivierte und Externe) mit den drei Werten `anwesend`,
+  `entschuldigt`, `unentschuldigt` (Anzeige „da / entsch. / fehlt“). Der Wert `verspaetet` bleibt nur für alte Daten im Schema
+  und gilt überall als `anwesend` (`teilnahmeNormalisiert`); die API liefert ihn nie, der Schnappschuss speichert `anwesend`.
+- **Feste Teilnahme:** Wer in einem Baustein Erscheint oder Geht steht, ist im Kopf auf „da“ festgestellt (Auswahl gesperrt) und
+  zeigt seine Zeiten aus den Bausteinen: „ab 21:00“ (erstes Erscheint), „bis 22:10“ (letztes Geht) oder „ab 21:00 · bis 22:10“
+  (`anwesenheitsZeiten`, live aus dem Dokument, auch lesend). Entfällt die Person aus allen Bausteinen, endet die Sperre.
 - **Ableitung** aus den eigenen Antworten auf das Sitzungs-Event (`teilnahmeAbleiten`): Zusage = anwesend, Absage =
   entschuldigt, keine Antwort = unentschuldigt.
 - **Nur Überschreibungen** stehen im `kopf` (`teilnahme`: Mitglied → Wert). Alle anderen folgen im Entwurf live dem Event; ein
@@ -47,13 +52,13 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
   Zusage; wer ausgewählt wird, ersetzt diese Ableitung.
 - **Gäste:** nur Freitext.
 - **Sitzungsleitung, Protokollführung** (`sitzungsleitung`, `protokollfuehrung`, je ein Mitglied oder leer; beim Anlegen
-  wird die Protokollführung auf die anlegende Person gesetzt), **Eröffnung** (`eroeffnung`, `HH:MM`) und die **Uhrzeit des
-  Eintreffens** verspäteter Mitglieder (`verspaetung`, Mitglied → `HH:MM`). Im Formular sind „Sitzungsleitung“ und
-  „Protokoll“ durchsuchbare Auswahlfelder („username (Vorname Nachname)“), „Eröffnung“ ein Zeitfeld; bei `verspaetet`
-  erscheint daneben „ab ... Uhr“ (entfällt beim Wechsel auf einen anderen Wert). Lesend steht alles als Text im Kopf.
-- **Automatisch spät:** Ein Baustein „Erscheint“ mit Person setzt im Entwurf eine fehlende Person (entschuldigt/unentschuldigt) im Kopf auf `verspaetet`, siehe Slash-Befehle.
+  wird die Protokollführung auf die anlegende Person gesetzt), **Eröffnung** (`eroeffnung`, `HH:MM`). Im Formular sind „Sitzungsleitung“ und
+  „Protokoll“ durchsuchbare Auswahlfelder („username (Vorname Nachname)“), „Eröffnung“ ein Zeitfeld. Lesend steht alles als Text im Kopf.
+  `verspaetung` (Zeit je Mitglied) bleibt nur aus Kompatibilität im Schema, wird nicht mehr geschrieben oder angezeigt.
+- **Automatisch „da“:** Bekommt ein Baustein Erscheint oder Geht eine Person (Einfügen oder Personenwechsel) und gilt sie im Kopf nicht
+  als `anwesend`, setzt das die Überschreibung `anwesend` (`kopfNachAnwesenheit`), siehe Slash-Befehle.
 - **Beschlussfähigkeit:** Der Kopf zeigt live „Beschlussfähig: 13 von 25 Mitgliedern anwesend (nötig: 13)“ (rot: „Nicht
-  beschlussfähig“) aus der Teilnahme zu Beginn und der Art der Sitzung.
+  beschlussfähig“) aus der Teilnahme zu Beginn (ohne die, die später per Erscheint kommen) und der Art der Sitzung.
 - **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden und die Art der Sitzung ein
   (`schnappschuss`, `emsSchnappschuss`, `statusSchnappschuss`, `artSchnappschuss`). Danach zeigt
   das Protokoll genau diese Personen und Werte; spätere Zu- oder Absagen, Statuswechsel oder Deaktivierungen ändern sie nicht.
@@ -68,13 +73,13 @@ löschen, verschieben noch umbenennen (auch nicht durch Alles-markieren + Lösch
 Listen, Links, fett und kursiv sowie Bausteine. Am Ende jedes Abschnitts bleibt ein leerer Absatz.
 
 Ein **Baustein** ist ein Block mit Feldern (Formular im Dokument) und einem Freitext darunter (normaler Text mit
-Formatierung). Jeder hat eine stabile `id` (UUID, bei Kopien neu vergeben) und `daten`. Lesende sehen Bausteine als kompakte
+Formatierung; nur Erscheint/Geht hat keinen). Jeder hat eine stabile `id` (UUID, bei Kopien neu vergeben) und `daten`. Lesende sehen Bausteine als kompakte
 Karten.
 
 | Baustein (Knoten)                              | Felder                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Event (`bausteinEvent`)                        | Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event)                                                                                                                                           |
-| Anwesenheit (`bausteinAnwesenheit`)            | Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional); kommt nicht in den Vorschlag fürs nächste Protokoll                                                                                                                                                                                                                                                                           |
+| Anwesenheit (`bausteinAnwesenheit`)            | Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional); ohne Freitext (Atom, kein `content`; alte Bausteine mit Absatz werden beim Laden bereinigt); kommt nicht in den Vorschlag fürs nächste Protokoll                                                                                                                                                                              |
 | Vergangenes Event (`bausteinVergangenesEvent`) | Kalender-Event (`eventId`) oder Name und Datum von Hand                                                                                                                                                                                                                                                                                                                                                |
 | Anwärter:in (`bausteinAnwaerter`)              | Vorname, Nachname, E-Mail (optional)                                                                                                                                                                                                                                                                                                                                                                   |
 | Abstimmung (`bausteinBeschluss`)               | Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag); nur Mitglieder stimmen, verbindlich. Der Knotenname bleibt `bausteinBeschluss` (alte Daten gelten weiter)                                                                                           |
@@ -119,6 +124,14 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl), einge
   leeren) und an jede Stelle der Liste. Abstimmung, Meinungsbild und Wahl dürfen zusätzlich in die Notizen eines anderen
   Bausteins (nicht in eine Abstimmung, ein Meinungsbild oder eine Wahl) und von dort wieder auf Abschnittsebene. Alle anderen
   Bausteine lassen sich nicht in Notizen ablegen. Ein Baustein nimmt seine Notizen samt verschachtelten Bausteinen mit.
+- **Technik:** Die Gliederung ist **eine** flache Liste (ein `Droppable`): Abschnittskopf (nicht ziehbar), Baustein, verschachtelter
+  Baustein (eingerückt). Beim Ziehen eines verschachtelbaren Bausteins kommt hinter jedem Baustein, der Notizen haben darf, eine
+  Zeile „In die Notizen“ dazu; beim Ziehen eines Bausteins mit Notizen sind dessen verschachtelte Zeilen ausgeblendet. Das Ziel
+  ergibt sich aus der Zeile **direkt darunter** (`gliederungZiel` in `gliederung.ts`, getestet): ist es ein verschachtelter
+  Baustein, kommt der gezogene davor in dessen Notizen (bei „In die Notizen“ ans Ende); nicht verschachtelbare Bausteine landen
+  stattdessen direkt hinter dem Eltern-Baustein. Sonst steht er auf Abschnittsebene in dem Abschnitt der Zeile darüber (direkt
+  unter dem Abschnittskopf: an erster Stelle), vor dem nächsten Baustein. Schlägt der Zug fehl, erscheint „Verschieben hat nicht
+  geklappt.“ und die Gliederung bleibt bedienbar.
 - **Position:** „Als i-ter“ heißt direkt vor dem i-ten Baustein der Liste, am Ende hinter dem letzten Baustein bzw. (leere
   Liste) vor dem leeren Schluss-Absatz. Freitext bleibt, wo er ist. Der Zug ist **eine** Transaktion (Einfügen + Löschen):
   Rückgängig macht ihn in einem Schritt rückgängig, das Autospeichern greift wie sonst; die drei Abschnitte bleiben intakt.
@@ -131,8 +144,9 @@ Schreibende sehen im Entwurf den Umschalter „Bearbeiten“ / „Dokument“ (d
 aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschlossene Protokolle zeigen nur das Dokument.
 
 - **Titel:** `<Titel der Sitzung> TT.MM.JJJJ` (Datum in Berlin).
-- **Kopfzeilen:** „Anwesende Mitglieder“ (anwesend und verspätet; Verspätete mit „(21:00 Uhr)“ aus dem Kopf, sonst aus dem
-  Baustein „Anwesenheit“, sonst „(verspätet)“; wer fehlt, aber einen Baustein „erscheint“ hat, zählt auch hier), „Fehlende
+- **Kopfzeilen:** „Anwesende Mitglieder“ (alle „da“, auch die aus Erscheint/Geht-Bausteinen, mit „(ab 21:00 Uhr)“, „(bis 22:10 Uhr)“
+  oder „(ab 21:00 Uhr, bis 22:10 Uhr)“ aus den Bausteinen; wer fehlt, aber einen Baustein hat, zählt auch hier; gleich bei
+  den Anwärter:innen), „Fehlende
   Mitglieder (entschuldigt)“, „(unentschuldigt)“ (immer sichtbar), „EMs“, „Anwärter:innen“ und „Gäste“ (nur wenn gefüllt),
   „Sitzungsleitung“, „Protokoll“. Namen: Benutzername, fett in der Farbe des Status (`StatusName`).
 - **Eröffnung:** „<Leitung> eröffnet die Sitzung um 20:04 Uhr.“ (Mitgliederversammlung entsprechend), nur mit Uhrzeit „Die Sitzung
@@ -158,7 +172,7 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
   „nicht beschlussfähig“), dann die Notizen. Personen als `StatusName`.
 - **Verschachtelt:** Eine Abstimmung, ein Meinungsbild oder eine Wahl in den Notizen eines anderen Bausteins steht dort, eingerückt wie die
   übrigen Notizen, an der Stelle im Text.
-- **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Person entfällt sie); ändert
+- **Anwesenheit:** kursive Zeile „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Uhrzeit „Strobi geht.“, ohne Person entfällt sie); ändert
   sich dadurch die Beschlussfähigkeit, folgt fett „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.
 
 ## Slash-Befehle und Button „Baustein“
@@ -178,14 +192,13 @@ aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschl
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
   Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = aktuelle
-  Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter. Der Baustein ist eine Zeile (Person, erscheint/geht,
+  Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter in den nächsten Absatz (bei Bedarf wird einer angelegt). Der Baustein ist eine Zeile (Person, erscheint/geht,
   Uhrzeit) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
-  sowie einer optionalen Bemerkung. Eine **Abstimmung** (und eine Aufnahme, Wahl) zeigt „Anwesend: x von y Mitgliedern“, bei fehlender
+  ohne Freitext. Eine **Abstimmung** (und eine Aufnahme, Wahl) zeigt „Anwesend: x von y Mitgliedern“, bei fehlender
   Beschlussfähigkeit rot „Nicht beschlussfähig“ und bei mehr Stimmen als Anwesenden eine gelbe Warnung.
-  **Erscheint setzt den Kopf:** Bekommt ein Erscheint-Baustein eine Person (beim Einfügen oder später im Formular) und gilt sie im Kopf
-  als `entschuldigt` oder `unentschuldigt` (abgeleitet oder überschrieben), setzt das die Überschreibung `verspaetet`
-  (`kopfNachErscheinen` in `protokoll/anwesenheit.ts`); „anwesend“ und „verspätet“ bleiben unberührt, `verspaetung` wird nicht gesetzt
-  (die Zeit kommt aus dem Baustein). Entfernen des Bausteins oder „Geht“ ändern den Kopf nicht.
+  **Erscheint und Geht setzen den Kopf:** Bekommt ein solcher Baustein eine Person (beim Einfügen oder später im Formular) und gilt sie im
+  Kopf nicht als `anwesend`, setzt das die Überschreibung `anwesend` (`kopfNachAnwesenheit` in `protokoll/anwesenheit.ts`); die Person ist
+  danach gesperrt (siehe Kopf). Entfernen aller Bausteine löst die Sperre, die Überschreibung bleibt „da“.
 - **Notizen** neuer Event- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
 - **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist

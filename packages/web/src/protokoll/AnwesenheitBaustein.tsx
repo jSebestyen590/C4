@@ -9,16 +9,9 @@ import {
   Text,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
-import {
-  NodeViewContent,
-  NodeViewWrapper,
-  useEditorState,
-  type ReactNodeViewProps,
-} from '@tiptap/react';
-import { useState } from 'react';
+import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
 import { Link } from 'react-router-dom';
 import { ANWESENHEIT_ARTEN, type AnwesenheitArt, type BausteinAnwesenheitDaten } from '@c4/shared';
-import { BestaetigenDialog } from '../BestaetigenDialog';
 import { mitgliedLink } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesenheit';
@@ -31,19 +24,17 @@ import { SlashIcon } from './symbole';
 const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht: 'Geht' };
 
 /**
- * Compact block "<Person> erscheint / geht <Uhrzeit>" with the quorum at that point and an optional note.
+ * Compact block "<Person> erscheint / geht <Uhrzeit>" with the quorum at that point (no free text).
  * One row on wide screens, wraps on phones.
  */
 export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
-  const { teilnahme, verlauf, onErscheint } = useProtokollKontext();
-  const [loeschen, setLoeschen] = useState(false);
+  const { teilnahme, verlauf, onAnwesenheit } = useProtokollKontext();
   const daten = node.attrs.daten as BausteinAnwesenheitDaten;
   const id = node.attrs.id as string;
   const stand = verlauf.bausteine[id];
   const person = teilnahme.find((t) => t.sub === daten.sub);
-  const hatText = node.textContent.trim() !== '';
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
   const aendern = (f: (alt: BausteinAnwesenheitDaten) => BausteinAnwesenheitDaten) => {
@@ -74,7 +65,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
 
   return (
     <NodeViewWrapper
-      className={`protokoll-baustein protokoll-anwesenheit${!editierbar && !hatText ? ' protokoll-ohne-text' : ''}`}
+      className="protokoll-baustein protokoll-anwesenheit"
       data-baustein="bausteinAnwesenheit"
     >
       <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
@@ -96,7 +87,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                     sub,
                     uhrzeit: sub && !d.uhrzeit ? anwesenheitUhrzeit() : d.uhrzeit,
                   }));
-                  if (sub && daten.art === 'erscheint') onErscheint?.(sub);
+                  if (sub) onAnwesenheit?.(sub);
                 }}
                 style={{ flex: '1 1 11rem', minWidth: 0 }}
                 renderOption={({ option }) => {
@@ -112,7 +103,10 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 size="md"
                 aria-label="Erscheint oder geht"
                 value={daten.art}
-                onChange={(art) => aendern((d) => ({ ...d, art: art as AnwesenheitArt }))}
+                onChange={(art) => {
+                  aendern((d) => ({ ...d, art: art as AnwesenheitArt }));
+                  if (daten.sub) onAnwesenheit?.(daten.sub);
+                }}
                 data={ANWESENHEIT_ARTEN.map((a) => ({ value: a, label: ART_LABEL[a] }))}
               />
               <LokalText
@@ -131,7 +125,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 size={44}
                 className="protokoll-nicht-drucken"
                 aria-label="Anwesenheit entfernen"
-                onClick={() => (hatText ? setLoeschen(true) : deleteNode())}
+                onClick={() => deleteNode()}
               >
                 <IconTrash size={20} />
               </ActionIcon>
@@ -159,22 +153,6 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
           {quorum}
         </Stack>
       </div>
-      <NodeViewContent className="protokoll-baustein-text protokoll-anwesenheit-text" />
-      {loeschen && (
-        <BestaetigenDialog
-          titel="Anwesenheit entfernen"
-          bestaetigenText="Entfernen"
-          onClose={() => setLoeschen(false)}
-          onBestaetigt={() => {
-            deleteNode();
-            return Promise.resolve();
-          }}
-        >
-          <Text>
-            Der Eintrag samt seiner Bemerkung wird entfernt. Mit „Rückgängig“ holst du ihn zurück.
-          </Text>
-        </BestaetigenDialog>
-      )}
     </NodeViewWrapper>
   );
 }

@@ -3,7 +3,9 @@ import {
   anwesenheitsVerlauf,
   beschlussfaehigkeit,
   datumKurz,
-  erscheintUhrzeiten,
+  anwesenheitsZeitText,
+  anwesenheitsZeiten,
+  teilnahmeMitBloecken,
   eventUeberschrift,
   vergangenesUeberschrift,
 } from './protokollAnwesenheit';
@@ -87,7 +89,8 @@ describe('anwesenheitsVerlauf', () => {
       { sub: 'x', status: 'extern', wert: 'anwesend' },
     ];
     const { start, bausteine } = anwesenheitsVerlauf(doc(), { art: 'sitzung', teilnahme });
-    expect(start).toEqual({ gesamt: 7, anwesend: 4, mindestens: 4, beschlussfaehig: true });
+    // `verspaetet` (old data) counts as anwesend.
+    expect(start).toEqual({ gesamt: 7, anwesend: 5, mindestens: 4, beschlussfaehig: true });
     expect(bausteine).toEqual({});
   });
 
@@ -150,7 +153,7 @@ describe('anwesenheitsVerlauf', () => {
     });
   });
 
-  it('ignores double erscheint, geht of an absent member and non-members', () => {
+  it('ignores blocks of non-members and blocks without a person', () => {
     const teilnahme: T[] = [
       ...mitglieder(2),
       { sub: 'e', status: 'mitglied', wert: 'entschuldigt' },
@@ -158,8 +161,6 @@ describe('anwesenheitsVerlauf', () => {
       { sub: 'em', status: 'em', wert: 'anwesend' },
     ];
     const blocks = [
-      anw('erscheint', 'm0'), // already present
-      anw('geht', 'e'), // absent
       anw('geht', 'a1'), // Anwärter
       anw('erscheint', 'em'),
       anw('geht', 'unbekannt'),
@@ -215,21 +216,92 @@ describe('anwesenheitsVerlauf', () => {
   });
 });
 
-describe('erscheintUhrzeiten', () => {
-  it('returns the first erscheint time per member', () => {
+describe('anwesenheitsZeiten', () => {
+  it('returns the first erscheint and the last geht time per member', () => {
     const d = doc(
       anw('erscheint', 'a', '21:00'),
       anw('erscheint', 'a', '22:00'),
       anw('erscheint', 'b', ''),
       anw('erscheint', 'b', '21:30'),
       anw('geht', 'c', '23:00'),
+      anw('geht', 'a', '22:10'),
+      anw('geht', 'a', '22:40'),
+      anw('geht', 'a', ''),
       anw('erscheint', null, '20:00'),
     );
-    expect(erscheintUhrzeiten(d)).toEqual({ a: '21:00', b: '21:30' });
+    expect(anwesenheitsZeiten(d)).toEqual({
+      a: { ab: '21:00', bis: '22:40' },
+      b: { ab: '21:30', bis: '' },
+      c: { ab: '', bis: '23:00' },
+    });
+  });
+
+  it('formats the notes', () => {
+    expect(anwesenheitsZeitText({ ab: '21:00', bis: '' })).toBe('ab 21:00');
+    expect(anwesenheitsZeitText({ ab: '', bis: '22:10' })).toBe('bis 22:10');
+    expect(anwesenheitsZeitText({ ab: '21:00', bis: '22:10' })).toBe('ab 21:00 · bis 22:10');
+    expect(anwesenheitsZeitText({ ab: '21:00', bis: '22:10' }, ' Uhr')).toBe(
+      'ab 21:00 Uhr, bis 22:10 Uhr',
+    );
+    expect(anwesenheitsZeitText({ ab: '', bis: '' })).toBe('');
+    expect(anwesenheitsZeitText(undefined)).toBe('');
+  });
+
+  it('normalises verspaetet and locks people with blocks to anwesend', () => {
+    const t: T[] = [
+      { sub: 'v', status: 'mitglied', wert: 'verspaetet' },
+      { sub: 'e', status: 'mitglied', wert: 'entschuldigt' },
+      { sub: 'u', status: 'mitglied', wert: 'unentschuldigt' },
+    ];
+    const r = teilnahmeMitBloecken(t, doc(anw('geht', 'e', '22:00')));
+    expect(r.map((x) => x.wert)).toEqual(['anwesend', 'anwesend', 'unentschuldigt']);
+  });
+});
+
+describe('anwesenheitsVerlauf: arrival and departure at the opening', () => {
+  it('does not count members whose first block is erscheint, but those whose first is geht', () => {
+    const teilnahme = mitglieder(4); // m0..m3, all da
+    const e = anw('erscheint', 'm0', '21:00');
+    const g = anw('geht', 'm1', '22:00');
+    const b1 = beschluss();
+    const b2 = beschluss();
+    const v = anwesenheitsVerlauf(doc(b1, e, g, b2), { art: 'sitzung', teilnahme });
+    // m0 arrives later: 3 of 4 at the opening; then 4, then 3.
+    expect(v.start.anwesend).toBe(3);
+    expect(v.bausteine[b1.attrs.id]!.anwesend).toBe(3);
+    expect(v.bausteine[e.attrs.id]!.anwesend).toBe(4);
+    expect(v.bausteine[g.attrs.id]!.anwesend).toBe(3);
+    expect(v.bausteine[b2.attrs.id]!.anwesend).toBe(3);
+  });
+
+  it('counts a member who goes and comes back at the opening (first block geht)', () => {
+    const v = anwesenheitsVerlauf(doc(anw('geht', 'm0'), anw('erscheint', 'm0')), {
+      art: 'sitzung',
+      teilnahme: mitglieder(3),
+    });
+    expect(v.start.anwesend).toBe(3);
+  });
+
+  it('treats a member who is absent in the Kopf but has a block as da (old data)', () => {
+    const teilnahme: T[] = [
+      ...mitglieder(2),
+      { sub: 'x', status: 'mitglied', wert: 'unentschuldigt' },
+    ];
+    const g = anw('geht', 'x', '22:00');
+    const v = anwesenheitsVerlauf(doc(g), { art: 'sitzung', teilnahme });
+    expect(v.start.anwesend).toBe(3);
+    expect(v.bausteine[g.attrs.id]!.anwesend).toBe(2);
   });
 });
 
 describe('bausteinAnwesenheit', () => {
+  it('has no free text, but old blocks with a paragraph stay valid', () => {
+    expect(anw('geht', 'a').content).toBeUndefined();
+    const alt = { ...anw('geht', 'a', '21:05'), content: [{ type: 'paragraph' }] };
+    expect(protokollDokumentPruefen(doc(alt))).toBeNull();
+    expect(protokollDokumentPruefen(doc(anw('geht', 'a', '21:05')))).toBeNull();
+  });
+
   it('is empty by default and validated strictly', () => {
     expect(bausteinLeer('bausteinAnwesenheit')).toEqual({
       art: 'erscheint',

@@ -1,5 +1,6 @@
 import {
   teilnahmeAbleiten,
+  teilnahmeNormalisiert,
   type Anrede,
   type MitgliedStatus,
   type ProtokollArt,
@@ -64,15 +65,17 @@ export function protokollListen(
     .map((m): ProtokollTeilnahmeDto => {
       const abgeleitet = teilnahmeAbleiten(antworten[m.sub]);
       const ueberschreibung = kopf.teilnahme[m.sub];
-      const wert: ProtokollTeilnahmeWert = geschlossen
-        ? (kopf.schnappschuss![m.sub] ?? abgeleitet)
-        : (ueberschreibung ?? abgeleitet);
+      // Old data may hold `verspaetet`; it counts as `anwesend` and is never delivered.
+      const wert: ProtokollTeilnahmeWert = teilnahmeNormalisiert(
+        geschlossen ? (kopf.schnappschuss![m.sub] ?? abgeleitet) : (ueberschreibung ?? abgeleitet),
+      );
       return {
         ...mitgliedDto(m),
         status: geschlossen ? (kopf.statusSchnappschuss?.[m.sub] ?? m.status) : m.status,
         abgeleitet,
         wert,
-        ueberschrieben: ueberschreibung !== undefined && ueberschreibung !== abgeleitet,
+        ueberschrieben:
+          ueberschreibung !== undefined && teilnahmeNormalisiert(ueberschreibung) !== abgeleitet,
       };
     })
     .sort(nachName);

@@ -1,10 +1,12 @@
 import {
   anwesenheitsVerlauf,
+  teilnahmeNormalisiert,
   type ProtokollArt,
   type ProtokollDokument,
   type ProtokollDto,
   type ProtokollKopf,
   type ProtokollMitgliedDto,
+  type AnwesenheitsZeit,
   type ProtokollTeilnahmeWert,
   zeitBerlin,
 } from '@c4/shared';
@@ -19,17 +21,29 @@ export interface AnwesenheitPerson extends ProtokollMitgliedDto {
   wert: ProtokollTeilnahmeWert;
 }
 
-/** The effective attendance: a draft follows the Sitzung unless overridden; a closed protocol is frozen. */
+/**
+ * The effective attendance: a draft follows the Sitzung unless overridden; a closed protocol is
+ * frozen. Old `verspaetet` counts as `anwesend`; people with an Anwesenheit block (`zeiten`) are "da".
+ */
 export function wertVon(
   t: ProtokollDto['teilnahme'][number],
   kopf: ProtokollKopf,
   entwurf: boolean,
+  zeiten: Readonly<Record<string, AnwesenheitsZeit>> = {},
 ): ProtokollTeilnahmeWert {
-  return entwurf ? (kopf.teilnahme[t.sub] ?? t.abgeleitet) : t.wert;
+  if (t.sub in zeiten) return 'anwesend';
+  return teilnahmeNormalisiert(entwurf ? (kopf.teilnahme[t.sub] ?? t.abgeleitet) : t.wert);
 }
 
-/** The attendance list with the values that count right now (including local Kopf overrides). */
-export function effektiveTeilnahme(dto: ProtokollDto, kopf: ProtokollKopf): AnwesenheitPerson[] {
+/**
+ * The attendance list with the values that count right now (including local Kopf overrides and the
+ * lock to "da" of people in Erscheint / Geht blocks).
+ */
+export function effektiveTeilnahme(
+  dto: ProtokollDto,
+  kopf: ProtokollKopf,
+  zeiten: Readonly<Record<string, AnwesenheitsZeit>> = {},
+): AnwesenheitPerson[] {
   const entwurf = dto.status === 'entwurf';
   return dto.teilnahme.map((t) => ({
     sub: t.sub,
@@ -38,14 +52,17 @@ export function effektiveTeilnahme(dto: ProtokollDto, kopf: ProtokollKopf): Anwe
     nachname: t.nachname,
     status: t.status,
     anrede: t.anrede,
-    wert: wertVon(t, kopf, entwurf),
+    wert: wertVon(t, kopf, entwurf, zeiten),
   }));
 }
 
-/** Quorum at the opening (before any Erscheint / Geht block). */
-export function quorumBeiEroeffnung(art: ProtokollArt, personen: readonly AnwesenheitPerson[]) {
-  const leer: ProtokollDokument = { type: 'doc', content: [] };
-  return anwesenheitsVerlauf(leer, { art, teilnahme: personen }).start;
+/** Quorum at the opening (before any Erscheint / Geht block; those who arrive later are not counted). */
+export function quorumBeiEroeffnung(
+  art: ProtokollArt,
+  personen: readonly AnwesenheitPerson[],
+  inhalt: ProtokollDokument = { type: 'doc', content: [] },
+) {
+  return anwesenheitsVerlauf(inhalt, { art, teilnahme: personen }).start;
 }
 
 /** "von 25 Mitgliedern" after "12 von …": "1 Mitglied" / "25 Mitgliedern". */
@@ -96,7 +113,7 @@ export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPers
       titel: p.username ?? (voll || '–'),
       beschreibung: [neben, status].filter(Boolean).join(' · '),
       mitglied: p.status === 'mitglied',
-      da: p.wert === 'anwesend' || p.wert === 'verspaetet',
+      da: p.wert === 'anwesend',
     };
   });
 }
@@ -106,22 +123,22 @@ export function anwesenheitUhrzeit(jetzt: Date = new Date()): string {
   return zeitBerlin(jetzt.toISOString());
 }
 
-/** Whether somebody with this attendance counts as absent at the opening (so an arrival makes them late). */
+/** Whether somebody with this attendance counts as absent at the opening. */
 export const fehltZuBeginn = (wert: ProtokollTeilnahmeWert): boolean =>
   wert === 'entschuldigt' || wert === 'unentschuldigt';
 
 /**
- * The Kopf after somebody arrived (Erscheint block with this person): a person who is absent at the
- * opening gets the override `verspaetet`. Returns `null` when nothing changes (unknown person, already
- * present or late, closed protocol).
+ * The Kopf after somebody got an Erscheint / Geht block: a person who is not "da" gets the override
+ * `anwesend` (blocks lock the person to "da"). Returns `null` when nothing changes (unknown person,
+ * already present, closed protocol).
  */
-export function kopfNachErscheinen(
+export function kopfNachAnwesenheit(
   dto: ProtokollDto,
   kopf: ProtokollKopf,
   sub: string,
 ): ProtokollKopf | null {
   if (dto.status !== 'entwurf') return null;
   const person = dto.teilnahme.find((t) => t.sub === sub);
-  if (!person || !fehltZuBeginn(wertVon(person, kopf, true))) return null;
-  return { ...kopf, teilnahme: { ...kopf.teilnahme, [sub]: 'verspaetet' } };
+  if (!person || wertVon(person, kopf, true) === 'anwesend') return null;
+  return { ...kopf, teilnahme: { ...kopf.teilnahme, [sub]: 'anwesend' } };
 }

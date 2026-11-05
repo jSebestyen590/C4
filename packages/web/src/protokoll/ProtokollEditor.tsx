@@ -68,7 +68,7 @@ export function ProtokollEditor({
   art,
   teilnahme,
   ems = [],
-  onErscheint,
+  onAnwesenheit,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -80,16 +80,16 @@ export function ProtokollEditor({
   teilnahme: readonly AnwesenheitPerson[];
   /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
   ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
-  /** A person arrived (Erscheint block with a person inserted or set); not called when read-only. */
-  onErscheint?: (sub: string) => void;
+  /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
+  onAnwesenheit?: (sub: string) => void;
 }>) {
-  const onErscheintRef = useRef(onErscheint);
+  const onAnwesenheitRef = useRef(onAnwesenheit);
   useEffect(() => {
-    onErscheintRef.current = onErscheint;
+    onAnwesenheitRef.current = onAnwesenheit;
   });
-  const erscheint = useCallback((sub: string) => onErscheintRef.current?.(sub), []);
+  const anwesenheit = useCallback((sub: string) => onAnwesenheitRef.current?.(sub), []);
   const basisDaten = useSlashDaten(sitzungBeginn, teilnahme);
-  const slashDaten = useMemo(() => ({ ...basisDaten, erscheint }), [basisDaten, erscheint]);
+  const slashDaten = useMemo(() => ({ ...basisDaten, anwesenheit }), [basisDaten, anwesenheit]);
   // The document as the quorum needs it (a little behind the typing).
   const [dokument, setDokument] = useState(inhalt);
   const dokumentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -203,14 +203,14 @@ export function ProtokollEditor({
       art,
       teilnahme,
       ems,
-      onErscheint: erscheint,
+      onAnwesenheit: anwesenheit,
       verlauf: anwesenheitsVerlauf(dokument, {
         art,
         teilnahme,
         ems: ems.filter((e) => e.ausgewaehlt),
       }),
     }),
-    [sitzungBeginn, art, teilnahme, ems, dokument, erscheint],
+    [sitzungBeginn, art, teilnahme, ems, dokument, anwesenheit],
   );
 
   return (
@@ -279,7 +279,8 @@ export function ProtokollEditor({
             className="protokoll-nicht-drucken"
             aria-label="Gliederung"
             style={{
-              flex: '0 0 19rem',
+              // Grows with the window, so long titles (e.g. Abstimmungen) are cut less.
+              flex: '0 0 clamp(19rem, 28vw, 32rem)',
               position: 'sticky',
               top: `calc(${HEADER_HOEHE}px + env(safe-area-inset-top) + var(--mantine-spacing-xs))`,
               maxHeight: `calc(100dvh - ${HEADER_HOEHE}px - env(safe-area-inset-top) - 2 * var(--mantine-spacing-md))`,

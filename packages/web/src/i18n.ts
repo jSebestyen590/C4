@@ -292,14 +292,14 @@ export const TRICHTER_KOENIG_EWIG_LABELS: Gegendert = {
 // Protokolle: attendance in full words (legend, summary) and in short words (segmented control).
 export const PROTOKOLL_TEILNAHME_LABELS: Record<ProtokollTeilnahmeWert, string> = {
   anwesend: 'anwesend',
-  verspaetet: 'verspätet',
+  verspaetet: 'anwesend', // legacy value, counts as anwesend
   entschuldigt: 'entschuldigt',
   unentschuldigt: 'unentschuldigt',
 };
 
 export const PROTOKOLL_TEILNAHME_KURZ: Record<ProtokollTeilnahmeWert, string> = {
   anwesend: 'da',
-  verspaetet: 'spät',
+  verspaetet: 'da', // legacy value, counts as anwesend
   entschuldigt: 'entsch.',
   unentschuldigt: 'fehlt',
 };

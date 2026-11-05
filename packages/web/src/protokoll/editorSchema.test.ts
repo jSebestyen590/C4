@@ -22,13 +22,22 @@ describe('editor schema', () => {
   it('lets Abstimmung and Meinungsbild stand in the notes of other Bausteine, but not in each other', () => {
     for (const typ of BAUSTEIN_TYPEN) {
       for (const innen of ['bausteinBeschluss', 'bausteinMeinungsbild', 'bausteinWahl'] as const) {
-        const erlaubt = !istBausteinInNotizen(typ);
+        // Anwesenheit has no free text at all.
+        const erlaubt = !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit';
         const knoten = schema.nodeFromJSON(bausteinErzeugen(innen));
         const eltern = schema.nodes[typ]!;
         const passt = eltern.contentMatch.matchType(knoten.type) !== null;
         expect(passt, `${innen} in ${typ}`).toBe(erlaubt);
       }
     }
+  });
+
+  it('has no content in Anwesenheit blocks and accepts old ones only without it', () => {
+    const typ = schema.nodes.bausteinAnwesenheit!;
+    expect(typ.isLeaf).toBe(true);
+    expect(() =>
+      schema.nodeFromJSON(bausteinErzeugen('bausteinAnwesenheit')).check(),
+    ).not.toThrow();
   });
 
   it('keeps the other Bausteine out of the notes', () => {

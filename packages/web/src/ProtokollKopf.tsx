@@ -21,7 +21,11 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronDown } from '@tabler/icons-react';
 import { useState } from 'react';
 import {
-  PROTOKOLL_TEILNAHME,
+  PROTOKOLL_TEILNAHME_WAHL,
+  anwesenheitsZeitText,
+  anwesenheitsZeiten,
+  type AnwesenheitsZeit,
+  type ProtokollDokument,
   type ProtokollDto,
   type ProtokollArt,
   type ProtokollKopf as KopfDaten,
@@ -54,7 +58,7 @@ export const PROTOKOLL_DRUCK_CSS = `
 }
 `;
 
-const SPALTEN = PROTOKOLL_TEILNAHME;
+const SPALTEN = PROTOKOLL_TEILNAHME_WAHL;
 
 function Person({ m }: Readonly<{ m: ProtokollMitgliedDto }>) {
   return <StatusName status={m.status}>{mitgliedName(m)}</StatusName>;
@@ -77,8 +81,13 @@ function zaehlung(werte: ProtokollTeilnahmeWert[]): string {
 function QuorumZeile({
   art,
   personen,
-}: Readonly<{ art: ProtokollArt; personen: readonly AnwesenheitPerson[] }>) {
-  const q = quorumBeiEroeffnung(art, personen);
+  inhalt,
+}: Readonly<{
+  art: ProtokollArt;
+  personen: readonly AnwesenheitPerson[];
+  inhalt: ProtokollDokument;
+}>) {
+  const q = quorumBeiEroeffnung(art, personen, inhalt);
   if (q.gesamt === 0) return null;
   return (
     <Text size="sm" fw={600} c={q.beschlussfaehig ? 'green' : 'red'}>
@@ -96,11 +105,13 @@ const personVon = (dto: ProtokollDto, sub: string | null): ProtokollMitgliedDto 
 function KopfLesen({
   dto,
   kopf,
+  inhalt,
   entwurf,
-}: Readonly<{ dto: ProtokollDto; kopf: KopfDaten; entwurf: boolean }>) {
+}: Readonly<{ dto: ProtokollDto; kopf: KopfDaten; inhalt: ProtokollDokument; entwurf: boolean }>) {
+  const zeiten = anwesenheitsZeiten(inhalt);
   const ems = gewaehlteEms(dto, kopf, entwurf);
   const emListe = dto.ems.filter((e) => ems.includes(e.sub));
-  const personen = effektiveTeilnahme(dto, kopf);
+  const personen = effektiveTeilnahme(dto, kopf, zeiten);
   const leitung = personVon(dto, kopf.sitzungsleitung);
   const protokoll = personVon(dto, kopf.protokollfuehrung);
   return (
@@ -129,10 +140,10 @@ function KopfLesen({
           <Person m={protokoll} />
         </Text>
       )}
-      <QuorumZeile art={dto.sitzung.art} personen={personen} />
+      <QuorumZeile art={dto.sitzung.art} personen={personen} inhalt={inhalt} />
       <Title order={4}>Teilnahme</Title>
       {SPALTEN.map((w) => {
-        const personen = dto.teilnahme.filter((t) => wertVon(t, kopf, entwurf) === w);
+        const personen = dto.teilnahme.filter((t) => wertVon(t, kopf, entwurf, zeiten) === w);
         if (personen.length === 0) return null;
         return (
           <Text key={w} size="sm">
@@ -145,9 +156,9 @@ function KopfLesen({
               <span key={p.sub}>
                 {i > 0 && ', '}
                 <Person m={p} />
-                {w === 'verspaetet' &&
-                  kopf.verspaetung[p.sub] &&
-                  ` (ab ${kopf.verspaetung[p.sub]} Uhr)`}
+                {zeiten[p.sub] && anwesenheitsZeitText(zeiten[p.sub]) && (
+                  <> ({anwesenheitsZeitText(zeiten[p.sub])})</>
+                )}
               </span>
             ))}
           </Text>
@@ -189,16 +200,16 @@ function TeilnahmeZeile({
   t,
   wert,
   onWahl,
-  ab,
-  onAb,
+  zeit,
 }: Readonly<{
   t: ProtokollDto['teilnahme'][number];
   wert: ProtokollTeilnahmeWert;
   onWahl: (w: ProtokollTeilnahmeWert) => void;
-  /** Time a late person arrived (`HH:MM` or ''). */
-  ab: string;
-  onAb: (zeit: string) => void;
+  /** Times from the Erscheint / Geht blocks; set = the person is locked to "da". */
+  zeit: AnwesenheitsZeit | undefined;
 }>) {
+  const gesperrt = zeit !== undefined;
+  const zeitText = anwesenheitsZeitText(zeit);
   const ueberschrieben = wert !== t.abgeleitet;
   return (
     <Flex
@@ -213,34 +224,25 @@ function TeilnahmeZeile({
         <Box style={{ minWidth: 0 }}>
           <Person m={t} />
         </Box>
-        {ueberschrieben && (
-          <Text size="xs" c="orange" style={{ flexShrink: 0 }} title="Weicht von der Sitzung ab">
-            ● überschrieben
+        {gesperrt ? (
+          <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+            {zeitText || 'Erscheint/Geht'}
           </Text>
+        ) : (
+          ueberschrieben && (
+            <Text size="xs" c="orange" style={{ flexShrink: 0 }} title="Weicht von der Sitzung ab">
+              ● überschrieben
+            </Text>
+          )
         )}
       </Group>
-      {wert === 'verspaetet' && (
-        <Group gap="xs" wrap="nowrap">
-          <Text size="sm">ab</Text>
-          <TextInput
-            type="time"
-            size="md"
-            w={130}
-            aria-label={`Verspätet ab (Uhrzeit) von ${mitgliedName(t)}`}
-            value={ab}
-            onChange={(e) => onAb(e.currentTarget.value)}
-          />
-          <Text size="sm" c="dimmed">
-            Uhr (optional)
-          </Text>
-        </Group>
-      )}
       <SegmentedControl
         size="md"
         fullWidth
         w={{ base: '100%', sm: 320 }}
         aria-label={`Teilnahme von ${mitgliedName(t)}`}
         value={wert}
+        disabled={gesperrt}
         onChange={(v) => onWahl(v as ProtokollTeilnahmeWert)}
         data={SPALTEN.map((w) => ({ value: w, label: PROTOKOLL_TEILNAHME_KURZ[w] }))}
       />
@@ -255,11 +257,14 @@ function TeilnahmeZeile({
 export function ProtokollKopf({
   dto,
   kopf,
+  inhalt,
   editierbar,
   onChange,
 }: Readonly<{
   dto: ProtokollDto;
   kopf: KopfDaten;
+  /** The current document: who has an Erscheint / Geht block is locked to "da". */
+  inhalt: ProtokollDokument;
   editierbar: boolean;
   onChange: (kopf: KopfDaten) => void;
 }>) {
@@ -272,29 +277,21 @@ export function ProtokollKopf({
   const [umgeschaltet, setUmgeschaltet] = useState<boolean | null>(null);
   const offen = umgeschaltet ?? !telefon;
 
-  const werte = dto.teilnahme.map((t) => wertVon(t, kopf, entwurf));
+  const zeiten = anwesenheitsZeiten(inhalt);
+  const werte = dto.teilnahme.map((t) => wertVon(t, kopf, entwurf, zeiten));
   const ueberschriebene = Object.keys(kopf.teilnahme).length;
 
   const waehlen = (sub: string, abgeleitet: ProtokollTeilnahmeWert, w: ProtokollTeilnahmeWert) => {
     const teilnahme = { ...kopf.teilnahme };
     if (w === abgeleitet) delete teilnahme[sub];
     else teilnahme[sub] = w;
-    const verspaetung = { ...kopf.verspaetung };
-    if (w !== 'verspaetet') delete verspaetung[sub];
-    onChange({ ...kopf, teilnahme, verspaetung });
-  };
-
-  const verspaetungSetzen = (sub: string, zeit: string) => {
-    const verspaetung = { ...kopf.verspaetung };
-    if (zeit === '') delete verspaetung[sub];
-    else verspaetung[sub] = zeit;
-    onChange({ ...kopf, verspaetung });
+    onChange({ ...kopf, teilnahme });
   };
 
   if (!editierbar) {
     return (
       <Paper withBorder p="md">
-        <KopfLesen dto={dto} kopf={kopf} entwurf={entwurf} />
+        <KopfLesen dto={dto} kopf={kopf} inhalt={inhalt} entwurf={entwurf} />
       </Paper>
     );
   }
@@ -332,7 +329,7 @@ export function ProtokollKopf({
       }}
     />
   );
-  const effektiv = effektiveTeilnahme(dto, kopf);
+  const effektiv = effektiveTeilnahme(dto, kopf, zeiten);
 
   const emOptionen = dto.ems.map((e) => ({ value: e.sub, label: mitgliedName(e) }));
   const emStatus = new Map(dto.ems.map((e) => [e.sub, e.status]));
@@ -362,7 +359,7 @@ export function ProtokollKopf({
               value={kopf.eroeffnung}
               onChange={(e) => onChange({ ...kopf, eroeffnung: e.currentTarget.value })}
             />
-            <QuorumZeile art={dto.sitzung.art} personen={effektiv} />
+            <QuorumZeile art={dto.sitzung.art} personen={effektiv} inhalt={inhalt} />
           </Stack>
 
           <Stack gap="xs">
@@ -393,18 +390,18 @@ export function ProtokollKopf({
             <Collapse expanded={offen} id="protokoll-teilnahme">
               <Stack gap="xs">
                 <Text size="xs" c="dimmed">
-                  da = anwesend · spät = verspätet · entsch. = entschuldigt · fehlt =
-                  unentschuldigt. Vorbelegt aus den Zu- und Absagen zur Sitzung.
+                  da = anwesend · entsch. = entschuldigt · fehlt = unentschuldigt. Vorbelegt aus den
+                  Zu- und Absagen zur Sitzung. Wer einen Baustein „Erscheint“ oder „Geht“ hat, ist
+                  fest „da“.
                 </Text>
                 <Stack gap={0}>
                   {dto.teilnahme.map((t) => (
                     <TeilnahmeZeile
                       key={t.sub}
                       t={t}
-                      wert={wertVon(t, kopf, entwurf)}
+                      wert={wertVon(t, kopf, entwurf, zeiten)}
                       onWahl={(w) => waehlen(t.sub, t.abgeleitet, w)}
-                      ab={kopf.verspaetung[t.sub] ?? ''}
-                      onAb={(zeit) => verspaetungSetzen(t.sub, zeit)}
+                      zeit={zeiten[t.sub]}
                     />
                   ))}
                 </Stack>
@@ -463,7 +460,7 @@ export function ProtokollKopf({
         </Stack>
       </Paper>
       <Box className="pk-nur-druck">
-        <KopfLesen dto={dto} kopf={kopf} entwurf={entwurf} />
+        <KopfLesen dto={dto} kopf={kopf} inhalt={inhalt} entwurf={entwurf} />
       </Box>
     </>
   );

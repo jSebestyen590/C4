@@ -403,7 +403,6 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
             <strong>{z.wechsel}</strong>
           </p>
         )}
-        <Notizen knoten={k.content} ctx={ctx} />
       </>
     );
   }

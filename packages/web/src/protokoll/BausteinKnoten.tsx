@@ -171,11 +171,17 @@ const parseJson = (el: HTMLElement, attribut: string): unknown => {
   }
 };
 
+/** A Baustein without free text (no content): an atom. */
+const OHNE_TEXT: readonly BausteinTyp[] = ['bausteinAnwesenheit'];
+
 function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) => ReactElement) {
+  const ohneText = OHNE_TEXT.includes(typ);
   return Node.create({
     name: typ,
     group: istBausteinInNotizen(typ) ? 'block innerbaustein' : 'block',
-    content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT,
+    ...(ohneText
+      ? { atom: true }
+      : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),
     isolating: true,
     defining: true,
     draggable: false,
@@ -202,7 +208,8 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
     },
 
     renderHTML({ HTMLAttributes }) {
-      return ['div', mergeAttributes(HTMLAttributes, { 'data-baustein': typ }), 0];
+      const attrs = mergeAttributes(HTMLAttributes, { 'data-baustein': typ });
+      return ohneText ? ['div', attrs] : ['div', attrs, 0];
     },
 
     addNodeView() {

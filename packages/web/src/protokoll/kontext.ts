@@ -14,8 +14,8 @@ export interface ProtokollKontextWert {
   ems: readonly ProtokollMitgliedDto[];
   /** Quorum at the opening and at each Anwesenheit / Abstimmung / Neues EM / Aufnahme block of the current document. */
   verlauf: AnwesenheitsVerlauf;
-  /** A person arrived (Erscheint block): lets the page mark them as late in the Kopf. Editable documents only. */
-  onErscheint?: (sub: string) => void;
+  /** A person got an Erscheint / Geht block: lets the page lock them to "da" in the Kopf. Editable documents only. */
+  onAnwesenheit?: (sub: string) => void;
 }
 
 export const ProtokollKontext = createContext<ProtokollKontextWert>({

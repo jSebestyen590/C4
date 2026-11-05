@@ -14,13 +14,18 @@ import { notifications } from '@mantine/notifications';
 import { IconLock, IconLockOpen, IconPrinter, IconTrash } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import type { ProtokollDokument, ProtokollDto, ProtokollKopf as KopfDaten } from '@c4/shared';
+import {
+  anwesenheitsZeiten,
+  type ProtokollDokument,
+  type ProtokollDto,
+  type ProtokollKopf as KopfDaten,
+} from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
-import { effektiveTeilnahme, kopfNachErscheinen } from '../protokoll/anwesenheit';
+import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
@@ -77,7 +82,8 @@ function ProtokollAnsicht({
   const [kopf, setKopf] = useState<KopfDaten>(dto.kopf);
   const [inhalt, setInhalt] = useState<ProtokollDokument>(dto.inhalt);
   // Live attendance (incl. local Kopf overrides) for the quorum in the editor.
-  const teilnahme = useMemo(() => effektiveTeilnahme(dto, kopf), [dto, kopf]);
+  const zeiten = useMemo(() => anwesenheitsZeiten(inhalt), [inhalt]);
+  const teilnahme = useMemo(() => effektiveTeilnahme(dto, kopf, zeiten), [dto, kopf, zeiten]);
   const ems = useMemo(() => mitLiveKopf(dto, kopf).ems, [dto, kopf]);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
   const [druckAuftrag, setDruckAuftrag] = useState(0);
@@ -101,10 +107,10 @@ function ProtokollAnsicht({
     setKopf(k);
     aendern({ kopf: k });
   };
-  /** Somebody arrived (Erscheint block): an absent person becomes "spät" in the Kopf. */
-  const erscheint = useCallback(
+  /** Somebody got an Erscheint / Geht block: they are locked to "da" in the Kopf. */
+  const anwesenheit = useCallback(
     (sub: string) => {
-      const neu = kopfNachErscheinen(dto, kopfRef.current, sub);
+      const neu = kopfNachAnwesenheit(dto, kopfRef.current, sub);
       if (!neu) return;
       kopfRef.current = neu;
       setKopf(neu);
@@ -147,7 +153,7 @@ function ProtokollAnsicht({
   const konflikt = zustand.art === 'konflikt';
 
   return (
-    <Stack maw="60rem">
+    <Stack>
       <style>{PROTOKOLL_DRUCK_CSS}</style>
       <div data-druck="aus">
         <ZurueckLink to="/protokolle">Protokolle</ZurueckLink>
@@ -259,7 +265,13 @@ function ProtokollAnsicht({
       {editierbar && (
         // Stays mounted (only hidden) in the document view, so the editor keeps its state.
         <Stack style={{ display: dokumentSichtbar ? 'none' : undefined }}>
-          <ProtokollKopf dto={dto} kopf={kopf} editierbar={editierbar} onChange={kopfAendern} />
+          <ProtokollKopf
+            dto={dto}
+            kopf={kopf}
+            inhalt={inhalt}
+            editierbar={editierbar}
+            onChange={kopfAendern}
+          />
           <ProtokollEditor
             inhalt={dto.inhalt}
             editierbar={editierbar}
@@ -268,7 +280,7 @@ function ProtokollAnsicht({
             art={dto.sitzung.art}
             teilnahme={teilnahme}
             ems={ems}
-            onErscheint={erscheint}
+            onAnwesenheit={anwesenheit}
           />
         </Stack>
       )}
