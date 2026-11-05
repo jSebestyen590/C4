@@ -2,6 +2,7 @@ import {
   Anchor,
   ActionIcon,
   Alert,
+  Autocomplete,
   Badge,
   Button,
   Group,
@@ -14,6 +15,7 @@ import {
   Text,
 } from '@mantine/core';
 import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -38,6 +40,7 @@ import {
 } from '@c4/shared';
 import { aufnahmeOptionen, emKandidaten, personenOptionen } from './anwesenheit';
 import { useProtokollKontext } from './kontext';
+import { unwrap, useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
 import { useDienstformen, useEventKategorien, useVorlagen } from '../kalenderDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
@@ -815,6 +818,17 @@ function WahlErgebnisBereich({
   );
 }
 
+/** Names of the Posten of the app that are not archived (options of the Wahl's Posten field). */
+function usePostenOptionen(aktiv: boolean) {
+  const api = useApi();
+  const posten = useQuery({
+    queryKey: ['posten', { archiv: false }],
+    queryFn: async () => unwrap(await api.posten.$get({ query: {} })),
+    enabled: aktiv,
+  });
+  return posten.data ?? [];
+}
+
 export function WahlFormular({
   daten,
   aendern,
@@ -822,6 +836,7 @@ export function WahlFormular({
 }: Readonly<FormularProps<BausteinWahlDaten>>) {
   const { teilnahme, ems } = useProtokollKontext();
   const personen = emKandidaten(teilnahme, ems);
+  const postenListe = usePostenOptionen(editierbar);
   const ergebnis = wahlErgebnis(daten);
   const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
   const plaetze = daten.anzahl === 1 ? '1 Platz' : `${daten.anzahl} Plätze`;
@@ -839,6 +854,7 @@ export function WahlFormular({
         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
           {daten.posten || 'Posten offen'} ({plaetze})
         </Text>
+        {daten.gueltigAb && <Text size="sm">Gilt ab {datumAnzeigen(daten.gueltigAb)}</Text>}
         {daten.kandidaten.length > 0 && (
           <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
             {stimmen(daten.kandidaten, (k) => k.stimmen)} · Enthaltung {daten.enthaltung}
@@ -863,14 +879,27 @@ export function WahlFormular({
   const ueberzaehlig = daten.stichwahlen.length > ergebnis.runden.length;
   return (
     <Stack gap="xs">
-      <LokalText
+      <Autocomplete
         label="Posten"
-        placeholder="z. B. Vorstand Finanzen"
+        placeholder="Posten wählen oder eintippen"
         data-fokus="posten"
+        size="md"
         autoComplete="off"
-        wert={daten.posten}
         maxLength={200}
-        onWert={(posten) => aendern((d) => ({ ...d, posten }))}
+        data={postenListe.map((p) => p.name)}
+        value={daten.posten}
+        onChange={(posten) =>
+          aendern((d) => ({
+            ...d,
+            posten,
+            postenId: postenListe.find((p) => p.name === posten)?.id ?? null,
+          }))
+        }
+      />
+      <DatumFeld
+        label="Gilt ab"
+        value={daten.gueltigAb ?? ''}
+        onWert={(gueltigAb) => aendern((d) => ({ ...d, gueltigAb }))}
       />
       <LokalZahl
         label="Anzahl zu wählen"
@@ -888,7 +917,6 @@ export function WahlFormular({
                 placeholder="Person wählen"
                 size="md"
                 searchable
-                clearable
                 nothingFoundMessage="Niemand gefunden"
                 style={{ flex: 1, minWidth: 0 }}
                 data={personenOptionen(personen)}
@@ -913,14 +941,10 @@ export function WahlFormular({
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            {k.sub === null && (
-              <LokalText
-                label="Name (falls nicht in der App)"
-                autoComplete="off"
-                wert={k.name}
-                maxLength={200}
-                onWert={(name) => aendern((d) => kandidatSetzen(d, k.id, { name }))}
-              />
+            {k.sub === null && k.name.trim() && (
+              <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                Bisher ohne App-Konto: {k.name.trim()}. Wähle eine Person, um sie zu ersetzen.
+              </Text>
             )}
             <LokalZahl
               label="Stimmen"

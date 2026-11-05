@@ -303,6 +303,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           <p>
             <strong>Wahl:</strong> {z.posten} ({z.plaetze})
           </p>
+          {z.giltAb && <p>{z.giltAb}</p>}
           {z.kandidaten.length > 0 && (
             <p>
               Kandidat:innen:{' '}

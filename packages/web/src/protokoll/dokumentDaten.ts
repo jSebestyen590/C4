@@ -12,6 +12,7 @@ import {
   teilnahmeMitBloecken,
   teilnahmeNormalisiert,
   heuteBerlin,
+  datumAnzeigen,
   datumBerlin,
   zeitBerlin,
   type BausteinEmAbstimmung,
@@ -353,6 +354,8 @@ export interface WahlZeilen {
   enthaltung: number;
   /** One entry per runoff round that applies. */
   stichwahlen: { kandidaten: WahlKandidat[]; enthaltung: number }[];
+  /** "Gilt ab 01.01.2027" or '' while no date is set. */
+  giltAb: string;
   gewaehlt: WahlKandidat[];
   /** A tie is still open: no result yet. */
   offen: boolean;
@@ -390,6 +393,7 @@ export function wahlZeilen(
       kandidaten: r.kandidaten.flatMap((id) => von(id, w.stichwahlen[i]!.stimmen[id] ?? 0)),
       enthaltung: w.stichwahlen[i]!.enthaltung,
     })),
+    giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',

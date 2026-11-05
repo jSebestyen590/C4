@@ -270,6 +270,12 @@ describe('Texte', () => {
       },
     ]);
     expect(fertig.nichtBeschlussfaehig).toBe(true);
+    expect(offen.giltAb).toBe('');
+    expect(
+      wahlZeilen({ ...wahl([]), postenId: 'p1', gueltigAb: '2027-01-01' }, stand),
+    ).toMatchObject({
+      giltAb: 'Gilt ab 01.01.2027',
+    });
     expect(wahlZeilen({ posten: 'x' }, stand)).toBeNull();
   });
 

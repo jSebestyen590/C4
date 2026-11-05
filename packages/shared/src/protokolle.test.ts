@@ -21,6 +21,7 @@ import {
   teilnahmeAbleiten,
   type BausteinKnoten,
   type BausteinWahlDaten,
+  bausteinWahlDatenSchema,
   type ProtokollDokument,
   type ProtokollEventInfo,
   type ProtokollKnoten,
@@ -609,6 +610,8 @@ describe('Wahl', () => {
     stichwahlen: BausteinWahlDaten['stichwahlen'] = [],
   ): BausteinWahlDaten => ({
     posten: 'Finanzen',
+    postenId: null,
+    gueltigAb: '',
     anzahl,
     kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
     enthaltung: 0,
@@ -626,12 +629,18 @@ describe('Wahl', () => {
       );
     expect(bausteinLeer('bausteinWahl')).toEqual({
       posten: '',
+      postenId: null,
+      gueltigAb: '',
       anzahl: 1,
       kandidaten: [],
       enthaltung: 0,
       stichwahlen: [],
     });
     expect(pruefen(daten([3, 2]))).toBeNull();
+    expect(pruefen({ ...daten([3, 2]), postenId: 'p1', gueltigAb: '2027-01-01' })).toBeNull();
+    expect(pruefen({ ...daten([3, 2]), gueltigAb: '01.01.2027' })).not.toBeNull();
+    expect(pruefen({ ...daten([3, 2]), gueltigAb: '2027-13-45x' })).not.toBeNull();
+    expect(pruefen({ ...daten([3, 2]), postenId: 'x'.repeat(101) })).not.toBeNull();
     expect(pruefen({ ...daten([3, 2]), extra: 1 })).not.toBeNull();
     expect(pruefen({ ...daten([3, 2]), anzahl: 0 })).not.toBeNull();
     expect(pruefen({ ...daten([3, 2]), anzahl: 21 })).not.toBeNull();
@@ -650,6 +659,20 @@ describe('Wahl', () => {
     expect(
       pruefen({ ...daten([3, 2]), stichwahlen: [{ stimmen: { k0: 1.5 }, enthaltung: 0 }] }),
     ).not.toBeNull();
+  });
+
+  it('accepts old data without postenId and gueltigAb and fills the defaults', () => {
+    const alt: Record<string, unknown> = { ...daten([3, 2]) };
+    delete alt.postenId;
+    delete alt.gueltigAb;
+    expect(
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [bausteinErzeugen('bausteinWahl', alt as never)] }),
+      ),
+    ).toBeNull();
+    expect(bausteinWahlDatenSchema.parse(alt)).toMatchObject({ postenId: null, gueltigAb: '' });
+    // Old free-text candidates (sub null with a name) stay valid.
+    expect(bausteinWahlDatenSchema.safeParse(daten([1])).success).toBe(true);
   });
 
   it('has no result without candidates or votes', () => {

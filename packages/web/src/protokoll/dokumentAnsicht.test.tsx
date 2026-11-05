@@ -170,7 +170,7 @@ describe('ProtokollDokumentAnsicht', () => {
   });
 
   it('renders a Wahl with runoff, result and quorum, also an open tie', () => {
-    const wahl = (id: string, stichwahlen: unknown[]): ProtokollKnoten => ({
+    const wahl = (id: string, stichwahlen: unknown[], extra = {}): ProtokollKnoten => ({
       type: 'bausteinWahl',
       attrs: {
         id,
@@ -184,6 +184,7 @@ describe('ProtokollDokumentAnsicht', () => {
           ],
           enthaltung: 1,
           stichwahlen,
+          ...extra,
         },
       },
       content: [text('Wahlnotiz')],
@@ -212,7 +213,11 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(offen).toContain('Kandidat:innen: Anna 5 · Bea 3 · Cem 3 · Enthaltung 1');
     expect(offen).toContain('Noch offen: Stichwahl nötig');
     expect(offen).not.toContain('Gewählt:');
+    expect(offen).not.toContain('Gilt ab');
     expect(offen).toContain('Wahlnotiz');
+    expect(render(wahl('w3', [], { postenId: 'p1', gueltigAb: '2027-01-01' }))).toContain(
+      'Gilt ab 01.01.2027',
+    );
     const fertig = render(wahl('w2', [{ stimmen: { b: 1, c: 4 }, enthaltung: 2 }]));
     expect(fertig).toContain('Stichwahl: Bea 1 · Cem 4 · Enthaltung 2');
     expect(fertig).toContain('Gewählt: Anna, Cem');

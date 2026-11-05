@@ -198,7 +198,7 @@ export const WAHL_MAX_STICHWAHLEN = 10;
 export const WAHL_MAX_ANZAHL = 20;
 export const bausteinWahlKandidatSchema = z.strictObject({
   id: z.string().min(1).max(100),
-  /** A person of the app; null = free-text `name`. */
+  /** A person of the app; null only in old data (free-text `name`), new candidates always have one. */
   sub: idOderNull,
   name: z.string().max(200),
   stimmen,
@@ -211,7 +211,15 @@ export const bausteinWahlStichwahlSchema = z.strictObject({
 });
 export type BausteinWahlStichwahl = z.infer<typeof bausteinWahlStichwahlSchema>;
 export const bausteinWahlDatenSchema = z.strictObject({
+  /** Name of the position: free text, or the name of a Posten of the app (then `postenId` is set). */
   posten: z.string().max(200),
+  /** The Posten of the app picked by name; null = free text (and in old data). */
+  postenId: z.string().max(100).nullable().default(null),
+  /** Date from which the result applies (`YYYY-MM-DD`), '' = not entered (and in old data). */
+  gueltigAb: z
+    .string()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, 'Bitte gib ein Datum an.')
+    .default(''),
   anzahl: z.number().int().min(1).max(WAHL_MAX_ANZAHL),
   kandidaten: z.array(bausteinWahlKandidatSchema).max(WAHL_MAX_KANDIDATEN),
   enthaltung: stimmen,
@@ -339,7 +347,15 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         optionen: ['Ja', 'Nein', 'Enthaltung'].map((text) => ({ text, stimmen: 0 })),
       };
     case 'bausteinWahl':
-      return { posten: '', anzahl: 1, kandidaten: [], enthaltung: 0, stichwahlen: [] };
+      return {
+        posten: '',
+        postenId: null,
+        gueltigAb: '',
+        anzahl: 1,
+        kandidaten: [],
+        enthaltung: 0,
+        stichwahlen: [],
+      };
     case 'bausteinAufnahme':
       return {
         sub: null,

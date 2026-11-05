@@ -215,6 +215,10 @@ describe('Wahl', () => {
     kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
   });
 
+  it('starts without Posten link and date', () => {
+    expect(leer).toMatchObject({ postenId: null, gueltigAb: '' });
+  });
+
   it('adds candidates up to 30 and removes them (also from the runoff rounds)', () => {
     const eins = kandidatHinzufuegen(leer, 'a');
     expect(eins.kandidaten).toEqual([{ id: 'a', sub: null, name: '', stimmen: 0 }]);
