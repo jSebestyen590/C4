@@ -128,8 +128,8 @@
   font-weight: 700;
 }
 
-.pk-dok-anwesenheit {
-  font-style: italic;
+/* Erscheint / Geht: shown like a quote (the blockquote rules above), right-aligned and italic. */
+.pk-dok blockquote.pk-dok-anwesenheit {
   margin: 0.4em 0 0.2em;
 }
 

@@ -396,10 +396,12 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const p = ctx.person(z.sub);
     return (
       <>
-        <p className="pk-dok-anwesenheit">
-          {p ? <PersonName p={p} /> : null}
-          {z.nach}
-        </p>
+        <blockquote className="pk-dok-anwesenheit">
+          <p>
+            {p ? <PersonName p={p} /> : null}
+            {z.nach}
+          </p>
+        </blockquote>
         {z.wechsel && (
           <p className={z.wechselBeschlussfaehig ? undefined : 'pk-dok-warnung'}>
             <strong>{z.wechsel}</strong>
