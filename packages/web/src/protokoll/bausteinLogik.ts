@@ -13,7 +13,9 @@ import {
   type BausteinEventDaten,
   type BausteinTyp,
   type EventDauer,
+  type EventDto,
   type EventKategorieDto,
+  type ProtokollKalenderEvent,
   type ProtokollDokument,
   type ProtokollKnoten,
   type VorlageDto,
@@ -446,3 +448,35 @@ export function kommendeEvents<T extends EreignisKurz>(
     .filter((e) => !e.abgesagt && e.ende > sitzungBeginn)
     .sort((a, b) => (a.beginn < b.beginn ? -1 : a.beginn > b.beginn ? 1 : 0));
 }
+
+/**
+ * A calendar event as `eventDatenAusKalender` needs it (the API maps its events the same way for the
+ * suggestion). The Sitzung flag is irrelevant there.
+ */
+export const kalenderEventFuerBaustein = (
+  e: Pick<
+    EventDto,
+    | 'id'
+    | 'anzeigeTitel'
+    | 'beginn'
+    | 'ende'
+    | 'abgesagt'
+    | 'kategorie'
+    | 'dauer'
+    | 'serie'
+    | 'verantwortlich'
+    | 'schichten'
+  >,
+): ProtokollKalenderEvent => ({
+  id: e.id,
+  titel: e.anzeigeTitel,
+  beginn: e.beginn,
+  ende: e.ende,
+  abgesagt: e.abgesagt,
+  kategorieId: e.kategorie?.id ?? null,
+  dauer: e.dauer,
+  serie: e.serie,
+  sitzung: false,
+  verantwortlichSub: e.verantwortlich?.sub ?? null,
+  schichten: e.schichten,
+});

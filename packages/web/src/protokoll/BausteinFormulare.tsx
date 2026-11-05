@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
   datumBerlin,
+  eventDatenAusKalender,
   MEINUNGSBILD_MAX_OPTIONEN,
   WAHL_MAX_ANZAHL,
   WAHL_MAX_KANDIDATEN,
@@ -52,6 +53,7 @@ import {
   eventDatumSetzen,
   kandidatEntfernen,
   kandidatHinzufuegen,
+  kalenderEventFuerBaustein,
   kandidatSetzen,
   optionEntfernen,
   optionHinzufuegen,
@@ -127,7 +129,9 @@ export function EventFormular({
   const events = useProtokollEvents();
 
   const vorlage = vorlagen.data?.find((v) => v.id === daten.vorlageId);
-  const kategorie = kategorien.liste.find((k) => k.id === vorlage?.kategorieId);
+  const kategorie = kategorien.liste.find(
+    (k) => k.id === (daten.kategorieId ?? vorlage?.kategorieId),
+  );
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
   const dienstformName = (id: string) => dienstformen.nachId.get(id)?.name ?? 'Dienstform';
   const vorlageText = daten.vorlageId
@@ -150,6 +154,13 @@ export function EventFormular({
         {daten.vorlageId && (
           <Text size="sm" c="dimmed">
             {vorlageText}
+          </Text>
+        )}
+        {daten.kategorieId && (
+          <Text size="sm">
+            Kategorie:{' '}
+            {kategorien.liste.find((k) => k.id === daten.kategorieId)?.name ??
+              (kategorien.isPending ? '…' : 'Unbekannt')}
           </Text>
         )}
         {daten.schichten.length > 0 && (
@@ -175,6 +186,11 @@ export function EventFormular({
       value: daten.eventId,
       label: e ? `${eventDatumText(e)} ${e.anzeigeTitel}` : 'Verknüpftes Event',
     });
+  }
+  const kategorieOptionen = kategorien.aktive.map((k) => ({ value: k.id, label: k.name }));
+  if (daten.kategorieId && !kategorieOptionen.some((o) => o.value === daten.kategorieId)) {
+    const k = kategorien.liste.find((x) => x.id === daten.kategorieId);
+    kategorieOptionen.unshift({ value: daten.kategorieId, label: k?.name ?? 'Unbekannt' });
   }
   const mehrtaegig = dauer !== 'eintaegig';
   const tage = vorlage?.tage ?? 1;
@@ -247,6 +263,17 @@ export function EventFormular({
         </Stack>
       )}
       <Select
+        label="Kategorie"
+        description="Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann."
+        placeholder="Keine Kategorie"
+        searchable
+        clearable
+        data={kategorieOptionen}
+        value={daten.kategorieId}
+        onChange={(kategorieId) => aendern((d) => ({ ...d, kategorieId }))}
+        nothingFoundMessage="Keine Kategorie gefunden"
+      />
+      <Select
         label="Verantwortliche:r"
         placeholder="Niemand"
         searchable
@@ -258,13 +285,18 @@ export function EventFormular({
       />
       <Select
         label="Im Kalender"
-        description="Verknüpft den Baustein mit einem bestehenden Event."
+        description="Verknüpft den Baustein mit einem bestehenden Event und übernimmt dessen Angaben (Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste). Die Notizen bleiben."
         placeholder="Noch nicht im Kalender"
         searchable
         clearable
         data={kalenderOptionen}
         value={daten.eventId}
-        onChange={(eventId) => aendern((d) => ({ ...d, eventId }))}
+        onChange={(eventId) => {
+          const e = eventId ? events.alle.find((x) => x.id === eventId) : undefined;
+          aendern((d) =>
+            e ? eventDatenAusKalender(kalenderEventFuerBaustein(e), d) : { ...d, eventId: eventId },
+          );
+        }}
         nothingFoundMessage="Kein Event gefunden"
       />
       {daten.eventId && <KalenderLink eventId={daten.eventId} />}
@@ -370,6 +402,11 @@ export function AnwaerterFormular({
         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
           {name || 'Name offen'}
         </Text>
+        {daten.sub && (
+          <Text size="sm">
+            Eingeladen: <Mitglied sub={daten.sub} />
+          </Text>
+        )}
         {daten.email && (
           <Anchor href={`mailto:${daten.email}`} size="sm" style={{ overflowWrap: 'anywhere' }}>
             {daten.email}
@@ -398,11 +435,18 @@ export function AnwaerterFormular({
           onWert={(nachname) => aendern((d) => ({ ...d, nachname }))}
         />
       </SimpleGrid>
+      {daten.sub && (
+        <Text size="sm">
+          Eingeladen: <Mitglied sub={daten.sub} />
+        </Text>
+      )}
       <LokalText
         label="E-Mail (optional)"
         type="email"
         inputMode="email"
         autoComplete="off"
+        disabled={!!daten.sub}
+        description={daten.sub ? 'Die Einladung ist schon verschickt.' : undefined}
         wert={daten.email ?? ''}
         maxLength={200}
         onWert={(email) => aendern((d) => ({ ...d, email: email === '' ? null : email }))}

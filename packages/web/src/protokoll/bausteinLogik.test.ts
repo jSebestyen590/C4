@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { bausteinLeer, vorlageSchichtSchema, type VorlageSchicht } from '@c4/shared';
+import {
+  bausteinLeer,
+  eventDatenAusKalender,
+  vorlageSchichtSchema,
+  type VorlageSchicht,
+} from '@c4/shared';
 import {
   anzahlSetzen,
   bedarfSetzen,
@@ -8,6 +13,7 @@ import {
   eventBisSetzen,
   eventDatenAusVorlage,
   eventDatumSetzen,
+  kalenderEventFuerBaustein,
   kommendeEvents,
   optionEntfernen,
   optionHinzufuegen,
@@ -417,5 +423,44 @@ describe('new Bausteine', () => {
     expect(ersterLeererFeld('bausteinAnwesenheit', { art: 'geht', sub: 'x', uhrzeit: '' })).toBe(
       'nach',
     );
+  });
+});
+
+describe('kalenderEventFuerBaustein', () => {
+  it('lets the calendar win when applied to a Baustein', () => {
+    const e = kalenderEventFuerBaustein({
+      id: 'e1',
+      anzeigeTitel: 'Sommerfest',
+      beginn: '2026-07-04T16:00:00.000Z',
+      ende: '2026-07-04T20:00:00.000Z',
+      abgesagt: false,
+      kategorie: { id: 'k1', name: 'Fest', farbe: '#fff' },
+      dauer: 'eintaegig',
+      serie: null,
+      verantwortlich: null,
+      schichten: [],
+    });
+    expect(e.kategorieId).toBe('k1');
+    const daten = eventDatenAusKalender(e, {
+      vorlageId: 'v1',
+      name: 'Alt',
+      datum: '2026-01-01',
+      bisDatum: null,
+      beginnZeit: null,
+      endeZeit: null,
+      schichten: [],
+      verantwortlichSub: null,
+      eventId: null,
+      kategorieId: null,
+    });
+    expect(daten).toMatchObject({
+      vorlageId: 'v1',
+      name: 'Sommerfest',
+      datum: '2026-07-04',
+      beginnZeit: '18:00',
+      endeZeit: '22:00',
+      eventId: 'e1',
+      kategorieId: 'k1',
+    });
   });
 });

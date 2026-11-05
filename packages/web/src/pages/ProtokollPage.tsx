@@ -27,13 +27,25 @@ import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
 import { mitgliedName } from '../mitglied';
+import { AktionenAuswahl, AktionenKarte } from '../protokoll/AktionenAnsicht';
+import {
+  ergebnisZusammenfassung,
+  gueltigeAuswahl,
+  vorgewaehlteAktionen,
+} from '../protokoll/aktionenLogik';
 import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
 import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
-import { useProtokoll, useProtokollLoeschen, useProtokollStatus } from '../protokollDaten';
+import {
+  useProtokoll,
+  useProtokollAktionen,
+  useProtokollAktionenAusfuehren,
+  useProtokollLoeschen,
+  useProtokollStatus,
+} from '../protokollDaten';
 import { PROTOKOLL_DRUCK_CSS, ProtokollKopf } from '../ProtokollKopf';
 import { useProtokollAutosave, type SpeicherZustand } from '../useProtokollAutosave';
 import { ApiFehler, fehlerAnzeigen } from '../warenApi';
@@ -72,6 +84,68 @@ function SpeicherZeile({
 type Dialog = 'abschliessen' | 'loeschen' | null;
 type Ansicht = 'bearbeiten' | 'dokument';
 
+/** Tells what the Aktionen did (nothing when none ran). */
+const aktionenMelden = (ausgang: Parameters<typeof ergebnisZusammenfassung>[0]) => {
+  const text = ergebnisZusammenfassung(ausgang);
+  if (!text) return;
+  const fehler = ausgang.some((a) => a.status === 'fehler');
+  notifications.show({ color: fehler ? 'orange' : 'green', message: text });
+};
+
+/** Content of the closing dialog below the explanation: loading state, error or the list of Aktionen. */
+function AbschliessenAktionen({
+  gespeichert,
+  q,
+  auswahl,
+  onAuswahl,
+}: Readonly<{
+  /** Whether the draft is saved (null = still saving). */
+  gespeichert: boolean | null;
+  q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isPending' | 'isError'>;
+  auswahl: readonly string[];
+  onAuswahl: (ids: string[]) => void;
+}>) {
+  if (gespeichert === null || (gespeichert === true && q.isPending)) {
+    return (
+      <Group gap="xs">
+        <Loader size="sm" aria-label="Aktionen werden geladen" />
+        <Text size="sm" c="dimmed">
+          Aktionen werden geladen …
+        </Text>
+      </Group>
+    );
+  }
+  if (gespeichert === false) {
+    return (
+      <Alert color="red">
+        Das Protokoll konnte nicht gespeichert werden. Die Aktionen lassen sich daher nicht
+        anzeigen; abschließen kannst du trotzdem, sobald das Speichern klappt.
+      </Alert>
+    );
+  }
+  if (q.isError) {
+    return (
+      <Alert color="red" title="Die Aktionen konnten nicht geladen werden">
+        Du kannst das Protokoll trotzdem ohne Aktionen abschließen.
+      </Alert>
+    );
+  }
+  if (!q.data || q.data.length === 0) return null;
+  return (
+    <Stack gap="xs">
+      <Title order={5}>Aktionen</Title>
+      <Text size="sm" c="dimmed">
+        Beim Abschließen werden die angehakten Aktionen ausgeführt.
+      </Text>
+      <AktionenAuswahl
+        aktionen={q.data}
+        auswahl={auswahl}
+        onAuswahl={(neu) => onAuswahl(gueltigeAuswahl(neu, q.data ?? []))}
+      />
+    </Stack>
+  );
+}
+
 /** The loaded protocol; remounted (via `key`) whenever the server version replaces the local state. */
 function ProtokollAnsicht({
   dto,
@@ -109,6 +183,21 @@ function ProtokollAnsicht({
   const [ladeNeu, setLadeNeu] = useState(false);
   const status = useProtokollStatus();
   const loeschen = useProtokollLoeschen();
+  const aktionenAusfuehren = useProtokollAktionenAusfuehren();
+  // Closing dialog: the draft is saved first (null = saving), then the Aktionen load.
+  const [entwurfGespeichert, setEntwurfGespeichert] = useState<boolean | null>(null);
+  const dialogAktionen = useProtokollAktionen(
+    dto.id,
+    dialog === 'abschliessen' && entwurfGespeichert === true,
+  );
+  // The user's choice; until they touch it the executable open Aktionen are checked.
+  const [eigeneAuswahl, setEigeneAuswahl] = useState<string[] | null>(null);
+  const gewaehlteAktionen =
+    eigeneAuswahl ?? (dialogAktionen.data ? vorgewaehlteAktionen(dialogAktionen.data) : []);
+  const aktionenLaden =
+    entwurfGespeichert === null || (entwurfGespeichert === true && dialogAktionen.isPending);
+  // The Aktionen card of a closed protocol (writers only).
+  const kartenAktionen = useProtokollAktionen(dto.id, darfSchreiben && !entwurf);
 
   const { zustand, aendern, jetzt } = useProtokollAutosave({
     id: dto.id,
@@ -153,11 +242,29 @@ function ProtokollAnsicht({
   };
 
   /** Saves pending changes first, then changes the status; the refetch remounts this view. */
-  const statusSetzen = async (neu: 'entwurf' | 'abgeschlossen') => {
+  const statusSetzen = async (neu: 'entwurf' | 'abgeschlossen', aktionen?: string[]) => {
     if (editierbar && !(await jetzt())) {
       throw new ApiFehler(0, 'Das Protokoll konnte nicht gespeichert werden.');
     }
-    await status.mutateAsync({ id: dto.id, status: neu });
+    const antwort = await status.mutateAsync({ id: dto.id, status: neu, aktionen });
+    aktionenMelden(antwort.aktionen ?? []);
+  };
+
+  /** Saves the draft, then the closing dialog may load the Aktionen. */
+  const abschliessenOeffnen = () => {
+    setEigeneAuswahl(null);
+    setEntwurfGespeichert(null);
+    setDialog('abschliessen');
+    void jetzt().then(setEntwurfGespeichert, () => setEntwurfGespeichert(false));
+  };
+
+  const aktionenStarten = async (aktionId: string) => {
+    try {
+      const antwort = await aktionenAusfuehren.mutateAsync({ id: dto.id, aktionen: [aktionId] });
+      aktionenMelden(antwort.ergebnisse);
+    } catch (e) {
+      fehlerAnzeigen(e);
+    }
   };
 
   /** Closes the dialog, shows the editor and scrolls to the Baustein with the wrong vote count. */
@@ -205,7 +312,7 @@ function ProtokollAnsicht({
       {darfSchreiben && (
         <Group gap="xs" data-druck="aus">
           {entwurf ? (
-            <Button leftSection={<IconLock size={18} />} onClick={() => setDialog('abschliessen')}>
+            <Button leftSection={<IconLock size={18} />} onClick={abschliessenOeffnen}>
               Abschließen
             </Button>
           ) : (
@@ -317,6 +424,18 @@ function ProtokollAnsicht({
           />
         </Stack>
       )}
+      {darfSchreiben && !entwurf && kartenAktionen.data && kartenAktionen.data.length > 0 && (
+        <AktionenKarte
+          aktionen={kartenAktionen.data}
+          laeuftId={
+            aktionenAusfuehren.isPending
+              ? (aktionenAusfuehren.variables?.aktionen[0] ?? null)
+              : null
+          }
+          gesperrt={aktionenAusfuehren.isPending}
+          onAusfuehren={(aktionId) => void aktionenStarten(aktionId)}
+        />
+      )}
       {dokumentSichtbar && (
         <ProtokollDokumentAnsicht
           eingabe={{
@@ -334,9 +453,9 @@ function ProtokollAnsicht({
           titel="Protokoll abschließen"
           color="blue"
           bestaetigenText="Abschließen"
-          gesperrt={stimmenProbleme.length > 0}
+          gesperrt={stimmenProbleme.length > 0 || aktionenLaden}
           onClose={() => setDialog(null)}
-          onBestaetigt={() => statusSetzen('abgeschlossen')}
+          onBestaetigt={() => statusSetzen('abgeschlossen', gewaehlteAktionen)}
         >
           <Text>
             Beim Abschließen wird die Teilnahme eingefroren: Spätere Zu- oder Absagen ändern sie
@@ -364,6 +483,14 @@ function ProtokollAnsicht({
                 ))}
               </Stack>
             </Alert>
+          )}
+          {stimmenProbleme.length === 0 && (
+            <AbschliessenAktionen
+              gespeichert={entwurfGespeichert}
+              q={dialogAktionen}
+              auswahl={gewaehlteAktionen}
+              onAuswahl={setEigeneAuswahl}
+            />
           )}
         </BestaetigenDialog>
       )}

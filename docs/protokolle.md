@@ -338,4 +338,18 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
   die nicht mehr berechnet werden (z. B. das angelegte Event), stehen am Ende.
 - **Erneut versuchen:** `POST .../aktionen` für ein abgeschlossenes Protokoll wiederholt gescheiterte oder offene Aktionen; die
   Rückschreibung in den Inhalt ist serverseitig erlaubt.
+- **Abschließen-Dialog (Web):** Nach dem Speichern des Entwurfs lädt der Dialog `GET .../aktionen` (Ladeanzeige, „Abschließen“ so lange
+  gesperrt; scheitert das Laden, erscheint ein Hinweis und das Abschließen ohne Aktionen bleibt möglich). Unter den Stimmenproblemen
+  steht der Abschnitt „Aktionen“ (`protokoll/AktionenAnsicht.tsx`): je Aktion eine Checkbox (vorgewählt: ausführbar und offen), Text,
+  betroffene Personen (`StatusName`, verlinkt) und Link zum Event; nicht ausführbare sind abgeblendet mit Grund, erledigte zeigen
+  „erledigt“. Die angehakten Ids gehen im `PUT .../status` mit. Danach meldet eine Benachrichtigung das Ergebnis („3 Aktionen
+  erledigt, 1 fehlgeschlagen“; nichts, wenn keine lief), und Protokoll, Kalender, Mitglieder und Posten werden neu geladen.
+  Die reine Logik (Vorauswahl, Zusammenfassung) steht in `protokoll/aktionenLogik.ts`.
+- **Karte „Aktionen“ (Web):** Über dem Dokument eines abgeschlossenen Protokolls, nur mit `protokolle:schreiben` und nur, wenn es
+  Aktionen gibt. Je Aktion der Zustand (erledigt, fehlgeschlagen mit Text des Ergebnisses, offen, nicht ausführbar mit Grund) und
+  „Ausführen“ (offen) bzw. „Erneut versuchen“ (fehlgeschlagen) per `POST .../aktionen`, danach Neuladen.
+- **Event-Baustein:** Das Feld „Kategorie“ (nicht archivierte Kategorien) steht neben der Vorlage; wird im Feld „Im Kalender“ ein
+  Event gewählt, übernimmt der Baustein dessen Angaben (Kalender gewinnt: Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste
+  über `eventDatenAusKalender`), die Notizen bleiben. Beim Anwärter:in-Baustein zeigt ein gesetztes `sub` „Eingeladen“ mit Link zum
+  Mitglied, und die E-Mail ist nicht mehr änderbar.
 - Der Hinweis auf Event-Änderungen (Benachrichtigung) geht wie im Kalender raus. Einladungen verschicken auf dev eine echte Mail.
