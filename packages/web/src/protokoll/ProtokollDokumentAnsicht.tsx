@@ -17,6 +17,8 @@ import {
   beschlussZeilen,
   meinungsbildZeilen,
   emZeilen,
+  wahlZeilen,
+  type WahlKandidat,
   beschlussfaehigkeitText,
   dokumentKopf,
   eroeffnungSatz,
@@ -124,7 +126,8 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       );
     case 'bausteinBeschluss':
     case 'bausteinMeinungsbild':
-      // An Abstimmung / Meinungsbild inside the free text of another Baustein.
+    case 'bausteinWahl':
+      // An Abstimmung / Meinungsbild / Wahl inside the free text of another Baustein.
       return (
         <div className="pk-dok-innen">
           <Baustein k={k} ctx={ctx} />
@@ -187,6 +190,30 @@ function Stimmzeilen({
       )}
     </>
   );
+}
+
+/** "A 5 · B 3 · Enthaltung 1" with the persons in the color of their status. */
+function WahlStimmen({
+  kandidaten,
+  enthaltung,
+  ctx,
+}: Readonly<{ kandidaten: WahlKandidat[]; enthaltung: number; ctx: Kontext }>) {
+  return (
+    <>
+      {kandidaten.map((k, i) => (
+        <Fragment key={k.id}>
+          {i > 0 && ' · '}
+          <WahlName k={k} ctx={ctx} /> {k.stimmen}
+        </Fragment>
+      ))}
+      {kandidaten.length > 0 && ' · '}Enthaltung {enthaltung}
+    </>
+  );
+}
+
+function WahlName({ k, ctx }: Readonly<{ k: WahlKandidat; ctx: Kontext }>) {
+  const p = k.sub ? ctx.person(k.sub) : null;
+  return p ? <PersonName p={p} /> : <>{k.name || 'Person offen'}</>;
 }
 
 function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
@@ -260,6 +287,55 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           </p>
           {z.optionen && <p>{z.optionen}</p>}
           <p className="pk-dok-klein">(nicht bindend)</p>
+        </div>
+        <Notizen knoten={k.content} ctx={ctx} />
+      </>
+    );
+  }
+  if (k.type === 'bausteinWahl') {
+    const z = wahlZeilen(daten, ctx.verlauf.bausteine[id]);
+    if (!z) return null;
+    return (
+      <>
+        <div className="pk-dok-beschluss">
+          <p>
+            <strong>Wahl:</strong> {z.posten} ({z.plaetze})
+          </p>
+          {z.kandidaten.length > 0 && (
+            <p>
+              Kandidat:innen:{' '}
+              <WahlStimmen kandidaten={z.kandidaten} enthaltung={z.enthaltung} ctx={ctx} />
+            </p>
+          )}
+          {z.stichwahlen.map((r, i) => (
+            <p key={i}>
+              Stichwahl:{' '}
+              <WahlStimmen kandidaten={r.kandidaten} enthaltung={r.enthaltung} ctx={ctx} />
+            </p>
+          ))}
+          {z.offen ? (
+            <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>
+          ) : (
+            z.gewaehlt.length > 0 && (
+              <p>
+                Gewählt:{' '}
+                {z.gewaehlt.map((g, i) => (
+                  <Fragment key={g.id}>
+                    {i > 0 && ', '}
+                    <WahlName k={g} ctx={ctx} />
+                  </Fragment>
+                ))}
+              </p>
+            )
+          )}
+          {(z.anwesend || z.nichtBeschlussfaehig) && (
+            <p>
+              {z.anwesend}
+              {z.nichtBeschlussfaehig && (
+                <span className="pk-dok-warnung"> – nicht beschlussfähig</span>
+              )}
+            </p>
+          )}
         </div>
         <Notizen knoten={k.content} ctx={ctx} />
       </>

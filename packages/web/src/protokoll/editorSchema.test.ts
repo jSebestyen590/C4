@@ -21,7 +21,7 @@ describe('editor schema', () => {
 
   it('lets Abstimmung and Meinungsbild stand in the notes of other Bausteine, but not in each other', () => {
     for (const typ of BAUSTEIN_TYPEN) {
-      for (const innen of ['bausteinBeschluss', 'bausteinMeinungsbild'] as const) {
+      for (const innen of ['bausteinBeschluss', 'bausteinMeinungsbild', 'bausteinWahl'] as const) {
         const erlaubt = !istBausteinInNotizen(typ);
         const knoten = schema.nodeFromJSON(bausteinErzeugen(innen));
         const eltern = schema.nodes[typ]!;
@@ -41,6 +41,7 @@ describe('editor schema', () => {
       { type: 'paragraph' },
       bausteinErzeugen('bausteinBeschluss'),
       bausteinErzeugen('bausteinMeinungsbild'),
+      bausteinErzeugen('bausteinWahl'),
       { type: 'paragraph' },
     ]);
     const doc = schema.nodeFromJSON({

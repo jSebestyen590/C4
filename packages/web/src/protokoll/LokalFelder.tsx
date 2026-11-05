@@ -61,14 +61,22 @@ export function LokalZahl({
   wert,
   onWert,
   min = 0,
+  max,
   label,
-}: Readonly<{ wert: number; onWert: (wert: number) => void; min?: number; label: string }>) {
+}: Readonly<{
+  wert: number;
+  onWert: (wert: number) => void;
+  min?: number;
+  max?: number;
+  label: string;
+}>) {
   const [lokal, setLokal] = useLokal<number | string>(wert);
   return (
     <ZahlFeld
       label={label}
       value={lokal}
       min={min}
+      max={max}
       allowDecimal={false}
       allowNegative={false}
       onChange={(v) => {

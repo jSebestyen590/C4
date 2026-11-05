@@ -1,6 +1,7 @@
 import {
   Anchor,
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Group,
@@ -12,12 +13,17 @@ import {
   Switch,
   Text,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
   datumBerlin,
   MEINUNGSBILD_MAX_OPTIONEN,
+  WAHL_MAX_ANZAHL,
+  WAHL_MAX_KANDIDATEN,
+  WAHL_MAX_STICHWAHLEN,
+  wahlErgebnis,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
   type BausteinBeschlussDaten,
@@ -25,6 +31,7 @@ import {
   type BausteinEmAbstimmung,
   type BausteinEventDaten,
   type BausteinMeinungsbildDaten,
+  type BausteinWahlDaten,
   type BausteinVergangenesEventDaten,
   type EventDauer,
   type ProtokollMitgliedDto,
@@ -39,10 +46,18 @@ import { StatusName } from '../StatusAnzeige';
 import {
   eventBisSetzen,
   eventDatumSetzen,
+  kandidatEntfernen,
+  kandidatHinzufuegen,
+  kandidatSetzen,
   optionEntfernen,
   optionHinzufuegen,
   optionSetzen,
+  stichwahlEntfernen,
+  stichwahlHinzufuegen,
+  stichwahlSetzen,
   stimmeSetzen,
+  ueberzaehligeStichwahlenEntfernen,
+  wahlAnzahlSetzen,
   zeitWert,
 } from './bausteinLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
@@ -719,6 +734,267 @@ export function MeinungsbildFormular({
       >
         Option hinzufügen
       </Button>
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Wahl
+// ---------------------------------------------------------------------------------------------
+
+type WahlKandidatDaten = BausteinWahlDaten['kandidaten'][number];
+
+/** A candidate: a person of the app (bold in the color of their status) or the free-text name. */
+function KandidatName({
+  k,
+  personen,
+}: Readonly<{ k: WahlKandidatDaten; personen: readonly ProtokollMitgliedDto[] }>) {
+  const person = personen.find((p) => p.sub === k.sub);
+  if (!person) return <>{k.name.trim() || 'Person offen'}</>;
+  return (
+    <StatusName status={person.status}>
+      {person.username ?? (`${person.vorname} ${person.nachname}`.trim() || '–')}
+    </StatusName>
+  );
+}
+
+/** Result of the Wahl: who is elected, or which tie needs a Stichwahl (with the button to add one). */
+function WahlErgebnisBereich({
+  daten,
+  personen,
+  aendern,
+}: Readonly<{
+  daten: BausteinWahlDaten;
+  personen: readonly ProtokollMitgliedDto[];
+  aendern?: (f: (alt: BausteinWahlDaten) => BausteinWahlDaten) => void;
+}>) {
+  const { gewaehlt, offen } = wahlErgebnis(daten);
+  const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
+  const liste = (ids: readonly string[], getrennt: string) =>
+    ids.flatMap((id, i) => {
+      const k = nachId.get(id);
+      return k
+        ? [
+            <Fragment key={id}>
+              {i > 0 && getrennt}
+              <KandidatName k={k} personen={personen} />
+            </Fragment>,
+          ]
+        : [];
+    });
+  return (
+    <Stack gap="xs">
+      {gewaehlt.length > 0 && (
+        <Text fw={700} c="green" style={{ overflowWrap: 'anywhere' }}>
+          Gewählt: {liste(gewaehlt, ', ')}
+        </Text>
+      )}
+      {offen && (
+        <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              Gleichstand zwischen {liste(offen.kandidaten, ' und ')} um{' '}
+              {offen.plaetze === 1 ? '1 Platz' : `${offen.plaetze} Plätze`} –{' '}
+              {offen.rundeVorhanden ? 'Stichwahl noch ohne Stimmen' : 'Stichwahl nötig'}
+            </Text>
+            {aendern && !offen.rundeVorhanden && (
+              <Button
+                variant="default"
+                size="md"
+                leftSection={<IconPlus size={18} />}
+                disabled={daten.stichwahlen.length >= WAHL_MAX_STICHWAHLEN}
+                onClick={() => aendern((d) => stichwahlHinzufuegen(d))}
+              >
+                Stichwahl hinzufügen
+              </Button>
+            )}
+          </Stack>
+        </Alert>
+      )}
+    </Stack>
+  );
+}
+
+export function WahlFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinWahlDaten>>) {
+  const { teilnahme, ems } = useProtokollKontext();
+  const personen = emKandidaten(teilnahme, ems);
+  const ergebnis = wahlErgebnis(daten);
+  const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
+  const plaetze = daten.anzahl === 1 ? '1 Platz' : `${daten.anzahl} Plätze`;
+
+  if (!editierbar) {
+    const stimmen = (ks: readonly WahlKandidatDaten[], wert: (k: WahlKandidatDaten) => number) =>
+      ks.map((k, i) => (
+        <Fragment key={k.id}>
+          {i > 0 && ' · '}
+          <KandidatName k={k} personen={personen} /> {wert(k)}
+        </Fragment>
+      ));
+    return (
+      <Stack gap={4}>
+        <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+          {daten.posten || 'Posten offen'} ({plaetze})
+        </Text>
+        {daten.kandidaten.length > 0 && (
+          <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+            {stimmen(daten.kandidaten, (k) => k.stimmen)} · Enthaltung {daten.enthaltung}
+          </Text>
+        )}
+        {ergebnis.runden.map((r, i) => (
+          <Text key={i} size="sm" style={{ overflowWrap: 'anywhere' }}>
+            Stichwahl:{' '}
+            {stimmen(
+              r.kandidaten.flatMap((id) => nachId.get(id) ?? []),
+              (k) => daten.stichwahlen[i]!.stimmen[k.id] ?? 0,
+            )}{' '}
+            · Enthaltung {daten.stichwahlen[i]!.enthaltung}
+          </Text>
+        ))}
+        <WahlErgebnisBereich daten={daten} personen={personen} />
+      </Stack>
+    );
+  }
+
+  const status = new Map(personen.map((p) => [p.sub, p.status]));
+  const ueberzaehlig = daten.stichwahlen.length > ergebnis.runden.length;
+  return (
+    <Stack gap="xs">
+      <LokalText
+        label="Posten"
+        placeholder="z. B. Vorstand Finanzen"
+        data-fokus="posten"
+        autoComplete="off"
+        wert={daten.posten}
+        maxLength={200}
+        onWert={(posten) => aendern((d) => ({ ...d, posten }))}
+      />
+      <LokalZahl
+        label="Anzahl zu wählen"
+        wert={daten.anzahl}
+        min={1}
+        max={WAHL_MAX_ANZAHL}
+        onWert={(n) => aendern((d) => wahlAnzahlSetzen(d, n))}
+      />
+      {daten.kandidaten.map((k, i) => (
+        <Paper key={k.id} withBorder p="xs" radius="md">
+          <Stack gap="xs">
+            <Group gap="xs" wrap="nowrap" align="flex-end">
+              <Select
+                label={`Kandidat:in ${i + 1}`}
+                placeholder="Person wählen"
+                size="md"
+                searchable
+                clearable
+                nothingFoundMessage="Niemand gefunden"
+                style={{ flex: 1, minWidth: 0 }}
+                data={personenOptionen(personen)}
+                value={k.sub}
+                onChange={(sub) => aendern((d) => kandidatSetzen(d, k.id, { sub }))}
+                renderOption={({ option }) => {
+                  const s = status.get(option.value);
+                  return s ? (
+                    <StatusName status={s}>{option.label}</StatusName>
+                  ) : (
+                    <span>{option.label}</span>
+                  );
+                }}
+              />
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size={44}
+                aria-label={`Kandidat:in ${i + 1} entfernen`}
+                onClick={() => aendern((d) => kandidatEntfernen(d, k.id))}
+              >
+                <IconTrash size={20} />
+              </ActionIcon>
+            </Group>
+            {k.sub === null && (
+              <LokalText
+                label="Name (falls nicht in der App)"
+                autoComplete="off"
+                wert={k.name}
+                maxLength={200}
+                onWert={(name) => aendern((d) => kandidatSetzen(d, k.id, { name }))}
+              />
+            )}
+            <LokalZahl
+              label="Stimmen"
+              wert={k.stimmen}
+              onWert={(stimmen) => aendern((d) => kandidatSetzen(d, k.id, { stimmen }))}
+            />
+          </Stack>
+        </Paper>
+      ))}
+      <Button
+        variant="default"
+        size="md"
+        leftSection={<IconPlus size={18} />}
+        disabled={daten.kandidaten.length >= WAHL_MAX_KANDIDATEN}
+        onClick={() => aendern((d) => kandidatHinzufuegen(d))}
+      >
+        Kandidat:in hinzufügen
+      </Button>
+      <LokalZahl
+        label="Enthaltung"
+        wert={daten.enthaltung}
+        onWert={(enthaltung) => aendern((d) => ({ ...d, enthaltung }))}
+      />
+      {ergebnis.runden.map((r, i) => (
+        <Paper key={i} withBorder p="xs" radius="md">
+          <Stack gap="xs">
+            <Group justify="space-between" wrap="nowrap" gap="xs">
+              <Text fw={600}>Stichwahl {i + 1}</Text>
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size={44}
+                aria-label={`Stichwahl ${i + 1} entfernen`}
+                onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
+              >
+                <IconTrash size={20} />
+              </ActionIcon>
+            </Group>
+            {r.kandidaten.map((id) => {
+              const k = nachId.get(id);
+              if (!k) return null;
+              return (
+                <LokalZahl
+                  key={id}
+                  label={`Stimmen für ${k.name.trim() || personen.find((p) => p.sub === k.sub)?.username || 'Person'}`}
+                  wert={daten.stichwahlen[i]!.stimmen[id] ?? 0}
+                  onWert={(n) => aendern((d) => stichwahlSetzen(d, i, id, n))}
+                />
+              );
+            })}
+            <LokalZahl
+              label="Enthaltung"
+              wert={daten.stichwahlen[i]!.enthaltung}
+              onWert={(n) => aendern((d) => stichwahlSetzen(d, i, 'enthaltung', n))}
+            />
+          </Stack>
+        </Paper>
+      ))}
+      {ueberzaehlig && (
+        <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">Gespeicherte Stichwahlen passen nicht mehr zu den Stimmen.</Text>
+            <Button
+              variant="default"
+              size="md"
+              leftSection={<IconTrash size={18} />}
+              onClick={() => aendern((d) => ueberzaehligeStichwahlenEntfernen(d))}
+            >
+              Stichwahlen entfernen
+            </Button>
+          </Stack>
+        </Alert>
+      )}
+      <WahlErgebnisBereich daten={daten} personen={personen} aendern={aendern} />
     </Stack>
   );
 }

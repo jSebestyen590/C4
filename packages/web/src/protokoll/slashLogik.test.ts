@@ -60,6 +60,7 @@ describe('first stage', () => {
       'Aufnahme',
       'Abstimmung',
       'Meinungsbild',
+      'Wahl',
       'Neues EM',
       'Erscheint',
       'Geht',
@@ -76,6 +77,9 @@ describe('first stage', () => {
     expect(titel('mein')).toEqual(['Meinungsbild']);
     expect(titel('stimmungsbild')).toEqual(['Meinungsbild']);
     expect(titel('aufn')).toEqual(['Aufnahme']);
+    for (const alias of ['wah', 'waehlen', 'wählen', 'wahlen', 'postenwahl']) {
+      expect(titel(alias), alias).toEqual(['Wahl']);
+    }
     expect(titel('em')).toEqual(['Neues EM']);
     expect(titel('ehrenmitglied')).toEqual(['Neues EM']);
     expect(titel('neues em')).toEqual(['Neues EM']);
@@ -107,6 +111,10 @@ describe('first stage', () => {
         daten: { frage: '', optionen: [{ text: 'Ja' }, { text: 'Nein' }, { text: 'Enthaltung' }] },
       },
     });
+    expect(slashEintraege('wahl', daten)[0]?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinWahl', daten: { posten: '', anzahl: 1, kandidaten: [] } },
+    });
     expect(slashEintraege('aufn', daten)[0]?.aktion).toMatchObject({
       art: 'einfuegen',
       wahl: { typ: 'bausteinAufnahme', daten: { sub: null, abstimmung: { ja: 0 } } },
@@ -116,6 +124,7 @@ describe('first stage', () => {
     const innen = slashEintraege('', daten, true).map((e) => e.titel);
     expect(innen).not.toContain('Abstimmung');
     expect(innen).not.toContain('Meinungsbild');
+    expect(innen).not.toContain('Wahl');
     expect(innen).toContain('Aufnahme');
     expect(innen).toContain('Zitat');
     expect(slashEintraege('abstimm', daten, true)).toEqual([]);

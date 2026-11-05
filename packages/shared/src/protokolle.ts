@@ -43,6 +43,7 @@ export const BAUSTEIN_TYPEN = [
   'bausteinAnwesenheit',
   'bausteinMeinungsbild',
   'bausteinAufnahme',
+  'bausteinWahl',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
 
@@ -50,7 +51,11 @@ export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
  * Bausteine that may also stand inside the free text ("Notizen") of another Baustein (at the cursor),
  * but never inside each other. All other Bausteine are top-level only.
  */
-export const BAUSTEINE_IN_NOTIZEN = ['bausteinBeschluss', 'bausteinMeinungsbild'] as const;
+export const BAUSTEINE_IN_NOTIZEN = [
+  'bausteinBeschluss',
+  'bausteinMeinungsbild',
+  'bausteinWahl',
+] as const;
 export const istBausteinInNotizen = (typ: string): boolean =>
   (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
 
@@ -167,6 +172,100 @@ export const bausteinAufnahmeDatenSchema = z.strictObject({
 });
 export type BausteinAufnahmeDaten = z.infer<typeof bausteinAufnahmeDatenSchema>;
 
+/**
+ * A Wahl (election): persons are proposed, `anzahl` of them are elected for a position by the voting
+ * members. `stichwahlen` are runoff rounds, one per tie (see `wahlErgebnis`).
+ */
+export const WAHL_MAX_KANDIDATEN = 30;
+export const WAHL_MAX_STICHWAHLEN = 10;
+export const WAHL_MAX_ANZAHL = 20;
+export const bausteinWahlKandidatSchema = z.strictObject({
+  id: z.string().min(1).max(100),
+  /** A person of the app; null = free-text `name`. */
+  sub: idOderNull,
+  name: z.string().max(200),
+  stimmen,
+});
+export type BausteinWahlKandidat = z.infer<typeof bausteinWahlKandidatSchema>;
+export const bausteinWahlStichwahlSchema = z.strictObject({
+  /** Votes by candidate id (missing = 0). */
+  stimmen: z.record(z.string().max(100), stimmen),
+  enthaltung: stimmen,
+});
+export type BausteinWahlStichwahl = z.infer<typeof bausteinWahlStichwahlSchema>;
+export const bausteinWahlDatenSchema = z.strictObject({
+  posten: z.string().max(200),
+  anzahl: z.number().int().min(1).max(WAHL_MAX_ANZAHL),
+  kandidaten: z.array(bausteinWahlKandidatSchema).max(WAHL_MAX_KANDIDATEN),
+  enthaltung: stimmen,
+  stichwahlen: z.array(bausteinWahlStichwahlSchema).max(WAHL_MAX_STICHWAHLEN),
+});
+export type BausteinWahlDaten = z.infer<typeof bausteinWahlDatenSchema>;
+
+export interface WahlRunde {
+  /** The candidates the round is about (the ones the previous round left tied). */
+  kandidaten: string[];
+  /** Seats still to fill in this round. */
+  plaetze: number;
+}
+
+export interface WahlErgebnis {
+  /** Elected candidate ids: clear winners of a round first, best first. */
+  gewaehlt: string[];
+  /** The tie that is still open (null = the election is decided, or has no votes yet). */
+  offen: (WahlRunde & { rundeVorhanden: boolean }) | null;
+  /** The stored runoff rounds that apply, in order (stored rounds beyond these are superfluous). */
+  runden: WahlRunde[];
+}
+
+/**
+ * Result of a Wahl. Rank the candidates by the votes of the main round (Enthaltungen do not count).
+ * If the votes of place `anzahl` and place `anzahl + 1` differ, the top `anzahl` are elected. Otherwise
+ * the candidates tied with place `anzahl` go into a Stichwahl for the seats left after the candidates
+ * clearly above them are elected. `stichwahlen[i]` is the i-th runoff among exactly the candidates the
+ * previous round left tied, with the same rule; a tie again needs the next round. A round without any
+ * vote counts as not held yet. With at most `anzahl` candidates, all that got at least one vote are
+ * elected. Without any vote in the main round there is no result.
+ */
+export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
+  const leer: WahlErgebnis = { gewaehlt: [], offen: null, runden: [] };
+  const ids = daten.kandidaten.map((k) => k.id);
+  const haupt = Object.fromEntries(daten.kandidaten.map((k) => [k.id, k.stimmen]));
+  if (ids.length === 0 || ids.every((id) => (haupt[id] ?? 0) === 0)) return leer;
+  const rang = (gruppe: string[], stimmenVon: Record<string, number>) =>
+    [...gruppe].sort((a, b) => (stimmenVon[b] ?? 0) - (stimmenVon[a] ?? 0));
+
+  if (ids.length <= daten.anzahl) {
+    return { ...leer, gewaehlt: rang(ids, haupt).filter((id) => (haupt[id] ?? 0) > 0) };
+  }
+
+  const gewaehlt: string[] = [];
+  const runden: WahlRunde[] = [];
+  let gruppe = ids;
+  let plaetze = daten.anzahl;
+  let stimmenVon = haupt;
+  for (let i = 0; ; i++) {
+    const sortiert = rang(gruppe, stimmenVon);
+    const grenze = stimmenVon[sortiert[plaetze - 1]!] ?? 0;
+    const danach = stimmenVon[sortiert[plaetze]!] ?? 0;
+    if (grenze > danach) {
+      return { gewaehlt: [...gewaehlt, ...sortiert.slice(0, plaetze)], offen: null, runden };
+    }
+    const klar = sortiert.filter((id) => (stimmenVon[id] ?? 0) > grenze);
+    gewaehlt.push(...klar);
+    gruppe = sortiert.filter((id) => (stimmenVon[id] ?? 0) === grenze);
+    plaetze -= klar.length;
+    const runde = daten.stichwahlen[i];
+    if (!runde)
+      return { gewaehlt, offen: { kandidaten: gruppe, plaetze, rundeVorhanden: false }, runden };
+    runden.push({ kandidaten: gruppe, plaetze });
+    stimmenVon = runde.stimmen;
+    if (gruppe.every((id) => (stimmenVon[id] ?? 0) === 0)) {
+      return { gewaehlt, offen: { kandidaten: gruppe, plaetze, rundeVorhanden: true }, runden };
+    }
+  }
+}
+
 export interface BausteinDatenVon {
   bausteinEvent: BausteinEventDaten;
   bausteinVergangenesEvent: BausteinVergangenesEventDaten;
@@ -176,6 +275,7 @@ export interface BausteinDatenVon {
   bausteinAnwesenheit: BausteinAnwesenheitDaten;
   bausteinMeinungsbild: BausteinMeinungsbildDaten;
   bausteinAufnahme: BausteinAufnahmeDaten;
+  bausteinWahl: BausteinWahlDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -187,6 +287,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinAnwesenheit: bausteinAnwesenheitDatenSchema,
   bausteinMeinungsbild: bausteinMeinungsbildDatenSchema,
   bausteinAufnahme: bausteinAufnahmeDatenSchema,
+  bausteinWahl: bausteinWahlDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -220,6 +321,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         frage: '',
         optionen: ['Ja', 'Nein', 'Enthaltung'].map((text) => ({ text, stimmen: 0 })),
       };
+    case 'bausteinWahl':
+      return { posten: '', anzahl: 1, kandidaten: [], enthaltung: 0, stichwahlen: [] };
     case 'bausteinAufnahme':
       return {
         sub: null,
@@ -485,7 +588,7 @@ function eventBausteine(
 
 const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
 
-/** The free text without Abstimmung / Meinungsbild blocks (their votes belong to one Sitzung). */
+/** The free text without Abstimmung / Meinungsbild / Wahl blocks (their votes belong to one Sitzung). */
 function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnoten[] {
   const rest = (content ?? []).filter((k) => !istBausteinInNotizen(k.type));
   return rest.length > 0 ? rest : [leererAbsatz()];

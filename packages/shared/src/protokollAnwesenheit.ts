@@ -47,7 +47,7 @@ export interface AnwesenheitsVerlauf {
   start: Beschlussfaehigkeit;
   /**
    * Quorum at each `bausteinAnwesenheit` (after applying it), `bausteinBeschluss`, `bausteinEm` and
-   * `bausteinAufnahme`, by Baustein id.
+   * `bausteinAufnahme` and `bausteinWahl`, by Baustein id.
    */
   bausteine: Record<string, Beschlussfaehigkeit & { wechsel: boolean }>;
   /**
@@ -109,7 +109,8 @@ export function anwesenheitsVerlauf(
     } else if (
       knoten.type === 'bausteinBeschluss' ||
       knoten.type === 'bausteinEm' ||
-      knoten.type === 'bausteinAufnahme'
+      knoten.type === 'bausteinAufnahme' ||
+      knoten.type === 'bausteinWahl'
     ) {
       bausteine[id] = { ...aktuell, wechsel: false };
     } else if (knoten.type === 'bausteinMeinungsbild') {

@@ -5,6 +5,8 @@ import {
   bausteinBeschlussDatenSchema,
   bausteinMeinungsbildDatenSchema,
   bausteinEmDatenSchema,
+  bausteinWahlDatenSchema,
+  wahlErgebnis,
   erscheintUhrzeiten,
   heuteBerlin,
   type BausteinEmAbstimmung,
@@ -298,6 +300,66 @@ export function meinungsbildZeilen(daten: unknown): MeinungsbildZeilen {
       .filter((o) => o.text.trim() !== '')
       .map((o) => `${o.text.trim()} ${o.stimmen}`)
       .join(' · '),
+  };
+}
+
+export interface WahlKandidat {
+  id: string;
+  sub: string | null;
+  /** Free-text name (used when there is no `sub`), trimmed. */
+  name: string;
+  stimmen: number;
+}
+
+export interface WahlZeilen {
+  posten: string;
+  /** "1 Platz" / "2 Plätze" */
+  plaetze: string;
+  kandidaten: WahlKandidat[];
+  enthaltung: number;
+  /** One entry per runoff round that applies. */
+  stichwahlen: { kandidaten: WahlKandidat[]; enthaltung: number }[];
+  gewaehlt: WahlKandidat[];
+  /** A tie is still open: no result yet. */
+  offen: boolean;
+  /** "(13 von 25 Mitgliedern anwesend)" or '' */
+  anwesend: string;
+  nichtBeschlussfaehig: boolean;
+}
+
+/** Lines of a `bausteinWahl`; null when the data are invalid. */
+export function wahlZeilen(
+  daten: unknown,
+  stand: Beschlussfaehigkeit | undefined,
+): WahlZeilen | null {
+  const d = bausteinWahlDatenSchema.safeParse(daten);
+  if (!d.success) return null;
+  const w = d.data;
+  const ergebnis = wahlErgebnis(w);
+  const kandidat = (k: (typeof w.kandidaten)[number], stimmen: number): WahlKandidat => ({
+    id: k.id,
+    sub: k.sub,
+    name: k.name.trim(),
+    stimmen,
+  });
+  const nachId = new Map(w.kandidaten.map((k) => [k.id, k]));
+  const von = (id: string, stimmen: number): WahlKandidat[] => {
+    const k = nachId.get(id);
+    return k ? [kandidat(k, stimmen)] : [];
+  };
+  return {
+    posten: w.posten.trim(),
+    plaetze: w.anzahl === 1 ? '1 Platz' : `${w.anzahl} Plätze`,
+    kandidaten: w.kandidaten.map((k) => kandidat(k, k.stimmen)),
+    enthaltung: w.enthaltung,
+    stichwahlen: ergebnis.runden.map((r, i) => ({
+      kandidaten: r.kandidaten.flatMap((id) => von(id, w.stichwahlen[i]!.stimmen[id] ?? 0)),
+      enthaltung: w.stichwahlen[i]!.enthaltung,
+    })),
+    gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
+    offen: ergebnis.offen !== null,
+    anwesend: stand ? `(${anwesendText(stand)})` : '',
+    nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,
   };
 }
 

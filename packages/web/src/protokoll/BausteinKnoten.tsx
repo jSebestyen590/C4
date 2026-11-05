@@ -19,12 +19,13 @@ import {
   type BausteinEmDaten,
   type BausteinEventDaten,
   type BausteinMeinungsbildDaten,
+  type BausteinWahlDaten,
   type BausteinTyp,
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
-import { BeschlussHinweis, MeinungsbildHinweis } from './BeschlussHinweis';
+import { BeschlussHinweis, MeinungsbildHinweis, WahlHinweis } from './BeschlussHinweis';
 import { FORMULAR_ATTRIBUT } from './formular';
 import {
   AnwaerterFormular,
@@ -33,6 +34,7 @@ import {
   EmFormular,
   EventFormular,
   MeinungsbildFormular,
+  WahlFormular,
   VergangenesEventFormular,
   type FormularProps,
 } from './BausteinFormulare';
@@ -42,7 +44,7 @@ import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 /** Text content allowed in the free text of every Baustein. */
 const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote';
 /**
- * Free text of a Baustein: text, and an Abstimmung / Meinungsbild (group `innerbaustein`) at the cursor.
+ * Free text of a Baustein: text, and an Abstimmung / Meinungsbild / Wahl (group `innerbaustein`) at the cursor.
  * Those two take plain text only, so there are no Bausteine inside Bausteine beyond that one level.
  */
 const FREITEXT = `(${TEXT} | innerbaustein)+`;
@@ -153,6 +155,12 @@ function BausteinAnsicht<T extends BausteinTyp>({
                 <BeschlussHinweis
                   id={node.attrs.id as string}
                   daten={(daten as unknown as BausteinAufnahmeDaten).abstimmung}
+                />
+              )}
+              {typ === 'bausteinWahl' && (
+                <WahlHinweis
+                  id={node.attrs.id as string}
+                  daten={daten as unknown as BausteinWahlDaten}
                 />
               )}
               {typ === 'bausteinMeinungsbild' && (
@@ -287,6 +295,10 @@ export const BausteinMeinungsbildKnoten = bausteinKnoten(
     MeinungsbildFormular as ComponentType<FormularProps<BausteinMeinungsbildDaten>>,
   ),
 );
+export const BausteinWahlKnoten = bausteinKnoten(
+  'bausteinWahl',
+  karte('bausteinWahl', WahlFormular as ComponentType<FormularProps<BausteinWahlDaten>>),
+);
 export const BausteinAufnahmeKnoten = bausteinKnoten(
   'bausteinAufnahme',
   karte(
@@ -311,4 +323,5 @@ export const BAUSTEIN_KNOTEN = [
   BausteinAnwesenheitKnoten,
   BausteinMeinungsbildKnoten,
   BausteinAufnahmeKnoten,
+  BausteinWahlKnoten,
 ];

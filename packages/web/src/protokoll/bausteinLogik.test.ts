@@ -16,6 +16,15 @@ import {
   schichtKurz,
   schichtZeitSetzen,
   stimmeSetzen,
+  kandidatEntfernen,
+  kandidatHinzufuegen,
+  kandidatSetzen,
+  stichwahlEntfernen,
+  stichwahlHinzufuegen,
+  stichwahlSetzen,
+  ueberzaehligeStichwahlenEntfernen,
+  wahlAnzahlSetzen,
+  zuvieleWahlStimmen,
   vergangeneEvents,
   zeitWert,
   anwesenheitUhrzeit,
@@ -162,6 +171,10 @@ describe('stimmeSetzen', () => {
   it('leaves the result alone while nobody voted yes or no', () => {
     expect(stimmeSetzen(leer, 'enthaltung', 3).ergebnis).toBeNull();
   });
+  it('does not count Enthaltungen for the suggestion', () => {
+    const ja = stimmeSetzen(leer, 'ja', 1);
+    expect(stimmeSetzen(ja, 'enthaltung', 10).ergebnis).toBe('angenommen');
+  });
   it('ignores negative or fractional counts', () => {
     expect(stimmeSetzen(leer, 'ja', -1)).toBe(leer);
     expect(stimmeSetzen(leer, 'ja', 1.5)).toBe(leer);
@@ -192,6 +205,77 @@ describe('Meinungsbild options', () => {
   it('words the head count', () => {
     expect(personenAnwesendText(1)).toBe('Anwesend: 1 Person (ohne Gäste)');
     expect(personenAnwesendText(12)).toBe('Anwesend: 12 Personen (ohne Gäste)');
+  });
+});
+
+describe('Wahl', () => {
+  const leer = bausteinLeer('bausteinWahl');
+  const mit = (stimmen: number[], anzahl = 1) => ({
+    ...leer,
+    anzahl,
+    kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
+  });
+
+  it('adds candidates up to 30 and removes them (also from the runoff rounds)', () => {
+    const eins = kandidatHinzufuegen(leer, 'a');
+    expect(eins.kandidaten).toEqual([{ id: 'a', sub: null, name: '', stimmen: 0 }]);
+    let voll = leer;
+    for (let i = 0; i < 40; i++) voll = kandidatHinzufuegen(voll, `k${i}`);
+    expect(voll.kandidaten).toHaveLength(30);
+    const runde = { ...eins, stichwahlen: [{ stimmen: { a: 2, b: 1 }, enthaltung: 0 }] };
+    const ohne = kandidatEntfernen(runde, 'a');
+    expect(ohne.kandidaten).toEqual([]);
+    expect(ohne.stichwahlen[0]!.stimmen).toEqual({ b: 1 });
+  });
+
+  it('sets a candidate, ignoring invalid counts', () => {
+    const d = kandidatHinzufuegen(leer, 'a');
+    expect(kandidatSetzen(d, 'a', { name: 'Max', stimmen: 3 }).kandidaten[0]).toMatchObject({
+      name: 'Max',
+      stimmen: 3,
+    });
+    expect(kandidatSetzen(d, 'a', { stimmen: -1 })).toBe(d);
+    expect(kandidatSetzen(d, 'a', { stimmen: 1.5 })).toBe(d);
+  });
+
+  it('keeps the number of seats between 1 and 20', () => {
+    expect(wahlAnzahlSetzen(leer, 3).anzahl).toBe(3);
+    expect(wahlAnzahlSetzen(leer, 0)).toBe(leer);
+    expect(wahlAnzahlSetzen(leer, 21)).toBe(leer);
+  });
+
+  it('adds a Stichwahl only when a tie needs one, and removes it with the later ones', () => {
+    const klar = mit([5, 3]);
+    expect(stichwahlHinzufuegen(klar)).toBe(klar);
+    const gleich = mit([3, 3]);
+    const eine = stichwahlHinzufuegen(gleich);
+    expect(eine.stichwahlen).toEqual([{ stimmen: {}, enthaltung: 0 }]);
+    // An empty round is waiting for its votes: no second one yet.
+    expect(stichwahlHinzufuegen(eine)).toBe(eine);
+    const stimmen = stichwahlSetzen(eine, 0, 'k0', 2);
+    expect(stimmen.stichwahlen[0]!.stimmen).toEqual({ k0: 2 });
+    expect(stichwahlSetzen(stimmen, 0, 'enthaltung', 4).stichwahlen[0]!.enthaltung).toBe(4);
+    expect(stichwahlSetzen(stimmen, 0, 'k0', -1)).toBe(stimmen);
+    expect(stichwahlSetzen(stimmen, 5, 'k0', 1)).toBe(stimmen);
+    expect(stichwahlEntfernen(stimmen, 0).stichwahlen).toEqual([]);
+  });
+
+  it('drops runoff rounds that the votes no longer need', () => {
+    const d = { ...mit([5, 3]), stichwahlen: [{ stimmen: { k0: 1 }, enthaltung: 0 }] };
+    expect(ueberzaehligeStichwahlenEntfernen(d).stichwahlen).toEqual([]);
+    const noetig = { ...mit([3, 3]), stichwahlen: [{ stimmen: { k0: 1 }, enthaltung: 0 }] };
+    expect(ueberzaehligeStichwahlenEntfernen(noetig)).toEqual(noetig);
+  });
+
+  it('warns when a round has more votes than the present members can give', () => {
+    expect(zuvieleWahlStimmen(4, 4, 1)).toBe(false);
+    expect(zuvieleWahlStimmen(5, 4, 1)).toBe(true);
+    expect(zuvieleWahlStimmen(8, 4, 2)).toBe(false);
+  });
+
+  it('focuses the Posten first', () => {
+    expect(ersterLeererFeld('bausteinWahl', { posten: '' })).toBe('posten');
+    expect(ersterLeererFeld('bausteinWahl', { posten: 'Finanzen' })).toBe('text');
   });
 });
 

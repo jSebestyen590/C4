@@ -9,6 +9,7 @@ import {
   IconCrown,
   IconQuote,
   IconTemplate,
+  IconUsersGroup,
   IconUserCheck,
   IconUserPlus,
 } from '@tabler/icons-react';
@@ -29,6 +30,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconUserCheck size={size} />;
     case 'meinungsbild':
       return <IconChartBar size={size} />;
+    case 'wahl':
+      return <IconUsersGroup size={size} />;
     case 'em':
       return <IconCrown size={size} />;
     case 'erscheint':
@@ -53,6 +56,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinAnwesenheit: 'erscheint',
   bausteinMeinungsbild: 'meinungsbild',
   bausteinAufnahme: 'aufnahme',
+  bausteinWahl: 'wahl',
 };
 
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
@@ -64,4 +68,5 @@ export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinAnwesenheit: 'Anwesenheit',
   bausteinMeinungsbild: 'Meinungsbild',
   bausteinAufnahme: 'Aufnahme',
+  bausteinWahl: 'Wahl',
 };

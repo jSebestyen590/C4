@@ -6,6 +6,7 @@ import {
   bausteinErzeugen,
   bausteinLeer,
   beschlussErgebnisVorschlag,
+  wahlErgebnis,
   protokollAnlegenSchema,
   protokollDokumentPruefen,
   protokollDokumentSchema,
@@ -17,6 +18,7 @@ import {
   protokollVorschlag,
   teilnahmeAbleiten,
   type BausteinKnoten,
+  type BausteinWahlDaten,
   type ProtokollDokument,
   type ProtokollEventInfo,
   type ProtokollKnoten,
@@ -291,6 +293,8 @@ describe('beschlussErgebnisVorschlag', () => {
     expect(beschlussErgebnisVorschlag(2, 5)).toBe('abgelehnt');
     expect(beschlussErgebnisVorschlag(3, 3)).toBe('abgelehnt');
     expect(beschlussErgebnisVorschlag(0, 0)).toBeNull();
+    // Enthaltungen are not an argument: 1 Ja, 0 Nein (and 10 Enthaltungen) is a majority.
+    expect(beschlussErgebnisVorschlag(1, 0)).toBe('angenommen');
   });
 });
 
@@ -423,6 +427,19 @@ describe('protokollVorschlag', () => {
     expect(b!.content).toEqual([{ type: 'paragraph' }]);
   });
 
+  it('does not carry Wahl blocks inside an event over', () => {
+    const original = bausteinErzeugen('bausteinEvent', bausteinLeer('bausteinEvent'), [
+      absatz('Text'),
+      bausteinErzeugen('bausteinWahl'),
+    ]);
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: dokument({ zukuenftiges: [original] }),
+      events: {},
+    });
+    expect(bausteine(doc, 2)[0]!.content).toEqual([absatz('Text')]);
+  });
+
   it('refreshes name, dates and times from the calendar', () => {
     const letztes = dokument({
       zukuenftiges: [
@@ -542,5 +559,138 @@ describe('protokollEventIds', () => {
       ],
     });
     expect(protokollEventIds(doc)).toEqual(['e1', 'e2']);
+  });
+});
+
+describe('Wahl', () => {
+  const daten = (
+    stimmen: number[],
+    anzahl = 1,
+    stichwahlen: BausteinWahlDaten['stichwahlen'] = [],
+  ): BausteinWahlDaten => ({
+    posten: 'Finanzen',
+    anzahl,
+    kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
+    enthaltung: 0,
+    stichwahlen,
+  });
+  const runde = (stimmen: Record<string, number>): BausteinWahlDaten['stichwahlen'][number] => ({
+    stimmen,
+    enthaltung: 0,
+  });
+
+  it('is checked strictly and starts empty', () => {
+    const pruefen = (d: unknown) =>
+      protokollDokumentPruefen(
+        dokument({ gegenwaertiges: [bausteinErzeugen('bausteinWahl', d as never)] }),
+      );
+    expect(bausteinLeer('bausteinWahl')).toEqual({
+      posten: '',
+      anzahl: 1,
+      kandidaten: [],
+      enthaltung: 0,
+      stichwahlen: [],
+    });
+    expect(pruefen(daten([3, 2]))).toBeNull();
+    expect(pruefen({ ...daten([3, 2]), extra: 1 })).not.toBeNull();
+    expect(pruefen({ ...daten([3, 2]), anzahl: 0 })).not.toBeNull();
+    expect(pruefen({ ...daten([3, 2]), anzahl: 21 })).not.toBeNull();
+    expect(pruefen({ ...daten([3, 2]), posten: 'x'.repeat(201) })).not.toBeNull();
+    expect(pruefen(daten(Array.from({ length: 31 }, () => 1)))).not.toBeNull();
+    expect(pruefen(daten([-1]))).not.toBeNull();
+    expect(
+      pruefen(
+        daten(
+          [1, 1],
+          1,
+          Array.from({ length: 11 }, () => runde({})),
+        ),
+      ),
+    ).not.toBeNull();
+    expect(
+      pruefen({ ...daten([3, 2]), stichwahlen: [{ stimmen: { k0: 1.5 }, enthaltung: 0 }] }),
+    ).not.toBeNull();
+  });
+
+  it('has no result without candidates or votes', () => {
+    expect(wahlErgebnis(daten([]))).toEqual({ gewaehlt: [], offen: null, runden: [] });
+    expect(wahlErgebnis(daten([0, 0, 0]))).toEqual({ gewaehlt: [], offen: null, runden: [] });
+  });
+
+  it('elects the top candidates when the boundary is clear', () => {
+    expect(wahlErgebnis(daten([5, 3, 1])).gewaehlt).toEqual(['k0']);
+    expect(wahlErgebnis(daten([1, 5, 3, 0], 2)).gewaehlt).toEqual(['k1', 'k2']);
+    expect(wahlErgebnis(daten([4, 4, 1], 2))).toMatchObject({
+      gewaehlt: ['k0', 'k1'],
+      offen: null,
+    });
+  });
+
+  it('elects all candidates with a vote when there are at most as many as seats', () => {
+    expect(wahlErgebnis(daten([2, 0, 3], 3)).gewaehlt).toEqual(['k2', 'k0']);
+    expect(wahlErgebnis(daten([1], 1)).gewaehlt).toEqual(['k0']);
+  });
+
+  it('needs a Stichwahl among the candidates tied at the boundary', () => {
+    // The best is elected already, the two tied for the second seat go to a runoff.
+    expect(wahlErgebnis(daten([5, 3, 3], 2))).toEqual({
+      gewaehlt: ['k0'],
+      offen: { kandidaten: ['k1', 'k2'], plaetze: 1, rundeVorhanden: false },
+      runden: [],
+    });
+    // Tie for the only seat.
+    expect(wahlErgebnis(daten([4, 4, 1])).offen).toEqual({
+      kandidaten: ['k0', 'k1'],
+      plaetze: 1,
+      rundeVorhanden: false,
+    });
+    // Three-way tie for two seats: all three are in the runoff.
+    expect(wahlErgebnis(daten([2, 2, 2], 2)).offen).toEqual({
+      kandidaten: ['k0', 'k1', 'k2'],
+      plaetze: 2,
+      rundeVorhanden: false,
+    });
+  });
+
+  it('applies the Stichwahl and asks for another one on a new tie', () => {
+    const ergebnis = wahlErgebnis(daten([5, 3, 3], 2, [runde({ k1: 1, k2: 4 })]));
+    expect(ergebnis).toEqual({
+      gewaehlt: ['k0', 'k2'],
+      offen: null,
+      runden: [{ kandidaten: ['k1', 'k2'], plaetze: 1 }],
+    });
+    const nochmal = wahlErgebnis(daten([5, 3, 3], 2, [runde({ k1: 2, k2: 2 })]));
+    expect(nochmal.gewaehlt).toEqual(['k0']);
+    expect(nochmal.offen).toEqual({ kandidaten: ['k1', 'k2'], plaetze: 1, rundeVorhanden: false });
+    const zweite = wahlErgebnis(daten([5, 3, 3], 2, [runde({ k1: 2, k2: 2 }), runde({ k1: 3 })]));
+    expect(zweite).toMatchObject({ gewaehlt: ['k0', 'k1'], offen: null });
+    expect(zweite.runden).toHaveLength(2);
+  });
+
+  it('narrows a three-way tie round by round', () => {
+    // 2 seats, 3 tied: round 1 leaves k2 clearly behind, so k0 and k1 are elected.
+    expect(wahlErgebnis(daten([2, 2, 2], 2, [runde({ k0: 3, k1: 3, k2: 1 })]))).toMatchObject({
+      gewaehlt: ['k0', 'k1'],
+      offen: null,
+    });
+    // Round 1: k0 is clearly first, k1 and k2 tie for the last seat.
+    const r = wahlErgebnis(daten([2, 2, 2], 2, [runde({ k0: 4, k1: 1, k2: 1 })]));
+    expect(r.gewaehlt).toEqual(['k0']);
+    expect(r.offen).toEqual({ kandidaten: ['k1', 'k2'], plaetze: 1, rundeVorhanden: false });
+  });
+
+  it('treats a Stichwahl without any vote as not held yet', () => {
+    const r = wahlErgebnis(daten([5, 3, 3], 2, [runde({})]));
+    expect(r.offen).toEqual({ kandidaten: ['k1', 'k2'], plaetze: 1, rundeVorhanden: true });
+    expect(r.runden).toHaveLength(1);
+  });
+
+  it('ignores stored Stichwahlen that are no longer needed', () => {
+    const r = wahlErgebnis(daten([5, 3, 1], 2, [runde({ k1: 1, k2: 4 })]));
+    expect(r).toMatchObject({ gewaehlt: ['k0', 'k1'], offen: null, runden: [] });
+  });
+
+  it('does not count Enthaltungen', () => {
+    expect(wahlErgebnis({ ...daten([1, 0]), enthaltung: 10 }).gewaehlt).toEqual(['k0']);
   });
 });

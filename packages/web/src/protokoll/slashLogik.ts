@@ -29,6 +29,7 @@ export type SlashSymbol =
   | 'beschluss'
   | 'meinungsbild'
   | 'aufnahme'
+  | 'wahl'
   | 'em'
   | 'erscheint'
   | 'geht'
@@ -184,6 +185,17 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     },
   },
   {
+    schluessel: 'wahl',
+    titel: 'Wahl',
+    beschreibung: 'Posten wählen: Kandidat:innen, Stimmen, Stichwahl',
+    symbol: 'wahl',
+    woerter: ['wahl', 'waehlen', 'wahlen', 'postenwahl'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinWahl', daten: bausteinLeer('bausteinWahl') },
+    },
+  },
+  {
     schluessel: 'em',
     titel: 'Neues EM',
     beschreibung: 'Neues Ehrenmitglied, optional mit Abstimmung',
@@ -222,7 +234,7 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
 
 /**
  * Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter.
- * `ohneVerschachtelt` leaves out Abstimmung and Meinungsbild (the cursor is inside one of them: they
+ * `ohneVerschachtelt` leaves out Abstimmung, Meinungsbild and Wahl (the cursor is inside one of them: they
  * cannot be nested in each other); `ohneZitat` leaves out the quote (the cursor is in a list item).
  */
 export function bausteinEintraege(

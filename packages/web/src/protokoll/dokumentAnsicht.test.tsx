@@ -168,4 +168,55 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html).toContain('(nicht bindend)');
     expect(html.indexOf('notes')).toBeLessThan(html.indexOf('Meinungsbild:'));
   });
+
+  it('renders a Wahl with runoff, result and quorum, also an open tie', () => {
+    const wahl = (id: string, stichwahlen: unknown[]): ProtokollKnoten => ({
+      type: 'bausteinWahl',
+      attrs: {
+        id,
+        daten: {
+          posten: 'Finanzen',
+          anzahl: 2,
+          kandidaten: [
+            { id: 'a', sub: null, name: 'Anna', stimmen: 5 },
+            { id: 'b', sub: null, name: 'Bea', stimmen: 3 },
+            { id: 'c', sub: null, name: 'Cem', stimmen: 3 },
+          ],
+          enthaltung: 1,
+          stichwahlen,
+        },
+      },
+      content: [text('Wahlnotiz')],
+    });
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const render = (...bloecke: ProtokollKnoten[]) =>
+      renderToStaticMarkup(
+        <MantineProvider>
+          <ProtokollDokumentAnsicht
+            eingabe={{
+              ...eingabe,
+              inhalt: {
+                type: 'doc',
+                content: [
+                  vergangenes!,
+                  { ...gegenwaertiges!, content: [...bloecke, { type: 'paragraph' }] },
+                  zukuenftiges!,
+                ],
+              },
+            }}
+          />
+        </MantineProvider>,
+      );
+    const offen = render(wahl('w1', []));
+    expect(offen).toContain('<strong>Wahl:</strong> Finanzen (2 Plätze)');
+    expect(offen).toContain('Kandidat:innen: Anna 5 · Bea 3 · Cem 3 · Enthaltung 1');
+    expect(offen).toContain('Noch offen: Stichwahl nötig');
+    expect(offen).not.toContain('Gewählt:');
+    expect(offen).toContain('Wahlnotiz');
+    const fertig = render(wahl('w2', [{ stimmen: { b: 1, c: 4 }, enthaltung: 2 }]));
+    expect(fertig).toContain('Stichwahl: Bea 1 · Cem 4 · Enthaltung 2');
+    expect(fertig).toContain('Gewählt: Anna, Cem');
+    expect(fertig).toContain('(1 von 1 Mitgliedern anwesend)');
+    expect(fertig).not.toContain('Noch offen');
+  });
 });

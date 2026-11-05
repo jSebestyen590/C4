@@ -294,6 +294,19 @@ describe('Aufnahme, Meinungsbild and nested blocks', () => {
     expect(v.anwesendePersonen).toEqual({});
   });
 
+  it('records the quorum at a Wahl block, also a nested one', () => {
+    const wahl = bausteinErzeugen('bausteinWahl');
+    const innen = bausteinErzeugen('bausteinWahl');
+    const ereignis = bausteinErzeugen('bausteinEvent', undefined, [{ type: 'paragraph' }, innen]);
+    const v = anwesenheitsVerlauf(doc(anw('geht', 'm0'), wahl, ereignis), {
+      art: 'sitzung',
+      teilnahme: mitglieder(3),
+    });
+    expect(v.bausteine[wahl.attrs.id]).toMatchObject({ anwesend: 2, wechsel: false });
+    expect(v.bausteine[innen.attrs.id]).toMatchObject({ anwesend: 2, wechsel: false });
+    expect(v.anwesendePersonen).toEqual({});
+  });
+
   it('counts everybody present at a Meinungsbild (all statuses, chosen EMs)', () => {
     const vorher = bausteinErzeugen('bausteinMeinungsbild');
     const nachher = bausteinErzeugen('bausteinMeinungsbild');

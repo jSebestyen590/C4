@@ -6,6 +6,7 @@ import {
   aufnahmeZeilen,
   beschlussZeilen,
   meinungsbildZeilen,
+  wahlZeilen,
   datumLang,
   dokumentKopf,
   dokumentTitel,
@@ -205,6 +206,48 @@ describe('Texte', () => {
     ).toEqual({ frage: 'Ernst oder Spaß?', optionen: 'Ernst 4 · Spaß 3 · Enthaltung 2' });
     expect(meinungsbildZeilen({ frage: '', optionen: [] }).optionen).toBe('');
     expect(meinungsbildZeilen(null)).toEqual({ frage: '', optionen: '' });
+  });
+
+  it('Wahl lines: result, runoff and quorum', () => {
+    const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
+    const wahl = (stichwahlen: unknown[]) => ({
+      posten: ' Finanzen ',
+      anzahl: 2,
+      kandidaten: [
+        { id: 'a', sub: 's1', name: '', stimmen: 5 },
+        { id: 'b', sub: null, name: ' Bea ', stimmen: 3 },
+        { id: 'c', sub: null, name: 'Cem', stimmen: 3 },
+      ],
+      enthaltung: 1,
+      stichwahlen,
+    });
+    const offen = wahlZeilen(wahl([]), stand)!;
+    expect(offen).toMatchObject({
+      posten: 'Finanzen',
+      plaetze: '2 Plätze',
+      offen: true,
+      enthaltung: 1,
+    });
+    expect(offen.gewaehlt.map((g) => g.id)).toEqual(['a']);
+    expect(offen.anwesend).toBe('(13 von 25 Mitgliedern anwesend)');
+    const fertig = wahlZeilen(wahl([{ stimmen: { b: 1, c: 4 }, enthaltung: 2 }]), {
+      ...stand,
+      anwesend: 10,
+      beschlussfaehig: false,
+    })!;
+    expect(fertig.offen).toBe(false);
+    expect(fertig.gewaehlt.map((g) => g.id)).toEqual(['a', 'c']);
+    expect(fertig.stichwahlen).toEqual([
+      {
+        kandidaten: [
+          { id: 'b', sub: null, name: 'Bea', stimmen: 1 },
+          { id: 'c', sub: null, name: 'Cem', stimmen: 4 },
+        ],
+        enthaltung: 2,
+      },
+    ]);
+    expect(fertig.nichtBeschlussfaehig).toBe(true);
+    expect(wahlZeilen({ posten: 'x' }, stand)).toBeNull();
   });
 
   it('Neues EM lines', () => {

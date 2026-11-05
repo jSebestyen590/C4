@@ -3,9 +3,14 @@ import {
   beschlussErgebnisVorschlag,
   datumBerlin,
   MEINUNGSBILD_MAX_OPTIONEN,
+  WAHL_MAX_ANZAHL,
+  WAHL_MAX_KANDIDATEN,
+  WAHL_MAX_STICHWAHLEN,
+  wahlErgebnis,
   zeitBerlin,
   type BausteinBeschlussDaten,
   type BausteinMeinungsbildDaten,
+  type BausteinWahlDaten,
   type BausteinEventDaten,
   type BausteinTyp,
   type EventDauer,
@@ -207,6 +212,95 @@ export const personenAnwesendText = (n: number): string =>
   `Anwesend: ${n} ${n === 1 ? 'Person' : 'Personen'} (ohne Gäste)`;
 
 // ---------------------------------------------------------------------------------------------
+// Wahl
+// ---------------------------------------------------------------------------------------------
+
+/** A new empty candidate at the end (at most `WAHL_MAX_KANDIDATEN`). */
+export function kandidatHinzufuegen(
+  daten: BausteinWahlDaten,
+  id: string = globalThis.crypto.randomUUID(),
+): BausteinWahlDaten {
+  if (daten.kandidaten.length >= WAHL_MAX_KANDIDATEN) return daten;
+  return {
+    ...daten,
+    kandidaten: [...daten.kandidaten, { id, sub: null, name: '', stimmen: 0 }],
+  };
+}
+
+/** Removes a candidate, also from the runoff rounds. */
+export function kandidatEntfernen(daten: BausteinWahlDaten, id: string): BausteinWahlDaten {
+  return {
+    ...daten,
+    kandidaten: daten.kandidaten.filter((k) => k.id !== id),
+    stichwahlen: daten.stichwahlen.map((r) => ({
+      ...r,
+      stimmen: Object.fromEntries(Object.entries(r.stimmen).filter(([k]) => k !== id)),
+    })),
+  };
+}
+
+/** Changes person, name or votes of one candidate; a negative or fractional count is ignored. */
+export function kandidatSetzen(
+  daten: BausteinWahlDaten,
+  id: string,
+  neu: { sub?: string | null; name?: string; stimmen?: number },
+): BausteinWahlDaten {
+  if (neu.stimmen !== undefined && (!ganz(neu.stimmen) || neu.stimmen < 0)) return daten;
+  return {
+    ...daten,
+    kandidaten: daten.kandidaten.map((k) => (k.id === id ? { ...k, ...neu } : k)),
+  };
+}
+
+/** Number of seats, at least 1 (and at most the schema's maximum). */
+export function wahlAnzahlSetzen(daten: BausteinWahlDaten, anzahl: number): BausteinWahlDaten {
+  if (!ganz(anzahl) || anzahl < 1 || anzahl > WAHL_MAX_ANZAHL) return daten;
+  return { ...daten, anzahl };
+}
+
+/** Appends the runoff round the tie needs (nothing when no round is needed or one is there already). */
+export function stichwahlHinzufuegen(daten: BausteinWahlDaten): BausteinWahlDaten {
+  const offen = wahlErgebnis(daten).offen;
+  if (!offen || offen.rundeVorhanden || daten.stichwahlen.length >= WAHL_MAX_STICHWAHLEN) {
+    return daten;
+  }
+  return { ...daten, stichwahlen: [...daten.stichwahlen, { stimmen: {}, enthaltung: 0 }] };
+}
+
+/** Removes the runoff round `index` and all after it (they depend on it). */
+export function stichwahlEntfernen(daten: BausteinWahlDaten, index: number): BausteinWahlDaten {
+  return { ...daten, stichwahlen: daten.stichwahlen.slice(0, index) };
+}
+
+/** Votes (`id`) or Enthaltung (`'enthaltung'`) in runoff round `index`; invalid counts are ignored. */
+export function stichwahlSetzen(
+  daten: BausteinWahlDaten,
+  index: number,
+  feld: string,
+  wert: number,
+): BausteinWahlDaten {
+  if (!ganz(wert) || wert < 0 || !daten.stichwahlen[index]) return daten;
+  return {
+    ...daten,
+    stichwahlen: daten.stichwahlen.map((r, i) => {
+      if (i !== index) return r;
+      return feld === 'enthaltung'
+        ? { ...r, enthaltung: wert }
+        : { ...r, stimmen: { ...r.stimmen, [feld]: wert } };
+    }),
+  };
+}
+
+/** Drops the stored runoff rounds the result no longer uses (the votes changed so there is no tie). */
+export function ueberzaehligeStichwahlenEntfernen(daten: BausteinWahlDaten): BausteinWahlDaten {
+  return stichwahlEntfernen(daten, wahlErgebnis(daten).runden.length);
+}
+
+/** Whether a round has more votes than present members could give (each has up to `plaetze` votes). */
+export const zuvieleWahlStimmen = (summe: number, anwesend: number, plaetze: number): boolean =>
+  summe > anwesend * plaetze;
+
+// ---------------------------------------------------------------------------------------------
 // Focus after inserting
 // ---------------------------------------------------------------------------------------------
 
@@ -217,6 +311,7 @@ export type FokusZiel =
   | 'nachname'
   | 'antrag'
   | 'frage'
+  | 'posten'
   | 'person'
   /** Into the free text of the Baustein. */
   | 'text'
@@ -242,6 +337,8 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
       return leer('sub') && leer('name') ? 'person' : 'text';
     case 'bausteinMeinungsbild':
       return leer('frage') ? 'frage' : 'text';
+    case 'bausteinWahl':
+      return leer('posten') ? 'posten' : 'text';
     case 'bausteinAnwesenheit':
       return leer('sub') ? 'person' : 'nach';
   }
