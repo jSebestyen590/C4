@@ -32,6 +32,8 @@ import {
   type Person,
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
+import { DokumentRahmen } from './DokumentGliederung';
+import { dokumentUeberschriften } from './dokumentUeberschriften';
 
 type Verlauf = ReturnType<typeof anwesenheitsVerlauf>;
 
@@ -39,6 +41,8 @@ interface Kontext {
   eingabe: DokumentEingabe;
   verlauf: Verlauf;
   person: (sub: string) => Person | null;
+  /** Anchor ids of the headings (see `dokumentUeberschriften`). */
+  ids: Map<ProtokollKnoten, string>;
 }
 
 const SICHERE_LINKS = /^(https?:|mailto:|tel:)/i;
@@ -89,7 +93,7 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       const stufe = k.attrs?.level === 3 ? 'pk-dok-h3' : 'pk-dok-h2';
       const Tag = k.attrs?.level === 3 ? 'h5' : 'h4';
       return (
-        <Tag className={stufe}>
+        <Tag className={stufe} id={ctx.ids.get(k)}>
           <Kinder liste={k.content} ctx={ctx} />
         </Tag>
       );
@@ -230,7 +234,9 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       d.success && d.data.verantwortlichSub ? ctx.person(d.data.verantwortlichSub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2">{titel || 'Event'}</h3>
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+          {titel || 'Event'}
+        </h3>
         <Notizen
           knoten={k.content}
           ctx={ctx}
@@ -250,7 +256,9 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const titel = d.success ? vergangenesUeberschrift(d.data) : '';
     return (
       <>
-        <h3 className="pk-dok-h2">{titel || 'Vergangenes Event'}</h3>
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+          {titel || 'Vergangenes Event'}
+        </h3>
         <Notizen knoten={k.content} ctx={ctx} />
       </>
     );
@@ -260,7 +268,9 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const name = d.success ? `${d.data.vorname} ${d.data.nachname}`.trim() : '';
     return (
       <>
-        <h3 className="pk-dok-h2">{`Neue:r Anwärter:in${name ? `: ${name}` : ''}`}</h3>
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+          {`Neue:r Anwärter:in${name ? `: ${name}` : ''}`}
+        </h3>
         <Notizen knoten={k.content} ctx={ctx} />
       </>
     );
@@ -349,7 +359,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const p = z.sub ? ctx.person(z.sub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2">
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
           Aufnahme
           {p ? (
             <>
@@ -369,7 +379,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const p = z.sub ? ctx.person(z.sub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2">
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
           Neues EM
           {p ? (
             <>
@@ -426,7 +436,11 @@ function Abschnitt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   if (art === 'sonstiges' && inhalt.length === 0) return null;
   return (
     <section>
-      {titel && <h2 className="pk-dok-h1">{titel}</h2>}
+      {titel && (
+        <h2 className="pk-dok-h1" id={ctx.ids.get(k)}>
+          {titel}
+        </h2>
+      )}
       {inhalt.map((c, i) =>
         BAUSTEINE.has(c.type) ? (
           <Baustein key={String(c.attrs?.id ?? i)} k={c} ctx={ctx} />
@@ -474,9 +488,14 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
   });
   const alle = [...eingabe.teilnahme, ...eingabe.ems];
+  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, (sub) => {
+    const m = alle.find((x) => x.sub === sub);
+    return m ? personName(m) : null;
+  });
   const ctx: Kontext = {
     eingabe,
     verlauf,
+    ids,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
       return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;
@@ -492,58 +511,60 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
   const emsVorhanden = kopf.ems.length > 0 || kopf.emsFreitext !== '';
 
   return (
-    <article className="pk-dok" data-testid="protokoll-dokument">
-      <h2 className="pk-dok-titel pk-dok-h1" style={{ marginTop: 0, fontWeight: 700 }}>
-        {kopf.titel}
-      </h2>
-      <div className="pk-dok-kopf">
-        <Zeile label="Anwesende Mitglieder:">
-          <Namen liste={kopf.anwesende} />
-        </Zeile>
-        <Zeile label="Fehlende Mitglieder (entschuldigt):">
-          <Namen liste={kopf.entschuldigt} />
-        </Zeile>
-        <Zeile label="Fehlende Mitglieder (unentschuldigt):">
-          <Namen liste={kopf.unentschuldigt} />
-        </Zeile>
-        {emsVorhanden && (
-          <Zeile label="EMs:">
-            <Namen liste={kopf.ems} />
-            {kopf.ems.length > 0 && kopf.emsFreitext && ', '}
-            {kopf.emsFreitext}
+    <DokumentRahmen eintraege={eintraege}>
+      <article className="pk-dok" data-testid="protokoll-dokument">
+        <h2 className="pk-dok-titel pk-dok-h1" style={{ marginTop: 0, fontWeight: 700 }}>
+          {kopf.titel}
+        </h2>
+        <div className="pk-dok-kopf">
+          <Zeile label="Anwesende Mitglieder:">
+            <Namen liste={kopf.anwesende} />
           </Zeile>
-        )}
-        {kopf.anwaerter.length > 0 && (
-          <Zeile label="Anwärter:innen:">
-            <Namen liste={kopf.anwaerter} />
+          <Zeile label="Fehlende Mitglieder (entschuldigt):">
+            <Namen liste={kopf.entschuldigt} />
           </Zeile>
-        )}
-        {kopf.gaeste && <Zeile label="Gäste:">{kopf.gaeste}</Zeile>}
-        <div className="pk-dok-luecke" />
-        <Zeile label="Sitzungsleitung:">{kopf.leitung && <PersonName p={kopf.leitung} />}</Zeile>
-        <Zeile label="Protokoll:">{kopf.protokoll && <PersonName p={kopf.protokoll} />}</Zeile>
-        <div className="pk-dok-luecke" />
-        {satz && (
-          <p>
-            {kopf.leitung && <PersonName p={kopf.leitung} />}
-            {satz}
-          </p>
-        )}
-        {bf && (
-          <p>
-            {bf.fakten}{' '}
-            {kopf.beschlussfaehigkeit?.beschlussfaehig ? (
-              bf.urteil
-            ) : (
-              <span className="pk-dok-warnung">{bf.urteil}</span>
-            )}
-          </p>
-        )}
-      </div>
-      {eingabe.inhalt.content.map((a, i) => (
-        <Abschnitt key={i} k={a} ctx={ctx} />
-      ))}
-      {naechste && <p data-testid="naechste-sitzung">{naechste}</p>}
-    </article>
+          <Zeile label="Fehlende Mitglieder (unentschuldigt):">
+            <Namen liste={kopf.unentschuldigt} />
+          </Zeile>
+          {emsVorhanden && (
+            <Zeile label="EMs:">
+              <Namen liste={kopf.ems} />
+              {kopf.ems.length > 0 && kopf.emsFreitext && ', '}
+              {kopf.emsFreitext}
+            </Zeile>
+          )}
+          {kopf.anwaerter.length > 0 && (
+            <Zeile label="Anwärter:innen:">
+              <Namen liste={kopf.anwaerter} />
+            </Zeile>
+          )}
+          {kopf.gaeste && <Zeile label="Gäste:">{kopf.gaeste}</Zeile>}
+          <div className="pk-dok-luecke" />
+          <Zeile label="Sitzungsleitung:">{kopf.leitung && <PersonName p={kopf.leitung} />}</Zeile>
+          <Zeile label="Protokoll:">{kopf.protokoll && <PersonName p={kopf.protokoll} />}</Zeile>
+          <div className="pk-dok-luecke" />
+          {satz && (
+            <p>
+              {kopf.leitung && <PersonName p={kopf.leitung} />}
+              {satz}
+            </p>
+          )}
+          {bf && (
+            <p>
+              {bf.fakten}{' '}
+              {kopf.beschlussfaehigkeit?.beschlussfaehig ? (
+                bf.urteil
+              ) : (
+                <span className="pk-dok-warnung">{bf.urteil}</span>
+              )}
+            </p>
+          )}
+        </div>
+        {eingabe.inhalt.content.map((a, i) => (
+          <Abschnitt key={i} k={a} ctx={ctx} />
+        ))}
+        {naechste && <p data-testid="naechste-sitzung">{naechste}</p>}
+      </article>
+    </DokumentRahmen>
   );
 }

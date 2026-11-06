@@ -165,6 +165,14 @@ Schreibende sehen im Entwurf den Umschalter „Bearbeiten“ / „Dokument“ (d
 aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschlossene Protokolle zeigen nur das Dokument.
 Das Dokument ist höchstens etwa so breit wie eine A4-Seite (21 cm) und steht mittig.
 
+**Gliederung der Dokumentansicht** (`DokumentGliederung`, Ableitung `dokumentUeberschriften` in `protokoll/dokumentUeberschriften.ts`,
+getestet): nur Überschriften – die Abschnitte, Bausteine, die als Überschrift stehen (Event, Vergangenes Event, Anwärter:in,
+Aufnahme, Neues EM) und im Freitext getippte Überschriften; keine Abstimmungen, Meinungsbilder, Wahlen, Anwesenheitszeilen oder
+Kopf. Verschachtelt nach Ebene (Abschnitt > Überschrift > Zwischenüberschrift); jede Überschrift trägt einen Anker (`id`), den
+die Ansicht setzt. Ab `lg` steht sie als sticky Seitenleiste rechts neben dem Dokument, darunter öffnet der Button „Gliederung“ eine
+Schublade von rechts; Antippen scrollt weich zur Überschrift (unter dem Header) und schließt sie. Für alle sichtbar (auch
+Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedruckt wird sie nicht (`data-druck="aus"`).
+
 - **Titel:** `<Titel der Sitzung> TT.MM.JJJJ` (Datum in Berlin).
 - **Kopfzeilen:** „Anwesende Mitglieder“ (alle „da“, auch die aus Erscheint/Geht-Bausteinen, mit „(ab 21:00 Uhr)“, „(bis 22:10 Uhr)“
   oder „(ab 21:00 Uhr, bis 22:10 Uhr)“ aus den Bausteinen; wer fehlt, aber einen Baustein hat, zählt auch hier; gleich bei
