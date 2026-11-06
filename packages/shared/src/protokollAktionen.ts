@@ -103,6 +103,11 @@ export interface ProtokollAktionenKontext {
   personen: Readonly<Record<string, AktionPersonKontext>>;
   /** The Posten the Wahl blocks pick, by id. */
   posten: Readonly<Record<string, AktionPostenKontext>>;
+  /**
+   * Ids of the votes at which the Sitzung was not beschlussfähig (`nichtBeschlussfaehigeAbstimmungen`):
+   * their Aktionen still run, but provisionally (`vorlaeufig`), the next Sitzung repeats the vote.
+   */
+  nichtBeschlussfaehig?: readonly string[];
 }
 
 /** What the API has to do for an Aktion. */
@@ -129,6 +134,8 @@ export interface ProtokollAktion {
   eventId: string | null;
   /** The members concerned (`aufnahme.status`, `em.status`, `wahl.posten`: the elected). */
   subs: string[];
+  /** The vote was not beschlussfähig: the Aktion runs provisionally, the vote is repeated next time. Only set when true. */
+  vorlaeufig?: boolean;
   /** Null when the Aktion cannot run. */
   plan: AktionPlan | null;
 }
@@ -408,6 +415,8 @@ function wahlPosten(
   };
 }
 
+const VOTE_AKTIONEN: readonly AktionArt[] = ['aufnahme.status', 'em.status', 'wahl.posten'];
+
 /**
  * The Aktionen the Bausteine of a document imply, in document order (also Bausteine inside the free
  * text of other Bausteine). Each Aktion tells whether it can run and why not; the ones whose effect
@@ -421,9 +430,12 @@ export function protokollAktionen(
   const hinzu = (knoten: ProtokollKnoten, art: AktionArt, eintrag: Eintrag | null) => {
     if (!eintrag) return;
     const bausteinId = String((knoten.attrs as { id?: unknown }).id);
+    const vorlaeufig =
+      kontext.nichtBeschlussfaehig?.includes(bausteinId) === true && VOTE_AKTIONEN.includes(art);
     liste.push({
       erledigt: false,
       ...eintrag,
+      ...(vorlaeufig ? { vorlaeufig: true } : {}),
       id: `${bausteinId}:${art}`,
       bausteinId,
       art,

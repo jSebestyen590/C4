@@ -99,6 +99,12 @@ Karten.
 
 Alte Wahlen ohne `postenId`, `gueltigAb` und `stimmenProPerson` bleiben gültig (Standard `null` bzw. leer).
 
+**Wiederholung (`wiederholung`):** Abstimmung, Neues EM (mit Abstimmung), Aufnahme und Wahl haben das optionale Feld
+`wiederholung` (`{ datum, sitzung }` oder `null`, Standard `null`, alte Daten bleiben gültig). Es steht an Abstimmungen, die
+`protokollVorschlag` aus einer nicht beschlussfähigen Sitzung übernommen hat (siehe [Vorbelegung](#vorbelegung-eines-neuen-protokolls)).
+Der Editor zeigt oben im Baustein den Hinweis „Wiederholung der Abstimmung vom 05.11.2026 (Sitzung), damals nicht
+beschlussfähig.“ (Wahl: „… der Wahl …“, Aufnahme: „… der Aufnahme-Abstimmung …“), die Dokumentansicht dieselbe Zeile klein im Block.
+
 **Stimmen müssen zur Anwesenheit passen (`stimmenPruefen` in `protokollStimmen.ts`):** Jede Abstimmung, die Abstimmung eines
 Neuen EM (falls vorhanden), jede Aufnahme und jede Wahl braucht **genau so viele Stimmen, wie Mitglieder an der Stelle anwesend
 sind** (dieselbe Zahl wie „Anwesend: x von y Mitgliedern“, `anwesenheitsVerlauf`). Abstimmung: Ja + Nein + Enthaltung = x. Wahl,
@@ -266,6 +272,14 @@ Events, auf die das alte Protokoll zeigt.
 - **Ausgelassen** werden abgesagte Events, Serien-Events (`serie` gesetzt) und Sitzungen. Steht ein Event schon im alten
   Protokoll, kommt es trotzdem (auch als Serien-Event) mit seinen Notizen. Jede `eventId` erscheint einmal; Events, die es im
   Kalender nicht mehr gibt, bleiben wie geschrieben.
+- **Wiederholung nicht beschlussfähiger Abstimmungen:** War die Sitzung bei einer Abstimmung, einem Neuen EM mit Abstimmung, einer
+  Aufnahme oder Wahl des alten Protokolls nicht beschlussfähig (`nichtBeschlussfaehigeAbstimmungen` in `protokollAnwesenheit.ts`, nach
+  `anwesenheitsVerlauf` an der Stelle des Bausteins; ein Meinungsbild zählt nie), kommt derselbe Baustein ins **Gegenwärtiges** der
+  neuen Sitzung, auch wenn er in den Notizen eines anderen Bausteins stand (er steht dann oben im Abschnitt, in Dokument-Reihenfolge).
+  Antrag, Person bzw. Posten, „Gilt ab“, Anzahl, Stimmen pro Person und Kandidat:innen bleiben, alle Stimmen sind 0, Ergebnis `null`,
+  Stichwahlen und Notizen leer, neue Id, `wiederholung` zeigt auf Datum und Titel der alten Sitzung. Nur das neue Ergebnis zählt. Ist die
+  Wiederholung wieder nicht beschlussfähig, kommt sie in der nächsten Sitzung erneut. Die API ermittelt die Ids aus Teilnahme, EMs und
+  Art des alten Protokolls (live im Entwurf, Schnappschuss wenn abgeschlossen) und gibt sie als `wiederholen` mit.
 - **Der Kalender gewinnt:** Name, Datum, Uhrzeiten, Kategorie, Verantwortliche:r und Dienste (`schichtenAusEvent`, Umkehrung der
   Vorlage-Umrechnung `ausVorlage`) kommen aus dem Kalender, die Notizen aus dem alten Protokoll. Alle Bausteine bekommen neue Ids.
 
@@ -332,6 +346,10 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
   Vorlage: in `event.anlegen` (Kontext `vorlageKategorien`), beim Übernehmen aus dem vorigen Protokoll (`protokollVorschlag`) und
   als angezeigter Wert im Event-Formular (die Hilfe unter „Kategorie“ erscheint nur ohne Kategorie).
 - **Sitzungsdatum:** Liegt die Sitzung in der Zukunft, gilt heute (Statusdatum darf nicht in der Zukunft liegen).
+- **Vorläufig:** Eine Aktion einer Aufnahme, eines Neuen EM oder einer Wahl, die in einer **nicht beschlussfähigen** Sitzung stand
+  (`kontext.nichtBeschlussfaehig`, Ids aus `nichtBeschlussfaehigeAbstimmungen`), bleibt ausführbar, bekommt aber `vorlaeufig: true`. Der
+  Dialog und die Karte zeigen ein Badge „vorläufig“ und „Vorläufig – nicht beschlussfähig, wird in der nächsten Sitzung wiederholt.“.
+  Fällt die Wiederholung anders aus, greifen die Aktionen der neuen Sitzung (z. B. Aufnahme abgelehnt → Extern) oder man korrigiert von Hand.
 - **Schon erledigt:** Hat die Aktion keine Wirkung mehr (Status schon erreicht, Besetzung schon da, Event entspricht dem Baustein),
   ist sie nicht ausführbar mit dem Grund „Bereits erledigt“ (`erledigt: true`). Das macht Wieder öffnen und erneutes Abschließen
   idempotent.

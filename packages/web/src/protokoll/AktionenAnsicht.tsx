@@ -1,4 +1,15 @@
-import { Anchor, Box, Button, Checkbox, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import {
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -28,6 +39,24 @@ function AktionBezug({ aktion }: Readonly<{ aktion: ProtokollAktionDto }>) {
           Im Kalender öffnen
         </Anchor>
       )}
+    </Group>
+  );
+}
+
+/** The vote was not beschlussfähig: the Aktion runs provisionally, the vote is repeated next time. */
+export const VORLAEUFIG_TEXT =
+  'Vorläufig – nicht beschlussfähig, wird in der nächsten Sitzung wiederholt.';
+
+function Vorlaeufig({ aktion }: Readonly<{ aktion: ProtokollAktionDto }>) {
+  if (!aktion.vorlaeufig) return null;
+  return (
+    <Group gap="xs" wrap="nowrap" align="flex-start">
+      <Badge color="orange" variant="light" size="md">
+        vorläufig
+      </Badge>
+      <Text size="sm" c="orange.8" style={{ overflowWrap: 'anywhere', flex: 1 }}>
+        {VORLAEUFIG_TEXT}
+      </Text>
     </Group>
   );
 }
@@ -88,6 +117,7 @@ export function AktionenAuswahl({
                   Zuletzt fehlgeschlagen: {a.ergebnis.text}
                 </Text>
               )}
+              <Vorlaeufig aktion={a} />
               <AktionBezug aktion={a} />
             </Stack>
           </li>
@@ -121,6 +151,7 @@ export function AktionenKarte({
             <li key={a.id}>
               <Stack gap={4}>
                 <Text style={{ overflowWrap: 'anywhere' }}>{a.text}</Text>
+                <Vorlaeufig aktion={a} />
                 <AktionBezug aktion={a} />
                 <AktionZustand aktion={a} />
                 {aktionLaeuft(a) && (

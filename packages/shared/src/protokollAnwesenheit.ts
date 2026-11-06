@@ -1,6 +1,7 @@
 import type { ProtokollArt } from './kalender';
 import {
   bausteinAnwesenheitDatenSchema,
+  bausteinEmDatenSchema,
   type ProtokollDokument,
   type ProtokollKnoten,
   teilnahmeNormalisiert,
@@ -183,6 +184,31 @@ export function anwesenheitsVerlauf(
     }
   });
   return { start, bausteine, anwesendePersonen };
+}
+
+/**
+ * Ids of the votes (Abstimmung, Neues EM with a vote, Aufnahme, Wahl; also inside the notes of other
+ * Bausteine) in document order at which the Sitzung was not beschlussfähig. The next Sitzung repeats
+ * them (`protokollVorschlag`); the Aktionen of them are provisional. A Meinungsbild never counts.
+ */
+export function nichtBeschlussfaehigeAbstimmungen(
+  dokument: ProtokollDokument,
+  eingabe: AnwesenheitsEingabe,
+): string[] {
+  const verlauf = anwesenheitsVerlauf(dokument, eingabe);
+  const ids: string[] = [];
+  inReihenfolge(dokument, (knoten) => {
+    const id = knoten.attrs?.id;
+    if (typeof id !== 'string') return;
+    const abstimmung =
+      knoten.type === 'bausteinBeschluss' ||
+      knoten.type === 'bausteinAufnahme' ||
+      knoten.type === 'bausteinWahl' ||
+      (knoten.type === 'bausteinEm' &&
+        bausteinEmDatenSchema.safeParse(knoten.attrs?.daten).data?.abstimmung != null);
+    if (abstimmung && verlauf.bausteine[id]?.beschlussfaehig === false) ids.push(id);
+  });
+  return ids;
 }
 
 // ---------------------------------------------------------------------------------------------

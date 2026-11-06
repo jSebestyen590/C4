@@ -104,6 +104,17 @@ const stimmen = z
 export const BESCHLUSS_ERGEBNISSE = ['angenommen', 'abgelehnt'] as const;
 export type BeschlussErgebnis = (typeof BESCHLUSS_ERGEBNISSE)[number];
 
+/**
+ * Set on a vote that is the repetition of one from the previous Sitzung, where the session was not
+ * beschlussfähig (`protokollVorschlag`): date (`YYYY-MM-DD`) and title of that Sitzung. Null = an
+ * ordinary vote (and in old data).
+ */
+export const wiederholungSchema = z
+  .strictObject({ datum: datumSchema, sitzung: z.string().max(200) })
+  .nullable()
+  .default(null);
+export type Wiederholung = z.infer<typeof wiederholungSchema>;
+
 export const bausteinEventDatenSchema = z.strictObject({
   /** Vorlage the block was started from; null = none. */
   vorlageId: idOderNull,
@@ -144,6 +155,7 @@ export const bausteinBeschlussDatenSchema = z.strictObject({
   nein: stimmen,
   enthaltung: stimmen,
   ergebnis: z.enum(BESCHLUSS_ERGEBNISSE).nullable(),
+  wiederholung: wiederholungSchema,
 });
 export type BausteinBeschlussDaten = z.infer<typeof bausteinBeschlussDatenSchema>;
 
@@ -161,6 +173,7 @@ export const bausteinEmDatenSchema = z.strictObject({
   sub: idOderNull,
   name: z.string().max(200),
   abstimmung: bausteinEmAbstimmungSchema.nullable(),
+  wiederholung: wiederholungSchema,
 });
 export type BausteinEmDaten = z.infer<typeof bausteinEmDatenSchema>;
 
@@ -193,6 +206,7 @@ export const bausteinAufnahmeDatenSchema = z.strictObject({
   sub: idOderNull,
   name: z.string().max(200),
   abstimmung: bausteinEmAbstimmungSchema,
+  wiederholung: wiederholungSchema,
 });
 export type BausteinAufnahmeDaten = z.infer<typeof bausteinAufnahmeDatenSchema>;
 
@@ -233,6 +247,7 @@ export const bausteinWahlDatenSchema = z.strictObject({
   kandidaten: z.array(bausteinWahlKandidatSchema).max(WAHL_MAX_KANDIDATEN),
   enthaltung: stimmen,
   stichwahlen: z.array(bausteinWahlStichwahlSchema).max(WAHL_MAX_STICHWAHLEN),
+  wiederholung: wiederholungSchema,
 });
 export type BausteinWahlDaten = z.infer<typeof bausteinWahlDatenSchema>;
 
@@ -351,9 +366,9 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
     case 'bausteinAnwaerter':
       return { vorname: '', nachname: '', email: null, sub: null };
     case 'bausteinBeschluss':
-      return { antrag: '', ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+      return { antrag: '', ja: 0, nein: 0, enthaltung: 0, ergebnis: null, wiederholung: null };
     case 'bausteinEm':
-      return { sub: null, name: '', abstimmung: null };
+      return { sub: null, name: '', abstimmung: null, wiederholung: null };
     case 'bausteinAnwesenheit':
       return { art: 'erscheint', sub: null, uhrzeit: '' };
     case 'bausteinMeinungsbild':
@@ -371,12 +386,14 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         kandidaten: [],
         enthaltung: 0,
         stichwahlen: [],
+        wiederholung: null,
       };
     case 'bausteinAufnahme':
       return {
         sub: null,
         name: '',
         abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: null },
+        wiederholung: null,
       };
   }
 }
@@ -715,6 +732,11 @@ export interface ProtokollVorschlagEingabe {
   kalender?: readonly ProtokollKalenderEvent[];
   /** Kategorie of the Vorlagen by id: fills `kategorieId` of copied Event blocks that have none (old data). */
   vorlageKategorien?: Readonly<Record<string, string>>;
+  /**
+   * Votes of the previous protocol to repeat because the session was not beschlussfähig there (ids
+   * from `nichtBeschlussfaehigeAbstimmungen`), with date and title of that Sitzung. Needs `letztes`.
+   */
+  wiederholen?: { bausteinIds: readonly string[]; datum: string; sitzung: string } | null;
 }
 
 /**
@@ -778,6 +800,73 @@ const eventSortierung = (a: BausteinEventDaten, b: BausteinEventDaten): number =
   return (a.beginnZeit ?? '').localeCompare(b.beginnZeit ?? '');
 };
 
+const NULL_STIMMEN = { ja: 0, nein: 0, enthaltung: 0, ergebnis: null } as const;
+
+/**
+ * The same vote again for the next Sitzung: subject, persons, Posten, "Gilt ab" and the number of
+ * votes stay; all counts and the result are reset, runoffs and notes are gone. Null for blocks that
+ * are no vote, that do not parse, or a "Neues EM" without a vote.
+ */
+function abstimmungWiederholen(
+  knoten: ProtokollKnoten,
+  wiederholung: NonNullable<Wiederholung>,
+): ProtokollKnoten | null {
+  const daten: unknown = knoten.attrs?.daten;
+  switch (knoten.type) {
+    case 'bausteinBeschluss': {
+      const d = bausteinBeschlussDatenSchema.safeParse(daten);
+      return d.success
+        ? bausteinErzeugen('bausteinBeschluss', { ...d.data, ...NULL_STIMMEN, wiederholung })
+        : null;
+    }
+    case 'bausteinEm': {
+      const d = bausteinEmDatenSchema.safeParse(daten);
+      return d.success && d.data.abstimmung !== null
+        ? bausteinErzeugen('bausteinEm', {
+            ...d.data,
+            abstimmung: { ...NULL_STIMMEN },
+            wiederholung,
+          })
+        : null;
+    }
+    case 'bausteinAufnahme': {
+      const d = bausteinAufnahmeDatenSchema.safeParse(daten);
+      return d.success
+        ? bausteinErzeugen('bausteinAufnahme', {
+            ...d.data,
+            abstimmung: { ...NULL_STIMMEN },
+            wiederholung,
+          })
+        : null;
+    }
+    case 'bausteinWahl': {
+      const d = bausteinWahlDatenSchema.safeParse(daten);
+      return d.success
+        ? bausteinErzeugen('bausteinWahl', {
+            ...d.data,
+            kandidaten: d.data.kandidaten.map((k) => ({ ...k, stimmen: 0 })),
+            enthaltung: 0,
+            stichwahlen: [],
+            wiederholung,
+          })
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** The nodes with one of the ids, in document order, also inside other Bausteine. */
+function knotenMitIds(
+  knoten: ProtokollKnoten,
+  ids: ReadonlySet<string>,
+  gefunden: ProtokollKnoten[] = [],
+): ProtokollKnoten[] {
+  if (typeof knoten.attrs?.id === 'string' && ids.has(knoten.attrs.id)) gefunden.push(knoten);
+  for (const kind of knoten.content ?? []) knotenMitIds(kind, ids, gefunden);
+  return gefunden;
+}
+
 /**
  * Pre-filled document for a new protocol, from the calendar and the previous protocol.
  *
@@ -792,7 +881,10 @@ const eventSortierung = (a: BausteinEventDaten, b: BausteinEventDaten): number =
  * - The calendar wins: name, dates, times, Kategorie, responsible member and Schichten come from the
  *   calendar. The notes (free text of the block, without votes) come from the previous protocol; new
  *   events get an empty list. Events gone from the calendar are kept as written.
- * "Gegenwärtiges" and "Sonstiges" stay empty; all blocks get new ids.
+ * - "Gegenwärtiges" holds the votes of the previous protocol listed in `wiederholen` (not beschlussfähig
+ *   there; also those from notes of other blocks) as top-level blocks in document order: same subject
+ *   and persons, counts and result reset, `wiederholung` pointing to that Sitzung.
+ * "Sonstiges" stays empty; all blocks get new ids.
  */
 export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): ProtokollDokument {
   const kalender = new Map((eingabe.kalender ?? []).map((e) => [e.id, e]));
@@ -854,6 +946,18 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
     vergangen.push({ eventId: e.id, name: e.titel, datum: daten.datum });
   }
 
+  const wiederholen = eingabe.wiederholen;
+  const wiederholungen: ProtokollKnoten[] =
+    eingabe.letztes && wiederholen && wiederholen.bausteinIds.length > 0
+      ? knotenMitIds(eingabe.letztes, new Set(wiederholen.bausteinIds)).flatMap((k) => {
+          const neu = abstimmungWiederholen(k, {
+            datum: wiederholen.datum,
+            sitzung: wiederholen.sitzung,
+          });
+          return neu ? [neu] : [];
+        })
+      : [];
+
   vergangen.sort((a, b) => {
     if (a.datum === b.datum) return 0;
     if (a.datum === null) return 1;
@@ -873,7 +977,7 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
         'vergangenes',
         vergangen.map((v) => bausteinErzeugen('bausteinVergangenesEvent', v)),
       ),
-      abschnitt('gegenwaertiges', []),
+      abschnitt('gegenwaertiges', wiederholungen),
       abschnitt('zukuenftiges', [
         ...mitId.map((m) => bausteinErzeugen('bausteinEvent', m.daten, m.content)),
         ...ohneId,

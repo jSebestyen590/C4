@@ -542,3 +542,19 @@ describe('Kategorie of the Vorlage', () => {
     expect(ohne).toMatchObject({ ausfuehrbar: false, grund: 'Die Kategorie fehlt.' });
   });
 });
+
+describe('vorlaeufig (not beschlussfähig)', () => {
+  it('keeps the Aktion executable and marks it provisional', () => {
+    const b = baustein('bausteinAufnahme', { sub: 'p', abstimmung: ergebnis('angenommen') });
+    const k = kontext({ personen: { p: person('anwaerter') } });
+    const id = (b.attrs as { id: string }).id;
+    const [normal] = protokollAktionen(dok(b), k);
+    expect(normal!.vorlaeufig).toBeUndefined();
+    const [vorl] = protokollAktionen(dok(b), { ...k, nichtBeschlussfaehig: [id] });
+    expect(vorl).toMatchObject({
+      ausfuehrbar: true,
+      vorlaeufig: true,
+      plan: { status: 'mitglied' },
+    });
+  });
+});

@@ -25,7 +25,9 @@ import {
   type ProtokollKopf,
   type ProtokollNaechsteSitzungVorschlag,
   type ProtokollTeilnahmeWert,
+  type Wiederholung,
 } from '@c4/shared';
+import { wiederholungText, type WiederholungArt } from './wiederholungText';
 
 // Pure derivation of the finished document ("Dokument" view) of the minutes: header lines, opening
 // sentence, quorum texts. Rendering lives in ProtokollDokumentAnsicht.tsx.
@@ -271,7 +273,13 @@ export function stimmenText(a: BausteinEmAbstimmung): string {
   return `Ja ${a.ja} · Nein ${a.nein} · Enthaltung ${a.enthaltung}${ergebnis}`;
 }
 
+/** "Wiederholung der Abstimmung vom 05.11.2026 (Sitzung), damals nicht beschlussfähig." or '' */
+const wiederholungZeile = (art: WiederholungArt, w: Wiederholung | undefined): string =>
+  w ? wiederholungText(art, w) : '';
+
 export interface BeschlussZeilen {
+  /** Hint when the vote repeats one of the previous Sitzung, else '' */
+  wiederholung: string;
   antrag: string;
   stimmen: string;
   /** "(13 von 25 Mitgliedern anwesend)" or '' */
@@ -286,6 +294,7 @@ export function beschlussZeilen(
   const d = bausteinBeschlussDatenSchema.safeParse(daten);
   const b = d.success ? d.data : null;
   return {
+    wiederholung: wiederholungZeile('Abstimmung', b?.wiederholung),
     antrag: b?.antrag.trim() ?? '',
     stimmen: b ? stimmenText(b) : '',
     anwesend: stand ? `(${anwesendText(stand)})` : '',
@@ -294,6 +303,7 @@ export function beschlussZeilen(
 }
 
 export interface AufnahmeZeilen {
+  wiederholung: string;
   /** Free-text name (used when the Baustein has no `sub`), trimmed. */
   name: string;
   sub: string | null;
@@ -311,6 +321,10 @@ export function aufnahmeZeilen(
 ): AufnahmeZeilen {
   const d = bausteinAufnahmeDatenSchema.safeParse(daten);
   return {
+    wiederholung: wiederholungZeile(
+      'Aufnahme-Abstimmung',
+      d.success ? d.data.wiederholung : undefined,
+    ),
     name: d.success ? d.data.name.trim() : '',
     sub: d.success ? d.data.sub : null,
     stimmen: d.success ? stimmenText(d.data.abstimmung) : '',
@@ -347,6 +361,7 @@ export interface WahlKandidat {
 }
 
 export interface WahlZeilen {
+  wiederholung: string;
   posten: string;
   /** "1 Platz" / "2 Plätze" */
   plaetze: string;
@@ -385,6 +400,7 @@ export function wahlZeilen(
     return k ? [kandidat(k, stimmen)] : [];
   };
   return {
+    wiederholung: wiederholungZeile('Wahl', w.wiederholung),
     posten: w.posten.trim(),
     plaetze: w.anzahl === 1 ? '1 Platz' : `${w.anzahl} Plätze`,
     kandidaten: w.kandidaten.map((k) => kandidat(k, k.stimmen)),
@@ -402,6 +418,7 @@ export function wahlZeilen(
 }
 
 export interface EmZeilen {
+  wiederholung: string;
   /** Free-text name (used when the Baustein has no `sub`), trimmed. */
   name: string;
   sub: string | null;
@@ -413,10 +430,13 @@ export interface EmZeilen {
 /** Lines of a `bausteinEm`; the vote line only exists when there is a vote. */
 export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined): EmZeilen {
   const d = bausteinEmDatenSchema.safeParse(daten);
-  if (!d.success) return { name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+  if (!d.success) {
+    return { wiederholung: '', name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+  }
   const { sub, name, abstimmung: a } = d.data;
   const anwesend = stand ? ` (${anwesendText(stand)})` : '';
   return {
+    wiederholung: wiederholungZeile('Abstimmung', d.data.wiederholung),
     name: name.trim(),
     sub,
     abstimmung: a ? `Abstimmung: ${stimmenText(a)}${anwesend}` : '',

@@ -143,6 +143,7 @@ import {
   protokollDokumentPruefen,
   stimmenPruefen,
   protokollEventIds,
+  nichtBeschlussfaehigeAbstimmungen,
   protokollKopfLeer,
   protokollKopfSchema,
   protokollLeer,
@@ -988,6 +989,28 @@ export function createApp(deps: AppDeps) {
   };
 
   /**
+   * Ids of the votes of a protocol at which its Sitzung was not beschlussfähig (attendance as the
+   * protocol shows it: live in a draft, the snapshot once closed).
+   */
+  const nichtBeschlussfaehigVon = async (
+    p: ProtokollDaten,
+    dokument: ProtokollDokument,
+  ): Promise<string[]> => {
+    const [[event], mitglieder, antworten] = await Promise.all([
+      deps.kalender.eventsKurz([p.eventId]),
+      protokollMitglieder(),
+      deps.kalender.teilnahmeAntworten(p.eventId),
+    ]);
+    const kopf = protokollKopfLesen(p.kopf);
+    const { teilnahme, ems } = protokollListen(kopf, p.status, mitglieder, antworten);
+    return nichtBeschlussfaehigeAbstimmungen(dokument, {
+      art: protokollArtVon(kopf, p.status, event?.protokollArt ?? 'sitzung'),
+      teilnahme: teilnahme.map((t) => ({ sub: t.sub, status: t.status, wert: t.wert })),
+      ems: ems.filter((e) => e.ausgewaehlt),
+    });
+  };
+
+  /**
    * Pre-filled document and header for a new protocol: the calendar from the previous Sitzung on (and
    * the events the latest protocol of an earlier Sitzung points to) plus that protocol's notes.
    */
@@ -1045,6 +1068,14 @@ export function createApp(deps: AppDeps) {
         letztes: dokument,
         kalender,
         vorlageKategorien: Object.fromEntries(vorlagen.map((v) => [v.id, v.kategorieId])),
+        wiederholen:
+          letztes && dokument && letzteBeginn
+            ? {
+                bausteinIds: await nichtBeschlussfaehigVon(letztes, dokument),
+                datum: datumBerlin(letzteBeginn),
+                sitzung: events.find((e) => e.id === letztes.eventId)?.titel ?? 'Sitzung',
+              }
+            : null,
       }),
       kopf: protokollKopfLeer(),
     };
@@ -1128,7 +1159,10 @@ export function createApp(deps: AppDeps) {
     const [event] = await deps.kalender.eventsKurz([p.eventId]);
     const sitzungDatum = datumBerlin(event?.beginn ?? p.erstelltAm.toISOString());
     const kontext = await aktionenLaufer.kontextLesen(dokument, sitzungDatum, heuteBerlin());
-    return protokollAktionen(dokument, kontext);
+    return protokollAktionen(dokument, {
+      ...kontext,
+      nichtBeschlussfaehig: await nichtBeschlussfaehigVon(p, dokument),
+    });
   };
 
   /** The Aktionen as the web shows them: state, stored result and the members concerned. */

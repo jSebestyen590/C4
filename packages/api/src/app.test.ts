@@ -6757,6 +6757,74 @@ describe('protokolle', () => {
     ).toBe(400);
   });
 
+  it('repeats votes that were not beschlussfähig in the next Sitzung', async () => {
+    const t = await setup();
+    // m2 is the only member and did not answer: 0 of 1 present, so the Sitzung is not beschlussfähig.
+    const aufnahme = bausteinErzeugen('bausteinAufnahme', {
+      sub: 'r',
+      name: '',
+      abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: 'angenommen' },
+      wiederholung: null,
+    });
+    const doc = protokollLeer();
+    doc.content[1]!.content = [aufnahme, { type: 'paragraph' }];
+    const id = (await (await t.anlegen('admin-token', { eventId: 's1', inhalt: doc })).json())
+      .id as string;
+
+    // The Aktion still runs, but provisionally.
+    const aktionen = (await (
+      await t.app.request(`/api/protokolle/${id}/aktionen`, json('admin-token', 'GET'))
+    ).json()) as { aktionen: { art: string; ausfuehrbar: boolean; vorlaeufig?: boolean }[] };
+    expect(aktionen.aktionen).toMatchObject([
+      { art: 'aufnahme.status', ausfuehrbar: true, vorlaeufig: true },
+    ]);
+
+    const zu = await t.app.request(
+      `/api/protokolle/${id}/status`,
+      json('admin-token', 'PUT', { status: 'abgeschlossen' }),
+    );
+    expect(zu.status).toBe(200);
+
+    const vorschlag = (await (
+      await t.app.request('/api/protokolle/vorschlag?eventId=s2', json('admin-token', 'GET'))
+    ).json()) as { inhalt: ProtokollDokument };
+    const gegenwart = vorschlag.inhalt.content[1]!.content!.filter((k) =>
+      k.type.startsWith('baustein'),
+    );
+    expect(gegenwart).toHaveLength(1);
+    expect(gegenwart[0]).toMatchObject({
+      type: 'bausteinAufnahme',
+      attrs: {
+        daten: {
+          sub: 'r',
+          abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: null },
+          wiederholung: { datum: '2026-10-06', sitzung: 'Sitzung' },
+        },
+      },
+    });
+    expect(gegenwart[0]!.attrs!.id).not.toBe(aufnahme.attrs.id);
+  });
+
+  it('does not repeat votes of a beschlussfähige Sitzung', async () => {
+    const t = await setup();
+    t.antworten.m2 = 'teilnahme';
+    const beschluss = bausteinErzeugen('bausteinBeschluss', {
+      antrag: 'Bier',
+      ja: 1,
+      nein: 0,
+      enthaltung: 0,
+      ergebnis: 'angenommen',
+      wiederholung: null,
+    });
+    const doc = protokollLeer();
+    doc.content[1]!.content = [beschluss, { type: 'paragraph' }];
+    await t.anlegen('admin-token', { eventId: 's1', inhalt: doc });
+    const vorschlag = (await (
+      await t.app.request('/api/protokolle/vorschlag?eventId=s2', json('admin-token', 'GET'))
+    ).json()) as { inhalt: ProtokollDokument };
+    expect(vorschlag.inhalt.content[1]!.content).toEqual([{ type: 'paragraph' }]);
+  });
+
   it('turns events that are over by the next Sitzung into past ones', async () => {
     const t = await setup();
     await t.anlegen('admin-token', {

@@ -27,7 +27,14 @@ function doc(...gegenwaertiges: ProtokollKnoten[]): ProtokollDokument {
 const eingabe = (n: number) => ({ art: 'sitzung' as const, teilnahme: mitglieder(n) });
 
 const beschluss = (ja: number, nein: number, enthaltung: number, antrag = 'Bier') =>
-  bausteinErzeugen('bausteinBeschluss', { antrag, ja, nein, enthaltung, ergebnis: null });
+  bausteinErzeugen('bausteinBeschluss', {
+    antrag,
+    ja,
+    nein,
+    enthaltung,
+    ergebnis: null,
+    wiederholung: null,
+  });
 
 function wahl(teil: Partial<BausteinWahlDaten>) {
   return bausteinErzeugen('bausteinWahl', {
@@ -39,6 +46,7 @@ function wahl(teil: Partial<BausteinWahlDaten>) {
     kandidaten: [],
     enthaltung: 0,
     stichwahlen: [],
+    wiederholung: null,
     ...teil,
   });
 }
@@ -105,12 +113,18 @@ describe('stimmenPruefen: Abstimmung', () => {
 
 describe('stimmenPruefen: Neues EM und Aufnahme', () => {
   it('checks the optional vote of a Neues EM only when there is one', () => {
-    const ohne = bausteinErzeugen('bausteinEm', { sub: null, name: 'Ede', abstimmung: null });
+    const ohne = bausteinErzeugen('bausteinEm', {
+      sub: null,
+      name: 'Ede',
+      abstimmung: null,
+      wiederholung: null,
+    });
     expect(stimmenPruefen(doc(ohne), eingabe(5)).problems).toEqual([]);
     const mit = bausteinErzeugen('bausteinEm', {
       sub: null,
       name: 'Ede',
       abstimmung: { ja: 1, nein: 0, enthaltung: 0, ergebnis: null },
+      wiederholung: null,
     });
     expect(stimmenPruefen(doc(mit), eingabe(5)).problems[0]!.text).toBe(
       'Neues EM „Ede“, Abstimmung: 1 Stimme, aber 5 Mitglieder anwesend.',
@@ -122,6 +136,7 @@ describe('stimmenPruefen: Neues EM und Aufnahme', () => {
       sub: 'x',
       name: '',
       abstimmung: { ja: 2, nein: 0, enthaltung: 0, ergebnis: null },
+      wiederholung: null,
     });
     const r = stimmenPruefen(doc(a), {
       ...eingabe(2),

@@ -22,6 +22,9 @@ import {
   type BausteinKnoten,
   type BausteinWahlDaten,
   bausteinWahlDatenSchema,
+  bausteinBeschlussDatenSchema,
+  bausteinAufnahmeDatenSchema,
+  bausteinEmDatenSchema,
   type ProtokollDokument,
   type ProtokollKalenderEvent,
   type ProtokollKnoten,
@@ -126,6 +129,7 @@ describe('protokollDokumentPruefen', () => {
           sub: 'a',
           name: '',
           abstimmung: { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' },
+          wiederholung: null,
         }),
       ],
       zukuenftiges: [eventBaustein({ name: 'Barabend', datum: '2026-12-01' }, 'Text')],
@@ -150,6 +154,7 @@ describe('protokollDokumentPruefen', () => {
       sub: null,
       name: '',
       abstimmung: null,
+      wiederholung: null,
     });
   });
 
@@ -844,6 +849,7 @@ describe('Wahl', () => {
     kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
     enthaltung: 0,
     stichwahlen,
+    wiederholung: null,
   });
   const runde = (stimmen: Record<string, number>): BausteinWahlDaten['stichwahlen'][number] => ({
     stimmen,
@@ -864,6 +870,7 @@ describe('Wahl', () => {
       kandidaten: [],
       enthaltung: 0,
       stichwahlen: [],
+      wiederholung: null,
     });
     expect(pruefen(daten([3, 2]))).toBeNull();
     expect(pruefen({ ...daten([3, 2]), postenId: 'p1', gueltigAb: '2027-01-01' })).toBeNull();
@@ -984,5 +991,149 @@ describe('Wahl', () => {
 
   it('does not count Enthaltungen', () => {
     expect(wahlErgebnis({ ...daten([1, 0]), enthaltung: 10 }).gewaehlt).toEqual(['k0']);
+  });
+});
+
+describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
+  const sitzung = '2026-11-10';
+  const wiederholen = (ids: string[]) => ({
+    bausteinIds: ids,
+    datum: '2026-11-05',
+    sitzung: 'Sitzung',
+  });
+  const gegenwaertiges = (doc: ProtokollDokument) => doc.content[1]!.content ?? [];
+  const w = { datum: '2026-11-05', sitzung: 'Sitzung' };
+
+  it('defaults wiederholung to null in old data', () => {
+    const alt = { antrag: 'x', ja: 1, nein: 0, enthaltung: 0, ergebnis: null };
+    expect(bausteinBeschlussDatenSchema.parse(alt).wiederholung).toBeNull();
+    expect(
+      bausteinAufnahmeDatenSchema.parse({
+        sub: null,
+        name: '',
+        abstimmung: { ja: 1, nein: 0, enthaltung: 0, ergebnis: null },
+      }).wiederholung,
+    ).toBeNull();
+    expect(
+      bausteinEmDatenSchema.parse({ sub: null, name: '', abstimmung: null }).wiederholung,
+    ).toBeNull();
+    const wahl: Record<string, unknown> = { ...bausteinLeer('bausteinWahl') };
+    delete wahl.wiederholung;
+    expect(bausteinWahlDatenSchema.parse(wahl).wiederholung).toBeNull();
+    expect(bausteinLeer('bausteinBeschluss').wiederholung).toBeNull();
+  });
+
+  it('copies the votes into Gegenwärtiges, reset, with new ids and a pointer to the Sitzung', () => {
+    const beschluss = bausteinErzeugen(
+      'bausteinBeschluss',
+      { antrag: 'Bier', ja: 3, nein: 1, enthaltung: 0, ergebnis: 'angenommen', wiederholung: null },
+      [absatz('Notiz')],
+    );
+    const aufnahme = bausteinErzeugen('bausteinAufnahme', {
+      sub: 'a',
+      name: '',
+      abstimmung: { ja: 2, nein: 1, enthaltung: 1, ergebnis: 'angenommen' },
+      wiederholung: null,
+    });
+    const em = bausteinErzeugen('bausteinEm', {
+      sub: 'e',
+      name: '',
+      abstimmung: { ja: 1, nein: 0, enthaltung: 0, ergebnis: 'angenommen' },
+      wiederholung: null,
+    });
+    const wahl = bausteinErzeugen('bausteinWahl', {
+      ...bausteinLeer('bausteinWahl'),
+      posten: 'Kasse',
+      postenId: 'p1',
+      gueltigAb: '2027-01-01',
+      anzahl: 2,
+      stimmenProPerson: 1,
+      kandidaten: [{ id: 'k1', sub: 'x', name: '', stimmen: 4 }],
+      enthaltung: 2,
+      stichwahlen: [{ stimmen: { k1: 1 }, enthaltung: 0 }],
+    });
+    const letztes = dokument({ gegenwaertiges: [beschluss, aufnahme, em, wahl] });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      wiederholen: wiederholen([beschluss, aufnahme, em, wahl].map((k) => k.attrs.id)),
+    });
+    const neu = gegenwaertiges(doc).filter((k) => k.type.startsWith('baustein'));
+    expect(neu.map((k) => k.type)).toEqual([
+      'bausteinBeschluss',
+      'bausteinAufnahme',
+      'bausteinEm',
+      'bausteinWahl',
+    ]);
+    const alteIds = new Set([beschluss, aufnahme, em, wahl].map((k) => k.attrs.id));
+    expect(neu.every((k) => !alteIds.has(k.attrs!.id as string))).toBe(true);
+    expect(neu[0]!.attrs!.daten).toEqual({
+      antrag: 'Bier',
+      ja: 0,
+      nein: 0,
+      enthaltung: 0,
+      ergebnis: null,
+      wiederholung: w,
+    });
+    expect(neu[0]!.content).toEqual([{ type: 'paragraph' }]);
+    expect(neu[1]!.attrs!.daten).toEqual({
+      sub: 'a',
+      name: '',
+      abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: null },
+      wiederholung: w,
+    });
+    expect(neu[2]!.attrs!.daten).toMatchObject({
+      sub: 'e',
+      abstimmung: { ja: 0, nein: 0, enthaltung: 0, ergebnis: null },
+      wiederholung: w,
+    });
+    expect(neu[3]!.attrs!.daten).toEqual({
+      posten: 'Kasse',
+      postenId: 'p1',
+      gueltigAb: '2027-01-01',
+      anzahl: 2,
+      stimmenProPerson: 1,
+      kandidaten: [{ id: 'k1', sub: 'x', name: '', stimmen: 0 }],
+      enthaltung: 0,
+      stichwahlen: [],
+      wiederholung: w,
+    });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('lifts votes from the notes of other blocks and only takes the listed ones', () => {
+    const innen = bausteinErzeugen('bausteinBeschluss', {
+      ...bausteinLeer('bausteinBeschluss'),
+      antrag: 'innen',
+    });
+    const nein = bausteinErzeugen('bausteinBeschluss', {
+      ...bausteinLeer('bausteinBeschluss'),
+      antrag: 'nein',
+    });
+    const event = eventBaustein({ name: 'Fest', datum: '2026-12-01', eventId: 'e1' });
+    event.content = [absatz('Text'), innen];
+    const letztes = dokument({ gegenwaertiges: [event, nein] });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      wiederholen: wiederholen([innen.attrs.id]),
+    });
+    const neu = gegenwaertiges(doc).filter((k) => k.type.startsWith('baustein'));
+    expect(neu.map((k) => (k.attrs!.daten as { antrag: string }).antrag)).toEqual(['innen']);
+    // The Event block itself is not copied into Gegenwärtiges (no longer in the past) and loses the vote.
+    expect(JSON.stringify(doc.content[2])).not.toContain('"innen"');
+  });
+
+  it('skips a Neues EM without a vote and does nothing without a list', () => {
+    const em = bausteinErzeugen('bausteinEm');
+    const letztes = dokument({ gegenwaertiges: [em] });
+    const mit = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      wiederholen: wiederholen([em.attrs.id]),
+    });
+    expect(gegenwaertiges(mit).filter((k) => k.type.startsWith('baustein'))).toEqual([]);
+    const ohne = protokollVorschlag({ sitzungDatum: sitzung, letztes });
+    expect(gegenwaertiges(ohne).filter((k) => k.type.startsWith('baustein'))).toEqual([]);
   });
 });

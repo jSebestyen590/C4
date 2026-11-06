@@ -68,6 +68,7 @@ import {
   zeitWert,
 } from './bausteinLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
+import { WiederholungHinweis } from './WiederholungHinweis';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
 import { SchichtEditor, SchichtListe } from './SchichtEditor';
 
@@ -554,6 +555,7 @@ export function BeschlussFormular({
   if (!editierbar) {
     return (
       <Stack gap={4}>
+        <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
         <Text style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
           {daten.antrag || 'Antrag offen'}
         </Text>
@@ -563,6 +565,7 @@ export function BeschlussFormular({
   }
   return (
     <Stack gap="xs">
+      <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
       <LokalTextbereich
         label="Antrag"
         data-fokus="antrag"
@@ -597,6 +600,7 @@ export function EmFormular({
     const name = daten.name.trim();
     return (
       <Stack gap={4}>
+        <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
         <PersonOderName person={person} name={name} />
         {a && <StimmenAnzeige a={a} />}
       </Stack>
@@ -605,6 +609,7 @@ export function EmFormular({
   const status = new Map(personen.map((p) => [p.sub, p.status]));
   return (
     <Stack gap="xs">
+      <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
       <Select
         label="Person"
         placeholder="Person wählen"
@@ -671,6 +676,7 @@ export function AufnahmeFormular({
   if (!editierbar) {
     return (
       <Stack gap={4}>
+        <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
         <PersonOderName person={person} name={daten.name.trim()} />
         <StimmenAnzeige a={daten.abstimmung} />
       </Stack>
@@ -679,6 +685,7 @@ export function AufnahmeFormular({
   const status = new Map(personen.map((p) => [p.sub, p.status]));
   return (
     <Stack gap="xs">
+      <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
       <Select
         label="Person"
         placeholder="Person wählen"
@@ -903,6 +910,7 @@ export function WahlFormular({
       ));
     return (
       <Stack gap={4}>
+        <WiederholungHinweis art="Wahl" wiederholung={daten.wiederholung} />
         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
           {daten.posten || 'Posten offen'} ({plaetze})
         </Text>
@@ -931,6 +939,7 @@ export function WahlFormular({
   const ueberzaehlig = daten.stichwahlen.length > ergebnis.runden.length;
   return (
     <Stack gap="xs">
+      <WiederholungHinweis art="Wahl" wiederholung={daten.wiederholung} />
       <Autocomplete
         label="Posten"
         placeholder="Posten wählen oder eintippen"

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   anwesenheitsVerlauf,
   beschlussfaehigkeit,
+  nichtBeschlussfaehigeAbstimmungen,
   datumKurz,
   anwesenheitsZeitText,
   anwesenheitsZeiten,
@@ -478,5 +479,52 @@ describe('headings', () => {
     expect(vergangenesUeberschrift({ name: 'Barabend', datum: '2026-02-11' })).toBe(
       '11.02. Barabend',
     );
+  });
+});
+
+describe('nichtBeschlussfaehigeAbstimmungen', () => {
+  const em = (abstimmung: boolean) =>
+    bausteinErzeugen('bausteinEm', {
+      ...bausteinLeer('bausteinEm'),
+      abstimmung: abstimmung ? { ja: 0, nein: 0, enthaltung: 0, ergebnis: null } : null,
+    });
+  // 10 members, 3 present: not beschlussfähig; 6 present would be.
+  const eingabe = {
+    art: 'sitzung' as const,
+    teilnahme: mitglieder(10).map((t, i) => ({
+      ...t,
+      wert: i < 3 ? ('anwesend' as const) : ('entschuldigt' as const),
+    })),
+  };
+
+  it('lists votes, Aufnahmen, Wahlen and EMs with a vote in document order, also nested', () => {
+    const b = beschluss();
+    const innen = bausteinErzeugen('bausteinWahl');
+    const aussen = bausteinErzeugen('bausteinEvent', undefined, [{ type: 'paragraph' }, innen]);
+    const a = bausteinErzeugen('bausteinAufnahme');
+    const e = em(true);
+    const ids = nichtBeschlussfaehigeAbstimmungen(doc(b, aussen, a, e), eingabe);
+    expect(ids).toEqual([b, innen, a, e].map((k) => k.attrs.id));
+  });
+
+  it('leaves out a Meinungsbild and a Neues EM without a vote', () => {
+    const m = bausteinErzeugen('bausteinMeinungsbild');
+    expect(nichtBeschlussfaehigeAbstimmungen(doc(m, em(false)), eingabe)).toEqual([]);
+  });
+
+  it('only lists votes at which the Sitzung was not beschlussfähig', () => {
+    const vorher = beschluss();
+    const kommt = [3, 4, 5].map((i) => anw('erscheint', `m${i}`));
+    const nachher = beschluss();
+    // m3..m5 are absent at the opening and arrive: 3 -> 6 present of 10.
+    const teilnahme = mitglieder(10).map((t, i) => ({
+      ...t,
+      wert: i <= 5 ? ('anwesend' as const) : ('entschuldigt' as const),
+    }));
+    const ids = nichtBeschlussfaehigeAbstimmungen(doc(vorher, ...kommt, nachher), {
+      art: 'sitzung',
+      teilnahme,
+    });
+    expect(ids).toEqual([vorher.attrs.id]);
   });
 });

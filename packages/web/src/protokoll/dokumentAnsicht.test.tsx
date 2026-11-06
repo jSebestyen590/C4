@@ -1,7 +1,8 @@
 import { MantineProvider } from '@mantine/core';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { protokollKopfLeer, type ProtokollKnoten } from '@c4/shared';
+import { bausteinLeer, protokollKopfLeer, type ProtokollKnoten } from '@c4/shared';
+import { WiederholungHinweis } from './WiederholungHinweis';
 import { ProtokollDokumentAnsicht } from './ProtokollDokumentAnsicht';
 import type { DokumentEingabe } from './dokumentDaten';
 
@@ -263,5 +264,81 @@ describe('ProtokollDokumentAnsicht', () => {
     const satz = 'Die nächste Sitzung findet am Dienstag, 13.02.2024 um 20:00 Uhr statt.';
     expect(voll).toContain(satz);
     expect(voll.indexOf(satz)).toBeGreaterThan(voll.indexOf('Grillen im Sommer'));
+  });
+});
+
+describe('Wiederholung einer Abstimmung', () => {
+  const wiederholung = { datum: '2026-11-05', sitzung: 'Test Sitzung' };
+  const knoten = (type: string, daten: object): ProtokollKnoten => ({
+    type,
+    attrs: { id: type, daten },
+    content: [{ type: 'paragraph' }],
+  });
+  const stimmen = { ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+
+  it('shows the hint in the document for every kind of vote', () => {
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          {
+            ...gegenwaertiges!,
+            content: [
+              knoten('bausteinBeschluss', { antrag: 'Bier', ...stimmen, wiederholung }),
+              knoten('bausteinAufnahme', {
+                sub: null,
+                name: 'Max',
+                abstimmung: stimmen,
+                wiederholung,
+              }),
+              knoten('bausteinWahl', {
+                ...bausteinLeer('bausteinWahl'),
+                posten: 'Kasse',
+                wiederholung,
+              }),
+              knoten('bausteinEm', { sub: null, name: 'Ede', abstimmung: stimmen, wiederholung }),
+              { type: 'paragraph' },
+            ],
+          },
+          zukuenftiges!,
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    const hinweis = (art: string) =>
+      `Wiederholung der ${art} vom 05.11.2026 (Test Sitzung), damals nicht beschlussfähig.`;
+    expect(html).toContain(hinweis('Abstimmung'));
+    expect(html).toContain(hinweis('Aufnahme-Abstimmung'));
+    expect(html).toContain(hinweis('Wahl'));
+    expect(html.split(hinweis('Abstimmung'))).toHaveLength(3); // Abstimmung and Neues EM
+  });
+
+  it('shows no hint for an ordinary vote', () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={eingabe} />
+      </MantineProvider>,
+    );
+    expect(html).not.toContain('Wiederholung der');
+  });
+
+  it('shows the hint in the editor forms', () => {
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <WiederholungHinweis art="Wahl" wiederholung={wiederholung} />
+        <WiederholungHinweis art="Wahl" wiederholung={null} />
+      </MantineProvider>,
+    );
+    expect(html).toContain(
+      'Wiederholung der Wahl vom 05.11.2026 (Test Sitzung), damals nicht beschlussfähig.',
+    );
+    expect(html.split('data-testid="wiederholung-hinweis"')).toHaveLength(2);
   });
 });

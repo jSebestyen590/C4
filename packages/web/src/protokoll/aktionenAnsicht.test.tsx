@@ -170,3 +170,27 @@ describe('AktionenKarte', () => {
     expect(html).toContain('/kalender/events/ev9');
   });
 });
+
+describe('vorläufige Aktionen', () => {
+  const vorlaeufig = [{ ...basis, art: 'aufnahme.status' as const, vorlaeufig: true }];
+
+  it('marks provisional Aktionen in the dialog and on the card', () => {
+    const dialog = rendern(
+      <AktionenAuswahl aktionen={vorlaeufig} auswahl={[]} onAuswahl={() => undefined} />,
+    );
+    expect(dialog).toContain('vorläufig');
+    expect(dialog).toContain('nicht beschlussfähig, wird in der nächsten Sitzung wiederholt');
+    const karte = rendern(
+      <AktionenKarte
+        aktionen={vorlaeufig}
+        laeuftId={null}
+        gesperrt={false}
+        onAusfuehren={() => undefined}
+      />,
+    );
+    expect(karte).toContain('nicht beschlussfähig, wird in der nächsten Sitzung wiederholt');
+    expect(
+      rendern(<AktionenAuswahl aktionen={[basis]} auswahl={[]} onAuswahl={() => undefined} />),
+    ).not.toContain('vorläufig');
+  });
+});

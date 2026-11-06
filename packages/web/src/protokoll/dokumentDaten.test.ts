@@ -186,6 +186,7 @@ describe('Texte', () => {
         stand,
       ),
     ).toEqual({
+      wiederholung: '',
       antrag: 'Neuer Tresen',
       stimmen: 'Ja 8 · Nein 3 · Enthaltung 2 – angenommen',
       anwesend: '(10 von 25 Mitgliedern anwesend)',
@@ -201,6 +202,7 @@ describe('Texte', () => {
     const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
     const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
     expect(aufnahmeZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({
+      wiederholung: '',
       name: '',
       sub: 'a',
       stimmen: 'Ja 8 · Nein 3 · Enthaltung 2 – angenommen',
@@ -208,6 +210,19 @@ describe('Texte', () => {
       nichtBeschlussfaehig: false,
     });
     const nicht = { ...stand, anwesend: 10, beschlussfaehig: false };
+    expect(
+      aufnahmeZeilen(
+        {
+          sub: null,
+          name: 'Max',
+          abstimmung,
+          wiederholung: { datum: '2026-11-05', sitzung: 'Test Sitzung' },
+        },
+        nicht,
+      ).wiederholung,
+    ).toBe(
+      'Wiederholung der Aufnahme-Abstimmung vom 05.11.2026 (Test Sitzung), damals nicht beschlussfähig.',
+    );
     expect(aufnahmeZeilen({ sub: null, name: ' Max ', abstimmung }, nicht)).toMatchObject({
       name: 'Max',
       sub: null,
@@ -283,6 +298,7 @@ describe('Texte', () => {
     const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
     const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
     expect(emZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({
+      wiederholung: '',
       name: '',
       sub: 'a',
       abstimmung:
@@ -295,6 +311,7 @@ describe('Texte', () => {
       nichtBeschlussfaehig: true,
     });
     expect(emZeilen({ sub: 'a', name: '', abstimmung: null }, nicht)).toEqual({
+      wiederholung: '',
       name: '',
       sub: 'a',
       abstimmung: '',

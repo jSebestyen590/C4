@@ -280,6 +280,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     return (
       <>
         <div className="pk-dok-beschluss">
+          {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
           <p>
             <strong>Abstimmung:</strong> {z.antrag}
           </p>
@@ -310,6 +311,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     return (
       <>
         <div className="pk-dok-beschluss">
+          {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
           <p>
             <strong>Wahl:</strong> {z.posten} ({z.plaetze})
           </p>
@@ -369,6 +371,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
             z.name && `: ${z.name}`
           )}
         </h3>
+        {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
         <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
         <Notizen knoten={k.content} ctx={ctx} />
       </>
@@ -389,6 +392,7 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
             z.name && `: ${z.name}`
           )}
         </h3>
+        {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
         {z.abstimmung && (
           <p>
             {z.abstimmung}
