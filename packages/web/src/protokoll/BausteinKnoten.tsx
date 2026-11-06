@@ -11,6 +11,7 @@ import {
 } from '@tiptap/react';
 import { useState, type ComponentType, type ReactElement } from 'react';
 import {
+  BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
@@ -49,6 +50,15 @@ const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote';
 const FREITEXT = `(${TEXT} | innerbaustein)+`;
 const FREITEXT_NUR_TEXT = `(${TEXT})+`;
 
+/**
+ * The data of a Baustein with the schema defaults filled in: nodes saved before a field existed lack it
+ * in their raw attrs (e.g. `annahme` of a Wahl). Data the schema rejects (a draft) stay as they are.
+ */
+function mitStandardwerten<T extends BausteinTyp>(typ: T, daten: unknown): BausteinDatenVon[T] {
+  const geprueft = BAUSTEIN_DATEN_SCHEMAS[typ].safeParse(daten);
+  return (geprueft.success ? geprueft.data : daten) as BausteinDatenVon[T];
+}
+
 function BausteinAnsicht<T extends BausteinTyp>({
   typ,
   Formular,
@@ -61,7 +71,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
   const [loeschen, setLoeschen] = useState(false);
-  const daten = node.attrs.daten as BausteinDatenVon[T];
+  const daten = mitStandardwerten(typ, node.attrs.daten);
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
   const aendern = (f: (alt: BausteinDatenVon[T]) => BausteinDatenVon[T]) => {
@@ -69,7 +79,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
     if (pos === undefined) return;
     const aktuell = editor.state.doc.nodeAt(pos);
     if (aktuell?.type !== node.type) return;
-    const neu = f(aktuell.attrs.daten as BausteinDatenVon[T]);
+    const neu = f(mitStandardwerten(typ, aktuell.attrs.daten));
     editor.view.dispatch(
       editor.state.tr.setNodeMarkup(pos, undefined, { ...aktuell.attrs, daten: neu }),
     );

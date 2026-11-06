@@ -363,7 +363,8 @@ export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
   const abgelehnt: string[] = [];
   for (;;) {
     const ergebnis = wahlErgebnisRoh(aktuell);
-    const neu = ergebnis.gewaehlt.filter((id) => daten.annahme[id] === false);
+    // `?.`: raw editor data of an older Wahl may lack the field (the schema default applies only on parse).
+    const neu = ergebnis.gewaehlt.filter((id) => daten.annahme?.[id] === false);
     if (neu.length === 0) return { ...ergebnis, abgelehnt };
     abgelehnt.push(...neu);
     aktuell = {
@@ -1178,3 +1179,37 @@ export type ProtokollStatusEingabe = z.infer<typeof protokollStatusSchema>;
 /** Ids of the Aktionen to run (again) for a protocol, open or closed. */
 export const protokollAktionenAusfuehrenSchema = z.object({ aktionen: aktionIdsSchema.min(1) });
 export type ProtokollAktionenAusfuehren = z.infer<typeof protokollAktionenAusfuehrenSchema>;
+
+/** Largest PDF of a closed protocol the API takes (Graph's simple upload and Lambda's payload limit). */
+export const PROTOKOLL_PDF_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The PDF of a closed protocol for OneDrive. JSON with base64 instead of raw bytes: API Gateway and the
+ * Lambda adapter pass binary request bodies only with extra configuration, JSON always arrives intact.
+ */
+export const protokollPdfSchema = z.object({
+  /** File name, e.g. `2026-11-04_Sitzung.pdf`; the API cleans it again. */
+  dateiname: z.string().trim().min(1).max(200),
+  /** The PDF bytes, base64 (standard alphabet). */
+  base64: z.string().min(1).max(Math.ceil((PROTOKOLL_PDF_MAX_BYTES * 4) / 3) + 1024),
+});
+export type ProtokollPdfEingabe = z.infer<typeof protokollPdfSchema>;
+
+export interface ProtokollPdfAntwort {
+  gespeichert: true;
+  /** Path in OneDrive, e.g. `Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung.pdf`. */
+  pfad: string;
+}
+
+/** File name safe for OneDrive and ending in `.pdf`; null if nothing usable is left. */
+export function protokollPdfDateiname(roh: string): string | null {
+  const name = roh
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\.pdf$/i, '')
+    .replace(/[.\s]+$/, '')
+    .slice(0, 150)
+    .trim();
+  return name ? `${name}.pdf` : null;
+}
