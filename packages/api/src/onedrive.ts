@@ -9,7 +9,7 @@ import { bilderFreigaben, bilderOrdnerCache, onedriveVerbindung } from './db/sch
 
 export const STANDARD_BASIS_PFAD = 'Cloud4/Bilder';
 /** Folder of the PDFs of closed minutes, relative to the drive root (not to the Bilder base folder). */
-export const PROTOKOLL_PFAD = 'Cloud4/Sitzungen/Protokolle';
+export const PROTOKOLL_PFAD = 'Cloud4/Sitzungen/C4/Protokolle';
 /** Graph's simple upload takes files up to 4 MB. */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const VERBINDUNG_ID = 'onedrive';
@@ -99,7 +99,7 @@ export interface OneDrive {
   loeschenWennLeer(id: string): Promise<'geloescht' | 'nicht-leer' | 'fehlt'>;
   /**
    * Uploads a file (at most `MAX_UPLOAD_BYTES`) to a path relative to the drive root, e.g.
-   * `Cloud4/Sitzungen/Protokolle/x.pdf`; missing folders are created, an existing file is replaced.
+   * `Cloud4/Sitzungen/C4/Protokolle/x.pdf`; missing folders are created, an existing file is replaced.
    * Throws `NichtVerbunden` or a generic Error when Microsoft fails.
    */
   dateiHochladen(pfad: string, inhalt: Uint8Array, contentType: string): Promise<void>;

@@ -325,7 +325,7 @@ Events, auf die das alte Protokoll zeigt.
 ## PDF und OneDrive
 
 Beim **Abschließen** erzeugt die App aus dem abgeschlossenen Protokoll ein PDF und legt es in OneDrive ab (sofern eingerichtet,
-siehe [bilder.md](./bilder.md)): `Cloud4/Sitzungen/Protokolle/<Jahr>/<Datum>_<Sitzung>.pdf` (Name wie `druckTitel`, das Jahr aus dem Datum; fehlende Ordner legt OneDrive an, ein vorhandenes
+siehe [bilder.md](./bilder.md)): `Cloud4/Sitzungen/C4/Protokolle/<Jahr>/<Datum>_<Sitzung>.pdf` (Name wie `druckTitel`, das Jahr aus dem Datum; fehlende Ordner legt OneDrive an, ein vorhandenes
 gleichnamiges PDF wird ersetzt). Eine Meldung nennt den Pfad, einen Link gibt es nicht. Klappt OneDrive nicht (nicht
 verbunden, nicht erreichbar, Fehler), lädt der Browser das PDF stattdessen direkt herunter und die Meldung sagt das
 („OneDrive nicht erreichbar – das PDF wurde stattdessen heruntergeladen.“). Scheitert schon die PDF-Erstellung, erscheint eine

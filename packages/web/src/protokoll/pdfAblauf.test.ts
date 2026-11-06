@@ -17,7 +17,7 @@ function deps(extra: Partial<PdfAblaufDeps> = {}) {
   const d = {
     eingabe: vi.fn(async () => eingabe),
     erzeugen: vi.fn(async () => pdf),
-    hochladen: vi.fn(async (name: string) => `Cloud4/Sitzungen/Protokolle/2026/${name}`),
+    hochladen: vi.fn(async (name: string) => `Cloud4/Sitzungen/C4/Protokolle/2026/${name}`),
     herunterladen: vi.fn(),
     melden: (m: PdfMeldung) => meldungen.push(m),
     ...extra,
@@ -33,7 +33,7 @@ describe('protokollPdfAblauf', () => {
     expect(d.herunterladen).not.toHaveBeenCalled();
     expect(meldungen.map((m) => m.art)).toEqual(['laedt', 'ok']);
     expect(meldungen[1]!.text).toBe(
-      'Protokoll als PDF in OneDrive gespeichert: Cloud4/Sitzungen/Protokolle/2026/2026-11-04_Clubsitzung.pdf',
+      'Protokoll als PDF in OneDrive gespeichert: Cloud4/Sitzungen/C4/Protokolle/2026/2026-11-04_Clubsitzung.pdf',
     );
   });
 

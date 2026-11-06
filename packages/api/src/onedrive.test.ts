@@ -350,13 +350,13 @@ describe('dateiHochladen', () => {
     }) as typeof fetch;
     const od = createOneDrive({ store, fetch: fetchFn, jetzt: () => JETZT });
     await od.dateiHochladen(
-      'Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung & Co.pdf',
+      'Cloud4/Sitzungen/C4/Protokolle/2026-11-04_Sitzung & Co.pdf',
       bytes,
       'application/pdf',
     );
     expect(aufrufe).toEqual([
       {
-        url: 'https://graph.microsoft.com/v1.0/me/drive/root:/Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung%20%26%20Co.pdf:/content?@microsoft.graph.conflictBehavior=replace',
+        url: 'https://graph.microsoft.com/v1.0/me/drive/root:/Cloud4/Sitzungen/C4/Protokolle/2026-11-04_Sitzung%20%26%20Co.pdf:/content?@microsoft.graph.conflictBehavior=replace',
         methode: 'PUT',
       },
     ]);

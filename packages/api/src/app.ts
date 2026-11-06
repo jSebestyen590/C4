@@ -2204,7 +2204,7 @@ export function createApp(deps: AppDeps) {
           if (new TextDecoder().decode(inhalt.subarray(0, 5)) !== '%PDF-') {
             throw new HTTPException(400, { message: 'Das PDF ist ungültig.' });
           }
-          // One folder per year (`Cloud4/Sitzungen/Protokolle/2026/...`); OneDrive creates it on upload.
+          // One folder per year (`Cloud4/Sitzungen/C4/Protokolle/2026/...`); OneDrive creates it on upload.
           const jahr = /^(\d{4})-/.exec(name)?.[1] ?? heuteBerlin().slice(0, 4);
           const pfad = `${PROTOKOLL_PFAD}/${jahr}/${name}`;
           try {

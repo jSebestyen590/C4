@@ -120,7 +120,7 @@ zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an di
 
 Dieselbe Verbindung speichert die PDFs abgeschlossener Sitzungsprotokolle: `OneDrive.dateiHochladen(pfad, inhalt, contentType)`
 (Graph-Direktupload `PUT /me/drive/root:/<Pfad>:/content`, `conflictBehavior=replace`, höchstens 4 MB; Graph legt fehlende Ordner an).
-Der Pfad `Cloud4/Sitzungen/Protokolle/<Jahr>/<Datei>.pdf` (`PROTOKOLL_PFAD`) gilt ab dem Wurzelordner des OneDrive, nicht ab dem
+Der Pfad `Cloud4/Sitzungen/C4/Protokolle/<Jahr>/<Datei>.pdf` (`PROTOKOLL_PFAD`) gilt ab dem Wurzelordner des OneDrive, nicht ab dem
 Bilder-Basisordner. Details in [protokolle.md](./protokolle.md#pdf-und-onedrive).
 
 ## API
