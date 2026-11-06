@@ -105,6 +105,44 @@ const rendern = (e: DokumentEingabe) =>
     </MantineProvider>,
   );
 
+describe('Thema in the outline', () => {
+  const thema = (id: string, titel: string): ProtokollKnoten => ({
+    type: 'bausteinThema',
+    attrs: { id, daten: { titel } },
+    content: [ueberschrift(3, 'Unterpunkt'), { type: 'paragraph' }],
+  });
+  const mit: ProtokollDokument = {
+    type: 'doc',
+    content: [
+      abschnitt('vergangenes'),
+      abschnitt('gegenwaertiges', thema('t1', ' Hausordnung '), thema('t2', ''), abstimmung),
+      abschnitt('zukuenftiges'),
+      { type: 'abschnitt', attrs: { art: 'sonstiges' }, content: [{ type: 'paragraph' }] },
+    ],
+  } as ProtokollDokument;
+
+  it('is a heading of the Baustein level with its title, "Thema" when empty', () => {
+    const { eintraege } = dokumentUeberschriften(mit, () => null);
+    expect(eintraege.map((e) => [e.ebene, e.text])).toEqual([
+      [1, 'Vergangenes'],
+      [1, 'Gegenwärtiges'],
+      [2, 'Hausordnung'],
+      [3, 'Unterpunkt'],
+      [2, 'Thema'],
+      [3, 'Unterpunkt'],
+      [1, 'Zukünftiges'],
+    ]);
+  });
+
+  it('renders as h3 with the outline id, followed by its notes', () => {
+    const { eintraege } = dokumentUeberschriften(mit, () => null);
+    const html = rendern({ ...eingabe, inhalt: mit });
+    expect(html).toContain(`<h3 class="pk-dok-h2" id="${eintraege[2]!.id}">Hausordnung</h3>`);
+    expect(html).toContain(`id="${eintraege[4]!.id}">Thema</h3>`);
+    expect(html.indexOf('Hausordnung')).toBeLessThan(html.indexOf('Unterpunkt'));
+  });
+});
+
 describe('Gliederung der Dokumentansicht', () => {
   it('puts the outline ids on the headings and offers the Gliederung button (not printed)', () => {
     const html = rendern(eingabe);

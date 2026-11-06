@@ -98,6 +98,25 @@ describe('gliederungBauen', () => {
   });
 });
 
+describe('gliederungBauen: Thema', () => {
+  it('offers the notes row of a Thema and nests a Wahl in it, the Thema itself stays top-level', () => {
+    const s = zustand([
+      baustein('bausteinThema', 't1', { titel: 'Bar' }, [
+        absatz(),
+        baustein('bausteinWahl', 'w1', { posten: 'Kasse' }),
+        absatz(),
+      ]),
+    ]);
+    const e = gliederungBauen(s.doc)[0]!.eintraege[0]!;
+    expect(e.titel).toBe('Bar');
+    expect(e.kannEnthalten).toBe(true);
+    expect(e.verschachtelbar).toBe(false);
+    expect(e.kinder.map((k) => k.titel)).toEqual(['Wahl: Kasse']);
+    const zeilen = gliederungZeilen(gliederungBauen(s.doc), null);
+    expect(zeilen.some((z) => z.art === 'notizen' && z.elternId === 't1')).toBe(true);
+  });
+});
+
 describe('gliederungTitel', () => {
   it('names people and shortens long texts', () => {
     const name = (sub: string) => (sub === 's1' ? 'Mia' : undefined);
@@ -114,6 +133,8 @@ describe('gliederungTitel', () => {
     );
     expect(gliederungTitel('bausteinBeschluss', { antrag: '' })).toBe('Abstimmung');
     expect(gliederungTitel('bausteinEvent', { name: '', datum: null })).toBe('Event');
+    expect(gliederungTitel('bausteinThema', { titel: ' Hausordnung ' })).toBe('Hausordnung');
+    expect(gliederungTitel('bausteinThema', { titel: '' })).toBe('Thema');
     const lang = gliederungTitel('bausteinBeschluss', { antrag: 'a'.repeat(200) });
     expect(lang.length).toBeLessThan(100);
     expect(lang.endsWith('…')).toBe(true);

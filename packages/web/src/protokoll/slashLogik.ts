@@ -26,6 +26,7 @@ export type SlashAktion =
 
 export type SlashSymbol =
   | 'event'
+  | 'thema'
   | 'vergangenes'
   | 'anwaerter'
   | 'beschluss'
@@ -141,6 +142,17 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     symbol: 'event',
     woerter: ['event', 'veranstaltung', 'termin'],
     aktion: { art: 'weiter', text: 'event ' },
+  },
+  {
+    schluessel: 'thema',
+    titel: 'Thema',
+    beschreibung: 'Allgemeiner Punkt mit Titel und Notizen',
+    symbol: 'thema',
+    woerter: ['thema', 'punkt', 'top', 'tagesordnungspunkt'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinThema', daten: bausteinLeer('bausteinThema') },
+    },
   },
   {
     schluessel: 'vergangenes',

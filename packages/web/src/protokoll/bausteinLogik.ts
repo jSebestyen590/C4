@@ -337,6 +337,7 @@ export function ueberzaehligeStichwahlenEntfernen(daten: BausteinWahlDaten): Bau
 export type FokusZiel =
   | 'name'
   | 'datum'
+  | 'titel'
   | 'vorname'
   | 'nachname'
   | 'antrag'
@@ -355,6 +356,8 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
   switch (typ) {
     case 'bausteinEvent':
       return leer('name') ? 'name' : leer('datum') ? 'datum' : 'text';
+    case 'bausteinThema':
+      return leer('titel') ? 'titel' : 'text';
     case 'bausteinVergangenesEvent':
       if (!leer('eventId')) return 'text';
       return leer('name') ? 'name' : leer('datum') ? 'datum' : 'text';
@@ -374,9 +377,9 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
   }
 }
 
-/** Free text of a new Baustein: Event and Vergangenes Event start with an empty bullet list. */
+/** Free text of a new Baustein: Event, Thema and Vergangenes Event start with an empty bullet list. */
 export function notizenVorlage(typ: BausteinTyp): ProtokollKnoten[] {
-  if (typ === 'bausteinEvent' || typ === 'bausteinVergangenesEvent') {
+  if (typ === 'bausteinEvent' || typ === 'bausteinThema' || typ === 'bausteinVergangenesEvent') {
     return [
       {
         type: 'bulletList',

@@ -4,6 +4,7 @@ import {
   anwesenheitsVerlauf,
   bausteinAnwaerterDatenSchema,
   bausteinEventDatenSchema,
+  bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
   eventUeberschrift,
@@ -407,6 +408,11 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
         ),
       ];
     }
+    case 'bausteinThema': {
+      const d = bausteinThemaDatenSchema.safeParse(daten);
+      const titel = d.success ? d.data.titel.trim() : '';
+      return [ueberschrift(k, ctx, titel || 'Thema'), ...notizen(k.content, ctx)];
+    }
     case 'bausteinVergangenesEvent': {
       const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
       const titel = d.success ? vergangenesUeberschrift(d.data) : '';
@@ -464,6 +470,8 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
                 `Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`,
               ),
             ]),
+        // The notes are the discussion before; the vote concludes the point.
+        ...notizen(k.content, ctx),
         block(
           <Kasten>
             {z.wiederholung && <Klein>{z.wiederholung}</Klein>}
@@ -526,7 +534,6 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
             )}
           </Kasten>,
         ),
-        ...notizen(k.content, ctx),
       ];
     }
     case 'bausteinAufnahme': {

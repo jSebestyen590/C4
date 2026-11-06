@@ -54,6 +54,20 @@ function wahl(teil: Partial<BausteinWahlDaten>) {
 }
 const kand = (id: string, stimmen: number) => ({ id, sub: id, name: '', stimmen });
 
+describe('stimmenPruefen: Thema', () => {
+  it('checks votes and Wahlen in the notes of a Thema like those in an Event', () => {
+    const thema = bausteinErzeugen('bausteinThema', { titel: 'Bar' }, [
+      { type: 'paragraph' },
+      beschluss(1, 0, 0),
+      wahl({ kandidaten: [kand('a', 1)], enthaltung: 0 }),
+    ]);
+    const ergebnis = stimmenPruefen(doc(thema), eingabe(5));
+    expect(ergebnis.pruefungen.length).toBeGreaterThanOrEqual(2);
+    expect(ergebnis.problems.length).toBe(2);
+    expect(ergebnis.problems[0]!.text).toContain('Abstimmung');
+  });
+});
+
 describe('stimmenPruefen: Abstimmung', () => {
   it('accepts exactly as many votes as members present', () => {
     expect(stimmenPruefen(doc(beschluss(3, 1, 1)), eingabe(5)).problems).toEqual([]);

@@ -61,6 +61,7 @@ describe('first stage', () => {
   it('lists everything without a query', () => {
     expect(titel('')).toEqual([
       'Event',
+      'Thema',
       'Vergangenes Event',
       'Anwärter:in',
       'Aufnahme',
@@ -135,6 +136,18 @@ describe('first stage', () => {
     expect(innen).toContain('Zitat');
     expect(slashEintraege('abstimm', daten, true)).toEqual([]);
     expect(slashEintraege('stimmungsbild', daten, true)).toEqual([]);
+  });
+  it('inserts a Thema directly, found by its aliases, also inside votes', () => {
+    for (const q of ['thema', 'punkt', 'top']) {
+      const treffer = slashEintraege(q, daten);
+      expect(treffer.map((e) => e.titel)).toEqual(['Thema']);
+      expect(treffer[0]!.aktion).toEqual({
+        art: 'einfuegen',
+        wahl: { typ: 'bausteinThema', daten: { titel: '' } },
+      });
+    }
+    // Not one of the nestable Bausteine (that rule is in the editor schema), so the menu keeps it.
+    expect(slashEintraege('', daten, true).map((e) => e.titel)).toContain('Thema');
   });
   it('leaves out the quote inside a list item', () => {
     expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Zitat');

@@ -144,6 +144,61 @@ describe('PDF outline', () => {
   });
 });
 
+describe('PDF: Thema and Wahl', () => {
+  const wahl: ProtokollKnoten = {
+    type: 'bausteinWahl',
+    attrs: {
+      id: 'w1',
+      daten: {
+        ...bausteinLeer('bausteinWahl'),
+        posten: 'Kasse',
+        kandidaten: [{ id: 'a', sub: null, name: 'Anna', stimmen: 2 }],
+      },
+    },
+    content: [text('WAHLDISKUSSION')],
+  };
+  const thema: ProtokollKnoten = {
+    type: 'bausteinThema',
+    attrs: { id: 't1', daten: { titel: 'Vorstand' } },
+    content: [text('THEMENNOTIZ'), ueberschrift(3, 'Detail'), wahl],
+  };
+  const mit: DokumentEingabe = {
+    ...eingabe,
+    inhalt: {
+      ...eingabe.inhalt,
+      content: [
+        eingabe.inhalt.content[0]!,
+        { ...eingabe.inhalt.content[1]!, content: [thema, wahl, { type: 'paragraph' }] },
+        eingabe.inhalt.content[2]!,
+      ],
+    },
+  };
+
+  it('puts a Thema into the bookmarks at the level of an Event', () => {
+    const outline = lesezeichen(blockBaum(pdfBloecke(mit)));
+    const gegenwart = outline.find((o) => o.titel === 'Gegenwärtiges')!;
+    expect(gegenwart.kinder).toEqual([
+      { titel: 'Vorstand', kinder: [{ titel: 'Detail', kinder: [] }] },
+    ]);
+  });
+
+  it('renders the notes of a Wahl before its box, top-level and nested', () => {
+    const text = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      // `ctx` props carry the whole input; only the rendered tree counts for the order.
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    const alle = [...text.matchAll(/WAHLDISKUSSION/g)].map((m) => m.index!);
+    const boxen = [...text.matchAll(/Kandidat:innen: /g)].map((m) => m.index!);
+    expect(alle).toHaveLength(2);
+    expect(boxen).toHaveLength(2);
+    // nested (in the Thema) first, top-level second; each box follows its notes
+    expect(alle[0]!).toBeLessThan(boxen[0]!);
+    expect(boxen[0]!).toBeLessThan(alle[1]!);
+    expect(alle[1]!).toBeLessThan(boxen[1]!);
+  });
+});
+
 describe('PDF rendering', () => {
   it('renders the minutes to a valid PDF with embedded font', async () => {
     const require = createRequire(import.meta.url);

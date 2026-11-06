@@ -507,6 +507,12 @@ describe('nichtBeschlussfaehigeAbstimmungen', () => {
     expect(ids).toEqual([b, innen, a, e].map((k) => k.attrs.id));
   });
 
+  it('finds votes in the notes of a Thema', () => {
+    const innen = bausteinErzeugen('bausteinBeschluss');
+    const thema = bausteinErzeugen('bausteinThema', undefined, [{ type: 'paragraph' }, innen]);
+    expect(nichtBeschlussfaehigeAbstimmungen(doc(thema), eingabe)).toEqual([innen.attrs.id]);
+  });
+
   it('leaves out a Meinungsbild and a Neues EM without a vote', () => {
     const m = bausteinErzeugen('bausteinMeinungsbild');
     expect(nichtBeschlussfaehigeAbstimmungen(doc(m, em(false)), eingabe)).toEqual([]);

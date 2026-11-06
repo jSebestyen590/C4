@@ -56,6 +56,7 @@ export type ProtokollStatus = (typeof PROTOKOLL_STATI)[number];
 /** TipTap node type names of the Bausteine (the web editor registers nodes with exactly these names). */
 export const BAUSTEIN_TYPEN = [
   'bausteinEvent',
+  'bausteinThema',
   'bausteinVergangenesEvent',
   'bausteinAnwaerter',
   'bausteinBeschluss',
@@ -132,6 +133,11 @@ export const bausteinEventDatenSchema = z.strictObject({
   kategorieId: idOderNull.default(null),
 });
 export type BausteinEventDaten = z.infer<typeof bausteinEventDatenSchema>;
+
+export const bausteinThemaDatenSchema = z.strictObject({
+  titel: z.string().max(200).default(''),
+});
+export type BausteinThemaDaten = z.infer<typeof bausteinThemaDatenSchema>;
 
 export const bausteinVergangenesEventDatenSchema = z.strictObject({
   eventId: idOderNull,
@@ -385,6 +391,7 @@ export function wahlRunden(daten: BausteinWahlDaten): WahlRunde[] {
 
 export interface BausteinDatenVon {
   bausteinEvent: BausteinEventDaten;
+  bausteinThema: BausteinThemaDaten;
   bausteinVergangenesEvent: BausteinVergangenesEventDaten;
   bausteinAnwaerter: BausteinAnwaerterDaten;
   bausteinBeschluss: BausteinBeschlussDaten;
@@ -397,6 +404,7 @@ export interface BausteinDatenVon {
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinEvent: bausteinEventDatenSchema,
+  bausteinThema: bausteinThemaDatenSchema,
   bausteinVergangenesEvent: bausteinVergangenesEventDatenSchema,
   bausteinAnwaerter: bausteinAnwaerterDatenSchema,
   bausteinBeschluss: bausteinBeschlussDatenSchema,
@@ -424,6 +432,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         eventId: null,
         kategorieId: null,
       };
+    case 'bausteinThema':
+      return { titel: '' };
     case 'bausteinVergangenesEvent':
       return { eventId: null, name: '', datum: null };
     case 'bausteinAnwaerter':

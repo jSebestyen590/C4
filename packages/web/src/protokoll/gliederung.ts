@@ -67,6 +67,8 @@ export function gliederungTitel(
   switch (typ) {
     case 'bausteinEvent':
       return kurz(eventUeberschrift(d as unknown as BausteinEventDaten)) || BAUSTEIN_TITEL[typ];
+    case 'bausteinThema':
+      return kurz(String(d.titel ?? '')) || BAUSTEIN_TITEL[typ];
     case 'bausteinVergangenesEvent':
       return (
         kurz(vergangenesUeberschrift(d as unknown as BausteinVergangenesEventDaten)) ||

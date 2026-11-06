@@ -331,6 +331,8 @@ describe('ersterLeererFeld', () => {
     );
     expect(ersterLeererFeld('bausteinAufnahme', { sub: null, name: '' })).toBe('person');
     expect(ersterLeererFeld('bausteinAufnahme', { sub: 'a', name: '' })).toBe('text');
+    expect(ersterLeererFeld('bausteinThema', { titel: '' })).toBe('titel');
+    expect(ersterLeererFeld('bausteinThema', { titel: 'Bar' })).toBe('text');
   });
 });
 
@@ -414,8 +416,8 @@ describe('Event lists', () => {
 });
 
 describe('new Bausteine', () => {
-  it('start Event and Vergangenes Event with an empty bullet list', () => {
-    for (const typ of ['bausteinEvent', 'bausteinVergangenesEvent'] as const) {
+  it('start Event, Thema and Vergangenes Event with an empty bullet list', () => {
+    for (const typ of ['bausteinEvent', 'bausteinThema', 'bausteinVergangenesEvent'] as const) {
       expect(notizenVorlage(typ)).toEqual([
         { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }] },
       ]);

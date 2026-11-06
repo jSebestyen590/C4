@@ -4,6 +4,7 @@ import {
   eventUeberschrift,
   bausteinAnwaerterDatenSchema,
   bausteinEventDatenSchema,
+  bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
   vergangenesUeberschrift,
@@ -256,6 +257,18 @@ function Baustein({
       </>
     );
   }
+  if (k.type === 'bausteinThema') {
+    const d = bausteinThemaDatenSchema.safeParse(daten);
+    const titel = d.success ? d.data.titel.trim() : '';
+    return (
+      <>
+        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+          {titel || 'Thema'}
+        </h3>
+        <Notizen knoten={k.content} ctx={ctx} />
+      </>
+    );
+  }
   if (k.type === 'bausteinVergangenesEvent') {
     const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
     const titel = d.success ? vergangenesUeberschrift(d.data) : '';
@@ -326,6 +339,8 @@ function Baustein({
             {`Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`}
           </div>
         )}
+        {/* The notes are the discussion before; the vote concludes the point. */}
+        <Notizen knoten={k.content} ctx={ctx} />
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
           {innen && (
@@ -396,7 +411,6 @@ function Baustein({
             </p>
           )}
         </div>
-        <Notizen knoten={k.content} ctx={ctx} />
       </>
     );
   }

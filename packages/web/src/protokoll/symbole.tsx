@@ -6,6 +6,7 @@ import {
   IconHistory,
   IconLogin2,
   IconLogout2,
+  IconNotes,
   IconCrown,
   IconQuote,
   IconTemplate,
@@ -20,6 +21,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
   switch (symbol) {
     case 'event':
       return <IconCalendarEvent size={size} />;
+    case 'thema':
+      return <IconNotes size={size} />;
     case 'vergangenes':
       return <IconHistory size={size} />;
     case 'anwaerter':
@@ -49,6 +52,7 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
 
 export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinEvent: 'event',
+  bausteinThema: 'thema',
   bausteinVergangenesEvent: 'vergangenes',
   bausteinAnwaerter: 'anwaerter',
   bausteinBeschluss: 'beschluss',
@@ -61,6 +65,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
 
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinEvent: 'Event',
+  bausteinThema: 'Thema',
   bausteinVergangenesEvent: 'Vergangenes Event',
   bausteinAnwaerter: 'Neue:r Anwärter:in',
   bausteinBeschluss: 'Abstimmung',

@@ -237,6 +237,29 @@ describe('protokollDokumentPruefen', () => {
     ).not.toBeNull();
   });
 
+  it('checks a Thema: title up to 200 characters, optional in old data, strict, Abstimmung inside', () => {
+    const thema = (daten: unknown) =>
+      protokollDokumentPruefen(
+        dokument({
+          gegenwaertiges: [
+            { type: 'bausteinThema', attrs: { id: crypto.randomUUID(), daten }, content: [] },
+          ],
+        }),
+      );
+    expect(bausteinLeer('bausteinThema')).toEqual({ titel: '' });
+    expect(thema({ titel: 'Hausordnung' })).toBeNull();
+    expect(thema({})).toBeNull();
+    expect(thema({ titel: 'x'.repeat(201) })).not.toBeNull();
+    expect(thema({ titel: 'a', extra: 1 })).not.toBeNull();
+    expect(thema({ titel: 5 })).not.toBeNull();
+    const mitWahl = bausteinErzeugen('bausteinThema', { titel: 'T' }, [
+      absatz('Text'),
+      bausteinErzeugen('bausteinBeschluss'),
+      bausteinErzeugen('bausteinWahl'),
+    ]);
+    expect(protokollDokumentPruefen(dokument({ gegenwaertiges: [mitWahl] }))).toBeNull();
+  });
+
   it('knows empty defaults for every Baustein type', () => {
     for (const typ of BAUSTEIN_TYPEN) {
       const doc = dokument({ gegenwaertiges: [bausteinErzeugen(typ)] });
@@ -498,6 +521,19 @@ describe('protokollVorschlag', () => {
     const [a, b] = bausteine(doc, 2);
     expect(a!.content).toEqual([absatz('Text')]);
     expect(b!.content).toEqual([{ type: 'paragraph' }]);
+  });
+
+  it('does not carry a Thema over, but keeps no trace of its Wahl either', () => {
+    const thema = bausteinErzeugen('bausteinThema', { titel: 'Sonstiges' }, [
+      absatz('Text'),
+      bausteinErzeugen('bausteinWahl'),
+    ]);
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes: dokument({ gegenwaertiges: [thema], zukuenftiges: [thema] }),
+    });
+    expect(JSON.stringify(doc)).not.toContain('bausteinThema');
+    expect(JSON.stringify(doc)).not.toContain('bausteinWahl');
   });
 
   it('does not carry Wahl blocks inside an event over', () => {

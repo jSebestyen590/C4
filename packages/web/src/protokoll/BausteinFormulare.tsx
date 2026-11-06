@@ -38,6 +38,7 @@ import {
   type BausteinEventDaten,
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
+  type BausteinThemaDaten,
   type BausteinVergangenesEventDaten,
   type EventDauer,
   type ProtokollMitgliedDto,
@@ -318,6 +319,30 @@ export function EventFormular({
 // ---------------------------------------------------------------------------------------------
 // Vergangenes Event
 // ---------------------------------------------------------------------------------------------
+
+export function ThemaFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinThemaDaten>>) {
+  if (!editierbar) {
+    return (
+      <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+        {daten.titel || 'Thema ohne Titel'}
+      </Text>
+    );
+  }
+  return (
+    <LokalText
+      label="Titel"
+      placeholder="Titel"
+      data-fokus="titel"
+      wert={daten.titel}
+      maxLength={200}
+      onWert={(titel) => aendern((d) => ({ ...d, titel }))}
+    />
+  );
+}
 
 export function VergangenesEventFormular({
   daten,

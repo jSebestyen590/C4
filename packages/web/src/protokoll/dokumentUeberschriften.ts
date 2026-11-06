@@ -1,5 +1,6 @@
 import {
   bausteinEventDatenSchema,
+  bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   bausteinAnwaerterDatenSchema,
   eventUeberschrift,
@@ -62,6 +63,10 @@ export function bausteinUeberschrift(
     case 'bausteinEvent': {
       const d = bausteinEventDatenSchema.safeParse(daten);
       return (d.success ? eventUeberschrift(d.data) : '') || 'Event';
+    }
+    case 'bausteinThema': {
+      const d = bausteinThemaDatenSchema.safeParse(daten);
+      return (d.success ? d.data.titel.trim() : '') || 'Thema';
     }
     case 'bausteinVergangenesEvent': {
       const d = bausteinVergangenesEventDatenSchema.safeParse(daten);

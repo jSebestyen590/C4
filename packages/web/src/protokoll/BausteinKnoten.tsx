@@ -22,6 +22,7 @@ import {
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
   type BausteinTyp,
+  type BausteinThemaDaten,
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
@@ -35,6 +36,7 @@ import {
   EmFormular,
   EventFormular,
   MeinungsbildFormular,
+  ThemaFormular,
   WahlFormular,
   VergangenesEventFormular,
   type FormularProps,
@@ -230,6 +232,10 @@ export const BausteinEventKnoten = bausteinKnoten(
   'bausteinEvent',
   karte('bausteinEvent', EventFormular as ComponentType<FormularProps<BausteinEventDaten>>),
 );
+export const BausteinThemaKnoten = bausteinKnoten(
+  'bausteinThema',
+  karte('bausteinThema', ThemaFormular as ComponentType<FormularProps<BausteinThemaDaten>>),
+);
 export const BausteinVergangenesEventKnoten = bausteinKnoten(
   'bausteinVergangenesEvent',
   karte(
@@ -279,6 +285,7 @@ export const BausteinAnwesenheitKnoten = bausteinKnoten('bausteinAnwesenheit', (
 
 export const BAUSTEIN_KNOTEN = [
   BausteinEventKnoten,
+  BausteinThemaKnoten,
   BausteinVergangenesEventKnoten,
   BausteinAnwaerterKnoten,
   BausteinBeschlussKnoten,

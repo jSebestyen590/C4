@@ -219,6 +219,9 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(offen).not.toContain('Gewählt:');
     expect(offen).not.toContain('Gilt ab');
     expect(offen).toContain('Wahlnotiz');
+    // The notes are the discussion before: heading, notes, then the result box.
+    expect(offen.indexOf('Wahl: Finanzen (2 Plätze)')).toBeLessThan(offen.indexOf('Wahlnotiz'));
+    expect(offen.indexOf('Wahlnotiz')).toBeLessThan(offen.indexOf('Kandidat:innen:'));
     expect(render(wahl('w3', [], { postenId: 'p1', gueltigAb: '2027-01-01' }))).toContain(
       'Gilt ab 01.01.2027',
     );
@@ -239,6 +242,51 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(abgesagt).toContain('Nimmt die Wahl nicht an: Cem');
     expect(fertig).not.toContain('Nicht angetreten');
     expect(fertig).not.toContain('Nimmt die Wahl nicht an');
+  });
+
+  it('puts the notes of a nested Wahl before its box inside a Thema', () => {
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const wahl: ProtokollKnoten = {
+      type: 'bausteinWahl',
+      attrs: {
+        id: 'w1',
+        daten: {
+          posten: 'Kasse',
+          anzahl: 1,
+          kandidaten: [{ id: 'a', sub: null, name: 'Anna', stimmen: 2 }],
+          enthaltung: 0,
+          stichwahlen: [],
+        },
+      },
+      content: [text('Wahldiskussion')],
+    };
+    const thema: ProtokollKnoten = {
+      type: 'bausteinThema',
+      attrs: { id: 't1', daten: { titel: 'Vorstand' } },
+      content: [text('Themennotiz'), wahl],
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht
+          eingabe={{
+            ...eingabe,
+            inhalt: {
+              type: 'doc',
+              content: [
+                vergangenes!,
+                { ...gegenwaertiges!, content: [thema, { type: 'paragraph' }] },
+                zukuenftiges!,
+              ],
+            },
+          }}
+        />
+      </MantineProvider>,
+    );
+    expect(html).toContain('>Vorstand</h3>');
+    const i = (s: string) => html.indexOf(s);
+    expect(i('Themennotiz')).toBeLessThan(i('Wahldiskussion'));
+    expect(i('Wahldiskussion')).toBeLessThan(i('<strong>Wahl:</strong>'));
+    expect(i('<strong>Wahl:</strong>')).toBeLessThan(i('Kandidat:innen: Anna 2'));
   });
 
   it('shows Sonstiges only with content and ends with the next Sitzung', () => {
