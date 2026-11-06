@@ -1,5 +1,7 @@
 import {
   bausteinLeer,
+  heuteBerlin,
+  wahlGueltigAbVorschlag,
   istBausteinInNotizen,
   type BausteinDatenVon,
   type BausteinEventDaten,
@@ -200,7 +202,16 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     woerter: ['wahl', 'waehlen', 'wahlen', 'postenwahl'],
     aktion: {
       art: 'einfuegen',
-      wahl: { typ: 'bausteinWahl', daten: bausteinLeer('bausteinWahl') },
+      wahl: {
+        typ: 'bausteinWahl',
+        // A getter, so "Gilt ab" uses the day of inserting, not of loading the page.
+        get daten() {
+          return {
+            ...bausteinLeer('bausteinWahl'),
+            gueltigAb: wahlGueltigAbVorschlag(heuteBerlin()),
+          };
+        },
+      },
     },
   },
   {

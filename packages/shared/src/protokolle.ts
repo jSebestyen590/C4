@@ -273,6 +273,15 @@ export interface WahlErgebnis {
 }
 
 /**
+ * Default "Gilt ab" of a new Wahl: after 1 November the 1 January of the next year (elections for the
+ * coming year), otherwise the given day itself. `heute` is a Berlin date `YYYY-MM-DD`.
+ */
+export function wahlGueltigAbVorschlag(heute: string): string {
+  const jahr = Number(heute.slice(0, 4));
+  return heute.slice(5) > '11-01' ? `${jahr + 1}-01-01` : heute;
+}
+
+/**
  * Result of a Wahl. Rank the candidates by the votes of the main round (Enthaltungen do not count).
  * If the votes of place `anzahl` and place `anzahl + 1` differ, the top `anzahl` are elected. Otherwise
  * the candidates tied with place `anzahl` go into a Stichwahl for the seats left after the candidates

@@ -8,6 +8,7 @@ import {
   bausteinLeer,
   beschlussErgebnisVorschlag,
   wahlErgebnis,
+  wahlGueltigAbVorschlag,
   protokollAnlegenSchema,
   protokollDokumentNormalisieren,
   protokollDokumentPruefen,
@@ -1135,5 +1136,16 @@ describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
     expect(gegenwaertiges(mit).filter((k) => k.type.startsWith('baustein'))).toEqual([]);
     const ohne = protokollVorschlag({ sitzungDatum: sitzung, letztes });
     expect(gegenwaertiges(ohne).filter((k) => k.type.startsWith('baustein'))).toEqual([]);
+  });
+});
+
+describe('wahlGueltigAbVorschlag', () => {
+  it('uses the day itself until 1 November', () => {
+    expect(wahlGueltigAbVorschlag('2026-03-14')).toBe('2026-03-14');
+    expect(wahlGueltigAbVorschlag('2026-11-01')).toBe('2026-11-01');
+  });
+  it('uses 1 January of the next year after 1 November', () => {
+    expect(wahlGueltigAbVorschlag('2026-11-02')).toBe('2027-01-01');
+    expect(wahlGueltigAbVorschlag('2026-12-31')).toBe('2027-01-01');
   });
 });
