@@ -150,6 +150,10 @@ import {
   protokollDokumentNormalisieren,
   protokollSpeichernSchema,
   protokollStatusSchema,
+  protokollPdfSchema,
+  protokollPdfDateiname,
+  PROTOKOLL_PDF_MAX_BYTES,
+  type ProtokollPdfAntwort,
   protokollVorschlag,
   type ProtokollDokument,
   type ProtokollDto,
@@ -194,6 +198,7 @@ import {
   OneDriveFehler,
   OrdnerExistiert,
   OrdnerFehlt,
+  PROTOKOLL_PFAD,
   type FreigabenStore,
   type OneDrive,
   type OneDriveOrdner,
@@ -2168,6 +2173,51 @@ export function createApp(deps: AppDeps) {
           } catch (err) {
             return protokollKonflikt(err, c);
           }
+        },
+      )
+      // Stores the PDF of a closed protocol in OneDrive (generated in the browser).
+      .put(
+        '/protokolle/:id/pdf',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollPdfSchema),
+        async (c) => {
+          const p = gefunden(
+            await deps.protokolle.holen(c.req.param('id')),
+            'Protokoll nicht gefunden',
+          );
+          if (p.status !== 'abgeschlossen') {
+            throw new HTTPException(409, {
+              message: 'Das PDF gibt es erst, wenn das Protokoll abgeschlossen ist.',
+            });
+          }
+          const { dateiname, base64 } = c.req.valid('json');
+          const name = protokollPdfDateiname(dateiname);
+          if (!name) throw new HTTPException(400, { message: 'Ungültiger Dateiname.' });
+          if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+            throw new HTTPException(400, { message: 'Das PDF ist ungültig.' });
+          }
+          const inhalt = new Uint8Array(Buffer.from(base64, 'base64'));
+          if (inhalt.byteLength > PROTOKOLL_PDF_MAX_BYTES) {
+            throw new HTTPException(413, { message: 'Das PDF ist zu groß (höchstens 4 MB).' });
+          }
+          if (new TextDecoder().decode(inhalt.subarray(0, 5)) !== '%PDF-') {
+            throw new HTTPException(400, { message: 'Das PDF ist ungültig.' });
+          }
+          const pfad = `${PROTOKOLL_PFAD}/${name}`;
+          try {
+            await deps.onedrive.dateiHochladen(pfad, inhalt, 'application/pdf');
+          } catch (err) {
+            console.error('Uploading the protocol PDF to OneDrive failed', err);
+            throw new HTTPException(503, {
+              message:
+                err instanceof NichtVerbunden
+                  ? 'OneDrive ist nicht verbunden.'
+                  : 'OneDrive ist gerade nicht erreichbar.',
+            });
+          }
+          const antwort: ProtokollPdfAntwort = { gespeichert: true, pfad };
+          return c.json(antwort);
         },
       )
       .get('/protokolle/:id/aktionen', auth, protokolleSchreiben, async (c) => {

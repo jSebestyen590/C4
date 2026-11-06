@@ -8,6 +8,10 @@ import { bilderFreigaben, bilderOrdnerCache, onedriveVerbindung } from './db/sch
 // confidential client). The connection (client id/secret, tokens) lives in one DB row, see docs/bilder.md.
 
 export const STANDARD_BASIS_PFAD = 'Cloud4/Bilder';
+/** Folder of the PDFs of closed minutes, relative to the drive root (not to the Bilder base folder). */
+export const PROTOKOLL_PFAD = 'Cloud4/Sitzungen/Protokolle';
+/** Graph's simple upload takes files up to 4 MB. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const VERBINDUNG_ID = 'onedrive';
 const AUTHORIZE_URL = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize';
 const TOKEN_URL = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
@@ -93,6 +97,12 @@ export interface OneDrive {
   freigabeLink(id: string): Promise<string>;
   /** Deletes the folder (to the OneDrive recycle bin) only if it has no content. */
   loeschenWennLeer(id: string): Promise<'geloescht' | 'nicht-leer' | 'fehlt'>;
+  /**
+   * Uploads a file (at most `MAX_UPLOAD_BYTES`) to a path relative to the drive root, e.g.
+   * `Cloud4/Sitzungen/Protokolle/x.pdf`; missing folders are created, an existing file is replaced.
+   * Throws `NichtVerbunden` or a generic Error when Microsoft fails.
+   */
+  dateiHochladen(pfad: string, inhalt: Uint8Array, contentType: string): Promise<void>;
   /** Job task: renews the refresh token at most once a day; does nothing when not connected. */
   tokenPflegen(jetzt: Date): Promise<void>;
 }
@@ -398,16 +408,24 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
   };
 
   /** Graph request with the current token; one retry with a fresh token on 401. */
-  const graph = async (methode: string, pfadOderUrl: string, body?: unknown): Promise<Response> => {
+  const graph = async (
+    methode: string,
+    pfadOderUrl: string,
+    body?: unknown,
+    /** Raw bytes with their content type instead of a JSON body. */
+    roh?: { inhalt: Uint8Array; contentType: string },
+  ): Promise<Response> => {
     const url = pfadOderUrl.startsWith('http') ? pfadOderUrl : `${GRAPH}${pfadOderUrl}`;
     const senden = async (token: string) =>
       http(url, {
         method: methode,
         headers: {
           authorization: `Bearer ${token}`,
-          ...(body !== undefined && { 'content-type': 'application/json' }),
+          ...(roh && { 'content-type': roh.contentType }),
+          ...(!roh && body !== undefined && { 'content-type': 'application/json' }),
         },
-        ...(body !== undefined && { body: JSON.stringify(body) }),
+        ...(roh && { body: roh.inhalt as unknown as BodyInit }),
+        ...(!roh && body !== undefined && { body: JSON.stringify(body) }),
       });
     let res = await senden((await zugriffstoken()).token);
     if (res.status === 401) res = await senden((await zugriffstoken(true)).token);
@@ -619,6 +637,18 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
       if (del.status === 404) return 'fehlt';
       if (!del.ok) throw await graphFehler(del);
       return 'geloescht';
+    },
+
+    async dateiHochladen(pfad, inhalt, contentType) {
+      if (inhalt.byteLength > MAX_UPLOAD_BYTES) throw new OneDriveFehler('Die Datei ist zu groß.');
+      // Graph creates missing parent folders on a path-based upload.
+      const res = await graph(
+        'PUT',
+        `/me/drive/root:/${kodiereSegmente(basisPfadBereinigen(pfad))}:/content?@microsoft.graph.conflictBehavior=replace`,
+        undefined,
+        { inhalt, contentType },
+      );
+      if (!res.ok) throw await graphFehler(res);
     },
 
     async tokenPflegen(jetztWert) {

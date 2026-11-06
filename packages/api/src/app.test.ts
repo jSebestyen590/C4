@@ -6983,6 +6983,71 @@ describe('protokolle', () => {
     expect(dto.teilnahme.find((x) => x.sub === 'r')?.wert).toBe('anwesend');
   });
 
+  describe('PDF in OneDrive', () => {
+    const PDF = Buffer.from('%PDF-1.7\n%binary \u00e4\u00f6\u00fc\n%%EOF').toString('base64');
+    async function geschlossen() {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      const pdf = (token: string, body: unknown) =>
+        t.app.request(`/api/protokolle/${id}/pdf`, json(token, 'PUT', body));
+      const zu = () =>
+        t.app.request(
+          `/api/protokolle/${id}/status`,
+          json('admin-token', 'PUT', { status: 'abgeschlossen' }),
+        );
+      return { ...t, id, pdf, zu };
+    }
+
+    it('stores the PDF of a closed protocol under Cloud4/Sitzungen/Protokolle', async () => {
+      const t = await geschlossen();
+      expect((await t.zu()).status).toBe(200);
+      const res = await t.pdf('admin-token', {
+        dateiname: '2026-11-04_Sitzung: A/B.pdf',
+        base64: PDF,
+      });
+      expect(res.status).toBe(200);
+      const pfad = 'Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung AB.pdf';
+      expect(await res.json()).toEqual({ gespeichert: true, pfad });
+      const datei = t.onedrive.dateien.get(pfad);
+      expect(datei?.contentType).toBe('application/pdf');
+      expect(Buffer.from(datei!.inhalt).toString('base64')).toBe(PDF);
+    });
+
+    it('only takes PDFs of closed protocols from writers', async () => {
+      const t = await geschlossen();
+      expect((await t.pdf('admin-token', { dateiname: 'a.pdf', base64: PDF })).status).toBe(409);
+      expect((await t.zu()).status).toBe(200);
+      expect((await t.pdf('reader-token', { dateiname: 'a.pdf', base64: PDF })).status).toBe(403);
+      expect((await t.pdf('admin-token', { dateiname: '///', base64: PDF })).status).toBe(400);
+      const kaputt = Buffer.from('kein pdf').toString('base64');
+      expect((await t.pdf('admin-token', { dateiname: 'a.pdf', base64: kaputt })).status).toBe(400);
+      expect(t.onedrive.dateien.size).toBe(0);
+    });
+
+    it('rejects PDFs over 4 MB', async () => {
+      const t = await geschlossen();
+      await t.zu();
+      const gross = Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(4 * 1024 * 1024)]).toString(
+        'base64',
+      );
+      const res = await t.pdf('admin-token', { dateiname: 'a.pdf', base64: gross });
+      expect(res.status).toBe(413);
+      expect(((await res.json()) as { error: string }).error).toContain('zu groß');
+    });
+
+    it('answers 503 when OneDrive is not connected or fails', async () => {
+      const t = await geschlossen();
+      await t.zu();
+      t.onedrive.zustand.verbunden = false;
+      const a = await t.pdf('admin-token', { dateiname: 'a.pdf', base64: PDF });
+      expect(a.status).toBe(503);
+      expect(((await a.json()) as { error: string }).error).toContain('OneDrive');
+      t.onedrive.zustand.verbunden = true;
+      t.onedrive.zustand.ausfall = true;
+      expect((await t.pdf('admin-token', { dateiname: 'a.pdf', base64: PDF })).status).toBe(503);
+    });
+  });
+
   it('freezes member status and art when closing and drops them when reopening', async () => {
     const t = await setup();
     t.events.set('s1', {

@@ -116,6 +116,13 @@ auf den OneDrive greift C4 erst zu, wenn sich jemand mit diesem Konto in Schritt
 Ablauf: Die API liefert die Authorize-URL (`/consumers`-Endpunkt, `state` gegen CSRF im `sessionStorage`); Microsoft leitet
 zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an die API, die ihn serverseitig eintauscht.
 
+## PDFs der Protokolle
+
+Dieselbe Verbindung speichert die PDFs abgeschlossener Sitzungsprotokolle: `OneDrive.dateiHochladen(pfad, inhalt, contentType)`
+(Graph-Direktupload `PUT /me/drive/root:/<Pfad>:/content`, `conflictBehavior=replace`, höchstens 4 MB; Graph legt fehlende Ordner an).
+Der Pfad `Cloud4/Sitzungen/Protokolle/<Datei>.pdf` (`PROTOKOLL_PFAD`) gilt ab dem Wurzelordner des OneDrive, nicht ab dem
+Bilder-Basisordner. Details in [protokolle.md](./protokolle.md#pdf-und-onedrive).
+
 ## API
 
 - `GET /api/bilder/ordner` → `{ verbunden, ordner: [{ id, name, webUrl, freigabeUrl, von, bis, eventName, genauigkeit, eventId }], stand, ausCache }`

@@ -11,7 +11,13 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconLock, IconLockOpen, IconPrinter, IconTrash } from '@tabler/icons-react';
+import {
+  IconCloudUpload,
+  IconLock,
+  IconLockOpen,
+  IconPrinter,
+  IconTrash,
+} from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -39,6 +45,7 @@ import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
+import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
 import {
   useProtokoll,
   useProtokollAktionen,
@@ -184,6 +191,7 @@ function ProtokollAnsicht({
   const status = useProtokollStatus();
   const loeschen = useProtokollLoeschen();
   const aktionenAusfuehren = useProtokollAktionenAusfuehren();
+  const pdfSpeichern = useProtokollPdfSpeichern();
   // Closing dialog: the draft is saved first (null = saving), then the Aktionen load.
   const [entwurfGespeichert, setEntwurfGespeichert] = useState<boolean | null>(null);
   const dialogAktionen = useProtokollAktionen(
@@ -266,6 +274,8 @@ function ProtokollAnsicht({
     }
     const antwort = await status.mutateAsync({ id: dto.id, status: neu, aktionen });
     aktionenMelden(antwort.aktionen ?? []);
+    // The PDF of the closed protocol goes to OneDrive (or is downloaded); closing is done either way.
+    if (neu === 'abgeschlossen') void pdfSpeichern(dto.id);
   };
 
   /** Saves the draft, then the closing dialog may load the Aktionen. */
@@ -355,6 +365,12 @@ function ProtokollAnsicht({
                 color: 'red',
                 sichtbar: entwurf,
                 onClick: () => setDialog('loeschen'),
+              },
+              {
+                text: 'PDF erneut in OneDrive speichern',
+                icon: <IconCloudUpload size={18} />,
+                sichtbar: !entwurf,
+                onClick: () => void pdfSpeichern(dto.id),
               },
             ]}
           />

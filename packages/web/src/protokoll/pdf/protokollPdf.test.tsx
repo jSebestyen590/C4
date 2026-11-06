@@ -1,0 +1,170 @@
+// @vitest-environment node
+import { createRequire } from 'node:module';
+import { pdf } from '@react-pdf/renderer';
+import { describe, expect, it } from 'vitest';
+import { bausteinLeer, protokollKopfLeer, type ProtokollKnoten } from '@c4/shared';
+import { dokumentGliederungBauen, dokumentUeberschriften } from '../dokumentUeberschriften';
+import { personName, type DokumentEingabe } from '../dokumentDaten';
+import { blockBaum, lesezeichen, pdfBloecke } from './pdfBloecke';
+import { ProtokollPdf } from './ProtokollPdf';
+import { schriftenRegistrieren } from './schriften';
+
+const text = (t: string): ProtokollKnoten => ({
+  type: 'paragraph',
+  content: [{ type: 'text', text: t }],
+});
+const ueberschrift = (level: 2 | 3, t: string): ProtokollKnoten => ({
+  type: 'heading',
+  attrs: { level },
+  content: [{ type: 'text', text: t }],
+});
+const liste = (...t: string[]): ProtokollKnoten => ({
+  type: 'bulletList',
+  content: t.map((x) => ({ type: 'listItem', content: [text(x)] })),
+});
+
+const event = (id: string, name: string, content: ProtokollKnoten[]): ProtokollKnoten => ({
+  type: 'bausteinEvent',
+  attrs: {
+    id,
+    daten: { ...bausteinLeer('bausteinEvent'), name, datum: '2024-02-11', verantwortlichSub: '1' },
+  },
+  content,
+});
+
+const abstimmung: ProtokollKnoten = {
+  type: 'bausteinBeschluss',
+  attrs: {
+    id: 'v1',
+    daten: {
+      antrag: 'Neuer Tresen „Prima“',
+      ja: 1,
+      nein: 0,
+      enthaltung: 0,
+      ergebnis: 'angenommen',
+    },
+  },
+  content: [text('Notiz zur Abstimmung')],
+};
+
+const eingabe: DokumentEingabe = {
+  inhalt: {
+    type: 'doc',
+    content: [
+      {
+        type: 'abschnitt',
+        attrs: { art: 'vergangenes' },
+        content: [
+          {
+            type: 'bausteinVergangenesEvent',
+            attrs: {
+              id: 'a',
+              daten: { eventId: null, name: 'Weihnachtsöffnung', datum: '2023-12-27' },
+            },
+            content: [
+              liste('Waren einige Gäste da'),
+              { type: 'blockquote', content: [text('Aufgewacht'), text('– Strobi')] },
+              {
+                type: 'orderedList',
+                content: [
+                  {
+                    type: 'listItem',
+                    content: [text('Erstens'), liste('verschachtelt')],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'abschnitt',
+        attrs: { art: 'gegenwaertiges' },
+        content: [
+          ueberschrift(2, 'Finanzen'),
+          text('Alles gut – „sehr“ gut.'),
+          ueberschrift(3, 'Kasse'),
+          abstimmung,
+          {
+            type: 'bausteinAnwesenheit',
+            attrs: { id: 'w', daten: { art: 'geht', sub: '1', uhrzeit: '22:10' } },
+          },
+        ],
+      },
+      {
+        type: 'abschnitt',
+        attrs: { art: 'zukuenftiges' },
+        content: [
+          event('b', 'Superbowl', [liste('notes'), ueberschrift(3, 'Aufgaben'), abstimmung]),
+        ],
+      },
+    ],
+  },
+  kopf: { ...protokollKopfLeer(), sitzungsleitung: '1', eroeffnung: '20:04' },
+  teilnahme: [
+    {
+      sub: '1',
+      username: 'Niklas',
+      vorname: 'N',
+      nachname: 'N',
+      status: 'mitglied',
+      anrede: 'neutral',
+      abgeleitet: 'anwesend',
+      wert: 'anwesend',
+      ueberschrieben: false,
+    },
+  ],
+  ems: [],
+  sitzung: { titel: 'Clubsitzung', beginn: '2024-01-30T19:00:00Z', art: 'sitzung' },
+};
+
+describe('PDF outline', () => {
+  it('mirrors the Gliederung of the document view and leaves votes out', () => {
+    const outline = lesezeichen(blockBaum(pdfBloecke(eingabe)));
+    const gliederung = dokumentGliederungBauen(
+      dokumentUeberschriften(eingabe.inhalt, (sub) => {
+        const m = eingabe.teilnahme.find((x) => x.sub === sub);
+        return m ? personName(m) : null;
+      }).eintraege,
+    );
+    const alsTitel = (g: typeof gliederung): unknown[] =>
+      g.map((k) => ({ titel: k.text, kinder: alsTitel(k.kinder) }));
+    expect(outline).toEqual(alsTitel(gliederung));
+    expect(outline).toEqual([
+      { titel: 'Vergangenes', kinder: [{ titel: '27.12. Weihnachtsöffnung', kinder: [] }] },
+      {
+        titel: 'Gegenwärtiges',
+        kinder: [{ titel: 'Finanzen', kinder: [{ titel: 'Kasse', kinder: [] }] }],
+      },
+      {
+        titel: 'Zukünftiges',
+        kinder: [{ titel: '11.02. Superbowl', kinder: [{ titel: 'Aufgaben', kinder: [] }] }],
+      },
+    ]);
+  });
+});
+
+describe('PDF rendering', () => {
+  it('renders the minutes to a valid PDF with embedded font', async () => {
+    const require = createRequire(import.meta.url);
+    const datei = (n: string) =>
+      require.resolve(`@fontsource/noto-sans/files/noto-sans-latin-${n}.woff`);
+    schriftenRegistrieren({
+      normal: datei('400-normal'),
+      fett: datei('700-normal'),
+      kursiv: datei('400-italic'),
+      fettKursiv: datei('700-italic'),
+    });
+    const strom = await pdf(<ProtokollPdf eingabe={eingabe} />).toBuffer();
+    const teile: Buffer[] = [];
+    for await (const t of strom) teile.push(Buffer.from(t as Uint8Array));
+    const bytes = Buffer.concat(teile);
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(bytes.length).toBeGreaterThan(5000);
+    const roh = bytes.toString('latin1');
+    expect(roh).toContain('/Outlines');
+    // One outline entry per heading of the Gliederung (8) plus the document title in the info.
+    expect(roh.match(/\/Title /g)?.length).toBe(9);
+    expect(roh).toContain('/Count');
+  });
+});

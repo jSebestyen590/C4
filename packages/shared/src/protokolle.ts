@@ -1191,7 +1191,10 @@ export const protokollPdfSchema = z.object({
   /** File name, e.g. `2026-11-04_Sitzung.pdf`; the API cleans it again. */
   dateiname: z.string().trim().min(1).max(200),
   /** The PDF bytes, base64 (standard alphabet). */
-  base64: z.string().min(1).max(Math.ceil((PROTOKOLL_PDF_MAX_BYTES * 4) / 3) + 1024),
+  base64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((PROTOKOLL_PDF_MAX_BYTES * 4) / 3) + 1024),
 });
 export type ProtokollPdfEingabe = z.infer<typeof protokollPdfSchema>;
 
@@ -1204,7 +1207,9 @@ export interface ProtokollPdfAntwort {
 /** File name safe for OneDrive and ending in `.pdf`; null if nothing usable is left. */
 export function protokollPdfDateiname(roh: string): string | null {
   const name = roh
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\.pdf$/i, '')

@@ -322,6 +322,31 @@ Events, auf die das alte Protokoll zeigt.
 | `/protokolle/neu`  | `protokolle:schreiben` | Sitzung wählen (Events mit Sitzungs-Kategorie ohne Protokoll, bis morgen, höchstens 20, jüngste vorgewählt), „Protokoll anlegen“ mit Vorbelegung              |
 | `/protokolle/<id>` | `protokolle:lesen`     | Schreibende eines Entwurfs wechseln zwischen „Bearbeiten“ (Kopf und Editor) und „Dokument“; alle anderen und abgeschlossene Protokolle sehen nur das Dokument |
 
+## PDF und OneDrive
+
+Beim **Abschließen** erzeugt die App aus dem abgeschlossenen Protokoll ein PDF und legt es in OneDrive ab (sofern eingerichtet,
+siehe [bilder.md](./bilder.md)): `Cloud4/Sitzungen/Protokolle/<Datum>_<Sitzung>.pdf` (Name wie `druckTitel`, ein vorhandenes
+gleichnamiges PDF wird ersetzt). Eine Meldung nennt den Pfad, einen Link gibt es nicht. Klappt OneDrive nicht (nicht
+verbunden, nicht erreichbar, Fehler), lädt der Browser das PDF stattdessen direkt herunter und die Meldung sagt das
+(„OneDrive nicht erreichbar – das PDF wurde stattdessen heruntergeladen.“). Scheitert schon die PDF-Erstellung, erscheint eine
+Fehlermeldung; das Protokoll bleibt abgeschlossen. Im Menü „Weitere Aktionen“ eines abgeschlossenen Protokolls wiederholt
+„PDF erneut in OneDrive speichern“ den Ablauf (inkl. Download-Ausweichlösung).
+
+- **Erzeugung im Browser** mit `@react-pdf/renderer` (`protokoll/pdf/`, per dynamischem Import erst beim Bedarf geladen).
+  `ProtokollPdf` zeigt denselben Inhalt wie die [Dokumentansicht](#dokumentansicht) und nutzt dieselben Ableitungen
+  (`dokumentDaten`, `dokumentUeberschriften`, `anwesenheitsVerlauf`): A4, Fußzeile „Seite x von y“, Namen fett in der Statusfarbe
+  (`STATUS_FARBE`), Abstimmungs-/Wahl-Kästen mit Randlinie, rechtsbündige Zitate und Erscheint/Geht-Zeilen. Es ist nicht
+  pixelgleich zur HTML-Ansicht. Schrift: Noto Sans (Latin, 400/700, auch kursiv) aus `@fontsource/noto-sans`, per Vite als
+  Asset eingebunden (`schriften.ts`; Zeichen außerhalb von Latin, z. B. polnische Buchstaben, fehlen).
+- **Lesezeichen** (PDF-Gliederung) entsprechen der Gliederung der Dokumentansicht: Abschnitt > Event/Baustein-Überschrift >
+  eigene Überschriften, keine Abstimmungen. `pdfBloecke` liefert die Blöcke flach mit Überschriftsebene, `blockBaum` verschachtelt
+  sie; verschachtelte Views tragen `bookmark`. Der PDF-Titel ist der Dateiname ohne `.pdf`.
+- **Daten:** Der Ablauf (`usePdfSpeichern`, `pdfAblauf`) lädt das Protokoll nach dem Abschließen neu, damit der eingefrorene Stand
+  (Teilnahme, Status) und die Aktions-Ergebnisse im PDF stehen.
+- **Upload als JSON** `{ dateiname, base64 }` statt roher Bytes: API Gateway und der Lambda-Adapter reichen Binär-Bodies nur mit
+  zusätzlicher Konfiguration unverändert durch, JSON kommt immer heil an. Grenze 4 MB (`PROTOKOLL_PDF_MAX_BYTES`; Graph-Direktupload
+  und Lambda-Payload). Der Server prüft Dateiname (bereinigt, `.pdf`), Base64, `%PDF-`-Kopf und Größe.
+
 ## API
 
 | Route                               | Recht                  | Inhalt                                                                                                                                                                                                                                                                                                                                                                     |
@@ -333,6 +358,7 @@ Events, auf die das alte Protokoll zeigt.
 | `POST /api/protokolle`              | `protokolle:schreiben` | `{ eventId, inhalt?, kopf? }` → 201 `{ id }`; ohne `inhalt`/`kopf` gilt die Vorbelegung; 409 bei zweitem Protokoll                                                                                                                                                                                                                                                         |
 | `PUT /api/protokolle/:id`           | `protokolle:schreiben` | `{ inhalt, kopf, version }` → `{ version, geaendertAm }`; 409 bei veralteter Version oder abgeschlossen                                                                                                                                                                                                                                                                    |
 | `PUT /api/protokolle/:id/status`    | `protokolle:schreiben` | `{ status, aktionen? }` (`entwurf`/`abgeschlossen`, `aktionen` = gewählte Aktions-Ids): Abschließen friert die Teilnahme ein (400 mit allen Stimmen-Fehlern auf Deutsch, wenn Stimmen nicht zur Anwesenheit passen) und führt die gewählten Aktionen aus, Wieder öffnen löst die Teilnahme. Antwort `{ status, version, geaendertAm, aktionen: ProtokollAktionAusgang[] }` |
+| `PUT /api/protokolle/:id/pdf`       | `protokolle:schreiben` | `{ dateiname, base64 }` speichert das PDF eines **abgeschlossenen** Protokolls in OneDrive (409 sonst, 413 über 4 MB, 503 wenn OneDrive nicht verbunden oder nicht erreichbar) → `{ gespeichert: true, pfad }` |
 | `GET /api/protokolle/:id/aktionen`  | `protokolle:schreiben` | `{ aktionen: ProtokollAktionDto[] }`, live aus dem gespeicherten Inhalt berechnet (auch erledigte und gescheiterte)                                                                                                                                                                                                                                                        |
 | `POST /api/protokolle/:id/aktionen` | `protokolle:schreiben` | `{ aktionen: string[] }` führt Aktionen eines **abgeschlossenen** Protokolls (erneut) aus (409 im Entwurf); Antwort `{ version, ergebnisse, aktionen }`                                                                                                                                                                                                                    |
 | `DELETE /api/protokolle/:id`        | `protokolle:schreiben` | nur im Entwurf (409 sonst)                                                                                                                                                                                                                                                                                                                                                 |
