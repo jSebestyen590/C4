@@ -10,6 +10,20 @@ um Mitglieder, Profile, Rechte oder Kontaktkanäle), damit die Änderung zum Bes
 ein Feature anlegst oder änderst, aktualisiere dessen Seite im selben Change. Für neue Feature-Bereiche
 legst du eine neue Seite samt Zeile in `docs/README.md` an. Halte sie kurz und sachlich.
 
+## Models and token usage
+
+The main chat (Opus) plans, decides and reviews; it re-reads its whole context on every step, so
+keep hands-on work out of it:
+
+- **All tests run in Sonnet subagents** (`Agent` with `model: "sonnet"`): unit/integration tests,
+  builds, type checks, and especially browser checks in the preview or on dev.c4-leipzig.de
+  (screenshots, page reads, phone-width checks). The subagent reports a short result; the main chat
+  doesn't take screenshots or read page trees itself.
+- Code exploration over more than a couple of files goes to the `Explore` agent with
+  `model: "sonnet"` instead of many `grep`/`sed -n` calls in the main chat.
+- Don't poll CI with `gh run watch`/`gh run view`; bind the PR to the session and let the app's CI
+  monitor / Auto-fix report failures.
+
 ## UI: mobile first (important)
 
 The app is used **mainly on cellphones**, and only sometimes on tablets or desktops. Every new page
