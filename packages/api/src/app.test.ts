@@ -6998,7 +6998,7 @@ describe('protokolle', () => {
       return { ...t, id, pdf, zu };
     }
 
-    it('stores the PDF of a closed protocol under Cloud4/Sitzungen/Protokolle', async () => {
+    it('stores the PDF of a closed protocol under Cloud4/Sitzungen/Protokolle/<Jahr>', async () => {
       const t = await geschlossen();
       expect((await t.zu()).status).toBe(200);
       const res = await t.pdf('admin-token', {
@@ -7006,7 +7006,7 @@ describe('protokolle', () => {
         base64: PDF,
       });
       expect(res.status).toBe(200);
-      const pfad = 'Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung AB.pdf';
+      const pfad = 'Cloud4/Sitzungen/Protokolle/2026/2026-11-04_Sitzung AB.pdf';
       expect(await res.json()).toEqual({ gespeichert: true, pfad });
       const datei = t.onedrive.dateien.get(pfad);
       expect(datei?.contentType).toBe('application/pdf');

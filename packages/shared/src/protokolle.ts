@@ -1200,7 +1200,7 @@ export type ProtokollPdfEingabe = z.infer<typeof protokollPdfSchema>;
 
 export interface ProtokollPdfAntwort {
   gespeichert: true;
-  /** Path in OneDrive, e.g. `Cloud4/Sitzungen/Protokolle/2026-11-04_Sitzung.pdf`. */
+  /** Path in OneDrive, e.g. `Cloud4/Sitzungen/Protokolle/2026/2026-11-04_Sitzung.pdf`. */
   pfad: string;
 }
 
