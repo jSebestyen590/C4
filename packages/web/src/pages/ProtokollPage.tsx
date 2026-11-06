@@ -35,7 +35,7 @@ import {
 } from '../protokoll/aktionenLogik';
 import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
 import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
-import { mitLiveKopf } from '../protokoll/dokumentDaten';
+import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
@@ -236,6 +236,24 @@ function ProtokollAnsicht({
   useEffect(() => {
     if (druckAuftrag > 0) window.print();
   }, [druckAuftrag]);
+  // Printing to PDF proposes the page title as file name (and PDF title): "2026-11-04_Sitzung".
+  const druckName = druckTitel(dto.sitzung);
+  useEffect(() => {
+    let vorher = document.title;
+    const vor = () => {
+      vorher = document.title;
+      document.title = druckName;
+    };
+    const nach = () => {
+      document.title = vorher;
+    };
+    window.addEventListener('beforeprint', vor);
+    window.addEventListener('afterprint', nach);
+    return () => {
+      window.removeEventListener('beforeprint', vor);
+      window.removeEventListener('afterprint', nach);
+    };
+  }, [druckName]);
   const drucken = () => {
     setAnsicht('dokument');
     setDruckAuftrag((n) => n + 1);

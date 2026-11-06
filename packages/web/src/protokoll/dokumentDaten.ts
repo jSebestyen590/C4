@@ -467,3 +467,15 @@ export function knotenText(k: ProtokollKnoten): string {
 /** An attribution line in a quote ("— Strobi"): starts with a dash. */
 export const istQuellenzeile = (k: ProtokollKnoten): boolean =>
   k.type === 'paragraph' && /^\s*[–—-]/.test(knotenText(k));
+
+/**
+ * File name offered when printing the minutes to PDF ("YYYY-MM-DD_Sitzungsname"): browsers take it from
+ * the page title, which also becomes the PDF's title. Characters not allowed in file names are dropped.
+ */
+export function druckTitel(sitzung: { titel: string; beginn: string }): string {
+  const name = sitzung.titel
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
+}

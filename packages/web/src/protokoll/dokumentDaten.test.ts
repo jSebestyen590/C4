@@ -12,6 +12,7 @@ import {
   beschlussZeilen,
   meinungsbildZeilen,
   wahlZeilen,
+  druckTitel,
   datumLang,
   dokumentKopf,
   dokumentTitel,
@@ -380,5 +381,20 @@ describe('wahlZeilen, single seat', () => {
     expect(
       wahlZeilen({ ...bausteinLeer('bausteinWahl'), posten: 'Kasse' }, undefined)?.plaetze,
     ).toBe('');
+  });
+});
+
+describe('druckTitel', () => {
+  it('builds "YYYY-MM-DD_Sitzungsname" with the Berlin date', () => {
+    expect(druckTitel({ titel: 'Clubsitzung', beginn: '2024-01-30T18:00:00.000Z' })).toBe(
+      '2024-01-30_Clubsitzung',
+    );
+    // 23:30 UTC is already the next day in Berlin.
+    expect(druckTitel({ titel: 'MV', beginn: '2026-11-04T23:30:00.000Z' })).toBe('2026-11-05_MV');
+  });
+  it('drops characters not allowed in file names', () => {
+    expect(
+      druckTitel({ titel: 'Sitzung 04/11: Teil 2?', beginn: '2026-11-04T18:00:00.000Z' }),
+    ).toBe('2026-11-04_Sitzung 0411 Teil 2');
   });
 });

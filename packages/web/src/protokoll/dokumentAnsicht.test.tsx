@@ -157,7 +157,7 @@ describe('ProtokollDokumentAnsicht', () => {
       </MantineProvider>,
     );
     // Top level: own heading, no "Abstimmung:" line in the box.
-    expect(html).toContain('<h3 class="pk-dok-h2">Abstimmung: Neuer Tresen</h3>');
+    expect(html).toContain('<div class="pk-dok-h2">Abstimmung: Neuer Tresen</div>');
     expect(html).not.toContain('<strong>Abstimmung:</strong> Neuer Tresen');
     expect(html).not.toContain('Beschluss:');
     expect(html).toContain('Ja 1 · Nein 0 · Enthaltung 0 – angenommen');
@@ -212,7 +212,7 @@ describe('ProtokollDokumentAnsicht', () => {
         </MantineProvider>,
       );
     const offen = render(wahl('w1', []));
-    expect(offen).toContain('<h3 class="pk-dok-h2">Wahl: Finanzen (2 Plätze)</h3>');
+    expect(offen).toContain('<div class="pk-dok-h2">Wahl: Finanzen (2 Plätze)</div>');
     expect(offen).not.toContain('<strong>Wahl:</strong>');
     expect(offen).toContain('Kandidat:innen: Anna 5 · Bea 3 · Cem 3 · Enthaltung 1');
     expect(offen).toContain('Noch offen: Stichwahl nötig');

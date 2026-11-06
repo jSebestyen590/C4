@@ -285,7 +285,8 @@ function Baustein({
     return (
       <>
         {!innen && (
-          <h3 className="pk-dok-h2">{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</h3>
+          // Styled like a heading but no heading element: votes stay out of the PDF outline.
+          <div className="pk-dok-h2">{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</div>
         )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
@@ -321,9 +322,9 @@ function Baustein({
     return (
       <>
         {!innen && (
-          <h3 className="pk-dok-h2">
+          <div className="pk-dok-h2">
             {`Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`}
-          </h3>
+          </div>
         )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
@@ -531,9 +532,9 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
   return (
     <DokumentRahmen eintraege={eintraege}>
       <article className="pk-dok" data-testid="protokoll-dokument">
-        <h2 className="pk-dok-titel pk-dok-h1" style={{ marginTop: 0, fontWeight: 700 }}>
+        <h1 className="pk-dok-titel pk-dok-h1" style={{ marginTop: 0, fontWeight: 700 }}>
           {kopf.titel}
-        </h2>
+        </h1>
         <div className="pk-dok-kopf">
           <Zeile label="Anwesende Mitglieder:">
             <Namen liste={kopf.anwesende} />

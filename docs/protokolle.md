@@ -297,6 +297,11 @@ Events, auf die das alte Protokoll zeigt.
   abgeschlossenes Protokoll ist schreibgeschützt (409 bei `PUT`/`DELETE`).
 - **Löschen** nur im Entwurf (Menü „Weitere Aktionen“ mit Bestätigung).
 - **Drucken:** Button für alle; druckt die [Dokumentansicht](#dokumentansicht) (Schreibende wechseln dafür automatisch dorthin).
+  Während des Druckens heißt die Seite „YYYY-MM-DD_Sitzungsname“ (`druckTitel`, Berliner Datum der Sitzung, in Dateinamen
+  verbotene Zeichen entfernt); das schlägt der Browser als Dateinamen vor und schreibt es als Titel ins PDF. Die Überschriften
+  sind echte Ebenen (Titel `h1`, Abschnitte `h2`, Events und andere Bausteine `h3`, eigene Überschriften `h4`/`h5`), Abstimmungen
+  und Wahlen nur wie Überschriften gestaltet. Chrome und Edge erzeugen daraus beim „Als PDF speichern“ Lesezeichen (Option
+  „Dokumentgliederung“ unter „Weitere Einstellungen“), die der Gliederung der App entsprechen.
   Das Druck-CSS blendet Bedienelemente und Seitentitel aus (`PROTOKOLL_DRUCK_CSS`, `data-druck="aus"`); Überschriften behalten
   ihre Farbe und stehen nie allein am Seitenende (`break-after: avoid`).
 
