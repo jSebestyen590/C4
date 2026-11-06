@@ -53,10 +53,10 @@ export const STATUS_FARBE: Record<MitgliedStatus, string> = {
 };
 
 export const stile = StyleSheet.create({
+  // No lineHeight here: on the Page it blanks out `render` texts (the page numbers).
   seite: {
     fontFamily: PDF_SCHRIFT,
     fontSize: 10.5,
-    lineHeight: 1.45,
     paddingTop: 54,
     paddingBottom: 66,
     paddingHorizontal: 56,
@@ -64,12 +64,10 @@ export const stile = StyleSheet.create({
   fuss: {
     position: 'absolute',
     bottom: 30,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    fontSize: 9,
-    color: GEDAEMPFT,
+    left: 56,
+    right: 56,
   },
+  fussText: { textAlign: 'center', fontSize: 9, color: GEDAEMPFT },
   titel: { fontSize: 20, fontWeight: 700, lineHeight: 1.2, marginBottom: 12 },
   absatz: { marginBottom: 5 },
   zeile: { marginBottom: 2 },

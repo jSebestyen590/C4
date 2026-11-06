@@ -56,11 +56,12 @@ export function ProtokollPdf({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>
     <Document title={druckTitel(eingabe.sitzung)} language="de-DE" creator="C4" producer="C4">
       <Page size="A4" style={stile.seite}>
         <Baum knoten={baum} />
-        <Text
-          style={stile.fuss}
-          fixed
-          render={({ pageNumber, totalPages }) => `Seite ${pageNumber} von ${totalPages}`}
-        />
+        <View style={stile.fuss} fixed>
+          <Text
+            style={stile.fussText}
+            render={({ pageNumber, totalPages }) => `Seite ${pageNumber} von ${totalPages}`}
+          />
+        </View>
       </Page>
     </Document>
   );
