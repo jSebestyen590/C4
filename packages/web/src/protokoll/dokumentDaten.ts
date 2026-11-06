@@ -476,6 +476,8 @@ export function druckTitel(sitzung: { titel: string; beginn: string }): string {
   const name = sitzung.titel
     .replace(/[\\/:*?"<>|]/g, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    // No trailing dot: "Sitzung 04.11." would end up as "….pdf" with two dots.
+    .replace(/[.\s]+$/, '');
   return name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
 }
