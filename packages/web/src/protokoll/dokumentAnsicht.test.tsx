@@ -227,6 +227,18 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(fertig).toContain('Gewählt: Anna, Cem');
     expect(fertig).toContain('(1 von 1 Mitgliedern anwesend)');
     expect(fertig).not.toContain('Noch offen');
+    const abgesagt = render(
+      wahl('w4', [{ stimmen: { b: 1, c: 4 }, enthaltung: 2 }], {
+        nichtAngetreten: ['1'],
+        annahme: { c: false },
+      }),
+    );
+    expect(abgesagt).toContain('Nicht angetreten: ');
+    expect(abgesagt).toContain('Niklas');
+    expect(abgesagt).toContain('Gewählt: Anna, Bea');
+    expect(abgesagt).toContain('Nimmt die Wahl nicht an: Cem');
+    expect(fertig).not.toContain('Nicht angetreten');
+    expect(fertig).not.toContain('Nimmt die Wahl nicht an');
   });
 
   it('shows Sonstiges only with content and ends with the next Sitzung', () => {

@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   Group,
+  MultiSelect,
   Paper,
   Select,
   SegmentedControl,
@@ -27,6 +28,7 @@ import {
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
   wahlErgebnis,
+  wahlRunden,
   wahlStimmenProPerson,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
@@ -55,6 +57,8 @@ import {
   kandidatHinzufuegen,
   kalenderEventFuerBaustein,
   kandidatSetzen,
+  annahmeSetzen,
+  nichtAngetretenSetzen,
   optionEntfernen,
   optionHinzufuegen,
   optionSetzen,
@@ -820,6 +824,34 @@ function KandidatName({
   );
 }
 
+/** Read-only line of the persons proposed who do not run. */
+function NichtAngetreten({
+  daten,
+  personen,
+}: Readonly<{ daten: BausteinWahlDaten; personen: readonly ProtokollMitgliedDto[] }>) {
+  if (daten.nichtAngetreten.length === 0) return null;
+  return (
+    <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+      Nicht angetreten:{' '}
+      {daten.nichtAngetreten.map((sub, i) => {
+        const p = personen.find((x) => x.sub === sub);
+        return (
+          <Fragment key={sub}>
+            {i > 0 && ', '}
+            {p ? (
+              <StatusName status={p.status}>
+                {p.username ?? (`${p.vorname} ${p.nachname}`.trim() || '–')}
+              </StatusName>
+            ) : (
+              'Person offen'
+            )}
+          </Fragment>
+        );
+      })}
+    </Text>
+  );
+}
+
 /** Result of the Wahl: who is elected, or which tie needs a Stichwahl (with the button to add one). */
 function WahlErgebnisBereich({
   daten,
@@ -830,7 +862,7 @@ function WahlErgebnisBereich({
   personen: readonly ProtokollMitgliedDto[];
   aendern?: (f: (alt: BausteinWahlDaten) => BausteinWahlDaten) => void;
 }>) {
-  const { gewaehlt, offen } = wahlErgebnis(daten);
+  const { gewaehlt, abgelehnt, offen } = wahlErgebnis(daten);
   const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
   const liste = (ids: readonly string[], getrennt: string) =>
     ids.flatMap((id, i) => {
@@ -851,6 +883,29 @@ function WahlErgebnisBereich({
           Gewählt: {liste(gewaehlt, ', ')}
         </Text>
       )}
+      {abgelehnt.length > 0 && (
+        <Text size="sm" c="red" style={{ overflowWrap: 'anywhere' }}>
+          Nimmt die Wahl nicht an: {liste(abgelehnt, ', ')}
+        </Text>
+      )}
+      {aendern &&
+        [...gewaehlt, ...abgelehnt].flatMap((id) => {
+          const k = nachId.get(id);
+          if (!k) return [];
+          return [
+            <Switch
+              key={id}
+              size="md"
+              checked={daten.annahme[id] !== false}
+              onChange={(e) => aendern((d) => annahmeSetzen(d, id, e.currentTarget.checked))}
+              label={
+                <>
+                  <KandidatName k={k} personen={personen} /> nimmt die Wahl an
+                </>
+              }
+            />,
+          ];
+        })}
       {offen && (
         <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
           <Stack gap="xs" align="flex-start">
@@ -896,7 +951,7 @@ export function WahlFormular({
   const { teilnahme, ems } = useProtokollKontext();
   const personen = emKandidaten(teilnahme, ems);
   const postenListe = usePostenOptionen(editierbar);
-  const ergebnis = wahlErgebnis(daten);
+  const runden = wahlRunden(daten);
   const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
   const plaetze = daten.anzahl === 1 ? '' : ` (${daten.anzahl} Plätze)`;
 
@@ -921,7 +976,7 @@ export function WahlFormular({
             {stimmen(daten.kandidaten, (k) => k.stimmen)} · Enthaltung {daten.enthaltung}
           </Text>
         )}
-        {ergebnis.runden.map((r, i) => (
+        {runden.map((r, i) => (
           <Text key={i} size="sm" style={{ overflowWrap: 'anywhere' }}>
             Stichwahl:{' '}
             {stimmen(
@@ -931,13 +986,14 @@ export function WahlFormular({
             · Enthaltung {daten.stichwahlen[i]!.enthaltung}
           </Text>
         ))}
+        <NichtAngetreten daten={daten} personen={personen} />
         <WahlErgebnisBereich daten={daten} personen={personen} />
       </Stack>
     );
   }
 
   const status = new Map(personen.map((p) => [p.sub, p.status]));
-  const ueberzaehlig = daten.stichwahlen.length > ergebnis.runden.length;
+  const ueberzaehlig = daten.stichwahlen.length > runden.length;
   return (
     <Stack gap="xs">
       <WiederholungHinweis art="Wahl" wiederholung={daten.wiederholung} />
@@ -1037,7 +1093,30 @@ export function WahlFormular({
         wert={daten.enthaltung}
         onWert={(enthaltung) => aendern((d) => ({ ...d, enthaltung }))}
       />
-      {ergebnis.runden.map((r, i) => (
+      <MultiSelect
+        label="Vorgeschlagen, tritt nicht an"
+        placeholder={daten.nichtAngetreten.length === 0 ? 'Personen wählen' : undefined}
+        size="md"
+        searchable
+        clearable
+        nothingFoundMessage="Niemand gefunden"
+        data={personenOptionen(personen).filter(
+          (o) =>
+            daten.nichtAngetreten.includes(o.value) ||
+            !daten.kandidaten.some((k) => k.sub === o.value),
+        )}
+        value={daten.nichtAngetreten}
+        onChange={(subs) => aendern((d) => nichtAngetretenSetzen(d, subs))}
+        renderOption={({ option }) => {
+          const s = status.get(option.value);
+          return s ? (
+            <StatusName status={s}>{option.label}</StatusName>
+          ) : (
+            <span>{option.label}</span>
+          );
+        }}
+      />
+      {runden.map((r, i) => (
         <Paper key={i} withBorder p="xs" radius="md">
           <Stack gap="xs">
             <Group justify="space-between" wrap="nowrap" gap="xs">

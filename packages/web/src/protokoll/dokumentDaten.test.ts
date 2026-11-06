@@ -297,6 +297,14 @@ describe('Texte', () => {
     ).toMatchObject({
       giltAb: 'Gilt ab 01.01.2027',
     });
+    const abgesagt = wahlZeilen(
+      { ...wahl([]), anzahl: 1, nichtAngetreten: ['s9'], annahme: { a: false } },
+      stand,
+    )!;
+    expect(abgesagt.nichtAngetreten).toEqual(['s9']);
+    expect(abgesagt.abgelehnt.map((g) => g.id)).toEqual(['a']);
+    expect(abgesagt.offen).toBe(true);
+    expect(abgesagt.gewaehlt).toEqual([]);
     expect(wahlZeilen({ posten: 'x' }, stand)).toBeNull();
   });
 

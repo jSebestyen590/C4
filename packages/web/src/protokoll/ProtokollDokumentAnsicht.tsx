@@ -347,6 +347,20 @@ function Baustein({
               <WahlStimmen kandidaten={r.kandidaten} enthaltung={r.enthaltung} ctx={ctx} />
             </p>
           ))}
+          {z.nichtAngetreten.length > 0 && (
+            <p>
+              Nicht angetreten:{' '}
+              {z.nichtAngetreten.map((sub, i) => {
+                const p = ctx.person(sub);
+                return (
+                  <Fragment key={sub}>
+                    {i > 0 && ', '}
+                    {p ? <PersonName p={p} /> : 'Person offen'}
+                  </Fragment>
+                );
+              })}
+            </p>
+          )}
           {z.offen ? (
             <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>
           ) : (
@@ -361,6 +375,17 @@ function Baustein({
                 ))}
               </p>
             )
+          )}
+          {z.abgelehnt.length > 0 && (
+            <p>
+              Nimmt die Wahl nicht an:{' '}
+              {z.abgelehnt.map((g, i) => (
+                <Fragment key={g.id}>
+                  {i > 0 && ', '}
+                  <WahlName k={g} ctx={ctx} />
+                </Fragment>
+              ))}
+            </p>
           )}
           {(z.anwesend || z.nichtBeschlussfaehig) && (
             <p>

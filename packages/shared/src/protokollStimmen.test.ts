@@ -46,6 +46,8 @@ function wahl(teil: Partial<BausteinWahlDaten>) {
     kandidaten: [],
     enthaltung: 0,
     stichwahlen: [],
+    nichtAngetreten: [],
+    annahme: {},
     wiederholung: null,
     ...teil,
   });
@@ -221,6 +223,31 @@ describe('stimmenPruefen: Wahl', () => {
     });
     expect(stimmenPruefen(doc(falsch), eingabe(5)).problems.map((p) => p.text)).toEqual([
       'Wahl „Kasse“ – Stichwahl 1: 4 Stimmen, erwartet 5 (5 Mitglieder × 1 Stimme).',
+    ]);
+  });
+
+  it('keeps checking the held Stichwahl after a decline and blocks a tie the decline creates', () => {
+    const hauptrunde = [kand('a', 6), kand('b', 2), kand('c', 2)];
+    const gehalten = wahl({
+      anzahl: 2,
+      kandidaten: hauptrunde,
+      stichwahlen: [{ stimmen: { b: 3, c: 2 }, enthaltung: 0 }],
+      annahme: { b: false },
+    });
+    const r = stimmenPruefen(doc(gehalten), eingabe(5));
+    expect(r.problems).toEqual([]);
+    expect(r.pruefungen.map((p) => [p.runde, p.ist, p.soll])).toEqual([
+      [0, 10, 10],
+      [1, 5, 5],
+    ]);
+    // a declines in a one-seat election: b and c are tied for the new boundary.
+    const neu = wahl({
+      anzahl: 1,
+      kandidaten: [kand('a', 3), kand('b', 1), kand('c', 1)],
+      annahme: { a: false },
+    });
+    expect(stimmenPruefen(doc(neu), eingabe(5)).problems.map((p) => p.text)).toEqual([
+      'Wahl „Kasse“: Stichwahl nötig (Gleichstand).',
     ]);
   });
 

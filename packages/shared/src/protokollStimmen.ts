@@ -12,6 +12,7 @@ import {
   type ProtokollDokument,
   type ProtokollKnoten,
   wahlErgebnis,
+  wahlRunden,
   wahlStimmenProPerson,
 } from './protokolle';
 
@@ -93,8 +94,9 @@ function wahlPruefungen(
   const pruefungen = [
     neu(0, summe(daten.kandidaten.map((k) => k.stimmen)) + daten.enthaltung, pro),
   ];
-  ergebnis.runden.forEach((r, i) => {
-    const s = daten.stichwahlen[i]!;
+  wahlRunden(daten).forEach((r, i) => {
+    const s = daten.stichwahlen[i];
+    if (!s) return;
     pruefungen.push(
       neu(
         i + 1,

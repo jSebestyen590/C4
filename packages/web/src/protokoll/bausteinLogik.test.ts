@@ -22,6 +22,8 @@ import {
   schichtKurz,
   schichtZeitSetzen,
   stimmeSetzen,
+  annahmeSetzen,
+  nichtAngetretenSetzen,
   kandidatEntfernen,
   kandidatHinzufuegen,
   kandidatSetzen,
@@ -235,6 +237,18 @@ describe('Wahl', () => {
     const ohne = kandidatEntfernen(runde, 'a');
     expect(ohne.kandidaten).toEqual([]);
     expect(ohne.stichwahlen[0]!.stimmen).toEqual({ b: 1 });
+  });
+
+  it('stores a decline as false and accepting again removes the entry', () => {
+    const nein = annahmeSetzen(leer, 'a', false);
+    expect(nein.annahme).toEqual({ a: false });
+    expect(annahmeSetzen(nein, 'a', true).annahme).toEqual({});
+    const mit = annahmeSetzen(kandidatHinzufuegen(leer, 'a'), 'a', false);
+    expect(kandidatEntfernen(mit, 'a').annahme).toEqual({});
+  });
+
+  it('sets the persons that do not run without duplicates', () => {
+    expect(nichtAngetretenSetzen(leer, ['x', 'y', 'x']).nichtAngetreten).toEqual(['x', 'y']);
   });
 
   it('sets a candidate, ignoring invalid counts', () => {

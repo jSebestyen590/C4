@@ -247,6 +247,10 @@ export const bausteinWahlDatenSchema = z.strictObject({
   kandidaten: z.array(bausteinWahlKandidatSchema).max(WAHL_MAX_KANDIDATEN),
   enthaltung: stimmen,
   stichwahlen: z.array(bausteinWahlStichwahlSchema).max(WAHL_MAX_STICHWAHLEN),
+  /** Persons of the app (subs) proposed who do not want to run; shown only, no votes. */
+  nichtAngetreten: z.array(z.string().min(1).max(100)).max(WAHL_MAX_KANDIDATEN).default([]),
+  /** Whether an elected candidate accepts, by candidate id; missing = accepted. */
+  annahme: z.record(z.string().max(100), z.boolean()).default({}),
   wiederholung: wiederholungSchema,
 });
 export type BausteinWahlDaten = z.infer<typeof bausteinWahlDatenSchema>;
@@ -268,6 +272,8 @@ export interface WahlErgebnis {
   gewaehlt: string[];
   /** The tie that is still open (null = the election is decided, or has no votes yet). */
   offen: (WahlRunde & { rundeVorhanden: boolean }) | null;
+  /** Elected candidates that declined (`annahme` false), in the order they were skipped. */
+  abgelehnt: string[];
   /** The stored runoff rounds that apply, in order (stored rounds beyond these are superfluous). */
   runden: WahlRunde[];
 }
@@ -290,8 +296,8 @@ export function wahlGueltigAbVorschlag(heute: string): string {
  * vote counts as not held yet. With at most `anzahl` candidates, all that got at least one vote are
  * elected. Without any vote in the main round there is no result.
  */
-export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
-  const leer: WahlErgebnis = { gewaehlt: [], offen: null, runden: [] };
+function wahlErgebnisRoh(daten: BausteinWahlDaten): WahlErgebnis {
+  const leer: WahlErgebnis = { gewaehlt: [], abgelehnt: [], offen: null, runden: [] };
   const ids = daten.kandidaten.map((k) => k.id);
   const haupt = Object.fromEntries(daten.kandidaten.map((k) => [k.id, k.stimmen]));
   if (ids.length === 0 || ids.every((id) => (haupt[id] ?? 0) === 0)) return leer;
@@ -312,7 +318,11 @@ export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
     const grenze = stimmenVon[sortiert[plaetze - 1]!] ?? 0;
     const danach = stimmenVon[sortiert[plaetze]!] ?? 0;
     if (grenze > danach) {
-      return { gewaehlt: [...gewaehlt, ...sortiert.slice(0, plaetze)], offen: null, runden };
+      return {
+        ...leer,
+        gewaehlt: [...gewaehlt, ...sortiert.slice(0, plaetze)],
+        runden,
+      };
     }
     const klar = sortiert.filter((id) => (stimmenVon[id] ?? 0) > grenze);
     gewaehlt.push(...klar);
@@ -320,13 +330,56 @@ export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
     plaetze -= klar.length;
     const runde = daten.stichwahlen[i];
     if (!runde)
-      return { gewaehlt, offen: { kandidaten: gruppe, plaetze, rundeVorhanden: false }, runden };
+      return {
+        ...leer,
+        gewaehlt,
+        offen: { kandidaten: gruppe, plaetze, rundeVorhanden: false },
+        runden,
+      };
     runden.push({ kandidaten: gruppe, plaetze });
     stimmenVon = runde.stimmen;
     if (gruppe.every((id) => (stimmenVon[id] ?? 0) === 0)) {
-      return { gewaehlt, offen: { kandidaten: gruppe, plaetze, rundeVorhanden: true }, runden };
+      return {
+        ...leer,
+        gewaehlt,
+        offen: { kandidaten: gruppe, plaetze, rundeVorhanden: true },
+        runden,
+      };
     }
   }
+}
+
+/**
+ * Effective result of a Wahl: like the raw result, but candidates that declined (`annahme[id] ===
+ * false`) after being elected are skipped. Repeat: compute the result for the remaining candidates
+ * (same main-round votes, same Stichwahl rules, stored `stichwahlen[i]` still used for round i by
+ * candidate id), take the elected ones that declined out of the list and compute again, until nobody
+ * elected has declined. So the next one by votes moves up, and a tie at the new boundary needs a
+ * Stichwahl as usual. `gewaehlt` holds only accepting persons; `abgelehnt` the skipped ones in
+ * order (they keep their switch). Declines of candidates that would not be elected are ignored.
+ */
+export function wahlErgebnis(daten: BausteinWahlDaten): WahlErgebnis {
+  let aktuell = daten;
+  const abgelehnt: string[] = [];
+  for (;;) {
+    const ergebnis = wahlErgebnisRoh(aktuell);
+    const neu = ergebnis.gewaehlt.filter((id) => daten.annahme[id] === false);
+    if (neu.length === 0) return { ...ergebnis, abgelehnt };
+    abgelehnt.push(...neu);
+    aktuell = {
+      ...aktuell,
+      kandidaten: aktuell.kandidaten.filter((k) => !neu.includes(k.id)),
+    };
+  }
+}
+
+/**
+ * The runoff rounds to show and check: the ones held for the ties as voted (ignoring declines),
+ * then the ones only a decline makes necessary.
+ */
+export function wahlRunden(daten: BausteinWahlDaten): WahlRunde[] {
+  const gehalten = wahlErgebnis({ ...daten, annahme: {} }).runden;
+  return [...gehalten, ...wahlErgebnis(daten).runden.slice(gehalten.length)];
 }
 
 export interface BausteinDatenVon {
@@ -395,6 +448,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         kandidaten: [],
         enthaltung: 0,
         stichwahlen: [],
+        nichtAngetreten: [],
+        annahme: {},
         wiederholung: null,
       };
     case 'bausteinAufnahme':
@@ -856,6 +911,7 @@ function abstimmungWiederholen(
             kandidaten: d.data.kandidaten.map((k) => ({ ...k, stimmen: 0 })),
             enthaltung: 0,
             stichwahlen: [],
+            annahme: {},
             wiederholung,
           })
         : null;

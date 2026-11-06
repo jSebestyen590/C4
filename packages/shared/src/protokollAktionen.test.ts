@@ -390,6 +390,11 @@ describe('wahl.posten', () => {
     });
   });
 
+  it('gives the Besetzung only to elected persons that accept', () => {
+    const [a] = protokollAktionen(dok(wahl({ annahme: { c1: false } })), ctx());
+    expect(a).toMatchObject({ ausfuehrbar: true, subs: ['b'], plan: { subs: ['b'] } });
+  });
+
   it('keeps the re-elected and has nothing to do when they hold the Posten', () => {
     const [a] = protokollAktionen(
       dok(wahl()),

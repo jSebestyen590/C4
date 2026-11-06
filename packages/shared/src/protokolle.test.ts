@@ -8,6 +8,7 @@ import {
   bausteinLeer,
   beschlussErgebnisVorschlag,
   wahlErgebnis,
+  wahlRunden,
   wahlGueltigAbVorschlag,
   protokollAnlegenSchema,
   protokollDokumentNormalisieren,
@@ -846,6 +847,8 @@ describe('Wahl', () => {
     postenId: null,
     gueltigAb: '',
     stimmenProPerson: null,
+    nichtAngetreten: [],
+    annahme: {},
     anzahl,
     kandidaten: stimmen.map((n, i) => ({ id: `k${i}`, sub: null, name: `K${i}`, stimmen: n })),
     enthaltung: 0,
@@ -871,6 +874,8 @@ describe('Wahl', () => {
       kandidaten: [],
       enthaltung: 0,
       stichwahlen: [],
+      nichtAngetreten: [],
+      annahme: {},
       wiederholung: null,
     });
     expect(pruefen(daten([3, 2]))).toBeNull();
@@ -907,14 +912,80 @@ describe('Wahl', () => {
         dokument({ gegenwaertiges: [bausteinErzeugen('bausteinWahl', alt as never)] }),
       ),
     ).toBeNull();
-    expect(bausteinWahlDatenSchema.parse(alt)).toMatchObject({ postenId: null, gueltigAb: '' });
+    delete alt.nichtAngetreten;
+    delete alt.annahme;
+    expect(bausteinWahlDatenSchema.parse(alt)).toMatchObject({
+      postenId: null,
+      gueltigAb: '',
+      nichtAngetreten: [],
+      annahme: {},
+    });
     // Old free-text candidates (sub null with a name) stay valid.
     expect(bausteinWahlDatenSchema.safeParse(daten([1])).success).toBe(true);
   });
 
+  it('skips candidates that declined: the next one by votes moves up', () => {
+    const d = { ...daten([5, 4, 3], 1), annahme: { k0: false } };
+    expect(wahlErgebnis(d)).toMatchObject({ gewaehlt: ['k1'], abgelehnt: ['k0'], offen: null });
+    // Accepting is the default and a decline of someone not elected is ignored.
+    expect(wahlErgebnis({ ...daten([5, 4, 3]), annahme: { k2: false } })).toMatchObject({
+      gewaehlt: ['k0'],
+      abgelehnt: [],
+    });
+    // The replacement can decline, too.
+    const zwei = { ...daten([5, 4, 3], 1), annahme: { k0: false, k1: false } };
+    expect(wahlErgebnis(zwei)).toMatchObject({ gewaehlt: ['k2'], abgelehnt: ['k0', 'k1'] });
+    // Everybody declined: nobody is elected.
+    const alle = { ...daten([5, 4], 1), annahme: { k0: false, k1: false } };
+    expect(wahlErgebnis(alle)).toMatchObject({ gewaehlt: [], abgelehnt: ['k0', 'k1'] });
+  });
+
+  it('needs a Stichwahl for a tie at the new boundary after a decline', () => {
+    const d = { ...daten([5, 3, 3], 2), annahme: { k0: false } };
+    // Without k0 two seats are left for k1 and k2: all elected, no tie.
+    expect(wahlErgebnis(d)).toMatchObject({
+      gewaehlt: ['k1', 'k2'],
+      abgelehnt: ['k0'],
+      offen: null,
+    });
+    const e = { ...daten([5, 3, 3, 3], 2), annahme: { k0: false } };
+    expect(wahlErgebnis(e).offen).toEqual({
+      kandidaten: ['k1', 'k2', 'k3'],
+      plaetze: 2,
+      rundeVorhanden: false,
+    });
+    const f = { ...daten([5, 4, 3, 3], 2), annahme: { k1: false } };
+    expect(wahlErgebnis(f)).toMatchObject({
+      gewaehlt: ['k0'],
+      abgelehnt: ['k1'],
+      offen: { kandidaten: ['k2', 'k3'], plaetze: 1, rundeVorhanden: false },
+    });
+    const g = { ...f, stichwahlen: [runde({ k2: 2, k3: 1 })] };
+    expect(wahlErgebnis(g)).toMatchObject({ gewaehlt: ['k0', 'k2'], offen: null });
+  });
+
+  it('lists the held runoff rounds before the ones only a decline needs', () => {
+    const d = daten([5, 3, 3], 2, [runde({ k1: 1, k2: 4 })]);
+    expect(wahlRunden(d)).toEqual([{ kandidaten: ['k1', 'k2'], plaetze: 1 }]);
+    // k2 wins the runoff and declines: k1 has the seat, the held round stays listed.
+    const abgelehnt = { ...d, annahme: { k2: false } };
+    expect(wahlErgebnis(abgelehnt)).toMatchObject({ gewaehlt: ['k0', 'k1'], abgelehnt: ['k2'] });
+    expect(wahlRunden(abgelehnt)).toEqual([{ kandidaten: ['k1', 'k2'], plaetze: 1 }]);
+  });
+
   it('has no result without candidates or votes', () => {
-    expect(wahlErgebnis(daten([]))).toEqual({ gewaehlt: [], offen: null, runden: [] });
-    expect(wahlErgebnis(daten([0, 0, 0]))).toEqual({ gewaehlt: [], offen: null, runden: [] });
+    expect(wahlErgebnis(daten([]))).toEqual({
+      gewaehlt: [],
+      abgelehnt: [],
+      offen: null,
+      runden: [],
+    });
+    expect(wahlErgebnis(daten([0, 0, 0]))).toEqual({
+      gewaehlt: [],
+      abgelehnt: [],
+      offen: null,
+      runden: [],
+    });
   });
 
   it('elects the top candidates when the boundary is clear', () => {
@@ -935,6 +1006,7 @@ describe('Wahl', () => {
     // The best is elected already, the two tied for the second seat go to a runoff.
     expect(wahlErgebnis(daten([5, 3, 3], 2))).toEqual({
       gewaehlt: ['k0'],
+      abgelehnt: [],
       offen: { kandidaten: ['k1', 'k2'], plaetze: 1, rundeVorhanden: false },
       runden: [],
     });
@@ -956,6 +1028,7 @@ describe('Wahl', () => {
     const ergebnis = wahlErgebnis(daten([5, 3, 3], 2, [runde({ k1: 1, k2: 4 })]));
     expect(ergebnis).toEqual({
       gewaehlt: ['k0', 'k2'],
+      abgelehnt: [],
       offen: null,
       runden: [{ kandidaten: ['k1', 'k2'], plaetze: 1 }],
     });
@@ -1052,6 +1125,8 @@ describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
       kandidaten: [{ id: 'k1', sub: 'x', name: '', stimmen: 4 }],
       enthaltung: 2,
       stichwahlen: [{ stimmen: { k1: 1 }, enthaltung: 0 }],
+      nichtAngetreten: ['n'],
+      annahme: { k1: false },
     });
     const letztes = dokument({ gegenwaertiges: [beschluss, aufnahme, em, wahl] });
     const doc = protokollVorschlag({
@@ -1097,6 +1172,8 @@ describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
       kandidaten: [{ id: 'k1', sub: 'x', name: '', stimmen: 0 }],
       enthaltung: 0,
       stichwahlen: [],
+      nichtAngetreten: ['n'],
+      annahme: {},
       wiederholung: w,
     });
     expect(protokollDokumentPruefen(doc)).toBeNull();

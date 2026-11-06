@@ -7,6 +7,7 @@ import {
   bausteinEmDatenSchema,
   bausteinWahlDatenSchema,
   wahlErgebnis,
+  wahlRunden,
   anwesenheitsZeitText,
   anwesenheitsZeiten,
   teilnahmeMitBloecken,
@@ -371,7 +372,12 @@ export interface WahlZeilen {
   stichwahlen: { kandidaten: WahlKandidat[]; enthaltung: number }[];
   /** "Gilt ab 01.01.2027" or '' while no date is set. */
   giltAb: string;
+  /** Elected and accepted. */
   gewaehlt: WahlKandidat[];
+  /** Elected but declined. */
+  abgelehnt: WahlKandidat[];
+  /** Proposed persons (subs) who do not run. */
+  nichtAngetreten: string[];
   /** A tie is still open: no result yet. */
   offen: boolean;
   /** "(13 von 25 Mitgliedern anwesend)" or '' */
@@ -405,12 +411,14 @@ export function wahlZeilen(
     plaetze: w.anzahl === 1 ? '' : `${w.anzahl} Plätze`,
     kandidaten: w.kandidaten.map((k) => kandidat(k, k.stimmen)),
     enthaltung: w.enthaltung,
-    stichwahlen: ergebnis.runden.map((r, i) => ({
+    stichwahlen: wahlRunden(w).map((r, i) => ({
       kandidaten: r.kandidaten.flatMap((id) => von(id, w.stichwahlen[i]!.stimmen[id] ?? 0)),
       enthaltung: w.stichwahlen[i]!.enthaltung,
     })),
     giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
+    abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
+    nichtAngetreten: w.nichtAngetreten,
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',
     nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,

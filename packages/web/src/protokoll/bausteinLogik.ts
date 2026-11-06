@@ -7,6 +7,7 @@ import {
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
   wahlErgebnis,
+  wahlRunden,
   type BausteinBeschlussDaten,
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
@@ -235,6 +236,7 @@ export function kandidatEntfernen(daten: BausteinWahlDaten, id: string): Baustei
   return {
     ...daten,
     kandidaten: daten.kandidaten.filter((k) => k.id !== id),
+    annahme: Object.fromEntries(Object.entries(daten.annahme).filter(([k]) => k !== id)),
     stichwahlen: daten.stichwahlen.map((r) => ({
       ...r,
       stimmen: Object.fromEntries(Object.entries(r.stimmen).filter(([k]) => k !== id)),
@@ -253,6 +255,24 @@ export function kandidatSetzen(
     ...daten,
     kandidaten: daten.kandidaten.map((k) => (k.id === id ? { ...k, ...neu } : k)),
   };
+}
+
+/** The persons proposed who do not run (duplicates dropped, at most `WAHL_MAX_KANDIDATEN`). */
+export function nichtAngetretenSetzen(
+  daten: BausteinWahlDaten,
+  subs: readonly string[],
+): BausteinWahlDaten {
+  return { ...daten, nichtAngetreten: [...new Set(subs)].slice(0, WAHL_MAX_KANDIDATEN) };
+}
+
+/** Whether the elected candidate accepts; accepting is the default and stored as no entry. */
+export function annahmeSetzen(
+  daten: BausteinWahlDaten,
+  id: string,
+  nimmtAn: boolean,
+): BausteinWahlDaten {
+  const rest = Object.fromEntries(Object.entries(daten.annahme).filter(([k]) => k !== id));
+  return { ...daten, annahme: nimmtAn ? rest : { ...rest, [id]: false } };
 }
 
 /** Number of seats, at least 1 (and at most the schema's maximum). */
@@ -307,7 +327,7 @@ export function stichwahlSetzen(
 
 /** Drops the stored runoff rounds the result no longer uses (the votes changed so there is no tie). */
 export function ueberzaehligeStichwahlenEntfernen(daten: BausteinWahlDaten): BausteinWahlDaten {
-  return stichwahlEntfernen(daten, wahlErgebnis(daten).runden.length);
+  return stichwahlEntfernen(daten, wahlRunden(daten).length);
 }
 
 // ---------------------------------------------------------------------------------------------
