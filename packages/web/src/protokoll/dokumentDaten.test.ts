@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { protokollKopfLeer, type ProtokollKnoten, type ProtokollKopf } from '@c4/shared';
+import {
+  bausteinLeer,
+  protokollKopfLeer,
+  type ProtokollKnoten,
+  type ProtokollKopf,
+} from '@c4/shared';
 import {
   anwesenheitZeile,
   beschlussfaehigkeitText,
@@ -367,5 +372,13 @@ describe('naechsteSitzung', () => {
       'Die nächste Sitzung findet am Mittwoch, 02.12.2026 um 19:30 Uhr statt.',
     );
     expect(naechsteSitzungWert(kopf('', ''), vorschlag)).toBeNull();
+  });
+});
+
+describe('wahlZeilen, single seat', () => {
+  it('shows no seat count for a single seat', () => {
+    expect(
+      wahlZeilen({ ...bausteinLeer('bausteinWahl'), posten: 'Kasse' }, undefined)?.plaetze,
+    ).toBe('');
   });
 });

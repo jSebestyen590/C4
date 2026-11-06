@@ -197,13 +197,13 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   `StatusName`, sonst der Freitext-Name); mit Abstimmung die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
   25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
   danach die Notizen.
-- **Abstimmung:** eingerückter Block „Abstimmung: Antrag“, „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
+- **Abstimmung:** auf oberster Ebene mit Überschrift „Abstimmung: Antrag“ (nicht in der Gliederung), darunter ein Block; in den Notizen eines anderen Bausteins steht „Abstimmung: Antrag“ im Block. Der Block zeigt „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
   Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig).
 - **Aufnahme:** Überschrift „Aufnahme: <Name>“ (Person als `StatusName`, sonst Freitext oder nur „Aufnahme“), dann die
   Stimmzeilen genau wie bei der Abstimmung, dann die Notizen.
 - **Meinungsbild:** Block „Meinungsbild: Frage“, „Ja 4 · Nein 3 · Enthaltung 2“ (Optionen ohne Text entfallen), klein „(nicht
   bindend)“, dann die Notizen.
-- **Wahl:** Block „Wahl: Posten (2 Plätze)“, bei gesetztem „Gilt ab“ die Zeile „Gilt ab 01.01.2027“, „Kandidat:innen: A 5 · B 3 · C 3 · Enthaltung 1“, je Stichwahl „Stichwahl: B 4 ·
+- **Wahl:** auf oberster Ebene mit Überschrift „Wahl: Posten (2 Plätze)“ (nicht in der Gliederung; bei einem Platz ohne Anzahl), in Notizen steht diese Zeile im Block; dann bei gesetztem „Gilt ab“ die Zeile „Gilt ab 01.01.2027“, „Kandidat:innen: A 5 · B 3 · C 3 · Enthaltung 1“, je Stichwahl „Stichwahl: B 4 ·
   C 2 · Enthaltung 0“, dann „Gewählt: A, B“ (oder rot „Noch offen: Stichwahl nötig“), „(x von y Mitgliedern anwesend)“ (rot
   „nicht beschlussfähig“), dann die Notizen. Personen als `StatusName`.
 - **Verschachtelt:** Eine Abstimmung, ein Meinungsbild oder eine Wahl in den Notizen eines anderen Bausteins steht dort, eingerückt wie die

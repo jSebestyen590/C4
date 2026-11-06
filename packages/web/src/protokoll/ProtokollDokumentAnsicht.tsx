@@ -136,7 +136,7 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       // An Abstimmung / Meinungsbild / Wahl inside the free text of another Baustein.
       return (
         <div className="pk-dok-innen">
-          <Baustein k={k} ctx={ctx} />
+          <Baustein k={k} ctx={ctx} innen />
         </div>
       );
     default:
@@ -222,7 +222,12 @@ function WahlName({ k, ctx }: Readonly<{ k: WahlKandidat; ctx: Kontext }>) {
   return p ? <PersonName p={p} /> : <>{k.name || 'Person offen'}</>;
 }
 
-function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
+/** `innen`: inside the notes of another Baustein (Abstimmung / Wahl then get no heading of their own). */
+function Baustein({
+  k,
+  ctx,
+  innen = false,
+}: Readonly<{ k: ProtokollKnoten; ctx: Kontext; innen?: boolean }>) {
   const daten: unknown = k.attrs?.daten;
   const id = typeof k.attrs?.id === 'string' ? k.attrs.id : '';
   const art = ctx.eingabe.sitzung.art;
@@ -279,11 +284,16 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     const z = beschlussZeilen(daten, ctx.verlauf.bausteine[id]);
     return (
       <>
+        {!innen && (
+          <h3 className="pk-dok-h2">{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</h3>
+        )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
-          <p>
-            <strong>Abstimmung:</strong> {z.antrag}
-          </p>
+          {innen && (
+            <p>
+              <strong>Abstimmung:</strong> {z.antrag}
+            </p>
+          )}
           <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
         </div>
         <Notizen knoten={k.content} ctx={ctx} />
@@ -310,11 +320,19 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     if (!z) return null;
     return (
       <>
+        {!innen && (
+          <h3 className="pk-dok-h2">
+            {`Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`}
+          </h3>
+        )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
-          <p>
-            <strong>Wahl:</strong> {z.posten} ({z.plaetze})
-          </p>
+          {innen && (
+            <p>
+              <strong>Wahl:</strong> {z.posten}
+              {z.plaetze && ` (${z.plaetze})`}
+            </p>
+          )}
           {z.giltAb && <p>{z.giltAb}</p>}
           {z.kandidaten.length > 0 && (
             <p>

@@ -898,7 +898,7 @@ export function WahlFormular({
   const postenListe = usePostenOptionen(editierbar);
   const ergebnis = wahlErgebnis(daten);
   const nachId = new Map(daten.kandidaten.map((k) => [k.id, k]));
-  const plaetze = daten.anzahl === 1 ? '1 Platz' : `${daten.anzahl} Plätze`;
+  const plaetze = daten.anzahl === 1 ? '' : ` (${daten.anzahl} Plätze)`;
 
   if (!editierbar) {
     const stimmen = (ks: readonly WahlKandidatDaten[], wert: (k: WahlKandidatDaten) => number) =>
@@ -912,7 +912,8 @@ export function WahlFormular({
       <Stack gap={4}>
         <WiederholungHinweis art="Wahl" wiederholung={daten.wiederholung} />
         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
-          {daten.posten || 'Posten offen'} ({plaetze})
+          {daten.posten || 'Posten offen'}
+          {plaetze}
         </Text>
         {daten.gueltigAb && <Text size="sm">Gilt ab {datumAnzeigen(daten.gueltigAb)}</Text>}
         {daten.kandidaten.length > 0 && (

@@ -363,7 +363,7 @@ export interface WahlKandidat {
 export interface WahlZeilen {
   wiederholung: string;
   posten: string;
-  /** "1 Platz" / "2 Plätze" */
+  /** "2 Plätze"; '' for a single seat */
   plaetze: string;
   kandidaten: WahlKandidat[];
   enthaltung: number;
@@ -402,7 +402,7 @@ export function wahlZeilen(
   return {
     wiederholung: wiederholungZeile('Wahl', w.wiederholung),
     posten: w.posten.trim(),
-    plaetze: w.anzahl === 1 ? '1 Platz' : `${w.anzahl} Plätze`,
+    plaetze: w.anzahl === 1 ? '' : `${w.anzahl} Plätze`,
     kandidaten: w.kandidaten.map((k) => kandidat(k, k.stimmen)),
     enthaltung: w.enthaltung,
     stichwahlen: ergebnis.runden.map((r, i) => ({
