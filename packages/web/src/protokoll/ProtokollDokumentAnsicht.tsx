@@ -412,12 +412,8 @@ function Baustein({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
             {p ? <PersonName p={p} /> : null}
             {z.nach}
           </p>
+          {z.wechsel && <p>{z.wechsel}</p>}
         </blockquote>
-        {z.wechsel && (
-          <p className={z.wechselBeschlussfaehig ? undefined : 'pk-dok-warnung'}>
-            <strong>{z.wechsel}</strong>
-          </p>
-        )}
       </>
     );
   }
