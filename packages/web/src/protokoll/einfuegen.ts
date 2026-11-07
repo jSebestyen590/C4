@@ -189,6 +189,15 @@ export function imVerschachtelbaren(state: EditorState): boolean {
   return false;
 }
 
+/** Whether the cursor is at the top level of a section, in no Baustein (a Todo cannot be inserted there). */
+export function ausserhalbBaustein(state: EditorState): boolean {
+  const { $from } = state.selection;
+  for (let d = $from.depth; d > 0; d--) {
+    if (bausteinNamen.includes($from.node(d).type.name)) return false;
+  }
+  return true;
+}
+
 /**
  * Inserts a Baustein at the cursor (after deleting `loeschen`, e.g. the typed "/query") and focuses its
  * first empty field; see `einfuegeStelle` for the position. One transaction = one undo step.

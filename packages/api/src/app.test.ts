@@ -7532,7 +7532,12 @@ describe('protokolle', () => {
       const t = await setup();
       const baustein = todoBaustein(daten);
       const doc = protokollLeer();
-      doc.content[1]!.content = [baustein];
+      // A Todo may only stand in the notes of another Baustein.
+      doc.content[1]!.content = [
+        bausteinErzeugen('bausteinThema', { ...bausteinLeer('bausteinThema'), titel: 'Kasse' }, [
+          baustein,
+        ]),
+      ];
       const id = (await (await t.anlegen('admin-token', { eventId: 's1', inhalt: doc })).json())
         .id as string;
       const bausteinId = (baustein.attrs as { id: string }).id;
@@ -7608,7 +7613,9 @@ describe('protokolle', () => {
       const dto = await t.holen(t.id);
       const inhalt = JSON.parse(JSON.stringify(dto.inhalt)) as ProtokollDokument;
       const daten = (
-        inhalt.content[1]!.content![0] as unknown as { attrs: { daten: Record<string, unknown> } }
+        inhalt.content[1]!.content![0]!.content![0] as unknown as {
+          attrs: { daten: Record<string, unknown> };
+        }
       ).attrs.daten;
       Object.assign(daten, {
         titel: 'Kasse zählen',

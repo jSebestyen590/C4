@@ -339,31 +339,65 @@ describe('PDF: Todo', () => {
     },
     content: [liste('TODONOTIZ')],
   };
-  const mit: DokumentEingabe = {
+  const thema = (inhalt: ProtokollKnoten[]): ProtokollKnoten => ({
+    type: 'bausteinThema',
+    attrs: { id: 'th', daten: { ...bausteinLeer('bausteinThema'), titel: 'Kasse' } },
+    content: inhalt,
+  });
+  const mitInhalt = (inhalt: ProtokollKnoten[]): DokumentEingabe => ({
     ...eingabe,
     inhalt: {
       ...eingabe.inhalt,
       content: [
         eingabe.inhalt.content[0]!,
-        { ...eingabe.inhalt.content[1]!, content: [todo, { type: 'paragraph' }] },
+        {
+          ...eingabe.inhalt.content[1]!,
+          content: [thema([...inhalt, { type: 'paragraph' }]), { type: 'paragraph' }],
+        },
         eingabe.inhalt.content[2]!,
       ],
     },
-  };
-
-  it('writes the Todo line and its notes, and keeps it out of the bookmarks', () => {
+  });
+  const mit = mitInhalt([todo]);
+  /** The blocks of the Thema "Kasse" (the section Gegenwärtiges) as JSON. */
+  const json = (e: DokumentEingabe) => {
     const text = JSON.stringify(
-      pdfBloecke(mit).map((b) => b.element),
+      pdfBloecke(e).map((b) => b.element),
       (k, v: unknown) => (k === 'ctx' ? undefined : v),
     );
+    return text.slice(text.indexOf('"Kasse"'), text.indexOf('"Zukünftiges"'));
+  };
+
+  it('writes the Todo as a bullet with its notes one level deeper, in no box, out of the bookmarks', () => {
+    const text = json(mit);
     expect(text).toContain('Todo:');
     expect(text).toContain('Kasse prüfen');
     expect(text).toContain('@Alle');
     expect(text).toContain(' (bis 14.11.2026)');
     expect(text.indexOf('TODONOTIZ')).toBeGreaterThan(text.indexOf('Kasse prüfen'));
+    // A bullet of a list (marker "•") and no colored block; the notes get the second-level dot.
+    expect(text).toContain('"•"');
+    expect(text).not.toContain('borderLeftWidth');
+    expect(text).not.toContain('marginLeft":15');
+    expect(text.indexOf('"•"')).toBeLessThan(text.indexOf('Todo:'));
+    expect(text.indexOf('"width":4,"height":4')).toBeGreaterThan(text.indexOf('Todo:'));
+  });
+
+  it('joins a bullet list in front: one list, the Todo is its last bullet', () => {
+    const liste: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+    };
+    const text = json(mitInhalt([liste, todo]));
+    // One "•" for the empty item and one for the Todo (the notes use the second-level dot).
+    expect(text.split('"•"')).toHaveLength(3);
+  });
+
+  it('keeps the Todo out of the bookmarks', () => {
     const gegenwart = lesezeichen(blockBaum(pdfBloecke(mit))).find(
       (o) => o.titel === 'Gegenwärtiges',
     )!;
-    expect(gegenwart.kinder).toEqual([]);
+    expect(gegenwart.kinder.map((o) => o.titel)).toEqual(['Kasse']);
+    expect(gegenwart.kinder[0]!.kinder).toEqual([]);
   });
 });

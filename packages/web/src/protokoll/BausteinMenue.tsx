@@ -2,7 +2,13 @@ import { Button, Menu, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import type { Editor } from '@tiptap/react';
 import { useState } from 'react';
-import { bausteinEinfuegen, imListenpunkt, imVerschachtelbaren, zitatEinfuegen } from './einfuegen';
+import {
+  ausserhalbBaustein,
+  bausteinEinfuegen,
+  imListenpunkt,
+  imVerschachtelbaren,
+  zitatEinfuegen,
+} from './einfuegen';
 import { SlashListe } from './SlashListe';
 import {
   bausteinEintraege,
@@ -38,6 +44,8 @@ export function BausteinMenue({
   // Inside an Abstimmung / Meinungsbild neither of them can be inserted.
   const [ohneVerschachtelt, setOhneVerschachtelt] = useState(false);
   const [ohneZitat, setOhneZitat] = useState(false);
+  // At the top level a Todo cannot be inserted (only into the notes of another Baustein).
+  const [ohneTodo, setOhneTodo] = useState(false);
 
   const waehlen = (e: SlashEintrag) => {
     if (e.aktion.art === 'weiter') {
@@ -71,6 +79,7 @@ export function BausteinMenue({
         onOpen={() => {
           setOhneVerschachtelt(imVerschachtelbaren(editor.state));
           setOhneZitat(imListenpunkt(editor.state));
+          setOhneTodo(ausserhalbBaustein(editor.state));
         }}
       >
         <Menu.Target>
@@ -86,7 +95,7 @@ export function BausteinMenue({
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
-          {bausteinEintraege('', ohneVerschachtelt, ohneZitat).map((e) => (
+          {bausteinEintraege('', ohneVerschachtelt, ohneZitat, ohneTodo).map((e) => (
             <Menu.Item
               key={e.schluessel}
               leftSection={<SlashIcon symbol={e.symbol} />}

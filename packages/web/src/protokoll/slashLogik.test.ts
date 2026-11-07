@@ -3,6 +3,7 @@ import { bausteinLeer } from '@c4/shared';
 import {
   anwesenheitPerson,
   auswahlNachAenderung,
+  bausteinEintraege,
   normalisieren,
   slashEintraege,
   slashStufe,
@@ -196,6 +197,17 @@ describe('first stage', () => {
       expect(slashEintraege(q, daten, true)).toEqual([]);
     }
     expect(slashEintraege('', daten, true).map((e) => e.titel)).not.toContain('Todo');
+  });
+  it('leaves out the Todo at the top level of a section, also by its aliases', () => {
+    expect(slashEintraege('', daten, false, false, true).map((e) => e.titel)).not.toContain('Todo');
+    expect(bausteinEintraege('', false, false, true).map((e) => e.titel)).not.toContain('Todo');
+    for (const q of ['todo', 'aufgabe', 'aufgaben']) {
+      expect(slashEintraege(q, daten, false, false, true)).toEqual([]);
+    }
+    // The other Bausteine stay.
+    expect(slashEintraege('', daten, false, false, true).map((e) => e.titel)).toContain(
+      'Abstimmung',
+    );
   });
   it('leaves out the quote inside a list item', () => {
     expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Zitat');

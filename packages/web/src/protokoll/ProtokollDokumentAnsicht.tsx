@@ -102,13 +102,76 @@ function Marken({ k }: Readonly<{ k: ProtokollKnoten }>) {
   return <>{inhalt}</>;
 }
 
+/**
+ * The children of a node. A Todo has no block of its own: it is a bullet of the surrounding notes
+ * (`TodoPunkt`). Todos directly behind a bullet list (or each other) join that list, so they look like
+ * its further items; behind a paragraph they open a list of their own.
+ */
 function Kinder({ liste, ctx }: Readonly<{ liste: ProtokollKnoten[] | undefined; ctx: Kontext }>) {
+  const alle = liste ?? [];
+  const inhalt: ReactNode[] = [];
+  for (let i = 0; i < alle.length; i++) {
+    const k = alle[i]!;
+    const schluessel = k.attrs?.id ? String(k.attrs.id) : i;
+    const istListe = k.type === 'bulletList';
+    if (!istListe && k.type !== 'bausteinTodo') {
+      inhalt.push(<Knoten key={schluessel} k={k} ctx={ctx} />);
+      continue;
+    }
+    // A bullet list and the Todos right behind it, or a run of Todos: one list.
+    const todos: ProtokollKnoten[] = [];
+    while (alle[i + 1]?.type === 'bausteinTodo') todos.push(alle[++i]!);
+    if (!istListe || todos.length > 0) {
+      inhalt.push(
+        <ul key={schluessel}>
+          {istListe ? <Kinder liste={k.content} ctx={ctx} /> : <TodoPunkt k={k} ctx={ctx} />}
+          {todos.map((t, j) => (
+            <TodoPunkt key={t.attrs?.id ? String(t.attrs.id) : `t${j}`} k={t} ctx={ctx} />
+          ))}
+        </ul>,
+      );
+    } else {
+      inhalt.push(<Knoten key={schluessel} k={k} ctx={ctx} />);
+    }
+  }
+  return <>{inhalt}</>;
+}
+
+/**
+ * A Todo as a bullet of the surrounding notes: "Todo: Titel – Anna, Ben, @Alle (bis 14.11.2026)", its notes
+ * as bullets one level deeper. No block or box; the highlighter on my name or group is the only emphasis.
+ */
+function TodoPunkt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
+  const daten: unknown = k.attrs?.daten;
+  const z = todoZeile(daten);
+  const notizen = ohneLeereEnden(k.content).filter(
+    (c) => c.type !== 'paragraph' || (c.content?.length ?? 0) > 0,
+  );
   return (
-    <>
-      {(liste ?? []).map((k, i) => (
-        <Knoten key={k.attrs?.id ? String(k.attrs.id) : i} k={k} ctx={ctx} />
-      ))}
-    </>
+    <li>
+      <strong>Todo:</strong> {z.titel || 'Ohne Titel'}
+      {z.zustaendig.length > 0 && (
+        <>
+          {' – '}
+          <TodoZustaendige k={k} daten={daten} ctx={ctx} />
+        </>
+      )}
+      {z.bis && ` (bis ${z.bis})`}
+      {notizen.length > 0 && (
+        <ul>
+          {notizen.map((c, i) => {
+            if (c.type === 'bulletList' || c.type === 'orderedList') {
+              return <Kinder key={i} liste={c.content} ctx={ctx} />;
+            }
+            return (
+              <li key={i}>
+                <Kinder liste={c.type === 'paragraph' ? c.content : [c]} ctx={ctx} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -217,12 +280,18 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
     case 'bausteinAuswahl':
-    case 'bausteinTodo':
-      // An Abstimmung / Meinungsbild / Wahl / Todo inside the free text of another Baustein.
+      // An Abstimmung / Meinungsbild / Wahl inside the free text of another Baustein.
       return (
         <div className="pk-dok-innen">
           <Baustein k={k} ctx={ctx} innen />
         </div>
+      );
+    case 'bausteinTodo':
+      // A Todo is a bullet of the notes it stands in (see `Kinder`); alone it gets a list of its own.
+      return (
+        <ul>
+          <TodoPunkt k={k} ctx={ctx} />
+        </ul>
       );
     default:
       return <Kinder liste={k.content} ctx={ctx} />;
@@ -237,13 +306,19 @@ function TextBloecke({
 }: Readonly<{ liste: ProtokollKnoten[]; ctx: Kontext; vorne?: ReactNode }>) {
   const [erstes, ...rest] = liste;
   if (vorne && erstes?.type === 'bulletList') {
+    // Todos right behind the list are further items of it (see `Kinder`).
+    const anzahl = rest.findIndex((k) => k.type !== 'bausteinTodo');
+    const todos = anzahl < 0 ? rest : rest.slice(0, anzahl);
     return (
       <>
         <ul>
           <li>{vorne}</li>
           <Kinder liste={erstes.content} ctx={ctx} />
+          {todos.map((t, j) => (
+            <TodoPunkt key={t.attrs?.id ? String(t.attrs.id) : `t${j}`} k={t} ctx={ctx} />
+          ))}
         </ul>
-        <Kinder liste={rest} ctx={ctx} />
+        <Kinder liste={rest.slice(todos.length)} ctx={ctx} />
       </>
     );
   }
@@ -539,26 +614,6 @@ function Baustein({
             </p>
           )}
           <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
-        </div>
-        <Notizen knoten={k.content} ctx={ctxIn} />
-      </>
-    );
-  }
-  if (k.type === 'bausteinTodo') {
-    const z = todoZeile(daten);
-    return (
-      <>
-        <div className="pk-dok-beschluss">
-          <p>
-            <strong>Todo:</strong> {z.titel || 'Ohne Titel'}
-            {z.zustaendig.length > 0 && (
-              <>
-                {' – '}
-                <TodoZustaendige k={k} daten={daten} ctx={ctx} />
-              </>
-            )}
-            {z.bis && ` (bis ${z.bis})`}
-          </p>
         </div>
         <Notizen knoten={k.content} ctx={ctxIn} />
       </>

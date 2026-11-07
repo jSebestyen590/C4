@@ -3,6 +3,7 @@ import {
   heuteBerlin,
   wahlGueltigAbVorschlag,
   istBausteinInNotizen,
+  istNurInNotizen,
   type BausteinDatenVon,
   type BausteinEventDaten,
   type AnwesenheitArt,
@@ -309,12 +310,15 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
 /**
  * Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter.
  * `ohneVerschachtelt` leaves out Abstimmung, Meinungsbild, Wahl and Auswahl (the cursor is inside one of them: they
- * cannot be nested in each other); `ohneZitat` leaves out the quote (the cursor is in a list item).
+ * cannot be nested in each other); `ohneZitat` leaves out the quote (the cursor is in a list item);
+ * `ohneNurInNotizen` leaves out the Bausteine that only exist in the notes of another one (the Todo; the
+ * cursor is at the top level of a section).
  */
 export function bausteinEintraege(
   filter: string,
   ohneVerschachtelt = false,
   ohneZitat = false,
+  ohneNurInNotizen = false,
 ): SlashEintrag[] {
   const f = normalisieren(filter).trim();
   return SLASH_DEFINITIONEN.filter((d) => {
@@ -323,6 +327,8 @@ export function bausteinEintraege(
       d.aktion.art === 'einfuegen' &&
       istBausteinInNotizen(d.aktion.wahl.typ)
     )
+      return false;
+    if (ohneNurInNotizen && d.aktion.art === 'einfuegen' && istNurInNotizen(d.aktion.wahl.typ))
       return false;
     if (ohneVerschachtelt && d.schluessel === 'beschluss') return false;
     if (ohneZitat && d.aktion.art === 'zitat') return false;
@@ -472,6 +478,7 @@ export function slashEintraege(
   daten: SlashDaten,
   ohneVerschachtelt = false,
   ohneZitat = false,
+  ohneNurInNotizen = false,
 ): SlashEintrag[] {
   const { stufe, filter } = slashStufe(query);
   if (stufe === 'vorlagen') return vorlageEintraege(daten.vorlagen, filter);
@@ -480,7 +487,7 @@ export function slashEintraege(
   if (stufe === 'erscheint' || stufe === 'geht') {
     return personEintraege(stufe, daten.personen ?? [], filter, daten.uhrzeit?.() ?? '');
   }
-  return bausteinEintraege(filter, ohneVerschachtelt, ohneZitat);
+  return bausteinEintraege(filter, ohneVerschachtelt, ohneZitat, ohneNurInNotizen);
 }
 
 /**

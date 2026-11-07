@@ -5,6 +5,7 @@ import {
   PROTOKOLL_ABSCHNITTE,
   eventUeberschrift,
   darfInNotizen,
+  istNurInNotizen,
   istVerschachtelbar,
   kannBausteineEnthalten,
   vergangenesUeberschrift,
@@ -274,7 +275,8 @@ export function gliederungZiel(
       const n = unten.art === 'kind' ? geschwister.indexOf(unten) : geschwister.length;
       return { elternId: unten.elternId, index: n };
     }
-    // Not nestable: top-level directly behind the outermost ancestor.
+    // Not nestable: top-level directly behind the outermost ancestor (a Todo cannot go there).
+    if (istNurInNotizen(gezogen.eintrag.typ)) return null;
     const elternPos = rest.findIndex((z) => z.art === 'baustein' && z.key === unten.pfad[0]);
     if (elternPos < 0) return null;
     return {
@@ -284,6 +286,8 @@ export function gliederungZiel(
         .filter((z) => z.art === 'baustein' && z.abschnitt === unten.abschnitt).length,
     };
   }
+  // Top level: not for a Todo, which only stands in the notes of another Baustein.
+  if (istNurInNotizen(gezogen.eintrag.typ)) return null;
   const abschnitt = oben?.abschnitt ?? 0;
   return {
     abschnitt,
@@ -333,6 +337,8 @@ export function bausteinInGliederungVerschieben(
   let eltern: PmNode;
   let elternPos: number;
   if ('abschnitt' in ziel) {
+    // A Todo only stands in the notes of another Baustein, never at the top level.
+    if (istNurInNotizen(quelle.node.type.name)) return null;
     if (ziel.abschnitt < 0 || ziel.abschnitt >= doc.childCount) return null;
     eltern = doc.child(ziel.abschnitt);
     elternPos = 0;

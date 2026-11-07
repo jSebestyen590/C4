@@ -3,6 +3,7 @@ import {
   bausteinErzeugen,
   bausteinTodoDatenSchema,
   darfInNotizen,
+  istNurInNotizen,
   kannBausteineEnthalten,
   protokollDokumentPruefen,
   protokollLeer,
@@ -88,10 +89,24 @@ describe('Baustein Todo', () => {
     expect(kannBausteineEnthalten('bausteinTodo')).toBe(false);
   });
 
-  it('is a valid document node', () => {
+  it('is a valid document node in the notes of another Baustein', () => {
     const d = protokollLeer();
-    d.content[2]!.content = [bausteinErzeugen('bausteinTodo')];
+    d.content[2]!.content = [
+      bausteinErzeugen('bausteinThema', undefined, [bausteinErzeugen('bausteinTodo')]),
+    ];
     expect(protokollDokumentPruefen(d)).toBeNull();
+  });
+
+  it('is rejected at the top level of a section', () => {
+    expect(istNurInNotizen('bausteinTodo')).toBe(true);
+    expect(istNurInNotizen('bausteinBeschluss')).toBe(false);
+    for (const i of [0, 1, 2, 3]) {
+      const d = protokollLeer();
+      d.content[i]!.content = [bausteinErzeugen('bausteinTodo')];
+      expect(protokollDokumentPruefen(d)).toBe(
+        'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.',
+      );
+    }
   });
 
   it('is not carried into the next protocol', () => {
@@ -112,7 +127,10 @@ describe('Baustein Todo', () => {
       },
       [bausteinErzeugen('bausteinTodo')],
     );
-    letztes.content[2]!.content = [event, bausteinErzeugen('bausteinTodo')];
+    letztes.content[2]!.content = [
+      event,
+      bausteinErzeugen('bausteinThema', undefined, [bausteinErzeugen('bausteinTodo')]),
+    ];
     const neu = protokollVorschlag({ sitzungDatum: '2026-11-20', letztes });
     expect(JSON.stringify(neu)).not.toContain('bausteinTodo');
   });

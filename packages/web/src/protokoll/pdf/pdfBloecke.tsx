@@ -213,7 +213,13 @@ const Absatz = ({ children, stil }: Readonly<{ children: ReactNode; stil?: objec
   <Text style={{ ...stile.absatz, ...stil }}>{children}</Text>
 );
 
-function listenBlock(k: ProtokollKnoten, ctx: Kontext, tiefe: number, vorne?: ReactNode) {
+function listenBlock(
+  k: ProtokollKnoten,
+  ctx: Kontext,
+  tiefe: number,
+  vorne?: ReactNode,
+  todos: readonly ProtokollKnoten[] = [],
+) {
   const geordnet = k.type === 'orderedList';
   const start = typeof k.attrs?.start === 'number' ? k.attrs.start : 1;
   const eintraege: ReactElement[] = [];
@@ -246,10 +252,59 @@ function listenBlock(k: ProtokollKnoten, ctx: Kontext, tiefe: number, vorne?: Re
     );
     n += 1;
   }
+  // Todos behind the list are further items of it, their notes bullets one level deeper.
+  for (const [i, todo] of todos.entries()) {
+    eintraege.push(
+      <View key={`todo${i}`} style={stile.eintrag}>
+        <View style={stile.marke}>{marke(n)}</View>
+        <View style={stile.eintragInhalt}>{todoPunkt(todo, ctx, tiefe)}</View>
+      </View>,
+    );
+    n += 1;
+  }
   return (
     <View style={stile.liste} key="liste">
       {eintraege}
     </View>
+  );
+}
+
+/** The line of a Todo ("Todo: Titel – Anna, Ben, @Alle (bis 14.11.2026)") and its notes as a nested list. */
+function todoPunkt(k: ProtokollKnoten, ctx: Kontext, tiefe: number): ReactNode {
+  const z = todoZeile(k.attrs?.daten);
+  const punkte = ohneLeereEnden(k.content).flatMap((c): ProtokollKnoten[] => {
+    if (c.type === 'bulletList' || c.type === 'orderedList') return c.content ?? [];
+    if (c.type === 'paragraph' && istLeererAbsatz(c)) return [];
+    return [{ type: 'listItem', content: [c] }];
+  });
+  return (
+    <>
+      <Text>
+        <Text style={stile.fett}>Todo:</Text> {z.titel || 'Ohne Titel'}
+        {z.zustaendig.length > 0 && (
+          <>
+            {' – '}
+            {z.zustaendig.map((zu, i) => {
+              const p = zu.art === 'person' ? ctx.person(zu.sub) : null;
+              return (
+                <Fragment key={zu.art === 'person' ? `p${zu.sub}` : `g${zu.gruppe}`}>
+                  {i > 0 && ', '}
+                  {zu.art === 'gruppe' ? (
+                    erwaehnungText({ art: 'gruppe', gruppe: zu.gruppe }, () => null)
+                  ) : p ? (
+                    <Name p={p} />
+                  ) : (
+                    'Person offen'
+                  )}
+                </Fragment>
+              );
+            })}
+          </>
+        )}
+        {z.bis && ` (bis ${z.bis})`}
+      </Text>
+      {punkte.length > 0 && listenBlock({ type: 'bulletList', content: punkte }, ctx, tiefe + 1)}
+    </>
   );
 }
 
@@ -378,25 +433,58 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
     case 'bausteinAuswahl':
-    case 'bausteinTodo':
       return bausteinBloecke(k, ctx, true).map((b) => ({
         ...b,
         element: <View style={stile.innen}>{b.element}</View>,
       }));
+    case 'bausteinTodo':
+      // A Todo is a bullet of the notes it stands in (see `textListe`); alone it gets a list of its own.
+      return [block(listenBlock({ type: 'bulletList', content: [] }, ctx, 0, undefined, [k]))];
     default:
       return (k.content ?? []).flatMap((c) => textBloecke(c, ctx));
   }
+}
+
+/**
+ * Blocks of a list of sibling nodes. Todos directly behind a bullet list (or each other) join that list as
+ * further bullets; behind a paragraph they open a list of their own.
+ */
+function textListe(liste: readonly ProtokollKnoten[], ctx: Kontext): Block[] {
+  const bloecke: Block[] = [];
+  for (let i = 0; i < liste.length; i++) {
+    const k = liste[i]!;
+    if (k.type !== 'bulletList' && k.type !== 'bausteinTodo') {
+      bloecke.push(...textBloecke(k, ctx));
+      continue;
+    }
+    const todos: ProtokollKnoten[] = [];
+    while (liste[i + 1]?.type === 'bausteinTodo') todos.push(liste[++i]!);
+    if (k.type === 'bausteinTodo') todos.unshift(k);
+    if (todos.length === 0) {
+      bloecke.push(...textBloecke(k, ctx));
+      continue;
+    }
+    const basis = k.type === 'bausteinTodo' ? { type: 'bulletList' } : k;
+    bloecke.push(block(listenBlock(basis, ctx, 0, undefined, todos)));
+  }
+  return bloecke;
 }
 
 /** Blocks of a list of text nodes; `vorne` is an item merged into a leading bullet list. */
 function textMitVorne(liste: ProtokollKnoten[], ctx: Kontext, vorne?: ReactNode): Block[] {
   const [erstes, ...rest] = liste;
   if (vorne && erstes?.type === 'bulletList') {
-    return [block(listenBlock(erstes, ctx, 0, vorne)), ...rest.flatMap((k) => textBloecke(k, ctx))];
+    // Todos right behind the list are further items of it.
+    const anzahl = rest.findIndex((k) => k.type !== 'bausteinTodo');
+    const todos = anzahl < 0 ? rest : rest.slice(0, anzahl);
+    return [
+      block(listenBlock(erstes, ctx, 0, vorne, todos)),
+      ...textListe(rest.slice(todos.length), ctx),
+    ];
   }
   return [
     ...(vorne ? [block(listenBlock({ type: 'bulletList', content: [] }, ctx, 0, vorne))] : []),
-    ...liste.flatMap((k) => textBloecke(k, ctx)),
+    ...textListe(liste, ctx),
   ];
 }
 
@@ -599,40 +687,6 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
               </Text>
             )}
             <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
-          </Kasten>,
-        ),
-        ...notizen(k.content, ctxIn),
-      ];
-    }
-    case 'bausteinTodo': {
-      const z = todoZeile(daten);
-      return [
-        block(
-          <Kasten>
-            <Text>
-              <Text style={stile.fett}>Todo:</Text> {z.titel || 'Ohne Titel'}
-              {z.zustaendig.length > 0 && (
-                <>
-                  {' – '}
-                  {z.zustaendig.map((zu, i) => {
-                    const p = zu.art === 'person' ? ctx.person(zu.sub) : null;
-                    return (
-                      <Fragment key={zu.art === 'person' ? `p${zu.sub}` : `g${zu.gruppe}`}>
-                        {i > 0 && ', '}
-                        {zu.art === 'gruppe' ? (
-                          erwaehnungText({ art: 'gruppe', gruppe: zu.gruppe }, () => null)
-                        ) : p ? (
-                          <Name p={p} />
-                        ) : (
-                          'Person offen'
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </>
-              )}
-              {z.bis && ` (bis ${z.bis})`}
-            </Text>
           </Kasten>,
         ),
         ...notizen(k.content, ctxIn),
@@ -977,7 +1031,11 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
       });
     }
     for (const c of inhalt) {
-      bloecke.push(...(BAUSTEINE.has(c.type) ? bausteinBloecke(c, ctx) : textBloecke(c, ctx)));
+      bloecke.push(
+        ...(BAUSTEINE.has(c.type) && c.type !== 'bausteinTodo'
+          ? bausteinBloecke(c, ctx)
+          : textBloecke(c, ctx)),
+      );
     }
   }
   if (naechste) bloecke.push(block(<Absatz stil={{ marginTop: 10 }}>{naechste}</Absatz>));

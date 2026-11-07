@@ -172,7 +172,7 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html.indexOf('notes')).toBeLessThan(html.indexOf('Meinungsbild:'));
   });
 
-  it('renders a Todo line with names, groups and deadline, notes below, nested and marked for me', () => {
+  it('renders a Todo as a bullet of the notes it stands in, its notes one level deeper, marked for me', () => {
     const todo = (id: string, daten: Record<string, unknown>, content: ProtokollKnoten[]) =>
       ({
         type: 'bausteinTodo',
@@ -182,7 +182,7 @@ describe('ProtokollDokumentAnsicht', () => {
         },
         content,
       }) as ProtokollKnoten;
-    const oben = todo(
+    const nachListe = todo(
       't1',
       {
         titel: 'Kasse prüfen',
@@ -191,10 +191,10 @@ describe('ProtokollDokumentAnsicht', () => {
           { art: 'gruppe', gruppe: 'alle' },
         ],
       },
-      [liste('TODONOTIZ')],
+      [liste('TODONOTIZ'), text('ABSATZNOTIZ'), { type: 'paragraph' }],
     );
-    const innen = todo('t2', { titel: 'Putzen', faelligAm: null }, [{ type: 'paragraph' }]);
-    const ohne = todo('t3', { titel: 'Nur Titel', faelligAm: null }, [{ type: 'paragraph' }]);
+    const nachAbsatz = todo('t2', { titel: 'Putzen', faelligAm: null }, [{ type: 'paragraph' }]);
+    const zweites = todo('t3', { titel: 'Nur Titel', faelligAm: null }, [{ type: 'paragraph' }]);
     const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
     const event = zukuenftiges!.content![0]!;
     const mit: DokumentEingabe = {
@@ -204,10 +204,22 @@ describe('ProtokollDokumentAnsicht', () => {
         type: 'doc',
         content: [
           vergangenes!,
-          { ...gegenwaertiges!, content: [oben, ohne, { type: 'paragraph' }] },
+          { ...gegenwaertiges!, content: [{ type: 'paragraph' }] },
           {
             ...zukuenftiges!,
-            content: [{ ...event, content: [liste('notes'), innen, { type: 'paragraph' }] }],
+            content: [
+              {
+                ...event,
+                content: [
+                  liste('notes'),
+                  nachListe,
+                  zweites,
+                  text('danach'),
+                  nachAbsatz,
+                  { type: 'paragraph' },
+                ],
+              },
+            ],
           },
         ],
       },
@@ -217,19 +229,20 @@ describe('ProtokollDokumentAnsicht', () => {
         <ProtokollDokumentAnsicht eingabe={mit} />
       </MantineProvider>,
     );
-    expect(html).toContain('<strong>Todo:</strong> Kasse prüfen – ');
+    // Behind a bullet list (here with the Verantwortlich line) the Todos are further items of that very list, no box.
+    expect(html).toMatch(
+      /<li><p>notes<\/p><\/li><li><strong>Todo:<\/strong> Kasse prüfen – .*? \(bis 14\.11\.2026\)<ul>/,
+    );
+    expect(html).toContain('<li><strong>Todo:</strong> Nur Titel</li></ul>');
     expect(html).toContain('@Alle');
-    expect(html).toContain(' (bis 14.11.2026)');
-    // Persons and groups that concern me carry the highlighter; the first one the anchor.
+    // The notes of the Todo are bullets one level deeper.
+    expect(html).toMatch(/<ul><li><p>TODONOTIZ<\/p><\/li><li>ABSATZNOTIZ<\/li><\/ul><\/li>/);
+    // Behind a paragraph the Todo opens a list of its own.
+    expect(html).toMatch(/<p>danach<\/p><ul><li><strong>Todo:<\/strong> Putzen<\/li><\/ul>/);
+    // The highlighter on my name or group is the only emphasis; the first one carries the anchor.
     expect(html).toContain('<mark class="pk-dok-erw-ich"');
     expect(html).toContain('data-testid="erwaehnung-ich"');
-    expect(html.indexOf('TODONOTIZ')).toBeGreaterThan(html.indexOf('Kasse prüfen'));
-    // No Zuständige and no deadline: just the title.
-    expect(html).toMatch(/<strong>Todo:<\/strong> Nur Titel<\/p>/);
-    // Nested in the Event notes: indented and no heading of its own.
-    expect(html).toContain(
-      '<div class="pk-dok-innen"><div class="pk-dok-beschluss"><p><strong>Todo:</strong> Putzen',
-    );
+    expect(html).not.toContain('pk-dok-beschluss"><p><strong>Todo');
     expect(html).not.toMatch(/<h\d[^>]*>[^<]*Todo/);
   });
 

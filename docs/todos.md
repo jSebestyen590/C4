@@ -1,7 +1,7 @@
 # Todos
 
 Aufgaben mit Deadline. Sie entstehen beim Abschließen eines Protokolls aus dem Baustein **Todo** (siehe
-[protokolle.md](./protokolle.md)) oder werden von Mitgliedern für sich selbst angelegt. Jede Person sieht ihre Todos auf der Seite
+[protokolle.md](./protokolle.md); das Todo steht dort nur in den Notizen eines anderen Bausteins, nie auf oberster Ebene, und erscheint im Dokument und PDF als Aufzählungspunkt) oder werden von Mitgliedern für sich selbst angelegt. Jede Person sieht ihre Todos auf der Seite
 **Todos** (`/todos`, Navigation „Todos“ mit `IconChecklist`, für alle angemeldeten Mitglieder mit Profil; es ist kein eigenes Recht nötig).
 
 ## Datenmodell

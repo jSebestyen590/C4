@@ -329,6 +329,50 @@ describe('bausteinInGliederungVerschieben', () => {
   });
 });
 
+describe('Todo in the Gliederung', () => {
+  const todo = (id: string) => baustein('bausteinTodo', id, { titel: 'T' });
+  const state = () =>
+    zustand(
+      [event('p', 'P', [absatz(), todo('td'), absatz()]), event('q', 'Q'), absatz()],
+      [absatz()],
+      [absatz()],
+    );
+  const baum = () => gliederungBauen(state().doc);
+  const vor = (id: string, vorKey: string | null) => {
+    const rest = gliederungZeilen(baum(), id).filter((z) => z.key !== id);
+    const i = vorKey === null ? rest.length : rest.findIndex((z) => z.key === vorKey);
+    return gliederungZiel(gliederungZeilen(baum(), id), id, i);
+  };
+
+  it('moves between the notes of Bausteine, never to the top level', () => {
+    const z = vor('td', 'notizen:q');
+    expect(z).toEqual({ elternId: 'q', index: 0 });
+    expect(verschieben(state(), 'td', z!)).toBe('p q(td) _ | _ | _');
+    // Dropped between top-level rows or at a section header or at the end: no target.
+    expect(vor('td', 'q')).toBeNull();
+    expect(vor('td', 'abschnitt:1')).toBeNull();
+    expect(vor('td', null)).toBeNull();
+  });
+  it('is refused as a top-level target by the move itself', () => {
+    expect(verschieben(state(), 'td', { abschnitt: 0, index: 0 })).toBeNull();
+    expect(verschieben(state(), 'td', { abschnitt: 1, index: 0 })).toBeNull();
+  });
+  it('is not accepted at the top level by the editor schema', () => {
+    expect(() =>
+      schema
+        .nodeFromJSON({
+          type: 'doc',
+          content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges', 'sonstiges'].map((art, i) => ({
+            type: 'abschnitt',
+            attrs: { art },
+            content: i === 0 ? [todo('x'), absatz()] : [absatz()],
+          })),
+        })
+        .check(),
+    ).toThrow();
+  });
+});
+
 describe('undo of a Gliederung move', () => {
   it('is one undo step with the history and the structure guard plugins', () => {
     const A = '11111111-1111-4111-8111-111111111111';

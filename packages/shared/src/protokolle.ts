@@ -85,6 +85,12 @@ export const BAUSTEINE_IN_NOTIZEN = [
 export const istBausteinInNotizen = (typ: string): boolean =>
   (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
 
+/**
+ * Bausteine that may stand only inside the notes of another Baustein, never at the top level of a section
+ * (the Todo). `protokollDokumentPruefen` rejects them as a direct child of a section.
+ */
+export const istNurInNotizen = (typ: string): boolean => typ === 'bausteinTodo';
+
 /** The Baustein "Thema": top level, or in the notes of any Baustein that can hold others (any depth). */
 export const istThema = (typ: string): boolean => typ === 'bausteinThema';
 
@@ -888,6 +894,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
         return 'Das Protokoll ist ungültig.';
       }
     }
+  }
+  if (tiefe === 2 && istNurInNotizen(type)) {
+    return 'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.';
   }
   if (istBausteinTyp(type)) {
     const fehler = bausteinFehler(knoten, type);

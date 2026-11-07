@@ -43,6 +43,7 @@ import {
   type ProtokollDokument,
   type ProtokollKalenderEvent,
   type ProtokollKnoten,
+  istNurInNotizen,
 } from './protokolle';
 
 const absatz = (text: string): ProtokollKnoten => ({
@@ -275,7 +276,15 @@ describe('protokollDokumentPruefen', () => {
 
   it('knows empty defaults for every Baustein type', () => {
     for (const typ of BAUSTEIN_TYPEN) {
-      const doc = dokument({ gegenwaertiges: [bausteinErzeugen(typ)] });
+      // A Todo only stands in the notes of another Baustein.
+      const baustein = bausteinErzeugen(typ);
+      const doc = dokument({
+        gegenwaertiges: [
+          istNurInNotizen(typ)
+            ? bausteinErzeugen('bausteinThema', undefined, [baustein])
+            : baustein,
+        ],
+      });
       expect(protokollDokumentPruefen(doc), typ).toBeNull();
     }
   });

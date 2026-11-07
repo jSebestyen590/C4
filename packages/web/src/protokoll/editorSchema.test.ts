@@ -39,6 +39,14 @@ describe('editor schema', () => {
     }
   });
 
+  it('keeps the Todo out of the top level of a section and of lists, but lets it into notes', () => {
+    const todo = schema.nodeFromJSON(bausteinErzeugen('bausteinTodo')).type;
+    expect(schema.nodes.abschnitt!.contentMatch.matchType(todo)).toBeNull();
+    expect(schema.nodes.bulletList!.contentMatch.matchType(todo)).toBeNull();
+    expect(schema.nodes.bausteinEvent!.contentMatch.matchType(todo)).not.toBeNull();
+    expect(schema.nodes.bausteinThema!.contentMatch.matchType(todo)).not.toBeNull();
+  });
+
   it('has no content in Anwesenheit blocks and accepts old ones only without it', () => {
     const typ = schema.nodes.bausteinAnwesenheit!;
     expect(typ.isLeaf).toBe(true);

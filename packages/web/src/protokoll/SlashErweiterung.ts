@@ -4,6 +4,7 @@ import { Suggestion } from '@tiptap/suggestion';
 import {
   bausteinEinfuegen,
   imListenpunkt,
+  ausserhalbBaustein,
   imVerschachtelbaren,
   slashErlaubt,
   zitatEinfuegen,
@@ -55,6 +56,7 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               steuerung.daten(),
               imVerschachtelbaren(editor.state),
               imListenpunkt(editor.state),
+              ausserhalbBaustein(editor.state),
             ),
           command: ({ editor, range, props }) => {
             if (props.aktion.art === 'weiter') {
