@@ -1,19 +1,22 @@
 import { Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useEffect, useRef } from 'react';
-import type { SlashEintrag } from './slashLogik';
+import type { ListenEintrag } from './slashLogik';
 import { SlashIcon } from './symbole';
 
 /** List of slash menu items: icon, title, one-line description. Rows are at least 52px high. */
-export function SlashListe({
+export function SlashListe<T extends ListenEintrag>({
   eintraege,
   auswahl,
   onWaehlen,
   onZeiger,
+  bezeichnung = 'Bausteine',
 }: Readonly<{
-  eintraege: readonly SlashEintrag[];
+  eintraege: readonly T[];
+  /** Accessible name of the list. */
+  bezeichnung?: string;
   /** Highlighted row (keyboard). */
   auswahl?: number;
-  onWaehlen: (eintrag: SlashEintrag) => void;
+  onWaehlen: (eintrag: T) => void;
   onZeiger?: (index: number) => void;
 }>) {
   const aktiv = useRef<HTMLButtonElement | null>(null);
@@ -21,7 +24,7 @@ export function SlashListe({
     aktiv.current?.scrollIntoView({ block: 'nearest' });
   }, [auswahl]);
   return (
-    <Stack gap={2} role="listbox" aria-label="Bausteine">
+    <Stack gap={2} role="listbox" aria-label={bezeichnung}>
       {eintraege.map((e, i) => {
         const gewaehlt = i === auswahl;
         return (

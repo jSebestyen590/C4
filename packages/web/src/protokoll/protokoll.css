@@ -125,3 +125,13 @@
   border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-md);
 }
+
+/* @mentions in the editor: an atom, highlighted when selected. */
+.protokoll-erwaehnung {
+  border-radius: var(--mantine-radius-xs);
+  white-space: nowrap;
+}
+
+.protokoll-erwaehnung[data-selected] {
+  outline: 2px solid var(--mantine-primary-color-filled);
+}

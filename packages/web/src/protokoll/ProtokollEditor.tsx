@@ -31,6 +31,9 @@ import {
   ProtokollAbsicherung,
   ProtokollDokumentKnoten,
 } from './schema';
+import type { ErwaehnungPerson } from './erwaehnungLogik';
+import { ErwaehnungKnoten } from './ErwaehnungKnoten';
+import { erwaehnungErweiterung, type ErwaehnungSteuerung } from './ErwaehnungErweiterung';
 import { slashErweiterung, type SlashSteuerung } from './SlashErweiterung';
 import { SlashPopup, type SlashZustand } from './SlashPopup';
 
@@ -53,6 +56,8 @@ const LABELS: Partial<RichTextEditorLabels> = {
   linkEditorSave: 'Übernehmen',
 };
 
+const KEINE_MITGLIEDER: readonly ErwaehnungPerson[] = [];
+
 /** Height of the app header (`AppLayout`): the sticky toolbar sits right below it. */
 const HEADER_HOEHE = 56;
 
@@ -69,6 +74,7 @@ export function ProtokollEditor({
   art,
   teilnahme,
   ems = [],
+  mitglieder = KEINE_MITGLIEDER,
   onAnwesenheit,
 }: Readonly<{
   inhalt: ProtokollDokument;
@@ -81,6 +87,8 @@ export function ProtokollEditor({
   teilnahme: readonly AnwesenheitPerson[];
   /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
   ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
+  /** All members: the choices of the @mention list and the names shown for mentions. */
+  mitglieder?: readonly ErwaehnungPerson[];
   /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
   onAnwesenheit?: (sub: string) => void;
 }>) {
@@ -95,10 +103,12 @@ export function ProtokollEditor({
   const [dokument, setDokument] = useState(inhalt);
   const dokumentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(dokumentTimer.current), []);
+  const personenRef = useRef<readonly ErwaehnungPerson[]>(mitglieder);
   const slashDatenRef = useRef(slashDaten);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     slashDatenRef.current = slashDaten;
+    personenRef.current = mitglieder;
     onChangeRef.current = onChange;
   });
 
@@ -132,12 +142,17 @@ export function ProtokollEditor({
         return true;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
-        const eintrag = z.eintraege[Math.min(auswahlRef.current, n - 1)];
-        if (eintrag) z.waehlen(eintrag);
+        z.waehlen(Math.min(auswahlRef.current, n - 1));
         return true;
       }
       return false;
     },
+  }));
+
+  const [erwaehnungSteuerung] = useState<ErwaehnungSteuerung>(() => ({
+    personen: () => personenRef.current,
+    zustand: steuerung.zustand,
+    taste: steuerung.taste,
   }));
 
   const editor = useEditor({
@@ -166,12 +181,16 @@ export function ProtokollEditor({
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
       Placeholder.configure({
-        placeholder: 'Schreib etwas oder tippe / für einen Baustein oder ein Zitat',
+        placeholder:
+          'Schreib etwas oder tippe / für einen Baustein oder ein Zitat, @ für eine Erwähnung',
       }),
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
       BlockVerschieben,
+      ErwaehnungKnoten,
       slashErweiterung(steuerung),
+      // After the slash menu: it yields while that is open.
+      erwaehnungErweiterung(erwaehnungSteuerung),
     ],
     content: dokumentNormalisieren(inhalt, editierbar),
     editable: editierbar,
@@ -204,6 +223,7 @@ export function ProtokollEditor({
       art,
       teilnahme,
       ems,
+      mitglieder,
       onAnwesenheit: anwesenheit,
       verlauf: anwesenheitsVerlauf(dokument, {
         art,
@@ -216,7 +236,7 @@ export function ProtokollEditor({
         ems: ems.filter((e) => e.ausgewaehlt),
       }).pruefungen,
     }),
-    [sitzungBeginn, art, teilnahme, ems, dokument, anwesenheit],
+    [sitzungBeginn, art, teilnahme, ems, mitglieder, dokument, anwesenheit],
   );
 
   return (

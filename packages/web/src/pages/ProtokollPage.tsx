@@ -33,6 +33,7 @@ import { BestaetigenDialog } from '../BestaetigenDialog';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
 import { mitgliedName } from '../mitglied';
+import { useEigeneSub, useMitgliederListe } from '../organisator';
 import { AktionenAuswahl, AktionenKarte } from '../protokoll/AktionenAnsicht';
 import {
   ergebnisZusammenfassung,
@@ -159,6 +160,13 @@ function ProtokollAnsicht({
   neuLaden,
 }: Readonly<{ dto: ProtokollDto; neuLaden: () => Promise<unknown> }>) {
   const { can } = useAuth();
+  const eigeneSub = useEigeneSub();
+  const mitgliederListe = useMitgliederListe().data;
+  // The viewer with their CURRENT status: @mentions of groups are matched against it.
+  const ich = useMemo(() => {
+    const m = mitgliederListe?.find((x) => x.sub === eigeneSub);
+    return m ? { sub: m.sub, status: m.status } : null;
+  }, [mitgliederListe, eigeneSub]);
   const navigate = useNavigate();
   const darfSchreiben = can('protokolle:schreiben');
   const entwurf = dto.status === 'entwurf';
@@ -447,6 +455,7 @@ function ProtokollAnsicht({
             art={dto.sitzung.art}
             teilnahme={teilnahme}
             ems={ems}
+            mitglieder={mitgliederListe}
             onAnwesenheit={anwesenheit}
           />
           <NaechsteSitzungKarte
@@ -478,6 +487,8 @@ function ProtokollAnsicht({
             ...mitLiveKopf(dto, kopf),
             sitzung: dto.sitzung,
             naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
+            mitglieder: mitgliederListe,
+            ich,
           }}
         />
       )}

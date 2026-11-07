@@ -7,13 +7,16 @@ import {
   bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
+  erwaehnungAttrs,
   eventUeberschrift,
   istBausteinInNotizen,
   vergangenesUeberschrift,
   type MitgliedStatus,
   type ProtokollKnoten,
 } from '@c4/shared';
+import { erwaehnungText } from '../erwaehnungLogik';
 import {
+  alleMitglieder,
   anwesenheitZeile,
   aufnahmeZeilen,
   beschlussfaehigkeitText,
@@ -157,11 +160,24 @@ const Name = ({ p }: Readonly<{ p: Person }>) => (
   <Text style={{ fontWeight: 700, color: STATUS_FARBE[p.status] }}>{p.name}</Text>
 );
 
+/** An @mention: "@username" bold in the color of the status, "@Mitglieder" as plain text (no highlighter). */
+function erwaehnung(k: ProtokollKnoten, person: (sub: string) => Person | null): ReactNode {
+  const attrs = erwaehnungAttrs(k.attrs);
+  if (!attrs) return <Text>@</Text>;
+  const p = attrs.art === 'person' && attrs.sub ? person(attrs.sub) : null;
+  if (p) return <Name p={{ ...p, name: `@${p.name}` }} />;
+  return <Text>{erwaehnungText(attrs, () => null)}</Text>;
+}
+
 /** Text, marks and hard breaks of a paragraph. */
-function inline(liste: readonly ProtokollKnoten[] | undefined): ReactNode[] {
+function inline(
+  liste: readonly ProtokollKnoten[] | undefined,
+  person: (sub: string) => Person | null,
+): ReactNode[] {
   return (liste ?? []).map((k, i) => {
     if (k.type === 'hardBreak') return <Text key={i}>{'\n'}</Text>;
-    if (k.type !== 'text') return <Fragment key={i}>{inline(k.content)}</Fragment>;
+    if (k.type === 'erwaehnung') return <Fragment key={i}>{erwaehnung(k, person)}</Fragment>;
+    if (k.type !== 'text') return <Fragment key={i}>{inline(k.content, person)}</Fragment>;
     const marks = k.marks ?? [];
     const fett = marks.some((m) => m.type === 'bold');
     const kursiv = marks.some((m) => m.type === 'italic');
@@ -240,11 +256,11 @@ function knotenInListe(k: ProtokollKnoten, ctx: Kontext, tiefe: number, key: num
   if (k.type === 'paragraph') {
     return (
       <Text key={key} style={{ marginBottom: 1 }}>
-        {inline(k.content)}
+        {inline(k.content, ctx.person)}
       </Text>
     );
   }
-  return <Text key={key}>{inline(k.content)}</Text>;
+  return <Text key={key}>{inline(k.content, ctx.person)}</Text>;
 }
 
 const block = (element: ReactElement): Block => ({ element });
@@ -253,7 +269,7 @@ const block = (element: ReactElement): Block => ({ element });
 function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
   switch (k.type) {
     case 'paragraph':
-      return istLeererAbsatz(k) ? [] : [block(<Absatz>{inline(k.content)}</Absatz>)];
+      return istLeererAbsatz(k) ? [] : [block(<Absatz>{inline(k.content, ctx.person)}</Absatz>)];
     case 'heading': {
       // Relative to the enclosing heading, like the document view.
       const stufe = unterEbene(ctx.ebene, eigeneUeberschriftSchritte(k.attrs?.level));
@@ -265,7 +281,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
           titel,
           element: (
             <Text style={ueberschriftStil(stufe)} minPresenceAhead={50}>
-              {inline(k.content)}
+              {inline(k.content, ctx.person)}
             </Text>
           ),
         },
@@ -287,7 +303,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
                     fontStyle: istQuellenzeile(c) ? 'normal' : 'italic',
                   }}
                 >
-                  {inline(c.content)}
+                  {inline(c.content, ctx.person)}
                 </Text>
               ) : null,
             )}
@@ -688,7 +704,7 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     teilnahme: eingabe.teilnahme,
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
   });
-  const alle = [...eingabe.teilnahme, ...eingabe.ems];
+  const alle = alleMitglieder(eingabe);
   const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, (sub) => {
     const m = alle.find((x) => x.sub === sub);
     return m ? personName(m) : null;

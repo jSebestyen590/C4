@@ -37,12 +37,15 @@ export function useProtokollPdfSpeichern() {
         )) as ProtokollDto;
         if (dto.status !== 'abgeschlossen')
           throw new Error('Das Protokoll ist nicht abgeschlossen.');
+        // For the names of @mentions (also of people who are not in the attendance list).
+        const mitglieder = await unwrap(await api.mitglieder.$get()).catch(() => []);
         return {
           inhalt: dto.inhalt,
           kopf: dto.kopf,
           ...mitLiveKopf(dto, dto.kopf),
           sitzung: dto.sitzung,
           naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
+          mitglieder,
         };
       },
       erzeugen: async (eingabe) => (await import('./pdf/pdfErzeugen')).protokollPdfBlob(eingabe),

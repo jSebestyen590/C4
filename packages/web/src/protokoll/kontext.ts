@@ -5,6 +5,7 @@ import type {
   ProtokollMitgliedDto,
   StimmenPruefung,
 } from '@c4/shared';
+import type { ErwaehnungPerson } from './erwaehnungLogik';
 import { quorumBeiEroeffnung, type AnwesenheitPerson } from './anwesenheit';
 
 /** What the Baustein node views need to know about the document they live in. */
@@ -17,6 +18,8 @@ export interface ProtokollKontextWert {
   teilnahme: readonly AnwesenheitPerson[];
   /** The active EMs (candidates for a Neues EM block next to the attendance list). */
   ems: readonly ProtokollMitgliedDto[];
+  /** All members (names of @mentions, also of people who are not in the attendance list). */
+  mitglieder: readonly ErwaehnungPerson[];
   /** Quorum at the opening and at each Anwesenheit / Abstimmung / Neues EM / Aufnahme block of the current document. */
   verlauf: AnwesenheitsVerlauf;
   /** Vote count checks of the binding votes (Abstimmung, Wahl rounds) against the members present. */
@@ -30,6 +33,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   art: 'sitzung',
   teilnahme: [],
   ems: [],
+  mitglieder: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },
   stimmen: [],
 });

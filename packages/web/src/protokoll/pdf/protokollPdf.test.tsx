@@ -223,3 +223,56 @@ describe('PDF rendering', () => {
     expect(roh).toContain('/Count');
   });
 });
+
+describe('PDF: Erwähnungen', () => {
+  const erw = (attrs: Record<string, unknown>): ProtokollKnoten => ({ type: 'erwaehnung', attrs });
+  const mit: DokumentEingabe = {
+    ...eingabe,
+    ich: { sub: '1', status: 'mitglied' },
+    mitglieder: [
+      {
+        sub: '2',
+        username: 'gast',
+        vorname: 'G',
+        nachname: 'G',
+        status: 'extern',
+      },
+    ],
+    inhalt: {
+      ...eingabe.inhalt,
+      content: [
+        {
+          ...eingabe.inhalt.content[0]!,
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                { type: 'text', text: 'Hallo ' },
+                erw({ art: 'person', sub: '1' }),
+                { type: 'text', text: ' und ' },
+                erw({ art: 'person', sub: '2' }),
+                { type: 'text', text: ' und ' },
+                erw({ art: 'gruppe', gruppe: 'mitglieder' }),
+              ],
+            },
+          ],
+        },
+        ...eingabe.inhalt.content.slice(1),
+      ],
+    },
+  };
+
+  it('writes @username in the status color and @Gruppe as plain text, without highlighter', () => {
+    const text = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    expect(text).toContain('@Niklas');
+    expect(text).toContain('@gast');
+    expect(text).toContain('@Mitglieder');
+    // persons go through the same bold status-colored name as other mentions of members
+    expect(text).toContain('"name":"@Niklas","status":"mitglied"');
+    expect(text).toContain('"name":"@gast","status":"extern"');
+    expect(text).not.toContain('backgroundColor":"#ffe');
+  });
+});

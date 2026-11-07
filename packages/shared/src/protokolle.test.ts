@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BAUSTEIN_TYPEN,
+  ERWAEHNUNG_GRUPPEN,
+  erwaehnungAttrs,
+  erwaehnungBetrifft,
   PROTOKOLL_ABSCHNITTE,
   PROTOKOLL_MAX_BYTES,
   PROTOKOLL_MAX_TIEFE,
@@ -1260,5 +1263,61 @@ describe('wahlGueltigAbVorschlag', () => {
   it('uses 1 January of the next year after 1 November', () => {
     expect(wahlGueltigAbVorschlag('2026-11-02')).toBe('2027-01-01');
     expect(wahlGueltigAbVorschlag('2026-12-31')).toBe('2027-01-01');
+  });
+});
+
+describe('@Erwähnungen', () => {
+  const mit = (erw: unknown) =>
+    protokollDokumentPruefen(
+      dokument({
+        gegenwaertiges: [
+          { type: 'paragraph', content: [{ type: 'erwaehnung', attrs: erw as never }] },
+        ],
+      }),
+    );
+
+  it('accepts valid mentions and rejects broken ones', () => {
+    expect(mit({ art: 'person', sub: 'abc' })).toBeNull();
+    for (const gruppe of ERWAEHNUNG_GRUPPEN) expect(mit({ art: 'gruppe', gruppe })).toBeNull();
+    expect(mit({ art: 'person' })).toMatch(/Erwähnung/);
+    expect(mit({ art: 'person', sub: '' })).toMatch(/Erwähnung/);
+    expect(mit({ art: 'gruppe', gruppe: 'alle-und-mehr' })).toMatch(/Erwähnung/);
+    expect(mit({ art: 'ding' })).toMatch(/Erwähnung/);
+    expect(mit(undefined)).toMatch(/Erwähnung/);
+  });
+
+  it('keeps documents without mentions valid', () => {
+    expect(protokollDokumentPruefen(protokollLeer())).toBeNull();
+  });
+
+  it('reads the attributes', () => {
+    expect(erwaehnungAttrs({ art: 'person', sub: 's', gruppe: null })).toEqual({
+      art: 'person',
+      sub: 's',
+    });
+    expect(erwaehnungAttrs({ art: 'gruppe', gruppe: 'ems', sub: null })).toEqual({
+      art: 'gruppe',
+      gruppe: 'ems',
+    });
+    expect(erwaehnungAttrs(null)).toBeNull();
+  });
+
+  it('decides who a mention concerns by the current status', () => {
+    const ich = (status: 'anwaerter' | 'mitglied' | 'em' | 'extern') => ({ sub: 'me', status });
+    expect(erwaehnungBetrifft({ art: 'person', sub: 'me' }, ich('extern'))).toBe(true);
+    expect(erwaehnungBetrifft({ art: 'person', sub: 'x' }, ich('mitglied'))).toBe(false);
+    const gruppe = (g: (typeof ERWAEHNUNG_GRUPPEN)[number]) => ({
+      art: 'gruppe' as const,
+      gruppe: g,
+    });
+    expect(erwaehnungBetrifft(gruppe('anwaerter'), ich('anwaerter'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('anwaerter'), ich('mitglied'))).toBe(false);
+    expect(erwaehnungBetrifft(gruppe('mitglieder'), ich('mitglied'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('ems'), ich('em'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('aktive'), ich('anwaerter'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('aktive'), ich('mitglied'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('aktive'), ich('em'))).toBe(false);
+    expect(erwaehnungBetrifft(gruppe('alle'), ich('em'))).toBe(true);
+    expect(erwaehnungBetrifft(gruppe('alle'), ich('extern'))).toBe(false);
   });
 });

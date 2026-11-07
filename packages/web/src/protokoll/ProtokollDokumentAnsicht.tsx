@@ -1,4 +1,5 @@
 import { createElement, Fragment, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   anwesenheitsVerlauf,
   eventUeberschrift,
@@ -7,13 +8,19 @@ import {
   bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
+  erwaehnungAttrs,
+  erwaehnungBetrifft,
   istBausteinInNotizen,
   vergangenesUeberschrift,
   type ProtokollKnoten,
 } from '@c4/shared';
+import { mitgliedLink } from '../mitglied';
+import { Text } from '@mantine/core';
 import { StatusName } from '../StatusAnzeige';
 import './dokumentAnsicht.css';
+import { erwaehnungText, meineErwaehnungen } from './erwaehnungLogik';
 import {
+  alleMitglieder,
   anwesenheitZeile,
   aufnahmeZeilen,
   beschlussZeilen,
@@ -50,6 +57,8 @@ interface Kontext {
   person: (sub: string) => Person | null;
   /** Anchor ids of the headings (see `dokumentUeberschriften`). */
   ids: Map<ProtokollKnoten, string>;
+  /** Anchor ids of the @mentions that concern the viewer (see `meineErwaehnungen`). */
+  erwIds: Map<ProtokollKnoten, string>;
   /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...; see `MAX_EBENE`). */
   ebene: number;
 }
@@ -98,6 +107,43 @@ function Kinder({ liste, ctx }: Readonly<{ liste: ProtokollKnoten[] | undefined;
   );
 }
 
+/**
+ * An @mention: a person as a link in the color of their status, a group as text. When it concerns the
+ * viewer (the person, or a group of their current status) it is highlighted and gets an anchor id.
+ */
+function Erwaehnung({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
+  const attrs = erwaehnungAttrs(k.attrs);
+  if (!attrs) return <>@</>;
+  const ich = ctx.eingabe.ich;
+  const betrifft = !!ich && erwaehnungBetrifft(attrs, ich);
+  const m = attrs.art === 'person' && attrs.sub ? ctx.person(attrs.sub) : null;
+  const mitglied = m ? alleMitglieder(ctx.eingabe).find((x) => x.sub === m.sub) : undefined;
+  let inhalt: ReactNode;
+  if (attrs.art === 'person') {
+    if (m && mitglied) {
+      inhalt = (
+        <Link to={mitgliedLink(mitglied)} style={{ textDecoration: 'none' }}>
+          <StatusName status={m.status}>{`@${m.name}`}</StatusName>
+        </Link>
+      );
+    } else {
+      inhalt = (
+        <Text component="span" c="dimmed">
+          {erwaehnungText(attrs, () => null)}
+        </Text>
+      );
+    }
+  } else {
+    inhalt = erwaehnungText(attrs, () => null);
+  }
+  if (!betrifft) return <>{inhalt}</>;
+  return (
+    <mark className="pk-dok-erw-ich" id={ctx.erwIds.get(k)} data-testid="erwaehnung-ich">
+      {inhalt}
+    </mark>
+  );
+}
+
 /** A block of free text; unknown nodes render their children. */
 function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   switch (k.type) {
@@ -105,6 +151,8 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       return <Marken k={k} />;
     case 'hardBreak':
       return <br />;
+    case 'erwaehnung':
+      return <Erwaehnung k={k} ctx={ctx} />;
     case 'paragraph':
       return (
         <p>
@@ -330,7 +378,9 @@ function Baustein({
       <>
         {!innen && (
           // Styled like a heading but no heading element: votes stay out of the PDF outline.
-          <div className={`pk-dok-h${Math.min(h, 5)}`}>{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</div>
+          <div className={`pk-dok-h${Math.min(h, 5)}`}>
+            {z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}
+          </div>
         )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
@@ -576,15 +626,18 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
     teilnahme: eingabe.teilnahme,
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
   });
-  const alle = [...eingabe.teilnahme, ...eingabe.ems];
-  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, (sub) => {
+  const alle = alleMitglieder(eingabe);
+  const namen = (sub: string) => {
     const m = alle.find((x) => x.sub === sub);
     return m ? personName(m) : null;
-  });
+  };
+  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen);
+  const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen);
   const ctx: Kontext = {
     eingabe,
     verlauf,
     ids,
+    erwIds: meine.ids,
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
@@ -601,7 +654,11 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
   const emsVorhanden = kopf.ems.length > 0 || kopf.emsFreitext !== '';
 
   return (
-    <DokumentRahmen eintraege={eintraege}>
+    <DokumentRahmen
+      eintraege={eintraege}
+      erwaehnungen={meine.eintraege}
+      zeigeErwaehnungen={!!eingabe.ich}
+    >
       <article className="pk-dok" data-testid="protokoll-dokument">
         <h1 className="pk-dok-titel pk-dok-h1" style={{ marginTop: 0, fontWeight: 700 }}>
           {kopf.titel}

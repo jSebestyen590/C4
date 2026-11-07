@@ -2,13 +2,16 @@ import { Paper, Portal, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useEffect, useState } from 'react';
 import { SlashListe } from './SlashListe';
-import type { SlashEintrag } from './slashLogik';
+import type { ListenEintrag } from './slashLogik';
 
 /** What the suggestion plugin reports to the React side. */
 export interface SlashZustand {
-  eintraege: SlashEintrag[];
+  eintraege: ListenEintrag[];
   query: string;
-  waehlen: (eintrag: SlashEintrag) => void;
+  /** Chooses the entry at this index of `eintraege`. */
+  waehlen: (index: number) => void;
+  /** Accessible name of the list (default: Bausteine). */
+  bezeichnung?: string;
   /** Rectangle of the typed "/query" in the viewport. */
   rect: (() => DOMRect | null) | null | undefined;
 }
@@ -76,7 +79,8 @@ export function SlashPopup({
           <SlashListe
             eintraege={zustand.eintraege}
             auswahl={auswahl}
-            onWaehlen={zustand.waehlen}
+            bezeichnung={zustand.bezeichnung}
+            onWaehlen={(e) => zustand.waehlen(zustand.eintraege.indexOf(e))}
             onZeiger={onZeiger}
           />
         ) : (

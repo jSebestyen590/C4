@@ -41,6 +41,10 @@ export interface DokumentEingabe {
   sitzung: { titel: string; beginn: string; art: ProtokollArt };
   /** The calendar's suggestion for the next Sitzung (counts while `kopf.naechsteSitzung` is null). */
   naechsteSitzungVorschlag?: ProtokollNaechsteSitzungVorschlag | null;
+  /** All members, to resolve @mentions of people who are not in the lists above (e.g. Externe). */
+  mitglieder?: readonly Namen[];
+  /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
+  ich?: { sub: string; status: MitgliedStatus } | null;
 }
 
 /** The next Sitzung that counts: Berlin date, time ('' = unknown) and the calendar event, if any. */
@@ -93,7 +97,7 @@ export interface Person {
   zusatz: string;
 }
 
-interface Namen {
+export interface Namen {
   sub: string;
   username: string | null;
   vorname: string;
@@ -110,6 +114,11 @@ const person = (m: Namen, zusatz = ''): Person => ({
   status: m.status,
   zusatz,
 });
+
+/** Everybody who can be looked up by `sub` in the document: attendance list, EMs, then all members. */
+export const alleMitglieder = (
+  e: Pick<DokumentEingabe, 'teilnahme' | 'ems' | 'mitglieder'>,
+): readonly Namen[] => [...e.teilnahme, ...e.ems, ...(e.mitglieder ?? [])];
 
 /** `30.01.2024` (Berlin) of an ISO instant. */
 export function datumLang(beginn: string): string {

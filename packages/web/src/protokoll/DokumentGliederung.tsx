@@ -2,6 +2,7 @@ import { Box, Button, Drawer, Text, UnstyledButton, useMantineTheme } from '@man
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { IconListTree } from '@tabler/icons-react';
 import { useMemo, type ReactNode } from 'react';
+import type { MeineErwaehnung } from './erwaehnungLogik';
 import {
   dokumentGliederungBauen,
   type DokumentGliederungsKnoten,
@@ -54,11 +55,59 @@ function Ebene({
   );
 }
 
-/** Tree of the headings of the document view; a tap scrolls to the heading. */
+/** "Meine Erwähnungen": where the viewer is mentioned, each with its heading and an excerpt. */
+function MeineErwaehnungenListe({
+  erwaehnungen,
+  onWaehlen,
+}: Readonly<{ erwaehnungen: readonly MeineErwaehnung[]; onWaehlen: (id: string) => void }>) {
+  return (
+    <section aria-label="Meine Erwähnungen" data-testid="meine-erwaehnungen">
+      <Text fw={700} size="sm" mt="md" mb={4}>
+        Meine Erwähnungen
+      </Text>
+      {erwaehnungen.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          Du wirst in diesem Protokoll nicht erwähnt.
+        </Text>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {erwaehnungen.map((e) => (
+            <li key={e.id}>
+              <UnstyledButton
+                onClick={() => onWaehlen(e.id)}
+                style={{ width: '100%', minHeight: 44, padding: '6px 0', minWidth: 0 }}
+              >
+                {e.ueberschrift && (
+                  <Text size="xs" c="dimmed" truncate>
+                    {e.ueberschrift}
+                  </Text>
+                )}
+                <Text size="sm" lineClamp={3} style={{ overflowWrap: 'anywhere' }}>
+                  {e.auszug}
+                </Text>
+              </UnstyledButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Tree of the headings of the document view; a tap scrolls to the heading. With `erwaehnungen` the
+ * "Meine Erwähnungen" overview follows below it.
+ */
 export function DokumentGliederung({
   eintraege,
+  erwaehnungen,
   onGewaehlt,
-}: Readonly<{ eintraege: readonly DokumentUeberschrift[]; onGewaehlt?: () => void }>) {
+}: Readonly<{
+  eintraege: readonly DokumentUeberschrift[];
+  /** The mentions that concern the viewer; undefined = no overview (viewer unknown). */
+  erwaehnungen?: readonly MeineErwaehnung[];
+  onGewaehlt?: () => void;
+}>) {
   const baum = useMemo(() => dokumentGliederungBauen(eintraege), [eintraege]);
   const waehlen = (id: string) => {
     onGewaehlt?.();
@@ -66,9 +115,14 @@ export function DokumentGliederung({
     setTimeout(() => zuUeberschriftScrollen(id), onGewaehlt ? 300 : 0);
   };
   return (
-    <nav aria-label="Gliederung">
-      <Ebene knoten={baum} onWaehlen={waehlen} />
-    </nav>
+    <>
+      {baum.length > 0 && (
+        <nav aria-label="Gliederung">
+          <Ebene knoten={baum} onWaehlen={waehlen} />
+        </nav>
+      )}
+      {erwaehnungen && <MeineErwaehnungenListe erwaehnungen={erwaehnungen} onWaehlen={waehlen} />}
+    </>
   );
 }
 
@@ -78,12 +132,23 @@ export function DokumentGliederung({
  */
 export function DokumentRahmen({
   eintraege,
+  erwaehnungen,
+  zeigeErwaehnungen = false,
   children,
-}: Readonly<{ eintraege: readonly DokumentUeberschrift[]; children: ReactNode }>) {
+}: Readonly<{
+  eintraege: readonly DokumentUeberschrift[];
+  /** The mentions that concern the viewer. */
+  erwaehnungen?: readonly MeineErwaehnung[];
+  /** Whether to show "Meine Erwähnungen" (the viewer is known), also when there are none. */
+  zeigeErwaehnungen?: boolean;
+  children: ReactNode;
+}>) {
   const theme = useMantineTheme();
   const breit = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false);
   const [offen, { open, close }] = useDisclosure(false);
-  const mitGliederung = eintraege.length > 0;
+  const mitGliederung = eintraege.length > 0 || zeigeErwaehnungen;
+  const titel = eintraege.length > 0 ? 'Gliederung' : 'Meine Erwähnungen';
+  const meine = zeigeErwaehnungen ? (erwaehnungen ?? []) : undefined;
 
   return (
     <div
@@ -103,7 +168,7 @@ export function DokumentRahmen({
             leftSection={<IconListTree size={18} />}
             onClick={open}
           >
-            Gliederung
+            {titel}
           </Button>
         </Box>
       )}
@@ -124,7 +189,7 @@ export function DokumentRahmen({
             borderRadius: 'var(--mantine-radius-md)',
           }}
         >
-          <DokumentGliederung eintraege={eintraege} />
+          <DokumentGliederung eintraege={eintraege} erwaehnungen={meine} />
         </Box>
       )}
       {mitGliederung && !breit && (
@@ -133,9 +198,9 @@ export function DokumentRahmen({
           onClose={close}
           position="right"
           size="min(24rem, 100%)"
-          title="Gliederung"
+          title={titel}
         >
-          <DokumentGliederung eintraege={eintraege} onGewaehlt={close} />
+          <DokumentGliederung eintraege={eintraege} erwaehnungen={meine} onGewaehlt={close} />
         </Drawer>
       )}
     </div>

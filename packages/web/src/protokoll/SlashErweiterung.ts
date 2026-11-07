@@ -16,6 +16,9 @@ import {
 } from './slashLogik';
 import type { SlashZustand } from './SlashPopup';
 
+/** Plugin key of the slash menu (the @mention suggestion yields while it is open). */
+export const SLASH_SCHLUESSEL = new PluginKey('slashBefehle');
+
 /** What the editor component gives the extension (all callbacks read current values, they never go stale). */
 export interface SlashSteuerung {
   daten: () => SlashDaten;
@@ -37,7 +40,7 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
       return [
         Suggestion<SlashEintrag, SlashEintrag>({
           editor: this.editor,
-          pluginKey: new PluginKey('slashBefehle'),
+          pluginKey: SLASH_SCHLUESSEL,
           char: '/',
           allowSpaces: true,
           startOfLine: false,
@@ -75,7 +78,10 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               steuerung.zustand({
                 eintraege: p.items,
                 query: p.query,
-                waehlen: p.command,
+                waehlen: (index) => {
+                  const eintrag = p.items[index];
+                  if (eintrag) p.command(eintrag);
+                },
                 rect: p.clientRect,
               });
             return {

@@ -13,6 +13,8 @@ import {
   IconUsersGroup,
   IconUserCheck,
   IconUserPlus,
+  IconUser,
+  IconUsers,
 } from '@tabler/icons-react';
 import type { BausteinTyp } from '@c4/shared';
 import type { SlashSymbol } from './slashLogik';
@@ -47,6 +49,10 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconQuote size={size} />;
     case 'ohne':
       return <IconBan size={size} />;
+    case 'person':
+      return <IconUser size={size} />;
+    case 'gruppe':
+      return <IconUsers size={size} />;
   }
 }
 

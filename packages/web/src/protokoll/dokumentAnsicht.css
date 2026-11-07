@@ -151,3 +151,22 @@
 .pk-dok a {
   color: var(--mantine-primary-color-filled);
 }
+
+/* @mention that concerns the viewer: highlighter, readable in light and dark. Not printed. */
+.pk-dok-erw-ich {
+  background-color: var(--mantine-color-yellow-3);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+:root[data-mantine-color-scheme='dark'] .pk-dok-erw-ich {
+  background-color: rgb(250 176 5 / 28%);
+}
+
+@media print {
+  .pk-dok-erw-ich {
+    background: none;
+    padding: 0;
+  }
+}

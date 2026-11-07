@@ -38,7 +38,9 @@ export type SlashSymbol =
   | 'geht'
   | 'vorlage'
   | 'ohne'
-  | 'zitat';
+  | 'zitat'
+  | 'person'
+  | 'gruppe';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -47,6 +49,9 @@ export interface SlashEintrag {
   symbol: SlashSymbol;
   aktion: SlashAktion;
 }
+
+/** What the list of a suggestion popup needs of an entry (slash menu and @mentions). */
+export type ListenEintrag = Pick<SlashEintrag, 'schluessel' | 'titel' | 'beschreibung' | 'symbol'>;
 
 /** A selectable Vorlage with the Baustein fields it creates. */
 export interface SlashVorlage {

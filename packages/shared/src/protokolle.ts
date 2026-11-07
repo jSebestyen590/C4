@@ -574,6 +574,63 @@ export function protokollDokumentNormalisieren(dokument: ProtokollDokument): Pro
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// @Erwähnungen
+// ---------------------------------------------------------------------------------------------
+
+/** Node type of an @mention in the free text (inline, atomic). */
+export const ERWAEHNUNG_TYP = 'erwaehnung';
+
+/** Groups that can be mentioned (`@Mitglieder`, ...). */
+export const ERWAEHNUNG_GRUPPEN = ['anwaerter', 'mitglieder', 'ems', 'aktive', 'alle'] as const;
+export type ErwaehnungGruppe = (typeof ERWAEHNUNG_GRUPPEN)[number];
+
+/** Statuses a group covers. `alle` has no Externe; `aktive` = Anwärter:innen and Mitglieder. */
+export const ERWAEHNUNG_GRUPPE_STATI: Record<ErwaehnungGruppe, readonly MitgliedStatus[]> = {
+  anwaerter: ['anwaerter'],
+  mitglieder: ['mitglied'],
+  ems: ['em'],
+  aktive: ['anwaerter', 'mitglied'],
+  alle: ['anwaerter', 'mitglied', 'em'],
+};
+
+/** Attributes of an `erwaehnung` node. */
+export interface ErwaehnungAttrs {
+  art: 'person' | 'gruppe';
+  sub?: string | null;
+  gruppe?: ErwaehnungGruppe | null;
+}
+
+const istErwaehnungGruppe = (v: unknown): v is ErwaehnungGruppe =>
+  (ERWAEHNUNG_GRUPPEN as readonly unknown[]).includes(v);
+
+/** The attributes of an `erwaehnung` node if they are valid, else null. */
+export function erwaehnungAttrs(attrs: unknown): ErwaehnungAttrs | null {
+  if (!istObjekt(attrs)) return null;
+  if (attrs.art === 'person') {
+    const sub = attrs.sub;
+    if (typeof sub !== 'string' || sub.length === 0 || sub.length > 128) return null;
+    return { art: 'person', sub };
+  }
+  if (attrs.art === 'gruppe' && istErwaehnungGruppe(attrs.gruppe)) {
+    return { art: 'gruppe', gruppe: attrs.gruppe };
+  }
+  return null;
+}
+
+/**
+ * Whether a mention concerns the viewer: the person themself, or a group their CURRENT status belongs
+ * to (not the status at the time of the Sitzung).
+ */
+export function erwaehnungBetrifft(
+  erwaehnung: ErwaehnungAttrs,
+  betrachter: { sub: string; status: MitgliedStatus },
+): boolean {
+  if (erwaehnung.art === 'person') return erwaehnung.sub === betrachter.sub;
+  if (!erwaehnung.gruppe) return false;
+  return ERWAEHNUNG_GRUPPE_STATI[erwaehnung.gruppe].includes(betrachter.status);
+}
+
 const MAX_KNOTEN_KINDER = 5000;
 const bausteinIdSchema = z.guid();
 
@@ -619,6 +676,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
   if (istBausteinTyp(type)) {
     const fehler = bausteinFehler(knoten, type);
     if (fehler) return fehler;
+  }
+  if (type === ERWAEHNUNG_TYP && erwaehnungAttrs(attrs) === null) {
+    return 'Eine Erwähnung ist ungültig.';
   }
   if (content !== undefined) {
     if (!Array.isArray(content) || content.length > MAX_KNOTEN_KINDER) {
