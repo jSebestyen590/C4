@@ -4,14 +4,13 @@ import {
   Flex,
   Group,
   Select,
-  SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
 import { Link } from 'react-router-dom';
-import { ANWESENHEIT_ARTEN, type AnwesenheitArt, type BausteinAnwesenheitDaten } from '@c4/shared';
+import { type AnwesenheitArt, type BausteinAnwesenheitDaten } from '@c4/shared';
 import { mitgliedLink } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesenheit';
@@ -99,16 +98,11 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                   );
                 }}
               />
-              <SegmentedControl
-                size="md"
-                aria-label="Erscheint oder geht"
-                value={daten.art}
-                onChange={(art) => {
-                  aendern((d) => ({ ...d, art: art as AnwesenheitArt }));
-                  if (daten.sub) onAnwesenheit?.(daten.sub);
-                }}
-                data={ANWESENHEIT_ARTEN.map((a) => ({ value: a, label: ART_LABEL[a] }))}
-              />
+              {/* Fixed when inserted (/erscheint or /geht); to change it, remove the block and insert the other. */}
+              <Group gap={6} wrap="nowrap" data-testid="anwesenheit-art">
+                <SlashIcon symbol={daten.art} size={18} />
+                <Text>{ART_LABEL[daten.art]}</Text>
+              </Group>
               <LokalText
                 type="time"
                 size="md"

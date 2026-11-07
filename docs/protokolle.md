@@ -257,7 +257,7 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = aktuelle
   Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter in den nächsten Absatz (bei Bedarf wird einer angelegt). Der Baustein ist eine Zeile (Person, erscheint/geht,
-  Uhrzeit) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
+  Uhrzeit; „Erscheint“ bzw. „Geht“ steht fest und lässt sich nicht umschalten, dafür Baustein entfernen und neu einfügen) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
   ohne Freitext. Eine **Abstimmung** (und eine Aufnahme, Wahl) zeigt „Anwesend: x von y Mitgliedern“, bei fehlender
   Beschlussfähigkeit rot „Nicht beschlussfähig“ und die Zeile „Stimmen: 4 von 5“ (Wahl: „Stimmen: 7 von 10 (5 × 2)“, je Stichwahl eine
   Zeile), bei Abweichung orange.
