@@ -71,6 +71,7 @@ describe('first stage', () => {
       'Neues EM',
       'Erscheint',
       'Geht',
+      'Bild',
       'Zitat',
     ]);
   });

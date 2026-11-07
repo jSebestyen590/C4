@@ -8,6 +8,11 @@ import {
   PROTOKOLL_MAX_BYTES,
   PROTOKOLL_MAX_TIEFE,
   bausteinErzeugen,
+  BILD_TYP,
+  istProtokollBildSchluessel,
+  protokollBildAnfrageSchema,
+  protokollBildPrefix,
+  protokollBildSchluessel,
   bausteinLeer,
   beschlussErgebnisVorschlag,
   wahlErgebnis,
@@ -1319,5 +1324,63 @@ describe('@Erwähnungen', () => {
     expect(erwaehnungBetrifft(gruppe('aktive'), ich('em'))).toBe(false);
     expect(erwaehnungBetrifft(gruppe('alle'), ich('em'))).toBe(true);
     expect(erwaehnungBetrifft(gruppe('alle'), ich('extern'))).toBe(false);
+  });
+});
+
+describe('Bilder', () => {
+  const uuid = '00000000-0000-4000-8000-000000000001';
+  const schluessel = `protokollbilder/p1/${uuid}.jpg`;
+  const bild = (attrs: Record<string, unknown> = {}): ProtokollKnoten => ({
+    type: BILD_TYP,
+    attrs: { schluessel, breite: 'voll', ausrichtung: 'links', beschreibung: '', ...attrs },
+  });
+  const mit = (knoten: ProtokollKnoten) => dokument({ gegenwaertiges: [knoten] });
+
+  it('accepts a valid image at section level and in notes', () => {
+    expect(protokollDokumentPruefen(mit(bild()))).toBeNull();
+    const thema = bausteinErzeugen('bausteinThema', undefined, [absatz('x'), bild()]);
+    expect(protokollDokumentPruefen(mit(thema))).toBeNull();
+  });
+
+  it.each([
+    ['a foreign key', { schluessel: 'profilbilder/p1/x.jpg' }],
+    ['a path trick', { schluessel: `protokollbilder/p1/../${uuid}.jpg` }],
+    ['a wrong extension', { schluessel: `protokollbilder/p1/${uuid}.png` }],
+    ['an unknown width', { breite: 'dritte' }],
+    ['an unknown alignment', { ausrichtung: 'oben' }],
+    ['a missing description', { beschreibung: undefined }],
+    ['a long description', { beschreibung: 'x'.repeat(301) }],
+    ['an unknown field', { extra: 1 }],
+  ])('rejects %s', (_name, attrs) => {
+    expect(protokollDokumentPruefen(mit(bild(attrs)))).not.toBeNull();
+  });
+
+  it('knows the key shape, prefix and the keys of a document', () => {
+    expect(istProtokollBildSchluessel(schluessel)).toBe(true);
+    expect(istProtokollBildSchluessel('protokollbilder/p1/x.jpg')).toBe(false);
+    expect(protokollBildPrefix('p1')).toBe('protokollbilder/p1/');
+    const thema = bausteinErzeugen('bausteinThema', undefined, [bild()]);
+    expect(protokollBildSchluessel(dokument({ gegenwaertiges: [bild(), thema] }))).toEqual([
+      schluessel,
+    ]);
+  });
+
+  it('limits the upload size to 5 MB', () => {
+    expect(protokollBildAnfrageSchema.safeParse({ groesse: 5 * 1024 * 1024 }).success).toBe(true);
+    expect(protokollBildAnfrageSchema.safeParse({ groesse: 5 * 1024 * 1024 + 1 }).success).toBe(
+      false,
+    );
+    expect(protokollBildAnfrageSchema.safeParse({ groesse: 0 }).success).toBe(false);
+  });
+
+  it('does not carry images into the next protocol', () => {
+    const event = eventBaustein({ name: 'Barabend', datum: '2026-12-01' }, 'Text');
+    event.content = [absatz('Text'), bild()];
+    const doc = protokollVorschlag({
+      sitzungDatum: '2026-11-10',
+      letztes: dokument({ zukuenftiges: [event] }),
+    });
+    expect(protokollBildSchluessel(doc)).toEqual([]);
+    expect(JSON.stringify(doc)).toContain('Text');
   });
 });

@@ -5,6 +5,8 @@ Jedes Event hat dort einen Unterordner `Datum_Event`. Die Seite **Bilder** (`/bi
 nach Eventname und Datum; ein Klick öffnet den Ordner in OneDrive. Unterordner werden nicht betrachtet. Rechte:
 `bilder:lesen` (alle Status: ansehen und Ordner anlegen), Verbindung einrichten mit `users:manage`.
 
+Die Bilder in Protokollen sind davon getrennt: Sie liegen in S3, nicht in OneDrive (siehe [protokolle.md](./protokolle.md#bilder)).
+
 ## Namensschema
 
 | Form                    | Beispiel                          | Genauigkeit |

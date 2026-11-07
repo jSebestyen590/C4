@@ -24,6 +24,10 @@ export interface ProtokollKontextWert {
   verlauf: AnwesenheitsVerlauf;
   /** Vote count checks of the binding votes (Abstimmung, Wahl rounds) against the members present. */
   stimmen: readonly StimmenPruefung[];
+  /** URLs of the images of the protocol by key (presigned, local previews of fresh uploads included). */
+  bilder: Readonly<Record<string, string>>;
+  /** An image failed to load (probably an expired URL): fetch fresh ones. Throttled by the provider. */
+  bilderErneuern?: () => void;
   /** A person got an Erscheint / Geht block: lets the page lock them to "da" in the Kopf. Editable documents only. */
   onAnwesenheit?: (sub: string) => void;
 }
@@ -36,6 +40,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   mitglieder: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },
   stimmen: [],
+  bilder: {},
 });
 
 export const useProtokollKontext = (): ProtokollKontextWert => useContext(ProtokollKontext);

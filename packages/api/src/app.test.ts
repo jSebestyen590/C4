@@ -812,6 +812,14 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
     loeschen: vi.fn<(key: string) => Promise<void>>(async () => {}),
   };
+  const protokollbilder = {
+    uploadVorbereiten: vi.fn(async (protokollId: string, groesse: number) => ({
+      uploadUrl: `https://s3.example/upload?size=${groesse}`,
+      schluessel: `protokollbilder/${protokollId}/00000000-0000-4000-8000-000000000001.jpg`,
+    })),
+    anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
+    loeschen: vi.fn<(protokollId: string) => Promise<void>>(async () => {}),
+  };
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
   );
@@ -848,6 +856,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     ordnerCache,
     ...(appUrl && { appUrl }),
     profilbilder,
+    protokollbilder,
     pingDb,
   });
   return {
@@ -857,6 +866,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     mitglieder,
     posten,
     profilbilder,
+    protokollbilder,
     waren,
     inventar,
     inventarVerwendet,
@@ -7320,6 +7330,83 @@ describe('protokolle', () => {
     expect((await t.app.request(`/api/protokolle/${id}`, json('reader-token', 'GET'))).status).toBe(
       404,
     );
+  });
+
+  describe('Bilder', () => {
+    const uuid = '00000000-0000-4000-8000-000000000001';
+    const bild = (id: string, schluessel = `protokollbilder/${id}/${uuid}.jpg`) => ({
+      type: 'protokollBild',
+      attrs: { schluessel, breite: 'voll', ausrichtung: 'mitte', beschreibung: 'Tafel' },
+    });
+    const mitBild = (dto: { inhalt: ProtokollDokument }, knoten: unknown) => {
+      const inhalt = structuredClone(dto.inhalt);
+      inhalt.content[0]!.content!.push(knoten as never);
+      return inhalt;
+    };
+
+    it('prepares an upload for a draft, limited to 5 MB and the right to write', async () => {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      const post = (token: string, body: unknown, pid = id) =>
+        t.app.request(`/api/protokolle/${pid}/bilder`, json(token, 'POST', body));
+      const res = await post('vorstand-token', { groesse: 1234 });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        uploadUrl: 'https://s3.example/upload?size=1234',
+        schluessel: `protokollbilder/${id}/${uuid}.jpg`,
+      });
+      expect(t.protokollbilder.uploadVorbereiten).toHaveBeenCalledWith(id, 1234);
+      expect((await post('reader-token', { groesse: 10 })).status).toBe(403);
+      expect((await post('admin-token', { groesse: 5 * 1024 * 1024 + 1 })).status).toBe(400);
+      expect((await post('admin-token', { groesse: 0 })).status).toBe(400);
+      expect((await post('admin-token', { groesse: 10 }, 'gibtsnicht')).status).toBe(404);
+      await t.app.request(
+        `/api/protokolle/${id}/status`,
+        json('admin-token', 'PUT', { status: 'abgeschlossen' }),
+      );
+      expect((await post('admin-token', { groesse: 10 })).status).toBe(409);
+    });
+
+    it('saves images of this protocol and returns URLs only for those', async () => {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      const dto = await t.holen(id);
+      expect(dto.bilder).toEqual({});
+      const put = (inhalt: unknown, version: number) =>
+        t.app.request(
+          `/api/protokolle/${id}`,
+          json('admin-token', 'PUT', { inhalt, kopf: dto.kopf, version }),
+        );
+      expect((await put(mitBild(dto, bild(id)), 1)).status).toBe(200);
+      const neu = await t.holen(id);
+      const key = `protokollbilder/${id}/${uuid}.jpg`;
+      expect(neu.bilder).toEqual({ [key]: `https://s3.example/${key}` });
+    });
+
+    it('rejects images of another protocol or with a bad shape', async () => {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      const dto = await t.holen(id);
+      const put = (inhalt: unknown) =>
+        t.app.request(
+          `/api/protokolle/${id}`,
+          json('admin-token', 'PUT', { inhalt, kopf: dto.kopf, version: 1 }),
+        );
+      expect((await put(mitBild(dto, bild('anderes-protokoll')))).status).toBe(400);
+      expect((await put(mitBild(dto, bild(id, 'profilbilder/x/y.jpg')))).status).toBe(400);
+      expect((await put(mitBild(dto, bild(id, `protokollbilder/${id}/../x.jpg`)))).status).toBe(
+        400,
+      );
+    });
+
+    it('deletes the images together with the protocol', async () => {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      t.protokollbilder.loeschen.mockRejectedValueOnce(new Error('s3 down'));
+      const res = await t.app.request(`/api/protokolle/${id}`, json('admin-token', 'DELETE'));
+      expect(res.status).toBe(200);
+      expect(t.protokollbilder.loeschen).toHaveBeenCalledWith(id);
+    });
   });
 
   it('refuses to delete a Sitzung that has a protocol', async () => {

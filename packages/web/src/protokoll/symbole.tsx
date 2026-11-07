@@ -7,6 +7,7 @@ import {
   IconLogin2,
   IconLogout2,
   IconNotes,
+  IconPhoto,
   IconCrown,
   IconQuote,
   IconTemplate,
@@ -47,6 +48,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconTemplate size={size} />;
     case 'zitat':
       return <IconQuote size={size} />;
+    case 'bild':
+      return <IconPhoto size={size} />;
     case 'ohne':
       return <IconBan size={size} />;
     case 'person':

@@ -37,6 +37,7 @@ function baue() {
         daten: () => ({ vorlagen: [], vergangene: [] }),
         zustand,
         taste,
+        bild: () => {},
       }),
       erwaehnungErweiterung({ personen: () => LEUTE, zustand, taste }),
     ],

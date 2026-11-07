@@ -1,4 +1,4 @@
-import { createElement, Fragment, type ReactNode } from 'react';
+import { createElement, Fragment, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   anwesenheitsVerlauf,
@@ -8,6 +8,8 @@ import {
   bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
+  BILD_AUSRICHTUNGEN,
+  BILD_BREITEN,
   erwaehnungAttrs,
   erwaehnungBetrifft,
   istBausteinInNotizen,
@@ -41,6 +43,7 @@ import {
   type Person,
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
+import { hatBilder, notizAbschnitte } from './notizAbschnitte';
 import { DokumentRahmen } from './DokumentGliederung';
 import {
   dokumentUeberschriften,
@@ -202,6 +205,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           )}
         </blockquote>
       );
+    case 'protokollBild':
+      // Only reached at section level: images in notes are set beside the text (see `Notizen`).
+      return <BildFigur k={k} ctx={ctx} />;
     case 'bausteinThema':
       // A Thema inside the notes of another Baustein (a heading one level below it).
       return <Baustein k={k} ctx={ctx} innen />;
@@ -219,13 +225,12 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   }
 }
 
-/** The free text of a Baustein or section; `vorne` is an item merged into a leading bullet list. */
-function Notizen({
-  knoten,
+/** A text block list with an optional item merged into a leading bullet list. */
+function TextBloecke({
+  liste,
   ctx,
   vorne,
-}: Readonly<{ knoten: ProtokollKnoten[] | undefined; ctx: Kontext; vorne?: ReactNode }>) {
-  const liste = ohneLeereEnden(knoten);
+}: Readonly<{ liste: ProtokollKnoten[]; ctx: Kontext; vorne?: ReactNode }>) {
   const [erstes, ...rest] = liste;
   if (vorne && erstes?.type === 'bulletList') {
     return (
@@ -247,6 +252,93 @@ function Notizen({
       )}
       <Kinder liste={liste} ctx={ctx} />
     </>
+  );
+}
+
+/**
+ * The free text of a Baustein or section; `vorne` is an item merged into a leading bullet list. With
+ * images, the notes are split at nested Bausteine (`notizAbschnitte`): each piece of text that has images
+ * is a grid with the text on the left and the images stacked in a column on the right.
+ */
+function Notizen({
+  knoten,
+  ctx,
+  vorne,
+}: Readonly<{ knoten: ProtokollKnoten[] | undefined; ctx: Kontext; vorne?: ReactNode }>) {
+  const liste = ohneLeereEnden(knoten);
+  if (!hatBilder(liste)) return <TextBloecke liste={liste} ctx={ctx} vorne={vorne} />;
+  const abschnitte = notizAbschnitte(liste);
+  return (
+    <>
+      {vorne && abschnitte[0]?.art !== 'text' && <TextBloecke liste={[]} ctx={ctx} vorne={vorne} />}
+      {abschnitte.map((a, i) => {
+        const key = a.art === 'baustein' ? String(a.knoten.attrs?.id ?? i) : i;
+        if (a.art === 'baustein') return <Knoten key={key} k={a.knoten} ctx={ctx} />;
+        const text = ohneLeereEnden(a.knoten);
+        const mitVorne = i === 0 ? vorne : undefined;
+        if (a.bilder.length === 0) {
+          return <TextBloecke key={key} liste={text} ctx={ctx} vorne={mitVorne} />;
+        }
+        return (
+          <div key={key} className="pk-dok-notiz-bilder">
+            <div className="pk-dok-notiz-text">
+              <TextBloecke liste={text} ctx={ctx} vorne={mitVorne} />
+            </div>
+            <div className="pk-dok-notiz-spalte">
+              {a.bilder.map((b, j) => (
+                <BildFigur key={j} k={b} ctx={ctx} spalte />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * An image with its description as a small caption. At section level it has its own row with the width
+ * and position of the node; `spalte`: in the image column beside the notes (always the column's width).
+ */
+function BildFigur({
+  k,
+  ctx,
+  spalte = false,
+}: Readonly<{ k: ProtokollKnoten; ctx: Kontext; spalte?: boolean }>) {
+  const schluessel = typeof k.attrs?.schluessel === 'string' ? k.attrs.schluessel : '';
+  const beschreibung = typeof k.attrs?.beschreibung === 'string' ? k.attrs.beschreibung : '';
+  const breite = (BILD_BREITEN as readonly unknown[]).includes(k.attrs?.breite)
+    ? (k.attrs?.breite as string)
+    : 'voll';
+  const ausrichtung = (BILD_AUSRICHTUNGEN as readonly unknown[]).includes(k.attrs?.ausrichtung)
+    ? (k.attrs?.ausrichtung as string)
+    : 'mitte';
+  const url = ctx.eingabe.bilder?.[schluessel];
+  // One refresh per image: the URL may have expired.
+  const erneuert = useRef(false);
+  return (
+    <figure
+      className={spalte ? 'pk-dok-bild pk-dok-bild-spalte' : 'pk-dok-bild'}
+      data-breite={spalte ? undefined : breite}
+      data-ausrichtung={spalte ? undefined : ausrichtung}
+      data-testid="dokument-bild"
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={beschreibung}
+          loading="lazy"
+          onError={() => {
+            if (erneuert.current) return;
+            erneuert.current = true;
+            ctx.eingabe.bilderErneuern?.();
+          }}
+        />
+      ) : (
+        <p className="pk-dok-klein">Bild nicht verfügbar</p>
+      )}
+      {beschreibung && <figcaption className="pk-dok-klein">{beschreibung}</figcaption>}
+    </figure>
   );
 }
 

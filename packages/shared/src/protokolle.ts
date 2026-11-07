@@ -648,6 +648,85 @@ function bausteinFehler(knoten: Record<string, unknown>, typ: BausteinTyp): stri
   return null;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Bilder
+// ---------------------------------------------------------------------------------------------
+
+/** TipTap node type of an image in a protocol (block, atom). */
+export const BILD_TYP = 'protokollBild';
+export const BILD_BREITEN = ['voll', 'halb'] as const;
+export type BildBreite = (typeof BILD_BREITEN)[number];
+export const BILD_AUSRICHTUNGEN = ['links', 'mitte', 'rechts'] as const;
+export type BildAusrichtung = (typeof BILD_AUSRICHTUNGEN)[number];
+export const BILD_BESCHREIBUNG_MAX = 300;
+/** Largest upload of one protocol image (the browser scales to 2000 px, so this is generous). */
+export const PROTOKOLL_BILD_MAX_BYTES = 5 * 1024 * 1024;
+
+export interface ProtokollBildAttrs {
+  schluessel: string;
+  breite: BildBreite;
+  ausrichtung: BildAusrichtung;
+  beschreibung: string;
+}
+
+/** S3 key prefix of all images of one protocol. */
+export const protokollBildPrefix = (protokollId: string): string =>
+  `protokollbilder/${protokollId}/`;
+
+const BILD_SCHLUESSEL_FORM = /^protokollbilder\/([A-Za-z0-9-]{1,64})\/[0-9a-f-]{36}\.jpg$/;
+
+/** Whether `schluessel` has the shape `protokollbilder/<protocol id>/<uuid>.jpg`. */
+export const istProtokollBildSchluessel = (schluessel: unknown): schluessel is string =>
+  typeof schluessel === 'string' && BILD_SCHLUESSEL_FORM.test(schluessel);
+
+/** Error message for the attrs of an image node, null when valid. */
+function bildAttrsFehler(attrs: unknown): string | null {
+  if (!istObjekt(attrs)) return 'Ein Bild ist ungültig.';
+  if (
+    Object.keys(attrs).some(
+      (k) => !['schluessel', 'breite', 'ausrichtung', 'beschreibung'].includes(k),
+    )
+  ) {
+    return 'Ein Bild hat unbekannte Felder.';
+  }
+  if (!istProtokollBildSchluessel(attrs.schluessel)) return 'Ein Bild ist ungültig.';
+  if (!(BILD_BREITEN as readonly unknown[]).includes(attrs.breite)) return 'Ein Bild ist ungültig.';
+  if (!(BILD_AUSRICHTUNGEN as readonly unknown[]).includes(attrs.ausrichtung)) {
+    return 'Ein Bild ist ungültig.';
+  }
+  if (typeof attrs.beschreibung !== 'string' || attrs.beschreibung.length > BILD_BESCHREIBUNG_MAX) {
+    return `Die Bildbeschreibung darf höchstens ${BILD_BESCHREIBUNG_MAX} Zeichen haben.`;
+  }
+  return null;
+}
+
+/** Image nodes of a document, in order (inside Bausteine too). */
+function bildKnoten(knoten: ProtokollKnoten, gefunden: ProtokollKnoten[] = []): ProtokollKnoten[] {
+  if (knoten.type === BILD_TYP) gefunden.push(knoten);
+  for (const kind of knoten.content ?? []) bildKnoten(kind, gefunden);
+  return gefunden;
+}
+
+/** Keys of all images in a document (each once). */
+export function protokollBildSchluessel(dokument: ProtokollKnoten): string[] {
+  const keys = new Set<string>();
+  for (const k of bildKnoten(dokument)) {
+    if (typeof k.attrs?.schluessel === 'string') keys.add(k.attrs.schluessel);
+  }
+  return [...keys];
+}
+
+/** Request for an upload URL of a protocol image. */
+export const protokollBildAnfrageSchema = z.object({
+  groesse: z.number().int().min(1).max(PROTOKOLL_BILD_MAX_BYTES),
+});
+export type ProtokollBildAnfrage = z.infer<typeof protokollBildAnfrageSchema>;
+
+export interface ProtokollBildUploadDto {
+  uploadUrl: string;
+  schluessel: string;
+}
+
 /** Structure of one node and its descendants: types, depth, Baustein fields; returns an error message or null. */
 function knotenFehler(knoten: unknown, tiefe: number): string | null {
   if (tiefe > PROTOKOLL_MAX_TIEFE) return 'Das Protokoll ist zu tief verschachtelt.';
@@ -679,6 +758,10 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
   }
   if (type === ERWAEHNUNG_TYP && erwaehnungAttrs(attrs) === null) {
     return 'Eine Erwähnung ist ungültig.';
+  }
+  if (type === BILD_TYP) {
+    const bildFehler = bildAttrsFehler(attrs);
+    if (bildFehler) return bildFehler;
   }
   if (content !== undefined) {
     if (!Array.isArray(content) || content.length > MAX_KNOTEN_KINDER) {
@@ -943,7 +1026,7 @@ const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
  * without nested Themen (a Thema belongs to one Sitzung, with everything in it).
  */
 function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnoten[] {
-  const rest = (content ?? []).filter((k) => !istVerschachtelbar(k.type));
+  const rest = (content ?? []).filter((k) => !istVerschachtelbar(k.type) && k.type !== BILD_TYP);
   return rest.length > 0 ? rest : [leererAbsatz()];
 }
 
@@ -1216,6 +1299,8 @@ export interface ProtokollDto {
     art: ProtokollArt;
   };
   inhalt: ProtokollDokument;
+  /** Presigned GET URLs (1 h) of the images in `inhalt`, by key. */
+  bilder: Record<string, string>;
   kopf: ProtokollKopf;
   status: ProtokollStatus;
   version: number;

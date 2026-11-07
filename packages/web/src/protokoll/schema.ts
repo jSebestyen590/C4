@@ -3,6 +3,7 @@ import { Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state
 import type { Node as PmNode } from '@tiptap/pm/model';
 import {
   BAUSTEIN_TYPEN,
+  BILD_TYP,
   PROTOKOLL_ABSCHNITTE,
   istVerschachtelbar,
   type ProtokollAbschnitt,
@@ -33,7 +34,7 @@ export const ProtokollDokumentKnoten = Node.create({
  */
 export const AbschnittKnoten = Node.create({
   name: 'abschnitt',
-  content: '(block | thema)+',
+  content: '(block | thema | bild)+',
   isolating: true,
   selectable: false,
   draggable: false,
@@ -92,7 +93,10 @@ export function absatzAmEndeEinfuegen(tr: Transaction): boolean {
   tr.doc.descendants((node, pos) => {
     if (node.type.name === 'abschnitt') {
       if (!node.lastChild?.isTextblock) stellen.push(pos + node.nodeSize - 1);
-    } else if (node.lastChild && istVerschachtelbar(node.lastChild.type.name)) {
+    } else if (
+      node.lastChild &&
+      (istVerschachtelbar(node.lastChild.type.name) || node.lastChild.type.name === BILD_TYP)
+    ) {
       stellen.push(pos + node.nodeSize - 1);
     }
     return true;

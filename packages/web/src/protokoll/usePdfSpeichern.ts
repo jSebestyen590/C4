@@ -2,6 +2,8 @@ import { notifications } from '@mantine/notifications';
 import type { ProtokollDto, ProtokollPdfAntwort } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { pruefen } from '../warenApi';
+import { protokollBildSchluessel } from '@c4/shared';
+import { bilderFuerPdf } from './pdfBilder';
 import { mitLiveKopf } from './dokumentDaten';
 import { blobHerunterladen, blobZuBase64, protokollPdfAblauf, type PdfMeldung } from './pdfAblauf';
 
@@ -39,8 +41,11 @@ export function useProtokollPdfSpeichern() {
           throw new Error('Das Protokoll ist nicht abgeschlossen.');
         // For the names of @mentions (also of people who are not in the attendance list).
         const mitglieder = await unwrap(await api.mitglieder.$get()).catch(() => []);
+        // Fresh URLs from the DTO, loaded here so a broken image only becomes a placeholder in the PDF.
+        const bilder = await bilderFuerPdf(protokollBildSchluessel(dto.inhalt), dto.bilder, fetch);
         return {
           inhalt: dto.inhalt,
+          bilder,
           kopf: dto.kopf,
           ...mitLiveKopf(dto, dto.kopf),
           sitzung: dto.sitzung,

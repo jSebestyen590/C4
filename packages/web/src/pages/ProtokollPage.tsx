@@ -46,6 +46,7 @@ import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
+import { useProtokollBilder } from '../protokoll/bilderDaten';
 import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
 import {
   useProtokoll,
@@ -172,6 +173,7 @@ function ProtokollAnsicht({
   const entwurf = dto.status === 'entwurf';
   const editierbar = darfSchreiben && entwurf;
 
+  const bilder = useProtokollBilder(dto.id, dto.bilder);
   const [kopf, setKopf] = useState<KopfDaten>(dto.kopf);
   const [inhalt, setInhalt] = useState<ProtokollDokument>(dto.inhalt);
   // Live attendance (incl. local Kopf overrides) for the quorum in the editor.
@@ -457,6 +459,7 @@ function ProtokollAnsicht({
             ems={ems}
             mitglieder={mitgliederListe}
             onAnwesenheit={anwesenheit}
+            bilder={bilder}
           />
           <NaechsteSitzungKarte
             kopf={kopf}
@@ -489,6 +492,8 @@ function ProtokollAnsicht({
             naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
             mitglieder: mitgliederListe,
             ich,
+            bilder: bilder.urls,
+            bilderErneuern: bilder.erneuern,
           }}
         />
       )}

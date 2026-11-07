@@ -3,6 +3,7 @@ import { TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
 import {
   BAUSTEIN_TYPEN,
+  BILD_TYP,
   darfInNotizen,
   istBausteinInNotizen,
   istThema,
@@ -44,9 +45,14 @@ export interface EinfuegeStelle {
   entfernen?: Entfernen;
 }
 
-export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp): EinfuegeStelle {
+export function einfuegeStelle(
+  doc: PmNode,
+  position: number,
+  typ: BausteinTyp | typeof BILD_TYP,
+): EinfuegeStelle {
   const $pos = doc.resolve(Math.min(position, doc.content.size));
-  const verschachtelbar = istVerschachtelbar(typ);
+  const bild = typ === BILD_TYP;
+  const verschachtelbar = bild || istVerschachtelbar(typ);
 
   // The container whose direct children we insert between: the section, or for a nestable type the
   // innermost Baustein that may hold it (not an Abstimmung / Meinungsbild / Wahl itself).
@@ -57,7 +63,13 @@ export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp):
       container = d;
       break;
     }
-    if (verschachtelbar && darfInNotizen(name, typ)) {
+    // An image goes into the notes of every Baustein with free text (also the votes).
+    if (
+      verschachtelbar &&
+      (bild
+        ? bausteinNamen.includes(name) && name !== 'bausteinAnwesenheit'
+        : darfInNotizen(name, typ))
+    ) {
       container = d;
       break;
     }
@@ -80,7 +92,9 @@ export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp):
   // The cursor sits in an empty last list item (the typed "/query" is gone): the item goes away.
   // (A top-level Thema: the empty list is cleaned up next to it, as before.)
   const ersetzt =
-    istBausteinInNotizen(typ) || (istThema(typ) && $pos.node(container).type.name !== 'abschnitt');
+    bild ||
+    istBausteinInNotizen(typ) ||
+    (istThema(typ) && $pos.node(container).type.name !== 'abschnitt');
   if (leer.ganz && leer.liste === blockDepth && ersetzt) {
     return { von, bis }; // the list was only this item: the Baustein takes its place
   }

@@ -22,7 +22,9 @@ export type SlashAktion =
   | { art: 'weiter'; text: string }
   | { art: 'einfuegen'; wahl: BausteinWahl }
   /** Turn the current paragraph into a quote (works at the cursor, also inside a Baustein's text). */
-  | { art: 'zitat' };
+  | { art: 'zitat' }
+  /** Pick an image file and upload it (the file dialog opens, so this runs in the user's click or key press). */
+  | { art: 'bild' };
 
 export type SlashSymbol =
   | 'event'
@@ -39,6 +41,7 @@ export type SlashSymbol =
   | 'vorlage'
   | 'ohne'
   | 'zitat'
+  | 'bild'
   | 'person'
   | 'gruppe';
 
@@ -257,6 +260,14 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     symbol: 'geht',
     woerter: ['geht', 'gehen', 'verlaesst', 'verlassen'],
     aktion: { art: 'weiter', text: 'geht ' },
+  },
+  {
+    schluessel: 'bild',
+    titel: 'Bild',
+    beschreibung: 'Foto oder Bild aus der Galerie oder Kamera',
+    symbol: 'bild',
+    woerter: ['bild', 'foto', 'image', 'bilder', 'fotos', 'kamera'],
+    aktion: { art: 'bild' },
   },
   {
     schluessel: 'zitat',

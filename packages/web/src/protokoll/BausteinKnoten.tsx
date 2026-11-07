@@ -43,9 +43,10 @@ import {
   type FormularProps,
 } from './BausteinFormulare';
 import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
+import { BildKnoten } from './BildKnoten';
 
 /** Text content allowed in the free text of every Baustein. */
-const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote';
+const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote | bild';
 /**
  * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl (group
  * `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
@@ -297,4 +298,5 @@ export const BAUSTEIN_KNOTEN = [
   BausteinMeinungsbildKnoten,
   BausteinAufnahmeKnoten,
   BausteinWahlKnoten,
+  BildKnoten,
 ];

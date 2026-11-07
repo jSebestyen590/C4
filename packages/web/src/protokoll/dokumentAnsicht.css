@@ -170,3 +170,70 @@
     padding: 0;
   }
 }
+
+/* Images. At section level: own row, full width or half (from sm), left / center / right, no text wrap. */
+.pk-dok-bild {
+  margin: 0.8em 0;
+  width: 100%;
+  break-inside: avoid;
+}
+
+.pk-dok-bild img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.pk-dok-bild figcaption {
+  margin-top: 0.25em;
+}
+
+.pk-dok-bild[data-ausrichtung='mitte'] {
+  margin-inline: auto;
+}
+
+.pk-dok-bild[data-ausrichtung='mitte'] figcaption {
+  text-align: center;
+}
+
+.pk-dok-bild[data-ausrichtung='rechts'] {
+  margin-left: auto;
+}
+
+.pk-dok-bild[data-ausrichtung='rechts'] figcaption {
+  text-align: right;
+}
+
+@media (min-width: 48em) {
+  .pk-dok-bild[data-breite='halb'] {
+    width: 50%;
+  }
+}
+
+/* Notes with images: text on the left, the images stacked in a column on the right (also on phones). */
+.pk-dok-notiz-bilder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38%;
+  gap: 0.75em;
+  align-items: start;
+  margin: 0.2em 0 0.5em;
+}
+
+@media (min-width: 48em) {
+  .pk-dok-notiz-bilder {
+    grid-template-columns: minmax(0, 1fr) 40%;
+  }
+}
+
+.pk-dok-notiz-text {
+  min-width: 0;
+}
+
+.pk-dok-notiz-spalte {
+  min-width: 0;
+}
+
+.pk-dok-bild-spalte {
+  margin: 0 0 0.6em;
+}

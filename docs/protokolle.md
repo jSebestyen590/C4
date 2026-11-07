@@ -264,6 +264,8 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
   einfach eine weitere Zeile. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
   prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).
+- **Bild** (`/bild`, `/foto`, `/image`) öffnet die Dateiauswahl und lädt das Bild hoch, siehe [Bilder](#bilder). Es kommt hinter den
+  aktuellen Block, im Freitext eines Bausteins (auch einer Abstimmung) in dessen Notizen.
 - Der Baustein kommt hinter den aktuellen Block (ein leerer Absatz wird ersetzt, im Freitext eines Bausteins dahinter; keine
   Verschachtelung). Abstimmung und Meinungsbild kommen dagegen in die Notizen am Cursor (leerer Absatz ersetzt, sonst hinter
   dem aktuellen Block dort).
@@ -383,6 +385,37 @@ Fehlermeldung; das Protokoll bleibt abgeschlossen. Im Menü „Weitere Aktionen�
   zusätzlicher Konfiguration unverändert durch, JSON kommt immer heil an. Grenze 4 MB (`PROTOKOLL_PDF_MAX_BYTES`; Graph-Direktupload
   und Lambda-Payload). Der Server prüft Dateiname (bereinigt, `.pdf`), Base64, `%PDF-`-Kopf und Größe.
 
+## Bilder
+
+Ein Protokoll kann Fotos und Bilder enthalten (Knoten `protokollBild`, Block und Atom).
+
+- **Knoten:** `schluessel` (`protokollbilder/<Protokoll-Id>/<uuid>.jpg`), `breite` (`voll`/`halb`), `ausrichtung`
+  (`links`/`mitte`/`rechts`), `beschreibung` (höchstens 300 Zeichen, auch Alt-Text). Erlaubt auf Abschnittsebene und in den Notizen
+  aller Bausteine mit Freitext, auch in Abstimmung, Meinungsbild und Wahl; nicht in Zitaten und Listen. `knotenFehler` prüft die Form des
+  Schlüssels, die API beim Speichern zusätzlich, dass er zu diesem Protokoll gehört (400 sonst). `protokollVorschlag` übernimmt keine Bilder
+  ins nächste Protokoll.
+- **Speicher:** Derselbe S3-Bucket wie die Profilbilder (`PROFILBILD_BUCKET`), Präfix `protokollbilder/<Protokoll-Id>/`
+  (`packages/api/src/protokollbilder.ts`). `POST /api/protokolle/:id/bilder` gibt eine presigned PUT-URL (feste Größe, `image/jpeg`, 5 MB)
+  und den Schlüssel. `GET /api/protokolle/:id` gibt `bilder` (Schlüssel → presigned GET-URL, 1 Stunde) für die Schlüssel mit dem Präfix des
+  Protokolls, die im Inhalt vorkommen. Beim Löschen des Protokolls werden alle Objekte unter dem Präfix gelöscht (Fehler dabei werden nur
+  protokolliert). Terraform: die Lambda darf auf `protokollbilder/*` lesen, schreiben und löschen und im Bucket mit diesem Präfix auflisten.
+- **Hochladen** (Slash `/bild`, auch `/foto`, `/image`, und Button „Baustein“): Dateiauswahl mit `image/*` (am Handy auch Kamera). Der
+  Browser verkleinert das Bild über Canvas auf höchstens 2000 px an der langen Seite und macht immer ein JPEG (Qualität 0,85; das PDF kann
+  kein WebP/HEIC) (`bildLogik.ts`). Währenddessen steht an der Einfügestelle ein Platzhalter mit Fortschritt (`BildHochladen.ts`, nicht Teil
+  des Dokuments); bei einem Fehler erscheint eine Meldung. Erst danach kommt der Knoten ins Dokument.
+- **Editor:** Karte mit Vorschau und „Beschreibung“; auf oberster Ebene zusätzlich „Breite“ (Voll/Halb) und „Position“
+  (Links/Mitte/Rechts). In Notizen gibt es beides nicht. Die URLs kommen aus `bilder` des Protokolls (frische Uploads zeigen eine lokale
+  Vorschau); schlägt das Laden fehl, holt die Seite einmal (höchstens alle 30 s) neue URLs (`useProtokollBilder`, eigene Anfrage, damit der
+  Editor nicht neu aufgebaut wird).
+- **Dokumentansicht:** Oberste Ebene: eigene Zeile, `voll` 100 %, `halb` 50 % ab `sm` (am Handy 100 %), links/mittig/rechts, kein
+  Textumfluss, Beschreibung als kleine Unterschrift. In Notizen teilt `notizAbschnitte(kinder)` die Notizen an verschachtelten Bausteinen
+  (Abstimmung, Meinungsbild, Wahl, Thema). Ein Textabschnitt mit Bildern ist ein Grid: Text links, rechts eine Bildspalte (40 %, am Handy
+  38 %) mit den Bildern untereinander; verschachtelte Bausteine stehen in voller Breite dazwischen, Abschnitte ohne Bild bleiben unverändert.
+- **PDF:** Gleiches Layout (`pdfBloecke.tsx`, Notiz-Abschnitte als Zeile). `usePdfSpeichern` lädt das Protokoll neu und holt die Bilder vorab
+  (`pdfBilder.ts`, als Data-URL); ein Bild, das nicht lädt, wird im PDF zum Platzhaltertext „[Bild nicht verfügbar]“, das PDF entsteht
+  trotzdem. Überschriften am Anfang eines Notiz-Abschnitts mit Bildern behalten ihr Lesezeichen, spätere in derselben Zeile nicht.
+- **Bekannter Rest:** Bilder, die aus dem Text entfernt werden, bleiben in S3 liegen, bis das Protokoll gelöscht wird.
+
 ## API
 
 | Route                               | Recht                  | Inhalt                                                                                                                                                                                                                                                                                                                                                                     |
@@ -394,10 +427,13 @@ Fehlermeldung; das Protokoll bleibt abgeschlossen. Im Menü „Weitere Aktionen�
 | `POST /api/protokolle`              | `protokolle:schreiben` | `{ eventId, inhalt?, kopf? }` → 201 `{ id }`; ohne `inhalt`/`kopf` gilt die Vorbelegung; 409 bei zweitem Protokoll                                                                                                                                                                                                                                                         |
 | `PUT /api/protokolle/:id`           | `protokolle:schreiben` | `{ inhalt, kopf, version }` → `{ version, geaendertAm }`; 409 bei veralteter Version oder abgeschlossen                                                                                                                                                                                                                                                                    |
 | `PUT /api/protokolle/:id/status`    | `protokolle:schreiben` | `{ status, aktionen? }` (`entwurf`/`abgeschlossen`, `aktionen` = gewählte Aktions-Ids): Abschließen friert die Teilnahme ein (400 mit allen Stimmen-Fehlern auf Deutsch, wenn Stimmen nicht zur Anwesenheit passen) und führt die gewählten Aktionen aus, Wieder öffnen löst die Teilnahme. Antwort `{ status, version, geaendertAm, aktionen: ProtokollAktionAusgang[] }` |
+| `POST /api/protokolle/:id/bilder`   | `protokolle:schreiben` | `{ groesse }` (1 Byte bis 5 MB) → `{ uploadUrl, schluessel }`, nur im Entwurf (409 sonst), siehe [Bilder](#bilder)                                                                                                                                                                                                                                                         |
 | `PUT /api/protokolle/:id/pdf`       | `protokolle:schreiben` | `{ dateiname, base64 }` speichert das PDF eines **abgeschlossenen** Protokolls in OneDrive (409 sonst, 413 über 4 MB, 503 wenn OneDrive nicht verbunden oder nicht erreichbar) → `{ gespeichert: true, pfad }`                                                                                                                                                             |
 | `GET /api/protokolle/:id/aktionen`  | `protokolle:schreiben` | `{ aktionen: ProtokollAktionDto[] }`, live aus dem gespeicherten Inhalt berechnet (auch erledigte und gescheiterte)                                                                                                                                                                                                                                                        |
 | `POST /api/protokolle/:id/aktionen` | `protokolle:schreiben` | `{ aktionen: string[] }` führt Aktionen eines **abgeschlossenen** Protokolls (erneut) aus (409 im Entwurf); Antwort `{ version, ergebnisse, aktionen }`                                                                                                                                                                                                                    |
 | `DELETE /api/protokolle/:id`        | `protokolle:schreiben` | nur im Entwurf (409 sonst)                                                                                                                                                                                                                                                                                                                                                 |
+
+`GET /api/protokolle/:id` liefert zusätzlich `bilder` (Schlüssel → URL, siehe [Bilder](#bilder)). `DELETE /api/protokolle/:id` löscht auch die Bilder des Protokolls.
 
 `DELETE /api/kalender/events/:id` antwortet 409, solange das Event ein Protokoll hat.
 

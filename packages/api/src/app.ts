@@ -78,6 +78,10 @@ import {
   postenArchivierenSchema,
   postenRechteSetzenSchema,
   profilbildAnfrageSchema,
+  protokollBildAnfrageSchema,
+  protokollBildPrefix,
+  type ProtokollBildUploadDto,
+  protokollBildSchluessel,
   setGroupsSchema,
   setMitgliedAktivSchema,
   setMitgliedStatusSchema,
@@ -255,6 +259,7 @@ import {
   type MitgliederStore,
 } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
+import type { Protokollbilder } from './protokollbilder';
 import {
   authenticate,
   DEAKTIVIERT,
@@ -285,6 +290,7 @@ export interface AppDeps {
   /** Public origin of the web app (`https://c4.example`) for links in the calendar feed; none = no links. */
   appUrl?: string;
   profilbilder: Profilbilder;
+  protokollbilder: Protokollbilder;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }
@@ -1098,6 +1104,18 @@ export function createApp(deps: AppDeps) {
     return events.map((e) => ({ eventId: e.id, titel: e.titel, beginn: e.beginn }));
   };
 
+  /** Presigned GET URLs of the images in the document that belong to this protocol. */
+  const protokollBilderUrls = async (
+    id: string,
+    inhalt: ProtokollDokument,
+  ): Promise<Record<string, string>> => {
+    const keys = protokollBildSchluessel(inhalt).filter((k) =>
+      k.startsWith(protokollBildPrefix(id)),
+    );
+    const urls = await Promise.all(keys.map((k) => deps.protokollbilder.anzeigeUrl(k)));
+    return Object.fromEntries(keys.map((k, i) => [k, urls[i]!]));
+  };
+
   const alsProtokollDto = async (p: ProtokollDaten): Promise<ProtokollDto> => {
     const [[event], mitglieder, antworten] = await Promise.all([
       deps.kalender.eventsKurz([p.eventId]),
@@ -1108,6 +1126,7 @@ export function createApp(deps: AppDeps) {
     const geschlossen = p.status === 'abgeschlossen' && kopf.naechsteSitzungSchnappschuss !== null;
     const naechste = geschlossen ? [] : await naechsteSitzungenLesen(event?.beginn);
     const von = mitglieder.find((m) => m.sub === p.geaendertVon);
+    const inhalt = protokollInhaltLesen(p.inhalt);
     return {
       id: p.id,
       eventId: p.eventId,
@@ -1118,7 +1137,8 @@ export function createApp(deps: AppDeps) {
         kategorie: event?.kategorie ?? null,
         art: protokollArtVon(kopf, p.status, event?.protokollArt ?? 'sitzung'),
       },
-      inhalt: protokollInhaltLesen(p.inhalt),
+      inhalt,
+      bilder: await protokollBilderUrls(p.id, inhalt),
       kopf,
       status: p.status,
       version: p.version,
@@ -2039,6 +2059,12 @@ export function createApp(deps: AppDeps) {
             await deps.protokolle.holen(c.req.param('id')),
             'Protokoll nicht gefunden',
           );
+          // Images must belong to this protocol (the shared check only knows their shape).
+          const fremd = protokollBildSchluessel(inhalt).some(
+            (k) => !k.startsWith(protokollBildPrefix(gespeichert.id)),
+          );
+          if (fremd)
+            throw new HTTPException(400, { message: 'Ein Bild gehört nicht zu diesem Protokoll.' });
           try {
             const ergebnis = gefunden(
               await deps.protokolle.speichern(
@@ -2294,12 +2320,38 @@ export function createApp(deps: AppDeps) {
           return c.json(antwort);
         },
       )
+      // Upload URL for an image of a draft (the browser scales it to a JPEG first).
+      .post(
+        '/protokolle/:id/bilder',
+        auth,
+        protokolleSchreiben,
+        zValidator('json', protokollBildAnfrageSchema),
+        async (c) => {
+          const p = gefunden(
+            await deps.protokolle.holen(c.req.param('id')),
+            'Protokoll nicht gefunden',
+          );
+          if (p.status !== 'entwurf') {
+            throw new HTTPException(409, {
+              message: 'Bilder lassen sich nur im Entwurf hinzufügen.',
+            });
+          }
+          const antwort: ProtokollBildUploadDto = await deps.protokollbilder.uploadVorbereiten(
+            p.id,
+            c.req.valid('json').groesse,
+          );
+          return c.json(antwort);
+        },
+      )
       .delete('/protokolle/:id', auth, protokolleSchreiben, async (c) => {
         try {
           gefunden(await deps.protokolle.loeschen(c.req.param('id')), 'Protokoll nicht gefunden');
         } catch (err) {
           return protokollKonflikt(err, c);
         }
+        await deps.protokollbilder.loeschen(c.req.param('id')).catch((err) => {
+          console.error('protokollbilder: delete failed', err);
+        });
         return c.json({ ok: true });
       })
       // ----- Trichter

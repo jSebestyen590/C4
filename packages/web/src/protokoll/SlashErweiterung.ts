@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/react';
+import { Extension, type Editor } from '@tiptap/react';
 import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion } from '@tiptap/suggestion';
 import {
@@ -7,6 +7,7 @@ import {
   imVerschachtelbaren,
   slashErlaubt,
   zitatEinfuegen,
+  type TextBereich,
 } from './einfuegen';
 import {
   anwesenheitPerson,
@@ -23,6 +24,8 @@ export const SLASH_SCHLUESSEL = new PluginKey('slashBefehle');
 export interface SlashSteuerung {
   daten: () => SlashDaten;
   zustand: (zustand: SlashZustand | null) => void;
+  /** Opens the file picker for an image; `loeschen` is the typed "/bild", removed right away. */
+  bild: (editor: Editor, loeschen: TextBereich) => void;
   /** Keyboard handling of the open menu; true = handled. */
   taste: (ereignis: KeyboardEvent) => boolean;
 }
@@ -62,6 +65,8 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               });
             } else if (props.aktion.art === 'zitat') {
               zitatEinfuegen(editor, range);
+            } else if (props.aktion.art === 'bild') {
+              steuerung.bild(editor, range);
             } else {
               bausteinEinfuegen(editor, props.aktion.wahl, range);
               const sub = anwesenheitPerson(props.aktion.wahl);

@@ -43,6 +43,10 @@ export interface DokumentEingabe {
   naechsteSitzungVorschlag?: ProtokollNaechsteSitzungVorschlag | null;
   /** All members, to resolve @mentions of people who are not in the lists above (e.g. Externe). */
   mitglieder?: readonly Namen[];
+  /** Image URLs by key (the PDF gets data URLs of the images that could be loaded; missing = not available). */
+  bilder?: Readonly<Record<string, string>>;
+  /** An image of the view failed to load (expired URL?): the page fetches fresh URLs. */
+  bilderErneuern?: () => void;
   /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
   ich?: { sub: string; status: MitgliedStatus } | null;
 }

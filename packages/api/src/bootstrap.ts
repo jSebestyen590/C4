@@ -31,6 +31,7 @@ import { createTrichterStore } from './trichter';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
+import { createProtokollbilder } from './protokollbilder';
 
 /** Wires the real AWS-backed dependencies. Shared by the Lambda and the local server. */
 export function createProduction() {
@@ -78,6 +79,7 @@ export function createProduction() {
     ordnerCache,
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
+    protokollbilder: createProtokollbilder(config.profilbildBucket, config.region),
     pingDb: async () => {
       await pool.query('select 1');
     },

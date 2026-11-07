@@ -1,5 +1,5 @@
 import { Fragment, type ReactElement, type ReactNode } from 'react';
-import { Link, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Image, Link, StyleSheet, Text, View } from '@react-pdf/renderer';
 import {
   anwesenheitsVerlauf,
   bausteinAnwaerterDatenSchema,
@@ -7,6 +7,8 @@ import {
   bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
+  BILD_AUSRICHTUNGEN,
+  BILD_BREITEN,
   erwaehnungAttrs,
   eventUeberschrift,
   istBausteinInNotizen,
@@ -42,6 +44,7 @@ import {
   unterEbene,
 } from '../dokumentUeberschriften';
 import { ABSCHNITT_TITEL } from '../schema';
+import { hatBilder, notizAbschnitte } from '../notizAbschnitte';
 import { PDF_SCHRIFT } from './schriften';
 
 // The document of the minutes as a flat list of blocks (heading blocks know their level), derived from
@@ -265,6 +268,59 @@ function knotenInListe(k: ProtokollKnoten, ctx: Kontext, tiefe: number, key: num
 
 const block = (element: ReactElement): Block => ({ element });
 
+const BILD_AUSRICHTUNG = { links: 'flex-start', mitte: 'center', rechts: 'flex-end' } as const;
+const BILD_TEXT_AUSRICHTUNG = { links: 'left', mitte: 'center', rechts: 'right' } as const;
+const BILD_MAX_HOEHE = 640;
+/** Width of the image column beside the notes (the text takes the rest). */
+const BILD_SPALTE = '40%';
+export const BILD_NICHT_VERFUEGBAR = '[Bild nicht verfügbar]';
+
+/**
+ * An image with its description. At section level: own row, full or half width, aligned like the node
+ * says; `spalte`: in the column beside the notes. An image without a loadable URL is a placeholder text,
+ * so a broken image never fails the PDF.
+ */
+function bildElement(k: ProtokollKnoten, ctx: Kontext, spalte: boolean): ReactElement {
+  const schluessel = typeof k.attrs?.schluessel === 'string' ? k.attrs.schluessel : '';
+  const beschreibung = typeof k.attrs?.beschreibung === 'string' ? k.attrs.beschreibung : '';
+  const breite = (BILD_BREITEN as readonly unknown[]).includes(k.attrs?.breite)
+    ? (k.attrs?.breite as string)
+    : 'voll';
+  const ausrichtung = (BILD_AUSRICHTUNGEN as readonly unknown[]).includes(k.attrs?.ausrichtung)
+    ? (k.attrs?.ausrichtung as (typeof BILD_AUSRICHTUNGEN)[number])
+    : 'mitte';
+  const url = ctx.eingabe.bilder?.[schluessel];
+  const inhalt = (
+    <View wrap={false}>
+      {url ? (
+        <Image
+          src={url}
+          style={{ width: '100%', maxHeight: BILD_MAX_HOEHE, objectFit: 'contain' }}
+        />
+      ) : (
+        <Text style={stile.klein}>{BILD_NICHT_VERFUEGBAR}</Text>
+      )}
+      {beschreibung ? (
+        <Text
+          style={{
+            ...stile.klein,
+            marginTop: 2,
+            textAlign: spalte ? 'left' : BILD_TEXT_AUSRICHTUNG[ausrichtung],
+          }}
+        >
+          {beschreibung}
+        </Text>
+      ) : null}
+    </View>
+  );
+  if (spalte) return <View style={{ marginBottom: 6 }}>{inhalt}</View>;
+  return (
+    <View style={{ marginVertical: 6, alignItems: BILD_AUSRICHTUNG[ausrichtung] }} wrap={false}>
+      <View style={{ width: breite === 'halb' ? '50%' : '100%' }}>{inhalt}</View>
+    </View>
+  );
+}
+
 /** Blocks of free text; unknown nodes contribute their children. */
 function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
   switch (k.type) {
@@ -310,6 +366,9 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
           </View>,
         ),
       ];
+    case 'protokollBild':
+      // Only reached at section level: images in notes are set beside the text (see `notizen`).
+      return [block(bildElement(k, ctx, false))];
     case 'bausteinThema':
       // A Thema inside the notes of another Baustein: a heading one level below it, not indented.
       return bausteinBloecke(k, ctx, true);
@@ -325,9 +384,8 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
   }
 }
 
-/** The free text of a Baustein or section; `vorne` is an item merged into a leading bullet list. */
-function notizen(knoten: ProtokollKnoten[] | undefined, ctx: Kontext, vorne?: ReactNode): Block[] {
-  const liste = ohneLeereEnden(knoten);
+/** Blocks of a list of text nodes; `vorne` is an item merged into a leading bullet list. */
+function textMitVorne(liste: ProtokollKnoten[], ctx: Kontext, vorne?: ReactNode): Block[] {
   const [erstes, ...rest] = liste;
   if (vorne && erstes?.type === 'bulletList') {
     return [block(listenBlock(erstes, ctx, 0, vorne)), ...rest.flatMap((k) => textBloecke(k, ctx))];
@@ -336,6 +394,51 @@ function notizen(knoten: ProtokollKnoten[] | undefined, ctx: Kontext, vorne?: Re
     ...(vorne ? [block(listenBlock({ type: 'bulletList', content: [] }, ctx, 0, vorne))] : []),
     ...liste.flatMap((k) => textBloecke(k, ctx)),
   ];
+}
+
+/**
+ * The free text of a Baustein or section; `vorne` is an item merged into a leading bullet list. With
+ * images the notes are split at nested Bausteine (`notizAbschnitte`): a piece of text with images is a
+ * row, text left and the images stacked in a column right, like the document view. Headings at the start
+ * of such a piece stay separate blocks (they keep their bookmark); later ones lose it inside the row.
+ */
+function notizen(knoten: ProtokollKnoten[] | undefined, ctx: Kontext, vorne?: ReactNode): Block[] {
+  const liste = ohneLeereEnden(knoten);
+  if (!hatBilder(liste)) return textMitVorne(liste, ctx, vorne);
+  const abschnitte = notizAbschnitte(liste);
+  const bloecke: Block[] = [];
+  if (vorne && abschnitte[0]?.art !== 'text') bloecke.push(...textMitVorne([], ctx, vorne));
+  for (const [i, a] of abschnitte.entries()) {
+    if (a.art === 'baustein') {
+      bloecke.push(...textBloecke(a.knoten, ctx));
+      continue;
+    }
+    const text = textMitVorne(ohneLeereEnden(a.knoten), ctx, i === 0 ? vorne : undefined);
+    if (a.bilder.length === 0) {
+      bloecke.push(...text);
+      continue;
+    }
+    const kopf = text.findIndex((b) => !b.ebene);
+    const vorweg = kopf === -1 ? text.length : kopf;
+    bloecke.push(...text.slice(0, vorweg));
+    bloecke.push(
+      block(
+        <View style={{ flexDirection: 'row', marginBottom: 5 }}>
+          <View style={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }}>
+            {text.slice(vorweg).map((b, j) => (
+              <Fragment key={j}>{b.element}</Fragment>
+            ))}
+          </View>
+          <View style={{ width: BILD_SPALTE, marginLeft: 8 }}>
+            {a.bilder.map((b, j) => (
+              <Fragment key={j}>{bildElement(b, ctx, true)}</Fragment>
+            ))}
+          </View>
+        </View>,
+      ),
+    );
+  }
+  return bloecke;
 }
 
 /** Heading block of a Baustein shown as a heading. */

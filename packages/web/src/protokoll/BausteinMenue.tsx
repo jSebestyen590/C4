@@ -27,7 +27,11 @@ const LISTEN: Record<Liste, { wort: string; titel: string; suche: string }> = {
  * Toolbar button "Baustein": the same choices as the slash menu (the "/" is awkward on phone keyboards).
  * Event and Vergangenes Event open a searchable list of Vorlagen / past events in a modal.
  */
-export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; daten: SlashDaten }>) {
+export function BausteinMenue({
+  editor,
+  daten,
+  onBild,
+}: Readonly<{ editor: Editor; daten: SlashDaten; onBild?: () => void }>) {
   const [liste, setListe] = useState<Liste | null>(null);
   const [suche, setSuche] = useState('');
   // Inside an Abstimmung / Meinungsbild neither of them can be inserted.
@@ -44,6 +48,10 @@ export function BausteinMenue({ editor, daten }: Readonly<{ editor: Editor; date
     setListe(null);
     if (e.aktion.art === 'zitat') {
       zitatEinfuegen(editor);
+      return;
+    }
+    if (e.aktion.art === 'bild') {
+      onBild?.();
       return;
     }
     bausteinEinfuegen(editor, e.aktion.wahl);

@@ -36,6 +36,13 @@ import { ErwaehnungKnoten } from './ErwaehnungKnoten';
 import { erwaehnungErweiterung, type ErwaehnungSteuerung } from './ErwaehnungErweiterung';
 import { slashErweiterung, type SlashSteuerung } from './SlashErweiterung';
 import { SlashPopup, type SlashZustand } from './SlashPopup';
+import {
+  bildDateiWaehlen,
+  bildErweiterung,
+  bildMeldung,
+  type BildSteuerung,
+} from './BildHochladen';
+import type { BilderZugriff } from './bilderDaten';
 
 const LABELS: Partial<RichTextEditorLabels> = {
   boldControlLabel: 'Fett',
@@ -57,6 +64,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
 };
 
 const KEINE_MITGLIEDER: readonly ErwaehnungPerson[] = [];
+const KEINE_BILDER: Readonly<Record<string, string>> = {};
 
 /** Height of the app header (`AppLayout`): the sticky toolbar sits right below it. */
 const HEADER_HOEHE = 56;
@@ -76,6 +84,7 @@ export function ProtokollEditor({
   ems = [],
   mitglieder = KEINE_MITGLIEDER,
   onAnwesenheit,
+  bilder,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -91,7 +100,17 @@ export function ProtokollEditor({
   mitglieder?: readonly ErwaehnungPerson[];
   /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
   onAnwesenheit?: (sub: string) => void;
+  /** Image URLs and uploads of the protocol; without it images cannot be added. */
+  bilder?: BilderZugriff;
 }>) {
+  const bilderRef = useRef(bilder);
+  useEffect(() => {
+    bilderRef.current = bilder;
+  });
+  const [bildSteuerung] = useState<BildSteuerung>(() => ({
+    zugriff: () => bilderRef.current,
+    fehler: bildMeldung,
+  }));
   const onAnwesenheitRef = useRef(onAnwesenheit);
   useEffect(() => {
     onAnwesenheitRef.current = onAnwesenheit;
@@ -129,6 +148,7 @@ export function ProtokollEditor({
       slashRef.current = neu;
       setSlash(neu);
     },
+    bild: (e, loeschen) => bildDateiWaehlen(e, bildSteuerung, loeschen),
     taste: (e) => {
       const z = slashRef.current;
       const n = z?.eintraege.length ?? 0;
@@ -188,6 +208,7 @@ export function ProtokollEditor({
       ProtokollAbsicherung,
       BlockVerschieben,
       ErwaehnungKnoten,
+      bildErweiterung(),
       slashErweiterung(steuerung),
       // After the slash menu: it yields while that is open.
       erwaehnungErweiterung(erwaehnungSteuerung),
@@ -225,6 +246,8 @@ export function ProtokollEditor({
       ems,
       mitglieder,
       onAnwesenheit: anwesenheit,
+      bilder: bilder?.urls ?? KEINE_BILDER,
+      bilderErneuern: bilder?.erneuern,
       verlauf: anwesenheitsVerlauf(dokument, {
         art,
         teilnahme,
@@ -236,7 +259,7 @@ export function ProtokollEditor({
         ems: ems.filter((e) => e.ausgewaehlt),
       }).pruefungen,
     }),
-    [sitzungBeginn, art, teilnahme, ems, mitglieder, dokument, anwesenheit],
+    [sitzungBeginn, art, teilnahme, ems, mitglieder, dokument, anwesenheit, bilder],
   );
 
   return (
@@ -260,7 +283,11 @@ export function ProtokollEditor({
                 stickyOffset={`calc(${HEADER_HOEHE}px + env(safe-area-inset-top))`}
                 className="protokoll-toolbar protokoll-nicht-drucken"
               >
-                <BausteinMenue editor={editor} daten={slashDaten} />
+                <BausteinMenue
+                  editor={editor}
+                  daten={slashDaten}
+                  onBild={() => bildDateiWaehlen(editor, bildSteuerung)}
+                />
                 {!breit && (
                   <Button
                     variant="default"
