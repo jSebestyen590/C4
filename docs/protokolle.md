@@ -301,6 +301,8 @@ alle`). Gespeichert wird nur die Referenz, der Name wird beim Anzeigen aufgelös
 - **Meine Erwähnungen:** unter der Gliederung (Seitenleiste ab `lg`, sonst in der Schublade). Jeder Eintrag zeigt die nächste
   Überschrift davor und einen Textauszug; Antippen scrollt zur Erwähnung (am Handy schließt sich die Schublade). Ohne Treffer:
   „Du wirst in diesem Protokoll nicht erwähnt.“ (`meineErwaehnungen`, getestet.)
+- **Event-Verantwortliche:** Die verantwortliche Person eines Events steht ohne „@“ im Dokument und im PDF, zählt aber als
+  Erwähnung: Bist du es, ist dein Name mit Textmarker hinterlegt und das Event steht unter „Meine Erwähnungen“.
 - **PDF und Druck:** `@username` (fett in Statusfarbe) bzw. `@Mitglieder`, ohne Textmarker, da das PDF für alle gleich ist.
 
 ## Vorbelegung eines neuen Protokolls

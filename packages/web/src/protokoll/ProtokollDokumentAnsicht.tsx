@@ -420,7 +420,14 @@ function Baustein({
           vorne={
             verantwortlich && (
               <>
-                Verantwortlich: @<PersonName p={verantwortlich} />
+                Verantwortlich:{' '}
+                {ctx.erwIds.has(k) ? (
+                  <mark className="pk-dok-erw-ich" id={ctx.erwIds.get(k)} data-testid="erwaehnung-ich">
+                    <PersonName p={verantwortlich} />
+                  </mark>
+                ) : (
+                  <PersonName p={verantwortlich} />
+                )}
               </>
             )
           }

@@ -142,3 +142,50 @@ describe('DokumentGliederung overview', () => {
     expect(html).not.toContain('Meine Erwähnungen');
   });
 });
+
+describe('Event lead in the document view', () => {
+  const mitLeitung = (ich: DokumentEingabe['ich']): DokumentEingabe => {
+    const e = eingabe(ich);
+    const abschnitte = e.inhalt.content!;
+    abschnitte[2] = {
+      type: 'abschnitt',
+      attrs: { art: 'zukuenftiges' },
+      content: [
+        {
+          type: 'bausteinEvent',
+          attrs: {
+            id: 'ev',
+            daten: {
+              vorlageId: null,
+              name: 'Superbowl',
+              datum: '2024-02-11',
+              bisDatum: null,
+              beginnZeit: null,
+              endeZeit: null,
+              schichten: [],
+              verantwortlichSub: 'me',
+              eventId: null,
+            },
+          },
+          content: [{ type: 'paragraph' }],
+        },
+      ],
+    };
+    return e;
+  };
+
+  it('highlights the lead name without "@" when it is the viewer', () => {
+    const html = render(mitLeitung({ sub: 'me', status: 'mitglied' }));
+    expect(html).toContain('data-testid="erwaehnung-ich"');
+    expect(markiert(html)).toContain('ich');
+    expect(html).not.toContain('@ich</mark>');
+    expect(html).toContain('Verantwortlich:');
+    expect(html).not.toMatch(/Verantwortlich:\s*(<!-- -->)?\s*@/);
+  });
+
+  it('does not highlight the lead for someone else', () => {
+    const html = render(mitLeitung({ sub: 'andere', status: 'mitglied' }));
+    expect(markiert(html)).not.toContain('ich');
+    expect(html).not.toContain('Verantwortlich: @');
+  });
+});

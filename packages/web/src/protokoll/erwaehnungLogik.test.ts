@@ -150,4 +150,47 @@ describe('meineErwaehnungen', () => {
   it('is empty without a viewer', () => {
     expect(meineErwaehnungen(dokument, null).eintraege).toEqual([]);
   });
+
+  describe('event lead', () => {
+    const event = (verantwortlichSub: string | null): ProtokollKnoten => ({
+      type: 'bausteinEvent',
+      attrs: {
+        id: 'ev',
+        daten: {
+          vorlageId: null,
+          name: 'Superbowl',
+          datum: '2024-02-11',
+          bisDatum: null,
+          beginnZeit: null,
+          endeZeit: null,
+          schichten: [],
+          verantwortlichSub,
+          eventId: null,
+        },
+      },
+      content: [{ type: 'paragraph' }],
+    });
+
+    it('is a mention of the lead person, with the event heading', () => {
+      const r = meineErwaehnungen(
+        dok([], [], [event('me')]),
+        { sub: 'me', status: 'mitglied' },
+        namen,
+      );
+      expect(r.eintraege).toHaveLength(1);
+      expect(r.eintraege[0]!.ueberschrift).toContain('Superbowl');
+      expect(r.eintraege[0]!.auszug).toBe('Verantwortlich: ich');
+      expect(r.ids.size).toBe(1);
+    });
+
+    it('is no mention of me when someone else leads', () => {
+      const r = meineErwaehnungen(
+        dok([], [], [event('z')]),
+        { sub: 'me', status: 'mitglied' },
+        namen,
+      );
+      expect(r.eintraege).toEqual([]);
+      expect(r.ids.size).toBe(0);
+    });
+  });
 });

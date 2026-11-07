@@ -557,7 +557,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
           ctxIn,
           verantwortlich && (
             <>
-              {'Verantwortlich: @'}
+              {'Verantwortlich: '}
               <Name p={verantwortlich} />
             </>
           ),

@@ -96,7 +96,7 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html).toContain('27.12. Weihnachtsöffnung');
     expect(html).toContain('<p class="pk-dok-quelle">– Strobi</p>');
     // Verantwortlich is the first item of the existing bullet list
-    expect(html).toMatch(/<ul><li>Verantwortlich: @<span[^>]*>Niklas<\/span><\/li><li><p>notes/);
+    expect(html).toMatch(/<ul><li>Verantwortlich: <span[^>]*>Niklas<\/span><\/li><li><p>notes/);
   });
 
   it('renders Abstimmung, Meinungsbild and Aufnahme, also inside the notes of an Event', () => {

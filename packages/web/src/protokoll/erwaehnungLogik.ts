@@ -1,4 +1,5 @@
 import {
+  bausteinEventDatenSchema,
   ERWAEHNUNG_GRUPPEN,
   ERWAEHNUNG_TYP,
   erwaehnungAttrs,
@@ -173,6 +174,21 @@ export function meineErwaehnungen(
     const uid = ueberschriftIds.get(k);
     const utext = uid ? titel.get(uid) : undefined;
     if (uid && utext) aktuell = { id: uid, text: utext };
+    // The lead of an event is a mention of that person too (shown without "@" in the document).
+    if (k.type === 'bausteinEvent') {
+      const d = bausteinEventDatenSchema.safeParse(k.attrs?.daten);
+      if (d.success && d.data.verantwortlichSub === ich.sub) {
+        const id = `${ERWAEHNUNG_ID_PREFIX}${eintraege.length}`;
+        ids.set(k, id);
+        const ue = aktuell as { id: string; text: string } | null;
+        eintraege.push({
+          id,
+          ueberschrift: ue?.text ?? '',
+          ueberschriftId: ue?.id ?? null,
+          auszug: `Verantwortlich: ${personName(ich.sub) ?? 'du'}`,
+        });
+      }
+    }
     const kinder = k.content ?? [];
     if (!kinder.some((c) => c.type === ERWAEHNUNG_TYP)) {
       for (const c of kinder) gehe(c);
