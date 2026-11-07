@@ -4,7 +4,7 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import {
   BAUSTEIN_TYPEN,
   PROTOKOLL_ABSCHNITTE,
-  istBausteinInNotizen,
+  istVerschachtelbar,
   type ProtokollAbschnitt,
 } from '@c4/shared';
 
@@ -33,7 +33,7 @@ export const ProtokollDokumentKnoten = Node.create({
  */
 export const AbschnittKnoten = Node.create({
   name: 'abschnitt',
-  content: 'block+',
+  content: '(block | thema)+',
   isolating: true,
   selectable: false,
   draggable: false,
@@ -85,14 +85,14 @@ export function abschnitteIntakt(doc: PmNode): boolean {
 
 /**
  * Adds an empty paragraph to every section that does not end with a text block, and to every Baustein
- * whose free text ends with an Abstimmung / Meinungsbild (a place to type after it). Returns whether it did.
+ * whose free text ends with an Abstimmung / Meinungsbild / Wahl / Thema (a place to type after it). Returns whether it did.
  */
 export function absatzAmEndeEinfuegen(tr: Transaction): boolean {
   const stellen: number[] = [];
   tr.doc.descendants((node, pos) => {
     if (node.type.name === 'abschnitt') {
       if (!node.lastChild?.isTextblock) stellen.push(pos + node.nodeSize - 1);
-    } else if (node.lastChild && istBausteinInNotizen(node.lastChild.type.name)) {
+    } else if (node.lastChild && istVerschachtelbar(node.lastChild.type.name)) {
       stellen.push(pos + node.nodeSize - 1);
     }
     return true;

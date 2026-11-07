@@ -62,8 +62,11 @@ const ziehStil = (stil: CSSProperties | undefined, zieht: boolean): CSSPropertie
   borderRadius: 'var(--mantine-radius-sm)',
 });
 
+/** Indentation of a nested row: 28px per level, at most four levels (the text keeps its room on phones). */
+const einzug = (tiefe: number): number => Math.min(tiefe, 4) * 28;
+
 /**
- * Outline of the minutes: the Bausteine per section, nested ones indented below their parent. A tap
+ * Outline of the minutes: the Bausteine per section, nested ones (Themen at any depth) indented by depth below their parent. A tap
  * scrolls the editor to the Baustein; the grip moves it (between sections, into and out of notes).
  */
 const zu = (z: GliederungZeile): boolean => 'eingeklappt' in z && z.eingeklappt;
@@ -154,7 +157,7 @@ export function Gliederung({
         );
       case 'notizen':
         return (
-          <div {...drag.dragHandleProps} style={{ marginLeft: 28 }}>
+          <div {...drag.dragHandleProps} style={{ marginLeft: einzug(z.tiefe) }}>
             <div style={platzhalterStil(false)}>
               <Text size="xs" c="dimmed">
                 In die Notizen
@@ -169,7 +172,7 @@ export function Gliederung({
           <div
             style={{
               ...ziehStil(undefined, dragSnap.isDragging),
-              marginLeft: z.art === 'kind' ? 28 : 0,
+              marginLeft: z.art === 'kind' ? einzug(z.tiefe) : 0,
             }}
           >
             {eintragZeile(

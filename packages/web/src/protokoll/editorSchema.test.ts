@@ -2,7 +2,13 @@ import Blockquote from '@tiptap/extension-blockquote';
 import { getSchema } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { describe, expect, it } from 'vitest';
-import { BAUSTEIN_TYPEN, bausteinErzeugen, istBausteinInNotizen } from '@c4/shared';
+import {
+  BAUSTEIN_TYPEN,
+  bausteinErzeugen,
+  istBausteinInNotizen,
+  istVerschachtelbar,
+  kannBausteineEnthalten,
+} from '@c4/shared';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { AbschnittKnoten, ProtokollDokumentKnoten } from './schema';
 
@@ -62,5 +68,49 @@ describe('editor schema', () => {
       })),
     });
     expect(() => doc.check()).not.toThrow();
+  });
+
+  it('lets a Thema stand in the notes of every Baustein that can hold others, but not in votes', () => {
+    const knoten = schema.nodeFromJSON(bausteinErzeugen('bausteinThema'));
+    for (const typ of BAUSTEIN_TYPEN) {
+      const erlaubt = kannBausteineEnthalten(typ);
+      const passt = schema.nodes[typ]!.contentMatch.matchType(knoten.type) !== null;
+      expect(passt, `Thema in ${typ}`).toBe(erlaubt);
+    }
+  });
+
+  it('keeps every other Baustein out of a Thema, but allows votes in it', () => {
+    const thema = schema.nodes.bausteinThema!;
+    for (const typ of BAUSTEIN_TYPEN) {
+      const passt = thema.contentMatch.matchType(schema.nodes[typ]!) !== null;
+      expect(passt, `${typ} in Thema`).toBe(istVerschachtelbar(typ));
+    }
+  });
+
+  it('accepts a Thema in a Thema in an Event with votes at every level, and old flat documents', () => {
+    const wahl = bausteinErzeugen('bausteinWahl');
+    const tief = bausteinErzeugen('bausteinThema', { titel: 'A' }, [
+      { type: 'paragraph' },
+      bausteinErzeugen('bausteinThema', { titel: 'B' }, [{ type: 'paragraph' }, wahl]),
+      bausteinErzeugen('bausteinBeschluss'),
+      { type: 'paragraph' },
+    ]);
+    const alt = bausteinErzeugen('bausteinThema', { titel: 'Alt' }, [{ type: 'paragraph' }]);
+    const event = bausteinErzeugen('bausteinEvent', undefined, [{ type: 'paragraph' }, tief]);
+    const doc = schema.nodeFromJSON({
+      type: 'doc',
+      content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges', 'sonstiges'].map((art, i) => ({
+        type: 'abschnitt',
+        attrs: { art },
+        content: i === 1 ? [event, alt, { type: 'paragraph' }] : [{ type: 'paragraph' }],
+      })),
+    });
+    expect(() => doc.check()).not.toThrow();
+  });
+
+  it('does not allow a Thema inside a list or a quote', () => {
+    const thema = schema.nodes.bausteinThema!;
+    expect(schema.nodes.listItem!.contentMatch.matchType(thema)).toBeNull();
+    expect(schema.nodes.blockquote!.contentMatch.matchType(thema)).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import { useState, type ComponentType, type ReactElement } from 'react';
 import {
   BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
+  istThema,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
   type BausteinBeschlussDaten,
@@ -46,10 +47,11 @@ import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 /** Text content allowed in the free text of every Baustein. */
 const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote';
 /**
- * Free text of a Baustein: text, and an Abstimmung / Meinungsbild / Wahl (group `innerbaustein`) at the cursor.
- * Those two take plain text only, so there are no Bausteine inside Bausteine beyond that one level.
+ * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl (group
+ * `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
+ * only, so Bausteine nest only through Themen.
  */
-const FREITEXT = `(${TEXT} | innerbaustein)+`;
+const FREITEXT = `(${TEXT} | innerbaustein | thema)+`;
 const FREITEXT_NUR_TEXT = `(${TEXT})+`;
 
 /**
@@ -176,7 +178,8 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
   const ohneText = OHNE_TEXT.includes(typ);
   return Node.create({
     name: typ,
-    group: istBausteinInNotizen(typ) ? 'block innerbaustein' : 'block',
+    // A Thema is no `block`: it may stand in a section and in Baustein notes, not in lists or quotes.
+    group: istBausteinInNotizen(typ) ? 'block innerbaustein' : istThema(typ) ? 'thema' : 'block',
     ...(ohneText
       ? { atom: true }
       : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),

@@ -36,7 +36,9 @@
 
 .pk-dok-h1,
 .pk-dok-h2,
-.pk-dok-h3 {
+.pk-dok-h3,
+.pk-dok-h4,
+.pk-dok-h5 {
   color: var(--mantine-primary-color-filled);
   font-weight: 400;
   line-height: 1.25;
@@ -56,6 +58,19 @@
 .pk-dok-h3 {
   margin: 0.9em 0 0.25em;
   font-size: 1.1rem;
+}
+
+/* Nested Themen and typed headings below a Baustein: ever smaller (h4 .. h6), never below body size. */
+.pk-dok-h4 {
+  margin: 0.8em 0 0.2em;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pk-dok-h5 {
+  margin: 0.7em 0 0.2em;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .pk-dok ul,

@@ -4,7 +4,9 @@ import {
   BAUSTEIN_TYPEN,
   PROTOKOLL_ABSCHNITTE,
   eventUeberschrift,
-  istBausteinInNotizen,
+  darfInNotizen,
+  istVerschachtelbar,
+  kannBausteineEnthalten,
   vergangenesUeberschrift,
   type BausteinAnwaerterDaten,
   type BausteinAnwesenheitDaten,
@@ -27,11 +29,11 @@ export interface GliederungEintrag {
   id: string;
   typ: BausteinTyp;
   titel: string;
-  /** Whether the Baustein may stand in the notes of another Baustein. */
+  /** Whether the Baustein may stand in the notes of another Baustein (Abstimmung, Meinungsbild, Wahl, Thema). */
   verschachtelbar: boolean;
   /** Whether other Bausteine may stand in its notes. */
   kannEnthalten: boolean;
-  /** Bausteine in its notes. */
+  /** Bausteine in its notes (a Thema holds Themen: any depth). */
   kinder: GliederungEintrag[];
 }
 
@@ -104,25 +106,28 @@ export function gliederungTitel(
 function eintrag(
   node: PmNode,
   personName: (sub: string) => string | undefined,
-  tief: boolean,
 ): GliederungEintrag {
   const typ = node.type.name as BausteinTyp;
   const kinder: GliederungEintrag[] = [];
-  if (!tief) {
-    node.forEach((kind) => {
-      if (istBaustein(kind)) kinder.push(eintrag(kind, personName, true));
-    });
-  }
+  node.forEach((kind) => {
+    if (istBaustein(kind)) kinder.push(eintrag(kind, personName));
+  });
   return {
     id: node.attrs.id as string,
     typ,
     titel: gliederungTitel(typ, node.attrs.daten, personName),
-    verschachtelbar: istBausteinInNotizen(typ),
-    // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl are nested ones themselves.
-    kannEnthalten: !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit' && !node.type.isLeaf,
+    verschachtelbar: istVerschachtelbar(typ),
+    // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl hold text only.
+    kannEnthalten: kannBausteineEnthalten(typ) && !node.type.isLeaf,
     kinder,
   };
 }
+
+/** The entry and all entries below it, depth first. */
+const mitNachfahren = (e: GliederungEintrag): GliederungEintrag[] => [
+  e,
+  ...e.kinder.flatMap(mitNachfahren),
+];
 
 /** The three sections with their Bausteine in document order (free text is left out). */
 export function gliederungBauen(
@@ -134,7 +139,7 @@ export function gliederungBauen(
     const eintraege: GliederungEintrag[] = [];
     const abschnitt = doc.maybeChild(i);
     abschnitt?.forEach((kind) => {
-      if (istBaustein(kind)) eintraege.push(eintrag(kind, name, false));
+      if (istBaustein(kind)) eintraege.push(eintrag(kind, name));
     });
     return { art, titel: ABSCHNITT_TITEL[art], eintraege };
   });
@@ -156,8 +161,12 @@ export type GliederungZeile =
       key: string;
       abschnitt: number;
       elternId: string;
+      /** Ids of all ancestors, the outermost first (`elternId` is the last). */
+      pfad: string[];
+      /** Nesting depth: 1 = in the notes of a top-level Baustein, 2 = in a Thema in there, ... */
+      tiefe: number;
       eintrag: GliederungEintrag;
-      /** Rendered with zero height (its parent is being dragged). */
+      /** Rendered with zero height (an ancestor is being dragged). */
       eingeklappt: boolean;
     }
   | {
@@ -165,44 +174,62 @@ export type GliederungZeile =
       key: string;
       abschnitt: number;
       elternId: string;
-      /** Rendered with zero height (nothing nestable is being dragged). */
+      /** Ids of all ancestors of the slot, the outermost first (`elternId` is the last). */
+      pfad: string[];
+      /** Depth of the Bausteine the slot takes (like `tiefe` of a `kind`). */
+      tiefe: number;
+      /** Rendered with zero height (nothing nestable is dragged, or the slot is inside the dragged one). */
       eingeklappt: boolean;
     };
 
 /**
- * The flat rows of the outline. The set of rows is constant (pangea does not allow adding or removing
- * Draggables during a drag): every nested Baustein and every notes slot is always there. Rows that
- * are not usable are flagged `eingeklappt` (rendered with zero height): the nested rows of the Baustein
- * `gezogenId` being dragged, and all notes slots unless a nestable Baustein is dragged.
+ * The flat rows of the outline, depth first. The set of rows is constant (pangea does not allow adding
+ * or removing Draggables during a drag): every nested Baustein and every notes slot is always there.
+ * Rows that are not usable are flagged `eingeklappt` (rendered with zero height): everything below the
+ * Baustein `gezogenId` being dragged (nested rows and notes slots; a Baustein cannot go into itself or
+ * its descendants), and all notes slots unless a nestable Baustein is dragged.
  */
 export function gliederungZeilen(
   baum: GliederungAbschnitt[],
   gezogenId: string | null = null,
 ): GliederungZeile[] {
-  const alle = baum.flatMap((a) => a.eintraege.flatMap((e) => [e, ...e.kinder]));
+  const alle = baum.flatMap((a) => a.eintraege.flatMap(mitNachfahren));
   const gezogen = gezogenId ? alle.find((e) => e.id === gezogenId) : undefined;
   const zeilen: GliederungZeile[] = [];
+
+  // The rows below `e` (its nested Bausteine, then its notes slot); `pfad` = the ancestors of `e`.
+  const unterhalb = (e: GliederungEintrag, abschnitt: number, tiefe: number, pfad: string[]) => {
+    const voll = [...pfad, e.id];
+    for (const k of e.kinder) {
+      zeilen.push({
+        art: 'kind',
+        key: k.id,
+        abschnitt,
+        elternId: e.id,
+        pfad: voll,
+        tiefe: tiefe + 1,
+        eintrag: k,
+        eingeklappt: gezogenId !== null && voll.includes(gezogenId),
+      });
+      unterhalb(k, abschnitt, tiefe + 1, voll);
+    }
+    if (e.kannEnthalten)
+      zeilen.push({
+        art: 'notizen',
+        key: `notizen:${e.id}`,
+        abschnitt,
+        elternId: e.id,
+        pfad: voll,
+        tiefe: tiefe + 1,
+        eingeklappt: !gezogen?.verschachtelbar || (gezogenId !== null && voll.includes(gezogenId)),
+      });
+  };
+
   baum.forEach((a, i) => {
     zeilen.push({ art: 'abschnitt', key: `abschnitt:${i}`, abschnitt: i, titel: a.titel });
     for (const e of a.eintraege) {
       zeilen.push({ art: 'baustein', key: e.id, abschnitt: i, eintrag: e });
-      for (const k of e.kinder)
-        zeilen.push({
-          art: 'kind',
-          key: k.id,
-          abschnitt: i,
-          elternId: e.id,
-          eintrag: k,
-          eingeklappt: e.id === gezogenId,
-        });
-      if (e.kannEnthalten)
-        zeilen.push({
-          art: 'notizen',
-          key: `notizen:${e.id}`,
-          abschnitt: i,
-          elternId: e.id,
-          eingeklappt: !gezogen?.verschachtelbar,
-        });
+      unterhalb(e, i, 0, []);
     }
   });
   return zeilen;
@@ -211,10 +238,12 @@ export function gliederungZeilen(
 /**
  * Target of dropping the row `gezogenId` at the flat index `index` of `zeilen` (the full, constant list; `index` is the final position of the dragged row). Looks at the rows directly above and
  * below the dropped row:
- * - below is a nested row or a notes slot of a parent and the dragged Baustein is nestable: nested into
- *   that parent, before that nested row (at the end for the slot);
+ * - below is a nested row or a notes slot of a parent (any depth) and the dragged Baustein is nestable:
+ *   nested into that parent, before that nested row (at the end for the slot);
  * - otherwise top-level in the section of the row above (a section header: first position), before the
- *   next top-level Baustein; a non-nestable one dropped above a nested row goes right behind its parent.
+ *   next top-level Baustein; a non-nestable one dropped above a nested row goes right behind its
+ *   top-level ancestor.
+ * Rows inside the dragged Baustein are collapsed, so it can never land in itself or its descendants.
  */
 export function gliederungZiel(
   zeilen: GliederungZeile[],
@@ -233,14 +262,15 @@ export function gliederungZiel(
 
   if (unten && (unten.art === 'kind' || unten.art === 'notizen')) {
     if (gezogen.eintrag.verschachtelbar) {
+      if (unten.pfad.includes(gezogenId)) return null;
       const geschwister = rest.filter(
         (z) => z.art === 'kind' && !z.eingeklappt && z.elternId === unten.elternId,
       );
       const n = unten.art === 'kind' ? geschwister.indexOf(unten) : geschwister.length;
       return { elternId: unten.elternId, index: n };
     }
-    // Not nestable: top-level directly behind the parent.
-    const elternPos = rest.findIndex((z) => z.art === 'baustein' && z.key === unten.elternId);
+    // Not nestable: top-level directly behind the outermost ancestor.
+    const elternPos = rest.findIndex((z) => z.art === 'baustein' && z.key === unten.pfad[0]);
     if (elternPos < 0) return null;
     return {
       abschnitt: unten.abschnitt,
@@ -306,9 +336,8 @@ export function bausteinInGliederungVerschieben(
     const f = findeBaustein(doc, ziel.elternId);
     if (!f) return null;
     // Only into the notes of a Baustein that may hold others, and only a Baustein that may be held.
-    if (!istBausteinInNotizen(quelle.node.type.name) || istBausteinInNotizen(f.node.type.name))
-      return null;
-    // Not into itself.
+    if (!darfInNotizen(f.node.type.name, quelle.node.type.name)) return null;
+    // Not into itself or one of its own descendants (a Thema carries its notes along).
     if (f.pos >= von && f.pos < bis) return null;
     eltern = f.node;
     elternPos = f.pos;
@@ -335,6 +364,11 @@ export function bausteinInGliederungVerschieben(
   const tr = state.tr;
   tr.insert(einfuegen, quelle.node);
   const versatz = einfuegen <= von ? quelle.node.nodeSize : 0;
-  tr.delete(von + versatz, bis + versatz);
+  if (doc.resolve(von).parent.childCount === 1) {
+    // The only child of its parent (e.g. the only content of a Thema's notes): leave an empty paragraph.
+    tr.replaceWith(von + versatz, bis + versatz, state.schema.nodes.paragraph!.create());
+  } else {
+    tr.delete(von + versatz, bis + versatz);
+  }
   return tr.scrollIntoView();
 }

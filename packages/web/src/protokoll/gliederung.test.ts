@@ -99,7 +99,7 @@ describe('gliederungBauen', () => {
 });
 
 describe('gliederungBauen: Thema', () => {
-  it('offers the notes row of a Thema and nests a Wahl in it, the Thema itself stays top-level', () => {
+  it('offers the notes row of a Thema and nests a Wahl in it', () => {
     const s = zustand([
       baustein('bausteinThema', 't1', { titel: 'Bar' }, [
         absatz(),
@@ -110,7 +110,8 @@ describe('gliederungBauen: Thema', () => {
     const e = gliederungBauen(s.doc)[0]!.eintraege[0]!;
     expect(e.titel).toBe('Bar');
     expect(e.kannEnthalten).toBe(true);
-    expect(e.verschachtelbar).toBe(false);
+    // A Thema may itself stand in the notes of other Bausteine.
+    expect(e.verschachtelbar).toBe(true);
     expect(e.kinder.map((k) => k.titel)).toEqual(['Wahl: Kasse']);
     const zeilen = gliederungZeilen(gliederungBauen(s.doc), null);
     expect(zeilen.some((z) => z.art === 'notizen' && z.elternId === 't1')).toBe(true);
@@ -352,5 +353,171 @@ describe('gliederungZiel with a drag starting right behind a collapsed slot', ()
     // Without the drag state the slot is collapsed: the same index then means "top-level behind the Event".
     const zu = gliederungZeilen(gliederungBauen(s.doc), null);
     expect(gliederungZiel(zu, 'a', 2)).toEqual({ abschnitt: 0, index: 1 });
+  });
+});
+
+describe('nested Themen in the Gliederung', () => {
+  const thema = (id: string, titel: string, inhalt?: ProtokollKnoten[]) =>
+    baustein('bausteinThema', id, { titel }, inhalt);
+  const wahl = (id: string, posten: string) => baustein('bausteinWahl', id, { posten });
+  /** e( t1( t2( w ) ) a ) and a top-level Thema `top`. */
+  const state = () =>
+    zustand(
+      [
+        event('e', 'E', [
+          absatz(),
+          thema('t1', 'Eins', [
+            absatz(),
+            thema('t2', 'Zwei', [absatz(), wahl('w', 'Kasse'), absatz()]),
+            absatz(),
+          ]),
+          abstimmung('a', 'A'),
+          absatz(),
+        ]),
+        thema('top', 'Oben', [absatz('n')]),
+        anwaerter('d', 'D'),
+        absatz(),
+      ],
+      [absatz()],
+      [absatz()],
+    );
+  const baum = () => gliederungBauen(state().doc);
+  const zeilen = (id: string | null = null) => gliederungZeilen(baum(), id);
+
+  it('builds the tree to any depth', () => {
+    const e = baum()[0]!.eintraege[0]!;
+    expect(e.kinder.map((k) => k.titel)).toEqual(['Eins', 'Abstimmung: A']);
+    const t1 = e.kinder[0]!;
+    expect(t1.kannEnthalten).toBe(true);
+    expect(t1.verschachtelbar).toBe(true);
+    expect(t1.kinder.map((k) => k.titel)).toEqual(['Zwei']);
+    expect(t1.kinder[0]!.kinder.map((k) => k.titel)).toEqual(['Wahl: Kasse']);
+    // Votes hold nothing.
+    expect(t1.kinder[0]!.kinder[0]!.kannEnthalten).toBe(false);
+  });
+
+  it('lists the rows depth first with depth, ancestors and a notes slot at every Thema', () => {
+    const z = zeilen();
+    expect(z.map((r) => r.key)).toEqual([
+      'abschnitt:0',
+      'e',
+      't1',
+      't2',
+      'w',
+      'notizen:t2',
+      'notizen:t1',
+      'a',
+      'notizen:e',
+      'top',
+      'notizen:top',
+      'd',
+      'notizen:d',
+      'abschnitt:1',
+      'abschnitt:2',
+      'abschnitt:3',
+    ]);
+    const finde = (key: string) => z.find((r) => r.key === key)!;
+    expect(finde('t1')).toMatchObject({ art: 'kind', tiefe: 1, elternId: 'e', pfad: ['e'] });
+    expect(finde('t2')).toMatchObject({ tiefe: 2, elternId: 't1', pfad: ['e', 't1'] });
+    expect(finde('w')).toMatchObject({ tiefe: 3, elternId: 't2', pfad: ['e', 't1', 't2'] });
+    expect(finde('notizen:t2')).toMatchObject({ art: 'notizen', tiefe: 3, elternId: 't2' });
+    expect(finde('notizen:top')).toMatchObject({ art: 'notizen', tiefe: 1, pfad: ['top'] });
+  });
+
+  it('keeps the same rows while dragging, and collapses everything inside the dragged Thema', () => {
+    const alle = zeilen().map((r) => r.key);
+    for (const id of ['e', 't1', 't2', 'w', 'a', 'top', 'd']) {
+      expect(zeilen(id).map((r) => r.key)).toEqual(alle);
+    }
+    const zu = (id: string | null) =>
+      zeilen(id)
+        .filter((r) => 'eingeklappt' in r && r.eingeklappt)
+        .map((r) => r.key);
+    expect(zu(null)).toEqual(['notizen:t2', 'notizen:t1', 'notizen:e', 'notizen:top', 'notizen:d']);
+    // A Thema carries its notes: its nested rows and its own slot vanish, the other slots stay.
+    expect(zu('t1')).toEqual(['t2', 'w', 'notizen:t2', 'notizen:t1']);
+    expect(zu('top')).toEqual(['notizen:top']);
+    // A vote can go into every slot.
+    expect(zu('w')).toEqual([]);
+    // Something that is not nestable has no slots at all.
+    expect(zu('e')).toContain('notizen:t2');
+  });
+
+  it('drops a Thema into the notes of a nested Thema: before a row and via the slot', () => {
+    const rows = zeilen('top');
+    const rest = rows.filter((r) => r.key !== 'top');
+    const bei = (key: string) => gliederungZiel(rows, 'top', rest.findIndex((r) => r.key === key));
+    expect(bei('w')).toEqual({ elternId: 't2', index: 0 });
+    expect(bei('notizen:t2')).toEqual({ elternId: 't2', index: 1 });
+    expect(bei('t2')).toEqual({ elternId: 't1', index: 0 });
+    expect(bei('notizen:t1')).toEqual({ elternId: 't1', index: 1 });
+    expect(bei('a')).toEqual({ elternId: 'e', index: 1 });
+    expect(bei('notizen:e')).toEqual({ elternId: 'e', index: 2 });
+    // Right above a top-level row it stays top-level.
+    expect(bei('d')).toEqual({ abschnitt: 0, index: 1 });
+  });
+
+  it('a non-nestable Baustein above a deep row lands behind the top-level ancestor', () => {
+    const rows = zeilen('d');
+    const rest = rows.filter((r) => r.key !== 'd');
+    expect(gliederungZiel(rows, 'd', rest.findIndex((r) => r.key === 'w'))).toEqual({
+      abschnitt: 0,
+      index: 1,
+    });
+  });
+
+  it('never targets the dragged Thema or anything inside it', () => {
+    const rows = zeilen('t1');
+    for (let i = 0; i < rows.length; i++) {
+      const z = gliederungZiel(rows, 't1', i);
+      expect(z && 'elternId' in z ? ['t1', 't2', 'w'].includes(z.elternId) : false).toBe(false);
+    }
+    expect(verschieben(state(), 't1', { elternId: 't1', index: 0 })).toBeNull();
+    expect(verschieben(state(), 't1', { elternId: 't2', index: 0 })).toBeNull();
+    expect(verschieben(state(), 'e', { elternId: 'top', index: 0 })).toBeNull();
+  });
+
+  it('moves a Thema with its notes and nested Bausteine into another Thema', () => {
+    expect(verschieben(state(), 't1', { elternId: 'top', index: 0 })).toBe(
+      'e(a) top(t1(t2(w))) d _ | _ | _',
+    );
+    expect(verschieben(state(), 'top', { elternId: 't2', index: 0 })).toBe(
+      'e(t1(t2(top w)) a) d _ | _ | _',
+    );
+    expect(verschieben(state(), 'top', { elternId: 't2', index: 1 })).toBe(
+      'e(t1(t2(w top)) a) d _ | _ | _',
+    );
+  });
+
+  it('moves a nested Thema out to a section and back up a level', () => {
+    expect(verschieben(state(), 't2', { abschnitt: 1, index: 0 })).toBe(
+      'e(t1 a) top d _ | t2(w) _ | _',
+    );
+    expect(verschieben(state(), 't2', { elternId: 'e', index: 0 })).toBe(
+      'e(t2(w) t1 a) top d _ | _ | _',
+    );
+  });
+
+  it('moves a Thema into the notes of an Anwärter:in, not into a vote or an Anwesenheit', () => {
+    expect(verschieben(state(), 'top', { elternId: 'd', index: 0 })).toBe(
+      'e(t1(t2(w)) a) d(top) _ | _ | _',
+    );
+    expect(verschieben(state(), 'top', { elternId: 'a', index: 0 })).toBeNull();
+    expect(verschieben(state(), 'top', { elternId: 'w', index: 0 })).toBeNull();
+  });
+
+  it('leaves an empty paragraph when the only content of the notes moves away', () => {
+    const s = zustand(
+      [thema('solo', 'Solo', [wahl('w1', 'X')]), thema('zwei', 'Zwei'), absatz()],
+      [absatz()],
+      [absatz()],
+    );
+    expect(verschieben(s, 'w1', { elternId: 'zwei', index: 0 })).toBe('solo zwei(w1) _ | _ | _');
+    expect(verschieben(s, 'w1', { abschnitt: 1, index: 0 })).toBe('solo zwei _ | w1 _ | _');
+  });
+
+  it('is one undo step including the nested content', () => {
+    const tr = bausteinInGliederungVerschieben(state(), 't1', { elternId: 'top', index: 0 })!;
+    expect(tr.steps.length).toBe(2);
   });
 });

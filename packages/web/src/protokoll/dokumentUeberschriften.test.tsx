@@ -76,7 +76,7 @@ describe('dokumentUeberschriften', () => {
     expect(eintraege.map((e) => [e.ebene, e.text])).toEqual([
       [1, 'Vergangenes'],
       [2, '27.12. Weihnachtsöffnung'],
-      [3, 'Fazit'],
+      [4, 'Fazit'],
       [1, 'Gegenwärtiges'],
       [2, 'Finanzen'],
       [2, 'Aufnahme: Max Neu'],
@@ -127,9 +127,9 @@ describe('Thema in the outline', () => {
       [1, 'Vergangenes'],
       [1, 'Gegenwärtiges'],
       [2, 'Hausordnung'],
-      [3, 'Unterpunkt'],
+      [4, 'Unterpunkt'],
       [2, 'Thema'],
-      [3, 'Unterpunkt'],
+      [4, 'Unterpunkt'],
       [1, 'Zukünftiges'],
     ]);
   });

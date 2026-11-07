@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { createElement, Fragment, type ReactNode } from 'react';
 import {
   anwesenheitsVerlauf,
   eventUeberschrift,
@@ -7,6 +7,7 @@ import {
   bausteinThemaDatenSchema,
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
+  istBausteinInNotizen,
   vergangenesUeberschrift,
   type ProtokollKnoten,
 } from '@c4/shared';
@@ -34,7 +35,12 @@ import {
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
 import { DokumentRahmen } from './DokumentGliederung';
-import { dokumentUeberschriften } from './dokumentUeberschriften';
+import {
+  dokumentUeberschriften,
+  eigeneUeberschriftSchritte,
+  ueberschriftTag,
+  unterEbene,
+} from './dokumentUeberschriften';
 
 type Verlauf = ReturnType<typeof anwesenheitsVerlauf>;
 
@@ -44,6 +50,21 @@ interface Kontext {
   person: (sub: string) => Person | null;
   /** Anchor ids of the headings (see `dokumentUeberschriften`). */
   ids: Map<ProtokollKnoten, string>;
+  /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...; see `MAX_EBENE`). */
+  ebene: number;
+}
+
+/** A heading element of the given level (`h2`..`h6`), styled by `pk-dok-h<level>`. */
+function Ueberschrift({
+  ebene,
+  id,
+  children,
+}: Readonly<{ ebene: number; id: string | undefined; children: ReactNode }>) {
+  return createElement(
+    ueberschriftTag(ebene),
+    { className: `pk-dok-h${Math.min(ebene, 5)}`, id },
+    children,
+  );
 }
 
 const SICHERE_LINKS = /^(https?:|mailto:|tel:)/i;
@@ -91,12 +112,14 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
         </p>
       );
     case 'heading': {
-      const stufe = k.attrs?.level === 3 ? 'pk-dok-h3' : 'pk-dok-h2';
-      const Tag = k.attrs?.level === 3 ? 'h5' : 'h4';
+      // Relative to the enclosing heading: one and two levels below it.
       return (
-        <Tag className={stufe} id={ctx.ids.get(k)}>
+        <Ueberschrift
+          ebene={unterEbene(ctx.ebene, eigeneUeberschriftSchritte(k.attrs?.level))}
+          id={ctx.ids.get(k)}
+        >
           <Kinder liste={k.content} ctx={ctx} />
-        </Tag>
+        </Ueberschrift>
       );
     }
     case 'bulletList':
@@ -131,6 +154,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           )}
         </blockquote>
       );
+    case 'bausteinThema':
+      // A Thema inside the notes of another Baustein (a heading one level below it).
+      return <Baustein k={k} ctx={ctx} innen />;
     case 'bausteinBeschluss':
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
@@ -232,6 +258,11 @@ function Baustein({
   const daten: unknown = k.attrs?.daten;
   const id = typeof k.attrs?.id === 'string' ? k.attrs.id : '';
   const art = ctx.eingabe.sitzung.art;
+  // Heading level of this Baustein; its notes (and the headings in them) sit below it. A vote has no
+  // heading element when nested, so its notes stay at the level of the enclosing one.
+  const h = unterEbene(ctx.ebene);
+  const istAbstimmung = istBausteinInNotizen(k.type);
+  const ctxIn: Kontext = { ...ctx, ebene: istAbstimmung && innen ? ctx.ebene : h };
 
   if (k.type === 'bausteinEvent') {
     const d = bausteinEventDatenSchema.safeParse(daten);
@@ -240,12 +271,12 @@ function Baustein({
       d.success && d.data.verantwortlichSub ? ctx.person(d.data.verantwortlichSub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           {titel || 'Event'}
-        </h3>
+        </Ueberschrift>
         <Notizen
           knoten={k.content}
-          ctx={ctx}
+          ctx={ctxIn}
           vorne={
             verantwortlich && (
               <>
@@ -262,10 +293,10 @@ function Baustein({
     const titel = d.success ? d.data.titel.trim() : '';
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           {titel || 'Thema'}
-        </h3>
-        <Notizen knoten={k.content} ctx={ctx} />
+        </Ueberschrift>
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -274,10 +305,10 @@ function Baustein({
     const titel = d.success ? vergangenesUeberschrift(d.data) : '';
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           {titel || 'Vergangenes Event'}
-        </h3>
-        <Notizen knoten={k.content} ctx={ctx} />
+        </Ueberschrift>
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -286,10 +317,10 @@ function Baustein({
     const name = d.success ? `${d.data.vorname} ${d.data.nachname}`.trim() : '';
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           {`Neue:r Anwärter:in${name ? `: ${name}` : ''}`}
-        </h3>
-        <Notizen knoten={k.content} ctx={ctx} />
+        </Ueberschrift>
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -299,7 +330,7 @@ function Baustein({
       <>
         {!innen && (
           // Styled like a heading but no heading element: votes stay out of the PDF outline.
-          <div className="pk-dok-h2">{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</div>
+          <div className={`pk-dok-h${Math.min(h, 5)}`}>{z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung'}</div>
         )}
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
@@ -310,7 +341,7 @@ function Baustein({
           )}
           <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
         </div>
-        <Notizen knoten={k.content} ctx={ctx} />
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -325,7 +356,7 @@ function Baustein({
           {z.optionen && <p>{z.optionen}</p>}
           <p className="pk-dok-klein">(nicht bindend)</p>
         </div>
-        <Notizen knoten={k.content} ctx={ctx} />
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -335,12 +366,12 @@ function Baustein({
     return (
       <>
         {!innen && (
-          <div className="pk-dok-h2">
+          <div className={`pk-dok-h${Math.min(h, 5)}`}>
             {`Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`}
           </div>
         )}
         {/* The notes are the discussion before; the vote concludes the point. */}
-        <Notizen knoten={k.content} ctx={ctx} />
+        <Notizen knoten={k.content} ctx={ctxIn} />
         <div className="pk-dok-beschluss">
           {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
           {innen && (
@@ -419,7 +450,7 @@ function Baustein({
     const p = z.sub ? ctx.person(z.sub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           Aufnahme
           {p ? (
             <>
@@ -428,10 +459,10 @@ function Baustein({
           ) : (
             z.name && `: ${z.name}`
           )}
-        </h3>
+        </Ueberschrift>
         {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
         <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
-        <Notizen knoten={k.content} ctx={ctx} />
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -440,7 +471,7 @@ function Baustein({
     const p = z.sub ? ctx.person(z.sub) : null;
     return (
       <>
-        <h3 className="pk-dok-h2" id={ctx.ids.get(k)}>
+        <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
           Neues EM
           {p ? (
             <>
@@ -449,7 +480,7 @@ function Baustein({
           ) : (
             z.name && `: ${z.name}`
           )}
-        </h3>
+        </Ueberschrift>
         {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
         {z.abstimmung && (
           <p>
@@ -459,7 +490,7 @@ function Baustein({
             )}
           </p>
         )}
-        <Notizen knoten={k.content} ctx={ctx} />
+        <Notizen knoten={k.content} ctx={ctxIn} />
       </>
     );
   }
@@ -554,6 +585,7 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
     eingabe,
     verlauf,
     ids,
+    ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
       return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;

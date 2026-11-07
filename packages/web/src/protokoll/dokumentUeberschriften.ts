@@ -4,6 +4,7 @@ import {
   bausteinVergangenesEventDatenSchema,
   bausteinAnwaerterDatenSchema,
   eventUeberschrift,
+  istBausteinInNotizen,
   vergangenesUeberschrift,
   type ProtokollDokument,
   type ProtokollKnoten,
@@ -23,11 +24,30 @@ import { ABSCHNITT_TITEL } from './schema';
 
 export const GLIEDERUNG_ID_PREFIX = 'dok-ueb-';
 
+/**
+ * Heading levels: 1 = section (`h2` in the view), 2 = top-level Baustein (`h3`), then one deeper per nested
+ * Thema (`h4`, `h5`, `h6`). Level 5 (`h6`) is the deepest; anything below stays there.
+ */
+export const MAX_EBENE = 5;
+
+/** The level `n` steps below `ebene`, capped at `MAX_EBENE`. */
+export const unterEbene = (ebene: number, n = 1): number => Math.min(ebene + n, MAX_EBENE);
+
+/** The HTML heading tag (`h2`..`h6`) of a level. */
+export const ueberschriftTag = (ebene: number): 'h2' | 'h3' | 'h4' | 'h5' | 'h6' =>
+  `h${Math.min(Math.max(ebene, 1), MAX_EBENE) + 1}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
+/**
+ * Steps below the enclosing heading for a heading typed in the free text: the editor's "Überschrift 2"
+ * is one level below it, "Überschrift 3" two.
+ */
+export const eigeneUeberschriftSchritte = (level: unknown): 1 | 2 => (level === 3 ? 2 : 1);
+
 export interface DokumentUeberschrift {
   /** Anchor id of the heading element in the document view. */
   id: string;
-  /** 1 = section, 2 = Baustein / heading, 3 = sub-heading. */
-  ebene: 1 | 2 | 3;
+  /** Level, see `MAX_EBENE`. */
+  ebene: number;
   text: string;
 }
 
@@ -97,21 +117,30 @@ export function dokumentUeberschriften(
 ): DokumentGliederungDaten {
   const eintraege: DokumentUeberschrift[] = [];
   const ids = new Map<ProtokollKnoten, string>();
-  const neu = (k: ProtokollKnoten, ebene: 1 | 2 | 3, text: string) => {
+  const neu = (k: ProtokollKnoten, ebene: number, text: string) => {
     const id = `${GLIEDERUNG_ID_PREFIX}${eintraege.length}`;
     ids.set(k, id);
     const t = text.trim();
     if (t) eintraege.push({ id, ebene, text: t });
   };
 
-  const gehe = (k: ProtokollKnoten) => {
+  // `eltern`: level of the enclosing heading; `innen`: inside the notes of a Baustein.
+  const gehe = (k: ProtokollKnoten, eltern: number, innen: boolean) => {
+    let hier = eltern;
     if (k.type === 'heading') {
-      neu(k, k.attrs?.level === 3 ? 3 : 2, knotenText(k));
+      neu(k, unterEbene(eltern, eigeneUeberschriftSchritte(k.attrs?.level)), knotenText(k));
     } else {
       const titel = bausteinUeberschrift(k, personName);
-      if (titel !== null) neu(k, 2, titel);
+      if (titel !== null) {
+        hier = unterEbene(eltern);
+        neu(k, hier, titel);
+      } else if (istBausteinInNotizen(k.type) && !innen) {
+        // A top-level vote is styled like a heading (not in the outline): its notes sit below it.
+        hier = unterEbene(eltern);
+      }
     }
-    for (const c of ohneLeereEnden(k.content)) gehe(c);
+    const inBaustein = innen || k.type.startsWith('baustein');
+    for (const c of ohneLeereEnden(k.content)) gehe(c, hier, inBaustein);
   };
 
   for (const a of inhalt.content) {
@@ -123,12 +152,12 @@ export function dokumentUeberschriften(
     // Same rules as the view: "Sonstiges" only shows with content.
     if (art === 'sonstiges' && inh.length === 0) continue;
     if (titel) neu(a, 1, titel);
-    for (const c of inh) gehe(c);
+    for (const c of inh) gehe(c, 1, false);
   }
   return { eintraege, ids };
 }
 
-/** Nests the flat headings by level: section > heading > sub-heading. */
+/** Nests the flat headings by level: section > Baustein > nested Thema / heading > ... */
 export function dokumentGliederungBauen(
   eintraege: readonly DokumentUeberschrift[],
 ): DokumentGliederungsKnoten[] {

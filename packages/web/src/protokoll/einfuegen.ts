@@ -3,7 +3,10 @@ import { TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
 import {
   BAUSTEIN_TYPEN,
+  darfInNotizen,
   istBausteinInNotizen,
+  istThema,
+  istVerschachtelbar,
   type BausteinTyp,
   type ProtokollKnoten,
 } from '@c4/shared';
@@ -22,9 +25,10 @@ const bausteinNamen: readonly string[] = BAUSTEIN_TYPEN;
  * (`von` = `bis` inserts, otherwise the range, an empty paragraph, is replaced).
  * - Most Bausteine are top level: after the block of the section the cursor is in (an empty paragraph is
  *   replaced); inside a Baustein's free text that means after that Baustein (no nesting).
- * - Abstimmung and Meinungsbild may also go into the free text of another Baustein: at the cursor's
- *   block there (an empty paragraph is replaced, else after the block). Inside an Abstimmung or
- *   Meinungsbild they go after that one (they do not nest in each other).
+ * - Abstimmung, Meinungsbild, Wahl and Thema may also go into the free text of another Baustein: at the
+ *   cursor's block there (an empty paragraph is replaced, else after the block). A Thema goes into the
+ *   innermost Baustein that can hold others (a Thema inside a Thema, at any depth); inside an Abstimmung,
+ *   Meinungsbild or Wahl they go after that one (votes hold no Bausteine).
  */
 interface Entfernen {
   von: number;
@@ -42,10 +46,10 @@ export interface EinfuegeStelle {
 
 export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp): EinfuegeStelle {
   const $pos = doc.resolve(Math.min(position, doc.content.size));
-  const verschachtelbar = istBausteinInNotizen(typ);
+  const verschachtelbar = istVerschachtelbar(typ);
 
   // The container whose direct children we insert between: the section, or for a nestable type the
-  // innermost Baustein that is not an Abstimmung / Meinungsbild itself.
+  // innermost Baustein that may hold it (not an Abstimmung / Meinungsbild / Wahl itself).
   let container = -1;
   for (let d = $pos.depth; d > 0; d--) {
     const name = $pos.node(d).type.name;
@@ -53,7 +57,7 @@ export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp):
       container = d;
       break;
     }
-    if (verschachtelbar && bausteinNamen.includes(name) && !istBausteinInNotizen(name)) {
+    if (verschachtelbar && darfInNotizen(name, typ)) {
       container = d;
       break;
     }
@@ -74,7 +78,10 @@ export function einfuegeStelle(doc: PmNode, position: number, typ: BausteinTyp):
   const leer = leerenListenpunkt($pos);
   if (!leer) return stelle;
   // The cursor sits in an empty last list item (the typed "/query" is gone): the item goes away.
-  if (leer.ganz && leer.liste === blockDepth && verschachtelbar) {
+  // (A top-level Thema: the empty list is cleaned up next to it, as before.)
+  const ersetzt =
+    istBausteinInNotizen(typ) || (istThema(typ) && $pos.node(container).type.name !== 'abschnitt');
+  if (leer.ganz && leer.liste === blockDepth && ersetzt) {
     return { von, bis }; // the list was only this item: the Baustein takes its place
   }
   return { ...stelle, entfernen: leer.bereich };

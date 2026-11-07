@@ -8,6 +8,7 @@ import {
   bausteinVergangenesEventDatenSchema,
   BAUSTEIN_TYPEN,
   eventUeberschrift,
+  istBausteinInNotizen,
   vergangenesUeberschrift,
   type MitgliedStatus,
   type ProtokollKnoten,
@@ -32,7 +33,11 @@ import {
   type Person,
   type WahlKandidat,
 } from '../dokumentDaten';
-import { dokumentUeberschriften } from '../dokumentUeberschriften';
+import {
+  dokumentUeberschriften,
+  eigeneUeberschriftSchritte,
+  unterEbene,
+} from '../dokumentUeberschriften';
 import { ABSCHNITT_TITEL } from '../schema';
 import { PDF_SCHRIFT } from './schriften';
 
@@ -77,6 +82,22 @@ export const stile = StyleSheet.create({
   h1: { fontSize: 17, color: PRIMAER, lineHeight: 1.25, marginTop: 18, marginBottom: 6 },
   h2: { fontSize: 13.5, color: PRIMAER, lineHeight: 1.25, marginTop: 12, marginBottom: 4 },
   h3: { fontSize: 11.5, color: PRIMAER, lineHeight: 1.25, marginTop: 9, marginBottom: 3 },
+  h4: {
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: PRIMAER,
+    lineHeight: 1.25,
+    marginTop: 7,
+    marginBottom: 2,
+  },
+  h5: {
+    fontSize: 9.5,
+    fontWeight: 700,
+    color: PRIMAER,
+    lineHeight: 1.25,
+    marginTop: 6,
+    marginBottom: 2,
+  },
   zitat: { marginVertical: 5, textAlign: 'right', fontStyle: 'italic' },
   quelle: { fontStyle: 'normal' },
   anwesenheit: { marginTop: 4, marginBottom: 2, textAlign: 'right', fontStyle: 'italic' },
@@ -109,8 +130,8 @@ export const stile = StyleSheet.create({
 });
 
 export interface Block {
-  /** Heading level; only set for blocks that appear in the outline. */
-  ebene?: 1 | 2 | 3;
+  /** Heading level (see `MAX_EBENE`); only set for blocks that appear in the outline. */
+  ebene?: number;
   /** Outline title of a heading block. */
   titel?: string;
   element: ReactElement;
@@ -122,7 +143,13 @@ interface Kontext {
   person: (sub: string) => Person | null;
   ids: Map<ProtokollKnoten, string>;
   titel: Map<string, string>;
+  /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...). */
+  ebene: number;
 }
+
+/** PDF style of a heading level (the deepest levels share the smallest). */
+const ueberschriftStil = (ebene: number) =>
+  [stile.h1, stile.h1, stile.h2, stile.h3, stile.h4, stile.h5][Math.min(ebene, 5)]!;
 
 const SICHERE_LINKS = /^(https?:|mailto:|tel:)/i;
 
@@ -228,7 +255,8 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     case 'paragraph':
       return istLeererAbsatz(k) ? [] : [block(<Absatz>{inline(k.content)}</Absatz>)];
     case 'heading': {
-      const stufe = k.attrs?.level === 3 ? 3 : 2;
+      // Relative to the enclosing heading, like the document view.
+      const stufe = unterEbene(ctx.ebene, eigeneUeberschriftSchritte(k.attrs?.level));
       const id = ctx.ids.get(k);
       const titel = id ? ctx.titel.get(id) : undefined;
       return [
@@ -236,7 +264,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
           ebene: titel ? stufe : undefined,
           titel,
           element: (
-            <Text style={stufe === 3 ? stile.h3 : stile.h2} minPresenceAhead={50}>
+            <Text style={ueberschriftStil(stufe)} minPresenceAhead={50}>
               {inline(k.content)}
             </Text>
           ),
@@ -266,6 +294,9 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
           </View>,
         ),
       ];
+    case 'bausteinThema':
+      // A Thema inside the notes of another Baustein: a heading one level below it, not indented.
+      return bausteinBloecke(k, ctx, true);
     case 'bausteinBeschluss':
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
@@ -295,11 +326,12 @@ function notizen(knoten: ProtokollKnoten[] | undefined, ctx: Kontext, vorne?: Re
 function ueberschrift(k: ProtokollKnoten, ctx: Kontext, inhalt: ReactNode): Block {
   const id = ctx.ids.get(k);
   const titel = id ? ctx.titel.get(id) : undefined;
+  const ebene = unterEbene(ctx.ebene);
   return {
-    ebene: titel ? 2 : undefined,
+    ebene: titel ? ebene : undefined,
     titel,
     element: (
-      <Text style={stile.h2} minPresenceAhead={50}>
+      <Text style={ueberschriftStil(ebene)} minPresenceAhead={50}>
         {inhalt}
       </Text>
     ),
@@ -307,9 +339,9 @@ function ueberschrift(k: ProtokollKnoten, ctx: Kontext, inhalt: ReactNode): Bloc
 }
 
 /** Heading-like line of a top-level vote (not in the outline). */
-const kopfzeile = (text: string): Block =>
+const kopfzeile = (text: string, ctx: Kontext): Block =>
   block(
-    <Text style={stile.h2} minPresenceAhead={50}>
+    <Text style={ueberschriftStil(unterEbene(ctx.ebene))} minPresenceAhead={50}>
       {text}
     </Text>,
   );
@@ -387,6 +419,11 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
   const daten: unknown = k.attrs?.daten;
   const id = typeof k.attrs?.id === 'string' ? k.attrs.id : '';
   const art = ctx.eingabe.sitzung.art;
+  // Level of this Baustein's heading; its notes sit below it (a nested vote has no heading of its own).
+  const ctxIn: Kontext = {
+    ...ctx,
+    ebene: istBausteinInNotizen(k.type) && innen ? ctx.ebene : unterEbene(ctx.ebene),
+  };
 
   switch (k.type) {
     case 'bausteinEvent': {
@@ -398,7 +435,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
         ueberschrift(k, ctx, titel || 'Event'),
         ...notizen(
           k.content,
-          ctx,
+          ctxIn,
           verantwortlich && (
             <>
               {'Verantwortlich: @'}
@@ -411,25 +448,25 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
     case 'bausteinThema': {
       const d = bausteinThemaDatenSchema.safeParse(daten);
       const titel = d.success ? d.data.titel.trim() : '';
-      return [ueberschrift(k, ctx, titel || 'Thema'), ...notizen(k.content, ctx)];
+      return [ueberschrift(k, ctx, titel || 'Thema'), ...notizen(k.content, ctxIn)];
     }
     case 'bausteinVergangenesEvent': {
       const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
       const titel = d.success ? vergangenesUeberschrift(d.data) : '';
-      return [ueberschrift(k, ctx, titel || 'Vergangenes Event'), ...notizen(k.content, ctx)];
+      return [ueberschrift(k, ctx, titel || 'Vergangenes Event'), ...notizen(k.content, ctxIn)];
     }
     case 'bausteinAnwaerter': {
       const d = bausteinAnwaerterDatenSchema.safeParse(daten);
       const name = d.success ? `${d.data.vorname} ${d.data.nachname}`.trim() : '';
       return [
         ueberschrift(k, ctx, `Neue:r Anwärter:in${name ? `: ${name}` : ''}`),
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
       ];
     }
     case 'bausteinBeschluss': {
       const z = beschlussZeilen(daten, ctx.verlauf.bausteine[id]);
       return [
-        ...(innen ? [] : [kopfzeile(z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung')]),
+        ...(innen ? [] : [kopfzeile(z.antrag ? `Abstimmung: ${z.antrag}` : 'Abstimmung', ctx)]),
         block(
           <Kasten>
             {z.wiederholung && <Klein>{z.wiederholung}</Klein>}
@@ -441,7 +478,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
             <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
           </Kasten>,
         ),
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
       ];
     }
     case 'bausteinMeinungsbild': {
@@ -456,7 +493,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
             <Klein>(nicht bindend)</Klein>
           </Kasten>,
         ),
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
       ];
     }
     case 'bausteinWahl': {
@@ -468,10 +505,11 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
           : [
               kopfzeile(
                 `Wahl${z.posten ? `: ${z.posten}` : ''}${z.plaetze ? ` (${z.plaetze})` : ''}`,
+                ctx,
               ),
             ]),
         // The notes are the discussion before; the vote concludes the point.
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
         block(
           <Kasten>
             {z.wiederholung && <Klein>{z.wiederholung}</Klein>}
@@ -561,7 +599,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
             <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
           </View>,
         ),
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
       ];
     }
     case 'bausteinEm': {
@@ -596,7 +634,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
               ),
             ]
           : []),
-        ...notizen(k.content, ctx),
+        ...notizen(k.content, ctxIn),
       ];
     }
     case 'bausteinAnwesenheit': {
@@ -660,6 +698,7 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     verlauf,
     ids,
     titel: new Map(eintraege.map((e) => [e.id, e.text])),
+    ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
       return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;

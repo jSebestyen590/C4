@@ -80,6 +80,30 @@ export const BAUSTEINE_IN_NOTIZEN = [
 export const istBausteinInNotizen = (typ: string): boolean =>
   (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
 
+/** The Baustein "Thema": top level, or in the notes of any Baustein that can hold others (any depth). */
+export const istThema = (typ: string): boolean => typ === 'bausteinThema';
+
+/**
+ * Whether a Baustein of this type may stand in the notes of another Baustein: Abstimmung, Meinungsbild,
+ * Wahl and Thema. All others are top-level only.
+ */
+export const istVerschachtelbar = (typ: string): boolean =>
+  istBausteinInNotizen(typ) || istThema(typ);
+
+/**
+ * Whether the notes of a Baustein of this type may hold other Bausteine (Abstimmung, Meinungsbild, Wahl
+ * and Thema): every Baustein with notes except the votes (which hold text only) and Anwesenheit (no notes).
+ * A Thema may therefore hold Themen (any depth).
+ */
+export const kannBausteineEnthalten = (typ: string): boolean =>
+  (BAUSTEIN_TYPEN as readonly string[]).includes(typ) &&
+  typ !== 'bausteinAnwesenheit' &&
+  !istBausteinInNotizen(typ);
+
+/** Whether a Baustein of type `typ` may stand in the notes of a Baustein of type `elternTyp`. */
+export const darfInNotizen = (elternTyp: string, typ: string): boolean =>
+  kannBausteineEnthalten(elternTyp) && istVerschachtelbar(typ);
+
 export const PROTOKOLL_MAX_TIEFE = 30;
 export const PROTOKOLL_MAX_BYTES = 500 * 1024;
 
@@ -854,9 +878,12 @@ function eventBausteine(
 
 const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
 
-/** The free text without Abstimmung / Meinungsbild / Wahl blocks (their votes belong to one Sitzung). */
+/**
+ * The free text without Abstimmung / Meinungsbild / Wahl blocks (their votes belong to one Sitzung) and
+ * without nested Themen (a Thema belongs to one Sitzung, with everything in it).
+ */
 function ohneAbstimmungen(content: ProtokollKnoten[] | undefined): ProtokollKnoten[] {
-  const rest = (content ?? []).filter((k) => !istBausteinInNotizen(k.type));
+  const rest = (content ?? []).filter((k) => !istVerschachtelbar(k.type));
   return rest.length > 0 ? rest : [leererAbsatz()];
 }
 
