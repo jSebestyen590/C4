@@ -134,6 +134,15 @@ App:
 Die Telefonnummer ist Freitext und wird mit `telefonNormalisieren` umgewandelt (bei führender `0`
 gilt `+49`, nicht lesbare Nummern ergeben keinen Link). Code: `packages/shared/src/kontakt.ts`.
 
+Wer WhatsApp, Signal oder Telegram wählt, muss im Profil eine lesbare Telefonnummer angeben (Schema
+`mitgliedAktualisierenSchema`, gilt auch im API: `PUT /api/me/mitglied` → 400). Bestehende Daten ohne
+Nummer bleiben, die Prüfung greift beim nächsten Speichern.
+
+Auf der Detailseite anderer (nicht deaktivierter) Mitglieder gibt es den Button „Als Kontakt speichern“.
+Er erzeugt mit `vcardErstellen` eine vCard 3.0 (`<username>.vcf`) mit Name, Username (Nickname), Organisation
+C4, Telefon (normalisiert), E-Mail, Geburtstag, Adresse, Discord-Name (Notiz) und dem kleinen Profilbild
+(falls ladbar). Auf dem Handy öffnet er das Teilen-Menü, sonst wird die Datei heruntergeladen.
+
 Discord lässt sich nicht über den Username verlinken. Ein Bot auf dem Vereinsserver könnte Namen in
 User-IDs auflösen (`GET /guilds/{id}/members/search`). Das ist nicht gebaut und braucht ein Bot-Token
 sowie den Server Members Intent.

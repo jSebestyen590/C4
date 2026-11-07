@@ -1040,7 +1040,7 @@ describe('api', () => {
       const ok = await put({
         ...gueltig,
         anrede: 'weiblich',
-        kontaktkanaele: ['mail', 'signal'],
+        kontaktkanaele: ['mail', 'discord'],
         discordName: ' erika#1 ',
         telefon: '  ',
         ueberMich: 'Hallo',
@@ -1049,7 +1049,7 @@ describe('api', () => {
       expect(mitglieder.speichern).toHaveBeenCalledWith('r', {
         ...gueltig,
         anrede: 'weiblich',
-        kontaktkanaele: 'signal,mail',
+        kontaktkanaele: 'discord,mail',
         discordName: 'erika#1',
         adresse: null,
         telefon: null,
@@ -1058,6 +1058,20 @@ describe('api', () => {
         geburtsdatum: null,
         geburtstagImKalender: true,
       });
+    });
+
+    it('requires a readable phone number when WhatsApp, Signal or Telegram is chosen', async () => {
+      const { app, mitglieder } = makeApp();
+      const put = (body: unknown) =>
+        app.request('/api/me/mitglied', json('reader-token', 'PUT', body));
+      expect((await put({ ...gueltig, kontaktkanaele: ['whatsapp'] })).status).toBe(400);
+      expect(
+        (await put({ ...gueltig, kontaktkanaele: ['telegram'], telefon: '1234' })).status,
+      ).toBe(400);
+      expect(mitglieder.speichern).not.toHaveBeenCalled();
+      expect(
+        (await put({ ...gueltig, kontaktkanaele: ['whatsapp'], telefon: '0171 1234567' })).status,
+      ).toBe(200);
     });
 
     it('saves and returns the birthday fields and validates the date', async () => {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { POSTEN_RECHTE, roleSchema } from './roles';
 import { ANREDEN } from './anrede';
 import { heuteBerlin } from './datum';
-import { KONTAKTKANAELE } from './kontakt';
+import { KONTAKTKANAELE, TELEFON_KANAELE, telefonNormalisieren } from './kontakt';
 import { MITGLIED_STATI } from './status';
 import { statusAbSchema } from './statusVerlauf';
 
@@ -112,27 +112,45 @@ export const appConfigSchema = z.object({
 export type AppConfig = z.infer<typeof appConfigSchema>;
 
 /** Members edit these fields themselves; everything except the names is optional. */
-export const mitgliedAktualisierenSchema = z.object({
-  vorname: vornameSchema,
-  nachname: nachnameSchema,
-  anrede: anredeSchema.default('neutral'),
-  kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)).default([]),
-  discordName: optionalerText(64),
-  adresse: optionalerText(500),
-  telefon: optionalerText(50),
-  ueberMich: optionalerText(2000),
-  /** Object key returned by POST /api/me/profilbild; null removes the picture. */
-  profilbildKey: z.string().max(300).nullable().default(null),
-  /** Date of birth `YYYY-MM-DD`; optional, not in the future, not before 1900. */
-  geburtsdatum: z.iso
-    .date({ error: 'Bitte gib ein gültiges Datum an.' })
-    .refine((d) => d >= '1900-01-01', 'Das Geburtsdatum darf nicht vor 1900 liegen.')
-    .refine((d) => d <= heuteBerlin(), 'Das Geburtsdatum darf nicht in der Zukunft liegen.')
-    .nullable()
-    .default(null),
-  /** Whether other members see the birthday in the calendar (and get notified about it). */
-  geburtstagImKalender: z.boolean().default(true),
-});
+export const mitgliedAktualisierenSchema = z
+  .object({
+    vorname: vornameSchema,
+    nachname: nachnameSchema,
+    anrede: anredeSchema.default('neutral'),
+    kontaktkanaele: z.array(z.enum(KONTAKTKANAELE)).default([]),
+    discordName: optionalerText(64),
+    adresse: optionalerText(500),
+    telefon: optionalerText(50),
+    ueberMich: optionalerText(2000),
+    /** Object key returned by POST /api/me/profilbild; null removes the picture. */
+    profilbildKey: z.string().max(300).nullable().default(null),
+    /** Date of birth `YYYY-MM-DD`; optional, not in the future, not before 1900. */
+    geburtsdatum: z.iso
+      .date({ error: 'Bitte gib ein gültiges Datum an.' })
+      .refine((d) => d >= '1900-01-01', 'Das Geburtsdatum darf nicht vor 1900 liegen.')
+      .refine((d) => d <= heuteBerlin(), 'Das Geburtsdatum darf nicht in der Zukunft liegen.')
+      .nullable()
+      .default(null),
+    /** Whether other members see the birthday in the calendar (and get notified about it). */
+    geburtstagImKalender: z.boolean().default(true),
+  })
+  .superRefine((daten, ctx) => {
+    if (!daten.kontaktkanaele.some((k) => TELEFON_KANAELE.includes(k))) return;
+    if (!daten.telefon) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['telefon'],
+        message: 'Für WhatsApp, Signal und Telegram brauchst du eine Telefonnummer.',
+      });
+    } else if (!telefonNormalisieren(daten.telefon)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['telefon'],
+        message:
+          'Diese Nummer können wir nicht verlinken. Gib sie z. B. als 0171 1234567 oder +49 171 1234567 an.',
+      });
+    }
+  });
 export type MitgliedAktualisieren = z.input<typeof mitgliedAktualisierenSchema>;
 
 export const emailAendernSchema = z.object({

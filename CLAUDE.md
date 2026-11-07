@@ -19,10 +19,24 @@ keep hands-on work out of it:
   builds, type checks, and especially browser checks in the preview or on dev.c4-leipzig.de
   (screenshots, page reads, phone-width checks). The subagent reports a short result; the main chat
   doesn't take screenshots or read page trees itself.
+- **Implementation of an approved plan** goes to a `general-purpose` subagent with
+  `model: "sonnet"`. The main chat reviews the diff and sends corrections back to that subagent
+  (`SendMessage`) instead of editing itself.
 - Code exploration over more than a couple of files goes to the `Explore` agent with
   `model: "sonnet"` instead of many `grep`/`sed -n` calls in the main chat.
 - Don't poll CI with `gh run watch`/`gh run view`; bind the PR to the session and let the app's CI
   monitor / Auto-fix report failures.
+
+## Testing on dev
+
+- Deploy a feature branch to dev with the Deploy workflow:
+  `gh workflow run deploy.yml --ref <branch> -f env=dev` (a push to `main` deploys dev automatically,
+  tags `v*` deploy prod). Commit and push first; the workflow deploys the pushed ref.
+- Browser checks then run on https://dev.c4-leipzig.de/app/ (Sonnet subagent). Log in through the dev
+  Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory
+  (`reference_dev_testuser.md`), never put it into the repo or chat.
+- The local API (`pnpm dev`) needs `packages/api/.env.local` from `pnpm db:up` (README); without it,
+  use dev.
 
 ## UI: mobile first (important)
 

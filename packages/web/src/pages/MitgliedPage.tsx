@@ -6,7 +6,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
-import { KontaktkanalIcons } from '../KontaktkanalIcons';
+import { KontaktSpeichernButton, KontaktkanalIcons } from '../KontaktkanalIcons';
 import { DeaktivierenFeld } from '../DeaktivierenFeld';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
@@ -115,6 +115,11 @@ export function MitgliedPage() {
               <Text size="sm" mt={4}>
                 Discord: {m.discordName}
               </Text>
+            )}
+            {!m.deaktiviert && (
+              <div style={{ marginTop: 8 }}>
+                <KontaktSpeichernButton mitglied={m} />
+              </div>
             )}
           </div>
           {m.telefon && (

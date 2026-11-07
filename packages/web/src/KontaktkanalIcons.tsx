@@ -1,13 +1,22 @@
-import { ActionIcon, Group, Text, ThemeIcon, Tooltip } from '@mantine/core';
+import { ActionIcon, Button, Group, Text, ThemeIcon, Tooltip } from '@mantine/core';
 import {
+  IconAddressBook,
   IconBrandDiscord,
   IconBrandSignal,
   IconBrandTelegram,
   IconBrandWhatsapp,
   IconMail,
 } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import type { ComponentType } from 'react';
-import { KONTAKTKANAELE, kontaktLink, type Kontaktkanal } from '@c4/shared';
+import {
+  KONTAKTKANAELE,
+  kontaktLink,
+  vcardErstellen,
+  type Kontaktkanal,
+  type Mitglied,
+} from '@c4/shared';
+import { anzeigename } from './mitglied';
 import { KONTAKTKANAL_LABELS } from './i18n';
 
 const ICONS: Record<Kontaktkanal, ComponentType<{ size?: number }>> = {
@@ -125,5 +134,69 @@ export function KontaktkanalAuswahl({
         })}
       </Group>
     </div>
+  );
+}
+
+/** Loads the picture as base64 (no prefix); null when it cannot be fetched. */
+async function bildAlsBase64(url: string | null): Promise<string | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let binaer = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      binaer += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binaer);
+  } catch {
+    return null;
+  }
+}
+
+/** Offers the member as a contact card (vCard): share sheet where available, else a download. */
+export function KontaktSpeichernButton({ mitglied }: Readonly<{ mitglied: Mitglied }>) {
+  // Preloaded so the click handler can share without awaiting (iOS expires the user activation).
+  const foto = useQuery({
+    queryKey: ['profilbild-base64', mitglied.profilbildUrl],
+    queryFn: () => bildAlsBase64(mitglied.profilbildUrl),
+    enabled: !!mitglied.profilbildUrl,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const herunterladen = (datei: File) => {
+    const url = URL.createObjectURL(datei);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = datei.name;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
+  const speichern = () => {
+    const vcf = vcardErstellen({ ...mitglied, fotoBase64: foto.data ?? null });
+    const dateiname = `${(anzeigename(mitglied) || 'kontakt').replace(/[\\/:*?"<>|]/g, '_')}.vcf`;
+    const datei = new File([vcf], dateiname, { type: 'text/vcard' });
+    if (navigator.canShare?.({ files: [datei] })) {
+      navigator.share({ files: [datei] }).catch((e: unknown) => {
+        if (!(e instanceof DOMException && e.name === 'AbortError')) herunterladen(datei);
+      });
+      return;
+    }
+    herunterladen(datei);
+  };
+
+  return (
+    <Button
+      size="md"
+      variant="light"
+      leftSection={<IconAddressBook size={20} />}
+      w={{ base: '100%', sm: 'auto' }}
+      onClick={speichern}
+    >
+      Als Kontakt speichern
+    </Button>
   );
 }
