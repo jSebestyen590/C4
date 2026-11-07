@@ -192,6 +192,7 @@ export function KontaktSpeichernButton({ mitglied }: Readonly<{ mitglied: Mitgli
     <Button
       size="md"
       variant="light"
+      mih={44}
       leftSection={<IconAddressBook size={20} />}
       w={{ base: '100%', sm: 'auto' }}
       onClick={speichern}
