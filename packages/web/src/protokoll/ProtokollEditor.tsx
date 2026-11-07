@@ -3,6 +3,7 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { RichTextEditor, type RichTextEditorLabels } from '@mantine/tiptap';
 import { IconListTree } from '@tabler/icons-react';
 import Blockquote from '@tiptap/extension-blockquote';
+import { auswahlNachAenderung } from './slashLogik';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, type Editor } from '@tiptap/react';
@@ -144,7 +145,11 @@ export function ProtokollEditor({
   const [steuerung] = useState<SlashSteuerung>(() => ({
     daten: () => slashDatenRef.current,
     zustand: (neu) => {
-      if (neu?.query !== slashRef.current?.query) setAuswahl(0);
+      const kennung = (z: SlashZustand | null) =>
+        z && { query: z.query, schluessel: z.eintraege.map((e) => e.schluessel) };
+      setAuswahl(
+        auswahlNachAenderung(kennung(slashRef.current), kennung(neu), auswahlRef.current),
+      );
       slashRef.current = neu;
       setSlash(neu);
     },

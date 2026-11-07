@@ -425,3 +425,22 @@ export function slashEintraege(
   }
   return bausteinEintraege(filter, ohneVerschachtelt, ohneZitat);
 }
+
+/**
+ * Highlighted row after the suggestion list was updated: back to the first match whenever the query
+ * or the list of entries changed, otherwise kept (within bounds).
+ */
+export function auswahlNachAenderung(
+  alt: { query: string; schluessel: readonly string[] } | null,
+  neu: { query: string; schluessel: readonly string[] } | null,
+  auswahl: number,
+): number {
+  if (!neu || neu.schluessel.length === 0) return 0;
+  const gleich =
+    alt !== null &&
+    alt.query === neu.query &&
+    alt.schluessel.length === neu.schluessel.length &&
+    alt.schluessel.every((s, i) => s === neu.schluessel[i]);
+  if (!gleich) return 0;
+  return Math.min(Math.max(0, auswahl), neu.schluessel.length - 1);
+}

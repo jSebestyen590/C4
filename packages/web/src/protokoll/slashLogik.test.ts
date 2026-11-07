@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bausteinLeer } from '@c4/shared';
 import {
   anwesenheitPerson,
+  auswahlNachAenderung,
   normalisieren,
   slashEintraege,
   slashStufe,
@@ -220,5 +221,27 @@ describe('Erscheint and Geht', () => {
     expect(anwesenheitPerson(wahl('erscheint', 'j'))).toBe('j');
     expect(anwesenheitPerson(wahl('erscheint', null))).toBeNull();
     expect(anwesenheitPerson(wahl('geht', 'j'))).toBe('j');
+  });
+});
+
+describe('auswahlNachAenderung', () => {
+  const liste = (query: string, ...schluessel: string[]) => ({ query, schluessel });
+
+  it('resets to the first match when the query changes', () => {
+    expect(auswahlNachAenderung(liste('', 'alle', 'a', 'b'), liste('Mitgl', 'm1', 'm2'), 2)).toBe(0);
+  });
+
+  it('resets when the entries change although the query does not', () => {
+    expect(auswahlNachAenderung(liste('x', 'a', 'b'), liste('x', 'a', 'b', 'c'), 1)).toBe(0);
+  });
+
+  it('keeps the selection when nothing changed and clamps it', () => {
+    expect(auswahlNachAenderung(liste('x', 'a', 'b'), liste('x', 'a', 'b'), 1)).toBe(1);
+    expect(auswahlNachAenderung(liste('x', 'a', 'b'), liste('x', 'a', 'b'), 5)).toBe(1);
+  });
+
+  it('starts at 0 for a new or empty list', () => {
+    expect(auswahlNachAenderung(null, liste('', 'a'), 3)).toBe(0);
+    expect(auswahlNachAenderung(liste('', 'a'), null, 3)).toBe(0);
   });
 });

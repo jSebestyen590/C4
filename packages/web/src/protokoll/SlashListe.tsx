@@ -37,7 +37,8 @@ export function SlashListe<T extends ListenEintrag>({
             className="protokoll-slash-eintrag"
             // Keep the focus (and the typed "/query") in the editor.
             onMouseDown={(ev) => ev.preventDefault()}
-            onMouseEnter={() => onZeiger?.(i)}
+            // Only a real mouse move (not a list re-rendering under a resting pointer) moves the highlight.
+            onMouseMove={() => i !== auswahl && onZeiger?.(i)}
             onClick={() => onWaehlen(e)}
             px="sm"
             py="xs"
