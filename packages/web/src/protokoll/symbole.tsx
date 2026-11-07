@@ -9,6 +9,7 @@ import {
   IconNotes,
   IconPhoto,
   IconCrown,
+  IconListCheck,
   IconQuote,
   IconTemplate,
   IconUsersGroup,
@@ -38,6 +39,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconChartBar size={size} />;
     case 'wahl':
       return <IconUsersGroup size={size} />;
+    case 'auswahl':
+      return <IconListCheck size={size} />;
     case 'em':
       return <IconCrown size={size} />;
     case 'erscheint':
@@ -70,6 +73,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinMeinungsbild: 'meinungsbild',
   bausteinAufnahme: 'aufnahme',
   bausteinWahl: 'wahl',
+  bausteinAuswahl: 'auswahl',
 };
 
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
@@ -83,4 +87,5 @@ export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinMeinungsbild: 'Meinungsbild',
   bausteinAufnahme: 'Aufnahme',
   bausteinWahl: 'Wahl',
+  bausteinAuswahl: 'Abstimmung (Auswahl)',
 };

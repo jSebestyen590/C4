@@ -30,6 +30,10 @@ import {
   stichwahlEntfernen,
   stichwahlHinzufuegen,
   stichwahlSetzen,
+  annahmeSchalterIds,
+  auswahlOptionEntfernen,
+  auswahlOptionHinzufuegen,
+  auswahlOptionSetzen,
   ueberzaehligeStichwahlenEntfernen,
   wahlAnzahlSetzen,
   wahlStimmenProPersonSetzen,
@@ -212,6 +216,58 @@ describe('Meinungsbild options', () => {
   it('words the head count', () => {
     expect(personenAnwesendText(1)).toBe('Anwesend: 1 Person (ohne Gäste)');
     expect(personenAnwesendText(12)).toBe('Anwesend: 12 Personen (ohne Gäste)');
+  });
+});
+
+describe('annahmeSchalterIds', () => {
+  it('keeps the order of the candidates when one declines', () => {
+    const daten = {
+      ...bausteinLeer('bausteinWahl'),
+      anzahl: 2,
+      kandidaten: [
+        { id: 'a', sub: null, name: 'A', stimmen: 5 },
+        { id: 'b', sub: null, name: 'B', stimmen: 4 },
+        { id: 'c', sub: null, name: 'C', stimmen: 3 },
+        { id: 'd', sub: null, name: 'D', stimmen: 0 },
+      ],
+    };
+    expect(annahmeSchalterIds(daten)).toEqual(['a', 'b']);
+    // A declines: C moves up, A is declined; the order does not follow the result.
+    expect(annahmeSchalterIds({ ...daten, annahme: { a: false } })).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('Auswahl', () => {
+  const leer = bausteinLeer('bausteinAuswahl');
+  it('adds, edits and removes options (also from the runoff rounds)', () => {
+    const eins = auswahlOptionHinzufuegen(leer, 'a');
+    const zwei = auswahlOptionHinzufuegen(eins, 'b');
+    expect(zwei.optionen.map((o) => o.id)).toEqual(['a', 'b']);
+    const mit = auswahlOptionSetzen(auswahlOptionSetzen(zwei, 'a', { text: 'Ja' }), 'a', {
+      stimmen: 3,
+    });
+    expect(mit.optionen[0]).toEqual({ id: 'a', text: 'Ja', stimmen: 3 });
+    expect(auswahlOptionSetzen(mit, 'a', { stimmen: -1 })).toBe(mit);
+    const runde = { ...mit, stichwahlen: [{ stimmen: { a: 2, b: 1 }, enthaltung: 0 }] };
+    const ohne = auswahlOptionEntfernen(runde, 'a');
+    expect(ohne.optionen.map((o) => o.id)).toEqual(['b']);
+    expect(ohne.stichwahlen[0]!.stimmen).toEqual({ b: 1 });
+  });
+  it('adds a runoff for a tie and drops superfluous ones', () => {
+    const gleich = {
+      ...leer,
+      optionen: [
+        { id: 'a', text: 'A', stimmen: 2 },
+        { id: 'b', text: 'B', stimmen: 2 },
+      ],
+    };
+    const mit = stichwahlHinzufuegen(gleich);
+    expect(mit.stichwahlen).toHaveLength(1);
+    expect(stichwahlHinzufuegen(mit)).toBe(mit);
+    const geklaert = { ...mit, optionen: [{ ...mit.optionen[0]!, stimmen: 3 }, mit.optionen[1]!] };
+    expect(ueberzaehligeStichwahlenEntfernen(geklaert).stichwahlen).toEqual([]);
+    expect(wahlAnzahlSetzen(leer, 2).anzahl).toBe(2);
+    expect(wahlStimmenProPersonSetzen(leer, 3).stimmenProPerson).toBe(3);
   });
 });
 

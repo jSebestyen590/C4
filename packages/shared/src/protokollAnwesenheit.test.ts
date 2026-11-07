@@ -380,6 +380,18 @@ describe('Aufnahme, Meinungsbild and nested blocks', () => {
     expect(v.anwesendePersonen).toEqual({});
   });
 
+  it('records the quorum at an Auswahl block, also a nested one', () => {
+    const auswahl = bausteinErzeugen('bausteinAuswahl');
+    const innen = bausteinErzeugen('bausteinAuswahl');
+    const ereignis = bausteinErzeugen('bausteinEvent', undefined, [{ type: 'paragraph' }, innen]);
+    const v = anwesenheitsVerlauf(doc(anw('geht', 'm0'), auswahl, ereignis), {
+      art: 'sitzung',
+      teilnahme: mitglieder(3),
+    });
+    expect(v.bausteine[auswahl.attrs.id]).toMatchObject({ anwesend: 2, wechsel: false });
+    expect(v.bausteine[innen.attrs.id]).toMatchObject({ anwesend: 2, wechsel: false });
+  });
+
   it('counts everybody present at a Meinungsbild (all statuses, chosen EMs)', () => {
     const vorher = bausteinErzeugen('bausteinMeinungsbild');
     const nachher = bausteinErzeugen('bausteinMeinungsbild');
@@ -503,8 +515,9 @@ describe('nichtBeschlussfaehigeAbstimmungen', () => {
     const aussen = bausteinErzeugen('bausteinEvent', undefined, [{ type: 'paragraph' }, innen]);
     const a = bausteinErzeugen('bausteinAufnahme');
     const e = em(true);
-    const ids = nichtBeschlussfaehigeAbstimmungen(doc(b, aussen, a, e), eingabe);
-    expect(ids).toEqual([b, innen, a, e].map((k) => k.attrs.id));
+    const auswahl = bausteinErzeugen('bausteinAuswahl');
+    const ids = nichtBeschlussfaehigeAbstimmungen(doc(b, aussen, a, e, auswahl), eingabe);
+    expect(ids).toEqual([b, innen, a, e, auswahl].map((k) => k.attrs.id));
   });
 
   it('finds votes in the notes of a Thema', () => {

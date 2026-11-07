@@ -28,6 +28,7 @@ import {
   beschlussZeilen,
   meinungsbildZeilen,
   emZeilen,
+  auswahlZeilen,
   wahlZeilen,
   type WahlKandidat,
   beschlussfaehigkeitText,
@@ -214,6 +215,7 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     case 'bausteinBeschluss':
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
+    case 'bausteinAuswahl':
       // An Abstimmung / Meinungsbild / Wahl inside the free text of another Baustein.
       return (
         <div className="pk-dok-innen">
@@ -422,7 +424,11 @@ function Baustein({
               <>
                 Verantwortlich:{' '}
                 {ctx.erwIds.has(k) ? (
-                  <mark className="pk-dok-erw-ich" id={ctx.erwIds.get(k)} data-testid="erwaehnung-ich">
+                  <mark
+                    className="pk-dok-erw-ich"
+                    id={ctx.erwIds.get(k)}
+                    data-testid="erwaehnung-ich"
+                  >
                     <PersonName p={verantwortlich} />
                   </mark>
                 ) : (
@@ -581,6 +587,47 @@ function Baustein({
                 </Fragment>
               ))}
             </p>
+          )}
+          {(z.anwesend || z.nichtBeschlussfaehig) && (
+            <p>
+              {z.anwesend}
+              {z.nichtBeschlussfaehig && (
+                <span className="pk-dok-warnung"> – nicht beschlussfähig</span>
+              )}
+            </p>
+          )}
+        </div>
+      </>
+    );
+  }
+  if (k.type === 'bausteinAuswahl') {
+    const z = auswahlZeilen(daten, ctx.verlauf.bausteine[id]);
+    if (!z) return null;
+    return (
+      <>
+        {!innen && (
+          <div className={`pk-dok-h${Math.min(h, 5)}`}>
+            {z.frage ? `Abstimmung: ${z.frage}` : 'Abstimmung'}
+          </div>
+        )}
+        {/* The notes are the discussion before; the vote concludes the point. */}
+        <Notizen knoten={k.content} ctx={ctxIn} />
+        <div className="pk-dok-beschluss">
+          {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
+          {innen && (
+            <p>
+              <strong>Abstimmung:</strong> {z.frage}
+            </p>
+          )}
+          {z.anzahl && <p>{z.anzahl}</p>}
+          {z.moeglichkeiten && <p>Möglichkeiten: {z.moeglichkeiten}</p>}
+          {z.stichwahlen.map((r, i) => (
+            <p key={i}>Stichwahl: {r}</p>
+          ))}
+          {z.offen ? (
+            <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>
+          ) : (
+            z.ergebnis && <p>Ergebnis: {z.ergebnis}</p>
           )}
           {(z.anwesend || z.nichtBeschlussfaehig) && (
             <p>

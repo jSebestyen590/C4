@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { describe, expect, it } from 'vitest';
 import {
   BAUSTEIN_TYPEN,
+  BAUSTEINE_IN_NOTIZEN,
   bausteinErzeugen,
   istBausteinInNotizen,
   istVerschachtelbar,
@@ -27,7 +28,7 @@ describe('editor schema', () => {
 
   it('lets Abstimmung and Meinungsbild stand in the notes of other Bausteine, but not in each other', () => {
     for (const typ of BAUSTEIN_TYPEN) {
-      for (const innen of ['bausteinBeschluss', 'bausteinMeinungsbild', 'bausteinWahl'] as const) {
+      for (const innen of BAUSTEINE_IN_NOTIZEN) {
         // Anwesenheit has no free text at all.
         const erlaubt = !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit';
         const knoten = schema.nodeFromJSON(bausteinErzeugen(innen));

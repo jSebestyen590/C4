@@ -84,6 +84,8 @@ export function gliederungTitel(
       return mit(BAUSTEIN_TITEL[typ], (d as unknown as BausteinBeschlussDaten).antrag ?? '');
     case 'bausteinMeinungsbild':
       return mit(BAUSTEIN_TITEL[typ], (d as unknown as BausteinMeinungsbildDaten).frage ?? '');
+    case 'bausteinAuswahl':
+      return mit('Abstimmung', String(d.frage ?? ''));
     case 'bausteinWahl':
       return mit(BAUSTEIN_TITEL[typ], (d as unknown as BausteinWahlDaten).posten ?? '');
     case 'bausteinAufnahme': {
@@ -103,10 +105,7 @@ export function gliederungTitel(
   }
 }
 
-function eintrag(
-  node: PmNode,
-  personName: (sub: string) => string | undefined,
-): GliederungEintrag {
+function eintrag(node: PmNode, personName: (sub: string) => string | undefined): GliederungEintrag {
   const typ = node.type.name as BausteinTyp;
   const kinder: GliederungEintrag[] = [];
   node.forEach((kind) => {

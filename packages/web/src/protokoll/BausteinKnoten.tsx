@@ -16,6 +16,7 @@ import {
   istThema,
   type BausteinAnwaerterDaten,
   type BausteinAufnahmeDaten,
+  type BausteinAuswahlDaten,
   type BausteinBeschlussDaten,
   type BausteinDatenVon,
   type BausteinEmDaten,
@@ -38,6 +39,7 @@ import {
   EventFormular,
   MeinungsbildFormular,
   ThemaFormular,
+  AuswahlFormular,
   WahlFormular,
   VergangenesEventFormular,
   type FormularProps,
@@ -127,6 +129,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
               {typ === 'bausteinBeschluss' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinAufnahme' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinWahl' && <BeschlussHinweis id={node.attrs.id as string} />}
+              {typ === 'bausteinAuswahl' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinMeinungsbild' && (
                 <MeinungsbildHinweis id={node.attrs.id as string} />
               )}
@@ -272,6 +275,10 @@ export const BausteinWahlKnoten = bausteinKnoten(
   'bausteinWahl',
   karte('bausteinWahl', WahlFormular as ComponentType<FormularProps<BausteinWahlDaten>>),
 );
+export const BausteinAuswahlKnoten = bausteinKnoten(
+  'bausteinAuswahl',
+  karte('bausteinAuswahl', AuswahlFormular as ComponentType<FormularProps<BausteinAuswahlDaten>>),
+);
 export const BausteinAufnahmeKnoten = bausteinKnoten(
   'bausteinAufnahme',
   karte(
@@ -298,5 +305,6 @@ export const BAUSTEIN_KNOTEN = [
   BausteinMeinungsbildKnoten,
   BausteinAufnahmeKnoten,
   BausteinWahlKnoten,
+  BausteinAuswahlKnoten,
   BildKnoten,
 ];

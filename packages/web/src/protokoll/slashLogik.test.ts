@@ -108,11 +108,42 @@ describe('first stage', () => {
     expect(event?.aktion).toEqual({ art: 'weiter', text: 'event ' });
     expect(vergangen?.aktion).toEqual({ art: 'weiter', text: 'vergangenes ' });
   });
-  it('inserts Abstimmung, Meinungsbild and Aufnahme directly with empty fields', () => {
-    expect(slashEintraege('abstimm', daten)[0]?.aktion).toMatchObject({
+  it('opens the second stage for Abstimmung with Ja / Nein and Mehrere Möglichkeiten', () => {
+    expect(slashEintraege('abstimm', daten)[0]?.aktion).toEqual({
+      art: 'weiter',
+      text: 'abstimmung ',
+    });
+    expect(slashEintraege('beschluss', daten)[0]?.aktion).toEqual({
+      art: 'weiter',
+      text: 'abstimmung ',
+    });
+    expect(titel('abstimmung ')).toEqual(['Ja / Nein', 'Mehrere Möglichkeiten']);
+    expect(titel('beschluss ')).toEqual(['Ja / Nein', 'Mehrere Möglichkeiten']);
+    expect(titel('abstimmung meh')).toEqual(['Mehrere Möglichkeiten']);
+    expect(titel('abstimmung ja')).toEqual(['Ja / Nein']);
+    expect(slashEintraege('abstimmung ', daten)[0]?.aktion).toMatchObject({
       art: 'einfuegen',
       wahl: { typ: 'bausteinBeschluss' },
     });
+    expect(slashEintraege('abstimmung meh', daten)[0]?.aktion).toMatchObject({
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinAuswahl', daten: { frage: '', anzahl: 1, optionen: [] } },
+    });
+    // Not offered inside a vote.
+    expect(slashEintraege('abstimmung ', daten, true)).toEqual([]);
+  });
+  it('inserts an Auswahl directly by its aliases, but does not list it without a query', () => {
+    for (const alias of ['auswahl', 'mehrfach', 'mehrfachauswahl']) {
+      expect(slashEintraege(alias, daten)[0]?.aktion, alias).toMatchObject({
+        art: 'einfuegen',
+        wahl: { typ: 'bausteinAuswahl' },
+      });
+      expect(slashEintraege(alias, daten, true)).toEqual([]);
+    }
+    expect(titel('')).not.toContain('Abstimmung (Mehrere Möglichkeiten)');
+    expect(titel('abstimm')).toEqual(['Abstimmung']);
+  });
+  it('inserts Meinungsbild and Aufnahme directly with empty fields', () => {
     expect(slashEintraege('mein', daten)[0]?.aktion).toMatchObject({
       art: 'einfuegen',
       wahl: {
@@ -228,7 +259,9 @@ describe('auswahlNachAenderung', () => {
   const liste = (query: string, ...schluessel: string[]) => ({ query, schluessel });
 
   it('resets to the first match when the query changes', () => {
-    expect(auswahlNachAenderung(liste('', 'alle', 'a', 'b'), liste('Mitgl', 'm1', 'm2'), 2)).toBe(0);
+    expect(auswahlNachAenderung(liste('', 'alle', 'a', 'b'), liste('Mitgl', 'm1', 'm2'), 2)).toBe(
+      0,
+    );
   });
 
   it('resets when the entries change although the query does not', () => {

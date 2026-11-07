@@ -244,6 +244,68 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(fertig).not.toContain('Nimmt die Wahl nicht an');
   });
 
+  it('renders an Auswahl titled like an Abstimmung: notes, then options, runoff and result', () => {
+    const auswahl = (id: string, stichwahlen: unknown[], extra = {}): ProtokollKnoten => ({
+      type: 'bausteinAuswahl',
+      attrs: {
+        id,
+        daten: {
+          ...bausteinLeer('bausteinAuswahl'),
+          frage: 'Wohin geht der Ausflug?',
+          anzahl: 2,
+          optionen: [
+            { id: 'a', text: 'Berlin', stimmen: 5 },
+            { id: 'b', text: 'Dresden', stimmen: 3 },
+            { id: 'c', text: '', stimmen: 3 },
+          ],
+          enthaltung: 1,
+          stichwahlen,
+          ...extra,
+        },
+      },
+      content: [text('Auswahlnotiz')],
+    });
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const render = (...bloecke: ProtokollKnoten[]) =>
+      renderToStaticMarkup(
+        <MantineProvider>
+          <ProtokollDokumentAnsicht
+            eingabe={{
+              ...eingabe,
+              inhalt: {
+                type: 'doc',
+                content: [
+                  vergangenes!,
+                  { ...gegenwaertiges!, content: [...bloecke, { type: 'paragraph' }] },
+                  zukuenftiges!,
+                ],
+              },
+            }}
+          />
+        </MantineProvider>,
+      );
+    const offen = render(auswahl('x1', []));
+    expect(offen).toContain('<div class="pk-dok-h2">Abstimmung: Wohin geht der Ausflug?</div>');
+    expect(offen).toContain('Möglichkeiten: Berlin 5 · Dresden 3 · – 3 · Enthaltung 1');
+    expect(offen).toContain('Noch offen: Stichwahl nötig');
+    expect(offen).not.toContain('Ergebnis:');
+    expect(offen.indexOf('Abstimmung: Wohin')).toBeLessThan(offen.indexOf('Auswahlnotiz'));
+    expect(offen.indexOf('Auswahlnotiz')).toBeLessThan(offen.indexOf('Möglichkeiten:'));
+    const fertig = render(auswahl('x2', [{ stimmen: { b: 1, c: 4 }, enthaltung: 2 }]));
+    expect(fertig).toContain('Stichwahl: Dresden 1 · – 4 · Enthaltung 2');
+    expect(fertig).toContain('Ergebnis: Berlin, –');
+    expect(fertig).toContain('(1 von 1 Mitgliedern anwesend)');
+    expect(fertig).not.toContain('Noch offen');
+    // Nested in a Thema: no heading of its own, the question stands in the box.
+    const innen = render({
+      type: 'bausteinThema',
+      attrs: { id: 't1', daten: { titel: 'Ausflug' } },
+      content: [text('Themennotiz'), auswahl('x3', [])],
+    });
+    expect(innen).toContain('<strong>Abstimmung:</strong> Wohin geht der Ausflug?');
+    expect(innen).not.toContain('<div class="pk-dok-h3">Abstimmung');
+  });
+
   it('puts the notes of a nested Wahl before its box inside a Thema', () => {
     const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
     const wahl: ProtokollKnoten = {

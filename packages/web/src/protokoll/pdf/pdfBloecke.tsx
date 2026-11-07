@@ -33,6 +33,7 @@ import {
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  auswahlZeilen,
   wahlZeilen,
   type DokumentEingabe,
   type Person,
@@ -375,6 +376,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     case 'bausteinBeschluss':
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
+    case 'bausteinAuswahl':
       return bausteinBloecke(k, ctx, true).map((b) => ({
         ...b,
         element: <View style={stile.innen}>{b.element}</View>,
@@ -680,6 +682,43 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
                 {'Nimmt die Wahl nicht an: '}
                 <Liste personen={z.abgelehnt} ctx={ctx} />
               </Text>
+            )}
+            {(z.anwesend || z.nichtBeschlussfaehig) && (
+              <Text>
+                {z.anwesend}
+                {z.nichtBeschlussfaehig && (
+                  <Text style={stile.warnung}> – nicht beschlussfähig</Text>
+                )}
+              </Text>
+            )}
+          </Kasten>,
+        ),
+      ];
+    }
+    case 'bausteinAuswahl': {
+      const z = auswahlZeilen(daten, ctx.verlauf.bausteine[id]);
+      if (!z) return [];
+      return [
+        ...(innen ? [] : [kopfzeile(z.frage ? `Abstimmung: ${z.frage}` : 'Abstimmung', ctx)]),
+        // The notes are the discussion before; the vote concludes the point.
+        ...notizen(k.content, ctxIn),
+        block(
+          <Kasten>
+            {z.wiederholung && <Klein>{z.wiederholung}</Klein>}
+            {innen && (
+              <Text>
+                <Text style={stile.fett}>Abstimmung:</Text> {z.frage}
+              </Text>
+            )}
+            {z.anzahl && <Text>{z.anzahl}</Text>}
+            {z.moeglichkeiten && <Text>Möglichkeiten: {z.moeglichkeiten}</Text>}
+            {z.stichwahlen.map((r, i) => (
+              <Text key={i}>Stichwahl: {r}</Text>
+            ))}
+            {z.offen ? (
+              <Text style={stile.warnung}>Noch offen: Stichwahl nötig</Text>
+            ) : (
+              z.ergebnis && <Text>Ergebnis: {z.ergebnis}</Text>
             )}
             {(z.anwesend || z.nichtBeschlussfaehig) && (
               <Text>

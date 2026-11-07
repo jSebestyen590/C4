@@ -199,6 +199,51 @@ describe('PDF: Thema and Wahl', () => {
   });
 });
 
+describe('PDF: Auswahl', () => {
+  const auswahl: ProtokollKnoten = {
+    type: 'bausteinAuswahl',
+    attrs: {
+      id: 'x1',
+      daten: {
+        ...bausteinLeer('bausteinAuswahl'),
+        frage: 'Wohin?',
+        optionen: [
+          { id: 'a', text: 'Berlin', stimmen: 2 },
+          { id: 'b', text: 'Dresden', stimmen: 1 },
+        ],
+        enthaltung: 1,
+      },
+    },
+    content: [text('AUSWAHLDISKUSSION')],
+  };
+  const mit: DokumentEingabe = {
+    ...eingabe,
+    inhalt: {
+      ...eingabe.inhalt,
+      content: [
+        eingabe.inhalt.content[0]!,
+        { ...eingabe.inhalt.content[1]!, content: [auswahl, { type: 'paragraph' }] },
+        eingabe.inhalt.content[2]!,
+      ],
+    },
+  };
+
+  it('renders heading, notes, then the result box, and stays out of the bookmarks', () => {
+    const json = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    const i = (s: string) => json.indexOf(s);
+    expect(i('Abstimmung: Wohin?')).toBeGreaterThan(-1);
+    expect(i('Abstimmung: Wohin?')).toBeLessThan(i('AUSWAHLDISKUSSION'));
+    expect(i('AUSWAHLDISKUSSION')).toBeLessThan(i('Möglichkeiten: '));
+    expect(json).toContain('Berlin 2 · Dresden 1 · Enthaltung 1');
+    expect(json).toContain('Ergebnis: ');
+    const outline = JSON.stringify(lesezeichen(blockBaum(pdfBloecke(mit))));
+    expect(outline).not.toContain('Wohin');
+  });
+});
+
 describe('PDF rendering', () => {
   it('renders the minutes to a valid PDF with embedded font', async () => {
     const require = createRequire(import.meta.url);

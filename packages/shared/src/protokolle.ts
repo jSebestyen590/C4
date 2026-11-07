@@ -65,6 +65,7 @@ export const BAUSTEIN_TYPEN = [
   'bausteinMeinungsbild',
   'bausteinAufnahme',
   'bausteinWahl',
+  'bausteinAuswahl',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
 
@@ -76,6 +77,7 @@ export const BAUSTEINE_IN_NOTIZEN = [
   'bausteinBeschluss',
   'bausteinMeinungsbild',
   'bausteinWahl',
+  'bausteinAuswahl',
 ] as const;
 export const istBausteinInNotizen = (typ: string): boolean =>
   (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
@@ -285,10 +287,34 @@ export const bausteinWahlDatenSchema = z.strictObject({
 });
 export type BausteinWahlDaten = z.infer<typeof bausteinWahlDatenSchema>;
 
-/** Votes each present member has in the main round of a Wahl: `stimmenProPerson`, else `anzahl`. */
+/**
+ * An Auswahl: a vote among several free-text options, `anzahl` of them win. Like a Wahl, but without
+ * proposals, acceptance or Posten. `stichwahlen` are runoff rounds, one per tie (see `auswahlErgebnis`).
+ */
+export const AUSWAHL_MAX_OPTIONEN = 30;
+export const bausteinAuswahlOptionSchema = z.strictObject({
+  id: z.string().min(1).max(100),
+  text: z.string().max(200),
+  stimmen,
+});
+export type BausteinAuswahlOption = z.infer<typeof bausteinAuswahlOptionSchema>;
+export const bausteinAuswahlDatenSchema = z.strictObject({
+  frage: z.string().max(2000),
+  anzahl: z.number().int().min(1).max(WAHL_MAX_ANZAHL),
+  /** Votes each present member has; null = same as `anzahl`. */
+  stimmenProPerson: z.number().int().min(1).max(WAHL_MAX_ANZAHL).nullable().default(null),
+  optionen: z.array(bausteinAuswahlOptionSchema).max(AUSWAHL_MAX_OPTIONEN),
+  enthaltung: stimmen,
+  stichwahlen: z.array(bausteinWahlStichwahlSchema).max(WAHL_MAX_STICHWAHLEN),
+  wiederholung: wiederholungSchema,
+});
+export type BausteinAuswahlDaten = z.infer<typeof bausteinAuswahlDatenSchema>;
+
+/** Votes each present member has in the main round of a Wahl / Auswahl: `stimmenProPerson`, else `anzahl`. */
 export const wahlStimmenProPerson = (
   daten: Pick<BausteinWahlDaten, 'anzahl' | 'stimmenProPerson'>,
 ): number => daten.stimmenProPerson ?? daten.anzahl;
+export const auswahlStimmenProPerson = wahlStimmenProPerson;
 
 export interface WahlRunde {
   /** The candidates the round is about (the ones the previous round left tied). */
@@ -318,7 +344,7 @@ export function wahlGueltigAbVorschlag(heute: string): string {
 }
 
 /**
- * Result of a Wahl. Rank the candidates by the votes of the main round (Enthaltungen do not count).
+ * Result of a vote among ids (Wahl, Auswahl). Rank the candidates by the votes of the main round (Enthaltungen do not count).
  * If the votes of place `anzahl` and place `anzahl + 1` differ, the top `anzahl` are elected. Otherwise
  * the candidates tied with place `anzahl` go into a Stichwahl for the seats left after the candidates
  * clearly above them are elected. `stichwahlen[i]` is the i-th runoff among exactly the candidates the
@@ -326,10 +352,16 @@ export function wahlGueltigAbVorschlag(heute: string): string {
  * vote counts as not held yet. With at most `anzahl` candidates, all that got at least one vote are
  * elected. Without any vote in the main round there is no result.
  */
-function wahlErgebnisRoh(daten: BausteinWahlDaten): WahlErgebnis {
+export function rangErgebnis(daten: {
+  ids: string[];
+  /** Main-round votes by id (missing = 0). */
+  stimmen: Record<string, number>;
+  anzahl: number;
+  stichwahlen: BausteinWahlStichwahl[];
+}): WahlErgebnis {
   const leer: WahlErgebnis = { gewaehlt: [], abgelehnt: [], offen: null, runden: [] };
-  const ids = daten.kandidaten.map((k) => k.id);
-  const haupt = Object.fromEntries(daten.kandidaten.map((k) => [k.id, k.stimmen]));
+  const ids = daten.ids;
+  const haupt = daten.stimmen;
   if (ids.length === 0 || ids.every((id) => (haupt[id] ?? 0) === 0)) return leer;
   const rang = (gruppe: string[], stimmenVon: Record<string, number>) =>
     [...gruppe].sort((a, b) => (stimmenVon[b] ?? 0) - (stimmenVon[a] ?? 0));
@@ -379,6 +411,30 @@ function wahlErgebnisRoh(daten: BausteinWahlDaten): WahlErgebnis {
   }
 }
 
+function wahlErgebnisRoh(daten: BausteinWahlDaten): WahlErgebnis {
+  return rangErgebnis({
+    ids: daten.kandidaten.map((k) => k.id),
+    stimmen: Object.fromEntries(daten.kandidaten.map((k) => [k.id, k.stimmen])),
+    anzahl: daten.anzahl,
+    stichwahlen: daten.stichwahlen,
+  });
+}
+
+/** Result of an Auswahl: the rules of `wahlErgebnis` without declines (`abgelehnt` is always empty). */
+export function auswahlErgebnis(daten: BausteinAuswahlDaten): WahlErgebnis {
+  return rangErgebnis({
+    ids: daten.optionen.map((o) => o.id),
+    stimmen: Object.fromEntries(daten.optionen.map((o) => [o.id, o.stimmen])),
+    anzahl: daten.anzahl,
+    stichwahlen: daten.stichwahlen,
+  });
+}
+
+/** The runoff rounds of an Auswahl to show and check. */
+export function auswahlRunden(daten: BausteinAuswahlDaten): WahlRunde[] {
+  return auswahlErgebnis(daten).runden;
+}
+
 /**
  * Effective result of a Wahl: like the raw result, but candidates that declined (`annahme[id] ===
  * false`) after being elected are skipped. Repeat: compute the result for the remaining candidates
@@ -424,6 +480,7 @@ export interface BausteinDatenVon {
   bausteinMeinungsbild: BausteinMeinungsbildDaten;
   bausteinAufnahme: BausteinAufnahmeDaten;
   bausteinWahl: BausteinWahlDaten;
+  bausteinAuswahl: BausteinAuswahlDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -437,6 +494,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinMeinungsbild: bausteinMeinungsbildDatenSchema,
   bausteinAufnahme: bausteinAufnahmeDatenSchema,
   bausteinWahl: bausteinWahlDatenSchema,
+  bausteinAuswahl: bausteinAuswahlDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -485,6 +543,16 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         stichwahlen: [],
         nichtAngetreten: [],
         annahme: {},
+        wiederholung: null,
+      };
+    case 'bausteinAuswahl':
+      return {
+        frage: '',
+        anzahl: 1,
+        stimmenProPerson: null,
+        optionen: [],
+        enthaltung: 0,
+        stichwahlen: [],
         wiederholung: null,
       };
     case 'bausteinAufnahme':
@@ -1093,6 +1161,18 @@ function abstimmungWiederholen(
             enthaltung: 0,
             stichwahlen: [],
             annahme: {},
+            wiederholung,
+          })
+        : null;
+    }
+    case 'bausteinAuswahl': {
+      const d = bausteinAuswahlDatenSchema.safeParse(daten);
+      return d.success
+        ? bausteinErzeugen('bausteinAuswahl', {
+            ...d.data,
+            optionen: d.data.optionen.map((o) => ({ ...o, stimmen: 0 })),
+            enthaltung: 0,
+            stichwahlen: [],
             wiederholung,
           })
         : null;

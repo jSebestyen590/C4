@@ -14,10 +14,11 @@ import {
 } from './slashLogik';
 import { SlashIcon } from './symbole';
 
-type Liste = 'vorlagen' | 'events' | 'erscheint' | 'geht';
+type Liste = 'vorlagen' | 'events' | 'abstimmung' | 'erscheint' | 'geht';
 
 const LISTEN: Record<Liste, { wort: string; titel: string; suche: string }> = {
   vorlagen: { wort: 'event', titel: 'Event einfügen', suche: 'Vorlage suchen' },
+  abstimmung: { wort: 'abstimmung', titel: 'Abstimmung einfügen', suche: 'Art suchen' },
   events: { wort: 'vergangenes', titel: 'Vergangenes Event einfügen', suche: 'Event suchen' },
   erscheint: { wort: 'erscheint', titel: 'Erscheint einfügen', suche: 'Person suchen' },
   geht: { wort: 'geht', titel: 'Geht einfügen', suche: 'Person suchen' },

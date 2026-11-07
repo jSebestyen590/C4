@@ -16,6 +16,11 @@ import {
   bausteinLeer,
   beschlussErgebnisVorschlag,
   wahlErgebnis,
+  auswahlErgebnis,
+  auswahlRunden,
+  bausteinAuswahlDatenSchema,
+  darfInNotizen,
+  type BausteinAuswahlDaten,
   wahlRunden,
   wahlGueltigAbVorschlag,
   protokollAnlegenSchema,
@@ -1112,6 +1117,98 @@ describe('Wahl', () => {
   });
 });
 
+describe('Auswahl', () => {
+  const daten = (
+    stimmen: number[],
+    anzahl = 1,
+    stichwahlen: BausteinAuswahlDaten['stichwahlen'] = [],
+  ): BausteinAuswahlDaten => ({
+    frage: 'Wohin?',
+    anzahl,
+    stimmenProPerson: null,
+    optionen: stimmen.map((n, i) => ({ id: `o${i}`, text: `O${i}`, stimmen: n })),
+    enthaltung: 0,
+    stichwahlen,
+    wiederholung: null,
+  });
+
+  it('is a Baustein type that may sit in notes but holds none', () => {
+    expect(BAUSTEIN_TYPEN).toContain('bausteinAuswahl');
+    expect(bausteinAuswahlDatenSchema.parse(bausteinLeer('bausteinAuswahl'))).toEqual(
+      bausteinLeer('bausteinAuswahl'),
+    );
+    expect(darfInNotizen('bausteinEvent', 'bausteinAuswahl')).toBe(true);
+    expect(darfInNotizen('bausteinThema', 'bausteinAuswahl')).toBe(true);
+    expect(darfInNotizen('bausteinAuswahl', 'bausteinThema')).toBe(false);
+    expect(darfInNotizen('bausteinAuswahl', 'bausteinBeschluss')).toBe(false);
+    expect(darfInNotizen('bausteinWahl', 'bausteinAuswahl')).toBe(false);
+  });
+
+  it('validates the fields strictly, stimmenProPerson defaults to null', () => {
+    const ohne: Record<string, unknown> = { ...daten([1]) };
+    delete ohne.stimmenProPerson;
+    expect(bausteinAuswahlDatenSchema.parse(ohne).stimmenProPerson).toBeNull();
+    const s = (teil: object) => bausteinAuswahlDatenSchema.safeParse({ ...daten([1]), ...teil });
+    expect(s({ anzahl: 0 }).success).toBe(false);
+    expect(s({ stimmenProPerson: 21 }).success).toBe(false);
+    expect(s({ frage: 'x'.repeat(2001) }).success).toBe(false);
+    expect(s({ extra: 1 }).success).toBe(false);
+    expect(s({ optionen: [{ id: '', text: 'a', stimmen: 0 }] }).success).toBe(false);
+    expect(s({ optionen: [{ id: 'a', text: 'a'.repeat(201), stimmen: 0 }] }).success).toBe(false);
+    expect(
+      s({ optionen: Array.from({ length: 31 }, (_, i) => ({ id: `${i}`, text: '', stimmen: 0 })) })
+        .success,
+    ).toBe(false);
+    const doc = dokument({ gegenwaertiges: [bausteinErzeugen('bausteinAuswahl', daten([2, 1]))] });
+    expect(protokollDokumentPruefen(doc)).toBeNull();
+  });
+
+  it('a clear winner is chosen', () => {
+    expect(auswahlErgebnis(daten([5, 3, 1]))).toEqual({
+      gewaehlt: ['o0'],
+      abgelehnt: [],
+      offen: null,
+      runden: [],
+    });
+  });
+
+  it('no votes: no result', () => {
+    expect(auswahlErgebnis(daten([0, 0])).gewaehlt).toEqual([]);
+    expect(auswahlErgebnis(daten([])).offen).toBeNull();
+  });
+
+  it('anzahl 2 takes the two best', () => {
+    expect(auswahlErgebnis(daten([5, 1, 3], 2)).gewaehlt).toEqual(['o0', 'o2']);
+  });
+
+  it('a tie at the boundary is open and needs a Stichwahl', () => {
+    const e = auswahlErgebnis(daten([5, 3, 3], 2));
+    expect(e.gewaehlt).toEqual(['o0']);
+    expect(e.offen).toEqual({ kandidaten: ['o1', 'o2'], plaetze: 1, rundeVorhanden: false });
+  });
+
+  it('a Stichwahl resolves the tie', () => {
+    const d = daten([4, 4], 1, [{ stimmen: { o0: 1, o1: 3 }, enthaltung: 0 }]);
+    const e = auswahlErgebnis(d);
+    expect(e.gewaehlt).toEqual(['o1']);
+    expect(e.offen).toBeNull();
+    expect(auswahlRunden(d)).toEqual([{ kandidaten: ['o0', 'o1'], plaetze: 1 }]);
+  });
+
+  it('gives the same result as a Wahl with the same votes', () => {
+    const stimmen = [4, 4, 2, 4];
+    const stich = [{ stimmen: { o0: 2, o1: 2, o3: 1 }, enthaltung: 0 }];
+    const a = auswahlErgebnis(daten(stimmen, 2, stich));
+    const w = wahlErgebnis({
+      ...bausteinLeer('bausteinWahl'),
+      anzahl: 2,
+      kandidaten: stimmen.map((n, i) => ({ id: `o${i}`, sub: null, name: '', stimmen: n })),
+      stichwahlen: stich,
+    });
+    expect(a).toEqual(w);
+  });
+});
+
 describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
   const sitzung = '2026-11-10';
   const wiederholen = (ids: string[]) => ({
@@ -1244,6 +1341,47 @@ describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
     expect(neu.map((k) => (k.attrs!.daten as { antrag: string }).antrag)).toEqual(['innen']);
     // The Event block itself is not copied into Gegenwärtiges (no longer in the past) and loses the vote.
     expect(JSON.stringify(doc.content[2])).not.toContain('"innen"');
+  });
+
+  it('repeats an Auswahl with texts kept, votes reset and a pointer to the Sitzung', () => {
+    const auswahl = bausteinErzeugen('bausteinAuswahl', {
+      ...bausteinLeer('bausteinAuswahl'),
+      frage: 'Wohin?',
+      anzahl: 2,
+      stimmenProPerson: 1,
+      optionen: [
+        { id: 'a', text: 'Nord', stimmen: 4 },
+        { id: 'b', text: 'Süd', stimmen: 4 },
+      ],
+      enthaltung: 1,
+      stichwahlen: [{ stimmen: { a: 1 }, enthaltung: 0 }],
+    });
+    const nicht = bausteinErzeugen('bausteinAuswahl');
+    const letztes = dokument({ gegenwaertiges: [auswahl, nicht] });
+    const doc = protokollVorschlag({
+      sitzungDatum: sitzung,
+      letztes,
+      wiederholen: wiederholen([auswahl.attrs.id]),
+    });
+    const neu = gegenwaertiges(doc).filter((k) => k.type.startsWith('baustein'));
+    expect(neu).toHaveLength(1);
+    expect(neu[0]!.type).toBe('bausteinAuswahl');
+    expect(neu[0]!.attrs!.id).not.toBe(auswahl.attrs.id);
+    expect(neu[0]!.attrs!.daten).toEqual({
+      frage: 'Wohin?',
+      anzahl: 2,
+      stimmenProPerson: 1,
+      optionen: [
+        { id: 'a', text: 'Nord', stimmen: 0 },
+        { id: 'b', text: 'Süd', stimmen: 0 },
+      ],
+      enthaltung: 0,
+      stichwahlen: [],
+      wiederholung: w,
+    });
+    // Without the list an Auswahl is dropped like an Abstimmung.
+    const ohne = protokollVorschlag({ sitzungDatum: sitzung, letztes });
+    expect(gegenwaertiges(ohne).filter((k) => k.type.startsWith('baustein'))).toEqual([]);
   });
 
   it('skips a Neues EM without a vote and does nothing without a list', () => {

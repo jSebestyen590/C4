@@ -5,7 +5,9 @@ import {
   bausteinBeschlussDatenSchema,
   bausteinMeinungsbildDatenSchema,
   bausteinEmDatenSchema,
+  bausteinAuswahlDatenSchema,
   bausteinWahlDatenSchema,
+  auswahlErgebnis,
   wahlErgebnis,
   wahlRunden,
   anwesenheitsZeitText,
@@ -432,6 +434,63 @@ export function wahlZeilen(
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
     nichtAngetreten: w.nichtAngetreten,
+    offen: ergebnis.offen !== null,
+    anwesend: stand ? `(${anwesendText(stand)})` : '',
+    nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,
+  };
+}
+
+export interface AuswahlZeilen {
+  wiederholung: string;
+  frage: string;
+  /** "Anzahl zu wählen: 2" or '' for a single winner. */
+  anzahl: string;
+  /** "A 5 · B 3 · Enthaltung 1" (an option without text is "–"), '' without options. */
+  moeglichkeiten: string;
+  /** One line per runoff round that applies: "B 4 · C 2 · Enthaltung 0". */
+  stichwahlen: string[];
+  /** "A, B" (names of the winners), '' while undecided. */
+  ergebnis: string;
+  /** A tie is still open: no result yet. */
+  offen: boolean;
+  /** "(13 von 25 Mitgliedern anwesend)" or '' */
+  anwesend: string;
+  nichtBeschlussfaehig: boolean;
+}
+
+/** Lines of a `bausteinAuswahl`; null when the data are invalid. */
+export function auswahlZeilen(
+  daten: unknown,
+  stand: Beschlussfaehigkeit | undefined,
+): AuswahlZeilen | null {
+  const d = bausteinAuswahlDatenSchema.safeParse(daten);
+  if (!d.success) return null;
+  const a = d.data;
+  const ergebnis = auswahlErgebnis(a);
+  const text = (t: string): string => t.trim() || '–';
+  const nachId = new Map(a.optionen.map((o) => [o.id, o]));
+  const zeile = (eintraege: { text: string; stimmen: number }[], enthaltung: number): string =>
+    [...eintraege.map((e) => `${text(e.text)} ${e.stimmen}`), `Enthaltung ${enthaltung}`].join(
+      ' · ',
+    );
+  return {
+    wiederholung: wiederholungZeile('Abstimmung', a.wiederholung),
+    frage: a.frage.trim(),
+    anzahl: a.anzahl === 1 ? '' : `Anzahl zu wählen: ${a.anzahl}`,
+    moeglichkeiten: a.optionen.length > 0 ? zeile(a.optionen, a.enthaltung) : '',
+    stichwahlen: ergebnis.runden.map((r, i) =>
+      zeile(
+        r.kandidaten.flatMap((id) => {
+          const o = nachId.get(id);
+          return o ? [{ text: o.text, stimmen: a.stichwahlen[i]!.stimmen[id] ?? 0 }] : [];
+        }),
+        a.stichwahlen[i]!.enthaltung,
+      ),
+    ),
+    ergebnis: ergebnis.gewaehlt
+      .flatMap((id) => nachId.get(id) ?? [])
+      .map((o) => text(o.text))
+      .join(', '),
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',
     nichtBeschlussfaehig: stand !== undefined && !stand.beschlussfaehig,

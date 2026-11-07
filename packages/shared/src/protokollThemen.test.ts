@@ -29,7 +29,13 @@ describe('rules for Bausteine in notes', () => {
   it('lets votes and Themen be nested, nothing else', () => {
     const nestbar = BAUSTEIN_TYPEN.filter(istVerschachtelbar);
     expect(nestbar.sort()).toEqual(
-      ['bausteinBeschluss', 'bausteinMeinungsbild', 'bausteinThema', 'bausteinWahl'].sort(),
+      [
+        'bausteinAuswahl',
+        'bausteinBeschluss',
+        'bausteinMeinungsbild',
+        'bausteinThema',
+        'bausteinWahl',
+      ].sort(),
     );
     expect(istThema('bausteinThema')).toBe(true);
     expect(istThema('bausteinEvent')).toBe(false);
@@ -139,7 +145,10 @@ describe('votes through nested Themen', () => {
     const gegenwart = (neu.content[1]!.content ?? []).filter((k) => k.type.startsWith('baustein'));
     expect(gegenwart.map((k) => k.type)).toEqual(['bausteinBeschluss']);
     expect(gegenwart[0]!.attrs!.id).not.toBe(abstimmung.attrs.id);
-    expect(gegenwart[0]!.attrs!.daten).toMatchObject({ ja: 0, wiederholung: { datum: '2026-11-05' } });
+    expect(gegenwart[0]!.attrs!.daten).toMatchObject({
+      ja: 0,
+      wiederholung: { datum: '2026-11-05' },
+    });
     // The Event of the old minutes is gone from Gegenwärtiges and nothing of the Themen is carried over.
     expect(event.type).toBe('bausteinEvent');
     expect(JSON.stringify(neu)).not.toContain('bausteinThema');

@@ -1,6 +1,9 @@
 import {
   bausteinErzeugen,
   beschlussErgebnisVorschlag,
+  AUSWAHL_MAX_OPTIONEN,
+  auswahlErgebnis,
+  auswahlRunden,
   MEINUNGSBILD_MAX_OPTIONEN,
   protokollDokumentNormalisieren,
   WAHL_MAX_ANZAHL,
@@ -8,6 +11,7 @@ import {
   WAHL_MAX_STICHWAHLEN,
   wahlErgebnis,
   wahlRunden,
+  type BausteinAuswahlDaten,
   type BausteinBeschlussDaten,
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
@@ -275,17 +279,34 @@ export function annahmeSetzen(
   return { ...daten, annahme: nimmtAn ? rest : { ...rest, [id]: false } };
 }
 
+/** A vote with runoffs: the Wahl or the Auswahl (they share seats, votes per person and runoff rounds). */
+type MehrfachDaten = BausteinWahlDaten | BausteinAuswahlDaten;
+
+const ergebnisVon = (daten: MehrfachDaten) =>
+  'optionen' in daten ? auswahlErgebnis(daten) : wahlErgebnis(daten);
+
+/**
+ * Candidates to show an acceptance switch for (elected or declined), in the order of the candidates.
+ * The order must not depend on the result: toggling a switch moves the candidate between elected and
+ * declined, and a switch that moves in the DOM loses its focus.
+ */
+export function annahmeSchalterIds(daten: BausteinWahlDaten): string[] {
+  const { gewaehlt, abgelehnt } = wahlErgebnis(daten);
+  const mit = new Set([...gewaehlt, ...abgelehnt]);
+  return daten.kandidaten.filter((k) => mit.has(k.id)).map((k) => k.id);
+}
+
 /** Number of seats, at least 1 (and at most the schema's maximum). */
-export function wahlAnzahlSetzen(daten: BausteinWahlDaten, anzahl: number): BausteinWahlDaten {
+export function wahlAnzahlSetzen<T extends MehrfachDaten>(daten: T, anzahl: number): T {
   if (!ganz(anzahl) || anzahl < 1 || anzahl > WAHL_MAX_ANZAHL) return daten;
   return { ...daten, anzahl };
 }
 
 /** Sets the votes each present member has; out-of-range values leave the Wahl as it is. */
-export function wahlStimmenProPersonSetzen(
-  daten: BausteinWahlDaten,
+export function wahlStimmenProPersonSetzen<T extends MehrfachDaten>(
+  daten: T,
   stimmenProPerson: number,
-): BausteinWahlDaten {
+): T {
   if (!ganz(stimmenProPerson) || stimmenProPerson < 1 || stimmenProPerson > WAHL_MAX_ANZAHL) {
     return daten;
   }
@@ -293,8 +314,8 @@ export function wahlStimmenProPersonSetzen(
 }
 
 /** Appends the runoff round the tie needs (nothing when no round is needed or one is there already). */
-export function stichwahlHinzufuegen(daten: BausteinWahlDaten): BausteinWahlDaten {
-  const offen = wahlErgebnis(daten).offen;
+export function stichwahlHinzufuegen<T extends MehrfachDaten>(daten: T): T {
+  const offen = ergebnisVon(daten).offen;
   if (!offen || offen.rundeVorhanden || daten.stichwahlen.length >= WAHL_MAX_STICHWAHLEN) {
     return daten;
   }
@@ -302,17 +323,17 @@ export function stichwahlHinzufuegen(daten: BausteinWahlDaten): BausteinWahlDate
 }
 
 /** Removes the runoff round `index` and all after it (they depend on it). */
-export function stichwahlEntfernen(daten: BausteinWahlDaten, index: number): BausteinWahlDaten {
+export function stichwahlEntfernen<T extends MehrfachDaten>(daten: T, index: number): T {
   return { ...daten, stichwahlen: daten.stichwahlen.slice(0, index) };
 }
 
 /** Votes (`id`) or Enthaltung (`'enthaltung'`) in runoff round `index`; invalid counts are ignored. */
-export function stichwahlSetzen(
-  daten: BausteinWahlDaten,
+export function stichwahlSetzen<T extends MehrfachDaten>(
+  daten: T,
   index: number,
   feld: string,
   wert: number,
-): BausteinWahlDaten {
+): T {
   if (!ganz(wert) || wert < 0 || !daten.stichwahlen[index]) return daten;
   return {
     ...daten,
@@ -326,8 +347,50 @@ export function stichwahlSetzen(
 }
 
 /** Drops the stored runoff rounds the result no longer uses (the votes changed so there is no tie). */
-export function ueberzaehligeStichwahlenEntfernen(daten: BausteinWahlDaten): BausteinWahlDaten {
-  return stichwahlEntfernen(daten, wahlRunden(daten).length);
+export function ueberzaehligeStichwahlenEntfernen<T extends MehrfachDaten>(daten: T): T {
+  const runden = 'optionen' in daten ? auswahlRunden(daten) : wahlRunden(daten);
+  return stichwahlEntfernen(daten, runden.length);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Auswahl
+// ---------------------------------------------------------------------------------------------
+
+/** A new empty option at the end (at most `AUSWAHL_MAX_OPTIONEN`). */
+export function auswahlOptionHinzufuegen(
+  daten: BausteinAuswahlDaten,
+  id: string = globalThis.crypto.randomUUID(),
+): BausteinAuswahlDaten {
+  if (daten.optionen.length >= AUSWAHL_MAX_OPTIONEN) return daten;
+  return { ...daten, optionen: [...daten.optionen, { id, text: '', stimmen: 0 }] };
+}
+
+/** Removes an option, also from the runoff rounds. */
+export function auswahlOptionEntfernen(
+  daten: BausteinAuswahlDaten,
+  id: string,
+): BausteinAuswahlDaten {
+  return {
+    ...daten,
+    optionen: daten.optionen.filter((o) => o.id !== id),
+    stichwahlen: daten.stichwahlen.map((r) => ({
+      ...r,
+      stimmen: Object.fromEntries(Object.entries(r.stimmen).filter(([k]) => k !== id)),
+    })),
+  };
+}
+
+/** Changes text or votes of one option; a negative or fractional count is ignored. */
+export function auswahlOptionSetzen(
+  daten: BausteinAuswahlDaten,
+  id: string,
+  neu: { text?: string; stimmen?: number },
+): BausteinAuswahlDaten {
+  if (neu.stimmen !== undefined && (!ganz(neu.stimmen) || neu.stimmen < 0)) return daten;
+  return {
+    ...daten,
+    optionen: daten.optionen.map((o) => (o.id === id ? { ...o, ...neu } : o)),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -369,6 +432,7 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
     case 'bausteinAufnahme':
       return leer('sub') && leer('name') ? 'person' : 'text';
     case 'bausteinMeinungsbild':
+    case 'bausteinAuswahl':
       return leer('frage') ? 'frage' : 'text';
     case 'bausteinWahl':
       return leer('posten') ? 'posten' : 'text';

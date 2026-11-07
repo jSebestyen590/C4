@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bausteinErzeugen,
+  type BausteinAuswahlDaten,
   bausteinWahlDatenSchema,
   protokollLeer,
   type BausteinWahlDaten,
@@ -300,6 +301,59 @@ describe('stimmenPruefen: Wahl', () => {
     const r = stimmenPruefen(doc(wahl({})), eingabe(3));
     expect(r.problems[0]!.text).toBe(
       'Wahl „Kasse“: 0 Stimmen, erwartet 3 (3 Mitglieder × 1 Stimme).',
+    );
+  });
+});
+
+function auswahl(teil: Partial<BausteinAuswahlDaten>) {
+  return bausteinErzeugen('bausteinAuswahl', {
+    frage: 'Wohin?',
+    anzahl: 1,
+    stimmenProPerson: null,
+    optionen: [],
+    enthaltung: 0,
+    stichwahlen: [],
+    wiederholung: null,
+    ...teil,
+  });
+}
+const opt = (id: string, stimmen: number) => ({ id, text: id, stimmen });
+
+describe('stimmenPruefen: Auswahl', () => {
+  it('main round: option votes plus Enthaltung = present × stimmenProPerson', () => {
+    const ok = auswahl({ anzahl: 2, optionen: [opt('a', 6), opt('b', 3)], enthaltung: 1 });
+    expect(stimmenPruefen(doc(ok), eingabe(5)).problems).toEqual([]);
+    const falsch = auswahl({ anzahl: 2, optionen: [opt('a', 5), opt('b', 2)] });
+    const r = stimmenPruefen(doc(falsch), eingabe(5));
+    expect(r.problems[0]!.text).toBe(
+      'Abstimmung „Wohin?“: 7 Stimmen, erwartet 10 (5 Mitglieder × 2 Stimmen).',
+    );
+    expect(r.pruefungen[0]).toMatchObject({ typ: 'wahl', runde: 0, ist: 7, soll: 10 });
+  });
+
+  it('stimmenProPerson overrides anzahl', () => {
+    const a = auswahl({ anzahl: 2, stimmenProPerson: 1, optionen: [opt('a', 3), opt('b', 2)] });
+    expect(stimmenPruefen(doc(a), eingabe(5)).problems).toEqual([]);
+  });
+
+  it('an open tie is a problem; a matching Stichwahl resolves it', () => {
+    const offen = auswahl({ optionen: [opt('a', 2), opt('b', 2), opt('c', 1)] });
+    expect(stimmenPruefen(doc(offen), eingabe(5)).problems.map((p) => p.text)).toEqual([
+      'Abstimmung „Wohin?“: Stichwahl nötig (Gleichstand).',
+    ]);
+    const mit = auswahl({
+      optionen: [opt('a', 2), opt('b', 2), opt('c', 1)],
+      stichwahlen: [{ stimmen: { a: 3, b: 2 }, enthaltung: 0 }],
+    });
+    const r = stimmenPruefen(doc(mit), eingabe(5));
+    expect(r.problems).toEqual([]);
+    expect(r.pruefungen).toHaveLength(2);
+    const falsch = auswahl({
+      optionen: [opt('a', 2), opt('b', 2), opt('c', 1)],
+      stichwahlen: [{ stimmen: { a: 3, b: 1 }, enthaltung: 0 }],
+    });
+    expect(stimmenPruefen(doc(falsch), eingabe(5)).problems[0]!.text).toBe(
+      'Abstimmung „Wohin?“ – Stichwahl 1: 4 Stimmen, erwartet 5 (5 Mitglieder × 1 Stimme).',
     );
   });
 });

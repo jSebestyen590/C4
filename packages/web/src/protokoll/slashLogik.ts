@@ -35,6 +35,7 @@ export type SlashSymbol =
   | 'meinungsbild'
   | 'aufnahme'
   | 'wahl'
+  | 'auswahl'
   | 'em'
   | 'erscheint'
   | 'geht'
@@ -101,7 +102,7 @@ export function anwesenheitPerson(wahl: BausteinWahl): string | null {
   return wahl.daten.sub || null;
 }
 
-export type SlashStufe = 'bausteine' | 'vorlagen' | 'events' | AnwesenheitArt;
+export type SlashStufe = 'bausteine' | 'vorlagen' | 'events' | 'abstimmung' | AnwesenheitArt;
 
 /** Lower case, umlauts spelled out (`Anwärter` = `anwaerter`), single spaces. */
 export function normalisieren(text: string): string {
@@ -121,6 +122,9 @@ export function slashStufe(query: string): { stufe: SlashStufe; filter: string }
   const wort = treffer?.[1];
   const rest = treffer?.[2] ?? '';
   if (wort === 'event') return { stufe: 'vorlagen', filter: rest.trim() };
+  if (wort === 'abstimmung' || wort === 'beschluss') {
+    return { stufe: 'abstimmung', filter: rest.trim() };
+  }
   if (wort === 'vergangenes' || wort === 'vergangen') {
     return { stufe: 'events', filter: rest.replace(/^event ?/, '').trim() };
   }
@@ -140,6 +144,8 @@ interface Definition {
   symbol: SlashSymbol;
   woerter: string[];
   aktion: SlashAktion;
+  /** Only found by its aliases (not by the title), and only once something was typed. */
+  nurAlias?: boolean;
 }
 
 export const SLASH_DEFINITIONEN: readonly Definition[] = [
@@ -198,9 +204,18 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     beschreibung: 'Antrag mit Abstimmung der Mitglieder und Ergebnis',
     symbol: 'beschluss',
     woerter: ['abstimmung', 'beschluss', 'antrag'],
+    aktion: { art: 'weiter', text: 'abstimmung ' },
+  },
+  {
+    schluessel: 'auswahl',
+    titel: 'Abstimmung (Mehrere Möglichkeiten)',
+    beschreibung: 'Abstimmung über mehrere Möglichkeiten, mehrere können gewinnen',
+    symbol: 'auswahl',
+    woerter: ['auswahl', 'mehrfach', 'mehrfachauswahl'],
+    nurAlias: true,
     aktion: {
       art: 'einfuegen',
-      wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
+      wahl: { typ: 'bausteinAuswahl', daten: bausteinLeer('bausteinAuswahl') },
     },
   },
   {
@@ -281,7 +296,7 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
 
 /**
  * Items of the first stage: the Bausteine (and the quote) whose name or alias starts with the filter.
- * `ohneVerschachtelt` leaves out Abstimmung, Meinungsbild and Wahl (the cursor is inside one of them: they
+ * `ohneVerschachtelt` leaves out Abstimmung, Meinungsbild, Wahl and Auswahl (the cursor is inside one of them: they
  * cannot be nested in each other); `ohneZitat` leaves out the quote (the cursor is in a list item).
  */
 export function bausteinEintraege(
@@ -297,7 +312,9 @@ export function bausteinEintraege(
       istBausteinInNotizen(d.aktion.wahl.typ)
     )
       return false;
+    if (ohneVerschachtelt && d.schluessel === 'beschluss') return false;
     if (ohneZitat && d.aktion.art === 'zitat') return false;
+    if (d.nurAlias) return f !== '' && d.woerter.some((n) => n.startsWith(f));
     if (f === '') return true;
     const namen = [normalisieren(d.titel), ...normalisieren(d.titel).split(' '), ...d.woerter];
     return namen.some((n) => n.startsWith(f));
@@ -342,6 +359,33 @@ export function vorlageEintraege(
     });
   }
   return eintraege;
+}
+
+/** Second stage of "Abstimmung": Ja / Nein (the Beschluss) or several options (the Auswahl). */
+export function abstimmungEintraege(filter: string): SlashEintrag[] {
+  const alle: SlashEintrag[] = [
+    {
+      schluessel: 'abstimmung-ja-nein',
+      titel: 'Ja / Nein',
+      beschreibung: 'Antrag mit Ja, Nein und Enthaltung',
+      symbol: 'beschluss',
+      aktion: {
+        art: 'einfuegen',
+        wahl: { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') },
+      },
+    },
+    {
+      schluessel: 'abstimmung-auswahl',
+      titel: 'Mehrere Möglichkeiten',
+      beschreibung: 'Frage mit mehreren Möglichkeiten, die eine oder mehrere gewinnen',
+      symbol: 'auswahl',
+      aktion: {
+        art: 'einfuegen',
+        wahl: { typ: 'bausteinAuswahl', daten: bausteinLeer('bausteinAuswahl') },
+      },
+    },
+  ];
+  return alle.filter((e) => enthaelt(`${e.titel} ${e.beschreibung}`, filter));
 }
 
 /** Second stage of "Vergangenes Event": no calendar event ("von Hand") and past events matching the filter. */
@@ -419,6 +463,7 @@ export function slashEintraege(
 ): SlashEintrag[] {
   const { stufe, filter } = slashStufe(query);
   if (stufe === 'vorlagen') return vorlageEintraege(daten.vorlagen, filter);
+  if (stufe === 'abstimmung') return ohneVerschachtelt ? [] : abstimmungEintraege(filter);
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
   if (stufe === 'erscheint' || stufe === 'geht') {
     return personEintraege(stufe, daten.personen ?? [], filter, daten.uhrzeit?.() ?? '');

@@ -7,17 +7,21 @@ import {
   bausteinAufnahmeDatenSchema,
   bausteinBeschlussDatenSchema,
   bausteinEmDatenSchema,
+  bausteinAuswahlDatenSchema,
+  type BausteinAuswahlDaten,
   bausteinWahlDatenSchema,
   type BausteinWahlDaten,
   type ProtokollDokument,
   type ProtokollKnoten,
+  auswahlErgebnis,
+  auswahlRunden,
   wahlErgebnis,
   wahlRunden,
   wahlStimmenProPerson,
 } from './protokolle';
 
 // Vote counts of binding votes against the members present (see docs/protokolle.md): every
-// Abstimmung (also the one of a Neues EM / Aufnahme) and every Wahl round must have exactly as many
+// Abstimmung (also the one of a Neues EM / Aufnahme) and every Wahl / Auswahl round must have exactly as many
 // votes as the present members can cast. Pure functions; the document is only walked.
 
 export interface StimmenEingabe extends AnwesenheitsEingabe {
@@ -56,6 +60,9 @@ const mehrzahl = (n: number, eins: string, viele: string): string =>
 const stimmenText = (n: number): string => mehrzahl(n, 'Stimme', 'Stimmen');
 const mitgliederText = (n: number): string => mehrzahl(n, 'Mitglied', 'Mitglieder');
 
+/** A long question shortened for a message. */
+const kurz = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text);
+
 /** `Abstimmung „Antrag“`; without a title just `Abstimmung`. */
 const mitTitel = (art: string, titel: string): string => {
   const t = titel.trim();
@@ -71,9 +78,10 @@ export function stimmenHinweisText(p: StimmenPruefung): string {
 
 const summe = (zahlen: readonly number[]): number => zahlen.reduce((a, b) => a + b, 0);
 
+/** Checks of a Wahl or Auswahl: the main round and every runoff that applies. */
 function wahlPruefungen(
   id: string,
-  daten: BausteinWahlDaten,
+  daten: BausteinWahlDaten | BausteinAuswahlDaten,
   stand: Beschlussfaehigkeit,
 ): { pruefungen: StimmenPruefung[]; offen: boolean } {
   const pro = wahlStimmenProPerson(daten);
@@ -90,11 +98,14 @@ function wahlPruefungen(
       ok: ist === soll,
     };
   };
-  const ergebnis = wahlErgebnis(daten);
-  const pruefungen = [
-    neu(0, summe(daten.kandidaten.map((k) => k.stimmen)) + daten.enthaltung, pro),
-  ];
-  wahlRunden(daten).forEach((r, i) => {
+  const auswahl = 'optionen' in daten;
+  const ergebnis = auswahl ? auswahlErgebnis(daten) : wahlErgebnis(daten);
+  const runden = auswahl ? auswahlRunden(daten) : wahlRunden(daten);
+  const hauptStimmen = auswahl
+    ? daten.optionen.map((o) => o.stimmen)
+    : daten.kandidaten.map((k) => k.stimmen);
+  const pruefungen = [neu(0, summe(hauptStimmen) + daten.enthaltung, pro)];
+  runden.forEach((r, i) => {
     const s = daten.stichwahlen[i];
     if (!s) return;
     pruefungen.push(
@@ -119,7 +130,7 @@ function problemText(p: StimmenPruefung, titel: string): string {
 /**
  * Checks every binding vote of the document against the members present at that point
  * (`anwesenheitsVerlauf`): Abstimmung, the vote of a Neues EM (only if there is one) and of an
- * Aufnahme need `ja + nein + enthaltung` = present members. A Wahl needs, per round that applies,
+ * Aufnahme need `ja + nein + enthaltung` = present members. A Wahl or Auswahl needs, per round that applies,
  * the votes of the candidates of that round plus Enthaltungen = present × votes per person (Stichwahl:
  * at most the seats of that round). A tie that still needs a Stichwahl is a problem, too. A Meinungsbild
  * is not binding and not checked. Damaged Baustein data is skipped.
@@ -175,10 +186,16 @@ export function stimmenPruefen(
           const titel = mitTitel('Aufnahme', name(d.data.sub, d.data.name));
           abstimmung(id, `${titel}, Abstimmung`, stand, d.data.abstimmung);
         }
-      } else if (knoten.type === 'bausteinWahl') {
-        const d = bausteinWahlDatenSchema.safeParse(roh);
+      } else if (knoten.type === 'bausteinWahl' || knoten.type === 'bausteinAuswahl') {
+        const d =
+          knoten.type === 'bausteinWahl'
+            ? bausteinWahlDatenSchema.safeParse(roh)
+            : bausteinAuswahlDatenSchema.safeParse(roh);
         if (d.success) {
-          const titel = mitTitel('Wahl', d.data.posten);
+          const titel =
+            'optionen' in d.data
+              ? mitTitel('Abstimmung', kurz(d.data.frage))
+              : mitTitel('Wahl', d.data.posten);
           const { pruefungen: ps, offen } = wahlPruefungen(id, d.data, stand);
           pruefungen.push(...ps);
           const falsch = ps.filter((p) => !p.ok);

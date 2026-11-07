@@ -49,7 +49,7 @@ export interface AnwesenheitsVerlauf {
   start: Beschlussfaehigkeit;
   /**
    * Quorum at each `bausteinAnwesenheit` (after applying it), `bausteinBeschluss`, `bausteinEm` and
-   * `bausteinAufnahme` and `bausteinWahl`, by Baustein id.
+   * `bausteinAufnahme`, `bausteinWahl` and `bausteinAuswahl`, by Baustein id.
    */
   bausteine: Record<string, Beschlussfaehigkeit & { wechsel: boolean }>;
   /**
@@ -176,7 +176,8 @@ export function anwesenheitsVerlauf(
       knoten.type === 'bausteinBeschluss' ||
       knoten.type === 'bausteinEm' ||
       knoten.type === 'bausteinAufnahme' ||
-      knoten.type === 'bausteinWahl'
+      knoten.type === 'bausteinWahl' ||
+      knoten.type === 'bausteinAuswahl'
     ) {
       bausteine[id] = { ...aktuell, wechsel: false };
     } else if (knoten.type === 'bausteinMeinungsbild') {
@@ -204,6 +205,7 @@ export function nichtBeschlussfaehigeAbstimmungen(
       knoten.type === 'bausteinBeschluss' ||
       knoten.type === 'bausteinAufnahme' ||
       knoten.type === 'bausteinWahl' ||
+      knoten.type === 'bausteinAuswahl' ||
       (knoten.type === 'bausteinEm' &&
         bausteinEmDatenSchema.safeParse(knoten.attrs?.daten).data?.abstimmung != null);
     if (abstimmung && verlauf.bausteine[id]?.beschlussfaehig === false) ids.push(id);
