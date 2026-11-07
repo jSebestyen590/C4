@@ -70,12 +70,15 @@ export function createFakeOneDrive(start: { verbunden?: boolean; ordner?: string
     tokenGepflegt: number;
     /** Number of `freigabeLink` calls. */
     freigaben: number;
+    /** Uploaded files by path. */
+    dateien: Map<string, { inhalt: Uint8Array; contentType: string }>;
   } = {
     ordner,
     zustand,
     codes: [],
     tokenGepflegt: 0,
     freigaben: 0,
+    dateien: new Map(),
     hinzufuegen: neu,
     async status() {
       return status();
@@ -138,6 +141,10 @@ export function createFakeOneDrive(start: { verbunden?: boolean; ordner?: string
       if (o.inhalt > 0) return 'nicht-leer';
       ordner.delete(id);
       return 'geloescht';
+    },
+    async dateiHochladen(pfad, inhalt, contentType) {
+      pruefen();
+      onedrive.dateien.set(pfad, { inhalt, contentType });
     },
     async tokenPflegen() {
       onedrive.tokenGepflegt += 1;

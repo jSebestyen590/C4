@@ -83,6 +83,14 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     minuten: null,
     abschaltbar: false,
   },
+  {
+    // Two days before the deadline of an open Todo; cannot be switched off.
+    key: 'todo.frist',
+    bereich: 'todo',
+    standardAktiv: true,
+    minuten: null,
+    abschaltbar: false,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

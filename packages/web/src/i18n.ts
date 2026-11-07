@@ -6,6 +6,9 @@ import type {
   EventBewertung,
   MitgliedStatus,
   Permission,
+  ProtokollArt,
+  ProtokollStatus,
+  ProtokollTeilnahmeWert,
   Quelle,
   Role,
   EventArt,
@@ -70,6 +73,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'trichter:lesen': 'Trichter sehen und Durchgänge eintragen',
   'trichter:verwalten': 'Trichter verwalten',
   'bilder:lesen': 'Bilder ansehen und Ordner anlegen',
+  'protokolle:lesen': 'Protokolle lesen',
+  'protokolle:schreiben': 'Protokolle schreiben',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -121,6 +126,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   geburtstag: 'Geburtstage',
   schluessel: 'Schlüssel',
   umfrage: 'Umfragen',
+  todo: 'Todos',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -169,6 +175,10 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
     'umfrage.erneut_abstimmen': {
       titel: 'Erneut abstimmen',
       beschreibung: 'Wenn eine Umfrage so geändert wurde, dass deine Stimme nicht mehr zählt.',
+    },
+    'todo.frist': {
+      titel: 'Todo bald fällig',
+      beschreibung: 'Erinnerung zwei Tage vor der Deadline eines offenen Todos.',
     },
   };
 
@@ -282,4 +292,36 @@ export const TRICHTER_KOENIG_EWIG_LABELS: Gegendert = {
   maennlich: 'ist ewiger Trichterkönig',
   weiblich: 'ist ewige Trichterkönigin',
   neutral: 'ist ewige:r Trichterkönig:in',
+};
+
+// Protokolle: attendance in full words (legend, summary) and in short words (segmented control).
+export const PROTOKOLL_TEILNAHME_LABELS: Record<ProtokollTeilnahmeWert, string> = {
+  anwesend: 'anwesend',
+  verspaetet: 'anwesend', // legacy value, counts as anwesend
+  entschuldigt: 'entschuldigt',
+  unentschuldigt: 'unentschuldigt',
+};
+
+export const PROTOKOLL_TEILNAHME_KURZ: Record<ProtokollTeilnahmeWert, string> = {
+  anwesend: 'da',
+  verspaetet: 'da', // legacy value, counts as anwesend
+  entschuldigt: 'entsch.',
+  unentschuldigt: 'fehlt',
+};
+
+/** Kind of Sitzung (quorum rule). */
+export const PROTOKOLL_ART_LABELS: Record<ProtokollArt, string> = {
+  sitzung: 'Sitzung',
+  mitgliederversammlung: 'Mitgliederversammlung',
+};
+
+/** Short explanation of the quorum rule of each kind. */
+export const PROTOKOLL_ART_BESCHREIBUNG: Record<ProtokollArt, string> = {
+  sitzung: 'Beschlussfähig mit mehr als der Hälfte der Mitglieder.',
+  mitgliederversammlung: 'Beschlussfähig mit mehr als zwei Dritteln der Mitglieder.',
+};
+
+export const PROTOKOLL_STATUS_LABELS: Record<ProtokollStatus, string> = {
+  entwurf: 'Entwurf',
+  abgeschlossen: 'Abgeschlossen',
 };

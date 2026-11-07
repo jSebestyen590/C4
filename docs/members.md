@@ -41,6 +41,10 @@ können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/share
 (Stufe übersprungen, zurück) ist erlaubt, aber das Statusfeld fragt vorher mit einer Warnung nach. Das API prüft die
 Reihenfolge nicht.
 
+Statuswechsel und Einladungen entstehen auch aus **Protokollen**: Beim Abschließen laden Anwärter:in-Bausteine ein (Konto plus
+Profil als Anwärter:in), Aufnahme und Neues EM setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum.
+Das läuft mit dem Recht `protokolle:schreiben`, ohne `users:manage`; siehe [protokolle.md](./protokolle.md#aktionen-beim-abschließen).
+
 ## Status-Historie
 
 Jeder Statuswechsel steht mit Datum in der Tabelle `mitglied_status_verlauf` (Migrationen `0098`–`0100`; Code in
@@ -79,11 +83,11 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
   Token werden für die Oberfläche nicht verwendet.
 - **Externe** (`extern`) haben vorerst dieselben Rechte wie Anwärter:innen (eigene Liste in `STATUS_PERMISSIONS`, damit sie sich später ändern lässt).
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
-  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`, `trichter:lesen`). Sobald Features unterschiedliche Rechte
+  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`, `trichter:lesen`, `bilder:lesen`, `protokolle:lesen`). Sobald Features unterschiedliche Rechte
   brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
-  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten` und `trichter:verwalten` haben nur Admins und Posten (siehe
+  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten` und `protokolle:schreiben` haben nur Admins und Posten (siehe
   [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md),
-  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md)).
+  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md), [protokolle.md](./protokolle.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

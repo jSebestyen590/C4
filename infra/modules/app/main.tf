@@ -148,9 +148,19 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = aws_dsql_cluster.this.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
-        Resource = "${aws_s3_bucket.profilbilder.arn}/profilbilder/*"
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = [
+          "${aws_s3_bucket.profilbilder.arn}/profilbilder/*",
+          "${aws_s3_bucket.profilbilder.arn}/protokollbilder/*",
+        ]
+      },
+      {
+        # Deleting a protocol removes all its images (list + delete by prefix).
+        Effect    = "Allow"
+        Action    = ["s3:ListBucket"]
+        Resource  = aws_s3_bucket.profilbilder.arn
+        Condition = { StringLike = { "s3:prefix" = ["protokollbilder/*"] } }
       },
       {
         Effect = "Allow"

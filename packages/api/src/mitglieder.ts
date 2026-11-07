@@ -45,8 +45,16 @@ export const geburtstagSichtbar = (row: Pick<MitgliedRow, 'geburtstagImKalender'
 export interface MitgliederStore {
   holen(sub: string): Promise<MitgliedRow | undefined>;
   alle(): Promise<MitgliedRow[]>;
-  /** Creates or replaces the row for `sub`; `statusNeu` only applies when the row is created. */
-  speichern(sub: string, daten: MitgliedDaten, statusNeu?: MitgliedStatus): Promise<void>;
+  /**
+   * Creates or replaces the row for `sub`; `statusNeu` and `ab` (start of the first status entry,
+   * default today) only apply when the row is created.
+   */
+  speichern(
+    sub: string,
+    daten: MitgliedDaten,
+    statusNeu?: MitgliedStatus,
+    ab?: string,
+  ): Promise<void>;
   /**
    * Admin only. Adds a history entry starting `ab` (or overwrites the one with the same day) and
    * syncs `mitglieder.status`. Returns false when the member has no profile row yet.
@@ -105,7 +113,7 @@ export function createMitgliederStore(db: Db): MitgliederStore {
     async alle() {
       return db.select().from(mitglieder).orderBy(mitglieder.nachname, mitglieder.vorname);
     },
-    async speichern(sub, daten, statusNeu = 'anwaerter') {
+    async speichern(sub, daten, statusNeu = 'anwaerter', ab = heuteBerlin()) {
       const werte = { ...daten, aktualisiertAm: new Date() };
       await db.transaction(async (tx) => {
         const [vorhanden] = await tx
@@ -121,7 +129,7 @@ export function createMitgliederStore(db: Db): MitgliederStore {
           id: randomUUID(),
           mitgliedSub: sub,
           status: statusNeu,
-          ab: heuteBerlin(),
+          ab,
         });
       });
     },

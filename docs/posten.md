@@ -39,7 +39,7 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
   stehen die Rechte aus `POSTEN_RECHTE` (`packages/shared/src/roles.ts`: `users:manage`, `posten:bearbeiten`,
-  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`); weitere Rechte
+  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben`); weitere Rechte
   trägt man dort ein.
 - Es gibt keine eigene Vorstandsrolle: Archivierte Posten sehen und reaktivieren alle mit `posten:bearbeiten`.
 
@@ -68,6 +68,11 @@ Datumswerte erscheinen überall als `dd.MM.yyyy` (`datumAnzeigen` in `packages/s
 Mitglieder werden überall mit ihrem Username (ohne Username „Vorname Nachname“), fett und in der Farbe ihres Status genannt (`StatusName` in `packages/web/src/StatusAnzeige.tsx`). Auf der Postenübersicht und im Übernahme-Dialog sind die Namen nicht verlinkt (dort ist die Zeile bzw. das Feld selbst bedienbar); auf der Detailseite führen die Besetzungen zum Mitglied. Im Auswahlfeld „Mitglied“ steht „username (Vorname Nachname)“.
 
 Die Besetzung in Kacheln und Tabelle lautet „<Name> ist seit <dd.MM.yyyy> <Bezeichnung>“ (Bezeichnung nach der `anrede` des Mitglieds, Datum = Start der Besetzung), eine Zeile pro aktueller Besetzung. In der Tabelle ist die ganze Zeile klickbar.
+
+Besetzungen entstehen auch aus **Wahlen in Protokollen**: Beim Abschließen legt die Aktion `wahl.posten` für die Gewählten
+Besetzungen ab „Gilt ab“ an, die offenen Besetzungen Nicht-Wiedergewählter enden am Vortag (Ablösung), Wiedergewählte behalten
+ihre. Das läuft mit dem Recht `protokolle:schreiben`, ohne `posten:bearbeiten`; siehe
+[protokolle.md](./protokolle.md#aktionen-beim-abschließen).
 
 ## Vorstandsposten
 

@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   ColorSwatch,
   Group,
   Badge,
@@ -31,9 +32,16 @@ import {
   type EventDauer,
   type EventKategorieDto,
   type ExterneDto,
+  PROTOKOLL_ARTEN,
+  type ProtokollArt,
 } from '@c4/shared';
 import { useApi } from './api';
-import { EVENT_ART_LABELS, EVENT_DAUER_LABELS } from './i18n';
+import {
+  EVENT_ART_LABELS,
+  EVENT_DAUER_LABELS,
+  PROTOKOLL_ART_BESCHREIBUNG,
+  PROTOKOLL_ART_LABELS,
+} from './i18n';
 import {
   TeilnahmeFelder,
   teilnahmeKreisAus,
@@ -183,6 +191,10 @@ interface KategorieWerte {
   dauer: EventDauer;
   /** Default circle; only sent for `teilnahme`. */
   teilnahme: TeilnahmeWerte;
+  /** "Sitzung mit Protokoll"; only for `teilnahme`. */
+  protokoll: boolean;
+  /** Kind of Sitzung (quorum rule); only sent with `protokoll`. */
+  protokollArt: ProtokollArt;
 }
 
 const kategorieJson = (w: KategorieWerte) => ({
@@ -191,6 +203,8 @@ const kategorieJson = (w: KategorieWerte) => ({
   art: w.art,
   dauer: w.dauer,
   teilnahmeStatus: w.art === 'teilnahme' ? teilnahmeKreisAus(w.teilnahme) : null,
+  protokoll: w.art === 'teilnahme' && w.protokoll,
+  protokollArt: w.protokoll ? w.protokollArt : 'sitzung',
 });
 
 export function EventKategorienTab() {
@@ -214,6 +228,11 @@ export function EventKategorienTab() {
               <Badge variant="light" color={k.art === 'teilnahme' ? 'teal' : 'gray'} tt="none">
                 {EVENT_ART_LABELS[k.art]}
               </Badge>
+              {k.protokoll && (
+                <Badge variant="light" color="indigo" tt="none">
+                  Protokoll
+                </Badge>
+              )}
               {k.dauer !== 'eintaegig' && (
                 <Badge variant="outline" color="gray" tt="none">
                   {EVENT_DAUER_LABELS[k.dauer].titel}
@@ -229,6 +248,8 @@ export function EventKategorienTab() {
         art: 'dienste',
         dauer: 'eintaegig',
         teilnahme: teilnahmeWerteAus([...MITGLIED_STATI]),
+        protokoll: false,
+        protokollArt: 'sitzung',
       }}
       aus={(k) => ({
         name: k.name,
@@ -236,6 +257,8 @@ export function EventKategorienTab() {
         art: k.art,
         dauer: k.dauer,
         teilnahme: teilnahmeWerteAus(k.teilnahmeStatus ?? [...MITGLIED_STATI]),
+        protokoll: k.protokoll,
+        protokollArt: k.protokollArt,
       })}
       felder={(w, set, k) => (
         <>
@@ -287,6 +310,33 @@ export function EventKategorienTab() {
             </Text>
           )}
           {w.art === 'teilnahme' && (
+            <Checkbox
+              size="md"
+              label="Sitzung mit Protokoll"
+              description="Zu Events dieser Kategorie kann ein Protokoll geschrieben werden."
+              checked={w.protokoll}
+              onChange={(e) => set({ ...w, protokoll: e.currentTarget.checked })}
+            />
+          )}
+          {w.art === 'teilnahme' && w.protokoll && (
+            <Stack gap={4}>
+              <Text size="sm" fw={500}>
+                Art
+              </Text>
+              <SegmentedControl
+                size="md"
+                fullWidth
+                aria-label="Art der Sitzung"
+                value={w.protokollArt}
+                onChange={(v) => set({ ...w, protokollArt: v as ProtokollArt })}
+                data={PROTOKOLL_ARTEN.map((a) => ({ value: a, label: PROTOKOLL_ART_LABELS[a] }))}
+              />
+              <Text size="sm" c="dimmed">
+                {PROTOKOLL_ART_BESCHREIBUNG[w.protokollArt]}
+              </Text>
+            </Stack>
+          )}
+          {w.art === 'teilnahme' && (
             <TeilnahmeFelder
               titel="Standard-Kreis"
               label="Wer nimmt standardmäßig teil?"
@@ -316,6 +366,8 @@ export function EventKategorienTab() {
               art: k.art,
               dauer: k.dauer,
               teilnahmeStatus: k.teilnahmeStatus,
+              protokoll: k.protokoll,
+              protokollArt: k.protokollArt,
               archiviert,
             },
           }),

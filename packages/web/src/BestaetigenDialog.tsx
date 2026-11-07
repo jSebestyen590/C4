@@ -8,6 +8,7 @@ export function BestaetigenDialog({
   children,
   bestaetigenText,
   color = 'red',
+  gesperrt = false,
   onClose,
   onBestaetigt,
 }: Readonly<{
@@ -15,6 +16,8 @@ export function BestaetigenDialog({
   children: ReactNode;
   bestaetigenText: string;
   color?: string;
+  /** Disables the confirm button (the explanation belongs into `children`). */
+  gesperrt?: boolean;
   onClose: () => void;
   onBestaetigt: () => Promise<void>;
 }>) {
@@ -41,7 +44,12 @@ export function BestaetigenDialog({
           <Button variant="default" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button color={color} loading={laeuft} onClick={() => void ausfuehren()}>
+          <Button
+            color={color}
+            loading={laeuft}
+            disabled={gesperrt}
+            onClick={() => void ausfuehren()}
+          >
             {bestaetigenText}
           </Button>
         </Group>

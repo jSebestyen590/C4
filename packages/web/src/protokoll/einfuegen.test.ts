@@ -1,0 +1,283 @@
+import { describe, expect, it } from 'vitest';
+import { Schema, type Node as PmNode } from '@tiptap/pm/model';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
+import { absatzAmEndeEinfuegen } from './schema';
+import { einfuegeStelle, imListenpunkt, imVerschachtelbaren, slashErlaubt } from './einfuegen';
+
+const TEXT = 'paragraph | bulletList';
+const schema = new Schema({
+  nodes: {
+    doc: { content: 'abschnitt{3}' },
+    abschnitt: { content: 'block+' },
+    paragraph: { group: 'block', content: 'text*' },
+    listItem: { content: 'paragraph (bulletList)?' },
+    bulletList: { group: 'block', content: 'listItem+' },
+    bausteinEvent: { group: 'block', content: `(${TEXT} | innerbaustein | thema)+` },
+    bausteinThema: { group: 'block thema', content: `(${TEXT} | innerbaustein | thema)+` },
+    bausteinAnwaerter: { group: 'block', content: `(${TEXT} | innerbaustein | thema)+` },
+    bausteinBeschluss: { group: 'block innerbaustein', content: `(${TEXT})+` },
+    bausteinMeinungsbild: { group: 'block innerbaustein', content: `(${TEXT})+` },
+    marke: { group: 'block innerbaustein', content: 'paragraph' },
+    text: {},
+  },
+});
+const n = (typ: string, ...kinder: PmNode[]) => schema.nodes[typ]!.create(null, kinder);
+const p = (t = '') => schema.nodes.paragraph!.create(null, t ? schema.text(t) : undefined);
+const abschnitte = (a: PmNode[], b: PmNode[] = [p()], c: PmNode[] = [p()]) =>
+  schema.nodes.doc!.create(null, [
+    n('abschnitt', ...a),
+    n('abschnitt', ...b),
+    n('abschnitt', ...c),
+  ]);
+
+/** Position inside the text of the first paragraph containing `text`. */
+function stelle(doc: PmNode, text: string, versatz = 0): number {
+  let pos = -1;
+  doc.descendants((k, ps) => {
+    if (pos === -1 && k.isTextblock && k.textContent === text) pos = ps + 1 + versatz;
+    return pos === -1;
+  });
+  if (pos === -1) throw new Error(`no paragraph ${text}`);
+  return pos;
+}
+
+/** What `einfuegeStelle` would produce, as text: the inserted node is written as "#". */
+function ergebnis(doc: PmNode, position: number, typ: Parameters<typeof einfuegeStelle>[2]) {
+  const { von, bis, entfernen } = einfuegeStelle(doc, position, typ);
+  const knoten = n('marke', p());
+  const tr = EditorState.create({ doc }).tr.replaceWith(von, bis, knoten);
+  if (entfernen?.ersatz) tr.replaceWith(entfernen.von, entfernen.bis, p());
+  else if (entfernen) tr.delete(entfernen.von, entfernen.bis);
+  const text = (k: PmNode): string => {
+    if (k.type.name === 'marke') return '#';
+    if (k.isText) return k.text!;
+    const inner = [...Array(k.childCount).keys()].map((i) => text(k.child(i))).join(' ');
+    if (k.type.name === 'paragraph') return inner || '_';
+    return k.type.name === 'doc' ? inner : `[${inner}]`;
+  };
+  return text(tr.doc);
+}
+
+describe('einfuegeStelle: top-level Bausteine', () => {
+  it('replaces an empty paragraph and goes after any other block', () => {
+    const doc = abschnitte([p('a'), p(), p('b')]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinEm' as never)).toContain('[a # b]');
+    expect(ergebnis(doc, stelle(doc, 'a'), 'bausteinEm' as never)).toContain('[a # _ b]');
+  });
+
+  it('goes after the whole Baustein when the cursor is in its notes (also in a nested Abstimmung)', () => {
+    const doc = abschnitte([n('bausteinEvent', p('x'), n('bausteinBeschluss', p('y'))), p('z')]);
+    expect(ergebnis(doc, stelle(doc, 'x'), 'bausteinAufnahme' as never)).toContain('[[x [y]] # z]');
+    expect(ergebnis(doc, stelle(doc, 'y'), 'bausteinAufnahme' as never)).toContain('[[x [y]] # z]');
+  });
+});
+
+describe('einfuegeStelle: Abstimmung and Meinungsbild', () => {
+  const doc = abschnitte([
+    p('vor'),
+    n('bausteinEvent', p('x'), p(), n('bausteinBeschluss', p('y'))),
+    n('bausteinMeinungsbild', p('m')),
+    p('nach'),
+  ]);
+
+  it('goes into the notes of a Baustein at the cursor, replacing an empty paragraph', () => {
+    const leer = stelle(doc, '');
+    expect(ergebnis(doc, leer, 'bausteinBeschluss')).toContain('[vor [x # [y]]');
+  });
+
+  it('goes after the current block inside the notes, not after the Baustein', () => {
+    expect(ergebnis(doc, stelle(doc, 'x'), 'bausteinMeinungsbild')).toContain('[vor [x # _ [y]]');
+  });
+
+  it('goes after the Abstimmung / Meinungsbild when the cursor is inside one (no nesting in itself)', () => {
+    // Inside the Abstimmung in the Event: after it, still in the Event's notes.
+    expect(ergebnis(doc, stelle(doc, 'y'), 'bausteinBeschluss')).toContain('[x _ [y] #]');
+    // Inside the top-level Meinungsbild: after it, in the section.
+    expect(ergebnis(doc, stelle(doc, 'm'), 'bausteinMeinungsbild')).toContain('[m] # nach]');
+  });
+
+  it('works in the section itself like any Baustein', () => {
+    expect(ergebnis(doc, stelle(doc, 'vor'), 'bausteinBeschluss')).toContain('[vor # [x');
+  });
+
+  it('falls back to the end of the last section without a usable cursor', () => {
+    const { von, bis } = einfuegeStelle(doc, 0, 'bausteinBeschluss');
+    expect(von).toBe(doc.content.size - 1);
+    expect(bis).toBe(von);
+  });
+});
+
+describe('imVerschachtelbaren', () => {
+  it('is true only inside an Abstimmung or Meinungsbild', () => {
+    const doc = abschnitte([n('bausteinEvent', p('x'), n('bausteinBeschluss', p('y'))), p('z')]);
+    const bei = (t: string) => {
+      const s = EditorState.create({ doc });
+      return imVerschachtelbaren(
+        s.apply(s.tr.setSelection(TextSelection.create(doc, stelle(doc, t)))),
+      );
+    };
+    expect(bei('y')).toBe(true);
+    expect(bei('x')).toBe(false);
+    expect(bei('z')).toBe(false);
+  });
+});
+
+describe('absatzAmEndeEinfuegen', () => {
+  it('adds a paragraph after an Abstimmung that ends the notes of a Baustein', () => {
+    const doc = abschnitte([n('bausteinEvent', p('x'), n('bausteinMeinungsbild', p('m')))]);
+    const tr = EditorState.create({ doc }).tr;
+    expect(absatzAmEndeEinfuegen(tr)).toBe(true);
+    // Event notes get one, and the section (ends with a Baustein) gets one.
+    const event = tr.doc.child(0).child(0);
+    expect(event.lastChild?.type.name).toBe('paragraph');
+    expect(tr.doc.child(0).lastChild?.type.name).toBe('paragraph');
+  });
+
+  it('leaves notes that end with text alone', () => {
+    const doc = abschnitte([n('bausteinEvent', n('bausteinMeinungsbild', p('m')), p('x')), p()]);
+    expect(absatzAmEndeEinfuegen(EditorState.create({ doc }).tr)).toBe(false);
+  });
+});
+
+const punkt = (...t: string[]) => n('listItem', ...t.map((x) => p(x)).slice(0, 1));
+const liste = (...punkte: PmNode[]) => n('bulletList', ...punkte);
+
+describe('einfuegeStelle in lists', () => {
+  it('replaces a list that only holds the empty item by a nestable Baustein', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt('')))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toContain('[[#]]');
+  });
+
+  it('removes the empty last item and inserts after the list in the same notes', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')), p('z'))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinMeinungsbild')).toContain('[[[a]] # z]');
+  });
+
+  it('keeps a non-empty item and goes after the list', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('b')), p('z'))]);
+    expect(ergebnis(doc, stelle(doc, 'a'), 'bausteinBeschluss')).toContain('[[[a] [b]] # z]');
+  });
+
+  it('keeps an empty item that is not the last one', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt(''), punkt('b')), p('z'))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toContain('[[[_] [b]] # z]');
+  });
+
+  it('puts a top-level Baustein after the section block and cleans up the item', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')), p('z')), p('nach')]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinEm' as never)).toContain('[[[a]] z] # nach]');
+  });
+
+  it('leaves an empty paragraph when the only list was all the content of a Baustein', () => {
+    const doc = abschnitte([n('bausteinEvent', liste(punkt('')))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinEm' as never)).toContain('[[_] #]');
+  });
+
+  it('replaces a top-level list that only holds the empty item', () => {
+    const doc = abschnitte([liste(punkt(''))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toBe('[#] [_] [_]');
+  });
+
+  it('handles nested lists: only the nested item or list goes', () => {
+    const verschachtelt = (innen: PmNode) => n('listItem', p('a'), innen) as PmNode;
+    const doc = abschnitte([n('bausteinEvent', liste(verschachtelt(liste(punkt('')))), p('z'))]);
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toContain('[[[a]] # z]');
+  });
+});
+
+describe('slashErlaubt', () => {
+  const bei = (doc: PmNode, t: string) => slashErlaubt(doc.resolve(stelle(doc, t)));
+  it('opens in paragraphs of a section or Baustein notes and in their list items', () => {
+    const doc = abschnitte([
+      p('s'),
+      n('bausteinEvent', p('e'), liste(punkt('l'), n('listItem', p('m'), liste(punkt('t'))))),
+      liste(punkt('o')),
+    ]);
+    for (const t of ['s', 'e', 'l', 'm', 't', 'o']) expect(bei(doc, t), t).toBe(true);
+  });
+  it('stays closed inside Abstimmung-less quotes', () => {
+    const zitat = new Schema({
+      nodes: {
+        doc: { content: 'abschnitt{3}' },
+        abschnitt: { content: 'block+' },
+        paragraph: { group: 'block', content: 'text*' },
+        blockquote: { group: 'block', content: 'paragraph+' },
+        text: {},
+      },
+    });
+    const absatz = (t: string) => zitat.nodes.paragraph!.create(null, zitat.text(t));
+    const abs = (...k: PmNode[]) => zitat.nodes.abschnitt!.create(null, k);
+    const doc = zitat.nodes.doc!.create(null, [
+      abs(zitat.nodes.blockquote!.create(null, [absatz('q')])),
+      abs(absatz('x')),
+      abs(absatz('y')),
+    ]);
+    expect(slashErlaubt(doc.resolve(stelle(doc, 'q')))).toBe(false);
+    expect(slashErlaubt(doc.resolve(stelle(doc, 'x')))).toBe(true);
+  });
+  it('knows list items for the quote entry', () => {
+    const doc = abschnitte([liste(punkt('l')), p('x')]);
+    const s = EditorState.create({ doc });
+    const bei2 = (t: string) =>
+      imListenpunkt(s.apply(s.tr.setSelection(TextSelection.create(doc, stelle(doc, t)))));
+    expect(bei2('l')).toBe(true);
+    expect(bei2('x')).toBe(false);
+  });
+});
+
+describe('einfuegeStelle: Thema', () => {
+  const thema = 'bausteinThema';
+  it('goes top-level next to a block of the section', () => {
+    const doc = abschnitte([p('a'), p(), p('b')]);
+    expect(ergebnis(doc, stelle(doc, ''), thema)).toContain('[a # b]');
+    expect(ergebnis(doc, stelle(doc, 'a'), thema)).toContain('[a # _ b]');
+  });
+
+  it('goes into the notes of a Baustein at the cursor, in front of an empty paragraph', () => {
+    const doc = abschnitte([n('bausteinEvent', p('x'), p(), p('y')), p('z')]);
+    expect(ergebnis(doc, stelle(doc, ''), thema)).toContain('[[x # y] z]');
+    expect(ergebnis(doc, stelle(doc, 'x'), thema)).toContain('[[x # _ y] z]');
+  });
+
+  it('goes into the innermost Thema at any depth, not into a vote', () => {
+    const doc = abschnitte([
+      n(
+        'bausteinEvent',
+        p('e'),
+        n(
+          'bausteinThema',
+          p('t1'),
+          n('bausteinThema', p('t2'), n('bausteinBeschluss', p('v')), p('t3')),
+        ),
+      ),
+      p('z'),
+    ]);
+    expect(ergebnis(doc, stelle(doc, 't3'), thema)).toContain('[[e [t1 [t2 [v] t3 #]]] z]');
+    // Cursor in a vote inside the inner Thema: after the vote, in that Thema.
+    expect(ergebnis(doc, stelle(doc, 'v'), thema)).toContain('[t2 [v] # t3]');
+    // Cursor in the outer Thema: in the outer one.
+    expect(ergebnis(doc, stelle(doc, 't1'), thema)).toContain('[t1 # [t2');
+  });
+
+  it('keeps other top-level Bausteine out of Themen: they go after the top-level Baustein', () => {
+    const doc = abschnitte([
+      n('bausteinEvent', p('e'), n('bausteinThema', p('t'))),
+      p('z'),
+    ]);
+    expect(ergebnis(doc, stelle(doc, 't'), 'bausteinAnwaerter')).toContain('[[e [t]] # z]');
+  });
+
+  it('replaces the empty list item the cursor is in, inside a Thema', () => {
+    const doc = abschnitte([
+      n('bausteinEvent', p('e'), n('bausteinThema', p('t'), n('bulletList', n('listItem', p())))),
+    ]);
+    expect(ergebnis(doc, stelle(doc, ''), thema)).toContain('[e [t #]]');
+  });
+
+  it('puts a trailing paragraph behind a Thema that ends the notes', () => {
+    const doc = abschnitte([n('bausteinEvent', p('e'), n('bausteinThema', p('t')))]);
+    const tr = EditorState.create({ doc }).tr;
+    expect(absatzAmEndeEinfuegen(tr)).toBe(true);
+    expect(tr.doc.child(0).child(0).lastChild!.type.name).toBe('paragraph');
+  });
+});

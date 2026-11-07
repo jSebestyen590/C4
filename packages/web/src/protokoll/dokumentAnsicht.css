@@ -1,0 +1,239 @@
+/* Finished-document view of the minutes ("Dokument"): looks like the former Word minutes. */
+
+.pk-dok {
+  font-size: 1rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  /* About the width of an A4 page; narrower screens use their full width. */
+  max-width: 21cm;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.pk-dok p {
+  margin: 0 0 0.5em;
+}
+
+.pk-dok-titel {
+  margin: 0 0 0.6em;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pk-dok-kopf p {
+  margin: 0 0 0.15em;
+}
+
+.pk-dok-luecke {
+  height: 1em;
+}
+
+.pk-dok-label {
+  font-weight: 600;
+}
+
+.pk-dok-h1,
+.pk-dok-h2,
+.pk-dok-h3,
+.pk-dok-h4,
+.pk-dok-h5 {
+  color: var(--mantine-primary-color-filled);
+  font-weight: 400;
+  line-height: 1.25;
+  break-after: avoid;
+}
+
+.pk-dok-h1 {
+  margin: 1.6em 0 0.4em;
+  font-size: 1.6rem;
+}
+
+.pk-dok-h2 {
+  margin: 1.1em 0 0.3em;
+  font-size: 1.3rem;
+}
+
+.pk-dok-h3 {
+  margin: 0.9em 0 0.25em;
+  font-size: 1.1rem;
+}
+
+/* Nested Themen and typed headings below a Baustein: ever smaller (h4 .. h6), never below body size. */
+.pk-dok-h4 {
+  margin: 0.8em 0 0.2em;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pk-dok-h5 {
+  margin: 0.7em 0 0.2em;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.pk-dok ul,
+.pk-dok ol {
+  margin: 0 0 0.5em;
+  padding-left: 1.6em;
+}
+
+.pk-dok ul {
+  list-style-type: disc;
+}
+
+.pk-dok ul ul {
+  list-style-type: circle;
+}
+
+.pk-dok ul ul ul {
+  list-style-type: square;
+}
+
+.pk-dok li > p {
+  margin: 0;
+}
+
+.pk-dok li {
+  break-inside: avoid;
+}
+
+/* Quotes: right-aligned and italic; an attribution line ("— Name") is upright. */
+.pk-dok blockquote {
+  margin: 0.5em 0;
+  padding: 0;
+  text-align: right;
+  font-style: italic;
+  break-inside: avoid;
+}
+
+.pk-dok blockquote p {
+  margin: 0;
+}
+
+.pk-dok blockquote p.pk-dok-quelle {
+  font-style: normal;
+}
+
+.pk-dok-beschluss {
+  margin: 0.8em 0;
+  padding: 0.4em 0.8em;
+  border-left: 4px solid var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+  break-inside: avoid;
+}
+
+.pk-dok-beschluss p {
+  margin: 0;
+}
+
+.pk-dok-klein {
+  font-size: 0.85em;
+  color: var(--mantine-color-dimmed);
+}
+
+/* An Abstimmung / Meinungsbild inside the notes of another Baustein: indented like the list items. */
+.pk-dok-innen {
+  margin-left: 1.6em;
+}
+
+.pk-dok-warnung {
+  color: var(--mantine-color-red-7);
+  font-weight: 700;
+}
+
+/* Erscheint / Geht: shown like a quote (the blockquote rules above), right-aligned and italic. */
+.pk-dok blockquote.pk-dok-anwesenheit {
+  margin: 0.4em 0 0.2em;
+}
+
+.pk-dok a {
+  color: var(--mantine-primary-color-filled);
+}
+
+/* @mention that concerns the viewer: highlighter, readable in light and dark. Not printed. */
+.pk-dok-erw-ich {
+  background-color: var(--mantine-color-yellow-3);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+:root[data-mantine-color-scheme='dark'] .pk-dok-erw-ich {
+  background-color: rgb(250 176 5 / 28%);
+}
+
+@media print {
+  .pk-dok-erw-ich {
+    background: none;
+    padding: 0;
+  }
+}
+
+/* Images. At section level: own row, full width or half (from sm), left / center / right, no text wrap. */
+.pk-dok-bild {
+  margin: 0.8em 0;
+  width: 100%;
+  break-inside: avoid;
+}
+
+.pk-dok-bild img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.pk-dok-bild figcaption {
+  margin-top: 0.25em;
+}
+
+.pk-dok-bild[data-ausrichtung='mitte'] {
+  margin-inline: auto;
+}
+
+.pk-dok-bild[data-ausrichtung='mitte'] figcaption {
+  text-align: center;
+}
+
+.pk-dok-bild[data-ausrichtung='rechts'] {
+  margin-left: auto;
+}
+
+.pk-dok-bild[data-ausrichtung='rechts'] figcaption {
+  text-align: right;
+}
+
+@media (min-width: 48em) {
+  .pk-dok-bild[data-breite='halb'] {
+    width: 50%;
+  }
+}
+
+/* Notes with images: text on the left, the images stacked in a column on the right (also on phones). */
+.pk-dok-notiz-bilder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38%;
+  gap: 0.75em;
+  align-items: start;
+  margin: 0.2em 0 0.5em;
+}
+
+@media (min-width: 48em) {
+  .pk-dok-notiz-bilder {
+    grid-template-columns: minmax(0, 1fr) 40%;
+  }
+}
+
+.pk-dok-notiz-text {
+  min-width: 0;
+}
+
+.pk-dok-notiz-spalte {
+  min-width: 0;
+}
+
+.pk-dok-bild-spalte {
+  margin: 0 0 0.6em;
+}

@@ -5,6 +5,8 @@ Jedes Event hat dort einen Unterordner `Datum_Event`. Die Seite **Bilder** (`/bi
 nach Eventname und Datum; ein Klick öffnet den Ordner in OneDrive. Unterordner werden nicht betrachtet. Rechte:
 `bilder:lesen` (alle Status: ansehen und Ordner anlegen), Verbindung einrichten mit `users:manage`.
 
+Die Bilder in Protokollen sind davon getrennt: Sie liegen in S3, nicht in OneDrive (siehe [protokolle.md](./protokolle.md#bilder)).
+
 ## Namensschema
 
 | Form                    | Beispiel                          | Genauigkeit |
@@ -115,6 +117,13 @@ auf den OneDrive greift C4 erst zu, wenn sich jemand mit diesem Konto in Schritt
 
 Ablauf: Die API liefert die Authorize-URL (`/consumers`-Endpunkt, `state` gegen CSRF im `sessionStorage`); Microsoft leitet
 zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an die API, die ihn serverseitig eintauscht.
+
+## PDFs der Protokolle
+
+Dieselbe Verbindung speichert die PDFs abgeschlossener Sitzungsprotokolle: `OneDrive.dateiHochladen(pfad, inhalt, contentType)`
+(Graph-Direktupload `PUT /me/drive/root:/<Pfad>:/content`, `conflictBehavior=replace`, höchstens 4 MB; Graph legt fehlende Ordner an).
+Der Pfad `Cloud4/Sitzungen/C4/Protokolle/<Jahr>/<Datei>.pdf` (`PROTOKOLL_PFAD`) gilt ab dem Wurzelordner des OneDrive, nicht ab dem
+Bilder-Basisordner. Details in [protokolle.md](./protokolle.md#pdf-und-onedrive).
 
 ## API
 

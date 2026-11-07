@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MitgliedStatus } from './status';
 import {
   ausVorlage,
+  schichtenAusEvent,
   eventTitel,
   serieAendernSchema,
   serieEingabeSchema,
@@ -1116,5 +1117,63 @@ describe('Dauer der Kategorie', () => {
       { art: 'teilnahme', teilnahmeStatus: [], dauer: 'ganztaegig' },
     );
     expect([e.beginn, e.ende]).toEqual(['2026-07-09T22:00:00.000Z', '2026-07-12T22:00:00.000Z']);
+  });
+});
+
+describe('schichtenAusEvent', () => {
+  const vorlage: VorlageDaten = {
+    titel: 'Offener Abend',
+    beschreibung: null,
+    kategorieId: 'k1',
+    beginnZeit: '20:00',
+    endeZeit: '02:00',
+    teilnahmeStatus: null,
+    schichten: [
+      {
+        art: 'aufbau',
+        tagVersatz: -1,
+        beginnZeit: '18:00',
+        endeZeit: '20:00',
+        minimum: 1,
+        wunsch: 2,
+      },
+      {
+        art: 'betrieb',
+        beginnZeit: '00:00',
+        endeZeit: '02:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
+        art: 'putzen',
+        tagVersatz: 2,
+        beginnZeit: '10:00',
+        endeZeit: '11:30',
+        minimum: 0,
+        wunsch: 1,
+      },
+    ],
+  };
+
+  it('is the inverse of the Schicht part of ausVorlage (also across daylight saving time)', () => {
+    for (const datum of ['2026-06-05', '2026-03-27', '2026-10-24']) {
+      const e = ausVorlage(vorlage, datum);
+      const zurueck = schichtenAusEvent(
+        e.beginn,
+        e.schichten.map((s) => ({
+          ...s,
+          bedarfe: s.art === 'betrieb' ? s.bedarfe : [],
+          minimum: s.art === 'betrieb' ? null : s.minimum,
+          wunsch: s.art === 'betrieb' ? null : s.wunsch,
+        })),
+      );
+      expect(zurueck).toEqual(vorlage.schichten);
+    }
+  });
+
+  it('sorts by begin and leaves out Betrieb Schichten without a Bedarf', () => {
+    const e = ausVorlage(vorlage, '2026-06-05');
+    const schichten = [...e.schichten.map((s) => ({ ...s, bedarfe: [] as never[] })).reverse()];
+    const ergebnis = schichtenAusEvent(e.beginn, schichten);
+    expect(ergebnis.map((s) => s.art)).toEqual(['aufbau', 'putzen']);
   });
 });

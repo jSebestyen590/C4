@@ -471,6 +471,10 @@ export const eventKategorien = pgTable('event_kategorien', {
   teilnahmeStatus: text('teilnahme_status'),
   /** `eintaegig` (null), `mehrtaegig` or `ganztaegig`. */
   dauer: text('dauer'),
+  /** Meetings of this category get minutes (`teilnahme` categories only); null = no. */
+  protokoll: boolean('protokoll'),
+  /** Kind of Sitzung for categories with `protokoll`: `sitzung` (null) or `mitgliederversammlung`. */
+  protokollArt: text('protokoll_art'),
   archiviert: boolean('archiviert').notNull().default(false),
 });
 export type EventKategorieRow = typeof eventKategorien.$inferSelect;
@@ -761,6 +765,25 @@ export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
   stand: timestamp('stand', { withTimezone: true }).notNull(),
 });
 
+/** Meeting minutes of one event (see docs/protokolle.md); `inhalt` is the TipTap document and `kopf` the header, both JSON text. */
+export const protokolle = pgTable('protokolle', {
+  id: text('id').primaryKey(),
+  /** Event of a Kategorie with `protokoll`; unique, deliberately without a foreign key (checked in the API). */
+  eventId: text('event_id').notNull(),
+  inhalt: text('inhalt').notNull(),
+  kopf: text('kopf').notNull(),
+  /** `entwurf` or `abgeschlossen` (CHECK). */
+  status: text('status').$type<'entwurf' | 'abgeschlossen'>().notNull().default('entwurf'),
+  /** Counts saves, for optimistic locking. */
+  version: integer('version').notNull().default(1),
+  /** Cognito subs, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von'),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  geaendertVon: text('geaendert_von'),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type ProtokollRow = typeof protokolle.$inferSelect;
+
 /** Global "Dienste fehlen" reminders; `id` is `erinnerung-<minutenVorher>`. */
 export const kalenderFehltErinnerungen = pgTable('kalender_fehlt_erinnerungen', {
   id: text('id').primaryKey(),
@@ -797,6 +820,46 @@ export const schluesselUebergaben = pgTable('schluessel_uebergaben', {
   zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
 });
 export type UebergabeRow = typeof schluesselUebergaben.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Todos
+
+/** A Todo (see docs/todos.md); the people it is for are in `todoZustaendige`. */
+export const todos = pgTable('todos', {
+  id: text('id').primaryKey(),
+  titel: text('titel').notNull(),
+  notizen: text('notizen'),
+  /** `YYYY-MM-DD` */
+  faelligAm: text('faellig_am').notNull(),
+  /** `gemeinsam` or `einzeln` (CHECK). */
+  modus: text('modus').$type<'gemeinsam' | 'einzeln'>().notNull(),
+  /** Protocol and Baustein the Todo comes from, deliberately without a foreign key; null = created by a member. */
+  protokollId: text('protokoll_id'),
+  bausteinId: text('baustein_id'),
+  /** Mode `gemeinsam`: when and by whom (Cognito sub) it was ticked. */
+  erledigtAm: timestamp('erledigt_am', { withTimezone: true }),
+  erledigtVon: text('erledigt_von'),
+  /** Cognito sub, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TodoRow = typeof todos.$inferSelect;
+
+/** A person a Todo is for; in mode `einzeln` their own tick. */
+export const todoZustaendige = pgTable(
+  'todo_zustaendige',
+  {
+    todoId: text('todo_id')
+      .notNull()
+      .references(() => todos.id),
+    sub: text('sub').notNull(),
+    erledigtAm: timestamp('erledigt_am', { withTimezone: true }),
+    erledigtVon: text('erledigt_von'),
+  },
+  (t) => [primaryKey({ columns: [t.todoId, t.sub] })],
+);
+export type TodoZustaendigerRow = typeof todoZustaendige.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // Umfragen

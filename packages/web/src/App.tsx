@@ -28,12 +28,16 @@ import { KalenderMeinKalenderPage } from './pages/KalenderMeinKalenderPage';
 import { KalenderPage } from './pages/KalenderPage';
 import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
+import { ProtokollNeuPage } from './pages/ProtokollNeuPage';
+import { ProtokollPage } from './pages/ProtokollPage';
+import { ProtokollePage } from './pages/ProtokollePage';
 import { PostenPage } from './pages/PostenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
 import { SchluesselPage } from './pages/SchluesselPage';
 import { UmfrageFormularPage } from './pages/UmfrageFormularPage';
 import { UmfragePage } from './pages/UmfragePage';
+import { TodosPage } from './pages/TodosPage';
 import { TrichterDurchgangPage } from './pages/TrichterDurchgangPage';
 import { TrichterPage } from './pages/TrichterPage';
 import { TrichterVerwaltungPage } from './pages/TrichterVerwaltungPage';
@@ -247,6 +251,36 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="users:manage">
                 <RequireUsername>
                   <BilderEinrichtungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/protokolle"
+            element={
+              <Protected permission="protokolle:lesen">
+                <RequireUsername>
+                  <ProtokollePage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/protokolle/neu"
+            element={
+              <Protected permission="protokolle:schreiben">
+                <RequireUsername>
+                  <ProtokollNeuPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/protokolle/:id"
+            element={
+              <Protected permission="protokolle:lesen">
+                <RequireUsername>
+                  <ProtokollPage />
                 </RequireUsername>
               </Protected>
             }
@@ -516,6 +550,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             element={
               <Protected permission="profil:bearbeiten">
                 <ProfilPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/todos"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <RequireUsername>
+                  <TodosPage />
+                </RequireUsername>
               </Protected>
             }
           />

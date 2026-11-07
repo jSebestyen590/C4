@@ -229,6 +229,10 @@ export const dienstformEingabeSchema = z.object({
 });
 export type DienstformEingabe = z.infer<typeof dienstformEingabeSchema>;
 
+/** Kind of a Sitzung; decides the quorum rule (see `beschlussfaehigkeit`). Set at the event Kategorie. */
+export const PROTOKOLL_ARTEN = ['sitzung', 'mitgliederversammlung'] as const;
+export type ProtokollArt = (typeof PROTOKOLL_ARTEN)[number];
+
 export const eventKategorieEingabeSchema = z
   .object({
     name: name(),
@@ -242,13 +246,28 @@ export const eventKategorieEingabeSchema = z
       .enum(EVENT_DAUERN, 'Bitte wähle die Dauer.')
       .optional()
       .transform((v) => v ?? 'eintaegig'),
+    /** Meetings of this Kategorie get minutes ("Sitzung mit Protokoll"); `teilnahme` only. Left out = false. */
+    protokoll: z
+      .boolean()
+      .optional()
+      .transform((v) => v ?? false),
+    /** Kind of Sitzung (quorum rule) for a Kategorie with `protokoll`; stored as 'sitzung' otherwise. */
+    protokollArt: z.enum(PROTOKOLL_ARTEN).default('sitzung'),
     archiviert: z.boolean().optional(),
   })
   .refine((v) => v.art !== 'teilnahme' || v.teilnahmeStatus !== null, {
     message: 'Bitte lege den Standard-Kreis fest.',
     path: ['teilnahmeStatus'],
   })
-  .transform((v) => (v.art === 'dienste' ? { ...v, teilnahmeStatus: null } : v));
+  .refine((v) => v.art === 'teilnahme' || !v.protokoll, {
+    message: 'Nur Kategorien mit Teilnahme können eine Sitzung mit Protokoll sein.',
+    path: ['protokoll'],
+  })
+  .transform((v) => ({
+    ...v,
+    teilnahmeStatus: v.art === 'dienste' ? null : v.teilnahmeStatus,
+    protokollArt: v.protokoll ? v.protokollArt : ('sitzung' as const),
+  }));
 export type EventKategorieEingabe = z.infer<typeof eventKategorieEingabeSchema>;
 
 export const externeEingabeSchema = z.object({
@@ -584,6 +603,10 @@ export interface EventKategorieDto {
   /** Default participation circle (`teilnahme` only, else null). */
   teilnahmeStatus: TeilnahmeKreis;
   dauer: EventDauer;
+  /** Meetings of this Kategorie get minutes (`teilnahme` only, else false). */
+  protokoll: boolean;
+  /** Kind of Sitzung of a Kategorie with `protokoll` ('sitzung' otherwise). */
+  protokollArt: ProtokollArt;
   /** At least one event uses the Kategorie, so its `art` cannot change. */
   benutzt: boolean;
   archiviert: boolean;
@@ -908,8 +931,52 @@ export function ausVorlage(
   };
 }
 
+/** The Schicht of an event as `schichtenAusEvent` needs it. */
+export type SchichtQuelle = Pick<SchichtDto, 'art' | 'beginn' | 'ende'> &
+  Partial<Pick<SchichtDto, 'bedarfe' | 'minimum' | 'wunsch'>>;
+
+const tageZwischen = (von: string, bis: string): number =>
+  Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Schichten of an existing event in the format of a Vorlage (inverse of the Schicht part of
+ * `ausVorlage`): Berlin wall times, Aufbau/Putzen with the day offset to the event's first day.
+ * Betrieb Schichten without a Bedarf are left out (a Vorlage cannot hold them). Sorted by begin.
+ */
+export function schichtenAusEvent(
+  eventBeginn: string,
+  schichten: readonly SchichtQuelle[],
+): VorlageSchicht[] {
+  const eventTag = datumBerlin(eventBeginn);
+  const sortiert = [...schichten].sort((a, b) => Date.parse(a.beginn) - Date.parse(b.beginn));
+  const ergebnis: VorlageSchicht[] = [];
+  for (const s of sortiert) {
+    const beginnZeit = zeitBerlin(s.beginn);
+    const endeZeit = zeitBerlin(s.ende);
+    if (s.art === 'betrieb') {
+      const bedarfe = (s.bedarfe ?? []).map((b) => ({
+        dienstformId: b.dienstformId,
+        minimum: b.minimum,
+        wunsch: b.wunsch,
+      }));
+      if (bedarfe.length === 0) continue;
+      ergebnis.push({ art: 'betrieb', beginnZeit, endeZeit, bedarfe });
+    } else {
+      ergebnis.push({
+        art: s.art,
+        tagVersatz: tageZwischen(eventTag, datumBerlin(s.beginn)),
+        beginnZeit,
+        endeZeit,
+        minimum: s.minimum ?? 0,
+        wunsch: Math.max(1, s.wunsch ?? 1, s.minimum ?? 0),
+      });
+    }
+  }
+  return ergebnis;
+}
+
 /** Schicht of an existing event as input (keeps its id, so entered Dienste stay). */
-const schichtAlsEingabe = (s: SchichtDto): SchichtEingabe =>
+export const schichtAlsEingabe = (s: SchichtDto): SchichtEingabe =>
   s.art === 'betrieb'
     ? {
         id: s.id,

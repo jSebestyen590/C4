@@ -1,0 +1,175 @@
+/* Minutes editor: sections, Baustein cards, slash menu, print. */
+
+.protokoll-editor .ProseMirror {
+  padding: var(--mantine-spacing-sm);
+  min-height: 12rem;
+}
+
+@media (min-width: 48em) {
+  .protokoll-editor .ProseMirror {
+    padding: var(--mantine-spacing-md);
+  }
+}
+
+.protokoll-abschnitt + .protokoll-abschnitt {
+  margin-top: var(--mantine-spacing-xl);
+}
+
+.protokoll-abschnitt-titel {
+  font-size: var(--mantine-h3-font-size);
+  font-weight: 700;
+  line-height: 1.3;
+  padding-bottom: 4px;
+  margin-bottom: var(--mantine-spacing-xs);
+  border-bottom: 2px solid var(--mantine-primary-color-filled);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.protokoll-baustein {
+  margin: var(--mantine-spacing-xs) 0 var(--mantine-spacing-sm);
+  break-inside: avoid;
+}
+
+.protokoll-baustein-text {
+  min-width: 0;
+  outline: none;
+}
+
+.protokoll-baustein-text > :last-child {
+  margin-bottom: 0;
+}
+
+.protokoll-baustein-text p.is-empty::before,
+.protokoll-baustein-text p.is-editor-empty::before {
+  color: var(--mantine-color-placeholder);
+}
+
+/* Empty text blocks keep a line to click into. */
+.protokoll-editor .ProseMirror p {
+  min-height: 1.5em;
+}
+
+/* Quotes: in sections and in the free text of Baustein cards, edit and read-only mode, print. */
+.protokoll-editor .ProseMirror blockquote {
+  margin: var(--mantine-spacing-xs) 0;
+  padding: 2px 0 2px var(--mantine-spacing-sm);
+  border-left: 4px solid var(--mantine-primary-color-filled);
+  color: var(--mantine-color-dimmed);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  break-inside: avoid;
+}
+
+.protokoll-editor .ProseMirror blockquote p {
+  margin: 0;
+}
+
+.protokoll-editor .ProseMirror blockquote p + p {
+  margin-top: var(--mantine-spacing-xs);
+}
+
+.protokoll-toolbar {
+  /* Above the inputs of the Baustein cards (Mantine gives every div in the content z-index 2). */
+  z-index: 5;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  scrollbar-width: none;
+}
+
+.protokoll-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.protokoll-toolbar > * {
+  flex: 0 0 auto;
+}
+
+.protokoll-slash-eintrag[data-gewaehlt] {
+  background-color: var(--mantine-primary-color-light);
+}
+
+@media (hover: hover) {
+  .protokoll-slash-eintrag:hover {
+    background-color: var(--mantine-primary-color-light-hover);
+  }
+}
+
+@media print {
+  .protokoll-nicht-drucken,
+  .protokoll-editor [data-sticky] {
+    display: none !important;
+  }
+
+  .protokoll-editor {
+    border: none !important;
+  }
+
+  .protokoll-editor .ProseMirror {
+    padding: 0;
+  }
+
+  .protokoll-abschnitt {
+    break-before: auto;
+  }
+
+  .protokoll-abschnitt-titel {
+    break-after: avoid;
+  }
+}
+
+/* Anwesenheit (Erscheint / Geht): a slim row with the quorum (no free text). */
+.protokoll-anwesenheit {
+  padding: var(--mantine-spacing-xs);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+/* @mentions in the editor: an atom, highlighted when selected. */
+.protokoll-erwaehnung {
+  border-radius: var(--mantine-radius-xs);
+  white-space: nowrap;
+}
+
+.protokoll-erwaehnung[data-selected] {
+  outline: 2px solid var(--mantine-primary-color-filled);
+}
+
+/* Images in the editor: card with preview, placeholder while uploading. */
+.protokoll-bild {
+  margin: var(--mantine-spacing-xs) 0 var(--mantine-spacing-sm);
+  break-inside: avoid;
+}
+
+.protokoll-bild-vorschau {
+  display: block;
+  max-width: 100%;
+  max-height: 16rem;
+  margin-inline: auto;
+  object-fit: contain;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.protokoll-bild-platzhalter {
+  margin: var(--mantine-spacing-xs) 0 var(--mantine-spacing-sm);
+  padding: var(--mantine-spacing-sm);
+  border: 1px dashed var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.protokoll-bild-balken {
+  height: 6px;
+  margin-top: var(--mantine-spacing-xs);
+  border-radius: 3px;
+  background: var(--mantine-color-default-border);
+  overflow: hidden;
+}
+
+.protokoll-bild-balken > div {
+  height: 100%;
+  background: var(--mantine-primary-color-filled);
+  transition: width 0.15s linear;
+}

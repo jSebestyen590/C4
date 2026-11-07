@@ -333,3 +333,54 @@ describe('folders', () => {
     expect(await od.loeschenWennLeer('weg')).toBe('fehlt');
   });
 });
+
+describe('dateiHochladen', () => {
+  it('puts the bytes to the path below the drive root and replaces existing files', async () => {
+    const store = createMemoryOneDriveStore(verbunden());
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0xff, 0x00]);
+    let gesehen: { body: unknown; typ: string | undefined } | null = null;
+    const aufrufe: { url: string; methode: string }[] = [];
+    const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
+      aufrufe.push({ url: String(url), methode: init?.method ?? 'GET' });
+      gesehen = {
+        body: init?.body,
+        typ: (init?.headers as Record<string, string>)['content-type'],
+      };
+      return json(201, { id: 'x' });
+    }) as typeof fetch;
+    const od = createOneDrive({ store, fetch: fetchFn, jetzt: () => JETZT });
+    await od.dateiHochladen(
+      'Cloud4/Sitzungen/C4/Protokolle/2026-11-04_Sitzung & Co.pdf',
+      bytes,
+      'application/pdf',
+    );
+    expect(aufrufe).toEqual([
+      {
+        url: 'https://graph.microsoft.com/v1.0/me/drive/root:/Cloud4/Sitzungen/C4/Protokolle/2026-11-04_Sitzung%20%26%20Co.pdf:/content?@microsoft.graph.conflictBehavior=replace',
+        methode: 'PUT',
+      },
+    ]);
+    expect(gesehen).toEqual({ body: bytes, typ: 'application/pdf' });
+  });
+
+  it('refuses files over 4 MB, fails on Graph errors and without connection', async () => {
+    const store = createMemoryOneDriveStore(verbunden());
+    const m = mock(() => json(507, { error: 'quota' }));
+    const od = createOneDrive({ store, fetch: m.fetchFn, jetzt: () => JETZT });
+    await expect(
+      od.dateiHochladen('a/b.pdf', new Uint8Array(4 * 1024 * 1024 + 1), 'application/pdf'),
+    ).rejects.toThrow('zu groß');
+    expect(m.aufrufe).toHaveLength(0);
+    await expect(
+      od.dateiHochladen('a/b.pdf', new Uint8Array(3), 'application/pdf'),
+    ).rejects.toThrow(/507/);
+    const ohne = createOneDrive({
+      store: createMemoryOneDriveStore(),
+      fetch: m.fetchFn,
+      jetzt: () => JETZT,
+    });
+    await expect(
+      ohne.dateiHochladen('a/b.pdf', new Uint8Array(3), 'application/pdf'),
+    ).rejects.toBeInstanceOf(NichtVerbunden);
+  });
+});
