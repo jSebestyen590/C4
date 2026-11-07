@@ -22,7 +22,7 @@ import {
   type GliederungEintrag,
   type GliederungZeile,
 } from './gliederung';
-import { BAUSTEIN_SYMBOL, SlashIcon } from './symbole';
+import { SlashIcon } from './symbole';
 
 /** Space above the editor content that the sticky app header and toolbar cover. */
 const SCROLL_ABSTAND = 136;
@@ -128,7 +128,7 @@ export function Gliederung({
         }}
       >
         <Box component="span" c="dimmed" style={{ display: 'flex', flexShrink: 0 }}>
-          <SlashIcon symbol={BAUSTEIN_SYMBOL[e.typ]} size={18} />
+          <SlashIcon symbol={e.symbol} size={18} />
         </Box>
         <Text size="sm" truncate style={{ minWidth: 0 }}>
           {e.titel}

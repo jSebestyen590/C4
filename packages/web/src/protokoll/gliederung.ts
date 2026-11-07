@@ -20,7 +20,8 @@ import {
   type BausteinWahlDaten,
   type ProtokollAbschnitt,
 } from '@c4/shared';
-import { BAUSTEIN_TITEL } from './symbole';
+import { BAUSTEIN_TITEL, bausteinSymbol } from './symbole';
+import type { SlashSymbol } from './slashLogik';
 import { ABSCHNITT_TITEL } from './schema';
 
 // Outline ("Gliederung") of the minutes: the Bausteine per section, and moving one of them (no React).
@@ -29,6 +30,8 @@ export interface GliederungEintrag {
   id: string;
   typ: BausteinTyp;
   titel: string;
+  /** Icon of the entry (Anwesenheit: "erscheint" or "geht"). */
+  symbol: SlashSymbol;
   /** Whether the Baustein may stand in the notes of another Baustein (Abstimmung, Meinungsbild, Wahl, Thema). */
   verschachtelbar: boolean;
   /** Whether other Bausteine may stand in its notes. */
@@ -115,6 +118,7 @@ function eintrag(node: PmNode, personName: (sub: string) => string | undefined):
     id: node.attrs.id as string,
     typ,
     titel: gliederungTitel(typ, node.attrs.daten, personName),
+    symbol: bausteinSymbol(typ, node.attrs.daten),
     verschachtelbar: istVerschachtelbar(typ),
     // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl hold text only.
     kannEnthalten: kannBausteineEnthalten(typ) && !node.type.isLeaf,

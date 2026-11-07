@@ -76,6 +76,15 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinAuswahl: 'auswahl',
 };
 
+/** Symbol of a Baustein from its fields: Anwesenheit shows "erscheint" or "geht". */
+export function bausteinSymbol(typ: BausteinTyp, daten: unknown): SlashSymbol {
+  if (typ === 'bausteinAnwesenheit') {
+    const art = (daten as { art?: unknown } | null)?.art;
+    return art === 'geht' ? 'geht' : 'erscheint';
+  }
+  return BAUSTEIN_SYMBOL[typ];
+}
+
 export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinEvent: 'Event',
   bausteinThema: 'Thema',

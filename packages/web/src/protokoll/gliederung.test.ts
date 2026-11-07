@@ -118,6 +118,18 @@ describe('gliederungBauen: Thema', () => {
   });
 });
 
+describe('gliederungBauen symbols', () => {
+  it('gives Erscheint and Geht their own icon', () => {
+    const s = zustand([
+      baustein('bausteinAnwesenheit', 'a1', { art: 'erscheint' }, []),
+      baustein('bausteinAnwesenheit', 'a2', { art: 'geht' }, []),
+      absatz(),
+    ]);
+    const e = gliederungBauen(s.doc)[0]!.eintraege;
+    expect(e.map((x) => x.symbol)).toEqual(['erscheint', 'geht']);
+  });
+});
+
 describe('gliederungTitel', () => {
   it('names people and shortens long texts', () => {
     const name = (sub: string) => (sub === 's1' ? 'Mia' : undefined);
