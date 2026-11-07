@@ -40,6 +40,7 @@ import {
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  todoZeile,
   type DokumentEingabe,
   type Person,
 } from './dokumentDaten';
@@ -216,7 +217,8 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
     case 'bausteinAuswahl':
-      // An Abstimmung / Meinungsbild / Wahl inside the free text of another Baustein.
+    case 'bausteinTodo':
+      // An Abstimmung / Meinungsbild / Wahl / Todo inside the free text of another Baustein.
       return (
         <div className="pk-dok-innen">
           <Baustein k={k} ctx={ctx} innen />
@@ -386,6 +388,48 @@ function WahlStimmen({
   );
 }
 
+/** "Anna, Ben, @Alle" of a Todo; those who concern the viewer get the highlighter (the first one the anchor). */
+function TodoZustaendige({
+  k,
+  daten,
+  ctx,
+}: Readonly<{ k: ProtokollKnoten; daten: unknown; ctx: Kontext }>) {
+  const z = todoZeile(daten);
+  const ich = ctx.eingabe.ich;
+  const anker = ctx.erwIds.get(k);
+  const betrifftMich = (zu: (typeof z.zustaendig)[number]) => !!ich && erwaehnungBetrifft(zu, ich);
+  const ersteTreffer = z.zustaendig.findIndex(betrifftMich);
+  return (
+    <>
+      {z.zustaendig.map((zu, i) => {
+        const p = zu.art === 'person' ? ctx.person(zu.sub) : null;
+        const inhalt =
+          zu.art === 'gruppe' ? (
+            erwaehnungText({ art: 'gruppe', gruppe: zu.gruppe }, () => null)
+          ) : p ? (
+            <PersonName p={p} />
+          ) : (
+            'Person offen'
+          );
+        const betrifft = betrifftMich(zu);
+        const id = i === ersteTreffer ? anker : undefined;
+        return (
+          <Fragment key={zu.art === 'person' ? `p${zu.sub}` : `g${zu.gruppe}`}>
+            {i > 0 && ', '}
+            {betrifft ? (
+              <mark className="pk-dok-erw-ich" id={id} data-testid="erwaehnung-ich">
+                {inhalt}
+              </mark>
+            ) : (
+              inhalt
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 function WahlName({ k, ctx }: Readonly<{ k: WahlKandidat; ctx: Kontext }>) {
   const p = k.sub ? ctx.person(k.sub) : null;
   return p ? <PersonName p={p} /> : <>{k.name || 'Person offen'}</>;
@@ -495,6 +539,26 @@ function Baustein({
             </p>
           )}
           <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
+        </div>
+        <Notizen knoten={k.content} ctx={ctxIn} />
+      </>
+    );
+  }
+  if (k.type === 'bausteinTodo') {
+    const z = todoZeile(daten);
+    return (
+      <>
+        <div className="pk-dok-beschluss">
+          <p>
+            <strong>Todo:</strong> {z.titel || 'Ohne Titel'}
+            {z.zustaendig.length > 0 && (
+              <>
+                {' – '}
+                <TodoZustaendige k={k} daten={daten} ctx={ctx} />
+              </>
+            )}
+            {z.bis && ` (bis ${z.bis})`}
+          </p>
         </div>
         <Notizen knoten={k.content} ctx={ctxIn} />
       </>

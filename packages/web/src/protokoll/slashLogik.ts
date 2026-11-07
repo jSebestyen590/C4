@@ -44,7 +44,8 @@ export type SlashSymbol =
   | 'zitat'
   | 'bild'
   | 'person'
-  | 'gruppe';
+  | 'gruppe'
+  | 'todo';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -258,6 +259,17 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     aktion: {
       art: 'einfuegen',
       wahl: { typ: 'bausteinEm', daten: bausteinLeer('bausteinEm') },
+    },
+  },
+  {
+    schluessel: 'todo',
+    titel: 'Todo',
+    beschreibung: 'Aufgabe mit Zuständigen und Deadline, mit Erinnerung per Push',
+    symbol: 'todo',
+    woerter: ['todo', 'aufgabe', 'aufgaben'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinTodo', daten: bausteinLeer('bausteinTodo') },
     },
   },
   {

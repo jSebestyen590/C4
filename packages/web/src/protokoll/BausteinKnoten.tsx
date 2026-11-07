@@ -25,6 +25,7 @@ import {
   type BausteinWahlDaten,
   type BausteinTyp,
   type BausteinThemaDaten,
+  type BausteinTodoDaten,
   type BausteinVergangenesEventDaten,
 } from '@c4/shared';
 import { BestaetigenDialog } from '../BestaetigenDialog';
@@ -39,6 +40,7 @@ import {
   EventFormular,
   MeinungsbildFormular,
   ThemaFormular,
+  TodoFormular,
   AuswahlFormular,
   WahlFormular,
   VergangenesEventFormular,
@@ -243,6 +245,10 @@ export const BausteinThemaKnoten = bausteinKnoten(
   'bausteinThema',
   karte('bausteinThema', ThemaFormular as ComponentType<FormularProps<BausteinThemaDaten>>),
 );
+export const BausteinTodoKnoten = bausteinKnoten(
+  'bausteinTodo',
+  karte('bausteinTodo', TodoFormular as ComponentType<FormularProps<BausteinTodoDaten>>),
+);
 export const BausteinVergangenesEventKnoten = bausteinKnoten(
   'bausteinVergangenesEvent',
   karte(
@@ -306,5 +312,6 @@ export const BAUSTEIN_KNOTEN = [
   BausteinAufnahmeKnoten,
   BausteinWahlKnoten,
   BausteinAuswahlKnoten,
+  BausteinTodoKnoten,
   BildKnoten,
 ];

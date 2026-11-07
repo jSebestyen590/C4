@@ -4,6 +4,7 @@ import {
   bausteinAufnahmeDatenSchema,
   bausteinBeschlussDatenSchema,
   bausteinMeinungsbildDatenSchema,
+  bausteinTodoDatenSchema,
   bausteinEmDatenSchema,
   bausteinAuswahlDatenSchema,
   bausteinWahlDatenSchema,
@@ -28,6 +29,7 @@ import {
   type ProtokollKopf,
   type ProtokollNaechsteSitzungVorschlag,
   type ProtokollTeilnahmeWert,
+  type TodoZustaendig,
   type Wiederholung,
 } from '@c4/shared';
 import { wiederholungText, type WiederholungArt } from './wiederholungText';
@@ -365,6 +367,24 @@ export function meinungsbildZeilen(daten: unknown): MeinungsbildZeilen {
       .filter((o) => o.text.trim() !== '')
       .map((o) => `${o.text.trim()} ${o.stimmen}`)
       .join(' · '),
+  };
+}
+
+/** The line of a `bausteinTodo`: "Todo: Titel – Anna, @Alle (bis 14.11.2026)". */
+export interface TodoZeile {
+  titel: string;
+  zustaendig: TodoZustaendig[];
+  /** "14.11.2026"; '' without a deadline. */
+  bis: string;
+}
+
+export function todoZeile(daten: unknown): TodoZeile {
+  const d = bausteinTodoDatenSchema.safeParse(daten);
+  if (!d.success) return { titel: '', zustaendig: [], bis: '' };
+  return {
+    titel: d.data.titel.trim(),
+    zustaendig: d.data.zustaendig,
+    bis: d.data.faelligAm ? datumAnzeigen(d.data.faelligAm) : '',
   };
 }
 

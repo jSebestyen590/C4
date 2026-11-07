@@ -10,6 +10,10 @@ import {
   bedarfSetzen,
   dokumentNormalisieren,
   ersterLeererFeld,
+  todoNurEinePerson,
+  todoZustaendigAusWert,
+  todoZustaendigSetzen,
+  todoZustaendigWert,
   eventBisSetzen,
   eventDatenAusVorlage,
   eventDatumSetzen,
@@ -389,6 +393,8 @@ describe('ersterLeererFeld', () => {
     expect(ersterLeererFeld('bausteinAufnahme', { sub: 'a', name: '' })).toBe('text');
     expect(ersterLeererFeld('bausteinThema', { titel: '' })).toBe('titel');
     expect(ersterLeererFeld('bausteinThema', { titel: 'Bar' })).toBe('text');
+    expect(ersterLeererFeld('bausteinTodo', { titel: '' })).toBe('titel');
+    expect(ersterLeererFeld('bausteinTodo', { titel: 'Putzen' })).toBe('text');
   });
 });
 
@@ -473,7 +479,12 @@ describe('Event lists', () => {
 
 describe('new Bausteine', () => {
   it('start Event, Thema and Vergangenes Event with an empty bullet list', () => {
-    for (const typ of ['bausteinEvent', 'bausteinThema', 'bausteinVergangenesEvent'] as const) {
+    for (const typ of [
+      'bausteinEvent',
+      'bausteinThema',
+      'bausteinVergangenesEvent',
+      'bausteinTodo',
+    ] as const) {
       expect(notizenVorlage(typ)).toEqual([
         { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }] },
       ]);
@@ -534,5 +545,42 @@ describe('kalenderEventFuerBaustein', () => {
       eventId: 'e1',
       kategorieId: 'k1',
     });
+  });
+});
+
+describe('Todo Zuständige', () => {
+  it('encodes people and groups as select values and back', () => {
+    expect(todoZustaendigWert({ art: 'person', sub: 'x' })).toBe('p:x');
+    expect(todoZustaendigWert({ art: 'gruppe', gruppe: 'alle' })).toBe('g:alle');
+    expect(todoZustaendigAusWert('p:x')).toEqual({ art: 'person', sub: 'x' });
+    expect(todoZustaendigAusWert('g:ems')).toEqual({ art: 'gruppe', gruppe: 'ems' });
+    expect(todoZustaendigAusWert('g:nope')).toBeNull();
+    expect(todoZustaendigAusWert('p:')).toBeNull();
+    expect(todoZustaendigAusWert('x')).toBeNull();
+  });
+  it('sets the Zuständigen from select values without invalid or duplicate ones', () => {
+    const neu = todoZustaendigSetzen(bausteinLeer('bausteinTodo'), [
+      'g:alle',
+      'p:a',
+      'p:a',
+      'q',
+      '',
+    ]);
+    expect(neu.zustaendig).toEqual([
+      { art: 'gruppe', gruppe: 'alle' },
+      { art: 'person', sub: 'a' },
+    ]);
+    expect(neu.modus).toBe('einzeln');
+  });
+  it('knows when exactly one person is zuständig', () => {
+    expect(todoNurEinePerson([{ art: 'person', sub: 'a' }])).toBe(true);
+    expect(todoNurEinePerson([{ art: 'gruppe', gruppe: 'alle' }])).toBe(false);
+    expect(todoNurEinePerson([])).toBe(false);
+    expect(
+      todoNurEinePerson([
+        { art: 'person', sub: 'a' },
+        { art: 'person', sub: 'b' },
+      ]),
+    ).toBe(false);
   });
 });

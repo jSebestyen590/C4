@@ -66,18 +66,21 @@ export const BAUSTEIN_TYPEN = [
   'bausteinAufnahme',
   'bausteinWahl',
   'bausteinAuswahl',
+  'bausteinTodo',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
 
 /**
  * Bausteine that may also stand inside the free text ("Notizen") of another Baustein (at the cursor),
- * but never inside each other. All other Bausteine are top-level only.
+ * but never inside each other. All other Bausteine are top-level only. They hold plain text only
+ * (`kannBausteineEnthalten`): votes and Todo, so a Todo cannot stand in a vote or in another Todo.
  */
 export const BAUSTEINE_IN_NOTIZEN = [
   'bausteinBeschluss',
   'bausteinMeinungsbild',
   'bausteinWahl',
   'bausteinAuswahl',
+  'bausteinTodo',
 ] as const;
 export const istBausteinInNotizen = (typ: string): boolean =>
   (BAUSTEINE_IN_NOTIZEN as readonly string[]).includes(typ);
@@ -108,6 +111,22 @@ export const darfInNotizen = (elternTyp: string, typ: string): boolean =>
 
 export const PROTOKOLL_MAX_TIEFE = 30;
 export const PROTOKOLL_MAX_BYTES = 500 * 1024;
+
+/** Node type of an @mention in the free text (inline, atomic). */
+export const ERWAEHNUNG_TYP = 'erwaehnung';
+
+/** Groups that can be mentioned (`@Mitglieder`, ...). */
+export const ERWAEHNUNG_GRUPPEN = ['anwaerter', 'mitglieder', 'ems', 'aktive', 'alle'] as const;
+export type ErwaehnungGruppe = (typeof ERWAEHNUNG_GRUPPEN)[number];
+
+/** Statuses a group covers. `alle` has no Externe; `aktive` = Anwärter:innen and Mitglieder. */
+export const ERWAEHNUNG_GRUPPE_STATI: Record<ErwaehnungGruppe, readonly MitgliedStatus[]> = {
+  anwaerter: ['anwaerter'],
+  mitglieder: ['mitglied'],
+  ems: ['em'],
+  aktive: ['anwaerter', 'mitglied'],
+  alle: ['anwaerter', 'mitglied', 'em'],
+};
 
 // ---------------------------------------------------------------------------------------------
 // Baustein fields. Drafts: fields may be empty while editing, so only the types are checked.
@@ -164,6 +183,25 @@ export const bausteinThemaDatenSchema = z.strictObject({
   titel: z.string().max(200).default(''),
 });
 export type BausteinThemaDaten = z.infer<typeof bausteinThemaDatenSchema>;
+
+/** Who is zuständig for a Todo: a person, or a group (resolved by `todoZustaendigeAufloesen` when the protocol is closed). Same shape as the attrs of an `erwaehnung` node. */
+export const todoZustaendigSchema = z.discriminatedUnion('art', [
+  z.strictObject({ art: z.literal('person'), sub: z.string().min(1).max(128) }),
+  z.strictObject({ art: z.literal('gruppe'), gruppe: z.enum(ERWAEHNUNG_GRUPPEN) }),
+]);
+export type TodoZustaendig = z.infer<typeof todoZustaendigSchema>;
+
+export const BAUSTEIN_TODO_MAX_ZUSTAENDIG = 50;
+export const bausteinTodoDatenSchema = z.strictObject({
+  titel: z.string().max(200),
+  zustaendig: z.array(todoZustaendigSchema).max(BAUSTEIN_TODO_MAX_ZUSTAENDIG),
+  /** Deadline; null only while it is a draft. */
+  faelligAm: datumSchema.nullable(),
+  modus: z.enum(['gemeinsam', 'einzeln']).default('einzeln'),
+  /** Set once the Todo exists (written back when the protocol is closed). */
+  todoId: idOderNull.default(null),
+});
+export type BausteinTodoDaten = z.infer<typeof bausteinTodoDatenSchema>;
 
 export const bausteinVergangenesEventDatenSchema = z.strictObject({
   eventId: idOderNull,
@@ -481,6 +519,7 @@ export interface BausteinDatenVon {
   bausteinAufnahme: BausteinAufnahmeDaten;
   bausteinWahl: BausteinWahlDaten;
   bausteinAuswahl: BausteinAuswahlDaten;
+  bausteinTodo: BausteinTodoDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -495,6 +534,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinAufnahme: bausteinAufnahmeDatenSchema,
   bausteinWahl: bausteinWahlDatenSchema,
   bausteinAuswahl: bausteinAuswahlDatenSchema,
+  bausteinTodo: bausteinTodoDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -516,6 +556,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
       };
     case 'bausteinThema':
       return { titel: '' };
+    case 'bausteinTodo':
+      return { titel: '', zustaendig: [], faelligAm: null, modus: 'einzeln', todoId: null };
     case 'bausteinVergangenesEvent':
       return { eventId: null, name: '', datum: null };
     case 'bausteinAnwaerter':
@@ -646,22 +688,6 @@ export function protokollDokumentNormalisieren(dokument: ProtokollDokument): Pro
 // @Erwähnungen
 // ---------------------------------------------------------------------------------------------
 
-/** Node type of an @mention in the free text (inline, atomic). */
-export const ERWAEHNUNG_TYP = 'erwaehnung';
-
-/** Groups that can be mentioned (`@Mitglieder`, ...). */
-export const ERWAEHNUNG_GRUPPEN = ['anwaerter', 'mitglieder', 'ems', 'aktive', 'alle'] as const;
-export type ErwaehnungGruppe = (typeof ERWAEHNUNG_GRUPPEN)[number];
-
-/** Statuses a group covers. `alle` has no Externe; `aktive` = Anwärter:innen and Mitglieder. */
-export const ERWAEHNUNG_GRUPPE_STATI: Record<ErwaehnungGruppe, readonly MitgliedStatus[]> = {
-  anwaerter: ['anwaerter'],
-  mitglieder: ['mitglied'],
-  ems: ['em'],
-  aktive: ['anwaerter', 'mitglied'],
-  alle: ['anwaerter', 'mitglied', 'em'],
-};
-
 /** Attributes of an `erwaehnung` node. */
 export interface ErwaehnungAttrs {
   art: 'person' | 'gruppe';
@@ -697,6 +723,49 @@ export function erwaehnungBetrifft(
   if (erwaehnung.art === 'person') return erwaehnung.sub === betrachter.sub;
   if (!erwaehnung.gruppe) return false;
   return ERWAEHNUNG_GRUPPE_STATI[erwaehnung.gruppe].includes(betrachter.status);
+}
+
+/**
+ * The people a Todo is for: persons directly, groups by their CURRENT status (when the protocol is
+ * closed). Without duplicates, in the order of `zustaendig`; deactivated members and subs not in
+ * `mitglieder` are dropped (a person that is named directly but unknown is dropped as well).
+ */
+export function todoZustaendigeAufloesen(
+  zustaendig: readonly TodoZustaendig[],
+  mitglieder: readonly { sub: string; status: MitgliedStatus; deaktiviert?: boolean }[],
+): string[] {
+  const aktiv = mitglieder.filter((m) => !m.deaktiviert);
+  const ergebnis = new Set<string>();
+  for (const z of zustaendig) {
+    if (z.art === 'person') {
+      if (aktiv.some((m) => m.sub === z.sub)) ergebnis.add(z.sub);
+      continue;
+    }
+    const stati = ERWAEHNUNG_GRUPPE_STATI[z.gruppe];
+    for (const m of aktiv) if (stati.includes(m.status)) ergebnis.add(m.sub);
+  }
+  return [...ergebnis];
+}
+
+/**
+ * Plain text of free-text nodes: one line per paragraph / list item (nested lists flattened),
+ * mentions as written (`@sub` is not resolved here, they are left out). Empty lines are dropped.
+ */
+export function protokollNotizenText(content: readonly ProtokollKnoten[] | undefined): string {
+  const zeilen: string[] = [];
+  const inline = (k: ProtokollKnoten): string =>
+    k.text ?? (k.type === 'hardBreak' ? ' ' : (k.content ?? []).map(inline).join(''));
+  const gehe = (k: ProtokollKnoten) => {
+    if (k.type === 'paragraph' || k.type === 'heading') {
+      const z = inline(k).trim();
+      if (z !== '') zeilen.push(z);
+      return;
+    }
+    if (istBausteinTyp(k.type) || k.type === BILD_TYP) return;
+    for (const kind of k.content ?? []) gehe(kind);
+  };
+  for (const k of content ?? []) gehe(k);
+  return zeilen.join('\n');
 }
 
 const MAX_KNOTEN_KINDER = 5000;

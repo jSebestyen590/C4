@@ -37,6 +37,7 @@ import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
 import { SchluesselPage } from './pages/SchluesselPage';
 import { UmfrageFormularPage } from './pages/UmfrageFormularPage';
 import { UmfragePage } from './pages/UmfragePage';
+import { TodosPage } from './pages/TodosPage';
 import { TrichterDurchgangPage } from './pages/TrichterDurchgangPage';
 import { TrichterPage } from './pages/TrichterPage';
 import { TrichterVerwaltungPage } from './pages/TrichterVerwaltungPage';
@@ -549,6 +550,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
             element={
               <Protected permission="profil:bearbeiten">
                 <ProfilPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/todos"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <RequireUsername>
+                  <TodosPage />
+                </RequireUsername>
               </Protected>
             }
           />

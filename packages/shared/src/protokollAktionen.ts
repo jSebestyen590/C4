@@ -19,15 +19,20 @@ import {
   bausteinAufnahmeDatenSchema,
   bausteinEmDatenSchema,
   bausteinEventDatenSchema,
+  bausteinTodoDatenSchema,
   bausteinWahlDatenSchema,
+  protokollNotizenText,
+  todoZustaendigeAufloesen,
   wahlErgebnis,
   type BausteinEventDaten,
+  type BausteinTodoDaten,
   type ProtokollAktionErgebnis,
   type ProtokollDokument,
   type ProtokollKnoten,
   type ProtokollMitgliedDto,
 } from './protokolle';
 import type { MitgliedStatus } from './status';
+import type { TodoModus } from './todos';
 
 // Actions that closing a protocol can run in the app (see docs/protokolle.md): create or change
 // events, invite Anwärter:innen, change member status, occupy Posten. `protokollAktionen` only
@@ -40,6 +45,8 @@ export const AKTION_ARTEN = [
   'aufnahme.status',
   'em.status',
   'wahl.posten',
+  'todo.anlegen',
+  'todo.aendern',
 ] as const;
 export type AktionArt = (typeof AKTION_ARTEN)[number];
 
@@ -89,7 +96,19 @@ export interface AktionPostenKontext {
   besetzungen: AktionBesetzungKontext[];
 }
 
+/** A Todo as the Aktionen need it (to tell whether `todo.aendern` changes anything). */
+export interface AktionTodoKontext {
+  titel: string;
+  notizen: string | null;
+  faelligAm: string;
+  modus: TodoModus;
+  /** Subs of the people it is for. */
+  subs: string[];
+}
+
 export interface ProtokollAktionenKontext {
+  /** Id of the protocol (stored with a created Todo as its source). */
+  protokollId?: string;
   /** Berlin date (`YYYY-MM-DD`) of the Sitzung. */
   sitzungDatum: string;
   /** Today (`YYYY-MM-DD`): status changes and Besetzungen of a Sitzung in the future start today. */
@@ -103,11 +122,25 @@ export interface ProtokollAktionenKontext {
   personen: Readonly<Record<string, AktionPersonKontext>>;
   /** The Posten the Wahl blocks pick, by id. */
   posten: Readonly<Record<string, AktionPostenKontext>>;
+  /** The Todos the Todo blocks point to, by id (missing = deleted). Without it every Todo block with an id changes its Todo. */
+  todos?: Readonly<Record<string, AktionTodoKontext>>;
   /**
    * Ids of the votes at which the Sitzung was not beschlussfähig (`nichtBeschlussfaehigeAbstimmungen`):
    * their Aktionen still run, but provisionally (`vorlaeufig`), the next Sitzung repeats the vote.
    */
   nichtBeschlussfaehig?: readonly string[];
+}
+
+/** What a Todo Aktion writes: the notes as plain text, the people resolved (groups by current status). */
+export interface TodoPlan {
+  titel: string;
+  notizen: string | null;
+  faelligAm: string;
+  modus: TodoModus;
+  subs: string[];
+  /** Source (the protocol and the Baustein); null when the context has no protocol id. */
+  protokollId: string | null;
+  bausteinId: string;
 }
 
 /** What the API has to do for an Aktion. */
@@ -116,7 +149,9 @@ export type AktionPlan =
   | { art: 'event.aendern'; eventId: string; eingabe: EventEingabe }
   | { art: 'anwaerter.einladen'; email: string; vorname: string; nachname: string; ab: string }
   | { art: 'aufnahme.status' | 'em.status'; sub: string; status: MitgliedStatus; ab: string }
-  | { art: 'wahl.posten'; postenId: string; start: string; subs: string[]; ablosung: string[] };
+  | { art: 'wahl.posten'; postenId: string; start: string; subs: string[]; ablosung: string[] }
+  | { art: 'todo.anlegen'; todo: TodoPlan }
+  | { art: 'todo.aendern'; todoId: string; todo: TodoPlan };
 
 export interface ProtokollAktion {
   /** `bausteinId:art` */
@@ -415,6 +450,82 @@ function wahlPosten(
   };
 }
 
+const personenText = (n: number): string => `${n} ${n === 1 ? 'Person' : 'Personen'}`;
+
+/** Both Todo Aktionen: `todo.anlegen` without a `todoId`, else `todo.aendern`. */
+function todoAktion(
+  daten: BausteinTodoDaten,
+  content: readonly ProtokollKnoten[] | undefined,
+  bausteinId: string,
+  k: ProtokollAktionenKontext,
+): Eintrag | null {
+  const titel = daten.titel.trim();
+  const subs = todoZustaendigeAufloesen(
+    daten.zustaendig,
+    Object.entries(k.personen).map(([sub, p]) => ({
+      sub,
+      status: p.status,
+      deaktiviert: p.deaktiviert,
+    })),
+  );
+  const teile = [
+    subs.length > 0 ? `für ${personenText(subs.length)}` : '',
+    daten.faelligAm ? `bis ${datumAnzeigen(daten.faelligAm)}` : '',
+  ].filter(Boolean);
+  const beschreibung = `Todo${titel ? ` „${titel}“` : ''}${teile.length > 0 ? ` ${teile.join(', ')}` : ''}`;
+  const aendern = daten.todoId !== null;
+  const text = aendern ? `${beschreibung} ändern` : beschreibung;
+
+  const notizen = protokollNotizenText(content);
+  const todo: TodoPlan | null =
+    titel !== '' && daten.faelligAm !== null && subs.length > 0
+      ? {
+          titel,
+          notizen: notizen === '' ? null : notizen,
+          faelligAm: daten.faelligAm,
+          modus: daten.modus,
+          subs,
+          protokollId: k.protokollId ?? null,
+          bausteinId,
+        }
+      : null;
+
+  if (aendern) {
+    const alt = k.todos?.[daten.todoId!];
+    // A deleted Todo has nothing to change.
+    if (k.todos && !alt) return null;
+    if (todo && alt) {
+      const gleich =
+        alt.titel === todo.titel &&
+        (alt.notizen ?? null) === todo.notizen &&
+        alt.faelligAm === todo.faelligAm &&
+        alt.modus === todo.modus &&
+        alt.subs.length === todo.subs.length &&
+        alt.subs.every((s) => todo.subs.includes(s));
+      if (gleich) return null;
+    }
+  }
+  if (titel === '') return nichtAusfuehrbar(text, 'Der Titel fehlt.', { subs });
+  if (daten.faelligAm === null) return nichtAusfuehrbar(text, 'Die Deadline fehlt.', { subs });
+  if (!todo) {
+    return nichtAusfuehrbar(
+      text,
+      daten.zustaendig.length === 0
+        ? 'Es ist niemand zuständig.'
+        : 'Von den Zuständigen ist niemand aktiv.',
+    );
+  }
+  return {
+    text,
+    ausfuehrbar: true,
+    eventId: null,
+    subs,
+    plan: aendern
+      ? { art: 'todo.aendern', todoId: daten.todoId!, todo }
+      : { art: 'todo.anlegen', todo },
+  };
+}
+
 const VOTE_AKTIONEN: readonly AktionArt[] = ['aufnahme.status', 'em.status', 'wahl.posten'];
 
 /**
@@ -524,6 +635,16 @@ export function protokollAktionen(
         case 'bausteinWahl': {
           const d = bausteinWahlDatenSchema.safeParse(daten);
           if (d.success) hinzu(knoten, 'wahl.posten', wahlPosten(d.data, kontext));
+          break;
+        }
+        case 'bausteinTodo': {
+          const d = bausteinTodoDatenSchema.safeParse(daten);
+          if (!d.success) break;
+          hinzu(
+            knoten,
+            d.data.todoId === null ? 'todo.anlegen' : 'todo.aendern',
+            todoAktion(d.data, knoten.content, knoten.attrs.id, kontext),
+          );
           break;
         }
       }

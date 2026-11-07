@@ -563,3 +563,132 @@ describe('vorlaeufig (not beschlussfähig)', () => {
     });
   });
 });
+
+describe('Todo', () => {
+  const notizen: ProtokollKnoten[] = [
+    {
+      type: 'bulletList',
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Erstens' }] }],
+        },
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Zweitens' }] }],
+        },
+        { type: 'listItem', content: [{ type: 'paragraph' }] },
+      ],
+    },
+  ];
+  const personen = {
+    a: { status: 'mitglied', deaktiviert: false },
+    b: { status: 'anwaerter', deaktiviert: false },
+    c: { status: 'em', deaktiviert: false },
+    d: { status: 'mitglied', deaktiviert: true },
+  } as const;
+  const daten = {
+    titel: ' Kasse prüfen ',
+    zustaendig: [
+      { art: 'gruppe', gruppe: 'aktive' },
+      { art: 'person', sub: 'a' },
+    ],
+    faelligAm: '2026-11-14',
+    modus: 'gemeinsam',
+  } as const;
+
+  it('creates a Todo with the resolved people and the notes as text', () => {
+    const b = baustein('bausteinTodo', { ...daten, zustaendig: [...daten.zustaendig] }, notizen);
+    const id = (b.attrs as { id: string }).id;
+    const [a, ...rest] = protokollAktionen(dok(b), kontext({ personen, protokollId: 'p1' }));
+    expect(rest).toEqual([]);
+    expect(a).toMatchObject({
+      id: `${id}:todo.anlegen`,
+      art: 'todo.anlegen',
+      ausfuehrbar: true,
+      text: 'Todo „Kasse prüfen“ für 2 Personen, bis 14.11.2026',
+      subs: ['a', 'b'],
+      plan: {
+        art: 'todo.anlegen',
+        todo: {
+          titel: 'Kasse prüfen',
+          notizen: 'Erstens\nZweitens',
+          faelligAm: '2026-11-14',
+          modus: 'gemeinsam',
+          protokollId: 'p1',
+          bausteinId: id,
+        },
+      },
+    });
+    expect(a!.plan).toMatchObject({ todo: { subs: ['a', 'b'] } });
+  });
+
+  it('uses the singular for one person', () => {
+    const b = baustein('bausteinTodo', {
+      ...daten,
+      zustaendig: [{ art: 'person', sub: 'c' }],
+    });
+    const [a] = protokollAktionen(dok(b), kontext({ personen }));
+    expect(a!.text).toBe('Todo „Kasse prüfen“ für 1 Person, bis 14.11.2026');
+    expect(a!.plan).toMatchObject({ todo: { notizen: null, protokollId: null } });
+  });
+
+  it.each([
+    ['title', { titel: '  ' }, 'Der Titel fehlt.'],
+    ['deadline', { faelligAm: null }, 'Die Deadline fehlt.'],
+    ['people', { zustaendig: [] }, 'Es ist niemand zuständig.'],
+    [
+      'active people',
+      { zustaendig: [{ art: 'person', sub: 'd' }] },
+      'Von den Zuständigen ist niemand aktiv.',
+    ],
+  ] as const)('cannot run without %s', (_, extra, grund) => {
+    const b = baustein('bausteinTodo', {
+      ...daten,
+      zustaendig: [...daten.zustaendig],
+      ...extra,
+    } as never);
+    const [a] = protokollAktionen(dok(b), kontext({ personen }));
+    expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null, art: 'todo.anlegen' });
+  });
+
+  it('changes an existing Todo only when something differs', () => {
+    const b = baustein('bausteinTodo', {
+      ...daten,
+      zustaendig: [{ art: 'person', sub: 'a' }],
+      todoId: 't1',
+    });
+    const alt = {
+      titel: 'Kasse prüfen',
+      notizen: null,
+      faelligAm: '2026-11-14',
+      modus: 'gemeinsam' as const,
+      subs: ['a'],
+    };
+    expect(protokollAktionen(dok(b), kontext({ personen, todos: { t1: alt } }))).toEqual([]);
+    const [a] = protokollAktionen(
+      dok(b),
+      kontext({ personen, todos: { t1: { ...alt, faelligAm: '2026-11-20' } } }),
+    );
+    expect(a).toMatchObject({
+      art: 'todo.aendern',
+      ausfuehrbar: true,
+      text: 'Todo „Kasse prüfen“ für 1 Person, bis 14.11.2026 ändern',
+      plan: { art: 'todo.aendern', todoId: 't1', todo: { faelligAm: '2026-11-14' } },
+    });
+    // Without the Todos in the context it always changes; a deleted Todo has nothing to change.
+    expect(protokollAktionen(dok(b), kontext({ personen }))).toHaveLength(1);
+    expect(protokollAktionen(dok(b), kontext({ personen, todos: {} }))).toEqual([]);
+  });
+
+  it('reports a changed Todo that cannot run', () => {
+    const b = baustein('bausteinTodo', {
+      ...daten,
+      zustaendig: [...daten.zustaendig],
+      titel: '',
+      todoId: 't1',
+    });
+    const [a] = protokollAktionen(dok(b), kontext({ personen }));
+    expect(a).toMatchObject({ art: 'todo.aendern', ausfuehrbar: false, grund: 'Der Titel fehlt.' });
+  });
+});

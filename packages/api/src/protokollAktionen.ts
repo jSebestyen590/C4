@@ -2,6 +2,7 @@ import {
   protokollAktionen,
   protokollEventIds,
   type AktionEventKontext,
+  type AktionTodoKontext,
   type ProtokollAktion,
   type ProtokollAktionAusgang,
   type ProtokollAktionErgebnis,
@@ -19,6 +20,7 @@ import {
 } from './kalender';
 import { istDeaktiviert, type MitgliederStore } from './mitglieder';
 import { AblosungUngueltig, BesetzungUeberschneidung, type PostenStore } from './posten';
+import type { TodosStore } from './todos';
 
 // Runs the Aktionen of a protocol (see docs/protokolle.md, `protokollAktionen` in shared). The
 // stores are called directly: the routes only need `protokolle:schreiben`, not the rights of the
@@ -32,14 +34,15 @@ export interface AktionenDeps {
   mitglieder: Pick<MitgliederStore, 'alle' | 'holen' | 'speichern' | 'statusSetzen'>;
   userAdmin: Pick<UserAdmin, 'createUser'>;
   posten: Pick<PostenStore, 'holen' | 'besetzungAnlegen'>;
+  todos: Pick<TodosStore, 'byIds' | 'anlegen' | 'aendern' | 'zustaendigeSetzen'>;
   /** Called after an event was changed (notifications); failures must not matter. */
   eventGeaendert?: (eventId: string, aenderung: EventAenderung, akteur: string) => Promise<void>;
 }
 
-/** A value an Aktion wrote back into a Baustein (`eventId` of a created event, `sub` of an invited person). */
+/** A value an Aktion wrote back into a Baustein (`eventId` of a created event, `sub` of an invited person, `todoId` of a created Todo). */
 export interface Rueckschreibung {
   bausteinId: string;
-  feld: 'eventId' | 'sub';
+  feld: 'eventId' | 'sub' | 'todoId';
   wert: string;
 }
 
@@ -77,6 +80,20 @@ function postenIdsVon(dokument: ProtokollDokument): string[] {
   return [...ids];
 }
 
+/** Ids of the Todos the Todo blocks of the document point to. */
+function todoIdsVon(dokument: ProtokollDokument): string[] {
+  const ids = new Set<string>();
+  const gehe = (knoten: ProtokollKnoten) => {
+    if (knoten.type === 'bausteinTodo') {
+      const id = (knoten.attrs?.daten as { todoId?: unknown } | undefined)?.todoId;
+      if (typeof id === 'string') ids.add(id);
+    }
+    for (const kind of knoten.content ?? []) gehe(kind);
+  };
+  gehe(dokument);
+  return [...ids];
+}
+
 const namensName = (err: unknown): string => (err instanceof Error ? err.name : '');
 
 /** German message for an error of an Aktion; unknown errors are logged and reported generally. */
@@ -105,18 +122,33 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     dokument: ProtokollDokument,
     sitzungDatum: string,
     heute: string,
+    protokollId?: string,
   ): Promise<ProtokollAktionenKontext> {
     const postenIds = postenIdsVon(dokument);
-    const [events, kategorien, vorlagen, personen, posten] = await Promise.all([
+    const [events, kategorien, vorlagen, personen, posten, todos] = await Promise.all([
       Promise.all(protokollEventIds(dokument).map((id) => deps.kalender.event(id))),
       deps.kalender.kategorien(true),
       deps.kalender.vorlagen(true),
       deps.mitglieder.alle(),
       Promise.all(postenIds.map((id) => deps.posten.holen(id))),
+      deps.todos.byIds(todoIdsVon(dokument)),
     ]);
     return {
+      ...(protokollId !== undefined && { protokollId }),
       sitzungDatum,
       heute,
+      todos: Object.fromEntries(
+        todos.map((t) => [
+          t.id,
+          {
+            titel: t.titel,
+            notizen: t.notizen,
+            faelligAm: t.faelligAm,
+            modus: t.modus,
+            subs: t.zustaendige.map((z) => z.sub),
+          } satisfies AktionTodoKontext,
+        ]),
+      ),
       events: Object.fromEntries(
         events.flatMap((e) =>
           e
@@ -231,6 +263,33 @@ export function createProtokollAktionen(deps: AktionenDeps) {
           throw new AktionFehler('Die Person hat noch kein Profil.');
         }
         return 'Status geändert.';
+      }
+      case 'todo.anlegen': {
+        const t = plan.todo;
+        const id = await deps.todos.anlegen({
+          titel: t.titel,
+          notizen: t.notizen,
+          faelligAm: t.faelligAm,
+          modus: t.modus,
+          protokollId: t.protokollId,
+          bausteinId: t.bausteinId,
+          erstelltVon: akteur,
+          subs: t.subs,
+        });
+        patches.push({ bausteinId: a.bausteinId, feld: 'todoId', wert: id });
+        return `Todo für ${t.subs.length} ${t.subs.length === 1 ? 'Person' : 'Personen'} angelegt.`;
+      }
+      case 'todo.aendern': {
+        const t = plan.todo;
+        const gefunden = await deps.todos.aendern(plan.todoId, {
+          titel: t.titel,
+          notizen: t.notizen,
+          faelligAm: t.faelligAm,
+          modus: t.modus,
+        });
+        if (!gefunden) throw new AktionFehler('Das Todo gibt es nicht mehr.');
+        await deps.todos.zustaendigeSetzen(plan.todoId, t.subs);
+        return 'Todo geändert.';
       }
       case 'wahl.posten': {
         let ablosung = plan.ablosung;

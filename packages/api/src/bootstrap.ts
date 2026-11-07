@@ -24,6 +24,8 @@ import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
 import { createSchluesselStore } from './schluessel';
+import { createTodosStore } from './todos';
+import { registriereTodoAufgaben } from './todoBenachrichtigungen';
 import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
@@ -52,6 +54,8 @@ export function createProduction() {
   const mitglieder = createMitgliederStore(db);
   registriereGeburtstagAufgaben(benachrichtigungen, mitglieder, userAdmin);
   const posten = createPostenStore(db);
+  const todos = createTodosStore(db);
+  registriereTodoAufgaben(benachrichtigungen, todos);
   const umfragen = createUmfragenStore(db);
   registriereUmfrageAufgaben(benachrichtigungen, umfragen, (jetzt) =>
     ladeKontext({ mitglieder, userAdmin, posten }, jetzt),
@@ -70,6 +74,7 @@ export function createProduction() {
     inventar: createInventarStore(db),
     kalender,
     schluessel: createSchluesselStore(db),
+    todos,
     umfragen,
     trichter: createTrichterStore(db),
     protokolle: createProtokolleStore(db),

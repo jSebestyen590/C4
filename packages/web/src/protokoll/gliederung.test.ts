@@ -150,6 +150,8 @@ describe('gliederungTitel', () => {
     expect(gliederungTitel('bausteinEvent', { name: '', datum: null })).toBe('Event');
     expect(gliederungTitel('bausteinThema', { titel: ' Hausordnung ' })).toBe('Hausordnung');
     expect(gliederungTitel('bausteinThema', { titel: '' })).toBe('Thema');
+    expect(gliederungTitel('bausteinTodo', { titel: ' Putzen ' })).toBe('Todo: Putzen');
+    expect(gliederungTitel('bausteinTodo', { titel: '' })).toBe('Todo');
     const lang = gliederungTitel('bausteinBeschluss', { antrag: 'a'.repeat(200) });
     expect(lang.length).toBeLessThan(100);
     expect(lang.endsWith('…')).toBe(true);
@@ -460,7 +462,12 @@ describe('nested Themen in the Gliederung', () => {
   it('drops a Thema into the notes of a nested Thema: before a row and via the slot', () => {
     const rows = zeilen('top');
     const rest = rows.filter((r) => r.key !== 'top');
-    const bei = (key: string) => gliederungZiel(rows, 'top', rest.findIndex((r) => r.key === key));
+    const bei = (key: string) =>
+      gliederungZiel(
+        rows,
+        'top',
+        rest.findIndex((r) => r.key === key),
+      );
     expect(bei('w')).toEqual({ elternId: 't2', index: 0 });
     expect(bei('notizen:t2')).toEqual({ elternId: 't2', index: 1 });
     expect(bei('t2')).toEqual({ elternId: 't1', index: 0 });
@@ -474,7 +481,13 @@ describe('nested Themen in the Gliederung', () => {
   it('a non-nestable Baustein above a deep row lands behind the top-level ancestor', () => {
     const rows = zeilen('d');
     const rest = rows.filter((r) => r.key !== 'd');
-    expect(gliederungZiel(rows, 'd', rest.findIndex((r) => r.key === 'w'))).toEqual({
+    expect(
+      gliederungZiel(
+        rows,
+        'd',
+        rest.findIndex((r) => r.key === 'w'),
+      ),
+    ).toEqual({
       abschnitt: 0,
       index: 1,
     });

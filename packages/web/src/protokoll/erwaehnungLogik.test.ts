@@ -193,4 +193,40 @@ describe('meineErwaehnungen', () => {
       expect(r.ids.size).toBe(0);
     });
   });
+
+  describe('Todo', () => {
+    const todo = (zustaendig: unknown[], titel = 'Kasse prüfen'): ProtokollKnoten => ({
+      type: 'bausteinTodo',
+      attrs: { id: 'td', daten: { titel, zustaendig, faelligAm: '2026-11-14', modus: 'einzeln' } },
+      content: [{ type: 'paragraph' }],
+    });
+
+    it('is a mention for a person who is zuständig, with the title in the excerpt', () => {
+      const r = meineErwaehnungen(
+        dok([], [], [todo([{ art: 'person', sub: 'me' }])]),
+        { sub: 'me', status: 'mitglied' },
+        namen,
+      );
+      expect(r.eintraege.map((e) => e.auszug)).toEqual(['Todo: Kasse prüfen']);
+      expect(r.ids.size).toBe(1);
+    });
+
+    it('is a mention through a group of my current status', () => {
+      const d = dok([], [], [todo([{ art: 'gruppe', gruppe: 'mitglieder' }])]);
+      expect(meineErwaehnungen(d, { sub: 'me', status: 'mitglied' }, namen).eintraege).toHaveLength(
+        1,
+      );
+      expect(meineErwaehnungen(d, { sub: 'me', status: 'em' }, namen).eintraege).toEqual([]);
+    });
+
+    it('is no mention when only others are zuständig', () => {
+      const r = meineErwaehnungen(
+        dok([], [], [todo([{ art: 'person', sub: 'z' }])]),
+        { sub: 'me', status: 'mitglied' },
+        namen,
+      );
+      expect(r.eintraege).toEqual([]);
+      expect(r.ids.size).toBe(0);
+    });
+  });
 });

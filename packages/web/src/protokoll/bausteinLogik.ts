@@ -1,4 +1,6 @@
 import {
+  BAUSTEIN_TODO_MAX_ZUSTAENDIG,
+  ERWAEHNUNG_GRUPPEN,
   bausteinErzeugen,
   beschlussErgebnisVorschlag,
   AUSWAHL_MAX_OPTIONEN,
@@ -16,6 +18,7 @@ import {
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
   type BausteinEventDaten,
+  type BausteinTodoDaten,
   type BausteinTyp,
   type EventDauer,
   type EventDto,
@@ -23,6 +26,7 @@ import {
   type ProtokollKalenderEvent,
   type ProtokollDokument,
   type ProtokollKnoten,
+  type TodoZustaendig,
   type VorlageDto,
   type VorlageSchicht,
 } from '@c4/shared';
@@ -394,6 +398,39 @@ export function auswahlOptionSetzen(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Todo
+// ---------------------------------------------------------------------------------------------
+
+/** Select value of a Zuständige:r: `p:<sub>` for a person, `g:<gruppe>` for a group. */
+export const todoZustaendigWert = (z: TodoZustaendig): string =>
+  z.art === 'person' ? `p:${z.sub}` : `g:${z.gruppe}`;
+
+/** The Zuständige:r of a select value, null if invalid. */
+export function todoZustaendigAusWert(wert: string): TodoZustaendig | null {
+  const gruppe = ERWAEHNUNG_GRUPPEN.find((g) => wert === `g:${g}`);
+  if (gruppe) return { art: 'gruppe', gruppe };
+  if (wert.startsWith('p:') && wert.length > 2) return { art: 'person', sub: wert.slice(2) };
+  return null;
+}
+
+/** Sets the Zuständigen from select values (invalid and duplicate ones dropped, at most `BAUSTEIN_TODO_MAX_ZUSTAENDIG`). */
+export function todoZustaendigSetzen(daten: BausteinTodoDaten, werte: string[]): BausteinTodoDaten {
+  const gesehen = new Set<string>();
+  const zustaendig: TodoZustaendig[] = [];
+  for (const w of werte) {
+    const z = todoZustaendigAusWert(w);
+    if (!z || gesehen.has(w) || zustaendig.length >= BAUSTEIN_TODO_MAX_ZUSTAENDIG) continue;
+    gesehen.add(w);
+    zustaendig.push(z);
+  }
+  return { ...daten, zustaendig };
+}
+
+/** Whether exactly one person (and no group) is zuständig: "Abhaken" is moot then. */
+export const todoNurEinePerson = (zustaendig: readonly TodoZustaendig[]): boolean =>
+  zustaendig.length === 1 && zustaendig[0]!.art === 'person';
+
+// ---------------------------------------------------------------------------------------------
 // Focus after inserting
 // ---------------------------------------------------------------------------------------------
 
@@ -420,6 +457,7 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
     case 'bausteinEvent':
       return leer('name') ? 'name' : leer('datum') ? 'datum' : 'text';
     case 'bausteinThema':
+    case 'bausteinTodo':
       return leer('titel') ? 'titel' : 'text';
     case 'bausteinVergangenesEvent':
       if (!leer('eventId')) return 'text';
@@ -443,7 +481,12 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
 
 /** Free text of a new Baustein: Event, Thema and Vergangenes Event start with an empty bullet list. */
 export function notizenVorlage(typ: BausteinTyp): ProtokollKnoten[] {
-  if (typ === 'bausteinEvent' || typ === 'bausteinThema' || typ === 'bausteinVergangenesEvent') {
+  if (
+    typ === 'bausteinEvent' ||
+    typ === 'bausteinThema' ||
+    typ === 'bausteinVergangenesEvent' ||
+    typ === 'bausteinTodo'
+  ) {
     return [
       {
         type: 'bulletList',

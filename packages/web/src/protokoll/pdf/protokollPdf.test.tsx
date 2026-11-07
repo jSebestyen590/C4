@@ -321,3 +321,49 @@ describe('PDF: Erwähnungen', () => {
     expect(text).not.toContain('backgroundColor":"#ffe');
   });
 });
+
+describe('PDF: Todo', () => {
+  const todo: ProtokollKnoten = {
+    type: 'bausteinTodo',
+    attrs: {
+      id: 'td',
+      daten: {
+        ...bausteinLeer('bausteinTodo'),
+        titel: 'Kasse prüfen',
+        zustaendig: [
+          { art: 'person', sub: '1' },
+          { art: 'gruppe', gruppe: 'alle' },
+        ],
+        faelligAm: '2026-11-14',
+      },
+    },
+    content: [liste('TODONOTIZ')],
+  };
+  const mit: DokumentEingabe = {
+    ...eingabe,
+    inhalt: {
+      ...eingabe.inhalt,
+      content: [
+        eingabe.inhalt.content[0]!,
+        { ...eingabe.inhalt.content[1]!, content: [todo, { type: 'paragraph' }] },
+        eingabe.inhalt.content[2]!,
+      ],
+    },
+  };
+
+  it('writes the Todo line and its notes, and keeps it out of the bookmarks', () => {
+    const text = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    expect(text).toContain('Todo:');
+    expect(text).toContain('Kasse prüfen');
+    expect(text).toContain('@Alle');
+    expect(text).toContain(' (bis 14.11.2026)');
+    expect(text.indexOf('TODONOTIZ')).toBeGreaterThan(text.indexOf('Kasse prüfen'));
+    const gegenwart = lesezeichen(blockBaum(pdfBloecke(mit))).find(
+      (o) => o.titel === 'Gegenwärtiges',
+    )!;
+    expect(gegenwart.kinder).toEqual([]);
+  });
+});

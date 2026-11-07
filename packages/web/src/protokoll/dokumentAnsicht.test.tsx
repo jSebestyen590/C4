@@ -172,6 +172,67 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html.indexOf('notes')).toBeLessThan(html.indexOf('Meinungsbild:'));
   });
 
+  it('renders a Todo line with names, groups and deadline, notes below, nested and marked for me', () => {
+    const todo = (id: string, daten: Record<string, unknown>, content: ProtokollKnoten[]) =>
+      ({
+        type: 'bausteinTodo',
+        attrs: {
+          id,
+          daten: { ...bausteinLeer('bausteinTodo'), faelligAm: '2026-11-14', ...daten },
+        },
+        content,
+      }) as ProtokollKnoten;
+    const oben = todo(
+      't1',
+      {
+        titel: 'Kasse prüfen',
+        zustaendig: [
+          { art: 'person', sub: '1' },
+          { art: 'gruppe', gruppe: 'alle' },
+        ],
+      },
+      [liste('TODONOTIZ')],
+    );
+    const innen = todo('t2', { titel: 'Putzen', faelligAm: null }, [{ type: 'paragraph' }]);
+    const ohne = todo('t3', { titel: 'Nur Titel', faelligAm: null }, [{ type: 'paragraph' }]);
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const event = zukuenftiges!.content![0]!;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      ich: { sub: '1', status: 'mitglied' },
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          { ...gegenwaertiges!, content: [oben, ohne, { type: 'paragraph' }] },
+          {
+            ...zukuenftiges!,
+            content: [{ ...event, content: [liste('notes'), innen, { type: 'paragraph' }] }],
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    expect(html).toContain('<strong>Todo:</strong> Kasse prüfen – ');
+    expect(html).toContain('@Alle');
+    expect(html).toContain(' (bis 14.11.2026)');
+    // Persons and groups that concern me carry the highlighter; the first one the anchor.
+    expect(html).toContain('<mark class="pk-dok-erw-ich"');
+    expect(html).toContain('data-testid="erwaehnung-ich"');
+    expect(html.indexOf('TODONOTIZ')).toBeGreaterThan(html.indexOf('Kasse prüfen'));
+    // No Zuständige and no deadline: just the title.
+    expect(html).toMatch(/<strong>Todo:<\/strong> Nur Titel<\/p>/);
+    // Nested in the Event notes: indented and no heading of its own.
+    expect(html).toContain(
+      '<div class="pk-dok-innen"><div class="pk-dok-beschluss"><p><strong>Todo:</strong> Putzen',
+    );
+    expect(html).not.toMatch(/<h\d[^>]*>[^<]*Todo/);
+  });
+
   it('renders a Wahl with runoff, result and quorum, also an open tie', () => {
     const wahl = (id: string, stichwahlen: unknown[], extra = {}): ProtokollKnoten => ({
       type: 'bausteinWahl',

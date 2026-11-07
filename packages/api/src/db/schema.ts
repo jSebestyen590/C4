@@ -822,6 +822,46 @@ export const schluesselUebergaben = pgTable('schluessel_uebergaben', {
 export type UebergabeRow = typeof schluesselUebergaben.$inferSelect;
 
 // ---------------------------------------------------------------------------
+// Todos
+
+/** A Todo (see docs/todos.md); the people it is for are in `todoZustaendige`. */
+export const todos = pgTable('todos', {
+  id: text('id').primaryKey(),
+  titel: text('titel').notNull(),
+  notizen: text('notizen'),
+  /** `YYYY-MM-DD` */
+  faelligAm: text('faellig_am').notNull(),
+  /** `gemeinsam` or `einzeln` (CHECK). */
+  modus: text('modus').$type<'gemeinsam' | 'einzeln'>().notNull(),
+  /** Protocol and Baustein the Todo comes from, deliberately without a foreign key; null = created by a member. */
+  protokollId: text('protokoll_id'),
+  bausteinId: text('baustein_id'),
+  /** Mode `gemeinsam`: when and by whom (Cognito sub) it was ticked. */
+  erledigtAm: timestamp('erledigt_am', { withTimezone: true }),
+  erledigtVon: text('erledigt_von'),
+  /** Cognito sub, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TodoRow = typeof todos.$inferSelect;
+
+/** A person a Todo is for; in mode `einzeln` their own tick. */
+export const todoZustaendige = pgTable(
+  'todo_zustaendige',
+  {
+    todoId: text('todo_id')
+      .notNull()
+      .references(() => todos.id),
+    sub: text('sub').notNull(),
+    erledigtAm: timestamp('erledigt_am', { withTimezone: true }),
+    erledigtVon: text('erledigt_von'),
+  },
+  (t) => [primaryKey({ columns: [t.todoId, t.sub] })],
+);
+export type TodoZustaendigerRow = typeof todoZustaendige.$inferSelect;
+
+// ---------------------------------------------------------------------------
 // Umfragen
 
 /** A poll; runs until the end of `endetAm` (Berlin) unless `beendetAm` is set. */

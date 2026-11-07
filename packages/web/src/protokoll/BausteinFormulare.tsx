@@ -25,6 +25,7 @@ import {
   auswahlRunden,
   datumAnzeigen,
   datumBerlin,
+  ERWAEHNUNG_GRUPPEN,
   eventDatenAusKalender,
   MEINUNGSBILD_MAX_OPTIONEN,
   WAHL_MAX_ANZAHL,
@@ -43,6 +44,7 @@ import {
   type BausteinMeinungsbildDaten,
   type BausteinWahlDaten,
   type BausteinThemaDaten,
+  type BausteinTodoDaten,
   type BausteinVergangenesEventDaten,
   type EventDauer,
   type ProtokollMitgliedDto,
@@ -79,8 +81,12 @@ import {
   ueberzaehligeStichwahlenEntfernen,
   wahlAnzahlSetzen,
   wahlStimmenProPersonSetzen,
+  todoNurEinePerson,
+  todoZustaendigSetzen,
+  todoZustaendigWert,
   zeitWert,
 } from './bausteinLogik';
+import { GRUPPE_TITEL } from './erwaehnungLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
 import { WiederholungHinweis } from './WiederholungHinweis';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
@@ -350,6 +356,126 @@ export function ThemaFormular({
       maxLength={200}
       onWert={(titel) => aendern((d) => ({ ...d, titel }))}
     />
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Todo
+// ---------------------------------------------------------------------------------------------
+
+const TODO_MODUS_HINWEIS = {
+  einzeln: 'Jede Person hakt für sich ab.',
+  gemeinsam: 'Eine Person hakt ab, dann ist es für alle erledigt.',
+} as const;
+
+export function TodoFormular({
+  daten,
+  aendern,
+  editierbar,
+}: Readonly<FormularProps<BausteinTodoDaten>>) {
+  const mitglieder = useMitgliederListe();
+  const liste = mitglieder.data ?? [];
+  const status = new Map(liste.map((m) => [`p:${m.sub}`, m.status]));
+  const gewaehlt = daten.zustaendig.map(todoZustaendigWert);
+
+  if (!editierbar) {
+    const namen = daten.zustaendig.map((z) => {
+      if (z.art === 'gruppe') return `@${GRUPPE_TITEL[z.gruppe]}`;
+      const m = liste.find((x) => x.sub === z.sub);
+      return m ? mitgliedName(m) : 'Person offen';
+    });
+    return (
+      <Text style={{ overflowWrap: 'anywhere' }}>
+        <Text span fw={700}>
+          Todo:
+        </Text>{' '}
+        {daten.titel || 'Ohne Titel'}
+        {namen.length > 0 && ` – ${namen.join(', ')}`}
+        {daten.faelligAm && ` (bis ${datumAnzeigen(daten.faelligAm)})`}
+      </Text>
+    );
+  }
+
+  const personen = mitgliedOptionen(liste.filter((m) => !m.deaktiviert)).map((o) => ({
+    ...o,
+    value: `p:${o.value}`,
+  }));
+  // Already chosen people that are not (or no longer) in the list stay visible and removable.
+  for (const w of gewaehlt) {
+    if (w.startsWith('p:') && !personen.some((o) => o.value === w)) {
+      personen.push({ value: w, label: 'Unbekannt' });
+    }
+  }
+  const gruppen = ERWAEHNUNG_GRUPPEN.map((g) => ({
+    value: `g:${g}`,
+    label: `@${GRUPPE_TITEL[g]}`,
+  }));
+  const nurEine = todoNurEinePerson(daten.zustaendig);
+
+  // All fields (also "Abhaken") are always rendered and keep their place: moving or removing a focused
+  // control inside the editor would throw the focus (and the phone keyboard) into the text.
+  return (
+    <Stack gap="xs">
+      <LokalText
+        label="Titel"
+        placeholder="Titel"
+        data-fokus="titel"
+        wert={daten.titel}
+        maxLength={200}
+        onWert={(titel) => aendern((d) => ({ ...d, titel }))}
+      />
+      <MultiSelect
+        label="Zuständig"
+        placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
+        size="md"
+        searchable
+        clearable
+        nothingFoundMessage="Niemand gefunden"
+        data={[
+          { group: 'Gruppen', items: gruppen },
+          { group: 'Personen', items: personen },
+        ]}
+        value={gewaehlt}
+        onChange={(werte) => aendern((d) => todoZustaendigSetzen(d, werte))}
+        renderOption={({ option }) => {
+          const s = status.get(option.value);
+          return s ? (
+            <StatusName status={s}>{option.label}</StatusName>
+          ) : (
+            <span>{option.label}</span>
+          );
+        }}
+      />
+      <DatumFeld
+        label="Deadline"
+        loeschbar={false}
+        value={daten.faelligAm ?? ''}
+        onWert={(datum) => aendern((d) => ({ ...d, faelligAm: datum || null }))}
+      />
+      <Stack gap={4}>
+        <Text size="sm" fw={500}>
+          Abhaken
+        </Text>
+        <SegmentedControl
+          fullWidth
+          size="md"
+          disabled={nurEine}
+          value={daten.modus}
+          data={[
+            { value: 'einzeln', label: 'Einzeln' },
+            { value: 'gemeinsam', label: 'Gemeinsam' },
+          ]}
+          onChange={(modus) =>
+            aendern((d) => ({ ...d, modus: modus === 'gemeinsam' ? 'gemeinsam' : 'einzeln' }))
+          }
+        />
+        <Text size="xs" c="dimmed">
+          {nurEine
+            ? 'Bei nur einer Person gibt es nichts zu wählen.'
+            : TODO_MODUS_HINWEIS[daten.modus]}
+        </Text>
+      </Stack>
+    </Stack>
   );
 }
 

@@ -1,5 +1,6 @@
 import {
   IconBan,
+  IconChecklist,
   IconCalendarEvent,
   IconChartBar,
   IconGavel,
@@ -59,6 +60,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconUser size={size} />;
     case 'gruppe':
       return <IconUsers size={size} />;
+    case 'todo':
+      return <IconChecklist size={size} />;
   }
 }
 
@@ -74,6 +77,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinAufnahme: 'aufnahme',
   bausteinWahl: 'wahl',
   bausteinAuswahl: 'auswahl',
+  bausteinTodo: 'todo',
 };
 
 /** Symbol of a Baustein from its fields: Anwesenheit shows "erscheint" or "geht". */
@@ -97,4 +101,5 @@ export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinAufnahme: 'Aufnahme',
   bausteinWahl: 'Wahl',
   bausteinAuswahl: 'Abstimmung (Auswahl)',
+  bausteinTodo: 'Todo',
 };

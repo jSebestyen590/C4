@@ -26,7 +26,7 @@ const thema = (titel: string, ...inhalt: ProtokollKnoten[]) =>
   bausteinErzeugen('bausteinThema', { titel }, [absatz, ...inhalt, absatz]);
 
 describe('rules for Bausteine in notes', () => {
-  it('lets votes and Themen be nested, nothing else', () => {
+  it('lets votes, Themen and Todos be nested, nothing else', () => {
     const nestbar = BAUSTEIN_TYPEN.filter(istVerschachtelbar);
     expect(nestbar.sort()).toEqual(
       [
@@ -34,6 +34,7 @@ describe('rules for Bausteine in notes', () => {
         'bausteinBeschluss',
         'bausteinMeinungsbild',
         'bausteinThema',
+        'bausteinTodo',
         'bausteinWahl',
       ].sort(),
     );

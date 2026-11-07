@@ -33,6 +33,7 @@ import {
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  todoZeile,
   auswahlZeilen,
   wahlZeilen,
   type DokumentEingabe,
@@ -377,6 +378,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     case 'bausteinMeinungsbild':
     case 'bausteinWahl':
     case 'bausteinAuswahl':
+    case 'bausteinTodo':
       return bausteinBloecke(k, ctx, true).map((b) => ({
         ...b,
         element: <View style={stile.innen}>{b.element}</View>,
@@ -597,6 +599,40 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
               </Text>
             )}
             <Stimmzeilen stimmen={z.stimmen} anwesend={z.anwesend} nicht={z.nichtBeschlussfaehig} />
+          </Kasten>,
+        ),
+        ...notizen(k.content, ctxIn),
+      ];
+    }
+    case 'bausteinTodo': {
+      const z = todoZeile(daten);
+      return [
+        block(
+          <Kasten>
+            <Text>
+              <Text style={stile.fett}>Todo:</Text> {z.titel || 'Ohne Titel'}
+              {z.zustaendig.length > 0 && (
+                <>
+                  {' – '}
+                  {z.zustaendig.map((zu, i) => {
+                    const p = zu.art === 'person' ? ctx.person(zu.sub) : null;
+                    return (
+                      <Fragment key={zu.art === 'person' ? `p${zu.sub}` : `g${zu.gruppe}`}>
+                        {i > 0 && ', '}
+                        {zu.art === 'gruppe' ? (
+                          erwaehnungText({ art: 'gruppe', gruppe: zu.gruppe }, () => null)
+                        ) : p ? (
+                          <Name p={p} />
+                        ) : (
+                          'Person offen'
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </>
+              )}
+              {z.bis && ` (bis ${z.bis})`}
+            </Text>
           </Kasten>,
         ),
         ...notizen(k.content, ctxIn),

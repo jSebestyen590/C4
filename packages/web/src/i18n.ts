@@ -126,6 +126,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   geburtstag: 'Geburtstage',
   schluessel: 'Schlüssel',
   umfrage: 'Umfragen',
+  todo: 'Todos',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -174,6 +175,10 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
     'umfrage.erneut_abstimmen': {
       titel: 'Erneut abstimmen',
       beschreibung: 'Wenn eine Umfrage so geändert wurde, dass deine Stimme nicht mehr zählt.',
+    },
+    'todo.frist': {
+      titel: 'Todo bald fällig',
+      beschreibung: 'Erinnerung zwei Tage vor der Deadline eines offenen Todos.',
     },
   };
 

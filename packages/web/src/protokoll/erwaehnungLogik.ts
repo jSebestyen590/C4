@@ -1,5 +1,6 @@
 import {
   bausteinEventDatenSchema,
+  bausteinTodoDatenSchema,
   ERWAEHNUNG_GRUPPEN,
   ERWAEHNUNG_TYP,
   erwaehnungAttrs,
@@ -186,6 +187,22 @@ export function meineErwaehnungen(
           ueberschrift: ue?.text ?? '',
           ueberschriftId: ue?.id ?? null,
           auszug: `Verantwortlich: ${personName(ich.sub) ?? 'du'}`,
+        });
+      }
+    }
+    // Zuständig for a Todo (as a person or through a group of the current status) is a mention too.
+    if (k.type === 'bausteinTodo') {
+      const d = bausteinTodoDatenSchema.safeParse(k.attrs?.daten);
+      if (d.success && d.data.zustaendig.some((z) => erwaehnungBetrifft(z, ich))) {
+        const id = `${ERWAEHNUNG_ID_PREFIX}${eintraege.length}`;
+        ids.set(k, id);
+        const ue = aktuell as { id: string; text: string } | null;
+        const titel = d.data.titel.trim();
+        eintraege.push({
+          id,
+          ueberschrift: ue?.text ?? '',
+          ueberschriftId: ue?.id ?? null,
+          auszug: titel ? `Todo: ${titel}` : 'Todo',
         });
       }
     }

@@ -70,6 +70,7 @@ describe('first stage', () => {
       'Meinungsbild',
       'Wahl',
       'Neues EM',
+      'Todo',
       'Erscheint',
       'Geht',
       'Bild',
@@ -181,6 +182,20 @@ describe('first stage', () => {
     }
     // Not one of the nestable Bausteine (that rule is in the editor schema), so the menu keeps it.
     expect(slashEintraege('', daten, true).map((e) => e.titel)).toContain('Thema');
+  });
+  it('inserts a Todo, found by todo, aufgabe and aufgaben, but not inside a vote or a Todo', () => {
+    for (const q of ['todo', 'aufgabe', 'aufgaben']) {
+      const treffer = slashEintraege(q, daten);
+      expect(treffer.map((e) => e.titel)).toEqual(['Todo']);
+      expect(treffer[0]!.symbol).toBe('todo');
+      expect(treffer[0]!.aktion).toMatchObject({
+        art: 'einfuegen',
+        wahl: { typ: 'bausteinTodo', daten: { titel: '', zustaendig: [], faelligAm: null } },
+      });
+      // `ohneVerschachtelt` also covers the notes of a Todo (it is one of the nestable Bausteine).
+      expect(slashEintraege(q, daten, true)).toEqual([]);
+    }
+    expect(slashEintraege('', daten, true).map((e) => e.titel)).not.toContain('Todo');
   });
   it('leaves out the quote inside a list item', () => {
     expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Zitat');

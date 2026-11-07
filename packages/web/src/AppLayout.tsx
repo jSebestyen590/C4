@@ -17,6 +17,7 @@ import {
   IconBeer,
   IconBell,
   IconBriefcase,
+  IconChecklist,
   IconCalendar,
   IconNotes,
   IconPhoto,
@@ -165,6 +166,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Protokolle',
       icon: <IconNotes size={20} />,
       show: can('protokolle:lesen'),
+    },
+    {
+      to: '/todos',
+      label: 'Todos',
+      icon: <IconChecklist size={20} />,
+      show: !!user,
     },
     {
       to: '/posten',
