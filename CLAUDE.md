@@ -32,8 +32,13 @@ keep hands-on work out of it:
   source code unless a concrete error needs it.
 - In browser checks prefer `get_page_text`/`find`/`javascript_tool`; take screenshots only as final
   proof and with `scale: 0.5`.
-- Don't poll CI with `gh run watch`/`gh run view`; bind the PR to the session and let the app's CI
-  monitor / Auto-fix report failures.
+- Don't poll PR CI (`ci.yml` checks) with `gh run watch`/`gh run view`; bind the PR to the session
+  and let the app's CI monitor / Auto-fix report failures.
+- Deploys to dev (`gh workflow run deploy.yml --ref <branch> -f env=dev`) aren't covered by the CI
+  monitor, so waiting for them is allowed, but only in a Sonnet subagent: get the run id with
+  `gh run list --workflow deploy.yml --limit 1`, then a single blocking
+  `gh run watch <id> --exit-status >/dev/null` (no polling loops), then run the browser check. A
+  green run already includes the workflow's `/api/health` smoke test.
 
 ## Testing on dev
 
