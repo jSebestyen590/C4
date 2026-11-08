@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { datumAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { useVcardToken } from '../vcard';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { KontaktSpeichernButton, KontaktkanalIcons } from '../KontaktkanalIcons';
@@ -16,6 +17,7 @@ import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
 export function MitgliedPage() {
+  const { vcardLink } = useVcardToken();
   const { kennung = '' } = useParams();
   const navigate = useNavigate();
   const api = useApi();
@@ -118,7 +120,7 @@ export function MitgliedPage() {
             )}
             {!m.deaktiviert && (
               <div style={{ marginTop: 8 }}>
-                <KontaktSpeichernButton mitglied={m} />
+                <KontaktSpeichernButton href={vcardLink?.(m)} />
               </div>
             )}
           </div>

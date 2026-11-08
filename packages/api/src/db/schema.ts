@@ -695,6 +695,16 @@ export const kalenderTokens = pgTable('kalender_tokens', {
   erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Short-lived secret per member for the vCard links; only the sha256 hex hash of the token is stored. */
+export const vcardTokens = pgTable('vcard_tokens', {
+  mitgliedSub: text('mitglied_sub')
+    .primaryKey()
+    .references(() => mitglieder.sub),
+  tokenHash: text('token_hash').notNull(),
+  ablauf: timestamp('ablauf', { withTimezone: true }).notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** One Web Push subscription per device (generic notification module, see docs/benachrichtigungen.md). */
 export const pushAbos = pgTable('push_abos', {
   id: text('id').primaryKey(),

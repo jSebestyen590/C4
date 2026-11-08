@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import {
   aktuellerStatus,
@@ -11,7 +11,14 @@ import {
   type StatusEintragEingabe,
 } from '@c4/shared';
 import type { Db } from './db/client';
-import { mitglieder, mitgliedStatusVerlauf, type MitgliedRow } from './db/schema';
+import { mitglieder, mitgliedStatusVerlauf, vcardTokens, type MitgliedRow } from './db/schema';
+
+/** How long a vCard link token stays valid. */
+export const VCARD_TOKEN_GUELTIG_MS = 24 * 3600 * 1000;
+
+/** sha256 hex of a vCard token; only this hash is stored. */
+export const vcardTokenHash = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
 
 /** Another status entry of the member already starts on that day. */
 export class StatusDatumDoppelt extends Error {}
@@ -73,6 +80,10 @@ export interface MitgliederStore {
    * (default status), like in the invite flow.
    */
   deaktiviertSetzen(sub: string, deaktiviert: boolean): Promise<void>;
+  /** New vCard link token for the member (replacing the old one), valid for 24 hours. */
+  vcardTokenErzeugen(sub: string): Promise<{ token: string; ablauf: Date }>;
+  /** The member and expiry the vCard token hash (see `vcardTokenHash`) belongs to. */
+  vcardTokenSuchen(hash: string): Promise<{ sub: string; ablauf: Date } | undefined>;
 }
 
 /** Whether the profile row belongs to a deactivated account. */
@@ -222,6 +233,23 @@ export function createMitgliederStore(db: Db): MitgliederStore {
           ab: heuteBerlin(),
         });
       });
+    },
+    async vcardTokenErzeugen(sub) {
+      const token = randomBytes(32).toString('base64url');
+      const ablauf = new Date(Date.now() + VCARD_TOKEN_GUELTIG_MS);
+      const werte = { tokenHash: vcardTokenHash(token), ablauf, erstellt: new Date() };
+      await db
+        .insert(vcardTokens)
+        .values({ mitgliedSub: sub, ...werte })
+        .onConflictDoUpdate({ target: vcardTokens.mitgliedSub, set: werte });
+      return { token, ablauf };
+    },
+    async vcardTokenSuchen(hash) {
+      const [row] = await db
+        .select({ sub: vcardTokens.mitgliedSub, ablauf: vcardTokens.ablauf })
+        .from(vcardTokens)
+        .where(eq(vcardTokens.tokenHash, hash));
+      return row;
     },
   };
 }

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { useVcardToken } from '../vcard';
 import { MitgliedEinladen } from '../MitgliedEinladen';
 import { KontaktkanalIcons } from '../KontaktkanalIcons';
 import { PostenLinks } from '../PostenAnzeige';
@@ -89,6 +90,7 @@ function StatusUebersicht({ mitglieder }: Readonly<{ mitglieder: readonly Mitgli
 }
 
 export function MitgliederPage() {
+  const { vcardLink } = useVcardToken();
   const api = useApi();
   const istAdmin = useAuth().can('users:manage');
   const [suche, setSuche] = useState('');
@@ -217,7 +219,11 @@ export function MitgliederPage() {
                 {m.telefon && <Text size="sm">{m.telefon}</Text>}
               </Link>
               <PostenLinks posten={m.posten} />
-              <KontaktkanalIcons gewaehlt={m.kontaktkanaele} angaben={kontaktangaben(m)} />
+              <KontaktkanalIcons
+                gewaehlt={m.kontaktkanaele}
+                angaben={kontaktangaben(m)}
+                vcardHref={vcardLink?.(m)}
+              />
             </Stack>
           </Paper>
         ))}
@@ -281,6 +287,7 @@ export function MitgliederPage() {
                       gewaehlt={m.kontaktkanaele}
                       angaben={kontaktangaben(m)}
                       groesse={36}
+                      vcardHref={vcardLink?.(m)}
                     />
                   </Table.Td>
                 </Table.Tr>

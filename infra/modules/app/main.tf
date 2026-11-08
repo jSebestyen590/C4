@@ -248,6 +248,14 @@ resource "aws_apigatewayv2_route" "kalender_feed" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
+# Contact cards (vCard) are opened by the phone's Contacts app, which cannot send a bearer token:
+# the short-lived secret token in the URL is the credential.
+resource "aws_apigatewayv2_route" "vcard" {
+  api_id    = aws_apigatewayv2_api.this.id
+  route_key = "GET /api/vcard/{token}/{datei}"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
 resource "aws_apigatewayv2_route" "protected" {
   api_id             = aws_apigatewayv2_api.this.id
   route_key          = "ANY /api/{proxy+}"
