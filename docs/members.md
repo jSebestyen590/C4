@@ -140,7 +140,7 @@ Nummer bleiben, die Prüfung greift beim nächsten Speichern.
 
 **Als Kontakt speichern:** Auf der Detailseite (Button „Als Kontakt speichern“) und in der Mitgliederliste (Icon nach den
 Kanal-Icons, in Karten und Tabelle) öffnet ein Link die vCard 3.0 des Mitglieds, sodass Handy-Kontakte-Apps „Neuer Kontakt“
-anbieten (iOS öffnet Blob-Downloads der PWA nicht, deshalb eine echte URL). Nicht für deaktivierte Mitglieder.
+anbieten (iOS öffnet Blob-Downloads der PWA nicht, deshalb eine echte URL). Nicht für deaktivierte Mitglieder und nicht für den eigenen Eintrag.
 
 - `POST /api/me/vcard-token` (`mitglieder:lesen`) erzeugt einen Token für den Betrachter (24 h gültig, ersetzt den alten;
   Tabelle `vcard_tokens`, nur der SHA-256-Hash wird gespeichert). Der Hook `useVcardToken()` (`packages/web/src/vcard.ts`)
