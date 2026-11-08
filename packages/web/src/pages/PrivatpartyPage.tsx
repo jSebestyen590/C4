@@ -108,12 +108,19 @@ export function PrivatpartyPage() {
 
       <Group gap="xs">
         {p.status !== 'zugesagt' && (
-          <Button onClick={() => setDialog('zusagen')} disabled={p.termine.length === 0}>
+          <Button
+            size="md"
+            mih={44}
+            onClick={() => setDialog('zusagen')}
+            disabled={p.termine.length === 0}
+          >
             Zusagen
           </Button>
         )}
         {p.status !== 'zugesagt' && !umfrageLaeuft && (
           <Button
+            size="md"
+            mih={44}
             variant="default"
             onClick={() => setDialog('umfrage')}
             disabled={p.termine.length === 0}
@@ -122,12 +129,18 @@ export function PrivatpartyPage() {
           </Button>
         )}
         {p.status !== 'abgesagt' && (
-          <Button variant="default" color="red" onClick={() => setDialog('absagen')}>
+          <Button
+            size="md"
+            mih={44}
+            variant="default"
+            color="red"
+            onClick={() => setDialog('absagen')}
+          >
             Absagen
           </Button>
         )}
         {p.status !== 'offen' && (
-          <Button variant="default" onClick={() => setDialog('oeffnen')}>
+          <Button size="md" mih={44} variant="default" onClick={() => setDialog('oeffnen')}>
             Wieder öffnen
           </Button>
         )}

@@ -90,10 +90,10 @@ export function PrivatpartyPersonFormular({
           />
           {fehler && <Alert color="red">{fehler}</Alert>}
           <Group grow preventGrowOverflow={false}>
-            <Button variant="default" onClick={onClose}>
+            <Button size="md" mih={44} variant="default" onClick={onClose}>
               Abbrechen
             </Button>
-            <Button type="submit" loading={laeuft}>
+            <Button size="md" mih={44} type="submit" loading={laeuft}>
               {person ? 'Speichern' : 'Anlegen'}
             </Button>
           </Group>

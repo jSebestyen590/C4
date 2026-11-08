@@ -37,9 +37,14 @@ export function PrivatpartyPersonenPage() {
   return (
     <Stack maw="60rem">
       <ZurueckLink to="/privatpartys">Privatpartys</ZurueckLink>
-      <Group justify="space-between" wrap="nowrap" gap="xs">
+      <Group justify="space-between" gap="xs">
         <Title order={2}>Personen</Title>
-        <Button leftSection={<IconPlus size={18} />} onClick={() => setNeu(true)}>
+        <Button
+          size="md"
+          mih={44}
+          leftSection={<IconPlus size={18} />}
+          onClick={() => setNeu(true)}
+        >
           Neue Person
         </Button>
       </Group>

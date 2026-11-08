@@ -109,10 +109,16 @@ function ZuordnenDialog({
         />
         {fehler && <Alert color="red">{fehler}</Alert>}
         <Group grow preventGrowOverflow={false}>
-          <Button variant="default" onClick={onClose}>
+          <Button size="md" mih={44} variant="default" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button disabled={!ziel} loading={laeuft} onClick={() => void senden()}>
+          <Button
+            size="md"
+            mih={44}
+            disabled={!ziel}
+            loading={laeuft}
+            onClick={() => void senden()}
+          >
             Zuordnen
           </Button>
         </Group>
@@ -232,7 +238,13 @@ function Antwortfeld({ p }: Readonly<{ p: PrivatpartyDetailDto }>) {
       />
       {fehler && <Alert color="red">{fehler}</Alert>}
       <Group>
-        <Button size="md" loading={laeuft} disabled={!text.trim()} onClick={() => void senden()}>
+        <Button
+          size="md"
+          mih={44}
+          loading={laeuft}
+          disabled={!text.trim()}
+          onClick={() => void senden()}
+        >
           Senden
         </Button>
       </Group>

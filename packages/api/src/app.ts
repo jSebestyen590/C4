@@ -2375,7 +2375,10 @@ export function createApp(deps: AppDeps) {
             })
             .catch((err: unknown) => {
               console.error('Party-Mail send failed', err);
-              throw new HTTPException(502, { message: 'Die Mail konnte nicht gesendet werden.' });
+              throw new HTTPException(502, {
+                message:
+                  `Die Mail konnte nicht gesendet werden. ${err instanceof Error ? err.message : ''}`.trim(),
+              });
             });
           const id = await deps.privatpartys.nachrichtAnlegen({
             privatpartyId: e.id,

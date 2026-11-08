@@ -1,14 +1,4 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Group,
-  Loader,
-  SegmentedControl,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Alert, Button, Group, Loader, SegmentedControl, Stack, Text, Title } from '@mantine/core';
 import { IconPlus, IconUsers } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
@@ -59,7 +49,7 @@ function MailStatus() {
     }
   };
   return (
-    <Group justify="space-between" wrap="nowrap" gap="xs">
+    <Group justify="space-between" gap="xs">
       <Text size="sm" c={status.data.fehler ? 'red' : 'dimmed'}>
         {status.data.fehler
           ? `Letzter Abruf fehlgeschlagen: ${status.data.fehler}`
@@ -67,9 +57,16 @@ function MailStatus() {
             ? `Postfach zuletzt abgerufen: ${new Date(status.data.letzterAbruf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })}`
             : 'Postfach noch nicht abgerufen.'}
       </Text>
-      <Anchor component="button" type="button" size="sm" onClick={() => void abrufen()}>
-        {laeuft ? 'Ruft ab …' : 'Jetzt abrufen'}
-      </Anchor>
+      <Button
+        variant="subtle"
+        size="md"
+        mih={44}
+        loading={laeuft}
+        style={{ whiteSpace: 'nowrap' }}
+        onClick={() => void abrufen()}
+      >
+        Jetzt abrufen
+      </Button>
     </Group>
   );
 }
@@ -83,10 +80,12 @@ export function PrivatpartysPage() {
 
   return (
     <Stack maw="60rem">
-      <Group justify="space-between" wrap="nowrap" gap="xs">
+      <Group justify="space-between" gap="xs">
         <Title order={2}>Privatpartys</Title>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs">
           <Button
+            size="md"
+            mih={44}
             component={Link}
             to="/privatpartys/personen"
             variant="default"
@@ -94,7 +93,13 @@ export function PrivatpartysPage() {
           >
             Personen
           </Button>
-          <Button component={Link} to="/privatpartys/neu" leftSection={<IconPlus size={18} />}>
+          <Button
+            size="md"
+            mih={44}
+            component={Link}
+            to="/privatpartys/neu"
+            leftSection={<IconPlus size={18} />}
+          >
             Neu
           </Button>
         </Group>

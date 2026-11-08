@@ -4,6 +4,7 @@ import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { z } from 'zod';
+import { imapFehlerText, ordnerHinweis, smtpFehlerText } from './partymailFehler';
 import { mailParsen } from './partymailParsen';
 import type { AbrufErgebnis, EingehendeMail, PartyMail, PartyMailKonfig } from './partymailTypen';
 
@@ -101,9 +102,20 @@ export function createPartyMail(opts: { secretArn?: string; region: string }): P
       const k = await konfig();
       const client = imapClient(k);
       return mitFrist(client, ABRUF_MAX_MS, async () => {
-        await client.connect();
         try {
-          const lock = await client.getMailboxLock(k.ordnerEingang);
+          await client.connect();
+        } catch (err) {
+          throw new Error(imapFehlerText(err), { cause: err });
+        }
+        try {
+          const lock = await client.getMailboxLock(k.ordnerEingang).catch(async (err: unknown) => {
+            let hinweis = '';
+            if (imapFehlerText(err, k.ordnerEingang).startsWith('Ordner')) {
+              const ordner = await client.list().catch(() => []);
+              hinweis = ordnerHinweis(ordner.map((o) => o.path));
+            }
+            throw new Error(imapFehlerText(err, k.ordnerEingang) + hinweis, { cause: err });
+          });
           try {
             const box = client.mailbox;
             if (!box) throw new Error('Postfach nicht verfügbar.');
@@ -168,7 +180,11 @@ export function createPartyMail(opts: { secretArn?: string; region: string }): P
         greetingTimeout: 5000,
         socketTimeout: 8000,
       });
-      await transport.sendMail({ envelope: { from: k.adresse, to: [mail.an] }, raw });
+      await transport
+        .sendMail({ envelope: { from: k.adresse, to: [mail.an] }, raw })
+        .catch((err: unknown) => {
+          throw new Error(smtpFehlerText(err), { cause: err });
+        });
       return { messageId, raw, vonAdresse: k.adresse, vonName: k.absenderName || null };
     },
 
@@ -178,7 +194,9 @@ export function createPartyMail(opts: { secretArn?: string; region: string }): P
       await mitFrist(client, 8000, async () => {
         await client.connect();
         try {
-          await client.append(k.ordnerGesendet, raw, ['\\Seen']);
+          await client.append(k.ordnerGesendet, raw, ['\\Seen']).catch((err: unknown) => {
+            throw new Error(imapFehlerText(err, k.ordnerGesendet), { cause: err });
+          });
         } finally {
           await client.logout().catch(() => client.close());
         }

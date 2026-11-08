@@ -69,9 +69,11 @@ export function PrivatpartyPersonPage() {
         {p.kontakt && <Text style={{ overflowWrap: 'anywhere' }}>Kontakt: {p.kontakt}</Text>}
         {p.notizen && <Text style={{ whiteSpace: 'pre-wrap' }}>{p.notizen}</Text>}
       </Stack>
-      <Group justify="space-between" wrap="nowrap" gap="xs">
+      <Group justify="space-between" gap="xs">
         <Title order={3}>Privatpartys</Title>
         <Button
+          size="md"
+          mih={44}
           component={Link}
           to={`/privatpartys/neu?person=${encodeURIComponent(p.id)}`}
           variant="default"
