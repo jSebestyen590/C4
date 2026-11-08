@@ -24,6 +24,14 @@ keep hands-on work out of it:
   (`SendMessage`) instead of editing itself.
 - Code exploration over more than a couple of files goes to the `Explore` agent with
   `model: "sonnet"` instead of many `grep`/`sed -n` calls in the main chat.
+- Most subagent context is source code read by implementation agents. When an `Explore` agent ran
+  first, put its findings (files, patterns, line ranges) into the implementation prompt so the
+  implementing agent doesn't explore the same area again.
+- Implementation agents don't run the browser check themselves: after they finish, a fresh Sonnet
+  subagent does it, with the routes/pages to check named in its prompt. Check agents don't read
+  source code unless a concrete error needs it.
+- In browser checks prefer `get_page_text`/`find`/`javascript_tool`; take screenshots only as final
+  proof and with `scale: 0.5`.
 - Don't poll CI with `gh run watch`/`gh run view`; bind the PR to the session and let the app's CI
   monitor / Auto-fix report failures.
 
