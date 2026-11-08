@@ -24,6 +24,8 @@ export interface Profilbilder {
     anfrage: ProfilbildAnfrage,
   ): Promise<{ uploadUrl: string; kleinUploadUrl: string; key: string }>;
   anzeigeUrl(key: string): Promise<string>;
+  /** Content of the object; throws when it cannot be read. */
+  lesen(key: string): Promise<Uint8Array>;
   /** Deletes the large picture and its small variant. */
   loeschen(key: string): Promise<void>;
 }
@@ -59,6 +61,11 @@ export function createProfilbilder(bucket: string, region: string): Profilbilder
       getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
         expiresIn: ANZEIGE_GUELTIG_S,
       }),
+    async lesen(key) {
+      const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!res.Body) throw new Error(`Empty object ${key}`);
+      return res.Body.transformToByteArray();
+    },
     async loeschen(key) {
       await Promise.all(
         [key, kleinKey(key)].map((k) =>

@@ -36,6 +36,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0110–0113 (Protokolle): 0110 löscht die Tabelle `protokolle`, 0111 den Index `protokolle_event_idx`; 0112 und 0113 fügen
   `event_kategorien.protokoll` und `protokoll_art` per `ALTER` hinzu, die Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Protokolle:
   `0109_bilder_ordner_cache`.
+- 0118–0119 (vCard-Links): 0118 löscht die Tabelle `vcard_tokens`, 0119 ihren Index. Rollback-Ziel nur für die vCards:
+  `0117_todos_protokoll_idx`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

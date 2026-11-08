@@ -4,9 +4,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { datumAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { useVcardToken } from '../vcard';
 import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglied';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
-import { KontaktkanalIcons } from '../KontaktkanalIcons';
+import { KontaktSpeichernButton, KontaktkanalIcons } from '../KontaktkanalIcons';
 import { DeaktivierenFeld } from '../DeaktivierenFeld';
 import { PostenLinks } from '../PostenAnzeige';
 import { RollenFeld } from '../RollenAnzeige';
@@ -16,6 +17,7 @@ import { ProfilFormular } from './ProfilPage';
 
 /** Detail page of one member; the owner edits their own profile here. */
 export function MitgliedPage() {
+  const { vcardLink } = useVcardToken();
   const { kennung = '' } = useParams();
   const navigate = useNavigate();
   const api = useApi();
@@ -115,6 +117,11 @@ export function MitgliedPage() {
               <Text size="sm" mt={4}>
                 Discord: {m.discordName}
               </Text>
+            )}
+            {!m.deaktiviert && (
+              <div style={{ marginTop: 8 }}>
+                <KontaktSpeichernButton href={vcardLink?.(m)} />
+              </div>
             )}
           </div>
           {m.telefon && (

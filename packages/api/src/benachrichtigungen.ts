@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { generateVAPIDKeys, sendNotification } from 'web-push';
+import webpush from 'web-push';
 import {
   benachrichtigungsArt,
   BENACHRICHTIGUNGS_ARTEN,
@@ -278,7 +278,7 @@ export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
       };
       let vapid = await lesen();
       if (!vapid) {
-        const neu = generateVAPIDKeys();
+        const neu = webpush.generateVAPIDKeys();
         await db
           .insert(pushSchluessel)
           .values({ id: VAPID_ID, publicKey: neu.publicKey, privateKey: neu.privateKey })
@@ -404,7 +404,7 @@ export function createWebPushSender(store: BenachrichtigungenStore, subject: str
   return async (abo, nachricht) => {
     const vapid = await store.vapid();
     try {
-      await sendNotification(
+      await webpush.sendNotification(
         { endpoint: abo.endpoint, keys: { p256dh: abo.p256dh, auth: abo.auth } },
         JSON.stringify(nachricht),
         {

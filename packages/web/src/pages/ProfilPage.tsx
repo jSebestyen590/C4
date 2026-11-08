@@ -20,6 +20,7 @@ import { useBlocker } from 'react-router-dom';
 import {
   ANREDEN,
   PROFILBILD_TYPEN,
+  TELEFON_KANAELE,
   heuteBerlin,
   mitgliedAktualisierenSchema,
   setUsernameSchema,
@@ -80,6 +81,7 @@ export function ProfilFormular({
   const [discordName, setDiscordName] = useState(mitglied?.discordName ?? '');
   const [adresse, setAdresse] = useState(mitglied?.adresse ?? '');
   const [telefon, setTelefon] = useState(mitglied?.telefon ?? '');
+  const messengerGewaehlt = kanaele.some((k) => TELEFON_KANAELE.includes(k));
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
   const [geburtsdatum, setGeburtsdatum] = useState(mitglied?.geburtsdatum ?? '');
   const [imKalender, setImKalender] = useState(mitglied?.geburtstagImKalender ?? true);
@@ -335,14 +337,15 @@ export function ProfilFormular({
               error={fehler.discordName}
             />
           )}
-          {(kanaele.includes('whatsapp') ||
-            kanaele.includes('signal') ||
-            kanaele.includes('telegram')) && (
-            <Text size="xs" c="dimmed">
-              WhatsApp, Signal und Telegram werden über deine Telefonnummer verlinkt, Mail über
-              deine E-Mail-Adresse.
-            </Text>
-          )}
+          <TextInput
+            type="tel"
+            label="Telefonnummer"
+            withAsterisk={messengerGewaehlt}
+            autoComplete="tel"
+            value={telefon}
+            onChange={(e) => setTelefon(e.currentTarget.value)}
+            error={fehler.telefon}
+          />
           <Textarea
             size="md"
             label="Adresse"
@@ -352,14 +355,6 @@ export function ProfilFormular({
             value={adresse}
             onChange={(e) => setAdresse(e.currentTarget.value)}
             error={fehler.adresse}
-          />
-          <TextInput
-            type="tel"
-            label="Telefonnummer"
-            autoComplete="tel"
-            value={telefon}
-            onChange={(e) => setTelefon(e.currentTarget.value)}
-            error={fehler.telefon}
           />
           <DatumFeld
             size="md"

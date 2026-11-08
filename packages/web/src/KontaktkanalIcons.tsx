@@ -1,5 +1,6 @@
-import { ActionIcon, Group, Text, ThemeIcon, Tooltip } from '@mantine/core';
+import { ActionIcon, Button, Group, Text, ThemeIcon, Tooltip } from '@mantine/core';
 import {
+  IconAddressBook,
   IconBrandDiscord,
   IconBrandSignal,
   IconBrandTelegram,
@@ -33,11 +34,14 @@ export function KontaktkanalIcons({
   gewaehlt,
   angaben,
   groesse = 44,
+  vcardHref,
 }: Readonly<{
   gewaehlt: readonly Kontaktkanal[];
   angaben: Kontaktangaben;
   /** Edge length of one icon button; keep >= 44 wherever the icons are tappable. */
   groesse?: number;
+  /** Link to the contact card; adds an "Als Kontakt speichern" icon after the channels. */
+  vcardHref?: string;
 }>) {
   return (
     <Group gap={4} wrap="nowrap">
@@ -81,6 +85,19 @@ export function KontaktkanalIcons({
           </ThemeIcon>
         );
       })}
+      {vcardHref && (
+        <ActionIcon
+          component="a"
+          href={vcardHref}
+          variant="subtle"
+          color="blue"
+          size={groesse}
+          aria-label="Als Kontakt speichern"
+          title="Als Kontakt speichern"
+        >
+          <IconAddressBook size={Math.round(groesse * 0.6)} />
+        </ActionIcon>
+      )}
     </Group>
   );
 }
@@ -125,5 +142,23 @@ export function KontaktkanalAuswahl({
         })}
       </Group>
     </div>
+  );
+}
+
+/** Opens the contact card of a member (vCard from the API) so the phone offers "new contact". */
+export function KontaktSpeichernButton({ href }: Readonly<{ href: string | undefined }>) {
+  return (
+    <Button
+      component="a"
+      href={href}
+      size="md"
+      variant="light"
+      mih={44}
+      leftSection={<IconAddressBook size={20} />}
+      w={{ base: '100%', sm: 'auto' }}
+      disabled={!href}
+    >
+      Als Kontakt speichern
+    </Button>
   );
 }

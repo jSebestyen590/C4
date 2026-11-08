@@ -98,3 +98,29 @@ describe('geburtsdatum in the profile schema', () => {
     expect(parse({ geburtsdatum: null }).success).toBe(true);
   });
 });
+
+describe('Telefonnummer bei Messengern im Profil-Schema', () => {
+  const basis = { vorname: 'A', nachname: 'B' };
+  const parse = (extra: object) => mitgliedAktualisierenSchema.safeParse({ ...basis, ...extra });
+  const telefonFehler = (extra: object) => {
+    const r = parse(extra);
+    return r.success ? null : r.error.issues.find((i) => i.path[0] === 'telefon')?.message;
+  };
+
+  it('requires a number for WhatsApp, Signal and Telegram', () => {
+    for (const k of ['whatsapp', 'signal', 'telegram'])
+      expect(telefonFehler({ kontaktkanaele: [k] })).toBe(
+        'Für WhatsApp, Signal und Telegram brauchst du eine Telefonnummer.',
+      );
+  });
+  it('rejects an unreadable number', () => {
+    expect(telefonFehler({ kontaktkanaele: ['whatsapp'], telefon: '1234' })).toMatch(
+      /nicht verlinken/,
+    );
+  });
+  it('accepts a readable number and channels without a phone', () => {
+    expect(parse({ kontaktkanaele: ['whatsapp'], telefon: '0171 1234567' }).success).toBe(true);
+    expect(parse({ kontaktkanaele: ['mail', 'discord'] }).success).toBe(true);
+    expect(parse({ kontaktkanaele: ['mail'], telefon: 'egal' }).success).toBe(true);
+  });
+});

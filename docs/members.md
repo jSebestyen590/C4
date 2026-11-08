@@ -134,6 +134,25 @@ App:
 Die Telefonnummer ist Freitext und wird mit `telefonNormalisieren` umgewandelt (bei führender `0`
 gilt `+49`, nicht lesbare Nummern ergeben keinen Link). Code: `packages/shared/src/kontakt.ts`.
 
+Wer WhatsApp, Signal oder Telegram wählt, muss im Profil eine lesbare Telefonnummer angeben (Schema
+`mitgliedAktualisierenSchema`, gilt auch im API: `PUT /api/me/mitglied` → 400). Bestehende Daten ohne
+Nummer bleiben, die Prüfung greift beim nächsten Speichern.
+
+**Als Kontakt speichern:** Auf der Detailseite (Button „Als Kontakt speichern“) und in der Mitgliederliste (Icon nach den
+Kanal-Icons, in Karten und Tabelle) öffnet ein Link die vCard 3.0 des Mitglieds, sodass Handy-Kontakte-Apps „Neuer Kontakt“
+anbieten (iOS öffnet Blob-Downloads der PWA nicht, deshalb eine echte URL). Nicht für deaktivierte Mitglieder und nicht für den eigenen Eintrag.
+
+- `POST /api/me/vcard-token` (`mitglieder:lesen`) erzeugt einen Token für den Betrachter (24 h gültig, ersetzt den alten;
+  Tabelle `vcard_tokens`, nur der SHA-256-Hash wird gespeichert). Der Hook `useVcardToken()` (`packages/web/src/vcard.ts`)
+  holt ihn und erneuert ihn vor dem Ablauf; solange er fehlt, gibt es kein Icon bzw. der Button ist deaktiviert.
+- `GET /api/vcard/:token/<username oder sub>.vcf` ist **öffentlich** (eigene API-Gateway-Route ohne Authorizer, Muster wie
+  `GET /api/kalender/feed/:token`). Unbekannter oder abgelaufener Token, deaktivierter Token-Inhaber (oder ohne
+  `mitglieder:lesen`) und deaktivierte oder unbekannte Mitglieder ergeben 404. Antwort: `Content-Type: text/vcard`,
+  `Content-Disposition: inline`, `Cache-Control: no-store`.
+- Inhalt (`vcardErstellen`, `packages/shared/src/kontakt.ts`): Name, Username (Nickname), Organisation C4, Telefon
+  (normalisiert), E-Mail, Geburtstag, Adresse, Discord-Name (Notiz) und das kleine Profilbild (serverseitig über
+  `Profilbilder.lesen`, bei Fehlern ohne Foto).
+
 Discord lässt sich nicht über den Username verlinken. Ein Bot auf dem Vereinsserver könnte Namen in
 User-IDs auflösen (`GET /guilds/{id}/members/search`). Das ist nicht gebaut und braucht ein Bot-Token
 sowie den Server Members Intent.
@@ -190,6 +209,7 @@ hat, muss sich neu anmelden.
 | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `GET/PUT /api/me/mitglied`                                                    | Eigenes Profil                                                                                |
 | `PUT /api/me/username`, `PUT /api/me/email`, `POST /api/me/email/bestaetigen` | Über Cognito                                                                                  |
+| `POST /api/me/vcard-token`, `GET /api/vcard/:token/:datei`                    | vCard-Link; die GET-Route ist öffentlich (Token in der URL), 404 bei ungültigem Token         |
 | `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)                                                        |
 | `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle; `?deaktivierte=1` (Admin) nimmt Deaktivierte dazu |
 | `GET /api/admin/mitglieder/:sub/deaktivieren-vorschau`                        | Admin; offene Dienste, Posten, Schlüssel                                                      |
