@@ -29,11 +29,13 @@ export const alsDetailDto = (
   event: PrivatpartyEventKurzDto | null,
   nachrichten: PrivatpartyNachrichtDto[],
   mailEingerichtet: boolean,
+  antwortAn: string | null,
 ): PrivatpartyDetailDto => ({
   ...alsListeDto(e),
   notizen: e.notizen,
   nachrichten,
   mailEingerichtet,
+  antwortAn,
   umfrage,
   event,
   aktualisiertAm: e.aktualisiertAm.toISOString(),

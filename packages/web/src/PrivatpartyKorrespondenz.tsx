@@ -228,6 +228,11 @@ function Antwortfeld({ p }: Readonly<{ p: PrivatpartyDetailDto }>) {
   };
   return (
     <Stack gap="xs">
+      <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+        {p.antwortAn
+          ? `An: ${p.antwortAn}`
+          : 'Keine Mail-Adresse vorhanden – trag bei der Person eine E-Mail ein.'}
+      </Text>
       <Textarea
         size="md"
         label="Antworten"
@@ -242,7 +247,7 @@ function Antwortfeld({ p }: Readonly<{ p: PrivatpartyDetailDto }>) {
           size="md"
           mih={44}
           loading={laeuft}
-          disabled={!text.trim()}
+          disabled={!text.trim() || !p.antwortAn}
           onClick={() => void senden()}
         >
           Senden

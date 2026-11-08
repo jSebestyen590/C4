@@ -916,13 +916,21 @@ export function createApp(deps: AppDeps) {
   const privatpartyGefunden = async (id: string): Promise<PrivatpartyEintrag> =>
     gefunden(await deps.privatpartys.holen(id), 'Privatparty nicht gefunden');
 
+  /** Where a reply goes: the reply address of the mails, else the person's email. */
+  const antwortAdresse = async (e: PrivatpartyEintrag): Promise<string | null> => {
+    if (e.mailAdresse) return e.mailAdresse;
+    const person = e.personId ? await deps.privatpartys.person(e.personId) : undefined;
+    return person?.email ?? null;
+  };
+
   const privatpartyDetail = async (e: PrivatpartyEintrag) => {
-    const [umfrage, event, nachrichten, konten, mailEingerichtet] = await Promise.all([
+    const [umfrage, event, nachrichten, konten, mailEingerichtet, antwortAn] = await Promise.all([
       e.umfrageId ? deps.umfragen.holen(e.umfrageId) : undefined,
       e.eventId ? deps.kalender.event(e.eventId) : undefined,
       deps.privatpartys.nachrichten(e.id),
       deps.userAdmin.konten(),
       deps.partymail.eingerichtet(),
+      antwortAdresse(e),
     ]);
     const umfrageKurz: PrivatpartyUmfrageKurzDto | null = umfrage
       ? { id: umfrage.id, titel: umfrage.titel, laeuft: umfrageLaeuft(umfrage, new Date()) }
@@ -960,7 +968,7 @@ export function createApp(deps: AppDeps) {
       zeitpunkt: n.zeitpunkt.toISOString(),
       gesendetVon: n.mitgliedSub ? (sender.get(n.mitgliedSub) ?? null) : null,
     }));
-    return alsPrivatpartyDetailDto(e, umfrageKurz, eventKurz, dtos, mailEingerichtet);
+    return alsPrivatpartyDetailDto(e, umfrageKurz, eventKurz, dtos, mailEingerichtet, antwortAn);
   };
 
   /** Accepts a wish date: creates the event from the Vorlage at the wished times and ends a running poll. */
@@ -2348,8 +2356,7 @@ export function createApp(deps: AppDeps) {
           if (!(await deps.partymail.eingerichtet())) {
             throw new HTTPException(409, { message: MAIL_AUS });
           }
-          const person = e.personId ? await deps.privatpartys.person(e.personId) : undefined;
-          const an = e.mailAdresse ?? person?.email ?? null;
+          const an = await antwortAdresse(e);
           if (!an) {
             throw new HTTPException(400, {
               message:

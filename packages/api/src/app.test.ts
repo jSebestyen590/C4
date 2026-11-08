@@ -9146,6 +9146,7 @@ describe('privatpartys: Party-Mail', () => {
     expect(t.gesendet).toHaveLength(0);
     const d = await t.holen(id);
     expect(d.unbeantwortet).toBe(false);
+    expect(d.antwortAn).toBe('eva@kunde.example');
     expect(d.nachrichten[1]).toMatchObject({
       richtung: 'aus',
       gesendetVon: { sub: 'a', username: 'user-a' },
@@ -9181,6 +9182,7 @@ describe('privatpartys: Party-Mail', () => {
     expect(await res.json()).toMatchObject({ error: 'Die Party-Mail ist nicht eingerichtet.' });
     expect((await t.abrufen()).status).toBe(409);
     expect((await t.holen(id)).mailEingerichtet).toBe(false);
+    expect((await t.holen(id)).antwortAn).toBeNull();
   });
 
   it('uses the person address and a default subject for the first mail', async () => {

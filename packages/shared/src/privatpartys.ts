@@ -199,6 +199,8 @@ export interface PrivatpartyDetailDto extends PrivatpartyListeDto {
   nachrichten: PrivatpartyNachrichtDto[];
   /** False without the Party-Mail secret: no replies possible. */
   mailEingerichtet: boolean;
+  /** Where a reply goes: the reply address of the mails, else the person's email; null = none. */
+  antwortAn: string | null;
   /** The poll built from the wish dates; null = none. */
   umfrage: PrivatpartyUmfrageKurzDto | null;
   /** The event of the accepted date; null = none (or deleted in the calendar). */
