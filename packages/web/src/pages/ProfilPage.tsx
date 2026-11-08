@@ -337,12 +337,15 @@ export function ProfilFormular({
               error={fehler.discordName}
             />
           )}
-          {messengerGewaehlt && (
-            <Text size="xs" c="dimmed">
-              WhatsApp, Signal und Telegram werden über deine Telefonnummer verlinkt, Mail über
-              deine E-Mail-Adresse.
-            </Text>
-          )}
+          <TextInput
+            type="tel"
+            label="Telefonnummer"
+            withAsterisk={messengerGewaehlt}
+            autoComplete="tel"
+            value={telefon}
+            onChange={(e) => setTelefon(e.currentTarget.value)}
+            error={fehler.telefon}
+          />
           <Textarea
             size="md"
             label="Adresse"
@@ -352,15 +355,6 @@ export function ProfilFormular({
             value={adresse}
             onChange={(e) => setAdresse(e.currentTarget.value)}
             error={fehler.adresse}
-          />
-          <TextInput
-            type="tel"
-            label="Telefonnummer"
-            withAsterisk={messengerGewaehlt}
-            autoComplete="tel"
-            value={telefon}
-            onChange={(e) => setTelefon(e.currentTarget.value)}
-            error={fehler.telefon}
           />
           <DatumFeld
             size="md"
