@@ -189,7 +189,6 @@ function Formular({
                     size="md"
                     type="time"
                     label="Bis"
-                    description="Vor „Von“: am Folgetag"
                     value={t.ende}
                     onChange={(e) => aendern(t.key, { ende: e.currentTarget.value })}
                   />

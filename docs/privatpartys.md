@@ -104,10 +104,13 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
   und `References` aus der letzten Nachricht, Betreff „Re: …“ (ohne doppeltes „Re:“) bzw. „Deine Anfrage beim C4“ ohne Nachricht.
   Ziel ist `mail_adresse`, sonst die E-Mail der Person (sonst 400). Danach wird die Mail per IMAP APPEND im Gesendet-Ordner abgelegt
   (best effort) und mit `mitglied_sub` gespeichert. Antworten lösen keine Benachrichtigung aus.
-- **Umhängen** (`POST /api/privatpartys/nachrichten/:id/zuordnen { privatpartyId }`): die Ziel-Anfrage muss `offen` sein; beide Einträge
-  berechnen `letzte_nachricht_am` und `mail_adresse` neu. Ein Eintrag ohne Person, Termine, Nachrichten, Umfrage und Event wird gelöscht.
+- **Umhängen** (`POST /api/privatpartys/nachrichten/:id/zuordnen`, Body `{ privatpartyId }` oder `{ neu: true }`, Antwort `{ ok, geloescht, id }`
+  mit der Ziel-Id): die Ziel-Anfrage muss `offen` sein; beide Einträge berechnen `letzte_nachricht_am` und `mail_adresse` neu.
+  `neu: true` legt vorher einen leeren Eintrag an (wie der Mail-Job bei einer nicht zuordenbaren Mail: offen, ohne Person und Termine,
+  `mail_adresse` vom Absender) und hängt die Nachricht dorthin, z. B. wenn jemand auf eine alte Mail antwortet, um eine neue Party
+  anzufragen. Keine Benachrichtigung. Ein Eintrag ohne Person, Termine, Nachrichten, Umfrage und Event wird gelöscht.
 - **Seite**: „Korrespondenz“ auf der Detailseite, chronologisch, eingehende links, eigene rechts mit „gesendet von“ (`StatusName`, Link
-  zum Mitglied); Zitate (`>`-Zeilen, „Am … schrieb …:“) hinter „Zitat anzeigen“ (`zitatTrennen`); Menü „Andere Anfrage zuordnen“;
+  zum Mitglied); Zitate (`>`-Zeilen, „Am … schrieb …:“) hinter „Zitat anzeigen“ (`zitatTrennen`); Menü „Andere Anfrage zuordnen“ (Dialog ohne Tastatur: Liste antippbarer Karten, zuerst „Neue Anfrage“, danach die anderen offenen Anfragen; nach „Neue Anfrage“ öffnet sich der neue Eintrag);
   darunter Antwortfeld. Ein Eintrag ohne Person zeigt den Absender und „Person zuordnen“ (vorhandene Person, Vorschlag bei
   passender E-Mail, oder neue Person mit Name und Adresse vorbelegt) und öffnet danach das Formular für die Wunschtermine.
 - Module: `partymail.ts` (IMAP/SMTP mit `imapflow`, `nodemailer`; Secret), `partymailParsen.ts` (`mailparser`, `html-to-text`, Thread-Zuordnung),

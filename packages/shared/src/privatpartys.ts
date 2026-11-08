@@ -243,9 +243,16 @@ export const privatpartyNachrichtSchema = z.object({
 });
 
 /** Body of `POST /api/privatpartys/nachrichten/:id/zuordnen`. */
-export const privatpartyZuordnenSchema = z.object({
-  privatpartyId: z.string('Bitte wähle eine Anfrage.').min(1, 'Bitte wähle eine Anfrage.'),
-});
+export const privatpartyZuordnenSchema = z.union(
+  [
+    z.object({
+      privatpartyId: z.string('Bitte wähle eine Anfrage.').min(1, 'Bitte wähle eine Anfrage.'),
+    }),
+    /** Moves the message into a brand-new blank request. */
+    z.object({ neu: z.literal(true) }),
+  ],
+  'Bitte wähle eine Anfrage.',
+);
 
 /** `GET /api/privatpartys/mail-status`. */
 export interface PrivatpartyMailStatusDto {

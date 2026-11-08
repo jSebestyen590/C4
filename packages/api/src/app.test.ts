@@ -9238,10 +9238,36 @@ describe('privatpartys: Party-Mail', () => {
       json('admin-token', 'PUT', { status: 'offen' }),
     );
     const res = await zuordnen(nachricht.id, ziel.id);
-    expect(await res.json()).toEqual({ ok: true, geloescht: true });
+    expect(await res.json()).toEqual({ ok: true, geloescht: true, id: ziel.id });
     expect(await t.liste()).toHaveLength(1);
     const d = await t.holen(ziel.id);
     expect(d.nachrichten).toHaveLength(2);
     expect(d.mailAdresse).toBe('x@y.de');
+  });
+
+  it('moves a message into a new blank request', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail({ vonAdresse: 'alt@y.de' }));
+    await t.abrufen();
+    const quelle = (await t.liste())[0]!;
+    const nachricht = (await t.holen(quelle.id)).nachrichten[0]!;
+    const post = (body: unknown) =>
+      t.app.request(
+        `/api/privatpartys/nachrichten/${nachricht.id}/zuordnen`,
+        json('admin-token', 'POST', body),
+      );
+    expect((await post({})).status).toBe(400);
+    const res = await post({ neu: true });
+    const antwort = (await res.json()) as { ok: boolean; geloescht: boolean; id: string };
+    expect(antwort).toMatchObject({ ok: true, geloescht: true });
+    const alle = await t.liste();
+    expect(alle).toHaveLength(1);
+    const d = await t.holen(antwort.id);
+    expect(antwort.id).not.toBe(quelle.id);
+    expect(d.status).toBe('offen');
+    expect(d.person).toBeNull();
+    expect(d.termine).toHaveLength(0);
+    expect(d.mailAdresse).toBe('alt@y.de');
+    expect(d.nachrichten).toHaveLength(1);
   });
 });

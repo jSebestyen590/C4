@@ -2185,21 +2185,40 @@ export function createApp(deps: AppDeps) {
             await deps.privatpartys.nachricht(c.req.param('id')),
             'Nachricht nicht gefunden',
           );
-          const { privatpartyId } = c.req.valid('json');
-          const ziel = await privatpartyGefunden(privatpartyId);
-          if (ziel.id === nachricht.privatpartyId) {
-            throw new HTTPException(400, {
-              message: 'Die Nachricht gehört schon zu dieser Anfrage.',
-            });
-          }
-          if (ziel.status !== 'offen') {
-            throw new HTTPException(409, { message: 'Die Anfrage ist nicht offen.' });
-          }
+          const daten = c.req.valid('json');
           const quelleId = nachricht.privatpartyId;
-          await deps.privatpartys.nachrichtVerschieben(nachricht.id, ziel.id);
+          let zielId: string;
+          if ('neu' in daten) {
+            // Same blank entry the mail job creates for an unthreaded incoming mail.
+            const quelle = await privatpartyGefunden(quelleId);
+            zielId = await deps.privatpartys.anlegen(
+              {
+                personId: null,
+                anlass: null,
+                notizen: null,
+                termine: [],
+                mailAdresse:
+                  nachricht.richtung === 'ein' ? nachricht.vonAdresse : quelle.mailAdresse,
+                letzteNachrichtAm: nachricht.zeitpunkt,
+              },
+              null,
+            );
+          } else {
+            const ziel = await privatpartyGefunden(daten.privatpartyId);
+            if (ziel.id === quelleId) {
+              throw new HTTPException(400, {
+                message: 'Die Nachricht gehört schon zu dieser Anfrage.',
+              });
+            }
+            if (ziel.status !== 'offen') {
+              throw new HTTPException(409, { message: 'Die Anfrage ist nicht offen.' });
+            }
+            zielId = ziel.id;
+          }
+          await deps.privatpartys.nachrichtVerschieben(nachricht.id, zielId);
           // An entry that only existed for this mail is not needed any more.
           const geloescht = await deps.privatpartys.leerenEintragLoeschen(quelleId);
-          return c.json({ ok: true, geloescht });
+          return c.json({ ok: true, geloescht, id: zielId });
         },
       )
       .get(

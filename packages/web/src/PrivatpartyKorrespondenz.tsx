@@ -5,18 +5,24 @@ import {
   Group,
   Modal,
   Paper,
-  Select,
+  Radio,
+  ScrollArea,
   Stack,
   Text,
   Textarea,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowsExchange, IconPaperclip } from '@tabler/icons-react';
+import { IconArrowsExchange, IconPaperclip, IconPlus } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { zitatTrennen, type PrivatpartyDetailDto, type PrivatpartyNachrichtDto } from '@c4/shared';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  datumAnzeigen,
+  zitatTrennen,
+  type PrivatpartyDetailDto,
+  type PrivatpartyNachrichtDto,
+} from '@c4/shared';
 import { useApi } from './api';
 import { AktionsMenue } from './AktionsMenue';
 import { mitgliedLink, mitgliedName } from './mitglied';
@@ -54,6 +60,8 @@ function MailText({ text }: Readonly<{ text: string }>) {
   );
 }
 
+const NEU = '__neu__';
+
 /** Moves a message to another open request (e.g. a reply that was not threaded). */
 function ZuordnenDialog({
   nachricht,
@@ -62,7 +70,9 @@ function ZuordnenDialog({
 }: Readonly<{ nachricht: PrivatpartyNachrichtDto; aktuelleId: string; onClose: () => void }>) {
   const api = useApi();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const offene = usePrivatpartys('offen');
+  const andere = (offene.data ?? []).filter((p) => p.id !== aktuelleId);
   const [ziel, setZiel] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -70,15 +80,22 @@ function ZuordnenDialog({
     setLaeuft(true);
     setFehler(null);
     try {
-      await pruefen(
-        await api.privatpartys.nachrichten[':id'].zuordnen.$post({
-          param: { id: nachricht.id },
-          json: { privatpartyId: ziel! },
-        }),
-      );
+      const neu = ziel === NEU;
+      const res = await api.privatpartys.nachrichten[':id'].zuordnen.$post({
+        param: { id: nachricht.id },
+        json: neu ? { neu: true } : { privatpartyId: ziel! },
+      });
+      await pruefen(res);
+      const antwort = (await res.json()) as { id: string };
       await privatpartysInvalidieren(qc);
-      notifications.show({ color: 'green', message: 'Die Nachricht wurde zugeordnet.' });
+      notifications.show({
+        color: 'green',
+        message: neu
+          ? 'Die Nachricht ist jetzt eine neue Anfrage.'
+          : 'Die Nachricht wurde zugeordnet.',
+      });
       onClose();
+      if (neu) void navigate(`/privatpartys/${antwort.id}`);
     } catch (err) {
       setFehler(fehlerText(err));
     } finally {
@@ -90,23 +107,45 @@ function ZuordnenDialog({
       <Stack>
         <Text size="sm" c="dimmed">
           Die Nachricht „{nachricht.betreff ?? 'ohne Betreff'}“ wandert zu einer anderen offenen
-          Anfrage. Ein Eintrag, der nur für diese Mail angelegt wurde, wird gelöscht.
+          Anfrage oder wird zu einer neuen Anfrage (z. B. wenn jemand auf eine alte Mail antwortet,
+          um eine neue Party anzufragen). Ein Eintrag, der nur für diese Mail angelegt wurde, wird
+          gelöscht.
         </Text>
-        <Select
-          size="md"
-          label="Anfrage"
-          placeholder="Anfrage wählen"
-          searchable
-          nothingFoundMessage="Keine offene Anfrage"
-          data={(offene.data ?? [])
-            .filter((p) => p.id !== aktuelleId)
-            .map((p) => ({
-              value: p.id,
-              label: p.anlass ? `${privatpartyName(p)} · ${p.anlass}` : privatpartyName(p),
-            }))}
-          value={ziel}
-          onChange={setZiel}
-        />
+        <Radio.Group value={ziel} onChange={setZiel} aria-label="Anfrage">
+          <ScrollArea.Autosize mah="50dvh" type="auto">
+            <Stack gap="xs">
+              <Radio.Card value={NEU} p="sm" mih={44} withBorder>
+                <Group wrap="nowrap" gap="sm">
+                  <Radio.Indicator />
+                  <IconPlus size={18} />
+                  <Text fw={700}>Neue Anfrage</Text>
+                </Group>
+              </Radio.Card>
+              {andere.length === 0 && (
+                <Text size="sm" c="dimmed">
+                  Keine andere offene Anfrage
+                </Text>
+              )}
+              {andere.map((p) => (
+                <Radio.Card key={p.id} value={p.id} p="sm" mih={44} withBorder>
+                  <Group wrap="nowrap" gap="sm" align="flex-start">
+                    <Radio.Indicator mt={2} />
+                    <Stack gap={0} style={{ minWidth: 0 }}>
+                      <Text style={{ overflowWrap: 'anywhere' }}>
+                        {p.anlass ? `${privatpartyName(p)} · ${p.anlass}` : privatpartyName(p)}
+                      </Text>
+                      {p.termine[0] && (
+                        <Text size="xs" c="dimmed">
+                          Wunschtermin: {datumAnzeigen(p.termine[0].datum)}
+                        </Text>
+                      )}
+                    </Stack>
+                  </Group>
+                </Radio.Card>
+              ))}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Radio.Group>
         {fehler && <Alert color="red">{fehler}</Alert>}
         <Group grow preventGrowOverflow={false}>
           <Button size="md" mih={44} variant="default" onClick={onClose}>
@@ -119,7 +158,7 @@ function ZuordnenDialog({
             loading={laeuft}
             onClick={() => void senden()}
           >
-            Zuordnen
+            {ziel === NEU ? 'Neue Anfrage anlegen' : 'Zuordnen'}
           </Button>
         </Group>
       </Stack>
