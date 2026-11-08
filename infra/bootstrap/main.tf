@@ -215,6 +215,13 @@ resource "aws_iam_role_policy" "deploy" {
         ]
       },
       {
+        # The empty Party-Mail secret c4-<env>-partymail (infra/modules/app); its values are entered by hand.
+        Sid      = "SecretsManager"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:*"]
+        Resource = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:c4-${each.key}-*"]
+      },
+      {
         Sid    = "Logs"
         Effect = "Allow"
         Action = ["logs:*"]

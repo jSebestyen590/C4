@@ -50,3 +50,9 @@ variable "push_job_rate" {
   default     = "rate(5 minutes)"
   description = "How often EventBridge Scheduler runs the notification job (reminders, missing Dienste)."
 }
+
+variable "mail_job_rate" {
+  type        = string
+  default     = "rate(2 minutes)"
+  description = "How often EventBridge Scheduler runs the Party-Mail job (fetching new mails)."
+}

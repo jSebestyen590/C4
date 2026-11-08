@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
@@ -104,13 +103,11 @@ import {
   umfrageLaeuft,
   ungueltigNachAenderung,
   ausVorlage,
+  ausVorlageZuZeit,
   bedarfZusammen,
   dienstVerteilung,
   MAX_DAUER_MS,
-  terminDauerFehler,
-  terminNormalisieren,
   terminSpanne,
-  terminText,
   terminWahlSchema,
   type EventEingabe,
   type UmfrageListeDto,
@@ -174,6 +171,23 @@ import {
   type ProtokollListeEintragDto,
   type ProtokollSitzungDto,
   type ProtokollVorschlagDto,
+  leererKreis,
+  MITGLIED_STATI,
+  PRIVATPARTY_STATI,
+  privatpartyEingabeSchema,
+  privatpartyNachrichtSchema,
+  privatpartyZuordnenSchema,
+  type PrivatpartyMailStatusDto,
+  type PrivatpartyNachrichtDto,
+  privatpartyOptionName,
+  privatpartyPersonEingabeSchema,
+  privatpartyStatusEingabeSchema,
+  privatpartyUmfrageSchema,
+  privatpartyUmfrageTitel,
+  privatpartyZusageSchema,
+  UMFRAGE_ERINNERUNG_STANDARD,
+  type PrivatpartyEventKurzDto,
+  type PrivatpartyUmfrageKurzDto,
 } from '@c4/shared';
 import { UsernameTakenError, type Konto, type UserAdmin } from './admin';
 import {
@@ -204,6 +218,14 @@ import {
   type KalenderStore,
 } from './kalender';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
+import {
+  alsDetailDto as alsPrivatpartyDetailDto,
+  alsListeDto as alsPrivatpartyListeDto,
+  alsPersonDto as alsPrivatpartyPersonDto,
+} from './privatpartyAnsicht';
+import { mailJob } from './privatpartyMail';
+import type { PartyMail } from './partymailTypen';
+import { TerminInBenutzung, type PrivatpartyEintrag, type PrivatpartysStore } from './privatpartys';
 import {
   NichtKonfiguriert,
   NichtVerbunden,
@@ -246,7 +268,7 @@ import {
   protokollListen,
   type ProtokollMitglied,
 } from './protokolleAnsicht';
-import type { UmfrageDaten, UmfragenCursor, UmfrageSpeichern, UmfragenStore } from './umfragen';
+import type { UmfragenCursor, UmfragenStore } from './umfragen';
 import {
   alsDetailDto,
   alsListeDto,
@@ -269,6 +291,11 @@ import {
   type MitgliederStore,
 } from './mitglieder';
 import { kleinKey, profilbildPrefix, type Profilbilder } from './profilbilder';
+import {
+  terminQuellen as terminQuellenModul,
+  terminVorbereiten as terminVorbereitenModul,
+  umfrageSpeichern as umfrageSpeichernModul,
+} from './umfrageSpeichern';
 import type { Protokollbilder } from './protokollbilder';
 import {
   authenticate,
@@ -292,6 +319,9 @@ export interface AppDeps {
   umfragen: UmfragenStore;
   trichter: TrichterStore;
   protokolle: ProtokollStore;
+  privatpartys: PrivatpartysStore;
+  /** The Party-Mail mailbox (IMAP/SMTP); `eingerichtet()` is false without the secret. */
+  partymail: PartyMail;
   benachrichtigungen: Benachrichtigungen;
   onedrive: OneDrive;
   /** Cache of the anonymous sharing links of the photo folders. */
@@ -377,6 +407,7 @@ export function createApp(deps: AppDeps) {
   const bilderLesen = requirePermission('bilder:lesen');
   const protokolleLesen = requirePermission('protokolle:lesen');
   const protokolleSchreiben = requirePermission('protokolle:schreiben');
+  const privatpartysVerwalten = requirePermission('privatpartys:verwalten');
 
   /** Merges the profile row with the Cognito account; either side may be missing. */
   const alsMitglied = async (
@@ -777,6 +808,16 @@ export function createApp(deps: AppDeps) {
     verwaltung: c.get('permissions').includes('umfragen:verwalten'),
   });
 
+  /** Like `umfrageAufrufer`; holders of `privatpartys:verwalten` also handle the poll of a Privatparty. */
+  const aufruferFuerUmfrage = async (
+    c: Parameters<typeof umfrageAufrufer>[0],
+    umfrageId: string,
+  ): Promise<Aufrufer> => {
+    const a = umfrageAufrufer(c);
+    if (a.verwaltung || !c.get('permissions').includes('privatpartys:verwalten')) return a;
+    return (await deps.privatpartys.nachUmfrage(umfrageId)) ? { ...a, privatpartys: true } : a;
+  };
+
   const umfrageKontext = () => ladeKontext(deps);
 
   /** The poll if the caller may see it; 404 otherwise, so other polls stay hidden. */
@@ -788,109 +829,11 @@ export function createApp(deps: AppDeps) {
     return { u, k };
   };
 
-  /** Validated input with ids: existing questions and options keep theirs, new ones get one. */
-  const umfrageSpeichern = (
-    e: z.output<typeof umfrageEingabeSchema>,
-    bestehend?: UmfrageDaten,
-  ): UmfrageSpeichern => {
-    if (e.endetAm < heuteBerlin()) {
-      throw new HTTPException(400, { message: 'Das Ablaufdatum liegt in der Vergangenheit.' });
-    }
-    return {
-      titel: e.titel,
-      beschreibung: e.beschreibung,
-      endetAm: e.endetAm,
-      anonym: e.anonym,
-      ergebnisse: e.ergebnisse,
-      pflicht: e.pflicht,
-      optional: e.optional,
-      erinnerungenPflicht: e.erinnerungenPflicht,
-      erinnerungenOptional: e.erinnerungenOptional,
-      fragen: e.fragen.map((f) => {
-        const alt = bestehend?.fragen.find((x) => x.id === f.id);
-        return {
-          id: alt?.id ?? randomUUID(),
-          text: f.text,
-          freitext: f.freitext,
-          maxAntworten: f.maxAntworten,
-          optionen: f.optionen.map((o) => ({
-            id: alt?.optionen.find((x) => x.id === o.id)?.id ?? randomUUID(),
-            text: o.text,
-            termin: o.termin,
-          })),
-        };
-      }),
-      termin: e.termin,
-      terminFrei: e.terminFrei,
-    };
-  };
-
-  /** Kategorie and Vorlage behind a scheduling poll; with a Vorlage its Kategorie counts. */
-  const terminQuellen = async (termin: UmfrageTermin, nurAktive: boolean) => {
-    const [kategorien, vorlagen] = await Promise.all([
-      deps.kalender.kategorien(!nurAktive),
-      termin.vorlageId ? deps.kalender.vorlagen(!nurAktive) : Promise.resolve([]),
-    ]);
-    const vorlage = termin.vorlageId ? vorlagen.find((v) => v.id === termin.vorlageId) : null;
-    const kategorie = kategorien.find(
-      (k) => k.id === (vorlage ? vorlage.kategorieId : termin.kategorieId),
-    );
-    return { vorlage: vorlage ?? null, kategorie: kategorie ?? null };
-  };
-
-  /**
-   * Fits a scheduling poll to its Kategorie (or Vorlage): drops what they decide themselves,
-   * checks the rest and fills an empty title with the Vorlage's or Kategorie's name.
-   */
-  const terminVorbereiten = async (
-    e: z.output<typeof umfrageEingabeSchema>,
-  ): Promise<z.output<typeof umfrageEingabeSchema>> => {
-    if (!e.termin) return e;
-    const { vorlage, kategorie } = await terminQuellen(e.termin, true);
-    if (e.termin.vorlageId && !vorlage) {
-      throw new HTTPException(400, { message: 'Unbekannte Vorlage.' });
-    }
-    if (!kategorie) throw new HTTPException(400, { message: 'Unbekannte Kategorie.' });
-    const [frage] = e.fragen;
-    const n = terminNormalisieren(
-      { ...e.termin, kategorieId: kategorie.id },
-      frage!.optionen,
-      kategorie.dauer,
-    );
-    const fehler = terminDauerFehler(n.termin, n.optionen, kategorie.dauer);
-    if (fehler) throw new HTTPException(400, { message: fehler });
-    if (!vorlage && kategorie.art === 'teilnahme' && n.termin.bedarf) {
-      throw new HTTPException(400, {
-        message: 'Bei einer Teilnahme-Kategorie gibt es keine Dienste.',
-      });
-    }
-    if (!vorlage && kategorie.art === 'dienste') {
-      if (!n.termin.bedarf) {
-        throw new HTTPException(400, {
-          message:
-            'Bitte wähle die Dienstform und wie viele es mindestens und am liebsten sein sollen.',
-        });
-      }
-      const dienstform = (await deps.kalender.dienstformen(false)).some(
-        (d) => d.id === n.termin.bedarf!.dienstformId,
-      );
-      if (!dienstform) throw new HTTPException(400, { message: 'Unbekannte Dienstform.' });
-    }
-    return {
-      ...e,
-      titel: e.titel || vorlage?.titel || kategorie.name,
-      termin: n.termin,
-      fragen: [
-        {
-          ...frage!,
-          optionen: n.optionen.map((o) => ({
-            ...o,
-            text: o.termin ? terminText(o.termin) : o.text,
-          })),
-        },
-      ],
-    };
-  };
+  const umfrageSpeichern = umfrageSpeichernModul;
+  const terminQuellen = (termin: UmfrageTermin, nurAktive: boolean) =>
+    terminQuellenModul(deps.kalender, termin, nurAktive);
+  const terminVorbereiten = (e: z.output<typeof umfrageEingabeSchema>) =>
+    terminVorbereitenModul(deps.kalender, e);
 
   /** Dauer and Bedarf of a scheduling poll for display (all Dienstformen of a Vorlage together). */
   const terminAnzeige = async (termin: UmfrageTermin) => {
@@ -957,6 +900,100 @@ export function createApp(deps: AppDeps) {
     halter: halter(s.halter),
     halterSeit: s.halterSeit?.toISOString() ?? null,
   });
+
+  // ----- Privatpartys: helpers (see docs/privatpartys.md)
+
+  /** Deletes an event like `DELETE /kalender/events/:id`; false when it is already gone. */
+  const eventLoeschenMitPruefung = async (eventId: string): Promise<boolean> => {
+    if (await deps.protokolle.nachEvent(eventId)) {
+      throw new HTTPException(409, { message: 'Zu dieser Sitzung gibt es ein Protokoll.' });
+    }
+    return mitOrdnerAufraeumen(() => deps.kalender.eventLoeschen(eventId).catch(kalenderFehler));
+  };
+
+  const MAIL_AUS = 'Die Party-Mail ist nicht eingerichtet.';
+
+  const privatpartyGefunden = async (id: string): Promise<PrivatpartyEintrag> =>
+    gefunden(await deps.privatpartys.holen(id), 'Privatparty nicht gefunden');
+
+  const privatpartyDetail = async (e: PrivatpartyEintrag) => {
+    const [umfrage, event, nachrichten, konten, mailEingerichtet] = await Promise.all([
+      e.umfrageId ? deps.umfragen.holen(e.umfrageId) : undefined,
+      e.eventId ? deps.kalender.event(e.eventId) : undefined,
+      deps.privatpartys.nachrichten(e.id),
+      deps.userAdmin.konten(),
+      deps.partymail.eingerichtet(),
+    ]);
+    const umfrageKurz: PrivatpartyUmfrageKurzDto | null = umfrage
+      ? { id: umfrage.id, titel: umfrage.titel, laeuft: umfrageLaeuft(umfrage, new Date()) }
+      : null;
+    // An event deleted in the calendar is shown as none.
+    const eventKurz: PrivatpartyEventKurzDto | null = event
+      ? { id: event.id, titel: event.anzeigeTitel, beginn: event.beginn }
+      : null;
+    const sender = new Map<string, PrivatpartyNachrichtDto['gesendetVon']>();
+    for (const sub of new Set(nachrichten.flatMap((n) => (n.mitgliedSub ? [n.mitgliedSub] : [])))) {
+      const profil = await deps.mitglieder.holen(sub);
+      sender.set(
+        sub,
+        profil
+          ? {
+              sub,
+              username: konten.get(sub)?.username ?? null,
+              vorname: profil.vorname,
+              nachname: profil.nachname,
+              status: profil.status,
+              anrede: profil.anrede ?? 'neutral',
+            }
+          : null,
+      );
+    }
+    const dtos: PrivatpartyNachrichtDto[] = nachrichten.map((n) => ({
+      id: n.id,
+      richtung: n.richtung,
+      vonAdresse: n.vonAdresse,
+      vonName: n.vonName,
+      anAdresse: n.anAdresse,
+      betreff: n.betreff,
+      text: n.text,
+      anhaenge: n.anhaenge,
+      zeitpunkt: n.zeitpunkt.toISOString(),
+      gesendetVon: n.mitgliedSub ? (sender.get(n.mitgliedSub) ?? null) : null,
+    }));
+    return alsPrivatpartyDetailDto(e, umfrageKurz, eventKurz, dtos, mailEingerichtet);
+  };
+
+  /** Accepts a wish date: creates the event from the Vorlage at the wished times and ends a running poll. */
+  const privatpartyZusagen = async (
+    e: PrivatpartyEintrag,
+    terminId: string,
+    vorlageId: string,
+    sub: string,
+  ): Promise<string> => {
+    if (e.status === 'zugesagt' && e.eventId && (await deps.kalender.event(e.eventId))) {
+      throw new HTTPException(409, { message: 'Die Privatparty ist schon zugesagt.' });
+    }
+    const termin = e.termine.find((t) => t.id === terminId);
+    if (!termin) throw new HTTPException(400, { message: 'Unbekannter Termin.' });
+    const vorlage = (await deps.kalender.vorlagen(false)).find((v) => v.id === vorlageId);
+    if (!vorlage) throw new HTTPException(400, { message: 'Unbekannte Vorlage.' });
+    const kategorie = (await deps.kalender.kategorien(false)).find(
+      (k) => k.id === vorlage.kategorieId,
+    );
+    if (!kategorie) throw new HTTPException(400, { message: 'Unbekannte Kategorie.' });
+    const eingabe: EventEingabe = {
+      ...ausVorlageZuZeit(vorlage, termin.datum, termin.beginn, termin.ende, kategorie),
+      // Only the Vorlage's (else a plain) title: no contact data in the calendar.
+      titel: vorlage.titel.trim() || 'Privatparty',
+    };
+    const eventId = await deps.kalender.eventAnlegen(eingabe, sub).catch(kalenderFehler);
+    if (e.umfrageId) {
+      const u = await deps.umfragen.holen(e.umfrageId);
+      if (u && umfrageLaeuft(u, new Date())) await deps.umfragen.beenden(u.id, new Date());
+    }
+    await deps.privatpartys.zusagen(e.id, termin.id, eventId);
+    return eventId;
+  };
 
   // ----- Todos: helpers
 
@@ -2060,6 +2097,338 @@ export function createApp(deps: AppDeps) {
           return c.json(alsSchluesselDto(s, m.halter));
         },
       )
+      // ----- Privatpartys (see docs/privatpartys.md): everything needs `privatpartys:verwalten`
+      .get('/privatpartys/personen', auth, privatpartysVerwalten, async (c) => {
+        const liste = await deps.privatpartys.personen();
+        return c.json(liste.map((p) => alsPrivatpartyPersonDto(p, p.anzahl)));
+      })
+      .post(
+        '/privatpartys/personen',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyPersonEingabeSchema),
+        async (c) => {
+          const id = await deps.privatpartys.personAnlegen(c.req.valid('json'), c.get('user').sub);
+          return c.json({ id }, 201);
+        },
+      )
+      .get('/privatpartys/personen/:id', auth, privatpartysVerwalten, async (c) => {
+        const person = gefunden(
+          await deps.privatpartys.person(c.req.param('id')),
+          'Person nicht gefunden',
+        );
+        const privatpartys = await deps.privatpartys.nachPerson(person.id);
+        return c.json({
+          ...alsPrivatpartyPersonDto(person, privatpartys.length),
+          privatpartys: privatpartys.map(alsPrivatpartyListeDto),
+        });
+      })
+      .put(
+        '/privatpartys/personen/:id',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyPersonEingabeSchema),
+        async (c) => {
+          gefunden(
+            await deps.privatpartys.personAktualisieren(c.req.param('id'), c.req.valid('json')),
+            'Person nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/privatpartys/personen/:id', auth, privatpartysVerwalten, async (c) => {
+        const ergebnis = await deps.privatpartys.personLoeschen(c.req.param('id'));
+        if (ergebnis === 'nicht_gefunden') {
+          throw new HTTPException(404, { message: 'Person nicht gefunden' });
+        }
+        if (ergebnis === 'in_benutzung') {
+          throw new HTTPException(409, {
+            message: 'Zu dieser Person gibt es noch Privatpartys.',
+          });
+        }
+        return c.json({ ok: true });
+      })
+      .get('/privatpartys/mail-status', auth, privatpartysVerwalten, async (c) => {
+        const [eingerichtet, stand] = await Promise.all([
+          deps.partymail.eingerichtet(),
+          deps.privatpartys.abrufStand(),
+        ]);
+        return c.json({
+          eingerichtet,
+          letzterAbruf: stand.letzterAbruf?.toISOString() ?? null,
+          fehler: stand.fehler,
+        } satisfies PrivatpartyMailStatusDto);
+      })
+      .post('/privatpartys/mail/abrufen', auth, privatpartysVerwalten, async (c) => {
+        if (!(await deps.partymail.eingerichtet()))
+          throw new HTTPException(409, { message: MAIL_AUS });
+        const ergebnis = await mailJob(deps);
+        if (ergebnis.fehler)
+          throw new HTTPException(502, { message: 'Der Abruf ist fehlgeschlagen.' });
+        return c.json({ neu: ergebnis.neu });
+      })
+      .post(
+        '/privatpartys/nachrichten/:id/zuordnen',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyZuordnenSchema),
+        async (c) => {
+          const nachricht = gefunden(
+            await deps.privatpartys.nachricht(c.req.param('id')),
+            'Nachricht nicht gefunden',
+          );
+          const { privatpartyId } = c.req.valid('json');
+          const ziel = await privatpartyGefunden(privatpartyId);
+          if (ziel.id === nachricht.privatpartyId) {
+            throw new HTTPException(400, {
+              message: 'Die Nachricht gehört schon zu dieser Anfrage.',
+            });
+          }
+          if (ziel.status !== 'offen') {
+            throw new HTTPException(409, { message: 'Die Anfrage ist nicht offen.' });
+          }
+          const quelleId = nachricht.privatpartyId;
+          await deps.privatpartys.nachrichtVerschieben(nachricht.id, ziel.id);
+          // An entry that only existed for this mail is not needed any more.
+          const geloescht = await deps.privatpartys.leerenEintragLoeschen(quelleId);
+          return c.json({ ok: true, geloescht });
+        },
+      )
+      .get(
+        '/privatpartys',
+        auth,
+        privatpartysVerwalten,
+        zValidator(
+          'query',
+          z.object({ status: z.enum([...PRIVATPARTY_STATI, 'alle']).optional() }),
+        ),
+        async (c) => {
+          const status = c.req.valid('query').status ?? 'offen';
+          const liste = await deps.privatpartys.alle(status === 'alle' ? undefined : status);
+          return c.json(liste.map(alsPrivatpartyListeDto));
+        },
+      )
+      .post(
+        '/privatpartys',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyEingabeSchema),
+        async (c) => {
+          const daten = c.req.valid('json');
+          gefunden(await deps.privatpartys.person(daten.personId), 'Person nicht gefunden');
+          const id = await deps.privatpartys.anlegen(daten, c.get('user').sub);
+          return c.json({ id }, 201);
+        },
+      )
+      .get('/privatpartys/:id', auth, privatpartysVerwalten, async (c) => {
+        return c.json(await privatpartyDetail(await privatpartyGefunden(c.req.param('id'))));
+      })
+      .put(
+        '/privatpartys/:id',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyEingabeSchema),
+        async (c) => {
+          const daten = c.req.valid('json');
+          gefunden(await deps.privatpartys.person(daten.personId), 'Person nicht gefunden');
+          try {
+            gefunden(
+              await deps.privatpartys.aktualisieren(c.req.param('id'), daten),
+              'Privatparty nicht gefunden',
+            );
+          } catch (err) {
+            if (err instanceof TerminInBenutzung) {
+              throw new HTTPException(409, {
+                message: 'Der zugesagte Termin kann nicht entfernt werden.',
+              });
+            }
+            throw err;
+          }
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/privatpartys/:id', auth, privatpartysVerwalten, async (c) => {
+        const ergebnis = await deps.privatpartys.loeschen(c.req.param('id'));
+        if (ergebnis === 'nicht_gefunden') {
+          throw new HTTPException(404, { message: 'Privatparty nicht gefunden' });
+        }
+        if (ergebnis === 'in_benutzung') {
+          throw new HTTPException(409, {
+            message:
+              'An der Privatparty hängen ein Event oder Nachrichten. Sage sie stattdessen ab.',
+          });
+        }
+        return c.json({ ok: true });
+      })
+      .post(
+        '/privatpartys/:id/umfrage',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyUmfrageSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          const e = await privatpartyGefunden(c.req.param('id'));
+          const { vorlageId, endetAm, pflicht } = c.req.valid('json');
+          if (e.termine.length === 0) {
+            throw new HTTPException(400, { message: 'Lege zuerst Wunschtermine an.' });
+          }
+          if (e.umfrageId) {
+            const bisher = await deps.umfragen.holen(e.umfrageId);
+            if (bisher && umfrageLaeuft(bisher, new Date())) {
+              throw new HTTPException(409, { message: 'Es läuft schon eine Umfrage.' });
+            }
+          }
+          const vorlage = (await deps.kalender.vorlagen(false)).find((v) => v.id === vorlageId);
+          if (!vorlage) throw new HTTPException(400, { message: 'Unbekannte Vorlage.' });
+          await eigenesProfilMussExistieren(sub);
+          const alle = { ...leererKreis(), status: [...MITGLIED_STATI] };
+          const geparst = umfrageEingabeSchema.safeParse({
+            titel: privatpartyUmfrageTitel(e.anlass),
+            beschreibung: null,
+            endetAm,
+            anonym: false,
+            ergebnisse: 'sofort',
+            pflicht: pflicht ? alle : leererKreis(),
+            optional: pflicht ? leererKreis() : alle,
+            erinnerungenPflicht: pflicht ? [...UMFRAGE_ERINNERUNG_STANDARD.pflicht] : [],
+            erinnerungenOptional: pflicht ? [] : [...UMFRAGE_ERINNERUNG_STANDARD.optional],
+            fragen: [
+              {
+                text: '',
+                freitext: false,
+                maxAntworten: null,
+                optionen: e.termine.map((t) => ({
+                  text: '',
+                  termin: {
+                    datum: t.datum,
+                    bis: null,
+                    beginn: null,
+                    ende: null,
+                    name: privatpartyOptionName(t),
+                  },
+                })),
+              },
+            ],
+            termin: {
+              kategorieId: vorlage.kategorieId,
+              vorlageId: vorlage.id,
+              jeTermin: false,
+              beginn: null,
+              ende: null,
+              bedarf: null,
+            },
+          });
+          if (!geparst.success) {
+            throw new HTTPException(400, {
+              message: geparst.error.issues[0]?.message ?? 'Ungültige Umfrage.',
+            });
+          }
+          const eingabe = await terminVorbereiten(geparst.data);
+          const id = await deps.umfragen.anlegen(umfrageSpeichern(eingabe), sub);
+          await deps.privatpartys.umfrageSetzen(e.id, id);
+          await bestEffort(async () => {
+            const [u, k, akteur] = await Promise.all([
+              deps.umfragen.holen(id),
+              umfrageKontext(),
+              akteurMitName(sub),
+            ]);
+            if (u) await meldeNeueUmfrage(deps.benachrichtigungen, u, k, akteur);
+          });
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/privatpartys/:id/nachrichten',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyNachrichtSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          const e = await privatpartyGefunden(c.req.param('id'));
+          if (!(await deps.partymail.eingerichtet())) {
+            throw new HTTPException(409, { message: MAIL_AUS });
+          }
+          const person = e.personId ? await deps.privatpartys.person(e.personId) : undefined;
+          const an = e.mailAdresse ?? person?.email ?? null;
+          if (!an) {
+            throw new HTTPException(400, {
+              message:
+                'Es gibt keine E-Mail-Adresse für die Antwort. Trage sie bei der Person ein.',
+            });
+          }
+          const bisher = await deps.privatpartys.nachrichten(e.id);
+          const letzte = bisher.at(-1);
+          const betreff = letzte?.betreff?.trim()
+            ? /^re:/i.test(letzte.betreff.trim())
+              ? letzte.betreff.trim()
+              : `Re: ${letzte.betreff.trim()}`
+            : 'Deine Anfrage beim C4';
+          const gesendet = await deps.partymail
+            .senden({
+              an,
+              betreff,
+              text: c.req.valid('json').text,
+              inReplyTo: letzte?.messageId ?? null,
+              referenzen: letzte
+                ? [...new Set([...letzte.referenzen, letzte.messageId])].slice(-20)
+                : [],
+            })
+            .catch((err: unknown) => {
+              console.error('Party-Mail send failed', err);
+              throw new HTTPException(502, { message: 'Die Mail konnte nicht gesendet werden.' });
+            });
+          const id = await deps.privatpartys.nachrichtAnlegen({
+            privatpartyId: e.id,
+            richtung: 'aus',
+            messageId: gesendet.messageId,
+            inReplyTo: letzte?.messageId ?? null,
+            referenzen: letzte ? [...letzte.referenzen, letzte.messageId] : [],
+            vonAdresse: gesendet.vonAdresse,
+            vonName: gesendet.vonName,
+            anAdresse: an,
+            betreff,
+            text: c.req.valid('json').text,
+            anhaenge: [],
+            zeitpunkt: new Date(),
+            mitgliedSub: sub,
+          });
+          await bestEffort(() => deps.partymail.gesendetAblegen(gesendet.raw));
+          return c.json({ id }, 201);
+        },
+      )
+      .post(
+        '/privatpartys/:id/zusage',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyZusageSchema),
+        async (c) => {
+          const e = await privatpartyGefunden(c.req.param('id'));
+          const { terminId, vorlageId } = c.req.valid('json');
+          const eventId = await privatpartyZusagen(e, terminId, vorlageId, c.get('user').sub);
+          return c.json({ eventId }, 201);
+        },
+      )
+      .put(
+        '/privatpartys/:id/status',
+        auth,
+        privatpartysVerwalten,
+        zValidator('json', privatpartyStatusEingabeSchema),
+        async (c) => {
+          const e = await privatpartyGefunden(c.req.param('id'));
+          const { status, terminId, vorlageId } = c.req.valid('json');
+          if (status === 'zugesagt') {
+            if (!terminId || !vorlageId) {
+              throw new HTTPException(400, { message: 'Bitte wähle Termin und Vorlage.' });
+            }
+            const eventId = await privatpartyZusagen(e, terminId, vorlageId, c.get('user').sub);
+            return c.json({ eventId });
+          }
+          // Leaving "zugesagt" deletes the event (if it is already gone, nothing to do).
+          if (e.eventId) await eventLoeschenMitPruefung(e.eventId);
+          await deps.privatpartys.statusSetzen(e.id, status);
+          return c.json({ ok: true });
+        },
+      )
       // ----- Todos (see docs/todos.md): always the signed-in member's own
       .get('/me/todos', auth, async (c) => {
         const sub = c.get('user').sub;
@@ -2712,7 +3081,7 @@ export function createApp(deps: AppDeps) {
         });
       })
       .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
         const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
         const dto = alsDetailDto(u, k, a);
         return c.json(u.termin ? { ...dto, ...(await terminAnzeige(u.termin)) } : dto);
@@ -2817,7 +3186,7 @@ export function createApp(deps: AppDeps) {
         },
       )
       .post('/umfragen/:id/beenden', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
         const { u } = await sichtbareUmfrage(c.req.param('id'), a);
         if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
         if (!umfrageLaeuft(u))
@@ -2831,7 +3200,7 @@ export function createApp(deps: AppDeps) {
         umfragenLesen,
         zValidator('json', terminWahlSchema),
         async (c) => {
-          const a = umfrageAufrufer(c);
+          const a = await aufruferFuerUmfrage(c, c.req.param('id'));
           const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
           if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
           const termin = u.termin;
@@ -2869,8 +3238,31 @@ export function createApp(deps: AppDeps) {
           const vorgabe = vorlage?.titel || kategorie.name;
           const titel = u.titel === vorgabe ? (vorlage?.titel ?? '') : u.titel;
           const teilnahme = kategorie.art === 'teilnahme';
+          // The poll of a Privatparty: the chosen option is one of its wish dates (found by its name).
+          const privatparty = await deps.privatpartys.nachUmfrage(u.id);
+          const wunschTermin = privatparty?.termine.find(
+            (t) =>
+              t.datum === option.termin!.datum && privatpartyOptionName(t) === option.termin!.name,
+          );
           let eingabe: EventEingabe;
-          if (vorlage) {
+          if (vorlage && privatparty) {
+            // No contact data or request title in the event, only the Vorlage's (else a plain) title.
+            const ausDerVorlage = wunschTermin
+              ? ausVorlageZuZeit(
+                  vorlage,
+                  option.termin.datum,
+                  wunschTermin.beginn,
+                  wunschTermin.ende,
+                  kategorie,
+                )
+              : ausVorlage(vorlage, option.termin.datum, kategorie);
+            eingabe = {
+              ...ausDerVorlage,
+              titel: vorlage.titel.trim() || 'Privatparty',
+              teilnahmeStatus: teilnahme ? [] : null,
+              eingeladen: teilnahme ? zustimmende : [],
+            };
+          } else if (vorlage) {
             const ausDerVorlage = ausVorlage(vorlage, option.termin.datum, kategorie);
             eingabe = {
               ...ausDerVorlage,
@@ -2901,6 +3293,9 @@ export function createApp(deps: AppDeps) {
           }
           const eventId = await deps.kalender.eventAnlegen(eingabe, a.sub).catch(kalenderFehler);
           await deps.umfragen.eventSetzen(u.id, eventId, option.id);
+          if (privatparty) {
+            await deps.privatpartys.zusagen(privatparty.id, wunschTermin?.id ?? null, eventId);
+          }
           if (!teilnahme) {
             // Everybody who agreed gets one Dienst: first up to every Minimum, then every Wunsch.
             const schichten = (await deps.kalender.event(eventId))?.schichten ?? [];
@@ -3836,7 +4231,10 @@ export function createApp(deps: AppDeps) {
           await deps.kalender.event(c.req.param('id'), c.get('user').sub),
           'Event nicht gefunden',
         );
-        return c.json((await eventsMitUsernames([event]))[0]!);
+        const dto = (await eventsMitUsernames([event]))[0]!;
+        if (!c.get('permissions').includes('privatpartys:verwalten')) return c.json(dto);
+        const privatparty = await deps.privatpartys.nachEvent(event.id);
+        return c.json({ ...dto, privatpartyId: privatparty?.id ?? null });
       })
       .post(
         '/kalender/events',
@@ -3982,15 +4380,7 @@ export function createApp(deps: AppDeps) {
         return c.json({ imAbo: false });
       })
       .delete('/kalender/events/:id', auth, eventsVerwalten, async (c) => {
-        if (await deps.protokolle.nachEvent(c.req.param('id'))) {
-          throw new HTTPException(409, { message: 'Zu dieser Sitzung gibt es ein Protokoll.' });
-        }
-        gefunden(
-          await mitOrdnerAufraeumen(() =>
-            deps.kalender.eventLoeschen(c.req.param('id')).catch(kalenderFehler),
-          ),
-          'Event nicht gefunden',
-        );
+        gefunden(await eventLoeschenMitPruefung(c.req.param('id')), 'Event nicht gefunden');
         return c.json({ ok: true });
       })
       // Everybody may create the photo folder of an existing event (not only event managers).

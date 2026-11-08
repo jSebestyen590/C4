@@ -33,6 +33,8 @@ export interface Aufrufer {
   sub: string;
   /** Has `umfragen:verwalten`. */
   verwaltung: boolean;
+  /** Has `privatpartys:verwalten` and the poll belongs to a Privatparty: may handle this poll. */
+  privatpartys?: boolean;
 }
 
 export function personVon(k: UmfrageKontext, sub: string): UmfragePerson {
@@ -69,7 +71,7 @@ export function darfSehen(u: UmfrageDaten, kreis: Map<string, KreisRolle>, a: Au
 }
 
 export const darfBearbeiten = (u: UmfrageDaten, a: Aufrufer) =>
-  a.verwaltung || u.erstellerSub === a.sub;
+  a.verwaltung || a.privatpartys === true || u.erstellerSub === a.sub;
 
 export function alsListeDto(
   u: UmfrageDaten,

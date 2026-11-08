@@ -85,9 +85,10 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
   `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`, `trichter:lesen`, `bilder:lesen`, `protokolle:lesen`). Sobald Features unterschiedliche Rechte
   brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
-  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten` und `protokolle:schreiben` haben nur Admins und Posten (siehe
+  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben` und `privatpartys:verwalten` haben nur Admins und Posten (siehe
   [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md),
-  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md), [protokolle.md](./protokolle.md)).
+  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md), [protokolle.md](./protokolle.md),
+  [privatpartys.md](./privatpartys.md)).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

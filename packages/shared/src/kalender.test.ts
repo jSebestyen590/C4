@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MitgliedStatus } from './status';
 import {
   ausVorlage,
+  ausVorlageZuZeit,
   schichtenAusEvent,
   eventTitel,
   serieAendernSchema,
@@ -283,6 +284,90 @@ describe('ausVorlage', () => {
   });
   it('yields valid Event input', () => {
     expect(eventEingabeSchema.safeParse(ausVorlage(vorlage, '2026-06-05')).success).toBe(true);
+  });
+});
+
+describe('ausVorlageZuZeit', () => {
+  const vorlage: VorlageDaten = {
+    titel: 'Privatparty',
+    beschreibung: null,
+    kategorieId: 'k1',
+    beginnZeit: '20:00',
+    endeZeit: '02:00',
+    teilnahmeStatus: null,
+    schichten: [
+      {
+        art: 'aufbau',
+        tagVersatz: 0,
+        beginnZeit: '18:00',
+        endeZeit: '20:00',
+        minimum: 1,
+        wunsch: 2,
+      },
+      {
+        art: 'betrieb',
+        beginnZeit: '20:00',
+        endeZeit: '02:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
+        art: 'putzen',
+        tagVersatz: 1,
+        beginnZeit: '10:00',
+        endeZeit: '11:30',
+        minimum: 0,
+        wunsch: 1,
+      },
+    ],
+  };
+  it('stretches Betrieb to the wish times and moves Aufbau and Putzen', () => {
+    const e = ausVorlageZuZeit(vorlage, '2026-06-05', '16:00', '23:00');
+    expect(e.beginn).toBe('2026-06-05T14:00:00.000Z');
+    expect(e.ende).toBe('2026-06-05T21:00:00.000Z');
+    // The start moves from 20:00 to 16:00, so Aufbau moves by -4 hours
+    expect(e.schichten[0]!.beginn).toBe('2026-06-05T12:00:00.000Z');
+    expect(e.schichten[0]!.ende).toBe('2026-06-05T14:00:00.000Z');
+    expect(e.schichten[1]!.beginn).toBe('2026-06-05T14:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-06-05T21:00:00.000Z');
+    // Putzen moves with the end (-3 hours)
+    expect(e.schichten[2]!.beginn).toBe('2026-06-06T05:00:00.000Z');
+    expect(eventEingabeSchema.safeParse(e).success).toBe(true);
+  });
+  it('treats an end before the begin as the next day', () => {
+    const e = ausVorlageZuZeit(vorlage, '2026-06-05', '19:00', '04:00');
+    expect(e.beginn).toBe('2026-06-05T17:00:00.000Z');
+    expect(e.ende).toBe('2026-06-06T02:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-06-06T02:00:00.000Z');
+    expect(eventEingabeSchema.safeParse(e).success).toBe(true);
+  });
+  it('caps Betrieb at 24 hours', () => {
+    const e = ausVorlageZuZeit(vorlage, '2026-06-05', '12:00', '12:00');
+    expect(e.ende).toBe('2026-06-06T10:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-06-06T10:00:00.000Z');
+  });
+  it('handles the autumn switch', () => {
+    const e = ausVorlageZuZeit(vorlage, '2026-10-24', '22:00', '04:00');
+    expect(e.beginn).toBe('2026-10-24T20:00:00.000Z');
+    // 04:00 on 25 October is CET (UTC+1)
+    expect(e.ende).toBe('2026-10-25T03:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-10-25T03:00:00.000Z');
+  });
+  it('handles the spring switch', () => {
+    const e = ausVorlageZuZeit(vorlage, '2026-03-28', '22:00', '04:00');
+    expect(e.ende).toBe('2026-03-29T02:00:00.000Z');
+  });
+  it('keeps inner Betrieb boundaries with several Schichten', () => {
+    const geteilt: VorlageDaten = {
+      ...vorlage,
+      schichten: [
+        { art: 'betrieb', beginnZeit: '20:00', endeZeit: '23:00', bedarfe: [] },
+        { art: 'betrieb', beginnZeit: '23:00', endeZeit: '02:00', bedarfe: [] },
+      ],
+    };
+    const e = ausVorlageZuZeit(geteilt, '2026-06-05', '19:00', '03:00');
+    expect(e.schichten[0]!.beginn).toBe('2026-06-05T17:00:00.000Z');
+    expect(e.schichten[0]!.ende).toBe('2026-06-05T21:00:00.000Z');
+    expect(e.schichten[1]!.ende).toBe('2026-06-06T01:00:00.000Z');
   });
 });
 

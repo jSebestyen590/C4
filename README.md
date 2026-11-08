@@ -58,6 +58,30 @@ in the workflow). Re-apply `infra/bootstrap` after changing it.
 need the new `scheduler:*` permission for the EventBridge schedule `c4-<env>-push-job` (every 5 minutes,
 see `docs/benachrichtigungen.md`). Without it the Terraform apply of the environment fails.
 
+**Re-apply `infra/bootstrap` once before deploying the Party-Mail** (Privatpartys): the deploy roles need
+`secretsmanager:*` on `c4-<env>-*` for the secret `c4-<env>-partymail`. Terraform creates that secret empty and
+the schedule `c4-<env>-mail-job` (every 2 minutes). Fill the secret by hand in the AWS console (Secrets Manager,
+"Retrieve/Edit secret value", plaintext) with JSON; until then the Party-Mail is off and the app says so:
+
+```json
+{
+  "adresse": "party@example.de",
+  "absenderName": "C4 Party-Mail",
+  "benutzer": "party@example.de",
+  "passwort": "...",
+  "imapHost": "imap.example.de",
+  "imapPort": 993,
+  "imapTls": true,
+  "smtpHost": "smtp.example.de",
+  "smtpPort": 465,
+  "smtpSecure": true,
+  "ordnerEingang": "INBOX",
+  "ordnerGesendet": "Sent"
+}
+```
+
+See `docs/privatpartys.md`.
+
 Create the GitHub Environments `dev` and `prod` (add required reviewers on `prod`). A push to `main`
 deploys **dev**; pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`) deploys **prod**
 (after the `prod` environment approval). `workflow_dispatch` can deploy either env manually. The

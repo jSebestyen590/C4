@@ -38,6 +38,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `0109_bilder_ordner_cache`.
 - 0118–0119 (vCard-Links): 0118 löscht die Tabelle `vcard_tokens`, 0119 ihren Index. Rollback-Ziel nur für die vCards:
   `0117_todos_protokoll_idx`.
+- 0120–0129 (Privatpartys): 0120–0124 löschen die Tabellen `privatparty_personen`, `privatpartys`, `privatparty_termine`,
+  `privatparty_nachrichten` und `mail_abruf`, 0125–0129 ihre Indizes. Rollback-Ziel nur für die Privatpartys:
+  `0119_vcard_tokens_hash_idx`.
 - Vor dem ersten Release wurden die Migrationen ab 0010 zusammengelegt: Spalten, die später per `ALTER TABLE … ADD COLUMN`
   dazukamen, stehen jetzt in der `CREATE TABLE` (Aurora DSQL kann `DROP COLUMN` nicht, Down-Dateien solcher Spalten
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die

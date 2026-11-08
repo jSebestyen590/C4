@@ -90,6 +90,15 @@ Dienst durch andere eingetragen oder entfernt, `meldeDienstDurchAndere`).
 `packages/api/src/umfrageBenachrichtigungen.ts`: neue Umfrage und erneut abstimmen direkt aus den Routen, Erinnerungen als
 Job-Aufgabe (in `bootstrap.ts` registriert). Details in [umfragen.md](./umfragen.md).
 
+## Privatpartys
+
+Bereich „Privatpartys“, Arten `privatpartys.anfrage` (neue Anfrage) und `privatpartys.nachricht` (weitere Nachricht zu einer
+bestehenden Privatparty); beide an alle mit dem Recht `privatpartys:verwalten`. Empfänger liefert `mitgliederMitRecht`
+(`packages/api/src/privatpartyBenachrichtigungen.ts`): Inhaber:innen von Posten mit dem Recht (`PostenStore.inhaberMitRecht`,
+gleiche Regeln wie `rechteVon`) plus Admins aus den Cognito-Rollen. Verschickt werden sie vom Mail-Abruf-Job
+(siehe [privatpartys.md](./privatpartys.md)), Dedupe-Schlüssel ist die `Message-ID`. Die Nachricht beim Event aus der Umfrage ist `umfrage.termin` (alle Mitglieder
+sind im Kreis der Umfrage).
+
 ## Todos
 
 `packages/api/src/todoBenachrichtigungen.ts` (Job-Aufgabe `todo.erinnerungen`, in `bootstrap.ts` registriert): Bereich „Todos“, Art

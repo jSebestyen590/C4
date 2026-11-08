@@ -31,6 +31,7 @@ export const PERMISSIONS = [
   'bilder:lesen',
   'protokolle:lesen',
   'protokolle:schreiben',
+  'privatpartys:verwalten',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -46,6 +47,7 @@ export const POSTEN_RECHTE = [
   'umfragen:verwalten',
   'trichter:verwalten',
   'protokolle:schreiben',
+  'privatpartys:verwalten',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
@@ -62,6 +64,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'umfragen:verwalten',
     'trichter:verwalten',
     'protokolle:schreiben',
+    'privatpartys:verwalten',
   ],
 };
 

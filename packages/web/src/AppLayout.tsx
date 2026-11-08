@@ -18,6 +18,7 @@ import {
   IconBell,
   IconBriefcase,
   IconChecklist,
+  IconConfetti,
   IconCalendar,
   IconNotes,
   IconPhoto,
@@ -166,6 +167,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Protokolle',
       icon: <IconNotes size={20} />,
       show: can('protokolle:lesen'),
+    },
+    {
+      to: '/privatpartys',
+      label: 'Privatpartys',
+      icon: <IconConfetti size={20} />,
+      show: can('privatpartys:verwalten'),
     },
     {
       to: '/todos',

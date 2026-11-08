@@ -102,4 +102,13 @@ describe('permissions', () => {
       expect(hasPermission(['admin'], status, 'protokolle:schreiben')).toBe(true);
     }
   });
+  it('only extra permissions manage Privatpartys', () => {
+    for (const status of MITGLIED_STATI) {
+      expect(hasPermission([], status, 'privatpartys:verwalten')).toBe(false);
+      expect(hasPermission([], status, 'privatpartys:verwalten', ['privatpartys:verwalten'])).toBe(
+        true,
+      );
+      expect(hasPermission(['admin'], status, 'privatpartys:verwalten')).toBe(true);
+    }
+  });
 });

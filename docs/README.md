@@ -16,6 +16,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [bilder.md](./bilder.md)                         | Bilder: OneDrive-Ordner der Events, Suche, Ordner anlegen, Verbindung                 |
 | [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung                  |
 | [umfragen.md](./umfragen.md)                     | Umfragen: Fragen, Pflicht- und optionale Kreise, Anonymität, Erinnerungen             |
+| [privatpartys.md](./privatpartys.md)             | Privatpartys: Anfragen, Personen, Wunschtermine, Umfrage, Zusage mit Event, Absage    |
 | [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung      |
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                               |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                    |

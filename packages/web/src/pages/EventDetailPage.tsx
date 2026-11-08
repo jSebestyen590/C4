@@ -14,6 +14,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import {
   IconBan,
+  IconConfetti,
   IconEdit,
   IconPhoto,
   IconPlayerPlay,
@@ -25,7 +26,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   datumBerlin,
   schichtDetails,
@@ -201,6 +202,18 @@ export function EventDetailPage() {
       )}
       {e.beschreibung && <Text style={{ whiteSpace: 'pre-wrap' }}>{e.beschreibung}</Text>}
       <EventAboButton event={e} />
+      {can('privatpartys:verwalten') && e.privatpartyId && (
+        <Group>
+          <Button
+            variant="default"
+            component={Link}
+            to={`/privatpartys/${e.privatpartyId}`}
+            leftSection={<IconConfetti size={18} />}
+          >
+            Zur Privatparty
+          </Button>
+        </Group>
+      )}
       {e.bilderOrdnerUrl ? (
         <Group gap="xs">
           <Button
