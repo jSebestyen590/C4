@@ -263,3 +263,38 @@ export interface PlanungDto {
   anfrageId: string | null;
   erstelltVon: MitgliedRefDto;
 }
+
+/**
+ * Who is expected to hold a key during a time window (the people to ask for a Bedarf). Walks the
+ * planned handovers in time order: the expected holder is the recipient of the last plan strictly
+ * before the window, else the current holder. A plan on the same day is strictly before only if
+ * both sides have an `ab` and the plan's is not later; if either has none the order is unclear and
+ * both the holder before that plan and its recipient are returned. Plans after the window are
+ * ignored.
+ */
+export function erwarteteHalter(
+  schluessel: { halterSub: string | null },
+  planungen: readonly { anSub: string; datum: string; ab: string | null }[],
+  fenster: { datum: string; ab: string | null },
+): string[] {
+  const subs = new Set<string>();
+  let halter = schluessel.halterSub;
+  const sortiert = [...planungen].sort(
+    (a, b) => a.datum.localeCompare(b.datum) || (a.ab ?? '').localeCompare(b.ab ?? ''),
+  );
+  for (const p of sortiert) {
+    if (p.datum > fenster.datum) break;
+    if (p.datum < fenster.datum) {
+      halter = p.anSub;
+    } else if (p.ab && fenster.ab) {
+      if (p.ab > fenster.ab) break;
+      halter = p.anSub;
+    } else {
+      if (halter) subs.add(halter);
+      subs.add(p.anSub);
+      halter = p.anSub;
+    }
+  }
+  if (halter) subs.add(halter);
+  return [...subs];
+}

@@ -4512,7 +4512,7 @@ describe('schluessel anfragen und planungen', () => {
     expect(t.gesendet[0]!.text).toContain('einen Schlüssel');
   });
 
-  it('also asks designated holders and never the creator', async () => {
+  it('asks the expected holder at the request time and never the creator', async () => {
     const t = await setup();
     const plan = await t.app.request(
       `/api/schluessel/${t.id}/planungen`,
@@ -4520,12 +4520,38 @@ describe('schluessel anfragen und planungen', () => {
     );
     expect(plan.status).toBe(201);
     expect(t.empfaenger()).toEqual(['v']);
+    // The plan is after the request: still the current holder.
     t.gesendet.length = 0;
     await t.anfrage('member-token', bedarf({ schluesselId: t.id }));
-    expect(t.empfaenger()).toEqual(['r', 'v']);
-    t.gesendet.length = 0;
-    await t.anfrage('vorstand-token', bedarf({ schluesselId: t.id }));
     expect(t.empfaenger()).toEqual(['r']);
+    // The plan is before the request: the recipient.
+    t.gesendet.length = 0;
+    await t.anfrage('member-token', bedarf({ schluesselId: t.id, ab: '21:00' }));
+    expect(t.empfaenger()).toEqual(['v']);
+    // Same day without a time: unclear, ask both.
+    t.gesendet.length = 0;
+    await t.anfrage('member-token', bedarf({ schluesselId: t.id, ab: null }));
+    expect(t.empfaenger()).toEqual(['r', 'v']);
+    // Never the creator.
+    t.gesendet.length = 0;
+    await t.anfrage('vorstand-token', bedarf({ schluesselId: t.id, ab: null }));
+    expect(t.empfaenger()).toEqual(['r']);
+  });
+
+  it('lets only the expected holder answer a Bedarf of "irgendeiner" with that key', async () => {
+    const t = await setup();
+    await t.app.request(
+      `/api/schluessel/${t.id}/planungen`,
+      json('reader-token', 'POST', { anSub: 'v', datum: heute, ab: '12:00' }),
+    );
+    // At 18:00 v holds the key, r no longer.
+    const { id } = await t.anfrage('member-token', bedarf());
+    expect(
+      (await t.antwort('reader-token', id, { art: 'zusage', schluesselId: t.id })).status,
+    ).toBe(403);
+    expect(
+      (await t.antwort('vorstand-token', id, { art: 'zusage', schluesselId: t.id })).status,
+    ).toBe(200);
   });
 
   it('asks only Wohnheim members for an Abgabe, and only from a holder', async () => {
@@ -4577,7 +4603,7 @@ describe('schluessel anfragen und planungen', () => {
       `/api/schluessel/${t.id}/planungen`,
       json('reader-token', 'POST', { anSub: 'v', datum: heute, ab: '20:00' }),
     );
-    const { id } = await t.anfrage('member-token', bedarf({ schluesselId: t.id }));
+    const { id } = await t.anfrage('member-token', bedarf({ schluesselId: t.id, ab: null }));
     await t.antwort('vorstand-token', id, { art: 'ablehnung' });
     t.gesendet.length = 0;
     await t.antwort('reader-token', id, { art: 'zusage' });

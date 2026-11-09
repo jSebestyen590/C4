@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { heuteBerlin, tagNachher } from './datum';
 import {
   anfrageAnlegenSchema,
+  erwarteteHalter,
   halterGleich,
   schluesselAnlegenSchema,
   uebergabeSchema,
@@ -91,5 +92,48 @@ describe('zeitfensterAnzeigen', () => {
     expect(zeitfensterAnzeigen({ datum: '2026-11-13', ab: null, bis: '12:00' }, heute)).toBe(
       'Fr, 13.11. bis 12:00',
     );
+  });
+});
+
+describe('erwarteteHalter', () => {
+  const key = { halterSub: 'A' };
+  const plan = (anSub: string, datum: string, ab: string | null = null) => ({ anSub, datum, ab });
+  const kette = [plan('B', '2030-01-02'), plan('C', '2030-01-03')];
+
+  it('follows the chain of planned handovers', () => {
+    expect(erwarteteHalter(key, kette, { datum: '2030-01-01', ab: null })).toEqual(['A']);
+    expect(erwarteteHalter(key, kette, { datum: '2030-01-02', ab: null })).toEqual(['A', 'B']);
+    expect(erwarteteHalter(key, kette, { datum: '2030-01-04', ab: null })).toEqual(['C']);
+  });
+
+  it('is not sensitive to the order of the plans', () => {
+    expect(erwarteteHalter(key, [...kette].reverse(), { datum: '2030-01-04', ab: null })).toEqual([
+      'C',
+    ]);
+  });
+
+  it('compares times on the same day when both sides have one', () => {
+    const p = [plan('B', '2030-01-02', '12:00')];
+    expect(erwarteteHalter(key, p, { datum: '2030-01-02', ab: '10:00' })).toEqual(['A']);
+    expect(erwarteteHalter(key, p, { datum: '2030-01-02', ab: '12:00' })).toEqual(['B']);
+    expect(erwarteteHalter(key, p, { datum: '2030-01-02', ab: '14:00' })).toEqual(['B']);
+  });
+
+  it('asks both when the order on the same day is unclear', () => {
+    expect(
+      erwarteteHalter(key, [plan('B', '2030-01-02', '12:00')], { datum: '2030-01-02', ab: null }),
+    ).toEqual(['A', 'B']);
+    expect(
+      erwarteteHalter(key, [plan('B', '2030-01-02')], { datum: '2030-01-02', ab: '14:00' }),
+    ).toEqual(['A', 'B']);
+  });
+
+  it('ignores a holder that is not a member', () => {
+    expect(erwarteteHalter({ halterSub: null }, kette, { datum: '2030-01-01', ab: null })).toEqual(
+      [],
+    );
+    expect(erwarteteHalter({ halterSub: null }, kette, { datum: '2030-01-02', ab: null })).toEqual([
+      'B',
+    ]);
   });
 });

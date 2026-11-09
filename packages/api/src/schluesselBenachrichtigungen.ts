@@ -1,4 +1,5 @@
 import {
+  erwarteteHalter,
   heuteBerlin,
   stundeBerlin,
   zeitBerlin,
@@ -95,30 +96,50 @@ export const RUHE_BIS_UHR = 8;
 export interface AnfrageKontext {
   /** Non-archived keys with their current member holder (null = person without app or nobody). */
   schluessel: { id: string; halterSub: string | null }[];
-  planungen: Pick<PlanungDaten, 'schluesselId' | 'anSub'>[];
+  planungen: Pick<PlanungDaten, 'schluesselId' | 'anSub' | 'datum' | 'ab'>[];
   /** Active members who live in the Wohnheim. */
   wohnheimSubs: string[];
 }
 
+type AnfrageZiel = Pick<Zeitfenster, 'datum' | 'ab'> & {
+  art: AnfrageArt;
+  erstellerSub: string;
+  schluesselId: string | null;
+};
+
 /**
- * Who is asked: for a Bedarf the holders and designated holders of the named key (or of all keys),
- * for an Abgabe the Wohnheim members. The creator is never asked.
+ * Per key of a Bedarf (the named one, or all for "irgendeiner"): who is expected to hold it at the
+ * request's time (see `erwarteteHalter`). The creator is not part of it.
  */
-export function antwortBerechtigte(
-  anfrage: { art: AnfrageArt; erstellerSub: string; schluesselId: string | null },
+export function erwarteteHalterJeSchluessel(
+  anfrage: AnfrageZiel,
   kontext: AnfrageKontext,
-): string[] {
+): Map<string, string[]> {
+  const ergebnis = new Map<string, string[]>();
+  for (const k of kontext.schluessel) {
+    if (anfrage.schluesselId && k.id !== anfrage.schluesselId) continue;
+    const subs = erwarteteHalter(
+      k,
+      kontext.planungen.filter((p) => p.schluesselId === k.id),
+      anfrage,
+    ).filter((s) => s !== anfrage.erstellerSub);
+    ergebnis.set(k.id, subs);
+  }
+  return ergebnis;
+}
+
+/**
+ * Who is asked: for a Bedarf the members expected to hold the named key (or any key) at the
+ * request's time, for an Abgabe the Wohnheim members. The creator is never asked.
+ */
+export function antwortBerechtigte(anfrage: AnfrageZiel, kontext: AnfrageKontext): string[] {
   const subs = new Set<string>();
   if (anfrage.art === 'abgabe') {
     kontext.wohnheimSubs.forEach((s) => subs.add(s));
   } else {
-    const ids = new Set(
-      anfrage.schluesselId ? [anfrage.schluesselId] : kontext.schluessel.map((k) => k.id),
-    );
-    for (const k of kontext.schluessel) {
-      if (ids.has(k.id) && k.halterSub) subs.add(k.halterSub);
+    for (const liste of erwarteteHalterJeSchluessel(anfrage, kontext).values()) {
+      liste.forEach((s) => subs.add(s));
     }
-    for (const p of kontext.planungen) if (ids.has(p.schluesselId)) subs.add(p.anSub);
   }
   subs.delete(anfrage.erstellerSub);
   return [...subs];

@@ -86,23 +86,29 @@ describe('antwortBerechtigte', () => {
       { id: 's1', halterSub: 'h1' },
       { id: 's2', halterSub: 'h2' },
     ],
-    planungen: [{ schluesselId: 's1', anSub: 'p1' }],
+    planungen: [
+      { schluesselId: 's1', anSub: 'p1', datum: '2030-01-02', ab: null },
+      { schluesselId: 's1', anSub: 'p2', datum: '2030-01-03', ab: null },
+    ],
     wohnheimSubs: ['w1', 'ersteller'],
   };
-  it('picks holders and designated holders for a Bedarf, Wohnheim for an Abgabe', () => {
-    const basis = { erstellerSub: 'ersteller' };
-    expect(antwortBerechtigte({ ...basis, art: 'bedarf', schluesselId: 's1' }, kontext)).toEqual([
-      'h1',
-      'p1',
-    ]);
-    expect(antwortBerechtigte({ ...basis, art: 'bedarf', schluesselId: null }, kontext)).toEqual([
-      'h1',
-      'h2',
-      'p1',
-    ]);
-    expect(antwortBerechtigte({ ...basis, art: 'abgabe', schluesselId: 's1' }, kontext)).toEqual([
-      'w1',
-    ]);
+  const basis = { erstellerSub: 'ersteller', art: 'bedarf' as const, ab: null };
+  it('picks the expected holder at the request time for a Bedarf', () => {
+    const f = (datum: string, schluesselId: string | null) =>
+      antwortBerechtigte({ ...basis, datum, schluesselId }, kontext);
+    expect(f('2030-01-01', 's1')).toEqual(['h1']);
+    expect(f('2030-01-02', 's1')).toEqual(['h1', 'p1']);
+    expect(f('2030-01-04', 's1')).toEqual(['p2']);
+    expect(f('2030-01-01', null)).toEqual(['h1', 'h2']);
+    expect(f('2030-01-04', null)).toEqual(['p2', 'h2']);
+  });
+  it('picks the Wohnheim members for an Abgabe', () => {
+    expect(
+      antwortBerechtigte(
+        { ...basis, art: 'abgabe', datum: '2030-01-01', schluesselId: 's1' },
+        kontext,
+      ),
+    ).toEqual(['w1']);
   });
 });
 

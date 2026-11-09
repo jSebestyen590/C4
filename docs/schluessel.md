@@ -29,8 +29,8 @@ API alle Übergaben des Schlüssels außer den neuesten 10 (`SCHLUESSEL_VERLAUF_
 Statt im Chat auszumachen, wer einen Schlüssel bekommt, gibt es zwei Arten von Anfragen (Seite `/schluessel`, Abschnitt
 „Anfragen“; alle mit `schluessel:lesen`):
 
-- **Bedarf** („Brauche einen Schlüssel“): ein bestimmter Schlüssel oder „irgendeiner“, dazu ein Zeitfenster. Gefragt werden
-  der Halter und die vorgesehenen Halter (siehe Planung) des Schlüssels, bei „irgendeiner“ von allen Schlüsseln.
+- **Bedarf** („Brauche einen Schlüssel“): ein bestimmter Schlüssel oder „irgendeiner“, dazu ein Zeitfenster. Gefragt wird, wer den
+  Schlüssel zu dieser Zeit voraussichtlich hat (siehe „Wer hat den Schlüssel dann?“), bei „irgendeiner“ je Schlüssel.
 - **Abgabe** („Schlüssel abgeben“): nur für einen Schlüssel, den man hat oder bekommen soll (sonst 409). Gefragt werden alle
   Mitglieder mit dem Profilfeld **Wohnheim**.
 
@@ -50,11 +50,22 @@ Antworten.
 ## Geplante Übergaben
 
 Pro Schlüssel eine Kette von Planungen, nach Zeit sortiert: „Jetzt: A → B (heute ab 18:00) → C (morgen)“. „Von“ ist implizit
-der Vorgänger in der Kette bzw. der aktuelle Halter. Die **vorgesehenen Halter** eines Schlüssels sind die Empfänger seiner
-Planungen; sie werden bei einem Bedarf mitgefragt und dürfen den Schlüssel abgeben. Jeder mit `schluessel:lesen` darf auf der
+der Vorgänger in der Kette bzw. der aktuelle Halter. Jeder mit `schluessel:lesen` darf auf der
 Detailseite („Geplante Übergaben“) Planungen anlegen, ändern und löschen. Eine Planung ändert den Halter **nicht**; das
 passiert weiter über die echte Übergabe. Wird der Schlüssel an ein Mitglied übergeben, löscht das API in derselben
 Transaktion dessen früheste Planung für diesen Schlüssel. Auf der Liste steht unter dem Halter „Danach: …“.
+
+### Wer hat den Schlüssel dann?
+
+`erwarteteHalter` (`packages/shared/src/schluessel.ts`) bestimmt für ein Zeitfenster, wer den Schlüssel voraussichtlich hat:
+der Empfänger der letzten Planung **echt vor** dem Fenster, sonst der aktuelle Halter (nur ein Mitglied). Echt davor heißt:
+früherer Tag, oder derselbe Tag und beide haben `ab` und das der Planung ist nicht später. Fehlt am selben Tag bei einer
+Seite das `ab`, ist die Reihenfolge unklar und es zählen **beide** (Halter vor der Planung und ihr Empfänger). Beispiel:
+A hat den Schlüssel, Planung A→B morgen, B→C übermorgen. Bedarf heute: A; morgen (ohne Uhrzeit): A und B; in 3 Tagen: C.
+
+Das bestimmt, wer bei einem Bedarf gefragt wird (Push, stündliche Wiederholung) und wer antworten darf (`darfAntworten`,
+403 sonst). Bei „irgendeiner“ muss der Antwortende einen Schlüssel nennen, den er zu der Zeit voraussichtlich hat.
+Code: `antwortBerechtigte` / `erwarteteHalterJeSchluessel` in `schluesselBenachrichtigungen.ts`.
 
 ## Benachrichtigungen
 
@@ -70,12 +81,12 @@ Person, die eingetragen hat:
 
 Weitere Arten (alle **nicht abschaltbar**, Push-URL `/app/schluessel/anfragen/:id` bzw. `/app/schluessel/:id`):
 
-| Art                  | An                                                                 | Wann                                                                                      |
-| -------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `schluessel.bedarf`  | Halter und vorgesehene Halter (Schlüssel bzw. alle Schlüssel)      | neuer Bedarf; stündlich wiederholt an alle, die noch nicht geantwortet haben              |
-| `schluessel.abgabe`  | Mitglieder mit Wohnheim (ohne Ersteller)                           | neue Abgabe; stündlich wiederholt an alle, die noch nicht geantwortet haben               |
-| `schluessel.antwort` | Ersteller; bei Zusage zusätzlich alle, die schon geantwortet haben | Zusage, Gegenvorschlag, Ablehnung; „hat sich erledigt“; „hat deinen Vorschlag angenommen“ |
-| `schluessel.planung` | aktueller Halter, Vorgänger in der Kette, Empfänger (ohne Akteur)  | Planung manuell angelegt, geändert, gelöscht (Planungen aus Anfragen melden `antwort`)    |
+| Art                  | An                                                                       | Wann                                                                                      |
+| -------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `schluessel.bedarf`  | voraussichtliche Halter zur gefragten Zeit (Schlüssel bzw. je Schlüssel) | neuer Bedarf; stündlich wiederholt an alle, die noch nicht geantwortet haben              |
+| `schluessel.abgabe`  | Mitglieder mit Wohnheim (ohne Ersteller)                                 | neue Abgabe; stündlich wiederholt an alle, die noch nicht geantwortet haben               |
+| `schluessel.antwort` | Ersteller; bei Zusage zusätzlich alle, die schon geantwortet haben       | Zusage, Gegenvorschlag, Ablehnung; „hat sich erledigt“; „hat deinen Vorschlag angenommen“ |
+| `schluessel.planung` | aktueller Halter, Vorgänger in der Kette, Empfänger (ohne Akteur)        | Planung manuell angelegt, geändert, gelöscht (Planungen aus Anfragen melden `antwort`)    |
 
 Die Wiederholung (nicht zwischen 22 und 8 Uhr, nicht wenn alle abgelehnt haben oder der Tag vorbei ist) steht in
 [benachrichtigungen.md](./benachrichtigungen.md).
@@ -115,7 +126,7 @@ Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verw
 | Route                                                             | Recht     | Hinweise                                                                                                           |
 | ----------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/schluessel`                                             | lesen     | `?archiv=1` nur mit verwalten                                                                                      |
-| `GET /api/schluessel/:id`                                         | lesen     | mit Verlauf und Planungen; archivierte nur mit verwalten                                                                         |
+| `GET /api/schluessel/:id`                                         | lesen     | mit Verlauf und Planungen; archivierte nur mit verwalten                                                           |
 | `POST /api/schluessel/:id/uebergaben`                             | lesen     | `{ von, an }`; `an: null` nur mit verwalten; 409 wenn `von` nicht mehr stimmt                                      |
 | `POST /api/schluessel`                                            | verwalten | `{ name, beschreibung?, halter? }`                                                                                 |
 | `GET /api/schluessel/anfragen`                                    | lesen     | offene, aktuelle Anfragen + eigene der letzten 3 Tage; `darfAntworten` je Anfrage                                  |

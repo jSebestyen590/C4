@@ -257,6 +257,7 @@ import type { TodoDaten, TodosStore } from './todos';
 import { UebergabeKonflikt, type SchluesselDaten, type SchluesselStore } from './schluessel';
 import {
   antwortBerechtigte,
+  erwarteteHalterJeSchluessel,
   ladeAnfrageKontext,
   meldeAnfrage,
   meldeAntwort,
@@ -2189,7 +2190,13 @@ export function createApp(deps: AppDeps) {
             await meldeAnfrage(deps.benachrichtigungen, {
               anfrage: { id, art: daten.art, datum: daten.datum, ab: daten.ab, bis: daten.bis },
               empfaenger: antwortBerechtigte(
-                { art: daten.art, erstellerSub: ich, schluesselId: daten.schluesselId },
+                {
+                  art: daten.art,
+                  erstellerSub: ich,
+                  schluesselId: daten.schluesselId,
+                  datum: daten.datum,
+                  ab: daten.ab,
+                },
                 kontext,
               ),
               ersteller: m.name(ich),
@@ -2243,13 +2250,14 @@ export function createApp(deps: AppDeps) {
           if (!antwortBerechtigte(a, kontext).includes(ich)) {
             throw new HTTPException(403, { message: 'Diese Anfrage ist nicht an dich gerichtet.' });
           }
-          // The key a responder offers for a Bedarf of "irgendeiner": one they hold or will get.
+          // The key a responder offers for a Bedarf of "irgendeiner": one they are expected to hold then.
           const schluesselId = a.schluesselId ?? antwort.schluesselId;
           if (a.art === 'bedarf' && !a.schluesselId && antwort.art !== 'ablehnung') {
-            const eigene = new Set([
-              ...kontext.schluessel.filter((k) => k.halterSub === ich).map((k) => k.id),
-              ...kontext.planungen.filter((p) => p.anSub === ich).map((p) => p.schluesselId),
-            ]);
+            const eigene = new Set(
+              [...erwarteteHalterJeSchluessel(a, kontext)]
+                .filter(([, subs]) => subs.includes(ich))
+                .map(([id]) => id),
+            );
             if (!schluesselId || !eigene.has(schluesselId)) {
               throw new HTTPException(400, { message: 'Bitte wähle den Schlüssel, den du gibst.' });
             }
