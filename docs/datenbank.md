@@ -27,6 +27,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0130–0136 (Schlüssel-Anfragen): 0130 entfernt `mitglieder.wohnheim` wieder, 0131–0133 löschen ihre Tabellen
   (`schluessel_anfragen`, `schluessel_antworten`, `schluessel_planungen`), 0134–0136 ihre Indizes. Rollback-Ziel nur für die
   Anfragen: `0129_privatparty_nachrichten_message_idx`.
+- 0137–0140 (Benachrichtigungsverlauf): 0137 löscht die Tabelle `benachrichtigung_verlauf` (mit allen Einträgen), 0138–0140
+  ihre Indizes. Rollback-Ziel nur für den Verlauf: `0136_schluessel_planungen_schluessel_idx`.
 - 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:
   `0091_umfragen_erstellt_idx`.
 - 0098–0100 (Status-Verlauf): 0098 löscht die Tabelle, 0099 den Index, 0100 löscht nur die Startbuchungen ohne Datum

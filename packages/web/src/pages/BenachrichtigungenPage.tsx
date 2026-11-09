@@ -1,6 +1,7 @@
-import { Alert, Button, Loader, Select, Stack, Switch, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Loader, Select, Stack, Switch, Text, Title } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { EinstellungDto } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import {
@@ -201,6 +202,9 @@ export function BenachrichtigungenPage() {
         Push-Nachrichten musst du auf jedem Gerät einzeln aktivieren. Welche Nachrichten du
         bekommst, gilt für alle deine Geräte.
       </Text>
+      <Anchor component={Link} to="/benachrichtigungen/verlauf">
+        Zum Benachrichtigungsverlauf
+      </Anchor>
       <GeraetPush />
       <Einstellungen />
     </Stack>

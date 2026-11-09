@@ -23,12 +23,19 @@ import type {
 
 function setup(mitglieder: { sub: string; status: MitgliedStatus; deaktiviert?: boolean }[]) {
   const fake = createFakeBenachrichtigungenStore(() => mitglieder);
-  const versendet: { endpoint: string; titel: string; text: string; url: string }[] = [];
+  const versendet: { endpoint: string; titel: string; text: string; url: string; id?: string }[] =
+    [];
   const ergebnisse = new Map<string, PushErgebnis>();
   const b = createBenachrichtigungen({
     store: fake.store,
     sender: async (abo, n) => {
-      versendet.push({ endpoint: abo.endpoint, titel: n.titel, text: n.text, url: n.url });
+      versendet.push({
+        endpoint: abo.endpoint,
+        titel: n.titel,
+        text: n.text,
+        url: n.url,
+        id: n.id,
+      });
       return ergebnisse.get(abo.endpoint) ?? 'ok';
     },
   });
@@ -39,6 +46,87 @@ function setup(mitglieder: { sub: string; status: MitgliedStatus; deaktiviert?: 
     });
   return { ...fake, b, versendet, ergebnisse, abo };
 }
+
+describe('Verlauf', () => {
+  const eingabe = { art: 'kalender.aenderung', titel: 'T', text: 'X', url: '/app/x' };
+
+  it('writes an entry for active members even without a device', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    expect(await t.b.senden({ ...eingabe, subs: ['a'] })).toBe(0);
+    expect(t.verlauf).toHaveLength(1);
+    expect(t.verlauf[0]).toMatchObject({ sub: 'a', art: 'kalender.aenderung', titel: 'T' });
+  });
+
+  it('writes no entry when the type is switched off', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.b.einstellungSetzen('a', 'kalender.aenderung', false);
+    await t.b.senden({ ...eingabe, subs: ['a'] });
+    expect(t.verlauf).toHaveLength(0);
+  });
+
+  it('writes an entry regardless of the setting with ohneEinstellung', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.b.einstellungSetzen('a', 'kalender.aenderung', false);
+    await t.b.senden({ ...eingabe, subs: ['a'], ohneEinstellung: true });
+    expect(t.verlauf).toHaveLength(1);
+  });
+
+  it('dedupes: sending twice yields one entry, also first without and later with a device', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    const mitKey = { ...eingabe, subs: ['a'], dedupeSchluessel: 'k1' };
+    await t.b.senden(mitKey);
+    expect(t.verlauf).toHaveLength(1);
+    await t.abo('a');
+    await t.b.senden(mitKey);
+    await t.b.senden(mitKey);
+    expect(t.verlauf).toHaveLength(1);
+    expect(t.versendet).toHaveLength(1);
+    expect(t.versendet[0]!.id).toBe(t.verlauf[0]!.id);
+  });
+
+  it("puts the matching entry id into each member's payload", async () => {
+    const t = setup([
+      { sub: 'a', status: 'mitglied' },
+      { sub: 'b', status: 'mitglied' },
+    ]);
+    await t.abo('a');
+    await t.abo('b');
+    await t.b.senden({ ...eingabe, subs: ['a', 'b'] });
+    for (const sub of ['a', 'b']) {
+      const eintrag = t.verlauf.find((v) => v.sub === sub)!;
+      expect(t.versendet.find((v) => v.endpoint === `https://push.example/${sub}-1`)?.id).toBe(
+        eintrag.id,
+      );
+    }
+  });
+
+  it('still pushes when the history cannot be written', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    t.fehler.verlaufEintragen = true;
+    expect(await t.b.senden({ ...eingabe, subs: ['a'] })).toBe(1);
+    expect(t.versendet).toHaveLength(1);
+    expect(t.versendet[0]!.id).toBeUndefined();
+  });
+
+  it('writes no entry for test messages', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    await t.b.testSenden('a');
+    expect(t.verlauf).toHaveLength(0);
+  });
+
+  it('cleans up only entries older than 90 days', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.b.senden({ ...eingabe, subs: ['a'] });
+    await t.b.senden({ ...eingabe, subs: ['a'] });
+    const jetzt = new Date();
+    t.verlauf[0]!.erstellt = new Date(jetzt.getTime() - 91 * 86_400_000);
+    t.verlauf[1]!.erstellt = new Date(jetzt.getTime() - 89 * 86_400_000);
+    expect(await t.b.verlaufAufraeumen(jetzt)).toBe(1);
+    expect(t.verlauf).toHaveLength(1);
+  });
+});
 
 describe('senden', () => {
   it('never delivers to deactivated members, whether named or addressed to everybody', async () => {
