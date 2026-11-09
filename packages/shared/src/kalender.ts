@@ -718,6 +718,8 @@ export interface EventDto {
   bilderOrdnerUrl: string | null;
   /** OneDrive id of the photo folder; null = none. */
   bilderOrdnerId: string | null;
+  /** The Privatparty the event was made for; only filled in the detail for holders of `privatpartys:verwalten`. */
+  privatpartyId?: string | null;
 }
 
 /** Title to display: the entered title, else the Kategorie's name, else "Event". */
@@ -926,6 +928,56 @@ export function ausVorlage(
         ...zeitspanne(tageDazu(datum, s.tagVersatz), s.beginnZeit, s.endeZeit),
         minimum: s.minimum,
         wunsch: s.wunsch,
+      };
+    }),
+  };
+}
+
+/**
+ * Like `ausVorlage`, but for fixed wish times (Berlin wall times, `ende` at or before `beginn` =
+ * next day): the event runs from `beginn` to `ende`, Betrieb Schichten are stretched to that span
+ * (at most 24 hours), Aufbau moves with the begin and Putzen with the end. With several Betrieb
+ * Schichten only the first start and the last end move.
+ */
+export function ausVorlageZuZeit(
+  vorlage: VorlageDaten,
+  datum: string,
+  beginn: string,
+  ende: string,
+  kategorie?: Parameters<typeof ausVorlage>[2],
+): EventEingabe {
+  const basis = ausVorlage(vorlage, datum, kategorie);
+  const wunsch = zeitspanne(datum, beginn, ende);
+  const ms = (iso: string) => new Date(iso).getTime();
+  const verschoben = (iso: string, delta: number) => new Date(ms(iso) + delta).toISOString();
+  const deltaBeginn = ms(wunsch.beginn) - ms(basis.beginn);
+  const deltaEnde = ms(wunsch.ende) - ms(basis.ende);
+  const betriebe = basis.schichten.filter((s) => s.art === 'betrieb');
+  const erster = Math.min(...betriebe.map((s) => ms(s.beginn)));
+  const letzter = Math.max(...betriebe.map((s) => ms(s.ende)));
+  const kappe = (b: string) => new Date(ms(b) + MAX_DAUER_MS).toISOString();
+  return {
+    ...basis,
+    beginn: wunsch.beginn,
+    ende: wunsch.ende,
+    schichten: basis.schichten.map((sch): SchichtEingabe => {
+      if (sch.art === 'betrieb') {
+        const b = ms(sch.beginn) === erster ? wunsch.beginn : sch.beginn;
+        let e = ms(sch.ende) === letzter ? wunsch.ende : sch.ende;
+        if (ms(e) > ms(kappe(b))) e = kappe(b);
+        return { ...sch, beginn: b, ende: e };
+      }
+      if (sch.art === 'aufbau') {
+        return {
+          ...sch,
+          beginn: verschoben(sch.beginn, deltaBeginn),
+          ende: verschoben(sch.ende, deltaBeginn),
+        };
+      }
+      return {
+        ...sch,
+        beginn: verschoben(sch.beginn, deltaEnde),
+        ende: verschoben(sch.ende, deltaEnde),
       };
     }),
   };

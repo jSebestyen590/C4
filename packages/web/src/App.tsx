@@ -28,6 +28,11 @@ import { KalenderMeinKalenderPage } from './pages/KalenderMeinKalenderPage';
 import { KalenderPage } from './pages/KalenderPage';
 import { KalenderStatistikPage } from './pages/KalenderStatistikPage';
 import { PostenDetailPage } from './pages/PostenDetailPage';
+import { PrivatpartyFormularPage } from './pages/PrivatpartyFormularPage';
+import { PrivatpartyPage } from './pages/PrivatpartyPage';
+import { PrivatpartyPersonenPage } from './pages/PrivatpartyPersonenPage';
+import { PrivatpartyPersonPage } from './pages/PrivatpartyPersonPage';
+import { PrivatpartysPage } from './pages/PrivatpartysPage';
 import { ProtokollNeuPage } from './pages/ProtokollNeuPage';
 import { ProtokollPage } from './pages/ProtokollPage';
 import { ProtokollePage } from './pages/ProtokollePage';
@@ -251,6 +256,66 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="users:manage">
                 <RequireUsername>
                   <BilderEinrichtungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartysPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys/neu"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartyFormularPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys/personen"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartyPersonenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys/personen/:id"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartyPersonPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys/:id/bearbeiten"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartyFormularPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/privatpartys/:id"
+            element={
+              <Protected permission="privatpartys:verwalten">
+                <RequireUsername>
+                  <PrivatpartyPage />
                 </RequireUsername>
               </Protected>
             }

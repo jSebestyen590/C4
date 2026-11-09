@@ -163,6 +163,12 @@ resource "aws_iam_role_policy" "lambda" {
         Condition = { StringLike = { "s3:prefix" = ["protokollbilder/*"] } }
       },
       {
+        # Credentials of the Party-Mail mailbox (filled in by hand, see docs/privatpartys.md).
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.partymail.arn
+      },
+      {
         Effect = "Allow"
         Action = [
           "cognito-idp:ListUsers",
@@ -183,6 +189,16 @@ resource "aws_iam_role_policy" "lambda" {
   })
 }
 
+# ---------------------------------------------------------------- Party-Mail secret
+# Only the empty secret is managed here, never a version: the values (JSON with adresse, absenderName,
+# benutzer, passwort, imapHost, imapPort, imapTls, smtpHost, smtpPort, smtpSecure, ordnerEingang,
+# ordnerGesendet) are entered by hand in the console, so they never end up in the Terraform state.
+resource "aws_secretsmanager_secret" "partymail" {
+  name                    = "${local.name}-partymail"
+  description             = "Mailbox of the Party-Mail (IMAP/SMTP), see docs/privatpartys.md"
+  recovery_window_in_days = var.env == "prod" ? 30 : 0
+}
+
 resource "aws_lambda_function" "api" {
   function_name    = "${local.name}-api"
   role             = aws_iam_role.lambda.arn
@@ -200,6 +216,8 @@ resource "aws_lambda_function" "api" {
       CLIENT_ID         = aws_cognito_user_pool_client.web.id
       DSQL_ENDPOINT     = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
       PROFILBILD_BUCKET = aws_s3_bucket.profilbilder.bucket
+
+      PARTYMAIL_SECRET_ARN = aws_secretsmanager_secret.partymail.arn
 
       # Origin for links in the calendar feed. Without a custom domain it is unknown here (the
       # CloudFront domain would make a dependency cycle), so the feed then carries no links.
@@ -339,6 +357,29 @@ resource "aws_scheduler_schedule" "push_job" {
     arn      = aws_lambda_function.api.arn
     role_arn = aws_iam_role.scheduler.arn
     input    = jsonencode({ c4 = "push-job" })
+
+    retry_policy {
+      maximum_retry_attempts       = 0
+      maximum_event_age_in_seconds = 300
+    }
+  }
+}
+
+# Party-Mail job: fetches new mails every 2 minutes. A schedule of its own, so the push job keeps its
+# 15 seconds. The scheduler role above may invoke the whole function.
+resource "aws_scheduler_schedule" "mail_job" {
+  name                = "${local.name}-mail-job"
+  description         = "Fetches new mails of the Party-Mail into the Privatpartys"
+  schedule_expression = var.mail_job_rate
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.api.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ c4 = "mail-job" })
 
     retry_policy {
       maximum_retry_attempts       = 0

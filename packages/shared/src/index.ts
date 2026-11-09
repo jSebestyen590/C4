@@ -9,6 +9,7 @@ export * from './inventarZeitraum';
 export * from './kalender';
 export * from './kontakt';
 export * from './posten';
+export * from './privatpartys';
 export * from './protokolle';
 export * from './protokollAktionen';
 export * from './protokollAnwesenheit';

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS privatparty_nachrichten_privatparty_idx

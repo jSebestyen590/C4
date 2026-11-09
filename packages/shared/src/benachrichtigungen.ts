@@ -91,6 +91,20 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     minuten: null,
     abschaltbar: false,
   },
+  {
+    // New request for a Privatparty; only holders of `privatpartys:verwalten` receive it.
+    key: 'privatpartys.anfrage',
+    bereich: 'privatpartys',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    // Another message to an existing Privatparty.
+    key: 'privatpartys.nachricht',
+    bereich: 'privatpartys',
+    standardAktiv: true,
+    minuten: null,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

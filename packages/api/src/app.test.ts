@@ -18,6 +18,7 @@ import {
   type DurchgaengeSeiteDto,
   type BilderOrdnerDto,
   type EventDto,
+  type PrivatpartyDetailDto,
   type TrichterUebersichtDto,
   type UmfrageDetailDto,
   type AdminUser,
@@ -94,6 +95,9 @@ import {
   createMemoryOrdnerCacheStore,
   freigabenNachziehen,
 } from './onedrive';
+import type { EingehendeMail } from './partymailTypen';
+import { createFakePartyMail } from './partymail.fake';
+import { createFakePrivatpartysStore } from './privatpartys.fake';
 import { createFakeProtokolleStore } from './protokolle.fake';
 import { createFakeTodosStore } from './todos.fake';
 import { createFakeTrichterStore } from './trichter.fake';
@@ -809,6 +813,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
           ]
         : [],
     ),
+    inhaberMitRecht: vi.fn(async (): Promise<string[]> => []),
   };
   const { fake: waren, orte, verwendet } = makeWarenFake();
   const { fake: inventar, verwendet: inventarVerwendet } = makeInventarFake();
@@ -821,6 +826,13 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { store: trichter } = createFakeTrichterStore();
   const { store: protokolle, liste: protokollListe } = createFakeProtokolleStore();
   const { store: todos, liste: todosListe } = createFakeTodosStore();
+  const {
+    store: privatpartys,
+    personen: privatpartyPersonen,
+    liste: privatpartyListe,
+    nachrichtenListe: privatpartyNachrichten,
+  } = createFakePrivatpartysStore();
+  const partymail = createFakePartyMail();
   const profilbilder = {
     uploadVorbereiten: vi.fn(async (sub: string) => ({
       uploadUrl: 'https://s3.example/upload',
@@ -870,6 +882,8 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragen,
     trichter,
     protokolle,
+    privatpartys,
+    partymail: partymail.mail,
     benachrichtigungen,
     onedrive,
     freigaben,
@@ -902,6 +916,11 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragen,
     umfragenListe,
     protokollListe,
+    privatpartys,
+    privatpartyPersonen,
+    privatpartyListe,
+    privatpartyNachrichten,
+    partymail: partymail.zustand,
     push,
     pushMitglieder,
     gesendet,
@@ -3922,6 +3941,8 @@ describe('kalender', () => {
         'umfrage.termin',
         'umfrage.erneut_abstimmen',
         'todo.frist',
+        'privatpartys.anfrage',
+        'privatpartys.nachricht',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
       expect(
@@ -8519,5 +8540,734 @@ describe('vCard links', () => {
     expect((await t.app.request(`/api/vcard/${tok}/erika.vcf`)).status).toBe(200);
     await t.mitglieder.deaktiviertSetzen('r', true);
     expect((await t.app.request(`/api/vcard/${tok}/erika.vcf`)).status).toBe(404);
+  });
+});
+
+describe('privatpartys', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const termin = (extra: Record<string, unknown> = {}) => ({
+    datum: '2099-03-14',
+    beginn: '19:00',
+    ende: '02:00',
+    stufe: 'bevorzugt',
+    ...extra,
+  });
+  const kategorie = {
+    id: 'party',
+    name: 'Party',
+    farbe: 'blue',
+    art: 'dienste' as const,
+    teilnahmeStatus: null,
+    dauer: 'eintaegig' as const,
+    protokoll: false,
+    protokollArt: 'sitzung' as const,
+    benutzt: false,
+    archiviert: false,
+  };
+  const vorlage = {
+    id: 'privat',
+    titel: 'Privatparty',
+    beschreibung: null,
+    kategorieId: 'party',
+    beginnZeit: '20:00',
+    endeZeit: '02:00',
+    teilnahmeStatus: null,
+    tage: 1,
+    bilderOrdner: false,
+    archiviert: false,
+    schichten: [
+      {
+        art: 'betrieb' as const,
+        beginnZeit: '20:00',
+        endeZeit: '02:00',
+        bedarfe: [{ dienstformId: 'tresen', minimum: 1, wunsch: 2 }],
+      },
+    ],
+  };
+
+  /** Profiles for a (admin), v, m2 and a Kategorie and Vorlage for the events. */
+  async function setup() {
+    const t = makeApp();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map(
+        ['a', 'v', 'm2'].map((sub) => [
+          sub,
+          { sub, kontoName: sub, username: `user-${sub}`, aktiviert: true, enabled: true },
+        ]),
+      ),
+    );
+    for (const sub of ['a', 'v', 'm2']) {
+      await t.mitglieder.speichern(sub, {
+        vorname: 'A',
+        nachname: 'B',
+        anrede: 'neutral',
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
+      });
+    }
+    t.kalender.kategorien.mockResolvedValue([kategorie]);
+    t.kalender.dienstformen.mockResolvedValue([
+      { id: 'tresen', name: 'Tresen', reihenfolge: 1, archiviert: false },
+    ]);
+    t.kalender.vorlagen.mockResolvedValue([vorlage]);
+    const person = async () => {
+      const res = await t.app.request(
+        '/api/privatpartys/personen',
+        json('admin-token', 'POST', { name: 'Eva Muster', email: 'eva@example.de' }),
+      );
+      expect(res.status).toBe(201);
+      return ((await res.json()) as { id: string }).id;
+    };
+    const anlegen = async (extra: Record<string, unknown> = {}) => {
+      const personId = await person();
+      const res = await t.app.request(
+        '/api/privatpartys',
+        json('admin-token', 'POST', {
+          personId,
+          anlass: '30. Geburtstag',
+          termine: [termin(), termin({ datum: '2099-03-21', stufe: 'notfalls' })],
+          ...extra,
+        }),
+      );
+      expect(res.status).toBe(201);
+      return { id: ((await res.json()) as { id: string }).id, personId };
+    };
+    const holen = async (id: string) =>
+      (await (
+        await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'GET'))
+      ).json()) as PrivatpartyDetailDto;
+    return { ...t, person, anlegen, holen };
+  }
+
+  it('is only open to holders of the right', async () => {
+    const t = await setup();
+    for (const [methode, pfad] of [
+      ['GET', '/api/privatpartys'],
+      ['GET', '/api/privatpartys/personen'],
+      ['POST', '/api/privatpartys'],
+    ] as const) {
+      expect(
+        (
+          await t.app.request(
+            pfad,
+            json('member-token', methode, methode === 'GET' ? undefined : {}),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    expect((await t.app.request('/api/privatpartys', json('admin-token', 'GET'))).status).toBe(200);
+    // A Posten can grant the right.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'v' ? ['privatpartys:verwalten' as const] : [],
+    );
+    expect((await t.app.request('/api/privatpartys', json('vorstand-token', 'GET'))).status).toBe(
+      200,
+    );
+  });
+
+  it('manages people and refuses to delete one with Privatpartys', async () => {
+    const t = await setup();
+    const bad = await t.app.request(
+      '/api/privatpartys/personen',
+      json('admin-token', 'POST', { name: '', email: 'kaputt' }),
+    );
+    expect(bad.status).toBe(400);
+    const { id, personId } = await t.anlegen();
+    const put = await t.app.request(
+      `/api/privatpartys/personen/${personId}`,
+      json('admin-token', 'PUT', { name: 'Eva M.', kontakt: 'Instagram @eva' }),
+    );
+    expect(put.status).toBe(200);
+    const detail = await (
+      await t.app.request(`/api/privatpartys/personen/${personId}`, json('admin-token', 'GET'))
+    ).json();
+    expect(detail).toMatchObject({
+      name: 'Eva M.',
+      email: null,
+      kontakt: 'Instagram @eva',
+      anzahlPrivatpartys: 1,
+      privatpartys: [{ id }],
+    });
+    expect(
+      (await t.app.request(`/api/privatpartys/personen/${personId}`, json('admin-token', 'DELETE')))
+        .status,
+    ).toBe(409);
+    await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'DELETE'));
+    expect(
+      (await t.app.request(`/api/privatpartys/personen/${personId}`, json('admin-token', 'DELETE')))
+        .status,
+    ).toBe(200);
+  });
+
+  it('creates, lists, edits and deletes a Privatparty', async () => {
+    const t = await setup();
+    const personId = await t.person();
+    const post = (body: unknown) =>
+      t.app.request('/api/privatpartys', json('admin-token', 'POST', body));
+    expect((await post({ personId, termine: [] })).status).toBe(400);
+    expect((await post({ termine: [termin()] })).status).toBe(400);
+    expect((await post({ personId: 'gibt-es-nicht', termine: [termin()] })).status).toBe(404);
+    const { id } = await t.anlegen();
+    const abgesagt = await t.anlegen({ anlass: null });
+    await t.app.request(
+      `/api/privatpartys/${abgesagt.id}/status`,
+      json('admin-token', 'PUT', { status: 'abgesagt' }),
+    );
+    const liste = async (status?: string) =>
+      (await (
+        await t.app.request(
+          `/api/privatpartys${status ? `?status=${status}` : ''}`,
+          json('admin-token', 'GET'),
+        )
+      ).json()) as { id: string }[];
+    expect((await liste()).map((p) => p.id)).toEqual([id]);
+    expect((await liste('alle')).map((p) => p.id).sort()).toEqual([id, abgesagt.id].sort());
+    expect((await liste('abgesagt')).map((p) => p.id)).toEqual([abgesagt.id]);
+
+    const d = await t.holen(id);
+    expect(d).toMatchObject({
+      status: 'offen',
+      anlass: '30. Geburtstag',
+      person: { name: 'Eva Muster' },
+      unbeantwortet: false,
+      umfrage: null,
+      event: null,
+    });
+    expect(d.termine.map((x) => [x.datum, x.stufe])).toEqual([
+      ['2099-03-14', 'bevorzugt'],
+      ['2099-03-21', 'notfalls'],
+    ]);
+    const put = await t.app.request(
+      `/api/privatpartys/${id}`,
+      json('admin-token', 'PUT', {
+        personId: d.person!.id,
+        anlass: null,
+        notizen: 'Wünscht DJ',
+        termine: [{ ...d.termine[1]!, stufe: 'moeglich' }],
+      }),
+    );
+    expect(put.status).toBe(200);
+    const neu = await t.holen(id);
+    expect(neu).toMatchObject({ anlass: null, notizen: 'Wünscht DJ' });
+    expect(neu.termine).toEqual([{ ...d.termine[1], stufe: 'moeglich' }]);
+    expect(
+      (await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'DELETE'))).status,
+    ).toBe(200);
+    expect(
+      (await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'GET'))).status,
+    ).toBe(404);
+  });
+
+  it('accepts a date directly: event at the wished times, no contact data, status zugesagt', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const d = await t.holen(id);
+    const wunsch = d.termine[0]!;
+    expect(
+      (
+        await t.app.request(
+          `/api/privatpartys/${id}/zusage`,
+          json('admin-token', 'POST', { terminId: 'x', vorlageId: 'privat' }),
+        )
+      ).status,
+    ).toBe(400);
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/zusage`,
+      json('admin-token', 'POST', { terminId: wunsch.id, vorlageId: 'privat' }),
+    );
+    expect(res.status).toBe(201);
+    expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        titel: 'Privatparty',
+        kategorieId: 'party',
+        beginn: '2099-03-14T18:00:00.000Z',
+        ende: '2099-03-15T01:00:00.000Z',
+        beschreibung: null,
+      }),
+      'a',
+    );
+    t.kalender.event.mockResolvedValue({
+      id: 'e1',
+      anzeigeTitel: 'Privatparty',
+      beginn: '2099-03-14T18:00:00.000Z',
+    } as unknown as EventDto);
+    expect(await t.holen(id)).toMatchObject({
+      status: 'zugesagt',
+      terminId: wunsch.id,
+      event: { id: 'e1' },
+    });
+    // Already accepted.
+    expect(
+      (
+        await t.app.request(
+          `/api/privatpartys/${id}/zusage`,
+          json('admin-token', 'POST', { terminId: wunsch.id, vorlageId: 'privat' }),
+        )
+      ).status,
+    ).toBe(409);
+    // The accepted date cannot be removed.
+    const d2 = await t.holen(id);
+    const put = await t.app.request(
+      `/api/privatpartys/${id}`,
+      json('admin-token', 'PUT', {
+        personId: d2.person!.id,
+        termine: [{ ...d2.termine[1]! }],
+      }),
+    );
+    expect(put.status).toBe(409);
+    // A request with an event cannot be deleted.
+    expect(
+      (await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'DELETE'))).status,
+    ).toBe(409);
+  });
+
+  it('deletes the event when the request leaves "zugesagt"', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const wunsch = (await t.holen(id)).termine[0]!;
+    await t.app.request(
+      `/api/privatpartys/${id}/zusage`,
+      json('admin-token', 'POST', { terminId: wunsch.id, vorlageId: 'privat' }),
+    );
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/status`,
+      json('admin-token', 'PUT', { status: 'abgesagt' }),
+    );
+    expect(res.status).toBe(200);
+    expect(t.kalender.eventLoeschen).toHaveBeenCalledWith('e1');
+    expect(await t.holen(id)).toMatchObject({ status: 'abgesagt', terminId: null, event: null });
+    // Accepting again through the status route needs date and Vorlage.
+    expect(
+      (
+        await t.app.request(
+          `/api/privatpartys/${id}/status`,
+          json('admin-token', 'PUT', { status: 'zugesagt' }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await t.app.request(
+          `/api/privatpartys/${id}/status`,
+          json('admin-token', 'PUT', {
+            status: 'zugesagt',
+            terminId: wunsch.id,
+            vorlageId: 'privat',
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    // An event that is already gone does not block going back to "offen".
+    t.kalender.eventLoeschen.mockResolvedValueOnce(false);
+    expect(
+      (
+        await t.app.request(
+          `/api/privatpartys/${id}/status`,
+          json('admin-token', 'PUT', { status: 'offen' }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(await t.holen(id)).toMatchObject({ status: 'offen', terminId: null });
+  });
+
+  it('builds a poll over the wish dates and turns the chosen one into the event', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const umfrage = (body: unknown, token = 'admin-token') =>
+      t.app.request(`/api/privatpartys/${id}/umfrage`, json(token, 'POST', body));
+    expect(
+      (await umfrage({ vorlageId: 'gibt-es-nicht', endetAm: '2099-03-01', pflicht: true })).status,
+    ).toBe(400);
+    expect(
+      (await umfrage({ vorlageId: 'privat', endetAm: '2000-01-01', pflicht: true })).status,
+    ).toBe(400);
+    const res = await umfrage({ vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false });
+    expect(res.status).toBe(201);
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    expect(
+      (await umfrage({ vorlageId: 'privat', endetAm: '2099-03-01', pflicht: true })).status,
+    ).toBe(409);
+    const d = await t.holen(id);
+    expect(d.umfrage).toMatchObject({ id: umfrageId, laeuft: true });
+    const u = (await (
+      await t.app.request(`/api/umfragen/${umfrageId}`, json('member-token', 'GET'))
+    ).json()) as UmfrageDetailDto;
+    expect(u).toMatchObject({
+      titel: 'Privatparty: 30. Geburtstag',
+      termin: { vorlageId: 'privat', kategorieId: 'party' },
+      pflicht: { status: [] },
+      optional: { status: ['anwaerter', 'mitglied', 'em', 'extern'] },
+    });
+    expect(u.fragen[0]!.optionen.map((o) => o.text)).toEqual([
+      'Sa, 14.03.2099 · 19:00–02:00 · Bevorzugt',
+      'Sa, 21.03.2099 · 19:00–02:00 · Nur notfalls',
+    ]);
+    // The member without the right does not see the poll's controls, the holder of the right does.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'v' ? ['privatpartys:verwalten' as const] : [],
+    );
+    const sicht = async (token: string) =>
+      (await (
+        await t.app.request(`/api/umfragen/${umfrageId}`, json(token, 'GET'))
+      ).json()) as UmfrageDetailDto;
+    expect((await sicht('vorstand-token')).darfBearbeiten).toBe(true);
+    expect((await sicht('member-token')).darfBearbeiten).toBe(false);
+    // End the poll and create the event with the wished times.
+    expect(
+      (await t.app.request(`/api/umfragen/${umfrageId}/beenden`, json('member-token', 'POST')))
+        .status,
+    ).toBe(403);
+    expect(
+      (await t.app.request(`/api/umfragen/${umfrageId}/beenden`, json('vorstand-token', 'POST')))
+        .status,
+    ).toBe(200);
+    const zweite = u.fragen[0]!.optionen[1]!;
+    t.kalender.event.mockResolvedValue({
+      id: 'e1',
+      anzeigeTitel: 'Privatparty',
+      beginn: '2099-03-21T18:00:00.000Z',
+      schichten: [],
+    } as unknown as EventDto);
+    const ev = await t.app.request(
+      `/api/umfragen/${umfrageId}/event`,
+      json('vorstand-token', 'POST', { optionId: zweite.id }),
+    );
+    expect(ev.status).toBe(201);
+    expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        titel: 'Privatparty',
+        beginn: '2099-03-21T18:00:00.000Z',
+        ende: '2099-03-22T01:00:00.000Z',
+      }),
+      'v',
+    );
+    const danach = await t.holen(id);
+    expect(danach).toMatchObject({ status: 'zugesagt', event: { id: 'e1' } });
+    expect(danach.terminId).toBe(danach.termine[1]!.id);
+  });
+
+  it('shows the link to the Privatparty in the event only to holders of the right', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const wunsch = (await t.holen(id)).termine[0]!;
+    await t.app.request(
+      `/api/privatpartys/${id}/zusage`,
+      json('admin-token', 'POST', { terminId: wunsch.id, vorlageId: 'privat' }),
+    );
+    t.kalender.event.mockResolvedValue({
+      id: 'e1',
+      titel: 'Privatparty',
+      anzeigeTitel: 'Privatparty',
+      schichten: [],
+      teilnahmen: [],
+      nichtVerfuegbar: [],
+      verantwortlich: null,
+    } as unknown as EventDto);
+    const abfrage = async (token: string) =>
+      (await (
+        await t.app.request('/api/kalender/events/e1', json(token, 'GET'))
+      ).json()) as EventDto;
+    expect((await abfrage('admin-token')).privatpartyId).toBe(id);
+    expect((await abfrage('member-token')).privatpartyId).toBeUndefined();
+  });
+});
+
+describe('privatpartys: Party-Mail', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let uid = 0;
+  const mail = (extra: Partial<EingehendeMail> = {}): EingehendeMail => ({
+    uid: ++uid,
+    messageId: `<m${uid}@kunde.example>`,
+    inReplyTo: null,
+    referenzen: [],
+    vonAdresse: 'eva@kunde.example',
+    vonName: 'Eva Muster',
+    anAdresse: 'party@party.example',
+    betreff: 'Anfrage Geburtstag',
+    text: 'Hallo, habt ihr am 14.3. Platz?',
+    anhaenge: [],
+    zeitpunkt: new Date(Date.UTC(2020, 0, 1, 10, uid)),
+    ...extra,
+  });
+
+  async function setup() {
+    const t = makeApp();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map(
+        ['a', 'v', 'm2'].map((sub) => [
+          sub,
+          { sub, kontoName: sub, username: `user-${sub}`, aktiviert: true, enabled: true },
+        ]),
+      ),
+    );
+    for (const sub of ['a', 'v', 'm2']) {
+      await t.mitglieder.speichern(sub, {
+        vorname: 'A',
+        nachname: 'B',
+        anrede: 'neutral',
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
+      });
+      await t.push.store.aboSpeichern(sub, {
+        endpoint: `https://push.example/${sub}`,
+        keys: { p256dh: 'p', auth: 'a' },
+      });
+    }
+    // 'a' is admin (right via role), 'v' holds the right through a Posten, 'm2' has no right.
+    t.userAdmin.rollen.mockResolvedValue(new Map([['a', ['admin']]]));
+    t.posten.inhaberMitRecht.mockResolvedValue(['v']);
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'v' ? ['privatpartys:verwalten' as const] : [],
+    );
+    // Prime the position (first run imports nothing).
+    t.partymail.uidValidity = '1';
+    await t.privatpartys.abrufStandSetzen({ uidValidity: '1', letzteUid: 0 });
+    t.gesendet.length = 0;
+    const abrufen = async () =>
+      t.app.request('/api/privatpartys/mail/abrufen', json('admin-token', 'POST'));
+    const liste = async () =>
+      (await (
+        await t.app.request('/api/privatpartys?status=alle', json('admin-token', 'GET'))
+      ).json()) as {
+        id: string;
+        unbeantwortet: boolean;
+        mailAdresse: string | null;
+        person: unknown;
+      }[];
+    const holen = async (id: string) =>
+      (await (
+        await t.app.request(`/api/privatpartys/${id}`, json('admin-token', 'GET'))
+      ).json()) as PrivatpartyDetailDto;
+    return { ...t, abrufen, liste, holen };
+  }
+
+  it('creates a blank entry for a new thread and notifies only the right holders', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail());
+    const res = await t.abrufen();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ neu: 1 });
+    const [eintrag] = await t.liste();
+    expect(eintrag).toMatchObject({
+      unbeantwortet: true,
+      mailAdresse: 'eva@kunde.example',
+      person: null,
+    });
+    const d = await t.holen(eintrag!.id);
+    expect(d).toMatchObject({ status: 'offen', mailEingerichtet: true, termine: [] });
+    expect(d.nachrichten).toMatchObject([{ richtung: 'ein', betreff: 'Anfrage Geburtstag' }]);
+    expect(t.gesendet.map((g) => g.endpoint).sort()).toEqual([
+      'https://push.example/a',
+      'https://push.example/v',
+    ]);
+    expect(t.gesendet[0]).toMatchObject({ url: `/app/privatpartys/${eintrag!.id}` });
+  });
+
+  it('adds a reply in the thread to the same entry and skips duplicates', async () => {
+    const t = await setup();
+    const erste = mail();
+    t.partymail.eingang.push(erste);
+    await t.abrufen();
+    t.gesendet.length = 0;
+    const [eintrag] = await t.liste();
+    t.partymail.eingang.push(
+      mail({ inReplyTo: '<unbekannt@x>', referenzen: [erste.messageId, '<unbekannt@x>'] }),
+    );
+    // The same Message-ID again (e.g. a copy) is ignored.
+    t.partymail.eingang.push(mail({ messageId: erste.messageId }));
+    expect(await (await t.abrufen()).json()).toEqual({ neu: 1 });
+    expect(await t.liste()).toHaveLength(1);
+    expect((await t.holen(eintrag!.id)).nachrichten).toHaveLength(2);
+    expect(t.gesendet.length).toBe(2);
+    // The notification text of a follow-up differs from a new request.
+    expect(t.gesendet[0]!.titel).toBe('Neue Nachricht zu einer Privatparty');
+    // Unthreaded mail = new entry.
+    t.partymail.eingang.push(mail());
+    await t.abrufen();
+    expect(await t.liste()).toHaveLength(2);
+  });
+
+  it('imports nothing when the mailbox was replaced and reports errors', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail());
+    t.partymail.uidValidity = '2';
+    expect(await (await t.abrufen()).json()).toEqual({ neu: 0 });
+    expect(await t.liste()).toHaveLength(0);
+    t.partymail.fehler = 'IMAP down';
+    expect((await t.abrufen()).status).toBe(502);
+    const status = await (
+      await t.app.request('/api/privatpartys/mail-status', json('admin-token', 'GET'))
+    ).json();
+    expect(status).toMatchObject({ eingerichtet: true, fehler: 'IMAP down' });
+  });
+
+  it('answers with thread headers, the sender and no notification', async () => {
+    const t = await setup();
+    const erste = mail({ betreff: 'Re: Anfrage' });
+    t.partymail.eingang.push(erste);
+    await t.abrufen();
+    t.gesendet.length = 0;
+    const id = (await t.liste())[0]!.id;
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/nachrichten`,
+      json('admin-token', 'POST', { text: 'Ja, der 14.3. geht.' }),
+    );
+    expect(res.status).toBe(201);
+    expect(t.partymail.gesendet).toMatchObject([
+      {
+        an: 'eva@kunde.example',
+        betreff: 'Re: Anfrage',
+        inReplyTo: erste.messageId,
+        referenzen: [erste.messageId],
+        text: 'Ja, der 14.3. geht.',
+      },
+    ]);
+    expect(t.partymail.abgelegt).toHaveLength(1);
+    expect(t.gesendet).toHaveLength(0);
+    const d = await t.holen(id);
+    expect(d.unbeantwortet).toBe(false);
+    expect(d.antwortAn).toBe('eva@kunde.example');
+    expect(d.nachrichten[1]).toMatchObject({
+      richtung: 'aus',
+      gesendetVon: { sub: 'a', username: 'user-a' },
+    });
+    // A mail answering ours lands in the same entry.
+    t.partymail.eingang.push(mail({ inReplyTo: t.partymail.gesendet[0]!.messageId }));
+    await t.abrufen();
+    expect(await t.liste()).toHaveLength(1);
+  });
+
+  it('refuses to answer without Party-Mail or address', async () => {
+    const t = await setup();
+    const personRes = await t.app.request(
+      '/api/privatpartys/personen',
+      json('admin-token', 'POST', { name: 'Ohne Mail' }),
+    );
+    const personId = ((await personRes.json()) as { id: string }).id;
+    const neu = await t.app.request(
+      '/api/privatpartys',
+      json('admin-token', 'POST', {
+        personId,
+        termine: [{ datum: '2099-03-14', beginn: '19:00', ende: '02:00', stufe: 'bevorzugt' }],
+      }),
+    );
+    const id = ((await neu.json()) as { id: string }).id;
+    const antwort = (token = 'admin-token') =>
+      t.app.request(`/api/privatpartys/${id}/nachrichten`, json(token, 'POST', { text: 'Hi' }));
+    expect((await antwort()).status).toBe(400);
+    expect((await antwort('member-token')).status).toBe(403);
+    t.partymail.eingerichtet = false;
+    const res = await antwort();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'Die Party-Mail ist nicht eingerichtet.' });
+    expect((await t.abrufen()).status).toBe(409);
+    expect((await t.holen(id)).mailEingerichtet).toBe(false);
+    expect((await t.holen(id)).antwortAn).toBeNull();
+  });
+
+  it('uses the person address and a default subject for the first mail', async () => {
+    const t = await setup();
+    const personRes = await t.app.request(
+      '/api/privatpartys/personen',
+      json('admin-token', 'POST', { name: 'Eva', email: 'eva@x.de' }),
+    );
+    const personId = ((await personRes.json()) as { id: string }).id;
+    const neu = await t.app.request(
+      '/api/privatpartys',
+      json('admin-token', 'POST', {
+        personId,
+        termine: [{ datum: '2099-03-14', beginn: '19:00', ende: '02:00', stufe: 'bevorzugt' }],
+      }),
+    );
+    const id = ((await neu.json()) as { id: string }).id;
+    await t.app.request(
+      `/api/privatpartys/${id}/nachrichten`,
+      json('admin-token', 'POST', { text: 'Hallo' }),
+    );
+    expect(t.partymail.gesendet[0]).toMatchObject({
+      an: 'eva@x.de',
+      betreff: 'Deine Anfrage beim C4',
+      inReplyTo: null,
+      referenzen: [],
+    });
+  });
+
+  it('moves a message to another open request and deletes the emptied entry', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail(), mail({ vonAdresse: 'x@y.de' }));
+    await t.abrufen();
+    const alle = await t.liste();
+    expect(alle).toHaveLength(2);
+    const quelle = alle.find((e) => e.mailAdresse === 'x@y.de')!;
+    const ziel = alle.find((e) => e.id !== quelle.id)!;
+    const nachricht = (await t.holen(quelle.id)).nachrichten[0]!;
+    const zuordnen = (nid: string, pid: string) =>
+      t.app.request(
+        `/api/privatpartys/nachrichten/${nid}/zuordnen`,
+        json('admin-token', 'POST', { privatpartyId: pid }),
+      );
+    expect((await zuordnen(nachricht.id, quelle.id)).status).toBe(400);
+    // Not open: refused.
+    await t.app.request(
+      `/api/privatpartys/${ziel.id}/status`,
+      json('admin-token', 'PUT', { status: 'abgesagt' }),
+    );
+    expect((await zuordnen(nachricht.id, ziel.id)).status).toBe(409);
+    await t.app.request(
+      `/api/privatpartys/${ziel.id}/status`,
+      json('admin-token', 'PUT', { status: 'offen' }),
+    );
+    const res = await zuordnen(nachricht.id, ziel.id);
+    expect(await res.json()).toEqual({ ok: true, geloescht: true, id: ziel.id });
+    expect(await t.liste()).toHaveLength(1);
+    const d = await t.holen(ziel.id);
+    expect(d.nachrichten).toHaveLength(2);
+    expect(d.mailAdresse).toBe('x@y.de');
+  });
+
+  it('moves a message into a new blank request', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail({ vonAdresse: 'alt@y.de' }));
+    await t.abrufen();
+    const quelle = (await t.liste())[0]!;
+    const nachricht = (await t.holen(quelle.id)).nachrichten[0]!;
+    const post = (body: unknown) =>
+      t.app.request(
+        `/api/privatpartys/nachrichten/${nachricht.id}/zuordnen`,
+        json('admin-token', 'POST', body),
+      );
+    expect((await post({})).status).toBe(400);
+    const res = await post({ neu: true });
+    const antwort = (await res.json()) as { ok: boolean; geloescht: boolean; id: string };
+    expect(antwort).toMatchObject({ ok: true, geloescht: true });
+    const alle = await t.liste();
+    expect(alle).toHaveLength(1);
+    const d = await t.holen(antwort.id);
+    expect(antwort.id).not.toBe(quelle.id);
+    expect(d.status).toBe('offen');
+    expect(d.person).toBeNull();
+    expect(d.termine).toHaveLength(0);
+    expect(d.mailAdresse).toBe('alt@y.de');
+    expect(d.nachrichten).toHaveLength(1);
   });
 });

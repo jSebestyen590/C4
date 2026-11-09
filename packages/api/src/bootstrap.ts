@@ -23,6 +23,9 @@ import {
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
+import { createPartyMail } from './partymail';
+import { mailJob as mailJobAusfuehren } from './privatpartyMail';
+import { createPrivatpartysStore } from './privatpartys';
 import { createSchluesselStore } from './schluessel';
 import { createTodosStore } from './todos';
 import { registriereTodoAufgaben } from './todoBenachrichtigungen';
@@ -64,6 +67,11 @@ export function createProduction() {
   const freigaben = createFreigabenStore(db);
   const ordnerCache = createOrdnerCacheStore(db);
   registriereOneDriveAufgaben(benachrichtigungen, onedrive, { onedrive, ordnerCache, freigaben });
+  const partymail = createPartyMail({
+    region: config.region,
+    ...(config.partymailSecretArn && { secretArn: config.partymailSecretArn }),
+  });
+  const privatpartys = createPrivatpartysStore(db);
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
@@ -78,6 +86,8 @@ export function createProduction() {
     umfragen,
     trichter: createTrichterStore(db),
     protokolle: createProtokolleStore(db),
+    privatpartys,
+    partymail,
     benachrichtigungen,
     onedrive,
     freigaben,
@@ -89,7 +99,12 @@ export function createProduction() {
       await pool.query('select 1');
     },
   });
-  return { app, pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt) };
+  return {
+    app,
+    pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
+    mailJob: (jetzt: Date) =>
+      mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),
+  };
 }
 
 export const createProductionApp = () => createProduction().app;

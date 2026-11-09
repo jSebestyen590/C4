@@ -6,6 +6,7 @@ import type {
   EventBewertung,
   MitgliedStatus,
   Permission,
+  PrivatpartyStatus,
   ProtokollArt,
   ProtokollStatus,
   ProtokollTeilnahmeWert,
@@ -75,6 +76,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'bilder:lesen': 'Bilder ansehen und Ordner anlegen',
   'protokolle:lesen': 'Protokolle lesen',
   'protokolle:schreiben': 'Protokolle schreiben',
+  'privatpartys:verwalten': 'Privatpartys verwalten',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {
@@ -127,6 +129,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   schluessel: 'Schlüssel',
   umfrage: 'Umfragen',
   todo: 'Todos',
+  privatpartys: 'Privatpartys',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -179,6 +182,16 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
     'todo.frist': {
       titel: 'Todo bald fällig',
       beschreibung: 'Erinnerung zwei Tage vor der Deadline eines offenen Todos.',
+    },
+    'privatpartys.anfrage': {
+      titel: 'Neue Privatparty-Anfrage',
+      beschreibung:
+        'Wenn eine neue Anfrage für eine Privatparty eingeht. Nur mit dem Recht „Privatpartys verwalten“.',
+    },
+    'privatpartys.nachricht': {
+      titel: 'Neue Nachricht zu einer Privatparty',
+      beschreibung:
+        'Wenn zu einer bestehenden Privatparty eine weitere Nachricht eingeht. Nur mit dem Recht „Privatpartys verwalten“.',
     },
   };
 
@@ -325,3 +338,13 @@ export const PROTOKOLL_STATUS_LABELS: Record<ProtokollStatus, string> = {
   entwurf: 'Entwurf',
   abgeschlossen: 'Abgeschlossen',
 };
+
+/** Status of a Privatparty request. */
+export const PRIVATPARTY_STATUS_LABELS: Record<PrivatpartyStatus, string> = {
+  offen: 'Offen',
+  zugesagt: 'Zugesagt',
+  abgesagt: 'Abgesagt',
+};
+
+// How much a wish date is wanted; the labels live in shared because the poll options use them, too.
+export { PRIVATPARTY_STUFEN_NAMEN as PRIVATPARTY_STUFE_LABELS } from '@c4/shared';

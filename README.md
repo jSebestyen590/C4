@@ -37,7 +37,31 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
       netcup webspace (CloudFront cannot be an apex CNAME target at netcup).
 6. **Publish the web build and migrate** (CI does this on a push to `main` for dev and on a `v*` tag for prod):
    see `.github/workflows/deploy-env.yml`.
-7. **First admin user** (self sign-up is disabled):
+7. **Fill the Party-Mail secret** (Privatpartys): Terraform creates `c4-<env>-partymail` empty. In the AWS console open
+   Secrets Manager, the secret, "Retrieve secret value" / "Edit", tab "Plaintext", and enter:
+
+   ```json
+   {
+     "adresse": "party@example.de",
+     "absenderName": "C4 Party-Mail",
+     "benutzer": "party@example.de",
+     "passwort": "...",
+     "imapHost": "imap.example.de",
+     "imapPort": 993,
+     "imapTls": true,
+     "smtpHost": "smtp.example.de",
+     "smtpPort": 465,
+     "smtpSecure": true,
+     "ordnerEingang": "INBOX",
+     "ordnerGesendet": "Sent"
+   }
+   ```
+
+   `ordnerEingang` / `ordnerGesendet` must match the mailbox's real folder names (some hosts use `INBOX` and
+   `INBOX.Sent`); if a folder is wrong, the Privatpartys page shows the available folders in the error. The first
+   successful fetch only records the mailbox position and imports nothing older. Give the right "Privatpartys
+   verwalten" to the responsible Posten (admins have it automatically).
+8. **First admin user** (self sign-up is disabled):
    ```bash
    aws cognito-idp admin-create-user --user-pool-id eu-central-1_gmPabN3Yu --username leonard \
      --user-attributes Name=email,Value=leonard@c4-leipzig.de Name=email_verified,Value=true
@@ -57,6 +81,15 @@ in the workflow). Re-apply `infra/bootstrap` after changing it.
 **Re-apply `infra/bootstrap` once before deploying the notification feature** (Web Push): the deploy roles
 need the new `scheduler:*` permission for the EventBridge schedule `c4-<env>-push-job` (every 5 minutes,
 see `docs/benachrichtigungen.md`). Without it the Terraform apply of the environment fails.
+
+**Re-apply `infra/bootstrap` once before deploying the Party-Mail** (Privatpartys): the deploy roles need
+`secretsmanager:*` on `c4-<env>-*` for the secret `c4-<env>-partymail`. Terraform creates that secret empty and
+the schedule `c4-<env>-mail-job` (every 2 minutes). Fill the secret as described in step 7 of the first-time setup;
+until then the Party-Mail is off and the app says so.
+
+(The JSON is described in step 7 of the first-time setup above.)
+
+See `docs/privatpartys.md`.
 
 Create the GitHub Environments `dev` and `prod` (add required reviewers on `prod`). A push to `main`
 deploys **dev**; pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.0.0`) deploys **prod**

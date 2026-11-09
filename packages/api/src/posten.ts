@@ -94,6 +94,8 @@ export interface PostenStore {
   aktuelleNachMitglied(heute?: string): Promise<Map<string, AktuellerPosten[]>>;
   /** Permissions granted by the Posten the member currently holds. */
   rechteVon(sub: string, heute?: string): Promise<Permission[]>;
+  /** Subs of the members who currently hold a Posten that grants `recht` (same rules as `rechteVon`). */
+  inhaberMitRecht(recht: PostenRecht, heute?: string): Promise<string[]>;
 }
 
 const istRecht = (r: string): r is PostenRecht => (POSTEN_RECHTE as readonly string[]).includes(r);
@@ -289,6 +291,19 @@ export function createPostenStore(db: Db): PostenStore {
         .where(and(eq(postenBesetzungen.mitgliedSub, sub), eq(posten.archiviert, false)));
       const rechte = rows.filter((r) => rechteAktiv(r.besetzung, heute)).map((r) => r.recht);
       return [...new Set(rechte)].filter(istRecht);
+    },
+    async inhaberMitRecht(recht, heute = heuteBerlin()) {
+      const rows = await db
+        .select({ besetzung: postenBesetzungen })
+        .from(postenBesetzungen)
+        .innerJoin(posten, eq(posten.id, postenBesetzungen.postenId))
+        .innerJoin(postenRechte, eq(postenRechte.postenId, posten.id))
+        .where(and(eq(postenRechte.recht, recht), eq(posten.archiviert, false)));
+      return [
+        ...new Set(
+          rows.filter((r) => rechteAktiv(r.besetzung, heute)).map((r) => r.besetzung.mitgliedSub),
+        ),
+      ];
     },
   };
 }

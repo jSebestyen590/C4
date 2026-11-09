@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   customType,
   date,
@@ -19,6 +20,8 @@ import type {
   MhdArt,
   SchichtArt,
   MitgliedStatus,
+  PrivatpartyStatus,
+  PrivatpartyStufe,
   TeilnahmeAntwort,
   Quelle,
   UmfrageErgebnisse,
@@ -1036,3 +1039,87 @@ export const trichterTeilnahmen = pgTable(
   },
   (t) => [primaryKey({ columns: [t.durchgangId, t.mitgliedSub] })],
 );
+
+// ---------------------------------------------------------------------------
+// Privatpartys (see docs/privatpartys.md); no foreign keys, references are checked in the API.
+
+/** An external person who rents the club for a private party. */
+export const privatpartyPersonen = pgTable('privatparty_personen', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email'),
+  /** Free text: phone, Instagram, ... */
+  kontakt: text('kontakt'),
+  notizen: text('notizen'),
+  /** Cognito sub. */
+  angelegtVon: text('angelegt_von'),
+  angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
+  aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type PrivatpartyPersonRow = typeof privatpartyPersonen.$inferSelect;
+
+/** A request for a private party; `personId` is null for blank entries (e.g. created from a mail). */
+export const privatpartys = pgTable('privatpartys', {
+  id: text('id').primaryKey(),
+  personId: text('person_id'),
+  anlass: text('anlass'),
+  notizen: text('notizen'),
+  /** `offen`, `zugesagt` or `abgesagt` (CHECK). */
+  status: text('status').$type<PrivatpartyStatus>().notNull().default('offen'),
+  /** The accepted wish date (`privatparty_termine.id`). */
+  terminId: text('termin_id'),
+  umfrageId: text('umfrage_id'),
+  eventId: text('event_id'),
+  /** Where replies go: Reply-To / From of the last incoming mail. */
+  mailAdresse: text('mail_adresse'),
+  letzteNachrichtAm: timestamp('letzte_nachricht_am', { withTimezone: true }),
+  angelegtVon: text('angelegt_von'),
+  angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull().defaultNow(),
+  aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type PrivatpartyRow = typeof privatpartys.$inferSelect;
+
+/** Wish date with Berlin wall times `HH:MM` (`ende` before `beginn` = next day). */
+export const privatpartyTermine = pgTable('privatparty_termine', {
+  id: text('id').primaryKey(),
+  privatpartyId: text('privatparty_id').notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  beginn: text('beginn').notNull(),
+  ende: text('ende').notNull(),
+  /** `bevorzugt`, `moeglich` or `notfalls` (CHECK). */
+  stufe: text('stufe').$type<PrivatpartyStufe>().notNull(),
+  /** Keeps the entered order. */
+  position: integer('position').notNull().default(0),
+});
+export type PrivatpartyTerminRow = typeof privatpartyTermine.$inferSelect;
+
+/** Mails of a request (filled by the mail job); `anhaenge` are file names as JSON text. */
+export const privatpartyNachrichten = pgTable('privatparty_nachrichten', {
+  id: text('id').primaryKey(),
+  privatpartyId: text('privatparty_id').notNull(),
+  /** `ein` or `aus` (CHECK). */
+  richtung: text('richtung').$type<'ein' | 'aus'>().notNull(),
+  /** Unique index. */
+  messageId: text('message_id').notNull(),
+  inReplyTo: text('in_reply_to'),
+  referenzen: text('referenzen'),
+  vonAdresse: text('von_adresse'),
+  vonName: text('von_name'),
+  anAdresse: text('an_adresse'),
+  betreff: text('betreff'),
+  text: text('text').notNull().default(''),
+  anhaenge: text('anhaenge'),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
+  /** Cognito sub of the sender of an outgoing mail. */
+  mitgliedSub: text('mitglied_sub'),
+});
+export type PrivatpartyNachrichtRow = typeof privatpartyNachrichten.$inferSelect;
+
+/** State of the mail job: one row with id `partymail`. */
+export const mailAbruf = pgTable('mail_abruf', {
+  id: text('id').primaryKey(),
+  uidValidity: text('uid_validity'),
+  letzteUid: bigint('letzte_uid', { mode: 'number' }).notNull().default(0),
+  letzterAbruf: timestamp('letzter_abruf', { withTimezone: true }),
+  fehler: text('fehler'),
+});

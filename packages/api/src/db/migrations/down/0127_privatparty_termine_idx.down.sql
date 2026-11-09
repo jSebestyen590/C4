@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS privatparty_termine_privatparty_idx
