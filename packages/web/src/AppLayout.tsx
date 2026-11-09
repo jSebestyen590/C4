@@ -12,7 +12,7 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   IconBeer,
   IconBell,
@@ -132,6 +132,18 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   // Runs during render so the pages' back links (rendered below) already see this navigation.
   ortMerken(location, useNavigationType());
   const [opened, { toggle, close }] = useDisclosure(false);
+  const mobil = useMediaQuery('(max-width: 61.99em)');
+  const menueOffen = opened && !!mobil;
+
+  // Keep the page behind the open mobile menu from scrolling.
+  useEffect(() => {
+    if (!menueOffen) return;
+    const alt = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = alt;
+    };
+  }, [menueOffen]);
   // Any navigation (sidebar, profile menu, in-page links) closes the mobile menu.
   useEffect(close, [pathname, close]);
   const farbschema = useComputedColorScheme('light');
@@ -273,25 +285,32 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       </AppShell.Header>
 
       <AppShell.Navbar p="sm">
-        {links.map((l) => (
+        <AppShell.Section
+          grow
+          mih={0}
+          style={{ overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+        >
+          {links.map((l) => (
+            <NavLink
+              key={l.to}
+              component={Link}
+              to={l.to}
+              label={l.label}
+              leftSection={l.icon}
+              active={pathname === l.to || (l.to !== '/' && pathname.startsWith(`${l.to}/`))}
+              onClick={close}
+              py="sm"
+            />
+          ))}
+        </AppShell.Section>
+        <AppShell.Section>
           <NavLink
-            key={l.to}
-            component={Link}
-            to={l.to}
-            label={l.label}
-            leftSection={l.icon}
-            active={pathname === l.to || (l.to !== '/' && pathname.startsWith(`${l.to}/`))}
-            onClick={close}
+            label="Abmelden"
+            leftSection={<IconLogout size={20} />}
+            onClick={logout}
             py="sm"
           />
-        ))}
-        <NavLink
-          label="Abmelden"
-          leftSection={<IconLogout size={20} />}
-          onClick={logout}
-          py="sm"
-          mt="auto"
-        />
+        </AppShell.Section>
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>

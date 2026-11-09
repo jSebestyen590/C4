@@ -13,7 +13,7 @@ const istHomescreenApp = () =>
 const inEbene = (ziel: EventTarget | null) =>
   ziel instanceof Element &&
   ziel.closest(
-    '[role="dialog"], [role="menu"], [role="listbox"], [data-rfd-drag-handle-draggable-id]',
+    'nav, [role="dialog"], [role="menu"], [role="listbox"], [data-rfd-drag-handle-draggable-id]',
   );
 
 /**
