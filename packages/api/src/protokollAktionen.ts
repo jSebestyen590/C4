@@ -248,6 +248,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
             profilbildKey: null,
             geburtsdatum: null,
             geburtstagImKalender: null,
+            wohnheim: null,
           },
           'anwaerter',
           plan.ab,

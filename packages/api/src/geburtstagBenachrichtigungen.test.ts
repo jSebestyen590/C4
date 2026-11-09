@@ -20,6 +20,7 @@ const zeile = (sub: string, extra: Partial<MitgliedRow> = {}): MitgliedRow => ({
   profilbildKey: null,
   geburtsdatum: null,
   geburtstagImKalender: null,
+  wohnheim: null,
   status: 'mitglied',
   deaktiviertAm: null,
   aktualisiertAm: new Date(),

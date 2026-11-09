@@ -85,6 +85,7 @@ export function ProfilFormular({
   const [ueberMich, setUeberMich] = useState(mitglied?.ueberMich ?? '');
   const [geburtsdatum, setGeburtsdatum] = useState(mitglied?.geburtsdatum ?? '');
   const [imKalender, setImKalender] = useState(mitglied?.geburtstagImKalender ?? true);
+  const [wohnheim, setWohnheim] = useState(mitglied?.wohnheim ?? false);
   const [bildKey, setBildKey] = useState<string | null>(mitglied?.profilbildKey ?? null);
   const [bildUrl, setBildUrl] = useState<string | null>(mitglied?.profilbildUrl ?? null);
   const [bildGrossUrl, setBildGrossUrl] = useState<string | null>(
@@ -203,6 +204,7 @@ export function ProfilFormular({
       profilbildKey: bildKey,
       geburtsdatum: geburtsdatum || null,
       geburtstagImKalender: imKalender,
+      wohnheim,
     });
     if (!usernameGeprueft.success || !parsed.success) {
       const neu: Fehler = {};
@@ -372,6 +374,13 @@ export function ProfilFormular({
             disabled={!geburtsdatum}
             checked={imKalender}
             onChange={(e) => setImKalender(e.currentTarget.checked)}
+          />
+          <Switch
+            size="md"
+            label="Ich wohne im Wohnheim"
+            description="Du wirst gefragt, wenn jemand einen Schlüssel abgeben möchte."
+            checked={wohnheim}
+            onChange={(e) => setWohnheim(e.currentTarget.checked)}
           />
           <Textarea
             size="md"

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS schluessel_planungen_schluessel_idx

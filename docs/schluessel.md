@@ -24,6 +24,49 @@ Alle Mitglieder können Übergaben eintragen:
 inzwischen bewegt (oder ist archiviert), antwortet das API mit 409 und die Seite lädt neu. Nach jeder Übergabe löscht das
 API alle Übergaben des Schlüssels außer den neuesten 10 (`SCHLUESSEL_VERLAUF_MAX`).
 
+## Anfragen: Bedarf und Abgabe
+
+Statt im Chat auszumachen, wer einen Schlüssel bekommt, gibt es zwei Arten von Anfragen (Seite `/schluessel`, Abschnitt
+„Anfragen“; alle mit `schluessel:lesen`):
+
+- **Bedarf** („Brauche einen Schlüssel“): ein bestimmter Schlüssel oder „irgendeiner“, dazu ein Zeitfenster. Gefragt wird, wer den
+  Schlüssel zu dieser Zeit voraussichtlich hat (siehe „Wer hat den Schlüssel dann?“), bei „irgendeiner“ je Schlüssel.
+- **Abgabe** („Schlüssel abgeben“): nur für einen Schlüssel, den man hat oder bekommen soll (sonst 409). Gefragt werden alle
+  Mitglieder mit dem Profilfeld **Wohnheim**.
+
+Der Ersteller wird nie selbst gefragt. **Zeitfenster**: Tag (heute, morgen oder anderer Tag; nicht in der Vergangenheit),
+optional `ab`/`bis` (`HH:MM`, beide leer = ganzer Tag) und eine Notiz; Anzeige mit `zeitfensterAnzeigen` („heute ab 18:00“,
+„morgen im Laufe des Tages“, „Fr, 13.11. 16:00–18:00“). Eine Anfrage ist `offen`, `vergeben` oder `zurueckgezogen`; „abgelaufen“
+wird beim Lesen berechnet (Tag vorbei). Die Liste zeigt alle offenen, aktuellen Anfragen plus die eigenen der letzten 3 Tage; zurückgezogene
+Anfragen erscheinen nie in der Liste.
+
+Jeder Gefragte hat **eine** Antwort, die er ändern kann: **Zusagen**, **Anderer Zeitpunkt** (Gegenvorschlag mit eigenem
+Zeitfenster) oder **Ablehnen**. Die **erste Zusage gewinnt**: sie legt eine geplante Übergabe an (Bedarf: an den Ersteller, mit
+dem Schlüssel des Antwortenden, bei „irgendeiner“ muss er ihn nennen; Abgabe: an den Antwortenden) und setzt die Anfrage auf
+`vergeben`; spätere Antworten bekommen 409. Der Ersteller kann einen **Gegenvorschlag annehmen** (legt die Planung zum
+vorgeschlagenen Zeitpunkt an) oder die Anfrage **zurückziehen**. Die Seite `/schluessel/anfragen/:id` zeigt Details und alle
+Antworten.
+
+## Geplante Übergaben
+
+Pro Schlüssel eine Kette von Planungen, nach Zeit sortiert: „Jetzt: A → B (heute ab 18:00) → C (morgen)“. „Von“ ist implizit
+der Vorgänger in der Kette bzw. der aktuelle Halter. Jeder mit `schluessel:lesen` darf auf der
+Detailseite („Geplante Übergaben“) Planungen anlegen, ändern und löschen. Eine Planung ändert den Halter **nicht**; das
+passiert weiter über die echte Übergabe. Wird der Schlüssel an ein Mitglied übergeben, löscht das API in derselben
+Transaktion dessen früheste Planung für diesen Schlüssel. Auf der Liste steht unter dem Halter „Danach: …“.
+
+### Wer hat den Schlüssel dann?
+
+`erwarteteHalter` (`packages/shared/src/schluessel.ts`) bestimmt für ein Zeitfenster, wer den Schlüssel voraussichtlich hat:
+der Empfänger der letzten Planung **echt vor** dem Fenster, sonst der aktuelle Halter (nur ein Mitglied). Echt davor heißt:
+früherer Tag, oder derselbe Tag und beide haben `ab` und das der Planung ist nicht später. Fehlt am selben Tag bei einer
+Seite das `ab`, ist die Reihenfolge unklar und es zählen **beide** (Halter vor der Planung und ihr Empfänger). Beispiel:
+A hat den Schlüssel, Planung A→B morgen, B→C übermorgen. Bedarf heute: A; morgen (ohne Uhrzeit): A und B; in 3 Tagen: C.
+
+Das bestimmt, wer bei einem Bedarf gefragt wird (Push, stündliche Wiederholung) und wer antworten darf (`darfAntworten`,
+403 sonst). Bei „irgendeiner“ muss der Antwortende einen Schlüssel nennen, den er zu der Zeit voraussichtlich hat.
+Code: `antwortBerechtigte` / `erwarteteHalterJeSchluessel` in `schluesselBenachrichtigungen.ts`.
+
 ## Benachrichtigungen
 
 Art `schluessel.uebergabe`, **nicht abschaltbar** (`abschaltbar: false`, siehe
@@ -36,6 +79,18 @@ Person, die eingetragen hat:
 | „an“ (bekommen)     | –                                                     | „X hat den Schlüssel von dir bekommen.“                   |
 | Dritte / Verwaltung | „X hat eingetragen, dass du ihn von Y bekommen hast.“ | „X hat eingetragen, dass du ihn an Z weitergegeben hast.“ |
 
+Weitere Arten (alle **nicht abschaltbar**, Push-URL `/app/schluessel/anfragen/:id` bzw. `/app/schluessel/:id`):
+
+| Art                  | An                                                                       | Wann                                                                                      |
+| -------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `schluessel.bedarf`  | voraussichtliche Halter zur gefragten Zeit (Schlüssel bzw. je Schlüssel) | neuer Bedarf; stündlich wiederholt an alle, die noch nicht geantwortet haben              |
+| `schluessel.abgabe`  | Mitglieder mit Wohnheim (ohne Ersteller)                                 | neue Abgabe; stündlich wiederholt an alle, die noch nicht geantwortet haben               |
+| `schluessel.antwort` | Ersteller; bei Zusage zusätzlich alle, die schon geantwortet haben       | Zusage, Gegenvorschlag, Ablehnung; „hat sich erledigt“; „hat deinen Vorschlag angenommen“ |
+| `schluessel.planung` | aktueller Halter, Vorgänger in der Kette, Empfänger (ohne Akteur)        | Planung manuell angelegt, geändert, gelöscht (Planungen aus Anfragen melden `antwort`)    |
+
+Die Wiederholung (nicht zwischen 22 und 8 Uhr, nicht wenn alle abgelehnt haben oder der Tag vorbei ist) steht in
+[benachrichtigungen.md](./benachrichtigungen.md).
+
 Ohne vorherigen Halter heißt es „X hat dir den Schlüssel zugewiesen.“, bei „an niemand“ „… dass du den Schlüssel
 abgegeben hast.“ Code: `packages/api/src/schluesselBenachrichtigungen.ts`. Push muss auf dem Gerät aktiviert sein.
 
@@ -47,27 +102,41 @@ abgegeben hast.“ Code: `packages/api/src/schluesselBenachrichtigungen.ts`. Pus
 
 ## Datenmodell
 
-Migrationen `0073`–`0076`, Code in `packages/api/src/schluessel.ts`, Schemas in `packages/shared/src/schluessel.ts`.
+Migrationen `0073`–`0076` (Schlüssel) und `0130`–`0136` (Anfragen), Code in `packages/api/src/schluessel.ts` und
+`schluesselAnfragen.ts`, Schemas in `packages/shared/src/schluessel.ts`.
 
-| Tabelle                 | Inhalt                                                                                                                     |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `schluessel`            | `id`, `name`, `beschreibung`, `halter_sub` → `mitglieder` oder `halter_name` (höchstens eins), `halter_seit`, `archiviert` |
-| `schluessel_uebergaben` | `schluessel_id`, `von_sub`/`von_name`, `an_sub`/`an_name`, `eingetragen_von` (sub ohne FK), `zeitpunkt`                    |
+| Tabelle                 | Inhalt                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schluessel`            | `id`, `name`, `beschreibung`, `halter_sub` → `mitglieder` oder `halter_name` (höchstens eins), `halter_seit`, `archiviert`                                                      |
+| `schluessel_anfragen`   | `art` (`bedarf`/`abgabe`), `ersteller_sub`, `schluessel_id` (bei Bedarf optional), `datum`, `ab`/`bis` (`HH:MM`), `notiz`, `status`, `erstellt`, `erinnert`                     |
+| `schluessel_antworten`  | `anfrage_id`, `sub`, `art` (`zusage`/`ablehnung`/`gegenvorschlag`), Zeitfenster des Gegenvorschlags, `schluessel_id` (angebotener Schlüssel); eindeutig je `anfrage_id` + `sub` |
+| `schluessel_planungen`  | `schluessel_id`, `an_sub`, `datum`/`ab`/`bis`/`notiz`, `anfrage_id` (Herkunft), `erstellt_von` (sub ohne FK)                                                                    |
+| `schluessel_uebergaben` | `schluessel_id`, `von_sub`/`von_name`, `an_sub`/`an_name`, `eingetragen_von` (sub ohne FK), `zeitpunkt`                                                                         |
 
 ## Seiten und API
 
-| Seite             | Zweck                                                                                                                                                                  |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/schluessel`     | Handy: Karten; ab `sm` Tabelle (Name, bei, seit, Beschreibung, Aktionen; ganze Zeile klickbar). „Deine Schlüssel“ oben, dann alle anderen; Verwaltung: Anlegen, Archiv |
-| `/schluessel/:id` | „Zurück zur Liste“, Halter, Aktionen, Verlauf der letzten 10 Übergaben; Verwaltung: Bearbeiten, Archivieren                                                            |
+| Seite                      | Zweck                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/schluessel`              | Handy: Karten; ab `sm` Tabelle (Name, bei, seit, Beschreibung, Aktionen; ganze Zeile klickbar). „Deine Schlüssel“ oben, dann alle anderen; Verwaltung: Anlegen, Archiv |
+| `/schluessel/anfragen/:id` | Anfrage mit allen Antworten; Ersteller: Vorschlag annehmen, zurückziehen                                                                                               |
+| `/schluessel/:id`          | „Zurück zur Liste“, Halter, Aktionen, Verlauf der letzten 10 Übergaben; Verwaltung: Bearbeiten, Archivieren                                                            |
 
 Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verwaltung über „Übergabe eintragen“ ein.
 
-| Route                                 | Recht     | Hinweise                                                                      |
-| ------------------------------------- | --------- | ----------------------------------------------------------------------------- |
-| `GET /api/schluessel`                 | lesen     | `?archiv=1` nur mit verwalten                                                 |
-| `GET /api/schluessel/:id`             | lesen     | mit Verlauf; archivierte nur mit verwalten                                    |
-| `POST /api/schluessel/:id/uebergaben` | lesen     | `{ von, an }`; `an: null` nur mit verwalten; 409 wenn `von` nicht mehr stimmt |
-| `POST /api/schluessel`                | verwalten | `{ name, beschreibung?, halter? }`                                            |
-| `PUT /api/schluessel/:id`             | verwalten | `{ name, beschreibung? }`                                                     |
-| `PUT /api/schluessel/:id/archiv`      | verwalten | `{ archiviert }`                                                              |
+| Route                                                             | Recht     | Hinweise                                                                                                           |
+| ----------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/schluessel`                                             | lesen     | `?archiv=1` nur mit verwalten                                                                                      |
+| `GET /api/schluessel/:id`                                         | lesen     | mit Verlauf und Planungen; archivierte nur mit verwalten                                                           |
+| `POST /api/schluessel/:id/uebergaben`                             | lesen     | `{ von, an }`; `an: null` nur mit verwalten; 409 wenn `von` nicht mehr stimmt                                      |
+| `POST /api/schluessel`                                            | verwalten | `{ name, beschreibung?, halter? }`                                                                                 |
+| `GET /api/schluessel/anfragen`                                    | lesen     | offene, aktuelle Anfragen + eigene der letzten 3 Tage; `darfAntworten` je Anfrage                                  |
+| `GET /api/schluessel/anfragen/:id`                                | lesen     | mit allen Antworten                                                                                                |
+| `POST /api/schluessel/anfragen`                                   | lesen     | `{ art, schluesselId?, datum, ab?, bis?, notiz? }`; Abgabe nur mit eigenem/vorgesehenem Schlüssel (409)            |
+| `PUT /api/schluessel/anfragen/:id/antwort`                        | lesen     | `{ art, schluesselId?, datum?, ab?, bis?, notiz? }`; 403 für Ersteller und nicht Gefragte, 409 wenn schon vergeben |
+| `PUT /api/schluessel/anfragen/:id/rueckzug`                       | lesen     | nur Ersteller                                                                                                      |
+| `POST /api/schluessel/anfragen/:id/antworten/:antwortId/annehmen` | lesen     | nur Ersteller, nur Gegenvorschläge                                                                                 |
+| `POST /api/schluessel/:id/planungen`                              | lesen     | `{ anSub, datum, ab?, bis?, notiz? }`                                                                              |
+| `PUT /api/schluessel/planungen/:id`                               | lesen     | wie oben                                                                                                           |
+| `DELETE /api/schluessel/planungen/:id`                            | lesen     |                                                                                                                    |
+| `PUT /api/schluessel/:id`                                         | verwalten | `{ name, beschreibung? }`                                                                                          |
+| `PUT /api/schluessel/:id/archiv`                                  | verwalten | `{ archiviert }`                                                                                                   |

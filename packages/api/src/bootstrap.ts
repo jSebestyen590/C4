@@ -27,6 +27,8 @@ import { createPartyMail } from './partymail';
 import { mailJob as mailJobAusfuehren } from './privatpartyMail';
 import { createPrivatpartysStore } from './privatpartys';
 import { createSchluesselStore } from './schluessel';
+import { createSchluesselAnfragenStore } from './schluesselAnfragen';
+import { registriereSchluesselAufgaben } from './schluesselBenachrichtigungen';
 import { createTodosStore } from './todos';
 import { registriereTodoAufgaben } from './todoBenachrichtigungen';
 import { ladeKontext } from './umfrageAnsicht';
@@ -56,6 +58,14 @@ export function createProduction() {
   const userAdmin = createCognitoUserAdmin(config.userPoolId, config.region);
   const mitglieder = createMitgliederStore(db);
   registriereGeburtstagAufgaben(benachrichtigungen, mitglieder, userAdmin);
+  const schluessel = createSchluesselStore(db);
+  const schluesselAnfragen = createSchluesselAnfragenStore(db);
+  registriereSchluesselAufgaben(benachrichtigungen, {
+    schluessel,
+    anfragen: schluesselAnfragen,
+    mitglieder,
+    userAdmin,
+  });
   const posten = createPostenStore(db);
   const todos = createTodosStore(db);
   registriereTodoAufgaben(benachrichtigungen, todos);
@@ -81,7 +91,8 @@ export function createProduction() {
     waren: createWarenStore(db),
     inventar: createInventarStore(db),
     kalender,
-    schluessel: createSchluesselStore(db),
+    schluessel,
+    schluesselAnfragen,
     todos,
     umfragen,
     trichter: createTrichterStore(db),

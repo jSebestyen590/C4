@@ -161,6 +161,25 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       titel: 'Schlüsselübergaben',
       beschreibung: 'Wenn jemand eine Übergabe eines Schlüssels an dich oder von dir einträgt.',
     },
+    'schluessel.bedarf': {
+      titel: 'Schlüssel gesucht',
+      beschreibung:
+        'Wenn jemand einen Schlüssel braucht und du ihn hast oder bekommen sollst. Wird stündlich wiederholt, bis du antwortest.',
+    },
+    'schluessel.abgabe': {
+      titel: 'Schlüssel wird abgegeben',
+      beschreibung:
+        'Wenn du im Wohnheim wohnst und jemand einen Schlüssel abgeben möchte. Wird stündlich wiederholt, bis du antwortest.',
+    },
+    'schluessel.antwort': {
+      titel: 'Antworten auf Schlüssel-Anfragen',
+      beschreibung:
+        'Wenn jemand auf deine Anfrage zusagt, ablehnt oder einen anderen Zeitpunkt vorschlägt.',
+    },
+    'schluessel.planung': {
+      titel: 'Geplante Schlüsselübergaben',
+      beschreibung: 'Wenn eine Übergabe geplant, geändert oder gelöscht wird, die dich betrifft.',
+    },
     'umfrage.neu': {
       titel: 'Neue Umfragen',
       beschreibung: 'Wenn jemand eine Umfrage erstellt, bei der du abstimmen sollst oder kannst.',

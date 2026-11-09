@@ -13,26 +13,53 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { IconPlus, IconKey, IconKeyOff } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { datumAnzeigen, datumBerlin, zeitBerlin, type SchluesselDto } from '@c4/shared';
+import {
+  datumAnzeigen,
+  datumBerlin,
+  zeitBerlin,
+  zeitfensterAnzeigen,
+  type SchluesselDto,
+} from '@c4/shared';
 import { useAuth } from '../auth';
 import { useEigeneSub } from '../organisator';
 import { SchluesselAktionen } from '../SchluesselAktionen';
+import { AnfrageFormular, AnfrageKarte } from '../SchluesselAnfragen';
 import { SchluesselFormular } from '../SchluesselFormular';
-import { HalterName, istHalter, schluesselLink, useSchluesselListe } from '../schluesselDaten';
+import {
+  HalterName,
+  istHalter,
+  schluesselLink,
+  useAnfragen,
+  useSchluesselListe,
+} from '../schluesselDaten';
 
 /** `30.10.2026 20:15` (Berlin time). */
 const seitAnzeigen = (iso: string) => `${datumAnzeigen(datumBerlin(iso))} ${zeitBerlin(iso)}`;
 
+/** "Danach: <Halter> (heute ab 18:00)": the next designated holder, if a handover is planned. */
+function NaechsterHalter({ schluessel }: Readonly<{ schluessel: SchluesselDto }>) {
+  const naechster = schluessel.planungen[0];
+  if (!naechster) return null;
+  return (
+    <Text size="sm" c="dimmed">
+      Danach: <HalterName halter={naechster.an} /> ({zeitfensterAnzeigen(naechster.zeitfenster)})
+    </Text>
+  );
+}
+
 /** "Seit <Datum> <Uhrzeit> bei <Halter>"; just "Bei <Halter>" without a recorded Übergabe. */
 export function HalterZeile({ schluessel }: Readonly<{ schluessel: SchluesselDto }>) {
   return (
-    <Text>
-      {schluessel.halterSeit ? `Seit ${seitAnzeigen(schluessel.halterSeit)} bei ` : 'Bei '}
-      <HalterName halter={schluessel.halter} />
-    </Text>
+    <>
+      <Text>
+        {schluessel.halterSeit ? `Seit ${seitAnzeigen(schluessel.halterSeit)} bei ` : 'Bei '}
+        <HalterName halter={schluessel.halter} />
+      </Text>
+      <NaechsterHalter schluessel={schluessel} />
+    </>
   );
 }
 
@@ -123,6 +150,7 @@ function SchluesselTabelle({
               </Table.Td>
               <Table.Td>
                 <HalterName halter={s.halter} />
+                <NaechsterHalter schluessel={s} />
               </Table.Td>
               <Table.Td>{s.halterSeit ? seitAnzeigen(s.halterSeit) : '–'}</Table.Td>
               <Table.Td>
@@ -153,11 +181,19 @@ export function SchluesselPage() {
   const eigeneSub = useEigeneSub();
   const [archiv, setArchiv] = useState(false);
   const [anlegen, setAnlegen] = useState(false);
+  const [anfrageArt, setAnfrageArt] = useState<'bedarf' | 'abgabe' | null>(null);
   const liste = useSchluesselListe(darfVerwalten && archiv);
+  const anfragen = useAnfragen();
 
   const daten = useMemo(() => liste.data ?? [], [liste.data]);
   const eigene = daten.filter((s) => istHalter(s.halter, eigeneSub));
   const andere = daten.filter((s) => !istHalter(s.halter, eigeneSub));
+  // Keys the member holds or is designated for: they can hand them over or offer them.
+  const meine = daten.filter(
+    (s) =>
+      !s.archiviert &&
+      (istHalter(s.halter, eigeneSub) || s.planungen.some((p) => p.an.sub === eigeneSub)),
+  );
   const vorschlaege = useMemo(() => personenNamen(daten), [daten]);
   // Cards on phones, a table from `sm` upward.
   const karten = (schluessel: SchluesselDto[]) => (
@@ -189,6 +225,32 @@ export function SchluesselPage() {
           onChange={(e) => setArchiv(e.currentTarget.checked)}
         />
       )}
+      <Title order={3}>Anfragen</Title>
+      <Group grow preventGrowOverflow={false} gap="xs">
+        <Button leftSection={<IconKey size={18} />} onClick={() => setAnfrageArt('bedarf')}>
+          Brauche einen Schlüssel
+        </Button>
+        {meine.length > 0 && (
+          <Button
+            variant="default"
+            leftSection={<IconKeyOff size={18} />}
+            onClick={() => setAnfrageArt('abgabe')}
+          >
+            Schlüssel abgeben
+          </Button>
+        )}
+      </Group>
+      {anfragen.isError && <Alert color="red">Die Anfragen konnten nicht geladen werden.</Alert>}
+      {anfragen.data && anfragen.data.length === 0 && (
+        <Text c="dimmed">Keine offenen Anfragen.</Text>
+      )}
+      {anfragen.data && anfragen.data.length > 0 && (
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          {anfragen.data.map((a) => (
+            <AnfrageKarte key={a.id} anfrage={a} eigeneSub={eigeneSub} meineSchluessel={meine} />
+          ))}
+        </SimpleGrid>
+      )}
       {liste.isPending && <Loader m="md" aria-label="Schlüssel werden geladen" />}
       {liste.isError && <Alert color="red">Die Schlüssel konnten nicht geladen werden.</Alert>}
       {liste.data && daten.length === 0 && <Text c="dimmed">Keine Schlüssel vorhanden.</Text>}
@@ -201,6 +263,13 @@ export function SchluesselPage() {
       )}
       {andere.length > 0 && karten(andere)}
       {anlegen && <SchluesselFormular onClose={() => setAnlegen(false)} />}
+      {anfrageArt && (
+        <AnfrageFormular
+          art={anfrageArt}
+          schluessel={anfrageArt === 'abgabe' ? meine : daten.filter((s) => !s.archiviert)}
+          onClose={() => setAnfrageArt(null)}
+        />
+      )}
     </Stack>
   );
 }

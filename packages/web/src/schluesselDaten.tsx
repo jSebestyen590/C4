@@ -1,7 +1,7 @@
 import { Anchor, Text } from '@mantine/core';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import type { Halter, HalterDto, SchluesselDetailDto, SchluesselDto } from '@c4/shared';
+import type { AnfrageDto, Halter, HalterDto, SchluesselDetailDto, SchluesselDto } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
@@ -13,6 +13,8 @@ export const schluesselInvalidieren = (qc: QueryClient) =>
   qc.invalidateQueries({ queryKey: [SCHLUESSEL_KEY] });
 
 export const schluesselLink = (id: string) => `/schluessel/${encodeURIComponent(id)}`;
+
+export const anfrageLink = (id: string) => `/schluessel/anfragen/${encodeURIComponent(id)}`;
 
 export function useSchluesselListe(mitArchiv = false) {
   const api = useApi();
@@ -34,6 +36,27 @@ export function useSchluessel(id: string | undefined) {
       (await unwrap(
         await api.schluessel[':id'].$get({ param: { id: id! } }),
       )) as SchluesselDetailDto,
+  });
+}
+
+/** Open and current key requests (Bedarf / Abgabe). */
+export function useAnfragen() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [SCHLUESSEL_KEY, 'anfragen'],
+    queryFn: async () => (await unwrap(await api.schluessel.anfragen.$get())) as AnfrageDto[],
+  });
+}
+
+export function useAnfrage(id: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [SCHLUESSEL_KEY, 'anfrage', id],
+    enabled: !!id,
+    queryFn: async () =>
+      (await unwrap(
+        await api.schluessel.anfragen[':id'].$get({ param: { id: id! } }),
+      )) as AnfrageDto,
   });
 }
 
