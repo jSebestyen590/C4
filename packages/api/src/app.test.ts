@@ -4645,7 +4645,7 @@ describe('schluessel anfragen und planungen', () => {
     ).toBe(409);
   });
 
-  it('lists open requests and withdrawn ones only for their creator', async () => {
+  it('lists open requests and never withdrawn ones', async () => {
     const t = await setup();
     const a = await t.anfrage('member-token', bedarf());
     await t.anfrage('vorstand-token', bedarf());
@@ -4656,9 +4656,24 @@ describe('schluessel anfragen und planungen', () => {
         darfAntworten: boolean;
       }[];
     expect(await lesen('reader-token')).toHaveLength(1);
-    const eigene = await lesen('member-token');
-    expect(eigene).toHaveLength(2);
+    expect(await lesen('member-token')).toHaveLength(1);
     expect((await lesen('reader-token'))[0]!.darfAntworten).toBe(true);
+  });
+
+  it('hides a withdrawn request from its creator list but keeps the detail', async () => {
+    const t = await setup();
+    const { id } = await t.anfrage('member-token', bedarf());
+    expect(
+      (await t.app.request(`/api/schluessel/anfragen/${id}/rueckzug`, json('member-token', 'PUT')))
+        .status,
+    ).toBe(200);
+    const liste = (await (
+      await t.app.request('/api/schluessel/anfragen', json('member-token', 'GET'))
+    ).json()) as { id: string }[];
+    expect(liste.map((a) => a.id)).not.toContain(id);
+    expect(
+      (await t.app.request(`/api/schluessel/anfragen/${id}`, json('member-token', 'GET'))).status,
+    ).toBe(200);
   });
 
   it('uses up the earliest planned handover when the key really moves', async () => {

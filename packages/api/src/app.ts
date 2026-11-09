@@ -2117,11 +2117,13 @@ export function createApp(deps: AppDeps) {
           anfrageAnsicht(),
         ]);
         // Open and current requests of everybody, plus the viewer's own from the last days.
+        // Withdrawn requests are never listed.
         const sichtbar = alle
           .filter(
             (a) =>
-              (a.status === 'offen' && a.datum >= heute) ||
-              (a.erstellerSub === ich && a.datum >= tagNachher(heute, -3)),
+              a.status !== 'zurueckgezogen' &&
+              ((a.status === 'offen' && a.datum >= heute) ||
+                (a.erstellerSub === ich && a.datum >= tagNachher(heute, -3))),
           )
           .sort((a, b) => a.datum.localeCompare(b.datum) || (a.ab ?? '').localeCompare(b.ab ?? ''));
         return c.json(

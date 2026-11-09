@@ -37,7 +37,8 @@ Statt im Chat auszumachen, wer einen Schlüssel bekommt, gibt es zwei Arten von 
 Der Ersteller wird nie selbst gefragt. **Zeitfenster**: Tag (heute, morgen oder anderer Tag; nicht in der Vergangenheit),
 optional `ab`/`bis` (`HH:MM`, beide leer = ganzer Tag) und eine Notiz; Anzeige mit `zeitfensterAnzeigen` („heute ab 18:00“,
 „morgen im Laufe des Tages“, „Fr, 13.11. 16:00–18:00“). Eine Anfrage ist `offen`, `vergeben` oder `zurueckgezogen`; „abgelaufen“
-wird beim Lesen berechnet (Tag vorbei). Die Liste zeigt alle offenen, aktuellen Anfragen plus die eigenen der letzten 3 Tage.
+wird beim Lesen berechnet (Tag vorbei). Die Liste zeigt alle offenen, aktuellen Anfragen plus die eigenen der letzten 3 Tage; zurückgezogene
+Anfragen erscheinen nie in der Liste.
 
 Jeder Gefragte hat **eine** Antwort, die er ändern kann: **Zusagen**, **Anderer Zeitpunkt** (Gegenvorschlag mit eigenem
 Zeitfenster) oder **Ablehnen**. Die **erste Zusage gewinnt**: sie legt eine geplante Übergabe an (Bedarf: an den Ersteller, mit
