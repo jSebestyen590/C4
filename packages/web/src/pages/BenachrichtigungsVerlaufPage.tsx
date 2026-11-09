@@ -16,6 +16,7 @@ import {
   Title,
 } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BENACHRICHTIGUNGS_ARTEN,
@@ -32,10 +33,15 @@ import {
   useVerlauf,
 } from '../benachrichtigungVerlauf';
 import { BENACHRICHTIGUNG_ART_LABELS, BENACHRICHTIGUNG_BEREICH_LABELS, label } from '../i18n';
+import {
+  ALLE_ARTEN,
+  ART_PRAEFIX,
+  auswahlWert,
+  BEREICH_PRAEFIX,
+  filterAusAuswahl,
+} from '../verlaufFilter';
 import { WischZumGelesen } from '../WischZumGelesen';
 import { fehlerAnzeigen } from '../warenApi';
-
-const ALLE_ARTEN = 'alle';
 
 /** Select options grouped by area: "Alle aus <Bereich>" plus the single types. */
 const FILTER_OPTIONEN = [
@@ -44,11 +50,11 @@ const FILTER_OPTIONEN = [
     group: label(BENACHRICHTIGUNG_BEREICH_LABELS, bereich),
     items: [
       {
-        value: `bereich:${bereich}`,
+        value: `${BEREICH_PRAEFIX}${bereich}`,
         label: `Alle aus ${label(BENACHRICHTIGUNG_BEREICH_LABELS, bereich)}`,
       },
       ...BENACHRICHTIGUNGS_ARTEN.filter((a) => a.bereich === bereich).map((a) => ({
-        value: `art:${a.key}`,
+        value: `${ART_PRAEFIX}${a.key}`,
         label: BENACHRICHTIGUNG_ART_LABELS[a.key]?.titel ?? a.key,
       })),
     ],
@@ -121,7 +127,7 @@ export function BenachrichtigungsVerlaufPage() {
   const art = params.get('art') ?? undefined;
   const bereich = params.get('bereich') ?? undefined;
   const nurUngelesen = params.get('alle') !== '1';
-  const auswahl = art ? `art:${art}` : bereich ? `bereich:${bereich}` : ALLE_ARTEN;
+  const auswahl = auswahlWert(art, bereich);
   const filter = { art: art as never, bereich };
 
   const liste = useVerlauf({ ...filter, nurUngelesen });
@@ -145,6 +151,32 @@ export function BenachrichtigungsVerlaufPage() {
   const eintraege = liste.data?.pages.flatMap((s) => s.eintraege) ?? [];
   // Entries just marked as read stay in the cache (and collapse) until the next fetch.
   const sichtbar = nurUngelesen ? eintraege.filter((e) => !e.gelesen) : eintraege;
+  // Ids read in the "Ungelesen" view are dropped after the collapse animation, so removal does
+  // not depend on the transition finishing.
+  const ansichtKey = `${nurUngelesen}|${auswahl}`;
+  // Tied to the view, so it starts empty again when the filter or view changes.
+  const [entfernung, setEntfernung] = useState<{ key: string; ids: ReadonlySet<string> }>({
+    key: ansichtKey,
+    ids: new Set(),
+  });
+  const entfernt: ReadonlySet<string> = entfernung.key === ansichtKey ? entfernung.ids : new Set();
+  const gelesenIds = nurUngelesen
+    ? eintraege.filter((e) => e.gelesen && !entfernt.has(e.id)).map((e) => e.id)
+    : [];
+  const gelesenKey = gelesenIds.join(',');
+  useEffect(() => {
+    if (!gelesenKey) return;
+    const ids = gelesenKey.split(',');
+    const timer = setTimeout(
+      () =>
+        setEntfernung((alt) => ({
+          key: ansichtKey,
+          ids: new Set([...(alt.key === ansichtKey ? alt.ids : []), ...ids]),
+        })),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [gelesenKey, ansichtKey]);
 
   const oeffnen = (e: VerlaufEintragDto) => {
     if (!e.gelesen) markieren.mutate(e.id);
@@ -176,9 +208,7 @@ export function BenachrichtigungsVerlaufPage() {
         data={FILTER_OPTIONEN}
         value={auswahl}
         onChange={(v) => {
-          if (!v || v === ALLE_ARTEN) aendern({ art: null, bereich: null });
-          else if (v.startsWith('art:')) aendern({ art: v.slice(4), bereich: null });
-          else aendern({ art: null, bereich: v.slice(7) });
+          aendern(filterAusAuswahl(v));
         }}
       />
       <SegmentedControl
@@ -217,18 +247,20 @@ export function BenachrichtigungsVerlaufPage() {
       )}
       {liste.isSuccess && (
         <Stack gap={0}>
-          {eintraege.map((e) => (
-            // Collapses (instead of vanishing) once read in the "Ungelesen" view.
-            <Collapse key={e.id} expanded={!nurUngelesen || !e.gelesen} transitionDuration={250}>
-              <Box pb="sm">
-                <Eintrag
-                  eintrag={e}
-                  onKlick={() => oeffnen(e)}
-                  onGelesen={() => markieren.mutate(e.id)}
-                />
-              </Box>
-            </Collapse>
-          ))}
+          {eintraege
+            .filter((e) => !entfernt.has(e.id))
+            .map((e) => (
+              // Collapses (instead of vanishing) once read in the "Ungelesen" view.
+              <Collapse key={e.id} expanded={!nurUngelesen || !e.gelesen} transitionDuration={250}>
+                <Box pb="sm">
+                  <Eintrag
+                    eintrag={e}
+                    onKlick={() => oeffnen(e)}
+                    onGelesen={() => markieren.mutate(e.id)}
+                  />
+                </Box>
+              </Collapse>
+            ))}
         </Stack>
       )}
       {liste.hasNextPage && (

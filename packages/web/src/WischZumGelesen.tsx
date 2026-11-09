@@ -60,7 +60,11 @@ export function WischZumGelesen({
       bewegt.current = true;
       setZieht(true);
       // Capture only now, so clicks on inner buttons keep working.
-      e.currentTarget.setPointerCapture(s.id);
+      try {
+        e.currentTarget.setPointerCapture(s.id);
+      } catch {
+        // Capture can fail (e.g. NotFoundError); dragging still works without it.
+      }
     }
     setDx(x);
   };
