@@ -27,6 +27,10 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `kalender.teilnahme_erinnerung` | X Minuten vor Beginn eines Events, an dem man teilnimmt (15/30/60/120/1440)                                                                                                                                              | an, 60 Minuten                   |
 | `geburtstag.erinnerung`         | Ein Mitglied hat Geburtstag: am Tag selbst oder 1/2/3/5/7 Tage vorher (`minuten` = Tage in Minuten: 0/1440/2880/4320/7200/10080), ab 9 Uhr (Berlin)                                                                      | an, am Tag selbst                |
 | `schluessel.uebergabe`          | Jemand anderes trägt eine Übergabe an dich oder von dir ein (siehe [schluessel.md](./schluessel.md))                                                                                                                     | an, nicht abschaltbar            |
+| `schluessel.bedarf`             | Jemand braucht einen Schlüssel und du hast ihn oder sollst ihn bekommen; stündlich wiederholt, bis du antwortest (siehe [schluessel.md](./schluessel.md))                                                                | an, nicht abschaltbar            |
+| `schluessel.abgabe`             | Jemand möchte einen Schlüssel abgeben und du wohnst im Wohnheim; stündlich wiederholt, bis du antwortest                                                                                                                 | an, nicht abschaltbar            |
+| `schluessel.antwort`            | Antwort auf deine Schlüssel-Anfrage (Zusage, Ablehnung, Gegenvorschlag) oder „hat sich erledigt“                                                                                                                         | an, nicht abschaltbar            |
+| `schluessel.planung`            | Eine geplante Übergabe, die dich betrifft (Halter, Vorgänger, Empfänger), wurde angelegt, geändert oder gelöscht                                                                                                         | an, nicht abschaltbar            |
 | `umfrage.neu`                   | Eine Umfrage wurde erstellt, bei der du abstimmen musst oder darfst (siehe [umfragen.md](./umfragen.md))                                                                                                                 | an                               |
 | `umfrage.erinnerung`            | Ab 9 Uhr an den gewählten Tagen vor Ende einer Umfrage, ohne gültige Stimme; im Pflicht-Kreis unabhängig von der Einstellung                                                                                             | an                               |
 | `umfrage.erneut_abstimmen`      | Eine Änderung an der Umfrage macht deine Stimme ungültig                                                                                                                                                                 | an, nicht abschaltbar            |
@@ -151,3 +155,11 @@ Browser-/Geräteeinstellungen wieder erlaubt werden.
 
 ≈ 0 €: EventBridge Scheduler alle 5 Minuten ≈ 8.600 Aufrufe/Monat (Free Tier), Push-Dienste der Browser sind kostenlos.
 Vor dem ersten Deploy einmal `infra/bootstrap` neu anwenden (`scheduler:*` für die Deploy-Rolle).
+
+## Schlüssel-Anfragen: stündliche Wiederholung
+
+Aufgabe `schluessel.anfragen` (`registriereSchluesselAufgaben` in `bootstrap.ts`, Code in
+`schluesselBenachrichtigungen.ts`) läuft im 5-Minuten-Job. Sie sendet `schluessel.bedarf` bzw. `schluessel.abgabe` erneut an
+alle, die noch **nicht** geantwortet haben, solange die Anfrage `offen` ist, ihr Tag (und ein `bis` am heutigen Tag) nicht
+vorbei ist und nicht alle Angefragten abgelehnt haben. Höchstens einmal pro Stunde (`schluessel_anfragen.erinnert`),
+nicht zwischen 22 und 8 Uhr Berlin. Kein Dedupe-Schlüssel; der Zeitstempel in der Zeile ersetzt ihn.

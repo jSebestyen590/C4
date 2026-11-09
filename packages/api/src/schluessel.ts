@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { halterGleich, SCHLUESSEL_VERLAUF_MAX, type Halter } from '@c4/shared';
 import type { Db } from './db/client';
-import { schluessel, schluesselUebergaben, type SchluesselRow } from './db/schema';
+import {
+  schluessel,
+  schluesselPlanungen,
+  schluesselUebergaben,
+  type SchluesselRow,
+} from './db/schema';
+import { planungSortieren } from './schluesselAnfragen';
 
 // Club keys handed from person to person (see docs/schluessel.md).
 
@@ -46,6 +52,7 @@ export interface SchluesselStore {
   /**
    * Moves the key from `von` (the holder the client saw) to `an` and keeps only the newest
    * SCHLUESSEL_VERLAUF_MAX Übergaben. Throws UebergabeKonflikt when `von` is not the current holder.
+   * A member receiving the key uses up their earliest planned handover of this key (same transaction).
    */
   uebergeben(
     id: string,
@@ -194,6 +201,19 @@ export function createSchluesselStore(db: Db): SchluesselStore {
           .returning();
         // The stored holder keeps the spelling the key had, not the client's.
         await protokollieren(tx, id, halterAus(row.halterSub, row.halterName), an, akteur, jetzt);
+        if (h.sub) {
+          const geplant = planungSortieren(
+            await tx
+              .select()
+              .from(schluesselPlanungen)
+              .where(
+                and(eq(schluesselPlanungen.schluesselId, id), eq(schluesselPlanungen.anSub, h.sub)),
+              ),
+          )[0];
+          if (geplant) {
+            await tx.delete(schluesselPlanungen).where(eq(schluesselPlanungen.id, geplant.id));
+          }
+        }
         return alsDaten(neu!);
       });
     },

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS schluessel_anfragen_status_idx

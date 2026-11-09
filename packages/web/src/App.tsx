@@ -39,6 +39,7 @@ import { ProtokollePage } from './pages/ProtokollePage';
 import { PostenPage } from './pages/PostenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
+import { SchluesselAnfragePage } from './pages/SchluesselAnfragePage';
 import { SchluesselPage } from './pages/SchluesselPage';
 import { UmfrageFormularPage } from './pages/UmfrageFormularPage';
 import { UmfragePage } from './pages/UmfragePage';
@@ -196,6 +197,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="schluessel:lesen">
                 <RequireUsername>
                   <SchluesselPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/schluessel/anfragen/:id"
+            element={
+              <Protected permission="schluessel:lesen">
+                <RequireUsername>
+                  <SchluesselAnfragePage />
                 </RequireUsername>
               </Protected>
             }

@@ -133,6 +133,8 @@ export const mitgliedAktualisierenSchema = z
       .default(null),
     /** Whether other members see the birthday in the calendar (and get notified about it). */
     geburtstagImKalender: z.boolean().default(true),
+    /** Lives in the Wohnheim and is asked when someone wants to hand over a key. */
+    wohnheim: z.boolean().default(false),
   })
   .superRefine((daten, ctx) => {
     if (!daten.kontaktkanaele.some((k) => TELEFON_KANAELE.includes(k))) return;
@@ -188,6 +190,8 @@ export const mitgliedSchema = z.object({
   geburtsdatum: z.string().nullable(),
   /** Whether the birthday is shown in the calendar to other members. */
   geburtstagImKalender: z.boolean(),
+  /** Lives in the Wohnheim (asked about key handovers). */
+  wohnheim: z.boolean(),
   /** True when an admin deactivated the account (no login, hidden from lists and circles). */
   deaktiviert: z.boolean(),
   /** Roles of the member; only sent to administrators. */

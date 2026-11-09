@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS schluessel_antworten_anfrage_idx

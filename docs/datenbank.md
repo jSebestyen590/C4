@@ -24,6 +24,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   ihre Indizes, 0086 entzieht den Vorstandsposten `umfragen:verwalten` wieder. 0089–0090 fügen `event_kategorien.dauer`
   und `event_vorlagen.tage` per `ALTER` hinzu; ihre Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Umfragen:
   `0076_schluessel_vorstandsposten_rechte`.
+- 0130–0136 (Schlüssel-Anfragen): 0130 entfernt `mitglieder.wohnheim` wieder, 0131–0133 löschen ihre Tabellen
+  (`schluessel_anfragen`, `schluessel_antworten`, `schluessel_planungen`), 0134–0136 ihre Indizes. Rollback-Ziel nur für die
+  Anfragen: `0129_privatparty_nachrichten_message_idx`.
 - 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:
   `0091_umfragen_erstellt_idx`.
 - 0098–0100 (Status-Verlauf): 0098 löscht die Tabelle, 0099 den Index, 0100 löscht nur die Startbuchungen ohne Datum

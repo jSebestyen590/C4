@@ -20,6 +20,7 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { SchluesselAktionen } from '../SchluesselAktionen';
 import { SchluesselFormular } from '../SchluesselFormular';
+import { SchluesselPlanungen } from '../SchluesselPlanungen';
 import { HalterName, schluesselInvalidieren, useSchluessel } from '../schluesselDaten';
 import { pruefen } from '../warenApi';
 import { HalterZeile, personenNamen } from './SchluesselPage';
@@ -116,6 +117,8 @@ export function SchluesselDetailPage() {
           </Button>
         </Group>
       )}
+
+      <SchluesselPlanungen schluessel={s} />
 
       <Title order={3} mt="md">
         Verlauf

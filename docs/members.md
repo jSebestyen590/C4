@@ -9,18 +9,21 @@ Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`00
 pro Migration nur ein DDL-Statement und kein `ALTER ... SET NOT NULL`. Fremdschlüssel sind erlaubt. Später
 hinzugefügte Spalten sind deshalb nullable.
 
-| Spalte                             | Hinweise                                                                         |
-| ---------------------------------- | -------------------------------------------------------------------------------- |
-| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).       |
-| `status`                           | `anwaerter` (Standard), `mitglied`, `em`, `extern`. Nur Admins ändern ihn.       |
-| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                       |
-| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                             |
-| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                     |
-| `discord_name`                     | Discord-Username, nur zur Anzeige.                                               |
-| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                        |
-| `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900. |
-| `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung. |
-| `deaktiviert_am`                   | Zeitstempel, null = aktiv (Migration `0097`), siehe „Accounts deaktivieren“.     |
+| Spalte                             | Hinweise                                                                                                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vorname`, `nachname`              | Pflicht (bei eingeladenen Mitgliedern leer, bis sie ihr Profil ausfüllen).                                                                                               |
+| `status`                           | `anwaerter` (Standard), `mitglied`, `em`, `extern`. Nur Admins ändern ihn.                                                                                               |
+| `anrede`                           | `maennlich`, `weiblich`, `neutral`; null gilt als neutral.                                                                                                               |
+| `adresse`, `telefon`, `ueber_mich` | Optionaler Freitext.                                                                                                                                                     |
+| `kontaktkanaele`                   | Kommaseparierte Kanäle, z. B. `whatsapp,mail` (siehe unten).                                                                                                             |
+| `discord_name`                     | Discord-Username, nur zur Anzeige.                                                                                                                                       |
+| `profilbild_key`                   | S3-Key des großen Bildes; null ohne Bild.                                                                                                                                |
+| `geburtsdatum`                     | Optional, `YYYY-MM-DD` (Migration `0071`); nicht in der Zukunft, nicht vor 1900.                                                                                         |
+| `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung.                                                                                         |
+| `wohnheim`                         | Boolean, null = nein (Migration `0130`). Wer „Ich wohne im Wohnheim“ setzt, wird gefragt, wenn jemand einen Schlüssel abgeben möchte ([schluessel.md](./schluessel.md)). |
+| `deaktiviert_am`                   | Zeitstempel, null = aktiv (Migration `0097`), siehe „Accounts deaktivieren“.                                                                                             |
+
+**Wohnheim:** Schalter im Profil (`/profil`), `PUT /api/me/mitglied` sendet wie alle Felder auch `wohnheim`.
 
 **Geburtstag:** Im Profil (`/profil`, `DatumFeld` + Schalter „Geburtstag im Kalender anzeigen“, ohne Datum
 deaktiviert) pflegbar. `PUT /api/me/mitglied` muss immer beide Felder senden, sonst werden sie zurückgesetzt. Andere

@@ -67,6 +67,8 @@ export const mitglieder = pgTable('mitglieder', {
   geburtsdatum: date('geburtsdatum', { mode: 'string' }),
   /** Whether other members see the birthday; null (never chosen) counts as true. */
   geburtstagImKalender: boolean('geburtstag_im_kalender'),
+  /** Lives in the Wohnheim and is asked about key handovers; null counts as false. */
+  wohnheim: boolean('wohnheim'),
   status: text('status').$type<MitgliedStatus>().notNull().default('anwaerter'),
   /** Set when an admin deactivated the account; null = active. */
   deaktiviertAm: timestamp('deaktiviert_am', { withTimezone: true }),
@@ -833,6 +835,69 @@ export const schluesselUebergaben = pgTable('schluessel_uebergaben', {
   zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull().defaultNow(),
 });
 export type UebergabeRow = typeof schluesselUebergaben.$inferSelect;
+
+/** Key request: `art` 'bedarf' (needs a key, `schluesselId` optional) or 'abgabe' (hands one over). */
+export const schluesselAnfragen = pgTable('schluessel_anfragen', {
+  id: text('id').primaryKey(),
+  art: text('art').$type<'bedarf' | 'abgabe'>().notNull(),
+  erstellerSub: text('ersteller_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  schluesselId: text('schluessel_id').references(() => schluessel.id),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  /** `HH:MM` (Berlin); both null = all day. */
+  ab: text('ab'),
+  bis: text('bis'),
+  notiz: text('notiz'),
+  status: text('status')
+    .$type<'offen' | 'vergeben' | 'zurueckgezogen'>()
+    .notNull()
+    .default('offen'),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+  /** When the push (or its hourly repeat) last went out. */
+  erinnert: timestamp('erinnert', { withTimezone: true }).notNull().defaultNow(),
+});
+export type SchluesselAnfrageRow = typeof schluesselAnfragen.$inferSelect;
+
+/** One answer per member and request (unique `anfrage_id` + `sub`). */
+export const schluesselAntworten = pgTable('schluessel_antworten', {
+  id: text('id').primaryKey(),
+  anfrageId: text('anfrage_id')
+    .notNull()
+    .references(() => schluesselAnfragen.id),
+  sub: text('sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  art: text('art').$type<'zusage' | 'ablehnung' | 'gegenvorschlag'>().notNull(),
+  datum: date('datum', { mode: 'string' }),
+  ab: text('ab'),
+  bis: text('bis'),
+  notiz: text('notiz'),
+  /** The key a responder offers for a Bedarf without a named key. */
+  schluesselId: text('schluessel_id').references(() => schluessel.id),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+export type SchluesselAntwortRow = typeof schluesselAntworten.$inferSelect;
+
+/** Planned handover: the key goes to `anSub` at the given time. */
+export const schluesselPlanungen = pgTable('schluessel_planungen', {
+  id: text('id').primaryKey(),
+  schluesselId: text('schluessel_id')
+    .notNull()
+    .references(() => schluessel.id),
+  anSub: text('an_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  ab: text('ab'),
+  bis: text('bis'),
+  notiz: text('notiz'),
+  anfrageId: text('anfrage_id').references(() => schluesselAnfragen.id),
+  /** Cognito sub, deliberately without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+});
+export type SchluesselPlanungRow = typeof schluesselPlanungen.$inferSelect;
 
 // ---------------------------------------------------------------------------
 // Todos
