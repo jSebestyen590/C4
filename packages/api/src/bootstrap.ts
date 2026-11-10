@@ -35,6 +35,7 @@ import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
+import { createFinanzenStore } from './finanzen';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
@@ -96,6 +97,7 @@ export function createProduction() {
     todos,
     umfragen,
     trichter: createTrichterStore(db),
+    finanzen: createFinanzenStore(db),
     protokolle: createProtokolleStore(db),
     privatpartys,
     partymail,

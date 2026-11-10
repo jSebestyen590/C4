@@ -23,6 +23,7 @@ import {
   IconNotes,
   IconPhoto,
   IconCheck,
+  IconCoin,
   IconDeviceDesktop,
   IconBuildingWarehouse,
   IconHome,
@@ -234,6 +235,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       icon: <IconBox size={20} />,
       show: can('inventar:lesen'),
     },
+    {
+      to: '/finanzen',
+      label: 'Finanzen',
+      icon: <IconCoin size={20} />,
+      show: can('finanzen:lesen'),
+    },
   ].filter((l) => l.show);
 
   return (
@@ -288,7 +295,11 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
         <AppShell.Section
           grow
           mih={0}
-          style={{ overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+          style={{
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+          }}
         >
           {links.map((l) => (
             <NavLink

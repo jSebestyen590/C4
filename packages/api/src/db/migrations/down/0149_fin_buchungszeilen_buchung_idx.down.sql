@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_buchungszeilen_buchung_idx

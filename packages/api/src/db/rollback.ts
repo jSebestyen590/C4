@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type pg from 'pg';
-import { mitWiederholung } from './migrate';
+import { mitWiederholung } from './wiederholung';
 
 const MIGRATIONS_DIR = path.join(import.meta.dirname, 'migrations');
 

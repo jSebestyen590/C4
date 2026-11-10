@@ -32,6 +32,13 @@ export const PERMISSIONS = [
   'protokolle:lesen',
   'protokolle:schreiben',
   'privatpartys:verwalten',
+  'buch:lesen',
+  'kasse:zaehlen',
+  'belege:einreichen',
+  'finanzen:lesen',
+  'finanzen:buchen',
+  'finanzen:verwalten',
+  'finanzen:pruefen',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -48,6 +55,10 @@ export const POSTEN_RECHTE = [
   'trichter:verwalten',
   'protokolle:schreiben',
   'privatpartys:verwalten',
+  'finanzen:lesen',
+  'finanzen:buchen',
+  'finanzen:verwalten',
+  'finanzen:pruefen',
 ] as const satisfies readonly Permission[];
 export type PostenRecht = (typeof POSTEN_RECHTE)[number];
 
@@ -65,6 +76,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'trichter:verwalten',
     'protokolle:schreiben',
     'privatpartys:verwalten',
+    'finanzen:lesen',
+    'finanzen:buchen',
+    'finanzen:verwalten',
+    'finanzen:pruefen',
   ],
 };
 
@@ -85,6 +100,9 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'trichter:lesen',
     'bilder:lesen',
     'protokolle:lesen',
+    'buch:lesen',
+    'kasse:zaehlen',
+    'belege:einreichen',
   ],
   extern: [
     'content:read',
@@ -101,6 +119,9 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'trichter:lesen',
     'bilder:lesen',
     'protokolle:lesen',
+    'buch:lesen',
+    'kasse:zaehlen',
+    'belege:einreichen',
   ],
   mitglied: [
     'content:read',
@@ -117,6 +138,9 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'trichter:lesen',
     'bilder:lesen',
     'protokolle:lesen',
+    'buch:lesen',
+    'kasse:zaehlen',
+    'belege:einreichen',
   ],
   em: [
     'content:read',
@@ -133,6 +157,9 @@ export const STATUS_PERMISSIONS: Record<MitgliedStatus, readonly Permission[]> =
     'trichter:lesen',
     'bilder:lesen',
     'protokolle:lesen',
+    'buch:lesen',
+    'kasse:zaehlen',
+    'belege:einreichen',
   ],
 };
 

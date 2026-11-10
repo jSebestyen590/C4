@@ -34,10 +34,11 @@ Konten, die Summe der Zeilen ist 0. Das löst Umbuchungen (Safe → Bank ist _ei
 SumUp-Gebühren, Buch-Guthaben und Pfand ohne Sonderfälle. Die Oberfläche bleibt fachlich (Beleg,
 Zählung, Abrechnung); Soll/Haben sieht nur, wer ins Journal schaut.
 
-- `fin_konten`: `id`, `name`, `art` (`bargeld` | `bank` | `durchlauf` | `buch` | `erloes` |
-  `aufwand` | `neutral`), `parent_id` (Safe → Fächer, Kassen), `stueckelung boolean`,
+- `fin_konten`: `id`, `name`, `art` (`bargeld` | `bank` | `durchlauf` | `erloes` | `aufwand` |
+  `neutral`), `parent_id` (Safe → Fächer, Kassen), `stueckelung boolean`,
   `steuersatz_standard`, `archiviert`. Die Erlös-/Aufwandskonten sind die **Kategorien** (Nachfolger
-  der Access-Warengruppen als G+V-Konten).
+  der Access-Warengruppen als G+V-Konten). Das Buch ist ein Nebenbuch (Scheibe 2) und hat keine eigene
+  Kontoart.
 - `fin_buchungen`: `id`, `seq` (lückenlos), `datum date`, `text`, `quelle_typ`/`quelle_id` (Beleg,
   Zählung, Buch-Abrechnung, Bankumsatz, SumUp, Rechnung, Umbuchung, Eröffnung), `event_id`,
   `storno_von`, `erstellt_von`, `erstellt_am`, `prev_hash`, `hash`.
@@ -89,7 +90,10 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 - „Kette prüfen" (zunächst nur gegen die Datenbank).
 - Spike: Kann die API mit einer eigenen DSQL-Rolle laufen, die auf `fin_*`-Journaltabellen nur
   SELECT/INSERT hat (`CREATE ROLE`, `AWS IAM GRANT`, `dsql:DbConnect`)? Wenn ja, umstellen; sonst
-  bleibt der Schutz bei API + Hash-Kette + Anker.
+  bleibt der Schutz bei API + Hash-Kette + Anker. **Ergebnis:** bisher nur anhand der AWS-Doku
+  untersucht, der Praxistest auf dev steht aus (SSO war abgelaufen). Empfehlung: umstellen, aber in
+  einer eigenen Scheibe nach dem Journal-Grundgerüst und vor dem produktiven Einsatz; vorher den
+  Praxistest nachholen (siehe [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md)).
 - `docs/finanzen.md` (Zielbild, Verfahrensdokumentation im Aufbau) und `docs/plans/finanzen.md`
   (dieser Plan, wird nach jeder Scheibe fortgeschrieben), Zeilen in `docs/README.md`,
   `docs/datenbank.md`, `docs/posten.md`.
@@ -255,20 +259,20 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                         |
-| ------------------------- | --------------------------------------------- |
-| 0 Fundament               | offen                                         |
-| 1 Bargeld                 | offen                                         |
-| 2 Buch                    | offen                                         |
-| 3 Barkassen               | offen                                         |
-| 4 Belege                  | offen                                         |
-| 5 GoBD-Abschluss          | offen                                         |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen) |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                |
-| 8 Rechnungen              | offen                                         |
-| 9 Auswertungen            | offen                                         |
-| Ü Übernahme               | offen                                         |
-| 10 Unentgeltliche Abgaben | offen                                         |
+| Scheibe                   | Stand                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0 Fundament               | umgesetzt (PR folgt); Spike DSQL-Rolle: siehe [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md) |
+| 1 Bargeld                 | offen                                                                                                        |
+| 2 Buch                    | offen                                                                                                        |
+| 3 Barkassen               | offen                                                                                                        |
+| 4 Belege                  | offen                                                                                                        |
+| 5 GoBD-Abschluss          | offen                                                                                                        |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                               |
+| 8 Rechnungen              | offen                                                                                                        |
+| 9 Auswertungen            | offen                                                                                                        |
+| Ü Übernahme               | offen                                                                                                        |
+| 10 Unentgeltliche Abgaben | offen                                                                                                        |
 
 ## Verifikation (je Scheibe)
 

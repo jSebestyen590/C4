@@ -15,6 +15,8 @@ import type {
   BuchungsArt,
   Einheit,
   EventArt,
+  KontoArt,
+  SteuerArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -1187,4 +1189,76 @@ export const mailAbruf = pgTable('mail_abruf', {
   letzteUid: bigint('letzte_uid', { mode: 'number' }).notNull().default(0),
   letzterAbruf: timestamp('letzter_abruf', { withTimezone: true }),
   fehler: text('fehler'),
+});
+
+// ----- Finanzen (see docs/finanzen.md): append-only journal with a hash chain. Money is whole
+// cents; bigint columns are mapped to numbers (safe: amounts are capped far below 2^53).
+
+/** Chart of accounts. `art` has a CHECK constraint without `buch`. */
+export const finKonten = pgTable('fin_konten', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  art: text('art').$type<KontoArt>().notNull(),
+  parentId: text('parent_id').references((): AnyPgColumn => finKonten.id),
+  stueckelung: boolean('stueckelung').notNull().default(false),
+  /** Basis points, 1900 = 19 %. */
+  steuersatzStandard: integer('steuersatz_standard'),
+  archiviert: boolean('archiviert').notNull().default(false),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
+});
+export type FinKontoRow = typeof finKonten.$inferSelect;
+
+/** Journal entry; rows are only ever inserted. `seq` and `storno_von` have unique indexes. */
+export const finBuchungen = pgTable('fin_buchungen', {
+  id: text('id').primaryKey(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  text: text('text').notNull(),
+  quelleTyp: text('quelle_typ').notNull(),
+  quelleId: text('quelle_id'),
+  eventId: text('event_id').references(() => events.id),
+  stornoVon: text('storno_von').references((): AnyPgColumn => finBuchungen.id),
+  /** Cognito sub, deliberately without a foreign key (like `bestandsvorgaenge`). */
+  erstelltVon: text('erstellt_von').notNull(),
+  /** Truncated to milliseconds: it is part of the hash. */
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  prevHash: text('prev_hash').notNull(),
+  hash: text('hash').notNull(),
+});
+export type FinBuchungRow = typeof finBuchungen.$inferSelect;
+
+export const finBuchungszeilen = pgTable('fin_buchungszeilen', {
+  id: text('id').primaryKey(),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  pos: integer('pos').notNull(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  nettoCent: bigint('netto_cent', { mode: 'number' }),
+  steuerCent: bigint('steuer_cent', { mode: 'number' }),
+  steuersatz: integer('steuersatz'),
+  steuerArt: text('steuer_art').$type<SteuerArt>().notNull().default('keine'),
+});
+export type FinBuchungszeileRow = typeof finBuchungszeilen.$inferSelect;
+
+export const finStueckelung = pgTable(
+  'fin_stueckelung',
+  {
+    zeileId: text('zeile_id')
+      .notNull()
+      .references(() => finBuchungszeilen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.zeileId, t.nennwertCent] })],
+);
+
+/** Counter rows; 'journal' holds the last `seq` and the hash of the last entry. */
+export const finZaehler = pgTable('fin_zaehler', {
+  name: text('name').primaryKey(),
+  wert: bigint('wert', { mode: 'number' }).notNull(),
+  letzterHash: text('letzter_hash').notNull(),
 });

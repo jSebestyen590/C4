@@ -133,6 +133,19 @@ import {
   trichterAendernSchema,
   trichterEingabeSchema,
   TRICHTER_DURCHGAENGE_SEITE,
+  buchungEingabeSchema,
+  journalAbfrageSchema,
+  kontoAendernSchema,
+  kontoArchivSchema,
+  kontoEingabeSchema,
+  pruefeKette,
+  stornoEingabeSchema,
+  type BuchungDetailDto,
+  type BuchungenSeiteDto,
+  type BuchungListeDto,
+  type FinanzMitgliedDto,
+  type KettenErgebnisDto,
+  type KontoDto,
   type DurchgaengeSeiteDto,
   type DurchgangDto,
   type TrichterDto,
@@ -274,6 +287,13 @@ import {
 } from './schluesselAnfragen';
 import type { DurchgangDaten, TrichterDaten, TrichterStore } from './trichter';
 import {
+  BuchungUngueltig,
+  KontoKonflikt,
+  KontoUngueltig,
+  StornoKonflikt,
+  type FinanzenStore,
+} from './finanzen';
+import {
   ProtokollAbgeschlossen,
   ProtokollExistiert,
   ProtokollVeraltet,
@@ -342,6 +362,7 @@ export interface AppDeps {
   todos: TodosStore;
   umfragen: UmfragenStore;
   trichter: TrichterStore;
+  finanzen: FinanzenStore;
   protokolle: ProtokollStore;
   privatpartys: PrivatpartysStore;
   /** The Party-Mail mailbox (IMAP/SMTP); `eingerichtet()` is false without the secret. */
@@ -428,6 +449,10 @@ export function createApp(deps: AppDeps) {
   const umfragenVerwalten = requirePermission('umfragen:verwalten');
   const trichterLesen = requirePermission('trichter:lesen');
   const trichterVerwalten = requirePermission('trichter:verwalten');
+  const finanzenLesen = requirePermission('finanzen:lesen');
+  const finanzenBuchen = requirePermission('finanzen:buchen');
+  const finanzenVerwalten = requirePermission('finanzen:verwalten');
+  const finanzenPruefen = requirePermission('finanzen:pruefen');
   const bilderLesen = requirePermission('bilder:lesen');
   const protokolleLesen = requirePermission('protokolle:lesen');
   const protokolleSchreiben = requirePermission('protokolle:schreiben');
@@ -1513,6 +1538,33 @@ export function createApp(deps: AppDeps) {
         anrede: zeile?.anrede ?? 'neutral',
       };
     };
+  };
+
+  /** Display data of the creators in Finanzen DTOs; null if the member has no profile any more. */
+  const finanzenMitglieder = async () => {
+    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
+    const zeilen = new Map(rows.map((r) => [r.sub, r]));
+    return (sub: string): FinanzMitgliedDto | null => {
+      const zeile = zeilen.get(sub);
+      if (!zeile) return null;
+      return {
+        sub,
+        username: konten.get(sub)?.username ?? null,
+        vorname: zeile.vorname,
+        nachname: zeile.nachname,
+        status: zeile.status,
+        anrede: zeile.anrede ?? 'neutral',
+      };
+    };
+  };
+
+  /** Maps the domain errors of the Finanzen store to HTTP statuses. */
+  const finanzenFehler = (err: unknown): never => {
+    if (err instanceof BuchungUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof KontoUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof StornoKonflikt) throw new HTTPException(409, { message: err.message });
+    if (err instanceof KontoKonflikt) throw new HTTPException(409, { message: err.message });
+    throw err;
   };
 
   const alsTrichterDto = (t: TrichterDaten): TrichterDto => ({
@@ -3542,6 +3594,134 @@ export function createApp(deps: AppDeps) {
         }
         await deps.trichter.durchgangLoeschen(d.id);
         return c.json({ ok: true });
+      })
+      // ----- Finanzen (see docs/finanzen.md). Bookings are insert-only: no PUT/DELETE on them.
+      .get('/finanzen/konten', auth, finanzenLesen, async (c) => {
+        const mitArchiv = c.req.query('archiviert') === '1';
+        const dto: KontoDto[] = await deps.finanzen.konten(mitArchiv);
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/konten',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', kontoEingabeSchema),
+        async (c) => {
+          const id = await deps.finanzen.kontoAnlegen(c.req.valid('json')).catch(finanzenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .put(
+        '/finanzen/konten/:id/archiv',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', kontoArchivSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen.kontoArchivieren(c.req.param('id'), c.req.valid('json').archiviert),
+            'Konto nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .put(
+        '/finanzen/konten/:id',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', kontoAendernSchema),
+        async (c) => {
+          const daten = c.req.valid('json');
+          gefunden(
+            await deps.finanzen
+              .kontoAendern(c.req.param('id'), {
+                ...(daten.name !== undefined && { name: daten.name }),
+                ...(daten.art !== undefined && { art: daten.art }),
+                ...(daten.parentId !== undefined && { parentId: daten.parentId }),
+                ...(daten.stueckelung !== undefined && { stueckelung: daten.stueckelung }),
+                ...(daten.steuersatzStandard !== undefined && {
+                  steuersatzStandard: daten.steuersatzStandard,
+                }),
+              })
+              .catch(finanzenFehler),
+            'Konto nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // Journal page by page, newest first; `weiter` is the `vorSeq` of the next page.
+      .get(
+        '/finanzen/buchungen',
+        auth,
+        finanzenLesen,
+        zValidator('query', journalAbfrageSchema),
+        async (c) => {
+          const abfrage = c.req.valid('query');
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.journal({ ...abfrage, limit: abfrage.limit + 1 }),
+            finanzenMitglieder(),
+          ]);
+          const seite = liste.slice(0, abfrage.limit);
+          const dto: BuchungenSeiteDto = {
+            buchungen: seite.map((b): BuchungListeDto => ({
+              ...b,
+              erstelltVon: mitglied(b.erstelltVon),
+            })),
+            weiter: liste.length > seite.length ? (seite.at(-1)?.seq ?? null) : null,
+          };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/buchungen/:id', auth, finanzenLesen, async (c) => {
+        const [b, mitglied] = await Promise.all([
+          deps.finanzen.buchung(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const buchung = gefunden(b, 'Buchung nicht gefunden');
+        const dto: BuchungDetailDto = { ...buchung, erstelltVon: mitglied(buchung.erstelltVon) };
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/buchungen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', buchungEingabeSchema),
+        async (c) => {
+          const ergebnis = await deps.finanzen
+            .buchen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, 201);
+        },
+      )
+      .post(
+        '/finanzen/buchungen/:id/storno',
+        auth,
+        finanzenBuchen,
+        zValidator('json', stornoEingabeSchema),
+        async (c) => {
+          const ergebnis = gefunden(
+            await deps.finanzen
+              .stornieren(c.req.param('id'), c.req.valid('json'), c.get('user').sub)
+              .catch(finanzenFehler),
+            'Buchung nicht gefunden',
+          );
+          return c.json(ergebnis, 201);
+        },
+      )
+      // Verifies the whole hash chain and compares the counter with the last booking.
+      .get('/finanzen/kette', auth, finanzenPruefen, async (c) => {
+        const daten = await deps.finanzen.kettenDaten();
+        const ergebnis = await pruefeKette(daten.buchungen);
+        const zaehlerPasst =
+          daten.zaehlerWert === ergebnis.letzteSeq && daten.zaehlerHash === ergebnis.kopfHash;
+        const dto: KettenErgebnisDto = {
+          ...ergebnis,
+          zaehlerWert: daten.zaehlerWert,
+          zaehlerHash: daten.zaehlerHash,
+          zaehlerPasst,
+          ok: zaehlerPasst && ergebnis.fehler.length === 0,
+          geprueftAm: new Date().toISOString(),
+        };
+        return c.json(dto);
       })
       // ----- Umfragen
       .get('/umfragen', auth, umfragenLesen, async (c) => {

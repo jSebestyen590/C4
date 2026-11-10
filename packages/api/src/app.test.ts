@@ -102,6 +102,7 @@ import { createFakeProtokolleStore } from './protokolle.fake';
 import { createFakeSchluesselAnfragenStore } from './schluesselAnfragen.fake';
 import { createFakeTodosStore } from './todos.fake';
 import { createFakeTrichterStore } from './trichter.fake';
+import { createFakeFinanzenStore } from './finanzen.fake';
 import { createFakeUmfragenStore } from './umfragen.fake';
 
 /** Map-backed fake of the key store with the same conflict and history rules as the real one. */
@@ -829,6 +830,8 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: schluessel } = makeSchluesselFake(anfragenFake.planungVerbrauchen);
   const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const { store: trichter } = createFakeTrichterStore();
+  const finanzenFake = createFakeFinanzenStore();
+  const finanzen = finanzenFake.store;
   const { store: protokolle, liste: protokollListe } = createFakeProtokolleStore();
   const { store: todos, liste: todosListe } = createFakeTodosStore();
   const {
@@ -887,6 +890,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     todos,
     umfragen,
     trichter,
+    finanzen,
     protokolle,
     privatpartys,
     partymail: partymail.mail,
@@ -923,6 +927,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     todosListe,
     umfragen,
     umfragenListe,
+    finanzenFake,
     protokollListe,
     privatpartys,
     privatpartyPersonen,
@@ -977,6 +982,9 @@ describe('api', () => {
         'trichter:lesen',
         'bilder:lesen',
         'protokolle:lesen',
+        'buch:lesen',
+        'kasse:zaehlen',
+        'belege:einreichen',
       ],
     });
   });
@@ -9627,5 +9635,491 @@ describe('privatpartys: Party-Mail', () => {
     expect(d.termine).toHaveLength(0);
     expect(d.mailAdresse).toBe('alt@y.de');
     expect(d.nachrichten).toHaveLength(1);
+  });
+});
+
+describe('finanzen', () => {
+  const json = (token: string, method: string, body?: unknown) => ({
+    method,
+    headers: { ...bearer(token), 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  /** v may read, r may check the chain; admin (a) has all four Finanzen rights. */
+  async function setup() {
+    const t = makeApp();
+    t.userAdmin.konten.mockResolvedValue(
+      new Map(
+        ['a', 'r', 'v', 'm2'].map((sub) => [
+          sub,
+          { sub, kontoName: sub, username: `user-${sub}`, aktiviert: true, enabled: true },
+        ]),
+      ),
+    );
+    for (const sub of ['a', 'r', 'v', 'm2']) {
+      await t.mitglieder.speichern(sub, {
+        vorname: 'A',
+        nachname: 'B',
+        anrede: 'neutral',
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: null,
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
+        wohnheim: null,
+      });
+    }
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'v' ? ['finanzen:lesen' as const] : sub === 'r' ? ['finanzen:pruefen' as const] : [],
+    );
+    const anfrage = (token: string, method: string, pfad: string, body?: unknown) =>
+      t.app.request(`/api/finanzen${pfad}`, json(token, method, body));
+    const buchen = (body: Record<string, unknown>, token = 'admin-token') =>
+      anfrage(token, 'POST', '/buchungen', body);
+    /** Moves `betragCent` from the Bank to the Geldtransit. */
+    const umbuchung = (betragCent = 500, extra: Record<string, unknown> = {}) =>
+      buchen({
+        datum: '2027-01-05',
+        text: 'Umbuchung',
+        quelleTyp: 'umbuchung',
+        zeilen: [
+          { kontoId: 'geldtransit', betragCent },
+          { kontoId: 'bank', betragCent: -betragCent },
+        ],
+        ...extra,
+      });
+    const lesen = async <T>(token: string, pfad: string) =>
+      (await (await anfrage(token, 'GET', pfad)).json()) as T;
+    return { ...t, anfrage, buchen, umbuchung, lesen };
+  }
+
+  it('requires the matching right on every route', async () => {
+    const t = await setup();
+    const routen: [string, string, string][] = [
+      ['GET', '/konten', 'finanzen:lesen'],
+      ['POST', '/konten', 'finanzen:verwalten'],
+      ['PUT', '/konten/safe', 'finanzen:verwalten'],
+      ['PUT', '/konten/safe/archiv', 'finanzen:verwalten'],
+      ['GET', '/buchungen', 'finanzen:lesen'],
+      ['GET', '/buchungen/x', 'finanzen:lesen'],
+      ['POST', '/buchungen', 'finanzen:buchen'],
+      ['POST', '/buchungen/x/storno', 'finanzen:buchen'],
+      ['GET', '/kette', 'finanzen:pruefen'],
+    ];
+    for (const [method, pfad] of routen) {
+      for (const token of ['member-token', 'reader-token']) {
+        if (token === 'reader-token' && pfad === '/kette') continue; // r holds finanzen:pruefen
+        const res = await t.anfrage(token, method, pfad, method === 'GET' ? undefined : {});
+        expect(res.status, `${method} ${pfad} ${token}`).toBe(403);
+      }
+    }
+    // Lesen alone neither books, manages nor checks.
+    expect((await t.anfrage('vorstand-token', 'GET', '/konten')).status).toBe(200);
+    expect((await t.anfrage('vorstand-token', 'POST', '/buchungen', {})).status).toBe(403);
+    expect((await t.anfrage('vorstand-token', 'POST', '/konten', {})).status).toBe(403);
+    expect((await t.anfrage('vorstand-token', 'GET', '/kette')).status).toBe(403);
+    expect((await t.anfrage('reader-token', 'GET', '/kette')).status).toBe(200);
+    expect((await t.anfrage('reader-token', 'GET', '/konten')).status).toBe(403);
+  });
+
+  it('lists the base accounts with balance and manages the chart of accounts', async () => {
+    const t = await setup();
+    type K = {
+      id: string;
+      name: string;
+      saldoCent: number;
+      archiviert: boolean;
+      parentId: string | null;
+    };
+    const konten = await t.lesen<K[]>('vorstand-token', '/konten');
+    expect(konten.map((k) => k.id).sort()).toEqual(['bank', 'eroeffnung', 'geldtransit', 'safe']);
+    expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
+
+    const neu = await t.anfrage('admin-token', 'POST', '/konten', {
+      name: 'Getränke',
+      art: 'erloes',
+      steuersatzStandard: 1900,
+    });
+    expect(neu.status).toBe(201);
+    const { id } = (await neu.json()) as { id: string };
+    const unter = await t.anfrage('admin-token', 'POST', '/konten', {
+      name: 'Bier',
+      art: 'erloes',
+      parentId: id,
+    });
+    expect(unter.status).toBe(201);
+    const { id: unterId } = (await unter.json()) as { id: string };
+
+    // a partial change leaves the other fields alone
+    expect(
+      (await t.anfrage('admin-token', 'PUT', `/konten/${id}`, { name: 'Getränke 19' })).status,
+    ).toBe(200);
+    const nachher = (
+      await t.lesen<(K & { steuersatzStandard: number })[]>('vorstand-token', '/konten')
+    ).find((k) => k.id === id);
+    expect(nachher).toMatchObject({
+      name: 'Getränke 19',
+      steuersatzStandard: 1900,
+      parentId: null,
+    });
+
+    // unknown parent, itself, cycle, empty body, unknown id
+    expect(
+      (
+        await t.anfrage('admin-token', 'POST', '/konten', {
+          name: 'X',
+          art: 'neutral',
+          parentId: 'nix',
+        })
+      ).status,
+    ).toBe(400);
+    expect((await t.anfrage('admin-token', 'PUT', `/konten/${id}`, { parentId: id })).status).toBe(
+      400,
+    );
+    expect(
+      (await t.anfrage('admin-token', 'PUT', `/konten/${id}`, { parentId: unterId })).status,
+    ).toBe(400);
+    expect((await t.anfrage('admin-token', 'PUT', `/konten/${id}`, {})).status).toBe(400);
+    expect((await t.anfrage('admin-token', 'PUT', '/konten/nix', { name: 'X' })).status).toBe(404);
+    expect(
+      (await t.anfrage('admin-token', 'PUT', '/konten/nix/archiv', { archiviert: true })).status,
+    ).toBe(404);
+    expect(
+      (await t.anfrage('admin-token', 'POST', '/konten', { name: 'X', art: 'buch' })).status,
+    ).toBe(400);
+
+    // archive and reactivate
+    expect(
+      (await t.anfrage('admin-token', 'PUT', `/konten/${unterId}/archiv`, { archiviert: true }))
+        .status,
+    ).toBe(200);
+    expect((await t.lesen<K[]>('vorstand-token', '/konten')).some((k) => k.id === unterId)).toBe(
+      false,
+    );
+    const alle = await t.lesen<K[]>('vorstand-token', '/konten?archiviert=1');
+    expect(alle.find((k) => k.id === unterId)?.archiviert).toBe(true);
+  });
+
+  it('refuses to change art, Stückelung and parent once an account has lines', async () => {
+    const t = await setup();
+    expect((await t.umbuchung()).status).toBe(201);
+    const aendern = (body: unknown) => t.anfrage('admin-token', 'PUT', '/konten/bank', body);
+    expect((await aendern({ art: 'neutral' })).status).toBe(409);
+    expect((await aendern({ stueckelung: true })).status).toBe(409);
+    expect((await aendern({ parentId: 'safe' })).status).toBe(409);
+    // unchanged values and name/tax rate stay possible
+    expect((await aendern({ art: 'bank', name: 'Bank neu', steuersatzStandard: 700 })).status).toBe(
+      200,
+    );
+  });
+
+  it('books, shows the entry in the journal and moves the balances', async () => {
+    const t = await setup();
+    const res = await t.umbuchung(500);
+    expect(res.status).toBe(201);
+    const ergebnis = (await res.json()) as { id: string; seq: number };
+    expect(ergebnis.seq).toBe(1);
+    expect((await (await t.umbuchung(250)).json()) as { seq: number }).toMatchObject({ seq: 2 });
+
+    const saldo = async (id: string) =>
+      (await t.lesen<{ id: string; saldoCent: number }[]>('vorstand-token', '/konten')).find(
+        (k) => k.id === id,
+      )?.saldoCent;
+    expect(await saldo('geldtransit')).toBe(750);
+    expect(await saldo('bank')).toBe(-750);
+
+    const seite = await t.lesen<{
+      buchungen: {
+        id: string;
+        seq: number;
+        betragCent: number;
+        erstelltVon: { username: string; sub: string } | null;
+      }[];
+      weiter: number | null;
+    }>('vorstand-token', '/buchungen');
+    expect(seite.weiter).toBeNull();
+    expect(seite.buchungen.map((b) => b.seq)).toEqual([2, 1]);
+    expect(seite.buchungen[1]).toMatchObject({
+      id: ergebnis.id,
+      betragCent: 500,
+      text: 'Umbuchung',
+      datum: '2027-01-05',
+      quelleTyp: 'umbuchung',
+      stornoVon: null,
+      storniertDurch: null,
+      erstelltVon: { sub: 'a', username: 'user-a', status: 'anwaerter' },
+    });
+
+    const detail = await t.lesen<{
+      zeilen: { pos: number; kontoName: string; betragCent: number }[];
+      hash: string;
+      prevHash: string;
+    }>('vorstand-token', `/buchungen/${ergebnis.id}`);
+    expect(detail.prevHash).toBe('0'.repeat(64));
+    expect(detail.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(detail.zeilen.map((z) => [z.pos, z.kontoName, z.betragCent])).toEqual([
+      [1, 'Geldtransit', 500],
+      [2, 'Bank (Fyrst)', -500],
+    ]);
+    expect((await t.anfrage('vorstand-token', 'GET', '/buchungen/nix')).status).toBe(404);
+  });
+
+  it('filters and pages the journal', async () => {
+    const t = await setup();
+    await t.umbuchung(100, { datum: '2027-01-01' });
+    await t.umbuchung(200, { datum: '2027-02-01' });
+    await t.buchen({
+      datum: '2027-03-01',
+      text: 'Eröffnung',
+      zeilen: [
+        { kontoId: 'eroeffnung', betragCent: -1000 },
+        {
+          kontoId: 'safe',
+          betragCent: 1000,
+          stueckelung: [{ nennwertCent: 1000, anzahl: 1 }],
+        },
+      ],
+    });
+    const seqs = async (abfrage: string) =>
+      (
+        await t.lesen<{ buchungen: { seq: number }[] }>('vorstand-token', `/buchungen${abfrage}`)
+      ).buchungen.map((b) => b.seq);
+    expect(await seqs('')).toEqual([3, 2, 1]);
+    expect(await seqs('?kontoId=safe')).toEqual([3]);
+    expect(await seqs('?kontoId=bank')).toEqual([2, 1]);
+    expect(await seqs('?von=2027-02-01')).toEqual([3, 2]);
+    expect(await seqs('?von=2027-01-15&bis=2027-02-15')).toEqual([2]);
+    const erste = await t.lesen<{ buchungen: { seq: number }[]; weiter: number | null }>(
+      'vorstand-token',
+      '/buchungen?limit=2',
+    );
+    expect(erste.buchungen.map((b) => b.seq)).toEqual([3, 2]);
+    expect(erste.weiter).toBe(2);
+    expect(await seqs('?limit=2&vorSeq=2')).toEqual([1]);
+    expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?limit=500')).status).toBe(400);
+    expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?von=kaputt')).status).toBe(400);
+  });
+
+  it('rejects invalid bookings with 400 and German messages', async () => {
+    const t = await setup();
+    const fehler = async (body: Record<string, unknown>) => {
+      const res = await t.buchen(body);
+      expect(res.status).toBe(400);
+      return res.text();
+    };
+    const basis = { datum: '2027-01-05', text: 'Test' };
+    expect(
+      await fehler({
+        ...basis,
+        zeilen: [
+          { kontoId: 'bank', betragCent: -500 },
+          { kontoId: 'geldtransit', betragCent: 400 },
+        ],
+      }),
+    ).toContain('geht nicht auf');
+    expect(
+      await fehler({
+        ...basis,
+        zeilen: [
+          { kontoId: 'bank', betragCent: -500 },
+          { kontoId: 'nix', betragCent: 500 },
+        ],
+      }),
+    ).toContain('Das Konto gibt es nicht');
+    expect(
+      await fehler({
+        ...basis,
+        zeilen: [
+          { kontoId: 'safe', betragCent: 500 },
+          { kontoId: 'bank', betragCent: -500 },
+        ],
+      }),
+    ).toContain('Stückelung');
+    expect(await fehler({ ...basis, zeilen: [{ kontoId: 'bank', betragCent: 0 }] })).toContain(
+      'mindestens zwei',
+    );
+    expect(
+      await fehler({
+        ...basis,
+        zeilen: [
+          { kontoId: 'bank', betragCent: -1.5 },
+          { kontoId: 'geldtransit', betragCent: 1.5 },
+        ],
+      }),
+    ).toContain('ganze Cent');
+    expect(await fehler({ ...basis, quelleTyp: 'storno', zeilen: [] })).toBeTruthy();
+
+    await t.anfrage('admin-token', 'PUT', '/konten/geldtransit/archiv', { archiviert: true });
+    expect((await t.umbuchung()).status).toBe(400);
+    // nothing was booked
+    expect(
+      (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+    ).toHaveLength(0);
+  });
+
+  it('stores the denominations of a booking on a Stückelung account', async () => {
+    const t = await setup();
+    const res = await t.buchen({
+      datum: '2027-01-05',
+      text: 'Anfangsbestand',
+      zeilen: [
+        { kontoId: 'eroeffnung', betragCent: -2500 },
+        {
+          kontoId: 'safe',
+          betragCent: 2500,
+          stueckelung: [
+            { nennwertCent: 2000, anzahl: 1 },
+            { nennwertCent: 500, anzahl: 1 },
+          ],
+        },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: string };
+    const detail = await t.lesen<{ zeilen: { kontoId: string; stueckelung: unknown[] }[] }>(
+      'vorstand-token',
+      `/buchungen/${id}`,
+    );
+    expect(detail.zeilen.find((z) => z.kontoId === 'safe')?.stueckelung).toEqual([
+      { nennwertCent: 500, anzahl: 1 },
+      { nennwertCent: 2000, anzahl: 1 },
+    ]);
+  });
+
+  it('reverses a booking once and never a reversal', async () => {
+    const t = await setup();
+    const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
+    const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-06',
+    });
+    expect(storno.status).toBe(201);
+    const { id: stornoId, seq } = (await storno.json()) as { id: string; seq: number };
+    expect(seq).toBe(2);
+
+    const original = await t.lesen<{ storniertDurch: { id: string; seq: number } | null }>(
+      'vorstand-token',
+      `/buchungen/${id}`,
+    );
+    expect(original.storniertDurch).toEqual({ id: stornoId, seq: 2 });
+    const detail = await t.lesen<{
+      text: string;
+      quelleTyp: string;
+      stornoVon: { id: string; seq: number } | null;
+      zeilen: { kontoId: string; betragCent: number }[];
+    }>('vorstand-token', `/buchungen/${stornoId}`);
+    expect(detail).toMatchObject({
+      text: 'Storno von Nr. 1: Umbuchung',
+      quelleTyp: 'storno',
+      stornoVon: { id, seq: 1 },
+    });
+    expect(detail.zeilen.map((z) => [z.kontoId, z.betragCent])).toEqual([
+      ['geldtransit', -500],
+      ['bank', 500],
+    ]);
+    const konten = await t.lesen<{ id: string; saldoCent: number }[]>('vorstand-token', '/konten');
+    expect(konten.find((k) => k.id === 'bank')?.saldoCent).toBe(0);
+
+    // twice, and a Storno of a Storno
+    const nochmal = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-07',
+    });
+    expect(nochmal.status).toBe(409);
+    expect(await nochmal.text()).toContain('bereits storniert');
+    expect(
+      (
+        await t.anfrage('admin-token', 'POST', `/buchungen/${stornoId}/storno`, {
+          datum: '2027-01-07',
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await t.anfrage('admin-token', 'POST', '/buchungen/nix/storno', { datum: '2027-01-07' }))
+        .status,
+    ).toBe(404);
+    expect(
+      (await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum: 'x' })).status,
+    ).toBe(400);
+  });
+
+  it('uses the given text for a Storno and may reverse into archived accounts', async () => {
+    const t = await setup();
+    const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
+    await t.anfrage('admin-token', 'PUT', '/konten/geldtransit/archiv', { archiviert: true });
+    const res = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-06',
+      text: 'Falscher Betrag',
+    });
+    expect(res.status).toBe(201);
+    const { id: stornoId } = (await res.json()) as { id: string };
+    expect((await t.lesen<{ text: string }>('vorstand-token', `/buchungen/${stornoId}`)).text).toBe(
+      'Falscher Betrag',
+    );
+  });
+
+  it('verifies the chain and detects manipulation', async () => {
+    const t = await setup();
+    const leer = await t.lesen<{ ok: boolean; anzahl: number; kopfHash: string }>(
+      'reader-token',
+      '/kette',
+    );
+    expect(leer).toMatchObject({ ok: true, anzahl: 0, kopfHash: '0'.repeat(64) });
+
+    const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
+    await t.umbuchung(300);
+    await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum: '2027-01-06' });
+    const intakt = await t.lesen<{
+      ok: boolean;
+      anzahl: number;
+      zaehlerPasst: boolean;
+      fehler: unknown[];
+      letzteSeq: number;
+    }>('reader-token', '/kette');
+    expect(intakt).toMatchObject({
+      ok: true,
+      anzahl: 3,
+      zaehlerPasst: true,
+      fehler: [],
+      letzteSeq: 3,
+    });
+
+    // tamper with an amount in the stored journal
+    t.finanzenFake.buchungen[1]!.zeilen = t.finanzenFake.buchungen[1]!.zeilen.map((z) =>
+      z.pos === 1 ? { ...z, betragCent: 301 } : z,
+    );
+    const kaputt = await t.lesen<{ ok: boolean; fehler: { seq: number; art: string }[] }>(
+      'reader-token',
+      '/kette',
+    );
+    expect(kaputt.ok).toBe(false);
+    expect(kaputt.fehler).toContainEqual({ seq: 2, art: 'hash' });
+    expect(kaputt.fehler).toContainEqual({ seq: 2, art: 'summe' });
+  });
+
+  it('notices a counter that does not match the last booking', async () => {
+    const t = await setup();
+    await t.umbuchung(500);
+    t.finanzenFake.zaehler.wert = 2;
+    const res = await t.lesen<{ ok: boolean; zaehlerPasst: boolean; fehler: unknown[] }>(
+      'reader-token',
+      '/kette',
+    );
+    expect(res).toMatchObject({ ok: false, zaehlerPasst: false, fehler: [] });
+  });
+
+  it('has no routes to change or delete bookings', async () => {
+    const t = await setup();
+    const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
+    for (const method of ['PUT', 'PATCH', 'DELETE']) {
+      for (const pfad of ['/buchungen', `/buchungen/${id}`, `/buchungen/${id}/storno`]) {
+        const res = await t.anfrage('admin-token', method, pfad, {});
+        expect([404, 405], `${method} ${pfad}`).toContain(res.status);
+      }
+    }
+    expect(
+      (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+    ).toHaveLength(1);
   });
 });

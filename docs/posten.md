@@ -39,7 +39,7 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
   stehen die Rechte aus `POSTEN_RECHTE` (`packages/shared/src/roles.ts`: `users:manage`, `posten:bearbeiten`,
-  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben`, `privatpartys:verwalten`); weitere Rechte
+  `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben`, `privatpartys:verwalten`, `finanzen:lesen`, `finanzen:buchen`, `finanzen:verwalten`, `finanzen:pruefen`); weitere Rechte
   trägt man dort ein.
 - Es gibt keine eigene Vorstandsrolle: Archivierte Posten sehen und reaktivieren alle mit `posten:bearbeiten`.
 
@@ -81,8 +81,14 @@ Vorstandsvorsitz (Vize / Vize / Vize) und Buchhaltung (Finanzer / Finanzerin / F
 dieselben Rechte wie die Gruppe `admin` (`users:manage`, `posten:bearbeiten`, dazu `waren:verwalten` und
 `inventar:verwalten` per Migration `0024`, `events:verwalten` und `kalender:einrichten` per Migration `0065`,
 `schluessel:verwalten` per Migration `0076`, `umfragen:verwalten` per Migration `0086`); wer sie besetzt, kann
-also auch Mitglieder einladen sowie Status und Rollen ändern. Die Ids sind fest
+also auch Mitglieder einladen sowie Status und Rollen ändern. Anders als bei den übrigen Rechten bekommen nicht alle
+drei dasselbe: Migration `0138` gibt Buchhaltung `finanzen:lesen`, `finanzen:buchen` und `finanzen:verwalten`,
+Vorstandsvorsitz und Stellvertretender Vorstandsvorsitz nur `finanzen:lesen` (siehe [finanzen.md](./finanzen.md)). Die Ids sind fest
 (`vorstandsvorsitz`, `stellvertretender-vorstandsvorsitz`, `buchhaltung`), die Migration ist idempotent.
+
+**Kassenprüfung:** Migration `0137` legt den Posten `kassenpruefung` an (Kassenprüfer / Kassenprüferin /
+Kassenprüfer:in). Migration `0138` gibt ihm `finanzen:lesen` und `finanzen:pruefen`: Er liest den Kontenplan und das
+Journal und prüft die Hash-Kette, kann aber nicht buchen. Die Id ist fest, die Migrationen sind idempotent.
 
 Beim Setzen des Startdatums einer Besetzung wird das Ende automatisch auf den 31.12. desselben Jahres gesetzt; es lässt sich danach ändern oder leeren.
 
