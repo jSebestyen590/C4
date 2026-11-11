@@ -46,8 +46,8 @@ Ziel ist nicht, Manipulation unmöglich zu machen, sondern jede Änderung erkenn
 | `finanzen:pruefen`   | Admin, Kassenprüfung                                                          | „Kette prüfen“ (später Prüfexport)                              |
 
 Die ersten drei Rechte stehen in `STATUS_PERMISSIONS`, die `finanzen:*`-Rechte vergeben Posten
-(Migration `0138`, siehe [posten.md](./posten.md)) und die Gruppe `admin`. Der Posten
-`kassenpruefung` kommt mit Migration `0137`. Wer ein `finanzen:*`-Recht hat, sieht den Menüpunkt
+(Migration `0142`, siehe [posten.md](./posten.md)) und die Gruppe `admin`. Der Posten
+`kassenpruefung` kommt mit Migration `0141`. Wer ein `finanzen:*`-Recht hat, sieht den Menüpunkt
 „Finanzen“.
 
 ## Kontenplan
@@ -57,7 +57,7 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
 
 - **Arten:** Bargeld, Bank, Durchlauf, Erlöse, Aufwand, Neutral. Eine Art „Buch“ gibt es bewusst nicht:
   Das Buch der Mitglieder (Scheibe 2) ist ein Nebenbuch ohne Journalbuchungen.
-- **Grundkonten** mit festen Ids (Migration `0145`): `safe` „Safe“ (Bargeld, mit Stückelung), `bank`
+- **Grundkonten** mit festen Ids (Migration `0149`): `safe` „Safe“ (Bargeld, mit Stückelung), `bank`
   „Bank (Fyrst)“, `geldtransit` „Geldtransit“ (Durchlauf), `eroeffnung` „Eröffnung / Saldovortrag“
   (Neutral). Weitere Konten legt `finanzen:verwalten` an.
 - **Unterkonten** über `parent_id` (später z. B. Safe → Fächer). Das übergeordnete Konto muss
@@ -70,7 +70,7 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
 
 ## Journal
 
-Tabellen (Migrationen `0140`–`0144`, Index auf `idempotenz_schluessel` in `0152`, Spalte `idempotenz_schluessel` in `0151`):
+Tabellen (Migrationen `0144`–`0148`, Index auf `idempotenz_schluessel` in `0156`, Spalte `idempotenz_schluessel` in `0155`):
 
 | Tabelle              | Inhalt                                                                                                                                                                      |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -99,7 +99,7 @@ steht in Basispunkten.
 `fin_zaehler` `journal`; Aurora DSQL bricht von zwei parallelen Buchungen eine mit einem
 Konflikt (SQLSTATE 40001) ab, `mitWiederholung` (`packages/api/src/db/wiederholung.ts`) wiederholt
 sie mit Backoff. So werden parallele Buchungen nacheinander nummeriert. Eindeutige Indizes auf `seq` und
-`storno_von` (Migrationen `0146`, `0147`) sichern die Nummer und den Einmal-Storno zusätzlich.
+`storno_von` (Migrationen `0150`, `0151`) sichern die Nummer und den Einmal-Storno zusätzlich.
 
 **Storno** (`POST /api/finanzen/buchungen/:id/storno`): eine neue Buchung mit `quelle_typ` `storno`
 und `storno_von` auf das Original, alle Beträge und Stückelungsanzahlen negiert, mit eigenem Datum
@@ -110,7 +110,7 @@ selbst nicht (409).
 Erfassung erzeugt). Wird derselbe Schlüssel noch einmal gesendet (doppelter Klick, Wiederholung nach
 Netzfehler, Neuladen), legt die API keine zweite Buchung an, sondern gibt die vorhandene zurück: neu
 `201 { id, seq }`, wiederholt `200 { id, seq, wiederholt: true }`. Die Prüfung läuft in der
-Transaktion; der eindeutige Index `fin_buchungen_idempotenz_idx` (Migration `0152`) fängt zwei parallele
+Transaktion; der eindeutige Index `fin_buchungen_idempotenz_idx` (Migration `0156`) fängt zwei parallele
 Anfragen mit demselben Schlüssel ab (dann wird die vorhandene Buchung gelesen). Der Schlüssel ist ein
 technisches Feld und **nicht Teil des Hashs**. Er ist `NULL` bei späteren Systembuchungen.
 

@@ -73,7 +73,7 @@ Migration nach Muster 0076):
 **Code-Muster** wie bei den bestehenden Features: Schemas/DTOs/reine Logik in
 `packages/shared/src/finanzen*.ts`, Store + Fake in `packages/api/src/<bereich>.ts`/`.fake.ts`,
 Routen in `app.ts`, Seiten in `packages/web/src/pages/`, Navigation in `AppLayout.tsx` (ein
-Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0137`, je ein
+Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0141`, je ein
 Statement plus Down-Datei.
 
 ### Bedienung: Arbeitsseiten zuerst für den Desktop

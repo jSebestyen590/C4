@@ -20,7 +20,7 @@ import {
   type FinanzenStore,
 } from './finanzen';
 
-/** Map-backed Finanzen store for tests; seeded like migrations 0144 and 0145. */
+/** Map-backed Finanzen store for tests; seeded like migrations 0148 and 0149. */
 export function createFakeFinanzenStore() {
   const konten = new Map<string, Omit<KontoDto, 'saldoCent'>>();
   for (const k of [

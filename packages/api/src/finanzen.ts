@@ -253,7 +253,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       .set({ wert: sql`${finZaehler.wert} + 1` })
       .where(eq(finZaehler.name, 'journal'))
       .returning({ wert: finZaehler.wert, letzterHash: finZaehler.letzterHash });
-    if (!zaehler) throw new Error('Der Journal-Zähler fehlt (Migration 0144).');
+    if (!zaehler) throw new Error('Der Journal-Zähler fehlt (Migration 0148).');
     const { buchung, zeilenIds } = await buchungErzeugen(
       entwurf,
       zaehler.wert,
