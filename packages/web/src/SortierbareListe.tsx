@@ -19,8 +19,8 @@ export function Griff({
       {...props}
       aria-label={label}
       style={{
-        width: 44,
-        height: 44,
+        width: 42,
+        height: 42,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',

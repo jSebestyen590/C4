@@ -40,7 +40,7 @@ export function PrivatpartyPersonZuordnen({ p }: Readonly<{ p: PrivatpartyDetail
           {vorschlag && (
             <Alert color="blue">
               Die Adresse gehört zu <b>{vorschlag.name}</b>.{' '}
-              <Button size="md" mih={44} variant="light" onClick={() => weiter(vorschlag.id)}>
+              <Button size="md" mih={42} variant="light" onClick={() => weiter(vorschlag.id)}>
                 Diese Person nehmen
               </Button>
             </Alert>
@@ -59,10 +59,10 @@ export function PrivatpartyPersonZuordnen({ p }: Readonly<{ p: PrivatpartyDetail
             onChange={setWahl}
           />
           <Group grow preventGrowOverflow={false}>
-            <Button size="md" mih={44} disabled={!wahl} onClick={() => wahl && weiter(wahl)}>
+            <Button size="md" mih={42} disabled={!wahl} onClick={() => wahl && weiter(wahl)}>
               Zuordnen
             </Button>
-            <Button size="md" mih={44} variant="default" onClick={() => setNeu(true)}>
+            <Button size="md" mih={42} variant="default" onClick={() => setNeu(true)}>
               Neue Person
             </Button>
           </Group>

@@ -114,8 +114,8 @@ function WahlButtons<T extends number>({
               key={o.wert}
               variant={an ? 'filled' : 'default'}
               aria-pressed={an}
-              h={44}
-              miw={44}
+              h={42}
+              miw={42}
               px="sm"
               onClick={() => onChange(an ? wert.filter((w) => w !== o.wert) : [...wert, o.wert])}
             >
@@ -331,7 +331,7 @@ export function SerienTab() {
                 <ActionIcon
                   variant="subtle"
                   color="gray"
-                  size={44}
+                  size={42}
                   aria-label="Bearbeiten"
                   onClick={() => {
                     setMeldung(null);
@@ -343,7 +343,7 @@ export function SerienTab() {
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label="Löschen"
                   onClick={() => setLoeschen(s)}
                 >
@@ -355,7 +355,7 @@ export function SerienTab() {
               <Switch
                 label="Aktiv"
                 checked={s.aktiv}
-                styles={{ root: { minHeight: 44, display: 'flex', alignItems: 'center' } }}
+                styles={{ root: { minHeight: 42, display: 'flex', alignItems: 'center' } }}
                 onChange={(e) => void aktivSetzen(s, e.currentTarget.checked)}
               />
               <Badge variant="light" color="gray" tt="none">

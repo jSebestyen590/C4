@@ -103,7 +103,7 @@ export function DeaktivierenFeld({ mitglied }: Readonly<{ mitglied: Mitglied }>)
     return (
       <Button
         size="md"
-        mih={44}
+        mih={42}
         variant="light"
         fullWidth
         onClick={() =>
@@ -123,7 +123,7 @@ export function DeaktivierenFeld({ mitglied }: Readonly<{ mitglied: Mitglied }>)
     <>
       <Button
         size="md"
-        mih={44}
+        mih={42}
         color="red"
         variant="light"
         fullWidth

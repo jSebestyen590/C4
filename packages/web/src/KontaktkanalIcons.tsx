@@ -33,12 +33,12 @@ export interface Kontaktangaben {
 export function KontaktkanalIcons({
   gewaehlt,
   angaben,
-  groesse = 44,
+  groesse = 42,
   vcardHref,
 }: Readonly<{
   gewaehlt: readonly Kontaktkanal[];
   angaben: Kontaktangaben;
-  /** Edge length of one icon button; keep >= 44 wherever the icons are tappable. */
+  /** Edge length of one icon button; keep >= 42 wherever the icons are tappable. */
   groesse?: number;
   /** Link to the contact card; adds an "Als Kontakt speichern" icon after the channels. */
   vcardHref?: string;
@@ -153,7 +153,7 @@ export function KontaktSpeichernButton({ href }: Readonly<{ href: string | undef
       href={href}
       size="md"
       variant="light"
-      mih={44}
+      mih={42}
       leftSection={<IconAddressBook size={20} />}
       w={{ base: '100%', sm: 'auto' }}
       disabled={!href}

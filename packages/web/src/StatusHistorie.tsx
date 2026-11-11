@@ -55,7 +55,7 @@ export function StatusHistorie({
         <Timeline active={statusVerlauf.length - 1} bulletSize={16} lineWidth={2}>
           {statusVerlauf.map((e) => (
             <Timeline.Item key={e.id}>
-              <Group justify="space-between" wrap="nowrap" gap="xs" mih={44}>
+              <Group justify="space-between" wrap="nowrap" gap="xs" mih={42}>
                 <Group gap="xs">
                   <Text size="sm">{e.ab ? `ab ${datumAnzeigen(e.ab)}` : 'seit ?'}</Text>
                   <StatusBadge status={e.status} anrede={anrede} />

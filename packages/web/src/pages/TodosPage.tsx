@@ -91,7 +91,7 @@ export function TodoKarte({
     <Paper withBorder p="sm" data-testid="todo-karte">
       <Group wrap="nowrap" align="flex-start" gap="xs">
         {/* The label makes the whole 44px square a touch target. */}
-        <Center component="label" htmlFor={checkId} w={44} h={44} style={{ flexShrink: 0 }}>
+        <Center component="label" htmlFor={checkId} w={42} h={42} style={{ flexShrink: 0 }}>
           <Checkbox
             id={checkId}
             size="lg"

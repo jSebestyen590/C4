@@ -123,7 +123,7 @@ export function BestandZeile({
               styles={{
                 input: {
                   textAlign: 'center',
-                  height: 44,
+                  height: 42,
                   fontSize: 16,
                   paddingInline: 4,
                   ...(zuViel ? { borderColor: 'var(--mantine-color-orange-6)' } : {}),

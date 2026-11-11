@@ -10,7 +10,7 @@ export function TrichterKopf({ uebersicht }: Readonly<{ uebersicht: TrichterUebe
   return (
     <Paper withBorder p="md" radius="md">
       <Group align="flex-start" wrap="nowrap" gap="md">
-        <ThemeIcon size={44} radius="xl" color="yellow" variant="light">
+        <ThemeIcon size={42} radius="xl" color="yellow" variant="light">
           <IconCrown size={26} />
         </ThemeIcon>
         <Stack gap="xs" style={{ minWidth: 0 }}>

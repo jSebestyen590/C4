@@ -377,7 +377,7 @@ export function EventDetailPage() {
                             <ActionIcon
                               variant="subtle"
                               color="red"
-                              size={44}
+                              size={42}
                               aria-label={`${personAnzeigename(d.person)} entfernen`}
                               onClick={() => setDialog({ art: 'entfernen', dienst: d, schicht: s })}
                             >

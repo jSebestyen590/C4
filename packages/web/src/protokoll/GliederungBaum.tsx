@@ -46,7 +46,7 @@ export function zuBausteinScrollen(editor: Editor, id: string): void {
 }
 
 const platzhalterStil = (aktiv: boolean): CSSProperties => ({
-  minHeight: 44,
+  minHeight: 42,
   paddingInline: 'var(--mantine-spacing-sm)',
   display: 'flex',
   alignItems: 'center',
@@ -121,7 +121,7 @@ export function Gliederung({
         style={{
           flex: 1,
           minWidth: 0,
-          minHeight: 44,
+          minHeight: 42,
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--mantine-spacing-xs)',

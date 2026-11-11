@@ -25,7 +25,7 @@ Aufgaben mit Deadline. Sie entstehen beim Abschließen eines Protokolls aus dem 
 
 Mobile first, eine Liste aus Karten (auch am Desktop, ab `md` höchstens 720 px breit). Oben der Titel und „Todo anlegen“.
 
-- **Offen:** nach Deadline sortiert. Jede Karte hat eine große Checkbox (44 px Tippfläche), Titel, Deadline („Fällig Sa, 14.11.“, rot
+- **Offen:** nach Deadline sortiert. Jede Karte hat eine große Checkbox (42 px Tippfläche), Titel, Deadline („Fällig Sa, 14.11.“, rot
   und „überfällig“ nach Ablauf, orange ab zwei Tage davor), Notizen (Zeilenumbrüche bleiben), bei Todos aus einem Protokoll „Aus
   Protokoll: Sitzung 04.11.2026“ (verlinkt, wenn du `protokolle:lesen` hast) und bei mehreren Zuständigen den Fortschritt (Gemeinsam:
   „Erledigt von <Name>“, Einzeln: „3 von 12 erledigt“). Ohne offene Todos steht dort „Keine offenen Todos.“

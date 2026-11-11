@@ -521,7 +521,7 @@ export function AusleihePage() {
           <ActionIcon
             variant="subtle"
             color="red"
-            size={44}
+            size={42}
             aria-label={`${g.name} entfernen`}
             onClick={() => setGegenstandIds((alt) => alt.filter((x) => x !== g.id))}
           >
@@ -572,7 +572,7 @@ export function AusleihePage() {
                 checked={aktuell > 0}
                 data-zeile
                 styles={{
-                  root: { minHeight: 44, display: 'flex', alignItems: 'center' },
+                  root: { minHeight: 42, display: 'flex', alignItems: 'center' },
                   body: { alignItems: 'center', width: '100%' },
                   labelWrapper: { flex: 1, paddingBlock: 6 },
                 }}
@@ -734,7 +734,7 @@ export function AusleihePage() {
                   <ActionIcon
                     variant="subtle"
                     color="red"
-                    size={44}
+                    size={42}
                     aria-label={`${el.name} mit allen Teilen entfernen`}
                     onClick={() => gruppeEntfernen(el.id)}
                   >

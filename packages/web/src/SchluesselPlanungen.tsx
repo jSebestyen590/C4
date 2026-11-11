@@ -138,7 +138,7 @@ export function SchluesselPlanungen({ schluessel }: Readonly<{ schluessel: Schlu
               <ActionIcon
                 variant="subtle"
                 color="gray"
-                size={44}
+                size={42}
                 aria-label="Übergabe ändern"
                 onClick={() => setDialog(p)}
               >
@@ -147,7 +147,7 @@ export function SchluesselPlanungen({ schluessel }: Readonly<{ schluessel: Schlu
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label="Übergabe löschen"
                 onClick={() => setLoeschen(p)}
               >

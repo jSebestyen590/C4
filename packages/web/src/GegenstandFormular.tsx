@@ -338,7 +338,7 @@ export function GegenstandFormular({
                         <ActionIcon
                           variant="subtle"
                           color="red"
-                          size={44}
+                          size={42}
                           aria-label="Teil entfernen"
                           mb={teilFehler[t.key] ? 22 : 0}
                           onClick={() => setTeile((alle) => alle.filter((x) => x.key !== t.key))}

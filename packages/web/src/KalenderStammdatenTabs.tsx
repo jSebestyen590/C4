@@ -164,8 +164,8 @@ export function FarbWahl({
             aria-checked={wert === f}
             aria-label={f}
             onClick={() => onChange(f)}
-            w={44}
-            h={44}
+            w={42}
+            h={42}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <ColorSwatch

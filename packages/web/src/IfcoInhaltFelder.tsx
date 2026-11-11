@@ -202,7 +202,7 @@ export function IfcoInhaltFelder({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label={`Gegenstand ${i + 1} entfernen`}
                   onClick={() => setZeilen((l) => l.filter((x) => x.key !== z.key))}
                 >
