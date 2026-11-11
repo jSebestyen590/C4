@@ -73,7 +73,44 @@ Migration nach Muster 0076):
 `packages/shared/src/finanzen*.ts`, Store + Fake in `packages/api/src/<bereich>.ts`/`.fake.ts`,
 Routen in `app.ts`, Seiten in `packages/web/src/pages/`, Navigation in `AppLayout.tsx` (ein
 Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0137`, je ein
-Statement plus Down-Datei. Listen: Karten auf dem Handy, Tabelle ab `sm`.
+Statement plus Down-Datei.
+
+### Bedienung: Arbeitsseiten zuerst für den Desktop
+
+Abweichend vom Rest der App (mobile first) sind die **Arbeitsseiten der Finanzen** für den Desktop
+entworfen: Journal, Buchen, Kontenplan, Belegerfassung, Buch-Abrechnung, Kassenabrechnung,
+Umsatz-Zuordnung, Rechnungen, Auswertungen. Dort wird viel gearbeitet, und Fehler sind teuer, weil
+Gebuchtes nur per Storno korrigierbar ist. Auf dem Handy müssen sie funktionieren (kein
+horizontales Scrollen der Seite), sind dort aber zweitrangig. **Mobile first bleiben** die Seiten
+für alle Mitglieder: eigene Buchseite, Rangliste, Kassenzählung am Event, Beleg einreichen.
+
+Schnell arbeiten:
+
+- Volle Breite nutzen: dichte Tabellen mit fixierter Kopfzeile und Summenzeile, Erfassung direkt in
+  der Tabelle (Belegposten, Buch-Abrechnung, Stückelung) statt Dialog je Zeile.
+- Durchgehend per Tastatur bedienbar: sinnvolle Tab-Reihenfolge, Enter springt ins nächste Feld
+  bzw. legt die nächste Zeile an, Fokus steht nach dem Speichern im ersten Feld der nächsten
+  Erfassung. Auswahlfelder (Konto, Kategorie, Ware, Rechnungssteller, Mitglied) mit Tippen suchbar.
+- Beträge werden getippt (deutsches Komma, `1,10`), nicht mit −/+ gezählt; `ZahlFeld` bleibt für
+  Stückzahlen auf den mobilen Seiten.
+- Sinnvolle Vorbelegung (heutiges Datum, letzter Rechnungssteller, Standard-Steuersatz) und
+  „Speichern und nächster".
+- Beleg-Datei und Erfassungsmaske nebeneinander, damit man abtippen kann, ohne zu wechseln.
+
+Keine Fehler:
+
+- Summen, Differenzen und Salden rechnen beim Tippen mit; eine Buchung, die nicht aufgeht, lässt
+  sich nicht speichern, und die Seite zeigt, wo die Differenz liegt.
+- Prüfung am Feld mit klarer Meldung, nicht erst nach dem Absenden. Plausibilitätswarnungen
+  (Datum in der Zukunft oder in festgeschriebener Periode, ungewöhnlich hoher Betrag, möglicher
+  doppelter Beleg, Überzug im Buch) blockieren nicht, müssen aber bestätigt werden.
+- Vor jedem unumkehrbaren Schritt (buchen, abrechnen, stornieren, festschreiben) eine
+  Zusammenfassung dessen, was gebucht wird, mit ausdrücklicher Bestätigung.
+- Nichts geht verloren: Entwürfe werden gespeichert, ungespeicherte Eingaben warnen beim Verlassen,
+  ein doppelter Klick oder ein Neuladen erzeugt keine zweite Buchung (Idempotenz-Schlüssel je
+  Erfassung).
+- Vorzeichen nie raten lassen: Einnahme/Ausgabe, Zugang/Abgang und Von/Nach stehen als Wörter da,
+  Beträge sind rechtsbündig mit Tabellenziffern, negative Werte deutlich abgesetzt.
 
 ## Zielscheiben
 
@@ -100,7 +137,8 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 - Bestand je Fach als Saldo **und** je Münze/Schein; Gesamtübersicht.
 - Umbuchung zwischen Fächern mit Stückelung, Wechseln innerhalb eines Fachs, Zählung mit
   Differenzbuchung auf „Kassendifferenz".
-- Wiederverwendbare Komponente `StueckelungFeld` (je Nennwert ein `ZahlFeld`, Summe live).
+- Wiederverwendbare Komponente `StueckelungFeld` (je Nennwert eine Anzahl, Summe live): am Desktop
+  getippt und per Tab durchlaufbar, auf dem Handy (Kassenzählung am Event) mit `ZahlFeld`.
 
 ### Scheibe 2: Buch
 
@@ -108,7 +146,8 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
   (Nummer wird frei). `buch_tarife`: je Status Strichwert und maximaler Überzug, mit „gültig ab".
 - `buch_eintraege` (nur INSERT, Storno): Striche, Bar, Abzahlung, Strichwert zum Zeitpunkt.
 - Abrechnungstabelle aller Seiten (Mitglied, Striche, Bar, Abzahlung); leere Zeilen erzeugen
-  nichts; auf dem Handy als Kartenliste mit denselben Feldern.
+  nichts. Am Desktop eine Tabelle, die sich per Tastatur zeilenweise durcharbeiten lässt; auf dem
+  Handy als Kartenliste mit denselben Feldern.
 - Eigene Seite mit Verlauf und Saldo, Überzugswarnung; Rangliste gesamt/pro Jahr (Muster
   `packages/shared/src/trichter.ts` + `TrichterRangliste.tsx`).
 - Deaktivieren-Vorschau der Mitglieder zeigt offenen Buch-Saldo.
@@ -276,6 +315,8 @@ FinTS-Überweisungen, E-Rechnung.
   Stückelung, Rundung, Buch-Saldo, Kassenabrechnung) als reine Funktionen in `@c4/shared` mit
   Unit-Tests, Routen über Fake-Stores in `app.test.ts`.
 - Deploy auf dev (`gh workflow run deploy.yml --ref <branch> -f env=dev`), Browser-Check auf
-  https://dev.c4-leipzig.de/app/ bei 375×812 durch einen frischen Sonnet-Subagent.
+  https://dev.c4-leipzig.de/app/ durch einen frischen Sonnet-Subagent: Arbeitsseiten zuerst am
+  Desktop (1440×900), einmal komplett nur mit der Tastatur, dann bei 375×812; Mitglieder-Seiten
+  zuerst bei 375×812.
 - Fachlicher Abgleich: Salden nach Übernahme gegen Access (Safe je Nennwert, Kassen, Buchsalden,
   Kontostand); ab Scheibe 5 „Kette prüfen" nach einer absichtlichen Manipulation auf dev.
