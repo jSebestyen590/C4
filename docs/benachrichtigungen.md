@@ -1,9 +1,18 @@
 # Benachrichtigungen (Web Push)
 
 Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; Nutzer sind der Kalender, Geburtstage, die
-Schlüssel und die Umfragen. Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
+Schlüssel, die Umfragen, die Todos und die Privatpartys (je ein Modul `*Benachrichtigungen.ts` in `packages/api/src`). Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
 Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`.
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                                                                                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/benachrichtigungen.ts` (Versand, Job), `benachrichtigungen.fake.ts`; je Bereich `kalenderBenachrichtigungen.ts`, `geburtstagBenachrichtigungen.ts`, `schluesselBenachrichtigungen.ts`, `umfrageBenachrichtigungen.ts`, `todoBenachrichtigungen.ts`, `privatpartyBenachrichtigungen.ts`; Registrierung in `bootstrap.ts` |
+| Shared  | `packages/shared/src/benachrichtigungen.ts` (`BENACHRICHTIGUNGS_ARTEN`, `effektiveEinstellung`)                                                                                                                                                                                                                                           |
+| Web     | `pages/BenachrichtigungenPage.tsx`, `PushAbfrage.tsx`, `pushGeraet.ts`, `usePushGeraet.ts`, `public/sw.js`                                                                                                                                                                                                                                |
+| Tests   | `packages/api/src/benachrichtigungen.test.ts`, die `*Benachrichtigungen.test.ts` der Bereiche; `packages/shared/src/benachrichtigungen.test.ts`; `packages/web/src/pushGeraet.test.ts`                                                                                                                                                    |
 
 ## Konzept
 
@@ -36,6 +45,8 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `umfrage.erneut_abstimmen`      | Eine Änderung an der Umfrage macht deine Stimme ungültig                                                                                                                                                                 | an, nicht abschaltbar            |
 | `umfrage.termin`                | Aus einer Terminumfrage wurde ein Event angelegt; sagt, ob du eingetragen bist                                                                                                                                           | an                               |
 | `todo.frist`                    | Ein offenes Todo ist heute oder in den nächsten 2 Tagen fällig; ab 9 Uhr (Berlin), einmal je Todo, Deadline und Person (siehe [todos.md](./todos.md))                                                                    | an, nicht abschaltbar            |
+| `privatpartys.anfrage`          | Neue Privatparty-Anfrage; nur Inhaber:innen von `privatpartys:verwalten` (siehe [privatpartys.md](./privatpartys.md))                                                                                                    | an                               |
+| `privatpartys.nachricht`        | Weitere Nachricht zu einer bestehenden Privatparty; nur Inhaber:innen von `privatpartys:verwalten`                                                                                                                       | an                               |
 
 ## Tabellen
 

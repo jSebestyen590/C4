@@ -4,6 +4,32 @@ Lagerorte (Baum), Warengruppen (Baum), Gebinde, Waren, Bestandsbuchungen und Inv
 (Bestand, FIFO, Verlauf, Inventurabgleich) liegt in `packages/shared/src/waren.ts`, Speicherung und
 Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 
+## Invarianten
+
+- Bestand ist nie gespeichert, sondern die Summe von `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD (`bestandZu`);
+  Posten mit Summe 0 entfallen. Gebucht wird nur über Vorgänge (`bestandsvorgang`); ein Vorgang wird gelöscht, nicht bearbeitet.
+- **Bestand darf negativ werden:** Eine Entnahme über den Bestand hinaus bucht den Rest ins Minus am gewählten Lagerort (MHD leer),
+  siehe [FIFO-Entnahme](#fifo-entnahme). Es gibt keine Bestandsprüfung beim Entnehmen.
+- Entnahmen werden beim Buchen FIFO geplant und danach **nie neu berechnet**; auch das Löschen eines früheren Vorgangs ändert
+  spätere Aufteilungen nicht.
+- Das MHD hängt an der Ware (`mhdArt`: `keins`/`tag`/`monat`); Monats-MHDs werden als Erster des Monats gespeichert, MHD-Waren brauchen
+  beim Einlagern ein MHD (`mhdNormalisieren`, `einlagerungMhd`).
+- Stammdaten lassen sich nur löschen, wenn nichts darauf verweist (409), sonst archivieren; auf archivierte Einträge lässt sich nicht
+  buchen (400).
+- Gebinde sind eindeutig über alle Attribute (409 `gebindeDoppelt`) und kennen nur eine Verschachtelungsebene.
+- Pro Lagerort höchstens eine offene Inventur (409); ein Soll-Schlüssel ohne gespeicherten Zählwert gilt als korrekt (Ist = Soll),
+  eine ausdrückliche 0 heißt „nichts da“.
+- Ein IFCO-Lagerplatz nimmt nie gleichzeitig IFCOs und Ware auf (siehe [IFCO-Lagerplätze](#ifco-lagerplätze)).
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/waren.ts` (Stores, Planung der Sammelbuchungen, Inventur), `ifcoPlatz.ts` (IFCO-Kapazitätsprüfung), Routen in `app.ts`                                                                                                                                                                                                                                                      |
+| Shared  | `packages/shared/src/waren.ts` (Schemas, Gebinde, Bestand, FIFO, Verlauf, Inventurabgleich, Regale)                                                                                                                                                                                                                                                                                           |
+| Web     | Seiten `pages/LagerPage.tsx`, `EntnahmePage.tsx`, `EinlagerungPage.tsx`, `UmlagerungPage.tsx`, `InventurPage.tsx`, `StammdatenPage.tsx`, `WarenPage.tsx`, `WareDetailPage.tsx`; Komponenten `LagerBaum.tsx`, `LagerKachel.tsx`, `BestandAbschnitt.tsx`, `BestandZeile.tsx`, `BuchungModal.tsx`, `InventurZusammenfassung.tsx`; Logik `lagerAnsicht.ts`, `lagerBestand.ts`, `inventurDaten.ts` |
+| Tests   | `packages/shared/src/waren.test.ts`, `packages/api/src/waren.test.ts`, `packages/web/src/lagerAnsicht.test.ts`, `lagerBestand.test.ts`                                                                                                                                                                                                                                                        |
+
 ## Rechte
 
 - `waren:lesen` und `bestand:buchen` haben alle Status. Buchen umfasst Einlagerung, Entnahme, Inventur
@@ -86,6 +112,35 @@ Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen geb
   „Dieses Gebinde gibt es schon.“, `gebindeDoppelt`). Sortierung: erst Basis-, dann Obergebinde (`gebindeSortieren`).
 - `GET /waren/:id/verlauf` liefert `gebinde: [{ id, bezeichnung, kurz }]`.
 
+## FIFO-Entnahme
+
+`entnahmePlanen` (`packages/shared/src/waren.ts`) plant eine Entnahme (`anzahl` eines Gebindes einer Ware). Der Aufrufer
+(`entnahmeZeilen`, `entnahmenZeilen` in `packages/api/src/waren.ts`) übergibt den Bestand der Ware zum gewählten Zeitpunkt
+(Rückdatieren erlaubt), eingeschränkt auf den Teilbaum des gewählten Lagerorts (Sammel-Entnahme: nur der Platz selbst). Es zählen
+nur Posten mit Menge > 0; bereits negativer Bestand wird nicht ausgeglichen.
+
+1. **Reihenfolge der Posten** (`fifoVergleich`): MHD aufsteigend (Posten ohne MHD zuletzt), dann `ersterZugang` (frühester positiver
+   Zugang des Postens), dann Lagerort-Id, dann Gebinde-Id. Die letzten beiden Schlüssel sind nur für eine feste Reihenfolge da, sie
+   sortieren nicht nach Namen.
+2. **Lose Einheiten zuerst:** In dieser Reihenfolge werden zuerst alle Posten **des angefragten Gebindes** aufgebraucht
+   (`abgang`), auch wenn ein Obergebinde ein früheres MHD hat.
+3. **Anbruch:** Reicht das nicht, öffnet sie Obergebinde, deren Untergebinde das angefragte Gebinde ist, wieder in der Reihenfolge
+   aus 1. Je geöffnetem Obergebinde am selben Lagerort und MHD: −1 Obergebinde (`anbruch`), +`unterAnzahl` lose (`anbruch`), davon
+   −min(`unterAnzahl`, Rest) (`abgang`). Übrige lose Einheiten bleiben als Bestand liegen. Es wird nur eine Ebene geöffnet.
+4. **Rest ohne Deckung:** Bleibt danach ein Rest, wird er als `abgang` am gewählten Lagerort mit MHD `null` gebucht; der Bestand
+   dort wird negativ (kein Fehler).
+5. Zeilen gleicher Art, Lagerort, Gebinde und MHD werden zusammengefasst, Zeilen mit Menge 0 entfallen.
+
+Beispiel (Ware mit Monats-MHD, Gebinde „Flasche“ und „Kasten“ = 20 Flaschen): Bestand 5 Flaschen (MHD 03.2027) und 2 Kästen
+(MHD 01.2027) am Platz. Entnahme von 8 Flaschen: 5 lose Flaschen (03.2027, obwohl die Kästen früher ablaufen), dann ein Kasten
+01.2027 öffnen (−1 Kasten, +20 Flaschen) und 3 Flaschen entnehmen; es bleiben 17 lose Flaschen und 1 Kasten (beide 01.2027).
+Entnahme von 50 Flaschen: 5 + 20 + 20 aus den Beständen (beide Kästen geöffnet) und 5 Flaschen ohne MHD im Minus (−5).
+
+**MHD-Speicherung:** `mhdArt` der Ware (`keins`, `tag`, `monat`) bestimmt, was gespeichert wird (`mhdNormalisieren`): `keins` immer
+`null`, `tag` das Datum, `monat` den **Ersten des Monats** (`2027-03-01`). Angezeigt wird `dd.MM.yyyy` bzw. `MM.yyyy`
+(`mhdAnzeigen`). Da das MHD als ISO-Text sortiert wird, ordnet der Erste des Monats Monats-MHDs richtig ein. Beim Einlagern ist ein
+MHD Pflicht, wenn `mhdArt` nicht `keins` ist (400 „Bitte gib ein MHD an.“).
+
 ## Wartung
 
 Ändert sich eine Waren-Migration (0010–0024) nachträglich, nimmt
@@ -125,7 +180,7 @@ Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem S
 gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, Gebinde, MHD) ohne Zählwert gilt als korrekt
 (Ist = Soll), eine ausdrückliche 0 bedeutet „nichts da“. Die Tabelle `inventur_knoten` wird nicht mehr genutzt.
 
-## Oberfläche
+## Oberfläche (Details)
 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
   (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten (nicht bei Regalböden), Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
@@ -201,7 +256,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,
   neueste zuerst, mit Löschen (`WareHistorie.tsx`); der Ersteller steht als Username (ohne Username „Vorname Nachname“), fett in der Statusfarbe und verlinkt zum Mitglied. `ersteller` in `GET /waren/:id/vorgaenge` und `/inventuren[/:id]` trägt dazu `sub`, `username` und `status`. Beim Löschen eines Vorgangs werden spätere FIFO-Aufteilungen nicht neu berechnet; enthält er Zeilen anderer Waren (`weitereZeilen`, Sammelbuchung), nennt die Bestätigung deren Anzahl, denn sie werden mitgelöscht.
 - `/lager/inventur/:id` (`bestand:buchen`): Inventur als eine kompakte, direkt bearbeitbare Tabelle für das ganze Lager,
-  Handy zuerst (`InventurPage.tsx`, `InventurAbschnitt.tsx`, `InventurZeile.tsx`). Je Platz (Tiefensuche) eine Überschrift
+  Handy zuerst (`InventurPage.tsx`, Abschnitte und Zeilen aus `BestandAbschnitt.tsx` und `BestandZeile.tsx`, Daten in `inventurDaten.ts`). Je Platz (Tiefensuche) eine Überschrift
   mit dem Pfad, darunter eine Zeile je Ware und MHD: vorbelegt aus dem Soll (eine Zeile je vorhandenem MHD, Anzeige „Name ·
   MM.yyyy“) und der Warenliste (in Listenreihenfolge, Waren nur mit Soll danach). MHD-Waren ohne Soll bekommen eine Zeile mit
   MHD-Eingabe, „+ MHD“ fügt eine weitere hinzu; Waren ohne MHD haben genau eine Zeile. Pro Gebinde ein kleines Zahlenfeld

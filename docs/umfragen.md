@@ -11,11 +11,36 @@ Umfragen kommen auf einmal (`GET /api/umfragen`), beendete seitenweise zu je 20,
 wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird nach `erstellt_am`, `id` (Index Migration
 `0091`). Der Erinnerungs-Job liest nur laufende Umfragen.
 
+## Invarianten
+
+- Die Kreise (Pflicht/Optional) werden bei jedem Zugriff **dynamisch** gegen aktuelle Mitglieder, Status und Posten-Besetzungen
+  ausgewertet (`kreisVon`); Pflicht und Optional dürfen sich nicht überschneiden (400). Deaktivierte Mitglieder fallen aus den Kreisen,
+  ihre abgegebenen Stimmen bleiben gezählt.
+- Eine Stimme ist ein Stimmzettel für **alle** Fragen (`stimmzettelFehler`) und bis zum Ende änderbar; je Person und Umfrage genau eine
+  Abgabe (`umfrage_abgaben`, Primärschlüssel).
+- Eine beendete Umfrage (abgelaufen oder vorzeitig) lässt sich weder bearbeiten noch wieder öffnen.
+- `anonym` lässt sich nach der ersten Stimme nicht mehr ändern (400); Terminumfragen sind nie anonym. Was „anonym“ bedeutet, steht
+  unter [Regeln](#regeln).
+- Eine Änderung, die Stimmen ungültig macht, braucht die Bestätigung des Bearbeitenden (409, bis `bestaetigt: true`); die Betroffenen
+  müssen erneut abstimmen (`umfrage_abgaben.erneut_noetig`) und zählen bis dahin nicht als abgestimmt.
+- Aus einer Terminumfrage entsteht höchstens ein Event (409, außer das erste wurde gelöscht), und erst nach dem Ende der Umfrage.
+- Löschen darf nur die Verwaltung (`umfragen:verwalten`), Bearbeiten und Beenden zusätzlich die erstellende Person (und bei einer
+  Privatparty-Umfrage die Inhaber:innen von `privatpartys:verwalten`).
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                      |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/umfragen.ts` (Store), `umfrageAnsicht.ts` (DTOs, Sichtbarkeit, Anonymität), `umfrageSpeichern.ts` (Speichern, Termin-Vorbereitung), `umfrageBenachrichtigungen.ts`, `umfragen.fake.ts`, Routen in `app.ts` |
+| Shared  | `packages/shared/src/umfragen.ts` (Schemas, Kreise, Ergebnis-Sichtbarkeit, Terminregeln, `ungueltigNachAenderung`)                                                                                                           |
+| Web     | Seiten `pages/UmfragenPage.tsx`, `UmfragePage.tsx`, `UmfrageFormularPage.tsx`; `UmfrageTerminFelder.tsx`, `umfrageDaten.tsx`, `SortierbareListe.tsx`, `ZeitraumFeld.tsx`                                                     |
+| Tests   | `packages/shared/src/umfragen.test.ts`, `packages/api/src/umfrageBenachrichtigungen.test.ts`, `packages/web/src/SortierbareListe.test.ts`                                                                                    |
+
 ## Formular
 
 Das Formular „Umfrage erstellen“ ist zweistufig: zuerst wählt man den Typ, danach erscheint das passende Formular
 („Anderen Typ wählen“ führt zurück). Beim Bearbeiten steht der Typ fest. Antworten lassen sich am Griff per Drag-and-drop
-umsortieren (`SortierbareListe`, `@hello-pangea/dnd`); Termine sortiert die App selbst. Bei der Terminfindung mit Event
+umsortieren (`SortierbareListe`); Termine sortiert die App selbst. Bei der Terminfindung mit Event
 steht die Kategorie bzw. Vorlage ganz oben im Formular (`TerminQuelleFelder`), weil sie die übrigen Felder bestimmt.
 
 | Typ                       | Inhalt                                                                            |
@@ -48,12 +73,19 @@ Beginn und Ende (beide oder keins, `freieTerminFehler`) und optionalem Namen; de
   Allen anderen antwortet das API mit 404. **Abstimmen** darf nur, wer in einem Kreis ist.
 - **Stimme**: ein Stimmzettel für alle Fragen (`PUT /api/umfragen/:id/stimme`), jede Frage muss beantwortet sein
   (`stimmzettelFehler`). Bis zum Ende änderbar.
-- **Anonym** (`anonym`): das API gibt nie heraus, wer abgestimmt hat oder was, auch nicht an die Person, die die Umfrage
-  erstellt hat. Sichtbar sind nur Zahlen und Freitexte ohne Namen. Intern bleibt die Sub gespeichert (eine Stimme je
-  Person, Erinnerungen). Nach der ersten Stimme lässt sich `anonym` nicht mehr ändern (400). Öffentliche Umfragen zeigen
-  die Namen je Antwort und die Liste „Noch offen / Abgestimmt“.
+- **Anonym** (`anonym`): Anonymität gilt **in der App, nicht in der Datenbank**. Die API gibt nie heraus, wer abgestimmt hat oder was:
+  Ergebnisse zeigen nur Zahlen (`personen: null`) und Freitexte ohne Namen (`person: null`), die Liste „Noch offen / Abgestimmt“
+  (`teilnehmende`) entfällt, und das gilt auch für die Person, die die Umfrage erstellt hat, und die Verwaltung (`umfrageAnsicht.ts`).
+  Nur die eigenen Antworten (`meineAntworten`) sieht man selbst. In der Datenbank steht dagegen weiterhin, wer wie abgestimmt hat:
+  `umfrage_stimmen.mitglied_sub` je Antwort und `umfrage_abgaben` mit `mitglied_sub` und `abgegeben_am` (der Zeitstempel liegt in
+  `umfrage_abgaben`, nicht in `umfrage_stimmen`). Das braucht die App für „eine Stimme je Person“ und die Erinnerungen. Wer Zugriff auf die
+  Datenbank hat, kann Stimmen also Personen zuordnen. Nach der ersten Stimme lässt sich `anonym` nicht mehr ändern (400). Öffentliche
+  Umfragen zeigen die Namen je Antwort und die Liste „Noch offen / Abgestimmt“.
 - **Ergebnisse** (`ergebnisse`): `sofort`, `nach_abstimmung` (wer abgestimmt hat) oder `nach_ende`. Wer die Umfrage
   erstellt hat und die Verwaltung sehen sie immer, nach dem Ende alle (`ergebnisseSichtbar`).
+  Bei der Umfrage einer Privatparty gilt das auch für Inhaber:innen von `privatpartys:verwalten`: Sie zählen wie die Verwaltung als
+  „verwaltet“ (`darfBearbeiten` in `umfrageAnsicht.ts`, gesetzt über `aufruferFuerUmfrage` in `app.ts`) und sehen die Ergebnisse jederzeit.
+  Dieses Recht gilt nur für diese Umfrage; zum Sehen der Umfrage selbst ändert es nichts.
 
 ## Terminfindung
 
@@ -149,10 +181,10 @@ in `packages/shared/src/umfragen.ts`.
 | `umfrage_kreis`          | Posten (`art` posten, `ref` = Posten-ID) und Personen (`art` person, `ref` = Sub) je Kreis (`pflicht`)                                                          |
 | `umfrage_fragen`         | `position`, `text`, `freitext`, `max_antworten`                                                                                                                 |
 | `umfrage_optionen`       | Feste Antworten einer Frage (`position`, `text`)                                                                                                                |
-| `umfrage_abgaben`        | Wer abgestimmt hat (`abgegeben_am`, `erneut_noetig`)                                                                                                            |
+| `umfrage_abgaben`        | Wer abgestimmt hat: `mitglied_sub`, `abgegeben_am`, `erneut_noetig` (auch bei anonymen Umfragen)                                                                |
 | `umfrage_termine`        | Terminfindung: Kategorie, Uhrzeiten, Bedarf, entstandenes Event (`event_id`, `option_id`)                                                                       |
 | `umfrage_option_termine` | Datum (ggf. Uhrzeit und Name) einer Antwort                                                                                                                     |
-| `umfrage_stimmen`        | Einzelne Antworten: `option_id` oder `freitext`                                                                                                                 |
+| `umfrage_stimmen`        | Einzelne Antworten: `mitglied_sub`, `frage_id`, `option_id` oder `freitext` (kein Zeitstempel; auch bei anonymen Umfragen)                                      |
 
 ## Rechte
 

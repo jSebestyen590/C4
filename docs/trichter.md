@@ -3,6 +3,36 @@
 Wer trichtert, wird eingetragen. Aus den Einträgen entsteht eine Rangliste mit Trichterkönig:in für das laufende Jahr und
 für alle Zeiten.
 
+## Invarianten
+
+- Volumen werden überall als ganze Milliliter gespeichert (`volumen_ml`); nur die Eingabe läuft in Litern (`literZuMl`).
+- Ein Durchgang gilt geteilt: Jede teilnehmende Person bekommt `Volumen / Anzahl Teilnehmende` gutgeschrieben (bricht ggf. Nachkommastellen).
+- Das Volumen eines Durchgangs darf das des Trichters nicht überschreiten, die Teilnehmenden nicht die Auslässe (400).
+- Man trägt nie sich selbst ein (400); deaktivierte Mitglieder lassen sich nicht eintragen (400).
+- Auf archivierte Trichter lassen sich keine neuen Durchgänge eintragen (400); ihre alten Durchgänge bleiben in jeder Wertung.
+- Gewertet wird die Anzahl der Durchgänge, bei Gleichstand die Liter; Gleichauf-Liegende werden alle genannt.
+- Löschen darf nur, wer den Durchgang eingetragen hat, oder die Verwaltung (403 sonst).
+
+## Grenzen
+
+Geprüft in `packages/shared/src/trichter.ts` (Schemas) und `POST /api/trichter/durchgaenge` in `app.ts`; alle Verstöße geben 400:
+
+- **Volumen** (Trichter und Durchgang): größer als 0 und höchstens **1000 l**, höchstens 2 Nachkommastellen.
+- **Auslässe:** ganze Zahl von 1 bis `TRICHTER_AUSLAESSE_MAX` (20); **Teilnehmende** je Durchgang 1 bis 20, jede Person nur einmal.
+- **Zeitpunkt:** nicht in der Zukunft (1 Minute Toleranz für eine vorgehende Handyuhr); ohne Angabe gilt jetzt.
+- **Teilnehmende** müssen ein Profil haben oder ein aktiviertes Konto sein („Mitglied nicht gefunden.“) und dürfen **nicht deaktiviert**
+  sein (`MITGLIED_DEAKTIVIERT`); die eintragende Person braucht ein eigenes Profil.
+- Der Trichter muss existieren und darf nicht archiviert sein.
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                                  |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/trichter.ts` (Store), `trichter.fake.ts`, Routen und Prüfungen in `app.ts` (`/api/trichter…`)                                                                                                                          |
+| Shared  | `packages/shared/src/trichter.ts` (Schemas, Wertung, Könige)                                                                                                                                                                             |
+| Web     | Seiten `pages/TrichterPage.tsx`, `TrichterDurchgangPage.tsx`, `TrichterVerwaltungPage.tsx`; `TrichterRangliste.tsx`, `TrichterDurchgangListe.tsx`, `TrichterKopf.tsx`, `TrichterFormular.tsx`, `trichterDaten.tsx`, `trichterAnzeige.ts` |
+| Tests   | `packages/shared/src/trichter.test.ts`, `packages/web/src/trichterAnzeige.test.ts`                                                                                                                                                       |
+
 ## Trichter und Durchgänge
 
 - Ein **Trichter** hat einen Namen, ein Volumen (ganze Milliliter, Eingabe in Litern mit höchstens 2 Nachkommastellen) und
