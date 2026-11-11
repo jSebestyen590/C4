@@ -27,10 +27,10 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0130–0136 (Schlüssel-Anfragen): 0130 entfernt `mitglieder.wohnheim` wieder, 0131–0133 löschen ihre Tabellen
   (`schluessel_anfragen`, `schluessel_antworten`, `schluessel_planungen`), 0134–0136 ihre Indizes. Rollback-Ziel nur für die
   Anfragen: `0129_privatparty_nachrichten_message_idx`.
-- 0137–0151 (Finanzen): 0137 löscht den Posten `kassenpruefung` wieder, 0138 entzieht den Posten die vergebenen
+- 0137–0152 (Finanzen): 0137 löscht den Posten `kassenpruefung` wieder, 0138 entzieht den Posten die vergebenen
   `finanzen:*`-Rechte, 0139–0143 löschen ihre Tabellen (`fin_konten`, `fin_buchungen`, `fin_buchungszeilen`,
   `fin_stueckelung`, `fin_zaehler`), 0144 die Zählerzeile `journal`, 0145 die Grundkonten (`safe`, `bank`, `geldtransit`,
-  `eroeffnung`), 0146–0151 ihre Indizes (0151: `fin_buchungen_idempotenz_idx`). `0140` wurde vor dem ersten Prod-Release nachträglich um `idempotenz_schluessel` ergänzt (Dev wird zurückgerollt). Rollback-Ziel nur für Finanzen: `0136_schluessel_planungen_schluessel_idx`.
+  `eroeffnung`), 0146–0150 ihre Indizes, 0151 ergänzt `fin_buchungen.idempotenz_schluessel` per ALTER (Down leert die Werte), 0152 löscht ihren Index `fin_buchungen_idempotenz_idx`. Rollback-Ziel nur für Finanzen: `0136_schluessel_planungen_schluessel_idx`.
   `mitWiederholung` (Wiederholung bei DSQL-Konflikten) liegt dafür in `packages/api/src/db/wiederholung.ts` und wird von
   Migration, Rollback und Finanzen-Buchungen genutzt.
 - 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:

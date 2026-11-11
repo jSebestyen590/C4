@@ -12,7 +12,5 @@ CREATE TABLE IF NOT EXISTS fin_buchungen (
   erstellt_von text NOT NULL,
   erstellt_am timestamptz NOT NULL,
   prev_hash text NOT NULL,
-  hash text NOT NULL,
-  -- Technical, not part of the hash: repeating a request with the same key returns the booking. NULL for system bookings.
-  idempotenz_schluessel text
+  hash text NOT NULL
 )

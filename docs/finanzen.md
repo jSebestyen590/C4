@@ -70,7 +70,7 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
 
 ## Journal
 
-Tabellen (Migrationen `0140`–`0144`, Index auf `idempotenz_schluessel` in `0151`):
+Tabellen (Migrationen `0140`–`0144`, Index auf `idempotenz_schluessel` in `0152`, Spalte `idempotenz_schluessel` in `0151`):
 
 | Tabelle              | Inhalt                                                                                                                                                                      |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -110,7 +110,7 @@ selbst nicht (409).
 Erfassung erzeugt). Wird derselbe Schlüssel noch einmal gesendet (doppelter Klick, Wiederholung nach
 Netzfehler, Neuladen), legt die API keine zweite Buchung an, sondern gibt die vorhandene zurück: neu
 `201 { id, seq }`, wiederholt `200 { id, seq, wiederholt: true }`. Die Prüfung läuft in der
-Transaktion; der eindeutige Index `fin_buchungen_idempotenz_idx` (Migration `0151`) fängt zwei parallele
+Transaktion; der eindeutige Index `fin_buchungen_idempotenz_idx` (Migration `0152`) fängt zwei parallele
 Anfragen mit demselben Schlüssel ab (dann wird die vorhandene Buchung gelesen). Der Schlüssel ist ein
 technisches Feld und **nicht Teil des Hashs**. Er ist `NULL` bei späteren Systembuchungen.
 
