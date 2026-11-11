@@ -1645,6 +1645,20 @@ export function createApp(deps: AppDeps) {
     if (istDeaktiviert(row)) throw new HTTPException(400, { message: MITGLIED_DEAKTIVIERT });
   };
 
+  /**
+   * A Posten may only be staffed by someone who holds every right it grants, otherwise an editor
+   * could put themselves on a Posten with rights they lack. Unknown Posten are left to the store (404).
+   */
+  const postenRechteMuessenBeiDirLiegen = (
+    p: { rechte: readonly string[] } | undefined,
+    eigene: readonly string[],
+    text: string,
+  ) => {
+    if (p?.rechte.some((r) => !eigene.includes(r))) {
+      throw new HTTPException(403, { message: text });
+    }
+  };
+
   /** 400 when one of the members is deactivated (unknown subs are left to the store). */
   const personenAktivPruefen = async (subs: readonly string[]) => {
     if (subs.length === 0) return;
@@ -2039,6 +2053,13 @@ export function createApp(deps: AppDeps) {
         zValidator('json', postenArchivierenSchema),
         async (c) => {
           const { archiviert } = c.req.valid('json');
+          if (!archiviert) {
+            postenRechteMuessenBeiDirLiegen(
+              await deps.posten.holen(c.req.param('id')),
+              c.get('permissions'),
+              'Diesen Posten kannst du nicht wieder aktivieren: Er gewährt Rechte, die du selbst nicht hast.',
+            );
+          }
           if (!(await deps.posten.archivieren(c.req.param('id'), archiviert))) {
             throw new HTTPException(404, { message: 'Posten nicht gefunden' });
           }
@@ -2052,6 +2073,11 @@ export function createApp(deps: AppDeps) {
         zValidator('json', besetzungAnlegenSchema),
         async (c) => {
           const { ablosung, ...daten } = c.req.valid('json');
+          postenRechteMuessenBeiDirLiegen(
+            await deps.posten.holen(c.req.param('id')),
+            c.get('permissions'),
+            'Diesen Posten kannst du nicht besetzen: Er gewährt Rechte, die du selbst nicht hast.',
+          );
           await mitgliedMussExistieren(daten.mitgliedSub);
           const id = await deps.posten
             .besetzungAnlegen(c.req.param('id'), daten, ablosung)
@@ -2067,7 +2093,17 @@ export function createApp(deps: AppDeps) {
         zValidator('json', besetzungEingabeSchema),
         async (c) => {
           const daten = c.req.valid('json');
-          await mitgliedMussExistieren(daten.mitgliedSub);
+          const posten = await deps.posten.holen(c.req.param('id'));
+          postenRechteMuessenBeiDirLiegen(
+            posten,
+            c.get('permissions'),
+            'Diese Besetzung kannst du nicht ändern: Der Posten gewährt Rechte, die du selbst nicht hast.',
+          );
+          // Ending the Besetzung of a member who was deactivated later must stay possible.
+          const bisher = posten?.besetzungen.find((b) => b.id === c.req.param('bid'));
+          if (bisher?.mitgliedSub !== daten.mitgliedSub) {
+            await mitgliedMussExistieren(daten.mitgliedSub);
+          }
           const geaendert = await deps.posten
             .besetzungAendern(c.req.param('id'), c.req.param('bid'), daten)
             .catch(besetzungFehler);
@@ -2551,6 +2587,12 @@ export function createApp(deps: AppDeps) {
               message: 'Nur die Schlüsselverwaltung kann einen Schlüssel ohne Halter eintragen.',
             });
           }
+          // `von` is the holder the client saw (409 otherwise): null = the key has no holder yet.
+          if (von === null && !c.get('permissions').includes('schluessel:verwalten')) {
+            throw new HTTPException(403, {
+              message: 'Den ersten Halter trägt die Schlüsselverwaltung ein.',
+            });
+          }
           await eigenesProfilMussExistieren(akteur);
           if (an?.art === 'mitglied') await mitgliedMussExistieren(an.sub);
           const s = gefunden(
@@ -2929,6 +2971,11 @@ export function createApp(deps: AppDeps) {
           // Leaving "zugesagt" deletes the event (if it is already gone, nothing to do).
           if (e.eventId) await eventLoeschenMitPruefung(e.eventId);
           await deps.privatpartys.statusSetzen(e.id, status);
+          // A declined request ends its running poll, like an acceptance does.
+          if (status === 'abgesagt' && e.umfrageId) {
+            const u = await deps.umfragen.holen(e.umfrageId);
+            if (u && umfrageLaeuft(u, new Date())) await deps.umfragen.beenden(u.id, new Date());
+          }
           return c.json({ ok: true });
         },
       )
@@ -3743,6 +3790,17 @@ export function createApp(deps: AppDeps) {
           const teilnahme = kategorie.art === 'teilnahme';
           // The poll of a Privatparty: the chosen option is one of its wish dates (found by its name).
           const privatparty = await deps.privatpartys.nachUmfrage(u.id);
+          if (
+            privatparty &&
+            (privatparty.status === 'abgesagt' ||
+              (privatparty.status === 'zugesagt' &&
+                privatparty.eventId &&
+                (await deps.kalender.event(privatparty.eventId))))
+          ) {
+            throw new HTTPException(409, {
+              message: 'Die Privatparty ist bereits zugesagt oder abgesagt.',
+            });
+          }
           const wunschTermin = privatparty?.termine.find(
             (t) =>
               t.datum === option.termin!.datum && privatpartyOptionName(t) === option.termin!.name,
@@ -4974,7 +5032,17 @@ export function createApp(deps: AppDeps) {
       )
       // Anonymous read-only sharing link of a folder (created and cached on first use).
       .post('/bilder/ordner/:id/freigabe', auth, bilderLesen, async (c) => {
-        const url = await freigabeErstellen(c.req.param('id')).catch(onedriveFehler);
+        const id = c.req.param('id');
+        // Only folders the app knows (folder list snapshot or cached sharing links): the id comes
+        // from the URL and must not be any drive item.
+        const [snapshot, links] = await Promise.all([
+          deps.ordnerCache.lesen().catch(() => null),
+          deps.freigaben.alle().catch(() => new Map<string, string>()),
+        ]);
+        if (!links.has(id) && !snapshot?.ordner.some((o) => o.id === id)) {
+          throw new HTTPException(404, { message: 'Ordner nicht gefunden' });
+        }
+        const url = await freigabeErstellen(id).catch(onedriveFehler);
         return c.json({ url });
       })
       // ----- Bilder: OneDrive connection (admins)
@@ -5332,6 +5400,21 @@ export function createApp(deps: AppDeps) {
         const token = c.req.param('token').replace(/\.ics$/, '');
         const sub = await deps.kalender.subPerTokenHash(tokenHash(token));
         if (!sub) throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        // The token owner must still be active and allowed to read the calendar (like `auth`: a
+        // member without a profile row counts as an active Anwärter).
+        const [inhaber, rollen, rechte] = await Promise.all([
+          deps.mitglieder.holen(sub),
+          deps.userAdmin.rollen(),
+          deps.posten.rechteVon(sub),
+        ]);
+        const erlaubt = permissionsFor(
+          rollen.get(sub) ?? [],
+          inhaber?.status ?? 'anwaerter',
+          rechte,
+        );
+        if ((inhaber && istDeaktiviert(inhaber)) || !erlaubt.includes('kalender:lesen')) {
+          throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        }
         const ab = new Date(Date.now() - FEED_RUECKBLICK_TAGE * 24 * 3600 * 1000);
         const [dienste, eventListe] = await Promise.all([
           deps.kalender.meineDienste(sub, ab),

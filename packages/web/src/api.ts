@@ -1,6 +1,7 @@
 import { hc } from 'hono/client';
 import type { AppType } from '@c4/api';
 import { useAuth } from './auth';
+import { ApiFehler } from './warenApi';
 
 /** Typed API client; the Authorization header is read lazily so it always carries the current token. */
 export function useApi() {
@@ -37,6 +38,16 @@ type JsonResponse = { ok: boolean; status: number; json(): Promise<unknown> };
 export async function unwrap<R extends JsonResponse>(
   res: R,
 ): Promise<Awaited<ReturnType<Exclude<R, { status: 400 }>['json']>>> {
-  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  if (!res.ok) {
+    // Show the API's German error text when there is one.
+    let meldung = 'Das hat nicht geklappt. Bitte versuch es noch einmal.';
+    try {
+      const body = (await res.json()) as { error?: unknown } | null;
+      if (typeof body?.error === 'string' && body.error) meldung = body.error;
+    } catch {
+      // Keep the generic message.
+    }
+    throw new ApiFehler(res.status, meldung);
+  }
   return (await res.json()) as never;
 }

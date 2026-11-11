@@ -35,13 +35,14 @@ Migrationen `0120`–`0129` (siehe [datenbank.md](./datenbank.md)); Text-IDs, ke
    kommt `umfrage.neu`. Geht nur, solange keine laufende verknüpfte Umfrage existiert (409). Siehe [umfragen.md](./umfragen.md).
 3. **Event aus der Umfrage**: im Umfragedetail wie bei jeder Terminumfrage. Hängt die Umfrage an einer Privatparty, nimmt das Event die
    Wunschzeiten (`ausVorlageZuZeit`), die Privatparty wird „Zugesagt“ (mit `event_id`, `termin_id`), und Inhaber:innen des Rechts
-   dürfen die Umfrage beenden und das Event anlegen.
+   dürfen die Umfrage beenden und das Event anlegen. Ist die Privatparty schon abgesagt oder mit einem noch vorhandenen Event
+   zugesagt, lehnt `POST /api/umfragen/:id/event` mit 409 ab (kein zweites Event).
 4. **Direkt zusagen** (`POST /api/privatpartys/:id/zusage { terminId, vorlageId }`): Termin und Vorlage wählen, das Event entsteht sofort;
    eine laufende verknüpfte Umfrage wird beendet. Reicht mit dem Recht allein (ohne `events:verwalten`). Bereits zugesagt = 409.
 5. **Status ändern** (`PUT /api/privatpartys/:id/status { status, terminId?, vorlageId? }`): jederzeit. Verlässt die Privatparty
    `zugesagt`, wird das Event gelöscht wie bei `DELETE /kalender/events/:id` (gibt es ein Protokoll dazu: 409; Bilder-Ordner werden
    aufgeräumt); `event_id` und `termin_id` werden geleert. War das Event schon gelöscht, wird nur geleert. „Zugesagt“ braucht
-   Termin und Vorlage und läuft wie `/zusage`. Die Absage auf der Seite fragt bei bestehendem Event vorher nach.
+   Termin und Vorlage und läuft wie `/zusage`. Bei „Abgesagt“ wird eine laufende verknüpfte Umfrage beendet (wie bei der Zusage). Die Absage auf der Seite fragt bei bestehendem Event vorher nach.
 
 ## Event
 
@@ -98,6 +99,10 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
     (`mitgliederMitRecht`): `privatpartys.anfrage` für einen neuen Eintrag, `privatpartys.nachricht` für eine Folgemail, mit der
     `Message-ID` als Dedupe-Schlüssel und der URL `/app/privatpartys/<id>`.
   - Fehler stehen in `mail_abruf.fehler` (die Liste zeigt sie), der Stand rückt dann nicht vor.
+  - Eine Mail, die sich nicht parsen lässt (oder über 10 MB groß ist; sie wird dann gar nicht geladen), wird übersprungen und geloggt;
+    `mail_abruf.fehler` nennt „n Mail(s) konnten nicht verarbeitet werden …“ bis zum nächsten sauberen Lauf. Scheitert dagegen das
+    Speichern einer Mail (z. B. kurzer Datenbankfehler), bricht der Lauf dort ab, der Stand bleibt vor dieser Mail, `fehler` sagt, dass
+    der nächste Abruf es erneut versucht, und eine dafür neu angelegte leere Anfrage wird wieder gelöscht. Der Text einer Mail wird auf 20.000 Zeichen gekürzt.
   - `POST /api/privatpartys/mail/abrufen` („Jetzt abrufen“ auf der Liste) startet einen Lauf; `GET /api/privatpartys/mail-status`
     liefert `eingerichtet`, `letzterAbruf`, `fehler`.
 - **Antworten** (`POST /api/privatpartys/:id/nachrichten { text }`): eigene `Message-ID` (`<uuid@Domain der Party-Mail>`), `In-Reply-To`

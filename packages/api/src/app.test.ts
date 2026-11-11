@@ -1453,6 +1453,107 @@ describe('posten', () => {
     expect((await put('admin-token')).status).toBe(200);
   });
 
+  describe('Besetzung rules', () => {
+    const profil = {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+      geburtsdatum: null,
+      geburtstagImKalender: null,
+      wohnheim: null,
+    };
+    const aufbau = async (rechte: PostenRecht[]) => {
+      const t = makeApp();
+      await t.mitglieder.speichern('m1', profil);
+      const res = await t.app.request(
+        '/api/posten',
+        json('vorstand-token', 'POST', { name: 'Mit Rechten' }),
+      );
+      const { id } = (await res.json()) as { id: string };
+      await t.posten.rechteSetzen(id, rechte);
+      return { ...t, id };
+    };
+    const besetzung = { mitgliedSub: 'm1', start: '2026-01-01' };
+
+    it('refuses to staff a Posten that grants rights the editor lacks', async () => {
+      const t = await aufbau(['users:manage']);
+      const url = `/api/posten/${t.id}/besetzungen`;
+      const neu = await t.app.request(url, json('vorstand-token', 'POST', besetzung));
+      expect(neu.status).toBe(403);
+      expect(await neu.json()).toEqual({
+        error:
+          'Diesen Posten kannst du nicht besetzen: Er gewährt Rechte, die du selbst nicht hast.',
+      });
+      const aendern = await t.app.request(
+        `${url}/b1`,
+        json('vorstand-token', 'PUT', { ...besetzung, ende: '2026-02-01' }),
+      );
+      expect(aendern.status).toBe(403);
+      await t.app.request(
+        `/api/posten/${t.id}/archiv`,
+        json('admin-token', 'PUT', { archiviert: true }),
+      );
+      const aktivieren = await t.app.request(
+        `/api/posten/${t.id}/archiv`,
+        json('vorstand-token', 'PUT', { archiviert: false }),
+      );
+      expect(aktivieren.status).toBe(403);
+      // Archiving stays possible.
+      expect(
+        (
+          await t.app.request(
+            `/api/posten/${t.id}/archiv`,
+            json('vorstand-token', 'PUT', { archiviert: true }),
+          )
+        ).status,
+      ).toBe(200);
+      // Admins hold every right.
+      expect((await t.app.request(url, json('admin-token', 'POST', besetzung))).status).toBe(201);
+      expect(
+        (
+          await t.app.request(
+            `/api/posten/${t.id}/archiv`,
+            json('admin-token', 'PUT', { archiviert: false }),
+          )
+        ).status,
+      ).toBe(200);
+    });
+
+    it('allows staffing a Posten without rights or with only rights the editor holds', async () => {
+      for (const rechte of [[], ['waren:verwalten' as const]]) {
+        const t = await aufbau(rechte);
+        const url = `/api/posten/${t.id}/besetzungen`;
+        expect((await t.app.request(url, json('vorstand-token', 'POST', besetzung))).status).toBe(
+          201,
+        );
+        expect(
+          (await t.app.request(`${url}/b1`, json('vorstand-token', 'PUT', besetzung))).status,
+        ).toBe(200);
+      }
+    });
+
+    it('lets an admin end the Besetzung of a deactivated member but not name one', async () => {
+      const t = await aufbau([]);
+      await t.mitglieder.speichern('m3', profil);
+      await t.posten.besetzungAnlegen(t.id, { mitgliedSub: 'm1', start: '2026-01-01', ende: null });
+      await t.mitglieder.deaktiviertSetzen('m1', true);
+      await t.mitglieder.deaktiviertSetzen('m3', true);
+      const put = (mitgliedSub: string) =>
+        t.app.request(
+          `/api/posten/${t.id}/besetzungen/b1`,
+          json('admin-token', 'PUT', { mitgliedSub, start: '2026-01-01', ende: '2026-03-01' }),
+        );
+      expect((await put('m1')).status).toBe(200);
+      expect((await put('m3')).status).toBe(400);
+    });
+  });
+
   it('adds the permissions of held Posten to /api/me', async () => {
     const res = await makeApp().app.request('/api/me', { headers: bearer('vorstand-token') });
     expect(((await res.json()) as { permissions: string[] }).permissions).toContain(
@@ -3606,6 +3707,33 @@ describe('kalender', () => {
     expect((await t.app.request('/api/kalender/feed/unbekannt.ics')).status).toBe(404);
   });
 
+  it('404s the feed for a deactivated member or one without the calendar right', async () => {
+    const t = makeApp();
+    const token = await t.kalender.tokenErzeugen('r');
+    expect((await t.app.request(`/api/kalender/feed/${token}`)).status).toBe(200);
+    await t.mitglieder.speichern('r', {
+      vorname: 'A',
+      nachname: 'B',
+      anrede: null,
+      kontaktkanaele: null,
+      discordName: null,
+      adresse: null,
+      telefon: null,
+      ueberMich: null,
+      profilbildKey: null,
+      geburtsdatum: null,
+      geburtstagImKalender: null,
+      wohnheim: null,
+    });
+    expect((await t.app.request(`/api/kalender/feed/${token}`)).status).toBe(200);
+    await t.mitglieder.deaktiviertSetzen('r', true);
+    const res = await t.app.request(`/api/kalender/feed/${token}`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Kalender nicht gefunden' });
+    await t.mitglieder.deaktiviertSetzen('r', false);
+    expect((await t.app.request(`/api/kalender/feed/${token}`)).status).toBe(200);
+  });
+
   it('puts participation and subscribed events into the feed next to the Dienste', async () => {
     const t = makeApp(undefined, 'https://c4.example');
     t.kalender.meineEvents.mockResolvedValue([
@@ -4333,6 +4461,28 @@ describe('schluessel', () => {
         )
       ).status,
     ).toBe(200);
+  });
+
+  it('lets only the key management enter the first holder', async () => {
+    const t = await setup();
+    const res = await t.app.request(
+      '/api/schluessel',
+      json('admin-token', 'POST', { name: 'Keller', halter: null }),
+    );
+    const { id } = (await res.json()) as { id: string };
+    const uebergeben = (token: string) =>
+      t.app.request(
+        `/api/schluessel/${id}/uebergaben`,
+        json(token, 'POST', { von: null, an: mitglied('m2') }),
+      );
+    const nein = await uebergeben('member-token');
+    expect(nein.status).toBe(403);
+    expect(await nein.json()).toEqual({
+      error: 'Den ersten Halter trägt die Schlüsselverwaltung ein.',
+    });
+    const ja = await uebergeben('admin-token');
+    expect(ja.status).toBe(200);
+    expect(await ja.json()).toMatchObject({ halter: { art: 'mitglied', sub: 'm2' } });
   });
 
   it('tells the receiver when the holder hands the key over', async () => {
@@ -6525,6 +6675,7 @@ describe('bilder', () => {
     it('creates, caches and returns the sharing link for every member', async () => {
       const t = makeApp();
       const o = t.onedrive.hinzufuegen('2025-06-14_A');
+      await t.ordnerCache.schreiben([o], new Date());
       const res = await t.app.request(
         `/api/bilder/ordner/${o.id}/freigabe`,
         json('reader-token', 'POST'),
@@ -6537,6 +6688,7 @@ describe('bilder', () => {
     it('answers 401, 503 and 404', async () => {
       const t = makeApp();
       const o = t.onedrive.hinzufuegen('2025-06-14_A');
+      await t.ordnerCache.schreiben([o], new Date());
       const url = `/api/bilder/ordner/${o.id}/freigabe`;
       expect((await t.app.request(url, { method: 'POST' })).status).toBe(401);
       expect(
@@ -6549,6 +6701,27 @@ describe('bilder', () => {
       ).toBe(404);
       t.onedrive.zustand.verbunden = false;
       expect((await t.app.request(url, json('reader-token', 'POST'))).status).toBe(503);
+    });
+
+    it('refuses ids of folders the app does not know', async () => {
+      const t = makeApp();
+      const bekannt = t.onedrive.hinzufuegen('2025-06-14_A');
+      const fremd = t.onedrive.hinzufuegen('2025-06-15_Fremd');
+      await t.ordnerCache.schreiben([bekannt], new Date());
+      const res = await t.app.request(
+        `/api/bilder/ordner/${fremd.id}/freigabe`,
+        json('reader-token', 'POST'),
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Ordner nicht gefunden' });
+      expect(t.onedrive.freigaben).toBe(0);
+      // A folder with a stored sharing link is known as well.
+      t.freigaben.karte.set(fremd.id, 'https://1drv.ms/f/alt');
+      const ok = await t.app.request(
+        `/api/bilder/ordner/${fremd.id}/freigabe`,
+        json('reader-token', 'POST'),
+      );
+      expect(ok.status).toBe(200);
     });
   });
 
@@ -9313,6 +9486,65 @@ describe('privatpartys', () => {
     expect(danach.terminId).toBe(danach.termine[1]!.id);
   });
 
+  it('ends the running poll when the request is declined and then refuses an event from it', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/umfrage`,
+      json('admin-token', 'POST', { vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false }),
+    );
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    expect((await t.holen(id)).umfrage).toMatchObject({ laeuft: true });
+    await t.app.request(
+      `/api/privatpartys/${id}/status`,
+      json('admin-token', 'PUT', { status: 'abgesagt' }),
+    );
+    expect((await t.holen(id)).umfrage).toMatchObject({ laeuft: false });
+    const u = (await (
+      await t.app.request(`/api/umfragen/${umfrageId}`, json('admin-token', 'GET'))
+    ).json()) as UmfrageDetailDto;
+    const ev = await t.app.request(
+      `/api/umfragen/${umfrageId}/event`,
+      json('admin-token', 'POST', { optionId: u.fragen[0]!.optionen[0]!.id }),
+    );
+    expect(ev.status).toBe(409);
+    expect(await ev.json()).toEqual({
+      error: 'Die Privatparty ist bereits zugesagt oder abgesagt.',
+    });
+    expect(t.kalender.eventAnlegen).not.toHaveBeenCalled();
+  });
+
+  it('refuses an event from the poll of an already accepted request', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/umfrage`,
+      json('admin-token', 'POST', { vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false }),
+    );
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    const wunsch = (await t.holen(id)).termine[0]!;
+    // The direct acceptance also ends the poll.
+    await t.app.request(
+      `/api/privatpartys/${id}/zusage`,
+      json('admin-token', 'POST', { terminId: wunsch.id, vorlageId: 'privat' }),
+    );
+    t.kalender.event.mockResolvedValue({
+      id: 'e1',
+      anzeigeTitel: 'Privatparty',
+      schichten: [],
+    } as unknown as EventDto);
+    t.kalender.eventAnlegen.mockClear();
+    const u = (await (
+      await t.app.request(`/api/umfragen/${umfrageId}`, json('admin-token', 'GET'))
+    ).json()) as UmfrageDetailDto;
+    const ev = await t.app.request(
+      `/api/umfragen/${umfrageId}/event`,
+      json('admin-token', 'POST', { optionId: u.fragen[0]!.optionen[0]!.id }),
+    );
+    expect(ev.status).toBe(409);
+    expect(t.kalender.eventAnlegen).not.toHaveBeenCalled();
+  });
+
   it('shows the link to the Privatparty in the event only to holders of the right', async () => {
     const t = await setup();
     const { id } = await t.anlegen();
@@ -9477,6 +9709,41 @@ describe('privatpartys: Party-Mail', () => {
       await t.app.request('/api/privatpartys/mail-status', json('admin-token', 'GET'))
     ).json();
     expect(status).toMatchObject({ eingerichtet: true, fehler: 'IMAP down' });
+  });
+
+  it('stops at a mail that cannot be stored and retries it in the next run', async () => {
+    const t = await setup();
+    const [a, kaputt, c] = [mail(), mail(), mail()];
+    t.partymail.eingang.push(a, kaputt, c);
+    const echt = t.privatpartys.nachrichtAnlegen.bind(t.privatpartys);
+    let ausfall = true;
+    vi.spyOn(t.privatpartys, 'nachrichtAnlegen').mockImplementation(async (daten) => {
+      if (ausfall && daten.messageId === kaputt.messageId) throw new Error('insert failed');
+      return echt(daten);
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(await (await t.abrufen()).json()).toEqual({ neu: 1 });
+    const stand = await t.privatpartys.abrufStand();
+    expect(stand.letzteUid).toBe(a.uid);
+    expect(stand.fehler).toBe(
+      'Eine Mail konnte nicht gespeichert werden. Der Abruf versucht es beim nächsten Mal erneut.',
+    );
+    // The empty request created for the failing mail is removed again.
+    expect(await t.liste()).toHaveLength(1);
+    ausfall = false;
+    expect(await (await t.abrufen()).json()).toEqual({ neu: 2 });
+    expect(await t.liste()).toHaveLength(3);
+    const danach = await t.privatpartys.abrufStand();
+    expect(danach.letzteUid).toBe(c.uid);
+    expect(danach.fehler).toBeNull();
+  });
+
+  it('truncates an oversized mail text to the outgoing limit', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail({ text: 'x'.repeat(30000) }));
+    await t.abrufen();
+    const d = await t.holen((await t.liste())[0]!.id);
+    expect(d.nachrichten[0]!.text).toHaveLength(20000);
   });
 
   it('answers with thread headers, the sender and no notification', async () => {

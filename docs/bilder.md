@@ -5,7 +5,7 @@ Jedes Event hat dort einen Unterordner `Datum_Event`. Die Seite **Bilder** (`/bi
 nach Eventname und Datum; ein Klick öffnet den Ordner in OneDrive. Unterordner werden nicht betrachtet. Rechte:
 `bilder:lesen` (alle Status: ansehen und Ordner anlegen), Verbindung einrichten mit `users:manage`.
 
-Die Bilder in Protokollen sind davon getrennt: Sie liegen in S3, nicht in OneDrive (siehe [protokolle.md](./protokolle.md#bilder)).
+Die Bilder in Protokollen sind davon getrennt: Sie liegen in S3, nicht in OneDrive (siehe [protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md#bilder)).
 
 ## Namensschema
 
@@ -123,7 +123,7 @@ zurück auf `/app/bilder/einrichtung?code=…`, die Seite schickt den Code an di
 Dieselbe Verbindung speichert die PDFs abgeschlossener Sitzungsprotokolle: `OneDrive.dateiHochladen(pfad, inhalt, contentType)`
 (Graph-Direktupload `PUT /me/drive/root:/<Pfad>:/content`, `conflictBehavior=replace`, höchstens 4 MB; Graph legt fehlende Ordner an).
 Der Pfad `Cloud4/Sitzungen/C4/Protokolle/<Jahr>/<Datei>.pdf` (`PROTOKOLL_PFAD`) gilt ab dem Wurzelordner des OneDrive, nicht ab dem
-Bilder-Basisordner. Details in [protokolle.md](./protokolle.md#pdf-und-onedrive).
+Bilder-Basisordner. Details in [protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md#pdf-und-onedrive).
 
 ## API
 
@@ -131,7 +131,7 @@ Bilder-Basisordner. Details in [protokolle.md](./protokolle.md#pdf-und-onedrive)
   (neueste zuerst). Live aus OneDrive (speichert den Snapshot; `stand` = jetzt, `ausCache: false`); mit `?quelle=cache` sofort
   der gespeicherte Snapshot (`ausCache: true`, `stand` ISO oder `null` und `ordner: []` ohne Snapshot).
 - `POST /api/bilder/ordner` `{ eventName, von, bis? }` → 201; 409 bei vorhandenem Namen, 503 ohne Verbindung
-- `POST /api/bilder/ordner/:id/freigabe` (`bilder:lesen`) → `{ url }` (legt den Link an und cached ihn); 404 ohne Ordner, 503 ohne Verbindung
+- `POST /api/bilder/ordner/:id/freigabe` (`bilder:lesen`) → `{ url }` (legt den Link an und cached ihn); 404, wenn die App den Ordner nicht kennt (nicht im Listen-Snapshot und ohne gespeicherten Freigabelink; die Id kommt aus der URL und darf kein beliebiges OneDrive-Element sein), 503 ohne Verbindung
 - `POST /api/kalender/events/:id/bilder-ordner` → `{ bilderOrdnerUrl }` (409, wenn schon einer existiert)
 - Verbindung (`users:manage`): `GET`/`PUT`/`DELETE /api/bilder/verbindung`, `POST /api/bilder/verbindung/login`
   `{ redirectUri, state }` → `{ url }`, `POST /api/bilder/verbindung/code` `{ code, redirectUri }`

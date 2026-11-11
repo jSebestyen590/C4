@@ -28,6 +28,8 @@ export interface AbrufErgebnis {
   /** The mailbox was replaced (uidValidity changed) or fetched for the first time: nothing imported. */
   zurueckgesetzt: boolean;
   mails: EingehendeMail[];
+  /** Messages that were too large or could not be parsed and were left out. */
+  uebersprungen?: number;
 }
 
 export interface AusgehendeMail {

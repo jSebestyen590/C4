@@ -159,8 +159,17 @@ export function SchluesselAktionen({
 }: Readonly<{ schluessel: SchluesselDto; personenVorschlaege?: string[] }>) {
   const eigeneSub = useEigeneSub();
   const uebergeben = useUebergeben(schluessel);
+  const darfVerwalten = useAuth().can('schluessel:verwalten');
   const [dialog, setDialog] = useState<'weitergeben' | 'eintragen' | 'bekommen' | null>(null);
   if (schluessel.archiviert) return null;
+  // Only the Verwaltung enters the first holder of a key.
+  if (!schluessel.halter && !darfVerwalten) {
+    return (
+      <Text size="sm" c="dimmed">
+        Den ersten Halter trägt die Schlüsselverwaltung ein.
+      </Text>
+    );
+  }
   const meiner = istHalter(schluessel.halter, eigeneSub);
 
   return (

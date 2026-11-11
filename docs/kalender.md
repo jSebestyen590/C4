@@ -18,7 +18,7 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
 | `event_teilnahmen`, `kalender_event_abos`                | Teilnahme einzelner Personen (`antwort` leer/`teilnahme`/`absage`, `eingeladen`); bei Dienste-Events steht hier nur `absage` („nicht verfügbar“) und Events im eigenen Kalender-Abo                                                              |
 | `kalender_serien`                                        | Serien: Name, Vorlage, Regel, Wochentage, Wochen, Start/Ende, `aktiv`; Id = Slug des ersten Namens                                                                                                                                               |
 | `serien_termine`                                         | Jeder Tag, für den eine Serie schon ein Event erzeugt hat: `serie`, `datum`, `event_id` (ohne Fremdschlüssel), `erzeugt`                                                                                                                         |
-| `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag                                                                                                                                                    |     |
+| `kalender_fehlt_erinnerungen`                            | Globale Zeitpunkte (Minuten vor Beginn) für „Dienste fehlen“; Standard 1 Woche, 2 Tage, 1 Tag                                                                                                                                                    |
 
 ## Regeln
 
@@ -69,7 +69,6 @@ Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinner
 - **Ampel** (`schichtBewertung`): rot = eine Dienstform (bei Aufbau/Putzen: die Anzahl aller Einträge) unter Minimum oder Anwärter:in ohne Mitglied/EM in derselben
   Schicht (Externe zählen nicht als Begleitung, Anwärter:innen zählen zum Bedarf; Mitglieder mit dem Status Externe:r sind neutral: sie brauchen keine Begleitung und sind keine); gelb = Wunsch nicht erreicht;
   grün = alles erfüllt. Ein Event hat die schlechteste Farbe seiner Schichten, abgesagt = grau.
-- Deaktivierte Mitglieder (siehe [members.md](./members.md)) fallen aus allen Kreisen und Push-Empfänger:innen heraus.
 - Deaktivierte Mitglieder (siehe [members.md](./members.md)) fallen aus allen Kreisen und Push-Empfänger:innen heraus.
 - Ändern eines Events behält die Einträge; entfernt es Schichten oder Bedarfe mit Einträgen, antwortet das API mit 409
   und der Liste der Betroffenen, bis `bestaetigt: true` mitkommt. Wechselt die Art einer Schicht mit Einträgen von
@@ -250,7 +249,8 @@ Antwort `GeburtstagDto[]`: `datum`, `alter`, Mitglied mit `username`, `status`, 
   ersetzt den alten (der alte Link geht dann nicht mehr).
 - `GET /api/me/kalender-token` (`{ vorhanden }`), `POST /api/me/kalender-token` (`{ token }`).
 - `GET /api/kalender/feed/:token(.ics)` ist öffentlich (kein Bearer-Token, in API Gateway eine eigene Route ohne
-  Authorizer). Er enthält die eigenen Dienste ab 90 Tage zurück, `text/calendar`, `no-store`. Titel
+  Authorizer). Er antwortet mit 404 „Kalender nicht gefunden“, wenn das Mitglied des Tokens deaktiviert ist oder
+  `kalender:lesen` nicht (mehr) hat. Er enthält die eigenen Dienste ab 90 Tage zurück, `text/calendar`, `no-store`. Titel
   „Dienstform · Event“ (bei Aufbau/Putzen „Aufbau · Event“), abgesagte Events als `STATUS:CANCELLED`. Links zum Event nur, wenn die Lambda-Variable
   `PUBLIC_URL` gesetzt ist (Terraform: nur mit eigener Domain).
 - Neben den eigenen Diensten enthält der Feed **Events mit der Gesamtzeit des Events** (UID `event-<id>@c4-leipzig.de`,
