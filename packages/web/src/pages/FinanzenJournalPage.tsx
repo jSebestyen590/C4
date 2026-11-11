@@ -106,6 +106,7 @@ export function FinanzenJournalPage() {
       </Group>
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <Select
+          selectFirstOptionOnChange
           label="Konto"
           placeholder="Alle Konten"
           clearable

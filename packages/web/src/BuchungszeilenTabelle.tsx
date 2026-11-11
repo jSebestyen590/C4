@@ -97,6 +97,7 @@ export function BuchungszeilenTabelle({
     const f = zeilenFehler(z, konten);
     return (
       <Select
+        selectFirstOptionOnChange
         aria-label={`Konto der Zeile ${i + 1}`}
         placeholder="Konto suchen"
         searchable
@@ -107,12 +108,19 @@ export function BuchungszeilenTabelle({
           aendere(z.key, { kontoId: v });
           // After picking an account the next field is the direction.
           if (v) {
-            setTimeout(
-              () =>
+            // Wait until the dropdown has closed and Mantine has returned focus to the input,
+            // then move on, unless the user already went somewhere else.
+            const ziel = wurzel.current?.querySelector<HTMLElement>(
+              `[data-konto-zeile="${z.key}"]`,
+            );
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const aktiv = document.activeElement;
+                if (aktiv && aktiv !== ziel && aktiv !== document.body) return;
                 wurzel.current
                   ?.querySelector<HTMLElement>(`[data-richtung-zeile="${z.key}"]`)
-                  ?.focus(),
-              0,
+                  ?.focus();
+              }),
             );
           }
         }}
@@ -249,7 +257,7 @@ export function BuchungszeilenTabelle({
                     w={280}
                     events={{ hover: true, focus: true, touch: true }}
                   >
-                    <Box component="span" tabIndex={0} aria-label={HILFE} lh={0}>
+                    <Box component="span" lh={0}>
                       <IconInfoCircle size={16} />
                     </Box>
                   </Tooltip>

@@ -254,6 +254,7 @@ export function FinanzenBuchenPage() {
             {modus === 'umbuchung' ? (
               <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                 <Select
+                  selectFirstOptionOnChange
                   label="Von Konto"
                   description="Hier geht der Betrag ab (Abgang)."
                   placeholder="Konto suchen"
@@ -268,6 +269,7 @@ export function FinanzenBuchenPage() {
                   data-nav=""
                 />
                 <Select
+                  selectFirstOptionOnChange
                   label="Nach Konto"
                   description="Hier kommt der Betrag an (Zugang)."
                   placeholder="Konto suchen"
