@@ -104,7 +104,7 @@ function Eintrag({
             <ActionIcon
               visibleFrom="sm"
               variant="light"
-              size={44}
+              size={42}
               aria-label="Als gelesen markieren"
               title="Als gelesen markieren"
               onClick={(e) => {

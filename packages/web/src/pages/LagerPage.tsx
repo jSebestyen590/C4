@@ -373,7 +373,7 @@ export function LagerPage() {
       <Group gap="xs">
         <Button
           variant="default"
-          mih={44}
+          mih={42}
           leftSection={<IconArrowsMaximize size={18} />}
           onClick={() => alleAufZu(true)}
         >
@@ -381,7 +381,7 @@ export function LagerPage() {
         </Button>
         <Button
           variant="default"
-          mih={44}
+          mih={42}
           leftSection={<IconArrowsMinimize size={18} />}
           onClick={() => alleAufZu(false)}
         >

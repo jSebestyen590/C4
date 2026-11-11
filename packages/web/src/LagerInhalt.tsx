@@ -12,7 +12,7 @@ const inventarZeile = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  minHeight: 44,
+  minHeight: 42,
   overflowWrap: 'anywhere',
 } as const;
 

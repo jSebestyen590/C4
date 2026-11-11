@@ -3,7 +3,7 @@ import { IconMinus, IconPlus } from '@tabler/icons-react';
 import type { SyntheticEvent } from 'react';
 import { amRand, naechsterWert } from './zahlSchritt';
 
-const SCHALTER = 44;
+const SCHALTER = 42;
 
 /**
  * Number field with large -/+ buttons that change the value WITHOUT focusing the input, so the phone

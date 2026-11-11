@@ -64,7 +64,7 @@ function Kopfzelle({
   const aktiv = sortierung.spalte === spalte;
   return (
     <Table.Th>
-      <UnstyledButton onClick={() => onSortieren(spalte)} fw={600} mih={44}>
+      <UnstyledButton onClick={() => onSortieren(spalte)} fw={600} mih={42}>
         <Group gap={4} wrap="nowrap">
           {text}
           {aktiv &&
@@ -157,7 +157,7 @@ export function TrichterRangliste({
           />
           <ActionIcon
             variant="default"
-            size={44}
+            size={42}
             aria-label={sortierung.richtung === 'ab' ? 'Absteigend' : 'Aufsteigend'}
             onClick={() =>
               setSortierung((s) => ({ ...s, richtung: s.richtung === 'ab' ? 'auf' : 'ab' }))

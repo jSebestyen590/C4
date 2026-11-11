@@ -136,7 +136,7 @@ export function FinanzenKontenPage() {
                 ml={tiefe * 20}
                 opacity={k.archiviert ? 0.6 : 1}
               >
-                <Group gap={4} wrap="nowrap" mih={44}>
+                <Group gap={4} wrap="nowrap" mih={42}>
                   <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                     <Group gap="xs">
                       <Text fw={600} style={{ overflowWrap: 'anywhere' }}>

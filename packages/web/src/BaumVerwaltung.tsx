@@ -69,7 +69,7 @@ function Zeilen({
       {eintraege.map(({ node, kinder }) => (
         <Stack key={node.id} gap="xs">
           <Paper withBorder p={4} pl="sm" opacity={node.archiviert ? 0.6 : 1}>
-            <Group gap={4} wrap="nowrap" mih={44}>
+            <Group gap={4} wrap="nowrap" mih={42}>
               <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
                 <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
                   {node.name}

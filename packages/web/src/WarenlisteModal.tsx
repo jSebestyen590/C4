@@ -82,8 +82,8 @@ function WarenlisteInhalt({
             {...handleProps}
             aria-label={`${ware?.name ?? 'Ware'} verschieben`}
             style={{
-              width: 44,
-              height: 44,
+              width: 42,
+              height: 42,
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
@@ -108,7 +108,7 @@ function WarenlisteInhalt({
           <ActionIcon
             variant="subtle"
             color="red"
-            size={44}
+            size={42}
             aria-label={`${ware?.name ?? 'Ware'} entfernen`}
             onClick={() => setIds(ids.filter((x) => x !== id))}
           >

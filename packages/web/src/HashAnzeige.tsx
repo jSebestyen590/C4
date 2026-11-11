@@ -18,7 +18,7 @@ export function HashAnzeige({ label, wert }: Readonly<{ label: string; wert: str
               <ActionIcon
                 variant="subtle"
                 color={copied ? 'teal' : 'gray'}
-                size={44}
+                size={42}
                 onClick={copy}
                 aria-label={`${label} kopieren`}
               >

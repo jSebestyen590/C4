@@ -116,7 +116,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 className="protokoll-nicht-drucken"
                 aria-label="Anwesenheit entfernen"
                 onClick={() => deleteNode()}

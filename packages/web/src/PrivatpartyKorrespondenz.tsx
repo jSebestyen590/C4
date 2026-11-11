@@ -114,7 +114,7 @@ function ZuordnenDialog({
         <Radio.Group value={ziel} onChange={setZiel} aria-label="Anfrage">
           <ScrollArea.Autosize mah="50dvh" type="auto">
             <Stack gap="xs">
-              <Radio.Card value={NEU} p="sm" mih={44} withBorder>
+              <Radio.Card value={NEU} p="sm" mih={42} withBorder>
                 <Group wrap="nowrap" gap="sm">
                   <Radio.Indicator />
                   <IconPlus size={18} />
@@ -127,7 +127,7 @@ function ZuordnenDialog({
                 </Text>
               )}
               {andere.map((p) => (
-                <Radio.Card key={p.id} value={p.id} p="sm" mih={44} withBorder>
+                <Radio.Card key={p.id} value={p.id} p="sm" mih={42} withBorder>
                   <Group wrap="nowrap" gap="sm" align="flex-start">
                     <Radio.Indicator mt={2} />
                     <Stack gap={0} style={{ minWidth: 0 }}>
@@ -148,12 +148,12 @@ function ZuordnenDialog({
         </Radio.Group>
         {fehler && <Alert color="red">{fehler}</Alert>}
         <Group grow preventGrowOverflow={false}>
-          <Button size="md" mih={44} variant="default" onClick={onClose}>
+          <Button size="md" mih={42} variant="default" onClick={onClose}>
             Abbrechen
           </Button>
           <Button
             size="md"
-            mih={44}
+            mih={42}
             disabled={!ziel}
             loading={laeuft}
             onClick={() => void senden()}
@@ -284,7 +284,7 @@ function Antwortfeld({ p }: Readonly<{ p: PrivatpartyDetailDto }>) {
       <Group>
         <Button
           size="md"
-          mih={44}
+          mih={42}
           loading={laeuft}
           disabled={!text.trim() || !p.antwortAn}
           onClick={() => void senden()}

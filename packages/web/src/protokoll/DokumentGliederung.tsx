@@ -34,7 +34,7 @@ function Ebene({
             onClick={() => onWaehlen(k.id)}
             style={{
               width: '100%',
-              minHeight: 44,
+              minHeight: 42,
               display: 'flex',
               alignItems: 'center',
               minWidth: 0,
@@ -75,7 +75,7 @@ function MeineErwaehnungenListe({
             <li key={e.id}>
               <UnstyledButton
                 onClick={() => onWaehlen(e.id)}
-                style={{ width: '100%', minHeight: 44, padding: '6px 0', minWidth: 0 }}
+                style={{ width: '100%', minHeight: 42, padding: '6px 0', minWidth: 0 }}
               >
                 {e.ueberschrift && (
                   <Text size="xs" c="dimmed" truncate>

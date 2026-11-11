@@ -219,7 +219,7 @@ export function BedarfeEditor({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label="Bedarf entfernen"
                 onClick={() => onChange(bedarfe.filter((_, j) => j !== i))}
               >
@@ -345,7 +345,7 @@ export function SchichtListeEditor<T extends SchichtBasis>({
                 <ActionIcon
                   variant="subtle"
                   color="gray"
-                  size={44}
+                  size={42}
                   aria-label="Schicht nach oben"
                   disabled={i === 0}
                   onClick={() => verschieben(i, -1)}
@@ -355,7 +355,7 @@ export function SchichtListeEditor<T extends SchichtBasis>({
                 <ActionIcon
                   variant="subtle"
                   color="gray"
-                  size={44}
+                  size={42}
                   aria-label="Schicht nach unten"
                   disabled={i === schichten.length - 1}
                   onClick={() => verschieben(i, 1)}
@@ -365,7 +365,7 @@ export function SchichtListeEditor<T extends SchichtBasis>({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label="Schicht entfernen"
                   onClick={() => onChange(schichten.filter((_, j) => j !== i))}
                 >

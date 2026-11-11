@@ -274,7 +274,7 @@ function TypWahl({ onWahl }: Readonly<{ onWahl: (typ: UmfrageTyp) => void }>) {
       <Text>Was möchtest du erstellen?</Text>
       {UMFRAGE_TYPEN.map((t) => (
         <UnstyledButton key={t.typ} onClick={() => onWahl(t.typ)}>
-          <Paper withBorder p="md" mih={44}>
+          <Paper withBorder p="md" mih={42}>
             <Group gap="sm" wrap="nowrap" align="flex-start">
               {TYP_ICONS[t.typ]}
               <Stack gap={2}>
@@ -442,7 +442,7 @@ function FrageEditor({
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={44}
+              size={42}
               aria-label="Frage nach oben"
               disabled={nr === 1}
               onClick={() => onVerschieben(-1)}
@@ -452,7 +452,7 @@ function FrageEditor({
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={44}
+              size={42}
               aria-label="Frage nach unten"
               disabled={nr === anzahl}
               onClick={() => onVerschieben(1)}
@@ -462,7 +462,7 @@ function FrageEditor({
             <ActionIcon
               variant="subtle"
               color="red"
-              size={44}
+              size={42}
               aria-label="Frage entfernen"
               disabled={anzahl === 1}
               onClick={onEntfernen}
@@ -504,7 +504,7 @@ function FrageEditor({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label={`Antwort ${i + 1} entfernen`}
                   onClick={() =>
                     onChange({ ...frage, optionen: frage.optionen.filter((_, j) => j !== i) })

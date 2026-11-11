@@ -59,7 +59,7 @@ function KlickZeile({
     <Group
       wrap="nowrap"
       gap="xs"
-      mih={44}
+      mih={42}
       role="link"
       tabIndex={0}
       style={{ cursor: 'pointer' }}
@@ -81,8 +81,8 @@ function KlickZeile({
             justifyContent: 'center',
             alignSelf: 'stretch',
             flex: 'none',
-            width: 44,
-            minHeight: 44,
+            width: 42,
+            minHeight: 42,
             cursor: 'pointer',
           }}
         >

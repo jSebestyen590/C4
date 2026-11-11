@@ -43,7 +43,7 @@ export function LagerKachel({
       onClick={onClick}
       title={node.name}
       aria-label={beschreibung}
-      mih={44}
+      mih={42}
       p={6}
       pos="relative"
       opacity={node.archiviert ? 0.5 : 1}
@@ -179,7 +179,7 @@ export function LagerKachelDrawer({
             <Button
               key={a.text}
               fullWidth
-              mih={44}
+              mih={42}
               variant={a.color || a.primaer ? 'light' : 'default'}
               color={a.color}
               leftSection={a.icon}

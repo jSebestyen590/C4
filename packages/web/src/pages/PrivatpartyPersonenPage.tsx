@@ -41,7 +41,7 @@ export function PrivatpartyPersonenPage() {
         <Title order={2}>Personen</Title>
         <Button
           size="md"
-          mih={44}
+          mih={42}
           leftSection={<IconPlus size={18} />}
           onClick={() => setNeu(true)}
         >

@@ -287,7 +287,7 @@ export function BilderPage() {
                 <Title order={3}>
                   <UnstyledButton
                     w="100%"
-                    mih={44}
+                    mih={42}
                     aria-expanded={offen}
                     aria-controls={regionId}
                     onClick={() => {

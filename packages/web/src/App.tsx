@@ -109,7 +109,7 @@ function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
           </Text>
           <Button
             size="md"
-            mih={44}
+            mih={42}
             variant="light"
             color="red"
             loading={me.isFetching || mitglied.isFetching}

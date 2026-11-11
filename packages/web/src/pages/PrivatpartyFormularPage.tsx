@@ -140,7 +140,7 @@ function Formular({
             value={personId}
             onChange={setPersonId}
           />
-          <Button size="md" mih={44} variant="default" onClick={() => setNeuePerson(true)}>
+          <Button size="md" mih={42} variant="default" onClick={() => setNeuePerson(true)}>
             Neue Person
           </Button>
         </Group>
@@ -163,7 +163,7 @@ function Formular({
                   <ActionIcon
                     variant="subtle"
                     color="red"
-                    size={44}
+                    size={42}
                     aria-label={`Termin ${i + 1} entfernen`}
                     onClick={() => setTermine((l) => l.filter((x) => x.key !== t.key))}
                   >
@@ -209,7 +209,7 @@ function Formular({
           ))}
           <Button
             size="md"
-            mih={44}
+            mih={42}
             variant="default"
             leftSection={<IconPlus size={18} />}
             onClick={() => setTermine((l) => [...l, leererTermin()])}
@@ -229,7 +229,7 @@ function Formular({
         <Group grow preventGrowOverflow={false}>
           <Button
             size="md"
-            mih={44}
+            mih={42}
             variant="default"
             onClick={() =>
               void navigate(bearbeiten ? privatpartyLink(bearbeiten.id) : '/privatpartys')
@@ -237,7 +237,7 @@ function Formular({
           >
             Abbrechen
           </Button>
-          <Button size="md" mih={44} type="submit" loading={laeuft}>
+          <Button size="md" mih={42} type="submit" loading={laeuft}>
             {bearbeiten ? 'Speichern' : 'Anlegen'}
           </Button>
         </Group>

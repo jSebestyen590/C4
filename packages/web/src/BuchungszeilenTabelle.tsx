@@ -159,7 +159,7 @@ export function BuchungszeilenTabelle({
     <ActionIcon
       variant="subtle"
       color="red"
-      size={44}
+      size={42}
       aria-label={`Zeile ${i + 1} entfernen`}
       disabled={zeilen.length <= 2}
       onClick={() => entferne(z.key)}
