@@ -261,7 +261,7 @@ jede Änderung macht `['inventar']` ungültig.
   `['inventar']` ungültig, damit auch `verliehen` an Gegenständen und IFCOs nachzieht.
 - `/inventar/ausleihen/neu` (`AusleihePage`, `inventar:umraeumen`): An wen, „Organisiert von“ (durchsuchbare Mitgliederliste, vorbelegt mit dir selbst), Zeitpunkt (jetzt, änderbar), geplante Rückgabe (Pflicht, mit Sternchen),
   Kommentar; Gegenstand per Suche hinzufügen, je Platz das im gewählten Zeitraum Verfügbare (ändert sich mit Zeitpunkt und Rückgabe; ohne Rückgabedatum rechnet die Seite offen) als Zahlenfeld
-  – bei einem Platz mit zugeordneter Anzahl 1 stattdessen ein Schalter „Verleihen aus <Pfad>“ (≥ 44 px, `standardMenge`): hat der Gegenstand nur
+  – bei einem Platz mit zugeordneter Anzahl 1 stattdessen ein Schalter „Verleihen aus <Pfad>“ (≥ 42 px, `standardMenge`): hat der Gegenstand nur
   diesen einen Platz und ist er frei, ist er mit dem Hinzufügen schon gewählt; sonst gesperrt mit Hinweis, wer ihn hat. Ganze IFCOs übernehmen als
   Standard das Verfügbare (Platzhalter = verfügbar; mehr als verfügbar: orange mit Fehler, Absenden gesperrt). „Ganze IFCO verleihen“ übernimmt den verfügbaren Inhalt
   einer IFCO; sie wird als **ganze IFCO** verliehen, solange der volle verfügbare Inhalt eingetragen bleibt (der Bestätigungsdialog zeigt dann „Spanngurtkiste (ganze IFCO)“, sonst werden die Teile einzeln verliehen). Vorbelegung über `?gegenstand=<id>` und `?ifco=<id>` (Buttons „Verleihen“ auf den Detailseiten). Bestätigungsdialog mit dem Zeitraum („Vom 25.10.2026 09:00 bis 27.10.2026“ bzw. „Seit … bis …“) und allen
@@ -274,7 +274,7 @@ jede Änderung macht `['inventar']` ungültig.
   Status und Knopf.
 - `/inventar/ausleihen/:id` (`AusleiheDetailPage`): Kopf, Positionen mit Häkchen und „Zurückgeben“ (Zeitpunkt, Standard jetzt; Teilrückgabe
   möglich), zurückgegebene Positionen mit Datum. Die ganze Karte einer Position ist anklickbar (öffnet den Gegenstand, per Tastatur erreichbar); das Häkchen
-  (44 px Trefferfläche) wählt unabhängig davon. Ganz verliehene IFCOs erscheinen als eine Karte „Spanngurtkiste (ganze IFCO)“ (öffnet die IFCO) mit
+  (42 px Trefferfläche) wählt unabhängig davon. Ganz verliehene IFCOs erscheinen als eine Karte „Spanngurtkiste (ganze IFCO)“ (öffnet die IFCO) mit
   Gruppen-Häkchen für alle offenen Positionen und den Inhalten als Unterliste, einzeln wählbar. Unter der Überschrift steht „Organisiert von <Username>“
   (Username, ohne Username „Vorname Nachname“; fett in der Statusfarbe, auf der Detailseite zum Mitglied verlinkt; im Auswahlfeld „username (Vorname Nachname)“); ebenso auf `AusleiheKarte`, die ganze IFCOs als eine Zeile mit kompaktem Inhalt zeigt. Bei vorgemerkten Ausleihen gibt es keine Rückgabe, nur Bearbeiten und Löschen. Menü „Bearbeiten“: bei nicht erledigten Ausleihen die Seite `/inventar/ausleihen/:id/bearbeiten` (`AusleihePage` im Bearbeiten-Modus: Kopf und offene Positionen vorbelegt, eigene Positionen blockieren sich nicht, zurückgegebene stehen read-only unter „Bereits zurückgegeben“, Bestätigung „Änderungen speichern“), bei erledigten `AusleiheBearbeitenModal` (an, Organisator, Zeitpunkt, geplante Rückgabe (Pflicht), Kommentar)
   und „Löschen“ (`inventar:umraeumen`).

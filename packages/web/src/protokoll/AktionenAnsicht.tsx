@@ -90,14 +90,14 @@ export function AktionenAuswahl({
           <li key={a.id}>
             <Stack gap={2} opacity={kannLaufen || a.erledigt ? 1 : 0.6}>
               {a.erledigt ? (
-                <Group gap="xs" wrap="nowrap" align="flex-start" mih={44}>
+                <Group gap="xs" wrap="nowrap" align="flex-start" mih={42}>
                   <Text style={{ overflowWrap: 'anywhere', flex: 1 }}>{a.text}</Text>
                   <Erledigt />
                 </Group>
               ) : (
                 <Checkbox
                   size="md"
-                  mih={44}
+                  mih={42}
                   styles={{ root: { display: 'flex', alignItems: 'center' } }}
                   label={a.text}
                   checked={auswahl.includes(a.id)}

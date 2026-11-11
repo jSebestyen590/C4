@@ -87,7 +87,7 @@ function ErinnerungenEditor({ gespeichert }: Readonly<{ gespeichert: number[] }>
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`${erinnerungText(m)} entfernen`}
                 onClick={() => setListe(liste.filter((x) => x !== m))}
               >

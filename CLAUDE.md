@@ -63,7 +63,7 @@ and component must be designed and built **mobile first**:
   desktop afterwards.
 - Use Mantine components (`@mantine/core`) and the theme in `packages/web/src/theme.ts`; don't hand-roll
   styles with fixed pixel widths. No horizontal scrolling of the page.
-- Touch targets must be at least 44px (keep Mantine size `md`+ for inputs and buttons). Input font
+- Touch targets must be at least 42px, the Mantine `md` input height (keep Mantine size `md`+ for inputs and buttons). Input font
   size must stay >= 16px, otherwise iOS Safari zooms in on focus.
 - For numbers use `ZahlFeld` (`packages/web/src/ZahlFeld.tsx`) instead of Mantine's `NumberInput`: big
   -/+ buttons that don't open the phone keyboard.

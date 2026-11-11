@@ -24,7 +24,7 @@ export function DatumFeld({
       type="date"
       value={value}
       onChange={(e) => onWert(e.currentTarget.value)}
-      rightSectionWidth={loeschbar ? 44 : undefined}
+      rightSectionWidth={loeschbar ? 42 : undefined}
       rightSectionPointerEvents="all"
       rightSection={
         loeschbar && value ? (

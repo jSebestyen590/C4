@@ -176,7 +176,7 @@ function GeburtstagZeile({
       px="sm"
       py={6}
       style={{
-        minHeight: 44,
+        minHeight: 42,
         borderRadius: 8,
         background: 'var(--mantine-color-green-light)',
         borderLeft: `6px solid ${GEBURTSTAG_FARBE}`,
@@ -278,7 +278,7 @@ function TagesUebersicht({
           onClick={() => void navigate(`/kalender/events/${e.id}`)}
           p="sm"
           style={{
-            minHeight: 44,
+            minHeight: 42,
             borderRadius: 8,
             border: '1px solid var(--mantine-color-default-border)',
             borderLeft: `6px solid var(--mantine-color-${kategorieFarbe(e.kategorie)}-6)`,
@@ -801,7 +801,7 @@ export function KalenderPage() {
       <Group justify="space-between" wrap="nowrap">
         <ActionIcon
           variant="default"
-          size={44}
+          size={42}
           aria-label="Voriger Monat"
           onClick={() => verschieben(-1)}
         >
@@ -817,7 +817,7 @@ export function KalenderPage() {
         </Stack>
         <ActionIcon
           variant="default"
-          size={44}
+          size={42}
           aria-label="Nächster Monat"
           onClick={() => verschieben(1)}
         >

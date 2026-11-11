@@ -128,7 +128,7 @@ export function BewegungVerlauf({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label="Buchung löschen"
                   onClick={() => setLoeschen(b)}
                 >

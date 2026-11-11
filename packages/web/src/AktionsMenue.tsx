@@ -23,7 +23,7 @@ export function AktionsMenue({ aktionen, label }: Readonly<{ aktionen: Aktion[];
   return (
     <Menu position="bottom-end" width={260} withinPortal>
       <Menu.Target>
-        <ActionIcon variant="subtle" color="gray" size={44} aria-label={label}>
+        <ActionIcon variant="subtle" color="gray" size={42} aria-label={label}>
           <IconDots size={22} />
         </ActionIcon>
       </Menu.Target>
@@ -36,7 +36,7 @@ export function AktionsMenue({ aktionen, label }: Readonly<{ aktionen: Aktion[];
               color={a.color}
               disabled={a.disabled}
               onClick={a.onClick}
-              mih={44}
+              mih={42}
             >
               {a.text}
             </Menu.Item>

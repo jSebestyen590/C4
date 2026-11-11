@@ -240,7 +240,7 @@ export function GegenstandPlaetzeModal({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label={`Platz ${i + 1} entfernen`}
                   onClick={() => setZeilen((l) => l.filter((x) => x.key !== z.key))}
                 >
@@ -287,7 +287,7 @@ export function GegenstandPlaetzeModal({
                 <ActionIcon
                   variant="subtle"
                   color="red"
-                  size={44}
+                  size={42}
                   aria-label={`Ort ${i + 1} entfernen`}
                   onClick={() => setVerbaut((l) => l.filter((x) => x.key !== v.key))}
                 >

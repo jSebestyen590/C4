@@ -60,7 +60,7 @@ function MailStatus() {
       <Button
         variant="subtle"
         size="md"
-        mih={44}
+        mih={42}
         loading={laeuft}
         style={{ whiteSpace: 'nowrap' }}
         onClick={() => void abrufen()}
@@ -85,7 +85,7 @@ export function PrivatpartysPage() {
         <Group gap="xs">
           <Button
             size="md"
-            mih={44}
+            mih={42}
             component={Link}
             to="/privatpartys/personen"
             variant="default"
@@ -95,7 +95,7 @@ export function PrivatpartysPage() {
           </Button>
           <Button
             size="md"
-            mih={44}
+            mih={42}
             component={Link}
             to="/privatpartys/neu"
             leftSection={<IconPlus size={18} />}

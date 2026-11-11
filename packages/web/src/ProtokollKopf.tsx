@@ -365,7 +365,7 @@ export function ProtokollKopf({
           <Stack gap="xs">
             <UnstyledButton
               w="100%"
-              mih={44}
+              mih={42}
               aria-expanded={offen}
               aria-controls="protokoll-teilnahme"
               onClick={() => setUmgeschaltet(!offen)}

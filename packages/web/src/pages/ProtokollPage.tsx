@@ -525,7 +525,7 @@ function ProtokollAnsicht({
                     type="button"
                     size="sm"
                     ta="left"
-                    style={{ minHeight: 44, overflowWrap: 'anywhere' }}
+                    style={{ minHeight: 42, overflowWrap: 'anywhere' }}
                     onClick={() => zuBaustein(p.bausteinId)}
                   >
                     {p.text}
