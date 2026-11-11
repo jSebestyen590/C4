@@ -9675,8 +9675,22 @@ describe('finanzen', () => {
     t.posten.rechteVon.mockImplementation(async (sub: string) =>
       sub === 'v' ? ['finanzen:lesen' as const] : sub === 'r' ? ['finanzen:pruefen' as const] : [],
     );
-    const anfrage = (token: string, method: string, pfad: string, body?: unknown) =>
+    const roh = (token: string, method: string, pfad: string, body?: unknown) =>
       t.app.request(`/api/finanzen${pfad}`, json(token, method, body));
+    // Bookings and reversals need an idempotency key; tests get a fresh one unless they bring their own.
+    const anfrage = (token: string, method: string, pfad: string, body?: unknown) =>
+      roh(
+        token,
+        method,
+        pfad,
+        method === 'POST' &&
+          (pfad === '/buchungen' || pfad.endsWith('/storno')) &&
+          body &&
+          typeof body === 'object' &&
+          !('idempotenzSchluessel' in body)
+          ? { idempotenzSchluessel: crypto.randomUUID(), ...body }
+          : body,
+      );
     const buchen = (body: Record<string, unknown>, token = 'admin-token') =>
       anfrage(token, 'POST', '/buchungen', body);
     /** Moves `betragCent` from the Bank to the Geldtransit. */
@@ -9693,7 +9707,7 @@ describe('finanzen', () => {
       });
     const lesen = async <T>(token: string, pfad: string) =>
       (await (await anfrage(token, 'GET', pfad)).json()) as T;
-    return { ...t, anfrage, buchen, umbuchung, lesen };
+    return { ...t, anfrage, roh, buchen, umbuchung, lesen };
   }
 
   it('requires the matching right on every route', async () => {
@@ -9987,6 +10001,60 @@ describe('finanzen', () => {
       { nennwertCent: 500, anzahl: 1 },
       { nennwertCent: 2000, anzahl: 1 },
     ]);
+  });
+
+  it('books only once per idempotency key', async () => {
+    const t = await setup();
+    const key = crypto.randomUUID();
+    const erste = await t.umbuchung(500, { idempotenzSchluessel: key });
+    expect(erste.status).toBe(201);
+    const { id, seq } = (await erste.json()) as { id: string; seq: number };
+    const zweite = await t.umbuchung(500, { idempotenzSchluessel: key });
+    expect(zweite.status).toBe(200);
+    expect(await zweite.json()).toEqual({ id, seq, wiederholt: true });
+    expect(
+      (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+    ).toHaveLength(1);
+
+    // the same for a reversal
+    const stornoKey = crypto.randomUUID();
+    const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-06',
+      idempotenzSchluessel: stornoKey,
+    });
+    expect(storno.status).toBe(201);
+    const { id: stornoId } = (await storno.json()) as { id: string };
+    const nochmal = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-06',
+      idempotenzSchluessel: stornoKey,
+    });
+    expect(nochmal.status).toBe(200);
+    expect(((await nochmal.json()) as { id: string }).id).toBe(stornoId);
+    expect(
+      (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+    ).toHaveLength(2);
+  });
+
+  it('requires a valid idempotency key', async () => {
+    const t = await setup();
+    const body = {
+      datum: '2027-01-05',
+      text: 'x',
+      zeilen: [
+        { kontoId: 'geldtransit', betragCent: 5 },
+        { kontoId: 'bank', betragCent: -5 },
+      ],
+    };
+    expect((await t.roh('admin-token', 'POST', '/buchungen', body)).status).toBe(400);
+    const kaputt = await t.roh('admin-token', 'POST', '/buchungen', {
+      ...body,
+      idempotenzSchluessel: 'abc',
+    });
+    expect(kaputt.status).toBe(400);
+    expect(await kaputt.text()).toContain('UUID');
+    expect(
+      (await t.roh('admin-token', 'POST', '/buchungen/x/storno', { datum: '2027-01-05' })).status,
+    ).toBe(400);
   });
 
   it('reverses a booking once and never a reversal', async () => {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { centAnzeigen, type KontoDto } from '@c4/shared';
+import { type KontoDto } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
 
@@ -16,9 +16,12 @@ export function useKonten(archiviert: boolean) {
   });
 }
 
-/** Amount with an explicit sign: `+12,50 €` / `-12,50 €`. */
-export const betragMitVorzeichen = (cent: number): string =>
-  `${cent > 0 ? '+' : ''}${centAnzeigen(cent)}`;
+/** Style for amounts: right-aligned digits of equal width, never wrapped. */
+export const BETRAG_STIL = {
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
+  whiteSpace: 'nowrap',
+} as const;
 
 /** Parses the JSON body after checking the status; throws an `ApiFehler` with the API's German text. */
 export async function jsonOderFehler<T>(res: {

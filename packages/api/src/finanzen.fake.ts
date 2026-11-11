@@ -34,6 +34,8 @@ export function createFakeFinanzenStore() {
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
   const zaehler = { wert: 0, letzterHash: GENESIS_HASH };
+  /** Idempotency key -> booking, like the unique index. */
+  const schluessel = new Map<string, { id: string; seq: number }>();
 
   const saldo = (id: string) =>
     buchungen.reduce(
@@ -69,6 +71,11 @@ export function createFakeFinanzenStore() {
     };
   };
 
+  const vorhandene = (key: string) => {
+    const b = schluessel.get(key);
+    return b ? { ...b, wiederholt: true } : undefined;
+  };
+
   const anhaengen = async (entwurf: Parameters<typeof buchungErzeugen>[0]) => {
     const { buchung } = await buchungErzeugen(
       entwurf,
@@ -79,6 +86,8 @@ export function createFakeFinanzenStore() {
     buchungen.push(buchung);
     zaehler.wert = buchung.seq;
     zaehler.letzterHash = buchung.hash;
+    if (entwurf.idempotenzSchluessel)
+      schluessel.set(entwurf.idempotenzSchluessel, { id: buchung.id, seq: buchung.seq });
     return { id: buchung.id, seq: buchung.seq };
   };
 
@@ -118,6 +127,8 @@ export function createFakeFinanzenStore() {
       return true;
     },
     async buchen(eingabe, sub) {
+      const schon = vorhandene(eingabe.idempotenzSchluessel);
+      if (schon) return schon;
       const fehler = pruefeBuchung(eingabe, [...konten.values()]);
       if (fehler.length > 0) throw new BuchungUngueltig(fehler);
       return anhaengen({
@@ -128,10 +139,13 @@ export function createFakeFinanzenStore() {
         eventId: eingabe.eventId,
         stornoVon: null,
         erstelltVon: sub,
+        idempotenzSchluessel: eingabe.idempotenzSchluessel,
         zeilen: entwurfZeilen(eingabe),
       });
     },
     async stornieren(id, eingabe, sub) {
+      const schon = vorhandene(eingabe.idempotenzSchluessel);
+      if (schon) return schon;
       const original = buchungen.find((b) => b.id === id);
       if (!original) return undefined;
       if (original.stornoVon !== null)
@@ -146,6 +160,7 @@ export function createFakeFinanzenStore() {
         eventId: original.eventId,
         stornoVon: original.id,
         erstelltVon: sub,
+        idempotenzSchluessel: eingabe.idempotenzSchluessel,
         zeilen: stornoZeilen(structuredClone(original.zeilen)).map(ohnePos),
       });
     },

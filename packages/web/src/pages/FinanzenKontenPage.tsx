@@ -1,12 +1,14 @@
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
   Paper,
   Stack,
   Switch,
+  Table,
   Text,
   Title,
 } from '@mantine/core';
@@ -18,7 +20,7 @@ import { centAnzeigen, KONTO_ART_LABELS, KONTO_ARTEN, type KontoDto } from '@c4/
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { FINANZEN_KEY, useKonten } from '../finanzenDaten';
+import { BETRAG_STIL, FINANZEN_KEY, useKonten } from '../finanzenDaten';
 import { KontoFormular } from '../KontoFormular';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
@@ -76,13 +78,34 @@ export function FinanzenKontenPage() {
     onError: (e) => fehlerAnzeigen(e),
   });
 
+  const aktionsMenue = (k: KontoDto) => (
+    <AktionsMenue
+      label={`Aktionen für ${k.name}`}
+      aktionen={[
+        {
+          text: 'Bearbeiten',
+          icon: <IconEdit size={18} />,
+          onClick: () => setFormular({ konto: k }),
+          sichtbar: darfVerwalten,
+        },
+        {
+          text: k.archiviert ? 'Wiederherstellen' : 'Archivieren',
+          icon: k.archiviert ? <IconArchiveOff size={18} /> : <IconArchive size={18} />,
+          onClick: () => archivMutation.mutate(k),
+          sichtbar: darfVerwalten,
+          trenner: true,
+        },
+      ]}
+    />
+  );
+
   const gruppen = KONTO_ARTEN.map((art) => ({
     art,
     zeilen: baum((konten.data ?? []).filter((k) => k.art === art && (archiv || !k.archiviert))),
   })).filter((g) => g.zeilen.length > 0);
 
   return (
-    <Stack maw={900}>
+    <Stack maw={1100}>
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
       <Group justify="space-between" wrap="wrap">
         <Title order={2}>Kontenplan</Title>
@@ -100,79 +123,144 @@ export function FinanzenKontenPage() {
       {konten.isPending && <Loader m="md" aria-label="Konten werden geladen" />}
       {konten.isError && <Alert color="red">Die Konten konnten nicht geladen werden.</Alert>}
       {konten.data && gruppen.length === 0 && <Text c="dimmed">Keine Konten vorhanden.</Text>}
-      {gruppen.map(({ art, zeilen }) => (
-        <Stack key={art} gap="xs">
-          <Title order={4}>{KONTO_ART_LABELS[art]}</Title>
-          {zeilen.map(({ konto: k, tiefe }) => (
-            <Paper
-              key={k.id}
-              withBorder
-              p={4}
-              pl="sm"
-              ml={tiefe * 20}
-              opacity={k.archiviert ? 0.6 : 1}
-            >
-              <Group gap={4} wrap="nowrap" mih={44}>
-                <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                  <Group gap="xs">
-                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {k.name}
-                    </Text>
-                    {k.stueckelung && (
-                      <Badge variant="light" color="gray">
-                        Stückelung
-                      </Badge>
+      <Stack hiddenFrom="sm" gap="md">
+        {gruppen.map(({ art, zeilen }) => (
+          <Stack key={art} gap="xs">
+            <Title order={4}>{KONTO_ART_LABELS[art]}</Title>
+            {zeilen.map(({ konto: k, tiefe }) => (
+              <Paper
+                key={k.id}
+                withBorder
+                p={4}
+                pl="sm"
+                ml={tiefe * 20}
+                opacity={k.archiviert ? 0.6 : 1}
+              >
+                <Group gap={4} wrap="nowrap" mih={44}>
+                  <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+                    <Group gap="xs">
+                      <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                        {k.name}
+                      </Text>
+                      {k.stueckelung && (
+                        <Badge variant="light" color="gray">
+                          Stückelung
+                        </Badge>
+                      )}
+                      {k.archiviert && (
+                        <Badge color="gray" variant="light">
+                          Archiviert
+                        </Badge>
+                      )}
+                    </Group>
+                    {k.parentId && !zeilen.some((z) => z.konto.id === k.parentId) && (
+                      <Text size="sm" c="dimmed">
+                        Unter {namen.get(k.parentId) ?? 'unbekannt'}
+                      </Text>
                     )}
-                    {k.archiviert && (
-                      <Badge color="gray" variant="light">
-                        Archiviert
-                      </Badge>
+                    {k.steuersatzStandard !== null && (
+                      <Text size="sm" c="dimmed">
+                        Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                      </Text>
                     )}
-                  </Group>
-                  {k.parentId && !zeilen.some((z) => z.konto.id === k.parentId) && (
-                    <Text size="sm" c="dimmed">
-                      Unter {namen.get(k.parentId) ?? 'unbekannt'}
+                  </Stack>
+                  <Text
+                    fw={600}
+                    component={Link}
+                    to={`/finanzen/journal?konto=${encodeURIComponent(k.id)}`}
+                    c={k.saldoCent < 0 ? 'red' : undefined}
+                    style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
+                    aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoCent)}`}
+                  >
+                    {centAnzeigen(k.saldoCent)}
+                  </Text>
+                  {aktionsMenue(k)}
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        ))}
+      </Stack>
+      {gruppen.length > 0 && (
+        <Box visibleFrom="sm">
+          <Table verticalSpacing={6} tabularNums stickyHeader stickyHeaderOffset={56}>
+            <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
+              <Table.Tr>
+                <Table.Th>Konto</Table.Th>
+                <Table.Th w={130}>Stückelung</Table.Th>
+                <Table.Th w={160} style={BETRAG_STIL}>
+                  Saldo
+                </Table.Th>
+                <Table.Th w={120}>Status</Table.Th>
+                <Table.Th w={56} aria-label="Aktionen" />
+              </Table.Tr>
+            </Table.Thead>
+            {gruppen.map(({ art, zeilen }) => (
+              <Table.Tbody key={art}>
+                <Table.Tr style={{ background: 'var(--mantine-color-default-hover)' }}>
+                  <Table.Td colSpan={5}>
+                    <Text fw={700} size="sm">
+                      {KONTO_ART_LABELS[art]}
                     </Text>
-                  )}
-                  {k.steuersatzStandard !== null && (
-                    <Text size="sm" c="dimmed">
-                      Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
-                    </Text>
-                  )}
-                </Stack>
-                <Text
-                  fw={600}
-                  component={Link}
-                  to={`/finanzen/journal?konto=${encodeURIComponent(k.id)}`}
-                  c={k.saldoCent < 0 ? 'red' : undefined}
-                  style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-                  aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoCent)}`}
-                >
-                  {centAnzeigen(k.saldoCent)}
-                </Text>
-                <AktionsMenue
-                  label={`Aktionen für ${k.name}`}
-                  aktionen={[
-                    {
-                      text: 'Bearbeiten',
-                      icon: <IconEdit size={18} />,
-                      onClick: () => setFormular({ konto: k }),
-                      sichtbar: darfVerwalten,
-                    },
-                    {
-                      text: k.archiviert ? 'Wiederherstellen' : 'Archivieren',
-                      icon: k.archiviert ? <IconArchiveOff size={18} /> : <IconArchive size={18} />,
-                      onClick: () => archivMutation.mutate(k),
-                      sichtbar: darfVerwalten,
-                      trenner: true,
-                    },
-                  ]}
-                />
-              </Group>
-            </Paper>
-          ))}
-        </Stack>
-      ))}
+                  </Table.Td>
+                </Table.Tr>
+                {zeilen.map(({ konto: k, tiefe }) => (
+                  <Table.Tr key={k.id} opacity={k.archiviert ? 0.6 : 1}>
+                    <Table.Td
+                      style={{ paddingLeft: `calc(var(--mantine-spacing-xs) + ${tiefe * 24}px)` }}
+                    >
+                      <Text fw={tiefe === 0 ? 600 : 400} style={{ overflowWrap: 'anywhere' }}>
+                        {k.name}
+                      </Text>
+                      {k.parentId && !zeilen.some((z) => z.konto.id === k.parentId) && (
+                        <Text size="xs" c="dimmed">
+                          Unter {namen.get(k.parentId) ?? 'unbekannt'}
+                        </Text>
+                      )}
+                      {k.steuersatzStandard !== null && (
+                        <Text size="xs" c="dimmed">
+                          Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {k.stueckelung && (
+                        <Badge variant="light" color="gray">
+                          Stückelung
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td style={BETRAG_STIL}>
+                      <Text
+                        fw={600}
+                        component={Link}
+                        to={`/finanzen/journal?konto=${encodeURIComponent(k.id)}`}
+                        c={k.saldoCent < 0 ? 'red' : undefined}
+                        style={{ textDecoration: 'none', ...BETRAG_STIL }}
+                        aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoCent)}`}
+                      >
+                        {centAnzeigen(k.saldoCent)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {k.archiviert ? (
+                        <Badge color="gray" variant="light">
+                          Archiviert
+                        </Badge>
+                      ) : (
+                        <Badge color="teal" variant="light">
+                          Aktiv
+                        </Badge>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{aktionsMenue(k)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            ))}
+          </Table>
+        </Box>
+      )}
       {formular && (
         <KontoFormular
           konto={formular.konto}

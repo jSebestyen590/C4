@@ -1,6 +1,7 @@
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Group,
   Loader,
@@ -19,7 +20,7 @@ import { centAnzeigen, datumAnzeigen, QUELLE_TYP_LABELS, type BuchungListeDto } 
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { DatumFeld } from '../DatumFeld';
-import { detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from '../finanzenDaten';
+import { BETRAG_STIL, detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from '../finanzenDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { ZurueckLink } from '../ZurueckLink';
@@ -134,7 +135,7 @@ export function FinanzenJournalPage() {
             <Stack gap="xs">
               <Group justify="space-between" wrap="nowrap" align="flex-start">
                 <Text fw={600}>Nr. {b.seq}</Text>
-                <Text fw={600} style={{ whiteSpace: 'nowrap' }}>
+                <Text fw={600} style={BETRAG_STIL}>
                   {centAnzeigen(b.betragCent)}
                 </Text>
               </Group>
@@ -157,14 +158,24 @@ export function FinanzenJournalPage() {
       </SimpleGrid>
 
       {buchungen.length > 0 && (
-        <Table.ScrollContainer minWidth={760} visibleFrom="sm">
-          <Table verticalSpacing="xs" highlightOnHover>
-            <Table.Thead>
+        <Box visibleFrom="sm">
+          <Table
+            verticalSpacing={6}
+            highlightOnHover
+            tabularNums
+            stickyHeader
+            stickyHeaderOffset={56}
+          >
+            <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
               <Table.Tr>
-                <Table.Th>Nr.</Table.Th>
-                <Table.Th>Datum</Table.Th>
+                <Table.Th w={70} style={BETRAG_STIL}>
+                  Nr.
+                </Table.Th>
+                <Table.Th w={110}>Datum</Table.Th>
                 <Table.Th>Text</Table.Th>
-                <Table.Th ta="right">Betrag</Table.Th>
+                <Table.Th w={140} style={BETRAG_STIL}>
+                  Betrag
+                </Table.Th>
                 <Table.Th>Erstellt von</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -178,7 +189,7 @@ export function FinanzenJournalPage() {
                     if (!(e.target as HTMLElement).closest('a')) void navigate(detailPfad(b.id));
                   }}
                 >
-                  <Table.Td>
+                  <Table.Td style={BETRAG_STIL}>
                     <Link
                       to={detailPfad(b.id)}
                       style={{ color: 'inherit', textDecoration: 'none' }}
@@ -195,9 +206,7 @@ export function FinanzenJournalPage() {
                       <StornoBadges b={b} />
                     </Group>
                   </Table.Td>
-                  <Table.Td ta="right" style={{ whiteSpace: 'nowrap' }}>
-                    {centAnzeigen(b.betragCent)}
-                  </Table.Td>
+                  <Table.Td style={BETRAG_STIL}>{centAnzeigen(b.betragCent)}</Table.Td>
                   <Table.Td>
                     <Ersteller b={b} />
                   </Table.Td>
@@ -205,7 +214,7 @@ export function FinanzenJournalPage() {
               ))}
             </Table.Tbody>
           </Table>
-        </Table.ScrollContainer>
+        </Box>
       )}
       {seiten.hasNextPage && (
         <Button

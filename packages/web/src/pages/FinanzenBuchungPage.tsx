@@ -3,6 +3,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Group,
   Loader,
   Paper,
@@ -29,10 +30,12 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
-import { betragMitVorzeichen, detailPfad, FINANZEN_KEY, jsonOderFehler } from '../finanzenDaten';
+import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
+import { BETRAG_STIL, detailPfad, FINANZEN_KEY, jsonOderFehler } from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
+import { ZeilenUebersicht } from '../ZeilenUebersicht';
 import { ZurueckLink } from '../ZurueckLink';
 
 const zeitText = (iso: string) =>
@@ -56,16 +59,21 @@ function StornoDialog({
   const navigate = useNavigate();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
+  const [geprueft, setGeprueft] = useState(false);
+  // One key per opening of the dialog: a double click or a retry does not reverse twice.
+  const [schluessel] = useState(() => crypto.randomUUID());
   return (
     <BestaetigenDialog
       titel={`Buchung Nr. ${buchung.seq} stornieren`}
       bestaetigenText="Stornieren"
+      groesse="lg"
+      gesperrt={!geprueft || !datum}
       onClose={onClose}
       onBestaetigt={async () => {
         const neu = await jsonOderFehler<{ id: string }>(
           await api.finanzen.buchungen[':id'].storno.$post({
             param: { id: buchung.id },
-            json: { datum, text },
+            json: { idempotenzSchluessel: schluessel, datum, text },
           }),
         );
         await qc.invalidateQueries({ queryKey: FINANZEN_KEY });
@@ -73,9 +81,16 @@ function StornoDialog({
       }}
     >
       <Text size="sm">
-        Es wird eine Gegenbuchung mit umgekehrten Beträgen angelegt. Die ursprüngliche Buchung
-        bleibt unverändert bestehen.
+        Es wird diese Gegenbuchung angelegt: Zugang und Abgang sind vertauscht. Die ursprüngliche
+        Buchung bleibt unverändert bestehen.
       </Text>
+      <ZeilenUebersicht
+        zeilen={buchung.zeilen.map((z) => ({
+          key: z.id,
+          konto: z.kontoName,
+          betragCent: -z.betragCent,
+        }))}
+      />
       <DatumFeld
         label="Datum der Stornobuchung"
         value={datum}
@@ -88,6 +103,11 @@ function StornoDialog({
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}
         maxLength={500}
+      />
+      <Checkbox
+        label={`Ja, ich storniere Buchung Nr. ${buchung.seq} mit dieser Gegenbuchung.`}
+        checked={geprueft}
+        onChange={(e) => setGeprueft(e.currentTarget.checked)}
       />
     </BestaetigenDialog>
   );
@@ -147,7 +167,9 @@ export function FinanzenBuchungPage() {
                 Art:{' '}
                 {QUELLE_TYP_LABELS[b.quelleTyp as keyof typeof QUELLE_TYP_LABELS] ?? b.quelleTyp}
               </Text>
-              <Text>Volumen: {centAnzeigen(b.betragCent)}</Text>
+              <Text>
+                Volumen: <span style={BETRAG_STIL}>{centAnzeigen(b.betragCent)}</span>
+              </Text>
               <Text>
                 Erstellt von:{' '}
                 {b.erstelltVon ? (
@@ -173,12 +195,9 @@ export function FinanzenBuchungPage() {
                     <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
                       {z.kontoName}
                     </Text>
-                    <Text
-                      fw={600}
-                      c={z.betragCent < 0 ? 'red' : undefined}
-                      style={{ whiteSpace: 'nowrap' }}
-                    >
-                      {betragMitVorzeichen(z.betragCent)}
+                    <Text fw={600} style={BETRAG_STIL}>
+                      {RICHTUNG_LABELS[richtungVon(z.betragCent)]}{' '}
+                      {centAnzeigen(Math.abs(z.betragCent))}
                     </Text>
                   </Group>
                   {steuerText(z) && (
@@ -196,11 +215,12 @@ export function FinanzenBuchungPage() {
             ))}
           </Stack>
           <Table.ScrollContainer minWidth={600} visibleFrom="sm">
-            <Table verticalSpacing="xs">
+            <Table verticalSpacing="xs" tabularNums>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Konto</Table.Th>
-                  <Table.Th ta="right">Betrag</Table.Th>
+                  <Table.Th>Zugang/Abgang</Table.Th>
+                  <Table.Th style={BETRAG_STIL}>Betrag</Table.Th>
                   <Table.Th>Steuer</Table.Th>
                   <Table.Th>Stückelung</Table.Th>
                 </Table.Tr>
@@ -209,9 +229,8 @@ export function FinanzenBuchungPage() {
                 {b.zeilen.map((z) => (
                   <Table.Tr key={z.id}>
                     <Table.Td>{z.kontoName}</Table.Td>
-                    <Table.Td ta="right" style={{ whiteSpace: 'nowrap' }}>
-                      {betragMitVorzeichen(z.betragCent)}
-                    </Table.Td>
+                    <Table.Td>{RICHTUNG_LABELS[richtungVon(z.betragCent)]}</Table.Td>
+                    <Table.Td style={BETRAG_STIL}>{centAnzeigen(Math.abs(z.betragCent))}</Table.Td>
                     <Table.Td>{steuerText(z) ?? '–'}</Table.Td>
                     <Table.Td>{z.stueckelung.length > 0 ? stueckelungText(z) : '–'}</Table.Td>
                   </Table.Tr>

@@ -150,7 +150,16 @@ export const buchungZeileSchema = z.object({
 });
 export type BuchungZeileEingabe = z.output<typeof buchungZeileSchema>;
 
+/**
+ * Technical key of one entry attempt (a UUID the client generates per Erfassung). Posting the same
+ * key again returns the existing booking instead of booking twice. Not part of the hash.
+ */
+export const idempotenzSchluessel = z
+  .string('Der Idempotenz-Schlüssel fehlt.')
+  .uuid('Der Idempotenz-Schlüssel muss eine UUID sein.');
+
 export const buchungEingabeSchema = z.object({
+  idempotenzSchluessel,
   datum: datumSchema,
   text: buchungstext,
   quelleTyp: z.enum(MANUELLE_QUELLE_TYPEN, 'Ungültige Buchungsart.').default('manuell'),
@@ -165,6 +174,7 @@ export type BuchungEingabeInput = z.input<typeof buchungEingabeSchema>;
 
 /** Body of `POST /api/finanzen/buchungen/:id/storno`. */
 export const stornoEingabeSchema = z.object({
+  idempotenzSchluessel,
   datum: datumSchema,
   text: z
     .string()

@@ -296,20 +296,20 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                                                                               |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| 0 Fundament               | umgesetzt (PR folgt); keine eigene DB-Rolle (Entscheidung, [Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | offen                                                                                               |
-| 2 Buch                    | offen                                                                                               |
-| 3 Barkassen               | offen                                                                                               |
-| 4 Belege                  | offen                                                                                               |
-| 5 GoBD-Abschluss          | offen                                                                                               |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                       |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                      |
-| 8 Rechnungen              | offen                                                                                               |
-| 9 Auswertungen            | offen                                                                                               |
-| Ü Übernahme               | offen                                                                                               |
-| 10 Unentgeltliche Abgaben | offen                                                                                               |
+| Scheibe                   | Stand                                                                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
+| 1 Bargeld                 | offen                                                                                                                                              |
+| 2 Buch                    | offen                                                                                                                                              |
+| 3 Barkassen               | offen                                                                                                                                              |
+| 4 Belege                  | offen                                                                                                                                              |
+| 5 GoBD-Abschluss          | offen                                                                                                                                              |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                     |
+| 8 Rechnungen              | offen                                                                                                                                              |
+| 9 Auswertungen            | offen                                                                                                                                              |
+| Ü Übernahme               | offen                                                                                                                                              |
+| 10 Unentgeltliche Abgaben | offen                                                                                                                                              |
 
 ## Verifikation (je Scheibe)
 

@@ -154,7 +154,9 @@ describe('pruefeBuchung', () => {
 });
 
 describe('schemas', () => {
+  const schluessel = '3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f';
   const basis = {
+    idempotenzSchluessel: schluessel,
     datum: '2027-01-05',
     text: '  Einkauf  ',
     zeilen: [
@@ -202,10 +204,21 @@ describe('schemas', () => {
     expect(kontoAendernSchema.parse({ parentId: null })).toEqual({ parentId: null });
     expect(kontoAendernSchema.safeParse({}).success).toBe(false);
     expect(kontoAendernSchema.safeParse({ steuersatzStandard: 12000 }).success).toBe(false);
-    expect(stornoEingabeSchema.parse({ datum: '2027-01-05', text: ' ' })).toEqual({
-      datum: '2027-01-05',
-      text: null,
-    });
+    expect(
+      stornoEingabeSchema.parse({
+        idempotenzSchluessel: schluessel,
+        datum: '2027-01-05',
+        text: ' ',
+      }),
+    ).toEqual({ idempotenzSchluessel: schluessel, datum: '2027-01-05', text: null });
+    // the key is required and must be a UUID
+    expect(stornoEingabeSchema.safeParse({ datum: '2027-01-05' }).success).toBe(false);
+    expect(buchungEingabeSchema.safeParse({ ...basis, idempotenzSchluessel: 'x' }).success).toBe(
+      false,
+    );
+    expect(
+      buchungEingabeSchema.safeParse({ ...basis, idempotenzSchluessel: undefined }).success,
+    ).toBe(false);
   });
 });
 

@@ -1224,6 +1224,8 @@ export const finBuchungen = pgTable('fin_buchungen', {
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
   prevHash: text('prev_hash').notNull(),
   hash: text('hash').notNull(),
+  /** Technical, not part of the hash; unique index. NULL for system bookings. */
+  idempotenzSchluessel: text('idempotenz_schluessel'),
 });
 export type FinBuchungRow = typeof finBuchungen.$inferSelect;
 

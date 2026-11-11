@@ -58,6 +58,8 @@ export interface KontoNeu {
 export interface GebuchtErgebnis {
   id: string;
   seq: number;
+  /** True when the idempotency key was already used: the existing booking is returned. */
+  wiederholt?: boolean;
 }
 
 export interface KettenDaten {
@@ -104,6 +106,8 @@ export interface BuchungsEntwurf {
   eventId: string | null;
   stornoVon: string | null;
   erstelltVon: string;
+  /** Technical key against double posting; not part of the hash. */
+  idempotenzSchluessel?: string | null;
   zeilen: Omit<HashZeile, 'pos'>[];
 }
 
@@ -269,6 +273,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       erstelltAm: new Date(buchung.erstelltAm),
       prevHash: buchung.prevHash,
       hash: buchung.hash,
+      idempotenzSchluessel: entwurf.idempotenzSchluessel ?? null,
     });
     await tx.insert(finBuchungszeilen).values(
       buchung.zeilen.map((z, i) => ({
@@ -297,6 +302,91 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       .where(eq(finZaehler.name, 'journal'));
     return { id: buchung.id, seq: buchung.seq };
   };
+
+  /** Looks up the booking made with this idempotency key. */
+  const vorhandene = async (q: Q, schluessel: string): Promise<GebuchtErgebnis | undefined> => {
+    const [row] = await q
+      .select({ id: finBuchungen.id, seq: finBuchungen.seq })
+      .from(finBuchungen)
+      .where(eq(finBuchungen.idempotenzSchluessel, schluessel));
+    return row ? { id: row.id, seq: row.seq, wiederholt: true } : undefined;
+  };
+
+  const buchenTx = (eingabe: BuchungEingabe, sub: string) =>
+    mitWiederholung(
+      () =>
+        db.transaction(async (tx) => {
+          const schon = await vorhandene(tx, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+          const ids = [...new Set(eingabe.zeilen.map((z) => z.kontoId))];
+          const konten = await tx.select().from(finKonten).where(inArray(finKonten.id, ids));
+          const fehler = pruefeBuchung(eingabe, konten);
+          if (eingabe.eventId) {
+            const [event] = await tx
+              .select({ id: events.id })
+              .from(events)
+              .where(eq(events.id, eingabe.eventId));
+            if (!event) fehler.push('Die Veranstaltung gibt es nicht.');
+          }
+          if (fehler.length > 0) throw new BuchungUngueltig(fehler);
+          return einfuegen(tx, {
+            datum: eingabe.datum,
+            text: eingabe.text,
+            quelleTyp: eingabe.quelleTyp,
+            quelleId: null,
+            eventId: eingabe.eventId,
+            stornoVon: null,
+            erstelltVon: sub,
+            idempotenzSchluessel: eingabe.idempotenzSchluessel,
+            zeilen: entwurfZeilen(eingabe),
+          });
+        }),
+      BUCHEN_VERSUCHE,
+      undefined,
+      BUCHEN_WARTEN_MS,
+    );
+
+  const stornierenTx = (id: string, eingabe: StornoEingabe, sub: string) =>
+    mitWiederholung(
+      () =>
+        db.transaction(async (tx) => {
+          const schon = await vorhandene(tx, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+          const [original] = await tx.select().from(finBuchungen).where(eq(finBuchungen.id, id));
+          if (!original) return undefined;
+          if (original.stornoVon !== null)
+            throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
+          const [doppelt] = await tx
+            .select({ id: finBuchungen.id })
+            .from(finBuchungen)
+            .where(eq(finBuchungen.stornoVon, id));
+          if (doppelt) throw new StornoKonflikt('Die Buchung ist bereits storniert.');
+          const quelle: HashZeile[] = (await zeilenLaden(tx, [id])).map((z) => ({
+            pos: z.pos,
+            kontoId: z.kontoId,
+            betragCent: z.betragCent,
+            nettoCent: z.nettoCent,
+            steuerCent: z.steuerCent,
+            steuersatz: z.steuersatz,
+            steuerArt: z.steuerArt,
+            stueckelung: z.stueckelung,
+          }));
+          return einfuegen(tx, {
+            datum: eingabe.datum,
+            text: stornoText(original, eingabe.text),
+            quelleTyp: 'storno',
+            quelleId: original.id,
+            eventId: original.eventId,
+            stornoVon: original.id,
+            erstelltVon: sub,
+            idempotenzSchluessel: eingabe.idempotenzSchluessel,
+            zeilen: stornoZeilen(quelle).map(ohnePos),
+          });
+        }),
+      BUCHEN_VERSUCHE,
+      undefined,
+      BUCHEN_WARTEN_MS,
+    );
 
   /** True if `kontoId` would end up below itself when `elternId` becomes its parent. */
   const ergibtZyklus = async (kontoId: string, elternId: string): Promise<boolean> => {
@@ -392,82 +482,28 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     },
 
     async buchen(eingabe, sub) {
-      return mitWiederholung(
-        () =>
-          db.transaction(async (tx) => {
-            const ids = [...new Set(eingabe.zeilen.map((z) => z.kontoId))];
-            const konten = await tx.select().from(finKonten).where(inArray(finKonten.id, ids));
-            const fehler = pruefeBuchung(eingabe, konten);
-            if (eingabe.eventId) {
-              const [event] = await tx
-                .select({ id: events.id })
-                .from(events)
-                .where(eq(events.id, eingabe.eventId));
-              if (!event) fehler.push('Die Veranstaltung gibt es nicht.');
-            }
-            if (fehler.length > 0) throw new BuchungUngueltig(fehler);
-            return einfuegen(tx, {
-              datum: eingabe.datum,
-              text: eingabe.text,
-              quelleTyp: eingabe.quelleTyp,
-              quelleId: null,
-              eventId: eingabe.eventId,
-              stornoVon: null,
-              erstelltVon: sub,
-              zeilen: entwurfZeilen(eingabe),
-            });
-          }),
-        BUCHEN_VERSUCHE,
-        undefined,
-        BUCHEN_WARTEN_MS,
-      );
+      try {
+        return await buchenTx(eingabe, sub);
+      } catch (err) {
+        // The unique index on idempotenz_schluessel catches two parallel requests with one key.
+        if (istDoppelt(err)) {
+          const schon = await vorhandene(db, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+        }
+        throw err;
+      }
     },
 
     async stornieren(id, eingabe, sub) {
       try {
-        return await mitWiederholung(
-          () =>
-            db.transaction(async (tx) => {
-              const [original] = await tx
-                .select()
-                .from(finBuchungen)
-                .where(eq(finBuchungen.id, id));
-              if (!original) return undefined;
-              if (original.stornoVon !== null)
-                throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
-              const [schon] = await tx
-                .select({ id: finBuchungen.id })
-                .from(finBuchungen)
-                .where(eq(finBuchungen.stornoVon, id));
-              if (schon) throw new StornoKonflikt('Die Buchung ist bereits storniert.');
-              const quelle: HashZeile[] = (await zeilenLaden(tx, [id])).map((z) => ({
-                pos: z.pos,
-                kontoId: z.kontoId,
-                betragCent: z.betragCent,
-                nettoCent: z.nettoCent,
-                steuerCent: z.steuerCent,
-                steuersatz: z.steuersatz,
-                steuerArt: z.steuerArt,
-                stueckelung: z.stueckelung,
-              }));
-              return einfuegen(tx, {
-                datum: eingabe.datum,
-                text: stornoText(original, eingabe.text),
-                quelleTyp: 'storno',
-                quelleId: original.id,
-                eventId: original.eventId,
-                stornoVon: original.id,
-                erstelltVon: sub,
-                zeilen: stornoZeilen(quelle).map(ohnePos),
-              });
-            }),
-          BUCHEN_VERSUCHE,
-          undefined,
-          BUCHEN_WARTEN_MS,
-        );
+        return await stornierenTx(id, eingabe, sub);
       } catch (err) {
-        // The unique index on storno_von catches two reversals racing each other.
-        if (istDoppelt(err)) throw new StornoKonflikt('Die Buchung ist bereits storniert.');
+        if (istDoppelt(err)) {
+          const schon = await vorhandene(db, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+          // The unique index on storno_von catches two reversals racing each other.
+          throw new StornoKonflikt('Die Buchung ist bereits storniert.');
+        }
         throw err;
       }
     },

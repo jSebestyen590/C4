@@ -3689,7 +3689,7 @@ export function createApp(deps: AppDeps) {
           const ergebnis = await deps.finanzen
             .buchen(c.req.valid('json'), c.get('user').sub)
             .catch(finanzenFehler);
-          return c.json(ergebnis, 201);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )
       .post(
@@ -3704,7 +3704,7 @@ export function createApp(deps: AppDeps) {
               .catch(finanzenFehler),
             'Buchung nicht gefunden',
           );
-          return c.json(ergebnis, 201);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )
       // Verifies the whole hash chain and compares the counter with the last booking.

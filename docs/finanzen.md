@@ -70,14 +70,14 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
 
 ## Journal
 
-Tabellen (Migrationen `0140`–`0144`):
+Tabellen (Migrationen `0140`–`0144`, Index auf `idempotenz_schluessel` in `0151`):
 
-| Tabelle              | Inhalt                                                                                                                                             |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fin_buchungen`      | Kopf: `seq`, `datum`, `text`, `quelle_typ`/`quelle_id`, `event_id`, `storno_von`, `erstellt_von` (Cognito-sub), `erstellt_am`, `prev_hash`, `hash` |
-| `fin_buchungszeilen` | Zeilen: `buchung_id`, `pos`, `konto_id`, `betrag_cent` (mit Vorzeichen), `netto_cent`, `steuer_cent`, `steuersatz`, `steuer_art`                   |
-| `fin_stueckelung`    | je Zeile auf einem Stückelungskonto: `nennwert_cent`, `anzahl` (mit Vorzeichen)                                                                    |
-| `fin_zaehler`        | Zeile `journal`: letzte `seq` und letzter Hash                                                                                                     |
+| Tabelle              | Inhalt                                                                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fin_buchungen`      | Kopf: `seq`, `datum`, `text`, `quelle_typ`/`quelle_id`, `event_id`, `storno_von`, `erstellt_von` (Cognito-sub), `erstellt_am`, `prev_hash`, `hash`, `idempotenz_schluessel` |
+| `fin_buchungszeilen` | Zeilen: `buchung_id`, `pos`, `konto_id`, `betrag_cent` (mit Vorzeichen), `netto_cent`, `steuer_cent`, `steuersatz`, `steuer_art`                                            |
+| `fin_stueckelung`    | je Zeile auf einem Stückelungskonto: `nennwert_cent`, `anzahl` (mit Vorzeichen)                                                                                             |
+| `fin_zaehler`        | Zeile `journal`: letzte `seq` und letzter Hash                                                                                                                              |
 
 **Nur INSERT.** Es gibt keine Update- oder Delete-Route auf Buchungen; eine Korrektur ist ein Storno
 plus Neubuchung. Geld ist durchgehend ganze Cent (Soll positiv, Haben negativ), der Steuersatz
@@ -105,6 +105,14 @@ sie mit Backoff. So werden parallele Buchungen nacheinander nummeriert. Eindeuti
 und `storno_von` auf das Original, alle Beträge und Stückelungsanzahlen negiert, mit eigenem Datum
 und Text (Standard „Storno von Nr. n: …“). Eine Buchung lässt sich nur einmal stornieren, ein Storno
 selbst nicht (409).
+
+**Idempotenz-Schlüssel:** Buchen und Stornieren verlangen `idempotenzSchluessel` (UUID, die die Seite je
+Erfassung erzeugt). Wird derselbe Schlüssel noch einmal gesendet (doppelter Klick, Wiederholung nach
+Netzfehler, Neuladen), legt die API keine zweite Buchung an, sondern gibt die vorhandene zurück: neu
+`201 { id, seq }`, wiederholt `200 { id, seq, wiederholt: true }`. Die Prüfung läuft in der
+Transaktion; der eindeutige Index `fin_buchungen_idempotenz_idx` (Migration `0151`) fängt zwei parallele
+Anfragen mit demselben Schlüssel ab (dann wird die vorhandene Buchung gelesen). Der Schlüssel ist ein
+technisches Feld und **nicht Teil des Hashs**. Er ist `NULL` bei späteren Systembuchungen.
 
 **Quellen:** `manuell`, `umbuchung`, `storno`, `eroeffnung`; spätere Scheiben ergänzen eigene Typen.
 
@@ -169,28 +177,46 @@ Abgleich gegen Exporte und Kopf-Hash im S3-Archiv (Object Lock) kommt mit Scheib
 
 Navigation: Menüpunkt „Finanzen“ (`/finanzen`) im `AppLayout`.
 
-| Seite                   | Recht                                         | Inhalt                                                                                                  |
-| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `/finanzen`             | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                               |
-| `/finanzen/konten`      | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan nach Art gruppiert mit Saldo, anlegen, bearbeiten, archivieren                               |
-| `/finanzen/journal`     | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle ab `sm`), Filter Konto und Zeitraum                            |
-| `/finanzen/journal/:id` | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen, Stückelung, Hash und `prev_hash`, Verweis Storno und Original                                   |
-| `/finanzen/buchen`      | `finanzen:buchen`                             | freie Buchung und Umbuchung; Konten mit Stückelung bietet die Seite noch nicht an (kommt mit Scheibe 1) |
-| `/finanzen/kette`       | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                             |
+Diese Seiten sind **desktop first** (Regeln in [plans/finanzen.md](./plans/finanzen.md), „Bedienung“),
+funktionieren aber auch auf dem Handy ohne horizontales Scrollen der Seite: dichte Tabellen mit
+fixierter Kopfzeile, Beträge rechtsbündig mit Tabellenziffern, Zugang/Abgang und Von/Nach als Wörter,
+Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung vor dem Buchen.
+
+| Seite                   | Recht                                         | Inhalt                                                                                                                                                    |
+| ----------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/finanzen`             | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                                                                                 |
+| `/finanzen/konten`      | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan: Tabelle ab `sm` (nach Art gruppiert, Unterkonten eingerückt, Saldo, Status, Aktionen), Karten auf dem Handy; anlegen, bearbeiten, archivieren |
+| `/finanzen/journal`     | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle mit fixierter Kopfzeile ab `sm`), Filter Konto und Zeitraum, „Mehr laden“                                        |
+| `/finanzen/journal/:id` | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen (Zugang/Abgang), Stückelung, Hash und `prev_hash`, Verweis Storno und Original; Storno-Dialog mit Gegenbuchung, Bestätigung und eigenem Schlüssel  |
+| `/finanzen/buchen`      | `finanzen:buchen`                             | freie Buchung und Umbuchung (siehe unten); Konten mit Stückelung bietet die Seite noch nicht an (kommt mit Scheibe 1)                                     |
+| `/finanzen/kette`       | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                                                                               |
+
+**Buchen:** Modus „Umbuchung“ (Von Konto = Abgang, Nach Konto = Zugang, Betrag) oder „Frei“ mit der
+wiederverwendbaren `BuchungszeilenTabelle` (Konto suchbar, Zugang/Abgang, Betrag; Summenzeile mit
+„Noch 5,00 € Abgang offen“ / „Ausgeglichen“; unter `sm` gestapelte Karten). Beträge tippt man im
+`BetragFeld` (`1,10`, `1.234,56`). Enter springt zum nächsten Feld, im Betrag der letzten Zeile legt es
+die nächste Zeile an, Strg+Enter öffnet die Zusammenfassung. „Prüfen und buchen“ ist gesperrt, solange
+die Buchung nicht aufgeht, und nennt den Grund. Die Zusammenfassung zeigt Datum, Text und alle Zeilen;
+Plausibilitätswarnungen (Datum in der Zukunft, Betrag ab 1.000,00 € „ungewöhnlich hoch“) blockieren
+nicht, müssen aber angehakt werden. Nach dem Buchen erscheint „Buchung Nr. X gebucht – ansehen“, die
+Eingabe wird geleert (Datum bleibt) und der Fokus steht im Buchungstext. Ungespeicherte Eingaben warnen
+beim Verlassen (Router-Dialog, beim Schließen oder Neuladen die Browser-Warnung). Der Idempotenz-Schlüssel
+gehört zur Erfassung: gleicher Inhalt behält ihn bei Wiederholung und Doppelklick, geänderter Inhalt oder
+eine geglückte Buchung erzeugt einen neuen.
 
 ## API
 
-| Route                                     | Recht                | Hinweise                                                                                                              |
-| ----------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/finanzen/konten`                | `finanzen:lesen`     | `?archiviert=1` nimmt archivierte mit; je Konto `saldoCent`                                                           |
-| `POST /api/finanzen/konten`               | `finanzen:verwalten` | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                      |
-| `PUT /api/finanzen/konten/:id`            | `finanzen:verwalten` | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                         |
-| `PUT /api/finanzen/konten/:id/archiv`     | `finanzen:verwalten` | `{ archiviert }`                                                                                                      |
-| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `limit` (Standard 50, höchstens 200), `vorSeq`; neueste zuerst, `weiter` = nächster `vorSeq` |
-| `GET /api/finanzen/buchungen/:id`         | `finanzen:lesen`     | mit Zeilen, Stückelung, Hashes                                                                                        |
-| `POST /api/finanzen/buchungen`            | `finanzen:buchen`    | `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`), `eventId`, `zeilen`; 201 `{ id, seq }`                          |
-| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `datum`, `text?`; 409 bei doppeltem Storno                                                                            |
-| `GET /api/finanzen/kette`                 | `finanzen:pruefen`   | Ergebnis von „Kette prüfen“                                                                                           |
+| Route                                     | Recht                | Hinweise                                                                                                                                                                      |
+| ----------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/finanzen/konten`                | `finanzen:lesen`     | `?archiviert=1` nimmt archivierte mit; je Konto `saldoCent`                                                                                                                   |
+| `POST /api/finanzen/konten`               | `finanzen:verwalten` | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                                                                              |
+| `PUT /api/finanzen/konten/:id`            | `finanzen:verwalten` | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                                                                                 |
+| `PUT /api/finanzen/konten/:id/archiv`     | `finanzen:verwalten` | `{ archiviert }`                                                                                                                                                              |
+| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `limit` (Standard 50, höchstens 200), `vorSeq`; neueste zuerst, `weiter` = nächster `vorSeq`                                                         |
+| `GET /api/finanzen/buchungen/:id`         | `finanzen:lesen`     | mit Zeilen, Stückelung, Hashes                                                                                                                                                |
+| `POST /api/finanzen/buchungen`            | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`), `eventId`, `zeilen`; 201 `{ id, seq }`, bei bekanntem Schlüssel 200 mit der vorhandenen Buchung |
+| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text?`; 409 bei doppeltem Storno                                                                                                            |
+| `GET /api/finanzen/kette`                 | `finanzen:pruefen`   | Ergebnis von „Kette prüfen“                                                                                                                                                   |
 
 Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username und Status.
 

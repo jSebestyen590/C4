@@ -1,36 +1,43 @@
 import {
-  ActionIcon,
   Alert,
+  Anchor,
   Button,
+  Grid,
   Group,
-  List,
   Loader,
-  Paper,
+  Modal,
   SegmentedControl,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState, type SubmitEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useBlocker, useNavigate } from 'react-router-dom';
 import { heuteBerlin } from '@c4/shared';
 import { useApi } from '../api';
+import { BetragFeld } from '../BetragFeld';
+import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
+import { BuchungszeilenTabelle } from '../BuchungszeilenTabelle';
 import {
+  buchbareKonten,
   buchungBody,
+  fehlendeRichtung,
   formularFehler,
-  freieZeilen,
+  formularLeer,
   leereZeile,
-  summeCent,
-  summeText,
+  schluesselFuer,
+  summen,
+  umbuchungFehler,
+  warnungen,
+  zeilenFuer,
   type FormularModus,
   type FreieZeile,
-  type Seite,
 } from '../buchungFormular';
-import { CentFeld } from '../CentFeld';
 import { DatumFeld } from '../DatumFeld';
 import {
   detailPfad,
@@ -42,9 +49,12 @@ import {
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
-const SEGMENT_STIL = { label: { minHeight: 36, display: 'grid', placeItems: 'center' } };
+const neueZeilen = (): FreieZeile[] => [leereZeile('zugang'), leereZeile('abgang')];
 
-/** Create a booking: a simple Umbuchung between two accounts, or a free booking with any number of lines. */
+/**
+ * Create a booking: a simple Umbuchung (Von -> Nach) or a free booking with any number of lines.
+ * Desktop first: dense, keyboard driven (Enter moves on), live sum, summary before booking.
+ */
 export function FinanzenBuchenPage() {
   const api = useApi();
   const qc = useQueryClient();
@@ -54,191 +64,301 @@ export function FinanzenBuchenPage() {
   const [text, setText] = useState('');
   const [modus, setModus] = useState<FormularModus>('umbuchung');
   const [von, setVon] = useState<string | null>(null);
-  const [an, setAn] = useState<string | null>(null);
-  const [betrag, setBetrag] = useState<number | string>('');
-  const [zeilen, setZeilen] = useState<FreieZeile[]>(() => [
-    leereZeile('soll'),
-    leereZeile('haben'),
-  ]);
+  const [nach, setNach] = useState<string | null>(null);
+  const [betrag, setBetrag] = useState<number | null>(null);
+  const [zeilen, setZeilen] = useState<FreieZeile[]>(neueZeilen);
+  const [beruehrt, setBeruehrt] = useState<ReadonlySet<string>>(new Set());
   const [versucht, setVersucht] = useState(false);
+  const [pruefen, setPruefen] = useState(false);
+  const [fokusKey, setFokusKey] = useState<number | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const textRef = useRef<HTMLInputElement>(null);
+  const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
+  const gebuchtRef = useRef(false);
 
-  // Accounts with a Stückelung need denominations, which come with a later slice.
-  const wahl = useMemo(
-    () => (konten.data ?? []).filter((k) => !k.archiviert && !k.stueckelung),
-    [konten.data],
-  );
+  const wahl = useMemo(() => buchbareKonten(konten.data ?? []), [konten.data]);
   const optionen = kontoOptionen(wahl);
   const hatStueckelung = (konten.data ?? []).some((k) => !k.archiviert && k.stueckelung);
 
-  const stand = { modus, von, an, betrag, zeilen };
+  const stand = { modus, von, nach, betrag, zeilen };
+  const kopf = { datum, text };
   const fehler = formularFehler(stand, wahl);
-  const summe = summeCent(freieZeilen(zeilen));
+  const textLeer = text.trim() === '';
+  const gruende = [
+    ...(datum ? [] : ['Bitte gib ein Datum an.']),
+    ...(textLeer ? ['Bitte gib einen Buchungstext ein.'] : []),
+    ...fehler,
+  ];
+  const buchbar = gruende.length === 0;
+  const uf = umbuchungFehler(stand);
+  const zeigt = (feld: string) => versucht || beruehrt.has(feld);
+  const anfassen = (feld: string) => setBeruehrt((alt) => new Set(alt).add(feld));
+
+  // Unsaved input: warn on reload/close and on in-app navigation (the app uses a data router).
+  const ungespeichert = !formularLeer(kopf, stand);
+  const blocker = useBlocker(() => ungespeichert && !gebuchtRef.current);
+  useEffect(() => {
+    if (!ungespeichert) return;
+    gebuchtRef.current = false;
+    const handler = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [ungespeichert]);
 
   const buchen = useMutation({
-    mutationFn: async () =>
-      jsonOderFehler<{ id: string }>(
-        await api.finanzen.buchungen.$post({ json: buchungBody({ datum, text }, stand) }),
-      ),
-    onSuccess: async ({ id }) => {
-      await qc.invalidateQueries({ queryKey: FINANZEN_KEY });
-      void navigate(detailPfad(id));
+    mutationFn: async () => {
+      // Same content keeps the key (retry, double click); changed content gets a new one.
+      const inhalt = JSON.stringify(buchungBody(kopf, stand, ''));
+      schluessel.current = schluesselFuer(schluessel.current, inhalt, () => crypto.randomUUID());
+      return jsonOderFehler<{ id: string; seq: number; wiederholt?: boolean }>(
+        await api.finanzen.buchungen.$post({
+          json: buchungBody(kopf, stand, schluessel.current.schluessel),
+        }),
+      );
+    },
+    onSuccess: async ({ id, seq, wiederholt }) => {
+      gebuchtRef.current = true;
+      schluessel.current = null;
+      void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      notifications.show({
+        color: 'green',
+        autoClose: 10000,
+        message: (
+          <Text size="sm">
+            {wiederholt
+              ? `Buchung Nr. ${seq} war schon gebucht – `
+              : `Buchung Nr. ${seq} gebucht – `}
+            <Anchor
+              href={`/app${detailPfad(id)}`}
+              onClick={(e) => {
+                e.preventDefault();
+                void navigate(detailPfad(id));
+              }}
+            >
+              ansehen
+            </Anchor>
+          </Text>
+        ),
+      });
+      // Next Erfassung: keep date and mode, clear the rest, focus the first field.
+      setText('');
+      setVon(null);
+      setNach(null);
+      setBetrag(null);
+      setZeilen(neueZeilen());
+      setBeruehrt(new Set());
+      setVersucht(false);
+      setPruefen(false);
+      setTimeout(() => textRef.current?.focus(), 0);
     },
   });
 
-  const aendere = (key: number, teil: Partial<FreieZeile>) =>
-    setZeilen((alt) => alt.map((z) => (z.key === key ? { ...z, ...teil } : z)));
+  const neueZeile = () => {
+    if (zeilen.length >= 50) return;
+    const z = leereZeile(fehlendeRichtung(summen(zeilen).differenz));
+    setZeilen((alt) => [...alt, z]);
+    setFokusKey(z.key);
+  };
+  const fokusErledigt = useCallback(() => setFokusKey(null), []);
 
-  const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const pruefenOeffnen = () => {
     setVersucht(true);
-    if (text.trim() === '' || !datum || fehler.length > 0) return;
-    buchen.mutate();
+    if (!buchbar) return;
+    buchen.reset();
+    setPruefen(true);
   };
 
-  const textFehler =
-    versucht && text.trim() === '' ? 'Bitte gib einen Buchungstext ein.' : undefined;
+  const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      pruefenOeffnen();
+      return;
+    }
+    const el = e.target as HTMLElement;
+    if (!el.matches('[data-nav]')) return;
+    // An open account dropdown uses Enter to pick the highlighted entry.
+    if (el.getAttribute('aria-expanded') === 'true') return;
+    const felder = [...(formRef.current?.querySelectorAll<HTMLElement>('[data-nav]') ?? [])];
+    const i = felder.indexOf(el);
+    const naechstes = felder[i + 1];
+    e.preventDefault();
+    if (naechstes) naechstes.focus();
+    else if (modus === 'frei') neueZeile();
+    else pruefenOeffnen();
+  };
+
+  const kontoName = (id: string) => wahl.find((k) => k.id === id)?.name ?? id;
+  const uebersicht = zeilenFuer(stand).map((z, i) => ({
+    key: i,
+    konto: kontoName(z.kontoId),
+    betragCent: z.betragCent,
+  }));
 
   return (
-    <Stack maw={700}>
+    <Stack maw={1100}>
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
       <Title order={2}>Buchen</Title>
       {konten.isPending && <Loader m="md" aria-label="Konten werden geladen" />}
       {konten.isError && <Alert color="red">Die Konten konnten nicht geladen werden.</Alert>}
       {konten.data && (
-        <form onSubmit={onSubmit}>
+        <form
+          ref={formRef}
+          noValidate
+          onKeyDown={onKeyDown}
+          onSubmit={(e) => {
+            e.preventDefault();
+            pruefenOeffnen();
+          }}
+        >
           <Stack>
             <SegmentedControl
-              fullWidth
               size="md"
               aria-label="Art der Buchung"
               value={modus}
               onChange={(v) => setModus(v as FormularModus)}
-              styles={SEGMENT_STIL}
               data={[
                 { value: 'umbuchung', label: 'Umbuchung' },
                 { value: 'frei', label: 'Frei' },
               ]}
+              w={{ base: '100%', sm: 320 }}
             />
-            <DatumFeld label="Datum" value={datum} onWert={setDatum} loeschbar={false} />
-            <TextInput
-              label="Buchungstext"
-              value={text}
-              onChange={(e) => setText(e.currentTarget.value)}
-              maxLength={500}
-              error={textFehler}
-            />
+            <Grid gap="md">
+              <Grid.Col span={{ base: 12, sm: 4 }}>
+                <DatumFeld
+                  label="Datum"
+                  value={datum}
+                  onWert={setDatum}
+                  loeschbar={false}
+                  onBlur={() => anfassen('datum')}
+                  error={zeigt('datum') && !datum ? 'Bitte gib ein Datum an.' : undefined}
+                  data-nav=""
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, sm: 8 }}>
+                <TextInput
+                  ref={textRef}
+                  label="Buchungstext"
+                  value={text}
+                  onChange={(e) => setText(e.currentTarget.value)}
+                  onBlur={() => anfassen('text')}
+                  maxLength={500}
+                  error={
+                    zeigt('text') && textLeer ? 'Bitte gib einen Buchungstext ein.' : undefined
+                  }
+                  data-nav=""
+                />
+              </Grid.Col>
+            </Grid>
 
             {modus === 'umbuchung' ? (
-              <Stack>
+              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                 <Select
                   label="Von Konto"
-                  placeholder="Konto wählen"
+                  description="Hier geht der Betrag ab (Abgang)."
+                  placeholder="Konto suchen"
                   searchable
+                  inputMode="text"
                   data={optionen}
                   value={von}
                   onChange={setVon}
+                  onBlur={() => anfassen('von')}
                   nothingFoundMessage="Kein Konto gefunden"
+                  error={zeigt('von') ? uf.von : undefined}
+                  data-nav=""
                 />
                 <Select
-                  label="An Konto"
-                  placeholder="Konto wählen"
+                  label="Nach Konto"
+                  description="Hier kommt der Betrag an (Zugang)."
+                  placeholder="Konto suchen"
                   searchable
+                  inputMode="text"
                   data={optionen}
-                  value={an}
-                  onChange={setAn}
+                  value={nach}
+                  onChange={setNach}
+                  onBlur={() => anfassen('nach')}
                   nothingFoundMessage="Kein Konto gefunden"
+                  error={zeigt('nach') ? uf.nach : undefined}
+                  data-nav=""
                 />
-                <CentFeld label="Betrag" value={betrag} onChange={setBetrag} />
-              </Stack>
+                <BetragFeld
+                  label="Betrag"
+                  value={betrag}
+                  onWert={setBetrag}
+                  onBlur={() => anfassen('betrag')}
+                  error={zeigt('betrag') ? uf.betrag : undefined}
+                  data-nav=""
+                />
+              </SimpleGrid>
             ) : (
-              <Stack>
-                {zeilen.map((z, i) => (
-                  <Paper key={z.key} withBorder p="sm">
-                    <Stack gap="xs">
-                      <Group justify="space-between" wrap="nowrap">
-                        <Text fw={600}>Zeile {i + 1}</Text>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size={44}
-                          aria-label={`Zeile ${i + 1} entfernen`}
-                          disabled={zeilen.length <= 2}
-                          onClick={() => setZeilen((alt) => alt.filter((x) => x.key !== z.key))}
-                        >
-                          <IconTrash size={20} />
-                        </ActionIcon>
-                      </Group>
-                      <Select
-                        aria-label={`Konto der Zeile ${i + 1}`}
-                        placeholder="Konto wählen"
-                        searchable
-                        data={optionen}
-                        value={z.kontoId}
-                        onChange={(v) => aendere(z.key, { kontoId: v })}
-                        nothingFoundMessage="Kein Konto gefunden"
-                      />
-                      <SegmentedControl
-                        fullWidth
-                        size="md"
-                        aria-label={`Seite der Zeile ${i + 1}`}
-                        value={z.seite}
-                        onChange={(v) => aendere(z.key, { seite: v as Seite })}
-                        styles={SEGMENT_STIL}
-                        data={[
-                          { value: 'soll', label: 'Soll (+)' },
-                          { value: 'haben', label: 'Haben (−)' },
-                        ]}
-                      />
-                      <CentFeld
-                        aria-label={`Betrag der Zeile ${i + 1}`}
-                        value={z.betrag}
-                        onChange={(v) => aendere(z.key, { betrag: v })}
-                      />
-                    </Stack>
-                  </Paper>
-                ))}
-                <Button
-                  variant="default"
-                  leftSection={<IconPlus size={18} />}
-                  disabled={zeilen.length >= 50}
-                  onClick={() =>
-                    setZeilen((alt) => [...alt, leereZeile(summe > 0 ? 'haben' : 'soll')])
-                  }
-                >
-                  Zeile hinzufügen
-                </Button>
-                <Text fw={600} c={summe === 0 ? 'teal' : undefined} aria-live="polite">
-                  {summeText(summe)}
-                </Text>
-              </Stack>
+              <BuchungszeilenTabelle
+                zeilen={zeilen}
+                onZeilen={setZeilen}
+                konten={wahl}
+                optionen={optionen}
+                zeigeFehler={versucht}
+                fokusKey={fokusKey}
+                onFokusErledigt={fokusErledigt}
+                onNeueZeile={neueZeile}
+              />
             )}
 
             {hatStueckelung && (
               <Text size="sm" c="dimmed">
-                Konten mit Stückelung (z. B. der Tresor) stehen hier noch nicht zur Auswahl.
-                Buchungen von Bargeld mit Scheinen und Münzen kommen mit einem späteren Schritt.
+                Konten mit Stückelung (z. B. der Safe) stehen hier noch nicht zur Auswahl. Buchungen
+                von Bargeld mit Scheinen und Münzen kommen mit einem späteren Schritt.
               </Text>
             )}
-            {versucht && fehler.length > 0 && (
-              <Alert color="red" title="Die Buchung ist noch nicht vollständig">
-                <List size="sm" spacing={4}>
-                  {fehler.map((f) => (
-                    <List.Item key={f}>{f}</List.Item>
-                  ))}
-                </List>
-              </Alert>
-            )}
-            {buchen.isError && (
-              <Alert color="red">
-                {fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.')}
-              </Alert>
-            )}
-            <Button type="submit" loading={buchen.isPending}>
-              Buchen
-            </Button>
+            <Group align="center" gap="md">
+              <Button type="button" onClick={pruefenOeffnen} disabled={!buchbar}>
+                Prüfen und buchen
+              </Button>
+              {buchbar ? (
+                <Text size="sm" c="dimmed">
+                  Tastenkürzel: Strg+Enter
+                </Text>
+              ) : (
+                <Text size="sm" c="dimmed" style={{ flex: 1, minWidth: 200 }}>
+                  Noch nicht möglich: {gruende[0]}
+                  {gruende.length > 1 && ` (und ${gruende.length - 1} weitere Hinweise)`}
+                </Text>
+              )}
+            </Group>
           </Stack>
         </form>
       )}
+      {pruefen && (
+        <BuchungsZusammenfassung
+          datum={datum}
+          text={text.trim()}
+          zeilen={uebersicht}
+          warnungen={warnungen(kopf, stand, heuteBerlin())}
+          laeuft={buchen.isPending}
+          fehler={
+            buchen.isError ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.') : null
+          }
+          onBuchen={() => buchen.mutate()}
+          onClose={() => setPruefen(false)}
+        />
+      )}
+      <Modal
+        opened={blocker.state === 'blocked'}
+        onClose={() => blocker.reset?.()}
+        title="Eingabe verwerfen?"
+        centered
+      >
+        <Stack>
+          <Text>
+            Du hast noch nicht gebucht. Wenn du die Seite verlässt, gehen deine Eingaben verloren.
+          </Text>
+          <Button fullWidth color="red" onClick={() => blocker.proceed?.()}>
+            Verwerfen
+          </Button>
+          <Button fullWidth variant="default" onClick={() => blocker.reset?.()}>
+            Weiter bearbeiten
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
