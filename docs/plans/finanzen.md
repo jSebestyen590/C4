@@ -174,6 +174,11 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 ### Scheibe 4: Belege
 
 - Rechnungssteller (mit Rabatt), Steuersätze, Kategorien (Erlös-/Aufwandskonten).
+- **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
+  „Eröffnung / Saldovortrag“ = −Vereinsvermögen). Kontenplan, Salden und Auswertungen zeigen
+  Erlös- und Neutral-Konten deshalb mit umgekehrtem Vorzeichen (Erlöse positiv, „Eröffnung“ z. B.
+  als „Vereinsvermögen zum Stichtag“); Bargeld, Bank, Durchlauf und Aufwand bleiben, wie sie sind.
+  Nur Anzeige, die gespeicherten Beträge und der Hash ändern sich nicht.
 - Beleg: Nummernkreis, **Belegdatum und Bezahldatum**, Zahlweg (bar aus Safe-Fach mit Stückelung,
   Bank, Auslage eines Mitglieds), brutto oder netto, Datei (PDF/Foto), Eigenbeleg mit Begründung.
 - **Auslagen (elementar):** Ein Beleg mit Zahlweg „Auslage" bucht gegen das Durchlaufkonto
