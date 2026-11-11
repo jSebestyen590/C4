@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import webpush from 'web-push';
 import {
   benachrichtigungsArt,
   BENACHRICHTIGUNGS_ARTEN,
+  VERLAUF_AUFBEWAHRUNG_TAGE,
+  type VerlaufFilter,
   effektiveEinstellung,
   istAbschaltbar,
   type EinstellungDto,
@@ -15,6 +17,7 @@ import {
 import type { Db } from './db/client';
 import {
   benachrichtigungEinstellungen,
+  benachrichtigungVerlauf,
   mitglieder,
   pushAbos,
   pushSchluessel,
@@ -43,6 +46,40 @@ export interface Empfaenger {
   sub: string;
   status: MitgliedStatus;
   gespeichert: GespeicherteEinstellung | null;
+}
+
+/** A history entry to write; `schluessel` makes it unique per member (null = no dedupe). */
+export interface VerlaufNeu {
+  sub: string;
+  art: string;
+  titel: string;
+  text: string;
+  url: string;
+  schluessel: string | null;
+}
+
+export interface VerlaufZeile {
+  id: string;
+  art: string;
+  titel: string;
+  text: string;
+  url: string;
+  erstellt: Date;
+  gelesen: Date | null;
+}
+
+/** Position after which the next history page starts (newest first). */
+export interface VerlaufCursor {
+  erstellt: Date;
+  id: string;
+}
+
+export interface VerlaufAbfrage {
+  /** Only these types (resolved from the `art`/`bereich` filter). */
+  arten?: readonly string[];
+  nurUngelesen?: boolean;
+  vor?: VerlaufCursor;
+  limit: number;
 }
 
 export interface BenachrichtigungenStore {
@@ -74,6 +111,19 @@ export interface BenachrichtigungenStore {
   /** Claims a dedupe key; false when it was already claimed. */
   versandBelegen(schluessel: string): Promise<boolean>;
   versandFreigeben(schluessel: string): Promise<void>;
+  /**
+   * Writes history entries; an entry whose (member, schluessel) exists is kept. Returns the id of
+   * each member's entry (also of already existing ones).
+   */
+  verlaufEintragen(eintraege: readonly VerlaufNeu[]): Promise<Map<string, string>>;
+  verlaufSeite(sub: string, abfrage: VerlaufAbfrage): Promise<VerlaufZeile[]>;
+  verlaufUngelesen(sub: string): Promise<number>;
+  /** Marks one of the member's entries as read; false when it does not exist (or is not theirs). */
+  verlaufGelesen(sub: string, id: string): Promise<boolean>;
+  /** Marks all unread entries (of the given types) as read. */
+  verlaufAlleGelesen(sub: string, arten?: readonly string[]): Promise<void>;
+  /** Deletes entries created before `vor`; returns how many. */
+  verlaufAufraeumen(vor: Date): Promise<number>;
 }
 
 /** Result of one delivery: `gone` = subscription expired (404/410), `fehler` = try again later. */
@@ -116,10 +166,48 @@ export interface Benachrichtigungen {
   /** Claims a once-only marker (e.g. a job that runs once per day); false when already claimed. */
   einmalBelegen(schluessel: string): Promise<boolean>;
   einmalFreigeben(schluessel: string): Promise<void>;
+  /** History page (newest first); `weiter` is the cursor of the next page. */
+  verlaufSeite(
+    sub: string,
+    abfrage: VerlaufFilter & { nurUngelesen?: boolean; vor?: VerlaufCursor; limit: number },
+  ): Promise<{ eintraege: VerlaufZeile[]; weiter: VerlaufCursor | null }>;
+  verlaufUngelesen(sub: string): Promise<number>;
+  verlaufGelesen(sub: string, id: string): Promise<boolean>;
+  verlaufAlleGelesen(sub: string, filter: VerlaufFilter): Promise<void>;
+  /** Deletes history entries older than the retention period. */
+  verlaufAufraeumen(jetzt: Date): Promise<number>;
   /** Registers a task that runs on every `pushJob`. */
   registriereAufgabe(name: string, aufgabe: (jetzt: Date) => Promise<void>): void;
   /** Runs all registered tasks; one failing task does not stop the others. */
   pushJob(jetzt: Date): Promise<void>;
+}
+
+/** Type keys matching a history filter; undefined = all types. */
+function verlaufArten(art?: string, bereich?: string): string[] | undefined {
+  if (art) return [art];
+  if (bereich)
+    return BENACHRICHTIGUNGS_ARTEN.filter((a) => a.bereich === bereich).map((a) => a.key);
+  return undefined;
+}
+
+/** Registers the daily clean-up of old history entries. */
+export function registriereVerlaufAufraeumen(
+  benachrichtigungen: Pick<
+    Benachrichtigungen,
+    'registriereAufgabe' | 'einmalBelegen' | 'einmalFreigeben' | 'verlaufAufraeumen'
+  >,
+): void {
+  benachrichtigungen.registriereAufgabe('verlauf-aufraeumen', async (jetzt) => {
+    const schluessel = `verlauf-aufraeumen:${jetzt.toISOString().slice(0, 10)}`;
+    if (!(await benachrichtigungen.einmalBelegen(schluessel))) return;
+    try {
+      const n = await benachrichtigungen.verlaufAufraeumen(jetzt);
+      if (n > 0) console.log(`Notification history: deleted ${n} old entries`);
+    } catch (err) {
+      await benachrichtigungen.einmalFreigeben(schluessel).catch(() => {});
+      throw err;
+    }
+  });
 }
 
 export function createBenachrichtigungen(deps: {
@@ -208,19 +296,54 @@ export function createBenachrichtigungen(deps: {
             effektiveEinstellung(art, e.status, e.gespeichert).aktiv),
       );
       if (empfaenger.length === 0) return 0;
-      // Without a device nothing can be delivered: don't claim the key, so a later run still sends
-      // once the member has activated push.
-      const abos = await store.abosVon(empfaenger.map((e) => e.sub));
-      if (abos.length === 0) return 0;
       const schluessel = sendung.dedupeSchluessel;
-      if (schluessel && !(await store.versandBelegen(schluessel))) return 0;
+      const abos = await store.abosVon(empfaenger.map((e) => e.sub));
 
-      const nachricht: PushNachricht = {
-        titel: sendung.titel,
-        text: sendung.text,
-        url: sendung.url,
+      const verlaufSchreiben = async (): Promise<Map<string, string>> => {
+        try {
+          return await store.verlaufEintragen(
+            empfaenger.map((e) => ({
+              sub: e.sub,
+              art: sendung.art,
+              titel: sendung.titel,
+              text: sendung.text,
+              url: sendung.url,
+              schluessel: schluessel ?? null,
+            })),
+          );
+        } catch (err) {
+          console.error('Notification history could not be written', err);
+          return new Map();
+        }
       };
-      const ergebnisse = await liefern(abos, nachricht);
+
+      // Without a device nothing can be delivered: only the history is written and the key stays
+      // unclaimed, so a later run still sends once the member has activated push.
+      if (abos.length === 0) {
+        await verlaufSchreiben();
+        return 0;
+      }
+      if (schluessel && !(await store.versandBelegen(schluessel))) return 0;
+      const ids = await verlaufSchreiben();
+
+      const proMitglied = new Map<string, PushAbo[]>();
+      for (const abo of abos) {
+        const liste = proMitglied.get(abo.mitgliedSub) ?? [];
+        liste.push(abo);
+        proMitglied.set(abo.mitgliedSub, liste);
+      }
+      const ergebnisse = (
+        await Promise.all(
+          [...proMitglied].map(([sub, meine]) =>
+            liefern(meine, {
+              titel: sendung.titel,
+              text: sendung.text,
+              url: sendung.url,
+              ...(ids.has(sub) ? { id: ids.get(sub) } : {}),
+            }),
+          ),
+        )
+      ).flat();
       // Nobody could be reached because of a transient error: allow a retry in the next run.
       if (schluessel && ergebnisse.includes('fehler') && !ergebnisse.includes('ok')) {
         await store.versandFreigeben(schluessel).catch(() => {});
@@ -245,6 +368,26 @@ export function createBenachrichtigungen(deps: {
     einmalBelegen: (schluessel) => store.versandBelegen(schluessel),
     einmalFreigeben: (schluessel) => store.versandFreigeben(schluessel),
 
+    async verlaufSeite(sub, { art, bereich, nurUngelesen, vor, limit }) {
+      const arten = verlaufArten(art, bereich);
+      const zeilen = await store.verlaufSeite(sub, { arten, nurUngelesen, vor, limit: limit + 1 });
+      const seite = zeilen.slice(0, limit);
+      const letzte = seite.at(-1);
+      return {
+        eintraege: seite,
+        weiter:
+          zeilen.length > seite.length && letzte
+            ? { erstellt: letzte.erstellt, id: letzte.id }
+            : null,
+      };
+    },
+    verlaufUngelesen: (sub) => store.verlaufUngelesen(sub),
+    verlaufGelesen: (sub, id) => store.verlaufGelesen(sub, id),
+    verlaufAlleGelesen: (sub, { art, bereich }) =>
+      store.verlaufAlleGelesen(sub, verlaufArten(art, bereich)),
+    verlaufAufraeumen: (jetzt) =>
+      store.verlaufAufraeumen(new Date(jetzt.getTime() - VERLAUF_AUFBEWAHRUNG_TAGE * 86_400_000)),
+
     registriereAufgabe(name, aufgabe) {
       aufgaben.set(name, aufgabe);
     },
@@ -266,6 +409,8 @@ export function createBenachrichtigungen(deps: {
 // ---------------------------------------------------------------------------------------------
 
 const VAPID_ID = 'vapid';
+/** Rows per statement for history writes (Aurora DSQL limits rows per transaction). */
+const VERLAUF_STAPEL = 500;
 
 export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
   let vapidCache: Vapid | undefined;
@@ -391,6 +536,161 @@ export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
 
     async versandFreigeben(schluessel) {
       await db.delete(pushVersand).where(eq(pushVersand.schluessel, schluessel));
+    },
+
+    async verlaufEintragen(eintraege) {
+      const ids = new Map<string, string>();
+      for (let i = 0; i < eintraege.length; i += VERLAUF_STAPEL) {
+        const stapel = eintraege.slice(i, i + VERLAUF_STAPEL);
+        const neu = stapel.map((e) => ({ e, id: randomUUID() }));
+        await db
+          .insert(benachrichtigungVerlauf)
+          .values(
+            neu.map(({ e, id }) => ({
+              id,
+              mitgliedSub: e.sub,
+              art: e.art,
+              titel: e.titel,
+              text: e.text,
+              url: e.url,
+              schluessel: e.schluessel,
+            })),
+          )
+          .onConflictDoNothing();
+        for (const { e, id } of neu) ids.set(e.sub, id);
+        // Entries with a key may already exist: they keep their id, so read those back.
+        const mitSchluessel = stapel.filter((e) => e.schluessel !== null);
+        if (mitSchluessel.length > 0) {
+          const zeilen = await db
+            .select({
+              id: benachrichtigungVerlauf.id,
+              sub: benachrichtigungVerlauf.mitgliedSub,
+              schluessel: benachrichtigungVerlauf.schluessel,
+            })
+            .from(benachrichtigungVerlauf)
+            .where(
+              and(
+                inArray(
+                  benachrichtigungVerlauf.mitgliedSub,
+                  mitSchluessel.map((e) => e.sub),
+                ),
+                inArray(benachrichtigungVerlauf.schluessel, [
+                  ...new Set(mitSchluessel.map((e) => e.schluessel!)),
+                ]),
+              ),
+            );
+          const gewollt = new Set(mitSchluessel.map((e) => `${e.sub}|${e.schluessel}`));
+          for (const z of zeilen) {
+            if (gewollt.has(`${z.sub}|${z.schluessel}`)) ids.set(z.sub, z.id);
+          }
+        }
+      }
+      return ids;
+    },
+
+    async verlaufSeite(sub, { arten, nurUngelesen, vor, limit }) {
+      if (arten && arten.length === 0) return [];
+      const t = benachrichtigungVerlauf;
+      return db
+        .select({
+          id: t.id,
+          art: t.art,
+          titel: t.titel,
+          text: t.text,
+          url: t.url,
+          erstellt: t.erstellt,
+          gelesen: t.gelesen,
+        })
+        .from(t)
+        .where(
+          and(
+            eq(t.mitgliedSub, sub),
+            arten ? inArray(t.art, [...arten]) : undefined,
+            nurUngelesen ? isNull(t.gelesen) : undefined,
+            vor
+              ? or(
+                  lt(t.erstellt, vor.erstellt),
+                  and(eq(t.erstellt, vor.erstellt), lt(t.id, vor.id)),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(t.erstellt), desc(t.id))
+        .limit(limit);
+    },
+
+    async verlaufUngelesen(sub) {
+      const t = benachrichtigungVerlauf;
+      const [row] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(t)
+        .where(and(eq(t.mitgliedSub, sub), isNull(t.gelesen)));
+      return row?.n ?? 0;
+    },
+
+    async verlaufGelesen(sub, id) {
+      const t = benachrichtigungVerlauf;
+      const vorhanden = await db
+        .select({ id: t.id })
+        .from(t)
+        .where(and(eq(t.id, id), eq(t.mitgliedSub, sub)));
+      if (vorhanden.length === 0) return false;
+      await db
+        .update(t)
+        .set({ gelesen: new Date() })
+        .where(and(eq(t.id, id), eq(t.mitgliedSub, sub), isNull(t.gelesen)));
+      return true;
+    },
+
+    async verlaufAlleGelesen(sub, arten) {
+      if (arten && arten.length === 0) return;
+      const t = benachrichtigungVerlauf;
+      const jetzt = new Date();
+      // Batches stay below the per-transaction row limit of Aurora DSQL.
+      for (;;) {
+        const offen = await db
+          .select({ id: t.id })
+          .from(t)
+          .where(
+            and(
+              eq(t.mitgliedSub, sub),
+              isNull(t.gelesen),
+              arten ? inArray(t.art, [...arten]) : undefined,
+            ),
+          )
+          .limit(VERLAUF_STAPEL);
+        if (offen.length === 0) return;
+        await db
+          .update(t)
+          .set({ gelesen: jetzt })
+          .where(
+            inArray(
+              t.id,
+              offen.map((o) => o.id),
+            ),
+          );
+        if (offen.length < VERLAUF_STAPEL) return;
+      }
+    },
+
+    async verlaufAufraeumen(vor) {
+      const t = benachrichtigungVerlauf;
+      let gesamt = 0;
+      for (;;) {
+        const alt = await db
+          .select({ id: t.id })
+          .from(t)
+          .where(lt(t.erstellt, vor))
+          .limit(VERLAUF_STAPEL);
+        if (alt.length === 0) return gesamt;
+        await db.delete(t).where(
+          inArray(
+            t.id,
+            alt.map((a) => a.id),
+          ),
+        );
+        gesamt += alt.length;
+      }
     },
   };
 }

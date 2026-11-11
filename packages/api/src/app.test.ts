@@ -4027,6 +4027,80 @@ describe('kalender', () => {
       );
     });
 
+    describe('notification history', () => {
+      const base = '/api/me/benachrichtigungen/verlauf';
+      const eintragen = (t: ReturnType<typeof makeApp>, sub: string, art: string, titel: string) =>
+        t.push.store.verlaufEintragen([
+          { sub, art, titel, text: 'x', url: '/app/x', schluessel: null },
+        ]);
+
+      it('lists with filters and pagination, newest first', async () => {
+        const t = makeApp();
+        mitProfil(t);
+        for (let i = 1; i <= 31; i++) await eintragen(t, 'm2', 'umfrage.neu', `U${i}`);
+        await eintragen(t, 'm2', 'kalender.aenderung', 'K1');
+        await eintragen(t, 'a', 'umfrage.neu', 'fremd');
+        const get = async (query = '') =>
+          (await t.app.request(`${base}${query}`, json('member-token', 'GET'))).json() as Promise<{
+            eintraege: { id: string; titel: string; gelesen: boolean }[];
+            weiter: string | null;
+          }>;
+        const seite1 = await get();
+        expect(seite1.eintraege).toHaveLength(30);
+        expect(seite1.eintraege[0]!.titel).toBe('K1');
+        expect(seite1.weiter).not.toBeNull();
+        const seite2 = await get(`?vor=${encodeURIComponent(seite1.weiter!)}`);
+        expect(seite2.eintraege.map((e) => e.titel)).toEqual(['U2', 'U1']);
+        expect(seite2.weiter).toBeNull();
+
+        expect((await get('?art=kalender.aenderung')).eintraege).toHaveLength(1);
+        expect((await get('?bereich=umfrage')).eintraege).toHaveLength(30);
+        const res = await t.app.request(`${base}?art=gibt.es.nicht`, json('member-token', 'GET'));
+        expect(res.status).toBe(400);
+
+        const erste = seite1.eintraege[0]!.id;
+        await t.app.request(`${base}/${erste}/gelesen`, json('member-token', 'POST'));
+        const ungelesen = await get('?ungelesen=true&bereich=kalender');
+        expect(ungelesen.eintraege).toHaveLength(0);
+        expect((await t.app.request(base, { method: 'GET' })).status).toBe(401);
+      });
+
+      it('returns 404 for a foreign or unknown id and 204 for an own one', async () => {
+        const t = makeApp();
+        mitProfil(t);
+        const fremd = (await eintragen(t, 'a', 'umfrage.neu', 'fremd')).get('a')!;
+        const eigen = (await eintragen(t, 'm2', 'umfrage.neu', 'eigen')).get('m2')!;
+        const post = (id: string) =>
+          t.app.request(`${base}/${id}/gelesen`, json('member-token', 'POST'));
+        expect((await post(fremd)).status).toBe(404);
+        expect((await post('unbekannt')).status).toBe(404);
+        expect((await post(eigen)).status).toBe(204);
+        expect(await t.push.store.verlaufUngelesen('a')).toBe(1);
+      });
+
+      it('counts unread entries and marks all matching the filter as read', async () => {
+        const t = makeApp();
+        mitProfil(t);
+        await eintragen(t, 'm2', 'umfrage.neu', 'U1');
+        await eintragen(t, 'm2', 'umfrage.erinnerung', 'U2');
+        await eintragen(t, 'm2', 'kalender.aenderung', 'K1');
+        const anzahl = async () =>
+          (
+            (await (
+              await t.app.request(`${base}/ungelesen`, json('member-token', 'GET'))
+            ).json()) as { anzahl: number }
+          ).anzahl;
+        expect(await anzahl()).toBe(3);
+        const alle = (body: unknown) =>
+          t.app.request(`${base}/gelesen`, json('member-token', 'POST', body));
+        expect((await alle({ bereich: 'umfrage' })).status).toBe(204);
+        expect(await anzahl()).toBe(1);
+        expect((await alle({ art: 'gibt.es.nicht' })).status).toBe(400);
+        expect((await alle({})).status).toBe(204);
+        expect(await anzahl()).toBe(0);
+      });
+    });
+
     it('notifies a removed member, but not the person who removed themself', async () => {
       const t = makeApp();
       mitProfil(t);

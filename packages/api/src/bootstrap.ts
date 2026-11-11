@@ -11,6 +11,7 @@ import {
   createBenachrichtigungen,
   createBenachrichtigungenStore,
   createWebPushSender,
+  registriereVerlaufAufraeumen,
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
 import {
@@ -53,6 +54,7 @@ export function createProduction() {
     sender: createWebPushSender(pushStore, config.appUrl ?? 'https://www.c4-leipzig.de'),
   });
   // Features register their job tasks here (see docs/benachrichtigungen.md).
+  registriereVerlaufAufraeumen(benachrichtigungen);
   registriereKalenderAufgaben(benachrichtigungen, kalender);
   registriereKalenderSerien(benachrichtigungen, kalender);
   const userAdmin = createCognitoUserAdmin(config.userPoolId, config.region);

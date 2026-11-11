@@ -38,6 +38,7 @@ import { ProtokollPage } from './pages/ProtokollPage';
 import { ProtokollePage } from './pages/ProtokollePage';
 import { PostenPage } from './pages/PostenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
+import { BenachrichtigungsVerlaufPage } from './pages/BenachrichtigungsVerlaufPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
 import { SchluesselAnfragePage } from './pages/SchluesselAnfragePage';
 import { SchluesselPage } from './pages/SchluesselPage';
@@ -645,6 +646,16 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="profil:bearbeiten">
                 <RequireUsername>
                   <BenachrichtigungenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/benachrichtigungen/verlauf"
+            element={
+              <Protected permission="profil:bearbeiten">
+                <RequireUsername>
+                  <BenachrichtigungsVerlaufPage />
                 </RequireUsername>
               </Protected>
             }

@@ -1,5 +1,5 @@
 import type { GespeicherteEinstellung, MitgliedStatus } from '@c4/shared';
-import type { BenachrichtigungenStore, PushAbo } from './benachrichtigungen';
+import type { BenachrichtigungenStore, PushAbo, VerlaufZeile } from './benachrichtigungen';
 
 /** In-memory store for tests. `mitglieder` supplies the members (with status) at call time. */
 export function createFakeBenachrichtigungenStore(
@@ -8,6 +8,9 @@ export function createFakeBenachrichtigungenStore(
   const abos: PushAbo[] = [];
   const einstellungen = new Map<string, GespeicherteEinstellung>(); // key: `${sub}|${art}`
   const versand = new Set<string>();
+  const verlauf: (VerlaufZeile & { sub: string; schluessel: string | null })[] = [];
+  let verlaufZaehler = 0;
+  const fehler = { verlaufEintragen: false };
   const store: BenachrichtigungenStore = {
     vapid: async () => ({ publicKey: 'public-key', privateKey: 'private-key' }),
     aboSpeichern: async (sub, abo) => {
@@ -62,6 +65,80 @@ export function createFakeBenachrichtigungenStore(
     versandFreigeben: async (schluessel) => {
       versand.delete(schluessel);
     },
+    verlaufEintragen: async (eintraege) => {
+      if (fehler.verlaufEintragen) throw new Error('verlauf failed');
+      const ids = new Map<string, string>();
+      for (const e of eintraege) {
+        let zeile =
+          e.schluessel === null
+            ? undefined
+            : verlauf.find((v) => v.sub === e.sub && v.schluessel === e.schluessel);
+        if (!zeile) {
+          verlaufZaehler += 1;
+          zeile = {
+            id: `v${String(verlaufZaehler).padStart(5, '0')}`,
+            sub: e.sub,
+            schluessel: e.schluessel,
+            art: e.art,
+            titel: e.titel,
+            text: e.text,
+            url: e.url,
+            erstellt: new Date(),
+            gelesen: null,
+          };
+          verlauf.push(zeile);
+        }
+        ids.set(e.sub, zeile.id);
+      }
+      return ids;
+    },
+    verlaufSeite: async (sub, { arten, nurUngelesen, vor, limit }) =>
+      verlauf
+        .filter(
+          (v) =>
+            v.sub === sub &&
+            (!arten || arten.includes(v.art)) &&
+            (!nurUngelesen || v.gelesen === null) &&
+            (!vor ||
+              v.erstellt < vor.erstellt ||
+              (v.erstellt.getTime() === vor.erstellt.getTime() && v.id < vor.id)),
+        )
+        .sort((a, b) => b.erstellt.getTime() - a.erstellt.getTime() || (a.id < b.id ? 1 : -1))
+        .slice(0, limit)
+        .map((v) => ({
+          id: v.id,
+          art: v.art,
+          titel: v.titel,
+          text: v.text,
+          url: v.url,
+          erstellt: v.erstellt,
+          gelesen: v.gelesen,
+        })),
+    verlaufUngelesen: async (sub) =>
+      verlauf.filter((v) => v.sub === sub && v.gelesen === null).length,
+    verlaufGelesen: async (sub, id) => {
+      const v = verlauf.find((x) => x.id === id && x.sub === sub);
+      if (!v) return false;
+      v.gelesen ??= new Date();
+      return true;
+    },
+    verlaufAlleGelesen: async (sub, arten) => {
+      for (const v of verlauf) {
+        if (v.sub === sub && v.gelesen === null && (!arten || arten.includes(v.art))) {
+          v.gelesen = new Date();
+        }
+      }
+    },
+    verlaufAufraeumen: async (vor) => {
+      let n = 0;
+      for (let i = verlauf.length - 1; i >= 0; i--) {
+        if (verlauf[i]!.erstellt < vor) {
+          verlauf.splice(i, 1);
+          n += 1;
+        }
+      }
+      return n;
+    },
   };
-  return { store, abos, einstellungen, versand };
+  return { store, abos, einstellungen, versand, verlauf, fehler };
 }

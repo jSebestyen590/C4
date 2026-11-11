@@ -238,4 +238,46 @@ export interface PushNachricht {
   text: string;
   /** App-relative path (e.g. `/app/kalender/events/<id>`) opened on click. */
   url: string;
+  /** Id of the member's history entry (opened/read marking); absent for test messages. */
+  id?: string;
 }
+
+/** One entry of the notification history. */
+export interface VerlaufEintragDto {
+  id: string;
+  art: string;
+  titel: string;
+  text: string;
+  /** App-relative path (with `/app` prefix) opened on click. */
+  url: string;
+  erstellt: string;
+  gelesen: boolean;
+}
+
+/** `GET /api/me/benachrichtigungen/verlauf`: `weiter` is the `vor` cursor of the next page (null: no more). */
+export interface VerlaufSeiteDto {
+  eintraege: VerlaufEintragDto[];
+  weiter: string | null;
+}
+
+/** Query of `GET /api/me/benachrichtigungen/verlauf`. */
+export const verlaufFilterSchema = z.object({
+  art: z.enum(BENACHRICHTIGUNGS_ART_KEYS, 'Unbekannte Benachrichtigung.').optional(),
+  bereich: z
+    .string()
+    .refine((b) => (BENACHRICHTIGUNGS_BEREICHE as string[]).includes(b), 'Unbekannter Bereich.')
+    .optional(),
+});
+
+/** Query of `GET /api/me/benachrichtigungen/verlauf`: the filter plus unread-only and the page cursor. */
+export const verlaufSeiteQuerySchema = verlaufFilterSchema.extend({
+  ungelesen: z.enum(['true', 'false']).optional(),
+  vor: z.string().max(200).optional(),
+});
+
+/** Body of `POST /api/me/benachrichtigungen/verlauf/gelesen`: marks everything matching the filter. */
+export const verlaufAlleGelesenSchema = verlaufFilterSchema;
+export type VerlaufFilter = z.infer<typeof verlaufFilterSchema>;
+
+/** Entries older than this many days are deleted. */
+export const VERLAUF_AUFBEWAHRUNG_TAGE = 90;

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS benachrichtigung_verlauf_mitglied_idx
