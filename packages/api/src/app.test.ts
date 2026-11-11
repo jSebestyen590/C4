@@ -9991,6 +9991,46 @@ describe('finanzen', () => {
     expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?von=kaputt')).status).toBe(400);
   });
 
+  it('shows the direction of money and the running balance per account', async () => {
+    const t = await setup();
+    await t.umbuchung(100, { datum: '2027-01-01' });
+    await t.umbuchung(250, { datum: '2027-02-01' });
+    type Eintrag = {
+      seq: number;
+      abgang: { kontoId: string; kontoName: string; betragCent: number }[];
+      zugang: { kontoId: string; kontoName: string; betragCent: number }[];
+      konto: { betragCent: number; saldoNachCent: number } | null;
+    };
+    const alle = await t.lesen<{ buchungen: Eintrag[] }>('vorstand-token', '/buchungen');
+    expect(alle.buchungen[0]!.abgang).toEqual([
+      { kontoId: 'bank', kontoName: 'Bank (Fyrst)', betragCent: 250 },
+    ]);
+    expect(alle.buchungen[0]!.zugang).toEqual([
+      { kontoId: 'geldtransit', kontoName: 'Geldtransit', betragCent: 250 },
+    ]);
+    expect(alle.buchungen.map((b) => b.konto)).toEqual([null, null]);
+    // Account statement across two pages; the date filter does not change the balance.
+    const seite1 = await t.lesen<{ buchungen: Eintrag[]; weiter: number | null }>(
+      'vorstand-token',
+      '/buchungen?kontoId=bank&limit=1',
+    );
+    expect(seite1.buchungen.map((b) => b.konto)).toEqual([
+      { betragCent: -250, saldoNachCent: -350 },
+    ]);
+    const seite2 = await t.lesen<{ buchungen: Eintrag[] }>(
+      'vorstand-token',
+      `/buchungen?kontoId=bank&limit=1&vorSeq=${seite1.weiter}`,
+    );
+    expect(seite2.buchungen.map((b) => b.konto)).toEqual([
+      { betragCent: -100, saldoNachCent: -100 },
+    ]);
+    const gefiltert = await t.lesen<{ buchungen: Eintrag[] }>(
+      'vorstand-token',
+      '/buchungen?kontoId=bank&von=2027-02-01',
+    );
+    expect(gefiltert.buchungen.map((b) => b.konto?.saldoNachCent)).toEqual([-350]);
+  });
+
   it('rejects invalid bookings with 400 and German messages', async () => {
     const t = await setup();
     const fehler = async (body: Record<string, unknown>) => {

@@ -5,6 +5,8 @@ import {
   stornoZeilen,
   type BuchungDetailEintrag,
   type BuchungListeEintrag,
+  type JournalEintrag,
+  type BuchungRichtungDto,
   type KettenBuchung,
   type KontoDto,
 } from '@c4/shared';
@@ -165,7 +167,7 @@ export function createFakeFinanzenStore() {
       });
     },
     async journal({ von, bis, kontoId, limit, vorSeq }) {
-      return [...buchungen]
+      const seite = [...buchungen]
         .reverse()
         .filter(
           (b) =>
@@ -174,8 +176,35 @@ export function createFakeFinanzenStore() {
             (!kontoId || b.zeilen.some((z) => z.kontoId === kontoId)) &&
             (vorSeq === undefined || b.seq < vorSeq),
         )
-        .slice(0, limit)
-        .map(eintrag);
+        .slice(0, limit);
+      const kontoSumme = (b: KettenBuchung) =>
+        b.zeilen.filter((z) => z.kontoId === kontoId).reduce((t, z) => t + z.betragCent, 0);
+      const oben = Math.max(0, ...seite.map((b) => b.seq));
+      let saldoNach = kontoId
+        ? buchungen.filter((b) => b.seq <= oben).reduce((s, b) => s + kontoSumme(b), 0)
+        : 0;
+      return seite.map((b): JournalEintrag => {
+        const richtung = (vorzeichen: 1 | -1): BuchungRichtungDto[] => {
+          const proKonto = new Map<string, BuchungRichtungDto>();
+          for (const z of b.zeilen) {
+            if (Math.sign(z.betragCent) !== vorzeichen) continue;
+            const alt = proKonto.get(z.kontoId);
+            proKonto.set(z.kontoId, {
+              kontoId: z.kontoId,
+              kontoName: konten.get(z.kontoId)?.name ?? z.kontoId,
+              betragCent: (alt?.betragCent ?? 0) + Math.abs(z.betragCent),
+            });
+          }
+          return [...proKonto.values()];
+        };
+        let konto: JournalEintrag['konto'] = null;
+        if (kontoId) {
+          const betrag = kontoSumme(b);
+          konto = { betragCent: betrag, saldoNachCent: saldoNach };
+          saldoNach -= betrag;
+        }
+        return { ...eintrag(b), abgang: richtung(-1), zugang: richtung(1), konto };
+      });
     },
     async buchung(id) {
       const b = buchungen.find((x) => x.id === id);

@@ -578,7 +578,32 @@ export interface BuchungDetailEintrag extends BuchungListeEintrag {
   zeilen: BuchungZeileDto[];
 }
 
-export interface BuchungListeDto extends Omit<BuchungListeEintrag, 'erstelltVon'> {
+/** One side of a booking: the lines of one account on that side, as positive amounts. */
+export interface BuchungRichtungDto {
+  kontoId: string;
+  kontoName: string;
+  betragCent: number;
+}
+
+/** Effect of a booking on the filtered account (account statement view). */
+export interface BuchungKontoDto {
+  /** Signed sum of the account's lines in this booking. */
+  betragCent: number;
+  /** Running balance of the account after this booking, by journal order (`seq`). */
+  saldoNachCent: number;
+}
+
+/** A journal list entry as the store returns it: with direction of money. */
+export interface JournalEintrag extends BuchungListeEintrag {
+  /** Accounts the money leaves (negative lines), per account. */
+  abgang: BuchungRichtungDto[];
+  /** Accounts the money enters (positive lines), per account. */
+  zugang: BuchungRichtungDto[];
+  /** Only set when the query filters by account. */
+  konto: BuchungKontoDto | null;
+}
+
+export interface BuchungListeDto extends Omit<JournalEintrag, 'erstelltVon'> {
   /** Null if the creator's account no longer exists. */
   erstelltVon: FinanzMitgliedDto | null;
 }

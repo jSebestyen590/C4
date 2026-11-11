@@ -12,15 +12,31 @@ import {
   Table,
   Text,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { centAnzeigen, datumAnzeigen, QUELLE_TYP_LABELS, type BuchungListeDto } from '@c4/shared';
+import {
+  centAnzeigen,
+  datumAnzeigen,
+  QUELLE_TYP_LABELS,
+  type BuchungListeDto,
+  type BuchungRichtungDto,
+} from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { DatumFeld } from '../DatumFeld';
 import { BETRAG_STIL, detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from '../finanzenDaten';
+import {
+  bewegungText,
+  RICHTUNG_MAX,
+  richtungKurz,
+  richtungText,
+  richtungZeilen,
+  saldoText,
+  vonNachText,
+} from '../finanzenJournal';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { ZurueckLink } from '../ZurueckLink';
@@ -51,6 +67,81 @@ function StornoBadges({ b }: Readonly<{ b: BuchungListeDto }>) {
         </Badge>
       )}
     </>
+  );
+}
+
+const NEGATIV_FARBE = 'var(--mantine-color-red-7)';
+
+/** One side of a booking, truncated with ellipsis; a tooltip lists all accounts when shortened. */
+function Richtung({ konten }: Readonly<{ konten: BuchungRichtungDto[] }>) {
+  const { namen, weitere } = richtungKurz(konten);
+  const text =
+    namen.length === 0 ? '–' : namen.join(', ') + (weitere > 0 ? ` + ${weitere} weitere` : '');
+  const inhalt = (
+    <Text span inline style={{ display: 'block', minWidth: 0 }} truncate="end">
+      {text}
+    </Text>
+  );
+  return (
+    <Tooltip
+      multiline
+      maw={320}
+      label={richtungZeilen(konten).map((z) => (
+        <div key={z}>{z}</div>
+      ))}
+      disabled={weitere === 0 && text.length < 30}
+      events={{ hover: true, focus: true, touch: true }}
+    >
+      {inhalt}
+    </Tooltip>
+  );
+}
+
+/** "Von → Nach" in one truncated line; the tooltip lists every account with its amount. */
+function VonNach({ b }: Readonly<{ b: BuchungListeDto }>) {
+  const lang = b.abgang.length > RICHTUNG_MAX || b.zugang.length > RICHTUNG_MAX;
+  return (
+    <Tooltip
+      multiline
+      maw={360}
+      disabled={!lang}
+      events={{ hover: true, focus: true, touch: true }}
+      label={
+        <div>
+          {[
+            ...richtungZeilen(b.abgang).map((z) => `Von ${z}`),
+            ...richtungZeilen(b.zugang).map((z) => `Nach ${z}`),
+          ].map((z) => (
+            <div key={z}>{z}</div>
+          ))}
+        </div>
+      }
+    >
+      <Text span inline style={{ display: 'block', minWidth: 0 }} truncate="end">
+        {vonNachText(b.abgang, b.zugang)}
+      </Text>
+    </Tooltip>
+  );
+}
+
+/** Account-statement amount: the word says the direction, red and bold only add to it. */
+function Bewegung({ cent }: Readonly<{ cent: number }>) {
+  return (
+    <Text
+      span
+      fw={cent < 0 ? 600 : 400}
+      style={{ ...BETRAG_STIL, color: cent < 0 ? NEGATIV_FARBE : undefined }}
+    >
+      {bewegungText(cent)}
+    </Text>
+  );
+}
+
+function Saldo({ cent }: Readonly<{ cent: number }>) {
+  return (
+    <Text span style={{ ...BETRAG_STIL, color: cent < 0 ? NEGATIV_FARBE : undefined }}>
+      {saldoText(cent)}
+    </Text>
   );
 }
 
@@ -136,15 +227,31 @@ export function FinanzenJournalPage() {
             <Stack gap="xs">
               <Group justify="space-between" wrap="nowrap" align="flex-start">
                 <Text fw={600}>Nr. {b.seq}</Text>
-                <Text fw={600} style={BETRAG_STIL}>
-                  {centAnzeigen(b.betragCent)}
-                </Text>
+                {b.konto ? (
+                  <Bewegung cent={b.konto.betragCent} />
+                ) : (
+                  <Text fw={600} style={BETRAG_STIL}>
+                    {centAnzeigen(b.betragCent)}
+                  </Text>
+                )}
               </Group>
               <Text style={{ overflowWrap: 'anywhere' }}>{b.text}</Text>
+              <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                {b.konto
+                  ? b.konto.betragCent < 0
+                    ? `Nach ${richtungText(b.zugang)}`
+                    : `Von ${richtungText(b.abgang)}`
+                  : vonNachText(b.abgang, b.zugang)}
+              </Text>
               <Text size="sm" c="dimmed">
                 {datumAnzeigen(b.datum)} ·{' '}
                 {QUELLE_TYP_LABELS[b.quelleTyp as keyof typeof QUELLE_TYP_LABELS] ?? b.quelleTyp}
               </Text>
+              {b.konto && (
+                <Text size="sm">
+                  Saldo danach: <Saldo cent={b.konto.saldoNachCent} />
+                </Text>
+              )}
               {(b.stornoVon || b.storniertDurch) && (
                 <Group gap="xs">
                   <StornoBadges b={b} />
@@ -174,9 +281,15 @@ export function FinanzenJournalPage() {
                 </Table.Th>
                 <Table.Th w={110}>Datum</Table.Th>
                 <Table.Th>Text</Table.Th>
-                <Table.Th w={140} style={BETRAG_STIL}>
-                  Betrag
+                <Table.Th w={200}>{kontoId ? 'Gegenkonto' : 'Von → Nach'}</Table.Th>
+                <Table.Th w={160} style={BETRAG_STIL}>
+                  {kontoId ? 'Bewegung' : 'Betrag'}
                 </Table.Th>
+                {kontoId && (
+                  <Table.Th w={140} style={BETRAG_STIL}>
+                    Saldo danach
+                  </Table.Th>
+                )}
                 <Table.Th>Erstellt von</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -207,7 +320,21 @@ export function FinanzenJournalPage() {
                       <StornoBadges b={b} />
                     </Group>
                   </Table.Td>
-                  <Table.Td style={BETRAG_STIL}>{centAnzeigen(b.betragCent)}</Table.Td>
+                  <Table.Td style={{ maxWidth: 0, width: 200 }}>
+                    {b.konto ? (
+                      <Richtung konten={b.konto.betragCent < 0 ? b.zugang : b.abgang} />
+                    ) : (
+                      <VonNach b={b} />
+                    )}
+                  </Table.Td>
+                  <Table.Td style={BETRAG_STIL}>
+                    {b.konto ? <Bewegung cent={b.konto.betragCent} /> : centAnzeigen(b.betragCent)}
+                  </Table.Td>
+                  {b.konto && (
+                    <Table.Td style={BETRAG_STIL}>
+                      <Saldo cent={b.konto.saldoNachCent} />
+                    </Table.Td>
+                  )}
                   <Table.Td>
                     <Ersteller b={b} />
                   </Table.Td>

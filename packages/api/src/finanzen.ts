@@ -11,6 +11,8 @@ import {
   type BuchungZeileDto,
   type HashZeile,
   type JournalAbfrage,
+  type JournalEintrag,
+  type BuchungRichtungDto,
   type KettenBuchung,
   type KontoArt,
   type KontoDto,
@@ -86,7 +88,7 @@ export interface FinanzenStore {
   /** Reverses a booking; undefined when it does not exist, throws StornoKonflikt. */
   stornieren(id: string, eingabe: StornoEingabe, sub: string): Promise<GebuchtErgebnis | undefined>;
   /** Newest `seq` first. */
-  journal(abfrage: JournalAbfrage): Promise<BuchungListeEintrag[]>;
+  journal(abfrage: JournalAbfrage): Promise<JournalEintrag[]>;
   buchung(id: string): Promise<BuchungDetailEintrag | undefined>;
   /** All bookings by `seq` plus the counter, read in one consistent snapshot. */
   kettenDaten(): Promise<KettenDaten>;
@@ -215,6 +217,71 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       erstelltVon: r.erstelltVon,
       erstelltAm: r.erstelltAm.toISOString(),
     }));
+  };
+
+  /**
+   * Direction of money per booking and, for an account filter, the account's effect and running
+   * balance by `seq` (one SUM up to the page's highest `seq`, then walking down the page).
+   */
+  const richtungAnreichern = async (
+    q: Q,
+    liste: BuchungListeEintrag[],
+    kontoId: string | undefined,
+  ): Promise<JournalEintrag[]> => {
+    if (liste.length === 0) return [];
+    const zeilen = await q
+      .select({
+        buchungId: finBuchungszeilen.buchungId,
+        kontoId: finBuchungszeilen.kontoId,
+        kontoName: finKonten.name,
+        betragCent: finBuchungszeilen.betragCent,
+      })
+      .from(finBuchungszeilen)
+      .innerJoin(finKonten, eq(finKonten.id, finBuchungszeilen.kontoId))
+      .where(
+        inArray(
+          finBuchungszeilen.buchungId,
+          liste.map((b) => b.id),
+        ),
+      );
+    let saldo = 0;
+    if (kontoId) {
+      const [summe] = await q
+        .select({ summe: sql<string>`coalesce(sum(${finBuchungszeilen.betragCent}), 0)` })
+        .from(finBuchungszeilen)
+        .innerJoin(finBuchungen, eq(finBuchungen.id, finBuchungszeilen.buchungId))
+        .where(
+          and(
+            eq(finBuchungszeilen.kontoId, kontoId),
+            lte(finBuchungen.seq, Math.max(...liste.map((b) => b.seq))),
+          ),
+        );
+      saldo = Number(summe?.summe ?? 0);
+    }
+    return liste.map((b) => {
+      const seite = (vorzeichen: 1 | -1): BuchungRichtungDto[] => {
+        const proKonto = new Map<string, BuchungRichtungDto>();
+        for (const z of zeilen) {
+          if (z.buchungId !== b.id || Math.sign(z.betragCent) !== vorzeichen) continue;
+          const alt = proKonto.get(z.kontoId);
+          proKonto.set(z.kontoId, {
+            kontoId: z.kontoId,
+            kontoName: z.kontoName,
+            betragCent: (alt?.betragCent ?? 0) + Math.abs(z.betragCent),
+          });
+        }
+        return [...proKonto.values()];
+      };
+      let konto: JournalEintrag['konto'] = null;
+      if (kontoId) {
+        const betrag = zeilen
+          .filter((z) => z.buchungId === b.id && z.kontoId === kontoId)
+          .reduce((s, z) => s + z.betragCent, 0);
+        konto = { betragCent: betrag, saldoNachCent: saldo };
+        saldo -= betrag;
+      }
+      return { ...b, abgang: seite(-1), zugang: seite(1), konto };
+    });
   };
 
   /** Lines (with denominations) of the given bookings, by booking and `pos`. */
@@ -530,7 +597,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         )
         .orderBy(desc(finBuchungen.seq))
         .limit(limit);
-      return listeAnreichern(db, rows);
+      return richtungAnreichern(db, await listeAnreichern(db, rows), kontoId);
     },
 
     async buchung(id) {

@@ -106,6 +106,19 @@ und `storno_von` auf das Original, alle Beträge und Stückelungsanzahlen negier
 und Text (Standard „Storno von Nr. n: …“). Eine Buchung lässt sich nur einmal stornieren, ein Storno
 selbst nicht (409).
 
+**Journal-Liste** (`GET /api/finanzen/buchungen`, Seite „Journal“): jeder Eintrag trägt `abgang` und
+`zugang`, die Zeilen mit negativem bzw. positivem Betrag je Konto zusammengefasst (positive Beträge,
+Wechsel-Zeilen mit 0 entfallen). Die Tabelle (ab `sm`) hat die Spalten Nr., Datum, Text, **Von → Nach**,
+Betrag (Volumen) und Erstellt von; Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
+Mehr als zwei Konten einer Seite werden als „Bank + 3 weitere“ gekürzt (Tooltip mit allen Konten und
+Beträgen), lange Namen mit Auslassungspunkten (Logik in `packages/web/src/finanzenJournal.ts`).
+**Kontoauszug-Ansicht:** mit Kontofilter bekommt jeder Eintrag zusätzlich `konto` (`betragCent` mit
+Vorzeichen, `saldoNachCent`); sonst ist `konto` `null`. Die Tabelle zeigt dann „Gegenkonto“ (nur die
+andere Seite), „Bewegung“ („Zugang 25,50 €“ / „Abgang 25,50 €“, Abgang fett und rot) und „Saldo danach“
+(negativ rot mit Minus). Der laufende Saldo folgt der **Journalreihenfolge (`seq`)**, nicht dem Datum
+und unabhängig vom Von/Bis-Filter: eine SUM-Abfrage bis zur höchsten `seq` der Seite, danach wird
+beim Durchgehen der (absteigenden) Seite je Eintrag die eigene Bewegung abgezogen.
+
 **Idempotenz-Schlüssel:** Buchen und Stornieren verlangen `idempotenzSchluessel` (UUID, die die Seite je
 Erfassung erzeugt). Wird derselbe Schlüssel noch einmal gesendet (doppelter Klick, Wiederholung nach
 Netzfehler, Neuladen), legt die API keine zweite Buchung an, sondern gibt die vorhandene zurück: neu
