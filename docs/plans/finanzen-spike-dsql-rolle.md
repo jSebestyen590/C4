@@ -1,5 +1,20 @@
 # Spike: Eigene DSQL-Rolle für die Finanz-Journaltabellen
 
+## Entscheidung (11.11.2026)
+
+**Keine eigene DB-Rolle für das Journal.** Gründe:
+
+- Ziel der GoBD ist Erkennbarkeit, nicht Unmöglichkeit; die Hash-Kette macht Änderungen sichtbar.
+- Die Rolle schützt nicht gegen `admin` (CI/Migrationen) und damit nicht gegen den eigentlichen
+  Angreifer oder Fehler im Betrieb.
+- Dauerhafter Aufwand: jede neue Tabelle braucht ein `GRANT`, zwei Verbindungsarten, ARN je Umgebung.
+
+Stattdessen: API nur mit INSERT (keine Update-/Delete-Routen), abgesichert durch den Test
+`packages/api/src/finanzenNurInsert.test.ts`; Hash-Kette; der tägliche Export des Kopf-Hashs in
+S3 Object Lock wird vor den Stichtag 01.01.2027 gezogen (Scheibe 4 statt 5).
+
+Die Analyse unten bleibt als Referenz, falls die Entscheidung neu bewertet wird.
+
 ## Frage
 
 Kann die API (Lambda, pg + drizzle, Aurora DSQL) als eigene DB-Rolle laufen, die auf `fin_buchungen`,
@@ -9,17 +24,13 @@ volle Rechte (`fin_zaehler`: + `UPDATE`, `fin_konten`: `SELECT`/`INSERT`/`UPDATE
 
 ## Vorgehen
 
-Geplant war ein Praxistest auf dev (Testrolle `spike_fin`, Testtabellen, Verbindung per
-`DsqlSigner.getDbConnectAuthToken()`, anschließend Cleanup). **Nicht durchgeführt:** Die
-SSO-Anmeldung für das Profil `C4` war abgelaufen (`Token has expired and refresh failed`), ein
-Login ist dem Agenten nicht möglich. Es wurde nichts an dev, prod oder IAM verändert; es gibt
-nichts aufzuräumen. Der Test kann mit frischem `aws sso login --profile C4` nachgeholt werden.
-Die Analyse unten stützt sich auf die AWS-Doku (Using database roles and IAM authentication;
-Authentication and authorization for Aurora DSQL).
+Der Praxistest auf dev wurde nicht durchgeführt (SSO für Profil `C4` abgelaufen); es wurde nichts
+verändert. Die Analyse stützt sich auf die AWS-Doku.
 
 ## Ergebnis (nur Doku, nicht praktisch bestätigt)
 
 Dokumentiert und vorgesehen:
+
 - `CREATE ROLE x WITH LOGIN;` als `admin`, dann `AWS IAM GRANT x TO 'arn:aws:iam::<acct>:role/<name>';`
   (Zuordnung sichtbar in `sys.iam_pg_role_mappings`; Rückbau mit `AWS IAM REVOKE x FROM '<arn>'`).
 - IAM-Aktion `dsql:DbConnect` auf den Cluster-ARN; Token mit `getDbConnectAuthToken()`, Datenbank-User
@@ -30,6 +41,7 @@ Dokumentiert und vorgesehen:
 - Rechteänderungen wirken ab der nächsten Transaktion.
 
 Unklar / zu testen (genau das sollte der Praxistest klären):
+
 - SQLSTATE bei `UPDATE`/`DELETE` ohne Recht (PostgreSQL: `42501 insufficient_privilege`).
 - Ob `ALTER DEFAULT PRIVILEGES` in DSQL unterstützt ist (in der Doku nicht erwähnt; im Zweifel
   nein, dann braucht jede neue Tabelle ein explizites `GRANT`).
@@ -74,12 +86,3 @@ Unklar / zu testen (genau das sollte der Praxistest klären):
 - Lokale Entwicklung (Postgres in Docker) kennt `AWS IAM GRANT` nicht; Migrationen müssen dort
   übersprungen oder anders abgebildet werden.
 - Praxistest steht noch aus; Annahmen oben (SQLSTATE, Default Privileges) sind ungeprüft.
-
-## Empfehlung
-
-Umstellen: ja, aber in einer eigenen Scheibe **nach** dem Journal-Grundgerüst und **vor** dem
-produktiven Einsatz von Buchungen (Prod). Vorher den Praxistest auf dev nachholen (ca. 30 Minuten
-mit gültigem SSO-Login), insbesondere `ALTER DEFAULT PRIVILEGES`, `42501` bei `UPDATE`/`DELETE`
-und das Verhalten von `FOR UPDATE`. Der Nutzen ist moderat (Schutz gegen Programmierfehler und
-SQL-Injection in der API), der Pflegeaufwand überschaubar, solange ein Test die Grants je Tabelle
-prüft.

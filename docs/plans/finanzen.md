@@ -88,12 +88,9 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
   Buchungslogik mit Summenprüfung, `seq`, Hash, Storno, Retry.
 - Seiten: Kontenplan (verwalten), Journal (Liste, Detail, Storno), freie Buchung/Umbuchung.
 - „Kette prüfen" (zunächst nur gegen die Datenbank).
-- Spike: Kann die API mit einer eigenen DSQL-Rolle laufen, die auf `fin_*`-Journaltabellen nur
-  SELECT/INSERT hat (`CREATE ROLE`, `AWS IAM GRANT`, `dsql:DbConnect`)? Wenn ja, umstellen; sonst
-  bleibt der Schutz bei API + Hash-Kette + Anker. **Ergebnis:** bisher nur anhand der AWS-Doku
-  untersucht, der Praxistest auf dev steht aus (SSO war abgelaufen). Empfehlung: umstellen, aber in
-  einer eigenen Scheibe nach dem Journal-Grundgerüst und vor dem produktiven Einsatz; vorher den
-  Praxistest nachholen (siehe [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md)).
+- Spike DSQL-Rolle: **Entscheidung 11.11.2026: keine eigene DB-Rolle.** Schutz durch insert-only API
+  (Test `finanzenNurInsert.test.ts`), Hash-Kette und Anker (siehe
+  [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md)).
 - `docs/finanzen.md` (Zielbild, Verfahrensdokumentation im Aufbau) und `docs/plans/finanzen.md`
   (dieser Plan, wird nach jeder Scheibe fortgeschrieben), Zeilen in `docs/README.md`,
   `docs/datenbank.md`, `docs/posten.md`.
@@ -159,10 +156,11 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 - Neuer Bucket `c4-<env>-finanzarchiv-<acct>` mit Object Lock (prod: Compliance, 10 Jahre; dev:
   Governance, kurz), Lambda darf nur schreiben/lesen; Upload per Presigned URL nach dem Muster
   `packages/api/src/protokollbilder.ts`, SHA-256 der Datei geht in den Buchungs-Hash.
+- Täglicher Job (neuer Zweig in `lambda.ts` + Schedule): Journal-Export und Kopf-Hash ins Archiv
+  (aus Scheibe 5 vorgezogen, muss zum 01.01.2027 laufen; ersetzt die fehlende DB-Rolle).
 
 ### Scheibe 5: GoBD-Abschluss
 
-- Täglicher Job (neuer Zweig in `lambda.ts` + Schedule): Journal-Export und Kopf-Hash ins Archiv.
 - Festschreibung je Monat mit Export; Kopf-Hash per Push an alle mit `finanzen:pruefen` und in der
   App abrufbar (Mail bräuchte SES, offen).
 - „Kette prüfen" gegen Archiv-Exporte und Beleg-Hashes, Abweichungen anzeigen.
@@ -247,7 +245,7 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Risiken
 
-- **Stichtag in sieben Wochen.** Bis 01.01.2027 müssen 0, 1, 2, 3, 4 und Ü stehen. Konto, SumUp,
+- **Stichtag in sieben Wochen.** Bis 01.01.2027 müssen 0, 1, 2, 3, 4 (inkl. täglichem Anker-Export) und Ü stehen. Konto, SumUp,
   Rechnungen und Auswertungen können im ersten Quartal folgen und rückwirkend ab 01.01. buchen;
   die Festschreibung für Januar braucht Scheibe 5 erst im Februar.
 - **FinTS** ist der unsicherste Teil (Registrierung, TAN-Verfahren, Lambda-Laufzeit).
@@ -259,20 +257,20 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 0 Fundament               | umgesetzt (PR folgt); Spike DSQL-Rolle: siehe [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md) |
-| 1 Bargeld                 | offen                                                                                                        |
-| 2 Buch                    | offen                                                                                                        |
-| 3 Barkassen               | offen                                                                                                        |
-| 4 Belege                  | offen                                                                                                        |
-| 5 GoBD-Abschluss          | offen                                                                                                        |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                               |
-| 8 Rechnungen              | offen                                                                                                        |
-| 9 Auswertungen            | offen                                                                                                        |
-| Ü Übernahme               | offen                                                                                                        |
-| 10 Unentgeltliche Abgaben | offen                                                                                                        |
+| Scheibe                   | Stand                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR folgt); keine eigene DB-Rolle (Entscheidung, [Spike](./finanzen-spike-dsql-rolle.md)) |
+| 1 Bargeld                 | offen                                                                                               |
+| 2 Buch                    | offen                                                                                               |
+| 3 Barkassen               | offen                                                                                               |
+| 4 Belege                  | offen                                                                                               |
+| 5 GoBD-Abschluss          | offen                                                                                               |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                       |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                      |
+| 8 Rechnungen              | offen                                                                                               |
+| 9 Auswertungen            | offen                                                                                               |
+| Ü Übernahme               | offen                                                                                               |
+| 10 Unentgeltliche Abgaben | offen                                                                                               |
 
 ## Verifikation (je Scheibe)
 

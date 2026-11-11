@@ -30,7 +30,7 @@ Ziel ist nicht, Manipulation unmöglich zu machen, sondern jede Änderung erkenn
 - Journal nur mit INSERT, lückenlose Nummer, Storno statt Ändern, Festschreibung je Monat.
 - Hash-Kette über alle Buchungen samt Hash der Belegdateien.
 - Originalbelege, tägliche Journal-Exporte und der Ketten-Hash liegen in S3 mit Object Lock
-  (Compliance, 10 Jahre).
+  (Compliance, 10 Jahre). Der tägliche Export läuft ab 01.01.2027.
 - Der Posten „Kassenprüfung“ liest alles und kann die Kette gegen das Archiv prüfen.
 
 ## Rechte
@@ -196,7 +196,8 @@ Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username u
 
 ## Datenbankrolle
 
-Ob die API künftig mit einer DB-Rolle laufen kann, die auf den Journaltabellen nur `SELECT`/`INSERT`
-darf, ist im Spike [plans/finanzen-spike-dsql-rolle.md](./plans/finanzen-spike-dsql-rolle.md)
-untersucht (bisher nur anhand der Doku, Praxistest auf dev steht aus). Bis dahin schützen API (keine
-Update-/Delete-Routen), Hash-Kette und später das Archiv.
+Es gibt bewusst **keine eigene DB-Rolle** für die Journaltabellen (Entscheidung 11.11.2026, Begründung
+in [plans/finanzen-spike-dsql-rolle.md](./plans/finanzen-spike-dsql-rolle.md)). Es schützen: die API
+hat keine Update-/Delete-Routen, der Test `packages/api/src/finanzenNurInsert.test.ts` schlägt an,
+sobald Code `fin_buchungen`, `fin_buchungszeilen` oder `fin_stueckelung` ändert oder löscht, dazu
+Hash-Kette und Anker.
