@@ -81,7 +81,7 @@ function ProfilMenue() {
         <UnstyledButton
           aria-label={ungelesen > 0 ? `Profilmenü, ${ungelesen} ungelesen` : 'Profilmenü'}
           style={{ lineHeight: 0 }}
-          p={2}
+          p={1}
         >
           <Indicator
             label={ungelesen > 99 ? '99+' : ungelesen}
