@@ -27,6 +27,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0130–0136 (Schlüssel-Anfragen): 0130 entfernt `mitglieder.wohnheim` wieder, 0131–0133 löschen ihre Tabellen
   (`schluessel_anfragen`, `schluessel_antworten`, `schluessel_planungen`), 0134–0136 ihre Indizes. Rollback-Ziel nur für die
   Anfragen: `0129_privatparty_nachrichten_message_idx`.
+- 0137–0140 (Benachrichtigungsverlauf): 0137 löscht die Tabelle `benachrichtigung_verlauf` (mit allen Einträgen), 0138–0140
+  ihre Indizes. Rollback-Ziel nur für den Verlauf: `0136_schluessel_planungen_schluessel_idx`.
 - 0137–0152 (Finanzen): 0137 löscht den Posten `kassenpruefung` wieder, 0138 entzieht den Posten die vergebenen
   `finanzen:*`-Rechte, 0139–0143 löschen ihre Tabellen (`fin_konten`, `fin_buchungen`, `fin_buchungszeilen`,
   `fin_stueckelung`, `fin_zaehler`), 0144 die Zählerzeile `journal`, 0145 die Grundkonten (`safe`, `bank`, `geldtransit`,

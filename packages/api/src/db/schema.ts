@@ -738,6 +738,22 @@ export const benachrichtigungEinstellungen = pgTable(
   (t) => [primaryKey({ columns: [t.mitgliedSub, t.art] })],
 );
 
+/** Notification history per member (kept 90 days); `gelesen` null = unread. */
+export const benachrichtigungVerlauf = pgTable('benachrichtigung_verlauf', {
+  id: text('id').primaryKey(),
+  mitgliedSub: text('mitglied_sub')
+    .notNull()
+    .references(() => mitglieder.sub),
+  art: text('art').notNull(),
+  titel: text('titel').notNull(),
+  text: text('text').notNull(),
+  url: text('url').notNull(),
+  /** Dedupe key of the Sendung (unique per member); null without dedupe. */
+  schluessel: text('schluessel'),
+  erstellt: timestamp('erstellt', { withTimezone: true }).notNull().defaultNow(),
+  gelesen: timestamp('gelesen', { withTimezone: true }),
+});
+
 /** Dedupe keys of notifications that were already sent. */
 export const pushVersand = pgTable('push_versand', {
   schluessel: text('schluessel').primaryKey(),

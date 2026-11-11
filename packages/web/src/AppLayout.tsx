@@ -1,9 +1,11 @@
 import {
   AppShell,
   Avatar,
+  Badge,
   Burger,
   Button,
   Group,
+  Indicator,
   Menu,
   NavLink,
   Text,
@@ -24,6 +26,7 @@ import {
   IconPhoto,
   IconCheck,
   IconCoin,
+  IconHistory,
   IconDeviceDesktop,
   IconBuildingWarehouse,
   IconHome,
@@ -44,6 +47,7 @@ import { Link, useLocation, useNavigationType } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import logo from './assets/favicon.png';
 import logoDunkel from './assets/logo-dunkel.png';
+import { usePushGelesenParam, useUngelesen } from './benachrichtigungVerlauf';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
 import { ortMerken } from './zurueckVerlauf';
@@ -71,18 +75,32 @@ function ProfilMenue() {
       return res.json();
     },
   });
+  const ungelesen = useUngelesen(darfProfil).data ?? 0;
   return (
-    <Menu position="bottom-end" width={240}>
+    <Menu position="bottom-end" width={260}>
       <Menu.Target>
-        <UnstyledButton aria-label="Profilmenü" style={{ lineHeight: 0 }} p={2}>
-          <Avatar
-            src={mitglied.data?.profilbildUrl}
-            name={me.data?.preferredUsername}
-            color="initials"
-            size={40}
-            radius="xl"
-            alt=""
-          />
+        <UnstyledButton
+          aria-label={ungelesen > 0 ? `Profilmenü, ${ungelesen} ungelesen` : 'Profilmenü'}
+          style={{ lineHeight: 0 }}
+          p={2}
+        >
+          <Indicator
+            label={ungelesen > 99 ? '99+' : ungelesen}
+            disabled={ungelesen === 0}
+            color="red"
+            size={18}
+            offset={4}
+            withBorder
+          >
+            <Avatar
+              src={mitglied.data?.profilbildUrl}
+              name={me.data?.preferredUsername}
+              color="initials"
+              size={40}
+              radius="xl"
+              alt=""
+            />
+          </Indicator>
         </UnstyledButton>
       </Menu.Target>
       <Menu.Dropdown>
@@ -99,6 +117,23 @@ function ProfilMenue() {
             py="sm"
           >
             Benachrichtigungen
+          </Menu.Item>
+        )}
+        {darfProfil && (
+          <Menu.Item
+            component={Link}
+            to="/benachrichtigungen/verlauf"
+            leftSection={<IconHistory size={18} />}
+            rightSection={
+              ungelesen > 0 ? (
+                <Badge color="red" size="sm" circle={ungelesen < 10}>
+                  {ungelesen > 99 ? '99+' : ungelesen}
+                </Badge>
+              ) : undefined
+            }
+            py="sm"
+          >
+            Benachrichtigungsverlauf
           </Menu.Item>
         )}
         <Text size="xs" c="dimmed" px="sm" pt="xs" pb={4}>
@@ -132,6 +167,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { pathname } = location;
   // Runs during render so the pages' back links (rendered below) already see this navigation.
   ortMerken(location, useNavigationType());
+  usePushGelesenParam();
   const [opened, { toggle, close }] = useDisclosure(false);
   const mobil = useMediaQuery('(max-width: 61.99em)');
   const menueOffen = opened && !!mobil;
