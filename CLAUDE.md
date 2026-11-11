@@ -72,6 +72,15 @@ and component must be designed and built **mobile first**:
 - Navigation lives in `AppLayout` (burger menu on mobile, sidebar from `md`); add new routes there.
 - Use `100dvh` instead of `100vh`; respect safe-area insets for fixed headers/footers.
 
+### Exception: Finanzen work pages are desktop first
+
+The pages the Finanzer:in works on (journal, bookings, Kontenplan, Belege entry, Buch-Abrechnung,
+Kassenabrechnung, bank matching, invoices, reports) are used mainly on a desktop, a lot, and errors
+there are costly. Design them **desktop first** and optimise for fast, safe data entry; the rules are
+in `docs/plans/finanzen.md` ("Bedienung"). They must still work on a phone (no horizontal page
+scroll), but the phone layout is secondary. Finance pages for all members (own Buch page, Rangliste,
+Kassenzählung at an event, submitting a Beleg photo) stay mobile first.
+
 ## Build warnings
 
 Bundle size is not a concern. Ignore Vite's "Some chunks are larger than 500 kB" warning; don't
