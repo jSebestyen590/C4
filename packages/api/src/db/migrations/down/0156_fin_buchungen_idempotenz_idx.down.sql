@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_buchungen_idempotenz_idx

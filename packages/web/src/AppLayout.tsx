@@ -25,6 +25,7 @@ import {
   IconNotes,
   IconPhoto,
   IconCheck,
+  IconCoin,
   IconHistory,
   IconDeviceDesktop,
   IconBuildingWarehouse,
@@ -269,6 +270,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Inventar',
       icon: <IconBox size={20} />,
       show: can('inventar:lesen'),
+    },
+    {
+      to: '/finanzen',
+      label: 'Finanzen',
+      icon: <IconCoin size={20} />,
+      show: can('finanzen:lesen'),
     },
   ].filter((l) => l.show);
 

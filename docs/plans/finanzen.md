@@ -34,10 +34,11 @@ Konten, die Summe der Zeilen ist 0. Das löst Umbuchungen (Safe → Bank ist _ei
 SumUp-Gebühren, Buch-Guthaben und Pfand ohne Sonderfälle. Die Oberfläche bleibt fachlich (Beleg,
 Zählung, Abrechnung); Soll/Haben sieht nur, wer ins Journal schaut.
 
-- `fin_konten`: `id`, `name`, `art` (`bargeld` | `bank` | `durchlauf` | `buch` | `erloes` |
-  `aufwand` | `neutral`), `parent_id` (Safe → Fächer, Kassen), `stueckelung boolean`,
+- `fin_konten`: `id`, `name`, `art` (`bargeld` | `bank` | `durchlauf` | `erloes` | `aufwand` |
+  `neutral`), `parent_id` (Safe → Fächer, Kassen), `stueckelung boolean`,
   `steuersatz_standard`, `archiviert`. Die Erlös-/Aufwandskonten sind die **Kategorien** (Nachfolger
-  der Access-Warengruppen als G+V-Konten).
+  der Access-Warengruppen als G+V-Konten). Das Buch ist ein Nebenbuch (Scheibe 2) und hat keine eigene
+  Kontoart.
 - `fin_buchungen`: `id`, `seq` (lückenlos), `datum date`, `text`, `quelle_typ`/`quelle_id` (Beleg,
   Zählung, Buch-Abrechnung, Bankumsatz, SumUp, Rechnung, Umbuchung, Eröffnung), `event_id`,
   `storno_von`, `erstellt_von`, `erstellt_am`, `prev_hash`, `hash`.
@@ -72,7 +73,7 @@ Migration nach Muster 0076):
 **Code-Muster** wie bei den bestehenden Features: Schemas/DTOs/reine Logik in
 `packages/shared/src/finanzen*.ts`, Store + Fake in `packages/api/src/<bereich>.ts`/`.fake.ts`,
 Routen in `app.ts`, Seiten in `packages/web/src/pages/`, Navigation in `AppLayout.tsx` (ein
-Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0137`, je ein
+Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0141`, je ein
 Statement plus Down-Datei.
 
 ### Bedienung: Arbeitsseiten zuerst für den Desktop
@@ -124,9 +125,9 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
   Buchungslogik mit Summenprüfung, `seq`, Hash, Storno, Retry.
 - Seiten: Kontenplan (verwalten), Journal (Liste, Detail, Storno), freie Buchung/Umbuchung.
 - „Kette prüfen" (zunächst nur gegen die Datenbank).
-- Spike: Kann die API mit einer eigenen DSQL-Rolle laufen, die auf `fin_*`-Journaltabellen nur
-  SELECT/INSERT hat (`CREATE ROLE`, `AWS IAM GRANT`, `dsql:DbConnect`)? Wenn ja, umstellen; sonst
-  bleibt der Schutz bei API + Hash-Kette + Anker.
+- Spike DSQL-Rolle: **Entscheidung 11.11.2026: keine eigene DB-Rolle.** Schutz durch insert-only API
+  (Test `finanzenNurInsert.test.ts`), Hash-Kette und Anker (siehe
+  [finanzen-spike-dsql-rolle.md](./finanzen-spike-dsql-rolle.md)).
 - `docs/finanzen.md` (Zielbild, Verfahrensdokumentation im Aufbau) und `docs/plans/finanzen.md`
   (dieser Plan, wird nach jeder Scheibe fortgeschrieben), Zeilen in `docs/README.md`,
   `docs/datenbank.md`, `docs/posten.md`.
@@ -173,6 +174,11 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 ### Scheibe 4: Belege
 
 - Rechnungssteller (mit Rabatt), Steuersätze, Kategorien (Erlös-/Aufwandskonten).
+- **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
+  „Eröffnung / Saldovortrag“ = −Vereinsvermögen). Kontenplan, Salden und Auswertungen zeigen
+  Erlös- und Neutral-Konten deshalb mit umgekehrtem Vorzeichen (Erlöse positiv, „Eröffnung“ z. B.
+  als „Vereinsvermögen zum Stichtag“); Bargeld, Bank, Durchlauf und Aufwand bleiben, wie sie sind.
+  Nur Anzeige, die gespeicherten Beträge und der Hash ändern sich nicht.
 - Beleg: Nummernkreis, **Belegdatum und Bezahldatum**, Zahlweg (bar aus Safe-Fach mit Stückelung,
   Bank, Auslage eines Mitglieds), brutto oder netto, Datei (PDF/Foto), Eigenbeleg mit Begründung.
 - **Auslagen (elementar):** Ein Beleg mit Zahlweg „Auslage" bucht gegen das Durchlaufkonto
@@ -194,10 +200,11 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
 - Neuer Bucket `c4-<env>-finanzarchiv-<acct>` mit Object Lock (prod: Compliance, 10 Jahre; dev:
   Governance, kurz), Lambda darf nur schreiben/lesen; Upload per Presigned URL nach dem Muster
   `packages/api/src/protokollbilder.ts`, SHA-256 der Datei geht in den Buchungs-Hash.
+- Täglicher Job (neuer Zweig in `lambda.ts` + Schedule): Journal-Export und Kopf-Hash ins Archiv
+  (aus Scheibe 5 vorgezogen, muss zum 01.01.2027 laufen; ersetzt die fehlende DB-Rolle).
 
 ### Scheibe 5: GoBD-Abschluss
 
-- Täglicher Job (neuer Zweig in `lambda.ts` + Schedule): Journal-Export und Kopf-Hash ins Archiv.
 - Festschreibung je Monat mit Export; Kopf-Hash per Push an alle mit `finanzen:pruefen` und in der
   App abrufbar (Mail bräuchte SES, offen).
 - „Kette prüfen" gegen Archiv-Exporte und Beleg-Hashes, Abweichungen anzeigen.
@@ -282,7 +289,7 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Risiken
 
-- **Stichtag in sieben Wochen.** Bis 01.01.2027 müssen 0, 1, 2, 3, 4 und Ü stehen. Konto, SumUp,
+- **Stichtag in sieben Wochen.** Bis 01.01.2027 müssen 0, 1, 2, 3, 4 (inkl. täglichem Anker-Export) und Ü stehen. Konto, SumUp,
   Rechnungen und Auswertungen können im ersten Quartal folgen und rückwirkend ab 01.01. buchen;
   die Festschreibung für Januar braucht Scheibe 5 erst im Februar.
 - **FinTS** ist der unsicherste Teil (Registrierung, TAN-Verfahren, Lambda-Laufzeit).
@@ -294,20 +301,20 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                         |
-| ------------------------- | --------------------------------------------- |
-| 0 Fundament               | offen                                         |
-| 1 Bargeld                 | offen                                         |
-| 2 Buch                    | offen                                         |
-| 3 Barkassen               | offen                                         |
-| 4 Belege                  | offen                                         |
-| 5 GoBD-Abschluss          | offen                                         |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen) |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                |
-| 8 Rechnungen              | offen                                         |
-| 9 Auswertungen            | offen                                         |
-| Ü Übernahme               | offen                                         |
-| 10 Unentgeltliche Abgaben | offen                                         |
+| Scheibe                   | Stand                                                                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
+| 1 Bargeld                 | offen                                                                                                                                              |
+| 2 Buch                    | offen                                                                                                                                              |
+| 3 Barkassen               | offen                                                                                                                                              |
+| 4 Belege                  | offen                                                                                                                                              |
+| 5 GoBD-Abschluss          | offen                                                                                                                                              |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                     |
+| 8 Rechnungen              | offen                                                                                                                                              |
+| 9 Auswertungen            | offen                                                                                                                                              |
+| Ü Übernahme               | offen                                                                                                                                              |
+| 10 Unentgeltliche Abgaben | offen                                                                                                                                              |
 
 ## Verifikation (je Scheibe)
 

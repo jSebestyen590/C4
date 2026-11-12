@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasPermission, permissionsFor, STATUS_PERMISSIONS } from './roles';
+import { hasPermission, permissionsFor, POSTEN_RECHTE, STATUS_PERMISSIONS } from './roles';
 import { MITGLIED_STATI } from './status';
 
 describe('permissions', () => {
@@ -109,6 +109,28 @@ describe('permissions', () => {
         true,
       );
       expect(hasPermission(['admin'], status, 'privatpartys:verwalten')).toBe(true);
+    }
+  });
+  it('every status may read the own Buch, count the Kasse and submit Belege', () => {
+    for (const status of MITGLIED_STATI) {
+      for (const recht of ['buch:lesen', 'kasse:zaehlen', 'belege:einreichen'] as const) {
+        expect(hasPermission([], status, recht)).toBe(true);
+      }
+    }
+  });
+  it('only extra permissions and admins read, book, manage and check the Finanzen', () => {
+    for (const status of MITGLIED_STATI) {
+      for (const recht of [
+        'finanzen:lesen',
+        'finanzen:buchen',
+        'finanzen:verwalten',
+        'finanzen:pruefen',
+      ] as const) {
+        expect(hasPermission([], status, recht)).toBe(false);
+        expect(hasPermission([], status, recht, [recht])).toBe(true);
+        expect(hasPermission(['admin'], status, recht)).toBe(true);
+        expect(POSTEN_RECHTE).toContain(recht);
+      }
     }
   });
 });

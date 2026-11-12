@@ -37,6 +37,12 @@ import { ProtokollNeuPage } from './pages/ProtokollNeuPage';
 import { ProtokollPage } from './pages/ProtokollPage';
 import { ProtokollePage } from './pages/ProtokollePage';
 import { PostenPage } from './pages/PostenPage';
+import { FinanzenPage } from './pages/FinanzenPage';
+import { FinanzenKontenPage } from './pages/FinanzenKontenPage';
+import { FinanzenJournalPage } from './pages/FinanzenJournalPage';
+import { FinanzenBuchungPage } from './pages/FinanzenBuchungPage';
+import { FinanzenBuchenPage } from './pages/FinanzenBuchenPage';
+import { FinanzenKettePage } from './pages/FinanzenKettePage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { BenachrichtigungsVerlaufPage } from './pages/BenachrichtigungsVerlaufPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
@@ -188,6 +194,66 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="posten:lesen">
                 <RequireUsername>
                   <PostenDetailPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/konten"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenKontenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/journal"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenJournalPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/journal/:id"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenBuchungPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/buchen"
+            element={
+              <Protected permission="finanzen:buchen">
+                <RequireUsername>
+                  <FinanzenBuchenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/kette"
+            element={
+              <Protected permission="finanzen:pruefen">
+                <RequireUsername>
+                  <FinanzenKettePage />
                 </RequireUsername>
               </Protected>
             }

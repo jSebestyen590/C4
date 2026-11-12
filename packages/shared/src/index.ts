@@ -2,6 +2,7 @@ export * from './anrede';
 export * from './benachrichtigungen';
 export * from './bilder';
 export * from './datum';
+export * from './finanzen';
 export * from './geburtstag';
 export * from './ifco';
 export * from './inventar';
