@@ -83,3 +83,22 @@ Down-Datei), das Skript anpassen und erneut deployen; die Migration läuft dann 
 
 `pnpm db:reset` löscht alle Tabellen (braucht `CONFIRM_DB_RESET=yes`). Der Deploy-Workflow hat dafür
 die Eingabe `reset_db`. Alle Daten gehen verloren.
+
+## Gleichzeitige Zugriffe
+
+Aurora DSQL arbeitet mit optimistischer Nebenläufigkeit: Ändern zwei Transaktionen gleichzeitig dieselben
+Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
+
+- `createDb` (`packages/api/src/db/client.ts`) wiederholt jede Transaktion auf oberster Ebene bei einem
+  solchen Konflikt: insgesamt 3 Versuche, Wartezeit ab 100 ms mit Jitter (`transaktionenWiederholen` in
+  `db/wiederholung.ts`). Verschachtelte `tx.transaction`-Aufrufe (Savepoints) bleiben unberührt.
+- Einzelne Statements außerhalb einer Transaktion werden nicht wiederholt.
+- Die Buchung in `finanzen.ts` hat eine eigene, großzügigere Wiederholung (8 Versuche, ab 50 ms, wegen der
+  Zählerzeile des Journals). Innerhalb von `mitWiederholung` wird nicht ein zweites Mal wiederholt.
+- Die API antwortet bei einem Konflikt, der nach allen Versuchen bleibt, mit 409 „Jemand anderes hat gerade
+  dasselbe geändert. Bitte versuch es noch einmal.“ und bei einer Unique- oder Fremdschlüssel-Verletzung
+  (`23505`, `23503`) mit 409 „Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und
+  versuch es noch einmal.“ Beides wird weiterhin geloggt. Alles andere bleibt 500.
+- **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
+  S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
+  davor oder danach.

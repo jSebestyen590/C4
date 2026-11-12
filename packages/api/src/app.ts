@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -5786,6 +5787,21 @@ export function createApp(deps: AppDeps) {
           return c.json({ error: err.message }, err.status);
         }
         console.error(err);
+        if (istKonflikt(err)) {
+          return c.json(
+            { error: 'Jemand anderes hat gerade dasselbe geändert. Bitte versuch es noch einmal.' },
+            409,
+          );
+        }
+        if (istDatenAbweichung(err)) {
+          return c.json(
+            {
+              error:
+                'Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und versuch es noch einmal.',
+            },
+            409,
+          );
+        }
         return c.json({ error: 'Internal server error' }, 500);
       })
   );

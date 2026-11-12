@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { istKonflikt, mitWiederholung } from './wiederholung';
+import {
+  istDatenAbweichung,
+  istKonflikt,
+  mitWiederholung,
+  sqlState,
+  transaktionenWiederholen,
+} from './wiederholung';
 
 const konflikt = () => Object.assign(new Error('schema has been updated'), { code: '40001' });
 const sofort = () => Promise.resolve();
@@ -99,5 +105,88 @@ describe('mitWiederholung', () => {
       () => 0,
     );
     expect(mitMinimum).toEqual([50, 100]);
+  });
+});
+
+describe('sqlState', () => {
+  it('finds the SQLSTATE through the cause chain', () => {
+    expect(sqlState(Object.assign(new Error('x'), { code: '23505' }))).toBe('23505');
+    expect(sqlState(new Error('Failed query', { cause: { code: '23503' } }))).toBe('23503');
+    expect(sqlState(new Error('x'))).toBeUndefined();
+    expect(sqlState(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBeUndefined();
+    expect(sqlState(undefined)).toBeUndefined();
+  });
+
+  it('flags unique and foreign-key violations only', () => {
+    expect(istDatenAbweichung(new Error('x', { cause: { code: '23505' } }))).toBe(true);
+    expect(istDatenAbweichung({ code: '23503' })).toBe(true);
+    expect(istDatenAbweichung({ code: '40001' })).toBe(false);
+    expect(istDatenAbweichung(new Error('x'))).toBe(false);
+  });
+});
+
+describe('transaktionenWiederholen', () => {
+  const fakeDb = (aktion: () => Promise<string>) => ({
+    transaction: async (fn: (tx: string) => Promise<string>) => {
+      await aktion();
+      return fn('tx');
+    },
+  });
+
+  it('retries a top-level transaction that fails twice with a conflict', async () => {
+    let aufrufe = 0;
+    const wartezeiten: number[] = [];
+    const db = transaktionenWiederholen(
+      fakeDb(async () => {
+        if (++aufrufe < 3) throw konflikt();
+        return 'ok';
+      }),
+      async (ms) => void wartezeiten.push(ms),
+    );
+    expect(await db.transaction(async (tx) => `${tx}!`)).toBe('tx!');
+    expect(aufrufe).toBe(3);
+    expect(wartezeiten).toHaveLength(2);
+    expect(Math.max(...wartezeiten)).toBeLessThan(300);
+  });
+
+  it('throws other errors immediately', async () => {
+    let aufrufe = 0;
+    const db = transaktionenWiederholen(
+      fakeDb(async () => {
+        aufrufe++;
+        throw new Error('syntax error');
+      }),
+      sofort,
+    );
+    await expect(db.transaction(async () => 'x')).rejects.toThrow('syntax error');
+    expect(aufrufe).toBe(1);
+  });
+
+  it('throws the conflict after the third attempt', async () => {
+    let aufrufe = 0;
+    const db = transaktionenWiederholen(
+      fakeDb(async () => {
+        aufrufe++;
+        throw konflikt();
+      }),
+      sofort,
+    );
+    await expect(db.transaction(async () => 'x')).rejects.toMatchObject({ code: '40001' });
+    expect(aufrufe).toBe(3);
+  });
+
+  it('does not multiply attempts inside an explicit mitWiederholung', async () => {
+    let aufrufe = 0;
+    const db = transaktionenWiederholen(
+      fakeDb(async () => {
+        aufrufe++;
+        throw konflikt();
+      }),
+      sofort,
+    );
+    await expect(
+      mitWiederholung(() => db.transaction(async () => 'x'), 4, sofort),
+    ).rejects.toMatchObject({ code: '40001' });
+    expect(aufrufe).toBe(4);
   });
 });

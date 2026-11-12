@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import type { Config } from '../config';
 import * as schema from './schema';
+import { transaktionenWiederholen } from './wiederholung';
 
 /** Pool authenticating with a short-lived IAM token (generated per new connection). */
 export function createPool(config: Pick<Config, 'region' | 'dsqlEndpoint'>): pg.Pool {
@@ -20,6 +21,7 @@ export function createPool(config: Pick<Config, 'region' | 'dsqlEndpoint'>): pg.
 }
 
 export function createDb(pool: pg.Pool) {
-  return drizzle(pool, { schema });
+  // Top-level transactions retry on DSQL concurrency conflicts (docs/datenbank.md).
+  return transaktionenWiederholen(drizzle(pool, { schema }));
 }
 export type Db = ReturnType<typeof createDb>;

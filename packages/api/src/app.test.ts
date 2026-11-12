@@ -957,6 +957,35 @@ describe('api', () => {
     expect(await res.json()).toEqual({ status: 'ok', db: 'error' });
   });
 
+  it('maps database conflicts to 409 and unknown errors to 500', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { app, userAdmin } = makeApp();
+    const post = () =>
+      app.request('/api/admin/users', {
+        method: 'POST',
+        headers: { ...bearer('admin-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'x@example.de', groups: ['admin'] }),
+      });
+    userAdmin.createUser.mockRejectedValueOnce(Object.assign(new Error('x'), { code: '40001' }));
+    const konflikt = await post();
+    expect(konflikt.status).toBe(409);
+    expect(await konflikt.json()).toEqual({
+      error: 'Jemand anderes hat gerade dasselbe geändert. Bitte versuch es noch einmal.',
+    });
+    userAdmin.createUser.mockRejectedValueOnce(
+      new Error('Failed query', { cause: Object.assign(new Error('dup'), { code: '23505' }) }),
+    );
+    const doppelt = await post();
+    expect(doppelt.status).toBe(409);
+    expect(await doppelt.json()).toEqual({
+      error:
+        'Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und versuch es noch einmal.',
+    });
+    userAdmin.createUser.mockRejectedValueOnce(new Error('boom'));
+    expect((await post()).status).toBe(500);
+    vi.restoreAllMocks();
+  });
+
   it('rejects missing and invalid tokens', async () => {
     const { app } = makeApp();
     expect((await app.request('/api/me')).status).toBe(401);
