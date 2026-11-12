@@ -5008,6 +5008,27 @@ describe('schluessel anfragen und planungen', () => {
     expect((await t.planungen()).planungen).toHaveLength(0);
   });
 
+  it('refuses to change a plan to the current holder or onto an archived key', async () => {
+    const t = await setup();
+    const angelegt = await t.app.request(
+      `/api/schluessel/${t.id}/planungen`,
+      json('admin-token', 'POST', { anSub: 'v', datum: heute, ab: '18:00' }),
+    );
+    const { id } = (await angelegt.json()) as { id: string };
+    const aendern = (anSub: string) =>
+      t.app.request(
+        `/api/schluessel/planungen/${id}`,
+        json('admin-token', 'PUT', { anSub, datum: heute, ab: '19:00' }),
+      );
+    expect((await aendern('r')).status).toBe(409);
+    expect((await aendern('v')).status).toBe(200);
+    await t.app.request(
+      `/api/schluessel/${t.id}/archiv`,
+      json('admin-token', 'PUT', { archiviert: true }),
+    );
+    expect((await aendern('v')).status).toBe(404);
+  });
+
   it('refuses past days', async () => {
     const t = await setup();
     expect((await t.anfrage('member-token', bedarf({ datum: tagNachher(heute, -1) }))).status).toBe(
@@ -5258,6 +5279,18 @@ describe('umfragen', () => {
       json('vorstand-token', 'PUT', umfrage({ endetAm: '2099-01-31', anonym: false })),
     );
     expect(res.status).toBe(400);
+  });
+
+  it('orders free texts of an anonymous poll by text, not by who voted last', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31', anonym: true });
+    const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+    await t.abstimmen(id, 'member-token', [{ frageId: frage.id, optionIds: [], freitext: 'Zeta' }]);
+    await t.abstimmen(id, 'reader-token', [
+      { frageId: frage.id, optionIds: [], freitext: 'Alpha' },
+    ]);
+    const { body } = await t.holen(id, 'admin-token');
+    expect(body.fragen[0]!.freitexte!.map((f) => f.text)).toEqual(['Alpha', 'Zeta']);
   });
 
   it('hides the results until the end when chosen, except for the creator', async () => {
@@ -6909,6 +6942,9 @@ describe('bilder', () => {
       expect((await login('http://localhost:5173/app/bilder/einrichtung')).status).toBe(200);
       expect((await login('https://boese.example/app/bilder/einrichtung')).status).toBe(400);
       expect((await login('https://www.c4-leipzig.de/app/anderes')).status).toBe(400);
+      expect(
+        (await login('https://www.c4-leipzig.de.evil.com/app/bilder/einrichtung')).status,
+      ).toBe(400);
     });
   });
 
@@ -8063,6 +8099,14 @@ describe('protokolle', () => {
       expect((await post('admin-token', { groesse: 10 })).status).toBe(409);
     });
 
+    it('refuses images when creating a protocol', async () => {
+      const t = await setup();
+      const inhalt = mitBild({ inhalt: protokollLeer() }, bild('fremd'));
+      const res = await t.anlegen('admin-token', { eventId: 's1', inhalt, kopf: undefined });
+      expect(res.status).toBe(400);
+      expect(t.protokollListe.size).toBe(0);
+    });
+
     it('saves images of this protocol and returns URLs only for those', async () => {
       const t = await setup();
       const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
@@ -9181,6 +9225,12 @@ describe('vCard links', () => {
     await t.mitglieder.deaktiviertSetzen('r', true);
     expect((await t.app.request(`/api/vcard/${tok}/erika.vcf`)).status).toBe(404);
   });
+
+  it('answers 404 for a malformed percent-encoded file name', async () => {
+    const { t, token } = await setup();
+    const { token: tok } = await token();
+    expect((await t.app.request(`/api/vcard/${tok}/%E0%A4%A.vcf`)).status).toBe(404);
+  });
 });
 
 describe('privatpartys', () => {
@@ -9946,6 +9996,30 @@ describe('privatpartys: Party-Mail', () => {
       inReplyTo: null,
       referenzen: [],
     });
+  });
+
+  it('clamps the time of a mail with a Date header in the future to now', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail({ zeitpunkt: new Date('2099-01-01T00:00:00Z') }));
+    const vorher = Date.now();
+    await t.abrufen();
+    const [eintrag] = await t.liste();
+    const nachricht = (await t.holen(eintrag!.id)).nachrichten[0]!;
+    expect(Date.parse(nachricht.zeitpunkt)).toBeLessThanOrEqual(Date.now());
+    expect(Date.parse(nachricht.zeitpunkt)).toBeGreaterThanOrEqual(vorher - 1000);
+  });
+
+  it('refuses to reply to an invalid reply address', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail({ vonAdresse: 'kein mail@' }));
+    await t.abrufen();
+    const [eintrag] = await t.liste();
+    const res = await t.app.request(
+      `/api/privatpartys/${eintrag!.id}/nachrichten`,
+      json('admin-token', 'POST', { text: 'Hi' }),
+    );
+    expect(res.status).toBe(400);
+    expect(t.partymail.gesendet).toHaveLength(0);
   });
 
   it('moves a message to another open request and deletes the emptied entry', async () => {

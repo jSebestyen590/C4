@@ -649,9 +649,21 @@ export function createApp(deps: AppDeps) {
   /** Redirect URI of the OneDrive login: the SPA page, on the app's own origin or the local dev server. */
   const redirectUriPruefen = (uri: string) => {
     const ende = '/app/bilder/einrichtung';
+    // Compare by parsed origin: a plain prefix check would accept `https://app.example.evil.com`.
+    const vonApp = (): boolean => {
+      try {
+        const u = new URL(uri);
+        const app = new URL(deps.appUrl!);
+        const pfad = app.pathname.replace(/\/+$/, '');
+        return (
+          u.origin === app.origin && (u.pathname === pfad || u.pathname.startsWith(`${pfad}/`))
+        );
+      } catch {
+        return false;
+      }
+    };
     const ok =
-      uri.endsWith(ende) &&
-      (!deps.appUrl || uri.startsWith(deps.appUrl) || uri === `http://localhost:5173${ende}`);
+      uri.endsWith(ende) && (!deps.appUrl || vonApp() || uri === `http://localhost:5173${ende}`);
     if (!ok) throw new HTTPException(400, { message: 'Ungültige Weiterleitungsadresse.' });
   };
 
@@ -2510,7 +2522,13 @@ export function createApp(deps: AppDeps) {
             await deps.schluesselAnfragen.planung(c.req.param('id')),
             'Planung nicht gefunden',
           );
+          const schluessel = await deps.schluessel.holen(p.schluesselId);
+          if (!schluessel || schluessel.archiviert)
+            throw new HTTPException(404, { message: 'Schlüssel nicht gefunden' });
           await mitgliedMussExistieren(daten.anSub);
+          if (schluessel.halter?.art === 'mitglied' && schluessel.halter.sub === daten.anSub) {
+            throw new HTTPException(409, { message: 'Dieses Mitglied hat den Schlüssel schon.' });
+          }
           gefunden(
             await deps.schluesselAnfragen.planungAendern(p.id, daten),
             'Planung nicht gefunden',
@@ -2957,6 +2975,12 @@ export function createApp(deps: AppDeps) {
                 'Es gibt keine E-Mail-Adresse für die Antwort. Trage sie bei der Person ein.',
             });
           }
+          if (!z.string().email().safeParse(an).success) {
+            throw new HTTPException(400, {
+              message:
+                'Die E-Mail-Adresse für die Antwort ist ungültig. Korrigiere sie bei der Person.',
+            });
+          }
           const bisher = await deps.privatpartys.nachrichten(e.id);
           const letzte = bisher.at(-1);
           const betreff = letzte?.betreff?.trim()
@@ -3155,6 +3179,10 @@ export function createApp(deps: AppDeps) {
         zValidator('json', protokollAnlegenSchema),
         async (c) => {
           const eingabe = c.req.valid('json');
+          // A new protocol has no id (and so no image prefix) yet, so it cannot carry images.
+          if (eingabe.inhalt && protokollBildSchluessel(eingabe.inhalt).length > 0) {
+            throw new HTTPException(400, { message: 'Ein Bild gehört nicht zu diesem Protokoll.' });
+          }
           const sitzung = await sitzungPruefen(eingabe.eventId);
           if (await deps.protokolle.nachEvent(sitzung.id)) {
             throw new HTTPException(409, {
@@ -5641,7 +5669,13 @@ export function createApp(deps: AppDeps) {
         if (!inhaber || istDeaktiviert(inhaber)) throw nichtGefunden;
         const erlaubt = permissionsFor(rollen.get(eintrag.sub) ?? [], inhaber.status, rechte);
         if (!erlaubt.includes('mitglieder:lesen')) throw nichtGefunden;
-        const kennung = decodeURIComponent(c.req.param('datei')).replace(/\.vcf$/i, '');
+        let datei: string;
+        try {
+          datei = decodeURIComponent(c.req.param('datei'));
+        } catch {
+          throw nichtGefunden;
+        }
+        const kennung = datei.replace(/\.vcf$/i, '');
         const liste = await alleMitglieder(false, true);
         const mitglied =
           liste.find((m) => m.sub === kennung) ??

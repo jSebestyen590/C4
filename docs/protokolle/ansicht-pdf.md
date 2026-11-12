@@ -144,7 +144,7 @@ Ein Protokoll kann Fotos und Bilder enthalten (Knoten `protokollBild`, Block und
 - **Knoten:** `schluessel` (`protokollbilder/<Protokoll-Id>/<uuid>.jpg`), `breite` (`voll`/`halb`), `ausrichtung`
   (`links`/`mitte`/`rechts`), `beschreibung` (höchstens 300 Zeichen, auch Alt-Text). Erlaubt auf Abschnittsebene und in den Notizen
   aller Bausteine mit Freitext, auch in Abstimmung, Meinungsbild und Wahl; nicht in Zitaten und Listen. `knotenFehler` prüft die Form des
-  Schlüssels, die API beim Speichern zusätzlich, dass er zu diesem Protokoll gehört (400 sonst). `protokollVorschlag` übernimmt keine Bilder
+  Schlüssels, die API beim Speichern zusätzlich, dass er zu diesem Protokoll gehört (400 sonst); beim Anlegen (`POST /api/protokolle`) ist jeder Bildschlüssel im Inhalt ein 400, weil es die Protokoll-Id noch nicht gibt. `protokollVorschlag` übernimmt keine Bilder
   ins nächste Protokoll.
 - **Speicher:** Derselbe S3-Bucket wie die Profilbilder (`PROFILBILD_BUCKET`), Präfix `protokollbilder/<Protokoll-Id>/`
   (`packages/api/src/protokollbilder.ts`). `POST /api/protokolle/:id/bilder` gibt eine presigned PUT-URL (feste Größe, `image/jpeg`, 5 MB)

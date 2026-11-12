@@ -425,6 +425,10 @@ describe('freie Terminfindung', () => {
       ],
       ...extra,
     });
+  it('is never anonymous', () => {
+    expect(umfrageEingabeSchema.safeParse(frei({ anonym: true })).success).toBe(false);
+    expect(umfrageEingabeSchema.safeParse(frei({ anonym: false })).success).toBe(true);
+  });
   it('allows several dates with optional times and needs a title', () => {
     const u = umfrageEingabeSchema.parse(frei());
     expect(u.fragen[0]).toMatchObject({

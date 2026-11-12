@@ -88,6 +88,9 @@ export function jahreMitEintraegen(durchgaenge: readonly RanglisteDurchgang[]): 
   return [...new Set(durchgaenge.map((d) => jahrBerlin(d.zeitpunkt)))].sort((a, b) => b - a);
 }
 
+/** Credited volumes are sums of fractions; round so equal totals summed in any order tie. */
+const mlGerundet = (ml: number) => Math.round(ml * 1e6) / 1e6;
+
 /**
  * Per member the number of Durchgänge and the credited volume, optionally only for one calendar
  * year (Berlin; `null` = all). Most Durchgänge first, then most volume, then by sub.
@@ -109,7 +112,8 @@ export function rangliste(
     }
   }
   return [...zeilen.values()].sort(
-    (a, b) => b.anzahl - a.anzahl || b.ml - a.ml || a.sub.localeCompare(b.sub),
+    (a, b) =>
+      b.anzahl - a.anzahl || mlGerundet(b.ml) - mlGerundet(a.ml) || a.sub.localeCompare(b.sub),
   );
 }
 
@@ -117,13 +121,19 @@ export function rangliste(
 export function koenige(zeilen: readonly { sub: string; anzahl: number; ml: number }[]): string[] {
   let beste: { anzahl: number; ml: number } | undefined;
   for (const z of zeilen) {
-    if (!beste || z.anzahl > beste.anzahl || (z.anzahl === beste.anzahl && z.ml > beste.ml)) {
+    if (
+      !beste ||
+      z.anzahl > beste.anzahl ||
+      (z.anzahl === beste.anzahl && mlGerundet(z.ml) > mlGerundet(beste.ml))
+    ) {
       beste = z;
     }
   }
   if (!beste) return [];
   const b = beste;
-  return zeilen.filter((z) => z.anzahl === b.anzahl && z.ml === b.ml).map((z) => z.sub);
+  return zeilen
+    .filter((z) => z.anzahl === b.anzahl && mlGerundet(z.ml) === mlGerundet(b.ml))
+    .map((z) => z.sub);
 }
 
 export type RanglisteSpalte = 'anzahl' | 'liter' | 'name';
@@ -147,8 +157,8 @@ export function sortiereRangliste<T extends { anzahl: number; ml: number }>(
       spalte === 'name'
         ? text(a, b)
         : spalte === 'anzahl'
-          ? a.anzahl - b.anzahl || a.ml - b.ml
-          : a.ml - b.ml || a.anzahl - b.anzahl;
+          ? a.anzahl - b.anzahl || mlGerundet(a.ml) - mlGerundet(b.ml)
+          : mlGerundet(a.ml) - mlGerundet(b.ml) || a.anzahl - b.anzahl;
     return vorzeichen * primaer || text(a, b);
   });
 }

@@ -17,6 +17,11 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 - Stammdaten lassen sich nur löschen, wenn nichts darauf verweist (409), sonst archivieren; auf archivierte Einträge lässt sich nicht
   buchen (400).
 - Gebinde sind eindeutig über alle Attribute (409 `gebindeDoppelt`) und kennen nur eine Verschachtelungsebene.
+- Hat ein Gebinde Buchungen, lassen sich Menge, Einheit und Untergebinde (`unterGebindeId`, `unterAnzahl`) nicht mehr ändern (409,
+  neues Gebinde anlegen); Umbenennen, Pfand und Verpackungseinheit bleiben änderbar. Ebenso lässt sich die `mhdArt` einer Ware mit Buchungen nicht
+  mehr ändern (409).
+- Archivierte IFCOs belegen keinen Lagerort: Sie blockieren weder das Archivieren noch das Löschen des Lagerorts. Beim Löschen wird ihr
+  `lagerort_id` geleert; wird eine solche IFCO wiederhergestellt, steht sie ohne Platz da.
 - Pro Lagerort höchstens eine offene Inventur (409); ein Soll-Schlüssel ohne gespeicherten Zählwert gilt als korrekt (Ist = Soll),
   eine ausdrückliche 0 heißt „nichts da“.
 - Ein IFCO-Lagerplatz nimmt nie gleichzeitig IFCOs und Ware auf (siehe [IFCO-Lagerplätze](#ifco-lagerplätze)).

@@ -245,7 +245,7 @@ const eingabeAus = (w: Werte, kategorie?: EventKategorieDto) => ({
   titel: w.titel,
   beschreibung: w.beschreibung,
   endetAm: w.endetAm,
-  anonym: w.anonym,
+  anonym: w.anonym && w.typ !== 'termin_frei',
   ergebnisse: w.ergebnisse,
   pflicht: w.pflicht,
   optional: w.optional,
@@ -762,14 +762,14 @@ function Formular({ umfrage, typ }: Readonly<{ umfrage?: UmfrageDetailDto; typ: 
           size="md"
           label="Anonym"
           description={
-            w.termin
+            w.termin || w.typ === 'termin_frei'
               ? 'Terminumfragen sind nicht anonym, sonst lässt sich niemand eintragen.'
               : umfrage?.hatStimmen
                 ? 'Lässt sich nach der ersten Stimme nicht mehr ändern.'
                 : 'Niemand sieht, wer abgestimmt hat oder was, auch du nicht.'
           }
-          disabled={umfrage?.hatStimmen || w.termin !== null}
-          checked={w.anonym && w.termin === null}
+          disabled={umfrage?.hatStimmen || w.termin !== null || w.typ === 'termin_frei'}
+          checked={w.anonym && w.termin === null && w.typ !== 'termin_frei'}
           onChange={(e) => set('anonym', e.currentTarget.checked)}
         />
         <Radio.Group

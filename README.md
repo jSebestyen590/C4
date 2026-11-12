@@ -61,6 +61,7 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
    `INBOX.Sent`); if a folder is wrong, the Privatpartys page shows the available folders in the error. The first
    successful fetch only records the mailbox position and imports nothing older. Give the right "Privatpartys
    verwalten" to the responsible Posten (admins have it automatically).
+
 8. **First admin user** (self sign-up is disabled):
    ```bash
    aws cognito-idp admin-create-user --user-pool-id eu-central-1_gmPabN3Yu --username leonard \
@@ -86,8 +87,6 @@ see `docs/benachrichtigungen.md`). Without it the Terraform apply of the environ
 `secretsmanager:*` on `c4-<env>-*` for the secret `c4-<env>-partymail`. Terraform creates that secret empty and
 the schedule `c4-<env>-mail-job` (every 2 minutes). Fill the secret as described in step 7 of the first-time setup;
 until then the Party-Mail is off and the app says so.
-
-(The JSON is described in step 7 of the first-time setup above.)
 
 See `docs/privatpartys.md`.
 

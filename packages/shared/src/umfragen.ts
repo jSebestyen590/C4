@@ -353,6 +353,13 @@ export const umfrageEingabeSchema = z
     bestaetigt: z.boolean().optional(),
   })
   .superRefine((u, ctx) => {
+    if (u.anonym && (u.termin || u.terminFrei)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['anonym'],
+        message: 'Eine Terminumfrage kann nicht anonym sein.',
+      });
+    }
     if (u.termin) {
       if (u.terminFrei) {
         ctx.addIssue({

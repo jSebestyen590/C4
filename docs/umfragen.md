@@ -19,7 +19,7 @@ wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird n
 - Eine Stimme ist ein Stimmzettel für **alle** Fragen (`stimmzettelFehler`) und bis zum Ende änderbar; je Person und Umfrage genau eine
   Abgabe (`umfrage_abgaben`, Primärschlüssel).
 - Eine beendete Umfrage (abgelaufen oder vorzeitig) lässt sich weder bearbeiten noch wieder öffnen.
-- `anonym` lässt sich nach der ersten Stimme nicht mehr ändern (400); Terminumfragen sind nie anonym. Was „anonym“ bedeutet, steht
+- `anonym` lässt sich nach der ersten Stimme nicht mehr ändern (400); Terminumfragen sind nie anonym (das Schema lehnt `anonym: true` dafür ab, auch bei freier Terminfindung). Was „anonym“ bedeutet, steht
   unter [Regeln](#regeln).
 - Eine Änderung, die Stimmen ungültig macht, braucht die Bestätigung des Bearbeitenden (409, bis `bestaetigt: true`); die Betroffenen
   müssen erneut abstimmen (`umfrage_abgaben.erneut_noetig`) und zählen bis dahin nicht als abgestimmt.
@@ -74,7 +74,7 @@ Beginn und Ende (beide oder keins, `freieTerminFehler`) und optionalem Namen; de
 - **Stimme**: ein Stimmzettel für alle Fragen (`PUT /api/umfragen/:id/stimme`), jede Frage muss beantwortet sein
   (`stimmzettelFehler`). Bis zum Ende änderbar.
 - **Anonym** (`anonym`): Anonymität gilt **in der App, nicht in der Datenbank**. Die API gibt nie heraus, wer abgestimmt hat oder was:
-  Ergebnisse zeigen nur Zahlen (`personen: null`) und Freitexte ohne Namen (`person: null`), die Liste „Noch offen / Abgestimmt“
+  Ergebnisse zeigen nur Zahlen (`personen: null`) und Freitexte ohne Namen (`person: null`, nach Text sortiert statt nach Abgabe-Reihenfolge), die Liste „Noch offen / Abgestimmt“
   (`teilnehmende`) entfällt, und das gilt auch für die Person, die die Umfrage erstellt hat, und die Verwaltung (`umfrageAnsicht.ts`).
   Nur die eigenen Antworten (`meineAntworten`) sieht man selbst. In der Datenbank steht dagegen weiterhin, wer wie abgestimmt hat:
   `umfrage_stimmen.mitglied_sub` je Antwort und `umfrage_abgaben` mit `mitglied_sub` und `abgegeben_am` (der Zeitstempel liegt in

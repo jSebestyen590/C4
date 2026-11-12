@@ -158,7 +158,7 @@ Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verw
 | `PUT /api/schluessel/anfragen/:id/rueckzug`                       | lesen     | nur Ersteller                                                                                                      |
 | `POST /api/schluessel/anfragen/:id/antworten/:antwortId/annehmen` | lesen     | nur Ersteller, nur Gegenvorschläge                                                                                 |
 | `POST /api/schluessel/:id/planungen`                              | lesen     | `{ anSub, datum, ab?, bis?, notiz? }`                                                                              |
-| `PUT /api/schluessel/planungen/:id`                               | lesen     | wie oben                                                                                                           |
+| `PUT /api/schluessel/planungen/:id`                               | lesen     | wie oben (gleiche Prüfungen: Schlüssel nicht archiviert, Mitglied existiert, ist nicht schon Halter)               |
 | `DELETE /api/schluessel/planungen/:id`                            | lesen     |                                                                                                                    |
 | `PUT /api/schluessel/:id`                                         | verwalten | `{ name, beschreibung? }`                                                                                          |
 | `PUT /api/schluessel/:id/archiv`                                  | verwalten | `{ archiviert }`                                                                                                   |

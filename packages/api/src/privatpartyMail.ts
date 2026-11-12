@@ -47,6 +47,8 @@ export async function mailJob(deps: MailJobDeps, jetzt = new Date()): Promise<Ma
     let vorherigeUid = stand.letzteUid;
     for (const mail of ergebnis.mails) {
       angelegt = null;
+      // A Date header in the future would pin the request to the top of the list.
+      const zeitpunkt = mail.zeitpunkt > jetzt ? jetzt : mail.zeitpunkt;
       try {
         if (await store.nachrichtNachMessageId(mail.messageId)) {
           vorherigeUid = mail.uid;
@@ -62,7 +64,7 @@ export async function mailJob(deps: MailJobDeps, jetzt = new Date()): Promise<Ma
               notizen: null,
               termine: [],
               mailAdresse: mail.vonAdresse,
-              letzteNachrichtAm: mail.zeitpunkt,
+              letzteNachrichtAm: zeitpunkt,
             },
             null,
           ));
@@ -78,7 +80,7 @@ export async function mailJob(deps: MailJobDeps, jetzt = new Date()): Promise<Ma
           betreff: mail.betreff,
           text: mail.text.slice(0, NACHRICHT_TEXT_MAX),
           anhaenge: mail.anhaenge,
-          zeitpunkt: mail.zeitpunkt,
+          zeitpunkt,
           mitgliedSub: null,
         });
         neu++;
