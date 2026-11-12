@@ -9,17 +9,21 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   Title,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { IconArrowDown, IconArrowUp, IconPlus, IconSelector } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   centAnzeigen,
   datumAnzeigen,
+  JOURNAL_MAX,
   QUELLE_TYP_LABELS,
   type BuchungListeDto,
   type BuchungRichtungDto,
@@ -30,26 +34,65 @@ import { DatumFeld } from '../DatumFeld';
 import { BETRAG_STIL, detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from '../finanzenDaten';
 import {
   bewegungText,
+  journalSortieren,
   RICHTUNG_MAX,
   richtungKurz,
   richtungText,
   richtungZeilen,
   saldoText,
+  SORT_SPALTEN,
+  sortAusParams,
+  sortLabel,
   vonNachText,
+  type SortRichtung,
+  type SortSpalte,
 } from '../finanzenJournal';
-import { mitgliedLink, mitgliedName } from '../mitglied';
+import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { ZurueckLink } from '../ZurueckLink';
 
-function Ersteller({ b, verlinkt = true }: Readonly<{ b: BuchungListeDto; verlinkt?: boolean }>) {
+/** The creator as plain bold, status-colored text (no link). */
+function Ersteller({ b }: Readonly<{ b: BuchungListeDto }>) {
   const m = b.erstelltVon;
   if (!m) return <Text span>–</Text>;
-  // Inside a card that is itself a link, the name stays plain text (no nested anchors).
-  if (!verlinkt) return <StatusName status={m.status}>{mitgliedName(m)}</StatusName>;
+  return <StatusName status={m.status}>{mitgliedName(m)}</StatusName>;
+}
+
+/** Clickable column header: shows the sort state and toggles the direction. */
+function SortKopf({
+  spalte,
+  aktiv,
+  richtung,
+  mitKonto,
+  rechts,
+  onSort,
+}: Readonly<{
+  spalte: SortSpalte;
+  aktiv: SortSpalte;
+  richtung: SortRichtung;
+  mitKonto: boolean;
+  rechts?: boolean;
+  onSort: (spalte: SortSpalte) => void;
+}>) {
+  const istAktiv = spalte === aktiv;
+  const Icon = !istAktiv ? IconSelector : richtung === 'asc' ? IconArrowUp : IconArrowDown;
   return (
-    <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
-      <StatusName status={m.status}>{mitgliedName(m)}</StatusName>
-    </Link>
+    <UnstyledButton
+      onClick={() => onSort(spalte)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        minHeight: 42,
+        width: '100%',
+        justifyContent: rechts ? 'flex-end' : 'flex-start',
+        font: 'inherit',
+        fontWeight: 'inherit',
+      }}
+    >
+      <span>{sortLabel(spalte, mitKonto)}</span>
+      <Icon size={14} aria-hidden style={{ flexShrink: 0, opacity: istAktiv ? 1 : 0.5 }} />
+    </UnstyledButton>
   );
 }
 
@@ -166,23 +209,64 @@ export function FinanzenJournalPage() {
     );
 
   const konten = useKonten(true);
-  const seiten = useInfiniteQuery({
-    queryKey: [...FINANZEN_KEY, 'buchungen', { kontoId, von, bis }],
-    initialPageParam: undefined as number | undefined,
-    queryFn: async ({ pageParam }) =>
+  const nurStorno = params.get('storno') === '1';
+  const sort = sortAusParams(params.get('sort'), params.get('richtung'), kontoId !== '');
+  const setSort = (spalte: SortSpalte, richtung: SortRichtung) =>
+    setParams(
+      (alt) => {
+        const neu = new URLSearchParams(alt);
+        neu.set('sort', spalte);
+        neu.set('richtung', richtung);
+        return neu;
+      },
+      { replace: true },
+    );
+  // Same column again: flip the direction; a new column starts descending for Nr./Datum/amounts.
+  const sortUmschalten = (spalte: SortSpalte) =>
+    setSort(
+      spalte,
+      spalte === sort.spalte
+        ? sort.richtung === 'asc'
+          ? 'desc'
+          : 'asc'
+        : ['text', 'konten', 'erstellt'].includes(spalte)
+          ? 'asc'
+          : 'desc',
+    );
+  const sortOptionen = SORT_SPALTEN.filter((s) => s !== 'saldo' || kontoId !== '').flatMap((s) => [
+    { value: `${s}:asc`, label: `${sortLabel(s, kontoId !== '')}, aufsteigend` },
+    { value: `${s}:desc`, label: `${sortLabel(s, kontoId !== '')}, absteigend` },
+  ]);
+
+  const seiten = useQuery({
+    queryKey: [...FINANZEN_KEY, 'buchungen', { kontoId, von, bis, nurStorno }],
+    queryFn: async () =>
       unwrap(
         await api.finanzen.buchungen.$get({
           query: {
             ...(kontoId && { kontoId }),
             ...(von && { von }),
             ...(bis && { bis }),
-            ...(pageParam !== undefined && { vorSeq: String(pageParam) }),
+            ...(nurStorno && { storno: '1' }),
           },
         }),
       ),
-    getNextPageParam: (letzte) => letzte.weiter ?? undefined,
   });
-  const buchungen = seiten.data?.pages.flatMap((p) => p.buchungen) ?? [];
+  // Sorted here over the complete result, so every column sorts correctly.
+  const buchungen = useMemo(
+    () =>
+      journalSortieren(seiten.data?.buchungen ?? [], sort.spalte, sort.richtung, kontoId !== ''),
+    [seiten.data, sort.spalte, sort.richtung, kontoId],
+  );
+
+  const ariaSort = (spalte: SortSpalte) =>
+    spalte === sort.spalte ? (sort.richtung === 'asc' ? 'ascending' : 'descending') : 'none';
+  const kopfProps = {
+    aktiv: sort.spalte,
+    richtung: sort.richtung,
+    mitKonto: kontoId !== '',
+    onSort: sortUmschalten,
+  };
 
   return (
     <Stack>
@@ -210,10 +294,35 @@ export function FinanzenJournalPage() {
         <DatumFeld label="Von" value={von} onWert={(v) => setFilter('von', v)} />
         <DatumFeld label="Bis" value={bis} onWert={(v) => setFilter('bis', v)} />
       </SimpleGrid>
+      <Switch
+        size="md"
+        label="Nur Stornos (mit den stornierten Buchungen)"
+        checked={nurStorno}
+        onChange={(e) => setFilter('storno', e.currentTarget.checked ? '1' : null)}
+      />
+      {seiten.data?.gekappt && (
+        <Alert color="yellow">
+          Es werden die neuesten {JOURNAL_MAX.toLocaleString('de-DE')} Buchungen gezeigt – grenze
+          den Zeitraum ein.
+        </Alert>
+      )}
       {seiten.isPending && <Loader m="md" aria-label="Buchungen werden geladen" />}
       {seiten.isError && <Alert color="red">Das Journal konnte nicht geladen werden.</Alert>}
       {seiten.data && buchungen.length === 0 && <Text c="dimmed">Keine Buchungen gefunden.</Text>}
 
+      {buchungen.length > 0 && (
+        <Select
+          hiddenFrom="sm"
+          label="Sortieren nach"
+          allowDeselect={false}
+          data={sortOptionen}
+          value={`${sort.spalte}:${sort.richtung}`}
+          onChange={(v) => {
+            const [spalte, richtung] = (v ?? '').split(':');
+            setSort(spalte as SortSpalte, richtung as SortRichtung);
+          }}
+        />
+      )}
       <SimpleGrid cols={1} hiddenFrom="sm">
         {buchungen.map((b) => (
           <Paper
@@ -258,7 +367,7 @@ export function FinanzenJournalPage() {
                 </Group>
               )}
               <Text size="sm">
-                Von <Ersteller b={b} verlinkt={false} />
+                Von <Ersteller b={b} />
               </Text>
             </Stack>
           </Paper>
@@ -276,21 +385,29 @@ export function FinanzenJournalPage() {
           >
             <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
               <Table.Tr>
-                <Table.Th w={70} style={BETRAG_STIL}>
-                  Nr.
+                <Table.Th w={80} style={BETRAG_STIL} aria-sort={ariaSort('nr')}>
+                  <SortKopf spalte="nr" rechts {...kopfProps} />
                 </Table.Th>
-                <Table.Th w={110}>Datum</Table.Th>
-                <Table.Th>Text</Table.Th>
-                <Table.Th w={200}>{kontoId ? 'Gegenkonto' : 'Von → Nach'}</Table.Th>
-                <Table.Th w={160} style={BETRAG_STIL}>
-                  {kontoId ? 'Bewegung' : 'Betrag'}
+                <Table.Th w={120} aria-sort={ariaSort('datum')}>
+                  <SortKopf spalte="datum" {...kopfProps} />
+                </Table.Th>
+                <Table.Th aria-sort={ariaSort('text')}>
+                  <SortKopf spalte="text" {...kopfProps} />
+                </Table.Th>
+                <Table.Th w={200} aria-sort={ariaSort('konten')}>
+                  <SortKopf spalte="konten" {...kopfProps} />
+                </Table.Th>
+                <Table.Th w={170} style={BETRAG_STIL} aria-sort={ariaSort('betrag')}>
+                  <SortKopf spalte="betrag" rechts {...kopfProps} />
                 </Table.Th>
                 {kontoId && (
-                  <Table.Th w={140} style={BETRAG_STIL}>
-                    Saldo danach
+                  <Table.Th w={150} style={BETRAG_STIL} aria-sort={ariaSort('saldo')}>
+                    <SortKopf spalte="saldo" rechts {...kopfProps} />
                   </Table.Th>
                 )}
-                <Table.Th>Erstellt von</Table.Th>
+                <Table.Th aria-sort={ariaSort('erstellt')}>
+                  <SortKopf spalte="erstellt" {...kopfProps} />
+                </Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -299,7 +416,7 @@ export function FinanzenJournalPage() {
                   key={b.id}
                   style={{ cursor: 'pointer' }}
                   onClick={(e) => {
-                    // Inner links (Nr., Ersteller) navigate on their own.
+                    // The Nr. link navigates on its own.
                     if (!(e.target as HTMLElement).closest('a')) void navigate(detailPfad(b.id));
                   }}
                 >
@@ -343,15 +460,6 @@ export function FinanzenJournalPage() {
             </Table.Tbody>
           </Table>
         </Box>
-      )}
-      {seiten.hasNextPage && (
-        <Button
-          variant="default"
-          loading={seiten.isFetchingNextPage}
-          onClick={() => void seiten.fetchNextPage()}
-        >
-          Mehr laden
-        </Button>
       )}
     </Stack>
   );

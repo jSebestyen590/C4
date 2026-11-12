@@ -166,7 +166,7 @@ export function createFakeFinanzenStore() {
         zeilen: stornoZeilen(structuredClone(original.zeilen)).map(ohnePos),
       });
     },
-    async journal({ von, bis, kontoId, limit, vorSeq }) {
+    async journal({ von, bis, kontoId, storno, limit }) {
       const seite = [...buchungen]
         .reverse()
         .filter(
@@ -174,15 +174,11 @@ export function createFakeFinanzenStore() {
             (!von || b.datum >= von) &&
             (!bis || b.datum <= bis) &&
             (!kontoId || b.zeilen.some((z) => z.kontoId === kontoId)) &&
-            (vorSeq === undefined || b.seq < vorSeq),
+            (!storno || b.stornoVon !== null || buchungen.some((s) => s.stornoVon === b.id)),
         )
         .slice(0, limit);
       const kontoSumme = (b: KettenBuchung) =>
         b.zeilen.filter((z) => z.kontoId === kontoId).reduce((t, z) => t + z.betragCent, 0);
-      const oben = Math.max(0, ...seite.map((b) => b.seq));
-      let saldoNach = kontoId
-        ? buchungen.filter((b) => b.seq <= oben).reduce((s, b) => s + kontoSumme(b), 0)
-        : 0;
       return seite.map((b): JournalEintrag => {
         const richtung = (vorzeichen: 1 | -1): BuchungRichtungDto[] => {
           const proKonto = new Map<string, BuchungRichtungDto>();
@@ -199,9 +195,10 @@ export function createFakeFinanzenStore() {
         };
         let konto: JournalEintrag['konto'] = null;
         if (kontoId) {
-          const betrag = kontoSumme(b);
-          konto = { betragCent: betrag, saldoNachCent: saldoNach };
-          saldoNach -= betrag;
+          const saldoNach = buchungen
+            .filter((x) => x.seq <= b.seq)
+            .reduce((summe, x) => summe + kontoSumme(x), 0);
+          konto = { betragCent: kontoSumme(b), saldoNachCent: saldoNach };
         }
         return { ...eintrag(b), abgang: richtung(-1), zugang: richtung(1), konto };
       });

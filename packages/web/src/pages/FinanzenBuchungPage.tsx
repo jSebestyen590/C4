@@ -33,7 +33,7 @@ import { DatumFeld } from '../DatumFeld';
 import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
 import { BETRAG_STIL, detailPfad, FINANZEN_KEY, jsonOderFehler } from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
-import { mitgliedLink, mitgliedName } from '../mitglied';
+import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { ZeilenUebersicht } from '../ZeilenUebersicht';
 import { ZurueckLink } from '../ZurueckLink';
@@ -59,6 +59,7 @@ function StornoDialog({
   const navigate = useNavigate();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
+  const [beruehrt, setBeruehrt] = useState(false);
   const [geprueft, setGeprueft] = useState(false);
   // One key per opening of the dialog: a double click or a retry does not reverse twice.
   const [schluessel] = useState(() => crypto.randomUUID());
@@ -67,7 +68,7 @@ function StornoDialog({
       titel={`Buchung Nr. ${buchung.seq} stornieren`}
       bestaetigenText="Stornieren"
       groesse="lg"
-      gesperrt={!geprueft || !datum}
+      gesperrt={!geprueft || !datum || text.trim() === ''}
       onClose={onClose}
       onBestaetigt={async () => {
         const neu = await jsonOderFehler<{ id: string }>(
@@ -98,10 +99,17 @@ function StornoDialog({
         loeschbar={false}
       />
       <TextInput
-        label="Text (optional)"
-        description="Ohne Angabe steht dort „Storno“ mit der Nummer."
+        required
+        label="Begründung"
+        description={`Die Buchung erhält den Text „Storno von Nr. ${buchung.seq}: …“.`}
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}
+        error={
+          beruehrt && text.trim() === ''
+            ? 'Bitte gib eine Begründung für das Storno an.'
+            : undefined
+        }
+        onBlur={() => setBeruehrt(true)}
         maxLength={500}
       />
       <Checkbox
@@ -173,11 +181,9 @@ export function FinanzenBuchungPage() {
               <Text>
                 Erstellt von:{' '}
                 {b.erstelltVon ? (
-                  <Link to={mitgliedLink(b.erstelltVon)} style={{ textDecoration: 'none' }}>
-                    <StatusName status={b.erstelltVon.status}>
-                      {mitgliedName(b.erstelltVon)}
-                    </StatusName>
-                  </Link>
+                  <StatusName status={b.erstelltVon.status}>
+                    {mitgliedName(b.erstelltVon)}
+                  </StatusName>
                 ) : (
                   '–'
                 )}{' '}

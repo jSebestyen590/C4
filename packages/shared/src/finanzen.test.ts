@@ -208,9 +208,19 @@ describe('schemas', () => {
       stornoEingabeSchema.parse({
         idempotenzSchluessel: schluessel,
         datum: '2027-01-05',
-        text: ' ',
+        text: ' Falsch gebucht ',
       }),
-    ).toEqual({ idempotenzSchluessel: schluessel, datum: '2027-01-05', text: null });
+    ).toEqual({ idempotenzSchluessel: schluessel, datum: '2027-01-05', text: 'Falsch gebucht' });
+    // the reason is required
+    for (const text of [undefined, '', '  ']) {
+      const r = stornoEingabeSchema.safeParse({
+        idempotenzSchluessel: schluessel,
+        datum: '2027-01-05',
+        text,
+      });
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0]?.message).toBe('Bitte gib eine Begründung für das Storno an.');
+    }
     // the key is required and must be a UUID
     expect(stornoEingabeSchema.safeParse({ datum: '2027-01-05' }).success).toBe(false);
     expect(buchungEingabeSchema.safeParse({ ...basis, idempotenzSchluessel: 'x' }).success).toBe(

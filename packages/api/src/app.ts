@@ -137,6 +137,7 @@ import {
   trichterEingabeSchema,
   TRICHTER_DURCHGAENGE_SEITE,
   buchungEingabeSchema,
+  JOURNAL_MAX,
   journalAbfrageSchema,
   kontoAendernSchema,
   kontoArchivSchema,
@@ -3653,7 +3654,8 @@ export function createApp(deps: AppDeps) {
           return c.json({ ok: true });
         },
       )
-      // Journal page by page, newest first; `weiter` is the `vorSeq` of the next page.
+      // The whole journal matching the filters, newest first, capped at JOURNAL_MAX (the page
+      // sorts it itself); `gekappt` says that older matches were left out.
       .get(
         '/finanzen/buchungen',
         auth,
@@ -3662,16 +3664,15 @@ export function createApp(deps: AppDeps) {
         async (c) => {
           const abfrage = c.req.valid('query');
           const [liste, mitglied] = await Promise.all([
-            deps.finanzen.journal({ ...abfrage, limit: abfrage.limit + 1 }),
+            deps.finanzen.journal({ ...abfrage, limit: JOURNAL_MAX + 1 }),
             finanzenMitglieder(),
           ]);
-          const seite = liste.slice(0, abfrage.limit);
           const dto: BuchungenSeiteDto = {
-            buchungen: seite.map((b): BuchungListeDto => ({
+            buchungen: liste.slice(0, JOURNAL_MAX).map((b): BuchungListeDto => ({
               ...b,
               erstelltVon: mitglied(b.erstelltVon),
             })),
-            weiter: liste.length > seite.length ? (seite.at(-1)?.seq ?? null) : null,
+            gekappt: liste.length > JOURNAL_MAX,
           };
           return c.json(dto);
         },

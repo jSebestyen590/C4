@@ -42,9 +42,8 @@ export const BETRAG_MAX_CENT = 1_000_000_000;
 export const ZEILEN_MAX = 50;
 /** Largest count of one denomination in a line. */
 export const ANZAHL_MAX = 1_000_000;
-/** Entries per page of `GET /api/finanzen/buchungen`. */
-export const BUCHUNGEN_SEITE = 50;
-export const BUCHUNGEN_SEITE_MAX = 200;
+/** The journal list returns at most this many bookings (the newest ones). */
+export const JOURNAL_MAX = 2000;
 
 export const KONTO_ART_LABELS: Record<KontoArt, string> = {
   bargeld: 'Bargeld',
@@ -176,13 +175,12 @@ export type BuchungEingabeInput = z.input<typeof buchungEingabeSchema>;
 export const stornoEingabeSchema = z.object({
   idempotenzSchluessel,
   datum: datumSchema,
+  /** Reason of the reversal; required. */
   text: z
-    .string()
+    .string('Bitte gib eine Begründung für das Storno an.')
     .trim()
-    .max(500, 'Höchstens 500 Zeichen erlaubt.')
-    .transform((v) => (v === '' ? null : v))
-    .nullish()
-    .transform((v) => v ?? null),
+    .min(1, 'Bitte gib eine Begründung für das Storno an.')
+    .max(500, 'Höchstens 500 Zeichen erlaubt.'),
 });
 export type StornoEingabe = z.output<typeof stornoEingabeSchema>;
 export type StornoEingabeInput = z.input<typeof stornoEingabeSchema>;
@@ -192,14 +190,11 @@ export const journalAbfrageSchema = z.object({
   von: datumSchema.optional(),
   bis: datumSchema.optional(),
   kontoId: z.string().min(1).optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(BUCHUNGEN_SEITE_MAX, `Höchstens ${BUCHUNGEN_SEITE_MAX} Einträge pro Seite erlaubt.`)
-    .default(BUCHUNGEN_SEITE),
-  /** Cursor: only entries with a smaller `seq`. */
-  vorSeq: z.coerce.number().int().min(1).optional(),
+  /** `1`: only reversals and the originals they reversed. */
+  storno: z
+    .enum(['0', '1'])
+    .optional()
+    .transform((v) => v === '1'),
 });
 export type JournalAbfrage = z.output<typeof journalAbfrageSchema>;
 
@@ -612,10 +607,11 @@ export interface BuchungDetailDto extends Omit<BuchungDetailEintrag, 'erstelltVo
   erstelltVon: FinanzMitgliedDto | null;
 }
 
-/** `GET /api/finanzen/buchungen`: `weiter` is the `vorSeq` of the next page (null: no more). */
+/** `GET /api/finanzen/buchungen`: all matches, newest first, at most `JOURNAL_MAX`. */
 export interface BuchungenSeiteDto {
   buchungen: BuchungListeDto[];
-  weiter: number | null;
+  /** More bookings matched than returned: only the newest `JOURNAL_MAX` are in the list. */
+  gekappt: boolean;
 }
 
 /** `GET /api/finanzen/kette`. */

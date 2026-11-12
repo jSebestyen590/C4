@@ -9926,9 +9926,9 @@ describe('finanzen', () => {
         betragCent: number;
         erstelltVon: { username: string; sub: string } | null;
       }[];
-      weiter: number | null;
+      gekappt: boolean;
     }>('vorstand-token', '/buchungen');
-    expect(seite.weiter).toBeNull();
+    expect(seite.gekappt).toBe(false);
     expect(seite.buchungen.map((b) => b.seq)).toEqual([2, 1]);
     expect(seite.buchungen[1]).toMatchObject({
       id: ergebnis.id,
@@ -9955,7 +9955,7 @@ describe('finanzen', () => {
     expect((await t.anfrage('vorstand-token', 'GET', '/buchungen/nix')).status).toBe(404);
   });
 
-  it('filters and pages the journal', async () => {
+  it('filters the journal and returns all matches', async () => {
     const t = await setup();
     await t.umbuchung(100, { datum: '2027-01-01' });
     await t.umbuchung(200, { datum: '2027-02-01' });
@@ -9980,14 +9980,7 @@ describe('finanzen', () => {
     expect(await seqs('?kontoId=bank')).toEqual([2, 1]);
     expect(await seqs('?von=2027-02-01')).toEqual([3, 2]);
     expect(await seqs('?von=2027-01-15&bis=2027-02-15')).toEqual([2]);
-    const erste = await t.lesen<{ buchungen: { seq: number }[]; weiter: number | null }>(
-      'vorstand-token',
-      '/buchungen?limit=2',
-    );
-    expect(erste.buchungen.map((b) => b.seq)).toEqual([3, 2]);
-    expect(erste.weiter).toBe(2);
-    expect(await seqs('?limit=2&vorSeq=2')).toEqual([1]);
-    expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?limit=500')).status).toBe(400);
+    expect(await seqs('?limit=2&vorSeq=2')).toEqual([3, 2, 1]);
     expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?von=kaputt')).status).toBe(400);
   });
 
@@ -10009,19 +10002,13 @@ describe('finanzen', () => {
       { kontoId: 'geldtransit', kontoName: 'Geldtransit', betragCent: 250 },
     ]);
     expect(alle.buchungen.map((b) => b.konto)).toEqual([null, null]);
-    // Account statement across two pages; the date filter does not change the balance.
-    const seite1 = await t.lesen<{ buchungen: Eintrag[]; weiter: number | null }>(
+    // Account statement: the balance follows `seq`, not the display order.
+    const konto = await t.lesen<{ buchungen: Eintrag[] }>(
       'vorstand-token',
-      '/buchungen?kontoId=bank&limit=1',
+      '/buchungen?kontoId=bank',
     );
-    expect(seite1.buchungen.map((b) => b.konto)).toEqual([
+    expect(konto.buchungen.map((b) => b.konto)).toEqual([
       { betragCent: -250, saldoNachCent: -350 },
-    ]);
-    const seite2 = await t.lesen<{ buchungen: Eintrag[] }>(
-      'vorstand-token',
-      `/buchungen?kontoId=bank&limit=1&vorSeq=${seite1.weiter}`,
-    );
-    expect(seite2.buchungen.map((b) => b.konto)).toEqual([
       { betragCent: -100, saldoNachCent: -100 },
     ]);
     const gefiltert = await t.lesen<{ buchungen: Eintrag[] }>(
@@ -10029,6 +10016,43 @@ describe('finanzen', () => {
       '/buchungen?kontoId=bank&von=2027-02-01',
     );
     expect(gefiltert.buchungen.map((b) => b.konto?.saldoNachCent)).toEqual([-350]);
+  });
+
+  it('keeps the running balance right when other bookings are filtered out', async () => {
+    const t = await setup();
+    await t.umbuchung(100, { datum: '2027-03-01' });
+    await t.umbuchung(200, { datum: '2027-01-01' });
+    await t.umbuchung(300, { datum: '2027-03-02' });
+    const res = await t.lesen<{
+      buchungen: { seq: number; konto: { saldoNachCent: number } | null }[];
+    }>('vorstand-token', '/buchungen?kontoId=bank&von=2027-03-01');
+    expect(res.buchungen.map((b) => [b.seq, b.konto?.saldoNachCent])).toEqual([
+      [3, -600],
+      [1, -100],
+    ]);
+  });
+
+  it('filters the journal to Stornos and the bookings they reversed', async () => {
+    const t = await setup();
+    const { id } = (await (await t.umbuchung(100, { datum: '2027-01-01' })).json()) as {
+      id: string;
+    };
+    await t.umbuchung(200, { datum: '2027-01-02' });
+    await t.umbuchung(300, { datum: '2027-02-01' });
+    await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-02-02',
+      text: 'Falsch',
+    });
+    const seqs = async (abfrage: string) =>
+      (
+        await t.lesen<{ buchungen: { seq: number }[] }>('vorstand-token', `/buchungen${abfrage}`)
+      ).buchungen.map((b) => b.seq);
+    expect(await seqs('')).toEqual([4, 3, 2, 1]);
+    expect(await seqs('?storno=1')).toEqual([4, 1]);
+    expect(await seqs('?storno=0')).toEqual([4, 3, 2, 1]);
+    expect(await seqs('?storno=1&von=2027-02-01')).toEqual([4]);
+    expect(await seqs('?storno=1&kontoId=bank&bis=2027-01-31')).toEqual([1]);
+    expect((await t.anfrage('vorstand-token', 'GET', '/buchungen?storno=x')).status).toBe(400);
   });
 
   it('rejects invalid bookings with 400 and German messages', async () => {
@@ -10134,12 +10158,14 @@ describe('finanzen', () => {
     const stornoKey = crypto.randomUUID();
     const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
       datum: '2027-01-06',
+      text: 'Falscher Betrag',
       idempotenzSchluessel: stornoKey,
     });
     expect(storno.status).toBe(201);
     const { id: stornoId } = (await storno.json()) as { id: string };
     const nochmal = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
       datum: '2027-01-06',
+      text: 'Falscher Betrag',
       idempotenzSchluessel: stornoKey,
     });
     expect(nochmal.status).toBe(200);
@@ -10167,7 +10193,12 @@ describe('finanzen', () => {
     expect(kaputt.status).toBe(400);
     expect(await kaputt.text()).toContain('UUID');
     expect(
-      (await t.roh('admin-token', 'POST', '/buchungen/x/storno', { datum: '2027-01-05' })).status,
+      (
+        await t.roh('admin-token', 'POST', '/buchungen/x/storno', {
+          datum: '2027-01-05',
+          text: 'x',
+        })
+      ).status,
     ).toBe(400);
   });
 
@@ -10176,6 +10207,7 @@ describe('finanzen', () => {
     const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
     const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
       datum: '2027-01-06',
+      text: 'Doppelt erfasst',
     });
     expect(storno.status).toBe(201);
     const { id: stornoId, seq } = (await storno.json()) as { id: string; seq: number };
@@ -10193,7 +10225,7 @@ describe('finanzen', () => {
       zeilen: { kontoId: string; betragCent: number }[];
     }>('vorstand-token', `/buchungen/${stornoId}`);
     expect(detail).toMatchObject({
-      text: 'Storno von Nr. 1: Umbuchung',
+      text: 'Storno von Nr. 1: Doppelt erfasst',
       quelleTyp: 'storno',
       stornoVon: { id, seq: 1 },
     });
@@ -10207,6 +10239,7 @@ describe('finanzen', () => {
     // twice, and a Storno of a Storno
     const nochmal = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
       datum: '2027-01-07',
+      text: 'Nochmal',
     });
     expect(nochmal.status).toBe(409);
     expect(await nochmal.text()).toContain('bereits storniert');
@@ -10214,19 +10247,41 @@ describe('finanzen', () => {
       (
         await t.anfrage('admin-token', 'POST', `/buchungen/${stornoId}/storno`, {
           datum: '2027-01-07',
+          text: 'Nochmal',
         })
       ).status,
     ).toBe(409);
     expect(
-      (await t.anfrage('admin-token', 'POST', '/buchungen/nix/storno', { datum: '2027-01-07' }))
-        .status,
+      (
+        await t.anfrage('admin-token', 'POST', '/buchungen/nix/storno', {
+          datum: '2027-01-07',
+          text: 'x',
+        })
+      ).status,
     ).toBe(404);
     expect(
-      (await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum: 'x' })).status,
+      (await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum: 'x', text: 'x' }))
+        .status,
     ).toBe(400);
   });
 
-  it('uses the given text for a Storno and may reverse into archived accounts', async () => {
+  it('requires a reason for a Storno', async () => {
+    const t = await setup();
+    const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
+    for (const text of [undefined, '', '   ']) {
+      const res = await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+        datum: '2027-01-06',
+        ...(text !== undefined && { text }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain('Begründung');
+    }
+    expect(
+      (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+    ).toHaveLength(1);
+  });
+
+  it('uses the reason as Storno text and may reverse into archived accounts', async () => {
     const t = await setup();
     const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
     await t.anfrage('admin-token', 'PUT', '/konten/geldtransit/archiv', { archiviert: true });
@@ -10237,7 +10292,7 @@ describe('finanzen', () => {
     expect(res.status).toBe(201);
     const { id: stornoId } = (await res.json()) as { id: string };
     expect((await t.lesen<{ text: string }>('vorstand-token', `/buchungen/${stornoId}`)).text).toBe(
-      'Falscher Betrag',
+      'Storno von Nr. 1: Falscher Betrag',
     );
   });
 
@@ -10251,7 +10306,10 @@ describe('finanzen', () => {
 
     const { id } = (await (await t.umbuchung(500)).json()) as { id: string };
     await t.umbuchung(300);
-    await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum: '2027-01-06' });
+    await t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, {
+      datum: '2027-01-06',
+      text: 'Test',
+    });
     const intakt = await t.lesen<{
       ok: boolean;
       anzahl: number;

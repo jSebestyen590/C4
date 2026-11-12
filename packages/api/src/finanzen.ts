@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import {
   buchungsHash,
   pruefeBuchung,
@@ -88,7 +88,8 @@ export interface FinanzenStore {
   /** Reverses a booking; undefined when it does not exist, throws StornoKonflikt. */
   stornieren(id: string, eingabe: StornoEingabe, sub: string): Promise<GebuchtErgebnis | undefined>;
   /** Newest `seq` first. */
-  journal(abfrage: JournalAbfrage): Promise<JournalEintrag[]>;
+  /** Newest first, at most `limit` entries. */
+  journal(abfrage: JournalAbfrage & { limit: number }): Promise<JournalEintrag[]>;
   buchung(id: string): Promise<BuchungDetailEintrag | undefined>;
   /** All bookings by `seq` plus the counter, read in one consistent snapshot. */
   kettenDaten(): Promise<KettenDaten>;
@@ -159,8 +160,8 @@ export const ohnePos = (z: HashZeile): BuchungsEntwurf['zeilen'][number] => {
   return rest as BuchungsEntwurf['zeilen'][number];
 };
 
-export const stornoText = (original: { seq: number; text: string }, text: string | null) =>
-  text ?? `Storno von Nr. ${original.seq}: ${original.text}`;
+export const stornoText = (original: { seq: number }, begruendung: string) =>
+  `Storno von Nr. ${original.seq}: ${begruendung}`;
 
 const istDoppelt = (err: unknown): boolean => {
   const e = err as { code?: unknown; cause?: unknown } | null;
@@ -221,7 +222,9 @@ export function createFinanzenStore(db: Db): FinanzenStore {
 
   /**
    * Direction of money per booking and, for an account filter, the account's effect and running
-   * balance by `seq` (one SUM up to the page's highest `seq`, then walking down the page).
+   * balance by `seq`: the balance after a booking is the account's total up to the highest `seq`
+   * of the list minus the account's lines of all newer bookings, whatever the other filters or
+   * the display order are.
    */
   const richtungAnreichern = async (
     q: Q,
@@ -244,19 +247,34 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           liste.map((b) => b.id),
         ),
       );
-    let saldo = 0;
+    const saldoNach = new Map<number, number>();
     if (kontoId) {
+      const hoechste = Math.max(...liste.map((b) => b.seq));
+      const niedrigste = Math.min(...liste.map((b) => b.seq));
       const [summe] = await q
         .select({ summe: sql<string>`coalesce(sum(${finBuchungszeilen.betragCent}), 0)` })
+        .from(finBuchungszeilen)
+        .innerJoin(finBuchungen, eq(finBuchungen.id, finBuchungszeilen.buchungId))
+        .where(and(eq(finBuchungszeilen.kontoId, kontoId), lte(finBuchungen.seq, hoechste)));
+      // The account's movement per booking between the lowest and highest `seq` of the list.
+      const bewegungen = await q
+        .select({ seq: finBuchungen.seq, summe: sql<string>`sum(${finBuchungszeilen.betragCent})` })
         .from(finBuchungszeilen)
         .innerJoin(finBuchungen, eq(finBuchungen.id, finBuchungszeilen.buchungId))
         .where(
           and(
             eq(finBuchungszeilen.kontoId, kontoId),
-            lte(finBuchungen.seq, Math.max(...liste.map((b) => b.seq))),
+            gte(finBuchungen.seq, niedrigste),
+            lte(finBuchungen.seq, hoechste),
           ),
-        );
-      saldo = Number(summe?.summe ?? 0);
+        )
+        .groupBy(finBuchungen.seq)
+        .orderBy(desc(finBuchungen.seq));
+      let saldo = Number(summe?.summe ?? 0);
+      for (const bew of bewegungen) {
+        saldoNach.set(bew.seq, saldo);
+        saldo -= Number(bew.summe);
+      }
     }
     return liste.map((b) => {
       const seite = (vorzeichen: 1 | -1): BuchungRichtungDto[] => {
@@ -277,8 +295,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         const betrag = zeilen
           .filter((z) => z.buchungId === b.id && z.kontoId === kontoId)
           .reduce((s, z) => s + z.betragCent, 0);
-        konto = { betragCent: betrag, saldoNachCent: saldo };
-        saldo -= betrag;
+        konto = { betragCent: betrag, saldoNachCent: saldoNach.get(b.seq) ?? 0 };
       }
       return { ...b, abgang: seite(-1), zugang: seite(1), konto };
     });
@@ -575,7 +592,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       }
     },
 
-    async journal({ von, bis, kontoId, limit, vorSeq }) {
+    async journal({ von, bis, kontoId, storno, limit }) {
       const rows = await db
         .select()
         .from(finBuchungen)
@@ -592,7 +609,19 @@ export function createFinanzenStore(db: Db): FinanzenStore {
                     .where(eq(finBuchungszeilen.kontoId, kontoId)),
                 )
               : undefined,
-            vorSeq !== undefined ? lt(finBuchungen.seq, vorSeq) : undefined,
+            // Reversals and the originals they reversed.
+            storno
+              ? or(
+                  isNotNull(finBuchungen.stornoVon),
+                  inArray(
+                    finBuchungen.id,
+                    db
+                      .select({ id: finBuchungen.stornoVon })
+                      .from(finBuchungen)
+                      .where(isNotNull(finBuchungen.stornoVon)),
+                  ),
+                )
+              : undefined,
           ),
         )
         .orderBy(desc(finBuchungen.seq))

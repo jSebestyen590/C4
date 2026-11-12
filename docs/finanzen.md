@@ -103,21 +103,32 @@ sie mit Backoff. So werden parallele Buchungen nacheinander nummeriert. Eindeuti
 
 **Storno** (`POST /api/finanzen/buchungen/:id/storno`): eine neue Buchung mit `quelle_typ` `storno`
 und `storno_von` auf das Original, alle Beträge und Stückelungsanzahlen negiert, mit eigenem Datum
-und Text (Standard „Storno von Nr. n: …“). Eine Buchung lässt sich nur einmal stornieren, ein Storno
+und **Begründung** (Pflichtfeld `text`, getrimmt, 1 bis 500 Zeichen; ohne sie 400 „Bitte gib eine
+Begründung für das Storno an.“). Der Buchungstext lautet „Storno von Nr. n: <Begründung>“. Eine Buchung lässt sich nur einmal stornieren, ein Storno
 selbst nicht (409).
 
 **Journal-Liste** (`GET /api/finanzen/buchungen`, Seite „Journal“): jeder Eintrag trägt `abgang` und
 `zugang`, die Zeilen mit negativem bzw. positivem Betrag je Konto zusammengefasst (positive Beträge,
 Wechsel-Zeilen mit 0 entfallen). Die Tabelle (ab `sm`) hat die Spalten Nr., Datum, Text, **Von → Nach**,
 Betrag (Volumen) und Erstellt von; Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
+**Alle Spalten sind sortierbar** (Klick auf die Kopfzeile, erneuter Klick dreht die Richtung, `aria-sort`;
+Standard Nr. absteigend; im URL-Parameter `sort`/`richtung`). Dafür liefert die API **alle Treffer in einer
+Antwort** (keine Seiten, kein „Mehr laden“), höchstens `JOURNAL_MAX` = 2000, neueste (`seq`) zuerst; gibt es
+mehr, ist `gekappt: true` und die Seite zeigt „Es werden die neuesten 2.000 Buchungen gezeigt – grenze den
+Zeitraum ein.“ Sortiert wird im Browser über das ganze Ergebnis (Von → Nach nach angezeigtem Text,
+`localeCompare('de')`; Betrag nach Cent, Bewegung nach Cent mit Vorzeichen; Gleichstand: Datum, dann Nr.).
+Auf dem Handy wählt ein Feld „Sortieren nach“ über den Karten dieselbe Sortierung. **Filter „Nur Stornos“**
+(`storno=1`): zeigt Stornobuchungen **und** die Originale, die sie rückgängig machen; kombinierbar mit Konto
+und Zeitraum (UND). Der Ersteller steht als einfacher fetter Statusname, **ohne Link** zum Mitglied (auch auf
+der Detailseite).
 Mehr als zwei Konten einer Seite werden als „Bank + 3 weitere“ gekürzt (Tooltip mit allen Konten und
 Beträgen), lange Namen mit Auslassungspunkten (Logik in `packages/web/src/finanzenJournal.ts`).
 **Kontoauszug-Ansicht:** mit Kontofilter bekommt jeder Eintrag zusätzlich `konto` (`betragCent` mit
 Vorzeichen, `saldoNachCent`); sonst ist `konto` `null`. Die Tabelle zeigt dann „Gegenkonto“ (nur die
 andere Seite), „Bewegung“ („Zugang 25,50 €“ / „Abgang 25,50 €“, Abgang fett und rot) und „Saldo danach“
 (negativ rot mit Minus). Der laufende Saldo folgt der **Journalreihenfolge (`seq`)**, nicht dem Datum
-und unabhängig vom Von/Bis-Filter: eine SUM-Abfrage bis zur höchsten `seq` der Seite, danach wird
-beim Durchgehen der (absteigenden) Seite je Eintrag die eigene Bewegung abgezogen.
+und unabhängig von Filtern und Anzeigereihenfolge: Kontosumme bis zur höchsten `seq` der Liste, davon
+werden die Bewegungen aller neueren Buchungen des Kontos abgezogen (auch solcher, die ein Filter ausblendet).
 
 **Idempotenz-Schlüssel:** Buchen und Stornieren verlangen `idempotenzSchluessel` (UUID, die die Seite je
 Erfassung erzeugt). Wird derselbe Schlüssel noch einmal gesendet (doppelter Klick, Wiederholung nach
@@ -195,14 +206,14 @@ funktionieren aber auch auf dem Handy ohne horizontales Scrollen der Seite: dich
 fixierter Kopfzeile, Beträge rechtsbündig mit Tabellenziffern, Zugang/Abgang und Von/Nach als Wörter,
 Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung vor dem Buchen.
 
-| Seite                   | Recht                                         | Inhalt                                                                                                                                                    |
-| ----------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/finanzen`             | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                                                                                 |
-| `/finanzen/konten`      | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan: Tabelle ab `sm` (nach Art gruppiert, Unterkonten eingerückt, Saldo, Status, Aktionen), Karten auf dem Handy; anlegen, bearbeiten, archivieren |
-| `/finanzen/journal`     | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle mit fixierter Kopfzeile ab `sm`), Filter Konto und Zeitraum, „Mehr laden“                                        |
-| `/finanzen/journal/:id` | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen (Zugang/Abgang), Stückelung, Hash und `prev_hash`, Verweis Storno und Original; Storno-Dialog mit Gegenbuchung, Bestätigung und eigenem Schlüssel  |
-| `/finanzen/buchen`      | `finanzen:buchen`                             | freie Buchung und Umbuchung (siehe unten); Konten mit Stückelung bietet die Seite noch nicht an (kommt mit Scheibe 1)                                     |
-| `/finanzen/kette`       | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                                                                               |
+| Seite                   | Recht                                         | Inhalt                                                                                                                                                                         |
+| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/finanzen`             | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                                                                                                      |
+| `/finanzen/konten`      | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan: Tabelle ab `sm` (nach Art gruppiert, Unterkonten eingerückt, Saldo, Status, Aktionen), Karten auf dem Handy; anlegen, bearbeiten, archivieren                      |
+| `/finanzen/journal`     | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle mit fixierter Kopfzeile ab `sm`), Filter Konto, Zeitraum und „Nur Stornos“, alle Spalten sortierbar                                   |
+| `/finanzen/journal/:id` | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen (Zugang/Abgang), Stückelung, Hash und `prev_hash`, Verweis Storno und Original; Storno-Dialog mit Gegenbuchung, Begründung (Pflicht), Bestätigung und eigenem Schlüssel |
+| `/finanzen/buchen`      | `finanzen:buchen`                             | freie Buchung und Umbuchung (siehe unten); Konten mit Stückelung bietet die Seite noch nicht an (kommt mit Scheibe 1)                                                          |
+| `/finanzen/kette`       | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                                                                                                    |
 
 **Buchen:** Modus „Umbuchung“ (Von Konto = Abgang, Nach Konto = Zugang, Betrag) oder „Frei“ mit der
 wiederverwendbaren `BuchungszeilenTabelle` (Konto suchbar, Zugang/Abgang, Betrag; Summenzeile mit
@@ -225,10 +236,10 @@ eine geglückte Buchung erzeugt einen neuen.
 | `POST /api/finanzen/konten`               | `finanzen:verwalten` | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                                                                              |
 | `PUT /api/finanzen/konten/:id`            | `finanzen:verwalten` | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                                                                                 |
 | `PUT /api/finanzen/konten/:id/archiv`     | `finanzen:verwalten` | `{ archiviert }`                                                                                                                                                              |
-| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `limit` (Standard 50, höchstens 200), `vorSeq`; neueste zuerst, `weiter` = nächster `vorSeq`                                                         |
+| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `storno` (`1`); alle Treffer, neueste zuerst, höchstens 2000 (`gekappt`)                                                                             |
 | `GET /api/finanzen/buchungen/:id`         | `finanzen:lesen`     | mit Zeilen, Stückelung, Hashes                                                                                                                                                |
 | `POST /api/finanzen/buchungen`            | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`), `eventId`, `zeilen`; 201 `{ id, seq }`, bei bekanntem Schlüssel 200 mit der vorhandenen Buchung |
-| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text?`; 409 bei doppeltem Storno                                                                                                            |
+| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text` (Begründung, Pflicht); 409 bei doppeltem Storno                                                                                       |
 | `GET /api/finanzen/kette`                 | `finanzen:pruefen`   | Ergebnis von „Kette prüfen“                                                                                                                                                   |
 
 Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username und Status.
