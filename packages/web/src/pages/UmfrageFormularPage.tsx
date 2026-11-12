@@ -838,9 +838,11 @@ export function UmfrageFormularPage() {
       <Title order={2}>{id ? 'Umfrage bearbeiten' : 'Umfrage erstellen'}</Title>
       {!id && !typ && <TypWahl onWahl={setTyp} />}
       {!id && typ && (
-        <Group justify="space-between" wrap="nowrap" gap="xs">
-          <Text fw={600}>{UMFRAGE_TYPEN.find((t) => t.typ === typ)?.titel}</Text>
-          <Button variant="subtle" onClick={() => setTyp(null)}>
+        <Group justify="space-between" wrap="wrap" gap="xs">
+          <Text fw={600} style={{ flex: '1 1 auto', minWidth: 0 }}>
+            {UMFRAGE_TYPEN.find((t) => t.typ === typ)?.titel}
+          </Text>
+          <Button variant="subtle" style={{ flexShrink: 0 }} onClick={() => setTyp(null)}>
             Anderen Typ wählen
           </Button>
         </Group>

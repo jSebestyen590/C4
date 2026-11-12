@@ -10,6 +10,9 @@ um Mitglieder, Profile, Rechte oder Kontaktkanäle), damit die Änderung zum Bes
 ein Feature anlegst oder änderst, aktualisiere dessen Seite im selben Change. Für neue Feature-Bereiche
 legst du eine neue Seite samt Zeile in `docs/README.md` an. Halte sie kurz und sachlich.
 
+Vor einem Review oder Refactoring liest du `docs/refactoring.md`: Dort steht, was bereits geprüft und
+behoben ist und was offen bleibt. Erledigte Punkte trägst du dort aus.
+
 ## Models and token usage
 
 The main chat (Opus) plans, decides and reviews; it re-reads its whole context on every step, so
