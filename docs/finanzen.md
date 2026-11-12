@@ -109,13 +109,13 @@ selbst nicht (409).
 
 **Journal-Liste** (`GET /api/finanzen/buchungen`, Seite „Journal“): jeder Eintrag trägt `abgang` und
 `zugang`, die Zeilen mit negativem bzw. positivem Betrag je Konto zusammengefasst (positive Beträge,
-Wechsel-Zeilen mit 0 entfallen). Die Tabelle (ab `sm`) hat die Spalten Nr., Datum, Text, **Von → Nach**,
-Betrag (Volumen) und Erstellt von; Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
+Wechsel-Zeilen mit 0 entfallen). Die Tabelle (ab `sm`) hat die Spalten Nr., Datum, Text, **Von**, **Nach**,
+Betrag (Volumen) und Erstellt von (Von/Nach je mit eigener Sortierung, `sort=von|nach`; der alte Wert `konten` gilt als `von`; Tabelle scrollt bei schmaler Breite im eigenen Container); Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
 **Alle Spalten sind sortierbar** (Klick auf die Kopfzeile, erneuter Klick dreht die Richtung, `aria-sort`;
 Standard Nr. absteigend; im URL-Parameter `sort`/`richtung`). Dafür liefert die API **alle Treffer in einer
 Antwort** (keine Seiten, kein „Mehr laden“), höchstens `JOURNAL_MAX` = 2000, neueste (`seq`) zuerst; gibt es
 mehr, ist `gekappt: true` und die Seite zeigt „Es werden die neuesten 2.000 Buchungen gezeigt – grenze den
-Zeitraum ein.“ Sortiert wird im Browser über das ganze Ergebnis (Von → Nach nach angezeigtem Text,
+Zeitraum ein.“ Sortiert wird im Browser über das ganze Ergebnis (Von und Nach nach angezeigtem Text,
 `localeCompare('de')`; Betrag nach Cent, Bewegung nach Cent mit Vorzeichen; Gleichstand: Datum, dann Nr.).
 Auf dem Handy wählt ein Feld „Sortieren nach“ über den Karten dieselbe Sortierung. **Filter „Nur Stornos“**
 (`storno=1`): zeigt Stornobuchungen **und** die Originale, die sie rückgängig machen; kombinierbar mit Konto

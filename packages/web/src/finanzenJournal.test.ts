@@ -99,8 +99,9 @@ describe('journalSortieren', () => {
 
   it('sorts text German-aware, by accounts, creator and amounts', () => {
     expect(seqs('text', 'asc', false)).toEqual([2, 3, 1]);
-    // "Bank → Safe" (Nr. 3 before 1 by date) before "Safe → Bank"
-    expect(seqs('konten', 'asc', false)).toEqual([3, 1, 2]);
+    // Von: Bank (Nr. 3 before 1 by date) before Safe
+    expect(seqs('von', 'asc', false)).toEqual([3, 1, 2]);
+    expect(seqs('nach', 'asc', false)).toEqual([2, 3, 1]);
     expect(seqs('erstellt', 'asc', false)).toEqual([2, 1, 3]);
     expect(seqs('betrag', 'asc', false)).toEqual([2, 1, 3]);
   });
@@ -110,7 +111,7 @@ describe('journalSortieren', () => {
     expect(seqs('betrag', 'desc', true)).toEqual([2, 3, 1]);
     expect(seqs('saldo', 'asc', true)).toEqual([1, 3, 2]);
     // the counter account is Safe everywhere; ties fall back to date, then Nr.
-    expect(seqs('konten', 'asc', true)).toEqual([2, 3, 1]);
+    expect(seqs('von', 'asc', true)).toEqual([2, 3, 1]);
   });
 });
 
@@ -125,6 +126,9 @@ describe('sortAusParams / sortLabel', () => {
 
   it('names the columns per view', () => {
     expect(sortLabel('betrag', true)).toBe('Bewegung');
-    expect(sortLabel('konten', false)).toBe('Von → Nach');
+    expect(sortLabel('von', false)).toBe('Von');
+    expect(sortLabel('von', true)).toBe('Gegenkonto');
+    expect(sortAusParams('konten', 'asc', false)).toEqual({ spalte: 'von', richtung: 'asc' });
+    expect(sortAusParams('nach', 'asc', true)).toEqual({ spalte: 'nr', richtung: 'desc' });
   });
 });

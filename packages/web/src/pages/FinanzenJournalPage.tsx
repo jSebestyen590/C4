@@ -35,7 +35,6 @@ import { BETRAG_STIL, detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from 
 import {
   bewegungText,
   journalSortieren,
-  RICHTUNG_MAX,
   richtungKurz,
   richtungText,
   richtungZeilen,
@@ -140,33 +139,6 @@ function Richtung({ konten }: Readonly<{ konten: BuchungRichtungDto[] }>) {
   );
 }
 
-/** "Von → Nach" in one truncated line; the tooltip lists every account with its amount. */
-function VonNach({ b }: Readonly<{ b: BuchungListeDto }>) {
-  const lang = b.abgang.length > RICHTUNG_MAX || b.zugang.length > RICHTUNG_MAX;
-  return (
-    <Tooltip
-      multiline
-      maw={360}
-      disabled={!lang}
-      events={{ hover: true, focus: true, touch: true }}
-      label={
-        <div>
-          {[
-            ...richtungZeilen(b.abgang).map((z) => `Von ${z}`),
-            ...richtungZeilen(b.zugang).map((z) => `Nach ${z}`),
-          ].map((z) => (
-            <div key={z}>{z}</div>
-          ))}
-        </div>
-      }
-    >
-      <Text span inline style={{ display: 'block', minWidth: 0 }} truncate="end">
-        {vonNachText(b.abgang, b.zugang)}
-      </Text>
-    </Tooltip>
-  );
-}
-
 /** Account-statement amount: the word says the direction, red and bold only add to it. */
 function Bewegung({ cent }: Readonly<{ cent: number }>) {
   return (
@@ -229,11 +201,13 @@ export function FinanzenJournalPage() {
         ? sort.richtung === 'asc'
           ? 'desc'
           : 'asc'
-        : ['text', 'konten', 'erstellt'].includes(spalte)
+        : ['text', 'von', 'nach', 'erstellt'].includes(spalte)
           ? 'asc'
           : 'desc',
     );
-  const sortOptionen = SORT_SPALTEN.filter((s) => s !== 'saldo' || kontoId !== '').flatMap((s) => [
+  const sortOptionen = SORT_SPALTEN.filter((s) =>
+    s === 'saldo' ? kontoId !== '' : s === 'nach' ? kontoId === '' : true,
+  ).flatMap((s) => [
     { value: `${s}:asc`, label: `${sortLabel(s, kontoId !== '')}, aufsteigend` },
     { value: `${s}:desc`, label: `${sortLabel(s, kontoId !== '')}, absteigend` },
   ]);
@@ -376,89 +350,101 @@ export function FinanzenJournalPage() {
 
       {buchungen.length > 0 && (
         <Box visibleFrom="sm">
-          <Table
-            verticalSpacing={6}
-            highlightOnHover
-            tabularNums
-            stickyHeader
-            stickyHeaderOffset={56}
-          >
-            <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
-              <Table.Tr>
-                <Table.Th w={80} style={BETRAG_STIL} aria-sort={ariaSort('nr')}>
-                  <SortKopf spalte="nr" rechts {...kopfProps} />
-                </Table.Th>
-                <Table.Th w={120} aria-sort={ariaSort('datum')}>
-                  <SortKopf spalte="datum" {...kopfProps} />
-                </Table.Th>
-                <Table.Th aria-sort={ariaSort('text')}>
-                  <SortKopf spalte="text" {...kopfProps} />
-                </Table.Th>
-                <Table.Th w={200} aria-sort={ariaSort('konten')}>
-                  <SortKopf spalte="konten" {...kopfProps} />
-                </Table.Th>
-                <Table.Th w={170} style={BETRAG_STIL} aria-sort={ariaSort('betrag')}>
-                  <SortKopf spalte="betrag" rechts {...kopfProps} />
-                </Table.Th>
-                {kontoId && (
-                  <Table.Th w={150} style={BETRAG_STIL} aria-sort={ariaSort('saldo')}>
-                    <SortKopf spalte="saldo" rechts {...kopfProps} />
+          <Table.ScrollContainer minWidth={900}>
+            <Table
+              verticalSpacing={6}
+              highlightOnHover
+              tabularNums
+              stickyHeader
+              stickyHeaderOffset={56}
+            >
+              <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
+                <Table.Tr>
+                  <Table.Th w={80} style={BETRAG_STIL} aria-sort={ariaSort('nr')}>
+                    <SortKopf spalte="nr" rechts {...kopfProps} />
                   </Table.Th>
-                )}
-                <Table.Th aria-sort={ariaSort('erstellt')}>
-                  <SortKopf spalte="erstellt" {...kopfProps} />
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {buchungen.map((b) => (
-                <Table.Tr
-                  key={b.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={(e) => {
-                    // The Nr. link navigates on its own.
-                    if (!(e.target as HTMLElement).closest('a')) void navigate(detailPfad(b.id));
-                  }}
-                >
-                  <Table.Td style={BETRAG_STIL}>
-                    <Link
-                      to={detailPfad(b.id)}
-                      style={{ color: 'inherit', textDecoration: 'none' }}
-                    >
-                      {b.seq}
-                    </Link>
-                  </Table.Td>
-                  <Table.Td style={{ whiteSpace: 'nowrap' }}>{datumAnzeigen(b.datum)}</Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Text span style={{ overflowWrap: 'anywhere' }}>
-                        {b.text}
-                      </Text>
-                      <StornoBadges b={b} />
-                    </Group>
-                  </Table.Td>
-                  <Table.Td style={{ maxWidth: 0, width: 200 }}>
-                    {b.konto ? (
-                      <Richtung konten={b.konto.betragCent < 0 ? b.zugang : b.abgang} />
-                    ) : (
-                      <VonNach b={b} />
-                    )}
-                  </Table.Td>
-                  <Table.Td style={BETRAG_STIL}>
-                    {b.konto ? <Bewegung cent={b.konto.betragCent} /> : centAnzeigen(b.betragCent)}
-                  </Table.Td>
-                  {b.konto && (
-                    <Table.Td style={BETRAG_STIL}>
-                      <Saldo cent={b.konto.saldoNachCent} />
-                    </Table.Td>
+                  <Table.Th w={120} aria-sort={ariaSort('datum')}>
+                    <SortKopf spalte="datum" {...kopfProps} />
+                  </Table.Th>
+                  <Table.Th miw={200} aria-sort={ariaSort('text')}>
+                    <SortKopf spalte="text" {...kopfProps} />
+                  </Table.Th>
+                  <Table.Th w={160} aria-sort={ariaSort('von')}>
+                    <SortKopf spalte="von" {...kopfProps} />
+                  </Table.Th>
+                  {!kontoId && (
+                    <Table.Th w={160} aria-sort={ariaSort('nach')}>
+                      <SortKopf spalte="nach" {...kopfProps} />
+                    </Table.Th>
                   )}
-                  <Table.Td>
-                    <Ersteller b={b} />
-                  </Table.Td>
+                  <Table.Th w={170} style={BETRAG_STIL} aria-sort={ariaSort('betrag')}>
+                    <SortKopf spalte="betrag" rechts {...kopfProps} />
+                  </Table.Th>
+                  {kontoId && (
+                    <Table.Th w={150} style={BETRAG_STIL} aria-sort={ariaSort('saldo')}>
+                      <SortKopf spalte="saldo" rechts {...kopfProps} />
+                    </Table.Th>
+                  )}
+                  <Table.Th aria-sort={ariaSort('erstellt')}>
+                    <SortKopf spalte="erstellt" {...kopfProps} />
+                  </Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {buchungen.map((b) => (
+                  <Table.Tr
+                    key={b.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      // The Nr. link navigates on its own.
+                      if (!(e.target as HTMLElement).closest('a')) void navigate(detailPfad(b.id));
+                    }}
+                  >
+                    <Table.Td style={BETRAG_STIL}>
+                      <Link
+                        to={detailPfad(b.id)}
+                        style={{ color: 'inherit', textDecoration: 'none' }}
+                      >
+                        {b.seq}
+                      </Link>
+                    </Table.Td>
+                    <Table.Td style={{ whiteSpace: 'nowrap' }}>{datumAnzeigen(b.datum)}</Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Text span style={{ overflowWrap: 'anywhere' }}>
+                          {b.text}
+                        </Text>
+                        <StornoBadges b={b} />
+                      </Group>
+                    </Table.Td>
+                    <Table.Td style={{ maxWidth: 0, width: 160 }}>
+                      <Richtung konten={b.konto && b.konto.betragCent < 0 ? b.zugang : b.abgang} />
+                    </Table.Td>
+                    {!b.konto && (
+                      <Table.Td style={{ maxWidth: 0, width: 160 }}>
+                        <Richtung konten={b.zugang} />
+                      </Table.Td>
+                    )}
+                    <Table.Td style={BETRAG_STIL}>
+                      {b.konto ? (
+                        <Bewegung cent={b.konto.betragCent} />
+                      ) : (
+                        centAnzeigen(b.betragCent)
+                      )}
+                    </Table.Td>
+                    {b.konto && (
+                      <Table.Td style={BETRAG_STIL}>
+                        <Saldo cent={b.konto.saldoNachCent} />
+                      </Table.Td>
+                    )}
+                    <Table.Td>
+                      <Ersteller b={b} />
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         </Box>
       )}
     </Stack>

@@ -53,7 +53,8 @@ export const SORT_SPALTEN = [
   'nr',
   'datum',
   'text',
-  'konten',
+  'von',
+  'nach',
   'betrag',
   'saldo',
   'erstellt',
@@ -72,18 +73,21 @@ export function sortAusParams(
   richtung: string | null,
   mitSaldo: boolean,
 ): { spalte: SortSpalte; richtung: SortRichtung } {
-  const spalte = SORT_SPALTEN.find((s) => s === sort);
-  if (!spalte || (spalte === 'saldo' && !mitSaldo)) return SORT_STANDARD;
+  // Old URLs: the combined "Von → Nach" column became "Von".
+  const spalte = SORT_SPALTEN.find((s) => s === (sort === 'konten' ? 'von' : sort));
+  // In the account statement there is only "Gegenkonto" (key `von`) and a balance column.
+  if (!spalte || (spalte === 'saldo' && !mitSaldo) || (spalte === 'nach' && mitSaldo))
+    return SORT_STANDARD;
   return { spalte, richtung: richtung === 'asc' ? 'asc' : 'desc' };
 }
 
-/** The accounts column as displayed: the counter account for an account statement, else "Von → Nach". */
-export function kontenText(
+/** The "Von" column as displayed: the counter account ("Gegenkonto") for an account statement. */
+export function vonText(
   b: Pick<BuchungListeDto, 'abgang' | 'zugang' | 'konto'>,
   mitKonto: boolean,
 ): string {
   if (mitKonto && b.konto) return richtungText(b.konto.betragCent < 0 ? b.zugang : b.abgang);
-  return vonNachText(b.abgang, b.zugang);
+  return richtungText(b.abgang);
 }
 
 type SortBuchung = Pick<
@@ -108,8 +112,10 @@ export function journalSortieren<B extends SortBuchung>(
         return a.datum.localeCompare(b.datum);
       case 'text':
         return text(a.text, b.text);
-      case 'konten':
-        return text(kontenText(a, mitKonto), kontenText(b, mitKonto));
+      case 'von':
+        return text(vonText(a, mitKonto), vonText(b, mitKonto));
+      case 'nach':
+        return text(richtungText(a.zugang), richtungText(b.zugang));
       case 'betrag':
         return mitKonto
           ? (a.konto?.betragCent ?? 0) - (b.konto?.betragCent ?? 0)
@@ -139,8 +145,10 @@ export function sortLabel(spalte: SortSpalte, mitKonto: boolean): string {
       return 'Datum';
     case 'text':
       return 'Text';
-    case 'konten':
-      return mitKonto ? 'Gegenkonto' : 'Von → Nach';
+    case 'von':
+      return mitKonto ? 'Gegenkonto' : 'Von';
+    case 'nach':
+      return 'Nach';
     case 'betrag':
       return mitKonto ? 'Bewegung' : 'Betrag';
     case 'saldo':
