@@ -350,13 +350,17 @@ export function FinanzenJournalPage() {
 
       {buchungen.length > 0 && (
         <Box visibleFrom="sm">
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer
+            minWidth={900}
+            maxHeight="max(360px, calc(100dvh - 120px))"
+            type="native"
+          >
             <Table
               verticalSpacing={6}
               highlightOnHover
               tabularNums
               stickyHeader
-              stickyHeaderOffset={56}
+              stickyHeaderOffset={0}
             >
               <Table.Thead style={{ background: 'var(--mantine-color-body)' }}>
                 <Table.Tr>
