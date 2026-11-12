@@ -120,7 +120,7 @@ export function KalenderStammdatenTab<T extends { id: string; archiviert: boolea
               <ActionIcon
                 variant="subtle"
                 color="gray"
-                size={44}
+                size={42}
                 aria-label="Bearbeiten"
                 onClick={() => {
                   setMeldung(null);
@@ -132,7 +132,7 @@ export function KalenderStammdatenTab<T extends { id: string; archiviert: boolea
               <ActionIcon
                 variant="subtle"
                 color="gray"
-                size={44}
+                size={42}
                 aria-label={t.archiviert ? 'Wiederherstellen' : 'Archivieren'}
                 onClick={() => void archivWechseln(t)}
               >

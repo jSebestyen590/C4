@@ -9,6 +9,7 @@ export function BestaetigenDialog({
   bestaetigenText,
   color = 'red',
   gesperrt = false,
+  groesse,
   onClose,
   onBestaetigt,
 }: Readonly<{
@@ -18,6 +19,8 @@ export function BestaetigenDialog({
   color?: string;
   /** Disables the confirm button (the explanation belongs into `children`). */
   gesperrt?: boolean;
+  /** Modal width (Mantine size), e.g. `lg` for tables. */
+  groesse?: string;
   onClose: () => void;
   onBestaetigt: () => Promise<void>;
 }>) {
@@ -36,7 +39,7 @@ export function BestaetigenDialog({
     }
   };
   return (
-    <Modal opened onClose={onClose} title={titel}>
+    <Modal opened onClose={onClose} title={titel} size={groesse}>
       <Stack>
         {children}
         {fehler && <Alert color="red">{fehler}</Alert>}

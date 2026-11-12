@@ -11,6 +11,7 @@ import {
   createBenachrichtigungen,
   createBenachrichtigungenStore,
   createWebPushSender,
+  registriereVerlaufAufraeumen,
 } from './benachrichtigungen';
 import { createKalenderStore } from './kalender';
 import {
@@ -35,6 +36,7 @@ import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
+import { createFinanzenStore } from './finanzen';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
@@ -53,6 +55,7 @@ export function createProduction() {
     sender: createWebPushSender(pushStore, config.appUrl ?? 'https://www.c4-leipzig.de'),
   });
   // Features register their job tasks here (see docs/benachrichtigungen.md).
+  registriereVerlaufAufraeumen(benachrichtigungen);
   registriereKalenderAufgaben(benachrichtigungen, kalender);
   registriereKalenderSerien(benachrichtigungen, kalender);
   const userAdmin = createCognitoUserAdmin(config.userPoolId, config.region);
@@ -96,6 +99,7 @@ export function createProduction() {
     todos,
     umfragen,
     trichter: createTrichterStore(db),
+    finanzen: createFinanzenStore(db),
     protokolle: createProtokolleStore(db),
     privatpartys,
     partymail,

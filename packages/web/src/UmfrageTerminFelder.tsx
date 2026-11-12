@@ -427,7 +427,7 @@ export function TerminListe({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Termin ${i + 1} entfernen`}
                 disabled={termine.length === 1}
                 onClick={() => onChange(termine.filter((_, j) => j !== i))}

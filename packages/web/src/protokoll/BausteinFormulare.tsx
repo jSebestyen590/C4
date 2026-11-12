@@ -936,7 +936,7 @@ export function MeinungsbildFormular({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Option ${i + 1} entfernen`}
                 onClick={() => aendern((d) => optionEntfernen(d, i))}
               >
@@ -1267,7 +1267,7 @@ export function WahlFormular({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Kandidat:in ${i + 1} entfernen`}
                 onClick={() => aendern((d) => kandidatEntfernen(d, k.id))}
               >
@@ -1332,7 +1332,7 @@ export function WahlFormular({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >
@@ -1489,7 +1489,7 @@ export function AuswahlFormular({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Möglichkeit ${i + 1} entfernen`}
                 onClick={() => aendern((d) => auswahlOptionEntfernen(d, o.id))}
               >
@@ -1526,7 +1526,7 @@ export function AuswahlFormular({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >

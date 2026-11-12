@@ -19,7 +19,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [privatpartys.md](./privatpartys.md)             | Privatpartys: Anfragen, Personen, Wunschtermine, Umfrage, Zusage mit Event, Absage    |
 | [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung      |
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                               |
-| [finanzen.md](./finanzen.md)                     | Finanzen (geplant): Zielbild, GoBD, Rechte; Umsetzungsplan in `plans/finanzen.md`     |
+| [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`        |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                    |
 
 ## Allgemein

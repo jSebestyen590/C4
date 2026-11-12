@@ -3,7 +3,8 @@
 Allgemeines Modul für Push-Nachrichten. Es kennt keinen Feature-Bereich; Nutzer sind der Kalender, Geburtstage, die
 Schlüssel, die Umfragen, die Todos und die Privatpartys (je ein Modul `*Benachrichtigungen.ts` in `packages/api/src`). Einstellungen liegen auf der Seite `/benachrichtigungen` (Profilmenü, Eintrag „Benachrichtigungen“).
 
-Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`.
+Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`;
+`benachrichtigung_verlauf`: `0137`–`0140` (siehe [Verlauf](#verlauf)).
 
 ## Dateien
 
@@ -55,6 +56,7 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `push_abos`                      | Ein Abo je Gerät (`endpoint` eindeutig, `p256dh`, `auth`, `mitglied_sub`).                                                                                                                                                           |
 | `benachrichtigung_einstellungen` | `(mitglied_sub, art)` → `aktiv`, `minuten`.                                                                                                                                                                                          |
 | `push_versand`                   | Dedupe-Schlüssel bereits gesendeter Nachrichten.                                                                                                                                                                                     |
+| `benachrichtigung_verlauf`       | Verlauf je Mitglied: `id`, `mitglied_sub`, `art`, `titel`, `text`, `url`, `schluessel` (Dedupe, eindeutig je Mitglied, kann `NULL` sein), `erstellt`, `gelesen` (`NULL` = ungelesen).                                                |
 | `push_schluessel`                | VAPID-Schlüsselpaar (eine Zeile). Wird beim ersten Gebrauch von der API erzeugt (`generateVAPIDKeys`); gleichzeitige Kaltstarts einigen sich per `insert … on conflict do nothing` + erneutes Lesen. Kein Secret in Terraform/State. |
 
 ## API
@@ -65,6 +67,10 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
   `PUT /api/me/benachrichtigungen` `{ art, aktiv, minuten? }`.
 - `POST /api/push/test` → `{ geraete, ok, fehler }`: Testnachricht an die eigenen Geräte (ohne Dedupe und ohne
   Einstellungsfilter).
+- Verlauf (siehe unten):
+  `GET /api/me/benachrichtigungen/verlauf?art=&bereich=&ungelesen=true&vor=` → `{ eintraege, weiter }` (30 je Seite, neueste
+  zuerst, `weiter` ist der `vor`-Cursor); `GET …/verlauf/ungelesen` → `{ anzahl }`; `POST …/verlauf/:id/gelesen` → 204
+  (fremde oder unbekannte id: 404); `POST …/verlauf/gelesen` `{ art?, bereich? }` → 204, markiert alle zum Filter passenden.
 - Alle brauchen `profil:bearbeiten` und eine Profilzeile.
 
 ## Versand und Job
@@ -91,6 +97,28 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
    registrieren (Vorbild: `kalenderBenachrichtigungen.ts`). Für wiederholte Jobs einen `dedupeSchluessel` wählen,
    der sich ändert, wenn erneut benachrichtigt werden soll (z. B. neuer Beginn).
 4. Tests mit `createFakeBenachrichtigungenStore` (`benachrichtigungen.fake.ts`) und einem Fake-Sender.
+
+## Verlauf
+
+Jede Sendung (`senden`) schreibt für jeden Empfänger, für den die Art aktiv ist (bei `ohneEinstellung` für jeden), einen
+Eintrag in `benachrichtigung_verlauf`, **auch ohne registriertes Gerät** (der Verlauf ist so auch ein In-App-Postfach).
+`testSenden` schreibt keinen Eintrag. Ein Fehler beim Schreiben wird nur geloggt, der Push geht trotzdem raus (dann ohne `id`).
+
+- **Dedupe:** Mit `dedupeSchluessel` ist der Eintrag je Mitglied eindeutig (Unique-Index auf `(mitglied_sub, schluessel)`).
+  Ohne Gerät wird nur der Verlauf geschrieben und der Schlüssel nicht belegt (der Eintrag entsteht beim späteren Lauf nicht
+  doppelt). Mit Gerät wird zuerst der Schlüssel belegt; ist er schon belegt, passiert nichts.
+- **Payload:** Die Push-Nachricht enthält die `id` des Eintrags des jeweiligen Mitglieds.
+- **Aufbewahrung:** 90 Tage. Der Job-Task `verlauf-aufraeumen` (einmal je Tag, per `einmalBelegen`) löscht ältere Einträge in
+  Batches.
+- **Gelesen** ist ein Eintrag, wenn man auf den Push klickt, auf den Eintrag im Verlauf klickt, ihn nach links oder rechts
+  wischt (am Desktop: Knopf „Als gelesen markieren“) oder „Alle als gelesen markieren“ wählt. Das bloße Öffnen der Seite
+  markiert nichts.
+- **Service Worker:** Beim Klick auf einen Push hängt er `?benachrichtigung=<id>` an die Ziel-URL (er hat kein Token); die
+  App markiert den Eintrag als gelesen und entfernt den Parameter (`usePushGelesenParam` im `AppLayout`). Eingehende Pushs
+  melden sich per `postMessage({ typ: 'push' })` bei offenen Fenstern, damit Badge und Liste sich aktualisieren.
+- **Web:** Das Profilbild-Menü zeigt am Avatar und am Eintrag „Benachrichtigungsverlauf“ die Zahl der ungelesenen Einträge
+  (alle 60 s und beim Fokus aktualisiert). Die Seite `/benachrichtigungen/verlauf` zeigt standardmäßig nur Ungelesene
+  (Umschalter „Alle“), filtert nach Bereich oder Art (in der URL: `art`, `bereich`, `alle=1`) und lädt mit „Mehr laden“ nach.
 
 ## Kalender-Arten
 

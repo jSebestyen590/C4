@@ -104,7 +104,7 @@ function LagerZeile({
             <ActionIcon
               variant="subtle"
               color="gray"
-              size={44}
+              size={42}
               aria-label={auf ? `${node.name} zuklappen` : `${node.name} aufklappen`}
               aria-expanded={auf}
               onClick={() => ctx.umschalten(node.id, tiefe)}
@@ -112,7 +112,7 @@ function LagerZeile({
               {auf ? <IconChevronDown size={20} /> : <IconChevronRight size={20} />}
             </ActionIcon>
           ) : (
-            <Box w={44} h={44} style={{ flexShrink: 0 }} />
+            <Box w={42} h={42} style={{ flexShrink: 0 }} />
           )}
           <Stack gap={0} style={{ flex: 1, minWidth: 0 }} py={10}>
             <Group gap="xs">
@@ -153,7 +153,7 @@ function LagerZeile({
             <SimpleGrid cols={ctx.hatBestand(node.id) ? 2 : 1} spacing="xs" maw={{ sm: 420 }}>
               {ctx.hatBestand(node.id) && (
                 <Button
-                  mih={44}
+                  mih={42}
                   leftSection={<IconPackageExport size={18} />}
                   onClick={() => ctx.entnehmen(node)}
                 >
@@ -161,7 +161,7 @@ function LagerZeile({
                 </Button>
               )}
               <Button
-                mih={44}
+                mih={42}
                 variant="light"
                 leftSection={<IconPackageImport size={18} />}
                 onClick={() => ctx.einlagern(node)}
@@ -170,7 +170,7 @@ function LagerZeile({
               </Button>
             </SimpleGrid>
             <Button
-              mih={44}
+              mih={42}
               w={{ base: '100%', sm: 'fit-content' }}
               variant={inventurId ? 'filled' : 'default'}
               leftSection={<IconClipboardCheck size={18} />}

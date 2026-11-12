@@ -278,7 +278,7 @@ export function ProtokollEditor({
             withTypographyStyles
             styles={{
               root: editierbar ? undefined : { border: 'none' },
-              control: { width: 44, height: 44 },
+              control: { width: 42, height: 42 },
               content: { background: 'transparent' },
             }}
           >

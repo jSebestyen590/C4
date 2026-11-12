@@ -77,6 +77,13 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'protokolle:lesen': 'Protokolle lesen',
   'protokolle:schreiben': 'Protokolle schreiben',
   'privatpartys:verwalten': 'Privatpartys verwalten',
+  'buch:lesen': 'Eigenes Buch lesen',
+  'kasse:zaehlen': 'Kasse zählen',
+  'belege:einreichen': 'Belege einreichen',
+  'finanzen:lesen': 'Finanzen lesen',
+  'finanzen:buchen': 'Finanzen buchen',
+  'finanzen:verwalten': 'Finanzen verwalten',
+  'finanzen:pruefen': 'Finanzen prüfen',
 };
 
 export const MITGLIED_STATUS_LABELS: Record<MitgliedStatus, Gegendert> = {

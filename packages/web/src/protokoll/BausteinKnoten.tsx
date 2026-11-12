@@ -119,7 +119,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
                     <ActionIcon
                       variant="subtle"
                       color="red"
-                      size={44}
+                      size={42}
                       className="protokoll-nicht-drucken"
                       aria-label={`${BAUSTEIN_TITEL[typ]} entfernen`}
                       onClick={() => setLoeschen(true)}

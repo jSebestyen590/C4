@@ -73,7 +73,7 @@ export function PrivatpartyPersonPage() {
         <Title order={3}>Privatpartys</Title>
         <Button
           size="md"
-          mih={44}
+          mih={42}
           component={Link}
           to={`/privatpartys/neu?person=${encodeURIComponent(p.id)}`}
           variant="default"

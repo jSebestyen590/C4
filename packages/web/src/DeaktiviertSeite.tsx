@@ -7,7 +7,7 @@ export function DeaktiviertSeite({ onAbmelden }: Readonly<{ onAbmelden: () => vo
       <Stack maw={420} align="center" ta="center">
         <Title order={2}>Account deaktiviert</Title>
         <Text>Dein Account ist deaktiviert. Wende dich an den Vorstand.</Text>
-        <Button size="md" mih={44} fullWidth onClick={onAbmelden}>
+        <Button size="md" mih={42} fullWidth onClick={onAbmelden}>
           Abmelden
         </Button>
       </Stack>

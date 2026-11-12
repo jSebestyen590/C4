@@ -67,12 +67,12 @@ function Dialog({
         {children}
         {fehler && <Alert color="red">{fehler}</Alert>}
         <Group grow preventGrowOverflow={false}>
-          <Button size="md" mih={44} variant="default" onClick={onClose}>
+          <Button size="md" mih={42} variant="default" onClick={onClose}>
             Abbrechen
           </Button>
           <Button
             size="md"
-            mih={44}
+            mih={42}
             loading={laeuft}
             disabled={gesperrt}
             onClick={() => void absenden()}

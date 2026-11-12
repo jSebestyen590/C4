@@ -1,0 +1,48 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+// Guard: the journal tables are insert-only. No production code may update or delete them.
+const TABELLEN = 'finBuchungen|finBuchungszeilen|finStueckelung';
+const SQL_TABELLEN = 'fin_buchungen|fin_buchungszeilen|fin_stueckelung';
+
+const MUSTER: RegExp[] = [
+  new RegExp(`\\.(update|delete)\\(\\s*(${TABELLEN})\\b`, 'g'),
+  new RegExp(`\\bUPDATE\\s+(${SQL_TABELLEN})\\b`, 'gi'),
+  new RegExp(`\\bDELETE\\s+FROM\\s+(${SQL_TABELLEN})\\b`, 'gi'),
+];
+
+function treffer(text: string): string[] {
+  return MUSTER.flatMap((m) => [...text.matchAll(m)].map((x) => x[0]));
+}
+
+function dateien(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const pfad = join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'migrations' ? [] : dateien(pfad);
+    if (!e.name.endsWith('.ts') || e.name.endsWith('.test.ts') || e.name.endsWith('.fake.ts')) {
+      return [];
+    }
+    return [pfad];
+  });
+}
+
+describe('Finanz-Journal ist insert-only', () => {
+  it('kein Produktionscode ändert oder löscht Journaltabellen', () => {
+    const funde = dateien(__dirname).flatMap((datei) =>
+      treffer(readFileSync(datei, 'utf8')).map((t) => `${datei}: ${t}`),
+    );
+    expect(funde, `Update/Delete auf Journaltabellen gefunden:\n${funde.join('\n')}`).toEqual([]);
+  });
+
+  it('der Detektor erkennt Verstöße', () => {
+    expect(treffer('await db.update(finBuchungen).set({})')).toHaveLength(1);
+    expect(treffer('tx.delete(\n  finBuchungszeilen)')).toHaveLength(1);
+    expect(treffer('db.update( finStueckelung )')).toHaveLength(1);
+    expect(treffer('update Fin_Buchungen set x = 1')).toHaveLength(1);
+    expect(treffer('DELETE   FROM fin_stueckelung')).toHaveLength(1);
+    expect(treffer('db.update(finZaehler).set({})')).toHaveLength(0);
+    expect(treffer('UPDATE fin_konten SET x = 1')).toHaveLength(0);
+    expect(treffer('db.insert(finBuchungen).values({})')).toHaveLength(0);
+  });
+});

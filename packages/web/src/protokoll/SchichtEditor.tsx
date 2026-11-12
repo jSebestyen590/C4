@@ -30,7 +30,7 @@ export function SchichtEditor({
               <ActionIcon
                 variant="subtle"
                 color="red"
-                size={44}
+                size={42}
                 aria-label={`${ART_TITEL[s.art]} entfernen`}
                 onClick={() => onChange(schichten.filter((_, j) => j !== i))}
               >
