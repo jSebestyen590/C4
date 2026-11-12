@@ -110,7 +110,7 @@ selbst nicht (409).
 **Journal-Liste** (`GET /api/finanzen/buchungen`, Seite „Journal“): jeder Eintrag trägt `abgang` und
 `zugang`, die Zeilen mit negativem bzw. positivem Betrag je Konto zusammengefasst (positive Beträge,
 Wechsel-Zeilen mit 0 entfallen). Die Tabelle (ab `sm`) hat die Spalten Nr., Datum, Text, **Von**, **Nach**,
-Betrag (Volumen) und Erstellt von (Von/Nach je mit eigener Sortierung, `sort=von|nach`; der alte Wert `konten` gilt als `von`; Tabelle scrollt bei schmaler Breite im eigenen Container); Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
+Betrag (Volumen) und Erstellt von (Von/Nach je mit eigener Sortierung, `sort=von|nach`; Tabelle scrollt bei schmaler Breite im eigenen Container); Karten auf dem Handy zeigen dieselbe Zeile „Bank (Fyrst) → Geldtransit“.
 **Alle Spalten sind sortierbar** (Klick auf die Kopfzeile, erneuter Klick dreht die Richtung, `aria-sort`;
 Standard Nr. absteigend; im URL-Parameter `sort`/`richtung`). Dafür liefert die API **alle Treffer in einer
 Antwort** (keine Seiten, kein „Mehr laden“), höchstens `JOURNAL_MAX` = 2000, neueste (`seq`) zuerst; gibt es

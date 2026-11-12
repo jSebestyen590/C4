@@ -128,7 +128,7 @@ describe('sortAusParams / sortLabel', () => {
     expect(sortLabel('betrag', true)).toBe('Bewegung');
     expect(sortLabel('von', false)).toBe('Von');
     expect(sortLabel('von', true)).toBe('Gegenkonto');
-    expect(sortAusParams('konten', 'asc', false)).toEqual({ spalte: 'von', richtung: 'asc' });
+    expect(sortAusParams('konten', 'asc', false)).toEqual({ spalte: 'nr', richtung: 'desc' });
     expect(sortAusParams('nach', 'asc', true)).toEqual({ spalte: 'nr', richtung: 'desc' });
   });
 });

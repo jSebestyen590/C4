@@ -73,8 +73,7 @@ export function sortAusParams(
   richtung: string | null,
   mitSaldo: boolean,
 ): { spalte: SortSpalte; richtung: SortRichtung } {
-  // Old URLs: the combined "Von → Nach" column became "Von".
-  const spalte = SORT_SPALTEN.find((s) => s === (sort === 'konten' ? 'von' : sort));
+  const spalte = SORT_SPALTEN.find((s) => s === sort);
   // In the account statement there is only "Gegenkonto" (key `von`) and a balance column.
   if (!spalte || (spalte === 'saldo' && !mitSaldo) || (spalte === 'nach' && mitSaldo))
     return SORT_STANDARD;
