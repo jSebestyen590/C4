@@ -117,7 +117,12 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 ## Offen
 
+Als „zurückgestellt“ markierte Punkte sind vorerst nicht geplant und nur als GitHub-Issue festgehalten; alle anderen sollen
+angegangen werden.
+
 ### 1. Gleichzeitige Zugriffe, die der Retry nicht löst
+
+**Zurückgestellt**, dokumentiert in [Issue 36](https://github.com/jSebestyen590/C4/issues/36).
 
 Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe je Stelle: in der
 Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegenstands oder Lagerorts) oder ein Unique-Index.
@@ -144,7 +149,7 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 - **Deploy-Reihenfolge:** `terraform apply` (neue Lambda) läuft vor `db:migrate`. Kein Rollback-Weg für prod (keine
   Lambda-Versionen, `rollback_to` nur dev), `-auto-approve` ohne Plan, kein Zwang zu grünem CI oder Tag auf `main`.
 - **Migrationen:** kein Schutz gegen zwei gleichzeitige Läufe (kein `concurrency` im Workflow, keine Sperrzeile).
-- **Admin-Entzug:** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
+- **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
 - **Absicherung nach außen:** kein Throttling am API Gateway, keine Security-Header (CloudFront), `/health` fragt die DB ab,
   kein MFA im Cognito-Pool, kein Default-Deny für `auth` in `app.ts`.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
@@ -156,21 +161,21 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
   Profilbilder ist aus.
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll.
-- **Eingehende Mail:** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes
+- **Eingehende Mail (zurückgestellt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes
   `In-Reply-To` überschreibt `mail_adresse`.
 - **CI:** Actions auf Major-Tags statt SHAs, kein Dependabot oder `pnpm audit`, kein `terraform plan` auf PRs.
 - **Lokal:** `pnpm db:reset` nutzt den Endpoint aus der Umgebung; mit prod-Zugangsdaten träfe es prod.
 
 ### 3. Fachliche Punkte, die eine Entscheidung brauchen
 
-- **Status mit Zukunftsdatum:** `statusAbgleichen` nimmt den jüngsten Eintrag ohne Vergleich mit heute; über einen
+- **Status mit Zukunftsdatum (zurückgestellt, [Issue 39](https://github.com/jSebestyen590/C4/issues/39)):** `statusAbgleichen` nimmt den jüngsten Eintrag ohne Vergleich mit heute; über einen
   Protokoll-Abschluss könnte ein künftiges Datum hineinkommen (unsicher). `statusSetzen` überschreibt einen Eintrag vom selben
   Tag still, die Route antwortet dafür mit 409.
 - **Schlüssel-Planungen** laufen nie ab; eine veraltete Planung zeigt ihren Empfänger weiter als erwarteten Halter. Eine
   Übergabe an jemand anderen entfernt sie nicht.
 - **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
   ohne Prüfung auf Zukunftsdatum.
-- **Buchungen mit Zukunftsdatum** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
+- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
   nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
 - **Todos:** Überfällige Todos werden nie erinnert.
 - **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
