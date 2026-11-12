@@ -1,8 +1,28 @@
 # Todos
 
 Aufgaben mit Deadline. Sie entstehen beim Abschließen eines Protokolls aus dem Baustein **Todo** (siehe
-[protokolle.md](./protokolle.md); das Todo steht dort nur in den Notizen eines anderen Bausteins, nie auf oberster Ebene, und erscheint im Dokument und PDF als Aufzählungspunkt) oder werden von Mitgliedern für sich selbst angelegt. Jede Person sieht ihre Todos auf der Seite
+[protokolle.md](./protokolle.md), [Baustein Todo](./protokolle/bausteine.md#todo-bausteintodo); das Todo steht dort nur in den Notizen eines anderen Bausteins, nie auf oberster Ebene, und erscheint im Dokument und PDF als Aufzählungspunkt) oder werden von Mitgliedern für sich selbst angelegt. Jede Person sieht ihre Todos auf der Seite
 **Todos** (`/todos`, Navigation „Todos“ mit `IconChecklist`, für alle angemeldeten Mitglieder mit Profil; es ist kein eigenes Recht nötig).
+
+## Invarianten
+
+- Der Weg ins System: Todos aus einem Protokoll entstehen nur beim Abschließen (Aktionen `todo.anlegen`/`todo.aendern`, siehe
+  [protokolle/aktionen.md](./protokolle/aktionen.md)); eigene Todos legt man über `POST /api/me/todos` an. Es gibt keinen anderen Weg.
+- Nur selbst angelegte Todos **ohne** Protokoll lassen sich ändern oder löschen (sonst 403, `todoBearbeitbarLaden`); Todos aus einem
+  Protokoll folgen dem Protokoll. Wird der Todo-Baustein entfernt, bleibt das Todo bestehen.
+- Eigene Todos sind immer Modus `einzeln` und nur für die anlegende Person.
+- Abhaken dürfen nur Zuständige (403 sonst); beim Ändern und Löschen sind fremde Todos 404 (`eigenesTodoLaden`), damit keine Ids durchsickern.
+- Ein Moduswechsel setzt alle Häkchen zurück; wer in der Zuständigenliste bleibt, behält sein Häkchen (`zustaendigeSetzen`).
+- Die Erinnerung `todo.frist` ist nicht abschaltbar und kommt einmal je Todo, Deadline und Person (siehe [Erinnerung](#erinnerung)).
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/todos.ts` (Store), `todoBenachrichtigungen.ts` (Erinnerung), `todos.fake.ts`, Routen `/api/me/todos…` in `app.ts`; Anlegen aus Protokollen in `protokollAktionen.ts` |
+| Shared  | `packages/shared/src/todos.ts` (Schemas, Sortierung, Anzeige-Texte)                                                                                                                    |
+| Web     | `pages/TodosPage.tsx`, `TodoDialog.tsx`, `todoDaten.tsx`                                                                                                                               |
+| Tests   | `packages/shared/src/todos.test.ts`, `packages/api/src/todoBenachrichtigungen.test.ts`, `packages/web/src/pages/TodosPage.test.tsx`                                                    |
 
 ## Datenmodell
 
@@ -49,5 +69,16 @@ Alle Routen brauchen nur die Anmeldung und beziehen sich auf die angemeldete Per
 
 ## Erinnerung
 
-Art `todo.frist` (nicht abschaltbar), siehe [benachrichtigungen.md](./benachrichtigungen.md). Push erreicht nur Geräte, auf denen
-Benachrichtigungen erlaubt sind. Tippen auf die Nachricht öffnet die Seite Todos.
+Art `todo.frist` (nicht abschaltbar), siehe [benachrichtigungen.md](./benachrichtigungen.md#todos). Umsetzung:
+`todoErinnerungen` in `packages/api/src/todoBenachrichtigungen.ts`, Abfrage `offeneFaelligZwischen` in `todos.ts`. Der Job läuft alle 5 Minuten.
+
+- **Welche Todos:** Alle mit Deadline (`faelligAm`) von **heute bis heute + 2 Tage** (beide Tage eingeschlossen, `TODO_ERINNERUNG_TAGE`),
+  die für mindestens eine Person noch offen sind. Offen ist: bei `gemeinsam` für alle Zuständigen, solange niemand abgehakt hat; bei
+  `einzeln` für die, die noch nicht abgehakt haben (`offeneSubsVon`). Gesendet wird einzeln an jede dieser Personen.
+- **Ab wann:** Erst ab **09:00 Uhr Berliner Zeit** (`stundeBerlin`); davor tut der Job nichts. „Heute“ ist das Berliner Datum.
+- **Wie oft:** Dedupe-Schlüssel `todo.frist:<todoId>:<faelligAm>:<sub>`, also **einmal je Todo, Deadline und Person**: Die Nachricht kommt
+  am ersten Tag, an dem das Todo im Fenster liegt (zwei Tage vor der Deadline, bei später angelegten Todos entsprechend später), nicht
+  noch einmal am Tag davor oder am Fälligkeitstag. Verschiebt sich die Deadline, kommt sie erneut. Hat eine Person kein Push-Gerät, wird
+  der Schlüssel nicht belegt (siehe [benachrichtigungen.md](./benachrichtigungen.md#versand-und-job)).
+- **Überfällige Todos** (Deadline vor heute) liegen außerhalb des Fensters und werden **nicht** erinnert; sie werden auch nicht nachgeholt.
+- Push erreicht nur Geräte, auf denen Benachrichtigungen erlaubt sind. Tippen auf die Nachricht öffnet die Seite Todos (`/app/todos`).

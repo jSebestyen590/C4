@@ -104,6 +104,15 @@ describe('koenige', () => {
       ]),
     ).toEqual(['b']);
   });
+  it('behandelt Mengen als gleich, die nur durch Rundung abweichen', () => {
+    expect(0.1 + 0.2).not.toBe(0.3);
+    expect(
+      koenige([
+        { sub: 'a', anzahl: 1, ml: 0.1 + 0.2 },
+        { sub: 'b', anzahl: 1, ml: 0.3 },
+      ]),
+    ).toEqual(['a', 'b']);
+  });
   it('nennt bei vollem Gleichstand alle', () => {
     expect(
       koenige([

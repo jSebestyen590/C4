@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { anzahlSchema } from './bausteine';
 import {
   basisGebinde,
   bodenIfcoPlatz,
@@ -941,5 +942,15 @@ describe('bodenIfcoPlatz / schemas', () => {
     expect(
       boedenHinzufuegenSchema.safeParse({ namen: ['x', 'y'], ifcoPlatz: [a, b] }).success,
     ).toBe(true);
+  });
+});
+
+describe('anzahlSchema', () => {
+  it('needs a whole number from 1 to 1,000,000', () => {
+    expect(anzahlSchema.safeParse(1).success).toBe(true);
+    expect(anzahlSchema.safeParse(1_000_000).success).toBe(true);
+    expect(anzahlSchema.safeParse(1_000_001).success).toBe(false);
+    expect(anzahlSchema.safeParse(0).success).toBe(false);
+    expect(anzahlSchema.safeParse(1.5).success).toBe(false);
   });
 });

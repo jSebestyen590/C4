@@ -3,6 +3,30 @@
 Ein Mitglied ist eine Person mit einem Cognito-Konto **und** einer Profilzeile in der Datenbank.
 Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank alles andere.
 
+## Invarianten
+
+- `mitglieder.status` ist **abgeleitet** aus `mitglied_status_verlauf` (jüngster Eintrag, `statusAbgleichen` in `packages/api/src/mitglieder.ts`);
+  geändert wird der Verlauf, nie die Spalte allein.
+- Username und E-Mail liegen nur in Cognito, nie in der Datenbank. Die Mitgliederliste ist die Vereinigung aus Profilzeilen und aktivierten
+  Cognito-Konten; eine Selbstregistrierung gibt es nicht.
+- Die Rechte werden bei jedem Request neu berechnet (Status ∪ Gruppen ∪ Rechte der aktuellen Posten); ohne Profilzeile gilt `anwaerter`.
+- `deaktiviert_am` ist die Wahrheit über einen deaktivierten Account (403 auf jeder Route); sein Status und seine Historie sind gesperrt (409),
+  neue Einträge für ihn (Dienst, Trichter, Schlüsselübergabe …) lehnt die API mit 400 ab. Das eigene Konto lässt sich nicht deaktivieren
+  und die eigene Admin-Rolle nicht entziehen.
+- Der Status-Verlauf hat nie zwei Einträge mit demselben Datum (409) und verliert nie seinen letzten Eintrag (400); Daten liegen nicht in der Zukunft.
+- **Jedes** Mitglied mit `mitglieder:lesen` (alle Status) sieht alle Profilfelder aller Mitglieder (siehe
+  [Was andere Mitglieder sehen](#was-andere-mitglieder-sehen)). Neue Profilfelder sind damit automatisch für alle sichtbar, solange man das nicht ändert.
+- Profilbild-Keys müssen unter `profilbilder/<eigene sub>/` liegen; wer WhatsApp, Signal oder Telegram wählt, braucht eine lesbare Telefonnummer.
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                    |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/mitglieder.ts` (Store, Status-Verlauf), `admin.ts` (Cognito-Verwaltung), `auth.ts` (Rechte, Deaktivierung), `profilbilder.ts`, `emailaenderung.ts`; Routen und `alsMitglied` in `app.ts` |
+| Shared  | `packages/shared/src/roles.ts` (Rechte), `status.ts`, `statusVerlauf.ts`, `kontakt.ts` (Kanäle, Telefon, vCard)                                                                                            |
+| Web     | Seiten `pages/MitgliederPage.tsx`, `MitgliedPage.tsx`, `ProfilPage.tsx`; `auth.tsx`, `StatusAnzeige.tsx` (`StatusName`), `KontaktkanalIcons.tsx`, `vcard.ts`, `i18n.ts`                                    |
+| Tests   | `packages/shared/src/status.test.ts`, `statusVerlauf.test.ts`, `kontakt.test.ts`, `roles.test.ts`; `packages/api/src/mitglieder.test.ts`, `profilbilder.test.ts`                                           |
+
 ## Datenmodell
 
 Tabelle `mitglieder`, Schlüssel ist die Cognito-`sub` (Migrationen `0002`–`0005`). Aurora DSQL erlaubt
@@ -22,6 +46,19 @@ hinzugefügte Spalten sind deshalb nullable.
 | `geburtstag_im_kalender`           | Boolean, null = an (Migration `0072`). Aus: nicht im Kalender, keine Erinnerung.                                                                                         |
 | `wohnheim`                         | Boolean, null = nein (Migration `0130`). Wer „Ich wohne im Wohnheim“ setzt, wird gefragt, wenn jemand einen Schlüssel abgeben möchte ([schluessel.md](./schluessel.md)). |
 | `deaktiviert_am`                   | Zeitstempel, null = aktiv (Migration `0097`), siehe „Accounts deaktivieren“.                                                                                             |
+
+**Weitere Tabellen:** `mitglied_status_verlauf` (siehe „Status-Historie“) und `vcard_tokens` (Migrationen `0118`, `0119`; `mitglied_sub` als Schlüssel,
+`token_hash`, `ablauf`, `erstellt`: der kurzlebige Token für die vCard-Links, siehe „Kontaktkanäle“).
+
+## Was andere Mitglieder sehen
+
+`GET /api/mitglieder` und `GET /api/mitglieder/:kennung` (Recht `mitglieder:lesen`, das **alle** Status haben) liefern für jedes Mitglied denselben
+Datensatz (`alsMitglied` in `packages/api/src/app.ts`): Vorname, Nachname, Anrede, Username, **E-Mail**, **Adresse**, **Telefon**, Über mich,
+Kontaktkanäle, Discord-Name, Profilbild-URLs (klein und groß), **Geburtsdatum**, `geburtstagImKalender`, `wohnheim`, Status, `deaktiviert`, `aktiviert` und die aktuellen Posten.
+Das ist die **geltende Regel**, nicht ein Versehen: Es gibt keine Freigabe pro Feld und keine Einschränkung nach Status (beim Geburtsdatum
+steht im Code ausdrücklich „Always visible“). Ausnahmen: `rollen` bekommen nur Admins (`users:manage`), und Deaktivierte stehen nur auf Anfrage (`?deaktivierte=1`, Admins) in der
+Liste (die Detailroute liefert sie weiter). Wer ein neues Profilfeld ergänzt, gibt es damit allen Mitgliedern frei; soll es privat bleiben, muss `alsMitglied` es
+für Nicht-Admins weglassen.
 
 **Wohnheim:** Schalter im Profil (`/profil`), `PUT /api/me/mitglied` sendet wie alle Felder auch `wohnheim`.
 
@@ -46,7 +83,7 @@ Reihenfolge nicht.
 
 Statuswechsel und Einladungen entstehen auch aus **Protokollen**: Beim Abschließen laden Anwärter:in-Bausteine ein (Konto plus
 Profil als Anwärter:in), Aufnahme und Neues EM setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum.
-Das läuft mit dem Recht `protokolle:schreiben`, ohne `users:manage`; siehe [protokolle.md](./protokolle.md#aktionen-beim-abschließen).
+Das läuft mit dem Recht `protokolle:schreiben`, ohne `users:manage`; siehe [protokolle/aktionen.md](./protokolle/aktionen.md).
 
 ## Status-Historie
 
@@ -85,13 +122,11 @@ Rechte = STATUS_PERMISSIONS[Status]  ∪  ROLE_PERMISSIONS[Cognito-Gruppen]  ∪
 - Die Web-App liest das Ergebnis von `GET /api/me` (`can()` in `auth.tsx`). Die Gruppen aus dem
   Token werden für die Oberfläche nicht verwendet.
 - **Externe** (`extern`) haben vorerst dieselben Rechte wie Anwärter:innen (eigene Liste in `STATUS_PERMISSIONS`, damit sie sich später ändern lässt).
-- Aktuell bekommen alle Status dieselben Rechte (`content:read`, `mitglieder:lesen`, `profil:bearbeiten`, `posten:lesen`,
-  `waren:lesen`, `bestand:buchen`, `inventar:lesen`, `inventar:umraeumen`, `kalender:lesen`, `schluessel:lesen`, `umfragen:lesen`, `trichter:lesen`, `bilder:lesen`, `protokolle:lesen`). Sobald Features unterschiedliche Rechte
-  brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte `waren:verwalten`,
-  `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben` und `privatpartys:verwalten` haben nur Admins und Posten (siehe
-  [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md),
-  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md), [protokolle.md](./protokolle.md),
-  [privatpartys.md](./privatpartys.md)).
+- Welche Rechte ein Status, die Gruppe `admin` und ein Posten vergeben können, steht in `packages/shared/src/roles.ts` (`PERMISSIONS`,
+  `STATUS_PERMISSIONS`, `ROLE_PERMISSIONS`, `POSTEN_RECHTE`). Aktuell bekommen alle Status dieselben Lese- und Buchungsrechte; sobald Features
+  unterschiedliche Rechte brauchen, trägt man sie in `STATUS_PERMISSIONS` ein. Die Verwaltungsrechte haben nur Admins und Posten; sie sind bei den
+  Features beschrieben: [waren.md](./waren.md), [inventar.md](./inventar.md), [kalender.md](./kalender.md), [schluessel.md](./schluessel.md),
+  [umfragen.md](./umfragen.md), [trichter.md](./trichter.md), [protokolle.md](./protokolle.md), [privatpartys.md](./privatpartys.md).
 - Zusätzliche Rechte kommen über Posten: Wer einen Posten aktuell innehat, erhält dessen Rechte
   (siehe [posten.md](./posten.md)).
 

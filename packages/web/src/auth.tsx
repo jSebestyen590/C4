@@ -19,6 +19,9 @@ export interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/** The token refresh in flight, shared by all requests that hit a 401 at the same time. */
+let laufendeErneuerung: Promise<string | null> | null = null;
+
 export function createUserManager(config: AppConfig): UserManager {
   const origin = window.location.origin;
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -112,7 +115,15 @@ export function AuthProvider({
       getAccessToken: () => user?.access_token ?? null,
       refreshAccessToken: async () => {
         if (!user?.refresh_token) return null;
-        return (await manager.signinSilent().catch(() => null))?.access_token ?? null;
+        // Parallel 401s share one refresh instead of each calling signinSilent().
+        laufendeErneuerung ??= manager
+          .signinSilent()
+          .then((u) => u?.access_token ?? null)
+          .catch(() => null)
+          .finally(() => {
+            laufendeErneuerung = null;
+          });
+        return laufendeErneuerung;
       },
       kontoDeaktiviert: () => setDeaktiviert(true),
     };

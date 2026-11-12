@@ -117,6 +117,19 @@ export function verwendetMeldung(art: EintragArt): string {
   return `${artikel} ${art} wird noch verwendet, archiviere ${pronomen} stattdessen.`;
 }
 
+/** True if the content of a Gebinde (amount, unit, Untergebinde) differs between `bisher` and `neu`. */
+export function gebindeInhaltGeaendert(
+  bisher: Pick<GebindeRow, 'menge' | 'einheit' | 'unterGebindeId' | 'unterAnzahl'>,
+  neu: Pick<GebindeRow, 'menge' | 'einheit' | 'unterGebindeId' | 'unterAnzahl'>,
+): boolean {
+  return (
+    bisher.menge !== neu.menge ||
+    bisher.einheit !== neu.einheit ||
+    bisher.unterGebindeId !== neu.unterGebindeId ||
+    bisher.unterAnzahl !== neu.unterAnzahl
+  );
+}
+
 /** German error if `id` would get itself or one of its descendants as parent, otherwise null. */
 export function zyklusFehler(
   nodes: BaumKnoten[],
@@ -982,6 +995,17 @@ export function createWarenStore(db: Db): WarenStore {
       }
     }
 
+    if (
+      id &&
+      bisher[0] &&
+      bisher[0].mhdArt !== daten.mhdArt &&
+      (await gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.wareId, id)))
+    ) {
+      throw new WarenKonflikt(
+        'Die MHD-Art einer Ware lässt sich nicht mehr ändern, sobald es Buchungen gibt. Leg eine neue Ware an.',
+      );
+    }
+
     const wareId = id ?? randomUUID();
     const werte = {
       name: daten.name,
@@ -1143,11 +1167,12 @@ export function createWarenStore(db: Db): WarenStore {
           gibtEs(tx, inventuren, eq(inventuren.lagerortId, id)),
           gibtEs(tx, inventurKnoten, eq(inventurKnoten.lagerortId, id)),
           gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.lagerortId, id)),
-          gibtEs(tx, ifcos, eq(ifcos.lagerortId, id)),
+          gibtEs(tx, ifcos, and(eq(ifcos.lagerortId, id), eq(ifcos.archiviert, false))),
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.lagerortId, id)),
           gibtEs(tx, ausleihePositionen, eq(ausleihePositionen.lagerortId, id)),
         ]);
         if (verwendet.some(Boolean)) throw new WarenKonflikt(verwendetMeldung('Lagerort'));
+        await tx.update(ifcos).set({ lagerortId: null }).where(eq(ifcos.lagerortId, id));
         await tx.delete(lagerorte).where(eq(lagerorte.id, id));
         return true;
       });
@@ -1179,7 +1204,7 @@ export function createWarenStore(db: Db): WarenStore {
           }
           const [inventar, offenVerliehen] = await Promise.all([
             Promise.all([
-              gibtEs(tx, ifcos, inArray(ifcos.lagerortId, ids)),
+              gibtEs(tx, ifcos, and(inArray(ifcos.lagerortId, ids), eq(ifcos.archiviert, false))),
               gibtEs(tx, gegenstandPlaetze, inArray(gegenstandPlaetze.lagerortId, ids)),
             ]),
             offenLaden(tx, inArray(ausleihePositionen.lagerortId, ids)),
@@ -1361,6 +1386,14 @@ export function createWarenStore(db: Db): WarenStore {
           throw new WarenUngueltig('Das Untergebinde ist archiviert.');
         }
         if (gebindeDoppelt(daten, alle, id)) throw new WarenKonflikt(GEBINDE_DOPPELT);
+        if (
+          gebindeInhaltGeaendert(bisher, daten) &&
+          (await gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.gebindeId, id)))
+        ) {
+          throw new WarenKonflikt(
+            'Menge und Inhalt eines Gebindes lassen sich nicht mehr ändern, sobald es Buchungen gibt. Leg ein neues Gebinde an.',
+          );
+        }
         await tx.update(gebinde).set(daten).where(eq(gebinde.id, id));
         return true;
       });

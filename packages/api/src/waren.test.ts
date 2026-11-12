@@ -4,6 +4,7 @@ import type { GebindeRow } from './db/schema';
 import {
   einlagerungMhd,
   elternFehler,
+  gebindeInhaltGeaendert,
   entnahmenZeilen,
   entnahmeZeilen,
   lagerortBestandZeilen,
@@ -343,5 +344,15 @@ describe('entnahmenZeilen / umlagerungenZeilen / lagerortBestandZeilen', () => {
     expect(bestand).toEqual([
       { lagerortId: 'BK', wareId: 'bier', gebindeId: 'K', menge: 12, fruehestesMhd: '2027-01-01' },
     ]);
+  });
+});
+
+describe('gebindeInhaltGeaendert', () => {
+  const g = { menge: 0.5, einheit: 'l', unterGebindeId: null, unterAnzahl: null } as const;
+  it('flags changes of amount, unit and Untergebinde only', () => {
+    expect(gebindeInhaltGeaendert(g, { ...g })).toBe(false);
+    expect(gebindeInhaltGeaendert(g, { ...g, menge: 1 })).toBe(true);
+    expect(gebindeInhaltGeaendert(g, { ...g, einheit: 'kg' })).toBe(true);
+    expect(gebindeInhaltGeaendert(g, { ...g, unterGebindeId: 'x', unterAnzahl: 6 })).toBe(true);
   });
 });

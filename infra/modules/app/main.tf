@@ -299,7 +299,7 @@ resource "aws_apigatewayv2_stage" "default" {
       ip             = "$context.identity.sourceIp"
       requestTime    = "$context.requestTime"
       method         = "$context.httpMethod"
-      path           = "$context.path"
+      routeKey       = "$context.routeKey"
       status         = "$context.status"
       responseLength = "$context.responseLength"
       latency        = "$context.responseLatency"

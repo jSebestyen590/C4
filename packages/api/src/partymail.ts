@@ -30,6 +30,8 @@ const konfigSchema = z.object({
 const CACHE_MS = 5 * 60_000;
 /** The whole run stays well under the Lambda's 15 seconds. */
 const ABRUF_MAX_MS = 9_000;
+/** Messages above this size are skipped without downloading them. */
+const MAIL_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Reads (and caches for 5 minutes) the secret; undefined when unset, empty or unusable. */
 export function createKonfigLeser(secretArn: string | undefined, region: string) {
@@ -137,16 +139,31 @@ export function createPartyMail(opts: { secretArn?: string; region: string }): P
               .sort((a, b) => a - b)
               .slice(0, max);
             const mails: EingehendeMail[] = [];
+            let uebersprungen = 0;
             for (const uid of uids) {
+              // A message that is too large or cannot be parsed is skipped, it must not block the
+              // inbox: the position still advances past it. Connection errors still abort the run.
+              const kopf = await client.fetchOne(String(uid), { size: true }, { uid: true });
+              if (kopf && kopf.size !== undefined && kopf.size > MAIL_MAX_BYTES) {
+                console.error(`Party-Mail: UID ${uid} skipped, ${kopf.size} bytes`);
+                uebersprungen++;
+                continue;
+              }
               const nachricht = await client.fetchOne(String(uid), { source: true }, { uid: true });
-              if (nachricht && nachricht.source)
+              if (!nachricht || !nachricht.source) continue;
+              try {
                 mails.push(await mailParsen(nachricht.source, uid));
+              } catch (err) {
+                console.error(`Party-Mail: UID ${uid} could not be parsed, skipped`, err);
+                uebersprungen++;
+              }
             }
             return {
               uidValidity: validity,
               letzteUid: uids.at(-1) ?? stand.letzteUid,
               zurueckgesetzt: false,
               mails,
+              uebersprungen,
             };
           } finally {
             lock.release();

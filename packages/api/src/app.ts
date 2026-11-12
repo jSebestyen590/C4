@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -648,9 +649,21 @@ export function createApp(deps: AppDeps) {
   /** Redirect URI of the OneDrive login: the SPA page, on the app's own origin or the local dev server. */
   const redirectUriPruefen = (uri: string) => {
     const ende = '/app/bilder/einrichtung';
+    // Compare by parsed origin: a plain prefix check would accept `https://app.example.evil.com`.
+    const vonApp = (): boolean => {
+      try {
+        const u = new URL(uri);
+        const app = new URL(deps.appUrl!);
+        const pfad = app.pathname.replace(/\/+$/, '');
+        return (
+          u.origin === app.origin && (u.pathname === pfad || u.pathname.startsWith(`${pfad}/`))
+        );
+      } catch {
+        return false;
+      }
+    };
     const ok =
-      uri.endsWith(ende) &&
-      (!deps.appUrl || uri.startsWith(deps.appUrl) || uri === `http://localhost:5173${ende}`);
+      uri.endsWith(ende) && (!deps.appUrl || vonApp() || uri === `http://localhost:5173${ende}`);
     if (!ok) throw new HTTPException(400, { message: 'Ungültige Weiterleitungsadresse.' });
   };
 
@@ -1703,6 +1716,20 @@ export function createApp(deps: AppDeps) {
     if (istDeaktiviert(row)) throw new HTTPException(400, { message: MITGLIED_DEAKTIVIERT });
   };
 
+  /**
+   * A Posten may only be staffed by someone who holds every right it grants, otherwise an editor
+   * could put themselves on a Posten with rights they lack. Unknown Posten are left to the store (404).
+   */
+  const postenRechteMuessenBeiDirLiegen = (
+    p: { rechte: readonly string[] } | undefined,
+    eigene: readonly string[],
+    text: string,
+  ) => {
+    if (p?.rechte.some((r) => !eigene.includes(r))) {
+      throw new HTTPException(403, { message: text });
+    }
+  };
+
   /** 400 when one of the members is deactivated (unknown subs are left to the store). */
   const personenAktivPruefen = async (subs: readonly string[]) => {
     if (subs.length === 0) return;
@@ -2097,6 +2124,13 @@ export function createApp(deps: AppDeps) {
         zValidator('json', postenArchivierenSchema),
         async (c) => {
           const { archiviert } = c.req.valid('json');
+          if (!archiviert) {
+            postenRechteMuessenBeiDirLiegen(
+              await deps.posten.holen(c.req.param('id')),
+              c.get('permissions'),
+              'Diesen Posten kannst du nicht wieder aktivieren: Er gewährt Rechte, die du selbst nicht hast.',
+            );
+          }
           if (!(await deps.posten.archivieren(c.req.param('id'), archiviert))) {
             throw new HTTPException(404, { message: 'Posten nicht gefunden' });
           }
@@ -2110,6 +2144,11 @@ export function createApp(deps: AppDeps) {
         zValidator('json', besetzungAnlegenSchema),
         async (c) => {
           const { ablosung, ...daten } = c.req.valid('json');
+          postenRechteMuessenBeiDirLiegen(
+            await deps.posten.holen(c.req.param('id')),
+            c.get('permissions'),
+            'Diesen Posten kannst du nicht besetzen: Er gewährt Rechte, die du selbst nicht hast.',
+          );
           await mitgliedMussExistieren(daten.mitgliedSub);
           const id = await deps.posten
             .besetzungAnlegen(c.req.param('id'), daten, ablosung)
@@ -2125,7 +2164,17 @@ export function createApp(deps: AppDeps) {
         zValidator('json', besetzungEingabeSchema),
         async (c) => {
           const daten = c.req.valid('json');
-          await mitgliedMussExistieren(daten.mitgliedSub);
+          const posten = await deps.posten.holen(c.req.param('id'));
+          postenRechteMuessenBeiDirLiegen(
+            posten,
+            c.get('permissions'),
+            'Diese Besetzung kannst du nicht ändern: Der Posten gewährt Rechte, die du selbst nicht hast.',
+          );
+          // Ending the Besetzung of a member who was deactivated later must stay possible.
+          const bisher = posten?.besetzungen.find((b) => b.id === c.req.param('bid'));
+          if (bisher?.mitgliedSub !== daten.mitgliedSub) {
+            await mitgliedMussExistieren(daten.mitgliedSub);
+          }
           const geaendert = await deps.posten
             .besetzungAendern(c.req.param('id'), c.req.param('bid'), daten)
             .catch(besetzungFehler);
@@ -2473,7 +2522,13 @@ export function createApp(deps: AppDeps) {
             await deps.schluesselAnfragen.planung(c.req.param('id')),
             'Planung nicht gefunden',
           );
+          const schluessel = await deps.schluessel.holen(p.schluesselId);
+          if (!schluessel || schluessel.archiviert)
+            throw new HTTPException(404, { message: 'Schlüssel nicht gefunden' });
           await mitgliedMussExistieren(daten.anSub);
+          if (schluessel.halter?.art === 'mitglied' && schluessel.halter.sub === daten.anSub) {
+            throw new HTTPException(409, { message: 'Dieses Mitglied hat den Schlüssel schon.' });
+          }
           gefunden(
             await deps.schluesselAnfragen.planungAendern(p.id, daten),
             'Planung nicht gefunden',
@@ -2607,6 +2662,12 @@ export function createApp(deps: AppDeps) {
           if (an === null && !c.get('permissions').includes('schluessel:verwalten')) {
             throw new HTTPException(403, {
               message: 'Nur die Schlüsselverwaltung kann einen Schlüssel ohne Halter eintragen.',
+            });
+          }
+          // `von` is the holder the client saw (409 otherwise): null = the key has no holder yet.
+          if (von === null && !c.get('permissions').includes('schluessel:verwalten')) {
+            throw new HTTPException(403, {
+              message: 'Den ersten Halter trägt die Schlüsselverwaltung ein.',
             });
           }
           await eigenesProfilMussExistieren(akteur);
@@ -2914,6 +2975,12 @@ export function createApp(deps: AppDeps) {
                 'Es gibt keine E-Mail-Adresse für die Antwort. Trage sie bei der Person ein.',
             });
           }
+          if (!z.string().email().safeParse(an).success) {
+            throw new HTTPException(400, {
+              message:
+                'Die E-Mail-Adresse für die Antwort ist ungültig. Korrigiere sie bei der Person.',
+            });
+          }
           const bisher = await deps.privatpartys.nachrichten(e.id);
           const letzte = bisher.at(-1);
           const betreff = letzte?.betreff?.trim()
@@ -2987,6 +3054,11 @@ export function createApp(deps: AppDeps) {
           // Leaving "zugesagt" deletes the event (if it is already gone, nothing to do).
           if (e.eventId) await eventLoeschenMitPruefung(e.eventId);
           await deps.privatpartys.statusSetzen(e.id, status);
+          // A declined request ends its running poll, like an acceptance does.
+          if (status === 'abgesagt' && e.umfrageId) {
+            const u = await deps.umfragen.holen(e.umfrageId);
+            if (u && umfrageLaeuft(u, new Date())) await deps.umfragen.beenden(u.id, new Date());
+          }
           return c.json({ ok: true });
         },
       )
@@ -3107,6 +3179,10 @@ export function createApp(deps: AppDeps) {
         zValidator('json', protokollAnlegenSchema),
         async (c) => {
           const eingabe = c.req.valid('json');
+          // A new protocol has no id (and so no image prefix) yet, so it cannot carry images.
+          if (eingabe.inhalt && protokollBildSchluessel(eingabe.inhalt).length > 0) {
+            throw new HTTPException(400, { message: 'Ein Bild gehört nicht zu diesem Protokoll.' });
+          }
           const sitzung = await sitzungPruefen(eingabe.eventId);
           if (await deps.protokolle.nachEvent(sitzung.id)) {
             throw new HTTPException(409, {
@@ -3929,6 +4005,17 @@ export function createApp(deps: AppDeps) {
           const teilnahme = kategorie.art === 'teilnahme';
           // The poll of a Privatparty: the chosen option is one of its wish dates (found by its name).
           const privatparty = await deps.privatpartys.nachUmfrage(u.id);
+          if (
+            privatparty &&
+            (privatparty.status === 'abgesagt' ||
+              (privatparty.status === 'zugesagt' &&
+                privatparty.eventId &&
+                (await deps.kalender.event(privatparty.eventId))))
+          ) {
+            throw new HTTPException(409, {
+              message: 'Die Privatparty ist bereits zugesagt oder abgesagt.',
+            });
+          }
           const wunschTermin = privatparty?.termine.find(
             (t) =>
               t.datum === option.termin!.datum && privatpartyOptionName(t) === option.termin!.name,
@@ -5160,7 +5247,17 @@ export function createApp(deps: AppDeps) {
       )
       // Anonymous read-only sharing link of a folder (created and cached on first use).
       .post('/bilder/ordner/:id/freigabe', auth, bilderLesen, async (c) => {
-        const url = await freigabeErstellen(c.req.param('id')).catch(onedriveFehler);
+        const id = c.req.param('id');
+        // Only folders the app knows (folder list snapshot or cached sharing links): the id comes
+        // from the URL and must not be any drive item.
+        const [snapshot, links] = await Promise.all([
+          deps.ordnerCache.lesen().catch(() => null),
+          deps.freigaben.alle().catch(() => new Map<string, string>()),
+        ]);
+        if (!links.has(id) && !snapshot?.ordner.some((o) => o.id === id)) {
+          throw new HTTPException(404, { message: 'Ordner nicht gefunden' });
+        }
+        const url = await freigabeErstellen(id).catch(onedriveFehler);
         return c.json({ url });
       })
       // ----- Bilder: OneDrive connection (admins)
@@ -5518,6 +5615,21 @@ export function createApp(deps: AppDeps) {
         const token = c.req.param('token').replace(/\.ics$/, '');
         const sub = await deps.kalender.subPerTokenHash(tokenHash(token));
         if (!sub) throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        // The token owner must still be active and allowed to read the calendar (like `auth`: a
+        // member without a profile row counts as an active Anwärter).
+        const [inhaber, rollen, rechte] = await Promise.all([
+          deps.mitglieder.holen(sub),
+          deps.userAdmin.rollen(),
+          deps.posten.rechteVon(sub),
+        ]);
+        const erlaubt = permissionsFor(
+          rollen.get(sub) ?? [],
+          inhaber?.status ?? 'anwaerter',
+          rechte,
+        );
+        if ((inhaber && istDeaktiviert(inhaber)) || !erlaubt.includes('kalender:lesen')) {
+          throw new HTTPException(404, { message: 'Kalender nicht gefunden' });
+        }
         const ab = new Date(Date.now() - FEED_RUECKBLICK_TAGE * 24 * 3600 * 1000);
         const [dienste, eventListe] = await Promise.all([
           deps.kalender.meineDienste(sub, ab),
@@ -5557,7 +5669,13 @@ export function createApp(deps: AppDeps) {
         if (!inhaber || istDeaktiviert(inhaber)) throw nichtGefunden;
         const erlaubt = permissionsFor(rollen.get(eintrag.sub) ?? [], inhaber.status, rechte);
         if (!erlaubt.includes('mitglieder:lesen')) throw nichtGefunden;
-        const kennung = decodeURIComponent(c.req.param('datei')).replace(/\.vcf$/i, '');
+        let datei: string;
+        try {
+          datei = decodeURIComponent(c.req.param('datei'));
+        } catch {
+          throw nichtGefunden;
+        }
+        const kennung = datei.replace(/\.vcf$/i, '');
         const liste = await alleMitglieder(false, true);
         const mitglied =
           liste.find((m) => m.sub === kennung) ??
@@ -5703,6 +5821,21 @@ export function createApp(deps: AppDeps) {
           return c.json({ error: err.message }, err.status);
         }
         console.error(err);
+        if (istKonflikt(err)) {
+          return c.json(
+            { error: 'Jemand anderes hat gerade dasselbe geändert. Bitte versuch es noch einmal.' },
+            409,
+          );
+        }
+        if (istDatenAbweichung(err)) {
+          return c.json(
+            {
+              error:
+                'Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und versuch es noch einmal.',
+            },
+            409,
+          );
+        }
         return c.json({ error: 'Internal server error' }, 500);
       })
   );

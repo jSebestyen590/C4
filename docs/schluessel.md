@@ -3,6 +3,28 @@
 Der Club hat eine feste Anzahl Schlüssel, die von Person zu Person weitergereicht werden. Die App hält fest, wo jeder
 Schlüssel gerade ist, und behält die letzten 10 Übergaben je Schlüssel.
 
+## Invarianten
+
+- Ein Schlüssel hat immer höchstens einen Halter: Mitglied (`halter_sub`) **oder** Freitext-Name (`halter_name`) **oder** niemand
+  (CHECK in Migration 0073). „Niemand“ setzt nur die Verwaltung (403 sonst). Ebenso trägt nur die Verwaltung den ersten Halter eines Schlüssels ohne Halter ein (`von: null`, 403 sonst; die Aktionen sind für andere ausgeblendet).
+- Eine Übergabe gilt sofort und braucht den Halter, den der Client gesehen hat (`von`); sonst 409. Fehler werden durch eine weitere
+  Übergabe korrigiert, nicht durch Löschen.
+- Je Schlüssel bleiben nur die neuesten 10 Übergaben (`SCHLUESSEL_VERLAUF_MAX`, wird nach jeder Übergabe gekürzt).
+- Eine Planung ändert den Halter nie; nur die echte Übergabe tut das (und löscht dann die früheste Planung des neuen Halters).
+- Je Anfrage und gefragter Person gibt es genau eine Antwort (eindeutig `anfrage_id` + `sub`), die sich ändern lässt. Die erste Zusage
+  gewinnt; danach ist die Anfrage `vergeben` und weitere Antworten geben 409 (`AnfrageKonflikt`).
+- Der Ersteller einer Anfrage wird nie selbst gefragt und darf nicht antworten.
+- Die Benachrichtigungsarten der Schlüssel sind nicht abschaltbar.
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                    |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/schluessel.ts` (Schlüssel, Übergaben), `schluesselAnfragen.ts` (Anfragen, Antworten, Planungen), `schluesselBenachrichtigungen.ts`, `schluesselAnfragen.fake.ts`, Routen in `app.ts`                     |
+| Shared  | `packages/shared/src/schluessel.ts` (Schemas, `erwarteteHalter`, Zeitfenster)                                                                                                                                              |
+| Web     | Seiten `pages/SchluesselPage.tsx`, `SchluesselDetailPage.tsx`, `SchluesselAnfragePage.tsx`; `SchluesselAktionen.tsx`, `SchluesselAnfragen.tsx`, `SchluesselFormular.tsx`, `SchluesselPlanungen.tsx`, `schluesselDaten.tsx` |
+| Tests   | `packages/shared/src/schluessel.test.ts`, `packages/api/src/schluesselBenachrichtigungen.test.ts`                                                                                                                          |
+
 ## Halter
 
 Ein Schlüssel ist immer bei genau einem von:
@@ -96,13 +118,13 @@ abgegeben hast.“ Code: `packages/api/src/schluesselBenachrichtigungen.ts`. Pus
 
 ## Rechte
 
-- `schluessel:lesen` (alle Status): Liste und Verlauf ansehen, Übergaben eintragen.
+- `schluessel:lesen` (alle Status): Liste und Verlauf ansehen, Übergaben zwischen Haltern eintragen.
 - `schluessel:verwalten` (Gruppe `admin`, Vorstandsposten per Migration `0076`, wählbar in `POSTEN_RECHTE`): Schlüssel
-  anlegen, bearbeiten, archivieren/reaktivieren, Archiv ansehen, Halter „niemand“ setzen.
+  anlegen, bearbeiten, archivieren/reaktivieren, Archiv ansehen, Halter „niemand“ setzen, ersten Halter eintragen.
 
 ## Datenmodell
 
-Migrationen `0073`–`0076` (Schlüssel) und `0130`–`0136` (Anfragen), Code in `packages/api/src/schluessel.ts` und
+Migrationen `0073`–`0076` (Schlüssel, Übergaben, Rechte), `0130` (`mitglieder.wohnheim`) und `0131`–`0136` (Anfragen, Antworten, Planungen samt Indizes), Code in `packages/api/src/schluessel.ts` und
 `schluesselAnfragen.ts`, Schemas in `packages/shared/src/schluessel.ts`.
 
 | Tabelle                 | Inhalt                                                                                                                                                                          |
@@ -127,7 +149,7 @@ Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verw
 | ----------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/schluessel`                                             | lesen     | `?archiv=1` nur mit verwalten                                                                                      |
 | `GET /api/schluessel/:id`                                         | lesen     | mit Verlauf und Planungen; archivierte nur mit verwalten                                                           |
-| `POST /api/schluessel/:id/uebergaben`                             | lesen     | `{ von, an }`; `an: null` nur mit verwalten; 409 wenn `von` nicht mehr stimmt                                      |
+| `POST /api/schluessel/:id/uebergaben`                             | lesen     | `{ von, an }`; `an: null` und `von: null` (erster Halter) nur mit verwalten; 409 wenn `von` nicht mehr stimmt      |
 | `POST /api/schluessel`                                            | verwalten | `{ name, beschreibung?, halter? }`                                                                                 |
 | `GET /api/schluessel/anfragen`                                    | lesen     | offene, aktuelle Anfragen + eigene der letzten 3 Tage; `darfAntworten` je Anfrage                                  |
 | `GET /api/schluessel/anfragen/:id`                                | lesen     | mit allen Antworten                                                                                                |
@@ -136,7 +158,7 @@ Ein neuer Schlüssel ist zuerst bei niemandem; den ersten Halter trägt die Verw
 | `PUT /api/schluessel/anfragen/:id/rueckzug`                       | lesen     | nur Ersteller                                                                                                      |
 | `POST /api/schluessel/anfragen/:id/antworten/:antwortId/annehmen` | lesen     | nur Ersteller, nur Gegenvorschläge                                                                                 |
 | `POST /api/schluessel/:id/planungen`                              | lesen     | `{ anSub, datum, ab?, bis?, notiz? }`                                                                              |
-| `PUT /api/schluessel/planungen/:id`                               | lesen     | wie oben                                                                                                           |
+| `PUT /api/schluessel/planungen/:id`                               | lesen     | wie oben (gleiche Prüfungen: Schlüssel nicht archiviert, Mitglied existiert, ist nicht schon Halter)               |
 | `DELETE /api/schluessel/planungen/:id`                            | lesen     |                                                                                                                    |
 | `PUT /api/schluessel/:id`                                         | verwalten | `{ name, beschreibung? }`                                                                                          |
 | `PUT /api/schluessel/:id/archiv`                                  | verwalten | `{ archiviert }`                                                                                                   |

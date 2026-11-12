@@ -23,7 +23,8 @@ export const parentIdSchema = z
 export const anzahlSchema = z
   .number('Bitte gib eine Anzahl an.')
   .int('Die Anzahl muss eine ganze Zahl sein.')
-  .min(1, 'Die Anzahl muss mindestens 1 sein.');
+  .min(1, 'Die Anzahl muss mindestens 1 sein.')
+  .max(1_000_000, 'Die Anzahl darf höchstens 1.000.000 sein.');
 
 export const zeitpunktSchema = z.iso.datetime({ offset: true, error: 'Ungültiger Zeitpunkt.' });
 

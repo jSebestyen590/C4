@@ -157,6 +157,8 @@ export function alsDetailDto(u: UmfrageDetails, k: UmfrageKontext, a: Aufrufer):
         ? zaehlend
             .filter((s) => s.frageId === f.id && s.freitext !== null)
             .map((s) => ({ text: s.freitext!, person: u.anonym ? null : personVon(k, s.sub) }))
+            // Stored order follows the votes; for anonymous polls sort so it cannot reveal who voted last.
+            .sort((x, y) => (u.anonym ? x.text.localeCompare(y.text, 'de') : 0))
         : null,
     })),
     meineAntworten: u.fragen.map((f) => {

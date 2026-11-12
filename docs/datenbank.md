@@ -11,8 +11,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Ein Statement: `<migration>.down.sql`, z. B. `0010_foo.down.sql` für `0010_foo.sql`.
 - Mehrere Statements: `<migration>.down.1.sql`, `<migration>.down.2.sql`, ... Sie laufen in
   numerischer Reihenfolge, jedes als eigene Abfrage.
-- Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 braucht jede Migration eine
-  (ein Test in `rollback.test.ts` prüft das). 0010–0023 (Waren) und 0025–0035 (Inventar) löschen ihre Tabellen bzw.
+- Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 gehört zu jeder Migration eine; ein Test erzwingt das aber
+  erst ab 0037 (`migrations.test.ts`, siehe unten). `rollback.test.ts` prüft nur den Rollback-Ablauf (er bricht vor jeder Änderung ab,
+  wenn eine Down-Datei fehlt), nicht die vorhandenen Dateien. 0010–0023 (Waren) und 0025–0035 (Inventar) löschen ihre Tabellen bzw.
   Indizes; 0036 löscht nur die Startbuchungen „Bestand übernommen“ wieder; 0024 entzieht den Vorstandsposten `waren:verwalten` und `inventar:verwalten` wieder. Rollback-Ziel nur für das
   Inventar: `0024_vorstandsposten_rechte`.
 - Die Kalender-Migrationen `0037`–`0070` (Namen `*_kalender_*`, `*_push_*`) sind eine zusammengelegte, lückenlose Fassung
@@ -83,3 +84,22 @@ Down-Datei), das Skript anpassen und erneut deployen; die Migration läuft dann 
 
 `pnpm db:reset` löscht alle Tabellen (braucht `CONFIRM_DB_RESET=yes`). Der Deploy-Workflow hat dafür
 die Eingabe `reset_db`. Alle Daten gehen verloren.
+
+## Gleichzeitige Zugriffe
+
+Aurora DSQL arbeitet mit optimistischer Nebenläufigkeit: Ändern zwei Transaktionen gleichzeitig dieselben
+Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
+
+- `createDb` (`packages/api/src/db/client.ts`) wiederholt jede Transaktion auf oberster Ebene bei einem
+  solchen Konflikt: insgesamt 3 Versuche, Wartezeit ab 100 ms mit Jitter (`transaktionenWiederholen` in
+  `db/wiederholung.ts`). Verschachtelte `tx.transaction`-Aufrufe (Savepoints) bleiben unberührt.
+- Einzelne Statements außerhalb einer Transaktion werden nicht wiederholt.
+- Die Buchung in `finanzen.ts` hat eine eigene, großzügigere Wiederholung (8 Versuche, ab 50 ms, wegen der
+  Zählerzeile des Journals). Innerhalb von `mitWiederholung` wird nicht ein zweites Mal wiederholt.
+- Die API antwortet bei einem Konflikt, der nach allen Versuchen bleibt, mit 409 „Jemand anderes hat gerade
+  dasselbe geändert. Bitte versuch es noch einmal.“ und bei einer Unique- oder Fremdschlüssel-Verletzung
+  (`23505`, `23503`) mit 409 „Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und
+  versuch es noch einmal.“ Beides wird weiterhin geloggt. Alles andere bleibt 500.
+- **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
+  S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
+  davor oder danach.

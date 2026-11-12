@@ -11,6 +11,8 @@ import type { PartyMail } from './partymailTypen';
 
 /** Most mails imported per run. */
 export const MAIL_JOB_MAX = 20;
+/** Longest stored mail text (same limit as outgoing replies). */
+const NACHRICHT_TEXT_MAX = 20000;
 
 export interface MailJobDeps {
   partymail: PartyMail;
@@ -36,59 +38,89 @@ export async function mailJob(deps: MailJobDeps, jetzt = new Date()): Promise<Ma
   if (!(await deps.partymail.eingerichtet())) return { eingerichtet: false, neu: 0, fehler: null };
   const store = deps.privatpartys;
   let neu = 0;
+  let uebersprungen = 0;
   try {
     const stand = await store.abrufStand();
     const ergebnis = await deps.partymail.abrufen(stand, MAIL_JOB_MAX);
+    uebersprungen += ergebnis.uebersprungen ?? 0;
+    let angelegt: string | null = null;
+    let vorherigeUid = stand.letzteUid;
     for (const mail of ergebnis.mails) {
-      if (await store.nachrichtNachMessageId(mail.messageId)) continue;
-      const bisherige = await store.privatpartyZuMessageIds(threadIds(mail));
-      const id =
-        bisherige ??
-        (await store.anlegen(
-          {
-            personId: null,
-            anlass: null,
-            notizen: null,
-            termine: [],
-            mailAdresse: mail.vonAdresse,
-            letzteNachrichtAm: mail.zeitpunkt,
-          },
-          null,
-        ));
-      await store.nachrichtAnlegen({
-        privatpartyId: id,
-        richtung: 'ein',
-        messageId: mail.messageId,
-        inReplyTo: mail.inReplyTo,
-        referenzen: mail.referenzen,
-        vonAdresse: mail.vonAdresse,
-        vonName: mail.vonName,
-        anAdresse: mail.anAdresse,
-        betreff: mail.betreff,
-        text: mail.text,
-        anhaenge: mail.anhaenge,
-        zeitpunkt: mail.zeitpunkt,
-        mitgliedSub: null,
-      });
-      neu++;
-      const absender = mail.vonName || mail.vonAdresse || 'Jemand';
-      await bestEffort(async () => {
-        await deps.benachrichtigungen.senden({
-          subs: await mitgliederMitRecht(deps, 'privatpartys:verwalten'),
-          art: bisherige ? 'privatpartys.nachricht' : 'privatpartys.anfrage',
-          titel: bisherige ? 'Neue Nachricht zu einer Privatparty' : 'Neue Privatparty-Anfrage',
-          text: `${absender}: ${mail.betreff ?? '(ohne Betreff)'}`,
-          url: `/app/privatpartys/${id}`,
-          dedupeSchluessel: mail.messageId,
+      angelegt = null;
+      // A Date header in the future would pin the request to the top of the list.
+      const zeitpunkt = mail.zeitpunkt > jetzt ? jetzt : mail.zeitpunkt;
+      try {
+        if (await store.nachrichtNachMessageId(mail.messageId)) {
+          vorherigeUid = mail.uid;
+          continue;
+        }
+        const bisherige = await store.privatpartyZuMessageIds(threadIds(mail));
+        const id =
+          bisherige ??
+          (angelegt = await store.anlegen(
+            {
+              personId: null,
+              anlass: null,
+              notizen: null,
+              termine: [],
+              mailAdresse: mail.vonAdresse,
+              letzteNachrichtAm: zeitpunkt,
+            },
+            null,
+          ));
+        await store.nachrichtAnlegen({
+          privatpartyId: id,
+          richtung: 'ein',
+          messageId: mail.messageId,
+          inReplyTo: mail.inReplyTo,
+          referenzen: mail.referenzen,
+          vonAdresse: mail.vonAdresse,
+          vonName: mail.vonName,
+          anAdresse: mail.anAdresse,
+          betreff: mail.betreff,
+          text: mail.text.slice(0, NACHRICHT_TEXT_MAX),
+          anhaenge: mail.anhaenge,
+          zeitpunkt,
+          mitgliedSub: null,
         });
-      });
+        neu++;
+        const absender = mail.vonName || mail.vonAdresse || 'Jemand';
+        await bestEffort(async () => {
+          await deps.benachrichtigungen.senden({
+            subs: await mitgliederMitRecht(deps, 'privatpartys:verwalten'),
+            art: bisherige ? 'privatpartys.nachricht' : 'privatpartys.anfrage',
+            titel: bisherige ? 'Neue Nachricht zu einer Privatparty' : 'Neue Privatparty-Anfrage',
+            text: `${absender}: ${mail.betreff ?? '(ohne Betreff)'}`,
+            url: `/app/privatpartys/${id}`,
+            dedupeSchluessel: mail.messageId,
+          });
+        });
+        vorherigeUid = mail.uid;
+      } catch (err) {
+        // A store error may be transient: stop here, keep the position before this mail and retry it
+        // in the next run. Remove the empty request created for it, else the retry makes a second one.
+        console.error('Mail job: storing a mail failed', mail.messageId, err);
+        if (angelegt) await store.loeschen(angelegt).catch(() => undefined);
+        await store.abrufStandSetzen({
+          uidValidity: ergebnis.uidValidity,
+          letzteUid: vorherigeUid,
+          letzterAbruf: jetzt,
+          fehler:
+            'Eine Mail konnte nicht gespeichert werden. Der Abruf versucht es beim nächsten Mal erneut.',
+        });
+        return { eingerichtet: true, neu, fehler: null };
+      }
     }
     await store.abrufStandSetzen({
       uidValidity: ergebnis.uidValidity,
       letzteUid: ergebnis.letzteUid,
       letzterAbruf: jetzt,
-      fehler: null,
+      fehler:
+        uebersprungen > 0
+          ? `${uebersprungen === 1 ? '1 Mail konnte' : `${uebersprungen} Mails konnten`} nicht verarbeitet werden und ${uebersprungen === 1 ? 'wurde' : 'wurden'} übersprungen.`
+          : null,
     });
+    // Skipped mails are shown in the status line, but the run itself succeeded.
     return { eingerichtet: true, neu, fehler: null };
   } catch (err) {
     const meldung = err instanceof Error ? err.message : 'Unbekannter Fehler';

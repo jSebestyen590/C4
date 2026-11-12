@@ -34,13 +34,19 @@ sich allein nach Start und Ende; die Detailseite nennt den Rechtezeitraum je Bes
 
 - `posten:lesen` haben alle Status (`STATUS_PERMISSIONS`).
 - `posten:bearbeiten` gewährt ein Posten über `posten_rechte`. Wer den Posten innerhalb der Übergangszeit seiner Besetzung innehat, erhält
-  das Recht (`rechteVon` in `auth.ts`, bei jedem Request). Archivieren oder eine abgelaufene Übergangszeit entziehen es.
+  das Recht (`rechteVon` in `posten.ts`, bei jedem Request). Archivieren oder eine abgelaufene Übergangszeit entziehen es.
 - Admins (Cognito-Gruppe `admin`) haben `posten:bearbeiten` immer und können so Posten anlegen, bearbeiten,
   archivieren und besetzen, auch ohne selbst einen Posten zu halten.
 - Welche Rechte ein Posten gewährt, ändern nur Admins (`users:manage`) auf der Detailseite. Zur Wahl
   stehen die Rechte aus `POSTEN_RECHTE` (`packages/shared/src/roles.ts`: `users:manage`, `posten:bearbeiten`,
   `waren:verwalten`, `inventar:verwalten`, `events:verwalten`, `kalender:einrichten`, `schluessel:verwalten`, `umfragen:verwalten`, `trichter:verwalten`, `protokolle:schreiben`, `privatpartys:verwalten`, `finanzen:lesen`, `finanzen:buchen`, `finanzen:verwalten`, `finanzen:pruefen`); weitere Rechte
   trägt man dort ein.
+- **Nur Posten mit eigenen Rechten:** Wer einen Posten besetzen will (`POST` und `PUT` einer Besetzung) oder einen archivierten
+  Posten wieder aktiviert (`archiviert: false`), muss selbst alle Rechte halten, die der Posten gewährt, sonst 403
+  („… gewährt Rechte, die du selbst nicht hast“). So kann sich niemand über einen Posten Rechte beschaffen, die er nicht hat.
+  Besetzung löschen und archivieren bleiben mit `posten:bearbeiten` möglich. Admins halten alle Rechte.
+- Das Ende einer bestehenden Besetzung lässt sich auch setzen, wenn das Mitglied inzwischen deaktiviert ist; ein anderes Mitglied
+  einzusetzen, geht nur mit einem aktiven (400 sonst).
 - Es gibt keine eigene Vorstandsrolle: Archivierte Posten sehen und reaktivieren alle mit `posten:bearbeiten`.
 
 ## Seiten und API

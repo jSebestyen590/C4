@@ -7,6 +7,33 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 `packages/api/src/inventar.ts`, Routen in `packages/api/src/app.ts` (Abschnitt `Inventar`). Fehlerklassen und Hilfen
 (`WarenUngueltig` → 400, `WarenKonflikt` → 409) kommen aus `packages/api/src/waren.ts`.
 
+## Invarianten
+
+- `gegenstaende.anzahl` ist die Summe des Verlaufs (`gegenstand_bewegungen`) und ändert sich nur über Zugänge und Abgänge (Anlegen bucht
+  den ersten Zugang). Bestand 0 ist erlaubt.
+- Plätze plus fest verbaute Stück dürfen die Anzahl **unterschreiten** („ohne Platz“), aber nie **überschreiten**
+  (`zuVielVerteiltFehler`, 400); ein gelöschter Zugang darf das nicht verursachen (409, `sollZuKleinFehler`).
+- Gelöscht wird nur, was nirgends verwendet wird (409), sonst archivieren. Ein archivierter Gegenstand ist nicht mehr umräumbar
+  und nicht verleihbar.
+- Teile haben nur eine Ebene und übernehmen die Kategorie des übergeordneten Gegenstands; virtuelle Gegenstände haben nie Plätze,
+  fest verbaute Stück oder eigene Ausleihen.
+- Umräumen (Platz entfernen, Anzahl senken, IFCO-Inhalt, Archivieren) darf nie unter das Verliehene und Vorgemerkte fallen (409,
+  `verliehenFehler`).
+- Eine Ausleihe belegt ihre Stück an den Tagen [Starttag, Rückgabetag); `rueckgabeGeplant` ist Pflicht, und die Belegung am selben
+  Platz überschreitet nie die Zuordnung (`ausleihFehler`, 400).
+- Die IFCOs auf einem IFCO-Lagerplatz müssen immer passen (`ifcosPassen`), IFCOs ohne Typ dürfen nicht darauf; Ware und IFCOs
+  teilen sich keinen Platz (siehe [waren.md](./waren.md#ifco-lagerplätze)).
+- Es läuft höchstens eine Aufräumaktion gleichzeitig (409 beim Starten einer zweiten).
+
+## Dateien
+
+| Bereich | Dateien                                                                                                                                                                                                                                                                    |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/inventar.ts` (Stores und Regeln), `ifcoPlatz.ts` (IFCO-Kapazität auf Lagerplätzen), Routen in `app.ts` (Abschnitt `Inventar`)                                                                                                                            |
+| Shared  | `packages/shared/src/inventar.ts` (Schemas, Abweichung, Verliehen- und Ausleih-Prüfungen), `inventarZeitraum.ts` (Belegung nach Tagen), `ifco.ts` (Kapazitätsmodell)                                                                                                       |
+| Web     | Seiten `pages/InventarPage.tsx`, `GegenstandDetailPage.tsx`, `IfcoDetailPage.tsx`, `AusleihePage.tsx`, `AusleiheDetailPage.tsx`, `InventarStammdatenPage.tsx`; `inventarDaten.ts`, `inventarAnzeige.ts`, `IfcoFormular.tsx`, `IfcoInhaltModal.tsx`, `IfcoInhaltFelder.tsx` |
+| Tests   | `packages/shared/src/inventar.test.ts`, `inventarZeitraum.test.ts`, `ifco.test.ts`; `packages/api/src/inventar.test.ts`, `ifcoPlatz.test.ts`                                                                                                                               |
+
 ## Rechte
 
 - `inventar:lesen` und `inventar:umraeumen` haben alle Status. Umräumen umfasst Plätze ändern, IFCOs umstellen und befüllen sowie
@@ -67,8 +94,8 @@ IFCOs sind Euronormboxen mit nur **zwei Grundflächen**: groß 60×40 und klein 
 (10, 13, 16, 22 cm …). Ein **IFCO-Typ** (Stammdaten, Tab „IFCO-Typen“ unter `/inventar/stammdaten`) hält Name, Grundfläche und Höhe;
 jede IFCO hat optional einen Typ (`typId`). Typ löschen nur ungenutzt (409, sonst archivieren); archivierte Typen sind nicht mehr wählbar.
 
-Ein Lagerort kann **IFCO-Lagerplatz** sein (Felder und Regeln in [waren.md](./waren.md)): `ifcoHoeheCm` und `ifcoStellflaechen`.
-Dort stehen IFCOs und lose Gegenstände; Ware kann dort nur liegen, solange keine IFCO dort steht (und umgekehrt, siehe waren.md).
+Ein Lagerort kann **IFCO-Lagerplatz** sein (`ifcoHoeheCm`, `ifcoStellflaechen`). Markierung, API-Felder und die Regel „Ware und IFCOs
+teilen sich keinen Platz“ stehen nur in [waren.md](./waren.md#ifco-lagerplätze); hier folgt, was auf einen Platz passt.
 
 **Kapazitätsmodell** (`packages/shared/src/ifco.ts`, `ifcosPassen`): Der Boden besteht aus `2 × Stellflächen` Halbspalten, jede
 `ifcoHoeheCm` hoch. Eine kleine IFCO belegt eine Halbspalte mit ihrer Höhe, eine große zwei beliebige Halbspalten (Reihenfolge und
@@ -82,7 +109,7 @@ Regeln (alle 400 mit deutscher Meldung, die den Platz, was dort steht und was ni
 1 Stellfläche): dort stehen Spanngurtkiste (6410, 10 cm), …; „Strom-IFCO“ (6416, 16 cm) hat keinen Platz mehr.“):
 IFCO anlegen/ändern/umstellen (`PUT /ifcos/:id/platz`) auf einen IFCO-Lagerplatz, Typ einer dort stehenden IFCO ändern, Wiederherstellen
 einer archivierten IFCO, Grundfläche/Höhe eines Typs ändern (jeder IFCO-Lagerplatz mit IFCOs dieses Typs muss danach noch passen),
-Maße eines IFCO-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Zusätzlich ist jede IFCO auf einem IFCO-Lagerplatz mit Warenbestand ≠ 0 400 „Auf „HR11“ liegt Ware; dort kann keine IFCO stehen.“ IFCOs ohne Typ dürfen nicht auf einen IFCO-Lagerplatz.
+Maße eines IFCO-Lagerplatzes ändern (nicht unter den Inhalt) oder ihn markieren. Zusätzlich gilt die Warenregel aus [waren.md](./waren.md#ifco-lagerplätze) (Platz mit Warenbestand ≠ 0: 400). IFCOs ohne Typ dürfen nicht auf einen IFCO-Lagerplatz.
 Das Aufheben der Markierung ist immer erlaubt. Normale Lagerorte sind für IFCOs unbeschränkt. Die Prüfung steht in
 `packages/api/src/ifcoPlatz.ts` und läuft in den Transaktionen der Stores.
 
@@ -195,7 +222,7 @@ ersetzt es zusätzlich alle offenen Positionen (gleiche Prüfungen wie beim Anle
 zurückgegebene bleiben unverändert, eine leere Liste geht nur, wenn es zurückgegebene gibt. Die Liste enthält je Ausleihe `ausgeliehenAm`,
 `rueckgabeGeplant` und die Positionen; der Client rechnet damit die Verfügbarkeit im gewählten Zeitraum selbst (`verfuegbarImZeitraum`).
 
-## Oberfläche
+## Oberfläche (Details)
 
 Mobile first; Navigationseintrag „Inventar“ (`inventar:lesen`). Die Seiten lesen die Listen über `useInventar()`
 (`inventarDaten.ts`, Query-Keys `['inventar', 'kategorien' | 'gegenstaende' | 'ifcos']`, Archiviertes inklusive, Filter im Client);
@@ -223,7 +250,7 @@ jede Änderung macht `['inventar']` ungültig.
   auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Anzahl 1 ohne Mengenfeld), Menü wie beim Gegenstand.
-- **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne
+- **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt` in `IfcoInhaltModal.tsx`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne
   Überschrift; die Anzahl erscheint erst, wenn ein Gegenstand gewählt ist. Ein neu gewählter
   Gegenstand kommt standardmäßig ganz in die IFCO (Anzahl = verteilbar). Liegt er schon an anderen Plätzen, steht darunter
   „Bisher zugeordnet“ mit einem Zähler je Platz („Bisher 5“). Bei einem neu gewählten Gegenstand stehen sie auf 0, bei
