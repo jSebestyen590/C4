@@ -25,14 +25,14 @@ jobs:
     # The GitHub Environment named like the env; configure required reviewers on "prod".
     environment: ${{ inputs.env }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: hashicorp/setup-terraform@v4
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::189575358537:role/c4-${{ inputs.env }}-deploy
           aws-region: eu-central-1
@@ -43,11 +43,67 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+      - name: Terraform init
+        working-directory: infra/envs/${{ inputs.env }}
+        run: terraform init -input=false
+
+      # Outputs of the currently deployed stack (empty on a first-ever deploy: no state yet).
+      - name: Read current outputs
+        id: current
+        working-directory: infra/envs/${{ inputs.env }}
+        env:
+          RESET_DB: ${{ inputs.reset_db }}
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
+        run: |
+          terraform output -json app > ../../../current-outputs.json 2> /dev/null || echo '{}' > ../../../current-outputs.json
+          if [ -z "$(jq -r '.dsql_endpoint // empty' ../../../current-outputs.json 2> /dev/null)" ]; then
+            if [ "$RESET_DB" = "true" ] || [ -n "$ROLLBACK_TO" ]; then
+              echo "::error::reset_db / rollback_to need an existing database, but the current outputs could not be read (no database in state, or terraform output failed)."
+              exit 1
+            fi
+            echo "no database in state: migrating after apply"
+            echo "has_db=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "existing database: migrating before apply"
+            echo "has_db=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Migrate BEFORE the new Lambda goes live. The old code keeps running against the new schema for
+      # a moment, so migrations must stay additive (expand first; remove columns in a later release).
+      - name: Migrate database
+        if: steps.current.outputs.has_db == 'true'
+        env:
+          C4_ENV: ${{ inputs.env }}
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
+        run: |
+          export DSQL_ENDPOINT=$(jq -r .dsql_endpoint current-outputs.json)
+          export USER_POOL_ID=$(jq -r .user_pool_id current-outputs.json)
+          export CLIENT_ID=$(jq -r .client_id current-outputs.json)
+          export PROFILBILD_BUCKET=$(jq -r .profilbild_bucket current-outputs.json)
+          export AWS_REGION=eu-central-1
+          if [ "${{ inputs.reset_db }}" = "true" ]; then
+            if [ "${{ inputs.env }}" != "dev" ]; then
+              echo "::error::reset_db is only allowed for dev"
+              exit 1
+            fi
+            CONFIRM_DB_RESET=yes pnpm db:reset
+          elif [ -n "$ROLLBACK_TO" ]; then
+            if [ "${{ inputs.env }}" != "dev" ]; then
+              echo "::error::rollback_to is only allowed for dev"
+              exit 1
+            fi
+            CONFIRM_DB_ROLLBACK=yes pnpm db:rollback --to "$ROLLBACK_TO"
+          fi
+          pnpm db:migrate
+
+      - name: Terraform plan
+        working-directory: infra/envs/${{ inputs.env }}
+        run: terraform plan -input=false -out=tfplan
+
       - name: Terraform apply
         working-directory: infra/envs/${{ inputs.env }}
         run: |
-          terraform init -input=false
-          terraform apply -input=false -auto-approve
+          terraform apply -input=false tfplan
           terraform output -json app > ../../../app-outputs.json
 
       - name: Publish web build
@@ -66,28 +122,17 @@ jobs:
             --cache-control "no-cache" --content-type text/javascript
           aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app/index.html" "/app/config.json" "/app/manifest.webmanifest" "/app/sw.js"
 
-      - name: Migrate database
+      # First-ever deploy: the database only exists after apply.
+      - name: Migrate database (first deploy)
+        if: steps.current.outputs.has_db != 'true'
         env:
-          ROLLBACK_TO: ${{ inputs.rollback_to }}
+          C4_ENV: ${{ inputs.env }}
         run: |
           export DSQL_ENDPOINT=$(jq -r .dsql_endpoint app-outputs.json)
           export USER_POOL_ID=$(jq -r .user_pool_id app-outputs.json)
           export CLIENT_ID=$(jq -r .client_id app-outputs.json)
           export PROFILBILD_BUCKET=$(jq -r .profilbild_bucket app-outputs.json)
           export AWS_REGION=eu-central-1
-          if [ "${{ inputs.reset_db }}" = "true" ]; then
-            if [ "${{ inputs.env }}" != "dev" ]; then
-              echo "::error::reset_db is only allowed for dev"
-              exit 1
-            fi
-            CONFIRM_DB_RESET=yes pnpm db:reset
-          elif [ -n "$ROLLBACK_TO" ]; then
-            if [ "${{ inputs.env }}" != "dev" ]; then
-              echo "::error::rollback_to is only allowed for dev"
-              exit 1
-            fi
-            CONFIRM_DB_ROLLBACK=yes pnpm db:rollback --to "$ROLLBACK_TO"
-          fi
           pnpm db:migrate
 
       - name: Smoke test

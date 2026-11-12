@@ -80,6 +80,20 @@ Szenario: Das Skript einer Migration auf dem Feature-Branch wurde nach dem Deplo
 Dann zuerst auf die letzte unveränderte Migration zurückgehen (`rollback_to`, der Branch braucht die
 Down-Datei), das Skript anpassen und erneut deployen; die Migration läuft dann mit dem neuen Stand.
 
+## Deploy-Reihenfolge und additive Migrationen
+
+Der Deploy migriert die Datenbank **vor** dem Terraform-Apply, also bevor die neue Lambda live geht. Dadurch
+läuft der alte Code kurz gegen das neue Schema. Migrationen müssen deshalb additiv sein: erst hinzufügen
+(Spalte, Tabelle, Index), den Code umstellen und Altes erst in einem späteren Release entfernen
+(Spalten löschen, umbenennen oder `NOT NULL` verschärfen nie zusammen mit dem Code, der sie noch braucht).
+Beim allerersten Deploy gibt es noch keine Datenbank; dann läuft die Migration nach dem Apply.
+
+## Umgebungsmarke (`app_info.env`)
+
+`pnpm db:migrate` schreibt `app_info('env', <Wert>)`, wenn `C4_ENV` gesetzt ist (der Deploy-Workflow setzt
+`dev` bzw. `prod`). `pnpm db:reset` und `pnpm db:rollback` lesen die Zeile zuerst und brechen bei `prod` ab.
+Fehlt Tabelle oder Zeile, laufen sie wie bisher (Funktion `assertNotProd` in `db/environment.ts`).
+
 ## Reset (nur dev)
 
 `pnpm db:reset` löscht alle Tabellen (braucht `CONFIRM_DB_RESET=yes`). Der Deploy-Workflow hat dafür

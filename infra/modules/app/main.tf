@@ -292,6 +292,12 @@ resource "aws_apigatewayv2_stage" "default" {
   name        = "$default"
   auto_deploy = true
 
+  # Rate limit for the whole API (abuse / runaway client protection).
+  default_route_settings {
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
+  }
+
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.apigw.arn
     format = jsonencode({
@@ -451,8 +457,25 @@ resource "aws_s3_bucket_cors_configuration" "profilbilder" {
   }
 }
 
-resource "aws_s3_bucket_lifecycle_configuration" "profilbilder" {
+# Overwritten or deleted pictures stay recoverable for 30 days.
+resource "aws_s3_bucket_versioning" "profilbilder" {
   bucket = aws_s3_bucket.profilbilder.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "profilbilder" {
+  bucket     = aws_s3_bucket.profilbilder.id
+  depends_on = [aws_s3_bucket_versioning.profilbilder]
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    filter {}
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
   rule {
     id     = "abort-incomplete-uploads"
     status = "Enabled"
@@ -615,7 +638,9 @@ resource "aws_cloudfront_function" "spa" {
 
 # AWS managed policies (fixed ids; avoids List* calls that cannot be scoped in the deploy role).
 locals {
-  cache_policy_optimized                   = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+  cache_policy_optimized = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+  # AWS managed response headers policy "Managed-SecurityHeadersPolicy" (fixed id; no data source, the deploy role cannot list policies).
+  response_headers_policy_security         = "67f7725c-6f97-4210-82d7-5512b31e9d03"
   cache_policy_disabled                    = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
   origin_request_policy_all_viewer_no_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
 }
@@ -647,12 +672,13 @@ resource "aws_cloudfront_distribution" "this" {
 
   # Default: SPA behavior (also handles "/" -> "/app/" via the function).
   default_cache_behavior {
-    target_origin_id       = "web"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = local.cache_policy_disabled
+    target_origin_id           = "web"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.cache_policy_disabled
+    response_headers_policy_id = local.response_headers_policy_security
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa.arn
@@ -660,13 +686,14 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   ordered_cache_behavior {
-    path_pattern           = "/app/*"
-    target_origin_id       = "web"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = local.cache_policy_optimized
+    path_pattern               = "/app/*"
+    target_origin_id           = "web"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.cache_policy_optimized
+    response_headers_policy_id = local.response_headers_policy_security
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa.arn
@@ -674,14 +701,15 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   ordered_cache_behavior {
-    path_pattern             = "/api/*"
-    target_origin_id         = "api"
-    viewer_protocol_policy   = "https-only"
-    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods           = ["GET", "HEAD"]
-    compress                 = true
-    cache_policy_id          = local.cache_policy_disabled
-    origin_request_policy_id = local.origin_request_policy_all_viewer_no_host
+    path_pattern               = "/api/*"
+    target_origin_id           = "api"
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = local.cache_policy_disabled
+    response_headers_policy_id = local.response_headers_policy_security
+    origin_request_policy_id   = local.origin_request_policy_all_viewer_no_host
   }
 
   logging_config {

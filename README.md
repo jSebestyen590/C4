@@ -95,6 +95,18 @@ deploys **dev**; pushing a tag `v*` (e.g. `git tag v1.0.0 && git push origin v1.
 (after the `prod` environment approval). `workflow_dispatch` can deploy either env manually. The
 deploy roles come from `infra/bootstrap`.
 
+Deploy order (`deploy-env.yml`): lint, typecheck, test, build, `terraform init`, read the current outputs,
+**migrate the database first** (only if the environment already has a database), `terraform plan`, then
+`terraform apply` of that plan, publish the web build, smoke test. A first-ever deploy has no database yet
+and migrates after the apply. Because the old Lambda keeps running against the new schema for a moment,
+migrations must stay additive (see `docs/datenbank.md`).
+
+Prod gate (`deploy.yml`, job `pruefen`): a prod deploy fails unless the commit is contained in `main` and
+the CI job `check` succeeded for it. Only tags `v*` trigger prod. Dev deploys are unrestricted.
+
+`pnpm db:migrate` writes `app_info.env` when `C4_ENV` is set (the workflow passes the environment name).
+`pnpm db:reset` and `pnpm db:rollback` refuse to run against a database marked `prod`.
+
 ## Local development
 
 ```bash

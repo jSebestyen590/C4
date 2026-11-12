@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../config';
 import { createPool } from './client';
+import { assertNotProd } from './environment';
 import { rollback, type RollbackTarget } from './rollback';
 
 const { values } = parseArgs({
@@ -25,8 +26,12 @@ const target: RollbackTarget =
 
 const pool = createPool(loadConfig());
 try {
+  await assertNotProd(pool, 'roll back');
   const rolledBack = await rollback(pool, target);
   console.log(rolledBack.length ? `Rolled back: ${rolledBack.join(', ')}` : 'Nothing to roll back');
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exitCode = 1;
 } finally {
   await pool.end();
 }
