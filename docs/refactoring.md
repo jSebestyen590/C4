@@ -97,6 +97,16 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Das Access-Log des API Gateway schreibt `routeKey` statt des Pfads, damit keine Feed- und vCard-Token im Log stehen.
 - Lokale API bindet an `127.0.0.1`.
 
+**Deploy-Härtung** (Branch `infra/deploy-haertung`)
+
+- Deploy-Reihenfolge: `db:migrate` läuft vor dem Apply (Migrationen müssen additiv sein, siehe [datenbank.md](./datenbank.md)),
+  dazwischen `terraform plan` und Apply genau dieses Plans statt `-auto-approve`. Ein Rollback-Weg für prod fehlt weiter.
+- Prod-Deploy nur für Tags `v*`, deren Commit auf `main` liegt und dessen CI-Job `check` grün ist (Job `pruefen`).
+- `db:reset` und `db:rollback` verweigern Datenbanken mit `app_info.env = prod`.
+- API Gateway: Throttling (Burst 100, Rate 50). CloudFront: Security-Header-Policy auf allen Behaviors.
+- Profilbilder-Bucket: Versionierung, alte Versionen laufen nach 30 Tagen ab.
+- Actions auf Commit-SHAs gepinnt, `dependabot.yml` (Actions und npm), informativer Job `audit` (`pnpm audit`).
+
 **Doku**
 
 - `protokolle.md` aufgeteilt (Einstieg plus `protokolle/bausteine.md`, `aktionen.md`, `ansicht-pdf.md`).
@@ -106,6 +116,11 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 **Entschieden (kein Handlungsbedarf)**
 
 - Adresse, Telefon, E-Mail und Geburtsdatum bleiben für alle mit `mitglieder:lesen` sichtbar (siehe `members.md`).
+- Kalender-Abo-Links (Feed-Token) bleiben unbefristet.
+- Kein eigener Schutz im GitHub-Environment `prod` gegen Deploys von Branches: Prod wird nur über Tags deployt, andere Tags
+  als Releases gibt es nicht. Der Job `pruefen` verlangt ohnehin einen Commit auf `main` mit grünem CI.
+- Zwei gleichzeitige Deploys derselben Umgebung verhindert die `concurrency`-Gruppe in `deploy.yml`; ein eigener Schutz für
+  Migrationen ist nicht nötig.
 
 **Ohne Test geblieben**
 
@@ -146,25 +161,22 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
   `cognito-idp:*`, `dsql:*`, `cloudfront:*` auf alle Ressourcen des Accounts; die dev-Rolle kann prod ändern. Das
   OIDC-Vertrauen prüft nur das Environment, nicht den Branch. Abhilfe: Permissions Boundary, Eingrenzung per Tag oder Name,
   Branch-Bedingung im `sub`. Das Bootstrap wird lokal mit dem Profil `C4` angewendet, der State liegt lokal.
-- **Deploy-Reihenfolge:** `terraform apply` (neue Lambda) läuft vor `db:migrate`. Kein Rollback-Weg für prod (keine
-  Lambda-Versionen, `rollback_to` nur dev), `-auto-approve` ohne Plan, kein Zwang zu grünem CI oder Tag auf `main`.
-- **Migrationen:** kein Schutz gegen zwei gleichzeitige Läufe (kein `concurrency` im Workflow, keine Sperrzeile).
+- **Deploy-Rollback:** Kein Rollback-Weg für prod (keine Lambda-Versionen, `rollback_to` nur dev).
 - **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
-- **Absicherung nach außen:** kein Throttling am API Gateway, keine Security-Header (CloudFront), `/health` fragt die DB ab,
-  kein MFA im Cognito-Pool, kein Default-Deny für `auth` in `app.ts`.
+- **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
+- **MFA (zurückgestellt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
   Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
-- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage). Feed-Token laufen nie ab.
-- **Backups:** DSQL-Backups für prod sind in Terraform nicht konfiguriert (unsicher, ob anderswo); Bucket-Versionierung der
-  Profilbilder ist aus.
+- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
+- **Backups:** DSQL-Backups sind in Terraform nicht konfiguriert. Beschlossen: AWS Backup, zuerst auf dev getestet; braucht
+  zusätzliche Rechte in der Deploy-Rolle.
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll.
 - **Eingehende Mail (zurückgestellt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes
   `In-Reply-To` überschreibt `mail_adresse`.
-- **CI:** Actions auf Major-Tags statt SHAs, kein Dependabot oder `pnpm audit`, kein `terraform plan` auf PRs.
-- **Lokal:** `pnpm db:reset` nutzt den Endpoint aus der Umgebung; mit prod-Zugangsdaten träfe es prod.
+- **CI:** kein `terraform plan` auf PRs.
 
 ### 3. Fachliche Punkte, die eine Entscheidung brauchen
 
