@@ -103,7 +103,8 @@ resource "aws_cognito_user_group" "this" {
 # ---------------------------------------------------------------- Aurora DSQL
 resource "aws_dsql_cluster" "this" {
   deletion_protection_enabled = var.deletion_protection
-  tags                        = { Name = local.name }
+  # Environment is set explicitly: AWS Backup (infra/bootstrap) selects clusters by this tag.
+  tags = { Name = local.name, Environment = var.env }
 }
 
 # ---------------------------------------------------------------- Lambda
@@ -121,6 +122,8 @@ resource "aws_cloudwatch_log_group" "lambda" {
 
 resource "aws_iam_role" "lambda" {
   name = "${local.name}-api"
+  # Ceiling for the role, created in infra/bootstrap; the deploy role may only create roles with it.
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name}-workload-boundary"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -327,6 +330,8 @@ resource "aws_lambda_permission" "apigw" {
 # "Dienste fehlen" notifications. About 8,640 invocations per month, well inside the free tier.
 resource "aws_iam_role" "scheduler" {
   name = "${local.name}-scheduler"
+  # Ceiling for the role, created in infra/bootstrap; the deploy role may only create roles with it.
+  permissions_boundary = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name}-workload-boundary"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

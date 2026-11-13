@@ -35,6 +35,8 @@ data "aws_caller_identity" "current" {}
 locals {
   account = data.aws_caller_identity.current.account_id
   region  = "eu-central-1"
+  # Used for the cross-environment deny of the deploy role.
+  other_env = { dev = "prod", prod = "dev" }
 }
 
 resource "aws_s3_bucket" "state" {
@@ -169,6 +171,85 @@ resource "aws_iam_role" "deploy" {
   })
 }
 
+# Permissions boundary for the roles the deploy creates (the API Lambda role and the scheduler role of
+# infra/modules/app). It is the ceiling of what those roles can ever do, whatever policy the deploy
+# attaches. Keep it in step with the role policies in infra/modules/app/main.tf.
+# DSQL cluster ids and Cognito pool ids are random, so those two cannot be scoped to the environment
+# by name; the boundary allows them on all clusters/pools of the account (the role policy itself is
+# narrower).
+resource "aws_iam_policy" "workload_boundary" {
+  for_each    = toset(var.envs)
+  name        = "c4-${each.value}-workload-boundary"
+  description = "Permissions boundary for the Lambda and scheduler roles of c4-${each.value}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "Logs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = ["arn:aws:logs:${local.region}:${local.account}:log-group:/aws/lambda/c4-${each.value}-*:*"]
+      },
+      {
+        Sid      = "DsqlConnect"
+        Effect   = "Allow"
+        Action   = ["dsql:DbConnectAdmin", "dsql:DbConnect"]
+        Resource = ["arn:aws:dsql:${local.region}:${local.account}:cluster/*"]
+      },
+      {
+        Sid    = "S3EnvBucketObjects"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          "arn:aws:s3:::c4-${each.value}-*/*",
+        ]
+      },
+      {
+        Sid      = "S3EnvBucketList"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = ["arn:aws:s3:::c4-${each.value}-*"]
+      },
+      {
+        Sid      = "InvokeApiFunction"
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = ["arn:aws:lambda:${local.region}:${local.account}:function:c4-${each.value}-*"]
+      },
+      {
+        Sid      = "ReadEnvSecrets"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:c4-${each.value}-*"]
+      },
+      {
+        Sid    = "CognitoUserAdmin"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:ListUsers",
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminUpdateUserAttributes",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsersInGroup",
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminRemoveUserFromGroup",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminUserGlobalSignOut",
+        ]
+        Resource = ["arn:aws:cognito-idp:${local.region}:${local.account}:userpool/*"]
+      },
+      {
+        Sid      = "DenyIam"
+        Effect   = "Deny"
+        Action   = ["iam:*"]
+        Resource = ["*"]
+      },
+    ]
+  })
+}
+
 # What the CI deploy role may do: only resources of its own environment (name prefix c4-<env>-*)
 # wherever AWS supports resource-level permissions. Cognito pools and DSQL clusters have
 # generated ids, so those are scoped by account + region only.
@@ -298,12 +379,76 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = ["arn:aws:budgets::${local.account}:budget/c4-${each.key}"]
       },
       {
-        Sid    = "IamEnvRoles"
+        # Creating roles or changing their permissions only works when the role carries the env's
+        # workload boundary (aws_iam_policy.workload_boundary), so the deploy cannot mint a role that
+        # is more powerful than the boundary allows.
+        Sid    = "IamEnvRolesWithBoundary"
         Effect = "Allow"
-        Action = ["iam:*"]
-        Resource = [
-          "arn:aws:iam::${local.account}:role/c4-${each.key}-*",
+        Action = [
+          "iam:CreateRole",
+          "iam:PutRolePolicy",
+          "iam:AttachRolePolicy",
+          "iam:PutRolePermissionsBoundary",
         ]
+        Resource  = ["arn:aws:iam::${local.account}:role/c4-${each.key}-*"]
+        Condition = { StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.workload_boundary[each.key].arn } }
+      },
+      {
+        Sid    = "IamEnvRolesOther"
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:ListInstanceProfilesForRole",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:ListRoleTags",
+          "iam:UpdateRole",
+          "iam:UpdateRoleDescription",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:DeleteRole",
+          "iam:PassRole",
+        ]
+        Resource = ["arn:aws:iam::${local.account}:role/c4-${each.key}-*"]
+      },
+      {
+        # Deny always wins: the deploy role must not touch itself (it matches c4-<env>-* above) ...
+        Sid      = "DenyIamOnOwnDeployRole"
+        Effect   = "Deny"
+        Action   = ["iam:*"]
+        Resource = [aws_iam_role.deploy[each.key].arn]
+      },
+      {
+        # ... and must not remove the boundary from the roles it manages.
+        Sid      = "DenyRemoveBoundary"
+        Effect   = "Deny"
+        Action   = ["iam:DeleteRolePermissionsBoundary"]
+        Resource = ["arn:aws:iam::${local.account}:role/c4-${each.key}-*"]
+      },
+      {
+        # Cross-environment protection. Pools, clusters, distributions, APIs and certificates have
+        # generated ids, so they cannot be scoped by name; they carry the tag Environment=<env>
+        # (provider default_tags). Deny when the target resource is tagged with the OTHER env.
+        # A missing tag leaves the condition false (no deny), so list/create calls and untagged
+        # resources are unaffected; this is a guard rail, not a complete isolation.
+        Sid      = "DenyOtherEnvironment"
+        Effect   = "Deny"
+        Action   = ["cognito-idp:*", "dsql:*", "cloudfront:*", "apigateway:*", "acm:*"]
+        Resource = ["*"]
+        Condition = {
+          StringEquals = { "aws:ResourceTag/Environment" = local.other_env[each.key] }
+        }
+      },
+      {
+        # Backups are managed here in the bootstrap only; the deploy role must never delete them.
+        Sid      = "DenyBackup"
+        Effect   = "Deny"
+        Action   = ["backup:*", "backup-storage:*"]
+        Resource = ["*"]
       },
       {
         Sid    = "S3EnvBuckets"
@@ -331,6 +476,104 @@ resource "aws_iam_role_policy" "deploy" {
       },
     ]
   })
+}
+
+# ---------------------------------------------------------------- Backups (AWS Backup)
+# Managed here (applied by the owner), never by the deploy role, so a compromised deploy cannot change
+# or delete backups. Prerequisite (manual, once): enable the resource type "Aurora DSQL" in AWS Backup
+# under Settings > Service opt-in for eu-central-1. Not managed in Terraform on purpose:
+# aws_backup_region_settings would take over the whole account setting.
+locals {
+  backup_rules = {
+    prod = {
+      stuendlich = { schedule = "cron(0 * * * ? *)", delete_after = 2 }
+      taeglich   = { schedule = "cron(0 3 * * ? *)", delete_after = 35 }
+    }
+    dev = {
+      taeglich = { schedule = "cron(0 3 * * ? *)", delete_after = 7 }
+    }
+  }
+}
+
+resource "aws_backup_vault" "env" {
+  for_each = toset(var.envs)
+  name     = "c4-${each.value}-backup"
+}
+
+# The deploy role may not delete recovery points or shorten their retention. Deliberately no deny on
+# PutBackupVaultAccessPolicy, so the owner can still change this policy.
+resource "aws_backup_vault_policy" "env" {
+  for_each          = aws_backup_vault.env
+  backup_vault_name = each.value.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyDeployRolesDeleteRecoveryPoints"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = ["backup:DeleteRecoveryPoint", "backup:UpdateRecoveryPointLifecycle"]
+      Resource  = "*"
+      Condition = { ArnEquals = { "aws:PrincipalArn" = [for r in aws_iam_role.deploy : r.arn] } }
+    }]
+  })
+}
+
+# Named c4backup-<env>-service, NOT c4-<env>-*: the deploy role has IAM rights on role/c4-<env>-*
+# and must not be able to change this role.
+resource "aws_iam_role" "backup" {
+  for_each = toset(var.envs)
+  name     = "c4backup-${each.value}-service"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "backup.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "backup" {
+  for_each = {
+    for pair in setproduct(var.envs, ["Backup", "Restores"]) : "${pair[0]}-${pair[1]}" => {
+      role   = aws_iam_role.backup[pair[0]].name
+      policy = "AWSBackupServiceRolePolicyFor${pair[1]}"
+    }
+  }
+  role       = each.value.role
+  policy_arn = "arn:aws:iam::aws:policy/service-role/${each.value.policy}"
+}
+
+resource "aws_backup_plan" "env" {
+  for_each = toset(var.envs)
+  name     = "c4-${each.value}"
+  dynamic "rule" {
+    for_each = local.backup_rules[each.value]
+    content {
+      rule_name         = rule.key
+      target_vault_name = aws_backup_vault.env[each.value].name
+      schedule          = rule.value.schedule
+      lifecycle {
+        delete_after = rule.value.delete_after
+      }
+    }
+  }
+}
+
+# DSQL clusters have random ids: select all clusters of the account and keep those tagged with the env
+# (the module tags its cluster with Environment=<env>).
+resource "aws_backup_selection" "env" {
+  for_each     = toset(var.envs)
+  name         = "c4-${each.value}-dsql"
+  plan_id      = aws_backup_plan.env[each.value].id
+  iam_role_arn = aws_iam_role.backup[each.value].arn
+  resources    = ["arn:aws:dsql:${local.region}:${local.account}:cluster/*"]
+  condition {
+    string_equals {
+      key   = "aws:ResourceTag/Environment"
+      value = each.value
+    }
+  }
 }
 
 output "state_bucket" {
