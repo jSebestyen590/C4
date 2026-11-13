@@ -26,6 +26,11 @@ export class StatusDatumDoppelt extends Error {}
 /** The last remaining status entry cannot be deleted. */
 export class LetzterStatusEintrag extends Error {}
 
+/** Status entries never start in the future (see docs/members.md); routes validate this already. */
+function abPruefen(ab: string) {
+  if (ab > heuteBerlin()) throw new Error(`Status-Eintrag in der Zukunft: ${ab}`);
+}
+
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export type MitgliedDaten = Omit<
@@ -125,6 +130,7 @@ export function createMitgliederStore(db: Db): MitgliederStore {
       return db.select().from(mitglieder).orderBy(mitglieder.nachname, mitglieder.vorname);
     },
     async speichern(sub, daten, statusNeu = 'anwaerter', ab = heuteBerlin()) {
+      abPruefen(ab);
       const werte = { ...daten, aktualisiertAm: new Date() };
       await db.transaction(async (tx) => {
         const [vorhanden] = await tx
@@ -145,6 +151,7 @@ export function createMitgliederStore(db: Db): MitgliederStore {
       });
     },
     async statusSetzen(sub, status, ab = heuteBerlin()) {
+      abPruefen(ab);
       return db.transaction(async (tx) => {
         const [vorhanden] = await tx
           .select({ sub: mitglieder.sub })

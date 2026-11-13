@@ -302,6 +302,14 @@ describe('aufnahme.status', () => {
     expect(nein!.plan).toMatchObject({ status: 'extern' });
   });
 
+  it('starts today when the Sitzung lies in the future', () => {
+    const [a] = protokollAktionen(
+      dok(baustein('bausteinAufnahme', { sub: 'p', abstimmung: ergebnis('angenommen') })),
+      kontext({ personen: { p: person('anwaerter') }, heute: '2026-11-01' }),
+    );
+    expect(a!.plan).toMatchObject({ status: 'mitglied', ab: '2026-11-01' });
+  });
+
   it('is not executable without result, person, or for a deactivated account', () => {
     const k = kontext({ personen: { p: person('anwaerter'), d: person('anwaerter', true) } });
     const grund = (daten: object) =>

@@ -82,7 +82,7 @@ können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/share
 Reihenfolge nicht.
 
 Statuswechsel und Einladungen entstehen auch aus **Protokollen**: Beim Abschließen laden Anwärter:in-Bausteine ein (Konto plus
-Profil als Anwärter:in), Aufnahme und Neues EM setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum.
+Profil als Anwärter:in), Aufnahme und Neues EM setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum (liegt es in der Zukunft, ab heute).
 Das läuft mit dem Recht `protokolle:schreiben`, ohne `users:manage`; siehe [protokolle/aktionen.md](./protokolle/aktionen.md).
 
 ## Status-Historie
@@ -100,7 +100,10 @@ Eintrag und wird bei jeder Änderung des Verlaufs nachgezogen.
   Pflicht und nicht in der Zukunft). Bei deaktivierten Accounts ist die Historie gesperrt (409). Das API lehnt ein
   doppeltes Datum ab (409) sowie das Löschen des letzten Eintrags (400).
 - **Statusfeld:** Nach der Wahl eines neuen Status fragt der Dialog „Status ändern“ nach dem Datum „Ab“ (Standard heute)
-  und zeigt dort auch die Warnung bei ungewöhnlichen Wechseln.
+  und zeigt dort auch die Warnung bei ungewöhnlichen Wechseln. Gibt es an dem Tag schon einen Eintrag, ersetzt der neue
+  Status ihn (kein 409, anders als „Eintrag hinzufügen“); das gilt auch für Protokoll-Aktionen.
+- **Keine Zukunft:** Kein Eintrag beginnt nach heute, daher ist der jüngste Eintrag immer der aktuelle Status. Die Routen
+  prüfen das, Protokoll-Aktionen nehmen bei einer künftigen Sitzung heute, und der Store wirft als letzte Absicherung.
 
 ## Mitglieder anlegen
 

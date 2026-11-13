@@ -140,6 +140,12 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
 - Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
 
+**Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
+
+- Status mit Zukunftsdatum: nicht erreichbar (Routen prüfen, Protokoll-Aktionen nehmen bei künftiger Sitzung heute).
+  `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
+  selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
+
 **Ohne Test geblieben**
 
 - Größenprüfung und Überspringen beim Parsen in `partymail.ts` (bräuchte einen IMAP-Client).
@@ -198,9 +204,6 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
 Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
-- **Status mit Zukunftsdatum (zurückgestellt, [Issue 39](https://github.com/jSebestyen590/C4/issues/39)):** `statusAbgleichen` nimmt den jüngsten Eintrag ohne Vergleich mit heute; über einen
-  Protokoll-Abschluss könnte ein künftiges Datum hineinkommen (unsicher). `statusSetzen` überschreibt einen Eintrag vom selben
-  Tag still, die Route antwortet dafür mit 409.
 - **Schlüssel-Planungen** laufen nie ab; eine veraltete Planung zeigt ihren Empfänger weiter als erwarteten Halter. Eine
   Übergabe an jemand anderen entfernt sie nicht.
 - **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
