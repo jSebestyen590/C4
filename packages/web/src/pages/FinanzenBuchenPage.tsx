@@ -307,8 +307,8 @@ export function FinanzenBuchenPage() {
 
             {hatStueckelung && (
               <Text size="sm" c="dimmed">
-                Konten mit Stückelung (z. B. der Safe) stehen hier noch nicht zur Auswahl. Buchungen
-                von Bargeld mit Scheinen und Münzen kommen mit einem späteren Schritt.
+                Die Fächer des Safes und Konten mit Unterkonten stehen hier nicht zur Auswahl.
+                Bargeld mit Scheinen und Münzen buchst du unter „Bargeld“.
               </Text>
             )}
             <Group align="center" gap="md">

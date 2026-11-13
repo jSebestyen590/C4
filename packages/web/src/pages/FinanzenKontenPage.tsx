@@ -168,11 +168,11 @@ export function FinanzenKontenPage() {
                     fw={600}
                     component={Link}
                     to={`/finanzen/journal?konto=${encodeURIComponent(k.id)}`}
-                    c={k.saldoCent < 0 ? 'red' : undefined}
+                    c={k.saldoGesamtCent < 0 ? 'red' : undefined}
                     style={{ textDecoration: 'none', whiteSpace: 'nowrap' }}
-                    aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoCent)}`}
+                    aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoGesamtCent)}`}
                   >
-                    {centAnzeigen(k.saldoCent)}
+                    {centAnzeigen(k.saldoGesamtCent)}
                   </Text>
                   {aktionsMenue(k)}
                 </Group>
@@ -235,11 +235,11 @@ export function FinanzenKontenPage() {
                         fw={600}
                         component={Link}
                         to={`/finanzen/journal?konto=${encodeURIComponent(k.id)}`}
-                        c={k.saldoCent < 0 ? 'red' : undefined}
+                        c={k.saldoGesamtCent < 0 ? 'red' : undefined}
                         style={{ textDecoration: 'none', ...BETRAG_STIL }}
-                        aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoCent)}`}
+                        aria-label={`Buchungen von ${k.name}, Saldo ${centAnzeigen(k.saldoGesamtCent)}`}
                       >
-                        {centAnzeigen(k.saldoCent)}
+                        {centAnzeigen(k.saldoGesamtCent)}
                       </Text>
                     </Table.Td>
                     <Table.Td>

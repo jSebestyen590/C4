@@ -40,9 +40,14 @@ export const leereZeile = (richtung: Richtung = 'zugang'): FreieZeile => ({
   betrag: null,
 });
 
-/** Accounts that take bookings on this page: not archived, without Stückelung (comes with slice 1). */
-export const buchbareKonten = (konten: readonly KontoDto[]): KontoDto[] =>
-  konten.filter((k) => !k.archiviert && !k.stueckelung);
+/**
+ * Accounts that take bookings on this page: not archived, without Stückelung (Fächer are booked on
+ * the Bargeld pages) and not a group (an account with sub accounts takes no lines).
+ */
+export const buchbareKonten = (konten: readonly KontoDto[]): KontoDto[] => {
+  const eltern = new Set(konten.map((k) => k.parentId));
+  return konten.filter((k) => !k.archiviert && !k.stueckelung && !eltern.has(k.id));
+};
 
 export const einfacheZeile = (kontoId: string, cent: number): BuchungZeileEingabe => ({
   kontoId,

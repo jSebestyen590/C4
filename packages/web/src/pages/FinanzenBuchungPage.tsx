@@ -31,7 +31,13 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
 import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
-import { BETRAG_STIL, detailPfad, FINANZEN_KEY, jsonOderFehler } from '../finanzenDaten';
+import {
+  BETRAG_STIL,
+  detailPfad,
+  FINANZEN_KEY,
+  jsonOderFehler,
+  zaehlungPfad,
+} from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
 import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
@@ -175,6 +181,11 @@ export function FinanzenBuchungPage() {
                 Art:{' '}
                 {QUELLE_TYP_LABELS[b.quelleTyp as keyof typeof QUELLE_TYP_LABELS] ?? b.quelleTyp}
               </Text>
+              {b.quelleTyp === 'zaehlung' && b.quelleId && (
+                <Anchor component={Link} to={zaehlungPfad(b.quelleId)}>
+                  Zur Zählung
+                </Anchor>
+              )}
               <Text>
                 Volumen: <span style={BETRAG_STIL}>{centAnzeigen(b.betragCent)}</span>
               </Text>

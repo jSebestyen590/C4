@@ -43,6 +43,12 @@ import { FinanzenJournalPage } from './pages/FinanzenJournalPage';
 import { FinanzenBuchungPage } from './pages/FinanzenBuchungPage';
 import { FinanzenBuchenPage } from './pages/FinanzenBuchenPage';
 import { FinanzenKettePage } from './pages/FinanzenKettePage';
+import { FinanzenBargeldPage } from './pages/FinanzenBargeldPage';
+import { FinanzenBargeldUmbuchenPage } from './pages/FinanzenBargeldUmbuchenPage';
+import { FinanzenBargeldWechselnPage } from './pages/FinanzenBargeldWechselnPage';
+import { FinanzenBargeldZaehlenPage } from './pages/FinanzenBargeldZaehlenPage';
+import { FinanzenZaehlungPage } from './pages/FinanzenZaehlungPage';
+import { FinanzenZaehlungenPage } from './pages/FinanzenZaehlungenPage';
 import { BenachrichtigungenPage } from './pages/BenachrichtigungenPage';
 import { BenachrichtigungsVerlaufPage } from './pages/BenachrichtigungsVerlaufPage';
 import { SchluesselDetailPage } from './pages/SchluesselDetailPage';
@@ -244,6 +250,66 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
               <Protected permission="finanzen:buchen">
                 <RequireUsername>
                   <FinanzenBuchenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenBargeldPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld/umbuchen"
+            element={
+              <Protected permission="finanzen:buchen">
+                <RequireUsername>
+                  <FinanzenBargeldUmbuchenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld/wechseln"
+            element={
+              <Protected permission="finanzen:buchen">
+                <RequireUsername>
+                  <FinanzenBargeldWechselnPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld/zaehlen"
+            element={
+              <Protected permission="finanzen:buchen">
+                <RequireUsername>
+                  <FinanzenBargeldZaehlenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld/zaehlungen"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenZaehlungenPage />
+                </RequireUsername>
+              </Protected>
+            }
+          />
+          <Route
+            path="/finanzen/bargeld/zaehlungen/:id"
+            element={
+              <Protected permission="finanzen:lesen">
+                <RequireUsername>
+                  <FinanzenZaehlungPage />
                 </RequireUsername>
               </Protected>
             }

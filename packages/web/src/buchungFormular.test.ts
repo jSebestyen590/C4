@@ -215,4 +215,14 @@ describe('buchbareKonten', () => {
       ),
     ).toEqual(['a']);
   });
+
+  it('drops groups (accounts with sub accounts)', () => {
+    const k = (id: string, parentId: string | null) =>
+      ({ id, parentId, archiviert: false, stueckelung: false }) as Parameters<
+        typeof buchbareKonten
+      >[0][number];
+    expect(
+      buchbareKonten([k('safe', null), k('kind', 'safe'), k('bank', null)]).map((x) => x.id),
+    ).toEqual(['kind', 'bank']);
+  });
 });
