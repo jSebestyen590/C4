@@ -26,7 +26,13 @@ import {
   type ZaehlungErgebnisDto,
 } from '@c4/shared';
 import { useApi } from '../api';
-import { mengenLeer, mengenStueckelung, zaehlungIst, type Mengen } from '../bargeldFormular';
+import {
+  abweichungText,
+  mengenLeer,
+  mengenStueckelung,
+  zaehlungIst,
+  type Mengen,
+} from '../bargeldFormular';
 import { schluesselFuer } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
 import {
@@ -114,15 +120,16 @@ function ZaehlungsZusammenfassung({
           </Table.Tbody>
         </Table>
         {unterschiede.length > 0 && (
-          <Text size="sm">
-            Abweichungen:{' '}
-            {unterschiede
-              .map(
-                (p) =>
-                  `${centAnzeigen(p.nennwertCent)} ${p.differenzAnzahl > 0 ? '+' : '−'}${Math.abs(p.differenzAnzahl)}`,
-              )
-              .join(', ')}
-          </Text>
+          <Stack gap={2}>
+            <Text size="sm" fw={600}>
+              Abweichungen
+            </Text>
+            {unterschiede.map((p) => (
+              <Text key={p.nennwertCent} size="sm">
+                {abweichungText(p.nennwertCent, p.differenzAnzahl)}
+              </Text>
+            ))}
+          </Stack>
         )}
         {ergebnis.zeilen.length === 0 ? (
           <Alert color="teal">

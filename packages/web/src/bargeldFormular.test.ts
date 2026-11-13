@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { KontoDto } from '@c4/shared';
 import {
+  abweichungText,
   andereKonten,
   bestandFehler,
   faecherAus,
@@ -108,5 +109,13 @@ describe('Wechseln', () => {
   it('sperrt mehr Raus als im Bestand', () => {
     const s = { fach: 'f1', raus: { 200: 5 }, rein: { 100: 10 } };
     expect(wechselnFehler(s, bestand)).toContain('Im Fach ist nicht genug vorhanden.');
+  });
+});
+
+describe('abweichungText', () => {
+  it('formuliert zu wenig und zu viel', () => {
+    expect(abweichungText(50, -1)).toBe('0,50 €: 1 Stück zu wenig');
+    expect(abweichungText(200, 3)).toBe('2,00 €: 3 Stück zu viel');
+    expect(abweichungText(200, 0)).toBe('');
   });
 });

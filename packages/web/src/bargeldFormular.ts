@@ -181,3 +181,9 @@ export const zaehlungIst = (m: Mengen): StueckelungDto[] =>
 /** Text of a Stückelung, e.g. `3 × 2,00 €, 1 × 5,00 €`. */
 export const stueckelungText = (s: readonly StueckelungDto[]): string =>
   s.map((x) => `${x.anzahl} × ${centAnzeigen(x.nennwertCent)}`).join(', ');
+
+/** `0,50 €: 1 Stück zu wenig` / `2,00 €: 3 Stück zu viel`; empty for no difference. */
+export const abweichungText = (nennwertCent: number, differenzAnzahl: number): string =>
+  differenzAnzahl === 0
+    ? ''
+    : `${centAnzeigen(nennwertCent)}: ${Math.abs(differenzAnzahl).toLocaleString('de-DE')} Stück zu ${differenzAnzahl < 0 ? 'wenig' : 'viel'}`;
