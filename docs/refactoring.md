@@ -107,6 +107,14 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Profilbilder-Bucket: Versionierung, alte Versionen laufen nach 30 Tagen ab.
 - Actions auf Commit-SHAs gepinnt, `dependabot.yml` (Actions und npm), informativer Job `audit` (`pnpm audit`).
 
+**Deploy-Rolle und Backups** (Branch `infra/deploy-rolle-backup`)
+
+- Deploy-Rolle: Permissions Boundary `c4-<env>-workload-boundary` für die von ihr angelegten Rollen, `iam:*` auf sich selbst
+  verboten, Cross-Environment-Verbot per Tag `Environment`, `backup:*` verboten. Offen bleibt die Branch-Bedingung im `sub`
+  (bewusst nicht gesetzt) und dass Cognito/DSQL ohne Tag nicht je Umgebung eingegrenzt sind.
+- Backups: AWS Backup für DSQL je Umgebung im Bootstrap (siehe [datenbank.md](./datenbank.md#backups)); Wiederherstellung noch
+  nicht getestet.
+
 **Doku**
 
 - `protokolle.md` aufgeteilt (Einstieg plus `protokolle/bausteine.md`, `aktionen.md`, `ansicht-pdf.md`).
@@ -157,10 +165,6 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 
 ### 2. Infrastruktur und Deploy
 
-- **Deploy-Rolle (hoch):** `infra/bootstrap/main.tf` gibt `iam:*` auf `role/c4-<env>-*` (trifft die Rolle selbst) und
-  `cognito-idp:*`, `dsql:*`, `cloudfront:*` auf alle Ressourcen des Accounts; die dev-Rolle kann prod ändern. Das
-  OIDC-Vertrauen prüft nur das Environment, nicht den Branch. Abhilfe: Permissions Boundary, Eingrenzung per Tag oder Name,
-  Branch-Bedingung im `sub`. Das Bootstrap wird lokal mit dem Profil `C4` angewendet, der State liegt lokal.
 - **Deploy-Rollback:** Kein Rollback-Weg für prod (keine Lambda-Versionen, `rollback_to` nur dev).
 - **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
 - **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
@@ -170,8 +174,6 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
   Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
 - **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
-- **Backups:** DSQL-Backups sind in Terraform nicht konfiguriert. Beschlossen: AWS Backup, zuerst auf dev getestet; braucht
-  zusätzliche Rechte in der Deploy-Rolle.
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll.
 - **Eingehende Mail (zurückgestellt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes

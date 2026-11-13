@@ -117,3 +117,17 @@ Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
 - **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
   S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
   davor oder danach.
+
+## Backups
+
+AWS Backup sichert die DSQL-Cluster, die mit `Environment=<env>` getaggt sind. Konfiguriert ist das in `infra/bootstrap`
+(vom Owner angewendet, die Deploy-Rolle kann es nicht ändern oder löschen).
+
+| Umgebung | Regel        | Zeitplan          | Aufbewahrung |
+| -------- | ------------ | ----------------- | ------------ |
+| prod     | `stuendlich` | jede volle Stunde | 2 Tage       |
+| prod     | `taeglich`   | täglich 03:00 UTC | 35 Tage      |
+| dev      | `taeglich`   | täglich 03:00 UTC | 7 Tage       |
+
+Voraussetzung: In AWS Backup ist der Ressourcentyp „Aurora DSQL“ für eu-central-1 aktiviert (manuell, siehe README).
+Wiederherstellung erzeugt einen neuen Cluster, den die App erst bekommen muss; **noch nicht getestet**.
