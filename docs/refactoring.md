@@ -129,6 +129,16 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   als Releases gibt es nicht. Der Job `pruefen` verlangt ohnehin einen Commit auf `main` mit grünem CI.
 - Zwei gleichzeitige Deploys derselben Umgebung verhindert die `concurrency`-Gruppe in `deploy.yml`; ein eigener Schutz für
   Migrationen ist nicht nötig.
+- Anonyme Umfragen bekommen keine Mindestgröße des Kreises; `mitglied_sub` je Stimme bleibt in der DB.
+
+**Entschieden, Umsetzung offen** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
+
+- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
+- Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
+- Überfällige Todos werden einmal am Tag erinnert.
+- Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
+- Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
+- Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
 
 **Ohne Test geblieben**
 
@@ -141,7 +151,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 ## Offen
 
 Als „zurückgestellt“ markierte Punkte sind vorerst nicht geplant und nur als GitHub-Issue festgehalten; alle anderen sollen
-angegangen werden.
+angegangen werden und stehen je Abschnitt in einem Arbeits-Issue mit Checkliste.
 
 ### 1. Gleichzeitige Zugriffe, die der Retry nicht löst
 
@@ -165,6 +175,9 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 
 ### 2. Infrastruktur und Deploy
 
+Arbeits-Issue: [Issue 47](https://github.com/jSebestyen590/C4/issues/47) (außer den zurückgestellten Punkten). Dazu gehört
+auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
+
 - **Deploy-Rollback:** Kein Rollback-Weg für prod (keine Lambda-Versionen, `rollback_to` nur dev).
 - **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
 - **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
@@ -180,7 +193,10 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
   `In-Reply-To` überschreibt `mail_adresse`.
 - **CI:** kein `terraform plan` auf PRs.
 
-### 3. Fachliche Punkte, die eine Entscheidung brauchen
+### 3. Fachliche Punkte
+
+Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
+Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
 - **Status mit Zukunftsdatum (zurückgestellt, [Issue 39](https://github.com/jSebestyen590/C4/issues/39)):** `statusAbgleichen` nimmt den jüngsten Eintrag ohne Vergleich mit heute; über einen
   Protokoll-Abschluss könnte ein künftiges Datum hineinkommen (unsicher). `statusSetzen` überschreibt einen Eintrag vom selben
@@ -198,13 +214,14 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
   mitschreibt.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
-- **Umfragen:** keine Mindestgröße des Kreises bei anonymen Umfragen; `mitglied_sub` je Stimme in der DB. Inhaber von
-  `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).
+- **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).
 - **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
 - **Benachrichtigungen:** Der Versandschlüssel wird vor dem Senden belegt (bei Abbruch geht der Push verloren);
   `push_versand` wird nie aufgeräumt; der Geburtstags-Job rechnet ab 09:00 alle 5 Minuten alle Empfänger neu.
 
 ### 4. Tests und Struktur
+
+Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 - **Keine Tests gegen echtes SQL:** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores laufen erst auf dev. Vorschlag: PGlite
   mit den echten Migrationen und Vertragstests, die Fake und Store gegen dasselbe Interface prüfen.
@@ -219,6 +236,8 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 
 ### 5. Frontend
 
+Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
+
 - Kein globales `MutationCache.onError` und kein Standard-`staleTime`; einzelne Mutationen zeigen bei Fehlern nichts
   (`protokollDaten.ts`, `todoDaten.tsx`, `RollenAnzeige.tsx`, `StatusAnzeige.tsx`, `MitgliedEinladen.tsx`,
   `StatusEintragModal.tsx`; unsicher, ob die Aufrufer es abfangen).
@@ -230,6 +249,8 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 - **Noch zu prüfen:** Mitglieder ohne `StatusName` und hart kodierte gegenderte Begriffe (die Suche im Review schlug fehl).
 
 ### 6. Doku
+
+Arbeits-Issue: [Issue 51](https://github.com/jSebestyen590/C4/issues/51).
 
 - Die Abschnitte „Oberfläche (Details)“ in `waren.md` und `inventar.md` sind nicht gegen die Komponenten geprüft.
 - `kalender.md` hat keine Routen-Tabelle für Events und Dienste.
