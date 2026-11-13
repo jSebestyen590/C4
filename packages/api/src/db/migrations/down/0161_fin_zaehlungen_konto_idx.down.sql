@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_zaehlungen_konto_idx
