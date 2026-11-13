@@ -1,7 +1,7 @@
 # Finanzen
 
-Stand: **Scheibe 0 (Fundament) ist gebaut**: Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung
-und „Kette prüfen“ (nur gegen die Datenbank). Alles Weitere (Bargeld, Buch, Belege, Archiv in S3, …)
+Stand: **Scheibe 0 (Fundament) und Scheibe 1 (Bargeld) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
+Storno, freie Buchung, „Kette prüfen“ (nur gegen die Datenbank) und der Safe mit Fächern. Alles Weitere (Buch, Buch, Belege, Archiv in S3, …)
 steht als Zielbild unten und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Diese Seite
 wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich die Verfahrensdokumentation
 (wer bucht wie, wo liegen Belege, wie läuft die Prüfung).
@@ -57,16 +57,21 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
 
 - **Arten:** Bargeld, Bank, Durchlauf, Erlöse, Aufwand, Neutral. Eine Art „Buch“ gibt es bewusst nicht:
   Das Buch der Mitglieder (Scheibe 2) ist ein Nebenbuch ohne Journalbuchungen.
-- **Grundkonten** mit festen Ids (Migration `0149`): `safe` „Safe“ (Bargeld, mit Stückelung), `bank`
+- **Grundkonten** mit festen Ids (Migration `0149`): `safe` „Safe“ (Bargeld, Gruppe der Fächer, seit `0158` ohne eigene Stückelung), `bank`
   „Bank (Fyrst)“, `geldtransit` „Geldtransit“ (Durchlauf), `eroeffnung` „Eröffnung / Saldovortrag“
-  (Neutral). Weitere Konten legt `finanzen:verwalten` an.
+  (Neutral); `kassendifferenz` „Kassendifferenz“ (Neutral, Migration `0157`). Weitere Konten legt
+  `finanzen:verwalten` an.
 - **Unterkonten** über `parent_id` (später z. B. Safe → Fächer). Das übergeordnete Konto muss
   existieren, Zyklen und das eigene Konto als Eltern sind ungültig.
 - **Archivieren statt löschen:** Archivierte Konten erscheinen nicht mehr in der Liste (Schalter
   „Archivierte anzeigen“) und nehmen keine neuen Buchungen an; ihre Zeilen bleiben.
 - **Art, Stückelung und Übergeordnet** lassen sich nur ändern, solange keine Buchungszeile auf dem
   Konto liegt (sonst 409). Name, Steuersatz und Archivierung gehen immer.
-- Der Saldo je Konto ist die Summe seiner Zeilen (ohne Unterkonten).
+- Der Saldo je Konto (`saldoCent`) ist die Summe seiner Zeilen, `saldoGesamtCent` zusätzlich die seiner
+  Unterkonten (der Kontenplan zeigt die Gesamtsumme).
+- **Gruppenregel:** Ein Konto mit Unterkonten nimmt keine Buchungszeilen an (400 „Auf das Konto „X“ kann
+  nicht gebucht werden, weil es Unterkonten hat …“), auch nicht per Storno. Umgekehrt bekommt ein Konto mit
+  Buchungszeilen keine Unterkonten (409). Die Regel gilt einheitlich, es gibt keine Sonderfälle für Altdaten.
 
 ## Journal
 
@@ -197,6 +202,36 @@ Das Ergebnis zeigt Anzahl, Kopf-Hash und Fehler je `seq`. **In dieser Scheibe wi
 Datenbank geprüft.** Wer die Datenbank ändern kann, könnte Buchungen samt Hashes neu schreiben; der
 Abgleich gegen Exporte und Kopf-Hash im S3-Archiv (Object Lock) kommt mit Scheibe 5.
 
+## Bargeld (Safe)
+
+Der Safe ist eine **Gruppe**: Seine Unterkonten sind die **Fächer** (Bargeld mit Stückelung, z. B.
+„Zählbrett“, „Kleingeld“, „Wechselgeld“, je Barkasse eines). Die Finanzer:in legt sie frei im Kontenplan an
+(Art Bargeld, Stückelung an, Übergeordnet „Safe“); es gibt keine vorgegebenen Fächer. Gebucht wird nur auf
+Fächer, nie auf den Safe selbst (Gruppenregel).
+
+- **Bestandsregel** (`pruefeBestand`, bei jeder Buchung samt Storno und Zählung in der Transaktion geprüft,
+  Antwort 400): Kein Bargeldkonto darf negativ werden, und bei Stückelungskonten darf keine Münz-/Scheinart
+  unter 0 fallen („Im Fach „Wechselgeld“ sind nur 3 × 2,00 € vorhanden.“). Mehrere Zeilen auf demselben
+  Konto werden zusammengerechnet (Wechseln).
+- **Bestand** je Fach: Saldo und Anzahl je Nennwert (Summe der Stückelungszeilen). `GET /api/finanzen/bargeld`
+  liefert alle nicht archivierten Fächer unter `safe` mit den 13 Nennwerten sowie Summen je Nennwert.
+- **Umbuchen:** Von und Nach, wobei mindestens eine Seite ein Fach ist (die andere ein Fach oder ein
+  anderes buchbares Konto, z. B. Bank). Die Stückelung wird einmal erfasst; die Fach-Seite bekommt sie
+  (Von negiert), die andere Seite nur den Betrag. Von begrenzt auf den Bestand. `quelle_typ` `umbuchung`.
+- **Wechseln:** ein Fach, „Raus“ (auf den Bestand begrenzt) und „Rein“; die Summen müssen gleich sein
+  („Noch 1,00 € Unterschied“). Zwei Zeilen auf dem Fach (−Raus, +Rein), Text „Wechseln <Fach>“.
+- **Zählen:** Der gezählte Ist-Bestand eines Fachs wird gegen den Soll-Bestand gerechnet
+  (`berechneZaehlung`). Eine Zählung wird **immer** als insert-only Protokoll gespeichert, auch ohne
+  Differenz (Tabellen `fin_zaehlungen` und `fin_zaehlung_posten`: Soll, Ist und Differenz je Nennwert,
+  Zähler:in, Zeitpunkt, Verweis auf die Buchung). Weicht etwas ab, entsteht in derselben Transaktion eine
+  Differenzbuchung (`quelle_typ` `zaehlung`, `quelle_id` = Zählung): Mehr-Nennwerte stehen auf einer
+  Fach-Zeile, Fehl-Nennwerte auf einer zweiten, dazu eine Zeile auf `kassendifferenz` mit dem Gegenbetrag
+  der Nettodifferenz. Stimmt nur die Mischung (Netto 0), bleiben es die zwei Fach-Zeilen. Stimmt alles, gibt
+  es keine Buchung. Text: Anmerkung der Zähler:in oder „Zählung <Fach>: Differenz …“. Ein Fach ist ein
+  Stückelungskonto ohne Unterkonten und nicht archiviert, sonst 400.
+- Rechte: Lesen `finanzen:lesen`, Umbuchen, Wechseln und Zählen `finanzen:buchen` (nicht `kasse:zaehlen`,
+  das gehört der Kassenzählung am Event in Scheibe 3).
+
 ## Seiten
 
 Navigation: Menüpunkt „Finanzen“ (`/finanzen`) im `AppLayout`.
@@ -206,14 +241,17 @@ funktionieren aber auch auf dem Handy ohne horizontales Scrollen der Seite: dich
 fixierter Kopfzeile, Beträge rechtsbündig mit Tabellenziffern, Zugang/Abgang und Von/Nach als Wörter,
 Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung vor dem Buchen.
 
-| Seite                   | Recht                                         | Inhalt                                                                                                                                                                         |
-| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/finanzen`             | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                                                                                                      |
-| `/finanzen/konten`      | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan: Tabelle ab `sm` (nach Art gruppiert, Unterkonten eingerückt, Saldo, Status, Aktionen), Karten auf dem Handy; anlegen, bearbeiten, archivieren                      |
-| `/finanzen/journal`     | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle mit fixierter Kopfzeile ab `sm`), Filter Konto, Zeitraum und „Nur Stornos“, alle Spalten sortierbar                                   |
-| `/finanzen/journal/:id` | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen (Zugang/Abgang), Stückelung, Hash und `prev_hash`, Verweis Storno und Original; Storno-Dialog mit Gegenbuchung, Begründung (Pflicht), Bestätigung und eigenem Schlüssel |
-| `/finanzen/buchen`      | `finanzen:buchen`                             | freie Buchung und Umbuchung (siehe unten); Konten mit Stückelung bietet die Seite noch nicht an (kommt mit Scheibe 1)                                                          |
-| `/finanzen/kette`       | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                                                                                                    |
+| Seite                                                 | Recht                                         | Inhalt                                                                                                                                                                                                |
+| ----------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/finanzen`                                           | `finanzen:lesen`                              | Übersicht mit Zugängen zu den Unterseiten                                                                                                                                                             |
+| `/finanzen/konten`                                    | `finanzen:lesen`, Pflege `finanzen:verwalten` | Kontenplan: Tabelle ab `sm` (nach Art gruppiert, Unterkonten eingerückt, Saldo, Status, Aktionen), Karten auf dem Handy; anlegen, bearbeiten, archivieren                                             |
+| `/finanzen/journal`                                   | `finanzen:lesen`                              | Buchungen (Karten auf dem Handy, Tabelle mit fixierter Kopfzeile ab `sm`), Filter Konto, Zeitraum und „Nur Stornos“, alle Spalten sortierbar                                                          |
+| `/finanzen/journal/:id`                               | `finanzen:lesen`, Storno `finanzen:buchen`    | Zeilen (Zugang/Abgang), Stückelung, Hash und `prev_hash`, Verweis Storno und Original; Storno-Dialog mit Gegenbuchung, Begründung (Pflicht), Bestätigung und eigenem Schlüssel                        |
+| `/finanzen/buchen`                                    | `finanzen:buchen`                             | freie Buchung und Umbuchung (siehe unten); Fächer und Konten mit Unterkonten bietet die Seite nicht an (Bargeld siehe `/finanzen/bargeld`)                                                            |
+| `/finanzen/kette`                                     | `finanzen:pruefen`                            | „Kette prüfen“ mit Ergebnis                                                                                                                                                                           |
+| `/finanzen/bargeld`                                   | `finanzen:lesen`                              | Fächer (Spalten) × Nennwerte (Zeilen) mit Summen; unter `sm` eine Karte je Fach; Zugänge zu Umbuchen, Wechseln, Zählen, Zählungen und „Fach anlegen“ (Kontenplan)                                     |
+| `/finanzen/bargeld/umbuchen`, `/wechseln`, `/zaehlen` | `finanzen:buchen`                             | Erfassung per `StueckelungFeld` (13 Zahlfelder, Tab/Enter von oben nach unten, Spalten Bestand/Soll und Differenz, Summenzeile); Zusammenfassung vor dem Speichern, Idempotenz-Schlüssel je Erfassung |
+| `/finanzen/bargeld/zaehlungen` und `/:id`             | `finanzen:lesen`                              | Protokoll der Zählungen (Tabelle ab `sm`, Karten darunter, Filter Fach) und Detail mit Soll/Ist/Differenz je Nennwert, Zähler:in (`StatusName`), Link zur Buchung                                     |
 
 **Buchen:** Modus „Umbuchung“ (Von Konto = Abgang, Nach Konto = Zugang, Betrag) oder „Frei“ mit der
 wiederverwendbaren `BuchungszeilenTabelle` (Konto suchbar, Zugang/Abgang, Betrag; Summenzeile mit
@@ -230,17 +268,21 @@ eine geglückte Buchung erzeugt einen neuen.
 
 ## API
 
-| Route                                     | Recht                | Hinweise                                                                                                                                                                      |
-| ----------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/finanzen/konten`                | `finanzen:lesen`     | `?archiviert=1` nimmt archivierte mit; je Konto `saldoCent`                                                                                                                   |
-| `POST /api/finanzen/konten`               | `finanzen:verwalten` | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                                                                              |
-| `PUT /api/finanzen/konten/:id`            | `finanzen:verwalten` | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                                                                                 |
-| `PUT /api/finanzen/konten/:id/archiv`     | `finanzen:verwalten` | `{ archiviert }`                                                                                                                                                              |
-| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `storno` (`1`); alle Treffer, neueste zuerst, höchstens 2000 (`gekappt`)                                                                             |
-| `GET /api/finanzen/buchungen/:id`         | `finanzen:lesen`     | mit Zeilen, Stückelung, Hashes                                                                                                                                                |
-| `POST /api/finanzen/buchungen`            | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`), `eventId`, `zeilen`; 201 `{ id, seq }`, bei bekanntem Schlüssel 200 mit der vorhandenen Buchung |
-| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text` (Begründung, Pflicht); 409 bei doppeltem Storno                                                                                       |
-| `GET /api/finanzen/kette`                 | `finanzen:pruefen`   | Ergebnis von „Kette prüfen“                                                                                                                                                   |
+| Route                                     | Recht                | Hinweise                                                                                                                                                                                                                              |
+| ----------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/finanzen/konten`                | `finanzen:lesen`     | `?archiviert=1` nimmt archivierte mit; je Konto `saldoCent`                                                                                                                                                                           |
+| `POST /api/finanzen/konten`               | `finanzen:verwalten` | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                                                                                                                                      |
+| `PUT /api/finanzen/konten/:id`            | `finanzen:verwalten` | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                                                                                                                                         |
+| `PUT /api/finanzen/konten/:id/archiv`     | `finanzen:verwalten` | `{ archiviert }`                                                                                                                                                                                                                      |
+| `GET /api/finanzen/buchungen`             | `finanzen:lesen`     | `von`, `bis`, `kontoId`, `storno` (`1`); alle Treffer, neueste zuerst, höchstens 2000 (`gekappt`)                                                                                                                                     |
+| `GET /api/finanzen/buchungen/:id`         | `finanzen:lesen`     | mit Zeilen, Stückelung, Hashes                                                                                                                                                                                                        |
+| `POST /api/finanzen/buchungen`            | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`; `zaehlung` und `storno` entstehen nur über ihre Routen), `eventId`, `zeilen`; 201 `{ id, seq }`, bei bekanntem Schlüssel 200 mit der vorhandenen Buchung |
+| `POST /api/finanzen/buchungen/:id/storno` | `finanzen:buchen`    | `idempotenzSchluessel`, `datum`, `text` (Begründung, Pflicht); 409 bei doppeltem Storno                                                                                                                                               |
+| `GET /api/finanzen/bargeld`               | `finanzen:lesen`     | Fächer des Safes mit `saldoCent` und `bestand` (13 Nennwerte), `summeBestand`, `summeCent`                                                                                                                                            |
+| `POST /api/finanzen/zaehlungen`           | `finanzen:buchen`    | `idempotenzSchluessel`, `kontoId`, `datum`, `text`, `ist` (`[{ nennwertCent, anzahl }]`); 201 `{ id, buchungId, buchungSeq, differenzCent }`, bei bekanntem Schlüssel 200; 400 bei Nicht-Fach                                         |
+| `GET /api/finanzen/zaehlungen`            | `finanzen:lesen`     | `?kontoId=`; neueste zuerst, höchstens 2000 (`gekappt`)                                                                                                                                                                               |
+| `GET /api/finanzen/zaehlungen/:id`        | `finanzen:lesen`     | mit `posten` (Soll/Ist/Differenz je Nennwert) und Verweis auf die Buchung                                                                                                                                                             |
+| `GET /api/finanzen/kette`                 | `finanzen:pruefen`   | Ergebnis von „Kette prüfen“                                                                                                                                                                                                           |
 
 Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username und Status.
 

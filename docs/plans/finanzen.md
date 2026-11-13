@@ -304,7 +304,7 @@ FinTS-Überweisungen, E-Rechnung.
 | Scheibe                   | Stand                                                                                                                                              |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | offen                                                                                                                                              |
+| 1 Bargeld                 | umgesetzt (PR folgt)                                                                                                                               |
 | 2 Buch                    | offen                                                                                                                                              |
 | 3 Barkassen               | offen                                                                                                                                              |
 | 4 Belege                  | offen                                                                                                                                              |
