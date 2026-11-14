@@ -146,6 +146,13 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
   selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
 
+**Nach PR #33** ([Issue 51](https://github.com/jSebestyen590/C4/issues/51))
+
+- Doku: „Oberfläche (Details)“ in `waren.md` und `inventar.md` gegen die Komponenten geprüft (Korrektur: Menüs bieten
+  „Archivieren“ bzw. „Wiederherstellen“, der Lagerort-Dialog heißt „Lager anlegen“ / „Unterebene anlegen“); Routen-Tabelle
+  für Events und Dienste in `kalender.md`; neue Seite `querschnitt.md` (Auth-Modell, Rechteberechnung, Fehler-Mapping,
+  DSQL-Wiederholung); `README.md`: User-Pool-ID je Umgebung per Terraform-Output, lokaler Bootstrap-State, OneDrive-Verbindung.
+
 **Ohne Test geblieben**
 
 - Größenprüfung und Überspringen beim Parsen in `partymail.ts` (bräuchte einen IMAP-Client).
@@ -250,13 +257,3 @@ Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
 - Tests: nichts für `api.ts`, `auth.tsx`, `PullToRefresh`, `ZurueckLink`; ein einziger Komponententest; keine E2E-Tests.
 - PWA: Manifest nur mit 180-px-Icon, ohne `theme_color`; kein Offline-Hinweis.
 - **Noch zu prüfen:** Mitglieder ohne `StatusName` und hart kodierte gegenderte Begriffe (die Suche im Review schlug fehl).
-
-### 6. Doku
-
-Arbeits-Issue: [Issue 51](https://github.com/jSebestyen590/C4/issues/51).
-
-- Die Abschnitte „Oberfläche (Details)“ in `waren.md` und `inventar.md` sind nicht gegen die Komponenten geprüft.
-- `kalender.md` hat keine Routen-Tabelle für Events und Dienste.
-- Eine Seite für Querschnittsthemen fehlt (Auth-Modell, Rechteberechnung, Fehler-Mapping).
-- `README.md`: Schritt 8 nennt eine User-Pool-ID ohne Umgebung; der lokale Bootstrap-State und die OneDrive-Verbindung sind
-  nicht erwähnt.

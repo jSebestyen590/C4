@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 import {
   benachrichtigungsArt,
   BENACHRICHTIGUNGS_ARTEN,

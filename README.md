@@ -23,7 +23,8 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
 ## First-time AWS setup
 
-1. Export credentials for account `189575358537`.
+1. Export credentials for account `189575358537`. The AWS CLI and `infra/envs/*` use the default credentials chain (e.g.
+   `AWS_PROFILE=C4`); `infra/bootstrap` has the profile `C4` hard-coded in its provider (`aws sso login --profile C4`).
 2. **Bootstrap** (once): `cd infra/bootstrap`, comment out the `backend "s3"` block (the bucket doesn't
    exist yet), `terraform init && terraform apply`, restore the block, then `terraform init -migrate-state`.
    From then on the bootstrap state lives in the state bucket under `bootstrap/` (versioned).
@@ -64,15 +65,23 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
    successful fetch only records the mailbox position and imports nothing older. Give the right "Privatpartys
    verwalten" to the responsible Posten (admins have it automatically).
 
-8. **First admin user** (self sign-up is disabled):
+8. **First admin user** (self sign-up is disabled). The user pool differs per environment: read its id with
+   `cd infra/envs/<env> && terraform output app` (field `user_pool_id`, `<env>` = `dev` or `prod`) and use it below.
+
    ```bash
-   aws cognito-idp admin-create-user --user-pool-id eu-central-1_gmPabN3Yu --username leonard \
+   aws cognito-idp admin-create-user --user-pool-id <user_pool_id> --username leonard \
      --user-attributes Name=email,Value=leonard@c4-leipzig.de Name=email_verified,Value=true
-   aws cognito-idp admin-add-user-to-group --user-pool-id eu-central-1_gmPabN3Yu --username leonard --group-name admin
+   aws cognito-idp admin-add-user-to-group --user-pool-id <user_pool_id> --username leonard --group-name admin
    ```
+
    The CLI username is only an internal id (it must not look like an email). On first login you sign in with
    the email and the temporary password, then pick your login name on the "Choose your username" page; after
    that you can sign in with either. Further users (invited by email only) and group changes: Admin page.
+
+9. **Connect OneDrive** (event photo folders and the PDFs of the Sitzungsprotokolle; optional until needed): register the
+   app at Microsoft, then save client id, secret and base folder in the app under Bilder -> Einrichtung and sign in with
+   the OneDrive account. The full procedure is in [docs/bilder.md](docs/bilder.md#einrichtung-einmalig); it is done per
+   environment in the app, nothing for it lives in Terraform.
 
 ### GitHub setup
 
