@@ -6,6 +6,7 @@ import type {
   ProtokollDto,
   ProtokollKopf,
   ProtokollListeEintragDto,
+  ProtokollMitgliedDto,
   ProtokollSitzungDto,
   ProtokollStatus,
   ProtokollStatusAntwort,
@@ -80,7 +81,8 @@ export function useProtokollAnlegen() {
 }
 
 export type SpeichernErgebnis =
-  { art: 'ok'; version: number } | { art: 'konflikt'; version: number | null };
+  | { art: 'ok'; version: number }
+  | { art: 'konflikt'; version: number | null; geaendertVon: ProtokollMitgliedDto | null };
 
 /** PUT with the version we loaded; a 409 is a result (somebody else saved), other failures throw. */
 export function useProtokollSpeichern() {
@@ -91,8 +93,15 @@ export function useProtokollSpeichern() {
   ): Promise<SpeichernErgebnis> => {
     const res = await api.protokolle[':id'].$put({ param: { id }, json: daten as never });
     if (res.status === 409) {
-      const body = (await res.json().catch(() => null)) as { version?: number } | null;
-      return { art: 'konflikt', version: body?.version ?? null };
+      const body = (await res.json().catch(() => null)) as {
+        version?: number;
+        geaendertVon?: ProtokollMitgliedDto | null;
+      } | null;
+      return {
+        art: 'konflikt',
+        version: body?.version ?? null,
+        geaendertVon: body?.geaendertVon ?? null,
+      };
     }
     await pruefen(res);
     const body = (await res.json()) as { version: number };

@@ -51,7 +51,7 @@ export function createFakeProtokolleStore() {
       const p = liste.get(id);
       if (!p) return undefined;
       if (p.status === 'abgeschlossen') throw new ProtokollAbgeschlossen();
-      if (p.version !== daten.version) throw new ProtokollVeraltet(p.version);
+      if (p.version !== daten.version) throw new ProtokollVeraltet(p.version, p.geaendertVon);
       Object.assign(p, {
         inhalt: daten.inhalt,
         kopf: daten.kopf,
@@ -64,7 +64,7 @@ export function createFakeProtokolleStore() {
     async statusSetzen(id, status, kopf, version, von, inhalt) {
       const p = liste.get(id);
       if (!p) return undefined;
-      if (p.version !== version) throw new ProtokollVeraltet(p.version);
+      if (p.version !== version) throw new ProtokollVeraltet(p.version, p.geaendertVon);
       Object.assign(p, {
         status,
         kopf,
@@ -78,7 +78,7 @@ export function createFakeProtokolleStore() {
     async ergebnisSpeichern(id, daten, von) {
       const p = liste.get(id);
       if (!p) return undefined;
-      if (p.version !== daten.version) throw new ProtokollVeraltet(p.version);
+      if (p.version !== daten.version) throw new ProtokollVeraltet(p.version, p.geaendertVon);
       Object.assign(p, {
         inhalt: daten.inhalt,
         kopf: daten.kopf,

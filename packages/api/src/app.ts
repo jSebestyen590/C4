@@ -1445,10 +1445,14 @@ export function createApp(deps: AppDeps) {
     };
   };
 
-  /** Maps the protocol store's conflicts to 409 (an outdated version also tells the current one). */
-  const protokollKonflikt = (err: unknown, c: Context): Response => {
+  /** Maps the protocol store's conflicts to 409 (an outdated version also tells the current one and who saved it). */
+  const protokollKonflikt = async (err: unknown, c: Context): Promise<Response> => {
     if (err instanceof ProtokollVeraltet) {
-      return c.json({ error: err.message, version: err.version }, 409);
+      const von = (await protokollMitglieder()).find((m) => m.sub === err.geaendertVon);
+      return c.json(
+        { error: err.message, version: err.version, geaendertVon: von ? mitgliedDto(von) : null },
+        409,
+      );
     }
     if (err instanceof ProtokollAbgeschlossen || err instanceof ProtokollExistiert) {
       throw new HTTPException(409, {

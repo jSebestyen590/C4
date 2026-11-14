@@ -143,10 +143,12 @@ stehen in [protokolle/aktionen.md](./protokolle/aktionen.md).
 ## Speichern
 
 - **Autosave** 2 Sekunden nach der letzten Änderung (Dokument und Kopf), Speichern überlappt nie. Nach einem **fehlgeschlagenen**
-  Speichern versucht er es nicht von selbst erneut („Erneut versuchen“ in der Statuszeile oder die nächste Änderung). Details:
+  Speichern versucht er es bis zu dreimal von selbst erneut (nach 2, 5 und 10 Sekunden); danach bleibt es bei „Nicht gespeichert.“
+  bis zur nächsten Änderung oder „Erneut versuchen“ in der Statuszeile. Details:
   [protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md#autosave-oberfläche).
 - **Versionskonflikt:** `PUT` trägt die geladene `version`; hat jemand anderes inzwischen gespeichert, antwortet die API mit 409
-  (und der aktuellen `version`). Die Seite zeigt „Jemand anderes hat das Protokoll inzwischen geändert.“ mit **Neu laden**.
+  (und der aktuellen `version` sowie `geaendertVon`, wer zuletzt gespeichert hat). Die Seite zeigt „<Name> hat das Protokoll
+  inzwischen geändert.“ (Name als `StatusName`; ohne bekannte Person „Jemand anderes …“) mit **Neu laden**.
   Der Autosave sendet danach nichts mehr; „Neu laden“ lädt den Server-Stand und **verwirft den lokalen, ungespeicherten Stand**.
 - **Abschließen / Wieder öffnen:** Der Dialog erklärt das Einfrieren der Teilnahme und listet die [Aktionen](./protokolle/aktionen.md). Vorher wird gespeichert. Passen Stimmen nicht zur
   Anwesenheit (siehe oben, mit den Live-Daten der Seite), listet der Dialog jede Stelle als Link, der zum Baustein scrollt, und
