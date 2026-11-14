@@ -33,8 +33,8 @@ export interface Aufrufer {
   sub: string;
   /** Has `umfragen:verwalten`. */
   verwaltung: boolean;
-  /** Has `privatpartys:verwalten` and the poll belongs to a Privatparty: may handle this poll. */
-  privatpartys?: boolean;
+  /** Has `privatpartys:verwalten`: ids of all polls that belong to a Privatparty; the caller may handle and vote in these. */
+  privatpartys?: ReadonlySet<string>;
 }
 
 export function personVon(k: UmfrageKontext, sub: string): UmfragePerson {
@@ -64,14 +64,19 @@ export const gueltigAbgestimmt = (u: UmfrageDaten): Set<string> =>
 export function darfSehen(u: UmfrageDaten, kreis: Map<string, KreisRolle>, a: Aufrufer): boolean {
   return (
     a.verwaltung ||
+    a.privatpartys?.has(u.id) === true ||
     u.erstellerSub === a.sub ||
     kreis.has(a.sub) ||
     u.abgaben.some((x) => x.sub === a.sub)
   );
 }
 
+/** Circle members and holders of `privatpartys:verwalten` (for a Privatparty poll) may vote. */
+export const darfAbstimmen = (u: UmfrageDaten, kreis: Map<string, KreisRolle>, a: Aufrufer) =>
+  kreis.has(a.sub) || a.privatpartys?.has(u.id) === true;
+
 export const darfBearbeiten = (u: UmfrageDaten, a: Aufrufer) =>
-  a.verwaltung || a.privatpartys === true || u.erstellerSub === a.sub;
+  a.verwaltung || a.privatpartys?.has(u.id) === true || u.erstellerSub === a.sub;
 
 export function alsListeDto(
   u: UmfrageDaten,
@@ -92,6 +97,7 @@ export function alsListeDto(
       ? personVon(k, u.erstellerSub)
       : null,
     meinKreis: kreis.get(a.sub) ?? null,
+    darfAbstimmen: darfAbstimmen(u, kreis, a),
     abgestimmt: gueltig.has(a.sub),
     erneutNoetig: eigene?.erneutNoetig ?? false,
     darfBearbeiten: darfBearbeiten(u, a),

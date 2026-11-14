@@ -21,6 +21,7 @@ import {
   type PrivatpartyDetailDto,
   type TrichterUebersichtDto,
   type UmfrageDetailDto,
+  type UmfrageListeDto,
   type AdminUser,
   type MitgliedStatus,
   type PostenRecht,
@@ -9700,6 +9701,77 @@ describe('privatpartys', () => {
     const danach = await t.holen(id);
     expect(danach).toMatchObject({ status: 'zugesagt', event: { id: 'e1' } });
     expect(danach.terminId).toBe(danach.termine[1]!.id);
+  });
+
+  it('lets holders of the right outside the circle see and vote in the poll of a Privatparty only', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/umfrage`,
+      json('admin-token', 'POST', { vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false }),
+    );
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    const fremd = await t.app.request('/api/umfragen', {
+      ...json('admin-token', 'POST', {
+        titel: 'Sommerfest',
+        beschreibung: null,
+        endetAm: '2099-03-01',
+        anonym: false,
+        ergebnisse: 'sofort',
+        pflicht: { status: [], posten: [], personen: ['a'] },
+        optional: { status: [], posten: [], personen: [] },
+        erinnerungenPflicht: [],
+        erinnerungenOptional: [],
+        fragen: [
+          {
+            text: 'Wann?',
+            freitext: false,
+            maxAntworten: 1,
+            optionen: [{ text: 'A' }, { text: 'B' }],
+          },
+        ],
+      }),
+    });
+    expect(fremd.status).toBe(201);
+    const fremdId = ((await fremd.json()) as { id: string }).id;
+    // r has no profile and so is outside the circle; m2 is in it. Only r holds the right.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'r' ? ['privatpartys:verwalten' as const] : [],
+    );
+    const ids = async (token: string, pfad: string) => {
+      const r = await t.app.request(pfad, json(token, 'GET'));
+      if (r.status !== 200) throw new Error(`${token} ${r.status} ${await r.text()}`);
+      return ((await r.json()) as UmfrageListeDto[]).map((u) => u.id);
+    };
+    // The holder outside the circle sees the poll in the list and may vote (the gate passes; without a profile: 400, not 403).
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([umfrageId]);
+    const detail = (await (
+      await t.app.request(`/api/umfragen/${umfrageId}`, json('reader-token', 'GET'))
+    ).json()) as UmfrageDetailDto;
+    expect(detail).toMatchObject({ meinKreis: null, darfAbstimmen: true });
+    const stimme = (token: string, uid: string) =>
+      t.app.request(
+        `/api/umfragen/${uid}/stimme`,
+        json(token, 'PUT', {
+          antworten: [
+            { frageId: detail.fragen[0]!.id, optionIds: [detail.fragen[0]!.optionen[0]!.id] },
+          ],
+        }),
+      );
+    expect((await stimme('reader-token', umfrageId)).status).toBe(400);
+    // Without the right the same caller gets 404 (poll hidden), also on the list.
+    t.posten.rechteVon.mockImplementation(async () => []);
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([]);
+    expect((await stimme('reader-token', umfrageId)).status).toBe(404);
+    // The right grants nothing on other polls.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'r' ? ['privatpartys:verwalten' as const] : [],
+    );
+    expect(
+      (await t.app.request(`/api/umfragen/${fremdId}`, json('reader-token', 'GET'))).status,
+    ).toBe(404);
+    expect((await stimme('reader-token', fremdId)).status).toBe(404);
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([umfrageId]);
   });
 
   it('ends the running poll when the request is declined and then refuses an event from it', async () => {

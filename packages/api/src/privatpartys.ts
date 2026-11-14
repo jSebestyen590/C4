@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type {
   PrivatpartyEingabeDaten,
   PrivatpartyPersonEingabe,
@@ -100,6 +100,8 @@ export interface PrivatpartysStore {
   holen(id: string): Promise<PrivatpartyEintrag | undefined>;
   nachPerson(personId: string): Promise<PrivatpartyEintrag[]>;
   nachUmfrage(umfrageId: string): Promise<PrivatpartyEintrag | undefined>;
+  /** Ids of all polls linked to a Privatparty. */
+  umfrageIds(): Promise<Set<string>>;
   nachEvent(eventId: string): Promise<PrivatpartyEintrag | undefined>;
   anlegen(daten: PrivatpartyAnlegen, von: string | null): Promise<string>;
   /**
@@ -314,6 +316,13 @@ export function createPrivatpartysStore(db: Db): PrivatpartysStore {
     holen: (id) => eins(eq(privatpartys.id, id)),
     nachPerson: (personId) => laden(eq(privatpartys.personId, personId)),
     nachUmfrage: (umfrageId) => eins(eq(privatpartys.umfrageId, umfrageId)),
+    async umfrageIds() {
+      const rows = await db
+        .select({ id: privatpartys.umfrageId })
+        .from(privatpartys)
+        .where(isNotNull(privatpartys.umfrageId));
+      return new Set(rows.flatMap((r) => (r.id ? [r.id] : [])));
+    },
     nachEvent: (eventId) => eins(eq(privatpartys.eventId, eventId)),
 
     async anlegen(daten, von) {

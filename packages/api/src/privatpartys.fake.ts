@@ -112,6 +112,9 @@ export function createFakePrivatpartysStore() {
       const e = [...liste.values()].find((x) => x.umfrageId === umfrageId);
       return e && namen(e);
     },
+    async umfrageIds() {
+      return new Set([...liste.values()].flatMap((e) => (e.umfrageId ? [e.umfrageId] : [])));
+    },
     async nachEvent(eventId) {
       const e = [...liste.values()].find((x) => x.eventId === eventId);
       return e && namen(e);
