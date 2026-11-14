@@ -106,7 +106,7 @@ import { createFakeFinanzenStore } from './finanzen.fake';
 import { createFakeUmfragenStore } from './umfragen.fake';
 
 /** Map-backed fake of the key store with the same conflict and history rules as the real one. */
-function makeSchluesselFake(beiUebergabe?: (id: string, anSub: string) => void) {
+function makeSchluesselFake(beiUebergabe?: (id: string, an: Halter) => void) {
   const liste = new Map<string, SchluesselDetails>();
   const fake = {
     alle: vi.fn(async (mitArchiv: boolean) =>
@@ -161,7 +161,7 @@ function makeSchluesselFake(beiUebergabe?: (id: string, anSub: string) => void) 
       ].slice(0, SCHLUESSEL_VERLAUF_MAX);
       s.halter = u.an;
       s.halterSeit = jetzt;
-      if (u.an?.art === 'mitglied') beiUebergabe?.(id, u.an.sub);
+      beiUebergabe?.(id, u.an);
       return s;
     }),
   } satisfies SchluesselStore;
@@ -2866,6 +2866,10 @@ describe('inventar', () => {
       );
       expect((await rueckgabe('a1', { positionIds: [], zurueckAm: zeitpunkt })).status).toBe(400);
       expect((await rueckgabe('a1', { positionIds: ['p1'] })).status).toBe(400);
+      const morgenIso = new Date(Date.now() + 2 * 86_400_000).toISOString();
+      expect((await rueckgabe('a1', { positionIds: ['p1'], zurueckAm: morgenIso })).status).toBe(
+        400,
+      );
       expect(
         (await rueckgabe('a1', { positionIds: ['bereits'], zurueckAm: zeitpunkt })).status,
       ).toBe(400);
@@ -4983,6 +4987,55 @@ describe('schluessel anfragen und planungen', () => {
       ['v', tagNachher(heute, 2)],
       ['m2', tagNachher(heute, 3)],
     ]);
+  });
+
+  it('drops the earliest planned handover when the key goes to someone else', async () => {
+    const t = await setup();
+    const plan = (anSub: string, datum: string) =>
+      t.app.request(
+        `/api/schluessel/${t.id}/planungen`,
+        json('reader-token', 'POST', { anSub, datum }),
+      );
+    await plan('v', morgen);
+    await plan('m2', tagNachher(heute, 3));
+    const res = await t.app.request(
+      `/api/schluessel/${t.id}/uebergaben`,
+      json('reader-token', 'POST', { von: mitglied('r'), an: { art: 'person', name: 'ute' } }),
+    );
+    expect(res.status).toBe(200);
+    expect((await t.planungen()).planungen.map((p) => p.an.sub)).toEqual(['m2']);
+  });
+
+  it('keeps Planungen when the key goes to nobody', async () => {
+    const t = await setup();
+    await t.app.request(
+      `/api/schluessel/${t.id}/planungen`,
+      json('reader-token', 'POST', { anSub: 'v', datum: morgen }),
+    );
+    const res = await t.app.request(
+      `/api/schluessel/${t.id}/uebergaben`,
+      json('admin-token', 'POST', { von: mitglied('r'), an: null }),
+    );
+    expect(res.status).toBe(200);
+    expect((await t.planungen()).planungen).toHaveLength(1);
+  });
+
+  it('hides a Planung from the day after its date', async () => {
+    const t = await setup();
+    const gestern = tagNachher(heute, -1);
+    for (const datum of [gestern, heute]) {
+      await t.anfragenFake.store.planungAnlegen({
+        schluesselId: t.id,
+        anSub: 'v',
+        datum,
+        ab: null,
+        bis: null,
+        notiz: null,
+        anfrageId: null,
+        erstelltVon: 'r',
+      });
+    }
+    expect((await t.planungen()).planungen.map((p) => p.zeitfenster.datum)).toEqual([heute]);
   });
 
   it('tells holder, previous and next holder about changed and deleted plans', async () => {

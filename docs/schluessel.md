@@ -10,7 +10,8 @@ Schlüssel gerade ist, und behält die letzten 10 Übergaben je Schlüssel.
 - Eine Übergabe gilt sofort und braucht den Halter, den der Client gesehen hat (`von`); sonst 409. Fehler werden durch eine weitere
   Übergabe korrigiert, nicht durch Löschen.
 - Je Schlüssel bleiben nur die neuesten 10 Übergaben (`SCHLUESSEL_VERLAUF_MAX`, wird nach jeder Übergabe gekürzt).
-- Eine Planung ändert den Halter nie; nur die echte Übergabe tut das (und löscht dann die früheste Planung des neuen Halters).
+- Eine Planung ändert den Halter nie; nur die echte Übergabe tut das (und löscht dann die früheste Planung des neuen Halters; hat der neue Halter keine, die früheste aktuelle Planung des Schlüssels, deren Empfänger nicht der neue Halter ist). Bei einer Übergabe an „niemand“ bleiben Planungen bestehen.
+- Eine Planung gilt einen Tag nach ihrem Datum als abgelaufen: `planungen()` liefert nur Planungen mit `datum` ab heute (Berliner Tag), abgelaufene erscheinen nirgends mehr (Anzeige, erwartete Halter, Benachrichtigungen). Sie bleiben in der Tabelle; es gibt keinen Löschjob.
 - Je Anfrage und gefragter Person gibt es genau eine Antwort (eindeutig `anfrage_id` + `sub`), die sich ändern lässt. Die erste Zusage
   gewinnt; danach ist die Anfrage `vergeben` und weitere Antworten geben 409 (`AnfrageKonflikt`).
 - Der Ersteller einer Anfrage wird nie selbst gefragt und darf nicht antworten.
@@ -75,7 +76,7 @@ Pro Schlüssel eine Kette von Planungen, nach Zeit sortiert: „Jetzt: A → B (
 der Vorgänger in der Kette bzw. der aktuelle Halter. Jeder mit `schluessel:lesen` darf auf der
 Detailseite („Geplante Übergaben“) Planungen anlegen, ändern und löschen. Eine Planung ändert den Halter **nicht**; das
 passiert weiter über die echte Übergabe. Wird der Schlüssel an ein Mitglied übergeben, löscht das API in derselben
-Transaktion dessen früheste Planung für diesen Schlüssel. Auf der Liste steht unter dem Halter „Danach: …“.
+Transaktion dessen früheste Planung für diesen Schlüssel; hat er keine (oder bekommt ein Freitext-Halter den Schlüssel), die früheste aktuelle Planung des Schlüssels. Auf der Liste steht unter dem Halter „Danach: …“.
 
 ### Wer hat den Schlüssel dann?
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { GegenstandRow } from './db/schema';
-import { gegenstandDetails, ifcoAusleihen, organisatorVon, zielFehler } from './inventar';
+import {
+  beendetPruefen,
+  gegenstandDetails,
+  ifcoAusleihen,
+  organisatorVon,
+  zielFehler,
+} from './inventar';
 
 const g: GegenstandRow = {
   id: 'g1',
@@ -153,5 +159,17 @@ describe('organisatorVon', () => {
   it('is null for an unknown person', () => {
     expect(organisatorVon({ organisiertVon: null, erstelltVon: 'x' }, personen)).toBeNull();
     expect(organisatorVon({ organisiertVon: 'x', erstelltVon: 'a' }, personen)).toBeNull();
+  });
+});
+
+describe('beendetPruefen', () => {
+  it('rejects position changes once every position is returned', () => {
+    expect(() => beendetPruefen([{ zurueckAm: vorher }, { zurueckAm: jetzt }])).toThrow(
+      'Die Ausleihe ist beendet. Leg eine neue Ausleihe an.',
+    );
+  });
+  it('allows open Ausleihen, partly returned ones and ones without positions', () => {
+    expect(() => beendetPruefen([{ zurueckAm: vorher }, { zurueckAm: null }])).not.toThrow();
+    expect(() => beendetPruefen([])).not.toThrow();
   });
 });

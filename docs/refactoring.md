@@ -133,8 +133,6 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 **Entschieden, Umsetzung offen** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
 
-- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
-- Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
 - Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
 - Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
@@ -146,6 +144,10 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   markiert den Tag erst nach erfolgreicher Arbeit (die Arbeit ist je Event idempotent).
 - Benachrichtigungen: Der Versandschlüssel wird erst nach dem Versand belegt (Abbruch führt höchstens zu einem doppelten Push);
   `push_versand` wird täglich auf 90 Tage gekürzt; der Geburtstags-Job rechnet einmal pro Tag.
+- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum (beim Lesen gefiltert, kein Job); eine Übergabe an jemand anderen
+  entfernt die früheste aktuelle Planung (`docs/schluessel.md`).
+- Beendete Ausleihen gehen nicht wieder auf (409 bei `PUT` mit Positionen); Rückgabe mit Zukunftsdatum ist 400
+  (`docs/inventar.md`).
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -218,10 +220,6 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
 Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
-- **Schlüssel-Planungen** laufen nie ab; eine veraltete Planung zeigt ihren Empfänger weiter als erwarteten Halter. Eine
-  Übergabe an jemand anderen entfernt sie nicht.
-- **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
-  ohne Prüfung auf Zukunftsdatum.
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
   nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
 - **Protokoll-Autosave:** kein erneuter Versuch nach einem Fehler; ein Konflikt verwirft den lokalen Stand, ohne Hinweis, wer

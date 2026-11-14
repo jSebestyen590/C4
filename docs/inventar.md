@@ -189,7 +189,8 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
   in der orangen Warnung.
 - **Seit / ab:** Texte zum Beginn einer Ausleihe laufen über einen Helfer (`beginnText` in shared, `seitAbText` im Web): Beginn in der
   Zukunft „ab …“, sonst „seit …“ (Karten, Detail, Gegenstand-Notizen, IFCO-Badges, Blockierer-Hinweise).
-- **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
+- **Beendet:** Eine Ausleihe, deren Positionen alle zurück sind, geht nicht wieder auf: `PUT` mit `positionen` ist dann 409 „Die Ausleihe ist beendet. Leg eine neue Ausleihe an.“ (`beendetPruefen`). Der Kopf (Wer, Zeiten, Kommentar) bleibt änderbar; die Seite „Ausleihe bearbeiten“ zeigt für beendete Ausleihen nur diesen Hinweis.
+- **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt und nicht an einem Berliner Tag in der Zukunft (je 400, „Das Datum darf nicht in der Zukunft liegen.“).
   Eine Ausleihe ist `erledigt`, wenn alle Positionen zurück sind. `DELETE` entfernt eine Ausleihe samt Positionen (Fehleintrag).
 - **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`, ebenso IFCO-Inhalt und Archivieren von IFCO/Lagerort) wird
   abgelehnt, wenn die Zuordnung unter die höchste gleichzeitige Belegung ab heute fällt (alle offenen Positionen, offene ohne Rückgabedatum zählen

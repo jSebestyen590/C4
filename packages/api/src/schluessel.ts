@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import { halterGleich, SCHLUESSEL_VERLAUF_MAX, type Halter } from '@c4/shared';
+import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
+import { halterGleich, heuteBerlin, SCHLUESSEL_VERLAUF_MAX, type Halter } from '@c4/shared';
 import type { Db } from './db/client';
 import {
   schluessel,
@@ -201,18 +201,24 @@ export function createSchluesselStore(db: Db): SchluesselStore {
           .returning();
         // The stored holder keeps the spelling the key had, not the client's.
         await protokollieren(tx, id, halterAus(row.halterSub, row.halterName), an, akteur, jetzt);
-        if (h.sub) {
-          const geplant = planungSortieren(
-            await tx
-              .select()
-              .from(schluesselPlanungen)
-              .where(
-                and(eq(schluesselPlanungen.schluesselId, id), eq(schluesselPlanungen.anSub, h.sub)),
-              ),
-          )[0];
-          if (geplant) {
-            await tx.delete(schluesselPlanungen).where(eq(schluesselPlanungen.id, geplant.id));
-          }
+        // The earliest Planung of the new holder is used up. A handover to someone without a Planung
+        // makes the earliest current Planung of the key obsolete (its recipient is not the new holder).
+        const plaene = planungSortieren(
+          !an
+            ? []
+            : await tx
+                .select()
+                .from(schluesselPlanungen)
+                .where(
+                  and(
+                    eq(schluesselPlanungen.schluesselId, id),
+                    gte(schluesselPlanungen.datum, heuteBerlin()),
+                  ),
+                ),
+        );
+        const geplant = (h.sub && plaene.find((p) => p.anSub === h.sub)) || plaene[0];
+        if (geplant) {
+          await tx.delete(schluesselPlanungen).where(eq(schluesselPlanungen.id, geplant.id));
         }
         return alsDaten(neu!);
       });
