@@ -111,6 +111,10 @@ export interface BenachrichtigungenStore {
   /** Claims a dedupe key; false when it was already claimed. */
   versandBelegen(schluessel: string): Promise<boolean>;
   versandFreigeben(schluessel: string): Promise<void>;
+  /** True when the dedupe key is claimed (read only). */
+  versandVorhanden(schluessel: string): Promise<boolean>;
+  /** Deletes dedupe keys claimed before `vor`; returns how many. */
+  versandAufraeumen(vor: Date): Promise<number>;
   /**
    * Writes history entries; an entry whose (member, schluessel) exists is kept. Returns the id of
    * each member's entry (also of already existing ones).
@@ -166,6 +170,8 @@ export interface Benachrichtigungen {
   /** Claims a once-only marker (e.g. a job that runs once per day); false when already claimed. */
   einmalBelegen(schluessel: string): Promise<boolean>;
   einmalFreigeben(schluessel: string): Promise<void>;
+  /** True when a once-only marker is claimed (read only). */
+  einmalGesetzt(schluessel: string): Promise<boolean>;
   /** History page (newest first); `weiter` is the cursor of the next page. */
   verlaufSeite(
     sub: string,
@@ -176,6 +182,8 @@ export interface Benachrichtigungen {
   verlaufAlleGelesen(sub: string, filter: VerlaufFilter): Promise<void>;
   /** Deletes history entries older than the retention period. */
   verlaufAufraeumen(jetzt: Date): Promise<number>;
+  /** Deletes dedupe keys older than the retention period. */
+  versandAufraeumen(jetzt: Date): Promise<number>;
   /** Registers a task that runs on every `pushJob`. */
   registriereAufgabe(name: string, aufgabe: (jetzt: Date) => Promise<void>): void;
   /** Runs all registered tasks; one failing task does not stop the others. */
@@ -190,24 +198,46 @@ function verlaufArten(art?: string, bereich?: string): string[] | undefined {
   return undefined;
 }
 
-/** Registers the daily clean-up of old history entries. */
+/** Dedupe keys are kept this long; the longest dedupe window of any type is far shorter. */
+export const VERSAND_AUFBEWAHRUNG_TAGE = 90;
+
+/** Registers the daily clean-up of old history entries and old dedupe keys (`push_versand`). */
 export function registriereVerlaufAufraeumen(
   benachrichtigungen: Pick<
     Benachrichtigungen,
-    'registriereAufgabe' | 'einmalBelegen' | 'einmalFreigeben' | 'verlaufAufraeumen'
+    | 'registriereAufgabe'
+    | 'einmalBelegen'
+    | 'einmalFreigeben'
+    | 'verlaufAufraeumen'
+    | 'versandAufraeumen'
   >,
 ): void {
-  benachrichtigungen.registriereAufgabe('verlauf-aufraeumen', async (jetzt) => {
-    const schluessel = `verlauf-aufraeumen:${jetzt.toISOString().slice(0, 10)}`;
-    if (!(await benachrichtigungen.einmalBelegen(schluessel))) return;
-    try {
-      const n = await benachrichtigungen.verlaufAufraeumen(jetzt);
-      if (n > 0) console.log(`Notification history: deleted ${n} old entries`);
-    } catch (err) {
-      await benachrichtigungen.einmalFreigeben(schluessel).catch(() => {});
-      throw err;
-    }
-  });
+  const taeglich = (
+    name: string,
+    arbeit: (jetzt: Date) => Promise<number>,
+    beschreibung: string,
+  ): void =>
+    benachrichtigungen.registriereAufgabe(name, async (jetzt) => {
+      const schluessel = `${name}:${jetzt.toISOString().slice(0, 10)}`;
+      if (!(await benachrichtigungen.einmalBelegen(schluessel))) return;
+      try {
+        const n = await arbeit(jetzt);
+        if (n > 0) console.log(`${beschreibung}: deleted ${n} old entries`);
+      } catch (err) {
+        await benachrichtigungen.einmalFreigeben(schluessel).catch(() => {});
+        throw err;
+      }
+    });
+  taeglich(
+    'verlauf-aufraeumen',
+    (jetzt) => benachrichtigungen.verlaufAufraeumen(jetzt),
+    'Notification history',
+  );
+  taeglich(
+    'versand-aufraeumen',
+    (jetzt) => benachrichtigungen.versandAufraeumen(jetzt),
+    'Push dedupe keys',
+  );
 }
 
 export function createBenachrichtigungen(deps: {
@@ -323,7 +353,9 @@ export function createBenachrichtigungen(deps: {
         await verlaufSchreiben();
         return 0;
       }
-      if (schluessel && !(await store.versandBelegen(schluessel))) return 0;
+      // The key is only claimed after delivery: an abort (e.g. Lambda timeout) in between leads to
+      // at most a duplicate push in the next run, never to a lost one.
+      if (schluessel && (await store.versandVorhanden(schluessel))) return 0;
       const ids = await verlaufSchreiben();
 
       const proMitglied = new Map<string, PushAbo[]>();
@@ -344,9 +376,10 @@ export function createBenachrichtigungen(deps: {
           ),
         )
       ).flat();
-      // Nobody could be reached because of a transient error: allow a retry in the next run.
-      if (schluessel && ergebnisse.includes('fehler') && !ergebnisse.includes('ok')) {
-        await store.versandFreigeben(schluessel).catch(() => {});
+      // Nobody could be reached because of a transient error: leave the key free for a retry in
+      // the next run.
+      if (schluessel && !(ergebnisse.includes('fehler') && !ergebnisse.includes('ok'))) {
+        await store.versandBelegen(schluessel);
       }
       return empfaenger.length;
     },
@@ -367,6 +400,7 @@ export function createBenachrichtigungen(deps: {
 
     einmalBelegen: (schluessel) => store.versandBelegen(schluessel),
     einmalFreigeben: (schluessel) => store.versandFreigeben(schluessel),
+    einmalGesetzt: (schluessel) => store.versandVorhanden(schluessel),
 
     async verlaufSeite(sub, { art, bereich, nurUngelesen, vor, limit }) {
       const arten = verlaufArten(art, bereich);
@@ -385,6 +419,8 @@ export function createBenachrichtigungen(deps: {
     verlaufGelesen: (sub, id) => store.verlaufGelesen(sub, id),
     verlaufAlleGelesen: (sub, { art, bereich }) =>
       store.verlaufAlleGelesen(sub, verlaufArten(art, bereich)),
+    versandAufraeumen: (jetzt) =>
+      store.versandAufraeumen(new Date(jetzt.getTime() - VERSAND_AUFBEWAHRUNG_TAGE * 86_400_000)),
     verlaufAufraeumen: (jetzt) =>
       store.verlaufAufraeumen(new Date(jetzt.getTime() - VERLAUF_AUFBEWAHRUNG_TAGE * 86_400_000)),
 
@@ -536,6 +572,33 @@ export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
 
     async versandFreigeben(schluessel) {
       await db.delete(pushVersand).where(eq(pushVersand.schluessel, schluessel));
+    },
+
+    async versandVorhanden(schluessel) {
+      const rows = await db
+        .select({ schluessel: pushVersand.schluessel })
+        .from(pushVersand)
+        .where(eq(pushVersand.schluessel, schluessel));
+      return rows.length > 0;
+    },
+
+    async versandAufraeumen(vor) {
+      let gesamt = 0;
+      for (;;) {
+        const alt = await db
+          .select({ schluessel: pushVersand.schluessel })
+          .from(pushVersand)
+          .where(lt(pushVersand.gesendet, vor))
+          .limit(VERLAUF_STAPEL);
+        if (alt.length === 0) return gesamt;
+        await db.delete(pushVersand).where(
+          inArray(
+            pushVersand.schluessel,
+            alt.map((a) => a.schluessel),
+          ),
+        );
+        gesamt += alt.length;
+      }
     },
 
     async verlaufEintragen(eintraege) {

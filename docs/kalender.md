@@ -87,7 +87,8 @@ nichts davon ist im Code oder in Migrationen festgelegt (Kategorien, Vorlagen un
   `events.serie` und `serien_termine.serie` tragen diese Id. Legt man eine Serie mit dem Namen einer gelöschten Serie an,
   übernimmt sie deren Events und Tage.
 - **Job:** Die Aufgabe `kalender.serien` (im Push-Job, höchstens einmal pro Berlin-Tag über den Dedupe-Schlüssel
-  `kalender.serien:<Datum>` in `push_versand`) erzeugt für jede aktive Serie jeden fälligen Tag von max(heute, Start) bis
+  `kalender.serien:<Datum>` in `push_versand`; der Tag wird erst nach erfolgreicher Arbeit markiert, ein Lambda-Timeout verliert
+  ihn also nicht, und die Arbeit ist je Event idempotent) erzeugt für jede aktive Serie jeden fälligen Tag von max(heute, Start) bis
   min(heute + 12 Monate, Ende), der noch keinen `serien_termine`-Eintrag hat, ein Event aus der Vorlage (mit der Kategorie
   der Vorlage, `angelegt_von` leer). Eintrag und Event entstehen in einer Transaktion (`ON CONFLICT DO NOTHING`). Pro Lauf
   höchstens 30 Events. Vergangene Tage werden nie nachgeholt; fehlt die Vorlage oder ist sie archiviert, entsteht nichts
@@ -212,7 +213,7 @@ durch eine Serie bleibt der Wert unverändert (Eingabe ohne `verantwortlichSub`)
 - **Push:** `kalender.aenderung` bei Verschiebung, Absage und Wiederaufnahme geht auch an die verantwortliche Person (nicht an
   die handelnde). Wer neu eingetragen wird (nicht durch sich selbst), bekommt „Du bist verantwortlich für …“. Die Hinweise
   „Fehlende Dienste“ gehen an sie **unabhängig** von ihrer Einstellung (ein Push-Gerät ist nötig), mit eigenem Schlüssel
-  `kalender.fehlende_dienste:<eventId>:<m>:verantwortlich`; die allgemeine Sendung lässt sie aus.
+  `kalender.fehlende_dienste:<eventId>:<beginn>:<m>:verantwortlich` (der Beginn gehört zum Schlüssel, nach einer Verschiebung kommt der Hinweis erneut); die allgemeine Sendung lässt sie aus.
 
 ## Seiten
 

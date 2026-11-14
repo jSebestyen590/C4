@@ -42,12 +42,19 @@ export function registriereGeburtstagAufgaben(
  * members who hide their birthday in the calendar.
  */
 export async function geburtstagErinnerungen(
-  benachrichtigungen: Benachrichtigungen,
+  benachrichtigungen: Pick<
+    Benachrichtigungen,
+    'senden' | 'empfaengerEinstellungen' | 'einmalGesetzt' | 'einmalBelegen'
+  >,
   mitglieder: Pick<MitgliederStore, 'alle'>,
   userAdmin: { konten(): Promise<Map<string, Pick<Konto, 'username'>>> },
   jetzt: Date,
 ): Promise<void> {
   if (stundeBerlin(jetzt) < AB_UHR) return;
+  // Computed once a day: the day is marked when everything was sent without error.
+  const tagesMarke = `${ART}:tag:${heuteBerlin(jetzt)}`;
+  if (await benachrichtigungen.einmalGesetzt(tagesMarke)) return;
+  let fehler = false;
   const optionen = benachrichtigungsArt(ART)?.minuten?.optionen ?? [];
   const maxTage = Math.floor(Math.max(0, ...optionen) / TAG_MINUTEN);
   const heute = heuteBerlin(jetzt);
@@ -59,7 +66,10 @@ export async function geburtstagErinnerungen(
       : [],
   );
   const kandidaten = geburtstageZwischen(sichtbar, heute, tagNachher(heute, maxTage));
-  if (kandidaten.length === 0) return;
+  if (kandidaten.length === 0) {
+    await benachrichtigungen.einmalBelegen(tagesMarke);
+    return;
+  }
 
   const einstellungen = await benachrichtigungen.empfaengerEinstellungen(ART);
   const konten = await userAdmin.konten();
@@ -85,7 +95,9 @@ export async function geburtstagErinnerungen(
         });
       } catch (err) {
         console.error('Birthday reminder failed', err);
+        fehler = true;
       }
     }
   }
+  if (!fehler) await benachrichtigungen.einmalBelegen(tagesMarke);
 }
