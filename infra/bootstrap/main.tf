@@ -1,7 +1,16 @@
-# Run once with admin credentials (local state): creates the Terraform state bucket and
-# the GitHub OIDC trust + deploy roles used by CI.
+# Run with admin credentials: creates the Terraform state bucket and the GitHub OIDC trust +
+# deploy roles used by CI. Its own state lives in that bucket under bootstrap/ (versioned); the deploy
+# roles can only reach envs/<env>/. A fresh account needs a first apply with the backend block
+# commented out, then `terraform init -migrate-state`.
 terraform {
   required_version = ">= 1.10"
+  backend "s3" {
+    bucket       = "c4-terraform-state-189575358537"
+    key          = "bootstrap/terraform.tfstate"
+    region       = "eu-central-1"
+    profile      = "C4"
+    use_lockfile = true
+  }
   required_providers {
     aws = { source = "hashicorp/aws", version = ">= 6.0" }
     tls = { source = "hashicorp/tls", version = ">= 4.0" }

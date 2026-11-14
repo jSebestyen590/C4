@@ -122,24 +122,24 @@ export async function serienMarkeFreigeben(
   await benachrichtigungen.einmalFreigeben(markeSchluessel(jetzt));
 }
 
-/** Registers the `kalender.serien` job task: runs once per Berlin day (or until everything is created). */
+/**
+ * Registers the `kalender.serien` job task: runs once per Berlin day (or until everything is
+ * created). The day is marked only after the work succeeded, so a Lambda timeout does not lose it;
+ * the work is idempotent per event (`serienTerminAnlegen` skips existing days), so an overlapping or
+ * repeated run is harmless.
+ */
 export function registriereKalenderSerien(
   benachrichtigungen: Pick<
     Benachrichtigungen,
-    'registriereAufgabe' | 'einmalBelegen' | 'einmalFreigeben'
+    'registriereAufgabe' | 'einmalBelegen' | 'einmalGesetzt'
   >,
   kalender: SerienStore,
 ): void {
   benachrichtigungen.registriereAufgabe('kalender.serien', async (jetzt) => {
     const schluessel = markeSchluessel(jetzt);
-    if (!(await benachrichtigungen.einmalBelegen(schluessel))) return;
-    try {
-      const { erzeugt, rest } = await serienErzeugen(kalender, jetzt);
-      if (erzeugt > 0) console.log(`Series: created ${erzeugt} events`);
-      if (rest) await benachrichtigungen.einmalFreigeben(schluessel);
-    } catch (err) {
-      await benachrichtigungen.einmalFreigeben(schluessel).catch(() => {});
-      throw err;
-    }
+    if (await benachrichtigungen.einmalGesetzt(schluessel)) return;
+    const { erzeugt, rest } = await serienErzeugen(kalender, jetzt);
+    if (erzeugt > 0) console.log(`Series: created ${erzeugt} events`);
+    if (!rest) await benachrichtigungen.einmalBelegen(schluessel);
   });
 }

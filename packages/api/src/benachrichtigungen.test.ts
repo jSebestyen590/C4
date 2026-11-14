@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { EventDto, MitgliedStatus } from '@c4/shared';
-import { bestEffort, createBenachrichtigungen, type PushErgebnis } from './benachrichtigungen';
+import {
+  bestEffort,
+  createBenachrichtigungen,
+  registriereVerlaufAufraeumen,
+  type PushErgebnis,
+} from './benachrichtigungen';
 import { createFakeBenachrichtigungenStore } from './benachrichtigungen.fake';
 import {
   erinnerungen,
@@ -46,6 +51,21 @@ function setup(mitglieder: { sub: string; status: MitgliedStatus; deaktiviert?: 
     });
   return { ...fake, b, versendet, ergebnisse, abo };
 }
+
+describe('registriereVerlaufAufraeumen', () => {
+  it('deletes dedupe keys older than 90 days, once per day', async () => {
+    const t = setup([]);
+    registriereVerlaufAufraeumen(t.b);
+    const jetzt = new Date('2026-06-15T10:00:00Z');
+    t.versand.add('alt');
+    t.versandZeit.set('alt', new Date(jetzt.getTime() - 91 * 86_400_000));
+    t.versand.add('neu');
+    t.versandZeit.set('neu', new Date(jetzt.getTime() - 89 * 86_400_000));
+    await t.b.pushJob(jetzt);
+    expect(t.versand.has('alt')).toBe(false);
+    expect(t.versand.has('neu')).toBe(true);
+  });
+});
 
 describe('Verlauf', () => {
   const eingabe = { art: 'kalender.aenderung', titel: 'T', text: 'X', url: '/app/x' };
@@ -210,6 +230,31 @@ describe('senden', () => {
     await t.b.senden(sendung);
     await t.b.senden(sendung);
     expect(t.versendet).toHaveLength(1);
+  });
+
+  it('claims the dedupe key only after delivery, so an abort loses no push', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    const gesehen: boolean[] = [];
+    const b = createBenachrichtigungen({
+      store: t.store,
+      sender: async () => {
+        gesehen.push(t.versand.has('k1'));
+        throw new Error('aborted');
+      },
+    });
+    await b
+      .senden({
+        subs: ['a'],
+        art: 'kalender.aenderung',
+        titel: 'T',
+        text: 'X',
+        url: '/',
+        dedupeSchluessel: 'k1',
+      })
+      .catch(() => {});
+    expect(gesehen).toEqual([false]);
+    expect(t.versand.has('k1')).toBe(false);
   });
 
   it('removes subscriptions the push service reports as gone (410)', async () => {
@@ -449,6 +494,20 @@ describe('fehlende Dienste', () => {
     expect(t.versendet[0]!.text).toBe('Für „Offener Abend“ am Fr, 23.10. fehlen noch Dienste.');
     await fehlendeDienste(t.b, k, stundenVorher(12));
     expect(t.versendet).toHaveLength(1);
+  });
+
+  it('reminds again after the event was moved', async () => {
+    const t = setup([{ sub: 'a', status: 'mitglied' }]);
+    await t.abo('a');
+    await fehlendeDienste(t.b, kalender([event()]), stundenVorher(24));
+    expect(t.versendet).toHaveLength(1);
+    const neu = new Date(new Date(BEGINN).getTime() + 7 * 86_400_000).toISOString();
+    await fehlendeDienste(
+      t.b,
+      kalender([event({ beginn: neu })]),
+      new Date(new Date(neu).getTime() - 24 * 3600_000),
+    );
+    expect(t.versendet).toHaveLength(2);
   });
 
   it('tells the responsible person regardless of their setting, and only once', async () => {
