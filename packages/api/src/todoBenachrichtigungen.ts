@@ -14,6 +14,13 @@ export const TODO_ERINNERUNG_TAGE = 2;
 export const todoFristText = (titel: string, faelligAm: string): string =>
   `„${titel}“ ist am ${todoFaelligKurz(faelligAm)} fällig.`;
 
+/** Whole days from `von` to `bis` (both ISO dates). */
+const tageZwischen = (von: string, bis: string): number =>
+  Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);
+
+export const todoUeberfaelligText = (titel: string, tage: number): string =>
+  `„${titel}“ ist seit ${tage} ${tage === 1 ? 'Tag' : 'Tagen'} überfällig.`;
+
 /** Registers the Todo reminder task with the generic job runner. */
 export function registriereTodoAufgaben(
   benachrichtigungen: Benachrichtigungen,
@@ -50,6 +57,24 @@ export async function todoErinnerungen(
         });
       } catch (err) {
         console.error('Todo reminder failed', err);
+      }
+    }
+  }
+  // Overdue and still open: every day again, without end, until the Todo is done.
+  const ueberfaellig = await todos.offeneFaelligZwischen('0000-01-01', tagNachher(heute, -1));
+  for (const { todo, offeneSubs } of ueberfaellig) {
+    for (const sub of offeneSubs) {
+      try {
+        await benachrichtigungen.senden({
+          subs: [sub],
+          art: ART,
+          titel: 'Todo überfällig',
+          text: todoUeberfaelligText(todo.titel, tageZwischen(todo.faelligAm, heute)),
+          url: '/app/todos',
+          dedupeSchluessel: `${ART}.ueberfaellig:${todo.id}:${heute}:${sub}`,
+        });
+      } catch (err) {
+        console.error('Todo overdue reminder failed', err);
       }
     }
   }

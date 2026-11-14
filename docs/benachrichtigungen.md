@@ -45,7 +45,7 @@ Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_s
 | `umfrage.erinnerung`            | Ab 9 Uhr an den gewählten Tagen vor Ende einer Umfrage, ohne gültige Stimme; im Pflicht-Kreis unabhängig von der Einstellung                                                                                             | an                               |
 | `umfrage.erneut_abstimmen`      | Eine Änderung an der Umfrage macht deine Stimme ungültig                                                                                                                                                                 | an, nicht abschaltbar            |
 | `umfrage.termin`                | Aus einer Terminumfrage wurde ein Event angelegt; sagt, ob du eingetragen bist                                                                                                                                           | an                               |
-| `todo.frist`                    | Ein offenes Todo ist heute oder in den nächsten 2 Tagen fällig; ab 9 Uhr (Berlin), einmal je Todo, Deadline und Person (siehe [todos.md](./todos.md))                                                                    | an, nicht abschaltbar            |
+| `todo.frist`                    | Ein offenes Todo ist heute oder in den nächsten 2 Tagen fällig; ab 9 Uhr (Berlin), einmal je Todo, Deadline und Person; überfällige offene Todos täglich („Todo überfällig“, siehe [todos.md](./todos.md))                                                                    | an, nicht abschaltbar            |
 | `privatpartys.anfrage`          | Neue Privatparty-Anfrage; nur Inhaber:innen von `privatpartys:verwalten` (siehe [privatpartys.md](./privatpartys.md))                                                                                                    | an                               |
 | `privatpartys.nachricht`        | Weitere Nachricht zu einer bestehenden Privatparty; nur Inhaber:innen von `privatpartys:verwalten`                                                                                                                       | an                               |
 
@@ -151,7 +151,8 @@ sind im Kreis der Umfrage).
 `todo.frist` (`abschaltbar: false`, immer aktiv). Ab 09:00 Uhr Berliner Zeit bekommt jede Person, für die ein Todo noch offen ist und dessen
 Deadline zwischen heute und heute + 2 Tagen liegt, die Nachricht „„Titel“ ist am Fr, 14.11. fällig.“ (Titel „Todo bald fällig“, öffnet
 `/app/todos`). Auch ein erst kurz vor der Deadline angelegtes Todo wird erfasst. Dedupe-Schlüssel `todo.frist:<todoId>:<faelligAm>:<sub>`: einmal
-je Todo, Deadline und Person; eine verschobene Deadline erinnert erneut. Push kommt nur auf Geräten an, auf denen Benachrichtigungen aktiviert
+je Todo, Deadline und Person; eine verschobene Deadline erinnert erneut. Überfällige offene Todos bekommen ab 09:00 täglich „„Titel“ ist seit n Tagen überfällig.“
+(Titel „Todo überfällig“, Schlüssel `todo.frist.ueberfaellig:<todoId>:<datum>:<sub>`). Push kommt nur auf Geräten an, auf denen Benachrichtigungen aktiviert
 sind.
 
 ## Geburtstage
