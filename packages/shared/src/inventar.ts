@@ -392,7 +392,10 @@ export const rueckgabeSchema = z.object({
     .array(idSchema('Ungültige Id.'))
     .min(1, 'Bitte wähle mindestens eine Position.')
     .refine(eindeutig, 'Jede Position darf nur einmal vorkommen.'),
-  zurueckAm: zeitpunktSchema,
+  zurueckAm: zeitpunktSchema.refine(
+    (z) => Number.isNaN(Date.parse(z)) || heuteBerlin(new Date(z)) <= heuteBerlin(),
+    'Das Datum darf nicht in der Zukunft liegen.',
+  ),
 });
 export type RueckgabeEingabe = z.input<typeof rueckgabeSchema>;
 

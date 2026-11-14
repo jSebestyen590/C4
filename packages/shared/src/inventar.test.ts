@@ -264,6 +264,10 @@ describe('ausleiheSchema / rueckgabeSchema', () => {
       organisiertVon: 'sub-1',
     });
   });
+  it('rejects a Rückgabe dated in the future', () => {
+    const zurueckAm = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    expect(rueckgabeSchema.safeParse({ positionIds: ['p1'], zurueckAm }).success).toBe(false);
+  });
   it('needs unique, non-empty position ids and a time', () => {
     const zurueckAm = '2026-05-02T10:00:00.000Z';
     expect(rueckgabeSchema.safeParse({ positionIds: ['p1'], zurueckAm }).success).toBe(true);

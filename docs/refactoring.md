@@ -133,8 +133,6 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 **Entschieden, Umsetzung offen** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
 
-- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
-- Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
 - Überfällige Todos werden einmal am Tag erinnert.
 - Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
@@ -145,6 +143,13 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Status mit Zukunftsdatum: nicht erreichbar (Routen prüfen, Protokoll-Aktionen nehmen bei künftiger Sitzung heute).
   `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
   selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
+
+**Nach PR #33** (Issue 50)
+
+- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum (beim Lesen gefiltert, kein Job); eine Übergabe an jemand anderen
+  entfernt die früheste aktuelle Planung (`docs/schluessel.md`).
+- Beendete Ausleihen gehen nicht wieder auf (409 bei `PUT` mit Positionen); Rückgabe mit Zukunftsdatum ist 400
+  (`docs/inventar.md`).
 
 **Ohne Test geblieben**
 
@@ -204,10 +209,6 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
 Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
-- **Schlüssel-Planungen** laufen nie ab; eine veraltete Planung zeigt ihren Empfänger weiter als erwarteten Halter. Eine
-  Übergabe an jemand anderen entfernt sie nicht.
-- **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
-  ohne Prüfung auf Zukunftsdatum.
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
   nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
 - **Todos:** Überfällige Todos werden nie erinnert.
