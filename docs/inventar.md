@@ -189,7 +189,8 @@ Beim Löschen einer IFCO fallen ihre Häkchen mit weg.
   in der orangen Warnung.
 - **Seit / ab:** Texte zum Beginn einer Ausleihe laufen über einen Helfer (`beginnText` in shared, `seitAbText` im Web): Beginn in der
   Zukunft „ab …“, sonst „seit …“ (Karten, Detail, Gegenstand-Notizen, IFCO-Badges, Blockierer-Hinweise).
-- **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt (400).
+- **Beendet:** Eine Ausleihe, deren Positionen alle zurück sind, geht nicht wieder auf: `PUT` mit `positionen` ist dann 409 „Die Ausleihe ist beendet. Leg eine neue Ausleihe an.“ (`beendetPruefen`). Der Kopf (Wer, Zeiten, Kommentar) bleibt änderbar; die Seite „Ausleihe bearbeiten“ zeigt für beendete Ausleihen nur diesen Hinweis.
+- **Rückgabe** je Position (Teilrückgaben möglich), nur für offene Positionen dieser Ausleihe und nicht vor dem Ausleihzeitpunkt und nicht an einem Berliner Tag in der Zukunft (je 400, „Das Datum darf nicht in der Zukunft liegen.“).
   Eine Ausleihe ist `erledigt`, wenn alle Positionen zurück sind. `DELETE` entfernt eine Ausleihe samt Positionen (Fehleintrag).
 - **Umräumen unter Verliehenes** (Platz entfernen oder Anzahl senken, `verliehenFehler`, ebenso IFCO-Inhalt und Archivieren von IFCO/Lagerort) wird
   abgelehnt, wenn die Zuordnung unter die höchste gleichzeitige Belegung ab heute fällt (alle offenen Positionen, offene ohne Rückgabedatum zählen
@@ -247,7 +248,7 @@ jede Änderung macht `['inventar']` ungültig.
   gesperrt) und Anzahl, Live-Summe gegen die Anzahl. Darunter der Abschnitt „Fest verbaut“ (Ort als Freitext, Anzahl, „Fest verbaut hinzufügen“), die Summe zählt beides. Bei Anzahl 1
   heißt es „Platz“ / „Platz ändern“ ohne „1 von 1 zugeordnet“, und der Dialog hat nur ein Feld „Platz“ (leerbar = „Kein Platz“) oder mit Häkchen „Fest verbaut“ ein Feld „Ort“. Die Detailseite listet
   fest verbaute Stück nach den Plätzen; Karten und Tabelle der Übersicht zeigen „fest verbaut: unter der Bar“, die Suche findet
-  auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
+  auch den Ort. Menü Bearbeiten, Archivieren bzw. Wiederherstellen, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Anzahl 1 ohne Mengenfeld), Menü wie beim Gegenstand.
 - **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt` in `IfcoInhaltModal.tsx`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne

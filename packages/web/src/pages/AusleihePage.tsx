@@ -643,6 +643,12 @@ export function AusleihePage() {
           : 'Die Ausleihe wurde nicht gefunden.'}
       </Alert>
     );
+  if (bearbeiten && bearbeitete?.erledigt)
+    return (
+      <Alert m="md" color="yellow">
+        Die Ausleihe ist beendet. Leg eine neue Ausleihe an.
+      </Alert>
+    );
   const zurueckLink = bearbeiten
     ? `/inventar/ausleihen/${encodeURIComponent(bearbeitenId)}`
     : '/inventar?ansicht=verliehen';

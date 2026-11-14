@@ -1,3 +1,4 @@
+import { heuteBerlin, type Halter } from '@c4/shared';
 import {
   AnfrageKonflikt,
   planungSortieren,
@@ -72,8 +73,11 @@ export function createFakeSchluesselAnfragenStore() {
       return { planungId };
     },
     async planungen(schluesselId) {
+      const heute = heuteBerlin();
       return planungSortieren(
-        [...planungen.values()].filter((p) => !schluesselId || p.schluesselId === schluesselId),
+        [...planungen.values()].filter(
+          (p) => (!schluesselId || p.schluesselId === schluesselId) && p.datum >= heute,
+        ),
       ).map(kopie);
     },
     async planung(id) {
@@ -94,11 +98,14 @@ export function createFakeSchluesselAnfragenStore() {
     },
   };
 
-  /** Mirrors the real `SchluesselStore.uebergeben`: the earliest plan of `anSub` for the key is used up. */
-  const planungVerbrauchen = (schluesselId: string, anSub: string) => {
-    const erste = planungSortieren(
-      [...planungen.values()].filter((p) => p.schluesselId === schluesselId && p.anSub === anSub),
-    )[0];
+  /** Mirrors the real `SchluesselStore.uebergeben`: the Planung of the new holder (else the earliest one) goes. */
+  const planungVerbrauchen = (schluesselId: string, an: Halter) => {
+    if (!an) return;
+    const heute = heuteBerlin();
+    const plaene = planungSortieren(
+      [...planungen.values()].filter((p) => p.schluesselId === schluesselId && p.datum >= heute),
+    );
+    const erste = (an.art === 'mitglied' && plaene.find((p) => p.anSub === an.sub)) || plaene[0];
     if (erste) planungen.delete(erste.id);
   };
 

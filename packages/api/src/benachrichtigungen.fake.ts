@@ -8,6 +8,7 @@ export function createFakeBenachrichtigungenStore(
   const abos: PushAbo[] = [];
   const einstellungen = new Map<string, GespeicherteEinstellung>(); // key: `${sub}|${art}`
   const versand = new Set<string>();
+  const versandZeit = new Map<string, Date>();
   const verlauf: (VerlaufZeile & { sub: string; schluessel: string | null })[] = [];
   let verlaufZaehler = 0;
   const fehler = { verlaufEintragen: false };
@@ -60,10 +61,17 @@ export function createFakeBenachrichtigungenStore(
     versandBelegen: async (schluessel) => {
       if (versand.has(schluessel)) return false;
       versand.add(schluessel);
+      versandZeit.set(schluessel, new Date());
       return true;
     },
     versandFreigeben: async (schluessel) => {
       versand.delete(schluessel);
+    },
+    versandVorhanden: async (schluessel) => versand.has(schluessel),
+    versandAufraeumen: async (vor) => {
+      const alt = [...versand].filter((k) => (versandZeit.get(k) ?? new Date()) < vor);
+      for (const k of alt) versand.delete(k);
+      return alt.length;
     },
     verlaufEintragen: async (eintraege) => {
       if (fehler.verlaufEintragen) throw new Error('verlauf failed');
@@ -140,5 +148,5 @@ export function createFakeBenachrichtigungenStore(
       return n;
     },
   };
-  return { store, abos, einstellungen, versand, verlauf, fehler };
+  return { store, abos, einstellungen, versand, versandZeit, verlauf, fehler };
 }

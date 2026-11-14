@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray } from 'drizzle-orm';
-import type { AnfrageArt, AnfrageStatus, AntwortArt } from '@c4/shared';
+import { and, asc, eq, gte, inArray } from 'drizzle-orm';
+import { heuteBerlin, type AnfrageArt, type AnfrageStatus, type AntwortArt } from '@c4/shared';
 import type { Db } from './db/client';
 import {
   schluesselAnfragen,
@@ -122,6 +122,7 @@ export interface SchluesselAnfragenStore {
     planung: PlanungEingabe,
   ): Promise<{ planungId: string } | undefined>;
   /** All plans in time order, optionally of one key. */
+  /** Current Planungen only: those dated before today have expired and are not returned. */
   planungen(schluesselId?: string): Promise<PlanungDaten[]>;
   planung(id: string): Promise<PlanungDaten | undefined>;
   planungAnlegen(daten: PlanungEingabe): Promise<string>;
@@ -313,7 +314,13 @@ export function createSchluesselAnfragenStore(db: Db): SchluesselAnfragenStore {
       const rows = await db
         .select()
         .from(schluesselPlanungen)
-        .where(schluesselId ? eq(schluesselPlanungen.schluesselId, schluesselId) : undefined);
+        .where(
+          and(
+            schluesselId ? eq(schluesselPlanungen.schluesselId, schluesselId) : undefined,
+            // A Planung expires one day after its date.
+            gte(schluesselPlanungen.datum, heuteBerlin()),
+          ),
+        );
       return planungSortieren(rows.map(alsPlanung));
     },
 

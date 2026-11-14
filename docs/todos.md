@@ -80,5 +80,8 @@ Art `todo.frist` (nicht abschaltbar), siehe [benachrichtigungen.md](./benachrich
   am ersten Tag, an dem das Todo im Fenster liegt (zwei Tage vor der Deadline, bei später angelegten Todos entsprechend später), nicht
   noch einmal am Tag davor oder am Fälligkeitstag. Verschiebt sich die Deadline, kommt sie erneut. Hat eine Person kein Push-Gerät, wird
   der Schlüssel nicht belegt (siehe [benachrichtigungen.md](./benachrichtigungen.md#versand-und-job)).
-- **Überfällige Todos** (Deadline vor heute) liegen außerhalb des Fensters und werden **nicht** erinnert; sie werden auch nicht nachgeholt.
+- **Überfällige Todos** (Deadline vor heute, noch offen): Ab 09:00 Uhr jeden Tag eine Nachricht an die Personen, für die das Todo noch offen ist,
+  ohne Ende, bis es erledigt ist. Art `todo.frist` (dieselbe Einstellung), Titel „Todo überfällig“, Text „„Titel“ ist seit n Tagen
+  überfällig.“ (n = volle Berliner Tage seit der Deadline, bei 1 „seit 1 Tag“). Dedupe-Schlüssel `todo.frist.ueberfaellig:<todoId>:<datum>:<sub>`:
+  einmal je Todo, Tag und Person.
 - Push erreicht nur Geräte, auf denen Benachrichtigungen erlaubt sind. Tippen auf die Nachricht öffnet die Seite Todos (`/app/todos`).
