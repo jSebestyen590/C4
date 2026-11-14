@@ -24,7 +24,9 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ## First-time AWS setup
 
 1. Export credentials for account `189575358537`.
-2. **Bootstrap** (once): `cd infra/bootstrap && terraform init && terraform apply`
+2. **Bootstrap** (once): `cd infra/bootstrap`, comment out the `backend "s3"` block (the bucket doesn't
+   exist yet), `terraform init && terraform apply`, restore the block, then `terraform init -migrate-state`.
+   From then on the bootstrap state lives in the state bucket under `bootstrap/` (versioned).
 3. **Build the Lambda**: `pnpm build`
 4. **Dev without custom domain first** (avoids waiting for DNS):
    `cd infra/envs/dev && terraform init && terraform apply -var 'domain_name='`
