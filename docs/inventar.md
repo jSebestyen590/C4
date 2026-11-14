@@ -247,7 +247,7 @@ jede Änderung macht `['inventar']` ungültig.
   gesperrt) und Anzahl, Live-Summe gegen die Anzahl. Darunter der Abschnitt „Fest verbaut“ (Ort als Freitext, Anzahl, „Fest verbaut hinzufügen“), die Summe zählt beides. Bei Anzahl 1
   heißt es „Platz“ / „Platz ändern“ ohne „1 von 1 zugeordnet“, und der Dialog hat nur ein Feld „Platz“ (leerbar = „Kein Platz“) oder mit Häkchen „Fest verbaut“ ein Feld „Ort“. Die Detailseite listet
   fest verbaute Stück nach den Plätzen; Karten und Tabelle der Übersicht zeigen „fest verbaut: unter der Bar“, die Suche findet
-  auch den Ort. Menü Bearbeiten, Archivieren, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
+  auch den Ort. Menü Bearbeiten, Archivieren bzw. Wiederherstellen, Löschen (`inventar:verwalten`; 409 bietet Archivieren an).
 - `/inventar/ifcos/:id`: Platz mit „Umstellen“ (`IfcoUmstellenModal`, auch „ohne Platz“), Inhalt als Liste (rechts nur die Anzahl, darunter wie beim Gegenstand je Ausleihe „verliehen: 9 (an …)“ / „vorgemerkt: 10 ab … (an …)“, `PlatzAusleihHinweise`), „Inhalt bearbeiten“
   (`IfcoInhaltModal`, `inventar:umraeumen`; Gegenstände mit Anzahl 1 ohne Mengenfeld), Menü wie beim Gegenstand.
 - **Inhalt mit Umräumen** (`IfcoInhaltFelder`, `useIfcoInhalt` in `IfcoInhaltModal.tsx`; in „Inhalt bearbeiten“ und „IFCO anlegen“): Jede Zeile ist ein Gegenstand-Feld ohne
