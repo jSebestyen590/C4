@@ -7542,6 +7542,29 @@ describe('protokolle', () => {
       expect(t.protokollListe.get(id)?.status).toBe('abgeschlossen');
     });
 
+    it('refuses deleting a draft while another tab holds the lock', async () => {
+      const { t, id } = await mitEntwurf();
+      const loeschen = (token: string, tabId: string) =>
+        t.app.request(url(id), tab(token, 'DELETE', tabId));
+      await nehmen(t, id, 'vorstand-token', 'tab-v');
+      const body = await gesperrt(await loeschen('admin-token', 'tab-a'));
+      expect(body.sperre.eigene).toBe(false);
+      expect(t.protokollListe.has(id)).toBe(true);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 3 * 60_000);
+      expect((await loeschen('admin-token', 'tab-a')).status).toBe(200);
+      expect(t.protokollListe.has(id)).toBe(false);
+    });
+
+    it('lets the holding tab delete its draft', async () => {
+      const { t, id } = await mitEntwurf();
+      await nehmen(t, id, 'admin-token', 'tab-1');
+      await gesperrt(await t.app.request(url(id), tab('admin-token', 'DELETE', 'tab-2')));
+      expect((await t.app.request(url(id), tab('admin-token', 'DELETE', 'tab-1'))).status).toBe(
+        200,
+      );
+    });
+
     it('does not lock closed protocols and clears the lock on closing', async () => {
       const { t, id, dto } = await mitEntwurf();
       await nehmen(t, id, 'admin-token', 'tab-1');

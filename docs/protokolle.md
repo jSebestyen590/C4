@@ -181,6 +181,8 @@ Einen Entwurf bearbeitet immer nur **ein Tab** (Seite im Browser) gleichzeitig; 
   „Das Protokoll ist jetzt frei, du kannst es bearbeiten.“ Bekommt der Autosave die Sperr-409, hört er auf zu speichern und die Seite
   wechselt in diese Ansicht (nicht gespeicherte lokale Änderungen gehen beim Neuladen verloren). Code: `useProtokollSperre.ts`
   (Hook, in `ProtokollPage`), `protokoll/SperreHinweis.tsx`, `useProtokollAutosave.ts`.
+- **Löschen:** `DELETE /api/protokolle/:id` gibt 409 (gleiche Form wie oben), solange ein anderer Tab eine gültige Sperre hält; der eigene Tab, eine freie oder abgelaufene Sperre erlauben es.
+- **Verlorene Änderungen:** Wer die Sperre verliert, verliert beim Neuladen lokale, noch nicht gespeicherte Änderungen (bewusst so entschieden).
 - **Speicher:** Spalten `sperre_sub`, `sperre_tab`, `sperre_bis` an `protokolle` (Migrationen 0163–0165).
 
 ## API
@@ -200,7 +202,7 @@ Einen Entwurf bearbeitet immer nur **ein Tab** (Seite im Browser) gleichzeitig; 
 | `PUT /api/protokolle/:id/pdf`       | `protokolle:schreiben` | `{ dateiname, base64 }` speichert das PDF eines **abgeschlossenen** Protokolls in OneDrive (409 sonst, 413 über 4 MB, 503 wenn OneDrive nicht verbunden oder nicht erreichbar) → `{ gespeichert: true, pfad }`                                                                                                                                                                                             |
 | `GET /api/protokolle/:id/aktionen`  | `protokolle:schreiben` | `{ aktionen: ProtokollAktionDto[] }`, live aus dem gespeicherten Inhalt berechnet (auch erledigte und gescheiterte)                                                                                                                                                                                                                                                                                        |
 | `POST /api/protokolle/:id/aktionen` | `protokolle:schreiben` | `{ aktionen: string[] }` führt Aktionen eines **abgeschlossenen** Protokolls (erneut) aus (409 im Entwurf); Antwort `{ version, ergebnisse, aktionen }`                                                                                                                                                                                                                                                    |
-| `DELETE /api/protokolle/:id`        | `protokolle:schreiben` | nur im Entwurf (409 sonst)                                                                                                                                                                                                                                                                                                                                                                                 |
+| `DELETE /api/protokolle/:id`        | `protokolle:schreiben` | nur im Entwurf (409 sonst, auch bei fremder Sperre)                                                                                                                                                                                                                                                                                                                                                        |
 
 `GET /api/protokolle/:id` liefert zusätzlich `bilder` (Schlüssel → URL, siehe [Bilder](./protokolle/ansicht-pdf.md#bilder)). `DELETE /api/protokolle/:id` löscht auch die Bilder des Protokolls.
 

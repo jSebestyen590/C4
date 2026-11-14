@@ -230,7 +230,7 @@ export function useProtokollLoeschen() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await pruefen(await api.protokolle[':id'].$delete({ param: { id } }));
+      await pruefen(await api.protokolle[':id'].$delete({ param: { id } }, tabKopf));
     },
     onSuccess: () => listenInvalidieren(qc),
   });

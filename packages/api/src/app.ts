@@ -3584,6 +3584,14 @@ export function createApp(deps: AppDeps) {
         },
       )
       .delete('/protokolle/:id', auth, protokolleSchreiben, async (c) => {
+        // A draft somebody else edits right now cannot be deleted.
+        const vorhanden = await deps.protokolle.holen(c.req.param('id'));
+        const ohneSperre = vorhanden && (await protokollOhneSperre(c, vorhanden));
+        if (ohneSperre) {
+          const aktiv = vorhanden.sperreBis !== null && vorhanden.sperreBis.getTime() > Date.now();
+          // A free or expired lock allows deleting; only a valid lock of another tab refuses.
+          if (aktiv) return ohneSperre;
+        }
         try {
           gefunden(await deps.protokolle.loeschen(c.req.param('id')), 'Protokoll nicht gefunden');
         } catch (err) {
