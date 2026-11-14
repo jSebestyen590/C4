@@ -20,7 +20,8 @@ export type SpeicherZustand =
 /**
  * Debounced autosave of a protocol. Saves never overlap: every save is chained after the previous one and
  * always sends the latest content. The version returned by a save is used for the next one. After a
- * conflict nothing is sent anymore. After a failed save it retries automatically (2 s, 5 s, 10 s) (the page offers "Neu laden", which remounts everything).
+ * conflict nothing is sent anymore (the page offers "Neu laden", which remounts everything). After a failed
+ * save it retries automatically (2 s, 5 s, 10 s); after the last retry it waits for the next edit.
  */
 export function useProtokollAutosave({
   id,
