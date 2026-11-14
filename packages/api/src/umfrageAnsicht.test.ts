@@ -3,7 +3,7 @@ import { darfSehen, type Aufrufer } from './umfrageAnsicht';
 import type { UmfrageDaten } from './umfragen';
 
 describe('darfSehen', () => {
-  const umfrage = { erstellerSub: 'ersteller', abgaben: [] } as unknown as UmfrageDaten;
+  const umfrage = { id: 'u1', erstellerSub: 'ersteller', abgaben: [] } as unknown as UmfrageDaten;
   const aufrufer = (extra: Partial<Aufrufer> = {}): Aufrufer => ({
     sub: 'fremd',
     verwaltung: false,
@@ -15,6 +15,6 @@ describe('darfSehen', () => {
   });
 
   it('shows the poll of a Privatparty to holders of privatpartys:verwalten outside the circle', () => {
-    expect(darfSehen(umfrage, new Map(), aufrufer({ privatpartys: true }))).toBe(true);
+    expect(darfSehen(umfrage, new Map(), aufrufer({ privatpartys: new Set(['u1']) }))).toBe(true);
   });
 });

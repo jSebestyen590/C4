@@ -321,6 +321,7 @@ import {
   alsDetailDto,
   alsListeDto,
   darfBearbeiten,
+  darfAbstimmen,
   darfSehen,
   gueltigAbgestimmt,
   kreisDerUmfrage,
@@ -882,14 +883,11 @@ export function createApp(deps: AppDeps) {
     verwaltung: c.get('permissions').includes('umfragen:verwalten'),
   });
 
-  /** Like `umfrageAufrufer`; holders of `privatpartys:verwalten` also handle the poll of a Privatparty. */
-  const aufruferFuerUmfrage = async (
-    c: Parameters<typeof umfrageAufrufer>[0],
-    umfrageId: string,
-  ): Promise<Aufrufer> => {
+  /** Like `umfrageAufrufer`; holders of `privatpartys:verwalten` also see, handle and vote in the polls of Privatpartys. */
+  const aufruferMitParty = async (c: Parameters<typeof umfrageAufrufer>[0]): Promise<Aufrufer> => {
     const a = umfrageAufrufer(c);
     if (a.verwaltung || !c.get('permissions').includes('privatpartys:verwalten')) return a;
-    return (await deps.privatpartys.nachUmfrage(umfrageId)) ? { ...a, privatpartys: true } : a;
+    return { ...a, privatpartys: await deps.privatpartys.umfrageIds() };
   };
 
   const umfrageKontext = () => ladeKontext(deps);
@@ -3807,7 +3805,7 @@ export function createApp(deps: AppDeps) {
       })
       // ----- Umfragen
       .get('/umfragen', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferMitParty(c);
         const [liste, k] = await Promise.all([
           deps.umfragen.laufende(heuteBerlin()),
           umfrageKontext(),
@@ -3821,7 +3819,7 @@ export function createApp(deps: AppDeps) {
       })
       // Ended polls page by page; `weiter` is the cursor of the next page (null: no more).
       .get('/umfragen/beendet', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferMitParty(c);
         const heute = heuteBerlin();
         const k = await umfrageKontext();
         let nach = cursorLesen(c.req.query('nach'));
@@ -3846,7 +3844,7 @@ export function createApp(deps: AppDeps) {
         });
       })
       .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
-        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+        const a = await aufruferMitParty(c);
         const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
         const dto = alsDetailDto(u, k, a);
         return c.json(u.termin ? { ...dto, ...(await terminAnzeige(u.termin)) } : dto);
@@ -3951,7 +3949,7 @@ export function createApp(deps: AppDeps) {
         },
       )
       .post('/umfragen/:id/beenden', auth, umfragenLesen, async (c) => {
-        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+        const a = await aufruferMitParty(c);
         const { u } = await sichtbareUmfrage(c.req.param('id'), a);
         if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
         if (!umfrageLaeuft(u))
@@ -3965,7 +3963,7 @@ export function createApp(deps: AppDeps) {
         umfragenLesen,
         zValidator('json', terminWahlSchema),
         async (c) => {
-          const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+          const a = await aufruferMitParty(c);
           const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
           if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
           const termin = u.termin;
@@ -4109,9 +4107,9 @@ export function createApp(deps: AppDeps) {
         umfragenLesen,
         zValidator('json', stimmzettelSchema),
         async (c) => {
-          const a = umfrageAufrufer(c);
+          const a = await aufruferMitParty(c);
           const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
-          if (!kreisDerUmfrage(u, k).has(a.sub)) {
+          if (!darfAbstimmen(u, kreisDerUmfrage(u, k), a)) {
             throw new HTTPException(403, { message: 'Du bist bei dieser Umfrage nicht gefragt.' });
           }
           if (!umfrageLaeuft(u))

@@ -163,7 +163,7 @@ export function UmfragenPage() {
   const beendete = useBeendeteUmfragen();
   // A poll may end while the page is open; it then shows up among the running ones until reload.
   const daten = liste.data ?? [];
-  const offen = daten.filter((u) => u.laeuft && u.meinKreis !== null && !u.abgestimmt);
+  const offen = daten.filter((u) => u.laeuft && u.darfAbstimmen && !u.abgestimmt);
   const laufend = daten.filter((u) => !offen.includes(u));
   const beendet = beendete.data?.pages.flatMap((p) => p.umfragen) ?? [];
   const leer = liste.data && beendete.data && daten.length === 0 && beendet.length === 0;

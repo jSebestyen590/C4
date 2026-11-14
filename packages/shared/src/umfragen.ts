@@ -745,6 +745,8 @@ export interface UmfrageListeDto {
   ersteller: UmfragePerson | null;
   /** The caller's role in the circles; null outside them. */
   meinKreis: KreisRolle | null;
+  /** The caller may vote: in a circle, or holder of `privatpartys:verwalten` on a Privatparty poll. */
+  darfAbstimmen: boolean;
   /** The caller has a valid vote. */
   abgestimmt: boolean;
   /** The caller's vote became invalid by an edit. */

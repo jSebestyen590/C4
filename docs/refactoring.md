@@ -150,7 +150,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 - `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
-- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (`darfSehen`) und können sie beenden.
+- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
 
 **Ohne Test geblieben**
 

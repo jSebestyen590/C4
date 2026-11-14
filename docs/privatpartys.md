@@ -35,7 +35,7 @@ Migrationen `0120`–`0129` (siehe [datenbank.md](./datenbank.md)); Text-IDs, ke
    kommt `umfrage.neu`. Geht nur, solange keine laufende verknüpfte Umfrage existiert (409). Siehe [umfragen.md](./umfragen.md).
 3. **Event aus der Umfrage**: im Umfragedetail wie bei jeder Terminumfrage. Hängt die Umfrage an einer Privatparty, nimmt das Event die
    Wunschzeiten (`ausVorlageZuZeit`), die Privatparty wird „Zugesagt“ (mit `event_id`, `termin_id`), und Inhaber:innen des Rechts
-   dürfen die Umfrage beenden und das Event anlegen. Ist die Privatparty schon abgesagt oder mit einem noch vorhandenen Event
+   sehen die Umfrage auch außerhalb des Kreises (Liste und Detail), dürfen abstimmen, beenden und das Event anlegen. Ist die Privatparty schon abgesagt oder mit einem noch vorhandenen Event
    zugesagt, lehnt `POST /api/umfragen/:id/event` mit 409 ab (kein zweites Event).
 4. **Direkt zusagen** (`POST /api/privatpartys/:id/zusage { terminId, vorlageId }`): Termin und Vorlage wählen, das Event entsteht sofort;
    eine laufende verknüpfte Umfrage wird beendet. Reicht mit dem Recht allein (ohne `events:verwalten`). Bereits zugesagt = 409.
