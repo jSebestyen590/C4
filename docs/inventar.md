@@ -14,7 +14,7 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 - Plätze plus fest verbaute Stück dürfen die Anzahl **unterschreiten** („ohne Platz“), aber nie **überschreiten**
   (`zuVielVerteiltFehler`, 400); ein gelöschter Zugang darf das nicht verursachen (409, `sollZuKleinFehler`).
 - Gelöscht wird nur, was nirgends verwendet wird (409), sonst archivieren. Ein archivierter Gegenstand ist nicht mehr umräumbar
-  und nicht verleihbar.
+  und nicht verleihbar; auch Buchungen lassen sich dann weder anlegen noch löschen (400).
 - Teile haben nur eine Ebene und übernehmen die Kategorie des übergeordneten Gegenstands; virtuelle Gegenstände haben nie Plätze,
   fest verbaute Stück oder eigene Ausleihen.
 - Umräumen (Platz entfernen, Anzahl senken, IFCO-Inhalt, Archivieren) darf nie unter das Verliehene und Vorgemerkte fallen (409,

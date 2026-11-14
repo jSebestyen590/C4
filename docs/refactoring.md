@@ -146,6 +146,12 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
   selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
 
+**Nach PR #33** (Issue 50)
+
+- `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
+  `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
+- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (`darfSehen`) und können sie beenden.
+
 **Ohne Test geblieben**
 
 - Größenprüfung und Überspringen beim Parsen in `partymail.ts` (bräuchte einen IMAP-Client).
@@ -208,8 +214,7 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
   Übergabe an jemand anderen entfernt sie nicht.
 - **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
   ohne Prüfung auf Zukunftsdatum.
-- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
-  nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
+- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“.
 - **Todos:** Überfällige Todos werden nie erinnert.
 - **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
   Serien-Job belegt den Tag vor der Arbeit; bei einem Lambda-Timeout fällt der Tag aus.
@@ -217,7 +222,6 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
   mitschreibt.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
-- **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).
 - **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
 - **Benachrichtigungen:** Der Versandschlüssel wird vor dem Senden belegt (bei Abbruch geht der Push verloren);
   `push_versand` wird nie aufgeräumt; der Geburtstags-Job rechnet ab 09:00 alle 5 Minuten alle Empfänger neu.

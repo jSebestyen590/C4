@@ -1261,6 +1261,7 @@ export function createInventarStore(db: Db): InventarStore {
         if (!b) return false;
         const [g] = await tx.select().from(gegenstaende).where(eq(gegenstaende.id, gegenstandId));
         if (!g) return false;
+        if (g.archiviert) throw new WarenUngueltig('Der Gegenstand ist archiviert.');
         // A removed Abgang brings the pieces back without a Platz; a removed Zugang takes them away.
         const anzahl = g.anzahl + (b.art === 'zugang' ? -b.anzahl : b.anzahl);
         if (anzahl < 0) {

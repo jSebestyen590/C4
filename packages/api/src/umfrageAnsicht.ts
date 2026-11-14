@@ -64,6 +64,7 @@ export const gueltigAbgestimmt = (u: UmfrageDaten): Set<string> =>
 export function darfSehen(u: UmfrageDaten, kreis: Map<string, KreisRolle>, a: Aufrufer): boolean {
   return (
     a.verwaltung ||
+    a.privatpartys === true ||
     u.erstellerSub === a.sub ||
     kreis.has(a.sub) ||
     u.abgaben.some((x) => x.sub === a.sub)
