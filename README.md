@@ -8,7 +8,7 @@ environments (`dev`, `prod`) live in one AWS account (`189575358537`, `eu-centra
 packages/shared   zod schemas, roles/permissions (used by api + web)
 packages/api      Hono app, Lambda handler, local server, DSQL access, SQL migrations
 packages/web      Vite + React + React Router + TanStack Query
-infra/bootstrap   state bucket + GitHub OIDC roles (run once)
+infra/bootstrap   state bucket + GitHub OIDC roles (state in the bucket under bootstrap/)
 infra/modules/app everything one environment needs
 infra/envs/{dev,prod}   environment roots (own state each)
 infra/local-db    throwaway per-developer DSQL cluster
@@ -115,6 +115,17 @@ See `docs/privatpartys.md`.
 - **Backups** mit AWS Backup (Vault `c4-<env>-backup`, Plan `c4-<env>`, Rolle `c4backup-<env>-service` außerhalb des Präfixes
   `c4-<env>-*`, damit die Deploy-Rolle sie nicht ändern kann). Die Vault-Policy verbietet den Deploy-Rollen, Wiederherstellungspunkte
   zu löschen. Zeitpläne und Aufbewahrung: [docs/datenbank.md](docs/datenbank.md#backups).
+
+**Änderungen am Bootstrap (Owner):** Der State liegt im State-Bucket unter `bootstrap/terraform.tfstate` (versioniert,
+verschlüsselt; die Deploy-Rollen kommen nicht heran). Ablauf aus jedem Checkout:
+
+1. `aws sso login --profile C4`
+2. `cd infra/bootstrap && terraform init` (einmal je Checkout; holt den State aus S3, kein lokaler State mehr)
+3. `terraform plan`, prüfen, dann `terraform apply`. Das Lockfile im Bucket (`use_lockfile`) verhindert zwei gleichzeitige Läufe.
+
+Ist der State kaputt (z. B. abgebrochener Lauf), liegt jede frühere Fassung als Objekt-Version im Bucket
+(`aws s3api list-object-versions --bucket c4-terraform-state-189575358537 --prefix bootstrap/`); eine alte Version
+zurückkopieren, dann `terraform plan`. Ein hängendes Lock löst `terraform force-unlock <id>`.
 
 **Reihenfolge beim Anwenden (Owner):**
 
