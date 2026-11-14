@@ -228,6 +228,34 @@ durch eine Serie bleibt der Wert unverändert (Eingabe ohne `verantwortlichSub`)
 Das Dienstschwein zählt jeden Eintrag einmal, nach dem Jahr des Schichtbeginns (Europe/Berlin); abgesagte Events
 zählen nicht. Es ist für alle mit `kalender:lesen` sichtbar.
 
+## API: Events und Dienste
+
+Alle Routen unter `/api` in `app.ts` (Abschnitte „Kalender“). Serien-Routen stehen unter [Terminserien](#terminserien).
+
+| Route                                                                 | Recht                 | Hinweise                                                                                                                               |
+| --------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /kalender/events?von=&bis=`                                      | `kalender:lesen`      | Events im Zeitraum, mit Schichten, Diensten und eigener Teilnahme; 400 bei `von > bis`                                                 |
+| `GET /kalender/geburtstage?von=&bis=`                                 | `kalender:lesen`      | nur Mitglieder, die ihn im Kalender zeigen (siehe „Geburtstage“)                                                                       |
+| `GET /kalender/events/:id`                                            | `kalender:lesen`      | ein Event; 404, wenn unbekannt                                                                                                         |
+| `POST /kalender/events`                                               | `events:verwalten`    | 201 mit `id`; mit `bilderOrdner` legt es den OneDrive-Ordner an (`bilderHinweis` bei Problemen)                                        |
+| `PUT /kalender/events/:id`                                            | `events:verwalten`    | 409 mit `betroffene`/`teilnahmen`, wenn Einträge durch die Änderung entfallen (`EntfernungBestaetigen`), bis das Formular bestätigt    |
+| `PUT /kalender/events/:id/absage`                                     | `events:verwalten`    | `{ abgesagt }`                                                                                                                         |
+| `DELETE /kalender/events/:id`                                         | `events:verwalten`    | 409, solange Dienste eingetragen sind (dann absagen) oder es ein Protokoll zur Sitzung gibt; räumt einen leeren Bilder-Ordner auf      |
+| `PUT /kalender/events/:id/teilnahme`                                  | `kalender:lesen`      | `{ teilnahme }`, nur die eigene Antwort                                                                                                |
+| `PUT /kalender/events/:id/verfuegbarkeit`                             | `kalender:lesen`      | `{ verfuegbar, bestaetigt? }`, nur die eigene; 409 mit `dienste`, wenn eigene Dienste entfallen würden, bis `bestaetigt`               |
+| `PUT`/`DELETE /kalender/events/:id/abo`                               | `kalender:lesen`      | Event in den eigenen Kalender-Abo-Feed aufnehmen bzw. entfernen                                                                        |
+| `POST /kalender/events/:id/bilder-ordner`                             | `bilder:lesen`        | legt den Ordner nachträglich an; 409, wenn schon einer existiert                                                                       |
+| `POST /kalender/schichten/:id/dienste`                                | `kalender:lesen`      | Dienst eintragen (`mitgliedSub` oder Externe, Dienstform, Kommentar); jede:r darf jedes Mitglied eintragen, Meldung an die Person; 201 |
+| `DELETE /kalender/dienste/:id`                                        | `kalender:lesen`      | Dienst eines Mitglieds darf jede:r entfernen; der einer Externen nur, wer ihn eingetragen hat, oder `events:verwalten` (sonst 403)     |
+| `GET /kalender/externe`, `POST /kalender/externe`                     | `kalender:lesen`      | Externe auflisten bzw. anlegen (jede:r darf anlegen)                                                                                   |
+| `PUT /kalender/externe/:id`, `POST /kalender/externe/zusammenfuehren` | `kalender:einrichten` | Externe bearbeiten bzw. zusammenführen                                                                                                 |
+| `GET /kalender/statistik?jahr=`                                       | `kalender:lesen`      | Dienstschwein                                                                                                                          |
+
+Dienstformen, Kategorien und Vorlagen (`GET /kalender/dienstformen|kategorien|vorlagen` mit `kalender:lesen`; `POST`, `PUT /:id`
+und `DELETE /kalender/vorlagen/:id` mit `kalender:einrichten`) sowie `GET`/`PUT /kalender/erinnerungen` (Schreiben mit
+`kalender:einrichten`) bilden die Einrichtung. Der ICS-Feed (`GET /kalender/feed/:token`, öffentlich) und der Token
+(`/me/kalender-token`) stehen unter „Mein Kalender“.
+
 ## Geburtstage
 
 Mitglieder mit Geburtsdatum erscheinen im Kalender (`GET /api/kalender/geburtstage?von&bis`, `kalender:lesen`, höchstens 400 Tage,

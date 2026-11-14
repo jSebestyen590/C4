@@ -9,7 +9,7 @@ Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank a
   geändert wird der Verlauf, nie die Spalte allein.
 - Username und E-Mail liegen nur in Cognito, nie in der Datenbank. Die Mitgliederliste ist die Vereinigung aus Profilzeilen und aktivierten
   Cognito-Konten; eine Selbstregistrierung gibt es nicht.
-- Die Rechte werden bei jedem Request neu berechnet (Status ∪ Gruppen ∪ Rechte der aktuellen Posten); ohne Profilzeile gilt `anwaerter`.
+- Die Rechte werden bei jedem Request neu berechnet (Status ∪ Gruppen ∪ Rechte der aktuellen Posten); ohne Profilzeile gilt `anwaerter`. Status und Posten kommen dabei aus der Datenbank, die Gruppen aus dem Access-Token (bis zu 60 Minuten alt, siehe [querschnitt.md](./querschnitt.md#auth-modell)).
 - `deaktiviert_am` ist die Wahrheit über einen deaktivierten Account (403 auf jeder Route); sein Status und seine Historie sind gesperrt (409),
   neue Einträge für ihn (Dienst, Trichter, Schlüsselübergabe …) lehnt die API mit 400 ab. Das eigene Konto lässt sich nicht deaktivieren
   und die eigene Admin-Rolle nicht entziehen.
