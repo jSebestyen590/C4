@@ -73,7 +73,9 @@ function SpeicherZeile({
   else if (zustand.art === 'laeuft') text = 'Wird gespeichert …';
   else if (zustand.art === 'sauber' && zustand.um) text = `Gespeichert · ${uhrzeit(zustand.um)}`;
   else if (zustand.art === 'fehler') {
-    text = 'Speichern fehlgeschlagen.';
+    text = zustand.erneut
+      ? 'Nicht gespeichert. Neuer Versuch folgt gleich …'
+      : 'Nicht gespeichert.';
     farbe = 'red';
   }
   return (
@@ -81,7 +83,7 @@ function SpeicherZeile({
       <Text size="sm" c={farbe}>
         {text}
       </Text>
-      {zustand.art === 'fehler' && (
+      {zustand.art === 'fehler' && !zustand.erneut && (
         <Anchor component="button" type="button" size="sm" onClick={onErneut}>
           Erneut versuchen
         </Anchor>

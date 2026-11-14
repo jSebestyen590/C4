@@ -136,7 +136,6 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
 - Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
 - Überfällige Todos werden einmal am Tag erinnert.
-- Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
 - Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
 
@@ -145,6 +144,11 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Status mit Zukunftsdatum: nicht erreichbar (Routen prüfen, Protokoll-Aktionen nehmen bei künftiger Sitzung heute).
   `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
   selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
+
+**Nach PR #33** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
+
+- Protokoll-Autosave: nach einem Fehler bis zu drei automatische Versuche (2 s, 5 s, 10 s), sichtbar als „Nicht gespeichert.“
+  (`useProtokollAutosave.ts`, `protokolle.md`).
 
 **Ohne Test geblieben**
 
@@ -213,8 +217,8 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 - **Todos:** Überfällige Todos werden nie erinnert.
 - **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
   Serien-Job belegt den Tag vor der Arbeit; bei einem Lambda-Timeout fällt der Tag aus.
-- **Protokoll-Autosave:** kein erneuter Versuch nach einem Fehler; ein Konflikt verwirft den lokalen Stand, ohne Hinweis, wer
-  mitschreibt.
+- **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand, ohne Hinweis, wer mitschreibt (Text
+  und Umgang mit dem lokalen Stand sind nicht entschieden).
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
 - **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).

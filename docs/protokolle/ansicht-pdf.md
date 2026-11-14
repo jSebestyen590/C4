@@ -95,9 +95,10 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Autosave** 2 Sekunden nach der letzten Änderung (Dokument und Kopf); Statuszeile „Gespeichert · 20:14“ bzw. „Wird
   gespeichert …“. Speichern überlappt nie, jedes sendet den neuesten Stand. Beim Verlassen der Seite wird zuletzt gespeichert,
   beim Schließen des Tabs warnt der Browser.
-- **Fehler:** Scheitert ein Speichern (Netz, Serverfehler), versucht der Autosave es **nicht von selbst erneut**: Die Statuszeile
-  zeigt rot „Speichern fehlgeschlagen.“ mit dem Link „Erneut versuchen“ (`jetzt()`); sonst wird erst bei der nächsten Änderung
-  wieder gespeichert (`useProtokollAutosave.ts`, `SpeicherZeile` in `pages/ProtokollPage.tsx`).
+- **Fehler:** Scheitert ein Speichern (Netz, Serverfehler), versucht der Autosave es bis zu dreimal von selbst erneut (Wartezeit 2 s, 5 s, 10 s;
+  `AUTOSAVE_WIEDERHOLUNG_MS`). Die Statuszeile zeigt dabei rot „Nicht gespeichert. Neuer Versuch folgt gleich …“. Sind die
+  Versuche aufgebraucht, steht dort „Nicht gespeichert.“ mit dem Link „Erneut versuchen“ (`jetzt()`); sonst wird erst bei der
+  nächsten Änderung (die die Versuche von vorn beginnt) wieder gespeichert (`useProtokollAutosave.ts`, `SpeicherZeile` in `pages/ProtokollPage.tsx`).
 - **Versionskonflikt (409):** Der Autosave sendet danach nichts mehr; „Neu laden“ lädt den Server-Stand und verwirft den lokalen,
   ungespeicherten Stand (siehe [protokolle.md](../protokolle.md#speichern)).
 
