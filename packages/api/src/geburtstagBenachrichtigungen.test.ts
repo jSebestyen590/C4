@@ -167,7 +167,26 @@ describe('geburtstagErinnerungen', () => {
     await t.run('2026-06-15T08:05:00Z');
     await t.run('2026-06-15T15:00:00Z');
     expect(t.versendet).toHaveLength(1);
-    expect([...t.versand]).toEqual([`${ART}:g:2026-06-15:x`]);
+    expect([...t.versand]).toContain(`${ART}:g:2026-06-15:x`);
+  });
+
+  it('computes the recipients only once per day', async () => {
+    const zeilen = [geburtstagskind(), zeile('x')];
+    const t = setup(zeilen);
+    await t.abo('x');
+    let gelesen = 0;
+    const lauf = (jetzt: string) =>
+      geburtstagErinnerungen(
+        t.b,
+        { alle: async () => (gelesen++, zeilen) },
+        { konten: async () => new Map() },
+        new Date(jetzt),
+      );
+    await lauf(MORGENS_10);
+    await lauf('2026-06-15T08:05:00Z');
+    expect(gelesen).toBe(1);
+    await lauf('2026-06-16T08:00:00Z');
+    expect(gelesen).toBe(2);
   });
 
   it('ignores members without a birthday', async () => {

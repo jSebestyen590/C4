@@ -135,10 +135,17 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 - Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
 - Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
-- Überfällige Todos werden einmal am Tag erinnert.
 - Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
 - Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
+
+**Nach PR #33** (Issue 50)
+
+- Todos: Überfällige offene Todos werden täglich erinnert (`todo.frist`, Schlüssel je Todo, Tag und Person).
+- Kalender: Der Schlüssel von „Fehlende Dienste“ enthält den Beginn (nach dem Verschieben kommt der Hinweis erneut). Der Serien-Job
+  markiert den Tag erst nach erfolgreicher Arbeit (die Arbeit ist je Event idempotent).
+- Benachrichtigungen: Der Versandschlüssel wird erst nach dem Versand belegt (Abbruch führt höchstens zu einem doppelten Push);
+  `push_versand` wird täglich auf 90 Tage gekürzt; der Geburtstags-Job rechnet einmal pro Tag.
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -217,17 +224,12 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
   ohne Prüfung auf Zukunftsdatum.
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
   nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
-- **Todos:** Überfällige Todos werden nie erinnert.
-- **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
-  Serien-Job belegt den Tag vor der Arbeit; bei einem Lambda-Timeout fällt der Tag aus.
 - **Protokoll-Autosave:** kein erneuter Versuch nach einem Fehler; ein Konflikt verwirft den lokalen Stand, ohne Hinweis, wer
   mitschreibt.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
 - **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).
 - **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
-- **Benachrichtigungen:** Der Versandschlüssel wird vor dem Senden belegt (bei Abbruch geht der Push verloren);
-  `push_versand` wird nie aufgeräumt; der Geburtstags-Job rechnet ab 09:00 alle 5 Minuten alle Empfänger neu.
 
 ### 4. Tests und Struktur
 
