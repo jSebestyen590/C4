@@ -188,7 +188,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 ## Oberfläche (Details)
 
 - `/lager` (`waren:lesen`): Lagerort-Baum als einklappbare Liste. Mit `waren:verwalten` gibt es je Knoten ein Menü
-  (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten (nicht bei Regalböden), Warenliste bearbeiten, Archivieren, Löschen; bei 409 wird
+  (Unterebene anlegen bzw. bei Regalen „Böden hinzufügen“, Bearbeiten, Nach oben/unten (nicht bei Regalböden), Warenliste bearbeiten, Archivieren bzw. Wiederherstellen, Löschen; bei 409 wird
   stattdessen Archivieren angeboten). Die Reihenfolge der Warenliste (per Drag & Drop am Griff links, auch per Touch und Tastatur)
   ist die Zählreihenfolge der Inventur und die Reihenfolge der Bestandsanzeige.
   - **Bestand je Platz:** Der Schalter „Bestand anzeigen“ (standardmäßig an, Wahl im `localStorage`) zeigt unter jedem Knoten
@@ -214,7 +214,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
   - **Höhe je Reihe:** Mit „Als IFCO-Lagerplätze anlegen“ und mehreren Reihen erscheint je Reihe ein Feld „Höhe Reihe r (cm)“ (alle folgen
     dem ersten Wert, bis man sie ändert); die Stellflächen sind gemeinsam. `boedenPlatzErgebnis` (`IfcoPlatzFelder.tsx`) macht daraus das Array
     pro Boden (`bodenMasse`, Reihe für Reihe wie `bodenNamen`).
-  - **Regal anlegen/bearbeiten** (`LagerortFormular.tsx`, `BoedenFelder.tsx`, `BoedenModal.tsx`): Der Dialog „Lager/Unterebene anlegen“
+  - **Regal anlegen/bearbeiten** (`LagerortFormular.tsx`, `BoedenFelder.tsx`, `BoedenModal.tsx`): Der Dialog (Titel „Lager anlegen“, „Unterebene anlegen“ bzw. „<Art> bearbeiten“)
     hat (wo ein Regal erlaubt ist) den Umschalter „Lagerort“ / „Regal“. Für ein Regal: Reihen (Standard 1), Plätze je Reihe (Standard 5),
     zusammen höchstens 50, Namensmuster (Standard `Boden {n}`, bei mehreren Reihen `Reihe {r} Platz {p}`), Startnummer (für `{n}`)
     und die Liste der erzeugten Namen als Eingabefelder, einzeln überschreibbar (Änderung von Muster/Anzahl erzeugt sie neu). „Böden
@@ -255,7 +255,7 @@ gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, 
 - `WareFelder.tsx`: wiederverwendbares Formular für Waren (Name, Warengruppe, MHD-Art, Gebinde, Aliase).
 - `/waren` (`waren:lesen`): Karten aller Waren mit Suche (Name, Aliase), Warengruppenfilter (inkl. Untergruppen), Archiv-Schalter,
   aktuellem Bestand und frühestem MHD. Mit `waren:verwalten` legt „Ware anlegen“ (`WareFormular.tsx`) neue Waren an.
-- `/waren/:id`: Stammdaten (Menü: Bearbeiten, Archivieren, Löschen), Schaltflächen „Einlagern“/„Entnehmen“ (`bestand:buchen`,
+- `/waren/:id`: Stammdaten (Menü: Bearbeiten, Archivieren bzw. Wiederherstellen, Löschen), Schaltflächen „Einlagern“/„Entnehmen“ (`bestand:buchen`,
   `BuchungModal.tsx`; Entnahme zeigt danach die FIFO-Zeilen), Bestand je Lagerort (`WareBestand.tsx`), Bestandsverlauf als
   Stufendiagramm je Basisgebinde, umschaltbar Gesamt / Je Lager (`WareVerlauf.tsx`; `GET /waren/:id/verlauf` liefert dazu
   neben `zeilen` in Basiseinheiten auch `punkte` mit den Mengen je Lager und Gebinde für den Tooltip) sowie die Vorgänge,

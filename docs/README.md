@@ -21,6 +21,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                               |
 | [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`        |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                    |
+| [querschnitt.md](./querschnitt.md)               | Querschnitt: Auth-Modell, Rechteberechnung, Fehler-Mapping, DSQL-Wiederholung         |
 | [refactoring.md](./refactoring.md)               | Review 11/2026: geprüft, erledigt, offen (vor jedem Refactoring lesen)                |
 
 ## Allgemein
