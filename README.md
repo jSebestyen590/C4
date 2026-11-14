@@ -25,10 +25,9 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
 1. Export credentials for account `189575358537`. The AWS CLI and `infra/envs/*` use the default credentials chain (e.g.
    `AWS_PROFILE=C4`); `infra/bootstrap` has the profile `C4` hard-coded in its provider (`aws sso login --profile C4`).
-2. **Bootstrap** (once): `cd infra/bootstrap && terraform init && terraform apply`. This root has **no remote backend**: it
-   creates the state bucket `c4-terraform-state-189575358537` that all other roots use, so its own state is the local file
-   `infra/bootstrap/terraform.tfstate`. That file is git-ignored (`infra/**/terraform.tfstate*`) and exists only on the machine that
-   ran the apply; re-applying bootstrap (see "GitHub setup") needs it.
+2. **Bootstrap** (once): `cd infra/bootstrap`, comment out the `backend "s3"` block (the bucket doesn't
+   exist yet), `terraform init && terraform apply`, restore the block, then `terraform init -migrate-state`.
+   From then on the bootstrap state lives in the state bucket under `bootstrap/` (versioned).
 3. **Build the Lambda**: `pnpm build`
 4. **Dev without custom domain first** (avoids waiting for DNS):
    `cd infra/envs/dev && terraform init && terraform apply -var 'domain_name='`

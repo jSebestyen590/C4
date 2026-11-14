@@ -15,9 +15,12 @@ export type ProtokollKurz = Omit<ProtokollRow, 'inhalt' | 'kopf'>;
 
 /** There already is a protocol for the Sitzung. */
 export class ProtokollExistiert extends Error {}
-/** Somebody saved in the meantime; `version` is the current one. */
+/** Somebody saved in the meantime; `version` is the current one, `geaendertVon` the last editor. */
 export class ProtokollVeraltet extends Error {
-  constructor(readonly version: number) {
+  constructor(
+    readonly version: number,
+    readonly geaendertVon: string | null = null,
+  ) {
     super('Jemand anderes hat das Protokoll inzwischen geändert.');
   }
 }
@@ -80,12 +83,16 @@ export function createProtokolleStore(db: Db): ProtokollStore {
   /** After a failed conditional update: why it failed. */
   const warumNicht = async (id: string, nurEntwurf: boolean): Promise<never | undefined> => {
     const [row] = await db
-      .select({ status: protokolle.status, version: protokolle.version })
+      .select({
+        status: protokolle.status,
+        version: protokolle.version,
+        geaendertVon: protokolle.geaendertVon,
+      })
       .from(protokolle)
       .where(eq(protokolle.id, id));
     if (!row) return undefined;
     if (nurEntwurf && row.status === 'abgeschlossen') throw new ProtokollAbgeschlossen();
-    throw new ProtokollVeraltet(row.version);
+    throw new ProtokollVeraltet(row.version, row.geaendertVon);
   };
 
   const aendern = async (

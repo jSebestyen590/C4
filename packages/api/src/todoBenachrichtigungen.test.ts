@@ -69,12 +69,34 @@ describe('todoErinnerungen', () => {
   it('covers the window from today to two days ahead only', async () => {
     const t = setup();
     await t.abo('x');
-    await t.neu({ titel: 'gestern', faelligAm: '2026-11-11' });
     await t.neu({ titel: 'heute', faelligAm: '2026-11-12' });
     await t.neu({ titel: 'in 2', faelligAm: '2026-11-14' });
     await t.neu({ titel: 'in 3', faelligAm: '2026-11-15' });
     await t.run(HEUTE_10);
     expect(t.versendet.map((v) => v.text.split('“')[0])).toEqual(['„heute', '„in 2']);
+  });
+
+  it('reminds about overdue open Todos every day, with singular and plural text', async () => {
+    const t = setup();
+    await t.abo('x');
+    await t.neu({ faelligAm: '2026-11-11' });
+    await t.run(HEUTE_10);
+    await t.run('2026-11-12T10:00:00Z');
+    expect(t.versendet.map((v) => [v.titel, v.text])).toEqual([
+      ['Todo überfällig', '„Kasse prüfen“ ist seit 1 Tag überfällig.'],
+    ]);
+    await t.run('2026-11-13T09:00:00Z');
+    expect(t.versendet[1]!.text).toBe('„Kasse prüfen“ ist seit 2 Tagen überfällig.');
+    expect(t.versendet).toHaveLength(2);
+  });
+
+  it('does not remind about a done overdue Todo', async () => {
+    const t = setup();
+    await t.abo('x');
+    const id = await t.neu({ faelligAm: '2026-11-10' });
+    await t.todosStore.abhaken(id, 'x', true);
+    await t.run(HEUTE_10);
+    expect(t.versendet).toHaveLength(0);
   });
 
   it('reminds once per Todo, deadline and person, but again when the deadline moves', async () => {

@@ -133,12 +133,25 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 **Entschieden, Umsetzung offen** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
 
-- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum.
-- Beendete Ausleihen gehen nicht wieder auf; dafür wird eine neue Ausleihe angelegt.
-- Überfällige Todos werden einmal am Tag erinnert.
-- Das Protokoll-Autosave versucht es nach einem Fehler automatisch erneut.
 - Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
 - Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
+
+**Nach PR #33** (Issue 50)
+
+- Todos: Überfällige offene Todos werden täglich erinnert (`todo.frist`, Schlüssel je Todo, Tag und Person).
+- Kalender: Der Schlüssel von „Fehlende Dienste“ enthält den Beginn (nach dem Verschieben kommt der Hinweis erneut). Der Serien-Job
+  markiert den Tag erst nach erfolgreicher Arbeit (die Arbeit ist je Event idempotent).
+- Benachrichtigungen: Der Versandschlüssel wird erst nach dem Versand belegt (Abbruch führt höchstens zu einem doppelten Push);
+  `push_versand` wird täglich auf 90 Tage gekürzt; der Geburtstags-Job rechnet einmal pro Tag.
+- Schlüssel-Planungen verfallen einen Tag nach ihrem Datum (beim Lesen gefiltert, kein Job); eine Übergabe an jemand anderen
+  entfernt die früheste aktuelle Planung (`docs/schluessel.md`).
+- Beendete Ausleihen gehen nicht wieder auf (409 bei `PUT` mit Positionen); Rückgabe mit Zukunftsdatum ist 400
+  (`docs/inventar.md`).
+- Protokoll-Autosave: nach einem Fehler bis zu drei automatische Versuche (2 s, 5 s, 10 s), sichtbar als „Nicht gespeichert.“
+  (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
+- `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
+  `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
+- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -146,20 +159,12 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   `statusSetzen` und `speichern` werfen jetzt zusätzlich bei einem künftigen Datum; das stille Ersetzen eines Eintrags vom
   selben Tag durch „Status ändern“ ist gewollt und in `members.md` beschrieben.
 
-<<<<<<< HEAD
-**Nach PR #33** (Issue 50)
-
-- `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
-  `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
-- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
-=======
 **Nach PR #33** ([Issue 51](https://github.com/jSebestyen590/C4/issues/51))
 
 - Doku: „Oberfläche (Details)“ in `waren.md` und `inventar.md` gegen die Komponenten geprüft (Korrektur: Menüs bieten
   „Archivieren“ bzw. „Wiederherstellen“, der Lagerort-Dialog heißt „Lager anlegen“ / „Unterebene anlegen“); Routen-Tabelle
   für Events und Dienste in `kalender.md`; neue Seite `querschnitt.md` (Auth-Modell, Rechteberechnung, Fehler-Mapping,
   DSQL-Wiederholung); `README.md`: User-Pool-ID je Umgebung per Terraform-Output, lokaler Bootstrap-State, OneDrive-Verbindung.
->>>>>>> origin/main
 
 **Ohne Test geblieben**
 
@@ -219,21 +224,12 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
 Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
-- **Schlüssel-Planungen** laufen nie ab; eine veraltete Planung zeigt ihren Empfänger weiter als erwarteten Halter. Eine
-  Übergabe an jemand anderen entfernt sie nicht.
-- **Ausleihen:** `ausleiheAktualisieren` nimmt Positionen für eine beendete Ausleihe an und öffnet sie damit wieder; Rückgabe
-  ohne Prüfung auf Zukunftsdatum.
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“.
-- **Todos:** Überfällige Todos werden nie erinnert.
-- **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
-  Serien-Job belegt den Tag vor der Arbeit; bei einem Lambda-Timeout fällt der Tag aus.
-- **Protokoll-Autosave:** kein erneuter Versuch nach einem Fehler; ein Konflikt verwirft den lokalen Stand, ohne Hinweis, wer
-  mitschreibt.
+- **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
+  soll, ist nicht entschieden.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
 - **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
-- **Benachrichtigungen:** Der Versandschlüssel wird vor dem Senden belegt (bei Abbruch geht der Push verloren);
-  `push_versand` wird nie aufgeräumt; der Geburtstags-Job rechnet ab 09:00 alle 5 Minuten alle Empfänger neu.
 
 ### 4. Tests und Struktur
 

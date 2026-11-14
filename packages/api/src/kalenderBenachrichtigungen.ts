@@ -177,7 +177,10 @@ export function waehleErinnerung(
   return erreicht.length > 0 ? Math.min(...erreicht) : undefined;
 }
 
-/** Once per event and reached reminder time (global setting) while the event is still red. */
+/**
+ * Once per event, start and reached reminder time (global setting) while the event is still red.
+ * The start is part of the key, so a moved event is reminded again.
+ */
 export async function fehlendeDienste(
   benachrichtigungen: Benachrichtigungen,
   kalender: Pick<KalenderStore, 'events' | 'erinnerungen'>,
@@ -208,14 +211,14 @@ export async function fehlendeDienste(
           ...nachricht,
           subs: [verantwortlich],
           ohneEinstellung: true,
-          dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}:verantwortlich`,
+          dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${event.beginn}:${minuten}:verantwortlich`,
         });
       }
       await benachrichtigungen.senden({
         ...nachricht,
         subs: 'alle',
         ausser: [...new Set([...(verantwortlich ? [verantwortlich] : []), ...nichtVerfuegbar])],
-        dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${minuten}`,
+        dedupeSchluessel: `${FEHLENDE_DIENSTE}:${event.id}:${event.beginn}:${minuten}`,
       });
     } catch (err) {
       console.error('Missing-Dienste notification failed', err);

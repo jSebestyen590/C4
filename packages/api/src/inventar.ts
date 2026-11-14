@@ -658,6 +658,13 @@ export function mitgliedVon(
 }
 
 /** The organising Mitglied of an Ausleihe: `organisiertVon`, else `erstelltVon`; null if unknown. */
+/** A finished Ausleihe (all positions returned) never reopens: its positions cannot be changed. */
+export function beendetPruefen(positionen: { zurueckAm: Date | null }[]): void {
+  if (positionen.length > 0 && positionen.every((p) => p.zurueckAm !== null)) {
+    throw new WarenKonflikt('Die Ausleihe ist beendet. Leg eine neue Ausleihe an.');
+  }
+}
+
 export function organisatorVon(
   a: Pick<AusleiheRow, 'organisiertVon' | 'erstelltVon'>,
   mitgliederListe: {
@@ -1539,6 +1546,7 @@ export function createInventarStore(db: Db): InventarStore {
           .where(eq(ausleihePositionen.ausleiheId, id));
         const eigene = alle.filter((p) => p.zurueckAm === null);
         if (positionen) {
+          beendetPruefen(alle);
           if (positionen.length === 0 && eigene.length === alle.length) {
             throw new WarenUngueltig('Bitte gib mindestens eine Position an.');
           }
