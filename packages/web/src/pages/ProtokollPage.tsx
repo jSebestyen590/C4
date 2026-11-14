@@ -45,6 +45,7 @@ import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenhei
 import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
+import { KonfliktHinweis } from '../protokoll/KonfliktHinweis';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokollBilder } from '../protokoll/bilderDaten';
 import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
@@ -396,29 +397,15 @@ function ProtokollAnsicht({
         </Group>
       )}
 
-      {konflikt && (
-        <Alert
-          color="red"
-          title="Jemand anderes hat das Protokoll inzwischen geändert."
-          data-druck="aus"
-        >
-          <Stack gap="xs" align="flex-start">
-            <Text size="sm">
-              Deine letzten Änderungen wurden nicht gespeichert. Lade die neue Version, um
-              weiterzuarbeiten. Deine ungespeicherten Änderungen gehen dabei verloren.
-            </Text>
-            <Button
-              color="red"
-              loading={ladeNeu}
-              onClick={() => {
-                setLadeNeu(true);
-                void neuLaden().finally(() => setLadeNeu(false));
-              }}
-            >
-              Neu laden
-            </Button>
-          </Stack>
-        </Alert>
+      {zustand.art === 'konflikt' && (
+        <KonfliktHinweis
+          von={zustand.geaendertVon}
+          ladeNeu={ladeNeu}
+          onNeuLaden={() => {
+            setLadeNeu(true);
+            void neuLaden().finally(() => setLadeNeu(false));
+          }}
+        />
       )}
       {editierbar && !konflikt && (
         <div data-druck="aus">

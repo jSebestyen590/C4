@@ -7609,6 +7609,8 @@ describe('protokolle', () => {
     expect(await veraltet.json()).toEqual({
       error: 'Jemand anderes hat das Protokoll inzwischen geändert.',
       version: 2,
+      // Who saved version 2 (for the hint on the page).
+      geaendertVon: expect.objectContaining({ sub: 'a', username: 'user-a' }),
     });
     expect((await t.holen(id)).inhalt).toEqual(inhalt);
 

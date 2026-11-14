@@ -148,7 +148,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 **Nach PR #33** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
 
 - Protokoll-Autosave: nach einem Fehler bis zu drei automatische Versuche (2 s, 5 s, 10 s), sichtbar als „Nicht gespeichert.“
-  (`useProtokollAutosave.ts`, `protokolle.md`).
+  (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 
 **Ohne Test geblieben**
 
@@ -217,8 +217,8 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 - **Todos:** Überfällige Todos werden nie erinnert.
 - **Kalender:** „Fehlende Dienste“ wird nach dem Verschieben eines Events nicht erneut gesendet (Schlüssel ohne Beginn). Der
   Serien-Job belegt den Tag vor der Arbeit; bei einem Lambda-Timeout fällt der Tag aus.
-- **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand, ohne Hinweis, wer mitschreibt (Text
-  und Umgang mit dem lokalen Stand sind nicht entschieden).
+- **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
+  soll, ist nicht entschieden.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
 - **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).

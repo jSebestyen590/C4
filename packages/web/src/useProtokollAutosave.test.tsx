@@ -104,7 +104,7 @@ describe('useProtokollAutosave retry', () => {
   });
 
   it('does not retry after a conflict', async () => {
-    speichernMock.mockResolvedValue({ art: 'konflikt', version: 5 });
+    speichernMock.mockResolvedValue({ art: 'konflikt', version: 5, geaendertVon: null });
     await aendern();
     await warte(AUTOSAVE_VERZOEGERUNG_MS + 60_000);
     expect(speichernMock).toHaveBeenCalledTimes(1);

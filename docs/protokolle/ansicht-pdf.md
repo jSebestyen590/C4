@@ -99,7 +99,8 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   `AUTOSAVE_WIEDERHOLUNG_MS`). Die Statuszeile zeigt dabei rot „Nicht gespeichert. Neuer Versuch folgt gleich …“. Sind die
   Versuche aufgebraucht, steht dort „Nicht gespeichert.“ mit dem Link „Erneut versuchen“ (`jetzt()`); sonst wird erst bei der
   nächsten Änderung (die die Versuche von vorn beginnt) wieder gespeichert (`useProtokollAutosave.ts`, `SpeicherZeile` in `pages/ProtokollPage.tsx`).
-- **Versionskonflikt (409):** Der Autosave sendet danach nichts mehr; „Neu laden“ lädt den Server-Stand und verwirft den lokalen,
+- **Versionskonflikt (409):** Der Hinweis nennt, wer das Protokoll zuletzt gespeichert hat (`geaendertVon` aus der 409-Antwort,
+  `protokoll/KonfliktHinweis.tsx`). Der Autosave sendet danach nichts mehr; „Neu laden“ lädt den Server-Stand und verwirft den lokalen,
   ungespeicherten Stand (siehe [protokolle.md](../protokolle.md#speichern)).
 
 ## Drucken

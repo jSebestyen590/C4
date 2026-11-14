@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ProtokollDokument, ProtokollKopf } from '@c4/shared';
+import type { ProtokollDokument, ProtokollKopf, ProtokollMitgliedDto } from '@c4/shared';
 import { useProtokollSpeichern } from './protokollDaten';
 
 export const AUTOSAVE_VERZOEGERUNG_MS = 2000;
@@ -15,7 +15,7 @@ export type SpeicherZustand =
   /** Save failed; `erneut` tells whether an automatic retry is still scheduled. */
   | { art: 'fehler'; erneut: boolean }
   /** Somebody else saved a newer version; saving is stopped until the page reloads. */
-  | { art: 'konflikt' };
+  | { art: 'konflikt'; geaendertVon: ProtokollMitgliedDto | null };
 
 /**
  * Debounced autosave of a protocol. Saves never overlap: every save is chained after the previous one and
@@ -64,7 +64,7 @@ export function useProtokollAutosave({
       });
       if (r.art === 'konflikt') {
         s.konflikt = true;
-        setZustand({ art: 'konflikt' });
+        setZustand({ art: 'konflikt', geaendertVon: r.geaendertVon });
         return;
       }
       s.version = r.version;
