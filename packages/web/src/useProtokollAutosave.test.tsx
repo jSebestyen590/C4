@@ -124,3 +124,15 @@ describe('useProtokollAutosave retry', () => {
     expect(speichernMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('useProtokollAutosave lock', () => {
+  it('stops saving when the edit lock is gone', async () => {
+    speichernMock.mockResolvedValue({ art: 'gesperrt', von: null, eigene: true });
+    await aendern();
+    await warte(AUTOSAVE_VERZOEGERUNG_MS);
+    expect(zustand()).toEqual({ art: 'gesperrt', von: null, eigene: true });
+    await aendern();
+    await warte(AUTOSAVE_VERZOEGERUNG_MS * 2);
+    expect(speichernMock).toHaveBeenCalledTimes(1);
+  });
+});

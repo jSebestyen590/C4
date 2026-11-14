@@ -149,6 +149,8 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`docs/inventar.md`).
 - Protokoll-Autosave: nach einem Fehler bis zu drei automatische Versuche (2 s, 5 s, 10 s), sichtbar als „Nicht gespeichert.“
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
+- Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
+  verlangen sie (`protokolle.md`, Migrationen 0163–0165).
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -224,7 +226,8 @@ Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
   nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
 - **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
-  soll, ist nicht entschieden.
+  soll, ist nicht entschieden. Gleichzeitiges Bearbeiten verhindert die Bearbeitungssperre (`protokolle.md`); ein Konflikt tritt nur
+  noch auf, wenn eine Sperre ablief (Tab lange eingefroren oder offline) und jemand anderes inzwischen gespeichert hat.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
 - **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).

@@ -48,6 +48,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0110–0113 (Protokolle): 0110 löscht die Tabelle `protokolle`, 0111 den Index `protokolle_event_idx`; 0112 und 0113 fügen
   `event_kategorien.protokoll` und `protokoll_art` per `ALTER` hinzu, die Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Protokolle:
   `0109_bilder_ordner_cache`.
+- 0163–0165 (Protokoll-Sperre) fügen `protokolle.sperre_sub`, `sperre_tab` und `sperre_bis` per `ALTER` hinzu; die Down-Dateien leeren nur
+  die Werte. `0157`–`0162` gehören dem Finanzen-PR.
 - 0118–0119 (vCard-Links): 0118 löscht die Tabelle `vcard_tokens`, 0119 ihren Index. Rollback-Ziel nur für die vCards:
   `0117_todos_protokoll_idx`.
 - 0120–0129 (Privatpartys): 0120–0124 löschen die Tabellen `privatparty_personen`, `privatpartys`, `privatparty_termine`,

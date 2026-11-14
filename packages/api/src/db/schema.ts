@@ -814,6 +814,10 @@ export const protokolle = pgTable('protokolle', {
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
   geaendertVon: text('geaendert_von'),
   geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull().defaultNow(),
+  /** Edit lock of a draft: Cognito sub and browser tab id of the editor, and when it expires. */
+  sperreSub: text('sperre_sub'),
+  sperreTab: text('sperre_tab'),
+  sperreBis: timestamp('sperre_bis', { withTimezone: true }),
 });
 export type ProtokollRow = typeof protokolle.$inferSelect;
 
