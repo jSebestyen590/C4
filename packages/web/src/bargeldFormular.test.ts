@@ -3,6 +3,9 @@ import type { KontoDto } from '@c4/shared';
 import {
   abweichungText,
   andereKonten,
+  bargeldSeite,
+  buchenPfad,
+  umbuchenPfad,
   bestandFehler,
   faecherAus,
   mengenStueckelung,
@@ -75,7 +78,7 @@ describe('Umbuchen', () => {
   it('verlangt ein Fach, Beträge und genug Bestand', () => {
     expect(
       umbuchenFehler({ von: 'bank', nach: 'safe', mengen: { 100: 1 } }, konten, null).nach,
-    ).toContain('Mindestens eine Seite');
+    ).toContain('keine Bargeld-Umbuchung');
     expect(
       umbuchenFehler({ von: 'f1', nach: 'f1', mengen: { 100: 1 } }, konten, bestand).nach,
     ).toContain('verschieden');
@@ -117,5 +120,20 @@ describe('abweichungText', () => {
     expect(abweichungText(50, -1)).toBe('0,50 €: 1 Stück zu wenig');
     expect(abweichungText(200, 3)).toBe('2,00 €: 3 Stück zu viel');
     expect(abweichungText(200, 0)).toBe('');
+  });
+});
+
+describe('bargeldSeite und Links', () => {
+  const k = (id: string) => konten.find((x) => x.id === id);
+  it('entscheidet nach Fach', () => {
+    expect(bargeldSeite(k('f1'), k('bank'))).toBe('bargeld');
+    expect(bargeldSeite(k('bank'), k('f2'))).toBe('bargeld');
+    expect(bargeldSeite(k('bank'), konto('kasse'))).toBe('buchen');
+    expect(bargeldSeite(k('bank'), undefined)).toBeNull();
+  });
+  it('baut Links mit Vorbelegung', () => {
+    expect(umbuchenPfad('a', 'b')).toBe('/finanzen/bargeld/umbuchen?von=a&nach=b');
+    expect(umbuchenPfad()).toBe('/finanzen/bargeld/umbuchen');
+    expect(buchenPfad('a', null)).toBe('/finanzen/buchen?modus=umbuchung&von=a');
   });
 });

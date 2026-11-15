@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Button,
   Grid,
   Group,
@@ -15,11 +16,12 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useBlocker, useNavigate } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useSearchParams } from 'react-router-dom';
 import { heuteBerlin } from '@c4/shared';
 import { useApi } from '../api';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import { BetragFeld } from '../BetragFeld';
+import { umbuchenPfad } from '../bargeldFormular';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { BuchungszeilenTabelle } from '../BuchungszeilenTabelle';
 import {
@@ -72,15 +74,34 @@ export function FinanzenBuchenPage() {
   const gebuchtRef = useRef(false);
 
   const wahl = useMemo(() => buchbareKonten(konten.data ?? []), [konten.data]);
+  // Preselect mode and accounts from a link (`?modus=umbuchung&von=…&nach=…`) once; bad ids are ignored.
+  const [parameter] = useSearchParams();
+  const [vorbelegt, setVorbelegt] = useState(false);
+  if (!vorbelegt && konten.data) {
+    setVorbelegt(true);
+    const gueltig = (id: string | null) =>
+      id !== null && wahl.some((k) => k.id === id) ? id : null;
+    if (parameter.get('modus') === 'frei') setModus('frei');
+    if (parameter.get('modus') === 'umbuchung') setModus('umbuchung');
+    const v = gueltig(parameter.get('von'));
+    const n = gueltig(parameter.get('nach'));
+    if (v) setVon(v);
+    if (n && n !== v) setNach(n);
+  }
   const optionen = kontoOptionen(wahl);
-  const hatStueckelung = (konten.data ?? []).some((k) => !k.archiviert && k.stueckelung);
 
   const stand = { modus, von, nach, betrag, zeilen };
   const kopf = { datum, text };
   const fehler = formularFehler(stand, wahl);
   const textLeer = text.trim() === '';
+  // Accounts with Stückelung need denominations: they are booked on the Bargeld pages.
+  const gewaehlt = modus === 'umbuchung' ? [von, nach] : zeilen.map((z) => z.kontoId);
+  const stueckelungKonten = gewaehlt.filter((id) => wahl.find((k) => k.id === id)?.stueckelung);
   const gruende = [
     ...(datum ? [] : ['Bitte gib ein Datum an.']),
+    ...(stueckelungKonten.length > 0
+      ? ['Konten mit Stückelung buchst du unter „Bargeld“ mit Münzen und Scheinen.']
+      : []),
     ...(textLeer ? ['Bitte gib einen Buchungstext ein.'] : []),
     ...fehler,
   ];
@@ -287,11 +308,19 @@ export function FinanzenBuchenPage() {
               />
             )}
 
-            {hatStueckelung && (
-              <Text size="sm" c="dimmed">
-                Die Fächer des Safes und Konten mit Unterkonten stehen hier nicht zur Auswahl.
-                Bargeld mit Scheinen und Münzen buchst du unter „Bargeld“.
-              </Text>
+            {stueckelungKonten.length > 0 && (
+              <Alert color="orange">
+                Dies ist eine{' '}
+                <Anchor
+                  component={Link}
+                  to={
+                    modus === 'umbuchung' && von && nach ? umbuchenPfad(von, nach) : umbuchenPfad()
+                  }
+                >
+                  Bargeld-Umbuchung
+                </Anchor>
+                : Konten mit Stückelung buchst du dort mit Münzen und Scheinen.
+              </Alert>
             )}
             <Group align="center" gap="md">
               <Button type="button" onClick={pruefenOeffnen} disabled={!buchbar}>

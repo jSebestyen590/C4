@@ -100,7 +100,7 @@ export function umbuchenFehler(
   if (!s.nach) f.nach = 'Bitte wähle das Konto, auf das das Geld geht.';
   if (s.von && s.nach && s.von === s.nach) f.nach = 'Von und Nach müssen verschieden sein.';
   if (von && nach && !istFach(von) && !istFach(nach))
-    f.nach = 'Mindestens eine Seite muss ein Fach sein. Andere Buchungen machst du unter „Buchen“.';
+    f.nach = 'Dies ist keine Bargeld-Umbuchung: Ohne Fach buchst du sie unter „Buchen“.';
   if (mengenLeer(s.mengen)) f.mengen = 'Bitte gib mindestens eine Münze oder einen Schein an.';
   else if (mengeZuGross(s.mengen)) f.mengen = 'Eine Anzahl ist zu groß.';
   else if (bestandVon && bestandFehler(s.mengen, bestandVon).size > 0)
@@ -184,3 +184,31 @@ export const abweichungText = (nennwertCent: number, differenzAnzahl: number): s
   differenzAnzahl === 0
     ? ''
     : `${centAnzeigen(nennwertCent)}: ${Math.abs(differenzAnzahl).toLocaleString('de-DE')} Stück zu ${differenzAnzahl < 0 ? 'wenig' : 'viel'}`;
+
+// ----- Which page fits a pair of accounts
+
+/**
+ * Where a booking between two accounts belongs: `bargeld` if at least one side is a Fach (needs
+ * denominations), `buchen` if both are chosen and none is, otherwise undecided (null).
+ */
+export function bargeldSeite(
+  von: KontoDto | undefined,
+  nach: KontoDto | undefined,
+): 'bargeld' | 'buchen' | null {
+  if (istFach(von) || istFach(nach)) return 'bargeld';
+  return von && nach ? 'buchen' : null;
+}
+
+const mitParametern = (pfad: string, parameter: Record<string, string | null | undefined>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(parameter)) if (v) q.set(k, v);
+  return q.size > 0 ? `${pfad}?${q}` : pfad;
+};
+
+/** Link to the Bargeld Umbuchen page, prefilled with the accounts when given. */
+export const umbuchenPfad = (von?: string | null, nach?: string | null) =>
+  mitParametern('/finanzen/bargeld/umbuchen', { von, nach });
+
+/** Link to the Buchen page in Umbuchung mode, prefilled with the accounts when given. */
+export const buchenPfad = (von?: string | null, nach?: string | null) =>
+  mitParametern('/finanzen/buchen', { modus: 'umbuchung', von, nach });

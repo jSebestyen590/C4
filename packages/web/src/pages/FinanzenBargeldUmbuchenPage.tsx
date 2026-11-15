@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Button,
   Group,
   Loader,
@@ -12,12 +13,14 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { centAnzeigen, heuteBerlin, type BuchungEingabeInput } from '@c4/shared';
 import { useApi } from '../api';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import {
   andereKonten,
+  bargeldSeite,
+  buchenPfad,
   faecherAus,
   mengenLeer,
   mengenStueckelung,
@@ -66,9 +69,26 @@ export function FinanzenBargeldUmbuchenPage() {
     { group: 'Fächer', items: faecher.map((k) => ({ value: k.id, label: k.name })) },
     { group: 'Andere Konten', items: andere.map((k) => ({ value: k.id, label: k.name })) },
   ].filter((g) => g.items.length > 0);
+  // Preselect Von/Nach from the link (`?von=…&nach=…`) once; unknown or archived ids are ignored.
+  const [parameter] = useSearchParams();
+  const [vorbelegt, setVorbelegt] = useState(false);
+  if (!vorbelegt && konten.data) {
+    setVorbelegt(true);
+    const gueltig = (id: string | null) =>
+      id !== null && [...faecher, ...andere].some((k) => k.id === id) ? id : null;
+    const v = gueltig(parameter.get('von'));
+    const n = gueltig(parameter.get('nach'));
+    if (v) setVon(v);
+    if (n && n !== v) setNach(n);
+  }
   const name = (id: string | null) => alle.find((k) => k.id === id)?.name ?? '';
 
   const bestandVon = bargeld.data?.faecher.find((f) => f.id === von)?.bestand ?? null;
+  const keineBargeldUmbuchung =
+    bargeldSeite(
+      alle.find((k) => k.id === von),
+      alle.find((k) => k.id === nach),
+    ) === 'buchen';
   const stand = { von, nach, mengen };
   const f = umbuchenFehler(stand, alle, bestandVon);
   const buchbar = f.alle.length === 0 && datum !== '';
@@ -169,7 +189,7 @@ export function FinanzenBargeldUmbuchenPage() {
                 value={nach}
                 onChange={setNach}
                 nothingFoundMessage="Nichts gefunden"
-                error={versucht ? f.nach : undefined}
+                error={versucht && !keineBargeldUmbuchung ? f.nach : undefined}
                 data-nav=""
               />
               <TextInput
@@ -182,6 +202,15 @@ export function FinanzenBargeldUmbuchenPage() {
                 data-nav=""
               />
             </SimpleGrid>
+            {keineBargeldUmbuchung && (
+              <Alert color="orange">
+                Dies ist keine Bargeld-Umbuchung: Ohne Fach buchst du sie unter{' '}
+                <Anchor component={Link} to={buchenPfad(von, nach)}>
+                  Buchen
+                </Anchor>
+                .
+              </Alert>
+            )}
             <Stack gap={4}>
               <Group gap={2}>
                 <Text fw={500} size="sm">

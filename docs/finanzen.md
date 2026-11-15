@@ -216,7 +216,7 @@ Fächer, nie auf den Safe selbst (Gruppenregel).
 - **Bestand** je Fach: Saldo und Anzahl je Nennwert (Summe der Stückelungszeilen). `GET /api/finanzen/bargeld`
   liefert alle nicht archivierten Fächer unter `safe` mit den 13 Nennwerten sowie Summen je Nennwert.
 - **Umbuchen:** Von und Nach, wobei mindestens eine Seite ein Fach ist (die andere ein Fach oder ein
-  anderes buchbares Konto, z. B. Bank). Die Stückelung wird einmal erfasst; die Fach-Seite bekommt sie
+  anderes buchbares Konto, z. B. Bank). Sind beide Seiten keine Fächer, sperrt die Seite und verweist auf „Buchen“; umgekehrt bietet „Buchen“ die Fächer an, sperrt aber die Buchung und verweist auf die Bargeld-Umbuchung. Beide Seiten übernehmen `von`/`nach` (und `modus=umbuchung` auf „Buchen“) aus dem Link als Vorbelegung. Die Stückelung wird einmal erfasst; die Fach-Seite bekommt sie
   (Von negiert), die andere Seite nur den Betrag. Von begrenzt auf den Bestand. `quelle_typ` `umbuchung`.
 - **Wechseln:** ein Fach und **eine Tabelle** mit den Nennwerten (1 ct bis 100 €) und den Spalten Bestand,
   Abgang (raus, je Nennwert auf den Bestand begrenzt), Zugang (rein) und Bestand danach; die Summen müssen

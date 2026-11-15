@@ -17,7 +17,7 @@ export const HILFE = {
   },
   buchen: {
     modus:
-      'Umbuchung: Geld geht von einem Konto auf ein anderes, mit einem Betrag. Frei: beliebig viele Zeilen mit Zugang und Abgang, z. B. für mehrere Konten in einer Buchung. Gebucht wird in beiden Fällen nach demselben Prinzip: Alle Zugänge zusammen sind so hoch wie alle Abgänge.',
+      'Umbuchung: Geld geht von einem Konto auf ein anderes, mit einem Betrag. Frei: beliebig viele Zeilen mit Zugang und Abgang, z. B. für mehrere Konten in einer Buchung. Alle Zugänge zusammen sind so hoch wie alle Abgänge. Konten mit Stückelung (Fächer des Safes) buchst du unter „Bargeld“ mit Münzen und Scheinen.',
     zugangAbgang:
       'Zugang erhöht den Kontostand, Abgang verringert ihn (statt „Soll“ und „Haben“). Die Buchung geht auf, wenn alle Zugänge zusammen so hoch sind wie alle Abgänge.',
     text: 'Beschreibt, worum es geht. Der Text steht im Journal und lässt sich später nicht mehr ändern.',
@@ -36,9 +36,9 @@ export const HILFE = {
   bargeld: {
     fach: 'Ein Fach ist ein Unterkonto des Safes mit Stückelung, z. B. Wechselgeld. Fächer legt die Finanzer:in im Kontenplan an. Gebucht wird nur auf Fächer, nie auf den Safe selbst.',
     umbuchenVon:
-      'Hier geht das Geld ab. Mindestens eine Seite der Umbuchung muss ein Fach sein. Du kannst höchstens entnehmen, was im Fach ist (Bestand je Münze und Schein).',
+      'Hier geht das Geld ab: ein Fach oder ein anderes Konto. Mindestens eine Seite muss ein Fach sein, sonst ist es keine Bargeld-Umbuchung und du buchst sie unter „Buchen“. Aus einem Fach kannst du höchstens entnehmen, was da ist (Bestand je Münze und Schein).',
     umbuchenNach:
-      'Hier kommt das Geld an: ein anderes Fach oder ein anderes Konto, z. B. Bank. Die Münzen und Scheine trägst du nur einmal ein.',
+      'Hier kommt das Geld an: ein anderes Fach oder ein anderes Konto, z. B. Bank. Mindestens eine Seite muss ein Fach sein. Die Münzen und Scheine trägst du nur einmal ein.',
     bestand:
       'Der Bestand ergibt sich aus den Buchungen: wie viele Stück je Münze und Schein im Fach liegen. Er darf nie unter 0 fallen.',
     wechselnTabelle:

@@ -206,14 +206,14 @@ describe('schluesselFuer', () => {
 });
 
 describe('buchbareKonten', () => {
-  it('drops archived accounts and accounts with Stückelung', () => {
+  it('drops archived accounts', () => {
     const k = (id: string, archiviert: boolean, stueckelung: boolean) =>
       ({ id, archiviert, stueckelung }) as Parameters<typeof buchbareKonten>[0][number];
     expect(
       buchbareKonten([k('a', false, false), k('b', true, false), k('c', false, true)]).map(
         (x) => x.id,
       ),
-    ).toEqual(['a']);
+    ).toEqual(['a', 'c']);
   });
 
   it('drops groups (accounts with sub accounts)', () => {
