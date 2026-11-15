@@ -189,3 +189,51 @@ describe('zaehlungEingabeSchema', () => {
       expect(zaehlungEingabeSchema.safeParse({ ...basis, ist }).success).toBe(false);
   });
 });
+
+describe('pruefeBuchung mit gemischten Vorzeichen', () => {
+  it('erlaubt positive und negative Anzahlen in einer Zeile, wenn die Summe passt', () => {
+    const konten: PruefKonto[] = [
+      { id: 'f', name: 'Kasse', stueckelung: true, archiviert: false },
+      { id: 'a', name: 'Aufwand', stueckelung: false, archiviert: false },
+    ];
+    const zeile = (
+      kontoId: string,
+      betragCent: number,
+      stueckelung: { nennwertCent: number; anzahl: number }[] | null,
+    ) => ({
+      kontoId,
+      betragCent,
+      stueckelung,
+      nettoCent: null,
+      steuerCent: null,
+      steuersatz: null,
+      steuerArt: 'keine' as const,
+    });
+    const ok = pruefeBuchung(
+      {
+        zeilen: [
+          zeile('f', -499, [
+            { nennwertCent: 1, anzahl: 1 },
+            { nennwertCent: 500, anzahl: -1 },
+          ]),
+          zeile('a', 499, null),
+        ],
+      },
+      konten,
+    );
+    expect(ok).toEqual([]);
+    const falsch = pruefeBuchung(
+      {
+        zeilen: [
+          zeile('f', -498, [
+            { nennwertCent: 500, anzahl: -1 },
+            { nennwertCent: 1, anzahl: 1 },
+          ]),
+          zeile('a', 498, null),
+        ],
+      },
+      konten,
+    );
+    expect(falsch.join(' ')).toContain('passt nicht zum Betrag');
+  });
+});

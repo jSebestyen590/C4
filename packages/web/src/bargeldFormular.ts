@@ -25,7 +25,7 @@ export const mengenLeer = (m: Mengen): boolean => NENNWERTE_CENT.every((n) => me
 
 /** The non-empty counts as a Stückelung (ascending), optionally negated. */
 export function mengenStueckelung(m: Mengen, vorzeichen: 1 | -1 = 1): StueckelungDto[] {
-  return NENNWERTE_CENT.filter((n) => mengeVon(m, n) > 0).map((n) => ({
+  return NENNWERTE_CENT.filter((n) => mengeVon(m, n) !== 0).map((n) => ({
     nennwertCent: n,
     anzahl: vorzeichen * mengeVon(m, n),
   }));
@@ -50,7 +50,7 @@ export function bestandFehler(m: Mengen, bestand: readonly StueckelungDto[]): Ma
 
 /** Counts above the allowed maximum of one field. */
 export const mengeZuGross = (m: Mengen): boolean =>
-  NENNWERTE_CENT.some((n) => mengeVon(m, n) > ANZAHL_MAX);
+  NENNWERTE_CENT.some((n) => Math.abs(mengeVon(m, n)) > ANZAHL_MAX);
 
 const zeile = (kontoId: string, betragCent: number, stueckelung: StueckelungDto[] | null) => ({
   ...einfacheZeile(kontoId, betragCent),
@@ -80,6 +80,49 @@ export function andereKonten(konten: readonly KontoDto[]): KontoDto[] {
   return konten.filter((k) => !k.archiviert && !k.stueckelung && !eltern.has(k.id));
 }
 
+/**
+ * Field errors of an Umbuchung per denomination. Positive counts are taken out of the Von-Fach and
+ * are capped at its stock; negative counts (Rückgeld) come back to Von, and when Nach is a Fach they
+ * are taken from the Nach-Fach and capped at its stock. Messages name the Fach.
+ */
+export function umbuchenFeldFehler(
+  m: Mengen,
+  von: { name: string; bestand: readonly StueckelungDto[] } | null,
+  nach: { name: string; bestand: readonly StueckelungDto[] } | null,
+): Map<number, string> {
+  const fehler = new Map<number, string>();
+  const pruefe = (
+    fach: { name: string; bestand: readonly StueckelungDto[] } | null,
+    vorzeichenAnzahl: 1 | -1,
+  ) => {
+    if (!fach) return;
+    const vorrat = anzahlenAus(fach.bestand);
+    for (const n of NENNWERTE_CENT) {
+      const noetig = vorzeichenAnzahl * mengeVon(m, n);
+      const da = vorrat.get(n) ?? 0;
+      if (noetig > da && !fehler.has(n))
+        fehler.set(
+          n,
+          da === 0
+            ? `Nicht in ${fach.name}.`
+            : `Nur ${da.toLocaleString('de-DE')} in ${fach.name}.`,
+        );
+    }
+  };
+  pruefe(von, 1);
+  pruefe(nach, -1);
+  return fehler;
+}
+
+/** `1 × 5,00 € raus, 1 × 0,01 € zurück`: positive counts leave Von, negative ones come back. */
+export const rueckgeldText = (m: Mengen): string =>
+  mengenStueckelung(m)
+    .map(
+      (s) =>
+        `${Math.abs(s.anzahl)} × ${centAnzeigen(s.nennwertCent)} ${s.anzahl > 0 ? 'raus' : 'zurück'}`,
+    )
+    .join(', ');
+
 export interface UmbuchenFehler {
   von?: string;
   nach?: string;
@@ -92,6 +135,7 @@ export function umbuchenFehler(
   s: UmbuchenStand,
   konten: readonly KontoDto[],
   bestandVon: readonly StueckelungDto[] | null,
+  bestandNach: readonly StueckelungDto[] | null = null,
 ): UmbuchenFehler {
   const f: UmbuchenFehler = { alle: [] };
   const von = konten.find((k) => k.id === s.von);
@@ -103,7 +147,15 @@ export function umbuchenFehler(
     f.nach = 'Dies ist keine Bargeld-Umbuchung: Ohne Fach buchst du sie unter „Buchen“.';
   if (mengenLeer(s.mengen)) f.mengen = 'Bitte gib mindestens eine Münze oder einen Schein an.';
   else if (mengeZuGross(s.mengen)) f.mengen = 'Eine Anzahl ist zu groß.';
-  else if (bestandVon && bestandFehler(s.mengen, bestandVon).size > 0)
+  else if (mengenSumme(s.mengen) <= 0)
+    f.mengen = 'Der Betrag muss größer als 0 sein: Es muss mehr abgehen, als zurückkommt.';
+  else if (
+    umbuchenFeldFehler(
+      s.mengen,
+      istFach(von) && bestandVon ? { name: von!.name, bestand: bestandVon } : null,
+      istFach(nach) && bestandNach ? { name: nach!.name, bestand: bestandNach } : null,
+    ).size > 0
+  )
     f.mengen = 'Im Fach ist nicht genug vorhanden.';
   f.alle = [f.von, f.nach, f.mengen].filter((x): x is string => !!x);
   return f;

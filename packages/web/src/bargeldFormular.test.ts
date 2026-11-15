@@ -6,6 +6,8 @@ import {
   bargeldSeite,
   buchenPfad,
   uebernahmeLesen,
+  rueckgeldText,
+  umbuchenFeldFehler,
   umbuchenPfad,
   bestandFehler,
   faecherAus,
@@ -149,5 +151,49 @@ describe('bargeldSeite und Links', () => {
       text: null,
       datum: null,
     });
+  });
+});
+
+describe('Umbuchen mit Rückgeld (negative Anzahlen)', () => {
+  const kasse = [
+    { nennwertCent: 1, anzahl: 2 },
+    { nennwertCent: 500, anzahl: 3 },
+  ];
+  it('baut die Zeilen mit gemischten Vorzeichen', () => {
+    const z = umbuchenZeilen({ von: 'f1', nach: 'f2', mengen: { 500: 1, 1: -1 } }, konten);
+    expect(z[0]).toMatchObject({
+      kontoId: 'f1',
+      betragCent: -499,
+      stueckelung: [
+        { nennwertCent: 1, anzahl: 1 },
+        { nennwertCent: 500, anzahl: -1 },
+      ],
+    });
+    expect(z[1]).toMatchObject({
+      kontoId: 'f2',
+      betragCent: 499,
+      stueckelung: [
+        { nennwertCent: 1, anzahl: -1 },
+        { nennwertCent: 500, anzahl: 1 },
+      ],
+    });
+  });
+  it('verlangt eine Summe über 0', () => {
+    const f = (mengen: Record<number, number>) =>
+      umbuchenFehler({ von: 'f1', nach: 'bank', mengen }, konten, kasse).mengen;
+    expect(f({ 500: 1, 1: -1 })).toBeUndefined();
+    expect(f({ 500: 1, 1000: -1 })).toContain('größer als 0');
+    expect(f({ 100: 1, 50: -2 })).toContain('größer als 0');
+  });
+  it('begrenzt positive Anzahlen am Von-Fach und negative am Nach-Fach', () => {
+    const von = { name: 'Kasse', bestand: kasse };
+    const nach = { name: 'Wechselgeld', bestand: [{ nennwertCent: 1, anzahl: 0 }] };
+    const e = umbuchenFeldFehler({ 500: 4, 1: -1 }, von, nach);
+    expect(e.get(500)).toBe('Nur 3 in Kasse.');
+    expect(e.get(1)).toBe('Nicht in Wechselgeld.');
+    expect(umbuchenFeldFehler({ 500: 1, 1: -1 }, von, null).size).toBe(0);
+  });
+  it('beschreibt raus und zurück', () => {
+    expect(rueckgeldText({ 500: 1, 1: -1 })).toBe('1 × 0,01 € zurück, 1 × 5,00 € raus');
   });
 });

@@ -24,9 +24,9 @@ import {
   uebernahmeLesen,
   faecherAus,
   mengenLeer,
-  mengenStueckelung,
+  rueckgeldText,
+  umbuchenFeldFehler,
   mengenSumme,
-  stueckelungText,
   umbuchenFehler,
   umbuchenZeilen,
   type Mengen,
@@ -94,7 +94,14 @@ export function FinanzenBargeldUmbuchenPage() {
       alle.find((k) => k.id === nach),
     ) === 'buchen';
   const stand = { von, nach, mengen };
-  const f = umbuchenFehler(stand, alle, bestandVon);
+  const bestandNach = bargeld.data?.faecher.find((f) => f.id === nach)?.bestand ?? null;
+  const f = umbuchenFehler(stand, alle, bestandVon, bestandNach);
+  const feldFehler = umbuchenFeldFehler(
+    mengen,
+    bestandVon ? { name: name(von), bestand: bestandVon } : null,
+    bestandNach ? { name: name(nach), bestand: bestandNach } : null,
+  );
+  const bestandAnzeige = bestandVon ?? bestandNach;
   const buchbar = f.alle.length === 0 && datum !== '';
   const buchText = text.trim() || `Umbuchung ${name(von)} → ${name(nach)}`;
   const ungespeichert = text.trim() !== '' || !mengenLeer(mengen);
@@ -228,14 +235,16 @@ export function FinanzenBargeldUmbuchenPage() {
                   Was wird umgebucht?
                 </Text>
                 <InfoHinweis feld="Bestand" text={HILFE.bargeld.bestand} />
+                <InfoHinweis feld="Rückgeld" text={HILFE.bargeld.umbuchenRueckgeld} />
               </Group>
               <StueckelungFeld
                 label="Umzubuchende Münzen und Scheine"
                 value={mengen}
                 onChange={setMengen}
-                bestand={bestandVon ?? undefined}
-                bestandLabel={`Bestand ${name(von)}`}
-                begrenzen={bestandVon !== null}
+                bestand={bestandAnzeige ?? undefined}
+                bestandLabel={`Bestand ${name(bestandVon ? von : nach)}`}
+                vorzeichen
+                fehler={feldFehler}
               />
               {versucht && f.mengen && (
                 <Text size="sm" c="red" role="alert">
@@ -269,7 +278,7 @@ export function FinanzenBargeldUmbuchenPage() {
             konto: name(z.kontoId),
             betragCent: z.betragCent,
           }))}
-          extra={<Text size="sm">{stueckelungText(mengenStueckelung(mengen))}</Text>}
+          extra={<Text size="sm">{rueckgeldText(mengen)}</Text>}
           warnungen={buchungsWarnungen(
             { datum, text: buchText },
             { modus: 'umbuchung', von, nach, betrag: mengenSumme(mengen), zeilen: [] },

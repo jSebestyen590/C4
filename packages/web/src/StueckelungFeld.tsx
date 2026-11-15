@@ -1,4 +1,5 @@
-import { Box, Text, TextInput } from '@mantine/core';
+import { ActionIcon, Box, Text, TextInput } from '@mantine/core';
+import { IconPlusMinus } from '@tabler/icons-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { ANZAHL_MAX, centAnzeigen, NENNWERTE_CENT, type StueckelungDto } from '@c4/shared';
 import { bestandFehler, mengeVon, mengenSumme, type Mengen } from './bargeldFormular';
@@ -6,7 +7,11 @@ import { BETRAG_STIL } from './finanzenDaten';
 import { feldReihenfolge, type FeldReihenfolge } from './feldReihenfolge';
 
 const ZAHL = new Intl.NumberFormat('de-DE');
-const vorzeichen = (n: number) => (n > 0 ? `+${ZAHL.format(n)}` : ZAHL.format(n));
+const istNegativ = (w: number | null | undefined) =>
+  w !== null && w !== undefined && (w < 0 || Object.is(w, -0));
+const zeigeWert = (w: number | null | undefined) =>
+  w === null || w === undefined ? '' : Object.is(w, -0) ? '-' : String(w);
+const vorzeichenText = (n: number) => (n > 0 ? `+${ZAHL.format(n)}` : ZAHL.format(n));
 
 /** One count column of a `StueckelungFeld` with several columns. */
 export interface StueckelungSpalte {
@@ -49,6 +54,8 @@ export function StueckelungFeld({
   bestandLabel = 'Bestand',
   differenz = false,
   begrenzen = false,
+  vorzeichen: mitVorzeichen = false,
+  fehler: fehlerVorgabe,
   disabled = false,
 }: Readonly<{
   value?: Mengen;
@@ -63,6 +70,13 @@ export function StueckelungFeld({
   differenz?: boolean;
   /** Single column: counts above the stock are errors (needs `bestand`). */
   begrenzen?: boolean;
+  /**
+   * Single column: counts may be negative (change coming back). Typing `-` works on a keyboard, a ±
+   * button flips the sign on touch (the numeric keypad has no minus). Negative counts show red.
+   */
+  vorzeichen?: boolean;
+  /** Single column: field errors per denomination, replacing the `begrenzen` check. */
+  fehler?: ReadonlyMap<number, string>;
   disabled?: boolean;
 }>) {
   const mehrere = !!spalten;
@@ -78,7 +92,11 @@ export function StueckelungFeld({
   ];
   const vorrat = new Map((bestand ?? []).map((s) => [s.nennwertCent, s.anzahl]));
   const fehler = cols.map((c) =>
-    c.begrenzen && bestand ? bestandFehler(c.value, bestand) : new Map<number, string>(),
+    !mehrere && fehlerVorgabe
+      ? fehlerVorgabe
+      : c.begrenzen && bestand
+        ? bestandFehler(c.value, bestand)
+        : new Map<number, string>(),
   );
   const bestandSumme = [...vorrat].reduce((s, [n, a]) => s + n * a, 0);
   const summen = cols.map((c) => mengenSumme(c.value));
@@ -101,7 +119,7 @@ export function StueckelungFeld({
   const template = [
     'max-content',
     ...(bestand ? ['max-content'] : []),
-    ...cols.map(() => 'minmax(76px, 140px)'),
+    ...cols.map(() => `minmax(${mitVorzeichen ? 130 : 76}px, 200px)`),
     ...(diffSp ? ['max-content'] : []),
     ...(danachSp ? ['max-content'] : []),
     ...(betragSp ? ['max-content'] : []),
@@ -154,7 +172,7 @@ export function StueckelungFeld({
           `d-${n}`,
           r,
           diffSp,
-          d === 0 ? '–' : vorzeichen(d),
+          d === 0 ? '–' : vorzeichenText(d),
           { ...ZELLE, fontWeight: d === 0 ? 400 : 600 },
           d === 0 ? 'dimmed' : d > 0 ? 'teal' : 'red',
         ),
@@ -170,9 +188,9 @@ export function StueckelungFeld({
           `t-${n}`,
           r,
           betragSp,
-          a === 0 ? '–' : centAnzeigen(n * a),
+          a === 0 ? '–' : a < 0 ? `${centAnzeigen(n * a)} zurück` : centAnzeigen(n * a),
           ZELLE,
-          a === 0 ? 'dimmed' : undefined,
+          a === 0 ? 'dimmed' : a < 0 ? 'red' : undefined,
         ),
       );
     }
@@ -211,30 +229,54 @@ export function StueckelungFeld({
     const meldung = fehler[s]!.get(n);
     return (
       <Box key={`${c.id}-${n}`} style={{ ...ZELLE, gridRow: z + 2, gridColumn: ersteZaehlSp + s }}>
-        <TextInput
-          aria-label={`${c.label} ${centAnzeigen(n)}`}
-          value={wert === null || wert === undefined ? '' : String(wert)}
-          inputMode="numeric"
-          enterKeyHint="next"
-          autoComplete="off"
-          maxLength={7}
-          placeholder="0"
-          disabled={disabled}
-          data-nav=""
-          error={!!meldung || mengeVon(c.value, n) > ANZAHL_MAX}
-          onChange={(e) => {
-            const ziffern = e.currentTarget.value.replace(/\D/g, '');
-            c.onChange({ ...c.value, [n]: ziffern === '' ? null : Number(ziffern) });
-          }}
-          onFocus={(e) => e.currentTarget.select()}
-          styles={{
-            input: {
-              textAlign: 'right',
-              fontVariantNumeric: 'tabular-nums',
-              fontSize: 'max(16px, 1rem)',
-            },
-          }}
-        />
+        <Box style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+          <TextInput
+            style={{ flex: 1, minWidth: 0 }}
+            aria-label={`${c.label} ${centAnzeigen(n)}`}
+            value={zeigeWert(wert)}
+            inputMode="numeric"
+            enterKeyHint="next"
+            autoComplete="off"
+            maxLength={mitVorzeichen ? 8 : 7}
+            placeholder="0"
+            disabled={disabled}
+            data-nav=""
+            error={!!meldung || Math.abs(mengeVon(c.value, n)) > ANZAHL_MAX}
+            onChange={(e) => {
+              const roh = e.currentTarget.value;
+              const ziffern = roh.replace(/\D/g, '');
+              const minus = mitVorzeichen && /^\s*[-−]/.test(roh);
+              // `-0` keeps a lone minus sign visible while the digits are still to come.
+              c.onChange({
+                ...c.value,
+                [n]: ziffern === '' ? (minus ? -0 : null) : (minus ? -1 : 1) * Number(ziffern),
+              });
+            }}
+            onFocus={(e) => e.currentTarget.select()}
+            styles={{
+              input: {
+                textAlign: 'right',
+                fontVariantNumeric: 'tabular-nums',
+                fontSize: 'max(16px, 1rem)',
+                color: istNegativ(wert) ? 'var(--mantine-color-red-7)' : undefined,
+              },
+            }}
+          />
+          {mitVorzeichen && !disabled && (
+            <ActionIcon
+              type="button"
+              variant="default"
+              size={42}
+              tabIndex={-1}
+              aria-label={`Vorzeichen umkehren für ${centAnzeigen(n)}`}
+              onClick={() =>
+                c.onChange({ ...c.value, [n]: wert ? -wert : istNegativ(wert) ? null : -0 })
+              }
+            >
+              <IconPlusMinus size={18} />
+            </ActionIcon>
+          )}
+        </Box>
         {meldung && (
           <Text size="xs" c="red" ta="right" role="alert">
             {meldung}

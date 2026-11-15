@@ -39,6 +39,8 @@ export const HILFE = {
       'Hier geht das Geld ab: ein Fach oder ein anderes Konto. Mindestens eine Seite muss ein Fach sein, sonst ist es keine Bargeld-Umbuchung und du buchst sie unter „Buchen“. Aus einem Fach kannst du höchstens entnehmen, was da ist (Bestand je Münze und Schein).',
     umbuchenNach:
       'Hier kommt das Geld an: ein anderes Fach oder ein anderes Konto, z. B. Bank. Mindestens eine Seite muss ein Fach sein. Die Münzen und Scheine trägst du nur einmal ein.',
+    umbuchenRueckgeld:
+      'Negative Anzahlen sind Rückgeld: Zahlst du z. B. eine Rechnung über 4,99 € aus dem Fach „Kasse“ mit 1 × 5,00 € und bekommst 1 Cent zurück, trägst du 1 bei 5,00 € und −1 bei 0,01 € ein. Auf der Tastatur tippst du ein Minus, am Handy kehrt die Taste „±“ das Vorzeichen um. Der Betrag insgesamt muss größer als 0 sein, die Richtung bleibt Von → Nach. Negative Anzahlen sind nur möglich, wenn die Münze im „Nach“-Fach vorhanden ist (sie wird dort entnommen).',
     bestand:
       'Der Bestand ergibt sich aus den Buchungen: wie viele Stück je Münze und Schein im Fach liegen. Er darf nie unter 0 fallen.',
     wechselnTabelle:
