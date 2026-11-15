@@ -1,4 +1,7 @@
-/** Order in which a table of count fields is walked with Tab and Enter. */
+/**
+ * Order in which a table of count fields is walked with Tab, Enter and the iOS keyboard arrows. The
+ * fields are rendered in this order (DOM order), see `StueckelungFeld`.
+ */
 export type FeldReihenfolge = 'zeilen' | 'spalten';
 
 /**
@@ -18,18 +21,4 @@ export function feldReihenfolge(
     for (let s = 0; s < spalten; s++) for (let z = 0; z < zeilen; z++) felder.push([z, s]);
   }
   return felder;
-}
-
-/** The field `schritt` places after (`-1`: before) `[zeile, spalte]`; null at the ends. */
-export function naechstesFeld(
-  zeilen: number,
-  spalten: number,
-  modus: FeldReihenfolge,
-  zeile: number,
-  spalte: number,
-  schritt: 1 | -1,
-): [number, number] | null {
-  const felder = feldReihenfolge(zeilen, spalten, modus);
-  const i = felder.findIndex(([z, s]) => z === zeile && s === spalte);
-  return i < 0 ? null : (felder[i + schritt] ?? null);
 }

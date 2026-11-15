@@ -1,9 +1,9 @@
-import { Table, Text, TextInput } from '@mantine/core';
-import { useRef, type KeyboardEvent } from 'react';
+import { Box, Text, TextInput } from '@mantine/core';
+import type { CSSProperties, ReactNode } from 'react';
 import { ANZAHL_MAX, centAnzeigen, NENNWERTE_CENT, type StueckelungDto } from '@c4/shared';
 import { bestandFehler, mengeVon, mengenSumme, type Mengen } from './bargeldFormular';
 import { BETRAG_STIL } from './finanzenDaten';
-import { naechstesFeld, type FeldReihenfolge } from './feldReihenfolge';
+import { feldReihenfolge, type FeldReihenfolge } from './feldReihenfolge';
 
 const ZAHL = new Intl.NumberFormat('de-DE');
 const vorzeichen = (n: number) => (n > 0 ? `+${ZAHL.format(n)}` : ZAHL.format(n));
@@ -20,13 +20,24 @@ export interface StueckelungSpalte {
   begrenzen?: boolean;
 }
 
+const ZELLE: CSSProperties = {
+  padding: '4px var(--mantine-spacing-xs)',
+  borderBottom: '1px solid var(--mantine-color-default-border)',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+};
+const KOPF: CSSProperties = { ...ZELLE, fontWeight: 600, fontSize: 'var(--mantine-font-size-sm)' };
+const FUSS: CSSProperties = { ...ZELLE, borderBottom: 'none', fontWeight: 600 };
+
 /**
  * Typed counts per denomination (1 ct up to 100 EUR), one integer field per row and count column.
  * Single column (`value`/`onChange`): optional stock column (`bestand`, `bestandLabel`) and the
  * difference to it, `begrenzen` makes a count above the stock a field error. Several columns
  * (`spalten`, e.g. Abgang and Zugang when changing money): stock, one column each and the stock
- * afterwards. Tab and Enter walk the fields row by row or column by column (`reihenfolge`); Enter
- * after the last field is left to the surrounding form. The footer sums the values live.
+ * afterwards. It looks like a table (CSS grid with explicit cell positions), but the fields are
+ * emitted in the walking order (`reihenfolge`: row by row or column by column), so Tab, the iOS
+ * keyboard arrows, Enter (`data-nav`) and screen readers all follow it. The footer sums live.
  */
 export function StueckelungFeld({
   value,
@@ -54,7 +65,6 @@ export function StueckelungFeld({
   begrenzen?: boolean;
   disabled?: boolean;
 }>) {
-  const tabelle = useRef<HTMLTableElement>(null);
   const mehrere = !!spalten;
   const cols: readonly StueckelungSpalte[] = spalten ?? [
     {
@@ -79,164 +89,172 @@ export function StueckelungFeld({
     cols.reduce((s, c) => s + (c.richtung === 'zu' ? 1 : -1) * mengeVon(c.value, n), 0);
   const danachSumme = NENNWERTE_CENT.reduce((s, n) => s + n * danach(n), 0);
 
-  const fokus = (z: number, s: number) =>
-    tabelle.current?.querySelector<HTMLElement>(`[data-pos="${z}-${s}"]`)?.focus();
-  // Tab and Enter follow the chosen order; at its ends the browser / the form take over.
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>, z: number, s: number) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.nativeEvent.isComposing) return;
-    const schritt = e.key === 'Tab' ? (e.shiftKey ? -1 : 1) : e.key === 'Enter' ? 1 : null;
-    if (schritt === null) return;
-    const ziel = naechstesFeld(NENNWERTE_CENT.length, cols.length, reihenfolge, z, s, schritt);
-    if (!ziel) return;
-    e.preventDefault();
-    e.stopPropagation();
-    fokus(ziel[0], ziel[1]);
-  };
+  // Grid columns: Wert, [Bestand], count columns, then Differenz / Bestand danach / Betrag.
+  let spalte = 1;
+  const wertSp = spalte++;
+  const bestandSp = bestand ? spalte++ : 0;
+  const ersteZaehlSp = spalte;
+  spalte += cols.length;
+  const diffSp = !mehrere && differenz && bestand ? spalte++ : 0;
+  const danachSp = mehrere && bestand ? spalte++ : 0;
+  const betragSp = !mehrere ? spalte : 0;
+  const template = [
+    'max-content',
+    ...(bestand ? ['max-content'] : []),
+    ...cols.map(() => 'minmax(76px, 140px)'),
+    ...(diffSp ? ['max-content'] : []),
+    ...(danachSp ? ['max-content'] : []),
+    ...(betragSp ? ['max-content'] : []),
+  ].join(' ');
+  const FUSS_ZEILE = NENNWERTE_CENT.length + 2;
+
+  const zelle = (
+    key: string,
+    zeile: number,
+    sp: number,
+    inhalt: ReactNode,
+    stil: CSSProperties = ZELLE,
+    farbe?: string,
+  ) => (
+    <Box
+      key={key}
+      c={farbe}
+      style={{
+        ...stil,
+        ...BETRAG_STIL,
+        gridRow: zeile,
+        gridColumn: sp,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {inhalt}
+    </Box>
+  );
+
+  const statisch: ReactNode[] = [
+    zelle('k-wert', 1, wertSp, 'Wert', KOPF),
+    ...(bestand ? [zelle('k-bestand', 1, bestandSp, bestandLabel, KOPF)] : []),
+    ...cols.map((c, s) => zelle(`k-${c.id}`, 1, ersteZaehlSp + s, c.label, KOPF)),
+    ...(diffSp ? [zelle('k-diff', 1, diffSp, 'Differenz', KOPF)] : []),
+    ...(danachSp ? [zelle('k-danach', 1, danachSp, 'Bestand danach', KOPF)] : []),
+    ...(betragSp ? [zelle('k-betrag', 1, betragSp, 'Betrag', KOPF)] : []),
+  ];
+  NENNWERTE_CENT.forEach((n, z) => {
+    const r = z + 2;
+    const d = mengeVon(einzel.value, n) - (vorrat.get(n) ?? 0);
+    const nach = danach(n);
+    statisch.push(zelle(`w-${n}`, r, wertSp, centAnzeigen(n)));
+    if (bestand)
+      statisch.push(
+        zelle(`b-${n}`, r, bestandSp, ZAHL.format(vorrat.get(n) ?? 0), ZELLE, 'dimmed'),
+      );
+    if (diffSp)
+      statisch.push(
+        zelle(
+          `d-${n}`,
+          r,
+          diffSp,
+          d === 0 ? '–' : vorzeichen(d),
+          { ...ZELLE, fontWeight: d === 0 ? 400 : 600 },
+          d === 0 ? 'dimmed' : d > 0 ? 'teal' : 'red',
+        ),
+      );
+    if (danachSp)
+      statisch.push(
+        zelle(`n-${n}`, r, danachSp, ZAHL.format(nach), ZELLE, nach < 0 ? 'red' : 'dimmed'),
+      );
+    if (betragSp) {
+      const a = mengeVon(einzel.value, n);
+      statisch.push(
+        zelle(
+          `t-${n}`,
+          r,
+          betragSp,
+          a === 0 ? '–' : centAnzeigen(n * a),
+          ZELLE,
+          a === 0 ? 'dimmed' : undefined,
+        ),
+      );
+    }
+  });
+  statisch.push(zelle('f-wert', FUSS_ZEILE, wertSp, 'Summe', FUSS));
+  if (bestand)
+    statisch.push(zelle('f-bestand', FUSS_ZEILE, bestandSp, centAnzeigen(bestandSumme), FUSS));
+  cols.forEach((c, s) =>
+    mehrere
+      ? statisch.push(
+          zelle(`f-${c.id}`, FUSS_ZEILE, ersteZaehlSp + s, centAnzeigen(summen[s]!), FUSS),
+        )
+      : null,
+  );
+  if (diffSp)
+    statisch.push(
+      zelle(
+        'f-diff',
+        FUSS_ZEILE,
+        diffSp,
+        diffSumme === 0 ? '–' : `${diffSumme > 0 ? '+' : '−'}${centAnzeigen(Math.abs(diffSumme))}`,
+        FUSS,
+        diffSumme === 0 ? undefined : diffSumme > 0 ? 'teal' : 'red',
+      ),
+    );
+  if (danachSp)
+    statisch.push(zelle('f-danach', FUSS_ZEILE, danachSp, centAnzeigen(danachSumme), FUSS));
+  if (betragSp)
+    statisch.push(zelle('f-betrag', FUSS_ZEILE, betragSp, centAnzeigen(summen[0]!), FUSS));
+
+  // The fields come last and in walking order, so the DOM order is the order of Tab and Enter.
+  const felder = feldReihenfolge(NENNWERTE_CENT.length, cols.length, reihenfolge).map(([z, s]) => {
+    const n = NENNWERTE_CENT[z]!;
+    const c = cols[s]!;
+    const wert = c.value[n];
+    const meldung = fehler[s]!.get(n);
+    return (
+      <Box key={`${c.id}-${n}`} style={{ ...ZELLE, gridRow: z + 2, gridColumn: ersteZaehlSp + s }}>
+        <TextInput
+          aria-label={`${c.label} ${centAnzeigen(n)}`}
+          value={wert === null || wert === undefined ? '' : String(wert)}
+          inputMode="numeric"
+          enterKeyHint="next"
+          autoComplete="off"
+          maxLength={7}
+          placeholder="0"
+          disabled={disabled}
+          data-nav=""
+          error={!!meldung || mengeVon(c.value, n) > ANZAHL_MAX}
+          onChange={(e) => {
+            const ziffern = e.currentTarget.value.replace(/\D/g, '');
+            c.onChange({ ...c.value, [n]: ziffern === '' ? null : Number(ziffern) });
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+          styles={{
+            input: {
+              textAlign: 'right',
+              fontVariantNumeric: 'tabular-nums',
+              fontSize: 'max(16px, 1rem)',
+            },
+          }}
+        />
+        {meldung && (
+          <Text size="xs" c="red" ta="right" role="alert">
+            {meldung}
+          </Text>
+        )}
+      </Box>
+    );
+  });
 
   return (
-    <Table
-      ref={tabelle}
-      verticalSpacing={4}
-      tabularNums
-      aria-label={label}
-      data-stueckelung=""
-      style={{ maxWidth: mehrere ? 760 : 640 }}
-    >
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th style={BETRAG_STIL}>Wert</Table.Th>
-          {bestand && <Table.Th style={BETRAG_STIL}>{bestandLabel}</Table.Th>}
-          {cols.map((c) => (
-            <Table.Th key={c.id} w={140} style={BETRAG_STIL}>
-              {c.label}
-            </Table.Th>
-          ))}
-          {!mehrere && differenz && bestand && <Table.Th style={BETRAG_STIL}>Differenz</Table.Th>}
-          {mehrere && bestand && <Table.Th style={BETRAG_STIL}>Bestand danach</Table.Th>}
-          {!mehrere && <Table.Th style={BETRAG_STIL}>Betrag</Table.Th>}
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {NENNWERTE_CENT.map((n, z) => {
-          const d = mengeVon(einzel.value, n) - (vorrat.get(n) ?? 0);
-          const nach = danach(n);
-          return (
-            <Table.Tr key={n}>
-              <Table.Td style={BETRAG_STIL}>{centAnzeigen(n)}</Table.Td>
-              {bestand && (
-                <Table.Td style={BETRAG_STIL} c="dimmed">
-                  {ZAHL.format(vorrat.get(n) ?? 0)}
-                </Table.Td>
-              )}
-              {cols.map((c, s) => {
-                const wert = c.value[n];
-                const meldung = fehler[s]!.get(n);
-                return (
-                  <Table.Td key={c.id}>
-                    <TextInput
-                      aria-label={`${c.label} ${centAnzeigen(n)}`}
-                      value={wert === null || wert === undefined ? '' : String(wert)}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      maxLength={7}
-                      placeholder="0"
-                      disabled={disabled}
-                      data-nav=""
-                      data-pos={`${z}-${s}`}
-                      error={!!meldung || mengeVon(c.value, n) > ANZAHL_MAX}
-                      onKeyDown={(e) => onKeyDown(e, z, s)}
-                      onChange={(e) => {
-                        const ziffern = e.currentTarget.value.replace(/\D/g, '');
-                        c.onChange({ ...c.value, [n]: ziffern === '' ? null : Number(ziffern) });
-                      }}
-                      onFocus={(e) => e.currentTarget.select()}
-                      styles={{
-                        input: {
-                          textAlign: 'right',
-                          fontVariantNumeric: 'tabular-nums',
-                          fontSize: 'max(16px, 1rem)',
-                        },
-                      }}
-                    />
-                    {meldung && (
-                      <Text size="xs" c="red" ta="right" role="alert">
-                        {meldung}
-                      </Text>
-                    )}
-                  </Table.Td>
-                );
-              })}
-              {!mehrere && differenz && bestand && (
-                <Table.Td
-                  style={BETRAG_STIL}
-                  c={d === 0 ? 'dimmed' : d > 0 ? 'teal' : 'red'}
-                  fw={d === 0 ? 400 : 600}
-                >
-                  {d === 0 ? '–' : vorzeichen(d)}
-                </Table.Td>
-              )}
-              {mehrere && bestand && (
-                <Table.Td style={BETRAG_STIL} c={nach < 0 ? 'red' : 'dimmed'}>
-                  {ZAHL.format(nach)}
-                </Table.Td>
-              )}
-              {!mehrere && (
-                <Table.Td
-                  style={BETRAG_STIL}
-                  c={mengeVon(einzel.value, n) === 0 ? 'dimmed' : undefined}
-                >
-                  {mengeVon(einzel.value, n) === 0
-                    ? '–'
-                    : centAnzeigen(n * mengeVon(einzel.value, n))}
-                </Table.Td>
-              )}
-            </Table.Tr>
-          );
-        })}
-      </Table.Tbody>
-      <Table.Tfoot>
-        <Table.Tr>
-          <Table.Td>
-            <Text fw={600} size="sm" ta="right">
-              Summe
-            </Text>
-          </Table.Td>
-          {bestand && (
-            <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
-              {centAnzeigen(bestandSumme)}
-            </Table.Td>
-          )}
-          {mehrere ? (
-            summen.map((s, i) => (
-              <Table.Td key={cols[i]!.id} style={{ ...BETRAG_STIL, fontWeight: 600 }}>
-                {centAnzeigen(s)}
-              </Table.Td>
-            ))
-          ) : (
-            <Table.Td />
-          )}
-          {!mehrere && differenz && bestand && (
-            <Table.Td
-              style={{ ...BETRAG_STIL, fontWeight: 600 }}
-              c={diffSumme === 0 ? undefined : diffSumme > 0 ? 'teal' : 'red'}
-            >
-              {diffSumme === 0
-                ? '–'
-                : `${diffSumme > 0 ? '+' : '−'}${centAnzeigen(Math.abs(diffSumme))}`}
-            </Table.Td>
-          )}
-          {mehrere && bestand && (
-            <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
-              {centAnzeigen(danachSumme)}
-            </Table.Td>
-          )}
-          {!mehrere && (
-            <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
-              {centAnzeigen(summen[0]!)}
-            </Table.Td>
-          )}
-        </Table.Tr>
-      </Table.Tfoot>
-    </Table>
+    <Box style={{ overflowX: 'auto', maxWidth: mehrere ? 760 : 640 }}>
+      <Box
+        role="group"
+        aria-label={label}
+        data-stueckelung=""
+        style={{ display: 'grid', gridTemplateColumns: template }}
+      >
+        {statisch}
+        {felder}
+      </Box>
+    </Box>
   );
 }
