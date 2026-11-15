@@ -253,6 +253,12 @@ Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung v
 | `/finanzen/bargeld/umbuchen`, `/wechseln`, `/zaehlen` | `finanzen:buchen`                             | Erfassung per `StueckelungFeld` (13 Zahlfelder, Tab/Enter von oben nach unten, Spalten Bestand/Soll und Differenz, Summenzeile); Zusammenfassung vor dem Speichern, Idempotenz-Schlüssel je Erfassung |
 | `/finanzen/bargeld/zaehlungen` und `/:id`             | `finanzen:lesen`                              | Protokoll der Zählungen (Tabelle ab `sm`, Karten darunter, Filter Fach) und Detail mit Soll/Ist/Differenz je Nennwert, Zähler:in (`StatusName`), Link zur Buchung                                     |
 
+**Hinweise:** Erklärungsbedürftige Felder haben ein Info-Symbol (`InfoHinweis`), dessen Text in
+`packages/web/src/finanzenHilfe.ts` steht (Konto, Buchen, Storno, Bargeld, Kette prüfen).
+
+**Hinweise:** Erklärungsbedürftige Felder haben ein Info-Symbol (`InfoHinweis`), dessen Text in
+`packages/web/src/finanzenHilfe.ts` steht (Konto, Buchen, Storno, Bargeld, Kette prüfen).
+
 **Buchen:** Modus „Umbuchung“ (Von Konto = Abgang, Nach Konto = Zugang, Betrag) oder „Frei“ mit der
 wiederverwendbaren `BuchungszeilenTabelle` (Konto suchbar, Zugang/Abgang, Betrag; Summenzeile mit
 „Noch 5,00 € Abgang offen“ / „Ausgeglichen“; unter `sm` gestapelte Karten). Beträge tippt man im

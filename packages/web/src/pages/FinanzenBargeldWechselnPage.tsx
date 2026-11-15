@@ -29,6 +29,8 @@ import {
 import { schluesselFuer, warnungen as buchungsWarnungen } from '../buchungFormular';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { DatumFeld } from '../DatumFeld';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import { detailPfad, FINANZEN_KEY, jsonOderFehler, useBargeld } from '../finanzenDaten';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
@@ -154,7 +156,7 @@ export function FinanzenBargeldWechselnPage() {
               <Select
                 ref={fachRef}
                 selectFirstOptionOnChange
-                label="Fach"
+                label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
                 placeholder="Fach suchen"
                 searchable
                 data={faecher.map((f) => ({ value: f.id, label: f.name }))}
@@ -165,7 +167,7 @@ export function FinanzenBargeldWechselnPage() {
                 data-nav=""
               />
               <TextInput
-                label="Buchungstext"
+                label={<FeldLabel text="Buchungstext" hilfe={HILFE.buchen.text} />}
                 description="Leer lassen für den Standardtext."
                 placeholder={`Wechseln ${aktuell?.name ?? ''}`.trim()}
                 value={text}
@@ -176,7 +178,10 @@ export function FinanzenBargeldWechselnPage() {
             </SimpleGrid>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
               <Stack gap={4}>
-                <Text fw={500}>Raus (aus dem Fach)</Text>
+                <Group gap={2}>
+                  <Text fw={500}>Raus (aus dem Fach)</Text>
+                  <InfoHinweis feld="Raus" text={HILFE.bargeld.wechselnRaus} />
+                </Group>
                 <StueckelungFeld
                   label="Herausgenommene Münzen und Scheine"
                   value={raus}
@@ -186,7 +191,10 @@ export function FinanzenBargeldWechselnPage() {
                 />
               </Stack>
               <Stack gap={4}>
-                <Text fw={500}>Rein (ins Fach)</Text>
+                <Group gap={2}>
+                  <Text fw={500}>Rein (ins Fach)</Text>
+                  <InfoHinweis feld="Rein" text={HILFE.bargeld.wechselnRein} />
+                </Group>
                 <StueckelungFeld
                   label="Hineingelegte Münzen und Scheine"
                   value={rein}

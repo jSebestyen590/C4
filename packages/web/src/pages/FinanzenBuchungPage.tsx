@@ -30,6 +30,8 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
 import {
   BETRAG_STIL,
@@ -87,6 +89,12 @@ function StornoDialog({
         void navigate(detailPfad(neu.id));
       }}
     >
+      <Group gap={2}>
+        <Text size="sm" fw={500}>
+          Storno
+        </Text>
+        <InfoHinweis feld="Storno" text={HILFE.storno.einmal} />
+      </Group>
       <Text size="sm">
         Es wird diese Gegenbuchung angelegt: Zugang und Abgang sind vertauscht. Die ursprüngliche
         Buchung bleibt unverändert bestehen.
@@ -99,14 +107,14 @@ function StornoDialog({
         }))}
       />
       <DatumFeld
-        label="Datum der Stornobuchung"
+        label={<FeldLabel text="Datum der Stornobuchung" hilfe={HILFE.storno.datum} />}
         value={datum}
         onWert={setDatum}
         loeschbar={false}
       />
       <TextInput
         required
-        label="Begründung"
+        label={<FeldLabel text="Begründung" hilfe={HILFE.storno.begruendung} />}
         description={`Die Buchung erhält den Text „Storno von Nr. ${buchung.seq}: …“.`}
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}

@@ -35,6 +35,8 @@ import {
 } from '../bargeldFormular';
 import { schluesselFuer } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import {
   BETRAG_STIL,
   detailPfad,
@@ -304,7 +306,7 @@ export function FinanzenBargeldZaehlenPage() {
               <Select
                 ref={fachRef}
                 selectFirstOptionOnChange
-                label="Fach"
+                label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
                 placeholder="Fach suchen"
                 searchable
                 data={faecher.map((f) => ({ value: f.id, label: f.name }))}
@@ -322,7 +324,7 @@ export function FinanzenBargeldZaehlenPage() {
                 data-nav=""
               />
               <TextInput
-                label="Anmerkung"
+                label={<FeldLabel text="Anmerkung" hilfe={HILFE.bargeld.zaehlprotokoll} />}
                 description="Optional, wird als Buchungstext verwendet."
                 value={text}
                 onChange={(e) => setText(e.currentTarget.value)}
@@ -330,6 +332,15 @@ export function FinanzenBargeldZaehlenPage() {
                 data-nav=""
               />
             </SimpleGrid>
+            {aktuell && (
+              <Group gap={2}>
+                <Text fw={500} size="sm">
+                  Soll, Ist und Differenz
+                </Text>
+                <InfoHinweis feld="Soll, Ist und Differenz" text={HILFE.bargeld.zaehlenSoll} />
+                <InfoHinweis feld="Kassendifferenz" text={HILFE.bargeld.zaehlenDifferenz} />
+              </Group>
+            )}
             {aktuell ? (
               <StueckelungFeld
                 label={`Gezählte Münzen und Scheine im Fach ${aktuell.name}`}

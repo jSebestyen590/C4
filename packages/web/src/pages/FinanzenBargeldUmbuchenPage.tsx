@@ -31,6 +31,8 @@ import {
 import { schluesselFuer, warnungen as buchungsWarnungen } from '../buchungFormular';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { DatumFeld } from '../DatumFeld';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import { detailPfad, FINANZEN_KEY, jsonOderFehler, useBargeld, useKonten } from '../finanzenDaten';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
@@ -166,7 +168,7 @@ export function FinanzenBargeldUmbuchenPage() {
               <Select
                 ref={vonRef}
                 selectFirstOptionOnChange
-                label="Von"
+                label={<FeldLabel text="Von" hilfe={HILFE.bargeld.umbuchenVon} />}
                 description="Hier geht das Geld ab."
                 placeholder="Fach oder Konto suchen"
                 searchable
@@ -179,7 +181,7 @@ export function FinanzenBargeldUmbuchenPage() {
               />
               <Select
                 selectFirstOptionOnChange
-                label="Nach"
+                label={<FeldLabel text="Nach" hilfe={HILFE.bargeld.umbuchenNach} />}
                 description="Hier kommt das Geld an."
                 placeholder="Fach oder Konto suchen"
                 searchable
@@ -191,7 +193,7 @@ export function FinanzenBargeldUmbuchenPage() {
                 data-nav=""
               />
               <TextInput
-                label="Buchungstext"
+                label={<FeldLabel text="Buchungstext" hilfe={HILFE.buchen.text} />}
                 description="Leer lassen für den Standardtext."
                 placeholder={`Umbuchung ${name(von) || 'Von'} → ${name(nach) || 'Nach'}`}
                 value={text}
@@ -201,9 +203,12 @@ export function FinanzenBargeldUmbuchenPage() {
               />
             </SimpleGrid>
             <Stack gap={4}>
-              <Text fw={500} size="sm">
-                Was wird umgebucht?
-              </Text>
+              <Group gap={2}>
+                <Text fw={500} size="sm">
+                  Was wird umgebucht?
+                </Text>
+                <InfoHinweis feld="Bestand" text={HILFE.bargeld.bestand} />
+              </Group>
               <StueckelungFeld
                 label="Umzubuchende Münzen und Scheine"
                 value={mengen}

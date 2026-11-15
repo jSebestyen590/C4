@@ -39,6 +39,8 @@ import {
   type FreieZeile,
 } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import {
   detailPfad,
   FINANZEN_KEY,
@@ -212,6 +214,12 @@ export function FinanzenBuchenPage() {
           }}
         >
           <Stack>
+            <Group gap={2} align="center">
+              <Text fw={500} size="sm">
+                Art der Buchung
+              </Text>
+              <InfoHinweis feld="Art der Buchung" text={HILFE.buchen.modus} />
+            </Group>
             <SegmentedControl
               size="md"
               aria-label="Art der Buchung"
@@ -226,7 +234,7 @@ export function FinanzenBuchenPage() {
             <Grid gap="md">
               <Grid.Col span={{ base: 12, sm: 4 }}>
                 <DatumFeld
-                  label="Datum"
+                  label={<FeldLabel text="Datum" hilfe={HILFE.buchen.datum} />}
                   value={datum}
                   onWert={setDatum}
                   loeschbar={false}
@@ -238,7 +246,7 @@ export function FinanzenBuchenPage() {
               <Grid.Col span={{ base: 12, sm: 8 }}>
                 <TextInput
                   ref={textRef}
-                  label="Buchungstext"
+                  label={<FeldLabel text="Buchungstext" hilfe={HILFE.buchen.text} />}
                   value={text}
                   onChange={(e) => setText(e.currentTarget.value)}
                   onBlur={() => anfassen('text')}
@@ -315,6 +323,7 @@ export function FinanzenBuchenPage() {
               <Button type="button" onClick={pruefenOeffnen} disabled={!buchbar}>
                 Prüfen und buchen
               </Button>
+              <InfoHinweis feld="Prüfen und buchen" text={HILFE.buchen.warnungen} />
               {buchbar ? (
                 <Text size="sm" c="dimmed">
                   Tastenkürzel: Strg+Enter

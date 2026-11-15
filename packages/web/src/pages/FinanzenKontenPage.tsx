@@ -21,6 +21,8 @@ import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { BETRAG_STIL, FINANZEN_KEY, useKonten } from '../finanzenDaten';
+import { InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 import { KontoFormular } from '../KontoFormular';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
@@ -115,11 +117,14 @@ export function FinanzenKontenPage() {
           </Button>
         )}
       </Group>
-      <Switch
-        label="Archivierte anzeigen"
-        checked={archiv}
-        onChange={(e) => setArchiv(e.currentTarget.checked)}
-      />
+      <Group gap={2}>
+        <Switch
+          label="Archivierte anzeigen"
+          checked={archiv}
+          onChange={(e) => setArchiv(e.currentTarget.checked)}
+        />
+        <InfoHinweis feld="Archivieren" text={HILFE.konto.archivieren} />
+      </Group>
       {konten.isPending && <Loader m="md" aria-label="Konten werden geladen" />}
       {konten.isError && <Alert color="red">Die Konten konnten nicht geladen werden.</Alert>}
       {konten.data && gruppen.length === 0 && <Text c="dimmed">Keine Konten vorhanden.</Text>}

@@ -1,6 +1,5 @@
 import {
   ActionIcon,
-  Box,
   Button,
   Group,
   NativeSelect,
@@ -9,11 +8,10 @@ import {
   Stack,
   Table,
   Text,
-  Tooltip,
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconInfoCircle, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { centAnzeigen, ZEILEN_MAX, type PruefKonto } from '@c4/shared';
 import { BetragFeld } from './BetragFeld';
@@ -25,6 +23,8 @@ import {
   type FreieZeile,
   type Richtung,
 } from './buchungFormular';
+import { InfoHinweis } from './InfoHinweis';
+import { HILFE } from './finanzenHilfe';
 import { BETRAG_STIL } from './finanzenDaten';
 
 const RICHTUNG_DATEN = (Object.keys(RICHTUNG_LABELS) as Richtung[]).map((value) => ({
@@ -32,8 +32,7 @@ const RICHTUNG_DATEN = (Object.keys(RICHTUNG_LABELS) as Richtung[]).map((value) 
   label: RICHTUNG_LABELS[value],
 }));
 
-const HILFE =
-  'Zugang erhöht den Kontostand, Abgang verringert ihn. Die Buchung geht auf, wenn alle Zugänge zusammen so hoch sind wie alle Abgänge.';
+const HILFE_ZUGANG = HILFE.buchen.zugangAbgang;
 
 const FUSS_STIL = {
   position: 'sticky',
@@ -199,7 +198,7 @@ export function BuchungszeilenTabelle({
     return (
       <Stack ref={wurzel} gap="sm">
         <Text size="sm" c="dimmed">
-          {HILFE}
+          {HILFE_ZUGANG}
         </Text>
         {zeilen.map((z, i) => (
           <Paper key={z.key} withBorder p="sm">
@@ -251,16 +250,7 @@ export function BuchungszeilenTabelle({
               <Table.Th w={180}>
                 <Group gap={4} wrap="nowrap">
                   Zugang/Abgang
-                  <Tooltip
-                    label={HILFE}
-                    multiline
-                    w={280}
-                    events={{ hover: true, focus: true, touch: true }}
-                  >
-                    <Box component="span" lh={0}>
-                      <IconInfoCircle size={16} />
-                    </Box>
-                  </Tooltip>
+                  <InfoHinweis feld="Zugang/Abgang" text={HILFE_ZUGANG} />
                 </Group>
               </Table.Th>
               <Table.Th w={190} style={BETRAG_STIL}>
