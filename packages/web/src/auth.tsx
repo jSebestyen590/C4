@@ -1,4 +1,4 @@
-import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
+import { ErrorResponse, UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DeaktiviertSeite } from './DeaktiviertSeite';
 import { meSchema, type AppConfig, type Permission } from '@c4/shared';
@@ -21,6 +21,24 @@ const AuthContext = createContext<AuthState | null>(null);
 
 /** The token refresh in flight, shared by all requests that hit a 401 at the same time. */
 let laufendeErneuerung: Promise<string | null> | null = null;
+
+const FEHLSCHLAG_KEY = 'c4-erneuerung-fehlgeschlagen';
+
+/**
+ * The session cannot be renewed: drop the stored user, so `Protected` sends the person to the login
+ * page instead of leaving a broken app behind. At most once per 30 s, so a login that immediately
+ * fails again cannot cause a redirect loop.
+ */
+function abmeldenNachFehlschlag(manager: UserManager): void {
+  try {
+    const zuletzt = Number(window.sessionStorage.getItem(FEHLSCHLAG_KEY) ?? 0);
+    if (Date.now() - zuletzt < 30_000) return;
+    window.sessionStorage.setItem(FEHLSCHLAG_KEY, String(Date.now()));
+  } catch {
+    // Storage unavailable: proceed without the guard.
+  }
+  void manager.removeUser();
+}
 
 export function createUserManager(config: AppConfig): UserManager {
   const origin = window.location.origin;
@@ -114,12 +132,20 @@ export function AuthProvider({
       },
       getAccessToken: () => user?.access_token ?? null,
       refreshAccessToken: async () => {
-        if (!user?.refresh_token) return null;
+        if (!user?.refresh_token) {
+          abmeldenNachFehlschlag(manager);
+          return null;
+        }
         // Parallel 401s share one refresh instead of each calling signinSilent().
         laufendeErneuerung ??= manager
           .signinSilent()
           .then((u) => u?.access_token ?? null)
-          .catch(() => null)
+          .catch((e: unknown) => {
+            // Only a refusal by Cognito (refresh token expired or revoked) ends the session;
+            // a network error may be temporary.
+            if (e instanceof ErrorResponse) abmeldenNachFehlschlag(manager);
+            return null;
+          })
           .finally(() => {
             laufendeErneuerung = null;
           });

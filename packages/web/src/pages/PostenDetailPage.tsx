@@ -53,6 +53,7 @@ function PostenBearbeiten({ posten }: Readonly<{ posten: Posten }>) {
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: PostenWerte) => {
       const res = await api.posten[':id'].$put({ param: { id: posten.id }, json });
       if (!res.ok) throw new Error('fehler');
@@ -124,6 +125,7 @@ function BesetzungDialog({
     onClose();
   };
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       mitgliedSub: string;
       start: string;
@@ -144,6 +146,7 @@ function BesetzungDialog({
     onSuccess: fertig,
   });
   const loeschen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       if (!besetzung) return;
       const res = await api.posten[':id'].besetzungen[':bid'].$delete({
@@ -296,6 +299,7 @@ function RechteFeld({ posten }: Readonly<{ posten: Posten }>) {
   const api = useApi();
   const qc = useQueryClient();
   const setzen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (rechte: PostenRecht[]) => {
       const res = await api.admin.posten[':id'].rechte.$put({
         param: { id: posten.id },
@@ -346,6 +350,7 @@ export function PostenDetailPage() {
     },
   });
   const archivieren = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (archiviert: boolean) => {
       const res = await api.posten[':id'].archiv.$put({ param: { id }, json: { archiviert } });
       if (!res.ok) throw new Error('fehler');

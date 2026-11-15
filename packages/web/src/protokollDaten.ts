@@ -71,6 +71,7 @@ export function useProtokollAnlegen() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eventId: string) => {
       const res = await api.protokolle.$post({ json: { eventId } });
       await pruefen(res);
@@ -166,6 +167,7 @@ export function useProtokollStatus() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({
       id,
       status,
@@ -213,6 +215,7 @@ export function useProtokollAktionenAusfuehren() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({ id, aktionen }: { id: string; aktionen: string[] }) => {
       const res = await api.protokolle[':id'].aktionen.$post({
         param: { id },
@@ -229,6 +232,7 @@ export function useProtokollLoeschen() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (id: string) => {
       await pruefen(await api.protokolle[':id'].$delete({ param: { id } }, tabKopf));
     },

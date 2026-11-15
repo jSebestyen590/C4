@@ -16,6 +16,7 @@ const zeitText = (iso: string) =>
 export function FinanzenKettePage() {
   const api = useApi();
   const pruefung = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (): Promise<KettenErgebnisDto> => {
       const res = await api.finanzen.kette.$get();
       await pruefen(res);

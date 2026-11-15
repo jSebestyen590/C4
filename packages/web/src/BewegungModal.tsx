@@ -75,6 +75,7 @@ export function BewegungModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: BewegungEingabe) =>
       pruefen(
         await api.inventar.gegenstaende[':id'].bewegungen.$post({

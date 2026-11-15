@@ -30,6 +30,7 @@ function GeraetPush() {
     { geraete: number; ok: number; fehler: number } | 'fehler' | null
   >(null);
   const test = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       const ergebnis = await unwrap(await api.push.test.$post());
       // The server knows no device although this one has a subscription: sync, then retry once.
@@ -126,6 +127,7 @@ function Einstellungen() {
     queryFn: async () => (await unwrap(await api.me.benachrichtigungen.$get())) as EinstellungDto[],
   });
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (e: { art: string; aktiv: boolean; minuten?: number }) =>
       unwrap(
         await api.me.benachrichtigungen.$put({

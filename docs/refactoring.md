@@ -246,10 +246,6 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
 
-- Kein globales `MutationCache.onError` und kein Standard-`staleTime`; einzelne Mutationen zeigen bei Fehlern nichts
-  (`protokollDaten.ts`, `todoDaten.tsx`, `RollenAnzeige.tsx`, `StatusAnzeige.tsx`, `MitgliedEinladen.tsx`,
-  `StatusEintragModal.tsx`; unsicher, ob die Aufrufer es abfangen).
-- Nach einem gescheiterten Token-Refresh folgt kein Logout oder Redirect.
 - Wiederholungen: Umschaltung Karte/Tabelle an etwa 13 Stellen, Datumsformate mehrfach inline, Zod-Fehler je Formular von
   Hand, Query-Keys von Hand invalidiert. `App.tsx` mit allen Routen in einer Datei.
 - Tests: nichts für `api.ts`, `auth.tsx`, `PullToRefresh`, `ZurueckLink`; ein einziger Komponententest; keine E2E-Tests.

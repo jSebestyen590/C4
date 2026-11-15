@@ -32,6 +32,7 @@ export function IfcoUmstellenModal({
   );
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
       pruefen(
         await api.inventar.ifcos[':id'].platz.$put({

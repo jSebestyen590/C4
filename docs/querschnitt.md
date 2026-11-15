@@ -20,7 +20,9 @@ Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und de
   (der Access-Token bliebe sonst noch bis zu eine Stunde gültig). Das Web ersetzt dann die App durch die Sperrseite
   (`kontoDeaktiviert` in `api.ts`).
 - **401 im Web:** `useApi` (`packages/web/src/api.ts`) erneuert bei 401 einmal den Token (parallele Anfragen teilen sich eine
-  Erneuerung) und wiederholt die Anfrage.
+  Erneuerung) und wiederholt die Anfrage. Lehnt Cognito die Erneuerung ab (Refresh-Token abgelaufen oder widerrufen) oder fehlt der
+  Refresh-Token, entfernt `auth.tsx` den gespeicherten Benutzer; `Protected` leitet dann zur Anmeldung weiter. Höchstens einmal je
+  30 Sekunden, damit kein Redirect-Loop entsteht. Netzwerkfehler melden nur `null` und lassen die Sitzung bestehen.
 
 ## Rechteberechnung
 
@@ -64,3 +66,11 @@ Aurora DSQL löst gleichzeitige Änderungen optimistisch auf: Eine der Transakti
   Grundlage von `onError`.
 
 Mehr dazu und zu den Migrationen: [datenbank.md](./datenbank.md#gleichzeitige-zugriffe).
+
+## Fehler im Web (Mutationen)
+
+`createQueryClient` (`packages/web/src/queryClient.ts`) hängt ein globales `MutationCache.onError` an: Jede fehlgeschlagene Mutation
+zeigt eine rote Notification mit der Meldung des `ApiFehler`, sonst „Das hat nicht geklappt. Bitte versuch es noch einmal.“.
+Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, Inline-`Alert`, `try/catch` um `mutateAsync`),
+setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
+bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).

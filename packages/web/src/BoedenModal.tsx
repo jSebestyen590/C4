@@ -34,6 +34,7 @@ export function BoedenModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: {
       namen: string[];
       ifcoPlatz: IfcoPlatzMasse | IfcoPlatzMasse[] | null;

@@ -360,6 +360,7 @@ export function AusleihePage() {
   const ganzeIfcoIds = ifcoIds.filter(ifcoKomplett);
 
   const verleihen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) => {
       if (bearbeiten) {
         await pruefen(

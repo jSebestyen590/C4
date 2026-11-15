@@ -118,6 +118,7 @@ export function AusleiheDetailPage() {
   const [rueckFehler, setRueckFehler] = useState<string | null>(null);
 
   const zurueckgeben = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof rueckgabeSchema.parse>) =>
       pruefen(await api.inventar.ausleihen[':id'].rueckgabe.$post({ param: { id }, json })),
     onSuccess: async () => {
