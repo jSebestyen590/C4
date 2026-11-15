@@ -8,6 +8,7 @@ import type {
 } from '@c4/shared';
 import { PRIVATPARTY_STATUS_LABELS, PRIVATPARTY_STUFE_LABELS } from './i18n';
 import { privatpartyLink, wunschTerminText } from './privatpartyDaten';
+import { KartenOderTabelle } from './KartenOderTabelle';
 
 const STATUS_FARBE: Record<PrivatpartyStatus, string> = {
   offen: 'yellow',
@@ -101,70 +102,56 @@ function PrivatpartyKarte({ p }: Readonly<{ p: PrivatpartyListeDto }>) {
   );
 }
 
-/** Table from `sm` upward; the whole row opens the request. */
-function PrivatpartyTabelle({ liste }: Readonly<{ liste: PrivatpartyListeDto[] }>) {
+/** Requests as cards on phones and as a table from `sm`; the whole row opens the request. */
+export function PrivatpartyListe({ liste }: Readonly<{ liste: PrivatpartyListeDto[] }>) {
   const navigate = useNavigate();
   return (
-    <Table.ScrollContainer minWidth={560} visibleFrom="sm">
-      <Table verticalSpacing="xs" highlightOnHover layout="fixed">
+    <KartenOderTabelle
+      zeilen={liste}
+      zeilenKey={(p) => p.id}
+      minWidth={560}
+      kartenAbstand="sm"
+      tabelle={{ highlightOnHover: true, layout: 'fixed' }}
+      spalten={
         <colgroup>
           <col style={{ width: '14rem' }} />
           <col />
           <col style={{ width: '8rem' }} />
           <col style={{ width: '9rem' }} />
         </colgroup>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Person</Table.Th>
-            <Table.Th>Wunschtermine</Table.Th>
-            <Table.Th>Status</Table.Th>
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {liste.map((p) => (
-            <Table.Tr
-              key={p.id}
-              style={{ cursor: 'pointer' }}
-              onClick={() => void navigate(privatpartyLink(p.id))}
-            >
-              <Table.Td>
-                <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
-                  {privatpartyName(p)}
-                </Text>
-                {p.anlass && (
-                  <Text size="sm" c="dimmed">
-                    {p.anlass}
-                  </Text>
-                )}
-              </Table.Td>
-              <Table.Td>
-                <TerminZeilen termine={p.termine} terminId={p.terminId} max={3} />
-              </Table.Td>
-              <Table.Td>
-                <PrivatpartyStatusBadge status={p.status} />
-              </Table.Td>
-              <Table.Td>
-                <Unbeantwortet p={p} />
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
-  );
-}
-
-/** Requests as cards on phones and as a table from `sm`. */
-export function PrivatpartyListe({ liste }: Readonly<{ liste: PrivatpartyListeDto[] }>) {
-  return (
-    <>
-      <SimpleGrid cols={1} spacing="sm" hiddenFrom="sm">
-        {liste.map((p) => (
-          <PrivatpartyKarte key={p.id} p={p} />
-        ))}
-      </SimpleGrid>
-      <PrivatpartyTabelle liste={liste} />
-    </>
+      }
+      karte={(p) => <PrivatpartyKarte p={p} />}
+      kopf={
+        <Table.Tr>
+          <Table.Th>Person</Table.Th>
+          <Table.Th>Wunschtermine</Table.Th>
+          <Table.Th>Status</Table.Th>
+          <Table.Th />
+        </Table.Tr>
+      }
+      zeile={(p) => (
+        <Table.Tr style={{ cursor: 'pointer' }} onClick={() => void navigate(privatpartyLink(p.id))}>
+          <Table.Td>
+            <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+              {privatpartyName(p)}
+            </Text>
+            {p.anlass && (
+              <Text size="sm" c="dimmed">
+                {p.anlass}
+              </Text>
+            )}
+          </Table.Td>
+          <Table.Td>
+            <TerminZeilen termine={p.termine} terminId={p.terminId} max={3} />
+          </Table.Td>
+          <Table.Td>
+            <PrivatpartyStatusBadge status={p.status} />
+          </Table.Td>
+          <Table.Td>
+            <Unbeantwortet p={p} />
+          </Table.Td>
+        </Table.Tr>
+      )}
+    />
   );
 }
