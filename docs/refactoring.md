@@ -176,12 +176,14 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 ## Offen
 
-Als „zurückgestellt“ markierte Punkte sind vorerst nicht geplant und nur als GitHub-Issue festgehalten; alle anderen sollen
-angegangen werden und stehen je Abschnitt in einem Arbeits-Issue mit Checkliste.
+Als „bewusst nicht umgesetzt“ markierte Punkte sind entschieden und werden nicht angegangen. Alle anderen stehen je
+Abschnitt in einem Arbeits-Issue; der Umsetzungsplan (Stand 15.11.2026) steht als Kommentar am Issue.
 
 ### 1. Gleichzeitige Zugriffe, die der Retry nicht löst
 
-**Zurückgestellt**, dokumentiert in [Issue 36](https://github.com/jSebestyen590/C4/issues/36).
+Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36). `inventurAbschliessen` und
+`gegenstaende.anzahl` sind kein Wettlauf (beide Transaktionen schreiben dieselbe Zeile und kollidieren korrekt) und
+entfallen.
 
 Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe je Stelle: in der
 Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegenstands oder Lagerorts) oder ein Unique-Index.
@@ -204,20 +206,23 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 Arbeits-Issue: [Issue 47](https://github.com/jSebestyen590/C4/issues/47) (außer den zurückgestellten Punkten). Dazu gehört
 auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 
-- **Deploy-Rollback:** Kein Rollback-Weg für prod (keine Lambda-Versionen, `rollback_to` nur dev).
-- **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
+- **Deploy-Rollback:** Keine Lambda-Versionen (bewusst); Rollback auf prod = älteren Tag `v*` erneut deployen, noch zu
+  dokumentieren und auf dev zu üben.
+- **Admin-Entzug (bewusst nicht umgesetzt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus
+  dem Access-Token (60 Minuten gültig); ein Entzug wirkt erst, wenn er abläuft.
 - **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
-- **MFA (zurückgestellt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
+- **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
-  Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
+  Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk (bleibt bewusst so).
 - **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
-  Protokoll.
-- **Eingehende Mail (zurückgestellt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes
-  `In-Reply-To` überschreibt `mail_adresse`.
-- **CI:** kein `terraform plan` auf PRs.
+  Protokoll (bleibt bewusst so).
+- **Eingehende Mail (bewusst nicht umgesetzt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** Schutz vor Spam
+  ist der Spamfilter des Anbieters (netcup); abgerufen wird nur der Posteingang. Keine eigene SPF/DKIM-Prüfung, keine
+  Mengenbegrenzung; ein gefälschtes `In-Reply-To` überschreibt `mail_adresse`.
+- **CI:** kein `terraform plan` auf PRs (bewusst nicht umgesetzt).
 
 ### 3. Fachliche Punkte
 
@@ -231,10 +236,9 @@ Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer
 
 Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
-- **Keine Tests gegen echtes SQL:** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores laufen erst auf dev. Vorschlag: PGlite
-  mit den echten Migrationen und Vertragstests, die Fake und Store gegen dasselbe Interface prüfen.
-- **Schema gegen Migrationen:** `schema.ts` und die SQL-Dateien werden von Hand synchron gehalten, kein Test vergleicht sie.
-  Der Migrationstest prüft erst ab 0037.
+- **Keine Tests gegen echtes SQL (bewusst nicht umgesetzt):** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores werden
+  auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
+- **Migrationstest:** prüft erst ab 0037; Grenze begründen.
 - **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
 - **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
   Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.

@@ -123,6 +123,10 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
   passender E-Mail, oder neue Person mit Name und Adresse vorbelegt) und öffnet danach das Formular für die Wunschtermine.
 - Module: `partymail.ts` (IMAP/SMTP mit `imapflow`, `nodemailer`; Secret), `partymailParsen.ts` (`mailparser`, `html-to-text`, Thread-Zuordnung),
   `partymailTypen.ts`, `partymail.fake.ts` (Tests). Anhänge werden nicht gespeichert, nur ihre Namen angezeigt.
+- **Spam und Fälschungen**: Das Postfach liegt bei netcup; dessen Spamfilter sortiert aus, abgerufen wird nur `ordnerEingang`
+  (`INBOX`, nicht der Spam-Ordner). Eine eigene SPF/DKIM-Prüfung oder Mengenbegrenzung gibt es bewusst nicht
+  ([Issue 38](https://github.com/jSebestyen590/C4/issues/38)). Restrisiken: Jede Mail im Posteingang wird eine Anfrage mit Push,
+  und ein gefälschtes `In-Reply-To` hängt eine Mail an eine bestehende Anfrage und überschreibt deren `mail_adresse`.
 
 ## Benachrichtigungen
 
