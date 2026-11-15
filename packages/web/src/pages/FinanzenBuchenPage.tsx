@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Button,
   Grid,
   Group,
@@ -14,12 +13,12 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useBlocker, useNavigate } from 'react-router-dom';
 import { heuteBerlin } from '@c4/shared';
 import { useApi } from '../api';
+import { zeigeGebucht } from '../gebuchtHinweis';
 import { BetragFeld } from '../BetragFeld';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { BuchungszeilenTabelle } from '../BuchungszeilenTabelle';
@@ -41,13 +40,7 @@ import {
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import {
-  detailPfad,
-  FINANZEN_KEY,
-  jsonOderFehler,
-  kontoOptionen,
-  useKonten,
-} from '../finanzenDaten';
+import { FINANZEN_KEY, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -122,26 +115,7 @@ export function FinanzenBuchenPage() {
       gebuchtRef.current = true;
       schluessel.current = null;
       void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
-      notifications.show({
-        color: 'green',
-        autoClose: 10000,
-        message: (
-          <Text size="sm">
-            {wiederholt
-              ? `Buchung Nr. ${seq} war schon gebucht – `
-              : `Buchung Nr. ${seq} gebucht – `}
-            <Anchor
-              href={`/app${detailPfad(id)}`}
-              onClick={(e) => {
-                e.preventDefault();
-                void navigate(detailPfad(id));
-              }}
-            >
-              ansehen
-            </Anchor>
-          </Text>
-        ),
-      });
+      zeigeGebucht(navigate, { id, seq, wiederholt });
       // Next Erfassung: keep date and mode, clear the rest, focus the first field.
       setText('');
       setVon(null);

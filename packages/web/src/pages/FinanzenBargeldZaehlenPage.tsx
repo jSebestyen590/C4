@@ -15,7 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   berechneZaehlung,
@@ -26,6 +26,7 @@ import {
   type ZaehlungErgebnisDto,
 } from '@c4/shared';
 import { useApi } from '../api';
+import { HINWEIS_DAUER_MS } from '../gebuchtHinweis';
 import {
   abweichungText,
   mengenLeer,
@@ -202,6 +203,13 @@ export function FinanzenBargeldZaehlenPage() {
   const fachRef = useRef<HTMLInputElement>(null);
   const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
 
+  // The success message closes by itself; a new one restarts the timer.
+  useEffect(() => {
+    if (!gespeichert) return;
+    const t = setTimeout(() => setGespeichert(null), HINWEIS_DAUER_MS);
+    return () => clearTimeout(t);
+  }, [gespeichert]);
+
   const faecher = bargeld.data?.faecher ?? [];
   const aktuell = faecher.find((f) => f.id === fach);
   const ergebnis = useMemo(
@@ -279,11 +287,21 @@ export function FinanzenBargeldZaehlenPage() {
                 : 'Es stimmt alles, es wurde keine Buchung angelegt.'}
             </Text>
             {gespeichert.buchungId && (
-              <Anchor component={Link} to={detailPfad(gespeichert.buchungId)} size="sm">
+              <Anchor
+                component={Link}
+                to={detailPfad(gespeichert.buchungId)}
+                size="sm"
+                onClick={() => setGespeichert(null)}
+              >
                 Buchung ansehen
               </Anchor>
             )}
-            <Anchor component={Link} to={zaehlungPfad(gespeichert.id)} size="sm">
+            <Anchor
+              component={Link}
+              to={zaehlungPfad(gespeichert.id)}
+              size="sm"
+              onClick={() => setGespeichert(null)}
+            >
               Zählung ansehen
             </Anchor>
           </Group>

@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Button,
   Group,
   Loader,
@@ -11,12 +10,12 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { centAnzeigen, heuteBerlin, type BuchungEingabeInput } from '@c4/shared';
 import { useApi } from '../api';
+import { zeigeGebucht } from '../gebuchtHinweis';
 import {
   andereKonten,
   faecherAus,
@@ -33,7 +32,7 @@ import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import { detailPfad, FINANZEN_KEY, jsonOderFehler, useBargeld, useKonten } from '../finanzenDaten';
+import { FINANZEN_KEY, jsonOderFehler, useBargeld, useKonten } from '../finanzenDaten';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
 import { fehlerText } from '../warenApi';
@@ -97,26 +96,7 @@ export function FinanzenBargeldUmbuchenPage() {
       warnung.abgeschlossen();
       schluessel.current = null;
       void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
-      notifications.show({
-        color: 'green',
-        autoClose: 10000,
-        message: (
-          <Text size="sm">
-            {wiederholt
-              ? `Buchung Nr. ${seq} war schon gebucht – `
-              : `Buchung Nr. ${seq} gebucht – `}
-            <Anchor
-              href={`/app${detailPfad(id)}`}
-              onClick={(e) => {
-                e.preventDefault();
-                void navigate(detailPfad(id));
-              }}
-            >
-              ansehen
-            </Anchor>
-          </Text>
-        ),
-      });
+      zeigeGebucht(navigate, { id, seq, wiederholt });
       setText('');
       setNach(null);
       setMengen({});
