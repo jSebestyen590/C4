@@ -72,6 +72,7 @@ export function GegenstandDetailPage() {
     await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: archivieren,
     onError: (e) => fehlerAnzeigen(e),
   });

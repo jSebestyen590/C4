@@ -64,6 +64,7 @@ export function IfcoFormular({
   );
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;

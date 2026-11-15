@@ -98,6 +98,7 @@ export function GegenstandPlaetzeModal({
     setVerbaut((l) => l.map((v) => (v.key === key ? { ...v, ...teil } : v)));
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       plaetze: { lagerortId: string | null; ifcoId: string | null; anzahl: number }[];
       verbaut: { ort: string; anzahl: number }[];

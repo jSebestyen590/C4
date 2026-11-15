@@ -100,6 +100,7 @@ export function StatusFeld({
   const [ab, setAb] = useState(heuteBerlin());
   const [fehler, setFehler] = useState<string | null>(null);
   const setzen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (daten: { status: MitgliedStatus; ab: string }) => {
       const res = await api.admin.mitglieder[':sub'].status.$put({ param: { sub }, json: daten });
       if (res.status === 404) throw new Error('kein-profil');

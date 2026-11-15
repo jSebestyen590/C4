@@ -31,6 +31,7 @@ export function RollenFeld({
   const api = useApi();
   const qc = useQueryClient();
   const setzen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (groups: Role[]) => {
       const res = await api.admin.mitglieder[':sub'].rollen.$put({
         param: { sub },

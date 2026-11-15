@@ -30,6 +30,7 @@ export function WareFormular({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof wareSchema.parse>) => {
       if (ware) await pruefen(await api.waren[':id'].$put({ param: { id: ware.id }, json }));
       else await pruefen(await api.waren.$post({ json }));

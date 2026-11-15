@@ -50,6 +50,7 @@ export function WareHistorie({
   });
 
   const loeschen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (id: string) =>
       pruefen(await api.bestand.vorgaenge[':id'].$delete({ param: { id } })),
     onSuccess: async () => {

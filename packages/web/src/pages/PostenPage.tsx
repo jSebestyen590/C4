@@ -63,6 +63,7 @@ function PostenAnlegen() {
   const [fehler, setFehler] = useState<string | null>(null);
 
   const anlegen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: PostenWerte) => unwrap(await api.posten.$post({ json })),
     onSuccess: async ({ id }) => {
       await qc.invalidateQueries({ queryKey: ['posten'] });

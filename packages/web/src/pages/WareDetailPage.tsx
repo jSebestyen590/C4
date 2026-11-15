@@ -49,6 +49,7 @@ export function WareDetailPage() {
     await qc.invalidateQueries({ queryKey: ['waren'] });
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: archivieren,
     onError: (e) => fehlerAnzeigen(e),
   });

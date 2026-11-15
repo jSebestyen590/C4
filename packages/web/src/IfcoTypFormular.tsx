@@ -24,6 +24,7 @@ export function IfcoTypFormular({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: { name: string; grundflaeche: IfcoGrundflaeche; hoeheCm: number }) =>
       pruefen(
         typ

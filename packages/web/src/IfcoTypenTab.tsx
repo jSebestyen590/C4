@@ -39,6 +39,7 @@ export function IfcoTypenTab() {
     await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: (t: IfcoTypEintrag) => archivieren(t, !t.archiviert),
     onError: (e) => fehlerAnzeigen(e),
   });

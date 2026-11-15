@@ -205,6 +205,7 @@ export function LagerPage() {
   const neuLaden = () => qc.invalidateQueries({ queryKey: ['lagerorte'] });
 
   const reihenfolge = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({ parentId, ids }: { parentId: string | null; ids: string[] }) =>
       pruefen(
         await api.lagerorte[':id'].reihenfolge.$put({
@@ -223,12 +224,14 @@ export function LagerPage() {
     await neuLaden();
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: ({ k, archiviert }: { k: LagerKnoten; archiviert: boolean }) =>
       archivieren(k, archiviert),
     onError: (e) => fehlerAnzeigen(e),
   });
 
   const inventurStarten = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (k: LagerKnoten) => {
       const offen = offeneInventuren.get(k.id);
       if (offen) return offen;

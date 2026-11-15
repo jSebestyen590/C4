@@ -71,6 +71,7 @@ export function EntnahmePage() {
     .map((a) => ({ lagerortId: a.lagerortId, quelleId: nachfuellen[a.lagerortId]?.quelle ?? '' }));
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof entnahmenSchema.parse>) => {
       await pruefen(await api.bestand.entnahmen.$post({ json }));
     },

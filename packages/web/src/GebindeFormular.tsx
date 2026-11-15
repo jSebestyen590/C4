@@ -65,6 +65,7 @@ export function GebindeFormular({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: GebindeDaten) => {
       if (gebinde) {
         await pruefen(await api.gebinde[':id'].$put({ param: { id: gebinde.id }, json }));

@@ -31,6 +31,7 @@ export function StatusEintragModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       const json = { status, ab };
       if (eintrag)

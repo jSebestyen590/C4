@@ -38,15 +38,18 @@ function useAufraeumMutationen() {
   const neu = () => qc.invalidateQueries({ queryKey: AUFRAEUMEN_KEY });
   return {
     starten: useMutation({
+      meta: { eigeneFehlermeldung: true },
       mutationFn: async () => pruefen(await api.inventar.aufraeumen.$post()),
       onSuccess: neu,
       onError: (e) => fehlerAnzeigen(e),
     }),
     beenden: useMutation({
+      meta: { eigeneFehlermeldung: true },
       mutationFn: async () => pruefen(await api.inventar.aufraeumen.beenden.$post()),
       onSuccess: neu,
     }),
     setzen: useMutation({
+      meta: { eigeneFehlermeldung: true },
       mutationFn: async ({ ifcoId, fertig }: { ifcoId: string; fertig: boolean }) =>
         pruefen(
           await api.inventar.aufraeumen.ifcos[':id'].$put({
