@@ -58,7 +58,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 **Rechte und Zugriff**
 
 - Posten: Besetzen, Besetzung ändern und Reaktivieren verlangen jedes Recht, das der Posten gewährt
-  (`postenRechteMuessenBeiDirLiegen` in `app.ts`). Vorher reichte `posten:bearbeiten`, um sich selbst `users:manage` zu geben.
+  (`postenRechteMuessenBeiDirLiegen` in `routes/posten.ts`). Vorher reichte `posten:bearbeiten`, um sich selbst `users:manage` zu geben.
 - Posten: Die Besetzung eines deaktivierten Mitglieds lässt sich beenden.
 - Kalender-Feed: 404 für deaktivierte Mitglieder oder ohne `kalender:lesen`.
 - Schlüssel: Den ersten Halter trägt nur die Verwaltung ein (API und Oberfläche). Planung ändern prüft wie Planung anlegen.

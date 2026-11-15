@@ -35,9 +35,15 @@ aus:
 über `GET /api/me` ab (`auth.tsx`); `can()` liest daraus. Eine Rechteänderung wirkt dort also erst nach dem nächsten Token oder
 Neuladen, in der API sofort. Details zu Status und Posten: [members.md](./members.md), [posten.md](./posten.md).
 
+## Routen und Routentests
+
+`createApp` (`packages/api/src/app.ts`) setzt die API aus einem Sub-Router je Feature zusammen (`packages/api/src/routes/<feature>.ts`, exportiert `<feature>Routes(ctx)`), verbunden per `.route('/', …)` unter `basePath('/api')`. `routes/kontext.ts` baut den `RoutenKontext` (`auth`, die `requirePermission`-Konstanten und Helfer, die mehrere Features brauchen, z. B. `alsMitglied`, `alleMitglieder`); Helfer, die nur ein Feature nutzt, stehen in dessen Datei. Neue Routen kommen in die Datei ihres Features (neues Feature = neue Datei samt `.route()` in `createApp`); bei sich überlappenden Pfaden zählt die Reihenfolge der Registrierung (`/x/neu` vor `/x/:id`).
+
+Die Routentests liegen neben den Routen als `routes/<feature>.test.ts`; `makeApp`, die Fakes und `bearer` kommen aus `packages/api/src/test/appTestHelfer.ts`. Allgemeine Tests (Health, Fehler-Mapping, Anmeldung) stehen in `app.test.ts`.
+
 ## Fehler-Mapping
 
-`onError` in `createApp` (`packages/api/src/app.ts`):
+`onError` in `createApp` (`packages/api/src/app.ts`, gilt für alle Sub-Router):
 
 | Fehler                                                    | Antwort                                                                                              |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |

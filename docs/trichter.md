@@ -15,7 +15,7 @@ für alle Zeiten.
 
 ## Grenzen
 
-Geprüft in `packages/shared/src/trichter.ts` (Schemas) und `POST /api/trichter/durchgaenge` in `app.ts`; alle Verstöße geben 400:
+Geprüft in `packages/shared/src/trichter.ts` (Schemas) und `POST /api/trichter/durchgaenge` in `routes/trichter.ts`; alle Verstöße geben 400:
 
 - **Volumen** (Trichter und Durchgang): größer als 0 und höchstens **1000 l**, höchstens 2 Nachkommastellen.
 - **Auslässe:** ganze Zahl von 1 bis `TRICHTER_AUSLAESSE_MAX` (20); **Teilnehmende** je Durchgang 1 bis 20, jede Person nur einmal.
@@ -29,7 +29,7 @@ Geprüft in `packages/shared/src/trichter.ts` (Schemas) und `POST /api/trichter/
 
 | Bereich | Dateien                                                                                                                                                                                                                                  |
 | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/trichter.ts` (Store), `trichter.fake.ts`, Routen und Prüfungen in `app.ts` (`/api/trichter…`)                                                                                                                          |
+| API     | `packages/api/src/trichter.ts` (Store), `trichter.fake.ts`, Routen und Prüfungen in `routes/trichter.ts` (`/api/trichter…`)                                                                                                              |
 | Shared  | `packages/shared/src/trichter.ts` (Schemas, Wertung, Könige)                                                                                                                                                                             |
 | Web     | Seiten `pages/TrichterPage.tsx`, `TrichterDurchgangPage.tsx`, `TrichterVerwaltungPage.tsx`; `TrichterRangliste.tsx`, `TrichterDurchgangListe.tsx`, `TrichterKopf.tsx`, `TrichterFormular.tsx`, `trichterDaten.tsx`, `trichterAnzeige.ts` |
 | Tests   | `packages/shared/src/trichter.test.ts`, `packages/web/src/trichterAnzeige.test.ts`                                                                                                                                                       |
