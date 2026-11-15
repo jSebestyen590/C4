@@ -69,6 +69,7 @@ import { PushAbfrage } from './PushAbfrage';
 import { StammdatenPage } from './pages/StammdatenPage';
 import { WareDetailPage } from './pages/WareDetailPage';
 import { WarenPage } from './pages/WarenPage';
+import { mitgliederKeys } from './queryKeys';
 
 function Protected({
   children,
@@ -94,9 +95,12 @@ function Protected({
  */
 function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
   const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
       if (res.status === 404) return null;

@@ -4,6 +4,7 @@ import { unwrap, useApi } from './api';
 import type { WareInfo } from './inventurDaten';
 import type { BestandsZeile } from './lagerBestand';
 import { useWarenStammdaten } from './warenDaten';
+import { lagerortKeys, lagerortWarenKeys, warenKeys } from './warenDaten';
 
 /**
  * Everything the stock pages need: Lagerorte and Gebinde (with archived), all wares, the current
@@ -13,15 +14,15 @@ export function useLagerBestand() {
   const api = useApi();
   const stamm = useWarenStammdaten();
   const bestand = useQuery({
-    queryKey: ['lagerorte', 'bestand'],
+    queryKey: lagerortKeys.bestand,
     queryFn: async (): Promise<BestandsZeile[]> => unwrap(await api.lagerorte.bestand.$get()),
   });
   const listen = useQuery({
-    queryKey: ['lagerort-waren', 'alle'],
+    queryKey: lagerortWarenKeys.liste,
     queryFn: async () => unwrap(await api.lagerorte.warenlisten.$get()),
   });
   const katalog = useQuery({
-    queryKey: ['waren', { archiv: true }],
+    queryKey: warenKeys.liste(true),
     queryFn: async () => unwrap(await api.waren.$get({ query: { archiv: '1' } })),
   });
 

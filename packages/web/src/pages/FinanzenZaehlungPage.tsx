@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { centAnzeigen, datumAnzeigen, NENNWERTE_CENT } from '@c4/shared';
 import { unwrap, useApi } from '../api';
-import { BETRAG_STIL, detailPfad, differenzText, FINANZEN_KEY } from '../finanzenDaten';
+import { BETRAG_STIL, detailPfad, differenzText, finanzenKeys } from '../finanzenDaten';
 import { mitgliedName } from '../mitglied';
 import { formatDatumZeit } from '../datum';
 import { StatusName } from '../StatusAnzeige';
@@ -17,7 +17,7 @@ export function FinanzenZaehlungPage() {
   const api = useApi();
   const { id = '' } = useParams();
   const zaehlung = useQuery({
-    queryKey: [...FINANZEN_KEY, 'zaehlung', id],
+    queryKey: finanzenKeys.zaehlung(id),
     queryFn: async () => unwrap(await api.finanzen.zaehlungen[':id'].$get({ param: { id } })),
   });
   const z = zaehlung.data;

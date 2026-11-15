@@ -75,6 +75,15 @@ Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, 
 setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
 bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).
 
+## Query-Keys (Web)
+
+Jedes Feature definiert seine TanStack-Query-Keys als Objekt neben den Hooks (`todoKeys` in `todoDaten.tsx`, `warenKeys`,
+`lagerortKeys`, `gebindeKeys` in `warenDaten.ts`, `inventarKeys`, `finanzenKeys`, `kalenderKeys`, `protokollKeys`, ...).
+Bereiche ohne eigene Datendatei (Mitglieder/`me`, Posten, Inventuren, Historie, Health) liegen in `queryKeys.ts`. Seiten und
+Komponenten schreiben keine Key-Literale: `queryKey: todoKeys.meine`, `qc.invalidateQueries({ queryKey: warenKeys.alle })`.
+`alle` ist der Präfix des Bereichs, darunter hängen die Einzel-Keys (`eins(id)`, `liste(...)`). Invalidierung läuft über den
+Präfix, die Arrays dürfen sich deshalb nicht ändern; `queryKeys.test.ts` sichert stichprobenartig die Werte.
+
 ## Wiederkehrende Helfer im Web
 
 - `KartenOderTabelle` (`packages/web/src/KartenOderTabelle.tsx`): Liste als Karten unter `sm`, als Tabelle (in `Table.ScrollContainer`

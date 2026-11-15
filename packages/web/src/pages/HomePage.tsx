@@ -2,12 +2,16 @@ import { Alert, Badge, Group, Paper, Skeleton, Stack, Text, Title } from '@manti
 import { useQuery } from '@tanstack/react-query';
 import { unwrap, useApi } from '../api';
 import { label, labelFuer, PERMISSION_LABELS, ROLE_LABELS } from '../i18n';
+import { mitgliederKeys, systemKeys } from '../queryKeys';
 
 export function HomePage() {
   const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const health = useQuery({
-    queryKey: ['health'],
+    queryKey: systemKeys.health,
     queryFn: async () => (await api.health.$get()).json(),
   });
   return (

@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { unwrap, useApi } from './api';
 import { useAuth } from './auth';
 import { usePushAbgleichBeimStart, usePushGeraet } from './usePushGeraet';
+import { mitgliederKeys } from './queryKeys';
 
 const NEIN_KEY = 'c4.push.nein';
 const SPAETER_KEY = 'c4.push.spaeter';
@@ -34,12 +35,12 @@ export function PushAbfrage() {
   const { pathname } = useLocation();
   const darf = !!user && can('profil:bearbeiten');
   const me = useQuery({
-    queryKey: ['me'],
+    queryKey: mitgliederKeys.me,
     enabled: darf,
     queryFn: async () => unwrap(await api.me.$get()),
   });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     enabled: darf,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();

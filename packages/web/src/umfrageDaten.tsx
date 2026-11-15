@@ -7,10 +7,15 @@ import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 
 /** Every Umfrage query lives under this key, so one invalidation refreshes the whole area. */
-export const UMFRAGEN_KEY = 'umfragen';
+export const umfrageKeys = {
+  alle: ['umfragen'] as const,
+  liste: ['umfragen', 'liste'] as const,
+  beendet: ['umfragen', 'beendet'] as const,
+  detail: (id: string | undefined) => ['umfragen', 'detail', id] as const,
+};
 
 export const umfragenInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [UMFRAGEN_KEY] });
+  qc.invalidateQueries({ queryKey: umfrageKeys.alle });
 
 export const umfrageLink = (id: string) => `/umfragen/${encodeURIComponent(id)}`;
 
@@ -18,7 +23,7 @@ export const umfrageLink = (id: string) => `/umfragen/${encodeURIComponent(id)}`
 export function useUmfragen() {
   const api = useApi();
   return useQuery({
-    queryKey: [UMFRAGEN_KEY, 'liste'],
+    queryKey: umfrageKeys.liste,
     queryFn: async () => (await unwrap(await api.umfragen.$get())) as UmfrageListeDto[],
   });
 }
@@ -27,7 +32,7 @@ export function useUmfragen() {
 export function useBeendeteUmfragen() {
   const api = useApi();
   return useInfiniteQuery({
-    queryKey: [UMFRAGEN_KEY, 'beendet'],
+    queryKey: umfrageKeys.beendet,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) =>
       (await unwrap(
@@ -40,7 +45,7 @@ export function useBeendeteUmfragen() {
 export function useUmfrage(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [UMFRAGEN_KEY, 'detail', id],
+    queryKey: umfrageKeys.detail(id),
     enabled: !!id,
     queryFn: async () =>
       (await unwrap(await api.umfragen[':id'].$get({ param: { id: id! } }))) as UmfrageDetailDto,

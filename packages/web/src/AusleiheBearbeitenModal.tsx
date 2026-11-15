@@ -6,7 +6,7 @@ import { useApi } from './api';
 import { AusleiheKopfFelder, type AusleiheKopf } from './AusleiheKopfFelder';
 import { zeitpunktIso } from './BuchungsFuss';
 import { isoZuLokal } from './inventarAnzeige';
-import { INVENTAR_KEY, type AusleiheEintrag } from './inventarDaten';
+import { inventarKeys, type AusleiheEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { zodFeldFehler } from './zodFehler';
 
@@ -32,7 +32,7 @@ export function AusleiheBearbeitenModal({
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) =>
       pruefen(await api.inventar.ausleihen[':id'].$put({ param: { id: ausleihe.id }, json })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

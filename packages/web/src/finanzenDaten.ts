@@ -4,13 +4,21 @@ import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
 
 /** Prefix of all Finanzen queries; invalidate it after any change. */
-export const FINANZEN_KEY = ['finanzen'] as const;
+export const finanzenKeys = {
+  alle: ['finanzen'] as const,
+  konten: (filter: { archiviert: boolean }) => ['finanzen', 'konten', filter] as const,
+  bargeld: ['finanzen', 'bargeld'] as const,
+  zaehlungen: (filter: { kontoId: string | null }) => ['finanzen', 'zaehlungen', filter] as const,
+  buchungen: (filter: Record<string, unknown>) => ['finanzen', 'buchungen', filter] as const,
+  buchung: (id: string | undefined) => ['finanzen', 'buchung', id] as const,
+  zaehlung: (id: string | undefined) => ['finanzen', 'zaehlung', id] as const,
+};
 
 /** Chart of accounts; with `archiviert` also the archived accounts. */
 export function useKonten(archiviert: boolean) {
   const api = useApi();
   return useQuery({
-    queryKey: [...FINANZEN_KEY, 'konten', { archiviert }],
+    queryKey: finanzenKeys.konten({ archiviert }),
     queryFn: async () =>
       unwrap(await api.finanzen.konten.$get({ query: archiviert ? { archiviert: '1' } : {} })),
   });
@@ -20,7 +28,7 @@ export function useKonten(archiviert: boolean) {
 export function useBargeld() {
   const api = useApi();
   return useQuery({
-    queryKey: [...FINANZEN_KEY, 'bargeld'],
+    queryKey: finanzenKeys.bargeld,
     queryFn: async () => unwrap(await api.finanzen.bargeld.$get()),
   });
 }
@@ -29,7 +37,7 @@ export function useBargeld() {
 export function useZaehlungen(kontoId: string | null) {
   const api = useApi();
   return useQuery({
-    queryKey: [...FINANZEN_KEY, 'zaehlungen', { kontoId }],
+    queryKey: finanzenKeys.zaehlungen({ kontoId }),
     queryFn: async () =>
       unwrap(await api.finanzen.zaehlungen.$get({ query: kontoId ? { kontoId } : {} })),
   });
