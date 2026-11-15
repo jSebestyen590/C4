@@ -80,8 +80,49 @@ export function useProtokollAnlegen() {
   });
 }
 
+/**
+ * Random id of this browser tab, kept in memory for the lifetime of the page: the edit lock belongs to
+ * a tab, so the same person in a second tab or on another device is locked out, too.
+ */
+export const TAB_ID = crypto.randomUUID();
+const tabKopf = { headers: { 'x-tab-id': TAB_ID } };
+
+/** Who holds the edit lock (409 of the lock routes, the save and the status change). */
+export interface SperreBelegt {
+  /** Null when unknown (the lock just lapsed). */
+  von: ProtokollMitgliedDto | null;
+  /** The same person, in another tab or on another device. */
+  eigene: boolean;
+}
+
+export type SperreErgebnis = { art: 'ok' } | ({ art: 'gesperrt' } & SperreBelegt);
+
+/** Takes, extends (heartbeat) and releases the edit lock of the open draft. */
+export function useProtokollSperreApi() {
+  const api = useApi();
+  return {
+    async nehmen(id: string): Promise<SperreErgebnis> {
+      const res = await api.protokolle[':id'].sperre.$post({ param: { id } }, tabKopf);
+      if (res.status === 409) {
+        const body = (await res.json().catch(() => null)) as { sperre?: SperreBelegt } | null;
+        if (body?.sperre) return { art: 'gesperrt', ...body.sperre };
+      }
+      await pruefen(res);
+      return { art: 'ok' };
+    },
+    /** `keepalive` lets the request survive the page being closed. */
+    async loesen(id: string): Promise<void> {
+      await api.protokolle[':id'].sperre.$delete(
+        { param: { id } },
+        { ...tabKopf, init: { keepalive: true } },
+      );
+    },
+  };
+}
+
 export type SpeichernErgebnis =
   | { art: 'ok'; version: number }
+  | ({ art: 'gesperrt' } & SperreBelegt)
   | { art: 'konflikt'; version: number | null; geaendertVon: ProtokollMitgliedDto | null };
 
 /** PUT with the version we loaded; a 409 is a result (somebody else saved), other failures throw. */
@@ -91,12 +132,14 @@ export function useProtokollSpeichern() {
     id: string,
     daten: { inhalt: ProtokollDokument; kopf: ProtokollKopf; version: number },
   ): Promise<SpeichernErgebnis> => {
-    const res = await api.protokolle[':id'].$put({ param: { id }, json: daten as never });
+    const res = await api.protokolle[':id'].$put({ param: { id }, json: daten as never }, tabKopf);
     if (res.status === 409) {
       const body = (await res.json().catch(() => null)) as {
         version?: number;
         geaendertVon?: ProtokollMitgliedDto | null;
+        sperre?: SperreBelegt;
       } | null;
+      if (body?.sperre) return { art: 'gesperrt', ...body.sperre };
       return {
         art: 'konflikt',
         version: body?.version ?? null,
@@ -132,10 +175,13 @@ export function useProtokollStatus() {
       status: ProtokollStatus;
       aktionen?: string[];
     }) => {
-      const res = await api.protokolle[':id'].status.$put({
-        param: { id },
-        json: (aktionen ? { status, aktionen } : { status }) as never,
-      });
+      const res = await api.protokolle[':id'].status.$put(
+        {
+          param: { id },
+          json: (aktionen ? { status, aktionen } : { status }) as never,
+        },
+        tabKopf,
+      );
       await pruefen(res);
       return (await res.json()) as unknown as ProtokollStatusAntwort;
     },
@@ -184,7 +230,7 @@ export function useProtokollLoeschen() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      await pruefen(await api.protokolle[':id'].$delete({ param: { id } }));
+      await pruefen(await api.protokolle[':id'].$delete({ param: { id } }, tabKopf));
     },
     onSuccess: () => listenInvalidieren(qc),
   });

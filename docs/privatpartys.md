@@ -35,7 +35,7 @@ Migrationen `0120`–`0129` (siehe [datenbank.md](./datenbank.md)); Text-IDs, ke
    kommt `umfrage.neu`. Geht nur, solange keine laufende verknüpfte Umfrage existiert (409). Siehe [umfragen.md](./umfragen.md).
    Ändert `PUT /api/privatpartys/:id` die Wunschtermine, solange die Umfrage läuft, zieht die API die Antworten nach: neue Termine kommen hinzu,
    entfernte fallen weg (mit ihren Stimmen; wer dadurch keine gültige Stimme mehr hat, muss erneut abstimmen). Antworten werden über Datum und Name erkannt, ein geänderter Termin ist also
-   eine neue Antwort ohne Stimmen. Bestehende Umfragen behalten ihren Titel.
+   eine neue Antwort ohne Stimmen. Wer dadurch erneut abstimmen muss, bekommt den Push „Bitte stimme erneut ab“, alle anderen im Kreis (und Abstimmende außerhalb) „Die Termine haben sich geändert.“ (Art `umfrage.erneut_abstimmen`, je Änderung einmal; ohne Änderung der Antworten nichts). Bestehende Umfragen behalten ihren Titel.
 3. **Event aus der Umfrage**: im Umfragedetail wie bei jeder Terminumfrage. Hängt die Umfrage an einer Privatparty, nimmt das Event die
    Wunschzeiten (`ausVorlageZuZeit`), die Privatparty wird „Zugesagt“ (mit `event_id`, `termin_id`), und Inhaber:innen des Rechts
    sehen die Umfrage auch außerhalb des Kreises (Liste und Detail), dürfen abstimmen, beenden und das Event anlegen. Ist die Privatparty schon abgesagt oder mit einem noch vorhandenen Event

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import type { ProtokollStatus } from '@c4/shared';
 import type { Db } from './db/client';
 import { protokolle, type ProtokollRow } from './db/schema';
@@ -11,7 +11,10 @@ import { istEindeutigVerletzt } from './kalender';
 export type ProtokollDaten = ProtokollRow;
 
 /** A protocol without its text, for the list. */
-export type ProtokollKurz = Omit<ProtokollRow, 'inhalt' | 'kopf'>;
+export type ProtokollKurz = Omit<
+  ProtokollRow,
+  'inhalt' | 'kopf' | 'sperreSub' | 'sperreTab' | 'sperreBis'
+>;
 
 /** There already is a protocol for the Sitzung. */
 export class ProtokollExistiert extends Error {}
@@ -35,6 +38,29 @@ export interface ProtokollSpeicherErgebnis {
   version: number;
   geaendertAm: Date;
 }
+
+/** The edit lock expires this long after the last heartbeat. */
+export const PROTOKOLL_SPERRE_MS = 2 * 60_000;
+
+/** Result of taking the edit lock: `erhalten` tells whether the caller holds it now, otherwise it is the holder's. */
+export interface ProtokollSperreErgebnis {
+  erhalten: boolean;
+  sub: string | null;
+  tab: string | null;
+  bis: Date | null;
+}
+
+/** The edit lock of a protocol row is held by (sub, tab) as of `jetzt`. */
+export const sperreGehoert = (
+  p: Pick<ProtokollRow, 'sperreSub' | 'sperreTab' | 'sperreBis'>,
+  sub: string,
+  tab: string,
+  jetzt: Date,
+): boolean =>
+  p.sperreSub === sub &&
+  p.sperreTab === tab &&
+  p.sperreBis !== null &&
+  p.sperreBis.getTime() > jetzt.getTime();
 
 export interface ProtokollStore {
   /** All protocols without their text. */
@@ -77,6 +103,20 @@ export interface ProtokollStore {
   ): Promise<ProtokollSpeicherErgebnis | undefined>;
   /** False when missing; throws ProtokollAbgeschlossen for closed protocols. */
   loeschen(id: string): Promise<boolean>;
+  /**
+   * Takes or extends the edit lock of a draft until `bis`: succeeds when it is free, expired (before
+   * `jetzt`) or already held by the same (sub, tab). Undefined when missing; throws
+   * ProtokollAbgeschlossen for closed protocols. Does not change `version`.
+   */
+  sperreNehmen(
+    id: string,
+    sub: string,
+    tab: string,
+    jetzt: Date,
+    bis: Date,
+  ): Promise<ProtokollSperreErgebnis | undefined>;
+  /** Releases the lock if (sub, tab) holds it; otherwise nothing happens. */
+  sperreLoesen(id: string, sub: string, tab: string): Promise<void>;
 }
 
 export function createProtokolleStore(db: Db): ProtokollStore {
@@ -178,13 +218,54 @@ export function createProtokolleStore(db: Db): ProtokollStore {
         id,
         version,
         false,
-        { status, kopf, ...(inhalt === undefined ? {} : { inhalt }) },
+        {
+          status,
+          kopf,
+          ...(inhalt === undefined ? {} : { inhalt }),
+          // Closing or reopening ends any edit lock.
+          sperreSub: null,
+          sperreTab: null,
+          sperreBis: null,
+        },
         von,
       );
     },
 
     ergebnisSpeichern(id, daten, von) {
       return aendern(id, daten.version, false, { inhalt: daten.inhalt, kopf: daten.kopf }, von);
+    },
+
+    async sperreNehmen(id, sub, tab, jetzt, bis) {
+      // One conditional UPDATE on the row: concurrent acquires conflict (40001) instead of both winning.
+      const rows = await db
+        .update(protokolle)
+        .set({ sperreSub: sub, sperreTab: tab, sperreBis: bis })
+        .where(
+          and(
+            eq(protokolle.id, id),
+            eq(protokolle.status, 'entwurf'),
+            or(
+              isNull(protokolle.sperreBis),
+              lte(protokolle.sperreBis, jetzt),
+              and(eq(protokolle.sperreSub, sub), eq(protokolle.sperreTab, tab)),
+            ),
+          ),
+        )
+        .returning({ id: protokolle.id });
+      if (rows.length > 0) return { erhalten: true, sub, tab, bis };
+      const [row] = await db.select().from(protokolle).where(eq(protokolle.id, id));
+      if (!row) return undefined;
+      if (row.status === 'abgeschlossen') throw new ProtokollAbgeschlossen();
+      return { erhalten: false, sub: row.sperreSub, tab: row.sperreTab, bis: row.sperreBis };
+    },
+
+    async sperreLoesen(id, sub, tab) {
+      await db
+        .update(protokolle)
+        .set({ sperreSub: null, sperreTab: null, sperreBis: null })
+        .where(
+          and(eq(protokolle.id, id), eq(protokolle.sperreSub, sub), eq(protokolle.sperreTab, tab)),
+        );
     },
 
     async loeschen(id) {

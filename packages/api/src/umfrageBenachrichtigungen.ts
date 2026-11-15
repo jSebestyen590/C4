@@ -74,6 +74,40 @@ export async function meldeErneutAbstimmen(
 }
 
 /**
+ * The dates of a running Privatparty poll changed: members whose vote became invalid are asked to
+ * vote again, everybody else involved (`uebrige`) is told that the dates changed. Both use the
+ * `umfrage.erneut_abstimmen` type; `aenderung` identifies the change for the dedupe key.
+ */
+export async function meldeTermineGeaendert(
+  sender: Sender,
+  u: { id: string; titel: string },
+  aenderung: string,
+  erneut: readonly string[],
+  uebrige: readonly string[],
+): Promise<void> {
+  const art = 'umfrage.erneut_abstimmen';
+  const schluessel = (art2: string) => `${art}:${art2}:${u.id}:${aenderung}`;
+  await Promise.all([
+    sender.senden({
+      subs: erneut,
+      art,
+      titel: 'Bitte stimme erneut ab',
+      text: `Die Termine von „${u.titel}“ haben sich geändert. Bitte stimme erneut ab.`,
+      url: url(u),
+      dedupeSchluessel: schluessel('erneut'),
+    }),
+    sender.senden({
+      subs: uebrige.filter((s) => !erneut.includes(s)),
+      art,
+      titel: u.titel,
+      text: 'Die Termine haben sich geändert.',
+      url: url(u),
+      dedupeSchluessel: schluessel('geaendert'),
+    }),
+  ]);
+}
+
+/**
  * Tells the circles of a scheduling poll which date became the event; those who agreed to it are
  * entered in the event.
  */
