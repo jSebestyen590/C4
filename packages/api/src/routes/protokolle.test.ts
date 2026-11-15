@@ -1577,7 +1577,8 @@ describe('protokolle', () => {
       const res = await t.schliessen(t.alleIds);
       expect(res.status).toBe(200);
       const antwort = (await res.json()) as ProtokollStatusAntwort;
-      expect(antwort).toMatchObject({ status: 'abgeschlossen', version: 2 });
+      // Claimed (version 2), then the results are written (version 3).
+      expect(antwort).toMatchObject({ status: 'abgeschlossen', version: 3 });
       expect(antwort.aktionen.map((a) => [a.art, a.status])).toEqual([
         ['anwaerter.einladen', 'erledigt'],
         ['aufnahme.status', 'erledigt'],
@@ -1616,7 +1617,7 @@ describe('protokolle', () => {
       // The ids are written back into the document (one save, one version) and the results kept.
       const dto = await t.holen(t.id);
       expect(dto.status).toBe('abgeschlossen');
-      expect(dto.version).toBe(2);
+      expect(dto.version).toBe(3);
       expect(JSON.stringify(dto.inhalt)).toContain('"eventId":"e-neu"');
       expect(JSON.stringify(dto.inhalt)).toContain('"sub":"uuid-neu"');
       expect(Object.keys(dto.kopf.aktionen).sort()).toEqual([...t.alleIds].sort());
@@ -1734,15 +1735,48 @@ describe('protokolle', () => {
         [t.ids.einladung, 'uebersprungen'],
         ['x:unbekannt', 'uebersprungen'],
       ]);
-      expect(wieder.version).toBe(3);
+      expect(wieder.version).toBe(5);
       expect(wieder.aktionen.find((a) => a.id === t.ids.neu)).toMatchObject({
         zustand: 'erledigt',
       });
       const nachher = await t.holen(t.id);
-      expect(nachher.version).toBe(3);
+      expect(nachher.version).toBe(5);
       expect(JSON.stringify(nachher.inhalt)).toContain('"eventId":"e-neu"');
       expect(nachher.kopf.aktionen[t.ids.neu]).toMatchObject({ status: 'erledigt' });
       expect(t.kalender.eventAnlegen).toHaveBeenCalledTimes(2);
+    });
+
+    it('runs the Aktionen once when two closes use the same version', async () => {
+      const t = await aktionenSetup();
+      const [a, b] = await Promise.all([t.schliessen(t.alleIds), t.schliessen(t.alleIds)]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const verloren = a.status === 409 ? a : b;
+      expect(await verloren.json()).toMatchObject({
+        error: 'Das Protokoll wurde inzwischen geändert. Bitte lade es neu.',
+      });
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledTimes(1);
+      expect(t.userAdmin.createUser).toHaveBeenCalledTimes(1);
+      expect((await t.holen(t.id)).status).toBe('abgeschlossen');
+    });
+
+    it('runs the Aktionen once when "Ausführen" is called in parallel', async () => {
+      const t = await aktionenSetup();
+      expect((await t.schliessen([])).status).toBe(200);
+      const [a, b] = await Promise.all([t.wiederholen(t.alleIds), t.wiederholen(t.alleIds)]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect(t.kalender.eventAnlegen).toHaveBeenCalledTimes(1);
+      expect(t.userAdmin.createUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the protocol closed and stores the failure when an Aktion fails after the claim', async () => {
+      const t = await aktionenSetup();
+      t.kalender.eventAnlegen.mockRejectedValueOnce(new Error('boom'));
+      const res = await t.schliessen([t.ids.neu]);
+      expect(res.status).toBe(200);
+      const dto = await t.holen(t.id);
+      expect(dto.status).toBe('abgeschlossen');
+      expect(dto.kopf.aktionen[t.ids.neu]).toMatchObject({ status: 'fehler' });
+      expect((await t.schliessen([t.ids.neu])).status).toBe(200);
     });
 
     it('reports an email address that is taken and does not create a profile', async () => {
