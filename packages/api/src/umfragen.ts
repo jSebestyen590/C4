@@ -24,6 +24,7 @@ import {
   type UmfrageTermin,
 } from '@c4/shared';
 import type { Db } from './db/client';
+import { sperreBeruehren } from './db/sperren';
 import {
   umfrageAbgaben,
   umfrageFragen,
@@ -93,6 +94,12 @@ export interface UmfragenCursor {
   id: string;
 }
 
+/** The ballot no longer fits the poll (an option or question was removed meanwhile). */
+export class UmfrageKonflikt extends Error {}
+
+export const STIMMZETTEL_VERALTET =
+  'Die Umfrage wurde inzwischen geändert. Bitte lade die Seite neu und stimme noch einmal ab.';
+
 export interface UmfragenStore {
   /**
    * Polls still running on `heute` (Berlin) with their questions and who voted (without the
@@ -125,6 +132,20 @@ export interface UmfragenStore {
 }
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** True when an answer points to a question or option that no longer exists (or not in that question). */
+export function stimmzettelVeraltet(
+  antworten: readonly { frageId: string; optionId: string | null }[],
+  fragen: readonly { id: string }[],
+  optionen: readonly { id: string; frageId: string }[],
+): boolean {
+  return antworten.some(
+    (a) =>
+      !fragen.some((f) => f.id === a.frageId) ||
+      (a.optionId !== null &&
+        !optionen.some((o) => o.id === a.optionId && o.frageId === a.frageId)),
+  );
+}
 
 const kreisZeilen = (umfrageId: string, kreis: UmfrageKreis, pflicht: boolean) => [
   ...kreis.posten.map((ref) => ({ umfrageId, pflicht, art: 'posten' as const, ref })),
@@ -391,6 +412,8 @@ export function createUmfragenStore(db: Db): UmfragenStore {
 
     async aktualisieren(id, daten, aenderung) {
       return db.transaction(async (tx) => {
+        // Conflicts with a concurrent vote, which validates its ballot against the options.
+        await sperreBeruehren(tx, `umfrage:${id}`);
         const rows = await tx
           .update(umfragen)
           .set(zeileSpalten(daten))
@@ -501,6 +524,20 @@ export function createUmfragenStore(db: Db): UmfragenStore {
 
     async abstimmen(id, sub, antworten) {
       await db.transaction(async (tx) => {
+        await sperreBeruehren(tx, `umfrage:${id}`);
+        // The route validated against an earlier read; check again against the current options.
+        const optionen = await tx
+          .select({ id: umfrageOptionen.id, frageId: umfrageOptionen.frageId })
+          .from(umfrageOptionen)
+          .innerJoin(umfrageFragen, eq(umfrageFragen.id, umfrageOptionen.frageId))
+          .where(eq(umfrageFragen.umfrageId, id));
+        const fragen = await tx
+          .select({ id: umfrageFragen.id })
+          .from(umfrageFragen)
+          .where(eq(umfrageFragen.umfrageId, id));
+        if (stimmzettelVeraltet(antworten, fragen, optionen)) {
+          throw new UmfrageKonflikt(STIMMZETTEL_VERALTET);
+        }
         await tx
           .delete(umfrageStimmen)
           .where(and(eq(umfrageStimmen.umfrageId, id), eq(umfrageStimmen.mitgliedSub, sub)));

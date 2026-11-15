@@ -10,6 +10,7 @@ import {
   type PostenRecht,
 } from '@c4/shared';
 import type { Db } from './db/client';
+import { sperreBeruehren } from './db/sperren';
 import {
   posten,
   postenBesetzungen,
@@ -109,6 +110,8 @@ async function keineUeberschneidung(
   daten: BesetzungDaten,
   ausser?: string,
 ) {
+  // Same transaction as the check and the write: overlapping Besetzungen of one member must conflict.
+  await sperreBeruehren(tx, `besetzung:${postenId}:${daten.mitgliedSub}`);
   const andere = await tx
     .select()
     .from(postenBesetzungen)

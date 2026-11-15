@@ -10,6 +10,7 @@ import {
   lagerortBestandZeilen,
   umlagerungenZeilen,
   inventurKnotenIds,
+  inventurUeberlappt,
   naechstePosition,
   reihenfolgeFehler,
   verwendetMeldung,
@@ -354,5 +355,18 @@ describe('gebindeInhaltGeaendert', () => {
     expect(gebindeInhaltGeaendert(g, { ...g, menge: 1 })).toBe(true);
     expect(gebindeInhaltGeaendert(g, { ...g, einheit: 'kg' })).toBe(true);
     expect(gebindeInhaltGeaendert(g, { ...g, unterGebindeId: 'x', unterAnzahl: 6 })).toBe(true);
+  });
+});
+
+describe('inventurUeberlappt', () => {
+  const alle = [...baum, knoten('keller', null)];
+  it('is false without open Inventuren or on unrelated Lagerorte', () => {
+    expect(inventurUeberlappt(alle, [], 'regal')).toBe(false);
+    expect(inventurUeberlappt(alle, ['keller'], 'regal')).toBe(false);
+  });
+  it('detects the same, an ancestor and a descendant Lagerort', () => {
+    expect(inventurUeberlappt(alle, ['regal'], 'regal')).toBe(true);
+    expect(inventurUeberlappt(alle, ['lager'], 'etage')).toBe(true);
+    expect(inventurUeberlappt(alle, ['etage'], 'lager')).toBe(true);
   });
 });

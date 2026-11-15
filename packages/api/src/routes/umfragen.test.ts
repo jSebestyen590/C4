@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { heuteBerlin, tagNachher, type EventDto, type UmfrageDetailDto } from '@c4/shared';
 import { makeApp, bearer } from '../test/appTestHelfer';
+import { STIMMZETTEL_VERALTET, UmfrageKonflikt } from '../umfragen';
 
 describe('umfragen', () => {
   const json = (token: string, method: string, body?: unknown) => ({
@@ -225,6 +226,27 @@ describe('umfragen', () => {
         expect.objectContaining({ rolle: 'optional', abgestimmt: false }),
       ]),
     );
+  });
+
+  it('rejects a ballot whose option no longer exists with 409', async () => {
+    const t = await setup();
+    const id = await t.anlegen({ endetAm: '2099-01-31' });
+    const frage = (await t.holen(id, 'member-token')).body.fragen[0]!;
+    const optionId = frage.optionen[0]!.id;
+    // The real store re-validates inside the transaction; the fake mirrors it.
+    t.umfragenListe.get(id)!.fragen[0]!.optionen.shift();
+    const nochDa = { frageId: frage.id, optionIds: [frage.optionen[1]!.id] };
+    expect((await t.abstimmen(id, 'member-token', [nochDa])).status).toBe(200);
+    await expect(
+      t.umfragen.abstimmen(id, 'm2', [{ frageId: frage.id, optionId, freitext: null }]),
+    ).rejects.toThrow(UmfrageKonflikt);
+    const spy = vi
+      .spyOn(t.umfragen, 'abstimmen')
+      .mockRejectedValueOnce(new UmfrageKonflikt(STIMMZETTEL_VERALTET));
+    const res = await t.abstimmen(id, 'member-token', [nochDa]);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(STIMMZETTEL_VERALTET);
+    spy.mockRestore();
   });
 
   it('never reveals who voted in an anonymous poll', async () => {

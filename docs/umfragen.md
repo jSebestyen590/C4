@@ -16,6 +16,8 @@ wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird n
 - Die Kreise (Pflicht/Optional) werden bei jedem Zugriff **dynamisch** gegen aktuelle Mitglieder, Status und Posten-Besetzungen
   ausgewertet (`kreisVon`); Pflicht und Optional dürfen sich nicht überschneiden (400). Deaktivierte Mitglieder fallen aus den Kreisen,
   ihre abgegebenen Stimmen bleiben gezählt.
+- Beim Speichern prüft der Store den Stimmzettel noch einmal gegen die aktuellen Optionen (409, wenn eine Option inzwischen
+  entfernt wurde; Bearbeiten und Abstimmen sind über `sperreBeruehren` gegeneinander gesichert).
 - Eine Stimme ist ein Stimmzettel für **alle** Fragen (`stimmzettelFehler`) und bis zum Ende änderbar; je Person und Umfrage genau eine
   Abgabe (`umfrage_abgaben`, Primärschlüssel).
 - Eine beendete Umfrage (abgelaufen oder vorzeitig) lässt sich weder bearbeiten noch wieder öffnen.

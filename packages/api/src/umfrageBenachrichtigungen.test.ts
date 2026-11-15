@@ -28,7 +28,7 @@ async function setup() {
       optional: { status: ['em'], posten: [], personen: [] },
       erinnerungenPflicht: [7, 3],
       erinnerungenOptional: [3],
-      fragen: [{ id: 'f', text: 'Ja?', freitext: false, maxAntworten: 1, optionen: [] }],
+      fragen: [{ id: 'f', text: 'Ja?', freitext: false, maxAntworten: 1, optionen: [{ id: 'o', text: 'Ja', termin: null }] }],
       termin: null,
       terminFrei: false,
     },
