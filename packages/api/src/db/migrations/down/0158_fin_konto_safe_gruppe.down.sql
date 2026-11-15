@@ -1,0 +1,1 @@
+UPDATE fin_konten SET stueckelung = true WHERE id = 'safe'

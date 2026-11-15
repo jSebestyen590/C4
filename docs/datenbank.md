@@ -36,6 +36,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `eroeffnung`), 0150–0154 ihre Indizes, 0155 ergänzt `fin_buchungen.idempotenz_schluessel` per ALTER (Down leert die Werte), 0156 löscht ihren Index `fin_buchungen_idempotenz_idx`. Rollback-Ziel nur für Finanzen: `0140_benachrichtigung_verlauf_erstellt_idx`.
   `mitWiederholung` (Wiederholung bei DSQL-Konflikten) liegt dafür in `packages/api/src/db/wiederholung.ts` und wird von
   Migration, Rollback und Finanzen-Buchungen genutzt.
+- 0157–0162 (Finanzen, Bargeld): 0157 löscht das Konto `kassendifferenz`, 0158 setzt `safe.stueckelung` wieder auf `true`,
+  0159 und 0162 löschen die Tabellen `fin_zaehlungen` und `fin_zaehlung_posten` (insert-only, mit allen Zählprotokollen),
+  0160 und 0161 ihre Indizes. Rollback-Ziel nur für Bargeld: `0156_fin_buchungen_idempotenz_idx`.
 - 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:
   `0091_umfragen_erstellt_idx`.
 - 0098–0100 (Status-Verlauf): 0098 löscht die Tabelle, 0099 den Index, 0100 löscht nur die Startbuchungen ohne Datum

@@ -23,6 +23,7 @@ import {
   heuteBerlin,
   QUELLE_TYP_LABELS,
   STEUER_ART_LABELS,
+  saldoWarnungen,
   type BuchungDetailDto,
   type BuchungZeileDto,
 } from '@c4/shared';
@@ -30,8 +31,17 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
-import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
-import { BETRAG_STIL, detailPfad, FINANZEN_KEY, jsonOderFehler } from '../finanzenDaten';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
+import { richtungWort, zeilenBetragText } from '../buchungFormular';
+import {
+  BETRAG_STIL,
+  detailPfad,
+  FINANZEN_KEY,
+  jsonOderFehler,
+  useKonten,
+  zaehlungPfad,
+} from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
 import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
@@ -61,6 +71,13 @@ function StornoDialog({
   const [text, setText] = useState('');
   const [beruehrt, setBeruehrt] = useState(false);
   const [geprueft, setGeprueft] = useState(false);
+  // Plausibility warnings of the reversal (balances afterwards); they must be ticked off.
+  const konten = useKonten(true);
+  const saldoHinweise = saldoWarnungen(
+    buchung.zeilen.map((z) => ({ kontoId: z.kontoId, betragCent: -z.betragCent })),
+    konten.data ?? [],
+  );
+  const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
   // One key per opening of the dialog: a double click or a retry does not reverse twice.
   const [schluessel] = useState(() => crypto.randomUUID());
   return (
@@ -68,7 +85,9 @@ function StornoDialog({
       titel={`Buchung Nr. ${buchung.seq} stornieren`}
       bestaetigenText="Stornieren"
       groesse="lg"
-      gesperrt={!geprueft || !datum || text.trim() === ''}
+      gesperrt={
+        !geprueft || !datum || text.trim() === '' || saldoHinweise.some((w) => !bestaetigt.has(w))
+      }
       onClose={onClose}
       onBestaetigt={async () => {
         const neu = await jsonOderFehler<{ id: string }>(
@@ -81,6 +100,12 @@ function StornoDialog({
         void navigate(detailPfad(neu.id));
       }}
     >
+      <Group gap={2}>
+        <Text size="sm" fw={500}>
+          Storno
+        </Text>
+        <InfoHinweis feld="Storno" text={HILFE.storno.einmal} />
+      </Group>
       <Text size="sm">
         Es wird diese Gegenbuchung angelegt: Zugang und Abgang sind vertauscht. Die ursprüngliche
         Buchung bleibt unverändert bestehen.
@@ -93,14 +118,14 @@ function StornoDialog({
         }))}
       />
       <DatumFeld
-        label="Datum der Stornobuchung"
+        label={<FeldLabel text="Datum der Stornobuchung" hilfe={HILFE.storno.datum} />}
         value={datum}
         onWert={setDatum}
         loeschbar={false}
       />
       <TextInput
         required
-        label="Begründung"
+        label={<FeldLabel text="Begründung" hilfe={HILFE.storno.begruendung} />}
         description={`Die Buchung erhält den Text „Storno von Nr. ${buchung.seq}: …“.`}
         value={text}
         onChange={(e) => setText(e.currentTarget.value)}
@@ -112,6 +137,27 @@ function StornoDialog({
         onBlur={() => setBeruehrt(true)}
         maxLength={500}
       />
+      {saldoHinweise.length > 0 && (
+        <Alert color="orange" title="Bitte prüfen">
+          <Stack gap="xs">
+            {saldoHinweise.map((w) => (
+              <Checkbox
+                key={w}
+                label={`${w} Das ist richtig so.`}
+                checked={bestaetigt.has(w)}
+                onChange={(e) =>
+                  setBestaetigt((alt) => {
+                    const neu = new Set(alt);
+                    if (e.currentTarget.checked) neu.add(w);
+                    else neu.delete(w);
+                    return neu;
+                  })
+                }
+              />
+            ))}
+          </Stack>
+        </Alert>
+      )}
       <Checkbox
         label={`Ja, ich storniere Buchung Nr. ${buchung.seq} mit dieser Gegenbuchung.`}
         checked={geprueft}
@@ -175,6 +221,11 @@ export function FinanzenBuchungPage() {
                 Art:{' '}
                 {QUELLE_TYP_LABELS[b.quelleTyp as keyof typeof QUELLE_TYP_LABELS] ?? b.quelleTyp}
               </Text>
+              {b.quelleTyp === 'zaehlung' && b.quelleId && (
+                <Anchor component={Link} to={zaehlungPfad(b.quelleId)}>
+                  Zur Zählung
+                </Anchor>
+              )}
               <Text>
                 Volumen: <span style={BETRAG_STIL}>{centAnzeigen(b.betragCent)}</span>
               </Text>
@@ -202,8 +253,9 @@ export function FinanzenBuchungPage() {
                       {z.kontoName}
                     </Text>
                     <Text fw={600} style={BETRAG_STIL}>
-                      {RICHTUNG_LABELS[richtungVon(z.betragCent)]}{' '}
-                      {centAnzeigen(Math.abs(z.betragCent))}
+                      {z.betragCent === 0
+                        ? zeilenBetragText(0)
+                        : `${richtungWort(z.betragCent)} ${zeilenBetragText(z.betragCent)}`}
                     </Text>
                   </Group>
                   {steuerText(z) && (
@@ -235,8 +287,8 @@ export function FinanzenBuchungPage() {
                 {b.zeilen.map((z) => (
                   <Table.Tr key={z.id}>
                     <Table.Td>{z.kontoName}</Table.Td>
-                    <Table.Td>{RICHTUNG_LABELS[richtungVon(z.betragCent)]}</Table.Td>
-                    <Table.Td style={BETRAG_STIL}>{centAnzeigen(Math.abs(z.betragCent))}</Table.Td>
+                    <Table.Td>{richtungWort(z.betragCent)}</Table.Td>
+                    <Table.Td style={BETRAG_STIL}>{zeilenBetragText(z.betragCent)}</Table.Td>
                     <Table.Td>{steuerText(z) ?? '–'}</Table.Td>
                     <Table.Td>{z.stueckelung.length > 0 ? stueckelungText(z) : '–'}</Table.Td>
                   </Table.Tr>

@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // Guard: the journal tables are insert-only. No production code may update or delete them.
-const TABELLEN = 'finBuchungen|finBuchungszeilen|finStueckelung';
-const SQL_TABELLEN = 'fin_buchungen|fin_buchungszeilen|fin_stueckelung';
+const TABELLEN = 'finBuchungen|finBuchungszeilen|finStueckelung|finZaehlungen|finZaehlungPosten';
+const SQL_TABELLEN =
+  'fin_buchungen|fin_buchungszeilen|fin_stueckelung|fin_zaehlungen|fin_zaehlung_posten';
 
 const MUSTER: RegExp[] = [
   new RegExp(`\\.(update|delete)\\(\\s*(${TABELLEN})\\b`, 'g'),
@@ -41,6 +42,7 @@ describe('Finanz-Journal ist insert-only', () => {
     expect(treffer('db.update( finStueckelung )')).toHaveLength(1);
     expect(treffer('update Fin_Buchungen set x = 1')).toHaveLength(1);
     expect(treffer('DELETE   FROM fin_stueckelung')).toHaveLength(1);
+    expect(treffer('db.update(finZaehlungen).set({})')).toHaveLength(1);
     expect(treffer('db.update(finZaehler).set({})')).toHaveLength(0);
     expect(treffer('UPDATE fin_konten SET x = 1')).toHaveLength(0);
     expect(treffer('db.insert(finBuchungen).values({})')).toHaveLength(0);

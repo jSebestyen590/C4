@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { type KontoDto } from '@c4/shared';
+import { centAnzeigen, type KontoDto } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
 
@@ -13,6 +13,25 @@ export function useKonten(archiviert: boolean) {
     queryKey: [...FINANZEN_KEY, 'konten', { archiviert }],
     queryFn: async () =>
       unwrap(await api.finanzen.konten.$get({ query: archiviert ? { archiviert: '1' } : {} })),
+  });
+}
+
+/** The Fächer of the Safe with their stock. */
+export function useBargeld() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...FINANZEN_KEY, 'bargeld'],
+    queryFn: async () => unwrap(await api.finanzen.bargeld.$get()),
+  });
+}
+
+/** Zählungen, newest first; optionally of one Fach. */
+export function useZaehlungen(kontoId: string | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...FINANZEN_KEY, 'zaehlungen', { kontoId }],
+    queryFn: async () =>
+      unwrap(await api.finanzen.zaehlungen.$get({ query: kontoId ? { kontoId } : {} })),
   });
 }
 
@@ -38,3 +57,10 @@ export const kontoOptionen = (konten: readonly KontoDto[]) =>
   konten.map((k) => ({ value: k.id, label: k.name }));
 
 export const detailPfad = (id: string) => `/finanzen/journal/${encodeURIComponent(id)}`;
+
+export const zaehlungPfad = (id: string) =>
+  `/finanzen/bargeld/zaehlungen/${encodeURIComponent(id)}`;
+
+/** Difference of a Zählung with sign, e.g. `−2,00 €`; `keine` when it is 0. */
+export const differenzText = (cent: number) =>
+  cent === 0 ? 'keine' : `${cent > 0 ? '+' : '−'}${centAnzeigen(Math.abs(cent))}`;

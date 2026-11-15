@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_zaehlungen_konto_idx ON fin_zaehlungen (konto_id)

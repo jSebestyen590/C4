@@ -1,3 +1,5 @@
+import { FeldLabel } from './InfoHinweis';
+import { HILFE } from './finanzenHilfe';
 import { Alert, Button, Modal, Select, Stack, Switch, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
@@ -106,14 +108,14 @@ export function KontoFormular({
             error={fehler}
           />
           <Select
-            label="Art"
+            label={<FeldLabel text="Art" hilfe={HILFE.konto.art} />}
             allowDeselect={false}
             value={art}
             onChange={(v) => v && setArt(v as KontoArt)}
             data={KONTO_ARTEN.map((a) => ({ value: a, label: KONTO_ART_LABELS[a] }))}
           />
           <Select
-            label="Übergeordnetes Konto"
+            label={<FeldLabel text="Übergeordnetes Konto" hilfe={HILFE.konto.parent} />}
             description="Optional"
             clearable
             searchable
@@ -123,12 +125,22 @@ export function KontoFormular({
             nothingFoundMessage="Kein Konto gefunden"
           />
           <Switch
-            label="Mit Stückelung (Bargeld nach Scheinen und Münzen)"
+            label={
+              <FeldLabel
+                text="Mit Stückelung (Bargeld nach Scheinen und Münzen)"
+                hilfe={HILFE.konto.stueckelung}
+              />
+            }
             checked={stueckelung}
             onChange={(e) => setStueckelung(e.currentTarget.checked)}
           />
           <ZahlFeld
-            label="Standard-Steuersatz (optional)"
+            label={
+              <FeldLabel
+                text="Standard-Steuersatz (optional)"
+                hilfe={HILFE.konto.steuersatzStandard}
+              />
+            }
             value={steuer}
             onChange={setSteuer}
             min={0}

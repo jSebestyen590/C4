@@ -112,6 +112,14 @@ Keine Fehler:
   Erfassung).
 - Vorzeichen nie raten lassen: Einnahme/Ausgabe, Zugang/Abgang und Von/Nach stehen als Wörter da,
   Beträge sind rechtsbündig mit Tabellenziffern, negative Werte deutlich abgesetzt.
+- Warnungen je Kontoart (bestätigungspflichtig, nicht blockierend): Bank im Minus, Aufwand mit Guthaben und
+  Erlöse im Minus nach der Buchung (`saldoWarnungen`, siehe `docs/finanzen.md`).
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
+  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
+  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
+  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
+  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
 
 ## Zielscheiben
 
@@ -329,7 +337,7 @@ FinTS-Überweisungen, E-Rechnung.
 | Scheibe                   | Stand                                                                                                                                              |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | offen                                                                                                                                              |
+| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
 | 2 Buch                    | offen                                                                                                                                              |
 | 3 Barkassen               | offen                                                                                                                                              |
 | 4 Belege                  | offen                                                                                                                                              |

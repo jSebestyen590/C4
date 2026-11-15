@@ -1,5 +1,5 @@
 import { Alert, Button, Checkbox, Group, Modal, Stack, Text } from '@mantine/core';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { datumAnzeigen } from '@c4/shared';
 import { ZeilenUebersicht, type UebersichtZeile } from './ZeilenUebersicht';
 
@@ -11,6 +11,7 @@ export function BuchungsZusammenfassung({
   datum,
   text,
   zeilen,
+  extra,
   warnungen,
   laeuft,
   fehler,
@@ -20,6 +21,8 @@ export function BuchungsZusammenfassung({
   datum: string;
   text: string;
   zeilen: readonly UebersichtZeile[];
+  /** Shown below the lines, e.g. the denominations. */
+  extra?: ReactNode;
   warnungen: readonly string[];
   laeuft: boolean;
   fehler: string | null;
@@ -59,6 +62,7 @@ export function BuchungsZusammenfassung({
           </Text>
         </Stack>
         <ZeilenUebersicht zeilen={zeilen} />
+        {extra}
         {warnungen.length > 0 && (
           <Alert color="orange" title="Bitte prüfen">
             <Stack gap="xs">

@@ -149,6 +149,13 @@ import {
   type BuchungenSeiteDto,
   type BuchungListeDto,
   type FinanzMitgliedDto,
+  type BargeldUebersichtDto,
+  type ZaehlungDetailDto,
+  type ZaehlungListeDto,
+  type ZaehlungenSeiteDto,
+  zaehlungEingabeSchema,
+  zaehlungenAbfrageSchema,
+  ZAEHLUNGEN_MAX,
   type KettenErgebnisDto,
   type KontoDto,
   type DurchgaengeSeiteDto,
@@ -3791,6 +3798,52 @@ export function createApp(deps: AppDeps) {
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )
+      // Bargeld: the Fächer of the Safe with their stock, and the Zählung protocol.
+      .get('/finanzen/bargeld', auth, finanzenLesen, async (c) => {
+        const dto: BargeldUebersichtDto = await deps.finanzen.bargeld();
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/zaehlungen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', zaehlungEingabeSchema),
+        async (c) => {
+          const ergebnis = await deps.finanzen
+            .zaehlen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
+      .get(
+        '/finanzen/zaehlungen',
+        auth,
+        finanzenLesen,
+        zValidator('query', zaehlungenAbfrageSchema),
+        async (c) => {
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.zaehlungen({ ...c.req.valid('query'), limit: ZAEHLUNGEN_MAX + 1 }),
+            finanzenMitglieder(),
+          ]);
+          const dto: ZaehlungenSeiteDto = {
+            zaehlungen: liste.slice(0, ZAEHLUNGEN_MAX).map((z): ZaehlungListeDto => ({
+              ...z,
+              gezaehltVon: mitglied(z.gezaehltVon),
+            })),
+            gekappt: liste.length > ZAEHLUNGEN_MAX,
+          };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/zaehlungen/:id', auth, finanzenLesen, async (c) => {
+        const [z, mitglied] = await Promise.all([
+          deps.finanzen.zaehlung(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const zaehlung = gefunden(z, 'Zählung nicht gefunden');
+        const dto: ZaehlungDetailDto = { ...zaehlung, gezaehltVon: mitglied(zaehlung.gezaehltVon) };
+        return c.json(dto);
+      })
       // Verifies the whole hash chain and compares the counter with the last booking.
       .get('/finanzen/kette', auth, finanzenPruefen, async (c) => {
         const daten = await deps.finanzen.kettenDaten();

@@ -1274,6 +1274,41 @@ export const finStueckelung = pgTable(
   (t) => [primaryKey({ columns: [t.zeileId, t.nennwertCent] })],
 );
 
+/** Protocol of a cash count of a Fach (insert-only). `buchungId`: the difference booking, if any. */
+export const finZaehlungen = pgTable('fin_zaehlungen', {
+  id: text('id').primaryKey(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  text: text('text'),
+  /** Cognito sub, deliberately without a foreign key. */
+  gezaehltVon: text('gezaehlt_von').notNull(),
+  gezaehltAm: timestamp('gezaehlt_am', { withTimezone: true }).notNull(),
+  sollCent: bigint('soll_cent', { mode: 'number' }).notNull(),
+  istCent: bigint('ist_cent', { mode: 'number' }).notNull(),
+  differenzCent: bigint('differenz_cent', { mode: 'number' }).notNull(),
+  buchungId: text('buchung_id').references(() => finBuchungen.id),
+  /** Set by a count at an event (later slice). */
+  eventId: text('event_id').references(() => events.id),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+});
+export type FinZaehlungRow = typeof finZaehlungen.$inferSelect;
+
+export const finZaehlungPosten = pgTable(
+  'fin_zaehlung_posten',
+  {
+    zaehlungId: text('zaehlung_id')
+      .notNull()
+      .references(() => finZaehlungen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    sollAnzahl: integer('soll_anzahl').notNull(),
+    istAnzahl: integer('ist_anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.zaehlungId, t.nennwertCent] })],
+);
+
 /** Counter rows; 'journal' holds the last `seq` and the hash of the last entry. */
 export const finZaehler = pgTable('fin_zaehler', {
   name: text('name').primaryKey(),

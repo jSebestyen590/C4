@@ -1,4 +1,15 @@
-import { Alert, Anchor, Badge, Button, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Modal,
+  Paper,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconTrash } from '@tabler/icons-react';
 import { ActionIcon } from '@mantine/core';
@@ -70,12 +81,7 @@ export function WareHistorie({
               <Text size="sm" c="dimmed">
                 {zeitAnzeigen(v.zeitpunkt)} ·{' '}
                 {v.ersteller ? (
-                  <Anchor
-                    component={Link}
-                    to={mitgliedLink(v.ersteller)}
-                    underline="never"
-                    inherit
-                  >
+                  <Anchor component={Link} to={mitgliedLink(v.ersteller)} underline="never" inherit>
                     <StatusName status={v.ersteller.status}>{mitgliedName(v.ersteller)}</StatusName>
                   </Anchor>
                 ) : (

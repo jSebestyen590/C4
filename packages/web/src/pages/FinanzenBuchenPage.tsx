@@ -14,13 +14,14 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useBlocker, useNavigate } from 'react-router-dom';
-import { heuteBerlin } from '@c4/shared';
+import { Link, useBlocker, useNavigate, useSearchParams } from 'react-router-dom';
+import { heuteBerlin, saldoWarnungen } from '@c4/shared';
 import { useApi } from '../api';
+import { zeigeGebucht } from '../gebuchtHinweis';
 import { BetragFeld } from '../BetragFeld';
+import { uebernahmeLesen, umbuchenPfad } from '../bargeldFormular';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { BuchungszeilenTabelle } from '../BuchungszeilenTabelle';
 import {
@@ -39,13 +40,9 @@ import {
   type FreieZeile,
 } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
-import {
-  detailPfad,
-  FINANZEN_KEY,
-  jsonOderFehler,
-  kontoOptionen,
-  useKonten,
-} from '../finanzenDaten';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
+import { FINANZEN_KEY, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -77,15 +74,38 @@ export function FinanzenBuchenPage() {
   const gebuchtRef = useRef(false);
 
   const wahl = useMemo(() => buchbareKonten(konten.data ?? []), [konten.data]);
+  // Preselect mode and accounts from a link (`?modus=umbuchung&von=…&nach=…`) once; bad ids are ignored.
+  const [parameter] = useSearchParams();
+  const [vorbelegt, setVorbelegt] = useState(false);
+  if (!vorbelegt && konten.data) {
+    setVorbelegt(true);
+    const gueltig = (id: string | null) =>
+      id !== null && wahl.some((k) => k.id === id) ? id : null;
+    if (parameter.get('modus') === 'frei') setModus('frei');
+    if (parameter.get('modus') === 'umbuchung') setModus('umbuchung');
+    const v = gueltig(parameter.get('von'));
+    const n = gueltig(parameter.get('nach'));
+    if (v) setVon(v);
+    if (n && n !== v) setNach(n);
+    const u = uebernahmeLesen(parameter);
+    if (u.text) setText(u.text);
+    if (u.datum) setDatum(u.datum);
+  }
   const optionen = kontoOptionen(wahl);
-  const hatStueckelung = (konten.data ?? []).some((k) => !k.archiviert && k.stueckelung);
 
   const stand = { modus, von, nach, betrag, zeilen };
   const kopf = { datum, text };
   const fehler = formularFehler(stand, wahl);
   const textLeer = text.trim() === '';
+  // Accounts with Stückelung need denominations: they are booked on the Bargeld pages.
+  const gewaehlt = modus === 'umbuchung' ? [von, nach] : zeilen.map((z) => z.kontoId);
+  const stueckelungKonten = gewaehlt.filter((id) => wahl.find((k) => k.id === id)?.stueckelung);
+  const umbuchungUebernehmen = modus === 'umbuchung' && !!von && !!nach;
   const gruende = [
     ...(datum ? [] : ['Bitte gib ein Datum an.']),
+    ...(stueckelungKonten.length > 0
+      ? ['Konten mit Stückelung buchst du unter „Bargeld“ mit Münzen und Scheinen.']
+      : []),
     ...(textLeer ? ['Bitte gib einen Buchungstext ein.'] : []),
     ...fehler,
   ];
@@ -120,26 +140,7 @@ export function FinanzenBuchenPage() {
       gebuchtRef.current = true;
       schluessel.current = null;
       void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
-      notifications.show({
-        color: 'green',
-        autoClose: 10000,
-        message: (
-          <Text size="sm">
-            {wiederholt
-              ? `Buchung Nr. ${seq} war schon gebucht – `
-              : `Buchung Nr. ${seq} gebucht – `}
-            <Anchor
-              href={`/app${detailPfad(id)}`}
-              onClick={(e) => {
-                e.preventDefault();
-                void navigate(detailPfad(id));
-              }}
-            >
-              ansehen
-            </Anchor>
-          </Text>
-        ),
-      });
+      zeigeGebucht(navigate, { id, seq, wiederholt });
       // Next Erfassung: keep date and mode, clear the rest, focus the first field.
       setText('');
       setVon(null);
@@ -165,7 +166,8 @@ export function FinanzenBuchenPage() {
     setVersucht(true);
     if (!buchbar) return;
     buchen.reset();
-    setPruefen(true);
+    // Balances change with every booking: reload them before the warnings are computed.
+    void konten.refetch().then(() => setPruefen(true));
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
@@ -212,6 +214,12 @@ export function FinanzenBuchenPage() {
           }}
         >
           <Stack>
+            <Group gap={2} align="center">
+              <Text fw={500} size="sm">
+                Art der Buchung
+              </Text>
+              <InfoHinweis feld="Art der Buchung" text={HILFE.buchen.modus} />
+            </Group>
             <SegmentedControl
               size="md"
               aria-label="Art der Buchung"
@@ -226,7 +234,7 @@ export function FinanzenBuchenPage() {
             <Grid gap="md">
               <Grid.Col span={{ base: 12, sm: 4 }}>
                 <DatumFeld
-                  label="Datum"
+                  label={<FeldLabel text="Datum" hilfe={HILFE.buchen.datum} />}
                   value={datum}
                   onWert={setDatum}
                   loeschbar={false}
@@ -238,7 +246,7 @@ export function FinanzenBuchenPage() {
               <Grid.Col span={{ base: 12, sm: 8 }}>
                 <TextInput
                   ref={textRef}
-                  label="Buchungstext"
+                  label={<FeldLabel text="Buchungstext" hilfe={HILFE.buchen.text} />}
                   value={text}
                   onChange={(e) => setText(e.currentTarget.value)}
                   onBlur={() => anfassen('text')}
@@ -305,16 +313,32 @@ export function FinanzenBuchenPage() {
               />
             )}
 
-            {hatStueckelung && (
-              <Text size="sm" c="dimmed">
-                Konten mit Stückelung (z. B. der Safe) stehen hier noch nicht zur Auswahl. Buchungen
-                von Bargeld mit Scheinen und Münzen kommen mit einem späteren Schritt.
-              </Text>
+            {stueckelungKonten.length > 0 && (
+              <Alert color="orange">
+                Dies ist eine{' '}
+                <Anchor
+                  component={Link}
+                  // Umbuchung with both accounts carries accounts, text and date; Frei stays plain.
+                  to={
+                    umbuchungUebernehmen
+                      ? umbuchenPfad({ von, nach, text: text.trim(), datum })
+                      : umbuchenPfad()
+                  }
+                  onClick={() => {
+                    // Nothing else typed (no amount): everything is carried, so do not warn.
+                    if (umbuchungUebernehmen && betrag === null) gebuchtRef.current = true;
+                  }}
+                >
+                  Bargeld-Umbuchung
+                </Anchor>
+                : Konten mit Stückelung buchst du dort mit Münzen und Scheinen.
+              </Alert>
             )}
             <Group align="center" gap="md">
               <Button type="button" onClick={pruefenOeffnen} disabled={!buchbar}>
                 Prüfen und buchen
               </Button>
+              <InfoHinweis feld="Prüfen und buchen" text={HILFE.buchen.warnungen} />
               {buchbar ? (
                 <Text size="sm" c="dimmed">
                   Tastenkürzel: Strg+Enter
@@ -334,7 +358,10 @@ export function FinanzenBuchenPage() {
           datum={datum}
           text={text.trim()}
           zeilen={uebersicht}
-          warnungen={warnungen(kopf, stand, heuteBerlin())}
+          warnungen={[
+            ...warnungen(kopf, stand, heuteBerlin()),
+            ...saldoWarnungen(zeilenFuer(stand), konten.data ?? []),
+          ]}
           laeuft={buchen.isPending}
           fehler={
             buchen.isError ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.') : null
