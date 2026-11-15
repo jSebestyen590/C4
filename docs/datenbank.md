@@ -119,6 +119,11 @@ Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
   dasselbe geändert. Bitte versuch es noch einmal.“ und bei einer Unique- oder Fremdschlüssel-Verletzung
   (`23505`, `23503`) mit 409 „Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und
   versuch es noch einmal.“ Beides wird weiterhin geloggt. Alles andere bleibt 500.
+- **Belegen vor externen Aktionen:** Wo zwei parallele Läufe nur lesen und dann extern handeln (Mail abrufen, Token
+  erneuern), reicht der Retry nicht. Der Lauf belegt vorab eine gemeinsame Zeile mit einem einzelnen bedingten
+  `UPDATE`/Upsert (z. B. Lease `mail_abruf.laeuft_bis`: `WHERE laeuft_bis IS NULL OR laeuft_bis < jetzt`); 0 Zeilen oder `40001`
+  heißt „läuft schon“ und der Lauf wird übersprungen. Die Sperre wird im `finally` freigegeben und läuft sonst von selbst ab.
+  Innerhalb einer Lambda-Instanz genügt ein geteiltes Promise (OneDrive `erneuern`).
 - **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
   S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
   davor oder danach.

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm';
+import { istKonflikt } from './db/wiederholung';
 import type {
   PrivatpartyEingabeDaten,
   PrivatpartyPersonEingabe,
@@ -133,6 +134,13 @@ export interface PrivatpartysStore {
 
   abrufStand(): Promise<AbrufStand>;
   abrufStandSetzen(stand: Partial<AbrufStand>): Promise<void>;
+  /**
+   * Claims the run (lease until `bis`) with a single conditional write, also on the very first run
+   * when the row does not exist yet. False when another run holds an unexpired lease.
+   */
+  abrufBelegen(jetzt: Date, bis: Date): Promise<boolean>;
+  /** Releases the lease. */
+  abrufFreigeben(): Promise<void>;
 }
 
 const JSON_LISTE = (wert: string | null): string[] => {
@@ -531,6 +539,27 @@ export function createPrivatpartysStore(db: Db): PrivatpartysStore {
         .insert(mailAbruf)
         .values({ id: STAND_ID, ...werte })
         .onConflictDoUpdate({ target: mailAbruf.id, set: werte });
+    },
+    async abrufBelegen(jetzt, bis) {
+      // 40001 means another run claimed the row at the same moment: treat it as "already running".
+      try {
+        const rows = await db
+          .insert(mailAbruf)
+          .values({ id: STAND_ID, laeuftBis: bis })
+          .onConflictDoUpdate({
+            target: mailAbruf.id,
+            set: { laeuftBis: bis },
+            setWhere: or(isNull(mailAbruf.laeuftBis), lt(mailAbruf.laeuftBis, jetzt)),
+          })
+          .returning({ id: mailAbruf.id });
+        return rows.length > 0;
+      } catch (err) {
+        if (istKonflikt(err)) return false;
+        throw err;
+      }
+    },
+    async abrufFreigeben() {
+      await db.update(mailAbruf).set({ laeuftBis: null }).where(eq(mailAbruf.id, STAND_ID));
     },
   };
 }

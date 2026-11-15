@@ -1209,6 +1209,8 @@ export const mailAbruf = pgTable('mail_abruf', {
   letzteUid: bigint('letzte_uid', { mode: 'number' }).notNull().default(0),
   letzterAbruf: timestamp('letzter_abruf', { withTimezone: true }),
   fehler: text('fehler'),
+  // Lease of a running mail job (see privatpartyMail.ts); null when none runs.
+  laeuftBis: timestamp('laeuft_bis', { withTimezone: true }),
 });
 
 // ----- Finanzen (see docs/finanzen.md): append-only journal with a hash chain. Money is whole

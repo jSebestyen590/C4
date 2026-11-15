@@ -121,6 +121,11 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Abschnitte „Invarianten“ und „Dateien“ auf den Feature-Seiten; FIFO-Entnahme, Todo-Erinnerung, Trichter-Grenzen, sichtbare
   Profilfelder und die Reichweite der Umfrage-Anonymität dokumentiert; tote Dateiverweise und Migrationsnummern korrigiert.
 
+**Gleichzeitige Zugriffe (Issue 36)**
+
+- Party-Mail: Lease `mail_abruf.laeuft_bis` verhindert, dass Cron und „Jetzt abrufen“ gleichzeitig laufen.
+- OneDrive: `erneuern` teilt eine laufende Token-Erneuerung (Single-Flight) innerhalb einer Lambda-Instanz.
+
 **Entschieden (kein Handlungsbedarf)**
 
 - Adresse, Telefon, E-Mail und Geburtsdatum bleiben für alle mit `mitglieder:lesen` sichtbar (siehe `members.md`).
@@ -197,8 +202,6 @@ Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegensta
 | `inventurAbschliessen` (`waren.ts`)                     | Korrekturen doppelt gebucht (unsicher)                                                     |
 | Protokoll abschließen, „Ausführen“ (`app.ts`)           | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
 | Umfrage bearbeiten während einer Stimmabgabe (`app.ts`) | Stimme behält eine entfernte Option (unsicher)                                             |
-| Party-Mail: Cron und „Jetzt abrufen“ gleichzeitig       | Fehler im Abrufstatus; leere Anfrage wird inzwischen weggeräumt                            |
-| OneDrive `erneuern` ohne Sperre, 6 parallele Worker     | Refresh-Token-Rotation kann einen Aufruf scheitern lassen (unsicher)                       |
 | `gegenstaende.anzahl` (`bewegungBuchen`)                | handgeführter Zähler ohne Abgleich gegen die Bewegungen                                    |
 
 ### 2. Infrastruktur und Deploy
