@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ausleihFehler,
   ausleiheTage,
@@ -7373,7 +7373,39 @@ describe('protokolle', () => {
       ];
       return doc;
     };
-    return { ...t, events, antworten, anlegen, holen, mitEvent };
+    // Saving and changing the status need the edit lock: unless a test sends its own `X-Tab-Id`,
+    // the request runs with a lock taken (and released) for the same caller around it.
+    const basis = t.app;
+    const sperreAnfrage = async (
+      url: string,
+      methode: string,
+      kopf: HeadersInit | undefined,
+    ): Promise<void> => {
+      await basis.request(`${url}/sperre`, {
+        method: methode,
+        headers: { ...(kopf as Record<string, string>), 'x-tab-id': 'auto-tab' },
+      });
+    };
+    const app = Object.assign(Object.create(basis) as typeof basis, {
+      request: async (input: string | Request | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : '';
+        const treffer = /^(\/api\/protokolle\/[^/]+)(\/status)?$/.exec(url);
+        const headers = init?.headers as Record<string, string> | undefined;
+        if (!treffer || init?.method !== 'PUT' || headers?.['x-tab-id']) {
+          return basis.request(input, init);
+        }
+        await sperreAnfrage(treffer[1]!, 'POST', headers);
+        try {
+          return await basis.request(input, {
+            ...init,
+            headers: { ...headers, 'x-tab-id': 'auto-tab' },
+          });
+        } finally {
+          await sperreAnfrage(treffer[1]!, 'DELETE', headers);
+        }
+      },
+    });
+    return { ...t, app, events, antworten, anlegen, holen, mitEvent };
   }
 
   it('lets everybody read but only writers change protocols', async () => {
@@ -7401,6 +7433,167 @@ describe('protokolle', () => {
     // A Posten with the right is enough.
     expect((await t.anlegen('vorstand-token', { eventId: 's2' })).status).toBe(201);
     expect(t.protokollListe.size).toBe(2);
+  });
+
+  describe('Bearbeitungssperre', () => {
+    const tab = (token: string, methode: string, tabId: string, body?: unknown) => {
+      const o = json(token, methode, body);
+      return { ...o, headers: { ...o.headers, 'x-tab-id': tabId } };
+    };
+    const url = (id: string, pfad = '') => `/api/protokolle/${id}${pfad}`;
+    const nehmen = (
+      t: Awaited<ReturnType<typeof setup>>,
+      id: string,
+      token: string,
+      tabId: string,
+    ) => t.app.request(url(id, '/sperre'), tab(token, 'POST', tabId));
+    const gesperrt = async (res: Response) => {
+      expect(res.status).toBe(409);
+      return (await res.json()) as {
+        error: string;
+        sperre: { von: { username: string | null; status: string } | null; eigene: boolean };
+      };
+    };
+    afterEach(() => vi.useRealTimers());
+
+    async function mitEntwurf() {
+      const t = await setup();
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1' })).json()).id as string;
+      return { t, id, dto: await t.holen(id) };
+    }
+
+    it('lets one tab take and extend the lock; a second tab of the same person is locked out', async () => {
+      const { t, id } = await mitEntwurf();
+      expect((await nehmen(t, id, 'admin-token', 'tab-1')).status).toBe(200);
+      expect((await nehmen(t, id, 'admin-token', 'tab-1')).status).toBe(200);
+      const body = await gesperrt(await nehmen(t, id, 'admin-token', 'tab-2'));
+      expect(body.error).toBe('Das Protokoll wird gerade von jemand anderem bearbeitet.');
+      expect(body.sperre.eigene).toBe(true);
+      expect(body.sperre.von?.username).toBe('user-a');
+    });
+
+    it('locks out other people, admins included, who see who edits', async () => {
+      const { t, id } = await mitEntwurf();
+      expect((await nehmen(t, id, 'vorstand-token', 'tab-v')).status).toBe(200);
+      const body = await gesperrt(await nehmen(t, id, 'admin-token', 'tab-a'));
+      expect(body.sperre.eigene).toBe(false);
+      expect(body.sperre.von?.username).toBeTruthy();
+      expect(body.sperre.von?.status).toBeTruthy();
+    });
+
+    it('needs the writing right and a tab id', async () => {
+      const { t, id } = await mitEntwurf();
+      expect((await nehmen(t, id, 'reader-token', 'tab-1')).status).toBe(403);
+      expect((await t.app.request(url(id, '/sperre'), json('admin-token', 'POST'))).status).toBe(
+        400,
+      );
+      expect((await nehmen(t, 'gibtsnicht', 'admin-token', 'tab-1')).status).toBe(404);
+    });
+
+    it('expires two minutes after the last heartbeat', async () => {
+      const { t, id } = await mitEntwurf();
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-01T10:00:00Z'));
+      await nehmen(t, id, 'vorstand-token', 'tab-v');
+      vi.setSystemTime(new Date('2026-11-01T10:01:30Z'));
+      await nehmen(t, id, 'vorstand-token', 'tab-v');
+      vi.setSystemTime(new Date('2026-11-01T10:03:00Z'));
+      await gesperrt(await nehmen(t, id, 'admin-token', 'tab-a'));
+      vi.setSystemTime(new Date('2026-11-01T10:03:31Z'));
+      expect((await nehmen(t, id, 'admin-token', 'tab-a')).status).toBe(200);
+    });
+
+    it('releases only for the holding tab', async () => {
+      const { t, id } = await mitEntwurf();
+      await nehmen(t, id, 'admin-token', 'tab-1');
+      await t.app.request(url(id, '/sperre'), tab('admin-token', 'DELETE', 'tab-2'));
+      await gesperrt(await nehmen(t, id, 'admin-token', 'tab-2'));
+      await t.app.request(url(id, '/sperre'), tab('vorstand-token', 'DELETE', 'tab-1'));
+      await gesperrt(await nehmen(t, id, 'vorstand-token', 'tab-1'));
+      expect(
+        (await t.app.request(url(id, '/sperre'), tab('admin-token', 'DELETE', 'tab-1'))).status,
+      ).toBe(200);
+      expect((await nehmen(t, id, 'vorstand-token', 'tab-v')).status).toBe(200);
+    });
+
+    it('rejects saving and closing without the lock', async () => {
+      const { t, id, dto } = await mitEntwurf();
+      const speichern = (token: string, tabId: string, version = dto.version) =>
+        t.app.request(
+          url(id),
+          tab(token, 'PUT', tabId, { inhalt: dto.inhalt, kopf: dto.kopf, version }),
+        );
+      const schliessen = (token: string, tabId: string) =>
+        t.app.request(url(id, '/status'), tab(token, 'PUT', tabId, { status: 'abgeschlossen' }));
+      // Nobody holds it: nobody may save.
+      const frei = await gesperrt(await speichern('admin-token', 'tab-1'));
+      expect(frei.sperre).toEqual({ von: null, eigene: false });
+      await gesperrt(await schliessen('admin-token', 'tab-1'));
+      await nehmen(t, id, 'admin-token', 'tab-1');
+      // Another tab, another person: locked out.
+      expect((await gesperrt(await speichern('admin-token', 'tab-2'))).sperre.eigene).toBe(true);
+      expect((await gesperrt(await speichern('vorstand-token', 'tab-1'))).sperre.eigene).toBe(
+        false,
+      );
+      await gesperrt(await schliessen('admin-token', 'tab-2'));
+      expect(t.protokollListe.get(id)?.version).toBe(dto.version);
+      // The holder may.
+      expect((await speichern('admin-token', 'tab-1')).status).toBe(200);
+      expect((await schliessen('admin-token', 'tab-1')).status).toBe(200);
+      expect(t.protokollListe.get(id)?.status).toBe('abgeschlossen');
+    });
+
+    it('refuses deleting a draft while another tab holds the lock', async () => {
+      const { t, id } = await mitEntwurf();
+      const loeschen = (token: string, tabId: string) =>
+        t.app.request(url(id), tab(token, 'DELETE', tabId));
+      await nehmen(t, id, 'vorstand-token', 'tab-v');
+      const body = await gesperrt(await loeschen('admin-token', 'tab-a'));
+      expect(body.sperre.eigene).toBe(false);
+      expect(t.protokollListe.has(id)).toBe(true);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(Date.now() + 3 * 60_000);
+      expect((await loeschen('admin-token', 'tab-a')).status).toBe(200);
+      expect(t.protokollListe.has(id)).toBe(false);
+    });
+
+    it('lets the holding tab delete its draft', async () => {
+      const { t, id } = await mitEntwurf();
+      await nehmen(t, id, 'admin-token', 'tab-1');
+      await gesperrt(await t.app.request(url(id), tab('admin-token', 'DELETE', 'tab-2')));
+      expect((await t.app.request(url(id), tab('admin-token', 'DELETE', 'tab-1'))).status).toBe(
+        200,
+      );
+    });
+
+    it('does not lock closed protocols and clears the lock on closing', async () => {
+      const { t, id, dto } = await mitEntwurf();
+      await nehmen(t, id, 'admin-token', 'tab-1');
+      expect(
+        (
+          await t.app.request(
+            url(id, '/status'),
+            tab('admin-token', 'PUT', 'tab-1', { status: 'abgeschlossen' }),
+          )
+        ).status,
+      ).toBe(200);
+      expect(t.protokollListe.get(id)?.sperreBis).toBeNull();
+      const res = await nehmen(t, id, 'admin-token', 'tab-1');
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toBe(
+        'Das Protokoll ist abgeschlossen.',
+      );
+      // Reopening needs no lock (there is none to hold).
+      expect(
+        (
+          await t.app.request(
+            url(id, '/status'),
+            tab('admin-token', 'PUT', 'tab-9', { status: 'entwurf' }),
+          )
+        ).status,
+      ).toBe(200);
+      expect(dto.status).toBe('entwurf');
+    });
   });
 
   it('creates a protocol only for a Sitzung and only once', async () => {

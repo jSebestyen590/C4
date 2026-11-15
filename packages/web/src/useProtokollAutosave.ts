@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProtokollDokument, ProtokollKopf, ProtokollMitgliedDto } from '@c4/shared';
-import { useProtokollSpeichern } from './protokollDaten';
+import { useProtokollSpeichern, type SperreBelegt } from './protokollDaten';
 
 export const AUTOSAVE_VERZOEGERUNG_MS = 2000;
 /** Waits before the automatic retries after a failed save; after the last one it stops until the next edit. */
@@ -15,12 +15,14 @@ export type SpeicherZustand =
   /** Save failed; `erneut` tells whether an automatic retry is still scheduled. */
   | { art: 'fehler'; erneut: boolean }
   /** Somebody else saved a newer version; saving is stopped until the page reloads. */
-  | { art: 'konflikt'; geaendertVon: ProtokollMitgliedDto | null };
+  | { art: 'konflikt'; geaendertVon: ProtokollMitgliedDto | null }
+  /** The edit lock is gone (somebody else holds it); saving is stopped, the page shows the read-only view. */
+  | ({ art: 'gesperrt' } & SperreBelegt);
 
 /**
  * Debounced autosave of a protocol. Saves never overlap: every save is chained after the previous one and
  * always sends the latest content. The version returned by a save is used for the next one. After a
- * conflict nothing is sent anymore (the page offers "Neu laden", which remounts everything). After a failed
+ * conflict (or a lost edit lock) nothing is sent anymore (the page offers "Neu laden", which remounts everything). After a failed
  * save it retries automatically (2 s, 5 s, 10 s); after the last retry it waits for the next edit.
  */
 export function useProtokollAutosave({
@@ -62,6 +64,11 @@ export function useProtokollAutosave({
         kopf: s.kopf,
         version: s.version,
       });
+      if (r.art === 'gesperrt') {
+        s.konflikt = true;
+        setZustand({ art: 'gesperrt', von: r.von, eigene: r.eigene });
+        return;
+      }
       if (r.art === 'konflikt') {
         s.konflikt = true;
         setZustand({ art: 'konflikt', geaendertVon: r.geaendertVon });

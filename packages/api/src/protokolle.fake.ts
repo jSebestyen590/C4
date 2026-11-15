@@ -2,6 +2,7 @@ import {
   ProtokollAbgeschlossen,
   ProtokollExistiert,
   ProtokollVeraltet,
+  sperreGehoert,
   type ProtokollDaten,
   type ProtokollKurz,
   type ProtokollStore,
@@ -17,6 +18,9 @@ export function createFakeProtokolleStore() {
         const kurz: Partial<ProtokollDaten> = { ...p };
         delete kurz.inhalt;
         delete kurz.kopf;
+        delete kurz.sperreSub;
+        delete kurz.sperreTab;
+        delete kurz.sperreBis;
         return kurz as ProtokollKurz;
       });
     },
@@ -44,6 +48,9 @@ export function createFakeProtokolleStore() {
         erstelltAm: jetzt,
         geaendertVon: von,
         geaendertAm: jetzt,
+        sperreSub: null,
+        sperreTab: null,
+        sperreBis: null,
       });
       return id;
     },
@@ -68,6 +75,9 @@ export function createFakeProtokolleStore() {
       Object.assign(p, {
         status,
         kopf,
+        sperreSub: null,
+        sperreTab: null,
+        sperreBis: null,
         ...(inhalt === undefined ? {} : { inhalt }),
         version: p.version + 1,
         geaendertVon: von,
@@ -87,6 +97,22 @@ export function createFakeProtokolleStore() {
         geaendertAm: new Date(),
       });
       return { version: p.version, geaendertAm: p.geaendertAm };
+    },
+    async sperreNehmen(id, sub, tab, jetzt, bis) {
+      const p = liste.get(id);
+      if (!p) return undefined;
+      if (p.status === 'abgeschlossen') throw new ProtokollAbgeschlossen();
+      if (p.sperreBis === null || !(p.sperreBis > jetzt) || sperreGehoert(p, sub, tab, jetzt)) {
+        Object.assign(p, { sperreSub: sub, sperreTab: tab, sperreBis: bis });
+        return { erhalten: true, sub, tab, bis };
+      }
+      return { erhalten: false, sub: p.sperreSub, tab: p.sperreTab, bis: p.sperreBis };
+    },
+    async sperreLoesen(id, sub, tab) {
+      const p = liste.get(id);
+      if (p?.sperreSub === sub && p.sperreTab === tab) {
+        Object.assign(p, { sperreSub: null, sperreTab: null, sperreBis: null });
+      }
     },
     async loeschen(id) {
       const p = liste.get(id);

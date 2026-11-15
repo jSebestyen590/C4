@@ -46,6 +46,7 @@ import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { KonfliktHinweis } from '../protokoll/KonfliktHinweis';
+import { SperreFreiHinweis, SperreHinweis } from '../protokoll/SperreHinweis';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokollBilder } from '../protokoll/bilderDaten';
 import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
@@ -58,6 +59,7 @@ import {
 } from '../protokollDaten';
 import { PROTOKOLL_DRUCK_CSS, ProtokollKopf } from '../ProtokollKopf';
 import { useProtokollAutosave, type SpeicherZustand } from '../useProtokollAutosave';
+import { useProtokollSperre, type SperreZustand } from '../useProtokollSperre';
 import { ApiFehler, fehlerAnzeigen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -162,7 +164,17 @@ function AbschliessenAktionen({
 function ProtokollAnsicht({
   dto,
   neuLaden,
-}: Readonly<{ dto: ProtokollDto; neuLaden: () => Promise<unknown> }>) {
+  sperre,
+  sperreVerloren,
+  freiHinweisSchliessen,
+}: Readonly<{
+  dto: ProtokollDto;
+  neuLaden: () => Promise<unknown>;
+  /** The edit lock of this tab (writers of a draft only). */
+  sperre: SperreZustand;
+  sperreVerloren: ReturnType<typeof useProtokollSperre>['verloren'];
+  freiHinweisSchliessen: () => void;
+}>) {
   const { can } = useAuth();
   const eigeneSub = useEigeneSub();
   const mitgliederListe = useMitgliederListe().data;
@@ -174,7 +186,10 @@ function ProtokollAnsicht({
   const navigate = useNavigate();
   const darfSchreiben = can('protokolle:schreiben');
   const entwurf = dto.status === 'entwurf';
-  const editierbar = darfSchreiben && entwurf;
+  // Writers edit a draft only while this tab holds the edit lock; without it they see the document.
+  const editierbar = darfSchreiben && entwurf && sperre.art === 'eigen';
+  const sperrePrueft =
+    darfSchreiben && entwurf && (sperre.art === 'pruefe' || sperre.art === 'inaktiv');
 
   const bilder = useProtokollBilder(dto.id, dto.bilder);
   const [kopf, setKopf] = useState<KopfDaten>(dto.kopf);
@@ -326,6 +341,12 @@ function ProtokollAnsicht({
 
   const konflikt = zustand.art === 'konflikt';
 
+  // A save was refused because the lock is gone: show the read-only view and check for the lock again.
+  const gesperrtVon = zustand.art === 'gesperrt' ? zustand : null;
+  useEffect(() => {
+    if (gesperrtVon) sperreVerloren(gesperrtVon.von, gesperrtVon.eigene);
+  }, [gesperrtVon, sperreVerloren]);
+
   return (
     <Stack>
       <style>{PROTOKOLL_DRUCK_CSS}</style>
@@ -353,7 +374,11 @@ function ProtokollAnsicht({
       {darfSchreiben && (
         <Group gap="xs" data-druck="aus">
           {entwurf ? (
-            <Button leftSection={<IconLock size={18} />} onClick={abschliessenOeffnen}>
+            <Button
+              leftSection={<IconLock size={18} />}
+              disabled={!editierbar}
+              onClick={abschliessenOeffnen}
+            >
               Abschließen
             </Button>
           ) : (
@@ -397,6 +422,12 @@ function ProtokollAnsicht({
         </Group>
       )}
 
+      {darfSchreiben && sperre.art === 'gesperrt' && (
+        <SperreHinweis von={sperre.von} eigene={sperre.eigene} />
+      )}
+      {darfSchreiben && sperre.art === 'eigen' && sperre.frei && (
+        <SperreFreiHinweis onSchliessen={freiHinweisSchliessen} />
+      )}
       {zustand.art === 'konflikt' && (
         <KonfliktHinweis
           von={zustand.geaendertVon}
@@ -471,7 +502,8 @@ function ProtokollAnsicht({
           onAusfuehren={(aktionId) => void aktionenStarten(aktionId)}
         />
       )}
-      {dokumentSichtbar && (
+      {sperrePrueft && <Loader m="md" aria-label="Bearbeitung wird vorbereitet" />}
+      {dokumentSichtbar && !sperrePrueft && (
         <ProtokollDokumentAnsicht
           eingabe={{
             inhalt,
@@ -558,6 +590,14 @@ function ProtokollAnsicht({
 export function ProtokollPage() {
   const { id } = useParams();
   const q = useProtokoll(id);
+  const { can } = useAuth();
+  const refetch = q.refetch;
+  // The edit lock lives here (not in the remounted view): it survives reloading the latest version.
+  const sperre = useProtokollSperre({
+    id: id ?? '',
+    aktiv: !!id && can('protokolle:schreiben') && q.data?.status === 'entwurf',
+    beiFrei: refetch,
+  });
   return (
     <>
       {q.isPending && <Loader m="md" aria-label="Protokoll wird geladen" />}
@@ -568,7 +608,14 @@ export function ProtokollPage() {
         </Stack>
       )}
       {q.data && (
-        <ProtokollAnsicht key={q.dataUpdatedAt} dto={q.data} neuLaden={() => q.refetch()} />
+        <ProtokollAnsicht
+          key={q.dataUpdatedAt}
+          dto={q.data}
+          neuLaden={() => q.refetch()}
+          sperre={sperre.zustand}
+          sperreVerloren={sperre.verloren}
+          freiHinweisSchliessen={sperre.hinweisSchliessen}
+        />
       )}
     </>
   );

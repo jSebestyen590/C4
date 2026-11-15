@@ -309,6 +309,8 @@ import {
   ProtokollAbgeschlossen,
   ProtokollExistiert,
   ProtokollVeraltet,
+  PROTOKOLL_SPERRE_MS,
+  sperreGehoert,
   type ProtokollDaten,
   type ProtokollStore,
 } from './protokolle';
@@ -1468,6 +1470,39 @@ export function createApp(deps: AppDeps) {
       });
     }
     throw err;
+  };
+
+  /** 409 for a draft that somebody else edits (or whose lock the caller does not hold), see docs/protokolle.md. */
+  const protokollGesperrt = async (
+    c: Context,
+    halter: { sub: string | null },
+  ): Promise<Response> => {
+    const von =
+      halter.sub === null
+        ? undefined
+        : (await protokollMitglieder()).find((m) => m.sub === halter.sub);
+    return c.json(
+      {
+        error: 'Das Protokoll wird gerade von jemand anderem bearbeitet.',
+        sperre: {
+          von: von ? mitgliedDto(von) : null,
+          eigene: halter.sub !== null && halter.sub === c.get('user').sub,
+        },
+      },
+      409,
+    );
+  };
+
+  /** The tab id the editing page sends (header `X-Tab-Id`). */
+  const protokollTab = (c: Context): string => c.req.header('x-tab-id') ?? '';
+
+  /** A 409 response unless the caller holds the edit lock of this draft; closed protocols are not locked. */
+  const protokollOhneSperre = async (c: Context, p: ProtokollDaten): Promise<Response | null> => {
+    if (p.status !== 'entwurf') return null;
+    const sub = c.get('user').sub;
+    if (sperreGehoert(p, sub, protokollTab(c), new Date())) return null;
+    const aktiv = p.sperreBis !== null && p.sperreBis.getTime() > Date.now();
+    return protokollGesperrt(c, { sub: aktiv ? p.sperreSub : null });
   };
 
   // ----- Protokolle: Aktionen beim Abschließen (see docs/protokolle.md)
@@ -3225,6 +3260,34 @@ export function createApp(deps: AppDeps) {
         );
         return c.json(await alsProtokollDto(p));
       })
+      // Takes or extends the edit lock of a draft for the tab in `X-Tab-Id` (heartbeat every 30 s).
+      .post('/protokolle/:id/sperre', auth, protokolleSchreiben, async (c) => {
+        const tab = protokollTab(c);
+        if (!tab || tab.length > 100)
+          throw new HTTPException(400, { message: 'Die Tab-Kennung fehlt.' });
+        const jetzt = new Date();
+        try {
+          const ergebnis = gefunden(
+            await deps.protokolle.sperreNehmen(
+              c.req.param('id'),
+              c.get('user').sub,
+              tab,
+              jetzt,
+              new Date(jetzt.getTime() + PROTOKOLL_SPERRE_MS),
+            ),
+            'Protokoll nicht gefunden',
+          );
+          if (!ergebnis.erhalten) return protokollGesperrt(c, ergebnis);
+          return c.json({ bis: ergebnis.bis!.toISOString() });
+        } catch (err) {
+          return protokollKonflikt(err, c);
+        }
+      })
+      // Releases the lock; only the tab that holds it can.
+      .delete('/protokolle/:id/sperre', auth, protokolleSchreiben, async (c) => {
+        await deps.protokolle.sperreLoesen(c.req.param('id'), c.get('user').sub, protokollTab(c));
+        return c.json({ ok: true });
+      })
       .put(
         '/protokolle/:id',
         auth,
@@ -3236,6 +3299,8 @@ export function createApp(deps: AppDeps) {
             await deps.protokolle.holen(c.req.param('id')),
             'Protokoll nicht gefunden',
           );
+          const ohneSperre = await protokollOhneSperre(c, gespeichert);
+          if (ohneSperre) return ohneSperre;
           // Images must belong to this protocol (the shared check only knows their shape).
           const fremd = protokollBildSchluessel(inhalt).some(
             (k) => !k.startsWith(protokollBildPrefix(gespeichert.id)),
@@ -3292,6 +3357,9 @@ export function createApp(deps: AppDeps) {
           });
           if (p.status === status)
             return c.json(antwort({ version: p.version, geaendertAm: p.geaendertAm }));
+          // Closing a draft needs the edit lock; reopening a closed protocol has none to hold.
+          const ohneSperre = await protokollOhneSperre(c, p);
+          if (ohneSperre) return ohneSperre;
           const kopf = protokollKopfLesen(p.kopf);
           if (status === 'entwurf') {
             try {
@@ -3521,6 +3589,14 @@ export function createApp(deps: AppDeps) {
         },
       )
       .delete('/protokolle/:id', auth, protokolleSchreiben, async (c) => {
+        // A draft somebody else edits right now cannot be deleted.
+        const vorhanden = await deps.protokolle.holen(c.req.param('id'));
+        const ohneSperre = vorhanden && (await protokollOhneSperre(c, vorhanden));
+        if (ohneSperre) {
+          const aktiv = vorhanden.sperreBis !== null && vorhanden.sperreBis.getTime() > Date.now();
+          // A free or expired lock allows deleting; only a valid lock of another tab refuses.
+          if (aktiv) return ohneSperre;
+        }
         try {
           gefunden(await deps.protokolle.loeschen(c.req.param('id')), 'Protokoll nicht gefunden');
         } catch (err) {
