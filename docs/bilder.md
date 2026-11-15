@@ -83,8 +83,11 @@ jede Daten gibt es den Ladekreis. Nach „Ordner anlegen“ werden beide Abfrage
 ## Verbindung zu OneDrive
 
 Microsoft Graph mit delegiertem Zugriff: Ein privates Microsoft-Konto erlaubt keine App-Anmeldung ohne Person, deshalb hält
-die API einen Refresh-Token. Tabelle `onedrive_verbindung` (eine Zeile, wie `push_schluessel`; kein Secret in Terraform):
-Client-ID, Client-Secret, Basisordner, Tokens, Konto, verbunden von/am, Fehler. Secret und Tokens verlassen die API nie.
+die API einen Refresh-Token. Tabelle `onedrive_verbindung` (eine Zeile): Client-ID, Basisordner, Konto, verbunden von/am,
+Fehler. **Client-Secret, Refresh-Token, Access-Token und dessen Ablauf liegen im Secrets-Manager-Secret `c4-<env>-onedrive`**
+(JSON; Terraform legt es nur leer an, die API schreibt es; Lesen mit 30 s Cache, vor dem Erneuern des Refresh-Tokens immer
+frisch gelesen, weil eine andere Lambda-Instanz ihn schon rotiert haben kann). Die gleichnamigen DB-Spalten sind veraltet und
+leer (Migration 0167). Secret und Tokens verlassen die API nie. Lokal ohne `ONEDRIVE_SECRET_ARN` liegen sie nur im Speicher.
 
 - Der Access-Token wird kurz vor Ablauf erneuert; der neue Refresh-Token ersetzt immer den alten. Die Job-Aufgabe
   `onedrive.token` (Push-Job, alle 5 Minuten) erneuert höchstens einmal am Tag, damit er nicht durch Inaktivität verfällt.

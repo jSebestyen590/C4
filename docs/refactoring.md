@@ -217,8 +217,9 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 - **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
-- **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
-  Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk (bleibt bewusst so).
+- **Geheimnisse (erledigt im Code, wartet auf Owner-Apply von `infra/bootstrap`):** OneDrive-Secret/-Tokens und VAPID-Schlüssel
+  liegen in Secrets Manager (`docs/datenbank.md`, „Geheimnisse“); die Deploy-Rolle hat statt `secretsmanager:*` eine explizite
+  Aktionsliste auf `c4-<env>-*`. Bewusst offen: OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
 - **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll (bleibt bewusst so).

@@ -24,6 +24,7 @@ import {
 import { registriereKalenderAufgaben } from './kalenderBenachrichtigungen';
 import { registriereGeburtstagAufgaben } from './geburtstagBenachrichtigungen';
 import { registriereKalenderSerien } from './kalenderSerien';
+import { createSecretStore } from './secrets';
 import { createPartyMail } from './partymail';
 import { mailJob as mailJobAusfuehren } from './privatpartyMail';
 import { createPrivatpartysStore } from './privatpartys';
@@ -48,7 +49,14 @@ export function createProduction() {
   const pool = createPool(config);
   const db = createDb(pool);
   const kalender = createKalenderStore(db);
-  const pushStore = createBenachrichtigungenStore(db);
+  const secrets = createSecretStore({
+    region: config.region,
+    arns: {
+      ...(config.onedriveSecretArn && { onedrive: config.onedriveSecretArn }),
+      ...(config.vapidSecretArn && { vapid: config.vapidSecretArn }),
+    },
+  });
+  const pushStore = createBenachrichtigungenStore(db, secrets);
   const benachrichtigungen = createBenachrichtigungen({
     store: pushStore,
     // VAPID subject: the app's address (a mailto: or https: URL is required by the push services).
@@ -76,7 +84,7 @@ export function createProduction() {
   registriereUmfrageAufgaben(benachrichtigungen, umfragen, (jetzt) =>
     ladeKontext({ mitglieder, userAdmin, posten }, jetzt),
   );
-  const onedrive = createOneDrive({ store: createOneDriveStore(db) });
+  const onedrive = createOneDrive({ store: createOneDriveStore(db, secrets) });
   const freigaben = createFreigabenStore(db);
   const ordnerCache = createOrdnerCacheStore(db);
   registriereOneDriveAufgaben(benachrichtigungen, onedrive, { onedrive, ordnerCache, freigaben });

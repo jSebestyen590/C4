@@ -15,12 +15,12 @@ import {
   type PushNachricht,
 } from '@c4/shared';
 import type { Db } from './db/client';
+import type { SecretStore } from './secrets';
 import {
   benachrichtigungEinstellungen,
   benachrichtigungVerlauf,
   mitglieder,
   pushAbos,
-  pushSchluessel,
   pushVersand,
 } from './db/schema';
 
@@ -444,33 +444,37 @@ export function createBenachrichtigungen(deps: {
 // Drizzle store
 // ---------------------------------------------------------------------------------------------
 
-const VAPID_ID = 'vapid';
 /** Rows per statement for history writes (Aurora DSQL limits rows per transaction). */
 const VERLAUF_STAPEL = 500;
 
-export function createBenachrichtigungenStore(db: Db): BenachrichtigungenStore {
-  let vapidCache: Vapid | undefined;
+/** The VAPID pair lives in the Secrets Manager secret `c4-<env>-vapid`; empty until first use. */
+export function createVapidLeser(
+  secrets: SecretStore,
+  erzeugen: () => Vapid = () => webpush.generateVAPIDKeys(),
+): () => Promise<Vapid> {
+  let cache: Vapid | undefined;
+  const gueltig = (v: Vapid | null): v is Vapid => !!v?.publicKey && !!v.privateKey;
+  return async () => {
+    if (cache) return cache;
+    let vapid = await secrets.get<Vapid>('vapid');
+    if (!gueltig(vapid)) {
+      await secrets.put('vapid', erzeugen());
+      // Re-read so concurrent cold starts agree on what is stored (the last write wins).
+      vapid = await secrets.get<Vapid>('vapid', true);
+    }
+    if (!gueltig(vapid)) throw new Error('VAPID keys could not be stored');
+    cache = { publicKey: vapid.publicKey, privateKey: vapid.privateKey };
+    return cache;
+  };
+}
+
+export function createBenachrichtigungenStore(
+  db: Db,
+  secrets: SecretStore,
+): BenachrichtigungenStore {
+  const vapidLeser = createVapidLeser(secrets);
   return {
-    async vapid() {
-      if (vapidCache) return vapidCache;
-      const lesen = async () => {
-        const [row] = await db.select().from(pushSchluessel).where(eq(pushSchluessel.id, VAPID_ID));
-        return row && { publicKey: row.publicKey, privateKey: row.privateKey };
-      };
-      let vapid = await lesen();
-      if (!vapid) {
-        const neu = webpush.generateVAPIDKeys();
-        await db
-          .insert(pushSchluessel)
-          .values({ id: VAPID_ID, publicKey: neu.publicKey, privateKey: neu.privateKey })
-          .onConflictDoNothing();
-        // Re-read so concurrent cold starts agree on the winner.
-        vapid = await lesen();
-      }
-      if (!vapid) throw new Error('VAPID keys could not be stored');
-      vapidCache = vapid;
-      return vapid;
-    },
+    vapid: vapidLeser,
 
     async aboSpeichern(sub, abo) {
       const werte = { mitgliedSub: sub, p256dh: abo.keys.p256dh, auth: abo.keys.auth };
