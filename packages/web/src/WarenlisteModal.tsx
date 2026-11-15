@@ -96,9 +96,7 @@ function WarenlisteInhalt({
             <IconGripVertical size={20} />
           </div>
           <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ overflowWrap: 'anywhere' }}>
-              {ware?.name ?? id}
-            </Text>
+            <Text style={{ overflowWrap: 'anywhere' }}>{ware?.name ?? id}</Text>
             {ware?.archiviert && (
               <Badge color="gray" variant="light" w="fit-content">
                 Archiviert

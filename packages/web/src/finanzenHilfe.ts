@@ -41,10 +41,10 @@ export const HILFE = {
       'Hier kommt das Geld an: ein anderes Fach oder ein anderes Konto, z. B. Bank. Die Münzen und Scheine trägst du nur einmal ein.',
     bestand:
       'Der Bestand ergibt sich aus den Buchungen: wie viele Stück je Münze und Schein im Fach liegen. Er darf nie unter 0 fallen.',
-    wechselnRaus:
-      'Was du aus dem Fach nimmst, höchstens bis zum Bestand. Raus und Rein müssen zusammen gleich viel Geld ergeben, sonst zeigt die Seite den Unterschied.',
-    wechselnRein:
-      'Was du dafür ins Fach legst. Der Betrag im Fach bleibt gleich, nur die Stückelung ändert sich.',
+    wechselnTabelle:
+      'Abgang ist, was du aus dem Fach nimmst (höchstens bis zum Bestand), Zugang, was du dafür hineinlegst. Beides muss zusammen gleich viel Geld ergeben, sonst zeigt die Seite den Unterschied. Der Betrag im Fach bleibt gleich, nur die Stückelung ändert sich; „Bestand danach“ zeigt das Ergebnis.',
+    wechselnReihenfolge:
+      'Aus: Tab und Enter springen zeilenweise (Abgang 1 ct, Zugang 1 ct, Abgang 2 ct …). An: erst alle Abgang-Felder von 1 ct bis 100 €, dann alle Zugang-Felder. Die Wahl wird in diesem Browser gespeichert.',
     zaehlenSoll:
       'Soll ist der Bestand laut Buchungen, Ist das, was du tatsächlich gezählt hast. Die Differenz ist Ist minus Soll je Münze und Schein. Felder, die du leer lässt, zählen als 0.',
     zaehlenDifferenz:

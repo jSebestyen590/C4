@@ -218,8 +218,12 @@ Fächer, nie auf den Safe selbst (Gruppenregel).
 - **Umbuchen:** Von und Nach, wobei mindestens eine Seite ein Fach ist (die andere ein Fach oder ein
   anderes buchbares Konto, z. B. Bank). Die Stückelung wird einmal erfasst; die Fach-Seite bekommt sie
   (Von negiert), die andere Seite nur den Betrag. Von begrenzt auf den Bestand. `quelle_typ` `umbuchung`.
-- **Wechseln:** ein Fach, „Raus“ (auf den Bestand begrenzt) und „Rein“; die Summen müssen gleich sein
-  („Noch 1,00 € Unterschied“). Zwei Zeilen auf dem Fach (−Raus, +Rein), Text „Wechseln <Fach>“.
+- **Wechseln:** ein Fach und **eine Tabelle** mit den Nennwerten (1 ct bis 100 €) und den Spalten Bestand,
+  Abgang (raus, je Nennwert auf den Bestand begrenzt), Zugang (rein) und Bestand danach; die Summen müssen
+  gleich sein („Noch 1,00 € Unterschied“). Zwei Zeilen auf dem Fach (−Abgang, +Zugang), Text „Wechseln <Fach>“.
+  Ein Schalter „Felder spaltenweise durchlaufen“ legt fest, ob Tab und Enter zeilenweise (Abgang 1 ct, Zugang
+  1 ct, Abgang 2 ct …) oder spaltenweise (erst alle Abgang-, dann alle Zugang-Felder) springen; die Wahl
+  merkt sich der Browser (`localStorage`, Standard zeilenweise).
 - **Zählen:** Der gezählte Ist-Bestand eines Fachs wird gegen den Soll-Bestand gerechnet
   (`berechneZaehlung`). Eine Zählung wird **immer** als insert-only Protokoll gespeichert, auch ohne
   Differenz (Tabellen `fin_zaehlungen` und `fin_zaehlung_posten`: Soll, Ist und Differenz je Nennwert,

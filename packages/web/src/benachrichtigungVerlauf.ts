@@ -91,7 +91,8 @@ export function useGelesenMarkieren() {
     mutationFn: async (id: string) => {
       const res = await api.me.benachrichtigungen.verlauf[':id'].gelesen.$post({ param: { id } });
       // 404 = entry expired or deleted: nothing left to mark.
-      if (!res.ok && (res.status as number) !== 404) throw new Error(`Request failed (${res.status})`);
+      if (!res.ok && (res.status as number) !== 404)
+        throw new Error(`Request failed (${res.status})`);
     },
     onMutate: (id) => {
       const war = qc

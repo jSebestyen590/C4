@@ -4,6 +4,7 @@ import {
   Group,
   Loader,
   Select,
+  Switch,
   SimpleGrid,
   Stack,
   Text,
@@ -15,6 +16,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { centAnzeigen, heuteBerlin, type BuchungEingabeInput } from '@c4/shared';
 import { useApi } from '../api';
+import { useFeldReihenfolge } from '../useFeldReihenfolge';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import {
   mengenLeer,
@@ -50,6 +52,7 @@ export function FinanzenBargeldWechselnPage() {
   const [fach, setFach] = useState<string | null>(null);
   const [raus, setRaus] = useState<Mengen>({});
   const [rein, setRein] = useState<Mengen>({});
+  const [reihenfolge, setReihenfolge] = useFeldReihenfolge();
   const [versucht, setVersucht] = useState(false);
   const [pruefen, setPruefen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -156,32 +159,47 @@ export function FinanzenBargeldWechselnPage() {
                 data-nav=""
               />
             </SimpleGrid>
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
-              <Stack gap={4}>
-                <Group gap={2}>
-                  <Text fw={500}>Raus (aus dem Fach)</Text>
-                  <InfoHinweis feld="Raus" text={HILFE.bargeld.wechselnRaus} />
-                </Group>
-                <StueckelungFeld
-                  label="Herausgenommene Münzen und Scheine"
-                  value={raus}
-                  onChange={setRaus}
-                  bestand={aktuell?.bestand}
-                  begrenzen={!!aktuell}
+            <Stack gap="xs">
+              <Group gap={2}>
+                <Text fw={500} size="sm">
+                  Was wird gewechselt?
+                </Text>
+                <InfoHinweis feld="Wechseln" text={HILFE.bargeld.wechselnTabelle} />
+              </Group>
+              <Group gap={2}>
+                <Switch
+                  label="Felder spaltenweise durchlaufen"
+                  checked={reihenfolge === 'spalten'}
+                  onChange={(e) => setReihenfolge(e.currentTarget.checked ? 'spalten' : 'zeilen')}
                 />
-              </Stack>
-              <Stack gap={4}>
-                <Group gap={2}>
-                  <Text fw={500}>Rein (ins Fach)</Text>
-                  <InfoHinweis feld="Rein" text={HILFE.bargeld.wechselnRein} />
-                </Group>
-                <StueckelungFeld
-                  label="Hineingelegte Münzen und Scheine"
-                  value={rein}
-                  onChange={setRein}
+                <InfoHinweis
+                  feld="Reihenfolge der Felder"
+                  text={HILFE.bargeld.wechselnReihenfolge}
                 />
-              </Stack>
-            </SimpleGrid>
+              </Group>
+              <StueckelungFeld
+                label="Münzen und Scheine, die gewechselt werden"
+                reihenfolge={reihenfolge}
+                bestand={aktuell?.bestand}
+                spalten={[
+                  {
+                    id: 'ab',
+                    label: 'Abgang (raus)',
+                    value: raus,
+                    onChange: setRaus,
+                    richtung: 'ab',
+                    begrenzen: !!aktuell,
+                  },
+                  {
+                    id: 'zu',
+                    label: 'Zugang (rein)',
+                    value: rein,
+                    onChange: setRein,
+                    richtung: 'zu',
+                  },
+                ]}
+              />
+            </Stack>
             {hinweis && (
               <Alert color={mengenLeer(raus) && mengenLeer(rein) ? 'gray' : 'orange'} role="status">
                 {hinweis}
