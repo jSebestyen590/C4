@@ -13,9 +13,8 @@ import {
 } from '@mantine/core';
 import { IconArrowsExchange, IconCoins, IconPlus, IconReportMoney } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
-import { centAnzeigen, type BargeldFachDto } from '@c4/shared';
+import { centAnzeigen, NENNWERTE_CENT, type BargeldFachDto } from '@c4/shared';
 import { useAuth } from '../auth';
-import { NENNWERTE_ABSTEIGEND } from '../bargeldFormular';
 import { BETRAG_STIL, useBargeld } from '../finanzenDaten';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -27,7 +26,7 @@ const anzahlVon = (
 
 /** Card of one Fach for narrow screens: balance and the denominations that are in stock. */
 function FachKarte({ fach }: Readonly<{ fach: BargeldFachDto }>) {
-  const vorhanden = NENNWERTE_ABSTEIGEND.filter((n) => anzahlVon(fach, n) > 0);
+  const vorhanden = NENNWERTE_CENT.filter((n) => anzahlVon(fach, n) > 0);
   return (
     <Paper withBorder p="md">
       <Stack gap="xs">
@@ -148,7 +147,7 @@ export function FinanzenBargeldPage() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {NENNWERTE_ABSTEIGEND.map((n) => (
+                  {NENNWERTE_CENT.map((n) => (
                     <Table.Tr key={n}>
                       <Table.Td style={BETRAG_STIL}>{centAnzeigen(n)}</Table.Td>
                       {b.faecher.map((f) => {

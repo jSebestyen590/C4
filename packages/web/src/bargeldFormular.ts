@@ -15,9 +15,6 @@ import { einfacheZeile } from './buchungFormular';
 /** Typed count per denomination (`nennwertCent`); missing or null = empty field = 0. */
 export type Mengen = Record<number, number | null | undefined>;
 
-/** Denominations as shown in the forms: largest first, like when counting. */
-export const NENNWERTE_ABSTEIGEND: readonly number[] = [...NENNWERTE_CENT].reverse();
-
 export const mengeVon = (m: Mengen, nennwertCent: number): number => m[nennwertCent] ?? 0;
 
 /** Value of the typed counts in cent. */

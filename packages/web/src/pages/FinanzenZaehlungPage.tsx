@@ -1,9 +1,8 @@
 import { Alert, Anchor, Loader, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { centAnzeigen, datumAnzeigen } from '@c4/shared';
+import { centAnzeigen, datumAnzeigen, NENNWERTE_CENT } from '@c4/shared';
 import { unwrap, useApi } from '../api';
-import { NENNWERTE_ABSTEIGEND } from '../bargeldFormular';
 import { BETRAG_STIL, detailPfad, differenzText, FINANZEN_KEY } from '../finanzenDaten';
 import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
@@ -23,7 +22,7 @@ export function FinanzenZaehlungPage() {
   });
   const z = zaehlung.data;
   const posten = z
-    ? NENNWERTE_ABSTEIGEND.map((n) => z.posten.find((p) => p.nennwertCent === n)).filter(
+    ? NENNWERTE_CENT.map((n) => z.posten.find((p) => p.nennwertCent === n)).filter(
         (p) => p !== undefined,
       )
     : [];

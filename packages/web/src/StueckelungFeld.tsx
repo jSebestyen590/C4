@@ -1,19 +1,13 @@
 import { Table, Text, TextInput } from '@mantine/core';
-import { ANZAHL_MAX, centAnzeigen, type StueckelungDto } from '@c4/shared';
-import {
-  bestandFehler,
-  mengeVon,
-  mengenSumme,
-  NENNWERTE_ABSTEIGEND,
-  type Mengen,
-} from './bargeldFormular';
+import { ANZAHL_MAX, centAnzeigen, NENNWERTE_CENT, type StueckelungDto } from '@c4/shared';
+import { bestandFehler, mengeVon, mengenSumme, type Mengen } from './bargeldFormular';
 import { BETRAG_STIL } from './finanzenDaten';
 
 const ZAHL = new Intl.NumberFormat('de-DE');
 const vorzeichen = (n: number) => (n > 0 ? `+${ZAHL.format(n)}` : ZAHL.format(n));
 
 /**
- * Typed counts per denomination (100 EUR down to 1 ct), one integer field per row, tab order top to
+ * Typed counts per denomination (1 ct up to 100 EUR), one integer field per row, tab order top to
  * bottom (Enter moves on when the form handles `data-nav`). Optional columns: the stock (`bestand`,
  * labelled `bestandLabel`) and the difference to it; with `begrenzen` a count above the stock is an
  * error on the field. The footer sums the values live. Desktop first, no phone keyboard tricks yet.
@@ -66,7 +60,7 @@ export function StueckelungFeld({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {NENNWERTE_ABSTEIGEND.map((n) => {
+        {NENNWERTE_CENT.map((n) => {
           const anzahl = mengeVon(value, n);
           const d = anzahl - (vorrat.get(n) ?? 0);
           return (
