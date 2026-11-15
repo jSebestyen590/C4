@@ -31,22 +31,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { bilderSuche, type BilderOrdnerDto } from '@c4/shared';
 import { useAuth } from '../auth';
+import { formatDatumZeit } from '../datum';
 import { BilderOrdnerModal } from '../BilderOrdnerModal';
 import { bilderDatum, bilderNachJahr } from '../bilderAnzeige';
 import { useBilderOrdner } from '../bilderDaten';
 import { useBilderTeilen } from '../bilderTeilen';
 
 /** "dd.mm. HH:mm" in Berlin time of an ISO instant. */
-const standText = (iso: string) =>
-  new Date(iso)
-    .toLocaleString('de-DE', {
-      timeZone: 'Europe/Berlin',
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    .replace(',', '');
+const standText = (iso: string) => formatDatumZeit(iso, 'ohneJahr');
 
 /** Link that opens the folder: the sharing link opens the OneDrive app on phones. */
 const ordnerLink = (o: BilderOrdnerDto) => o.freigabeUrl ?? o.webUrl;

@@ -44,12 +44,12 @@ import {
 } from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
 import { mitgliedName } from '../mitglied';
+import { formatDatumZeit } from '../datum';
 import { StatusName } from '../StatusAnzeige';
 import { ZeilenUebersicht } from '../ZeilenUebersicht';
 import { ZurueckLink } from '../ZurueckLink';
 
-const zeitText = (iso: string) =>
-  new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const zeitText = (iso: string) => formatDatumZeit(iso, 'mittel');
 
 const stueckelungText = (z: BuchungZeileDto) =>
   z.stueckelung.map((s) => `${s.anzahl} × ${centAnzeigen(s.nennwertCent)}`).join(', ');

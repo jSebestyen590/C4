@@ -5,12 +5,12 @@ import { centAnzeigen, datumAnzeigen, NENNWERTE_CENT } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { BETRAG_STIL, detailPfad, differenzText, FINANZEN_KEY } from '../finanzenDaten';
 import { mitgliedName } from '../mitglied';
+import { formatDatumZeit } from '../datum';
 import { StatusName } from '../StatusAnzeige';
 import { ZurueckLink } from '../ZurueckLink';
 
 const ZAHL = new Intl.NumberFormat('de-DE');
-const zeitText = (iso: string) =>
-  new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const zeitText = (iso: string) => formatDatumZeit(iso, 'mittel');
 
 /** One Zählung: Soll, Ist and Differenz per denomination, who counted, link to the booking. */
 export function FinanzenZaehlungPage() {
