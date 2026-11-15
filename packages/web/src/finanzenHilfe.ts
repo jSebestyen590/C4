@@ -48,7 +48,7 @@ export const HILFE = {
     zaehlenSoll:
       'Soll ist der Bestand laut Buchungen, Ist das, was du tatsächlich gezählt hast. Die Differenz ist Ist minus Soll je Münze und Schein. Felder, die du leer lässt, zählen als 0.',
     zaehlenDifferenz:
-      'Weicht der Betrag ab, wird das Fach auf den gezählten Bestand korrigiert und die Gegenbuchung geht auf „Kassendifferenz“. Stimmt nur die Mischung (z. B. andere Scheine, gleicher Betrag), wird nur die Stückelung umgebucht, ohne Kassendifferenz.',
+      'Weicht der Betrag ab, wird das Fach auf den gezählten Bestand korrigiert und die Gegenbuchung geht auf „Kassendifferenz“. Stimmt der Betrag, aber nicht die Mischung der Münzen und Scheine, wird nur die Stückelung umgebucht, ohne Kassendifferenz.',
     zaehlprotokoll:
       'Jede Zählung wird als Protokoll gespeichert, auch wenn alles stimmt. Eine gespeicherte Zählung lässt sich nicht ändern; Fehler korrigierst du mit einer neuen Zählung.',
   },

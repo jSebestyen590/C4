@@ -226,7 +226,7 @@ Fächer, nie auf den Safe selbst (Gruppenregel).
   Zähler:in, Zeitpunkt, Verweis auf die Buchung). Weicht etwas ab, entsteht in derselben Transaktion eine
   Differenzbuchung (`quelle_typ` `zaehlung`, `quelle_id` = Zählung): Mehr-Nennwerte stehen auf einer
   Fach-Zeile, Fehl-Nennwerte auf einer zweiten, dazu eine Zeile auf `kassendifferenz` mit dem Gegenbetrag
-  der Nettodifferenz. Stimmt nur die Mischung (Netto 0), bleiben es die zwei Fach-Zeilen. Stimmt alles, gibt
+  der Nettodifferenz. Stimmt der Betrag, aber nicht die Mischung (Netto 0), bleiben es die zwei Fach-Zeilen. Stimmt alles, gibt
   es keine Buchung. Text: Anmerkung der Zähler:in oder „Zählung <Fach>: Differenz …“. Ein Fach ist ein
   Stückelungskonto ohne Unterkonten und nicht archiviert, sonst 400.
 - Rechte: Lesen `finanzen:lesen`, Umbuchen, Wechseln und Zählen `finanzen:buchen` (nicht `kasse:zaehlen`,
