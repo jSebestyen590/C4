@@ -18,6 +18,14 @@ export const RICHTUNG_LABELS: Record<Richtung, string> = { zugang: 'Zugang', abg
 /** Word for a signed line amount: positive = Zugang, negative = Abgang. */
 export const richtungVon = (cent: number): Richtung => (cent < 0 ? 'abgang' : 'zugang');
 
+/** Direction word of a line; a line of 0 (pure exchange of coins) has none. */
+export const richtungWort = (cent: number): string =>
+  cent === 0 ? '–' : RICHTUNG_LABELS[richtungVon(cent)];
+
+/** Amount of a line without sign; 0 reads `±0,00 € (Tausch)`. */
+export const zeilenBetragText = (cent: number): string =>
+  cent === 0 ? `±${centAnzeigen(0)} (Tausch)` : centAnzeigen(Math.abs(cent));
+
 /** Amounts from this value on need an explicit confirmation ("ungewöhnlich hoch"): 1.000,00 €. */
 export const HOHER_BETRAG_CENT = 100_000;
 

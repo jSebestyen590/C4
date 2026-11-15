@@ -33,7 +33,7 @@ import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import { RICHTUNG_LABELS, richtungVon } from '../buchungFormular';
+import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
   detailPfad,
@@ -253,8 +253,9 @@ export function FinanzenBuchungPage() {
                       {z.kontoName}
                     </Text>
                     <Text fw={600} style={BETRAG_STIL}>
-                      {RICHTUNG_LABELS[richtungVon(z.betragCent)]}{' '}
-                      {centAnzeigen(Math.abs(z.betragCent))}
+                      {z.betragCent === 0
+                        ? zeilenBetragText(0)
+                        : `${richtungWort(z.betragCent)} ${zeilenBetragText(z.betragCent)}`}
                     </Text>
                   </Group>
                   {steuerText(z) && (
@@ -286,8 +287,8 @@ export function FinanzenBuchungPage() {
                 {b.zeilen.map((z) => (
                   <Table.Tr key={z.id}>
                     <Table.Td>{z.kontoName}</Table.Td>
-                    <Table.Td>{RICHTUNG_LABELS[richtungVon(z.betragCent)]}</Table.Td>
-                    <Table.Td style={BETRAG_STIL}>{centAnzeigen(Math.abs(z.betragCent))}</Table.Td>
+                    <Table.Td>{richtungWort(z.betragCent)}</Table.Td>
+                    <Table.Td style={BETRAG_STIL}>{zeilenBetragText(z.betragCent)}</Table.Td>
                     <Table.Td>{steuerText(z) ?? '–'}</Table.Td>
                     <Table.Td>{z.stueckelung.length > 0 ? stueckelungText(z) : '–'}</Table.Td>
                   </Table.Tr>

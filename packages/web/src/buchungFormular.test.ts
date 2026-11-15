@@ -11,6 +11,8 @@ import {
   HOHER_BETRAG_CENT,
   leereZeile,
   richtungVon,
+  richtungWort,
+  zeilenBetragText,
   schluesselFuer,
   summeCent,
   summen,
@@ -224,5 +226,14 @@ describe('buchbareKonten', () => {
     expect(
       buchbareKonten([k('safe', null), k('kind', 'safe'), k('bank', null)]).map((x) => x.id),
     ).toEqual(['kind', 'bank']);
+  });
+});
+
+describe('Zeilen mit Betrag 0 (Tausch)', () => {
+  it('nennt kein Zugang/Abgang', () => {
+    expect(richtungWort(0)).toBe('–');
+    expect(zeilenBetragText(0)).toBe('±0,00 € (Tausch)');
+    expect(richtungWort(-5)).toBe('Abgang');
+    expect(zeilenBetragText(-500)).toBe('5,00 €');
   });
 });
