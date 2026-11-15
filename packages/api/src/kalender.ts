@@ -436,6 +436,15 @@ export interface KalenderStore {
    * the day was already recorded, so parallel runs never duplicate and deleted days stay deleted.
    */
   serienTerminAnlegen(serie: string, datum: string, daten: EventEingabe): Promise<boolean>;
+  /**
+   * Like `serienTerminAnlegen` for several days at once: the days are recorded with one batch insert and
+   * their events created in one transaction per chunk. Returns the number of created events.
+   * Optional so stores without a batch path keep working; callers fall back to `serienTerminAnlegen`.
+   */
+  serienTermineAnlegen?(
+    serie: string,
+    termine: { datum: string; daten: EventEingabe }[],
+  ): Promise<number>;
 
   /** All series, ordered by name. */
   serien(): Promise<SerieDto[]>;
@@ -973,6 +982,11 @@ const dienstformIdsVon = (
     'bedarfe' in s && s.art === 'betrieb' ? s.bedarfe.map((b) => b.dienstformId) : [],
   );
 
+/** Events deleted per transaction when removing series events (DSQL: at most ~3000 changed rows per transaction). */
+const SERIEN_LOESCHEN_CHUNK = 20;
+/** Events created per transaction for one series (an event writes a handful of rows). */
+const SERIEN_ANLEGEN_CHUNK = 40;
+
 export function createKalenderStore(db: Db): KalenderStore {
   const schichtenSchreiben = async (
     tx: Tx,
@@ -1446,16 +1460,50 @@ export function createKalenderStore(db: Db): KalenderStore {
       throw new SerieBetroffen(unveraendert, kuenftig.length - unveraendert);
     }
   };
-  /** Deletes the events and their `serien_termine` (the days become free again); skips events that gained Dienste meanwhile. */
+  /**
+   * Deletes the events and their `serien_termine` (the days become free again); skips events that have a
+   * Protokoll or gained Dienste meanwhile. Works in chunks of one transaction each (DSQL caps the rows
+   * a transaction may change), with one statement per table instead of one transaction per event.
+   */
   const serienEventsLoeschen = async (liste: KuenftigesSerienEvent[]) => {
-    for (const e of liste) {
-      try {
-        await store.eventLoeschen(e.id);
-      } catch (err) {
-        if (err instanceof KalenderKonflikt) continue;
-        throw err;
-      }
-      await db.delete(serienTermine).where(eq(serienTermine.eventId, e.id));
+    for (let i = 0; i < liste.length; i += SERIEN_LOESCHEN_CHUNK) {
+      const ids = liste.slice(i, i + SERIEN_LOESCHEN_CHUNK).map((e) => e.id);
+      await db.transaction(async (tx) => {
+        const mitProtokoll = await tx
+          .select({ id: protokolle.eventId })
+          .from(protokolle)
+          .where(inArray(protokolle.eventId, ids));
+        const schichtRows = await tx
+          .select({ id: schichten.id, eventId: schichten.eventId })
+          .from(schichten)
+          .where(inArray(schichten.eventId, ids));
+        const mitDiensten =
+          schichtRows.length === 0
+            ? []
+            : await tx
+                .select({ id: dienste.schichtId })
+                .from(dienste)
+                .where(
+                  inArray(
+                    dienste.schichtId,
+                    schichtRows.map((r) => r.id),
+                  ),
+                );
+        const gesperrteSchichten = new Set(mitDiensten.map((r) => r.id));
+        const gesperrt = new Set<string>(mitProtokoll.flatMap((r) => (r.id ? [r.id] : [])));
+        for (const r of schichtRows) if (gesperrteSchichten.has(r.id)) gesperrt.add(r.eventId);
+        const frei = ids.filter((id) => !gesperrt.has(id));
+        if (frei.length === 0) return;
+        const freieSchichten = schichtRows.filter((r) => !gesperrt.has(r.eventId)).map((r) => r.id);
+        if (freieSchichten.length > 0) {
+          await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, freieSchichten));
+          await tx.delete(schichten).where(inArray(schichten.eventId, frei));
+        }
+        await tx.delete(eventTeilnahmen).where(inArray(eventTeilnahmen.eventId, frei));
+        await tx.delete(kalenderEventAbos).where(inArray(kalenderEventAbos.eventId, frei));
+        await tx.delete(events).where(inArray(events.id, frei));
+        await tx.delete(serienTermine).where(inArray(serienTermine.eventId, frei));
+      });
     }
   };
   const vorlageMussExistieren = async (id: string) => {
@@ -1526,6 +1574,26 @@ export function createKalenderStore(db: Db): KalenderStore {
         await eventErzeugen(tx, daten, null, serie, id);
         return true;
       });
+    },
+    async serienTermineAnlegen(serie, termine) {
+      let erzeugt = 0;
+      for (let i = 0; i < termine.length; i += SERIEN_ANLEGEN_CHUNK) {
+        const chunk = termine.slice(i, i + SERIEN_ANLEGEN_CHUNK);
+        erzeugt += await db.transaction(async (tx) => {
+          const mitId = chunk.map((t) => ({ ...t, id: randomUUID() }));
+          const eingefuegt = await tx
+            .insert(serienTermine)
+            .values(mitId.map((t) => ({ serie, datum: t.datum, eventId: t.id })))
+            .onConflictDoNothing()
+            .returning({ datum: serienTermine.datum });
+          const neu = new Set(eingefuegt.map((r) => r.datum));
+          for (const t of mitId) {
+            if (neu.has(t.datum)) await eventErzeugen(tx, t.daten, null, serie, t.id);
+          }
+          return neu.size;
+        });
+      }
+      return erzeugt;
     },
     async serien() {
       return serienLesen();

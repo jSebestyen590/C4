@@ -3,8 +3,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const dir = path.join(import.meta.dirname, 'migrations');
-/** Older migrations (already on main) predate the one-statement rule and down files; this guards the calendar set. */
-const ERSTE_GEPRUEFTE = 37;
+/**
+ * 0001-0009 predate the one-statement rule and down files (0009 has two statements, none has a down file) and were
+ * merged before the first release; 0010 and higher all satisfy the checks, so they are guarded here.
+ */
+const ERSTE_GEPRUEFTE = 10;
 const ups = readdirSync(dir)
   .filter((f) => f.endsWith('.sql') && Number(f.slice(0, 4)) >= ERSTE_GEPRUEFTE)
   .sort();

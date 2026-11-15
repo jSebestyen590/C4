@@ -166,6 +166,17 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   für Events und Dienste in `kalender.md`; neue Seite `querschnitt.md` (Auth-Modell, Rechteberechnung, Fehler-Mapping,
   DSQL-Wiederholung); `README.md`: User-Pool-ID je Umgebung per Terraform-Output, lokaler Bootstrap-State, OneDrive-Verbindung.
 
+**Issue 48 (Tests und Struktur, Leistung)**
+
+- Migrationstest: prüft jetzt ab 0010 (statt 0037). 0001–0009 sind ausgenommen, weil sie vor der Ein-Statement-Regel
+  entstanden (0009 hat zwei Statements, keine Down-Dateien) und vor dem ersten Release zusammengeführt wurden
+  (`datenbank.md`).
+- Cognito: `konten()`/`rollen()` sind je warmem Container 60 s gecacht; `createUser`, `setGroups`, `setEnabled` und
+  `setPreferredUsername` leeren den Cache. Neue Schnittstelle `UserAdminEinzeln` (`konto(sub)`, `rollenVon(kontoName)`).
+- Serien: `serienEventsLoeschen` löscht je Chunk (20 Events) in einer Transaktion mit je einer Anweisung pro Tabelle;
+  Termine einer Serie entstehen über `serienTermineAnlegen` (Batch-Insert der Tage, eine Transaktion je 40 Events).
+- Pool: `max` von 2 auf 4 (Routen fragen per `Promise.all` mehrere Stores parallel ab).
+
 **Ohne Test geblieben**
 
 - Größenprüfung und Überspringen beim Parsen in `partymail.ts` (bräuchte einen IMAP-Client).
@@ -238,13 +249,12 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 - **Keine Tests gegen echtes SQL (bewusst nicht umgesetzt):** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores werden
   auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
-- **Migrationstest:** prüft erst ab 0037; Grenze begründen.
 - **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
 - **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
   Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.
-- **Leistung:** Mehrere Routen laden für ein Mitglied die ganze Cognito-Liste (auch die öffentliche vCard-Route und der
-  Feed über `userAdmin.rollen()`); `ladeKontext` der Umfragen ruft `ListUsers` je Request; `/umfragen/beendet` scannt alle
-  beendeten Umfragen; Serien-Operationen schreiben je Event einzeln; Pool mit `max: 2`.
+- **Leistung (Rest):** `userAdmin.konten()`/`rollen()` sind jetzt gecacht, die Routen laden aber noch die ganze Liste für ein
+  Mitglied. Nach dem Aufteilen von `app.ts` auf `konto(sub)` / `rollenVon(kontoName)` umstellen (Profil-Routen, Feed, vCard) und
+  prüfen, dass `umfrageKontext()` je Request nur einmal läuft. `/umfragen/beendet` ist bereits paginiert.
 
 ### 5. Frontend
 

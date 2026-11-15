@@ -11,13 +11,13 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - Ein Statement: `<migration>.down.sql`, z. B. `0010_foo.down.sql` für `0010_foo.sql`.
 - Mehrere Statements: `<migration>.down.1.sql`, `<migration>.down.2.sql`, ... Sie laufen in
   numerischer Reihenfolge, jedes als eigene Abfrage.
-- Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 gehört zu jeder Migration eine; ein Test erzwingt das aber
-  erst ab 0037 (`migrations.test.ts`, siehe unten). `rollback.test.ts` prüft nur den Rollback-Ablauf (er bricht vor jeder Änderung ab,
+- Für die Migrationen 0001 bis 0009 gibt es keine Down-Dateien. Ab 0010 gehört zu jeder Migration eine; `migrations.test.ts` erzwingt das ab 0010 (genau ein Statement, Down-Datei, keine Lücken).
+  0001–0009 sind ausgenommen: Sie stammen von vor der Ein-Statement-Regel (0009 hat zwei Statements) und wurden vor dem ersten Release zusammengeführt. `rollback.test.ts` prüft nur den Rollback-Ablauf (er bricht vor jeder Änderung ab,
   wenn eine Down-Datei fehlt), nicht die vorhandenen Dateien. 0010–0023 (Waren) und 0025–0035 (Inventar) löschen ihre Tabellen bzw.
   Indizes; 0036 löscht nur die Startbuchungen „Bestand übernommen“ wieder; 0024 entzieht den Vorstandsposten `waren:verwalten` und `inventar:verwalten` wieder. Rollback-Ziel nur für das
   Inventar: `0024_vorstandsposten_rechte`.
 - Die Kalender-Migrationen `0037`–`0070` (Namen `*_kalender_*`, `*_push_*`) sind eine zusammengelegte, lückenlose Fassung
-  der früheren Migrationen 0037–0082. `migrations.test.ts` prüft für 0037 und höher: genau ein Statement je Datei, eine
+  der früheren Migrationen 0037–0082. `migrations.test.ts` prüft für 0010 und höher: genau ein Statement je Datei, eine
   Down-Datei je Migration, keine Lücken.
 - 0073–0075 (Schlüssel) löschen ihre Tabellen bzw. ihren Index, 0076 entzieht den Vorstandsposten
   `schluessel:verwalten` wieder; Rollback-Ziel nur für die Schlüssel: `0072_mitglieder_geburtstag_im_kalender`.
