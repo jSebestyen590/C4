@@ -245,8 +245,11 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
   auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
 - **Migrationstest:** prüft erst ab 0037; Grenze begründen.
 - **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
-- **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
-  Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.
+- **Fremdschlüssel / Unique:** erledigt (PR „Löschen referenzierter Zeilen“): alle Löschrouten prüfen Verweise in der
+  Transaktion und lehnen mit 409 und fachlicher Meldung ab (`datenbank.md`, „Fremdschlüssel und Löschen“). Offen: ob DSQL
+  Fremdschlüssel erzwingt, ist ungeprüft; Unique-Index nur für `privatpartys.event_id` (0166). Weitere Kandidaten ohne Index:
+  `privatpartys.umfrage_id` (nur nicht-eindeutiger Index 0126, `nachUmfrage` nimmt Eindeutigkeit an) und
+  `umfrage_termine.event_id`; vorher Duplikate auf dev prüfen.
 - **Leistung:** Mehrere Routen laden für ein Mitglied die ganze Cognito-Liste (auch die öffentliche vCard-Route und der
   Feed über `userAdmin.rollen()`); `ladeKontext` der Umfragen ruft `ListUsers` je Request; `/umfragen/beendet` scannt alle
   beendeten Umfragen; Serien-Operationen schreiben je Event einzeln; Pool mit `max: 2`.
