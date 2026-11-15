@@ -928,6 +928,7 @@ function makeApp(pingDb = async () => {}, appUrl?: string) {
     todosListe,
     umfragen,
     umfragenListe,
+    trichter,
     finanzenFake,
     protokollListe,
     privatpartys,
@@ -5931,6 +5932,41 @@ describe('trichter', () => {
     expect((await loeschen('admin-token', await eintragen())).status).toBe(200);
   });
 
+  it('rejects entries in closed calendar years (create and delete)', async () => {
+    const t = await setup();
+    const msg = 'Einträge in abgeschlossenen Jahren lassen sich nicht mehr anlegen oder ändern.';
+    const jahr = Number(new Date().toISOString().slice(0, 4));
+    const vorjahr = await t.eintragen('member-token', {
+      teilnehmende: ['a'],
+      zeitpunkt: new Date(Date.UTC(jahr - 1, 11, 31, 12)).toISOString(),
+    });
+    expect(vorjahr.status).toBe(400);
+    expect(await vorjahr.json()).toEqual({ error: msg });
+    // Within the current year it still works.
+    expect(
+      (
+        await t.eintragen('member-token', {
+          teilnehmende: ['a'],
+          zeitpunkt: new Date(Date.UTC(jahr, 0, 1, 12)).toISOString(),
+        })
+      ).status,
+    ).toBe(201);
+    // An entry that is already in a past year cannot be deleted either.
+    const alt = await t.trichter.durchgangAnlegen({
+      trichterId: t.id,
+      volumenMl: 1000,
+      zeitpunkt: new Date(Date.UTC(jahr - 1, 5, 1)),
+      eingetragenVon: 'm',
+      teilnehmende: ['a'],
+    });
+    const res = await t.app.request(
+      `/api/trichter/durchgaenge/${alt}`,
+      json('admin-token', 'DELETE'),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: msg });
+  });
+
   it('lists Durchgänge page by page with darfLoeschen', async () => {
     const t = await setup();
     for (let i = 0; i < 22; i++) {
@@ -5971,16 +6007,15 @@ describe('trichter', () => {
     const jahr = Number(new Date().toISOString().slice(0, 4));
     const mitte = (j: number) => `${j}-06-15T12:00:00Z`;
     // Last year: r twice. This year: a twice (shared volume), r once.
-    await t.eintragen('member-token', {
-      teilnehmende: ['r'],
-      volumenL: 2,
-      zeitpunkt: mitte(jahr - 1),
-    });
-    await t.eintragen('member-token', {
-      teilnehmende: ['r'],
-      volumenL: 2,
-      zeitpunkt: mitte(jahr - 1),
-    });
+    for (let i = 0; i < 2; i++) {
+      await t.trichter.durchgangAnlegen({
+        trichterId: t.id,
+        volumenMl: 2000,
+        zeitpunkt: new Date(mitte(jahr - 1)),
+        eingetragenVon: 'm',
+        teilnehmende: ['r'],
+      });
+    }
     await t.eintragen('member-token', {
       teilnehmende: ['a', 'r'],
       volumenL: 2,
@@ -9650,7 +9685,7 @@ describe('privatpartys', () => {
       await t.app.request(`/api/umfragen/${umfrageId}`, json('member-token', 'GET'))
     ).json()) as UmfrageDetailDto;
     expect(u).toMatchObject({
-      titel: 'Privatparty: 30. Geburtstag',
+      titel: 'Privatparty: Terminabstimmung',
       termin: { vorlageId: 'privat', kategorieId: 'party' },
       pflicht: { status: [] },
       optional: { status: ['anwaerter', 'mitglied', 'em', 'extern'] },
@@ -9701,6 +9736,91 @@ describe('privatpartys', () => {
     const danach = await t.holen(id);
     expect(danach).toMatchObject({ status: 'zugesagt', event: { id: 'e1' } });
     expect(danach.terminId).toBe(danach.termine[1]!.id);
+  });
+
+  it('adjusts the options of a running poll when the Wunschtermine change', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/umfrage`,
+      json('admin-token', 'POST', { vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false }),
+    );
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    const optionen = async () =>
+      (
+        (await (
+          await t.app.request(`/api/umfragen/${umfrageId}`, json('member-token', 'GET'))
+        ).json()) as UmfrageDetailDto
+      ).fragen[0]!;
+    const vorher = await optionen();
+    const [erste, zweite] = vorher.optionen;
+    // Everybody votes for the second date; the vote is gone when it is removed.
+    const stimme = await t.app.request(
+      `/api/umfragen/${umfrageId}/stimme`,
+      json('member-token', 'PUT', {
+        antworten: [{ frageId: vorher.id, optionIds: [zweite!.id] }],
+      }),
+    );
+    expect(stimme.status).toBe(200);
+    const d = await t.holen(id);
+    const put = (termine: unknown[]) =>
+      t.app.request(
+        `/api/privatpartys/${id}`,
+        json('admin-token', 'PUT', {
+          personId: d.person!.id,
+          anlass: d.anlass,
+          notizen: null,
+          termine,
+        }),
+      );
+    // Added date: new option, old ones (and their ids) stay.
+    expect(
+      (
+        await put([
+          d.termine[0],
+          d.termine[1],
+          { datum: '2099-03-28', beginn: '18:00', ende: '23:00', stufe: 'moeglich' },
+        ])
+      ).status,
+    ).toBe(200);
+    const mitNeuem = await optionen();
+    expect(mitNeuem.optionen.map((o) => o.text)).toEqual([
+      'Sa, 14.03.2099 · 19:00–02:00 · Bevorzugt',
+      'Sa, 21.03.2099 · 19:00–02:00 · Nur notfalls',
+      'Sa, 28.03.2099 · 18:00–23:00 · Möglich',
+    ]);
+    expect(mitNeuem.optionen.slice(0, 2).map((o) => o.id)).toEqual([erste!.id, zweite!.id]);
+    // Changed time of the first date: old option goes, a new one comes; the second keeps its vote.
+    expect((await put([{ ...d.termine[0], beginn: '20:00' }, d.termine[1]])).status).toBe(200);
+    const geaendert = await optionen();
+    expect(geaendert.optionen.map((o) => o.text)).toEqual([
+      'Sa, 14.03.2099 · 20:00–02:00 · Bevorzugt',
+      'Sa, 21.03.2099 · 19:00–02:00 · Nur notfalls',
+    ]);
+    expect(geaendert.optionen[0]!.id).not.toBe(erste!.id);
+    expect(geaendert.optionen[1]!.id).toBe(zweite!.id);
+    // Removing the voted date drops the vote.
+    expect((await put([{ ...d.termine[0], beginn: '20:00' }])).status).toBe(200);
+    const nurErste = await optionen();
+    expect(nurErste.optionen).toHaveLength(1);
+    expect(t.umfragenListe.get(umfrageId)!.stimmen).toEqual([]);
+    // The chosen option is still matched back to its wish date.
+    t.kalender.event.mockResolvedValue({
+      id: 'e1',
+      anzeigeTitel: 'Privatparty',
+      beginn: '2099-03-14T19:00:00.000Z',
+      schichten: [],
+    } as unknown as EventDto);
+    await t.app.request(`/api/umfragen/${umfrageId}/beenden`, json('admin-token', 'POST'));
+    const ev = await t.app.request(
+      `/api/umfragen/${umfrageId}/event`,
+      json('admin-token', 'POST', { optionId: nurErste.optionen[0]!.id }),
+    );
+    expect(ev.status).toBe(201);
+    expect(t.kalender.eventAnlegen).toHaveBeenCalledWith(
+      expect.objectContaining({ beginn: '2099-03-14T19:00:00.000Z' }),
+      expect.anything(),
+    );
   });
 
   it('lets holders of the right outside the circle see and vote in the poll of a Privatparty only', async () => {

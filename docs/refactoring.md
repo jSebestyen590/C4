@@ -131,13 +131,10 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   Migrationen ist nicht nötig.
 - Anonyme Umfragen bekommen keine Mindestgröße des Kreises; `mitglied_sub` je Stimme bleibt in der DB.
 
-**Entschieden, Umsetzung offen** ([Issue 50](https://github.com/jSebestyen590/C4/issues/50))
-
-- Die Privatparty-Umfrage zieht geänderte Wunschtermine nach; der Anlass verschwindet aus Umfragetitel und Push.
-- Trichter-Einträge lassen sich nicht in abgeschlossene Jahre (alle Kalenderjahre vor dem aktuellen) datieren.
-
 **Nach PR #33** (Issue 50)
 
+- Privatparty-Umfrage zieht geänderte Wunschtermine nach (neue Antworten hinzu, entfernte samt Stimmen weg); Umfragetitel „Privatparty: Terminabstimmung“ ohne Anlass (`docs/privatpartys.md`).
+- Trichter: Anlegen und Löschen von Durchgängen in abgeschlossenen Jahren ist 400 (`docs/trichter.md`).
 - Todos: Überfällige offene Todos werden täglich erinnert (`todo.frist`, Schlüssel je Todo, Tag und Person).
 - Kalender: Der Schlüssel von „Fehlende Dienste“ enthält den Beginn (nach dem Verschieben kommt der Hinweis erneut). Der Serien-Job
   markiert den Tag erst nach erfolgreicher Arbeit (die Arbeit ist je Event idempotent).
@@ -221,15 +218,11 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 
 ### 3. Fachliche Punkte
 
-Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
-Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
+Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten).
 
 - **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“.
 - **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
   soll, ist nicht entschieden.
-- **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
-  Umfragetitel und in der Push-Nachricht für alle Status.
-- **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
 
 ### 4. Tests und Struktur
 

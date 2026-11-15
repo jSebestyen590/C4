@@ -133,7 +133,7 @@ Eine Umfrage mit `termin` (Schalter „Terminfindung“ im Formular, `umfrageTer
 - **Privatparty**: Die Umfrage einer Privatparty (siehe [privatpartys.md](./privatpartys.md)) ist eine Terminumfrage mit
   Vorlage, die die API selbst anlegt (`POST /api/privatpartys/:id/umfrage`). Die Antworten sind die Wunschtermine; ihr Name
   trägt Zeit und Stufe („19:00–02:00 · Bevorzugt“), daran erkennt die API beim Anlegen des Events den Wunschtermin
-  wieder. Ist eine Umfrage mit einer Privatparty verknüpft (`privatpartys.umfrage_id`), dürfen auch Inhaber:innen von
+  wieder. Dasselbe Erkennen (Datum und Name) nutzt `privatpartyUmfrageNachziehen`, wenn sich die Wunschtermine ändern (neue Antworten hinzu, entfernte samt Stimmen weg). Titel immer „Privatparty: Terminabstimmung“. Ist eine Umfrage mit einer Privatparty verknüpft (`privatpartys.umfrage_id`), dürfen auch Inhaber:innen von
   `privatpartys:verwalten` sie beenden und das Event daraus anlegen (`Aufrufer.privatpartys`), ohne `umfragen:verwalten`. Das Event nimmt dann
   die Wunschzeiten (`ausVorlageZuZeit`), trägt nur den Titel der Vorlage (bzw. „Privatparty“) und setzt die Privatparty auf
   „Zugesagt“. Alle anderen Umfragen verhalten sich unverändert. `umfrageSpeichern` und `terminVorbereiten` liegen dafür in
