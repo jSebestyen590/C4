@@ -1,16 +1,4 @@
-import {
-  Alert,
-  Box,
-  Group,
-  Loader,
-  Paper,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Alert, Group, Loader, Select, Stack, Table, Text, Title } from '@mantine/core';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { centAnzeigen, datumAnzeigen, type ZaehlungListeDto } from '@c4/shared';

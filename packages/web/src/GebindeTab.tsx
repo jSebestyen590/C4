@@ -5,7 +5,6 @@ import {
   Group,
   Loader,
   Paper,
-  SimpleGrid,
   Stack,
   Switch,
   Table,

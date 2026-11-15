@@ -201,9 +201,24 @@ export function TrichterRangliste({
         kopf={
           <Table.Tr>
             <Table.Th w={80}>Platz</Table.Th>
-            <Kopfzelle text="Mitglied" spalte="name" sortierung={sortierung} onSortieren={sortieren} />
-            <Kopfzelle text="Anzahl" spalte="anzahl" sortierung={sortierung} onSortieren={sortieren} />
-            <Kopfzelle text="Liter" spalte="liter" sortierung={sortierung} onSortieren={sortieren} />
+            <Kopfzelle
+              text="Mitglied"
+              spalte="name"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
+            <Kopfzelle
+              text="Anzahl"
+              spalte="anzahl"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
+            <Kopfzelle
+              text="Liter"
+              spalte="liter"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
           </Table.Tr>
         }
         zeile={(z) => (

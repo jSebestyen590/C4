@@ -1,4 +1,4 @@
-import { Badge, Group, Paper, SimpleGrid, Stack, Table, Text } from '@mantine/core';
+import { Badge, Group, Paper, Stack, Table, Text } from '@mantine/core';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
   PrivatpartyListeDto,
@@ -130,7 +130,10 @@ export function PrivatpartyListe({ liste }: Readonly<{ liste: PrivatpartyListeDt
         </Table.Tr>
       }
       zeile={(p) => (
-        <Table.Tr style={{ cursor: 'pointer' }} onClick={() => void navigate(privatpartyLink(p.id))}>
+        <Table.Tr
+          style={{ cursor: 'pointer' }}
+          onClick={() => void navigate(privatpartyLink(p.id))}
+        >
           <Table.Td>
             <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
               {privatpartyName(p)}
