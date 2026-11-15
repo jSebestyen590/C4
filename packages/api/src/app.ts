@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
@@ -137,6 +138,8 @@ import {
   trichterAendernSchema,
   trichterEingabeSchema,
   TRICHTER_DURCHGAENGE_SEITE,
+  TRICHTER_JAHR_ABGESCHLOSSEN,
+  jahrBerlin,
   buchungEingabeSchema,
   JOURNAL_MAX,
   journalAbfrageSchema,
@@ -212,6 +215,7 @@ import {
   type PrivatpartyMailStatusDto,
   type PrivatpartyNachrichtDto,
   privatpartyOptionName,
+  terminText,
   privatpartyPersonEingabeSchema,
   privatpartyStatusEingabeSchema,
   privatpartyUmfrageSchema,
@@ -325,7 +329,7 @@ import {
   protokollListen,
   type ProtokollMitglied,
 } from './protokolleAnsicht';
-import type { UmfragenCursor, UmfragenStore } from './umfragen';
+import type { UmfragenCursor, UmfragenStore, UmfrageSpeichern } from './umfragen';
 import {
   alsDetailDto,
   alsListeDto,
@@ -337,7 +341,12 @@ import {
   ladeKontext,
   type Aufrufer,
 } from './umfrageAnsicht';
-import { meldeErneutAbstimmen, meldeNeueUmfrage, meldeTermin } from './umfrageBenachrichtigungen';
+import {
+  meldeErneutAbstimmen,
+  meldeNeueUmfrage,
+  meldeTermin,
+  meldeTermineGeaendert,
+} from './umfrageBenachrichtigungen';
 import {
   geburtstagSichtbar,
   kanaeleLesen,
@@ -1127,6 +1136,66 @@ export function createApp(deps: AppDeps) {
       gesendetVon: n.mitgliedSub ? (sender.get(n.mitgliedSub) ?? null) : null,
     }));
     return alsPrivatpartyDetailDto(e, umfrageKurz, eventKurz, dtos, mailEingerichtet, antwortAn);
+  };
+
+  /**
+   * Fits the options of a running Privatparty poll to the current Wunschtermine: options are found by
+   * date and name (like when the chosen one is matched back), so a changed date or time is a new
+   * option; options of removed dates go, with the votes on them.
+   */
+  const privatpartyUmfrageNachziehen = async (privatpartyId: string) => {
+    const e = await deps.privatpartys.holen(privatpartyId);
+    if (!e?.umfrageId) return;
+    const u = await deps.umfragen.holen(e.umfrageId);
+    if (!u || !umfrageLaeuft(u, new Date())) return;
+    const frage = u.fragen[0];
+    if (!frage) return;
+    const optionen = e.termine.map((t) => {
+      const name = privatpartyOptionName(t);
+      const alt = frage.optionen.find((o) => o.termin?.datum === t.datum && o.termin.name === name);
+      if (alt) return alt;
+      const termin = { datum: t.datum, bis: null, beginn: null, ende: null, name };
+      return { id: randomUUID(), text: terminText(termin), termin };
+    });
+    const bisherIds = frage.optionen.map((o) => o.id);
+    if (optionen.length === bisherIds.length && optionen.every((o) => bisherIds.includes(o.id))) {
+      return;
+    }
+    const daten: UmfrageSpeichern = {
+      ...u,
+      fragen: [{ ...frage, optionen }, ...u.fragen.slice(1)],
+    };
+    const aenderung = ungueltigNachAenderung(
+      daten.fragen.map((f) => ({
+        ...f,
+        optionIds: f.optionen.map((o) => o.id),
+        leerErlaubt: daten.termin !== null || daten.terminFrei,
+      })),
+      u.stimmen,
+      u.abgaben.map((x) => x.sub),
+    );
+    await deps.umfragen.aktualisieren(u.id, daten, aenderung);
+    // Voters whose votes were dropped are asked to vote again, the rest of the circle (and outside
+    // holders who voted) hear that the dates changed.
+    await bestEffort(async () => {
+      const k = await umfrageKontext();
+      const kreis = [...new Set([...kreisDerUmfrage(u, k).keys(), ...u.abgaben.map((x) => x.sub)])];
+      await meldeTermineGeaendert(
+        deps.benachrichtigungen,
+        u,
+        createHash('sha256')
+          .update(
+            optionen
+              .map((o) => o.id)
+              .sort()
+              .join(','),
+          )
+          .digest('hex')
+          .slice(0, 16),
+        aenderung.erneut,
+        kreis,
+      );
+    });
   };
 
   /** Accepts a wish date: creates the event from the Vorlage at the wished times and ends a running poll. */
@@ -2908,6 +2977,7 @@ export function createApp(deps: AppDeps) {
             }
             throw err;
           }
+          await privatpartyUmfrageNachziehen(c.req.param('id'));
           return c.json({ ok: true });
         },
       )
@@ -2947,7 +3017,7 @@ export function createApp(deps: AppDeps) {
           await eigenesProfilMussExistieren(sub);
           const alle = { ...leererKreis(), status: [...MITGLIED_STATI] };
           const geparst = umfrageEingabeSchema.safeParse({
-            titel: privatpartyUmfrageTitel(e.anlass),
+            titel: privatpartyUmfrageTitel(),
             beschreibung: null,
             endetAm,
             anonym: false,
@@ -3708,6 +3778,9 @@ export function createApp(deps: AppDeps) {
               message: 'Du kannst dich nicht selbst eintragen. Das machen die anderen für dich.',
             });
           }
+          if (eingabe.zeitpunkt && jahrBerlin(eingabe.zeitpunkt) < jahrBerlin(new Date())) {
+            throw new HTTPException(400, { message: TRICHTER_JAHR_ABGESCHLOSSEN });
+          }
           const t = await deps.trichter.holen(eingabe.trichterId);
           if (!t) throw new HTTPException(400, { message: 'Trichter nicht gefunden.' });
           if (t.archiviert) {
@@ -3758,6 +3831,9 @@ export function createApp(deps: AppDeps) {
           !c.get('permissions').includes('trichter:verwalten')
         ) {
           throw new HTTPException(403, { message: 'Forbidden' });
+        }
+        if (jahrBerlin(d.zeitpunkt) < jahrBerlin(new Date())) {
+          throw new HTTPException(400, { message: TRICHTER_JAHR_ABGESCHLOSSEN });
         }
         await deps.trichter.durchgangLoeschen(d.id);
         return c.json({ ok: true });

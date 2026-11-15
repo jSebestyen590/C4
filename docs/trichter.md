@@ -22,6 +22,7 @@ Geprüft in `packages/shared/src/trichter.ts` (Schemas) und `POST /api/trichter/
 - **Zeitpunkt:** nicht in der Zukunft (1 Minute Toleranz für eine vorgehende Handyuhr); ohne Angabe gilt jetzt.
 - **Teilnehmende** müssen ein Profil haben oder ein aktiviertes Konto sein („Mitglied nicht gefunden.“) und dürfen **nicht deaktiviert**
   sein (`MITGLIED_DEAKTIVIERT`); die eintragende Person braucht ein eigenes Profil.
+- **Abgeschlossene Jahre:** Ein Durchgang mit Zeitpunkt in einem Kalenderjahr (Berlin) vor dem aktuellen wird beim Anlegen mit 400 abgelehnt; ebenso das Löschen eines solchen Durchgangs (`TRICHTER_JAHR_ABGESCHLOSSEN`). Durchgänge lassen sich nicht ändern. Der Zeitpunkt-Picker beginnt am 1. Januar des laufenden Jahres.
 - Der Trichter muss existieren und darf nicht archiviert sein.
 
 ## Dateien

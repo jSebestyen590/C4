@@ -16,7 +16,7 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { durchgangEingabeSchema, mlZuLiter } from '@c4/shared';
+import { durchgangEingabeSchema, heuteBerlin, mlZuLiter } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { mitgliedOptionen, useEigeneSub, useMitgliederListe } from '../organisator';
@@ -187,6 +187,7 @@ export function TrichterDurchgangPage() {
                 label="Zeitpunkt"
                 required
                 valueFormat="DD.MM.YYYY HH:mm"
+                minDate={new Date(`${heuteBerlin().slice(0, 4)}-01-01T00:00:00`)}
                 maxDate={new Date()}
                 dropdownType={telefon ? 'modal' : 'popover'}
                 value={zeitpunkt}

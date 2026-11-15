@@ -62,8 +62,7 @@ describe('helpers', () => {
     expect(privatpartyOptionName(termin)).toBe('19:00–02:00 · Bevorzugt');
   });
   it('builds the poll title', () => {
-    expect(privatpartyUmfrageTitel(null)).toBe('Privatparty');
-    expect(privatpartyUmfrageTitel('30. Geburtstag')).toBe('Privatparty: 30. Geburtstag');
+    expect(privatpartyUmfrageTitel()).toBe('Privatparty: Terminabstimmung');
   });
   it('parses a status change', () => {
     expect(privatpartyStatusEingabeSchema.safeParse({ status: 'abgesagt' }).success).toBe(true);

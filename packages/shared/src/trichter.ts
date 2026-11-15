@@ -79,6 +79,10 @@ export interface RanglisteZeile {
   ml: number;
 }
 
+/** Entries in calendar years before the current one are closed. */
+export const TRICHTER_JAHR_ABGESCHLOSSEN =
+  'Einträge in abgeschlossenen Jahren lassen sich nicht mehr anlegen oder ändern.';
+
 /** Calendar year of a point in time in the club's time zone. */
 export const jahrBerlin = (zeitpunkt: string | Date): number =>
   Number(heuteBerlin(new Date(zeitpunkt)).slice(0, 4));

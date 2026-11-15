@@ -229,9 +229,8 @@ export const privatpartyZeitText = (t: Pick<PrivatpartyTerminDto, 'beginn' | 'en
 export const privatpartyOptionName = (t: Pick<PrivatpartyTerminDto, 'beginn' | 'ende' | 'stufe'>) =>
   `${privatpartyZeitText(t)} · ${PRIVATPARTY_STUFEN_NAMEN[t.stufe]}`;
 
-/** Title of the poll built for a request. */
-export const privatpartyUmfrageTitel = (anlass: string | null) =>
-  anlass ? `Privatparty: ${anlass}`.slice(0, 200) : 'Privatparty';
+/** Title of the poll built for a request; neutral, the Anlass stays out (the poll is visible to everybody). */
+export const privatpartyUmfrageTitel = () => 'Privatparty: Terminabstimmung';
 
 /** "Sa, 12.12.2026, 19:00–02:00 (Bevorzugt)" without the weekday. */
 export const privatpartyTerminText = (t: Omit<PrivatpartyTerminDto, 'id'>) =>
