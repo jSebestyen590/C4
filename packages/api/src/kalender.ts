@@ -1460,49 +1460,76 @@ export function createKalenderStore(db: Db): KalenderStore {
       throw new SerieBetroffen(unveraendert, kuenftig.length - unveraendert);
     }
   };
+  type Sperre = 'protokoll' | 'dienste';
+  /**
+   * Deletes the events with their Schichten, Teilnahmen and Abos in one batch (one statement per table).
+   * Events with a Protokoll or Dienste are left alone and reported in `gesperrt`; unknown ids are ignored.
+   */
+  const eventsLoeschenTx = async (
+    tx: Tx,
+    ids: string[],
+  ): Promise<{ geloescht: string[]; gesperrt: Map<string, Sperre> }> => {
+    const gesperrt = new Map<string, Sperre>();
+    if (ids.length === 0) return { geloescht: [], gesperrt };
+    const vorhanden = new Set(
+      (await tx.select({ id: events.id }).from(events).where(inArray(events.id, ids))).map(
+        (r) => r.id,
+      ),
+    );
+    const echte = ids.filter((id) => vorhanden.has(id));
+    if (echte.length === 0) return { geloescht: [], gesperrt };
+    const mitProtokoll = await tx
+      .select({ id: protokolle.eventId })
+      .from(protokolle)
+      .where(inArray(protokolle.eventId, echte));
+    for (const r of mitProtokoll) if (r.id) gesperrt.set(r.id, 'protokoll');
+    const schichtRows = await tx
+      .select({ id: schichten.id, eventId: schichten.eventId })
+      .from(schichten)
+      .where(inArray(schichten.eventId, echte));
+    if (schichtRows.length > 0) {
+      const mitDiensten = await tx
+        .select({ id: dienste.schichtId })
+        .from(dienste)
+        .where(
+          inArray(
+            dienste.schichtId,
+            schichtRows.map((r) => r.id),
+          ),
+        );
+      const gesperrteSchichten = new Set(mitDiensten.map((r) => r.id));
+      for (const r of schichtRows) {
+        if (gesperrteSchichten.has(r.id) && !gesperrt.has(r.eventId)) {
+          gesperrt.set(r.eventId, 'dienste');
+        }
+      }
+    }
+    const frei = echte.filter((id) => !gesperrt.has(id));
+    if (frei.length === 0) return { geloescht: [], gesperrt };
+    const freieSchichten = schichtRows.filter((r) => !gesperrt.has(r.eventId)).map((r) => r.id);
+    if (freieSchichten.length > 0) {
+      await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, freieSchichten));
+      await tx.delete(schichten).where(inArray(schichten.eventId, frei));
+    }
+    await tx.delete(eventTeilnahmen).where(inArray(eventTeilnahmen.eventId, frei));
+    await tx.delete(kalenderEventAbos).where(inArray(kalenderEventAbos.eventId, frei));
+    await tx.delete(events).where(inArray(events.id, frei));
+    return { geloescht: frei, gesperrt };
+  };
   /**
    * Deletes the events and their `serien_termine` (the days become free again); skips events that have a
-   * Protokoll or gained Dienste meanwhile. Works in chunks of one transaction each (DSQL caps the rows
-   * a transaction may change), with one statement per table instead of one transaction per event.
+   * Protokoll or gained Dienste meanwhile. One transaction per chunk (DSQL caps the rows a transaction
+   * may change).
    */
   const serienEventsLoeschen = async (liste: KuenftigesSerienEvent[]) => {
     for (let i = 0; i < liste.length; i += SERIEN_LOESCHEN_CHUNK) {
       const ids = liste.slice(i, i + SERIEN_LOESCHEN_CHUNK).map((e) => e.id);
       await db.transaction(async (tx) => {
-        const mitProtokoll = await tx
-          .select({ id: protokolle.eventId })
-          .from(protokolle)
-          .where(inArray(protokolle.eventId, ids));
-        const schichtRows = await tx
-          .select({ id: schichten.id, eventId: schichten.eventId })
-          .from(schichten)
-          .where(inArray(schichten.eventId, ids));
-        const mitDiensten =
-          schichtRows.length === 0
-            ? []
-            : await tx
-                .select({ id: dienste.schichtId })
-                .from(dienste)
-                .where(
-                  inArray(
-                    dienste.schichtId,
-                    schichtRows.map((r) => r.id),
-                  ),
-                );
-        const gesperrteSchichten = new Set(mitDiensten.map((r) => r.id));
-        const gesperrt = new Set<string>(mitProtokoll.flatMap((r) => (r.id ? [r.id] : [])));
-        for (const r of schichtRows) if (gesperrteSchichten.has(r.id)) gesperrt.add(r.eventId);
+        const { gesperrt } = await eventsLoeschenTx(tx, ids);
         const frei = ids.filter((id) => !gesperrt.has(id));
-        if (frei.length === 0) return;
-        const freieSchichten = schichtRows.filter((r) => !gesperrt.has(r.eventId)).map((r) => r.id);
-        if (freieSchichten.length > 0) {
-          await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, freieSchichten));
-          await tx.delete(schichten).where(inArray(schichten.eventId, frei));
+        if (frei.length > 0) {
+          await tx.delete(serienTermine).where(inArray(serienTermine.eventId, frei));
         }
-        await tx.delete(eventTeilnahmen).where(inArray(eventTeilnahmen.eventId, frei));
-        await tx.delete(kalenderEventAbos).where(inArray(kalenderEventAbos.eventId, frei));
-        await tx.delete(events).where(inArray(events.id, frei));
-        await tx.delete(serienTermine).where(inArray(serienTermine.eventId, frei));
       });
     }
   };
@@ -1685,37 +1712,17 @@ export function createKalenderStore(db: Db): KalenderStore {
     },
     async eventLoeschen(id) {
       return db.transaction(async (tx) => {
-        const [vorhanden] = await tx
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.id, id));
-        if (!vorhanden) return false;
-        const [protokoll] = await tx
-          .select({ id: protokolle.id })
-          .from(protokolle)
-          .where(eq(protokolle.eventId, id));
-        if (protokoll) throw new KalenderKonflikt('Zu dieser Sitzung gibt es ein Protokoll.');
-        const schichtIds = (
-          await tx.select({ id: schichten.id }).from(schichten).where(eq(schichten.eventId, id))
-        ).map((s) => s.id);
-        if (schichtIds.length > 0) {
-          const eintraege = await tx
-            .select({ id: dienste.id })
-            .from(dienste)
-            .where(inArray(dienste.schichtId, schichtIds))
-            .limit(1);
-          if (eintraege.length > 0) {
-            throw new KalenderKonflikt(
-              'Das Event hat Dienste und kann nicht gelöscht werden. Sage es stattdessen ab.',
-            );
-          }
-          await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, schichtIds));
-          await tx.delete(schichten).where(eq(schichten.eventId, id));
+        const { geloescht, gesperrt } = await eventsLoeschenTx(tx, [id]);
+        const sperre = gesperrt.get(id);
+        if (sperre === 'protokoll') {
+          throw new KalenderKonflikt('Zu dieser Sitzung gibt es ein Protokoll.');
         }
-        await tx.delete(eventTeilnahmen).where(eq(eventTeilnahmen.eventId, id));
-        await tx.delete(kalenderEventAbos).where(eq(kalenderEventAbos.eventId, id));
-        await tx.delete(events).where(eq(events.id, id));
-        return true;
+        if (sperre === 'dienste') {
+          throw new KalenderKonflikt(
+            'Das Event hat Dienste und kann nicht gelöscht werden. Sage es stattdessen ab.',
+          );
+        }
+        return geloescht.length > 0;
       });
     },
     async eventsKurz(ids) {
