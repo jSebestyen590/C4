@@ -205,10 +205,28 @@ const mitParametern = (pfad: string, parameter: Record<string, string | null | u
   return q.size > 0 ? `${pfad}?${q}` : pfad;
 };
 
-/** Link to the Bargeld Umbuchen page, prefilled with the accounts when given. */
-export const umbuchenPfad = (von?: string | null, nach?: string | null) =>
-  mitParametern('/finanzen/bargeld/umbuchen', { von, nach });
+/** What a cross-link carries over to the other page (all optional). */
+export interface Uebernahme {
+  von?: string | null;
+  nach?: string | null;
+  text?: string | null;
+  /** ISO date `JJJJ-MM-TT`. */
+  datum?: string | null;
+}
 
-/** Link to the Buchen page in Umbuchung mode, prefilled with the accounts when given. */
-export const buchenPfad = (von?: string | null, nach?: string | null) =>
-  mitParametern('/finanzen/buchen', { modus: 'umbuchung', von, nach });
+/** Link to the Bargeld Umbuchen page, prefilled with what is given. */
+export const umbuchenPfad = (u: Uebernahme = {}) =>
+  mitParametern('/finanzen/bargeld/umbuchen', { ...u });
+
+/** Link to the Buchen page in Umbuchung mode, prefilled with what is given. */
+export const buchenPfad = (u: Uebernahme = {}) =>
+  mitParametern('/finanzen/buchen', { modus: 'umbuchung', ...u });
+
+/** Reads a carried-over text and date from the link; invalid values are dropped. */
+export function uebernahmeLesen(p: URLSearchParams): { text: string | null; datum: string | null } {
+  const datum = p.get('datum');
+  return {
+    text: p.get('text')?.slice(0, 500) || null,
+    datum: datum && /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : null,
+  };
+}

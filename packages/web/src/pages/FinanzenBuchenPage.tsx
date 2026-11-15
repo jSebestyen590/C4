@@ -21,7 +21,7 @@ import { heuteBerlin } from '@c4/shared';
 import { useApi } from '../api';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import { BetragFeld } from '../BetragFeld';
-import { umbuchenPfad } from '../bargeldFormular';
+import { uebernahmeLesen, umbuchenPfad } from '../bargeldFormular';
 import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { BuchungszeilenTabelle } from '../BuchungszeilenTabelle';
 import {
@@ -87,6 +87,9 @@ export function FinanzenBuchenPage() {
     const n = gueltig(parameter.get('nach'));
     if (v) setVon(v);
     if (n && n !== v) setNach(n);
+    const u = uebernahmeLesen(parameter);
+    if (u.text) setText(u.text);
+    if (u.datum) setDatum(u.datum);
   }
   const optionen = kontoOptionen(wahl);
 
@@ -97,6 +100,7 @@ export function FinanzenBuchenPage() {
   // Accounts with Stückelung need denominations: they are booked on the Bargeld pages.
   const gewaehlt = modus === 'umbuchung' ? [von, nach] : zeilen.map((z) => z.kontoId);
   const stueckelungKonten = gewaehlt.filter((id) => wahl.find((k) => k.id === id)?.stueckelung);
+  const umbuchungUebernehmen = modus === 'umbuchung' && !!von && !!nach;
   const gruende = [
     ...(datum ? [] : ['Bitte gib ein Datum an.']),
     ...(stueckelungKonten.length > 0
@@ -313,9 +317,16 @@ export function FinanzenBuchenPage() {
                 Dies ist eine{' '}
                 <Anchor
                   component={Link}
+                  // Umbuchung with both accounts carries accounts, text and date; Frei stays plain.
                   to={
-                    modus === 'umbuchung' && von && nach ? umbuchenPfad(von, nach) : umbuchenPfad()
+                    umbuchungUebernehmen
+                      ? umbuchenPfad({ von, nach, text: text.trim(), datum })
+                      : umbuchenPfad()
                   }
+                  onClick={() => {
+                    // Nothing else typed (no amount): everything is carried, so do not warn.
+                    if (umbuchungUebernehmen && betrag === null) gebuchtRef.current = true;
+                  }}
                 >
                   Bargeld-Umbuchung
                 </Anchor>

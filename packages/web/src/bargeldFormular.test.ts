@@ -5,6 +5,7 @@ import {
   andereKonten,
   bargeldSeite,
   buchenPfad,
+  uebernahmeLesen,
   umbuchenPfad,
   bestandFehler,
   faecherAus,
@@ -132,8 +133,21 @@ describe('bargeldSeite und Links', () => {
     expect(bargeldSeite(k('bank'), undefined)).toBeNull();
   });
   it('baut Links mit Vorbelegung', () => {
-    expect(umbuchenPfad('a', 'b')).toBe('/finanzen/bargeld/umbuchen?von=a&nach=b');
+    expect(umbuchenPfad({ von: 'a', nach: 'b' })).toBe('/finanzen/bargeld/umbuchen?von=a&nach=b');
     expect(umbuchenPfad()).toBe('/finanzen/bargeld/umbuchen');
-    expect(buchenPfad('a', null)).toBe('/finanzen/buchen?modus=umbuchung&von=a');
+    expect(buchenPfad({ von: 'a', nach: null })).toBe('/finanzen/buchen?modus=umbuchung&von=a');
+    expect(buchenPfad({ von: 'a', nach: 'b', text: 'Ä & b', datum: '2027-01-05' })).toBe(
+      '/finanzen/buchen?modus=umbuchung&von=a&nach=b&text=%C3%84+%26+b&datum=2027-01-05',
+    );
+  });
+  it('liest Text und Datum aus dem Link', () => {
+    expect(uebernahmeLesen(new URLSearchParams('text=Hallo&datum=2027-01-05'))).toEqual({
+      text: 'Hallo',
+      datum: '2027-01-05',
+    });
+    expect(uebernahmeLesen(new URLSearchParams('datum=kaputt'))).toEqual({
+      text: null,
+      datum: null,
+    });
   });
 });

@@ -21,6 +21,7 @@ import {
   andereKonten,
   bargeldSeite,
   buchenPfad,
+  uebernahmeLesen,
   faecherAus,
   mengenLeer,
   mengenStueckelung,
@@ -80,6 +81,9 @@ export function FinanzenBargeldUmbuchenPage() {
     const n = gueltig(parameter.get('nach'));
     if (v) setVon(v);
     if (n && n !== v) setNach(n);
+    const u = uebernahmeLesen(parameter);
+    if (u.text) setText(u.text);
+    if (u.datum) setDatum(u.datum);
   }
   const name = (id: string | null) => alle.find((k) => k.id === id)?.name ?? '';
 
@@ -205,7 +209,14 @@ export function FinanzenBargeldUmbuchenPage() {
             {keineBargeldUmbuchung && (
               <Alert color="orange">
                 Dies ist keine Bargeld-Umbuchung: Ohne Fach buchst du sie unter{' '}
-                <Anchor component={Link} to={buchenPfad(von, nach)}>
+                <Anchor
+                  component={Link}
+                  to={buchenPfad({ von, nach, text: text.trim(), datum })}
+                  // Von, Nach, text and date are carried over; typed counts are not.
+                  onClick={() => {
+                    if (mengenLeer(mengen)) warnung.abgeschlossen();
+                  }}
+                >
                   Buchen
                 </Anchor>
                 .
