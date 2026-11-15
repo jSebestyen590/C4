@@ -24,6 +24,7 @@ import {
   uebernahmeLesen,
   faecherAus,
   mengenLeer,
+  nettoText,
   rueckgeldText,
   umbuchenFeldFehler,
   mengenSumme,
@@ -278,7 +279,14 @@ export function FinanzenBargeldUmbuchenPage() {
             konto: name(z.kontoId),
             betragCent: z.betragCent,
           }))}
-          extra={<Text size="sm">{rueckgeldText(mengen)}</Text>}
+          extra={
+            <Stack gap={2}>
+              <Text size="sm" fw={600}>
+                {nettoText(mengen, name(von), name(nach))}
+              </Text>
+              <Text size="sm">{rueckgeldText(mengen)}</Text>
+            </Stack>
+          }
           warnungen={buchungsWarnungen(
             { datum, text: buchText },
             { modus: 'umbuchung', von, nach, betrag: mengenSumme(mengen), zeilen: [] },

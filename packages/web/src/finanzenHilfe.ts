@@ -40,7 +40,7 @@ export const HILFE = {
     umbuchenNach:
       'Hier kommt das Geld an: ein anderes Fach oder ein anderes Konto, z. B. Bank. Mindestens eine Seite muss ein Fach sein. Die Münzen und Scheine trägst du nur einmal ein.',
     umbuchenRueckgeld:
-      'Negative Anzahlen sind Rückgeld: Zahlst du z. B. eine Rechnung über 4,99 € aus dem Fach „Kasse“ mit 1 × 5,00 € und bekommst 1 Cent zurück, trägst du 1 bei 5,00 € und −1 bei 0,01 € ein. Auf der Tastatur tippst du ein Minus, am Handy kehrt die Taste „±“ das Vorzeichen um. Der Betrag insgesamt muss größer als 0 sein, die Richtung bleibt Von → Nach. Negative Anzahlen sind nur möglich, wenn die Münze im „Nach“-Fach vorhanden ist (sie wird dort entnommen).',
+      'Negative Anzahlen sind Rückgeld: Zahlst du z. B. eine Rechnung über 4,99 € aus dem Fach „Kasse“ mit 1 × 5,00 € und bekommst 1 Cent zurück, trägst du 1 bei 5,00 € und −1 bei 0,01 € ein. Auf der Tastatur tippst du ein Minus, am Handy kehrt die Taste „±“ das Vorzeichen um. Der Betrag insgesamt darf auch 0 oder negativ sein (z. B. Tausch zwischen zwei Fächern: 1 × 50 € gegen 5 × 10 €); ohne Fach auf beiden Seiten braucht die Umbuchung aber einen Betrag. Negative Anzahlen sind nur möglich, wenn die Münze im „Nach“-Fach vorhanden ist (sie wird dort entnommen).',
     bestand:
       'Der Bestand ergibt sich aus den Buchungen: wie viele Stück je Münze und Schein im Fach liegen. Er darf nie unter 0 fallen.',
     wechselnTabelle:

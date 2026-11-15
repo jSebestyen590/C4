@@ -123,6 +123,18 @@ export const rueckgeldText = (m: Mengen): string =>
     )
     .join(', ');
 
+/**
+ * The net direction of an Umbuchung in words: `Netto 10,00 € von „B“ nach „A“`, or for a pure swap
+ * between two Fächer `Netto 0,00 € – reiner Tausch zwischen den Fächern`.
+ */
+export function nettoText(m: Mengen, vonName: string, nachName: string): string {
+  const summe = mengenSumme(m);
+  if (summe === 0) return `Netto ${centAnzeigen(0)} – reiner Tausch zwischen den Fächern`;
+  return summe > 0
+    ? `Netto ${centAnzeigen(summe)} von „${vonName}“ nach „${nachName}“`
+    : `Netto ${centAnzeigen(-summe)} von „${nachName}“ nach „${vonName}“`;
+}
+
 export interface UmbuchenFehler {
   von?: string;
   nach?: string;
@@ -147,8 +159,8 @@ export function umbuchenFehler(
     f.nach = 'Dies ist keine Bargeld-Umbuchung: Ohne Fach buchst du sie unter „Buchen“.';
   if (mengenLeer(s.mengen)) f.mengen = 'Bitte gib mindestens eine Münze oder einen Schein an.';
   else if (mengeZuGross(s.mengen)) f.mengen = 'Eine Anzahl ist zu groß.';
-  else if (mengenSumme(s.mengen) <= 0)
-    f.mengen = 'Der Betrag muss größer als 0 sein: Es muss mehr abgehen, als zurückkommt.';
+  else if (mengenSumme(s.mengen) === 0 && von && nach && !(istFach(von) && istFach(nach)))
+    f.mengen = 'Ohne Fach auf beiden Seiten braucht die Umbuchung einen Betrag.';
   else if (
     umbuchenFeldFehler(
       s.mengen,
@@ -170,7 +182,11 @@ export function umbuchenZeilen(
   const von = konten.find((k) => k.id === s.von);
   const nach = konten.find((k) => k.id === s.nach);
   return [
-    zeile(s.von ?? '', -summe, istFach(von) ? mengenStueckelung(s.mengen, -1) : null),
+    zeile(
+      s.von ?? '',
+      summe === 0 ? 0 : -summe,
+      istFach(von) ? mengenStueckelung(s.mengen, -1) : null,
+    ),
     zeile(s.nach ?? '', summe, istFach(nach) ? mengenStueckelung(s.mengen, 1) : null),
   ];
 }

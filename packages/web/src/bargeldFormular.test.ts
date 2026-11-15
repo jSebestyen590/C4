@@ -6,6 +6,7 @@ import {
   bargeldSeite,
   buchenPfad,
   uebernahmeLesen,
+  nettoText,
   rueckgeldText,
   umbuchenFeldFehler,
   umbuchenPfad,
@@ -178,12 +179,28 @@ describe('Umbuchen mit Rückgeld (negative Anzahlen)', () => {
       ],
     });
   });
-  it('verlangt eine Summe über 0', () => {
+  it('erlaubt jede Summe, auch 0 und negative, zwischen zwei Fächern', () => {
     const f = (mengen: Record<number, number>) =>
-      umbuchenFehler({ von: 'f1', nach: 'bank', mengen }, konten, kasse).mengen;
+      umbuchenFehler({ von: 'f1', nach: 'f2', mengen }, konten, kasse, kasse).mengen;
     expect(f({ 500: 1, 1: -1 })).toBeUndefined();
-    expect(f({ 500: 1, 1000: -1 })).toContain('größer als 0');
-    expect(f({ 100: 1, 50: -2 })).toContain('größer als 0');
+    expect(f({ 500: 1, 1: -2 })).toBeUndefined();
+    expect(f({ 1: -2 })).toBeUndefined();
+    expect(
+      umbuchenZeilen({ von: 'f1', nach: 'f2', mengen: { 500: 1, 1: -500 } }, konten)[0],
+    ).toMatchObject({ betragCent: 0 });
+  });
+  it('braucht ohne Fach auf beiden Seiten einen Betrag und mindestens eine Anzahl', () => {
+    const f = (nach: string, mengen: Record<number, number>) =>
+      umbuchenFehler({ von: 'f1', nach, mengen }, konten, kasse).mengen;
+    expect(f('bank', { 500: 1, 1: -500 })).toContain('braucht die Umbuchung einen Betrag');
+    expect(f('bank', {})).toContain('mindestens eine');
+  });
+  it('beschreibt die Netto-Richtung', () => {
+    expect(nettoText({ 1000: 1 }, 'B', 'A')).toBe('Netto 10,00 € von „B“ nach „A“');
+    expect(nettoText({ 500: -2 }, 'B', 'A')).toBe('Netto 10,00 € von „A“ nach „B“');
+    expect(nettoText({ 5000: 1, 1000: -5 }, 'B', 'A')).toBe(
+      'Netto 0,00 € – reiner Tausch zwischen den Fächern',
+    );
   });
   it('begrenzt positive Anzahlen am Von-Fach und negative am Nach-Fach', () => {
     const von = { name: 'Kasse', bestand: kasse };
