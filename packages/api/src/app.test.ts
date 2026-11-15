@@ -1,18 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UsernameTakenError, type Konto } from './admin';
 import { CodeUngueltig, EmailVergeben, NeuAnmeldungNoetig } from './emailaenderung';
+import { OEFFENTLICH } from './app';
 import { makeApp, bearer } from './test/appTestHelfer';
 
 describe('api', () => {
-  it('health is public and reports db status', async () => {
-    const ok = await makeApp().app.request('/api/health');
-    expect(await ok.json()).toEqual({ status: 'ok', db: 'ok' });
-    const failing = makeApp(async () => {
+  it('health is public and does not touch the database', async () => {
+    const pingDb = vi.fn(async () => {
       throw new Error('down');
     });
-    const res = await failing.app.request('/api/health');
-    expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({ status: 'ok', db: 'error' });
+    const res = await makeApp(pingDb).app.request('/api/health');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(pingDb).not.toHaveBeenCalled();
+  });
+
+  it('denies every route without a token except the public allowlist', async () => {
+    const { app } = makeApp();
+    const routen = app.routes.filter((r) => r.method !== 'ALL');
+    const gesperrt = routen.filter((r) => !OEFFENTLICH.some((p) => r.path.startsWith(p)));
+    expect(routen.length - gesperrt.length).toBe(3);
+    expect(gesperrt.length).toBeGreaterThan(100);
+    for (const r of gesperrt) {
+      const pfad = r.path.replace(/:[A-Za-z]+/g, 'x');
+      const res = await app.request(pfad, { method: r.method });
+      expect(res.status, `${r.method} ${r.path}`).toBe(401);
+    }
+    expect((await app.request('/api/gibt-es-nicht')).status).toBe(401);
+  });
+
+  it('authenticates once per request', async () => {
+    const { app, mitglieder } = makeApp();
+    const holen = vi.spyOn(mitglieder, 'holen');
+    expect((await app.request('/api/me', { headers: bearer('reader-token') })).status).toBe(200);
+    // Once in `authenticate`, once in the /me handler itself; a second auth run would make three.
+    expect(holen).toHaveBeenCalledTimes(2);
   });
 
   it('maps database conflicts to 409 and unknown errors to 500', async () => {
