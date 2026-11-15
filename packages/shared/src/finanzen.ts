@@ -22,7 +22,7 @@ export const STEUER_ARTEN = ['ust', 'vorsteuer', 'keine'] as const;
 export type SteuerArt = (typeof STEUER_ARTEN)[number];
 
 /** Where an entry comes from. Later slices add their own types. */
-export const QUELLE_TYPEN = ['manuell', 'umbuchung', 'storno', 'eroeffnung'] as const;
+export const QUELLE_TYPEN = ['manuell', 'umbuchung', 'storno', 'eroeffnung', 'zaehlung'] as const;
 export type QuelleTyp = (typeof QUELLE_TYPEN)[number];
 /** The types a user may choose when booking by hand (`storno` has its own route). */
 export const MANUELLE_QUELLE_TYPEN = ['manuell', 'umbuchung'] as const;
@@ -65,11 +65,12 @@ export const QUELLE_TYP_LABELS: Record<QuelleTyp, string> = {
   umbuchung: 'Umbuchung',
   storno: 'Storno',
   eroeffnung: 'Eröffnung',
+  zaehlung: 'Zählung',
 };
 
 // ----- Schemas
 
-const datumSchema = z
+export const finanzDatumSchema = z
   .string('Bitte gib ein Datum an.')
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Bitte gib ein gültiges Datum an.')
   .refine((d) => {
@@ -159,7 +160,7 @@ export const idempotenzSchluessel = z
 
 export const buchungEingabeSchema = z.object({
   idempotenzSchluessel,
-  datum: datumSchema,
+  datum: finanzDatumSchema,
   text: buchungstext,
   quelleTyp: z.enum(MANUELLE_QUELLE_TYPEN, 'Ungültige Buchungsart.').default('manuell'),
   eventId: nullish(z.string().min(1)),
@@ -174,7 +175,7 @@ export type BuchungEingabeInput = z.input<typeof buchungEingabeSchema>;
 /** Body of `POST /api/finanzen/buchungen/:id/storno`. */
 export const stornoEingabeSchema = z.object({
   idempotenzSchluessel,
-  datum: datumSchema,
+  datum: finanzDatumSchema,
   /** Reason of the reversal; required. */
   text: z
     .string('Bitte gib eine Begründung für das Storno an.')
@@ -187,8 +188,8 @@ export type StornoEingabeInput = z.input<typeof stornoEingabeSchema>;
 
 /** Query of `GET /api/finanzen/buchungen`. */
 export const journalAbfrageSchema = z.object({
-  von: datumSchema.optional(),
-  bis: datumSchema.optional(),
+  von: finanzDatumSchema.optional(),
+  bis: finanzDatumSchema.optional(),
   kontoId: z.string().min(1).optional(),
   /** `1`: only reversals and the originals they reversed. */
   storno: z
@@ -205,12 +206,38 @@ export interface PruefKonto {
   name: string;
   stueckelung: boolean;
   archiviert: boolean;
+  /** The account has sub accounts (it is a group) and takes no lines itself. */
+  hatUnterkonten?: boolean;
 }
 
-const eur = (c: number) =>
+/** `1250` -> `12,50 €` (plain space), for error messages. */
+export const formatEuro = (c: number) =>
   new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
     .format(c / 100)
     .replaceAll(String.fromCharCode(160), ' ');
+const eur = formatEuro;
+
+/**
+ * Group rule: an account with sub accounts takes no lines (also not in a reversal). Returns one
+ * German message per such account.
+ */
+export function pruefeGruppenregel(
+  zeilen: readonly { kontoId: string }[],
+  konten: readonly PruefKonto[],
+): string[] {
+  const nachId = new Map(konten.map((k) => [k.id, k]));
+  const gesehen = new Set<string>();
+  const fehler: string[] = [];
+  for (const z of zeilen) {
+    const k = nachId.get(z.kontoId);
+    if (!k?.hatUnterkonten || gesehen.has(k.id)) continue;
+    gesehen.add(k.id);
+    fehler.push(
+      `Auf das Konto „${k.name}“ kann nicht gebucht werden, weil es Unterkonten hat. Buche auf ein Fach/Unterkonto.`,
+    );
+  }
+  return fehler;
+}
 
 /**
  * Business checks of a new entry against the accounts; returns German messages, empty = valid.
@@ -273,11 +300,53 @@ export function pruefeBuchung(
         f('Netto und Steuer ergeben nicht den Betrag.');
     }
   });
+  fehler.push(...pruefeGruppenregel(eingabe.zeilen, konten));
   if (summe !== 0)
     fehler.push(
       `Die Buchung geht nicht auf: Die Zeilen ergeben ${eur(summe)}, sie müssen zusammen 0 ergeben.`,
     );
   return fehler;
+}
+
+// ----- Plausibility warnings per account kind
+
+/** An account with its current balance, for `saldoWarnungen`. */
+export interface SaldoKonto {
+  id: string;
+  name: string;
+  art: KontoArt;
+  /** Sum of the account's own lines (Soll/Zugang positive). */
+  saldoCent: number;
+}
+
+/**
+ * Non-blocking warnings about the balances after a booking (lines of one account are summed first):
+ * Bank below 0; Aufwand with a credit balance the booking made larger; Erlöse in the minus (Soll
+ * balance) the booking made larger. Bargeld is a hard server rule, Durchlauf and Neutral never warn.
+ */
+export function saldoWarnungen(
+  zeilen: readonly { kontoId: string; betragCent: number }[],
+  konten: readonly SaldoKonto[],
+): string[] {
+  const aenderung = new Map<string, number>();
+  for (const z of zeilen) aenderung.set(z.kontoId, (aenderung.get(z.kontoId) ?? 0) + z.betragCent);
+  const warnungen: string[] = [];
+  for (const [id, delta] of aenderung) {
+    const k = konten.find((x) => x.id === id);
+    if (!k) continue;
+    const neu = k.saldoCent + delta;
+    if (k.art === 'bank' && neu < 0)
+      warnungen.push(`Der Kontostand von „${k.name}“ wäre danach negativ (${formatEuro(neu)}).`);
+    else if (k.art === 'aufwand' && neu < 0 && delta < 0)
+      warnungen.push(
+        `„${k.name}“ (Aufwand) hätte danach ein Guthaben von ${formatEuro(-neu)} – das ist ungewöhnlich (z. B. Erstattung höher als die Ausgaben).`,
+      );
+    else if (k.art === 'erloes' && neu > 0 && delta > 0)
+      warnungen.push(
+        `„${k.name}“ (Erlöse) wäre danach im Minus (${formatEuro(neu)}) – das ist ungewöhnlich (z. B. Rückzahlung höher als die Einnahmen).`,
+      );
+  }
+  return warnungen;
 }
 
 // ----- Storno
@@ -523,6 +592,27 @@ export interface KontoDto {
   archiviert: boolean;
   /** Sum of all lines on this account (without sub accounts). */
   saldoCent: number;
+  /** Own balance plus the balances of all sub accounts (equals `saldoCent` without any). */
+  saldoGesamtCent: number;
+}
+
+/** Own balance plus the balances of all sub accounts, per account id. */
+export function saldoGesamt(
+  konten: readonly { id: string; parentId: string | null; saldoCent: number }[],
+): Map<string, number> {
+  const kinder = new Map<string, string[]>();
+  for (const k of konten) {
+    if (k.parentId) kinder.set(k.parentId, [...(kinder.get(k.parentId) ?? []), k.id]);
+  }
+  const eigene = new Map(konten.map((k) => [k.id, k.saldoCent]));
+  const summe = (id: string, besucht: Set<string>): number => {
+    if (besucht.has(id)) return 0;
+    besucht.add(id);
+    return (
+      (eigene.get(id) ?? 0) + (kinder.get(id) ?? []).reduce((s, c) => s + summe(c, besucht), 0)
+    );
+  };
+  return new Map(konten.map((k) => [k.id, summe(k.id, new Set())]));
 }
 
 export interface StueckelungDto {

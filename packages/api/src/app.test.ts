@@ -21,6 +21,7 @@ import {
   type PrivatpartyDetailDto,
   type TrichterUebersichtDto,
   type UmfrageDetailDto,
+  type UmfrageListeDto,
   type AdminUser,
   type MitgliedStatus,
   type PostenRecht,
@@ -9895,6 +9896,77 @@ describe('privatpartys', () => {
     expect(danach.terminId).toBe(danach.termine[1]!.id);
   });
 
+  it('lets holders of the right outside the circle see and vote in the poll of a Privatparty only', async () => {
+    const t = await setup();
+    const { id } = await t.anlegen();
+    const res = await t.app.request(
+      `/api/privatpartys/${id}/umfrage`,
+      json('admin-token', 'POST', { vorlageId: 'privat', endetAm: '2099-03-01', pflicht: false }),
+    );
+    const { id: umfrageId } = (await res.json()) as { id: string };
+    const fremd = await t.app.request('/api/umfragen', {
+      ...json('admin-token', 'POST', {
+        titel: 'Sommerfest',
+        beschreibung: null,
+        endetAm: '2099-03-01',
+        anonym: false,
+        ergebnisse: 'sofort',
+        pflicht: { status: [], posten: [], personen: ['a'] },
+        optional: { status: [], posten: [], personen: [] },
+        erinnerungenPflicht: [],
+        erinnerungenOptional: [],
+        fragen: [
+          {
+            text: 'Wann?',
+            freitext: false,
+            maxAntworten: 1,
+            optionen: [{ text: 'A' }, { text: 'B' }],
+          },
+        ],
+      }),
+    });
+    expect(fremd.status).toBe(201);
+    const fremdId = ((await fremd.json()) as { id: string }).id;
+    // r has no profile and so is outside the circle; m2 is in it. Only r holds the right.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'r' ? ['privatpartys:verwalten' as const] : [],
+    );
+    const ids = async (token: string, pfad: string) => {
+      const r = await t.app.request(pfad, json(token, 'GET'));
+      if (r.status !== 200) throw new Error(`${token} ${r.status} ${await r.text()}`);
+      return ((await r.json()) as UmfrageListeDto[]).map((u) => u.id);
+    };
+    // The holder outside the circle sees the poll in the list and may vote (the gate passes; without a profile: 400, not 403).
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([umfrageId]);
+    const detail = (await (
+      await t.app.request(`/api/umfragen/${umfrageId}`, json('reader-token', 'GET'))
+    ).json()) as UmfrageDetailDto;
+    expect(detail).toMatchObject({ meinKreis: null, darfAbstimmen: true });
+    const stimme = (token: string, uid: string) =>
+      t.app.request(
+        `/api/umfragen/${uid}/stimme`,
+        json(token, 'PUT', {
+          antworten: [
+            { frageId: detail.fragen[0]!.id, optionIds: [detail.fragen[0]!.optionen[0]!.id] },
+          ],
+        }),
+      );
+    expect((await stimme('reader-token', umfrageId)).status).toBe(400);
+    // Without the right the same caller gets 404 (poll hidden), also on the list.
+    t.posten.rechteVon.mockImplementation(async () => []);
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([]);
+    expect((await stimme('reader-token', umfrageId)).status).toBe(404);
+    // The right grants nothing on other polls.
+    t.posten.rechteVon.mockImplementation(async (sub: string) =>
+      sub === 'r' ? ['privatpartys:verwalten' as const] : [],
+    );
+    expect(
+      (await t.app.request(`/api/umfragen/${fremdId}`, json('reader-token', 'GET'))).status,
+    ).toBe(404);
+    expect((await stimme('reader-token', fremdId)).status).toBe(404);
+    expect(await ids('reader-token', '/api/umfragen')).toEqual([umfrageId]);
+  });
+
   it('ends the running poll when the request is declined and then refuses an event from it', async () => {
     const t = await setup();
     const { id } = await t.anlegen();
@@ -10376,7 +10448,7 @@ describe('finanzen', () => {
         method,
         pfad,
         method === 'POST' &&
-          (pfad === '/buchungen' || pfad.endsWith('/storno')) &&
+          (pfad === '/buchungen' || pfad === '/zaehlungen' || pfad.endsWith('/storno')) &&
           body &&
           typeof body === 'object' &&
           !('idempotenzSchluessel' in body)
@@ -10399,7 +10471,34 @@ describe('finanzen', () => {
       });
     const lesen = async <T>(token: string, pfad: string) =>
       (await (await anfrage(token, 'GET', pfad)).json()) as T;
-    return { ...t, anfrage, roh, buchen, umbuchung, lesen };
+    /** Creates a Fach (Stückelung account below the Safe) and returns its id. */
+    const fach = async (name = 'Wechselgeld') => {
+      const res = await anfrage('admin-token', 'POST', '/konten', {
+        name,
+        art: 'bargeld',
+        stueckelung: true,
+        parentId: 'safe',
+      });
+      return ((await res.json()) as { id: string }).id;
+    };
+    /** Puts a Stückelung into a Fach (opening booking). */
+    const befuellen = async (kontoId: string, stueckelung: [number, number][]) => {
+      const betragCent = stueckelung.reduce((sum, [n, a]) => sum + n * a, 0);
+      return buchen({
+        datum: '2027-01-02',
+        text: 'Anfangsbestand',
+        quelleTyp: 'umbuchung',
+        zeilen: [
+          { kontoId: 'eroeffnung', betragCent: -betragCent },
+          {
+            kontoId,
+            betragCent,
+            stueckelung: stueckelung.map(([nennwertCent, anzahl]) => ({ nennwertCent, anzahl })),
+          },
+        ],
+      });
+    };
+    return { ...t, anfrage, roh, buchen, umbuchung, lesen, fach, befuellen };
   }
 
   it('requires the matching right on every route', async () => {
@@ -10441,7 +10540,13 @@ describe('finanzen', () => {
       parentId: string | null;
     };
     const konten = await t.lesen<K[]>('vorstand-token', '/konten');
-    expect(konten.map((k) => k.id).sort()).toEqual(['bank', 'eroeffnung', 'geldtransit', 'safe']);
+    expect(konten.map((k) => k.id).sort()).toEqual([
+      'bank',
+      'eroeffnung',
+      'geldtransit',
+      'kassendifferenz',
+      'safe',
+    ]);
     expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
 
     const neu = await t.anfrage('admin-token', 'POST', '/konten', {
@@ -10577,13 +10682,14 @@ describe('finanzen', () => {
     const t = await setup();
     await t.umbuchung(100, { datum: '2027-01-01' });
     await t.umbuchung(200, { datum: '2027-02-01' });
+    const f = await t.fach();
     await t.buchen({
       datum: '2027-03-01',
       text: 'Eröffnung',
       zeilen: [
         { kontoId: 'eroeffnung', betragCent: -1000 },
         {
-          kontoId: 'safe',
+          kontoId: f,
           betragCent: 1000,
           stueckelung: [{ nennwertCent: 1000, anzahl: 1 }],
         },
@@ -10594,7 +10700,7 @@ describe('finanzen', () => {
         await t.lesen<{ buchungen: { seq: number }[] }>('vorstand-token', `/buchungen${abfrage}`)
       ).buchungen.map((b) => b.seq);
     expect(await seqs('')).toEqual([3, 2, 1]);
-    expect(await seqs('?kontoId=safe')).toEqual([3]);
+    expect(await seqs(`?kontoId=${f}`)).toEqual([3]);
     expect(await seqs('?kontoId=bank')).toEqual([2, 1]);
     expect(await seqs('?von=2027-02-01')).toEqual([3, 2]);
     expect(await seqs('?von=2027-01-15&bis=2027-02-15')).toEqual([2]);
@@ -10703,7 +10809,7 @@ describe('finanzen', () => {
       await fehler({
         ...basis,
         zeilen: [
-          { kontoId: 'safe', betragCent: 500 },
+          { kontoId: await t.fach(), betragCent: 500 },
           { kontoId: 'bank', betragCent: -500 },
         ],
       }),
@@ -10732,13 +10838,14 @@ describe('finanzen', () => {
 
   it('stores the denominations of a booking on a Stückelung account', async () => {
     const t = await setup();
+    const f = await t.fach();
     const res = await t.buchen({
       datum: '2027-01-05',
       text: 'Anfangsbestand',
       zeilen: [
         { kontoId: 'eroeffnung', betragCent: -2500 },
         {
-          kontoId: 'safe',
+          kontoId: f,
           betragCent: 2500,
           stueckelung: [
             { nennwertCent: 2000, anzahl: 1 },
@@ -10753,7 +10860,7 @@ describe('finanzen', () => {
       'vorstand-token',
       `/buchungen/${id}`,
     );
-    expect(detail.zeilen.find((z) => z.kontoId === 'safe')?.stueckelung).toEqual([
+    expect(detail.zeilen.find((z) => z.kontoId === f)?.stueckelung).toEqual([
       { nennwertCent: 500, anzahl: 1 },
       { nennwertCent: 2000, anzahl: 1 },
     ]);
@@ -10979,5 +11086,377 @@ describe('finanzen', () => {
     expect(
       (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
     ).toHaveLength(1);
+  });
+  describe('Bargeld', () => {
+    type Fehler = { error?: string; message?: string };
+    const meldung = async (res: Response) => {
+      const b = (await res.json()) as Fehler;
+      return b.error ?? b.message ?? '';
+    };
+    const zaehlen = (
+      t: Awaited<ReturnType<typeof setup>>,
+      kontoId: string,
+      ist: [number, number][],
+      extra: Record<string, unknown> = {},
+      token = 'admin-token',
+    ) =>
+      t.anfrage(token, 'POST', '/zaehlungen', {
+        kontoId,
+        datum: '2027-01-10',
+        ist: ist.map(([nennwertCent, anzahl]) => ({ nennwertCent, anzahl })),
+        ...extra,
+      });
+    const umbuchenFach = (
+      t: Awaited<ReturnType<typeof setup>>,
+      von: string,
+      nach: string,
+      nennwertCent: number,
+      anzahl: number,
+      zeilen: 'beide' | 'nur-von' = 'beide',
+    ) =>
+      t.buchen({
+        datum: '2027-01-11',
+        text: 'Umbuchung',
+        quelleTyp: 'umbuchung',
+        zeilen: [
+          {
+            kontoId: von,
+            betragCent: -nennwertCent * anzahl,
+            stueckelung: [{ nennwertCent, anzahl: -anzahl }],
+          },
+          zeilen === 'beide'
+            ? {
+                kontoId: nach,
+                betragCent: nennwertCent * anzahl,
+                stueckelung: [{ nennwertCent, anzahl }],
+              }
+            : { kontoId: nach, betragCent: nennwertCent * anzahl },
+        ],
+      });
+    type Bargeld = {
+      faecher: {
+        id: string;
+        name: string;
+        saldoCent: number;
+        bestand: { nennwertCent: number; anzahl: number }[];
+      }[];
+      summeBestand: { nennwertCent: number; anzahl: number }[];
+      summeCent: number;
+    };
+    const anzahl = (b: { nennwertCent: number; anzahl: number }[], n: number) =>
+      b.find((x) => x.nennwertCent === n)?.anzahl;
+
+    it('requires the matching right on the Bargeld routes', async () => {
+      const t = await setup();
+      for (const token of ['member-token', 'reader-token']) {
+        for (const [method, pfad] of [
+          ['GET', '/bargeld'],
+          ['GET', '/zaehlungen'],
+          ['GET', '/zaehlungen/x'],
+          ['POST', '/zaehlungen'],
+        ]) {
+          const res = await t.anfrage(token, method!, pfad!, method === 'GET' ? undefined : {});
+          expect(res.status, `${method} ${pfad} ${token}`).toBe(403);
+        }
+      }
+      expect((await t.anfrage('vorstand-token', 'GET', '/bargeld')).status).toBe(200);
+      expect((await t.anfrage('vorstand-token', 'GET', '/zaehlungen')).status).toBe(200);
+      expect((await t.anfrage('vorstand-token', 'POST', '/zaehlungen', {})).status).toBe(403);
+    });
+
+    it('rejects bookings on a group account and sub accounts below an account with lines', async () => {
+      const t = await setup();
+      await t.fach();
+      const res = await t.buchen({
+        datum: '2027-01-05',
+        text: 'Safe',
+        zeilen: [
+          { kontoId: 'safe', betragCent: 100 },
+          { kontoId: 'bank', betragCent: -100 },
+        ],
+      });
+      expect(res.status).toBe(400);
+      expect(await meldung(res)).toContain('Unterkonten');
+
+      await t.umbuchung(100);
+      const unter = await t.anfrage('admin-token', 'POST', '/konten', {
+        name: 'Unter Bank',
+        art: 'bank',
+        parentId: 'bank',
+      });
+      expect(unter.status).toBe(409);
+      expect(await meldung(unter)).toContain('hat schon Buchungen und kann keine Unterkonten');
+    });
+
+    it('refuses a Storno that would book on an account with sub accounts', async () => {
+      const t = await setup();
+      // a parent that has lines cannot get children, so the rule only bites through the fake's own
+      // state: book on a Fach, then give the Fach a child by a direct store call.
+      const f = await t.fach();
+      const b = (await (await t.befuellen(f, [[100, 5]])).json()) as { id: string };
+      t.finanzenFake.konten.set('kind', {
+        id: 'kind',
+        name: 'Kind',
+        art: 'bargeld',
+        parentId: f,
+        stueckelung: true,
+        steuersatzStandard: null,
+        archiviert: false,
+      });
+      const res = await t.anfrage('admin-token', 'POST', `/buchungen/${b.id}/storno`, {
+        datum: '2027-01-12',
+        text: 'Irrtum',
+      });
+      expect(res.status).toBe(400);
+      expect(await meldung(res)).toContain('Unterkonten');
+    });
+
+    it('blocks bookings that would make a balance or a count negative', async () => {
+      const t = await setup();
+      const f = await t.fach('Wechselgeld');
+      const g = await t.fach('Kleingeld');
+      await t.befuellen(f, [
+        [200, 3],
+        [100, 4],
+      ]);
+      const zuViel = await umbuchenFach(t, f, g, 200, 4);
+      expect(zuViel.status).toBe(400);
+      expect(await meldung(zuViel)).toContain(
+        'Im Fach „Wechselgeld“ sind nur 3 × 2,00 € vorhanden.',
+      );
+      // saldo check on a Bargeld account without Stückelung
+      const kasse = await t.anfrage('admin-token', 'POST', '/konten', {
+        name: 'Kasse',
+        art: 'bargeld',
+      });
+      const { id: kasseId } = (await kasse.json()) as { id: string };
+      const minus = await t.buchen({
+        datum: '2027-01-11',
+        text: 'Minus',
+        zeilen: [
+          { kontoId: kasseId, betragCent: -100 },
+          { kontoId: 'bank', betragCent: 100 },
+        ],
+      });
+      expect(minus.status).toBe(400);
+      expect(await meldung(minus)).toContain('sind nur 0,00 € vorhanden');
+      // within the stock it works
+      expect((await umbuchenFach(t, f, g, 200, 3)).status).toBe(201);
+      // a reversal of the Anfangsbestand would now take 2 EUR coins that are gone
+      const journal = await t.lesen<{ buchungen: { id: string; text: string }[] }>(
+        'vorstand-token',
+        '/buchungen',
+      );
+      const anfang = journal.buchungen.find((b) => b.text === 'Anfangsbestand')!;
+      const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${anfang.id}/storno`, {
+        datum: '2027-01-12',
+        text: 'Irrtum',
+      });
+      expect(storno.status).toBe(400);
+      expect(await meldung(storno)).toContain('Im Fach „Wechselgeld“ gibt es keine 2,00 €.');
+    });
+
+    it('allows changing money inside one Fach (Wechseln)', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [[500, 1]]);
+      const res = await t.buchen({
+        datum: '2027-01-11',
+        text: 'Wechseln',
+        quelleTyp: 'umbuchung',
+        zeilen: [
+          { kontoId: f, betragCent: -500, stueckelung: [{ nennwertCent: 500, anzahl: -1 }] },
+          { kontoId: f, betragCent: 500, stueckelung: [{ nennwertCent: 100, anzahl: 5 }] },
+        ],
+      });
+      expect(res.status).toBe(201);
+      const b = await t.lesen<Bargeld>('vorstand-token', '/bargeld');
+      expect(anzahl(b.faecher[0]!.bestand, 100)).toBe(5);
+      expect(anzahl(b.faecher[0]!.bestand, 500)).toBe(0);
+    });
+
+    it('shows the stock of the Fächer with totals', async () => {
+      const t = await setup();
+      const f = await t.fach('Wechselgeld');
+      const g = await t.fach('Barkasse');
+      await t.befuellen(f, [
+        [200, 3],
+        [100, 4],
+      ]);
+      await t.befuellen(g, [[100, 2]]);
+      const archiviert = await t.fach('Alt');
+      await t.anfrage('admin-token', 'PUT', `/konten/${archiviert}/archiv`, { archiviert: true });
+      const b = await t.lesen<Bargeld>('vorstand-token', '/bargeld');
+      expect(b.faecher.map((x) => x.name)).toEqual(['Barkasse', 'Wechselgeld']);
+      expect(b.faecher.map((x) => x.saldoCent)).toEqual([200, 1000]);
+      expect(b.faecher[0]!.bestand).toHaveLength(13);
+      expect(anzahl(b.summeBestand, 100)).toBe(6);
+      expect(anzahl(b.summeBestand, 200)).toBe(3);
+      expect(b.summeCent).toBe(1200);
+      // the Safe shows the rolled-up balance
+      const konten = await t.lesen<{ id: string; saldoCent: number; saldoGesamtCent: number }[]>(
+        'vorstand-token',
+        '/konten',
+      );
+      expect(konten.find((k) => k.id === 'safe')).toMatchObject({
+        saldoCent: 0,
+        saldoGesamtCent: 1200,
+      });
+    });
+
+    it('stores a Zählung without difference as protocol and books nothing', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [[100, 4]]);
+      const res = await zaehlen(t, f, [[100, 4]]);
+      expect(res.status).toBe(201);
+      const z = (await res.json()) as {
+        id: string;
+        buchungId: string | null;
+        differenzCent: number;
+      };
+      expect(z).toMatchObject({ buchungId: null, differenzCent: 0 });
+      const journal = await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen');
+      expect(journal.buchungen).toHaveLength(1);
+      const detail = await t.lesen<{
+        sollCent: number;
+        istCent: number;
+        buchung: unknown;
+        gezaehltVon: { username: string; status: string } | null;
+        posten: { nennwertCent: number; sollAnzahl: number; istAnzahl: number }[];
+      }>('vorstand-token', `/zaehlungen/${z.id}`);
+      expect(detail).toMatchObject({
+        sollCent: 400,
+        istCent: 400,
+        buchung: null,
+        gezaehltVon: { username: 'user-a' },
+      });
+      expect(detail.posten).toHaveLength(13);
+      expect(detail.posten.find((p) => p.nennwertCent === 100)).toMatchObject({
+        sollAnzahl: 4,
+        istAnzahl: 4,
+      });
+    });
+
+    it('books the net difference on Kassendifferenz', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [
+        [200, 3],
+        [100, 4],
+      ]);
+      const res = await zaehlen(t, f, [
+        [200, 3],
+        [100, 2],
+      ]);
+      expect(res.status).toBe(201);
+      const z = (await res.json()) as {
+        id: string;
+        buchungId: string;
+        buchungSeq: number;
+        differenzCent: number;
+      };
+      expect(z.differenzCent).toBe(-200);
+      expect(z.buchungSeq).toBe(2);
+      const buchung = await t.lesen<{
+        quelleTyp: string;
+        quelleId: string;
+        text: string;
+        zeilen: { kontoId: string; betragCent: number; stueckelung: unknown[] }[];
+      }>('vorstand-token', `/buchungen/${z.buchungId}`);
+      expect(buchung).toMatchObject({ quelleTyp: 'zaehlung', quelleId: z.id });
+      expect(buchung.text).toContain('Zählung Wechselgeld: Differenz');
+      expect(buchung.zeilen.map((x) => [x.kontoId, x.betragCent])).toEqual([
+        [f, -200],
+        ['kassendifferenz', 200],
+      ]);
+      const b = await t.lesen<Bargeld>('vorstand-token', '/bargeld');
+      expect(anzahl(b.faecher[0]!.bestand, 100)).toBe(2);
+      const liste = await t.lesen<{
+        zaehlungen: { id: string; kontoName: string; differenzCent: number }[];
+      }>('vorstand-token', `/zaehlungen?kontoId=${f}`);
+      expect(liste.zaehlungen).toMatchObject([
+        { id: z.id, kontoName: 'Wechselgeld', differenzCent: -200 },
+      ]);
+      expect(
+        (await t.lesen<{ zaehlungen: unknown[] }>('vorstand-token', '/zaehlungen?kontoId=nix'))
+          .zaehlungen,
+      ).toHaveLength(0);
+    });
+
+    it('books a surplus and a missing coin of another value as two Fach lines plus Kassendifferenz', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [[200, 3]]);
+      const res = await zaehlen(t, f, [
+        [200, 2],
+        [500, 1],
+      ]);
+      const z = (await res.json()) as { buchungId: string; differenzCent: number };
+      expect(z.differenzCent).toBe(-200 + 500);
+      const buchung = await t.lesen<{ zeilen: { kontoId: string; betragCent: number }[] }>(
+        'vorstand-token',
+        `/buchungen/${z.buchungId}`,
+      );
+      expect(buchung.zeilen.map((x) => [x.kontoId, x.betragCent])).toEqual([
+        [f, 500],
+        [f, -200],
+        ['kassendifferenz', -300],
+      ]);
+    });
+
+    it('books only the Stückelung when just the mix differs', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [[500, 1]]);
+      const res = await zaehlen(t, f, [[100, 5]]);
+      const z = (await res.json()) as { buchungId: string; differenzCent: number };
+      expect(z.differenzCent).toBe(0);
+      const buchung = await t.lesen<{ zeilen: { kontoId: string; betragCent: number }[] }>(
+        'vorstand-token',
+        `/buchungen/${z.buchungId}`,
+      );
+      expect(buchung.zeilen.map((x) => [x.kontoId, x.betragCent])).toEqual([
+        [f, 500],
+        [f, -500],
+      ]);
+    });
+
+    it('counts only once per idempotency key', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      await t.befuellen(f, [[100, 4]]);
+      const key = crypto.randomUUID();
+      const erste = await zaehlen(t, f, [[100, 3]], { idempotenzSchluessel: key });
+      expect(erste.status).toBe(201);
+      const e = (await erste.json()) as { id: string; buchungId: string };
+      const zweite = await zaehlen(t, f, [[100, 3]], { idempotenzSchluessel: key });
+      expect(zweite.status).toBe(200);
+      expect(await zweite.json()).toMatchObject({
+        id: e.id,
+        buchungId: e.buchungId,
+        wiederholt: true,
+      });
+      expect(
+        (await t.lesen<{ buchungen: unknown[] }>('vorstand-token', '/buchungen')).buchungen,
+      ).toHaveLength(2);
+      expect(
+        (await t.lesen<{ zaehlungen: unknown[] }>('vorstand-token', '/zaehlungen')).zaehlungen,
+      ).toHaveLength(1);
+    });
+
+    it('rejects a Zählung of an unknown, archived or non-Fach account and invalid counts', async () => {
+      const t = await setup();
+      const f = await t.fach();
+      expect((await zaehlen(t, 'nix', [])).status).toBe(400);
+      expect((await zaehlen(t, 'bank', [])).status).toBe(400);
+      expect((await zaehlen(t, 'safe', [])).status).toBe(400);
+      expect((await zaehlen(t, f, [[100, -1]])).status).toBe(400);
+      expect((await zaehlen(t, f, [[100, 1.5]])).status).toBe(400);
+      expect((await zaehlen(t, f, [[3, 1]])).status).toBe(400);
+      expect((await t.anfrage('admin-token', 'GET', '/zaehlungen/nix')).status).toBe(404);
+      await t.anfrage('admin-token', 'PUT', `/konten/${f}/archiv`, { archiviert: true });
+      expect((await zaehlen(t, f, [])).status).toBe(400);
+    });
   });
 });

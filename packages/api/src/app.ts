@@ -149,6 +149,13 @@ import {
   type BuchungenSeiteDto,
   type BuchungListeDto,
   type FinanzMitgliedDto,
+  type BargeldUebersichtDto,
+  type ZaehlungDetailDto,
+  type ZaehlungListeDto,
+  type ZaehlungenSeiteDto,
+  zaehlungEingabeSchema,
+  zaehlungenAbfrageSchema,
+  ZAEHLUNGEN_MAX,
   type KettenErgebnisDto,
   type KontoDto,
   type DurchgaengeSeiteDto,
@@ -323,6 +330,7 @@ import {
   alsDetailDto,
   alsListeDto,
   darfBearbeiten,
+  darfAbstimmen,
   darfSehen,
   gueltigAbgestimmt,
   kreisDerUmfrage,
@@ -884,14 +892,11 @@ export function createApp(deps: AppDeps) {
     verwaltung: c.get('permissions').includes('umfragen:verwalten'),
   });
 
-  /** Like `umfrageAufrufer`; holders of `privatpartys:verwalten` also handle the poll of a Privatparty. */
-  const aufruferFuerUmfrage = async (
-    c: Parameters<typeof umfrageAufrufer>[0],
-    umfrageId: string,
-  ): Promise<Aufrufer> => {
+  /** Like `umfrageAufrufer`; holders of `privatpartys:verwalten` also see, handle and vote in the polls of Privatpartys. */
+  const aufruferMitParty = async (c: Parameters<typeof umfrageAufrufer>[0]): Promise<Aufrufer> => {
     const a = umfrageAufrufer(c);
     if (a.verwaltung || !c.get('permissions').includes('privatpartys:verwalten')) return a;
-    return (await deps.privatpartys.nachUmfrage(umfrageId)) ? { ...a, privatpartys: true } : a;
+    return { ...a, privatpartys: await deps.privatpartys.umfrageIds() };
   };
 
   const umfrageKontext = () => ladeKontext(deps);
@@ -3869,6 +3874,52 @@ export function createApp(deps: AppDeps) {
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )
+      // Bargeld: the Fächer of the Safe with their stock, and the Zählung protocol.
+      .get('/finanzen/bargeld', auth, finanzenLesen, async (c) => {
+        const dto: BargeldUebersichtDto = await deps.finanzen.bargeld();
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/zaehlungen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', zaehlungEingabeSchema),
+        async (c) => {
+          const ergebnis = await deps.finanzen
+            .zaehlen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
+      .get(
+        '/finanzen/zaehlungen',
+        auth,
+        finanzenLesen,
+        zValidator('query', zaehlungenAbfrageSchema),
+        async (c) => {
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.zaehlungen({ ...c.req.valid('query'), limit: ZAEHLUNGEN_MAX + 1 }),
+            finanzenMitglieder(),
+          ]);
+          const dto: ZaehlungenSeiteDto = {
+            zaehlungen: liste.slice(0, ZAEHLUNGEN_MAX).map((z): ZaehlungListeDto => ({
+              ...z,
+              gezaehltVon: mitglied(z.gezaehltVon),
+            })),
+            gekappt: liste.length > ZAEHLUNGEN_MAX,
+          };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/zaehlungen/:id', auth, finanzenLesen, async (c) => {
+        const [z, mitglied] = await Promise.all([
+          deps.finanzen.zaehlung(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const zaehlung = gefunden(z, 'Zählung nicht gefunden');
+        const dto: ZaehlungDetailDto = { ...zaehlung, gezaehltVon: mitglied(zaehlung.gezaehltVon) };
+        return c.json(dto);
+      })
       // Verifies the whole hash chain and compares the counter with the last booking.
       .get('/finanzen/kette', auth, finanzenPruefen, async (c) => {
         const daten = await deps.finanzen.kettenDaten();
@@ -3887,7 +3938,7 @@ export function createApp(deps: AppDeps) {
       })
       // ----- Umfragen
       .get('/umfragen', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferMitParty(c);
         const [liste, k] = await Promise.all([
           deps.umfragen.laufende(heuteBerlin()),
           umfrageKontext(),
@@ -3901,7 +3952,7 @@ export function createApp(deps: AppDeps) {
       })
       // Ended polls page by page; `weiter` is the cursor of the next page (null: no more).
       .get('/umfragen/beendet', auth, umfragenLesen, async (c) => {
-        const a = umfrageAufrufer(c);
+        const a = await aufruferMitParty(c);
         const heute = heuteBerlin();
         const k = await umfrageKontext();
         let nach = cursorLesen(c.req.query('nach'));
@@ -3926,7 +3977,7 @@ export function createApp(deps: AppDeps) {
         });
       })
       .get('/umfragen/:id', auth, umfragenLesen, async (c) => {
-        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+        const a = await aufruferMitParty(c);
         const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
         const dto = alsDetailDto(u, k, a);
         return c.json(u.termin ? { ...dto, ...(await terminAnzeige(u.termin)) } : dto);
@@ -4031,7 +4082,7 @@ export function createApp(deps: AppDeps) {
         },
       )
       .post('/umfragen/:id/beenden', auth, umfragenLesen, async (c) => {
-        const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+        const a = await aufruferMitParty(c);
         const { u } = await sichtbareUmfrage(c.req.param('id'), a);
         if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
         if (!umfrageLaeuft(u))
@@ -4045,7 +4096,7 @@ export function createApp(deps: AppDeps) {
         umfragenLesen,
         zValidator('json', terminWahlSchema),
         async (c) => {
-          const a = await aufruferFuerUmfrage(c, c.req.param('id'));
+          const a = await aufruferMitParty(c);
           const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
           if (!darfBearbeiten(u, a)) throw new HTTPException(403, { message: 'Forbidden' });
           const termin = u.termin;
@@ -4189,9 +4240,9 @@ export function createApp(deps: AppDeps) {
         umfragenLesen,
         zValidator('json', stimmzettelSchema),
         async (c) => {
-          const a = umfrageAufrufer(c);
+          const a = await aufruferMitParty(c);
           const { u, k } = await sichtbareUmfrage(c.req.param('id'), a);
-          if (!kreisDerUmfrage(u, k).has(a.sub)) {
+          if (!darfAbstimmen(u, kreisDerUmfrage(u, k), a)) {
             throw new HTTPException(403, { message: 'Du bist bei dieser Umfrage nicht gefragt.' });
           }
           if (!umfrageLaeuft(u))

@@ -1,4 +1,4 @@
-import { Alert, Button, List, Loader, Stack, Text, Title } from '@mantine/core';
+import { Group, Alert, Button, List, Loader, Stack, Text, Title } from '@mantine/core';
 import { IconShieldCheck } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import { KETTEN_FEHLER_LABELS, type KettenErgebnisDto } from '@c4/shared';
@@ -6,6 +6,8 @@ import { useApi } from '../api';
 import { fehlerText, pruefen } from '../warenApi';
 import { HashAnzeige } from '../HashAnzeige';
 import { ZurueckLink } from '../ZurueckLink';
+import { InfoHinweis } from '../InfoHinweis';
+import { HILFE } from '../finanzenHilfe';
 
 const zeitText = (iso: string) =>
   new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'medium' });
@@ -25,7 +27,10 @@ export function FinanzenKettePage() {
   return (
     <Stack maw={900}>
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
-      <Title order={2}>Kette prüfen</Title>
+      <Group gap={4}>
+        <Title order={2}>Kette prüfen</Title>
+        <InfoHinweis feld="Kette prüfen" text={HILFE.kette.ergebnis} />
+      </Group>
       <Text c="dimmed">
         Prüft alle Buchungen: lückenlose Nummern, Verweise auf die vorige Buchung, Hashes, Summen
         und den Zähler.

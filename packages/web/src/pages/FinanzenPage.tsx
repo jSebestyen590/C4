@@ -1,5 +1,12 @@
 import { Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { IconBook2, IconListDetails, IconPencilPlus, IconShieldCheck } from '@tabler/icons-react';
+import {
+  IconBook2,
+  IconCoins,
+  IconListDetails,
+  IconPencilPlus,
+  IconReportMoney,
+  IconShieldCheck,
+} from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -47,6 +54,18 @@ export function FinanzenPage() {
           icon={<IconBook2 size={28} />}
           titel="Journal"
           text="Alle Buchungen, lückenlos nummeriert."
+        />
+        <Kachel
+          to="/finanzen/bargeld"
+          icon={<IconCoins size={28} />}
+          titel="Bargeld"
+          text="Safe mit Fächern, Bestand je Münze und Schein, Umbuchen und Wechseln."
+        />
+        <Kachel
+          to="/finanzen/bargeld/zaehlungen"
+          icon={<IconReportMoney size={28} />}
+          titel="Zählungen"
+          text="Protokoll aller Zählungen mit Soll, Ist und Differenz."
         />
         {can('finanzen:buchen') && (
           <Kachel

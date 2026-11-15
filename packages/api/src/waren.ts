@@ -55,7 +55,6 @@ import {
   gebinde,
   gegenstandPlaetze,
   ifcos,
-  inventurKnoten,
   inventuren,
   inventurZaehlungen,
   lagerortWaren,
@@ -1165,7 +1164,6 @@ export function createWarenStore(db: Db): WarenStore {
           gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.lagerortId, id)),
           gibtEs(tx, lagerortWaren, eq(lagerortWaren.lagerortId, id)),
           gibtEs(tx, inventuren, eq(inventuren.lagerortId, id)),
-          gibtEs(tx, inventurKnoten, eq(inventurKnoten.lagerortId, id)),
           gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.lagerortId, id)),
           gibtEs(tx, ifcos, and(eq(ifcos.lagerortId, id), eq(ifcos.archiviert, false))),
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.lagerortId, id)),
@@ -1874,7 +1872,6 @@ export function createWarenStore(db: Db): WarenStore {
         if (!inventur) return false;
         nurOffen(inventur);
         await tx.delete(inventurZaehlungen).where(eq(inventurZaehlungen.inventurId, id));
-        await tx.delete(inventurKnoten).where(eq(inventurKnoten.inventurId, id));
         await tx.delete(inventuren).where(eq(inventuren.id, id));
         return true;
       });

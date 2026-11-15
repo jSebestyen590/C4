@@ -1,13 +1,4 @@
-import {
-  Alert,
-  Button,
-  Modal,
-  Select,
-  Stack,
-  Textarea,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Button, Modal, Select, Stack, Textarea, TextInput, Title } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type SubmitEvent } from 'react';
 import { ifcoSchema, ifcoTypText, type IfcoInhaltPosition } from '@c4/shared';

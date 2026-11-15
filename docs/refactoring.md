@@ -151,6 +151,9 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 - Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
   verlangen sie (`protokolle.md`, Migrationen 0163–0165).
+- `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
+  `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
+- Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -223,14 +226,12 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten; die
 Entscheidungen stehen oben unter „Entschieden, Umsetzung offen“).
 
-- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“. `bewegungLoeschen` prüft `archiviert`
-  nicht. Die Tabelle `inventur_knoten` ist tot, wird aber noch abgefragt.
+- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“.
 - **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
   soll, ist nicht entschieden. Gleichzeitiges Bearbeiten verhindert die Bearbeitungssperre (`protokolle.md`); ein Konflikt tritt nur
   noch auf, wenn eine Sperre ablief (Tab lange eingefroren oder offline) und jemand anderes inzwischen gespeichert hat.
 - **Privatpartys:** Werden Wunschtermine nach dem Anlegen der Umfrage geändert, bleiben die Optionen alt. Der Anlass steht im
   Umfragetitel und in der Push-Nachricht für alle Status.
-- **Umfragen:** Inhaber von `privatpartys:verwalten` außerhalb des Kreises bekommen 404 auf die Privatparty-Umfrage (unsicher).
 - **Trichter:** Einträge lassen sich in abgeschlossene Jahre zurückdatieren.
 
 ### 4. Tests und Struktur

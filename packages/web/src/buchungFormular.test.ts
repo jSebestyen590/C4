@@ -11,6 +11,8 @@ import {
   HOHER_BETRAG_CENT,
   leereZeile,
   richtungVon,
+  richtungWort,
+  zeilenBetragText,
   schluesselFuer,
   summeCent,
   summen,
@@ -206,13 +208,32 @@ describe('schluesselFuer', () => {
 });
 
 describe('buchbareKonten', () => {
-  it('drops archived accounts and accounts with Stückelung', () => {
+  it('drops archived accounts', () => {
     const k = (id: string, archiviert: boolean, stueckelung: boolean) =>
       ({ id, archiviert, stueckelung }) as Parameters<typeof buchbareKonten>[0][number];
     expect(
       buchbareKonten([k('a', false, false), k('b', true, false), k('c', false, true)]).map(
         (x) => x.id,
       ),
-    ).toEqual(['a']);
+    ).toEqual(['a', 'c']);
+  });
+
+  it('drops groups (accounts with sub accounts)', () => {
+    const k = (id: string, parentId: string | null) =>
+      ({ id, parentId, archiviert: false, stueckelung: false }) as Parameters<
+        typeof buchbareKonten
+      >[0][number];
+    expect(
+      buchbareKonten([k('safe', null), k('kind', 'safe'), k('bank', null)]).map((x) => x.id),
+    ).toEqual(['kind', 'bank']);
+  });
+});
+
+describe('Zeilen mit Betrag 0 (Tausch)', () => {
+  it('nennt kein Zugang/Abgang', () => {
+    expect(richtungWort(0)).toBe('–');
+    expect(zeilenBetragText(0)).toBe('±0,00 € (Tausch)');
+    expect(richtungWort(-5)).toBe('Abgang');
+    expect(zeilenBetragText(-500)).toBe('5,00 €');
   });
 });

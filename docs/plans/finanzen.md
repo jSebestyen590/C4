@@ -112,11 +112,20 @@ Keine Fehler:
   Erfassung).
 - Vorzeichen nie raten lassen: Einnahme/Ausgabe, Zugang/Abgang und Von/Nach stehen als Wörter da,
   Beträge sind rechtsbündig mit Tabellenziffern, negative Werte deutlich abgesetzt.
+- Warnungen je Kontoart (bestätigungspflichtig, nicht blockierend): Bank im Minus, Aufwand mit Guthaben und
+  Erlöse im Minus nach der Buchung (`saldoWarnungen`, siehe `docs/finanzen.md`).
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
+  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
+  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
+  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
+  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
 
 ## Zielscheiben
 
 Abhängigkeiten: 0 → (1, 2, 4 parallel) → 3 (braucht 1) → 5 → 6 → 7; 8 braucht 4; 9 braucht 4 und
-wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
+wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt; 11 ist unabhängig und lohnt sich, sobald
+mehrere Unterseiten stehen.
 
 ### Scheibe 0: Fundament
 
@@ -271,6 +280,30 @@ wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt.
   Art, Event und Zeitraum, Bewertung zum Einkaufspreis für die Steuer.
 - Braucht Scheibe 4 (Einkaufspreise) und 9 (Auswertungen); steht bewusst am Ende.
 
+### Scheibe 11: Navigation in den Finanzen
+
+- Im Menü (`AppLayout`) steht standardmäßig nur der Menüpunkt „Finanzen". Bin ich auf `/finanzen`
+  oder einer Unterseite, klappen darunter die Unterseiten als Untermenüpunkte auf: dieselben
+  Einträge wie die Kacheln der Finanzen-Startseite, mit denselben Rechten. So wechsle ich zwischen
+  den Arbeitsseiten, ohne über die Startseite zu gehen.
+- Kacheln und Untermenü kommen aus einer gemeinsamen Liste, damit eine neue Unterseite an beiden
+  Stellen erscheint. Die aktive Unterseite ist markiert.
+- Gilt für Sidebar (ab `md`) und Burger-Menü am Handy.
+
+**Idee, noch nicht entschieden: zwei Seiten nebeneinander** (z. B. links Kontenübersicht, rechts
+Journal). Das denken wir zu Beginn der Scheibe genauer durch. Überlegungen:
+
+- Zurücknavigation: Laufen beide Hälften mit eigener Navigation (in React Router gibt es
+  `<Outlet>`, aber nur eine URL und einen Verlauf; die zweite Hälfte bräuchte z. B. einen
+  Suchparameter oder einen eigenen Memory-Router), oder ist eine Hälfte führend und die andere nur
+  angeheftet?
+- Konfigurationen speichern, damit viel genutzte Seitenkombinationen zusammen aufrufbar sind:
+  übergreifend für alle oder je Mitglied?
+- Breite der Hälften mit einem Schieberegler in der Mitte verstellbar.
+- Änderungen auf der einen Seite erscheinen live auf der anderen (links wird eine Buchung
+  angelegt, rechts aktualisiert sich die Liste der Buchungen von selbst).
+- Nur Desktop: am Handy bleibt es bei einer Seite.
+
 ### Später
 
 Einlagern aus dem Beleg (vorbefüllte Sammel-Einlagerung, `bestandsvorgang_id` am Posten), Verweis
@@ -304,7 +337,7 @@ FinTS-Überweisungen, E-Rechnung.
 | Scheibe                   | Stand                                                                                                                                              |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | offen                                                                                                                                              |
+| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
 | 2 Buch                    | offen                                                                                                                                              |
 | 3 Barkassen               | offen                                                                                                                                              |
 | 4 Belege                  | offen                                                                                                                                              |
@@ -315,6 +348,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 9 Auswertungen            | offen                                                                                                                                              |
 | Ü Übernahme               | offen                                                                                                                                              |
 | 10 Unentgeltliche Abgaben | offen                                                                                                                                              |
+| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                            |
 
 ## Verifikation (je Scheibe)
 

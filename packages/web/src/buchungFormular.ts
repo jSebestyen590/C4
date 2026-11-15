@@ -18,6 +18,14 @@ export const RICHTUNG_LABELS: Record<Richtung, string> = { zugang: 'Zugang', abg
 /** Word for a signed line amount: positive = Zugang, negative = Abgang. */
 export const richtungVon = (cent: number): Richtung => (cent < 0 ? 'abgang' : 'zugang');
 
+/** Direction word of a line; a line of 0 (pure exchange of coins) has none. */
+export const richtungWort = (cent: number): string =>
+  cent === 0 ? '–' : RICHTUNG_LABELS[richtungVon(cent)];
+
+/** Amount of a line without sign; 0 reads `±0,00 € (Tausch)`. */
+export const zeilenBetragText = (cent: number): string =>
+  cent === 0 ? `±${centAnzeigen(0)} (Tausch)` : centAnzeigen(Math.abs(cent));
+
 /** Amounts from this value on need an explicit confirmation ("ungewöhnlich hoch"): 1.000,00 €. */
 export const HOHER_BETRAG_CENT = 100_000;
 
@@ -40,9 +48,14 @@ export const leereZeile = (richtung: Richtung = 'zugang'): FreieZeile => ({
   betrag: null,
 });
 
-/** Accounts that take bookings on this page: not archived, without Stückelung (comes with slice 1). */
-export const buchbareKonten = (konten: readonly KontoDto[]): KontoDto[] =>
-  konten.filter((k) => !k.archiviert && !k.stueckelung);
+/**
+ * Accounts that take bookings: not archived and not a group (an account with sub accounts takes no
+ * lines). Fächer (Stückelung) are included; they need denominations, see `bargeldSeite`.
+ */
+export const buchbareKonten = (konten: readonly KontoDto[]): KontoDto[] => {
+  const eltern = new Set(konten.map((k) => k.parentId));
+  return konten.filter((k) => !k.archiviert && !eltern.has(k.id));
+};
 
 export const einfacheZeile = (kontoId: string, cent: number): BuchungZeileEingabe => ({
   kontoId,

@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 const dir = path.join(import.meta.dirname, 'migrations');
 /** Older migrations (already on main) predate the one-statement rule and down files; this guards the calendar set. */
 const ERSTE_GEPRUEFTE = 37;
-const RESERVIERT = [157, 158, 159, 160, 161, 162];
 const ups = readdirSync(dir)
   .filter((f) => f.endsWith('.sql') && Number(f.slice(0, 4)) >= ERSTE_GEPRUEFTE)
   .sort();
@@ -37,11 +36,6 @@ describe('migration files', () => {
 
   it('are numbered without gaps or duplicates', () => {
     const nummern = ups.map((f) => Number(f.slice(0, 4)));
-    // 0157-0162 belong to the open Finanzen PR; allowed to be missing until it is merged (then drop this).
-    const erwartet: number[] = [];
-    for (let n = ERSTE_GEPRUEFTE; erwartet.length < nummern.length; n++) {
-      if (!RESERVIERT.includes(n) || nummern.includes(n)) erwartet.push(n);
-    }
-    expect(nummern).toEqual(erwartet);
+    expect(nummern).toEqual(nummern.map((_, i) => ERSTE_GEPRUEFTE + i));
   });
 });

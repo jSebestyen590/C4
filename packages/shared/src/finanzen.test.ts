@@ -11,6 +11,7 @@ import {
   kontoEingabeSchema,
   pruefeBuchung,
   pruefeKette,
+  saldoWarnungen,
   stornoEingabeSchema,
   stornoZeilen,
   type BuchungZeileEingabe,
@@ -498,5 +499,59 @@ describe('euroZuCent und centZuEuroText', () => {
     expect(centZuEuroText(-5)).toBe('-0,05');
     expect(centZuEuroText(0)).toBe('0,00');
     expect(euroZuCent(centZuEuroText(-123456))).toBe(-123456);
+  });
+});
+
+describe('saldoWarnungen', () => {
+  const k = (
+    id: string,
+    art: 'bank' | 'aufwand' | 'erloes' | 'bargeld' | 'durchlauf',
+    saldoCent: number,
+  ) => ({
+    id,
+    name: id,
+    art,
+    saldoCent,
+  });
+  it('warnt bei negativer Bank', () => {
+    expect(
+      saldoWarnungen([{ kontoId: 'bank', betragCent: -1200 }], [k('bank', 'bank', 0)]),
+    ).toEqual(['Der Kontostand von „bank“ wäre danach negativ (-12,00 €).']);
+    expect(
+      saldoWarnungen([{ kontoId: 'bank', betragCent: -100 }], [k('bank', 'bank', 500)]),
+    ).toEqual([]);
+  });
+  it('warnt bei Aufwand mit Guthaben nur, wenn die Buchung es vergrößert', () => {
+    const w = saldoWarnungen([{ kontoId: 'a', betragCent: -1200 }], [k('a', 'aufwand', 0)]);
+    expect(w[0]).toContain('hätte danach ein Guthaben von 12,00 €');
+    expect(saldoWarnungen([{ kontoId: 'a', betragCent: 500 }], [k('a', 'aufwand', -1000)])).toEqual(
+      [],
+    );
+    expect(saldoWarnungen([{ kontoId: 'a', betragCent: -100 }], [k('a', 'aufwand', 500)])).toEqual(
+      [],
+    );
+  });
+  it('warnt bei Erlösen im Minus nur, wenn die Buchung es vergrößert', () => {
+    const w = saldoWarnungen([{ kontoId: 'e', betragCent: 1200 }], [k('e', 'erloes', 0)]);
+    expect(w[0]).toContain('im Minus (12,00 €)');
+    expect(saldoWarnungen([{ kontoId: 'e', betragCent: 300 }], [k('e', 'erloes', -1000)])).toEqual(
+      [],
+    );
+    expect(saldoWarnungen([{ kontoId: 'e', betragCent: -300 }], [k('e', 'erloes', 1000)])).toEqual(
+      [],
+    );
+  });
+  it('fasst Zeilen eines Kontos zusammen und ignoriert andere Arten', () => {
+    expect(
+      saldoWarnungen(
+        [
+          { kontoId: 'bank', betragCent: -500 },
+          { kontoId: 'bank', betragCent: 500 },
+          { kontoId: 'b', betragCent: -9999 },
+          { kontoId: 'd', betragCent: -9999 },
+        ],
+        [k('bank', 'bank', 0), k('b', 'bargeld', 0), k('d', 'durchlauf', 0)],
+      ),
+    ).toEqual([]);
   });
 });

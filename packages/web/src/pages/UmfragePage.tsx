@@ -419,7 +419,7 @@ export function UmfragePage() {
     );
   }
   const u = umfrage.data;
-  const darfAbstimmen = u.laeuft && u.meinKreis !== null;
+  const darfAbstimmen = u.laeuft && u.darfAbstimmen;
 
   return (
     <Stack maw={720}>

@@ -1,9 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import {
+  berechneZaehlung,
   buchungsHash,
+  KASSENDIFFERENZ_KONTO_ID,
+  pruefeBestand,
   pruefeBuchung,
+  pruefeGruppenregel,
+  SAFE_KONTO_ID,
+  saldoGesamt,
   stornoZeilen,
+  stueckelungVollstaendig,
+  zaehlungBuchungstext,
+  type BargeldUebersichtDto,
+  type BestandKonto,
+  type PruefKonto,
+  type ZaehlungDetailEintrag,
+  type ZaehlungEingabe,
+  type ZaehlungErgebnisDto,
+  type ZaehlungListeEintrag,
   type BuchungDetailEintrag,
   type BuchungEingabe,
   type BuchungListeEintrag,
@@ -26,7 +41,10 @@ import {
   finKonten,
   finStueckelung,
   finZaehler,
+  finZaehlungen,
+  finZaehlungPosten,
   type FinBuchungRow,
+  type FinKontoRow,
 } from './db/schema';
 import { mitWiederholung } from './db/wiederholung';
 import type { Tx } from './waren';
@@ -91,6 +109,16 @@ export interface FinanzenStore {
   /** Newest first, at most `limit` entries. */
   journal(abfrage: JournalAbfrage & { limit: number }): Promise<JournalEintrag[]>;
   buchung(id: string): Promise<BuchungDetailEintrag | undefined>;
+  /** The Fächer of the Safe with their stock (balance and count per denomination). */
+  bargeld(): Promise<BargeldUebersichtDto>;
+  /**
+   * Counts a Fach: stores the protocol and books the difference to the stock, in one transaction.
+   * Throws BuchungUngueltig for an unknown, archived or non-Fach account.
+   */
+  zaehlen(eingabe: ZaehlungEingabe, sub: string): Promise<ZaehlungErgebnisDto>;
+  /** Newest first, at most `limit` entries; optionally of one Fach. */
+  zaehlungen(abfrage: { kontoId?: string; limit: number }): Promise<ZaehlungListeEintrag[]>;
+  zaehlung(id: string): Promise<ZaehlungDetailEintrag | undefined>;
   /** All bookings by `seq` plus the counter, read in one consistent snapshot. */
   kettenDaten(): Promise<KettenDaten>;
 }
@@ -169,6 +197,60 @@ const istDoppelt = (err: unknown): boolean => {
 };
 
 type Q = Pick<Db, 'select'>;
+
+/** Why an account cannot be counted (empty = it is a countable Fach). Shared with the fake. */
+export const zaehlungKontoFehler = (
+  konto: Pick<PruefKonto, 'name' | 'stueckelung' | 'archiviert' | 'hatUnterkonten'> | undefined,
+): string[] => {
+  if (!konto) return ['Das Fach gibt es nicht.'];
+  if (!konto.stueckelung || konto.hatUnterkonten)
+    return [`Das Konto „${konto.name}“ ist kein Fach und kann nicht gezählt werden.`];
+  if (konto.archiviert) return [`Das Fach „${konto.name}“ ist archiviert.`];
+  return [];
+};
+
+/** The Bargeld overview of the given Fächer (sorted by the caller). Shared with the fake. */
+export function bargeldUebersicht(faecher: BestandKonto[]): BargeldUebersichtDto {
+  const summe = new Map<number, number>();
+  for (const f of faecher) for (const [n, a] of f.anzahl) summe.set(n, (summe.get(n) ?? 0) + a);
+  return {
+    faecher: faecher.map((f) => ({
+      id: f.id,
+      name: f.name,
+      saldoCent: f.saldoCent,
+      bestand: stueckelungVollstaendig(f.anzahl),
+    })),
+    summeBestand: stueckelungVollstaendig(summe),
+    summeCent: faecher.reduce((s, f) => s + f.saldoCent, 0),
+  };
+}
+
+const zaehlungEintrag = (
+  z: {
+    id: string;
+    kontoId: string;
+    datum: string;
+    gezaehltVon: string;
+    gezaehltAm: Date;
+    sollCent: number;
+    istCent: number;
+    differenzCent: number;
+    buchungId: string | null;
+  },
+  kontoName: string,
+  seq: number | null,
+): ZaehlungListeEintrag => ({
+  id: z.id,
+  kontoId: z.kontoId,
+  kontoName,
+  datum: z.datum,
+  gezaehltVon: z.gezaehltVon,
+  gezaehltAm: z.gezaehltAm.toISOString(),
+  sollCent: z.sollCent,
+  istCent: z.istCent,
+  differenzCent: z.differenzCent,
+  buchung: z.buchungId && seq !== null ? { id: z.buchungId, seq } : null,
+});
 
 export function createFinanzenStore(db: Db): FinanzenStore {
   const verweise = (rows: { id: string; seq: number }[]) =>
@@ -331,6 +413,62 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     }));
   };
 
+  /** The given accounts as the rules need them, with their stock (Bargeld accounts only). */
+  const kontenMitBestand = async (
+    q: Q,
+    ids: string[],
+  ): Promise<{ pruef: PruefKonto[]; bestand: BestandKonto[]; rows: FinKontoRow[] }> => {
+    if (ids.length === 0) return { pruef: [], bestand: [], rows: [] };
+    const [rows, mitKindern] = await Promise.all([
+      q.select().from(finKonten).where(inArray(finKonten.id, ids)),
+      q
+        .select({ parentId: finKonten.parentId })
+        .from(finKonten)
+        .where(inArray(finKonten.parentId, ids)),
+    ]);
+    const gruppen = new Set(mitKindern.map((r) => r.parentId));
+    const pruef = rows.map((k) => ({ ...k, hatUnterkonten: gruppen.has(k.id) }));
+    const bargeld = rows.filter((k) => k.art === 'bargeld');
+    const bestand = await bestandLaden(q, bargeld);
+    return { pruef, bestand, rows };
+  };
+
+  const bestandLaden = async (q: Q, rows: FinKontoRow[]): Promise<BestandKonto[]> => {
+    if (rows.length === 0) return [];
+    const ids = rows.map((k) => k.id);
+    const [salden, anzahlen] = await Promise.all([
+      q
+        .select({
+          kontoId: finBuchungszeilen.kontoId,
+          summe: sql<string>`coalesce(sum(${finBuchungszeilen.betragCent}), 0)`,
+        })
+        .from(finBuchungszeilen)
+        .where(inArray(finBuchungszeilen.kontoId, ids))
+        .groupBy(finBuchungszeilen.kontoId),
+      q
+        .select({
+          kontoId: finBuchungszeilen.kontoId,
+          nennwertCent: finStueckelung.nennwertCent,
+          summe: sql<string>`sum(${finStueckelung.anzahl})`,
+        })
+        .from(finStueckelung)
+        .innerJoin(finBuchungszeilen, eq(finBuchungszeilen.id, finStueckelung.zeileId))
+        .where(inArray(finBuchungszeilen.kontoId, ids))
+        .groupBy(finBuchungszeilen.kontoId, finStueckelung.nennwertCent),
+    ]);
+    const saldo = new Map(salden.map((r) => [r.kontoId, Number(r.summe)]));
+    return rows.map((k) => ({
+      id: k.id,
+      name: k.name,
+      art: k.art,
+      stueckelung: k.stueckelung,
+      saldoCent: saldo.get(k.id) ?? 0,
+      anzahl: new Map(
+        anzahlen.filter((a) => a.kontoId === k.id).map((a) => [a.nennwertCent, Number(a.summe)]),
+      ),
+    }));
+  };
+
   const einfuegen = async (tx: Tx, entwurf: BuchungsEntwurf): Promise<GebuchtErgebnis> => {
     const [zaehler] = await tx
       .update(finZaehler)
@@ -403,8 +541,11 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           const schon = await vorhandene(tx, eingabe.idempotenzSchluessel);
           if (schon) return schon;
           const ids = [...new Set(eingabe.zeilen.map((z) => z.kontoId))];
-          const konten = await tx.select().from(finKonten).where(inArray(finKonten.id, ids));
-          const fehler = pruefeBuchung(eingabe, konten);
+          const { pruef, bestand } = await kontenMitBestand(tx, ids);
+          const fehler = [
+            ...pruefeBuchung(eingabe, pruef),
+            ...pruefeBestand(eingabe.zeilen, bestand),
+          ];
           if (eingabe.eventId) {
             const [event] = await tx
               .select({ id: events.id })
@@ -455,6 +596,12 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             steuerArt: z.steuerArt,
             stueckelung: z.stueckelung,
           }));
+          const zeilen = stornoZeilen(quelle);
+          const { pruef, bestand } = await kontenMitBestand(tx, [
+            ...new Set(zeilen.map((z) => z.kontoId)),
+          ]);
+          const fehler = [...pruefeGruppenregel(zeilen, pruef), ...pruefeBestand(zeilen, bestand)];
+          if (fehler.length > 0) throw new BuchungUngueltig(fehler);
           return einfuegen(tx, {
             datum: eingabe.datum,
             text: stornoText(original, eingabe.text),
@@ -464,8 +611,113 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             stornoVon: original.id,
             erstelltVon: sub,
             idempotenzSchluessel: eingabe.idempotenzSchluessel,
-            zeilen: stornoZeilen(quelle).map(ohnePos),
+            zeilen: zeilen.map(ohnePos),
           });
+        }),
+      BUCHEN_VERSUCHE,
+      undefined,
+      BUCHEN_WARTEN_MS,
+    );
+
+  const zaehlungErgebnis = (
+    z: { id: string; differenzCent: number; buchungId: string | null },
+    seq: number | null,
+    wiederholt?: boolean,
+  ): ZaehlungErgebnisDto => ({
+    id: z.id,
+    buchungId: z.buchungId,
+    buchungSeq: seq,
+    differenzCent: z.differenzCent,
+    ...(wiederholt && { wiederholt }),
+  });
+
+  const zaehlungVorhandene = async (q: Q, schluessel: string) => {
+    const [row] = await q
+      .select({
+        id: finZaehlungen.id,
+        differenzCent: finZaehlungen.differenzCent,
+        buchungId: finZaehlungen.buchungId,
+        seq: finBuchungen.seq,
+      })
+      .from(finZaehlungen)
+      .leftJoin(finBuchungen, eq(finBuchungen.id, finZaehlungen.buchungId))
+      .where(eq(finZaehlungen.idempotenzSchluessel, schluessel));
+    return row ? zaehlungErgebnis(row, row.seq, true) : undefined;
+  };
+
+  const zaehlenTx = (eingabe: ZaehlungEingabe, sub: string) =>
+    mitWiederholung(
+      () =>
+        db.transaction(async (tx) => {
+          const schon = await zaehlungVorhandene(tx, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+          const { pruef, bestand } = await kontenMitBestand(tx, [
+            eingabe.kontoId,
+            KASSENDIFFERENZ_KONTO_ID,
+          ]);
+          const fach = pruef.find((k) => k.id === eingabe.kontoId);
+          const fachBestand = bestand.find((k) => k.id === eingabe.kontoId);
+          const fehler = zaehlungKontoFehler(fach);
+          if (fehler.length > 0 || !fach || !fachBestand) throw new BuchungUngueltig(fehler);
+          const ergebnis = berechneZaehlung(
+            fach.id,
+            stueckelungVollstaendig(fachBestand.anzahl),
+            eingabe.ist,
+          );
+          const zaehlungId = randomUUID();
+          let gebucht: GebuchtErgebnis | undefined;
+          if (ergebnis.zeilen.length > 0) {
+            const zeilen = ergebnis.zeilen.map((z) => ({
+              kontoId: z.kontoId,
+              betragCent: z.betragCent,
+              nettoCent: null,
+              steuerCent: null,
+              steuersatz: null,
+              steuerArt: 'keine' as const,
+              stueckelung: z.stueckelung,
+            }));
+            const buchungFehler = pruefeBuchung({ zeilen }, pruef);
+            if (buchungFehler.length > 0) throw new BuchungUngueltig(buchungFehler);
+            gebucht = await einfuegen(tx, {
+              datum: eingabe.datum,
+              text: eingabe.text ?? zaehlungBuchungstext(fach.name, ergebnis.differenzCent),
+              quelleTyp: 'zaehlung',
+              quelleId: zaehlungId,
+              eventId: null,
+              stornoVon: null,
+              erstelltVon: sub,
+              zeilen,
+            });
+          }
+          await tx.insert(finZaehlungen).values({
+            id: zaehlungId,
+            kontoId: fach.id,
+            datum: eingabe.datum,
+            text: eingabe.text,
+            gezaehltVon: sub,
+            gezaehltAm: new Date(),
+            sollCent: ergebnis.sollCent,
+            istCent: ergebnis.istCent,
+            differenzCent: ergebnis.differenzCent,
+            buchungId: gebucht?.id ?? null,
+            idempotenzSchluessel: eingabe.idempotenzSchluessel,
+          });
+          await tx.insert(finZaehlungPosten).values(
+            ergebnis.posten.map((p) => ({
+              zaehlungId,
+              nennwertCent: p.nennwertCent,
+              sollAnzahl: p.sollAnzahl,
+              istAnzahl: p.istAnzahl,
+            })),
+          );
+          return zaehlungErgebnis(
+            {
+              id: zaehlungId,
+              differenzCent: ergebnis.differenzCent,
+              buchungId: gebucht?.id ?? null,
+            },
+            gebucht?.seq ?? null,
+          );
         }),
       BUCHEN_VERSUCHE,
       undefined,
@@ -485,26 +737,34 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     return false;
   };
 
-  const parentPruefen = async (kontoId: string | null, parentId: string) => {
+  /** `bisher`: the current parent; the lines rule only applies when the parent changes. */
+  const parentPruefen = async (kontoId: string | null, parentId: string, bisher: string | null) => {
     if (kontoId !== null && parentId === kontoId)
       throw new KontoUngueltig('Ein Konto kann nicht sein eigenes Unterkonto sein.');
     const [parent] = await db
-      .select({ id: finKonten.id })
+      .select({ id: finKonten.id, name: finKonten.name })
       .from(finKonten)
       .where(eq(finKonten.id, parentId));
     if (!parent) throw new KontoUngueltig('Das übergeordnete Konto gibt es nicht.');
     if (kontoId !== null && (await ergibtZyklus(kontoId, parentId)))
       throw new KontoUngueltig('Das übergeordnete Konto liegt selbst unter diesem Konto.');
+    if (parentId !== bisher) {
+      const [zeile] = await db
+        .select({ id: finBuchungszeilen.id })
+        .from(finBuchungszeilen)
+        .where(eq(finBuchungszeilen.kontoId, parentId))
+        .limit(1);
+      if (zeile)
+        throw new KontoKonflikt(
+          `Das Konto „${parent.name}“ hat schon Buchungen und kann keine Unterkonten bekommen.`,
+        );
+    }
   };
 
   return {
     async konten(mitArchiv) {
-      const [rows, summen] = await Promise.all([
-        db
-          .select()
-          .from(finKonten)
-          .where(mitArchiv ? undefined : eq(finKonten.archiviert, false))
-          .orderBy(asc(finKonten.name)),
+      const [alle, summen] = await Promise.all([
+        db.select().from(finKonten).orderBy(asc(finKonten.name)),
         db
           .select({
             kontoId: finBuchungszeilen.kontoId,
@@ -514,20 +774,26 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           .groupBy(finBuchungszeilen.kontoId),
       ]);
       const saldo = new Map(summen.map((s) => [s.kontoId, Number(s.summe)]));
-      return rows.map((k) => ({
-        id: k.id,
-        name: k.name,
-        art: k.art,
-        parentId: k.parentId,
-        stueckelung: k.stueckelung,
-        steuersatzStandard: k.steuersatzStandard,
-        archiviert: k.archiviert,
-        saldoCent: saldo.get(k.id) ?? 0,
-      }));
+      const gesamt = saldoGesamt(
+        alle.map((k) => ({ id: k.id, parentId: k.parentId, saldoCent: saldo.get(k.id) ?? 0 })),
+      );
+      return alle
+        .filter((k) => mitArchiv || !k.archiviert)
+        .map((k) => ({
+          id: k.id,
+          name: k.name,
+          art: k.art,
+          parentId: k.parentId,
+          stueckelung: k.stueckelung,
+          steuersatzStandard: k.steuersatzStandard,
+          archiviert: k.archiviert,
+          saldoCent: saldo.get(k.id) ?? 0,
+          saldoGesamtCent: gesamt.get(k.id) ?? 0,
+        }));
     },
 
     async kontoAnlegen(daten) {
-      if (daten.parentId) await parentPruefen(null, daten.parentId);
+      if (daten.parentId) await parentPruefen(null, daten.parentId, null);
       const id = randomUUID();
       await db.insert(finKonten).values({ id, ...daten });
       return id;
@@ -551,7 +817,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             'Art, Stückelung und übergeordnetes Konto lassen sich nicht mehr ändern, sobald auf dem Konto gebucht wurde.',
           );
       }
-      if (daten.parentId) await parentPruefen(id, daten.parentId);
+      if (daten.parentId) await parentPruefen(id, daten.parentId, konto.parentId);
       await db.update(finKonten).set(daten).where(eq(finKonten.id, id));
       return true;
     },
@@ -650,6 +916,70 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           steuersatz: z.steuersatz,
           steuerArt: z.steuerArt,
           stueckelung: z.stueckelung,
+        })),
+      };
+    },
+
+    async bargeld() {
+      const faecher = await db
+        .select()
+        .from(finKonten)
+        .where(
+          and(
+            eq(finKonten.parentId, SAFE_KONTO_ID),
+            eq(finKonten.stueckelung, true),
+            eq(finKonten.archiviert, false),
+          ),
+        )
+        .orderBy(asc(finKonten.name));
+      return bargeldUebersicht(await bestandLaden(db, faecher));
+    },
+
+    async zaehlen(eingabe, sub) {
+      try {
+        return await zaehlenTx(eingabe, sub);
+      } catch (err) {
+        if (istDoppelt(err)) {
+          const schon = await zaehlungVorhandene(db, eingabe.idempotenzSchluessel);
+          if (schon) return schon;
+        }
+        throw err;
+      }
+    },
+
+    async zaehlungen({ kontoId, limit }) {
+      const rows = await db
+        .select({ z: finZaehlungen, kontoName: finKonten.name, seq: finBuchungen.seq })
+        .from(finZaehlungen)
+        .innerJoin(finKonten, eq(finKonten.id, finZaehlungen.kontoId))
+        .leftJoin(finBuchungen, eq(finBuchungen.id, finZaehlungen.buchungId))
+        .where(kontoId ? eq(finZaehlungen.kontoId, kontoId) : undefined)
+        .orderBy(desc(finZaehlungen.gezaehltAm), desc(finZaehlungen.id))
+        .limit(limit);
+      return rows.map((r) => zaehlungEintrag(r.z, r.kontoName, r.seq));
+    },
+
+    async zaehlung(id) {
+      const [r] = await db
+        .select({ z: finZaehlungen, kontoName: finKonten.name, seq: finBuchungen.seq })
+        .from(finZaehlungen)
+        .innerJoin(finKonten, eq(finKonten.id, finZaehlungen.kontoId))
+        .leftJoin(finBuchungen, eq(finBuchungen.id, finZaehlungen.buchungId))
+        .where(eq(finZaehlungen.id, id));
+      if (!r) return undefined;
+      const posten = await db
+        .select()
+        .from(finZaehlungPosten)
+        .where(eq(finZaehlungPosten.zaehlungId, id))
+        .orderBy(asc(finZaehlungPosten.nennwertCent));
+      return {
+        ...zaehlungEintrag(r.z, r.kontoName, r.seq),
+        text: r.z.text,
+        posten: posten.map((p) => ({
+          nennwertCent: p.nennwertCent,
+          sollAnzahl: p.sollAnzahl,
+          istAnzahl: p.istAnzahl,
+          differenzAnzahl: p.istAnzahl - p.sollAnzahl,
         })),
       };
     },

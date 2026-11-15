@@ -1,6 +1,6 @@
 import { Table, Text } from '@mantine/core';
 import { centAnzeigen } from '@c4/shared';
-import { RICHTUNG_LABELS, richtungVon } from './buchungFormular';
+import { richtungWort, zeilenBetragText } from './buchungFormular';
 import { BETRAG_STIL } from './finanzenDaten';
 
 export interface UebersichtZeile {
@@ -27,8 +27,8 @@ export function ZeilenUebersicht({ zeilen }: Readonly<{ zeilen: readonly Uebersi
         {zeilen.map((z) => (
           <Table.Tr key={z.key}>
             <Table.Td style={{ overflowWrap: 'anywhere' }}>{z.konto}</Table.Td>
-            <Table.Td>{RICHTUNG_LABELS[richtungVon(z.betragCent)]}</Table.Td>
-            <Table.Td style={BETRAG_STIL}>{centAnzeigen(Math.abs(z.betragCent))}</Table.Td>
+            <Table.Td>{richtungWort(z.betragCent)}</Table.Td>
+            <Table.Td style={BETRAG_STIL}>{zeilenBetragText(z.betragCent)}</Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>
