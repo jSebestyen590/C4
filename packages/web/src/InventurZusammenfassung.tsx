@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { gebindeBezeichnung, mhdAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { InventurLeiste } from './InventurLeiste';
+import { buchungsZeitpunktFehler } from './BuchungsFuss';
 import { jetztLokal } from './inventurDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
 
@@ -38,9 +39,8 @@ export function InventurZusammenfassung({
   const [zeitpunkt, setZeitpunkt] = useState(jetztLokal);
   const [alle, setAlle] = useState(false);
   const [bestaetigen, setBestaetigen] = useState(false);
-  const iso = Number.isNaN(new Date(zeitpunkt).getTime())
-    ? null
-    : new Date(zeitpunkt).toISOString();
+  const zeitFehler = buchungsZeitpunktFehler(zeitpunkt);
+  const iso = zeitFehler ? null : new Date(zeitpunkt).toISOString();
 
   const daten = useQuery({
     queryKey: ['inventuren', inventurId, 'zusammenfassung', iso],
@@ -159,7 +159,8 @@ export function InventurZusammenfassung({
               label="Zeitpunkt der Buchung"
               type="datetime-local"
               value={zeitpunkt}
-              error={iso === null ? 'Ungültiger Zeitpunkt.' : undefined}
+              max={jetztLokal()}
+              error={zeitFehler}
               onChange={(e) => setZeitpunkt(e.currentTarget.value)}
             />
           </>

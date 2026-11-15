@@ -283,13 +283,26 @@ export const wareSchema = z.object({
 });
 export type WareEingabe = z.input<typeof wareSchema>;
 
+/** Tolerance for a phone clock that runs ahead when booking. */
+export const ZUKUNFT_TOLERANZ_MS = 5 * 60_000;
+
+/** True when `zeitpunkt` (anything `Date` parses) lies further in the future than the tolerance. */
+export const inZukunft = (zeitpunkt: string | number | Date, jetzt = Date.now()): boolean =>
+  new Date(zeitpunkt).getTime() > jetzt + ZUKUNFT_TOLERANZ_MS;
+
+/** Zeitpunkt of a Waren booking: backdating is fine, the future is not (it would split shown and withdrawable stock). */
+export const buchungsZeitpunktSchema = zeitpunktSchema.refine(
+  (z) => Number.isNaN(Date.parse(z)) || !inZukunft(z),
+  'Der Zeitpunkt darf nicht in der Zukunft liegen.',
+);
+
 export const einlagerungSchema = z.object({
   wareId: idSchema('Bitte wähle eine Ware.'),
   lagerortId: idSchema('Bitte wähle einen Lagerort.'),
   gebindeId: idSchema('Bitte wähle ein Gebinde.'),
   anzahl: anzahlSchema,
   mhd: mhdSchema,
-  zeitpunkt: zeitpunktSchema,
+  zeitpunkt: buchungsZeitpunktSchema,
   kommentar: kommentarSchema,
 });
 export type EinlagerungEingabe = z.input<typeof einlagerungSchema>;
@@ -299,7 +312,7 @@ export const entnahmeSchema = z.object({
   lagerortId: idSchema('Bitte wähle einen Lagerort.'),
   gebindeId: idSchema('Bitte wähle ein Gebinde.'),
   anzahl: anzahlSchema,
-  zeitpunkt: zeitpunktSchema,
+  zeitpunkt: buchungsZeitpunktSchema,
   kommentar: kommentarSchema,
 });
 export type EntnahmeEingabe = z.input<typeof entnahmeSchema>;
@@ -311,7 +324,7 @@ const positionen = <T extends z.ZodType>(position: T) =>
   z.array(position).min(1, 'Bitte gib mindestens eine Position an.');
 
 export const einlagerungenSchema = z.object({
-  zeitpunkt: zeitpunktSchema,
+  zeitpunkt: buchungsZeitpunktSchema,
   kommentar: kommentarSchema,
   positionen: positionen(
     z.object({
@@ -326,7 +339,7 @@ export const einlagerungenSchema = z.object({
 export type EinlagerungenEingabe = z.input<typeof einlagerungenSchema>;
 
 export const entnahmenSchema = z.object({
-  zeitpunkt: zeitpunktSchema,
+  zeitpunkt: buchungsZeitpunktSchema,
   kommentar: kommentarSchema,
   positionen: positionen(
     z.object({
@@ -352,7 +365,7 @@ export const entnahmenSchema = z.object({
 export type EntnahmenEingabe = z.input<typeof entnahmenSchema>;
 
 export const umlagerungenSchema = z.object({
-  zeitpunkt: zeitpunktSchema,
+  zeitpunkt: buchungsZeitpunktSchema,
   kommentar: kommentarSchema,
   positionen: positionen(
     z
@@ -391,7 +404,7 @@ export const inventurStartenSchema = z.object({
   lagerortId: idSchema('Bitte wähle einen Lagerort.'),
 });
 
-export const inventurAbschlussSchema = z.object({ zeitpunkt: zeitpunktSchema });
+export const inventurAbschlussSchema = z.object({ zeitpunkt: buchungsZeitpunktSchema });
 
 // ---------------------------------------------------------------------------
 // Trees (Lagerorte, Warengruppen)

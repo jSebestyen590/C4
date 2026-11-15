@@ -142,6 +142,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   `push_versand` wird täglich auf 90 Tage gekürzt; der Geburtstags-Job rechnet einmal pro Tag.
 - Schlüssel-Planungen verfallen einen Tag nach ihrem Datum (beim Lesen gefiltert, kein Job); eine Übergabe an jemand anderen
   entfernt die früheste aktuelle Planung (`docs/schluessel.md`).
+- Waren-Buchungen mit Zukunftsdatum sind 400 (5 Minuten Toleranz; [Issue 40](https://github.com/jSebestyen590/C4/issues/40), `docs/waren.md`).
 - Beendete Ausleihen gehen nicht wieder auf (409 bei `PUT` mit Positionen); Rückgabe mit Zukunftsdatum ist 400
   (`docs/inventar.md`).
 - Protokoll-Autosave: nach einem Fehler bis zu drei automatische Versuche (2 s, 5 s, 10 s), sichtbar als „Nicht gespeichert.“
@@ -222,7 +223,6 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 
 Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer den zurückgestellten Punkten).
 
-- **Buchungen mit Zukunftsdatum (zurückgestellt, [Issue 40](https://github.com/jSebestyen590/C4/issues/40))** zählen im Bestand, aber nicht im FIFO-Plan „jetzt“.
 - **Protokoll-Autosave:** Bei einem Konflikt (409) verwirft „Neu laden“ den lokalen Stand; ob er stattdessen erhalten bleiben
   soll, ist nicht entschieden. Gleichzeitiges Bearbeiten verhindert die Bearbeitungssperre (`protokolle.md`); ein Konflikt tritt nur
   noch auf, wenn eine Sperre ablief (Tab lange eingefroren oder offline) und jemand anderes inzwischen gespeichert hat.
