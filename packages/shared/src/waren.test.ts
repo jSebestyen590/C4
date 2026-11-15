@@ -631,7 +631,7 @@ describe('schemas', () => {
       lagerortId: 'l',
       gebindeId: 'g',
       anzahl: 2,
-      zeitpunkt: '2027-01-01T10:00:00Z',
+      zeitpunkt: '2026-01-01T10:00:00Z',
     };
     expect(einlagerungSchema.safeParse(e).data).toMatchObject({ mhd: null, kommentar: null });
     expect(
@@ -777,7 +777,7 @@ describe('Umlagerung', () => {
 });
 
 describe('Sammel-Schemas', () => {
-  const zeitpunkt = '2027-01-01T10:00:00.000Z';
+  const zeitpunkt = '2026-01-01T10:00:00.000Z';
   it('validates Einlagerungen', () => {
     const pos = { wareId: 'w', lagerortId: 'l', gebindeId: 'g', anzahl: 2 };
     expect(einlagerungenSchema.safeParse({ zeitpunkt, positionen: [] }).success).toBe(false);

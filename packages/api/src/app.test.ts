@@ -2189,6 +2189,34 @@ describe('posten', () => {
       expect((await loeschen('nope')).status).toBe(404);
     });
 
+    it('rejects booking timestamps in the future but allows backdating and a small clock skew', async () => {
+      const { app, waren } = makeApp();
+      const post = async (url: string, body: unknown) =>
+        app.request(url, json('reader-token', 'POST', body));
+      const zukunft = new Date(Date.now() + 86_400_000).toISOString();
+      const leichtVoraus = new Date(Date.now() + 60_000).toISOString();
+      const pos = { wareId: 'w1', lagerortId: 'l1', gebindeId: 'gb1', anzahl: 2 };
+      const umlagerung = { wareId: 'w1', gebindeId: 'gb1', anzahl: 2, vonId: 'l1', nachId: 'l2' };
+      const faelle: [string, (zeitpunkt: string) => unknown][] = [
+        ['/api/bestand/einlagerung', (z) => ({ ...pos, mhd: '2027-01-15', zeitpunkt: z })],
+        ['/api/bestand/entnahme', (z) => ({ ...pos, zeitpunkt: z })],
+        ['/api/bestand/einlagerungen', (z) => ({ zeitpunkt: z, positionen: [pos] })],
+        ['/api/bestand/entnahmen', (z) => ({ zeitpunkt: z, positionen: [pos] })],
+        ['/api/bestand/umlagerungen', (z) => ({ zeitpunkt: z, positionen: [umlagerung] })],
+        ['/api/inventuren/i1/abschluss', (z) => ({ zeitpunkt: z })],
+      ];
+      for (const [url, body] of faelle) {
+        const res = await post(url, body(zukunft));
+        expect(res.status, url).toBe(400);
+        expect(JSON.stringify(await res.json()), url).toContain(
+          'Der Zeitpunkt darf nicht in der Zukunft liegen.',
+        );
+        expect((await post(url, body(leichtVoraus))).status, url).not.toBe(400);
+        expect((await post(url, body(zeitpunkt))).status, url).not.toBe(400);
+      }
+      expect(waren.entnehmen).toHaveBeenCalled();
+    });
+
     it('books several positions at once (Einlagerungen, Entnahmen, Umlagerungen)', async () => {
       const { app, waren } = makeApp();
       const post = (url: string, body: unknown) =>

@@ -15,6 +15,7 @@ import {
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { useOrteMitIfcos } from './inventarDaten';
+import { buchungsZeitpunktFehler } from './BuchungsFuss';
 import { DatumFeld } from './DatumFeld';
 import { fehlerText, pruefen } from './warenApi';
 import { zeileText } from './warenAnzeige';
@@ -117,7 +118,8 @@ export function BuchungModal({
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const zeit = new Date(zeitpunkt);
-    if (Number.isNaN(zeit.getTime())) return setFehler('Ungültiger Zeitpunkt.');
+    const zeitFehler = buchungsZeitpunktFehler(zeitpunkt);
+    if (zeitFehler) return setFehler(zeitFehler);
     const basis = {
       wareId: ware.id,
       lagerortId: lagerortId ?? '',
@@ -192,6 +194,8 @@ export function BuchungModal({
             label="Zeitpunkt"
             type="datetime-local"
             value={zeitpunkt}
+            max={jetztLokal()}
+            error={buchungsZeitpunktFehler(zeitpunkt)}
             onChange={(e) => setZeitpunkt(e.currentTarget.value)}
           />
           <Textarea

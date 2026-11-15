@@ -10,6 +10,9 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
   Posten mit Summe 0 entfallen. Gebucht wird nur über Vorgänge (`bestandsvorgang`); ein Vorgang wird gelöscht, nicht bearbeitet.
 - **Bestand darf negativ werden:** Eine Entnahme über den Bestand hinaus bucht den Rest ins Minus am gewählten Lagerort (MHD leer),
   siehe [FIFO-Entnahme](#fifo-entnahme). Es gibt keine Bestandsprüfung beim Entnehmen.
+- **Kein Zukunftsdatum:** Der `zeitpunkt` einer Buchung (Einlagerung, Entnahme, Umlagerung, Inventur-Abschluss) darf nicht in der
+  Zukunft liegen (400, `buchungsZeitpunktSchema`; 5 Minuten Toleranz für eine vorgehende Handyuhr). Rückdatieren bleibt erlaubt. So
+  weichen angezeigter Bestand und entnehmbarer Bestand („jetzt“) nicht auseinander. Die Formulare setzen `max` und zeigen den Fehler.
 - Entnahmen werden beim Buchen FIFO geplant und danach **nie neu berechnet**; auch das Löschen eines früheren Vorgangs ändert
   spätere Aufteilungen nicht.
 - Das MHD hängt an der Ware (`mhdArt`: `keins`/`tag`/`monat`); Monats-MHDs werden als Erster des Monats gespeichert, MHD-Waren brauchen
