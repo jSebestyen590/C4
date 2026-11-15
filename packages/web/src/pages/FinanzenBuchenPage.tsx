@@ -17,7 +17,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useBlocker, useNavigate, useSearchParams } from 'react-router-dom';
-import { heuteBerlin } from '@c4/shared';
+import { heuteBerlin, saldoWarnungen } from '@c4/shared';
 import { useApi } from '../api';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import { BetragFeld } from '../BetragFeld';
@@ -166,7 +166,8 @@ export function FinanzenBuchenPage() {
     setVersucht(true);
     if (!buchbar) return;
     buchen.reset();
-    setPruefen(true);
+    // Balances change with every booking: reload them before the warnings are computed.
+    void konten.refetch().then(() => setPruefen(true));
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>) => {
@@ -357,7 +358,10 @@ export function FinanzenBuchenPage() {
           datum={datum}
           text={text.trim()}
           zeilen={uebersicht}
-          warnungen={warnungen(kopf, stand, heuteBerlin())}
+          warnungen={[
+            ...warnungen(kopf, stand, heuteBerlin()),
+            ...saldoWarnungen(zeilenFuer(stand), konten.data ?? []),
+          ]}
           laeuft={buchen.isPending}
           fehler={
             buchen.isError ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.') : null

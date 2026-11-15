@@ -202,6 +202,22 @@ Das Ergebnis zeigt Anzahl, Kopf-Hash und Fehler je `seq`. **In dieser Scheibe wi
 Datenbank geprüft.** Wer die Datenbank ändern kann, könnte Buchungen samt Hashes neu schreiben; der
 Abgleich gegen Exporte und Kopf-Hash im S3-Archiv (Object Lock) kommt mit Scheibe 5.
 
+## Warnungen je Kontoart
+
+Beim Buchen, Stornieren und Umbuchen von Bargeld prüft `saldoWarnungen` (`@c4/shared`) den Saldo nach der
+Buchung (Zeilen je Konto zusammengerechnet, Soll/Zugang positiv). Die Warnungen blockieren nicht, müssen aber
+in der Zusammenfassung bestätigt werden:
+
+| Kontoart           | Warnung                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Bank               | Saldo danach unter 0                                                                                |
+| Aufwand            | Saldo danach im Haben (Guthaben) und die Buchung vergrößert es (z. B. Erstattung über den Ausgaben) |
+| Erlöse             | Saldo danach im Soll (Minus) und die Buchung vergrößert es (z. B. Rückzahlung über den Einnahmen)   |
+| Bargeld            | keine Warnung: harte Bestandsregel auf dem Server (siehe Bargeld)                                   |
+| Durchlauf, Neutral | keine Warnung                                                                                       |
+
+Die Salden werden vor dem Öffnen der Zusammenfassung neu geladen.
+
 ## Bargeld (Safe)
 
 Der Safe ist eine **Gruppe**: Seine Unterkonten sind die **Fächer** (Bargeld mit Stückelung, z. B.

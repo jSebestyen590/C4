@@ -14,7 +14,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { centAnzeigen, heuteBerlin, type BuchungEingabeInput } from '@c4/shared';
+import { centAnzeigen, heuteBerlin, saldoWarnungen, type BuchungEingabeInput } from '@c4/shared';
 import { useApi } from '../api';
 import { zeigeGebucht } from '../gebuchtHinweis';
 import {
@@ -143,7 +143,7 @@ export function FinanzenBargeldUmbuchenPage() {
     if (!buchbar) return;
     buchen.reset();
     // The stock may have changed since the page was opened.
-    void bargeld.refetch().then(() => setPruefen(true));
+    void Promise.all([bargeld.refetch(), konten.refetch()]).then(() => setPruefen(true));
   };
 
   return (
@@ -287,11 +287,14 @@ export function FinanzenBargeldUmbuchenPage() {
               <Text size="sm">{rueckgeldText(mengen)}</Text>
             </Stack>
           }
-          warnungen={buchungsWarnungen(
-            { datum, text: buchText },
-            { modus: 'umbuchung', von, nach, betrag: mengenSumme(mengen), zeilen: [] },
-            heuteBerlin(),
-          )}
+          warnungen={[
+            ...buchungsWarnungen(
+              { datum, text: buchText },
+              { modus: 'umbuchung', von, nach, betrag: mengenSumme(mengen), zeilen: [] },
+              heuteBerlin(),
+            ),
+            ...saldoWarnungen(umbuchenZeilen(stand, alle), konten.data ?? []),
+          ]}
           laeuft={buchen.isPending}
           fehler={
             buchen.isError ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.') : null

@@ -23,6 +23,7 @@ import {
   heuteBerlin,
   QUELLE_TYP_LABELS,
   STEUER_ART_LABELS,
+  saldoWarnungen,
   type BuchungDetailDto,
   type BuchungZeileDto,
 } from '@c4/shared';
@@ -38,6 +39,7 @@ import {
   detailPfad,
   FINANZEN_KEY,
   jsonOderFehler,
+  useKonten,
   zaehlungPfad,
 } from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
@@ -69,6 +71,13 @@ function StornoDialog({
   const [text, setText] = useState('');
   const [beruehrt, setBeruehrt] = useState(false);
   const [geprueft, setGeprueft] = useState(false);
+  // Plausibility warnings of the reversal (balances afterwards); they must be ticked off.
+  const konten = useKonten(true);
+  const saldoHinweise = saldoWarnungen(
+    buchung.zeilen.map((z) => ({ kontoId: z.kontoId, betragCent: -z.betragCent })),
+    konten.data ?? [],
+  );
+  const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
   // One key per opening of the dialog: a double click or a retry does not reverse twice.
   const [schluessel] = useState(() => crypto.randomUUID());
   return (
@@ -76,7 +85,9 @@ function StornoDialog({
       titel={`Buchung Nr. ${buchung.seq} stornieren`}
       bestaetigenText="Stornieren"
       groesse="lg"
-      gesperrt={!geprueft || !datum || text.trim() === ''}
+      gesperrt={
+        !geprueft || !datum || text.trim() === '' || saldoHinweise.some((w) => !bestaetigt.has(w))
+      }
       onClose={onClose}
       onBestaetigt={async () => {
         const neu = await jsonOderFehler<{ id: string }>(
@@ -126,6 +137,27 @@ function StornoDialog({
         onBlur={() => setBeruehrt(true)}
         maxLength={500}
       />
+      {saldoHinweise.length > 0 && (
+        <Alert color="orange" title="Bitte prüfen">
+          <Stack gap="xs">
+            {saldoHinweise.map((w) => (
+              <Checkbox
+                key={w}
+                label={`${w} Das ist richtig so.`}
+                checked={bestaetigt.has(w)}
+                onChange={(e) =>
+                  setBestaetigt((alt) => {
+                    const neu = new Set(alt);
+                    if (e.currentTarget.checked) neu.add(w);
+                    else neu.delete(w);
+                    return neu;
+                  })
+                }
+              />
+            ))}
+          </Stack>
+        </Alert>
+      )}
       <Checkbox
         label={`Ja, ich storniere Buchung Nr. ${buchung.seq} mit dieser Gegenbuchung.`}
         checked={geprueft}

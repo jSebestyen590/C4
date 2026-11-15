@@ -24,7 +24,7 @@ export const HILFE = {
     datum:
       'Das Buchungsdatum, nicht der Tag der Eingabe. Liegt es in der Zukunft, warnst du dich selbst: Du musst es dann bestätigen.',
     warnungen:
-      'Plausibilitätswarnungen (z. B. Datum in der Zukunft, ungewöhnlich hoher Betrag) blockieren nicht, müssen aber bestätigt werden. Gebuchtes lässt sich nicht mehr ändern, nur per Storno korrigieren.',
+      'Warnungen blockieren nicht, müssen aber bestätigt werden: Datum in der Zukunft, ungewöhnlich hoher Betrag und je Kontoart: Bank im Minus, Aufwandskonto mit Guthaben oder Erlöskonto im Minus nach der Buchung (das ist ungewöhnlich, kann aber richtig sein, z. B. bei einer Erstattung). Gebuchtes lässt sich nicht mehr ändern, nur per Storno korrigieren.',
   },
   storno: {
     begruendung:

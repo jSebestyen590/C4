@@ -308,6 +308,47 @@ export function pruefeBuchung(
   return fehler;
 }
 
+// ----- Plausibility warnings per account kind
+
+/** An account with its current balance, for `saldoWarnungen`. */
+export interface SaldoKonto {
+  id: string;
+  name: string;
+  art: KontoArt;
+  /** Sum of the account's own lines (Soll/Zugang positive). */
+  saldoCent: number;
+}
+
+/**
+ * Non-blocking warnings about the balances after a booking (lines of one account are summed first):
+ * Bank below 0; Aufwand with a credit balance the booking made larger; Erlöse in the minus (Soll
+ * balance) the booking made larger. Bargeld is a hard server rule, Durchlauf and Neutral never warn.
+ */
+export function saldoWarnungen(
+  zeilen: readonly { kontoId: string; betragCent: number }[],
+  konten: readonly SaldoKonto[],
+): string[] {
+  const aenderung = new Map<string, number>();
+  for (const z of zeilen) aenderung.set(z.kontoId, (aenderung.get(z.kontoId) ?? 0) + z.betragCent);
+  const warnungen: string[] = [];
+  for (const [id, delta] of aenderung) {
+    const k = konten.find((x) => x.id === id);
+    if (!k) continue;
+    const neu = k.saldoCent + delta;
+    if (k.art === 'bank' && neu < 0)
+      warnungen.push(`Der Kontostand von „${k.name}“ wäre danach negativ (${formatEuro(neu)}).`);
+    else if (k.art === 'aufwand' && neu < 0 && delta < 0)
+      warnungen.push(
+        `„${k.name}“ (Aufwand) hätte danach ein Guthaben von ${formatEuro(-neu)} – das ist ungewöhnlich (z. B. Erstattung höher als die Ausgaben).`,
+      );
+    else if (k.art === 'erloes' && neu > 0 && delta > 0)
+      warnungen.push(
+        `„${k.name}“ (Erlöse) wäre danach im Minus (${formatEuro(neu)}) – das ist ungewöhnlich (z. B. Rückzahlung höher als die Einnahmen).`,
+      );
+  }
+  return warnungen;
+}
+
 // ----- Storno
 
 export type StornoQuelleZeile = HashZeile;
