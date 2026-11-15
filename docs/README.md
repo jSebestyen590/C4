@@ -3,26 +3,26 @@
 Dokumentation der Features von C4. Sie soll kurz und aktuell bleiben: Wer ein Feature ändert,
 aktualisiert die zugehörige Seite im selben Change.
 
-| Seite                                            | Inhalt                                                                                |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [members.md](./members.md)                       | Mitglieder: Profil, Status, Rechte, Kontaktkanäle, Profilbilder, Mitgliederliste      |
-| [posten.md](./posten.md)                         | Posten: Verantwortlichkeiten, Besetzungen, Rechte über Posten, Archiv                 |
-| [historie.md](./historie.md)                     | Historie: Zeitstrahl von Status und Posten je Mitglied bzw. Posten, Drucken           |
-| [waren.md](./waren.md)                           | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte                 |
-| [inventar.md](./inventar.md)                     | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte                   |
-| [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo               |
-| [protokolle.md](./protokolle.md)                 | Protokolle: Sitzungen, Kopf mit Teilnahme, Dokument mit Bausteinen, Autosave          |
-| [todos.md](./todos.md)                           | Todos: Aufgaben aus Protokollen und eigene, Modi Gemeinsam/Einzeln, Seite, Erinnerung |
-| [bilder.md](./bilder.md)                         | Bilder: OneDrive-Ordner der Events, Suche, Ordner anlegen, Verbindung                 |
-| [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung                  |
-| [umfragen.md](./umfragen.md)                     | Umfragen: Fragen, Pflicht- und optionale Kreise, Anonymität, Erinnerungen             |
-| [privatpartys.md](./privatpartys.md)             | Privatpartys: Anfragen, Personen, Wunschtermine, Umfrage, Zusage mit Event, Absage    |
-| [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung      |
-| [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                               |
-| [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`        |
-| [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                    |
-| [querschnitt.md](./querschnitt.md)               | Querschnitt: Auth-Modell, Rechteberechnung, Fehler-Mapping, DSQL-Wiederholung         |
-| [refactoring.md](./refactoring.md)               | Review 11/2026: geprüft, erledigt, offen (vor jedem Refactoring lesen)                |
+| Seite                                            | Inhalt                                                                                                    |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [members.md](./members.md)                       | Mitglieder: Profil, Status, Rechte, Kontaktkanäle, Profilbilder, Mitgliederliste                          |
+| [posten.md](./posten.md)                         | Posten: Verantwortlichkeiten, Besetzungen, Rechte über Posten, Archiv                                     |
+| [historie.md](./historie.md)                     | Historie: Zeitstrahl von Status und Posten je Mitglied bzw. Posten, Drucken                               |
+| [waren.md](./waren.md)                           | Waren: Lagerorte, Gebinde, Bestandsbuchungen (FIFO), Inventur, Rechte                                     |
+| [inventar.md](./inventar.md)                     | Inventar: Gegenstände, Kategorien, IFCOs, Plätze, Ausleihen, Rechte                                       |
+| [kalender.md](./kalender.md)                     | Kalender: Events, Schichten, Dienste, Dienstschwein, Teilnahme, ICS-Abo                                   |
+| [protokolle.md](./protokolle.md)                 | Protokolle: Sitzungen, Kopf mit Teilnahme, Dokument mit Bausteinen, Autosave                              |
+| [todos.md](./todos.md)                           | Todos: Aufgaben aus Protokollen und eigene, Modi Gemeinsam/Einzeln, Seite, Erinnerung                     |
+| [bilder.md](./bilder.md)                         | Bilder: OneDrive-Ordner der Events, Suche, Ordner anlegen, Verbindung                                     |
+| [schluessel.md](./schluessel.md)                 | Schlüssel: wer welchen Schlüssel hat, Übergaben, Verlauf, Verwaltung                                      |
+| [umfragen.md](./umfragen.md)                     | Umfragen: Fragen, Pflicht- und optionale Kreise, Anonymität, Erinnerungen                                 |
+| [privatpartys.md](./privatpartys.md)             | Privatpartys: Anfragen, Personen, Wunschtermine, Umfrage, Zusage mit Event, Absage                        |
+| [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung                          |
+| [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                                                   |
+| [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`                            |
+| [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                                        |
+| [querschnitt.md](./querschnitt.md)               | Querschnitt: Auth-Modell, Rechteberechnung, Fehler-Mapping, DSQL-Wiederholung, PWA-Icons, Offline-Hinweis |
+| [refactoring.md](./refactoring.md)               | Review 11/2026: geprüft, erledigt, offen (vor jedem Refactoring lesen)                                    |
 
 ## Allgemein
 

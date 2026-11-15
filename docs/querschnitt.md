@@ -64,3 +64,21 @@ Aurora DSQL löst gleichzeitige Änderungen optimistisch auf: Eine der Transakti
   Grundlage von `onError`.
 
 Mehr dazu und zu den Migrationen: [datenbank.md](./datenbank.md#gleichzeitige-zugriffe).
+
+## PWA: Icons und Offline-Hinweis
+
+- Manifest: `packages/web/public/manifest.webmanifest` (Icons 192/512, maskable 512 mit 80 % Safe-Zone, `theme_color` = Indigo `#4c6ef5`,
+  `background_color` weiß). `index.html` setzt `<meta name="theme-color">`. Der Service Worker (`public/sw.js`) kennt nur Push, keinen Offline-Cache.
+- Icon-Quelle: `packages/web/icon-quelle/c4-logo.png` (wird nicht ausgeliefert). Neu erzeugen im Ordner `packages/web` (`gen <Kante> <Logobreite> <Ziel>`):
+
+  ```sh
+  gen(){ sips --resampleWidth $2 icon-quelle/c4-logo.png --out $3 >/dev/null && sips --padToHeightWidth $1 $1 --padColor FFFFFF $3 >/dev/null; }
+  gen 192 169 public/icon-192.png
+  gen 512 450 public/icon-512.png
+  gen 512 360 public/icon-maskable-512.png   # Logo in den mittleren 80 %
+  gen 180 158 public/icon-180.png            # Push-Icon
+  cp public/icon-180.png src/assets/apple-touch-icon.png
+  ```
+
+- Offline-Hinweis: `useOnline` (`src/useOnline.ts`, `online`/`offline`-Events) blendet in `AppLayout` unter dem Header einen schmalen Hinweis
+  „Keine Verbindung – Änderungen werden nicht gespeichert.“ ein.

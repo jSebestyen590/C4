@@ -1,4 +1,5 @@
 import {
+  Alert,
   AppShell,
   Avatar,
   Badge,
@@ -40,6 +41,7 @@ import {
   IconSun,
   IconUser,
   IconUsersGroup,
+  IconWifiOff,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, type ReactNode } from 'react';
@@ -50,6 +52,7 @@ import logoDunkel from './assets/logo-dunkel.png';
 import { usePushGelesenParam, useUngelesen } from './benachrichtigungVerlauf';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
+import { useOnline } from './useOnline';
 import { ortMerken } from './zurueckVerlauf';
 
 const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
@@ -184,6 +187,7 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
   // Any navigation (sidebar, profile menu, in-page links) closes the mobile menu.
   useEffect(close, [pathname, close]);
   const farbschema = useComputedColorScheme('light');
+  const online = useOnline();
 
   const links = [
     { to: '/', label: 'Startseite', icon: <IconHome size={20} />, show: true },
@@ -360,7 +364,24 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
         </AppShell.Section>
       </AppShell.Navbar>
 
-      <AppShell.Main>{children}</AppShell.Main>
+      <AppShell.Main>
+        {!online && (
+          <Alert
+            color="yellow"
+            variant="light"
+            radius={0}
+            py="xs"
+            mx="calc(var(--mantine-spacing-md) * -1)"
+            mt="calc(var(--mantine-spacing-md) * -1)"
+            mb="md"
+            role="status"
+            icon={<IconWifiOff size={18} />}
+          >
+            Keine Verbindung – Änderungen werden nicht gespeichert.
+          </Alert>
+        )}
+        {children}
+      </AppShell.Main>
     </AppShell>
   );
 }
