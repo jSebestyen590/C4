@@ -16,6 +16,8 @@ wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird n
 - Die Kreise (Pflicht/Optional) werden bei jedem Zugriff **dynamisch** gegen aktuelle Mitglieder, Status und Posten-Besetzungen
   ausgewertet (`kreisVon`); Pflicht und Optional dürfen sich nicht überschneiden (400). Deaktivierte Mitglieder fallen aus den Kreisen,
   ihre abgegebenen Stimmen bleiben gezählt.
+- Beim Speichern prüft der Store den Stimmzettel noch einmal gegen die aktuellen Optionen (409, wenn eine Option inzwischen
+  entfernt wurde; Bearbeiten und Abstimmen sind über `sperreBeruehren` gegeneinander gesichert).
 - Eine Stimme ist ein Stimmzettel für **alle** Fragen (`stimmzettelFehler`) und bis zum Ende änderbar; je Person und Umfrage genau eine
   Abgabe (`umfrage_abgaben`, Primärschlüssel).
 - Eine beendete Umfrage (abgelaufen oder vorzeitig) lässt sich weder bearbeiten noch wieder öffnen.
@@ -84,7 +86,7 @@ Beginn und Ende (beide oder keins, `freieTerminFehler`) und optionalem Namen; de
 - **Ergebnisse** (`ergebnisse`): `sofort`, `nach_abstimmung` (wer abgestimmt hat) oder `nach_ende`. Wer die Umfrage
   erstellt hat und die Verwaltung sehen sie immer, nach dem Ende alle (`ergebnisseSichtbar`).
   Bei der Umfrage einer Privatparty gilt das auch für Inhaber:innen von `privatpartys:verwalten`: Sie zählen wie die Verwaltung als
-  „verwaltet“ (`darfBearbeiten` in `umfrageAnsicht.ts`, gesetzt über `aufruferFuerUmfrage` in `app.ts`) und sehen die Ergebnisse jederzeit.
+  „verwaltet“ (`darfBearbeiten` in `umfrageAnsicht.ts`, gesetzt über `umfrageAufrufer` in `routes/umfragen.ts`) und sehen die Ergebnisse jederzeit.
   Dieses Recht gilt nur für diese Umfrage: Auch außerhalb des Kreises sehen sie sie (Liste, beendete Umfragen, Detail; sonst 404) und
   dürfen abstimmen (`darfAbstimmen`, DTO-Feld `darfAbstimmen`; `meinKreis` bleibt `null`). Die Ids aller Privatparty-Umfragen lädt
   `aufruferMitParty` einmal je Request (`PrivatpartysStore.umfrageIds`). `kreisGroesse` zählt Abstimmende außerhalb des Kreises mit.

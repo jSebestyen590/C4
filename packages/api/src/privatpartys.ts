@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { asc, desc, eq, inArray, isNotNull, isNull, lt, or } from 'drizzle-orm';
+import { istKonflikt } from './db/wiederholung';
 import type {
   PrivatpartyEingabeDaten,
   PrivatpartyPersonEingabe,
@@ -133,6 +134,13 @@ export interface PrivatpartysStore {
 
   abrufStand(): Promise<AbrufStand>;
   abrufStandSetzen(stand: Partial<AbrufStand>): Promise<void>;
+  /**
+   * Claims the run (lease until `bis`) with a single conditional write, also on the very first run
+   * when the row does not exist yet. False when another run holds an unexpired lease.
+   */
+  abrufBelegen(jetzt: Date, bis: Date): Promise<boolean>;
+  /** Releases the lease. */
+  abrufFreigeben(): Promise<void>;
 }
 
 const JSON_LISTE = (wert: string | null): string[] => {
@@ -380,19 +388,20 @@ export function createPrivatpartysStore(db: Db): PrivatpartysStore {
     zusagen: (id, terminId, eventId) => aendern(id, { status: 'zugesagt', terminId, eventId }),
     statusSetzen: (id, status) => aendern(id, { status, terminId: null, eventId: null }),
     async loeschen(id) {
-      const [row] = await db.select().from(privatpartys).where(eq(privatpartys.id, id));
-      if (!row) return 'nicht_gefunden';
-      const [nachricht] = await db
-        .select({ id: privatpartyNachrichten.id })
-        .from(privatpartyNachrichten)
-        .where(eq(privatpartyNachrichten.privatpartyId, id))
-        .limit(1);
-      if (row.eventId || nachricht) return 'in_benutzung';
-      await db.transaction(async (tx: Tx) => {
+      // Checked inside the transaction, so a Nachricht arriving meanwhile is not orphaned.
+      return db.transaction(async (tx: Tx) => {
+        const [row] = await tx.select().from(privatpartys).where(eq(privatpartys.id, id));
+        if (!row) return 'nicht_gefunden';
+        const [nachricht] = await tx
+          .select({ id: privatpartyNachrichten.id })
+          .from(privatpartyNachrichten)
+          .where(eq(privatpartyNachrichten.privatpartyId, id))
+          .limit(1);
+        if (row.eventId || nachricht) return 'in_benutzung';
         await tx.delete(privatpartyTermine).where(eq(privatpartyTermine.privatpartyId, id));
         await tx.delete(privatpartys).where(eq(privatpartys.id, id));
+        return 'ok';
       });
-      return 'ok';
     },
 
     async nachrichten(privatpartyId) {
@@ -531,6 +540,27 @@ export function createPrivatpartysStore(db: Db): PrivatpartysStore {
         .insert(mailAbruf)
         .values({ id: STAND_ID, ...werte })
         .onConflictDoUpdate({ target: mailAbruf.id, set: werte });
+    },
+    async abrufBelegen(jetzt, bis) {
+      // 40001 means another run claimed the row at the same moment: treat it as "already running".
+      try {
+        const rows = await db
+          .insert(mailAbruf)
+          .values({ id: STAND_ID, laeuftBis: bis })
+          .onConflictDoUpdate({
+            target: mailAbruf.id,
+            set: { laeuftBis: bis },
+            setWhere: or(isNull(mailAbruf.laeuftBis), lt(mailAbruf.laeuftBis, jetzt)),
+          })
+          .returning({ id: mailAbruf.id });
+        return rows.length > 0;
+      } catch (err) {
+        if (istKonflikt(err)) return false;
+        throw err;
+      }
+    },
+    async abrufFreigeben() {
+      await db.update(mailAbruf).set({ laeuftBis: null }).where(eq(mailAbruf.id, STAND_ID));
     },
   };
 }

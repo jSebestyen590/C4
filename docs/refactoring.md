@@ -28,7 +28,7 @@ Die Funde der Stufe „hoch“ und die meisten der Stufe „mittel“ wurden vor
 Diese Punkte muss ein neues Review nicht wiederholen, solange die genannten Stellen unverändert sind.
 
 - **Auth je Route:** Alle Routen in `app.ts` tragen `auth`, außer den drei bewusst öffentlichen (`/health`,
-  `/kalender/feed/:token`, `/vcard/:token/...`). Per Skript geprüft; ein Default-Deny fehlt aber (siehe Offen).
+  `/kalender/feed/:token`, `/vcard/:token/...`). Zusätzlich gilt Default-Deny (siehe Erledigt).
 - **Rechte im Frontend:** `can()` aus `auth.tsx` ist der einzige Helfer.
 - **SQL:** kein zusammengesetztes SQL außerhalb von Drizzle (einzige `sql`-Stelle: Spaltenreferenz in `protokolle.ts`).
   Zeitstempel durchgehend mit Zeitzone, `numeric` mit Zahl-Mappern.
@@ -58,7 +58,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 **Rechte und Zugriff**
 
 - Posten: Besetzen, Besetzung ändern und Reaktivieren verlangen jedes Recht, das der Posten gewährt
-  (`postenRechteMuessenBeiDirLiegen` in `app.ts`). Vorher reichte `posten:bearbeiten`, um sich selbst `users:manage` zu geben.
+  (`postenRechteMuessenBeiDirLiegen` in `routes/posten.ts`). Vorher reichte `posten:bearbeiten`, um sich selbst `users:manage` zu geben.
 - Posten: Die Besetzung eines deaktivierten Mitglieds lässt sich beenden.
 - Kalender-Feed: 404 für deaktivierte Mitglieder oder ohne `kalender:lesen`.
 - Schlüssel: Den ersten Halter trägt nur die Verwaltung ein (API und Oberfläche). Planung ändern prüft wie Planung anlegen.
@@ -121,6 +121,11 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Abschnitte „Invarianten“ und „Dateien“ auf den Feature-Seiten; FIFO-Entnahme, Todo-Erinnerung, Trichter-Grenzen, sichtbare
   Profilfelder und die Reichweite der Umfrage-Anonymität dokumentiert; tote Dateiverweise und Migrationsnummern korrigiert.
 
+**Gleichzeitige Zugriffe (Issue 36)**
+
+- Party-Mail: Lease `mail_abruf.laeuft_bis` verhindert, dass Cron und „Jetzt abrufen“ gleichzeitig laufen.
+- OneDrive: `erneuern` teilt eine laufende Token-Erneuerung (Single-Flight) innerhalb einer Lambda-Instanz.
+
 **Entschieden (kein Handlungsbedarf)**
 
 - Adresse, Telefon, E-Mail und Geburtsdatum bleiben für alle mit `mitglieder:lesen` sichtbar (siehe `members.md`).
@@ -149,9 +154,21 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 - Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
   verlangen sie (`protokolle.md`, Migrationen 0163–0165).
+- Protokoll abschließen und „Ausführen“ belegen die Version, bevor die Aktionen laufen (`statusBelegen`, `aktionenBelegen`);
+  ein paralleler Aufruf ist 409 ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), `protokolle/aktionen.md`).
 - `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
 - Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
+
+**Nach PR #33** ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), PR A: Tabelle `sperren`)
+
+- `sperreBeruehren` (`db/sperren.ts`, Migration 0167) vor Prüfen-dann-Einfügen: Ausleihe anlegen/ändern (`gegenstand:<id>`),
+  Inventur starten (`lagerort:<id>` für den Lagerort und alle Nachfahren), Aufräumaktion starten (`aufraeumaktion`), Besetzung
+  anlegen/ändern (`besetzung:<posten>:<mitglied>`), Umfrage bearbeiten und abstimmen (`umfrage:<id>`).
+- Inventur starten lehnt auch eine offene Inventur auf einem über- oder untergeordneten Lagerort ab (409); die Prüfung fehlte.
+- Abstimmen prüft den Stimmzettel in der Transaktion noch einmal gegen die aktuellen Optionen (409 bei entfernter Option).
+- Kein Wettlauf, nur begründet: `inventurAbschliessen` (beide Aufrufe schreiben dieselbe `inventuren`-Zeile, der Retry sieht
+  „abgeschlossen“); `gegenstaende.anzahl` (parallele Buchungen schreiben dieselbe Zeile; höchstens Drift, Vertragstests in Issue 48).
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -166,6 +183,17 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   für Events und Dienste in `kalender.md`; neue Seite `querschnitt.md` (Auth-Modell, Rechteberechnung, Fehler-Mapping,
   DSQL-Wiederholung); `README.md`: User-Pool-ID je Umgebung per Terraform-Output, lokaler Bootstrap-State, OneDrive-Verbindung.
 
+**Issue 48 (Tests und Struktur, Leistung)**
+
+- Migrationstest: prüft jetzt ab 0010 (statt 0037). 0001–0009 sind ausgenommen, weil sie vor der Ein-Statement-Regel
+  entstanden (0009 hat zwei Statements, keine Down-Dateien) und vor dem ersten Release zusammengeführt wurden
+  (`datenbank.md`).
+- Cognito: `konten()`/`rollen()` sind je warmem Container 60 s gecacht; `createUser`, `setGroups`, `setEnabled` und
+  `setPreferredUsername` leeren den Cache. Neue Schnittstelle `UserAdminEinzeln` (`konto(sub)`, `rollenVon(kontoName)`).
+- Serien: `serienEventsLoeschen` löscht je Chunk (20 Events) in einer Transaktion mit je einer Anweisung pro Tabelle;
+  Termine einer Serie entstehen über `serienTermineAnlegen` (Batch-Insert der Tage, eine Transaktion je 40 Events).
+- Pool: `max` von 2 auf 4 (Routen fragen per `Promise.all` mehrere Stores parallel ab).
+
 **Ohne Test geblieben**
 
 - Größenprüfung und Überspringen beim Parsen in `partymail.ts` (bräuchte einen IMAP-Client).
@@ -174,50 +202,48 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Im Browser nicht geprüft: 403 der Posten-Sperre und der Hinweis beim ersten Schlüsselhalter (bräuchten einen Account ohne
   Admin-Rechte).
 
+**Absicherung nach außen** (Issue 47, PR 1)
+
+- Default-Deny: Middleware in `createApp` verlangt `auth` außer für `OEFFENTLICH`; Test über alle registrierten Routen
+  (`app.test.ts`). Siehe `querschnitt.md`.
+- `/health` ist öffentlich ohne DB (`{ ok: true }`); die DB-Prüfung ist das Lambda-Event `{ "c4": "health" }`, das der Deploy aufruft.
+- CloudFront-Logs (enthalten Feed- und vCard-Token im Pfad) werden nach 14 Tagen gelöscht, die übrigen Logs nach 90.
+
 ## Offen
 
-Als „zurückgestellt“ markierte Punkte sind vorerst nicht geplant und nur als GitHub-Issue festgehalten; alle anderen sollen
-angegangen werden und stehen je Abschnitt in einem Arbeits-Issue mit Checkliste.
+Als „bewusst nicht umgesetzt“ markierte Punkte sind entschieden und werden nicht angegangen. Alle anderen stehen je
+Abschnitt in einem Arbeits-Issue; der Umsetzungsplan (Stand 15.11.2026) steht als Kommentar am Issue.
 
 ### 1. Gleichzeitige Zugriffe, die der Retry nicht löst
 
-**Zurückgestellt**, dokumentiert in [Issue 36](https://github.com/jSebestyen590/C4/issues/36).
+Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36). `inventurAbschliessen` und
+`gegenstaende.anzahl` sind kein Wettlauf (beide Transaktionen schreiben dieselbe Zeile und kollidieren korrekt) und
+entfallen.
 
-Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe je Stelle: in der
-Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegenstands oder Lagerorts) oder ein Unique-Index.
-
-| Stelle                                                  | Folge                                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `ausleiheAnlegen`, `positionenPruefen` (`inventar.ts`)  | derselbe Gegenstand wird doppelt verliehen                                                 |
-| Inventur starten (`waren.ts`)                           | zwei offene Inventuren je Lagerort; auch Eltern- und Kind-Lagerort gleichzeitig            |
-| Aufräumaktion starten (`inventar.ts`)                   | zwei offene Aufräumaktionen                                                                |
-| `besetzungAnlegen` (`posten.ts`)                        | überlappende Besetzungen einer Person                                                      |
-| `inventurAbschliessen` (`waren.ts`)                     | Korrekturen doppelt gebucht (unsicher)                                                     |
-| Protokoll abschließen, „Ausführen“ (`app.ts`)           | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
-| Umfrage bearbeiten während einer Stimmabgabe (`app.ts`) | Stimme behält eine entfernte Option (unsicher)                                             |
-| Party-Mail: Cron und „Jetzt abrufen“ gleichzeitig       | Fehler im Abrufstatus; leere Anfrage wird inzwischen weggeräumt                            |
-| OneDrive `erneuern` ohne Sperre, 6 parallele Worker     | Refresh-Token-Rotation kann einen Aufruf scheitern lassen (unsicher)                       |
-| `gegenstaende.anzahl` (`bewegungBuchen`)                | handgeführter Zähler ohne Abgleich gegen die Bewegungen                                    |
+Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe: `sperreBeruehren`
+(Tabelle `sperren`, siehe `docs/datenbank.md`). Alle bekannten Stellen (Ausleihe, Inventur, Aufräumaktion,
+Besetzung, Umfrage, Protokoll, Party-Mail-Abruf, OneDrive) sind erledigt (siehe unten).
 
 ### 2. Infrastruktur und Deploy
 
 Arbeits-Issue: [Issue 47](https://github.com/jSebestyen590/C4/issues/47) (außer den zurückgestellten Punkten). Dazu gehört
 auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
 
-- **Deploy-Rollback:** Kein Rollback-Weg für prod (keine Lambda-Versionen, `rollback_to` nur dev).
-- **Admin-Entzug (zurückgestellt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus dem Access-Token (60 Minuten gültig); `setGroups` meldet niemanden ab.
-- **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
-- **MFA (zurückgestellt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
+- **Deploy-Rollback:** Keine Lambda-Versionen (bewusst); Rollback auf prod = älteren Tag `v*` erneut deployen, noch zu
+  dokumentieren und auf dev zu üben.
+- **Admin-Entzug (bewusst nicht umgesetzt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus
+  dem Access-Token (60 Minuten gültig); ein Entzug wirkt erst, wenn er abläuft.
+- **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
-  Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
-- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
+  Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk (bleibt bewusst so).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
-  Protokoll.
-- **Eingehende Mail (zurückgestellt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** keine SPF/DKIM- oder Spam-Prüfung; jede Mail erzeugt eine Anfrage und einen Push. Ein gefälschtes
-  `In-Reply-To` überschreibt `mail_adresse`.
-- **CI:** kein `terraform plan` auf PRs.
+  Protokoll (bleibt bewusst so).
+- **Eingehende Mail (bewusst nicht umgesetzt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** Schutz vor Spam
+  ist der Spamfilter des Anbieters (netcup); abgerufen wird nur der Posteingang. Keine eigene SPF/DKIM-Prüfung, keine
+  Mengenbegrenzung; ein gefälschtes `In-Reply-To` überschreibt `mail_adresse`.
+- **CI:** kein `terraform plan` auf PRs (bewusst nicht umgesetzt).
 
 ### 3. Fachliche Punkte
 
@@ -231,16 +257,16 @@ Arbeits-Issue: [Issue 50](https://github.com/jSebestyen590/C4/issues/50) (außer
 
 Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
-- **Keine Tests gegen echtes SQL:** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores laufen erst auf dev. Vorschlag: PGlite
-  mit den echten Migrationen und Vertragstests, die Fake und Store gegen dasselbe Interface prüfen.
-- **Schema gegen Migrationen:** `schema.ts` und die SQL-Dateien werden von Hand synchron gehalten, kein Test vergleicht sie.
-  Der Migrationstest prüft erst ab 0037.
-- **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
-- **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
-  Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.
-- **Leistung:** Mehrere Routen laden für ein Mitglied die ganze Cognito-Liste (auch die öffentliche vCard-Route und der
-  Feed über `userAdmin.rollen()`); `ladeKontext` der Umfragen ruft `ListUsers` je Request; `/umfragen/beendet` scannt alle
-  beendeten Umfragen; Serien-Operationen schreiben je Event einzeln; Pool mit `max: 2`.
+- **Keine Tests gegen echtes SQL (bewusst nicht umgesetzt):** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores werden
+  auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
+- **Fremdschlüssel / Unique:** erledigt (PR „Löschen referenzierter Zeilen“): alle Löschrouten prüfen Verweise in der
+  Transaktion und lehnen mit 409 und fachlicher Meldung ab (`datenbank.md`, „Fremdschlüssel und Löschen“). Offen: ob DSQL
+  Fremdschlüssel erzwingt, ist ungeprüft; Unique-Index nur für `privatpartys.event_id` (0166). Weitere Kandidaten ohne Index:
+  `privatpartys.umfrage_id` (nur nicht-eindeutiger Index 0126, `nachUmfrage` nimmt Eindeutigkeit an) und
+  `umfrage_termine.event_id`; vorher Duplikate auf dev prüfen.
+- **Leistung (Rest):** `userAdmin.konten()`/`rollen()` sind jetzt gecacht, die Routen laden aber noch die ganze Liste für ein
+  Mitglied. In den Routen (`routes/`) auf `konto(sub)` / `rollenVon(kontoName)` umstellen (Profil-Routen, Feed, vCard) und
+  prüfen, dass `umfrageKontext()` je Request nur einmal läuft. `/umfragen/beendet` ist bereits paginiert.
 
 ### 5. Frontend
 

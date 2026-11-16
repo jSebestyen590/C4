@@ -141,3 +141,11 @@ jobs:
           HOST=$(jq -r .cloudfront_domain app-outputs.json)
           # Custom hostnames may not resolve yet (manual DNS); always test the cloudfront.net URL.
           curl --fail --silent --show-error --retry 5 --retry-delay 5 "https://$HOST/api/health"
+          # /api/health only proves reachability; the database check runs inside the Lambda.
+          aws lambda invoke --function-name "c4-${{ inputs.env }}-api" --payload '{"c4":"health"}' \
+            --cli-binary-format raw-in-base64-out out.json > invoke.json
+          cat invoke.json out.json
+          if jq -e '.FunctionError' invoke.json > /dev/null; then
+            echo "Lambda health check failed" >&2
+            exit 1
+          fi

@@ -59,6 +59,7 @@ import {
   type IfcoRow,
   type InventarKategorieRow,
 } from './db/schema';
+import { sperreBeruehren } from './db/sperren';
 import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 import {
   elternFehler,
@@ -524,12 +525,14 @@ const KATEGORIE_FEHLT = 'Bitte wähle eine Kategorie.';
  * Ausleihe being edited. Without `vollstaendig` only the availability is checked.
  */
 async function positionenPruefen(
-  q: Q,
+  q: Tx,
   positionen: AusleihePositionDaten[],
   kopf: AusleiheKopfDaten,
   { ohneAusleiheId, vollstaendig = true }: { ohneAusleiheId?: string; vollstaendig?: boolean } = {},
 ): Promise<void> {
   const gegenstandIds = [...new Set(positionen.map((p) => p.gegenstandId))];
+  // Same transaction as the check and the insert: two Ausleihen of one Gegenstand must conflict.
+  await sperreBeruehren(q, ...gegenstandIds.map((id) => `gegenstand:${id}`));
   if (vollstaendig) {
     const rows = await q.select().from(gegenstaende).where(inListe(gegenstaende.id, gegenstandIds));
     if (rows.length !== gegenstandIds.length) {
@@ -1635,6 +1638,7 @@ export function createInventarStore(db: Db): InventarStore {
     },
     async aufraeumenStarten(sub) {
       return db.transaction(async (tx) => {
+        await sperreBeruehren(tx, 'aufraeumaktion');
         if (await laufendeAktion(tx)) throw new WarenKonflikt('Es läuft schon eine Aufräumaktion.');
         const id = randomUUID();
         await tx.insert(aufraeumaktionen).values({ id, gestartetVon: sub });

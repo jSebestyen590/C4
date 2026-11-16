@@ -1,4 +1,11 @@
-import type { UmfrageDetails, UmfragenCursor, UmfragenStore } from './umfragen';
+import {
+  STIMMZETTEL_VERALTET,
+  stimmzettelVeraltet,
+  UmfrageKonflikt,
+  type UmfrageDetails,
+  type UmfragenCursor,
+  type UmfragenStore,
+} from './umfragen';
 
 const beendet = (u: UmfrageDetails, heute: string) => u.beendetAm !== null || u.endetAm < heute;
 /** Newest first; positive when `a` comes after `b`. */
@@ -63,6 +70,12 @@ export function createFakeUmfragenStore() {
     },
     async abstimmen(id, sub, antworten) {
       const u = liste.get(id)!;
+      const optionen = u.fragen.flatMap((f) =>
+        f.optionen.map((o) => ({ id: o.id, frageId: f.id })),
+      );
+      if (stimmzettelVeraltet(antworten, u.fragen, optionen)) {
+        throw new UmfrageKonflikt(STIMMZETTEL_VERALTET);
+      }
       u.stimmen = [
         ...u.stimmen.filter((s) => s.sub !== sub),
         ...antworten.map((a) => ({ ...a, id: `s${naechste++}`, sub })),
