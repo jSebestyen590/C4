@@ -28,7 +28,7 @@ Die Funde der Stufe „hoch“ und die meisten der Stufe „mittel“ wurden vor
 Diese Punkte muss ein neues Review nicht wiederholen, solange die genannten Stellen unverändert sind.
 
 - **Auth je Route:** Alle Routen in `app.ts` tragen `auth`, außer den drei bewusst öffentlichen (`/health`,
-  `/kalender/feed/:token`, `/vcard/:token/...`). Per Skript geprüft; ein Default-Deny fehlt aber (siehe Offen).
+  `/kalender/feed/:token`, `/vcard/:token/...`). Zusätzlich gilt Default-Deny (siehe Erledigt).
 - **Rechte im Frontend:** `can()` aus `auth.tsx` ist der einzige Helfer.
 - **SQL:** kein zusammengesetztes SQL außerhalb von Drizzle (einzige `sql`-Stelle: Spaltenreferenz in `protokolle.ts`).
   Zeitstempel durchgehend mit Zeitzone, `numeric` mit Zahl-Mappern.
@@ -185,6 +185,13 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Im Browser nicht geprüft: 403 der Posten-Sperre und der Hinweis beim ersten Schlüsselhalter (bräuchten einen Account ohne
   Admin-Rechte).
 
+**Absicherung nach außen** (Issue 47, PR 1)
+
+- Default-Deny: Middleware in `createApp` verlangt `auth` außer für `OEFFENTLICH`; Test über alle registrierten Routen
+  (`app.test.ts`). Siehe `querschnitt.md`.
+- `/health` ist öffentlich ohne DB (`{ ok: true }`); die DB-Prüfung ist das Lambda-Event `{ "c4": "health" }`, das der Deploy aufruft.
+- CloudFront-Logs (enthalten Feed- und vCard-Token im Pfad) werden nach 14 Tagen gelöscht, die übrigen Logs nach 90.
+
 ## Offen
 
 Als „bewusst nicht umgesetzt“ markierte Punkte sind entschieden und werden nicht angegangen. Alle anderen stehen je
@@ -221,13 +228,11 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
   dokumentieren und auf dev zu üben.
 - **Admin-Entzug (bewusst nicht umgesetzt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus
   dem Access-Token (60 Minuten gültig); ein Entzug wirkt erst, wenn er abläuft.
-- **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
 - **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
   Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk (bleibt bewusst so).
-- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll (bleibt bewusst so).
 - **Eingehende Mail (bewusst nicht umgesetzt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** Schutz vor Spam
@@ -249,11 +254,13 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 - **Keine Tests gegen echtes SQL (bewusst nicht umgesetzt):** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores werden
   auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
-- **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
-- **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
-  Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.
+- **Fremdschlüssel / Unique:** erledigt (PR „Löschen referenzierter Zeilen“): alle Löschrouten prüfen Verweise in der
+  Transaktion und lehnen mit 409 und fachlicher Meldung ab (`datenbank.md`, „Fremdschlüssel und Löschen“). Offen: ob DSQL
+  Fremdschlüssel erzwingt, ist ungeprüft; Unique-Index nur für `privatpartys.event_id` (0166). Weitere Kandidaten ohne Index:
+  `privatpartys.umfrage_id` (nur nicht-eindeutiger Index 0126, `nachUmfrage` nimmt Eindeutigkeit an) und
+  `umfrage_termine.event_id`; vorher Duplikate auf dev prüfen.
 - **Leistung (Rest):** `userAdmin.konten()`/`rollen()` sind jetzt gecacht, die Routen laden aber noch die ganze Liste für ein
-  Mitglied. Nach dem Aufteilen von `app.ts` auf `konto(sub)` / `rollenVon(kontoName)` umstellen (Profil-Routen, Feed, vCard) und
+  Mitglied. In den Routen (`routes/`) auf `konto(sub)` / `rollenVon(kontoName)` umstellen (Profil-Routen, Feed, vCard) und
   prüfen, dass `umfrageKontext()` je Request nur einmal läuft. `/umfragen/beendet` ist bereits paginiert.
 
 ### 5. Frontend

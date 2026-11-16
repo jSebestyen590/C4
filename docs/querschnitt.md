@@ -11,6 +11,13 @@ Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und de
 - **Prüfung:** Der API-Gateway-Authorizer (JWT) und `authenticate` in `packages/api/src/auth.ts` prüfen den **Access-Token**
   (`createCognitoVerifier`: Signatur, Issuer, `token_use = access`, `client_id`). Öffentlich ohne Authorizer sind nur
   `GET /api/health`, `GET /api/kalender/feed/:token` und `GET /api/vcard/:token/:datei`.
+- **Default-Deny:** `createApp` (`app.ts`) hängt vor alle Routen ein Middleware, das `authenticate` verlangt, außer für die
+  Allowlist `OEFFENTLICH` (`/api/health`, `/api/kalender/feed/`, `/api/vcard/`). Auch unbekannte Pfade liefern ohne Token 401.
+  Die per-Route-`auth` bleibt (sie hält die Typen des Web-Clients), überspringt sich aber, wenn der Nutzer schon gesetzt ist;
+  das Profil wird also nur einmal geladen. Eine neue öffentliche Route muss in `OEFFENTLICH` **und** als Route ohne Authorizer
+  im API Gateway stehen; der Test in `app.test.ts` prüft alle registrierten Routen.
+- **Health:** `GET /api/health` antwortet öffentlich mit `{ ok: true }` ohne Datenbankzugriff. Die DB-Prüfung ist das
+  Lambda-Event `{ "c4": "health" }` (`lambda.ts`, ruft `pingDb`, wirft bei Fehler); der Deploy ruft es per `aws lambda invoke` auf.
 - **Gruppen:** Die Cognito-Gruppen stehen im Claim `cognito:groups` des Access-Tokens. Es gibt nur die Gruppe `admin`
   (`ROLES` in `packages/shared/src/roles.ts`). Die API liest die Gruppen **aus dem Token, nicht aus Cognito**: Wer aus der
   Gruppe entfernt wird, behält die Admin-Rechte, bis der Token abläuft (bis zu 60 Minuten; `setGroups` in `admin.ts` meldet

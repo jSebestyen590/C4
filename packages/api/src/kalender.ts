@@ -77,6 +77,8 @@ import {
   kalenderSerien,
   type KalenderSerieRow,
   externe,
+  finBuchungen,
+  finZaehlungen,
   kalenderTokens,
   mitglieder,
   type MitgliedRow,
@@ -1460,10 +1462,11 @@ export function createKalenderStore(db: Db): KalenderStore {
       throw new SerieBetroffen(unveraendert, kuenftig.length - unveraendert);
     }
   };
-  type Sperre = 'protokoll' | 'dienste';
+  type Sperre = 'protokoll' | 'finanzen' | 'dienste';
   /**
    * Deletes the events with their Schichten, Teilnahmen and Abos in one batch (one statement per table).
-   * Events with a Protokoll or Dienste are left alone and reported in `gesperrt`; unknown ids are ignored.
+   * Events with a Protokoll, Finanzen rows (insert-only, they reference the event) or Dienste are left
+   * alone and reported in `gesperrt`; unknown ids are ignored.
    */
   const eventsLoeschenTx = async (
     tx: Tx,
@@ -1483,6 +1486,17 @@ export function createKalenderStore(db: Db): KalenderStore {
       .from(protokolle)
       .where(inArray(protokolle.eventId, echte));
     for (const r of mitProtokoll) if (r.id) gesperrt.set(r.id, 'protokoll');
+    const mitBuchung = await tx
+      .selectDistinct({ id: finBuchungen.eventId })
+      .from(finBuchungen)
+      .where(inArray(finBuchungen.eventId, echte));
+    const mitZaehlung = await tx
+      .selectDistinct({ id: finZaehlungen.eventId })
+      .from(finZaehlungen)
+      .where(inArray(finZaehlungen.eventId, echte));
+    for (const r of [...mitBuchung, ...mitZaehlung]) {
+      if (r.id && !gesperrt.has(r.id)) gesperrt.set(r.id, 'finanzen');
+    }
     const schichtRows = await tx
       .select({ id: schichten.id, eventId: schichten.eventId })
       .from(schichten)
@@ -1716,6 +1730,11 @@ export function createKalenderStore(db: Db): KalenderStore {
         const sperre = gesperrt.get(id);
         if (sperre === 'protokoll') {
           throw new KalenderKonflikt('Zu dieser Sitzung gibt es ein Protokoll.');
+        }
+        if (sperre === 'finanzen') {
+          throw new KalenderKonflikt(
+            'Zum Event gibt es Buchungen oder Kassenzählungen und es kann nicht gelöscht werden. Sage es stattdessen ab.',
+          );
         }
         if (sperre === 'dienste') {
           throw new KalenderKonflikt(

@@ -100,7 +100,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const setGroupsSchema = z.object({ groups: z.array(roleSchema) });
 export type SetGroupsInput = z.infer<typeof setGroupsSchema>;
 
-export const healthSchema = z.object({ status: z.literal('ok'), db: z.enum(['ok', 'error']) });
+export const healthSchema = z.object({ ok: z.literal(true) });
 export type Health = z.infer<typeof healthSchema>;
 
 export const appConfigSchema = z.object({

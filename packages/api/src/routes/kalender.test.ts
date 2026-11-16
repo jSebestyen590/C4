@@ -251,6 +251,16 @@ describe('kalender', () => {
     expect(falsch.status).toBe(400);
   });
 
+  it('refuses to delete events that Finanzen rows reference, with the message', async () => {
+    const t = makeApp();
+    const meldung =
+      'Zum Event gibt es Buchungen oder Kassenzählungen und es kann nicht gelöscht werden. Sage es stattdessen ab.';
+    t.kalender.eventLoeschen.mockRejectedValueOnce(new KalenderKonflikt(meldung));
+    const res = await t.app.request('/api/kalender/events/e1', json('admin-token', 'DELETE'));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: meldung });
+  });
+
   it('refuses to delete events with Dienste and cancels instead', async () => {
     const t = makeApp();
     t.kalender.eventLoeschen.mockRejectedValueOnce(new KalenderKonflikt('Das Event hat Dienste.'));
