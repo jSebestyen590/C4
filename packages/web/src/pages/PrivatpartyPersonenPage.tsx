@@ -1,23 +1,12 @@
-import {
-  Alert,
-  Button,
-  Group,
-  Loader,
-  Paper,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from '@mantine/core';
+import { Alert, Button, Group, Loader, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { PrivatpartyPersonDto } from '@c4/shared';
 import { PrivatpartyPersonFormular } from '../PrivatpartyPersonFormular';
 import { privatpartyPersonLink, usePrivatpartyPersonen } from '../privatpartyDaten';
 import { ZurueckLink } from '../ZurueckLink';
+import { KartenOderTabelle, KlickKarte } from '../KartenOderTabelle';
 
 const anzahlText = (n: number) => (n === 1 ? '1 Privatparty' : `${n} Privatpartys`);
 
@@ -61,69 +50,58 @@ export function PrivatpartyPersonenPage() {
       {personen.data && treffer.length === 0 && (
         <Text c="dimmed">{suche ? 'Keine Treffer.' : 'Noch keine Personen.'}</Text>
       )}
-      {treffer.length > 0 && (
-        <>
-          <SimpleGrid cols={1} spacing="sm" hiddenFrom="sm">
-            {treffer.map((p: PrivatpartyPersonDto) => (
-              <Paper
-                key={p.id}
-                component={Link}
-                to={privatpartyPersonLink(p.id)}
-                withBorder
-                p="md"
-                style={{ color: 'inherit', textDecoration: 'none' }}
-              >
-                <Stack gap={2}>
-                  <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
-                    {p.name}
-                  </Text>
-                  {p.email && (
-                    <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      {p.email}
-                    </Text>
-                  )}
-                  <Text size="sm" c="dimmed">
-                    {anzahlText(p.anzahlPrivatpartys)}
-                  </Text>
-                </Stack>
-              </Paper>
-            ))}
-          </SimpleGrid>
-          <Table.ScrollContainer minWidth={520} visibleFrom="sm">
-            <Table verticalSpacing="xs" highlightOnHover layout="fixed">
-              <colgroup>
-                <col style={{ width: '14rem' }} />
-                <col />
-                <col style={{ width: '10rem' }} />
-              </colgroup>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>E-Mail</Table.Th>
-                  <Table.Th>Privatpartys</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {treffer.map((p) => (
-                  <Table.Tr
-                    key={p.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => void navigate(privatpartyPersonLink(p.id))}
-                  >
-                    <Table.Td>
-                      <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
-                        {p.name}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td style={{ overflowWrap: 'anywhere' }}>{p.email ?? '–'}</Table.Td>
-                    <Table.Td>{p.anzahlPrivatpartys}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </>
-      )}
+      <KartenOderTabelle
+        zeilen={treffer}
+        zeilenKey={(p) => p.id}
+        minWidth={520}
+        kartenAbstand="sm"
+        tabelle={{ highlightOnHover: true, layout: 'fixed' }}
+        spalten={
+          <colgroup>
+            <col style={{ width: '14rem' }} />
+            <col />
+            <col style={{ width: '10rem' }} />
+          </colgroup>
+        }
+        karte={(p: PrivatpartyPersonDto) => (
+          <KlickKarte to={privatpartyPersonLink(p.id)}>
+            <Stack gap={2}>
+              <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+                {p.name}
+              </Text>
+              {p.email && (
+                <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                  {p.email}
+                </Text>
+              )}
+              <Text size="sm" c="dimmed">
+                {anzahlText(p.anzahlPrivatpartys)}
+              </Text>
+            </Stack>
+          </KlickKarte>
+        )}
+        kopf={
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>E-Mail</Table.Th>
+            <Table.Th>Privatpartys</Table.Th>
+          </Table.Tr>
+        }
+        zeile={(p) => (
+          <Table.Tr
+            style={{ cursor: 'pointer' }}
+            onClick={() => void navigate(privatpartyPersonLink(p.id))}
+          >
+            <Table.Td>
+              <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+                {p.name}
+              </Text>
+            </Table.Td>
+            <Table.Td style={{ overflowWrap: 'anywhere' }}>{p.email ?? '–'}</Table.Td>
+            <Table.Td>{p.anzahlPrivatpartys}</Table.Td>
+          </Table.Tr>
+        )}
+      />
       {neu && (
         <PrivatpartyPersonFormular
           onClose={() => setNeu(false)}

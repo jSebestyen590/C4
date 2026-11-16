@@ -9,21 +9,11 @@ import {
   type MhdArt,
   vergleicheBuchungsZeilen,
 } from '@c4/shared';
+import { formatDatumZeit } from './datum';
 import { BUCHUNGS_ART_LABELS } from './i18n';
 
 /** `14.10.2026 11:30` in the club's time zone. */
-export function zeitAnzeigen(iso: string): string {
-  return new Date(iso)
-    .toLocaleString('de-DE', {
-      timeZone: 'Europe/Berlin',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    .replace(',', '');
-}
+export const zeitAnzeigen = (iso: string): string => formatDatumZeit(iso);
 
 export interface ZeileDaten {
   lagerortId: string;

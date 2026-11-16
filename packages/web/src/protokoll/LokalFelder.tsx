@@ -1,5 +1,5 @@
 import { Textarea, TextInput, type TextareaProps, type TextInputProps } from '@mantine/core';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ZahlFeld } from '../ZahlFeld';
 
 // Inputs inside the node views keep their own value while typing, so a late re-render of the node view
@@ -68,7 +68,7 @@ export function LokalZahl({
   onWert: (wert: number) => void;
   min?: number;
   max?: number;
-  label: string;
+  label: ReactNode;
 }>) {
   const [lokal, setLokal] = useLokal<number | string>(wert);
   return (

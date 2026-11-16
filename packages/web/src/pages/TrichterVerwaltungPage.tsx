@@ -19,6 +19,7 @@ import { TrichterFormular } from '../TrichterFormular';
 import { literAnzeigen } from '../trichterAnzeige';
 import { useTrichterListe } from '../trichterDaten';
 import { ZurueckLink } from '../ZurueckLink';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 const auslaesseText = (n: number) => `${n} ${n === 1 ? 'Auslass' : 'Auslässe'}`;
 
@@ -55,56 +56,50 @@ export function TrichterVerwaltungPage() {
       {liste.isPending && <Loader m="md" aria-label="Trichter werden geladen" />}
       {liste.isError && <Alert color="red">Die Trichter konnten nicht geladen werden.</Alert>}
       {liste.data && daten.length === 0 && <Text c="dimmed">Keine Trichter vorhanden.</Text>}
-      {daten.length > 0 && (
-        <>
-          <Stack gap="xs" hiddenFrom="sm">
-            {daten.map((t) => (
-              <UnstyledButton key={t.id} onClick={() => setBearbeiten(t)} w="100%">
-                <Paper withBorder p="md" radius="md" opacity={t.archiviert ? 0.6 : 1}>
-                  <Group justify="space-between" wrap="nowrap" align="flex-start">
-                    <Stack gap={2} style={{ minWidth: 0 }}>
-                      <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                        {t.name}
-                      </Text>
-                      <Text size="sm" c="dimmed">
-                        {literAnzeigen(t.volumenMl)} · {auslaesseText(t.auslaesse)}
-                      </Text>
-                    </Stack>
-                    {t.archiviert && <ArchiviertBadge />}
-                  </Group>
-                </Paper>
-              </UnstyledButton>
-            ))}
-          </Stack>
-          <Table.ScrollContainer minWidth={420} visibleFrom="sm">
-            <Table verticalSpacing="xs" highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Volumen</Table.Th>
-                  <Table.Th>Auslässe</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {daten.map((t) => (
-                  <Table.Tr
-                    key={t.id}
-                    opacity={t.archiviert ? 0.6 : 1}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setBearbeiten(t)}
-                  >
-                    <Table.Td fw={600}>{t.name}</Table.Td>
-                    <Table.Td>{literAnzeigen(t.volumenMl)}</Table.Td>
-                    <Table.Td>{t.auslaesse}</Table.Td>
-                    <Table.Td>{t.archiviert && <ArchiviertBadge />}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </>
-      )}
+      <KartenOderTabelle
+        zeilen={daten}
+        zeilenKey={(t) => t.id}
+        minWidth={420}
+        kartenAlsStapel
+        tabelle={{ highlightOnHover: true }}
+        karte={(t) => (
+          <UnstyledButton onClick={() => setBearbeiten(t)} w="100%">
+            <Paper withBorder p="md" radius="md" opacity={t.archiviert ? 0.6 : 1}>
+              <Group justify="space-between" wrap="nowrap" align="flex-start">
+                <Stack gap={2} style={{ minWidth: 0 }}>
+                  <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                    {t.name}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    {literAnzeigen(t.volumenMl)} · {auslaesseText(t.auslaesse)}
+                  </Text>
+                </Stack>
+                {t.archiviert && <ArchiviertBadge />}
+              </Group>
+            </Paper>
+          </UnstyledButton>
+        )}
+        kopf={
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Volumen</Table.Th>
+            <Table.Th>Auslässe</Table.Th>
+            <Table.Th />
+          </Table.Tr>
+        }
+        zeile={(t) => (
+          <Table.Tr
+            opacity={t.archiviert ? 0.6 : 1}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setBearbeiten(t)}
+          >
+            <Table.Td fw={600}>{t.name}</Table.Td>
+            <Table.Td>{literAnzeigen(t.volumenMl)}</Table.Td>
+            <Table.Td>{t.auslaesse}</Table.Td>
+            <Table.Td>{t.archiviert && <ArchiviertBadge />}</Table.Td>
+          </Table.Tr>
+        )}
+      />
       {bearbeiten && (
         <TrichterFormular
           trichter={bearbeiten === 'neu' ? undefined : bearbeiten}

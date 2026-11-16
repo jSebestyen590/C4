@@ -24,18 +24,13 @@ import {
   type PrivatpartyNachrichtDto,
 } from '@c4/shared';
 import { useApi } from './api';
+import { formatDatumZeit } from './datum';
 import { AktionsMenue } from './AktionsMenue';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { privatpartyName } from './PrivatpartyAnzeige';
 import { privatpartysInvalidieren, usePrivatpartys } from './privatpartyDaten';
 import { StatusName } from './StatusAnzeige';
 import { fehlerText, pruefen } from './warenApi';
-
-const zeitFormat = new Intl.DateTimeFormat('de-DE', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'Europe/Berlin',
-});
 
 /** The mail text with quoted parts folded away behind "Zitat anzeigen". */
 function MailText({ text }: Readonly<{ text: string }>) {
@@ -202,7 +197,7 @@ function Nachricht({
               </Text>
             )}
             <Text size="xs" c="dimmed">
-              {zeitFormat.format(new Date(n.zeitpunkt))}
+              {formatDatumZeit(n.zeitpunkt, 'mittel')}
             </Text>
           </Stack>
           <AktionsMenue

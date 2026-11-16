@@ -4,6 +4,7 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { formatDatumZeit } from '../datum';
 import { useApi } from '../api';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { PRIVATPARTY_STATI } from '@c4/shared';
@@ -54,7 +55,7 @@ function MailStatus() {
         {status.data.fehler
           ? `Letzter Abruf fehlgeschlagen: ${status.data.fehler}`
           : status.data.letzterAbruf
-            ? `Postfach zuletzt abgerufen: ${new Date(status.data.letzterAbruf).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })}`
+            ? `Postfach zuletzt abgerufen: ${formatDatumZeit(status.data.letzterAbruf, 'kurz')}`
             : 'Postfach noch nicht abgerufen.'}
       </Text>
       <Button

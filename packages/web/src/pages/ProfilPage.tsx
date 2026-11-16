@@ -41,6 +41,7 @@ import { KontaktkanalAuswahl } from '../KontaktkanalIcons';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
+import { zodFeldFehler } from '../zodFehler';
 
 type Fehler = Partial<
   Record<
@@ -209,16 +210,7 @@ export function ProfilFormular({
       wohnheim,
     });
     if (!usernameGeprueft.success || !parsed.success) {
-      const neu: Fehler = {};
-      const probleme = [
-        ...(usernameGeprueft.success ? [] : usernameGeprueft.error.issues),
-        ...(parsed.success ? [] : parsed.error.issues),
-      ];
-      for (const issue of probleme) {
-        const feld = issue.path[0] as keyof Fehler;
-        neu[feld] ??= issue.message;
-      }
-      return setFehler(neu);
+      return setFehler(zodFeldFehler(usernameGeprueft, parsed));
     }
     setFehler({});
     speichern.mutate({ username: usernameGeprueft.data.username, daten: parsed.data });
