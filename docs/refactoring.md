@@ -274,8 +274,7 @@ Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
 
 - ~~Wiederholungen: Umschaltung Karte/Tabelle, Datumsformate inline, Zod-Fehler je Formular von Hand~~ **erledigt**
   (`KartenOderTabelle`, `datum.ts`, `zodFeldFehler`, siehe `querschnitt.md`). Bewusst nicht umgestellt: Journal und Kontenplan
-  (Sticky-Kopf, Gruppen), Bargeld (Matrix statt Liste). `App.tsx` mit allen Routen in einer
-  Datei ist ein separater Punkt (Issue 49, PR 1).
+  (Sticky-Kopf, Gruppen), Bargeld (Matrix statt Liste). `App.tsx` ist aufgeteilt (Routen je Feature).
 - ~~Query-Keys von Hand als Literale gestreut und invalidiert~~ **erledigt**: ein Key-Objekt je Feature (`todoKeys`, `warenKeys`, ...,
   `queryKeys.ts`), siehe `querschnitt.md`.
 - ~~Tests: nichts für `api.ts`, `auth.tsx`, `PullToRefresh`, `ZurueckLink`~~ **erledigt** (Unit-Tests je Datei, `*.test.tsx`). Es bleibt bei Unit-Tests, keine E2E-Tests (Entscheidung in Issue 49).
