@@ -15,6 +15,7 @@ export function createFakePrivatpartysStore() {
   const liste = new Map<string, PrivatpartyEintrag>();
   const nachrichtenListe: NachrichtEintrag[] = [];
   let stand: AbrufStand = { uidValidity: null, letzteUid: 0, letzterAbruf: null, fehler: null };
+  let laeuftBis: Date | null = null;
   const nachrichtenVon = (id: string) =>
     nachrichtenListe
       .filter((n) => n.privatpartyId === id)
@@ -227,6 +228,14 @@ export function createFakePrivatpartysStore() {
     },
     async abrufStandSetzen(neu) {
       stand = { ...stand, ...neu };
+    },
+    async abrufBelegen(jetzt, bis) {
+      if (laeuftBis && laeuftBis >= jetzt) return false;
+      laeuftBis = bis;
+      return true;
+    },
+    async abrufFreigeben() {
+      laeuftBis = null;
     },
   };
   return { store, personen, liste, nachrichtenListe };

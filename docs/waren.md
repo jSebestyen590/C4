@@ -2,7 +2,7 @@
 
 Lagerorte (Baum), Warengruppen (Baum), Gebinde, Waren, Bestandsbuchungen und Inventur. Fachlogik
 (Bestand, FIFO, Verlauf, Inventurabgleich) liegt in `packages/shared/src/waren.ts`, Speicherung und
-Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
+Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/routes/waren.ts`.
 
 ## Invarianten
 
@@ -33,7 +33,7 @@ Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/app.ts`.
 
 | Bereich | Dateien                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/waren.ts` (Stores, Planung der Sammelbuchungen, Inventur), `ifcoPlatz.ts` (IFCO-Kapazitätsprüfung), Routen in `app.ts`                                                                                                                                                                                                                                                      |
+| API     | `packages/api/src/waren.ts` (Stores, Planung der Sammelbuchungen, Inventur), `ifcoPlatz.ts` (IFCO-Kapazitätsprüfung), Routen in `routes/waren.ts`                                                                                                                                                                                                                                             |
 | Shared  | `packages/shared/src/waren.ts` (Schemas, Gebinde, Bestand, FIFO, Verlauf, Inventurabgleich, Regale)                                                                                                                                                                                                                                                                                           |
 | Web     | Seiten `pages/LagerPage.tsx`, `EntnahmePage.tsx`, `EinlagerungPage.tsx`, `UmlagerungPage.tsx`, `InventurPage.tsx`, `StammdatenPage.tsx`, `WarenPage.tsx`, `WareDetailPage.tsx`; Komponenten `LagerBaum.tsx`, `LagerKachel.tsx`, `BestandAbschnitt.tsx`, `BestandZeile.tsx`, `BuchungModal.tsx`, `InventurZusammenfassung.tsx`; Logik `lagerAnsicht.ts`, `lagerBestand.ts`, `inventurDaten.ts` |
 | Tests   | `packages/shared/src/waren.test.ts`, `packages/api/src/waren.test.ts`, `packages/web/src/lagerAnsicht.test.ts`, `lagerBestand.test.ts`                                                                                                                                                                                                                                                        |
@@ -183,7 +183,8 @@ geplante Zeilen auf Bestandsposten an, damit mehrere Positionen nacheinander gep
 
 `GET /waren/:id/vorgaenge` liefert je Vorgang `weitereZeilen` (Zeilen anderer Waren im selben Vorgang).
 
-Inventur: pro Lagerort höchstens eine offene (409). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
+Inventur: pro Lagerort höchstens eine offene (409); auch auf einem über- oder untergeordneten Lagerort darf keine offene
+laufen (409 „Für einen übergeordneten oder untergeordneten Lagerort läuft schon eine Inventur.“). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
 Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nur
 gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, Gebinde, MHD) ohne Zählwert gilt als korrekt
 (Ist = Soll), eine ausdrückliche 0 bedeutet „nichts da“. Die Tabelle `inventur_knoten` wird nicht mehr genutzt und nicht mehr abgefragt (sie bleibt im Schema).

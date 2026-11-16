@@ -72,7 +72,7 @@ Migration nach Muster 0076):
 
 **Code-Muster** wie bei den bestehenden Features: Schemas/DTOs/reine Logik in
 `packages/shared/src/finanzen*.ts`, Store + Fake in `packages/api/src/<bereich>.ts`/`.fake.ts`,
-Routen in `app.ts`, Seiten in `packages/web/src/pages/`, Navigation in `AppLayout.tsx` (ein
+Routen in `routes/finanzen.ts`, Seiten in `packages/web/src/pages/`, Navigation in `AppLayout.tsx` (ein
 Menüpunkt „Finanzen" mit Unterseiten, „Buch" separat für alle). Migrationen ab `0141`, je ein
 Statement plus Down-Datei.
 
@@ -354,7 +354,7 @@ FinTS-Überweisungen, E-Rechnung.
 
 - `pnpm lint`, `pnpm typecheck`, `pnpm test` in einem Sonnet-Subagent; neue Logik (Buchung, Hash,
   Stückelung, Rundung, Buch-Saldo, Kassenabrechnung) als reine Funktionen in `@c4/shared` mit
-  Unit-Tests, Routen über Fake-Stores in `app.test.ts`.
+  Unit-Tests, Routen über Fake-Stores in `routes/finanzen.test.ts`.
 - Deploy auf dev (`gh workflow run deploy.yml --ref <branch> -f env=dev`), Browser-Check auf
   https://dev.c4-leipzig.de/app/ durch einen frischen Sonnet-Subagent: Arbeitsseiten zuerst am
   Desktop (1440×900), einmal komplett nur mit der Tastatur, dann bei 375×812; Mitglieder-Seiten

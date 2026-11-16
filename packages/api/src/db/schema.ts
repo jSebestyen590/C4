@@ -1209,6 +1209,8 @@ export const mailAbruf = pgTable('mail_abruf', {
   letzteUid: bigint('letzte_uid', { mode: 'number' }).notNull().default(0),
   letzterAbruf: timestamp('letzter_abruf', { withTimezone: true }),
   fehler: text('fehler'),
+  // Lease of a running mail job (see privatpartyMail.ts); null when none runs.
+  laeuftBis: timestamp('laeuft_bis', { withTimezone: true }),
 });
 
 // ----- Finanzen (see docs/finanzen.md): append-only journal with a hash chain. Money is whole
@@ -1318,4 +1320,13 @@ export const finZaehler = pgTable('fin_zaehler', {
   name: text('name').primaryKey(),
   wert: bigint('wert', { mode: 'number' }).notNull(),
   letzterHash: text('letzter_hash').notNull(),
+});
+
+/**
+ * Lock rows (see `db/sperren.ts`): a transaction that checks and then inserts touches a key first,
+ * so a concurrent one writes the same row and one of them conflicts.
+ */
+export const sperren = pgTable('sperren', {
+  schluessel: text('schluessel').primaryKey(),
+  beruehrtAm: timestamp('beruehrt_am', { withTimezone: true }).notNull(),
 });

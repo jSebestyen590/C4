@@ -8,6 +8,13 @@ import {
   type ProtokollStore,
 } from './protokolle';
 
+const veraltet = (p: ProtokollDaten) =>
+  new ProtokollVeraltet(
+    p.version,
+    p.geaendertVon,
+    'Das Protokoll wurde inzwischen geändert. Bitte lade es neu.',
+  );
+
 /** Map-backed protocol store for tests, with the same conflict rules as the real one. */
 export function createFakeProtokolleStore() {
   const liste = new Map<string, ProtokollDaten>();
@@ -83,6 +90,29 @@ export function createFakeProtokolleStore() {
         geaendertVon: von,
         geaendertAm: new Date(),
       });
+      return { version: p.version, geaendertAm: p.geaendertAm };
+    },
+    async statusBelegen(id, version, von, nach, kopf) {
+      const p = liste.get(id);
+      if (!p) return undefined;
+      if (p.version !== version || p.status === nach) throw veraltet(p);
+      Object.assign(p, {
+        status: nach,
+        kopf,
+        sperreSub: null,
+        sperreTab: null,
+        sperreBis: null,
+        version: p.version + 1,
+        geaendertVon: von,
+        geaendertAm: new Date(),
+      });
+      return { version: p.version, geaendertAm: p.geaendertAm };
+    },
+    async aktionenBelegen(id, version, von) {
+      const p = liste.get(id);
+      if (!p) return undefined;
+      if (p.version !== version || p.status !== 'abgeschlossen') throw veraltet(p);
+      Object.assign(p, { version: p.version + 1, geaendertVon: von, geaendertAm: new Date() });
       return { version: p.version, geaendertAm: p.geaendertAm };
     },
     async ergebnisSpeichern(id, daten, von) {

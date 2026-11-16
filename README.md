@@ -149,7 +149,7 @@ deploy roles come from `infra/bootstrap`.
 
 Deploy order (`deploy-env.yml`): lint, typecheck, test, build, `terraform init`, read the current outputs,
 **migrate the database first** (only if the environment already has a database), `terraform plan`, then
-`terraform apply` of that plan, publish the web build, smoke test. A first-ever deploy has no database yet
+`terraform apply` of that plan, publish the web build, smoke test (`curl /api/health` for reachability, then `aws lambda invoke` with `{"c4":"health"}` for the database check; the step fails on `FunctionError`). A first-ever deploy has no database yet
 and migrates after the apply. Because the old Lambda keeps running against the new schema for a moment,
 migrations must stay additive (see `docs/datenbank.md`).
 

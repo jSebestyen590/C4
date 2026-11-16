@@ -41,8 +41,41 @@ export function faelligeTage(
 
 type SerienStore = Pick<
   KalenderStore,
-  'vorlagen' | 'kategorien' | 'serien' | 'serienTage' | 'serienTerminAnlegen'
+  | 'vorlagen'
+  | 'kategorien'
+  | 'serien'
+  | 'serienTage'
+  | 'serienTerminAnlegen'
+  | 'serienTermineAnlegen'
 >;
+
+/** Days per batch call in the time-budgeted path, so the budget is checked between batches. */
+const BATCH_TAGE = 10;
+
+/**
+ * Creates the events for the given days of one series: with the store's batch method (one transaction per
+ * chunk) or, without it, one day at a time. `weiter` is checked before each batch/day; false stops.
+ * Returns the number of created events.
+ */
+async function termineAnlegen(
+  kalender: SerienStore,
+  serieId: string,
+  termine: { datum: string; daten: EventEingabe }[],
+  weiter: () => boolean = () => true,
+): Promise<number> {
+  let erzeugt = 0;
+  if (kalender.serienTermineAnlegen) {
+    for (let i = 0; i < termine.length && weiter(); i += BATCH_TAGE) {
+      erzeugt += await kalender.serienTermineAnlegen(serieId, termine.slice(i, i + BATCH_TAGE));
+    }
+    return erzeugt;
+  }
+  for (const t of termine) {
+    if (!weiter()) break;
+    if (await kalender.serienTerminAnlegen(serieId, t.datum, t.daten)) erzeugt += 1;
+  }
+  return erzeugt;
+}
 
 /**
  * Creates the missing events of all series. Returns the number of created events and whether days are
@@ -69,11 +102,14 @@ export async function serienErzeugen(
     }
     const kategorie = kategorien.find((k) => k.id === vorlage.kategorieId);
     const vorhanden = new Set(await kalender.serienTage(serie.id));
-    for (const datum of faelligeTage(serie, heute, vorhanden)) {
-      if (erzeugt >= max) return { erzeugt, rest: true };
-      const daten: EventEingabe = ausVorlage(vorlage, datum, kategorie);
-      if (await kalender.serienTerminAnlegen(serie.id, datum, daten)) erzeugt += 1;
-    }
+    const tage = faelligeTage(serie, heute, vorhanden);
+    const heuteDran = tage.slice(0, Math.max(max - erzeugt, 0));
+    erzeugt += await termineAnlegen(
+      kalender,
+      serie.id,
+      heuteDran.map((datum) => ({ datum, daten: ausVorlage(vorlage, datum, kategorie) })),
+    );
+    if (heuteDran.length < tage.length) return { erzeugt, rest: true };
   }
   return { erzeugt, rest: false };
 }
@@ -103,13 +139,13 @@ export async function serieSofortErzeugen(
   }
   const kategorie = (await kalender.kategorien(true)).find((k) => k.id === vorlage.kategorieId);
   const vorhanden = new Set(await kalender.serienTage(serie.id));
-  let erzeugt = 0;
-  for (const datum of faelligeTage(serie, heuteBerlin(jetzt), vorhanden).slice(0, maxTage)) {
-    if (uhr() - start >= budgetMs) break;
-    if (await kalender.serienTerminAnlegen(serie.id, datum, ausVorlage(vorlage, datum, kategorie)))
-      erzeugt += 1;
-  }
-  return erzeugt;
+  const tage = faelligeTage(serie, heuteBerlin(jetzt), vorhanden).slice(0, maxTage);
+  return termineAnlegen(
+    kalender,
+    serie.id,
+    tage.map((datum) => ({ datum, daten: ausVorlage(vorlage, datum, kategorie) })),
+    () => uhr() - start < budgetMs,
+  );
 }
 
 const markeSchluessel = (jetzt: Date) => `kalender.serien:${heuteBerlin(jetzt)}`;

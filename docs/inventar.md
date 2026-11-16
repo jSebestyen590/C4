@@ -4,7 +4,7 @@ Dauerhaftes Betriebsvermögen des Clubs (Kabeltrommel, Beamer, Pavillons, Spanng
 Kategorienbaum, mit einer Anzahl (aus dem Verlauf der Zugänge und Abgänge) auf einem oder mehreren **Plätzen** im Lagerort-Baum (siehe [waren.md](./waren.md)),
 wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände lassen sich **verleihen** und können aus **Teilen** bestehen (siehe unten). Fachlogik
 (Schemas, Abweichung, Verliehen-Prüfungen) liegt in `packages/shared/src/inventar.ts`, Speicherung und Regeln in
-`packages/api/src/inventar.ts`, Routen in `packages/api/src/app.ts` (Abschnitt `Inventar`). Fehlerklassen und Hilfen
+`packages/api/src/inventar.ts`, Routen in `packages/api/src/routes/inventar.ts`. Fehlerklassen und Hilfen
 (`WarenUngueltig` → 400, `WarenKonflikt` → 409) kommen aus `packages/api/src/waren.ts`.
 
 ## Invarianten
@@ -29,7 +29,7 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 
 | Bereich | Dateien                                                                                                                                                                                                                                                                    |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/inventar.ts` (Stores und Regeln), `ifcoPlatz.ts` (IFCO-Kapazität auf Lagerplätzen), Routen in `app.ts` (Abschnitt `Inventar`)                                                                                                                            |
+| API     | `packages/api/src/inventar.ts` (Stores und Regeln), `ifcoPlatz.ts` (IFCO-Kapazität auf Lagerplätzen), Routen in `routes/inventar.ts`                                                                                                                                       |
 | Shared  | `packages/shared/src/inventar.ts` (Schemas, Abweichung, Verliehen- und Ausleih-Prüfungen), `inventarZeitraum.ts` (Belegung nach Tagen), `ifco.ts` (Kapazitätsmodell)                                                                                                       |
 | Web     | Seiten `pages/InventarPage.tsx`, `GegenstandDetailPage.tsx`, `IfcoDetailPage.tsx`, `AusleihePage.tsx`, `AusleiheDetailPage.tsx`, `InventarStammdatenPage.tsx`; `inventarDaten.ts`, `inventarAnzeige.ts`, `IfcoFormular.tsx`, `IfcoInhaltModal.tsx`, `IfcoInhaltFelder.tsx` |
 | Tests   | `packages/shared/src/inventar.test.ts`, `inventarZeitraum.test.ts`, `ifco.test.ts`; `packages/api/src/inventar.test.ts`, `ifcoPlatz.test.ts`                                                                                                                               |

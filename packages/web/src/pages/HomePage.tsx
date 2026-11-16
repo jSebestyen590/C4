@@ -15,10 +15,10 @@ export function HomePage() {
       <Title order={2}>C4</Title>
       <Paper withBorder p="md">
         <Group justify="space-between">
-          <Text fw={500}>Status API / Datenbank</Text>
+          <Text fw={500}>Status API</Text>
           {health.data ? (
-            <Badge color={health.data.status === 'ok' && health.data.db === 'ok' ? 'green' : 'red'}>
-              {health.data.status} / DB {health.data.db}
+            <Badge color={health.data.ok ? 'green' : 'red'}>
+              {health.data.ok ? 'erreichbar' : 'Fehler'}
             </Badge>
           ) : (
             <Skeleton height={22} width={90} />

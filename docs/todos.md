@@ -17,12 +17,12 @@ Aufgaben mit Deadline. Sie entstehen beim Abschließen eines Protokolls aus dem 
 
 ## Dateien
 
-| Bereich | Dateien                                                                                                                                                                                |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/todos.ts` (Store), `todoBenachrichtigungen.ts` (Erinnerung), `todos.fake.ts`, Routen `/api/me/todos…` in `app.ts`; Anlegen aus Protokollen in `protokollAktionen.ts` |
-| Shared  | `packages/shared/src/todos.ts` (Schemas, Sortierung, Anzeige-Texte)                                                                                                                    |
-| Web     | `pages/TodosPage.tsx`, `TodoDialog.tsx`, `todoDaten.tsx`                                                                                                                               |
-| Tests   | `packages/shared/src/todos.test.ts`, `packages/api/src/todoBenachrichtigungen.test.ts`, `packages/web/src/pages/TodosPage.test.tsx`                                                    |
+| Bereich | Dateien                                                                                                                                                                                         |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/todos.ts` (Store), `todoBenachrichtigungen.ts` (Erinnerung), `todos.fake.ts`, Routen `/api/me/todos…` in `routes/todos.ts`; Anlegen aus Protokollen in `protokollAktionen.ts` |
+| Shared  | `packages/shared/src/todos.ts` (Schemas, Sortierung, Anzeige-Texte)                                                                                                                             |
+| Web     | `pages/TodosPage.tsx`, `TodoDialog.tsx`, `todoDaten.tsx`                                                                                                                                        |
+| Tests   | `packages/shared/src/todos.test.ts`, `packages/api/src/todoBenachrichtigungen.test.ts`, `packages/web/src/pages/TodosPage.test.tsx`                                                             |
 
 ## Datenmodell
 
