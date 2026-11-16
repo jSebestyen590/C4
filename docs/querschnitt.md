@@ -78,3 +78,12 @@ Aurora DSQL löst gleichzeitige Änderungen optimistisch auf: Eine der Transakti
   Grundlage von `onError`.
 
 Mehr dazu und zu den Migrationen: [datenbank.md](./datenbank.md#gleichzeitige-zugriffe).
+
+## Routen im Web
+
+`packages/web/src/App.tsx` setzt nur zusammen: `/auth/callback`, die Funktionen aus `packages/web/src/routes/<feature>Routen.tsx` und
+die Catch-all-Route. Jede Funktion liefert ein Fragment aus `<Route>`-Elementen und wird in `<Routes>` direkt aufgerufen
+(`{mitgliederRouten()}`), nicht als Komponente gerendert, weil `<Routes>` nur `<Route>` oder Fragmente als Kinder erlaubt. Eine neue
+Seite kommt in das Modul ihres Features (neues Feature: neues Modul und Aufruf in `App.tsx`). Jede Route ist in `Protected`
+(Anmeldung, optional Recht) und meist `RequireUsername` (Profil vollständig) gewickelt, beide in `routes/Geschuetzt.tsx`. Das
+Menü steht weiterhin in `AppLayout`.
