@@ -154,6 +154,8 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 - Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
   verlangen sie (`protokolle.md`, Migrationen 0163–0165).
+- Protokoll abschließen und „Ausführen“ belegen die Version, bevor die Aktionen laufen (`statusBelegen`, `aktionenBelegen`);
+  ein paralleler Aufruf ist 409 ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), `protokolle/aktionen.md`).
 - `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
 - Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
@@ -180,6 +182,17 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   „Archivieren“ bzw. „Wiederherstellen“, der Lagerort-Dialog heißt „Lager anlegen“ / „Unterebene anlegen“); Routen-Tabelle
   für Events und Dienste in `kalender.md`; neue Seite `querschnitt.md` (Auth-Modell, Rechteberechnung, Fehler-Mapping,
   DSQL-Wiederholung); `README.md`: User-Pool-ID je Umgebung per Terraform-Output, lokaler Bootstrap-State, OneDrive-Verbindung.
+
+**Issue 48 (Tests und Struktur, Leistung)**
+
+- Migrationstest: prüft jetzt ab 0010 (statt 0037). 0001–0009 sind ausgenommen, weil sie vor der Ein-Statement-Regel
+  entstanden (0009 hat zwei Statements, keine Down-Dateien) und vor dem ersten Release zusammengeführt wurden
+  (`datenbank.md`).
+- Cognito: `konten()`/`rollen()` sind je warmem Container 60 s gecacht; `createUser`, `setGroups`, `setEnabled` und
+  `setPreferredUsername` leeren den Cache. Neue Schnittstelle `UserAdminEinzeln` (`konto(sub)`, `rollenVon(kontoName)`).
+- Serien: `serienEventsLoeschen` löscht je Chunk (20 Events) in einer Transaktion mit je einer Anweisung pro Tabelle;
+  Termine einer Serie entstehen über `serienTermineAnlegen` (Batch-Insert der Tage, eine Transaktion je 40 Events).
+- Pool: `max` von 2 auf 4 (Routen fragen per `Promise.all` mehrere Stores parallel ab).
 
 **Ohne Test geblieben**
 
@@ -208,12 +221,8 @@ Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36
 entfallen.
 
 Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe: `sperreBeruehren`
-(Tabelle `sperren`, siehe `docs/datenbank.md`). Die Stellen für Ausleihe, Inventur, Aufräumaktion, Besetzung und Umfrage sind
-erledigt (siehe unten); es bleiben:
-
-| Stelle                                        | Folge                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Protokoll abschließen, „Ausführen“ (`app.ts`) | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
+(Tabelle `sperren`, siehe `docs/datenbank.md`). Alle bekannten Stellen (Ausleihe, Inventur, Aufräumaktion,
+Besetzung, Umfrage, Protokoll, Party-Mail-Abruf, OneDrive) sind erledigt (siehe unten).
 
 ### 2. Infrastruktur und Deploy
 
@@ -251,16 +260,14 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 - **Keine Tests gegen echtes SQL (bewusst nicht umgesetzt):** Alle API-Tests laufen gegen Fakes; die Drizzle-Stores werden
   auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
-- **Migrationstest:** prüft erst ab 0037; Grenze begründen.
-- **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
 - **Fremdschlüssel / Unique:** erledigt (PR „Löschen referenzierter Zeilen“): alle Löschrouten prüfen Verweise in der
   Transaktion und lehnen mit 409 und fachlicher Meldung ab (`datenbank.md`, „Fremdschlüssel und Löschen“). Offen: ob DSQL
   Fremdschlüssel erzwingt, ist ungeprüft; Unique-Index nur für `privatpartys.event_id` (0166). Weitere Kandidaten ohne Index:
   `privatpartys.umfrage_id` (nur nicht-eindeutiger Index 0126, `nachUmfrage` nimmt Eindeutigkeit an) und
   `umfrage_termine.event_id`; vorher Duplikate auf dev prüfen.
-- **Leistung:** Mehrere Routen laden für ein Mitglied die ganze Cognito-Liste (auch die öffentliche vCard-Route und der
-  Feed über `userAdmin.rollen()`); `ladeKontext` der Umfragen ruft `ListUsers` je Request; `/umfragen/beendet` scannt alle
-  beendeten Umfragen; Serien-Operationen schreiben je Event einzeln; Pool mit `max: 2`.
+- **Leistung (Rest):** `userAdmin.konten()`/`rollen()` sind jetzt gecacht, die Routen laden aber noch die ganze Liste für ein
+  Mitglied. In den Routen (`routes/`) auf `konto(sub)` / `rollenVon(kontoName)` umstellen (Profil-Routen, Feed, vCard) und
+  prüfen, dass `umfrageKontext()` je Request nur einmal läuft. `/umfragen/beendet` ist bereits paginiert.
 
 ### 5. Frontend
 

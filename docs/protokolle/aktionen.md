@@ -64,3 +64,12 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
   Aktionen gibt. Je Aktion der Zustand (erledigt, fehlgeschlagen mit Text des Ergebnisses, offen, nicht ausführbar mit Grund) und
   „Ausführen“ (offen) bzw. „Erneut versuchen“ (fehlgeschlagen) per `POST .../aktionen`, danach Neuladen.
 - Der Hinweis auf Event-Änderungen (Benachrichtigung) geht wie im Kalender raus. Einladungen verschicken auf dev eine echte Mail.
+
+## Belegen vor dem Ausführen
+
+- `PUT /status` (Abschließen) setzt Status und Schnappschuss mit **einem** bedingten `UPDATE` (`version` und Status passen,
+  `statusBelegen`), **bevor** die Aktionen laufen. `POST /aktionen` zählt die Version vorher hoch (`aktionenBelegen`). Wer zu spät
+  kommt, bekommt 409 „Das Protokoll wurde inzwischen geändert. Bitte lade es neu.“; die Aktionen laufen so nie doppelt.
+- Scheitert danach eine Aktion, bleibt das Protokoll abgeschlossen (kein Zurückrollen). Das Ergebnis je Aktion steht in
+  `kopf.aktionen` (mit neuer Version geschrieben), gescheiterte lassen sich über „Ausführen“ wiederholen.
+- Je Abschluss mit Wirkung zählt die Version zweimal hoch (Belegen, Ergebnisse schreiben).
