@@ -1319,3 +1319,12 @@ export const finZaehler = pgTable('fin_zaehler', {
   wert: bigint('wert', { mode: 'number' }).notNull(),
   letzterHash: text('letzter_hash').notNull(),
 });
+
+/**
+ * Lock rows (see `db/sperren.ts`): a transaction that checks and then inserts touches a key first,
+ * so a concurrent one writes the same row and one of them conflicts.
+ */
+export const sperren = pgTable('sperren', {
+  schluessel: text('schluessel').primaryKey(),
+  beruehrtAm: timestamp('beruehrt_am', { withTimezone: true }).notNull(),
+});
