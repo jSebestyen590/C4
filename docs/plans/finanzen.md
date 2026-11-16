@@ -166,7 +166,7 @@ mehrere Unterseiten stehen.
   deren Abrechnung (Scheibe 3) als Bareinnahme erfasst. Maßgeblicher Zeitpunkt eines Eintrags ist
   das Eintragen in die App, Steuersatz immer der reguläre (derzeit 19 %). Die Scheibe hängt damit
   nur an den Rechten aus Scheibe 0 und kann früh live gehen.
-- Offener Punkt: Push bei Überzug (Access hatte „Buch-Mails")?
+- Push bei Überzug: Nach jeder Abrechnung bekommt jede Seite eines Mitglieds unter dem erlaubten Überzug eine Benachrichtigung (`buch.ueberzug`).
 
 ### Scheibe 3: Barkassen
 
@@ -338,7 +338,7 @@ FinTS-Überweisungen, E-Rechnung.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
-| 2 Buch                    | offen                                                                                                                                              |
+| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
 | 3 Barkassen               | offen                                                                                                                                              |
 | 4 Belege                  | offen                                                                                                                                              |
 | 5 GoBD-Abschluss          | offen                                                                                                                                              |

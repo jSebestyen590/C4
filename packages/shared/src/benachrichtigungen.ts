@@ -120,6 +120,13 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     abschaltbar: false,
   },
   {
+    // After a Buch-Abrechnung to the owner of a page that is below the allowed overdraft.
+    key: 'buch.ueberzug',
+    bereich: 'buch',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
     // New request for a Privatparty; only holders of `privatpartys:verwalten` receive it.
     key: 'privatpartys.anfrage',
     bereich: 'privatpartys',

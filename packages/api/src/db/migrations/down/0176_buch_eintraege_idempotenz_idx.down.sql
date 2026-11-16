@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS buch_eintraege_idempotenz_idx

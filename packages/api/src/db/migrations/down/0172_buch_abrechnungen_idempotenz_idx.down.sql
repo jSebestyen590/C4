@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS buch_abrechnungen_idempotenz_idx

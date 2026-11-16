@@ -1,0 +1,82 @@
+# Buch
+
+Das Buch ist die digitale Strichliste des Vereins (Scheibe 2 der [Finanzen](./finanzen.md), Plan in
+[plans/finanzen.md](./plans/finanzen.md)). Es ist ein **Nebenbuch**: keine Journalbuchungen, keine Konten in
+`fin_konten`, kein Teil des Bargeldbestands. Das Geld der Abzahlungen liegt in einer Barkasse und wird mit deren
+Abrechnung (spätere Scheibe) als Bareinnahme gebucht.
+
+## Konzept
+
+- Eine **Seite** (`buch_seiten`) gehört einem Mitglied oder einem externen Namen (genau eins von beiden), hat eine
+  **Nummer** und kann archiviert werden. Die Nummer ist unter aktiven Seiten eindeutig und wird beim Archivieren frei;
+  ein Mitglied hat höchstens eine aktive Seite. Beides prüft die API in der Transaktion mit `sperreBeruehren`
+  (Schlüssel `buchseite:nummer:<n>` und `buchseite:mitglied:<sub>`), Verstöße antworten mit 409.
+- Ein **Eintrag** (`buch_eintraege`) hat Striche, Strichwert, Bar und Abzahlung. Wirkung auf den Saldo:
+  `Abzahlung − Striche × Strichwert − Bar` (`betrag_cent`). Ein negativer Saldo sind Schulden. **Bar** ist ein Euro-Betrag,
+  der aufs Buch geschrieben wird (angeschrieben), keine Zahlung.
+- Der **Strichwert** kommt aus dem **Tarif** (`buch_tarife`): je Mitglieds-Status Strichwert und maximaler Überzug, mit
+  „gültig ab“. Es gilt der Tarif mit dem spätesten `gueltig_ab` bis zum Tag des Eintragens (Gleichstand: der später
+  angelegte). Maßgeblich ist der Zeitpunkt des Eintragens in der App (`erstellt_am`, Berlin). Seiten mit externem Namen
+  nutzen den Tarif des Status `extern`, Mitglieder-Seiten den **aktuellen** Status des Mitglieds. Der Strichwert wird im
+  Eintrag gespeichert und ändert sich später nicht. Ohne Tarif sind Striche nicht möglich (400 mit Hinweis), Bar und
+  Abzahlung schon.
+- Alles ist **nur INSERT** (`buch_tarife`, `buch_abrechnungen`, `buch_eintraege`; Guard: `finanzenNurInsert.test.ts`).
+  Einzig `buch_seiten.archiviert_am` wird gesetzt. Korrektur = **Storno**: ein neuer Eintrag mit umgekehrten Werten
+  (gleicher Strichwert), `storno_von`, Pflicht-Begründung. Ein Eintrag lässt sich nur einmal stornieren (409), ein Storno
+  nicht.
+- Eine **Abrechnung** (`buch_abrechnungen`) erzeugt in einer Transaktion je Zeile mit Werten einen Eintrag. Leere Zeilen
+  (alles 0) werden ignoriert, eine ganz leere Abrechnung ist 400. Idempotenz über `idempotenzSchluessel` (UUID je
+  Erfassung): derselbe Schlüssel liefert die vorhandene Abrechnung mit 200 statt 201. Stornos haben ihren eigenen
+  Schlüssel.
+- **Überzug**: Saldo unter `−max_ueberzug` des Tarifs. Er blockiert nicht; die Abrechnungsseite verlangt eine Bestätigung je
+  Seite. Nach dem Speichern bekommt jedes Mitglied, dessen Seite überzogen ist, einen Push `buch.ueberzug` (siehe
+  [benachrichtigungen.md](./benachrichtigungen.md)); bei einer wiederholten Abrechnung (gleicher Schlüssel) nicht erneut.
+  Externe Seiten bekommen keinen Push.
+- **Rangliste** (gesamt oder je Kalenderjahr, Berlin): sortiert nach Umsatz in Euro = Σ (Striche × Strichwert + Bar),
+  Abzahlungen zählen nicht, Stornos ziehen ab. Zusätzlich die Striche. Sie zeigt nie einen Saldo.
+
+## Rechte
+
+| Recht                | Wofür                                                          |
+| -------------------- | -------------------------------------------------------------- |
+| `buch:lesen`         | eigene Seite (`/buch`) und Rangliste; alle Status              |
+| `finanzen:lesen`     | alle Seiten, Verläufe und Tarife lesen                         |
+| `finanzen:buchen`    | Seiten anlegen und archivieren, abrechnen, Einträge stornieren |
+| `finanzen:verwalten` | Tarife anlegen                                                 |
+
+## Routen (`routes/buch.ts`)
+
+| Route                                   | Recht                                   | Zweck                                                     |
+| --------------------------------------- | --------------------------------------- | --------------------------------------------------------- |
+| `GET /api/buch/meine`                   | `buch:lesen`                            | eigene aktive Seite(n) mit Saldo, Tarif, Überzug, Verlauf |
+| `GET /api/buch/rangliste?jahr=`         | `buch:lesen`                            | Rangliste (`alle` oder Jahr)                              |
+| `GET /api/buch/seiten?archiviert=true`  | `finanzen:lesen`                        | aktive bzw. archivierte Seiten mit Saldo                  |
+| `GET /api/buch/seiten/:id`              | `finanzen:lesen`                        | Seite mit Verlauf                                         |
+| `POST /api/buch/seiten`                 | `finanzen:buchen`                       | Seite anlegen (`nummer`, `mitgliedSub` oder `externName`) |
+| `POST /api/buch/seiten/:id/archivieren` | `finanzen:buchen`                       | archivieren (der Saldo bleibt offen)                      |
+| `GET/POST /api/buch/tarife`             | `finanzen:lesen` / `finanzen:verwalten` | Tarife lesen / anlegen                                    |
+| `POST /api/buch/abrechnungen`           | `finanzen:buchen`                       | Abrechnung (`idempotenzSchluessel`, `zeilen`)             |
+| `POST /api/buch/eintraege/:id/storno`   | `finanzen:buchen`                       | Storno (`text`, `idempotenzSchluessel`)                   |
+
+Es gibt bewusst keine Update- oder Delete-Routen. Die Deaktivieren-Vorschau der Mitglieder listet offene Buch-Salden.
+
+## Oberfläche
+
+- `/buch` (mobile first, Menüpunkt „Buch“): eigener Saldo groß (negativ rot), Überzugs-Hinweis, Tarif, Verlauf als Karten,
+  darunter die Rangliste mit Jahresauswahl.
+- `/finanzen/buch` (desktop first): Seitenliste (Nummer, Mitglied/Extern, Saldo, Überzug), „Seite anlegen“, „Abrechnen“,
+  „Tarife“, Umschalter Aktiv/Archiviert.
+- `/finanzen/buch/abrechnen`: Tabelle aller aktiven Seiten nach Nummer mit Striche, Bar, Abzahlung; Enter springt zeilenweise
+  zum nächsten Feld, Strg+Enter öffnet die Prüfung; live „Saldo danach“ und Summen. Auf dem Handy Karten mit denselben
+  Feldern. Vor dem Speichern eine Zusammenfassung mit den bestätigungspflichtigen Überzugs-Warnungen; ungespeicherte
+  Eingaben warnen beim Verlassen.
+- `/finanzen/buch/seiten/:id`: Seite, Verlauf mit Storno (Begründung) und Archivieren (mit Bestätigung, bei Saldo ≠ 0 eigene
+  Bestätigung).
+- `/finanzen/buch/tarife`: aktueller Tarif je Status, Verlauf, Formular für neue Tarife.
+- Hilfetexte stehen in `finanzenHilfe.ts` (`HILFE.buch`).
+
+## Tabellen
+
+`buch_seiten`, `buch_tarife`, `buch_abrechnungen`, `buch_eintraege` (Migrationen `0169`–`0176`, siehe
+[datenbank.md](./datenbank.md)). Die Schicht liegt in `packages/api/src/buch.ts` (+ `buch.fake.ts`), die reine Logik
+(Tarifwahl, Wirkung, Rangliste, Schemas, DTOs) in `packages/shared/src/buch.ts`.

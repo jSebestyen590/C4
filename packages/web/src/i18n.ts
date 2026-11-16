@@ -137,11 +137,16 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   umfrage: 'Umfragen',
   todo: 'Todos',
   privatpartys: 'Privatpartys',
+  buch: 'Buch',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
 export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschreibung: string }> =
   {
+    'buch.ueberzug': {
+      titel: 'Buch überzogen',
+      beschreibung: 'Wenn dein Buch nach einer Abrechnung unter dem erlaubten Überzug liegt.',
+    },
     'kalender.erinnerung': {
       titel: 'Erinnerung vor meinem Dienst',
       beschreibung: 'Eine Nachricht kurz vor dem Beginn deiner Schicht.',

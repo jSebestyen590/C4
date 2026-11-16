@@ -1280,6 +1280,63 @@ export const finStueckelung = pgTable(
   (t) => [primaryKey({ columns: [t.zeileId, t.nennwertCent] })],
 );
 
+/** A page of the Buch (Strichliste): of a member or of an external name; archiving frees the number. */
+export const buchSeiten = pgTable('buch_seiten', {
+  id: text('id').primaryKey(),
+  nummer: integer('nummer').notNull(),
+  /** Cognito sub, deliberately without a foreign key. Exactly one of `mitgliedSub`/`externName` is set. */
+  mitgliedSub: text('mitglied_sub'),
+  externName: text('extern_name'),
+  angelegtVon: text('angelegt_von').notNull(),
+  angelegtAm: timestamp('angelegt_am', { withTimezone: true }).notNull(),
+  archiviertAm: timestamp('archiviert_am', { withTimezone: true }),
+});
+export type BuchSeiteRow = typeof buchSeiten.$inferSelect;
+
+/** Strichwert and maximum overdraft per member status, valid from a date (insert-only). */
+export const buchTarife = pgTable('buch_tarife', {
+  id: text('id').primaryKey(),
+  status: text('status').$type<MitgliedStatus>().notNull(),
+  strichwertCent: integer('strichwert_cent').notNull(),
+  maxUeberzugCent: integer('max_ueberzug_cent').notNull(),
+  gueltigAb: date('gueltig_ab', { mode: 'string' }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type BuchTarifRow = typeof buchTarife.$inferSelect;
+
+/** One Abrechnung of the Buch (insert-only); its entries point here. */
+export const buchAbrechnungen = pgTable('buch_abrechnungen', {
+  id: text('id').primaryKey(),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type BuchAbrechnungRow = typeof buchAbrechnungen.$inferSelect;
+
+/** Entry of a Buch page (insert-only); `betragCent` is the effect on the balance. */
+export const buchEintraege = pgTable('buch_eintraege', {
+  id: text('id').primaryKey(),
+  seiteId: text('seite_id')
+    .notNull()
+    .references(() => buchSeiten.id),
+  abrechnungId: text('abrechnung_id').references(() => buchAbrechnungen.id),
+  /** Unique index: an entry is reversed at most once. */
+  stornoVon: text('storno_von'),
+  striche: integer('striche').notNull(),
+  strichwertCent: integer('strichwert_cent').notNull(),
+  barCent: bigint('bar_cent', { mode: 'number' }).notNull(),
+  abzahlungCent: bigint('abzahlung_cent', { mode: 'number' }).notNull(),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  text: text('text'),
+  /** Unique index; only set on reversals. */
+  idempotenzSchluessel: text('idempotenz_schluessel'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type BuchEintragRow = typeof buchEintraege.$inferSelect;
+
 /** Protocol of a cash count of a Fach (insert-only). `buchungId`: the difference booking, if any. */
 export const finZaehlungen = pgTable('fin_zaehlungen', {
   id: text('id').primaryKey(),
