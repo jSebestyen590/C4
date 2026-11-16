@@ -1345,7 +1345,11 @@ export function WahlFormular({
               return (
                 <LokalZahl
                   key={id}
-                  label={`Stimmen für ${k.name.trim() || personen.find((p) => p.sub === k.sub)?.username || 'Person'}`}
+                  label={
+                    <>
+                      Stimmen für <KandidatName k={k} personen={personen} />
+                    </>
+                  }
                   wert={daten.stichwahlen[i]!.stimmen[id] ?? 0}
                   onWert={(n) => aendern((d) => stichwahlSetzen(d, i, id, n))}
                 />

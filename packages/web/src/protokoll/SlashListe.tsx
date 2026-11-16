@@ -1,5 +1,6 @@
 import { Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useEffect, useRef } from 'react';
+import { StatusName } from '../StatusAnzeige';
 import type { ListenEintrag } from './slashLogik';
 import { SlashIcon } from './symbole';
 
@@ -49,7 +50,14 @@ export function SlashListe<T extends ListenEintrag>({
               <SlashIcon symbol={e.symbol} />
               <div style={{ minWidth: 0 }}>
                 <Text fw={600} size="sm" truncate>
-                  {e.titel}
+                  {e.person ? (
+                    <>
+                      <StatusName status={e.person.status}>{e.person.name}</StatusName>
+                      {e.person.zusatz && ` (${e.person.zusatz})`}
+                    </>
+                  ) : (
+                    e.titel
+                  )}
                 </Text>
                 {e.beschreibung && (
                   <Text size="xs" c="dimmed" truncate>

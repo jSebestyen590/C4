@@ -9,6 +9,7 @@ import {
   type AnwesenheitArt,
   type BausteinTyp,
   type BausteinVergangenesEventDaten,
+  type MitgliedStatus,
 } from '@c4/shared';
 
 // Items of the slash menu ("/") and of the toolbar's Baustein menu: pure, no TipTap/React.
@@ -57,7 +58,13 @@ export interface SlashEintrag {
 }
 
 /** What the list of a suggestion popup needs of an entry (slash menu and @mentions). */
-export type ListenEintrag = Pick<SlashEintrag, 'schluessel' | 'titel' | 'beschreibung' | 'symbol'>;
+export type ListenEintrag = Pick<
+  SlashEintrag,
+  'schluessel' | 'titel' | 'beschreibung' | 'symbol'
+> & {
+  /** A member entry: the list shows `name` as `StatusName` (bold, status color) instead of `titel`. */
+  person?: { name: string; zusatz?: string; status: MitgliedStatus };
+};
 
 /** A selectable Vorlage with the Baustein fields it creates. */
 export interface SlashVorlage {

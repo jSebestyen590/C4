@@ -104,6 +104,11 @@ export function erwaehnungEintraege(
       titel,
       beschreibung: '',
       symbol: 'person',
+      person: {
+        name: erwaehnungPersonName(p),
+        zusatz: p.username && vollerName(p) ? vollerName(p) : undefined,
+        status: p.status,
+      },
       attrs: { art: 'person', sub: p.sub },
     }));
   return [...gruppen, ...leute];
