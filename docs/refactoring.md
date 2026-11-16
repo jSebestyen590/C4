@@ -28,7 +28,7 @@ Die Funde der Stufe „hoch“ und die meisten der Stufe „mittel“ wurden vor
 Diese Punkte muss ein neues Review nicht wiederholen, solange die genannten Stellen unverändert sind.
 
 - **Auth je Route:** Alle Routen in `app.ts` tragen `auth`, außer den drei bewusst öffentlichen (`/health`,
-  `/kalender/feed/:token`, `/vcard/:token/...`). Per Skript geprüft; ein Default-Deny fehlt aber (siehe Offen).
+  `/kalender/feed/:token`, `/vcard/:token/...`). Zusätzlich gilt Default-Deny (siehe Erledigt).
 - **Rechte im Frontend:** `can()` aus `auth.tsx` ist der einzige Helfer.
 - **SQL:** kein zusammengesetztes SQL außerhalb von Drizzle (einzige `sql`-Stelle: Spaltenreferenz in `protokolle.ts`).
   Zeitstempel durchgehend mit Zeitzone, `numeric` mit Zahl-Mappern.
@@ -158,6 +158,16 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
 - Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
 
+**Nach PR #33** ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), PR A: Tabelle `sperren`)
+
+- `sperreBeruehren` (`db/sperren.ts`, Migration 0167) vor Prüfen-dann-Einfügen: Ausleihe anlegen/ändern (`gegenstand:<id>`),
+  Inventur starten (`lagerort:<id>` für den Lagerort und alle Nachfahren), Aufräumaktion starten (`aufraeumaktion`), Besetzung
+  anlegen/ändern (`besetzung:<posten>:<mitglied>`), Umfrage bearbeiten und abstimmen (`umfrage:<id>`).
+- Inventur starten lehnt auch eine offene Inventur auf einem über- oder untergeordneten Lagerort ab (409); die Prüfung fehlte.
+- Abstimmen prüft den Stimmzettel in der Transaktion noch einmal gegen die aktuellen Optionen (409 bei entfernter Option).
+- Kein Wettlauf, nur begründet: `inventurAbschliessen` (beide Aufrufe schreiben dieselbe `inventuren`-Zeile, der Retry sieht
+  „abgeschlossen“); `gegenstaende.anzahl` (parallele Buchungen schreiben dieselbe Zeile; höchstens Drift, Vertragstests in Issue 48).
+
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
 - Status mit Zukunftsdatum: nicht erreichbar (Routen prüfen, Protokoll-Aktionen nehmen bei künftiger Sitzung heute).
@@ -179,6 +189,13 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Im Browser nicht geprüft: 403 der Posten-Sperre und der Hinweis beim ersten Schlüsselhalter (bräuchten einen Account ohne
   Admin-Rechte).
 
+**Absicherung nach außen** (Issue 47, PR 1)
+
+- Default-Deny: Middleware in `createApp` verlangt `auth` außer für `OEFFENTLICH`; Test über alle registrierten Routen
+  (`app.test.ts`). Siehe `querschnitt.md`.
+- `/health` ist öffentlich ohne DB (`{ ok: true }`); die DB-Prüfung ist das Lambda-Event `{ "c4": "health" }`, das der Deploy aufruft.
+- CloudFront-Logs (enthalten Feed- und vCard-Token im Pfad) werden nach 14 Tagen gelöscht, die übrigen Logs nach 90.
+
 ## Offen
 
 Als „bewusst nicht umgesetzt“ markierte Punkte sind entschieden und werden nicht angegangen. Alle anderen stehen je
@@ -190,19 +207,13 @@ Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36
 `gegenstaende.anzahl` sind kein Wettlauf (beide Transaktionen schreiben dieselbe Zeile und kollidieren korrekt) und
 entfallen.
 
-Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe je Stelle: in der
-Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegenstands oder Lagerorts) oder ein Unique-Index.
+Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe: `sperreBeruehren`
+(Tabelle `sperren`, siehe `docs/datenbank.md`). Die Stellen für Ausleihe, Inventur, Aufräumaktion, Besetzung und Umfrage sind
+erledigt (siehe unten); es bleiben:
 
-| Stelle                                                  | Folge                                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `ausleiheAnlegen`, `positionenPruefen` (`inventar.ts`)  | derselbe Gegenstand wird doppelt verliehen                                                 |
-| Inventur starten (`waren.ts`)                           | zwei offene Inventuren je Lagerort; auch Eltern- und Kind-Lagerort gleichzeitig            |
-| Aufräumaktion starten (`inventar.ts`)                   | zwei offene Aufräumaktionen                                                                |
-| `besetzungAnlegen` (`posten.ts`)                        | überlappende Besetzungen einer Person                                                      |
-| `inventurAbschliessen` (`waren.ts`)                     | Korrekturen doppelt gebucht (unsicher)                                                     |
-| Protokoll abschließen, „Ausführen“ (`app.ts`)           | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
-| Umfrage bearbeiten während einer Stimmabgabe (`app.ts`) | Stimme behält eine entfernte Option (unsicher)                                             |
-| `gegenstaende.anzahl` (`bewegungBuchen`)                | handgeführter Zähler ohne Abgleich gegen die Bewegungen                                    |
+| Stelle                                        | Folge                                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Protokoll abschließen, „Ausführen“ (`app.ts`) | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
 
 ### 2. Infrastruktur und Deploy
 
@@ -213,14 +224,12 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
   dokumentieren und auf dev zu üben.
 - **Admin-Entzug (bewusst nicht umgesetzt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus
   dem Access-Token (60 Minuten gültig); ein Entzug wirkt erst, wenn er abläuft.
-- **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
 - **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse (erledigt im Code, wartet auf Owner-Apply von `infra/bootstrap`):** OneDrive-Secret/-Tokens und VAPID-Schlüssel
   liegen in Secrets Manager (`docs/datenbank.md`, „Geheimnisse“); die Deploy-Rolle hat statt `secretsmanager:*` eine explizite
   Aktionsliste auf `c4-<env>-*`. Bewusst offen: OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk.
-- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll (bleibt bewusst so).
 - **Eingehende Mail (bewusst nicht umgesetzt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** Schutz vor Spam
@@ -244,8 +253,11 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
   auf dev geprüft. Damit entfällt auch ein Test, der `schema.ts` mit den Migrationen vergleicht.
 - **Migrationstest:** prüft erst ab 0037; Grenze begründen.
 - **`app.ts`** (rund 5800 Zeilen, alle Routen) und `app.test.ts` (rund 10000 Zeilen): aufteilen in Sub-Router je Feature.
-- **Fremdschlüssel:** kein `ON DELETE`; Löschen referenzierter Zeilen endet jetzt als 409 statt 500, aber ohne fachliche
-  Meldung. Nur wenige Unique-Constraints, obwohl der Code an Stellen Eindeutigkeit annimmt.
+- **Fremdschlüssel / Unique:** erledigt (PR „Löschen referenzierter Zeilen“): alle Löschrouten prüfen Verweise in der
+  Transaktion und lehnen mit 409 und fachlicher Meldung ab (`datenbank.md`, „Fremdschlüssel und Löschen“). Offen: ob DSQL
+  Fremdschlüssel erzwingt, ist ungeprüft; Unique-Index nur für `privatpartys.event_id` (0166). Weitere Kandidaten ohne Index:
+  `privatpartys.umfrage_id` (nur nicht-eindeutiger Index 0126, `nachUmfrage` nimmt Eindeutigkeit an) und
+  `umfrage_termine.event_id`; vorher Duplikate auf dev prüfen.
 - **Leistung:** Mehrere Routen laden für ein Mitglied die ganze Cognito-Liste (auch die öffentliche vCard-Route und der
   Feed über `userAdmin.rollen()`); `ladeKontext` der Umfragen ruft `ListUsers` je Request; `/umfragen/beendet` scannt alle
   beendeten Umfragen; Serien-Operationen schreiben je Event einzeln; Pool mit `max: 2`.

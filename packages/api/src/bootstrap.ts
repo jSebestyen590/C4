@@ -93,6 +93,9 @@ export function createProduction() {
     ...(config.partymailSecretArn && { secretArn: config.partymailSecretArn }),
   });
   const privatpartys = createPrivatpartysStore(db);
+  const pingDb = async () => {
+    await pool.query('select 1');
+  };
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
@@ -118,12 +121,11 @@ export function createProduction() {
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     protokollbilder: createProtokollbilder(config.profilbildBucket, config.region),
-    pingDb: async () => {
-      await pool.query('select 1');
-    },
+    pingDb,
   });
   return {
     app,
+    pingDb,
     pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
     mailJob: (jetzt: Date) =>
       mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),

@@ -760,7 +760,7 @@ export const pushVersand = pgTable('push_versand', {
   gesendet: timestamp('gesendet', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0168. */
+/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0170. */
 export const pushSchluessel = pgTable('push_schluessel', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
@@ -773,7 +773,7 @@ export const onedriveVerbindung = pgTable('onedrive_verbindung', {
   id: text('id').primaryKey(),
   clientId: text('client_id'),
   // Deprecated: client_secret, refresh_token, access_token, access_ablauf live in Secrets Manager
-  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0167, DSQL cannot drop columns).
+  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0169, DSQL cannot drop columns).
   clientSecret: text('client_secret'),
   basisPfad: text('basis_pfad').notNull().default('Cloud4/Bilder'),
   refreshToken: text('refresh_token'),
@@ -1322,4 +1322,13 @@ export const finZaehler = pgTable('fin_zaehler', {
   name: text('name').primaryKey(),
   wert: bigint('wert', { mode: 'number' }).notNull(),
   letzterHash: text('letzter_hash').notNull(),
+});
+
+/**
+ * Lock rows (see `db/sperren.ts`): a transaction that checks and then inserts touches a key first,
+ * so a concurrent one writes the same row and one of them conflicts.
+ */
+export const sperren = pgTable('sperren', {
+  schluessel: text('schluessel').primaryKey(),
+  beruehrtAm: timestamp('beruehrt_am', { withTimezone: true }).notNull(),
 });

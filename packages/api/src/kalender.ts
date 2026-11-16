@@ -77,6 +77,8 @@ import {
   kalenderSerien,
   type KalenderSerieRow,
   externe,
+  finBuchungen,
+  finZaehlungen,
   kalenderTokens,
   mitglieder,
   type MitgliedRow,
@@ -1627,6 +1629,22 @@ export function createKalenderStore(db: Db): KalenderStore {
           .from(protokolle)
           .where(eq(protokolle.eventId, id));
         if (protokoll) throw new KalenderKonflikt('Zu dieser Sitzung gibt es ein Protokoll.');
+        // Finanzen rows are insert-only and reference the event, so they block the delete.
+        const [buchung] = await tx
+          .select({ id: finBuchungen.id })
+          .from(finBuchungen)
+          .where(eq(finBuchungen.eventId, id))
+          .limit(1);
+        const [zaehlung] = await tx
+          .select({ id: finZaehlungen.id })
+          .from(finZaehlungen)
+          .where(eq(finZaehlungen.eventId, id))
+          .limit(1);
+        if (buchung || zaehlung) {
+          throw new KalenderKonflikt(
+            'Zum Event gibt es Buchungen oder Kassenzählungen und es kann nicht gelöscht werden. Sage es stattdessen ab.',
+          );
+        }
         const schichtIds = (
           await tx.select({ id: schichten.id }).from(schichten).where(eq(schichten.eventId, id))
         ).map((s) => s.id);

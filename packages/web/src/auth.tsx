@@ -1,6 +1,7 @@
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DeaktiviertSeite } from './DeaktiviertSeite';
+import { aktuellesZiel } from './ruecksprung';
 import { meSchema, type AppConfig, type Permission } from '@c4/shared';
 
 export interface AuthState {
@@ -103,7 +104,8 @@ export function AuthProvider({
       user,
       groups,
       can: (permission) => permissions?.includes(permission) ?? false,
-      login: () => manager.signinRedirect({ extraQueryParams: { lang: 'de' } }),
+      login: () =>
+        manager.signinRedirect({ extraQueryParams: { lang: 'de' }, state: aktuellesZiel() }),
       logout: () => {
         void manager.removeUser();
         // Cognito's discovery document has no end_session_endpoint, so build the URL by hand.

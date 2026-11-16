@@ -553,12 +553,26 @@ resource "aws_s3_bucket_ownership_controls" "logs" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "logs" {
   bucket = aws_s3_bucket.logs.id
+  # Everything else (S3 server access logs under s3/): 90 days.
   rule {
     id     = "expire"
     status = "Enabled"
     filter {}
     expiration {
       days = 90
+    }
+  }
+  # CloudFront logs contain the request path, and the calendar feed and vCard tokens (unlimited
+  # lifetime) are part of the path. Keep them short. Both rules match cloudfront/; S3 expires an
+  # object by the earlier date, so these objects go after 14 days.
+  rule {
+    id     = "expire-cloudfront"
+    status = "Enabled"
+    filter {
+      prefix = "cloudfront/"
+    }
+    expiration {
+      days = 14
     }
   }
 }

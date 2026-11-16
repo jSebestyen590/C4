@@ -63,6 +63,8 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   könnten nur Werte leeren). Neue Spalten nach einem Release brauchen wieder ein eigenes `ALTER`, dessen Down-Datei die
   Werte auf `NULL` setzt; eine Spalte mit `REFERENCES` per `ALTER` ist in DSQL nicht sicher (deshalb ist z. B.
   `ifcos.typ_id` nur Text, der Bezug zu `ifco_typen` wird in der API geprüft).
+- 0166 (`privatpartys_event_idx`) legt einen Unique-Index auf `privatpartys.event_id` an (ein Event gehört zu höchstens einer
+  Privatparty); die Down-Datei löscht ihn. Rollback-Ziel: `0165_protokolle_sperre_bis`.
 
 Aufruf (braucht `CONFIRM_DB_ROLLBACK=yes`):
 
@@ -134,9 +136,33 @@ Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
   `UPDATE`/Upsert (z. B. Lease `mail_abruf.laeuft_bis`: `WHERE laeuft_bis IS NULL OR laeuft_bis < jetzt`); 0 Zeilen oder `40001`
   heißt „läuft schon“ und der Lauf wird übersprungen. Die Sperre wird im `finally` freigegeben und läuft sonst von selbst ab.
   Innerhalb einer Lambda-Instanz genügt ein geteiltes Promise (OneDrive `erneuern`).
+- **Prüfen, dann einfügen:** DSQL erkennt Konflikte nur an Zeilen, die beide Transaktionen _schreiben_. Liest eine
+  Transaktion nur und fügt dann ein (z. B. „gibt es schon eine offene Inventur?“), kollidieren zwei parallele nie. Deshalb
+  ruft sie innerhalb derselben Transaktion **vor der Prüfung** `sperreBeruehren(tx, ...schluessel)` (`db/sperren.ts`) auf: ein
+  `INSERT … ON CONFLICT DO UPDATE` in die Tabelle `sperren` (ein Schlüssel je umkämpfter Sache, sortiert und ohne Dopplungen
+  geschrieben). Die zweite Transaktion schreibt dieselbe Zeile und scheitert mit 40001; der Retry sieht dann das Ergebnis der
+  ersten und lehnt fachlich ab. Schlüssel: `gegenstand:<id>`, `lagerort:<id>`, `aufraeumaktion`,
+  `besetzung:<posten>:<mitglied>`, `umfrage:<id>`. Nötig nur, wenn zwei verschiedene Abläufe dieselbe Regel prüfen und keine
+  gemeinsame Zeile schreiben; schreiben beide ohnehin dieselbe Zeile (z. B. `inventuren` beim Abschließen), reicht der Retry.
+  Die Fakes brauchen keine Sperre. Echtes Verhalten lässt sich nur auf dev prüfen (zwei gleichzeitige Requests).
 - **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
   S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
   davor oder danach.
+
+## Fremdschlüssel und Löschen
+
+Die Tabellen deklarieren `REFERENCES` ohne `ON DELETE`. Ob Aurora DSQL Fremdschlüssel erzwingt, ist **ungeprüft**: Ein
+Test auf dev (Lagerort mit Waren per SQL löschen) steht aus, und die AWS-Dokumentation, die wir lesen konnten, war dazu
+nicht eindeutig. Der Code verlässt sich deshalb nicht darauf:
+
+- **Prüfen, dann löschen:** Jede Löschroute prüft in derselben Transaktion vor dem `DELETE`, ob andere Zeilen auf die Zeile
+  verweisen (`gibtEs` in `waren.ts`), und lehnt mit 409 und einer deutschen, konkreten Meldung ab (`WarenKonflikt`,
+  `KalenderKonflikt`, ...). Fachlich abhängige Zeilen, die der Zeile gehören (Stimmen einer Umfrage, Teilnahmen eines
+  Events, Aliase einer Ware), löscht der Store in derselben Transaktion mit.
+- Neue Verweise: Beim Anlegen einer Tabelle mit `REFERENCES` die Löschroute der Zielzeile um die Prüfung ergänzen.
+- Weiche Verweise ohne Fremdschlüssel (z. B. `privatpartys.umfrage_id`, `umfrage_termine.event_id`, `protokolle.event_id`)
+  prüft der Code beim Lesen oder Löschen selbst; ein hängender Verweis ist dort zulässig und wird toleriert.
+- Greift ein Fremdschlüssel doch (`23503`), antwortet die API mit dem allgemeinen 409 (siehe oben).
 
 ## Backups
 

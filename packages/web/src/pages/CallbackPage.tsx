@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AppConfig } from '@c4/shared';
 import { _createUserManagerForCallback } from '../auth';
+import { ruecksprungZiel } from '../ruecksprung';
 
 export function CallbackPage({ config }: Readonly<{ config: AppConfig }>) {
   const navigate = useNavigate();
@@ -14,9 +15,9 @@ export function CallbackPage({ config }: Readonly<{ config: AppConfig }>) {
     started.current = true;
     _createUserManagerForCallback(config)
       .signinRedirectCallback()
-      .then(() => {
-        // Full reload so AuthProvider picks up the stored user.
-        window.location.replace(import.meta.env.BASE_URL);
+      .then((user) => {
+        // Full reload so AuthProvider picks up the stored user; return to the page that started the login.
+        window.location.replace(ruecksprungZiel(user.state, import.meta.env.BASE_URL));
       })
       .catch((e: unknown) => setError(String(e)));
   }, [config, navigate]);
