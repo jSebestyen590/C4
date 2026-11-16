@@ -6,6 +6,7 @@ Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und de
 
 - **Anmeldung:** Cognito-Hosted-UI mit Code-Flow (`oidc-client-ts`, `packages/web/src/auth.tsx`). Das Web hält den Access-Token
   im `localStorage` und erneuert ihn mit dem Refresh-Token automatisch vor Ablauf (`automaticSilentRenew`).
+  Wer einen Link ohne Anmeldung öffnet, landet nach dem Login wieder auf der aufgerufenen Seite (OIDC-`state`, geprüft in `ruecksprung.ts`).
 - **Token-Laufzeiten** (`infra/modules/app/main.tf`): Access- und ID-Token 60 Minuten, Refresh-Token 30 Tage (jede Erneuerung
   liefert einen neuen Refresh-Token).
 - **Prüfung:** Der API-Gateway-Authorizer (JWT) und `authenticate` in `packages/api/src/auth.ts` prüfen den **Access-Token**
