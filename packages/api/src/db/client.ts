@@ -15,7 +15,8 @@ export function createPool(config: Pick<Config, 'region' | 'dsqlEndpoint'>): pg.
     database: 'postgres',
     password: () => signer.getDbConnectAdminAuthToken(),
     ssl: { rejectUnauthorized: true },
-    max: 2,
+    // Routes query several stores in parallel (Promise.all of 3-4 reads); with 2 connections these queue up.
+    max: 4,
     idleTimeoutMillis: 10_000,
   });
 }
