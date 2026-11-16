@@ -47,7 +47,8 @@ keep hands-on work out of it:
 
 - Deploy a feature branch to dev with the Deploy workflow:
   `gh workflow run deploy.yml --ref <branch> -f env=dev` (a push to `main` deploys dev automatically,
-  tags `v*` deploy prod). Commit and push first; the workflow deploys the pushed ref.
+  tags `v*` deploy prod after the repo owner approves it in the `prod` environment).
+  Commit and push first; the workflow deploys the pushed ref.
 - Browser checks then run on https://dev.c4-leipzig.de/app/ (Sonnet subagent). Log in through the dev
   Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory
   (`reference_dev_testuser.md`), never put it into the repo or chat.
