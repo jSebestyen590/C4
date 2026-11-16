@@ -83,6 +83,24 @@ describe('privatpartys: Party-Mail', () => {
     return { ...t, abrufen, liste, holen };
   }
 
+  it('skips a run while another one holds the lease and takes over an expired lease', async () => {
+    const t = await setup();
+    t.partymail.eingang.push(mail());
+    const jetzt = new Date();
+    expect(await t.privatpartys.abrufBelegen(jetzt, new Date(jetzt.getTime() + 60_000))).toBe(true);
+    const res = await t.abrufen();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'Der Abruf läuft gerade schon.' });
+    expect(await t.liste()).toHaveLength(0);
+    // Expired lease: the next run takes over and releases it afterwards.
+    await t.privatpartys.abrufFreigeben();
+    expect(await t.privatpartys.abrufBelegen(jetzt, new Date(jetzt.getTime() - 1))).toBe(true);
+    const res2 = await t.abrufen();
+    expect(res2.status).toBe(200);
+    expect(await res2.json()).toEqual({ neu: 1 });
+    expect(await t.privatpartys.abrufBelegen(new Date(), new Date(Date.now() + 1000))).toBe(true);
+  });
+
   it('creates a blank entry for a new thread and notifies only the right holders', async () => {
     const t = await setup();
     t.partymail.eingang.push(mail());

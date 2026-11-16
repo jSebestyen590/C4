@@ -277,6 +277,8 @@ export const privatpartysRoutes = (ctx: RoutenKontext) => {
       if (!(await deps.partymail.eingerichtet()))
         throw new HTTPException(409, { message: MAIL_AUS });
       const ergebnis = await mailJob(deps);
+      if (ergebnis.laeuftSchon)
+        throw new HTTPException(409, { message: 'Der Abruf läuft gerade schon.' });
       if (ergebnis.fehler)
         throw new HTTPException(502, { message: 'Der Abruf ist fehlgeschlagen.' });
       return c.json({ neu: ergebnis.neu });

@@ -27,7 +27,12 @@ export interface MailJobErgebnis {
   /** Stored mails (duplicates not counted). */
   neu: number;
   fehler: string | null;
+  /** True when the run was skipped because another one holds the lease. */
+  laeuftSchon?: boolean;
 }
+
+/** How long a run holds the lease; a crashed run blocks the next ones at most this long. */
+export const MAIL_JOB_LEASE_MS = 60_000;
 
 /**
  * One run: new mails after the stored UID become messages of the request their thread headers point
@@ -36,6 +41,17 @@ export interface MailJobErgebnis {
  */
 export async function mailJob(deps: MailJobDeps, jetzt = new Date()): Promise<MailJobErgebnis> {
   if (!(await deps.partymail.eingerichtet())) return { eingerichtet: false, neu: 0, fehler: null };
+  const store = deps.privatpartys;
+  if (!(await store.abrufBelegen(jetzt, new Date(jetzt.getTime() + MAIL_JOB_LEASE_MS))))
+    return { eingerichtet: true, neu: 0, fehler: null, laeuftSchon: true };
+  try {
+    return await mailJobAusfuehren(deps, jetzt);
+  } finally {
+    await store.abrufFreigeben().catch(() => undefined);
+  }
+}
+
+async function mailJobAusfuehren(deps: MailJobDeps, jetzt: Date): Promise<MailJobErgebnis> {
   const store = deps.privatpartys;
   let neu = 0;
   let uebersprungen = 0;
