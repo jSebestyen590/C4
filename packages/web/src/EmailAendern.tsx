@@ -24,6 +24,7 @@ export function EmailAendern({ email }: Readonly<{ email: string }>) {
           : standard;
 
   const anfordern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (adresse: string) => api.me.email.$put({ json: { email: adresse } }),
     onSuccess: (res) => {
       if (!res.ok) return setFehler(meldung(res.status, 'Der Code konnte nicht gesendet werden.'));
@@ -34,6 +35,7 @@ export function EmailAendern({ email }: Readonly<{ email: string }>) {
   });
 
   const bestaetigen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: string) =>
       api.me.email.bestaetigen.$post({ json: { code: eingabe } }),
     onSuccess: async (res) => {

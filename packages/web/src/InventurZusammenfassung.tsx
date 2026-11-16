@@ -58,6 +58,7 @@ export function InventurZusammenfassung({
   });
 
   const abschliessen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
       pruefen(
         await api.inventuren[':id'].abschluss.$post({

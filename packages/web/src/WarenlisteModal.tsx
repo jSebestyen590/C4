@@ -47,6 +47,7 @@ function WarenlisteInhalt({
   const index = new Map(waren.map((w) => [w.id, w]));
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
       pruefen(
         await api.lagerorte[':id'].waren.$put({

@@ -117,6 +117,7 @@ export function FinanzenBargeldUmbuchenPage() {
   });
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       const inhalt = JSON.stringify(body(''));
       schluessel.current = schluesselFuer(schluessel.current, inhalt, () => crypto.randomUUID());

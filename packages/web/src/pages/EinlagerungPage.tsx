@@ -83,6 +83,7 @@ export function EinlagerungPage() {
     );
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof einlagerungenSchema.parse>) =>
       pruefen(await api.bestand.einlagerungen.$post({ json })),
     onSuccess: () => abschluss('Die Einlagerung wurde gebucht.'),

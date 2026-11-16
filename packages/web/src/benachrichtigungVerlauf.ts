@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { VerlaufFilter, VerlaufSeiteDto } from '@c4/shared';
 import { useApi } from './api';
 import { useAuth } from './auth';
+import { pruefen } from './warenApi';
 
 const VERLAUF_KEY = 'benachrichtigung-verlauf';
 const UNGELESEN_KEY = [VERLAUF_KEY, 'ungelesen'];
@@ -91,8 +92,7 @@ export function useGelesenMarkieren() {
     mutationFn: async (id: string) => {
       const res = await api.me.benachrichtigungen.verlauf[':id'].gelesen.$post({ param: { id } });
       // 404 = entry expired or deleted: nothing left to mark.
-      if (!res.ok && (res.status as number) !== 404)
-        throw new Error(`Request failed (${res.status})`);
+      if ((res.status as number) !== 404) await pruefen(res);
     },
     onMutate: (id) => {
       const war = qc
@@ -117,7 +117,7 @@ export function useAlleGelesen() {
           ...(filter.bereich && { bereich: filter.bereich }),
         },
       });
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      await pruefen(res);
     },
     onMutate: (filter) => {
       lokalGelesen(qc, (e) => passt(e.art, filter));

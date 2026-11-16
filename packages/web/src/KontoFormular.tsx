@@ -62,6 +62,7 @@ export function KontoFormular({
     .map((k) => ({ value: k.id, label: k.name }));
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: KontoEingabe | KontoAendern) =>
       pruefen(
         konto

@@ -260,10 +260,7 @@ describe('einfuegeStelle: Thema', () => {
   });
 
   it('keeps other top-level Bausteine out of Themen: they go after the top-level Baustein', () => {
-    const doc = abschnitte([
-      n('bausteinEvent', p('e'), n('bausteinThema', p('t'))),
-      p('z'),
-    ]);
+    const doc = abschnitte([n('bausteinEvent', p('e'), n('bausteinThema', p('t'))), p('z')]);
     expect(ergebnis(doc, stelle(doc, 't'), 'bausteinAnwaerter')).toContain('[[e [t]] # z]');
   });
 

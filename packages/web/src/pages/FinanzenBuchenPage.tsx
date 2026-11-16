@@ -126,6 +126,7 @@ export function FinanzenBuchenPage() {
   }, [ungespeichert]);
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       // Same content keeps the key (retry, double click); changed content gets a new one.
       const inhalt = JSON.stringify(buchungBody(kopf, stand, ''));

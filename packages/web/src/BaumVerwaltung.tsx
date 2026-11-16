@@ -162,6 +162,7 @@ export function BaumVerwaltung({ konfig }: Readonly<{ konfig: BaumKonfiguration 
     await neuLaden();
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: (g: BaumKnoten) => archivieren(g, !g.archiviert),
     onError: (e) => fehlerAnzeigen(e),
   });
