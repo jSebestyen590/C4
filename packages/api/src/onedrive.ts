@@ -362,8 +362,7 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
     };
   };
 
-  /** Renews the tokens with the refresh token. On `invalid_grant` the connection is dropped. */
-  const erneuern = async (row: VerbindungRow): Promise<string> => {
+  const erneuernAusfuehren = async (row: VerbindungRow): Promise<string> => {
     if (!row.refreshToken) throw new NichtVerbunden();
     const jetztWert = jetzt();
     const erg = await tokenAnfrage(row, {
@@ -389,6 +388,16 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
       fehler: null,
     });
     return a.access_token;
+  };
+
+  // The refresh token rotates, so two parallel renewals would invalidate each other: share one.
+  let laufendeErneuerung: Promise<string> | null = null;
+  /** Renews the tokens with the refresh token. On `invalid_grant` the connection is dropped. */
+  const erneuern = (row: VerbindungRow): Promise<string> => {
+    laufendeErneuerung ??= erneuernAusfuehren(row).finally(() => {
+      laufendeErneuerung = null;
+    });
+    return laufendeErneuerung;
   };
 
   const zugriffstoken = async (

@@ -20,12 +20,12 @@ Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank a
 
 ## Dateien
 
-| Bereich | Dateien                                                                                                                                                                                                    |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/mitglieder.ts` (Store, Status-Verlauf), `admin.ts` (Cognito-Verwaltung), `auth.ts` (Rechte, Deaktivierung), `profilbilder.ts`, `emailaenderung.ts`; Routen und `alsMitglied` in `app.ts` |
-| Shared  | `packages/shared/src/roles.ts` (Rechte), `status.ts`, `statusVerlauf.ts`, `kontakt.ts` (Kanäle, Telefon, vCard)                                                                                            |
-| Web     | Seiten `pages/MitgliederPage.tsx`, `MitgliedPage.tsx`, `ProfilPage.tsx`; `auth.tsx`, `StatusAnzeige.tsx` (`StatusName`), `KontaktkanalIcons.tsx`, `vcard.ts`, `i18n.ts`                                    |
-| Tests   | `packages/shared/src/status.test.ts`, `statusVerlauf.test.ts`, `kontakt.test.ts`, `roles.test.ts`; `packages/api/src/mitglieder.test.ts`, `profilbilder.test.ts`                                           |
+| Bereich | Dateien                                                                                                                                                                                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | `packages/api/src/mitglieder.ts` (Store, Status-Verlauf), `admin.ts` (Cognito-Verwaltung), `auth.ts` (Rechte, Deaktivierung), `profilbilder.ts`, `emailaenderung.ts`; Routen in `routes/me.ts`, `routes/mitglieder.ts`, `routes/admin.ts`, `alsMitglied` in `routes/kontext.ts` |
+| Shared  | `packages/shared/src/roles.ts` (Rechte), `status.ts`, `statusVerlauf.ts`, `kontakt.ts` (Kanäle, Telefon, vCard)                                                                                                                                                                 |
+| Web     | Seiten `pages/MitgliederPage.tsx`, `MitgliedPage.tsx`, `ProfilPage.tsx`; `auth.tsx`, `StatusAnzeige.tsx` (`StatusName`), `KontaktkanalIcons.tsx`, `vcard.ts`, `i18n.ts`                                                                                                         |
+| Tests   | `packages/shared/src/status.test.ts`, `statusVerlauf.test.ts`, `kontakt.test.ts`, `roles.test.ts`; `packages/api/src/mitglieder.test.ts`, `profilbilder.test.ts`                                                                                                                |
 
 ## Datenmodell
 
@@ -53,7 +53,7 @@ hinzugefügte Spalten sind deshalb nullable.
 ## Was andere Mitglieder sehen
 
 `GET /api/mitglieder` und `GET /api/mitglieder/:kennung` (Recht `mitglieder:lesen`, das **alle** Status haben) liefern für jedes Mitglied denselben
-Datensatz (`alsMitglied` in `packages/api/src/app.ts`): Vorname, Nachname, Anrede, Username, **E-Mail**, **Adresse**, **Telefon**, Über mich,
+Datensatz (`alsMitglied` in `packages/api/src/routes/kontext.ts`): Vorname, Nachname, Anrede, Username, **E-Mail**, **Adresse**, **Telefon**, Über mich,
 Kontaktkanäle, Discord-Name, Profilbild-URLs (klein und groß), **Geburtsdatum**, `geburtstagImKalender`, `wohnheim`, Status, `deaktiviert`, `aktiviert` und die aktuellen Posten.
 Das ist die **geltende Regel**, nicht ein Versehen: Es gibt keine Freigabe pro Feld und keine Einschränkung nach Status (beim Geburtsdatum
 steht im Code ausdrücklich „Always visible“). Ausnahmen: `rollen` bekommen nur Admins (`users:manage`), und Deaktivierte stehen nur auf Anfrage (`?deaktivierte=1`, Admins) in der

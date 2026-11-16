@@ -56,6 +56,7 @@ import {
   gegenstandPlaetze,
   ifcos,
   inventuren,
+  inventurKnoten,
   inventurZaehlungen,
   lagerortWaren,
   lagerorte,
@@ -72,6 +73,7 @@ import {
   type WareRow,
   type WarengruppeRow,
 } from './db/schema';
+import { sperreBeruehren } from './db/sperren';
 import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 
 // ---------------------------------------------------------------------------
@@ -358,6 +360,23 @@ export function inventurKnotenIds(
     lagerorteAlle.filter((l) => !l.archiviert && !mitIfcos.has(l.id)),
     wurzelId,
   ).map((l) => l.id);
+}
+
+/**
+ * True when an open Inventur at one of `offeneLagerortIds` covers the Lagerort `lagerortId`, is
+ * covered by it (ancestor or descendant) or sits on it: such Inventuren would count the same places.
+ */
+export function inventurUeberlappt(
+  lagerorteAlle: (BaumKnoten & { archiviert: boolean })[],
+  offeneLagerortIds: readonly string[],
+  lagerortId: string,
+): boolean {
+  const neu = new Set(inventurKnotenIds(lagerorteAlle, lagerortId));
+  neu.add(lagerortId);
+  return offeneLagerortIds.some(
+    (offen) =>
+      neu.has(offen) || inventurKnotenIds(lagerorteAlle, offen).some((id) => id === lagerortId),
+  );
 }
 
 export interface ZaehlungDaten {
@@ -1164,6 +1183,7 @@ export function createWarenStore(db: Db): WarenStore {
           gibtEs(tx, bestandsbuchungen, eq(bestandsbuchungen.lagerortId, id)),
           gibtEs(tx, lagerortWaren, eq(lagerortWaren.lagerortId, id)),
           gibtEs(tx, inventuren, eq(inventuren.lagerortId, id)),
+          gibtEs(tx, inventurKnoten, eq(inventurKnoten.lagerortId, id)),
           gibtEs(tx, inventurZaehlungen, eq(inventurZaehlungen.lagerortId, id)),
           gibtEs(tx, ifcos, and(eq(ifcos.lagerortId, id), eq(ifcos.archiviert, false))),
           gibtEs(tx, gegenstandPlaetze, eq(gegenstandPlaetze.lagerortId, id)),
@@ -1697,6 +1717,12 @@ export function createWarenStore(db: Db): WarenStore {
     },
     async inventurStarten(lagerortId, sub) {
       return db.transaction(async (tx) => {
+        const alle = await tx.select().from(lagerorte);
+        // Touch the Lagerort and its descendants: Inventuren on a parent and a child then conflict.
+        await sperreBeruehren(
+          tx,
+          ...[lagerortId, ...inventurKnotenIds(alle, lagerortId)].map((id) => `lagerort:${id}`),
+        );
         await buchbarerLagerort(tx, lagerortId);
         const offen = await gibtEs(
           tx,
@@ -1705,6 +1731,21 @@ export function createWarenStore(db: Db): WarenStore {
         );
         if (offen) {
           throw new WarenKonflikt('Für diesen Lagerort läuft bereits eine Inventur.');
+        }
+        const offene = await tx
+          .select({ lagerortId: inventuren.lagerortId })
+          .from(inventuren)
+          .where(eq(inventuren.status, 'offen'));
+        if (
+          inventurUeberlappt(
+            alle,
+            offene.map((o) => o.lagerortId),
+            lagerortId,
+          )
+        ) {
+          throw new WarenKonflikt(
+            'Für einen übergeordneten oder untergeordneten Lagerort läuft schon eine Inventur.',
+          );
         }
         const id = randomUUID();
         await tx.insert(inventuren).values({ id, lagerortId, status: 'offen', gestartetVon: sub });
@@ -1843,6 +1884,8 @@ export function createWarenStore(db: Db): WarenStore {
       };
     },
     async inventurAbschliessen(id, zeitpunkt, sub) {
+      // No lock key needed: two concurrent closings both write the same inventuren row, so one
+      // conflicts and its retry reads status 'abgeschlossen' (WarenKonflikt).
       return db.transaction(async (tx) => {
         const kontext = await inventurKontext(tx, id);
         if (!kontext) return undefined;

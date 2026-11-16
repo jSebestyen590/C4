@@ -81,6 +81,19 @@ describe('token handling', () => {
     expect(store.row?.accessAblauf?.getTime()).toBe(JETZT.getTime() + 3600_000);
   });
 
+  it('shares one token renewal between parallel calls', async () => {
+    const store = createMemoryOneDriveStore(verbunden({ accessAblauf: new Date(0) }));
+    const m = mock((a) =>
+      a.url.includes('/token')
+        ? json(200, { access_token: 'a2', refresh_token: 'r2', expires_in: 3600 })
+        : json(200, { value: [] }),
+    );
+    const od = createOneDrive({ store, fetch: m.fetchFn, jetzt: () => JETZT });
+    await Promise.all(Array.from({ length: 6 }, () => od.ordnerListen()));
+    expect(m.aufrufe.filter((a) => a.url.includes('/token'))).toHaveLength(1);
+    expect(m.aufrufe.filter((a) => !a.url.includes('/token'))).toHaveLength(6);
+  });
+
   it('drops the connection and sets an error on invalid_grant', async () => {
     const store = createMemoryOneDriveStore(verbunden({ accessAblauf: new Date(0) }));
     const m = mock(() => json(400, { error: 'invalid_grant' }));

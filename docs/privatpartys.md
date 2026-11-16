@@ -20,7 +20,7 @@ Migrationen `0120`–`0129` (siehe [datenbank.md](./datenbank.md)); Text-IDs, ke
 - `privatparty_nachrichten`: Mails einer Anfrage (`richtung` `ein`/`aus`, `message_id` eindeutig, `in_reply_to`, `referenzen`, `von_adresse`
   (bei eingehenden die Antwortadresse: Reply-To, sonst From), `von_name`, `an_adresse`, `betreff`, `text`, `anhaenge` (nur Dateinamen),
   `zeitpunkt`, `mitglied_sub` (Absender:in bei `aus`)). `mail_abruf`: eine Zeile `partymail` mit `uid_validity`, `letzte_uid`,
-  `letzter_abruf`, `fehler`. Die Liste zeigt „Unbeantwortet“, wenn die letzte Nachricht eingehend ist (`unbeantwortet` im DTO).
+  `letzter_abruf`, `fehler`, `laeuft_bis` (Lease, siehe Abruf-Job). Die Liste zeigt „Unbeantwortet“, wenn die letzte Nachricht eingehend ist (`unbeantwortet` im DTO).
 - Shared: `packages/shared/src/privatpartys.ts` (Schemas, DTOs, `privatpartyOptionName`). Store `packages/api/src/privatpartys.ts`
   (+ `.fake.ts`), DTOs `privatpartyAnsicht.ts`.
 
@@ -108,6 +108,9 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
     der nächste Abruf es erneut versucht, und eine dafür neu angelegte leere Anfrage wird wieder gelöscht. Der Text einer Mail wird auf 20.000 Zeichen gekürzt.
   - `POST /api/privatpartys/mail/abrufen` („Jetzt abrufen“ auf der Liste) startet einen Lauf; `GET /api/privatpartys/mail-status`
     liefert `eingerichtet`, `letzterAbruf`, `fehler`.
+  - **Lease:** Jeder Lauf belegt vorab `mail_abruf.laeuft_bis` (60 s) mit einem bedingten Upsert (`laeuft_bis` leer oder
+    abgelaufen) und gibt es am Ende frei. Läuft schon ein Lauf (oder meldet DSQL dabei `40001`), wird der Lauf übersprungen;
+    „Jetzt abrufen“ antwortet dann 409 „Der Abruf läuft gerade schon.“ Ein abgestürzter Lauf blockiert höchstens 60 s.
 - **Antworten** (`POST /api/privatpartys/:id/nachrichten { text }`): eigene `Message-ID` (`<uuid@Domain der Party-Mail>`), `In-Reply-To`
   und `References` aus der letzten Nachricht, Betreff „Re: …“ (ohne doppeltes „Re:“) bzw. „Deine Anfrage beim C4“ ohne Nachricht.
   Ziel ist `mail_adresse`, sonst die E-Mail der Person (sonst 400). Danach wird die Mail per IMAP APPEND im Gesendet-Ordner abgelegt
@@ -123,6 +126,10 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
   passender E-Mail, oder neue Person mit Name und Adresse vorbelegt) und öffnet danach das Formular für die Wunschtermine.
 - Module: `partymail.ts` (IMAP/SMTP mit `imapflow`, `nodemailer`; Secret), `partymailParsen.ts` (`mailparser`, `html-to-text`, Thread-Zuordnung),
   `partymailTypen.ts`, `partymail.fake.ts` (Tests). Anhänge werden nicht gespeichert, nur ihre Namen angezeigt.
+- **Spam und Fälschungen**: Das Postfach liegt bei netcup; dessen Spamfilter sortiert aus, abgerufen wird nur `ordnerEingang`
+  (`INBOX`, nicht der Spam-Ordner). Eine eigene SPF/DKIM-Prüfung oder Mengenbegrenzung gibt es bewusst nicht
+  ([Issue 38](https://github.com/jSebestyen590/C4/issues/38)). Restrisiken: Jede Mail im Posteingang wird eine Anfrage mit Push,
+  und ein gefälschtes `In-Reply-To` hängt eine Mail an eine bestehende Anfrage und überschreibt deren `mail_adresse`.
 
 ## Benachrichtigungen
 

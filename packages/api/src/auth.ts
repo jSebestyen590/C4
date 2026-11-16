@@ -57,6 +57,8 @@ export function authenticate(
   postenRechteOf: (sub: string) => Promise<Permission[]>,
 ) {
   return createMiddleware<AuthEnv>(async (c, next) => {
+    // The default-deny guard in `createApp` already ran this; the per-route `auth` must not load the profile again.
+    if (c.get('user')) return next();
     const header = c.req.header('authorization');
     const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
     if (!token) throw new HTTPException(401, { message: 'Missing bearer token' });
