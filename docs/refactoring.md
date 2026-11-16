@@ -149,9 +149,21 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 - Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
   verlangen sie (`protokolle.md`, Migrationen 0163–0165).
+- Protokoll abschließen und „Ausführen“ belegen die Version, bevor die Aktionen laufen (`statusBelegen`, `aktionenBelegen`);
+  ein paralleler Aufruf ist 409 ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), `protokolle/aktionen.md`).
 - `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
 - Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
+
+**Nach PR #33** ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), PR A: Tabelle `sperren`)
+
+- `sperreBeruehren` (`db/sperren.ts`, Migration 0167) vor Prüfen-dann-Einfügen: Ausleihe anlegen/ändern (`gegenstand:<id>`),
+  Inventur starten (`lagerort:<id>` für den Lagerort und alle Nachfahren), Aufräumaktion starten (`aufraeumaktion`), Besetzung
+  anlegen/ändern (`besetzung:<posten>:<mitglied>`), Umfrage bearbeiten und abstimmen (`umfrage:<id>`).
+- Inventur starten lehnt auch eine offene Inventur auf einem über- oder untergeordneten Lagerort ab (409); die Prüfung fehlte.
+- Abstimmen prüft den Stimmzettel in der Transaktion noch einmal gegen die aktuellen Optionen (409 bei entfernter Option).
+- Kein Wettlauf, nur begründet: `inventurAbschliessen` (beide Aufrufe schreiben dieselbe `inventuren`-Zeile, der Retry sieht
+  „abgeschlossen“); `gegenstaende.anzahl` (parallele Buchungen schreiben dieselbe Zeile; höchstens Drift, Vertragstests in Issue 48).
 
 **Nach PR #33** ([Issue 39](https://github.com/jSebestyen590/C4/issues/39))
 
@@ -203,21 +215,14 @@ Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36
 `gegenstaende.anzahl` sind kein Wettlauf (beide Transaktionen schreiben dieselbe Zeile und kollidieren korrekt) und
 entfallen.
 
-Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe je Stelle: in der
-Transaktion eine gemeinsame Zeile anfassen (z. B. `aktualisiert_am` des Gegenstands oder Lagerorts) oder ein Unique-Index.
+Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe: `sperreBeruehren`
+(Tabelle `sperren`, siehe `docs/datenbank.md`). Die Stellen für Ausleihe, Inventur, Aufräumaktion, Besetzung, Umfrage und Protokoll sind
+erledigt (siehe unten); es bleiben:
 
-| Stelle                                                  | Folge                                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `ausleiheAnlegen`, `positionenPruefen` (`inventar.ts`)  | derselbe Gegenstand wird doppelt verliehen                                                 |
-| Inventur starten (`waren.ts`)                           | zwei offene Inventuren je Lagerort; auch Eltern- und Kind-Lagerort gleichzeitig            |
-| Aufräumaktion starten (`inventar.ts`)                   | zwei offene Aufräumaktionen                                                                |
-| `besetzungAnlegen` (`posten.ts`)                        | überlappende Besetzungen einer Person                                                      |
-| `inventurAbschliessen` (`waren.ts`)                     | Korrekturen doppelt gebucht (unsicher)                                                     |
-| Protokoll abschließen, „Ausführen“ (`app.ts`)           | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
-| Umfrage bearbeiten während einer Stimmabgabe (`app.ts`) | Stimme behält eine entfernte Option (unsicher)                                             |
-| Party-Mail: Cron und „Jetzt abrufen“ gleichzeitig       | Fehler im Abrufstatus; leere Anfrage wird inzwischen weggeräumt                            |
-| OneDrive `erneuern` ohne Sperre, 6 parallele Worker     | Refresh-Token-Rotation kann einen Aufruf scheitern lassen (unsicher)                       |
-| `gegenstaende.anzahl` (`bewegungBuchen`)                | handgeführter Zähler ohne Abgleich gegen die Bewegungen                                    |
+| Stelle                                              | Folge                                                                |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
+| Party-Mail: Cron und „Jetzt abrufen“ gleichzeitig   | Fehler im Abrufstatus; leere Anfrage wird inzwischen weggeräumt      |
+| OneDrive `erneuern` ohne Sperre, 6 parallele Worker | Refresh-Token-Rotation kann einen Aufruf scheitern lassen (unsicher) |
 
 ### 2. Infrastruktur und Deploy
 

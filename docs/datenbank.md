@@ -121,6 +121,15 @@ Zeilen, schlägt eine mit SQLSTATE `40001` (Codes `OC000`/`OC001`) fehl.
   dasselbe geändert. Bitte versuch es noch einmal.“ und bei einer Unique- oder Fremdschlüssel-Verletzung
   (`23505`, `23503`) mit 409 „Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und
   versuch es noch einmal.“ Beides wird weiterhin geloggt. Alles andere bleibt 500.
+- **Prüfen, dann einfügen:** DSQL erkennt Konflikte nur an Zeilen, die beide Transaktionen _schreiben_. Liest eine
+  Transaktion nur und fügt dann ein (z. B. „gibt es schon eine offene Inventur?“), kollidieren zwei parallele nie. Deshalb
+  ruft sie innerhalb derselben Transaktion **vor der Prüfung** `sperreBeruehren(tx, ...schluessel)` (`db/sperren.ts`) auf: ein
+  `INSERT … ON CONFLICT DO UPDATE` in die Tabelle `sperren` (ein Schlüssel je umkämpfter Sache, sortiert und ohne Dopplungen
+  geschrieben). Die zweite Transaktion schreibt dieselbe Zeile und scheitert mit 40001; der Retry sieht dann das Ergebnis der
+  ersten und lehnt fachlich ab. Schlüssel: `gegenstand:<id>`, `lagerort:<id>`, `aufraeumaktion`,
+  `besetzung:<posten>:<mitglied>`, `umfrage:<id>`. Nötig nur, wenn zwei verschiedene Abläufe dieselbe Regel prüfen und keine
+  gemeinsame Zeile schreiben; schreiben beide ohnehin dieselbe Zeile (z. B. `inventuren` beim Abschließen), reicht der Retry.
+  Die Fakes brauchen keine Sperre. Echtes Verhalten lässt sich nur auf dev prüfen (zwei gleichzeitige Requests).
 - **Regel für neuen Code:** In einem Transaktions-Callback nur Datenbankarbeit. Er kann mehrfach laufen;
   S3, Cognito, OneDrive, Mail, Push, `fetch` und das Ändern von Variablen außerhalb des Callbacks gehören
   davor oder danach.

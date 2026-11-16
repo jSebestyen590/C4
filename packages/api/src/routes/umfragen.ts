@@ -22,7 +22,7 @@ import {
   privatpartyOptionName,
 } from '@c4/shared';
 import { bestEffort } from '../benachrichtigungen';
-import { type UmfragenCursor } from '../umfragen';
+import { UmfrageKonflikt, type UmfragenCursor } from '../umfragen';
 import {
   alsDetailDto,
   alsListeDto,
@@ -447,14 +447,26 @@ export const umfragenRoutes = (ctx: RoutenKontext) => {
             zettel,
           );
           if (fehler) throw new HTTPException(400, { message: fehler });
-          await deps.umfragen.abstimmen(
-            u.id,
-            a.sub,
-            zettel.antworten.flatMap((x) => [
-              ...x.optionIds.map((optionId) => ({ frageId: x.frageId, optionId, freitext: null })),
-              ...(x.freitext ? [{ frageId: x.frageId, optionId: null, freitext: x.freitext }] : []),
-            ]),
-          );
+          await deps.umfragen
+            .abstimmen(
+              u.id,
+              a.sub,
+              zettel.antworten.flatMap((x) => [
+                ...x.optionIds.map((optionId) => ({
+                  frageId: x.frageId,
+                  optionId,
+                  freitext: null,
+                })),
+                ...(x.freitext
+                  ? [{ frageId: x.frageId, optionId: null, freitext: x.freitext }]
+                  : []),
+              ]),
+            )
+            .catch((e: unknown) => {
+              if (e instanceof UmfrageKonflikt)
+                throw new HTTPException(409, { message: e.message });
+              throw e;
+            });
           return c.json({ ok: true });
         },
       )
