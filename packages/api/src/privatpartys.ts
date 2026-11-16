@@ -388,19 +388,20 @@ export function createPrivatpartysStore(db: Db): PrivatpartysStore {
     zusagen: (id, terminId, eventId) => aendern(id, { status: 'zugesagt', terminId, eventId }),
     statusSetzen: (id, status) => aendern(id, { status, terminId: null, eventId: null }),
     async loeschen(id) {
-      const [row] = await db.select().from(privatpartys).where(eq(privatpartys.id, id));
-      if (!row) return 'nicht_gefunden';
-      const [nachricht] = await db
-        .select({ id: privatpartyNachrichten.id })
-        .from(privatpartyNachrichten)
-        .where(eq(privatpartyNachrichten.privatpartyId, id))
-        .limit(1);
-      if (row.eventId || nachricht) return 'in_benutzung';
-      await db.transaction(async (tx: Tx) => {
+      // Checked inside the transaction, so a Nachricht arriving meanwhile is not orphaned.
+      return db.transaction(async (tx: Tx) => {
+        const [row] = await tx.select().from(privatpartys).where(eq(privatpartys.id, id));
+        if (!row) return 'nicht_gefunden';
+        const [nachricht] = await tx
+          .select({ id: privatpartyNachrichten.id })
+          .from(privatpartyNachrichten)
+          .where(eq(privatpartyNachrichten.privatpartyId, id))
+          .limit(1);
+        if (row.eventId || nachricht) return 'in_benutzung';
         await tx.delete(privatpartyTermine).where(eq(privatpartyTermine.privatpartyId, id));
         await tx.delete(privatpartys).where(eq(privatpartys.id, id));
+        return 'ok';
       });
-      return 'ok';
     },
 
     async nachrichten(privatpartyId) {

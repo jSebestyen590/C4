@@ -183,7 +183,8 @@ geplante Zeilen auf Bestandsposten an, damit mehrere Positionen nacheinander gep
 
 `GET /waren/:id/vorgaenge` liefert je Vorgang `weitereZeilen` (Zeilen anderer Waren im selben Vorgang).
 
-Inventur: pro Lagerort höchstens eine offene (409). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
+Inventur: pro Lagerort höchstens eine offene (409); auch auf einem über- oder untergeordneten Lagerort darf keine offene
+laufen (409 „Für einen übergeordneten oder untergeordneten Lagerort läuft schon eine Inventur.“). Der Entwurf liegt auf dem Server; beim Abschluss entsteht ein
 Vorgang (`typ=inventur`, `quelle=inventur`) mit den Korrekturen gegenüber dem Soll zum gewählten Zeitpunkt. Nur
 gespeicherte Zählwerte erzeugen Differenzen: ein Soll-Schlüssel (Platz, Ware, Gebinde, MHD) ohne Zählwert gilt als korrekt
 (Ist = Soll), eine ausdrückliche 0 bedeutet „nichts da“. Die Tabelle `inventur_knoten` wird nicht mehr genutzt und nicht mehr abgefragt (sie bleibt im Schema).

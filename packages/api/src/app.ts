@@ -76,53 +76,67 @@ export interface AppDeps {
   pingDb: () => Promise<void>;
 }
 
+/** Routes without a token: health, calendar feed and vCard (the token is part of the path). */
+export const OEFFENTLICH = ['/api/health', '/api/kalender/feed/', '/api/vcard/'];
+
 export function createApp(deps: AppDeps) {
   const ctx = baueKontext(deps);
-  return new Hono<AuthEnv>()
-    .basePath('/api')
-    .route('/', healthRoutes(ctx))
-    .route('/', meRoutes(ctx))
-    .route('/', mitgliederRoutes(ctx))
-    .route('/', adminRoutes(ctx))
-    .route('/', postenRoutes(ctx))
-    .route('/', schluesselRoutes(ctx))
-    .route('/', privatpartysRoutes(ctx))
-    .route('/', todosRoutes(ctx))
-    .route('/', protokolleRoutes(ctx))
-    .route('/', trichterRoutes(ctx))
-    .route('/', finanzenRoutes(ctx))
-    .route('/', umfragenRoutes(ctx))
-    .route('/', warenRoutes(ctx))
-    .route('/', inventarRoutes(ctx))
-    .route('/', kalenderRoutes(ctx))
-    .route('/', bilderRoutes(ctx))
-    .route('/', vcardRoutes(ctx))
-    .route('/', pushRoutes(ctx))
-    .route('/', benachrichtigungenRoutes(ctx))
-    .onError((err, c) => {
-      if (err instanceof HTTPException) {
-        if (err.cause === DEAKTIVIERT) {
-          return c.json({ error: err.message, deaktiviert: true }, err.status);
+  return (
+    new Hono<AuthEnv>()
+      .basePath('/api')
+      // Default deny: every route needs a valid token unless it is on `OEFFENTLICH`. The per-route `auth`
+      // stays in place for the typed client and skips itself once this guard has authenticated the request.
+      .use('*', async (c, next) => {
+        const pfad = c.req.path;
+        if (OEFFENTLICH.some((p) => pfad === p || (p.endsWith('/') && pfad.startsWith(p)))) {
+          return next();
         }
-        return c.json({ error: err.message }, err.status);
-      }
-      console.error(err);
-      if (istKonflikt(err)) {
-        return c.json(
-          { error: 'Jemand anderes hat gerade dasselbe geändert. Bitte versuch es noch einmal.' },
-          409,
-        );
-      }
-      if (istDatenAbweichung(err)) {
-        return c.json(
-          {
-            error:
-              'Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und versuch es noch einmal.',
-          },
-          409,
-        );
-      }
-      return c.json({ error: 'Internal server error' }, 500);
-    });
+        return ctx.auth(c, next);
+      })
+      .route('/', healthRoutes())
+      .route('/', meRoutes(ctx))
+      .route('/', mitgliederRoutes(ctx))
+      .route('/', adminRoutes(ctx))
+      .route('/', postenRoutes(ctx))
+      .route('/', schluesselRoutes(ctx))
+      .route('/', privatpartysRoutes(ctx))
+      .route('/', todosRoutes(ctx))
+      .route('/', protokolleRoutes(ctx))
+      .route('/', trichterRoutes(ctx))
+      .route('/', finanzenRoutes(ctx))
+      .route('/', umfragenRoutes(ctx))
+      .route('/', warenRoutes(ctx))
+      .route('/', inventarRoutes(ctx))
+      .route('/', kalenderRoutes(ctx))
+      .route('/', bilderRoutes(ctx))
+      .route('/', vcardRoutes(ctx))
+      .route('/', pushRoutes(ctx))
+      .route('/', benachrichtigungenRoutes(ctx))
+      .onError((err, c) => {
+        if (err instanceof HTTPException) {
+          if (err.cause === DEAKTIVIERT) {
+            return c.json({ error: err.message, deaktiviert: true }, err.status);
+          }
+          return c.json({ error: err.message }, err.status);
+        }
+        console.error(err);
+        if (istKonflikt(err)) {
+          return c.json(
+            { error: 'Jemand anderes hat gerade dasselbe geändert. Bitte versuch es noch einmal.' },
+            409,
+          );
+        }
+        if (istDatenAbweichung(err)) {
+          return c.json(
+            {
+              error:
+                'Das passt nicht mehr zum aktuellen Stand. Bitte lade die Seite neu und versuch es noch einmal.',
+            },
+            409,
+          );
+        }
+        return c.json({ error: 'Internal server error' }, 500);
+      })
+  );
 }
 export type AppType = ReturnType<typeof createApp>;
