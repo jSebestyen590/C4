@@ -155,7 +155,7 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 
 **Nach PR #33** ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), PR A: Tabelle `sperren`)
 
-- `sperreBeruehren` (`db/sperren.ts`, Migration 0166) vor Prüfen-dann-Einfügen: Ausleihe anlegen/ändern (`gegenstand:<id>`),
+- `sperreBeruehren` (`db/sperren.ts`, Migration 0167) vor Prüfen-dann-Einfügen: Ausleihe anlegen/ändern (`gegenstand:<id>`),
   Inventur starten (`lagerort:<id>` für den Lagerort und alle Nachfahren), Aufräumaktion starten (`aufraeumaktion`), Besetzung
   anlegen/ändern (`besetzung:<posten>:<mitglied>`), Umfrage bearbeiten und abstimmen (`umfrage:<id>`).
 - Inventur starten lehnt auch eine offene Inventur auf einem über- oder untergeordneten Lagerort ab (409); die Prüfung fehlte.
