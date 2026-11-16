@@ -5,8 +5,6 @@ import {
   Group,
   Loader,
   Modal,
-  Paper,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -30,6 +28,7 @@ import { useAuth } from '../auth';
 import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { leerePostenWerte, PostenFelder, type PostenWerte } from '../PostenFelder';
+import { KartenOderTabelle, KlickKarte } from '../KartenOderTabelle';
 
 /** Username of a holder, falling back to the full name while they have none. */
 export const besetzungName = (b: Besetzung) => mitgliedName(b.mitglied);
@@ -129,93 +128,69 @@ export function PostenPage() {
       {posten.isPending && <Loader m="md" aria-label="Posten werden geladen" />}
       {posten.isError && <Alert color="red">Die Posten konnten nicht geladen werden.</Alert>}
       {posten.data && posten.data.length === 0 && <Text c="dimmed">Keine Posten vorhanden.</Text>}
-      <SimpleGrid cols={1} hiddenFrom="sm">
-        {posten.data?.map((p) => {
-          return (
-            <Paper
-              key={p.id}
-              withBorder
-              p="md"
-              component={Link}
-              to={`/posten/${encodeURIComponent(p.id)}`}
-              style={{
-                color: 'inherit',
-                textDecoration: 'none',
-                opacity: p.archiviert ? 0.6 : 1,
-              }}
-            >
-              <Stack gap="xs">
-                <Group gap="xs" justify="space-between" wrap="nowrap" align="flex-start">
-                  <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+      <KartenOderTabelle
+        zeilen={posten.data ?? []}
+        zeilenKey={(p) => p.id}
+        minWidth={760}
+        karte={(p) => (
+          <KlickKarte to={`/posten/${encodeURIComponent(p.id)}`} opacity={p.archiviert ? 0.6 : 1}>
+            <Stack gap="xs">
+              <Group gap="xs" justify="space-between" wrap="nowrap" align="flex-start">
+                <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                  {p.name}
+                </Text>
+                {p.archiviert && (
+                  <Badge color="gray" variant="light">
+                    Archiviert
+                  </Badge>
+                )}
+              </Group>
+              <Besetzer posten={p} />
+            </Stack>
+          </KlickKarte>
+        )}
+        kopf={
+          <Table.Tr>
+            <Table.Th>Posten</Table.Th>
+            <Table.Th>Besetzung</Table.Th>
+            <Table.Th>Beschreibung</Table.Th>
+          </Table.Tr>
+        }
+        zeile={(p) => (
+          <Table.Tr
+            opacity={p.archiviert ? 0.6 : 1}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              // The name is a real link (keyboard, middle click); it navigates on its own.
+              if (!(e.target as HTMLElement).closest('a')) navigate(postenLink(p.id));
+            }}
+          >
+            <Table.Td>
+              <Group gap="xs" wrap="nowrap">
+                {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+                <Link to={postenLink(p.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <Text component="span" style={{ overflowWrap: 'anywhere' }}>
                     {p.name}
                   </Text>
-                  {p.archiviert && (
-                    <Badge color="gray" variant="light">
-                      Archiviert
-                    </Badge>
-                  )}
-                </Group>
-                <Besetzer posten={p} />
-              </Stack>
-            </Paper>
-          );
-        })}
-      </SimpleGrid>
-      {posten.data && posten.data.length > 0 && (
-        <Table.ScrollContainer minWidth={760} visibleFrom="sm">
-          <Table verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Posten</Table.Th>
-                <Table.Th>Besetzung</Table.Th>
-                <Table.Th>Beschreibung</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {posten.data.map((p) => {
-                return (
-                  <Table.Tr
-                    key={p.id}
-                    opacity={p.archiviert ? 0.6 : 1}
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => {
-                      // The name is a real link (keyboard, middle click); it navigates on its own.
-                      if (!(e.target as HTMLElement).closest('a')) navigate(postenLink(p.id));
-                    }}
-                  >
-                    <Table.Td>
-                      <Group gap="xs" wrap="nowrap">
-                        {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
-                        <Link
-                          to={postenLink(p.id)}
-                          style={{ color: 'inherit', textDecoration: 'none' }}
-                        >
-                          <Text component="span" style={{ overflowWrap: 'anywhere' }}>
-                            {p.name}
-                          </Text>
-                        </Link>
-                        {p.archiviert && (
-                          <Badge color="gray" variant="light">
-                            Archiviert
-                          </Badge>
-                        )}
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      <Besetzer posten={p} />
-                    </Table.Td>
-                    <Table.Td>
-                      <Text lineClamp={2} style={{ whiteSpace: 'pre-line' }}>
-                        {p.beschreibung}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+                </Link>
+                {p.archiviert && (
+                  <Badge color="gray" variant="light">
+                    Archiviert
+                  </Badge>
+                )}
+              </Group>
+            </Table.Td>
+            <Table.Td>
+              <Besetzer posten={p} />
+            </Table.Td>
+            <Table.Td>
+              <Text lineClamp={2} style={{ whiteSpace: 'pre-line' }}>
+                {p.beschreibung}
+              </Text>
+            </Table.Td>
+          </Table.Tr>
+        )}
+      />
     </Stack>
   );
 }

@@ -26,6 +26,7 @@ import {
 } from '@c4/shared';
 import { TrichterPerson, useTrichterUebersicht } from './trichterDaten';
 import { literAnzeigen, trichterName } from './trichterAnzeige';
+import { KartenOderTabelle } from './KartenOderTabelle';
 
 const SPALTEN: { value: RanglisteSpalte; label: string }[] = [
   { value: 'anzahl', label: 'Anzahl' },
@@ -177,66 +178,60 @@ export function TrichterRangliste({
       {uebersicht.data && zeilen.length === 0 && (
         <Text c="dimmed">Dafür gibt es noch keine Einträge.</Text>
       )}
-      {sortiert.length > 0 && (
-        <>
-          <Stack gap="xs" hiddenFrom="sm">
-            {sortiert.map((z) => (
-              <Paper key={z.mitglied.sub} withBorder p="sm" radius="md">
-                <Group gap="sm" wrap="nowrap" align="center">
-                  <Text fw={700} c="dimmed" w={32} ta="center">
-                    {platz.get(z.mitglied.sub)}.
-                  </Text>
-                  <Text style={{ flex: 1, minWidth: 0 }}>
-                    <TrichterPerson mitglied={z.mitglied} />
-                  </Text>
-                  <Text size="sm" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                    {z.anzahl}× · {literAnzeigen(z.ml)}
-                  </Text>
-                </Group>
-              </Paper>
-            ))}
-          </Stack>
-          <Table.ScrollContainer minWidth={420} visibleFrom="sm">
-            <Table verticalSpacing="xs">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th w={80}>Platz</Table.Th>
-                  <Kopfzelle
-                    text="Mitglied"
-                    spalte="name"
-                    sortierung={sortierung}
-                    onSortieren={sortieren}
-                  />
-                  <Kopfzelle
-                    text="Anzahl"
-                    spalte="anzahl"
-                    sortierung={sortierung}
-                    onSortieren={sortieren}
-                  />
-                  <Kopfzelle
-                    text="Liter"
-                    spalte="liter"
-                    sortierung={sortierung}
-                    onSortieren={sortieren}
-                  />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {sortiert.map((z) => (
-                  <Table.Tr key={z.mitglied.sub}>
-                    <Table.Td>{platz.get(z.mitglied.sub)}.</Table.Td>
-                    <Table.Td>
-                      <TrichterPerson mitglied={z.mitglied} />
-                    </Table.Td>
-                    <Table.Td>{z.anzahl}</Table.Td>
-                    <Table.Td>{literAnzeigen(z.ml)}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </>
-      )}
+      <KartenOderTabelle
+        zeilen={sortiert}
+        zeilenKey={(z) => z.mitglied.sub}
+        minWidth={420}
+        kartenAlsStapel
+        karte={(z) => (
+          <Paper withBorder p="sm" radius="md">
+            <Group gap="sm" wrap="nowrap" align="center">
+              <Text fw={700} c="dimmed" w={32} ta="center">
+                {platz.get(z.mitglied.sub)}.
+              </Text>
+              <Text style={{ flex: 1, minWidth: 0 }}>
+                <TrichterPerson mitglied={z.mitglied} />
+              </Text>
+              <Text size="sm" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                {z.anzahl}× · {literAnzeigen(z.ml)}
+              </Text>
+            </Group>
+          </Paper>
+        )}
+        kopf={
+          <Table.Tr>
+            <Table.Th w={80}>Platz</Table.Th>
+            <Kopfzelle
+              text="Mitglied"
+              spalte="name"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
+            <Kopfzelle
+              text="Anzahl"
+              spalte="anzahl"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
+            <Kopfzelle
+              text="Liter"
+              spalte="liter"
+              sortierung={sortierung}
+              onSortieren={sortieren}
+            />
+          </Table.Tr>
+        }
+        zeile={(z) => (
+          <Table.Tr>
+            <Table.Td>{platz.get(z.mitglied.sub)}.</Table.Td>
+            <Table.Td>
+              <TrichterPerson mitglied={z.mitglied} />
+            </Table.Td>
+            <Table.Td>{z.anzahl}</Table.Td>
+            <Table.Td>{literAnzeigen(z.ml)}</Table.Td>
+          </Table.Tr>
+        )}
+      />
     </Stack>
   );
 }

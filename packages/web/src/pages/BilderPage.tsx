@@ -9,7 +9,6 @@ import {
   Group,
   Loader,
   Paper,
-  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -31,22 +30,15 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { bilderSuche, type BilderOrdnerDto } from '@c4/shared';
 import { useAuth } from '../auth';
+import { formatDatumZeit } from '../datum';
 import { BilderOrdnerModal } from '../BilderOrdnerModal';
 import { bilderDatum, bilderNachJahr } from '../bilderAnzeige';
 import { useBilderOrdner } from '../bilderDaten';
 import { useBilderTeilen } from '../bilderTeilen';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 /** "dd.mm. HH:mm" in Berlin time of an ISO instant. */
-const standText = (iso: string) =>
-  new Date(iso)
-    .toLocaleString('de-DE', {
-      timeZone: 'Europe/Berlin',
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    .replace(',', '');
+const standText = (iso: string) => formatDatumZeit(iso, 'ohneJahr');
 
 /** Link that opens the folder: the sharing link opens the OneDrive app on phones. */
 const ordnerLink = (o: BilderOrdnerDto) => o.freigabeUrl ?? o.webUrl;
@@ -124,61 +116,63 @@ function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
   );
 }
 
-/** Table from `sm` upward; the whole row opens the folder in OneDrive. */
-function BilderTabelle({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
+/** Folders as cards on phones and as a table from `sm`; the whole row opens the folder in OneDrive. */
+function BilderListe({ ordner }: Readonly<{ ordner: BilderOrdnerDto[] }>) {
   return (
-    <Table.ScrollContainer minWidth={480} visibleFrom="sm">
-      <Table verticalSpacing="xs" highlightOnHover layout="fixed">
-        {/* Same widths in every year table; the Event column takes the rest. */}
+    <KartenOderTabelle
+      zeilen={ordner}
+      zeilenKey={(o) => o.id}
+      minWidth={480}
+      tabelle={{ highlightOnHover: true, layout: 'fixed' }}
+      /* Same widths in every year table; the Event column takes the rest. */
+      spalten={
         <colgroup>
           <col style={{ width: '12rem' }} />
           <col />
           <col style={{ width: '6rem' }} />
           <col style={{ width: '4rem' }} />
         </colgroup>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Datum</Table.Th>
-            <Table.Th>Event</Table.Th>
-            <Table.Th />
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {ordner.map((o) => (
-            <Table.Tr
-              key={o.id}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest('a')) return;
-                window.open(ordnerLink(o), '_blank', 'noopener');
-              }}
+      }
+      karte={(o) => <BilderKarte ordner={o} />}
+      kopf={
+        <Table.Tr>
+          <Table.Th>Datum</Table.Th>
+          <Table.Th>Event</Table.Th>
+          <Table.Th />
+          <Table.Th />
+        </Table.Tr>
+      }
+      zeile={(o) => (
+        <Table.Tr
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('a')) return;
+            window.open(ordnerLink(o), '_blank', 'noopener');
+          }}
+        >
+          <Table.Td style={{ whiteSpace: 'nowrap' }}>
+            {bilderDatum(o.von, o.bis, o.genauigkeit) ?? '–'}
+          </Table.Td>
+          <Table.Td>
+            {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+            <a
+              href={ordnerLink(o)}
+              target="_blank"
+              rel="noopener"
+              style={{ color: 'inherit', textDecoration: 'none' }}
             >
-              <Table.Td style={{ whiteSpace: 'nowrap' }}>
-                {bilderDatum(o.von, o.bis, o.genauigkeit) ?? '–'}
-              </Table.Td>
-              <Table.Td>
-                {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
-                <a
-                  href={ordnerLink(o)}
-                  target="_blank"
-                  rel="noopener"
-                  style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                  <Text component="span" fw={700} style={{ overflowWrap: 'anywhere' }}>
-                    {o.eventName}
-                  </Text>
-                </a>
-              </Table.Td>
-              <Table.Td ta="right">{o.eventId && <EventBadge eventId={o.eventId} />}</Table.Td>
-              <Table.Td ta="right">
-                <TeilenKnopf ordner={o} size="lg" />
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+              <Text component="span" fw={700} style={{ overflowWrap: 'anywhere' }}>
+                {o.eventName}
+              </Text>
+            </a>
+          </Table.Td>
+          <Table.Td ta="right">{o.eventId && <EventBadge eventId={o.eventId} />}</Table.Td>
+          <Table.Td ta="right">
+            <TeilenKnopf ordner={o} size="lg" />
+          </Table.Td>
+        </Table.Tr>
+      )}
+    />
   );
 }
 
@@ -314,12 +308,7 @@ export function BilderPage() {
                 </Title>
                 <Collapse expanded={offen} id={regionId}>
                   <Box pt="xs">
-                    <SimpleGrid cols={1} hiddenFrom="sm">
-                      {g.ordner.map((o) => (
-                        <BilderKarte key={o.id} ordner={o} />
-                      ))}
-                    </SimpleGrid>
-                    <BilderTabelle ordner={g.ordner} />
+                    <BilderListe ordner={g.ordner} />
                   </Box>
                 </Collapse>
               </Stack>

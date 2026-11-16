@@ -5,7 +5,6 @@ import {
   Group,
   Loader,
   Paper,
-  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -15,6 +14,7 @@ import { IconPlus } from '@tabler/icons-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { datumAnzeigen, type UmfrageListeDto } from '@c4/shared';
 import { PersonLink, umfrageLink, useBeendeteUmfragen, useUmfragen } from '../umfrageDaten';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 /** Badges for the caller's state: mandatory/optional, voted, vote again, anonymous, ended. */
 export function UmfrageBadges({ u }: Readonly<{ u: UmfrageListeDto }>) {
@@ -87,69 +87,63 @@ function UmfrageKarte({ u }: Readonly<{ u: UmfrageListeDto }>) {
   );
 }
 
-/** Table from `sm` upward (like Mitglieder and Schlüssel); the whole row opens the poll. */
-function UmfrageTabelle({ liste }: Readonly<{ liste: UmfrageListeDto[] }>) {
+/** Cards on phones, a table from `sm` upward (like Mitglieder and Schlüssel); the whole row opens the poll. */
+function UmfrageListe({ liste }: Readonly<{ liste: UmfrageListeDto[] }>) {
   const navigate = useNavigate();
   return (
-    <Table.ScrollContainer minWidth={720} visibleFrom="sm">
-      <Table verticalSpacing="xs">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Umfrage</Table.Th>
-            <Table.Th>Status</Table.Th>
-            <Table.Th>Läuft bis</Table.Th>
-            <Table.Th>Abgestimmt</Table.Th>
-            <Table.Th>Erstellt von</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {liste.map((u) => (
-            <Table.Tr
-              key={u.id}
-              opacity={u.laeuft ? 1 : 0.75}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => {
-                // Links (e.g. the creator) act on their own.
-                if ((e.target as HTMLElement).closest('a')) return;
-                navigate(umfrageLink(u.id));
-              }}
-            >
-              <Table.Td>
-                {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
-                <Link to={umfrageLink(u.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
-                  <Text component="span" fw={600} style={{ overflowWrap: 'anywhere' }}>
-                    {u.titel}
-                  </Text>
-                </Link>
-              </Table.Td>
-              <Table.Td>
-                <UmfrageBadges u={u} />
-              </Table.Td>
-              <Table.Td>{u.laeuft ? datumAnzeigen(u.endetAm) : 'beendet'}</Table.Td>
-              <Table.Td>
-                {u.abgaben} von {u.kreisGroesse}
-              </Table.Td>
-              <Table.Td>{u.ersteller ? <PersonLink person={u.ersteller} /> : '–'}</Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+    <KartenOderTabelle
+      zeilen={liste}
+      zeilenKey={(u) => u.id}
+      minWidth={720}
+      kartenAbstand="sm"
+      karte={(u) => <UmfrageKarte u={u} />}
+      kopf={
+        <Table.Tr>
+          <Table.Th>Umfrage</Table.Th>
+          <Table.Th>Status</Table.Th>
+          <Table.Th>Läuft bis</Table.Th>
+          <Table.Th>Abgestimmt</Table.Th>
+          <Table.Th>Erstellt von</Table.Th>
+        </Table.Tr>
+      }
+      zeile={(u) => (
+        <Table.Tr
+          opacity={u.laeuft ? 1 : 0.75}
+          style={{ cursor: 'pointer' }}
+          onClick={(e) => {
+            // Links (e.g. the creator) act on their own.
+            if ((e.target as HTMLElement).closest('a')) return;
+            navigate(umfrageLink(u.id));
+          }}
+        >
+          <Table.Td>
+            {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+            <Link to={umfrageLink(u.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
+              <Text component="span" fw={600} style={{ overflowWrap: 'anywhere' }}>
+                {u.titel}
+              </Text>
+            </Link>
+          </Table.Td>
+          <Table.Td>
+            <UmfrageBadges u={u} />
+          </Table.Td>
+          <Table.Td>{u.laeuft ? datumAnzeigen(u.endetAm) : 'beendet'}</Table.Td>
+          <Table.Td>
+            {u.abgaben} von {u.kreisGroesse}
+          </Table.Td>
+          <Table.Td>{u.ersteller ? <PersonLink person={u.ersteller} /> : '–'}</Table.Td>
+        </Table.Tr>
+      )}
+    />
   );
 }
 
 function Abschnitt({ titel, liste }: Readonly<{ titel: string; liste: UmfrageListeDto[] }>) {
   if (liste.length === 0) return null;
-  // Cards on phones, a table from `sm` upward.
   return (
     <>
       <Title order={3}>{titel}</Title>
-      <SimpleGrid cols={1} spacing="sm" hiddenFrom="sm">
-        {liste.map((u) => (
-          <UmfrageKarte key={u.id} u={u} />
-        ))}
-      </SimpleGrid>
-      <UmfrageTabelle liste={liste} />
+      <UmfrageListe liste={liste} />
     </>
   );
 }

@@ -57,14 +57,14 @@ import {
   useProtokollLoeschen,
   useProtokollStatus,
 } from '../protokollDaten';
+import { formatZeit } from '../datum';
 import { PROTOKOLL_DRUCK_CSS, ProtokollKopf } from '../ProtokollKopf';
 import { useProtokollAutosave, type SpeicherZustand } from '../useProtokollAutosave';
 import { useProtokollSperre, type SperreZustand } from '../useProtokollSperre';
 import { ApiFehler, fehlerAnzeigen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
-const uhrzeit = (d: Date) =>
-  d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+const uhrzeit = formatZeit;
 
 function SpeicherZeile({
   zustand,

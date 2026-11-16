@@ -272,8 +272,10 @@ Arbeits-Issue: [Issue 48](https://github.com/jSebestyen590/C4/issues/48).
 
 Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
 
-- Wiederholungen: Umschaltung Karte/Tabelle an etwa 13 Stellen, Datumsformate mehrfach inline, Zod-Fehler je Formular von
-  Hand, Query-Keys von Hand invalidiert. `App.tsx` mit allen Routen in einer Datei.
+- ~~Wiederholungen: Umschaltung Karte/Tabelle, Datumsformate inline, Zod-Fehler je Formular von Hand~~ **erledigt**
+  (`KartenOderTabelle`, `datum.ts`, `zodFeldFehler`, siehe `querschnitt.md`). Bewusst nicht umgestellt: Journal und Kontenplan
+  (Sticky-Kopf, Gruppen), Bargeld (Matrix statt Liste). `App.tsx` ist aufgeteilt (Routen je Feature); Query-Keys von Hand invalidiert bleibt ein
+  separater Punkt (Issue 49, PR 4).
 - ~~Tests: nichts für `api.ts`, `auth.tsx`, `PullToRefresh`, `ZurueckLink`~~ **erledigt** (Unit-Tests je Datei, `*.test.tsx`). Es bleibt bei Unit-Tests, keine E2E-Tests (Entscheidung in Issue 49).
 - PWA: Manifest nur mit 180-px-Icon, ohne `theme_color`; kein Offline-Hinweis.
 - ~~Noch zu prüfen: Mitglieder ohne `StatusName` und hart kodierte gegenderte Begriffe~~ **erledigt**: Die @-Erwähnungsliste und die Stichwahl-Beschriftung im Protokoll zeigen Mitglieder jetzt mit `StatusName`; die übrigen Fundstellen waren schon richtig. Die geprüften Gender-Stellen (`Finanzer:in` als Postenname, `Chef:in` als Platzhalter, `Freund:in von X` als Beispiel, „Mitglied“ als Kategorie) sind allgemein gemeint und bleiben.

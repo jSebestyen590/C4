@@ -97,3 +97,14 @@ zeigt eine rote Notification mit der Meldung des `ApiFehler`, sonst „Das hat n
 Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, Inline-`Alert`, `try/catch` um `mutateAsync`),
 setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
 bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).
+
+## Wiederkehrende Helfer im Web
+
+- `KartenOderTabelle` (`packages/web/src/KartenOderTabelle.tsx`): Liste als Karten unter `sm`, als Tabelle (in `Table.ScrollContainer`
+  mit `minWidth`) ab `sm`. Die Seite liefert Karte, Kopfzeile und Tabellenzeile; für ganze Karten als Link gibt es `KlickKarte`.
+  Ohne `minWidth` steht die Tabelle ohne Scroll-Container (Finanzen-Arbeitsseiten). Nicht passend und daher handgeschrieben:
+  Journal, Kontenplan, Bargeld.
+- `datum.ts`: `formatDatum`, `formatDatumZeit` (mit Stil, z. B. `ohneJahr`, `mittel`) und `formatZeit` für Zeitpunkte in
+  `Europe/Berlin` (de-DE). Reine Datumsstrings (`YYYY-MM-DD`) bleiben bei `datumAnzeigen` aus `@c4/shared`.
+- `zodFeldFehler(...ergebnisse)` (`zodFehler.ts`): erste Meldung je Feld (`path[0]`) aus einem oder mehreren `safeParse`-Ergebnissen,
+  z. B. für `error={fehler.feld}` an Formularfeldern.

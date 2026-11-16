@@ -5,7 +5,6 @@ import {
   Group,
   Loader,
   Paper,
-  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -20,6 +19,7 @@ import { tagAnzeigen } from '../kalenderZeit';
 import { mitgliedName } from '../mitglied';
 import { protokollLink, useProtokolle } from '../protokollDaten';
 import { StatusName } from '../StatusAnzeige';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 function EntwurfBadge({ p }: Readonly<{ p: ProtokollListeEintragDto }>) {
   return p.status === 'entwurf' ? (
@@ -65,50 +65,50 @@ function ProtokollKarte({ p }: Readonly<{ p: ProtokollListeEintragDto }>) {
   );
 }
 
-/** Table from `sm` upward; same column widths in every year; the whole row opens the protocol. */
-function ProtokollTabelle({ liste }: Readonly<{ liste: ProtokollListeEintragDto[] }>) {
+/** Cards on phones, a table from `sm` upward (same column widths in every year); the whole row opens the protocol. */
+function ProtokollListe({ liste }: Readonly<{ liste: ProtokollListeEintragDto[] }>) {
   const navigate = useNavigate();
   return (
-    <Table.ScrollContainer minWidth={520} visibleFrom="sm">
-      <Table verticalSpacing="xs" highlightOnHover layout="fixed">
+    <KartenOderTabelle
+      zeilen={liste}
+      zeilenKey={(p) => p.id}
+      minWidth={520}
+      kartenAbstand="sm"
+      tabelle={{ highlightOnHover: true, layout: 'fixed' }}
+      spalten={
         <colgroup>
           <col style={{ width: '10rem' }} />
           <col />
           <col style={{ width: '7rem' }} />
           <col style={{ width: '12rem' }} />
         </colgroup>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Datum</Table.Th>
-            <Table.Th>Sitzung</Table.Th>
-            <Table.Th />
-            <Table.Th>Zuletzt geändert von</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {liste.map((p) => (
-            <Table.Tr
-              key={p.id}
-              style={{ cursor: 'pointer' }}
-              onClick={() => void navigate(protokollLink(p.id))}
-            >
-              <Table.Td style={{ whiteSpace: 'nowrap' }}>{tagAnzeigen(p.beginn)}</Table.Td>
-              <Table.Td>
-                <Text component="span" fw={700} style={{ overflowWrap: 'anywhere' }}>
-                  {p.titel}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                <EntwurfBadge p={p} />
-              </Table.Td>
-              <Table.Td>
-                <GeaendertVon p={p} />
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+      }
+      karte={(p) => <ProtokollKarte p={p} />}
+      kopf={
+        <Table.Tr>
+          <Table.Th>Datum</Table.Th>
+          <Table.Th>Sitzung</Table.Th>
+          <Table.Th />
+          <Table.Th>Zuletzt geändert von</Table.Th>
+        </Table.Tr>
+      }
+      zeile={(p) => (
+        <Table.Tr style={{ cursor: 'pointer' }} onClick={() => void navigate(protokollLink(p.id))}>
+          <Table.Td style={{ whiteSpace: 'nowrap' }}>{tagAnzeigen(p.beginn)}</Table.Td>
+          <Table.Td>
+            <Text component="span" fw={700} style={{ overflowWrap: 'anywhere' }}>
+              {p.titel}
+            </Text>
+          </Table.Td>
+          <Table.Td>
+            <EntwurfBadge p={p} />
+          </Table.Td>
+          <Table.Td>
+            <GeaendertVon p={p} />
+          </Table.Td>
+        </Table.Tr>
+      )}
+    />
   );
 }
 
@@ -146,12 +146,7 @@ export function ProtokollePage() {
       {gruppen.map(([jahr, eintraege]) => (
         <Stack key={jahr} gap="xs">
           <Title order={3}>{jahr}</Title>
-          <SimpleGrid cols={1} spacing="sm" hiddenFrom="sm">
-            {eintraege.map((p) => (
-              <ProtokollKarte key={p.id} p={p} />
-            ))}
-          </SimpleGrid>
-          <ProtokollTabelle liste={eintraege} />
+          <ProtokollListe liste={eintraege} />
         </Stack>
       ))}
     </Stack>

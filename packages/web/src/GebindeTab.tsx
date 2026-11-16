@@ -5,7 +5,6 @@ import {
   Group,
   Loader,
   Paper,
-  SimpleGrid,
   Stack,
   Switch,
   Table,
@@ -27,6 +26,7 @@ import { useAuth } from './auth';
 import { GebindeFormular, type GebindeEintrag } from './GebindeFormular';
 import { LoeschenDialog } from './LoeschenDialog';
 import { fehlerAnzeigen, pruefen } from './warenApi';
+import { KartenOderTabelle } from './KartenOderTabelle';
 
 /** List of Gebinde: cards on phones, a table from `sm`. */
 export function GebindeTab() {
@@ -115,9 +115,12 @@ export function GebindeTab() {
       {daten.isError && <Alert color="red">Die Gebinde konnten nicht geladen werden.</Alert>}
       {daten.data && sichtbar.length === 0 && <Text c="dimmed">Keine Gebinde vorhanden.</Text>}
 
-      <SimpleGrid cols={1} hiddenFrom="sm">
-        {sichtbar.map((g) => (
-          <Paper key={g.id} withBorder p="sm" pr={4} opacity={g.archiviert ? 0.6 : 1}>
+      <KartenOderTabelle
+        zeilen={sichtbar}
+        zeilenKey={(g) => g.id}
+        minWidth={620}
+        karte={(g) => (
+          <Paper withBorder p="sm" pr={4} opacity={g.archiviert ? 0.6 : 1}>
             <Group gap={4} wrap="nowrap" align="flex-start">
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Group gap="xs">
@@ -135,42 +138,31 @@ export function GebindeTab() {
               {menue(g)}
             </Group>
           </Paper>
-        ))}
-      </SimpleGrid>
-
-      {sichtbar.length > 0 && (
-        <Table.ScrollContainer minWidth={620} visibleFrom="sm">
-          <Table verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Gebinde</Table.Th>
-                <Table.Th>Verpackung</Table.Th>
-                <Table.Th>Pfand</Table.Th>
-                <Table.Th>Gesamtpfand</Table.Th>
-                <Table.Th w={60} />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {sichtbar.map((g) => (
-                <Table.Tr key={g.id} opacity={g.archiviert ? 0.6 : 1}>
-                  <Table.Td>
-                    <Group gap="xs" wrap="nowrap">
-                      <Text>{titel(g)}</Text>
-                      {archiviertBadge(g)}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>{gebindeKurz(g)}</Table.Td>
-                  <Table.Td>{pfandText(g.pfandCent)}</Table.Td>
-                  <Table.Td>
-                    {g.unterGebindeId ? pfandText(pfandGesamtCent(g, alle)) : '–'}
-                  </Table.Td>
-                  <Table.Td>{menue(g)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+        )}
+        kopf={
+          <Table.Tr>
+            <Table.Th>Gebinde</Table.Th>
+            <Table.Th>Verpackung</Table.Th>
+            <Table.Th>Pfand</Table.Th>
+            <Table.Th>Gesamtpfand</Table.Th>
+            <Table.Th w={60} />
+          </Table.Tr>
+        }
+        zeile={(g) => (
+          <Table.Tr opacity={g.archiviert ? 0.6 : 1}>
+            <Table.Td>
+              <Group gap="xs" wrap="nowrap">
+                <Text>{titel(g)}</Text>
+                {archiviertBadge(g)}
+              </Group>
+            </Table.Td>
+            <Table.Td>{gebindeKurz(g)}</Table.Td>
+            <Table.Td>{pfandText(g.pfandCent)}</Table.Td>
+            <Table.Td>{g.unterGebindeId ? pfandText(pfandGesamtCent(g, alle)) : '–'}</Table.Td>
+            <Table.Td>{menue(g)}</Table.Td>
+          </Table.Tr>
+        )}
+      />
 
       {formular && (
         <GebindeFormular gebinde={formular.gebinde} alle={alle} onClose={() => setFormular(null)} />
