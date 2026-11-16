@@ -154,6 +154,8 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
   (`useProtokollAutosave.ts`, `protokolle.md`). Der Konflikt-Hinweis (409) nennt, wer zuletzt gespeichert hat.
 - Protokolle: Bearbeitungssperre je Tab (Herzschlag 30 s, Ablauf nach 2 Minuten, keine Übernahme); Speichern und Abschließen
   verlangen sie (`protokolle.md`, Migrationen 0163–0165).
+- Protokoll abschließen und „Ausführen“ belegen die Version, bevor die Aktionen laufen (`statusBelegen`, `aktionenBelegen`);
+  ein paralleler Aufruf ist 409 ([Issue 36](https://github.com/jSebestyen590/C4/issues/36), `protokolle/aktionen.md`).
 - `bewegungLoeschen` (`inventar.ts`) lehnt Buchungen eines archivierten Gegenstands ab wie `bewegungBuchen`; die Abfragen der toten Tabelle
   `inventur_knoten` sind entfernt (Tabelle bleibt im Schema).
 - Inhaber von `privatpartys:verwalten` außerhalb des Kreises sehen die Privatparty-Umfrage (Liste, Detail), können sie beenden und darin abstimmen.
@@ -208,12 +210,8 @@ Arbeits-Issue mit Plan: [Issue 36](https://github.com/jSebestyen590/C4/issues/36
 entfallen.
 
 Zwei parallele Transaktionen, die beide nur lesen und dann einfügen, lösen keinen Konflikt aus. Abhilfe: `sperreBeruehren`
-(Tabelle `sperren`, siehe `docs/datenbank.md`). Die Stellen für Ausleihe, Inventur, Aufräumaktion, Besetzung und Umfrage sind
-erledigt (siehe unten); es bleiben:
-
-| Stelle                                        | Folge                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Protokoll abschließen, „Ausführen“ (`app.ts`) | Aktionen (Event, Einladungen) doppelt, weil sie vor dem versionsgeprüften Schreiben laufen |
+(Tabelle `sperren`, siehe `docs/datenbank.md`). Alle bekannten Stellen (Ausleihe, Inventur, Aufräumaktion,
+Besetzung, Umfrage, Protokoll, Party-Mail-Abruf, OneDrive) sind erledigt (siehe unten).
 
 ### 2. Infrastruktur und Deploy
 
