@@ -28,7 +28,7 @@ Die Funde der Stufe „hoch“ und die meisten der Stufe „mittel“ wurden vor
 Diese Punkte muss ein neues Review nicht wiederholen, solange die genannten Stellen unverändert sind.
 
 - **Auth je Route:** Alle Routen in `app.ts` tragen `auth`, außer den drei bewusst öffentlichen (`/health`,
-  `/kalender/feed/:token`, `/vcard/:token/...`). Per Skript geprüft; ein Default-Deny fehlt aber (siehe Offen).
+  `/kalender/feed/:token`, `/vcard/:token/...`). Zusätzlich gilt Default-Deny (siehe Erledigt).
 - **Rechte im Frontend:** `can()` aus `auth.tsx` ist der einzige Helfer.
 - **SQL:** kein zusammengesetztes SQL außerhalb von Drizzle (einzige `sql`-Stelle: Spaltenreferenz in `protokolle.ts`).
   Zeitstempel durchgehend mit Zeitzone, `numeric` mit Zahl-Mappern.
@@ -174,6 +174,13 @@ Alles in PR #33. Details stehen auf der jeweiligen Feature-Seite; hier nur, was 
 - Im Browser nicht geprüft: 403 der Posten-Sperre und der Hinweis beim ersten Schlüsselhalter (bräuchten einen Account ohne
   Admin-Rechte).
 
+**Absicherung nach außen** (Issue 47, PR 1)
+
+- Default-Deny: Middleware in `createApp` verlangt `auth` außer für `OEFFENTLICH`; Test über alle registrierten Routen
+  (`app.test.ts`). Siehe `querschnitt.md`.
+- `/health` ist öffentlich ohne DB (`{ ok: true }`); die DB-Prüfung ist das Lambda-Event `{ "c4": "health" }`, das der Deploy aufruft.
+- CloudFront-Logs (enthalten Feed- und vCard-Token im Pfad) werden nach 14 Tagen gelöscht, die übrigen Logs nach 90.
+
 ## Offen
 
 Als „bewusst nicht umgesetzt“ markierte Punkte sind entschieden und werden nicht angegangen. Alle anderen stehen je
@@ -210,13 +217,11 @@ auch, die erste Sicherung und eine Wiederherstellung auf dev zu prüfen.
   dokumentieren und auf dev zu üben.
 - **Admin-Entzug (bewusst nicht umgesetzt, [Issue 37](https://github.com/jSebestyen590/C4/issues/37)):** Die Gruppe kommt aus
   dem Access-Token (60 Minuten gültig); ein Entzug wirkt erst, wenn er abläuft.
-- **Absicherung nach außen:** `/health` fragt die DB ab, kein Default-Deny für `auth` in `app.ts`.
 - **MFA (bewusst nicht umgesetzt, [Issue 42](https://github.com/jSebestyen590/C4/issues/42)):** Der Cognito-Pool hat kein MFA.
 - **Datenbank-Zugang:** Die Lambda verbindet sich als `admin` (`dsql:DbConnectAdmin`). Spike dazu:
   `plans/finanzen-spike-dsql-rolle.md`.
 - **Geheimnisse:** OneDrive-Secret und -Tokens sowie der private VAPID-Schlüssel liegen im Klartext in der DB; die
   Deploy-Rolle darf `secretsmanager:*` auf das Party-Mail-Secret. OneDrive-Scope `Files.ReadWrite` umfasst das ganze Laufwerk (bleibt bewusst so).
-- **Logs:** CloudFront-Logs enthalten weiterhin die Token-URLs (90 Tage).
 - **Uploads:** Ob das Größenlimit in den vorsignierten PUT-URLs greift, ist unklar (unsicher); keine Obergrenze für Bilder je
   Protokoll (bleibt bewusst so).
 - **Eingehende Mail (bewusst nicht umgesetzt, [Issue 38](https://github.com/jSebestyen590/C4/issues/38)):** Schutz vor Spam
