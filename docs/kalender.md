@@ -231,7 +231,7 @@ zählen nicht. Es ist für alle mit `kalender:lesen` sichtbar.
 
 ## API: Events und Dienste
 
-Alle Routen unter `/api` in `app.ts` (Abschnitte „Kalender“). Serien-Routen stehen unter [Terminserien](#terminserien).
+Alle Routen unter `/api` in `routes/kalender.ts` (Fotos in `routes/bilder.ts`). Serien-Routen stehen unter [Terminserien](#terminserien).
 
 | Route                                                                 | Recht                 | Hinweise                                                                                                                               |
 | --------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
