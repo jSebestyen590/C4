@@ -23,8 +23,9 @@ export class ProtokollVeraltet extends Error {
   constructor(
     readonly version: number,
     readonly geaendertVon: string | null = null,
+    message = 'Jemand anderes hat das Protokoll inzwischen geändert.',
   ) {
-    super('Jemand anderes hat das Protokoll inzwischen geändert.');
+    super(message);
   }
 }
 /** The protocol is closed and cannot be changed or deleted. */
@@ -92,6 +93,28 @@ export interface ProtokollStore {
     inhalt?: string,
   ): Promise<ProtokollSpeicherErgebnis | undefined>;
   /**
+   * Claims a status change before its Aktionen run: ONE conditional update (`version` and the
+   * opposite status) that sets `status` and `kopf`, ends the edit lock and counts the version up.
+   * Undefined when missing; throws ProtokollVeraltet (409) when somebody was faster.
+   */
+  statusBelegen(
+    id: string,
+    version: number,
+    von: string,
+    nach: ProtokollDaten['status'],
+    kopf: string,
+  ): Promise<ProtokollSpeicherErgebnis | undefined>;
+  /**
+   * Claims a closed protocol for a run of Aktionen: counts the version up if `version` is the
+   * stored one. Undefined when missing; throws ProtokollVeraltet when somebody was faster or the
+   * protocol is not closed.
+   */
+  aktionenBelegen(
+    id: string,
+    version: number,
+    von: string,
+  ): Promise<ProtokollSpeicherErgebnis | undefined>;
+  /**
    * Replaces document and `kopf` of a protocol in any status (the results of Aktionen, see
    * docs/protokolle.md) if `version` is the stored one. Undefined when missing; throws
    * ProtokollVeraltet for another version.
@@ -119,9 +142,15 @@ export interface ProtokollStore {
   sperreLoesen(id: string, sub: string, tab: string): Promise<void>;
 }
 
+const BELEGT_MELDUNG = 'Das Protokoll wurde inzwischen geändert. Bitte lade es neu.';
+
 export function createProtokolleStore(db: Db): ProtokollStore {
   /** After a failed conditional update: why it failed. */
-  const warumNicht = async (id: string, nurEntwurf: boolean): Promise<never | undefined> => {
+  const warumNicht = async (
+    id: string,
+    nurEntwurf: boolean,
+    meldung?: string,
+  ): Promise<never | undefined> => {
     const [row] = await db
       .select({
         status: protokolle.status,
@@ -132,7 +161,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
       .where(eq(protokolle.id, id));
     if (!row) return undefined;
     if (nurEntwurf && row.status === 'abgeschlossen') throw new ProtokollAbgeschlossen();
-    throw new ProtokollVeraltet(row.version, row.geaendertVon);
+    throw new ProtokollVeraltet(row.version, row.geaendertVon, meldung);
   };
 
   const aendern = async (
@@ -141,6 +170,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
     nurEntwurf: boolean,
     werte: Partial<typeof protokolle.$inferInsert>,
     von: string,
+    bedingung?: { status: ProtokollDaten['status']; meldung: string },
   ): Promise<ProtokollSpeicherErgebnis | undefined> => {
     const rows = await db
       .update(protokolle)
@@ -155,11 +185,12 @@ export function createProtokolleStore(db: Db): ProtokollStore {
           eq(protokolle.id, id),
           eq(protokolle.version, version),
           nurEntwurf ? eq(protokolle.status, 'entwurf') : undefined,
+          bedingung ? eq(protokolle.status, bedingung.status) : undefined,
         ),
       )
       .returning({ version: protokolle.version, geaendertAm: protokolle.geaendertAm });
     if (rows[0]) return rows[0];
-    return warumNicht(id, nurEntwurf);
+    return warumNicht(id, nurEntwurf, bedingung?.meldung);
   };
 
   return {
@@ -229,6 +260,24 @@ export function createProtokolleStore(db: Db): ProtokollStore {
         },
         von,
       );
+    },
+
+    statusBelegen(id, version, von, nach, kopf) {
+      return aendern(
+        id,
+        version,
+        false,
+        { status: nach, kopf, sperreSub: null, sperreTab: null, sperreBis: null },
+        von,
+        { status: nach === 'abgeschlossen' ? 'entwurf' : 'abgeschlossen', meldung: BELEGT_MELDUNG },
+      );
+    },
+
+    aktionenBelegen(id, version, von) {
+      return aendern(id, version, false, {}, von, {
+        status: 'abgeschlossen',
+        meldung: BELEGT_MELDUNG,
+      });
     },
 
     ergebnisSpeichern(id, daten, von) {

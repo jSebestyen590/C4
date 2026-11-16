@@ -402,6 +402,27 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
     };
   };
 
+  /** Writes the results of a run of Aktionen (and written-back ids) onto `stand`. */
+  const ergebnisSchreiben = async (
+    stand: ProtokollDaten,
+    lauf: { patches: readonly Rueckschreibung[]; ergebnisse: ProtokollKopf['aktionen'] },
+    akteur: string,
+  ) => {
+    const neu = mitErgebnissen(stand, lauf.patches, lauf.ergebnisse);
+    return gefunden(
+      await deps.protokolle.ergebnisSpeichern(
+        stand.id,
+        {
+          inhalt: JSON.stringify(neu.inhalt),
+          kopf: JSON.stringify({ ...neu.kopf, aktionen: neu.aktionen }),
+          version: stand.version,
+        },
+        akteur,
+      ),
+      'Protokoll nicht gefunden',
+    );
+  };
+
   return (
     new Hono<AuthEnv>()
       .get('/protokolle', auth, protokolleLesen, async (c) => {
@@ -641,39 +662,42 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
             });
           }
 
-          // The chosen Aktionen run one by one, a failure does not stop the others or the closing.
-          const lauf =
-            aktionenIds.length > 0
-              ? await aktionenLaufer.laufen(
-                  await aktionenBerechnen(p, dokument),
-                  aktionenIds,
-                  akteur,
-                )
-              : { ausgaenge: [], patches: [], ergebnisse: {} };
-          const wirkung = lauf.patches.length > 0 || Object.keys(lauf.ergebnisse).length > 0;
+          // The status is claimed first (one conditional update), so a parallel close cannot run the
+          // Aktionen a second time. A failing Aktion later leaves the protocol closed; its result is
+          // stored and it can be run again (see docs/protokolle.md).
+          let belegt;
           try {
-            const ergebnis = await nachAktionenSchreiben(
-              p,
-              async (stand) => {
-                const frisch =
-                  stand === p ? neuerKopf : abschliessen(protokollKopfLesen(stand.kopf));
-                const neu = mitErgebnissen(stand, lauf.patches, lauf.ergebnisse);
-                return gefunden(
-                  await deps.protokolle.statusSetzen(
-                    p.id,
-                    status,
-                    JSON.stringify({
-                      ...frisch,
-                      aktionen: { ...frisch.aktionen, ...neu.aktionen },
-                    }),
-                    stand.version,
-                    akteur,
-                    lauf.patches.length > 0 ? JSON.stringify(neu.inhalt) : undefined,
-                  ),
-                  'Protokoll nicht gefunden',
-                );
-              },
-              wirkung,
+            belegt = gefunden(
+              await deps.protokolle.statusBelegen(
+                p.id,
+                p.version,
+                akteur,
+                status,
+                JSON.stringify(neuerKopf),
+              ),
+              'Protokoll nicht gefunden',
+            );
+          } catch (err) {
+            return protokollKonflikt(err, c);
+          }
+          if (aktionenIds.length === 0) return c.json(antwort(belegt));
+          const lauf = await aktionenLaufer.laufen(
+            await aktionenBerechnen(p, dokument),
+            aktionenIds,
+            akteur,
+          );
+          if (lauf.patches.length === 0 && Object.keys(lauf.ergebnisse).length === 0) {
+            return c.json(antwort(belegt, lauf.ausgaenge));
+          }
+          try {
+            const stand: ProtokollDaten = {
+              ...p,
+              status,
+              kopf: JSON.stringify(neuerKopf),
+              version: belegt.version,
+            };
+            const ergebnis = await nachAktionenSchreiben(stand, (aktuell) =>
+              ergebnisSchreiben(aktuell, lauf, akteur),
             );
             return c.json(antwort(ergebnis, lauf.ausgaenge));
           } catch (err) {
@@ -759,29 +783,28 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
               message: 'Die Aktionen laufen beim Abschließen des Protokolls.',
             });
           }
+          // Claimed first, so that a parallel run cannot run the Aktionen a second time.
+          let stand: ProtokollDaten;
+          try {
+            const belegt = gefunden(
+              await deps.protokolle.aktionenBelegen(p.id, p.version, akteur),
+              'Protokoll nicht gefunden',
+            );
+            stand = { ...p, version: belegt.version };
+          } catch (err) {
+            return protokollKonflikt(err, c);
+          }
           const lauf = await aktionenLaufer.laufen(
             await aktionenBerechnen(p, protokollInhaltLesen(p.inhalt)),
             c.req.valid('json').aktionen,
             akteur,
           );
-          let version = p.version;
+          let version = stand.version;
           if (lauf.patches.length > 0 || Object.keys(lauf.ergebnisse).length > 0) {
             try {
-              const ergebnis = await nachAktionenSchreiben(p, async (stand) => {
-                const neu = mitErgebnissen(stand, lauf.patches, lauf.ergebnisse);
-                return gefunden(
-                  await deps.protokolle.ergebnisSpeichern(
-                    p.id,
-                    {
-                      inhalt: JSON.stringify(neu.inhalt),
-                      kopf: JSON.stringify({ ...neu.kopf, aktionen: neu.aktionen }),
-                      version: stand.version,
-                    },
-                    akteur,
-                  ),
-                  'Protokoll nicht gefunden',
-                );
-              });
+              const ergebnis = await nachAktionenSchreiben(stand, (aktuell) =>
+                ergebnisSchreiben(aktuell, lauf, akteur),
+              );
               version = ergebnis.version;
             } catch (err) {
               return protokollKonflikt(err, c);

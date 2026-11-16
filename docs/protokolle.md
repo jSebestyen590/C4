@@ -26,7 +26,9 @@ Unterseiten (Teil dieses Features):
 - Abschließen ist nur möglich, wenn bei jeder verbindlichen Abstimmung die Zahl der Stimmen zur Zahl der anwesenden Mitglieder passt
   (`stimmenPruefen`, sonst 400).
 - Aktionen sind idempotent: Hat eine Aktion keine Wirkung mehr, gilt sie als „Bereits erledigt“; ein Fehler einer Aktion stoppt weder die
-  anderen noch das Abschließen.
+  anderen noch das Abschließen. Der Status wird **vor** den Aktionen belegt (bedingtes Update auf die Version, paralleler Aufruf: 409);
+  scheitert eine Aktion, bleibt das Protokoll abgeschlossen und sie lässt sich über „Ausführen“ wiederholen
+  ([protokolle/aktionen.md](./protokolle/aktionen.md#belegen-vor-dem-ausführen)).
 - Die Aktionen beim Abschließen laufen bewusst nur mit `protokolle:schreiben` (ohne `users:manage`, `events:verwalten`,
   `posten:bearbeiten`), siehe [protokolle/aktionen.md](./protokolle/aktionen.md).
 
