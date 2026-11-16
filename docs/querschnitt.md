@@ -6,11 +6,19 @@ Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und de
 
 - **Anmeldung:** Cognito-Hosted-UI mit Code-Flow (`oidc-client-ts`, `packages/web/src/auth.tsx`). Das Web hält den Access-Token
   im `localStorage` und erneuert ihn mit dem Refresh-Token automatisch vor Ablauf (`automaticSilentRenew`).
+  Wer einen Link ohne Anmeldung öffnet, landet nach dem Login wieder auf der aufgerufenen Seite (OIDC-`state`, geprüft in `ruecksprung.ts`).
 - **Token-Laufzeiten** (`infra/modules/app/main.tf`): Access- und ID-Token 60 Minuten, Refresh-Token 30 Tage (jede Erneuerung
   liefert einen neuen Refresh-Token).
 - **Prüfung:** Der API-Gateway-Authorizer (JWT) und `authenticate` in `packages/api/src/auth.ts` prüfen den **Access-Token**
   (`createCognitoVerifier`: Signatur, Issuer, `token_use = access`, `client_id`). Öffentlich ohne Authorizer sind nur
   `GET /api/health`, `GET /api/kalender/feed/:token` und `GET /api/vcard/:token/:datei`.
+- **Default-Deny:** `createApp` (`app.ts`) hängt vor alle Routen ein Middleware, das `authenticate` verlangt, außer für die
+  Allowlist `OEFFENTLICH` (`/api/health`, `/api/kalender/feed/`, `/api/vcard/`). Auch unbekannte Pfade liefern ohne Token 401.
+  Die per-Route-`auth` bleibt (sie hält die Typen des Web-Clients), überspringt sich aber, wenn der Nutzer schon gesetzt ist;
+  das Profil wird also nur einmal geladen. Eine neue öffentliche Route muss in `OEFFENTLICH` **und** als Route ohne Authorizer
+  im API Gateway stehen; der Test in `app.test.ts` prüft alle registrierten Routen.
+- **Health:** `GET /api/health` antwortet öffentlich mit `{ ok: true }` ohne Datenbankzugriff. Die DB-Prüfung ist das
+  Lambda-Event `{ "c4": "health" }` (`lambda.ts`, ruft `pingDb`, wirft bei Fehler); der Deploy ruft es per `aws lambda invoke` auf.
 - **Gruppen:** Die Cognito-Gruppen stehen im Claim `cognito:groups` des Access-Tokens. Es gibt nur die Gruppe `admin`
   (`ROLES` in `packages/shared/src/roles.ts`). Die API liest die Gruppen **aus dem Token, nicht aus Cognito**: Wer aus der
   Gruppe entfernt wird, behält die Admin-Rechte, bis der Token abläuft (bis zu 60 Minuten; `setGroups` in `admin.ts` meldet
@@ -37,9 +45,15 @@ aus:
 über `GET /api/me` ab (`auth.tsx`); `can()` liest daraus. Eine Rechteänderung wirkt dort also erst nach dem nächsten Token oder
 Neuladen, in der API sofort. Details zu Status und Posten: [members.md](./members.md), [posten.md](./posten.md).
 
+## Routen und Routentests
+
+`createApp` (`packages/api/src/app.ts`) setzt die API aus einem Sub-Router je Feature zusammen (`packages/api/src/routes/<feature>.ts`, exportiert `<feature>Routes(ctx)`), verbunden per `.route('/', …)` unter `basePath('/api')`. `routes/kontext.ts` baut den `RoutenKontext` (`auth`, die `requirePermission`-Konstanten und Helfer, die mehrere Features brauchen, z. B. `alsMitglied`, `alleMitglieder`); Helfer, die nur ein Feature nutzt, stehen in dessen Datei. Neue Routen kommen in die Datei ihres Features (neues Feature = neue Datei samt `.route()` in `createApp`); bei sich überlappenden Pfaden zählt die Reihenfolge der Registrierung (`/x/neu` vor `/x/:id`).
+
+Die Routentests liegen neben den Routen als `routes/<feature>.test.ts`; `makeApp`, die Fakes und `bearer` kommen aus `packages/api/src/test/appTestHelfer.ts`. Allgemeine Tests (Health, Fehler-Mapping, Anmeldung) stehen in `app.test.ts`.
+
 ## Fehler-Mapping
 
-`onError` in `createApp` (`packages/api/src/app.ts`):
+`onError` in `createApp` (`packages/api/src/app.ts`, gilt für alle Sub-Router):
 
 | Fehler                                                    | Antwort                                                                                              |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -66,6 +80,15 @@ Aurora DSQL löst gleichzeitige Änderungen optimistisch auf: Eine der Transakti
   Grundlage von `onError`.
 
 Mehr dazu und zu den Migrationen: [datenbank.md](./datenbank.md#gleichzeitige-zugriffe).
+
+## Routen im Web
+
+`packages/web/src/App.tsx` setzt nur zusammen: `/auth/callback`, die Funktionen aus `packages/web/src/routes/<feature>Routen.tsx` und
+die Catch-all-Route. Jede Funktion liefert ein Fragment aus `<Route>`-Elementen und wird in `<Routes>` direkt aufgerufen
+(`{mitgliederRouten()}`), nicht als Komponente gerendert, weil `<Routes>` nur `<Route>` oder Fragmente als Kinder erlaubt. Eine neue
+Seite kommt in das Modul ihres Features (neues Feature: neues Modul und Aufruf in `App.tsx`). Jede Route ist in `Protected`
+(Anmeldung, optional Recht) und meist `RequireUsername` (Profil vollständig) gewickelt, beide in `routes/Geschuetzt.tsx`. Das
+Menü steht weiterhin in `AppLayout`.
 
 ## Fehler im Web (Mutationen)
 

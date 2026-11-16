@@ -4,12 +4,12 @@ Die Seite `/historie` (Menü „Historie“, Recht `mitglieder:lesen`) zeigt Zei
 
 ## Dateien
 
-| Bereich | Dateien                                                                                                                                          |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| API     | keine eigene Route: `GET /api/mitglieder/:kennung/historie` (in `app.ts`), `GET /api/posten`; Status-Verlauf siehe [members.md](./members.md)    |
-| Shared  | `packages/shared/src/statusVerlauf.ts` (`statusZeitraeume`)                                                                                      |
-| Web     | `packages/web/src/pages/HistoriePage.tsx`, `Zeitstrahl.tsx`, `zeitstrahlLogik.ts`, `historieDaten.ts`, `StatusHistorie.tsx` (Timeline im Profil) |
-| Tests   | `packages/web/src/zeitstrahlLogik.test.ts`, `packages/shared/src/statusVerlauf.test.ts`                                                          |
+| Bereich | Dateien                                                                                                                                                     |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API     | keine eigene Route: `GET /api/mitglieder/:kennung/historie` (in `routes/mitglieder.ts`), `GET /api/posten`; Status-Verlauf siehe [members.md](./members.md) |
+| Shared  | `packages/shared/src/statusVerlauf.ts` (`statusZeitraeume`)                                                                                                 |
+| Web     | `packages/web/src/pages/HistoriePage.tsx`, `Zeitstrahl.tsx`, `zeitstrahlLogik.ts`, `historieDaten.ts`, `StatusHistorie.tsx` (Timeline im Profil)            |
+| Tests   | `packages/web/src/zeitstrahlLogik.test.ts`, `packages/shared/src/statusVerlauf.test.ts`                                                                     |
 
 ## URL
 

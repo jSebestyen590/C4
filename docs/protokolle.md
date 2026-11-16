@@ -26,7 +26,9 @@ Unterseiten (Teil dieses Features):
 - Abschließen ist nur möglich, wenn bei jeder verbindlichen Abstimmung die Zahl der Stimmen zur Zahl der anwesenden Mitglieder passt
   (`stimmenPruefen`, sonst 400).
 - Aktionen sind idempotent: Hat eine Aktion keine Wirkung mehr, gilt sie als „Bereits erledigt“; ein Fehler einer Aktion stoppt weder die
-  anderen noch das Abschließen.
+  anderen noch das Abschließen. Der Status wird **vor** den Aktionen belegt (bedingtes Update auf die Version, paralleler Aufruf: 409);
+  scheitert eine Aktion, bleibt das Protokoll abgeschlossen und sie lässt sich über „Ausführen“ wiederholen
+  ([protokolle/aktionen.md](./protokolle/aktionen.md#belegen-vor-dem-ausführen)).
 - Die Aktionen beim Abschließen laufen bewusst nur mit `protokolle:schreiben` (ohne `users:manage`, `events:verwalten`,
   `posten:bearbeiten`), siehe [protokolle/aktionen.md](./protokolle/aktionen.md).
 
@@ -48,7 +50,7 @@ Tabelle `protokolle`: `id`, `event_id` (eindeutig), `inhalt` (Text, TipTap-JSON)
 
 | Bereich | Dateien                                                                                                                                                                                                                                                                                                              |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/protokolle.ts` (Store, Versionsprüfung), `protokolleAnsicht.ts` (Listen, Teilnahme, Schnappschuss), `protokollAktionen.ts` (Aktionen ausführen), `protokollbilder.ts` (S3), `protokolle.fake.ts`, Routen in `app.ts` (`/api/protokolle…`)                                                          |
+| API     | `packages/api/src/protokolle.ts` (Store, Versionsprüfung), `protokolleAnsicht.ts` (Listen, Teilnahme, Schnappschuss), `protokollAktionen.ts` (Aktionen ausführen), `protokollbilder.ts` (S3), `protokolle.fake.ts`, Routen in `routes/protokolle.ts` (`/api/protokolle…`)                                            |
 | Shared  | `packages/shared/src/protokolle.ts` (Typen, Prüfung, Vorbelegung, Wahl-Ergebnis; kennt TipTap nicht, nur die Knotenformen), `protokollAnwesenheit.ts`, `protokollStimmen.ts`, `protokollAktionen.ts`                                                                                                                 |
 | Web     | Seiten `pages/ProtokollePage.tsx`, `ProtokollNeuPage.tsx`, `ProtokollPage.tsx`; `ProtokollKopf.tsx`, `protokollDaten.ts`, `useProtokollAutosave.ts`; Editor, Ansicht und PDF unter `protokoll/` (u. a. `ProtokollEditor.tsx`, `BausteinFormulare.tsx`, `slashLogik.ts`, `gliederung.ts`, `dokumentDaten.ts`, `pdf/`) |
 | Tests   | Shared: `protokolle.test.ts`, `protokollAnwesenheit.test.ts`, `protokollStimmen.test.ts`, `protokollAktionen.test.ts`, `protokollThemen.test.ts`; Web: `protokoll/*.test.ts(x)`; API: Protokoll-Abschnitte in `app.test.ts`                                                                                          |

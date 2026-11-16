@@ -138,7 +138,7 @@ Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; `kategorie_id` ist `
   je nach Art der gewählten Kategorie den Schicht-Editor oder den Abschnitt Teilnahme (vorbelegt mit dem Standard-Kreis).
 - **Sitzung mit Protokoll:** Eine Teilnahme-Kategorie kann das Häkchen `protokoll` tragen (Spalte `event_kategorien.protokoll`,
   Badge „Protokoll“ in der Einrichtung; Dienste-Kategorien: 400). Zu Events dieser Kategorie lassen sich Protokolle schreiben,
-  siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll lässt sich nicht löschen (409), und Serienänderungen
+  siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll, mit Finanzbuchungen oder mit Kassenzählungen lässt sich nicht löschen (409), und Serienänderungen
   löschen oder ersetzen es nie. Mit dem Häkchen wählt man die **Art** (`protokollArt`: Sitzung = mehr als die Hälfte, Mitgliederversammlung = mehr als zwei Drittel der Mitglieder beschlussfähig).
 
 **Events aus Protokollen:** Neue Protokolle starten mit Bausteinen für die Events seit der letzten Sitzung und alle kommenden
@@ -231,7 +231,7 @@ zählen nicht. Es ist für alle mit `kalender:lesen` sichtbar.
 
 ## API: Events und Dienste
 
-Alle Routen unter `/api` in `app.ts` (Abschnitte „Kalender“). Serien-Routen stehen unter [Terminserien](#terminserien).
+Alle Routen unter `/api` in `routes/kalender.ts` (Fotos in `routes/bilder.ts`). Serien-Routen stehen unter [Terminserien](#terminserien).
 
 | Route                                                                 | Recht                 | Hinweise                                                                                                                               |
 | --------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |

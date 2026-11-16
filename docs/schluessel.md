@@ -21,7 +21,7 @@ Schlüssel gerade ist, und behält die letzten 10 Übergaben je Schlüssel.
 
 | Bereich | Dateien                                                                                                                                                                                                                    |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API     | `packages/api/src/schluessel.ts` (Schlüssel, Übergaben), `schluesselAnfragen.ts` (Anfragen, Antworten, Planungen), `schluesselBenachrichtigungen.ts`, `schluesselAnfragen.fake.ts`, Routen in `app.ts`                     |
+| API     | `packages/api/src/schluessel.ts` (Schlüssel, Übergaben), `schluesselAnfragen.ts` (Anfragen, Antworten, Planungen), `schluesselBenachrichtigungen.ts`, `schluesselAnfragen.fake.ts`, Routen in `routes/schluessel.ts`       |
 | Shared  | `packages/shared/src/schluessel.ts` (Schemas, `erwarteteHalter`, Zeitfenster)                                                                                                                                              |
 | Web     | Seiten `pages/SchluesselPage.tsx`, `SchluesselDetailPage.tsx`, `SchluesselAnfragePage.tsx`; `SchluesselAktionen.tsx`, `SchluesselAnfragen.tsx`, `SchluesselFormular.tsx`, `SchluesselPlanungen.tsx`, `schluesselDaten.tsx` |
 | Tests   | `packages/shared/src/schluessel.test.ts`, `packages/api/src/schluesselBenachrichtigungen.test.ts`                                                                                                                          |
