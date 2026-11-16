@@ -57,6 +57,7 @@ export function GebindeTab() {
     await neuLaden();
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: (g: GebindeEintrag) => archivieren(g, !g.archiviert),
     onError: (e) => fehlerAnzeigen(e),
   });

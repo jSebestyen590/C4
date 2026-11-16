@@ -27,6 +27,7 @@ export function AusleiheBearbeitenModal({
   const [rueckgabeFehler, setRueckgabeFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) =>
       pruefen(await api.inventar.ausleihen[':id'].$put({ param: { id: ausleihe.id }, json })),
     onSuccess: async () => {

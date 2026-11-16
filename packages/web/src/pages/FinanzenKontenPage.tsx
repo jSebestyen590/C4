@@ -69,6 +69,7 @@ export function FinanzenKontenPage() {
   );
 
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (k: KontoDto) =>
       pruefen(
         await api.finanzen.konten[':id'].archiv.$put({

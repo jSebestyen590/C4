@@ -7,7 +7,7 @@ import '@mantine/charts/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/tiptap/styles.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
@@ -15,9 +15,10 @@ import type { AppConfig } from '@c4/shared';
 import { App } from './App';
 import { AuthProvider } from './auth';
 import { loadAppConfig } from './config';
+import { createQueryClient } from './queryClient';
 import { theme } from './theme';
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const queryClient = createQueryClient();
 
 function Root() {
   const [config, setConfig] = useState<AppConfig | null>(null);

@@ -79,6 +79,7 @@ export function BuchungModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof einlagerungSchema.parse>) => {
       if (ein) {
         await pruefen(await api.bestand.einlagerung.$post({ json }));

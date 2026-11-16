@@ -52,6 +52,7 @@ export function BewegungVerlauf({
   const [loeschen, setLoeschen] = useState<BewegungEintrag | null>(null);
 
   const loeschenMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (b: BewegungEintrag) =>
       pruefen(
         await api.inventar.gegenstaende[':id'].bewegungen[':bewegungId'].$delete({

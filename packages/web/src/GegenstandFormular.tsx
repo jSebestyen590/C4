@@ -113,6 +113,7 @@ export function GegenstandFormular({
   );
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;

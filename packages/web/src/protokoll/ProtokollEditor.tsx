@@ -147,9 +147,7 @@ export function ProtokollEditor({
     zustand: (neu) => {
       const kennung = (z: SlashZustand | null) =>
         z && { query: z.query, schluessel: z.eintraege.map((e) => e.schluessel) };
-      setAuswahl(
-        auswahlNachAenderung(kennung(slashRef.current), kennung(neu), auswahlRef.current),
-      );
+      setAuswahl(auswahlNachAenderung(kennung(slashRef.current), kennung(neu), auswahlRef.current));
       slashRef.current = neu;
       setSlash(neu);
     },

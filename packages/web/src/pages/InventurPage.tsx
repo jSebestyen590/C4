@@ -83,6 +83,7 @@ export function InventurPage() {
   };
 
   const verwerfenMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       speicher.verwerfen();
       await pruefen(await api.inventuren[':id'].$delete({ param: { id } }));

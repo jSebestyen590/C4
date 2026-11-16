@@ -58,6 +58,7 @@ export function IfcoInhaltModal({
   const inhalt = useIfcoInhalt(ifco, gegenstaende);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (positionen: IfcoInhaltPosition[]) =>
       pruefen(
         await api.inventar.ifcos[':id'].inhalt.$put({

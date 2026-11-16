@@ -198,11 +198,6 @@ export function TodosPage() {
       </Group>
       {todos.isPending && <Loader m="md" aria-label="Todos werden geladen" />}
       {todos.isError && <Alert color="red">Die Todos konnten nicht geladen werden.</Alert>}
-      {erledigt.isError && (
-        <Alert color="red">
-          Das Häkchen konnte nicht gespeichert werden. Versuch es noch einmal.
-        </Alert>
-      )}
       {todos.data && (
         <>
           <Title order={3}>Offen</Title>

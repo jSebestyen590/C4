@@ -87,6 +87,7 @@ export function LagerortFormular({
   const ifcoSperre = ifcoPlatzMarkierenFehler(lagerort?.art ?? null, kinderAnzahl);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;

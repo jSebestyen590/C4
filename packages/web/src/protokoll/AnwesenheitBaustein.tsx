@@ -1,12 +1,4 @@
-import {
-  ActionIcon,
-  Anchor,
-  Flex,
-  Group,
-  Select,
-  Stack,
-  Text,
-} from '@mantine/core';
+import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
 import { Link } from 'react-router-dom';

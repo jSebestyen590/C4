@@ -96,6 +96,7 @@ export function ProfilFormular({
   const [bildFehler, setBildFehler] = useState<string | null>(null);
 
   const bildHochladen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({ datei, ausschnitt }: { datei: File; ausschnitt: Ausschnitt }) => {
       const { gross, klein } = await profilbilderErzeugen(datei, ausschnitt);
       const res = await api.me.profilbild.$post({
@@ -160,6 +161,7 @@ export function ProfilFormular({
   }, [dirty]);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: {
       username: string;
       daten: ReturnType<typeof mitgliedAktualisierenSchema.parse>;
