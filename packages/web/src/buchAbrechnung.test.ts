@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { naechsteOffene, rechneZeile, strichePruefen, ueberzugWarnung } from './buchAbrechnung';
+import { naechsteOffene, rechneZeile, strichePruefen } from './buchAbrechnung';
 
 const seite = (
   saldoCent: number,
@@ -51,14 +51,6 @@ describe('rechneZeile', () => {
     expect(
       rechneZeile(seite(0, null), { striche: '', barCent: 100, abzahlungCent: null }).ohneTarif,
     ).toBe(false);
-  });
-});
-
-describe('ueberzugWarnung', () => {
-  it('names the balance and the limit', () => {
-    expect(ueberzugWarnung('Seite 3 (anna)', { saldoDanachCent: -4250 }, 3000)).toBe(
-      'Seite 3 (anna) liegt danach bei -42,50 € (erlaubt: -30,00 €).',
-    );
   });
 });
 

@@ -1,6 +1,6 @@
 import { Badge, Button, Group, Paper, Stack, Text } from '@mantine/core';
 import { type BuchEintragDto } from '@c4/shared';
-import { Saldo, saldoText } from './buchDaten';
+import { Betrag, saldoText } from './buchDaten';
 import { formatDatumZeit } from './datum';
 import { mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
@@ -54,7 +54,7 @@ export function BuchVerlauf({
                   </Badge>
                 )}
                 <Text fw={700} td={e.storniert ? 'line-through' : undefined}>
-                  <Saldo cent={e.betragCent} />
+                  <Betrag cent={e.betragCent} fett />
                 </Text>
               </Group>
             </Group>

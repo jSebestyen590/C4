@@ -315,7 +315,7 @@ describe('buch', () => {
     expect(dto.ueberzug.map((u) => u.nummer).sort()).toEqual([2, 3]);
     expect(t.gesendet.map((g) => g.endpoint)).toEqual(['https://push.example/r']);
     expect(t.gesendet[0]?.url).toBe('/app/buch');
-    expect(t.gesendet[0]?.text).toContain('-40,00');
+    expect(t.gesendet[0]?.text).toBe('Du bist mit 40,00 € in der Barzahlung');
     const seiten = await t.lesen<Seite[]>('vorstand-token', '/seiten');
     expect(seiten.filter((s) => s.ueberzug).map((s) => s.nummer)).toEqual([2, 3]);
   });

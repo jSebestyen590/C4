@@ -1,6 +1,5 @@
 import {
   Alert,
-  Badge,
   Button,
   Group,
   Loader,
@@ -20,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { BuchSeiteDto } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { BUCH_KEY, BuchInhaber, Saldo, seitePfad, useBuchSeiten } from '../buchDaten';
+import { BUCH_KEY, BuchInhaber, Betrag, BuchSaldo, seitePfad, useBuchSeiten } from '../buchDaten';
 import { HILFE } from '../finanzenHilfe';
 import { jsonOderFehler } from '../finanzenDaten';
 import { FeldLabel } from '../InfoHinweis';
@@ -216,8 +215,7 @@ export function FinanzenBuchPage() {
                 </Text>
               </Stack>
               <Stack gap={2} align="flex-end">
-                <Saldo cent={s.saldoCent} />
-                {s.ueberzug && <Badge color="red">Überzogen</Badge>}
+                <BuchSaldo cent={s.saldoCent} maxUeberzugCent={s.tarif?.maxUeberzugCent} />
               </Stack>
             </Group>
           </KlickKarte>
@@ -246,16 +244,16 @@ export function FinanzenBuchPage() {
               <BuchInhaber seite={s} />
             </Table.Td>
             <Table.Td style={BETRAG}>
-              <Saldo cent={s.saldoCent} />
+              <BuchSaldo cent={s.saldoCent} maxUeberzugCent={s.tarif?.maxUeberzugCent} />
             </Table.Td>
-            <Table.Td>{s.ueberzug && <Badge color="red">Überzogen</Badge>}</Table.Td>
+            <Table.Td />
           </Table.Tr>
         )}
       />
       {liste.length > 0 && (
         <Text size="sm" c="dimmed">
           {liste.length} {liste.length === 1 ? 'Seite' : 'Seiten'} · Summe der Salden:{' '}
-          <Saldo cent={summe} fett={false} />
+          <Betrag cent={summe} />
         </Text>
       )}
       {anlegen && aktive.data && (

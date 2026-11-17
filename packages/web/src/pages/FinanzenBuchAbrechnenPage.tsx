@@ -2,7 +2,6 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   Group,
   Loader,
   Modal,
@@ -24,11 +23,10 @@ import { BetragFeld } from '../BetragFeld';
 import {
   naechsteOffene,
   rechneZeile,
-  ueberzugWarnung,
   type BuchEingabe,
   type BuchZeilenRechnung,
 } from '../buchAbrechnung';
-import { BUCH_KEY, BuchInhaber, Saldo, saldoText, seitenName, useBuchSeiten } from '../buchDaten';
+import { BUCH_KEY, BuchInhaber, BuchSaldo, saldoText, useBuchSeiten } from '../buchDaten';
 import { schluesselFuer } from '../buchungFormular';
 import { HILFE } from '../finanzenHilfe';
 import { jsonOderFehler } from '../finanzenDaten';
@@ -96,23 +94,20 @@ function StricheFeld({
 /** Confirmation for one page: what goes into the book, the balance before and after, warnings to tick. */
 function SeiteAbschliessen({
   zeile,
-  warnung,
   laeuft,
   fehler,
   onSpeichern,
   onClose,
 }: Readonly<{
   zeile: Zeile;
-  warnung: string | null;
   laeuft: boolean;
   fehler: string | null;
   onSpeichern: () => void;
   onClose: () => void;
 }>) {
-  const [bestaetigt, setBestaetigt] = useState(false);
   const { seite, rechnung: r } = zeile;
   const strichwert = seite.tarif?.strichwertCent ?? 0;
-  const gesperrt = (warnung !== null && !bestaetigt) || laeuft;
+  const max = seite.tarif?.maxUeberzugCent;
   return (
     <Modal
       opened
@@ -133,18 +128,9 @@ function SeiteAbschliessen({
           <Text>Abzahlung: {centAnzeigen(r.abzahlungCent)}</Text>
         </Stack>
         <Text fw={600}>
-          Saldo: <Saldo cent={seite.saldoCent} fett={false} /> → <Saldo cent={r.saldoDanachCent} />
+          Saldo: <BuchSaldo cent={seite.saldoCent} maxUeberzugCent={max} fett={false} /> →{' '}
+          <BuchSaldo cent={r.saldoDanachCent} maxUeberzugCent={max} />
         </Text>
-        {warnung && (
-          <Alert color="orange" title="Bitte prüfen">
-            <Checkbox
-              label={`${warnung} Das ist richtig so.`}
-              checked={bestaetigt}
-              onChange={(e) => setBestaetigt(e.currentTarget.checked)}
-              data-autofocus
-            />
-          </Alert>
-        )}
         <Text size="sm" c="dimmed">
           Gespeichertes lässt sich hier nicht mehr ändern; Korrekturen gehen per Storno auf der
           Seite.
@@ -154,12 +140,7 @@ function SeiteAbschliessen({
           <Button variant="default" onClick={onClose} disabled={laeuft}>
             Zurück
           </Button>
-          <Button
-            onClick={onSpeichern}
-            loading={laeuft}
-            disabled={gesperrt}
-            data-autofocus={warnung ? undefined : ''}
-          >
+          <Button onClick={onSpeichern} loading={laeuft} data-autofocus>
             Seite abschließen
           </Button>
         </Group>
@@ -169,7 +150,7 @@ function SeiteAbschliessen({
 }
 
 /** The locked state of a closed row: what was saved and, prominently, the number for the book. */
-function EintragenHinweis({ a }: Readonly<{ a: Abgeschlossen }>) {
+function EintragenHinweis({ a, max }: Readonly<{ a: Abgeschlossen; max: number | undefined }>) {
   return (
     <Stack gap={0} align="flex-end">
       <Badge color="green" variant="light">
@@ -179,7 +160,7 @@ function EintragenHinweis({ a }: Readonly<{ a: Abgeschlossen }>) {
         Ins Buch eintragen:
       </Text>
       <Text fz="xl" lh={1.1}>
-        <Saldo cent={a.saldoDanachCent} />
+        <BuchSaldo cent={a.saldoDanachCent} maxUeberzugCent={max} />
       </Text>
     </Stack>
   );
@@ -446,7 +427,7 @@ export function FinanzenBuchAbrechnenPage() {
                             {a.abzahlungCent ? centAnzeigen(a.abzahlungCent) : ''}
                           </Table.Td>
                           <Table.Td colSpan={2}>
-                            <EintragenHinweis a={a} />
+                            <EintragenHinweis a={a} max={z.seite.tarif?.maxUeberzugCent} />
                           </Table.Td>
                         </Table.Tr>
                       );
@@ -463,7 +444,11 @@ export function FinanzenBuchAbrechnenPage() {
                           {zeilenFehler(z.seite.id)}
                         </Table.Td>
                         <Table.Td style={BETRAG}>
-                          <Saldo cent={z.seite.saldoCent} fett={false} />
+                          <BuchSaldo
+                            cent={z.seite.saldoCent}
+                            maxUeberzugCent={z.seite.tarif?.maxUeberzugCent}
+                            fett={false}
+                          />
                         </Table.Td>
                         <Table.Td>{f.striche}</Table.Td>
                         <Table.Td>{f.bar}</Table.Td>
@@ -473,12 +458,10 @@ export function FinanzenBuchAbrechnenPage() {
                             ''
                           ) : (
                             <Group gap={6} justify="flex-end" wrap="nowrap">
-                              {z.rechnung.ueberzug && (
-                                <Badge color="red" variant="light">
-                                  Überzug
-                                </Badge>
-                              )}
-                              <Saldo cent={z.rechnung.saldoDanachCent} />
+                              <BuchSaldo
+                                cent={z.rechnung.saldoDanachCent}
+                                maxUeberzugCent={z.seite.tarif?.maxUeberzugCent}
+                              />
                             </Group>
                           )}
                         </Table.Td>
@@ -510,7 +493,12 @@ export function FinanzenBuchAbrechnenPage() {
                           </Text>
                           <BuchInhaber seite={z.seite} verlinken={false} />
                         </Text>
-                        {!a && <Saldo cent={z.seite.saldoCent} />}
+                        {!a && (
+                          <BuchSaldo
+                            cent={z.seite.saldoCent}
+                            maxUeberzugCent={z.seite.tarif?.maxUeberzugCent}
+                          />
+                        )}
                       </Group>
                       {a ? (
                         <>
@@ -518,7 +506,7 @@ export function FinanzenBuchAbrechnenPage() {
                             {a.striche} Striche · Bar {centAnzeigen(a.barCent)} · Abzahlung{' '}
                             {centAnzeigen(a.abzahlungCent)}
                           </Text>
-                          <EintragenHinweis a={a} />
+                          <EintragenHinweis a={a} max={z.seite.tarif?.maxUeberzugCent} />
                         </>
                       ) : (
                         <>
@@ -548,12 +536,10 @@ export function FinanzenBuchAbrechnenPage() {
                                 Saldo danach
                               </Text>
                               <Group gap="xs">
-                                {z.rechnung.ueberzug && (
-                                  <Badge color="red" variant="light">
-                                    Überzug
-                                  </Badge>
-                                )}
-                                <Saldo cent={z.rechnung.saldoDanachCent} />
+                                <BuchSaldo
+                                  cent={z.rechnung.saldoDanachCent}
+                                  maxUeberzugCent={z.seite.tarif?.maxUeberzugCent}
+                                />
                               </Group>
                             </Group>
                           )}
@@ -572,15 +558,6 @@ export function FinanzenBuchAbrechnenPage() {
       {dialogZeile && (
         <SeiteAbschliessen
           zeile={dialogZeile}
-          warnung={
-            dialogZeile.rechnung.ueberzug && dialogZeile.seite.tarif
-              ? ueberzugWarnung(
-                  seitenName(dialogZeile.seite),
-                  dialogZeile.rechnung,
-                  dialogZeile.seite.tarif.maxUeberzugCent,
-                )
-              : null
-          }
           laeuft={laeuft}
           fehler={fehler[dialogZeile.seite.id] || null}
           onSpeichern={() => void speichern(dialogZeile)}

@@ -45,6 +45,15 @@ export function gueltigerTarif<T extends BuchTarif>(
   return beste;
 }
 
+export type BuchSaldoStufe = 'gut' | 'warnung' | 'ueberzug';
+
+/**
+ * Classification of a balance for its colour: `gut` (>= 0), `warnung` (negative but within the
+ * allowed overdraft), `ueberzug` (below `-maxUeberzugCent`). Without a tarif pass 0 as limit.
+ */
+export const buchSaldoStufe = (saldo: number, maxUeberzugCent: number): BuchSaldoStufe =>
+  saldo >= 0 ? 'gut' : saldo >= -maxUeberzugCent ? 'warnung' : 'ueberzug';
+
 export interface BuchWerte {
   striche: number;
   strichwertCent: number;

@@ -1,6 +1,6 @@
 import { Alert, Badge, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { centAnzeigen } from '@c4/shared';
-import { BuchInhaber, Saldo, useBuchMeine } from '../buchDaten';
+import { BuchInhaber, BuchSaldo, useBuchMeine } from '../buchDaten';
 import { BuchRangliste } from '../BuchRangliste';
 import { BuchVerlauf } from '../BuchVerlauf';
 import { HILFE } from '../finanzenHilfe';
@@ -36,7 +36,7 @@ export function BuchPage() {
                 <InfoHinweis feld="Saldo" text={HILFE.buch.saldo} />
               </Group>
               <Text fz={36} lh={1.1}>
-                <Saldo cent={s.saldoCent} />
+                <BuchSaldo cent={s.saldoCent} maxUeberzugCent={s.tarif?.maxUeberzugCent} />
               </Text>
               <Text size="sm" c="dimmed">
                 <BuchInhaber seite={s} verlinken={false} />

@@ -307,20 +307,20 @@ export const buchRoutes = (ctx: RoutenKontext) => {
             const s = nachId.get(x.seiteId);
             const tarif = s && tarifFuer(s, mitglied, tarife);
             return s && tarif && istUeberzug(x.saldoCent, tarif.maxUeberzugCent)
-              ? [{ s, x, max: tarif.maxUeberzugCent }]
+              ? [{ s, x }]
               : [];
           });
           if (!ergebnis.wiederholt) {
             // The overdrawn members hear about it; failures never break the Abrechnung.
             await bestEffort(async () => {
-              for (const { s, x, max } of ueberzug) {
+              for (const { s, x } of ueberzug) {
                 const sub = s.seite.mitgliedSub;
                 if (!sub) continue;
                 await deps.benachrichtigungen.senden({
                   subs: [sub],
                   art: 'buch.ueberzug',
                   titel: 'Dein Buch ist überzogen',
-                  text: `Dein Buch steht bei ${formatEuro(x.saldoCent)}, erlaubt sind ${formatEuro(0 - max)}. Bitte zahl etwas ab.`,
+                  text: `Du bist mit ${formatEuro(Math.abs(x.saldoCent))} in der Barzahlung`,
                   url: '/app/buch',
                   dedupeSchluessel: `buch.ueberzug:${ergebnis.id}:${sub}`,
                 });

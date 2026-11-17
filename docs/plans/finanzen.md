@@ -104,7 +104,8 @@ Keine Fehler:
   sich nicht speichern, und die Seite zeigt, wo die Differenz liegt.
 - Prüfung am Feld mit klarer Meldung, nicht erst nach dem Absenden. Plausibilitätswarnungen
   (Datum in der Zukunft oder in festgeschriebener Periode, ungewöhnlich hoher Betrag, möglicher
-  doppelter Beleg, Überzug im Buch) blockieren nicht, müssen aber bestätigt werden.
+  doppelter Beleg) blockieren nicht, müssen aber bestätigt werden. Das Buch kennt keine solchen Warnungen: Es hält nur fest,
+  was im Papierbuch steht; ein Überzug ist nur die Farbe des Saldos.
 - Vor jedem unumkehrbaren Schritt (buchen, abrechnen, stornieren, festschreiben) eine
   Zusammenfassung dessen, was gebucht wird, mit ausdrücklicher Bestätigung.
 - Nichts geht verloren: Entwürfe werden gespeichert, ungespeicherte Eingaben warnen beim Verlassen,
@@ -158,7 +159,7 @@ mehrere Unterseiten stehen.
 - Abrechnungstabelle aller Seiten (Mitglied, Striche, Bar, Abzahlung); leere Zeilen erzeugen
   nichts. Am Desktop eine Tabelle, die sich per Tastatur zeilenweise durcharbeiten lässt; auf dem
   Handy als Kartenliste mit denselben Feldern.
-- Eigene Seite mit Verlauf und Saldo, Überzugswarnung; Rangliste gesamt/pro Jahr (Muster
+- Eigene Seite mit Verlauf und Saldo (Farbstufe grün/gelb/rot); Rangliste gesamt/pro Jahr (Muster
   `packages/shared/src/trichter.ts` + `TrichterRangliste.tsx`).
 - Deaktivieren-Vorschau der Mitglieder zeigt offenen Buch-Saldo.
 - **Das Buch ist ein Nebenbuch, kein Teil des Bargeldbestands und ohne eigene Journalbuchungen.**

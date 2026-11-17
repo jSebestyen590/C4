@@ -34,10 +34,12 @@ Abrechnung (spätere Scheibe) als Bareinnahme gebucht.
   (alles 0) werden ignoriert, eine ganz leere Abrechnung ist 400. Idempotenz über `idempotenzSchluessel` (UUID je
   Erfassung): derselbe Schlüssel liefert die vorhandene Abrechnung mit 200 statt 201. Stornos haben ihren eigenen
   Schlüssel.
-- **Überzug**: Saldo unter `−max_ueberzug` des Tarifs. Er blockiert nicht; die Abrechnungsseite verlangt eine Bestätigung je
-  Seite. Nach dem Speichern bekommt jedes Mitglied, dessen Seite überzogen ist, einen Push `buch.ueberzug` (siehe
-  [benachrichtigungen.md](./benachrichtigungen.md)); bei einer wiederholten Abrechnung (gleicher Schlüssel) nicht erneut.
-  Externe Seiten bekommen keinen Push.
+- **Saldo-Farben und Überzug**: Das Buch hält nur fest, was im Papierbuch steht; es gibt kein Richtig oder Falsch und
+  keine Warnung, die bestätigt werden müsste. Jeder Saldo wird nach `buchSaldoStufe(saldo, max_ueberzug)` eingefärbt:
+  grün ab 0 €, gelb im Minus innerhalb des Überzugs, rot darunter (ohne Tarif gilt der Überzug 0). Nach dem Speichern
+  einer Abrechnung bekommt jedes Mitglied mit rotem Saldo einen Push `buch.ueberzug` („Du bist mit 30,50 € in der
+  Barzahlung“, siehe [benachrichtigungen.md](./benachrichtigungen.md)); bei einer wiederholten Abrechnung (gleicher
+  Schlüssel) nicht erneut. Externe Seiten bekommen keinen Push.
 - **Rangliste** (gesamt oder je Kalenderjahr, Berlin): sortiert nach Umsatz in Euro = Σ (Striche × Strichwert + Bar),
   Abzahlungen zählen nicht, Stornos ziehen ab. Zusätzlich die Striche. Sie zeigt nie einen Saldo.
 
@@ -70,14 +72,14 @@ Es gibt bewusst keine Update- oder Delete-Routen. Die Deaktivieren-Vorschau der 
 
 ## Oberfläche
 
-- `/buch` (mobile first, Menüpunkt „Buch“): eigener Saldo groß (negativ rot), Überzugs-Hinweis, Tarif, Verlauf als Karten,
+- `/buch` (mobile first, Menüpunkt „Buch“): eigener Saldo groß (nach Stufe grün/gelb/rot), Überzugs-Hinweis, Tarif, Verlauf als Karten,
   darunter die Rangliste mit Jahresauswahl.
-- `/finanzen/buch` (desktop first): Seitenliste (Nummer, Mitglied/Extern, Saldo, Überzug), „Seite anlegen“, „Abrechnen“,
+- `/finanzen/buch` (desktop first): Seitenliste (Nummer, Mitglied/Extern, Saldo), „Seite anlegen“, „Abrechnen“,
   „Tarife“, Umschalter Aktiv/Archiviert.
 - `/finanzen/buch/abrechnen`: Abrechnung **seitenweise**, wie das Papierbuch (Striche zählen und durchstreichen, Bar,
   Abzahlung, Seite abschließen, neuen Saldo ins Buch schreiben). Tabelle aller aktiven Seiten nach Nummer mit Striche, Bar,
   Abzahlung; Enter springt zeilenweise zum nächsten Feld, Enter in „Abzahlung“ (oder „Seite abschließen“) öffnet die
-  Bestätigung nur dieser Seite (Striche × Strichwert, Bar, Abzahlung, Saldo vorher → danach, Überzugs-Warnung zum Abhaken).
+  Bestätigung nur dieser Seite (Striche × Strichwert, Bar, Abzahlung, Saldo vorher → danach; der Bestätigen-Knopf ist immer aktiv und hat den Fokus).
   Das Speichern sendet eine Abrechnung mit einer Zeile (`POST /api/buch/abrechnungen`, eigener Idempotenz-Schlüssel je Seite
   und Inhalt, Push je Seite wie sonst). Danach ist die Zeile gesperrt („Abgeschlossen“, groß: „Ins Buch eintragen: −8,50 €“)
   und der Fokus springt ins Striche-Feld der nächsten offenen Zeile. Leere Zeilen werden übersprungen. Oben steht „x von y

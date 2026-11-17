@@ -6,6 +6,7 @@ import {
   buchRangliste,
   buchSeiteEingabeSchema,
   buchTarifEingabeSchema,
+  buchSaldoStufe,
   eintragWirkungCent,
   gueltigerTarif,
   istUeberzug,
@@ -146,5 +147,19 @@ describe('Schemas', () => {
     expect(buchNummerSchema.safeParse({ nummer: 0 }).success).toBe(false);
     expect(buchNummerSchema.safeParse({ nummer: 1.5 }).success).toBe(false);
     expect(buchNummerSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('buchSaldoStufe', () => {
+  it('is green from zero, yellow within the limit, red beyond it', () => {
+    expect(buchSaldoStufe(0, 3000)).toBe('gut');
+    expect(buchSaldoStufe(500, 0)).toBe('gut');
+    expect(buchSaldoStufe(-1, 3000)).toBe('warnung');
+    expect(buchSaldoStufe(-3000, 3000)).toBe('warnung');
+    expect(buchSaldoStufe(-3001, 3000)).toBe('ueberzug');
+  });
+
+  it('treats a missing tarif as limit 0', () => {
+    expect(buchSaldoStufe(-1, 0)).toBe('ueberzug');
   });
 });

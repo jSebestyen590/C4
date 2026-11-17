@@ -26,7 +26,14 @@ import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { schluesselFuer } from '../buchungFormular';
-import { BUCH_KEY, BuchInhaber, Saldo, saldoText, useBuchSeite, useBuchSeiten } from '../buchDaten';
+import {
+  BUCH_KEY,
+  BuchInhaber,
+  BuchSaldo,
+  saldoText,
+  useBuchSeite,
+  useBuchSeiten,
+} from '../buchDaten';
 import { BuchVerlauf, eintragTeile } from '../BuchVerlauf';
 import { jsonOderFehler } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
@@ -281,7 +288,6 @@ export function FinanzenBuchSeitePage() {
               </Text>
             </Stack>
             {s.archiviert && <Badge color="gray">Archiviert</Badge>}
-            {s.ueberzug && <Badge color="red">Überzogen</Badge>}
           </Group>
           <Paper withBorder p="md" radius="md">
             <Group gap="xl" align="flex-end">
@@ -293,7 +299,7 @@ export function FinanzenBuchSeitePage() {
                   <InfoHinweis feld="Saldo" text={HILFE.buch.saldo} />
                 </Group>
                 <Text fz={32} lh={1.1}>
-                  <Saldo cent={s.saldoCent} />
+                  <BuchSaldo cent={s.saldoCent} maxUeberzugCent={s.tarif?.maxUeberzugCent} />
                 </Text>
               </Stack>
               <Stack gap={0}>

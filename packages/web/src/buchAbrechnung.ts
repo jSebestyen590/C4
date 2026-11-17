@@ -1,4 +1,4 @@
-import { eintragWirkungCent, formatEuro, istUeberzug, type BuchSeiteDto } from '@c4/shared';
+import { eintragWirkungCent, istUeberzug, type BuchSeiteDto } from '@c4/shared';
 
 /** What was typed for one page; `striche` is the raw text of the field. */
 export interface BuchEingabe {
@@ -50,14 +50,6 @@ export function rechneZeile(
     ueberzug: !leer && !!seite.tarif && istUeberzug(saldoDanachCent, seite.tarif.maxUeberzugCent),
   };
 }
-
-/** Confirmable warning of a page that goes over its limit with this Abrechnung. */
-export const ueberzugWarnung = (
-  name: string,
-  rechnung: Pick<BuchZeilenRechnung, 'saldoDanachCent'>,
-  maxUeberzugCent: number,
-): string =>
-  `${name} liegt danach bei ${formatEuro(rechnung.saldoDanachCent)} (erlaubt: ${formatEuro(0 - maxUeberzugCent)}).`;
 
 /** The next id after `aktuell` that is not closed yet (wrapping around); null when all are closed. */
 export function naechsteOffene(

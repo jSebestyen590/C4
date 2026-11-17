@@ -1,7 +1,13 @@
 import { Anchor, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { centAnzeigen, type BuchSeiteDto, type FinanzMitgliedDto } from '@c4/shared';
+import {
+  buchSaldoStufe,
+  centAnzeigen,
+  type BuchSaldoStufe,
+  type BuchSeiteDto,
+  type FinanzMitgliedDto,
+} from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
@@ -61,19 +67,45 @@ export const saldoText = (cent: number) =>
 export const wirkungText = (cent: number) =>
   cent > 0 ? `+${centAnzeigen(cent)}` : cent < 0 ? `−${centAnzeigen(-cent)}` : centAnzeigen(0);
 
-/** Color of a balance: debt red, credit teal, zero default. */
-export const saldoFarbe = (cent: number) => (cent < 0 ? 'red' : cent > 0 ? 'teal' : undefined);
+const STUFEN_FARBE: Record<BuchSaldoStufe, string> = {
+  gut: 'light-dark(var(--mantine-color-green-8), var(--mantine-color-green-4))',
+  warnung: 'light-dark(var(--mantine-color-yellow-9), var(--mantine-color-yellow-4))',
+  ueberzug: 'light-dark(var(--mantine-color-red-7), var(--mantine-color-red-4))',
+};
 
-/** Balance in its color, right-aligned digits of equal width. */
-export function Saldo({ cent, fett = true }: Readonly<{ cent: number; fett?: boolean }>) {
+/**
+ * A Buch balance in its colour: green from 0, yellow while negative within `maxUeberzugCent`, red
+ * below it (pass 0 without a tarif). Digits of equal width, never wrapped.
+ */
+export function BuchSaldo({
+  cent,
+  maxUeberzugCent,
+  fett = true,
+}: Readonly<{ cent: number; maxUeberzugCent: number | null | undefined; fett?: boolean }>) {
   return (
     <Text
       span
-      c={saldoFarbe(cent)}
+      fw={fett ? 700 : undefined}
+      style={{
+        color: STUFEN_FARBE[buchSaldoStufe(cent, maxUeberzugCent ?? 0)],
+        fontVariantNumeric: 'tabular-nums',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {saldoText(cent)}
+    </Text>
+  );
+}
+
+/** A plain signed amount (effect of an entry, sums): no status colour. */
+export function Betrag({ cent, fett = false }: Readonly<{ cent: number; fett?: boolean }>) {
+  return (
+    <Text
+      span
       fw={fett ? 700 : undefined}
       style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
     >
-      {saldoText(cent)}
+      {wirkungText(cent)}
     </Text>
   );
 }

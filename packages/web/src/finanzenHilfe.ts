@@ -77,7 +77,7 @@ export const HILFE = {
     seitenweise:
       'Das Buch ist ein Heft aus Papier: Du rechnest Seite für Seite ab. Trag Striche, Bar und Abzahlung einer Seite ein und schließ sie ab; sie wird sofort gespeichert und die Zeile gesperrt. Dann schreibst du den angezeigten neuen Saldo ins Buch und machst mit der nächsten Seite weiter. Mit Enter springst du zum nächsten Feld, Enter in „Abzahlung“ öffnet die Bestätigung der Seite. Korrekturen gehen nur per Storno auf der Seite.',
     ueberzug:
-      'Liegt der Saldo unter dem erlaubten Überzug, ist die Seite überzogen. Das blockiert die Abrechnung nicht, du musst es aber bestätigen. Das Mitglied bekommt danach eine Benachrichtigung.',
+      'Der Saldo ist grün ab 0 €, gelb im Minus innerhalb des erlaubten Überzugs und rot darunter (ohne Tarif gilt der Überzug 0). Das ist nur eine Information: Das Buch hält fest, was im Papierbuch steht, und die Abrechnung wird nie blockiert. Mitglieder mit rotem Saldo bekommen nach der Abrechnung eine Benachrichtigung.',
     strichwert:
       'Preis eines Strichs in Euro für den gewählten Status. Er wird beim Eintragen im Eintrag gespeichert und ändert sich später nicht mehr, auch wenn es einen neuen Tarif gibt.',
     maxUeberzug:
