@@ -1,4 +1,4 @@
-import { Alert, Badge, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { centAnzeigen } from '@c4/shared';
 import { BuchInhaber, BuchSaldo, useBuchMeine } from '../buchDaten';
 import { BuchRangliste } from '../BuchRangliste';
@@ -25,10 +25,7 @@ export function BuchPage() {
         <Stack key={s.id} gap="md">
           <Paper withBorder p="md" radius="md">
             <Stack gap={4}>
-              <Group justify="space-between" wrap="nowrap" align="center">
-                <Text c="dimmed">Seite {s.nummer}</Text>
-                {s.ueberzug && <Badge color="red">Überzogen</Badge>}
-              </Group>
+              <Text c="dimmed">Seite {s.nummer}</Text>
               <Group gap={2} align="center">
                 <Text size="sm" c="dimmed">
                   Dein Saldo
@@ -46,12 +43,6 @@ export function BuchPage() {
               </Text>
             </Stack>
           </Paper>
-          {s.ueberzug && s.tarif && (
-            <Alert color="red" title="Dein Buch ist überzogen">
-              Dein Saldo liegt unter dem erlaubten Überzug von{' '}
-              {centAnzeigen(s.tarif.maxUeberzugCent)}. Bitte zahl etwas ab.
-            </Alert>
-          )}
           <Title order={3}>Verlauf</Title>
           <BuchVerlauf eintraege={s.verlauf} />
         </Stack>

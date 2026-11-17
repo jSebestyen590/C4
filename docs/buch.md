@@ -72,7 +72,7 @@ Es gibt bewusst keine Update- oder Delete-Routen. Die Deaktivieren-Vorschau der 
 
 ## Oberfläche
 
-- `/buch` (mobile first, Menüpunkt „Buch“): eigener Saldo groß (nach Stufe grün/gelb/rot), Überzugs-Hinweis, Tarif, Verlauf als Karten,
+- `/buch` (mobile first, Menüpunkt „Buch“): eigener Saldo groß (nach Stufe grün/gelb/rot), Tarif, Verlauf als Karten,
   darunter die Rangliste mit Jahresauswahl.
 - `/finanzen/buch` (desktop first): Seitenliste (Nummer, Mitglied/Extern, Saldo), „Seite anlegen“, „Abrechnen“,
   „Tarife“, Umschalter Aktiv/Archiviert.
