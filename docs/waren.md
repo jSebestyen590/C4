@@ -4,6 +4,12 @@ Lagerorte (Baum), Warengruppen (Baum), Gebinde, Waren, Bestandsbuchungen und Inv
 (Bestand, FIFO, Verlauf, Inventurabgleich) liegt in `packages/shared/src/waren.ts`, Speicherung und
 Validierung in `packages/api/src/waren.ts`, Routen in `packages/api/src/routes/waren.ts`.
 
+## Überblick
+
+Mini-Warensystem: Lagerorte (Baum), Warengruppen (Baum), Gebinde, Waren, Bestandsbuchungen und Inventur. Der Bestand ist nie gespeichert, sondern die Summe von `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD; gebucht wird nur über Vorgänge, und der Bestand darf negativ werden. Fachlogik liegt in `packages/shared/src/waren.ts`, Speicherung in `packages/api/src/waren.ts`, Routen in `packages/api/src/routes/waren.ts`.
+
+Abschnitte: Invarianten, Dateien, Rechte, Datenmodell, IFCO-Lagerplätze, Regale und Regalböden, Gebinde, FIFO-Entnahme, Wartung, API, Oberfläche (Details)
+
 ## Invarianten
 
 - Bestand ist nie gespeichert, sondern die Summe von `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD (`bestandZu`);

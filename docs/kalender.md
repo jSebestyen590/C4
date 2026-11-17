@@ -3,6 +3,12 @@
 Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, siehe „Event-Art“). Rechte: `kalender:lesen` (ansehen, sich eintragen), `events:verwalten`
 (Events anlegen, ändern, absagen), `kalender:einrichten` (Dienstformen, Kategorien, Vorlagen, Externe).
 
+## Überblick
+
+Events mit Schichten und Diensten oder mit Teilnahme, je nach Event-Art der Kategorie. Rechte: `kalender:lesen` (ansehen, eintragen), `events:verwalten` (Events anlegen, ändern, absagen), `kalender:einrichten` (Dienstformen, Kategorien, Vorlagen, Externe). Code in `packages/api/src/kalender.ts` und `packages/shared/src/kalender.ts`; dazu Terminserien, Geburtstage, ICS-Abo, Erinnerungen und Push.
+
+Abschnitte: Datenmodell, Regeln, Terminserien, Event-Art (Dienste oder Teilnahme), Teilnahme, Absage (nicht verfügbar), Bilder-Ordner, Verantwortliche:r, Seiten, API: Events und Dienste, Geburtstage, Mein Kalender (ICS-Abo), Globale Erinnerungen (Dienste fehlen), Push-Benachrichtigungen
+
 ## Datenmodell
 
 Migrationen `0037`–`0065` (`*_kalender_*`; Tabellen, Indizes, Standard-Erinnerungen, Rechte der Vorstandsposten; Push-Tabellen `0066`–`0070` siehe `benachrichtigungen.md`), Code in `packages/api/src/kalender.ts`, Logik in `packages/shared/src/kalender.ts`.

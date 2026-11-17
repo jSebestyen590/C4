@@ -2,6 +2,12 @@
 
 Die Seite `/historie` (Menü „Historie“, Recht `mitglieder:lesen`) zeigt Zeitstrahlen (Gantt-artig, ohne Diagramm-Bibliothek).
 
+## Überblick
+
+Die Seite `/historie` (Recht `mitglieder:lesen`) zeigt Zeitstrahlen (Gantt-artig, ohne Diagramm-Bibliothek) für Status und Posten je Mitglied oder je Posten. Die Auswahl liegt nur in der URL und lässt sich so teilen; Drucken ist möglich. Code: `packages/web/src/pages/HistoriePage.tsx`, `Zeitstrahl.tsx`, `zeitstrahlLogik.ts`; Statuszeiträume in `packages/shared/src/statusVerlauf.ts`.
+
+Abschnitte: Dateien, URL, Ansicht „Mitglieder“, Ansicht „Posten“, Bedienung, Drucken
+
 ## Dateien
 
 | Bereich | Dateien                                                                                                                                                     |

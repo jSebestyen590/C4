@@ -5,6 +5,12 @@ Das Buch ist die digitale Strichliste des Vereins (Scheibe 2 der [Finanzen](./fi
 `fin_konten`, kein Teil des Bargeldbestands. Das Geld der Abzahlungen liegt in einer Barkasse und wird mit deren
 Abrechnung (spätere Scheibe) als Bareinnahme gebucht.
 
+## Überblick
+
+Das Buch ist die digitale Strichliste des Vereins und ein Nebenbuch der Finanzen (Scheibe 2): keine Journalbuchungen, keine Konten in `fin_konten`, kein Teil des Bargeldbestands. Eine Seite (`buch_seiten`) gehört einem Mitglied oder einem externen Namen, hat eine Nummer und kann archiviert werden. Das Geld der Abzahlungen liegt in einer Barkasse und wird erst mit deren Abrechnung gebucht.
+
+Abschnitte: Konzept, Rechte, Routen (`routes/buch.ts`), Oberfläche, Tabellen
+
 ## Konzept
 
 - Eine **Seite** (`buch_seiten`) gehört einem Mitglied oder einem externen Namen (genau eins von beiden), hat eine

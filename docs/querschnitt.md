@@ -2,6 +2,12 @@
 
 Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und der Umgang mit DSQL-Konflikten.
 
+## Überblick
+
+Was für alle Features gilt: Anmeldung über die Cognito-Hosted-UI (Code-Flow, `packages/web/src/auth.tsx`), Prüfung des Access-Tokens im API-Gateway-Authorizer und in `packages/api/src/auth.ts`, die Berechnung der Rechte, die Fehlerantworten und der Umgang mit DSQL-Konflikten. Dazu kommen PWA-Icons und der Offline-Hinweis. Öffentlich ohne Authorizer sind nur wenige Routen wie `GET /api/health`.
+
+Abschnitte: Auth-Modell, Rechteberechnung, Routen und Routentests, Fehler-Mapping, DSQL-Wiederholung, Routen im Web, Fehler im Web (Mutationen), Query-Keys (Web), Wiederkehrende Helfer im Web, PWA: Icons und Offline-Hinweis
+
 ## Auth-Modell
 
 - **Anmeldung:** Cognito-Hosted-UI mit Code-Flow (`oidc-client-ts`, `packages/web/src/auth.tsx`). Das Web hält den Access-Token

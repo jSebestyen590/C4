@@ -13,6 +13,12 @@ Unterseiten (Teil dieses Features):
 - [protokolle/aktionen.md](./protokolle/aktionen.md): Aktionen beim Abschließen (Events, Status, Posten, Todos).
 - [protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md): Gliederung, Dokumentansicht, Autosave-Oberfläche, Drucken, PDF, Bilder.
 
+## Überblick
+
+Sitzungsprotokolle der Mitgliederversammlungen und Sitzungen: Ein Protokoll gehört zu genau einem Sitzungs-Event und besteht aus dem Kopf (Teilnahme, EMs, Gäste) und einem Dokument mit vier festen Abschnitten und Bausteinen. Rechte: `protokolle:lesen` (ansehen, drucken) und `protokolle:schreiben` (anlegen, bearbeiten, abschließen, löschen; Admins immer, sonst über einen Posten). Details zu Bausteinen, Abschluss-Aktionen und Ansicht/PDF stehen auf den Unterseiten in `docs/protokolle/`.
+
+Abschnitte: Invarianten, Seiten, Datenmodell, Dateien, Sitzungen, Kopf, Vorbelegung eines neuen Protokolls, Aktionen beim Abschließen, Speichern, Bearbeitungssperre, API
+
 ## Invarianten
 
 - Je Event höchstens ein Protokoll (eindeutiger Index `protokolle_event_idx`, Migration 0111; ein zweites gibt 409). Ein Event
