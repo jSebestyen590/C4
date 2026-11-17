@@ -85,6 +85,8 @@ export interface DeaktivierenVorschau {
   posten: { id: string; name: string }[];
   /** Keys the member currently holds. */
   schluessel: { id: string; name: string }[];
+  /** Active Buch pages of the member with an open balance (not zero). */
+  buch: { seiteId: string; nummer: number; saldoCent: number }[];
 }
 
 export const createUserSchema = z.object({

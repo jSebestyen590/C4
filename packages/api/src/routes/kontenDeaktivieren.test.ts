@@ -202,8 +202,34 @@ describe('accounts deaktivieren', () => {
       ],
       posten: [{ id: 'p1', name: 'Kasse' }],
       schluessel: [{ id: 's1', name: 'Haupttür' }],
+      buch: [],
     });
     expect(t.kalender.meineDienste).toHaveBeenLastCalledWith('m2', expect.any(Date));
+
+    // An open Buch balance is listed, a zero balance is not.
+    const seiteId = await t.buchFake.store.seiteAnlegen(
+      { nummer: 7, mitgliedSub: 'm2', externName: null },
+      'a',
+    );
+    const leer = await t.app.request(
+      '/api/admin/mitglieder/m2/deaktivieren-vorschau',
+      json('admin-token', 'GET'),
+    );
+    expect(((await leer.json()) as { buch: unknown[] }).buch).toEqual([]);
+    await t.buchFake.store.abrechnen(
+      {
+        idempotenzSchluessel: crypto.randomUUID(),
+        zeilen: [{ seiteId, striche: 2, strichwertCent: 150, barCent: 0, abzahlungCent: 0 }],
+      },
+      'a',
+    );
+    const offen = await t.app.request(
+      '/api/admin/mitglieder/m2/deaktivieren-vorschau',
+      json('admin-token', 'GET'),
+    );
+    expect(((await offen.json()) as { buch: unknown[] }).buch).toEqual([
+      { seiteId, nummer: 7, saldoCent: -300 },
+    ]);
     expect(
       (
         await t.app.request(

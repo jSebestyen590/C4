@@ -1,0 +1,1 @@
+DELETE FROM buch_seiten_verlauf WHERE id LIKE '%:angelegt' OR id LIKE '%:archiviert'

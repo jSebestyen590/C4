@@ -5,6 +5,7 @@ import { AppLayout } from './AppLayout';
 import { CallbackPage } from './pages/CallbackPage';
 import { PushAbfrage } from './PushAbfrage';
 import { bilderRouten } from './routes/bilderRouten';
+import { buchRouten } from './routes/buchRouten';
 import { finanzenRouten } from './routes/finanzenRouten';
 import { inventarRouten } from './routes/inventarRouten';
 import { kalenderRouten } from './routes/kalenderRouten';
@@ -33,6 +34,7 @@ export function App({ config }: Readonly<{ config: AppConfig }>) {
           {mitgliederRouten()}
           {postenRouten()}
           {finanzenRouten()}
+          {buchRouten()}
           {schluesselRouten()}
           {trichterRouten()}
           {bilderRouten()}

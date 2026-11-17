@@ -63,6 +63,7 @@ import { createFakeSchluesselAnfragenStore } from '../schluesselAnfragen.fake';
 import { createFakeTodosStore } from '../todos.fake';
 import { createFakeTrichterStore } from '../trichter.fake';
 import { createFakeFinanzenStore } from '../finanzen.fake';
+import { createFakeBuchStore } from '../buch.fake';
 import { createFakeUmfragenStore } from '../umfragen.fake';
 
 /** Map-backed fake of the key store with the same conflict and history rules as the real one. */
@@ -792,6 +793,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { store: trichter } = createFakeTrichterStore();
   const finanzenFake = createFakeFinanzenStore();
   const finanzen = finanzenFake.store;
+  const buchFake = createFakeBuchStore();
+  const buch = buchFake.store;
   const { store: protokolle, liste: protokollListe } = createFakeProtokolleStore();
   const { store: todos, liste: todosListe } = createFakeTodosStore();
   const {
@@ -851,6 +854,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragen,
     trichter,
     finanzen,
+    buch,
     protokolle,
     privatpartys,
     partymail: partymail.mail,
@@ -889,6 +893,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragenListe,
     trichter,
     finanzenFake,
+    buchFake,
     protokollListe,
     privatpartys,
     privatpartyPersonen,

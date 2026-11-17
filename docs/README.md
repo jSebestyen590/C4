@@ -19,6 +19,7 @@ aktualisiert die zugehörige Seite im selben Change.
 | [privatpartys.md](./privatpartys.md)             | Privatpartys: Anfragen, Personen, Wunschtermine, Umfrage, Zusage mit Event, Absage                        |
 | [trichter.md](./trichter.md)                     | Trichter: Durchgänge, geteiltes Volumen, Trichterkönig:in, Rangliste, Verwaltung                          |
 | [benachrichtigungen.md](./benachrichtigungen.md) | Benachrichtigungen: Web Push, Arten, Einstellungen, Job                                                   |
+| [buch.md](./buch.md)                             | Buch: Strichlisten-Seiten, Tarife, Abrechnung, Storno, eigene Seite, Rangliste, Push                      |
 | [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`                            |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                                        |
 | [querschnitt.md](./querschnitt.md)               | Querschnitt: Auth-Modell, Rechteberechnung, Fehler-Mapping, DSQL-Wiederholung, PWA-Icons, Offline-Hinweis |

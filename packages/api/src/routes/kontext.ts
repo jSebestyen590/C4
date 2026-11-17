@@ -68,6 +68,7 @@ export function baueKontext(deps: AppDeps) {
   const umfragenVerwalten = requirePermission('umfragen:verwalten');
   const trichterLesen = requirePermission('trichter:lesen');
   const trichterVerwalten = requirePermission('trichter:verwalten');
+  const buchLesen = requirePermission('buch:lesen');
   const finanzenLesen = requirePermission('finanzen:lesen');
   const finanzenBuchen = requirePermission('finanzen:buchen');
   const finanzenVerwalten = requirePermission('finanzen:verwalten');
@@ -344,6 +345,7 @@ export function baueKontext(deps: AppDeps) {
     umfragenVerwalten,
     trichterLesen,
     trichterVerwalten,
+    buchLesen,
     finanzenLesen,
     finanzenBuchen,
     finanzenVerwalten,

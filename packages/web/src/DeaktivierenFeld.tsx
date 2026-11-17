@@ -3,7 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { datumAnzeigen, type Mitglied } from '@c4/shared';
+import { centAnzeigen, datumAnzeigen, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import { StatusName } from './StatusAnzeige';
@@ -22,8 +22,8 @@ function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
     return <Loader size="sm" aria-label="Offene Zuordnungen werden geladen" />;
   if (vorschau.isError)
     return <Alert color="red">Die offenen Zuordnungen konnten nicht geladen werden.</Alert>;
-  const { dienste, posten, schluessel } = vorschau.data;
-  if (dienste.length + posten.length + schluessel.length === 0) return null;
+  const { dienste, posten, schluessel, buch } = vorschau.data;
+  if (dienste.length + posten.length + schluessel.length + buch.length === 0) return null;
   return (
     <Stack gap="xs">
       <Text fw={600}>Noch offen:</Text>
@@ -69,6 +69,22 @@ function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
               <List.Item key={s.id}>
                 <Anchor component={Link} to={`/schluessel/${s.id}`}>
                   {s.name}
+                </Anchor>
+              </List.Item>
+            ))}
+          </List>
+        </div>
+      )}
+      {buch.length > 0 && (
+        <div>
+          <Text size="sm" c="dimmed">
+            Buch (offener Saldo)
+          </Text>
+          <List size="md" listStyleType="disc">
+            {buch.map((b) => (
+              <List.Item key={b.seiteId}>
+                <Anchor component={Link} to={`/finanzen/buch/seiten/${b.seiteId}`}>
+                  Seite {b.nummer}: {centAnzeigen(b.saldoCent)}
                 </Anchor>
               </List.Item>
             ))}
