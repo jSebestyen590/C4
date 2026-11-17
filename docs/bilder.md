@@ -7,6 +7,12 @@ nach Eventname und Datum; ein Klick öffnet den Ordner in OneDrive. Unterordner 
 
 Die Bilder in Protokollen sind davon getrennt: Sie liegen in S3, nicht in OneDrive (siehe [protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md#bilder)).
 
+## Überblick
+
+Die Veranstaltungsfotos liegen im privaten OneDrive des Vereins (Basisordner `Cloud4/Bilder`), je Event ein Unterordner `Datum_Event`. Die Seite `/bilder` listet und durchsucht diese Ordner und kann neue anlegen; Rechte sind `bilder:lesen` und `users:manage` (Verbindung einrichten). Die Bilder in Protokollen sind davon getrennt und liegen in S3.
+
+Abschnitte: Namensschema, Freigabelinks und Teilen, Ladezeit: Snapshot der Ordnerliste, Events und Vorlagen, Verbindung zu OneDrive, PDFs der Protokolle, API, Datenbank
+
 ## Namensschema
 
 | Form                    | Beispiel                          | Genauigkeit |

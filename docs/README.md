@@ -3,6 +3,8 @@
 Dokumentation der Features von C4. Sie soll kurz und aktuell bleiben: Wer ein Feature ändert,
 aktualisiert die zugehörige Seite im selben Change.
 
+Jede Seite beginnt direkt unter dem Titel mit einem `## Überblick` (kurze Zusammenfassung und Abschnittsliste), damit man erst nur den Anfang liest und dann gezielt zum passenden Abschnitt springt; neue Seiten brauchen ebenfalls einen.
+
 | Seite                                            | Inhalt                                                                                                    |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | [members.md](./members.md)                       | Mitglieder: Profil, Status, Rechte, Kontaktkanäle, Profilbilder, Mitgliederliste                          |

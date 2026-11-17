@@ -6,6 +6,12 @@ Schlüssel, die Umfragen, die Todos und die Privatpartys (je ein Modul `*Benachr
 Tabellen (`push_abos`, `benachrichtigung_einstellungen`, `push_versand`, `push_schluessel`): Migrationen `0066`–`0070`;
 `benachrichtigung_verlauf`: `0137`–`0140` (siehe [Verlauf](#verlauf)).
 
+## Überblick
+
+Allgemeines Modul für Web-Push-Nachrichten, das keinen Feature-Bereich kennt: Kalender, Geburtstage, Schlüssel, Umfragen, Todos und Privatpartys nutzen es über je ein Modul `*Benachrichtigungen.ts`. Arten stehen in der Registry `BENACHRICHTIGUNGS_ARTEN` (`packages/shared/src/benachrichtigungen.ts`); pro Person wird je Art gespeichert, ob sie aktiv ist, und jedes Gerät muss Push selbst aktivieren. Versand und Job liegen in `packages/api/src/benachrichtigungen.ts`, die Einstellungen auf der Seite `/benachrichtigungen`.
+
+Abschnitte: Dateien, Konzept, Tabellen, API, Versand und Job, Verlauf, Kalender-Arten, Umfragen, Privatpartys, Todos, Geburtstage, Web, iOS, Kosten und Betrieb, Schlüssel-Anfragen: stündliche Wiederholung
+
 ## Dateien
 
 | Bereich | Dateien                                                                                                                                                                                                                                                                                                                                   |

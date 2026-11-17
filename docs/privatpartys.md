@@ -5,6 +5,12 @@ Eine Terminumfrage klärt, wer übernehmen kann, und aus der Zusage entsteht ein
 **`privatpartys:verwalten`** (Admins und Posten, vergeben über [posten.md](./posten.md); Vorstand o. ä. trägt es der Admin dort ein).
 Navigation „Privatpartys“ (`IconConfetti`) nur mit dem Recht; Seiten unter `/privatpartys`.
 
+## Überblick
+
+Privatpersonen mieten den Club für private Feiern; hier werden die Anfragen verwaltet: Person, Wunschtermine mit Stufe und Notizen. Eine Terminumfrage klärt, wer übernehmen kann, und aus der Zusage entsteht ein Event. Alles braucht das Recht `privatpartys:verwalten`; Seiten liegen unter `/privatpartys`, Migrationen `0120`–`0129`.
+
+Abschnitte: Datenmodell, Ablauf, Event, Seiten, API, Party-Mail, Benachrichtigungen
+
 ## Datenmodell
 
 Migrationen `0120`–`0129` (siehe [datenbank.md](./datenbank.md)); Text-IDs, keine Fremdschlüssel, Bezüge prüft die API.

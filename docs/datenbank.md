@@ -4,6 +4,12 @@ Migrationen sind SQL-Dateien in `packages/api/src/db/migrations/`. `pnpm db:migr
 Namensreihenfolge an und merkt sie in `schema_migrations`. Aurora DSQL erlaubt nur ein DDL-Statement
 pro Transaktion, deshalb enthält jede Datei genau ein Statement.
 
+## Überblick
+
+Migrationen sind SQL-Dateien in `packages/api/src/db/migrations/`, die `pnpm db:migrate` in Namensreihenfolge anwendet und in `schema_migrations` merkt. Aurora DSQL erlaubt nur ein DDL-Statement pro Transaktion, deshalb enthält jede Datei genau ein Statement. Rollback läuft über Down-Dateien in `migrations/down/`; Reset und Deploy-Workflow gelten nur für dev.
+
+Abschnitte: Rollback mit Down-Dateien, Deploy-Workflow (nur dev), Deploy-Reihenfolge und additive Migrationen, Umgebungsmarke (`app_info.env`), Reset (nur dev), Gleichzeitige Zugriffe, Fremdschlüssel und Löschen, Backups
+
 ## Rollback mit Down-Dateien
 
 Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:

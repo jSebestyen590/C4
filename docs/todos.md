@@ -4,6 +4,12 @@ Aufgaben mit Deadline. Sie entstehen beim Abschließen eines Protokolls aus dem 
 [protokolle.md](./protokolle.md), [Baustein Todo](./protokolle/bausteine.md#todo-bausteintodo); das Todo steht dort nur in den Notizen eines anderen Bausteins, nie auf oberster Ebene, und erscheint im Dokument und PDF als Aufzählungspunkt) oder werden von Mitgliedern für sich selbst angelegt. Jede Person sieht ihre Todos auf der Seite
 **Todos** (`/todos`, Navigation „Todos“ mit `IconChecklist`, für alle angemeldeten Mitglieder mit Profil; es ist kein eigenes Recht nötig).
 
+## Überblick
+
+Aufgaben mit Deadline: Sie entstehen beim Abschließen eines Protokolls aus dem Baustein „Todo“ oder werden von Mitgliedern für sich selbst angelegt (`POST /api/me/todos`); einen anderen Weg gibt es nicht. Die Seite `/todos` steht allen angemeldeten Mitgliedern mit Profil offen, ein eigenes Recht ist nicht nötig. Nur selbst angelegte Todos ohne Protokoll lassen sich ändern oder löschen, Todos aus einem Protokoll folgen dem Protokoll.
+
+Abschnitte: Invarianten, Dateien, Datenmodell, Modi, Seite „Todos“, API, Erinnerung
+
 ## Invarianten
 
 - Der Weg ins System: Todos aus einem Protokoll entstehen nur beim Abschließen (Aktionen `todo.anlegen`/`todo.aendern`, siehe

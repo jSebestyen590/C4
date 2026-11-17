@@ -3,6 +3,12 @@
 Ein Posten ist eine Verantwortlichkeit im Verein (z. B. Kassenwart). Er hat einen Namen, eine
 Beschreibung und beliebig viele **Besetzungen**: ein Mitglied mit Startdatum und optionalem Enddatum.
 
+## Überblick
+
+Ein Posten ist eine Verantwortlichkeit im Verein (z. B. Kassenwart) mit Namen, Beschreibung und beliebig vielen Besetzungen (Mitglied mit Startdatum und optionalem Enddatum). Posten können Rechte gewähren und archiviert werden; es gibt feste Vorstandsposten. Code in `packages/api/src/posten.ts`, Migrationen `0006`–`0009`.
+
+Abschnitte: Datenmodell, Rechte, Seiten und API, Vorstandsposten
+
 ## Datenmodell
 
 Migrationen `0006`–`0008` (Tabellen) und `0009` (Vorstandsposten), Code in `packages/api/src/posten.ts`.
