@@ -3,6 +3,7 @@ import {
   IconBook2,
   IconCoins,
   IconListDetails,
+  IconNotebook,
   IconPencilPlus,
   IconReportMoney,
   IconShieldCheck,
@@ -66,6 +67,12 @@ export function FinanzenPage() {
           icon={<IconReportMoney size={28} />}
           titel="Zählungen"
           text="Protokoll aller Zählungen mit Soll, Ist und Differenz."
+        />
+        <Kachel
+          to="/finanzen/buch"
+          icon={<IconNotebook size={28} />}
+          titel="Buch"
+          text="Strichlisten aller Mitglieder: Seiten, Abrechnung und Tarife."
         />
         {can('finanzen:buchen') && (
           <Kachel

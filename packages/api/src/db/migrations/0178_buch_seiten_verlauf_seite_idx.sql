@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS buch_seiten_verlauf_seite_idx ON buch_seiten_verlauf (seite_id)

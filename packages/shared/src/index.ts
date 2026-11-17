@@ -3,6 +3,7 @@ export * from './benachrichtigungen';
 export * from './bilder';
 export * from './datum';
 export * from './bargeld';
+export * from './buch';
 export * from './finanzen';
 export * from './geburtstag';
 export * from './ifco';

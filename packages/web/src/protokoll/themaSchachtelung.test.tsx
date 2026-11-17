@@ -1,7 +1,12 @@
 import { MantineProvider } from '@mantine/core';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { bausteinLeer, protokollKopfLeer, type ProtokollDokument, type ProtokollKnoten } from '@c4/shared';
+import {
+  bausteinLeer,
+  protokollKopfLeer,
+  type ProtokollDokument,
+  type ProtokollKnoten,
+} from '@c4/shared';
 import { ProtokollDokumentAnsicht } from './ProtokollDokumentAnsicht';
 import { dokumentGliederungBauen, dokumentUeberschriften } from './dokumentUeberschriften';
 import type { DokumentEingabe } from './dokumentDaten';
@@ -30,7 +35,10 @@ const abstimmung: ProtokollKnoten = {
 // Event (h3) > T1 (h4) > T2 (h5) > T3 (h6) > T4 (h6, capped); typed headings in T3 and the Event.
 const event: ProtokollKnoten = {
   type: 'bausteinEvent',
-  attrs: { id: 'e', daten: { ...bausteinLeer('bausteinEvent'), name: 'Fest', datum: '2024-02-11' } },
+  attrs: {
+    id: 'e',
+    daten: { ...bausteinLeer('bausteinEvent'), name: 'Fest', datum: '2024-02-11' },
+  },
   content: [
     ueberschrift(2, 'EventUeb'),
     thema(
