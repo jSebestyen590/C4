@@ -97,6 +97,8 @@ describe('buch', () => {
       ['GET', '/seiten/x', ['member-token']],
       ['POST', '/seiten', ['member-token', 'vorstand-token']],
       ['POST', '/seiten/x/archivieren', ['member-token', 'vorstand-token']],
+      ['POST', '/seiten/x/nummer', ['member-token', 'vorstand-token']],
+      ['POST', '/seiten/x/reaktivieren', ['member-token', 'vorstand-token']],
       ['GET', '/tarife', ['member-token']],
       ['POST', '/tarife', ['member-token', 'vorstand-token']],
       ['POST', '/abrechnungen', ['member-token', 'vorstand-token']],
@@ -221,6 +223,16 @@ describe('buch', () => {
     ).toBe(201);
     const seiten = await t.lesen<Seite[]>('vorstand-token', '/seiten');
     expect(seiten[0]?.saldoCent).toBe(-250 + 100 - 400);
+  });
+
+  it('returns the balance of each settled page', async () => {
+    const t = await setup();
+    await t.tarif();
+    const id = await t.seite({ nummer: 1, mitgliedSub: 'm2' });
+    const res = await t.abrechnen([{ seiteId: id, striche: 2, barCent: 0, abzahlungCent: 100 }]);
+    expect(((await res.json()) as { saldi: unknown[] }).saldi).toEqual([
+      { seiteId: id, nummer: 1, saldoCent: -200 },
+    ]);
   });
 
   it('is idempotent: the same key books once and answers 200', async () => {
@@ -356,6 +368,67 @@ describe('buch', () => {
     const leer = await t.lesen<R>('member-token', `/rangliste?jahr=${r.aktuellesJahr - 1}`);
     expect(leer.rangliste).toEqual([]);
     expect((await t.roh('member-token', 'GET', '/rangliste?jahr=abc')).status).toBe(400);
+  });
+
+  type Ereignis = { art: string; nummer: number | null; erstelltVon: { sub: string } | null };
+  const verlaufVon = async (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    (await t.lesen<Seite & { nummernVerlauf: Ereignis[] }>('vorstand-token', `/seiten/${id}`))
+      .nummernVerlauf;
+
+  it('renumbers an active page and keeps the number history', async () => {
+    const t = await setup();
+    const id = await t.seite({ nummer: 1, mitgliedSub: 'm2' });
+    await t.seite({ nummer: 2, externName: 'Gast' });
+    const nummer = (token: string, n: number, pfad = id) =>
+      t.anfrage(token, 'POST', `/seiten/${pfad}/nummer`, { nummer: n });
+    expect((await nummer('admin-token', 1)).status).toBe(400);
+    expect((await nummer('admin-token', 2)).status).toBe(409);
+    expect((await nummer('admin-token', 6, 'nope')).status).toBe(404);
+    expect((await nummer('vorstand-token', 6)).status).toBe(403);
+    expect((await nummer('member-token', 6)).status).toBe(403);
+    expect((await nummer('admin-token', 6)).status).toBe(200);
+    const detail = await t.lesen<Seite>('vorstand-token', `/seiten/${id}`);
+    expect(detail.nummer).toBe(6);
+    expect((await verlaufVon(t, id)).map((e) => [e.art, e.nummer])).toEqual([
+      ['nummer', 6],
+      ['angelegt', 1],
+    ]);
+    expect((await verlaufVon(t, id))[0]?.erstelltVon?.sub).toBe('a');
+    // The old number is free again.
+    await t.seite({ nummer: 1, externName: 'Neu' });
+    await t.anfrage('admin-token', 'POST', `/seiten/${id}/archivieren`);
+    expect((await nummer('admin-token', 7)).status).toBe(409);
+  });
+
+  it('reactivates an archived page under a chosen number', async () => {
+    const t = await setup();
+    const id = await t.seite({ nummer: 1, mitgliedSub: 'm2' });
+    const reaktivieren = (token: string, n: number, pfad = id) =>
+      t.anfrage(token, 'POST', `/seiten/${pfad}/reaktivieren`, { nummer: n });
+    expect((await reaktivieren('admin-token', 1)).status).toBe(409); // still active
+    await t.anfrage('admin-token', 'POST', `/seiten/${id}/archivieren`);
+    await t.seite({ nummer: 1, externName: 'Gast' }); // took the old number
+    expect((await reaktivieren('admin-token', 1)).status).toBe(409);
+    const zweite = await t.seite({ nummer: 2, mitgliedSub: 'm2' }); // member has another page
+    const anderes = await reaktivieren('admin-token', 3);
+    expect(anderes.status).toBe(409);
+    expect(((await anderes.json()) as { error: string }).error).toContain(
+      'schon eine aktive Seite',
+    );
+    await t.anfrage('admin-token', 'POST', `/seiten/${zweite}/archivieren`);
+    expect((await reaktivieren('vorstand-token', 3)).status).toBe(403);
+    expect((await reaktivieren('admin-token', 6, 'nope')).status).toBe(404);
+    expect((await reaktivieren('admin-token', 3)).status).toBe(200);
+    const detail = await t.lesen<Seite & { archiviert: boolean }>(
+      'vorstand-token',
+      `/seiten/${id}`,
+    );
+    expect(detail).toMatchObject({ nummer: 3, archiviert: false });
+    expect((await verlaufVon(t, id)).map((e) => [e.art, e.nummer])).toEqual([
+      ['reaktiviert', 3],
+      ['archiviert', null],
+      ['angelegt', 1],
+    ]);
   });
 
   it('shows nothing for members without a page', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rechneZeile, strichePruefen, ueberzugWarnung } from './buchAbrechnung';
+import { naechsteOffene, rechneZeile, strichePruefen, ueberzugWarnung } from './buchAbrechnung';
 
 const seite = (
   saldoCent: number,
@@ -59,5 +59,18 @@ describe('ueberzugWarnung', () => {
     expect(ueberzugWarnung('Seite 3 (anna)', { saldoDanachCent: -4250 }, 3000)).toBe(
       'Seite 3 (anna) liegt danach bei -42,50 € (erlaubt: -30,00 €).',
     );
+  });
+});
+
+describe('naechsteOffene', () => {
+  const ids = ['a', 'b', 'c'];
+  it('skips closed rows and wraps around', () => {
+    expect(naechsteOffene(ids, new Set(['a']), 'a')).toBe('b');
+    expect(naechsteOffene(ids, new Set(['a', 'b']), 'a')).toBe('c');
+    expect(naechsteOffene(ids, new Set(['b', 'c']), 'c')).toBe('a');
+  });
+  it('is null when no other row is open', () => {
+    expect(naechsteOffene(ids, new Set(['a', 'b', 'c']), 'a')).toBeNull();
+    expect(naechsteOffene(ids, new Set(['b', 'c']), 'a')).toBeNull();
   });
 });

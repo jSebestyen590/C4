@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import type { BuchEintragRow, BuchSeiteRow, BuchTarifRow } from './db/schema';
+import type { BuchEintragRow, BuchSeiteRow, BuchSeitenVerlaufRow, BuchTarifRow } from './db/schema';
 import {
   abrechnungsEintrag,
   BuchKonflikt,
   EINTRAG_SCHON_STORNIERT,
+  nummerAendernPruefen,
+  reaktivierenPruefen,
+  verlaufZeile,
   SEITE_MITGLIED_VORHANDEN,
   SEITE_NICHT_AKTIV,
   SEITE_NUMMER_VERGEBEN,
@@ -19,6 +22,7 @@ export function createFakeBuchStore() {
   const seiten: BuchSeiteRow[] = [];
   const tarife: BuchTarifRow[] = [];
   const eintraege: BuchEintragRow[] = [];
+  const seitenVerlauf: BuchSeitenVerlaufRow[] = [];
   const abrechnungen = new Map<string, { id: string; eintraege: BuchEintragRow[] }>();
 
   const saldo = (seiteId: string) =>
@@ -50,22 +54,55 @@ export function createFakeBuchStore() {
       if (daten.mitgliedSub && offen.some((s) => s.mitgliedSub === daten.mitgliedSub))
         throw new BuchKonflikt(SEITE_MITGLIED_VORHANDEN);
       const id = randomUUID();
+      const jetzt = new Date();
       seiten.push({
         id,
         nummer: daten.nummer,
         mitgliedSub: daten.mitgliedSub,
         externName: daten.externName,
         angelegtVon: sub,
-        angelegtAm: new Date(),
+        angelegtAm: jetzt,
         archiviertAm: null,
       });
+      seitenVerlauf.push(verlaufZeile(id, 'angelegt', daten.nummer, sub, jetzt));
       return id;
     },
-    async seiteArchivieren(id) {
+    async seiteArchivieren(id, sub) {
       const s = seiten.find((x) => x.id === id);
       if (!s) return false;
-      s.archiviertAm ??= new Date();
+      if (s.archiviertAm === null) {
+        s.archiviertAm = new Date();
+        seitenVerlauf.push(verlaufZeile(id, 'archiviert', null, sub, s.archiviertAm));
+      }
       return true;
+    },
+    async seiteNummerAendern(id, nummer, sub) {
+      const s = seiten.find((x) => x.id === id);
+      if (!s) return false;
+      nummerAendernPruefen(
+        s,
+        nummer,
+        seiten.filter((x) => x.archiviertAm === null),
+      );
+      s.nummer = nummer;
+      seitenVerlauf.push(verlaufZeile(id, 'nummer', nummer, sub, new Date()));
+      return true;
+    },
+    async seiteReaktivieren(id, nummer, sub) {
+      const s = seiten.find((x) => x.id === id);
+      if (!s) return false;
+      reaktivierenPruefen(
+        s,
+        nummer,
+        seiten.filter((x) => x.archiviertAm === null),
+      );
+      s.nummer = nummer;
+      s.archiviertAm = null;
+      seitenVerlauf.push(verlaufZeile(id, 'reaktiviert', nummer, sub, new Date()));
+      return true;
+    },
+    async seitenVerlauf(seiteId) {
+      return seitenVerlauf.filter((v) => v.seiteId === seiteId).reverse();
     },
     async verlauf(seiteId) {
       const rows = eintraege.filter((e) => e.seiteId === seiteId).reverse();

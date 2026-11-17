@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buchAbrechnungEingabeSchema,
   buchJahre,
+  buchNummerSchema,
   buchRangliste,
   buchSeiteEingabeSchema,
   buchTarifEingabeSchema,
@@ -138,5 +139,12 @@ describe('Schemas', () => {
         .success,
     ).toBe(false);
     expect(buchAbrechnungEingabeSchema.safeParse({ zeilen: [zeile] }).success).toBe(false);
+  });
+
+  it('a new page number is a whole number from 1 to 9999', () => {
+    expect(buchNummerSchema.safeParse({ nummer: 6 }).success).toBe(true);
+    expect(buchNummerSchema.safeParse({ nummer: 0 }).success).toBe(false);
+    expect(buchNummerSchema.safeParse({ nummer: 1.5 }).success).toBe(false);
+    expect(buchNummerSchema.safeParse({}).success).toBe(false);
   });
 });

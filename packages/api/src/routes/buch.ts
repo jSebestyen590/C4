@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
   buchAbrechnungEingabeSchema,
+  buchNummerSchema,
   buchJahre,
   buchRangliste,
   buchSeiteEingabeSchema,
@@ -123,6 +124,13 @@ export const buchRoutes = (ctx: RoutenKontext) => {
   ): Promise<BuchSeiteDetailDto> => ({
     ...seiteDto(s, mitglied, tarife),
     verlauf: (await deps.buch.verlauf(s.seite.id)).map((v) => eintragDto(v, mitglied)),
+    nummernVerlauf: (await deps.buch.seitenVerlauf(s.seite.id)).map((v) => ({
+      id: v.id,
+      art: v.art,
+      nummer: v.nummer,
+      erstelltAm: v.erstelltAm.toISOString(),
+      erstelltVon: mitglied(v.erstelltVon),
+    })),
   });
 
   const buchFehler = (err: unknown): never => {
@@ -208,9 +216,42 @@ export const buchRoutes = (ctx: RoutenKontext) => {
         },
       )
       .post('/buch/seiten/:id/archivieren', auth, finanzenBuchen, async (c) => {
-        gefunden(await deps.buch.seiteArchivieren(c.req.param('id')), 'Seite nicht gefunden');
+        gefunden(
+          await deps.buch.seiteArchivieren(c.req.param('id'), c.get('user').sub),
+          'Seite nicht gefunden',
+        );
         return c.json({ ok: true });
       })
+      .post(
+        '/buch/seiten/:id/nummer',
+        auth,
+        finanzenBuchen,
+        zValidator('json', buchNummerSchema),
+        async (c) => {
+          gefunden(
+            await deps.buch
+              .seiteNummerAendern(c.req.param('id'), c.req.valid('json').nummer, c.get('user').sub)
+              .catch(buchFehler),
+            'Seite nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .post(
+        '/buch/seiten/:id/reaktivieren',
+        auth,
+        finanzenBuchen,
+        zValidator('json', buchNummerSchema),
+        async (c) => {
+          gefunden(
+            await deps.buch
+              .seiteReaktivieren(c.req.param('id'), c.req.valid('json').nummer, c.get('user').sub)
+              .catch(buchFehler),
+            'Seite nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
       .get('/buch/tarife', auth, finanzenLesen, async (c) => {
         const dto: BuchTarifDto[] = (await deps.buch.tarife()).map((t) => ({
           ...alsTarif(t),
@@ -289,6 +330,7 @@ export const buchRoutes = (ctx: RoutenKontext) => {
           const dto: BuchAbrechnungErgebnisDto = {
             id: ergebnis.id,
             eintraege: ergebnis.eintraege,
+            saldi: ergebnis.saldi,
             ueberzug: ueberzug.map(({ x }) => ({
               seiteId: x.seiteId,
               nummer: x.nummer,

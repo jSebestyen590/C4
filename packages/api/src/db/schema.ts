@@ -1293,6 +1293,19 @@ export const buchSeiten = pgTable('buch_seiten', {
 });
 export type BuchSeiteRow = typeof buchSeiten.$inferSelect;
 
+/** History of a page (insert-only): created, renumbered, archived, reactivated. `nummer` set except for 'archiviert'. */
+export const buchSeitenVerlauf = pgTable('buch_seiten_verlauf', {
+  id: text('id').primaryKey(),
+  seiteId: text('seite_id')
+    .notNull()
+    .references(() => buchSeiten.id),
+  art: text('art').$type<'angelegt' | 'nummer' | 'archiviert' | 'reaktiviert'>().notNull(),
+  nummer: integer('nummer'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type BuchSeitenVerlaufRow = typeof buchSeitenVerlauf.$inferSelect;
+
 /** Strichwert and maximum overdraft per member status, valid from a date (insert-only). */
 export const buchTarife = pgTable('buch_tarife', {
   id: text('id').primaryKey(),

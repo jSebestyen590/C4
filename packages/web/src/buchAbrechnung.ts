@@ -58,3 +58,17 @@ export const ueberzugWarnung = (
   maxUeberzugCent: number,
 ): string =>
   `${name} liegt danach bei ${formatEuro(rechnung.saldoDanachCent)} (erlaubt: ${formatEuro(0 - maxUeberzugCent)}).`;
+
+/** The next id after `aktuell` that is not closed yet (wrapping around); null when all are closed. */
+export function naechsteOffene(
+  ids: readonly string[],
+  abgeschlossen: ReadonlySet<string>,
+  aktuell: string,
+): string | null {
+  const start = ids.indexOf(aktuell);
+  for (let i = 1; i <= ids.length; i++) {
+    const id = ids[(start + i) % ids.length];
+    if (id !== undefined && id !== aktuell && !abgeschlossen.has(id)) return id;
+  }
+  return null;
+}

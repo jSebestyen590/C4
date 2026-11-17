@@ -142,6 +142,15 @@ export const buchSeiteEingabeSchema = z
   }));
 export type BuchSeiteEingabe = z.output<typeof buchSeiteEingabeSchema>;
 
+/** Body of `POST /api/buch/seiten/:id/nummer` and `/reaktivieren`. */
+export const buchNummerSchema = z.object({
+  nummer: z
+    .number('Bitte gib eine Nummer an.')
+    .int('Die Nummer muss eine ganze Zahl sein.')
+    .min(1, 'Die Nummer muss mindestens 1 sein.')
+    .max(9999, 'Die Nummer darf höchstens 9999 sein.'),
+});
+
 export const buchTarifEingabeSchema = z.object({
   status: z.enum(MITGLIED_STATI, 'Bitte wähle einen Status.'),
   strichwertCent: z
@@ -240,7 +249,18 @@ export interface BuchSeiteDto {
   ueberzug: boolean;
 }
 
+/** One event of a page's life; `nummer` is set except for `archiviert`. */
+export interface BuchSeitenEreignisDto {
+  id: string;
+  art: 'angelegt' | 'nummer' | 'archiviert' | 'reaktiviert';
+  nummer: number | null;
+  erstelltAm: string;
+  erstelltVon: FinanzMitgliedDto | null;
+}
+
 export interface BuchSeiteDetailDto extends BuchSeiteDto {
+  /** Number history (created, renumbered, archived, reactivated), newest first. */
+  nummernVerlauf: BuchSeitenEreignisDto[];
   /** Newest first. */
   verlauf: BuchEintragDto[];
 }
@@ -270,6 +290,8 @@ export interface BuchRanglisteDto {
 export interface BuchAbrechnungErgebnisDto {
   id: string;
   eintraege: number;
+  /** Balance of every page of the Abrechnung after it. */
+  saldi: { seiteId: string; nummer: number; saldoCent: number }[];
   /** Pages of this Abrechnung that are over the allowed overdraft now. */
   ueberzug: { seiteId: string; nummer: number; saldoCent: number }[];
   /** True when the idempotency key was already used: the existing Abrechnung is returned. */

@@ -12,8 +12,10 @@ import {
   buchAbrechnungen,
   buchEintraege,
   buchSeiten,
+  buchSeitenVerlauf,
   buchTarife,
   type BuchEintragRow,
+  type BuchSeitenVerlaufRow,
   type BuchSeiteRow,
   type BuchTarifRow,
 } from './db/schema';
@@ -89,7 +91,19 @@ export interface BuchStore {
     sub: string,
   ): Promise<string>;
   /** False when the page does not exist; archiving an archived page is a no-op. */
-  seiteArchivieren(id: string): Promise<boolean>;
+  seiteArchivieren(id: string, sub: string): Promise<boolean>;
+  /**
+   * Gives an active page another number. False when the page does not exist. Throws BuchUngueltig for
+   * the current number, BuchKonflikt for an archived page or a taken number.
+   */
+  seiteNummerAendern(id: string, nummer: number, sub: string): Promise<boolean>;
+  /**
+   * Activates an archived page again under `nummer`. False when the page does not exist. Throws BuchKonflikt
+   * when the page is active, the number is taken or the member has another active page.
+   */
+  seiteReaktivieren(id: string, nummer: number, sub: string): Promise<boolean>;
+  /** Number history of a page, newest first. */
+  seitenVerlauf(seiteId: string): Promise<BuchSeitenVerlaufRow[]>;
   /** Entries of a page, newest first. */
   verlauf(seiteId: string): Promise<BuchVerlaufEintrag[]>;
   /** All tarife, newest `gueltigAb` first. */
@@ -114,7 +128,49 @@ export const SEITE_NUMMER_VERGEBEN = 'Die Nummer ist bei einer aktiven Seite sch
 export const SEITE_MITGLIED_VORHANDEN = 'Das Mitglied hat schon eine aktive Seite.';
 export const EINTRAG_SCHON_STORNIERT = 'Der Eintrag ist bereits storniert.';
 export const STORNO_NICHT_STORNIERBAR = 'Ein Storno kann nicht storniert werden.';
+export const NUMMER_UNVERAENDERT = 'Die Seite hat diese Nummer schon.';
+export const SEITE_ARCHIVIERT = 'Die Seite ist archiviert. Reaktiviere sie zuerst.';
+export const SEITE_NICHT_ARCHIVIERT = 'Die Seite ist nicht archiviert.';
 export const SEITE_NICHT_AKTIV = 'Eine der Seiten gibt es nicht oder sie ist archiviert.';
+
+/** Checks a renumbering against the active pages (shared with the fake). */
+export function nummerAendernPruefen(
+  seite: Pick<BuchSeiteRow, 'id' | 'nummer' | 'archiviertAm'>,
+  nummer: number,
+  offen: readonly Pick<BuchSeiteRow, 'id' | 'nummer'>[],
+): void {
+  if (seite.archiviertAm !== null) throw new BuchKonflikt(SEITE_ARCHIVIERT);
+  if (seite.nummer === nummer) throw new BuchUngueltig(NUMMER_UNVERAENDERT);
+  if (offen.some((s) => s.nummer === nummer && s.id !== seite.id))
+    throw new BuchKonflikt(SEITE_NUMMER_VERGEBEN);
+}
+
+/** Checks a reactivation against the active pages (shared with the fake). */
+export function reaktivierenPruefen(
+  seite: Pick<BuchSeiteRow, 'id' | 'mitgliedSub' | 'archiviertAm'>,
+  nummer: number,
+  offen: readonly Pick<BuchSeiteRow, 'id' | 'nummer' | 'mitgliedSub'>[],
+): void {
+  if (seite.archiviertAm === null) throw new BuchKonflikt(SEITE_NICHT_ARCHIVIERT);
+  if (offen.some((s) => s.nummer === nummer)) throw new BuchKonflikt(SEITE_NUMMER_VERGEBEN);
+  if (seite.mitgliedSub && offen.some((s) => s.mitgliedSub === seite.mitgliedSub))
+    throw new BuchKonflikt(SEITE_MITGLIED_VORHANDEN);
+}
+
+export const verlaufZeile = (
+  seiteId: string,
+  art: BuchSeitenVerlaufRow['art'],
+  nummer: number | null,
+  sub: string,
+  jetzt: Date,
+): BuchSeitenVerlaufRow => ({
+  id: randomUUID(),
+  seiteId,
+  art,
+  nummer,
+  erstelltVon: sub,
+  erstelltAm: jetzt,
+});
 
 /** The reversal of `e` as an insertable entry (shared with the fake). */
 export const stornoEintrag = (
@@ -266,15 +322,19 @@ export function createBuchStore(db: Db): BuchStore {
             if (daten.mitgliedSub && offen.some((s) => s.mitgliedSub === daten.mitgliedSub))
               throw new BuchKonflikt(SEITE_MITGLIED_VORHANDEN);
             const id = randomUUID();
+            const jetzt = new Date();
             await tx.insert(buchSeiten).values({
               id,
               nummer: daten.nummer,
               mitgliedSub: daten.mitgliedSub,
               externName: daten.externName,
               angelegtVon: sub,
-              angelegtAm: new Date(),
+              angelegtAm: jetzt,
               archiviertAm: null,
             });
+            await tx
+              .insert(buchSeitenVerlauf)
+              .values(verlaufZeile(id, 'angelegt', daten.nummer, sub, jetzt));
             return id;
           }),
         VERSUCHE,
@@ -282,16 +342,79 @@ export function createBuchStore(db: Db): BuchStore {
         WARTEN_MS,
       ),
 
-    async seiteArchivieren(id) {
-      const [row] = await db.select().from(buchSeiten).where(eq(buchSeiten.id, id));
-      if (!row) return false;
-      if (row.archiviertAm === null) {
-        await db
-          .update(buchSeiten)
-          .set({ archiviertAm: new Date() })
-          .where(and(eq(buchSeiten.id, id), isNull(buchSeiten.archiviertAm)));
-      }
-      return true;
+    seiteArchivieren: (id, sub) =>
+      mitWiederholung(
+        () =>
+          db.transaction(async (tx) => {
+            const [row] = await tx.select().from(buchSeiten).where(eq(buchSeiten.id, id));
+            if (!row) return false;
+            if (row.archiviertAm === null) {
+              const jetzt = new Date();
+              await tx.update(buchSeiten).set({ archiviertAm: jetzt }).where(eq(buchSeiten.id, id));
+              await tx
+                .insert(buchSeitenVerlauf)
+                .values(verlaufZeile(id, 'archiviert', null, sub, jetzt));
+            }
+            return true;
+          }),
+        VERSUCHE,
+        undefined,
+        WARTEN_MS,
+      ),
+
+    seiteNummerAendern: (id, nummer, sub) =>
+      mitWiederholung(
+        () =>
+          db.transaction(async (tx) => {
+            await sperreBeruehren(tx, `buchseite:nummer:${nummer}`);
+            const [row] = await tx.select().from(buchSeiten).where(eq(buchSeiten.id, id));
+            if (!row) return false;
+            nummerAendernPruefen(row, nummer, await aktive(tx));
+            const jetzt = new Date();
+            await tx.update(buchSeiten).set({ nummer }).where(eq(buchSeiten.id, id));
+            await tx
+              .insert(buchSeitenVerlauf)
+              .values(verlaufZeile(id, 'nummer', nummer, sub, jetzt));
+            return true;
+          }),
+        VERSUCHE,
+        undefined,
+        WARTEN_MS,
+      ),
+
+    seiteReaktivieren: (id, nummer, sub) =>
+      mitWiederholung(
+        () =>
+          db.transaction(async (tx) => {
+            const [row] = await tx.select().from(buchSeiten).where(eq(buchSeiten.id, id));
+            if (!row) return false;
+            await sperreBeruehren(
+              tx,
+              `buchseite:nummer:${nummer}`,
+              ...(row.mitgliedSub ? [`buchseite:mitglied:${row.mitgliedSub}`] : []),
+            );
+            reaktivierenPruefen(row, nummer, await aktive(tx));
+            const jetzt = new Date();
+            await tx
+              .update(buchSeiten)
+              .set({ nummer, archiviertAm: null })
+              .where(eq(buchSeiten.id, id));
+            await tx
+              .insert(buchSeitenVerlauf)
+              .values(verlaufZeile(id, 'reaktiviert', nummer, sub, jetzt));
+            return true;
+          }),
+        VERSUCHE,
+        undefined,
+        WARTEN_MS,
+      ),
+
+    seitenVerlauf(seiteId) {
+      return db
+        .select()
+        .from(buchSeitenVerlauf)
+        .where(eq(buchSeitenVerlauf.seiteId, seiteId))
+        .orderBy(desc(buchSeitenVerlauf.erstelltAm), desc(buchSeitenVerlauf.id));
     },
 
     async verlauf(seiteId) {
