@@ -26,7 +26,7 @@ import { useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { BetragFeld } from '../BetragFeld';
-import { BUCH_KEY, useBuchTarife } from '../buchDaten';
+import { buchKeys, useBuchTarife } from '../buchDaten';
 import { DatumFeld } from '../DatumFeld';
 import { HILFE } from '../finanzenHilfe';
 import { FeldLabel } from '../InfoHinweis';
@@ -82,7 +82,7 @@ export function FinanzenBuchTarifePage() {
       }),
     );
     warnung.abgeschlossen();
-    await qc.invalidateQueries({ queryKey: BUCH_KEY });
+    await qc.invalidateQueries({ queryKey: buchKeys.alle });
     notifications.show({ color: 'green', message: 'Der Tarif wurde gespeichert.' });
     setStatus(null);
     setStrichwert(null);
