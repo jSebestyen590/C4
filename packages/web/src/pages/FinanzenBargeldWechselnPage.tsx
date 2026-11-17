@@ -32,7 +32,7 @@ import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import { FINANZEN_KEY, jsonOderFehler, useBargeld } from '../finanzenDaten';
+import { finanzenKeys, jsonOderFehler, useBargeld } from '../finanzenDaten';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
 import { fehlerText } from '../warenApi';
@@ -78,6 +78,7 @@ export function FinanzenBargeldWechselnPage() {
   });
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       const inhalt = JSON.stringify(body(''));
       schluessel.current = schluesselFuer(schluessel.current, inhalt, () => crypto.randomUUID());
@@ -88,7 +89,7 @@ export function FinanzenBargeldWechselnPage() {
     onSuccess: ({ id, seq, wiederholt }) => {
       warnung.abgeschlossen();
       schluessel.current = null;
-      void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       zeigeGebucht(navigate, { id, seq, wiederholt });
       setText('');
       setRaus({});

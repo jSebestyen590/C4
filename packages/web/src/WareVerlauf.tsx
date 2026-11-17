@@ -4,28 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { basisGebinde, bestandAnzeigen, type Gebinde } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { formatDatum, formatDatumZeit } from './datum';
+import { warenKeys } from './warenDaten';
 
 const FARBEN = ['indigo.6', 'teal.6', 'orange.6', 'grape.6', 'cyan.6', 'pink.6', 'lime.7', 'red.6'];
 
-const zeitKurz = (zeit: string | number) =>
-  new Date(zeit)
-    .toLocaleString('de-DE', {
-      timeZone: 'Europe/Berlin',
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    .replace(',', '');
+const zeitKurz = (zeit: string | number) => formatDatumZeit(zeit, 'jahrKurz');
 
-const tagKurz = (ms: number) =>
-  new Date(ms).toLocaleDateString('de-DE', {
-    timeZone: 'Europe/Berlin',
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-  });
+const tagKurz = (ms: number) => formatDatum(ms, 'jahrKurz');
 
 /** Stock over time: one step chart per Basisgebinde, total or per top-level Lager. */
 export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebinde: Gebinde[] }>) {
@@ -33,7 +19,7 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
   const [jetzt] = useState(() => Date.now());
   const [ansicht, setAnsicht] = useState<'gesamt' | 'lager'>('gesamt');
   const daten = useQuery({
-    queryKey: ['waren', wareId, 'verlauf'],
+    queryKey: warenKeys.verlauf(wareId),
     queryFn: async () => unwrap(await api.waren[':id'].verlauf.$get({ param: { id: wareId } })),
   });
 

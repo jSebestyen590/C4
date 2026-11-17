@@ -11,6 +11,7 @@ import {
 } from './IfcoPlatzFelder';
 import { BoedenFelder, boedenGesamtFehler, boedenStandard, type BoedenWert } from './BoedenFelder';
 import { fehlerText, pruefen } from './warenApi';
+import { lagerortKeys } from './warenDaten';
 
 /** Appends Regalböden to a Regal. Mount it only while it should be open. */
 export function BoedenModal({
@@ -34,13 +35,14 @@ export function BoedenModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: {
       namen: string[];
       ifcoPlatz: IfcoPlatzMasse | IfcoPlatzMasse[] | null;
     }) =>
       pruefen(await api.lagerorte[':id'].boeden.$post({ param: { id: regal.id }, json: eingabe })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['lagerorte'] });
+      await qc.invalidateQueries({ queryKey: lagerortKeys.alle });
       onClose();
     },
   });

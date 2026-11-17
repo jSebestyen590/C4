@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { emailAendernSchema, emailBestaetigenSchema } from '@c4/shared';
 import { useApi } from './api';
+import { mitgliederKeys } from './queryKeys';
 
 /** Two steps: request a code for the new address, then confirm it. */
 export function EmailAendern({ email }: Readonly<{ email: string }>) {
@@ -24,6 +25,7 @@ export function EmailAendern({ email }: Readonly<{ email: string }>) {
           : standard;
 
   const anfordern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (adresse: string) => api.me.email.$put({ json: { email: adresse } }),
     onSuccess: (res) => {
       if (!res.ok) return setFehler(meldung(res.status, 'Der Code konnte nicht gesendet werden.'));
@@ -34,6 +36,7 @@ export function EmailAendern({ email }: Readonly<{ email: string }>) {
   });
 
   const bestaetigen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: string) =>
       api.me.email.bestaetigen.$post({ json: { code: eingabe } }),
     onSuccess: async (res) => {
@@ -41,7 +44,9 @@ export function EmailAendern({ email }: Readonly<{ email: string }>) {
       if (!res.ok)
         return setFehler(meldung(res.status, 'Die Adresse konnte nicht bestätigt werden.'));
       await Promise.all(
-        ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+        [mitgliederKeys.me, mitgliederKeys.mitglied, mitgliederKeys.alle].map((queryKey) =>
+          qc.invalidateQueries({ queryKey }),
+        ),
       );
       notifications.show({ color: 'green', message: 'Deine E-Mail-Adresse wurde geändert.' });
       setFehler(null);

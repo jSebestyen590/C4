@@ -27,6 +27,8 @@ import { LoeschenDialog } from '../LoeschenDialog';
 import { useLagerBestand } from '../useLagerBestand';
 import { WarenlisteModal } from '../WarenlisteModal';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { inventurKeys } from '../queryKeys';
+import { lagerortKeys } from '../warenDaten';
 
 type Formular = { parentId: string | null; lagerort?: LagerKnoten };
 
@@ -101,11 +103,11 @@ export function LagerPage() {
 
   // Always load everything: reordering must name all siblings, archived ones included.
   const lagerorte = useQuery({
-    queryKey: ['lagerorte', 'alle'],
+    queryKey: lagerortKeys.liste,
     queryFn: async () => unwrap(await api.lagerorte.$get({ query: { archiv: '1' } })),
   });
   const inventuren = useQuery({
-    queryKey: ['inventuren', 'offen'],
+    queryKey: inventurKeys.offen,
     queryFn: async () => unwrap(await api.inventuren.$get({ query: { status: 'offen' } })),
   });
 
@@ -202,9 +204,10 @@ export function LagerPage() {
     return karte;
   }, [alle]);
 
-  const neuLaden = () => qc.invalidateQueries({ queryKey: ['lagerorte'] });
+  const neuLaden = () => qc.invalidateQueries({ queryKey: lagerortKeys.alle });
 
   const reihenfolge = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({ parentId, ids }: { parentId: string | null; ids: string[] }) =>
       pruefen(
         await api.lagerorte[':id'].reihenfolge.$put({
@@ -223,12 +226,14 @@ export function LagerPage() {
     await neuLaden();
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: ({ k, archiviert }: { k: LagerKnoten; archiviert: boolean }) =>
       archivieren(k, archiviert),
     onError: (e) => fehlerAnzeigen(e),
   });
 
   const inventurStarten = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (k: LagerKnoten) => {
       const offen = offeneInventuren.get(k.id);
       if (offen) return offen;
@@ -237,7 +242,7 @@ export function LagerPage() {
       return ((await res.json()) as { id: string }).id;
     },
     onSuccess: async (id) => {
-      await qc.invalidateQueries({ queryKey: ['inventuren'] });
+      await qc.invalidateQueries({ queryKey: inventurKeys.alle });
       navigate(`/lager/inventur/${encodeURIComponent(id)}`);
     },
     onError: (e) => fehlerAnzeigen(e),

@@ -24,6 +24,7 @@ import { StatusName } from './StatusAnzeige';
 import { fehlerAnzeigen, pruefen } from './warenApi';
 import { zeileText, zeilenSortieren, zeitAnzeigen } from './warenAnzeige';
 import type { WareEintrag } from './warenDaten';
+import { warenKeys } from './warenDaten';
 
 const SCHRITT = 10;
 
@@ -45,15 +46,16 @@ export function WareHistorie({
   const [loeschId, setLoeschId] = useState<string | null>(null);
 
   const daten = useQuery({
-    queryKey: ['waren', ware.id, 'vorgaenge'],
+    queryKey: warenKeys.vorgaenge(ware.id),
     queryFn: async () => unwrap(await api.waren[':id'].vorgaenge.$get({ param: { id: ware.id } })),
   });
 
   const loeschen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (id: string) =>
       pruefen(await api.bestand.vorgaenge[':id'].$delete({ param: { id } })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['waren'] });
+      await qc.invalidateQueries({ queryKey: warenKeys.alle });
       notifications.show({ color: 'green', message: 'Der Vorgang wurde gelöscht.' });
       setLoeschId(null);
     },

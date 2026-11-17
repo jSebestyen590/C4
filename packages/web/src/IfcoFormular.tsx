@@ -7,7 +7,7 @@ import { ifcoPlatzOptionen } from './inventarAnzeige';
 import { IfcoInhaltFelder } from './IfcoInhaltFelder';
 import { useIfcoInhalt } from './IfcoInhaltModal';
 import {
-  INVENTAR_KEY,
+  inventarKeys,
   type GegenstandEintrag,
   type IfcoEintrag,
   type IfcoTypEintrag,
@@ -64,6 +64,7 @@ export function IfcoFormular({
   );
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;
@@ -81,7 +82,7 @@ export function IfcoFormular({
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

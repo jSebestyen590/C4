@@ -19,7 +19,7 @@ import { BewegungModal } from './BewegungModal';
 import { GRUND_LABELS, label } from './i18n';
 import { datumText } from './inventarAnzeige';
 import {
-  INVENTAR_KEY,
+  inventarKeys,
   useBewegungen,
   type BewegungEintrag,
   type GegenstandEintrag,
@@ -52,6 +52,7 @@ export function BewegungVerlauf({
   const [loeschen, setLoeschen] = useState<BewegungEintrag | null>(null);
 
   const loeschenMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (b: BewegungEintrag) =>
       pruefen(
         await api.inventar.gegenstaende[':id'].bewegungen[':bewegungId'].$delete({
@@ -59,7 +60,7 @@ export function BewegungVerlauf({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       setLoeschen(null);
     },
   });

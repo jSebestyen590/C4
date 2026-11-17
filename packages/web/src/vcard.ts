@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Mitglied } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { mitgliederKeys } from './queryKeys';
 
 /** The token is renewed this long before it expires. */
 const VORLAUF_MS = 10 * 60 * 1000;
@@ -13,7 +14,7 @@ const VORLAUF_MS = 10 * 60 * 1000;
 export function useVcardToken() {
   const api = useApi();
   const token = useQuery({
-    queryKey: ['vcard-token'],
+    queryKey: mitgliederKeys.vcardToken,
     queryFn: async () => unwrap(await api.me['vcard-token'].$post()),
     staleTime: Infinity,
     retry: false,
@@ -23,7 +24,10 @@ export function useVcardToken() {
       return Math.max(60_000, new Date(ablauf).getTime() - Date.now() - VORLAUF_MS);
     },
   });
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const eigeneSub = me.data?.sub;
   const wert = token.data?.token;
   const vcardLink = wert

@@ -39,6 +39,11 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0157–0162 (Finanzen, Bargeld): 0157 löscht das Konto `kassendifferenz`, 0158 setzt `safe.stueckelung` wieder auf `true`,
   0159 und 0162 löschen die Tabellen `fin_zaehlungen` und `fin_zaehlung_posten` (insert-only, mit allen Zählprotokollen),
   0160 und 0161 ihre Indizes. Rollback-Ziel nur für Bargeld: `0156_fin_buchungen_idempotenz_idx`.
+- 0177–0179 (Buch-Seitenverlauf): 0177 löscht die Tabelle `buch_seiten_verlauf` (insert-only), 0178 ihren Index, 0179 (Backfill
+  der Zeilen `angelegt`/`archiviert` bestehender Seiten) löscht nur diese Startzeilen. Rollback-Ziel nur dafür: `0176_buch_eintraege_idempotenz_idx`.
+- 0169–0176 (Buch): 0169, 0170, 0171 und 0173 löschen die Tabellen `buch_seiten`, `buch_tarife`, `buch_abrechnungen` und
+  `buch_eintraege` (mit allen Einträgen, die insert-only sind), 0172 und 0174–0176 ihre Indizes. Rollback-Ziel nur für das Buch:
+  `0168_mail_abruf_laeuft_bis`.
 - 0092–0096 (Trichter): 0092–0094 löschen ihre Tabellen, 0095–0096 ihre Indizes. Rollback-Ziel nur für den Trichter:
   `0091_umfragen_erstellt_idx`.
 - 0098–0100 (Status-Verlauf): 0098 löscht die Tabelle, 0099 den Index, 0100 löscht nur die Startbuchungen ohne Datum

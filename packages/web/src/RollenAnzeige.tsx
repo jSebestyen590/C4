@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ROLES, type Anrede, type Role } from '@c4/shared';
 import { useApi } from './api';
 import { labelFuer, ROLE_LABELS } from './i18n';
+import { mitgliederKeys } from './queryKeys';
 
 /** Role badges of a member; renders nothing without roles. */
 export function RollenBadges({
@@ -31,6 +32,7 @@ export function RollenFeld({
   const api = useApi();
   const qc = useQueryClient();
   const setzen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (groups: Role[]) => {
       const res = await api.admin.mitglieder[':sub'].rollen.$put({
         param: { sub },
@@ -41,7 +43,7 @@ export function RollenFeld({
       if (!res.ok) throw new Error('fehler');
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['mitglieder'] });
+      await qc.invalidateQueries({ queryKey: mitgliederKeys.alle });
       notifications.show({ color: 'green', message: 'Die Rollen wurden gespeichert.' });
     },
     onError: (err) =>

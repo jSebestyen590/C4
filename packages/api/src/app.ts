@@ -16,6 +16,7 @@ import { type SchluesselStore } from './schluessel';
 import { type SchluesselAnfragenStore } from './schluesselAnfragen';
 import { type TrichterStore } from './trichter';
 import { type FinanzenStore } from './finanzen';
+import { type BuchStore } from './buch';
 import { type ProtokollStore } from './protokolle';
 import { type UmfragenStore } from './umfragen';
 import { type MitgliederStore } from './mitglieder';
@@ -34,6 +35,7 @@ import { todosRoutes } from './routes/todos';
 import { protokolleRoutes } from './routes/protokolle';
 import { trichterRoutes } from './routes/trichter';
 import { finanzenRoutes } from './routes/finanzen';
+import { buchRoutes } from './routes/buch';
 import { umfragenRoutes } from './routes/umfragen';
 import { warenRoutes } from './routes/waren';
 import { inventarRoutes } from './routes/inventar';
@@ -58,6 +60,7 @@ export interface AppDeps {
   umfragen: UmfragenStore;
   trichter: TrichterStore;
   finanzen: FinanzenStore;
+  buch: BuchStore;
   protokolle: ProtokollStore;
   privatpartys: PrivatpartysStore;
   /** The Party-Mail mailbox (IMAP/SMTP); `eingerichtet()` is false without the secret. */
@@ -104,6 +107,7 @@ export function createApp(deps: AppDeps) {
       .route('/', protokolleRoutes(ctx))
       .route('/', trichterRoutes(ctx))
       .route('/', finanzenRoutes(ctx))
+      .route('/', buchRoutes(ctx))
       .route('/', umfragenRoutes(ctx))
       .route('/', warenRoutes(ctx))
       .route('/', inventarRoutes(ctx))

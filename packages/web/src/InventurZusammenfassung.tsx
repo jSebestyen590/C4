@@ -21,6 +21,8 @@ import { InventurLeiste } from './InventurLeiste';
 import { buchungsZeitpunktFehler } from './BuchungsFuss';
 import { jetztLokal } from './inventurDaten';
 import { fehlerAnzeigen, fehlerText, pruefen } from './warenApi';
+import { inventurKeys } from './queryKeys';
+import { warenKeys } from './warenDaten';
 
 /** Last step: differences per node and Ware, then the booking. */
 export function InventurZusammenfassung({
@@ -43,7 +45,7 @@ export function InventurZusammenfassung({
   const iso = zeitFehler ? null : new Date(zeitpunkt).toISOString();
 
   const daten = useQuery({
-    queryKey: ['inventuren', inventurId, 'zusammenfassung', iso],
+    queryKey: inventurKeys.zusammenfassung(inventurId, iso),
     enabled: iso !== null,
     placeholderData: keepPreviousData,
     staleTime: 0,
@@ -58,6 +60,7 @@ export function InventurZusammenfassung({
   });
 
   const abschliessen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
       pruefen(
         await api.inventuren[':id'].abschluss.$post({
@@ -67,8 +70,8 @@ export function InventurZusammenfassung({
       ),
     onSuccess: async () => {
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ['waren'] }),
-        qc.invalidateQueries({ queryKey: ['inventuren'] }),
+        qc.invalidateQueries({ queryKey: warenKeys.alle }),
+        qc.invalidateQueries({ queryKey: inventurKeys.alle }),
       ]);
       notifications.show({ color: 'green', message: 'Die Inventur wurde abgeschlossen.' });
       navigate('/lager');

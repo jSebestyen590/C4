@@ -161,7 +161,9 @@ and migrates after the apply. Because the old Lambda keeps running against the n
 migrations must stay additive (see `docs/datenbank.md`).
 
 Prod gate (`deploy.yml`, job `pruefen`): a prod deploy fails unless the commit is contained in `main` and
-the CI job `check` succeeded for it. Only tags `v*` trigger prod. Dev deploys are unrestricted.
+the CI job `check` succeeded for it. Only tags `v*` trigger prod, and the `prod` environment only
+accepts `main` and `v*` tags and waits for the repo owner's approval (Actions → "Review deployments").
+Dev deploys are unrestricted.
 
 `pnpm db:migrate` writes `app_info.env` when `C4_ENV` is set (the workflow passes the environment name).
 `pnpm db:reset` and `pnpm db:rollback` refuse to run against a database marked `prod`.

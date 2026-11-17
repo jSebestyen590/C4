@@ -12,7 +12,7 @@ import {
 } from './pushGeraet';
 import { fehlerAnzeigen } from './warenApi';
 
-export const PUSH_STATUS_KEY = ['push-status'];
+export const pushKeys = { status: ['push-status'] as const };
 
 type Api = ReturnType<typeof useApi>;
 
@@ -43,7 +43,7 @@ export function usePushAbgleichBeimStart(bereit: boolean) {
   useEffect(() => {
     if (!bereit || abgeglichen) return;
     abgeglichen = true;
-    void pushAbgleichen(api).finally(() => qc.invalidateQueries({ queryKey: PUSH_STATUS_KEY }));
+    void pushAbgleichen(api).finally(() => qc.invalidateQueries({ queryKey: pushKeys.status }));
   }, [bereit, api, qc]);
 }
 
@@ -52,7 +52,7 @@ export function usePushGeraet() {
   const api = useApi();
   const qc = useQueryClient();
   const status = useQuery({
-    queryKey: PUSH_STATUS_KEY,
+    queryKey: pushKeys.status,
     queryFn: () =>
       pushStatus(
         async (endpoint) =>
@@ -87,7 +87,7 @@ export function usePushGeraet() {
       return false;
     } finally {
       setAktiviertGerade(false);
-      void qc.invalidateQueries({ queryKey: PUSH_STATUS_KEY });
+      void qc.invalidateQueries({ queryKey: pushKeys.status });
     }
   };
 
@@ -100,14 +100,14 @@ export function usePushGeraet() {
       fehlerAnzeigen(e, 'Push konnte nicht deaktiviert werden.');
     } finally {
       setDeaktiviertGerade(false);
-      void qc.invalidateQueries({ queryKey: PUSH_STATUS_KEY });
+      void qc.invalidateQueries({ queryKey: pushKeys.status });
     }
   };
 
   const syncNoetig = async (): Promise<boolean> => {
     if (!(await hatLokalesAbo())) return false;
     await pushAbgleichen(api);
-    void qc.invalidateQueries({ queryKey: PUSH_STATUS_KEY });
+    void qc.invalidateQueries({ queryKey: pushKeys.status });
     return true;
   };
 

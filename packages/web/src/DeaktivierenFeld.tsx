@@ -3,17 +3,18 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { datumAnzeigen, type Mitglied } from '@c4/shared';
+import { centAnzeigen, datumAnzeigen, type Mitglied } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import { StatusName } from './StatusAnzeige';
 import { mitgliedName } from './mitglied';
+import { mitgliederKeys } from './queryKeys';
 
 /** What is still open for the member; nothing is changed automatically on deactivation. */
 function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
   const api = useApi();
   const vorschau = useQuery({
-    queryKey: ['deaktivieren-vorschau', sub],
+    queryKey: mitgliederKeys.deaktivierenVorschau(sub),
     queryFn: async () =>
       unwrap(await api.admin.mitglieder[':sub']['deaktivieren-vorschau'].$get({ param: { sub } })),
     gcTime: 0,
@@ -22,8 +23,8 @@ function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
     return <Loader size="sm" aria-label="Offene Zuordnungen werden geladen" />;
   if (vorschau.isError)
     return <Alert color="red">Die offenen Zuordnungen konnten nicht geladen werden.</Alert>;
-  const { dienste, posten, schluessel } = vorschau.data;
-  if (dienste.length + posten.length + schluessel.length === 0) return null;
+  const { dienste, posten, schluessel, buch } = vorschau.data;
+  if (dienste.length + posten.length + schluessel.length + buch.length === 0) return null;
   return (
     <Stack gap="xs">
       <Text fw={600}>Noch offen:</Text>
@@ -75,6 +76,22 @@ function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
           </List>
         </div>
       )}
+      {buch.length > 0 && (
+        <div>
+          <Text size="sm" c="dimmed">
+            Buch (offener Saldo)
+          </Text>
+          <List size="md" listStyleType="disc">
+            {buch.map((b) => (
+              <List.Item key={b.seiteId}>
+                <Anchor component={Link} to={`/finanzen/buch/seiten/${b.seiteId}`}>
+                  Seite {b.nummer}: {centAnzeigen(b.saldoCent)}
+                </Anchor>
+              </List.Item>
+            ))}
+          </List>
+        </div>
+      )}
     </Stack>
   );
 }
@@ -91,8 +108,8 @@ export function DeaktivierenFeld({ mitglied }: Readonly<{ mitglied: Mitglied }>)
       json: { aktiv },
     });
     if (!res.ok) throw new Error('Der Account konnte nicht geändert werden.');
-    await qc.invalidateQueries({ queryKey: ['mitglieder'] });
-    await qc.invalidateQueries({ queryKey: ['mitglied'] });
+    await qc.invalidateQueries({ queryKey: mitgliederKeys.alle });
+    await qc.invalidateQueries({ queryKey: mitgliederKeys.mitglied });
     notifications.show({
       color: 'green',
       message: aktiv ? 'Der Account wurde wieder aktiviert.' : 'Der Account wurde deaktiviert.',

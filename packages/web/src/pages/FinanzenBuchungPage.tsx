@@ -37,19 +37,20 @@ import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
   detailPfad,
-  FINANZEN_KEY,
+  finanzenKeys,
   jsonOderFehler,
   useKonten,
   zaehlungPfad,
 } from '../finanzenDaten';
 import { HashAnzeige } from '../HashAnzeige';
 import { mitgliedName } from '../mitglied';
+import { formatDatumZeit } from '../datum';
 import { StatusName } from '../StatusAnzeige';
 import { ZeilenUebersicht } from '../ZeilenUebersicht';
 import { ZurueckLink } from '../ZurueckLink';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
-const zeitText = (iso: string) =>
-  new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const zeitText = (iso: string) => formatDatumZeit(iso, 'mittel');
 
 const stueckelungText = (z: BuchungZeileDto) =>
   z.stueckelung.map((s) => `${s.anzahl} × ${centAnzeigen(s.nennwertCent)}`).join(', ');
@@ -96,7 +97,7 @@ function StornoDialog({
             json: { idempotenzSchluessel: schluessel, datum, text },
           }),
         );
-        await qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+        await qc.invalidateQueries({ queryKey: finanzenKeys.alle });
         void navigate(detailPfad(neu.id));
       }}
     >
@@ -174,7 +175,7 @@ export function FinanzenBuchungPage() {
   const darfBuchen = useAuth().can('finanzen:buchen');
   const [storno, setStorno] = useState(false);
   const buchung = useQuery({
-    queryKey: [...FINANZEN_KEY, 'buchung', id],
+    queryKey: finanzenKeys.buchung(id),
     queryFn: async () => unwrap(await api.finanzen.buchungen[':id'].$get({ param: { id } })),
   });
   const b = buchung.data;
@@ -244,9 +245,14 @@ export function FinanzenBuchungPage() {
           </Paper>
 
           <Title order={4}>Zeilen</Title>
-          <Stack hiddenFrom="sm" gap="xs">
-            {b.zeilen.map((z) => (
-              <Paper key={z.id} withBorder p="md">
+          <KartenOderTabelle
+            zeilen={b.zeilen}
+            zeilenKey={(z) => z.id}
+            minWidth={600}
+            kartenAlsStapel
+            tabelle={{ tabularNums: true }}
+            karte={(z) => (
+              <Paper withBorder p="md">
                 <Stack gap={4}>
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
                     <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
@@ -270,32 +276,26 @@ export function FinanzenBuchungPage() {
                   )}
                 </Stack>
               </Paper>
-            ))}
-          </Stack>
-          <Table.ScrollContainer minWidth={600} visibleFrom="sm">
-            <Table verticalSpacing="xs" tabularNums>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Konto</Table.Th>
-                  <Table.Th>Zugang/Abgang</Table.Th>
-                  <Table.Th style={BETRAG_STIL}>Betrag</Table.Th>
-                  <Table.Th>Steuer</Table.Th>
-                  <Table.Th>Stückelung</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {b.zeilen.map((z) => (
-                  <Table.Tr key={z.id}>
-                    <Table.Td>{z.kontoName}</Table.Td>
-                    <Table.Td>{richtungWort(z.betragCent)}</Table.Td>
-                    <Table.Td style={BETRAG_STIL}>{zeilenBetragText(z.betragCent)}</Table.Td>
-                    <Table.Td>{steuerText(z) ?? '–'}</Table.Td>
-                    <Table.Td>{z.stueckelung.length > 0 ? stueckelungText(z) : '–'}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+            )}
+            kopf={
+              <Table.Tr>
+                <Table.Th>Konto</Table.Th>
+                <Table.Th>Zugang/Abgang</Table.Th>
+                <Table.Th style={BETRAG_STIL}>Betrag</Table.Th>
+                <Table.Th>Steuer</Table.Th>
+                <Table.Th>Stückelung</Table.Th>
+              </Table.Tr>
+            }
+            zeile={(z) => (
+              <Table.Tr>
+                <Table.Td>{z.kontoName}</Table.Td>
+                <Table.Td>{richtungWort(z.betragCent)}</Table.Td>
+                <Table.Td style={BETRAG_STIL}>{zeilenBetragText(z.betragCent)}</Table.Td>
+                <Table.Td>{steuerText(z) ?? '–'}</Table.Td>
+                <Table.Td>{z.stueckelung.length > 0 ? stueckelungText(z) : '–'}</Table.Td>
+              </Table.Tr>
+            )}
+          />
 
           <HashAnzeige label="Hash" wert={b.hash} />
           <HashAnzeige label="Hash der vorigen Buchung" wert={b.prevHash} />

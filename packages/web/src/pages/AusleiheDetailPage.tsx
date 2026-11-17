@@ -31,7 +31,7 @@ import { useAuth } from '../auth';
 import { zeitpunktIso } from '../BuchungsFuss';
 import { ifcoGruppeTitel, mengeName, offenePositionen } from '../inventarAnzeige';
 import {
-  INVENTAR_KEY,
+  inventarKeys,
   useAusleihe,
   useInventar,
   type AusleihePositionEintrag,
@@ -118,10 +118,11 @@ export function AusleiheDetailPage() {
   const [rueckFehler, setRueckFehler] = useState<string | null>(null);
 
   const zurueckgeben = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof rueckgabeSchema.parse>) =>
       pruefen(await api.inventar.ausleihen[':id'].rueckgabe.$post({ param: { id }, json })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       setGewaehlt(new Set());
       setRueckFehler(null);
       notifications.show({ color: 'green', message: 'Die Rückgabe wurde gebucht.' });
@@ -393,7 +394,7 @@ export function AusleiheDetailPage() {
           onClose={() => setLoeschen(false)}
           loeschen={async () => {
             await pruefen(await api.inventar.ausleihen[':id'].$delete({ param: { id } }));
-            await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+            await qc.invalidateQueries({ queryKey: inventarKeys.alle });
             navigate('/inventar?ansicht=verliehen');
           }}
           archivieren={async () => {}}

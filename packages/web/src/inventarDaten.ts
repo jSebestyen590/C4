@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import type { Anrede, IfcoGrundflaeche, MitgliedStatus } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import type { LagerKnoten } from './LagerBaum';
+import { lagerortKeys } from './warenDaten';
 
 export interface KategorieEintrag {
   id: string;
@@ -143,13 +144,25 @@ export interface AufraeumEintrag {
 }
 
 /** Query key prefix of everything below Inventar; invalidate it after a mutation. */
-export const INVENTAR_KEY = ['inventar'] as const;
+export const inventarKeys = {
+  alle: ['inventar'] as const,
+  ifcoTypen: ['inventar', 'ifco-typen'] as const,
+  gegenstaende: ['inventar', 'gegenstaende'] as const,
+  ifcos: ['inventar', 'ifcos'] as const,
+  ifcosAktiv: ['inventar', 'ifcos', 'aktiv'] as const,
+  ausleihen: (nurOffen: boolean) => ['inventar', 'ausleihen', nurOffen ? 'offen' : 'alle'] as const,
+  ausleihe: (id: string | undefined) => ['inventar', 'ausleihen', 'eine', id] as const,
+  kategorien: ['inventar', 'kategorien'] as const,
+  /** The running Aufräumaktion (below `alle`). */
+  aufraeumen: ['inventar', 'aufraeumen'] as const,
+  bewegungen: (gegenstandId: string) => ['inventar', 'bewegungen', gegenstandId] as const,
+};
 
 /** IFCO types including archived ones; only fetched when `enabled`. */
 export function useIfcoTypen(enabled = true) {
   const api = useApi();
   const q = useQuery({
-    queryKey: ['inventar', 'ifco-typen'],
+    queryKey: inventarKeys.ifcoTypen,
     queryFn: async () => unwrap(await api.inventar['ifco-typen'].$get({ query: { archiv: '1' } })),
     enabled,
   });
@@ -165,12 +178,12 @@ export function useIfcoTypen(enabled = true) {
 export function useGegenstaendeUndIfcos(enabled = true) {
   const api = useApi();
   const gegenstaende = useQuery({
-    queryKey: ['inventar', 'gegenstaende'],
+    queryKey: inventarKeys.gegenstaende,
     queryFn: async () => unwrap(await api.inventar.gegenstaende.$get({ query: { archiv: '1' } })),
     enabled,
   });
   const ifcos = useQuery({
-    queryKey: ['inventar', 'ifcos'],
+    queryKey: inventarKeys.ifcos,
     queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: { archiv: '1' } })),
     enabled,
   });
@@ -190,7 +203,7 @@ export function useGegenstaendeUndIfcos(enabled = true) {
 export function useOrteMitIfcos() {
   const api = useApi();
   const q = useQuery({
-    queryKey: ['inventar', 'ifcos', 'aktiv'],
+    queryKey: inventarKeys.ifcosAktiv,
     queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: {} })),
     retry: false,
   });
@@ -207,7 +220,7 @@ export function useOrteMitIfcos() {
 export function useAusleihen(nurOffen: boolean) {
   const api = useApi();
   const q = useQuery({
-    queryKey: ['inventar', 'ausleihen', nurOffen ? 'offen' : 'alle'],
+    queryKey: inventarKeys.ausleihen(nurOffen),
     queryFn: async () =>
       unwrap(await api.inventar.ausleihen.$get({ query: nurOffen ? { status: 'offen' } : {} })),
   });
@@ -222,7 +235,7 @@ export function useAusleihen(nurOffen: boolean) {
 export function useAusleihe(id: string, aktiv = true) {
   const api = useApi();
   const q = useQuery({
-    queryKey: ['inventar', 'ausleihen', 'eine', id],
+    queryKey: inventarKeys.ausleihe(id),
     enabled: aktiv,
     queryFn: async () => {
       const res = await api.inventar.ausleihen[':id'].$get({ param: { id } });
@@ -241,19 +254,19 @@ export function useAusleihe(id: string, aktiv = true) {
 export function useInventar() {
   const api = useApi();
   const lagerorte = useQuery({
-    queryKey: ['lagerorte', 'alle'],
+    queryKey: lagerortKeys.liste,
     queryFn: async () => unwrap(await api.lagerorte.$get({ query: { archiv: '1' } })),
   });
   const kategorien = useQuery({
-    queryKey: ['inventar', 'kategorien'],
+    queryKey: inventarKeys.kategorien,
     queryFn: async () => unwrap(await api.inventar.kategorien.$get({ query: { archiv: '1' } })),
   });
   const gegenstaende = useQuery({
-    queryKey: ['inventar', 'gegenstaende'],
+    queryKey: inventarKeys.gegenstaende,
     queryFn: async () => unwrap(await api.inventar.gegenstaende.$get({ query: { archiv: '1' } })),
   });
   const ifcos = useQuery({
-    queryKey: ['inventar', 'ifcos'],
+    queryKey: inventarKeys.ifcos,
     queryFn: async () => unwrap(await api.inventar.ifcos.$get({ query: { archiv: '1' } })),
   });
   const typen = useIfcoTypen();
@@ -278,9 +291,6 @@ export function useInventar() {
   };
 }
 
-/** Query key of the running Aufräumaktion (below `INVENTAR_KEY`). */
-export const AUFRAEUMEN_KEY = ['inventar', 'aufraeumen'] as const;
-
 /**
  * The running Aufräumaktion (null if none) and the done IFCOs by id. While one runs it is refetched
  * every 15 s, so everybody clearing up at the same time sees the others' progress.
@@ -288,7 +298,7 @@ export const AUFRAEUMEN_KEY = ['inventar', 'aufraeumen'] as const;
 export function useAufraeumen() {
   const api = useApi();
   const q = useQuery({
-    queryKey: AUFRAEUMEN_KEY,
+    queryKey: inventarKeys.aufraeumen,
     queryFn: async (): Promise<AufraeumEintrag | null> =>
       (await unwrap(await api.inventar.aufraeumen.$get())).aktion,
     refetchInterval: (query) => (query.state.data ? 15_000 : false),
@@ -319,7 +329,7 @@ export interface BewegungEintrag {
 export function useBewegungen(gegenstandId: string) {
   const api = useApi();
   const q = useQuery({
-    queryKey: ['inventar', 'bewegungen', gegenstandId],
+    queryKey: inventarKeys.bewegungen(gegenstandId),
     queryFn: async (): Promise<BewegungEintrag[]> =>
       unwrap(
         await api.inventar.gegenstaende[':id'].bewegungen.$get({ param: { id: gegenstandId } }),

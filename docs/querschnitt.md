@@ -28,7 +28,9 @@ Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und de
   (der Access-Token bliebe sonst noch bis zu eine Stunde gültig). Das Web ersetzt dann die App durch die Sperrseite
   (`kontoDeaktiviert` in `api.ts`).
 - **401 im Web:** `useApi` (`packages/web/src/api.ts`) erneuert bei 401 einmal den Token (parallele Anfragen teilen sich eine
-  Erneuerung) und wiederholt die Anfrage.
+  Erneuerung) und wiederholt die Anfrage. Lehnt Cognito die Erneuerung ab (Refresh-Token abgelaufen oder widerrufen) oder fehlt der
+  Refresh-Token, entfernt `auth.tsx` den gespeicherten Benutzer; `Protected` leitet dann zur Anmeldung weiter. Höchstens einmal je
+  30 Sekunden, damit kein Redirect-Loop entsteht. Netzwerkfehler melden nur `null` und lassen die Sitzung bestehen.
 
 ## Rechteberechnung
 
@@ -78,3 +80,58 @@ Aurora DSQL löst gleichzeitige Änderungen optimistisch auf: Eine der Transakti
   Grundlage von `onError`.
 
 Mehr dazu und zu den Migrationen: [datenbank.md](./datenbank.md#gleichzeitige-zugriffe).
+
+## Routen im Web
+
+`packages/web/src/App.tsx` setzt nur zusammen: `/auth/callback`, die Funktionen aus `packages/web/src/routes/<feature>Routen.tsx` und
+die Catch-all-Route. Jede Funktion liefert ein Fragment aus `<Route>`-Elementen und wird in `<Routes>` direkt aufgerufen
+(`{mitgliederRouten()}`), nicht als Komponente gerendert, weil `<Routes>` nur `<Route>` oder Fragmente als Kinder erlaubt. Eine neue
+Seite kommt in das Modul ihres Features (neues Feature: neues Modul und Aufruf in `App.tsx`). Jede Route ist in `Protected`
+(Anmeldung, optional Recht) und meist `RequireUsername` (Profil vollständig) gewickelt, beide in `routes/Geschuetzt.tsx`. Das
+Menü steht weiterhin in `AppLayout`.
+
+## Fehler im Web (Mutationen)
+
+`createQueryClient` (`packages/web/src/queryClient.ts`) hängt ein globales `MutationCache.onError` an: Jede fehlgeschlagene Mutation
+zeigt eine rote Notification mit der Meldung des `ApiFehler`, sonst „Das hat nicht geklappt. Bitte versuch es noch einmal.“.
+Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, Inline-`Alert`, `try/catch` um `mutateAsync`),
+setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
+bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).
+
+## Query-Keys (Web)
+
+Jedes Feature definiert seine TanStack-Query-Keys als Objekt neben den Hooks (`todoKeys` in `todoDaten.tsx`, `warenKeys`,
+`lagerortKeys`, `gebindeKeys` in `warenDaten.ts`, `inventarKeys`, `finanzenKeys`, `kalenderKeys`, `protokollKeys`, ...).
+Bereiche ohne eigene Datendatei (Mitglieder/`me`, Posten, Inventuren, Historie, Health) liegen in `queryKeys.ts`. Seiten und
+Komponenten schreiben keine Key-Literale: `queryKey: todoKeys.meine`, `qc.invalidateQueries({ queryKey: warenKeys.alle })`.
+`alle` ist der Präfix des Bereichs, darunter hängen die Einzel-Keys (`eins(id)`, `liste(...)`). Invalidierung läuft über den
+Präfix, die Arrays dürfen sich deshalb nicht ändern; `queryKeys.test.ts` sichert stichprobenartig die Werte.
+
+## Wiederkehrende Helfer im Web
+
+- `KartenOderTabelle` (`packages/web/src/KartenOderTabelle.tsx`): Liste als Karten unter `sm`, als Tabelle (in `Table.ScrollContainer`
+  mit `minWidth`) ab `sm`. Die Seite liefert Karte, Kopfzeile und Tabellenzeile; für ganze Karten als Link gibt es `KlickKarte`.
+  Ohne `minWidth` steht die Tabelle ohne Scroll-Container (Finanzen-Arbeitsseiten). Nicht passend und daher handgeschrieben:
+  Journal, Kontenplan, Bargeld.
+- `datum.ts`: `formatDatum`, `formatDatumZeit` (mit Stil, z. B. `ohneJahr`, `mittel`) und `formatZeit` für Zeitpunkte in
+  `Europe/Berlin` (de-DE). Reine Datumsstrings (`YYYY-MM-DD`) bleiben bei `datumAnzeigen` aus `@c4/shared`.
+- `zodFeldFehler(...ergebnisse)` (`zodFehler.ts`): erste Meldung je Feld (`path[0]`) aus einem oder mehreren `safeParse`-Ergebnissen,
+  z. B. für `error={fehler.feld}` an Formularfeldern.
+
+## PWA: Icons und Offline-Hinweis
+
+- Manifest: `packages/web/public/manifest.webmanifest` (Icons 192/512, maskable 512 mit 80 % Safe-Zone, `theme_color` = Indigo `#4c6ef5`,
+  `background_color` weiß). `index.html` setzt `<meta name="theme-color">`. Der Service Worker (`public/sw.js`) kennt nur Push, keinen Offline-Cache.
+- Icon-Quelle: `packages/web/icon-quelle/c4-logo.png` (wird nicht ausgeliefert). Neu erzeugen im Ordner `packages/web` (`gen <Kante> <Logobreite> <Ziel>`):
+
+  ```sh
+  gen(){ sips --resampleWidth $2 icon-quelle/c4-logo.png --out $3 >/dev/null && sips --padToHeightWidth $1 $1 --padColor FFFFFF $3 >/dev/null; }
+  gen 192 169 public/icon-192.png
+  gen 512 450 public/icon-512.png
+  gen 512 360 public/icon-maskable-512.png   # Logo in den mittleren 80 %
+  gen 180 158 public/icon-180.png            # Push-Icon
+  cp public/icon-180.png src/assets/apple-touch-icon.png
+  ```
+
+- Offline-Hinweis: `useOnline` (`src/useOnline.ts`, `online`/`offline`-Events) blendet in `AppLayout` unter dem Header einen schmalen Hinweis
+  „Keine Verbindung – Änderungen werden nicht gespeichert.“ ein.

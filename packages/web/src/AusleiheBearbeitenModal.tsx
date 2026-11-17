@@ -6,8 +6,9 @@ import { useApi } from './api';
 import { AusleiheKopfFelder, type AusleiheKopf } from './AusleiheKopfFelder';
 import { zeitpunktIso } from './BuchungsFuss';
 import { isoZuLokal } from './inventarAnzeige';
-import { INVENTAR_KEY, type AusleiheEintrag } from './inventarDaten';
+import { inventarKeys, type AusleiheEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
+import { zodFeldFehler } from './zodFehler';
 
 /** Edits to whom, organiser, when, planned return (required) and Kommentar of an Ausleihe; a changed period is checked against other Ausleihen. Mount it only while it should be open. */
 export function AusleiheBearbeitenModal({
@@ -27,10 +28,11 @@ export function AusleiheBearbeitenModal({
   const [rueckgabeFehler, setRueckgabeFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) =>
       pruefen(await api.inventar.ausleihen[':id'].$put({ param: { id: ausleihe.id }, json })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });
@@ -46,10 +48,9 @@ export function AusleiheBearbeitenModal({
       kommentar: kopf.kommentar,
     });
     if (!geprueft.success) {
-      const issues = geprueft.error.issues;
-      setRueckgabeFehler(issues.find((i) => i.path[0] === 'rueckgabeGeplant')?.message ?? null);
-      const anderes = issues.find((i) => i.path[0] !== 'rueckgabeGeplant');
-      return setFehler(anderes ? anderes.message : null);
+      const { rueckgabeGeplant, ...anderes } = zodFeldFehler(geprueft);
+      setRueckgabeFehler(rueckgabeGeplant ?? null);
+      return setFehler(Object.values(anderes)[0] ?? null);
     }
     setFehler(null);
     setRueckgabeFehler(null);

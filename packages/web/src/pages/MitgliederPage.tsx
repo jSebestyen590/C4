@@ -30,6 +30,8 @@ import { anzeigename, kontaktangaben, mitgliedLink, nebenname } from '../mitglie
 import { BADGE_FARBE, StatusBadge, StatusName } from '../StatusAnzeige';
 import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
 import { MITGLIED_STATI, type Mitglied } from '@c4/shared';
+import { KartenOderTabelle } from '../KartenOderTabelle';
+import { mitgliederKeys } from '../queryKeys';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
 const SORTIERUNGEN: { value: Sortierung; label: string }[] = [
@@ -100,7 +102,7 @@ export function MitgliederPage() {
   const zeigeDeaktivierte = istAdmin && mitDeaktivierten;
   // Own cache entry: the default `['mitglieder']` list feeds the pickers and must never contain deactivated members.
   const mitglieder = useQuery({
-    queryKey: zeigeDeaktivierte ? ['mitglieder', { deaktivierte: true }] : ['mitglieder'],
+    queryKey: mitgliederKeys.liste(zeigeDeaktivierte),
     queryFn: async () =>
       unwrap(
         zeigeDeaktivierte
@@ -172,9 +174,12 @@ export function MitgliederPage() {
       {mitglieder.data && treffer.length === 0 && (
         <Text c="dimmed">Keine Mitglieder gefunden.</Text>
       )}
-      <SimpleGrid cols={1} hiddenFrom="sm">
-        {treffer.map((m) => (
-          <Paper key={m.sub} withBorder p="md" style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
+      <KartenOderTabelle
+        zeilen={treffer}
+        zeilenKey={(m) => m.sub}
+        minWidth={880}
+        karte={(m) => (
+          <Paper withBorder p="md" style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
             <Stack gap="xs">
               {/* Only the upper part links to the detail page; the contact icons are links themselves. */}
               <Link
@@ -226,76 +231,68 @@ export function MitgliederPage() {
               />
             </Stack>
           </Paper>
-        ))}
-      </SimpleGrid>
-      {treffer.length > 0 && (
-        <Table.ScrollContainer minWidth={880} visibleFrom="sm">
-          <Table verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                {SORTIERUNGEN.map((sp) => (
-                  <SortKopf
-                    key={sp.value}
-                    spalte={sp.value}
-                    label={sp.label}
-                    sortierung={sortierung}
-                    aufsteigend={aufsteigend}
-                    onSort={sortieren}
-                  />
-                ))}
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Posten</Table.Th>
-                <Table.Th>E-Mail</Table.Th>
-                <Table.Th>Telefon</Table.Th>
-                <Table.Th>Kontakt</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {treffer.map((m) => (
-                <Table.Tr key={m.sub} style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
-                  <Table.Td>
-                    <Group gap="sm" wrap="nowrap">
-                      <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
-                      {/* Only the username leads to the detail page, not the whole row. */}
-                      <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
-                        <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
-                      </Link>
-                      {m.deaktiviert && (
-                        <Badge color="gray" variant="light">
-                          Deaktiviert
-                        </Badge>
-                      )}
-                      {!m.aktiviert && !m.deaktiviert && (
-                        <Badge color="yellow" variant="light">
-                          Noch nicht aktiviert
-                        </Badge>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>{m.vorname}</Table.Td>
-                  <Table.Td>{m.nachname}</Table.Td>
-                  <Table.Td>
-                    <StatusBadge status={m.status} anrede={m.anrede} />
-                  </Table.Td>
-                  <Table.Td>
-                    <PostenLinks posten={m.posten} />
-                  </Table.Td>
-                  <Table.Td>{m.email}</Table.Td>
-                  <Table.Td>{m.telefon}</Table.Td>
-                  <Table.Td>
-                    <KontaktkanalIcons
-                      gewaehlt={m.kontaktkanaele}
-                      angaben={kontaktangaben(m)}
-                      groesse={36}
-                      vcardHref={vcardLink?.(m)}
-                    />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+        )}
+        kopf={
+          <Table.Tr>
+            {SORTIERUNGEN.map((sp) => (
+              <SortKopf
+                key={sp.value}
+                spalte={sp.value}
+                label={sp.label}
+                sortierung={sortierung}
+                aufsteigend={aufsteigend}
+                onSort={sortieren}
+              />
+            ))}
+            <Table.Th>Status</Table.Th>
+            <Table.Th>Posten</Table.Th>
+            <Table.Th>E-Mail</Table.Th>
+            <Table.Th>Telefon</Table.Th>
+            <Table.Th>Kontakt</Table.Th>
+          </Table.Tr>
+        }
+        zeile={(m) => (
+          <Table.Tr style={m.deaktiviert ? { opacity: 0.6 } : undefined}>
+            <Table.Td>
+              <Group gap="sm" wrap="nowrap">
+                <Avatar src={m.profilbildUrl} size={32} radius="xl" alt="" />
+                {/* Only the username leads to the detail page, not the whole row. */}
+                <Link to={mitgliedLink(m)} style={{ textDecoration: 'none' }}>
+                  <StatusName status={m.status}>{m.username ?? '–'}</StatusName>
+                </Link>
+                {m.deaktiviert && (
+                  <Badge color="gray" variant="light">
+                    Deaktiviert
+                  </Badge>
+                )}
+                {!m.aktiviert && !m.deaktiviert && (
+                  <Badge color="yellow" variant="light">
+                    Noch nicht aktiviert
+                  </Badge>
+                )}
+              </Group>
+            </Table.Td>
+            <Table.Td>{m.vorname}</Table.Td>
+            <Table.Td>{m.nachname}</Table.Td>
+            <Table.Td>
+              <StatusBadge status={m.status} anrede={m.anrede} />
+            </Table.Td>
+            <Table.Td>
+              <PostenLinks posten={m.posten} />
+            </Table.Td>
+            <Table.Td>{m.email}</Table.Td>
+            <Table.Td>{m.telefon}</Table.Td>
+            <Table.Td>
+              <KontaktkanalIcons
+                gewaehlt={m.kontaktkanaele}
+                angaben={kontaktangaben(m)}
+                groesse={36}
+                vcardHref={vcardLink?.(m)}
+              />
+            </Table.Td>
+          </Table.Tr>
+        )}
+      />
     </Stack>
   );
 }

@@ -10,7 +10,9 @@ import {
   type Role,
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { fehlerText } from './warenApi';
 import { labelFuer, MITGLIED_STATUS_LABELS, ROLE_LABELS } from './i18n';
+import { mitgliederKeys } from './queryKeys';
 
 /** Button plus dialog to invite a new member by email. */
 export function MitgliedEinladen() {
@@ -25,6 +27,7 @@ export function MitgliedEinladen() {
   const [emailFehler, setEmailFehler] = useState<string | null>(null);
 
   const anlegen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (input: {
       email: string;
       groups: Role[];
@@ -33,7 +36,7 @@ export function MitgliedEinladen() {
       status: MitgliedStatus;
     }) => unwrap(await api.admin.users.$post({ json: input })),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['mitglieder'] });
+      await qc.invalidateQueries({ queryKey: mitgliederKeys.alle });
       setEmail('');
       setVorname('');
       setNachname('');
@@ -105,7 +108,9 @@ export function MitgliedEinladen() {
               </Group>
             </Chip.Group>
             {anlegen.isError && (
-              <Alert color="red">Das Mitglied konnte nicht angelegt werden.</Alert>
+              <Alert color="red">
+                {fehlerText(anlegen.error, 'Das Mitglied konnte nicht angelegt werden.')}
+              </Alert>
             )}
             <Button type="submit" loading={anlegen.isPending} fullWidth>
               Einladen

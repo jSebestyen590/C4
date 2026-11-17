@@ -62,6 +62,7 @@ export function BaumKnotenFormular({
   }, [alle, knoten, parent]);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: (json: { name: string; parentId: string | null }) =>
       speichernCall(knoten?.id ?? null, json),
     onSuccess: async () => {

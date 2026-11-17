@@ -9,6 +9,7 @@ import { leereWareWerte, WareFelder, wareWerte } from './WareFelder';
 import { fehlerText, pruefen } from './warenApi';
 import type { WareEintrag } from './warenDaten';
 import type { GebindeEintrag } from './GebindeFormular';
+import { warenKeys } from './warenDaten';
 
 /** Create or edit a Ware (full screen on phones). Mount it only while it should be open. */
 export function WareFormular({
@@ -30,12 +31,13 @@ export function WareFormular({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof wareSchema.parse>) => {
       if (ware) await pruefen(await api.waren[':id'].$put({ param: { id: ware.id }, json }));
       else await pruefen(await api.waren.$post({ json }));
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['waren'] });
+      await qc.invalidateQueries({ queryKey: warenKeys.alle });
       notifications.show({ color: 'green', message: 'Die Ware wurde gespeichert.' });
       onClose();
     },

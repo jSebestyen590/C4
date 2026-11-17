@@ -24,6 +24,7 @@ import { WareVerlauf } from '../WareVerlauf';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { useWarenStammdaten, type WareEintrag } from '../warenDaten';
 import { ZurueckLink } from '../ZurueckLink';
+import { warenKeys } from '../warenDaten';
 
 /** Detail of one Ware: master data, bookings, current stock, stock chart and history. */
 export function WareDetailPage() {
@@ -40,15 +41,16 @@ export function WareDetailPage() {
   const [buchung, setBuchung] = useState<BuchungsModus | null>(null);
 
   const daten = useQuery({
-    queryKey: ['waren', 'detail', id],
+    queryKey: warenKeys.detail(id),
     queryFn: async () => unwrap(await api.waren[':id'].$get({ param: { id } })),
   });
 
   const archivieren = async (archiviert: boolean) => {
     await pruefen(await api.waren[':id'].archiv.$put({ param: { id }, json: { archiviert } }));
-    await qc.invalidateQueries({ queryKey: ['waren'] });
+    await qc.invalidateQueries({ queryKey: warenKeys.alle });
   };
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: archivieren,
     onError: (e) => fehlerAnzeigen(e),
   });
@@ -187,7 +189,7 @@ export function WareDetailPage() {
           onClose={() => setLoeschen(false)}
           loeschen={async () => {
             await pruefen(await api.waren[':id'].$delete({ param: { id } }));
-            await qc.invalidateQueries({ queryKey: ['waren'] });
+            await qc.invalidateQueries({ queryKey: warenKeys.alle });
             navigate('/waren');
           }}
           archivieren={() => archivieren(true)}

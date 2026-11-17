@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { EinstellungDto } from '@c4/shared';
 import { unwrap, useApi } from '../api';
+import { benachrichtigungKeys } from '../benachrichtigungVerlauf';
 import {
   BENACHRICHTIGUNG_ART_LABELS,
   BENACHRICHTIGUNG_BEREICH_LABELS,
@@ -12,8 +13,6 @@ import {
 } from '../i18n';
 import { usePushGeraet } from '../usePushGeraet';
 import { fehlerAnzeigen } from '../warenApi';
-
-const EINSTELLUNGEN_KEY = ['benachrichtigungen'];
 
 /** Push on this device: status and the buttons to switch it on or off and to send a test. */
 function GeraetPush() {
@@ -30,6 +29,7 @@ function GeraetPush() {
     { geraete: number; ok: number; fehler: number } | 'fehler' | null
   >(null);
   const test = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () => {
       const ergebnis = await unwrap(await api.push.test.$post());
       // The server knows no device although this one has a subscription: sync, then retry once.
@@ -122,10 +122,11 @@ function Einstellungen() {
   const api = useApi();
   const qc = useQueryClient();
   const liste = useQuery({
-    queryKey: EINSTELLUNGEN_KEY,
+    queryKey: benachrichtigungKeys.einstellungen,
     queryFn: async () => (await unwrap(await api.me.benachrichtigungen.$get())) as EinstellungDto[],
   });
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (e: { art: string; aktiv: boolean; minuten?: number }) =>
       unwrap(
         await api.me.benachrichtigungen.$put({
@@ -133,7 +134,7 @@ function Einstellungen() {
         }),
       ),
     onError: (e) => fehlerAnzeigen(e, 'Die Einstellung konnte nicht gespeichert werden.'),
-    onSettled: () => qc.invalidateQueries({ queryKey: EINSTELLUNGEN_KEY }),
+    onSettled: () => qc.invalidateQueries({ queryKey: benachrichtigungKeys.einstellungen }),
   });
 
   if (liste.isPending) return <Loader size="sm" aria-label="Einstellungen werden geladen" />;

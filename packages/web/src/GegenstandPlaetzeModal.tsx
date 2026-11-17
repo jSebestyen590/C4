@@ -23,7 +23,7 @@ import {
 } from '@c4/shared';
 import { useApi } from './api';
 import { zielAusWert, zielOptionen, zielWert } from './inventarAnzeige';
-import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
+import { inventarKeys, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
@@ -98,6 +98,7 @@ export function GegenstandPlaetzeModal({
     setVerbaut((l) => l.map((v) => (v.key === key ? { ...v, ...teil } : v)));
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       plaetze: { lagerortId: string | null; ifcoId: string | null; anzahl: number }[];
       verbaut: { ort: string; anzahl: number }[];
@@ -109,7 +110,7 @@ export function GegenstandPlaetzeModal({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

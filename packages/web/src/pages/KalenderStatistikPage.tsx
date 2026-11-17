@@ -4,6 +4,7 @@ import { heuteBerlin, type StatistikZeileDto } from '@c4/shared';
 import { PersonName } from '../KalenderAnzeige';
 import { useDienstformen, useKalenderStatistik } from '../kalenderDaten';
 import { ZurueckLink } from '../ZurueckLink';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 const ZURUECK_JAHRE = 6;
 
@@ -49,65 +50,57 @@ export function KalenderStatistikPage() {
       ) : zeilen.length === 0 ? (
         <Text c="dimmed">In {jahr} gibt es noch keine Dienste.</Text>
       ) : (
-        <>
-          <Stack gap="xs" hiddenFrom="sm">
-            {zeilen.map((z) => (
-              <Paper
-                key={z.person.art === 'mitglied' ? z.person.sub : z.person.id}
-                withBorder
-                p="sm"
-                radius="md"
-              >
-                <Group justify="space-between" align="flex-start" wrap="nowrap">
-                  <Text style={{ minWidth: 0 }}>
-                    <PersonName person={z.person} />
-                  </Text>
-                  <Text fw={700} size="lg">
-                    {z.gesamt}
-                  </Text>
-                </Group>
-                <Text size="sm" c="dimmed">
-                  {spalten
-                    .filter((d) => (z.nachSpalte[d.key] ?? 0) > 0)
-                    .map((d) => `${d.name} ${z.nachSpalte[d.key]}`)
-                    .join(' · ')}
+        <KartenOderTabelle
+          zeilen={zeilen}
+          zeilenKey={(z) => (z.person.art === 'mitglied' ? z.person.sub : z.person.id)}
+          minWidth={400}
+          kartenAlsStapel
+          tabelle={{ striped: true }}
+          karte={(z) => (
+            <Paper withBorder p="sm" radius="md">
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <Text style={{ minWidth: 0 }}>
+                  <PersonName person={z.person} />
                 </Text>
-              </Paper>
-            ))}
-          </Stack>
-          <Table.ScrollContainer minWidth={400} visibleFrom="sm">
-            <Table striped>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Person</Table.Th>
-                  <Table.Th ta="right">Gesamt</Table.Th>
-                  {spalten.map((d) => (
-                    <Table.Th key={d.key} ta="right">
-                      {d.name}
-                    </Table.Th>
-                  ))}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {zeilen.map((z) => (
-                  <Table.Tr key={z.person.art === 'mitglied' ? z.person.sub : z.person.id}>
-                    <Table.Td>
-                      <PersonName person={z.person} />
-                    </Table.Td>
-                    <Table.Td ta="right" fw={700}>
-                      {z.gesamt}
-                    </Table.Td>
-                    {spalten.map((d) => (
-                      <Table.Td key={d.key} ta="right">
-                        {z.nachSpalte[d.key] ?? 0}
-                      </Table.Td>
-                    ))}
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        </>
+                <Text fw={700} size="lg">
+                  {z.gesamt}
+                </Text>
+              </Group>
+              <Text size="sm" c="dimmed">
+                {spalten
+                  .filter((d) => (z.nachSpalte[d.key] ?? 0) > 0)
+                  .map((d) => `${d.name} ${z.nachSpalte[d.key]}`)
+                  .join(' · ')}
+              </Text>
+            </Paper>
+          )}
+          kopf={
+            <Table.Tr>
+              <Table.Th>Person</Table.Th>
+              <Table.Th ta="right">Gesamt</Table.Th>
+              {spalten.map((d) => (
+                <Table.Th key={d.key} ta="right">
+                  {d.name}
+                </Table.Th>
+              ))}
+            </Table.Tr>
+          }
+          zeile={(z) => (
+            <Table.Tr>
+              <Table.Td>
+                <PersonName person={z.person} />
+              </Table.Td>
+              <Table.Td ta="right" fw={700}>
+                {z.gesamt}
+              </Table.Td>
+              {spalten.map((d) => (
+                <Table.Td key={d.key} ta="right">
+                  {z.nachSpalte[d.key] ?? 0}
+                </Table.Td>
+              ))}
+            </Table.Tr>
+          )}
+        />
       )}
     </Stack>
   );

@@ -46,7 +46,7 @@ import {
   verfuegbarImZeitraum,
   zeitraumZeile,
 } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAusleihe, useAusleihen, useInventar } from '../inventarDaten';
+import { inventarKeys, useAusleihe, useAusleihen, useInventar } from '../inventarDaten';
 import {
   ausleiheVorbelegung,
   mengeVerteilen,
@@ -360,6 +360,7 @@ export function AusleihePage() {
   const ganzeIfcoIds = ifcoIds.filter(ifcoKomplett);
 
   const verleihen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof ausleiheAendernSchema.parse>) => {
       if (bearbeiten) {
         await pruefen(
@@ -374,7 +375,7 @@ export function AusleihePage() {
       return ((await res.json()) as { id: string }).id;
     },
     onSuccess: async (id) => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       notifications.show({
         color: 'green',
         message: bearbeiten ? 'Die Änderungen wurden gespeichert.' : 'Die Ausleihe wurde angelegt.',

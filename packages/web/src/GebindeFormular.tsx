@@ -27,6 +27,7 @@ import { useApi } from './api';
 import { EINHEIT_LABELS, VERPACKUNGSEINHEIT_LABELS } from './i18n';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
+import { gebindeKeys } from './warenDaten';
 
 export type GebindeEintrag = Gebinde & { archiviert: boolean };
 
@@ -65,6 +66,7 @@ export function GebindeFormular({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: GebindeDaten) => {
       if (gebinde) {
         await pruefen(await api.gebinde[':id'].$put({ param: { id: gebinde.id }, json }));
@@ -73,7 +75,7 @@ export function GebindeFormular({
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['gebinde'] });
+      await qc.invalidateQueries({ queryKey: gebindeKeys.alle });
       onClose();
     },
   });

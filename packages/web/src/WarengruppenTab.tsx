@@ -2,14 +2,15 @@ import { warengruppeSchema } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { BaumVerwaltung, type BaumKonfiguration } from './BaumVerwaltung';
 import { pruefen } from './warenApi';
+import { warengruppeKeys } from './warenDaten';
 
 /** Tree of Warengruppen (sorted by name). */
 export function WarengruppenTab() {
   const api = useApi();
   const konfig: BaumKonfiguration = {
     texte: { singular: 'Warengruppe', plural: 'Warengruppen', unter: 'Untergruppe', genus: 'w' },
-    queryKey: ['warengruppen', 'alle'],
-    invalidieren: ['warengruppen'],
+    queryKey: warengruppeKeys.liste,
+    invalidieren: warengruppeKeys.alle,
     recht: 'waren:verwalten',
     schema: warengruppeSchema,
     api: {

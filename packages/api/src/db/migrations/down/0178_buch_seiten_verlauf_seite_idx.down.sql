@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS buch_seiten_verlauf_seite_idx

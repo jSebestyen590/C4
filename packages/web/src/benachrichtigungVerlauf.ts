@@ -11,9 +11,16 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { VerlaufFilter, VerlaufSeiteDto } from '@c4/shared';
 import { useApi } from './api';
 import { useAuth } from './auth';
+import { pruefen } from './warenApi';
 
-const VERLAUF_KEY = 'benachrichtigung-verlauf';
-const UNGELESEN_KEY = [VERLAUF_KEY, 'ungelesen'];
+export const benachrichtigungKeys = {
+  alle: ['benachrichtigung-verlauf'] as const,
+  /** All cached list pages of any view. */
+  listen: ['benachrichtigung-verlauf', 'liste'] as const,
+  liste: (ansicht: VerlaufAnsicht) => ['benachrichtigung-verlauf', 'liste', ansicht] as const,
+  ungelesen: ['benachrichtigung-verlauf', 'ungelesen'] as const,
+  einstellungen: ['benachrichtigungen'] as const,
+};
 
 export interface VerlaufAnsicht extends VerlaufFilter {
   /** Only unread entries (the default view). */
@@ -30,7 +37,7 @@ const passt = (art: string, filter: VerlaufFilter) =>
 export function useVerlauf(ansicht: VerlaufAnsicht) {
   const api = useApi();
   return useInfiniteQuery({
-    queryKey: [VERLAUF_KEY, 'liste', ansicht],
+    queryKey: benachrichtigungKeys.liste(ansicht),
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
       const res = await api.me.benachrichtigungen.verlauf.$get({
@@ -52,7 +59,7 @@ export function useVerlauf(ansicht: VerlaufAnsicht) {
 export function useUngelesen(enabled = true) {
   const api = useApi();
   return useQuery({
-    queryKey: UNGELESEN_KEY,
+    queryKey: benachrichtigungKeys.ungelesen,
     enabled,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -66,12 +73,12 @@ export function useUngelesen(enabled = true) {
 
 /** Refreshes the count and marks the lists stale (without refetching, so removed cards can animate out). */
 function aktualisieren(qc: QueryClient) {
-  void qc.invalidateQueries({ queryKey: UNGELESEN_KEY });
-  void qc.invalidateQueries({ queryKey: [VERLAUF_KEY, 'liste'], refetchType: 'none' });
+  void qc.invalidateQueries({ queryKey: benachrichtigungKeys.ungelesen });
+  void qc.invalidateQueries({ queryKey: benachrichtigungKeys.listen, refetchType: 'none' });
 }
 
 function lokalGelesen(qc: QueryClient, passend: (e: { id: string; art: string }) => boolean): void {
-  qc.setQueriesData<Seiten>({ queryKey: [VERLAUF_KEY, 'liste'] }, (alt) => {
+  qc.setQueriesData<Seiten>({ queryKey: benachrichtigungKeys.listen }, (alt) => {
     if (!alt) return alt;
     return {
       ...alt,
@@ -91,15 +98,15 @@ export function useGelesenMarkieren() {
     mutationFn: async (id: string) => {
       const res = await api.me.benachrichtigungen.verlauf[':id'].gelesen.$post({ param: { id } });
       // 404 = entry expired or deleted: nothing left to mark.
-      if (!res.ok && (res.status as number) !== 404)
-        throw new Error(`Request failed (${res.status})`);
+      if ((res.status as number) !== 404) await pruefen(res);
     },
     onMutate: (id) => {
       const war = qc
-        .getQueriesData<Seiten>({ queryKey: [VERLAUF_KEY, 'liste'] })
+        .getQueriesData<Seiten>({ queryKey: benachrichtigungKeys.listen })
         .some(([, d]) => d?.pages.some((s) => s.eintraege.some((e) => e.id === id && !e.gelesen)));
       lokalGelesen(qc, (e) => e.id === id);
-      if (war) qc.setQueryData<number>(UNGELESEN_KEY, (n) => Math.max(0, (n ?? 1) - 1));
+      if (war)
+        qc.setQueryData<number>(benachrichtigungKeys.ungelesen, (n) => Math.max(0, (n ?? 1) - 1));
     },
     onSettled: () => aktualisieren(qc),
   });
@@ -117,11 +124,11 @@ export function useAlleGelesen() {
           ...(filter.bereich && { bereich: filter.bereich }),
         },
       });
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      await pruefen(res);
     },
     onMutate: (filter) => {
       lokalGelesen(qc, (e) => passt(e.art, filter));
-      void qc.invalidateQueries({ queryKey: UNGELESEN_KEY });
+      void qc.invalidateQueries({ queryKey: benachrichtigungKeys.ungelesen });
     },
     onSettled: () => aktualisieren(qc),
   });
@@ -154,7 +161,7 @@ export function usePushGelesenParam() {
     if (!darf || !('serviceWorker' in navigator)) return;
     const onMessage = (ev: MessageEvent) => {
       if ((ev.data as { typ?: string } | null)?.typ !== 'push') return;
-      void qc.invalidateQueries({ queryKey: [VERLAUF_KEY] });
+      void qc.invalidateQueries({ queryKey: benachrichtigungKeys.alle });
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);

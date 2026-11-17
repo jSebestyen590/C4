@@ -2,6 +2,7 @@ import { Group, Alert, Button, List, Loader, Stack, Text, Title } from '@mantine
 import { IconShieldCheck } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 import { KETTEN_FEHLER_LABELS, type KettenErgebnisDto } from '@c4/shared';
+import { formatDatumZeit } from '../datum';
 import { useApi } from '../api';
 import { fehlerText, pruefen } from '../warenApi';
 import { HashAnzeige } from '../HashAnzeige';
@@ -9,13 +10,13 @@ import { ZurueckLink } from '../ZurueckLink';
 import { InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 
-const zeitText = (iso: string) =>
-  new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'medium' });
+const zeitText = (iso: string) => formatDatumZeit(iso, 'mittelSekunden');
 
 /** Verifies the whole hash chain of the journal and shows the result. */
 export function FinanzenKettePage() {
   const api = useApi();
   const pruefung = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (): Promise<KettenErgebnisDto> => {
       const res = await api.finanzen.kette.$get();
       await pruefen(res);

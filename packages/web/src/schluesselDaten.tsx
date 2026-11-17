@@ -7,10 +7,16 @@ import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 
 /** Every Schlüssel query lives under this key, so one invalidation refreshes the whole area. */
-export const SCHLUESSEL_KEY = 'schluessel';
+export const schluesselKeys = {
+  alle: ['schluessel'] as const,
+  liste: (mitArchiv: boolean) => ['schluessel', 'liste', mitArchiv] as const,
+  detail: (id: string | undefined) => ['schluessel', 'detail', id] as const,
+  anfragen: ['schluessel', 'anfragen'] as const,
+  anfrage: (id: string | undefined) => ['schluessel', 'anfrage', id] as const,
+};
 
 export const schluesselInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [SCHLUESSEL_KEY] });
+  qc.invalidateQueries({ queryKey: schluesselKeys.alle });
 
 export const schluesselLink = (id: string) => `/schluessel/${encodeURIComponent(id)}`;
 
@@ -19,7 +25,7 @@ export const anfrageLink = (id: string) => `/schluessel/anfragen/${encodeURIComp
 export function useSchluesselListe(mitArchiv = false) {
   const api = useApi();
   return useQuery({
-    queryKey: [SCHLUESSEL_KEY, 'liste', mitArchiv],
+    queryKey: schluesselKeys.liste(mitArchiv),
     queryFn: async () =>
       (await unwrap(
         await api.schluessel.$get({ query: mitArchiv ? { archiv: '1' } : {} }),
@@ -30,7 +36,7 @@ export function useSchluesselListe(mitArchiv = false) {
 export function useSchluessel(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [SCHLUESSEL_KEY, 'detail', id],
+    queryKey: schluesselKeys.detail(id),
     enabled: !!id,
     queryFn: async () =>
       (await unwrap(
@@ -43,7 +49,7 @@ export function useSchluessel(id: string | undefined) {
 export function useAnfragen() {
   const api = useApi();
   return useQuery({
-    queryKey: [SCHLUESSEL_KEY, 'anfragen'],
+    queryKey: schluesselKeys.anfragen,
     queryFn: async () => (await unwrap(await api.schluessel.anfragen.$get())) as AnfrageDto[],
   });
 }
@@ -51,7 +57,7 @@ export function useAnfragen() {
 export function useAnfrage(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [SCHLUESSEL_KEY, 'anfrage', id],
+    queryKey: schluesselKeys.anfrage(id),
     enabled: !!id,
     queryFn: async () =>
       (await unwrap(

@@ -7,6 +7,12 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its older run. Runs on main are never cancelled: the prod gate
+# (deploy.yml, job pruefen) needs a green `check` for every commit that may get a tag.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest

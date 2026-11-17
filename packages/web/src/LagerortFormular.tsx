@@ -33,6 +33,7 @@ import {
 import { ifcoPlatzMasse } from './ifcoPlatz';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
+import { lagerortKeys } from './warenDaten';
 
 export interface LagerortBearbeitung {
   id: string;
@@ -87,6 +88,7 @@ export function LagerortFormular({
   const ifcoSperre = ifcoPlatzMarkierenFehler(lagerort?.art ?? null, kinderAnzahl);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;
@@ -103,7 +105,7 @@ export function LagerortFormular({
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['lagerorte'] });
+      await qc.invalidateQueries({ queryKey: lagerortKeys.alle });
       onClose();
     },
   });

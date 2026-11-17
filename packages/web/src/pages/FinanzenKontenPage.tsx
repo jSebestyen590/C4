@@ -20,7 +20,7 @@ import { centAnzeigen, KONTO_ART_LABELS, KONTO_ARTEN, type KontoDto } from '@c4/
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { BETRAG_STIL, FINANZEN_KEY, useKonten } from '../finanzenDaten';
+import { BETRAG_STIL, finanzenKeys, useKonten } from '../finanzenDaten';
 import { InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { KontoFormular } from '../KontoFormular';
@@ -69,6 +69,7 @@ export function FinanzenKontenPage() {
   );
 
   const archivMutation = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (k: KontoDto) =>
       pruefen(
         await api.finanzen.konten[':id'].archiv.$put({
@@ -76,7 +77,7 @@ export function FinanzenKontenPage() {
           json: { archiviert: !k.archiviert },
         }),
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: FINANZEN_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: finanzenKeys.alle }),
     onError: (e) => fehlerAnzeigen(e),
   });
 

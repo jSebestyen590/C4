@@ -38,6 +38,7 @@ import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
 import { createFinanzenStore } from './finanzen';
+import { createBuchStore } from './buch';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
@@ -111,6 +112,7 @@ export function createProduction() {
     umfragen,
     trichter: createTrichterStore(db),
     finanzen: createFinanzenStore(db),
+    buch: createBuchStore(db),
     protokolle: createProtokolleStore(db),
     privatpartys,
     partymail,

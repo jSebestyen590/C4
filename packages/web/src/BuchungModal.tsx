@@ -21,6 +21,7 @@ import { fehlerText, pruefen } from './warenApi';
 import { zeileText } from './warenAnzeige';
 import type { WareEintrag } from './warenDaten';
 import { ZahlFeld } from './ZahlFeld';
+import { warenKeys } from './warenDaten';
 
 export type BuchungsModus = 'einlagerung' | 'entnahme';
 
@@ -79,6 +80,7 @@ export function BuchungModal({
   const [fehler, setFehler] = useState<string | null>(null);
 
   const buchen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: ReturnType<typeof einlagerungSchema.parse>) => {
       if (ein) {
         await pruefen(await api.bestand.einlagerung.$post({ json }));
@@ -89,7 +91,7 @@ export function BuchungModal({
       return ((await res.json()) as { id: string }).id;
     },
     onSuccess: async (vorgangId) => {
-      await qc.invalidateQueries({ queryKey: ['waren'] });
+      await qc.invalidateQueries({ queryKey: warenKeys.alle });
       let nachricht = ein ? 'Die Einlagerung wurde gebucht.' : 'Die Entnahme wurde gebucht.';
       if (vorgangId) {
         // Show what the FIFO plan booked; the booking itself already succeeded.

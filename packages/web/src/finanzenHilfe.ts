@@ -58,4 +58,45 @@ export const HILFE = {
     ergebnis:
       'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Geprüft wird derzeit nur gegen die Datenbank, nicht gegen das spätere Archiv.',
   },
+  buch: {
+    nummer:
+      'Die Nummer der Buchseite. Sie ist unter allen aktiven Seiten eindeutig; archivierst du eine Seite, wird ihre Nummer wieder frei.',
+    inhaber:
+      'Jedes Mitglied hat höchstens eine aktive Seite. Für Gäste legst du eine Seite mit externem Namen an; für sie gilt der Tarif „Extern“.',
+    saldo:
+      'Der Saldo ist die Summe aller Einträge einer Seite: Abzahlungen erhöhen ihn, Striche und Bar senken ihn. Ein negativer Saldo sind Schulden beim Verein.',
+    striche:
+      'Anzahl der Striche seit der letzten Abrechnung. Jeder Strich kostet den Strichwert, der am Tag des Eintragens für den Status der Seite gilt (Tarif). Ganze Zahl, 0 bei keinem Strich.',
+    bar: 'Betrag in Euro, der aufs Buch geschrieben wird (angeschrieben, nicht bezahlt), z. B. für etwas, das keinen Strich hat. Er senkt den Saldo wie die Striche.',
+    abzahlung:
+      'Betrag in Euro, den das Mitglied einzahlt. Er erhöht den Saldo. Das Geld liegt in einer Barkasse und wird mit deren Abrechnung als Bareinnahme gebucht; das Buch selbst erzeugt keine Journalbuchung.',
+    saldoDanach:
+      'Der Saldo der Seite nach dieser Abrechnung: bisheriger Saldo plus Abzahlung minus Striche mal Strichwert minus Bar.',
+    leereZeilen:
+      'Zeilen ohne Striche, Bar und Abzahlung werden übersprungen und erzeugen keinen Eintrag.',
+    seitenweise:
+      'Das Buch ist ein Heft aus Papier: Du rechnest Seite für Seite ab. Trag Striche, Bar und Abzahlung einer Seite ein und schließ sie ab; sie wird sofort gespeichert und die Zeile gesperrt. Dann schreibst du den angezeigten neuen Saldo ins Buch und machst mit der nächsten Seite weiter. Mit Enter springst du zum nächsten Feld, Enter in „Abzahlung“ öffnet die Bestätigung der Seite. Korrekturen gehen nur per Storno auf der Seite.',
+    ueberzug:
+      'Der Saldo ist grün ab 0 €, gelb im Minus innerhalb des erlaubten Überzugs und rot darunter (ohne Tarif gilt der Überzug 0). Das ist nur eine Information: Das Buch hält fest, was im Papierbuch steht, und die Abrechnung wird nie blockiert. Mitglieder mit rotem Saldo bekommen nach der Abrechnung eine Benachrichtigung.',
+    strichwert:
+      'Preis eines Strichs in Euro für den gewählten Status. Er wird beim Eintragen im Eintrag gespeichert und ändert sich später nicht mehr, auch wenn es einen neuen Tarif gibt.',
+    maxUeberzug:
+      'Wie weit der Saldo ins Minus gehen darf, in Euro (ohne Vorzeichen). Erst darunter gilt die Seite als überzogen.',
+    gueltigAb:
+      'Ab diesem Tag gilt der Tarif. Für einen Eintrag zählt der Tarif mit dem spätesten „gültig ab“ bis zum Tag des Eintragens; ein neuer Tarif ändert vergangene Einträge nicht. Tarife lassen sich nicht ändern oder löschen, nur durch einen neueren ersetzen.',
+    tarifStatus:
+      'Der Tarif gilt für alle Seiten von Mitgliedern mit diesem Status. Seiten mit externem Namen verwenden den Tarif „Extern“. Gibt es für einen Status noch keinen Tarif, sind keine Striche möglich (Bar und Abzahlung schon).',
+    nummerAendern:
+      'Die Seite bekommt eine andere Nummer, die unter allen aktiven Seiten noch frei sein muss. Saldo und Einträge bleiben unverändert; die alte Nummer wird wieder frei. Alle Nummern, die die Seite je hatte, stehen im Nummern-Verlauf.',
+    reaktivieren:
+      'Eine archivierte Seite wird wieder aktiv und taucht in der Abrechnung wieder auf. Dafür wählst du eine Nummer; vorgeschlagen ist die letzte der Seite, falls sie noch frei ist. Ein Mitglied kann nur eine aktive Seite haben.',
+    nummernVerlauf:
+      'Hält fest, wann die Seite angelegt, umnummeriert, archiviert und reaktiviert wurde und von wem. Der Verlauf wird nie geändert.',
+    archivieren:
+      'Archivieren blendet die Seite aus der Abrechnung aus und gibt ihre Nummer frei. Der Verlauf bleibt erhalten. Steht noch ein Saldo auf der Seite, bleibt er offen: Kläre ihn vorher.',
+    storno:
+      'Ein Eintrag wird nie geändert oder gelöscht. Das Storno ist ein neuer Eintrag mit umgekehrten Werten und deiner Begründung. Jeder Eintrag lässt sich nur einmal stornieren, ein Storno nicht.',
+    rangliste:
+      'Die Rangliste sortiert nach Umsatz in Euro: Striche mal Strichwert plus Bar. Abzahlungen zählen nicht. Stornierte Einträge zählen nicht mit.',
+  },
 } as const;

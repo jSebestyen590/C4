@@ -62,6 +62,7 @@ import {
 } from '../inventarDaten';
 import { AufraeumHinweis, AufraeumPanel, FertigBadge, FertigKnopf } from '../Aufraeumen';
 import { VerlieheneAnsicht } from '../VerlieheneAnsicht';
+import { KartenOderTabelle } from '../KartenOderTabelle';
 
 type Ansicht = 'gegenstaende' | 'ifcos' | 'verliehen';
 
@@ -180,7 +181,7 @@ function SortKopf<S extends string>({
   );
 }
 
-/** Table of Gegenstände from `sm` on; the whole row opens the detail page. */
+/** Gegenstände as cards on phones and as a table from `sm` on; the whole row opens the detail page. */
 function GegenstandTabelle({
   liste,
   inv,
@@ -205,114 +206,113 @@ function GegenstandTabelle({
     />
   );
   return (
-    <Table.ScrollContainer minWidth={760} visibleFrom="sm">
-      <Table verticalSpacing="xs">
-        <Table.Thead>
-          <Table.Tr>
-            {kopf('name', 'Name')}
-            {kopf('kategorie', 'Kategorie')}
-            {kopf('anzahl', 'Anzahl')}
-            {kopf('platz', 'Plätze')}
-            <Table.Th>Status</Table.Th>
+    <KartenOderTabelle
+      zeilen={liste}
+      zeilenKey={(g) => g.id}
+      minWidth={760}
+      karte={(g) => <GegenstandKarte g={g} inv={inv} />}
+      kopf={
+        <Table.Tr>
+          {kopf('name', 'Name')}
+          {kopf('kategorie', 'Kategorie')}
+          {kopf('anzahl', 'Anzahl')}
+          {kopf('platz', 'Plätze')}
+          <Table.Th>Status</Table.Th>
+        </Table.Tr>
+      }
+      zeile={(g) => {
+        const abweichung = gegenstandAbweichung(g);
+        const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
+        const teile = aktiveTeile(inv.gegenstaende, g.id);
+        const eltern = elternName(inv.gegenstaende, g);
+        return (
+          <Table.Tr
+            opacity={g.archiviert ? 0.6 : 1}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              // The name is a real link (keyboard, middle click); it navigates on its own.
+              if (!(e.target as HTMLElement).closest('a')) navigate(gegenstandLink(g.id));
+            }}
+          >
+            <Table.Td>
+              {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
+              <Link to={gegenstandLink(g.id)} style={kartenStil}>
+                <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                  {g.name}
+                </Text>
+              </Link>
+              {eltern && (
+                <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                  Teil von {eltern}
+                </Text>
+              )}
+              {g.beschreibung && (
+                <Text size="sm" c="dimmed" lineClamp={1}>
+                  {g.beschreibung}
+                </Text>
+              )}
+            </Table.Td>
+            <Table.Td>
+              <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                {pfad(inv.kategorien, g.kategorieId)}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Text fw={600}>{anzahlText(g.anzahl)}</Text>
+            </Table.Td>
+            <Table.Td>
+              {zeilen.map((z) => (
+                <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
+                  {[anzahlText(z.anzahl), z.text].filter(Boolean).join(' ')}
+                  {z.verliehen > 0 && (
+                    <Text span size="xs" c="grape" inherit>
+                      {' · '}
+                      {verliehenText(z.verliehen, g.anzahl === 1)}
+                    </Text>
+                  )}
+                  {z.vorgemerkt > 0 && (
+                    <Text span size="xs" c="cyan" inherit>
+                      {' · '}
+                      {vorgemerktText(z.vorgemerkt, g.anzahl === 1)}
+                    </Text>
+                  )}
+                </Text>
+              ))}
+              {verbautZeilen(g).map((v) => (
+                <Text key={v.id} size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                  {[anzahlText(v.anzahl), v.text].filter(Boolean).join(' ')}
+                </Text>
+              ))}
+              {zeilen.length === 0 && g.verbaut.length === 0 && !g.virtuell && (
+                <Text size="sm" c="dimmed">
+                  Kein Platz zugeordnet
+                </Text>
+              )}
+              {teile.length > 0 && (
+                <Text size="sm" c="dimmed">
+                  {teileZaehlText(teile.length, g.virtuell)}
+                </Text>
+              )}
+            </Table.Td>
+            <Table.Td>
+              <Group gap={4}>
+                {teile.length > 0 && <TeileStatusBadges eltern={g} teile={teile} />}
+                {abweichung && (
+                  <Badge color="orange" variant="light">
+                    {abweichung}
+                  </Badge>
+                )}
+                {g.archiviert && (
+                  <Badge color="gray" variant="light">
+                    Archiviert
+                  </Badge>
+                )}
+              </Group>
+            </Table.Td>
           </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {liste.map((g) => {
-            const abweichung = gegenstandAbweichung(g);
-            const zeilen = platzZeilen(g, inv.lagerorte, inv.ifcos);
-            const teile = aktiveTeile(inv.gegenstaende, g.id);
-            const eltern = elternName(inv.gegenstaende, g);
-            return (
-              <Table.Tr
-                key={g.id}
-                opacity={g.archiviert ? 0.6 : 1}
-                style={{ cursor: 'pointer' }}
-                onClick={(e) => {
-                  // The name is a real link (keyboard, middle click); it navigates on its own.
-                  if (!(e.target as HTMLElement).closest('a')) navigate(gegenstandLink(g.id));
-                }}
-              >
-                <Table.Td>
-                  {/* A real link for keyboard use, but plain text; the whole row is clickable. */}
-                  <Link to={gegenstandLink(g.id)} style={kartenStil}>
-                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {g.name}
-                    </Text>
-                  </Link>
-                  {eltern && (
-                    <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      Teil von {eltern}
-                    </Text>
-                  )}
-                  {g.beschreibung && (
-                    <Text size="sm" c="dimmed" lineClamp={1}>
-                      {g.beschreibung}
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
-                    {pfad(inv.kategorien, g.kategorieId)}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  <Text fw={600}>{anzahlText(g.anzahl)}</Text>
-                </Table.Td>
-                <Table.Td>
-                  {zeilen.map((z) => (
-                    <Text key={z.id} size="sm" style={{ overflowWrap: 'anywhere' }}>
-                      {[anzahlText(z.anzahl), z.text].filter(Boolean).join(' ')}
-                      {z.verliehen > 0 && (
-                        <Text span size="xs" c="grape" inherit>
-                          {' · '}
-                          {verliehenText(z.verliehen, g.anzahl === 1)}
-                        </Text>
-                      )}
-                      {z.vorgemerkt > 0 && (
-                        <Text span size="xs" c="cyan" inherit>
-                          {' · '}
-                          {vorgemerktText(z.vorgemerkt, g.anzahl === 1)}
-                        </Text>
-                      )}
-                    </Text>
-                  ))}
-                  {verbautZeilen(g).map((v) => (
-                    <Text key={v.id} size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
-                      {[anzahlText(v.anzahl), v.text].filter(Boolean).join(' ')}
-                    </Text>
-                  ))}
-                  {zeilen.length === 0 && g.verbaut.length === 0 && !g.virtuell && (
-                    <Text size="sm" c="dimmed">
-                      Kein Platz zugeordnet
-                    </Text>
-                  )}
-                  {teile.length > 0 && (
-                    <Text size="sm" c="dimmed">
-                      {teileZaehlText(teile.length, g.virtuell)}
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={4}>
-                    {teile.length > 0 && <TeileStatusBadges eltern={g} teile={teile} />}
-                    {abweichung && (
-                      <Badge color="orange" variant="light">
-                        {abweichung}
-                      </Badge>
-                    )}
-                    {g.archiviert && (
-                      <Badge color="gray" variant="light">
-                        Archiviert
-                      </Badge>
-                    )}
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+        );
+      }}
+    />
   );
 }
 
@@ -415,7 +415,7 @@ function IfcoKarte({
 const ifcoLink = (id: string) => `/inventar/ifcos/${encodeURIComponent(id)}`;
 
 /**
- * Table of IFCOs from `sm` on; the whole row opens the IFCO. While clearing up, the last column
+ * IFCOs as cards on phones and as a table from `sm` on; the whole row opens the IFCO. While clearing up, the last column
  * holds "Fertig" / "Wieder öffnen".
  */
 function IfcoTabelle({
@@ -446,101 +446,106 @@ function IfcoTabelle({
   );
   const name = (id: string) => inv.gegenstaende.find((g) => g.id === id)?.name ?? 'Unbekannt';
   return (
-    <Table.ScrollContainer minWidth={760} visibleFrom="sm">
-      <Table verticalSpacing="xs">
-        <Table.Thead>
-          <Table.Tr>
-            {kopf('name', 'Name')}
-            {kopf('platz', 'Standort')}
-            <Table.Th>Inhalt</Table.Th>
-            <Table.Th>Status</Table.Th>
-            {aufraeumen && <Table.Th>Aufräumen</Table.Th>}
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {liste.map((i) => {
-            const inhalt = i.inhalt
-              .map((p) => ({ ...p, name: name(p.gegenstandId) }))
-              .sort((a, b) => a.name.localeCompare(b.name, 'de'));
-            const fertig = aufraeumen?.get(i.id);
-            return (
-              <Table.Tr
-                key={i.id}
-                opacity={i.archiviert || fertig ? 0.6 : 1}
-                style={{ cursor: 'pointer' }}
-                onClick={(e) => {
-                  // Links and buttons in the row act on their own.
-                  if (!(e.target as HTMLElement).closest('a, button')) navigate(ifcoLink(i.id));
-                }}
-              >
-                <Table.Td>
-                  <Link to={ifcoLink(i.id)} style={kartenStil}>
-                    <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {i.name}
-                    </Text>
-                  </Link>
-                  <Text size="sm" c="dimmed">
-                    {typAnzeige(i.typId, inv.ifcoTypen)}
-                  </Text>
-                </Table.Td>
-                <Table.Td>
-                  {i.lagerortId ? (
-                    <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
-                      {pfad(inv.lagerorte, i.lagerortId)}
-                    </Text>
-                  ) : (
-                    <Badge color="orange" variant="light">
-                      Ohne Platz
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  {inhalt.slice(0, MAX_INHALT).map((p) => (
-                    <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
-                      {mengeName(p.anzahl, p.name)}
-                    </Text>
-                  ))}
-                  {inhalt.length > MAX_INHALT && (
-                    <Text size="sm" c="dimmed">
-                      + {inhalt.length - MAX_INHALT} weitere
-                    </Text>
-                  )}
-                  {inhalt.length === 0 && (
-                    <Text size="sm" c="dimmed">
-                      Leer
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={4}>
-                    {fertig && <FertigBadge f={fertig} />}
-                    {i.ausleihe && (
-                      <Badge
-                        color={i.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
-                        variant="light"
-                        style={{ maxWidth: '100%' }}
-                      >
-                        {ifcoAusleiheKurz(i.ausleihe)}
-                      </Badge>
-                    )}
-                    {i.archiviert && (
-                      <Badge color="gray" variant="light">
-                        Archiviert
-                      </Badge>
-                    )}
-                  </Group>
-                </Table.Td>
-                {aufraeumen && (
-                  <Table.Td>
-                    {!i.archiviert && <FertigKnopf ifcoId={i.id} fertig={!!fertig} />}
-                  </Table.Td>
+    <KartenOderTabelle
+      zeilen={liste}
+      zeilenKey={(i) => i.id}
+      minWidth={760}
+      karte={(i) => (
+        <IfcoKarte
+          ifco={i}
+          inv={inv}
+          aufraeumen={aufraeumen && !i.archiviert ? { fertig: aufraeumen.get(i.id) } : undefined}
+        />
+      )}
+      kopf={
+        <Table.Tr>
+          {kopf('name', 'Name')}
+          {kopf('platz', 'Standort')}
+          <Table.Th>Inhalt</Table.Th>
+          <Table.Th>Status</Table.Th>
+          {aufraeumen && <Table.Th>Aufräumen</Table.Th>}
+        </Table.Tr>
+      }
+      zeile={(i) => {
+        const inhalt = i.inhalt
+          .map((p) => ({ ...p, name: name(p.gegenstandId) }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+        const fertig = aufraeumen?.get(i.id);
+        return (
+          <Table.Tr
+            opacity={i.archiviert || fertig ? 0.6 : 1}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              // Links and buttons in the row act on their own.
+              if (!(e.target as HTMLElement).closest('a, button')) navigate(ifcoLink(i.id));
+            }}
+          >
+            <Table.Td>
+              <Link to={ifcoLink(i.id)} style={kartenStil}>
+                <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                  {i.name}
+                </Text>
+              </Link>
+              <Text size="sm" c="dimmed">
+                {typAnzeige(i.typId, inv.ifcoTypen)}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              {i.lagerortId ? (
+                <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+                  {pfad(inv.lagerorte, i.lagerortId)}
+                </Text>
+              ) : (
+                <Badge color="orange" variant="light">
+                  Ohne Platz
+                </Badge>
+              )}
+            </Table.Td>
+            <Table.Td>
+              {inhalt.slice(0, MAX_INHALT).map((p) => (
+                <Text key={p.gegenstandId} size="sm" style={{ overflowWrap: 'anywhere' }}>
+                  {mengeName(p.anzahl, p.name)}
+                </Text>
+              ))}
+              {inhalt.length > MAX_INHALT && (
+                <Text size="sm" c="dimmed">
+                  + {inhalt.length - MAX_INHALT} weitere
+                </Text>
+              )}
+              {inhalt.length === 0 && (
+                <Text size="sm" c="dimmed">
+                  Leer
+                </Text>
+              )}
+            </Table.Td>
+            <Table.Td>
+              <Group gap={4}>
+                {fertig && <FertigBadge f={fertig} />}
+                {i.ausleihe && (
+                  <Badge
+                    color={i.ausleihe.status === 'geplant' ? 'cyan' : 'grape'}
+                    variant="light"
+                    style={{ maxWidth: '100%' }}
+                  >
+                    {ifcoAusleiheKurz(i.ausleihe)}
+                  </Badge>
                 )}
-              </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
-    </Table.ScrollContainer>
+                {i.archiviert && (
+                  <Badge color="gray" variant="light">
+                    Archiviert
+                  </Badge>
+                )}
+              </Group>
+            </Table.Td>
+            {aufraeumen && (
+              <Table.Td>
+                {!i.archiviert && <FertigKnopf ifcoId={i.id} fertig={!!fertig} />}
+              </Table.Td>
+            )}
+          </Table.Tr>
+        );
+      }}
+    />
   );
 }
 
@@ -782,49 +787,22 @@ export function InventarPage() {
             </Text>
           )}
           {imGegenstand ? (
-            <>
-              <SimpleGrid cols={1} hiddenFrom="sm">
-                {gegenstaende.map((g) => (
-                  <GegenstandKarte key={g.id} g={g} inv={inv} />
-                ))}
-              </SimpleGrid>
-              {gegenstaende.length > 0 && (
-                <GegenstandTabelle
-                  liste={gegenstaende}
-                  inv={inv}
-                  sortierung={sortierung}
-                  umgekehrt={umgekehrt}
-                  onSort={sortieren}
-                />
-              )}
-            </>
+            <GegenstandTabelle
+              liste={gegenstaende}
+              inv={inv}
+              sortierung={sortierung}
+              umgekehrt={umgekehrt}
+              onSort={sortieren}
+            />
           ) : (
-            <>
-              <SimpleGrid cols={1} hiddenFrom="sm">
-                {ifcoListe.map((i) => (
-                  <IfcoKarte
-                    key={i.id}
-                    ifco={i}
-                    inv={inv}
-                    aufraeumen={
-                      aufraeumen.aktion && !i.archiviert
-                        ? { fertig: aufraeumen.fertig.get(i.id) }
-                        : undefined
-                    }
-                  />
-                ))}
-              </SimpleGrid>
-              {ifcoListe.length > 0 && (
-                <IfcoTabelle
-                  liste={ifcoListe}
-                  inv={inv}
-                  sortierung={ifcoSortierung}
-                  umgekehrt={ifcoUmgekehrt}
-                  onSort={ifcosSortierenNach}
-                  aufraeumen={aufraeumen.aktion ? aufraeumen.fertig : null}
-                />
-              )}
-            </>
+            <IfcoTabelle
+              liste={ifcoListe}
+              inv={inv}
+              sortierung={ifcoSortierung}
+              umgekehrt={ifcoUmgekehrt}
+              onSort={ifcosSortierenNach}
+              aufraeumen={aufraeumen.aktion ? aufraeumen.fertig : null}
+            />
           )}
         </>
       )}

@@ -30,7 +30,7 @@ import { kategorieOptionen, zielAusWert, zielOptionen } from './inventarAnzeige'
 import type { GegenstandEintrag, IfcoEintrag, KategorieEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { PfadSelect } from './PfadSelect';
-import { INVENTAR_KEY, useInventar } from './inventarDaten';
+import { inventarKeys, useInventar } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
 
@@ -113,6 +113,7 @@ export function GegenstandFormular({
   );
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: {
       name: string;
       beschreibung: string;
@@ -143,7 +144,7 @@ export function GegenstandFormular({
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

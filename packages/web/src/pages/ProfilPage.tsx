@@ -41,6 +41,8 @@ import { KontaktkanalAuswahl } from '../KontaktkanalIcons';
 import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
+import { zodFeldFehler } from '../zodFehler';
+import { mitgliederKeys } from '../queryKeys';
 
 type Fehler = Partial<
   Record<
@@ -96,6 +98,7 @@ export function ProfilFormular({
   const [bildFehler, setBildFehler] = useState<string | null>(null);
 
   const bildHochladen = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async ({ datei, ausschnitt }: { datei: File; ausschnitt: Ausschnitt }) => {
       const { gross, klein } = await profilbilderErzeugen(datei, ausschnitt);
       const res = await api.me.profilbild.$post({
@@ -160,6 +163,7 @@ export function ProfilFormular({
   }, [dirty]);
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async (eingabe: {
       username: string;
       daten: ReturnType<typeof mitgliedAktualisierenSchema.parse>;
@@ -180,7 +184,9 @@ export function ProfilFormular({
       // Call before refetching so a page addressed by the old username is not reloaded.
       onGespeichert?.(eingabe.username);
       await Promise.all(
-        ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+        [mitgliederKeys.me, mitgliederKeys.mitglied, mitgliederKeys.alle].map((queryKey) =>
+          qc.invalidateQueries({ queryKey }),
+        ),
       );
     },
     onError: (err) => {
@@ -207,16 +213,7 @@ export function ProfilFormular({
       wohnheim,
     });
     if (!usernameGeprueft.success || !parsed.success) {
-      const neu: Fehler = {};
-      const probleme = [
-        ...(usernameGeprueft.success ? [] : usernameGeprueft.error.issues),
-        ...(parsed.success ? [] : parsed.error.issues),
-      ];
-      for (const issue of probleme) {
-        const feld = issue.path[0] as keyof Fehler;
-        neu[feld] ??= issue.message;
-      }
-      return setFehler(neu);
+      return setFehler(zodFeldFehler(usernameGeprueft, parsed));
     }
     setFehler({});
     speichern.mutate({ username: usernameGeprueft.data.username, daten: parsed.data });
@@ -431,9 +428,12 @@ export function ProfilFormular({
 
 export function ProfilPage() {
   const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
       if (res.status === 404) return null;

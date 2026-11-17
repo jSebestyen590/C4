@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { unwrap, useApi } from './api';
 import { fehlerText, pruefen } from './warenApi';
+import { lagerortWarenKeys, warenKeys } from './warenDaten';
 
 interface WareOption {
   id: string;
@@ -47,6 +48,7 @@ function WarenlisteInhalt({
   const index = new Map(waren.map((w) => [w.id, w]));
 
   const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
       pruefen(
         await api.lagerorte[':id'].waren.$put({
@@ -55,7 +57,7 @@ function WarenlisteInhalt({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['lagerort-waren'] });
+      await qc.invalidateQueries({ queryKey: lagerortWarenKeys.alle });
       onClose();
     },
   });
@@ -204,14 +206,14 @@ export function WarenlisteModal({
   const api = useApi();
   const klein = useMediaQuery('(max-width: 36em)');
   const liste = useQuery({
-    queryKey: ['lagerort-waren', lagerort.id],
+    queryKey: lagerortWarenKeys.eins(lagerort.id),
     queryFn: async () =>
       unwrap(await api.lagerorte[':id'].waren.$get({ param: { id: lagerort.id } })),
     // Always the latest list, so a stale cache never overwrites a colleague's changes.
     gcTime: 0,
   });
   const waren = useQuery({
-    queryKey: ['waren', { archiv: true }],
+    queryKey: warenKeys.liste(true),
     queryFn: async () => unwrap(await api.waren.$get({ query: { archiv: '1' } })),
   });
 

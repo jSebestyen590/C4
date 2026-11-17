@@ -1,7 +1,7 @@
 # Finanzen
 
-Stand: **Scheibe 0 (Fundament) und Scheibe 1 (Bargeld) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
-Storno, freie Buchung, „Kette prüfen“ (nur gegen die Datenbank) und der Safe mit Fächern. Alles Weitere (Buch, Buch, Belege, Archiv in S3, …)
+Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld) und Scheibe 2 (Buch, siehe [buch.md](./buch.md)) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
+Storno, freie Buchung, „Kette prüfen“ (nur gegen die Datenbank), der Safe mit Fächern und das Buch als Nebenbuch. Alles Weitere (Belege, Archiv in S3, …)
 steht als Zielbild unten und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Diese Seite
 wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich die Verfahrensdokumentation
 (wer bucht wie, wo liegen Belege, wie läuft die Prüfung).
@@ -35,15 +35,15 @@ Ziel ist nicht, Manipulation unmöglich zu machen, sondern jede Änderung erkenn
 
 ## Rechte
 
-| Recht                | Wer                                                                           | Wofür                                                           |
-| -------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `buch:lesen`         | alle Status                                                                   | eigene Buchseite, Rangliste (noch keine Seite)                  |
-| `kasse:zaehlen`      | alle Status                                                                   | Kassenzählung am Event (noch keine Seite)                       |
-| `belege:einreichen`  | alle Status                                                                   | eigene Auslagen-Belege einreichen (noch keine Seite)            |
-| `finanzen:lesen`     | Admin, Buchhaltung, Vorstandsvorsitz, Stellv. Vorstandsvorsitz, Kassenprüfung | Kontenplan und Journal lesen                                    |
-| `finanzen:buchen`    | Admin, Buchhaltung                                                            | buchen, stornieren (später abrechnen)                           |
-| `finanzen:verwalten` | Admin, Buchhaltung                                                            | Kontenplan pflegen (später Tarife, Anbindungen, Festschreibung) |
-| `finanzen:pruefen`   | Admin, Kassenprüfung                                                          | „Kette prüfen“ (später Prüfexport)                              |
+| Recht                | Wer                                                                           | Wofür                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `buch:lesen`         | alle Status                                                                   | eigene Buchseite, Rangliste (`/buch`)                                   |
+| `kasse:zaehlen`      | alle Status                                                                   | Kassenzählung am Event (noch keine Seite)                               |
+| `belege:einreichen`  | alle Status                                                                   | eigene Auslagen-Belege einreichen (noch keine Seite)                    |
+| `finanzen:lesen`     | Admin, Buchhaltung, Vorstandsvorsitz, Stellv. Vorstandsvorsitz, Kassenprüfung | Kontenplan und Journal lesen                                            |
+| `finanzen:buchen`    | Admin, Buchhaltung                                                            | buchen, stornieren, Buch abrechnen und Seiten verwalten                 |
+| `finanzen:verwalten` | Admin, Buchhaltung                                                            | Kontenplan und Buch-Tarife pflegen (später Anbindungen, Festschreibung) |
+| `finanzen:pruefen`   | Admin, Kassenprüfung                                                          | „Kette prüfen“ (später Prüfexport)                                      |
 
 Die ersten drei Rechte stehen in `STATUS_PERMISSIONS`, die `finanzen:*`-Rechte vergeben Posten
 (Migration `0142`, siehe [posten.md](./posten.md)) und die Gruppe `admin`. Der Posten
