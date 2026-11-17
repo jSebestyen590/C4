@@ -149,7 +149,7 @@ Admins (`users:manage`) können Accounts deaktivieren und wieder aktivieren (Det
   anzeigen“, ausgegraut mit Badge „Deaktiviert“), allen Auswahlfeldern, den Personenkreisen (Kalender, Umfragen), den
   Pushes und den Geburtstagen. `GET /api/mitglieder/:kennung` liefert sie weiter, damit Links aus der Historie funktionieren.
 - Alte Einträge (Dienste, Trichter, Verlauf, Umfragen) behalten den Namen.
-- Der Bestätigungsdialog lädt die Vorschau und listet „Noch offen“: künftige Dienste, Posten und gehaltene Schlüssel.
+- Der Bestätigungsdialog lädt die Vorschau und listet „Noch offen“: künftige Dienste, Posten, gehaltene Schlüssel und offene Buch-Salden (Link zur Seite unter Finanzen).
   **Automatisch ändert sich nichts**; die Admins räumen das selbst auf.
 - Neue Einträge für Deaktivierte (Dienst, Trichter-Teilnahme, Schlüsselübergabe) lehnt das API mit 400 ab.
 
@@ -254,7 +254,7 @@ hat, muss sich neu anmelden.
 | `POST /api/me/vcard-token`, `GET /api/vcard/:token/:datei`                    | vCard-Link; die GET-Route ist öffentlich (Token in der URL), 404 bei ungültigem Token         |
 | `POST /api/me/profilbild`                                                     | Presigned Upload-URLs (groß und klein)                                                        |
 | `GET /api/mitglieder`, `GET /api/mitglieder/:kennung`                         | `rollen` nur für Admins; `posten` für alle; `?deaktivierte=1` (Admin) nimmt Deaktivierte dazu |
-| `GET /api/admin/mitglieder/:sub/deaktivieren-vorschau`                        | Admin; offene Dienste, Posten, Schlüssel                                                      |
+| `GET /api/admin/mitglieder/:sub/deaktivieren-vorschau`                        | Admin; offene Dienste, Posten, Schlüssel, Buch-Salden                                         |
 | `PUT /api/admin/mitglieder/:sub/aktiv`                                        | Admin; Body `{ aktiv }`, 400 bei sich selbst                                                  |
 | `PUT /api/admin/mitglieder/:sub/status`                                       | Admin; Body `{ status, ab? }` (`ab` Standard heute, nicht in der Zukunft)                     |
 | `GET /api/mitglieder/:kennung/historie`                                       | `mitglieder:lesen`; Status-Verlauf, Besetzungen, `deaktiviertAm` (auch für Deaktivierte)      |

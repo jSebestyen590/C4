@@ -17,6 +17,7 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   IconBeer,
+  IconBook,
   IconBell,
   IconBriefcase,
   IconChecklist,
@@ -274,6 +275,12 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
       label: 'Inventar',
       icon: <IconBox size={20} />,
       show: can('inventar:lesen'),
+    },
+    {
+      to: '/buch',
+      label: 'Buch',
+      icon: <IconBook size={20} />,
+      show: can('buch:lesen'),
     },
     {
       to: '/finanzen',

@@ -104,7 +104,8 @@ Keine Fehler:
   sich nicht speichern, und die Seite zeigt, wo die Differenz liegt.
 - Prüfung am Feld mit klarer Meldung, nicht erst nach dem Absenden. Plausibilitätswarnungen
   (Datum in der Zukunft oder in festgeschriebener Periode, ungewöhnlich hoher Betrag, möglicher
-  doppelter Beleg, Überzug im Buch) blockieren nicht, müssen aber bestätigt werden.
+  doppelter Beleg) blockieren nicht, müssen aber bestätigt werden. Das Buch kennt keine solchen Warnungen: Es hält nur fest,
+  was im Papierbuch steht; ein Überzug ist nur die Farbe des Saldos.
 - Vor jedem unumkehrbaren Schritt (buchen, abrechnen, stornieren, festschreiben) eine
   Zusammenfassung dessen, was gebucht wird, mit ausdrücklicher Bestätigung.
 - Nichts geht verloren: Entwürfe werden gespeichert, ungespeicherte Eingaben warnen beim Verlassen,
@@ -158,7 +159,7 @@ mehrere Unterseiten stehen.
 - Abrechnungstabelle aller Seiten (Mitglied, Striche, Bar, Abzahlung); leere Zeilen erzeugen
   nichts. Am Desktop eine Tabelle, die sich per Tastatur zeilenweise durcharbeiten lässt; auf dem
   Handy als Kartenliste mit denselben Feldern.
-- Eigene Seite mit Verlauf und Saldo, Überzugswarnung; Rangliste gesamt/pro Jahr (Muster
+- Eigene Seite mit Verlauf und Saldo (Farbstufe grün/gelb/rot); Rangliste gesamt/pro Jahr (Muster
   `packages/shared/src/trichter.ts` + `TrichterRangliste.tsx`).
 - Deaktivieren-Vorschau der Mitglieder zeigt offenen Buch-Saldo.
 - **Das Buch ist ein Nebenbuch, kein Teil des Bargeldbestands und ohne eigene Journalbuchungen.**
@@ -166,7 +167,7 @@ mehrere Unterseiten stehen.
   deren Abrechnung (Scheibe 3) als Bareinnahme erfasst. Maßgeblicher Zeitpunkt eines Eintrags ist
   das Eintragen in die App, Steuersatz immer der reguläre (derzeit 19 %). Die Scheibe hängt damit
   nur an den Rechten aus Scheibe 0 und kann früh live gehen.
-- Offener Punkt: Push bei Überzug (Access hatte „Buch-Mails")?
+- Push bei Überzug: Nach jeder Abrechnung bekommt jede Seite eines Mitglieds unter dem erlaubten Überzug eine Benachrichtigung (`buch.ueberzug`).
 
 ### Scheibe 3: Barkassen
 
@@ -338,7 +339,7 @@ FinTS-Überweisungen, E-Rechnung.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
-| 2 Buch                    | offen                                                                                                                                              |
+| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
 | 3 Barkassen               | offen                                                                                                                                              |
 | 4 Belege                  | offen                                                                                                                                              |
 | 5 GoBD-Abschluss          | offen                                                                                                                                              |

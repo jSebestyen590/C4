@@ -111,10 +111,11 @@ export const adminRoutes = (ctx: RoutenKontext) => {
       .get('/admin/mitglieder/:sub/deaktivieren-vorschau', auth, adminOnly, async (c) => {
         const sub = c.req.param('sub');
         const heute = heuteBerlin();
-        const [dienste, posten, schluessel] = await Promise.all([
+        const [dienste, posten, schluessel, buch] = await Promise.all([
           deps.kalender.meineDienste(sub, new Date(Date.now() - 24 * 3600 * 1000)),
           deps.posten.aktuelleNachMitglied(heute),
           deps.schluessel.alle(false),
+          deps.buch.seitenVon(sub),
         ]);
         const gesehen = new Set<string>();
         const vorschau: DeaktivierenVorschau = {
@@ -129,6 +130,9 @@ export const adminRoutes = (ctx: RoutenKontext) => {
           schluessel: schluessel
             .filter((s) => s.halter?.art === 'mitglied' && s.halter.sub === sub)
             .map((s) => ({ id: s.id, name: s.name })),
+          buch: buch
+            .filter((b) => b.saldoCent !== 0)
+            .map((b) => ({ seiteId: b.seite.id, nummer: b.seite.nummer, saldoCent: b.saldoCent })),
         };
         return c.json(vorschau);
       })

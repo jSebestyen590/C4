@@ -1182,6 +1182,7 @@ describe('kalender', () => {
         'umfrage.termin',
         'umfrage.erneut_abstimmen',
         'todo.frist',
+        'buch.ueberzug',
         'privatpartys.anfrage',
         'privatpartys.nachricht',
       ]);
