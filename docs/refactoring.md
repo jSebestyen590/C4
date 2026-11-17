@@ -278,5 +278,5 @@ Arbeits-Issue: [Issue 49](https://github.com/jSebestyen590/C4/issues/49).
 - ~~Query-Keys von Hand als Literale gestreut und invalidiert~~ **erledigt**: ein Key-Objekt je Feature (`todoKeys`, `warenKeys`, ...,
   `queryKeys.ts`), siehe `querschnitt.md`.
 - ~~Tests: nichts für `api.ts`, `auth.tsx`, `PullToRefresh`, `ZurueckLink`~~ **erledigt** (Unit-Tests je Datei, `*.test.tsx`). Es bleibt bei Unit-Tests, keine E2E-Tests (Entscheidung in Issue 49).
-- PWA: Manifest nur mit 180-px-Icon, ohne `theme_color`; kein Offline-Hinweis.
+- ~~PWA: Manifest nur mit 180-px-Icon, ohne `theme_color`; kein Offline-Hinweis~~ **erledigt** (Icons aus dem Logo, `theme_color`, Offline-Hinweis; siehe `querschnitt.md`).
 - ~~Noch zu prüfen: Mitglieder ohne `StatusName` und hart kodierte gegenderte Begriffe~~ **erledigt**: Die @-Erwähnungsliste und die Stichwahl-Beschriftung im Protokoll zeigen Mitglieder jetzt mit `StatusName`; die übrigen Fundstellen waren schon richtig. Die geprüften Gender-Stellen (`Finanzer:in` als Postenname, `Chef:in` als Platzhalter, `Freund:in von X` als Beispiel, „Mitglied“ als Kategorie) sind allgemein gemeint und bleiben.
