@@ -40,7 +40,7 @@ import {
   vorgemerktText,
 } from '../inventarAnzeige';
 import { TeileStatusBadges } from '../TeileStatusBadges';
-import { INVENTAR_KEY, useAusleihen, useInventar } from '../inventarDaten';
+import { inventarKeys, useAusleihen, useInventar } from '../inventarDaten';
 import { zeitAnzeigen } from '../warenAnzeige';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
@@ -69,7 +69,7 @@ export function GegenstandDetailPage() {
     await pruefen(
       await api.inventar.gegenstaende[':id'].archiv.$put({ param: { id }, json: { archiviert } }),
     );
-    await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+    await qc.invalidateQueries({ queryKey: inventarKeys.alle });
   };
   const archivMutation = useMutation({
     meta: { eigeneFehlermeldung: true },
@@ -483,7 +483,7 @@ export function GegenstandDetailPage() {
           onClose={() => setLoeschen(false)}
           loeschen={async () => {
             await pruefen(await api.inventar.gegenstaende[':id'].$delete({ param: { id } }));
-            await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+            await qc.invalidateQueries({ queryKey: inventarKeys.alle });
             // A deleted part leads back to its parent, anything else to the overview.
             navigate(g.teilVon ? gegenstandLink(g.teilVon) : '/inventar');
           }}

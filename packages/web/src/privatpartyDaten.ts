@@ -10,16 +10,25 @@ import type {
 } from '@c4/shared';
 import { datumAnzeigen, privatpartyZeitText } from '@c4/shared';
 import { unwrap, useApi } from './api';
+import { kalenderKeys } from './kalenderDaten';
+import { umfrageKeys } from './umfrageDaten';
 
 /** Every Privatparty query lives under this key, so one invalidation refreshes the whole area. */
-export const PRIVATPARTYS_KEY = 'privatpartys';
+export const privatpartyKeys = {
+  alle: ['privatpartys'] as const,
+  liste: (status: PrivatpartyFilter) => ['privatpartys', 'liste', status] as const,
+  detail: (id: string | undefined) => ['privatpartys', 'detail', id] as const,
+  personen: ['privatpartys', 'personen'] as const,
+  person: (id: string | undefined) => ['privatpartys', 'person', id] as const,
+  mailStatus: ['privatpartys', 'mail-status'] as const,
+};
 
 export const privatpartysInvalidieren = (qc: QueryClient) =>
   Promise.all([
-    qc.invalidateQueries({ queryKey: [PRIVATPARTYS_KEY] }),
+    qc.invalidateQueries({ queryKey: privatpartyKeys.alle }),
     // Accepting creates and cancelling deletes events; the poll is created and ended.
-    qc.invalidateQueries({ queryKey: ['kalender'] }),
-    qc.invalidateQueries({ queryKey: ['umfragen'] }),
+    qc.invalidateQueries({ queryKey: kalenderKeys.alle }),
+    qc.invalidateQueries({ queryKey: umfrageKeys.alle }),
   ]);
 
 export const privatpartyLink = (id: string) => `/privatpartys/${encodeURIComponent(id)}`;
@@ -32,7 +41,7 @@ export type PrivatpartyFilter = PrivatpartyStatus | 'alle';
 export function usePrivatpartys(status: PrivatpartyFilter) {
   const api = useApi();
   return useQuery({
-    queryKey: [PRIVATPARTYS_KEY, 'liste', status],
+    queryKey: privatpartyKeys.liste(status),
     queryFn: async () =>
       (await unwrap(await api.privatpartys.$get({ query: { status } }))) as PrivatpartyListeDto[],
   });
@@ -41,7 +50,7 @@ export function usePrivatpartys(status: PrivatpartyFilter) {
 export function usePrivatparty(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [PRIVATPARTYS_KEY, 'detail', id],
+    queryKey: privatpartyKeys.detail(id),
     enabled: !!id,
     queryFn: async () =>
       (await unwrap(
@@ -53,7 +62,7 @@ export function usePrivatparty(id: string | undefined) {
 export function usePrivatpartyPersonen() {
   const api = useApi();
   return useQuery({
-    queryKey: [PRIVATPARTYS_KEY, 'personen'],
+    queryKey: privatpartyKeys.personen,
     queryFn: async () =>
       (await unwrap(await api.privatpartys.personen.$get())) as PrivatpartyPersonDto[],
   });
@@ -62,7 +71,7 @@ export function usePrivatpartyPersonen() {
 export function usePrivatpartyPerson(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [PRIVATPARTYS_KEY, 'person', id],
+    queryKey: privatpartyKeys.person(id),
     enabled: !!id,
     queryFn: async () =>
       (await unwrap(
@@ -84,7 +93,7 @@ export const wunschTerminText = (t: Pick<PrivatpartyTerminDto, 'datum' | 'beginn
 export function usePrivatpartyMailStatus() {
   const api = useApi();
   return useQuery({
-    queryKey: [PRIVATPARTYS_KEY, 'mail-status'],
+    queryKey: privatpartyKeys.mailStatus,
     queryFn: async () =>
       (await unwrap(await api.privatpartys['mail-status'].$get())) as PrivatpartyMailStatusDto,
   });

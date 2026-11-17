@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useApi } from './api';
 import { ifcoPlatzOptionen } from './inventarAnzeige';
-import { INVENTAR_KEY, type IfcoEintrag, type IfcoTypEintrag } from './inventarDaten';
+import { inventarKeys, type IfcoEintrag, type IfcoTypEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { PfadSelect } from './PfadSelect';
@@ -41,7 +41,7 @@ export function IfcoUmstellenModal({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

@@ -23,7 +23,7 @@ import {
 } from '@c4/shared';
 import { useApi } from './api';
 import { zielAusWert, zielOptionen, zielWert } from './inventarAnzeige';
-import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
+import { inventarKeys, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
@@ -110,7 +110,7 @@ export function GegenstandPlaetzeModal({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

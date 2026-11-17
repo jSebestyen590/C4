@@ -13,6 +13,8 @@ import { InventurZusammenfassung } from '../InventurZusammenfassung';
 import { knotenZustand, sollLookup, type KnotenZustand, type WareInfo } from '../inventurDaten';
 import { useInventurSpeichern, type SpeicherStatus } from '../useInventurSpeichern';
 import { fehlerAnzeigen, fehlerText, pruefen } from '../warenApi';
+import { inventurKeys } from '../queryKeys';
+import { warenKeys } from '../warenDaten';
 
 const STATUS_TEXT: Record<SpeicherStatus, string> = {
   leer: '',
@@ -35,13 +37,13 @@ export function InventurPage() {
   const enterWeiter = useEnterWeiter('inventur-weiter');
 
   const daten = useQuery({
-    queryKey: ['inventuren', id],
+    queryKey: inventurKeys.eine(id),
     queryFn: async () => unwrap(await api.inventuren[':id'].$get({ param: { id } })),
     staleTime: 0,
     gcTime: 0,
   });
   const katalogDaten = useQuery({
-    queryKey: ['waren', { archiv: true }],
+    queryKey: warenKeys.liste(true),
     queryFn: async () => unwrap(await api.waren.$get({ query: { archiv: '1' } })),
   });
 
@@ -89,7 +91,7 @@ export function InventurPage() {
       await pruefen(await api.inventuren[':id'].$delete({ param: { id } }));
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['inventuren'] });
+      await qc.invalidateQueries({ queryKey: inventurKeys.alle });
       navigate('/lager');
     },
     onError: (e) => {

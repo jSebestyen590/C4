@@ -27,6 +27,7 @@ import { GebindeFormular, type GebindeEintrag } from './GebindeFormular';
 import { LoeschenDialog } from './LoeschenDialog';
 import { fehlerAnzeigen, pruefen } from './warenApi';
 import { KartenOderTabelle } from './KartenOderTabelle';
+import { gebindeKeys } from './warenDaten';
 
 /** List of Gebinde: cards on phones, a table from `sm`. */
 export function GebindeTab() {
@@ -38,7 +39,7 @@ export function GebindeTab() {
   const [loeschZiel, setLoeschZiel] = useState<GebindeEintrag | null>(null);
 
   const daten = useQuery({
-    queryKey: ['gebinde', 'alle'],
+    queryKey: gebindeKeys.liste,
     queryFn: async () => unwrap(await api.gebinde.$get({ query: { archiv: '1' } })),
   });
   const alle: GebindeEintrag[] = useMemo(() => daten.data ?? [], [daten.data]);
@@ -49,7 +50,7 @@ export function GebindeTab() {
   const titel = (g: GebindeEintrag) => gebindeBezeichnung(g, alle);
   const pfandText = (cent: number | null) => (cent === null ? 'kein Pfand' : centAnzeigen(cent));
 
-  const neuLaden = () => qc.invalidateQueries({ queryKey: ['gebinde'] });
+  const neuLaden = () => qc.invalidateQueries({ queryKey: gebindeKeys.alle });
   const archivieren = async (g: GebindeEintrag, archiviert: boolean) => {
     await pruefen(
       await api.gebinde[':id'].archiv.$put({ param: { id: g.id }, json: { archiviert } }),

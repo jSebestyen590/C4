@@ -18,6 +18,7 @@ import { historieAktualisieren } from './historieDaten';
 import { StatusBadge } from './StatusAnzeige';
 import { StatusEintragModal } from './StatusEintragModal';
 import { pruefen } from './warenApi';
+import { mitgliederKeys } from './queryKeys';
 
 const tageText = (n: number) => (n === 1 ? '1 Tag' : `${n.toLocaleString('de-DE')} Tage`);
 
@@ -34,7 +35,7 @@ export function StatusHistorie({
   const [bearbeiten, setBearbeiten] = useState<StatusEintrag | 'neu' | null>(null);
   const [loeschen, setLoeschen] = useState<StatusEintrag | null>(null);
   const historie = useQuery({
-    queryKey: ['mitglied-historie', sub],
+    queryKey: mitgliederKeys.statusHistorie(sub),
     queryFn: async () =>
       unwrap(await api.mitglieder[':kennung'].historie.$get({ param: { kennung: sub } })),
   });

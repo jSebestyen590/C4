@@ -42,6 +42,7 @@ import { ProfilbildAnzeige } from '../ProfilbildAnzeige';
 import { profilbilderErzeugen, type Ausschnitt } from '../profilbild';
 import { ProfilbildZuschnitt } from '../ProfilbildZuschnitt';
 import { zodFeldFehler } from '../zodFehler';
+import { mitgliederKeys } from '../queryKeys';
 
 type Fehler = Partial<
   Record<
@@ -183,7 +184,9 @@ export function ProfilFormular({
       // Call before refetching so a page addressed by the old username is not reloaded.
       onGespeichert?.(eingabe.username);
       await Promise.all(
-        ['me', 'mitglied', 'mitglieder'].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+        [mitgliederKeys.me, mitgliederKeys.mitglied, mitgliederKeys.alle].map((queryKey) =>
+          qc.invalidateQueries({ queryKey }),
+        ),
       );
     },
     onError: (err) => {
@@ -425,9 +428,12 @@ export function ProfilFormular({
 
 export function ProfilPage() {
   const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
       if (res.status === 404) return null;

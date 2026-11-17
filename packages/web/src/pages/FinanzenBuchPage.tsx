@@ -19,7 +19,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { BuchSeiteDto } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { BUCH_KEY, BuchInhaber, Betrag, BuchSaldo, seitePfad, useBuchSeiten } from '../buchDaten';
+import { buchKeys, BuchInhaber, Betrag, BuchSaldo, seitePfad, useBuchSeiten } from '../buchDaten';
 import { HILFE } from '../finanzenHilfe';
 import { jsonOderFehler } from '../finanzenDaten';
 import { FeldLabel } from '../InfoHinweis';
@@ -72,7 +72,7 @@ function SeiteAnlegenModal({
         }),
       ),
     onSuccess: ({ id }) => {
-      void qc.invalidateQueries({ queryKey: BUCH_KEY });
+      void qc.invalidateQueries({ queryKey: buchKeys.alle });
       notifications.show({ color: 'green', message: `Seite ${nummer} angelegt.` });
       onClose();
       void navigate(seitePfad(id));

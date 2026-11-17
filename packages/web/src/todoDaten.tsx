@@ -4,16 +4,19 @@ import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
 
 /** Every Todo query lives under this key, so one invalidation refreshes the page. */
-export const TODOS_KEY = 'todos';
+export const todoKeys = {
+  alle: ['todos'] as const,
+  meine: ['todos', 'meine'] as const,
+};
 
 export const todosInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [TODOS_KEY] });
+  qc.invalidateQueries({ queryKey: todoKeys.alle });
 
 /** The Todos the signed-in member is zuständig for (open ones first, by deadline). */
 export function useMeineTodos() {
   const api = useApi();
   return useQuery({
-    queryKey: [TODOS_KEY, 'meine'],
+    queryKey: todoKeys.meine,
     queryFn: async () => (await unwrap(await api.me.todos.$get())) as Todo[],
   });
 }
@@ -26,18 +29,18 @@ export function useTodoErledigt() {
     mutationFn: async ({ id, erledigt }: { id: string; erledigt: boolean }) =>
       pruefen(await api.me.todos[':id'].erledigt.$put({ param: { id }, json: { erledigt } })),
     onMutate: async ({ id, erledigt }) => {
-      await qc.cancelQueries({ queryKey: [TODOS_KEY] });
-      const alt = qc.getQueryData<Todo[]>([TODOS_KEY, 'meine']);
+      await qc.cancelQueries({ queryKey: todoKeys.alle });
+      const alt = qc.getQueryData<Todo[]>(todoKeys.meine);
       if (alt) {
         qc.setQueryData<Todo[]>(
-          [TODOS_KEY, 'meine'],
+          todoKeys.meine,
           alt.map((t) => (t.id === id ? { ...t, ichErledigt: erledigt } : t)),
         );
       }
       return { alt };
     },
     onError: (_fehler, _vars, kontext) => {
-      if (kontext?.alt) qc.setQueryData([TODOS_KEY, 'meine'], kontext.alt);
+      if (kontext?.alt) qc.setQueryData(todoKeys.meine, kontext.alt);
     },
     onSettled: () => todosInvalidieren(qc),
   });

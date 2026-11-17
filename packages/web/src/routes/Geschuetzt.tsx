@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { Permission } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
+import { mitgliederKeys } from '../queryKeys';
 
 export function Protected({
   children,
@@ -30,9 +31,12 @@ export function Protected({
  */
 export function RequireUsername({ children }: Readonly<{ children: ReactNode }>) {
   const api = useApi();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
       if (res.status === 404) return null;

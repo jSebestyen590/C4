@@ -21,6 +21,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { WareFormular } from '../WareFormular';
 import { useWarenStammdaten, type WareEintrag } from '../warenDaten';
+import { warenKeys } from '../warenDaten';
 
 /** Overview of all Waren with search, Warengruppe filter and the current stock. */
 export function WarenPage() {
@@ -33,7 +34,7 @@ export function WarenPage() {
   const [anlegen, setAnlegen] = useState(false);
 
   const daten = useQuery({
-    queryKey: ['waren', { archiv: true }],
+    queryKey: warenKeys.liste(true),
     queryFn: async () => unwrap(await api.waren.$get({ query: { archiv: '1' } })),
   });
 

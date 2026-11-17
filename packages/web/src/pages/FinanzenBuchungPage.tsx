@@ -37,7 +37,7 @@ import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
   detailPfad,
-  FINANZEN_KEY,
+  finanzenKeys,
   jsonOderFehler,
   useKonten,
   zaehlungPfad,
@@ -97,7 +97,7 @@ function StornoDialog({
             json: { idempotenzSchluessel: schluessel, datum, text },
           }),
         );
-        await qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+        await qc.invalidateQueries({ queryKey: finanzenKeys.alle });
         void navigate(detailPfad(neu.id));
       }}
     >
@@ -175,7 +175,7 @@ export function FinanzenBuchungPage() {
   const darfBuchen = useAuth().can('finanzen:buchen');
   const [storno, setStorno] = useState(false);
   const buchung = useQuery({
-    queryKey: [...FINANZEN_KEY, 'buchung', id],
+    queryKey: finanzenKeys.buchung(id),
     queryFn: async () => unwrap(await api.finanzen.buchungen[':id'].$get({ param: { id } })),
   });
   const b = buchung.data;

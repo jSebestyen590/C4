@@ -13,15 +13,20 @@ import { StatusName } from './StatusAnzeige';
 import { trichterName } from './trichterAnzeige';
 
 /** Every Trichter query lives under this key, so one invalidation refreshes the whole area. */
-export const TRICHTER_KEY = 'trichter';
+export const trichterKeys = {
+  alle: ['trichter'] as const,
+  liste: (mitArchiv: boolean) => ['trichter', 'liste', mitArchiv] as const,
+  uebersicht: (jahr: string) => ['trichter', 'uebersicht', jahr] as const,
+  durchgaenge: ['trichter', 'durchgaenge'] as const,
+};
 
 export const trichterInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [TRICHTER_KEY] });
+  qc.invalidateQueries({ queryKey: trichterKeys.alle });
 
 export function useTrichterListe(mitArchiv = false) {
   const api = useApi();
   return useQuery({
-    queryKey: [TRICHTER_KEY, 'liste', mitArchiv],
+    queryKey: trichterKeys.liste(mitArchiv),
     queryFn: async () =>
       (await unwrap(
         await api.trichter.$get({ query: mitArchiv ? { archiviert: '1' } : {} }),
@@ -33,7 +38,7 @@ export function useTrichterListe(mitArchiv = false) {
 export function useTrichterUebersicht(jahr: string) {
   const api = useApi();
   return useQuery({
-    queryKey: [TRICHTER_KEY, 'uebersicht', jahr],
+    queryKey: trichterKeys.uebersicht(jahr),
     queryFn: async () =>
       (await unwrap(
         await api.trichter.uebersicht.$get({ query: { jahr } }),
@@ -45,7 +50,7 @@ export function useTrichterUebersicht(jahr: string) {
 export function useDurchgaenge() {
   const api = useApi();
   return useInfiniteQuery({
-    queryKey: [TRICHTER_KEY, 'durchgaenge'],
+    queryKey: trichterKeys.durchgaenge,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) =>
       (await unwrap(

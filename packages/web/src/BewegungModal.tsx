@@ -15,7 +15,7 @@ import { useApi } from './api';
 import { DatumFeld } from './DatumFeld';
 import { GRUND_LABELS, label } from './i18n';
 import { zielAusWert, zielOptionen } from './inventarAnzeige';
-import { INVENTAR_KEY, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
+import { inventarKeys, type GegenstandEintrag, type IfcoEintrag } from './inventarDaten';
 import type { LagerKnoten } from './LagerBaum';
 import { PfadSelect } from './PfadSelect';
 import { fehlerText, pruefen } from './warenApi';
@@ -84,7 +84,7 @@ export function BewegungModal({
         }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

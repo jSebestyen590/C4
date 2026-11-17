@@ -91,6 +91,7 @@ import { eventDatumText, useProtokollEvents } from './daten';
 import { WiederholungHinweis } from './WiederholungHinweis';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
 import { SchichtEditor, SchichtListe } from './SchichtEditor';
+import { postenKeys } from '../queryKeys';
 
 /** Fields of one Baustein type: `aendern` maps the current fields to the new ones (always on the latest state). */
 export interface FormularProps<T> {
@@ -1144,7 +1145,7 @@ function WahlErgebnisAnzeige({
 function usePostenOptionen(aktiv: boolean) {
   const api = useApi();
   const posten = useQuery({
-    queryKey: ['posten', { archiv: false }],
+    queryKey: postenKeys.liste(false),
     queryFn: async () => unwrap(await api.posten.$get({ query: {} })),
     enabled: aktiv,
   });

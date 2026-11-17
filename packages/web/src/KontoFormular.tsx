@@ -13,7 +13,7 @@ import {
   type KontoDto,
 } from '@c4/shared';
 import { useApi } from './api';
-import { FINANZEN_KEY } from './finanzenDaten';
+import { finanzenKeys } from './finanzenDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
 
@@ -70,7 +70,7 @@ export function KontoFormular({
           : await api.finanzen.konten.$post({ json: json as KontoEingabe }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      await qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       onClose();
     },
   });
