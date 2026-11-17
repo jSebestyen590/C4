@@ -26,7 +26,7 @@ import {
   type BuchEingabe,
   type BuchZeilenRechnung,
 } from '../buchAbrechnung';
-import { BUCH_KEY, BuchInhaber, BuchSaldo, saldoText, useBuchSeiten } from '../buchDaten';
+import { buchKeys, BuchInhaber, BuchSaldo, saldoText, useBuchSeiten } from '../buchDaten';
 import { schluesselFuer } from '../buchungFormular';
 import { HILFE } from '../finanzenHilfe';
 import { jsonOderFehler } from '../finanzenDaten';
@@ -264,7 +264,7 @@ export function FinanzenBuchAbrechnenPage() {
         },
       }));
       setDialogId(null);
-      void qc.invalidateQueries({ queryKey: BUCH_KEY });
+      void qc.invalidateQueries({ queryKey: buchKeys.alle });
       // A repeated save (same key) is not announced a second time.
       if (!ergebnis.wiederholt) {
         notifications.show({

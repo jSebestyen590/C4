@@ -13,18 +13,26 @@ import type {
 } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
+import { kalenderKeys } from './kalenderDaten';
+import { mitgliederKeys, postenKeys } from './queryKeys';
 
 /** Every Protokolle query lives under this key, so one invalidation refreshes the whole area. */
-export const PROTOKOLLE_KEY = 'protokolle';
+export const protokollKeys = {
+  alle: ['protokolle'] as const,
+  liste: ['protokolle', 'liste'] as const,
+  sitzungen: ['protokolle', 'sitzungen'] as const,
+  detail: (id: string | undefined) => ['protokolle', 'detail', id] as const,
+  aktionen: (id: string | undefined) => ['protokolle', 'aktionen', id] as const,
+};
 
 export const protokolleInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [PROTOKOLLE_KEY] });
+  qc.invalidateQueries({ queryKey: protokollKeys.alle });
 
 /** The lists only (not the open protocol, whose editor must not be replaced behind the user's back). */
 const listenInvalidieren = async (qc: QueryClient) => {
   await Promise.all([
-    qc.invalidateQueries({ queryKey: [PROTOKOLLE_KEY, 'liste'] }),
-    qc.invalidateQueries({ queryKey: [PROTOKOLLE_KEY, 'sitzungen'] }),
+    qc.invalidateQueries({ queryKey: protokollKeys.liste }),
+    qc.invalidateQueries({ queryKey: protokollKeys.sitzungen }),
   ]);
 };
 
@@ -33,7 +41,7 @@ export const protokollLink = (id: string) => `/protokolle/${encodeURIComponent(i
 export function useProtokolle() {
   const api = useApi();
   return useQuery({
-    queryKey: [PROTOKOLLE_KEY, 'liste'],
+    queryKey: protokollKeys.liste,
     queryFn: async () => (await unwrap(await api.protokolle.$get())) as ProtokollListeEintragDto[],
   });
 }
@@ -46,7 +54,7 @@ export function useProtokolle() {
 export function useProtokoll(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [PROTOKOLLE_KEY, 'detail', id],
+    queryKey: protokollKeys.detail(id),
     enabled: !!id,
     gcTime: 0,
     refetchOnWindowFocus: false,
@@ -60,7 +68,7 @@ export function useProtokoll(id: string | undefined) {
 export function useProtokollSitzungen() {
   const api = useApi();
   return useQuery({
-    queryKey: [PROTOKOLLE_KEY, 'sitzungen'],
+    queryKey: protokollKeys.sitzungen,
     queryFn: async () =>
       (await unwrap(await api.protokolle.sitzungen.$get())) as ProtokollSitzungDto[],
   });
@@ -157,9 +165,9 @@ export function useProtokollSpeichern() {
 const aktionenFolgenInvalidieren = (qc: QueryClient) =>
   Promise.all([
     protokolleInvalidieren(qc),
-    qc.invalidateQueries({ queryKey: ['kalender'] }),
-    qc.invalidateQueries({ queryKey: ['mitglieder'] }),
-    qc.invalidateQueries({ queryKey: ['posten'] }),
+    qc.invalidateQueries({ queryKey: kalenderKeys.alle }),
+    qc.invalidateQueries({ queryKey: mitgliederKeys.alle }),
+    qc.invalidateQueries({ queryKey: postenKeys.alle }),
   ]);
 
 /** Closes (running the chosen Aktionen) or reopens; resolves to the API's answer with the Aktion outcomes. */
@@ -195,7 +203,7 @@ export function useProtokollStatus() {
 export function useProtokollAktionen(id: string, aktiv = true) {
   const api = useApi();
   return useQuery({
-    queryKey: [PROTOKOLLE_KEY, 'aktionen', id],
+    queryKey: protokollKeys.aktionen(id),
     enabled: aktiv,
     gcTime: 0,
     staleTime: 0,

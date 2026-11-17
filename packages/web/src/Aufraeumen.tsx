@@ -18,7 +18,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from './api';
 import { useAuth } from './auth';
 import {
-  AUFRAEUMEN_KEY,
+  inventarKeys,
   type AufraeumEintrag,
   type AufraeumFertigEintrag,
   type OrganisatorEintrag,
@@ -35,7 +35,7 @@ const Person = ({ o }: Readonly<{ o: OrganisatorEintrag | null }>) =>
 function useAufraeumMutationen() {
   const api = useApi();
   const qc = useQueryClient();
-  const neu = () => qc.invalidateQueries({ queryKey: AUFRAEUMEN_KEY });
+  const neu = () => qc.invalidateQueries({ queryKey: inventarKeys.aufraeumen });
   return {
     starten: useMutation({
       meta: { eigeneFehlermeldung: true },

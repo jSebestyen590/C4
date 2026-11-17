@@ -4,10 +4,15 @@ import type { BilderListeDto, OneDriveStatusDto } from '@c4/shared';
 import { unwrap, useApi } from './api';
 
 /** Every Bilder query lives under this key, so one invalidation refreshes the whole area. */
-export const BILDER_KEY = 'bilder';
+export const bilderKeys = {
+  alle: ['bilder'] as const,
+  ordnerCache: ['bilder', 'ordner', 'cache'] as const,
+  ordnerLive: ['bilder', 'ordner', 'live'] as const,
+  verbindung: ['bilder', 'verbindung'] as const,
+};
 
 export const bilderInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [BILDER_KEY] });
+  qc.invalidateQueries({ queryKey: bilderKeys.alle });
 
 const LOKAL_KEY = 'c4.bilder.liste';
 
@@ -38,7 +43,7 @@ function lokalSpeichern(liste: BilderListeDto) {
 export function useBilderOrdner() {
   const api = useApi();
   const cache = useQuery({
-    queryKey: [BILDER_KEY, 'ordner', 'cache'],
+    queryKey: bilderKeys.ordnerCache,
     staleTime: 60_000,
     initialData: lokaleListe,
     initialDataUpdatedAt: 0,
@@ -48,7 +53,7 @@ export function useBilderOrdner() {
       )) as BilderListeDto,
   });
   const live = useQuery({
-    queryKey: [BILDER_KEY, 'ordner', 'live'],
+    queryKey: bilderKeys.ordnerLive,
     staleTime: 30_000,
     queryFn: async () =>
       (await unwrap(await api.bilder.ordner.$get({ query: {} }))) as BilderListeDto,
@@ -75,7 +80,7 @@ export function useBilderOrdner() {
 export function useOneDriveStatus(enabled = true) {
   const api = useApi();
   return useQuery({
-    queryKey: [BILDER_KEY, 'verbindung'],
+    queryKey: bilderKeys.verbindung,
     enabled,
     queryFn: async () => (await unwrap(await api.bilder.verbindung.$get())) as OneDriveStatusDto,
   });

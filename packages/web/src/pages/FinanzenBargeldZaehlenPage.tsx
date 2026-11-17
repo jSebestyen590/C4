@@ -41,7 +41,7 @@ import { HILFE } from '../finanzenHilfe';
 import {
   BETRAG_STIL,
   detailPfad,
-  FINANZEN_KEY,
+  finanzenKeys,
   jsonOderFehler,
   useBargeld,
   zaehlungPfad,
@@ -247,7 +247,7 @@ export function FinanzenBargeldZaehlenPage() {
     onSuccess: (ergebnisDto) => {
       warnung.abgeschlossen();
       schluessel.current = null;
-      void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       setGespeichert(ergebnisDto);
       setText('');
       setIst({});

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { basisGebinde, bestandAnzeigen, type Gebinde } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { formatDatum, formatDatumZeit } from './datum';
+import { warenKeys } from './warenDaten';
 
 const FARBEN = ['indigo.6', 'teal.6', 'orange.6', 'grape.6', 'cyan.6', 'pink.6', 'lime.7', 'red.6'];
 
@@ -18,7 +19,7 @@ export function WareVerlauf({ wareId, gebinde }: Readonly<{ wareId: string; gebi
   const [jetzt] = useState(() => Date.now());
   const [ansicht, setAnsicht] = useState<'gesamt' | 'lager'>('gesamt');
   const daten = useQuery({
-    queryKey: ['waren', wareId, 'verlauf'],
+    queryKey: warenKeys.verlauf(wareId),
     queryFn: async () => unwrap(await api.waren[':id'].verlauf.$get({ param: { id: wareId } })),
   });
 

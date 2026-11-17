@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { IFCO_MASSE, ifcoTypSchema, type IfcoGrundflaeche } from '@c4/shared';
 import { useApi } from './api';
-import { INVENTAR_KEY, type IfcoTypEintrag } from './inventarDaten';
+import { inventarKeys, type IfcoTypEintrag } from './inventarDaten';
 import { fehlerText, pruefen } from './warenApi';
 import { ZahlFeld } from './ZahlFeld';
 
@@ -32,7 +32,7 @@ export function IfcoTypFormular({
           : await api.inventar['ifco-typen'].$post({ json }),
       ),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+      await qc.invalidateQueries({ queryKey: inventarKeys.alle });
       onClose();
     },
   });

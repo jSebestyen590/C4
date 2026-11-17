@@ -27,7 +27,7 @@ import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { schluesselFuer } from '../buchungFormular';
 import {
-  BUCH_KEY,
+  buchKeys,
   BuchInhaber,
   BuchSaldo,
   saldoText,
@@ -68,7 +68,7 @@ function StornoDialog({
       );
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: BUCH_KEY });
+      void qc.invalidateQueries({ queryKey: buchKeys.alle });
       notifications.show({ color: 'green', message: 'Der Eintrag wurde storniert.' });
       onClose();
     },
@@ -150,7 +150,7 @@ function NummerDialog({
       );
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: BUCH_KEY });
+      void qc.invalidateQueries({ queryKey: buchKeys.alle });
       notifications.show({
         color: 'green',
         message: reaktivieren
@@ -357,7 +357,7 @@ export function FinanzenBuchSeitePage() {
           onClose={() => setArchivieren(false)}
           onBestaetigt={async () => {
             await pruefen(await api.buch.seiten[':id'].archivieren.$post({ param: { id } }));
-            await qc.invalidateQueries({ queryKey: BUCH_KEY });
+            await qc.invalidateQueries({ queryKey: buchKeys.alle });
             notifications.show({ color: 'green', message: `Seite ${s.nummer} archiviert.` });
           }}
         >

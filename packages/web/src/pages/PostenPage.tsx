@@ -29,6 +29,7 @@ import { mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { leerePostenWerte, PostenFelder, type PostenWerte } from '../PostenFelder';
 import { KartenOderTabelle, KlickKarte } from '../KartenOderTabelle';
+import { postenKeys } from '../queryKeys';
 
 /** Username of a holder, falling back to the full name while they have none. */
 export const besetzungName = (b: Besetzung) => mitgliedName(b.mitglied);
@@ -65,7 +66,7 @@ function PostenAnlegen() {
     meta: { eigeneFehlermeldung: true },
     mutationFn: async (json: PostenWerte) => unwrap(await api.posten.$post({ json })),
     onSuccess: async ({ id }) => {
-      await qc.invalidateQueries({ queryKey: ['posten'] });
+      await qc.invalidateQueries({ queryKey: postenKeys.alle });
       close();
       setWerte(leerePostenWerte);
       navigate(`/posten/${encodeURIComponent(id)}`);
@@ -108,7 +109,7 @@ export function PostenPage() {
   const [archiv, setArchiv] = useState(false);
   const mitArchiv = darfBearbeiten && archiv;
   const posten = useQuery({
-    queryKey: ['posten', { archiv: mitArchiv }],
+    queryKey: postenKeys.liste(mitArchiv),
     queryFn: async () => unwrap(await api.posten.$get({ query: mitArchiv ? { archiv: '1' } : {} })),
   });
 

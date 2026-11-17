@@ -7,7 +7,7 @@ import { AktionsMenue } from './AktionsMenue';
 import { useApi } from './api';
 import { useAuth } from './auth';
 import { IfcoTypFormular } from './IfcoTypFormular';
-import { INVENTAR_KEY, useIfcoTypen, type IfcoTypEintrag } from './inventarDaten';
+import { inventarKeys, useIfcoTypen, type IfcoTypEintrag } from './inventarDaten';
 import { LoeschenDialog } from './LoeschenDialog';
 import { fehlerAnzeigen, pruefen } from './warenApi';
 
@@ -36,7 +36,7 @@ export function IfcoTypenTab() {
         json: { archiviert },
       }),
     );
-    await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+    await qc.invalidateQueries({ queryKey: inventarKeys.alle });
   };
   const archivMutation = useMutation({
     meta: { eigeneFehlermeldung: true },
@@ -121,7 +121,7 @@ export function IfcoTypenTab() {
             await pruefen(
               await api.inventar['ifco-typen'][':id'].$delete({ param: { id: loeschZiel.id } }),
             );
-            await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+            await qc.invalidateQueries({ queryKey: inventarKeys.alle });
           }}
           archivieren={() => archivieren(loeschZiel, true)}
         />

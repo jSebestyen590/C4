@@ -40,6 +40,7 @@ import { mitgliedLink } from '../mitglied';
 import { mitgliedOptionen } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import { besetzungName } from './PostenPage';
+import { mitgliederKeys, postenKeys } from '../queryKeys';
 
 const zeitraum = (b: Besetzung) =>
   `${datumAnzeigen(b.start)} – ${b.ende ? datumAnzeigen(b.ende) : 'unbefristet'}`;
@@ -59,7 +60,7 @@ function PostenBearbeiten({ posten }: Readonly<{ posten: Posten }>) {
       if (!res.ok) throw new Error('fehler');
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['posten'] });
+      await qc.invalidateQueries({ queryKey: postenKeys.alle });
       close();
     },
   });
@@ -115,13 +116,13 @@ function BesetzungDialog({
   // A new Besetzung may take over open-ended ones that are active today.
   const offene = besetzung ? [] : posten.besetzungen.filter((b) => b.aktuell && b.ende === null);
   const mitglieder = useQuery({
-    queryKey: ['mitglieder'],
+    queryKey: mitgliederKeys.alle,
     queryFn: async () => unwrap(await api.mitglieder.$get()),
     enabled: opened,
   });
 
   const fertig = async () => {
-    await qc.invalidateQueries({ queryKey: ['posten'] });
+    await qc.invalidateQueries({ queryKey: postenKeys.alle });
     onClose();
   };
   const speichern = useMutation({
@@ -307,7 +308,7 @@ function RechteFeld({ posten }: Readonly<{ posten: Posten }>) {
       });
       if (!res.ok) throw new Error('fehler');
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['posten'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: postenKeys.alle }),
     onError: () =>
       notifications.show({ color: 'red', message: 'Die Rechte konnten nicht gespeichert werden.' }),
   });
@@ -342,7 +343,7 @@ export function PostenDetailPage() {
   const darfBearbeiten = can('posten:bearbeiten');
   const [zuweisen, { open, close }] = useDisclosure(false);
   const posten = useQuery({
-    queryKey: ['posten', id],
+    queryKey: postenKeys.eins(id),
     queryFn: async () => {
       const res = await api.posten[':id'].$get({ param: { id } });
       if (res.status === 404) return null;
@@ -355,7 +356,7 @@ export function PostenDetailPage() {
       const res = await api.posten[':id'].archiv.$put({ param: { id }, json: { archiviert } });
       if (!res.ok) throw new Error('fehler');
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['posten'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: postenKeys.alle }),
     onError: () =>
       notifications.show({ color: 'red', message: 'Der Posten konnte nicht geändert werden.' }),
   });

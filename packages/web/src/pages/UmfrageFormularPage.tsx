@@ -69,6 +69,7 @@ import {
 import { SortierbareListe } from '../SortierbareListe';
 import { ZahlFeld } from '../ZahlFeld';
 import { ApiFehler, fehlerText } from '../warenApi';
+import { postenKeys } from '../queryKeys';
 
 let zaehler = 0;
 const neuerKey = () => `k${++zaehler}`;
@@ -325,7 +326,7 @@ function KreisFelder({
   const api = useApi();
   const mitglieder = useMitgliederListe();
   const posten = useQuery({
-    queryKey: ['posten', { archiv: false }],
+    queryKey: postenKeys.liste(false),
     queryFn: async () => unwrap(await api.posten.$get({ query: {} })),
   });
   return (

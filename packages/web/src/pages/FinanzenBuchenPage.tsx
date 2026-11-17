@@ -42,7 +42,7 @@ import {
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import { FINANZEN_KEY, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
+import { finanzenKeys, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -140,7 +140,7 @@ export function FinanzenBuchenPage() {
     onSuccess: async ({ id, seq, wiederholt }) => {
       gebuchtRef.current = true;
       schluessel.current = null;
-      void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       zeigeGebucht(navigate, { id, seq, wiederholt });
       // Next Erfassung: keep date and mode, clear the rest, focus the first field.
       setText('');

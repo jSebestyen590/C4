@@ -31,7 +31,7 @@ import {
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { DatumFeld } from '../DatumFeld';
-import { BETRAG_STIL, detailPfad, FINANZEN_KEY, kontoOptionen, useKonten } from '../finanzenDaten';
+import { BETRAG_STIL, detailPfad, finanzenKeys, kontoOptionen, useKonten } from '../finanzenDaten';
 import {
   bewegungText,
   journalSortieren,
@@ -213,7 +213,7 @@ export function FinanzenJournalPage() {
   ]);
 
   const seiten = useQuery({
-    queryKey: [...FINANZEN_KEY, 'buchungen', { kontoId, von, bis, nurStorno }],
+    queryKey: finanzenKeys.buchungen({ kontoId, von, bis, nurStorno }),
     queryFn: async () =>
       unwrap(
         await api.finanzen.buchungen.$get({

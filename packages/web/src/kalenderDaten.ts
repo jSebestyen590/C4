@@ -15,16 +15,29 @@ import {
 import { unwrap, useApi } from './api';
 
 /** Every Kalender query lives under this key, so one invalidation refreshes the whole area. */
-export const KALENDER_KEY = 'kalender';
+export const kalenderKeys = {
+  alle: ['kalender'] as const,
+  events: (von: string, bis: string) => ['kalender', 'events', von, bis] as const,
+  geburtstage: (von: string, bis: string) => ['kalender', 'geburtstage', von, bis] as const,
+  event: (id: string | undefined) => ['kalender', 'event', id] as const,
+  dienstformen: ['kalender', 'dienstformen'] as const,
+  kategorien: ['kalender', 'kategorien'] as const,
+  externe: (mitArchiv: boolean) => ['kalender', 'externe', mitArchiv] as const,
+  vorlagen: (mitArchiv: boolean) => ['kalender', 'vorlagen', mitArchiv] as const,
+  statistik: (jahr: number) => ['kalender', 'statistik', jahr] as const,
+  token: ['kalender', 'token'] as const,
+  erinnerungen: ['kalender', 'erinnerungen'] as const,
+  serien: ['kalender', 'serien'] as const,
+};
 
 export const kalenderInvalidieren = (qc: QueryClient) =>
-  qc.invalidateQueries({ queryKey: [KALENDER_KEY] });
+  qc.invalidateQueries({ queryKey: kalenderKeys.alle });
 
 /** Events overlapping the date range `von`..`bis` (`YYYY-MM-DD`, inclusive). */
 export function useKalenderEvents(von: string, bis: string) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'events', von, bis],
+    queryKey: kalenderKeys.events(von, bis),
     queryFn: async () =>
       (await unwrap(await api.kalender.events.$get({ query: { von, bis } }))) as EventDto[],
   });
@@ -34,7 +47,7 @@ export function useKalenderEvents(von: string, bis: string) {
 export function useGeburtstage(von: string, bis: string) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'geburtstage', von, bis],
+    queryKey: kalenderKeys.geburtstage(von, bis),
     queryFn: async () =>
       (await unwrap(
         await api.kalender.geburtstage.$get({ query: { von, bis } }),
@@ -45,7 +58,7 @@ export function useGeburtstage(von: string, bis: string) {
 export function useKalenderEvent(id: string | undefined) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'event', id],
+    queryKey: kalenderKeys.event(id),
     enabled: id !== undefined,
     queryFn: async () =>
       (await unwrap(await api.kalender.events[':id'].$get({ param: { id: id! } }))) as EventDto,
@@ -56,7 +69,7 @@ export function useKalenderEvent(id: string | undefined) {
 export function useDienstformen() {
   const api = useApi();
   const q = useQuery({
-    queryKey: [KALENDER_KEY, 'dienstformen'],
+    queryKey: kalenderKeys.dienstformen,
     queryFn: async () =>
       (await unwrap(
         await api.kalender.dienstformen.$get({ query: { archiv: '1' } }),
@@ -78,7 +91,7 @@ export const vorlageTitel = (v: VorlageDto, kategorien: readonly EventKategorieD
 export function useEventKategorien() {
   const api = useApi();
   const q = useQuery({
-    queryKey: [KALENDER_KEY, 'kategorien'],
+    queryKey: kalenderKeys.kategorien,
     queryFn: async () =>
       (await unwrap(
         await api.kalender.kategorien.$get({ query: { archiv: '1' } }),
@@ -92,7 +105,7 @@ export function useEventKategorien() {
 export function useExterne(mitArchiv = false) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'externe', mitArchiv],
+    queryKey: kalenderKeys.externe(mitArchiv),
     queryFn: async () =>
       (await unwrap(
         await api.kalender.externe.$get({ query: mitArchiv ? { archiv: '1' } : {} }),
@@ -103,7 +116,7 @@ export function useExterne(mitArchiv = false) {
 export function useVorlagen(mitArchiv = false) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'vorlagen', mitArchiv],
+    queryKey: kalenderKeys.vorlagen(mitArchiv),
     queryFn: async () =>
       (await unwrap(
         await api.kalender.vorlagen.$get({ query: mitArchiv ? { archiv: '1' } : {} }),
@@ -114,7 +127,7 @@ export function useVorlagen(mitArchiv = false) {
 export function useKalenderStatistik(jahr: number) {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'statistik', jahr],
+    queryKey: kalenderKeys.statistik(jahr),
     queryFn: async () =>
       (await unwrap(
         await api.kalender.statistik.$get({ query: { jahr: String(jahr) } }),
@@ -126,7 +139,7 @@ export function useKalenderStatistik(jahr: number) {
 export function useKalenderToken() {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'token'],
+    queryKey: kalenderKeys.token,
     queryFn: async () => (await unwrap(await api.me['kalender-token'].$get())).vorhanden,
   });
 }
@@ -135,7 +148,7 @@ export function useKalenderToken() {
 export function useErinnerungen() {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'erinnerungen'],
+    queryKey: kalenderKeys.erinnerungen,
     queryFn: async () => (await unwrap(await api.kalender.erinnerungen.$get())) as ErinnerungenDto,
   });
 }
@@ -144,7 +157,7 @@ export function useErinnerungen() {
 export function useSerien() {
   const api = useApi();
   return useQuery({
-    queryKey: [KALENDER_KEY, 'serien'],
+    queryKey: kalenderKeys.serien,
     queryFn: async () => (await unwrap(await api.kalender.serien.$get())) as SerieListeDto[],
   });
 }

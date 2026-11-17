@@ -38,6 +38,7 @@ import {
   personenFarben,
   zeitraumText,
 } from '../zeitstrahlLogik';
+import { historieKeys, mitgliederKeys, postenKeys } from '../queryKeys';
 
 type Ansicht = 'mitglieder' | 'posten';
 
@@ -170,7 +171,7 @@ function MitgliederAnsicht({ kennungen }: Readonly<{ kennungen: string[] }>) {
   const heute = heuteBerlin();
   const abfragen = useQueries({
     queries: kennungen.map((kennung) => ({
-      queryKey: ['historie', kennung],
+      queryKey: historieKeys.eins(kennung),
       queryFn: async (): Promise<Omit<PersonDaten, 'kennung'>> => {
         const [mres, historie] = await Promise.all([
           api.mitglieder[':kennung'].$get({ param: { kennung } }),
@@ -338,7 +339,7 @@ export function HistoriePage() {
 
   // Same cache entries as the Mitglieder and Posten pages.
   const mitglieder = useQuery({
-    queryKey: mitDeaktivierten ? ['mitglieder', { deaktivierte: true }] : ['mitglieder'],
+    queryKey: mitgliederKeys.liste(mitDeaktivierten),
     queryFn: async () =>
       unwrap(
         mitDeaktivierten
@@ -347,7 +348,7 @@ export function HistoriePage() {
       ),
   });
   const posten = useQuery({
-    queryKey: ['posten', { archiv: mitArchiv }],
+    queryKey: postenKeys.liste(mitArchiv),
     queryFn: async () => unwrap(await api.posten.$get({ query: mitArchiv ? { archiv: '1' } : {} })),
   });
 

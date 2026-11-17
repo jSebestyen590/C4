@@ -14,6 +14,7 @@ import { RollenFeld } from '../RollenAnzeige';
 import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { StatusHistorie } from '../StatusHistorie';
 import { ProfilFormular } from './ProfilPage';
+import { mitgliederKeys } from '../queryKeys';
 
 /** Detail page of one member; the owner edits their own profile here. */
 export function MitgliedPage() {
@@ -23,9 +24,12 @@ export function MitgliedPage() {
   const api = useApi();
   const qc = useQueryClient();
   const { can } = useAuth();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglieder', kennung],
+    queryKey: mitgliederKeys.eins(kennung),
     queryFn: async () => {
       const res = await api.mitglieder[':kennung'].$get({ param: { kennung } });
       if (res.status === 404) return null;
@@ -54,7 +58,7 @@ export function MitgliedPage() {
             // A changed username changes this page's URL.
             if (username.toLowerCase() !== kennung.toLowerCase())
               navigate(mitgliedLink({ username, sub: m.sub }), { replace: true });
-            void qc.invalidateQueries({ queryKey: ['mitglieder'] });
+            void qc.invalidateQueries({ queryKey: mitgliederKeys.alle });
           }}
         />
       )}

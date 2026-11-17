@@ -37,7 +37,7 @@ import { BuchungsZusammenfassung } from '../BuchungsZusammenfassung';
 import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
-import { FINANZEN_KEY, jsonOderFehler, useBargeld, useKonten } from '../finanzenDaten';
+import { finanzenKeys, jsonOderFehler, useBargeld, useKonten } from '../finanzenDaten';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
 import { fehlerText } from '../warenApi';
@@ -128,7 +128,7 @@ export function FinanzenBargeldUmbuchenPage() {
     onSuccess: ({ id, seq, wiederholt }) => {
       warnung.abgeschlossen();
       schluessel.current = null;
-      void qc.invalidateQueries({ queryKey: FINANZEN_KEY });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       zeigeGebucht(navigate, { id, seq, wiederholt });
       setText('');
       setNach(null);

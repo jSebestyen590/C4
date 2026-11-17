@@ -8,12 +8,13 @@ import { unwrap, useApi } from './api';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import { StatusName } from './StatusAnzeige';
 import { mitgliedName } from './mitglied';
+import { mitgliederKeys } from './queryKeys';
 
 /** What is still open for the member; nothing is changed automatically on deactivation. */
 function OffenesAbschnitt({ sub }: Readonly<{ sub: string }>) {
   const api = useApi();
   const vorschau = useQuery({
-    queryKey: ['deaktivieren-vorschau', sub],
+    queryKey: mitgliederKeys.deaktivierenVorschau(sub),
     queryFn: async () =>
       unwrap(await api.admin.mitglieder[':sub']['deaktivieren-vorschau'].$get({ param: { sub } })),
     gcTime: 0,
@@ -107,8 +108,8 @@ export function DeaktivierenFeld({ mitglied }: Readonly<{ mitglied: Mitglied }>)
       json: { aktiv },
     });
     if (!res.ok) throw new Error('Der Account konnte nicht geändert werden.');
-    await qc.invalidateQueries({ queryKey: ['mitglieder'] });
-    await qc.invalidateQueries({ queryKey: ['mitglied'] });
+    await qc.invalidateQueries({ queryKey: mitgliederKeys.alle });
+    await qc.invalidateQueries({ queryKey: mitgliederKeys.mitglied });
     notifications.show({
       color: 'green',
       message: aktiv ? 'Der Account wurde wieder aktiviert.' : 'Der Account wurde deaktiviert.',

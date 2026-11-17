@@ -13,13 +13,21 @@ import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 
 /** Prefix of all Buch queries; invalidate it after any change. */
-export const BUCH_KEY = ['buch'] as const;
+/** Query keys of the Buch; `alle` is a prefix of the others, so invalidating it refreshes everything. */
+export const buchKeys = {
+  alle: ['buch'] as const,
+  meine: ['buch', 'meine'] as const,
+  rangliste: (jahr: string) => ['buch', 'rangliste', jahr] as const,
+  seiten: (archiviert: boolean) => ['buch', 'seiten', { archiviert }] as const,
+  seite: (id: string) => ['buch', 'seite', id] as const,
+  tarife: ['buch', 'tarife'] as const,
+};
 
 /** The caller's own active page(s) with the Verlauf. */
 export function useBuchMeine() {
   const api = useApi();
   return useQuery({
-    queryKey: [...BUCH_KEY, 'meine'],
+    queryKey: buchKeys.meine,
     queryFn: async () => unwrap(await api.buch.meine.$get()),
   });
 }
@@ -28,7 +36,7 @@ export function useBuchMeine() {
 export function useBuchRangliste(jahr: string) {
   const api = useApi();
   return useQuery({
-    queryKey: [...BUCH_KEY, 'rangliste', jahr],
+    queryKey: buchKeys.rangliste(jahr),
     queryFn: async () => unwrap(await api.buch.rangliste.$get({ query: { jahr } })),
   });
 }
@@ -37,7 +45,7 @@ export function useBuchRangliste(jahr: string) {
 export function useBuchSeiten(archiviert: boolean) {
   const api = useApi();
   return useQuery({
-    queryKey: [...BUCH_KEY, 'seiten', { archiviert }],
+    queryKey: buchKeys.seiten(archiviert),
     queryFn: async () =>
       unwrap(await api.buch.seiten.$get({ query: archiviert ? { archiviert: 'true' } : {} })),
   });
@@ -46,7 +54,7 @@ export function useBuchSeiten(archiviert: boolean) {
 export function useBuchSeite(id: string) {
   const api = useApi();
   return useQuery({
-    queryKey: [...BUCH_KEY, 'seite', id],
+    queryKey: buchKeys.seite(id),
     queryFn: async () => unwrap(await api.buch.seiten[':id'].$get({ param: { id } })),
   });
 }
@@ -54,7 +62,7 @@ export function useBuchSeite(id: string) {
 export function useBuchTarife() {
   const api = useApi();
   return useQuery({
-    queryKey: [...BUCH_KEY, 'tarife'],
+    queryKey: buchKeys.tarife,
     queryFn: async () => unwrap(await api.buch.tarife.$get()),
   });
 }

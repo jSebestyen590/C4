@@ -31,6 +31,7 @@ import { BADGE_FARBE, StatusBadge, StatusName } from '../StatusAnzeige';
 import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
 import { MITGLIED_STATI, type Mitglied } from '@c4/shared';
 import { KartenOderTabelle } from '../KartenOderTabelle';
+import { mitgliederKeys } from '../queryKeys';
 
 type Sortierung = 'username' | 'vorname' | 'nachname';
 const SORTIERUNGEN: { value: Sortierung; label: string }[] = [
@@ -101,7 +102,7 @@ export function MitgliederPage() {
   const zeigeDeaktivierte = istAdmin && mitDeaktivierten;
   // Own cache entry: the default `['mitglieder']` list feeds the pickers and must never contain deactivated members.
   const mitglieder = useQuery({
-    queryKey: zeigeDeaktivierte ? ['mitglieder', { deaktivierte: true }] : ['mitglieder'],
+    queryKey: mitgliederKeys.liste(zeigeDeaktivierte),
     queryFn: async () =>
       unwrap(
         zeigeDeaktivierte

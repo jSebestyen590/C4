@@ -32,7 +32,7 @@ import { IfcoInhaltModal } from '../IfcoInhaltModal';
 import { IfcoUmstellenModal } from '../IfcoUmstellenModal';
 import { ifcoPlatzMasse, typAnzeige } from '../ifcoPlatz';
 import { anzahlText, ifcoAusleiheText } from '../inventarAnzeige';
-import { INVENTAR_KEY, useAufraeumen, useAusleihen, useInventar } from '../inventarDaten';
+import { inventarKeys, useAufraeumen, useAusleihen, useInventar } from '../inventarDaten';
 import { IfcoAufraeumen } from '../Aufraeumen';
 import { LoeschenDialog } from '../LoeschenDialog';
 import { PlatzAusleihHinweise } from '../PlatzAusleihHinweise';
@@ -60,7 +60,7 @@ export function IfcoDetailPage() {
     await pruefen(
       await api.inventar.ifcos[':id'].archiv.$put({ param: { id }, json: { archiviert } }),
     );
-    await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+    await qc.invalidateQueries({ queryKey: inventarKeys.alle });
   };
   const archivMutation = useMutation({
     meta: { eigeneFehlermeldung: true },
@@ -286,7 +286,7 @@ export function IfcoDetailPage() {
           onClose={() => setLoeschen(false)}
           loeschen={async () => {
             await pruefen(await api.inventar.ifcos[':id'].$delete({ param: { id } }));
-            await qc.invalidateQueries({ queryKey: INVENTAR_KEY });
+            await qc.invalidateQueries({ queryKey: inventarKeys.alle });
             navigate('/inventar?ansicht=ifcos');
           }}
           archivieren={() => archivieren(true)}

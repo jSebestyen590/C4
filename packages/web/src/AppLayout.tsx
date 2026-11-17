@@ -52,6 +52,7 @@ import { usePushGelesenParam, useUngelesen } from './benachrichtigungVerlauf';
 import { useAuth } from './auth';
 import { PullToRefresh } from './PullToRefresh';
 import { ortMerken } from './zurueckVerlauf';
+import { mitgliederKeys } from './queryKeys';
 
 const FARBMODI: { wert: MantineColorScheme; text: string; icon: ReactNode }[] = [
   { wert: 'light', text: 'Hell', icon: <IconSun size={18} /> },
@@ -65,9 +66,12 @@ function ProfilMenue() {
   const { can } = useAuth();
   const darfProfil = can('profil:bearbeiten');
   const { colorScheme, setColorScheme } = useMantineColorScheme();
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => unwrap(await api.me.$get()) });
+  const me = useQuery({
+    queryKey: mitgliederKeys.me,
+    queryFn: async () => unwrap(await api.me.$get()),
+  });
   const mitglied = useQuery({
-    queryKey: ['mitglied'],
+    queryKey: mitgliederKeys.mitglied,
     enabled: darfProfil,
     queryFn: async () => {
       const res = await api.me.mitglied.$get();
