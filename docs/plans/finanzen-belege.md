@@ -1,5 +1,15 @@
 # Finanzen Scheibe 4a: Belege – Umsetzungsplan
 
+**Erledigt:** umgesetzt im Branch `finanzen-belege`; Stand siehe [finanzen.md](../finanzen.md), „Belege“.
+
+Abweichungen vom Plan:
+
+- `fin_beleg_entwuerfe.daten` ist `text` (JSON) statt `jsonb` (DSQL).
+- `FINANZARCHIV_BUCKET` ist optional; ohne Bucket lehnen Upload und Export ab.
+- Warnungen berechnet der Server mit Codes und erzwingt sie beim Buchen per 409.
+- Eine Export-Zeile ist kanonisches JSON `{ hash, prev_hash, buchung }`.
+- Der Journal-Link bei einer Erstattung führt zu „Offene Auslagen“.
+
 Rahmen: [finanzen.md](./finanzen.md) (Architektur, Bedienung, Scheibe 4). Diese Datei ist der
 vollständige Plan für die Umsetzungs-Session; sie enthält alle mit dem Nutzer geklärten Entscheidungen
 (18.11.2026). Nach dem Merge den Stand in `docs/plans/finanzen.md` nachtragen und diese Datei als
@@ -11,26 +21,26 @@ Zuordnung Warengruppe → Kategorie, „Einlagern" je Beleg.
 
 ## Entscheidungen (geklärt)
 
-| Thema               | Entscheidung                                                                                                                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Schnitt             | 4a: Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Anker-Export, offene Auslagen + Sammelerstattung. Rest → 4b. |
-| Rabatt              | **Entfällt.** Preise werden so getippt, wie sie auf dem Beleg stehen.                                                                                                                         |
-| Belegnummer         | `B-JJJJ-NNNN`, lückenlos je Jahr, vergeben beim Buchen (Jahr = Zeitpunkt des Buchens, nicht Belegdatum). Entwürfe haben keine Nummer. Zähler in `fin_zaehler`, Name `beleg:JJJJ`.             |
-| Vorsteuer           | **Merkmal an der Zeile**: Aufwandszeile brutto mit `steuer_art = 'vorsteuer'`, `netto_cent`/`steuer_cent`/`steuersatz` an der Zeile (bestehende Validierung in `shared/src/finanzen.ts` ~301). Kein Vorsteuer-Konto. |
-| Richtung            | Ein Beleg ist eine **Ausgabe**. Gutschriften (z. B. Pfandrückgabe auf dem Metro-Bon) sind negative Posten. Einnahmen ohne Rechnung laufen wie bisher über Kasse oder freie Buchung.            |
-| Zahlweg Bank        | Bucht vor Scheibe 6 direkt gegen das Konto `bank` zum Bezahldatum. Scheibe 6 ordnet den Bankumsatz später dem Beleg zu, ohne neue Buchung.                                                     |
-| Zahlweg bar         | Abgang aus einem Safe-Fach mit Stückelung (Wechselgeld = Zugänge in derselben Stückelung, Summe = Betrag).                                                                                     |
-| Zahlweg Auslage     | Bucht gegen neues Durchlaufkonto `auslagen` („Auslagen Mitglieder"); Mitglied am Beleg. Offen bis zur Sammelerstattung.                                                                        |
-| Buchungsdatum       | bar/Bank: Bezahldatum. Auslage: Belegdatum (Aufwand), die Erstattung bucht zu ihrem eigenen Datum; Bezahldatum des Belegs = Datum der Erstattung (abgeleitet, nicht gespeichert).               |
-| Datei               | Pflicht, außer **Eigenbeleg** (dann Begründung Pflicht). Original wird unverändert archiviert (keine Kompression). PDF, JPEG, PNG, HEIC; max. 20 MB.                                            |
-| Archiv              | Neuer Bucket `c4-<env>-finanzarchiv-<acct>` mit Object Lock; Upload direkt dorthin unter `belege/<sha256>.<ext>` (gleiche Datei = gleicher Schlüssel = Dublettenhinweis). Verworfene Entwürfe hinterlassen die Datei; das ist gewollt. |
-| Datei-Hash          | Browser berechnet SHA-256 (WebCrypto); Presigned PUT mit `ChecksumSHA256`, S3 prüft ihn. Der Hash geht in den Buchungs-Hash.                                                                  |
-| Netto-Belege        | Posten netto; Korrektur je Steuersatz (Netto und Steuer) bis ±10 ct, damit die Summen dem Beleg entsprechen.                                                                                   |
-| Steuer-Rundung      | Steuer je Steuersatz auf die Summe der Gruppe gerechnet (wie Kassenbons), nicht je Posten.                                                                                                     |
-| Rechte              | Lesen `finanzen:lesen`; Entwürfe, Buchen, Erstattung, Rechnungssteller anlegen/ändern `finanzen:buchen`. `belege:einreichen` existiert schon, wird erst in 4b genutzt.                          |
-| Korrektur           | Gebuchter Beleg ist unveränderlich. Storno über die Buchung (Journal, bestehend); „Als Entwurf kopieren" legt einen neuen Entwurf mit denselben Daten und derselben Datei an.                    |
-| Rechnungssteller    | Stammdaten: Name, archiviert. Vorbelegung im Formular: zuletzt verwendeter. Kein Rabatt, keine Standard-Kategorie.                                                                             |
-| Steuersatz-Vorschlag| Aus `fin_konten.steuersatz_standard` der gewählten Kategorie (`waren.steuersatz_standard` gibt es nicht).                                                                                      |
+| Thema                | Entscheidung                                                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schnitt              | 4a: Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Anker-Export, offene Auslagen + Sammelerstattung. Rest → 4b.                                        |
+| Rabatt               | **Entfällt.** Preise werden so getippt, wie sie auf dem Beleg stehen.                                                                                                                                                                  |
+| Belegnummer          | `B-JJJJ-NNNN`, lückenlos je Jahr, vergeben beim Buchen (Jahr = Zeitpunkt des Buchens, nicht Belegdatum). Entwürfe haben keine Nummer. Zähler in `fin_zaehler`, Name `beleg:JJJJ`.                                                      |
+| Vorsteuer            | **Merkmal an der Zeile**: Aufwandszeile brutto mit `steuer_art = 'vorsteuer'`, `netto_cent`/`steuer_cent`/`steuersatz` an der Zeile (bestehende Validierung in `shared/src/finanzen.ts` ~301). Kein Vorsteuer-Konto.                   |
+| Richtung             | Ein Beleg ist eine **Ausgabe**. Gutschriften (z. B. Pfandrückgabe auf dem Metro-Bon) sind negative Posten. Einnahmen ohne Rechnung laufen wie bisher über Kasse oder freie Buchung.                                                    |
+| Zahlweg Bank         | Bucht vor Scheibe 6 direkt gegen das Konto `bank` zum Bezahldatum. Scheibe 6 ordnet den Bankumsatz später dem Beleg zu, ohne neue Buchung.                                                                                             |
+| Zahlweg bar          | Abgang aus einem Safe-Fach mit Stückelung (Wechselgeld = Zugänge in derselben Stückelung, Summe = Betrag).                                                                                                                             |
+| Zahlweg Auslage      | Bucht gegen neues Durchlaufkonto `auslagen` („Auslagen Mitglieder"); Mitglied am Beleg. Offen bis zur Sammelerstattung.                                                                                                                |
+| Buchungsdatum        | bar/Bank: Bezahldatum. Auslage: Belegdatum (Aufwand), die Erstattung bucht zu ihrem eigenen Datum; Bezahldatum des Belegs = Datum der Erstattung (abgeleitet, nicht gespeichert).                                                      |
+| Datei                | Pflicht, außer **Eigenbeleg** (dann Begründung Pflicht). Original wird unverändert archiviert (keine Kompression). PDF, JPEG, PNG, HEIC; max. 20 MB.                                                                                   |
+| Archiv               | Neuer Bucket `c4-<env>-finanzarchiv-<acct>` mit Object Lock; Upload direkt dorthin unter `belege/<sha256>.<ext>` (gleiche Datei = gleicher Schlüssel = Dublettenhinweis). Verworfene Entwürfe hinterlassen die Datei; das ist gewollt. |
+| Datei-Hash           | Browser berechnet SHA-256 (WebCrypto); Presigned PUT mit `ChecksumSHA256`, S3 prüft ihn. Der Hash geht in den Buchungs-Hash.                                                                                                           |
+| Netto-Belege         | Posten netto; Korrektur je Steuersatz (Netto und Steuer) bis ±10 ct, damit die Summen dem Beleg entsprechen.                                                                                                                           |
+| Steuer-Rundung       | Steuer je Steuersatz auf die Summe der Gruppe gerechnet (wie Kassenbons), nicht je Posten.                                                                                                                                             |
+| Rechte               | Lesen `finanzen:lesen`; Entwürfe, Buchen, Erstattung, Rechnungssteller anlegen/ändern `finanzen:buchen`. `belege:einreichen` existiert schon, wird erst in 4b genutzt.                                                                 |
+| Korrektur            | Gebuchter Beleg ist unveränderlich. Storno über die Buchung (Journal, bestehend); „Als Entwurf kopieren" legt einen neuen Entwurf mit denselben Daten und derselben Datei an.                                                          |
+| Rechnungssteller     | Stammdaten: Name, archiviert. Vorbelegung im Formular: zuletzt verwendeter. Kein Rabatt, keine Standard-Kategorie.                                                                                                                     |
+| Steuersatz-Vorschlag | Aus `fin_konten.steuersatz_standard` der gewählten Kategorie (`waren.steuersatz_standard` gibt es nicht).                                                                                                                              |
 
 ## Fachlicher Ablauf
 
@@ -86,7 +96,7 @@ Zuordnung Warengruppe → Kategorie, „Einlagern" je Beleg.
 - Typen `BelegEntwurfDaten`, `BelegPosten`, `Zahlweg`, `BelegModus`; Steuersätze-Konstante
   `STEUERSAETZE = [1900, 700, 0]`.
 - `belegBerechnen(daten)` → `{ postenBetraege, jeSteuersatz: {satz, netto, steuer, brutto}[], summe,
-  fehler[] }`: Brutto: Steuer je Gruppe = brutto − round(brutto / (1+satz)); Netto: Steuer =
+fehler[] }`: Brutto: Steuer je Gruppe = brutto − round(brutto / (1+satz)); Netto: Steuer =
   round(netto × satz) + Korrekturen; Korrektur > 10 ct → Fehler.
 - `belegBuchungszeilen(beleg, gegenkonto)` → Journalzeilen: je (Kategorie, Steuersatz) eine
   Aufwandszeile brutto mit `vorsteuer`-Merkmalen (Steuer der Gruppe anteilig auf die Kategorien,

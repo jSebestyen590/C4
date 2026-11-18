@@ -185,7 +185,9 @@ mehrere Unterseiten stehen.
 
 ### Scheibe 4: Belege
 
-- Rechnungssteller (mit Rabatt), Steuersätze, Kategorien (Erlös-/Aufwandskonten).
+**4a umgesetzt** (Plan und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. **4b offen:** Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, „Einlagern“ je Beleg. Die Liste unten beschreibt das Gesamtziel.
+
+- Rechnungssteller, Steuersätze, Kategorien (Erlös-/Aufwandskonten); kein Rabatt, Preise werden wie auf dem Beleg getippt.
 - **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
   „Eröffnung / Saldovortrag“ = −Vereinsvermögen). Kontenplan, Salden und Auswertungen zeigen
   Erlös- und Neutral-Konten deshalb mit umgekehrtem Vorzeichen (Erlöse positiv, „Eröffnung“ z. B.
@@ -204,7 +206,7 @@ mehrere Unterseiten stehen.
   neuer Einreichung und an das Mitglied bei Genehmigung, Verwerfung und Erstattung.
 - Posten: **entweder** Lager-Ware + Gebinde **oder** Kategorie + Freitext (Beamer braucht keinen
   Artikel mehr); Anzahl, Einzelpreis, tatsächlicher Steuersatz (Vorschlag aus
-  `waren.steuersatz_standard` bzw. der Kategorie), Pfand aus dem Gebinde (überschreibbar, gleich
+  `fin_konten.steuersatz_standard` der Kategorie; `waren.steuersatz_standard` gibt es nicht), Pfand aus dem Gebinde (überschreibbar, gleich
   netto/brutto wie der Posten). Warengruppe → Kategorie als Zuordnung, damit Lager-Waren
   automatisch richtig kontiert werden.
 - Netto-Belege: Korrektur der Summen netto und je Steuersatz bis 10 ct.
@@ -337,21 +339,21 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                                                                                                                              |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
-| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
-| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                               |
-| 4 Belege                  | 4a geplant ([finanzen-belege.md](./finanzen-belege.md)), 4b offen (Einreichen, Lager-Posten)                                                                                                                                        |
-| 5 GoBD-Abschluss          | offen                                                                                                                                              |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                     |
-| 8 Rechnungen              | offen                                                                                                                                              |
-| 9 Auswertungen            | offen                                                                                                                                              |
-| Ü Übernahme               | offen                                                                                                                                              |
-| 10 Unentgeltliche Abgaben | offen                                                                                                                                              |
-| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                            |
+| Scheibe                   | Stand                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md))                     |
+| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                     |
+| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                        |
+| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                   |
+| 4 Belege                  | 4a umgesetzt ([finanzen-belege.md](./finanzen-belege.md), „Belege“ in [finanzen.md](../finanzen.md)), 4b offen (Einreichen am Handy mit Push, Lager-Posten, Einlagern) |
+| 5 GoBD-Abschluss          | offen                                                                                                                                                                  |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                          |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                         |
+| 8 Rechnungen              | offen                                                                                                                                                                  |
+| 9 Auswertungen            | offen                                                                                                                                                                  |
+| Ü Übernahme               | offen                                                                                                                                                                  |
+| 10 Unentgeltliche Abgaben | offen                                                                                                                                                                  |
+| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                |
 
 ## Verifikation (je Scheibe)
 

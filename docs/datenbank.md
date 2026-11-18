@@ -46,6 +46,12 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   0159 und 0162 löschen die Tabellen `fin_zaehlungen` und `fin_zaehlung_posten` (insert-only, mit allen Zählprotokollen),
   0160 und 0161 ihre Indizes. Rollback-Ziel nur für Bargeld: `0156_fin_buchungen_idempotenz_idx`.
 - 0194–0196 (Kassen je Event): löschen die Tabellen `fin_kassen_kategorien`, `fin_event_kassen_angepasst` und `fin_event_kassen` (veränderbare Stammdaten, mit den Zuordnungen). Rollback-Ziel nur dafür: `0193_fin_kassenabrechnung_events_event_idx`.
+- 0197–0212 (Finanzen, Belege): 0197–0205 löschen die Tabellen `fin_rechnungssteller`, `fin_beleg_entwuerfe`, `fin_belege`,
+  `fin_belegposten`, `fin_beleg_korrekturen`, `fin_erstattungen`, `fin_erstattung_belege` und `fin_exporte` (`fin_rechnungssteller`
+  und `fin_beleg_entwuerfe` sind änderbar, alle anderen insert-only, mit allen Belegen, Erstattungen und Exportvermerken); 0205
+  entfernt das Konto `auslagen` (Durchlauf, „Auslagen Mitglieder“), 0206–0212 löschen ihre Indizes. `fin_beleg_entwuerfe.daten` ist
+  `text` mit JSON, nicht `jsonb` (DSQL kennt den Typ nicht als Spalte). Rollback-Ziel nur für die Belege:
+  `0196_fin_event_kassen`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden
