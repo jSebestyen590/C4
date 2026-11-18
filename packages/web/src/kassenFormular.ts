@@ -100,3 +100,63 @@ export function faecherAlsBestand(
 /** `Mengen` of the Grundbestand as a form start value. */
 export const grundbestandMengen = (g: readonly StueckelungDto[]): Mengen =>
   Object.fromEntries(g.filter((s) => s.anzahl > 0).map((s) => [s.nennwertCent, s.anzahl]));
+
+/** One row of the review matrix: counts per denomination (signed) and their value. */
+export interface MatrixZeile {
+  key: string;
+  label: string;
+  werte: Record<number, number>;
+  summeCent: number;
+}
+
+const zeileAus = (key: string, label: string, m: ReadonlyMap<number, number>): MatrixZeile => ({
+  key,
+  label,
+  werte: Object.fromEntries([...m].filter(([, a]) => a !== 0)),
+  summeCent: [...m].reduce((s, [n, a]) => s + n * a, 0),
+});
+
+/**
+ * Rows of the review matrix of a Kassenabrechnung: the counted Kasse, its delta (negative = goes
+ * out), the Ziel-Fach before and after, and each Nachschub Fach before and after.
+ */
+export function abrechnungsMatrix(p: {
+  ist: readonly StueckelungDto[];
+  transfers: readonly KassenTransfer[];
+  zielFach: { id: string; name: string; bestand: readonly StueckelungDto[] };
+  quellen: readonly { id: string; name: string; bestand: readonly StueckelungDto[] }[];
+}): MatrixZeile[] {
+  const ziel = anzahlenAus(p.transfers.filter((t) => t.fachId === p.zielFach.id));
+  const delta = new Map([...ziel].map(([n, a]) => [n, -a]));
+  const zielVorher = anzahlenAus(p.zielFach.bestand);
+  const zielNachher = new Map(zielVorher);
+  for (const [n, a] of ziel) zielNachher.set(n, (zielNachher.get(n) ?? 0) + a);
+  const faecher: MatrixZeile[] = [];
+  const nachschubIds = [
+    ...new Set(p.transfers.filter((t) => t.fachId !== p.zielFach.id).map((t) => t.fachId)),
+  ];
+  for (const id of nachschubIds) {
+    const quelle = p.quellen.find((q) => q.id === id);
+    const raus = anzahlenAus(p.transfers.filter((t) => t.fachId === id));
+    const vorher = anzahlenAus(quelle?.bestand ?? []);
+    const nachher = new Map(vorher);
+    for (const [n, a] of raus) {
+      nachher.set(n, (nachher.get(n) ?? 0) + a);
+      zielNachher.set(n, (zielNachher.get(n) ?? 0) - a);
+    }
+    const name = quelle?.name ?? id;
+    faecher.push(zeileAus(`${id}-vorher`, `${name} vorher`, vorher));
+    faecher.push(zeileAus(`${id}-nachher`, `${name} nachher`, nachher));
+  }
+  return [
+    zeileAus('ist', 'Kasse – gezählt (Ist)', anzahlenAus(p.ist)),
+    zeileAus('delta', 'Kasse – Delta (Abgang −, Zugang +)', delta),
+    zeileAus('ziel-vorher', `${p.zielFach.name} (Ziel-Fach) vorher`, zielVorher),
+    zeileAus('ziel-nachher', `${p.zielFach.name} (Ziel-Fach) nachher`, zielNachher),
+    ...faecher,
+  ];
+}
+
+/** The denominations that occur in any row, ascending. */
+export const matrixNennwerte = (zeilen: readonly MatrixZeile[]): number[] =>
+  NENNWERTE_CENT.filter((n) => zeilen.some((z) => (z.werte[n] ?? 0) !== 0));

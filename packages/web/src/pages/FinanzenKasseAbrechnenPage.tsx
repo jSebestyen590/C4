@@ -39,13 +39,7 @@ import {
 } from '@c4/shared';
 import { useApi } from '../api';
 import { BetragFeld } from '../BetragFeld';
-import {
-  mengenLeer,
-  mengenStueckelung,
-  stueckelungMengen,
-  stueckelungText,
-  type Mengen,
-} from '../bargeldFormular';
+import { mengenLeer, mengenStueckelung, stueckelungMengen, type Mengen } from '../bargeldFormular';
 import { schluesselFuer } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
 import {
@@ -61,13 +55,17 @@ import {
 import { HILFE } from '../finanzenHilfe';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import {
+  abrechnungsMatrix,
   eventBetraegeMit,
+  matrixNennwerte,
+  type MatrixZeile,
   faecherAlsBestand,
   fehlbestandJe,
   transfersBody,
   zielBestandMitNachschub,
   type NachschubMap,
 } from '../kassenFormular';
+import { entwurfBasis, entwurfLesen, entwurfLoeschen, entwurfSchreiben } from '../kassenEntwurf';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
@@ -178,6 +176,7 @@ function NachschubZeile({
             value={wahl.fachId}
             onChange={(v) => onWahl({ fachId: v, stueck: wahl.stueck })}
             w={{ base: '100%', sm: 280 }}
+            comboboxProps={{ width: 'target', withinPortal: true }}
             nothingFoundMessage="Kein Fach"
             searchable
           />
@@ -232,6 +231,8 @@ function NachschubZeile({
 /** Summary before booking: the booking lines, the figures and the warnings to confirm. */
 function Zusammenfassung({
   rechnung,
+  matrix,
+  erloesKontoId,
   warnungen,
   kontoName,
   datum,
@@ -242,6 +243,8 @@ function Zusammenfassung({
   onClose,
 }: Readonly<{
   rechnung: ReturnType<typeof berechneKassenabrechnung>;
+  matrix: readonly MatrixZeile[];
+  erloesKontoId: string;
   warnungen: readonly string[];
   kontoName: (id: string) => string;
   datum: string;
@@ -253,6 +256,8 @@ function Zusammenfassung({
 }>) {
   const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
   const offen = warnungen.some((w) => !bestaetigt.has(w));
+  const nennwerte = matrixNennwerte(matrix);
+  const erloesZeile = rechnung.zeilen.find((z) => z.kontoId === erloesKontoId);
   return (
     <Modal
       opened
@@ -305,36 +310,75 @@ function Zusammenfassung({
             Es stimmt alles, es ist keine Buchung nötig. Die Abrechnung wird nur protokolliert.
           </Alert>
         ) : (
-          <Stack gap={4}>
+          <Stack gap="xs">
             <Text fw={600}>Daraus entsteht eine Buchung („Kassenabrechnung“)</Text>
-            <Table.ScrollContainer minWidth={420}>
-              <Table tabularNums verticalSpacing={4}>
+            {erloesZeile && (
+              <Text size="sm">
+                {kontoName(erloesZeile.kontoId)}: {centAnzeigen(erloesZeile.betragCent)}
+                {erloesZeile.steuerArt === 'ust' &&
+                  ` (Umsatzsteuer ${(erloesZeile.steuersatz ?? 0) / 100} %: netto ${centAnzeigen(erloesZeile.nettoCent ?? 0)}, Steuer ${centAnzeigen(erloesZeile.steuerCent ?? 0)})`}
+              </Text>
+            )}
+            <Box visibleFrom="md">
+              <Table tabularNums verticalSpacing={4} withRowBorders>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Konto</Table.Th>
-                    <Table.Th style={BETRAG_STIL}>Betrag</Table.Th>
-                    <Table.Th>Stückelung und Steuer</Table.Th>
+                    <Table.Th />
+                    {nennwerte.map((n) => (
+                      <Table.Th key={n} style={BETRAG_STIL}>
+                        {centAnzeigen(n)}
+                      </Table.Th>
+                    ))}
+                    <Table.Th style={BETRAG_STIL}>Summe</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {rechnung.zeilen.map((z, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td>{kontoName(z.kontoId)}</Table.Td>
-                      <Table.Td style={BETRAG_STIL} c={z.betragCent < 0 ? 'red' : undefined}>
-                        {centAnzeigen(z.betragCent)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">
-                          {z.stueckelung.length > 0 && stueckelungText(z.stueckelung)}
-                          {z.steuerArt === 'ust' &&
-                            `Umsatzsteuer ${(z.steuersatz ?? 0) / 100} %: netto ${centAnzeigen(z.nettoCent ?? 0)}, Steuer ${centAnzeigen(z.steuerCent ?? 0)}`}
-                        </Text>
+                  {matrix.map((z) => (
+                    <Table.Tr key={z.key}>
+                      <Table.Td>{z.label}</Table.Td>
+                      {nennwerte.map((n) => (
+                        <Table.Td
+                          key={n}
+                          style={BETRAG_STIL}
+                          c={
+                            (z.werte[n] ?? 0) < 0
+                              ? 'red'
+                              : (z.werte[n] ?? 0) === 0
+                                ? 'dimmed'
+                                : undefined
+                          }
+                        >
+                          {z.werte[n] ? ZAHL.format(z.werte[n]!) : '–'}
+                        </Table.Td>
+                      ))}
+                      <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
+                        {centAnzeigen(z.summeCent)}
                       </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
               </Table>
-            </Table.ScrollContainer>
+            </Box>
+            <Stack gap="xs" hiddenFrom="md">
+              {matrix.map((z) => (
+                <Paper key={z.key} withBorder p="sm">
+                  <Group justify="space-between" wrap="nowrap" align="flex-start">
+                    <Text fw={600} size="sm">
+                      {z.label}
+                    </Text>
+                    <Text fw={600} size="sm" style={BETRAG_STIL}>
+                      {centAnzeigen(z.summeCent)}
+                    </Text>
+                  </Group>
+                  <Text size="sm" c="dimmed">
+                    {nennwerte
+                      .filter((n) => z.werte[n])
+                      .map((n) => `${ZAHL.format(z.werte[n]!)} × ${centAnzeigen(n)}`)
+                      .join(' · ') || 'leer'}
+                  </Text>
+                </Paper>
+              ))}
+            </Stack>
           </Stack>
         )}
         {warnungen.length > 0 && (
@@ -394,17 +438,44 @@ function AbrechnenFormular({
   const qc = useQueryClient();
   const { kasse } = vorschau;
   const navigate = useNavigate();
-  const [datum, setDatum] = useState(heuteBerlin());
-  const [ist, setIst] = useState<Mengen>({});
-  const [erloesWahl, setErloesWahl] = useState<string | null>(null);
-  const [zielWahl, setZielWahl] = useState<string | null>(null);
-  const [transferEingabe, setTransferEingabe] = useState<Mengen | null>(null);
-  const [nachschub, setNachschub] = useState<NachschubMap>({});
-  const [eventEingabe, setEventEingabe] = useState<Record<string, number | null>>({});
+  const basis = entwurfBasis({
+    saldoCent: kasse.saldoCent,
+    letzteAbrechnungId: kasse.letzteAbrechnung?.id ?? null,
+    zaehlungIds: vorschau.zaehlungen.map((z) => z.id),
+  });
+  // A draft of this Kasse survives a reload; one that no longer fits the preview is dropped with a hint.
+  const [gelesen] = useState(() => entwurfLesen(window.localStorage, kasse.kontoId, basis));
+  const e0 = gelesen.art === 'entwurf' ? gelesen.entwurf : null;
+  const [entwurfVerworfen, setEntwurfVerworfen] = useState(gelesen.art === 'verworfen');
+  const [datum, setDatum] = useState(e0?.datum ?? heuteBerlin());
+  const [ist, setIst] = useState<Mengen>(e0?.ist ?? {});
+  const [erloesWahl, setErloesWahl] = useState<string | null>(e0?.erloesWahl ?? null);
+  const [zielWahl, setZielWahl] = useState<string | null>(e0?.zielWahl ?? null);
+  const [transferEingabe, setTransferEingabe] = useState<Mengen | null>(
+    e0?.transferEingabe ?? null,
+  );
+  const [nachschub, setNachschub] = useState<NachschubMap>(e0?.nachschub ?? {});
+  const [eventEingabe, setEventEingabe] = useState<Record<string, number | null>>(
+    e0?.eventEingabe ?? {},
+  );
   const [pruefen, setPruefen] = useState(false);
   const [gespeichert, setGespeichert] = useState<KassenabrechnungErgebnisDto | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
+  const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(e0?.schluessel ?? null);
+  const verlassen = useRef(false);
+
+  const eingabenVerwerfen = () => {
+    entwurfLoeschen(window.localStorage, kasse.kontoId);
+    schluessel.current = null;
+    setDatum(heuteBerlin());
+    setIst({});
+    setErloesWahl(null);
+    setZielWahl(null);
+    setTransferEingabe(null);
+    setNachschub({});
+    setEventEingabe({});
+    setEntwurfVerworfen(false);
+  };
 
   const erloesId = erloesWahl ?? kasse.standardErloesKonto.id;
   const zielId = zielWahl ?? kasse.standardZielFach.id;
@@ -456,6 +527,12 @@ function AbrechnenFormular({
       vorschau,
     ],
   );
+  const matrix = abrechnungsMatrix({
+    ist: istListe,
+    transfers,
+    zielFach: zielFach ?? { id: zielId, name: kontoNamen.get(zielId) ?? zielId, bestand: [] },
+    quellen: quellen.map((f) => ({ id: f.id, name: f.name, bestand: f.bestand })),
+  });
   const bestandFehler = useMemo(
     () =>
       rechnung.zeilen.length > 0 ? pruefeBestand(rechnung.zeilen, faecherAlsBestand(faecher)) : [],
@@ -469,6 +546,42 @@ function AbrechnenFormular({
   const buchbar = datum !== '' && !zielFehlt && bestandFehler.length === 0 && !!erloesId;
   const ungespeichert = !mengenLeer(ist);
   const verwerfen = useVerwerfenWarnung(ungespeichert);
+
+  // Every change is kept in the draft (not after a successful booking, which clears it).
+  useEffect(() => {
+    if (verlassen.current) return;
+    if (
+      mengenLeer(ist) &&
+      !transferEingabe &&
+      Object.keys(nachschub).length === 0 &&
+      Object.keys(eventEingabe).length === 0
+    ) {
+      entwurfLoeschen(window.localStorage, kasse.kontoId);
+      return;
+    }
+    entwurfSchreiben(window.localStorage, kasse.kontoId, {
+      v: 1,
+      basis,
+      datum,
+      ist,
+      erloesWahl,
+      zielWahl,
+      transferEingabe,
+      nachschub,
+      eventEingabe,
+      schluessel: schluessel.current,
+    });
+  }, [
+    basis,
+    datum,
+    ist,
+    erloesWahl,
+    zielWahl,
+    transferEingabe,
+    nachschub,
+    eventEingabe,
+    kasse.kontoId,
+  ]);
 
   const body = (key: string): KassenabrechnungEingabeInput => ({
     idempotenzSchluessel: key,
@@ -490,11 +603,20 @@ function AbrechnenFormular({
     mutationFn: async () => {
       const inhalt = JSON.stringify(body(''));
       schluessel.current = schluesselFuer(schluessel.current, inhalt, () => crypto.randomUUID());
+      // The key belongs to the draft: after a reload the same content keeps it.
+      const roh = entwurfLesen(window.localStorage, kasse.kontoId, basis);
+      if (roh.art === 'entwurf')
+        entwurfSchreiben(window.localStorage, kasse.kontoId, {
+          ...roh.entwurf,
+          schluessel: schluessel.current,
+        });
       return jsonOderFehler<KassenabrechnungErgebnisDto>(
         await api.finanzen.kassenabrechnungen.$post({ json: body(schluessel.current.schluessel) }),
       );
     },
     onSuccess: (ergebnis) => {
+      verlassen.current = true;
+      entwurfLoeschen(window.localStorage, kasse.kontoId);
       verwerfen.abgeschlossen();
       schluessel.current = null;
       void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
@@ -535,6 +657,12 @@ function AbrechnenFormular({
         Zähle die Kasse durch. Die Einnahme ist Ist minus Bestand laut Buchhaltung und wird als ein
         Erlös gebucht. Danach füllst du die Kasse auf den Grundbestand auf.
       </Text>
+      {entwurfVerworfen && (
+        <Alert color="yellow" withCloseButton onClose={() => setEntwurfVerworfen(false)}>
+          Deine gespeicherten Eingaben passten nicht mehr zum aktuellen Stand der Kasse (z. B. wurde
+          inzwischen abgerechnet oder neu gezählt) und wurden verworfen.
+        </Alert>
+      )}
       {gespeichert && (
         <Alert
           color="green"
@@ -635,8 +763,6 @@ function AbrechnenFormular({
               <Table.Tbody>
                 {NENNWERTE_CENT.map((n, i) => {
                   const posten = rechnung.posten[i]!;
-                  const fehltN = fehlt.get(n) ?? 0;
-                  const hatNachschub = !!nachschub[n];
                   const abweichend = posten.danach !== posten.grundbestand;
                   return (
                     <Fragment key={n}>
@@ -670,41 +796,6 @@ function AbrechnenFormular({
                           {ZAHL.format(posten.danach)}
                         </Table.Td>
                       </Table.Tr>
-                      {(fehltN > 0 || hatNachschub) && (
-                        <Table.Tr>
-                          <Table.Td colSpan={6} bg="var(--mantine-color-orange-light)">
-                            <NachschubZeile
-                              nennwert={n}
-                              fehlt={fehltN}
-                              wahl={nachschub[n]}
-                              quellen={quellen}
-                              onWahl={(w) => setNachschub((alt) => ({ ...alt, [n]: w }))}
-                              onVorschlag={() => {
-                                const v = nachschubVorschlag(
-                                  [{ nennwertCent: n, anzahl: fehltN }],
-                                  quellen.map((f) => ({
-                                    fachId: f.id,
-                                    name: f.name,
-                                    bestand: f.bestand,
-                                  })),
-                                )[0];
-                                const rolle = muenzrolle(n);
-                                const irgendeins = quellen.find(
-                                  (f) =>
-                                    (f.bestand.find((b) => b.nennwertCent === n)?.anzahl ?? 0) > 0,
-                                );
-                                setNachschub((alt) => ({
-                                  ...alt,
-                                  [n]: v
-                                    ? { fachId: v.fachId, stueck: v.anzahl }
-                                    : { fachId: irgendeins?.id ?? null, stueck: rolle ?? fehltN },
-                                }));
-                                setTransferEingabe(null);
-                              }}
-                            />
-                          </Table.Td>
-                        </Table.Tr>
-                      )}
                     </Fragment>
                   );
                 })}
@@ -737,6 +828,47 @@ function AbrechnenFormular({
               </Table.Tfoot>
             </Table>
           </Box>
+          <Stack gap="xs">
+            {NENNWERTE_CENT.map((n) => {
+              const fehltN = fehlt.get(n) ?? 0;
+              if (fehltN <= 0 && !nachschub[n]) return null;
+              return (
+                <Paper key={`nachschub-${n}`} p="sm" bg="var(--mantine-color-orange-light)">
+                  <Text fw={600} size="sm" mb={4}>
+                    {centAnzeigen(n)}
+                  </Text>
+                  <NachschubZeile
+                    nennwert={n}
+                    fehlt={fehltN}
+                    wahl={nachschub[n]}
+                    quellen={quellen}
+                    onWahl={(w) => setNachschub((alt) => ({ ...alt, [n]: w }))}
+                    onVorschlag={() => {
+                      const v = nachschubVorschlag(
+                        [{ nennwertCent: n, anzahl: fehltN }],
+                        quellen.map((f) => ({
+                          fachId: f.id,
+                          name: f.name,
+                          bestand: f.bestand,
+                        })),
+                      )[0];
+                      const rolle = muenzrolle(n);
+                      const irgendeins = quellen.find(
+                        (f) => (f.bestand.find((b) => b.nennwertCent === n)?.anzahl ?? 0) > 0,
+                      );
+                      setNachschub((alt) => ({
+                        ...alt,
+                        [n]: v
+                          ? { fachId: v.fachId, stueck: v.anzahl }
+                          : { fachId: irgendeins?.id ?? null, stueck: rolle ?? fehltN },
+                      }));
+                      setTransferEingabe(null);
+                    }}
+                  />
+                </Paper>
+              );
+            })}
+          </Stack>
           {transferEingabe && (
             <Group>
               <Button
@@ -862,6 +994,14 @@ function AbrechnenFormular({
             </Alert>
           )}
           <Group align="center" gap="md">
+            <Button
+              type="button"
+              variant="default"
+              onClick={eingabenVerwerfen}
+              disabled={!ungespeichert}
+            >
+              Eingaben verwerfen
+            </Button>
             <Button type="button" onClick={pruefenOeffnen} disabled={!buchbar}>
               Prüfen und abrechnen
             </Button>
@@ -874,6 +1014,8 @@ function AbrechnenFormular({
       {pruefen && (
         <Zusammenfassung
           rechnung={rechnung}
+          matrix={matrix}
+          erloesKontoId={erloesId}
           warnungen={warnungen}
           kontoName={kontoName}
           datum={datum}

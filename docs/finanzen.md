@@ -290,6 +290,13 @@ erscheint wie jedes Fach unter „Bargeld“ und wird mit Umbuchen gefüllt. Rei
   Rest der Rolle bleibt dort (25 ins Zählbrett, 20 in die Kasse, Zählbrett danach 15). Hat das Fach keine ganze Rolle, ist die
   Stückzahl frei. _Diesmal weniger auffüllen_: Die Kasse geht mit weniger Münzen raus; der Grundbestand bleibt unverändert, die
   Abrechnung speichert „Kasse danach“ je Nennwert (`fin_kassenabrechnung_posten`).
+- **Prüfdialog:** Zusammenfassung mit Einnahme, Erlöskonto (mit Umsatzsteuer, falls das Konto einen Satz hat), Event-Zuordnung
+  und Fehler sowie einer Matrix: Zeilen Kasse (Ist), Kasse (Delta, Abgang −), Ziel-Fach vorher/nachher und je Nachschub-Fach
+  vorher/nachher, Spalten die vorkommenden Nennwerte plus Summe (Tabelle ab `md`, gestapelte Karten auf dem Handy).
+- **Entwurf:** Eingaben (Ist, Transfer, Münzrollen, Erlöskonto, Ziel-Fach, Event-Beträge, Idempotenz-Schlüssel) bleiben je Kasse
+  im `localStorage` und überstehen ein Neuladen; nach erfolgreichem Buchen werden sie gelöscht. Passt der Stand der Kasse nicht
+  mehr (neue Abrechnung, neue Zählung, anderer Bestand), wird der Entwurf mit Hinweis verworfen. „Eingaben verwerfen“ leert ihn.
+  Nach dem Buchen öffnet die Detailseite der Abrechnung. Logik: `kassenEntwurf.ts`, Matrix: `abrechnungsMatrix` in `kassenFormular.ts`.
 - **Warnungen** (nicht blockierend, zum Abhaken): Fehler ≠ 0 („Abweichung zur letzten Dienst-Zählung“), Kasse danach ≠
   Grundbestand, keine Dienst-Zählung seit der letzten Abrechnung, negative Einnahme, Datum in der Zukunft.
 - **Buchung:** eine Buchung (`quelle_typ` `kassenabrechnung`, `quelle_id` = Abrechnungs-Id, `event_id` leer) mit den Zeilen
