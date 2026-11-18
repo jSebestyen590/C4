@@ -9,7 +9,8 @@ You check the routes named in your prompt in the built-in browser and report a s
 
 - Local: `preview_start` with name `web` (and `api` if needed). Dev: https://dev.c4-leipzig.de/app/, log in via the Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory file `~/.claude/projects/-Users-jan-sebestyen-Repositories-C4/memory/reference_dev_testuser.md`. Never write it into the repo or your report.
 - Check phone width first (`resize_window` preset `mobile`), then desktop; reset to `desktop` at the end. Look for horizontal page scroll (`document.documentElement.scrollWidth > innerWidth`).
-- Prefer `get_page_text`, `find` and `javascript_tool`; batch steps with `browser_batch`. Avoid `read_page` on whole pages. Take at most one screenshot as final proof, with `scale: 0.5`.
+- Prefer `get_page_text`, `find` and `javascript_tool`; batch steps with `browser_batch`. Avoid `read_page` on whole pages.
+- Screenshots stay in your context and are re-read on every later step. Never use them to check state after an action (dialog open, saved, value shown): use `find`, `get_page_text` or `javascript_tool`. Take a screenshot only for a visual judgement (overlap, clipping, colors, phone layout): at most one per checked page at phone width, with `scale: 0.5`, or `zoom` on the relevant region. No final proof screenshot; nobody sees it.
 - Check `read_console_messages` with `onlyErrors: true`.
 
 Report per route: OK or the problem (what, where, at which width), plus console errors.

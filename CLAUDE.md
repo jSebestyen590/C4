@@ -36,11 +36,19 @@ they only carry the tools they need, so each call starts with a much smaller con
   prompt so it doesn't explore the same area again.
 - `implementer` doesn't run browser checks: after it finishes, a fresh `browser-check` does, with the
   routes/pages to check named in its prompt.
+- Split larger browser checks into one `browser-check` per page or flow (e.g. "create Kasse",
+  "count at event on phone", "Abrechnung"), run one after another, not in parallel (they share the
+  browser pane). An agent's context, screenshots included, is gone when it finishes; one agent for
+  everything carries all of it to the end. After a fix, re-check only the affected page or flow.
 - Plan and implementation of a larger feature (roughly 50+ expected implementation steps) run in
   separate sessions: after `/plan` the plan is written to `docs/plans/<feature>.md` completely
   (files, decisions, answers to open questions, docs page to update), and a new session implements
   it from that file. The planning context (docs, code, Q&A) would otherwise be re-read on every
   implementation step. Small features stay in the planning session.
+- Split the implementation of a larger plan into phases (e.g. shared types + API/DB, web, docs) and
+  start a fresh `implementer` per phase with only its part of the plan plus the files the previous
+  phases touched. One agent for everything grows its context to 400k+ and re-reads it on every
+  step. Corrections to a phase still go to that phase's agent via `SendMessage`.
 - When reviewing an `implementer` diff, start with `git diff --stat` and read only the relevant
   hunks, not the whole diff.
 - Command output stays short: tests and builds via `| tail -40` or filtered to errors; files are read
