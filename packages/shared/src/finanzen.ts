@@ -22,7 +22,14 @@ export const STEUER_ARTEN = ['ust', 'vorsteuer', 'keine'] as const;
 export type SteuerArt = (typeof STEUER_ARTEN)[number];
 
 /** Where an entry comes from. Later slices add their own types. */
-export const QUELLE_TYPEN = ['manuell', 'umbuchung', 'storno', 'eroeffnung', 'zaehlung'] as const;
+export const QUELLE_TYPEN = [
+  'manuell',
+  'umbuchung',
+  'storno',
+  'eroeffnung',
+  'zaehlung',
+  'kassenabrechnung',
+] as const;
 export type QuelleTyp = (typeof QUELLE_TYPEN)[number];
 /** The types a user may choose when booking by hand (`storno` has its own route). */
 export const MANUELLE_QUELLE_TYPEN = ['manuell', 'umbuchung'] as const;
@@ -66,6 +73,7 @@ export const QUELLE_TYP_LABELS: Record<QuelleTyp, string> = {
   storno: 'Storno',
   eroeffnung: 'Eröffnung',
   zaehlung: 'Zählung',
+  kassenabrechnung: 'Kassenabrechnung',
 };
 
 // ----- Schemas

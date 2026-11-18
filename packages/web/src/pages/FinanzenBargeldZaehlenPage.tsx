@@ -153,14 +153,15 @@ function ZaehlungsZusammenfassung({
                   key={w}
                   label={`${w} Das ist richtig so.`}
                   checked={bestaetigt.has(w)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const an = e.currentTarget.checked;
                     setBestaetigt((alt) => {
                       const neu = new Set(alt);
-                      if (e.currentTarget.checked) neu.add(w);
+                      if (an) neu.add(w);
                       else neu.delete(w);
                       return neu;
-                    })
-                  }
+                    });
+                  }}
                 />
               ))}
             </Stack>

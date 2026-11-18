@@ -7,7 +7,7 @@ Events mit Schichten und Diensten **oder** mit Teilnahme (je nach Kategorie, sie
 
 Events mit Schichten und Diensten oder mit Teilnahme, je nach Event-Art der Kategorie. Rechte: `kalender:lesen` (ansehen, eintragen), `events:verwalten` (Events anlegen, ändern, absagen), `kalender:einrichten` (Dienstformen, Kategorien, Vorlagen, Externe). Code in `packages/api/src/kalender.ts` und `packages/shared/src/kalender.ts`; dazu Terminserien, Geburtstage, ICS-Abo, Erinnerungen und Push.
 
-Abschnitte: Datenmodell, Regeln, Terminserien, Event-Art (Dienste oder Teilnahme), Teilnahme, Absage (nicht verfügbar), Bilder-Ordner, Verantwortliche:r, Seiten, API: Events und Dienste, Geburtstage, Mein Kalender (ICS-Abo), Globale Erinnerungen (Dienste fehlen), Push-Benachrichtigungen
+Abschnitte: Datenmodell, Regeln, Terminserien, Event-Art (Dienste oder Teilnahme), Teilnahme, Absage (nicht verfügbar), Bilder-Ordner, Verantwortliche:r, Kasse am Event, Seiten, API: Events und Dienste, Geburtstage, Mein Kalender (ICS-Abo), Globale Erinnerungen (Dienste fehlen), Push-Benachrichtigungen
 
 ## Datenmodell
 
@@ -144,7 +144,7 @@ Events und Vorlagen Pflicht ist (Schema und API, 400 sonst; `kategorie_id` ist `
   je nach Art der gewählten Kategorie den Schicht-Editor oder den Abschnitt Teilnahme (vorbelegt mit dem Standard-Kreis).
 - **Sitzung mit Protokoll:** Eine Teilnahme-Kategorie kann das Häkchen `protokoll` tragen (Spalte `event_kategorien.protokoll`,
   Badge „Protokoll“ in der Einrichtung; Dienste-Kategorien: 400). Zu Events dieser Kategorie lassen sich Protokolle schreiben,
-  siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll, mit Finanzbuchungen oder mit Kassenzählungen lässt sich nicht löschen (409), und Serienänderungen
+  siehe [protokolle.md](./protokolle.md). Ein Event mit Protokoll, mit Finanzbuchungen, mit Kassenzählungen oder mit Kassenabrechnungen lässt sich nicht löschen (409, Sperre `finanzen` in `eventsLoeschenTx`), und Serienänderungen
   löschen oder ersetzen es nie. Mit dem Häkchen wählt man die **Art** (`protokollArt`: Sitzung = mehr als die Hälfte, Mitgliederversammlung = mehr als zwei Drittel der Mitglieder beschlussfähig).
 
 **Events aus Protokollen:** Neue Protokolle starten mit Bausteinen für die Events seit der letzten Sitzung und alle kommenden
@@ -220,6 +220,16 @@ durch eine Serie bleibt der Wert unverändert (Eingabe ohne `verantwortlichSub`)
   die handelnde). Wer neu eingetragen wird (nicht durch sich selbst), bekommt „Du bist verantwortlich für …“. Die Hinweise
   „Fehlende Dienste“ gehen an sie **unabhängig** von ihrer Einstellung (ein Push-Gerät ist nötig), mit eigenem Schlüssel
   `kalender.fehlende_dienste:<eventId>:<beginn>:<m>:verantwortlich` (der Beginn gehört zum Schlüssel, nach einer Verschiebung kommt der Hinweis erneut); die allgemeine Sendung lässt sie aus.
+
+## Kasse am Event
+
+Auf der Event-Seite (`EventDetailPage`, nach den Schichten, mobile first) gibt es für alle mit `kasse:zaehlen` (alle Status) den
+Abschnitt „Kasse“, aber nur, wenn es aktive Kassen gibt. Er listet die Kassen des Events (Standard der Event-Kategorie, solange die Finanzer:in sie nicht mit „Kassen festlegen“ selbst bestimmt hat), je Kasse „noch nicht gezählt“ (ab Event-Beginn, nicht abgesagt) oder die Einnahme („vorläufig“ oder „abgerechnet“) und darunter die Summe aller Einnahmen (unvollständig, solange eine zugewiesene Kasse fehlt). Andere Kassen lassen sich weiter zählen. Die Zuordnungen werden mit dem Event gelöscht ([finanzen.md](./finanzen.md), „Barkassen“). Ab Event-Beginn zeigt er den
+Hinweis „noch nicht gezählt“ je zugewiesener Kasse (kein Push; `EventDto`
+bekommt kein Feld, der Hinweis kommt aus `GET /api/kassen/zaehlungen?eventId=`). „Kasse zählen“ öffnet ein Formular (Kasse wählen,
+`StueckelungFeld`, Summe, Bestätigung „Zählung über X € für Kasse Y speichern?“), die Zählung ist unverbindlich und löst keine
+Buchung aus. Die Liste zeigt Kasse, Summe, wer (`StatusName`) und wann; bei mehreren Zählungen einer Kasse gilt die neueste, ältere
+stehen grau als „ersetzt“. Komponente: `packages/web/src/EventKasse.tsx`.
 
 ## Seiten
 

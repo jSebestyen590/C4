@@ -32,6 +32,8 @@ Abschnitte: Konzept, Rechte, Routen (`routes/buch.ts`), Oberfläche, Tabellen
   nutzen den Tarif des Status `extern`, Mitglieder-Seiten den **aktuellen** Status des Mitglieds. Der Strichwert wird im
   Eintrag gespeichert und ändert sich später nicht. Ohne Tarif sind Striche nicht möglich (400 mit Hinweis), Bar und
   Abzahlung schon.
+- Die **Abzahlungen** landen als Bargeld in der Barkasse und gehen erst mit deren Abrechnung als Einnahme ins Journal
+  ([finanzen.md](./finanzen.md), „Barkassen“); das Buch selbst bucht nichts.
 - Alles ist **nur INSERT** (`buch_tarife`, `buch_abrechnungen`, `buch_eintraege`; Guard: `finanzenNurInsert.test.ts`).
   Einzig `buch_seiten.archiviert_am` wird gesetzt. Korrektur = **Storno**: ein neuer Eintrag mit umgekehrten Werten
   (gleicher Strichwert), `storno_von`, Pflicht-Begründung. Ein Eintrag lässt sich nur einmal stornieren (409), ein Storno

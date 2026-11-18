@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS fin_event_kassen_angepasst

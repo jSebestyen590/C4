@@ -12,7 +12,19 @@ export const finanzenKeys = {
   buchungen: (filter: Record<string, unknown>) => ['finanzen', 'buchungen', filter] as const,
   buchung: (id: string | undefined) => ['finanzen', 'buchung', id] as const,
   zaehlung: (id: string | undefined) => ['finanzen', 'zaehlung', id] as const,
+  kassen: (filter: { archiviert: boolean }) => ['finanzen', 'kassen', filter] as const,
+  kassenabrechnungen: (filter: { kontoId: string | null }) =>
+    ['finanzen', 'kassenabrechnungen', filter] as const,
+  kassenabrechnung: (id: string | undefined) => ['finanzen', 'kassenabrechnung', id] as const,
+  kassenAbrechnungVorschau: (kontoId: string | undefined) =>
+    ['finanzen', 'kassenAbrechnungVorschau', kontoId] as const,
 };
+
+/** Key of the Dienst-Zählungen of an event (members without a Finanzen right read them, too). */
+export const kassenzaehlungenKey = (eventId: string | undefined) =>
+  ['kassen', 'zaehlungen', eventId] as const;
+/** Key of the Kassen a member may count. */
+export const kassenKurzKey = ['kassen', 'kurz'] as const;
 
 /** Chart of accounts; with `archiviert` also the archived accounts. */
 export function useKonten(archiviert: boolean) {
@@ -40,6 +52,49 @@ export function useZaehlungen(kontoId: string | null) {
     queryKey: finanzenKeys.zaehlungen({ kontoId }),
     queryFn: async () =>
       unwrap(await api.finanzen.zaehlungen.$get({ query: kontoId ? { kontoId } : {} })),
+  });
+}
+
+/** The Kassen with stock; with `archiviert` also the archived ones. */
+export function useKassen(archiviert: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.kassen({ archiviert }),
+    queryFn: async () =>
+      unwrap(await api.finanzen.kassen.$get({ query: archiviert ? { archiviert: '1' } : {} })),
+  });
+}
+
+/** Kassenabrechnungen, newest first; optionally of one Kasse. */
+export function useKassenabrechnungen(kontoId: string | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.kassenabrechnungen({ kontoId }),
+    queryFn: async () =>
+      unwrap(await api.finanzen.kassenabrechnungen.$get({ query: kontoId ? { kontoId } : {} })),
+  });
+}
+
+export function useKassenabrechnung(id: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.kassenabrechnung(id),
+    enabled: !!id,
+    queryFn: async () =>
+      unwrap(await api.finanzen.kassenabrechnungen[':id'].$get({ param: { id: id! } })),
+  });
+}
+
+/** Stock, master data and open Dienst-Zählungen of a Kasse for the Abrechnung. */
+export function useKassenAbrechnungVorschau(kontoId: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.kassenAbrechnungVorschau(kontoId),
+    enabled: !!kontoId,
+    queryFn: async () =>
+      unwrap(
+        await api.finanzen.kassen[':kontoId'].abrechnung.$get({ param: { kontoId: kontoId! } }),
+      ),
   });
 }
 
@@ -72,3 +127,6 @@ export const zaehlungPfad = (id: string) =>
 /** Difference of a Zählung with sign, e.g. `−2,00 €`; `keine` when it is 0. */
 export const differenzText = (cent: number) =>
   cent === 0 ? 'keine' : `${cent > 0 ? '+' : '−'}${centAnzeigen(Math.abs(cent))}`;
+
+export const kassenabrechnungPfad = (id: string) =>
+  `/finanzen/kassen/abrechnungen/${encodeURIComponent(id)}`;

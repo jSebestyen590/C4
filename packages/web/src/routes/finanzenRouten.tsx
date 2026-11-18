@@ -6,6 +6,10 @@ import { FinanzenBargeldZaehlenPage } from '../pages/FinanzenBargeldZaehlenPage'
 import { FinanzenBuchenPage } from '../pages/FinanzenBuchenPage';
 import { FinanzenBuchungPage } from '../pages/FinanzenBuchungPage';
 import { FinanzenJournalPage } from '../pages/FinanzenJournalPage';
+import { FinanzenKasseAbrechnenPage } from '../pages/FinanzenKasseAbrechnenPage';
+import { FinanzenKassenabrechnungPage } from '../pages/FinanzenKassenabrechnungPage';
+import { FinanzenKassenabrechnungenPage } from '../pages/FinanzenKassenabrechnungenPage';
+import { FinanzenKassenPage } from '../pages/FinanzenKassenPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
@@ -122,6 +126,46 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenZaehlungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/kassen"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenKassenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/kassen/abrechnungen"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenKassenabrechnungenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/kassen/abrechnungen/:id"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenKassenabrechnungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/kassen/:kontoId/abrechnen"
+        element={
+          <Protected permission="finanzen:buchen">
+            <RequireUsername>
+              <FinanzenKasseAbrechnenPage />
             </RequireUsername>
           </Protected>
         }

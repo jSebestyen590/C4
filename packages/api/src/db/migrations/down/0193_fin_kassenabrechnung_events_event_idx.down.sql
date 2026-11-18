@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_kassenabrechnung_events_event_idx

@@ -1058,4 +1058,804 @@ describe('finanzen', () => {
       expect((await zaehlen(t, f, [])).status).toBe(400);
     });
   });
+
+  describe('Kassen', () => {
+    type Fehler = { error?: string; message?: string };
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const meldung = async (res: Response) => {
+      const b = (await res.json()) as Fehler;
+      return b.error ?? b.message ?? '';
+    };
+    const ereignis = (beginn = '2027-01-05T18:00:00.000Z', abgesagt = false) => ({
+      titel: 'Abend',
+      kategorie: 'Bar',
+      beginn,
+      abgesagt,
+    });
+    const roh = (
+      t: Awaited<ReturnType<typeof setup>>,
+      token: string,
+      method: string,
+      pfad: string,
+      body?: unknown,
+    ) => t.app.request(pfad, json(token, method, body));
+    const st = (...p: [number, number][]) =>
+      p.map(([nennwertCent, anzahl]) => ({ nennwertCent, anzahl }));
+    const kassenzaehlung = (
+      t: Awaited<ReturnType<typeof setup>>,
+      kontoId: string,
+      eventId: string,
+      ist: [number, number][],
+      extra: Record<string, unknown> = {},
+      token = 'member-token',
+    ) =>
+      roh(t, token, 'POST', '/api/kassen/zaehlungen', {
+        idempotenzSchluessel: crypto.randomUUID(),
+        kontoId,
+        eventId,
+        ist: st(...ist),
+        ...extra,
+      });
+    const abrechnen = (
+      t: Awaited<ReturnType<typeof setup>>,
+      k: { kasse: string; erloes: string; ziel: string },
+      ist: [number, number][],
+      extra: Record<string, unknown> = {},
+      token = 'admin-token',
+    ) =>
+      roh(t, token, 'POST', '/api/finanzen/kassenabrechnungen', {
+        idempotenzSchluessel: crypto.randomUUID(),
+        kontoId: k.kasse,
+        datum: '2027-01-12',
+        ist: st(...ist),
+        erloesKontoId: k.erloes,
+        zielFachId: k.ziel,
+        transfers: [],
+        events: [],
+        ...extra,
+      });
+    /** Erlöskonto (19 %), Ziel-Fach "Zählbrett" and a Kasse with Grundbestand 30 x 1 EUR and 2 x 5 EUR, filled to it. */
+    async function kasseSetup(
+      grund: [number, number][] = [
+        [100, 30],
+        [500, 2],
+      ],
+    ) {
+      const t = await setup();
+      const erloes = (
+        (await (
+          await t.anfrage('admin-token', 'POST', '/konten', {
+            name: 'Getränke',
+            art: 'erloes',
+            steuersatzStandard: 1900,
+          })
+        ).json()) as { id: string }
+      ).id;
+      const ziel = await t.fach('Zählbrett');
+      const res = await roh(t, 'admin-token', 'POST', '/api/finanzen/kassen', {
+        name: 'Bar',
+        grundbestand: st(...grund),
+        standardErloesKontoId: erloes,
+        standardZielFachId: ziel,
+      });
+      expect(res.status).toBe(201);
+      const kasse = ((await res.json()) as { kontoId: string }).kontoId;
+      await t.befuellen(kasse, grund);
+      t.finanzenFake.events.set('e1', ereignis('2027-01-05T18:00:00.000Z'));
+      t.finanzenFake.events.set('e2', ereignis('2027-01-08T18:00:00.000Z'));
+      const k = { kasse, erloes, ziel };
+      const bestand = async (id: string) =>
+        (
+          await t.lesen<{
+            faecher: { id: string; bestand: { nennwertCent: number; anzahl: number }[] }[];
+          }>('admin-token', '/bargeld')
+        ).faecher
+          .find((f) => f.id === id)!
+          .bestand.reduce<Record<number, number>>(
+            (m, b) => ({ ...m, [b.nennwertCent]: b.anzahl }),
+            {},
+          );
+      return { t, k, bestand };
+    }
+
+    it('requires the matching right on every Kassen route', async () => {
+      const t = await setup();
+      const routen: [string, string, string[]][] = [
+        ['GET', '/api/finanzen/kassen', ['member-token']],
+        ['POST', '/api/finanzen/kassen', ['member-token', 'vorstand-token']],
+        ['PUT', '/api/finanzen/kassen/x', ['member-token', 'vorstand-token']],
+        ['GET', '/api/finanzen/kassen/x/abrechnung', ['member-token']],
+        ['POST', '/api/finanzen/kassenabrechnungen', ['member-token', 'vorstand-token']],
+        ['GET', '/api/finanzen/kassenabrechnungen', ['member-token']],
+        ['GET', '/api/finanzen/kassenabrechnungen/x', ['member-token']],
+      ];
+      for (const [method, pfad, tokens] of routen)
+        for (const token of tokens) {
+          const res = await roh(t, token, method, pfad, method === 'GET' ? undefined : {});
+          expect(res.status, `${method} ${pfad} ${token}`).toBe(403);
+        }
+      expect((await roh(t, 'vorstand-token', 'GET', '/api/finanzen/kassen')).status).toBe(200);
+      expect(
+        (await roh(t, 'vorstand-token', 'GET', '/api/finanzen/kassen/nix/abrechnung')).status,
+      ).toBe(404);
+    });
+
+    it('creates a Kasse as a Fach and shows stock and Grundbestand', async () => {
+      const { t, k } = await kasseSetup();
+      const liste = (await (
+        await roh(t, 'vorstand-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      expect(liste).toHaveLength(1);
+      expect(liste[0]).toMatchObject({
+        kontoId: k.kasse,
+        name: 'Bar',
+        saldoCent: 3000 + 1000,
+        standardErloesKonto: { id: k.erloes, name: 'Getränke' },
+        standardZielFach: { id: k.ziel, name: 'Zählbrett' },
+        letzteAbrechnung: null,
+        offeneZaehlungen: 0,
+      });
+      expect(liste[0]!.grundbestand.find((g: Dto) => g.nennwertCent === 100).anzahl).toBe(30);
+      expect(liste[0]!.bestand).toHaveLength(13);
+      const konten = await t.lesen<
+        { id: string; parentId: string | null; stueckelung: boolean; art: string }[]
+      >('vorstand-token', '/konten');
+      expect(konten.find((x) => x.id === k.kasse)).toMatchObject({
+        parentId: 'safe',
+        stueckelung: true,
+        art: 'bargeld',
+      });
+    });
+
+    it('validates Erlöskonto and Ziel-Fach when creating and changing a Kasse', async () => {
+      const { t, k } = await kasseSetup();
+      const anlegen = (extra: Record<string, unknown>) =>
+        roh(t, 'admin-token', 'POST', '/api/finanzen/kassen', {
+          name: 'Zweite',
+          grundbestand: [],
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+          ...extra,
+        });
+      expect((await anlegen({ standardErloesKontoId: 'bank' })).status).toBe(400);
+      expect((await anlegen({ standardErloesKontoId: 'nix' })).status).toBe(400);
+      expect((await anlegen({ standardZielFachId: 'bank' })).status).toBe(400);
+      expect((await anlegen({ standardZielFachId: 'safe' })).status).toBe(400);
+      expect((await anlegen({ name: '' })).status).toBe(400);
+      expect((await anlegen({ grundbestand: [{ nennwertCent: 3, anzahl: 1 }] })).status).toBe(400);
+      expect((await anlegen({})).status).toBe(201);
+
+      const aendern = (kontoId: string, body: Record<string, unknown>) =>
+        roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${kontoId}`, {
+          grundbestand: st([100, 40]),
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+          ...body,
+        });
+      expect(await meldung(await aendern(k.kasse, { standardZielFachId: k.kasse }))).toContain(
+        'anderes Fach als die Kasse',
+      );
+      expect((await aendern('nix', {})).status).toBe(404);
+      expect((await aendern(k.kasse, {})).status).toBe(200);
+      // Rename like in the Kontenplan: same validation.
+      expect((await aendern(k.kasse, { name: '' })).status).toBe(400);
+      expect((await aendern(k.kasse, { name: 'x'.repeat(300) })).status).toBe(400);
+      expect((await aendern(k.kasse, { name: '  Festkasse ' })).status).toBe(200);
+      const namen = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      expect(namen.find((x) => x.kontoId === k.kasse)!.name).toBe('Festkasse');
+      const liste = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      const bar = liste.find((x) => x.kontoId === k.kasse)!;
+      expect(bar.grundbestand.find((g: Dto) => g.nennwertCent === 100).anzahl).toBe(40);
+      expect(bar.grundbestand.find((g: Dto) => g.nennwertCent === 500).anzahl).toBe(0);
+    });
+
+    it('lets members with kasse:zaehlen count at an event without seeing stock', async () => {
+      const { t, k } = await kasseSetup();
+      const kurz = await roh(t, 'member-token', 'GET', '/api/kassen');
+      expect(kurz.status).toBe(200);
+      expect(await kurz.json()).toEqual([{ kontoId: k.kasse, name: 'Bar' }]);
+      const res = await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 12],
+        [500, 1],
+      ]);
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({ summeCent: 1700 });
+      const liste = (
+        (await (
+          await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
+        ).json()) as Dto
+      ).zaehlungen as Dto[];
+      expect(liste).toHaveLength(1);
+      expect(liste[0]).toMatchObject({
+        kontoName: 'Bar',
+        summeCent: 1700,
+        ersetzt: false,
+        gezaehltVon: { sub: 'm2', username: 'user-m2' },
+      });
+      // A count books nothing.
+      expect(
+        (await t.lesen<{ buchungen: unknown[] }>('admin-token', '/buchungen')).buchungen,
+      ).toHaveLength(1);
+    });
+
+    it('counts only at existing, not cancelled events, is idempotent and the newest count wins', async () => {
+      const { t, k } = await kasseSetup();
+      t.finanzenFake.events.set('weg', ereignis('2027-01-09T18:00:00.000Z', true));
+      expect((await kassenzaehlung(t, k.kasse, 'nix', [])).status).toBe(400);
+      const abgesagt = await kassenzaehlung(t, k.kasse, 'weg', []);
+      expect(abgesagt.status).toBe(400);
+      expect(await meldung(abgesagt)).toBe('Das Event ist abgesagt.');
+      expect((await kassenzaehlung(t, 'bank', 'e1', [])).status).toBe(400);
+      expect((await kassenzaehlung(t, k.kasse, 'e1', [[100, -1]])).status).toBe(400);
+
+      const key = crypto.randomUUID();
+      const erste = await kassenzaehlung(t, k.kasse, 'e1', [[100, 5]], {
+        idempotenzSchluessel: key,
+      });
+      const zweite = await kassenzaehlung(t, k.kasse, 'e1', [[100, 5]], {
+        idempotenzSchluessel: key,
+      });
+      expect(zweite.status).toBe(200);
+      expect(await zweite.json()).toMatchObject({
+        id: ((await erste.json()) as Dto).id,
+        wiederholt: true,
+      });
+      await kassenzaehlung(t, k.kasse, 'e1', [[100, 7]]);
+      const liste = (
+        (await (
+          await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
+        ).json()) as Dto
+      ).zaehlungen as Dto[];
+      expect(liste.map((z) => [z.summeCent, z.ersetzt])).toEqual([
+        [700, false],
+        [500, true],
+      ]);
+      expect((await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen')).status).toBe(400);
+    });
+
+    it('settles a Kasse with one booking: Kasse, Erlös with tax, Ziel-Fach; the Grundbestand stays', async () => {
+      const { t, k, bestand } = await kasseSetup();
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      await kassenzaehlung(t, k.kasse, 'e2', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+        [2000, 2],
+      ]);
+      const vorschau = (await (
+        await roh(t, 'vorstand-token', 'GET', `/api/finanzen/kassen/${k.kasse}/abrechnung`)
+      ).json()) as Dto;
+      expect(vorschau.kasse.offeneZaehlungen).toBe(2);
+      expect(vorschau.zaehlungen.map((z: Dto) => [z.eventId, z.summeCent, z.eventTitel])).toEqual([
+        ['e1', 4000 + 5000, 'Abend'],
+        ['e2', 4000 + 5000 + 4000, 'Abend'],
+      ]);
+      expect(vorschau.zaehlungen[0].gezaehltVon).toMatchObject({ username: 'user-m2' });
+
+      // Finanzer:in counts 100 EUR more (1 x 50 + 2 x 20 + 1 x 10); events explain 50 + 30; the Zählbrett gets the surplus.
+      const res = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [5000, 1],
+          [2000, 2],
+          [1000, 1],
+        ],
+        {
+          transfers: [
+            { fachId: k.ziel, nennwertCent: 5000, anzahl: 1 },
+            { fachId: k.ziel, nennwertCent: 2000, anzahl: 2 },
+            { fachId: k.ziel, nennwertCent: 1000, anzahl: 1 },
+          ],
+          events: [
+            { eventId: 'e1', zaehlungId: vorschau.zaehlungen[0].id, betragCent: 5000 },
+            { eventId: 'e2', zaehlungId: vorschau.zaehlungen[1].id, betragCent: 3000 },
+          ],
+          // Whatever the client claims is ignored.
+          einnahmeCent: 1,
+          fehlerCent: 5,
+        },
+      );
+      expect(res.status).toBe(201);
+      const ergebnis = (await res.json()) as Dto;
+      expect(ergebnis).toMatchObject({ einnahmeCent: 10000, fehlerCent: 2000 });
+      expect(ergebnis.buchungSeq).toBeGreaterThan(0);
+
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${ergebnis.buchungId}`);
+      expect(buchung).toMatchObject({
+        quelleTyp: 'kassenabrechnung',
+        quelleId: ergebnis.id,
+        eventId: null,
+      });
+      expect(buchung.text).toBe('Kassenabrechnung Bar: Einnahme 100,00 €');
+      const summe = buchung.zeilen.reduce((s: number, z: Dto) => s + z.betragCent, 0);
+      expect(summe).toBe(0);
+      const erloes = buchung.zeilen.find((z: Dto) => z.kontoId === k.erloes);
+      expect(erloes).toMatchObject({
+        betragCent: -10000,
+        steuerArt: 'ust',
+        steuersatz: 1900,
+        nettoCent: -8403,
+        steuerCent: -1597,
+      });
+      expect(
+        buchung.zeilen
+          .filter((z: Dto) => z.kontoId === k.ziel)
+          .reduce((s: number, z: Dto) => s + z.betragCent, 0),
+      ).toBe(10000);
+
+      // The Kasse goes out as it was, the surplus is in the Zählbrett, the Grundbestand did not change.
+      expect(await bestand(k.kasse)).toMatchObject({ 100: 30, 500: 2, 5000: 0, 2000: 0, 1000: 0 });
+      expect(await bestand(k.ziel)).toMatchObject({ 5000: 1, 2000: 2, 1000: 1 });
+      const kasse = (
+        (await (await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')).json()) as Dto[]
+      )[0]!;
+      expect(kasse.grundbestand.find((g: Dto) => g.nennwertCent === 100).anzahl).toBe(30);
+      expect(kasse.letzteAbrechnung).toMatchObject({ id: ergebnis.id, datum: '2027-01-12' });
+      expect(kasse.offeneZaehlungen).toBe(0);
+
+      const detail = (await (
+        await roh(t, 'vorstand-token', 'GET', `/api/finanzen/kassenabrechnungen/${ergebnis.id}`)
+      ).json()) as Dto;
+      expect(detail).toMatchObject({
+        kontoName: 'Bar',
+        sollCent: 4000,
+        istCent: 14000,
+        einnahmeCent: 10000,
+        fehlerCent: 2000,
+        transferCent: 10000,
+        storniert: false,
+        erstelltVon: { username: 'user-a' },
+        erloesKonto: { name: 'Getränke' },
+        zielFach: { name: 'Zählbrett' },
+      });
+      expect(detail.events.map((e: Dto) => [e.eventId, e.betragCent])).toEqual([
+        ['e1', 5000],
+        ['e2', 3000],
+      ]);
+      expect(detail.posten).toHaveLength(13);
+      const liste = (await (
+        await roh(t, 'vorstand-token', 'GET', '/api/finanzen/kassenabrechnungen?kontoId=' + k.kasse)
+      ).json()) as Dto;
+      expect(liste.abrechnungen).toHaveLength(1);
+      expect(liste.gekappt).toBe(false);
+    });
+
+    it('books nothing when the count equals the stock and nothing is moved', async () => {
+      const { t, k } = await kasseSetup();
+      const res = await abrechnen(t, k, [
+        [100, 30],
+        [500, 2],
+      ]);
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({
+        buchungId: null,
+        buchungSeq: null,
+        einnahmeCent: 0,
+      });
+      expect(
+        (await t.lesen<{ buchungen: unknown[] }>('admin-token', '/buchungen')).buchungen,
+      ).toHaveLength(1);
+    });
+
+    it('books a negative income as a debit on the Erlöskonto', async () => {
+      const { t, k } = await kasseSetup();
+      const res = await abrechnen(
+        t,
+        k,
+        [
+          [100, 20],
+          [500, 2],
+        ],
+        {
+          transfers: [{ fachId: k.ziel, nennwertCent: 100, anzahl: 0 + 10 }],
+        },
+      );
+      expect(res.status).toBe(201);
+      const e = (await res.json()) as Dto;
+      expect(e.einnahmeCent).toBe(-1000);
+      const b = await t.lesen<Dto>('admin-token', `/buchungen/${e.buchungId}`);
+      expect(b.zeilen.find((z: Dto) => z.kontoId === k.erloes).betragCent).toBe(1000);
+    });
+
+    it('is idempotent per key', async () => {
+      const { t, k } = await kasseSetup();
+      const key = crypto.randomUUID();
+      const body = { idempotenzSchluessel: key };
+      const erste = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [200, 5],
+        ],
+        body,
+      );
+      const zweite = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [200, 5],
+        ],
+        body,
+      );
+      expect(erste.status).toBe(201);
+      expect(zweite.status).toBe(200);
+      expect(await zweite.json()).toMatchObject({
+        id: ((await erste.json()) as Dto).id,
+        wiederholt: true,
+      });
+      expect(
+        (await t.lesen<{ buchungen: unknown[] }>('admin-token', '/buchungen')).buchungen,
+      ).toHaveLength(2);
+    });
+
+    it('refuses invalid Abrechnungen with German messages', async () => {
+      const { t, k } = await kasseSetup();
+      const meld = async (res: Response) => {
+        expect(res.status).toBe(400);
+        return meldung(res);
+      };
+      expect(await meld(await abrechnen(t, { ...k, kasse: 'nix' }, []))).toContain(
+        'Die Kasse gibt es nicht',
+      );
+      expect(await meld(await abrechnen(t, { ...k, erloes: 'bank' }, []))).toContain(
+        'kein Erlöskonto',
+      );
+      expect(await meld(await abrechnen(t, { ...k, ziel: k.kasse }, []))).toContain(
+        'anderes Fach als die Kasse',
+      );
+      expect(
+        await meld(
+          await abrechnen(t, k, [[100, 30]], {
+            events: [{ eventId: 'nix', betragCent: 1 }],
+          }),
+        ),
+      ).toContain('Event');
+      expect(
+        await meld(
+          await abrechnen(t, k, [[100, 30]], {
+            transfers: [{ fachId: k.ziel, nennwertCent: 5000, anzahl: -1 }],
+          }),
+        ),
+      ).toContain('Im Fach „Zählbrett“ gibt es keine 50,00 €');
+      // Nachschub only with a negative count.
+      const tresor = await t.fach('Tresor');
+      await t.befuellen(tresor, [[100, 100]]);
+      expect(
+        await meld(
+          await abrechnen(
+            t,
+            k,
+            [
+              [100, 30],
+              [500, 2],
+            ],
+            {
+              transfers: [{ fachId: tresor, nennwertCent: 100, anzahl: 25 }],
+            },
+          ),
+        ),
+      ).toContain('negativen Anzahl');
+      expect((await abrechnen(t, k, [[100, 30]], { datum: 'gestern' })).status).toBe(400);
+    });
+
+    it('fetches coin rolls into the Ziel-Fach and refills the Kasse from it (stock rule on every Fach)', async () => {
+      // Grundbestand 30 x 1 EUR, counted 10, the Zählbrett has 10, the Tresor 100.
+      const { t, k, bestand } = await kasseSetup([[100, 10]]);
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: st([100, 30]),
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+      });
+      await t.befuellen(k.ziel, [[100, 10]]);
+      const tresor = await t.fach('Tresor');
+      await t.befuellen(tresor, [[100, 100]]);
+
+      const zuViel = await abrechnen(t, k, [[100, 10]], {
+        transfers: [
+          { fachId: k.ziel, nennwertCent: 100, anzahl: -20 },
+          { fachId: tresor, nennwertCent: 100, anzahl: -5 },
+        ],
+      });
+      expect(zuViel.status).toBe(400);
+      expect(await meldung(zuViel)).toBe('Im Fach „Zählbrett“ sind nur 10 × 1,00 € vorhanden.');
+
+      const res = await abrechnen(t, k, [[100, 10]], {
+        transfers: [
+          { fachId: k.ziel, nennwertCent: 100, anzahl: -20 },
+          { fachId: tresor, nennwertCent: 100, anzahl: -25 },
+        ],
+      });
+      expect(res.status).toBe(201);
+      expect(await bestand(k.kasse)).toMatchObject({ 100: 30 });
+      expect(await bestand(k.ziel)).toMatchObject({ 100: 15 });
+      expect(await bestand(tresor)).toMatchObject({ 100: 75 });
+      const e = (await res.json()) as Dto;
+      const detail = await t.lesen<Dto>('admin-token', `/kassenabrechnungen/${e.id}`);
+      expect(detail.transfers).toHaveLength(2);
+      expect(detail.transferCent).toBe(-2000);
+      // The Nachschub Fach itself must have enough, too.
+      const leer = await abrechnen(t, k, [[100, 30]], {
+        transfers: [{ fachId: tresor, nennwertCent: 100, anzahl: -200 }],
+      });
+      expect(leer.status).toBe(400);
+      expect(await meldung(leer)).toBe('Im Fach „Tresor“ sind nur 75 × 1,00 € vorhanden.');
+    });
+
+    it('may refill with less this time: the Grundbestand stays, the Abrechnung records the stock after', async () => {
+      const { t, k, bestand } = await kasseSetup([[100, 10]]);
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: st([100, 30]),
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+      });
+      await t.befuellen(k.ziel, [[100, 10]]);
+      const res = await abrechnen(t, k, [[100, 10]], {
+        transfers: [{ fachId: k.ziel, nennwertCent: 100, anzahl: -10 }],
+      });
+      expect(res.status).toBe(201);
+      expect(await bestand(k.kasse)).toMatchObject({ 100: 20 });
+      const e = (await res.json()) as Dto;
+      const detail = await t.lesen<Dto>('admin-token', `/kassenabrechnungen/${e.id}`);
+      expect(detail.posten.find((p: Dto) => p.nennwertCent === 100)).toMatchObject({
+        grundbestand: 30,
+        danach: 20,
+      });
+      const kasse = (
+        (await (await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')).json()) as Dto[]
+      )[0]!;
+      expect(kasse.grundbestand.find((g: Dto) => g.nennwertCent === 100).anzahl).toBe(30);
+    });
+
+    const eventKassen = async (
+      t: Awaited<ReturnType<typeof setup>>,
+      id = 'e1',
+      token = 'member-token',
+    ) => (await (await roh(t, token, 'GET', `/api/kassen/zaehlungen?eventId=${id}`)).json()) as Dto;
+    const festlegen = (
+      t: Awaited<ReturnType<typeof setup>>,
+      id: string,
+      kontoIds: string[],
+      token = 'admin-token',
+    ) => roh(t, token, 'PUT', `/api/finanzen/events/${id}/kassen`, { kontoIds });
+
+    it('uses the Kategorie default until the Kassen of an event are set, and resets to it', async () => {
+      const { t, k } = await kasseSetup();
+      // Without a default nothing is assigned.
+      expect((await eventKassen(t)).kassen).toEqual([]);
+      const zweite = (await (
+        await roh(t, 'admin-token', 'POST', '/api/finanzen/kassen', {
+          name: 'Zweite',
+          grundbestand: [],
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+        })
+      ).json()) as { kontoId: string };
+      const aendern = (kontoId: string, kat: string[]) =>
+        roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${kontoId}`, {
+          grundbestand: [],
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+          standardKategorieIds: kat,
+        });
+      expect((await aendern(k.kasse, ['nix'])).status).toBe(400);
+      expect((await aendern(k.kasse, ['kat'])).status).toBe(200);
+      const liste = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      expect(liste.find((x) => x.kontoId === k.kasse)!.standardKategorieIds).toEqual(['kat']);
+      // Dynamic: the default reaches existing events.
+      let e = await eventKassen(t);
+      expect(e).toMatchObject({ angepasst: false, summeCent: 0, unvollstaendig: true });
+      expect(e.kassen).toEqual([
+        {
+          kontoId: k.kasse,
+          name: 'Bar',
+          zugewiesen: true,
+          gezaehlt: false,
+          einnahmeCent: null,
+          status: null,
+        },
+      ]);
+      // Adjusted: the own list applies, the default no longer does.
+      expect((await festlegen(t, 'e1', [zweite.kontoId])).status).toBe(200);
+      e = await eventKassen(t);
+      expect(e.angepasst).toBe(true);
+      expect(e.kassen.map((x: Dto) => x.name)).toEqual(['Zweite']);
+      expect(await eventKassen(t, 'e2')).toMatchObject({ angepasst: false });
+      // An explicitly empty list is an adjustment, too.
+      await festlegen(t, 'e1', []);
+      expect(await eventKassen(t)).toMatchObject({
+        angepasst: true,
+        kassen: [],
+        unvollstaendig: false,
+      });
+      // Reset.
+      expect((await roh(t, 'admin-token', 'DELETE', '/api/finanzen/events/e1/kassen')).status).toBe(
+        200,
+      );
+      e = await eventKassen(t);
+      expect(e.angepasst).toBe(false);
+      expect(e.kassen.map((x: Dto) => x.name)).toEqual(['Bar']);
+      expect((await festlegen(t, 'nix', [])).status).toBe(404);
+      expect((await festlegen(t, 'e1', ['bank'])).status).toBe(400);
+    });
+
+    it('requires finanzen:buchen to set the Kassen of an event', async () => {
+      const { t } = await kasseSetup();
+      for (const token of ['member-token', 'vorstand-token']) {
+        expect((await festlegen(t, 'e1', [], token)).status, token).toBe(403);
+        expect(
+          (await roh(t, token, 'DELETE', '/api/finanzen/events/e1/kassen')).status,
+          token,
+        ).toBe(403);
+      }
+      expect(
+        (await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=nix')).status,
+      ).toBe(404);
+    });
+
+    it('hides archived Kassen and counts others that are not assigned', async () => {
+      const { t, k } = await kasseSetup();
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: [],
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+        standardKategorieIds: ['kat'],
+      });
+      // Not assigned (explicit empty list) but counted: shows up, preliminary.
+      await festlegen(t, 'e1', []);
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      let e = await eventKassen(t);
+      expect(e.kassen).toEqual([
+        {
+          kontoId: k.kasse,
+          name: 'Bar',
+          zugewiesen: false,
+          gezaehlt: true,
+          einnahmeCent: 5000,
+          status: 'vorlaeufig',
+        },
+      ]);
+      expect(e).toMatchObject({ summeCent: 5000, unvollstaendig: false });
+      await t.anfrage('admin-token', 'PUT', `/konten/${k.kasse}/archiv`, { archiviert: true });
+      e = await eventKassen(t);
+      expect(e.kassen).toEqual([]);
+      expect(e.zaehlungen).toEqual([]);
+    });
+
+    it('shows proposal income per Kasse as preliminary, then the booked amount, and the sum', async () => {
+      const { t, k } = await kasseSetup();
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: st([100, 30], [500, 2]),
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+        standardKategorieIds: ['kat'],
+      });
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      await kassenzaehlung(t, k.kasse, 'e2', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+        [2000, 2],
+      ]);
+      // Soll 40 EUR: e1 = 90 - 40, e2 = 130 - 90, like the proposal of the Abrechnung.
+      const e1 = await eventKassen(t, 'e1');
+      expect(e1.kassen[0]).toMatchObject({
+        einnahmeCent: 5000,
+        status: 'vorlaeufig',
+        gezaehlt: true,
+      });
+      expect(e1).toMatchObject({ summeCent: 5000, unvollstaendig: false });
+      expect((await eventKassen(t, 'e2')).kassen[0]).toMatchObject({
+        einnahmeCent: 4000,
+        status: 'vorlaeufig',
+      });
+      const vor = (await (
+        await roh(t, 'admin-token', 'GET', `/api/finanzen/kassen/${k.kasse}/abrechnung`)
+      ).json()) as Dto;
+      await new Promise((r) => setTimeout(r, 5));
+      // Booked with a different amount for e1: that amount counts now.
+      const res = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [5000, 1],
+          [2000, 2],
+        ],
+        {
+          transfers: [
+            { fachId: k.ziel, nennwertCent: 5000, anzahl: 1 },
+            { fachId: k.ziel, nennwertCent: 2000, anzahl: 2 },
+          ],
+          events: [
+            { eventId: 'e1', zaehlungId: vor.zaehlungen[0].id, betragCent: 4500 },
+            { eventId: 'e2', zaehlungId: vor.zaehlungen[1].id, betragCent: 4000 },
+          ],
+        },
+      );
+      const ergebnis = (await res.json()) as Dto;
+      expect((await eventKassen(t, 'e1')).kassen[0]).toMatchObject({
+        einnahmeCent: 4500,
+        status: 'abgerechnet',
+      });
+      // Storno: back to the proposal.
+      await t.anfrage('admin-token', 'POST', `/buchungen/${ergebnis.buchungId}/storno`, {
+        datum: '2027-01-13',
+        text: 'Falsch',
+      });
+      expect((await eventKassen(t, 'e1')).kassen[0]).toMatchObject({
+        einnahmeCent: 5000,
+        status: 'vorlaeufig',
+      });
+    });
+
+    it('a Storno of the booking makes the Dienst-Zählungen open again', async () => {
+      const { t, k } = await kasseSetup();
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      const vor = async () =>
+        (await (
+          await roh(t, 'admin-token', 'GET', `/api/finanzen/kassen/${k.kasse}/abrechnung`)
+        ).json()) as Dto;
+      expect((await vor()).zaehlungen).toHaveLength(1);
+      await new Promise((r) => setTimeout(r, 5));
+      const res = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [5000, 1],
+        ],
+        {
+          events: [{ eventId: 'e1', betragCent: 5000 }],
+        },
+      );
+      const e = (await res.json()) as Dto;
+      expect((await vor()).zaehlungen).toHaveLength(0);
+      const storno = await t.anfrage('admin-token', 'POST', `/buchungen/${e.buchungId}/storno`, {
+        datum: '2027-01-13',
+        text: 'Falsch gezählt',
+      });
+      expect(storno.status).toBe(201);
+      const danach = await vor();
+      expect(danach.zaehlungen).toHaveLength(1);
+      expect(danach.kasse.letzteAbrechnung).toBeNull();
+      const liste = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassenabrechnungen')
+      ).json()) as Dto;
+      expect(liste.abrechnungen[0].storniert).toBe(true);
+      const detail = await t.lesen<Dto>('admin-token', `/kassenabrechnungen/${e.id}`);
+      expect(detail.storniert).toBe(true);
+      expect((await t.anfrage('admin-token', 'GET', '/kassenabrechnungen/nix')).status).toBe(404);
+    });
+  });
 });

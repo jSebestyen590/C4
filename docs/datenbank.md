@@ -45,6 +45,12 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0157–0162 (Finanzen, Bargeld): 0157 löscht das Konto `kassendifferenz`, 0158 setzt `safe.stueckelung` wieder auf `true`,
   0159 und 0162 löschen die Tabellen `fin_zaehlungen` und `fin_zaehlung_posten` (insert-only, mit allen Zählprotokollen),
   0160 und 0161 ihre Indizes. Rollback-Ziel nur für Bargeld: `0156_fin_buchungen_idempotenz_idx`.
+- 0194–0196 (Kassen je Event): löschen die Tabellen `fin_kassen_kategorien`, `fin_event_kassen_angepasst` und `fin_event_kassen` (veränderbare Stammdaten, mit den Zuordnungen). Rollback-Ziel nur dafür: `0193_fin_kassenabrechnung_events_event_idx`.
+- 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
+  `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
+  `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden
+  insert-only, mit allen Zählungen und Abrechnungen), 0188–0193 ihre Indizes. Rollback-Ziel nur für die Barkassen:
+  `0179_buch_seiten_verlauf_angelegt`.
 - 0177–0179 (Buch-Seitenverlauf): 0177 löscht die Tabelle `buch_seiten_verlauf` (insert-only), 0178 ihren Index, 0179 (Backfill
   der Zeilen `angelegt`/`archiviert` bestehender Seiten) löscht nur diese Startzeilen. Rollback-Ziel nur dafür: `0176_buch_eintraege_idempotenz_idx`.
 - 0169–0176 (Buch): 0169, 0170, 0171 und 0173 löschen die Tabellen `buch_seiten`, `buch_tarife`, `buch_abrechnungen` und

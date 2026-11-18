@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_kassenzaehlungen_event_idx

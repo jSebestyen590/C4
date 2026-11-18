@@ -171,15 +171,17 @@ mehrere Unterseiten stehen.
 
 ### Scheibe 3: Barkassen
 
-- Kassen als Bargeld-Konten mit Grundbestand je Nennwert und Einsatzort; Safe-Fach je Kasse.
-- Event-Zählung durch die Dienste (`kasse:zaehlen`, unverbindlich, am Event sichtbar; Event mit
-  Zählung nicht löschbar, Muster `eventLoeschenMitPruefung`).
-- Verbindliche Abrechnung durch den Finanzer: Zählung → Einnahme = Ist − Soll, verteilt auf die
-  Events seit der letzten Abrechnung (anhand der Dienst-Zählungen) → Rückführung auf den
-  Grundbestand mit vorgeschlagenen Münz-Transfers von/zum Safe.
-- Warnung bei Abweichung zwischen letzter Dienst-Zählung und Finanzer-Zählung.
-- Offene Punkte: Aufteilung der Bareinnahmen auf 19 %/7 % (Access: „Bareinnahmen" und „Bar_7");
-  Pflicht oder Erinnerung für die Zählung am Event-Ende.
+- Eine Kasse ist ein Safe-Fach (Bargeld, Stückelung) mit Grundbestand je Nennwert, Standard-Erlöskonto und Standard-Ziel-Fach;
+  kein Einsatzort.
+- Event-Zählung durch die Dienste (`kasse:zaehlen`, alle Status, unverbindlich, am Event sichtbar, die neueste je Event und
+  Kasse gilt; Event mit Zählung nicht löschbar). Kein Push, nur der Hinweis „Kasse noch nicht gezählt“ am Event.
+- Verbindliche Abrechnung durch den Finanzer: Zählung → Einnahme = Ist − Soll, die gesamte Einnahme auf ein Erlöskonto
+  (Standard je Kasse, änderbar), verteilt auf die Events seit der letzten Abrechnung (Dienst-Zählungen), Abweichung als „Fehler
+  ohne Event“ → Rückführung auf den Grundbestand mit Transfer zum Ziel-Fach, bei Fehlbestand Münzrollen ins Ziel-Fach holen oder
+  diesmal weniger auffüllen (Grundbestand bleibt).
+- Kassen je Event: Standard je Event-Kategorie (dynamisch, bis die Finanzer:in die Kassen eines Events festlegt), „noch nicht gezählt“ je zugewiesener Kasse, Einnahmen je Kasse (vorläufig/abgerechnet) und Summe am Event.
+- Umgesetzt, Details in [finanzen.md](../finanzen.md) („Barkassen“); der Umsetzungsplan stand in
+  [finanzen-barkassen.md](./finanzen-barkassen.md) (erledigt).
 
 ### Scheibe 4: Belege
 
@@ -340,7 +342,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
-| 3 Barkassen               | offen                                                                                                                                              |
+| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                               |
 | 4 Belege                  | offen                                                                                                                                              |
 | 5 GoBD-Abschluss          | offen                                                                                                                                              |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |

@@ -1,6 +1,7 @@
 import { Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import {
   IconBook2,
+  IconCash,
   IconCoins,
   IconListDetails,
   IconNotebook,
@@ -61,6 +62,12 @@ export function FinanzenPage() {
           icon={<IconCoins size={28} />}
           titel="Bargeld"
           text="Safe mit Fächern, Bestand je Münze und Schein, Umbuchen und Wechseln."
+        />
+        <Kachel
+          to="/finanzen/kassen"
+          icon={<IconCash size={28} />}
+          titel="Kassen"
+          text="Barkassen: Grundbestand, Dienst-Zählungen der Events und Abrechnung."
         />
         <Kachel
           to="/finanzen/bargeld/zaehlungen"

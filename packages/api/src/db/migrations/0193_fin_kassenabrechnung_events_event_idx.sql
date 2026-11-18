@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_kassenabrechnung_events_event_idx ON fin_kassenabrechnung_events (event_id)

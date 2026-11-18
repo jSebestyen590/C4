@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_kassenabrechnungen_konto_idx
