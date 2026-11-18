@@ -51,11 +51,11 @@ oder als erledigt markieren.
      - Rollengröße je Nennwert als Konstante `MUENZROLLE` in `@c4/shared` (Euro-Standard: 1, 2, 5 ct je
        50; 10, 20, 50 ct je 40; 1 €, 2 € je 25; Scheine ohne Rolle). Kein Stammdatum, solange nichts
        anderes nötig ist.
-     - **Grundbestand anpassen**: setzt den Grundbestand dieses Nennwerts auf das Erreichbare
-       (vorbelegt Ist + verfügbare Münzen); wird mit der Abrechnung **dauerhaft** in den Stammdaten der
-       Kasse gespeichert (gleiche Transaktion), die Zusammenfassung nennt es („Grundbestand 1,00 €:
-       30 → 20“).
-     Bleibt trotzdem ein Rest, greift die Warnung „Kasse danach ≠ Grundbestand“.
+     - **Diesmal mit weniger auffüllen**: Der Grundbestand der Kasse bleibt unverändert (keine
+       dauerhafte Änderung); die Kasse geht nur für dieses Mal mit weniger Münzen dieses Nennwerts raus.
+       Das ist die bestätigungspflichtige Warnung „Kasse danach ≠ Grundbestand“ („1,00 €: 20 statt 30“),
+       die Abrechnung speichert es in `fin_kassenabrechnung_posten` (Grundbestand und Kasse danach).
+       Die nächste Abrechnung rechnet ohnehin vom tatsächlichen Bestand aus.
    - Warnungen (bestätigungspflichtig, nicht blockierend): Fehler ≠ 0 („Abweichung zur letzten
      Dienst-Zählung: 10,00 €“), Kasse danach ≠ Grundbestand (je Nennwert), keine Dienst-Zählung seit
      letzter Abrechnung, Einnahme negativ (über `saldoWarnungen` Erlös im Soll), Datum in der Zukunft.
@@ -88,7 +88,7 @@ oder als erledigt markieren.
   `erloes_konto_id`, `ziel_fach_id`, `soll_cent`, `ist_cent`, `einnahme_cent`, `transfer_cent`,
   `fehler_cent`, `erstellt_von`, `erstellt_am`, `idempotenz_schluessel` (unique).
 - `fin_kassenabrechnung_posten` (nur INSERT): `abrechnung_id`, `nennwert_cent`, `soll`, `ist`,
-  `grundbestand_vorher`, `grundbestand_nachher`.
+  `grundbestand`, `danach`.
 - `fin_kassenabrechnung_transfers` (nur INSERT): `abrechnung_id`, `fach_id`, `nennwert_cent`, `anzahl`
   (Ziel-Fach: positiv = Kasse → Ziel-Fach, negativ = Ziel-Fach → Kasse; Nachschub-Fach: negativ = Fach → Ziel-Fach).
 - `fin_kassenabrechnung_events` (nur INSERT): `abrechnung_id`, `event_id`, `zaehlung_id` (nullable),
@@ -105,8 +105,8 @@ oder als erledigt markieren.
   `kasseAendernSchema`, `kassenzaehlungEingabeSchema` (idempotenzSchluessel, kontoId, eventId, ist
   [{nennwertCent, anzahl ≥ 0}]), `kassenabrechnungEingabeSchema` (idempotenzSchluessel, kontoId, datum,
   ist, erloesKontoId, zielFachId, transfers [{fachId, nennwertCent, anzahl}] (Ziel-Fach + Nachschub;
-  Nachschub-Fächer nur mit negativer Anzahl, ihr Gegenstück landet im Ziel-Fach), grundbestandNeu? [{nennwertCent, anzahl}] (nur geänderte
-  Nennwerte), events [{eventId, zaehlungId?, betragCent}]).
+  Nachschub-Fächer nur mit negativer Anzahl, ihr Gegenstück landet im Ziel-Fach),
+  events [{eventId, zaehlungId?, betragCent}]).
 - `eventEinnahmenVorschlag(sollCent, zaehlungen)` → je Event Betrag (Differenzen der neuesten Zählungen).
 - `transferVorschlag(ist, grundbestand, bestandZielFach)` → Transfer + `fehlbestand` je Nennwert.
 - `nachschubVorschlag(fehlbestand, bestandFaecher)` → je Nennwert erstes Fach mit genug Bestand, Anzahl auf ganze `MUENZROLLE` aufgerundet (höchstens Bestand).
@@ -173,10 +173,10 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 - `packages/shared/src/kassen.test.ts`: Vorschlag Event-Einnahmen (Beispiel 100/50/40 → Fehler 10),
   neueste Zählung je Event gilt, Transfer-Vorschlag mit knappem Ziel-Fach, Zeilen summieren auf 0,
   Stückelung je Zeile = Betrag, Einnahme negativ, keine Zeilen bei Ist = Soll und Transfer 0,
-  Fehlbestand (30/10/10-Beispiel) mit Rolle (25) aus anderem Fach ins Zählbrett und 20 in die Kasse (Zählbrett danach 15) bzw. mit angepasstem Grundbestand; Quell-Fach ohne ganze Rolle.
+  Fehlbestand (30/10/10-Beispiel) mit Rolle (25) aus anderem Fach ins Zählbrett und 20 in die Kasse (Zählbrett danach 15); Rest ohne Nachschub → Warnung, Grundbestand unverändert; Quell-Fach ohne ganze Rolle.
 - `routes/finanzen.test.ts` (neues `describe('Kassen')`): Rechte je Route (inkl. `kasse:zaehlen` ohne
   Finanzrecht sieht keine Bestände), Kasse anlegen/ändern (Validierung Erlöskonto/Fach), Dienst-Zählung
-  (Event fehlt/abgesagt → 400, idempotent), Abrechnung bucht korrekte Zeilen, Bestandsregel am Ziel-Fach und an Nachschub-Fächern, Grundbestand-Anpassung wird gespeichert,
+  (Event fehlt/abgesagt → 400, idempotent), Abrechnung bucht korrekte Zeilen, Bestandsregel am Ziel-Fach und an Nachschub-Fächern, Grundbestand bleibt bei jeder Abrechnung unverändert,
   idempotent, Storno → Zählungen wieder offen, Server ignoriert Client-Fehlerbetrag.
 - Kalender-Test: Event mit Kassenzählung nicht löschbar.
 - `finanzenNurInsert.test.ts` um die neuen Tabellen.
@@ -195,5 +195,5 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 
 - `tester`: `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Deploy dev, `browser-check`: Kasse anlegen (Desktop 1440×900, Tastatur), Dienst-Zählung am Event bei
-  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Fehlbestand einmal per Münzrolle ins Zählbrett und einmal per Grundbestand lösen, Buchung im Journal prüfen, Bargeld-Bestände
+  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Fehlbestand einmal per Münzrolle ins Zählbrett und einmal mit weniger auffüllen (Warnung bestätigen, Grundbestand unverändert), Buchung im Journal prüfen, Bargeld-Bestände
   danach, Storno → Zählungen wieder offen, Event löschen gesperrt.
