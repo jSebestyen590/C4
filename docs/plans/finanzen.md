@@ -178,8 +178,9 @@ mehrere Unterseiten stehen.
   Events seit der letzten Abrechnung (anhand der Dienst-Zählungen) → Rückführung auf den
   Grundbestand mit vorgeschlagenen Münz-Transfers von/zum Safe.
 - Warnung bei Abweichung zwischen letzter Dienst-Zählung und Finanzer-Zählung.
-- Offene Punkte: Aufteilung der Bareinnahmen auf 19 %/7 % (Access: „Bareinnahmen" und „Bar_7");
-  Pflicht oder Erinnerung für die Zählung am Event-Ende.
+- Geklärt (18.11.2026), Details in [finanzen-barkassen.md](./finanzen-barkassen.md): Kasse = Safe-Fach,
+  ganze Einnahme auf ein Erlöskonto (Standard je Kasse, änderbar), Dienst-Zählungen nur zur
+  Event-Zuordnung, Abweichung als „Fehler ohne Event“, kein Push, nur Hinweis am Event, kein Einsatzort.
 
 ### Scheibe 4: Belege
 
