@@ -3,9 +3,9 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Group,
   Modal,
-  MultiSelect,
   Paper,
   Select,
   Stack,
@@ -205,16 +205,25 @@ function KassenFestlegen({
             ? 'Für dieses Event hast du die Kassen festgelegt. Änderungen am Standard der Kategorie gelten hier nicht mehr.'
             : 'Bisher gelten die Standard-Kassen der Kategorie. Sobald du speicherst, gilt deine Auswahl nur für dieses Event.'}
         </Text>
-        <MultiSelect
-          label="Kassen dieses Events"
-          placeholder="Kassen wählen"
-          data={(kassen.data ?? []).map((k) => ({ value: k.kontoId, label: k.name }))}
-          value={auswahl}
-          onChange={setAuswahl}
-          searchable
-          nothingFoundMessage="Keine Kasse gefunden"
-          comboboxProps={{ withinPortal: true }}
-        />
+        <Checkbox.Group label="Kassen dieses Events" value={auswahl} onChange={setAuswahl}>
+          <Stack gap={0} mt="xs">
+            {(kassen.data ?? []).map((k) => (
+              <Checkbox
+                key={k.kontoId}
+                value={k.kontoId}
+                label={k.name}
+                size="md"
+                py="xs"
+                styles={{ root: { minHeight: 44, display: 'flex', alignItems: 'center' } }}
+              />
+            ))}
+            {kassen.data?.length === 0 && (
+              <Text size="sm" c="dimmed">
+                Es gibt keine aktiven Kassen.
+              </Text>
+            )}
+          </Stack>
+        </Checkbox.Group>
         {fehler && (
           <Alert color="red">{fehlerText(fehler, 'Das Speichern ist fehlgeschlagen.')}</Alert>
         )}
