@@ -37,7 +37,20 @@ export function useVerwerfenWarnung(ungespeichert: boolean) {
       </Stack>
     </Modal>
   );
-  return { dialog, abgeschlossen: () => (fertig.current = true) };
+  return {
+    dialog,
+    abgeschlossen: () => (fertig.current = true),
+    /** Runs a navigation of the page itself (e.g. a `replace` after saving) without the warning. */
+    ohneWarnung: (aktion: () => void) => {
+      const vorher = fertig.current;
+      fertig.current = true;
+      try {
+        aktion();
+      } finally {
+        fertig.current = vorher;
+      }
+    },
+  };
 }
 
 /** Enter in a `data-nav` field moves to the next one; after the last one `amEnde` runs. */

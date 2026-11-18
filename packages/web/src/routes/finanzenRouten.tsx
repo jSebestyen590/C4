@@ -1,4 +1,9 @@
 import { Route } from 'react-router-dom';
+import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
+import { FinanzenBelegDetailPage } from '../pages/FinanzenBelegDetailPage';
+import { FinanzenBelegePage } from '../pages/FinanzenBelegePage';
+import { FinanzenBelegPage } from '../pages/FinanzenBelegPage';
+import { FinanzenRechnungsstellerPage } from '../pages/FinanzenRechnungsstellerPage';
 import { FinanzenBargeldPage } from '../pages/FinanzenBargeldPage';
 import { FinanzenBargeldUmbuchenPage } from '../pages/FinanzenBargeldUmbuchenPage';
 import { FinanzenBargeldWechselnPage } from '../pages/FinanzenBargeldWechselnPage';
@@ -166,6 +171,66 @@ export function finanzenRouten() {
           <Protected permission="finanzen:buchen">
             <RequireUsername>
               <FinanzenKasseAbrechnenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/belege"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenBelegePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/belege/neu"
+        element={
+          <Protected permission="finanzen:buchen">
+            <RequireUsername>
+              <FinanzenBelegPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/belege/entwurf/:id"
+        element={
+          <Protected permission="finanzen:buchen">
+            <RequireUsername>
+              <FinanzenBelegPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/belege/:id"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenBelegDetailPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/auslagen"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenAuslagenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungssteller"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenRechnungsstellerPage />
             </RequireUsername>
           </Protected>
         }

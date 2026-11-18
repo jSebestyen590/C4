@@ -18,6 +18,12 @@ export const finanzenKeys = {
   kassenabrechnung: (id: string | undefined) => ['finanzen', 'kassenabrechnung', id] as const,
   kassenAbrechnungVorschau: (kontoId: string | undefined) =>
     ['finanzen', 'kassenAbrechnungVorschau', kontoId] as const,
+  rechnungssteller: (filter: { archiviert: boolean }) =>
+    ['finanzen', 'rechnungssteller', filter] as const,
+  belege: (filter: Record<string, unknown>) => ['finanzen', 'belege', filter] as const,
+  beleg: (id: string | undefined) => ['finanzen', 'beleg', id] as const,
+  belegEntwurf: (id: string | undefined) => ['finanzen', 'belegEntwurf', id] as const,
+  auslagen: ['finanzen', 'auslagen'] as const,
 };
 
 /** Key of the Dienst-Zählungen of an event (members without a Finanzen right read them, too). */
@@ -33,6 +39,49 @@ export function useKonten(archiviert: boolean) {
     queryKey: finanzenKeys.konten({ archiviert }),
     queryFn: async () =>
       unwrap(await api.finanzen.konten.$get({ query: archiviert ? { archiviert: '1' } : {} })),
+  });
+}
+
+/** Rechnungssteller; with `archiviert` also the archived ones. */
+export function useRechnungssteller(archiviert: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.rechnungssteller({ archiviert }),
+    queryFn: async () =>
+      unwrap(
+        await api.finanzen.rechnungssteller.$get({ query: archiviert ? { archiviert: '1' } : {} }),
+      ),
+  });
+}
+
+/** Belege (drafts first) matching the filter; empty values are left out of the query. */
+export function useBelege(filter: Record<string, string | null>) {
+  const api = useApi();
+  const query = Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<
+    string,
+    string
+  >;
+  return useQuery({
+    queryKey: finanzenKeys.belege(query),
+    queryFn: async () => unwrap(await api.finanzen.belege.$get({ query })),
+  });
+}
+
+export function useBeleg(id: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.beleg(id),
+    enabled: !!id,
+    queryFn: async () => unwrap(await api.finanzen.belege[':id'].$get({ param: { id: id! } })),
+  });
+}
+
+/** Open Auslagen per member. */
+export function useAuslagen() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.auslagen,
+    queryFn: async () => unwrap(await api.finanzen.auslagen.$get()),
   });
 }
 
@@ -127,6 +176,10 @@ export const zaehlungPfad = (id: string) =>
 /** Difference of a Zählung with sign, e.g. `−2,00 €`; `keine` when it is 0. */
 export const differenzText = (cent: number) =>
   cent === 0 ? 'keine' : `${cent > 0 ? '+' : '−'}${centAnzeigen(Math.abs(cent))}`;
+
+export const belegPfad = (id: string) => `/finanzen/belege/${encodeURIComponent(id)}`;
+export const belegEntwurfPfad = (id: string) =>
+  `/finanzen/belege/entwurf/${encodeURIComponent(id)}`;
 
 export const kassenabrechnungPfad = (id: string) =>
   `/finanzen/kassen/abrechnungen/${encodeURIComponent(id)}`;

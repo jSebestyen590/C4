@@ -1,0 +1,37 @@
+import { Table } from '@mantine/core';
+import { centAnzeigen, type SteuersatzSumme } from '@c4/shared';
+import { satzText } from './belegFormular';
+import { BETRAG_STIL } from './finanzenDaten';
+
+/** Netto, Steuer and Brutto per tax rate plus the total of a Beleg. */
+export function BelegSummen({
+  jeSteuersatz,
+  summeCent,
+}: Readonly<{ jeSteuersatz: readonly SteuersatzSumme[]; summeCent: number }>) {
+  return (
+    <Table verticalSpacing={4} tabularNums aria-label="Summen je Steuersatz">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Steuersatz</Table.Th>
+          <Table.Th style={BETRAG_STIL}>Netto</Table.Th>
+          <Table.Th style={BETRAG_STIL}>Steuer</Table.Th>
+          <Table.Th style={BETRAG_STIL}>Brutto</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {jeSteuersatz.map((g) => (
+          <Table.Tr key={g.satz}>
+            <Table.Td>{satzText(g.satz)}</Table.Td>
+            <Table.Td style={BETRAG_STIL}>{centAnzeigen(g.netto)}</Table.Td>
+            <Table.Td style={BETRAG_STIL}>{centAnzeigen(g.steuer)}</Table.Td>
+            <Table.Td style={BETRAG_STIL}>{centAnzeigen(g.brutto)}</Table.Td>
+          </Table.Tr>
+        ))}
+        <Table.Tr fw={700}>
+          <Table.Td colSpan={3}>Summe</Table.Td>
+          <Table.Td style={BETRAG_STIL}>{centAnzeigen(summeCent)}</Table.Td>
+        </Table.Tr>
+      </Table.Tbody>
+    </Table>
+  );
+}
