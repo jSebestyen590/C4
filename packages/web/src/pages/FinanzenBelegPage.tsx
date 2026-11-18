@@ -14,6 +14,7 @@ import {
   Textarea,
   TextInput,
   Title,
+  useMatches,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
@@ -104,9 +105,16 @@ export function FinanzenBelegPage() {
   const bargeld = useBargeld();
   const rechnungssteller = useRechnungssteller(false);
   const mitglieder = useMitgliederListe();
+  // Set once the draft is booked or deleted, so the removed query is not fetched again (404).
+  const [erledigt, setErledigt] = useState(false);
+  // Sticky preview only beside the form (lg+); stacked on phones it would cover the form.
+  const vorschauStil = useMatches({
+    base: undefined,
+    lg: { position: 'sticky' as const, top: 16 },
+  });
   const entwurf = useQuery({
     queryKey: finanzenKeys.belegEntwurf(id),
-    enabled: !!id,
+    enabled: !!id && !erledigt,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     queryFn: async () =>
@@ -230,6 +238,7 @@ export function FinanzenBelegPage() {
         queryKey: finanzenKeys.alle,
         predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
       });
+      setErledigt(true);
       qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
       notifications.show({
         color: 'green',
@@ -330,7 +339,7 @@ export function FinanzenBelegPage() {
       </Group>
       {speicherFehler && <Alert color="red">{speicherFehler}</Alert>}
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
-        <Stack style={{ position: 'sticky', top: 16 }}>
+        <Stack style={vorschauStil}>
           <BelegDateiFeld
             datei={form.datei}
             vorschauUrl={dateiUrl}
@@ -849,6 +858,7 @@ export function FinanzenBelegPage() {
               queryKey: finanzenKeys.alle,
               predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
             });
+            setErledigt(true);
             qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
             void navigate('/finanzen/belege', { replace: true });
           }}
