@@ -226,7 +226,11 @@ export function FinanzenBelegPage() {
     onSuccess: (ergebnis) => {
       warnung.abgeschlossen();
       schluessel.current = null;
-      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
+      void qc.invalidateQueries({
+        queryKey: finanzenKeys.alle,
+        predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
+      });
+      qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
       notifications.show({
         color: 'green',
         autoClose: HINWEIS_DAUER_MS,
@@ -318,9 +322,11 @@ export function FinanzenBelegPage() {
       <ZurueckLink to="/finanzen/belege">Belege</ZurueckLink>
       <Group justify="space-between" align="flex-end" wrap="wrap">
         <Title order={2}>{id ? 'Beleg-Entwurf' : 'Neuer Beleg'}</Title>
-        <Text size="sm" c={stand === 'fehler' ? 'red' : 'dimmed'} role="status">
-          {SPEICHER_TEXT[stand]}
-        </Text>
+        {(id || stand !== 'gespeichert') && (
+          <Text size="sm" c={stand === 'fehler' ? 'red' : 'dimmed'} role="status">
+            {SPEICHER_TEXT[stand]}
+          </Text>
+        )}
       </Group>
       {speicherFehler && <Alert color="red">{speicherFehler}</Alert>}
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
@@ -328,6 +334,7 @@ export function FinanzenBelegPage() {
           <BelegDateiFeld
             datei={form.datei}
             vorschauUrl={dateiUrl}
+            doppeltText={entwurf.data?.warnungen.find((w) => w.code === 'datei_doppelt')?.text}
             fehler={fz('datei') && !form.eigenbeleg ? fz('datei') : undefined}
             onDatei={(datei: BelegDateiDaten, url) => {
               setLokaleUrl(url);
@@ -681,6 +688,20 @@ export function FinanzenBelegPage() {
                   error={fz('zahlweg')}
                   data-nav=""
                 />
+                {form.zahlweg === 'bar' && (
+                  <Select
+                    label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
+                    placeholder="Fach suchen"
+                    searchable
+                    selectFirstOptionOnChange
+                    data={faecher.map((x) => ({ value: x.id, label: x.name }))}
+                    value={form.fachId}
+                    onChange={(v) => aendern((f) => ({ ...f, fachId: v }))}
+                    nothingFoundMessage="Kein Fach gefunden"
+                    error={fz('fach')}
+                    data-nav=""
+                  />
+                )}
                 {form.zahlweg && form.zahlweg !== 'auslage' && (
                   <DatumFeld
                     label={<FeldLabel text="Bezahldatum" hilfe={HILFE.belege.bezahldatum} />}
@@ -708,19 +729,6 @@ export function FinanzenBelegPage() {
               </SimpleGrid>
               {form.zahlweg === 'bar' && (
                 <Stack gap="xs">
-                  <Select
-                    label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
-                    placeholder="Fach suchen"
-                    searchable
-                    selectFirstOptionOnChange
-                    data={faecher.map((x) => ({ value: x.id, label: x.name }))}
-                    value={form.fachId}
-                    onChange={(v) => aendern((f) => ({ ...f, fachId: v }))}
-                    nothingFoundMessage="Kein Fach gefunden"
-                    error={fz('fach')}
-                    data-nav=""
-                    maw={{ base: '100%', sm: 360 }}
-                  />
                   <Group gap={2}>
                     <Text fw={500} size="sm">
                       Münzen und Scheine
@@ -837,7 +845,11 @@ export function FinanzenBelegPage() {
             );
             window.clearTimeout(timer.current);
             warnung.abgeschlossen();
-            void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
+            void qc.invalidateQueries({
+              queryKey: finanzenKeys.alle,
+              predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
+            });
+            qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
             void navigate('/finanzen/belege', { replace: true });
           }}
         >

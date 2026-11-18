@@ -59,6 +59,7 @@ export function BelegBuchenDialog({
       return neu;
     });
   const zahlweg = form.zahlweg as Zahlweg;
+  const stueckelung = stueckelungAus(form.gegeben, form.wechselgeld);
   return (
     <Modal
       opened
@@ -97,7 +98,18 @@ export function BelegBuchenDialog({
           </Text>
           {zahlweg === 'bar' && (
             <Text size="sm">
-              Stückelung: {stueckelungText(stueckelungAus(form.gegeben, form.wechselgeld))}
+              {[
+                [
+                  'Abgang',
+                  stueckelung.filter((x) => x.anzahl < 0).map((x) => ({ ...x, anzahl: -x.anzahl })),
+                ],
+                ['Wechselgeld', stueckelung.filter((x) => x.anzahl > 0)],
+              ]
+                .filter(([, liste]) => (liste?.length ?? 0) > 0)
+                .map(
+                  ([titel, liste]) => `${titel}: ${stueckelungText(liste as typeof stueckelung)}`,
+                )
+                .join('; ')}
             </Text>
           )}
           <Text size="sm" c="dimmed">

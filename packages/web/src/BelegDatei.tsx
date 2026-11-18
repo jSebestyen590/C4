@@ -139,6 +139,7 @@ export function BelegDateiFeld({
   onEntfernen,
   disabled = false,
   fehler,
+  doppeltText,
 }: Readonly<{
   datei: BelegDateiDaten | null;
   /** Presigned or local URL of the file for the preview. */
@@ -147,6 +148,8 @@ export function BelegDateiFeld({
   onEntfernen: () => void;
   disabled?: boolean;
   fehler?: string;
+  /** Warning text of a loaded draft whose file is already part of a booked Beleg. */
+  doppeltText?: string;
 }>) {
   const api = useApi();
   const waehlen = useRef<HTMLInputElement>(null);
@@ -284,6 +287,11 @@ export function BelegDateiFeld({
             {doppelt.nummer}
           </Anchor>{' '}
           gebucht. Beim Buchen musst du das bestätigen.
+        </Alert>
+      )}
+      {!doppelt && datei && doppeltText && (
+        <Alert color="orange" title="Diese Datei gibt es schon">
+          {doppeltText}
         </Alert>
       )}
       {datei && (
