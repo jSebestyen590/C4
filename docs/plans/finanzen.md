@@ -343,7 +343,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
 | 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                               |
-| 4 Belege                  | offen                                                                                                                                              |
+| 4 Belege                  | 4a geplant ([finanzen-belege.md](./finanzen-belege.md)), 4b offen (Einreichen, Lager-Posten)                                                                                                                                        |
 | 5 GoBD-Abschluss          | offen                                                                                                                                              |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
 | 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                     |
