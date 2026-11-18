@@ -41,9 +41,16 @@ oder als erledigt markieren.
    - **Fehlbestand je Nennwert** (Beispiel: Grundbestand 30 × 1 €, Ist 10 × 1 €, Ziel-Fach hat nur
      10 × 1 € → 10 fehlen): Die Zeile ist markiert („Es fehlen 10 × 1,00 €“) und bietet direkt zwei
      Lösungen, auch kombinierbar:
-     - **Aus anderem Fach holen**: Fach wählen (Auswahl zeigt den Bestand dieses Nennwerts je Fach,
-       vorbelegt mit dem ersten Fach, das genug hat), Anzahl vorbelegt mit dem Rest. Geht direkt in die
-       Kasse, in derselben Buchung (eigene Zeilen: anderes Fach −, Kasse +).
+     - **Münzrollen ins Ziel-Fach holen**: Münzen liegen in Rollen. Fach wählen (Auswahl zeigt den
+       Bestand dieses Nennwerts je Fach, vorbelegt mit dem ersten Fach, das genug hat), Anzahl in
+       **ganzen Rollen** (vorbelegt: so viele Rollen, wie für den Rest nötig, z. B. 1 × 25 × 1 €; als
+       Rollen und Stück angezeigt). Die Rollen gehen ins **Ziel-Fach** (z. B. Zählbrett), und aus dem
+       Ziel-Fach wird die Kasse aufgefüllt; der Rest der Rolle bleibt im Ziel-Fach (im Beispiel: 25 ins
+       Zählbrett, 20 in die Kasse, Zählbrett danach 15). Alles in derselben Buchung. Hat das Quell-Fach
+       keine ganze Rolle mehr, ist die Stückzahl frei änderbar (Hinweis „keine ganze Rolle“).
+     - Rollengröße je Nennwert als Konstante `MUENZROLLE` in `@c4/shared` (Euro-Standard: 1, 2, 5 ct je
+       50; 10, 20, 50 ct je 40; 1 €, 2 € je 25; Scheine ohne Rolle). Kein Stammdatum, solange nichts
+       anderes nötig ist.
      - **Grundbestand anpassen**: setzt den Grundbestand dieses Nennwerts auf das Erreichbare
        (vorbelegt Ist + verfügbare Münzen); wird mit der Abrechnung **dauerhaft** in den Stammdaten der
        Kasse gespeichert (gleiche Transaktion), die Zusammenfassung nennt es („Grundbestand 1,00 €:
@@ -59,7 +66,7 @@ oder als erledigt markieren.
        freien Buchungen berechnen – vorhandene Logik in `@c4/shared` nutzen)
      - Kasse −Transfer, Stückelung −Transfer (nur wenn Transfer ≠ 0)
      - Ziel-Fach +Transfer, Stückelung +Transfer (nur wenn Transfer ≠ 0)
-     - je weiterem Fach (Nachschub): Fach −Betrag und Kasse +Betrag, jeweils mit Stückelung
+     - je Nachschub-Fach: Fach −Rollen und Ziel-Fach +Rollen (mit Stückelung); das Auffüllen der Kasse aus dem Ziel-Fach steckt in den Transfer-Zeilen oben
      - Einnahme 0 → keine Erlös-/Einnahme-Zeilen; ganz ohne Zeilen → Abrechnung ohne Buchung (`buchung_id` null), wie `zaehlenTx`.
      Bestandsregel `pruefeBestand` gilt in der Transaktion.
    - Danach: „Abrechnung gespeichert – Buchung Nr. X ansehen“.
@@ -83,7 +90,7 @@ oder als erledigt markieren.
 - `fin_kassenabrechnung_posten` (nur INSERT): `abrechnung_id`, `nennwert_cent`, `soll`, `ist`,
   `grundbestand_vorher`, `grundbestand_nachher`.
 - `fin_kassenabrechnung_transfers` (nur INSERT): `abrechnung_id`, `fach_id`, `nennwert_cent`, `anzahl`
-  (positiv = Kasse → Fach, negativ = Fach → Kasse); umfasst Ziel-Fach und Nachschub-Fächer.
+  (Ziel-Fach: positiv = Kasse → Ziel-Fach, negativ = Ziel-Fach → Kasse; Nachschub-Fach: negativ = Fach → Ziel-Fach).
 - `fin_kassenabrechnung_events` (nur INSERT): `abrechnung_id`, `event_id`, `zaehlung_id` (nullable),
   `betrag_cent`.
 - `QUELLE_TYPEN` um `kassenabrechnung` ergänzen (nicht in `MANUELLE_QUELLE_TYPEN`).
@@ -98,11 +105,11 @@ oder als erledigt markieren.
   `kasseAendernSchema`, `kassenzaehlungEingabeSchema` (idempotenzSchluessel, kontoId, eventId, ist
   [{nennwertCent, anzahl ≥ 0}]), `kassenabrechnungEingabeSchema` (idempotenzSchluessel, kontoId, datum,
   ist, erloesKontoId, zielFachId, transfers [{fachId, nennwertCent, anzahl}] (Ziel-Fach + Nachschub;
-  Nachschub-Fächer nur mit negativer Anzahl), grundbestandNeu? [{nennwertCent, anzahl}] (nur geänderte
+  Nachschub-Fächer nur mit negativer Anzahl, ihr Gegenstück landet im Ziel-Fach), grundbestandNeu? [{nennwertCent, anzahl}] (nur geänderte
   Nennwerte), events [{eventId, zaehlungId?, betragCent}]).
 - `eventEinnahmenVorschlag(sollCent, zaehlungen)` → je Event Betrag (Differenzen der neuesten Zählungen).
 - `transferVorschlag(ist, grundbestand, bestandZielFach)` → Transfer + `fehlbestand` je Nennwert.
-- `nachschubVorschlag(fehlbestand, bestandFaecher)` → je Nennwert erstes Fach mit genug Bestand.
+- `nachschubVorschlag(fehlbestand, bestandFaecher)` → je Nennwert erstes Fach mit genug Bestand, Anzahl auf ganze `MUENZROLLE` aufgerundet (höchstens Bestand).
 - `berechneKassenabrechnung({ kasse, bestand, ist, transfer, erloesKonto, zielFach, events })` →
   `{ sollCent, istCent, einnahmeCent, transferCent, fehlerCent, kasseDanach, zeilen, warnungen }`; der
   Server rechnet damit erneut (Client-Werte für Fehler/Einnahme werden nicht übernommen).
@@ -166,7 +173,7 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 - `packages/shared/src/kassen.test.ts`: Vorschlag Event-Einnahmen (Beispiel 100/50/40 → Fehler 10),
   neueste Zählung je Event gilt, Transfer-Vorschlag mit knappem Ziel-Fach, Zeilen summieren auf 0,
   Stückelung je Zeile = Betrag, Einnahme negativ, keine Zeilen bei Ist = Soll und Transfer 0,
-  Fehlbestand (30/10/10-Beispiel) mit Nachschub aus anderem Fach bzw. mit angepasstem Grundbestand.
+  Fehlbestand (30/10/10-Beispiel) mit Rolle (25) aus anderem Fach ins Zählbrett und 20 in die Kasse (Zählbrett danach 15) bzw. mit angepasstem Grundbestand; Quell-Fach ohne ganze Rolle.
 - `routes/finanzen.test.ts` (neues `describe('Kassen')`): Rechte je Route (inkl. `kasse:zaehlen` ohne
   Finanzrecht sieht keine Bestände), Kasse anlegen/ändern (Validierung Erlöskonto/Fach), Dienst-Zählung
   (Event fehlt/abgesagt → 400, idempotent), Abrechnung bucht korrekte Zeilen, Bestandsregel am Ziel-Fach und an Nachschub-Fächern, Grundbestand-Anpassung wird gespeichert,
@@ -188,5 +195,5 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 
 - `tester`: `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Deploy dev, `browser-check`: Kasse anlegen (Desktop 1440×900, Tastatur), Dienst-Zählung am Event bei
-  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Fehlbestand einmal per Nachschub und einmal per Grundbestand lösen, Buchung im Journal prüfen, Bargeld-Bestände
+  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Fehlbestand einmal per Münzrolle ins Zählbrett und einmal per Grundbestand lösen, Buchung im Journal prüfen, Bargeld-Bestände
   danach, Storno → Zählungen wieder offen, Event löschen gesperrt.
