@@ -341,7 +341,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
-| 3 Barkassen               | umgesetzt (PR #…, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                |
+| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                |
 | 4 Belege                  | offen                                                                                                                                              |
 | 5 GoBD-Abschluss          | offen                                                                                                                                              |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
