@@ -84,8 +84,10 @@ export const kasseEingabeSchema = z.object({
 export type KasseEingabe = z.output<typeof kasseEingabeSchema>;
 export type KasseEingabeInput = z.input<typeof kasseEingabeSchema>;
 
-/** Body of `PUT /api/finanzen/kassen/:kontoId`: the name changes in the Kontenplan. */
-export const kasseAendernSchema = kasseEingabeSchema.omit({ name: true });
+/** Body of `PUT /api/finanzen/kassen/:kontoId`: the optional `name` renames the Fach like the Kontenplan does. */
+export const kasseAendernSchema = kasseEingabeSchema.omit({ name: true }).extend({
+  name: name('einen Namen').optional(),
+});
 export type KasseAendern = z.output<typeof kasseAendernSchema>;
 export type KasseAendernInput = z.input<typeof kasseAendernSchema>;
 

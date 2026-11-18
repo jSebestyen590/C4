@@ -27,7 +27,7 @@ export function KasseFormular({
   const api = useApi();
   const qc = useQueryClient();
   const konten = useKonten(false);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(kasse?.name ?? '');
   const [grund, setGrund] = useState<Mengen>(grundbestandMengen(kasse?.grundbestand ?? []));
   const [erloes, setErloes] = useState<string | null>(kasse?.standardErloesKonto.id ?? null);
   const [ziel, setZiel] = useState<string | null>(kasse?.standardZielFach.id ?? null);
@@ -52,7 +52,10 @@ export function KasseFormular({
       };
       return pruefen(
         kasse
-          ? await api.finanzen.kassen[':kontoId'].$put({ param: { kontoId: kasse.kontoId }, json })
+          ? await api.finanzen.kassen[':kontoId'].$put({
+              param: { kontoId: kasse.kontoId },
+              json: { name: name.trim(), ...json },
+            })
           : await api.finanzen.kassen.$post({ json: { name: name.trim(), ...json } }),
       );
     },
@@ -65,7 +68,7 @@ export function KasseFormular({
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setVersucht(true);
-    if ((!kasse && name.trim() === '') || !erloes || !ziel) return;
+    if (name.trim() === '' || !erloes || !ziel) return;
     speichern.mutate();
   };
 
@@ -78,7 +81,7 @@ export function KasseFormular({
     >
       <form onSubmit={onSubmit} noValidate>
         <Stack>
-          {!kasse && (
+          {
             <TextInput
               label={<FeldLabel text="Name" hilfe={HILFE.kassen.kasse} />}
               value={name}
@@ -87,7 +90,7 @@ export function KasseFormular({
               error={versucht && name.trim() === '' ? 'Bitte gib einen Namen ein.' : undefined}
               data-autofocus
             />
-          )}
+          }
           <Stack gap={4}>
             <FeldLabel text="Grundbestand" hilfe={HILFE.kassen.grundbestand} />
             <StueckelungFeld

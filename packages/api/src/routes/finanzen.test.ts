@@ -1237,6 +1237,14 @@ describe('finanzen', () => {
       );
       expect((await aendern('nix', {})).status).toBe(404);
       expect((await aendern(k.kasse, {})).status).toBe(200);
+      // Rename like in the Kontenplan: same validation.
+      expect((await aendern(k.kasse, { name: '' })).status).toBe(400);
+      expect((await aendern(k.kasse, { name: 'x'.repeat(300) })).status).toBe(400);
+      expect((await aendern(k.kasse, { name: '  Festkasse ' })).status).toBe(200);
+      const namen = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      expect(namen.find((x) => x.kontoId === k.kasse)!.name).toBe('Festkasse');
       const liste = (await (
         await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
       ).json()) as Dto[];

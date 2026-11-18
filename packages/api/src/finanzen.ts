@@ -1489,6 +1489,8 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             daten.standardZielFachId,
             kontoId,
           );
+          if (daten.name !== undefined)
+            await tx.update(finKonten).set({ name: daten.name }).where(eq(finKonten.id, kontoId));
           await tx
             .update(finKassen)
             .set({

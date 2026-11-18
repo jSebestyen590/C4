@@ -262,7 +262,7 @@ Fächer, nie auf den Safe selbst (Gruppenregel).
 
 Eine **Kasse** ist ein Fach des Safes (Bargeld, Stückelung, Eltern `safe`) mit Zusatzdaten in `fin_kassen`:
 **Grundbestand** je Nennwert (`fin_kassen_grundbestand`, änderbar), **Standard-Erlöskonto** und **Standard-Ziel-Fach**.
-Name und Archivieren laufen über den Kontenplan; archivierte Kassen verschwinden aus den Auswahlen. Die Kasse
+Der Name ist der Kontoname des Fachs und lässt sich im Formular „Bearbeiten“ ändern (gleiche Prüfung wie im Kontenplan, der keine eindeutigen Namen verlangt), das Archivieren läuft über den Kontenplan; archivierte Kassen verschwinden aus den Auswahlen. Die Kasse
 erscheint wie jedes Fach unter „Bargeld“ und wird mit Umbuchen gefüllt. Reine Logik: `packages/shared/src/kassen.ts`
 (`berechneKassenabrechnung`, Vorschläge, Schemas, DTOs, `MUENZROLLE`), Prüfung und Hilfen für Store und Fake in
 `packages/api/src/finanzenKassen.ts`.

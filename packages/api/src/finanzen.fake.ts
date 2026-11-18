@@ -498,6 +498,7 @@ export function createFakeFinanzenStore() {
       const kasse = kassen.get(kontoId);
       if (!kasse) return false;
       kassenKontenPruefen(daten.standardErloesKontoId, daten.standardZielFachId, kontoId);
+      if (daten.name !== undefined) konten.get(kontoId)!.name = daten.name;
       kasse.erloesId = daten.standardErloesKontoId;
       kasse.zielId = daten.standardZielFachId;
       kasse.grundbestand = grundbestandMap(daten.grundbestand);
