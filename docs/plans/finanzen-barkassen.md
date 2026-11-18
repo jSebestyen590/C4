@@ -37,8 +37,18 @@ oder als erledigt markieren.
      **Fehler = Einnahme − Σ Event-Einnahmen**, rechnet live mit.
    - Rückführung: Transfer je Nennwert vorbelegt mit Ist − Grundbestand (positiv = in das Ziel-Fach,
      negativ = aus dem Ziel-Fach), änderbar; begrenzt durch Ist (Kasse) bzw. Bestand des Ziel-Fachs
-     (Fehlermeldung je Nennwert wie bei Umbuchen). Fehlt im Ziel-Fach eine Münze, zeigt die Zeile das
-     und schlägt nichts Unmögliches vor (Vorschlag = min(Bedarf, Bestand Ziel-Fach)).
+     (Fehlermeldung je Nennwert wie bei Umbuchen). Vorschlag = min(Bedarf, Bestand Ziel-Fach).
+   - **Fehlbestand je Nennwert** (Beispiel: Grundbestand 30 × 1 €, Ist 10 × 1 €, Ziel-Fach hat nur
+     10 × 1 € → 10 fehlen): Die Zeile ist markiert („Es fehlen 10 × 1,00 €“) und bietet direkt zwei
+     Lösungen, auch kombinierbar:
+     - **Aus anderem Fach holen**: Fach wählen (Auswahl zeigt den Bestand dieses Nennwerts je Fach,
+       vorbelegt mit dem ersten Fach, das genug hat), Anzahl vorbelegt mit dem Rest. Geht direkt in die
+       Kasse, in derselben Buchung (eigene Zeilen: anderes Fach −, Kasse +).
+     - **Grundbestand anpassen**: setzt den Grundbestand dieses Nennwerts auf das Erreichbare
+       (vorbelegt Ist + verfügbare Münzen); wird mit der Abrechnung **dauerhaft** in den Stammdaten der
+       Kasse gespeichert (gleiche Transaktion), die Zusammenfassung nennt es („Grundbestand 1,00 €:
+       30 → 20“).
+     Bleibt trotzdem ein Rest, greift die Warnung „Kasse danach ≠ Grundbestand“.
    - Warnungen (bestätigungspflichtig, nicht blockierend): Fehler ≠ 0 („Abweichung zur letzten
      Dienst-Zählung: 10,00 €“), Kasse danach ≠ Grundbestand (je Nennwert), keine Dienst-Zählung seit
      letzter Abrechnung, Einnahme negativ (über `saldoWarnungen` Erlös im Soll), Datum in der Zukunft.
@@ -49,6 +59,7 @@ oder als erledigt markieren.
        freien Buchungen berechnen – vorhandene Logik in `@c4/shared` nutzen)
      - Kasse −Transfer, Stückelung −Transfer (nur wenn Transfer ≠ 0)
      - Ziel-Fach +Transfer, Stückelung +Transfer (nur wenn Transfer ≠ 0)
+     - je weiterem Fach (Nachschub): Fach −Betrag und Kasse +Betrag, jeweils mit Stückelung
      - Einnahme 0 → keine Erlös-/Einnahme-Zeilen; ganz ohne Zeilen → Abrechnung ohne Buchung (`buchung_id` null), wie `zaehlenTx`.
      Bestandsregel `pruefeBestand` gilt in der Transaktion.
    - Danach: „Abrechnung gespeichert – Buchung Nr. X ansehen“.
@@ -70,11 +81,13 @@ oder als erledigt markieren.
   `erloes_konto_id`, `ziel_fach_id`, `soll_cent`, `ist_cent`, `einnahme_cent`, `transfer_cent`,
   `fehler_cent`, `erstellt_von`, `erstellt_am`, `idempotenz_schluessel` (unique).
 - `fin_kassenabrechnung_posten` (nur INSERT): `abrechnung_id`, `nennwert_cent`, `soll`, `ist`,
-  `grundbestand`, `transfer`.
+  `grundbestand_vorher`, `grundbestand_nachher`.
+- `fin_kassenabrechnung_transfers` (nur INSERT): `abrechnung_id`, `fach_id`, `nennwert_cent`, `anzahl`
+  (positiv = Kasse → Fach, negativ = Fach → Kasse); umfasst Ziel-Fach und Nachschub-Fächer.
 - `fin_kassenabrechnung_events` (nur INSERT): `abrechnung_id`, `event_id`, `zaehlung_id` (nullable),
   `betrag_cent`.
 - `QUELLE_TYPEN` um `kassenabrechnung` ergänzen (nicht in `MANUELLE_QUELLE_TYPEN`).
-- Die fünf Nur-INSERT-Tabellen in `finanzenNurInsert.test.ts` (`TABELLEN` und `SQL_TABELLEN`) aufnehmen.
+- Die sechs Nur-INSERT-Tabellen in `finanzenNurInsert.test.ts` (`TABELLEN` und `SQL_TABELLEN`) aufnehmen.
 - Event-Löschsperre: `eventsLoeschenTx` (`packages/api/src/kalender.ts` ~1471–1500, auch Massenlöschen
   ~1542) prüft zusätzlich `fin_kassenzaehlungen.event_id` und `fin_kassenabrechnung_events.event_id`
   (Sperre `finanzen`, bestehender Text passt).
@@ -84,10 +97,12 @@ oder als erledigt markieren.
 - Schemas: `kasseEingabeSchema` (name, grundbestand, standardErloesKontoId, standardZielFachId),
   `kasseAendernSchema`, `kassenzaehlungEingabeSchema` (idempotenzSchluessel, kontoId, eventId, ist
   [{nennwertCent, anzahl ≥ 0}]), `kassenabrechnungEingabeSchema` (idempotenzSchluessel, kontoId, datum,
-  ist, transfer [{nennwertCent, anzahl}], erloesKontoId, zielFachId, events [{eventId, zaehlungId?,
-  betragCent}]).
+  ist, erloesKontoId, zielFachId, transfers [{fachId, nennwertCent, anzahl}] (Ziel-Fach + Nachschub;
+  Nachschub-Fächer nur mit negativer Anzahl), grundbestandNeu? [{nennwertCent, anzahl}] (nur geänderte
+  Nennwerte), events [{eventId, zaehlungId?, betragCent}]).
 - `eventEinnahmenVorschlag(sollCent, zaehlungen)` → je Event Betrag (Differenzen der neuesten Zählungen).
-- `transferVorschlag(ist, grundbestand, bestandZielFach)`.
+- `transferVorschlag(ist, grundbestand, bestandZielFach)` → Transfer + `fehlbestand` je Nennwert.
+- `nachschubVorschlag(fehlbestand, bestandFaecher)` → je Nennwert erstes Fach mit genug Bestand.
 - `berechneKassenabrechnung({ kasse, bestand, ist, transfer, erloesKonto, zielFach, events })` →
   `{ sollCent, istCent, einnahmeCent, transferCent, fehlerCent, kasseDanach, zeilen, warnungen }`; der
   Server rechnet damit erneut (Client-Werte für Fehler/Einnahme werden nicht übernommen).
@@ -150,10 +165,11 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 
 - `packages/shared/src/kassen.test.ts`: Vorschlag Event-Einnahmen (Beispiel 100/50/40 → Fehler 10),
   neueste Zählung je Event gilt, Transfer-Vorschlag mit knappem Ziel-Fach, Zeilen summieren auf 0,
-  Stückelung je Zeile = Betrag, Einnahme negativ, keine Zeilen bei Ist = Soll und Transfer 0.
+  Stückelung je Zeile = Betrag, Einnahme negativ, keine Zeilen bei Ist = Soll und Transfer 0,
+  Fehlbestand (30/10/10-Beispiel) mit Nachschub aus anderem Fach bzw. mit angepasstem Grundbestand.
 - `routes/finanzen.test.ts` (neues `describe('Kassen')`): Rechte je Route (inkl. `kasse:zaehlen` ohne
   Finanzrecht sieht keine Bestände), Kasse anlegen/ändern (Validierung Erlöskonto/Fach), Dienst-Zählung
-  (Event fehlt/abgesagt → 400, idempotent), Abrechnung bucht korrekte Zeilen, Bestandsregel am Ziel-Fach,
+  (Event fehlt/abgesagt → 400, idempotent), Abrechnung bucht korrekte Zeilen, Bestandsregel am Ziel-Fach und an Nachschub-Fächern, Grundbestand-Anpassung wird gespeichert,
   idempotent, Storno → Zählungen wieder offen, Server ignoriert Client-Fehlerbetrag.
 - Kalender-Test: Event mit Kassenzählung nicht löschbar.
 - `finanzenNurInsert.test.ts` um die neuen Tabellen.
@@ -172,5 +188,5 @@ Store-Erweiterung in `packages/api/src/finanzen.ts` (`FinanzenStore`) + Fake `fi
 
 - `tester`: `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Deploy dev, `browser-check`: Kasse anlegen (Desktop 1440×900, Tastatur), Dienst-Zählung am Event bei
-  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Buchung im Journal prüfen, Bargeld-Bestände
+  375×812, Abrechnung mit zwei Event-Zählungen und Fehler, Fehlbestand einmal per Nachschub und einmal per Grundbestand lösen, Buchung im Journal prüfen, Bargeld-Bestände
   danach, Storno → Zählungen wieder offen, Event löschen gesperrt.
