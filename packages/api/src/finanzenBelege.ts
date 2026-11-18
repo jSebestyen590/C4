@@ -200,10 +200,8 @@ export function planeErstattung(
   const offen = new Map(kontext.offen.map((b) => [b.id, b]));
   const ids = [...new Set(eingabe.belegIds)];
   const fehler: string[] = [];
-  for (const id of ids) {
-    const b = offen.get(id);
-    if (!b) fehler.push('Ein Beleg ist nicht (mehr) als Auslage dieses Mitglieds offen.');
-  }
+  if (ids.some((id) => !offen.has(id)))
+    fehler.push('Ein Beleg ist nicht (mehr) als Auslage dieses Mitglieds offen.');
   const summeCent = ids.reduce((s, id) => s + (offen.get(id)?.summeCent ?? 0), 0);
   const zielId = eingabe.zahlweg === 'bar' ? eingabe.fachId! : 'bank';
   const zeilen = erstattungBuchungszeilen(summeCent, {
