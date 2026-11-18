@@ -319,7 +319,7 @@ function Zusammenfassung({
                   ` (Umsatzsteuer ${(erloesZeile.steuersatz ?? 0) / 100} %: netto ${centAnzeigen(erloesZeile.nettoCent ?? 0)}, Steuer ${centAnzeigen(erloesZeile.steuerCent ?? 0)})`}
               </Text>
             )}
-            <Box visibleFrom="sm">
+            <Box visibleFrom="md">
               <Table.ScrollContainer minWidth={560}>
                 <Table tabularNums verticalSpacing={4} horizontalSpacing={6} fz="xs" withRowBorders>
                   <Table.Thead>
@@ -361,7 +361,7 @@ function Zusammenfassung({
                 </Table>
               </Table.ScrollContainer>
             </Box>
-            <Stack gap="xs" hiddenFrom="sm">
+            <Stack gap="xs" hiddenFrom="md">
               {matrix.map((z) => (
                 <Paper key={z.key} withBorder p="sm">
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
