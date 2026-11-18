@@ -11,6 +11,8 @@ import {
   kassenabrechnungenAbfrageSchema,
   kassenzaehlungEingabeSchema,
   kassenzaehlungenAbfrageSchema,
+  eventKassenSchema,
+  type EventKassenDto,
   type KasseDto,
   type KasseKurzDto,
   type KassenabrechnungDetailDto,
@@ -336,6 +338,29 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         };
         return c.json(dto);
       })
+      // The Kassen of an event (Finanzer:in): explicit list, or back to the default of the Kategorie.
+      .put(
+        '/finanzen/events/:eventId/kassen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', eventKassenSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen
+              .eventKassenFestlegen(c.req.param('eventId'), c.req.valid('json').kontoIds)
+              .catch(finanzenFehler),
+            'Event nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/finanzen/events/:eventId/kassen', auth, finanzenBuchen, async (c) => {
+        gefunden(
+          await deps.finanzen.eventKassenFestlegen(c.req.param('eventId'), null).catch(finanzenFehler),
+          'Event nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
       // For everyone who may count: the active Kassen without stock and the counts of an event.
       .get('/kassen', auth, kasseZaehlen, async (c) => {
         const dto: KasseKurzDto[] = await deps.finanzen.kassenKurz();
@@ -347,14 +372,17 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         kasseZaehlen,
         zValidator('query', kassenzaehlungenAbfrageSchema),
         async (c) => {
-          const [liste, mitglied] = await Promise.all([
-            deps.finanzen.kassenzaehlungen(c.req.valid('query').eventId),
+          const [e, mitglied] = await Promise.all([
+            deps.finanzen.eventKassen(c.req.valid('query').eventId),
             finanzenMitglieder(),
           ]);
-          const dto: KassenzaehlungDto[] = liste.map((z) => ({
-            ...z,
-            gezaehltVon: mitglied(z.gezaehltVon),
-          }));
+          const eintrag = gefunden(e, 'Event nicht gefunden');
+          const dto: EventKassenDto = {
+            ...eintrag,
+            zaehlungen: eintrag.zaehlungen.map(
+              (z): KassenzaehlungDto => ({ ...z, gezaehltVon: mitglied(z.gezaehltVon) }),
+            ),
+          };
           return c.json(dto);
         },
       )

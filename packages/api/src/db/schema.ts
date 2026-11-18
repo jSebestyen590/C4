@@ -1530,3 +1530,38 @@ export const finKassenabrechnungEvents = pgTable(
   },
   (t) => [primaryKey({ columns: [t.abrechnungId, t.eventId] })],
 );
+
+/** Standard Kassen per event Kategorie (editable). */
+export const finKassenKategorien = pgTable(
+  'fin_kassen_kategorien',
+  {
+    kategorieId: text('kategorie_id')
+      .notNull()
+      .references(() => eventKategorien.id),
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+  },
+  (t) => [primaryKey({ columns: [t.kategorieId, t.kontoId] })],
+);
+
+/** Marks an event whose Kassen were set explicitly (editable, deleted with the event). */
+export const finEventKassenAngepasst = pgTable('fin_event_kassen_angepasst', {
+  eventId: text('event_id')
+    .primaryKey()
+    .references(() => events.id),
+});
+
+/** The Kassen of an explicitly set event (editable, deleted with the event). */
+export const finEventKassen = pgTable(
+  'fin_event_kassen',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.kontoId] })],
+);

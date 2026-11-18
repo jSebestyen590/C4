@@ -17,6 +17,7 @@ import {
   type KassenabrechnungListeEintrag,
   type KassenabrechnungVorschauEintrag,
   type KassenKonto,
+  type EventKassenEintrag,
   type KassenzaehlungEingabe,
   type KassenzaehlungEintrag,
   type KassenzaehlungErgebnisDto,
@@ -56,7 +57,10 @@ import {
   events,
   finBuchungen,
   finBuchungszeilen,
+  finEventKassen,
+  finEventKassenAngepasst,
   finKassen,
+  finKassenKategorien,
   finKassenabrechnungEvents,
   finKassenabrechnungPosten,
   finKassenabrechnungen,
@@ -74,6 +78,7 @@ import {
 } from './db/schema';
 import { mitWiederholung } from './db/wiederholung';
 import {
+  baueEventKassen,
   baueKasseDto,
   eventTitelAnzeige,
   kasseNutzbarFehler,
@@ -178,7 +183,13 @@ export interface FinanzenStore {
   /** The active Kassen without any stock (for the staff). */
   kassenKurz(): Promise<KasseKurzDto[]>;
   /** The Dienst-Zählungen of an event, newest first. */
-  kassenzaehlungen(eventId: string): Promise<KassenzaehlungEintrag[]>;
+  /**
+   * The Kassen section of an event: assigned Kassen (explicit list or the default of the Kategorie), counted ones,
+   * their income and the sum, plus the Dienst-Zählungen. Undefined when the event does not exist.
+   */
+  eventKassen(eventId: string): Promise<EventKassenEintrag | undefined>;
+  /** Sets the Kassen of an event explicitly, `null` goes back to the Kategorie default. False when the event does not exist. Throws BuchungUngueltig. */
+  eventKassenFestlegen(eventId: string, kontoIds: string[] | null): Promise<boolean>;
   /** Stores a Dienst-Zählung (no booking); throws BuchungUngueltig for an unknown or cancelled event or an unusable Kasse. */
   kasseZaehlen(eingabe: KassenzaehlungEingabe, sub: string): Promise<KassenzaehlungErgebnisDto>;
 }
@@ -311,6 +322,20 @@ const zaehlungEintrag = (
   differenzCent: z.differenzCent,
   buchung: z.buchungId && seq !== null ? { id: z.buchungId, seq } : null,
 });
+
+/** Per Kasse the amount of the newest Abrechnung (not reversed) that booked the event. */
+function abgerechneteBetraege(
+  zeilen: readonly { kontoId: string; buchungId: string | null; erstelltAm: Date; betragCent: number }[],
+  storniert: ReadonlySet<string | null>,
+): Map<string, number> {
+  const neueste = new Map<string, { erstelltAm: Date; betragCent: number }>();
+  for (const z of zeilen) {
+    if (z.buchungId !== null && storniert.has(z.buchungId)) continue;
+    const alt = neueste.get(z.kontoId);
+    if (!alt || z.erstelltAm > alt.erstelltAm) neueste.set(z.kontoId, z);
+  }
+  return new Map([...neueste].map(([k, v]) => [k, v.betragCent]));
+}
 
 const abrechnungEintrag = (
   a: {
@@ -893,7 +918,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     const verweisIds = [
       ...new Set(rows.flatMap((r) => [r.kasse.standardErloesKontoId, r.kasse.standardZielFachId])),
     ];
-    const [namen, { bestand }, grund, { nachKasse }, zaehlungen] = await Promise.all([
+    const [namen, { bestand }, grund, { nachKasse }, zaehlungen, kategorien] = await Promise.all([
       q
         .select({ id: finKonten.id, name: finKonten.name })
         .from(finKonten)
@@ -910,6 +935,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         })
         .from(finKassenzaehlungen)
         .where(inArray(finKassenzaehlungen.kontoId, ids)),
+      q.select().from(finKassenKategorien).where(inArray(finKassenKategorien.kontoId, ids)),
     ]);
     const name = new Map(namen.map((n) => [n.id, n.name]));
     return rows.map(({ kasse, konto }) => {
@@ -929,12 +955,74 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           name: name.get(kasse.standardZielFachId) ?? '',
         },
         abrechnungen,
+        standardKategorieIds: kategorien
+          .filter((k) => k.kontoId === kasse.kontoId)
+          .map((k) => k.kategorieId),
         zaehlungen: zaehlungen
           .filter((z) => z.kontoId === kasse.kontoId)
           .map((z) => ({ id: z.id, eventId: z.eventId, gezaehltAm: z.gezaehltAm.toISOString() })),
       });
       return { dto, seit: letzteAbrechnung(abrechnungen)?.erstelltAm ?? null };
     });
+  };
+
+  const zaehlungenVonEvent = async (eventId: string): Promise<KassenzaehlungEintrag[]> => {
+    const rows = await db
+      .select({ z: finKassenzaehlungen, kontoName: finKonten.name })
+      .from(finKassenzaehlungen)
+      .innerJoin(finKonten, eq(finKonten.id, finKassenzaehlungen.kontoId))
+      .where(eq(finKassenzaehlungen.eventId, eventId))
+      .orderBy(desc(finKassenzaehlungen.gezaehltAm), desc(finKassenzaehlungen.id));
+    if (rows.length === 0) return [];
+    const posten = await db
+      .select()
+      .from(finKassenzaehlungPosten)
+      .where(
+        inArray(
+          finKassenzaehlungPosten.zaehlungId,
+          rows.map((r) => r.z.id),
+        ),
+      );
+    // Rows are newest first: the first of a Kasse counts, the others are replaced.
+    const gilt = new Set<string>();
+    return rows.map((r): KassenzaehlungEintrag => {
+      const ersetzt = gilt.has(r.z.kontoId);
+      gilt.add(r.z.kontoId);
+      return {
+        id: r.z.id,
+        kontoId: r.z.kontoId,
+        kontoName: r.kontoName,
+        eventId: r.z.eventId,
+        summeCent: r.z.summeCent,
+        posten: stueckelungVollstaendig(
+          new Map(
+            posten
+              .filter((p) => p.zaehlungId === r.z.id)
+              .map((p) => [p.nennwertCent, p.anzahl] as [number, number]),
+          ),
+        ),
+        gezaehltVon: r.z.gezaehltVon,
+        gezaehltAm: r.z.gezaehltAm.toISOString(),
+        ersetzt,
+      };
+    });
+  };
+
+  /** Replaces the standard Kategorien of a Kasse; throws KontoUngueltig for unknown Kategorien. */
+  const kategorienSetzen = async (tx: Tx, kontoId: string, kategorieIds: readonly string[]) => {
+    const ids = [...new Set(kategorieIds)];
+    if (ids.length > 0) {
+      const da = await tx
+        .select({ id: eventKategorien.id })
+        .from(eventKategorien)
+        .where(inArray(eventKategorien.id, ids));
+      if (da.length !== ids.length) throw new KontoUngueltig('Eine Event-Kategorie gibt es nicht.');
+    }
+    await tx.delete(finKassenKategorien).where(eq(finKassenKategorien.kontoId, kontoId));
+    if (ids.length > 0)
+      await tx
+        .insert(finKassenKategorien)
+        .values(ids.map((kategorieId) => ({ kategorieId, kontoId })));
   };
 
   const grundbestandZeilen = (
@@ -1473,6 +1561,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           });
           const zeilen = grundbestandZeilen(id, daten.grundbestand);
           if (zeilen.length > 0) await tx.insert(finKassenGrundbestand).values(zeilen);
+          await kategorienSetzen(tx, id, daten.standardKategorieIds);
           return id;
         }),
       );
@@ -1502,6 +1591,8 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           await tx.delete(finKassenGrundbestand).where(eq(finKassenGrundbestand.kontoId, kontoId));
           const zeilen = grundbestandZeilen(kontoId, daten.grundbestand);
           if (zeilen.length > 0) await tx.insert(finKassenGrundbestand).values(zeilen);
+          if (daten.standardKategorieIds !== undefined)
+            await kategorienSetzen(tx, kontoId, daten.standardKategorieIds);
           return true;
         }),
       );
@@ -1658,46 +1749,117 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       return rows;
     },
 
-    async kassenzaehlungen(eventId) {
-      const rows = await db
-        .select({ z: finKassenzaehlungen, kontoName: finKonten.name })
-        .from(finKassenzaehlungen)
-        .innerJoin(finKonten, eq(finKonten.id, finKassenzaehlungen.kontoId))
-        .where(eq(finKassenzaehlungen.eventId, eventId))
-        .orderBy(desc(finKassenzaehlungen.gezaehltAm), desc(finKassenzaehlungen.id));
-      if (rows.length === 0) return [];
-      const posten = await db
-        .select()
-        .from(finKassenzaehlungPosten)
-        .where(
-          inArray(
-            finKassenzaehlungPosten.zaehlungId,
-            rows.map((r) => r.z.id),
-          ),
-        );
-      // Rows are newest first: the first of a Kasse counts, the others are replaced.
-      const gilt = new Set<string>();
-      return rows.map((r): KassenzaehlungEintrag => {
-        const ersetzt = gilt.has(r.z.kontoId);
-        gilt.add(r.z.kontoId);
-        return {
-          id: r.z.id,
-          kontoId: r.z.kontoId,
-          kontoName: r.kontoName,
-          eventId: r.z.eventId,
-          summeCent: r.z.summeCent,
-          posten: stueckelungVollstaendig(
-            new Map(
-              posten
-                .filter((p) => p.zaehlungId === r.z.id)
-                .map((p) => [p.nennwertCent, p.anzahl] as [number, number]),
+    async eventKassen(eventId) {
+      const [ev] = await db
+        .select({ kategorieId: events.kategorieId })
+        .from(events)
+        .where(eq(events.id, eventId));
+      if (!ev) return undefined;
+      const [aktive, markiert, zaehlungen] = await Promise.all([
+        kassenLaden(db, { mitArchiv: false }),
+        db
+          .select()
+          .from(finEventKassenAngepasst)
+          .where(eq(finEventKassenAngepasst.eventId, eventId)),
+        zaehlungenVonEvent(eventId),
+      ]);
+      const angepasst = markiert.length > 0;
+      const zugewiesen = (
+        angepasst
+          ? await db.select({ k: finEventKassen.kontoId }).from(finEventKassen).where(eq(finEventKassen.eventId, eventId))
+          : await db
+              .select({ k: finKassenKategorien.kontoId })
+              .from(finKassenKategorien)
+              .where(eq(finKassenKategorien.kategorieId, ev.kategorieId))
+      ).map((r) => r.k);
+      const ids = aktive.map((k) => k.dto.kontoId);
+      if (ids.length === 0)
+        return { angepasst, kassen: [], summeCent: 0, unvollstaendig: false, zaehlungen: [] };
+      const [alle, abgerechnet, { storniert }] = await Promise.all([
+        db
+          .select({
+            id: finKassenzaehlungen.id,
+            kontoId: finKassenzaehlungen.kontoId,
+            eventId: finKassenzaehlungen.eventId,
+            summeCent: finKassenzaehlungen.summeCent,
+            gezaehltAm: finKassenzaehlungen.gezaehltAm,
+            eventBeginn: events.beginn,
+          })
+          .from(finKassenzaehlungen)
+          .innerJoin(events, eq(events.id, finKassenzaehlungen.eventId))
+          .where(inArray(finKassenzaehlungen.kontoId, ids)),
+        db
+          .select({
+            kontoId: finKassenabrechnungen.kontoId,
+            buchungId: finKassenabrechnungen.buchungId,
+            erstelltAm: finKassenabrechnungen.erstelltAm,
+            betragCent: finKassenabrechnungEvents.betragCent,
+          })
+          .from(finKassenabrechnungEvents)
+          .innerJoin(
+            finKassenabrechnungen,
+            eq(finKassenabrechnungen.id, finKassenabrechnungEvents.abrechnungId),
+          )
+          .where(
+            and(
+              eq(finKassenabrechnungEvents.eventId, eventId),
+              inArray(finKassenabrechnungen.kontoId, ids),
             ),
           ),
-          gezaehltVon: r.z.gezaehltVon,
-          gezaehltAm: r.z.gezaehltAm.toISOString(),
-          ersetzt,
-        };
+        abrechnungenKurz(db, ids),
+      ]);
+      const gueltig = abgerechneteBetraege(abgerechnet, storniert);
+      const dto = baueEventKassen({
+        eventId,
+        kassen: aktive.map((k) => ({
+          kontoId: k.dto.kontoId,
+          name: k.dto.name,
+          saldoCent: k.dto.saldoCent,
+          seit: k.seit,
+        })),
+        zugewiesen: new Set(zugewiesen),
+        zaehlungen: alle.map((z) => ({
+          id: z.id,
+          kontoId: z.kontoId,
+          eventId: z.eventId,
+          summeCent: z.summeCent,
+          gezaehltAm: z.gezaehltAm.toISOString(),
+          eventBeginn: z.eventBeginn.toISOString(),
+        })),
+        abgerechnet: gueltig,
       });
+      return {
+        angepasst,
+        ...dto,
+        zaehlungen: zaehlungen.filter((z) => ids.includes(z.kontoId)),
+      };
+    },
+
+    async eventKassenFestlegen(eventId, kontoIds) {
+      return mitWiederholung(() =>
+        db.transaction(async (tx) => {
+          const [ev] = await tx.select({ id: events.id }).from(events).where(eq(events.id, eventId));
+          if (!ev) return false;
+          const ids = [...new Set(kontoIds ?? [])];
+          if (ids.length > 0) {
+            const aktiv = await tx
+              .select({ id: finKassen.kontoId })
+              .from(finKassen)
+              .innerJoin(finKonten, eq(finKonten.id, finKassen.kontoId))
+              .where(and(inArray(finKassen.kontoId, ids), eq(finKonten.archiviert, false)));
+            if (aktiv.length !== ids.length)
+              throw new BuchungUngueltig(['Eine Kasse gibt es nicht oder sie ist archiviert.']);
+          }
+          await tx.delete(finEventKassen).where(eq(finEventKassen.eventId, eventId));
+          await tx.delete(finEventKassenAngepasst).where(eq(finEventKassenAngepasst.eventId, eventId));
+          if (kontoIds !== null) {
+            await tx.insert(finEventKassenAngepasst).values({ eventId });
+            if (ids.length > 0)
+              await tx.insert(finEventKassen).values(ids.map((kontoId) => ({ eventId, kontoId })));
+          }
+          return true;
+        }),
+      );
     },
 
     async kasseZaehlen(eingabe, sub) {

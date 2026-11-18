@@ -30,6 +30,7 @@ import {
   type KontoDto,
 } from '@c4/shared';
 import {
+  baueEventKassen,
   baueKasseDto,
   eventTitelAnzeige,
   kasseNutzbarFehler,
@@ -57,10 +58,13 @@ interface FakeKasse {
   erloesId: string;
   zielId: string;
   grundbestand: Map<number, number>;
+  kategorieIds: Set<string>;
 }
 
 /** An event as the fake knows it (the real store reads the `events` table). */
 export interface FakeEvent {
+  /** Default `kat`. */
+  kategorieId?: string;
   titel: string | null;
   kategorie: string;
   /** ISO timestamp. */
@@ -90,6 +94,13 @@ export function createFakeFinanzenStore() {
   /** Events the Kassen code looks up; tests seed them. */
   const events = new Map<string, FakeEvent>();
   const kassen = new Map<string, FakeKasse>();
+  /** Event id -> explicitly set Kassen (absent = the Kategorie default applies). */
+  const eventKassenListe = new Map<string, Set<string>>();
+  /** Known event Kategorien. */
+  const kategorien = new Set<string>(['kat']);
+  const kategorienPruefen = (ids: readonly string[]) => {
+    if (ids.some((k) => !kategorien.has(k))) throw new KontoUngueltig('Eine Event-Kategorie gibt es nicht.');
+  };
   /** Dienst-Zählungen in insertion order (newest last). */
   const kassenzaehlungenListe: (KassenzaehlungEintrag & { schluessel: string })[] = [];
   const abrechnungenListe: (KassenabrechnungDetailEintrag & {
@@ -209,6 +220,7 @@ export function createFakeFinanzenStore() {
       })),
       erloesKonto: { id: kasse.erloesId, name: kontoName(kasse.erloesId) },
       zielFach: { id: kasse.zielId, name: kontoName(kasse.zielId) },
+      standardKategorieIds: [...kasse.kategorieIds],
       abrechnungen,
       zaehlungen: kassenzaehlungenListe.filter((z) => z.kontoId === kontoId),
     });
@@ -477,6 +489,7 @@ export function createFakeFinanzenStore() {
     },
     async kasseAnlegen(daten) {
       kassenKontenPruefen(daten.standardErloesKontoId, daten.standardZielFachId, null);
+      kategorienPruefen(daten.standardKategorieIds);
       const id = randomUUID();
       konten.set(id, {
         id,
@@ -491,6 +504,7 @@ export function createFakeFinanzenStore() {
         erloesId: daten.standardErloesKontoId,
         zielId: daten.standardZielFachId,
         grundbestand: grundbestandMap(daten.grundbestand),
+        kategorieIds: new Set(daten.standardKategorieIds),
       });
       return id;
     },
@@ -498,10 +512,13 @@ export function createFakeFinanzenStore() {
       const kasse = kassen.get(kontoId);
       if (!kasse) return false;
       kassenKontenPruefen(daten.standardErloesKontoId, daten.standardZielFachId, kontoId);
+      kategorienPruefen(daten.standardKategorieIds ?? []);
       if (daten.name !== undefined) konten.get(kontoId)!.name = daten.name;
       kasse.erloesId = daten.standardErloesKontoId;
       kasse.zielId = daten.standardZielFachId;
       kasse.grundbestand = grundbestandMap(daten.grundbestand);
+      if (daten.standardKategorieIds !== undefined)
+        kasse.kategorieIds = new Set(daten.standardKategorieIds);
       return true;
     },
     async kassenAbrechnungVorschau(kontoId) {
@@ -665,16 +682,70 @@ export function createFakeFinanzenStore() {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
     },
-    async kassenzaehlungen(eventId) {
+    async eventKassen(eventId) {
+      const ev = events.get(eventId);
+      if (!ev) return undefined;
       const liste = kassenzaehlungenListe.filter((z) => z.eventId === eventId).reverse();
       const gilt = new Set<string>();
-      return liste.map((z) => {
-        const ersetzt = gilt.has(z.kontoId);
-        gilt.add(z.kontoId);
-        const kopie: Partial<typeof z> & KassenzaehlungEintrag = structuredClone(z);
-        delete kopie.schluessel;
-        return { ...kopie, ersetzt };
+      const aktive = [...kassen.keys()].flatMap((id) => {
+        const k = kasseDto(id);
+        return k && !k.dto.archiviert ? [k] : [];
       });
+      const ids = new Set(aktive.map((k) => k.dto.kontoId));
+      const explizit = eventKassenListe.get(eventId);
+      const zugewiesen = new Set(
+        explizit
+          ? [...explizit]
+          : [...kassen].filter(([, k]) => k.kategorieIds.has(ev.kategorieId ?? 'kat')).map(([id]) => id),
+      );
+      const storniert = storniertIds();
+      const abgerechnet = new Map<string, number>();
+      for (const a of abrechnungenListe) {
+        const z = a.events.find((x) => x.eventId === eventId);
+        if (!z || (a.buchung && storniert.has(a.buchung.id))) continue;
+        abgerechnet.set(a.kontoId, z.betragCent);
+      }
+      const dto = baueEventKassen({
+        eventId,
+        kassen: aktive.map((k) => ({
+          kontoId: k.dto.kontoId,
+          name: k.dto.name,
+          saldoCent: k.dto.saldoCent,
+          seit: k.seit,
+        })),
+        zugewiesen,
+        zaehlungen: kassenzaehlungenListe
+          .filter((z) => ids.has(z.kontoId))
+          .flatMap((z) => {
+            const e = events.get(z.eventId);
+            return e
+              ? [{ id: z.id, kontoId: z.kontoId, eventId: z.eventId, summeCent: z.summeCent, gezaehltAm: z.gezaehltAm, eventBeginn: e.beginn }]
+              : [];
+          }),
+        abgerechnet,
+      });
+      return {
+        angepasst: explizit !== undefined,
+        ...dto,
+        zaehlungen: liste
+          .filter((z) => ids.has(z.kontoId))
+          .map((z) => {
+            const ersetzt = gilt.has(z.kontoId);
+            gilt.add(z.kontoId);
+            const kopie: Partial<typeof z> & KassenzaehlungEintrag = structuredClone(z);
+            delete kopie.schluessel;
+            return { ...kopie, ersetzt };
+          }),
+      };
+    },
+    async eventKassenFestlegen(eventId, kontoIds) {
+      if (!events.has(eventId)) return false;
+      const ids = [...new Set(kontoIds ?? [])];
+      if (ids.some((id) => !kassen.has(id) || konten.get(id)?.archiviert))
+        throw new BuchungUngueltig(['Eine Kasse gibt es nicht oder sie ist archiviert.']);
+      if (kontoIds === null) eventKassenListe.delete(eventId);
+      else eventKassenListe.set(eventId, new Set(ids));
+      return true;
     },
     async kasseZaehlen(eingabe, sub) {
       const schon = kassenzaehlungenListe.find(
@@ -711,5 +782,5 @@ export function createFakeFinanzenStore() {
       };
     },
   };
-  return { store, konten, buchungen, zaehler, events, kassen };
+  return { store, konten, buchungen, zaehler, events, kassen, kategorien };
 }

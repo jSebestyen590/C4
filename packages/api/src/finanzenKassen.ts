@@ -1,5 +1,8 @@
 import {
   berechneKassenabrechnung,
+  eventKassenEinnahme,
+  eventKassenSumme,
+  type EventKasseDto,
   fachFehler,
   kasseKontenFehler,
   pruefeBestand,
@@ -119,6 +122,7 @@ export function baueKasseDto(p: {
   zielFach: KontoVerweisDto;
   abrechnungen: readonly AbrechnungKurz[];
   zaehlungen: readonly { id: string; eventId: string; gezaehltAm: string }[];
+  standardKategorieIds: readonly string[];
 }): KasseDto {
   const letzte = letzteAbrechnung(p.abrechnungen);
   return {
@@ -136,6 +140,7 @@ export function baueKasseDto(p: {
       ? { id: letzte.id, datum: letzte.datum, buchung: letzte.buchung }
       : null,
     offeneZaehlungen: offeneZaehlungen(p.zaehlungen, letzte?.erstelltAm ?? null).length,
+    standardKategorieIds: [...p.standardKategorieIds],
   };
 }
 
@@ -152,3 +157,53 @@ export const kasseNutzbarFehler = (
 /** Event display title: its own title or the name of its Kategorie. */
 export const eventTitelAnzeige = (titel: string | null, kategorie: string): string =>
   titel && titel.trim() !== '' ? titel : kategorie;
+
+/**
+ * The Kassen of an event with their income and the sum. Rows: the assigned Kassen and every other
+ * Kasse that was counted at the event (assigned first, then by name); archived Kassen are not passed in.
+ * `zaehlungen` are all counts of those Kassen (any event), `abgerechnet` the booked event amounts.
+ */
+export function baueEventKassen(p: {
+  eventId: string;
+  kassen: readonly { kontoId: string; name: string; saldoCent: number; seit: string | null }[];
+  zugewiesen: ReadonlySet<string>;
+  zaehlungen: readonly {
+    id: string;
+    kontoId: string;
+    eventId: string;
+    summeCent: number;
+    gezaehltAm: string;
+    eventBeginn: string;
+  }[];
+  abgerechnet: ReadonlyMap<string, number>;
+}): { kassen: EventKasseDto[]; summeCent: number; unvollstaendig: boolean } {
+  const zeilen = p.kassen
+    .map((k): EventKasseDto => {
+      const gezaehlt = p.zaehlungen.some((z) => z.kontoId === k.kontoId && z.eventId === p.eventId);
+      const e = eventKassenEinnahme({
+        eventId: p.eventId,
+        sollCent: k.saldoCent,
+        zaehlungen: p.zaehlungen
+          .filter((z) => z.kontoId === k.kontoId && (k.seit === null || z.gezaehltAm > k.seit))
+          .map((z) => ({
+            eventId: z.eventId,
+            zaehlungId: z.id,
+            summeCent: z.summeCent,
+            gezaehltAm: z.gezaehltAm,
+            eventBeginn: z.eventBeginn,
+          })),
+        abgerechnetCent: p.abgerechnet.get(k.kontoId) ?? null,
+      });
+      return {
+        kontoId: k.kontoId,
+        name: k.name,
+        zugewiesen: p.zugewiesen.has(k.kontoId),
+        gezaehlt,
+        einnahmeCent: e.einnahmeCent,
+        status: e.status,
+      };
+    })
+    .filter((k) => k.zugewiesen || k.gezaehlt || k.status === 'abgerechnet')
+    .sort((a, b) => Number(b.zugewiesen) - Number(a.zugewiesen) || a.name.localeCompare(b.name));
+  return { kassen: zeilen, ...eventKassenSumme(zeilen) };
+}

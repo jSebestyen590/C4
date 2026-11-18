@@ -11,13 +11,17 @@ export interface BetragErgebnis {
 
 const BEISPIEL = 'Bitte gib einen Betrag wie 1,10 oder 1.234,56 ein.';
 
-/** Parses the text of an amount field. Amounts are positive; direction is chosen elsewhere. */
-export function betragLesen(text: string): BetragErgebnis {
+/**
+ * Parses the text of an amount field. Amounts are positive (direction is chosen elsewhere) unless
+ * `negativ` is set; then a lone minus sign is a valid intermediate state (no value, no error).
+ */
+export function betragLesen(text: string, negativ = false): BetragErgebnis {
   if (text.trim() === '') return { cent: null };
+  if (negativ && /^\s*-\s*$/.test(text)) return { cent: null };
   const cent = euroZuCent(text);
   if (cent === null) return { cent: null, fehler: BEISPIEL };
-  if (cent < 0) return { cent: null, fehler: 'Bitte gib den Betrag ohne Minus ein.' };
-  if (cent > BETRAG_MAX_CENT) return { cent: null, fehler: 'Der Betrag ist zu hoch.' };
+  if (cent < 0 && !negativ) return { cent: null, fehler: 'Bitte gib den Betrag ohne Minus ein.' };
+  if (Math.abs(cent) > BETRAG_MAX_CENT) return { cent: null, fehler: 'Der Betrag ist zu hoch.' };
   return { cent };
 }
 

@@ -5,6 +5,7 @@ import {
   Button,
   Group,
   Modal,
+  MultiSelect,
   Paper,
   Select,
   Stack,
@@ -16,18 +17,30 @@ import { IconCash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { centAnzeigen, type EventDto, type KassenzaehlungEingabeInput } from '@c4/shared';
+import {
+  centAnzeigen,
+  type EventDto,
+  type EventKasseDto,
+  type KassenzaehlungEingabeInput,
+} from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { mengenStueckelung, mengenSumme, type Mengen } from './bargeldFormular';
 import { schluesselFuer } from './buchungFormular';
 import { formatDatumZeit } from './datum';
-import { finanzenKeys, jsonOderFehler, kassenKurzKey, kassenzaehlungenKey } from './finanzenDaten';
+import { useAuth } from './auth';
+import {
+  finanzenKeys,
+  jsonOderFehler,
+  kassenKurzKey,
+  kassenzaehlungenKey,
+  useKassen,
+} from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { InfoHinweis } from './InfoHinweis';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
 import { StueckelungFeld } from './StueckelungFeld';
-import { fehlerText } from './warenApi';
+import { fehlerText, pruefen } from './warenApi';
 
 /** The form of one Dienst-Zählung: choose the Kasse, count, confirm, save. Mount it only while it should be open. */
 function ZaehlFormular({
@@ -145,28 +158,147 @@ function ZaehlFormular({
   );
 }
 
+/** The Kassen of this event: pick the active Kassen, or go back to the default of the Kategorie. */
+function KassenFestlegen({
+  eventId,
+  angepasst,
+  aktuell,
+  onClose,
+}: Readonly<{
+  eventId: string;
+  angepasst: boolean;
+  aktuell: readonly string[];
+  onClose: () => void;
+}>) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const kassen = useKassen(false);
+  const [auswahl, setAuswahl] = useState<string[]>([...aktuell]);
+  const fertig = async () => {
+    await qc.invalidateQueries({ queryKey: kassenzaehlungenKey(eventId) });
+    onClose();
+  };
+  const speichern = useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async () =>
+      pruefen(
+        await api.finanzen.events[':eventId'].kassen.$put({
+          param: { eventId },
+          json: { kontoIds: auswahl },
+        }),
+      ),
+    onSuccess: fertig,
+  });
+  const zuruecksetzen = useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async () =>
+      pruefen(await api.finanzen.events[':eventId'].kassen.$delete({ param: { eventId } })),
+    onSuccess: fertig,
+  });
+  const laeuft = speichern.isPending || zuruecksetzen.isPending;
+  const fehler = speichern.error ?? zuruecksetzen.error;
+  return (
+    <Modal opened onClose={laeuft ? () => undefined : onClose} title="Kassen festlegen" size="lg">
+      <Stack>
+        <Text size="sm" c="dimmed">
+          {angepasst
+            ? 'Für dieses Event hast du die Kassen festgelegt. Änderungen am Standard der Kategorie gelten hier nicht mehr.'
+            : 'Bisher gelten die Standard-Kassen der Kategorie. Sobald du speicherst, gilt deine Auswahl nur für dieses Event.'}
+        </Text>
+        <MultiSelect
+          label="Kassen dieses Events"
+          placeholder="Kassen wählen"
+          data={(kassen.data ?? []).map((k) => ({ value: k.kontoId, label: k.name }))}
+          value={auswahl}
+          onChange={setAuswahl}
+          searchable
+          nothingFoundMessage="Keine Kasse gefunden"
+          comboboxProps={{ withinPortal: true }}
+        />
+        {fehler && (
+          <Alert color="red">{fehlerText(fehler, 'Das Speichern ist fehlgeschlagen.')}</Alert>
+        )}
+        <Group grow preventGrowOverflow={false}>
+          {angepasst && (
+            <Button
+              variant="default"
+              size="md"
+              onClick={() => zuruecksetzen.mutate()}
+              loading={zuruecksetzen.isPending}
+              disabled={laeuft}
+            >
+              Standard der Kategorie wiederherstellen
+            </Button>
+          )}
+          <Button
+            size="md"
+            onClick={() => speichern.mutate()}
+            loading={speichern.isPending}
+            disabled={laeuft}
+          >
+            Speichern
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function KasseZeile({ k, wartet }: Readonly<{ k: EventKasseDto; wartet: boolean }>) {
+  return (
+    <Paper withBorder p="sm">
+      <Group justify="space-between" wrap="nowrap" align="flex-start">
+        <Stack gap={2}>
+          <Text fw={600}>{k.name}</Text>
+          {!k.zugewiesen && (
+            <Text size="xs" c="dimmed">
+              zusätzlich gezählt
+            </Text>
+          )}
+        </Stack>
+        {k.einnahmeCent !== null ? (
+          <Stack gap={2} align="flex-end">
+            <Text fw={600} style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+              {centAnzeigen(k.einnahmeCent)}
+            </Text>
+            <Badge color={k.status === 'abgerechnet' ? 'green' : 'yellow'} variant="light">
+              {k.status === 'abgerechnet' ? 'abgerechnet' : 'vorläufig'}
+            </Badge>
+          </Stack>
+        ) : (
+          <Badge color={wartet ? 'yellow' : 'gray'} variant="light">
+            {wartet ? 'noch nicht gezählt' : 'wartet auf Zählung'}
+          </Badge>
+        )}
+      </Group>
+    </Paper>
+  );
+}
+
 /**
- * Section „Kasse“ of the event page for everyone who may count: the hint when nobody counted yet,
- * the button to count and the counts so far (the newest per Kasse counts, older ones are „ersetzt“).
- * Shown only when there are active Kassen.
+ * Section „Kasse“ of the event page for everyone who may count: the Kassen of the event (assigned by
+ * the Kategorie default or set by the Finanzer:in) with their income (preliminary, or booked once settled),
+ * the sum, the counts so far (the newest per Kasse counts, older ones are „ersetzt“) and the buttons to
+ * count and, with `finanzen:buchen`, to set the Kassen. Shown only when there are active Kassen.
  */
 export function EventKasse({ event }: Readonly<{ event: EventDto }>) {
   const api = useApi();
+  const { can } = useAuth();
   const [offen, setOffen] = useState(false);
+  const [festlegen, setFestlegen] = useState(false);
   const [jetzt] = useState(() => Date.now());
   const kassen = useQuery({
     queryKey: kassenKurzKey,
     queryFn: async () => unwrap(await api.kassen.$get()),
   });
-  const zaehlungen = useQuery({
+  const daten = useQuery({
     queryKey: kassenzaehlungenKey(event.id),
     queryFn: async () => unwrap(await api.kassen.zaehlungen.$get({ query: { eventId: event.id } })),
   });
-  const liste = zaehlungen.data ?? [];
   if (!kassen.data || kassen.data.length === 0) return null;
+  const d = daten.data;
   const begonnen = new Date(event.beginn).getTime() <= jetzt;
-  const nochNicht =
-    zaehlungen.data !== undefined && liste.length === 0 && begonnen && !event.abgesagt;
+  const wartet = begonnen && !event.abgesagt;
   return (
     <Stack gap="sm">
       <Group justify="space-between" wrap="wrap">
@@ -174,20 +306,54 @@ export function EventKasse({ event }: Readonly<{ event: EventDto }>) {
           <Title order={3}>Kasse</Title>
           <InfoHinweis feld="Kasse zählen" text={HILFE.kassen.dienstZaehlung} />
         </Group>
-        {!event.abgesagt && (
-          <Button leftSection={<IconCash size={18} />} onClick={() => setOffen(true)} size="md">
-            Kasse zählen
-          </Button>
-        )}
+        <Group gap="xs" wrap="wrap">
+          {can('finanzen:buchen') && (
+            <Button variant="default" size="md" onClick={() => setFestlegen(true)} disabled={!d}>
+              Kassen festlegen
+            </Button>
+          )}
+          {!event.abgesagt && (
+            <Button leftSection={<IconCash size={18} />} onClick={() => setOffen(true)} size="md">
+              Kasse zählen
+            </Button>
+          )}
+        </Group>
       </Group>
-      {nochNicht && (
-        <Alert color="yellow" title="Kasse noch nicht gezählt">
-          Zähle die Kasse nach dem Event. Das ist unverbindlich und hilft der Finanzer:in, die
-          Einnahmen den Events zuzuordnen.
-        </Alert>
+      {daten.isError && <Alert color="red">Die Kassen konnten nicht geladen werden.</Alert>}
+      {d && d.kassen.length === 0 && (
+        <Text size="sm" c="dimmed">
+          Für dieses Event ist keine Kasse vorgesehen. Du kannst trotzdem eine Kasse zählen.
+        </Text>
       )}
-      {zaehlungen.isError && <Alert color="red">Die Zählungen konnten nicht geladen werden.</Alert>}
-      {liste.map((z) => (
+      {d?.kassen.map((k) => (
+        <KasseZeile key={k.kontoId} k={k} wartet={wartet} />
+      ))}
+      {d && d.kassen.length > 0 && (
+        <Paper p="sm" bg="var(--mantine-color-default-hover)">
+          <Group justify="space-between" wrap="nowrap" align="flex-start">
+            <Stack gap={0}>
+              <Text fw={700}>Summe aller Einnahmen</Text>
+              {d.unvollstaendig && (
+                <Text size="xs" c="orange.8">
+                  Unvollständig: Mindestens eine Kasse fehlt noch.
+                </Text>
+              )}
+            </Stack>
+            <Text fw={700} style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+              {centAnzeigen(d.summeCent)}
+            </Text>
+          </Group>
+        </Paper>
+      )}
+      {d && (
+        <Text size="xs" c="dimmed">
+          {d.angepasst
+            ? 'Die Kassen dieses Events wurden festgelegt.'
+            : 'Es gelten die Standard-Kassen der Kategorie.'}{' '}
+          Einnahmen „vorläufig“ sind ein Vorschlag aus den Zählungen, „abgerechnet“ sind gebucht.
+        </Text>
+      )}
+      {d?.zaehlungen.map((z) => (
         <Paper key={z.id} withBorder p="sm" opacity={z.ersetzt ? 0.55 : 1}>
           <Group justify="space-between" wrap="nowrap" align="flex-start">
             <Stack gap={0}>
@@ -219,7 +385,24 @@ export function EventKasse({ event }: Readonly<{ event: EventDto }>) {
         </Paper>
       ))}
       {offen && (
-        <ZaehlFormular eventId={event.id} kassen={kassen.data} onClose={() => setOffen(false)} />
+        <ZaehlFormular
+          eventId={event.id}
+          kassen={[...kassen.data].sort(
+            (a, b) =>
+              Number(!!d?.kassen.find((k) => k.kontoId === b.kontoId)?.zugewiesen) -
+                Number(!!d?.kassen.find((k) => k.kontoId === a.kontoId)?.zugewiesen) ||
+              a.name.localeCompare(b.name),
+          )}
+          onClose={() => setOffen(false)}
+        />
+      )}
+      {festlegen && d && (
+        <KassenFestlegen
+          eventId={event.id}
+          angepasst={d.angepasst}
+          aktuell={d.kassen.filter((k) => k.zugewiesen).map((k) => k.kontoId)}
+          onClose={() => setFestlegen(false)}
+        />
       )}
     </Stack>
   );

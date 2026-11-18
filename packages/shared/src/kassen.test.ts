@@ -4,6 +4,8 @@ import { pruefeBuchung, type PruefKonto } from './finanzen';
 import {
   berechneKassenabrechnung,
   eventEinnahmenVorschlag,
+  eventKassenEinnahme,
+  eventKassenSumme,
   kassenabrechnungEingabeSchema,
   kasseKontenFehler,
   MUENZROLLE,
@@ -382,5 +384,51 @@ describe('Regeln und Schemas', () => {
         transfers: [{ fachId: 'z', nennwertCent: 100, anzahl: 0 }],
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('Einnahme eines Events je Kasse', () => {
+  const z = (eventId: string, summeCent: number, tag: number) => ({
+    eventId,
+    zaehlungId: `z-${eventId}`,
+    summeCent,
+    gezaehltAm: `2027-01-0${tag}T01:00:00Z`,
+    eventBeginn: `2027-01-0${tag}T18:00:00Z`,
+  });
+  it('ist vorläufig der Vorschlag der Abrechnung (Differenz zur Zählung davor, Start mit dem Soll)', () => {
+    const zaehlungen = [z('e1', 9000, 1), z('e2', 13000, 2)];
+    expect(eventKassenEinnahme({ eventId: 'e1', sollCent: 4000, zaehlungen, abgerechnetCent: null })).toEqual({
+      einnahmeCent: 5000,
+      status: 'vorlaeufig',
+    });
+    expect(eventKassenEinnahme({ eventId: 'e2', sollCent: 4000, zaehlungen, abgerechnetCent: null })).toEqual({
+      einnahmeCent: 4000,
+      status: 'vorlaeufig',
+    });
+  });
+  it('ist nach der Abrechnung der gebuchte Betrag', () => {
+    expect(
+      eventKassenEinnahme({ eventId: 'e1', sollCent: 0, zaehlungen: [z('e1', 9000, 1)], abgerechnetCent: 4500 }),
+    ).toEqual({ einnahmeCent: 4500, status: 'abgerechnet' });
+  });
+  it('ohne Zählung und Abrechnung gibt es nichts', () => {
+    expect(eventKassenEinnahme({ eventId: 'e9', sollCent: 0, zaehlungen: [z('e1', 1, 1)], abgerechnetCent: null })).toEqual({
+      einnahmeCent: null,
+      status: null,
+    });
+  });
+  it('die Summe ist unvollständig, solange eine zugewiesene Kasse fehlt', () => {
+    expect(
+      eventKassenSumme([
+        { zugewiesen: true, einnahmeCent: 5000 },
+        { zugewiesen: true, einnahmeCent: null },
+        { zugewiesen: false, einnahmeCent: 300 },
+      ]),
+    ).toEqual({ summeCent: 5300, unvollstaendig: true });
+    expect(eventKassenSumme([{ zugewiesen: true, einnahmeCent: 1 }, { zugewiesen: false, einnahmeCent: null }])).toEqual({
+      summeCent: 1,
+      unvollstaendig: false,
+    });
+    expect(eventKassenSumme([])).toEqual({ summeCent: 0, unvollstaendig: false });
   });
 });

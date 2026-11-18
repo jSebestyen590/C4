@@ -78,6 +78,8 @@ import {
   type KalenderSerieRow,
   externe,
   finBuchungen,
+  finEventKassen,
+  finEventKassenAngepasst,
   finKassenabrechnungEvents,
   finKassenzaehlungen,
   finZaehlungen,
@@ -1535,6 +1537,9 @@ export function createKalenderStore(db: Db): KalenderStore {
       await tx.delete(schichtBedarfe).where(inArray(schichtBedarfe.schichtId, freieSchichten));
       await tx.delete(schichten).where(inArray(schichten.eventId, frei));
     }
+    // Kassen assignments are master data, not records: they go with the event.
+    await tx.delete(finEventKassen).where(inArray(finEventKassen.eventId, frei));
+    await tx.delete(finEventKassenAngepasst).where(inArray(finEventKassenAngepasst.eventId, frei));
     await tx.delete(eventTeilnahmen).where(inArray(eventTeilnahmen.eventId, frei));
     await tx.delete(kalenderEventAbos).where(inArray(kalenderEventAbos.eventId, frei));
     await tx.delete(events).where(inArray(events.id, frei));

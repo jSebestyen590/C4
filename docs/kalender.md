@@ -224,8 +224,8 @@ durch eine Serie bleibt der Wert unverändert (Eingabe ohne `verantwortlichSub`)
 ## Kasse am Event
 
 Auf der Event-Seite (`EventDetailPage`, nach den Schichten, mobile first) gibt es für alle mit `kasse:zaehlen` (alle Status) den
-Abschnitt „Kasse“, aber nur, wenn es aktive Kassen gibt ([finanzen.md](./finanzen.md), „Barkassen“). Ab Event-Beginn zeigt er den
-Hinweis „Kasse noch nicht gezählt“, solange das Event nicht abgesagt ist und keine Zählung existiert (kein Push; `EventDto`
+Abschnitt „Kasse“, aber nur, wenn es aktive Kassen gibt. Er listet die Kassen des Events (Standard der Event-Kategorie, solange die Finanzer:in sie nicht mit „Kassen festlegen“ selbst bestimmt hat), je Kasse „noch nicht gezählt“ (ab Event-Beginn, nicht abgesagt) oder die Einnahme („vorläufig“ oder „abgerechnet“) und darunter die Summe aller Einnahmen (unvollständig, solange eine zugewiesene Kasse fehlt). Andere Kassen lassen sich weiter zählen. Die Zuordnungen werden mit dem Event gelöscht ([finanzen.md](./finanzen.md), „Barkassen“). Ab Event-Beginn zeigt er den
+Hinweis „noch nicht gezählt“ je zugewiesener Kasse (kein Push; `EventDto`
 bekommt kein Feld, der Hinweis kommt aus `GET /api/kassen/zaehlungen?eventId=`). „Kasse zählen“ öffnet ein Formular (Kasse wählen,
 `StueckelungFeld`, Summe, Bestätigung „Zählung über X € für Kasse Y speichern?“), die Zählung ist unverbindlich und löst keine
 Buchung aus. Die Liste zeigt Kasse, Summe, wer (`StatusName`) und wann; bei mehreren Zählungen einer Kasse gilt die neueste, ältere

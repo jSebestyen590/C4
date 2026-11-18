@@ -63,6 +63,8 @@ export const HILFE = {
       'Auf dieses Erlöskonto geht die gesamte Einnahme einer Abrechnung. Der Steuersatz kommt vom Erlöskonto. Gibt es Getränke und Essen mit verschiedenen Steuersätzen, nimm getrennte Kassen.',
     zielFach:
       'Der Überschuss der Kasse geht in dieses Fach, und fehlende Münzen und Scheine kommen von dort. In der Abrechnung kannst du es ändern.',
+    standardKategorien:
+      'Bei Events dieser Kategorien ist die Kasse automatisch vorgesehen und wartet am Event auf ihre Zählung. Das gilt für alle Events, auch für schon angelegte, solange die Finanzer:in die Kassen eines Events nicht selbst festlegt.',
     dienstZaehlung:
       'Wer Dienst hat, kann die Kasse am Event zählen. Das ist unverbindlich: Es dient nur der Übersicht und der Zuordnung der Einnahmen zu Events und löst keine Buchung aus. Zählst du eine Kasse mehrfach, zählt die neueste Zählung.',
     ist: 'Zähle die Kasse durch und trage ein, was wirklich drin ist. Felder, die du leer lässt, zählen als 0. Bestand ist, was laut Buchhaltung in der Kasse sein müsste. Einnahme ist Ist minus Bestand und darf auch negativ sein.',

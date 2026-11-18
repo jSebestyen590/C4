@@ -25,7 +25,25 @@ describe('betragLesen', () => {
   });
 });
 
+describe('betragLesen mit negativ', () => {
+  it('liest negative Beträge und das einzelne Minus als Zwischenstand', () => {
+    expect(betragLesen('-30', true)).toEqual({ cent: -3000 });
+    expect(betragLesen('-30,00', true)).toEqual({ cent: -3000 });
+    expect(betragLesen('-0,05', true).cent).toBe(-5);
+    expect(betragLesen('-', true)).toEqual({ cent: null });
+    expect(betragLesen('30', true).cent).toBe(3000);
+    expect(betragLesen('-1.000.000.000', true).fehler).toContain('zu hoch');
+  });
+  it('ohne negativ bleibt das Minus ein Fehler', () => {
+    expect(betragLesen('-', false).fehler).toBeDefined();
+    expect(betragLesen('-30,00').fehler).toContain('Minus');
+  });
+});
+
 describe('betragFormatieren', () => {
+  it('formatiert negative Beträge', () => {
+    expect(betragFormatieren(-3000)).toBe('-30,00');
+  });
   it('uses comma, two decimals and thousands dots', () => {
     expect(betragFormatieren(110)).toBe('1,10');
     expect(betragFormatieren(123456)).toBe('1.234,56');

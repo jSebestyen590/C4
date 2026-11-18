@@ -1,4 +1,4 @@
-import { Alert, Button, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Modal, MultiSelect, Select, Stack, Text, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type SubmitEvent } from 'react';
 import { type KasseDto } from '@c4/shared';
@@ -8,6 +8,7 @@ import { finanzenKeys, useKonten } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { FeldLabel } from './InfoHinweis';
 import { grundbestandMengen } from './kassenFormular';
+import { useEventKategorien } from './kalenderDaten';
 import { StueckelungFeld } from './StueckelungFeld';
 import { fehlerText, pruefen } from './warenApi';
 
@@ -31,6 +32,8 @@ export function KasseFormular({
   const [grund, setGrund] = useState<Mengen>(grundbestandMengen(kasse?.grundbestand ?? []));
   const [erloes, setErloes] = useState<string | null>(kasse?.standardErloesKonto.id ?? null);
   const [ziel, setZiel] = useState<string | null>(kasse?.standardZielFach.id ?? null);
+  const [kategorien, setKategorien] = useState<string[]>(kasse?.standardKategorieIds ?? []);
+  const kategorieListe = useEventKategorien();
   const [versucht, setVersucht] = useState(false);
 
   const alle = konten.data ?? [];
@@ -49,6 +52,7 @@ export function KasseFormular({
         grundbestand: mengenStueckelung(grund),
         standardErloesKontoId: erloes ?? '',
         standardZielFachId: ziel ?? '',
+        standardKategorieIds: kategorien,
       };
       return pruefen(
         kasse
@@ -119,6 +123,18 @@ export function KasseFormular({
             onChange={setZiel}
             nothingFoundMessage="Kein Fach gefunden"
             error={versucht && !ziel ? 'Bitte wähle ein Ziel-Fach.' : undefined}
+          />
+          <MultiSelect
+            label={
+              <FeldLabel text="Standard für Kategorien" hilfe={HILFE.kassen.standardKategorien} />
+            }
+            placeholder="Kategorien wählen"
+            data={kategorieListe.aktive.map((k) => ({ value: k.id, label: k.name }))}
+            value={kategorien}
+            onChange={setKategorien}
+            searchable
+            nothingFoundMessage="Keine Kategorie gefunden"
+            comboboxProps={{ withinPortal: true }}
           />
           {!kasse && (
             <Text size="sm" c="dimmed">

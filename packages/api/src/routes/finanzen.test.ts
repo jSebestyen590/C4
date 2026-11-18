@@ -1264,9 +1264,11 @@ describe('finanzen', () => {
       ]);
       expect(res.status).toBe(201);
       expect(await res.json()).toMatchObject({ summeCent: 1700 });
-      const liste = (await (
-        await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
-      ).json()) as Dto[];
+      const liste = (
+        (await (
+          await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
+        ).json()) as Dto
+      ).zaehlungen as Dto[];
       expect(liste).toHaveLength(1);
       expect(liste[0]).toMatchObject({
         kontoName: 'Bar',
@@ -1303,9 +1305,11 @@ describe('finanzen', () => {
         wiederholt: true,
       });
       await kassenzaehlung(t, k.kasse, 'e1', [[100, 7]]);
-      const liste = (await (
-        await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
-      ).json()) as Dto[];
+      const liste = (
+        (await (
+          await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=e1')
+        ).json()) as Dto
+      ).zaehlungen as Dto[];
       expect(liste.map((z) => [z.summeCent, z.ersetzt])).toEqual([
         [700, false],
         [500, true],
@@ -1615,6 +1619,199 @@ describe('finanzen', () => {
         (await (await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')).json()) as Dto[]
       )[0]!;
       expect(kasse.grundbestand.find((g: Dto) => g.nennwertCent === 100).anzahl).toBe(30);
+    });
+
+    const eventKassen = async (
+      t: Awaited<ReturnType<typeof setup>>,
+      id = 'e1',
+      token = 'member-token',
+    ) => (await (await roh(t, token, 'GET', `/api/kassen/zaehlungen?eventId=${id}`)).json()) as Dto;
+    const festlegen = (
+      t: Awaited<ReturnType<typeof setup>>,
+      id: string,
+      kontoIds: string[],
+      token = 'admin-token',
+    ) => roh(t, token, 'PUT', `/api/finanzen/events/${id}/kassen`, { kontoIds });
+
+    it('uses the Kategorie default until the Kassen of an event are set, and resets to it', async () => {
+      const { t, k } = await kasseSetup();
+      // Without a default nothing is assigned.
+      expect((await eventKassen(t)).kassen).toEqual([]);
+      const zweite = (await (
+        await roh(t, 'admin-token', 'POST', '/api/finanzen/kassen', {
+          name: 'Zweite',
+          grundbestand: [],
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+        })
+      ).json()) as { kontoId: string };
+      const aendern = (kontoId: string, kat: string[]) =>
+        roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${kontoId}`, {
+          grundbestand: [],
+          standardErloesKontoId: k.erloes,
+          standardZielFachId: k.ziel,
+          standardKategorieIds: kat,
+        });
+      expect((await aendern(k.kasse, ['nix'])).status).toBe(400);
+      expect((await aendern(k.kasse, ['kat'])).status).toBe(200);
+      const liste = (await (
+        await roh(t, 'admin-token', 'GET', '/api/finanzen/kassen')
+      ).json()) as Dto[];
+      expect(liste.find((x) => x.kontoId === k.kasse)!.standardKategorieIds).toEqual(['kat']);
+      // Dynamic: the default reaches existing events.
+      let e = await eventKassen(t);
+      expect(e).toMatchObject({ angepasst: false, summeCent: 0, unvollstaendig: true });
+      expect(e.kassen).toEqual([
+        {
+          kontoId: k.kasse,
+          name: 'Bar',
+          zugewiesen: true,
+          gezaehlt: false,
+          einnahmeCent: null,
+          status: null,
+        },
+      ]);
+      // Adjusted: the own list applies, the default no longer does.
+      expect((await festlegen(t, 'e1', [zweite.kontoId])).status).toBe(200);
+      e = await eventKassen(t);
+      expect(e.angepasst).toBe(true);
+      expect(e.kassen.map((x: Dto) => x.name)).toEqual(['Zweite']);
+      expect(await eventKassen(t, 'e2')).toMatchObject({ angepasst: false });
+      // An explicitly empty list is an adjustment, too.
+      await festlegen(t, 'e1', []);
+      expect(await eventKassen(t)).toMatchObject({
+        angepasst: true,
+        kassen: [],
+        unvollstaendig: false,
+      });
+      // Reset.
+      expect((await roh(t, 'admin-token', 'DELETE', '/api/finanzen/events/e1/kassen')).status).toBe(
+        200,
+      );
+      e = await eventKassen(t);
+      expect(e.angepasst).toBe(false);
+      expect(e.kassen.map((x: Dto) => x.name)).toEqual(['Bar']);
+      expect((await festlegen(t, 'nix', [])).status).toBe(404);
+      expect((await festlegen(t, 'e1', ['bank'])).status).toBe(400);
+    });
+
+    it('requires finanzen:buchen to set the Kassen of an event', async () => {
+      const { t } = await kasseSetup();
+      for (const token of ['member-token', 'vorstand-token']) {
+        expect((await festlegen(t, 'e1', [], token)).status, token).toBe(403);
+        expect(
+          (await roh(t, token, 'DELETE', '/api/finanzen/events/e1/kassen')).status,
+          token,
+        ).toBe(403);
+      }
+      expect(
+        (await roh(t, 'member-token', 'GET', '/api/kassen/zaehlungen?eventId=nix')).status,
+      ).toBe(404);
+    });
+
+    it('hides archived Kassen and counts others that are not assigned', async () => {
+      const { t, k } = await kasseSetup();
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: [],
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+        standardKategorieIds: ['kat'],
+      });
+      // Not assigned (explicit empty list) but counted: shows up, preliminary.
+      await festlegen(t, 'e1', []);
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      let e = await eventKassen(t);
+      expect(e.kassen).toEqual([
+        {
+          kontoId: k.kasse,
+          name: 'Bar',
+          zugewiesen: false,
+          gezaehlt: true,
+          einnahmeCent: 5000,
+          status: 'vorlaeufig',
+        },
+      ]);
+      expect(e).toMatchObject({ summeCent: 5000, unvollstaendig: false });
+      await t.anfrage('admin-token', 'PUT', `/konten/${k.kasse}/archiv`, { archiviert: true });
+      e = await eventKassen(t);
+      expect(e.kassen).toEqual([]);
+      expect(e.zaehlungen).toEqual([]);
+    });
+
+    it('shows proposal income per Kasse as preliminary, then the booked amount, and the sum', async () => {
+      const { t, k } = await kasseSetup();
+      await roh(t, 'admin-token', 'PUT', `/api/finanzen/kassen/${k.kasse}`, {
+        grundbestand: st([100, 30], [500, 2]),
+        standardErloesKontoId: k.erloes,
+        standardZielFachId: k.ziel,
+        standardKategorieIds: ['kat'],
+      });
+      await kassenzaehlung(t, k.kasse, 'e1', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+      ]);
+      await kassenzaehlung(t, k.kasse, 'e2', [
+        [100, 30],
+        [500, 2],
+        [5000, 1],
+        [2000, 2],
+      ]);
+      // Soll 40 EUR: e1 = 90 - 40, e2 = 130 - 90, like the proposal of the Abrechnung.
+      const e1 = await eventKassen(t, 'e1');
+      expect(e1.kassen[0]).toMatchObject({
+        einnahmeCent: 5000,
+        status: 'vorlaeufig',
+        gezaehlt: true,
+      });
+      expect(e1).toMatchObject({ summeCent: 5000, unvollstaendig: false });
+      expect((await eventKassen(t, 'e2')).kassen[0]).toMatchObject({
+        einnahmeCent: 4000,
+        status: 'vorlaeufig',
+      });
+      const vor = (await (
+        await roh(t, 'admin-token', 'GET', `/api/finanzen/kassen/${k.kasse}/abrechnung`)
+      ).json()) as Dto;
+      await new Promise((r) => setTimeout(r, 5));
+      // Booked with a different amount for e1: that amount counts now.
+      const res = await abrechnen(
+        t,
+        k,
+        [
+          [100, 30],
+          [500, 2],
+          [5000, 1],
+          [2000, 2],
+        ],
+        {
+          transfers: [
+            { fachId: k.ziel, nennwertCent: 5000, anzahl: 1 },
+            { fachId: k.ziel, nennwertCent: 2000, anzahl: 2 },
+          ],
+          events: [
+            { eventId: 'e1', zaehlungId: vor.zaehlungen[0].id, betragCent: 4500 },
+            { eventId: 'e2', zaehlungId: vor.zaehlungen[1].id, betragCent: 4000 },
+          ],
+        },
+      );
+      const ergebnis = (await res.json()) as Dto;
+      expect((await eventKassen(t, 'e1')).kassen[0]).toMatchObject({
+        einnahmeCent: 4500,
+        status: 'abgerechnet',
+      });
+      // Storno: back to the proposal.
+      await t.anfrage('admin-token', 'POST', `/buchungen/${ergebnis.buchungId}/storno`, {
+        datum: '2027-01-13',
+        text: 'Falsch',
+      });
+      expect((await eventKassen(t, 'e1')).kassen[0]).toMatchObject({
+        einnahmeCent: 5000,
+        status: 'vorlaeufig',
+      });
     });
 
     it('a Storno of the booking makes the Dienst-Zählungen open again', async () => {

@@ -263,7 +263,7 @@ function Zusammenfassung({
       opened
       onClose={laeuft ? () => undefined : onClose}
       title="Abrechnung prüfen"
-      size="xl"
+      size="min(95vw, 1300px)"
       closeOnClickOutside={!laeuft}
     >
       <Stack>
@@ -320,44 +320,46 @@ function Zusammenfassung({
               </Text>
             )}
             <Box visibleFrom="md">
-              <Table tabularNums verticalSpacing={4} withRowBorders>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th />
-                    {nennwerte.map((n) => (
-                      <Table.Th key={n} style={BETRAG_STIL}>
-                        {centAnzeigen(n)}
-                      </Table.Th>
-                    ))}
-                    <Table.Th style={BETRAG_STIL}>Summe</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {matrix.map((z) => (
-                    <Table.Tr key={z.key}>
-                      <Table.Td>{z.label}</Table.Td>
+              <Table.ScrollContainer minWidth={560}>
+                <Table tabularNums verticalSpacing={4} horizontalSpacing={6} fz="xs" withRowBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th />
                       {nennwerte.map((n) => (
-                        <Table.Td
-                          key={n}
-                          style={BETRAG_STIL}
-                          c={
-                            (z.werte[n] ?? 0) < 0
-                              ? 'red'
-                              : (z.werte[n] ?? 0) === 0
-                                ? 'dimmed'
-                                : undefined
-                          }
-                        >
-                          {z.werte[n] ? ZAHL.format(z.werte[n]!) : '–'}
-                        </Table.Td>
+                        <Table.Th key={n} style={BETRAG_STIL}>
+                          {centAnzeigen(n)}
+                        </Table.Th>
                       ))}
-                      <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
-                        {centAnzeigen(z.summeCent)}
-                      </Table.Td>
+                      <Table.Th style={BETRAG_STIL}>Summe</Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {matrix.map((z) => (
+                      <Table.Tr key={z.key}>
+                        <Table.Td>{z.label}</Table.Td>
+                        {nennwerte.map((n) => (
+                          <Table.Td
+                            key={n}
+                            style={BETRAG_STIL}
+                            c={
+                              (z.werte[n] ?? 0) < 0
+                                ? 'red'
+                                : (z.werte[n] ?? 0) === 0
+                                  ? 'dimmed'
+                                  : undefined
+                            }
+                          >
+                            {z.werte[n] ? ZAHL.format(z.werte[n]!) : '–'}
+                          </Table.Td>
+                        ))}
+                        <Table.Td style={{ ...BETRAG_STIL, fontWeight: 600 }}>
+                          {centAnzeigen(z.summeCent)}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             </Box>
             <Stack gap="xs" hiddenFrom="md">
               {matrix.map((z) => (
@@ -955,6 +957,7 @@ function AbrechnenFormular({
                             <BetragFeld
                               aria-label={`Einnahme ${z.eventTitel}`}
                               value={e.betragCent}
+                              negativ
                               onWert={(c) => setEventEingabe((alt) => ({ ...alt, [z.eventId]: c }))}
                               data-nav=""
                             />

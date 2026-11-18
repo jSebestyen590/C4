@@ -80,6 +80,8 @@ export const kasseEingabeSchema = z.object({
   grundbestand: mengenListe('Bitte gib den Grundbestand an.'),
   standardErloesKontoId: idFeld('Bitte wähle ein Erlöskonto.'),
   standardZielFachId: idFeld('Bitte wähle ein Ziel-Fach.'),
+  /** Event-Kategorien for which this Kasse is a standard Kasse. */
+  standardKategorieIds: z.array(idFeld('Bitte wähle eine Kategorie.')).max(200).default([]),
 });
 export type KasseEingabe = z.output<typeof kasseEingabeSchema>;
 export type KasseEingabeInput = z.input<typeof kasseEingabeSchema>;
@@ -87,6 +89,8 @@ export type KasseEingabeInput = z.input<typeof kasseEingabeSchema>;
 /** Body of `PUT /api/finanzen/kassen/:kontoId`: the optional `name` renames the Fach like the Kontenplan does. */
 export const kasseAendernSchema = kasseEingabeSchema.omit({ name: true }).extend({
   name: name('einen Namen').optional(),
+  /** Without it the standard Kassen of the Kategorien stay as they are. */
+  standardKategorieIds: z.array(idFeld('Bitte wähle eine Kategorie.')).max(200).optional(),
 });
 export type KasseAendern = z.output<typeof kasseAendernSchema>;
 export type KasseAendernInput = z.input<typeof kasseAendernSchema>;
@@ -106,6 +110,12 @@ export type KassenzaehlungEingabeInput = z.input<typeof kassenzaehlungEingabeSch
 export const kassenzaehlungenAbfrageSchema = z.object({
   eventId: idFeld('Bitte wähle ein Event.'),
 });
+
+/** Body of `PUT /api/finanzen/events/:eventId/kassen`: the Kassen used at this event. */
+export const eventKassenSchema = z.object({
+  kontoIds: z.array(idFeld('Bitte wähle eine Kasse.')).max(200),
+});
+export type EventKassenEingabe = z.output<typeof eventKassenSchema>;
 
 /** Query of `GET /api/finanzen/kassenabrechnungen`. */
 export const kassenabrechnungenAbfrageSchema = z.object({ kontoId: z.string().min(1).optional() });
@@ -346,6 +356,38 @@ export function nachschubVorschlag(
   return ergebnis;
 }
 
+// ----- Income of an event
+
+export type EventEinnahmeStatus = 'vorlaeufig' | 'abgerechnet';
+
+/**
+ * Income of one Kasse at one event. After a (not reversed) Abrechnung it is the booked amount
+ * (`abgerechnet`); before, the proposal of the Abrechnung (`eventEinnahmenVorschlag` over the counts since
+ * the last Abrechnung, starting with `sollCent`) as `vorlaeufig`. No count and no Abrechnung: none.
+ */
+export function eventKassenEinnahme(p: {
+  eventId: string;
+  sollCent: number;
+  /** The counts of the Kasse since its last Abrechnung (all events). */
+  zaehlungen: readonly KassenZaehlungVorschlag[];
+  /** The amount booked for this event by the newest not reversed Abrechnung, if any. */
+  abgerechnetCent: number | null;
+}): { einnahmeCent: number | null; status: EventEinnahmeStatus | null } {
+  if (p.abgerechnetCent !== null) return { einnahmeCent: p.abgerechnetCent, status: 'abgerechnet' };
+  const e = eventEinnahmenVorschlag(p.sollCent, p.zaehlungen).find((x) => x.eventId === p.eventId);
+  return e ? { einnahmeCent: e.betragCent, status: 'vorlaeufig' } : { einnahmeCent: null, status: null };
+}
+
+/** Sum of all incomes of an event; incomplete while an assigned Kasse has none yet. */
+export function eventKassenSumme(
+  kassen: readonly { zugewiesen: boolean; einnahmeCent: number | null }[],
+): { summeCent: number; unvollstaendig: boolean } {
+  return {
+    summeCent: kassen.reduce((s, k) => s + (k.einnahmeCent ?? 0), 0),
+    unvollstaendig: kassen.some((k) => k.zugewiesen && k.einnahmeCent === null),
+  };
+}
+
 // ----- Settlement
 
 /** `1190` at 1900 bp -> net 1000, tax 190; signs follow the gross amount. */
@@ -583,6 +625,8 @@ export interface KasseDto {
   letzteAbrechnung: { id: string; datum: string; buchung: BuchungVerweisDto | null } | null;
   /** Events with a Dienst-Zählung since the last Abrechnung. */
   offeneZaehlungen: number;
+  /** Event-Kategorien this Kasse is a standard Kasse for. */
+  standardKategorieIds: string[];
 }
 
 /** A Dienst-Zählung as the store returns it (counter still a Cognito sub). */
@@ -722,4 +766,32 @@ export interface KassenabrechnungDetailDto extends Omit<
 export interface KassenabrechnungenSeiteDto {
   abrechnungen: KassenabrechnungListeDto[];
   gekappt: boolean;
+}
+
+/** A Kasse of an event: assigned and/or counted there, with its income. */
+export interface EventKasseDto {
+  kontoId: string;
+  name: string;
+  /** Assigned to the event (explicitly or by the default of its Kategorie). */
+  zugewiesen: boolean;
+  /** Counted at this event. */
+  gezaehlt: boolean;
+  /** Null without a count and without an Abrechnung. */
+  einnahmeCent: number | null;
+  status: EventEinnahmeStatus | null;
+}
+
+/** What the Kassen section of an event shows (store: counter still a Cognito sub). */
+export interface EventKassenEintrag {
+  /** True once the Finanzer:in set the Kassen of this event, false = the default of its Kategorie applies. */
+  angepasst: boolean;
+  kassen: EventKasseDto[];
+  summeCent: number;
+  /** An assigned Kasse is not counted yet. */
+  unvollstaendig: boolean;
+  zaehlungen: KassenzaehlungEintrag[];
+}
+
+export interface EventKassenDto extends Omit<EventKassenEintrag, 'zaehlungen'> {
+  zaehlungen: KassenzaehlungDto[];
 }
