@@ -572,7 +572,7 @@ export function FinanzenBelegPage() {
                           data-nav=""
                         />
                         <BetragFeld
-                          label={`Einzelpreis (${form.modus === 'netto' ? 'netto' : 'brutto'})`}
+                          label={`Preis (${form.modus === 'netto' ? 'netto' : 'brutto'})`}
                           negativ
                           value={p.einzelpreisCent}
                           onWert={(c) => setPosten(p.key, { einzelpreisCent: c })}
