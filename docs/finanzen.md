@@ -405,10 +405,8 @@ Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung v
 | `/finanzen/bargeld/zaehlungen` und `/:id`             | `finanzen:lesen`                                         | Protokoll der Zählungen (Tabelle ab `sm`, Karten darunter, Filter Fach) und Detail mit Soll/Ist/Differenz je Nennwert, Zähler:in (`StatusName`), Link zur Buchung                                                        |
 
 **Hinweise:** Erklärungsbedürftige Felder haben ein Info-Symbol (`InfoHinweis`), dessen Text in
-`packages/web/src/finanzenHilfe.ts` steht (Konto, Buchen, Storno, Bargeld, Kette prüfen).
-
-**Hinweise:** Erklärungsbedürftige Felder haben ein Info-Symbol (`InfoHinweis`), dessen Text in
-`packages/web/src/finanzenHilfe.ts` steht (Konto, Buchen, Storno, Bargeld, Kette prüfen).
+`packages/web/src/finanzenHilfe.ts` steht (Konto, Buchen, Storno, Bargeld, Kette prüfen, Belege). Das
+Symbol ist kein Tab-Stopp und macht das Label nicht höher, damit Felder nebeneinander bündig bleiben.
 
 **Buchen:** Modus „Umbuchung“ (Von Konto = Abgang, Nach Konto = Zugang, Betrag) oder „Frei“ mit der
 wiederverwendbaren `BuchungszeilenTabelle` (Konto suchbar, Zugang/Abgang, Betrag; Summenzeile mit
@@ -451,7 +449,7 @@ eine geglückte Buchung erzeugt einen neuen.
 | `GET /api/kassen/zaehlungen?eventId=`               | `kasse:zaehlen`           | Kassen des Events (`kassen` mit Einnahme und Status, `summeCent`, `unvollstaendig`, `angepasst`) und Dienst-Zählungen (Kasse, Summe, wer, wann, `ersetzt`); 404 bei unbekanntem Event                                                     |
 | `POST /api/kassen/zaehlungen`                       | `kasse:zaehlen`           | `idempotenzSchluessel`, `kontoId`, `eventId`, `ist`; 400 bei fehlendem oder abgesagtem Event; 201 `{ id, summeCent }`, bei bekanntem Schlüssel 200                                                                                        |
 | `GET`/`POST`/`PATCH /api/finanzen/rechnungssteller` | `finanzen:lesen`/`buchen` | Liste (mit `zuletztAm`), Anlegen, Ändern (Name, `archiviert`); Name eindeutig, sonst 409                                                                                                                                                  |
-| `GET /api/finanzen/belege`                          | `finanzen:lesen`          | Filter Status (entwurf/gebucht/storniert), Rechnungssteller, Zeitraum, Zahlweg, Mitglied; Entwürfe zuerst, gebuchte höchstens 500 (`gekappt`)                                                                                            |
+| `GET /api/finanzen/belege`                          | `finanzen:lesen`          | Filter Status (entwurf/gebucht/storniert), Rechnungssteller, Zeitraum, Zahlweg, Mitglied; Entwürfe zuerst, gebuchte höchstens 500 (`gekappt`)                                                                                             |
 | `GET /api/finanzen/belege/:id`                      | `finanzen:lesen`          | gebuchter Beleg mit Posten, Korrekturen, Datei-URL, Buchung, Erstattung                                                                                                                                                                   |
 | `POST /api/finanzen/belege/:id/kopieren`            | `finanzen:buchen`         | neuer Entwurf mit denselben Daten und Datei                                                                                                                                                                                               |
 | `POST /api/finanzen/beleg-entwuerfe`                | `finanzen:buchen`         | Entwurf anlegen; `GET`/`PUT`/`DELETE /api/finanzen/beleg-entwuerfe/:id` lesen, speichern, verwerfen (Lesen `finanzen:lesen`)                                                                                                              |

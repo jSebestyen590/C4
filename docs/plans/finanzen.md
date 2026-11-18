@@ -115,18 +115,16 @@ Keine Fehler:
   Beträge sind rechtsbündig mit Tabellenziffern, negative Werte deutlich abgesetzt.
 - Warnungen je Kontoart (bestätigungspflichtig, nicht blockierend): Bank im Minus, Aufwand mit Guthaben und
   Erlöse im Minus nach der Buchung (`saldoWarnungen`, siehe `docs/finanzen.md`).
-- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
-  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
-  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
-- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
-  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
-  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick oder
+  Tipp eine kurze Erklärung; kein Tab-Stopp, damit die Tastaturführung nicht unterbrochen wird). Die Texte
+  stehen zentral in `packages/web/src/finanzenHilfe.ts`; jede Scheibe ergänzt ihre Texte, damit das Wissen
+  beim Wechsel der Finanzer:in in der App bleibt.
 
 ## Zielscheiben
 
 Abhängigkeiten: 0 → (1, 2, 4 parallel) → 3 (braucht 1) → 5 → 6 → 7; 8 braucht 4; 9 braucht 4 und
 wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt; 11 ist unabhängig und lohnt sich, sobald
-mehrere Unterseiten stehen.
+mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export).
 
 ### Scheibe 0: Fundament
 
@@ -309,6 +307,21 @@ Journal). Das denken wir zu Beginn der Scheibe genauer durch. Überlegungen:
   angelegt, rechts aktualisiert sich die Liste der Buchungen von selbst).
 - Nur Desktop: am Handy bleibt es bei einer Seite.
 
+### Scheibe 12: Auswertung der Auslagen
+
+Wer hat wann wie viel ausgelegt, und wie schnell erstatten wir? Grundlage sind `fin_belege` (Zahlweg
+`auslage`, Mitglied, Belegdatum, Summe), `fin_erstattungen` / `fin_erstattung_belege` (Datum,
+Zahlweg) und Stornos aus `fin_buchungen.storno_von`; ab 4b zusätzlich das Einreichdatum.
+
+- Je Mitglied und Zeitraum (Monat/Quartal/Jahr, frei): Summe und Anzahl der Auslagen, davon erstattet
+  und offen, Erstattungen bar/Bank.
+- Verzögerung: Tage von Belegdatum (ab 4b: Einreichung) bis Erstattung je Beleg; Durchschnitt, Median
+  und Maximum je Mitglied und Zeitraum; älteste offene Auslage.
+- Übersicht über alle Mitglieder (Rangfolge nach Summe oder Verzögerung) und Verlauf als Diagramm
+  (`@mantine/charts`), Drill-down auf die Belege.
+- CSV-Export wie die übrigen Auswertungen (Scheibe 9). Rechte `finanzen:lesen`; Mitglieder sehen
+  später ihre eigenen Auslagen auf der eigenen Buch-Seite (mobile first).
+
 ### Später
 
 Einlagern aus dem Beleg (vorbefüllte Sammel-Einlagerung, `bestandsvorgang_id` am Posten), Verweis
@@ -354,6 +367,7 @@ FinTS-Überweisungen, E-Rechnung.
 | Ü Übernahme               | offen                                                                                                                                                                  |
 | 10 Unentgeltliche Abgaben | offen                                                                                                                                                                  |
 | 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                |
+| 12 Auslagen-Auswertung    | offen                                                                                                                                                                  |
 
 ## Verifikation (je Scheibe)
 
