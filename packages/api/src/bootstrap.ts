@@ -36,11 +36,13 @@ import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
+import { finanzExport } from './finanzExport';
 import { createFinanzenStore } from './finanzen';
 import { createBuchStore } from './buch';
 import { createUmfragenStore } from './umfragen';
 import { createWarenStore } from './waren';
 import { createProfilbilder } from './profilbilder';
+import { createFinanzarchiv, finanzarchivNichtEingerichtet } from './finanzarchiv';
 import { createProtokollbilder } from './protokollbilder';
 
 /** Wires the real AWS-backed dependencies. Shared by the Lambda and the local server. */
@@ -89,6 +91,10 @@ export function createProduction() {
   const pingDb = async () => {
     await pool.query('select 1');
   };
+  const finanzen = createFinanzenStore(db);
+  const finanzarchiv = config.finanzarchivBucket
+    ? createFinanzarchiv(config.finanzarchivBucket, config.region)
+    : finanzarchivNichtEingerichtet;
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
@@ -103,7 +109,7 @@ export function createProduction() {
     todos,
     umfragen,
     trichter: createTrichterStore(db),
-    finanzen: createFinanzenStore(db),
+    finanzen,
     buch: createBuchStore(db),
     protokolle: createProtokolleStore(db),
     privatpartys,
@@ -115,11 +121,14 @@ export function createProduction() {
     ...(config.appUrl && { appUrl: config.appUrl }),
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     protokollbilder: createProtokollbilder(config.profilbildBucket, config.region),
+    finanzarchiv,
     pingDb,
   });
   return {
     app,
     pingDb,
+    finanzExportJob: (jetzt: Date) =>
+      finanzExport({ store: finanzen, archiv: finanzarchiv }, jetzt),
     pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
     mailJob: (jetzt: Date) =>
       mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),

@@ -1565,3 +1565,128 @@ export const finEventKassen = pgTable(
   },
   (t) => [primaryKey({ columns: [t.eventId, t.kontoId] })],
 );
+
+/** Rechnungssteller of Belege (editable master data, archived instead of deleted). */
+export const finRechnungssteller = pgTable('fin_rechnungssteller', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+
+/** Draft of a Beleg (editable, deleted when booked or discarded); `daten` is the form state as JSON text. */
+export const finBelegEntwuerfe = pgTable('fin_beleg_entwuerfe', {
+  id: text('id').primaryKey(),
+  daten: text('daten').notNull(),
+  dateiSha256: text('datei_sha256'),
+  dateiSchluessel: text('datei_schluessel'),
+  dateiTyp: text('datei_typ'),
+  dateiName: text('datei_name'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+});
+export type FinBelegEntwurfRow = typeof finBelegEntwuerfe.$inferSelect;
+
+/** Booked Beleg (insert-only); `nummer` (B-YYYY-NNNN) and `idempotenz_schluessel` have unique indexes. */
+export const finBelege = pgTable('fin_belege', {
+  id: text('id').primaryKey(),
+  nummer: text('nummer').notNull(),
+  rechnungsstellerId: text('rechnungssteller_id')
+    .notNull()
+    .references(() => finRechnungssteller.id),
+  belegdatum: date('belegdatum', { mode: 'string' }).notNull(),
+  modus: text('modus').$type<'brutto' | 'netto'>().notNull(),
+  zahlweg: text('zahlweg').$type<'bar' | 'bank' | 'auslage'>().notNull(),
+  bezahldatum: date('bezahldatum', { mode: 'string' }),
+  /** Cognito sub of the member who paid (Auslage only), without a foreign key. */
+  mitgliedId: text('mitglied_id'),
+  eigenbelegBegruendung: text('eigenbeleg_begruendung'),
+  dateiSha256: text('datei_sha256'),
+  dateiSchluessel: text('datei_schluessel'),
+  dateiTyp: text('datei_typ'),
+  dateiName: text('datei_name'),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type FinBelegRow = typeof finBelege.$inferSelect;
+
+/** Items of a booked Beleg (insert-only); `anzahlMilli` in thousandths, `steuersatz` in basis points. */
+export const finBelegposten = pgTable(
+  'fin_belegposten',
+  {
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+    pos: integer('pos').notNull(),
+    kategorieId: text('kategorie_id')
+      .notNull()
+      .references(() => finKonten.id),
+    text: text('text').notNull(),
+    anzahlMilli: integer('anzahl_milli').notNull(),
+    einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
+    steuersatz: integer('steuersatz').notNull(),
+    betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.belegId, t.pos] })],
+);
+
+/** Rounding corrections per tax rate of a net Beleg (insert-only). */
+export const finBelegKorrekturen = pgTable(
+  'fin_beleg_korrekturen',
+  {
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+    steuersatz: integer('steuersatz').notNull(),
+    nettoCent: bigint('netto_cent', { mode: 'number' }).notNull(),
+    steuerCent: bigint('steuer_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.belegId, t.steuersatz] })],
+);
+
+/** Collective reimbursement of Auslagen (insert-only); `idempotenz_schluessel` has a unique index. */
+export const finErstattungen = pgTable('fin_erstattungen', {
+  id: text('id').primaryKey(),
+  /** Cognito sub, without a foreign key. */
+  mitgliedId: text('mitglied_id').notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  zahlweg: text('zahlweg').$type<'bar' | 'bank'>().notNull(),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type FinErstattungRow = typeof finErstattungen.$inferSelect;
+
+/** The Belege of an Erstattung (insert-only); a reversed Erstattung frees them again. */
+export const finErstattungBelege = pgTable(
+  'fin_erstattung_belege',
+  {
+    erstattungId: text('erstattung_id')
+      .notNull()
+      .references(() => finErstattungen.id),
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+  },
+  (t) => [primaryKey({ columns: [t.erstattungId, t.belegId] })],
+);
+
+/** Daily export of the journal to the archive bucket (insert-only). */
+export const finExporte = pgTable('fin_exporte', {
+  id: text('id').primaryKey(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  vonSeq: bigint('von_seq', { mode: 'number' }).notNull(),
+  bisSeq: bigint('bis_seq', { mode: 'number' }).notNull(),
+  kopfHash: text('kopf_hash').notNull(),
+  schluessel: text('schluessel').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});

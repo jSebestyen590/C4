@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_belege_buchung_idx ON fin_belege (buchung_id)

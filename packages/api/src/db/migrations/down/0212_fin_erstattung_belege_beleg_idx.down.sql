@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_erstattung_belege_beleg_idx

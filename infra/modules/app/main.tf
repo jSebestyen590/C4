@@ -159,6 +159,12 @@ resource "aws_iam_role_policy" "lambda" {
         ]
       },
       {
+        # Finanzarchiv: write and read only. No delete, no BypassGovernanceRetention.
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+        Resource = [aws_s3_bucket.finanzarchiv.arn, "${aws_s3_bucket.finanzarchiv.arn}/*"]
+      },
+      {
         # Deleting a protocol removes all its images (list + delete by prefix).
         Effect    = "Allow"
         Action    = ["s3:ListBucket"]
@@ -215,10 +221,11 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      USER_POOL_ID      = aws_cognito_user_pool.this.id
-      CLIENT_ID         = aws_cognito_user_pool_client.web.id
-      DSQL_ENDPOINT     = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
-      PROFILBILD_BUCKET = aws_s3_bucket.profilbilder.bucket
+      USER_POOL_ID        = aws_cognito_user_pool.this.id
+      CLIENT_ID           = aws_cognito_user_pool_client.web.id
+      DSQL_ENDPOINT       = "${aws_dsql_cluster.this.identifier}.dsql.${local.region}.on.aws"
+      PROFILBILD_BUCKET   = aws_s3_bucket.profilbilder.bucket
+      FINANZARCHIV_BUCKET = aws_s3_bucket.finanzarchiv.bucket
 
       PARTYMAIL_SECRET_ARN = aws_secretsmanager_secret.partymail.arn
 
@@ -376,6 +383,29 @@ resource "aws_scheduler_schedule" "push_job" {
   }
 }
 
+# Finanzarchiv export: daily at 03:00 Berlin time (entries since the last export + chain anchor).
+resource "aws_scheduler_schedule" "finanz_export" {
+  name                         = "${local.name}-finanz-export"
+  description                  = "Writes the daily Finanzarchiv export and anchor"
+  schedule_expression          = "cron(0 3 * * ? *)"
+  schedule_expression_timezone = "Europe/Berlin"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.api.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ c4 = "finanz-export" })
+
+    retry_policy {
+      maximum_retry_attempts       = 2
+      maximum_event_age_in_seconds = 3600
+    }
+  }
+}
+
 # Party-Mail job: fetches new mails every 2 minutes. A schedule of its own, so the push job keeps its
 # 15 seconds. The scheduler role above may invoke the whole function.
 resource "aws_scheduler_schedule" "mail_job" {
@@ -507,6 +537,49 @@ resource "aws_s3_bucket_policy" "profilbilder" {
 }
 
 # Access logs (S3 server access logs + CloudFront standard logs), expired after 90 days.
+# ---------------------------------------------------------------- S3 (Finanzarchiv)
+# Beleg files and daily exports under Object Lock; nothing is ever deleted (no lifecycle rules).
+resource "aws_s3_bucket" "finanzarchiv" {
+  bucket              = "${local.name}-finanzarchiv-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
+}
+
+resource "aws_s3_bucket_public_access_block" "finanzarchiv" {
+  bucket                  = aws_s3_bucket.finanzarchiv.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "finanzarchiv" {
+  bucket = aws_s3_bucket.finanzarchiv.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "finanzarchiv" {
+  bucket     = aws_s3_bucket.finanzarchiv.id
+  depends_on = [aws_s3_bucket_versioning.finanzarchiv]
+  rule {
+    default_retention {
+      mode = var.finanzarchiv_retention_mode
+      days = var.finanzarchiv_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "finanzarchiv" {
+  bucket = aws_s3_bucket.finanzarchiv.id
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
+    allowed_headers = ["content-type", "x-amz-checksum-sha256"]
+    max_age_seconds = 3000
+  }
+}
+
 resource "aws_s3_bucket" "logs" {
   bucket        = "${local.name}-logs-${data.aws_caller_identity.current.account_id}"
   force_destroy = var.env != "prod"

@@ -52,6 +52,7 @@ import {
   zaehlungKontoFehler,
   type FinanzenStore,
 } from './finanzen';
+import { createFakeBelegeStore } from './finanzenBelege.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
 interface FakeKasse {
@@ -81,12 +82,21 @@ export function createFakeFinanzenStore() {
     { id: 'geldtransit', name: 'Geldtransit', art: 'durchlauf', stueckelung: false },
     { id: 'eroeffnung', name: 'Eröffnung / Saldovortrag', art: 'neutral', stueckelung: false },
     { id: 'kassendifferenz', name: 'Kassendifferenz', art: 'neutral', stueckelung: false },
+    { id: 'auslagen', name: 'Auslagen Mitglieder', art: 'durchlauf', stueckelung: false },
   ] as const) {
     konten.set(k.id, { ...k, parentId: null, steuersatzStandard: null, archiviert: false });
   }
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
   const zaehler = { wert: 0, letzterHash: GENESIS_HASH };
+  const exporte: {
+    datum: string;
+    vonSeq: number;
+    bisSeq: number;
+    kopfHash: string;
+    schluessel: string;
+    erstelltAm: Date;
+  }[] = [];
   /** Zählungen in insertion order; the idempotency key is unique like the index. */
   const zaehlungenListe: (ZaehlungDetailEintrag & { schluessel: string })[] = [];
   /** Idempotency key -> booking, like the unique index. */
@@ -99,7 +109,8 @@ export function createFakeFinanzenStore() {
   /** Known event Kategorien. */
   const kategorien = new Set<string>(['kat']);
   const kategorienPruefen = (ids: readonly string[]) => {
-    if (ids.some((k) => !kategorien.has(k))) throw new KontoUngueltig('Eine Event-Kategorie gibt es nicht.');
+    if (ids.some((k) => !kategorien.has(k)))
+      throw new KontoUngueltig('Eine Event-Kategorie gibt es nicht.');
   };
   /** Dienst-Zählungen in insertion order (newest last). */
   const kassenzaehlungenListe: (KassenzaehlungEintrag & { schluessel: string })[] = [];
@@ -240,7 +251,16 @@ export function createFakeFinanzenStore() {
       g.filter((x) => x.anzahl > 0).map((x) => [x.nennwertCent, x.anzahl] as [number, number]),
     );
 
+  const belege = createFakeBelegeStore({
+    konten,
+    buchungen,
+    pruefKonten: () => pruefKonten().map((k) => ({ ...k, art: konten.get(k.id)!.art })),
+    alleBestand,
+    anhaengen,
+  });
+
   const store: FinanzenStore = {
+    ...belege,
     async konten(mitArchiv) {
       const gesamt = saldoGesamt(
         [...konten.values()].map((k) => ({ ...k, saldoCent: saldo(k.id) })),
@@ -696,7 +716,9 @@ export function createFakeFinanzenStore() {
       const zugewiesen = new Set(
         explizit
           ? [...explizit]
-          : [...kassen].filter(([, k]) => k.kategorieIds.has(ev.kategorieId ?? 'kat')).map(([id]) => id),
+          : [...kassen]
+              .filter(([, k]) => k.kategorieIds.has(ev.kategorieId ?? 'kat'))
+              .map(([id]) => id),
       );
       const storniert = storniertIds();
       const abgerechnet = new Map<string, number>();
@@ -719,7 +741,16 @@ export function createFakeFinanzenStore() {
           .flatMap((z) => {
             const e = events.get(z.eventId);
             return e
-              ? [{ id: z.id, kontoId: z.kontoId, eventId: z.eventId, summeCent: z.summeCent, gezaehltAm: z.gezaehltAm, eventBeginn: e.beginn }]
+              ? [
+                  {
+                    id: z.id,
+                    kontoId: z.kontoId,
+                    eventId: z.eventId,
+                    summeCent: z.summeCent,
+                    gezaehltAm: z.gezaehltAm,
+                    eventBeginn: e.beginn,
+                  },
+                ]
               : [];
           }),
         abgerechnet,
@@ -774,6 +805,12 @@ export function createFakeFinanzenStore() {
       });
       return { id, summeCent };
     },
+    async letzterExportSeq() {
+      return Math.max(0, ...exporte.map((e) => e.bisSeq));
+    },
+    async exportEintragen(e) {
+      exporte.push(e);
+    },
     async kettenDaten() {
       return {
         buchungen: structuredClone(buchungen),
@@ -782,5 +819,5 @@ export function createFakeFinanzenStore() {
       };
     },
   };
-  return { store, konten, buchungen, zaehler, events, kassen, kategorien };
+  return { store, exporte, konten, buchungen, zaehler, events, kassen, kategorien };
 }

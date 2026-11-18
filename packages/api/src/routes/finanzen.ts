@@ -2,6 +2,21 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
+  BELEGE_MAX,
+  belegBuchenSchema,
+  belegDateiUploadSchema,
+  belegEntwurfSchema,
+  belegeAbfrageSchema,
+  erstattungEingabeSchema,
+  rechnungsstellerAendernSchema,
+  rechnungsstellerEingabeSchema,
+  type AuslageMitgliedDto,
+  type AuslagenDto,
+  type BelegDetailDto,
+  type BelegEntwurfDto,
+  type BelegeSeiteDto,
+  type BelegListeDto,
+  type BelegUploadDto,
   buchungEingabeSchema,
   JOURNAL_MAX,
   kasseAendernSchema,
@@ -41,6 +56,7 @@ import {
   type KontoDto,
 } from '@c4/shared';
 import { BuchungUngueltig, KontoKonflikt, KontoUngueltig, StornoKonflikt } from '../finanzen';
+import { BelegWarnungenOffen } from '../finanzenBelege';
 import { type AuthEnv } from '../auth';
 import type { RoutenKontext } from './kontext';
 
@@ -356,7 +372,9 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
       )
       .delete('/finanzen/events/:eventId/kassen', auth, finanzenBuchen, async (c) => {
         gefunden(
-          await deps.finanzen.eventKassenFestlegen(c.req.param('eventId'), null).catch(finanzenFehler),
+          await deps.finanzen
+            .eventKassenFestlegen(c.req.param('eventId'), null)
+            .catch(finanzenFehler),
           'Event nicht gefunden',
         );
         return c.json({ ok: true });
@@ -379,9 +397,10 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           const eintrag = gefunden(e, 'Event nicht gefunden');
           const dto: EventKassenDto = {
             ...eintrag,
-            zaehlungen: eintrag.zaehlungen.map(
-              (z): KassenzaehlungDto => ({ ...z, gezaehltVon: mitglied(z.gezaehltVon) }),
-            ),
+            zaehlungen: eintrag.zaehlungen.map((z): KassenzaehlungDto => ({
+              ...z,
+              gezaehltVon: mitglied(z.gezaehltVon),
+            })),
           };
           return c.json(dto);
         },
@@ -394,6 +413,202 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         async (c) => {
           const ergebnis = await deps.finanzen
             .kasseZaehlen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
+      // Belege: Rechnungssteller, drafts, booking, file upload and the Auslagen of members.
+      .get('/finanzen/rechnungssteller', auth, finanzenLesen, async (c) =>
+        c.json(await deps.finanzen.rechnungssteller(c.req.query('archiviert') === '1')),
+      )
+      .post(
+        '/finanzen/rechnungssteller',
+        auth,
+        finanzenBuchen,
+        zValidator('json', rechnungsstellerEingabeSchema),
+        async (c) => {
+          const id = await deps.finanzen
+            .rechnungsstellerAnlegen(c.req.valid('json').name)
+            .catch(finanzenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .patch(
+        '/finanzen/rechnungssteller/:id',
+        auth,
+        finanzenBuchen,
+        zValidator('json', rechnungsstellerAendernSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen
+              .rechnungsstellerAendern(c.req.param('id'), c.req.valid('json'))
+              .catch(finanzenFehler),
+            'Rechnungssteller nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .get(
+        '/finanzen/belege',
+        auth,
+        finanzenLesen,
+        zValidator('query', belegeAbfrageSchema),
+        async (c) => {
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.belege({ ...c.req.valid('query'), limit: BELEGE_MAX + 1 }),
+            finanzenMitglieder(),
+          ]);
+          const gebucht = liste.filter((b) => b.status !== 'entwurf');
+          const dto: BelegeSeiteDto = {
+            belege: [
+              ...liste.filter((b) => b.status === 'entwurf'),
+              ...gebucht.slice(0, BELEGE_MAX),
+            ].map(({ mitgliedId, ...rest }): BelegListeDto => ({
+              ...rest,
+              mitglied: mitgliedId ? mitglied(mitgliedId) : null,
+            })),
+            gekappt: gebucht.length > BELEGE_MAX,
+          };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/belege/:id', auth, finanzenLesen, async (c) => {
+        const [b, mitglied] = await Promise.all([
+          deps.finanzen.beleg(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const { mitgliedId, erstelltVon, datei, ...beleg } = gefunden(b, 'Beleg nicht gefunden');
+        const dto: BelegDetailDto = {
+          ...beleg,
+          mitglied: mitgliedId ? mitglied(mitgliedId) : null,
+          erstelltVon: mitglied(erstelltVon),
+          datei: datei && { ...datei, url: await deps.finanzarchiv.anzeigeUrl(datei.schluessel) },
+        };
+        return c.json(dto);
+      })
+      .post('/finanzen/belege/:id/kopieren', auth, finanzenBuchen, async (c) => {
+        const id = gefunden(
+          await deps.finanzen.entwurfKopieren(c.req.param('id'), c.get('user').sub),
+          'Beleg nicht gefunden',
+        );
+        return c.json({ id }, 201);
+      })
+      .post(
+        '/finanzen/beleg-entwuerfe',
+        auth,
+        finanzenBuchen,
+        zValidator('json', belegEntwurfSchema),
+        async (c) => {
+          const id = await deps.finanzen.entwurfAnlegen(
+            c.req.valid('json').daten,
+            c.get('user').sub,
+          );
+          return c.json({ id }, 201);
+        },
+      )
+      .get('/finanzen/beleg-entwuerfe/:id', auth, finanzenLesen, async (c) => {
+        const [e, warnungen, mitglied] = await Promise.all([
+          deps.finanzen.entwurf(c.req.param('id')),
+          deps.finanzen.belegWarnungen(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const entwurf = gefunden(e, 'Entwurf nicht gefunden');
+        const dto: BelegEntwurfDto = {
+          id: entwurf.id,
+          daten: entwurf.daten,
+          dateiUrl: entwurf.daten.datei
+            ? await deps.finanzarchiv.anzeigeUrl(entwurf.daten.datei.schluessel)
+            : null,
+          warnungen: warnungen ?? [],
+          erstelltVon: mitglied(entwurf.erstelltVon),
+          erstelltAm: entwurf.erstelltAm,
+          geaendertAm: entwurf.geaendertAm,
+        };
+        return c.json(dto);
+      })
+      .put(
+        '/finanzen/beleg-entwuerfe/:id',
+        auth,
+        finanzenBuchen,
+        zValidator('json', belegEntwurfSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen.entwurfSpeichern(c.req.param('id'), c.req.valid('json').daten),
+            'Entwurf nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .delete('/finanzen/beleg-entwuerfe/:id', auth, finanzenBuchen, async (c) => {
+        gefunden(await deps.finanzen.entwurfLoeschen(c.req.param('id')), 'Entwurf nicht gefunden');
+        return c.json({ ok: true });
+      })
+      .post(
+        '/finanzen/beleg-entwuerfe/:id/buchen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', belegBuchenSchema),
+        async (c) => {
+          const id = c.req.param('id');
+          const mitglied = await finanzenMitglieder();
+          const entwurf = await deps.finanzen.entwurf(id);
+          const zahler = entwurf?.daten.zahlweg === 'auslage' ? entwurf.daten.mitgliedId : null;
+          if (zahler && !mitglied(zahler))
+            throw new HTTPException(400, { message: 'Das Mitglied der Auslage gibt es nicht.' });
+          try {
+            const ergebnis = gefunden(
+              await deps.finanzen.entwurfBuchen(id, c.req.valid('json'), c.get('user').sub),
+              'Entwurf nicht gefunden',
+            );
+            return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+          } catch (err) {
+            if (err instanceof BelegWarnungenOffen)
+              return c.json({ error: err.message, warnungen: err.warnungen }, 409);
+            return finanzenFehler(err);
+          }
+        },
+      )
+      // Presigned upload of a Beleg file straight into the archive; `schonGebucht` hints at a duplicate.
+      .post(
+        '/finanzen/beleg-dateien/upload',
+        auth,
+        finanzenBuchen,
+        zValidator('json', belegDateiUploadSchema),
+        async (c) => {
+          const datei = c.req.valid('json');
+          const [upload, schonGebucht] = await Promise.all([
+            deps.finanzarchiv.uploadVorbereiten(datei),
+            deps.finanzen.dateiGebucht(datei.sha256),
+          ]);
+          const dto: BelegUploadDto = { ...upload, schonGebucht };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/auslagen', auth, finanzenLesen, async (c) => {
+        const [liste, mitglied] = await Promise.all([
+          deps.finanzen.auslagen(),
+          finanzenMitglieder(),
+        ]);
+        const dto: AuslagenDto = {
+          mitglieder: liste.map((m): AuslageMitgliedDto => ({
+            ...m,
+            mitglied: mitglied(m.mitgliedId),
+          })),
+        };
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/erstattungen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', erstattungEingabeSchema),
+        async (c) => {
+          const eingabe = c.req.valid('json');
+          const mitglied = (await finanzenMitglieder())(eingabe.mitgliedId);
+          if (!mitglied) throw new HTTPException(400, { message: 'Das Mitglied gibt es nicht.' });
+          const name = mitglied.username ?? `${mitglied.vorname} ${mitglied.nachname}`;
+          const ergebnis = await deps.finanzen
+            .erstatten(eingabe, c.get('user').sub, name)
             .catch(finanzenFehler);
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },

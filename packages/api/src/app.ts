@@ -21,6 +21,7 @@ import { type ProtokollStore } from './protokolle';
 import { type UmfragenStore } from './umfragen';
 import { type MitgliederStore } from './mitglieder';
 import { type Profilbilder } from './profilbilder';
+import { type Finanzarchiv } from './finanzarchiv';
 import { type Protokollbilder } from './protokollbilder';
 import { DEAKTIVIERT, type AuthEnv, type TokenVerifier } from './auth';
 import { baueKontext } from './routes/kontext';
@@ -75,6 +76,8 @@ export interface AppDeps {
   appUrl?: string;
   profilbilder: Profilbilder;
   protokollbilder: Protokollbilder;
+  /** Archive bucket of the Finanzen (Beleg files, exports). */
+  finanzarchiv: Finanzarchiv;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }

@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 // Guard: the journal tables are insert-only. No production code may update or delete them.
 const TABELLEN =
-  'finBuchungen|finBuchungszeilen|finStueckelung|finZaehlungen|finZaehlungPosten|buchEintraege|buchTarife|buchAbrechnungen|buchSeitenVerlauf|finKassenzaehlungen|finKassenzaehlungPosten|finKassenabrechnungen|finKassenabrechnungPosten|finKassenabrechnungTransfers|finKassenabrechnungEvents';
+  'finBuchungen|finBuchungszeilen|finStueckelung|finZaehlungen|finZaehlungPosten|buchEintraege|buchTarife|buchAbrechnungen|buchSeitenVerlauf|finKassenzaehlungen|finKassenzaehlungPosten|finKassenabrechnungen|finKassenabrechnungPosten|finKassenabrechnungTransfers|finKassenabrechnungEvents|finBelege|finBelegposten|finBelegKorrekturen|finErstattungen|finErstattungBelege|finExporte';
 const SQL_TABELLEN =
-  'fin_buchungen|fin_buchungszeilen|fin_stueckelung|fin_zaehlungen|fin_zaehlung_posten|buch_eintraege|buch_tarife|buch_abrechnungen|buch_seiten_verlauf|fin_kassenzaehlungen|fin_kassenzaehlung_posten|fin_kassenabrechnungen|fin_kassenabrechnung_posten|fin_kassenabrechnung_transfers|fin_kassenabrechnung_events';
+  'fin_buchungen|fin_buchungszeilen|fin_stueckelung|fin_zaehlungen|fin_zaehlung_posten|buch_eintraege|buch_tarife|buch_abrechnungen|buch_seiten_verlauf|fin_kassenzaehlungen|fin_kassenzaehlung_posten|fin_kassenabrechnungen|fin_kassenabrechnung_posten|fin_kassenabrechnung_transfers|fin_kassenabrechnung_events|fin_belege|fin_belegposten|fin_beleg_korrekturen|fin_erstattungen|fin_erstattung_belege|fin_exporte';
 
 const MUSTER: RegExp[] = [
   new RegExp(`\\.(update|delete)\\(\\s*(${TABELLEN})\\b`, 'g'),

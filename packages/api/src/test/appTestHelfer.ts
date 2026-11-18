@@ -822,6 +822,17 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
     loeschen: vi.fn<(protokollId: string) => Promise<void>>(async () => {}),
   };
+  const finanzarchiv = {
+    uploadVorbereiten: vi.fn(async (d: { sha256: string; groesse: number; typ: string }) => ({
+      uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
+      schluessel: `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
+      checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
+    })),
+    anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
+    exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
+      async () => {},
+    ),
+  };
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
   );
@@ -865,6 +876,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     ...(appUrl && { appUrl }),
     profilbilder,
     protokollbilder,
+    finanzarchiv,
     pingDb,
   });
   return {
@@ -875,6 +887,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     posten,
     profilbilder,
     protokollbilder,
+    finanzarchiv,
     waren,
     inventar,
     inventarVerwendet,
