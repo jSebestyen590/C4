@@ -19,7 +19,7 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   berechneKassenabrechnung,
   centAnzeigen,
@@ -345,14 +345,15 @@ function Zusammenfassung({
                   key={w}
                   label={`${w} Das ist richtig so.`}
                   checked={bestaetigt.has(w)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const an = e.currentTarget.checked;
                     setBestaetigt((alt) => {
                       const neu = new Set(alt);
-                      if (e.currentTarget.checked) neu.add(w);
+                      if (an) neu.add(w);
                       else neu.delete(w);
                       return neu;
-                    })
-                  }
+                    });
+                  }}
                 />
               ))}
             </Stack>
@@ -392,6 +393,7 @@ function AbrechnenFormular({
   const api = useApi();
   const qc = useQueryClient();
   const { kasse } = vorschau;
+  const navigate = useNavigate();
   const [datum, setDatum] = useState(heuteBerlin());
   const [ist, setIst] = useState<Mengen>({});
   const [erloesWahl, setErloesWahl] = useState<string | null>(null);
@@ -498,6 +500,7 @@ function AbrechnenFormular({
       void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       void qc.invalidateQueries({ queryKey: ['kassen'] });
       setGespeichert(ergebnis);
+      void navigate(kassenabrechnungPfad(ergebnis.id));
       setIst({});
       setTransferEingabe(null);
       setNachschub({});
