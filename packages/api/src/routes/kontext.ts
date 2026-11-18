@@ -69,6 +69,7 @@ export function baueKontext(deps: AppDeps) {
   const trichterLesen = requirePermission('trichter:lesen');
   const trichterVerwalten = requirePermission('trichter:verwalten');
   const buchLesen = requirePermission('buch:lesen');
+  const kasseZaehlen = requirePermission('kasse:zaehlen');
   const finanzenLesen = requirePermission('finanzen:lesen');
   const finanzenBuchen = requirePermission('finanzen:buchen');
   const finanzenVerwalten = requirePermission('finanzen:verwalten');
@@ -346,6 +347,7 @@ export function baueKontext(deps: AppDeps) {
     trichterLesen,
     trichterVerwalten,
     buchLesen,
+    kasseZaehlen,
     finanzenLesen,
     finanzenBuchen,
     finanzenVerwalten,

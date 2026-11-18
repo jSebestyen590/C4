@@ -4,6 +4,20 @@ import { zValidator } from '@hono/zod-validator';
 import {
   buchungEingabeSchema,
   JOURNAL_MAX,
+  kasseAendernSchema,
+  kasseEingabeSchema,
+  KASSENABRECHNUNGEN_MAX,
+  kassenabrechnungEingabeSchema,
+  kassenabrechnungenAbfrageSchema,
+  kassenzaehlungEingabeSchema,
+  kassenzaehlungenAbfrageSchema,
+  type KasseDto,
+  type KasseKurzDto,
+  type KassenabrechnungDetailDto,
+  type KassenabrechnungListeDto,
+  type KassenabrechnungenSeiteDto,
+  type KassenabrechnungVorschauDto,
+  type KassenzaehlungDto,
   journalAbfrageSchema,
   kontoAendernSchema,
   kontoArchivSchema,
@@ -32,6 +46,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
   const {
     deps,
     auth,
+    kasseZaehlen,
     finanzenLesen,
     finanzenBuchen,
     finanzenVerwalten,
@@ -225,6 +240,136 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         const dto: ZaehlungDetailDto = { ...zaehlung, gezaehltVon: mitglied(zaehlung.gezaehltVon) };
         return c.json(dto);
       })
+      // Barkassen: master data, Abrechnung by the Finanzer:in and the Dienst-Zählung at events.
+      .get('/finanzen/kassen', auth, finanzenLesen, async (c) => {
+        const dto: KasseDto[] = await deps.finanzen.kassen(c.req.query('archiviert') === '1');
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/kassen',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', kasseEingabeSchema),
+        async (c) => {
+          const kontoId = await deps.finanzen
+            .kasseAnlegen(c.req.valid('json'))
+            .catch(finanzenFehler);
+          return c.json({ kontoId }, 201);
+        },
+      )
+      .put(
+        '/finanzen/kassen/:kontoId',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', kasseAendernSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen
+              .kasseAendern(c.req.param('kontoId'), c.req.valid('json'))
+              .catch(finanzenFehler),
+            'Kasse nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      .get('/finanzen/kassen/:kontoId/abrechnung', auth, finanzenLesen, async (c) => {
+        const [v, mitglied] = await Promise.all([
+          deps.finanzen.kassenAbrechnungVorschau(c.req.param('kontoId')),
+          finanzenMitglieder(),
+        ]);
+        const vorschau = gefunden(v, 'Kasse nicht gefunden');
+        const dto: KassenabrechnungVorschauDto = {
+          ...vorschau,
+          zaehlungen: vorschau.zaehlungen.map((z) => ({
+            ...z,
+            gezaehltVon: mitglied(z.gezaehltVon),
+          })),
+        };
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/kassenabrechnungen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', kassenabrechnungEingabeSchema),
+        async (c) => {
+          const ergebnis = await deps.finanzen
+            .kasseAbrechnen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
+      .get(
+        '/finanzen/kassenabrechnungen',
+        auth,
+        finanzenLesen,
+        zValidator('query', kassenabrechnungenAbfrageSchema),
+        async (c) => {
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.kassenabrechnungen({
+              ...c.req.valid('query'),
+              limit: KASSENABRECHNUNGEN_MAX + 1,
+            }),
+            finanzenMitglieder(),
+          ]);
+          const dto: KassenabrechnungenSeiteDto = {
+            abrechnungen: liste
+              .slice(0, KASSENABRECHNUNGEN_MAX)
+              .map((a): KassenabrechnungListeDto => ({
+                ...a,
+                erstelltVon: mitglied(a.erstelltVon),
+              })),
+            gekappt: liste.length > KASSENABRECHNUNGEN_MAX,
+          };
+          return c.json(dto);
+        },
+      )
+      .get('/finanzen/kassenabrechnungen/:id', auth, finanzenLesen, async (c) => {
+        const [a, mitglied] = await Promise.all([
+          deps.finanzen.kassenabrechnung(c.req.param('id')),
+          finanzenMitglieder(),
+        ]);
+        const abrechnung = gefunden(a, 'Kassenabrechnung nicht gefunden');
+        const dto: KassenabrechnungDetailDto = {
+          ...abrechnung,
+          erstelltVon: mitglied(abrechnung.erstelltVon),
+        };
+        return c.json(dto);
+      })
+      // For everyone who may count: the active Kassen without stock and the counts of an event.
+      .get('/kassen', auth, kasseZaehlen, async (c) => {
+        const dto: KasseKurzDto[] = await deps.finanzen.kassenKurz();
+        return c.json(dto);
+      })
+      .get(
+        '/kassen/zaehlungen',
+        auth,
+        kasseZaehlen,
+        zValidator('query', kassenzaehlungenAbfrageSchema),
+        async (c) => {
+          const [liste, mitglied] = await Promise.all([
+            deps.finanzen.kassenzaehlungen(c.req.valid('query').eventId),
+            finanzenMitglieder(),
+          ]);
+          const dto: KassenzaehlungDto[] = liste.map((z) => ({
+            ...z,
+            gezaehltVon: mitglied(z.gezaehltVon),
+          }));
+          return c.json(dto);
+        },
+      )
+      .post(
+        '/kassen/zaehlungen',
+        auth,
+        kasseZaehlen,
+        zValidator('json', kassenzaehlungEingabeSchema),
+        async (c) => {
+          const ergebnis = await deps.finanzen
+            .kasseZaehlen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
       // Verifies the whole hash chain and compares the counter with the last booking.
       .get('/finanzen/kette', auth, finanzenPruefen, async (c) => {
         const daten = await deps.finanzen.kettenDaten();

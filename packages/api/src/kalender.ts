@@ -78,6 +78,8 @@ import {
   type KalenderSerieRow,
   externe,
   finBuchungen,
+  finKassenabrechnungEvents,
+  finKassenzaehlungen,
   finZaehlungen,
   kalenderTokens,
   mitglieder,
@@ -1494,7 +1496,15 @@ export function createKalenderStore(db: Db): KalenderStore {
       .selectDistinct({ id: finZaehlungen.eventId })
       .from(finZaehlungen)
       .where(inArray(finZaehlungen.eventId, echte));
-    for (const r of [...mitBuchung, ...mitZaehlung]) {
+    const mitKassenzaehlung = await tx
+      .selectDistinct({ id: finKassenzaehlungen.eventId })
+      .from(finKassenzaehlungen)
+      .where(inArray(finKassenzaehlungen.eventId, echte));
+    const mitKassenabrechnung = await tx
+      .selectDistinct({ id: finKassenabrechnungEvents.eventId })
+      .from(finKassenabrechnungEvents)
+      .where(inArray(finKassenabrechnungEvents.eventId, echte));
+    for (const r of [...mitBuchung, ...mitZaehlung, ...mitKassenzaehlung, ...mitKassenabrechnung]) {
       if (r.id && !gesperrt.has(r.id)) gesperrt.set(r.id, 'finanzen');
     }
     const schichtRows = await tx

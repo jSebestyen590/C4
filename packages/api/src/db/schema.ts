@@ -1400,3 +1400,133 @@ export const sperren = pgTable('sperren', {
   schluessel: text('schluessel').primaryKey(),
   beruehrtAm: timestamp('beruehrt_am', { withTimezone: true }).notNull(),
 });
+
+// ----- Barkassen (docs/finanzen.md): a Kasse is a Fach of the Safe with master data and Abrechnungen.
+
+/** Master data of a Kasse (editable): the Fach (`kontoId`) and the default accounts of the Abrechnung. */
+export const finKassen = pgTable('fin_kassen', {
+  kontoId: text('konto_id')
+    .primaryKey()
+    .references(() => finKonten.id),
+  standardErloesKontoId: text('standard_erloes_konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  standardZielFachId: text('standard_ziel_fach_id')
+    .notNull()
+    .references(() => finKonten.id),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+});
+export type FinKasseRow = typeof finKassen.$inferSelect;
+
+/** Grundbestand of a Kasse per denomination (editable, replaced when saved). */
+export const finKassenGrundbestand = pgTable(
+  'fin_kassen_grundbestand',
+  {
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.kontoId, t.nennwertCent] })],
+);
+
+/** Dienst-Zählung of a Kasse at an event (insert-only, not binding, no booking). */
+export const finKassenzaehlungen = pgTable('fin_kassenzaehlungen', {
+  id: text('id').primaryKey(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKassen.kontoId),
+  eventId: text('event_id')
+    .notNull()
+    .references(() => events.id),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  /** Cognito sub, deliberately without a foreign key. */
+  gezaehltVon: text('gezaehlt_von').notNull(),
+  gezaehltAm: timestamp('gezaehlt_am', { withTimezone: true }).notNull(),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+});
+
+export const finKassenzaehlungPosten = pgTable(
+  'fin_kassenzaehlung_posten',
+  {
+    zaehlungId: text('zaehlung_id')
+      .notNull()
+      .references(() => finKassenzaehlungen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.zaehlungId, t.nennwertCent] })],
+);
+
+/** Kassenabrechnung by the Finanzer:in (insert-only); `buchungId` is null when nothing changed. */
+export const finKassenabrechnungen = pgTable('fin_kassenabrechnungen', {
+  id: text('id').primaryKey(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKassen.kontoId),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  buchungId: text('buchung_id').references(() => finBuchungen.id),
+  erloesKontoId: text('erloes_konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  zielFachId: text('ziel_fach_id')
+    .notNull()
+    .references(() => finKonten.id),
+  sollCent: bigint('soll_cent', { mode: 'number' }).notNull(),
+  istCent: bigint('ist_cent', { mode: 'number' }).notNull(),
+  einnahmeCent: bigint('einnahme_cent', { mode: 'number' }).notNull(),
+  transferCent: bigint('transfer_cent', { mode: 'number' }).notNull(),
+  fehlerCent: bigint('fehler_cent', { mode: 'number' }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+});
+
+export const finKassenabrechnungPosten = pgTable(
+  'fin_kassenabrechnung_posten',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    soll: integer('soll').notNull(),
+    ist: integer('ist').notNull(),
+    grundbestand: integer('grundbestand').notNull(),
+    danach: integer('danach').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.nennwertCent] })],
+);
+
+/** Ziel-Fach: positive = Kasse to Ziel-Fach; Nachschub-Fach: negative = Fach to Ziel-Fach. */
+export const finKassenabrechnungTransfers = pgTable(
+  'fin_kassenabrechnung_transfers',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    fachId: text('fach_id')
+      .notNull()
+      .references(() => finKonten.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.fachId, t.nennwertCent] })],
+);
+
+export const finKassenabrechnungEvents = pgTable(
+  'fin_kassenabrechnung_events',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    zaehlungId: text('zaehlung_id').references(() => finKassenzaehlungen.id),
+    betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.eventId] })],
+);

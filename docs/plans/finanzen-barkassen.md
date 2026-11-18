@@ -1,5 +1,7 @@
 # Finanzen Scheibe 3: Barkassen – Umsetzungsplan
 
+> **Erledigt.** Umgesetzt; das Gebaute steht in [../finanzen.md](../finanzen.md) („Barkassen“). Diese Datei bleibt als Entscheidungsprotokoll.
+
 Rahmen: [finanzen.md](./finanzen.md) (Architektur, Bedienung, Scheibe 3). Diese Datei ist der
 vollständige Plan für die Umsetzungs-Session; sie enthält alle mit dem Nutzer geklärten Entscheidungen
 (18.11.2026). Nach dem Merge den Stand in `docs/plans/finanzen.md` nachtragen und diese Datei löschen

@@ -10,6 +10,7 @@ export * from './ifco';
 export * from './inventar';
 export * from './inventarZeitraum';
 export * from './kalender';
+export * from './kassen';
 export * from './kontakt';
 export * from './posten';
 export * from './privatpartys';

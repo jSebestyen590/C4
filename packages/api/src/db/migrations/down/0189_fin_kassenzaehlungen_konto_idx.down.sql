@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_kassenzaehlungen_konto_idx

@@ -15,7 +15,7 @@ import { IconArrowsExchange, IconCoins, IconPlus, IconReportMoney } from '@table
 import { Link } from 'react-router-dom';
 import { centAnzeigen, NENNWERTE_CENT, type BargeldFachDto } from '@c4/shared';
 import { useAuth } from '../auth';
-import { BETRAG_STIL, useBargeld } from '../finanzenDaten';
+import { BETRAG_STIL, useBargeld, useKassen } from '../finanzenDaten';
 import { ZurueckLink } from '../ZurueckLink';
 
 const ZAHL = new Intl.NumberFormat('de-DE');
@@ -25,7 +25,7 @@ const anzahlVon = (
 ) => f.bestand.find((b) => b.nennwertCent === n)?.anzahl ?? 0;
 
 /** Card of one Fach for narrow screens: balance and the denominations that are in stock. */
-function FachKarte({ fach }: Readonly<{ fach: BargeldFachDto }>) {
+function FachKarte({ fach, abrechnen }: Readonly<{ fach: BargeldFachDto; abrechnen: boolean }>) {
   const vorhanden = NENNWERTE_CENT.filter((n) => anzahlVon(fach, n) > 0);
   return (
     <Paper withBorder p="md">
@@ -49,6 +49,16 @@ function FachKarte({ fach }: Readonly<{ fach: BargeldFachDto }>) {
               .join(' · ')}
           </Text>
         )}
+        {abrechnen && (
+          <Button
+            component={Link}
+            to={`/finanzen/kassen/${encodeURIComponent(fach.id)}/abrechnen`}
+            variant="default"
+            size="sm"
+          >
+            Abrechnen
+          </Button>
+        )}
       </Stack>
     </Paper>
   );
@@ -59,6 +69,11 @@ export function FinanzenBargeldPage() {
   const { can } = useAuth();
   const bargeld = useBargeld();
   const b = bargeld.data;
+  // Fächer that are a Kasse get a link to their Abrechnung.
+  const kassen = useKassen(false);
+  const kassenIds = new Set(
+    can('finanzen:buchen') ? (kassen.data ?? []).map((k) => k.kontoId) : [],
+  );
   return (
     <Stack maw={1300}>
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
@@ -121,7 +136,7 @@ export function FinanzenBargeldPage() {
         <>
           <SimpleGrid cols={1} hiddenFrom="sm">
             {b.faecher.map((f) => (
-              <FachKarte key={f.id} fach={f} />
+              <FachKarte key={f.id} fach={f} abrechnen={kassenIds.has(f.id)} />
             ))}
             <Paper withBorder p="md">
               <Group justify="space-between">
@@ -141,6 +156,16 @@ export function FinanzenBargeldPage() {
                     {b.faecher.map((f) => (
                       <Table.Th key={f.id} style={BETRAG_STIL}>
                         {f.name}
+                        {kassenIds.has(f.id) && (
+                          <Text
+                            size="xs"
+                            component={Link}
+                            to={`/finanzen/kassen/${encodeURIComponent(f.id)}/abrechnen`}
+                            display="block"
+                          >
+                            Abrechnen
+                          </Text>
+                        )}
                       </Table.Th>
                     ))}
                     <Table.Th style={BETRAG_STIL}>Gesamt</Table.Th>

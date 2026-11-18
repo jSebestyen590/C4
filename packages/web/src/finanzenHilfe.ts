@@ -54,6 +54,29 @@ export const HILFE = {
     zaehlprotokoll:
       'Jede Zählung wird als Protokoll gespeichert, auch wenn alles stimmt. Eine gespeicherte Zählung lässt sich nicht ändern; Fehler korrigierst du mit einer neuen Zählung.',
   },
+  kassen: {
+    kasse:
+      'Eine Kasse ist ein Fach des Safes (Bargeld mit Stückelung) mit Zusatzdaten: Grundbestand, Standard-Erlöskonto und Standard-Ziel-Fach. Den Namen und das Archivieren änderst du im Kontenplan.',
+    grundbestand:
+      'Das soll in der Kasse sein, wenn sie rausgeht: je Münze und Schein eine Anzahl. Die Abrechnung füllt die Kasse darauf auf und führt den Rest ab. Den Grundbestand kannst du jederzeit ändern.',
+    erloeskonto:
+      'Auf dieses Erlöskonto geht die gesamte Einnahme einer Abrechnung. Der Steuersatz kommt vom Erlöskonto. Gibt es Getränke und Essen mit verschiedenen Steuersätzen, nimm getrennte Kassen.',
+    zielFach:
+      'Der Überschuss der Kasse geht in dieses Fach, und fehlende Münzen und Scheine kommen von dort. In der Abrechnung kannst du es ändern.',
+    dienstZaehlung:
+      'Wer Dienst hat, kann die Kasse am Event zählen. Das ist unverbindlich: Es dient nur der Übersicht und der Zuordnung der Einnahmen zu Events und löst keine Buchung aus. Zählst du eine Kasse mehrfach, zählt die neueste Zählung.',
+    ist: 'Zähle die Kasse durch und trage ein, was wirklich drin ist. Felder, die du leer lässt, zählen als 0. Bestand ist, was laut Buchhaltung in der Kasse sein müsste. Einnahme ist Ist minus Bestand und darf auch negativ sein.',
+    transfer:
+      'Transfer ist, was zwischen Kasse und Ziel-Fach wandert: positiv = aus der Kasse ins Ziel-Fach (Überschuss), negativ = aus dem Ziel-Fach in die Kasse (Auffüllen). Vorgeschlagen wird, was die Kasse auf den Grundbestand bringt, du kannst es ändern. „Kasse danach“ zeigt, was in der Kasse bleibt.',
+    fehlbestand:
+      'Reichen die Münzen im Ziel-Fach nicht, um die Kasse aufzufüllen, fehlen sie. Du kannst Münzrollen aus einem anderen Fach ins Ziel-Fach holen (die Rolle wird dort geöffnet, der Rest bleibt im Ziel-Fach) oder die Kasse diesmal mit weniger Münzen rausgehen lassen. Der Grundbestand bleibt in beiden Fällen unverändert.',
+    eventZuordnung:
+      'Die Einnahme wird auf die Events verteilt, an denen die Kasse seit der letzten Abrechnung gezählt wurde: Vorschlag ist die Differenz der Dienst-Zählungen. Die Beträge kannst du ändern. Das ist nur eine Zuordnung für Auswertungen, gebucht wird die gesamte Einnahme als ein Erlös.',
+    fehler:
+      'Fehler ohne Event ist die Einnahme minus die Summe der Event-Einnahmen. Er steht nur in der Zuordnung und ändert die Buchung nicht. Beispiel: Du zählst 100 €, Event 1 hatte 50 € und Event 2 40 €, dann sind 10 € Fehler.',
+    storno:
+      'Eine Abrechnung lässt sich nicht ändern. Zum Korrigieren stornierst du die Buchung im Journal; die Dienst-Zählungen erscheinen dann in der nächsten Abrechnung wieder.',
+  },
   kette: {
     ergebnis:
       'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Geprüft wird derzeit nur gegen die Datenbank, nicht gegen das spätere Archiv.',
