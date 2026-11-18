@@ -57,7 +57,6 @@ import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import {
   abrechnungsMatrix,
   eventBetraegeMit,
-  matrixNennwerte,
   type MatrixZeile,
   faecherAlsBestand,
   fehlbestandJe,
@@ -256,7 +255,6 @@ function Zusammenfassung({
 }>) {
   const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
   const offen = warnungen.some((w) => !bestaetigt.has(w));
-  const nennwerte = matrixNennwerte(matrix);
   const erloesZeile = rechnung.zeilen.find((z) => z.kontoId === erloesKontoId);
   return (
     <Modal
@@ -325,7 +323,7 @@ function Zusammenfassung({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th />
-                      {nennwerte.map((n) => (
+                      {NENNWERTE_CENT.map((n) => (
                         <Table.Th key={n} style={BETRAG_STIL}>
                           {centAnzeigen(n)}
                         </Table.Th>
@@ -337,7 +335,7 @@ function Zusammenfassung({
                     {matrix.map((z) => (
                       <Table.Tr key={z.key}>
                         <Table.Td>{z.label}</Table.Td>
-                        {nennwerte.map((n) => (
+                        {NENNWERTE_CENT.map((n) => (
                           <Table.Td
                             key={n}
                             style={BETRAG_STIL}
@@ -373,7 +371,7 @@ function Zusammenfassung({
                     </Text>
                   </Group>
                   <Text size="sm" c="dimmed">
-                    {nennwerte
+                    {NENNWERTE_CENT
                       .filter((n) => z.werte[n])
                       .map((n) => `${ZAHL.format(z.werte[n]!)} × ${centAnzeigen(n)}`)
                       .join(' · ') || 'leer'}

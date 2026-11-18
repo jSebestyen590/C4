@@ -303,7 +303,7 @@ erscheint wie jedes Fach unter „Bargeld“ und wird mit Umbuchen gefüllt. Rei
   Abrechnung speichert „Kasse danach“ je Nennwert (`fin_kassenabrechnung_posten`).
 - **Prüfdialog:** Zusammenfassung mit Einnahme, Erlöskonto (mit Umsatzsteuer, falls das Konto einen Satz hat), Event-Zuordnung
   und Fehler sowie einer Matrix: Zeilen Kasse (Ist), Kasse (Delta, Abgang −), Ziel-Fach vorher/nachher und je Nachschub-Fach
-  vorher/nachher, Spalten die vorkommenden Nennwerte plus Summe (Tabelle ab `md`, gestapelte Karten auf dem Handy).
+  vorher/nachher, Spalten immer alle Nennwerte (leere grau) plus Summe (Tabelle ab `md`, gestapelte Karten auf dem Handy).
 - **Entwurf:** Eingaben (Ist, Transfer, Münzrollen, Erlöskonto, Ziel-Fach, Event-Beträge, Idempotenz-Schlüssel) bleiben je Kasse
   im `localStorage` und überstehen ein Neuladen; nach erfolgreichem Buchen werden sie gelöscht. Passt der Stand der Kasse nicht
   mehr (neue Abrechnung, neue Zählung, anderer Bestand), wird der Entwurf mit Hinweis verworfen. „Eingaben verwerfen“ leert ihn.

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   abrechnungsMatrix,
-  matrixNennwerte,
   eventBetraegeMit,
   fehlbestandJe,
   grundbestandMengen,
@@ -84,7 +83,6 @@ describe('abrechnungsMatrix', () => {
     expect(w('tresor-vorher').werte).toEqual({ 100: 100 });
     expect(w('tresor-nachher').werte).toEqual({ 100: 75 });
     expect(w('delta').summeCent).toBe(2000);
-    expect(matrixNennwerte(m)).toEqual([100]);
   });
   it('Überschuss geht als negatives Delta aus der Kasse', () => {
     const m = abrechnungsMatrix({

@@ -156,7 +156,3 @@ export function abrechnungsMatrix(p: {
     ...faecher,
   ];
 }
-
-/** The denominations that occur in any row, ascending. */
-export const matrixNennwerte = (zeilen: readonly MatrixZeile[]): number[] =>
-  NENNWERTE_CENT.filter((n) => zeilen.some((z) => (z.werte[n] ?? 0) !== 0));
