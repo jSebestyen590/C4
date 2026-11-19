@@ -13,6 +13,7 @@ export * from './inventarZeitraum';
 export * from './kalender';
 export * from './kassen';
 export * from './kontakt';
+export * from './lagerAbgleich';
 export * from './posten';
 export * from './privatpartys';
 export * from './protokolle';

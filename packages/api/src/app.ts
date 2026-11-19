@@ -15,6 +15,7 @@ import { type TodosStore } from './todos';
 import { type SchluesselStore } from './schluessel';
 import { type SchluesselAnfragenStore } from './schluesselAnfragen';
 import { type TrichterStore } from './trichter';
+import { type LagerAbgleichStore } from './lagerAbgleich';
 import { type FinanzenStore } from './finanzen';
 import { type BuchStore } from './buch';
 import { type ProtokollStore } from './protokolle';
@@ -36,6 +37,7 @@ import { todosRoutes } from './routes/todos';
 import { protokolleRoutes } from './routes/protokolle';
 import { trichterRoutes } from './routes/trichter';
 import { finanzenRoutes } from './routes/finanzen';
+import { lagerAbgleichRoutes } from './routes/lagerAbgleich';
 import { buchRoutes } from './routes/buch';
 import { umfragenRoutes } from './routes/umfragen';
 import { warenRoutes } from './routes/waren';
@@ -60,6 +62,7 @@ export interface AppDeps {
   todos: TodosStore;
   umfragen: UmfragenStore;
   trichter: TrichterStore;
+  lagerAbgleich: LagerAbgleichStore;
   finanzen: FinanzenStore;
   buch: BuchStore;
   protokolle: ProtokollStore;
@@ -110,6 +113,7 @@ export function createApp(deps: AppDeps) {
       .route('/', protokolleRoutes(ctx))
       .route('/', trichterRoutes(ctx))
       .route('/', finanzenRoutes(ctx))
+      .route('/', lagerAbgleichRoutes(ctx))
       .route('/', buchRoutes(ctx))
       .route('/', umfragenRoutes(ctx))
       .route('/', warenRoutes(ctx))

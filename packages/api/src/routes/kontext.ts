@@ -23,7 +23,7 @@ import {
   terminVorbereiten as terminVorbereitenModul,
   umfrageSpeichern as umfrageSpeichernModul,
 } from '../umfrageSpeichern';
-import { authenticate, requirePermission } from '../auth';
+import { authenticate, requireAnyPermission, requirePermission } from '../auth';
 import type { AppDeps } from '../app';
 
 /** "2026-11-01T09:00:00.000Z_<id>" */
@@ -75,6 +75,8 @@ export function baueKontext(deps: AppDeps) {
   const belegeEinreichen = requirePermission('belege:einreichen');
   const finanzenVerwalten = requirePermission('finanzen:verwalten');
   const finanzenPruefen = requirePermission('finanzen:pruefen');
+  const abgleichLesen = requireAnyPermission('finanzen:lesen', 'waren:verwalten');
+  const abgleichSchreiben = requireAnyPermission('finanzen:buchen', 'waren:verwalten');
   const bilderLesen = requirePermission('bilder:lesen');
   const protokolleLesen = requirePermission('protokolle:lesen');
   const protokolleSchreiben = requirePermission('protokolle:schreiben');
@@ -354,6 +356,8 @@ export function baueKontext(deps: AppDeps) {
     belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
+    abgleichLesen,
+    abgleichSchreiben,
     bilderLesen,
     protokolleLesen,
     protokolleSchreiben,

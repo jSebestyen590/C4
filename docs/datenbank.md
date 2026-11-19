@@ -61,6 +61,10 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `art` und `status` sind nullable (die API schreibt sie immer; `null` gilt als `kategorie` bzw. `entwurf`), und Leergut-Posten
   tragen in `kategorie_id` das Konto `pfand`. `bestandsvorgaenge.quelle` ist freier Text (kein Check), `beleg` ist ein neuer Wert.
   Rollback-Ziel nur dafür: `0212_fin_erstattung_belege_beleg_idx`.
+- 0230–0231 (Finanzen, Lager-Beleg-Abgleich): 0230 legt `waren_abgleich_korrekturen` an (insert-only: Korrekturen je Ware mit
+  vorzeichenbehafteter `menge` in Basiseinheiten, `grund`, `text`, `datum`; `ware_id` und `erstellt_von` ohne Fremdschlüssel, die API prüft
+  die Ware), 0231 die allgemeine Schlüssel-Wert-Tabelle `einstellungen` (erster Schlüssel `lager_abgleich_stichtag`, ISO-Datum; änderbar).
+  Die Down-Dateien löschen die Tabellen. Rollback-Ziel nur dafür: `0229_fin_beleg_entwuerfe_verworfen_am`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden

@@ -11,6 +11,7 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import type {
+  AbgleichGrund,
   Anrede,
   BelegPostenArt,
   EntwurfStatus,
@@ -1712,4 +1713,27 @@ export const finExporte = pgTable('fin_exporte', {
   kopfHash: text('kopf_hash').notNull(),
   schluessel: text('schluessel').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
+export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
+  id: text('id').primaryKey(),
+  /** Soft reference to `waren.id` (checked in the API). */
+  wareId: text('ware_id').notNull(),
+  menge: integer('menge').notNull(),
+  grund: text('grund').$type<AbgleichGrund>().notNull(),
+  text: text('text'),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type WarenAbgleichKorrekturRow = typeof warenAbgleichKorrekturen.$inferSelect;
+
+/** General key/value settings (e.g. `lager_abgleich_stichtag`). */
+export const einstellungen = pgTable('einstellungen', {
+  schluessel: text('schluessel').primaryKey(),
+  wert: text('wert').notNull(),
+  geaendertVon: text('geaendert_von').notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
 });
