@@ -24,6 +24,9 @@ export const finanzenKeys = {
   beleg: (id: string | undefined) => ['finanzen', 'beleg', id] as const,
   belegEntwurf: (id: string | undefined) => ['finanzen', 'belegEntwurf', id] as const,
   auslagen: ['finanzen', 'auslagen'] as const,
+  einreichungen: ['finanzen', 'einreichungen'] as const,
+  einreichungAuswahl: ['finanzen', 'einreichungAuswahl'] as const,
+  einreichung: (id: string | undefined) => ['finanzen', 'einreichung', id] as const,
   belegWaren: ['finanzen', 'belegWaren'] as const,
   warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
 };
@@ -204,3 +207,38 @@ export const belegEntwurfPfad = (id: string) =>
 
 export const kassenabrechnungPfad = (id: string) =>
   `/finanzen/kassen/abrechnungen/${encodeURIComponent(id)}`;
+
+/** Own submissions of the member, newest first. */
+export function useEinreichungen() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.einreichungen,
+    queryFn: async () => unwrap(await api.finanzen.einreichungen.$get()),
+  });
+}
+
+/** One own submission with its file. */
+export function useEinreichung(id: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.einreichung(id),
+    enabled: !!id,
+    queryFn: async () =>
+      unwrap(await api.finanzen.einreichungen[':id'].$get({ param: { id: id as string } })),
+  });
+}
+
+export const einreichungPfad = (id: string) => `/belege/${encodeURIComponent(id)}`;
+
+/** "2026-11-19" -> "19.11.2026". */
+export const datumDe = (iso: string | null) =>
+  iso ? iso.slice(0, 10).split('-').reverse().join('.') : '–';
+
+/** Rechnungssteller and Kategorien a member may pick when submitting a Beleg. */
+export function useEinreichungAuswahl() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.einreichungAuswahl,
+    queryFn: async () => unwrap(await api.finanzen.einreichungen.auswahl.$get()),
+  });
+}

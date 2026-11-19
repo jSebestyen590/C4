@@ -2731,6 +2731,26 @@ describe('finanzen', () => {
         expect(liste.belege[0].eingereichtAm).toEqual(expect.any(String));
       });
 
+      it('offers members only id and name of active Rechnungssteller and Aufwand Konten', async () => {
+        const t = await belegSetup();
+        expect((await t.app.request('/api/finanzen/einreichungen/auswahl')).status).toBe(401);
+        await t.roh('admin-token', 'POST', '/rechnungssteller', { name: 'Edeka' });
+        const alt = (await t.lesen<Dto[]>('admin-token', '/rechnungssteller')).find(
+          (r) => r.name === 'Edeka',
+        )!;
+        await t.roh('admin-token', 'PATCH', `/rechnungssteller/${alt.id}`, { archiviert: true });
+        const auswahl = await t.lesen<Dto>('member-token', '/einreichungen/auswahl');
+        expect(auswahl.rechnungssteller.length).toBeGreaterThan(0);
+        for (const r of auswahl.rechnungssteller) {
+          expect(Object.keys(r).sort()).toEqual(['id', 'name']);
+          expect(r.id).not.toBe(alt.id);
+        }
+        const aufwand = (await t.lesen<Dto[]>('admin-token', '/konten')).filter(
+          (k) => k.art === 'aufwand' && !k.archiviert,
+        );
+        expect(auswahl.kategorien).toEqual(aufwand.map((k) => ({ id: k.id, name: k.name })));
+      });
+
       it('shows and withdraws only own submissions, and only while submitted', async () => {
         const t = await belegSetup();
         const id = await einreichung(t, { rechnungsstellerName: 'Baumarkt' });

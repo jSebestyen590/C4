@@ -21,11 +21,44 @@ import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
 import { FinanzenZaehlungPage } from '../pages/FinanzenZaehlungPage';
 import { FinanzenZaehlungenPage } from '../pages/FinanzenZaehlungenPage';
+import { BelegEinreichenPage } from '../pages/BelegEinreichenPage';
+import { MeineBelegePage } from '../pages/MeineBelegePage';
+import { MeinBelegPage } from '../pages/MeinBelegPage';
 import { Protected, RequireUsername } from './Geschuetzt';
 
 export function finanzenRouten() {
   return (
     <>
+      <Route
+        path="/belege"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <MeineBelegePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/belege/einreichen"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <BelegEinreichenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/belege/:id"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <MeinBelegPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
       <Route
         path="/finanzen"
         element={

@@ -651,6 +651,14 @@ export interface EinreichungDto {
   eingereichtAm: string | null;
 }
 
+/** `GET /api/finanzen/einreichungen/auswahl`: slim choices for the submission form of a member. */
+export interface EinreichungAuswahlDto {
+  /** Active Rechnungssteller. */
+  rechnungssteller: { id: string; name: string }[];
+  /** Active Aufwand Konten (Kategorien). */
+  kategorien: { id: string; name: string }[];
+}
+
 /** `GET /api/finanzen/einreichungen/:id`: own submission with the file. */
 export interface EinreichungDetailDto extends EinreichungDto {
   dateiUrl: string | null;

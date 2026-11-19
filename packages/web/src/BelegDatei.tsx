@@ -140,6 +140,7 @@ export function BelegDateiFeld({
   disabled = false,
   fehler,
   doppeltText,
+  einreichung = false,
 }: Readonly<{
   datei: BelegDateiDaten | null;
   /** Presigned or local URL of the file for the preview. */
@@ -150,6 +151,8 @@ export function BelegDateiFeld({
   fehler?: string;
   /** Warning text of a loaded draft whose file is already part of a booked Beleg. */
   doppeltText?: string;
+  /** Member submission: uploads through the `einreichungen` route (needs only `belege:einreichen`). */
+  einreichung?: boolean;
 }>) {
   const api = useApi();
   const waehlen = useRef<HTMLInputElement>(null);
@@ -173,7 +176,9 @@ export function BelegDateiFeld({
       setAnteil(0);
       const sha256 = hexVon(await crypto.subtle.digest('SHA-256', await gewaehlt.arrayBuffer()));
       const upload = await jsonOderFehler<BelegUploadDto>(
-        await api.finanzen['beleg-dateien'].upload.$post({
+        await (
+          einreichung ? api.finanzen.einreichungen.upload : api.finanzen['beleg-dateien'].upload
+        ).$post({
           json: { sha256, groesse: gewaehlt.size, typ, name: gewaehlt.name },
         }),
       );

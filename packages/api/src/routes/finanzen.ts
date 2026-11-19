@@ -9,6 +9,7 @@ import {
   belegVerwerfenSchema,
   formatEuro,
   type EinreichungDetailDto,
+  type EinreichungAuswahlDto,
   type EinreichungDto,
   belegDateiUploadSchema,
   belegEntwurfSchema,
@@ -718,6 +719,19 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
       .get('/finanzen/einreichungen', auth, belegeEinreichen, async (c) => {
         const liste = await deps.finanzen.einreichungen(c.get('user').sub);
         const dto: EinreichungDto[] = liste.map(einreichungDto);
+        return c.json(dto);
+      })
+      .get('/finanzen/einreichungen/auswahl', auth, belegeEinreichen, async (c) => {
+        const [steller, konten] = await Promise.all([
+          deps.finanzen.rechnungssteller(false),
+          deps.finanzen.konten(false),
+        ]);
+        const dto: EinreichungAuswahlDto = {
+          rechnungssteller: steller.map((r) => ({ id: r.id, name: r.name })),
+          kategorien: konten
+            .filter((k) => k.art === 'aufwand' && !k.archiviert)
+            .map((k) => ({ id: k.id, name: k.name })),
+        };
         return c.json(dto);
       })
       .get('/finanzen/einreichungen/:id', auth, belegeEinreichen, async (c) => {
