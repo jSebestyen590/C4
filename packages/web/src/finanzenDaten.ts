@@ -24,6 +24,8 @@ export const finanzenKeys = {
   beleg: (id: string | undefined) => ['finanzen', 'beleg', id] as const,
   belegEntwurf: (id: string | undefined) => ['finanzen', 'belegEntwurf', id] as const,
   auslagen: ['finanzen', 'auslagen'] as const,
+  belegWaren: ['finanzen', 'belegWaren'] as const,
+  warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
 };
 
 /** Key of the Dienst-Zählungen of an event (members without a Finanzen right read them, too). */
@@ -51,6 +53,25 @@ export function useRechnungssteller(archiviert: boolean) {
       unwrap(
         await api.finanzen.rechnungssteller.$get({ query: archiviert ? { archiviert: '1' } : {} }),
       ),
+  });
+}
+
+/** Waren a Ware item can pick (with Gebinde, Pfand and the suggested Kategorie). */
+export function useBelegWaren(enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.belegWaren,
+    enabled,
+    queryFn: async () => unwrap(await api.finanzen['beleg-waren'].$get()),
+  });
+}
+
+/** Warengruppen with their own and their effective Kategorie. */
+export function useWarengruppenKategorien() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.warengruppenKategorien,
+    queryFn: async () => unwrap(await api.finanzen['warengruppen-kategorien'].$get()),
   });
 }
 

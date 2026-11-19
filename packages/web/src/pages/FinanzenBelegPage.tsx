@@ -1,10 +1,8 @@
 import {
-  ActionIcon,
   Alert,
   Button,
   Group,
   Loader,
-  Paper,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -17,14 +15,14 @@ import {
   useMatches,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BELEG_MODI,
   BELEG_MODUS_LABELS,
-  centAnzeigen,
+  pfad,
   STEUERSAETZE,
   ZAHLWEGE,
   ZAHLWEG_LABELS,
@@ -35,11 +33,19 @@ import {
   type Zahlweg,
 } from '@c4/shared';
 import { useApi, unwrap } from '../api';
+import { useAuth } from '../auth';
+import { BelegEinlagernFeld } from '../BelegEinlagernFeld';
+import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungKopf';
+import { BelegPostenZeile, letzterLagerort } from '../BelegPostenZeile';
+import { useOrteMitIfcos } from '../inventarDaten';
+import { useWarenStammdaten } from '../warenDaten';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
 import { BelegDateiFeld } from '../BelegDatei';
 import {
   anzahlLesen,
   fehlerZu,
+  pfandJeSatz,
+  satzText,
   formularFehler,
   formularSumme,
   formularZuDaten,
@@ -47,8 +53,6 @@ import {
   datenZuFormular,
   leeresFormular,
   neuerPosten,
-  satzText,
-  steuersatzVorschlag,
   stueckelungHinweis,
   verwendeteSaetze,
   type BelegFormular,
@@ -61,13 +65,12 @@ import { DatumFeld } from '../DatumFeld';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import {
-  BETRAG_STIL,
   belegEntwurfPfad,
   belegPfad,
   finanzenKeys,
   jsonOderFehler,
-  kontoOptionen,
   useBargeld,
+  useBelegWaren,
   useKonten,
   useRechnungssteller,
 } from '../finanzenDaten';
@@ -88,7 +91,6 @@ const SPEICHER_TEXT: Record<Speicherstand, string> = {
   fehler: 'Speichern fehlgeschlagen',
 };
 
-const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
 const AUTOSPEICHERN_MS = 1200;
 
 /**
@@ -105,6 +107,10 @@ export function FinanzenBelegPage() {
   const bargeld = useBargeld();
   const rechnungssteller = useRechnungssteller(false);
   const mitglieder = useMitgliederListe();
+  const { can } = useAuth();
+  const belegWaren = useBelegWaren();
+  const stamm = useWarenStammdaten();
+  const ifcoOrte = useOrteMitIfcos();
   // Set once the draft is booked or deleted, so the removed query is not fetched again (404).
   const [erledigt, setErledigt] = useState(false);
   // Sticky preview only beside the form (lg+); stacked on phones it would cover the form.
@@ -131,6 +137,7 @@ export function FinanzenBelegPage() {
   const [dialog, setDialog] = useState(false);
   const [warnungen, setWarnungen] = useState<BelegWarnungDto[]>([]);
   const [verwerfen, setVerwerfen] = useState(false);
+  const [einreichungVerwerfen, setEinreichungVerwerfen] = useState(false);
   const [neuerName, setNeuerName] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const kette = useRef<Promise<unknown>>(Promise.resolve());
@@ -278,12 +285,36 @@ export function FinanzenBelegPage() {
   const fz = (feld: string) => (versucht ? fehlerZu(fehler, feld) : undefined);
   const stueckHinweis = stueckelungHinweis(berechnung.summe, form.gegeben, form.wechselgeld);
   const zahler = (mitglieder.data ?? []).find((m) => m.sub === form.mitgliedId);
+  const einlagernMoeglich = can('bestand:buchen');
+  const eingereicht = entwurf.data?.status === 'eingereicht';
+  const lagerOptionen = stamm.lagerorte
+    .filter((l) => !l.archiviert && !ifcoOrte.orte.has(l.id))
+    .map((l) => ({ value: l.id, label: pfad(stamm.lagerorte, l.id) }));
   const dateiUrl = lokaleUrl ?? entwurf.data?.dateiUrl ?? null;
 
-  const setPosten = (key: string, patch: Partial<PostenZeile>) =>
+  // Ware items of a Beleg that is booked into the stock get the last used Lagerort.
+  const lagerVorschlag = (f: BelegFormular) =>
+    [...f.posten].reverse().find((x) => x.lagerortId)?.lagerortId ?? letzterLagerort();
+  const postenAendern = (key: string, patch: Partial<PostenZeile>) =>
     aendern((f) => ({
       ...f,
-      posten: f.posten.map((p) => (p.key === key ? { ...p, ...patch } : p)),
+      posten: f.posten.map((p) => {
+        if (p.key !== key) return p;
+        const neu = { ...p, ...patch };
+        return f.einlagern && neu.art === 'ware' && !neu.lagerortId
+          ? { ...neu, lagerortId: lagerVorschlag(f) }
+          : neu;
+      }),
+    }));
+  const einlagernSetzen = (an: boolean) =>
+    aendern((f) => ({
+      ...f,
+      einlagern: an,
+      posten: an
+        ? f.posten.map((p) =>
+            p.art === 'ware' && !p.lagerortId ? { ...p, lagerortId: lagerVorschlag(f) } : p,
+          )
+        : f.posten,
     }));
   const postenHinzu = () => {
     aendern((f) => ({
@@ -323,6 +354,15 @@ export function FinanzenBelegPage() {
     }
   };
 
+  const postenName = (p: PostenZeile) => {
+    if (p.art === 'leergut') return 'Leergut';
+    if (p.art === 'ware') {
+      const w = (belegWaren.data ?? []).find((x) => x.id === p.wareId);
+      const g = w?.gebinde.find((x) => x.id === p.gebindeId);
+      return `${w?.name ?? 'Ware'}${g ? ` (${g.bezeichnung})` : ''} – ${nameVon(p.kategorieId)}`;
+    }
+    return nameVon(p.kategorieId);
+  };
   const nameVon = (konto: string | null) =>
     (konten.data ?? []).find((k) => k.id === konto)?.name ?? '';
 
@@ -338,6 +378,14 @@ export function FinanzenBelegPage() {
         )}
       </Group>
       {speicherFehler && <Alert color="red">{speicherFehler}</Alert>}
+      {eingereicht && entwurf.data && (
+        <BelegEinreichungKopf
+          entwurf={entwurf.data}
+          betragCent={form.eingereichtBetragCent}
+          notiz={form.notiz}
+          rechnungsstellerName={form.rechnungsstellerName}
+        />
+      )}
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
         <Stack style={vorschauStil}>
           <BelegDateiFeld
@@ -427,6 +475,16 @@ export function FinanzenBelegPage() {
                   error={fz('rechnungssteller')}
                   data-nav=""
                 />
+                {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
+                  <Button
+                    variant="light"
+                    size="compact-md"
+                    onClick={() => setNeuerName(form.rechnungsstellerName)}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
+                  </Button>
+                )}
                 {neuerName === null ? (
                   <Button
                     variant="subtle"
@@ -491,6 +549,8 @@ export function FinanzenBelegPage() {
                 <Group gap={2}>
                   <Text fw={600}>Posten</Text>
                   <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
+                  <InfoHinweis feld="Postenart" text={HILFE.belege.postenArt} />
+                  <InfoHinweis feld="Lager-Posten" text={HILFE.belege.lagerPosten} />
                 </Group>
                 <SegmentedControl
                   aria-label="Preise sind"
@@ -499,113 +559,27 @@ export function FinanzenBelegPage() {
                   data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
                 />
               </Group>
-              {form.posten.map((p, i) => {
-                const letzte = i === form.posten.length - 1;
-                return (
-                  <Paper key={p.key} withBorder p="sm">
-                    <Stack gap="xs">
-                      <Group justify="space-between" wrap="nowrap">
-                        <Text size="sm" fw={600}>
-                          Posten {i + 1}
-                        </Text>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size={42}
-                          aria-label={`Posten ${i + 1} entfernen`}
-                          disabled={form.posten.length === 1}
-                          onClick={() =>
-                            aendern((f) => ({
-                              ...f,
-                              posten: f.posten.filter((x) => x.key !== p.key),
-                            }))
-                          }
-                        >
-                          <IconTrash size={20} />
-                        </ActionIcon>
-                      </Group>
-                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-                        <Select
-                          label="Kategorie"
-                          placeholder="Kategorie suchen"
-                          searchable
-                          selectFirstOptionOnChange
-                          data={kontoOptionen(aufwand)}
-                          value={p.kategorieId}
-                          onChange={(v) =>
-                            setPosten(p.key, {
-                              kategorieId: v,
-                              ...(steuersatzVorschlag(aufwand.find((k) => k.id === v)) !== null && {
-                                steuersatz: steuersatzVorschlag(aufwand.find((k) => k.id === v))!,
-                              }),
-                            })
-                          }
-                          nothingFoundMessage="Keine Kategorie gefunden"
-                          error={
-                            versucht && !p.kategorieId ? 'Bitte wähle eine Kategorie.' : undefined
-                          }
-                          data-nav=""
-                          data-kategorie=""
-                        />
-                        <TextInput
-                          label="Text"
-                          placeholder="optional"
-                          maxLength={200}
-                          value={p.text}
-                          onChange={(e) => setPosten(p.key, { text: e.currentTarget.value })}
-                          data-nav=""
-                        />
-                      </SimpleGrid>
-                      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
-                        <TextInput
-                          label={<FeldLabel text="Anzahl" hilfe={HILFE.belege.anzahl} />}
-                          inputMode="decimal"
-                          autoComplete="off"
-                          value={p.anzahl}
-                          onChange={(e) => setPosten(p.key, { anzahl: e.currentTarget.value })}
-                          error={
-                            p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null
-                              ? 'Ungültig, z. B. 1,5'
-                              : undefined
-                          }
-                          styles={{ input: { textAlign: 'right' } }}
-                          data-nav=""
-                        />
-                        <BetragFeld
-                          label={`Preis (${form.modus === 'netto' ? 'netto' : 'brutto'})`}
-                          negativ
-                          value={p.einzelpreisCent}
-                          onWert={(c) => setPosten(p.key, { einzelpreisCent: c })}
-                          error={
-                            versucht && p.einzelpreisCent === null ? 'Bitte angeben.' : undefined
-                          }
-                          data-nav=""
-                        />
-                        <Select
-                          label={<FeldLabel text="Steuersatz" hilfe={HILFE.belege.steuersatz} />}
-                          allowDeselect={false}
-                          data={SATZ_OPTIONEN}
-                          value={String(p.steuersatz)}
-                          onChange={(v) => v && setPosten(p.key, { steuersatz: Number(v) })}
-                          data-nav=""
-                          {...(letzte && { 'data-posten-ende': '' })}
-                        />
-                        <Stack gap={2} justify="flex-end">
-                          <Text size="sm" fw={500}>
-                            Betrag
-                          </Text>
-                          <Text
-                            style={{ ...BETRAG_STIL, minHeight: 42, lineHeight: '42px' }}
-                            fw={600}
-                          >
-                            {centAnzeigen(berechnung.postenBetraege[i] ?? 0)}
-                          </Text>
-                        </Stack>
-                      </SimpleGrid>
-                    </Stack>
-                  </Paper>
-                );
-              })}
+              {form.posten.map((p, i) => (
+                <BelegPostenZeile
+                  key={p.key}
+                  p={p}
+                  index={i}
+                  letzte={i === form.posten.length - 1}
+                  modus={form.modus}
+                  aufwand={aufwand}
+                  waren={belegWaren.data ?? []}
+                  lagerOptionen={lagerOptionen}
+                  einlagern={einlagernMoeglich && form.einlagern}
+                  betragCent={berechnung.postenBetraege[i] ?? 0}
+                  pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
+                  versucht={versucht}
+                  kannEntfernen={form.posten.length > 1}
+                  onAendern={(patch) => postenAendern(p.key, patch)}
+                  onEntfernen={() =>
+                    aendern((f) => ({ ...f, posten: f.posten.filter((x) => x.key !== p.key) }))
+                  }
+                />
+              ))}
               <Group>
                 <Button variant="light" leftSection={<IconPlus size={18} />} onClick={postenHinzu}>
                   Posten hinzufügen
@@ -671,13 +645,28 @@ export function FinanzenBelegPage() {
             )}
 
             <Stack gap="xs">
-              <BelegSummen jeSteuersatz={berechnung.jeSteuersatz} summeCent={berechnung.summe} />
+              <BelegSummen
+                jeSteuersatz={berechnung.jeSteuersatz}
+                summeCent={berechnung.summe}
+                pfand={pfandJeSatz(form.posten, berechnung.pfandBetraege)}
+              />
               {berechnung.fehler.map((m) => (
                 <Text key={m} size="sm" c="red">
                   {m}
                 </Text>
               ))}
             </Stack>
+
+            {einlagernMoeglich && (
+              <BelegEinlagernFeld
+                einlagern={form.einlagern}
+                zeitpunkt={form.einlagerungZeitpunkt}
+                hatWare={form.posten.some((p) => p.art === 'ware')}
+                fehler={fz('einlagern')}
+                onEinlagern={einlagernSetzen}
+                onZeitpunkt={(iso) => aendern((f) => ({ ...f, einlagerungZeitpunkt: iso }))}
+              />
+            )}
 
             <Stack gap="md">
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -793,16 +782,27 @@ export function FinanzenBelegPage() {
               <Text size="sm" c="dimmed" visibleFrom="sm">
                 Tastenkürzel: Strg+Enter
               </Text>
-              <Button
-                type="button"
-                variant="subtle"
-                color="red"
-                onClick={() =>
-                  entwurfId.current ? setVerwerfen(true) : void navigate('/finanzen/belege')
-                }
-              >
-                Entwurf verwerfen
-              </Button>
+              {eingereicht ? (
+                <Button
+                  type="button"
+                  variant="subtle"
+                  color="red"
+                  onClick={() => setEinreichungVerwerfen(true)}
+                >
+                  Verwerfen
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="subtle"
+                  color="red"
+                  onClick={() =>
+                    entwurfId.current ? setVerwerfen(true) : void navigate('/finanzen/belege')
+                  }
+                >
+                  Entwurf verwerfen
+                </Button>
+              )}
             </Group>
           </Stack>
         </form>
@@ -823,10 +823,20 @@ export function FinanzenBelegPage() {
           }
           posten={form.posten.map((p, i) => ({
             key: p.key,
-            kategorie: nameVon(p.kategorieId),
+            kategorie: postenName(p),
             text: p.text.trim(),
-            betragCent: berechnung.postenBetraege[i] ?? 0,
+            betragCent: (berechnung.postenBetraege[i] ?? 0) + (berechnung.pfandBetraege[i] ?? 0),
           }))}
+          einlagerung={
+            einlagernMoeglich && form.einlagern
+              ? form.posten
+                  .filter((p) => p.art === 'ware' && (anzahlLesen(p.anzahl) ?? 0) > 0)
+                  .map(
+                    (p) =>
+                      `${postenName(p)}: ${p.anzahl} × → ${pfad(stamm.lagerorte, p.lagerortId ?? '')}`,
+                  )
+              : null
+          }
           berechnung={berechnung}
           warnungen={warnungen}
           laeuft={buchen.isPending}
@@ -867,6 +877,29 @@ export function FinanzenBelegPage() {
             Der Entwurf wird gelöscht. Eine hochgeladene Datei bleibt im Archiv, das ist so gewollt.
           </Text>
         </BestaetigenDialog>
+      )}
+      {einreichungVerwerfen && (
+        <BelegVerwerfenDialog
+          onClose={() => setEinreichungVerwerfen(false)}
+          onVerwerfen={async (grund) => {
+            await unwrap(
+              await api.finanzen['beleg-entwuerfe'][':id'].verwerfen.$post({
+                param: { id: entwurfId.current! },
+                json: { grund },
+              }),
+            );
+            window.clearTimeout(timer.current);
+            warnung.abgeschlossen();
+            void qc.invalidateQueries({
+              queryKey: finanzenKeys.alle,
+              predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
+            });
+            setErledigt(true);
+            qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
+            notifications.show({ color: 'green', message: 'Der Beleg wurde verworfen.' });
+            void navigate('/finanzen/belege', { replace: true });
+          }}
+        />
       )}
       {warnung.dialog}
     </Stack>

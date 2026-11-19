@@ -22,7 +22,7 @@ import {
 } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { anzahlText, satzText } from '../belegFormular';
+import { anzahlText, pfandJeSatz, satzText } from '../belegFormular';
 import { BelegVorschau } from '../BelegDatei';
 import { BelegSummen } from '../BelegSummen';
 import {
@@ -32,14 +32,35 @@ import {
   finanzenKeys,
   jsonOderFehler,
   useBeleg,
+  useBelegWaren,
 } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { KartenOderTabelle } from '../KartenOderTabelle';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
+import { formatDatumZeit } from '../datum';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
+
+/** Ware and Gebinde of a Ware item (linked to the Ware page), nothing for other kinds. */
+function WareAngabe({
+  p,
+  gebindeName,
+}: Readonly<{ p: BelegPostenDto; gebindeName: string | null }>) {
+  if (p.art !== 'ware' || !p.wareId) return null;
+  return (
+    <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+      <Anchor component={Link} to={`/waren/${encodeURIComponent(p.wareId)}`}>
+        {p.wareName ?? 'Ware'}
+      </Anchor>
+      {gebindeName ? `, ${gebindeName}` : ''}
+      {p.pfandBetragCent
+        ? `, Pfand ${centAnzeigen(p.pfandCent ?? 0)} je Gebinde (${centAnzeigen(p.pfandBetragCent)})`
+        : ''}
+    </Text>
+  );
+}
 
 const Zeile = ({
   label,
@@ -75,6 +96,15 @@ export function FinanzenBelegDetailPage() {
     },
   });
   const b = beleg.data;
+  const waren = useBelegWaren(!!b?.posten.some((p) => p.art === 'ware'));
+  const gebindeName = (p: BelegPostenDto) =>
+    (waren.data ?? []).find((w) => w.id === p.wareId)?.gebinde.find((g) => g.id === p.gebindeId)
+      ?.bezeichnung ?? null;
+  const lagerWaren = [
+    ...new Map(
+      (b?.posten ?? []).filter((p) => p.wareId).map((p) => [p.wareId!, p.wareName ?? 'Ware']),
+    ),
+  ];
 
   return (
     <Stack maw={1100}>
@@ -147,6 +177,31 @@ export function FinanzenBelegDetailPage() {
               {b.eigenbelegBegruendung && (
                 <Zeile label="Eigenbeleg">{b.eigenbelegBegruendung}</Zeile>
               )}
+              {b.eingereichtVon && (
+                <Zeile label="Eingereicht von">
+                  <Anchor component={Link} to={mitgliedLink(b.eingereichtVon)}>
+                    <StatusName status={b.eingereichtVon.status}>
+                      {mitgliedName(b.eingereichtVon)}
+                    </StatusName>
+                  </Anchor>
+                  {b.eingereichtAm ? `, ${formatDatumZeit(b.eingereichtAm)}` : ''}
+                  {b.eingereichtBetragCent !== null &&
+                    `, genannter Betrag ${centAnzeigen(b.eingereichtBetragCent)}`}
+                </Zeile>
+              )}
+              {b.bestandsvorgangId && (
+                <Zeile label={<FeldLabel text="Einlagerung" hilfe={HILFE.belege.einlagern} />}>
+                  Mit dem Beleg ins Lager gebucht. Verlauf:{' '}
+                  {lagerWaren.map(([wareId, name], i) => (
+                    <span key={wareId}>
+                      {i > 0 && ', '}
+                      <Anchor component={Link} to={`/waren/${encodeURIComponent(wareId)}`}>
+                        {name}
+                      </Anchor>
+                    </span>
+                  ))}
+                </Zeile>
+              )}
               {b.erstelltVon && (
                 <Zeile label="Erfasst von">
                   <StatusName status={b.erstelltVon.status}>
@@ -167,8 +222,9 @@ export function FinanzenBelegDetailPage() {
                 <Group justify="space-between" wrap="nowrap" align="flex-start">
                   <Stack gap={0}>
                     <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {p.kategorieName}
+                      {p.art === 'leergut' ? 'Leergut' : p.kategorieName}
                     </Text>
+                    <WareAngabe p={p} gebindeName={gebindeName(p)} />
                     {p.text && (
                       <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
                         {p.text}
@@ -180,7 +236,7 @@ export function FinanzenBelegDetailPage() {
                     </Text>
                   </Stack>
                   <Text fw={600} style={BETRAG_STIL}>
-                    {centAnzeigen(p.betragCent)}
+                    {centAnzeigen(p.betragCent + (p.pfandBetragCent ?? 0))}
                   </Text>
                 </Group>
               </Paper>
@@ -197,16 +253,28 @@ export function FinanzenBelegDetailPage() {
             }
             zeile={(p) => (
               <Table.Tr>
-                <Table.Td>{p.kategorieName}</Table.Td>
-                <Table.Td style={{ overflowWrap: 'anywhere' }}>{p.text}</Table.Td>
+                <Table.Td>{p.art === 'leergut' ? 'Leergut' : p.kategorieName}</Table.Td>
+                <Table.Td style={{ overflowWrap: 'anywhere' }}>
+                  {p.text}
+                  <WareAngabe p={p} gebindeName={gebindeName(p)} />
+                </Table.Td>
                 <Table.Td style={BETRAG_STIL}>{anzahlText(p.anzahlMilli)}</Table.Td>
                 <Table.Td style={BETRAG_STIL}>{centAnzeigen(p.einzelpreisCent)}</Table.Td>
                 <Table.Td style={BETRAG_STIL}>{satzText(p.steuersatz)}</Table.Td>
-                <Table.Td style={BETRAG_STIL}>{centAnzeigen(p.betragCent)}</Table.Td>
+                <Table.Td style={BETRAG_STIL}>
+                  {centAnzeigen(p.betragCent + (p.pfandBetragCent ?? 0))}
+                </Table.Td>
               </Table.Tr>
             )}
           />
-          <BelegSummen jeSteuersatz={b.jeSteuersatz} summeCent={b.summeCent} />
+          <BelegSummen
+            jeSteuersatz={b.jeSteuersatz}
+            summeCent={b.summeCent}
+            pfand={pfandJeSatz(
+              b.posten,
+              b.posten.map((p) => p.pfandBetragCent ?? 0),
+            )}
+          />
           {b.korrekturen.length > 0 && (
             <Text size="sm" c="dimmed">
               Korrektur:{' '}

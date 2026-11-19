@@ -3,6 +3,7 @@ import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
 import { FinanzenBelegDetailPage } from '../pages/FinanzenBelegDetailPage';
 import { FinanzenBelegePage } from '../pages/FinanzenBelegePage';
 import { FinanzenBelegPage } from '../pages/FinanzenBelegPage';
+import { FinanzenWarengruppenKategorienPage } from '../pages/FinanzenWarengruppenKategorienPage';
 import { FinanzenRechnungsstellerPage } from '../pages/FinanzenRechnungsstellerPage';
 import { FinanzenBargeldPage } from '../pages/FinanzenBargeldPage';
 import { FinanzenBargeldUmbuchenPage } from '../pages/FinanzenBargeldUmbuchenPage';
@@ -231,6 +232,16 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenRechnungsstellerPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/warengruppen-kategorien"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenWarengruppenKategorienPage />
             </RequireUsername>
           </Protected>
         }

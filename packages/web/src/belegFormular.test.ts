@@ -13,6 +13,7 @@ import {
   hexVon,
   leeresFormular,
   mengenAus,
+  pfandJeSatz,
   neuerPosten,
   satzText,
   steuersatzVorschlag,
@@ -166,6 +167,107 @@ describe('datenZuFormular', () => {
   });
   it('legt für einen leeren Entwurf eine Postenzeile an', () => {
     expect(datenZuFormular(formularZuDaten(leeresFormular())).posten).toHaveLength(1);
+  });
+});
+
+describe('Ware, Leergut, Einlagern und Einreichung', () => {
+  const lager = (): BelegFormular => ({
+    ...voll(),
+    posten: [
+      {
+        ...neuerPosten(700),
+        art: 'ware',
+        wareId: 'w1',
+        gebindeId: 'g1',
+        kategorieId: 'k1',
+        anzahl: '2',
+        einzelpreisCent: 1000,
+        pfandCent: 300,
+        lagerortId: 'l1',
+        mhd: '2027-09-01',
+      },
+      { ...neuerPosten(700), art: 'leergut', text: 'Leergut', anzahl: '1', einzelpreisCent: -600 },
+      { ...neuerPosten(1900), kategorieId: 'k2', einzelpreisCent: 100 },
+    ],
+    einlagern: true,
+    einlagerungZeitpunkt: '2027-03-01T11:00:00.000Z',
+    eingereichtBetragCent: 1234,
+    rechnungsstellerName: ' Getränke Müller ',
+    notiz: ' Bon liegt bei ',
+  });
+
+  it('trägt Ware- und Leergut-Posten samt Lagerort und MHD in die Daten', () => {
+    const d = formularZuDaten(lager());
+    expect(d.posten[0]).toEqual({
+      art: 'ware',
+      wareId: 'w1',
+      gebindeId: 'g1',
+      kategorieId: 'k1',
+      text: '',
+      anzahlMilli: 2000,
+      einzelpreisCent: 1000,
+      steuersatz: 700,
+      pfandCent: 300,
+      lagerortId: 'l1',
+      mhd: '2027-09-01',
+    });
+    expect(d.posten[1]).toEqual({
+      art: 'leergut',
+      text: 'Leergut',
+      anzahlMilli: 1000,
+      einzelpreisCent: -600,
+      steuersatz: 700,
+    });
+    expect(d.posten[2]!.art).toBe('kategorie');
+  });
+  it('trägt Einlagern, Zeitpunkt, Betrag, Name und Notiz ohne Verlust', () => {
+    const d = formularZuDaten(lager());
+    expect(d.einlagern).toBe(true);
+    expect(d.einlagerungZeitpunkt).toBe('2027-03-01T11:00:00.000Z');
+    expect(d.eingereichtBetragCent).toBe(1234);
+    expect(d.rechnungsstellerName).toBe('Getränke Müller');
+    expect(d.notiz).toBe('Bon liegt bei');
+  });
+  it('ist über Laden und Speichern verlustfrei', () => {
+    const d = formularZuDaten(lager());
+    const f = datenZuFormular(d);
+    expect(formularZuDaten(f)).toEqual(d);
+    expect(f.posten[0]).toMatchObject({
+      art: 'ware',
+      wareId: 'w1',
+      lagerortId: 'l1',
+      pfandCent: 300,
+    });
+    expect(f.einlagern).toBe(true);
+    expect(f.notiz).toBe('Bon liegt bei');
+  });
+  it('lässt den Zeitpunkt ohne Einlagern weg', () => {
+    const d = formularZuDaten({ ...lager(), einlagern: false });
+    expect(d.einlagerungZeitpunkt).toBeNull();
+  });
+  it('rechnet das Pfand je Steuersatz mit', () => {
+    const b = formularSumme(lager());
+    expect(b.pfandBetraege[0]).toBe(600);
+    expect(b.summe).toBe(2000 + 600 - 600 + 100);
+  });
+  it('summiert das Pfand je Steuersatz', () => {
+    const f = lager();
+    const b = formularSumme(f);
+    expect(pfandJeSatz(f.posten, b.pfandBetraege)).toEqual({ 700: 600 });
+  });
+  it('verlangt Ware, Gebinde, Lagerort und Leergut-Text', () => {
+    const f = lager();
+    f.posten[0] = { ...f.posten[0]!, wareId: null, lagerortId: null };
+    f.posten[1] = { ...f.posten[1]!, text: '' };
+    const m = formularFehler(f)
+      .map((x) => x.meldung)
+      .join(' ');
+    expect(m).toContain('Bitte wähle eine Ware');
+    expect(m).toContain('Bitte beschreibe das Leergut');
+  });
+  it('zählt eine Ware-Zeile als Inhalt', () => {
+    const f = { ...leeresFormular(), posten: [{ ...neuerPosten(), art: 'ware' as const }] };
+    expect(hatInhalt(f)).toBe(true);
   });
 });
 

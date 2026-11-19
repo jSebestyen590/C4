@@ -31,6 +31,7 @@ export function BelegBuchenDialog({
   zahlwegZusatz,
   posten,
   berechnung,
+  einlagerung,
   warnungen,
   laeuft,
   fehler,
@@ -43,6 +44,8 @@ export function BelegBuchenDialog({
   zahlwegZusatz: string | null;
   posten: readonly BuchenPosten[];
   berechnung: BelegBerechnung;
+  /** One line per Ware item that goes into the stock; null = no Einlagerung. */
+  einlagerung: readonly string[] | null;
   warnungen: readonly BelegWarnungDto[];
   laeuft: boolean;
   fehler: string | null;
@@ -138,6 +141,21 @@ export function BelegBuchenDialog({
           </Table.Tbody>
         </Table>
         <BelegSummen jeSteuersatz={berechnung.jeSteuersatz} summeCent={berechnung.summe} />
+        {einlagerung && (
+          <Alert color="blue" title="Einlagerung">
+            <Stack gap={2}>
+              <Text size="sm">
+                Beim Buchen wird die Ware zugleich ins Lager gebucht. Ein Storno des Belegs bucht
+                den Lagerbestand nicht zurück.
+              </Text>
+              {einlagerung.map((z) => (
+                <Text key={z} size="sm" style={{ overflowWrap: 'anywhere' }}>
+                  {z}
+                </Text>
+              ))}
+            </Stack>
+          </Alert>
+        )}
         {warnungen.length > 0 && (
           <Alert color="orange" title="Bitte prüfen">
             <Stack gap="xs">

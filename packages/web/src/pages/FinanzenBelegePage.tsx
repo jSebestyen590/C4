@@ -43,12 +43,25 @@ const pfadVon = (b: BelegListeDto) =>
 
 function StatusBadge({ b }: Readonly<{ b: BelegListeDto }>) {
   if (b.status === 'gebucht') return null;
+  if (b.entwurfStatus === 'eingereicht')
+    return (
+      <Badge color="orange" variant="light">
+        Eingereicht
+      </Badge>
+    );
   return (
     <Badge color={b.status === 'entwurf' ? 'blue' : 'gray'} variant="light">
       {BELEG_STATUS_LABELS[b.status]}
     </Badge>
   );
 }
+
+const Einreicher = ({ b }: Readonly<{ b: BelegListeDto }>) =>
+  b.eingereichtVon ? (
+    <StatusName status={b.eingereichtVon.status}>{mitgliedName(b.eingereichtVon)}</StatusName>
+  ) : null;
+
+const summeVon = (b: BelegListeDto) => b.summeCent ?? b.eingereichtBetragCent;
 
 const Mitglied = ({ b }: Readonly<{ b: BelegListeDto }>) =>
   b.mitglied ? (
@@ -57,9 +70,97 @@ const Mitglied = ({ b }: Readonly<{ b: BelegListeDto }>) =>
     <Text span>–</Text>
   );
 
+/** Cards on phones, table from `sm`: one list of Belege. */
+function BelegTabelle({ zeilen }: Readonly<{ zeilen: readonly BelegListeDto[] }>) {
+  const navigate = useNavigate();
+  return (
+    <KartenOderTabelle
+      zeilen={zeilen}
+      zeilenKey={(b) => b.id}
+      minWidth={820}
+      karte={(b) => (
+        <KlickKarte to={pfadVon(b)}>
+          <Stack gap={4}>
+            <Group justify="space-between" wrap="nowrap" align="flex-start">
+              <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                {b.rechnungssteller ?? 'Ohne Rechnungssteller'}
+              </Text>
+              <Text fw={600} style={BETRAG_STIL}>
+                {summeVon(b) === null ? '–' : centAnzeigen(summeVon(b)!)}
+              </Text>
+            </Group>
+            <Group gap="xs">
+              <StatusBadge b={b} />
+              <Text size="sm" c="dimmed">
+                {b.nummer ?? 'Entwurf'}
+                {b.belegdatum ? ` · ${datumAnzeigen(b.belegdatum)}` : ''}
+              </Text>
+            </Group>
+            {b.eingereichtVon && (
+              <Text size="sm" c="dimmed">
+                Eingereicht von <Einreicher b={b} />
+              </Text>
+            )}
+            {b.zahlweg && (
+              <Text size="sm" c="dimmed">
+                {ZAHLWEG_LABELS[b.zahlweg]}
+                {b.mitglied && (
+                  <>
+                    {': '}
+                    {b.entwurfStatus === 'eingereicht' ? <Einreicher b={b} /> : <Mitglied b={b} />}
+                  </>
+                )}
+              </Text>
+            )}
+          </Stack>
+        </KlickKarte>
+      )}
+      kopf={
+        <Table.Tr>
+          <Table.Th>Nummer</Table.Th>
+          <Table.Th>Belegdatum</Table.Th>
+          <Table.Th>Rechnungssteller</Table.Th>
+          <Table.Th style={BETRAG_STIL}>Summe</Table.Th>
+          <Table.Th>Zahlweg</Table.Th>
+          <Table.Th>Mitglied / Einreicher:in</Table.Th>
+          <Table.Th />
+        </Table.Tr>
+      }
+      zeile={(b) => (
+        <Table.Tr
+          style={{ cursor: 'pointer' }}
+          opacity={b.status === 'storniert' ? 0.6 : 1}
+          onClick={(e) => {
+            if (!(e.target as HTMLElement).closest('a')) void navigate(pfadVon(b));
+          }}
+        >
+          <Table.Td style={{ whiteSpace: 'nowrap' }}>
+            <Link to={pfadVon(b)} style={{ color: 'inherit', textDecoration: 'none' }}>
+              {b.nummer ?? 'Entwurf'}
+            </Link>
+          </Table.Td>
+          <Table.Td style={{ whiteSpace: 'nowrap' }}>
+            {b.belegdatum ? datumAnzeigen(b.belegdatum) : '–'}
+          </Table.Td>
+          <Table.Td style={{ overflowWrap: 'anywhere' }}>{b.rechnungssteller ?? '–'}</Table.Td>
+          <Table.Td style={BETRAG_STIL}>
+            {summeVon(b) === null ? '–' : centAnzeigen(summeVon(b)!)}
+          </Table.Td>
+          <Table.Td>{b.zahlweg ? ZAHLWEG_LABELS[b.zahlweg] : '–'}</Table.Td>
+          <Table.Td>
+            <Mitglied b={b} />
+          </Table.Td>
+          <Table.Td>
+            <StatusBadge b={b} />
+          </Table.Td>
+        </Table.Tr>
+      )}
+    />
+  );
+}
+
 /** All Belege: drafts first, then the booked ones, with filters. */
 export function FinanzenBelegePage() {
-  const navigate = useNavigate();
   const { can } = useAuth();
   const [status, setStatus] = useState<string | null>(null);
   const [rs, setRs] = useState<string | null>(null);
@@ -78,18 +179,23 @@ export function FinanzenBelegePage() {
   const rechnungssteller = useRechnungssteller(true);
   const mitglieder = useMitgliederListe();
   const liste = belege.data?.belege ?? [];
+  const eingereicht = liste.filter((b) => b.entwurfStatus === 'eingereicht');
+  const rest = liste.filter((b) => b.entwurfStatus !== 'eingereicht');
 
   return (
     <Stack maw={1200}>
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
       <Group justify="space-between" align="center">
         <Title order={2}>Belege</Title>
-        <Group>
+        <Group wrap="wrap">
           <Button component={Link} to="/finanzen/auslagen" variant="default">
             Offene Auslagen
           </Button>
           <Button component={Link} to="/finanzen/rechnungssteller" variant="default">
             Rechnungssteller
+          </Button>
+          <Button component={Link} to="/finanzen/warengruppen-kategorien" variant="default">
+            Warengruppen und Kategorien
           </Button>
           {can('finanzen:buchen') && (
             <Button component={Link} to="/finanzen/belege/neu" leftSection={<IconPlus size={18} />}>
@@ -145,83 +251,27 @@ export function FinanzenBelegePage() {
       {belege.data?.gekappt && (
         <Alert color="blue">Es werden die neuesten Belege gezeigt, grenze die Auswahl ein.</Alert>
       )}
-      <KartenOderTabelle
-        zeilen={liste}
-        zeilenKey={(b) => b.id}
-        minWidth={820}
-        karte={(b) => (
-          <KlickKarte to={pfadVon(b)}>
-            <Stack gap={4}>
-              <Group justify="space-between" wrap="nowrap" align="flex-start">
-                <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                  {b.rechnungssteller ?? 'Ohne Rechnungssteller'}
-                </Text>
-                <Text fw={600} style={BETRAG_STIL}>
-                  {b.summeCent === null ? '–' : centAnzeigen(b.summeCent)}
-                </Text>
-              </Group>
-              <Group gap="xs">
-                <StatusBadge b={b} />
-                <Text size="sm" c="dimmed">
-                  {b.nummer ?? 'Entwurf'}
-                  {b.belegdatum ? ` · ${datumAnzeigen(b.belegdatum)}` : ''}
-                </Text>
-              </Group>
-              {b.zahlweg && (
-                <Text size="sm" c="dimmed">
-                  {ZAHLWEG_LABELS[b.zahlweg]}
-                  {b.mitglied && (
-                    <>
-                      {': '}
-                      <Mitglied b={b} />
-                    </>
-                  )}
-                </Text>
-              )}
-            </Stack>
-          </KlickKarte>
-        )}
-        kopf={
-          <Table.Tr>
-            <Table.Th>Nummer</Table.Th>
-            <Table.Th>Belegdatum</Table.Th>
-            <Table.Th>Rechnungssteller</Table.Th>
-            <Table.Th style={BETRAG_STIL}>Summe</Table.Th>
-            <Table.Th>Zahlweg</Table.Th>
-            <Table.Th>Mitglied</Table.Th>
-            <Table.Th />
-          </Table.Tr>
-        }
-        zeile={(b) => (
-          <Table.Tr
-            style={{ cursor: 'pointer' }}
-            opacity={b.status === 'storniert' ? 0.6 : 1}
-            onClick={(e) => {
-              if (!(e.target as HTMLElement).closest('a')) void navigate(pfadVon(b));
-            }}
-          >
-            <Table.Td style={{ whiteSpace: 'nowrap' }}>
-              <Link to={pfadVon(b)} style={{ color: 'inherit', textDecoration: 'none' }}>
-                {b.nummer ?? 'Entwurf'}
-              </Link>
-            </Table.Td>
-            <Table.Td style={{ whiteSpace: 'nowrap' }}>
-              {b.belegdatum ? datumAnzeigen(b.belegdatum) : '–'}
-            </Table.Td>
-            <Table.Td style={{ overflowWrap: 'anywhere' }}>{b.rechnungssteller ?? '–'}</Table.Td>
-            <Table.Td style={BETRAG_STIL}>
-              {b.summeCent === null ? '–' : centAnzeigen(b.summeCent)}
-            </Table.Td>
-            <Table.Td>{b.zahlweg ? ZAHLWEG_LABELS[b.zahlweg] : '–'}</Table.Td>
-            <Table.Td>
-              <Mitglied b={b} />
-            </Table.Td>
-            <Table.Td>
-              <StatusBadge b={b} />
-            </Table.Td>
-          </Table.Tr>
-        )}
-      />
+      {eingereicht.length > 0 && (
+        <Stack gap="xs">
+          <Group gap="xs">
+            <Title order={3}>Eingereicht</Title>
+            <Badge
+              variant="light"
+              color="orange"
+              aria-label={`${eingereicht.length} eingereichte Belege`}
+            >
+              {eingereicht.length}
+            </Badge>
+          </Group>
+          <Text size="sm" c="dimmed">
+            Mitglieder haben diese Belege eingereicht. Prüfe sie, ergänze sie und buche sie, oder
+            verwirf sie mit einer Begründung.
+          </Text>
+          <BelegTabelle zeilen={eingereicht} />
+        </Stack>
+      )}
+      {eingereicht.length > 0 && rest.length > 0 && <Title order={3}>Alle Belege</Title>}
+      <BelegTabelle zeilen={rest} />
     </Stack>
   );
 }

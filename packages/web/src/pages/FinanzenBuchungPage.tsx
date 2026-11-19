@@ -40,6 +40,7 @@ import {
   detailPfad,
   finanzenKeys,
   jsonOderFehler,
+  useBeleg,
   useKonten,
   zaehlungPfad,
 } from '../finanzenDaten';
@@ -80,6 +81,10 @@ function StornoDialog({
     konten.data ?? [],
   );
   const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
+  // A Beleg booked with Einlagern: the reversal leaves the stock as it is.
+  const beleg = useBeleg(
+    buchung.quelleTyp === 'beleg' ? (buchung.quelleId ?? undefined) : undefined,
+  );
   // One key per opening of the dialog: a double click or a retry does not reverse twice.
   const [schluessel] = useState(() => crypto.randomUUID());
   return (
@@ -112,6 +117,12 @@ function StornoDialog({
         Es wird diese Gegenbuchung angelegt: Zugang und Abgang sind vertauscht. Die ursprüngliche
         Buchung bleibt unverändert bestehen.
       </Text>
+      {beleg.data?.bestandsvorgangId && (
+        <Alert color="orange" title="Lagerbestand">
+          Der Lagerbestand wird nicht zurückgebucht. Die Einlagerung dieses Belegs bleibt bestehen;
+          korrigiere den Bestand bei Bedarf im Lager.
+        </Alert>
+      )}
       <ZeilenUebersicht
         zeilen={buchung.zeilen.map((z) => ({
           key: z.id,

@@ -7,6 +7,8 @@ import {
   type BelegDateiTyp,
   type BelegEntwurfDaten,
   type BelegFehler,
+  type BelegPosten,
+  type BelegPostenArt,
   type BelegModus,
   type KontoDto,
   type StueckelungDto,
@@ -26,6 +28,15 @@ export interface PostenZeile {
   anzahl: string;
   einzelpreisCent: number | null;
   steuersatz: number;
+  /** Item kind: Kategorie (Aufwand), Ware (stock) or Leergut (returned empties). */
+  art: BelegPostenArt;
+  /** Ware items: the Ware, the Gebinde the quantity counts and the deposit per Gebinde (null = none). */
+  wareId: string | null;
+  gebindeId: string | null;
+  pfandCent: number | null;
+  /** Ware items with Einlagern: target Lagerort and best-before date (`YYYY-MM-DD` or empty). */
+  lagerortId: string | null;
+  mhd: string;
 }
 
 /** Typed correction of one tax rate (cent, both may be empty = 0). */
@@ -52,6 +63,14 @@ export interface BelegFormular {
   eigenbeleg: boolean;
   eigenbelegBegruendung: string;
   datei: BelegDatei | null;
+  /** Book the Ware items into the stock with the Beleg. */
+  einlagern: boolean;
+  /** ISO instant of the Einlagerung; null = the default (Belegdatum noon, or now for today). */
+  einlagerungZeitpunkt: string | null;
+  /** Submissions: what the member stated, their free Rechnungssteller name and note. */
+  eingereichtBetragCent: number | null;
+  rechnungsstellerName: string;
+  notiz: string;
 }
 
 let zaehler = 0;
@@ -64,6 +83,12 @@ export const neuerPosten = (steuersatz: number = STEUERSAETZE[0]): PostenZeile =
   anzahl: '1',
   einzelpreisCent: null,
   steuersatz,
+  art: 'kategorie',
+  wareId: null,
+  gebindeId: null,
+  pfandCent: null,
+  lagerortId: null,
+  mhd: '',
 });
 
 export const leeresFormular = (): BelegFormular => ({
@@ -81,6 +106,11 @@ export const leeresFormular = (): BelegFormular => ({
   eigenbeleg: false,
   eigenbelegBegruendung: '',
   datei: null,
+  einlagern: false,
+  einlagerungZeitpunkt: null,
+  eingereichtBetragCent: null,
+  rechnungsstellerName: '',
+  notiz: '',
 });
 
 // ----- Quantity (thousandths)
@@ -142,6 +172,28 @@ export const bezahltCent = (gegeben: Mengen, wechselgeld: Mengen): number =>
 
 const postenAnzahl = (p: PostenZeile): number => anzahlLesen(p.anzahl) ?? 0;
 
+function postenZuDaten(p: PostenZeile): BelegPosten {
+  const basis = {
+    text: p.text.trim(),
+    anzahlMilli: postenAnzahl(p),
+    einzelpreisCent: p.einzelpreisCent ?? 0,
+    steuersatz: p.steuersatz,
+  };
+  if (p.art === 'leergut') return { art: 'leergut', ...basis };
+  if (p.art === 'ware')
+    return {
+      art: 'ware',
+      ...basis,
+      wareId: p.wareId,
+      gebindeId: p.gebindeId,
+      kategorieId: p.kategorieId,
+      pfandCent: p.pfandCent,
+      lagerortId: p.lagerortId,
+      mhd: p.mhd || null,
+    };
+  return { art: 'kategorie', kategorieId: p.kategorieId, ...basis };
+}
+
 /** The draft data as the API stores it. Unreadable inputs become 0 (the check names them). */
 export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
   const korrekturen =
@@ -158,14 +210,7 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     rechnungsstellerId: f.rechnungsstellerId,
     belegdatum: f.belegdatum || null,
     modus: f.modus,
-    posten: f.posten.map((p) => ({
-      art: 'kategorie' as const,
-      kategorieId: p.kategorieId,
-      text: p.text.trim(),
-      anzahlMilli: postenAnzahl(p),
-      einzelpreisCent: p.einzelpreisCent ?? 0,
-      steuersatz: p.steuersatz,
-    })),
+    posten: f.posten.map(postenZuDaten),
     korrekturen,
     zahlweg: f.zahlweg,
     bezahldatum: f.zahlweg && f.zahlweg !== 'auslage' && f.bezahldatum ? f.bezahldatum : null,
@@ -174,12 +219,11 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     mitgliedId: f.zahlweg === 'auslage' ? f.mitgliedId : null,
     eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
     datei: f.datei,
-    // Phase 3 (Ware items, Einlagern, submissions) carries these through the form.
-    einlagern: false,
-    einlagerungZeitpunkt: null,
-    eingereichtBetragCent: null,
-    rechnungsstellerName: null,
-    notiz: null,
+    einlagern: f.einlagern,
+    einlagerungZeitpunkt: f.einlagern ? f.einlagerungZeitpunkt : null,
+    eingereichtBetragCent: f.eingereichtBetragCent,
+    rechnungsstellerName: f.rechnungsstellerName.trim() || null,
+    notiz: f.notiz.trim() || null,
   };
 }
 
@@ -189,17 +233,7 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     rechnungsstellerId: d.rechnungsstellerId,
     belegdatum: d.belegdatum ?? '',
     modus: d.modus,
-    posten:
-      d.posten.length > 0
-        ? d.posten.map((p) => ({
-            key: neuerKey(),
-            kategorieId: p.art === 'leergut' ? null : p.kategorieId,
-            text: p.text,
-            anzahl: anzahlText(p.anzahlMilli),
-            einzelpreisCent: p.einzelpreisCent,
-            steuersatz: p.steuersatz,
-          }))
-        : [neuerPosten()],
+    posten: d.posten.length > 0 ? d.posten.map(postenZuZeile) : [neuerPosten()],
     korrekturen: Object.fromEntries(
       d.korrekturen.map((k) => [
         k.steuersatz,
@@ -215,6 +249,29 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     eigenbeleg: d.eigenbelegBegruendung !== null && !d.datei,
     eigenbelegBegruendung: d.eigenbelegBegruendung ?? '',
     datei: d.datei,
+    einlagern: d.einlagern,
+    einlagerungZeitpunkt: d.einlagerungZeitpunkt ?? null,
+    eingereichtBetragCent: d.eingereichtBetragCent ?? null,
+    rechnungsstellerName: d.rechnungsstellerName ?? '',
+    notiz: d.notiz ?? '',
+  };
+}
+
+function postenZuZeile(p: BelegPosten): PostenZeile {
+  const ware = p.art === 'ware' ? p : null;
+  return {
+    key: neuerKey(),
+    art: p.art,
+    kategorieId: p.art === 'leergut' ? null : (p.kategorieId ?? null),
+    text: p.text,
+    anzahl: anzahlText(p.anzahlMilli),
+    einzelpreisCent: p.einzelpreisCent,
+    steuersatz: p.steuersatz,
+    wareId: ware?.wareId ?? null,
+    gebindeId: ware?.gebindeId ?? null,
+    pfandCent: ware?.pfandCent ?? null,
+    lagerortId: ware?.lagerortId ?? null,
+    mhd: ware?.mhd ?? '',
   };
 }
 
@@ -225,7 +282,14 @@ export function hatInhalt(f: BelegFormular): boolean {
     f.belegdatum !== '' ||
     f.zahlweg !== null ||
     f.eigenbelegBegruendung.trim() !== '' ||
-    f.posten.some((p) => p.kategorieId || p.text.trim() !== '' || p.einzelpreisCent !== null)
+    f.notiz.trim() !== '' ||
+    f.posten.some(
+      (p) =>
+        p.art !== 'kategorie' ||
+        p.kategorieId ||
+        p.text.trim() !== '' ||
+        p.einzelpreisCent !== null,
+    )
   );
 }
 
@@ -250,6 +314,19 @@ export const fehlerZu = (fehler: readonly BelegFehler[], feld: string): string |
 /** Totals of the form per tax rate (live display). */
 export function formularSumme(f: BelegFormular) {
   return belegBerechnen(formularZuDaten(f));
+}
+
+/** Deposit (cent, incl. tax) per tax rate: the part of the totals that comes from the Pfand of Ware items. */
+export function pfandJeSatz(
+  posten: readonly Pick<PostenZeile, 'steuersatz'>[],
+  pfandBetraege: readonly number[],
+): Record<number, number> {
+  const summen: Record<number, number> = {};
+  posten.forEach((p, i) => {
+    const c = pfandBetraege[i] ?? 0;
+    if (c !== 0) summen[p.steuersatz] = (summen[p.steuersatz] ?? 0) + c;
+  });
+  return summen;
 }
 
 /** Tax rates the items use, highest first (the rows of the correction fields). */
