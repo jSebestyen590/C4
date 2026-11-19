@@ -400,16 +400,6 @@ export function belegBerechnen(beleg: BelegRechnung): BelegBerechnung {
   return { postenBetraege, pfandBetraege, jeSteuersatz, summe, fehler };
 }
 
-/** Splits `gesamt` by weight (rounded); the rest cent goes to the largest weight. */
-function verteile(gesamt: number, gewichte: readonly number[]): number[] {
-  const summe = gewichte.reduce((s, g) => s + g, 0);
-  if (summe === 0) return gewichte.map((_, i) => (i === 0 ? gesamt : 0));
-  const anteile = gewichte.map((g) => runde((gesamt * g) / summe));
-  const rest = gesamt - anteile.reduce((s, a) => s + a, 0);
-  anteile[gewichte.indexOf(Math.max(...gewichte))]! += rest;
-  return anteile;
-}
-
 export type BelegZeile = Omit<HashZeile, 'pos' | 'stueckelung'> & { stueckelung: StueckelungDto[] };
 
 /** The counter side of a Beleg: Fach (with signed denominations), Bank or Auslagen. */
@@ -427,7 +417,7 @@ const OHNE_STEUER = {
 
 /**
  * The journal lines of a Beleg: one line (gross, with the Vorsteuer fields) per Konto and tax rate;
- * the tax of a rate is split over its Konten by amount, the rest cent goes to the largest one. A Ware
+ * net and tax of a rate are calculated per Konto from its own signed amount, the rounding cent goes to the largest one. A Ware
  * item goes to its category, its deposit and every Leergut item to the Pfand Konto. The counter line
  * takes the whole amount. The lines add up to 0.
  */
@@ -442,6 +432,7 @@ export function belegBuchungszeilen(
   gegenkonto: BelegGegenkonto,
 ): BelegZeile[] {
   const b = belegBerechnen(beleg);
+  const modus = beleg.modus;
   const zeilen: BelegZeile[] = [];
   for (const g of b.jeSteuersatz) {
     const jeKonto = new Map<string, number>();
@@ -458,9 +449,21 @@ export function belegBuchungszeilen(
       if (b.pfandBetraege[i] !== 0) add(PFAND_KONTO_ID, b.pfandBetraege[i]!);
     });
     const ids = [...jeKonto.keys()];
-    const gewichte = ids.map((id) => Math.abs(jeKonto.get(id)!));
-    const netto = verteile(g.netto, gewichte);
-    const steuer = verteile(g.steuer, gewichte);
+    const betraege = ids.map((id) => jeKonto.get(id)!);
+    // Each Konto gets its own signed net/tax with the rounding rule of `belegBerechnen`; the rounding
+    // difference to the rate totals goes to the Konto with the largest absolute amount.
+    const netto = betraege.map((x) =>
+      modus === 'brutto' ? runde((x * 10000) / (10000 + g.satz)) : x,
+    );
+    const steuer = betraege.map((x, i) =>
+      modus === 'brutto' ? x - netto[i]! : runde((x * g.satz) / 10000),
+    );
+    let groesster = 0;
+    betraege.forEach((x, i) => {
+      if (Math.abs(x) > Math.abs(betraege[groesster]!)) groesster = i;
+    });
+    netto[groesster]! += g.netto - netto.reduce((t, x) => t + x, 0);
+    steuer[groesster]! += g.steuer - steuer.reduce((t, x) => t + x, 0);
     ids.forEach((kontoId, i) => {
       const betragCent = netto[i]! + steuer[i]!;
       if (betragCent === 0 && netto[i] === 0) return;
@@ -481,7 +484,7 @@ export function belegBuchungszeilen(
   }
   zeilen.push({
     kontoId: gegenkonto.kontoId,
-    betragCent: -b.summe,
+    betragCent: 0 - b.summe,
     stueckelung: (gegenkonto.stueckelung ?? []).map((s) => ({ ...s })),
     ...OHNE_STEUER,
   });

@@ -10,6 +10,7 @@ import {
   erstattungBuchungszeilen,
   einreichungStatus,
   warengruppeKategorie,
+  PFAND_KONTO_ID,
   type BelegRechnung,
 } from './belege';
 import { pruefeBuchung } from './finanzen';
@@ -493,5 +494,70 @@ describe('einreichungStatus', () => {
     expect(s({ entwurfStatus: null, beleg: { storniert: true, erstattet: true } })).toBe(
       'storniert',
     );
+  });
+});
+
+describe('belegBuchungszeilen mit Leergut (vorzeichenrichtig)', () => {
+  const kat = (einzelpreisCent: number, steuersatz = 1900, kategorieId = 'getraenke') => ({
+    art: 'kategorie' as const,
+    anzahlMilli: 1000,
+    einzelpreisCent,
+    steuersatz,
+    kategorieId,
+  });
+  const leergut = (einzelpreisCent: number, steuersatz = 1900) => ({
+    art: 'leergut' as const,
+    anzahlMilli: 1000,
+    einzelpreisCent,
+    steuersatz,
+  });
+  const summe = (z: { betragCent: number }[]) => z.reduce((s, x) => s + x.betragCent, 0);
+  const brutto0 = (posten: Parameters<typeof belegBuchungszeilen>[0]['posten']) =>
+    belegBuchungszeilen({ modus: 'brutto', posten, korrekturen: [] }, { kontoId: 'bank' });
+
+  it('books Kategorie 10,00 and Leergut -3,10 with their own signs (brutto)', () => {
+    const z = brutto0([kat(1000), leergut(-310)]);
+    expect(z[0]).toMatchObject({ kontoId: 'getraenke', betragCent: 1000 });
+    expect(z[1]).toMatchObject({ kontoId: PFAND_KONTO_ID, betragCent: -310 });
+    expect(z[1]!.nettoCent! + z[1]!.steuerCent!).toBe(-310);
+    expect(z[0]!.nettoCent! + z[0]!.steuerCent!).toBe(1000);
+    expect(z[2]).toMatchObject({ kontoId: 'bank', betragCent: -690 });
+    expect(summe(z)).toBe(0);
+  });
+
+  it('keeps both lines when the rate sums to 0', () => {
+    const z = brutto0([kat(310), leergut(-310)]);
+    expect(z).toHaveLength(3);
+    expect(z[0]).toMatchObject({ kontoId: 'getraenke', betragCent: 310 });
+    expect(z[1]).toMatchObject({ kontoId: PFAND_KONTO_ID, betragCent: -310 });
+    expect(z[2]).toMatchObject({ betragCent: 0 });
+  });
+
+  it('works in netto mode with Leergut', () => {
+    const z = belegBuchungszeilen(
+      { modus: 'netto', posten: [kat(1000), leergut(-300)], korrekturen: [] },
+      { kontoId: 'bank' },
+    );
+    expect(z[0]).toMatchObject({ betragCent: 1190, nettoCent: 1000, steuerCent: 190 });
+    expect(z[1]).toMatchObject({ betragCent: -357, nettoCent: -300, steuerCent: -57 });
+    expect(summe(z)).toBe(0);
+  });
+
+  it('handles mixed rates and Ware with Pfand and Leergut together', () => {
+    const ware = {
+      art: 'ware' as const,
+      anzahlMilli: 2000,
+      einzelpreisCent: 1190,
+      steuersatz: 1900,
+      pfandCent: 150,
+      kategorieId: 'getraenke',
+    };
+    const z = brutto0([ware, leergut(-310), kat(214, 700, 'essen')]);
+    const pfand = z.filter((x) => x.kontoId === PFAND_KONTO_ID);
+    expect(pfand).toHaveLength(1);
+    expect(pfand[0]!.betragCent).toBe(300 - 310);
+    expect(z.find((x) => x.kontoId === 'getraenke')!.betragCent).toBe(2380);
+    expect(z.find((x) => x.kontoId === 'essen')).toMatchObject({ betragCent: 214, nettoCent: 200 });
+    expect(summe(z)).toBe(0);
   });
 });
