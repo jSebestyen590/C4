@@ -371,8 +371,7 @@ function Zusammenfassung({
                     </Text>
                   </Group>
                   <Text size="sm" c="dimmed">
-                    {NENNWERTE_CENT
-                      .filter((n) => z.werte[n])
+                    {NENNWERTE_CENT.filter((n) => z.werte[n])
                       .map((n) => `${ZAHL.format(z.werte[n]!)} × ${centAnzeigen(n)}`)
                       .join(' · ') || 'leer'}
                   </Text>
@@ -698,7 +697,7 @@ function AbrechnenFormular({
         }}
       >
         <Stack>
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+          <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 3 }} spacing="md">
             <DatumFeld
               label="Datum"
               value={datum}

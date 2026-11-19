@@ -199,6 +199,9 @@ export function FinanzenBelegePage() {
           <Button component={Link} to="/finanzen/warengruppen-kategorien" variant="default">
             Warengruppen und Kategorien
           </Button>
+          <Button component={Link} to="/finanzen/lager-abgleich" variant="default">
+            Lager-Beleg-Abgleich
+          </Button>
           {can('finanzen:buchen') && (
             <Button component={Link} to="/finanzen/belege/neu" leftSection={<IconPlus size={18} />}>
               Neuer Beleg
@@ -206,7 +209,7 @@ export function FinanzenBelegePage() {
           )}
         </Group>
       </Group>
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+      <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
         <Select
           label="Status"
           placeholder="Alle"

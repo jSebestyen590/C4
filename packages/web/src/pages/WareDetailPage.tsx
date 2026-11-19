@@ -9,7 +9,7 @@ import {
 } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { gebindeBezeichnung, pfad } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { unwrap, useApi } from '../api';
@@ -23,6 +23,7 @@ import { WareHistorie } from '../WareHistorie';
 import { WareVerlauf } from '../WareVerlauf';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
 import { useWarenStammdaten, type WareEintrag } from '../warenDaten';
+import { lagerAbgleichPfad, useAbgleichRechte, useLagerAbgleich } from '../lagerAbgleichDaten';
 import { ZurueckLink } from '../ZurueckLink';
 import { warenKeys } from '../warenDaten';
 
@@ -36,6 +37,9 @@ export function WareDetailPage() {
   const darfVerwalten = can('waren:verwalten');
   const darfBuchen = can('bestand:buchen');
   const stamm = useWarenStammdaten();
+  const abgleichRechte = useAbgleichRechte();
+  const abgleich = useLagerAbgleich(abgleichRechte.lesen);
+  const diskrepanz = abgleich.data?.waren.find((w) => w.wareId === id);
   const [bearbeiten, setBearbeiten] = useState(false);
   const [loeschen, setLoeschen] = useState(false);
   const [buchung, setBuchung] = useState<BuchungsModus | null>(null);
@@ -149,6 +153,23 @@ export function WareDetailPage() {
             Entnehmen
           </Button>
         </SimpleGrid>
+      )}
+
+      {diskrepanz && diskrepanz.diskrepanz !== 0 && (
+        <Alert color="red" title="Diskrepanz zwischen Lager und Belegen">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Text size="sm">{diskrepanz.diskrepanzText} laut Lager-Beleg-Abgleich.</Text>
+            <Button
+              component={Link}
+              to={lagerAbgleichPfad(id)}
+              variant="light"
+              color="red"
+              size="md"
+            >
+              Zum Abgleich
+            </Button>
+          </Group>
+        </Alert>
       )}
 
       <Title order={3}>Bestand</Title>

@@ -19,6 +19,8 @@ import { FinanzenKassenPage } from '../pages/FinanzenKassenPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
+import { LagerAbgleichPage } from '../pages/LagerAbgleichPage';
+import { LagerAbgleichWarePage } from '../pages/LagerAbgleichWarePage';
 import { FinanzenZaehlungPage } from '../pages/FinanzenZaehlungPage';
 import { FinanzenZaehlungenPage } from '../pages/FinanzenZaehlungenPage';
 import { BelegEinreichenPage } from '../pages/BelegEinreichenPage';
@@ -215,6 +217,26 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenBelegePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/lager-abgleich"
+        element={
+          <Protected anyOf={['finanzen:lesen', 'waren:verwalten']}>
+            <RequireUsername>
+              <LagerAbgleichPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/lager-abgleich/:wareId"
+        element={
+          <Protected anyOf={['finanzen:lesen', 'waren:verwalten']}>
+            <RequireUsername>
+              <LagerAbgleichWarePage />
             </RequireUsername>
           </Protected>
         }

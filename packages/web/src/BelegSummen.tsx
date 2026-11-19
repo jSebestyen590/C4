@@ -23,7 +23,11 @@ export function BelegSummen({
           <Table.Th style={BETRAG_STIL}>Netto</Table.Th>
           <Table.Th style={BETRAG_STIL}>Steuer</Table.Th>
           <Table.Th style={BETRAG_STIL}>Brutto</Table.Th>
-          {mitPfand && <Table.Th style={BETRAG_STIL}>davon Pfand</Table.Th>}
+          {mitPfand && (
+            <Table.Th visibleFrom="sm" style={BETRAG_STIL}>
+              davon Pfand
+            </Table.Th>
+          )}
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -34,14 +38,16 @@ export function BelegSummen({
             <Table.Td style={BETRAG_STIL}>{centAnzeigen(g.steuer)}</Table.Td>
             <Table.Td style={BETRAG_STIL}>{centAnzeigen(g.brutto)}</Table.Td>
             {mitPfand && (
-              <Table.Td style={BETRAG_STIL}>{centAnzeigen(pfand[g.satz] ?? 0)}</Table.Td>
+              <Table.Td visibleFrom="sm" style={BETRAG_STIL}>
+                {centAnzeigen(pfand[g.satz] ?? 0)}
+              </Table.Td>
             )}
           </Table.Tr>
         ))}
         <Table.Tr fw={700}>
           <Table.Td colSpan={3}>Summe</Table.Td>
           <Table.Td style={BETRAG_STIL}>{centAnzeigen(summeCent)}</Table.Td>
-          {mitPfand && <Table.Td />}
+          {mitPfand && <Table.Td visibleFrom="sm" />}
         </Table.Tr>
       </Table.Tbody>
     </Table>

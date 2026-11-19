@@ -72,6 +72,7 @@ import { schluesselFuer } from '../buchungFormular';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { HINWEIS_DAUER_MS } from '../gebuchtHinweis';
+import { lokalIstNeuer, lokalLesen, lokalLoeschen, lokalSpeichern } from '../entwurfSpeicher';
 import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
 import { ApiFehler, fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
@@ -86,6 +87,16 @@ const SPEICHER_TEXT: Record<Speicherstand, string> = {
 };
 
 const AUTOSPEICHERN_MS = 1200;
+
+/** Key of the not yet created draft in the local storage. */
+const NEU = 'beleg-neu';
+const lokalSchluessel = (id: string) => `beleg-${id}`;
+
+/** The locally stored form, when it still has the shape of one. */
+function lokalesFormular(schluessel: string) {
+  const l = lokalLesen<BelegFormular>(schluessel);
+  return l && Array.isArray(l.wert.posten) && l.wert.posten.length > 0 ? l : null;
+}
 
 /**
  * Capture of a Beleg: file left, form right (stacked below `lg`). The draft is saved by itself
@@ -118,7 +129,9 @@ export function FinanzenBelegPage() {
       unwrap(await api.finanzen['beleg-entwuerfe'][':id'].$get({ param: { id: id! } })),
   });
 
-  const [form, setForm] = useState<BelegFormular | null>(id ? null : leeresFormular());
+  const [form, setForm] = useState<BelegFormular | null>(() =>
+    id ? null : (lokalesFormular(NEU)?.wert ?? leeresFormular()),
+  );
   const formRef = useRef<BelegFormular | null>(form);
   const entwurfId = useRef<string | null>(id ?? null);
   const [lokaleUrl, setLokaleUrl] = useState<string | null>(null);
@@ -135,12 +148,20 @@ export function FinanzenBelegPage() {
   const wurzel = useRef<HTMLFormElement>(null);
   const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
   const vorbelegt = useRef(false);
+  const nachspeichern = useRef(false);
   const warnung = useVerwerfenWarnung(stand !== 'gespeichert');
 
   // The draft of the route is loaded once; later changes come from this page.
   useEffect(() => {
     if (!id || formRef.current || !entwurf.data) return;
-    const f = datenZuFormular(entwurf.data.daten);
+    let f = datenZuFormular(entwurf.data.daten);
+    const lokal = lokalesFormular(lokalSchluessel(id));
+    if (lokal && lokalIstNeuer(lokal.zeit, entwurf.data.geaendertAm)) {
+      // Typed after the last save (the page was reloaded before the autosave ran): keep it and save it now.
+      f = lokal.wert;
+      notifications.show({ color: 'blue', message: 'Ungespeicherte Eingaben wiederhergestellt.' });
+      nachspeichern.current = true;
+    }
     formRef.current = f;
     entwurfId.current = id;
     setForm(f);
@@ -185,9 +206,13 @@ export function FinanzenBelegPage() {
             await api.finanzen['beleg-entwuerfe'].$post({ json: { daten } }),
           );
           entwurfId.current = neu.id;
+          lokalLoeschen(NEU);
+          if (formRef.current !== f) lokalSpeichern(lokalSchluessel(neu.id), formRef.current);
           warnung.ohneWarnung(() => void navigate(belegEntwurfPfad(neu.id), { replace: true }));
         }
         setSpeicherFehler(null);
+        if (formRef.current === f && entwurfId.current)
+          lokalLoeschen(lokalSchluessel(entwurfId.current));
         setStand(formRef.current === f ? 'gespeichert' : 'ungespeichert');
         void qc.invalidateQueries({ queryKey: ['finanzen', 'belege'] });
         return true;
@@ -201,11 +226,22 @@ export function FinanzenBelegPage() {
     return lauf;
   };
 
+  // A restored local state is saved right after it is shown.
+  useEffect(() => {
+    if (!form || !nachspeichern.current) return;
+    nachspeichern.current = false;
+    setStand('ungespeichert');
+    void speichernJetzt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
+
   const aendern = (fn: (f: BelegFormular) => BelegFormular) => {
     if (!formRef.current) return;
     const neu = fn(formRef.current);
     formRef.current = neu;
     setForm(neu);
+    // Mirror every change locally right away: the autosave below waits, a reload must not lose it.
+    lokalSpeichern(entwurfId.current ? lokalSchluessel(entwurfId.current) : NEU, neu);
     setStand('ungespeichert');
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => void speichernJetzt(), AUTOSPEICHERN_MS);
@@ -231,6 +267,7 @@ export function FinanzenBelegPage() {
     },
     onSuccess: (ergebnis) => {
       warnung.abgeschlossen();
+      lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
       schluessel.current = null;
       void qc.invalidateQueries({
         queryKey: finanzenKeys.alle,
@@ -427,7 +464,7 @@ export function FinanzenBelegPage() {
           }}
         >
           <Stack gap="lg">
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+            <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
               <Stack gap={4}>
                 <Select
                   label={
@@ -563,7 +600,12 @@ export function FinanzenBelegPage() {
                   <InfoHinweis feld="Korrektur" text={HILFE.belege.korrektur} />
                 </Group>
                 {verwendeteSaetze(form).map((satz) => (
-                  <SimpleGrid key={satz} cols={{ base: 2, sm: 3 }} spacing="xs">
+                  <SimpleGrid
+                    style={{ alignItems: 'end' }}
+                    key={satz}
+                    cols={{ base: 2, sm: 3 }}
+                    spacing="xs"
+                  >
                     <Text size="sm" fw={500} style={{ alignSelf: 'center' }}>
                       {satzText(satz)}
                     </Text>
@@ -624,7 +666,7 @@ export function FinanzenBelegPage() {
             </Stack>
 
             <Stack gap="md">
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
                 <Select
                   label={<FeldLabel text="Zahlweg" hilfe={HILFE.belege.zahlweg} />}
                   placeholder="Zahlweg wählen"
@@ -751,9 +793,11 @@ export function FinanzenBelegPage() {
                   type="button"
                   variant="subtle"
                   color="red"
-                  onClick={() =>
-                    entwurfId.current ? setVerwerfen(true) : void navigate('/finanzen/belege')
-                  }
+                  onClick={() => {
+                    if (entwurfId.current) return setVerwerfen(true);
+                    lokalLoeschen(NEU);
+                    void navigate('/finanzen/belege');
+                  }}
                 >
                   Entwurf verwerfen
                 </Button>
@@ -808,6 +852,7 @@ export function FinanzenBelegPage() {
               }),
             );
             window.clearTimeout(timer.current);
+            lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
             warnung.abgeschlossen();
             void qc.invalidateQueries({
               queryKey: finanzenKeys.alle,
@@ -834,6 +879,7 @@ export function FinanzenBelegPage() {
               }),
             );
             window.clearTimeout(timer.current);
+            lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
             warnung.abgeschlossen();
             void qc.invalidateQueries({
               queryKey: finanzenKeys.alle,

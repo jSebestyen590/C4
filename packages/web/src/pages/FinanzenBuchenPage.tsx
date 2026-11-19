@@ -232,7 +232,7 @@ export function FinanzenBuchenPage() {
               ]}
               w={{ base: '100%', sm: 320 }}
             />
-            <Grid gap="md">
+            <Grid align="flex-end" gap="md">
               <Grid.Col span={{ base: 12, sm: 4 }}>
                 <DatumFeld
                   label={<FeldLabel text="Datum" hilfe={HILFE.buchen.datum} />}
@@ -261,7 +261,7 @@ export function FinanzenBuchenPage() {
             </Grid>
 
             {modus === 'umbuchung' ? (
-              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, md: 3 }} spacing="md">
                 <Select
                   selectFirstOptionOnChange
                   label="Von Konto"

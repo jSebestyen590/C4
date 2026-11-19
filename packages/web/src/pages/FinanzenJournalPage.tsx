@@ -253,7 +253,7 @@ export function FinanzenJournalPage() {
           </Button>
         )}
       </Group>
-      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+      <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 3 }}>
         <Select
           selectFirstOptionOnChange
           label="Konto"

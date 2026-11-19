@@ -163,4 +163,10 @@ export const HILFE = {
     einreichen:
       'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
   },
+  lagerAbgleich: {
+    erklaerung:
+      'Der Abgleich prüft je Ware, ob Lager und Belege zusammenpassen, gezählt ab dem Stichtag. Lager (Ist): Was eingelagert wurde. Belege (Soll): Was auf gebuchten Belegen als Ware gekauft wurde. Korrektur: Eine Erklärung für eine Abweichung, z. B. Bruch. Diskrepanz = Lager − Belege − Korrekturen. 0 bedeutet: alles passt. Positiv: mehr eingelagert als gekauft; negativ: mehr gekauft als eingelagert (Ware fehlt oder wurde noch nicht eingelagert). Alle Mengen sind in Basiseinheiten (kleinstes Gebinde), z. B. Flaschen.',
+    stichtag:
+      'Erst Einlagerungen, Belege und Korrekturen ab diesem Tag zählen. Davor liegende Bestände bleiben außen vor.',
+  },
 } as const;

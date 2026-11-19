@@ -110,7 +110,7 @@ export function BelegPostenZeile({
         </Group>
 
         {p.art === 'ware' && (
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+          <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="xs">
             <Select
               label="Ware"
               placeholder="Ware suchen"
@@ -143,7 +143,7 @@ export function BelegPostenZeile({
           </SimpleGrid>
         )}
 
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+        <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="xs">
           {p.art !== 'leergut' && (
             <Select
               label="Kategorie"
@@ -182,7 +182,11 @@ export function BelegPostenZeile({
           />
         </SimpleGrid>
 
-        <SimpleGrid cols={{ base: 2, sm: p.art === 'ware' ? 5 : 4 }} spacing="xs">
+        <SimpleGrid
+          style={{ alignItems: 'end' }}
+          cols={{ base: 2, sm: p.art === 'ware' ? 5 : 4 }}
+          spacing="xs"
+        >
           <TextInput
             label={
               <FeldLabel

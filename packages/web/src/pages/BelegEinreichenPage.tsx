@@ -16,7 +16,7 @@ import {
 import { IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BELEG_POSTEN_ANZAHL_MAX, type BelegDatei as BelegDateiDaten } from '@c4/shared';
 import { useApi } from '../api';
@@ -25,6 +25,7 @@ import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
 import { ZahlFeld } from '../ZahlFeld';
 import { finanzenKeys, jsonOderFehler, useEinreichungAuswahl } from '../finanzenDaten';
+import { lokalLesen, lokalLoeschen, lokalSpeichern } from '../entwurfSpeicher';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -48,6 +49,36 @@ const STEUER_OPTIONEN = [
   { value: '0', label: '0 %' },
 ];
 
+/** Local storage key of the form being typed; cleared on submit or "Neu beginnen". */
+const LOKAL = 'beleg-einreichen';
+
+interface LokalerStand {
+  datei: BelegDateiDaten | null;
+  datum: string;
+  betrag: number | null;
+  steller: string;
+  notiz: string;
+  aufteilen: boolean;
+  posten: PostenZeile[];
+  naechsterKey: number;
+}
+
+/** The stored form, or null when absent or not shaped like one. */
+function lokalerStand(): LokalerStand | null {
+  const l = lokalLesen<Partial<LokalerStand>>(LOKAL)?.wert;
+  if (!l || !Array.isArray(l.posten) || typeof l.datum !== 'string') return null;
+  return {
+    datei: l.datei ?? null,
+    datum: l.datum,
+    betrag: typeof l.betrag === 'number' ? l.betrag : null,
+    steller: typeof l.steller === 'string' ? l.steller : '',
+    notiz: typeof l.notiz === 'string' ? l.notiz : '',
+    aufteilen: l.aufteilen === true,
+    posten: l.posten,
+    naechsterKey: typeof l.naechsterKey === 'number' ? l.naechsterKey : l.posten.length + 1,
+  };
+}
+
 const heute = () => new Date().toLocaleDateString('sv-SE');
 
 /**
@@ -58,16 +89,21 @@ export function BelegEinreichenPage() {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [datei, setDatei] = useState<BelegDateiDaten | null>(null);
+  const [wiederhergestellt, setWiederhergestellt] = useState(() => lokalerStand());
+  const [neustart, setNeustart] = useState(0);
+  const start = wiederhergestellt;
+  const [datei, setDatei] = useState<BelegDateiDaten | null>(start?.datei ?? null);
   const [lokaleUrl, setLokaleUrl] = useState<string | null>(null);
-  const [datum, setDatum] = useState(heute());
-  const [betrag, setBetrag] = useState<number | null>(null);
-  const [steller, setSteller] = useState('');
-  const [notiz, setNotiz] = useState('');
+  const [datum, setDatum] = useState(start?.datum ?? heute());
+  const [betrag, setBetrag] = useState<number | null>(start?.betrag ?? null);
+  const [steller, setSteller] = useState(start?.steller ?? '');
+  const [notiz, setNotiz] = useState(start?.notiz ?? '');
   const auswahl = useEinreichungAuswahl();
-  const [aufteilen, setAufteilen] = useState(false);
-  const [posten, setPosten] = useState<PostenZeile[]>([]);
-  const [naechsterKey, setNaechsterKey] = useState(1);
+  const [aufteilen, setAufteilen] = useState(start?.aufteilen ?? false);
+  const [posten, setPosten] = useState<PostenZeile[]>(start?.posten ?? []);
+  const [naechsterKey, setNaechsterKey] = useState(start?.naechsterKey ?? 1);
+  // Set after a submit or a restart, so the cleared storage is not written again by the next render.
+  const [verworfen, setVerworfen] = useState(false);
   const [versucht, setVersucht] = useState(false);
 
   const gewaehlt = auswahl.data?.rechnungssteller.find(
@@ -75,6 +111,40 @@ export function BelegEinreichenPage() {
   );
   const aendern = (key: number, teil: Partial<PostenZeile>) =>
     setPosten((ps) => ps.map((p) => (p.key === key ? { ...p, ...teil } : p)));
+
+  // Mirror the form into the local storage, so a reload keeps it (incl. the uploaded file).
+  useEffect(() => {
+    if (verworfen) return;
+    const leer = !datei && betrag === null && steller === '' && notiz === '' && posten.length === 0;
+    if (leer) lokalLoeschen(LOKAL);
+    else
+      lokalSpeichern<LokalerStand>(LOKAL, {
+        datei,
+        datum,
+        betrag,
+        steller,
+        notiz,
+        aufteilen,
+        posten,
+        naechsterKey,
+      });
+  }, [datei, datum, betrag, steller, notiz, aufteilen, posten, naechsterKey, verworfen]);
+
+  const neuBeginnen = () => {
+    lokalLoeschen(LOKAL);
+    setWiederhergestellt(null);
+    setDatei(null);
+    setLokaleUrl(null);
+    setDatum(heute());
+    setBetrag(null);
+    setSteller('');
+    setNotiz('');
+    setAufteilen(false);
+    setPosten([]);
+    setNaechsterKey(1);
+    setVersucht(false);
+    setNeustart((n) => n + 1);
+  };
 
   const einreichen = useMutation({
     meta: { eigeneFehlermeldung: true },
@@ -114,6 +184,8 @@ export function BelegEinreichenPage() {
         }),
       ),
     onSuccess: () => {
+      setVerworfen(true);
+      lokalLoeschen(LOKAL);
       void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
       notifications.show({ color: 'green', message: 'Dein Beleg wurde eingereicht.' });
       void navigate('/belege');
@@ -135,9 +207,19 @@ export function BelegEinreichenPage() {
   const gueltig = !fehlt.datei && !fehlt.datum && !fehlt.betrag && postenOk;
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" key={neustart}>
       <ZurueckLink to="/belege">Meine Belege</ZurueckLink>
       <Title order={2}>Beleg einreichen</Title>
+      {wiederhergestellt && (
+        <Alert color="blue" variant="light" title="Entwurf wiederhergestellt">
+          <Group justify="space-between" align="center" wrap="wrap">
+            Deine letzten Eingaben sind wieder da.
+            <Button variant="default" size="md" onClick={neuBeginnen}>
+              Neu beginnen
+            </Button>
+          </Group>
+        </Alert>
+      )}
       <BelegDateiFeld
         einreichung
         datei={datei}

@@ -332,15 +332,21 @@ export function LagerPage() {
           </Button>
         )}
       </Group>
-      <Button
-        component={Link}
-        to="/lager/stammdaten"
-        variant="default"
-        leftSection={<IconTags size={18} />}
-        w="fit-content"
-      >
-        Warengruppen &amp; Gebinde
-      </Button>
+      <Group gap="xs">
+        <Button
+          component={Link}
+          to="/lager/stammdaten"
+          variant="default"
+          leftSection={<IconTags size={18} />}
+        >
+          Warengruppen &amp; Gebinde
+        </Button>
+        {(can('finanzen:lesen') || darfVerwalten) && (
+          <Button component={Link} to="/finanzen/lager-abgleich" variant="default">
+            Lager-Beleg-Abgleich
+          </Button>
+        )}
+      </Group>
       <Switch
         label="Bestand anzeigen"
         checked={bestandZeigen}

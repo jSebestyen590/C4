@@ -127,7 +127,7 @@ export function ErstattungDialog({
         <Text size="sm" c="dimmed">
           {HILFE.belege.erstattung}
         </Text>
-        <Group align="flex-start" grow>
+        <Group align="flex-end" grow>
           <DatumFeld
             label="Datum der Erstattung"
             value={datum}
