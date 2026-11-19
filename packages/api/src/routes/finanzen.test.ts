@@ -2642,5 +2642,246 @@ describe('finanzen', () => {
         expect(waren[0]!.gebinde[0].bezeichnung).toContain('Flasche');
       });
     });
+
+    describe('Einreichungen', () => {
+      const einreichen = (extra: Dto = {}, token = 'member-token') => ({
+        token,
+        body: {
+          datei: datei('3'.repeat(64)),
+          belegdatum: '2027-01-05',
+          betragCent: 2340,
+          ...extra,
+        },
+      });
+      const einreichung = async (
+        t: Awaited<ReturnType<typeof belegSetup>>,
+        extra: Dto = {},
+        token = 'member-token',
+      ) => {
+        const e = einreichen(extra, token);
+        const res = await t.roh(e.token, 'POST', '/einreichungen', e.body);
+        expect(res.status, await res.clone().text()).toBe(201);
+        return ((await res.json()) as Dto).id as string;
+      };
+      const mitPush = async (t: Awaited<ReturnType<typeof belegSetup>>) => {
+        for (const sub of ['a', 'r', 'm2'])
+          await t.push.store.aboSpeichern(sub, {
+            endpoint: `https://push.example/${sub}`,
+            keys: { p256dh: 'p', auth: 'a' },
+          });
+        // `r` additionally holds a Posten with finanzen:buchen
+        t.posten.inhaberMitRecht.mockResolvedValue(['r']);
+        t.userAdmin.rollen.mockResolvedValue(new Map([['a', ['admin']]]));
+      };
+
+      it('requires belege:einreichen and validates the required fields', async () => {
+        const t = await belegSetup();
+        const e = einreichen();
+        const ohne = await t.app.request('/api/finanzen/einreichungen', { method: 'POST' });
+        expect(ohne.status).toBe(401);
+        for (const feld of ['datei', 'belegdatum', 'betragCent']) {
+          const rest = Object.fromEntries(Object.entries(e.body).filter(([k]) => k !== feld));
+          expect((await t.roh(e.token, 'POST', '/einreichungen', rest)).status, feld).toBe(400);
+        }
+        expect(
+          (await t.roh(e.token, 'POST', '/einreichungen', { ...e.body, betragCent: 0 })).status,
+        ).toBe(400);
+        expect(
+          (
+            await t.roh(e.token, 'POST', '/einreichungen', {
+              ...e.body,
+              rechnungsstellerId: 'gibt-es-nicht',
+            })
+          ).status,
+        ).toBe(400);
+        const upload = await t.roh(e.token, 'POST', '/einreichungen/upload', {
+          sha256: sha,
+          groesse: 100,
+          typ: 'application/pdf',
+          name: 'beleg.pdf',
+        });
+        expect(upload.status).toBe(200);
+      });
+
+      it('creates an Auslage draft of the submitter, the finance side sees it in the list', async () => {
+        const t = await belegSetup();
+        const id = await einreichung(t, { rechnungsstellerName: 'Baumarkt', notiz: 'Kabel' });
+        const e = await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`);
+        expect(e).toMatchObject({
+          status: 'eingereicht',
+          daten: {
+            zahlweg: 'auslage',
+            mitgliedId: 'm2',
+            eingereichtBetragCent: 2340,
+            rechnungsstellerName: 'Baumarkt',
+            notiz: 'Kabel',
+          },
+          eingereichtVon: { username: 'user-m2' },
+        });
+        const liste = await t.lesen<Dto>('admin-token', '/belege');
+        expect(liste.belege).toMatchObject([
+          {
+            id,
+            status: 'entwurf',
+            entwurfStatus: 'eingereicht',
+            eingereichtVon: { username: 'user-m2', status: 'anwaerter' },
+            eingereichtBetragCent: 2340,
+          },
+        ]);
+        expect(liste.belege[0].eingereichtAm).toEqual(expect.any(String));
+      });
+
+      it('shows and withdraws only own submissions, and only while submitted', async () => {
+        const t = await belegSetup();
+        const id = await einreichung(t, { rechnungsstellerName: 'Baumarkt' });
+        const meine = await t.lesen<Dto[]>('member-token', '/einreichungen');
+        expect(meine).toMatchObject([
+          { id, status: 'eingereicht', betragCent: 2340, rechnungssteller: 'Baumarkt' },
+        ]);
+        const detail = await t.lesen<Dto>('member-token', `/einreichungen/${id}`);
+        expect(detail).toMatchObject({ zurueckziehbar: true, dateiName: 'rechnung.pdf' });
+        expect(detail.dateiUrl).toContain('belege/');
+        // Foreign: not visible, not withdrawable.
+        expect(await t.lesen<Dto[]>('admin-token', '/einreichungen')).toEqual([]);
+        expect((await t.roh('admin-token', 'GET', `/einreichungen/${id}`)).status).toBe(404);
+        expect((await t.roh('admin-token', 'DELETE', `/einreichungen/${id}`)).status).toBe(404);
+        // Withdraw.
+        expect((await t.roh('member-token', 'DELETE', `/einreichungen/${id}`)).status).toBe(200);
+        expect((await t.roh('member-token', 'GET', `/einreichungen/${id}`)).status).toBe(404);
+        // After processing: rejected and booked ones stay.
+        const v = await einreichung(t);
+        const zweiter = await einreichung(t, { datei: datei('4'.repeat(64)) });
+        await t.roh('admin-token', 'POST', `/beleg-entwuerfe/${v}/verwerfen`, {
+          grund: 'unleserlich',
+        });
+        expect((await t.roh('member-token', 'DELETE', `/einreichungen/${v}`)).status).toBe(409);
+        const verworfen = await t.lesen<Dto>('member-token', `/einreichungen/${v}`);
+        expect(verworfen).toMatchObject({
+          status: 'verworfen',
+          verworfenGrund: 'unleserlich',
+          zurueckziehbar: false,
+        });
+        await t.roh('admin-token', 'PUT', `/beleg-entwuerfe/${zweiter}`, {
+          daten: {
+            ...t.daten({ zahlweg: 'auslage', mitgliedId: 'm2', bezahldatum: null }),
+            eingereichtBetragCent: 1190,
+          },
+        });
+        const gebucht = await t.buchenE(zweiter);
+        expect(gebucht.status, await gebucht.clone().text()).toBe(201);
+        const belegId = ((await gebucht.json()) as Dto).id as string;
+        expect((await t.roh('member-token', 'DELETE', `/einreichungen/${zweiter}`)).status).toBe(
+          404,
+        );
+        expect((await t.roh('member-token', 'DELETE', `/einreichungen/${belegId}`)).status).toBe(
+          404,
+        );
+        const status = (await t.lesen<Dto[]>('member-token', '/einreichungen'))
+          .map((x) => x.status)
+          .sort();
+        expect(status).toEqual(['gebucht', 'verworfen']);
+      });
+
+      it('rejects with a mandatory reason, only submitted drafts, and hides it from the list', async () => {
+        const t = await belegSetup();
+        const id = await einreichung(t);
+        const verwerfen = (body: unknown, token = 'admin-token') =>
+          t.roh(token, 'POST', `/beleg-entwuerfe/${id}/verwerfen`, body);
+        expect((await verwerfen({}, 'member-token')).status).toBe(403);
+        expect((await verwerfen({})).status).toBe(400);
+        expect((await verwerfen({ grund: '   ' })).status).toBe(400);
+        expect((await verwerfen({ grund: 'Doppelt' })).status).toBe(200);
+        expect((await verwerfen({ grund: 'Doppelt' })).status).toBe(409);
+        expect(
+          (await t.roh('admin-token', 'POST', '/beleg-entwuerfe/nope/verwerfen', { grund: 'x' }))
+            .status,
+        ).toBe(404);
+        expect((await t.lesen<Dto>('admin-token', '/belege')).belege).toEqual([]);
+        // A normal draft cannot be rejected.
+        const normal = await t.entwurf();
+        expect(
+          (
+            await t.roh('admin-token', 'POST', `/beleg-entwuerfe/${normal}/verwerfen`, {
+              grund: 'x',
+            })
+          ).status,
+        ).toBe(409);
+        // A rejected draft cannot be booked any more.
+        expect((await t.buchenE(id)).status).toBe(400);
+      });
+
+      it('pushes: submitted goes to the finance holders except the submitter', async () => {
+        const t = await belegSetup();
+        await mitPush(t);
+        const id = await einreichung(t);
+        expect(t.gesendet.map((g) => g.endpoint).sort()).toEqual([
+          'https://push.example/a',
+          'https://push.example/r',
+        ]);
+        expect(t.gesendet[0]).toMatchObject({
+          text: 'Neuer Beleg von user-m2: 23,40 €',
+          url: `/app/finanzen/belege/entwurf/${id}`,
+        });
+        t.gesendet.length = 0;
+        await einreichung(t, { datei: datei('5'.repeat(64)) }, 'admin-token');
+        expect(t.gesendet.map((g) => g.endpoint)).toEqual(['https://push.example/r']);
+      });
+
+      it('pushes: booked, rejected and reimbursed go to the submitter, not on repeat', async () => {
+        const t = await belegSetup();
+        await mitPush(t);
+        const alsAuslage = { zahlweg: 'auslage', mitgliedId: 'm2', bezahldatum: null };
+        const id = await einreichung(t);
+        t.gesendet.length = 0;
+        await t.roh('admin-token', 'PUT', `/beleg-entwuerfe/${id}`, {
+          daten: { ...t.daten(alsAuslage), eingereichtBetragCent: 2340 },
+        });
+        const schluessel = crypto.randomUUID();
+        const buchen = () =>
+          t.buchenE(id, { idempotenzSchluessel: schluessel, bestaetigt: ['betrag_abweichung'] });
+        const res = await buchen();
+        expect(res.status, await res.clone().text()).toBe(201);
+        expect(t.gesendet).toMatchObject([
+          {
+            endpoint: 'https://push.example/m2',
+            text: 'Dein Beleg über 23,40 € wurde gebucht.',
+            url: '/app/belege',
+          },
+        ]);
+        const belegId = ((await res.json()) as Dto).id as string;
+        expect((await buchen()).status).toBe(200);
+        expect(t.gesendet).toHaveLength(1);
+        // Reimbursed: one push per Erstattung, only for submitted Belege.
+        t.gesendet.length = 0;
+        const eigener = await t.gebucht({ ...alsAuslage, datei: datei('6'.repeat(64)) });
+        const erstattung = {
+          idempotenzSchluessel: crypto.randomUUID(),
+          mitgliedId: 'm2',
+          belegIds: [belegId, eigener.id],
+          datum: '2027-02-01',
+          zahlweg: 'bank',
+        };
+        expect((await t.roh('admin-token', 'POST', '/erstattungen', erstattung)).status).toBe(201);
+        expect(t.gesendet).toMatchObject([
+          {
+            endpoint: 'https://push.example/m2',
+            text: expect.stringContaining('wurden erstattet'),
+          },
+        ]);
+        expect(t.gesendet[0]!.text).toContain('23,40');
+        expect((await t.roh('admin-token', 'POST', '/erstattungen', erstattung)).status).toBe(200);
+        expect(t.gesendet).toHaveLength(1);
+        // Rejected: with the reason.
+        t.gesendet.length = 0;
+        const v = await einreichung(t, { datei: datei('7'.repeat(64)) });
+        t.gesendet.length = 0;
+        await t.roh('admin-token', 'POST', `/beleg-entwuerfe/${v}/verwerfen`, {
+          grund: 'unleserlich',
+        });
+        expect(t.gesendet).toMatchObject([
+          { endpoint: 'https://push.example/m2', text: 'Dein Beleg wurde verworfen: unleserlich' },
+        ]);
+      });
+    });
   });
 });

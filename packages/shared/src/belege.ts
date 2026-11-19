@@ -625,6 +625,41 @@ export function einreichungStatus(e: {
   return e.entwurfStatus === 'verworfen' ? 'verworfen' : 'eingereicht';
 }
 
+/** Body of `POST /api/finanzen/beleg-entwuerfe/:id/verwerfen`. */
+export const belegVerwerfenSchema = z.object({
+  grund: z
+    .string('Bitte nenne einen Grund.')
+    .trim()
+    .min(1, 'Bitte nenne einen Grund.')
+    .max(500, 'Höchstens 500 Zeichen erlaubt.'),
+});
+export type BelegVerwerfen = z.output<typeof belegVerwerfenSchema>;
+
+/** One own submission in `GET /api/finanzen/einreichungen`. */
+export interface EinreichungDto {
+  id: string;
+  status: EinreichungStatus;
+  belegdatum: string | null;
+  betragCent: number | null;
+  /** Name of the chosen Rechnungssteller, else the free name the member typed. */
+  rechnungssteller: string | null;
+  notiz: string | null;
+  /** Reason, when `status` is `verworfen`. */
+  verworfenGrund: string | null;
+  /** Number of the booked Beleg, once booked. */
+  belegNummer: string | null;
+  eingereichtAm: string | null;
+}
+
+/** `GET /api/finanzen/einreichungen/:id`: own submission with the file. */
+export interface EinreichungDetailDto extends EinreichungDto {
+  dateiUrl: string | null;
+  dateiName: string | null;
+  dateiTyp: string | null;
+  /** True while the member can still withdraw it (`DELETE`). */
+  zurueckziehbar: boolean;
+}
+
 // ----- Open Auslagen
 
 export interface AuslageBeleg {
@@ -758,10 +793,18 @@ export interface BelegListeEintrag {
   mitgliedId: string | null;
   hatDatei: boolean;
   erstelltAm: string;
+  /** Drafts only: `eingereicht` = submitted by a member, waiting for the Finanzer:in. */
+  entwurfStatus: 'entwurf' | 'eingereicht' | null;
+  /** Cognito sub of the member who submitted it (drafts and booked Belege). */
+  eingereichtVon: string | null;
+  eingereichtAm: string | null;
+  /** The amount the member stated (cent). */
+  eingereichtBetragCent: number | null;
 }
 
-export interface BelegListeDto extends Omit<BelegListeEintrag, 'mitgliedId'> {
+export interface BelegListeDto extends Omit<BelegListeEintrag, 'mitgliedId' | 'eingereichtVon'> {
   mitglied: FinanzMitgliedDto | null;
+  eingereichtVon: FinanzMitgliedDto | null;
 }
 
 export interface BelegeSeiteDto {

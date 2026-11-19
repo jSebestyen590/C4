@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   belegBerechnen,
   belegBuchungstext,
+  einreichungStatus,
   belegEntwurfDatenSchema,
   belegNummer,
   gebindeBezeichnung,
@@ -13,6 +14,7 @@ import {
   type AuslageBelegEintrag,
   type BelegDetailEintrag,
   type BelegEntwurfDaten,
+  type BelegDatei,
   type BelegEntwurfEintrag,
   type BelegKorrektur,
   type BelegListeEintrag,
@@ -35,6 +37,7 @@ import {
   planeBeleg,
   planeErstattung,
   type BelegeStore,
+  type EinreichungEintrag,
   type BelegKonto,
 } from './finanzenBelege';
 import { BuchungUngueltig, type BuchungsEntwurf } from './finanzen';
@@ -317,6 +320,10 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
             mitgliedId: d.mitgliedId,
             hatDatei: d.datei !== null,
             erstelltAm: e.erstelltAm,
+            entwurfStatus: e.status === 'eingereicht' ? 'eingereicht' : 'entwurf',
+            eingereichtVon: e.eingereichtVon,
+            eingereichtAm: e.eingereichtAm,
+            eingereichtBetragCent: d.eingereichtBetragCent,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -341,6 +348,10 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
               mitgliedId: b.mitgliedId,
               hatDatei: b.datei !== null,
               erstelltAm: b.erstelltAm,
+              entwurfStatus: null,
+              eingereichtVon: b.eingereichtVon,
+              eingereichtAm: b.eingereichtAm,
+              eingereichtBetragCent: b.eingereichtBetragCent,
             };
             return passt(eintrag) && (!abfrage.status || abfrage.status === status)
               ? [eintrag]
@@ -417,6 +428,83 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
     },
     async entwurfLoeschen(id) {
       return entwuerfe.delete(id);
+    },
+    async einreichungAnlegen(daten, sub) {
+      const id = await store.entwurfAnlegen(daten, sub);
+      const e = entwuerfe.get(id)!;
+      entwuerfe.set(id, {
+        ...e,
+        status: 'eingereicht',
+        eingereichtVon: sub,
+        eingereichtAm: e.erstelltAm,
+      });
+      return id;
+    },
+    async entwurfVerwerfen(id, grund) {
+      const e = entwuerfe.get(id);
+      if (!e) return 'fehlt';
+      if (e.status !== 'eingereicht') return 'nicht_eingereicht';
+      entwuerfe.set(id, { ...e, status: 'verworfen', verworfenGrund: grund });
+      return 'ok';
+    },
+    async einreichungZurueckziehen(id, sub) {
+      const e = entwuerfe.get(id);
+      if (!e || e.eingereichtVon !== sub) return 'fehlt';
+      if (e.status !== 'eingereicht') return 'nicht_eingereicht';
+      entwuerfe.delete(id);
+      return 'ok';
+    },
+    async einreichungen(sub) {
+      const storno = storniert();
+      const eigene: EinreichungEintrag[] = [...entwuerfe.values()]
+        .filter((e) => e.eingereichtVon === sub)
+        .map((e) => ({
+          id: e.id,
+          status: einreichungStatus({ entwurfStatus: e.status, beleg: null }),
+          belegdatum: e.daten.belegdatum,
+          betragCent: e.daten.eingereichtBetragCent,
+          rechnungssteller: e.daten.rechnungsstellerId
+            ? (steller.get(e.daten.rechnungsstellerId)?.name ?? null)
+            : (e.daten.rechnungsstellerName ?? null),
+          notiz: e.daten.notiz,
+          verworfenGrund: e.verworfenGrund,
+          belegNummer: null,
+          eingereichtAm: e.eingereichtAm,
+          datei: e.daten.datei ?? null,
+        }));
+      for (const b of belege.filter((x) => x.eingereichtVon === sub))
+        eigene.push({
+          id: b.id,
+          status: einreichungStatus({
+            entwurfStatus: null,
+            beleg: {
+              storniert: storno.has(b.buchungId),
+              erstattet: erstattungen.some(
+                (x) => x.belegIds.includes(b.id) && !storno.has(x.buchungId),
+              ),
+            },
+          }),
+          belegdatum: b.belegdatum,
+          betragCent: b.eingereichtBetragCent ?? b.summeCent,
+          rechnungssteller: steller.get(b.rechnungsstellerId)?.name ?? null,
+          notiz: null,
+          verworfenGrund: null,
+          belegNummer: b.nummer,
+          eingereichtAm: b.eingereichtAm,
+          datei: (b.datei as BelegDatei | null) ?? null,
+        });
+      return eigene.sort((a, b) => (b.eingereichtAm ?? '').localeCompare(a.eingereichtAm ?? ''));
+    },
+    async einreichung(id, sub) {
+      return (await store.einreichungen(sub)).find((e) => e.id === id);
+    },
+    async eingereichteBelege(belegIds) {
+      return belege
+        .filter((b) => belegIds.includes(b.id) && b.eingereichtVon)
+        .map((b) => ({
+          eingereichtVon: b.eingereichtVon!,
+          summeCent: b.eingereichtBetragCent ?? b.summeCent,
+        }));
     },
     async belegWarnungen(id) {
       const e = entwuerfe.get(id);

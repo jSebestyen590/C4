@@ -4,6 +4,12 @@ import { zValidator } from '@hono/zod-validator';
 import {
   BELEGE_MAX,
   belegBuchenSchema,
+  belegEinreichenSchema,
+  belegEntwurfDatenSchema,
+  belegVerwerfenSchema,
+  formatEuro,
+  type EinreichungDetailDto,
+  type EinreichungDto,
   belegDateiUploadSchema,
   belegEntwurfSchema,
   belegeAbfrageSchema,
@@ -59,7 +65,9 @@ import {
   type KontoDto,
 } from '@c4/shared';
 import { BuchungUngueltig, KontoKonflikt, KontoUngueltig, StornoKonflikt } from '../finanzen';
-import { BelegWarnungenOffen } from '../finanzenBelege';
+import { BelegWarnungenOffen, type EinreichungEintrag } from '../finanzenBelege';
+import { bestEffort, type Sendung } from '../benachrichtigungen';
+import { mitgliederMitRecht } from '../privatpartyBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig } from '../waren';
 import { type AuthEnv } from '../auth';
 import type { RoutenKontext } from './kontext';
@@ -71,6 +79,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     kasseZaehlen,
     finanzenLesen,
     finanzenBuchen,
+    belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
     gefunden,
@@ -93,6 +102,39 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
       };
     };
   };
+
+  const anzeigeName = (m: FinanzMitgliedDto | null) =>
+    m ? (m.username ?? `${m.vorname} ${m.nachname}`) : 'Jemand';
+
+  /** Sends a push after the request's work is done; a failure never fails the request. */
+  const pushSenden = (sendung: () => Promise<Sendung | null>) =>
+    bestEffort(async () => {
+      const s = await sendung();
+      if (s) await deps.benachrichtigungen.senden(s);
+    });
+
+  /** `belege.status` push to the submitter of a Beleg. */
+  const statusPush = (sub: string, titel: string, text: string) =>
+    pushSenden(async () => ({
+      subs: [sub],
+      art: 'belege.status',
+      titel,
+      text,
+      url: '/app/belege',
+    }));
+
+  /** The own submission without the file reference, plus the presigned URL for the detail view. */
+  const einreichungDto = (e: EinreichungEintrag): EinreichungDto => ({
+    id: e.id,
+    status: e.status,
+    belegdatum: e.belegdatum,
+    betragCent: e.betragCent,
+    rechnungssteller: e.rechnungssteller,
+    notiz: e.notiz,
+    verworfenGrund: e.verworfenGrund,
+    belegNummer: e.belegNummer,
+    eingereichtAm: e.eingereichtAm,
+  });
 
   /** Maps the domain errors of the Finanzen store to HTTP statuses. */
   const finanzenFehler = (err: unknown): never => {
@@ -469,9 +511,10 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             belege: [
               ...liste.filter((b) => b.status === 'entwurf'),
               ...gebucht.slice(0, BELEGE_MAX),
-            ].map(({ mitgliedId, ...rest }): BelegListeDto => ({
+            ].map(({ mitgliedId, eingereichtVon, ...rest }): BelegListeDto => ({
               ...rest,
               mitglied: mitgliedId ? mitglied(mitgliedId) : null,
+              eingereichtVon: eingereichtVon ? mitglied(eingereichtVon) : null,
             })),
             gekappt: gebucht.length > BELEGE_MAX,
           };
@@ -578,7 +621,16 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
               await deps.finanzen.entwurfBuchen(id, c.req.valid('json'), c.get('user').sub),
               'Entwurf nicht gefunden',
             );
-            // Phase 2: push `belege.status` (gebucht) to `entwurf.eingereichtVon` unless `ergebnis.wiederholt`.
+            if (!ergebnis.wiederholt && entwurf?.eingereichtVon) {
+              const betrag = entwurf.daten.eingereichtBetragCent;
+              await statusPush(
+                entwurf.eingereichtVon,
+                'Dein Beleg wurde gebucht',
+                betrag === null || betrag === undefined
+                  ? 'Dein Beleg wurde gebucht.'
+                  : `Dein Beleg über ${formatEuro(betrag)} wurde gebucht.`,
+              );
+            }
             return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
           } catch (err) {
             if (err instanceof BelegWarnungenOffen)
@@ -587,6 +639,114 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           }
         },
       )
+      .post(
+        '/finanzen/beleg-entwuerfe/:id/verwerfen',
+        auth,
+        finanzenBuchen,
+        zValidator('json', belegVerwerfenSchema),
+        async (c) => {
+          const id = c.req.param('id');
+          const { grund } = c.req.valid('json');
+          const entwurf = gefunden(await deps.finanzen.entwurf(id), 'Entwurf nicht gefunden');
+          const ergebnis = await deps.finanzen.entwurfVerwerfen(id, grund, c.get('user').sub);
+          if (ergebnis === 'fehlt')
+            throw new HTTPException(404, { message: 'Entwurf nicht gefunden' });
+          if (ergebnis === 'nicht_eingereicht')
+            throw new HTTPException(409, {
+              message: 'Nur eingereichte Belege kannst du verwerfen.',
+            });
+          if (entwurf.eingereichtVon)
+            await statusPush(
+              entwurf.eingereichtVon,
+              'Dein Beleg wurde verworfen',
+              `Dein Beleg wurde verworfen: ${grund}`,
+            );
+          return c.json({ ok: true });
+        },
+      )
+      // ----- Einreichungen of members (own ones only)
+      .post(
+        '/finanzen/einreichungen/upload',
+        auth,
+        belegeEinreichen,
+        zValidator('json', belegDateiUploadSchema),
+        async (c) => {
+          const upload = await deps.finanzarchiv.uploadVorbereiten(c.req.valid('json'));
+          const dto: BelegUploadDto = { ...upload, schonGebucht: null };
+          return c.json(dto);
+        },
+      )
+      .post(
+        '/finanzen/einreichungen',
+        auth,
+        belegeEinreichen,
+        zValidator('json', belegEinreichenSchema),
+        async (c) => {
+          const sub = c.get('user').sub;
+          const eingabe = c.req.valid('json');
+          if (eingabe.rechnungsstellerId) {
+            const steller = await deps.finanzen.rechnungssteller(false);
+            if (!steller.some((r) => r.id === eingabe.rechnungsstellerId))
+              throw new HTTPException(400, { message: 'Den Rechnungssteller gibt es nicht.' });
+          }
+          const daten = belegEntwurfDatenSchema.parse({
+            rechnungsstellerId: eingabe.rechnungsstellerId,
+            rechnungsstellerName: eingabe.rechnungsstellerName,
+            belegdatum: eingabe.belegdatum,
+            posten: eingabe.posten,
+            zahlweg: 'auslage',
+            mitgliedId: sub,
+            datei: eingabe.datei,
+            eingereichtBetragCent: eingabe.betragCent,
+            notiz: eingabe.notiz,
+          });
+          const id = await deps.finanzen.einreichungAnlegen(daten, sub);
+          await pushSenden(async () => {
+            const absender = anzeigeName((await finanzenMitglieder())(sub));
+            return {
+              subs: await mitgliederMitRecht(deps, 'finanzen:buchen'),
+              ausser: [sub],
+              art: 'belege.eingereicht',
+              titel: 'Neuer Beleg eingereicht',
+              text: `Neuer Beleg von ${absender}: ${formatEuro(eingabe.betragCent)}`,
+              url: `/app/finanzen/belege/entwurf/${id}`,
+            };
+          });
+          return c.json({ id }, 201);
+        },
+      )
+      .get('/finanzen/einreichungen', auth, belegeEinreichen, async (c) => {
+        const liste = await deps.finanzen.einreichungen(c.get('user').sub);
+        const dto: EinreichungDto[] = liste.map(einreichungDto);
+        return c.json(dto);
+      })
+      .get('/finanzen/einreichungen/:id', auth, belegeEinreichen, async (c) => {
+        const e = gefunden(
+          await deps.finanzen.einreichung(c.req.param('id'), c.get('user').sub),
+          'Einreichung nicht gefunden',
+        );
+        const dto: EinreichungDetailDto = {
+          ...einreichungDto(e),
+          dateiUrl: e.datei ? await deps.finanzarchiv.anzeigeUrl(e.datei.schluessel) : null,
+          dateiName: e.datei?.name ?? null,
+          dateiTyp: e.datei?.typ ?? null,
+          zurueckziehbar: e.status === 'eingereicht',
+        };
+        return c.json(dto);
+      })
+      .delete('/finanzen/einreichungen/:id', auth, belegeEinreichen, async (c) => {
+        const ergebnis = await deps.finanzen.einreichungZurueckziehen(
+          c.req.param('id'),
+          c.get('user').sub,
+        );
+        if (ergebnis === 'fehlt')
+          throw new HTTPException(404, { message: 'Einreichung nicht gefunden' });
+        if (ergebnis === 'nicht_eingereicht')
+          throw new HTTPException(409, {
+            message: 'Der Beleg ist schon in Bearbeitung und lässt sich nicht mehr zurückziehen.',
+          });
+        return c.json({ ok: true });
+      })
       // Presigned upload of a Beleg file straight into the archive; `schonGebucht` hints at a duplicate.
       .post(
         '/finanzen/beleg-dateien/upload',
@@ -654,6 +814,21 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           const ergebnis = await deps.finanzen
             .erstatten(eingabe, c.get('user').sub, name)
             .catch(finanzenFehler);
+          if (!ergebnis.wiederholt) {
+            const eingereicht = await deps.finanzen.eingereichteBelege(eingabe.belegIds);
+            const jeMitglied = new Map<string, number>();
+            for (const e of eingereicht)
+              jeMitglied.set(
+                e.eingereichtVon,
+                (jeMitglied.get(e.eingereichtVon) ?? 0) + e.summeCent,
+              );
+            for (const [sub, summe] of jeMitglied)
+              await statusPush(
+                sub,
+                'Deine Auslagen wurden erstattet',
+                `Deine Auslagen über ${formatEuro(summe)} wurden erstattet.`,
+              );
+          }
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )

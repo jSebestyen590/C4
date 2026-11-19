@@ -23,7 +23,10 @@ import {
   type AuslageBelegEintrag,
   type AuslageMitgliedEintrag,
   type BelegBuchen,
+  type BelegDatei,
   type BelegDateiInfo,
+  type EinreichungDto,
+  einreichungStatus,
   type BelegDetailEintrag,
   type BelegEntwurfDaten,
   type BelegEntwurfEintrag,
@@ -351,6 +354,13 @@ export function planeErstattung(
 
 // ----- Store
 
+export type EinreichungAktion = 'ok' | 'fehlt' | 'nicht_eingereicht';
+
+/** An own submission: the DTO plus the file reference (the route adds the presigned URL). */
+export interface EinreichungEintrag extends EinreichungDto {
+  datei: BelegDatei | null;
+}
+
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
 export interface BelegeStore {
   /** By name; archived ones only on request. */
@@ -370,6 +380,18 @@ export interface BelegeStore {
   /** False when the draft does not exist (e.g. already booked). */
   entwurfSpeichern(id: string, daten: BelegEntwurfDaten): Promise<boolean>;
   entwurfLoeschen(id: string): Promise<boolean>;
+  /** New draft submitted by a member (status `eingereicht`). */
+  einreichungAnlegen(daten: BelegEntwurfDaten, sub: string): Promise<string>;
+  /** Rejects a submitted draft with a reason; 'nicht_eingereicht' when it is in another state. */
+  entwurfVerwerfen(id: string, grund: string, sub: string): Promise<EinreichungAktion>;
+  /** Withdraws an own submission while it is `eingereicht`; 'fehlt' for foreign or missing ones. */
+  einreichungZurueckziehen(id: string, sub: string): Promise<EinreichungAktion>;
+  /** Own submissions (open drafts, rejected, booked), newest first. */
+  einreichungen(sub: string): Promise<EinreichungEintrag[]>;
+  /** One own submission by draft id or Beleg id; undefined when missing or foreign. */
+  einreichung(id: string, sub: string): Promise<EinreichungEintrag | undefined>;
+  /** Submitter and amount of the submitted ones among these Belege (for the Erstattung push). */
+  eingereichteBelege(belegIds: string[]): Promise<{ eingereichtVon: string; summeCent: number }[]>;
   /** The warnings before booking; undefined when the draft does not exist. */
   belegWarnungen(id: string): Promise<BelegWarnungDto[] | undefined>;
   /**
@@ -839,6 +861,95 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       }),
     );
 
+  const dateiAus = (r: {
+    dateiSha256: string | null;
+    dateiSchluessel: string | null;
+    dateiTyp: string | null;
+    dateiName: string | null;
+  }): BelegDatei | null =>
+    r.dateiSha256 && r.dateiSchluessel && r.dateiTyp && r.dateiName
+      ? ({
+          sha256: r.dateiSha256,
+          schluessel: r.dateiSchluessel,
+          typ: r.dateiTyp,
+          name: r.dateiName,
+        } as BelegDatei)
+      : null;
+
+  /** The own submissions: drafts still in the review plus the booked Belege that came from members. */
+  const einreichungenAus = async (sub: string, id?: string): Promise<EinreichungEintrag[]> => {
+    const namen = await stellerNamen(db);
+    const entwuerfe = await db
+      .select()
+      .from(finBelegEntwuerfe)
+      .where(
+        and(
+          eq(finBelegEntwuerfe.eingereichtVon, sub),
+          id ? eq(finBelegEntwuerfe.id, id) : undefined,
+        ),
+      );
+    const eintraege: EinreichungEintrag[] = entwuerfe.map((e) => {
+      const d = datenAusRow(e.daten);
+      return {
+        id: e.id,
+        status: einreichungStatus({ entwurfStatus: e.status ?? 'entwurf', beleg: null }),
+        belegdatum: d.belegdatum,
+        betragCent: d.eingereichtBetragCent,
+        rechnungssteller: d.rechnungsstellerId
+          ? (namen.get(d.rechnungsstellerId) ?? null)
+          : (d.rechnungsstellerName ?? null),
+        notiz: d.notiz,
+        verworfenGrund: e.verworfenGrund,
+        belegNummer: null,
+        eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
+        datei: d.datei,
+      };
+    });
+    const belege = await db
+      .select()
+      .from(finBelege)
+      .where(and(eq(finBelege.eingereichtVon, sub), id ? eq(finBelege.id, id) : undefined));
+    if (belege.length > 0) {
+      const links = await db
+        .select({
+          belegId: finErstattungBelege.belegId,
+          buchungId: finErstattungen.buchungId,
+        })
+        .from(finErstattungBelege)
+        .innerJoin(finErstattungen, eq(finErstattungen.id, finErstattungBelege.erstattungId))
+        .where(
+          inArray(
+            finErstattungBelege.belegId,
+            belege.map((b) => b.id),
+          ),
+        );
+      const storno = await stornierte(db, [
+        ...belege.map((b) => b.buchungId),
+        ...links.map((l) => l.buchungId),
+      ]);
+      for (const b of belege)
+        eintraege.push({
+          id: b.id,
+          status: einreichungStatus({
+            entwurfStatus: null,
+            beleg: {
+              storniert: storno.has(b.buchungId),
+              erstattet: links.some((l) => l.belegId === b.id && !storno.has(l.buchungId)),
+            },
+          }),
+          belegdatum: b.belegdatum,
+          betragCent: b.eingereichtBetragCent ?? b.summeCent,
+          rechnungssteller: namen.get(b.rechnungsstellerId) ?? null,
+          notiz: null,
+          verworfenGrund: null,
+          belegNummer: b.nummer,
+          eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
+          datei: dateiAus(b),
+        });
+    }
+    return eintraege.sort((a, b) => (b.eingereichtAm ?? '').localeCompare(a.eingereichtAm ?? ''));
+  };
+
   const store: BelegeStore = {
     async rechnungssteller(mitArchiv) {
       const [rows, zuletzt] = await Promise.all([
@@ -932,6 +1043,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             mitgliedId: d.mitgliedId,
             hatDatei: d.datei !== null,
             erstelltAm: e.erstelltAm.toISOString(),
+            entwurfStatus: e.status === 'eingereicht' ? 'eingereicht' : 'entwurf',
+            eingereichtVon: e.eingereichtVon,
+            eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
+            eingereichtBetragCent: d.eingereichtBetragCent,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -959,6 +1074,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             mitgliedId: r.mitgliedId,
             hatDatei: r.dateiSchluessel !== null,
             erstelltAm: r.erstelltAm.toISOString(),
+            entwurfStatus: null,
+            eingereichtVon: r.eingereichtVon,
+            eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
+            eingereichtBetragCent: r.eingereichtBetragCent,
           };
           return passt(eintrag) && (!abfrage.status || abfrage.status === status) ? [eintrag] : [];
         });
@@ -1097,6 +1216,73 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         .where(eq(finBelegEntwuerfe.id, id))
         .returning({ id: finBelegEntwuerfe.id });
       return rows.length > 0;
+    },
+
+    async einreichungAnlegen(daten, sub) {
+      const id = randomUUID();
+      const jetzt = new Date();
+      await db.insert(finBelegEntwuerfe).values({
+        id,
+        daten: JSON.stringify(daten),
+        ...dateiSpalten(daten),
+        status: 'eingereicht',
+        eingereichtVon: sub,
+        eingereichtAm: jetzt,
+        erstelltVon: sub,
+        erstelltAm: jetzt,
+        geaendertAm: jetzt,
+      });
+      return id;
+    },
+
+    async entwurfVerwerfen(id, grund, sub) {
+      const [row] = await db.select().from(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+      if (!row) return 'fehlt';
+      const jetzt = new Date();
+      const rows = await db
+        .update(finBelegEntwuerfe)
+        .set({
+          status: 'verworfen',
+          verworfenGrund: grund,
+          verworfenVon: sub,
+          verworfenAm: jetzt,
+          geaendertAm: jetzt,
+        })
+        .where(and(eq(finBelegEntwuerfe.id, id), eq(finBelegEntwuerfe.status, 'eingereicht')))
+        .returning({ id: finBelegEntwuerfe.id });
+      return rows.length > 0 ? 'ok' : 'nicht_eingereicht';
+    },
+
+    async einreichungZurueckziehen(id, sub) {
+      const [row] = await db.select().from(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+      if (!row || row.eingereichtVon !== sub) return 'fehlt';
+      const rows = await db
+        .delete(finBelegEntwuerfe)
+        .where(and(eq(finBelegEntwuerfe.id, id), eq(finBelegEntwuerfe.status, 'eingereicht')))
+        .returning({ id: finBelegEntwuerfe.id });
+      return rows.length > 0 ? 'ok' : 'nicht_eingereicht';
+    },
+
+    einreichungen: (sub) => einreichungenAus(sub),
+
+    async einreichung(id, sub) {
+      return (await einreichungenAus(sub, id))[0];
+    },
+
+    async eingereichteBelege(belegIds) {
+      if (belegIds.length === 0) return [];
+      const rows = await db
+        .select({
+          eingereichtVon: finBelege.eingereichtVon,
+          summeCent: finBelege.summeCent,
+          eingereichtBetragCent: finBelege.eingereichtBetragCent,
+        })
+        .from(finBelege)
+        .where(and(inArray(finBelege.id, belegIds), isNotNull(finBelege.eingereichtVon)));
+      return rows.map((r) => ({
+        eingereichtVon: r.eingereichtVon!,
+        summeCent: r.eingereichtBetragCent ?? r.summeCent,
+      }));
     },
 
     async belegWarnungen(id) {
