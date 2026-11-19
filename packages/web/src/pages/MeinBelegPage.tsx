@@ -17,7 +17,9 @@ export function MeinBelegPage() {
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const daten = useEinreichung(id);
+  // Once withdrawn, the detail query is disabled: the still mounted observer would refetch the deleted id (404).
+  const [geloescht, setGeloescht] = useState(false);
+  const daten = useEinreichung(geloescht ? undefined : id);
   const [bestaetigen, setBestaetigen] = useState(false);
 
   const zurueckziehen = useMutation({
@@ -27,7 +29,7 @@ export function MeinBelegPage() {
         await api.finanzen.einreichungen[':id'].$delete({ param: { id: id as string } }),
       ),
     onSuccess: () => {
-      // Drop the detail first: refetching the deleted id would 404.
+      setGeloescht(true);
       qc.removeQueries({ queryKey: finanzenKeys.einreichung(id) });
       void qc.invalidateQueries({ queryKey: finanzenKeys.einreichungen });
       notifications.show({ color: 'green', message: 'Der Beleg wurde zurückgezogen.' });
