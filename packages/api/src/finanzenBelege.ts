@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import {
   AUSLAGEN_KONTO_ID,
+  PFAND_KONTO_ID,
   BELEG_BETRAG_WARNUNG_CENT,
   belegBerechnen,
   belegBuchungstext,
@@ -9,6 +10,9 @@ import {
   belegEntwurfDatenSchema,
   belegNummer,
   belegPruefen,
+  gebindeBezeichnung,
+  pfandGesamtCent,
+  warengruppeKategorie,
   erstattungBuchungstext,
   erstattungBuchungszeilen,
   formatEuro,
@@ -25,6 +29,9 @@ import {
   type BelegEntwurfEintrag,
   type BelegeAbfrage,
   type BelegGebuchtDto,
+  type BelegWareDto,
+  type WarengruppeKategorieDto,
+  type Gebinde,
   type BelegListeEintrag,
   type BelegStatus,
   type BelegWarnungDto,
@@ -47,6 +54,10 @@ import {
   finErstattungen,
   finKonten,
   finRechnungssteller,
+  gebinde,
+  wareGebinde,
+  waren,
+  warengruppen,
   finZaehler,
   type FinBelegRow,
   type FinKontoRow,
@@ -58,7 +69,15 @@ import {
   type BuchungsEntwurf,
   type GebuchtErgebnis,
 } from './finanzen';
-import type { Tx } from './waren';
+import {
+  WarenUngueltig,
+  buchbareWare,
+  buchbarerLagerort,
+  einlagerungMhd,
+  vorgangAnlegen,
+  type Tx,
+  type ZeileMitWare,
+} from './waren';
 
 // Finanzen Belege (see docs/finanzen.md): drafts, booking a Beleg and the Sammelerstattung of
 // Auslagen. The planning (validation, journal lines, warnings) is pure and shared with the fake.
@@ -80,6 +99,15 @@ export interface BelegKonto extends PruefKonto {
   art: KontoArt;
 }
 
+/** A Ware as the planning of Ware items sees it. */
+export interface BelegWare {
+  id: string;
+  name: string;
+  archiviert: boolean;
+  /** Gebinde of the Ware; `archiviert` ones cannot be booked on. */
+  gebinde: readonly { id: string; archiviert: boolean }[];
+}
+
 export interface RechnungsstellerKurz {
   id: string;
   name: string;
@@ -91,18 +119,30 @@ export interface BelegPlanKontext {
   konten: readonly BelegKonto[];
   bestand: readonly BestandKonto[];
   rechnungssteller: RechnungsstellerKurz | undefined;
+  /** The Waren of the Ware items of the draft. */
+  waren: readonly BelegWare[];
 }
 
 export interface BelegPlan {
   fehler: string[];
   /** Set when `fehler` is empty. */
-  buchung?: { zeilen: BelegZeile[]; summeCent: number; datum: string; rechnungssteller: string };
+  buchung?: {
+    zeilen: BelegZeile[];
+    summeCent: number;
+    datum: string;
+    rechnungssteller: string;
+    /** Text per item: the typed text, for Ware items the name of the Ware by default. */
+    postenTexte: string[];
+  };
 }
 
 /** Accounts the planning needs: the Kategorien of the items, the Fach and the Gegenkonto. */
 export const belegKontoIds = (daten: BelegEntwurfDaten): string[] => [
   ...new Set([
-    ...daten.posten.flatMap((p) => (p.kategorieId ? [p.kategorieId] : [])),
+    ...daten.posten.flatMap((p) => (p.art !== 'leergut' && p.kategorieId ? [p.kategorieId] : [])),
+    ...(daten.posten.some((p) => p.art === 'leergut' || (p.art === 'ware' && p.pfandCent))
+      ? [PFAND_KONTO_ID]
+      : []),
     ...(daten.fachId ? [daten.fachId] : []),
     'bank',
     AUSLAGEN_KONTO_ID,
@@ -117,20 +157,32 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
   else if (steller?.archiviert)
     fehler.push(`Der Rechnungssteller „${steller.name}“ ist archiviert.`);
   const konten = new Map(kontext.konten.map((k) => [k.id, k]));
-  for (const id of new Set(daten.posten.flatMap((p) => (p.kategorieId ? [p.kategorieId] : [])))) {
+  for (const id of new Set(
+    daten.posten.flatMap((p) => (p.art !== 'leergut' && p.kategorieId ? [p.kategorieId] : [])),
+  )) {
     const k = konten.get(id);
     if (!k) fehler.push('Eine Kategorie gibt es nicht.');
     else if (k.art !== 'aufwand') fehler.push(`„${k.name}“ ist keine Aufwandskategorie.`);
   }
+  const waren = new Map(kontext.waren.map((w) => [w.id, w]));
+  daten.posten.forEach((p, i) => {
+    if (p.art !== 'ware' || !p.wareId || !p.gebindeId) return;
+    const w = waren.get(p.wareId);
+    const g = w?.gebinde.find((x) => x.id === p.gebindeId);
+    const n = `Posten ${i + 1}`;
+    if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
+    else if (w.archiviert) fehler.push(`${n}: Die Ware „${w.name}“ ist archiviert.`);
+    else if (!g) fehler.push(`${n}: Dieses Gebinde gehört nicht zur Ware „${w.name}“.`);
+    else if (g.archiviert) fehler.push(`${n}: Das Gebinde ist archiviert.`);
+  });
   if (daten.zahlweg === 'bar' && daten.fachId)
     fehler.push(...zaehlungKontoFehler(konten.get(daten.fachId)));
   if (fehler.length > 0 || !daten.zahlweg || !daten.belegdatum) return { fehler };
   const gegenKontoId =
     daten.zahlweg === 'bar' ? daten.fachId! : daten.zahlweg === 'bank' ? 'bank' : AUSLAGEN_KONTO_ID;
-  const posten = daten.posten.map((p) => ({ ...p, kategorieId: p.kategorieId! }));
   const rechnung = belegBerechnen(daten);
   const zeilen = belegBuchungszeilen(
-    { modus: daten.modus, posten, korrekturen: daten.korrekturen },
+    { modus: daten.modus, posten: daten.posten, korrekturen: daten.korrekturen },
     {
       kontoId: gegenKontoId,
       ...(daten.zahlweg === 'bar' && { stueckelung: daten.stueckelung }),
@@ -148,9 +200,73 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
       summeCent: rechnung.summe,
       datum: daten.zahlweg === 'auslage' ? daten.belegdatum : daten.bezahldatum!,
       rechnungssteller: steller!.name,
+      postenTexte: daten.posten.map((p) =>
+        p.art === 'ware' && !p.text ? (waren.get(p.wareId!)?.name ?? '') : p.text,
+      ),
     },
   };
 }
+
+// ----- Einlagern (stock-in together with the Beleg)
+
+export interface EinlagerPosition {
+  /** 1-based item number, for error messages. */
+  pos: number;
+  wareId: string;
+  gebindeId: string;
+  lagerortId: string;
+  anzahl: number;
+  mhd: string | null;
+}
+
+/** The Ware items to stock in: positive quantities only (a negative one is a Gutschrift). */
+export function einlagerPositionen(daten: BelegEntwurfDaten): EinlagerPosition[] {
+  return daten.posten.flatMap((p, i): EinlagerPosition[] =>
+    p.art === 'ware' && p.anzahlMilli > 0
+      ? [
+          {
+            pos: i + 1,
+            wareId: p.wareId!,
+            gebindeId: p.gebindeId!,
+            lagerortId: p.lagerortId!,
+            anzahl: p.anzahlMilli / 1000,
+            mhd: p.mhd,
+          },
+        ]
+      : [],
+  );
+}
+
+/** 12:00 in Berlin on a date, as an instant. */
+export function berlinMittag(datum: string): Date {
+  const stunde = (d: Date) =>
+    Number(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Berlin',
+        hour: '2-digit',
+        hourCycle: 'h23',
+      }).format(d),
+    );
+  const sommer = new Date(`${datum}T10:00:00Z`);
+  return stunde(sommer) === 12 ? sommer : new Date(`${datum}T11:00:00Z`);
+}
+
+/**
+ * Instant of the Einlagerung: the typed one, else noon (Berlin) of the Belegdatum, or now when the
+ * Belegdatum is today or later. Never in the future.
+ */
+export function einlagerungZeitpunkt(daten: BelegEntwurfDaten, jetzt: Date): Date {
+  if (daten.einlagerungZeitpunkt) {
+    const t = new Date(daten.einlagerungZeitpunkt);
+    if (t.getTime() > jetzt.getTime())
+      throw new BuchungUngueltig(['Der Einlagerungszeitpunkt liegt in der Zukunft.']);
+    return t;
+  }
+  const mittag = daten.belegdatum ? berlinMittag(daten.belegdatum) : jetzt;
+  return mittag.getTime() > jetzt.getTime() ? jetzt : mittag;
+}
+
+export const einlagerungKommentar = (nummer: string): string => `Beleg ${nummer}`;
 
 /** The non-blocking warnings before booking; every one must be confirmed by its `code`. */
 export function belegWarnungenBilden(p: {
@@ -179,6 +295,12 @@ export function belegWarnungenBilden(p: {
     w.push({
       code: 'hoher_betrag',
       text: `Der Betrag ist hoch (${formatEuro(p.summeCent)}). Bitte prüfe ihn.`,
+    });
+  const eingereicht = p.daten.eingereichtBetragCent;
+  if (eingereicht !== null && p.summeCent !== null && eingereicht !== p.summeCent)
+    w.push({
+      code: 'betrag_abweichung',
+      text: `Der eingereichte Betrag (${formatEuro(eingereicht)}) weicht von der Summe der Posten (${formatEuro(p.summeCent)}) ab.`,
     });
   p.saldo.forEach((text, i) => w.push({ code: `saldo:${i}`, text }));
   return w;
@@ -265,6 +387,15 @@ export interface BelegeStore {
   dateiGebucht(sha256: string): Promise<{ id: string; nummer: string } | null>;
   /** The open Auslagen per member. */
   auslagen(): Promise<AuslageMitgliedEintrag[]>;
+  /** All Warengruppen with their assigned and effective Kategorie. */
+  warengruppenKategorien(): Promise<WarengruppeKategorieDto[]>;
+  /**
+   * Assigns (or removes, `null`) the Kategorie of a Warengruppe. False when the group does not exist;
+   * throws BuchungUngueltig when the Konto is no active Aufwand Konto.
+   */
+  warengruppeKategorieSetzen(id: string, kategorieId: string | null): Promise<boolean>;
+  /** Non-archived Waren with their Gebinde, deposit, MHD kind and suggested Kategorie, for the Beleg form. */
+  belegWaren(): Promise<BelegWareDto[]>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
     eingabe: ErstattungEingabe,
@@ -319,11 +450,79 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finRechnungssteller)
           .where(eq(finRechnungssteller.id, daten.rechnungsstellerId))
       : [];
+    const wareIds = [
+      ...new Set(daten.posten.flatMap((p) => (p.art === 'ware' && p.wareId ? [p.wareId] : []))),
+    ];
+    const wareRows = wareIds.length
+      ? await q.select().from(waren).where(inArray(waren.id, wareIds))
+      : [];
+    const verknuepft = wareIds.length
+      ? await q
+          .select({
+            wareId: wareGebinde.wareId,
+            gebindeId: wareGebinde.gebindeId,
+            archiviert: gebinde.archiviert,
+          })
+          .from(wareGebinde)
+          .innerJoin(gebinde, eq(gebinde.id, wareGebinde.gebindeId))
+          .where(inArray(wareGebinde.wareId, wareIds))
+      : [];
     return {
       konten: pruef.map((k) => ({ ...k, art: art.get(k.id)! })),
       bestand,
       rechnungssteller: steller,
+      waren: wareRows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        archiviert: w.archiviert,
+        gebinde: verknuepft
+          .filter((v) => v.wareId === w.id)
+          .map((v) => ({ id: v.gebindeId, archiviert: v.archiviert })),
+      })),
     };
+  };
+
+  /**
+   * Stocks the Ware items in (one Bestandsvorgang, source `beleg`) inside the booking transaction, so
+   * a failure rolls the whole booking back. Domain errors become `BuchungUngueltig` (HTTP 400).
+   */
+  const einlagernTx = async (
+    tx: Tx,
+    daten: BelegEntwurfDaten,
+    nummer: string,
+    sub: string,
+    jetzt: Date,
+  ): Promise<string> => {
+    const zeilen: ZeileMitWare[] = [];
+    for (const p of einlagerPositionen(daten)) {
+      try {
+        const ware = await buchbareWare(tx, p.wareId, p.gebindeId);
+        await buchbarerLagerort(tx, p.lagerortId);
+        zeilen.push({
+          wareId: p.wareId,
+          lagerortId: p.lagerortId,
+          gebindeId: p.gebindeId,
+          mhd: einlagerungMhd(p.mhd, ware.mhdArt),
+          menge: p.anzahl,
+          art: 'zugang',
+        });
+      } catch (err) {
+        if (err instanceof WarenUngueltig)
+          throw new BuchungUngueltig([`Posten ${p.pos}: ${err.message}`]);
+        throw err;
+      }
+    }
+    return vorgangAnlegen(
+      tx,
+      {
+        typ: 'einlagerung',
+        quelle: 'beleg',
+        zeitpunkt: einlagerungZeitpunkt(daten, jetzt).toISOString(),
+        kommentar: einlagerungKommentar(nummer),
+        erstelltVon: sub,
+      },
+      zeilen,
+    );
   };
 
   /** Warnings of a draft; `plan` gives the lines for the balance warnings when it is valid. */
@@ -419,6 +618,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finBelegEntwuerfe)
           .where(eq(finBelegEntwuerfe.id, id));
         if (!entwurf) return undefined;
+        if (entwurf.status === 'verworfen')
+          throw new BuchungUngueltig(['Die Einreichung wurde verworfen.']);
         const daten = datenAusRow(entwurf.daten);
         const plan = planeBeleg(daten, await planKontext(tx, daten));
         if (!plan.buchung) throw new BuchungUngueltig(plan.fehler);
@@ -429,6 +630,9 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         const jetzt = new Date();
         const nummer = await naechsteNummer(tx, Number(datumBerlin(jetzt).slice(0, 4)));
         const belegId = randomUUID();
+        const bestandsvorgangId = daten.einlagern
+          ? await einlagernTx(tx, daten, nummer, sub, jetzt)
+          : null;
         const gebucht = await kern.einfuegen(tx, {
           datum: plan.buchung.datum,
           text: belegBuchungstext(nummer, plan.buchung.rechnungssteller),
@@ -459,17 +663,29 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           idempotenzSchluessel: eingabe.idempotenzSchluessel,
           erstelltVon: sub,
           erstelltAm: jetzt,
+          bestandsvorgangId,
+          // A submitted draft: keep who submitted it, when and which amount they stated.
+          eingereichtVon: entwurf.eingereichtVon,
+          eingereichtAm: entwurf.eingereichtAm,
+          eingereichtBetragCent: daten.eingereichtBetragCent,
         });
+        const rechnung = belegBerechnen(daten);
         await tx.insert(finBelegposten).values(
           daten.posten.map((p, i) => ({
             belegId,
             pos: i + 1,
-            kategorieId: p.kategorieId!,
-            text: p.text,
+            art: p.art,
+            kategorieId: p.art === 'leergut' ? PFAND_KONTO_ID : p.kategorieId!,
+            wareId: p.art === 'ware' ? p.wareId : null,
+            gebindeId: p.art === 'ware' ? p.gebindeId : null,
+            pfandCent: p.art === 'ware' ? p.pfandCent : null,
+            pfandBetragCent:
+              p.art === 'ware' && p.pfandCent !== null ? rechnung.pfandBetraege[i]! : null,
+            text: plan.buchung!.postenTexte[i]!,
             anzahlMilli: p.anzahlMilli,
             einzelpreisCent: p.einzelpreisCent,
             steuersatz: p.steuersatz,
-            betragCent: belegBerechnen(daten).postenBetraege[i]!,
+            betragCent: rechnung.postenBetraege[i]!,
           })),
         );
         const korrekturen = daten.korrekturen.filter(
@@ -478,6 +694,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         if (korrekturen.length > 0)
           await tx.insert(finBelegKorrekturen).values(korrekturen.map((k) => ({ belegId, ...k })));
         await tx.delete(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+        // The route sends the push `belege.status` (gebucht) to `eingereichtVon` after this returns.
         return { id: belegId, nummer, buchungId: gebucht.id, buchungSeq: gebucht.seq };
       }),
     );
@@ -485,6 +702,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
   const entwurfEintrag = (r: typeof finBelegEntwuerfe.$inferSelect): BelegEntwurfEintrag => ({
     id: r.id,
     daten: datenAusRow(r.daten),
+    status: r.status ?? 'entwurf',
+    eingereichtVon: r.eingereichtVon,
+    eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
+    verworfenGrund: r.verworfenGrund,
     erstelltVon: r.erstelltVon,
     erstelltAm: r.erstelltAm.toISOString(),
     geaendertAm: r.geaendertAm.toISOString(),
@@ -695,6 +916,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finBelegEntwuerfe)
           .orderBy(desc(finBelegEntwuerfe.geaendertAm));
         for (const e of entwuerfe) {
+          if (e.status === 'verworfen') continue;
           const d = datenAusRow(e.daten);
           const eintrag: BelegListeEintrag = {
             id: e.id,
@@ -755,9 +977,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       const b = row.beleg;
       const [posten, korrekturen, [buchung], erstattungen] = await Promise.all([
         db
-          .select({ p: finBelegposten, kategorie: finKonten.name })
+          .select({ p: finBelegposten, kategorie: finKonten.name, ware: waren.name })
           .from(finBelegposten)
           .innerJoin(finKonten, eq(finKonten.id, finBelegposten.kategorieId))
+          .leftJoin(waren, eq(waren.id, finBelegposten.wareId))
           .where(eq(finBelegposten.belegId, id))
           .orderBy(asc(finBelegposten.pos)),
         db.select().from(finBelegKorrekturen).where(eq(finBelegKorrekturen.belegId, id)),
@@ -799,10 +1022,16 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
                 name: b.dateiName,
               }
             : null,
-        posten: posten.map(({ p, kategorie }) => ({
+        posten: posten.map(({ p, kategorie, ware }) => ({
           pos: p.pos,
+          art: p.art ?? 'kategorie',
           kategorieId: p.kategorieId,
           kategorieName: kategorie,
+          wareId: p.wareId,
+          wareName: ware,
+          gebindeId: p.gebindeId,
+          pfandCent: p.pfandCent,
+          pfandBetragCent: p.pfandBetragCent,
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
@@ -825,6 +1054,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
               buchung: { id: aktiv.e.buchungId, seq: aktiv.seq },
             }
           : null,
+        bestandsvorgangId: b.bestandsvorgangId,
+        eingereichtVon: b.eingereichtVon,
+        eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
+        eingereichtBetragCent: b.eingereichtBetragCent,
         erstelltVon: b.erstelltVon,
         erstelltAm: b.erstelltAm.toISOString(),
       };
@@ -892,7 +1125,11 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         belegdatum: detail.belegdatum,
         modus: detail.modus,
         posten: detail.posten.map((p) => ({
+          art: p.art,
           kategorieId: p.kategorieId,
+          wareId: p.wareId,
+          gebindeId: p.gebindeId,
+          pfandCent: p.pfandCent,
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
@@ -922,6 +1159,68 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
     },
 
     auslagen: () => auslageDaten(db),
+
+    async warengruppenKategorien() {
+      const rows = await db.select().from(warengruppen).orderBy(asc(warengruppen.name));
+      return rows.map((g) => ({
+        id: g.id,
+        name: g.name,
+        parentId: g.parentId,
+        archiviert: g.archiviert,
+        kategorieId: g.kategorieId,
+        wirksamKategorieId: warengruppeKategorie(rows, g.id),
+      }));
+    },
+
+    async warengruppeKategorieSetzen(id, kategorieId) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const [gruppe] = await tx.select().from(warengruppen).where(eq(warengruppen.id, id));
+          if (!gruppe) return false;
+          if (kategorieId) {
+            const [konto] = await tx.select().from(finKonten).where(eq(finKonten.id, kategorieId));
+            if (!konto) throw new BuchungUngueltig(['Die Kategorie gibt es nicht.']);
+            if (konto.art !== 'aufwand')
+              throw new BuchungUngueltig([`„${konto.name}“ ist keine Aufwandskategorie.`]);
+            if (konto.archiviert)
+              throw new BuchungUngueltig([`Die Kategorie „${konto.name}“ ist archiviert.`]);
+          }
+          await tx.update(warengruppen).set({ kategorieId }).where(eq(warengruppen.id, id));
+          return true;
+        }),
+      );
+    },
+
+    async belegWaren() {
+      const [gruppen, wareRows, verknuepft, alleGebinde] = await Promise.all([
+        db.select().from(warengruppen),
+        db.select().from(waren).where(eq(waren.archiviert, false)).orderBy(asc(waren.name)),
+        db.select().from(wareGebinde),
+        db.select().from(gebinde),
+      ]);
+      const alle = alleGebinde as Gebinde[];
+      return wareRows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        warengruppeId: w.warengruppeId,
+        mhdArt: w.mhdArt,
+        kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+        gebinde: verknuepft
+          .filter((v) => v.wareId === w.id)
+          .flatMap((v) => {
+            const g = alleGebinde.find((x) => x.id === v.gebindeId);
+            return g && !g.archiviert
+              ? [
+                  {
+                    id: g.id,
+                    bezeichnung: gebindeBezeichnung(g as Gebinde, alle),
+                    pfandGesamtCent: pfandGesamtCent(g as Gebinde, alle),
+                  },
+                ]
+              : [];
+          }),
+      }));
+    },
 
     async erstatten(eingabe, sub, mitgliedName) {
       try {

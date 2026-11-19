@@ -12,6 +12,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import type {
   Anrede,
+  BelegPostenArt,
+  EntwurfStatus,
   BuchungsArt,
   Einheit,
   EventArt,
@@ -155,6 +157,8 @@ export const warengruppen = pgTable('warengruppen', {
   parentId: text('parent_id').references((): AnyPgColumn => warengruppen.id),
   name: text('name').notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Aufwand Konto suggested for Ware items on a Beleg (inherited by subgroups), checked in the API. */
+  kategorieId: text('kategorie_id'),
 });
 export type WarengruppeRow = typeof warengruppen.$inferSelect;
 
@@ -1584,6 +1588,14 @@ export const finBelegEntwuerfe = pgTable('fin_beleg_entwuerfe', {
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
   geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+  /** `entwurf` | `eingereicht` | `verworfen`; null counts as `entwurf`. */
+  status: text('status').$type<EntwurfStatus>(),
+  /** Cognito sub of the member who submitted the draft. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  verworfenGrund: text('verworfen_grund'),
+  verworfenVon: text('verworfen_von'),
+  verworfenAm: timestamp('verworfen_am', { withTimezone: true }),
 });
 export type FinBelegEntwurfRow = typeof finBelegEntwuerfe.$inferSelect;
 
@@ -1612,6 +1624,12 @@ export const finBelege = pgTable('fin_belege', {
   idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** Bestandsvorgang of the Einlagern done with the Beleg, without a foreign key. */
+  bestandsvorgangId: text('bestandsvorgang_id'),
+  /** Cognito sub of the member who submitted the Beleg. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  eingereichtBetragCent: bigint('eingereicht_betrag_cent', { mode: 'number' }),
 });
 export type FinBelegRow = typeof finBelege.$inferSelect;
 
@@ -1631,6 +1649,13 @@ export const finBelegposten = pgTable(
     einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
     steuersatz: integer('steuersatz').notNull(),
     betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+    /** `kategorie` | `ware` | `leergut`; null counts as `kategorie`. Leergut items use `kategorie_id` 'pfand'. */
+    art: text('art').$type<BelegPostenArt>(),
+    wareId: text('ware_id'),
+    gebindeId: text('gebinde_id'),
+    /** Deposit per Gebinde and its amount (Ware items). */
+    pfandCent: bigint('pfand_cent', { mode: 'number' }),
+    pfandBetragCent: bigint('pfand_betrag_cent', { mode: 'number' }),
   },
   (t) => [primaryKey({ columns: [t.belegId, t.pos] })],
 );

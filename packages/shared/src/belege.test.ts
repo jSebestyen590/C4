@@ -8,6 +8,8 @@ import {
   belegPruefen,
   offeneAuslagen,
   erstattungBuchungszeilen,
+  einreichungStatus,
+  warengruppeKategorie,
   type BelegRechnung,
 } from './belege';
 import { pruefeBuchung } from './finanzen';
@@ -271,5 +273,225 @@ describe('offeneAuslagen', () => {
       offeneAuslagen(belege, erstattung, new Set(['e-1'])).find((x) => x.mitgliedId === 'm1')
         ?.summeCent,
     ).toBe(500);
+  });
+});
+
+describe('Ware, Pfand und Leergut', () => {
+  const ware = (einzelpreisCent: number, pfandCent: number | null, steuersatz = 1900) => ({
+    art: 'ware' as const,
+    anzahlMilli: 2000,
+    einzelpreisCent,
+    steuersatz,
+    pfandCent,
+    kategorieId: 'getraenke',
+  });
+
+  it('adds the deposit per Gebinde to the sum per tax rate', () => {
+    const r = belegBerechnen({
+      modus: 'brutto',
+      posten: [ware(1190, 150)],
+      korrekturen: [],
+    });
+    expect(r.postenBetraege).toEqual([2380]);
+    expect(r.pfandBetraege).toEqual([300]);
+    expect(r.summe).toBe(2680);
+    expect(r.jeSteuersatz[0]).toMatchObject({ satz: 1900, brutto: 2680, netto: 2252 });
+  });
+
+  it('adds the deposit to the net sum of a Netto Beleg and taxes it', () => {
+    const r = belegBerechnen({ modus: 'netto', posten: [ware(1000, 250)], korrekturen: [] });
+    expect(r.jeSteuersatz[0]).toMatchObject({ netto: 2500, steuer: 475, brutto: 2975 });
+  });
+
+  it('keeps mixed tax rates with deposit apart', () => {
+    const r = belegBerechnen({
+      modus: 'brutto',
+      posten: [ware(1000, 100, 1900), ware(500, null, 700)],
+      korrekturen: [],
+    });
+    expect(r.jeSteuersatz.map((g) => [g.satz, g.brutto])).toEqual([
+      [1900, 2200],
+      [700, 1000],
+    ]);
+  });
+
+  it('books Ware to the category and the deposit to Pfand, grouped by Konto and rate', () => {
+    const zeilen = belegBuchungszeilen(
+      { modus: 'brutto', posten: [ware(1190, 150)], korrekturen: [] },
+      { kontoId: 'bank' },
+    );
+    expect(zeilen.map((z) => [z.kontoId, z.betragCent, z.steuersatz])).toEqual([
+      ['getraenke', 2380, 1900],
+      ['pfand', 300, 1900],
+      ['bank', -2680, null],
+    ]);
+    const konten = ['getraenke', 'pfand', 'bank'].map((id) => ({
+      id,
+      name: id,
+      stueckelung: false,
+      archiviert: false,
+    }));
+    expect(pruefeBuchung({ zeilen: zeilen.map((z) => ({ ...z })) }, konten)).toEqual([]);
+  });
+
+  it('books a negative Leergut item against Pfand', () => {
+    const zeilen = belegBuchungszeilen(
+      {
+        modus: 'brutto',
+        posten: [
+          ware(1190, 150),
+          { art: 'leergut', anzahlMilli: 2000, einzelpreisCent: -150, steuersatz: 1900 },
+        ],
+        korrekturen: [],
+      },
+      { kontoId: 'bank' },
+    );
+    // Pfand and Leergut cancel out: no empty Pfand line.
+    expect(zeilen.map((z) => [z.kontoId, z.betragCent])).toEqual([
+      ['getraenke', 2380],
+      ['bank', -2380],
+    ]);
+  });
+
+  it('merges Pfand and Leergut of a rate into one line', () => {
+    const zeilen = belegBuchungszeilen(
+      {
+        modus: 'brutto',
+        posten: [
+          ware(1190, 150),
+          { art: 'leergut', anzahlMilli: 1000, einzelpreisCent: -100, steuersatz: 1900 },
+        ],
+        korrekturen: [],
+      },
+      { kontoId: 'bank' },
+    );
+    expect(zeilen.filter((z) => z.kontoId === 'pfand')).toHaveLength(1);
+    expect(zeilen.find((z) => z.kontoId === 'pfand')!.betragCent).toBe(200);
+  });
+
+  it('groups Ware and Kategorie items of the same Konto', () => {
+    const zeilen = belegBuchungszeilen(
+      {
+        modus: 'brutto',
+        posten: [ware(1000, null), p(500, 1900, 1000, 'getraenke')],
+        korrekturen: [],
+      },
+      { kontoId: 'bank' },
+    );
+    expect(zeilen.map((z) => [z.kontoId, z.betragCent])).toEqual([
+      ['getraenke', 2500],
+      ['bank', -2500],
+    ]);
+  });
+});
+
+describe('belegPruefen mit Ware und Einlagern', () => {
+  const basis = {
+    rechnungsstellerId: 'r1',
+    belegdatum: '2027-01-05',
+    zahlweg: 'auslage',
+    mitgliedId: 'm1',
+    eigenbelegBegruendung: 'weg',
+  };
+  const wareRoh = (extra: Record<string, unknown> = {}) => ({
+    art: 'ware',
+    wareId: 'w1',
+    gebindeId: 'g1',
+    kategorieId: 'k1',
+    anzahlMilli: 3000,
+    einzelpreisCent: 1000,
+    steuersatz: 1900,
+    ...extra,
+  });
+  const pruefe = (posten: unknown[], extra: Record<string, unknown> = {}) =>
+    belegPruefen(belegEntwurfDatenSchema.parse({ ...basis, posten, ...extra }));
+
+  it('treats a posten without art as Kategorie', () => {
+    const d = belegEntwurfDatenSchema.parse({
+      posten: [{ kategorieId: 'k1', anzahlMilli: 1000, einzelpreisCent: 100, steuersatz: 0 }],
+    });
+    expect(d.posten[0]!.art).toBe('kategorie');
+  });
+
+  it('accepts Ware and Leergut without einlagern', () => {
+    expect(
+      pruefe([
+        wareRoh(),
+        {
+          art: 'leergut',
+          text: 'Kästen',
+          anzahlMilli: 1000,
+          einzelpreisCent: -150,
+          steuersatz: 1900,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('requires Ware, Gebinde and a text for Leergut', () => {
+    const fehler = pruefe([
+      wareRoh({ wareId: null }),
+      wareRoh({ gebindeId: null }),
+      { art: 'leergut', anzahlMilli: 1000, einzelpreisCent: -150, steuersatz: 0 },
+    ]);
+    expect(fehler.map((f) => f.meldung)).toEqual([
+      'Posten 1: Bitte wähle eine Ware.',
+      'Posten 2: Bitte wähle ein Gebinde.',
+      'Posten 3: Bitte beschreibe das Leergut.',
+    ]);
+  });
+
+  it('requires Lagerort and whole quantities for Einlagern, ignoring negative Ware items', () => {
+    const fehler = pruefe(
+      [wareRoh({ anzahlMilli: 1500 }), wareRoh({ anzahlMilli: -1000, einzelpreisCent: 100 })],
+      { einlagern: true },
+    );
+    expect(fehler.map((f) => f.meldung)).toEqual([
+      'Posten 1: Zum Einlagern muss die Anzahl eine ganze Zahl sein.',
+      'Posten 1: Bitte wähle einen Lagerort.',
+    ]);
+    expect(pruefe([wareRoh({ lagerortId: 'l1' })], { einlagern: true })).toEqual([]);
+  });
+
+  it('needs a Ware item for Einlagern', () => {
+    const fehler = pruefe([p(100)], { einlagern: true });
+    expect(fehler.map((f) => f.feld)).toEqual(['einlagern']);
+  });
+});
+
+describe('warengruppeKategorie', () => {
+  const gruppen = [
+    { id: 'a', parentId: null, kategorieId: 'k1' },
+    { id: 'b', parentId: 'a', kategorieId: null },
+    { id: 'c', parentId: 'b', kategorieId: 'k2' },
+    { id: 'd', parentId: 'c', kategorieId: null },
+    { id: 'x', parentId: null, kategorieId: null },
+  ];
+  it('inherits from the nearest ancestor with an assignment', () => {
+    expect(warengruppeKategorie(gruppen, 'b')).toBe('k1');
+    expect(warengruppeKategorie(gruppen, 'd')).toBe('k2');
+    expect(warengruppeKategorie(gruppen, 'a')).toBe('k1');
+  });
+  it('returns null without assignment or for an unknown group', () => {
+    expect(warengruppeKategorie(gruppen, 'x')).toBeNull();
+    expect(warengruppeKategorie(gruppen, 'nope')).toBeNull();
+    expect(warengruppeKategorie(gruppen, null)).toBeNull();
+  });
+});
+
+describe('einreichungStatus', () => {
+  it('derives the status from draft and Beleg', () => {
+    const s = einreichungStatus;
+    expect(s({ entwurfStatus: 'eingereicht', beleg: null })).toBe('eingereicht');
+    expect(s({ entwurfStatus: 'verworfen', beleg: null })).toBe('verworfen');
+    expect(s({ entwurfStatus: null, beleg: { storniert: false, erstattet: false } })).toBe(
+      'gebucht',
+    );
+    expect(s({ entwurfStatus: null, beleg: { storniert: false, erstattet: true } })).toBe(
+      'erstattet',
+    );
+    expect(s({ entwurfStatus: null, beleg: { storniert: true, erstattet: true } })).toBe(
+      'storniert',
+    );
   });
 });

@@ -40,7 +40,7 @@ export function vergleicheBuchungsZeilen(
 export const VORGANG_TYPEN = ['einlagerung', 'entnahme', 'umlagerung', 'inventur'] as const;
 export type VorgangTyp = (typeof VORGANG_TYPEN)[number];
 
-export const QUELLEN = ['manuell', 'inventur'] as const;
+export const QUELLEN = ['manuell', 'inventur', 'beleg'] as const;
 export type Quelle = (typeof QUELLEN)[number];
 
 export const EINHEITEN = ['l', 'kg', 'stk'] as const;

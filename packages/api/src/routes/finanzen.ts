@@ -10,6 +10,7 @@ import {
   erstattungEingabeSchema,
   rechnungsstellerAendernSchema,
   rechnungsstellerEingabeSchema,
+  warengruppeKategorieSchema,
   type AuslageMitgliedDto,
   type AuslagenDto,
   type BelegDetailDto,
@@ -17,6 +18,8 @@ import {
   type BelegeSeiteDto,
   type BelegListeDto,
   type BelegUploadDto,
+  type BelegWareDto,
+  type WarengruppeKategorieDto,
   buchungEingabeSchema,
   JOURNAL_MAX,
   kasseAendernSchema,
@@ -57,6 +60,7 @@ import {
 } from '@c4/shared';
 import { BuchungUngueltig, KontoKonflikt, KontoUngueltig, StornoKonflikt } from '../finanzen';
 import { BelegWarnungenOffen } from '../finanzenBelege';
+import { WarenKonflikt, WarenUngueltig } from '../waren';
 import { type AuthEnv } from '../auth';
 import type { RoutenKontext } from './kontext';
 
@@ -96,6 +100,8 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     if (err instanceof KontoUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof StornoKonflikt) throw new HTTPException(409, { message: err.message });
     if (err instanceof KontoKonflikt) throw new HTTPException(409, { message: err.message });
+    if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
     throw err;
   };
 
@@ -477,11 +483,15 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           deps.finanzen.beleg(c.req.param('id')),
           finanzenMitglieder(),
         ]);
-        const { mitgliedId, erstelltVon, datei, ...beleg } = gefunden(b, 'Beleg nicht gefunden');
+        const { mitgliedId, erstelltVon, eingereichtVon, datei, ...beleg } = gefunden(
+          b,
+          'Beleg nicht gefunden',
+        );
         const dto: BelegDetailDto = {
           ...beleg,
           mitglied: mitgliedId ? mitglied(mitgliedId) : null,
           erstelltVon: mitglied(erstelltVon),
+          eingereichtVon: eingereichtVon ? mitglied(eingereichtVon) : null,
           datei: datei && { ...datei, url: await deps.finanzarchiv.anzeigeUrl(datei.schluessel) },
         };
         return c.json(dto);
@@ -520,6 +530,10 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             ? await deps.finanzarchiv.anzeigeUrl(entwurf.daten.datei.schluessel)
             : null,
           warnungen: warnungen ?? [],
+          status: entwurf.status,
+          eingereichtVon: entwurf.eingereichtVon ? mitglied(entwurf.eingereichtVon) : null,
+          eingereichtAm: entwurf.eingereichtAm,
+          verworfenGrund: entwurf.verworfenGrund,
           erstelltVon: mitglied(entwurf.erstelltVon),
           erstelltAm: entwurf.erstelltAm,
           geaendertAm: entwurf.geaendertAm,
@@ -552,6 +566,10 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           const id = c.req.param('id');
           const mitglied = await finanzenMitglieder();
           const entwurf = await deps.finanzen.entwurf(id);
+          if (entwurf?.daten.einlagern && !c.get('permissions').includes('bestand:buchen'))
+            throw new HTTPException(403, {
+              message: 'Zum Einlagern brauchst du das Recht, Bestand zu buchen.',
+            });
           const zahler = entwurf?.daten.zahlweg === 'auslage' ? entwurf.daten.mitgliedId : null;
           if (zahler && !mitglied(zahler))
             throw new HTTPException(400, { message: 'Das Mitglied der Auslage gibt es nicht.' });
@@ -560,6 +578,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
               await deps.finanzen.entwurfBuchen(id, c.req.valid('json'), c.get('user').sub),
               'Entwurf nicht gefunden',
             );
+            // Phase 2: push `belege.status` (gebucht) to `entwurf.eingereichtVon` unless `ergebnis.wiederholt`.
             return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
           } catch (err) {
             if (err instanceof BelegWarnungenOffen)
@@ -584,6 +603,31 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           return c.json(dto);
         },
       )
+      // Warengruppe -> Kategorie: the Aufwand Konto suggested for Ware items of the group.
+      .get('/finanzen/warengruppen-kategorien', auth, finanzenLesen, async (c) => {
+        const dto: WarengruppeKategorieDto[] = await deps.finanzen.warengruppenKategorien();
+        return c.json(dto);
+      })
+      .put(
+        '/finanzen/warengruppen/:id/kategorie',
+        auth,
+        finanzenBuchen,
+        zValidator('json', warengruppeKategorieSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen
+              .warengruppeKategorieSetzen(c.req.param('id'), c.req.valid('json').kategorieId)
+              .catch(finanzenFehler),
+            'Warengruppe nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
+      // Waren with Gebinde, deposit, MHD kind and suggested Kategorie for the Ware items of a Beleg.
+      .get('/finanzen/beleg-waren', auth, finanzenLesen, async (c) => {
+        const dto: BelegWareDto[] = await deps.finanzen.belegWaren();
+        return c.json(dto);
+      })
       .get('/finanzen/auslagen', auth, finanzenLesen, async (c) => {
         const [liste, mitglied] = await Promise.all([
           deps.finanzen.auslagen(),

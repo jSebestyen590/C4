@@ -159,6 +159,7 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     belegdatum: f.belegdatum || null,
     modus: f.modus,
     posten: f.posten.map((p) => ({
+      art: 'kategorie' as const,
       kategorieId: p.kategorieId,
       text: p.text.trim(),
       anzahlMilli: postenAnzahl(p),
@@ -173,6 +174,12 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     mitgliedId: f.zahlweg === 'auslage' ? f.mitgliedId : null,
     eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
     datei: f.datei,
+    // Phase 3 (Ware items, Einlagern, submissions) carries these through the form.
+    einlagern: false,
+    einlagerungZeitpunkt: null,
+    eingereichtBetragCent: null,
+    rechnungsstellerName: null,
+    notiz: null,
   };
 }
 
@@ -186,7 +193,7 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
       d.posten.length > 0
         ? d.posten.map((p) => ({
             key: neuerKey(),
-            kategorieId: p.kategorieId,
+            kategorieId: p.art === 'leergut' ? null : p.kategorieId,
             text: p.text,
             anzahl: anzahlText(p.anzahlMilli),
             einzelpreisCent: p.einzelpreisCent,

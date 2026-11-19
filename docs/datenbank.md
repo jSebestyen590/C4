@@ -52,6 +52,15 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   entfernt das Konto `auslagen` (Durchlauf, „Auslagen Mitglieder“), 0206–0212 löschen ihre Indizes. `fin_beleg_entwuerfe.daten` ist
   `text` mit JSON, nicht `jsonb` (DSQL kennt den Typ nicht als Spalte). Rollback-Ziel nur für die Belege:
   `0196_fin_event_kassen`.
+- 0213–0229 (Finanzen, Belege 4b): 0213 fügt das Konto `pfand` („Pfand/Leergut“, Durchlauf) idempotent ein, die Down-Datei löscht es.
+  Alle anderen sind `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (ein Statement je Datei, die Down-Dateien leeren nur die Werte, DSQL kann
+  keine Spalten löschen): 0214 `warengruppen.kategorie_id` (Aufwandskonto, ohne FK, die API prüft es); 0215–0219 `fin_belegposten.art`,
+  `ware_id`, `gebinde_id`, `pfand_cent`, `pfand_betrag_cent`; 0220–0223 `fin_belege.bestandsvorgang_id`, `eingereicht_von`,
+  `eingereicht_am`, `eingereicht_betrag_cent`; 0224–0229 `fin_beleg_entwuerfe.status`, `eingereicht_von`, `eingereicht_am`,
+  `verworfen_grund`, `verworfen_von`, `verworfen_am`. DSQL kennt kein `ADD COLUMN … NOT NULL/DEFAULT` und kein `DROP NOT NULL`:
+  `art` und `status` sind nullable (die API schreibt sie immer; `null` gilt als `kategorie` bzw. `entwurf`), und Leergut-Posten
+  tragen in `kategorie_id` das Konto `pfand`. `bestandsvorgaenge.quelle` ist freier Text (kein Check), `beleg` ist ein neuer Wert.
+  Rollback-Ziel nur dafür: `0212_fin_erstattung_belege_beleg_idx`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden

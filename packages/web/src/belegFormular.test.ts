@@ -104,7 +104,14 @@ describe('formularZuDaten', () => {
   it('übernimmt Zahlweg bar mit Fach und Stückelung', () => {
     const d = formularZuDaten(voll());
     expect(d.posten).toEqual([
-      { kategorieId: 'k1', text: '', anzahlMilli: 2000, einzelpreisCent: 500, steuersatz: 1900 },
+      {
+        art: 'kategorie',
+        kategorieId: 'k1',
+        text: '',
+        anzahlMilli: 2000,
+        einzelpreisCent: 500,
+        steuersatz: 1900,
+      },
     ]);
     expect(d.zahlweg).toBe('bar');
     expect(d.fachId).toBe('f1');

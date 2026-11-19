@@ -145,6 +145,7 @@ describe('finanzen', () => {
       'eroeffnung',
       'geldtransit',
       'kassendifferenz',
+      'pfand',
       'safe',
     ]);
     expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
@@ -2333,6 +2334,313 @@ describe('finanzen', () => {
         expect((await t.roh('admin-token', 'POST', '/beleg-dateien/upload', kaputt)).status).toBe(
           400,
         );
+    });
+
+    describe('Ware, Pfand, Leergut und Einlagern', () => {
+      /** Seeds one Ware with a Gebinde (Kasten, 1,50 EUR Pfand), a Lagerort and a Warengruppe with Kategorie. */
+      async function wareSetup() {
+        const t = await belegSetup();
+        const l = t.finanzenFake.lager;
+        l.warengruppen.set('wg', {
+          id: 'wg',
+          name: 'Getränke',
+          parentId: null,
+          archiviert: false,
+          kategorieId: t.kat,
+        });
+        l.gebinde.set('g1', {
+          id: 'g1',
+          menge: 20,
+          einheit: 'stk',
+          verpackungseinheit: 'kasten',
+          pfandCent: 150,
+          unterGebindeId: null,
+          unterAnzahl: null,
+          archiviert: false,
+        });
+        const wareAnlegen = (id: string, mhdArt: 'keins' | 'tag' = 'keins') =>
+          l.waren.set(id, {
+            id,
+            name: `Ware ${id}`,
+            warengruppeId: 'wg',
+            mhdArt,
+            archiviert: false,
+            gebindeIds: ['g1'],
+          });
+        wareAnlegen('w1');
+        wareAnlegen('w2', 'tag');
+        l.lagerorte.set('l1', { archiviert: false });
+        const ware = (extra: Dto = {}) => ({
+          art: 'ware',
+          wareId: 'w1',
+          gebindeId: 'g1',
+          kategorieId: t.kat,
+          anzahlMilli: 2000,
+          einzelpreisCent: 1190,
+          steuersatz: 1900,
+          pfandCent: 150,
+          ...extra,
+        });
+        const leergut = (extra: Dto = {}) => ({
+          art: 'leergut',
+          text: 'Kästen zurück',
+          anzahlMilli: 1000,
+          einzelpreisCent: -150,
+          steuersatz: 1900,
+          ...extra,
+        });
+        return { ...t, l, ware, leergut, wareAnlegen };
+      }
+
+      it('books Ware, Pfand and Leergut to the category and the Pfand account', async () => {
+        const t = await wareSetup();
+        const res = await t.gebucht({ posten: [t.ware(), t.leergut()] });
+        const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${res.buchungId}`);
+        // 2 x 11,90 Ware; 2 x 1,50 Pfand minus 1 x 1,50 Leergut = 1,50 on Pfand.
+        expect(buchung.zeilen).toMatchObject([
+          { kontoId: t.kat, betragCent: 2380, steuersatz: 1900 },
+          { kontoId: 'pfand', betragCent: 150, steuersatz: 1900, steuerArt: 'vorsteuer' },
+          { kontoId: 'bank', betragCent: -2530 },
+        ]);
+        const detail = await t.lesen<Dto>('admin-token', `/belege/${res.id}`);
+        expect(detail.summeCent).toBe(2530);
+        expect(detail.posten).toMatchObject([
+          {
+            art: 'ware',
+            wareId: 'w1',
+            wareName: 'Ware w1',
+            text: 'Ware w1',
+            pfandCent: 150,
+            pfandBetragCent: 300,
+            betragCent: 2380,
+          },
+          { art: 'leergut', kategorieId: 'pfand', text: 'Kästen zurück', betragCent: -150 },
+        ]);
+        expect(detail.bestandsvorgangId).toBeNull();
+        expect(t.l.vorgaenge).toHaveLength(0);
+        const kette = await t.lesen<Dto>('admin-token', '/kette');
+        expect(kette.ok).toBe(true);
+      });
+
+      it('rejects unknown, archived or foreign Ware and Gebinde', async () => {
+        const t = await wareSetup();
+        t.l.waren.get('w1')!.archiviert = true;
+        t.l.gebinde.set('g2', { ...t.l.gebinde.get('g1')!, id: 'g2' });
+        const buchen = async (posten: Dto[]) => {
+          const id = await t.entwurf({ posten });
+          const res = await t.buchenE(id);
+          expect(res.status).toBe(400);
+          return ((await res.json()) as Dto).error as string;
+        };
+        expect(await buchen([t.ware()])).toContain('archiviert');
+        expect(await buchen([t.ware({ wareId: 'nope' })])).toContain('Die Ware gibt es nicht');
+        expect(await buchen([t.ware({ wareId: 'w2', gebindeId: 'g2' })])).toContain(
+          'gehört nicht zur Ware',
+        );
+        expect(await buchen([t.ware({ kategorieId: null })])).toContain('Kategorie');
+      });
+
+      it('stocks the Ware items in with the booking (Vorgang, Bestand, Verweis, Kommentar)', async () => {
+        const t = await wareSetup();
+        const res = await t.gebucht({
+          einlagern: true,
+          posten: [
+            t.ware({ lagerortId: 'l1' }),
+            t.ware({ wareId: 'w2', lagerortId: 'l1', mhd: '2027-06-01', anzahlMilli: 1000 }),
+            // A Gutschrift is not stocked in.
+            t.ware({ anzahlMilli: -1000, lagerortId: 'l1' }),
+          ],
+        });
+        expect(res.nummer).toBe('B-2027-0001');
+        expect(t.l.vorgaenge).toHaveLength(1);
+        expect(t.l.vorgaenge[0]).toMatchObject({
+          typ: 'einlagerung',
+          quelle: 'beleg',
+          kommentar: 'Beleg B-2027-0001',
+          erstelltVon: 'a',
+          // Belegdatum 2027-01-05, 12:00 Berlin (CET).
+          zeitpunkt: '2027-01-05T11:00:00.000Z',
+          zeilen: [
+            { wareId: 'w1', gebindeId: 'g1', lagerortId: 'l1', mhd: null, menge: 2 },
+            { wareId: 'w2', gebindeId: 'g1', lagerortId: 'l1', mhd: '2027-06-01', menge: 1 },
+          ],
+        });
+        const detail = await t.lesen<Dto>('admin-token', `/belege/${res.id}`);
+        expect(detail.bestandsvorgangId).toBe(t.l.vorgaenge[0]!.id);
+      });
+
+      it('requires a MHD where the Ware has one and rolls everything back on an error', async () => {
+        const t = await wareSetup();
+        const id = await t.entwurf({
+          einlagern: true,
+          posten: [
+            t.ware({ lagerortId: 'l1' }),
+            t.ware({ wareId: 'w2', lagerortId: 'l1', anzahlMilli: 1000 }),
+          ],
+        });
+        const res = await t.buchenE(id);
+        expect(res.status).toBe(400);
+        expect(((await res.json()) as Dto).error).toBe('Posten 2: Bitte gib ein MHD an.');
+        // Nothing was booked: no Vorgang, no Beleg, the draft is still there, the number is unused.
+        expect(t.l.vorgaenge).toHaveLength(0);
+        expect((await t.lesen<Dto>('admin-token', '/belege')).belege).toMatchObject([
+          { id, status: 'entwurf' },
+        ]);
+        await t.roh('admin-token', 'PUT', `/beleg-entwuerfe/${id}`, {
+          daten: t.daten({
+            einlagern: true,
+            posten: [
+              t.ware({ lagerortId: 'l1' }),
+              t.ware({ wareId: 'w2', lagerortId: 'l1', anzahlMilli: 1000, mhd: '2027-06-01' }),
+            ],
+          }),
+        });
+        const gut = await t.buchenE(id);
+        expect(gut.status).toBe(201);
+        expect(((await gut.json()) as Dto).nummer).toBe('B-2027-0001');
+        expect(t.l.vorgaenge).toHaveLength(1);
+      });
+
+      it('rejects an unknown Lagerort, fractions and a future time when stocking in', async () => {
+        const t = await wareSetup();
+        const fehler = async (extra: Dto, text: string) => {
+          const id = await t.entwurf({ einlagern: true, ...extra });
+          const res = await t.buchenE(id);
+          expect(res.status).toBe(400);
+          expect(((await res.json()) as Dto).error).toContain(text);
+        };
+        await fehler({ posten: [t.ware({ lagerortId: 'x' })] }, 'Der Lagerort existiert nicht');
+        await fehler({ posten: [t.ware({ lagerortId: 'l1', anzahlMilli: 1500 })] }, 'ganze Zahl');
+        await fehler({ posten: [t.ware()] }, 'Lagerort');
+        await fehler(
+          {
+            posten: [t.ware({ lagerortId: 'l1' })],
+            einlagerungZeitpunkt: '2027-03-02T10:00:00Z',
+          },
+          'Zukunft',
+        );
+        expect(t.l.vorgaenge).toHaveLength(0);
+      });
+
+      it('uses the given time or now for a Belegdatum of today', async () => {
+        const t = await wareSetup();
+        await t.gebucht({
+          einlagern: true,
+          belegdatum: '2027-03-01',
+          bezahldatum: '2027-03-01',
+          posten: [t.ware({ lagerortId: 'l1' })],
+        });
+        expect(t.l.vorgaenge[0]!.zeitpunkt).toBe('2027-03-01T10:00:00.000Z');
+        await t.gebucht({
+          einlagern: true,
+          einlagerungZeitpunkt: '2027-02-20T08:30:00Z',
+          posten: [t.ware({ lagerortId: 'l1' })],
+        });
+        expect(t.l.vorgaenge[1]!.zeitpunkt).toBe('2027-02-20T08:30:00.000Z');
+      });
+
+      it('warns when the stated amount differs from the sum and copies the submission data', async () => {
+        const t = await wareSetup();
+        const id = await t.entwurf({ eingereichtBetragCent: 1000 });
+        const e = await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`);
+        expect(e.warnungen).toMatchObject([{ code: 'betrag_abweichung' }]);
+        expect((await t.buchenE(id)).status).toBe(409);
+        const res = await t.buchenE(id, { bestaetigt: ['betrag_abweichung'] });
+        expect(res.status).toBe(201);
+        const detail = await t.lesen<Dto>(
+          'admin-token',
+          `/belege/${((await res.json()) as Dto).id}`,
+        );
+        expect(detail).toMatchObject({ eingereichtBetragCent: 1000, eingereichtVon: null });
+        // The right amount raises no warning (the duplicate file warning is another one).
+        const passt = await t.entwurf({ eingereichtBetragCent: 1190 });
+        const codes = (
+          await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${passt}`)
+        ).warnungen.map((w: Dto) => w.code);
+        expect(codes).not.toContain('betrag_abweichung');
+      });
+    });
+
+    describe('Warengruppe -> Kategorie', () => {
+      async function gruppen() {
+        const t = await belegSetup();
+        const l = t.finanzenFake.lager;
+        const gruppe = (id: string, parentId: string | null, kategorieId: string | null = null) =>
+          l.warengruppen.set(id, { id, name: id, parentId, archiviert: false, kategorieId });
+        gruppe('oben', null, t.kat);
+        gruppe('unten', 'oben');
+        gruppe('ohne', null);
+        return { ...t, l };
+      }
+
+      it('lists the groups with the own and the inherited Kategorie', async () => {
+        const t = await gruppen();
+        const liste = await t.lesen<Dto[]>('admin-token', '/warengruppen-kategorien');
+        expect(liste).toMatchObject([
+          { id: 'oben', kategorieId: t.kat, wirksamKategorieId: t.kat },
+          { id: 'ohne', kategorieId: null, wirksamKategorieId: null },
+          { id: 'unten', kategorieId: null, wirksamKategorieId: t.kat },
+        ]);
+        expect((await t.roh('vorstand-token', 'GET', '/warengruppen-kategorien')).status).toBe(200);
+      });
+
+      it('assigns and removes a Kategorie and validates it', async () => {
+        const t = await gruppen();
+        const setzen = (id: string, kategorieId: string | null, token = 'admin-token') =>
+          t.roh(token, 'PUT', `/warengruppen/${id}/kategorie`, { kategorieId });
+        expect((await setzen('ohne', t.kat)).status).toBe(200);
+        expect(t.l.warengruppen.get('ohne')!.kategorieId).toBe(t.kat);
+        expect((await setzen('ohne', null)).status).toBe(200);
+        expect(t.l.warengruppen.get('ohne')!.kategorieId).toBeNull();
+        expect((await setzen('ohne', 'bank')).status).toBe(400);
+        expect((await setzen('ohne', 'gibtsnicht')).status).toBe(400);
+        expect((await setzen('nope', t.kat)).status).toBe(404);
+        // Reading is not enough.
+        expect((await setzen('ohne', t.kat, 'vorstand-token')).status).toBe(403);
+        await t.roh('admin-token', 'PUT', `/konten/${t.kat}/archiv`, { archiviert: true });
+        expect((await setzen('ohne', t.kat)).status).toBe(400);
+      });
+
+      it('offers Waren with Gebinde, deposit, MHD kind and the suggested Kategorie', async () => {
+        const t = await gruppen();
+        t.l.gebinde.set('g1', {
+          id: 'g1',
+          menge: 0.5,
+          einheit: 'l',
+          verpackungseinheit: 'flasche',
+          pfandCent: 25,
+          unterGebindeId: null,
+          unterAnzahl: null,
+          archiviert: false,
+        });
+        t.l.waren.set('w1', {
+          id: 'w1',
+          name: 'Cola',
+          warengruppeId: 'unten',
+          mhdArt: 'monat',
+          archiviert: false,
+          gebindeIds: ['g1'],
+        });
+        t.l.waren.set('w2', {
+          id: 'w2',
+          name: 'Alt',
+          warengruppeId: 'unten',
+          mhdArt: 'keins',
+          archiviert: true,
+          gebindeIds: [],
+        });
+        const waren = await t.lesen<Dto[]>('vorstand-token', '/beleg-waren');
+        expect(waren).toMatchObject([
+          {
+            id: 'w1',
+            name: 'Cola',
+            mhdArt: 'monat',
+            kategorieId: t.kat,
+            gebinde: [{ id: 'g1', pfandGesamtCent: 25 }],
+          },
+        ]);
+        expect(waren[0]!.gebinde[0].bezeichnung).toContain('Flasche');
+      });
     });
   });
 });

@@ -4,6 +4,10 @@ import {
   belegBuchungstext,
   belegEntwurfDatenSchema,
   belegNummer,
+  gebindeBezeichnung,
+  pfandGesamtCent,
+  warengruppeKategorie,
+  PFAND_KONTO_ID,
   offeneAuslagen,
   saldoWarnungen,
   type AuslageBelegEintrag,
@@ -13,6 +17,8 @@ import {
   type BelegKorrektur,
   type BelegListeEintrag,
   type BelegPostenDto,
+  type Gebinde,
+  type MhdArt,
   type BelegStatus,
   type BestandKonto,
   type KettenBuchung,
@@ -23,12 +29,67 @@ import {
   BelegWarnungenOffen,
   belegWarnungenBilden,
   datumBerlin,
+  einlagerPositionen,
+  einlagerungKommentar,
+  einlagerungZeitpunkt,
   planeBeleg,
   planeErstattung,
   type BelegeStore,
   type BelegKonto,
 } from './finanzenBelege';
 import { BuchungUngueltig, type BuchungsEntwurf } from './finanzen';
+import { WarenUngueltig, einlagerungMhd } from './waren';
+
+/** Minimal Waren/Lager state for the Belege fake (Ware items, Einlagern); tests seed it directly. */
+export interface FakeLager {
+  warengruppen: Map<
+    string,
+    {
+      id: string;
+      name: string;
+      parentId: string | null;
+      archiviert: boolean;
+      kategorieId: string | null;
+    }
+  >;
+  waren: Map<
+    string,
+    {
+      id: string;
+      name: string;
+      warengruppeId: string;
+      mhdArt: MhdArt;
+      archiviert: boolean;
+      gebindeIds: string[];
+    }
+  >;
+  gebinde: Map<string, Gebinde & { archiviert: boolean }>;
+  lagerorte: Map<string, { archiviert: boolean }>;
+  /** Bestandsvorgänge created by booking a Beleg with Einlagern. */
+  vorgaenge: {
+    id: string;
+    typ: 'einlagerung';
+    quelle: 'beleg';
+    zeitpunkt: string;
+    kommentar: string;
+    erstelltVon: string;
+    zeilen: {
+      wareId: string;
+      gebindeId: string;
+      lagerortId: string;
+      mhd: string | null;
+      menge: number;
+    }[];
+  }[];
+}
+
+export const createFakeLager = (): FakeLager => ({
+  warengruppen: new Map(),
+  waren: new Map(),
+  gebinde: new Map(),
+  lagerorte: new Map(),
+  vorgaenge: [],
+});
 
 /** What the Belege fake needs from the journal fake. */
 export interface BelegeFakeKern {
@@ -37,6 +98,7 @@ export interface BelegeFakeKern {
   pruefKonten(): BelegKonto[];
   alleBestand(): BestandKonto[];
   anhaengen(entwurf: BuchungsEntwurf): Promise<{ id: string; seq: number }>;
+  lager: FakeLager;
 }
 
 interface FakeBeleg {
@@ -56,6 +118,10 @@ interface FakeBeleg {
   buchungId: string;
   buchungSeq: number;
   schluessel: string;
+  bestandsvorgangId: string | null;
+  eingereichtVon: string | null;
+  eingereichtAm: string | null;
+  eingereichtBetragCent: number | null;
   erstelltVon: string;
   erstelltAm: string;
 }
@@ -85,6 +151,22 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
     konten: k.pruefKonten(),
     bestand: k.alleBestand(),
     rechnungssteller: daten.rechnungsstellerId ? steller.get(daten.rechnungsstellerId) : undefined,
+    waren: daten.posten.flatMap((p) => {
+      const w = p.art === 'ware' && p.wareId ? k.lager.waren.get(p.wareId) : undefined;
+      return w
+        ? [
+            {
+              id: w.id,
+              name: w.name,
+              archiviert: w.archiviert,
+              gebinde: w.gebindeIds.map((id) => ({
+                id,
+                archiviert: k.lager.gebinde.get(id)?.archiviert ?? false,
+              })),
+            },
+          ]
+        : [];
+    }),
   });
   const warnungen = (daten: BelegEntwurfDaten) => {
     const summe = daten.posten.length > 0 ? belegBerechnen(daten).summe : null;
@@ -132,6 +214,43 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         belegdatum: b.belegdatum,
       }));
     return offeneAuslagen(eintraege, erstattungen, storniert());
+  };
+
+  /** Validates the Einlagern of a draft like the real transaction and returns the Vorgang (not stored yet). */
+  const einlagernPlanen = (daten: BelegEntwurfDaten, nummer: string, sub: string, jetzt: Date) => {
+    const l = k.lager;
+    const zeilen = einlagerPositionen(daten).map((p) => {
+      try {
+        const ware = l.waren.get(p.wareId);
+        if (!ware) throw new WarenUngueltig('Die Ware gibt es nicht.');
+        if (ware.archiviert) throw new WarenUngueltig('Die Ware ist archiviert.');
+        if (!ware.gebindeIds.includes(p.gebindeId))
+          throw new WarenUngueltig('Dieses Gebinde gehört nicht zur Ware.');
+        const ort = l.lagerorte.get(p.lagerortId);
+        if (!ort) throw new WarenUngueltig('Der Lagerort existiert nicht.');
+        if (ort.archiviert) throw new WarenUngueltig('Der Lagerort ist archiviert.');
+        return {
+          wareId: p.wareId,
+          gebindeId: p.gebindeId,
+          lagerortId: p.lagerortId,
+          mhd: einlagerungMhd(p.mhd, ware.mhdArt),
+          menge: p.anzahl,
+        };
+      } catch (err) {
+        if (err instanceof WarenUngueltig)
+          throw new BuchungUngueltig([`Posten ${p.pos}: ${err.message}`]);
+        throw err;
+      }
+    });
+    return {
+      id: randomUUID(),
+      typ: 'einlagerung' as const,
+      quelle: 'beleg' as const,
+      zeitpunkt: einlagerungZeitpunkt(daten, jetzt).toISOString(),
+      kommentar: einlagerungKommentar(nummer),
+      erstelltVon: sub,
+      zeilen,
+    };
   };
 
   const store: BelegeStore = {
@@ -182,6 +301,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         for (const e of [...entwuerfe.values()].sort((a, b) =>
           b.geaendertAm.localeCompare(a.geaendertAm),
         )) {
+          if (e.status === 'verworfen') continue;
           const d = e.daten;
           const eintrag: BelegListeEintrag = {
             id: e.id,
@@ -261,6 +381,10 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         erstattung: e
           ? { id: e.id, datum: e.datum, buchung: { id: e.buchungId, seq: e.buchungSeq } }
           : null,
+        bestandsvorgangId: b.bestandsvorgangId,
+        eingereichtVon: b.eingereichtVon,
+        eingereichtAm: b.eingereichtAm,
+        eingereichtBetragCent: b.eingereichtBetragCent,
         erstelltVon: b.erstelltVon,
         erstelltAm: b.erstelltAm,
       } satisfies BelegDetailEintrag;
@@ -268,7 +392,17 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
     async entwurfAnlegen(daten, sub) {
       const id = randomUUID();
       const jetzt = new Date().toISOString();
-      entwuerfe.set(id, { id, daten, erstelltVon: sub, erstelltAm: jetzt, geaendertAm: jetzt });
+      entwuerfe.set(id, {
+        id,
+        daten,
+        status: 'entwurf',
+        eingereichtVon: null,
+        eingereichtAm: null,
+        verworfenGrund: null,
+        erstelltVon: sub,
+        erstelltAm: jetzt,
+        geaendertAm: jetzt,
+      });
       return id;
     },
     async entwurf(id) {
@@ -300,15 +434,21 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         };
       const e = entwuerfe.get(id);
       if (!e) return undefined;
+      if (e.status === 'verworfen')
+        throw new BuchungUngueltig(['Die Einreichung wurde verworfen.']);
       const daten = belegEntwurfDatenSchema.parse(e.daten);
       const plan = planeBeleg(daten, kontext(daten));
       if (!plan.buchung) throw new BuchungUngueltig(plan.fehler);
       const offeneWarnungen = warnungen(daten).filter((w) => !eingabe.bestaetigt.includes(w.code));
       if (offeneWarnungen.length > 0) throw new BelegWarnungenOffen(offeneWarnungen);
-      const jahr = Number(datumBerlin(new Date()).slice(0, 4));
+      const jetzt = new Date();
+      const jahr = Number(datumBerlin(jetzt).slice(0, 4));
       const n = (zaehler.get(jahr) ?? 0) + 1;
-      zaehler.set(jahr, n);
       const nummer = belegNummer(jahr, n);
+      // Einlagern first and without side effects until it is known to work: a failure books nothing.
+      const vorgang = daten.einlagern ? einlagernPlanen(daten, nummer, sub, jetzt) : null;
+      zaehler.set(jahr, n);
+      if (vorgang) k.lager.vorgaenge.push(vorgang);
       const belegId = randomUUID();
       const gebucht = await k.anhaengen({
         datum: plan.buchung.datum,
@@ -333,21 +473,36 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         mitgliedId: daten.zahlweg === 'auslage' ? daten.mitgliedId : null,
         eigenbelegBegruendung: daten.datei ? null : daten.eigenbelegBegruendung,
         datei: daten.datei,
-        posten: daten.posten.map((p, i) => ({
-          pos: i + 1,
-          kategorieId: p.kategorieId!,
-          kategorieName: k.konten.get(p.kategorieId!)?.name ?? '',
-          text: p.text,
-          anzahlMilli: p.anzahlMilli,
-          einzelpreisCent: p.einzelpreisCent,
-          steuersatz: p.steuersatz,
-          betragCent: rechnung.postenBetraege[i]!,
-        })),
+        posten: daten.posten.map((p, i) => {
+          const kategorieId = p.art === 'leergut' ? PFAND_KONTO_ID : p.kategorieId!;
+          return {
+            pos: i + 1,
+            art: p.art,
+            kategorieId,
+            kategorieName: k.konten.get(kategorieId)?.name ?? '',
+            wareId: p.art === 'ware' ? p.wareId : null,
+            wareName:
+              p.art === 'ware' && p.wareId ? (k.lager.waren.get(p.wareId)?.name ?? null) : null,
+            gebindeId: p.art === 'ware' ? p.gebindeId : null,
+            pfandCent: p.art === 'ware' ? p.pfandCent : null,
+            pfandBetragCent:
+              p.art === 'ware' && p.pfandCent !== null ? rechnung.pfandBetraege[i]! : null,
+            text: plan.buchung!.postenTexte[i]!,
+            anzahlMilli: p.anzahlMilli,
+            einzelpreisCent: p.einzelpreisCent,
+            steuersatz: p.steuersatz,
+            betragCent: rechnung.postenBetraege[i]!,
+          };
+        }),
         korrekturen: daten.korrekturen.filter((c) => c.nettoCent !== 0 || c.steuerCent !== 0),
         summeCent: plan.buchung.summeCent,
         buchungId: gebucht.id,
         buchungSeq: gebucht.seq,
         schluessel: eingabe.idempotenzSchluessel,
+        bestandsvorgangId: vorgang?.id ?? null,
+        eingereichtVon: e.eingereichtVon,
+        eingereichtAm: e.eingereichtAm,
+        eingereichtBetragCent: daten.eingereichtBetragCent,
         erstelltVon: sub,
         erstelltAm: new Date().toISOString(),
       });
@@ -372,6 +527,52 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         }),
         sub,
       );
+    },
+    async warengruppenKategorien() {
+      const gruppen = [...k.lager.warengruppen.values()];
+      return gruppen
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((g) => ({ ...g, wirksamKategorieId: warengruppeKategorie(gruppen, g.id) }));
+    },
+    async warengruppeKategorieSetzen(id, kategorieId) {
+      const g = k.lager.warengruppen.get(id);
+      if (!g) return false;
+      if (kategorieId) {
+        const konto = k.konten.get(kategorieId);
+        if (!konto) throw new BuchungUngueltig(['Die Kategorie gibt es nicht.']);
+        if (konto.art !== 'aufwand')
+          throw new BuchungUngueltig([`„${konto.name}“ ist keine Aufwandskategorie.`]);
+        if (konto.archiviert)
+          throw new BuchungUngueltig([`Die Kategorie „${konto.name}“ ist archiviert.`]);
+      }
+      g.kategorieId = kategorieId;
+      return true;
+    },
+    async belegWaren() {
+      const gruppen = [...k.lager.warengruppen.values()];
+      const alle = [...k.lager.gebinde.values()];
+      return [...k.lager.waren.values()]
+        .filter((w) => !w.archiviert)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((w) => ({
+          id: w.id,
+          name: w.name,
+          warengruppeId: w.warengruppeId,
+          mhdArt: w.mhdArt,
+          kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+          gebinde: w.gebindeIds.flatMap((gid) => {
+            const g = k.lager.gebinde.get(gid);
+            return g && !g.archiviert
+              ? [
+                  {
+                    id: g.id,
+                    bezeichnung: gebindeBezeichnung(g, alle),
+                    pfandGesamtCent: pfandGesamtCent(g, alle),
+                  },
+                ]
+              : [];
+          }),
+        }));
     },
     async dateiGebucht(sha256) {
       const storno = storniert();
