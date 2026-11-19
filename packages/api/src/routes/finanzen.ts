@@ -610,10 +610,6 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           const id = c.req.param('id');
           const mitglied = await finanzenMitglieder();
           const entwurf = await deps.finanzen.entwurf(id);
-          if (entwurf?.daten.einlagern && !c.get('permissions').includes('bestand:buchen'))
-            throw new HTTPException(403, {
-              message: 'Zum Einlagern brauchst du das Recht, Bestand zu buchen.',
-            });
           const zahler = entwurf?.daten.zahlweg === 'auslage' ? entwurf.daten.mitgliedId : null;
           if (zahler && !mitglied(zahler))
             throw new HTTPException(400, { message: 'Das Mitglied der Auslage gibt es nicht.' });
@@ -701,7 +697,12 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             eingereichtBetragCent: eingabe.betragCent,
             notiz: eingabe.notiz,
           });
-          const id = await deps.finanzen.einreichungAnlegen(daten, sub);
+          let id: string;
+          try {
+            id = await deps.finanzen.einreichungAnlegen(daten, sub);
+          } catch (err) {
+            return finanzenFehler(err);
+          }
           await pushSenden(async () => {
             const absender = anzeigeName((await finanzenMitglieder())(sub));
             return {
@@ -722,15 +723,17 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         return c.json(dto);
       })
       .get('/finanzen/einreichungen/auswahl', auth, belegeEinreichen, async (c) => {
-        const [steller, konten] = await Promise.all([
+        const [steller, konten, waren] = await Promise.all([
           deps.finanzen.rechnungssteller(false),
           deps.finanzen.konten(false),
+          deps.finanzen.belegWaren(),
         ]);
         const dto: EinreichungAuswahlDto = {
           rechnungssteller: steller.map((r) => ({ id: r.id, name: r.name })),
           kategorien: konten
             .filter((k) => k.art === 'aufwand' && !k.archiviert)
             .map((k) => ({ id: k.id, name: k.name })),
+          waren,
         };
         return c.json(dto);
       })
@@ -740,14 +743,21 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           'Einreichung nicht gefunden',
         );
         const konten = new Map((await deps.finanzen.konten(true)).map((k) => [k.id, k.name]));
+        const waren = new Map((await deps.finanzen.belegWaren()).map((w) => [w.id, w]));
         const dto: EinreichungDetailDto = {
           ...einreichungDto(e),
-          posten: e.posten.map((p) => ({
-            kategorie: p.kategorieId ? (konten.get(p.kategorieId) ?? null) : null,
-            text: p.text,
-            betragCent: p.betragCent,
-            steuersatz: p.steuersatz,
-          })),
+          posten: e.posten.map((p) => {
+            const w = p.wareId ? waren.get(p.wareId) : undefined;
+            return {
+              kategorie: p.kategorieId ? (konten.get(p.kategorieId) ?? null) : null,
+              text: p.text,
+              betragCent: p.betragCent,
+              steuersatz: p.steuersatz,
+              ware: w?.name ?? null,
+              gebinde: w?.gebinde.find((g) => g.id === p.gebindeId)?.bezeichnung ?? null,
+              anzahlMilli: p.anzahlMilli,
+            };
+          }),
           dateiUrl: e.datei ? await deps.finanzarchiv.anzeigeUrl(e.datei.schluessel) : null,
           dateiName: e.datei?.name ?? null,
           dateiTyp: e.datei?.typ ?? null,

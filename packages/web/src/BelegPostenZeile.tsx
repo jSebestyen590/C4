@@ -24,27 +24,8 @@ import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL, kontoOptionen } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { FeldLabel } from './InfoHinweis';
-import { mhdAusEingabe, mhdEingabe } from './inventurDaten';
-import { PfadSelect } from './PfadSelect';
 
 const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
-
-/** Remembers the last Lagerort used for Einlagern, to pre-fill the next item. */
-const LAGERORT_SCHLUESSEL = 'c4.beleg.lagerort';
-export const letzterLagerort = (): string | null => {
-  try {
-    return localStorage.getItem(LAGERORT_SCHLUESSEL);
-  } catch {
-    return null;
-  }
-};
-const lagerortMerken = (id: string | null) => {
-  try {
-    if (id) localStorage.setItem(LAGERORT_SCHLUESSEL, id);
-  } catch {
-    // Without storage the Lagerort is simply not remembered.
-  }
-};
 
 /**
  * One item row of the Beleg form: kind (Kategorie, Ware, Leergut), the kind's fields and the
@@ -57,8 +38,6 @@ export function BelegPostenZeile({
   modus,
   aufwand,
   waren,
-  lagerOptionen,
-  einlagern,
   betragCent,
   pfandBetragCent,
   versucht,
@@ -72,9 +51,6 @@ export function BelegPostenZeile({
   modus: 'brutto' | 'netto';
   aufwand: readonly KontoDto[];
   waren: readonly BelegWareDto[];
-  lagerOptionen: readonly { value: string; label: string }[];
-  /** The Beleg books its Ware items into the stock: Lagerort and MHD are asked. */
-  einlagern: boolean;
   betragCent: number;
   pfandBetragCent: number;
   versucht: boolean;
@@ -93,7 +69,7 @@ export function BelegPostenZeile({
       art === 'leergut'
         ? { art, kategorieId: null, wareId: null, gebindeId: null, pfandCent: null }
         : art === 'kategorie'
-          ? { art, wareId: null, gebindeId: null, pfandCent: null, lagerortId: null, mhd: '' }
+          ? { art, wareId: null, gebindeId: null, pfandCent: null }
           : { art },
     );
   const wareWaehlen = (id: string | null) => {
@@ -103,12 +79,9 @@ export function BelegPostenZeile({
       wareId: id,
       gebindeId: g?.id ?? null,
       pfandCent: g?.pfandGesamtCent ?? null,
-      mhd: '',
       ...(neu?.kategorieId && kategorieSetzen(neu.kategorieId)),
     });
   };
-  const lagerFehlt = versucht && einlagern && p.art === 'ware' && !p.lagerortId;
-  const mhdNoetig = !!ware && ware.mhdArt !== 'keins';
 
   return (
     <Paper withBorder p="sm">
@@ -208,40 +181,6 @@ export function BelegPostenZeile({
             {...(p.art === 'leergut' && { 'data-kategorie': '' })}
           />
         </SimpleGrid>
-
-        {einlagern && p.art === 'ware' && (
-          <SimpleGrid cols={{ base: 1, sm: mhdNoetig ? 2 : 1 }} spacing="xs">
-            <PfadSelect
-              label="Lagerort (Einlagern)"
-              placeholder="Lagerort wählen"
-              searchable
-              selectFirstOptionOnChange
-              inputMode="text"
-              data={[...lagerOptionen]}
-              value={p.lagerortId}
-              onChange={(v) => {
-                lagerortMerken(v);
-                onAendern({ lagerortId: v });
-              }}
-              nothingFoundMessage="Kein Lagerort gefunden"
-              error={lagerFehlt ? 'Bitte wähle einen Lagerort.' : undefined}
-              data-nav=""
-            />
-            {mhdNoetig && (
-              <TextInput
-                label="MHD"
-                type={ware.mhdArt === 'monat' ? 'month' : 'date'}
-                value={mhdEingabe(p.mhd || null, ware.mhdArt)}
-                onChange={(e) =>
-                  onAendern({ mhd: mhdAusEingabe(e.currentTarget.value, ware.mhdArt) ?? '' })
-                }
-                error={versucht && p.anzahl && !p.mhd ? 'Bitte gib das MHD an.' : undefined}
-                styles={{ input: { minWidth: 0 } }}
-                data-nav=""
-              />
-            )}
-          </SimpleGrid>
-        )}
 
         <SimpleGrid cols={{ base: 2, sm: p.art === 'ware' ? 5 : 4 }} spacing="xs">
           <TextInput

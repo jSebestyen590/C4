@@ -160,8 +160,6 @@ export const HILFE = {
       'Bei einem Posten der Art „Ware (Lager)“ wählst du Ware und Gebinde; der Preis gilt je Gebinde ohne Pfand. Die Kategorie wird aus der Warengruppe der Ware vorgeschlagen und lässt sich ändern. Ohne Zuordnung musst du sie selbst wählen.',
     warengruppeKategorie:
       'Jede Warengruppe kann einer Kategorie (Aufwandskonto) zugeordnet werden. Untergruppen erben die Zuordnung der nächsten Obergruppe, solange sie keine eigene haben. Beim Erfassen eines Ware-Postens wird sie vorgeschlagen.',
-    einlagern:
-      'Ist „Ware beim Buchen einlagern“ an, werden alle Ware-Posten mit positiver Anzahl beim Buchen in derselben Transaktion ins Lager gebucht (nur mit dem Recht Bestand buchen). Dafür braucht jeder Posten einen Lagerort, eine ganze Anzahl und bei Waren mit MHD ein Datum. Der Zeitpunkt ist standardmäßig das Belegdatum um 12 Uhr, bei heute jetzt; er darf nicht in der Zukunft liegen. Ein Storno des Belegs bucht den Bestand nicht zurück.',
     einreichen:
       'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
   },

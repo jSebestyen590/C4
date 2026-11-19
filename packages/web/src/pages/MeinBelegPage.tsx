@@ -81,9 +81,17 @@ export function MeinBelegPage() {
                 {e.posten.map((p, i) => (
                   <Group key={i} justify="space-between" align="flex-start" wrap="nowrap">
                     <div style={{ minWidth: 0 }}>
-                      <Text>{p.text || p.kategorie || 'Posten'}</Text>
+                      <Text>{p.text || p.ware || p.kategorie || 'Posten'}</Text>
                       <Text size="sm" c="dimmed">
-                        {[p.kategorie, `${String(p.steuersatz / 100).replace('.', ',')} % MwSt.`]
+                        {[
+                          p.ware && p.text ? p.ware : null,
+                          p.gebinde,
+                          p.anzahlMilli !== null
+                            ? `${String(p.anzahlMilli / 1000).replace('.', ',')} ×`
+                            : null,
+                          p.kategorie,
+                          `${String(p.steuersatz / 100).replace('.', ',')} % MwSt.`,
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </Text>

@@ -6,6 +6,7 @@ import {
   Collapse,
   Group,
   Paper,
+  SegmentedControl,
   Select,
   Stack,
   Textarea,
@@ -22,13 +23,20 @@ import { useApi } from '../api';
 import { BelegDateiFeld } from '../BelegDatei';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
+import { ZahlFeld } from '../ZahlFeld';
 import { finanzenKeys, jsonOderFehler, useEinreichungAuswahl } from '../finanzenDaten';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
 interface PostenZeile {
   key: number;
+  art: 'kategorie' | 'ware';
   kategorieId: string | null;
+  /** Ware items: the Ware, the Gebinde, the number of Gebinde and the deposit per Gebinde (null = none). */
+  wareId: string | null;
+  gebindeId: string | null;
+  anzahl: number | string;
+  pfandCent: number | null;
   text: string;
   betragCent: number | null;
   steuersatz: string;
@@ -81,14 +89,27 @@ export function BelegEinreichenPage() {
               ? { rechnungsstellerId: gewaehlt.id }
               : { rechnungsstellerName: steller.trim() || undefined }),
             notiz: notiz.trim() || undefined,
-            posten: posten.map((p) => ({
-              art: 'kategorie' as const,
-              kategorieId: p.kategorieId,
-              text: p.text,
-              anzahlMilli: 1000,
-              einzelpreisCent: p.betragCent as number,
-              steuersatz: Number(p.steuersatz),
-            })),
+            posten: posten.map((p) =>
+              p.art === 'ware'
+                ? {
+                    art: 'ware' as const,
+                    wareId: p.wareId,
+                    gebindeId: p.gebindeId,
+                    text: p.text,
+                    anzahlMilli: Math.round(Number(p.anzahl) * 1000),
+                    einzelpreisCent: p.betragCent as number,
+                    steuersatz: Number(p.steuersatz),
+                    pfandCent: p.pfandCent,
+                  }
+                : {
+                    art: 'kategorie' as const,
+                    kategorieId: p.kategorieId,
+                    text: p.text,
+                    anzahlMilli: 1000,
+                    einzelpreisCent: p.betragCent as number,
+                    steuersatz: Number(p.steuersatz),
+                  },
+            ),
           },
         }),
       ),
@@ -105,7 +126,11 @@ export function BelegEinreichenPage() {
     betrag: betrag === null || betrag <= 0,
   };
   const postenFehlt = (p: PostenZeile) =>
-    p.kategorieId === null || p.betragCent === null || p.betragCent <= 0;
+    (p.art === 'ware'
+      ? p.wareId === null || p.gebindeId === null || !(Number(p.anzahl) >= 1)
+      : p.kategorieId === null) ||
+    p.betragCent === null ||
+    p.betragCent <= 0;
   const postenOk = !posten.some(postenFehlt);
   const gueltig = !fehlt.datei && !fehlt.datum && !fehlt.betrag && postenOk;
 
@@ -189,17 +214,103 @@ export function BelegEinreichenPage() {
                     <IconTrash size={20} />
                   </ActionIcon>
                 </Group>
-                <Select
-                  label="Kategorie"
+                <SegmentedControl
+                  fullWidth
                   size="md"
-                  searchable
-                  data={auswahl.data?.kategorien.map((k) => ({ value: k.id, label: k.name })) ?? []}
-                  value={p.kategorieId}
-                  onChange={(v) => aendern(p.key, { kategorieId: v })}
-                  error={
-                    versucht && p.kategorieId === null ? 'Bitte wähle eine Kategorie.' : undefined
+                  aria-label={`Art von Posten ${i + 1}`}
+                  value={p.art}
+                  onChange={(v) =>
+                    aendern(p.key, {
+                      art: v as PostenZeile['art'],
+                      kategorieId: null,
+                      wareId: null,
+                      gebindeId: null,
+                      pfandCent: null,
+                    })
                   }
+                  data={[
+                    { value: 'kategorie', label: 'Kategorie' },
+                    { value: 'ware', label: 'Ware' },
+                  ]}
                 />
+                {p.art === 'kategorie' ? (
+                  <Select
+                    label="Kategorie"
+                    size="md"
+                    searchable
+                    data={
+                      auswahl.data?.kategorien.map((k) => ({ value: k.id, label: k.name })) ?? []
+                    }
+                    value={p.kategorieId}
+                    onChange={(v) => aendern(p.key, { kategorieId: v })}
+                    error={
+                      versucht && p.kategorieId === null ? 'Bitte wähle eine Kategorie.' : undefined
+                    }
+                  />
+                ) : (
+                  <>
+                    <Select
+                      label="Ware"
+                      size="md"
+                      searchable
+                      nothingFoundMessage="Keine Ware gefunden"
+                      data={(auswahl.data?.waren ?? []).map((w) => ({
+                        value: w.id,
+                        label: w.name,
+                      }))}
+                      value={p.wareId}
+                      onChange={(v) => {
+                        const w = auswahl.data?.waren.find((x) => x.id === v);
+                        const g = w?.gebinde.length === 1 ? w.gebinde[0] : undefined;
+                        aendern(p.key, {
+                          wareId: v,
+                          gebindeId: g?.id ?? null,
+                          pfandCent: g?.pfandGesamtCent ?? null,
+                        });
+                      }}
+                      error={versucht && p.wareId === null ? 'Bitte wähle eine Ware.' : undefined}
+                    />
+                    <Select
+                      label="Gebinde"
+                      size="md"
+                      allowDeselect={false}
+                      placeholder={p.wareId ? 'Gebinde wählen' : 'Erst die Ware wählen'}
+                      disabled={!p.wareId}
+                      data={(auswahl.data?.waren.find((w) => w.id === p.wareId)?.gebinde ?? []).map(
+                        (g) => ({ value: g.id, label: g.bezeichnung }),
+                      )}
+                      value={p.gebindeId}
+                      onChange={(v) =>
+                        aendern(p.key, {
+                          gebindeId: v,
+                          pfandCent:
+                            auswahl.data?.waren
+                              .find((w) => w.id === p.wareId)
+                              ?.gebinde.find((g) => g.id === v)?.pfandGesamtCent ?? null,
+                        })
+                      }
+                      error={
+                        versucht && p.wareId !== null && p.gebindeId === null
+                          ? 'Bitte wähle ein Gebinde.'
+                          : undefined
+                      }
+                    />
+                    <ZahlFeld
+                      label="Anzahl Gebinde"
+                      size="md"
+                      min={1}
+                      max={9999}
+                      allowDecimal={false}
+                      value={p.anzahl}
+                      onChange={(v) => aendern(p.key, { anzahl: v })}
+                      error={
+                        versucht && !(Number(p.anzahl) >= 1)
+                          ? 'Bitte gib die Anzahl an.'
+                          : undefined
+                      }
+                    />
+                  </>
+                )}
                 <TextInput
                   label="Text"
                   size="md"
@@ -207,25 +318,36 @@ export function BelegEinreichenPage() {
                   value={p.text}
                   onChange={(e) => aendern(p.key, { text: e.currentTarget.value })}
                 />
-                <BetragFeld
-                  label="Betrag (brutto)"
-                  size="md"
-                  value={p.betragCent}
-                  onWert={(c) => aendern(p.key, { betragCent: c })}
-                  error={
-                    versucht && (p.betragCent === null || p.betragCent <= 0)
-                      ? 'Bitte gib den Betrag an.'
-                      : undefined
-                  }
-                />
-                <Select
-                  label="Steuersatz"
-                  size="md"
-                  allowDeselect={false}
-                  data={STEUER_OPTIONEN}
-                  value={p.steuersatz}
-                  onChange={(v) => aendern(p.key, { steuersatz: v ?? '1900' })}
-                />
+                <Group align="flex-end" grow wrap="wrap" gap="xs">
+                  <BetragFeld
+                    label={p.art === 'ware' ? 'Preis je Gebinde (brutto)' : 'Betrag (brutto)'}
+                    size="md"
+                    value={p.betragCent}
+                    onWert={(c) => aendern(p.key, { betragCent: c })}
+                    error={
+                      versucht && (p.betragCent === null || p.betragCent <= 0)
+                        ? 'Bitte gib den Betrag an.'
+                        : undefined
+                    }
+                  />
+                  {p.art === 'ware' && (
+                    <BetragFeld
+                      label="Pfand je Gebinde"
+                      size="md"
+                      placeholder="kein Pfand"
+                      value={p.pfandCent}
+                      onWert={(c) => aendern(p.key, { pfandCent: c })}
+                    />
+                  )}
+                  <Select
+                    label="Steuersatz"
+                    size="md"
+                    allowDeselect={false}
+                    data={STEUER_OPTIONEN}
+                    value={p.steuersatz}
+                    onChange={(v) => aendern(p.key, { steuersatz: v ?? '1900' })}
+                  />
+                </Group>
               </Stack>
             </Paper>
           ))}
@@ -238,7 +360,12 @@ export function BelegEinreichenPage() {
                   ...ps,
                   {
                     key: naechsterKey,
+                    art: 'kategorie',
                     kategorieId: null,
+                    wareId: null,
+                    gebindeId: null,
+                    anzahl: 1,
+                    pfandCent: null,
                     text: '',
                     betragCent: null,
                     steuersatz: '1900',

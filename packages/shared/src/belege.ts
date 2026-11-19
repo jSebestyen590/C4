@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import { anzahlSchema, zeitpunktSchema } from './bausteine';
-import type { MhdArt } from './waren';
 import {
   finanzDatumSchema,
   formatEuro,
@@ -161,10 +159,6 @@ export const belegPostenWareSchema = z.object({
   steuersatz: steuersatzFeld,
   /** Deposit per Gebinde; null = no deposit. */
   pfandCent: nullish(centFeld),
-  /** Einlagern: target Lagerort. */
-  lagerortId: nullish(z.string().min(1)),
-  /** Einlagern: best-before date, where the Ware has one. */
-  mhd: nullish(finanzDatumSchema),
 });
 
 /** Returned empties (usually negative): booked against the Pfand Konto. */
@@ -214,10 +208,6 @@ export const belegEntwurfDatenSchema = z.object({
   /** Required without a file (Eigenbeleg). */
   eigenbelegBegruendung: nullish(z.string().trim().max(500, 'Höchstens 500 Zeichen erlaubt.')),
   datei: nullish(belegDateiSchema),
-  /** Book the Ware items into the stock together with the Beleg (needs `bestand:buchen`). */
-  einlagern: z.boolean().default(false),
-  /** ISO instant with offset; null = noon of the Belegdatum (Berlin), or now for today. */
-  einlagerungZeitpunkt: nullish(zeitpunktSchema),
   /** Submitted by a member: the amount they stated (cent). */
   eingereichtBetragCent: nullish(centFeld),
   /** Submitted by a member: free name of the Rechnungssteller, a suggestion only. */
@@ -243,8 +233,14 @@ export const belegEinreichenSchema = z.object({
   rechnungsstellerId: nullish(z.string().min(1)),
   rechnungsstellerName: nullish(z.string().trim().max(120, 'Höchstens 120 Zeichen erlaubt.')),
   notiz: nullish(z.string().trim().max(500, 'Höchstens 500 Zeichen erlaubt.')),
+  /** Members split by Kategorie or by Ware; a Ware item gets its Kategorie from the Warengruppe. */
   posten: z
-    .array(belegPostenKategorieSchema)
+    .array(
+      z.discriminatedUnion('art', [
+        belegPostenKategorieSchema,
+        belegPostenWareSchema.omit({ kategorieId: true }),
+      ]),
+    )
     .max(BELEG_POSTEN_ANZAHL_MAX, `Höchstens ${BELEG_POSTEN_ANZAHL_MAX} Posten erlaubt.`)
     .default([]),
 });
@@ -517,7 +513,7 @@ export const erstattungBuchungstext = (mitglied: string, anzahl: number): string
 // ----- Validation
 
 export interface BelegFehler {
-  /** `rechnungssteller`, `belegdatum`, `posten`, `einlagern`, `korrekturen`, `datei`, `zahlweg`, `bezahldatum`, `fach`, `stueckelung`, `mitglied`. */
+  /** `rechnungssteller`, `belegdatum`, `posten`, `korrekturen`, `datei`, `zahlweg`, `bezahldatum`, `fach`, `stueckelung`, `mitglied`. */
   feld: string;
   meldung: string;
 }
@@ -539,19 +535,6 @@ export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
     }
     if (p.art === 'leergut' && !p.text) f('posten', `${n}: Bitte beschreibe das Leergut.`);
   });
-  if (daten.einlagern) {
-    const lager = daten.posten.filter(
-      (p): p is BelegPostenWare => p.art === 'ware' && p.anzahlMilli > 0,
-    );
-    if (lager.length === 0) f('einlagern', 'Zum Einlagern braucht der Beleg einen Ware-Posten.');
-    daten.posten.forEach((p, i) => {
-      if (p.art !== 'ware' || p.anzahlMilli <= 0) return;
-      const n = `Posten ${i + 1}`;
-      if (!anzahlSchema.safeParse(p.anzahlMilli / 1000).success)
-        f('einlagern', `${n}: Zum Einlagern muss die Anzahl eine ganze Zahl sein.`);
-      if (!p.lagerortId) f('einlagern', `${n}: Bitte wähle einen Lagerort.`);
-    });
-  }
   const rechnung = belegBerechnen(daten);
   for (const m of rechnung.fehler) f(m.includes('Korrektur') ? 'korrekturen' : 'posten', m);
   if (!daten.datei && !daten.eigenbelegBegruendung)
@@ -660,6 +643,8 @@ export interface EinreichungAuswahlDto {
   rechnungssteller: { id: string; name: string }[];
   /** Active Aufwand Konten (Kategorien). */
   kategorien: { id: string; name: string }[];
+  /** Non-archived Waren with their Gebinde, for Ware items. */
+  waren: BelegWareDto[];
 }
 
 /** `GET /api/finanzen/einreichungen/:id`: own submission with the file. */
@@ -679,6 +664,10 @@ export interface EinreichungPostenDto {
   text: string;
   betragCent: number;
   steuersatz: number;
+  /** Ware items only: name of the Ware, designation of the Gebinde and the number of Gebinde in thousandths. */
+  ware: string | null;
+  gebinde: string | null;
+  anzahlMilli: number | null;
 }
 
 // ----- Open Auslagen
@@ -752,7 +741,6 @@ export interface BelegWareDto {
   id: string;
   name: string;
   warengruppeId: string;
-  mhdArt: MhdArt;
   /** Suggested Kategorie from the Warengruppe (inherited); null without an assignment. */
   kategorieId: string | null;
   gebinde: BelegGebindeDto[];
@@ -889,8 +877,6 @@ export interface BelegDetailEintrag {
   /** The booking of the Beleg is reversed. */
   storniert: boolean;
   erstattung: BelegErstattungVerweis | null;
-  /** Bestandsvorgang of the Einlagern done with the Beleg. */
-  bestandsvorgangId: string | null;
   eingereichtVon: string | null;
   eingereichtAm: string | null;
   eingereichtBetragCent: number | null;

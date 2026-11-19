@@ -55,7 +55,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0213–0229 (Finanzen, Belege 4b): 0213 fügt das Konto `pfand` („Pfand/Leergut“, Durchlauf) idempotent ein, die Down-Datei löscht es.
   Alle anderen sind `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (ein Statement je Datei, die Down-Dateien leeren nur die Werte, DSQL kann
   keine Spalten löschen): 0214 `warengruppen.kategorie_id` (Aufwandskonto, ohne FK, die API prüft es); 0215–0219 `fin_belegposten.art`,
-  `ware_id`, `gebinde_id`, `pfand_cent`, `pfand_betrag_cent`; 0220–0223 `fin_belege.bestandsvorgang_id`, `eingereicht_von`,
+  `ware_id`, `gebinde_id`, `pfand_cent`, `pfand_betrag_cent`; 0220–0223 `fin_belege.bestandsvorgang_id` (seit 4c ungenutzt, bleibt in der Tabelle, DSQL kann sie nicht löschen; nicht mehr im Drizzle-Schema), `eingereicht_von`,
   `eingereicht_am`, `eingereicht_betrag_cent`; 0224–0229 `fin_beleg_entwuerfe.status`, `eingereicht_von`, `eingereicht_am`,
   `verworfen_grund`, `verworfen_von`, `verworfen_am`. DSQL kennt kein `ADD COLUMN … NOT NULL/DEFAULT` und kein `DROP NOT NULL`:
   `art` und `status` sind nullable (die API schreibt sie immer; `null` gilt als `kategorie` bzw. `entwurf`), und Leergut-Posten

@@ -386,7 +386,7 @@ describe('Ware, Pfand und Leergut', () => {
   });
 });
 
-describe('belegPruefen mit Ware und Einlagern', () => {
+describe('belegPruefen mit Ware', () => {
   const basis = {
     rechnungsstellerId: 'r1',
     belegdatum: '2027-01-05',
@@ -414,7 +414,7 @@ describe('belegPruefen mit Ware und Einlagern', () => {
     expect(d.posten[0]!.art).toBe('kategorie');
   });
 
-  it('accepts Ware and Leergut without einlagern', () => {
+  it('accepts Ware and Leergut', () => {
     expect(
       pruefe([
         wareRoh(),
@@ -440,23 +440,6 @@ describe('belegPruefen mit Ware und Einlagern', () => {
       'Posten 2: Bitte wähle ein Gebinde.',
       'Posten 3: Bitte beschreibe das Leergut.',
     ]);
-  });
-
-  it('requires Lagerort and whole quantities for Einlagern, ignoring negative Ware items', () => {
-    const fehler = pruefe(
-      [wareRoh({ anzahlMilli: 1500 }), wareRoh({ anzahlMilli: -1000, einzelpreisCent: 100 })],
-      { einlagern: true },
-    );
-    expect(fehler.map((f) => f.meldung)).toEqual([
-      'Posten 1: Zum Einlagern muss die Anzahl eine ganze Zahl sein.',
-      'Posten 1: Bitte wähle einen Lagerort.',
-    ]);
-    expect(pruefe([wareRoh({ lagerortId: 'l1' })], { einlagern: true })).toEqual([]);
-  });
-
-  it('needs a Ware item for Einlagern', () => {
-    const fehler = pruefe([p(100)], { einlagern: true });
-    expect(fehler.map((f) => f.feld)).toEqual(['einlagern']);
   });
 });
 

@@ -100,11 +100,6 @@ export function FinanzenBelegDetailPage() {
   const gebindeName = (p: BelegPostenDto) =>
     (waren.data ?? []).find((w) => w.id === p.wareId)?.gebinde.find((g) => g.id === p.gebindeId)
       ?.bezeichnung ?? null;
-  const lagerWaren = [
-    ...new Map(
-      (b?.posten ?? []).filter((p) => p.wareId).map((p) => [p.wareId!, p.wareName ?? 'Ware']),
-    ),
-  ];
 
   return (
     <Stack maw={1100}>
@@ -187,19 +182,6 @@ export function FinanzenBelegDetailPage() {
                   {b.eingereichtAm ? `, ${formatDatumZeit(b.eingereichtAm)}` : ''}
                   {b.eingereichtBetragCent !== null &&
                     `, genannter Betrag ${centAnzeigen(b.eingereichtBetragCent)}`}
-                </Zeile>
-              )}
-              {b.bestandsvorgangId && (
-                <Zeile label={<FeldLabel text="Einlagerung" hilfe={HILFE.belege.einlagern} />}>
-                  Mit dem Beleg ins Lager gebucht. Verlauf:{' '}
-                  {lagerWaren.map(([wareId, name], i) => (
-                    <span key={wareId}>
-                      {i > 0 && ', '}
-                      <Anchor component={Link} to={`/waren/${encodeURIComponent(wareId)}`}>
-                        {name}
-                      </Anchor>
-                    </span>
-                  ))}
                 </Zeile>
               )}
               {b.erstelltVon && (

@@ -208,7 +208,7 @@ export function entnahmeZeilen(eingabe: {
   });
 }
 
-export type ZeileMitWare = Buchungszeile & { wareId: string };
+type ZeileMitWare = Buchungszeile & { wareId: string };
 
 const alsBuchungen = (zeilen: ZeileMitWare[], zeitpunkt: string, vorgangId: string): Buchung[] =>
   zeilen.map((z) => ({ ...z, vorgangId, zeitpunkt }));
@@ -761,7 +761,7 @@ export async function buchungenLaden(q: Q, bedingung?: SQL): Promise<Buchung[]> 
 }
 
 /** Loads the ware for a booking and checks that it and the Gebinde can be booked on. */
-export async function buchbareWare(q: Q, wareId: string, gebindeId: string): Promise<WareRow> {
+async function buchbareWare(q: Q, wareId: string, gebindeId: string): Promise<WareRow> {
   const [ware] = await q.select().from(waren).where(eq(waren.id, wareId));
   if (!ware) throw new WarenUngueltig('Die Ware gibt es nicht.');
   if (ware.archiviert) throw new WarenUngueltig('Die Ware ist archiviert.');
@@ -788,7 +788,7 @@ async function ortMitIfcos(q: Q): Promise<Set<string>> {
  * The place must exist and not be archived. Unless it is only withdrawn from (`abgang`), no IFCO
  * may stand on it: Waren and IFCOs do not share a place.
  */
-export async function buchbarerLagerort(q: Q, lagerortId: string, abgang = false): Promise<void> {
+async function buchbarerLagerort(q: Q, lagerortId: string, abgang = false): Promise<void> {
   const [l] = await q.select().from(lagerorte).where(eq(lagerorte.id, lagerortId));
   if (!l) throw new WarenUngueltig('Der Lagerort existiert nicht.');
   if (l.archiviert) throw new WarenUngueltig('Der Lagerort ist archiviert.');
@@ -808,7 +808,7 @@ function elternKeinIfcoPlatz(
   if (eltern && ifcoPlatzMasse(eltern)) throw new WarenUngueltig(IFCO_PLATZ_KEINE_KINDER);
 }
 
-export async function vorgangAnlegen(
+async function vorgangAnlegen(
   tx: Tx,
   vorgang: Pick<VorgangRow, 'typ' | 'quelle' | 'kommentar' | 'erstelltVon'> & {
     zeitpunkt: string;

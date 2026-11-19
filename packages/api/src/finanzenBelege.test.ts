@@ -1,30 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { belegEntwurfDatenSchema } from '@c4/shared';
-import { einlagerungZeitpunkt } from './finanzenBelege';
+import { einreichungWarePosten, type EinreichungWare } from './finanzenBelege';
 
-const daten = (belegdatum: string | null) => belegEntwurfDatenSchema.parse({ belegdatum });
+const warePosten = (wareId: string, gebindeId: string) => ({
+  art: 'ware' as const,
+  wareId,
+  gebindeId,
+  anzahlMilli: 2000,
+  einzelpreisCent: 500,
+  steuersatz: 1900,
+});
+const daten = (...posten: ReturnType<typeof warePosten>[]) =>
+  belegEntwurfDatenSchema.parse({ posten });
+const waren: Record<string, EinreichungWare> = {
+  w1: { archiviert: false, gebindeIds: ['g1'], kategorieId: 'k1' },
+  w2: { archiviert: false, gebindeIds: ['g2'], kategorieId: null },
+  w3: { archiviert: true, gebindeIds: ['g3'], kategorieId: 'k1' },
+};
+const suche = (id: string) => waren[id];
 
-describe('einlagerungZeitpunkt', () => {
-  it('uses now when the Belegdatum is today, before or after noon', () => {
-    const frueh = new Date('2026-11-19T08:00:00Z'); // 09:00 Berlin
-    const spaet = new Date('2026-11-19T12:18:00Z'); // 13:18 Berlin
-    expect(einlagerungZeitpunkt(daten('2026-11-19'), frueh)).toEqual(frueh);
-    expect(einlagerungZeitpunkt(daten('2026-11-19'), spaet)).toEqual(spaet);
+describe('einreichungWarePosten', () => {
+  it('fills the Kategorie from the Warengruppe, or leaves it empty', () => {
+    const r = einreichungWarePosten(daten(warePosten('w1', 'g1'), warePosten('w2', 'g2')), suche);
+    expect(r.fehler).toEqual([]);
+    expect(r.daten.posten.map((p) => ('kategorieId' in p ? p.kategorieId : undefined))).toEqual([
+      'k1',
+      null,
+    ]);
   });
 
-  it('uses 12:00 Berlin for a past Belegdatum', () => {
-    const jetzt = new Date('2026-11-19T12:18:00Z');
-    expect(einlagerungZeitpunkt(daten('2026-11-10'), jetzt)).toEqual(
-      new Date('2026-11-10T11:00:00Z'),
+  it('rejects unknown and archived Waren and foreign Gebinde', () => {
+    const r = einreichungWarePosten(
+      daten(warePosten('x', 'g1'), warePosten('w3', 'g3'), warePosten('w1', 'g2')),
+      suche,
     );
-    expect(einlagerungZeitpunkt(daten('2026-07-10'), jetzt)).toEqual(
-      new Date('2026-07-10T10:00:00Z'),
-    );
-  });
-
-  it('uses now without a Belegdatum and never a future time', () => {
-    const jetzt = new Date('2026-11-19T12:18:00Z');
-    expect(einlagerungZeitpunkt(daten(null), jetzt)).toEqual(jetzt);
-    expect(einlagerungZeitpunkt(daten('2026-12-01'), jetzt)).toEqual(jetzt);
+    expect(r.fehler).toEqual([
+      'Posten 1: Die Ware gibt es nicht.',
+      'Posten 2: Die Ware ist archiviert.',
+      'Posten 3: Dieses Gebinde gehört nicht zur Ware.',
+    ]);
   });
 });

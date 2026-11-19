@@ -1624,8 +1624,6 @@ export const finBelege = pgTable('fin_belege', {
   idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
-  /** Bestandsvorgang of the Einlagern done with the Beleg, without a foreign key. */
-  bestandsvorgangId: text('bestandsvorgang_id'),
   /** Cognito sub of the member who submitted the Beleg. */
   eingereichtVon: text('eingereicht_von'),
   eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),

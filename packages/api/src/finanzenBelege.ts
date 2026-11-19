@@ -73,15 +73,7 @@ import {
   type BuchungsEntwurf,
   type GebuchtErgebnis,
 } from './finanzen';
-import {
-  WarenUngueltig,
-  buchbareWare,
-  buchbarerLagerort,
-  einlagerungMhd,
-  vorgangAnlegen,
-  type Tx,
-  type ZeileMitWare,
-} from './waren';
+import type { Tx } from './waren';
 
 // Finanzen Belege (see docs/finanzen.md): drafts, booking a Beleg and the Sammelerstattung of
 // Auslagen. The planning (validation, journal lines, warnings) is pure and shared with the fake.
@@ -96,6 +88,38 @@ export class BelegWarnungenOffen extends Error {
 /** Date (`YYYY-MM-DD`) of an instant in Berlin. */
 export const datumBerlin = (jetzt: Date): string =>
   new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
+
+/** What `einreichungWarePosten` needs to know about a Ware. */
+export interface EinreichungWare {
+  archiviert: boolean;
+  /** Ids of the non-archived Gebinde of the Ware. */
+  gebindeIds: string[];
+  /** Kategorie suggested by the Warengruppe (inherited); null without an assignment. */
+  kategorieId: string | null;
+}
+
+/**
+ * Checks the Ware items a member submits (Ware exists and is not archived, Gebinde belongs to it)
+ * and fills their Kategorie from the Warengruppe; without an assignment it stays empty and
+ * `belegPruefen` flags it when booking.
+ */
+export function einreichungWarePosten(
+  daten: BelegEntwurfDaten,
+  ware: (id: string) => EinreichungWare | undefined,
+): { daten: BelegEntwurfDaten; fehler: string[] } {
+  const fehler: string[] = [];
+  const posten = daten.posten.map((p, i) => {
+    if (p.art !== 'ware') return p;
+    const n = `Posten ${i + 1}`;
+    const w = p.wareId ? ware(p.wareId) : undefined;
+    if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
+    else if (w.archiviert) fehler.push(`${n}: Die Ware ist archiviert.`);
+    else if (!p.gebindeId || !w.gebindeIds.includes(p.gebindeId))
+      fehler.push(`${n}: Dieses Gebinde gehört nicht zur Ware.`);
+    return { ...p, kategorieId: p.kategorieId ?? w?.kategorieId ?? null };
+  });
+  return { daten: { ...daten, posten }, fehler };
+}
 
 type Q = Pick<Db, 'select'>;
 
@@ -211,68 +235,6 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
   };
 }
 
-// ----- Einlagern (stock-in together with the Beleg)
-
-export interface EinlagerPosition {
-  /** 1-based item number, for error messages. */
-  pos: number;
-  wareId: string;
-  gebindeId: string;
-  lagerortId: string;
-  anzahl: number;
-  mhd: string | null;
-}
-
-/** The Ware items to stock in: positive quantities only (a negative one is a Gutschrift). */
-export function einlagerPositionen(daten: BelegEntwurfDaten): EinlagerPosition[] {
-  return daten.posten.flatMap((p, i): EinlagerPosition[] =>
-    p.art === 'ware' && p.anzahlMilli > 0
-      ? [
-          {
-            pos: i + 1,
-            wareId: p.wareId!,
-            gebindeId: p.gebindeId!,
-            lagerortId: p.lagerortId!,
-            anzahl: p.anzahlMilli / 1000,
-            mhd: p.mhd,
-          },
-        ]
-      : [],
-  );
-}
-
-/** 12:00 in Berlin on a date, as an instant. */
-export function berlinMittag(datum: string): Date {
-  const stunde = (d: Date) =>
-    Number(
-      new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/Berlin',
-        hour: '2-digit',
-        hourCycle: 'h23',
-      }).format(d),
-    );
-  const sommer = new Date(`${datum}T10:00:00Z`);
-  return stunde(sommer) === 12 ? sommer : new Date(`${datum}T11:00:00Z`);
-}
-
-/**
- * Instant of the Einlagerung: the typed one, else noon (Berlin) of the Belegdatum, or now when the
- * Belegdatum is today or later. Never in the future.
- */
-export function einlagerungZeitpunkt(daten: BelegEntwurfDaten, jetzt: Date): Date {
-  if (daten.einlagerungZeitpunkt) {
-    const t = new Date(daten.einlagerungZeitpunkt);
-    if (t.getTime() > jetzt.getTime())
-      throw new BuchungUngueltig(['Der Einlagerungszeitpunkt liegt in der Zukunft.']);
-    return t;
-  }
-  if (!daten.belegdatum || daten.belegdatum >= datumBerlin(jetzt)) return jetzt;
-  const mittag = berlinMittag(daten.belegdatum);
-  return mittag.getTime() > jetzt.getTime() ? jetzt : mittag;
-}
-
-export const einlagerungKommentar = (nummer: string): string => `Beleg ${nummer}`;
-
 /** The non-blocking warnings before booking; every one must be confirmed by its `code`. */
 export function belegWarnungenBilden(p: {
   daten: BelegEntwurfDaten;
@@ -361,7 +323,16 @@ export type EinreichungAktion = 'ok' | 'fehlt' | 'nicht_eingereicht';
 /** An own submission: the DTO plus the file reference (the route adds the presigned URL). */
 export interface EinreichungEintrag extends EinreichungDto {
   datei: BelegDatei | null;
-  posten: { kategorieId: string | null; text: string; betragCent: number; steuersatz: number }[];
+  posten: {
+    kategorieId: string | null;
+    text: string;
+    betragCent: number;
+    steuersatz: number;
+    /** Ware items only. */
+    wareId: string | null;
+    gebindeId: string | null;
+    anzahlMilli: number | null;
+  }[];
 }
 
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
@@ -419,7 +390,7 @@ export interface BelegeStore {
    * throws BuchungUngueltig when the Konto is no active Aufwand Konto.
    */
   warengruppeKategorieSetzen(id: string, kategorieId: string | null): Promise<boolean>;
-  /** Non-archived Waren with their Gebinde, deposit, MHD kind and suggested Kategorie, for the Beleg form. */
+  /** Non-archived Waren with their Gebinde, deposit and suggested Kategorie, for the Beleg form. */
   belegWaren(): Promise<BelegWareDto[]>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
@@ -505,49 +476,6 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .map((v) => ({ id: v.gebindeId, archiviert: v.archiviert })),
       })),
     };
-  };
-
-  /**
-   * Stocks the Ware items in (one Bestandsvorgang, source `beleg`) inside the booking transaction, so
-   * a failure rolls the whole booking back. Domain errors become `BuchungUngueltig` (HTTP 400).
-   */
-  const einlagernTx = async (
-    tx: Tx,
-    daten: BelegEntwurfDaten,
-    nummer: string,
-    sub: string,
-    jetzt: Date,
-  ): Promise<string> => {
-    const zeilen: ZeileMitWare[] = [];
-    for (const p of einlagerPositionen(daten)) {
-      try {
-        const ware = await buchbareWare(tx, p.wareId, p.gebindeId);
-        await buchbarerLagerort(tx, p.lagerortId);
-        zeilen.push({
-          wareId: p.wareId,
-          lagerortId: p.lagerortId,
-          gebindeId: p.gebindeId,
-          mhd: einlagerungMhd(p.mhd, ware.mhdArt),
-          menge: p.anzahl,
-          art: 'zugang',
-        });
-      } catch (err) {
-        if (err instanceof WarenUngueltig)
-          throw new BuchungUngueltig([`Posten ${p.pos}: ${err.message}`]);
-        throw err;
-      }
-    }
-    return vorgangAnlegen(
-      tx,
-      {
-        typ: 'einlagerung',
-        quelle: 'beleg',
-        zeitpunkt: einlagerungZeitpunkt(daten, jetzt).toISOString(),
-        kommentar: einlagerungKommentar(nummer),
-        erstelltVon: sub,
-      },
-      zeilen,
-    );
   };
 
   /** Warnings of a draft; `plan` gives the lines for the balance warnings when it is valid. */
@@ -655,9 +583,6 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         const jetzt = new Date();
         const nummer = await naechsteNummer(tx, Number(datumBerlin(jetzt).slice(0, 4)));
         const belegId = randomUUID();
-        const bestandsvorgangId = daten.einlagern
-          ? await einlagernTx(tx, daten, nummer, sub, jetzt)
-          : null;
         const gebucht = await kern.einfuegen(tx, {
           datum: plan.buchung.datum,
           text: belegBuchungstext(nummer, plan.buchung.rechnungssteller),
@@ -688,7 +613,6 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           idempotenzSchluessel: eingabe.idempotenzSchluessel,
           erstelltVon: sub,
           erstelltAm: jetzt,
-          bestandsvorgangId,
           // A submitted draft: keep who submitted it, when and which amount they stated.
           eingereichtVon: entwurf.eingereichtVon,
           eingereichtAm: entwurf.eingereichtAm,
@@ -911,6 +835,9 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           text: p.text,
           betragCent: postenBetrag(p),
           steuersatz: p.steuersatz,
+          wareId: p.art === 'ware' ? (p.wareId ?? null) : null,
+          gebindeId: p.art === 'ware' ? (p.gebindeId ?? null) : null,
+          anzahlMilli: p.art === 'ware' ? p.anzahlMilli : null,
         })),
       };
     });
@@ -971,6 +898,9 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
               text: p.text,
               betragCent: p.betragCent,
               steuersatz: p.steuersatz,
+              wareId: p.art === 'ware' ? p.wareId : null,
+              gebindeId: p.art === 'ware' ? p.gebindeId : null,
+              anzahlMilli: p.art === 'ware' ? p.anzahlMilli : null,
             })),
         });
     }
@@ -1202,7 +1132,6 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
               buchung: { id: aktiv.e.buchungId, seq: aktiv.seq },
             }
           : null,
-        bestandsvorgangId: b.bestandsvorgangId,
         eingereichtVon: b.eingereichtVon,
         eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
         eingereichtBetragCent: b.eingereichtBetragCent,
@@ -1247,7 +1176,27 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       return rows.length > 0;
     },
 
-    async einreichungAnlegen(daten, sub) {
+    async einreichungAnlegen(eingabe, sub) {
+      const [gruppen, wareRows, verknuepft, alleGebinde] = await Promise.all([
+        db.select().from(warengruppen),
+        db.select().from(waren),
+        db.select().from(wareGebinde),
+        db.select().from(gebinde),
+      ]);
+      const { daten, fehler } = einreichungWarePosten(eingabe, (wid) => {
+        const w = wareRows.find((x) => x.id === wid);
+        return w
+          ? {
+              archiviert: w.archiviert,
+              gebindeIds: verknuepft
+                .filter((v) => v.wareId === wid)
+                .map((v) => v.gebindeId)
+                .filter((gid) => !alleGebinde.find((g) => g.id === gid)?.archiviert),
+              kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+            }
+          : undefined;
+      });
+      if (fehler.length > 0) throw new BuchungUngueltig(fehler);
       const id = randomUUID();
       const jetzt = new Date();
       await db.insert(finBelegEntwuerfe).values({
@@ -1418,7 +1367,6 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         id: w.id,
         name: w.name,
         warengruppeId: w.warengruppeId,
-        mhdArt: w.mhdArt,
         kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
         gebinde: verknuepft
           .filter((v) => v.wareId === w.id)

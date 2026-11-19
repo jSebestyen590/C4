@@ -292,7 +292,6 @@ export const VORGANG_TYP_LABELS: Record<VorgangTyp, string> = {
 
 export const QUELLE_LABELS: Record<Quelle, string> = {
   manuell: 'Manuell',
-  beleg: 'Beleg',
   inventur: 'Inventur',
 };
 

@@ -22,7 +22,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   BELEG_MODI,
   BELEG_MODUS_LABELS,
-  pfad,
   STEUERSAETZE,
   ZAHLWEGE,
   ZAHLWEG_LABELS,
@@ -33,16 +32,11 @@ import {
   type Zahlweg,
 } from '@c4/shared';
 import { useApi, unwrap } from '../api';
-import { useAuth } from '../auth';
-import { BelegEinlagernFeld } from '../BelegEinlagernFeld';
 import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungKopf';
-import { BelegPostenZeile, letzterLagerort } from '../BelegPostenZeile';
-import { useOrteMitIfcos } from '../inventarDaten';
-import { useWarenStammdaten } from '../warenDaten';
+import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
 import { BelegDateiFeld } from '../BelegDatei';
 import {
-  anzahlLesen,
   fehlerZu,
   pfandJeSatz,
   satzText,
@@ -107,10 +101,7 @@ export function FinanzenBelegPage() {
   const bargeld = useBargeld();
   const rechnungssteller = useRechnungssteller(false);
   const mitglieder = useMitgliederListe();
-  const { can } = useAuth();
   const belegWaren = useBelegWaren();
-  const stamm = useWarenStammdaten();
-  const ifcoOrte = useOrteMitIfcos();
   // Set once the draft is booked or deleted, so the removed query is not fetched again (404).
   const [erledigt, setErledigt] = useState(false);
   // Sticky preview only beside the form (lg+); stacked on phones it would cover the form.
@@ -285,36 +276,13 @@ export function FinanzenBelegPage() {
   const fz = (feld: string) => (versucht ? fehlerZu(fehler, feld) : undefined);
   const stueckHinweis = stueckelungHinweis(berechnung.summe, form.gegeben, form.wechselgeld);
   const zahler = (mitglieder.data ?? []).find((m) => m.sub === form.mitgliedId);
-  const einlagernMoeglich = can('bestand:buchen');
   const eingereicht = entwurf.data?.status === 'eingereicht';
-  const lagerOptionen = stamm.lagerorte
-    .filter((l) => !l.archiviert && !ifcoOrte.orte.has(l.id))
-    .map((l) => ({ value: l.id, label: pfad(stamm.lagerorte, l.id) }));
   const dateiUrl = lokaleUrl ?? entwurf.data?.dateiUrl ?? null;
 
-  // Ware items of a Beleg that is booked into the stock get the last used Lagerort.
-  const lagerVorschlag = (f: BelegFormular) =>
-    [...f.posten].reverse().find((x) => x.lagerortId)?.lagerortId ?? letzterLagerort();
   const postenAendern = (key: string, patch: Partial<PostenZeile>) =>
     aendern((f) => ({
       ...f,
-      posten: f.posten.map((p) => {
-        if (p.key !== key) return p;
-        const neu = { ...p, ...patch };
-        return f.einlagern && neu.art === 'ware' && !neu.lagerortId
-          ? { ...neu, lagerortId: lagerVorschlag(f) }
-          : neu;
-      }),
-    }));
-  const einlagernSetzen = (an: boolean) =>
-    aendern((f) => ({
-      ...f,
-      einlagern: an,
-      posten: an
-        ? f.posten.map((p) =>
-            p.art === 'ware' && !p.lagerortId ? { ...p, lagerortId: lagerVorschlag(f) } : p,
-          )
-        : f.posten,
+      posten: f.posten.map((p) => (p.key === key ? { ...p, ...patch } : p)),
     }));
   const postenHinzu = () => {
     aendern((f) => ({
@@ -568,8 +536,6 @@ export function FinanzenBelegPage() {
                   modus={form.modus}
                   aufwand={aufwand}
                   waren={belegWaren.data ?? []}
-                  lagerOptionen={lagerOptionen}
-                  einlagern={einlagernMoeglich && form.einlagern}
                   betragCent={berechnung.postenBetraege[i] ?? 0}
                   pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
                   versucht={versucht}
@@ -656,17 +622,6 @@ export function FinanzenBelegPage() {
                 </Text>
               ))}
             </Stack>
-
-            {einlagernMoeglich && (
-              <BelegEinlagernFeld
-                einlagern={form.einlagern}
-                zeitpunkt={form.einlagerungZeitpunkt}
-                hatWare={form.posten.some((p) => p.art === 'ware')}
-                fehler={fz('einlagern')}
-                onEinlagern={einlagernSetzen}
-                onZeitpunkt={(iso) => aendern((f) => ({ ...f, einlagerungZeitpunkt: iso }))}
-              />
-            )}
 
             <Stack gap="md">
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -827,16 +782,6 @@ export function FinanzenBelegPage() {
             text: p.text.trim(),
             betragCent: (berechnung.postenBetraege[i] ?? 0) + (berechnung.pfandBetraege[i] ?? 0),
           }))}
-          einlagerung={
-            einlagernMoeglich && form.einlagern
-              ? form.posten
-                  .filter((p) => p.art === 'ware' && (anzahlLesen(p.anzahl) ?? 0) > 0)
-                  .map(
-                    (p) =>
-                      `${postenName(p)}: ${p.anzahl} × → ${pfad(stamm.lagerorte, p.lagerortId ?? '')}`,
-                  )
-              : null
-          }
           berechnung={berechnung}
           warnungen={warnungen}
           laeuft={buchen.isPending}

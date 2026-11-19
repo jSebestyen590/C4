@@ -170,7 +170,7 @@ describe('datenZuFormular', () => {
   });
 });
 
-describe('Ware, Leergut, Einlagern und Einreichung', () => {
+describe('Ware, Leergut und Einreichung', () => {
   const lager = (): BelegFormular => ({
     ...voll(),
     posten: [
@@ -183,20 +183,16 @@ describe('Ware, Leergut, Einlagern und Einreichung', () => {
         anzahl: '2',
         einzelpreisCent: 1000,
         pfandCent: 300,
-        lagerortId: 'l1',
-        mhd: '2027-09-01',
       },
       { ...neuerPosten(700), art: 'leergut', text: 'Leergut', anzahl: '1', einzelpreisCent: -600 },
       { ...neuerPosten(1900), kategorieId: 'k2', einzelpreisCent: 100 },
     ],
-    einlagern: true,
-    einlagerungZeitpunkt: '2027-03-01T11:00:00.000Z',
     eingereichtBetragCent: 1234,
     rechnungsstellerName: ' Getränke Müller ',
     notiz: ' Bon liegt bei ',
   });
 
-  it('trägt Ware- und Leergut-Posten samt Lagerort und MHD in die Daten', () => {
+  it('trägt Ware- und Leergut-Posten in die Daten', () => {
     const d = formularZuDaten(lager());
     expect(d.posten[0]).toEqual({
       art: 'ware',
@@ -208,8 +204,6 @@ describe('Ware, Leergut, Einlagern und Einreichung', () => {
       einzelpreisCent: 1000,
       steuersatz: 700,
       pfandCent: 300,
-      lagerortId: 'l1',
-      mhd: '2027-09-01',
     });
     expect(d.posten[1]).toEqual({
       art: 'leergut',
@@ -220,10 +214,8 @@ describe('Ware, Leergut, Einlagern und Einreichung', () => {
     });
     expect(d.posten[2]!.art).toBe('kategorie');
   });
-  it('trägt Einlagern, Zeitpunkt, Betrag, Name und Notiz ohne Verlust', () => {
+  it('trägt Betrag, Name und Notiz ohne Verlust', () => {
     const d = formularZuDaten(lager());
-    expect(d.einlagern).toBe(true);
-    expect(d.einlagerungZeitpunkt).toBe('2027-03-01T11:00:00.000Z');
     expect(d.eingereichtBetragCent).toBe(1234);
     expect(d.rechnungsstellerName).toBe('Getränke Müller');
     expect(d.notiz).toBe('Bon liegt bei');
@@ -235,15 +227,9 @@ describe('Ware, Leergut, Einlagern und Einreichung', () => {
     expect(f.posten[0]).toMatchObject({
       art: 'ware',
       wareId: 'w1',
-      lagerortId: 'l1',
       pfandCent: 300,
     });
-    expect(f.einlagern).toBe(true);
     expect(f.notiz).toBe('Bon liegt bei');
-  });
-  it('lässt den Zeitpunkt ohne Einlagern weg', () => {
-    const d = formularZuDaten({ ...lager(), einlagern: false });
-    expect(d.einlagerungZeitpunkt).toBeNull();
   });
   it('rechnet das Pfand je Steuersatz mit', () => {
     const b = formularSumme(lager());
@@ -255,9 +241,9 @@ describe('Ware, Leergut, Einlagern und Einreichung', () => {
     const b = formularSumme(f);
     expect(pfandJeSatz(f.posten, b.pfandBetraege)).toEqual({ 700: 600 });
   });
-  it('verlangt Ware, Gebinde, Lagerort und Leergut-Text', () => {
+  it('verlangt Ware, Gebinde und Leergut-Text', () => {
     const f = lager();
-    f.posten[0] = { ...f.posten[0]!, wareId: null, lagerortId: null };
+    f.posten[0] = { ...f.posten[0]!, wareId: null };
     f.posten[1] = { ...f.posten[1]!, text: '' };
     const m = formularFehler(f)
       .map((x) => x.meldung)

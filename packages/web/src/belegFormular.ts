@@ -34,9 +34,6 @@ export interface PostenZeile {
   wareId: string | null;
   gebindeId: string | null;
   pfandCent: number | null;
-  /** Ware items with Einlagern: target Lagerort and best-before date (`YYYY-MM-DD` or empty). */
-  lagerortId: string | null;
-  mhd: string;
 }
 
 /** Typed correction of one tax rate (cent, both may be empty = 0). */
@@ -63,10 +60,6 @@ export interface BelegFormular {
   eigenbeleg: boolean;
   eigenbelegBegruendung: string;
   datei: BelegDatei | null;
-  /** Book the Ware items into the stock with the Beleg. */
-  einlagern: boolean;
-  /** ISO instant of the Einlagerung; null = the default (Belegdatum noon, or now for today). */
-  einlagerungZeitpunkt: string | null;
   /** Submissions: what the member stated, their free Rechnungssteller name and note. */
   eingereichtBetragCent: number | null;
   rechnungsstellerName: string;
@@ -87,8 +80,6 @@ export const neuerPosten = (steuersatz: number = STEUERSAETZE[0]): PostenZeile =
   wareId: null,
   gebindeId: null,
   pfandCent: null,
-  lagerortId: null,
-  mhd: '',
 });
 
 export const leeresFormular = (): BelegFormular => ({
@@ -106,8 +97,6 @@ export const leeresFormular = (): BelegFormular => ({
   eigenbeleg: false,
   eigenbelegBegruendung: '',
   datei: null,
-  einlagern: false,
-  einlagerungZeitpunkt: null,
   eingereichtBetragCent: null,
   rechnungsstellerName: '',
   notiz: '',
@@ -188,8 +177,6 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
       gebindeId: p.gebindeId,
       kategorieId: p.kategorieId,
       pfandCent: p.pfandCent,
-      lagerortId: p.lagerortId,
-      mhd: p.mhd || null,
     };
   return { art: 'kategorie', kategorieId: p.kategorieId, ...basis };
 }
@@ -219,8 +206,6 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     mitgliedId: f.zahlweg === 'auslage' ? f.mitgliedId : null,
     eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
     datei: f.datei,
-    einlagern: f.einlagern,
-    einlagerungZeitpunkt: f.einlagern ? f.einlagerungZeitpunkt : null,
     eingereichtBetragCent: f.eingereichtBetragCent,
     rechnungsstellerName: f.rechnungsstellerName.trim() || null,
     notiz: f.notiz.trim() || null,
@@ -249,8 +234,6 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     eigenbeleg: d.eigenbelegBegruendung !== null && !d.datei,
     eigenbelegBegruendung: d.eigenbelegBegruendung ?? '',
     datei: d.datei,
-    einlagern: d.einlagern,
-    einlagerungZeitpunkt: d.einlagerungZeitpunkt ?? null,
     eingereichtBetragCent: d.eingereichtBetragCent ?? null,
     rechnungsstellerName: d.rechnungsstellerName ?? '',
     notiz: d.notiz ?? '',
@@ -270,8 +253,6 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     wareId: ware?.wareId ?? null,
     gebindeId: ware?.gebindeId ?? null,
     pfandCent: ware?.pfandCent ?? null,
-    lagerortId: ware?.lagerortId ?? null,
-    mhd: ware?.mhd ?? '',
   };
 }
 
