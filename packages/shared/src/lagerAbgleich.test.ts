@@ -140,6 +140,27 @@ describe('lagerAbgleich', () => {
     expect([w.ist, w.soll]).toEqual([7, 4]);
     expect(rechne({})).toEqual([]);
   });
+
+  it('sorts entries of the same day and art chronologically', () => {
+    const r = rechne({
+      ist: [
+        { ...ist('2026-02-01', 1, 'v2'), zeit: '2026-02-01T12:00:00Z' },
+        { ...ist('2026-02-01', 2, 'v1'), zeit: '2026-02-01T08:00:00Z' },
+      ],
+      soll: [
+        { ...soll('2026-02-01', 1, 'b10'), belegNummer: 'B-2026-0010' },
+        { ...soll('2026-02-01', 2, 'b7'), belegNummer: 'B-2026-0007' },
+      ],
+      korrekturen: [
+        { ...korrektur('2026-02-01', 1), id: 'spaet', zeit: '2026-02-02T10:00:00Z' },
+        { ...korrektur('2026-02-01', 2), id: 'frueh', zeit: '2026-02-02T09:00:00Z' },
+      ],
+    });
+    const z = r[0]!.zeitleiste.map((e) =>
+      e.art === 'ist' ? e.vorgangId : e.art === 'soll' ? e.belegId : e.id,
+    );
+    expect(z).toEqual(['v1', 'v2', 'b7', 'b10', 'frueh', 'spaet']);
+  });
 });
 
 describe('Basiseinheiten', () => {

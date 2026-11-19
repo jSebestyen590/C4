@@ -41,7 +41,16 @@ export function LagerAbgleichKorrekturDialog({
   });
   const [fehler, setFehler] = useState<Record<string, string>>({});
   const setze = <K extends keyof typeof v>(k: K, w: (typeof v)[K]) =>
-    setV((alt) => ({ ...alt, [k]: w }));
+    {
+      setV((alt) => ({ ...alt, [k]: w }));
+      // Clear the error of the changed field (a Grund change also clears the Text error).
+      setFehler((alt) => {
+        const neu = { ...alt };
+        delete neu[k];
+        if (k === 'grund') delete neu.text;
+        return neu;
+      });
+    };
   const hinweis = useMemo(() => {
     if (!ware || v.menge === 0) return null;
     const eigene = stamm.gebinde.filter((g) => ware.gebindeIds.includes(g.id));

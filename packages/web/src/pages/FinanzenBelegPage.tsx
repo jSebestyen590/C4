@@ -465,73 +465,20 @@ export function FinanzenBelegPage() {
         >
           <Stack gap="lg">
             <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
-              <Stack gap={4}>
-                <Select
-                  label={
-                    <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
-                  }
-                  placeholder="Rechnungssteller suchen"
-                  searchable
-                  selectFirstOptionOnChange
-                  data={(rechnungssteller.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
-                  value={form.rechnungsstellerId}
-                  onChange={(v) => aendern((f) => ({ ...f, rechnungsstellerId: v }))}
-                  nothingFoundMessage="Keiner gefunden, lege ihn neu an"
-                  error={fz('rechnungssteller')}
-                  data-nav=""
-                />
-                {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
-                  <Button
-                    variant="light"
-                    size="compact-md"
-                    onClick={() => setNeuerName(form.rechnungsstellerName)}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
-                  </Button>
-                )}
-                {neuerName === null ? (
-                  <Button
-                    variant="subtle"
-                    size="compact-md"
-                    leftSection={<IconPlus size={16} />}
-                    onClick={() => setNeuerName('')}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    Neuen Rechnungssteller anlegen
-                  </Button>
-                ) : (
-                  <Group align="flex-start" gap="xs" wrap="nowrap">
-                    <TextInput
-                      style={{ flex: 1 }}
-                      aria-label="Name des neuen Rechnungsstellers"
-                      placeholder="Name"
-                      value={neuerName}
-                      maxLength={120}
-                      onChange={(e) => setNeuerName(e.currentTarget.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (neuerName.trim()) anlegen.mutate(neuerName.trim());
-                        }
-                      }}
-                      error={anlegen.isError ? fehlerText(anlegen.error) : undefined}
-                      data-autofocus
-                    />
-                    <Button
-                      onClick={() => anlegen.mutate(neuerName.trim())}
-                      loading={anlegen.isPending}
-                      disabled={neuerName.trim() === ''}
-                    >
-                      Anlegen
-                    </Button>
-                    <Button variant="default" onClick={() => setNeuerName(null)}>
-                      Abbrechen
-                    </Button>
-                  </Group>
-                )}
-              </Stack>
+              <Select
+                label={
+                  <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
+                }
+                placeholder="Rechnungssteller suchen"
+                searchable
+                selectFirstOptionOnChange
+                data={(rechnungssteller.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
+                value={form.rechnungsstellerId}
+                onChange={(v) => aendern((f) => ({ ...f, rechnungsstellerId: v }))}
+                nothingFoundMessage="Keiner gefunden, lege ihn neu an"
+                error={fz('rechnungssteller')}
+                data-nav=""
+              />
               <DatumFeld
                 label="Belegdatum"
                 value={form.belegdatum}
@@ -548,6 +495,57 @@ export function FinanzenBelegPage() {
                 data-nav=""
               />
             </SimpleGrid>
+            {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
+              <Button
+                variant="light"
+                size="compact-md"
+                onClick={() => setNeuerName(form.rechnungsstellerName)}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
+              </Button>
+            )}
+            {neuerName === null ? (
+              <Button
+                variant="subtle"
+                size="compact-md"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setNeuerName('')}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                Neuen Rechnungssteller anlegen
+              </Button>
+            ) : (
+              <Group align="flex-start" gap="xs" wrap="nowrap">
+                <TextInput
+                  style={{ flex: 1 }}
+                  aria-label="Name des neuen Rechnungsstellers"
+                  placeholder="Name"
+                  value={neuerName}
+                  maxLength={120}
+                  onChange={(e) => setNeuerName(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (neuerName.trim()) anlegen.mutate(neuerName.trim());
+                    }
+                  }}
+                  error={anlegen.isError ? fehlerText(anlegen.error) : undefined}
+                  data-autofocus
+                />
+                <Button
+                  onClick={() => anlegen.mutate(neuerName.trim())}
+                  loading={anlegen.isPending}
+                  disabled={neuerName.trim() === ''}
+                >
+                  Anlegen
+                </Button>
+                <Button variant="default" onClick={() => setNeuerName(null)}>
+                  Abbrechen
+                </Button>
+              </Group>
+            )}
 
             <Stack gap="xs">
               <Group justify="space-between" align="center" gap="xs">

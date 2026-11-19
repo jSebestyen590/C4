@@ -193,6 +193,7 @@ export function createLagerAbgleichStore(db: Db): LagerAbgleichStore {
           menge: inBasiseinheiten(r.gebindeId, r.menge, alle),
           vorgangId: r.vorgangId,
           lagerortName: r.lagerort,
+          zeit: r.zeitpunkt.toISOString(),
         })),
         soll: sollRows.flatMap((r) =>
           r.wareId && r.gebindeId
@@ -216,6 +217,7 @@ export function createLagerAbgleichStore(db: Db): LagerAbgleichStore {
           grund: r.grund,
           text: r.text,
           erstelltVon: r.erstelltVon,
+          zeit: r.erstelltAm.toISOString(),
         })),
         waren: wareRows
           .filter((w) => bewegt.has(w.id))

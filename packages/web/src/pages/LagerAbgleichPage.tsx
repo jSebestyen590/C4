@@ -168,6 +168,9 @@ export function LagerAbgleichPage() {
                       <Text size="sm">Lager: {w.istText}</Text>
                       <Text size="sm">Belege: {w.sollText}</Text>
                       <Text size="sm">Korrektur: {w.korrekturText}</Text>
+                      <Text size="sm">
+                        Diskrepanz: <DiskrepanzText zeile={w} />
+                      </Text>
                     </Stack>
                   </KlickKarte>
                 )}

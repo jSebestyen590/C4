@@ -53,6 +53,8 @@ export interface AbgleichIst {
   menge: number;
   vorgangId: string;
   lagerortName: string | null;
+  /** Sortable timestamp (ISO) to order Ist entries of the same day. */
+  zeit?: string;
 }
 
 export interface AbgleichSoll {
@@ -77,6 +79,8 @@ export interface AbgleichKorrektur {
   text: string | null;
   /** Cognito sub. */
   erstelltVon: string;
+  /** Sortable timestamp (ISO of `erstellt_am`) to order Korrekturen of the same day. */
+  zeit?: string;
 }
 
 export type AbgleichEreignis =
@@ -97,6 +101,10 @@ export interface AbgleichWare {
 }
 
 const REIHENFOLGE = { ist: 0, soll: 1, korrektur: 2 } as const;
+
+/** Order within the same day and art: Ist by time, Soll by Belegnummer, Korrektur by creation time. */
+const zeitschluessel = (e: AbgleichEreignis): string =>
+  e.art === 'soll' ? e.belegNummer : (e.zeit ?? '');
 
 /**
  * Per Ware the sums, the Diskrepanz and the chronological timeline (same day: Ist, Soll, Korrektur).
@@ -122,8 +130,10 @@ export function lagerAbgleich(eingabe: {
     if (z.datum < stichtag) continue;
     const key = `${z.wareId}|${z.vorgangId}`;
     const vorhanden = istJe.get(key);
-    if (vorhanden) vorhanden.menge += z.menge;
-    else istJe.set(key, { art: 'ist', ...z });
+    if (vorhanden) {
+      vorhanden.menge += z.menge;
+      if (z.zeit && (!vorhanden.zeit || z.zeit < vorhanden.zeit)) vorhanden.zeit = z.zeit;
+    } else istJe.set(key, { art: 'ist', ...z });
   }
   for (const { wareId, ...e } of istJe.values()) hinzu(wareId, { ...e, art: 'ist' });
 
@@ -160,6 +170,7 @@ export function lagerAbgleich(eingabe: {
           (a, b) =>
             a.e.datum.localeCompare(b.e.datum) ||
             REIHENFOLGE[a.e.art] - REIHENFOLGE[b.e.art] ||
+            zeitschluessel(a.e).localeCompare(zeitschluessel(b.e)) ||
             a.i - b.i,
         )
         .map((x) => x.e);
