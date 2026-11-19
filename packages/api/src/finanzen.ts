@@ -55,6 +55,8 @@ import type { Db } from './db/client';
 import {
   eventKategorien,
   events,
+  finBelege,
+  finExporte,
   finBuchungen,
   finBuchungszeilen,
   finEventKassen,
@@ -87,6 +89,7 @@ import {
   planeKassenabrechnung,
   type AbrechnungKurz,
 } from './finanzenKassen';
+import { createBelegeStore, type BelegeStore } from './finanzenBelege';
 import type { Tx } from './waren';
 
 // Finanzen: chart of accounts and the append-only journal (see docs/finanzen.md). Bookings are
@@ -128,7 +131,7 @@ export interface KettenDaten {
   zaehlerHash: string;
 }
 
-export interface FinanzenStore {
+export interface FinanzenStore extends BelegeStore {
   /** All accounts by name with their balance (sum of own lines). */
   konten(mitArchiv: boolean): Promise<KontoDto[]>;
   /** Throws KontoUngueltig for an unknown parent. */
@@ -161,6 +164,17 @@ export interface FinanzenStore {
   zaehlung(id: string): Promise<ZaehlungDetailEintrag | undefined>;
   /** All bookings by `seq` plus the counter, read in one consistent snapshot. */
   kettenDaten(): Promise<KettenDaten>;
+  /** `bis_seq` of the last export (0 when there is none yet). */
+  letzterExportSeq(): Promise<number>;
+  /** Records a written export. */
+  exportEintragen(export_: {
+    datum: string;
+    vonSeq: number;
+    bisSeq: number;
+    kopfHash: string;
+    schluessel: string;
+    erstelltAm: Date;
+  }): Promise<void>;
   /** The Kassen with stock, Grundbestand and open Dienst-Zählungen; archived ones only on request. */
   kassen(mitArchiv: boolean): Promise<KasseDto[]>;
   /** Creates the Fach of the Kasse and its master data; throws KontoUngueltig for unusable accounts. Returns the account id. */
@@ -211,6 +225,8 @@ export interface BuchungsEntwurf {
   /** Technical key against double posting; not part of the hash. */
   idempotenzSchluessel?: string | null;
   zeilen: Omit<HashZeile, 'pos'>[];
+  /** SHA-256 of the Beleg files; part of the hash. */
+  belege?: { sha256: string }[];
 }
 
 /** Numbers an entry and chains it to `prevHash`; `jetzt` has millisecond precision by itself. */
@@ -233,6 +249,7 @@ export async function buchungErzeugen(
     erstelltVon: entwurf.erstelltVon,
     erstelltAm: jetzt.toISOString(),
     zeilen,
+    ...(entwurf.belege && entwurf.belege.length > 0 && { belege: entwurf.belege }),
   };
   const hash = await buchungsHash(prevHash, basis);
   return { buchung: { ...basis, prevHash, hash }, zeilenIds: zeilen.map(() => randomUUID()) };
@@ -267,7 +284,7 @@ const istDoppelt = (err: unknown): boolean => {
   return e?.code === '23505' || (e?.cause as { code?: unknown } | null)?.code === '23505';
 };
 
-type Q = Pick<Db, 'select'>;
+export type Q = Pick<Db, 'select'>;
 
 /** Why an account cannot be counted (empty = it is a countable Fach). Shared with the fake. */
 export const zaehlungKontoFehler = (
@@ -325,7 +342,12 @@ const zaehlungEintrag = (
 
 /** Per Kasse the amount of the newest Abrechnung (not reversed) that booked the event. */
 function abgerechneteBetraege(
-  zeilen: readonly { kontoId: string; buchungId: string | null; erstelltAm: Date; betragCent: number }[],
+  zeilen: readonly {
+    kontoId: string;
+    buchungId: string | null;
+    erstelltAm: Date;
+    betragCent: number;
+  }[],
   storniert: ReadonlySet<string | null>,
 ): Map<string, number> {
   const neueste = new Map<string, { erstelltAm: Date; betragCent: number }>();
@@ -1313,7 +1335,15 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     }
   };
 
+  const belege = createBelegeStore(db, {
+    einfuegen,
+    kontenMitBestand,
+    bestandLaden,
+    wiederholen: (fn) => mitWiederholung(fn, BUCHEN_VERSUCHE, undefined, BUCHEN_WARTEN_MS),
+  });
+
   return {
+    ...belege,
     async konten(mitArchiv) {
       const [alle, summen] = await Promise.all([
         db.select().from(finKonten).orderBy(asc(finKonten.name)),
@@ -1766,7 +1796,10 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       const angepasst = markiert.length > 0;
       const zugewiesen = (
         angepasst
-          ? await db.select({ k: finEventKassen.kontoId }).from(finEventKassen).where(eq(finEventKassen.eventId, eventId))
+          ? await db
+              .select({ k: finEventKassen.kontoId })
+              .from(finEventKassen)
+              .where(eq(finEventKassen.eventId, eventId))
           : await db
               .select({ k: finKassenKategorien.kontoId })
               .from(finKassenKategorien)
@@ -1838,7 +1871,10 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     async eventKassenFestlegen(eventId, kontoIds) {
       return mitWiederholung(() =>
         db.transaction(async (tx) => {
-          const [ev] = await tx.select({ id: events.id }).from(events).where(eq(events.id, eventId));
+          const [ev] = await tx
+            .select({ id: events.id })
+            .from(events)
+            .where(eq(events.id, eventId));
           if (!ev) return false;
           const ids = [...new Set(kontoIds ?? [])];
           if (ids.length > 0) {
@@ -1851,7 +1887,9 @@ export function createFinanzenStore(db: Db): FinanzenStore {
               throw new BuchungUngueltig(['Eine Kasse gibt es nicht oder sie ist archiviert.']);
           }
           await tx.delete(finEventKassen).where(eq(finEventKassen.eventId, eventId));
-          await tx.delete(finEventKassenAngepasst).where(eq(finEventKassenAngepasst.eventId, eventId));
+          await tx
+            .delete(finEventKassenAngepasst)
+            .where(eq(finEventKassenAngepasst.eventId, eventId));
           if (kontoIds !== null) {
             await tx.insert(finEventKassenAngepasst).values({ eventId });
             if (ids.length > 0)
@@ -1874,6 +1912,19 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       }
     },
 
+    async letzterExportSeq() {
+      const [r] = await db
+        .select({ bisSeq: finExporte.bisSeq })
+        .from(finExporte)
+        .orderBy(desc(finExporte.bisSeq))
+        .limit(1);
+      return r?.bisSeq ?? 0;
+    },
+
+    async exportEintragen(e) {
+      await db.insert(finExporte).values({ id: randomUUID(), ...e });
+    },
+
     async kettenDaten() {
       // DSQL transactions read from one snapshot, so the counter matches the bookings read.
       return db.transaction(async (tx) => {
@@ -1890,7 +1941,18 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             tx,
             seite.map((b) => b.id),
           );
+          const belegIds = seite.flatMap((b) =>
+            b.quelleTyp === 'beleg' && b.quelleId ? [b.quelleId] : [],
+          );
+          const dateien =
+            belegIds.length === 0
+              ? []
+              : await tx
+                  .select({ id: finBelege.id, sha256: finBelege.dateiSha256 })
+                  .from(finBelege)
+                  .where(inArray(finBelege.id, belegIds));
           for (const b of seite) {
+            const sha256 = dateien.find((d) => d.id === b.quelleId)?.sha256;
             buchungen.push({
               seq: b.seq,
               id: b.id,
@@ -1904,6 +1966,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
               erstelltAm: b.erstelltAm.toISOString(),
               prevHash: b.prevHash,
               hash: b.hash,
+              ...(b.quelleTyp === 'beleg' && sha256 && { belege: [{ sha256 }] }),
               zeilen: zeilen
                 .filter((z) => z.buchungId === b.id)
                 .map((z) => ({

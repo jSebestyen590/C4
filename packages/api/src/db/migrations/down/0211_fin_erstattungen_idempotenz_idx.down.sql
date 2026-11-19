@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_erstattungen_idempotenz_idx

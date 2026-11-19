@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS fin_belege_nummer_idx ON fin_belege (nummer)

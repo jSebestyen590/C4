@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeApp, bearer } from '../test/appTestHelfer';
 
 describe('finanzen', () => {
@@ -140,6 +140,7 @@ describe('finanzen', () => {
     };
     const konten = await t.lesen<K[]>('vorstand-token', '/konten');
     expect(konten.map((k) => k.id).sort()).toEqual([
+      'auslagen',
       'bank',
       'eroeffnung',
       'geldtransit',
@@ -1856,6 +1857,482 @@ describe('finanzen', () => {
       const detail = await t.lesen<Dto>('admin-token', `/kassenabrechnungen/${e.id}`);
       expect(detail.storniert).toBe(true);
       expect((await t.anfrage('admin-token', 'GET', '/kassenabrechnungen/nix')).status).toBe(404);
+    });
+  });
+
+  describe('Belege', () => {
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const sha = 'a'.repeat(64);
+    const datei = (hash = sha) => ({
+      sha256: hash,
+      schluessel: `belege/${hash}.pdf`,
+      typ: 'application/pdf',
+      name: 'rechnung.pdf',
+    });
+    afterEach(() => vi.useRealTimers());
+    const jetzt = (iso: string) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(iso));
+    };
+
+    /** Aufwand category, Rechnungssteller and 1000 EUR on the Bank. */
+    async function belegSetup() {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      const post = async (pfad: string, body: unknown) =>
+        (await (await t.roh('admin-token', 'POST', pfad, body)).json()) as Dto;
+      const kat = (await post('/konten', { name: 'Material', art: 'aufwand' })).id as string;
+      const steller = (await post('/rechnungssteller', { name: 'Metro' })).id as string;
+      await t.buchen({
+        datum: '2027-01-02',
+        text: 'Startguthaben',
+        quelleTyp: 'umbuchung',
+        zeilen: [
+          { kontoId: 'eroeffnung', betragCent: -100000 },
+          { kontoId: 'bank', betragCent: 100000 },
+        ],
+      });
+      const daten = (extra: Dto = {}) => ({
+        rechnungsstellerId: steller,
+        belegdatum: '2027-01-05',
+        posten: [
+          {
+            kategorieId: kat,
+            text: 'Cola',
+            anzahlMilli: 1000,
+            einzelpreisCent: 1190,
+            steuersatz: 1900,
+          },
+        ],
+        zahlweg: 'bank',
+        bezahldatum: '2027-01-06',
+        datei: datei(),
+        ...extra,
+      });
+      const entwurf = async (extra: Dto = {}) => {
+        const res = await t.roh('admin-token', 'POST', '/beleg-entwuerfe', { daten: daten(extra) });
+        expect(res.status).toBe(201);
+        return ((await res.json()) as Dto).id as string;
+      };
+      const buchenE = (id: string, extra: Dto = {}, token = 'admin-token') =>
+        t.roh(token, 'POST', `/beleg-entwuerfe/${id}/buchen`, {
+          idempotenzSchluessel: crypto.randomUUID(),
+          ...extra,
+        });
+      /** Drafts and books a Beleg; returns the result. */
+      const gebucht = async (extra: Dto = {}) => {
+        const id = await entwurf(extra);
+        const w = (await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`)).warnungen as Dto[];
+        const res = await buchenE(id, { bestaetigt: w.map((x) => x.code) });
+        expect(res.status, await res.clone().text()).toBe(201);
+        return (await res.json()) as Dto;
+      };
+      return { ...t, kat, steller, daten, entwurf, buchenE, gebucht };
+    }
+
+    it('creates, reads, changes and deletes drafts', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf();
+      const e = await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`);
+      expect(e.daten.posten).toHaveLength(1);
+      expect(e.dateiUrl).toBe(`https://s3.example/finanzarchiv/belege/${sha}.pdf`);
+      expect(e.warnungen).toEqual([]);
+      // An empty draft is fine; only booking needs the required fields.
+      const leer = await t.roh('admin-token', 'PUT', `/beleg-entwuerfe/${id}`, { daten: {} });
+      expect(leer.status).toBe(200);
+      const liste = await t.lesen<Dto>('admin-token', '/belege');
+      expect(liste.belege).toMatchObject([
+        { id, status: 'entwurf', nummer: null, hatDatei: false },
+      ]);
+      expect((await t.roh('admin-token', 'DELETE', `/beleg-entwuerfe/${id}`)).status).toBe(200);
+      expect((await t.roh('admin-token', 'GET', `/beleg-entwuerfe/${id}`)).status).toBe(404);
+      expect(
+        (await t.roh('admin-token', 'PUT', `/beleg-entwuerfe/${id}`, { daten: {} })).status,
+      ).toBe(404);
+      expect((await t.roh('admin-token', 'DELETE', `/beleg-entwuerfe/${id}`)).status).toBe(404);
+    });
+
+    it('books a draft with a gapless number, the Vorsteuer fields and a valid hash chain', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf();
+      const erst = await t.buchenE(id);
+      expect(erst.status).toBe(201);
+      const res = (await erst.json()) as Dto;
+      expect(res.nummer).toBe('B-2027-0001');
+      const zweiter = await t.gebucht();
+      expect(zweiter.nummer).toBe('B-2027-0002');
+      expect((await t.roh('admin-token', 'GET', `/beleg-entwuerfe/${id}`)).status).toBe(404);
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${res.buchungId}`);
+      expect(buchung).toMatchObject({
+        quelleTyp: 'beleg',
+        datum: '2027-01-06',
+        text: 'Beleg B-2027-0001: Metro',
+      });
+      expect(buchung.zeilen).toMatchObject([
+        {
+          kontoId: t.kat,
+          betragCent: 1190,
+          nettoCent: 1000,
+          steuerCent: 190,
+          steuersatz: 1900,
+          steuerArt: 'vorsteuer',
+        },
+        { kontoId: 'bank', betragCent: -1190 },
+      ]);
+      const detail = await t.lesen<Dto>('admin-token', `/belege/${res.id}`);
+      expect(detail).toMatchObject({
+        nummer: 'B-2027-0001',
+        summeCent: 1190,
+        rechnungssteller: 'Metro',
+        storniert: false,
+      });
+      expect(detail.datei.url).toContain(`belege/${sha}.pdf`);
+      const kette = await t.lesen<Dto>('admin-token', '/kette');
+      expect(kette).toMatchObject({ ok: true, fehler: [] });
+    });
+
+    it('starts the numbering again in a new year and does not use up a number on a failure', async () => {
+      const t = await belegSetup();
+      expect((await t.gebucht()).nummer).toBe('B-2027-0001');
+      const kaputt = await t.buchenE(await t.entwurf({ posten: [] }));
+      expect(kaputt.status).toBe(400);
+      expect((await t.gebucht({ datei: datei('b'.repeat(64)) })).nummer).toBe('B-2027-0002');
+      jetzt('2028-01-02T10:00:00Z');
+      expect((await t.gebucht({ datei: datei('c'.repeat(64)) })).nummer).toBe('B-2028-0001');
+    });
+
+    it('is idempotent per key', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf();
+      const key = crypto.randomUUID();
+      const erst = await t.buchenE(id, { idempotenzSchluessel: key });
+      expect(erst.status).toBe(201);
+      const nochmal = await t.buchenE(id, { idempotenzSchluessel: key });
+      expect(nochmal.status).toBe(200);
+      expect(await nochmal.json()).toMatchObject({
+        ...((await erst.json()) as Dto),
+        wiederholt: true,
+      });
+      expect(((await t.lesen<Dto>('admin-token', '/belege')) as Dto).belege).toHaveLength(1);
+    });
+
+    it('needs finanzen:buchen to write and finanzen:lesen to read', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf();
+      for (const [method, pfad] of [
+        ['POST', '/rechnungssteller'],
+        ['PATCH', '/rechnungssteller/x'],
+        ['POST', '/beleg-entwuerfe'],
+        ['PUT', `/beleg-entwuerfe/${id}`],
+        ['DELETE', `/beleg-entwuerfe/${id}`],
+        ['POST', `/beleg-entwuerfe/${id}/buchen`],
+        ['POST', '/belege/x/kopieren'],
+        ['POST', '/beleg-dateien/upload'],
+        ['POST', '/erstattungen'],
+      ]) {
+        for (const token of ['member-token', 'reader-token', 'vorstand-token']) {
+          const res = await t.roh(token, method!, pfad!, {});
+          expect(res.status, `${method} ${pfad} ${token}`).toBe(403);
+        }
+      }
+      for (const pfad of ['/rechnungssteller', '/belege', `/beleg-entwuerfe/${id}`, '/auslagen']) {
+        expect((await t.roh('vorstand-token', 'GET', pfad)).status, pfad).toBe(200);
+        expect((await t.roh('member-token', 'GET', pfad)).status, pfad).toBe(403);
+      }
+    });
+
+    it('rejects incomplete drafts with German messages', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf({
+        rechnungsstellerId: null,
+        belegdatum: null,
+        datei: null,
+        zahlweg: null,
+      });
+      const res = await t.buchenE(id);
+      expect(res.status).toBe(400);
+      const text = ((await res.json()) as Dto).error as string;
+      for (const teil of ['Rechnungssteller', 'Belegdatum', 'Eigenbeleg', 'Zahlweg'])
+        expect(text).toContain(teil);
+      // An Eigenbeleg needs a reason, not a file.
+      const ohneDatei = await t.buchenE(
+        await t.entwurf({ datei: null, eigenbelegBegruendung: 'Beleg verloren' }),
+      );
+      expect(ohneDatei.status).toBe(201);
+      const kat = await t.entwurf({
+        posten: [
+          { kategorieId: 'safe', text: '', anzahlMilli: 1000, einzelpreisCent: 100, steuersatz: 0 },
+        ],
+      });
+      expect(((await (await t.buchenE(kat)).json()) as Dto).error).toContain(
+        'keine Aufwandskategorie',
+      );
+    });
+
+    it('asks to confirm warnings before booking', async () => {
+      const t = await belegSetup();
+      const teuer = {
+        posten: [
+          {
+            kategorieId: t.kat,
+            text: '',
+            anzahlMilli: 1000,
+            einzelpreisCent: 60000,
+            steuersatz: 0,
+          },
+        ],
+      };
+      const id = await t.entwurf(teuer);
+      const w = (await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`)).warnungen as Dto[];
+      expect(w.map((x) => x.code)).toContain('hoher_betrag');
+      const offen = await t.buchenE(id);
+      expect(offen.status).toBe(409);
+      expect(((await offen.json()) as Dto).warnungen.map((x: Dto) => x.code)).toContain(
+        'hoher_betrag',
+      );
+      const ok = await t.buchenE(id, { bestaetigt: w.map((x) => x.code) });
+      expect(ok.status).toBe(201);
+      // The same file again is reported.
+      const nochmal = await t.entwurf();
+      expect(
+        ((await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${nochmal}`)).warnungen as Dto[]).map(
+          (x) => x.code,
+        ),
+      ).toContain('datei_doppelt');
+      // A date in the future too.
+      const spaet = await t.entwurf({ belegdatum: '2027-12-01', datei: datei('d'.repeat(64)) });
+      expect(
+        ((await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${spaet}`)).warnungen as Dto[]).map(
+          (x) => x.code,
+        ),
+      ).toContain('zukunft');
+    });
+
+    it('books cash payment out of a Fach with denominations and checks the sum', async () => {
+      const t = await belegSetup();
+      const fach = await t.fach();
+      await t.befuellen(fach, [
+        [2000, 2],
+        [500, 1],
+      ]);
+      const bar = (stueckelung: Dto[]) => ({
+        zahlweg: 'bar',
+        fachId: fach,
+        posten: [
+          { kategorieId: t.kat, text: '', anzahlMilli: 1000, einzelpreisCent: 1200, steuersatz: 0 },
+        ],
+        stueckelung,
+      });
+      const falsch = await t.buchenE(await t.entwurf(bar([{ nennwertCent: 2000, anzahl: -1 }])));
+      expect(falsch.status).toBe(400);
+      const richtig = await t.buchenE(
+        await t.entwurf(
+          bar([
+            { nennwertCent: 2000, anzahl: -1 },
+            { nennwertCent: 500, anzahl: 1 },
+            { nennwertCent: 200, anzahl: 1 },
+            { nennwertCent: 100, anzahl: 1 },
+          ]),
+        ),
+      );
+      expect(richtig.status).toBe(201);
+      const fachDto = (await t.lesen<Dto>('admin-token', '/bargeld')).faecher.find(
+        (f: Dto) => f.id === fach,
+      );
+      expect(fachDto.saldoCent).toBe(4500 - 1200);
+    });
+
+    it('books Auslagen and reimburses them collectively, once', async () => {
+      const t = await belegSetup();
+      const auslage = (extra: Dto = {}) => ({
+        zahlweg: 'auslage',
+        mitgliedId: 'm2',
+        bezahldatum: null,
+        ...extra,
+      });
+      const b1 = await t.gebucht(auslage({ datei: datei('1'.repeat(64)) }));
+      const b2 = await t.gebucht(
+        auslage({ datei: datei('2'.repeat(64)), belegdatum: '2027-01-07' }),
+      );
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${b1.buchungId}`);
+      expect(buchung.datum).toBe('2027-01-05');
+      expect(buchung.zeilen.at(-1)).toMatchObject({ kontoId: 'auslagen', betragCent: -1190 });
+      const offen = await t.lesen<Dto>('admin-token', '/auslagen');
+      expect(offen.mitglieder).toHaveLength(1);
+      expect(offen.mitglieder[0]).toMatchObject({ mitgliedId: 'm2', summeCent: 2380 });
+      expect(offen.mitglieder[0].mitglied.username).toBe('user-m2');
+      expect((await t.lesen<Dto>('admin-token', `/belege/${b1.id}`)).bezahldatum).toBeNull();
+
+      const erstatten = (belegIds: string[], extra: Dto = {}) =>
+        t.roh('admin-token', 'POST', '/erstattungen', {
+          idempotenzSchluessel: crypto.randomUUID(),
+          mitgliedId: 'm2',
+          belegIds,
+          datum: '2027-02-01',
+          zahlweg: 'bank',
+          ...extra,
+        });
+      const res = await erstatten([b1.id, b2.id]);
+      expect(res.status).toBe(201);
+      const erstattung = (await res.json()) as Dto;
+      expect(erstattung.summeCent).toBe(2380);
+      const eb = await t.lesen<Dto>('admin-token', `/buchungen/${erstattung.buchungId}`);
+      expect(eb).toMatchObject({ quelleTyp: 'erstattung', datum: '2027-02-01' });
+      expect(eb.zeilen).toMatchObject([
+        { kontoId: 'auslagen', betragCent: 2380 },
+        { kontoId: 'bank', betragCent: -2380 },
+      ]);
+      expect((await t.lesen<Dto>('admin-token', '/auslagen')).mitglieder).toEqual([]);
+      const detail = await t.lesen<Dto>('admin-token', `/belege/${b1.id}`);
+      expect(detail.bezahldatum).toBe('2027-02-01');
+      expect(detail.erstattung.id).toBe(erstattung.id);
+
+      // A second Erstattung of the same Belege is refused ...
+      const doppelt = await erstatten([b1.id]);
+      expect(doppelt.status).toBe(400);
+      // ... until the Erstattung is reversed: then the Belege are open again.
+      const storno = await t.anfrage(
+        'admin-token',
+        'POST',
+        `/buchungen/${erstattung.buchungId}/storno`,
+        {
+          datum: '2027-02-02',
+          text: 'Falsch',
+        },
+      );
+      expect(storno.status).toBe(201);
+      expect((await t.lesen<Dto>('admin-token', '/auslagen')).mitglieder[0].summeCent).toBe(2380);
+      expect((await t.lesen<Dto>('admin-token', `/belege/${b1.id}`)).bezahldatum).toBeNull();
+      expect((await erstatten([b1.id])).status).toBe(201);
+      // A reversed Beleg is no longer open.
+      await t.anfrage('admin-token', 'POST', `/buchungen/${b2.buchungId}/storno`, {
+        datum: '2027-02-03',
+        text: 'Falsch',
+      });
+      expect((await t.lesen<Dto>('admin-token', '/auslagen')).mitglieder).toEqual([]);
+      expect((await erstatten([b2.id])).status).toBe(400);
+      const liste = (await t.lesen<Dto>('admin-token', '/belege')).belege as Dto[];
+      expect(liste.find((b) => b.id === b2.id)?.status).toBe('storniert');
+    });
+
+    it('reimburses in cash from a Fach and replays an Erstattung with the same key', async () => {
+      const t = await belegSetup();
+      const fach = await t.fach();
+      await t.befuellen(fach, [[2000, 1]]);
+      const b = await t.gebucht({
+        zahlweg: 'auslage',
+        mitgliedId: 'm2',
+        bezahldatum: null,
+        posten: [
+          { kategorieId: t.kat, text: '', anzahlMilli: 1000, einzelpreisCent: 1500, steuersatz: 0 },
+        ],
+      });
+      const body = {
+        idempotenzSchluessel: crypto.randomUUID(),
+        mitgliedId: 'm2',
+        belegIds: [b.id],
+        datum: '2027-02-01',
+        zahlweg: 'bar',
+        fachId: fach,
+        stueckelung: [
+          { nennwertCent: 2000, anzahl: -1 },
+          { nennwertCent: 500, anzahl: 1 },
+        ],
+      };
+      const erst = await t.roh('admin-token', 'POST', '/erstattungen', body);
+      expect(erst.status).toBe(201);
+      const nochmal = await t.roh('admin-token', 'POST', '/erstattungen', body);
+      expect(nochmal.status).toBe(200);
+      expect(((await nochmal.json()) as Dto).wiederholt).toBe(true);
+      const fachDto = (await t.lesen<Dto>('admin-token', '/bargeld')).faecher.find(
+        (f: Dto) => f.id === fach,
+      );
+      expect(fachDto.saldoCent).toBe(500);
+      const ohneFach = await t.roh('admin-token', 'POST', '/erstattungen', {
+        ...body,
+        idempotenzSchluessel: crypto.randomUUID(),
+        fachId: null,
+      });
+      expect(ohneFach.status).toBe(400);
+    });
+
+    it('manages Rechnungssteller and copies a booked Beleg to a new draft', async () => {
+      const t = await belegSetup();
+      expect(
+        (await t.roh('admin-token', 'POST', '/rechnungssteller', { name: ' metro ' })).status,
+      ).toBe(400);
+      const neu = (await (
+        await t.roh('admin-token', 'POST', '/rechnungssteller', { name: 'Edeka' })
+      ).json()) as Dto;
+      expect(
+        (await t.roh('admin-token', 'PATCH', `/rechnungssteller/${neu.id}`, { name: 'METRO' }))
+          .status,
+      ).toBe(400);
+      expect(
+        (await t.roh('admin-token', 'PATCH', `/rechnungssteller/${neu.id}`, { archiviert: true }))
+          .status,
+      ).toBe(200);
+      expect((await t.lesen<Dto[]>('admin-token', '/rechnungssteller')).map((r) => r.name)).toEqual(
+        ['Metro'],
+      );
+      expect(
+        (await t.lesen<Dto[]>('admin-token', '/rechnungssteller?archiviert=1')).map((r) => r.name),
+      ).toEqual(['Edeka', 'Metro']);
+      expect(
+        (await t.roh('admin-token', 'PATCH', '/rechnungssteller/nix', { archiviert: true })).status,
+      ).toBe(404);
+      const b = await t.gebucht();
+      expect(
+        (await t.lesen<Dto[]>('admin-token', '/rechnungssteller'))[0]!.zuletztAm,
+      ).not.toBeNull();
+      const kopie = (await (
+        await t.roh('admin-token', 'POST', `/belege/${b.id}/kopieren`)
+      ).json()) as Dto;
+      const e = await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${kopie.id}`);
+      expect(e.daten).toMatchObject({
+        rechnungsstellerId: t.steller,
+        zahlweg: 'bank',
+        datei: datei(),
+      });
+      expect(e.daten.posten[0].einzelpreisCent).toBe(1190);
+      expect((await t.roh('admin-token', 'POST', '/belege/nix/kopieren')).status).toBe(404);
+    });
+
+    it('filters the Beleg list and prepares an upload with a duplicate hint', async () => {
+      const t = await belegSetup();
+      const b = await t.gebucht();
+      const liste = async (q: string) =>
+        (await t.lesen<Dto>('admin-token', `/belege${q}`)).belege as Dto[];
+      expect(await liste('?status=gebucht')).toHaveLength(1);
+      expect(await liste('?status=entwurf')).toHaveLength(0);
+      expect(await liste('?zahlweg=bar')).toHaveLength(0);
+      expect(await liste('?von=2027-01-06')).toHaveLength(0);
+      expect(await liste(`?rechnungsstellerId=${t.steller}&bis=2027-01-05`)).toHaveLength(1);
+      const body = { sha256: sha, groesse: 1000, typ: 'application/pdf', name: 'a.pdf' };
+      const up = (await (
+        await t.roh('admin-token', 'POST', '/beleg-dateien/upload', body)
+      ).json()) as Dto;
+      expect(up).toMatchObject({
+        schluessel: `belege/${sha}.pdf`,
+        checksumSha256: Buffer.from(sha, 'hex').toString('base64'),
+        schonGebucht: { id: b.id, nummer: 'B-2027-0001' },
+      });
+      expect(up.uploadUrl).toContain('size=1000');
+      const frei = (await (
+        await t.roh('admin-token', 'POST', '/beleg-dateien/upload', {
+          ...body,
+          sha256: 'e'.repeat(64),
+        })
+      ).json()) as Dto;
+      expect(frei.schonGebucht).toBeNull();
+      for (const kaputt of [
+        { ...body, typ: 'text/plain' },
+        { ...body, groesse: 21 * 1024 * 1024 },
+        { ...body, sha256: 'XYZ' },
+      ])
+        expect((await t.roh('admin-token', 'POST', '/beleg-dateien/upload', kaputt)).status).toBe(
+          400,
+        );
     });
   });
 });

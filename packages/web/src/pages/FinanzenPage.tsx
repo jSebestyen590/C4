@@ -3,6 +3,8 @@ import {
   IconBook2,
   IconCash,
   IconCoins,
+  IconFileInvoice,
+  IconReceiptRefund,
   IconListDetails,
   IconNotebook,
   IconPencilPlus,
@@ -80,6 +82,18 @@ export function FinanzenPage() {
           icon={<IconNotebook size={28} />}
           titel="Buch"
           text="Strichlisten aller Mitglieder: Seiten, Abrechnung und Tarife."
+        />
+        <Kachel
+          to="/finanzen/belege"
+          icon={<IconFileInvoice size={28} />}
+          titel="Belege"
+          text="Rechnungen und Bons erfassen, buchen und ablegen."
+        />
+        <Kachel
+          to="/finanzen/auslagen"
+          icon={<IconReceiptRefund size={28} />}
+          titel="Offene Auslagen"
+          text="Was Mitglieder vorgestreckt haben, und die Sammelerstattung."
         />
         {can('finanzen:buchen') && (
           <Kachel

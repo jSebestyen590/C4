@@ -368,6 +368,19 @@ const HASH_1 = 'b793c46053220e30625e617241d37e478d90891d9fab068c3ff031e526849484
 const HASH_2 = '9f3fb5b928579b8e4538e95694b99aec5a2eb9934e0144fa9d7846b16fed9837';
 
 describe('kanonisch und buchungsHash', () => {
+  it('hashes an entry without Beleg files like before and differently with one', async () => {
+    expect(await buchungsHash(GENESIS_HASH, { ...buchung1, belege: [] })).toBe(HASH_1);
+    const mit = await buchungsHash(GENESIS_HASH, { ...buchung1, belege: [{ sha256: 'a'.repeat(64) }] });
+    expect(mit).not.toBe(HASH_1);
+    const zwei = [{ sha256: 'b'.repeat(64) }, { sha256: 'a'.repeat(64) }];
+    expect(await buchungsHash(GENESIS_HASH, { ...buchung1, belege: zwei })).toBe(
+      await buchungsHash(GENESIS_HASH, { ...buchung1, belege: [...zwei].reverse() }),
+    );
+    expect(kanonisch({ ...buchung1, belege: zwei })).toContain(
+      `"belege":[{"sha256":"${'a'.repeat(64)}"},{"sha256":"${'b'.repeat(64)}"}]`,
+    );
+  });
+
   it('serialises an entry in the pinned canonical form', () => {
     expect(kanonisch(buchung1)).toBe(KANONISCH_1);
   });

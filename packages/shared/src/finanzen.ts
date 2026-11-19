@@ -29,6 +29,8 @@ export const QUELLE_TYPEN = [
   'eroeffnung',
   'zaehlung',
   'kassenabrechnung',
+  'beleg',
+  'erstattung',
 ] as const;
 export type QuelleTyp = (typeof QUELLE_TYPEN)[number];
 /** The types a user may choose when booking by hand (`storno` has its own route). */
@@ -74,6 +76,8 @@ export const QUELLE_TYP_LABELS: Record<QuelleTyp, string> = {
   eroeffnung: 'Eröffnung',
   zaehlung: 'Zählung',
   kassenabrechnung: 'Kassenabrechnung',
+  beleg: 'Beleg',
+  erstattung: 'Erstattung',
 };
 
 // ----- Schemas
@@ -402,6 +406,8 @@ export interface HashBuchung {
   /** Instant of creation; serialised as ISO UTC with milliseconds. */
   erstelltAm: string | Date;
   zeilen: readonly HashZeile[];
+  /** SHA-256 (hex) of the Beleg files of the entry; sorted in the hash. Omitted = none. */
+  belege?: readonly { sha256: string }[];
 }
 
 /** An entry as stored, for verifying the chain. */
@@ -444,7 +450,7 @@ const zeitpunkt = (t: string | Date): string => new Date(t).toISOString();
 
 /**
  * The canonical JSON an entry is hashed with (format version 1): snake_case keys as in the
- * database, lines by `pos`, denominations by `nennwert_cent`, `belege` reserved for later slices.
+ * database, lines by `pos`, denominations by `nennwert_cent`, `belege` (file hashes) sorted by hash.
  */
 export function kanonisch(buchung: HashBuchung): string {
   const zeilen: Kanonisch[] = [...buchung.zeilen]
@@ -474,7 +480,10 @@ export function kanonisch(buchung: HashBuchung): string {
     erstellt_von: buchung.erstelltVon,
     erstellt_am: zeitpunkt(buchung.erstelltAm),
     zeilen,
-    belege: [],
+    belege: [...(buchung.belege ?? [])]
+      .map((b) => b.sha256)
+      .sort()
+      .map((sha256) => ({ sha256 })),
   });
 }
 

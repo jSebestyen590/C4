@@ -56,3 +56,15 @@ variable "mail_job_rate" {
   default     = "rate(2 minutes)"
   description = "How often EventBridge Scheduler runs the Party-Mail job (fetching new mails)."
 }
+
+variable "finanzarchiv_retention_mode" {
+  type        = string
+  default     = "GOVERNANCE"
+  description = "Object Lock default retention mode of the Finanzarchiv bucket (COMPLIANCE in prod)."
+}
+
+variable "finanzarchiv_retention_days" {
+  type        = number
+  default     = 1
+  description = "Object Lock default retention of the Finanzarchiv bucket in days (3650 = 10 years in prod)."
+}

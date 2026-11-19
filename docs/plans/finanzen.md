@@ -115,18 +115,16 @@ Keine Fehler:
   Beträge sind rechtsbündig mit Tabellenziffern, negative Werte deutlich abgesetzt.
 - Warnungen je Kontoart (bestätigungspflichtig, nicht blockierend): Bank im Minus, Aufwand mit Guthaben und
   Erlöse im Minus nach der Buchung (`saldoWarnungen`, siehe `docs/finanzen.md`).
-- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
-  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
-  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
-- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick, Tipp oder
-  Enter/Leertaste eine kurze Erklärung). Die Texte stehen zentral in `packages/web/src/finanzenHilfe.ts`;
-  jede Scheibe ergänzt ihre Texte, damit das Wissen beim Wechsel der Finanzer:in in der App bleibt.
+- Erklärungsbedürftige Felder bekommen einen `InfoHinweis` (Info-Symbol am Label, öffnet per Klick oder
+  Tipp eine kurze Erklärung; kein Tab-Stopp, damit die Tastaturführung nicht unterbrochen wird). Die Texte
+  stehen zentral in `packages/web/src/finanzenHilfe.ts`; jede Scheibe ergänzt ihre Texte, damit das Wissen
+  beim Wechsel der Finanzer:in in der App bleibt.
 
 ## Zielscheiben
 
 Abhängigkeiten: 0 → (1, 2, 4 parallel) → 3 (braucht 1) → 5 → 6 → 7; 8 braucht 4; 9 braucht 4 und
 wächst mit; Ü läuft vor dem Stichtag; 10 kommt zuletzt; 11 ist unabhängig und lohnt sich, sobald
-mehrere Unterseiten stehen.
+mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export).
 
 ### Scheibe 0: Fundament
 
@@ -185,7 +183,9 @@ mehrere Unterseiten stehen.
 
 ### Scheibe 4: Belege
 
-- Rechnungssteller (mit Rabatt), Steuersätze, Kategorien (Erlös-/Aufwandskonten).
+**4a umgesetzt** (Plan und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. **4b offen:** Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, „Einlagern“ je Beleg. Die Liste unten beschreibt das Gesamtziel.
+
+- Rechnungssteller, Steuersätze, Kategorien (Erlös-/Aufwandskonten); kein Rabatt, Preise werden wie auf dem Beleg getippt.
 - **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
   „Eröffnung / Saldovortrag“ = −Vereinsvermögen). Kontenplan, Salden und Auswertungen zeigen
   Erlös- und Neutral-Konten deshalb mit umgekehrtem Vorzeichen (Erlöse positiv, „Eröffnung“ z. B.
@@ -204,7 +204,7 @@ mehrere Unterseiten stehen.
   neuer Einreichung und an das Mitglied bei Genehmigung, Verwerfung und Erstattung.
 - Posten: **entweder** Lager-Ware + Gebinde **oder** Kategorie + Freitext (Beamer braucht keinen
   Artikel mehr); Anzahl, Einzelpreis, tatsächlicher Steuersatz (Vorschlag aus
-  `waren.steuersatz_standard` bzw. der Kategorie), Pfand aus dem Gebinde (überschreibbar, gleich
+  `fin_konten.steuersatz_standard` der Kategorie; `waren.steuersatz_standard` gibt es nicht), Pfand aus dem Gebinde (überschreibbar, gleich
   netto/brutto wie der Posten). Warengruppe → Kategorie als Zuordnung, damit Lager-Waren
   automatisch richtig kontiert werden.
 - Netto-Belege: Korrektur der Summen netto und je Steuersatz bis 10 ct.
@@ -307,6 +307,21 @@ Journal). Das denken wir zu Beginn der Scheibe genauer durch. Überlegungen:
   angelegt, rechts aktualisiert sich die Liste der Buchungen von selbst).
 - Nur Desktop: am Handy bleibt es bei einer Seite.
 
+### Scheibe 12: Auswertung der Auslagen
+
+Wer hat wann wie viel ausgelegt, und wie schnell erstatten wir? Grundlage sind `fin_belege` (Zahlweg
+`auslage`, Mitglied, Belegdatum, Summe), `fin_erstattungen` / `fin_erstattung_belege` (Datum,
+Zahlweg) und Stornos aus `fin_buchungen.storno_von`; ab 4b zusätzlich das Einreichdatum.
+
+- Je Mitglied und Zeitraum (Monat/Quartal/Jahr, frei): Summe und Anzahl der Auslagen, davon erstattet
+  und offen, Erstattungen bar/Bank.
+- Verzögerung: Tage von Belegdatum (ab 4b: Einreichung) bis Erstattung je Beleg; Durchschnitt, Median
+  und Maximum je Mitglied und Zeitraum; älteste offene Auslage.
+- Übersicht über alle Mitglieder (Rangfolge nach Summe oder Verzögerung) und Verlauf als Diagramm
+  (`@mantine/charts`), Drill-down auf die Belege.
+- CSV-Export wie die übrigen Auswertungen (Scheibe 9). Rechte `finanzen:lesen`; Mitglieder sehen
+  später ihre eigenen Auslagen auf der eigenen Buch-Seite (mobile first).
+
 ### Später
 
 Einlagern aus dem Beleg (vorbefüllte Sammel-Einlagerung, `bestandsvorgang_id` am Posten), Verweis
@@ -337,21 +352,22 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                                                                                                                              |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md)) |
-| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                 |
-| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                    |
-| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                               |
-| 4 Belege                  | offen                                                                                                                                              |
-| 5 GoBD-Abschluss          | offen                                                                                                                                              |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                      |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                     |
-| 8 Rechnungen              | offen                                                                                                                                              |
-| 9 Auswertungen            | offen                                                                                                                                              |
-| Ü Übernahme               | offen                                                                                                                                              |
-| 10 Unentgeltliche Abgaben | offen                                                                                                                                              |
-| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                            |
+| Scheibe                   | Stand                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md))                     |
+| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                     |
+| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                        |
+| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                   |
+| 4 Belege                  | 4a umgesetzt ([finanzen-belege.md](./finanzen-belege.md), „Belege“ in [finanzen.md](../finanzen.md)), 4b offen (Einreichen am Handy mit Push, Lager-Posten, Einlagern) |
+| 5 GoBD-Abschluss          | offen                                                                                                                                                                  |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                          |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                         |
+| 8 Rechnungen              | offen                                                                                                                                                                  |
+| 9 Auswertungen            | offen                                                                                                                                                                  |
+| Ü Übernahme               | offen                                                                                                                                                                  |
+| 10 Unentgeltliche Abgaben | offen                                                                                                                                                                  |
+| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                |
+| 12 Auslagen-Auswertung    | offen                                                                                                                                                                  |
 
 ## Verifikation (je Scheibe)
 

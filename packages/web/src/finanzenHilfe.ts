@@ -11,7 +11,7 @@ export const HILFE = {
     stueckelung:
       'Das Konto führt seinen Bestand je Münze und Schein (Stückelung). Das brauchst du für die Fächer des Safes und für Kassen. Bei jeder Buchung auf dieses Konto gibst du an, welche Münzen und Scheine es sind. Lässt sich nach der ersten Buchung nicht mehr ändern.',
     steuersatzStandard:
-      'Nur ein Vorschlagswert für die spätere Belegerfassung bei Erlös- und Aufwandskonten. Die Buchungszeile trägt den tatsächlichen Satz. Bei Bargeld, Bank, Durchlauf und Neutral ist er ohne Bedeutung. Derzeit wird er noch nirgends vorbelegt.',
+      'Nur ein Vorschlagswert bei Erlös- und Aufwandskonten: Wählst du das Konto als Kategorie eines Belegpostens, wird der Steuersatz damit vorbelegt (du kannst ihn ändern). Die Buchungszeile trägt den tatsächlichen Satz. Bei Bargeld, Bank, Durchlauf und Neutral ist er ohne Bedeutung.',
     archivieren:
       'Konten werden nie gelöscht, sondern archiviert. Ein archiviertes Konto nimmt keine neuen Buchungen mehr an, seine bisherigen Buchungszeilen bleiben erhalten. Du kannst es jederzeit wiederherstellen.',
   },
@@ -123,5 +123,34 @@ export const HILFE = {
       'Ein Eintrag wird nie geändert oder gelöscht. Das Storno ist ein neuer Eintrag mit umgekehrten Werten und deiner Begründung. Jeder Eintrag lässt sich nur einmal stornieren, ein Storno nicht.',
     rangliste:
       'Die Rangliste sortiert nach Umsatz in Euro: Striche mal Strichwert plus Bar. Abzahlungen zählen nicht. Stornierte Einträge zählen nicht mit.',
+  },
+  belege: {
+    nummer:
+      'Die Belegnummer (B-Jahr-Nummer, z. B. B-2027-0001) wird beim Buchen vergeben, lückenlos je Jahr. Das Jahr ist das des Buchens, nicht das Belegdatum. Entwürfe haben noch keine Nummer.',
+    datei:
+      'Das Original wird unverändert archiviert (PDF, JPEG, PNG oder HEIC, höchstens 20 MB) und lässt sich danach nicht mehr ändern oder löschen. Auch ein verworfener Entwurf hinterlässt die Datei im Archiv. Die gleiche Datei erkennt die App an ihrem Fingerabdruck und warnt vor Dubletten.',
+    eigenbeleg:
+      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert.',
+    modus:
+      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Ein Beleg ist immer eine Ausgabe, eine Gutschrift (z. B. Pfandrückgabe) tippst du als Posten mit negativem Preis.',
+    steuersatz:
+      'Der Steuersatz wird mit der Kategorie vorgeschlagen und gilt je Posten. Die Steuer wird je Steuersatz auf die Summe der Posten gerechnet (wie auf Kassenbons), nicht je Posten.',
+    anzahl: 'Die Anzahl darf Dezimalstellen haben, mit Komma getippt, z. B. 1,5 für 1,5 kg.',
+    korrektur:
+      'Bei Netto-Belegen kann die gerechnete Steuer um Cent vom Beleg abweichen. Mit der Korrektur je Steuersatz gleichst du Netto und Steuer an den Beleg an, höchstens um 10 Cent je Wert. Mehr ist keine Rundung, dann stimmen die Posten nicht.',
+    zahlweg:
+      'Bar: Das Geld kommt aus einem Safe-Fach, du gibst die Münzen und Scheine an. Bank: Gebucht wird direkt gegen das Bankkonto zum Bezahldatum. Auslage: Ein Mitglied hat bezahlt; der Beleg bleibt offen, bis du die Auslagen erstattest.',
+    bezahldatum:
+      'Das Datum, an dem bezahlt wurde; bei Bar und Bank das Buchungsdatum. Bei einer Auslage buchst du zum Belegdatum, das Bezahldatum ist später das Datum der Erstattung und wird nicht eingegeben.',
+    stueckelung:
+      'Abgang ist, was du aus dem Fach hergibst, Wechselgeld, was du zurückbekommst. Abgang minus Wechselgeld muss genau die Summe des Belegs ergeben. Der Abgang ist auf den Bestand des Fachs begrenzt.',
+    auslage:
+      'Hat ein Mitglied etwas vorgestreckt, wird es als Auslage gebucht und steht auf „Offene Auslagen“, bis du es erstattest. Mehrere Belege eines Mitglieds erstattest du gemeinsam in einer Buchung, bar oder per Bank.',
+    erstattung:
+      'Die Erstattung bucht „Auslagen Mitglieder“ gegen das Fach oder die Bank, zu ihrem eigenen Datum. Storniert du die Erstattung im Journal, sind die Belege wieder offen.',
+    kopieren:
+      'Ein gebuchter Beleg ist unveränderlich. „Als Entwurf kopieren“ legt einen neuen Entwurf mit denselben Angaben und derselben Datei an, z. B. nach einem Storno über das Journal.',
+    rechnungssteller:
+      'Wer die Rechnung gestellt hat (Händler, Lieferant). Archivierte Rechnungssteller erscheinen nicht mehr in der Auswahl, bleiben aber an alten Belegen erhalten. Vorbelegt wird der zuletzt verwendete.',
   },
 } as const;

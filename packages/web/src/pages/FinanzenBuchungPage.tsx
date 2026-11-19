@@ -36,6 +36,7 @@ import { HILFE } from '../finanzenHilfe';
 import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
+  belegPfad,
   detailPfad,
   finanzenKeys,
   jsonOderFehler,
@@ -226,6 +227,16 @@ export function FinanzenBuchungPage() {
               {b.quelleTyp === 'zaehlung' && b.quelleId && (
                 <Anchor component={Link} to={zaehlungPfad(b.quelleId)}>
                   Zur Zählung
+                </Anchor>
+              )}
+              {b.quelleTyp === 'beleg' && b.quelleId && (
+                <Anchor component={Link} to={belegPfad(b.quelleId)}>
+                  Zum Beleg
+                </Anchor>
+              )}
+              {b.quelleTyp === 'erstattung' && (
+                <Anchor component={Link} to="/finanzen/auslagen">
+                  Zu den Auslagen
                 </Anchor>
               )}
               <Text>

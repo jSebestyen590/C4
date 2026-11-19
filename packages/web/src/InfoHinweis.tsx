@@ -4,8 +4,9 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 
 /**
  * Small info icon that opens an explanation on click, tap, Enter or Space (not hover-only, so it
- * works on touch and keyboard). It is focusable but has no `data-nav`, so Enter in a field jumps
- * to the next input and skips it. Escape closes only the open explanation (also inside a Modal,
+ * works on touch). It is no tab stop (`tabIndex={-1}`) and has no `data-nav`, so Tab and Enter in a
+ * form skip it. The negative block margin keeps a label with icon as high as a plain label, so
+ * fields side by side stay aligned. Escape closes only the open explanation (also inside a Modal,
  * which then stays open) and returns the focus to the icon. Texts live in `finanzenHilfe.ts`.
  */
 export function InfoHinweis({ feld, text }: Readonly<{ feld: string; text: string }>) {
@@ -37,6 +38,8 @@ export function InfoHinweis({ feld, text }: Readonly<{ feld: string; text: strin
           color="gray"
           size={28}
           radius="xl"
+          tabIndex={-1}
+          my={-4}
           aria-label={`Erklärung zu ${feld}`}
           data-mantine-stop-propagation={offen ? 'true' : undefined}
           onClick={() => setOffen((o) => !o)}
