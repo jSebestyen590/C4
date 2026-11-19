@@ -1,5 +1,7 @@
 # Finanzen Scheibe 4b: Belege einreichen, Lager-Posten, Pfand, Einlagern – Umsetzungsplan
 
+> **Hinweis:** „Einlagern“ beim Buchen wurde durch [4c](./finanzen-belege-4c.md) ersetzt (Lager-Beleg-Abgleich); die Einlagern-Teile dieses Plans sind nicht mehr gültig.
+
 Rahmen: [finanzen.md](./finanzen.md) (Architektur, Bedienung, Scheibe 4), Vorgänger:
 [finanzen-belege.md](./finanzen-belege.md) (4a, umgesetzt). Diese Datei ist der vollständige Plan für die
 Umsetzungs-Session; Entscheidungen mit dem Nutzer geklärt am 19.11.2026. Nach dem Merge den Stand in

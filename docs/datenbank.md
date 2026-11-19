@@ -59,7 +59,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `eingereicht_am`, `eingereicht_betrag_cent`; 0224–0229 `fin_beleg_entwuerfe.status`, `eingereicht_von`, `eingereicht_am`,
   `verworfen_grund`, `verworfen_von`, `verworfen_am`. DSQL kennt kein `ADD COLUMN … NOT NULL/DEFAULT` und kein `DROP NOT NULL`:
   `art` und `status` sind nullable (die API schreibt sie immer; `null` gilt als `kategorie` bzw. `entwurf`), und Leergut-Posten
-  tragen in `kategorie_id` das Konto `pfand`. `bestandsvorgaenge.quelle` ist freier Text (kein Check), `beleg` ist ein neuer Wert.
+  tragen in `kategorie_id` das Konto `pfand`. `bestandsvorgaenge.quelle` ist freier Text (kein Check).
   Rollback-Ziel nur dafür: `0212_fin_erstattung_belege_beleg_idx`.
 - 0230–0231 (Finanzen, Lager-Beleg-Abgleich): 0230 legt `waren_abgleich_korrekturen` an (insert-only: Korrekturen je Ware mit
   vorzeichenbehafteter `menge` in Basiseinheiten, `grund`, `text`, `datum`; `ware_id` und `erstellt_von` ohne Fremdschlüssel, die API prüft

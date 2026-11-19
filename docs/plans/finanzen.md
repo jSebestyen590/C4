@@ -25,7 +25,7 @@ Deploy auf dev. Zu Beginn jeder Scheibe werden deren „Offene Punkte" mit dir g
 | Konto         | FinTS direkt, Datei-Import (CSV/CAMT) als Fallback                      |
 | SumUp         | Abruf per SumUp-API                                                     |
 | Buch-Sicht    | Eigene Seite + Rangliste für alle; Rest nur mit Finanzrecht             |
-| Lager         | Belegposten verweisen auf Ware + Gebinde; „Einlagern" optional je Beleg |
+| Lager         | Belegposten verweisen auf Ware + Gebinde; Abgleich Lager ↔ Belege je Ware (4c) |
 
 ## Architektur (gilt für alle Scheiben)
 
@@ -183,7 +183,7 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 4: Belege
 
-**4a und 4b umgesetzt** (4b: [finanzen-belege-4b.md](./finanzen-belege-4b.md); Plan 4a und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. **4b offen:** Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, „Einlagern“ je Beleg. Die Liste unten beschreibt das Gesamtziel.
+**4a, 4b und 4c umgesetzt** (4c: [finanzen-belege-4c.md](./finanzen-belege-4c.md), Lager-Beleg-Abgleich statt „Einlagern“) (4b: [finanzen-belege-4b.md](./finanzen-belege-4b.md); Plan 4a und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. 4b/4c: Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, Lager-Beleg-Abgleich. Die Liste unten beschreibt das Gesamtziel.
 
 - Rechnungssteller, Steuersätze, Kategorien (Erlös-/Aufwandskonten); kein Rabatt, Preise werden wie auf dem Beleg getippt.
 - **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
@@ -324,7 +324,7 @@ Zahlweg) und Stornos aus `fin_buchungen.storno_von`; ab 4b zusätzlich das Einre
 
 ### Später
 
-Einlagern aus dem Beleg (vorbefüllte Sammel-Einlagerung, `bestandsvorgang_id` am Posten), Verweis
+Verweis
 Beleg ↔ Inventar-Gegenstand mit Anschaffungswert, digitales Buch (in der App abstreichen),
 FinTS-Überweisungen, E-Rechnung.
 
@@ -358,7 +358,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                     |
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                        |
 | 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                   |
-| 4 Belege                  | 4a und 4b umgesetzt ([finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
+| 4 Belege                  | 4a, 4b und 4c umgesetzt ([finanzen-belege-4c.md](./finanzen-belege-4c.md), [finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
 | 5 GoBD-Abschluss          | offen                                                                                                                                                                  |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                          |
 | 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                         |

@@ -1,6 +1,6 @@
 # Finanzen
 
-Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen) und Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
+Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen) und Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand, Lager-Beleg-Abgleich) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
 Storno, freie Buchung, „Kette prüfen“ (nur gegen die Datenbank), der Safe mit Fächern, das Buch als Nebenbuch, die Barkassen mit Dienst-Zählung am Event und Abrechnung sowie Belege mit Datei-Archiv und Auslagen. Alles Weitere (Bankanbindung, …)
 steht als Zielbild unten und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Diese Seite
 wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich die Verfahrensdokumentation
@@ -8,9 +8,9 @@ wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich di
 
 ## Überblick
 
-Die Finanzen des Vereins laufen ab dem 01.01.2027 über die App und lösen die Access-Datenbank ab. Gebaut sind Fundament (Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung, „Kette prüfen“), Bargeld (Safe mit Fächern), das Buch ([buch.md](./buch.md)) die Barkassen (Dienst-Zählung am Event, Abrechnung mit einer Buchung) und die Belege (Datei-Archiv, Zahlwege, Auslagen mit Sammelerstattung, täglicher Export, Lager-Posten, Pfand, Einlagern, Einreichen durch Mitglieder); alles Weitere steht als Zielbild und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Die Seite wird mit jeder Scheibe ergänzt und ist zugleich die Verfahrensdokumentation (GoBD: jede Änderung erkennbar, Rechte, Prüfung).
+Die Finanzen des Vereins laufen ab dem 01.01.2027 über die App und lösen die Access-Datenbank ab. Gebaut sind Fundament (Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung, „Kette prüfen“), Bargeld (Safe mit Fächern), das Buch ([buch.md](./buch.md)) die Barkassen (Dienst-Zählung am Event, Abrechnung mit einer Buchung) und die Belege (Datei-Archiv, Zahlwege, Auslagen mit Sammelerstattung, täglicher Export, Lager-Posten, Pfand, Einreichen durch Mitglieder, Lager-Beleg-Abgleich); alles Weitere steht als Zielbild und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Die Seite wird mit jeder Scheibe ergänzt und ist zugleich die Verfahrensdokumentation (GoBD: jede Änderung erkennbar, Rechte, Prüfung).
 
-Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Seiten, API, Datenbankrolle
+Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Lager-Beleg-Abgleich, Seiten, API, Datenbankrolle
 
 ## Zielbild
 
@@ -23,7 +23,7 @@ Die Finanzen des Vereins laufen ab dem **01.01.2027** über die App und lösen d
 | Bargeld      | Safe mit Fächern, Bestand je Münze/Schein, Umbuchen, Wechseln, Zählung                              |
 | Buch         | Nummerierte Seiten der Mitglieder, Striche/Bar/Abzahlung, Tarife je Status, Verlauf, Rangliste      |
 | Barkassen    | Grundbestand, Zählung am Event durch die Dienste, verbindliche Abrechnung durch den:die Finanzer:in |
-| Belege       | Posten mit Kategorie, brutto/netto, Auslagen mit Sammelerstattung (Lager-Posten, Pfand, Einlagern, Einreichen) |
+| Belege       | Posten mit Kategorie, brutto/netto, Auslagen mit Sammelerstattung (Lager-Posten, Pfand, Einreichen, Lager-Beleg-Abgleich) |
 | Konto        | Fyrst per FinTS (Fallback Datei-Import), Zuordnung der Umsätze                                      |
 | SumUp        | Kartenumsätze, Gebühren und Auszahlungen per API                                                    |
 | Rechnungen   | Ausgangsrechnungen als PDF an Mitglieder oder externe Empfänger                                     |
@@ -326,8 +326,7 @@ Ein **Beleg** ist eine **Ausgabe** mit Datei, Rechnungssteller und Posten. Gutsc
 Posten; Einnahmen ohne Rechnung laufen über Kasse oder freie Buchung. Reine Logik: `packages/shared/src/belege.ts`
 (`belegBerechnen`, `belegBuchungszeilen`, `belegPruefen`, `belegNummer`, `offeneAuslagen`), Store und Hilfen in
 `packages/api/src/finanzenBelege.ts`, Datei-Archiv in `finanzarchiv.ts`, Export in `finanzExport.ts`. Rechte: Lesen `finanzen:lesen`,
-Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen durch Mitglieder `belege:einreichen`, Einlagern
-zusätzlich `bestand:buchen`.
+Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen durch Mitglieder `belege:einreichen`.
 
 - **Ablauf:** „Neuer Beleg“, Datei wählen (Handy: Kamera); der Browser berechnet den SHA-256, die Datei geht direkt ins Archiv und
   es entsteht ein **Entwurf** (`fin_beleg_entwuerfe`, änderbar, wird automatisch gespeichert, ohne Nummer). Maske: Rechnungssteller
@@ -346,12 +345,8 @@ zusätzlich `bestand:buchen`.
   mit dem Satz der Ware**; der Saldo ist das ausstehende Leergut.
 - **Warengruppe → Kategorie:** `warengruppen.kategorie_id` (Aufwandskonto, nullable) wird an Untergruppen vererbt (nächster Vorfahr mit
   Zuordnung). Gepflegt auf `/finanzen/warengruppen-kategorien` (Link von der Belege-Seite, Ändern `finanzen:buchen`).
-- **Einlagern:** Optionaler Schalter je Beleg, der **beim Buchen in derselben Transaktion** einen Einlagerungs-Vorgang erzeugt:
-  Lagerort je Ware-Posten, MHD, wo die Ware eins braucht, Zeitpunkt (Standard Belegdatum 12:00 Berlin, bei heute jetzt, nicht in der
-  Zukunft). Braucht zusätzlich `bestand:buchen` (sonst 403). `bestandsvorgaenge.quelle = beleg`, `fin_belege.bestandsvorgang_id`
-  verweist darauf, Kommentar „Beleg B-JJJJ-NNNN“. Ein Storno des Belegs ändert den Bestand **nicht** (Hinweis im Storno-Dialog).
 - **Einreichen durch Mitglieder:** Auf `/belege/einreichen` (Handy zuerst) lädt ein Mitglied Foto/Datei hoch und gibt Belegdatum und
-  Gesamtbetrag an (Pflicht); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Kategorie-Posten. Der
+  Gesamtbetrag an (Pflicht); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten und **Ware-Posten** (Ware, Gebinde, Anzahl, Preis je Gebinde, Pfand vorbelegt). Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren. Der
   Beleg ist immer eine **Auslage** (Zahler = Einreicher:in), kein Eigenbeleg. Es entsteht ein Entwurf mit `status = eingereicht`
   (`eingereicht_von`, `eingereicht_am`, `eingereicht_betrag_cent`; fehlt `status`, gilt `entwurf`). Die Finanzer:in sieht
   Einreichungen in der Belege-Liste, ergänzt sie wie jeden Entwurf (auch den Zahlweg) und bucht sie.
@@ -359,6 +354,12 @@ zusätzlich `bestand:buchen`.
   „Erstattet“ aus der Erstattung. **Zurückziehen** (löschen) geht nur, solange der Beleg noch eingereicht und nicht in Bearbeitung ist
   (409 sonst); dann reicht man neu ein. Nach dem Einreichen kein Bearbeiten durch das Mitglied. **Verwerfen** durch die Finanzer:in:
   `POST /api/finanzen/beleg-entwuerfe/:id/verwerfen` mit Begründung (Pflicht; `verworfen_grund`, `_von`, `_am`), nur für eingereichte.
+- **Reload-sicher:** Die Eingaben der Formulare überstehen ein Neuladen (`packages/web/src/entwurfSpeicher.ts`, `localStorage`): das
+  Belegformular der Finanzer:in je Beleg (`beleg-neu`, `beleg-<id>`) und das Einreichen der Mitglieder (`beleg-einreichen`). Nach
+  Speichern, Buchen oder Einreichen werden sie gelöscht. Die Dateivorschau beim Mitglieder-Einreichen wird nach einem Neuladen nicht
+  wiederhergestellt (die Datei muss neu gewählt werden).
+- **Layout:** Eingaben einer Zeile stehen unten bündig (gleiche Höhe trotz unterschiedlich hoher Labels); „davon Pfand“ in
+  `BelegSummen` erscheint ab `sm`, das Belegformular scrollt am Handy nicht seitlich.
 - **Pushes:** `belege.eingereicht` an alle mit `finanzen:buchen` (außer dem Einreicher), `belege.status` an das Mitglied bei Buchen,
   Verwerfen und Erstattung (siehe [benachrichtigungen.md](./benachrichtigungen.md)).
 - **Datei:** Pflicht, außer **Eigenbeleg** (dann Begründung Pflicht). PDF, JPEG, PNG oder HEIC, höchstens 20 MB, das Original wird
@@ -402,6 +403,40 @@ zusätzlich `bestand:buchen`.
   (`{ bis_seq, kopf_hash, erstellt_am }`), danach eine Zeile in `fin_exporte`. Ohne neue Buchungen gibt es nur den Anker.
 - **Journal:** Das Buchungsdetail verlinkt bei `quelle_typ` `beleg` auf den Beleg, bei `erstattung` auf „Offene Auslagen“.
 
+## Lager-Beleg-Abgleich
+
+Der Abgleich vergleicht je Ware, was **eingelagert** wurde (Ist), mit dem, was auf **Belegen** steht (Soll). Reine Logik:
+`packages/shared/src/lagerAbgleich.ts` (`lagerAbgleich`), Store in `packages/api/src/lagerAbgleich.ts`, Routen in
+`packages/api/src/routes/lagerAbgleich.ts`. Er ersetzt das frühere „Einlagern“ beim Buchen (die Ware ist beim Erfassen des Belegs
+meist längst im Lager); ein Beleg ändert den Lagerbestand nicht.
+
+- **Einheit:** kleinste Einheit (Basiseinheiten, `inBasiseinheiten`); Anzeige gemischt wie der Bestand („1 Kasten, 3 Flaschen“).
+- **Ist:** Zeilen der Art `zugang` von Vorgängen des Typs `einlagerung` (Zeitpunkt ab Stichtag). Entnahme, Umlagerung und Inventur zählen nicht.
+- **Soll:** Ware-Posten gebuchter, nicht stornierter Belege (Belegdatum ab Stichtag), Anzahl × Gebinde in Basiseinheiten, Vorzeichen wie
+  gebucht (Rückgabe negativ). Leergut und nicht gebuchte Entwürfe zählen nicht.
+- **Korrektur:** Eigener Eintrag je Ware (`waren_abgleich_korrekturen`): Menge (Basiseinheiten, Vorzeichen frei), Grund (Bruch beim
+  Einlagern, Fehler beim Händler, Sonstiges mit Text als Pflicht), Datum (nicht vor dem Stichtag, nicht in der Zukunft), Person. **Nur
+  INSERT**: eine Korrektur wird nicht geändert oder gelöscht, eine Rücknahme ist eine Gegenkorrektur. Sie ändert weder Lagerbestand noch
+  Buchungen.
+- **Formel:** Diskrepanz = Σ Ist − Σ Soll − Σ Korrektur. „Ausgleichen“ legt eine Korrektur über die aktuelle Diskrepanz an (Menge
+  vorbelegt, änderbar, Grund Pflicht).
+- **Stichtag:** globales Datum (`einstellungen`, Schlüssel `lager_abgleich_stichtag`), nur Bewegungen ab dem Tag zählen. Ohne Stichtag
+  zeigt die Seite nur den Hinweis zum Festlegen; Korrektur und Zeitleiste antworten dann mit 409.
+- **Zeitleiste** je Ware (chronologisch, am selben Tag Ist vor Soll vor Korrektur, mit laufender Diskrepanz). Beispiel:
+
+| Ereignis       | Menge | Diskrepanz danach |
+| -------------- | ----- | ----------------- |
+| Einlagerung    | 10    | 10                |
+| Beleg          | 5     | 5                 |
+| Beleg          | 5     | 0                 |
+| Einlagerung    | 10    | 10                |
+| Beleg          | 9     | 1                 |
+
+- **Rechte:** Lesen `finanzen:lesen` oder `waren:verwalten`; Korrigieren und Stichtag setzen `finanzen:buchen` oder `waren:verwalten`.
+- **Seiten:** `/finanzen/lager-abgleich` (Liste je Ware mit Ist, Soll, Korrektur, Diskrepanz; Stichtag) und
+  `/finanzen/lager-abgleich/:wareId` (Zeitleiste mit Links zu Vorgang und Beleg, „Ausgleichen“-Dialog). Links auf `/finanzen/belege`,
+  `/lager` und `/waren/:id` (dort die Diskrepanz der Ware, wenn ≠ 0). Kein eigener Eintrag in `AppLayout`.
+
 ## Seiten
 
 Navigation: Menüpunkt „Finanzen“ (`/finanzen`) im `AppLayout`.
@@ -425,6 +460,7 @@ Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung v
 | `/finanzen/belege/neu`, `/entwurf/:id`                | `finanzen:buchen`                                        | Erfassung (desktop first): Datei links, Maske rechts ab `lg`, Posten mit Enter-Führung, Summen je Steuersatz, Zahlweg, Autospeichern, Zusammenfassung mit Warnungen; am Handy Upload per Kamera                          |
 | `/finanzen/belege/:id`                                | `finanzen:lesen`, Kopieren `finanzen:buchen`             | gebuchter Beleg: Datei, Posten, Summen, Link zur Buchung, Erstattung, „Als Entwurf kopieren“                                                                                                                             |
 | `/belege`, `/belege/:id`, `/belege/einreichen`         | `belege:einreichen`                                      | „Meine Belege“ (Navigation, mobile first): Eingereicht (Entwürfe mit Status), Gebucht und Erstattet; Detail mit Datei, Status, eigenen Posten, Verwerfungsgrund und „Zurückziehen“; Einreichen mit Kamera/Datei, Datum, Betrag, optional Rechnungssteller, Notiz, Posten
+| `/finanzen/lager-abgleich`, `/:wareId`                | `finanzen:lesen` oder `waren:verwalten`                  | Lager-Beleg-Abgleich: Liste je Ware und Zeitleiste, Stichtag und „Ausgleichen“ mit `finanzen:buchen` oder `waren:verwalten` (siehe „Lager-Beleg-Abgleich“) |
 | `/finanzen/warengruppen-kategorien`                   | `finanzen:lesen`, Ändern `finanzen:buchen`               | Warengruppe → Kategorie zuordnen (Link von `/finanzen/belege`)
 | `/finanzen/auslagen`                                  | `finanzen:lesen`, Erstatten `finanzen:buchen`            | Offene Auslagen je Mitglied, Auswahl und Sammelerstattung (bar mit Stückelung oder Bank) mit Zusammenfassung                                                                                                             |
 | `/finanzen/rechnungssteller`                          | `finanzen:lesen`, Pflege `finanzen:buchen`               | Rechnungssteller anlegen, umbenennen, archivieren                                                                                                                                                                        |
@@ -489,10 +525,13 @@ eine geglückte Buchung erzeugt einen neuen.
 | `GET /api/finanzen/warengruppen-kategorien`         | `finanzen:lesen`          | Warengruppen mit zugeordneter und geerbter Kategorie
 | `PUT /api/finanzen/warengruppen/:id/kategorie`      | `finanzen:buchen`         | `{ kategorieId }` (Aufwandskonto oder `null`)
 | `POST /api/finanzen/einreichungen/upload`           | `belege:einreichen`       | wie `beleg-dateien/upload` für Mitglieder
-| `POST /api/finanzen/einreichungen`                  | `belege:einreichen`       | Datei, Belegdatum, `betragCent`, optional Rechnungssteller, Notiz, Posten; Zahlweg immer Auslage; 201 `{ id }`, Push `belege.eingereicht`
+| `POST /api/finanzen/einreichungen`                  | `belege:einreichen`       | Datei, Belegdatum, `betragCent`, optional Rechnungssteller, Notiz, Posten (Kategorie oder Ware); Zahlweg immer Auslage; 201 `{ id }`, Push `belege.eingereicht`
 | `GET /api/finanzen/einreichungen`, `/:id`           | `belege:einreichen`       | eigene Einreichungen (Liste, Detail mit Status, Grund, Posten, Datei-URL); die Liste „Eingereicht“ der Seite nutzt `GET /api/finanzen/belege` (`entwurfStatus`, freier Rechnungssteller-Name als `rechnungsstellerName`, in der Liste als „(Vorschlag)“)
 | `DELETE /api/finanzen/einreichungen/:id`            | `belege:einreichen`       | Zurückziehen, nur eigene und noch eingereichte (409 sonst)
-| `GET /api/finanzen/einreichungen/auswahl`           | `belege:einreichen`       | nur `id`/`name` der Rechnungssteller und aktiven Aufwandskonten
+| `GET /api/finanzen/einreichungen/auswahl`           | `belege:einreichen`       | `id`/`name` der Rechnungssteller und aktiven Aufwandskonten, dazu die Waren für Ware-Posten
+| `GET /api/lager-abgleich`, `/waren/:id`             | `finanzen:lesen` oder `waren:verwalten` | Liste je Ware (`stichtag: null` ohne Stichtag) und Zeitleiste einer Ware (409 ohne Stichtag)
+| `POST /api/lager-abgleich/korrekturen`              | `finanzen:buchen` oder `waren:verwalten` | `{ wareId, menge, grund, text?, datum }`; 409 ohne Stichtag, 400 bei Datum vor Stichtag oder in der Zukunft
+| `PUT /api/lager-abgleich/stichtag`                  | `finanzen:buchen` oder `waren:verwalten` | `{ stichtag }`
 | `GET /api/finanzen/auslagen`                        | `finanzen:lesen`          | offene Auslagen je Mitglied                                                                                                                                                                                                               |
 | `POST /api/finanzen/erstattungen`                   | `finanzen:buchen`         | `idempotenzSchluessel`, `mitgliedId`, `datum`, Belege, Zahlweg (bar mit Fach und Stückelung oder Bank); 201, bei bekanntem Schlüssel 200; 409 bei schon erstatteten Belegen                                                               |
 | `GET /api/finanzen/kette`                           | `finanzen:pruefen`        | Ergebnis von „Kette prüfen“                                                                                                                                                                                                               |

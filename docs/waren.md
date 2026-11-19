@@ -54,12 +54,12 @@ Abschnitte: Invarianten, Dateien, Rechte, Datenmodell, IFCO-Lagerplätze, Regale
 ## Datenmodell
 
 Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
-ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur; `quelle` u. a. `inventur` und `beleg`) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
+ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur; `quelle` u. a. `inventur`) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
 
-**Quelle `beleg`:** Ein Einkaufsbeleg mit Lager-Posten und Schalter „Einlagern“ erzeugt beim Buchen einen Einlagerungs-Vorgang mit `quelle = beleg`
-(Kommentar „Beleg B-JJJJ-NNNN“, `fin_belege.bestandsvorgang_id`); siehe [finanzen.md](./finanzen.md), „Belege“. **Warengruppe → Kategorie:**
+**Belege und Lager:** Ein Beleg bucht nichts ins Lager; Einlagerungen und Ware-Posten der Belege gleicht der Lager-Beleg-Abgleich je Ware ab
+(`/finanzen/lager-abgleich`, Diskrepanz auch auf `/lager` und `/waren/:id`; siehe [finanzen.md](./finanzen.md), „Lager-Beleg-Abgleich“). **Warengruppe → Kategorie:**
 `warengruppen.kategorie_id` (Aufwandskonto, nullable, an Untergruppen vererbt) schlägt die Kategorie für Ware-Posten vor; gepflegt auf
 `/finanzen/warengruppen-kategorien`.
 

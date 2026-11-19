@@ -3,6 +3,10 @@
 Folgt auf [finanzen-belege-4b.md](./finanzen-belege-4b.md) (umgesetzt, noch nicht gemergt) und läuft auf demselben Branch
 `finanzen-belege-4b` (ein PR für 4b + 4c). Entscheidungen mit dem Nutzer geklärt am 19.11.2026.
 
+**Status: umgesetzt** (Phasen 1-4). Abweichungen vom Plan: kein Eintrag in `AppLayout` (Zugang über Links auf `/finanzen/belege`,
+`/lager`, `/waren/:id`); Korrektur und Zeitleiste antworten ohne Stichtag mit 409; das Korrektur-Datum muss ≥ Stichtag und nicht in der
+Zukunft liegen (sonst 400); die Dateivorschau beim Mitglieder-Einreichen wird nach einem Reload nicht wiederhergestellt.
+
 ## Entscheidungen (geklärt)
 
 | Thema | Entscheidung |
