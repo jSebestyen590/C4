@@ -183,7 +183,7 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 4: Belege
 
-**4a umgesetzt** (Plan und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. **4b offen:** Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, „Einlagern“ je Beleg. Die Liste unten beschreibt das Gesamtziel.
+**4a und 4b umgesetzt** (4b: [finanzen-belege-4b.md](./finanzen-belege-4b.md); Plan 4a und Abweichungen: [finanzen-belege.md](./finanzen-belege.md), Doku in [finanzen.md](../finanzen.md), „Belege“): Rechnungssteller, Kategorie-Posten, Zahlweg bar/Bank/Auslage, Datei-Archiv mit Object Lock, Datei-Hash in der Kette, täglicher Export, offene Auslagen und Sammelerstattung. **4b offen:** Einreichen am Handy mit Push, Lager-Posten mit Gebinde und Pfand, Zuordnung Warengruppe → Kategorie, „Einlagern“ je Beleg. Die Liste unten beschreibt das Gesamtziel.
 
 - Rechnungssteller, Steuersätze, Kategorien (Erlös-/Aufwandskonten); kein Rabatt, Preise werden wie auf dem Beleg getippt.
 - **Vorzeichen in der Anzeige je Kontenart:** Im Journal gilt Zugang = +, die Summe aller Salden ist 0. Gegenkonten von Geldzugängen haben daher negative Salden (500 € Getränkeerlöse → −500 €,
@@ -311,7 +311,7 @@ Journal). Das denken wir zu Beginn der Scheibe genauer durch. Überlegungen:
 
 Wer hat wann wie viel ausgelegt, und wie schnell erstatten wir? Grundlage sind `fin_belege` (Zahlweg
 `auslage`, Mitglied, Belegdatum, Summe), `fin_erstattungen` / `fin_erstattung_belege` (Datum,
-Zahlweg) und Stornos aus `fin_buchungen.storno_von`; ab 4b zusätzlich das Einreichdatum.
+Zahlweg) und Stornos aus `fin_buchungen.storno_von`; ab 4b zusätzlich das Einreichdatum (`fin_beleg_entwuerfe.eingereicht_am`, am gebuchten Beleg `fin_belege.eingereicht_am`; 4b umgesetzt, Scheibe 12 kann es nutzen).
 
 - Je Mitglied und Zeitraum (Monat/Quartal/Jahr, frei): Summe und Anzahl der Auslagen, davon erstattet
   und offen, Erstattungen bar/Bank.
@@ -358,7 +358,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                     |
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                        |
 | 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                   |
-| 4 Belege                  | 4a umgesetzt ([finanzen-belege.md](./finanzen-belege.md), „Belege“ in [finanzen.md](../finanzen.md)), 4b offen (Einreichen am Handy mit Push, Lager-Posten, Einlagern) |
+| 4 Belege                  | 4a und 4b umgesetzt ([finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
 | 5 GoBD-Abschluss          | offen                                                                                                                                                                  |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                          |
 | 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                         |

@@ -54,9 +54,14 @@ Abschnitte: Invarianten, Dateien, Rechte, Datenmodell, IFCO-Lagerplätze, Regale
 ## Datenmodell
 
 Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
-ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
+ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur; `quelle` u. a. `inventur` und `beleg`) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
+
+**Quelle `beleg`:** Ein Einkaufsbeleg mit Lager-Posten und Schalter „Einlagern“ erzeugt beim Buchen einen Einlagerungs-Vorgang mit `quelle = beleg`
+(Kommentar „Beleg B-JJJJ-NNNN“, `fin_belege.bestandsvorgang_id`); siehe [finanzen.md](./finanzen.md), „Belege“. **Warengruppe → Kategorie:**
+`warengruppen.kategorie_id` (Aufwandskonto, nullable, an Untergruppen vererbt) schlägt die Kategorie für Ware-Posten vor; gepflegt auf
+`/finanzen/warengruppen-kategorien`.
 
 Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansonsten archiviert
 (`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist und im Teilbaum kein Inventar

@@ -5,6 +5,14 @@ Rahmen: [finanzen.md](./finanzen.md) (Architektur, Bedienung, Scheibe 4), Vorgä
 Umsetzungs-Session; Entscheidungen mit dem Nutzer geklärt am 19.11.2026. Nach dem Merge den Stand in
 `docs/plans/finanzen.md` (Scheibe 4, Stand-Tabelle) nachtragen und diese Datei als erledigt markieren.
 
+**Status: umgesetzt** (Phasen 1-5). Abweichungen vom Plan: DSQL-Spalten sind nullable (`art` null = `kategorie`, Entwurf-`status`
+null = `entwurf`), Leergut-Posten speichern `kategorie_id = 'pfand'`; Migrationen `0213`-`0229`. Member-Routen unter
+`/api/finanzen/einreichungen` (Upload, POST, GET Liste, GET `:id`, DELETE `:id`, GET `auswahl` nur mit id/name), alle
+`belege:einreichen`; dazu `POST /api/finanzen/beleg-entwuerfe/:id/verwerfen`, `GET /api/finanzen/beleg-waren`,
+`GET /api/finanzen/warengruppen-kategorien`, `PUT /api/finanzen/warengruppen/:id/kategorie`. Die Liste „Eingereicht“ nutzt
+`GET /api/finanzen/belege` (`entwurfStatus`). Web: `/belege`, `/belege/:id`, `/belege/einreichen` (Navigation „Meine Belege“),
+`/finanzen/warengruppen-kategorien` (Link von der Belege-Seite). Doku: [finanzen.md](../finanzen.md), „Belege“.
+
 ## Entscheidungen (geklärt)
 
 | Thema                  | Entscheidung                                                                                                                                                                                                                                  |
