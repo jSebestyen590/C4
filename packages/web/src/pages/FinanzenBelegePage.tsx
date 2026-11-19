@@ -83,7 +83,7 @@ function BelegTabelle({ zeilen }: Readonly<{ zeilen: readonly BelegListeDto[] }>
           <Stack gap={4}>
             <Group justify="space-between" wrap="nowrap" align="flex-start">
               <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                {b.rechnungssteller ?? 'Ohne Rechnungssteller'}
+                <StellerAnzeige b={b} leer="Ohne Rechnungssteller" />
               </Text>
               <Text fw={600} style={BETRAG_STIL}>
                 {summeVon(b) === null ? '–' : centAnzeigen(summeVon(b)!)}
@@ -142,7 +142,9 @@ function BelegTabelle({ zeilen }: Readonly<{ zeilen: readonly BelegListeDto[] }>
           <Table.Td style={{ whiteSpace: 'nowrap' }}>
             {b.belegdatum ? datumAnzeigen(b.belegdatum) : '–'}
           </Table.Td>
-          <Table.Td style={{ overflowWrap: 'anywhere' }}>{b.rechnungssteller ?? '–'}</Table.Td>
+          <Table.Td style={{ overflowWrap: 'anywhere' }}>
+            <StellerAnzeige b={b} leer="–" />
+          </Table.Td>
           <Table.Td style={BETRAG_STIL}>
             {summeVon(b) === null ? '–' : centAnzeigen(summeVon(b)!)}
           </Table.Td>
@@ -274,4 +276,22 @@ export function FinanzenBelegePage() {
       <BelegTabelle zeilen={rest} />
     </Stack>
   );
+}
+
+/** Rechnungssteller of a Beleg; for a submission only the member's free name, shown as a suggestion. */
+function StellerAnzeige({
+  b,
+  leer,
+}: {
+  b: { rechnungssteller: string | null; rechnungsstellerName: string | null };
+  leer: string;
+}) {
+  if (b.rechnungssteller) return <>{b.rechnungssteller}</>;
+  if (b.rechnungsstellerName)
+    return (
+      <Text span fs="italic" c="dimmed" inherit>
+        {b.rechnungsstellerName} (Vorschlag)
+      </Text>
+    );
+  return <>{leer}</>;
 }

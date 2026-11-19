@@ -26,6 +26,7 @@ import {
   type KettenBuchung,
   type KontoDto,
   type Zahlweg,
+  postenBetrag,
 } from '@c4/shared';
 import {
   BelegWarnungenOffen,
@@ -314,6 +315,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
             rechnungssteller: d.rechnungsstellerId
               ? (steller.get(d.rechnungsstellerId)?.name ?? null)
               : null,
+            rechnungsstellerName: d.rechnungsstellerName ?? null,
             belegdatum: d.belegdatum,
             summeCent: d.posten.length > 0 ? belegBerechnen(d).summe : null,
             zahlweg: d.zahlweg,
@@ -342,6 +344,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
               nummer: b.nummer,
               rechnungsstellerId: b.rechnungsstellerId,
               rechnungssteller: steller.get(b.rechnungsstellerId)?.name ?? null,
+              rechnungsstellerName: null,
               belegdatum: b.belegdatum,
               summeCent: b.summeCent,
               zahlweg: b.zahlweg,
@@ -471,6 +474,12 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           belegNummer: null,
           eingereichtAm: e.eingereichtAm,
           datei: e.daten.datei ?? null,
+          posten: e.daten.posten.map((p) => ({
+            kategorieId: 'kategorieId' in p ? (p.kategorieId ?? null) : null,
+            text: p.text,
+            betragCent: postenBetrag(p),
+            steuersatz: p.steuersatz,
+          })),
         }));
       for (const b of belege.filter((x) => x.eingereichtVon === sub))
         eigene.push({
@@ -492,6 +501,12 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           belegNummer: b.nummer,
           eingereichtAm: b.eingereichtAm,
           datei: (b.datei as BelegDatei | null) ?? null,
+          posten: b.posten.map((p) => ({
+            kategorieId: p.kategorieId,
+            text: p.text,
+            betragCent: p.betragCent,
+            steuersatz: p.steuersatz,
+          })),
         });
       return eigene.sort((a, b) => (b.eingereichtAm ?? '').localeCompare(a.eingereichtAm ?? ''));
     },

@@ -2751,6 +2751,28 @@ describe('finanzen', () => {
         expect(auswahl.kategorien).toEqual(aufwand.map((k) => ({ id: k.id, name: k.name })));
       });
 
+      it('shows the Posten of a submission with the Kategorie name', async () => {
+        const t = await belegSetup();
+        const kat = (await t.lesen<Dto[]>('admin-token', '/konten')).find(
+          (k) => k.art === 'aufwand' && !k.archiviert,
+        )!;
+        const id = await einreichung(t, {
+          posten: [
+            {
+              kategorieId: kat.id,
+              text: 'Kabel',
+              anzahlMilli: 2000,
+              einzelpreisCent: 500,
+              steuersatz: 1900,
+            },
+          ],
+        });
+        const detail = await t.lesen<Dto>('member-token', `/einreichungen/${id}`);
+        expect(detail.posten).toEqual([
+          { kategorie: kat.name, text: 'Kabel', betragCent: 1000, steuersatz: 1900 },
+        ]);
+      });
+
       it('shows and withdraws only own submissions, and only while submitted', async () => {
         const t = await belegSetup();
         const id = await einreichung(t, { rechnungsstellerName: 'Baumarkt' });
@@ -2761,6 +2783,7 @@ describe('finanzen', () => {
         const detail = await t.lesen<Dto>('member-token', `/einreichungen/${id}`);
         expect(detail).toMatchObject({ zurueckziehbar: true, dateiName: 'rechnung.pdf' });
         expect(detail.dateiUrl).toContain('belege/');
+        expect(detail.posten).toEqual([]);
         // Foreign: not visible, not withdrawable.
         expect(await t.lesen<Dto[]>('admin-token', '/einreichungen')).toEqual([]);
         expect((await t.roh('admin-token', 'GET', `/einreichungen/${id}`)).status).toBe(404);

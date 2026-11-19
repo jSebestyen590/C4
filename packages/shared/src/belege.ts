@@ -666,6 +666,16 @@ export interface EinreichungDetailDto extends EinreichungDto {
   dateiTyp: string | null;
   /** True while the member can still withdraw it (`DELETE`). */
   zurueckziehbar: boolean;
+  /** The Posten the member entered (or of the booked Beleg). */
+  posten: EinreichungPostenDto[];
+}
+
+export interface EinreichungPostenDto {
+  /** Name of the Kategorie (Konto); null while none is chosen. */
+  kategorie: string | null;
+  text: string;
+  betragCent: number;
+  steuersatz: number;
 }
 
 // ----- Open Auslagen
@@ -795,6 +805,8 @@ export interface BelegListeEintrag {
   nummer: string | null;
   rechnungsstellerId: string | null;
   rechnungssteller: string | null;
+  /** Drafts submitted by a member: the free name they typed (a suggestion only). */
+  rechnungsstellerName: string | null;
   belegdatum: string | null;
   summeCent: number | null;
   zahlweg: Zahlweg | null;

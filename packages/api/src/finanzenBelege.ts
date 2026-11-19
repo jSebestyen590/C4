@@ -45,6 +45,7 @@ import {
   type KontoArt,
   type PruefKonto,
   type RechnungsstellerDto,
+  postenBetrag,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
@@ -265,7 +266,8 @@ export function einlagerungZeitpunkt(daten: BelegEntwurfDaten, jetzt: Date): Dat
       throw new BuchungUngueltig(['Der Einlagerungszeitpunkt liegt in der Zukunft.']);
     return t;
   }
-  const mittag = daten.belegdatum ? berlinMittag(daten.belegdatum) : jetzt;
+  if (!daten.belegdatum || daten.belegdatum >= datumBerlin(jetzt)) return jetzt;
+  const mittag = berlinMittag(daten.belegdatum);
   return mittag.getTime() > jetzt.getTime() ? jetzt : mittag;
 }
 
@@ -359,6 +361,7 @@ export type EinreichungAktion = 'ok' | 'fehlt' | 'nicht_eingereicht';
 /** An own submission: the DTO plus the file reference (the route adds the presigned URL). */
 export interface EinreichungEintrag extends EinreichungDto {
   datei: BelegDatei | null;
+  posten: { kategorieId: string | null; text: string; betragCent: number; steuersatz: number }[];
 }
 
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
@@ -903,6 +906,12 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         belegNummer: null,
         eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
         datei: d.datei,
+        posten: d.posten.map((p) => ({
+          kategorieId: 'kategorieId' in p ? (p.kategorieId ?? null) : null,
+          text: p.text,
+          betragCent: postenBetrag(p),
+          steuersatz: p.steuersatz,
+        })),
       };
     });
     const belege = await db
@@ -910,6 +919,16 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       .from(finBelege)
       .where(and(eq(finBelege.eingereichtVon, sub), id ? eq(finBelege.id, id) : undefined));
     if (belege.length > 0) {
+      const postenRows = await db
+        .select()
+        .from(finBelegposten)
+        .where(
+          inArray(
+            finBelegposten.belegId,
+            belege.map((b) => b.id),
+          ),
+        )
+        .orderBy(asc(finBelegposten.pos));
       const links = await db
         .select({
           belegId: finErstattungBelege.belegId,
@@ -945,6 +964,14 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           belegNummer: b.nummer,
           eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
           datei: dateiAus(b),
+          posten: postenRows
+            .filter((p) => p.belegId === b.id)
+            .map((p) => ({
+              kategorieId: p.kategorieId,
+              text: p.text,
+              betragCent: p.betragCent,
+              steuersatz: p.steuersatz,
+            })),
         });
     }
     return eintraege.sort((a, b) => (b.eingereichtAm ?? '').localeCompare(a.eingereichtAm ?? ''));
@@ -1037,6 +1064,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             rechnungssteller: d.rechnungsstellerId
               ? (namen.get(d.rechnungsstellerId) ?? null)
               : null,
+            rechnungsstellerName: d.rechnungsstellerName ?? null,
             belegdatum: d.belegdatum,
             summeCent: d.posten.length > 0 ? belegBerechnen(d).summe : null,
             zahlweg: d.zahlweg,
@@ -1068,6 +1096,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             nummer: r.nummer,
             rechnungsstellerId: r.rechnungsstellerId,
             rechnungssteller: namen.get(r.rechnungsstellerId) ?? null,
+            rechnungsstellerName: null,
             belegdatum: r.belegdatum,
             summeCent: r.summeCent,
             zahlweg: r.zahlweg,

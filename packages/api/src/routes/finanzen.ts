@@ -739,8 +739,15 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           await deps.finanzen.einreichung(c.req.param('id'), c.get('user').sub),
           'Einreichung nicht gefunden',
         );
+        const konten = new Map((await deps.finanzen.konten(true)).map((k) => [k.id, k.name]));
         const dto: EinreichungDetailDto = {
           ...einreichungDto(e),
+          posten: e.posten.map((p) => ({
+            kategorie: p.kategorieId ? (konten.get(p.kategorieId) ?? null) : null,
+            text: p.text,
+            betragCent: p.betragCent,
+            steuersatz: p.steuersatz,
+          })),
           dateiUrl: e.datei ? await deps.finanzarchiv.anzeigeUrl(e.datei.schluessel) : null,
           dateiName: e.datei?.name ?? null,
           dateiTyp: e.datei?.typ ?? null,

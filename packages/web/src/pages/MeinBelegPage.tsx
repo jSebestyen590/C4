@@ -27,7 +27,9 @@ export function MeinBelegPage() {
         await api.finanzen.einreichungen[':id'].$delete({ param: { id: id as string } }),
       ),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: finanzenKeys.alle });
+      // Drop the detail first: refetching the deleted id would 404.
+      qc.removeQueries({ queryKey: finanzenKeys.einreichung(id) });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.einreichungen });
       notifications.show({ color: 'green', message: 'Der Beleg wurde zurückgezogen.' });
       void navigate('/belege');
     },
@@ -70,6 +72,26 @@ export function MeinBelegPage() {
               </Text>
             </Stack>
           </Paper>
+          {e.posten.length > 0 && (
+            <Paper withBorder p="md">
+              <Stack gap="sm">
+                <Text fw={700}>Posten</Text>
+                {e.posten.map((p, i) => (
+                  <Group key={i} justify="space-between" align="flex-start" wrap="nowrap">
+                    <div style={{ minWidth: 0 }}>
+                      <Text>{p.text || p.kategorie || 'Posten'}</Text>
+                      <Text size="sm" c="dimmed">
+                        {[p.kategorie, `${String(p.steuersatz / 100).replace('.', ',')} % MwSt.`]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    </div>
+                    <Text fw={600}>{centAnzeigen(p.betragCent)}</Text>
+                  </Group>
+                ))}
+              </Stack>
+            </Paper>
+          )}
           {e.status === 'verworfen' && e.verworfenGrund && (
             <Alert color="red" title="Verworfen">
               {e.verworfenGrund}
