@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import {
   artikelPatch,
+  enterWaehltErsteOption,
   artikelSteuersatz,
   istNeueWareText,
   NEUE_WARE,
@@ -160,5 +162,34 @@ describe('wareWahl', () => {
     expect(wareWahl('w1', true, false)).toBe('ignorieren');
     expect(wareWahl('w1', false, true)).toBe('waehlen');
     expect(wareWahl(null, false, true)).toBe('waehlen');
+  });
+});
+
+describe('enterWaehltErsteOption', () => {
+  const aufbau = (selected: boolean) => {
+    document.body.innerHTML = `<ul id="l"><li data-combobox-option ${selected ? 'data-combobox-selected' : ''}>A</li></ul>
+      <input id="i" aria-controls="l" aria-expanded="true">`;
+    const klicks: string[] = [];
+    document.querySelector('li')!.addEventListener('click', () => klicks.push('A'));
+    let verhindert = false;
+    const e = {
+      key: 'Enter',
+      nativeEvent: { isComposing: false },
+      target: document.getElementById('i')!,
+      preventDefault: () => (verhindert = true),
+      stopPropagation: () => {},
+    };
+    return { e, klicks, verhindert: () => verhindert };
+  };
+  it('picks the first option when none is highlighted', () => {
+    const t = aufbau(false);
+    enterWaehltErsteOption(t.e);
+    expect(t.klicks).toEqual(['A']);
+    expect(t.verhindert()).toBe(true);
+  });
+  it('leaves a highlighted option to Mantine', () => {
+    const t = aufbau(true);
+    enterWaehltErsteOption(t.e);
+    expect(t.klicks).toEqual([]);
   });
 });

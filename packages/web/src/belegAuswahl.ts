@@ -237,3 +237,30 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
   if (p.einzelpreisCent === null) f.preis = 'Bitte angeben.';
   return f;
 }
+
+/**
+ * Enter in a searchable select with an open list where nothing is highlighted yet (Mantine highlights
+ * the first match only after its own timing, so a quick "type + Enter" found nothing): picks the first
+ * option. Use as `onKeyDownCapture`; does nothing when an option is highlighted (Mantine picks it).
+ */
+export function enterWaehltErsteOption(e: {
+  key: string;
+  nativeEvent: { isComposing: boolean };
+  target: EventTarget;
+  preventDefault(): void;
+  stopPropagation(): void;
+}): void {
+  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+  const input = e.target as HTMLElement;
+  const id = input.getAttribute?.('aria-controls');
+  const liste = id ? input.ownerDocument.getElementById(id) : null;
+  if (!liste || input.getAttribute('aria-expanded') !== 'true') return;
+  if (liste.querySelector('[data-combobox-selected]')) return;
+  const erste = liste.querySelector<HTMLElement>(
+    '[data-combobox-option]:not([data-combobox-disabled])',
+  );
+  if (!erste) return;
+  e.preventDefault();
+  e.stopPropagation();
+  erste.click();
+}

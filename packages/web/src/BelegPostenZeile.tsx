@@ -26,6 +26,7 @@ import {
   artikelNamen,
   artikelPatch,
   artWechselPatch,
+  enterWaehltErsteOption,
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
@@ -120,6 +121,7 @@ export function BelegPostenZeile({
             <Select
               ref={wareEingabe}
               label="Ware"
+              onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Ware suchen"
               searchable
               autoSelectOnBlur
@@ -189,6 +191,7 @@ export function BelegPostenZeile({
           {p.art !== 'leergut' && (
             <Select
               label="Kategorie"
+              onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Kategorie suchen"
               searchable
               autoSelectOnBlur

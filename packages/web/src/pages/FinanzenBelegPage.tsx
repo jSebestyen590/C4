@@ -41,7 +41,7 @@ import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungK
 import { BelegPostenTabellen, type PostenBetraege } from '../BelegPostenTabellen';
 import { BelegNeueWare } from '../BelegNeueWare';
 import { FeldZeile } from '../FeldZeile';
-import { fokusAnzahl, warePatch } from '../belegAuswahl';
+import { enterWaehltErsteOption, fokusAnzahl, warePatch } from '../belegAuswahl';
 import { useAuth } from '../auth';
 import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
@@ -545,6 +545,7 @@ export function FinanzenBelegPage() {
                     <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
                   }
                   placeholder="Rechnungssteller suchen"
+                  onKeyDownCapture={enterWaehltErsteOption}
                   autoFocus={!id}
                   searchable
                   autoSelectOnBlur

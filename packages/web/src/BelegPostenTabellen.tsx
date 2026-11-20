@@ -28,6 +28,7 @@ import {
 import {
   artikelNamen,
   artikelPatch,
+  enterWaehltErsteOption,
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
@@ -195,7 +196,7 @@ export function BelegPostenTabelle({
       <Title order={4} size="h5">
         {TITEL[art]}
       </Title>
-      <Table.ScrollContainer minWidth={art === 'ware' ? 980 : 760} className={NUR_RAND_KLASSE}>
+      <Table.ScrollContainer minWidth={art === 'ware' ? 860 : 700} className={NUR_RAND_KLASSE}>
         <Table verticalSpacing={4} horizontalSpacing={4} style={{ tableLayout: 'fixed' }}>
           <Table.Thead>
             <Table.Tr>
@@ -354,6 +355,7 @@ function PostenTabellenZeile({
       <Select
         size="sm"
         aria-label={`Kategorie, ${zeile}`}
+        onKeyDownCapture={enterWaehltErsteOption}
         placeholder="Kategorie suchen"
         searchable
         autoSelectOnBlur
@@ -385,6 +387,7 @@ function PostenTabellenZeile({
               ref={wareEingabe}
               size="sm"
               aria-label={`Ware, ${zeile}`}
+              onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Ware suchen"
               searchable
               autoSelectOnBlur

@@ -19,6 +19,26 @@ export function datumParsen(text: string, heute: Date = new Date()): Date | null
   return d.getFullYear() === jahr && d.getMonth() === monat - 1 && d.getDate() === tag ? d : null;
 }
 
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `YYYY-MM-DD` of a date (local), the only form the form and the API accept. */
+export const datumAlsIso = (d: Date): string =>
+  `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Typed text -> `YYYY-MM-DD`, or null when it is no (complete) date. */
+export const datumTextAlsIso = (text: string, heute?: Date): string | null => {
+  const d = datumParsen(text, heute);
+  return d ? datumAlsIso(d) : null;
+};
+
+/** What a Mantine `DateInput` hands over (string, maybe with a time, or Date) -> `YYYY-MM-DD` or ''. */
+export function datumWertAlsIso(v: unknown): string {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : datumAlsIso(v);
+  if (typeof v !== 'string') return '';
+  const kopf = v.slice(0, 10);
+  return ISO.test(kopf) ? kopf : '';
+}
+
 /**
  * Date input with a clear button. Mobile browsers (iOS Safari in particular) offer no way to empty a
  * native date field once a value is set.
@@ -46,10 +66,11 @@ export function DatumFeld({
         label={rest.label}
         error={rest.error}
         placeholder={rest.placeholder ?? 'TT.MM.JJJJ'}
+        size="md"
         valueFormat="DD.MM.YYYY"
-        dateParser={(text) => datumParsen(text)}
+        dateParser={(text) => datumTextAlsIso(text)}
         value={value || null}
-        onChange={(v) => onWert(v ?? '')}
+        onChange={(v) => onWert(datumWertAlsIso(v))}
         clearable={loeschbar}
         allowDeselect={loeschbar}
         autoComplete="off"
