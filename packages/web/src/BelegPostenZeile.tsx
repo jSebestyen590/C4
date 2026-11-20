@@ -89,6 +89,8 @@ export function BelegPostenZeile({
   // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
   // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
   const neueWareGewaehlt = useRef(false);
+  // Set when a Ware was picked; the blur on leaving must not pick another one (see `wareWahl`).
+  const wareGewaehlt = useRef(false);
 
   return (
     <Paper withBorder p="sm" data-zeile={p.key}>
@@ -128,6 +130,7 @@ export function BelegPostenZeile({
               autoSelectOnBlur
               onFocus={() => {
                 neueWareGewaehlt.current = false;
+                wareGewaehlt.current = false;
               }}
               selectFirstOptionOnChange
               data={wareOptionen(waren, !!onNeueWare)}
@@ -140,6 +143,7 @@ export function BelegPostenZeile({
                   v,
                   neueWareGewaehlt.current,
                   document.activeElement === wareEingabe.current,
+                  wareGewaehlt.current,
                 );
                 if (wahl === 'ignorieren') return;
                 if (wahl !== 'waehlen') {
@@ -148,6 +152,7 @@ export function BelegPostenZeile({
                   setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
                   return;
                 }
+                wareGewaehlt.current = true;
                 onAendern(warePatch(waren, aufwand, v));
                 if (v) fokusAnzahl(p.key);
               }}

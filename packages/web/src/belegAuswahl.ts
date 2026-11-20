@@ -25,15 +25,20 @@ export const istNeueWareText = (text: string): boolean =>
  * What a change of a Ware select means. "Neue Ware anlegen" opens the dialog only when picked
  * deliberately (the input still has the focus), never when the field is just left (autoSelectOnBlur);
  * afterwards every change is ignored until the field gets the focus back (the dialog's focus move
- * blurs the field, which would otherwise pick the highlighted Ware).
+ * blurs the field, which would otherwise pick the highlighted Ware). Likewise a change without focus
+ * after a Ware was picked (`schonGewaehlt`, reset when the field gets the focus back) is ignored.
  */
 export function wareWahl(
   wert: string | null,
   neueWareGewaehlt: boolean,
   hatFokus: boolean,
+  schonGewaehlt = false,
 ): 'neue-oeffnen' | 'neue-merken' | 'ignorieren' | 'waehlen' {
   if (wert === NEUE_WARE) return hatFokus ? 'neue-oeffnen' : 'neue-merken';
-  return neueWareGewaehlt ? 'ignorieren' : 'waehlen';
+  if (neueWareGewaehlt) return 'ignorieren';
+  // After a Ware was picked the search reset makes Mantine highlight the first (unfiltered) option;
+  // the blur caused by moving on to Anzahl (autoSelectOnBlur) would click it and replace the pick.
+  return schonGewaehlt && !hatFokus ? 'ignorieren' : 'waehlen';
 }
 
 /**

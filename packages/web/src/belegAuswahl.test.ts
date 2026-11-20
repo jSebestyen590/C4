@@ -163,6 +163,11 @@ describe('wareWahl', () => {
     expect(wareWahl('w1', false, true)).toBe('waehlen');
     expect(wareWahl(null, false, true)).toBe('waehlen');
   });
+  it('ignores the blur pick after a Ware was picked, but not a new pick with focus', () => {
+    expect(wareWahl('w1', false, false, true)).toBe('ignorieren');
+    expect(wareWahl('w2', false, true, true)).toBe('waehlen');
+    expect(wareWahl('w1', false, false, false)).toBe('waehlen');
+  });
 });
 
 describe('enterWaehltErsteOption', () => {

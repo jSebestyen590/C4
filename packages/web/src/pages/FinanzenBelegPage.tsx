@@ -607,6 +607,7 @@ export function FinanzenBelegPage() {
                   variant="light"
                   size="compact-md"
                   onClick={() => setNeuerName(form.rechnungsstellerName)}
+                  tabIndex={-1}
                   style={{ alignSelf: 'flex-start' }}
                 >
                   „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
@@ -618,6 +619,7 @@ export function FinanzenBelegPage() {
                   size="compact-md"
                   leftSection={<IconPlus size={16} />}
                   onClick={() => setNeuerName('')}
+                  tabIndex={-1}
                   style={{ alignSelf: 'flex-start' }}
                 >
                   Neuen Rechnungssteller anlegen

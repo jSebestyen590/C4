@@ -85,6 +85,7 @@ function WareWahl({
 }>) {
   const [suche, setSuche] = useState('');
   const eingabe = useRef<HTMLInputElement>(null);
+  const gewaehlt = useRef(false);
   return (
     <Select
       ref={eingabe}
@@ -92,6 +93,9 @@ function WareWahl({
       size="md"
       searchable
       autoSelectOnBlur
+      onFocus={() => {
+        gewaehlt.current = false;
+      }}
       selectFirstOptionOnChange
       nothingFoundMessage="Keine Ware gefunden"
       data={wareOptionen(waren, neueWareErlaubt)}
@@ -107,6 +111,9 @@ function WareWahl({
           setTimeout(() => setSuche(alt), 0);
           return;
         }
+        // The blur after a pick (moving on) must not pick the highlighted first option.
+        if (gewaehlt.current && document.activeElement !== eingabe.current) return;
+        gewaehlt.current = true;
         onWare(v);
         if (v) fokusAnzahl(String(zeile));
       }}

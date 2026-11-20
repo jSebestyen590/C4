@@ -289,6 +289,8 @@ function PostenTabellenZeile({
   // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
   // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
   const neueWareGewaehlt = useRef(false);
+  // Set when a Ware was picked; the blur on leaving must not pick another one (see `wareWahl`).
+  const wareGewaehlt = useRef(false);
 
   const anzahl = (
     <Table.Td>
@@ -394,6 +396,7 @@ function PostenTabellenZeile({
               autoSelectOnBlur
               onFocus={(e) => {
                 neueWareGewaehlt.current = false;
+                wareGewaehlt.current = false;
                 e.currentTarget.select();
               }}
               selectFirstOptionOnChange
@@ -407,6 +410,7 @@ function PostenTabellenZeile({
                   v,
                   neueWareGewaehlt.current,
                   document.activeElement === wareEingabe.current,
+                  wareGewaehlt.current,
                 );
                 if (wahl === 'ignorieren') return;
                 if (wahl !== 'waehlen') {
@@ -415,6 +419,7 @@ function PostenTabellenZeile({
                   setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
                   return;
                 }
+                wareGewaehlt.current = true;
                 onAendern(warePatch(waren, aufwand, v));
                 if (v) fokusAnzahl(p.key);
               }}
