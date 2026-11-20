@@ -1,4 +1,15 @@
-import { Alert, Anchor, Button, Loader, Paper, Radio, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Loader,
+  Paper,
+  Radio,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -15,8 +26,16 @@ export function ProtokollNeuPage() {
   const anlegen = useProtokollAnlegen();
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
 
-  // The API lists the newest Sitzung first: preselect it until the user picks another.
-  const aktiv = gewaehlt ?? sitzungen.data?.[0]?.id ?? null;
+  // Preselect the Sitzung closest to now (upcoming ones are listed too) until the user picks another.
+  const jetzt = Date.now();
+  const naechste = sitzungen.data?.reduce<(typeof sitzungen.data)[number] | null>(
+    (best, s) =>
+      !best || Math.abs(Date.parse(s.beginn) - jetzt) < Math.abs(Date.parse(best.beginn) - jetzt)
+        ? s
+        : best,
+    null,
+  );
+  const aktiv = gewaehlt ?? naechste?.id ?? null;
 
   const absenden = async () => {
     if (!aktiv) return;
@@ -70,6 +89,11 @@ export function ProtokollNeuPage() {
                       <Stack gap={0}>
                         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
                           {s.titel}
+                          {Date.parse(s.beginn) > jetzt && (
+                            <Badge variant="light" ml="xs">
+                              Kommend
+                            </Badge>
+                          )}
                         </Text>
                         <Text size="sm" c="dimmed">
                           {tagAnzeigen(s.beginn)}

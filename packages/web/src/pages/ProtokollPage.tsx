@@ -188,6 +188,8 @@ function ProtokollAnsicht({
   const entwurf = dto.status === 'entwurf';
   // Writers edit a draft only while this tab holds the edit lock; without it they see the document.
   const editierbar = darfSchreiben && entwurf && sperre.art === 'eigen';
+  // Closing only makes sense once the Sitzung has begun (the API enforces it too).
+  const nochNichtBegonnen = Date.parse(dto.sitzung.beginn) > Date.now();
   const sperrePrueft =
     darfSchreiben && entwurf && (sperre.art === 'pruefe' || sperre.art === 'inaktiv');
 
@@ -376,7 +378,7 @@ function ProtokollAnsicht({
           {entwurf ? (
             <Button
               leftSection={<IconLock size={18} />}
-              disabled={!editierbar}
+              disabled={!editierbar || nochNichtBegonnen}
               onClick={abschliessenOeffnen}
             >
               Abschließen
@@ -413,6 +415,11 @@ function ProtokollAnsicht({
             ]}
           />
         </Group>
+      )}
+      {darfSchreiben && entwurf && nochNichtBegonnen && (
+        <Text size="sm" c="dimmed" data-druck="aus">
+          Abschließen geht ab Beginn der Sitzung.
+        </Text>
       )}
       {!darfSchreiben && (
         <Group data-druck="aus">
