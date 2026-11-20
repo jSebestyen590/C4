@@ -16,13 +16,7 @@ import { IconArchive, IconArchiveOff, IconEdit, IconPlus } from '@tabler/icons-r
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  centAnzeigen,
-  KONTO_ART_LABELS,
-  KONTO_ARTEN,
-  STEUERSATZ_ART_LABELS,
-  type KontoDto,
-} from '@c4/shared';
+import { centAnzeigen, KONTO_ART_LABELS, KONTO_ARTEN, type KontoDto } from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -31,6 +25,7 @@ import { InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { KontoFormular } from '../KontoFormular';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { artText, useHeutigeSaetze } from '../steuersaetze';
 import { ZurueckLink } from '../ZurueckLink';
 
 const nachName = (a: KontoDto, b: KontoDto) =>
@@ -69,6 +64,7 @@ export function FinanzenKontenPage() {
   const [formular, setFormular] = useState<{ konto?: KontoDto } | null>(null);
   // Always load the archived accounts too (parent options, names); the switch only filters.
   const konten = useKonten(true);
+  const heute = useHeutigeSaetze();
   const namen = useMemo(
     () => new Map((konten.data ?? []).map((k) => [k.id, k.name])),
     [konten.data],
@@ -118,11 +114,16 @@ export function FinanzenKontenPage() {
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
       <Group justify="space-between" wrap="wrap">
         <Title order={2}>Kontenplan</Title>
-        {darfVerwalten && (
-          <Button leftSection={<IconPlus size={18} />} onClick={() => setFormular({})}>
-            Konto anlegen
+        <Group wrap="wrap">
+          <Button component={Link} to="/finanzen/steuersaetze" variant="default">
+            Steuersätze
           </Button>
-        )}
+          {darfVerwalten && (
+            <Button leftSection={<IconPlus size={18} />} onClick={() => setFormular({})}>
+              Konto anlegen
+            </Button>
+          )}
+        </Group>
       </Group>
       <Group gap={2}>
         <Switch
@@ -172,7 +173,7 @@ export function FinanzenKontenPage() {
                     )}
                     {k.steuersatzArt !== null && (
                       <Text size="sm" c="dimmed">
-                        Steuersatz: {STEUERSATZ_ART_LABELS[k.steuersatzArt]}
+                        Steuersatz: {artText(k.steuersatzArt, heute)}
                       </Text>
                     )}
                   </Stack>
@@ -231,7 +232,7 @@ export function FinanzenKontenPage() {
                       )}
                       {k.steuersatzArt !== null && (
                         <Text size="xs" c="dimmed">
-                          Steuersatz: {STEUERSATZ_ART_LABELS[k.steuersatzArt]}
+                          Steuersatz: {artText(k.steuersatzArt, heute)}
                         </Text>
                       )}
                     </Table.Td>

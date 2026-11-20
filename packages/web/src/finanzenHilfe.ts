@@ -181,6 +181,16 @@ export const HILFE = {
     einreichen:
       'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
   },
+  steuersaetze: {
+    zeitraeume:
+      'Regelsatz und ermäßigter Satz gelten ab einem Datum, bis der nächste Zeitraum beginnt (z. B. 16 % und 5 % vom 1.7.2020 bis 31.12.2020). Für ein Belegdatum gilt der letzte Zeitraum, der an oder vor diesem Datum beginnt. Kategorien und Artikel merken sich nur „Regelsatz“, „Ermäßigt“ oder „Keine Steuer“; der Prozentwert ergibt sich aus dem Datum.',
+    loeschen:
+      'Ein Zeitraum lässt sich nur löschen, solange noch kein Beleg und keine Kassenabrechnung in ihm gebucht ist. Der Zeitraum davor gilt dann wieder bis zum nächsten.',
+  },
+  sortierung: {
+    spalten:
+      'Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter Klick dreht die Richtung. Auf dem Handy wählst du Spalte und Richtung über „Sortieren nach“. Leere Werte stehen immer am Ende.',
+  },
   artikel: {
     erklaerung:
       'Ein Artikel ist ein Name, der auf gebuchten Posten vorkommt (Kategorie-Posten). Seine Steuersatz-Vorgabe wird beim Erfassen eines Postens mit diesem Namen vorausgewählt; im Beleg kannst du sie weiter ändern. Gebuchte Belege bleiben unverändert.',

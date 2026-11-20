@@ -1,6 +1,7 @@
 import { Route } from 'react-router-dom';
 import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
 import { FinanzenArtikelPage } from '../pages/FinanzenArtikelPage';
+import { FinanzenSteuersaetzePage } from '../pages/FinanzenSteuersaetzePage';
 import { FinanzenBelegDetailPage } from '../pages/FinanzenBelegDetailPage';
 import { FinanzenBelegePage } from '../pages/FinanzenBelegePage';
 import { FinanzenBelegPage } from '../pages/FinanzenBelegPage';
@@ -288,6 +289,16 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenArtikelPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/steuersaetze"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenSteuersaetzePage />
             </RequireUsername>
           </Protected>
         }

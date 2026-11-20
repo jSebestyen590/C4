@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import { useSteuersatzZeitraeume } from './finanzenDaten';
-import { heuteBerlin, steuersaetzeAm, type SteuersaetzeAm } from '@c4/shared';
+import { heuteBerlin, steuersaetzeAm, type SteuersaetzeAm, type SteuersatzArt } from '@c4/shared';
 
 /**
  * The tax rates the item rows of a Beleg offer: those valid on its Belegdatum. The Beleg page
@@ -32,3 +32,9 @@ export const artOptionen = (heute: Pick<SteuersaetzeAm, 'regel' | 'ermaessigt'>)
   { value: 'ermaessigt', label: `Ermäßigt (${satzProzent(heute.ermaessigt)})` },
   { value: 'keine', label: 'Keine (0 %)' },
 ];
+
+/** "Regelsatz (19 %)" for the Art of a default tax rate, with today's rates. */
+export const artText = (
+  art: SteuersatzArt,
+  heute: Pick<SteuersaetzeAm, 'regel' | 'ermaessigt'>,
+): string => artOptionen(heute).find((o) => o.value === art)?.label ?? art;

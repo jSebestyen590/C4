@@ -3,6 +3,7 @@ import {
   Alert,
   Autocomplete,
   Button,
+  Checkbox,
   Collapse,
   Group,
   Paper,
@@ -22,7 +23,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   BELEG_POSTEN_ANZAHL_MAX,
   centAnzeigen,
+  einzelpreisAusGesamt,
+  heuteBerlin,
   steuersaetzeAm,
+  steuersatzUmstellen,
   type BelegDatei as BelegDateiDaten,
   type BelegWareDto,
 } from '@c4/shared';
@@ -32,7 +36,7 @@ import { useAuth } from '../auth';
 import { BelegNeueWare } from '../BelegNeueWare';
 import { FeldZeile } from '../FeldZeile';
 import { HILFE } from '../finanzenHilfe';
-import { FeldLabel } from '../InfoHinweis';
+import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { BelegDateiFeld } from '../BelegDatei';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
@@ -63,6 +67,8 @@ interface PostenZeile {
   wareId: string | null;
   gebindeId: string | null;
   anzahl: number | string;
+  /** Ware items: the price field is the Gesamtpreis of the whole line (without deposit). */
+  gesamt?: boolean;
   pfandCent: number | null;
   text: string;
   betragCent: number | null;
@@ -192,7 +198,7 @@ export function BelegEinreichenPage() {
   const start = wiederhergestellt;
   const [datei, setDatei] = useState<BelegDateiDaten | null>(start?.datei ?? null);
   const [lokaleUrl, setLokaleUrl] = useState<string | null>(null);
-  const [datum, setDatum] = useState(start?.datum ?? heute());
+  const [datum, setDatumRoh] = useState(start?.datum ?? heute());
   const [betrag, setBetrag] = useState<number | null>(start?.betrag ?? null);
   const [steller, setSteller] = useState(start?.steller ?? '');
   const [notiz, setNotiz] = useState(start?.notiz ?? '');
@@ -204,6 +210,23 @@ export function BelegEinreichenPage() {
   // The tax rates follow the Belegdatum.
   const saetzeAm = steuersaetzeAm(auswahl.data?.steuersatzZeitraeume ?? [], datum || heute());
   const artikelVorschlaege = auswahl.data?.artikelVorschlaege ?? [];
+  // A Belegdatum in another tax period converts the rates of the items (regular stays regular).
+  const setDatum = (neu: string) => {
+    const zeitraeume = auswahl.data?.steuersatzZeitraeume ?? [];
+    const alt = saetzeAm;
+    const neuSaetze = steuersaetzeAm(zeitraeume, neu || heute());
+    setDatumRoh(neu);
+    if (alt.regel === neuSaetze.regel && alt.ermaessigt === neuSaetze.ermaessigt) return;
+    setPosten((ps) =>
+      ps.map((p) => {
+        const satz = steuersatzUmstellen(Number(p.steuersatz), alt, neuSaetze);
+        return {
+          ...p,
+          steuersatz: String(neuSaetze.saetze.includes(satz) ? satz : neuSaetze.regel),
+        };
+      }),
+    );
+  };
   const [aufteilen, setAufteilen] = useState(start?.aufteilen ?? false);
   const [posten, setPosten] = useState<PostenZeile[]>(start?.posten ?? []);
   const [naechsterKey, setNaechsterKey] = useState(start?.naechsterKey ?? 1);
@@ -288,7 +311,13 @@ export function BelegEinreichenPage() {
                       wareId: p.wareId,
                       gebindeId: p.gebindeId,
                       anzahlMilli: Math.round(Number(p.anzahl) * 1000),
-                      einzelpreisCent: p.betragCent as number,
+                      einzelpreisCent: p.gesamt
+                        ? einzelpreisAusGesamt(
+                            p.betragCent as number,
+                            Math.round(Number(p.anzahl) * 1000),
+                          )
+                        : (p.betragCent as number),
+                      ...(p.gesamt && { gesamtCent: p.betragCent as number }),
                       steuersatz: Number(p.steuersatz),
                       pfandCent: p.pfandCent,
                     }
@@ -316,6 +345,7 @@ export function BelegEinreichenPage() {
   const fehlt = {
     datei: !datei,
     datum: datum === '',
+    datumZukunft: datum !== '' && datum > heuteBerlin(),
     betrag: betrag === null,
   };
   const postenFehlt = (p: PostenZeile) =>
@@ -327,7 +357,7 @@ export function BelegEinreichenPage() {
     p.betragCent === null ||
     (p.art !== 'kategorie' && p.betragCent < 0);
   const postenOk = !posten.some(postenFehlt);
-  const gueltig = !fehlt.datei && !fehlt.datum && !fehlt.betrag && postenOk;
+  const gueltig = !fehlt.datei && !fehlt.datum && !fehlt.datumZukunft && !fehlt.betrag && postenOk;
 
   return (
     <Stack gap="md" key={neustart}>
@@ -364,7 +394,14 @@ export function BelegEinreichenPage() {
         value={datum}
         onWert={setDatum}
         loeschbar={false}
-        error={versucht && fehlt.datum ? 'Bitte gib das Datum an.' : undefined}
+        max={heuteBerlin()}
+        error={
+          fehlt.datumZukunft
+            ? 'Das Belegdatum darf nicht in der Zukunft liegen.'
+            : versucht && fehlt.datum
+              ? 'Bitte gib das Datum an.'
+              : undefined
+        }
       />
       <BetragFeld
         label="Betrag"
@@ -442,7 +479,8 @@ export function BelegEinreichenPage() {
                       gebindeId: null,
                       pfandCent: null,
                       betragCent: null,
-                      anzahl: 1,
+                      anzahl: '',
+                      gesamt: false,
                     })
                   }
                   data={[
@@ -474,7 +512,7 @@ export function BelegEinreichenPage() {
                         }
                       />
                       <Select
-                        label="Kategorie"
+                        label={<FeldLabel text="Kategorie" hilfe={HILFE.belege.kategorie} />}
                         size="md"
                         searchable
                         onBlurCapture={blurWaehltMarkierte}
@@ -588,7 +626,9 @@ export function BelegEinreichenPage() {
                   <BetragFeld
                     label={
                       p.art === 'ware'
-                        ? 'Preis je Gebinde (brutto)'
+                        ? p.gesamt
+                          ? 'Gesamtpreis (brutto)'
+                          : 'Preis je Gebinde (brutto)'
                         : p.art === 'leergut'
                           ? 'Pfand je Stück'
                           : 'Betrag (brutto)'
@@ -624,6 +664,26 @@ export function BelegEinreichenPage() {
                     onChange={(v) => aendern(p.key, { steuersatz: v ?? String(saetzeAm.regel) })}
                   />
                 </FeldZeile>
+                {p.art === 'ware' && (
+                  <Group gap={2} wrap="nowrap" mih={42} align="center">
+                    <Checkbox
+                      size="md"
+                      label="Gesamtpreis"
+                      checked={p.gesamt === true}
+                      onChange={(e) => aendern(p.key, { gesamt: e.currentTarget.checked })}
+                    />
+                    <InfoHinweis feld="Gesamtpreis" text={HILFE.belege.gesamtpreis} />
+                  </Group>
+                )}
+                {p.art === 'ware' && p.gesamt && p.betragCent !== null && Number(p.anzahl) >= 1 && (
+                  <Text size="sm" c="dimmed">
+                    ≈{' '}
+                    {centAnzeigen(
+                      einzelpreisAusGesamt(p.betragCent, Math.round(Number(p.anzahl) * 1000)),
+                    )}{' '}
+                    je Gebinde
+                  </Text>
+                )}
                 {p.art === 'leergut' && p.betragCent !== null && Number(p.anzahl) >= 1 && (
                   <Text size="sm" fw={600}>
                     Betrag: {centAnzeigen(-Math.round(Number(p.anzahl) * p.betragCent))}
@@ -645,7 +705,7 @@ export function BelegEinreichenPage() {
                     kategorieId: null,
                     wareId: null,
                     gebindeId: null,
-                    anzahl: 1,
+                    anzahl: '',
                     pfandCent: null,
                     text: '',
                     betragCent: null,
