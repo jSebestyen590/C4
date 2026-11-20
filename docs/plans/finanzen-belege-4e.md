@@ -4,6 +4,8 @@ Folgt auf [finanzen-belege-4d.md](./finanzen-belege-4d.md), gleicher Branch `fin
 Nutzers vom 20.11.2026 nach den 4d-Browser-Checks; Rückfragen beantwortet (Summe ≤ 0 überall erlaubt, Artikel entstehen beim
 Buchen), übrige Details hier entschieden.
 
+**Status: umgesetzt** (Phasen 1-5). Abweichungen: Eine Summe genau 0 ist buchbar, ohne Gegenbuchung; Mitglieder können auch Leergut einreichen; die geplante eigene Auslagen-Bilanz auf der Buch-Seite ist nicht umgesetzt (es gibt keinen Endpunkt dafür).
+
 ## Entscheidungen
 
 | Thema                     | Entscheidung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
