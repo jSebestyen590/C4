@@ -112,6 +112,53 @@ export function postenHinzufuegen<T extends { art: BelegPostenArt }>(
   return [...sortiert.slice(0, ende + 1), neu, ...sortiert.slice(ende + 1)];
 }
 
+// ----- Empty rows: every table ends with one empty row that is not part of the Beleg
+
+/**
+ * Whether an item row is still empty (not saved, not checked). Ware: no Ware chosen; Kategorie:
+ * no Artikel, Kategorie or price; Leergut: no description or price. The preset quantity and tax
+ * rate do not count.
+ */
+export function postenLeer(
+  p: Pick<PostenZeile, 'art' | 'wareId' | 'text' | 'kategorieId' | 'einzelpreisCent'>,
+): boolean {
+  if (p.art === 'ware') return !p.wareId;
+  if (p.art === 'kategorie')
+    return p.text.trim() === '' && !p.kategorieId && p.einzelpreisCent === null;
+  return p.text.trim() === '' && p.einzelpreisCent === null;
+}
+
+/** The filled items in Beleg order (grouped by kind): what is saved, checked and booked. */
+export const gefuelltePosten = (posten: readonly PostenZeile[]): PostenZeile[] =>
+  postenSortieren(posten).filter((p) => !postenLeer(p));
+
+export interface TabellenZeile {
+  p: PostenZeile;
+  /** The empty row at the end of the table. */
+  leer: boolean;
+  /** 1-based position among the filled rows of the table; null for the empty row. */
+  nr: number | null;
+}
+
+/**
+ * Rows of the table of one kind: the filled items, then exactly one empty row. That is the form's
+ * last item of the kind when it is empty (a row that was cleared again keeps its place), else the
+ * view's own empty row `leere[art]`, which joins the form once something is typed into it.
+ */
+export function tabellenZeilen(
+  posten: readonly PostenZeile[],
+  leere: Readonly<Record<BelegPostenArt, PostenZeile>>,
+  art: BelegPostenArt,
+): TabellenZeile[] {
+  const dieser = posten.filter((p) => p.art === art);
+  const letzte = dieser.at(-1);
+  const leer = letzte && postenLeer(letzte) ? letzte : leere[art];
+  return [
+    ...dieser.filter((p) => !postenLeer(p)).map((p, i) => ({ p, leer: false, nr: i + 1 })),
+    { p: leer, leer: true, nr: null },
+  ];
+}
+
 export const leeresFormular = (): BelegFormular => ({
   rechnungsstellerId: null,
   belegdatum: '',
@@ -231,7 +278,7 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     rechnungsstellerId: f.rechnungsstellerId,
     belegdatum: f.belegdatum || null,
     modus: f.modus,
-    posten: postenSortieren(f.posten).map(postenZuDaten),
+    posten: gefuelltePosten(f.posten).map(postenZuDaten),
     korrekturen,
     zahlweg: f.zahlweg,
     bezahldatum: f.zahlweg && f.zahlweg !== 'auslage' && f.bezahldatum ? f.bezahldatum : null,
@@ -292,7 +339,7 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
   };
 }
 
-/** Whether the form holds anything worth saving as a draft (a pre-selected Rechnungssteller does not count). */
+/** Whether the form holds anything worth saving as a draft (empty rows do not count). */
 export function hatInhalt(f: BelegFormular): boolean {
   return (
     f.datei !== null ||
@@ -300,14 +347,8 @@ export function hatInhalt(f: BelegFormular): boolean {
     f.zahlweg !== null ||
     f.eigenbelegBegruendung.trim() !== '' ||
     f.notiz.trim() !== '' ||
-    f.posten.some(
-      (p) =>
-        p.art !== 'ware' ||
-        p.wareId ||
-        p.kategorieId ||
-        p.text.trim() !== '' ||
-        p.einzelpreisCent !== null,
-    )
+    f.belegsummeCent !== null ||
+    f.posten.some((p) => !postenLeer(p))
   );
 }
 
@@ -316,7 +357,7 @@ export function formularFehler(f: BelegFormular): BelegFehler[] {
   const fehler = belegPruefen(formularZuDaten(f));
   // Same order and numbering as `formularZuDaten`: the position within the art.
   const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
-  postenSortieren(f.posten).forEach((p) => {
+  gefuelltePosten(f.posten).forEach((p) => {
     const n = postenZeilenLabel(p.art, ++zaehler[p.art]);
     if (p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null)
       fehler.push({
@@ -325,6 +366,13 @@ export function formularFehler(f: BelegFormular): BelegFehler[] {
       });
     if (p.einzelpreisCent === null)
       fehler.push({ feld: 'posten', meldung: `${n}: Bitte gib den Einzelpreis an.` });
+    if (p.art === 'leergut' && p.einzelpreisCent !== null && p.einzelpreisCent < 0)
+      fehler.push({ feld: 'posten', meldung: `${n}: Das Pfand je Stück darf nicht negativ sein.` });
+    if (p.art === 'leergut' && (anzahlLesen(p.anzahl) ?? 0) < 0)
+      fehler.push({
+        feld: 'posten',
+        meldung: `${n}: Die zurückgegebene Anzahl muss größer als 0 sein.`,
+      });
   });
   return fehler;
 }
@@ -352,7 +400,7 @@ export function pfandJeSatz(
 
 /** Tax rates the items use, highest first (the rows of the correction fields). */
 export const verwendeteSaetze = (f: BelegFormular): number[] =>
-  [...new Set(f.posten.map((p) => p.steuersatz))].sort((a, b) => b - a);
+  [...new Set(gefuelltePosten(f.posten).map((p) => p.steuersatz))].sort((a, b) => b - a);
 
 /** Fach counts must pay the Beleg exactly; the German hint, or null when it fits (or is empty). */
 export function stueckelungHinweis(

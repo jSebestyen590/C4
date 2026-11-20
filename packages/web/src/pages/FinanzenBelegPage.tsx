@@ -24,6 +24,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   BELEG_MODI,
   BELEG_MODUS_LABELS,
+  centAnzeigen,
   STEUERSAETZE,
   ZAHLWEGE,
   ZAHLWEG_LABELS,
@@ -31,12 +32,17 @@ import {
   type BelegGebuchtDto,
   type BelegModus,
   type BelegPostenArt,
+  type BelegWareDto,
   type BelegWarnungDto,
   type Zahlweg,
 } from '@c4/shared';
 import { useApi, unwrap } from '../api';
 import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungKopf';
-import { BelegPostenTabellen } from '../BelegPostenTabellen';
+import { BelegPostenTabellen, type PostenBetraege } from '../BelegPostenTabellen';
+import { BelegNeueWare } from '../BelegNeueWare';
+import { FeldZeile } from '../FeldZeile';
+import { fokusAnzahl, warePatch } from '../belegAuswahl';
+import { useAuth } from '../auth';
 import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
 import { BelegDateiFeld } from '../BelegDatei';
@@ -47,11 +53,14 @@ import {
   formularFehler,
   formularSumme,
   formularZuDaten,
+  gefuelltePosten,
   hatInhalt,
   datenZuFormular,
   leeresFormular,
   neuerPosten,
+  POSTEN_REIHENFOLGE,
   postenHinzufuegen,
+  postenLeer,
   postenSortieren,
   stueckelungHinweis,
   verwendeteSaetze,
@@ -98,6 +107,13 @@ const AUTOSPEICHERN_MS = 1200;
 /** Key of the not yet created draft in the local storage. */
 const NEU = 'beleg-neu';
 const lokalSchluessel = (id: string) => `beleg-${id}`;
+
+type LeereZeilen = Record<BelegPostenArt, PostenZeile>;
+const neueLeere = (): LeereZeilen => ({
+  ware: neuerPosten(STEUERSAETZE[0], 'ware'),
+  kategorie: neuerPosten(STEUERSAETZE[0], 'kategorie'),
+  leergut: neuerPosten(STEUERSAETZE[0], 'leergut'),
+});
 
 /** The locally stored form, when it still has the shape of one. */
 function lokalesFormular(schluessel: string) {
@@ -151,6 +167,16 @@ export function FinanzenBelegPage() {
   const [verwerfen, setVerwerfen] = useState(false);
   const [einreichungVerwerfen, setEinreichungVerwerfen] = useState(false);
   const [neuerName, setNeuerName] = useState<string | null>(null);
+  // The empty row at the end of each table: view state, joins the form once something is typed into it.
+  const [leere, setLeereState] = useState(neueLeere);
+  const leereRef = useRef(leere);
+  const setLeere = (l: LeereZeilen) => {
+    leereRef.current = l;
+    setLeereState(l);
+  };
+  // "Neue Ware anlegen": the row (item key) and the typed name.
+  const [neueWare, setNeueWare] = useState<{ key: string; name: string } | null>(null);
+  const { can } = useAuth();
   const timer = useRef<number | undefined>(undefined);
   const kette = useRef<Promise<unknown>>(Promise.resolve());
   const wurzel = useRef<HTMLFormElement>(null);
@@ -160,7 +186,6 @@ export function FinanzenBelegPage() {
     getInitialValueInEffect: false,
   });
   const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
-  const vorbelegt = useRef(false);
   const nachspeichern = useRef(false);
   const warnung = useVerwerfenWarnung(stand !== 'gespeichert');
 
@@ -179,21 +204,6 @@ export function FinanzenBelegPage() {
     entwurfId.current = id;
     setForm(f);
   }, [id, entwurf.data]);
-
-  // New Belege start with the most recently used Rechnungssteller.
-  useEffect(() => {
-    const liste = rechnungssteller.data;
-    if (id || vorbelegt.current || !liste || !formRef.current) return;
-    vorbelegt.current = true;
-    const letzter = [...liste]
-      .filter((r) => r.zuletztAm)
-      .sort((a, b) => (b.zuletztAm ?? '').localeCompare(a.zuletztAm ?? ''))[0];
-    if (letzter && !formRef.current.rechnungsstellerId) {
-      const f = { ...formRef.current, rechnungsstellerId: letzter.id };
-      formRef.current = f;
-      setForm(f);
-    }
-  }, [id, rechnungssteller.data]);
 
   const speichernJetzt = (): Promise<boolean> => {
     window.clearTimeout(timer.current);
@@ -329,14 +339,53 @@ export function FinanzenBelegPage() {
   const eingereicht = entwurf.data?.status === 'eingereicht';
   const dateiUrl = lokaleUrl ?? entwurf.data?.dateiUrl ?? null;
 
-  const postenAendern = (key: string, patch: Partial<PostenZeile>) =>
+  // Filled items in Beleg order = the order of the totals (`formularZuDaten` leaves empty rows out).
+  const gefuellt = gefuelltePosten(form.posten);
+  const betraege: PostenBetraege = new Map(
+    gefuellt.map((p, i) => [
+      p.key,
+      {
+        betragCent: berechnung.postenBetraege[i] ?? 0,
+        pfandCent: berechnung.pfandBetraege[i] ?? 0,
+      },
+    ]),
+  );
+  const betragVon = (p: PostenZeile) => {
+    const b = betraege.get(p.key);
+    return (b?.betragCent ?? 0) + (b?.pfandCent ?? 0);
+  };
+
+  const postenAendern = (key: string, patch: Partial<PostenZeile>) => {
+    const leereArt = POSTEN_REIHENFOLGE.find((a) => leereRef.current[a].key === key);
+    if (leereArt) {
+      // The empty row of a table: it joins the form once it has content, a new empty row follows.
+      const zeile = { ...leereRef.current[leereArt], ...patch };
+      if (postenLeer(zeile)) {
+        setLeere({ ...leereRef.current, [leereArt]: zeile });
+      } else {
+        setLeere({ ...leereRef.current, [leereArt]: neuerPosten(zeile.steuersatz, leereArt) });
+        aendern((f) => ({ ...f, posten: postenHinzufuegen(f.posten, zeile) }));
+      }
+      return;
+    }
     aendern((f) => {
       const posten = f.posten.map((p) => (p.key === key ? { ...p, ...patch } : p));
       // A changed kind moves the item into its group.
       return { ...f, posten: 'art' in patch ? postenSortieren(posten) : posten };
     });
+  };
   const postenEntfernen = (key: string) =>
-    aendern((f) => ({ ...f, posten: f.posten.filter((x) => x.key !== key) }));
+    aendern((f) => {
+      const rest = f.posten.filter((x) => x.key !== key);
+      return { ...f, posten: rest.length > 0 ? rest : [neuerPosten()] };
+    });
+  // A Ware created in the Beleg: reload the list, then put it (with Gebinde, Pfand, Kategorie) into its row.
+  const wareAngelegt = async (key: string, ware: { id: string }) => {
+    await qc.invalidateQueries({ queryKey: finanzenKeys.belegWaren });
+    const waren = qc.getQueryData<BelegWareDto[]>(finanzenKeys.belegWaren) ?? [];
+    postenAendern(key, warePatch(waren, aufwand, ware.id));
+    fokusAnzahl(key);
+  };
   const postenHinzu = (art: BelegPostenArt = 'ware') => {
     const neu = neuerPosten(
       form.posten.filter((p) => p.art === art).at(-1)?.steuersatz ??
@@ -378,6 +427,11 @@ export function FinanzenBelegPage() {
     }
   };
 
+  // "Neue Ware anlegen" in the Ware select: only with the right to manage Waren.
+  const neueWareFn = can('waren:verwalten')
+    ? (key: string, suche: string) => setNeueWare({ key, name: suche.trim() })
+    : undefined;
+
   const postenName = (p: PostenZeile) => {
     if (p.art === 'leergut') return 'Leergut';
     if (p.art === 'ware') {
@@ -391,7 +445,7 @@ export function FinanzenBelegPage() {
     (konten.data ?? []).find((k) => k.id === konto)?.name ?? '';
 
   return (
-    <Stack maw={1500}>
+    <Stack>
       <ZurueckLink to="/finanzen/belege">Belege</ZurueckLink>
       <Group justify="space-between" align="flex-end" wrap="wrap">
         <Title order={2}>{id ? 'Beleg-Entwurf' : 'Neuer Beleg'}</Title>
@@ -472,7 +526,13 @@ export function FinanzenBelegPage() {
               ziel.getAttribute('aria-expanded') !== 'true'
             ) {
               e.preventDefault();
-              postenHinzu(ziel.getAttribute('data-posten-ende') as BelegPostenArt);
+              const art = ziel.getAttribute('data-posten-ende') as BelegPostenArt;
+              // Tables: on to the empty row of the table; cards: a new card.
+              const leer = wurzel.current?.querySelector<HTMLElement>(
+                `[data-tabelle="${art}"] [data-leer] [data-nav]`,
+              );
+              if (leer) leer.focus();
+              else postenHinzu(art);
               return;
             }
             enterWeiter(e, wurzel.current, () => void pruefenOeffnen());
@@ -483,10 +543,11 @@ export function FinanzenBelegPage() {
           }}
         >
           <Stack gap="lg">
-            <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
+            <FeldZeile cols={{ base: 1, sm: 2, xl: 3 }} spacing="md" verticalSpacing={0}>
               <Select
                 label={<FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />}
                 placeholder="Rechnungssteller suchen"
+                autoFocus={!id}
                 searchable
                 selectFirstOptionOnChange
                 data={(rechnungssteller.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
@@ -511,7 +572,15 @@ export function FinanzenBelegPage() {
                 error={fz('belegdatum')}
                 data-nav=""
               />
-            </SimpleGrid>
+              <BetragFeld
+                label={<FeldLabel text="Belegsumme (brutto)" hilfe={HILFE.belege.belegsumme} />}
+                negativ
+                value={form.belegsummeCent}
+                onWert={(c) => aendern((f) => ({ ...f, belegsummeCent: c }))}
+                error={fz('belegsumme')}
+                data-nav=""
+              />
+            </FeldZeile>
             {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
               <Button
                 variant="light"
@@ -571,6 +640,7 @@ export function FinanzenBelegPage() {
                   <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
                   <InfoHinweis feld="Postenart" text={HILFE.belege.postenArt} />
                   <InfoHinweis feld="Lager-Posten" text={HILFE.belege.lagerPosten} />
+                  <InfoHinweis feld="Neue Ware" text={HILFE.belege.neueWare} />
                 </Group>
                 <SegmentedControl
                   aria-label="Preise sind"
@@ -582,17 +652,16 @@ export function FinanzenBelegPage() {
               {breit ? (
                 <BelegPostenTabellen
                   posten={form.posten}
-                  betraege={berechnung.postenBetraege}
-                  pfandBetraege={berechnung.pfandBetraege}
+                  leere={leere}
+                  betraege={betraege}
                   modus={form.modus}
                   aufwand={aufwand}
                   waren={belegWaren.data ?? []}
                   artikelVorschlaege={artikelVorschlaege.data ?? []}
                   versucht={versucht}
-                  kannEntfernen={form.posten.length > 1}
+                  onNeueWare={neueWareFn}
                   onAendern={postenAendern}
                   onEntfernen={postenEntfernen}
-                  onHinzu={postenHinzu}
                 />
               ) : (
                 <>
@@ -606,10 +675,11 @@ export function FinanzenBelegPage() {
                       aufwand={aufwand}
                       waren={belegWaren.data ?? []}
                       artikelVorschlaege={artikelVorschlaege.data ?? []}
-                      betragCent={berechnung.postenBetraege[i] ?? 0}
-                      pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
+                      betragCent={betraege.get(p.key)?.betragCent ?? 0}
+                      pfandBetragCent={betraege.get(p.key)?.pfandCent ?? 0}
                       versucht={versucht}
                       kannEntfernen={form.posten.length > 1}
+                      onNeueWare={neueWareFn}
                       onAendern={(patch) => postenAendern(p.key, patch)}
                       onEntfernen={() => postenEntfernen(p.key)}
                     />
@@ -625,6 +695,7 @@ export function FinanzenBelegPage() {
                   </Group>
                 </>
               )}
+              <BelegsummeZeile postenCent={berechnung.summe} belegsummeCent={form.belegsummeCent} />
             </Stack>
 
             {form.modus === 'netto' && (
@@ -690,7 +761,7 @@ export function FinanzenBelegPage() {
               <BelegSummen
                 jeSteuersatz={berechnung.jeSteuersatz}
                 summeCent={berechnung.summe}
-                pfand={pfandJeSatz(form.posten, berechnung.pfandBetraege)}
+                pfand={pfandJeSatz(gefuellt, berechnung.pfandBetraege)}
               />
               {berechnung.fehler.map((m) => (
                 <Text key={m} size="sm" c="red">
@@ -854,11 +925,11 @@ export function FinanzenBelegPage() {
                 ? (zahler.username ?? `${zahler.vorname} ${zahler.nachname}`)
                 : null
           }
-          posten={form.posten.map((p, i) => ({
+          posten={gefuellt.map((p) => ({
             key: p.key,
             kategorie: postenName(p),
             text: p.text.trim(),
-            betragCent: (berechnung.postenBetraege[i] ?? 0) + (berechnung.pfandBetraege[i] ?? 0),
+            betragCent: betragVon(p),
           }))}
           berechnung={berechnung}
           warnungen={warnungen}
@@ -872,6 +943,13 @@ export function FinanzenBelegPage() {
           }
           onBuchen={(bestaetigt) => buchen.mutate(bestaetigt)}
           onClose={() => setDialog(false)}
+        />
+      )}
+      {neueWare && (
+        <BelegNeueWare
+          name={neueWare.name}
+          onAngelegt={(ware) => void wareAngelegt(neueWare.key, ware)}
+          onClose={() => setNeueWare(null)}
         />
       )}
       {verwerfen && (
@@ -928,5 +1006,22 @@ export function FinanzenBelegPage() {
       )}
       {warnung.dialog}
     </Stack>
+  );
+}
+
+/** "Posten: X € · Belegsumme: Y € · Differenz: Z €"; the difference is red unless it is 0. */
+function BelegsummeZeile({
+  postenCent,
+  belegsummeCent,
+}: Readonly<{ postenCent: number; belegsummeCent: number | null }>) {
+  const differenz = belegsummeCent === null ? null : belegsummeCent - postenCent;
+  return (
+    <Text size="sm" role="status" data-testid="belegsumme-zeile">
+      Posten: <b>{centAnzeigen(postenCent)}</b> · Belegsumme:{' '}
+      <b>{belegsummeCent === null ? '–' : centAnzeigen(belegsummeCent)}</b> · Differenz:{' '}
+      <Text span fw={700} c={differenz === null || differenz === 0 ? undefined : 'red'}>
+        {differenz === null ? '–' : centAnzeigen(differenz)}
+      </Text>
+    </Text>
   );
 }

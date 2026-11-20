@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  artikelPatch,
+  artikelSteuersatz,
+  istNeueWareText,
+  NEUE_WARE,
+  neueWareLabel,
+  wareOptionen,
   kategorieOptionenMitVorschlaegen,
   standardGebindeWaehlen,
   vorgeschlageneKategorie,
@@ -81,5 +87,65 @@ describe('wareFilter', () => {
     const options = waren.map((w) => ({ value: w.id, label: w.name }));
     const r = wareFilter(waren)({ options, search: 'sterni', limit: 50 });
     expect(r).toEqual([{ value: 'w1', label: 'Sternburg Export (Sterni)' }]);
+  });
+});
+
+describe('Neue Ware anlegen', () => {
+  const waren = [
+    { id: 'w1', name: 'Köstritzer', aliase: [] },
+    { id: 'w2', name: 'Sternburg Export', aliase: ['Sterni'] },
+  ];
+  const filter = (suche: string, mitNeuer = true) =>
+    (
+      wareFilter(waren)({ options: wareOptionen(waren, mitNeuer), search: suche, limit: 50 }) as {
+        value: string;
+        label: string;
+      }[]
+    ).map((o) => [o.value, o.label]);
+
+  it('is the last option, only when allowed', () => {
+    expect(wareOptionen(waren).map((o) => o.value)).toEqual(['w1', 'w2']);
+    expect(wareOptionen(waren, true).map((o) => o.value)).toEqual(['w1', 'w2', NEUE_WARE]);
+  });
+  it('stays last and names the search text whatever is typed', () => {
+    expect(filter('')).toEqual([
+      ['w1', 'Köstritzer'],
+      ['w2', 'Sternburg Export'],
+      [NEUE_WARE, 'Neue Ware anlegen'],
+    ]);
+    expect(filter('  Köstr ')).toEqual([
+      ['w1', 'Köstritzer'],
+      [NEUE_WARE, '„Köstr“ als neue Ware anlegen'],
+    ]);
+    expect(filter('xyz')).toEqual([[NEUE_WARE, '„xyz“ als neue Ware anlegen']]);
+  });
+  it('recognises its own label (Mantine writes it into the search field)', () => {
+    expect(istNeueWareText(neueWareLabel(''))).toBe(true);
+    expect(istNeueWareText(neueWareLabel('Bier'))).toBe(true);
+    expect(istNeueWareText('Köstritzer')).toBe(false);
+  });
+});
+
+describe('Artikel-Steuersatz', () => {
+  const v = [
+    { artikel: 'Deko', steuersatz: 700, kategorien: [{ kategorieId: 'k1', anzahl: 1 }] },
+    { artikel: 'Seltsam', steuersatz: 1234, kategorien: [] },
+    { artikel: 'Ohne', steuersatz: null, kategorien: [] },
+  ];
+  it('finds the rate of a known Artikel, ignoring case and edge spaces', () => {
+    expect(artikelSteuersatz(v, ' deko ')).toBe(700);
+    expect(artikelSteuersatz(v, 'Seltsam')).toBeNull();
+    expect(artikelSteuersatz(v, 'Ohne')).toBeNull();
+    expect(artikelSteuersatz(v, 'Unbekannt')).toBeNull();
+  });
+  it('wins over the standard rate of the suggested Kategorie', () => {
+    const aufwand = [{ id: 'k1', steuersatzStandard: 1900 }] as unknown as Parameters<
+      typeof artikelPatch
+    >[1];
+    expect(artikelPatch({ kategorieId: null }, aufwand, v, 'Deko')).toEqual({
+      text: 'Deko',
+      kategorieId: 'k1',
+      steuersatz: 700,
+    });
   });
 });

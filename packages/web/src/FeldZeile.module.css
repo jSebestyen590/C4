@@ -1,0 +1,29 @@
+/*
+ * Row of form fields whose error texts do not move anything: every cell reserves room under its
+ * input, the error text sits there (absolute), so inputs of one row stay on one height (bottom
+ * aligned, also with wrapped labels) and an error neither lifts its field nor pushes the next row.
+ */
+.zeile {
+  --fehler-platz: 1.4rem;
+  align-items: end;
+}
+
+.zeile > * {
+  position: relative;
+  min-width: 0;
+  padding-bottom: var(--fehler-platz);
+}
+
+.zeile :global(.mantine-InputWrapper-error) {
+  position: absolute;
+  top: calc(100% - var(--fehler-platz) + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Table cells: the red border marks the cell, the messages stand below the table. */
+.nurRand :global(.mantine-InputWrapper-error) {
+  display: none;
+}

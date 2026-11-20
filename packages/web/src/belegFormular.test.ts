@@ -10,6 +10,9 @@ import {
   formularZuDaten,
   groesseText,
   hatInhalt,
+  gefuelltePosten,
+  postenLeer,
+  tabellenZeilen,
   hexVon,
   leeresFormular,
   mengenAus,
@@ -161,9 +164,13 @@ describe('formularZuDaten', () => {
     ]);
   });
   it('macht aus leeren Feldern null bzw. 0', () => {
-    const d = formularZuDaten(leeresFormular());
+    const d = formularZuDaten({
+      ...leeresFormular(),
+      posten: [{ ...neuerPosten(700, 'leergut'), text: 'Kästen' }],
+    });
     expect(d.belegdatum).toBeNull();
     expect(d.posten[0]!.einzelpreisCent).toBe(0);
+    expect(formularZuDaten(leeresFormular()).posten).toEqual([]);
     expect(d.zahlweg).toBeNull();
   });
 });
@@ -253,12 +260,12 @@ describe('Ware, Leergut und Einreichung', () => {
   });
   it('verlangt Ware, Gebinde und Leergut-Text', () => {
     const f = lager();
-    f.posten[0] = { ...f.posten[0]!, wareId: null };
+    f.posten[0] = { ...f.posten[0]!, gebindeId: null };
     f.posten[2] = { ...f.posten[2]!, text: '' };
     const m = formularFehler(f)
       .map((x) => x.meldung)
       .join(' ');
-    expect(m).toContain('Bitte wähle eine Ware');
+    expect(m).toContain('Bitte wähle ein Gebinde');
     expect(m).toContain('Bitte beschreibe das Leergut');
   });
   it('zählt eine Ware-Zeile als Inhalt', () => {
@@ -291,7 +298,7 @@ describe('formularFehler', () => {
     const f = voll();
     f.posten = [
       { ...f.posten[0]!, einzelpreisCent: null },
-      { ...neuerPosten(0, 'ware'), einzelpreisCent: null },
+      { ...neuerPosten(0, 'ware'), wareId: 'w1', einzelpreisCent: null },
       { ...f.posten[0]!, einzelpreisCent: null },
     ];
     const m = formularFehler(f).map((x) => x.meldung);
@@ -311,7 +318,14 @@ describe('Summen und Sätze', () => {
     expect(s.jeSteuersatz.find((g) => g.satz === 1900)!.steuer).toBe(160);
   });
   it('listet die verwendeten Sätze absteigend', () => {
-    const f = { ...voll(), posten: [neuerPosten(700), neuerPosten(1900), neuerPosten(700)] };
+    const f = {
+      ...voll(),
+      posten: [
+        neuerPosten(700, 'leergut'),
+        neuerPosten(1900, 'leergut'),
+        neuerPosten(700, 'leergut'),
+      ].map((p) => ({ ...p, text: 'x' })),
+    };
     expect(verwendeteSaetze(f)).toEqual([1900, 700]);
   });
 });
@@ -384,9 +398,52 @@ describe('Reihenfolge der Posten', () => {
       ...voll(),
       posten: [
         { ...p('leergut', 'a'), text: 'L' },
-        { ...p('ware', 'b'), anzahl: '1' },
+        { ...p('ware', 'b'), wareId: 'w1', anzahl: '1' },
       ],
     };
     expect(formularZuDaten(f).posten.map((x) => x.art)).toEqual(['ware', 'leergut']);
+  });
+});
+
+describe('leere Zeilen', () => {
+  const leere = () => ({
+    ware: neuerPosten(1900, 'ware'),
+    kategorie: neuerPosten(1900, 'kategorie'),
+    leergut: neuerPosten(1900, 'leergut'),
+  });
+  it('kennt den Inhalt je Art (vorbelegte Anzahl und Steuersatz zählen nicht)', () => {
+    expect(postenLeer(neuerPosten(700, 'ware'))).toBe(true);
+    expect(postenLeer({ ...neuerPosten(), wareId: 'w1' })).toBe(false);
+    expect(postenLeer(neuerPosten(700, 'kategorie'))).toBe(true);
+    expect(postenLeer({ ...neuerPosten(700, 'kategorie'), text: ' ' })).toBe(true);
+    expect(postenLeer({ ...neuerPosten(700, 'kategorie'), einzelpreisCent: 0 })).toBe(false);
+    expect(postenLeer({ ...neuerPosten(700, 'kategorie'), kategorieId: 'k' })).toBe(false);
+    expect(postenLeer({ ...neuerPosten(700, 'leergut'), kategorieId: 'k' })).toBe(true);
+    expect(postenLeer({ ...neuerPosten(700, 'leergut'), text: 'Kästen' })).toBe(false);
+  });
+  it('speichert und prüft leere Zeilen nicht', () => {
+    const f = { ...voll(), posten: [...voll().posten, neuerPosten(700, 'leergut')] };
+    expect(formularZuDaten(f).posten).toHaveLength(voll().posten.length);
+    expect(gefuelltePosten(f.posten)).toHaveLength(voll().posten.length);
+    expect(hatInhalt({ ...leeresFormular(), posten: [neuerPosten(700, 'leergut')] })).toBe(false);
+  });
+  it('zeigt je Tabelle die gefüllten Zeilen und genau eine leere', () => {
+    const l = leere();
+    const k = { ...neuerPosten(1900, 'kategorie'), text: 'Deko' };
+    const z = tabellenZeilen([k], l, 'kategorie');
+    expect(z.map((x) => [x.p.key, x.leer, x.nr])).toEqual([
+      [k.key, false, 1],
+      [l.kategorie.key, true, null],
+    ]);
+    // Without items the table only has its empty row.
+    expect(tabellenZeilen([k], l, 'leergut').map((x) => x.leer)).toEqual([true]);
+  });
+  it('nutzt die zuletzt geleerte Zeile der Form als leere Zeile', () => {
+    const l = leere();
+    const gefuellt = { ...neuerPosten(1900, 'leergut'), text: 'a' };
+    const geleert = neuerPosten(1900, 'leergut');
+    const z = tabellenZeilen([gefuellt, geleert], l, 'leergut');
+    expect(z.map((x) => x.p.key)).toEqual([gefuellt.key, geleert.key]);
+    expect(z.at(-1)?.leer).toBe(true);
   });
 });

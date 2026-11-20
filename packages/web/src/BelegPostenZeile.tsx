@@ -5,12 +5,12 @@ import {
   Paper,
   SegmentedControl,
   Select,
-  SimpleGrid,
   Stack,
   Text,
   TextInput,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
+import { useRef, useState } from 'react';
 import {
   BELEG_POSTEN_ARTEN,
   BELEG_POSTEN_ART_LABELS,
@@ -26,8 +26,10 @@ import {
   artikelNamen,
   artikelPatch,
   artWechselPatch,
+  fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
+  NEUE_WARE,
   postenFeldFehler,
   wareFilter,
   wareOptionen,
@@ -37,6 +39,7 @@ import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { FeldLabel } from './InfoHinweis';
+import { FeldZeile } from './FeldZeile';
 
 const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
 
@@ -56,6 +59,7 @@ export function BelegPostenZeile({
   pfandBetragCent,
   versucht,
   kannEntfernen,
+  onNeueWare,
   onAendern,
   onEntfernen,
 }: Readonly<{
@@ -71,12 +75,16 @@ export function BelegPostenZeile({
   pfandBetragCent: number;
   versucht: boolean;
   kannEntfernen: boolean;
+  /** Opens "Neue Ware anlegen" with the typed search text; unset = not allowed. */
+  onNeueWare?: (key: string, suche: string) => void;
   onAendern: (patch: Partial<PostenZeile>) => void;
   onEntfernen: () => void;
 }>) {
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
   const fehler = postenFeldFehler(p, versucht);
+  const [wareSuche, setWareSuche] = useState('');
+  const wareEingabe = useRef<HTMLInputElement>(null);
 
   return (
     <Paper withBorder p="sm" data-zeile={p.key}>
@@ -105,16 +113,30 @@ export function BelegPostenZeile({
         </Group>
 
         {p.art === 'ware' && (
-          <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="xs">
+          <FeldZeile cols={{ base: 1, sm: 2 }} spacing="xs" verticalSpacing={0}>
             <Select
+              ref={wareEingabe}
               label="Ware"
               placeholder="Ware suchen"
               searchable
+              autoSelectOnBlur
               selectFirstOptionOnChange
-              data={wareOptionen(waren)}
+              data={wareOptionen(waren, !!onNeueWare)}
               filter={wareFilter(waren)}
               value={p.wareId}
-              onChange={(v) => onAendern(warePatch(waren, aufwand, v))}
+              searchValue={wareSuche}
+              onSearchChange={setWareSuche}
+              onChange={(v) => {
+                if (v === NEUE_WARE) {
+                  // Only a deliberate pick (Enter, tap) creates a Ware, not leaving the field.
+                  if (document.activeElement === wareEingabe.current)
+                    onNeueWare?.(p.key, wareSuche);
+                  setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
+                  return;
+                }
+                onAendern(warePatch(waren, aufwand, v));
+                if (v) fokusAnzahl(p.key);
+              }}
               nothingFoundMessage="Keine Ware gefunden"
               error={fehler.ware}
               data-nav=""
@@ -136,10 +158,10 @@ export function BelegPostenZeile({
               error={fehler.gebinde}
               data-nav=""
             />
-          </SimpleGrid>
+          </FeldZeile>
         )}
 
-        <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="xs">
+        <FeldZeile cols={{ base: 1, sm: 2 }} spacing="xs" verticalSpacing={0}>
           {p.art === 'kategorie' && (
             <Autocomplete
               label={<FeldLabel text="Artikel" hilfe={HILFE.belege.artikelKategorie} />}
@@ -158,6 +180,7 @@ export function BelegPostenZeile({
               label="Kategorie"
               placeholder="Kategorie suchen"
               searchable
+              autoSelectOnBlur
               selectFirstOptionOnChange
               allowDeselect={false}
               data={
@@ -189,17 +212,23 @@ export function BelegPostenZeile({
               data-kategorie=""
             />
           )}
-        </SimpleGrid>
+        </FeldZeile>
 
-        <SimpleGrid
-          style={{ alignItems: 'end' }}
+        <FeldZeile
           cols={{ base: 2, sm: p.art === 'ware' ? 5 : 4 }}
           spacing="xs"
+          verticalSpacing={0}
         >
           <TextInput
             label={
               <FeldLabel
-                text={p.art === 'ware' ? 'Anzahl Gebinde' : 'Anzahl'}
+                text={
+                  p.art === 'ware'
+                    ? 'Anzahl Gebinde'
+                    : p.art === 'leergut'
+                      ? 'Anzahl zurück'
+                      : 'Anzahl'
+                }
                 hilfe={HILFE.belege.anzahl}
               />
             }
@@ -210,10 +239,11 @@ export function BelegPostenZeile({
             error={fehler.anzahl}
             styles={{ input: { textAlign: 'right' } }}
             data-nav=""
+            data-anzahl=""
           />
           <BetragFeld
-            label={`${p.art === 'ware' ? 'Preis je Gebinde' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
-            negativ={p.art !== 'ware'}
+            label={`${p.art === 'ware' ? 'Preis je Gebinde' : p.art === 'leergut' ? 'Pfand je Stück' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
+            negativ={p.art === 'kategorie'}
             value={p.einzelpreisCent}
             onWert={(c) => onAendern({ einzelpreisCent: c })}
             error={fehler.preis}
@@ -250,7 +280,7 @@ export function BelegPostenZeile({
               )}
             </Text>
           </Stack>
-        </SimpleGrid>
+        </FeldZeile>
       </Stack>
     </Paper>
   );

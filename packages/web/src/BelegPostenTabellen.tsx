@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Autocomplete,
-  Button,
   Select,
   Stack,
   Table,
@@ -9,21 +8,30 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconTrash } from '@tabler/icons-react';
+import { useRef, useState } from 'react';
 import {
   centAnzeigen,
+  postenZeilenLabel,
   STEUERSAETZE,
   type ArtikelKategorieVorschlaege,
   type BelegPostenArt,
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { POSTEN_REIHENFOLGE, satzText, type PostenZeile } from './belegFormular';
+import {
+  POSTEN_REIHENFOLGE,
+  tabellenZeilen,
+  type PostenZeile,
+  type TabellenZeile,
+} from './belegFormular';
 import {
   artikelNamen,
   artikelPatch,
+  fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
+  NEUE_WARE,
   postenFeldFehler,
   wareFilter,
   wareOptionen,
@@ -31,8 +39,13 @@ import {
 } from './belegAuswahl';
 import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
+import { NUR_RAND_KLASSE } from './FeldZeile';
 
-const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
+/** Tax rate in a narrow column: "19", "7", "0" (the header says "Steuer %"). */
+const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({
+  value: String(s),
+  label: (s / 100).toLocaleString('de-DE'),
+}));
 
 const TITEL: Record<BelegPostenArt, string> = {
   ware: 'Waren',
@@ -40,35 +53,42 @@ const TITEL: Record<BelegPostenArt, string> = {
   leergut: 'Leergut',
 };
 
+interface Spalte {
+  name: string;
+  breite: string;
+  rechts?: true;
+  /** Price column: the header gets "(brutto)" / "(netto)". */
+  preis?: true;
+}
+
 /** Column header text and width (percent of the table) per kind. */
-const SPALTEN: Record<BelegPostenArt, readonly { name: string; breite: string; rechts?: true }[]> =
-  {
-    ware: [
-      { name: 'Ware', breite: '20%' },
-      { name: 'Gebinde', breite: '12%' },
-      { name: 'Anzahl', breite: '7%', rechts: true },
-      { name: 'Preis je Gebinde', breite: '11%', rechts: true },
-      { name: 'Pfand je Gebinde', breite: '11%', rechts: true },
-      { name: 'Steuersatz', breite: '8%' },
-      { name: 'Kategorie', breite: '18%' },
-      { name: 'Betrag', breite: '9%', rechts: true },
-    ],
-    kategorie: [
-      { name: 'Artikel', breite: '24%' },
-      { name: 'Kategorie', breite: '24%' },
-      { name: 'Anzahl', breite: '9%', rechts: true },
-      { name: 'Einzelpreis', breite: '14%', rechts: true },
-      { name: 'Steuersatz', breite: '10%' },
-      { name: 'Betrag', breite: '12%', rechts: true },
-    ],
-    leergut: [
-      { name: 'Beschreibung', breite: '40%' },
-      { name: 'Anzahl', breite: '12%', rechts: true },
-      { name: 'Preis', breite: '18%', rechts: true },
-      { name: 'Steuersatz', breite: '12%' },
-      { name: 'Betrag', breite: '14%', rechts: true },
-    ],
-  };
+const SPALTEN: Record<BelegPostenArt, readonly Spalte[]> = {
+  ware: [
+    { name: 'Ware', breite: '20%' },
+    { name: 'Gebinde', breite: '12%' },
+    { name: 'Anzahl', breite: '7%', rechts: true },
+    { name: 'Preis je Gebinde', breite: '11%', rechts: true, preis: true },
+    { name: 'Pfand je Gebinde', breite: '11%', rechts: true },
+    { name: 'Steuer %', breite: '7%' },
+    { name: 'Kategorie', breite: '17%' },
+    { name: 'Betrag', breite: '15%', rechts: true },
+  ],
+  kategorie: [
+    { name: 'Artikel', breite: '25%' },
+    { name: 'Kategorie', breite: '24%' },
+    { name: 'Anzahl', breite: '9%', rechts: true },
+    { name: 'Einzelpreis', breite: '14%', rechts: true, preis: true },
+    { name: 'Steuer %', breite: '9%' },
+    { name: 'Betrag', breite: '19%', rechts: true },
+  ],
+  leergut: [
+    { name: 'Beschreibung', breite: '38%' },
+    { name: 'Anzahl zurück', breite: '13%', rechts: true },
+    { name: 'Pfand je Stück', breite: '18%', rechts: true, preis: true },
+    { name: 'Steuer %', breite: '11%' },
+    { name: 'Betrag', breite: '20%', rechts: true },
+  ],
+};
 
 interface Gemeinsam {
   modus: 'brutto' | 'netto';
@@ -76,8 +96,12 @@ interface Gemeinsam {
   waren: readonly BelegWareDto[];
   artikelVorschlaege: ArtikelKategorieVorschlaege;
   versucht: boolean;
-  kannEntfernen: boolean;
+  /** Opens "Neue Ware anlegen" for the row with the item key and the typed search text; unset = not allowed. */
+  onNeueWare?: (key: string, suche: string) => void;
 }
+
+/** Amount (incl. deposit) and deposit part of a filled item, by item key. */
+export type PostenBetraege = ReadonlyMap<string, { betragCent: number; pfandCent: number }>;
 
 /** Tooltip-free hint of a row in the message list under the table. */
 const FELD_NAMEN: Record<string, string> = {
@@ -91,26 +115,26 @@ const FELD_NAMEN: Record<string, string> = {
 
 /**
  * The three item tables of the Finanzer:in form (Waren, Kategorien, Leergut), one below the other.
- * `posten` is the whole (grouped) list, so the row numbers match the "Posten N" messages. Every
- * input carries `data-nav`; the last input of the last row of a table carries
- * `data-posten-ende="<art>"` (the form then adds a row to that table on Enter), every row `data-zeile`.
+ * Each ends with one empty row (the form's last empty item of the kind or `leere[art]`, see
+ * `tabellenZeilen`); typing into it makes it a real item and a new empty row appears below.
+ * Every input carries `data-nav`, the Anzahl input `data-anzahl`, every row `data-zeile`, the empty
+ * row `data-leer`. The last input of the last filled row of a table carries
+ * `data-posten-ende="<art>"` (the form then moves to the empty row on Enter).
  */
 export function BelegPostenTabellen({
   posten,
+  leere,
   betraege,
-  pfandBetraege,
   onAendern,
   onEntfernen,
-  onHinzu,
   ...gemeinsam
 }: Readonly<
   Gemeinsam & {
     posten: readonly PostenZeile[];
-    betraege: readonly number[];
-    pfandBetraege: readonly number[];
+    leere: Readonly<Record<BelegPostenArt, PostenZeile>>;
+    betraege: PostenBetraege;
     onAendern: (key: string, patch: Partial<PostenZeile>) => void;
     onEntfernen: (key: string) => void;
-    onHinzu: (art: BelegPostenArt) => void;
   }
 >) {
   return (
@@ -119,17 +143,10 @@ export function BelegPostenTabellen({
         <BelegPostenTabelle
           key={art}
           art={art}
-          zeilen={posten
-            .map((p, index) => ({ p, index }))
-            .filter((z) => z.p.art === art)
-            .map((z) => ({
-              ...z,
-              betragCent: (betraege[z.index] ?? 0) + (pfandBetraege[z.index] ?? 0),
-              pfandBetragCent: pfandBetraege[z.index] ?? 0,
-            }))}
+          zeilen={tabellenZeilen(posten, leere, art)}
+          betraege={betraege}
           onAendern={onAendern}
           onEntfernen={onEntfernen}
-          onHinzu={() => onHinzu(art)}
           {...gemeinsam}
         />
       ))}
@@ -137,44 +154,39 @@ export function BelegPostenTabellen({
   );
 }
 
-interface Zeile {
-  p: PostenZeile;
-  /** Position in the whole item list (0-based). */
-  index: number;
-  betragCent: number;
-  pfandBetragCent: number;
-}
-
-/** One table of one kind with its "Zeile hinzufügen". */
+/** One table of one kind. */
 export function BelegPostenTabelle({
   art,
   zeilen,
+  betraege,
   modus,
   aufwand,
   waren,
   artikelVorschlaege,
   versucht,
-  kannEntfernen,
+  onNeueWare,
   onAendern,
   onEntfernen,
-  onHinzu,
 }: Readonly<
   Gemeinsam & {
     art: BelegPostenArt;
-    zeilen: readonly Zeile[];
+    zeilen: readonly TabellenZeile[];
+    betraege: PostenBetraege;
     onAendern: (key: string, patch: Partial<PostenZeile>) => void;
     onEntfernen: (key: string) => void;
-    onHinzu: () => void;
   }
 >) {
   const spalten = SPALTEN[art];
-  const preisLabel = `${modus === 'netto' ? 'netto' : 'brutto'}`;
+  const preisLabel = modus === 'netto' ? 'netto' : 'brutto';
+  const letzterGefuellt = zeilen.filter((z) => !z.leer).at(-1)?.p.key;
   const meldungen = versucht
-    ? zeilen.flatMap(({ p, index }) =>
-        Object.entries(postenFeldFehler(p, true)).map(
-          ([feld, text]) =>
-            `Posten ${index + 1}: ${[FELD_NAMEN[feld], text].filter(Boolean).join(': ')}`,
-        ),
+    ? zeilen.flatMap(({ p, nr }) =>
+        nr === null
+          ? []
+          : Object.entries(postenFeldFehler(p, true)).map(
+              ([feld, text]) =>
+                `${postenZeilenLabel(art, nr)}: ${[FELD_NAMEN[feld], text].filter(Boolean).join(': ')}`,
+            ),
       )
     : [];
 
@@ -183,46 +195,43 @@ export function BelegPostenTabelle({
       <Title order={4} size="h5">
         {TITEL[art]}
       </Title>
-      {zeilen.length > 0 && (
-        <Table.ScrollContainer minWidth={art === 'ware' ? 980 : 760}>
-          <Table verticalSpacing={4} horizontalSpacing={4} style={{ tableLayout: 'fixed' }}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th w={36} aria-label="Nummer">
-                  Nr.
+      <Table.ScrollContainer minWidth={art === 'ware' ? 980 : 760} className={NUR_RAND_KLASSE}>
+        <Table verticalSpacing={4} horizontalSpacing={4} style={{ tableLayout: 'fixed' }}>
+          <Table.Thead>
+            <Table.Tr>
+              {spalten.map((s) => (
+                <Table.Th
+                  key={s.name}
+                  w={s.breite}
+                  style={s.rechts ? { textAlign: 'right' } : undefined}
+                >
+                  {s.name}
+                  {s.preis && ` (${preisLabel})`}
                 </Table.Th>
-                {spalten.map((s) => (
-                  <Table.Th
-                    key={s.name}
-                    w={s.breite}
-                    style={s.rechts ? { textAlign: 'right' } : undefined}
-                  >
-                    {s.name}
-                    {(s.name.startsWith('Preis') || s.name === 'Einzelpreis') && ` (${preisLabel})`}
-                  </Table.Th>
-                ))}
-                <Table.Th w={44} aria-label="Entfernen" />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {zeilen.map((z, i) => (
-                <PostenTabellenZeile
-                  key={z.p.key}
-                  z={z}
-                  letzte={i === zeilen.length - 1}
-                  aufwand={aufwand}
-                  waren={waren}
-                  artikelVorschlaege={artikelVorschlaege}
-                  versucht={versucht}
-                  kannEntfernen={kannEntfernen}
-                  onAendern={(patch) => onAendern(z.p.key, patch)}
-                  onEntfernen={() => onEntfernen(z.p.key)}
-                />
               ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
+              <Table.Th w={44} aria-label="Entfernen" />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {zeilen.map((z) => (
+              <PostenTabellenZeile
+                key={z.p.key}
+                z={z}
+                art={art}
+                betrag={betraege.get(z.p.key)}
+                ende={z.p.key === letzterGefuellt}
+                aufwand={aufwand}
+                waren={waren}
+                artikelVorschlaege={artikelVorschlaege}
+                versucht={versucht}
+                onNeueWare={onNeueWare}
+                onAendern={(patch) => onAendern(z.p.key, patch)}
+                onEntfernen={() => onEntfernen(z.p.key)}
+              />
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {meldungen.length > 0 && (
         <Stack gap={0}>
           {meldungen.map((m) => (
@@ -232,56 +241,56 @@ export function BelegPostenTabelle({
           ))}
         </Stack>
       )}
-      <div>
-        <Button
-          variant="light"
-          size="compact-md"
-          leftSection={<IconPlus size={16} />}
-          onClick={onHinzu}
-        >
-          Zeile hinzufügen
-        </Button>
-      </div>
     </Stack>
   );
 }
 
 function PostenTabellenZeile({
-  z: { p, index, betragCent, pfandBetragCent },
-  letzte,
+  z: { p, leer, nr },
+  art,
+  betrag: betragWerte,
+  ende: istEnde,
   aufwand,
   waren,
   artikelVorschlaege,
   versucht,
-  kannEntfernen,
+  onNeueWare,
   onAendern,
   onEntfernen,
 }: Readonly<{
-  z: Zeile;
-  letzte: boolean;
+  z: TabellenZeile;
+  art: BelegPostenArt;
+  betrag: { betragCent: number; pfandCent: number } | undefined;
+  /** Last filled row of its table: its last input moves to the empty row on Enter. */
+  ende: boolean;
   aufwand: readonly KontoDto[];
   waren: readonly BelegWareDto[];
   artikelVorschlaege: ArtikelKategorieVorschlaege;
   versucht: boolean;
-  kannEntfernen: boolean;
+  onNeueWare?: (key: string, suche: string) => void;
   onAendern: (patch: Partial<PostenZeile>) => void;
   onEntfernen: () => void;
 }>) {
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
-  const fehler = postenFeldFehler(p, versucht);
-  const nr = index + 1;
+  // Empty rows show no errors: nothing is checked there.
+  const fehler = postenFeldFehler(p, versucht && !leer);
+  const zeile = leer ? `${TITEL[art]}, neue Zeile` : postenZeilenLabel(art, nr!);
+  const betragCent = betragWerte?.betragCent ?? 0;
+  const pfandBetragCent = betragWerte?.pfandCent ?? 0;
   // Red border only; the messages stand below the table.
   const rot = (meldung: string | undefined) => (meldung ? true : undefined);
   const dropdown = { width: 280, position: 'bottom-start' as const };
   // The last input of the row (Kategorie for Waren, else Steuersatz) ends the table on Enter.
-  const ende = (letztes: boolean) => (letzte && letztes ? { 'data-posten-ende': p.art } : {});
+  const ende = (letztes: boolean) => (istEnde && letztes ? { 'data-posten-ende': art } : {});
+  const [wareSuche, setWareSuche] = useState('');
+  const wareEingabe = useRef<HTMLInputElement>(null);
 
   const anzahl = (
     <Table.Td>
       <TextInput
         size="sm"
-        aria-label={`Anzahl${p.art === 'ware' ? ' Gebinde' : ''}, Posten ${nr}`}
+        aria-label={`${art === 'ware' ? 'Anzahl Gebinde' : art === 'leergut' ? 'Anzahl zurück' : 'Anzahl'}, ${zeile}`}
         inputMode="decimal"
         autoComplete="off"
         value={p.anzahl}
@@ -289,6 +298,7 @@ function PostenTabellenZeile({
         error={rot(fehler.anzahl)}
         styles={{ input: { textAlign: 'right' } }}
         data-nav=""
+        data-anzahl=""
       />
     </Table.Td>
   );
@@ -296,8 +306,8 @@ function PostenTabellenZeile({
     <Table.Td>
       <BetragFeld
         size="sm"
-        aria-label={`${p.art === 'ware' ? 'Preis je Gebinde' : 'Preis'}, Posten ${nr}`}
-        negativ={p.art !== 'ware'}
+        aria-label={`${art === 'ware' ? 'Preis je Gebinde' : art === 'leergut' ? 'Pfand je Stück' : 'Preis'}, ${zeile}`}
+        negativ={art === 'kategorie'}
         value={p.einzelpreisCent}
         onWert={(c) => onAendern({ einzelpreisCent: c })}
         error={rot(fehler.preis)}
@@ -309,26 +319,30 @@ function PostenTabellenZeile({
     <Table.Td>
       <Select
         size="sm"
-        aria-label={`Steuersatz, Posten ${nr}`}
+        aria-label={`Steuersatz, ${zeile}`}
         allowDeselect={false}
         data={SATZ_OPTIONEN}
         value={String(p.steuersatz)}
         onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
         comboboxProps={{ width: 100 }}
         data-nav=""
-        {...ende(p.art !== 'ware')}
+        {...ende(art !== 'ware')}
       />
     </Table.Td>
   );
   const betrag = (
     <Table.Td style={BETRAG_STIL}>
-      <Text fw={600} size="sm">
-        {centAnzeigen(betragCent)}
-      </Text>
-      {pfandBetragCent !== 0 && (
-        <Text size="xs" c="dimmed" lh={1.2}>
-          davon Pfand {centAnzeigen(pfandBetragCent)}
-        </Text>
+      {!leer && (
+        <>
+          <Text fw={600} size="sm">
+            {centAnzeigen(betragCent + pfandBetragCent)}
+          </Text>
+          {pfandBetragCent !== 0 && (
+            <Text size="xs" c="dimmed" lh={1.2} style={{ whiteSpace: 'normal' }}>
+              davon Pfand {centAnzeigen(pfandBetragCent)}
+            </Text>
+          )}
+        </>
       )}
     </Table.Td>
   );
@@ -336,9 +350,10 @@ function PostenTabellenZeile({
     <Table.Td>
       <Select
         size="sm"
-        aria-label={`Kategorie, Posten ${nr}`}
+        aria-label={`Kategorie, ${zeile}`}
         placeholder="Kategorie suchen"
         searchable
+        autoSelectOnBlur
         onFocus={(e) => e.currentTarget.select()}
         selectFirstOptionOnChange
         allowDeselect={false}
@@ -359,26 +374,35 @@ function PostenTabellenZeile({
   );
 
   return (
-    <Table.Tr data-zeile={p.key}>
-      <Table.Td>
-        <Text size="sm" c="dimmed">
-          {nr}
-        </Text>
-      </Table.Td>
+    <Table.Tr data-zeile={p.key} {...(leer && { 'data-leer': '' })}>
       {p.art === 'ware' && (
         <>
           <Table.Td>
             <Select
+              ref={wareEingabe}
               size="sm"
-              aria-label={`Ware, Posten ${nr}`}
+              aria-label={`Ware, ${zeile}`}
               placeholder="Ware suchen"
               searchable
+              autoSelectOnBlur
               onFocus={(e) => e.currentTarget.select()}
               selectFirstOptionOnChange
-              data={wareOptionen(waren)}
+              data={wareOptionen(waren, !!onNeueWare)}
               filter={wareFilter(waren)}
               value={p.wareId}
-              onChange={(v) => onAendern(warePatch(waren, aufwand, v))}
+              searchValue={wareSuche}
+              onSearchChange={setWareSuche}
+              onChange={(v) => {
+                if (v === NEUE_WARE) {
+                  // Only a deliberate pick (Enter, click) creates a Ware, not leaving the field.
+                  if (document.activeElement === wareEingabe.current)
+                    onNeueWare?.(p.key, wareSuche);
+                  setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
+                  return;
+                }
+                onAendern(warePatch(waren, aufwand, v));
+                if (v) fokusAnzahl(p.key);
+              }}
               nothingFoundMessage="Keine Ware gefunden"
               comboboxProps={dropdown}
               error={rot(fehler.ware)}
@@ -388,7 +412,7 @@ function PostenTabellenZeile({
           <Table.Td>
             <Select
               size="sm"
-              aria-label={`Gebinde, Posten ${nr}`}
+              aria-label={`Gebinde, ${zeile}`}
               placeholder={ware ? 'Gebinde' : 'Erst Ware'}
               disabled={!ware}
               allowDeselect={false}
@@ -410,7 +434,7 @@ function PostenTabellenZeile({
           <Table.Td>
             <BetragFeld
               size="sm"
-              aria-label={`Pfand je Gebinde, Posten ${nr}`}
+              aria-label={`Pfand je Gebinde, ${zeile}`}
               placeholder={gebinde ? 'kein Pfand' : undefined}
               value={p.pfandCent}
               onWert={(c) => onAendern({ pfandCent: c })}
@@ -427,7 +451,7 @@ function PostenTabellenZeile({
           <Table.Td>
             <Autocomplete
               size="sm"
-              aria-label={`Artikel, Posten ${nr}`}
+              aria-label={`Artikel, ${zeile}`}
               placeholder="z. B. Deko"
               maxLength={100}
               data={artikelNamen(artikelVorschlaege)}
@@ -449,7 +473,7 @@ function PostenTabellenZeile({
           <Table.Td>
             <TextInput
               size="sm"
-              aria-label={`Beschreibung, Posten ${nr}`}
+              aria-label={`Beschreibung, ${zeile}`}
               placeholder="z. B. Pfandrückgabe Kästen"
               maxLength={200}
               value={p.text}
@@ -465,16 +489,17 @@ function PostenTabellenZeile({
         </>
       )}
       <Table.Td>
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          size={36}
-          aria-label={`Posten ${nr} entfernen`}
-          disabled={!kannEntfernen}
-          onClick={onEntfernen}
-        >
-          <IconTrash size={18} />
-        </ActionIcon>
+        {!leer && (
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size={36}
+            aria-label={`${zeile} entfernen`}
+            onClick={onEntfernen}
+          >
+            <IconTrash size={18} />
+          </ActionIcon>
+        )}
       </Table.Td>
     </Table.Tr>
   );

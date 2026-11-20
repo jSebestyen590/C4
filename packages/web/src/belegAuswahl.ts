@@ -1,5 +1,6 @@
 import type { ComboboxItem, ComboboxItemGroup, OptionsFilter } from '@mantine/core';
 import {
+  STEUERSAETZE,
   wareSuchen,
   type ArtikelKategorieVorschlaege,
   type BelegWareDto,
@@ -7,13 +8,35 @@ import {
 } from '@c4/shared';
 import { anzahlLesen, steuersatzVorschlag, type PostenZeile } from './belegFormular';
 
-/** Options of a Ware select (value = Ware id, label = name). */
-export const wareOptionen = (waren: readonly { id: string; name: string }[]): ComboboxItem[] =>
-  waren.map((w) => ({ value: w.id, label: w.name }));
+/** Value of the last option of a Ware select: "Neue Ware anlegen" (never a Ware id). */
+export const NEUE_WARE = '__neue-ware__';
+
+/** Label of the "new Ware" option: with the search text it names the Ware to create. */
+export function neueWareLabel(suche: string): string {
+  const s = suche.trim();
+  return s ? `„${s}“ als neue Ware anlegen` : 'Neue Ware anlegen';
+}
+
+/** Whether a text is the label of the "new Ware" option (Mantine writes the label into the search field). */
+export const istNeueWareText = (text: string): boolean =>
+  text === 'Neue Ware anlegen' || /^„.*“ als neue Ware anlegen$/.test(text);
+
+/**
+ * Options of a Ware select (value = Ware id, label = name). With `mitNeuer` the option
+ * "Neue Ware anlegen" (`NEUE_WARE`) is the last one.
+ */
+export const wareOptionen = (
+  waren: readonly { id: string; name: string }[],
+  mitNeuer = false,
+): ComboboxItem[] => [
+  ...waren.map((w) => ({ value: w.id, label: w.name })),
+  ...(mitNeuer ? [{ value: NEUE_WARE, label: neueWareLabel('') }] : []),
+];
 
 /**
  * `filter` for a searchable Mantine `Select` of Waren: finds by name and by alias (via `wareSuchen`).
- * An alias match shows the alias in the option, e.g. "Sternburg Export (Sterni)".
+ * An alias match shows the alias in the option, e.g. "Sternburg Export (Sterni)". The option
+ * "Neue Ware anlegen" stays last whatever is typed and carries the search text in its label.
  */
 export const wareFilter =
   (waren: readonly { id: string; name: string; aliase?: readonly string[] }[]): OptionsFilter =>
@@ -21,6 +44,7 @@ export const wareFilter =
     const treffer = wareSuchen(waren, search);
     const nachId = new Map(treffer.map((t) => [t.ware.id, t.alias]));
     return (options as ComboboxItem[]).flatMap((o) => {
+      if (o.value === NEUE_WARE) return [{ ...o, label: neueWareLabel(search) }];
       if (!nachId.has(o.value)) return [];
       const alias = nachId.get(o.value);
       return [alias ? { ...o, label: `${o.label} (${alias})` } : o];
@@ -119,7 +143,21 @@ export function warePatch(
   };
 }
 
-/** Patch for typing the Artikel of a Kategorie item: preselects the most frequent Kategorie while it is empty. */
+/** Default tax rate of a known Artikel (one the form offers), or null. */
+export function artikelSteuersatz(
+  vorschlaege: ArtikelKategorieVorschlaege,
+  artikel: string,
+): number | null {
+  const q = norm(artikel);
+  if (!q) return null;
+  const satz = vorschlaege.find((v) => norm(v.artikel) === q)?.steuersatz ?? null;
+  return satz !== null && (STEUERSAETZE as readonly number[]).includes(satz) ? satz : null;
+}
+
+/**
+ * Patch for typing the Artikel of a Kategorie item: preselects the most frequent Kategorie while it
+ * is empty, and the Artikel's own tax rate (it wins over the Kategorie's standard).
+ */
 export function artikelPatch(
   p: Pick<PostenZeile, 'kategorieId'>,
   aufwand: readonly KontoDto[],
@@ -127,7 +165,22 @@ export function artikelPatch(
   artikel: string,
 ): Partial<PostenZeile> {
   const vorschlag = p.kategorieId ? null : vorgeschlageneKategorie(aufwand, vorschlaege, artikel);
-  return { text: artikel, ...(vorschlag !== null && kategoriePatch(aufwand, vorschlag)) };
+  const satz = artikelSteuersatz(vorschlaege, artikel);
+  return {
+    text: artikel,
+    ...(vorschlag !== null && kategoriePatch(aufwand, vorschlag)),
+    ...(satz !== null && { steuersatz: satz }),
+  };
+}
+
+/**
+ * Focuses the Anzahl input of a row (`data-zeile` = item key, input carries `data-anzahl`) after the
+ * current event, e.g. after a Ware was chosen (skips Gebinde; Shift-Tab reaches it).
+ */
+export function fokusAnzahl(key: string): void {
+  setTimeout(() => {
+    document.querySelector<HTMLElement>(`[data-zeile="${key}"] [data-anzahl]`)?.focus();
+  }, 0);
 }
 
 /** Patch for changing the kind of an item (clears the fields of the other kinds). */
@@ -151,6 +204,10 @@ export interface PostenFeldFehler {
 export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldFehler {
   const f: PostenFeldFehler = {};
   if (p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null) f.anzahl = 'Ungültig, z. B. 1,5';
+  if (p.art === 'leergut') {
+    const anzahl = anzahlLesen(p.anzahl);
+    if (anzahl !== null && anzahl <= 0) f.anzahl = 'Muss größer als 0 sein.';
+  }
   if (!versucht) return f;
   if (p.art === 'ware') {
     if (!p.wareId) f.ware = 'Bitte wähle eine Ware.';

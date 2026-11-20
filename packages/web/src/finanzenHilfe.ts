@@ -132,7 +132,11 @@ export const HILFE = {
     eigenbeleg:
       'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert.',
     modus:
-      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Ein Beleg ist immer eine Ausgabe, eine Gutschrift (z. B. Pfandrückgabe) tippst du als Posten mit negativem Preis.',
+      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Pfandrückgaben erfasst du als Leergut-Posten (Betrag negativ).',
+    belegsumme:
+      'Die Summe (brutto), die auf dem Beleg steht, auch negativ (z. B. reine Pfandrückgabe). Gebucht wird nur, wenn die Summe der Posten (inkl. Pfand, Leergut negativ) genau so hoch ist; die Differenz steht unter den Tabellen.',
+    neueWare:
+      'Steht die Ware nicht in der Liste, wähle ganz unten „Neue Ware anlegen“ (mit dem Recht „Waren verwalten“). Das Formular ist mit dem getippten Namen vorbelegt; danach steht die Ware in der Zeile.',
     steuersatz:
       'Der Steuersatz wird mit der Kategorie vorgeschlagen und gilt je Posten. Die Steuer wird je Steuersatz auf die Summe der Posten gerechnet (wie auf Kassenbons), nicht je Posten.',
     anzahl: 'Die Anzahl darf Dezimalstellen haben, mit Komma getippt, z. B. 1,5 für 1,5 kg.',
@@ -153,9 +157,9 @@ export const HILFE = {
     rechnungssteller:
       'Wer die Rechnung gestellt hat (Händler, Lieferant). Archivierte Rechnungssteller erscheinen nicht mehr in der Auswahl, bleiben aber an alten Belegen erhalten. Vorbelegt wird der zuletzt verwendete.',
     postenArt:
-      'Kategorie: ein normaler Aufwandsposten. Ware (Lager): eine Ware aus dem Lager in einem Gebinde (Kasten, Flasche …), mit Anzahl Gebinde und Preis je Gebinde; sie kann beim Buchen eingelagert werden. Leergut: zurückgegebene Pfandflaschen oder -kästen, meist mit negativem Preis.',
+      'Kategorie: ein normaler Aufwandsposten. Ware (Lager): eine Ware aus dem Lager in einem Gebinde (Kasten, Flasche …), mit Anzahl Gebinde und Preis je Gebinde; sie kann beim Buchen eingelagert werden. Leergut: zurückgegebene Pfandflaschen oder -kästen (Anzahl = Rückgabe, Preis = Pfand je Stück).',
     pfand:
-      'Das Pfand je Gebinde wird aus dem Gebinde der Ware vorbelegt (inkl. Untergebinde) und lässt sich überschreiben; leer heißt kein Pfand. Es steht nicht im Aufwand, sondern auf dem Konto „Pfand/Leergut“, trägt aber die Steuer der Ware. Der Saldo des Kontos ist das ausstehende Leergut. Zurückgegebenes Leergut erfasst du als Posten der Art „Leergut“ mit negativem Preis (Steuersatz wie beim Pfand).',
+      'Das Pfand je Gebinde wird aus dem Gebinde der Ware vorbelegt (inkl. Untergebinde) und lässt sich überschreiben; leer heißt kein Pfand. Es steht nicht im Aufwand, sondern auf dem Konto „Pfand/Leergut“, trägt aber die Steuer der Ware. Der Saldo des Kontos ist das ausstehende Leergut. Zurückgegebenes Leergut erfasst du als Posten der Art „Leergut“: Anzahl = zurückgegebene Stück (größer als 0), Preis = Pfand je Stück; der Betrag wird negativ (Steuersatz wie beim Pfand).',
     lagerPosten:
       'Bei einem Posten der Art „Ware (Lager)“ wählst du Ware und Gebinde; der Preis gilt je Gebinde ohne Pfand. Die Kategorie wird aus der Warengruppe der Ware vorgeschlagen und lässt sich ändern. Ohne Zuordnung musst du sie selbst wählen.',
     artikelKategorie:
