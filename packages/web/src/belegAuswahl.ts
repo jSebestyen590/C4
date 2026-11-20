@@ -120,9 +120,12 @@ export const artikelNamen = (vorschlaege: ArtikelKategorieVorschlaege): string[]
 
 // ----- Field logic shared by the card mask and the tables
 
+/** A Kategorie as the forms offer it; members get no standard tax rate. */
+export type KategorieAuswahl = Pick<KontoDto, 'id'> & Partial<Pick<KontoDto, 'steuersatzStandard'>>;
+
 /** Patch for choosing a Kategorie: the id plus the Kategorie's standard tax rate. */
 export function kategoriePatch(
-  aufwand: readonly KontoDto[],
+  aufwand: readonly KategorieAuswahl[],
   id: string | null,
 ): Partial<PostenZeile> {
   const satz = steuersatzVorschlag(aufwand.find((k) => k.id === id));
@@ -132,7 +135,7 @@ export function kategoriePatch(
 /** Patch for choosing a Ware: standard Gebinde with deposit and the Warengruppe's Kategorie. */
 export function warePatch(
   waren: readonly BelegWareDto[],
-  aufwand: readonly KontoDto[],
+  aufwand: readonly KategorieAuswahl[],
   id: string | null,
 ): Partial<PostenZeile> {
   const neu = waren.find((w) => w.id === id);
@@ -160,7 +163,7 @@ export function artikelSteuersatz(
  */
 export function artikelPatch(
   p: Pick<PostenZeile, 'kategorieId'>,
-  aufwand: readonly KontoDto[],
+  aufwand: readonly KategorieAuswahl[],
   vorschlaege: ArtikelKategorieVorschlaege,
   artikel: string,
 ): Partial<PostenZeile> {

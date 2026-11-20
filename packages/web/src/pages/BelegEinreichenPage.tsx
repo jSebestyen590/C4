@@ -9,25 +9,39 @@ import {
   SegmentedControl,
   Select,
   Stack,
+  Text,
   Textarea,
+  TextInput,
   Title,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BELEG_POSTEN_ANZAHL_MAX, type BelegDatei as BelegDateiDaten } from '@c4/shared';
+import {
+  BELEG_POSTEN_ANZAHL_MAX,
+  centAnzeigen,
+  type BelegDatei as BelegDateiDaten,
+  type BelegWareDto,
+} from '@c4/shared';
 import { useApi } from '../api';
+import { useAuth } from '../auth';
+import { BelegNeueWare } from '../BelegNeueWare';
+import { FeldZeile } from '../FeldZeile';
+import { HILFE } from '../finanzenHilfe';
+import { FeldLabel } from '../InfoHinweis';
 import { BelegDateiFeld } from '../BelegDatei';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
 import { ZahlFeld } from '../ZahlFeld';
 import {
   artikelNamen,
+  artikelPatch,
+  fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
-  standardGebindeWaehlen,
-  vorgeschlageneKategorie,
+  NEUE_WARE,
+  warePatch,
   wareFilter,
   wareOptionen,
 } from '../belegAuswahl';
@@ -38,8 +52,9 @@ import { ZurueckLink } from '../ZurueckLink';
 
 interface PostenZeile {
   key: number;
-  art: 'kategorie' | 'ware';
+  art: 'kategorie' | 'ware' | 'leergut';
   kategorieId: string | null;
+  /** Leergut items: Anzahl = returned pieces, betragCent = deposit per piece (amount counts negative). */
   /** Ware items: the Ware, the Gebinde, the number of Gebinde and the deposit per Gebinde (null = none). */
   wareId: string | null;
   gebindeId: string | null;
@@ -49,6 +64,76 @@ interface PostenZeile {
   betragCent: number | null;
   steuersatz: string;
 }
+
+/** Ware select of one item: remembers its search text for "Neue Ware anlegen". */
+function WareWahl({
+  waren,
+  zeile,
+  wareId,
+  neueWareErlaubt,
+  error,
+  onWare,
+  onNeueWare,
+}: Readonly<{
+  waren: readonly BelegWareDto[];
+  zeile: number;
+  wareId: string | null;
+  neueWareErlaubt: boolean;
+  error?: string;
+  onWare: (id: string | null) => void;
+  onNeueWare: (suche: string) => void;
+}>) {
+  const [suche, setSuche] = useState('');
+  const eingabe = useRef<HTMLInputElement>(null);
+  return (
+    <Select
+      ref={eingabe}
+      label="Ware"
+      size="md"
+      searchable
+      autoSelectOnBlur
+      selectFirstOptionOnChange
+      nothingFoundMessage="Keine Ware gefunden"
+      data={wareOptionen(waren, neueWareErlaubt)}
+      filter={wareFilter(waren)}
+      value={wareId}
+      searchValue={suche}
+      onSearchChange={setSuche}
+      onChange={(v) => {
+        if (v === NEUE_WARE) {
+          // Only a deliberate pick (Enter, tap) creates a Ware, not leaving the field.
+          if (document.activeElement === eingabe.current) onNeueWare(suche);
+          const alt = waren.find((w) => w.id === wareId)?.name ?? '';
+          setTimeout(() => setSuche(alt), 0);
+          return;
+        }
+        onWare(v);
+        if (v) fokusAnzahl(String(zeile));
+      }}
+      error={error}
+    />
+  );
+}
+
+/** Patch fields of a shared item patch that the member form keeps (tax rate as text). */
+const mitgliedPatch = ({
+  steuersatz,
+  gebindeId,
+  pfandCent,
+  kategorieId,
+}: Partial<{
+  steuersatz: number;
+  gebindeId: string | null;
+  pfandCent: number | null;
+  kategorieId: string | null;
+}>): Partial<PostenZeile> => {
+  return {
+    ...(steuersatz !== undefined && { steuersatz: String(steuersatz) }),
+    ...(gebindeId !== undefined && { gebindeId }),
+    ...(pfandCent !== undefined && { pfandCent }),
+    ...(kategorieId !== undefined && { kategorieId }),
+  };
+};
 
 const STEUER_OPTIONEN = [
   { value: '1900', label: '19 %' },
@@ -106,7 +191,9 @@ export function BelegEinreichenPage() {
   const [steller, setSteller] = useState(start?.steller ?? '');
   const [notiz, setNotiz] = useState(start?.notiz ?? '');
   const auswahl = useEinreichungAuswahl();
+  const { can } = useAuth();
   const waren = auswahl.data?.waren ?? [];
+  const [neueWare, setNeueWare] = useState<{ key: number; name: string } | null>(null);
   const kategorien = auswahl.data?.kategorien ?? [];
   const artikelVorschlaege = auswahl.data?.artikelVorschlaege ?? [];
   const [aufteilen, setAufteilen] = useState(start?.aufteilen ?? false);
@@ -119,6 +206,12 @@ export function BelegEinreichenPage() {
   const gewaehlt = auswahl.data?.rechnungssteller.find(
     (r) => r.name.toLowerCase() === steller.trim().toLowerCase(),
   );
+  const wareAngelegt = async (key: number, ware: { id: string }) => {
+    await qc.invalidateQueries({ queryKey: finanzenKeys.einreichungAuswahl });
+    const neu = qc.getQueryData<typeof auswahl.data>(finanzenKeys.einreichungAuswahl);
+    aendern(key, mitgliedPatch(warePatch(neu?.waren ?? [], neu?.kategorien ?? [], ware.id)));
+    fokusAnzahl(String(key));
+  };
   const aendern = (key: number, teil: Partial<PostenZeile>) =>
     setPosten((ps) => ps.map((p) => (p.key === key ? { ...p, ...teil } : p)));
 
@@ -170,24 +263,32 @@ export function BelegEinreichenPage() {
               : { rechnungsstellerName: steller.trim() || undefined }),
             notiz: notiz.trim() || undefined,
             posten: posten.map((p) =>
-              p.art === 'ware'
+              p.art === 'leergut'
                 ? {
-                    art: 'ware' as const,
-                    wareId: p.wareId,
-                    gebindeId: p.gebindeId,
+                    art: 'leergut' as const,
+                    text: p.text.trim(),
                     anzahlMilli: Math.round(Number(p.anzahl) * 1000),
                     einzelpreisCent: p.betragCent as number,
                     steuersatz: Number(p.steuersatz),
-                    pfandCent: p.pfandCent,
                   }
-                : {
-                    art: 'kategorie' as const,
-                    kategorieId: p.kategorieId,
-                    text: p.text,
-                    anzahlMilli: 1000,
-                    einzelpreisCent: p.betragCent as number,
-                    steuersatz: Number(p.steuersatz),
-                  },
+                : p.art === 'ware'
+                  ? {
+                      art: 'ware' as const,
+                      wareId: p.wareId,
+                      gebindeId: p.gebindeId,
+                      anzahlMilli: Math.round(Number(p.anzahl) * 1000),
+                      einzelpreisCent: p.betragCent as number,
+                      steuersatz: Number(p.steuersatz),
+                      pfandCent: p.pfandCent,
+                    }
+                  : {
+                      art: 'kategorie' as const,
+                      kategorieId: p.kategorieId,
+                      text: p.text,
+                      anzahlMilli: 1000,
+                      einzelpreisCent: p.betragCent as number,
+                      steuersatz: Number(p.steuersatz),
+                    },
             ),
           },
         }),
@@ -204,14 +305,16 @@ export function BelegEinreichenPage() {
   const fehlt = {
     datei: !datei,
     datum: datum === '',
-    betrag: betrag === null || betrag <= 0,
+    betrag: betrag === null,
   };
   const postenFehlt = (p: PostenZeile) =>
     (p.art === 'ware'
       ? p.wareId === null || p.gebindeId === null || !(Number(p.anzahl) >= 1)
-      : p.kategorieId === null || p.text.trim() === '') ||
+      : p.art === 'leergut'
+        ? p.text.trim() === '' || !(Number(p.anzahl) >= 1)
+        : p.kategorieId === null || p.text.trim() === '') ||
     p.betragCent === null ||
-    p.betragCent <= 0;
+    (p.art !== 'kategorie' && p.betragCent < 0);
   const postenOk = !posten.some(postenFehlt);
   const gueltig = !fehlt.datei && !fehlt.datum && !fehlt.betrag && postenOk;
 
@@ -257,8 +360,15 @@ export function BelegEinreichenPage() {
         size="md"
         value={betrag}
         onWert={setBetrag}
+        negativ
+        description="Auch 0 € oder ein negativer Betrag ist möglich, zum Beispiel bei einer Pfandrückgabe."
         error={versucht && fehlt.betrag ? 'Bitte gib den Betrag an.' : undefined}
       />
+      {betrag !== null && betrag < 0 && (
+        <Alert color="blue" variant="light">
+          Du schuldest dem Verein {centAnzeigen(-betrag)}. {HILFE.belege.betragNegativ}
+        </Alert>
+      )}
       <Autocomplete
         label="Rechnungssteller"
         description="Wähle aus der Liste oder tippe einen anderen Namen, zum Beispiel „Metro“."
@@ -293,7 +403,7 @@ export function BelegEinreichenPage() {
       <Collapse expanded={aufteilen || posten.length > 0}>
         <Stack gap="sm">
           {posten.map((p, i) => (
-            <Paper key={p.key} withBorder p="sm">
+            <Paper key={p.key} withBorder p="sm" data-zeile={p.key}>
               <Stack gap="xs">
                 <Group justify="space-between" wrap="nowrap">
                   <Title order={5}>Posten {i + 1}</Title>
@@ -320,120 +430,167 @@ export function BelegEinreichenPage() {
                       wareId: null,
                       gebindeId: null,
                       pfandCent: null,
+                      betragCent: null,
+                      anzahl: 1,
                     })
                   }
                   data={[
                     { value: 'ware', label: 'Ware' },
                     { value: 'kategorie', label: 'Kategorie' },
+                    { value: 'leergut', label: 'Leergut' },
                   ]}
                 />
-                {p.art === 'kategorie' ? (
-                  <>
-                    <Autocomplete
-                      label="Artikel"
+                <FeldZeile cols={1} spacing="xs" verticalSpacing={0}>
+                  {p.art === 'kategorie' && (
+                    <>
+                      <Autocomplete
+                        label="Artikel"
+                        size="md"
+                        placeholder="z. B. Deko"
+                        maxLength={100}
+                        data={artikelNamen(artikelVorschlaege)}
+                        value={p.text}
+                        onChange={(v) =>
+                          aendern(
+                            p.key,
+                            (({ text, ...teil }) => ({ text, ...mitgliedPatch(teil) }))(
+                              artikelPatch(p, kategorien, artikelVorschlaege, v),
+                            ),
+                          )
+                        }
+                        error={
+                          versucht && p.text.trim() === '' ? 'Bitte gib den Artikel an.' : undefined
+                        }
+                      />
+                      <Select
+                        label="Kategorie"
+                        size="md"
+                        searchable
+                        autoSelectOnBlur
+                        selectFirstOptionOnChange
+                        allowDeselect={false}
+                        data={kategorieOptionenMitVorschlaegen(
+                          kategorien,
+                          artikelVorschlaege,
+                          p.text,
+                        )}
+                        value={p.kategorieId}
+                        onChange={(v) => aendern(p.key, { kategorieId: v })}
+                        error={
+                          versucht && p.kategorieId === null
+                            ? 'Bitte wähle eine Kategorie.'
+                            : undefined
+                        }
+                      />
+                    </>
+                  )}
+                  {p.art === 'leergut' && (
+                    <TextInput
+                      label="Beschreibung"
                       size="md"
-                      placeholder="z. B. Deko"
-                      maxLength={100}
-                      data={artikelNamen(artikelVorschlaege)}
+                      placeholder="z. B. Pfandrückgabe Kästen"
+                      maxLength={200}
                       value={p.text}
-                      onChange={(v) =>
-                        aendern(p.key, {
-                          text: v,
-                          ...(p.kategorieId === null && {
-                            kategorieId: vorgeschlageneKategorie(kategorien, artikelVorschlaege, v),
-                          }),
-                        })
-                      }
+                      onChange={(e) => aendern(p.key, { text: e.currentTarget.value })}
                       error={
-                        versucht && p.text.trim() === '' ? 'Bitte gib den Artikel an.' : undefined
-                      }
-                    />
-                    <Select
-                      label="Kategorie"
-                      size="md"
-                      searchable
-                      allowDeselect={false}
-                      data={kategorieOptionenMitVorschlaegen(
-                        kategorien,
-                        artikelVorschlaege,
-                        p.text,
-                      )}
-                      value={p.kategorieId}
-                      onChange={(v) => aendern(p.key, { kategorieId: v })}
-                      error={
-                        versucht && p.kategorieId === null
-                          ? 'Bitte wähle eine Kategorie.'
+                        versucht && p.text.trim() === ''
+                          ? 'Bitte beschreibe das Leergut.'
                           : undefined
                       }
                     />
-                  </>
-                ) : (
-                  <>
-                    <Select
-                      label="Ware"
-                      size="md"
-                      searchable
-                      nothingFoundMessage="Keine Ware gefunden"
-                      data={wareOptionen(waren)}
-                      filter={wareFilter(waren)}
-                      value={p.wareId}
-                      onChange={(v) => {
-                        const w = waren.find((x) => x.id === v);
-                        const { gebindeId, pfandCent } = standardGebindeWaehlen(w);
-                        aendern(p.key, { wareId: v, gebindeId, pfandCent });
-                      }}
-                      error={versucht && p.wareId === null ? 'Bitte wähle eine Ware.' : undefined}
-                    />
-                    <Select
-                      label="Gebinde"
-                      size="md"
-                      allowDeselect={false}
-                      placeholder={p.wareId ? 'Gebinde wählen' : 'Erst die Ware wählen'}
-                      disabled={!p.wareId}
-                      data={(auswahl.data?.waren.find((w) => w.id === p.wareId)?.gebinde ?? []).map(
-                        (g) => ({ value: g.id, label: g.bezeichnung }),
-                      )}
-                      value={p.gebindeId}
-                      onChange={(v) =>
-                        aendern(p.key, {
-                          gebindeId: v,
-                          pfandCent:
-                            auswahl.data?.waren
-                              .find((w) => w.id === p.wareId)
-                              ?.gebinde.find((g) => g.id === v)?.pfandGesamtCent ?? null,
-                        })
-                      }
-                      error={
-                        versucht && p.wareId !== null && p.gebindeId === null
-                          ? 'Bitte wähle ein Gebinde.'
-                          : undefined
-                      }
-                    />
+                  )}
+                  {p.art === 'ware' && (
+                    <>
+                      <WareWahl
+                        waren={waren}
+                        zeile={p.key}
+                        wareId={p.wareId}
+                        neueWareErlaubt={can('waren:verwalten')}
+                        error={versucht && p.wareId === null ? 'Bitte wähle eine Ware.' : undefined}
+                        onWare={(v) =>
+                          aendern(p.key, {
+                            wareId: v,
+                            ...mitgliedPatch(warePatch(waren, kategorien, v)),
+                          })
+                        }
+                        onNeueWare={(suche) => setNeueWare({ key: p.key, name: suche.trim() })}
+                      />
+                      <Select
+                        label="Gebinde"
+                        size="md"
+                        allowDeselect={false}
+                        placeholder={p.wareId ? 'Gebinde wählen' : 'Erst die Ware wählen'}
+                        disabled={!p.wareId}
+                        data={(waren.find((w) => w.id === p.wareId)?.gebinde ?? []).map((g) => ({
+                          value: g.id,
+                          label: g.bezeichnung,
+                        }))}
+                        value={p.gebindeId}
+                        onChange={(v) =>
+                          aendern(p.key, {
+                            gebindeId: v,
+                            pfandCent:
+                              waren.find((w) => w.id === p.wareId)?.gebinde.find((g) => g.id === v)
+                                ?.pfandGesamtCent ?? null,
+                          })
+                        }
+                        error={
+                          versucht && p.wareId !== null && p.gebindeId === null
+                            ? 'Bitte wähle ein Gebinde.'
+                            : undefined
+                        }
+                      />
+                    </>
+                  )}
+                  {p.art !== 'kategorie' && (
                     <ZahlFeld
-                      label="Anzahl Gebinde"
+                      label={
+                        p.art === 'leergut' ? (
+                          <FeldLabel text="Anzahl zurück" hilfe={HILFE.belege.leergutMitglied} />
+                        ) : (
+                          'Anzahl Gebinde'
+                        )
+                      }
                       size="md"
                       min={1}
                       max={9999}
                       allowDecimal={false}
                       value={p.anzahl}
                       onChange={(v) => aendern(p.key, { anzahl: v })}
+                      data-anzahl=""
                       error={
                         versucht && !(Number(p.anzahl) >= 1)
-                          ? 'Bitte gib die Anzahl an.'
+                          ? p.art === 'leergut'
+                            ? 'Die Anzahl muss größer als 0 sein.'
+                            : 'Bitte gib die Anzahl an.'
                           : undefined
                       }
                     />
-                  </>
-                )}
-                <Group align="flex-end" grow wrap="wrap" gap="xs">
+                  )}
+                </FeldZeile>
+                <FeldZeile
+                  cols={{ base: 2, sm: p.art === 'ware' ? 3 : 2 }}
+                  spacing="xs"
+                  verticalSpacing={0}
+                >
                   <BetragFeld
-                    label={p.art === 'ware' ? 'Preis je Gebinde (brutto)' : 'Betrag (brutto)'}
+                    label={
+                      p.art === 'ware'
+                        ? 'Preis je Gebinde (brutto)'
+                        : p.art === 'leergut'
+                          ? 'Pfand je Stück'
+                          : 'Betrag (brutto)'
+                    }
                     size="md"
+                    negativ={p.art === 'kategorie'}
                     value={p.betragCent}
                     onWert={(c) => aendern(p.key, { betragCent: c })}
                     error={
-                      versucht && (p.betragCent === null || p.betragCent <= 0)
-                        ? 'Bitte gib den Betrag an.'
+                      versucht &&
+                      (p.betragCent === null || (p.art !== 'kategorie' && p.betragCent < 0))
+                        ? p.art === 'leergut'
+                          ? 'Bitte gib den Pfand an (0 € oder mehr).'
+                          : 'Bitte gib den Betrag an.'
                         : undefined
                     }
                   />
@@ -454,7 +611,12 @@ export function BelegEinreichenPage() {
                     value={p.steuersatz}
                     onChange={(v) => aendern(p.key, { steuersatz: v ?? '1900' })}
                   />
-                </Group>
+                </FeldZeile>
+                {p.art === 'leergut' && p.betragCent !== null && Number(p.anzahl) >= 1 && (
+                  <Text size="sm" fw={600}>
+                    Betrag: {centAnzeigen(-Math.round(Number(p.anzahl) * p.betragCent))}
+                  </Text>
+                )}
               </Stack>
             </Paper>
           ))}
@@ -486,6 +648,13 @@ export function BelegEinreichenPage() {
           )}
         </Stack>
       </Collapse>
+      {neueWare && (
+        <BelegNeueWare
+          name={neueWare.name}
+          onAngelegt={(ware) => void wareAngelegt(neueWare.key, ware)}
+          onClose={() => setNeueWare(null)}
+        />
+      )}
       <Alert color="blue" variant="light">
         Die Finanzer:innen prüfen deinen Beleg und buchen ihn als Auslage. Den Stand siehst du unter
         „Meine Belege“; bei Rückfragen bekommst du eine Nachricht.

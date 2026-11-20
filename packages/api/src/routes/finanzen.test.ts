@@ -2878,6 +2878,25 @@ describe('finanzen', () => {
         t.userAdmin.rollen.mockResolvedValue(new Map([['a', ['admin']]]));
       };
 
+      it('lets members submit Leergut items and rejects negative Anzahl or Pfand', async () => {
+        const t = await belegSetup();
+        const leergut: Dto = {
+          art: 'leergut',
+          text: 'Pfandrückgabe Kästen',
+          anzahlMilli: 2000,
+          einzelpreisCent: 310,
+          steuersatz: 1900,
+        };
+        const senden = (posten: Dto[], betragCent = -620) => {
+          const e = einreichen({ betragCent, posten });
+          return t.roh(e.token, 'POST', '/einreichungen', e.body);
+        };
+        const ok = await senden([leergut]);
+        expect(ok.status, await ok.clone().text()).toBe(201);
+        expect((await senden([{ ...leergut, anzahlMilli: -1000 }])).status).toBe(400);
+        expect((await senden([{ ...leergut, einzelpreisCent: -10 }])).status).toBe(400);
+      });
+
       it('requires belege:einreichen and validates the required fields', async () => {
         const t = await belegSetup();
         const e = einreichen();

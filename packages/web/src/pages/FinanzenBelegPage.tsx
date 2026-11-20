@@ -705,13 +705,8 @@ export function FinanzenBelegPage() {
                   <InfoHinweis feld="Korrektur" text={HILFE.belege.korrektur} />
                 </Group>
                 {verwendeteSaetze(form).map((satz) => (
-                  <SimpleGrid
-                    style={{ alignItems: 'end' }}
-                    key={satz}
-                    cols={{ base: 2, sm: 3 }}
-                    spacing="xs"
-                  >
-                    <Text size="sm" fw={500} style={{ alignSelf: 'center' }}>
+                  <FeldZeile key={satz} cols={{ base: 2, sm: 3 }} spacing="xs" verticalSpacing={0}>
+                    <Text size="sm" fw={500} style={{ lineHeight: '42px' }}>
                       {satzText(satz)}
                     </Text>
                     <BetragFeld
@@ -752,7 +747,7 @@ export function FinanzenBelegPage() {
                       }
                       data-nav=""
                     />
-                  </SimpleGrid>
+                  </FeldZeile>
                 ))}
               </Stack>
             )}
@@ -771,7 +766,7 @@ export function FinanzenBelegPage() {
             </Stack>
 
             <Stack gap="md">
-              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
+              <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0}>
                 <Select
                   label={<FeldLabel text="Zahlweg" hilfe={HILFE.belege.zahlweg} />}
                   placeholder="Zahlweg wählen"
@@ -826,7 +821,7 @@ export function FinanzenBelegPage() {
                     data-nav=""
                   />
                 )}
-              </SimpleGrid>
+              </FeldZeile>
               {form.zahlweg === 'bar' && (
                 <Stack gap="xs">
                   <Group gap={2}>
@@ -836,12 +831,16 @@ export function FinanzenBelegPage() {
                     <InfoHinweis feld="Stückelung" text={HILFE.belege.stueckelung} />
                   </Group>
                   <StueckelungFeld
-                    label="Münzen und Scheine, die du gibst, und Wechselgeld"
+                    label={
+                      berechnung.summe < 0
+                        ? 'Münzen und Scheine, die in die Kasse kommen'
+                        : 'Münzen und Scheine, die du gibst, und Wechselgeld'
+                    }
                     bestand={fach?.bestand}
                     spalten={[
                       {
                         id: 'ab',
-                        label: 'Abgang (gegeben)',
+                        label: berechnung.summe < 0 ? 'Abgang (zurückgegeben)' : 'Abgang (gegeben)',
                         value: form.gegeben,
                         onChange: (m) => aendern((f) => ({ ...f, gegeben: m })),
                         richtung: 'ab',
@@ -849,7 +848,7 @@ export function FinanzenBelegPage() {
                       },
                       {
                         id: 'zu',
-                        label: 'Wechselgeld',
+                        label: berechnung.summe < 0 ? 'Eingang (erhalten)' : 'Wechselgeld',
                         value: form.wechselgeld,
                         onChange: (m) => aendern((f) => ({ ...f, wechselgeld: m })),
                         richtung: 'zu',

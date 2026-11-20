@@ -254,12 +254,13 @@ export const belegEinreichenSchema = z.object({
   rechnungsstellerId: nullish(z.string().min(1)),
   rechnungsstellerName: nullish(z.string().trim().max(120, 'Höchstens 120 Zeichen erlaubt.')),
   notiz: nullish(z.string().trim().max(500, 'Höchstens 500 Zeichen erlaubt.')),
-  /** Members split by Kategorie or by Ware; a Ware item gets its Kategorie from the Warengruppe. */
+  /** Members split by Kategorie, Ware or Leergut; a Ware item gets its Kategorie from the Warengruppe. */
   posten: z
     .array(
       z.discriminatedUnion('art', [
         belegPostenKategorieSchema,
         belegPostenWareSchema.omit({ kategorieId: true }),
+        belegPostenLeergutSchema,
       ]),
     )
     .max(BELEG_POSTEN_ANZAHL_MAX, `Höchstens ${BELEG_POSTEN_ANZAHL_MAX} Posten erlaubt.`)

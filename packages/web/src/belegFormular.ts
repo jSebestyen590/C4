@@ -200,7 +200,9 @@ export function anzahlText(milli: number): string {
 export const satzText = (satz: number): string => `${(satz / 100).toLocaleString('de-DE')} %`;
 
 /** The standard tax rate of a Kategorie when it is one the form offers. */
-export function steuersatzVorschlag(konto: Pick<KontoDto, 'steuersatzStandard'> | undefined) {
+export function steuersatzVorschlag(
+  konto: Partial<Pick<KontoDto, 'steuersatzStandard'>> | undefined,
+) {
   const satz = konto?.steuersatzStandard;
   return satz !== null && satz !== undefined && (STEUERSAETZE as readonly number[]).includes(satz)
     ? satz
@@ -412,6 +414,9 @@ export function stueckelungHinweis(
   const bezahlt = bezahltCent(gegeben, wechselgeld);
   if (bezahlt === summeCent) return null;
   const diff = summeCent - bezahlt;
+  // A negative sum is an inflow: the received money (Wechselgeld column) is counted.
+  if (summeCent < 0)
+    return diff < 0 ? `Es fehlen noch ${cent(-diff)} Eingang.` : `Es sind ${cent(diff)} zu viel.`;
   return diff > 0 ? `Es fehlen noch ${cent(diff)}.` : `Es sind ${cent(-diff)} zu viel.`;
 }
 

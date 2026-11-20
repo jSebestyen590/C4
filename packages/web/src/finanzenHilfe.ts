@@ -152,6 +152,12 @@ export const HILFE = {
       'Hat ein Mitglied etwas vorgestreckt, wird es als Auslage gebucht und steht auf „Offene Auslagen“, bis du es erstattest. Mehrere Belege eines Mitglieds erstattest du gemeinsam in einer Buchung, bar oder per Bank.',
     erstattung:
       'Die Erstattung bucht „Auslagen Mitglieder“ gegen das Fach oder die Bank, zu ihrem eigenen Datum. Storniert du die Erstattung im Journal, sind die Belege wieder offen.',
+    erstattungEinlage:
+      'Das ist eine Einlage: Bar zählst du die erhaltenen Münzen und Scheine ins Fach, per Bank erwartest du eine Überweisung an den Verein.',
+    betragNegativ:
+      'Ein negativer Betrag bedeutet, dass du Geld zurückbekommen hast (z. B. reine Pfandrückgabe). Die Finanzer:innen buchen das als Einlage, bis das Geld beim Verein ist.',
+    leergutMitglied:
+      'Leergut ist eine Rückgabe: „Anzahl zurück“ mal Pfand je Stück ergibt einen negativen Betrag.',
     kopieren:
       'Ein gebuchter Beleg ist unveränderlich. „Als Entwurf kopieren“ legt einen neuen Entwurf mit denselben Angaben und derselben Datei an, z. B. nach einem Storno über das Journal.',
     rechnungssteller:
