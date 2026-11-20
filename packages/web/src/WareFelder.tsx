@@ -29,7 +29,7 @@ export interface WareWerte {
   mhdArt: MhdArt;
   gebindeIds: string[];
   aliase: string[];
-  /** Gebinde preselected in Belege; null = none. Always one of `gebindeIds`. */
+  /** Gebinde preselected in Belege; required, one of `gebindeIds`. Null only while nothing is chosen. */
   standardGebindeId: string | null;
 }
 
@@ -66,6 +66,8 @@ export function WareFelder({
   werte,
   onChange,
   fehler,
+  aliasFehler = null,
+  standardFehler = null,
   warengruppen,
   gebinde,
 }: Readonly<{
@@ -73,6 +75,10 @@ export function WareFelder({
   onChange: (werte: WareWerte) => void;
   /** Validation message shown below the name. */
   fehler: string | null;
+  /** Message shown below the Aliase. */
+  aliasFehler?: string | null;
+  /** Message shown below the Standard-Gebinde. */
+  standardFehler?: string | null;
   warengruppen: WarengruppeOption[];
   gebinde: GebindeOption[];
 }>) {
@@ -131,10 +137,11 @@ export function WareFelder({
           onChange({
             ...werte,
             gebindeIds,
+            // The Standard-Gebinde is required: keep it, else preselect the first selected one.
             standardGebindeId:
               werte.standardGebindeId !== null && gebindeIds.includes(werte.standardGebindeId)
                 ? werte.standardGebindeId
-                : null,
+                : (gebindeIds[0] ?? null),
           });
         }}
         nothingFoundMessage="Kein Gebinde gefunden"
@@ -142,8 +149,10 @@ export function WareFelder({
       <Select
         label={<FeldLabel text="Standard-Gebinde" hilfe={HILFE.waren.standardGebinde} />}
         description="Wird beim Erfassen eines Belegs vorausgewählt."
-        placeholder="Kein Standard-Gebinde"
-        clearable
+        placeholder="Standard-Gebinde wählen"
+        required
+        allowDeselect={false}
+        error={standardFehler}
         disabled={werte.gebindeIds.length === 0}
         data={gebindeDaten.filter((g) => werte.gebindeIds.includes(g.value))}
         value={werte.standardGebindeId}
@@ -155,6 +164,7 @@ export function WareFelder({
         placeholder="Alias eingeben und bestätigen"
         splitChars={[',']}
         value={werte.aliase}
+        error={aliasFehler}
         onChange={(aliase) => onChange({ ...werte, aliase })}
       />
     </Stack>

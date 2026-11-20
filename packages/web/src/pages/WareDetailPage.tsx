@@ -127,6 +127,7 @@ export function WareDetailPage() {
         {eigene.map((g) => (
           <Text key={g.id} size="sm">
             {gebindeBezeichnung(g, stamm.gebinde)}
+            {g.id === ware.standardGebindeId ? ' (Standard)' : ''}
           </Text>
         ))}
       </Stack>

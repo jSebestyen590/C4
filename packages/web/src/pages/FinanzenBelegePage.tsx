@@ -193,6 +193,9 @@ export function FinanzenBelegePage() {
           <Button component={Link} to="/finanzen/auslagen" variant="default">
             Offene Auslagen
           </Button>
+          <Button component={Link} to="/finanzen/artikel" variant="default">
+            Artikel
+          </Button>
           <Button component={Link} to="/finanzen/rechnungssteller" variant="default">
             Rechnungssteller
           </Button>

@@ -165,9 +165,15 @@ export const HILFE = {
     einreichen:
       'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
   },
+  artikel: {
+    erklaerung:
+      'Ein Artikel ist ein Name, der auf gebuchten Posten vorkommt (Kategorie-Posten). Seine Steuersatz-Vorgabe wird beim Erfassen eines Postens mit diesem Namen vorausgewählt; im Beleg kannst du sie weiter ändern. Gebuchte Belege bleiben unverändert.',
+    steuersatz:
+      'Standard-Steuersatz des Artikels: wird bei einem neuen Posten mit diesem Namen vorausgewählt.',
+  },
   waren: {
     standardGebinde:
-      'Das Standard-Gebinde wird beim Erfassen eines Ware-Postens vorausgewählt (samt Pfand). Ohne Standard wird das Gebinde nur vorausgewählt, wenn die Ware genau eines hat. Es muss eines der gewählten Gebinde der Ware sein.',
+      'Das Standard-Gebinde wird beim Erfassen eines Ware-Postens vorausgewählt (samt Pfand). Ohne Standard wird das Gebinde nur vorausgewählt, wenn die Ware genau eines hat. Pflichtfeld; es muss eines der gewählten Gebinde der Ware sein.',
   },
   lagerAbgleich: {
     erklaerung:

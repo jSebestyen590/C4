@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { centAnzeigen, type KontoDto } from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
@@ -29,6 +29,7 @@ export const finanzenKeys = {
   einreichung: (id: string | undefined) => ['finanzen', 'einreichung', id] as const,
   belegWaren: ['finanzen', 'belegWaren'] as const,
   artikelVorschlaege: ['finanzen', 'artikelVorschlaege'] as const,
+  artikel: ['finanzen', 'artikel'] as const,
   warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
 };
 
@@ -251,5 +252,35 @@ export function useEinreichungAuswahl() {
   return useQuery({
     queryKey: finanzenKeys.einreichungAuswahl,
     queryFn: async () => unwrap(await api.finanzen.einreichungen.auswahl.$get()),
+  });
+}
+
+/** Artikel (names of Posten) with their default tax rate and booking statistics. */
+export function useArtikel() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.artikel,
+    queryFn: async () => unwrap(await api.finanzen.artikel.$get()),
+  });
+}
+
+/** Sets the default tax rate (basis points) of an Artikel. */
+export function useArtikelSteuersatz() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async (a: { id: string; steuersatz: number }) =>
+      jsonOderFehler(
+        await api.finanzen.artikel[':id'].$patch({
+          param: { id: a.id },
+          json: { steuersatz: a.steuersatz },
+        }),
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: finanzenKeys.artikel });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.artikelVorschlaege });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.belegWaren });
+    },
   });
 }
