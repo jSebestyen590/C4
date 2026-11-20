@@ -10,7 +10,6 @@ import {
   Select,
   Stack,
   Textarea,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
@@ -24,6 +23,14 @@ import { BelegDateiFeld } from '../BelegDatei';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
 import { ZahlFeld } from '../ZahlFeld';
+import {
+  artikelNamen,
+  kategorieOptionenMitVorschlaegen,
+  standardGebindeWaehlen,
+  vorgeschlageneKategorie,
+  wareFilter,
+  wareOptionen,
+} from '../belegAuswahl';
 import { finanzenKeys, jsonOderFehler, useEinreichungAuswahl } from '../finanzenDaten';
 import { lokalLesen, lokalLoeschen, lokalSpeichern } from '../entwurfSpeicher';
 import { fehlerText } from '../warenApi';
@@ -99,6 +106,9 @@ export function BelegEinreichenPage() {
   const [steller, setSteller] = useState(start?.steller ?? '');
   const [notiz, setNotiz] = useState(start?.notiz ?? '');
   const auswahl = useEinreichungAuswahl();
+  const waren = auswahl.data?.waren ?? [];
+  const kategorien = auswahl.data?.kategorien ?? [];
+  const artikelVorschlaege = auswahl.data?.artikelVorschlaege ?? [];
   const [aufteilen, setAufteilen] = useState(start?.aufteilen ?? false);
   const [posten, setPosten] = useState<PostenZeile[]>(start?.posten ?? []);
   const [naechsterKey, setNaechsterKey] = useState(start?.naechsterKey ?? 1);
@@ -165,7 +175,6 @@ export function BelegEinreichenPage() {
                     art: 'ware' as const,
                     wareId: p.wareId,
                     gebindeId: p.gebindeId,
-                    text: p.text,
                     anzahlMilli: Math.round(Number(p.anzahl) * 1000),
                     einzelpreisCent: p.betragCent as number,
                     steuersatz: Number(p.steuersatz),
@@ -200,7 +209,7 @@ export function BelegEinreichenPage() {
   const postenFehlt = (p: PostenZeile) =>
     (p.art === 'ware'
       ? p.wareId === null || p.gebindeId === null || !(Number(p.anzahl) >= 1)
-      : p.kategorieId === null) ||
+      : p.kategorieId === null || p.text.trim() === '') ||
     p.betragCent === null ||
     p.betragCent <= 0;
   const postenOk = !posten.some(postenFehlt);
@@ -270,16 +279,18 @@ export function BelegEinreichenPage() {
         value={notiz}
         onChange={(e) => setNotiz(e.currentTarget.value)}
       />
-      <Button
-        size="md"
-        variant="subtle"
-        fullWidth
-        onClick={() => setAufteilen((a) => !a)}
-        aria-expanded={aufteilen}
-      >
-        {aufteilen ? 'Aufteilen ausblenden' : 'Aufteilen (optional)'}
-      </Button>
-      <Collapse expanded={aufteilen}>
+      {posten.length === 0 && (
+        <Button
+          size="md"
+          variant="subtle"
+          fullWidth
+          onClick={() => setAufteilen((a) => !a)}
+          aria-expanded={aufteilen}
+        >
+          {aufteilen ? 'Aufteilen ausblenden' : 'Aufteilen (optional)'}
+        </Button>
+      )}
+      <Collapse expanded={aufteilen || posten.length > 0}>
         <Stack gap="sm">
           {posten.map((p, i) => (
             <Paper key={p.key} withBorder p="sm">
@@ -305,30 +316,56 @@ export function BelegEinreichenPage() {
                     aendern(p.key, {
                       art: v as PostenZeile['art'],
                       kategorieId: null,
+                      text: '',
                       wareId: null,
                       gebindeId: null,
                       pfandCent: null,
                     })
                   }
                   data={[
-                    { value: 'kategorie', label: 'Kategorie' },
                     { value: 'ware', label: 'Ware' },
+                    { value: 'kategorie', label: 'Kategorie' },
                   ]}
                 />
                 {p.art === 'kategorie' ? (
-                  <Select
-                    label="Kategorie"
-                    size="md"
-                    searchable
-                    data={
-                      auswahl.data?.kategorien.map((k) => ({ value: k.id, label: k.name })) ?? []
-                    }
-                    value={p.kategorieId}
-                    onChange={(v) => aendern(p.key, { kategorieId: v })}
-                    error={
-                      versucht && p.kategorieId === null ? 'Bitte wähle eine Kategorie.' : undefined
-                    }
-                  />
+                  <>
+                    <Autocomplete
+                      label="Artikel"
+                      size="md"
+                      placeholder="z. B. Deko"
+                      maxLength={100}
+                      data={artikelNamen(artikelVorschlaege)}
+                      value={p.text}
+                      onChange={(v) =>
+                        aendern(p.key, {
+                          text: v,
+                          ...(p.kategorieId === null && {
+                            kategorieId: vorgeschlageneKategorie(kategorien, artikelVorschlaege, v),
+                          }),
+                        })
+                      }
+                      error={
+                        versucht && p.text.trim() === '' ? 'Bitte gib den Artikel an.' : undefined
+                      }
+                    />
+                    <Select
+                      label="Kategorie"
+                      size="md"
+                      searchable
+                      data={kategorieOptionenMitVorschlaegen(
+                        kategorien,
+                        artikelVorschlaege,
+                        p.text,
+                      )}
+                      value={p.kategorieId}
+                      onChange={(v) => aendern(p.key, { kategorieId: v })}
+                      error={
+                        versucht && p.kategorieId === null
+                          ? 'Bitte wähle eine Kategorie.'
+                          : undefined
+                      }
+                    />
+                  </>
                 ) : (
                   <>
                     <Select
@@ -336,19 +373,13 @@ export function BelegEinreichenPage() {
                       size="md"
                       searchable
                       nothingFoundMessage="Keine Ware gefunden"
-                      data={(auswahl.data?.waren ?? []).map((w) => ({
-                        value: w.id,
-                        label: w.name,
-                      }))}
+                      data={wareOptionen(waren)}
+                      filter={wareFilter(waren)}
                       value={p.wareId}
                       onChange={(v) => {
-                        const w = auswahl.data?.waren.find((x) => x.id === v);
-                        const g = w?.gebinde.length === 1 ? w.gebinde[0] : undefined;
-                        aendern(p.key, {
-                          wareId: v,
-                          gebindeId: g?.id ?? null,
-                          pfandCent: g?.pfandGesamtCent ?? null,
-                        });
+                        const w = waren.find((x) => x.id === v);
+                        const { gebindeId, pfandCent } = standardGebindeWaehlen(w);
+                        aendern(p.key, { wareId: v, gebindeId, pfandCent });
                       }}
                       error={versucht && p.wareId === null ? 'Bitte wähle eine Ware.' : undefined}
                     />
@@ -393,13 +424,6 @@ export function BelegEinreichenPage() {
                     />
                   </>
                 )}
-                <TextInput
-                  label="Text"
-                  size="md"
-                  maxLength={200}
-                  value={p.text}
-                  onChange={(e) => aendern(p.key, { text: e.currentTarget.value })}
-                />
                 <Group align="flex-end" grow wrap="wrap" gap="xs">
                   <BetragFeld
                     label={p.art === 'ware' ? 'Preis je Gebinde (brutto)' : 'Betrag (brutto)'}
@@ -442,7 +466,7 @@ export function BelegEinreichenPage() {
                   ...ps,
                   {
                     key: naechsterKey,
-                    art: 'kategorie',
+                    art: 'ware',
                     kategorieId: null,
                     wareId: null,
                     gebindeId: null,

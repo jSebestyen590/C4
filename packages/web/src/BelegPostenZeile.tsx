@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Autocomplete,
   Group,
   Paper,
   SegmentedControl,
@@ -16,12 +17,21 @@ import {
   centAnzeigen,
   STEUERSAETZE,
   type BelegPostenArt,
+  type ArtikelKategorieVorschlaege,
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
 import { anzahlLesen, satzText, steuersatzVorschlag, type PostenZeile } from './belegFormular';
+import {
+  artikelNamen,
+  kategorieOptionenMitVorschlaegen,
+  standardGebindeWaehlen,
+  vorgeschlageneKategorie,
+  wareFilter,
+  wareOptionen,
+} from './belegAuswahl';
 import { BetragFeld } from './BetragFeld';
-import { BETRAG_STIL, kontoOptionen } from './finanzenDaten';
+import { BETRAG_STIL } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { FeldLabel } from './InfoHinweis';
 
@@ -38,6 +48,7 @@ export function BelegPostenZeile({
   modus,
   aufwand,
   waren,
+  artikelVorschlaege = [],
   betragCent,
   pfandBetragCent,
   versucht,
@@ -51,6 +62,8 @@ export function BelegPostenZeile({
   modus: 'brutto' | 'netto';
   aufwand: readonly KontoDto[];
   waren: readonly BelegWareDto[];
+  /** Artikel names with the Kategorien booked for them (suggestions for Kategorie items). */
+  artikelVorschlaege?: ArtikelKategorieVorschlaege;
   betragCent: number;
   pfandBetragCent: number;
   versucht: boolean;
@@ -74,11 +87,9 @@ export function BelegPostenZeile({
     );
   const wareWaehlen = (id: string | null) => {
     const neu = waren.find((w) => w.id === id);
-    const g = neu?.gebinde.length === 1 ? neu.gebinde[0] : undefined;
     onAendern({
       wareId: id,
-      gebindeId: g?.id ?? null,
-      pfandCent: g?.pfandGesamtCent ?? null,
+      ...standardGebindeWaehlen(neu),
       ...(neu?.kategorieId && kategorieSetzen(neu.kategorieId)),
     });
   };
@@ -116,7 +127,8 @@ export function BelegPostenZeile({
               placeholder="Ware suchen"
               searchable
               selectFirstOptionOnChange
-              data={waren.map((w) => ({ value: w.id, label: w.name }))}
+              data={wareOptionen(waren)}
+              filter={wareFilter(waren)}
               value={p.wareId}
               onChange={wareWaehlen}
               nothingFoundMessage="Keine Ware gefunden"
@@ -144,13 +156,38 @@ export function BelegPostenZeile({
         )}
 
         <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="xs">
+          {p.art === 'kategorie' && (
+            <Autocomplete
+              label={<FeldLabel text="Artikel" hilfe={HILFE.belege.artikelKategorie} />}
+              placeholder="z. B. Deko"
+              maxLength={100}
+              data={artikelNamen(artikelVorschlaege)}
+              value={p.text}
+              onChange={(v) => {
+                const vorschlag = p.kategorieId
+                  ? null
+                  : vorgeschlageneKategorie(aufwand, artikelVorschlaege, v);
+                onAendern({
+                  text: v,
+                  ...(vorschlag !== null && kategorieSetzen(vorschlag)),
+                });
+              }}
+              error={versucht && p.text.trim() === '' ? 'Bitte gib den Artikel an.' : undefined}
+              data-nav=""
+              data-kategorie=""
+            />
+          )}
           {p.art !== 'leergut' && (
             <Select
               label="Kategorie"
               placeholder="Kategorie suchen"
               searchable
               selectFirstOptionOnChange
-              data={kontoOptionen(aufwand)}
+              data={
+                p.art === 'kategorie'
+                  ? kategorieOptionenMitVorschlaegen(aufwand, artikelVorschlaege, p.text)
+                  : aufwand.map((k) => ({ value: k.id, label: k.name }))
+              }
               value={p.kategorieId}
               onChange={(v) => onAendern(kategorieSetzen(v))}
               nothingFoundMessage="Keine Kategorie gefunden"
@@ -161,25 +198,18 @@ export function BelegPostenZeile({
               }
               error={versucht && !p.kategorieId ? 'Bitte wähle eine Kategorie.' : undefined}
               data-nav=""
-              {...(p.art === 'kategorie' && { 'data-kategorie': '' })}
             />
           )}
-          {p.art !== 'ware' && (
+          {p.art === 'leergut' && (
             <TextInput
-              label={p.art === 'leergut' ? 'Beschreibung' : 'Artikel'}
-              placeholder={p.art === 'leergut' ? 'z. B. Pfandrückgabe Kästen' : 'z. B. Deko'}
-              maxLength={p.art === 'leergut' ? 200 : 100}
+              label="Beschreibung"
+              placeholder="z. B. Pfandrückgabe Kästen"
+              maxLength={200}
               value={p.text}
               onChange={(e) => onAendern({ text: e.currentTarget.value })}
-              error={
-                versucht && p.text.trim() === ''
-                  ? p.art === 'leergut'
-                    ? 'Bitte beschreibe das Leergut.'
-                    : 'Bitte gib den Artikel an.'
-                  : undefined
-              }
+              error={versucht && p.text.trim() === '' ? 'Bitte beschreibe das Leergut.' : undefined}
               data-nav=""
-              {...(p.art === 'leergut' && { 'data-kategorie': '' })}
+              data-kategorie=""
             />
           )}
         </SimpleGrid>

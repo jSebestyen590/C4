@@ -63,6 +63,7 @@ import {
   belegPfad,
   finanzenKeys,
   jsonOderFehler,
+  useArtikelVorschlaege,
   useBargeld,
   useBelegWaren,
   useKonten,
@@ -113,6 +114,7 @@ export function FinanzenBelegPage() {
   const rechnungssteller = useRechnungssteller(false);
   const mitglieder = useMitgliederListe();
   const belegWaren = useBelegWaren();
+  const artikelVorschlaege = useArtikelVorschlaege();
   // Set once the draft is booked or deleted, so the removed query is not fetched again (404).
   const [erledigt, setErledigt] = useState(false);
   // Sticky preview only beside the form (lg+); stacked on phones it would cover the form.
@@ -466,9 +468,7 @@ export function FinanzenBelegPage() {
           <Stack gap="lg">
             <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }} spacing="md">
               <Select
-                label={
-                  <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
-                }
+                label={<FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />}
                 placeholder="Rechnungssteller suchen"
                 searchable
                 selectFirstOptionOnChange
@@ -571,6 +571,7 @@ export function FinanzenBelegPage() {
                   modus={form.modus}
                   aufwand={aufwand}
                   waren={belegWaren.data ?? []}
+                  artikelVorschlaege={artikelVorschlaege.data ?? []}
                   betragCent={berechnung.postenBetraege[i] ?? 0}
                   pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
                   versucht={versucht}

@@ -28,6 +28,7 @@ export const finanzenKeys = {
   einreichungAuswahl: ['finanzen', 'einreichungAuswahl'] as const,
   einreichung: (id: string | undefined) => ['finanzen', 'einreichung', id] as const,
   belegWaren: ['finanzen', 'belegWaren'] as const,
+  artikelVorschlaege: ['finanzen', 'artikelVorschlaege'] as const,
   warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
 };
 
@@ -66,6 +67,16 @@ export function useBelegWaren(enabled = true) {
     queryKey: finanzenKeys.belegWaren,
     enabled,
     queryFn: async () => unwrap(await api.finanzen['beleg-waren'].$get()),
+  });
+}
+
+/** Artikel names booked on Kategorie items with the Kategorien used (for the Artikel -> Kategorie suggestion). */
+export function useArtikelVorschlaege(enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.artikelVorschlaege,
+    enabled,
+    queryFn: async () => unwrap(await api.finanzen['artikel-vorschlaege'].$get()),
   });
 }
 
