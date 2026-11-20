@@ -148,6 +148,11 @@ und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. D
 - die Gliederung: Ein Todo lässt sich nur in die Notizen anderer Bausteine ziehen (`gliederungZiel` und `bausteinInGliederungVerschieben` liefern sonst keinen Platz);
 - die Prüfung beim Speichern (`protokollDokumentPruefen`): „Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.“
 
+### Bedienung im Editor
+
+- **Farbleiste:** Jede Baustein-Karte hat links eine 4 px breite Leiste in der Farbe ihres Typs (eine Zuordnung in `protokoll.css`, Block „Colour bar“; Zitat bleibt in der Primärfarbe). Verschachtelte Bausteine zeigen mehrere Leisten nebeneinander. Nur im Editor, nicht in Dokument-Ansicht und PDF.
+- **Tab-Reihenfolge:** Tab auf dem letzten Feld des Formulars setzt den Cursor an den Anfang der Notizen dieses Bausteins (`BausteinKnoten.tsx`, `fokusSetzen`). Shift+Tab am Anfang des ersten Absatzes der Notizen (nicht in einer Liste) springt zurück auf das letzte Formularfeld (`schema.ts`, Hilfen in `tabFolge.ts`). Reine Icon-Buttons (Baustein entfernen, Datum löschen) sind kein Tab-Stopp. Die Picker-Symbole der nativen Datums-/Zeitfelder sind browserseitig kein Tab-Stopp und bleiben unverändert.
+
 ## Bausteine in Notizen und verschachtelte Themen
 
 **Abstimmung, Meinungsbild, Wahl, Auswahl und Todo in anderen Bausteinen:** Diese fünf (`BAUSTEINE_IN_NOTIZEN`) lassen sich auch in den Notizen

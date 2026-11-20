@@ -344,6 +344,24 @@ describe('Hilfen', () => {
     expect(istQuellenzeile(text)).toBe(false);
   });
 
+  it('drops lists that only hold empty items, keeps lists with text', () => {
+    const text: ProtokollKnoten = { type: 'paragraph', content: [{ type: 'text', text: 'a' }] };
+    const leer = (type: string): ProtokollKnoten => ({
+      type,
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+    });
+    const voll: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [text] }],
+    };
+    expect(ohneLeereEnden([leer('bulletList')])).toEqual([]);
+    expect(ohneLeereEnden([leer('orderedList')])).toEqual([]);
+    expect(ohneLeereEnden([leer('bulletList'), text])).toEqual([text]);
+    expect(ohneLeereEnden([text, leer('bulletList'), { type: 'paragraph' }])).toEqual([text]);
+    expect(ohneLeereEnden([voll, leer('bulletList')])).toEqual([voll]);
+    expect(ohneLeereEnden([voll])).toEqual([voll]);
+  });
+
   it('mitLiveKopf applies overrides only to drafts', () => {
     const t = [m('1', 'leo', 'anwesend')];
     const kopf = { ...protokollKopfLeer(), teilnahme: { '1': 'entschuldigt' as const } };

@@ -8,6 +8,7 @@ import {
   istVerschachtelbar,
   type ProtokollAbschnitt,
 } from '@c4/shared';
+import { bausteinAnfangTiefe, letztesFormularFeld } from './tabFolge';
 
 // Document structure of the minutes: four fixed sections, each holding text blocks and Bausteine.
 
@@ -143,7 +144,19 @@ export const ProtokollAbsicherung = Extension.create({
         dispatch?.(tr.scrollIntoView());
         return true;
       });
-    return { Backspace: loeschen, Delete: loeschen };
+    // Shift+Tab at the very start of the Notizen leads back to the last field of the Baustein's form.
+    const zumFormular = () => {
+      const { selection } = this.editor.state;
+      if (!selection.empty) return false;
+      const tiefe = bausteinAnfangTiefe(selection.$from, (name) => bausteinNamen.has(name));
+      if (tiefe === null) return false;
+      const dom = this.editor.view.nodeDOM(selection.$from.before(tiefe));
+      const feld = dom instanceof HTMLElement ? letztesFormularFeld(dom) : undefined;
+      if (!feld) return false;
+      feld.focus();
+      return true;
+    };
+    return { Backspace: loeschen, Delete: loeschen, 'Shift-Tab': zumFormular };
   },
 
   addProseMirrorPlugins() {

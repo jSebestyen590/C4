@@ -69,6 +69,50 @@
   margin-top: var(--mantine-spacing-xs);
 }
 
+/*
+ * Colour bar on the left edge of every Baustein card, one colour per type (the only place of the map).
+ * Nested Bausteine show several bars side by side. Mantine's -6 shades read well on light and dark.
+ */
+.protokoll-baustein > .mantine-Paper-root {
+  border-left: 4px solid var(--baustein-farbe, var(--mantine-color-gray-6));
+}
+.protokoll-baustein[data-baustein='bausteinEvent'] {
+  --baustein-farbe: var(--mantine-color-green-6);
+}
+.protokoll-baustein[data-baustein='bausteinVergangenesEvent'] {
+  --baustein-farbe: var(--mantine-color-lime-6);
+}
+.protokoll-baustein[data-baustein='bausteinThema'] {
+  --baustein-farbe: var(--mantine-color-violet-6);
+}
+.protokoll-baustein[data-baustein='bausteinAnwaerter'] {
+  --baustein-farbe: var(--mantine-color-cyan-6);
+}
+.protokoll-baustein[data-baustein='bausteinBeschluss'] {
+  --baustein-farbe: var(--mantine-color-red-6);
+}
+.protokoll-baustein[data-baustein='bausteinEm'] {
+  --baustein-farbe: var(--mantine-color-orange-6);
+}
+.protokoll-baustein[data-baustein='bausteinAnwesenheit'] {
+  --baustein-farbe: var(--mantine-color-teal-6);
+}
+.protokoll-baustein[data-baustein='bausteinMeinungsbild'] {
+  --baustein-farbe: var(--mantine-color-pink-6);
+}
+.protokoll-baustein[data-baustein='bausteinAufnahme'] {
+  --baustein-farbe: var(--mantine-color-indigo-6);
+}
+.protokoll-baustein[data-baustein='bausteinWahl'] {
+  --baustein-farbe: var(--mantine-color-grape-6);
+}
+.protokoll-baustein[data-baustein='bausteinAuswahl'] {
+  --baustein-farbe: var(--mantine-color-yellow-6);
+}
+.protokoll-baustein[data-baustein='bausteinTodo'] {
+  --baustein-farbe: var(--mantine-color-gray-6);
+}
+
 .protokoll-toolbar {
   /* Above the inputs of the Baustein cards (Mantine gives every div in the content z-index 2). */
   z-index: 5;

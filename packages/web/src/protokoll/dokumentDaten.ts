@@ -552,10 +552,26 @@ export function istLeererAbsatz(k: ProtokollKnoten): boolean {
   );
 }
 
-/** The nodes without trailing empty paragraphs. */
+/** A bullet / ordered list whose items hold nothing but empty paragraphs (e.g. the initial empty bullet). */
+export function istLeereListe(k: ProtokollKnoten): boolean {
+  return (
+    (k.type === 'bulletList' || k.type === 'orderedList') &&
+    (k.content ?? []).every((item) =>
+      (item.content ?? []).every((c) => istLeererAbsatz(c) || istLeereListe(c)),
+    )
+  );
+}
+
+const istLeer = (k: ProtokollKnoten): boolean => istLeererAbsatz(k) || istLeereListe(k);
+
+/**
+ * The nodes without trailing empty paragraphs / empty lists and without leading empty lists (the empty
+ * bullet a Baustein starts with). Leading empty paragraphs stay.
+ */
 export function ohneLeereEnden(knoten: readonly ProtokollKnoten[] | undefined): ProtokollKnoten[] {
   const liste = [...(knoten ?? [])];
-  while (liste.length > 0 && istLeererAbsatz(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeer(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeereListe(liste[0]!)) liste.shift();
   return liste;
 }
 

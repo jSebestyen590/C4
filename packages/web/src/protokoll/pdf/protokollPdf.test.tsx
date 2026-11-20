@@ -386,10 +386,15 @@ describe('PDF: Todo', () => {
   it('joins a bullet list in front: one list, the Todo is its last bullet', () => {
     const liste: ProtokollKnoten = {
       type: 'bulletList',
-      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Punkt' }] }],
+        },
+      ],
     };
     const text = json(mitInhalt([liste, todo]));
-    // One "•" for the empty item and one for the Todo (the notes use the second-level dot).
+    // One "•" for the item and one for the Todo (the notes use the second-level dot).
     expect(text.split('"•"')).toHaveLength(3);
   });
 
