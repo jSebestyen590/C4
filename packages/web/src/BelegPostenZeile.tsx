@@ -208,6 +208,7 @@ export function BelegPostenZeile({
               onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Kategorie suchen"
               searchable
+              onFocus={(e) => e.currentTarget.select()}
               onBlurCapture={blurWaehltMarkierte}
               selectFirstOptionOnChange
               allowDeselect={false}

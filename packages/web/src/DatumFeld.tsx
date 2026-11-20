@@ -74,6 +74,11 @@ export function DatumFeld({
         clearable={loeschbar}
         allowDeselect={loeschbar}
         autoComplete="off"
+        onFocus={(e) => {
+          // Typing replaces the value instead of being appended to it.
+          e.currentTarget.select();
+          rest.onFocus?.(e);
+        }}
       />
     );
   return (

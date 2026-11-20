@@ -21,7 +21,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { SteuersaetzeKontext, satzProzent } from '../steuersaetze';
 import {
   BELEG_MODI,
@@ -148,8 +148,20 @@ function lokalesFormular(schluessel: string) {
 export function FinanzenBelegPage() {
   // The route elements of a new and an opened draft are the same component, so React keeps its state
   // across navigations; a counter as key gives the next Beleg of a series a fresh form.
+  // The remount must wait for the navigation: a page mounted while the URL still names the booked
+  // draft would load it (404) and never see the new route.
+  const ort = useLocation();
   const [durchlauf, setDurchlauf] = useState(0);
-  return <BelegSeite key={durchlauf} neuerDurchlauf={() => setDurchlauf((d) => d + 1)} />;
+  const [ausstehend, setAusstehend] = useState(false);
+  const [gesehen, setGesehen] = useState(ort.key);
+  if (gesehen !== ort.key) {
+    setGesehen(ort.key);
+    if (ausstehend) {
+      setAusstehend(false);
+      setDurchlauf((d) => d + 1);
+    }
+  }
+  return <BelegSeite key={durchlauf} neuerDurchlauf={() => setAusstehend(true)} />;
 }
 
 function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>) {
@@ -956,6 +968,11 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                 <Select
                   label={<FeldLabel text="Zahlweg" hilfe={HILFE.belege.zahlweg} />}
                   placeholder="Zahlweg wählen"
+                  onKeyDownCapture={enterWaehltErsteOption}
+                  onBlurCapture={blurWaehltMarkierte}
+                  onFocus={(e) => e.currentTarget.select()}
+                  searchable
+                  selectFirstOptionOnChange
                   allowDeselect={false}
                   data={ZAHLWEGE.map((z) => ({ value: z, label: ZAHLWEG_LABELS[z] }))}
                   value={form.zahlweg}
@@ -973,6 +990,10 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                   <Select
                     label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
                     placeholder="Fach suchen"
+                    onKeyDownCapture={enterWaehltErsteOption}
+                    onBlurCapture={blurWaehltMarkierte}
+                    onFocus={(e) => e.currentTarget.select()}
+                    allowDeselect={false}
                     searchable
                     selectFirstOptionOnChange
                     data={faecher.map((x) => ({ value: x.id, label: x.name }))}
@@ -998,6 +1019,10 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                   <Select
                     label={<FeldLabel text="Mitglied (hat bezahlt)" hilfe={HILFE.belege.auslage} />}
                     placeholder="Mitglied suchen"
+                    onKeyDownCapture={enterWaehltErsteOption}
+                    onBlurCapture={blurWaehltMarkierte}
+                    onFocus={(e) => e.currentTarget.select()}
+                    allowDeselect={false}
                     searchable
                     selectFirstOptionOnChange
                     data={mitgliedOptionen((mitglieder.data ?? []).filter((m) => !m.deaktiviert))}
