@@ -13,7 +13,9 @@ import {
   type EinreichungDto,
   belegDateiUploadSchema,
   belegEntwurfSchema,
+  artikelAendernSchema,
   belegeAbfrageSchema,
+  type ArtikelDto,
   erstattungEingabeSchema,
   rechnungsstellerAendernSchema,
   rechnungsstellerEingabeSchema,
@@ -695,6 +697,8 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             zahlweg: 'auslage',
             mitgliedId: sub,
             datei: eingabe.datei,
+            // The Finanzer:in sees the stated amount as the Belegsumme and can correct it.
+            belegsummeCent: eingabe.betragCent,
             eingereichtBetragCent: eingabe.betragCent,
             notiz: eingabe.notiz,
           });
@@ -827,6 +831,27 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         const dto: ArtikelKategorieVorschlaege = await deps.finanzen.artikelVorschlaege();
         return c.json(dto);
       })
+      // Artikel with their default tax rate, Kategorien, number of booked Posten and latest booking.
+      .get('/finanzen/artikel', auth, finanzenLesen, async (c) => {
+        const dto: ArtikelDto[] = await deps.finanzen.artikel();
+        return c.json(dto);
+      })
+      .patch(
+        '/finanzen/artikel/:id',
+        auth,
+        finanzenBuchen,
+        zValidator('json', artikelAendernSchema),
+        async (c) => {
+          gefunden(
+            await deps.finanzen.artikelSteuersatzSetzen(
+              c.req.param('id'),
+              c.req.valid('json').steuersatz,
+            ),
+            'Artikel nicht gefunden',
+          );
+          return c.json({ ok: true });
+        },
+      )
       .get('/finanzen/auslagen', auth, finanzenLesen, async (c) => {
         const [liste, mitglied] = await Promise.all([
           deps.finanzen.auslagen(),

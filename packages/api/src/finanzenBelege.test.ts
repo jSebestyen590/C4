@@ -35,9 +35,9 @@ describe('einreichungWarePosten', () => {
       suche,
     );
     expect(r.fehler).toEqual([
-      'Posten 1: Die Ware gibt es nicht.',
-      'Posten 2: Die Ware ist archiviert.',
-      'Posten 3: Dieses Gebinde gehört nicht zur Ware.',
+      'Waren, Zeile 1: Die Ware gibt es nicht.',
+      'Waren, Zeile 2: Die Ware ist archiviert.',
+      'Waren, Zeile 3: Dieses Gebinde gehört nicht zur Ware.',
     ]);
   });
 });

@@ -13,6 +13,7 @@ const konten = [
 ];
 const vorschlaege = [
   {
+    steuersatz: null,
     artikel: 'Luftballons',
     kategorien: [
       { kategorieId: 'k2', anzahl: 5 },

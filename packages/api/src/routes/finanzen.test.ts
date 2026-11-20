@@ -1896,6 +1896,7 @@ describe('finanzen', () => {
       const daten = (extra: Dto = {}) => ({
         rechnungsstellerId: steller,
         belegdatum: '2027-01-05',
+        belegsummeCent: 1190,
         posten: [
           {
             kategorieId: kat,
@@ -2079,6 +2080,7 @@ describe('finanzen', () => {
     it('asks to confirm warnings before booking', async () => {
       const t = await belegSetup();
       const teuer = {
+        belegsummeCent: 60000,
         posten: [
           {
             kategorieId: t.kat,
@@ -2125,6 +2127,7 @@ describe('finanzen', () => {
       const bar = (stueckelung: Dto[]) => ({
         zahlweg: 'bar',
         fachId: fach,
+        belegsummeCent: 1200,
         posten: [
           {
             kategorieId: t.kat,
@@ -2236,6 +2239,7 @@ describe('finanzen', () => {
         zahlweg: 'auslage',
         mitgliedId: 'm2',
         bezahldatum: null,
+        belegsummeCent: 1500,
         posten: [
           {
             kategorieId: t.kat,
@@ -2273,6 +2277,167 @@ describe('finanzen', () => {
         fachId: null,
       });
       expect(ohneFach.status).toBe(400);
+    });
+
+    it('books a Beleg with a negative sum (Leergut return) for every Zahlweg', async () => {
+      const t = await belegSetup();
+      const leergut = {
+        art: 'leergut',
+        text: 'Kästen zurück',
+        anzahlMilli: 1000,
+        einzelpreisCent: 310,
+        steuersatz: 0,
+      };
+      const negativ = (extra: Dto = {}) => ({
+        belegsummeCent: -310,
+        posten: [leergut],
+        ...extra,
+      });
+      // Bank: incoming money.
+      const bank = await t.gebucht(negativ());
+      const bb = await t.lesen<Dto>('admin-token', `/buchungen/${bank.buchungId}`);
+      expect(bb.zeilen).toMatchObject([
+        { kontoId: 'pfand', betragCent: -310 },
+        { kontoId: 'bank', betragCent: 310 },
+      ]);
+      const detail = await t.lesen<Dto>('admin-token', `/belege/${bank.id}`);
+      expect(detail).toMatchObject({ summeCent: -310 });
+      expect(detail.posten).toMatchObject([
+        { art: 'leergut', betragCent: -310, einzelpreisCent: 310 },
+      ]);
+      // The sum of the Posten must equal the Belegsumme, also when negative.
+      const falsch = await t.buchenE(
+        await t.entwurf(negativ({ belegsummeCent: 310, datei: datei('8'.repeat(64)) })),
+      );
+      expect(falsch.status).toBe(400);
+      expect(((await falsch.json()) as Dto).error).toContain('Die Posten ergeben');
+      // Bar: cash into the Fach with positive denominations.
+      const fach = await t.fach();
+      const bar = await t.gebucht(
+        negativ({
+          datei: datei('9'.repeat(64)),
+          zahlweg: 'bar',
+          fachId: fach,
+          stueckelung: [
+            { nennwertCent: 200, anzahl: 1 },
+            { nennwertCent: 100, anzahl: 1 },
+            { nennwertCent: 10, anzahl: 1 },
+          ],
+        }),
+      );
+      expect(bar.id).toBeTruthy();
+      const fachDto = (await t.lesen<Dto>('admin-token', '/bargeld')).faecher.find(
+        (f: Dto) => f.id === fach,
+      );
+      expect(fachDto.saldoCent).toBe(310);
+      // Auslage: the member owes the club; the Erstattung is a payment into the Kasse.
+      const auslage = await t.gebucht(
+        negativ({
+          datei: datei('a1'.repeat(32)),
+          zahlweg: 'auslage',
+          mitgliedId: 'm2',
+          bezahldatum: null,
+        }),
+      );
+      expect((await t.lesen<Dto>('admin-token', '/auslagen')).mitglieder[0].summeCent).toBe(-310);
+      const erst = await t.roh('admin-token', 'POST', '/erstattungen', {
+        idempotenzSchluessel: crypto.randomUUID(),
+        mitgliedId: 'm2',
+        belegIds: [auslage.id],
+        datum: '2027-02-01',
+        zahlweg: 'bank',
+      });
+      expect(erst.status, await erst.clone().text()).toBe(201);
+      const eb = await t.lesen<Dto>(
+        'admin-token',
+        `/buchungen/${((await erst.json()) as Dto).buchungId}`,
+      );
+      expect(eb.zeilen).toMatchObject([
+        { kontoId: 'auslagen', betragCent: -310 },
+        { kontoId: 'bank', betragCent: 310 },
+      ]);
+    });
+
+    it('books a Beleg that adds up to 0 for Bar, Bank and Auslage without a counter line', async () => {
+      const t = await belegSetup();
+      const fach = await t.fach();
+      const nullSumme = (hash: string, extra: Dto = {}) => ({
+        belegsummeCent: 0,
+        datei: datei(hash.repeat(64)),
+        posten: [
+          {
+            kategorieId: t.kat,
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 310,
+            steuersatz: 0,
+          },
+          {
+            art: 'leergut',
+            text: 'Kästen',
+            anzahlMilli: 1000,
+            einzelpreisCent: 310,
+            steuersatz: 0,
+          },
+        ],
+        ...extra,
+      });
+      const bank = await t.gebucht(nullSumme('d'));
+      const bar = await t.gebucht(nullSumme('e', { zahlweg: 'bar', fachId: fach }));
+      const auslage = await t.gebucht(
+        nullSumme('f', { zahlweg: 'auslage', mitgliedId: 'm2', bezahldatum: null }),
+      );
+      for (const b of [bank, bar, auslage]) {
+        const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${b.buchungId}`);
+        expect(buchung.zeilen).toHaveLength(2);
+        expect(buchung.zeilen.map((z: Dto) => z.kontoId)).toEqual([t.kat, 'pfand']);
+        expect((await t.lesen<Dto>('admin-token', `/belege/${b.id}`)).summeCent).toBe(0);
+      }
+      // Nothing is owed: the Auslage of 0 is not open.
+      expect((await t.lesen<Dto>('admin-token', '/auslagen')).mitglieder).toEqual([]);
+      expect((await t.lesen<Dto>('admin-token', '/kette')).ok).toBe(true);
+    });
+
+    it('rejects an Erstattung with the sum 0', async () => {
+      const t = await belegSetup();
+      const kat = (text: string, einzelpreisCent: number) => ({
+        kategorieId: t.kat,
+        text,
+        anzahlMilli: 1000,
+        einzelpreisCent,
+        steuersatz: 0,
+      });
+      const auslage = (summe: number, hash: string) =>
+        t.gebucht({
+          zahlweg: 'auslage',
+          mitgliedId: 'm2',
+          bezahldatum: null,
+          belegsummeCent: summe,
+          datei: datei(hash.repeat(64)),
+          posten:
+            summe > 0
+              ? [kat('Deko', summe)]
+              : [
+                  {
+                    art: 'leergut',
+                    text: 'Kästen',
+                    anzahlMilli: 1000,
+                    einzelpreisCent: -summe,
+                    steuersatz: 0,
+                  },
+                ],
+        });
+      const b = await auslage(500, 'b');
+      const b2 = await auslage(-500, 'c');
+      const res = await t.roh('admin-token', 'POST', '/erstattungen', {
+        idempotenzSchluessel: crypto.randomUUID(),
+        mitgliedId: 'm2',
+        belegIds: [b.id, b2.id],
+        datum: '2027-02-01',
+        zahlweg: 'bank',
+      });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as Dto).error).toContain('darf nicht 0 sein');
     });
 
     it('manages Rechnungssteller and copies a booked Beleg to a new draft', async () => {
@@ -2401,7 +2566,7 @@ describe('finanzen', () => {
           art: 'leergut',
           text: 'Kästen zurück',
           anzahlMilli: 1000,
-          einzelpreisCent: -150,
+          einzelpreisCent: 150,
           steuersatz: 1900,
           ...extra,
         });
@@ -2410,7 +2575,7 @@ describe('finanzen', () => {
 
       it('books Ware, Pfand and Leergut to the category and the Pfand account', async () => {
         const t = await wareSetup();
-        const res = await t.gebucht({ posten: [t.ware(), t.leergut()] });
+        const res = await t.gebucht({ belegsummeCent: 2530, posten: [t.ware(), t.leergut()] });
         const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${res.buchungId}`);
         // 2 x 11,90 Ware; 2 x 1,50 Pfand minus 1 x 1,50 Leergut = 1,50 on Pfand.
         expect(buchung.zeilen).toMatchObject([
@@ -2505,17 +2670,60 @@ describe('finanzen', () => {
           einzelpreisCent: 100,
           steuersatz: 0,
         });
-        await t.gebucht({ posten: [kat('Deko'), kat('deko '), t.ware()] });
-        await t.gebucht({ posten: [kat('Kerzen')] });
+        await t.gebucht({ belegsummeCent: 2880, posten: [kat('Deko'), kat('deko '), t.ware()] });
+        await t.gebucht({ belegsummeCent: 100, posten: [kat('Kerzen')] });
         const erwartet = [
-          { artikel: 'Deko', kategorien: [{ kategorieId: t.kat, anzahl: 2 }] },
-          { artikel: 'Kerzen', kategorien: [{ kategorieId: t.kat, anzahl: 1 }] },
+          { artikel: 'Deko', steuersatz: 0, kategorien: [{ kategorieId: t.kat, anzahl: 2 }] },
+          { artikel: 'Kerzen', steuersatz: 0, kategorien: [{ kategorieId: t.kat, anzahl: 1 }] },
         ];
         expect(await t.lesen<Dto>('vorstand-token', '/artikel-vorschlaege')).toEqual(erwartet);
         expect(
           (await t.lesen<Dto>('member-token', '/einreichungen/auswahl')).artikelVorschlaege,
         ).toEqual(erwartet);
         expect((await t.roh('member-token', 'GET', '/artikel-vorschlaege')).status).toBe(403);
+      });
+
+      it('creates Artikel when booking, lists them and changes the default tax rate', async () => {
+        const t = await wareSetup();
+        const kat = (text: string, steuersatz: number) => ({
+          kategorieId: t.kat,
+          text,
+          anzahlMilli: 1000,
+          einzelpreisCent: 100,
+          steuersatz,
+        });
+        await t.gebucht({ belegsummeCent: 200, posten: [kat('Deko', 700), kat('Kerzen', 1900)] });
+        // A known Artikel keeps its tax rate; only new names are created.
+        await t.gebucht({
+          belegsummeCent: 100,
+          posten: [kat(' deko', 0)],
+          datei: datei('7'.repeat(64)),
+        });
+        const liste = await t.lesen<Dto[]>('vorstand-token', '/artikel');
+        expect(liste).toMatchObject([
+          {
+            name: 'Deko',
+            steuersatz: 700,
+            kategorien: [{ kategorieId: t.kat, anzahl: 2 }],
+            postenAnzahl: 2,
+          },
+          { name: 'Kerzen', steuersatz: 1900, postenAnzahl: 1 },
+        ]);
+        expect(liste[0]!.zuletztAm).toEqual(expect.any(String));
+        expect((await t.roh('member-token', 'GET', '/artikel')).status).toBe(403);
+        const deko = liste[0]!.id as string;
+        expect(
+          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatz: 1900 })).status,
+        ).toBe(200);
+        expect((await t.lesen<Dto[]>('vorstand-token', '/artikel'))[0]).toMatchObject({
+          steuersatz: 1900,
+        });
+        expect(
+          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatz: -1 })).status,
+        ).toBe(400);
+        expect(
+          (await t.roh('admin-token', 'PATCH', '/artikel/gibt-es-nicht', { steuersatz: 0 })).status,
+        ).toBe(404);
       });
 
       it('requires an Artikel on Kategorie items of a submission and ignores a Ware text', async () => {
@@ -2680,7 +2888,7 @@ describe('finanzen', () => {
           expect((await t.roh(e.token, 'POST', '/einreichungen', rest)).status, feld).toBe(400);
         }
         expect(
-          (await t.roh(e.token, 'POST', '/einreichungen', { ...e.body, betragCent: 0 })).status,
+          (await t.roh(e.token, 'POST', '/einreichungen', { ...e.body, betragCent: 1.5 })).status,
         ).toBe(400);
         expect(
           (

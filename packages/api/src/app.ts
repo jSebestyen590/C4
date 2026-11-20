@@ -128,6 +128,8 @@ export function createApp(deps: AppDeps) {
           if (err.cause === DEAKTIVIERT) {
             return c.json({ error: err.message, deaktiviert: true }, err.status);
           }
+          const feld = (err.cause as { feld?: unknown } | undefined)?.feld;
+          if (typeof feld === 'string') return c.json({ error: err.message, feld }, err.status);
           return c.json({ error: err.message }, err.status);
         }
         console.error(err);

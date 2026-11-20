@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
+  artikelListeBilden,
+  artikelNameNorm,
   artikelVorschlaegeBilden,
   belegBerechnen,
   belegBuchungstext,
@@ -124,6 +126,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
   const steller = new Map<string, { id: string; name: string; archiviert: boolean }>();
   const entwuerfe = new Map<string, BelegEntwurfEintrag>();
   const belege: FakeBeleg[] = [];
+  const artikelListe = new Map<string, { id: string; name: string; steuersatz: number }>();
   const erstattungen: FakeErstattung[] = [];
   const zaehler = new Map<number, number>();
 
@@ -563,6 +566,12 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         erstelltVon: sub,
         erstelltAm: new Date().toISOString(),
       });
+      daten.posten.forEach((p, i) => {
+        const name = plan.buchung!.postenTexte[i]!.trim();
+        const schluessel = artikelNameNorm(name);
+        if (p.art === 'kategorie' && name !== '' && !artikelListe.has(schluessel))
+          artikelListe.set(schluessel, { id: randomUUID(), name, steuersatz: p.steuersatz });
+      });
       entwuerfe.delete(id);
       return { id: belegId, nummer, buchungId: gebucht.id, buchungSeq: gebucht.seq };
     },
@@ -622,7 +631,40 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           zaehler.set(schluessel, z);
         }
       }
-      return artikelVorschlaegeBilden([...zaehler.values()]);
+      return artikelVorschlaegeBilden(
+        [...zaehler.values()],
+        new Map([...artikelListe].map(([schluessel, a]) => [schluessel, a.steuersatz])),
+      );
+    },
+    async artikel() {
+      const storno = storniert();
+      const zeilen = new Map<
+        string,
+        { artikel: string; kategorieId: string; anzahl: number; zuletztAm: string | null }
+      >();
+      for (const b of belege) {
+        if (storno.has(b.buchungId)) continue;
+        for (const p of b.posten) {
+          if (p.art !== 'kategorie' || !p.text.trim()) continue;
+          const schluessel = `${artikelNameNorm(p.text)}\u0000${p.kategorieId}`;
+          const z = zeilen.get(schluessel) ?? {
+            artikel: p.text.trim(),
+            kategorieId: p.kategorieId,
+            anzahl: 0,
+            zuletztAm: null,
+          };
+          z.anzahl += 1;
+          if (!z.zuletztAm || b.erstelltAm > z.zuletztAm) z.zuletztAm = b.erstelltAm;
+          zeilen.set(schluessel, z);
+        }
+      }
+      return artikelListeBilden([...artikelListe.values()], [...zeilen.values()]);
+    },
+    async artikelSteuersatzSetzen(id, steuersatz) {
+      const a = [...artikelListe.values()].find((x) => x.id === id);
+      if (!a) return false;
+      a.steuersatz = steuersatz;
+      return true;
     },
     async belegWaren() {
       const gruppen = [...k.lager.warengruppen.values()];
@@ -636,7 +678,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           warengruppeId: w.warengruppeId,
           kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
           aliase: [...(w.aliase ?? [])],
-          standardGebindeId: w.standardGebindeId ?? null,
+          standardGebindeId: w.standardGebindeId ?? w.gebindeIds[0]!,
           gebinde: w.gebindeIds.flatMap((gid) => {
             const g = k.lager.gebinde.get(gid);
             return g && !g.archiviert

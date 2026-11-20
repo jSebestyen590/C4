@@ -69,6 +69,11 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   Fremdschlüssel, die API prüft, dass es zu den Gebinden der Ware gehört, und setzt es zurück, wenn das Gebinde entfernt wird).
   `ADD COLUMN IF NOT EXISTS`, die Down-Datei leert nur die Werte (DSQL kann keine Spalten löschen). Rollback-Ziel:
   `0231_einstellungen`.
+- 0233–0236 (Standard-Gebinde, Artikel): 0233 füllt fehlende `waren.standard_gebinde_id` mit dem ersten gewählten Gebinde (Down: nichts
+  zu tun, die Werte bleiben), 0234 legt `fin_artikel` an (Artikel eines Kategorie-Postens mit Standard-Steuersatz, `name_norm` =
+  `lower(trim(name))`, die API legt fehlende Artikel beim Buchen eines Belegs an und übernimmt den Steuersatz des Postens), 0235
+  übernimmt die Namen gebuchter, nicht stornierter Kategorie-Posten (`erstellt_von = 'migration'`, Steuersatz und Datum des frühesten Postens;
+  Down löscht diese Zeilen), 0236 ist der Unique-Index `fin_artikel_name_norm_idx` (`ASYNC`). Rollback-Ziel nur für die Artikel: `0233_waren_standard_gebinde_backfill`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden

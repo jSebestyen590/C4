@@ -172,12 +172,16 @@ export const belegPostenWareSchema = z.object({
   pfandCent: nullish(centFeld),
 });
 
-/** Returned empties (usually negative): booked against the Pfand Konto. */
+/**
+ * Returned empties, booked against the Pfand Konto. The quantity counts the returned pieces (> 0 is a
+ * return, 0 is caught by `belegPruefen`), the price is the deposit per piece (>= 0); the amount of the
+ * item is negative (`postenBetrag`).
+ */
 export const belegPostenLeergutSchema = z.object({
   art: z.literal('leergut'),
   text: textFeld,
-  anzahlMilli: anzahlMilliFeld,
-  einzelpreisCent: centFeld,
+  anzahlMilli: anzahlMilliFeld.min(0, 'Die Anzahl beim Leergut darf nicht negativ sein.'),
+  einzelpreisCent: centFeld.min(0, 'Der Pfand je Stück darf nicht negativ sein.'),
   steuersatz: steuersatzFeld,
 });
 
@@ -219,6 +223,12 @@ export const belegEntwurfDatenSchema = z.object({
   /** Required without a file (Eigenbeleg). */
   eigenbelegBegruendung: nullish(z.string().trim().max(500, 'Höchstens 500 Zeichen erlaubt.')),
   datei: nullish(belegDateiSchema),
+  /**
+   * The total (gross) printed on the paper Beleg, typed by the Finanzer:in; null while not entered.
+   * Prefilled from `eingereichtBetragCent` when a submitted Beleg is opened. `belegPruefen` requires
+   * it and requires it to equal the sum of the Posten.
+   */
+  belegsummeCent: nullish(centFeld),
   /** Submitted by a member: the amount they stated (cent). */
   eingereichtBetragCent: nullish(centFeld),
   /** Submitted by a member: free name of the Rechnungssteller, a suggestion only. */
@@ -239,7 +249,7 @@ export const belegEinreichenSchema = z.object({
   betragCent: z
     .number('Bitte gib den Betrag an.')
     .int('Beträge müssen ganze Cent sein.')
-    .min(1, 'Der Betrag muss größer als 0 sein.')
+    .min(-BELEG_POSTEN_MAX_CENT, 'Der Betrag ist zu groß.')
     .max(BELEG_POSTEN_MAX_CENT, 'Der Betrag ist zu groß.'),
   rechnungsstellerId: nullish(z.string().min(1)),
   rechnungsstellerName: nullish(z.string().trim().max(120, 'Höchstens 120 Zeichen erlaubt.')),
@@ -323,6 +333,8 @@ export type ErstattungEingabe = z.output<typeof erstattungEingabeSchema>;
 export interface BelegRechnung {
   modus: BelegModus;
   posten: readonly (Pick<BelegPosten, 'anzahlMilli' | 'einzelpreisCent' | 'steuersatz'> & {
+    /** Leergut items count negative (`postenBetrag`); null counts as Kategorie. */
+    art?: BelegPostenArt | null;
     /** Deposit per Gebinde of a Ware item (the quantity is the number of Gebinde). */
     pfandCent?: number | null;
   })[];
@@ -350,9 +362,29 @@ export interface BelegBerechnung {
 /** Rounds half away from zero, so a Gutschrift mirrors the same positive amount. */
 const runde = (x: number): number => (x < 0 ? -Math.round(-x) : Math.round(x));
 
-/** Amount of an item: quantity (thousandths) times unit price. */
-export const postenBetrag = (p: { anzahlMilli: number; einzelpreisCent: number }): number =>
-  runde((p.anzahlMilli * p.einzelpreisCent) / 1000);
+/**
+ * Amount of an item: quantity (thousandths) times unit price. Leergut (a return) is negative:
+ * `-round(anzahl * Pfand)`.
+ */
+export const postenBetrag = (p: {
+  anzahlMilli: number;
+  einzelpreisCent: number;
+  art?: BelegPostenArt | null;
+}): number => {
+  const betrag = runde((p.anzahlMilli * p.einzelpreisCent) / 1000);
+  return p.art === 'leergut' ? -betrag : betrag;
+};
+
+/** Plural table name of a Posten art as used in messages ("Waren, Zeile 2: ..."). */
+export const BELEG_POSTEN_TABELLEN_LABELS: Record<BelegPostenArt, string> = {
+  ware: 'Waren',
+  kategorie: 'Kategorien',
+  leergut: 'Leergut',
+};
+
+/** `Waren, Zeile 2`: `position` is the 1-based position within the items of that art. */
+export const postenZeilenLabel = (art: BelegPostenArt, position: number): string =>
+  `${BELEG_POSTEN_TABELLEN_LABELS[art]}, Zeile ${position}`;
 
 /**
  * Totals of a Beleg per tax rate. Brutto: the tax of a rate is its gross sum minus the rounded net
@@ -362,7 +394,7 @@ export const postenBetrag = (p: { anzahlMilli: number; einzelpreisCent: number }
  */
 export function belegBerechnen(beleg: BelegRechnung): BelegBerechnung {
   const fehler: string[] = [];
-  const postenBetraege = beleg.posten.map(postenBetrag);
+  const postenBetraege = beleg.posten.map((p) => postenBetrag(p));
   const pfandBetraege = beleg.posten.map((p) =>
     postenBetrag({ anzahlMilli: p.anzahlMilli, einzelpreisCent: p.pfandCent ?? 0 }),
   );
@@ -402,8 +434,6 @@ export function belegBerechnen(beleg: BelegRechnung): BelegBerechnung {
       return { satz, netto, steuer, brutto: netto + steuer };
     });
   const summe = jeSteuersatz.reduce((s, g) => s + g.brutto, 0);
-  if (beleg.posten.length > 0 && summe <= 0)
-    fehler.push('Die Summe des Belegs muss größer als 0 sein.');
   return { postenBetraege, pfandBetraege, jeSteuersatz, summe, fehler };
 }
 
@@ -489,12 +519,14 @@ export function belegBuchungszeilen(
       });
     });
   }
-  zeilen.push({
-    kontoId: gegenkonto.kontoId,
-    betragCent: 0 - b.summe,
-    stueckelung: (gegenkonto.stueckelung ?? []).map((s) => ({ ...s })),
-    ...OHNE_STEUER,
-  });
+  // A Beleg that adds up to 0 (e.g. Ware and Leergut cancelling out) has no counter line: nothing is paid.
+  if (b.summe !== 0)
+    zeilen.push({
+      kontoId: gegenkonto.kontoId,
+      betragCent: 0 - b.summe,
+      stueckelung: (gegenkonto.stueckelung ?? []).map((s) => ({ ...s })),
+      ...OHNE_STEUER,
+    });
   return zeilen;
 }
 
@@ -524,7 +556,7 @@ export const erstattungBuchungstext = (mitglied: string, anzahl: number): string
 // ----- Validation
 
 export interface BelegFehler {
-  /** `rechnungssteller`, `belegdatum`, `posten`, `korrekturen`, `datei`, `zahlweg`, `bezahldatum`, `fach`, `stueckelung`, `mitglied`. */
+  /** `rechnungssteller`, `belegdatum`, `belegsumme`, `posten`, `korrekturen`, `datei`, `zahlweg`, `bezahldatum`, `fach`, `stueckelung`, `mitglied`. */
   feld: string;
   meldung: string;
 }
@@ -536,8 +568,9 @@ export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
   if (!daten.rechnungsstellerId) f('rechnungssteller', 'Bitte wähle einen Rechnungssteller.');
   if (!daten.belegdatum) f('belegdatum', 'Bitte gib das Belegdatum an.');
   if (daten.posten.length === 0) f('posten', 'Bitte gib mindestens einen Posten an.');
-  daten.posten.forEach((p, i) => {
-    const n = `Posten ${i + 1}`;
+  const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
+  daten.posten.forEach((p) => {
+    const n = postenZeilenLabel(p.art, ++zaehler[p.art]);
     if (p.art !== 'leergut' && !p.kategorieId) f('posten', `${n}: Bitte wähle eine Kategorie.`);
     if (p.anzahlMilli === 0) f('posten', `${n}: Die Anzahl darf nicht 0 sein.`);
     if (p.art === 'ware') {
@@ -549,6 +582,16 @@ export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
   });
   const rechnung = belegBerechnen(daten);
   for (const m of rechnung.fehler) f(m.includes('Korrektur') ? 'korrekturen' : 'posten', m);
+  if (daten.belegsummeCent == null) f('belegsumme', 'Bitte gib die Belegsumme an.');
+  else if (
+    daten.posten.length > 0 &&
+    rechnung.fehler.length === 0 &&
+    daten.belegsummeCent !== rechnung.summe
+  )
+    f(
+      'belegsumme',
+      `Die Posten ergeben ${formatEuro(rechnung.summe)}, die Belegsumme ist ${formatEuro(daten.belegsummeCent)}.`,
+    );
   if (!daten.datei && !daten.eigenbelegBegruendung)
     f('datei', 'Bitte lade den Beleg hoch oder begründe, warum es keinen gibt (Eigenbeleg).');
   if (!daten.zahlweg) {
@@ -560,13 +603,16 @@ export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
   if (daten.zahlweg === 'auslage' && !daten.mitgliedId)
     f('mitglied', 'Bitte wähle das Mitglied, das bezahlt hat.');
   if (daten.zahlweg === 'bar') {
-    if (!daten.fachId) f('fach', 'Bitte wähle das Fach, aus dem bar gezahlt wurde.');
+    if (!daten.fachId && rechnung.summe !== 0)
+      f('fach', 'Bitte wähle das Fach, aus dem bar gezahlt wurde.');
     const wert = daten.stueckelung.reduce((s, x) => s + x.nennwertCent * x.anzahl, 0);
-    if (daten.stueckelung.length === 0) f('stueckelung', 'Bitte gib die Stückelung an.');
+    if (daten.stueckelung.length === 0 && rechnung.summe === 0) {
+      // Nothing is paid: no Stückelung needed.
+    } else if (daten.stueckelung.length === 0) f('stueckelung', 'Bitte gib die Stückelung an.');
     else if (rechnung.fehler.length === 0 && wert !== -rechnung.summe)
       f(
         'stueckelung',
-        `Die Stückelung (${formatEuro(-wert)} Abgang) passt nicht zur Summe (${formatEuro(rechnung.summe)}).`,
+        `Die Stückelung (${wert > 0 ? `${formatEuro(wert)} Eingang` : `${formatEuro(-wert)} Abgang`}) passt nicht zur Summe (${formatEuro(rechnung.summe)}).`,
       );
   }
   return fehler;
@@ -716,7 +762,8 @@ export function offeneAuslagen<B extends AuslageBeleg>(
   const jeMitglied = new Map<string, B[]>();
   for (const b of belege) {
     if (b.zahlweg !== 'auslage' || !b.mitgliedId) continue;
-    if (stornierte.has(b.buchungId) || erstattet.has(b.id)) continue;
+    // A Beleg of 0 owes nothing, so it is never an open Auslage.
+    if (stornierte.has(b.buchungId) || erstattet.has(b.id) || b.summeCent === 0) continue;
     jeMitglied.set(b.mitgliedId, [...(jeMitglied.get(b.mitgliedId) ?? []), b]);
   }
   return [...jeMitglied]
@@ -759,16 +806,76 @@ export interface BelegWareDto {
   kategorieId: string | null;
   /** Other names the Ware is found by (`waren.aliase`). */
   aliase: string[];
-  /** Gebinde to preselect; null = none (then the only Gebinde, if there is exactly one). */
-  standardGebindeId: string | null;
+  /** Gebinde to preselect (every Ware has one; it is one of `gebinde`). */
+  standardGebindeId: string;
   gebinde: BelegGebindeDto[];
 }
 
 /** Artikel names already booked on Kategorie items, with the Kategorien used for them (most often first). */
 export type ArtikelKategorieVorschlaege = {
   artikel: string;
+  /** Default tax rate of the Artikel (`fin_artikel`, basis points); null when it has none yet. */
+  steuersatz: number | null;
   kategorien: { kategorieId: string; anzahl: number }[];
 }[];
+
+/** Key to compare Artikel names: trimmed, case-insensitive (`fin_artikel.name_norm`). */
+export const artikelNameNorm = (name: string): string => name.trim().toLowerCase();
+
+/** `GET /api/finanzen/artikel`: an Artikel with how it was booked. */
+export interface ArtikelDto {
+  id: string;
+  name: string;
+  /** Default tax rate in basis points (1900 = 19 %). */
+  steuersatz: number;
+  /** Kategorien it was booked on, most often first. */
+  kategorien: { kategorieId: string; anzahl: number }[];
+  /** Number of booked Posten with this name. */
+  postenAnzahl: number;
+  /** ISO timestamp of the most recent booking; null when never booked. */
+  zuletztAm: string | null;
+}
+
+/** Body of `PATCH /api/finanzen/artikel/:id`. */
+export const artikelAendernSchema = z.object({ steuersatz: steuersatzFeld });
+
+/**
+ * Builds the Artikel list from `fin_artikel` rows and counted booked (Artikel, Kategorie) groups
+ * (`zuletztAm` = latest booking of that group). Sorted by name.
+ */
+export function artikelListeBilden(
+  artikel: readonly { id: string; name: string; steuersatz: number }[],
+  zeilen: readonly {
+    artikel: string;
+    kategorieId: string;
+    anzahl: number;
+    zuletztAm: string | null;
+  }[],
+): ArtikelDto[] {
+  const jeName = new Map<string, ArtikelDto>();
+  for (const a of artikel) {
+    jeName.set(artikelNameNorm(a.name), {
+      id: a.id,
+      name: a.name,
+      steuersatz: a.steuersatz,
+      kategorien: [],
+      postenAnzahl: 0,
+      zuletztAm: null,
+    });
+  }
+  for (const z of zeilen) {
+    const eintrag = jeName.get(artikelNameNorm(z.artikel));
+    if (!eintrag) continue;
+    const k = eintrag.kategorien.find((x) => x.kategorieId === z.kategorieId);
+    if (k) k.anzahl += z.anzahl;
+    else eintrag.kategorien.push({ kategorieId: z.kategorieId, anzahl: z.anzahl });
+    eintrag.postenAnzahl += z.anzahl;
+    if (z.zuletztAm && (!eintrag.zuletztAm || z.zuletztAm > eintrag.zuletztAm))
+      eintrag.zuletztAm = z.zuletztAm;
+  }
+  for (const e of jeName.values()) e.kategorien.sort((a, b) => b.anzahl - a.anzahl);
+  return [...jeName.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
 
 /**
  * Builds the suggestions from counted (Artikel, Kategorie) groups. Artikel are compared case-insensitively
@@ -777,14 +884,20 @@ export type ArtikelKategorieVorschlaege = {
  */
 export function artikelVorschlaegeBilden(
   zeilen: readonly { artikel: string; kategorieId: string; anzahl: number }[],
+  /** Default tax rate per Artikel, keyed by `artikelNameNorm`. */
+  steuersaetze: ReadonlyMap<string, number> = new Map(),
 ): ArtikelKategorieVorschlaege {
   const sortiert = zeilen
     .filter((z) => z.artikel.trim() !== '')
     .sort((a, b) => b.anzahl - a.anzahl || a.artikel.localeCompare(b.artikel, 'de'));
   const nachName = new Map<string, ArtikelKategorieVorschlaege[number]>();
   for (const z of sortiert) {
-    const schluessel = z.artikel.trim().toLowerCase();
-    const eintrag = nachName.get(schluessel) ?? { artikel: z.artikel.trim(), kategorien: [] };
+    const schluessel = artikelNameNorm(z.artikel);
+    const eintrag = nachName.get(schluessel) ?? {
+      artikel: z.artikel.trim(),
+      steuersatz: steuersaetze.get(schluessel) ?? null,
+      kategorien: [],
+    };
     const vorhanden = eintrag.kategorien.find((k) => k.kategorieId === z.kategorieId);
     if (vorhanden) vorhanden.anzahl += z.anzahl;
     else eintrag.kategorien.push({ kategorieId: z.kategorieId, anzahl: z.anzahl });

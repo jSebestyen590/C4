@@ -1661,6 +1661,20 @@ export const finBelegposten = pgTable(
   (t) => [primaryKey({ columns: [t.belegId, t.pos] })],
 );
 
+/**
+ * Artikel of Kategorie items with their default tax rate (basis points); created when a Beleg is
+ * booked. `name_norm` = lower(trim(name)) has a unique index.
+ */
+export const finArtikel = pgTable('fin_artikel', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  nameNorm: text('name_norm').notNull(),
+  steuersatz: integer('steuersatz').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
+export type FinArtikelRow = typeof finArtikel.$inferSelect;
+
 /** Rounding corrections per tax rate of a net Beleg (insert-only). */
 export const finBelegKorrekturen = pgTable(
   'fin_beleg_korrekturen',

@@ -46,7 +46,11 @@ import {
   type PruefKonto,
   type RechnungsstellerDto,
   postenBetrag,
+  postenZeilenLabel,
+  artikelListeBilden,
+  artikelNameNorm,
   artikelVorschlaegeBilden,
+  type ArtikelDto,
   type ArtikelKategorieVorschlaege,
 } from '@c4/shared';
 import type { Db } from './db/client';
@@ -54,6 +58,7 @@ import {
   finBelege,
   finBelegEntwuerfe,
   finBelegKorrekturen,
+  finArtikel,
   finBelegposten,
   wareAliase,
   finBuchungen,
@@ -111,9 +116,10 @@ export function einreichungWarePosten(
   ware: (id: string) => EinreichungWare | undefined,
 ): { daten: BelegEntwurfDaten; fehler: string[] } {
   const fehler: string[] = [];
-  const posten = daten.posten.map((p, i) => {
+  let wareZeile = 0;
+  const posten = daten.posten.map((p) => {
     if (p.art !== 'ware') return p;
-    const n = `Posten ${i + 1}`;
+    const n = postenZeilenLabel('ware', ++wareZeile);
     const w = p.wareId ? ware(p.wareId) : undefined;
     if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
     else if (w.archiviert) fehler.push(`${n}: Die Ware ist archiviert.`);
@@ -196,11 +202,13 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
     else if (k.art !== 'aufwand') fehler.push(`„${k.name}“ ist keine Aufwandskategorie.`);
   }
   const waren = new Map(kontext.waren.map((w) => [w.id, w]));
-  daten.posten.forEach((p, i) => {
-    if (p.art !== 'ware' || !p.wareId || !p.gebindeId) return;
+  let wareZeile = 0;
+  daten.posten.forEach((p) => {
+    if (p.art !== 'ware') return;
+    const n = postenZeilenLabel('ware', ++wareZeile);
+    if (!p.wareId || !p.gebindeId) return;
     const w = waren.get(p.wareId);
     const g = w?.gebinde.find((x) => x.id === p.gebindeId);
-    const n = `Posten ${i + 1}`;
     if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
     else if (w.archiviert) fehler.push(`${n}: Die Ware „${w.name}“ ist archiviert.`);
     else if (!g) fehler.push(`${n}: Dieses Gebinde gehört nicht zur Ware „${w.name}“.`);
@@ -261,7 +269,7 @@ export function belegWarnungenBilden(p: {
       code: 'beleg_doppelt',
       text: 'Es gibt schon einen gebuchten Beleg desselben Rechnungsstellers mit gleichem Datum und gleicher Summe.',
     });
-  if (p.summeCent !== null && p.summeCent > BELEG_BETRAG_WARNUNG_CENT)
+  if (p.summeCent !== null && Math.abs(p.summeCent) > BELEG_BETRAG_WARNUNG_CENT)
     w.push({
       code: 'hoher_betrag',
       text: `Der Betrag ist hoch (${formatEuro(p.summeCent)}). Bitte prüfe ihn.`,
@@ -301,7 +309,8 @@ export function planeErstattung(
     ...(eingabe.zahlweg === 'bar' && { stueckelung: eingabe.stueckelung }),
   });
   if (fehler.length === 0) {
-    if (summeCent <= 0) fehler.push('Die Summe der Erstattung muss größer als 0 sein.');
+    // A negative sum is allowed: the member pays money in (Fach: positive Stückelung; Bank: incoming).
+    if (summeCent === 0) fehler.push('Die Summe der Erstattung darf nicht 0 sein.');
     if (eingabe.zahlweg === 'bar') {
       const fach = kontext.konten.find((k) => k.id === zielId);
       fehler.push(...zaehlungKontoFehler(fach));
@@ -397,6 +406,10 @@ export interface BelegeStore {
   belegWaren(): Promise<BelegWareDto[]>;
   /** Artikel names of booked, not reversed Kategorie items with the Kategorien used for them. */
   artikelVorschlaege(): Promise<ArtikelKategorieVorschlaege>;
+  /** All Artikel with their Kategorien, number of booked Posten and latest booking. */
+  artikel(): Promise<ArtikelDto[]>;
+  /** Sets the default tax rate of an Artikel; false when it does not exist. */
+  artikelSteuersatzSetzen(id: string, steuersatz: number): Promise<boolean>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
     eingabe: ErstattungEingabe,
@@ -647,6 +660,39 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         );
         if (korrekturen.length > 0)
           await tx.insert(finBelegKorrekturen).values(korrekturen.map((k) => ({ belegId, ...k })));
+        // Artikel names booked for the first time become Artikel with the tax rate of their item.
+        const neueArtikel = new Map<string, { name: string; steuersatz: number }>();
+        daten.posten.forEach((p, i) => {
+          const name = plan.buchung!.postenTexte[i]!.trim();
+          const schluessel = artikelNameNorm(name);
+          if (p.art === 'kategorie' && name !== '' && !neueArtikel.has(schluessel))
+            neueArtikel.set(schluessel, { name, steuersatz: p.steuersatz });
+        });
+        if (neueArtikel.size > 0) {
+          const bekannt = new Set(
+            (
+              await tx
+                .select({ nameNorm: finArtikel.nameNorm })
+                .from(finArtikel)
+                .where(inArray(finArtikel.nameNorm, [...neueArtikel.keys()]))
+            ).map((a) => a.nameNorm),
+          );
+          const fehlend = [...neueArtikel].filter(([schluessel]) => !bekannt.has(schluessel));
+          if (fehlend.length > 0)
+            await tx
+              .insert(finArtikel)
+              .values(
+                fehlend.map(([nameNorm, a]) => ({
+                  id: randomUUID(),
+                  name: a.name,
+                  nameNorm,
+                  steuersatz: a.steuersatz,
+                  erstelltAm: jetzt,
+                  erstelltVon: sub,
+                })),
+              )
+              .onConflictDoNothing();
+        }
         await tx.delete(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
         // The route sends the push `belege.status` (gebucht) to `eingereichtVon` after this returns.
         return { id: belegId, nummer, buchungId: gebucht.id, buchungSeq: gebucht.seq };
@@ -1377,7 +1423,50 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           ),
         )
         .groupBy(sql`lower(trim(${finBelegposten.text}))`, finBelegposten.kategorieId);
-      return artikelVorschlaegeBilden(rows);
+      const artikel = await db.select().from(finArtikel);
+      return artikelVorschlaegeBilden(
+        rows,
+        new Map(artikel.map((a) => [a.nameNorm, a.steuersatz])),
+      );
+    },
+
+    async artikel() {
+      const [artikel, rows] = await Promise.all([
+        db.select().from(finArtikel),
+        db
+          .select({
+            artikel: sql<string>`min(trim(${finBelegposten.text}))`,
+            kategorieId: finBelegposten.kategorieId,
+            anzahl: sql<number>`count(*)::int`,
+            zuletztAm: sql<string | Date>`max(${finBelege.erstelltAm})`,
+          })
+          .from(finBelegposten)
+          .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+          .where(
+            and(
+              eq(finBelegposten.art, 'kategorie'),
+              sql`trim(${finBelegposten.text}) <> ''`,
+              sql`not exists (select 1 from fin_buchungen s where s.storno_von = ${finBelege.buchungId})`,
+            ),
+          )
+          .groupBy(sql`lower(trim(${finBelegposten.text}))`, finBelegposten.kategorieId),
+      ]);
+      return artikelListeBilden(
+        artikel,
+        rows.map((r) => ({
+          ...r,
+          zuletztAm: r.zuletztAm ? new Date(r.zuletztAm).toISOString() : null,
+        })),
+      );
+    },
+
+    async artikelSteuersatzSetzen(id, steuersatz) {
+      const rows = await db
+        .update(finArtikel)
+        .set({ steuersatz })
+        .where(eq(finArtikel.id, id))
+        .returning({ id: finArtikel.id });
+      return rows.length > 0;
     },
 
     async belegWaren() {
@@ -1398,7 +1487,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .filter((a) => a.wareId === w.id)
           .map((a) => a.alias)
           .sort((a, b) => a.localeCompare(b, 'de')),
-        standardGebindeId: w.standardGebindeId,
+        // Every Ware has one (required by the API, filled by migration 0233).
+        standardGebindeId: w.standardGebindeId!,
         gebinde: verknuepft
           .filter((v) => v.wareId === w.id)
           .flatMap((v) => {

@@ -146,7 +146,12 @@ export function baueKontext(deps: AppDeps) {
 
   /** Maps the Waren store's domain errors to 400 (invalid) and 409 (conflict). */
   const warenFehler = (err: unknown): never => {
-    if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof WarenUngueltig)
+      throw new HTTPException(400, {
+        message: err.message,
+        // `onError` adds it to the body as `feld`, so a form can show the message at the field.
+        cause: err.feld ? { feld: err.feld } : undefined,
+      });
     if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
     throw err;
   };

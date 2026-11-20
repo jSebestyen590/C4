@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_artikel_name_norm_idx

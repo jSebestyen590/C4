@@ -38,6 +38,7 @@ const voll = (): BelegFormular => ({
       einzelpreisCent: 500,
     },
   ],
+  belegsummeCent: 1000,
   zahlweg: 'bar',
   bezahldatum: '2027-03-01',
   fachId: 'f1',
@@ -195,7 +196,7 @@ describe('Ware, Leergut und Einreichung', () => {
         pfandCent: 300,
       },
       { ...neuerPosten(1900, 'kategorie'), kategorieId: 'k2', einzelpreisCent: 100 },
-      { ...neuerPosten(700), art: 'leergut', text: 'Leergut', anzahl: '1', einzelpreisCent: -600 },
+      { ...neuerPosten(700), art: 'leergut', text: 'Leergut', anzahl: '1', einzelpreisCent: 600 },
     ],
     eingereichtBetragCent: 1234,
     rechnungsstellerName: ' Getränke Müller ',
@@ -218,7 +219,7 @@ describe('Ware, Leergut und Einreichung', () => {
       art: 'leergut',
       text: 'Leergut',
       anzahlMilli: 1000,
-      einzelpreisCent: -600,
+      einzelpreisCent: 600,
       steuersatz: 700,
     });
     expect(d.posten[1]!.art).toBe('kategorie');
@@ -283,8 +284,19 @@ describe('formularFehler', () => {
     const m = formularFehler(f)
       .map((x) => x.meldung)
       .join('\n');
-    expect(m).toContain('Anzahl');
-    expect(m).toContain('Einzelpreis');
+    expect(m).toContain('Kategorien, Zeile 1: Die Anzahl');
+    expect(m).toContain('Kategorien, Zeile 1: Bitte gib den Einzelpreis an.');
+  });
+  it('zählt die Zeilen je Tabelle', () => {
+    const f = voll();
+    f.posten = [
+      { ...f.posten[0]!, einzelpreisCent: null },
+      { ...neuerPosten(0, 'ware'), einzelpreisCent: null },
+      { ...f.posten[0]!, einzelpreisCent: null },
+    ];
+    const m = formularFehler(f).map((x) => x.meldung);
+    expect(m).toContain('Waren, Zeile 1: Bitte gib den Einzelpreis an.');
+    expect(m).toContain('Kategorien, Zeile 2: Bitte gib den Einzelpreis an.');
   });
   it('prüft die Stückelung gegen die Summe', () => {
     const f = { ...voll(), gegeben: { 500: 1 } };

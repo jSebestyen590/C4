@@ -2,6 +2,7 @@ import {
   BELEG_DATEI_TYPEN,
   belegBerechnen,
   belegPruefen,
+  postenZeilenLabel,
   STEUERSAETZE,
   type BelegDatei,
   type BelegDateiTyp,
@@ -60,6 +61,8 @@ export interface BelegFormular {
   eigenbeleg: boolean;
   eigenbelegBegruendung: string;
   datei: BelegDatei | null;
+  /** The total printed on the paper Beleg (cent), null while not entered. */
+  belegsummeCent: number | null;
   /** Submissions: what the member stated, their free Rechnungssteller name and note. */
   eingereichtBetragCent: number | null;
   rechnungsstellerName: string;
@@ -124,6 +127,7 @@ export const leeresFormular = (): BelegFormular => ({
   eigenbeleg: false,
   eigenbelegBegruendung: '',
   datei: null,
+  belegsummeCent: null,
   eingereichtBetragCent: null,
   rechnungsstellerName: '',
   notiz: '',
@@ -236,6 +240,7 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     mitgliedId: f.zahlweg === 'auslage' ? f.mitgliedId : null,
     eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
     datei: f.datei,
+    belegsummeCent: f.belegsummeCent,
     eingereichtBetragCent: f.eingereichtBetragCent,
     rechnungsstellerName: f.rechnungsstellerName.trim() || null,
     notiz: f.notiz.trim() || null,
@@ -264,6 +269,7 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     eigenbeleg: d.eigenbelegBegruendung !== null && !d.datei,
     eigenbelegBegruendung: d.eigenbelegBegruendung ?? '',
     datei: d.datei,
+    belegsummeCent: d.belegsummeCent ?? null,
     eingereichtBetragCent: d.eingereichtBetragCent ?? null,
     rechnungsstellerName: d.rechnungsstellerName ?? '',
     notiz: d.notiz ?? '',
@@ -308,14 +314,17 @@ export function hatInhalt(f: BelegFormular): boolean {
 /** What is missing before the Beleg can be booked, incl. unreadable quantities. */
 export function formularFehler(f: BelegFormular): BelegFehler[] {
   const fehler = belegPruefen(formularZuDaten(f));
-  f.posten.forEach((p, i) => {
+  // Same order and numbering as `formularZuDaten`: the position within the art.
+  const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
+  postenSortieren(f.posten).forEach((p) => {
+    const n = postenZeilenLabel(p.art, ++zaehler[p.art]);
     if (p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null)
       fehler.push({
         feld: 'posten',
-        meldung: `Posten ${i + 1}: Die Anzahl ist ungültig, bitte gib z. B. 2 oder 1,5 ein.`,
+        meldung: `${n}: Die Anzahl ist ungültig, bitte gib z. B. 2 oder 1,5 ein.`,
       });
     if (p.einzelpreisCent === null)
-      fehler.push({ feld: 'posten', meldung: `Posten ${i + 1}: Bitte gib den Einzelpreis an.` });
+      fehler.push({ feld: 'posten', meldung: `${n}: Bitte gib den Einzelpreis an.` });
   });
   return fehler;
 }

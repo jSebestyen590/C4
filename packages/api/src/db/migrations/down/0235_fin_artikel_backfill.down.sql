@@ -1,0 +1,1 @@
+DELETE FROM fin_artikel WHERE erstellt_von = 'migration'
