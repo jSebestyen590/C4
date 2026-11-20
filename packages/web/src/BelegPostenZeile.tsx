@@ -29,7 +29,7 @@ import {
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
-  NEUE_WARE,
+  wareWahl,
   postenFeldFehler,
   wareFilter,
   wareOptionen,
@@ -85,6 +85,9 @@ export function BelegPostenZeile({
   const fehler = postenFeldFehler(p, versucht);
   const [wareSuche, setWareSuche] = useState('');
   const wareEingabe = useRef<HTMLInputElement>(null);
+  // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
+  // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
+  const neueWareGewaehlt = useRef(false);
 
   return (
     <Paper withBorder p="sm" data-zeile={p.key}>
@@ -120,6 +123,9 @@ export function BelegPostenZeile({
               placeholder="Ware suchen"
               searchable
               autoSelectOnBlur
+              onFocus={() => {
+                neueWareGewaehlt.current = false;
+              }}
               selectFirstOptionOnChange
               data={wareOptionen(waren, !!onNeueWare)}
               filter={wareFilter(waren)}
@@ -127,10 +133,15 @@ export function BelegPostenZeile({
               searchValue={wareSuche}
               onSearchChange={setWareSuche}
               onChange={(v) => {
-                if (v === NEUE_WARE) {
-                  // Only a deliberate pick (Enter, tap) creates a Ware, not leaving the field.
-                  if (document.activeElement === wareEingabe.current)
-                    onNeueWare?.(p.key, wareSuche);
+                const wahl = wareWahl(
+                  v,
+                  neueWareGewaehlt.current,
+                  document.activeElement === wareEingabe.current,
+                );
+                if (wahl === 'ignorieren') return;
+                if (wahl !== 'waehlen') {
+                  neueWareGewaehlt.current = true;
+                  if (wahl === 'neue-oeffnen') onNeueWare?.(p.key, wareSuche);
                   setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
                   return;
                 }

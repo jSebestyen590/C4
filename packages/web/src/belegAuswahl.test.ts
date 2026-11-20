@@ -6,6 +6,7 @@ import {
   NEUE_WARE,
   neueWareLabel,
   wareOptionen,
+  wareWahl,
   kategorieOptionenMitVorschlaegen,
   standardGebindeWaehlen,
   vorgeschlageneKategorie,
@@ -147,5 +148,17 @@ describe('Artikel-Steuersatz', () => {
       kategorieId: 'k1',
       steuersatz: 700,
     });
+  });
+});
+
+describe('wareWahl', () => {
+  it('opens the dialog only for a deliberate pick, never when the field is left', () => {
+    expect(wareWahl(NEUE_WARE, false, true)).toBe('neue-oeffnen');
+    expect(wareWahl(NEUE_WARE, false, false)).toBe('neue-merken');
+  });
+  it('ignores the option the blur picks after the dialog took the focus', () => {
+    expect(wareWahl('w1', true, false)).toBe('ignorieren');
+    expect(wareWahl('w1', false, true)).toBe('waehlen');
+    expect(wareWahl(null, false, true)).toBe('waehlen');
   });
 });

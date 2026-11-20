@@ -31,7 +31,7 @@ import {
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
-  NEUE_WARE,
+  wareWahl,
   postenFeldFehler,
   wareFilter,
   wareOptionen,
@@ -285,6 +285,9 @@ function PostenTabellenZeile({
   const ende = (letztes: boolean) => (istEnde && letztes ? { 'data-posten-ende': art } : {});
   const [wareSuche, setWareSuche] = useState('');
   const wareEingabe = useRef<HTMLInputElement>(null);
+  // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
+  // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
+  const neueWareGewaehlt = useRef(false);
 
   const anzahl = (
     <Table.Td>
@@ -385,7 +388,10 @@ function PostenTabellenZeile({
               placeholder="Ware suchen"
               searchable
               autoSelectOnBlur
-              onFocus={(e) => e.currentTarget.select()}
+              onFocus={(e) => {
+                neueWareGewaehlt.current = false;
+                e.currentTarget.select();
+              }}
               selectFirstOptionOnChange
               data={wareOptionen(waren, !!onNeueWare)}
               filter={wareFilter(waren)}
@@ -393,10 +399,15 @@ function PostenTabellenZeile({
               searchValue={wareSuche}
               onSearchChange={setWareSuche}
               onChange={(v) => {
-                if (v === NEUE_WARE) {
-                  // Only a deliberate pick (Enter, click) creates a Ware, not leaving the field.
-                  if (document.activeElement === wareEingabe.current)
-                    onNeueWare?.(p.key, wareSuche);
+                const wahl = wareWahl(
+                  v,
+                  neueWareGewaehlt.current,
+                  document.activeElement === wareEingabe.current,
+                );
+                if (wahl === 'ignorieren') return;
+                if (wahl !== 'waehlen') {
+                  neueWareGewaehlt.current = true;
+                  if (wahl === 'neue-oeffnen') onNeueWare?.(p.key, wareSuche);
                   setTimeout(() => setWareSuche(ware?.name ?? ''), 0);
                   return;
                 }

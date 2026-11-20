@@ -8,14 +8,25 @@
   align-items: end;
 }
 
+/*
+ * Mantine adds a 5px margin to an input that has an error text (and one above it for a description);
+ * that would lift or lower the input, so it is reset.
+ */
+.zeile *,
+.nurRand * {
+  --input-margin-top: 0px !important;
+  --input-margin-bottom: 0px !important;
+}
+
 .zeile > * {
   position: relative;
   min-width: 0;
   padding-bottom: var(--fehler-platz);
 }
 
-.zeile :global(.mantine-InputWrapper-error) {
+.zeile p[id$='-error'] {
   position: absolute;
+  z-index: 1;
   top: calc(100% - var(--fehler-platz) + 2px);
   left: 0;
   right: 0;
@@ -24,6 +35,6 @@
 }
 
 /* Table cells: the red border marks the cell, the messages stand below the table. */
-.nurRand :global(.mantine-InputWrapper-error) {
+.nurRand p[id$='-error'] {
   display: none;
 }

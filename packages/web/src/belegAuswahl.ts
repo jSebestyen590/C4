@@ -22,6 +22,21 @@ export const istNeueWareText = (text: string): boolean =>
   text === 'Neue Ware anlegen' || /^„.*“ als neue Ware anlegen$/.test(text);
 
 /**
+ * What a change of a Ware select means. "Neue Ware anlegen" opens the dialog only when picked
+ * deliberately (the input still has the focus), never when the field is just left (autoSelectOnBlur);
+ * afterwards every change is ignored until the field gets the focus back (the dialog's focus move
+ * blurs the field, which would otherwise pick the highlighted Ware).
+ */
+export function wareWahl(
+  wert: string | null,
+  neueWareGewaehlt: boolean,
+  hatFokus: boolean,
+): 'neue-oeffnen' | 'neue-merken' | 'ignorieren' | 'waehlen' {
+  if (wert === NEUE_WARE) return hatFokus ? 'neue-oeffnen' : 'neue-merken';
+  return neueWareGewaehlt ? 'ignorieren' : 'waehlen';
+}
+
+/**
  * Options of a Ware select (value = Ware id, label = name). With `mitNeuer` the option
  * "Neue Ware anlegen" (`NEUE_WARE`) is the last one.
  */
