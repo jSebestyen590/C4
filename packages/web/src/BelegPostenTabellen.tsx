@@ -340,6 +340,7 @@ function PostenTabellenZeile({
         placeholder="Kategorie suchen"
         searchable
         selectFirstOptionOnChange
+        allowDeselect={false}
         data={
           artikel
             ? kategorieOptionenMitVorschlaegen(aufwand, artikelVorschlaege, p.text)

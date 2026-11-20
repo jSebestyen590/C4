@@ -25,8 +25,10 @@ export const theme = createTheme({
     Textarea: Textarea.extend({ defaultProps: { size: 'md' } }),
     FileInput: FileInput.extend({ defaultProps: { size: 'md' } }),
     // Selects are not free text: stop iOS from offering AutoFill suggestions above the keyboard.
+    // No opening on (keyboard) focus: Enter then moves to the next field instead of picking the
+    // highlighted option; a click or typing still opens the dropdown.
     Select: Select.extend({
-      defaultProps: { size: 'md', autoComplete: 'off', inputMode: 'none' },
+      defaultProps: { size: 'md', autoComplete: 'off', inputMode: 'none', openOnFocus: false },
     }),
     NumberInput: NumberInput.extend({ defaultProps: { size: 'md' } }),
     MultiSelect: MultiSelect.extend({ defaultProps: { size: 'md', autoComplete: 'off' } }),

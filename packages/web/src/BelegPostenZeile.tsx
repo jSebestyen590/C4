@@ -159,6 +159,7 @@ export function BelegPostenZeile({
               placeholder="Kategorie suchen"
               searchable
               selectFirstOptionOnChange
+              allowDeselect={false}
               data={
                 p.art === 'kategorie'
                   ? kategorieOptionenMitVorschlaegen(aufwand, artikelVorschlaege, p.text)

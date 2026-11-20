@@ -352,6 +352,7 @@ export function BelegEinreichenPage() {
                       label="Kategorie"
                       size="md"
                       searchable
+                      allowDeselect={false}
                       data={kategorieOptionenMitVorschlaegen(
                         kategorien,
                         artikelVorschlaege,
