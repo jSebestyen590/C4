@@ -334,19 +334,33 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   Steuersatz 19/7/0 %; der Vorschlag kommt aus `fin_konten.steuersatz_standard` der Kategorie), Zahlweg. „Buchen“ zeigt eine
   Zusammenfassung mit Warnungen; danach ist der Beleg unveränderlich.
 - **Posten-Arten** (`art`; fehlt sie, gilt `kategorie`):
-  - `kategorie`: Aufwandskonto, Text, Anzahl, Einzelpreis (wie oben).
-  - `ware`: Lager-Posten mit Ware und Gebinde, Anzahl in Gebinden, Einzelpreis je Gebinde **ohne** Pfand und Pfand je Gebinde (aus
+  - `kategorie`: **Artikel** (Pflicht, `text`, z. B. „Deko“), Aufwandskonto, Anzahl, Einzelpreis (wie oben).
+  - `ware`: Lager-Posten ohne Text (Buchungstext = Ware-Name) mit Ware und Gebinde, Anzahl in Gebinden, Einzelpreis je Gebinde **ohne** Pfand und Pfand je Gebinde (aus
     `pfandGesamtCent` der Ware vorbelegt, überschreibbar, leer = kein Pfand); netto/brutto wie der Beleg. Die Kategorie kommt aus der
     Warengruppe (siehe unten), ist überschreibbar und Pflicht („Kategorie fehlt“ am Posten). Der Warenanteil bucht auf die Kategorie,
     das Pfand auf `pfand`.
   - `leergut`: Pfandrückgabe mit Text und Betrag (meist negativ) und wählbarem Steuersatz; bucht gegen `pfand` (Zeilen speichern
     `kategorie_id = 'pfand'`).
+- **Posten-Erfassung (Finanzer:in):** Ein neuer Posten ist immer Art Ware. Ab `md` (`BelegPostenTabellen.tsx`) stehen drei Tabellen
+  untereinander, je mit „Zeile hinzufügen“ und Löschen je Zeile: **Waren** (Ware, Gebinde, Anzahl, Preis je Gebinde, Pfand je
+  Gebinde, Steuersatz, Kategorie, Betrag), **Kategorien** (Artikel, Kategorie, Anzahl, Einzelpreis, Steuersatz, Betrag) und **Leergut**
+  (Beschreibung, Anzahl, Preis, Steuersatz, Betrag). Die Posten bleiben eine Liste mit `art`, im Beleg in der Reihenfolge Waren,
+  Kategorien, Leergut; die Spalte „Nr.“ entspricht „Posten N“ in den Meldungen. Tastatur: Enter springt ins nächste Feld, im letzten
+  Feld der letzten Zeile einer Tabelle legt Enter dort eine neue Zeile an, Strg/Cmd+Enter bucht. Die Tabellen scrollen in ihrem
+  Container, nie die Seite; Zellen mit Fehlern sind rot, die Meldungen stehen unter der Tabelle. Unter `md` bleibt die Karten-Maske
+  (gleiche Regeln). Hilfen: `packages/web/src/belegAuswahl.ts`.
+- **Artikel → Kategorie:** Bei Kategorie-Posten gibt man zuerst den Artikel (Autocomplete aus bisherigen Artikelnamen), dann die
+  Kategorie. Das Dropdown zeigt oben die **Vorschläge** (Kategorien, in denen der Artikelname schon gebucht wurde, nach Häufigkeit;
+  die häufigste ist vorbelegt, solange die Kategorie leer ist), darunter **Alle Kategorien**. Quelle: gebuchte, nicht stornierte
+  Posten mit `art = kategorie` (Vergleich ohne Groß/Klein und Leerzeichen am Rand). Gilt auch für Mitglieder.
+- **Ware-Auswahl:** Die Suche findet Waren auch über ihre Aliase ([waren.md](./waren.md)); gewählt wird das Standard-Gebinde samt Pfand
+  vorbelegt (sonst das einzige Gebinde).
 - **Pfand:** Konto `pfand` „Pfand/Leergut“ (Art Durchlauf, Forderung, kein Aufwand, Migration `0213`). Das Pfand trägt die **Vorsteuer
   mit dem Satz der Ware**; der Saldo ist das ausstehende Leergut.
 - **Warengruppe → Kategorie:** `warengruppen.kategorie_id` (Aufwandskonto, nullable) wird an Untergruppen vererbt (nächster Vorfahr mit
   Zuordnung). Gepflegt auf `/finanzen/warengruppen-kategorien` (Link von der Belege-Seite, Ändern `finanzen:buchen`).
 - **Einreichen durch Mitglieder:** Auf `/belege/einreichen` (Handy zuerst) lädt ein Mitglied Foto/Datei hoch und gibt Belegdatum und
-  Gesamtbetrag an (Pflicht); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten und **Ware-Posten** (Ware, Gebinde, Anzahl, Preis je Gebinde, Pfand vorbelegt). Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren. Der
+  Gesamtbetrag an (Pflicht); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten (Artikel + Kategorie mit Vorschlägen) und **Ware-Posten** (Ware, Gebinde, Anzahl, Preis je Gebinde, Pfand vorbelegt); neue Posten sind Ware, „Aufteilen (optional)“ ist ab dem ersten Posten immer offen (vorher einklappbar), damit Fehler sichtbar sind. Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren und `artikelVorschlaege`. Der
   Beleg ist immer eine **Auslage** (Zahler = Einreicher:in), kein Eigenbeleg. Es entsteht ein Entwurf mit `status = eingereicht`
   (`eingereicht_von`, `eingereicht_am`, `eingereicht_betrag_cent`; fehlt `status`, gilt `entwurf`). Die Finanzer:in sieht
   Einreichungen in der Belege-Liste, ergänzt sie wie jeden Entwurf (auch den Zahlweg) und bucht sie.
@@ -521,14 +535,15 @@ eine geglückte Buchung erzeugt einen neuen.
 | `POST /api/finanzen/beleg-entwuerfe/:id/buchen`     | `finanzen:buchen`                        | `idempotenzSchluessel`, `bestaetigt` (Warnungscodes); 409 mit Warnungen, solange nicht bestätigt; 201 mit Nummer und Buchung, bei bekanntem Schlüssel 200                                                                                                |
 | `POST /api/finanzen/beleg-dateien/upload`           | `finanzen:buchen`                        | `sha256`, Größe, Typ, Name; Presigned PUT mit `ChecksumSHA256` nach `belege/<sha256>.<ext>`, `schonGebucht` als Dublettenhinweis; ohne `FINANZARCHIV_BUCKET` abgelehnt                                                                                   |
 | `POST /api/finanzen/beleg-entwuerfe/:id/verwerfen`  | `finanzen:buchen`                        | `{ grund }`; nur eingereichte Entwürfe (sonst 409); Push `belege.status`                                                                                                                                                                                 |
-| `GET /api/finanzen/beleg-waren`                     | `finanzen:lesen`                         | Waren mit Gebinde, Pfand, MHD-Art und Vorschlags-Kategorie für Ware-Posten                                                                                                                                                                               |
+| `GET /api/finanzen/beleg-waren`                     | `finanzen:lesen`                         | Waren mit Gebinde, Standard-Gebinde, Aliase, Pfand, MHD-Art und Vorschlags-Kategorie für Ware-Posten                                                                                                                                                                               |
 | `GET /api/finanzen/warengruppen-kategorien`         | `finanzen:lesen`                         | Warengruppen mit zugeordneter und geerbter Kategorie                                                                                                                                                                                                     |
 | `PUT /api/finanzen/warengruppen/:id/kategorie`      | `finanzen:buchen`                        | `{ kategorieId }` (Aufwandskonto oder `null`)                                                                                                                                                                                                            |
 | `POST /api/finanzen/einreichungen/upload`           | `belege:einreichen`                      | wie `beleg-dateien/upload` für Mitglieder                                                                                                                                                                                                                |
 | `POST /api/finanzen/einreichungen`                  | `belege:einreichen`                      | Datei, Belegdatum, `betragCent`, optional Rechnungssteller, Notiz, Posten (Kategorie oder Ware); Zahlweg immer Auslage; 201 `{ id }`, Push `belege.eingereicht`                                                                                          |
 | `GET /api/finanzen/einreichungen`, `/:id`           | `belege:einreichen`                      | eigene Einreichungen (Liste, Detail mit Status, Grund, Posten, Datei-URL); die Liste „Eingereicht“ der Seite nutzt `GET /api/finanzen/belege` (`entwurfStatus`, freier Rechnungssteller-Name als `rechnungsstellerName`, in der Liste als „(Vorschlag)“) |
 | `DELETE /api/finanzen/einreichungen/:id`            | `belege:einreichen`                      | Zurückziehen, nur eigene und noch eingereichte (409 sonst)                                                                                                                                                                                               |
-| `GET /api/finanzen/einreichungen/auswahl`           | `belege:einreichen`                      | `id`/`name` der Rechnungssteller und aktiven Aufwandskonten, dazu die Waren für Ware-Posten                                                                                                                                                              |
+| `GET /api/finanzen/einreichungen/auswahl`           | `belege:einreichen`                      | `id`/`name` der Rechnungssteller und aktiven Aufwandskonten, dazu die Waren für Ware-Posten und `artikelVorschlaege`                                                                                                                                                              |
+| `GET /api/finanzen/artikel-vorschlaege`             | `finanzen:lesen`                         | Artikelnamen gebuchter Kategorie-Posten mit Kategorien und Häufigkeit `{ artikel, kategorien: { kategorieId, anzahl }[] }[]` |
 | `GET /api/lager-abgleich`, `/waren/:id`             | `finanzen:lesen` oder `waren:verwalten`  | Liste je Ware (`stichtag: null` ohne Stichtag) und Zeitleiste einer Ware (409 ohne Stichtag)                                                                                                                                                             |
 | `POST /api/lager-abgleich/korrekturen`              | `finanzen:buchen` oder `waren:verwalten` | `{ wareId, menge, grund, text?, datum }`; 409 ohne Stichtag, 400 bei Datum vor Stichtag oder in der Zukunft                                                                                                                                              |
 | `PUT /api/lager-abgleich/stichtag`                  | `finanzen:buchen` oder `waren:verwalten` | `{ stichtag }`                                                                                                                                                                                                                                           |

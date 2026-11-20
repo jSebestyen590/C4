@@ -129,6 +129,9 @@ Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen geb
 - Regeln (`gebindeSchema`, `gebindeFehler`): vollständige Basis- oder Obergebinde-Kombination, nur eine Verschachtelungsebene.
   Identische Gebinde (alle Attribute inkl. Pfand, bei Obergebinden Untergebinde + Anzahl) gibt es nur einmal (409
   „Dieses Gebinde gibt es schon.“, `gebindeDoppelt`). Sortierung: erst Basis-, dann Obergebinde (`gebindeSortieren`).
+- **Standard-Gebinde:** `waren.standard_gebinde_id` (nullable, Migration `0232`) wird im Ware-Formular aus den Gebinden der Ware
+  gewählt; die API prüft, dass es zur Ware gehört, und setzt es auf `null`, wenn man dieses Gebinde von der Ware entfernt. Auf Belegen
+  ist es beim Wählen der Ware vorbelegt (sonst das einzige Gebinde). Die Ware-Suche in Belegen findet auch Aliase (`wareSuchen`).
 - `GET /waren/:id/verlauf` liefert `gebinde: [{ id, bezeichnung, kurz }]`.
 
 ## FIFO-Entnahme

@@ -3,6 +3,8 @@
 Folgt auf [finanzen-belege-4c.md](./finanzen-belege-4c.md), gleicher Branch `finanzen-belege-4b` (ein PR für 4b–4d). Wünsche des
 Nutzers vom 20.11.2026; offene Details hier entschieden (siehe Tabelle), bei Bedarf beim Review ändern.
 
+**Status: umgesetzt** (Phasen 1-4).
+
 ## Entscheidungen
 
 | Thema | Entscheidung |
