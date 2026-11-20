@@ -31,6 +31,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 - Felder: Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional).
 - Ohne Freitext (Atom, kein `content`; alte Bausteine mit Absatz werden beim Laden bereinigt). Kommt nicht in den Vorschlag fürs nächste Protokoll.
+- Steht auf oberster Ebene oder in den Notizen eines Bausteins mit Notizen (`istVerschachtelbar`, Knotengruppe `innerbaustein`), auch in einem Listenpunkt dort. Alle Auswertungen (Teilnahme, Beschlussfähigkeit, Stimmen-Prüfung, Kopf) laufen rekursiv in Dokumentreihenfolge und finden ihn überall.
 
 ### Thema (`bausteinThema`)
 
@@ -143,7 +144,7 @@ und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. D
 
 **Das Todo gibt es nur in Notizen** (`istNurInNotizen`): Es steht nie direkt in einem Abschnitt. Dafür sorgen:
 
-- der Editor-Schema: Knotengruppe `notizbaustein` statt `block`, nur in den Notizen (auch nicht in Listen oder Zitaten);
+- der Editor-Schema: Knotengruppe `notizbaustein` statt `block`, nur in den Notizen (auch in Listenpunkten dort, aber nicht in Zitaten);
 - das Slash-Menü und das Menü „Baustein“: Auf oberster Ebene (Cursor in keinem Baustein, `ausserhalbBaustein`) fehlt „Todo“, auch seine Aliasse (`/aufgabe`);
 - die Gliederung: Ein Todo lässt sich nur in die Notizen anderer Bausteine ziehen (`gliederungZiel` und `bausteinInGliederungVerschieben` liefern sonst keinen Platz);
 - die Prüfung beim Speichern (`protokollDokumentPruefen`): „Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.“
@@ -155,7 +156,7 @@ und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. D
 
 ## Bausteine in Notizen und verschachtelte Themen
 
-**Abstimmung, Meinungsbild, Wahl, Auswahl und Todo in anderen Bausteinen:** Diese fünf (`BAUSTEINE_IN_NOTIZEN`) lassen sich auch in den Notizen
+**Abstimmung, Meinungsbild, Wahl, Auswahl und Todo in anderen Bausteinen:** Diese fünf (`BAUSTEINE_IN_NOTIZEN`), dazu Erscheint/Geht (nur `istVerschachtelbar`, keine Abstimmung), lassen sich auch in den Notizen
 eines anderen Bausteins (z. B. eines Events oder Themas) an der Cursor-Stelle einfügen, nicht ineinander. Alle anderen Bausteine bleiben
 auf oberster Ebene. Sie enthalten selbst nur Text, also keine weiteren Bausteine. Im Editor erlaubt das die Knotengruppe `innerbaustein` (`BausteinKnoten.tsx`); steht so ein Baustein am
 Ende der Notizen, kommt ein leerer Absatz dahinter. `protokollVorschlag` übernimmt sie nicht ins nächste Protokoll.
@@ -164,10 +165,27 @@ Ende der Notizen, kommt ein leerer Absatz dahinter. `protokollVorschlag` überni
 (Event, Vergangenes Event, Anwärter:in, Aufnahme, Neues EM) und in den Notizen eines anderen Themas, beliebig tief
 (`kannBausteineEnthalten`, `istVerschachtelbar`, `darfInNotizen` in `protokolle.ts`). Abstimmung, Meinungsbild und Wahl bleiben in jedem
 (auch verschachtelten) Thema erlaubt. Alle anderen Bausteine bleiben auf oberster Ebene. Im Editor ist das die Knotengruppe `thema`
-(Thema ist kein `block`, steht also nicht in Listen oder Zitaten). Alte Dokumente bleiben gültig. Im Vorschlag fürs nächste
+(Thema ist kein `block`, steht also nicht in Zitaten; in Listenpunkten ist es erlaubt, siehe unten). Alte Dokumente bleiben gültig. Im Vorschlag fürs nächste
 Protokoll entfallen verschachtelte Themen samt Inhalt aus den Notizen übernommener Events; Beschlussfähigkeit, Stimmen-Prüfung,
 Wiederholung und Aktionen finden Abstimmungen und Wahlen in beliebiger Tiefe. Mit dem Cursor in den Notizen fügt `/thema` (oder
 der Baustein-Button) das Thema dort ein, im innersten Baustein, der es aufnehmen kann; sonst steht es auf oberster Ebene.
+
+**Bausteine in Aufzählungen:** Fügt man in den Notizen eines Bausteins aus einem Listenpunkt heraus einen verschachtelbaren
+Baustein (Abstimmung, Meinungsbild, Wahl, Auswahl, Todo, Thema, Erscheint/Geht) oder ein Zitat ein, steht er als Kind eines
+Listenpunkts (`ListenPunkt` in `schema.ts`: Inhalt `paragraph (block | notizbaustein | thema)*`, also immer hinter dem Text des
+Punkts) und wird ohne Aufzählungspunkt, eingerückt auf Höhe dieses Punkts gezeigt; die folgenden Punkte behalten ihre Ebene
+(Platzierung: `listenStelle` in `einfuegen.ts`):
+
+- Leerer Punkt (nur der Rest des getippten `/…`) mit vorherigem Punkt derselben Liste: Der Punkt entfällt, der Baustein wird letztes
+  Kind des vorherigen Punkts (hinter dessen Text und Unterliste).
+- Leerer erster Punkt: Der Punkt entfällt, der Baustein steht vor der Liste (in der Unterliste im übergeordneten Punkt, dort eine
+  Ebene weniger eingerückt). War es der einzige Punkt, ersetzt der Baustein die Liste.
+- Punkt mit Text (oder mit Unterliste): Der Baustein steht direkt hinter dem Text im selben Punkt; ein leerer Folgeabsatz im Punkt wird ersetzt.
+- Top-Level-Bausteine (Event usw.) und alle Listen auf oberster Ebene eines Abschnitts verhalten sich wie vorher (hinter dem Block des Abschnitts).
+
+Prüfung und Auswertungen laufen rekursiv: Die Todo-Regel („nur in Notizen“) richtet sich nach dem umgebenden Baustein, nicht nach der
+Tiefe (`knotenFehler`); Gliederung (auch Ziehen, Einfügen neben die Liste), Dokument-Ansicht (`Knoten` rendert wie sonst) und PDF
+(`knotenInListe`) zeigen Bausteine in Listenpunkten wie anderswo.
 
 ## Slash-Befehle und Button „Baustein“
 
@@ -198,18 +216,17 @@ der Baustein-Button) das Thema dort ein, im innersten Baustein, der es aufnehmen
 - **Notizen** neuer Event-, Thema- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
 - **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
-  einfach eine weitere Zeile. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
+  einfach eine weitere Zeile. In einem Listenpunkt wird es zum Kind des Listenpunkts (siehe „Bausteine in Aufzählungen“) statt den Text des Punkts zu umschließen. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
   prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).
 - **Bild** (`/bild`, `/foto`, `/image`) öffnet die Dateiauswahl und lädt das Bild hoch, siehe [Bilder](./ansicht-pdf.md#bilder). Es kommt hinter den
   aktuellen Block, im Freitext eines Bausteins (auch einer Abstimmung) in dessen Notizen.
 - Der Baustein kommt hinter den aktuellen Block (ein leerer Absatz wird ersetzt, im Freitext eines Bausteins dahinter; keine
-  Verschachtelung). Abstimmung und Meinungsbild kommen dagegen in die Notizen am Cursor (leerer Absatz ersetzt, sonst hinter
+  Verschachtelung). Abstimmung, Meinungsbild, Wahl, Todo, Thema und Erscheint/Geht kommen dagegen in die Notizen am Cursor (leerer Absatz ersetzt, sonst hinter
   dem aktuellen Block dort).
   `/` öffnet das Menü auch in Listenpunkten (Aufzählung und nummerierte Liste, auch in den Notizen eines Bausteins), nicht in
-  Zitaten; der Eintrag „Zitat“ entfällt dort. Ein leerer letzter Listenpunkt (der Rest des getippten `/…`) wird vor dem Einfügen
-  entfernt, bei einem einzigen Punkt die ganze Liste (in den Notizen bleibt dann ein leerer Absatz, es sei denn Abstimmung oder
-  Meinungsbild ersetzen die Liste). Abstimmung und Meinungsbild kommen direkt hinter die Liste, alle anderen Bausteine nach
-  den üblichen Regeln hinter den Block des Abschnitts. Der **Cursor springt ins erste leere Feld** (Event: Name, dann Datum, Abstimmung: Antrag, Meinungsbild: Frage, Wahl: Posten, Aufnahme: Person, sonst der
+  Zitaten. In Notizen kommen verschachtelbare Bausteine und Zitate in den Listenpunkt (siehe „Bausteine in Aufzählungen“);
+  auf oberster Ebene eines Abschnitts (Liste direkt im Abschnitt) wird ein leerer letzter Listenpunkt entfernt (bei einem einzigen
+  Punkt die ganze Liste) und der Baustein kommt hinter den Block des Abschnitts. Der **Cursor springt ins erste leere Feld** (Event: Name, dann Datum, Abstimmung: Antrag, Meinungsbild: Frage, Wahl: Posten, Aufnahme: Person, sonst der
   Freitext).
 - Auf dem Handy ist `/` umständlich: Die Werkzeugleiste (klebt unter dem Header) hat den Button **„Baustein“** mit demselben
   Menü, dazu fett, kursiv, Überschriften, Listen, Link, Rückgängig/Wiederholen.

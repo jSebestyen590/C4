@@ -55,8 +55,8 @@ import { istLetztesFeld } from './tabFolge';
 /** Text content allowed in the free text of every Baustein. */
 const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote | bild';
 /**
- * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl (group
- * `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
+ * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl and
+ * erscheint / geht (group `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
  * only, so Bausteine nest only through Themen. The Todo (group `notizbaustein`, no `block`) stands only here,
  * never at the top level of a section.
  */
@@ -206,9 +206,11 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
       ? 'notizbaustein'
       : istBausteinInNotizen(typ)
         ? 'block innerbaustein'
-        : istThema(typ)
-          ? 'thema'
-          : 'block',
+        : typ === 'bausteinAnwesenheit'
+          ? 'block innerbaustein'
+          : istThema(typ)
+            ? 'thema'
+            : 'block',
     ...(ohneText
       ? { atom: true }
       : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),

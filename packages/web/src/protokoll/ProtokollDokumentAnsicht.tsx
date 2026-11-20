@@ -286,6 +286,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           <Baustein k={k} ctx={ctx} innen />
         </div>
       );
+    case 'bausteinAnwesenheit':
+      // erscheint / geht inside the notes of a Baustein (or in a list item of them).
+      return <Baustein k={k} ctx={ctx} innen />;
     case 'bausteinTodo':
       // A Todo is a bullet of the notes it stands in (see `Kinder`); alone it gets a list of its own.
       return (

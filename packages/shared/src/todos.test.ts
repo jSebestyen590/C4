@@ -9,6 +9,7 @@ import {
   protokollLeer,
   protokollNotizenText,
   protokollVorschlag,
+  type ProtokollKnoten,
   todoZustaendigeAufloesen,
 } from './protokolle';
 import {
@@ -107,6 +108,26 @@ describe('Baustein Todo', () => {
         'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.',
       );
     }
+  });
+
+  it('may stand in a list item of the notes of a Baustein, but not in a list of a section', () => {
+    const imPunkt = (): ProtokollKnoten => ({
+      type: 'bulletList',
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph' }, bausteinErzeugen('bausteinTodo')],
+        },
+      ],
+    });
+    const gut = protokollLeer();
+    gut.content[2]!.content = [bausteinErzeugen('bausteinThema', undefined, [imPunkt()])];
+    expect(protokollDokumentPruefen(gut)).toBeNull();
+    const schlecht = protokollLeer();
+    schlecht.content[2]!.content = [imPunkt()];
+    expect(protokollDokumentPruefen(schlecht)).toBe(
+      'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.',
+    );
   });
 
   it('is not carried into the next protocol', () => {

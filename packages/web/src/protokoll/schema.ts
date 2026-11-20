@@ -1,4 +1,5 @@
 import { Extension, mergeAttributes, Node } from '@tiptap/react';
+import { ListItem } from '@tiptap/extension-list';
 import { Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import {
@@ -21,6 +22,16 @@ export const ABSCHNITT_TITEL: Record<ProtokollAbschnitt, string> = {
 
 const istAbschnittArt = (art: unknown): art is ProtokollAbschnitt =>
   (PROTOKOLL_ABSCHNITTE as readonly string[]).includes(art as string);
+
+/**
+ * A list item: its text, then further blocks and nested lists, and also the nestable Bausteine (votes,
+ * erscheint / geht, Todo, Thema) and quotes: a Baustein inserted from a list item becomes a child of the
+ * previous item (see `einfuegeStelle`). Whether a Baustein may stand there is the insertion's and the
+ * validation's job (`protokollDokumentPruefen`), not the schema's.
+ */
+export const ListenPunkt = ListItem.extend({
+  content: 'paragraph (block | notizbaustein | thema)*',
+});
 
 /** The document is exactly the four sections (old documents get an empty "Sonstiges" on loading). */
 export const ProtokollDokumentKnoten = Node.create({
@@ -95,6 +106,7 @@ export function absatzAmEndeEinfuegen(tr: Transaction): boolean {
     if (node.type.name === 'abschnitt') {
       if (!node.lastChild?.isTextblock) stellen.push(pos + node.nodeSize - 1);
     } else if (
+      node.type.name !== 'listItem' &&
       node.lastChild &&
       (istVerschachtelbar(node.lastChild.type.name) || node.lastChild.type.name === BILD_TYP)
     ) {

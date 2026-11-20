@@ -143,6 +143,8 @@ export interface Block {
   /** Outline title of a heading block. */
   titel?: string;
   element: ReactElement;
+  /** Outline blocks (headings of Bausteine) inside this block, i.e. in the items of a list: for `lesezeichen` only. */
+  eingebettet?: Block[];
 }
 
 interface Kontext {
@@ -320,10 +322,47 @@ function knotenInListe(k: ProtokollKnoten, ctx: Kontext, tiefe: number, key: num
       </Text>
     );
   }
+  // A Baustein (Thema, Abstimmung, Zitat, erscheint / geht, ...) in the item: set normally, at the item's indent.
+  if (k.type === 'bausteinTodo') {
+    return (
+      <Fragment key={key}>
+        {listenBlock({ type: 'bulletList', content: [] }, ctx, tiefe, undefined, [k])}
+      </Fragment>
+    );
+  }
+  if (k.type === 'blockquote' || k.type.startsWith('baustein')) {
+    // Nested by heading level like at the top, so the bookmark of a Thema in a list item is where it stands.
+    return (
+      <Fragment key={key}>
+        <BlockBaumAnsicht knoten={blockBaum(textBloecke(k, ctx))} />
+      </Fragment>
+    );
+  }
   return <Text key={key}>{inline(k.content, ctx.person)}</Text>;
 }
 
 const block = (element: ReactElement): Block => ({ element });
+
+/** The outline blocks of the Bausteine inside the items of a list (at any list depth). */
+function gliederungInListe(liste: ProtokollKnoten, ctx: Kontext): Block[] {
+  const gefunden: Block[] = [];
+  for (const punkt of liste.content ?? []) {
+    for (const c of punkt.content ?? []) {
+      if (c.type === 'bulletList' || c.type === 'orderedList') {
+        gefunden.push(...gliederungInListe(c, ctx));
+      } else if (c.type !== 'paragraph' && c.type !== 'bausteinTodo') {
+        gefunden.push(...textBloecke(c, ctx).filter((b) => b.ebene && b.titel));
+      }
+    }
+  }
+  return gefunden;
+}
+
+/** A list as a block; the headings of the Bausteine in its items are remembered for the outline. */
+function listeAlsBlock(element: ReactElement, liste: ProtokollKnoten, ctx: Kontext): Block {
+  const eingebettet = gliederungInListe(liste, ctx);
+  return eingebettet.length > 0 ? { element, eingebettet } : { element };
+}
 
 const BILD_AUSRICHTUNG = { links: 'flex-start', mitte: 'center', rechts: 'flex-end' } as const;
 const BILD_TEXT_AUSRICHTUNG = { links: 'left', mitte: 'center', rechts: 'right' } as const;
@@ -402,7 +441,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     }
     case 'bulletList':
     case 'orderedList':
-      return [block(listenBlock(k, ctx, 0))];
+      return [listeAlsBlock(listenBlock(k, ctx, 0), k, ctx)];
     case 'blockquote':
       return [
         block(
@@ -437,6 +476,8 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
         ...b,
         element: <View style={stile.innen}>{b.element}</View>,
       }));
+    case 'bausteinAnwesenheit':
+      return bausteinBloecke(k, ctx, true);
     case 'bausteinTodo':
       // A Todo is a bullet of the notes it stands in (see `textListe`); alone it gets a list of its own.
       return [block(listenBlock({ type: 'bulletList', content: [] }, ctx, 0, undefined, [k]))];
@@ -465,7 +506,7 @@ function textListe(liste: readonly ProtokollKnoten[], ctx: Kontext): Block[] {
       continue;
     }
     const basis = k.type === 'bausteinTodo' ? { type: 'bulletList' } : k;
-    bloecke.push(block(listenBlock(basis, ctx, 0, undefined, todos)));
+    bloecke.push(listeAlsBlock(listenBlock(basis, ctx, 0, undefined, todos), basis, ctx));
   }
   return bloecke;
 }
@@ -478,7 +519,7 @@ function textMitVorne(liste: ProtokollKnoten[], ctx: Kontext, vorne?: ReactNode)
     const anzahl = rest.findIndex((k) => k.type !== 'bausteinTodo');
     const todos = anzahl < 0 ? rest : rest.slice(0, anzahl);
     return [
-      block(listenBlock(erstes, ctx, 0, vorne, todos)),
+      listeAlsBlock(listenBlock(erstes, ctx, 0, vorne, todos), erstes, ctx),
       ...textListe(rest.slice(todos.length), ctx),
     ];
   }
@@ -1072,6 +1113,51 @@ export interface Lesezeichen {
 export function lesezeichen(baum: readonly BlockBaumKnoten[]): Lesezeichen[] {
   return baum.flatMap((k): Lesezeichen[] => {
     const kinder = lesezeichen(k.kinder);
-    return k.block.ebene && k.block.titel ? [{ titel: k.block.titel, kinder }] : kinder;
+    if (k.block.ebene && k.block.titel) return [{ titel: k.block.titel, kinder }];
+    const innen = k.block.eingebettet ? lesezeichen(blockBaum(k.block.eingebettet)) : [];
+    return [...innen, ...kinder];
   });
+}
+
+/** Props that make an element an outline entry (nested by the element tree). */
+const bookmark = (title: string, expanded: boolean): object => ({
+  bookmark: { title, fit: true, expanded },
+});
+
+/** The block tree as nested Views; a heading's View carries its bookmark, so nesting the Views nests the outline. */
+export function BlockBaumAnsicht({ knoten }: Readonly<{ knoten: BlockBaumKnoten[] }>) {
+  return (
+    <>
+      {knoten.map((k, i) => {
+        if (!(k.block.ebene && k.block.titel)) {
+          return (
+            <View key={i}>
+              {k.block.element}
+              <BlockBaumAnsicht knoten={k.kinder} />
+            </View>
+          );
+        }
+        // Keeps the heading together with the block after it (no heading alone at the page end).
+        const [erstes, ...rest] = k.kinder;
+        const zusammen = erstes && !erstes.block.ebene ? erstes : undefined;
+        return (
+          <View
+            key={i}
+            // react-pdf resolves `bookmark` on any element, its typings only know it on Page.
+            {...bookmark(k.block.titel, k.block.ebene === 1)}
+          >
+            {zusammen ? (
+              <View wrap={false}>
+                {k.block.element}
+                {zusammen.block.element}
+              </View>
+            ) : (
+              k.block.element
+            )}
+            <BlockBaumAnsicht knoten={zusammen ? [...zusammen.kinder, ...rest] : k.kinder} />
+          </View>
+        );
+      })}
+    </>
+  );
 }
