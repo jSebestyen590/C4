@@ -167,10 +167,12 @@ describe('wareWahl', () => {
 
 describe('enterWaehltErsteOption', () => {
   const aufbau = (selected: boolean) => {
-    document.body.innerHTML = `<ul id="l"><li data-combobox-option ${selected ? 'data-combobox-selected' : ''}>A</li></ul>
+    document.body.innerHTML = `<ul id="l"><li data-combobox-option>A</li><li data-combobox-option ${selected ? 'data-combobox-selected' : ''}>B</li></ul>
       <input id="i" aria-controls="l" aria-expanded="true">`;
     const klicks: string[] = [];
-    document.querySelector('li')!.addEventListener('click', () => klicks.push('A'));
+    document
+      .querySelectorAll('li')
+      .forEach((li) => li.addEventListener('click', () => klicks.push(li.textContent!)));
     let verhindert = false;
     const e = {
       key: 'Enter',
@@ -187,9 +189,10 @@ describe('enterWaehltErsteOption', () => {
     expect(t.klicks).toEqual(['A']);
     expect(t.verhindert()).toBe(true);
   });
-  it('leaves a highlighted option to Mantine', () => {
+  it('picks the highlighted option', () => {
     const t = aufbau(true);
     enterWaehltErsteOption(t.e);
-    expect(t.klicks).toEqual([]);
+    expect(t.klicks).toEqual(['B']);
+    expect(t.verhindert()).toBe(true);
   });
 });

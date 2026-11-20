@@ -103,7 +103,10 @@ export function BelegBuchenDialog({
                   'Abgang',
                   stueckelung.filter((x) => x.anzahl < 0).map((x) => ({ ...x, anzahl: -x.anzahl })),
                 ],
-                ['Wechselgeld', stueckelung.filter((x) => x.anzahl > 0)],
+                [
+                  berechnung.summe < 0 ? 'Eingang' : 'Wechselgeld',
+                  stueckelung.filter((x) => x.anzahl > 0),
+                ],
               ]
                 .filter(([, liste]) => (liste?.length ?? 0) > 0)
                 .map(

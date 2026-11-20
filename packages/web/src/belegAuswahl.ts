@@ -239,9 +239,10 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
 }
 
 /**
- * Enter in a searchable select with an open list where nothing is highlighted yet (Mantine highlights
- * the first match only after its own timing, so a quick "type + Enter" found nothing): picks the first
- * option. Use as `onKeyDownCapture`; does nothing when an option is highlighted (Mantine picks it).
+ * Enter in a searchable select with an open list picks the highlighted option, else the first one.
+ * Mantine's own Enter handling relies on an internal index that can be -1 although an option is shown
+ * highlighted (quick "type + Enter", or an autofocused select), so we always click the option ourselves,
+ * as Mantine would. Use as `onKeyDownCapture`.
  */
 export function enterWaehltErsteOption(e: {
   key: string;
@@ -255,12 +256,11 @@ export function enterWaehltErsteOption(e: {
   const id = input.getAttribute?.('aria-controls');
   const liste = id ? input.ownerDocument.getElementById(id) : null;
   if (!liste) return;
-  if (liste.querySelector('[data-combobox-selected]')) return;
-  const erste = liste.querySelector<HTMLElement>(
-    '[data-combobox-option]:not([data-combobox-disabled])',
-  );
-  if (!erste) return;
+  const option =
+    liste.querySelector<HTMLElement>('[data-combobox-option][data-combobox-selected]') ??
+    liste.querySelector<HTMLElement>('[data-combobox-option]:not([data-combobox-disabled])');
+  if (!option) return;
   e.preventDefault();
   e.stopPropagation();
-  erste.click();
+  option.click();
 }
