@@ -1,4 +1,5 @@
 import {
+  Autocomplete,
   Button,
   Checkbox,
   Chip,
@@ -30,6 +31,7 @@ export const theme = createTheme({
     Select: Select.extend({
       defaultProps: { size: 'md', autoComplete: 'off', inputMode: 'none', openOnFocus: false },
     }),
+    Autocomplete: Autocomplete.extend({ defaultProps: { size: 'md' } }),
     NumberInput: NumberInput.extend({ defaultProps: { size: 'md' } }),
     MultiSelect: MultiSelect.extend({ defaultProps: { size: 'md', autoComplete: 'off' } }),
     TagsInput: TagsInput.extend({ defaultProps: { size: 'md' } }),

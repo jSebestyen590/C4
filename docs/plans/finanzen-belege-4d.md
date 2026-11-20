@@ -3,7 +3,10 @@
 Folgt auf [finanzen-belege-4c.md](./finanzen-belege-4c.md), gleicher Branch `finanzen-belege-4b` (ein PR für 4b–4d). Wünsche des
 Nutzers vom 20.11.2026; offene Details hier entschieden (siehe Tabelle), bei Bedarf beim Review ändern.
 
-**Status: umgesetzt** (Phasen 1-4).
+**Status: umgesetzt** (Phasen 1-4). Ergänzungen aus den Browser-Checks: Selects öffnen app-weit nicht mehr beim
+Tastatur-Fokus (`openOnFocus: false` im Theme), damit Enter zum nächsten Feld springt statt die markierte Option zu wählen;
+Pflicht-Kategorien sind nicht abwählbar; in den Tabellen markiert der Fokus den Suchtext von Ware/Kategorie; `Autocomplete`
+hat im Theme Größe `md` (16 px am Handy).
 
 ## Entscheidungen
 
