@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Autocomplete,
+  Checkbox,
   Group,
   Paper,
   SegmentedControl,
@@ -20,7 +21,13 @@ import {
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { type PostenZeile } from './belegFormular';
+import {
+  einzelpreisHinweis,
+  gesamtPatch,
+  postenPreis,
+  preisPatch,
+  type PostenZeile,
+} from './belegFormular';
 import {
   artikelNamen,
   artikelPatch,
@@ -39,7 +46,7 @@ import {
 import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
-import { FeldLabel } from './InfoHinweis';
+import { FeldLabel, InfoHinweis } from './InfoHinweis';
 import { FeldZeile } from './FeldZeile';
 import { satzOptionen, useSteuersaetze } from './steuersaetze';
 
@@ -84,6 +91,7 @@ export function BelegPostenZeile({
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
   const fehler = postenFeldFehler(p, versucht);
+  const proEinheit = einzelpreisHinweis(p);
   const [wareSuche, setWareSuche] = useState('');
   const wareEingabe = useRef<HTMLInputElement>(null);
   // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
@@ -196,7 +204,7 @@ export function BelegPostenZeile({
           )}
           {p.art !== 'leergut' && (
             <Select
-              label="Kategorie"
+              label={<FeldLabel text="Kategorie" hilfe={HILFE.belege.kategorie} />}
               onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Kategorie suchen"
               searchable
@@ -235,7 +243,7 @@ export function BelegPostenZeile({
         </FeldZeile>
 
         <FeldZeile
-          cols={{ base: 2, sm: p.art === 'ware' ? 5 : 4 }}
+          cols={{ base: 2, sm: p.art === 'ware' ? 6 : p.art === 'kategorie' ? 5 : 4 }}
           spacing="xs"
           verticalSpacing={0}
         >
@@ -261,11 +269,23 @@ export function BelegPostenZeile({
             data-nav=""
             data-anzahl=""
           />
+          {p.art !== 'leergut' && (
+            <Group gap={2} wrap="nowrap" mih={42} align="center">
+              <Checkbox
+                size="md"
+                label="Gesamtpreis"
+                checked={p.gesamt}
+                onChange={(e) => onAendern(gesamtPatch(p, e.currentTarget.checked))}
+                data-nav=""
+              />
+              <InfoHinweis feld="Gesamtpreis" text={HILFE.belege.gesamtpreis} />
+            </Group>
+          )}
           <BetragFeld
-            label={`${p.art === 'ware' ? 'Preis je Gebinde' : p.art === 'leergut' ? 'Pfand je Stück' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
+            label={`${p.gesamt ? 'Gesamtpreis' : p.art === 'ware' ? 'Preis je Gebinde' : p.art === 'leergut' ? 'Pfand je Stück' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
             negativ={p.art === 'kategorie'}
-            value={p.einzelpreisCent}
-            onWert={(c) => onAendern({ einzelpreisCent: c })}
+            value={postenPreis(p)}
+            onWert={(c) => onAendern(preisPatch(p, c))}
             error={fehler.preis}
             data-nav=""
           />
@@ -296,6 +316,11 @@ export function BelegPostenZeile({
               {pfandBetragCent !== 0 && (
                 <Text span size="xs" c="dimmed" display="block" lh={1.2}>
                   davon Pfand {centAnzeigen(pfandBetragCent)}
+                </Text>
+              )}
+              {proEinheit !== null && (
+                <Text span size="xs" c="dimmed" display="block" lh={1.2}>
+                  ≈ {centAnzeigen(proEinheit)} je {p.art === 'ware' ? 'Gebinde' : 'Stück'}
                 </Text>
               )}
             </Text>

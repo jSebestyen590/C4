@@ -1,6 +1,8 @@
 import {
   Alert,
+  Anchor,
   Button,
+  Checkbox,
   Group,
   Loader,
   SegmentedControl,
@@ -10,7 +12,6 @@ import {
   Switch,
   Text,
   Textarea,
-  TextInput,
   Title,
   useMatches,
   useMantineTheme,
@@ -21,14 +22,16 @@ import { IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { SteuersaetzeKontext } from '../steuersaetze';
+import { SteuersaetzeKontext, satzProzent } from '../steuersaetze';
 import {
   BELEG_MODI,
   belegEntwurfSchema,
   BELEG_MODUS_LABELS,
   centAnzeigen,
+  belegdatumAlt,
   heuteBerlin,
   steuersaetzeAm,
+  steuersatzUmstellen,
   ZAHLWEGE,
   ZAHLWEG_LABELS,
   type BelegDatei as BelegDateiDaten,
@@ -48,6 +51,9 @@ import {
   blurWaehltMarkierte,
   enterWaehltErsteOption,
   fokusAnzahl,
+  rechnungsstellerFilter,
+  rechnungsstellerOptionen,
+  rechnungsstellerWahl,
   warePatch,
 } from '../belegAuswahl';
 import { useAuth } from '../auth';
@@ -55,7 +61,9 @@ import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
 import { BelegDateiFeld } from '../BelegDatei';
 import {
+  EIGENBELEG_HINWEIS,
   fehlerZu,
+  formularEigenbeleg,
   pfandJeSatz,
   satzText,
   formularFehler,
@@ -70,6 +78,7 @@ import {
   postenHinzufuegen,
   postenLeer,
   postenSortieren,
+  saetzeUmstellen,
   stueckelungHinweis,
   verwendeteSaetze,
   type BelegFormular,
@@ -89,6 +98,7 @@ import {
   useArtikelVorschlaege,
   useBargeld,
   useBelegWaren,
+  useBelege,
   useSteuersatzZeitraeume,
   useKonten,
   useRechnungssteller,
@@ -136,6 +146,13 @@ function lokalesFormular(schluessel: string) {
  * next field, Enter in the last item row = new row, Ctrl+Enter = check and book).
  */
 export function FinanzenBelegPage() {
+  // The route elements of a new and an opened draft are the same component, so React keeps its state
+  // across navigations; a counter as key gives the next Beleg of a series a fresh form.
+  const [durchlauf, setDurchlauf] = useState(0);
+  return <BelegSeite key={durchlauf} neuerDurchlauf={() => setDurchlauf((d) => d + 1)} />;
+}
+
+function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>) {
   const { id } = useParams();
   const api = useApi();
   const qc = useQueryClient();
@@ -157,7 +174,10 @@ export function FinanzenBelegPage() {
   const entwurf = useQuery({
     queryKey: finanzenKeys.belegEntwurf(id),
     enabled: !!id && !erledigt,
-    staleTime: Infinity,
+    // Always load fresh when the page opens (a cached copy may predate the last save); changes made on
+    // this page are written into the cache after each save.
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     queryFn: async () =>
       unwrap(await api.finanzen['beleg-entwuerfe'][':id'].$get({ param: { id: id! } })),
@@ -176,7 +196,14 @@ export function FinanzenBelegPage() {
   const [warnungen, setWarnungen] = useState<BelegWarnungDto[]>([]);
   const [verwerfen, setVerwerfen] = useState(false);
   const [einreichungVerwerfen, setEinreichungVerwerfen] = useState(false);
-  const [neuerName, setNeuerName] = useState<string | null>(null);
+  // Search text of the Rechnungssteller select (controlled, like the Ware search).
+  const [rsSuche, setRsSuche] = useState('');
+  const rsEingabe = useRef<HTMLInputElement>(null);
+  // Series: "Weiteren Beleg erfassen" / "Weitere Einreichung bearbeiten"; on again for every new page.
+  const [serie, setSerie] = useState(true);
+  // Preview of the file: null = default (off for own Belege, on for submissions).
+  const [vorschauWahl, setVorschauWahl] = useState<boolean | null>(null);
+  const einreichungen = useBelege({});
   // The empty row at the end of each table: view state, joins the form once something is typed into it.
   const [leere, setLeereState] = useState(neueLeere);
   const leereRef = useRef(leere);
@@ -199,11 +226,14 @@ export function FinanzenBelegPage() {
   const nachspeichern = useRef(false);
   // Why the last save was skipped (the draft is not valid yet), else null.
   const ungueltig = useRef<string | null>(null);
-  const warnung = useVerwerfenWarnung(stand !== 'gespeichert');
+  // Set while the save before leaving runs: a new draft then stays on this page (the leaving navigation goes on).
+  const verlassen = useRef(false);
+  const speichernVorWeg = useRef<() => Promise<boolean>>(async () => true);
+  const warnung = useVerwerfenWarnung(stand !== 'gespeichert', () => speichernVorWeg.current());
 
   // The draft of the route is loaded once; later changes come from this page.
   useEffect(() => {
-    if (!id || formRef.current || !entwurf.data) return;
+    if (!id || formRef.current || !entwurf.data || !entwurf.isFetchedAfterMount) return;
     let f = datenZuFormular(entwurf.data.daten);
     const lokal = lokalesFormular(lokalSchluessel(id));
     if (lokal && lokalIstNeuer(lokal.zeit, entwurf.data.geaendertAm)) {
@@ -215,7 +245,7 @@ export function FinanzenBelegPage() {
     formRef.current = f;
     entwurfId.current = id;
     setForm(f);
-  }, [id, entwurf.data]);
+  }, [id, entwurf.data, entwurf.isFetchedAfterMount]);
 
   const speichernJetzt = (): Promise<boolean> => {
     window.clearTimeout(timer.current);
@@ -252,12 +282,25 @@ export function FinanzenBelegPage() {
           entwurfId.current = neu.id;
           lokalLoeschen(NEU);
           if (formRef.current !== f) lokalSpeichern(lokalSchluessel(neu.id), formRef.current);
-          warnung.ohneWarnung(() => void navigate(belegEntwurfPfad(neu.id), { replace: true }));
+          if (!verlassen.current)
+            warnung.ohneWarnung(() => void navigate(belegEntwurfPfad(neu.id), { replace: true }));
         }
         setSpeicherFehler(null);
         if (formRef.current === f && entwurfId.current)
           lokalLoeschen(lokalSchluessel(entwurfId.current));
         setStand(formRef.current === f ? 'gespeichert' : 'ungespeichert');
+        // The draft query must not keep the state from before this save (a later visit would show it).
+        const gespeichertId = entwurfId.current;
+        if (gespeichertId)
+          qc.setQueryData(finanzenKeys.belegEntwurf(gespeichertId), (alt: typeof entwurf.data) =>
+            alt
+              ? {
+                  ...alt,
+                  daten: daten as NonNullable<typeof entwurf.data>['daten'],
+                  geaendertAm: new Date().toISOString(),
+                }
+              : alt,
+          );
         void qc.invalidateQueries({ queryKey: ['finanzen', 'belege'] });
         return true;
       } catch (e) {
@@ -269,6 +312,17 @@ export function FinanzenBelegPage() {
     kette.current = lauf;
     return lauf;
   };
+
+  useEffect(() => {
+    speichernVorWeg.current = async () => {
+      verlassen.current = true;
+      try {
+        return await speichernJetzt();
+      } finally {
+        verlassen.current = false;
+      }
+    };
+  });
 
   // A restored local state is saved right after it is shown.
   useEffect(() => {
@@ -309,9 +363,10 @@ export function FinanzenBelegPage() {
       }
       return jsonOderFehler<BelegGebuchtDto>(res);
     },
-    onSuccess: (ergebnis) => {
+    onSuccess: async (ergebnis) => {
       warnung.abgeschlossen();
-      lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
+      const gebuchtId = entwurfId.current;
+      lokalLoeschen(NEU, lokalSchluessel(gebuchtId ?? ''));
       schluessel.current = null;
       void qc.invalidateQueries({
         queryKey: finanzenKeys.alle,
@@ -319,16 +374,64 @@ export function FinanzenBelegPage() {
       });
       setErledigt(true);
       qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
+      const text = ergebnis.wiederholt
+        ? `Beleg ${ergebnis.nummer} war schon gebucht.`
+        : `Beleg ${ergebnis.nummer} gebucht (Buchung Nr. ${ergebnis.buchungSeq}).`;
+      const weiter = await weiterZu(gebuchtId);
+      if (weiter === null) {
+        notifications.show({ color: 'green', autoClose: HINWEIS_DAUER_MS, message: text });
+        void navigate(belegPfad(ergebnis.id), { replace: true });
+        return;
+      }
+      // Series: the next form opens at once; the booked Beleg stays reachable through a link.
+      const meldung = `beleg-gebucht-${ergebnis.id}`;
       notifications.show({
+        id: meldung,
         color: 'green',
         autoClose: HINWEIS_DAUER_MS,
-        message: ergebnis.wiederholt
-          ? `Beleg ${ergebnis.nummer} war schon gebucht.`
-          : `Beleg ${ergebnis.nummer} gebucht (Buchung Nr. ${ergebnis.buchungSeq}).`,
+        message: (
+          <Text size="sm">
+            {text}{' '}
+            <Anchor
+              href={`/app${belegPfad(ergebnis.id)}`}
+              onClick={(e) => {
+                e.preventDefault();
+                notifications.hide(meldung);
+                void navigate(belegPfad(ergebnis.id));
+              }}
+            >
+              ansehen
+            </Anchor>
+          </Text>
+        ),
       });
-      void navigate(belegPfad(ergebnis.id), { replace: true });
+      neuerDurchlauf();
+      void navigate(weiter, { replace: true });
     },
   });
+
+  /**
+   * Where the series goes on after a booking or rejection: the next submission (oldest first, not the
+   * current one) or an empty new Beleg; null when the series is off or no further submission exists.
+   */
+  const weiterZu = async (aktuellId: string | null): Promise<string | null> => {
+    if (!serie) return null;
+    if (entwurf.data?.status !== 'eingereicht') return '/finanzen/belege/neu';
+    const naechste = (
+      await qc
+        .fetchQuery({
+          queryKey: finanzenKeys.belege({}),
+          staleTime: 0,
+          queryFn: async () => unwrap(await api.finanzen.belege.$get({ query: {} })),
+        })
+        .catch(() => einreichungen.data)
+    )?.belege
+      .filter((b) => b.entwurfStatus === 'eingereicht' && b.id !== aktuellId)
+      .sort((a, b) =>
+        (a.eingereichtAm ?? a.erstelltAm).localeCompare(b.eingereichtAm ?? b.erstelltAm),
+      )[0];
+    return naechste ? belegEntwurfPfad(naechste.id) : null;
+  };
 
   const anlegen = useMutation({
     meta: { eigeneFehlermeldung: true },
@@ -337,9 +440,27 @@ export function FinanzenBelegPage() {
     onSuccess: async ({ id: neu }) => {
       await qc.invalidateQueries({ queryKey: ['finanzen', 'rechnungssteller'] });
       aendern((f) => ({ ...f, rechnungsstellerId: neu }));
-      setNeuerName(null);
+      // On to the Belegdatum, after the select closed.
+      setTimeout(() => wurzel.current?.querySelector<HTMLElement>('[data-belegdatum]')?.focus(), 0);
     },
   });
+
+  // The tax rates follow the Belegdatum (today while it is empty).
+  const saetzeAm = steuersaetzeAm(zeitraeume.data ?? [], form?.belegdatum || heuteBerlin());
+  const saetzeVorher = useRef(saetzeAm);
+  // The empty rows of the tables follow the rates of the Belegdatum (the filled items are remapped on a date change).
+  useEffect(() => {
+    const alt = saetzeVorher.current;
+    saetzeVorher.current = saetzeAm;
+    if (alt.regel === saetzeAm.regel && alt.ermaessigt === saetzeAm.ermaessigt) return;
+    const l = leereRef.current;
+    const um = (z: PostenZeile): PostenZeile => {
+      const satz = steuersatzUmstellen(z.steuersatz, alt, saetzeAm);
+      return { ...z, steuersatz: saetzeAm.saetze.includes(satz) ? satz : saetzeAm.regel };
+    };
+    setLeere({ ware: um(l.ware), kategorie: um(l.kategorie), leergut: um(l.leergut) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saetzeAm.regel, saetzeAm.ermaessigt]);
 
   if (!form) {
     return entwurf.isError ? (
@@ -353,14 +474,27 @@ export function FinanzenBelegPage() {
   const faecher = bargeld.data?.faecher ?? [];
   const fach = faecher.find((x) => x.id === form.fachId);
   const berechnung = formularSumme(form);
-  // The tax rates follow the Belegdatum (today while it is empty).
-  const saetzeAm = steuersaetzeAm(zeitraeume.data ?? [], form.belegdatum || heuteBerlin());
   const fehler = formularFehler(form, zeitraeume.data ?? []);
   const fz = (feld: string) => (versucht ? fehlerZu(fehler, feld) : undefined);
   const stueckHinweis = stueckelungHinweis(berechnung.summe, form.gegeben, form.wechselgeld);
   const zahler = (mitglieder.data ?? []).find((m) => m.sub === form.mitgliedId);
   const eingereicht = entwurf.data?.status === 'eingereicht';
   const dateiUrl = lokaleUrl ?? entwurf.data?.dateiUrl ?? null;
+  const vorschauAn = vorschauWahl ?? eingereicht;
+  const eigenbeleg = formularEigenbeleg(form);
+  const heute = heuteBerlin();
+  const datumZukunft =
+    form.belegdatum !== '' && form.belegdatum > heute
+      ? 'Das Belegdatum darf nicht in der Zukunft liegen.'
+      : undefined;
+  const datumAlt =
+    form.belegdatum !== '' && form.belegdatum <= heute && belegdatumAlt(form.belegdatum, heute);
+  const weitereEinreichung = (einreichungen.data?.belege ?? []).some(
+    (b) => b.entwurfStatus === 'eingereicht' && b.id !== id,
+  );
+  const serieMoeglich = !eingereicht || weitereEinreichung;
+  // Fields of the head use the whole width while the preview is hidden.
+  const kopfSpalten = vorschauAn ? 2 : 3;
 
   // Filled items in Beleg order = the order of the totals (`formularZuDaten` leaves empty rows out).
   const gefuellt = gefuelltePosten(form.posten);
@@ -517,8 +651,12 @@ export function FinanzenBelegPage() {
           }}
         >
           <Stack gap="lg">
-            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
-              <Stack style={vorschauStil}>
+            <SimpleGrid
+              cols={{ base: 1, lg: vorschauAn ? 2 : 1 }}
+              spacing="lg"
+              style={{ alignItems: 'start' }}
+            >
+              <Stack style={vorschauAn ? vorschauStil : undefined}>
                 <BelegDateiFeld
                   datei={form.datei}
                   vorschauUrl={dateiUrl}
@@ -526,6 +664,8 @@ export function FinanzenBelegPage() {
                     entwurf.data?.warnungen.find((w) => w.code === 'datei_doppelt')?.text
                   }
                   fehler={fz('datei') && !form.eigenbeleg ? fz('datei') : undefined}
+                  vorschauSichtbar={vorschauAn}
+                  onVorschau={setVorschauWahl}
                   onDatei={(datei: BelegDateiDaten, url) => {
                     setLokaleUrl(url);
                     aendern((f) => ({ ...f, datei, eigenbeleg: false }));
@@ -570,12 +710,13 @@ export function FinanzenBelegPage() {
 
               <Stack gap="lg">
                 <FeldZeile
-                  cols={{ base: 1, sm: 2 }}
+                  cols={{ base: 1, sm: 2, lg: kopfSpalten }}
                   spacing="md"
                   verticalSpacing={0}
                   platz="2.8rem"
                 >
                   <Select
+                    ref={rsEingabe}
                     label={
                       <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
                     }
@@ -587,33 +728,66 @@ export function FinanzenBelegPage() {
                     searchable
                     onBlurCapture={blurWaehltMarkierte}
                     selectFirstOptionOnChange
-                    data={(rechnungssteller.data ?? []).map((r) => ({
-                      value: r.id,
-                      label: r.name,
-                    }))}
+                    data={rechnungsstellerOptionen(rechnungssteller.data ?? [], true)}
+                    filter={rechnungsstellerFilter}
+                    searchValue={rsSuche}
+                    onSearchChange={setRsSuche}
                     value={form.rechnungsstellerId}
-                    onChange={(v) => aendern((f) => ({ ...f, rechnungsstellerId: v }))}
-                    nothingFoundMessage="Keiner gefunden, lege ihn neu an"
-                    error={fz('rechnungssteller')}
+                    onChange={(v) => {
+                      const wahl = rechnungsstellerWahl(
+                        v,
+                        document.activeElement === rsEingabe.current,
+                      );
+                      const aktuell =
+                        (rechnungssteller.data ?? []).find((r) => r.id === form.rechnungsstellerId)
+                          ?.name ?? '';
+                      if (wahl !== 'waehlen') {
+                        // "Neuen anlegen": creates at once, only when picked on purpose (never on leaving the field).
+                        const name = rsSuche.trim();
+                        setTimeout(() => setRsSuche(aktuell), 0);
+                        if (wahl === 'anlegen' && name && !anlegen.isPending) anlegen.mutate(name);
+                        return;
+                      }
+                      aendern((f) => ({ ...f, rechnungsstellerId: v }));
+                    }}
+                    nothingFoundMessage="Noch kein Rechnungssteller, tippe einen Namen zum Anlegen"
+                    error={
+                      fz('rechnungssteller') ??
+                      (anlegen.isError ? fehlerText(anlegen.error) : undefined)
+                    }
                     data-nav=""
                   />
                   <DatumFeld
                     label="Belegdatum"
                     tippbar
                     value={form.belegdatum}
-                    onWert={(wert) =>
-                      aendern((f) => ({
-                        ...f,
-                        belegdatum: wert,
-                        bezahldatum:
-                          f.bezahldatum === '' || f.bezahldatum === f.belegdatum
-                            ? wert
-                            : f.bezahldatum,
-                      }))
-                    }
+                    onWert={(wert) => {
+                      const neu = steuersaetzeAm(zeitraeume.data ?? [], wert || heute);
+                      let umgestellt = 0;
+                      aendern((f) => {
+                        // Another tax rate period: items with the regular/reduced rate follow it.
+                        const alt = steuersaetzeAm(zeitraeume.data ?? [], f.belegdatum || heute);
+                        const r = saetzeUmstellen(f, alt, neu);
+                        umgestellt = r.geaendert;
+                        return {
+                          ...r.form,
+                          belegdatum: wert,
+                          bezahldatum:
+                            f.bezahldatum === '' || f.bezahldatum === f.belegdatum
+                              ? wert
+                              : f.bezahldatum,
+                        };
+                      });
+                      if (umgestellt > 0)
+                        notifications.show({
+                          color: 'blue',
+                          message: `Steuersätze der Posten auf das Belegdatum umgestellt (Regelsatz ${satzProzent(neu.regel)}, ermäßigt ${satzProzent(neu.ermaessigt)}).`,
+                        });
+                    }}
                     loeschbar={false}
-                    error={fz('belegdatum')}
+                    error={fz('belegdatum') ?? datumZukunft}
                     data-nav=""
+                    data-belegdatum=""
                   />
                   <BetragFeld
                     label={<FeldLabel text="Belegsumme (brutto)" hilfe={HILFE.belege.belegsumme} />}
@@ -624,58 +798,10 @@ export function FinanzenBelegPage() {
                     data-nav=""
                   />
                 </FeldZeile>
-                {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
-                  <Button
-                    variant="light"
-                    size="compact-md"
-                    onClick={() => setNeuerName(form.rechnungsstellerName)}
-                    tabIndex={-1}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
-                  </Button>
-                )}
-                {neuerName === null ? (
-                  <Button
-                    variant="subtle"
-                    size="compact-md"
-                    leftSection={<IconPlus size={16} />}
-                    onClick={() => setNeuerName('')}
-                    tabIndex={-1}
-                    style={{ alignSelf: 'flex-start' }}
-                  >
-                    Neuen Rechnungssteller anlegen
-                  </Button>
-                ) : (
-                  <Group align="flex-start" gap="xs" wrap="nowrap">
-                    <TextInput
-                      style={{ flex: 1 }}
-                      aria-label="Name des neuen Rechnungsstellers"
-                      placeholder="Name"
-                      value={neuerName}
-                      maxLength={120}
-                      onChange={(e) => setNeuerName(e.currentTarget.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (neuerName.trim()) anlegen.mutate(neuerName.trim());
-                        }
-                      }}
-                      error={anlegen.isError ? fehlerText(anlegen.error) : undefined}
-                      data-autofocus
-                    />
-                    <Button
-                      onClick={() => anlegen.mutate(neuerName.trim())}
-                      loading={anlegen.isPending}
-                      disabled={neuerName.trim() === ''}
-                    >
-                      Anlegen
-                    </Button>
-                    <Button variant="default" onClick={() => setNeuerName(null)}>
-                      Abbrechen
-                    </Button>
-                  </Group>
+                {datumAlt && (
+                  <Text size="sm" c="orange.8" role="status">
+                    Das Belegdatum liegt mehr als 2 Monate zurück. Prüfe es, gebucht wird trotzdem.
+                  </Text>
                 )}
               </Stack>
             </SimpleGrid>
@@ -684,19 +810,24 @@ export function FinanzenBelegPage() {
               <Group justify="space-between" align="center" gap="xs">
                 <Group gap={2}>
                   <Text fw={600}>Posten</Text>
-                  <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
                   <InfoHinweis feld="Postenart" text={HILFE.belege.postenArt} />
                   <InfoHinweis feld="Lager-Posten" text={HILFE.belege.lagerPosten} />
                   <InfoHinweis feld="Neue Ware" text={HILFE.belege.neueWare} />
                 </Group>
-                <SegmentedControl
-                  aria-label="Preise sind"
-                  // Rarely changed: stays clickable but Tab goes from Belegsumme straight to the Posten.
-                  ref={(el) => el?.querySelectorAll('input').forEach((i) => (i.tabIndex = -1))}
-                  value={form.modus}
-                  onChange={(v) => aendern((f) => ({ ...f, modus: v as BelegModus }))}
-                  data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
-                />
+                <Group gap={4} wrap="nowrap">
+                  <Text size="sm" fw={500}>
+                    Preise sind
+                  </Text>
+                  <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
+                  <SegmentedControl
+                    aria-label="Preise sind"
+                    // Rarely changed: stays clickable but Tab goes from Belegsumme straight to the Posten.
+                    ref={(el) => el?.querySelectorAll('input').forEach((i) => (i.tabIndex = -1))}
+                    value={form.modus}
+                    onChange={(v) => aendern((f) => ({ ...f, modus: v as BelegModus }))}
+                    data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
+                  />
+                </Group>
               </Group>
               {breit ? (
                 <BelegPostenTabellen
@@ -806,7 +937,13 @@ export function FinanzenBelegPage() {
                 jeSteuersatz={berechnung.jeSteuersatz}
                 summeCent={berechnung.summe}
                 pfand={pfandJeSatz(gefuellt, berechnung.pfandBetraege)}
+                ohneVorsteuer={eigenbeleg}
               />
+              {eigenbeleg && (
+                <Text size="sm" c="dimmed" role="status">
+                  {EIGENBELEG_HINWEIS}
+                </Text>
+              )}
               {berechnung.fehler.map((m) => (
                 <Text key={m} size="sm" c="red">
                   {m}
@@ -926,37 +1063,50 @@ export function FinanzenBelegPage() {
               </Alert>
             )}
 
-            <Group align="center" gap="md">
-              <Button type="button" onClick={() => void pruefenOeffnen()}>
-                Prüfen und buchen
-              </Button>
-              <Text size="sm" c="dimmed" visibleFrom="sm">
-                Tastenkürzel: Strg+Enter
-              </Text>
-              {eingereicht ? (
-                <Button
-                  type="button"
-                  variant="subtle"
-                  color="red"
-                  onClick={() => setEinreichungVerwerfen(true)}
-                >
-                  Verwerfen
+            <Stack gap="sm">
+              <Group align="center" gap="md">
+                <Button type="button" onClick={() => void pruefenOeffnen()}>
+                  Prüfen und buchen
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="subtle"
-                  color="red"
-                  onClick={() => {
-                    if (entwurfId.current) return setVerwerfen(true);
-                    lokalLoeschen(NEU);
-                    void navigate('/finanzen/belege');
-                  }}
-                >
-                  Entwurf verwerfen
-                </Button>
-              )}
-            </Group>
+                <Text size="sm" c="dimmed" visibleFrom="sm">
+                  Tastenkürzel: Strg+Enter
+                </Text>
+                {eingereicht ? (
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    color="red"
+                    onClick={() => setEinreichungVerwerfen(true)}
+                  >
+                    Verwerfen
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    color="red"
+                    onClick={() => {
+                      if (entwurfId.current) return setVerwerfen(true);
+                      lokalLoeschen(NEU);
+                      void navigate('/finanzen/belege');
+                    }}
+                  >
+                    Entwurf verwerfen
+                  </Button>
+                )}
+              </Group>
+              <Group gap={2} align="flex-start" wrap="nowrap">
+                <Checkbox
+                  size="md"
+                  label={eingereicht ? 'Weitere Einreichung bearbeiten' : 'Weiteren Beleg erfassen'}
+                  description={serieMoeglich ? undefined : 'Keine weitere Einreichung offen'}
+                  checked={serie && serieMoeglich}
+                  disabled={!serieMoeglich}
+                  onChange={(e) => setSerie(e.currentTarget.checked)}
+                />
+                <InfoHinweis feld="Serienerfassung" text={HILFE.belege.serienerfassung} />
+              </Group>
+            </Stack>
           </Stack>
         </div>
 
@@ -1050,7 +1200,9 @@ export function FinanzenBelegPage() {
               setErledigt(true);
               qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
               notifications.show({ color: 'green', message: 'Der Beleg wurde verworfen.' });
-              void navigate('/finanzen/belege', { replace: true });
+              const weiter = await weiterZu(entwurfId.current);
+              if (weiter !== null) neuerDurchlauf();
+              void navigate(weiter ?? '/finanzen/belege', { replace: true });
             }}
           />
         )}

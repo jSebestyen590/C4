@@ -2,10 +2,13 @@ import {
   BELEG_DATEI_TYPEN,
   belegBerechnen,
   belegPruefen,
+  einzelpreisAusGesamt,
+  istEigenbeleg,
   postenZeilenLabel,
   STEUERSATZ_NOTFALL,
   heuteBerlin,
   steuersatzFuerArt,
+  steuersatzUmstellen,
   type SteuersatzZeitraum,
   type BelegDatei,
   type BelegDateiTyp,
@@ -32,8 +35,10 @@ export interface PostenZeile {
   anzahl: string;
   einzelpreisCent: number | null;
   steuersatz: number;
-  /** Gesamtpreis of the line (cent); null = price per piece/Gebinde. */
+  /** Gesamtpreis of the line (cent), the typed price while `gesamt` is on. */
   gesamtCent: number | null;
+  /** "Gesamt" checkbox: the typed price is the Gesamtpreis of the line, not the price per piece/Gebinde. */
+  gesamt: boolean;
   /** Item kind: Kategorie (Aufwand), Ware (stock) or Leergut (returned empties). */
   art: BelegPostenArt;
   /** Ware items: the Ware, the Gebinde the quantity counts and the deposit per Gebinde (null = none). */
@@ -84,9 +89,10 @@ export const neuerPosten = (
   key: neuerKey(),
   kategorieId: null,
   text: '',
-  anzahl: '1',
+  anzahl: '',
   einzelpreisCent: null,
   gesamtCent: null,
+  gesamt: false,
   steuersatz,
   art,
   wareId: null,
@@ -126,12 +132,51 @@ export function postenHinzufuegen<T extends { art: BelegPostenArt }>(
  * rate do not count.
  */
 export function postenLeer(
-  p: Pick<PostenZeile, 'art' | 'wareId' | 'text' | 'kategorieId' | 'einzelpreisCent'>,
+  p: Pick<
+    PostenZeile,
+    'art' | 'wareId' | 'text' | 'kategorieId' | 'einzelpreisCent' | 'gesamtCent' | 'gesamt'
+  >,
 ): boolean {
   if (p.art === 'ware') return !p.wareId;
   if (p.art === 'kategorie')
-    return p.text.trim() === '' && !p.kategorieId && p.einzelpreisCent === null;
+    return p.text.trim() === '' && !p.kategorieId && postenPreis(p) === null;
   return p.text.trim() === '' && p.einzelpreisCent === null;
+}
+
+/** The typed price of a row: the Gesamtpreis while `gesamt` is on, else the price per piece/Gebinde. */
+export const postenPreis = (
+  p: Pick<PostenZeile, 'einzelpreisCent' | 'gesamtCent' | 'gesamt'>,
+): number | null => (p.gesamt ? p.gesamtCent : p.einzelpreisCent);
+
+/** Patch for the price input of a row (Gesamtpreis or price per piece, by `gesamt`). */
+export const preisPatch = (
+  p: Pick<PostenZeile, 'gesamt'>,
+  cent: number | null,
+): Partial<PostenZeile> => (p.gesamt ? { gesamtCent: cent } : { einzelpreisCent: cent });
+
+/**
+ * Patch for the "Gesamt" checkbox: the typed number stays in the field and changes its meaning
+ * (Gesamtpreis <-> price per piece); never for Leergut.
+ */
+export const gesamtPatch = (
+  p: Pick<PostenZeile, 'einzelpreisCent' | 'gesamtCent'>,
+  an: boolean,
+): Partial<PostenZeile> =>
+  an
+    ? { gesamt: true, gesamtCent: p.einzelpreisCent, einzelpreisCent: null }
+    : {
+        gesamt: false,
+        gesamtCent: null,
+        einzelpreisCent: p.gesamtCent,
+      };
+
+/** The price per piece/Gebinde implied by a Gesamtpreis row ("≈ 1,00 € je Stück"), or null. */
+export function einzelpreisHinweis(
+  p: Pick<PostenZeile, 'gesamt' | 'gesamtCent' | 'anzahl'>,
+): number | null {
+  if (!p.gesamt || p.gesamtCent === null) return null;
+  const anzahl = anzahlLesen(p.anzahl);
+  return anzahl ? einzelpreisAusGesamt(p.gesamtCent, anzahl) : null;
 }
 
 /** The filled items in Beleg order (grouped by kind): what is saved, checked and booked. */
@@ -214,6 +259,30 @@ export function steuersatzVorschlag(
   return art === undefined ? null : steuersatzFuerArt(art, saetze);
 }
 
+/**
+ * The Belegdatum moved into another tax rate period: items with the old regular/reduced rate get the
+ * same Art in the new period (also the corrections). `geaendert` counts the filled items that changed.
+ */
+export function saetzeUmstellen(
+  f: BelegFormular,
+  alt: Pick<SteuersatzZeitraum, 'regel' | 'ermaessigt'>,
+  neu: Pick<SteuersatzZeitraum, 'regel' | 'ermaessigt'>,
+): { form: BelegFormular; geaendert: number } {
+  if (alt.regel === neu.regel && alt.ermaessigt === neu.ermaessigt)
+    return { form: f, geaendert: 0 };
+  let geaendert = 0;
+  const posten = f.posten.map((p) => {
+    const satz = steuersatzUmstellen(p.steuersatz, alt, neu);
+    if (satz === p.steuersatz) return p;
+    if (!postenLeer(p)) geaendert++;
+    return { ...p, steuersatz: satz };
+  });
+  const korrekturen: Record<number, KorrekturEingabe> = {};
+  for (const [satz, k] of Object.entries(f.korrekturen))
+    korrekturen[steuersatzUmstellen(Number(satz), alt, neu)] = k;
+  return { form: { ...f, posten, korrekturen }, geaendert };
+}
+
 // ----- Denominations: signed as booked on the Fach (given negative, change positive)
 
 export function stueckelungAus(gegeben: Mengen, wechselgeld: Mengen): StueckelungDto[] {
@@ -250,8 +319,13 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
   const basis = {
     text: p.text.trim(),
     anzahlMilli: postenAnzahl(p),
-    einzelpreisCent: p.einzelpreisCent ?? 0,
-    gesamtCent: p.gesamtCent,
+    einzelpreisCent:
+      p.gesamt && p.art !== 'leergut'
+        ? p.gesamtCent === null
+          ? 0
+          : einzelpreisAusGesamt(p.gesamtCent, postenAnzahl(p))
+        : (p.einzelpreisCent ?? 0),
+    gesamtCent: p.gesamt && p.art !== 'leergut' ? p.gesamtCent : null,
     steuersatz: p.steuersatz,
   };
   if (p.art === 'leergut') {
@@ -350,12 +424,25 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     anzahl: anzahlText(p.anzahlMilli),
     einzelpreisCent: p.einzelpreisCent,
     gesamtCent: p.art === 'leergut' ? null : (p.gesamtCent ?? null),
+    gesamt: p.art !== 'leergut' && (p.gesamtCent ?? null) !== null,
     steuersatz: p.steuersatz,
     wareId: ware?.wareId ?? null,
     gebindeId: ware?.gebindeId ?? null,
     pfandCent: ware?.pfandCent ?? null,
   };
 }
+
+/** Whether the form is an Eigenbeleg (no file, with reason): booked without Vorsteuer. */
+export const formularEigenbeleg = (
+  f: Pick<BelegFormular, 'datei' | 'eigenbeleg' | 'eigenbelegBegruendung'>,
+): boolean =>
+  istEigenbeleg({
+    datei: f.datei,
+    eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
+  });
+
+/** Text under the summaries of an Eigenbeleg. */
+export const EIGENBELEG_HINWEIS = 'Eigenbeleg: keine Vorsteuer, der volle Betrag ist Aufwand.';
 
 /** Whether the form holds anything worth saving as a draft (empty rows do not count). */
 export function hatInhalt(f: BelegFormular): boolean {
@@ -385,8 +472,11 @@ export function formularFehler(
         feld: 'posten',
         meldung: `${n}: Die Anzahl ist ungültig, bitte gib z. B. 2 oder 1,5 ein.`,
       });
-    if (p.einzelpreisCent === null)
-      fehler.push({ feld: 'posten', meldung: `${n}: Bitte gib den Einzelpreis an.` });
+    if (postenPreis(p) === null)
+      fehler.push({
+        feld: 'posten',
+        meldung: `${n}: Bitte gib ${p.gesamt ? 'den Gesamtpreis' : 'den Einzelpreis'} an.`,
+      });
     if (p.art === 'leergut' && p.einzelpreisCent !== null && p.einzelpreisCent < 0)
       fehler.push({ feld: 'posten', meldung: `${n}: Das Pfand je Stück darf nicht negativ sein.` });
     if (p.art === 'leergut' && (anzahlLesen(p.anzahl) ?? 0) < 0)

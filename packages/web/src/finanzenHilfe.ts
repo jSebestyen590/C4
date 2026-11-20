@@ -130,7 +130,13 @@ export const HILFE = {
     datei:
       'Das Original wird unverändert archiviert (PDF, JPEG, PNG oder HEIC, höchstens 20 MB) und lässt sich danach nicht mehr ändern oder löschen. Auch ein verworfener Entwurf hinterlässt die Datei im Archiv. Die gleiche Datei erkennt die App an ihrem Fingerabdruck und warnt vor Dubletten.',
     eigenbeleg:
-      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert.',
+      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert. Ein Eigenbeleg wird ohne Vorsteuer gebucht: Der volle Betrag ist Aufwand.',
+    kategorie:
+      'Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe gebucht wird.',
+    gesamtpreis:
+      'Mit „Gesamt“ gibst du den Preis der ganzen Zeile ein (ohne Pfand), z. B. 7,99 € für 8 Stück. Der Betrag der Zeile ist genau dieser Preis. Der Preis je Stück ist auf Cent gerundet und nur zur Info (z. B. für die Lagerbewertung).',
+    serienerfassung:
+      'Neuer Beleg: Nach dem Buchen öffnet sich gleich ein leerer Beleg. Eingereichter Beleg: Nach dem Buchen oder Verwerfen geht es mit der nächsten Einreichung weiter (älteste zuerst). Ausgeschaltet kommst du zur Beleg-Seite.',
     modus:
       'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Pfandrückgaben erfasst du als Leergut-Posten (Betrag negativ).',
     belegsumme:

@@ -360,6 +360,27 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
     „„Köstritzer“ als neue Ware anlegen“). Es öffnet das `WareFormular` mit vorbelegtem Namen; danach steht die Ware samt
     Standard-Gebinde, Pfand und Kategorie in der Zeile und `beleg-waren` wird neu geladen. Gilt auch in der Karten-Maske und beim
     Mitglied (dort nur mit dem Recht).
+  - **Neuer Rechnungssteller aus dem Beleg:** Im Rechnungssteller-Feld steht mit Suchtext unten „„X“ als neuen Rechnungssteller
+    anlegen“ (nicht bei vorhandenem Namen); Wählen legt ihn sofort an (nur Name), wählt ihn aus und springt zum Belegdatum. Nie per
+    Tab/Blur (`rechnungsstellerWahl`, `blurWaehltMarkierte`).
+  - **Anzahl** ist nirgends vorbelegt; leer = Fehler „Bitte angeben.“ an der Zelle.
+  - **Gesamtpreis je Zeile:** Checkbox „Gesamt“ (Waren, Kategorien) direkt vor dem Preis: Das Preisfeld ist dann der Gesamtpreis der
+    Zeile (ohne Pfand), der Betrag ist genau dieser Preis; „≈ X € je Gebinde/Stück“ unter dem Betrag (`einzelpreisAusGesamt`, wird
+    als Einzelpreis mitgespeichert). Das Umschalten behält die getippte Zahl, nur ihre Bedeutung wechselt (`gesamt`,
+    `gesamtCent` in `PostenZeile`).
+  - **Belegdatum:** In der Zukunft = Fehler am Feld (live); älter als 2 Monate = orange Hinweis am Feld und im Buchen-Dialog.
+    Wechselt es in einen anderen Steuersatz-Zeitraum, werden Posten mit Regel-/ermäßigtem Satz umgestellt (Hinweis,
+    `saetzeUmstellen`); Steuersatz-Optionen kommen aus dem Datum.
+  - **Eigenbeleg** (ohne Datei, mit Begründung): Hinweis „keine Vorsteuer, der volle Betrag ist Aufwand“, Summen und Dialog ohne
+    Netto/Steuer.
+  - **Vorschau** der Datei: bei neuen Belegen aus, bei eingereichten an („Vorschau ein-/ausblenden“); ausgeblendet nutzen die
+    Kopffelder die volle Breite.
+  - **Serienerfassung** (Checkbox unter „Prüfen und buchen“, initial an): neuer Beleg = nach dem Buchen gleich `/finanzen/belege/neu`
+    (Hinweis mit Link zum gebuchten Beleg); eingereichter Beleg = nach Buchen oder Verwerfen zur nächsten Einreichung (älteste
+    zuerst), ausgegraut ohne weitere. Die Seite bekommt dafür einen frischen Durchlauf (Key), kein Rest des alten Formulars.
+  - **Speichern vor dem Verlassen:** Eine Navigation weg vom Entwurf speichert zuerst und geht bei Erfolg weiter; schlägt es fehl,
+    fragt ein Dialog „trotzdem verlassen?“ (Eingaben bleiben lokal). Der Entwurf-Cache (`belegEntwurf`) wird nach jedem Speichern
+    aktualisiert und beim Öffnen immer frisch geladen.
   - Unter `md` bleibt die Karten-Maske (`BelegPostenZeile.tsx`, gleiche Regeln) mit „Posten hinzufügen“. Hilfen:
     `packages/web/src/belegAuswahl.ts`.
 - **Belegsumme:** Die Finanzer:in gibt oben die **Belegsumme (brutto)** an (Pflicht). Unter den Tabellen steht live „Posten: X € ·

@@ -1,8 +1,10 @@
 import { Alert, Button, Checkbox, Group, Modal, Stack, Table, Text } from '@mantine/core';
 import { useState } from 'react';
 import {
+  belegdatumAlt,
   centAnzeigen,
   datumAnzeigen,
+  heuteBerlin,
   ZAHLWEG_LABELS,
   type BelegBerechnung,
   type BelegWarnungDto,
@@ -11,7 +13,7 @@ import {
 import { BelegSummen } from './BelegSummen';
 import { BETRAG_STIL } from './finanzenDaten';
 import { stueckelungText } from './bargeldFormular';
-import { stueckelungAus } from './belegFormular';
+import { EIGENBELEG_HINWEIS, formularEigenbeleg, stueckelungAus } from './belegFormular';
 import type { BelegFormular } from './belegFormular';
 
 export interface BuchenPosten {
@@ -59,6 +61,7 @@ export function BelegBuchenDialog({
       return neu;
     });
   const zahlweg = form.zahlweg as Zahlweg;
+  const eigenbeleg = formularEigenbeleg(form);
   const stueckelung = stueckelungAus(form.gegeben, form.wechselgeld);
   return (
     <Modal
@@ -85,6 +88,12 @@ export function BelegBuchenDialog({
               Belegdatum:
             </Text>{' '}
             {datumAnzeigen(form.belegdatum)}
+            {belegdatumAlt(form.belegdatum, heuteBerlin()) && (
+              <Text span c="orange.8">
+                {' '}
+                – liegt mehr als 2 Monate zurück
+              </Text>
+            )}
           </Text>
           <Text style={{ overflowWrap: 'anywhere' }}>
             <Text span fw={600}>
@@ -140,7 +149,16 @@ export function BelegBuchenDialog({
             ))}
           </Table.Tbody>
         </Table>
-        <BelegSummen jeSteuersatz={berechnung.jeSteuersatz} summeCent={berechnung.summe} />
+        <BelegSummen
+          jeSteuersatz={berechnung.jeSteuersatz}
+          summeCent={berechnung.summe}
+          ohneVorsteuer={eigenbeleg}
+        />
+        {eigenbeleg && (
+          <Text size="sm" c="dimmed">
+            {EIGENBELEG_HINWEIS}
+          </Text>
+        )}
         {warnungen.length > 0 && (
           <Alert color="orange" title="Bitte prüfen">
             <Stack gap="xs">

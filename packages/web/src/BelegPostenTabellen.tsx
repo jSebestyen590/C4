@@ -1,6 +1,8 @@
 import {
   ActionIcon,
   Autocomplete,
+  Checkbox,
+  Group,
   Select,
   Stack,
   Table,
@@ -19,7 +21,11 @@ import {
   type KontoDto,
 } from '@c4/shared';
 import {
+  einzelpreisHinweis,
+  gesamtPatch,
   POSTEN_REIHENFOLGE,
+  postenPreis,
+  preisPatch,
   tabellenZeilen,
   type PostenZeile,
   type TabellenZeile,
@@ -42,6 +48,8 @@ import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
 import { NUR_RAND_KLASSE } from './FeldZeile';
 import { satzOptionen, useSteuersaetze } from './steuersaetze';
+import { HILFE } from './finanzenHilfe';
+import { InfoHinweis } from './InfoHinweis';
 
 const TITEL: Record<BelegPostenArt, string> = {
   ware: 'Waren',
@@ -55,27 +63,31 @@ interface Spalte {
   rechts?: true;
   /** Price column: the header gets "(brutto)" / "(netto)". */
   preis?: true;
+  /** Explanation behind the header text (info icon). */
+  hilfe?: string;
 }
 
 /** Column header text and width (percent of the table) per kind. */
 const SPALTEN: Record<BelegPostenArt, readonly Spalte[]> = {
   ware: [
-    { name: 'Ware', breite: '20%' },
-    { name: 'Gebinde', breite: '12%' },
+    { name: 'Ware', breite: '17%' },
+    { name: 'Gebinde', breite: '11%' },
     { name: 'Anzahl', breite: '7%', rechts: true },
+    { name: 'Gesamt', breite: '7%', hilfe: HILFE.belege.gesamtpreis },
     { name: 'Preis je Gebinde', breite: '11%', rechts: true, preis: true },
-    { name: 'Pfand je Gebinde', breite: '11%', rechts: true },
+    { name: 'Pfand je Gebinde', breite: '10%', rechts: true },
     { name: 'Steuer %', breite: '7%' },
-    { name: 'Kategorie', breite: '17%' },
-    { name: 'Betrag', breite: '15%', rechts: true },
+    { name: 'Kategorie', breite: '16%', hilfe: HILFE.belege.kategorie },
+    { name: 'Betrag', breite: '14%', rechts: true },
   ],
   kategorie: [
-    { name: 'Artikel', breite: '25%' },
-    { name: 'Kategorie', breite: '24%' },
+    { name: 'Artikel', breite: '23%' },
+    { name: 'Kategorie', breite: '22%', hilfe: HILFE.belege.kategorie },
     { name: 'Anzahl', breite: '9%', rechts: true },
-    { name: 'Einzelpreis', breite: '14%', rechts: true, preis: true },
-    { name: 'Steuer %', breite: '9%' },
-    { name: 'Betrag', breite: '19%', rechts: true },
+    { name: 'Gesamt', breite: '7%', hilfe: HILFE.belege.gesamtpreis },
+    { name: 'Einzelpreis', breite: '13%', rechts: true, preis: true },
+    { name: 'Steuer %', breite: '8%' },
+    { name: 'Betrag', breite: '18%', rechts: true },
   ],
   leergut: [
     { name: 'Beschreibung', breite: '38%' },
@@ -191,7 +203,7 @@ export function BelegPostenTabelle({
       <Title order={4} size="h5">
         {TITEL[art]}
       </Title>
-      <Table.ScrollContainer minWidth={art === 'ware' ? 860 : 700} className={NUR_RAND_KLASSE}>
+      <Table.ScrollContainer minWidth={art === 'ware' ? 920 : 760} className={NUR_RAND_KLASSE}>
         <Table verticalSpacing={4} horizontalSpacing={4} style={{ tableLayout: 'fixed' }}>
           <Table.Thead>
             <Table.Tr>
@@ -201,7 +213,14 @@ export function BelegPostenTabelle({
                   w={s.breite}
                   style={s.rechts ? { textAlign: 'right' } : undefined}
                 >
-                  {s.name}
+                  {s.hilfe ? (
+                    <Group gap={2} wrap="nowrap" component="span" display="inline-flex">
+                      <span>{s.name}</span>
+                      <InfoHinweis feld={s.name} text={s.hilfe} />
+                    </Group>
+                  ) : (
+                    s.name
+                  )}
                   {s.preis && ` (${preisLabel})`}
                 </Table.Th>
               ))}
@@ -304,19 +323,34 @@ function PostenTabellenZeile({
       />
     </Table.Td>
   );
+  // "Gesamt" sits right before the price, so the price's meaning is clear when it is reached by Tab.
+  const gesamt = (
+    <Table.Td>
+      <Checkbox
+        size="md"
+        aria-label={`Gesamtpreis statt Preis je ${art === 'ware' ? 'Gebinde' : 'Stück'}, ${zeile}`}
+        checked={p.gesamt}
+        onChange={(e) => onAendern(gesamtPatch(p, e.currentTarget.checked))}
+        styles={{ root: { display: 'flex', justifyContent: 'center' } }}
+        data-nav=""
+      />
+    </Table.Td>
+  );
   const preis = (
     <Table.Td>
       <BetragFeld
         size="sm"
-        aria-label={`${art === 'ware' ? 'Preis je Gebinde' : art === 'leergut' ? 'Pfand je Stück' : 'Preis'}, ${zeile}`}
+        aria-label={`${p.gesamt ? 'Gesamtpreis' : art === 'ware' ? 'Preis je Gebinde' : art === 'leergut' ? 'Pfand je Stück' : 'Preis'}, ${zeile}`}
+        placeholder={p.gesamt ? 'Gesamt' : undefined}
         negativ={art === 'kategorie'}
-        value={p.einzelpreisCent}
-        onWert={(c) => onAendern({ einzelpreisCent: c })}
+        value={postenPreis(p)}
+        onWert={(c) => onAendern(preisPatch(p, c))}
         error={rot(fehler.preis)}
         data-nav=""
       />
     </Table.Td>
   );
+  const proEinheit = einzelpreisHinweis(p);
   const steuersatz = (
     <Table.Td>
       <Select
@@ -342,6 +376,11 @@ function PostenTabellenZeile({
           {pfandBetragCent !== 0 && (
             <Text size="xs" c="dimmed" lh={1.2} style={{ whiteSpace: 'normal' }}>
               davon Pfand {centAnzeigen(pfandBetragCent)}
+            </Text>
+          )}
+          {proEinheit !== null && (
+            <Text size="xs" c="dimmed" lh={1.2} style={{ whiteSpace: 'normal' }}>
+              ≈ {centAnzeigen(proEinheit)} je {art === 'ware' ? 'Gebinde' : 'Stück'}
             </Text>
           )}
         </>
@@ -446,6 +485,7 @@ function PostenTabellenZeile({
             />
           </Table.Td>
           {anzahl}
+          {gesamt}
           {preis}
           <Table.Td>
             <BetragFeld
@@ -479,6 +519,7 @@ function PostenTabellenZeile({
           </Table.Td>
           {kategorieZelle(true)}
           {anzahl}
+          {gesamt}
           {preis}
           {steuersatz}
           {betrag}

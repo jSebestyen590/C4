@@ -7,7 +7,7 @@ import {
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { anzahlLesen, steuersatzVorschlag, type PostenZeile } from './belegFormular';
+import { anzahlLesen, postenPreis, steuersatzVorschlag, type PostenZeile } from './belegFormular';
 
 /** Value of the last option of a Ware select: "Neue Ware anlegen" (never a Ware id). */
 export const NEUE_WARE = '__neue-ware__';
@@ -71,6 +71,57 @@ export const wareFilter =
       return [alias ? { ...o, label: `${o.label} (${alias})` } : o];
     });
   };
+
+// ----- "Neuen Rechnungssteller anlegen" in the Rechnungssteller select (like "Neue Ware")
+
+/** Value of the last option of the Rechnungssteller select (never an id). */
+export const NEUER_RECHNUNGSSTELLER = '__neuer-rechnungssteller__';
+
+/** Label of the "new Rechnungssteller" option: it names the typed name. */
+export const neuerRechnungsstellerLabel = (suche: string): string =>
+  `„${suche.trim()}“ als neuen Rechnungssteller anlegen`;
+
+/** Whether a text is the label of that option (Mantine writes the label into the search field). */
+export const istNeuerRechnungsstellerText = (text: string): boolean =>
+  /^„.*“ als neuen Rechnungssteller anlegen$/.test(text);
+
+/** Options of the Rechnungssteller select (value = id, label = name); the "new" option is added by the filter. */
+export const rechnungsstellerOptionen = (
+  liste: readonly { id: string; name: string }[],
+  mitNeuem: boolean,
+): ComboboxItem[] => [
+  ...liste.map((r) => ({ value: r.id, label: r.name })),
+  ...(mitNeuem ? [{ value: NEUER_RECHNUNGSSTELLER, label: neuerRechnungsstellerLabel('') }] : []),
+];
+
+/**
+ * `filter` of the Rechnungssteller select: names containing the search text; the option "„X“ als
+ * neuen Rechnungssteller anlegen" is last, only with a search text that is no existing name.
+ */
+export const rechnungsstellerFilter: OptionsFilter = ({ options, search }) => {
+  const q = search.trim().toLowerCase();
+  const alle = options as ComboboxItem[];
+  const vorhanden = alle.some(
+    (o) => o.value !== NEUER_RECHNUNGSSTELLER && o.label.toLowerCase() === q,
+  );
+  return alle.flatMap((o) => {
+    if (o.value === NEUER_RECHNUNGSSTELLER)
+      return q && !vorhanden ? [{ ...o, label: neuerRechnungsstellerLabel(search) }] : [];
+    return o.label.toLowerCase().includes(q) ? [o] : [];
+  });
+};
+
+/**
+ * What a change of the Rechnungssteller select means: the "new" option creates only when picked
+ * deliberately (the input has the focus), never when the field is just left.
+ */
+export function rechnungsstellerWahl(
+  wert: string | null,
+  hatFokus: boolean,
+): 'anlegen' | 'ignorieren' | 'waehlen' {
+  if (wert === NEUER_RECHNUNGSSTELLER) return hatFokus ? 'anlegen' : 'ignorieren';
+  return 'waehlen';
+}
 
 /** Gebinde and deposit to preselect when a Ware is chosen: its standard Gebinde, else its only one, else none. */
 export function standardGebindeWaehlen(
@@ -222,7 +273,15 @@ export function fokusAnzahl(key: string): void {
 /** Patch for changing the kind of an item (clears the fields of the other kinds). */
 export function artWechselPatch(art: PostenZeile['art']): Partial<PostenZeile> {
   if (art === 'leergut')
-    return { art, kategorieId: null, wareId: null, gebindeId: null, pfandCent: null };
+    return {
+      art,
+      kategorieId: null,
+      wareId: null,
+      gebindeId: null,
+      pfandCent: null,
+      gesamt: false,
+      gesamtCent: null,
+    };
   if (art === 'kategorie') return { art, wareId: null, gebindeId: null, pfandCent: null };
   return { art };
 }
@@ -245,6 +304,7 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
     if (anzahl !== null && anzahl <= 0) f.anzahl = 'Muss größer als 0 sein.';
   }
   if (!versucht) return f;
+  if (!f.anzahl && !anzahlLesen(p.anzahl)) f.anzahl = 'Bitte angeben.';
   if (p.art === 'ware') {
     if (!p.wareId) f.ware = 'Bitte wähle eine Ware.';
     else if (!p.gebindeId) f.gebinde = 'Bitte wähle ein Gebinde.';
@@ -252,7 +312,7 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
   if (p.art !== 'leergut' && !p.kategorieId) f.kategorie = 'Bitte wähle eine Kategorie.';
   if (p.art === 'kategorie' && p.text.trim() === '') f.text = 'Bitte gib den Artikel an.';
   if (p.art === 'leergut' && p.text.trim() === '') f.text = 'Bitte beschreibe das Leergut.';
-  if (p.einzelpreisCent === null) f.preis = 'Bitte angeben.';
+  if (postenPreis(p) === null) f.preis = 'Bitte angeben.';
   return f;
 }
 
@@ -332,6 +392,7 @@ export function blurWaehltMarkierte(e: { target: EventTarget }): void {
   const option = liste?.querySelector<HTMLElement>(
     '[data-combobox-option][data-combobox-selected]',
   );
-  if (!option || istNeueWareText(option.textContent?.trim() ?? '')) return;
+  const text = option?.textContent?.trim() ?? '';
+  if (!option || istNeueWareText(text) || istNeuerRechnungsstellerText(text)) return;
   option.click();
 }

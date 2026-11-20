@@ -6,6 +6,11 @@ import {
   blurWaehltMarkierte,
   artikelSteuersatz,
   istNeueWareText,
+  istNeuerRechnungsstellerText,
+  NEUER_RECHNUNGSSTELLER,
+  rechnungsstellerFilter,
+  rechnungsstellerOptionen,
+  rechnungsstellerWahl,
   NEUE_WARE,
   neueWareLabel,
   wareOptionen,
@@ -284,5 +289,47 @@ describe('Pfeiltasten und Blur', () => {
     const t = aufbau(1, ['A', '„Sterni“ als neue Ware anlegen']);
     blurWaehltMarkierte({ target: t.input });
     expect(t.klicks).toEqual([]);
+  });
+});
+
+describe('Neuen Rechnungssteller anlegen', () => {
+  const liste = [
+    { id: 'r1', name: 'Aldi' },
+    { id: 'r2', name: 'Neumarkt' },
+  ];
+  const filtern = (search: string) =>
+    (
+      rechnungsstellerFilter({
+        options: rechnungsstellerOptionen(liste, true),
+        search,
+        limit: 100,
+      }) as { value: string; label: string }[]
+    ).map((o) => [o.value, o.label]);
+
+  it('zeigt die Option nur mit Suchtext, ganz unten', () => {
+    expect(filtern('')).toEqual([
+      ['r1', 'Aldi'],
+      ['r2', 'Neumarkt'],
+    ]);
+    expect(filtern('neu').at(-1)).toEqual([
+      NEUER_RECHNUNGSSTELLER,
+      '„neu“ als neuen Rechnungssteller anlegen',
+    ]);
+    expect(filtern('neu')).toHaveLength(2);
+  });
+
+  it('bietet keine Dublette eines vorhandenen Namens an', () => {
+    expect(filtern('aldi')).toEqual([['r1', 'Aldi']]);
+  });
+
+  it('legt nur an, wenn die Option mit Fokus gewählt wird', () => {
+    expect(rechnungsstellerWahl(NEUER_RECHNUNGSSTELLER, true)).toBe('anlegen');
+    expect(rechnungsstellerWahl(NEUER_RECHNUNGSSTELLER, false)).toBe('ignorieren');
+    expect(rechnungsstellerWahl('r1', false)).toBe('waehlen');
+  });
+
+  it('erkennt den Optionstext für den Blur-Schutz', () => {
+    expect(istNeuerRechnungsstellerText('„X“ als neuen Rechnungssteller anlegen')).toBe(true);
+    expect(istNeuerRechnungsstellerText('Aldi')).toBe(false);
   });
 });
