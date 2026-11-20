@@ -38,6 +38,8 @@ import { ZahlFeld } from '../ZahlFeld';
 import {
   artikelNamen,
   artikelPatch,
+  blurWaehltMarkierte,
+  enterWaehltErsteOption,
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   NEUE_WARE,
@@ -92,7 +94,8 @@ function WareWahl({
       label="Ware"
       size="md"
       searchable
-      autoSelectOnBlur
+      onBlurCapture={blurWaehltMarkierte}
+onKeyDownCapture={enterWaehltErsteOption}
       onFocus={() => {
         gewaehlt.current = false;
       }}
@@ -473,7 +476,8 @@ export function BelegEinreichenPage() {
                         label="Kategorie"
                         size="md"
                         searchable
-                        autoSelectOnBlur
+                        onBlurCapture={blurWaehltMarkierte}
+onKeyDownCapture={enterWaehltErsteOption}
                         selectFirstOptionOnChange
                         allowDeselect={false}
                         data={kategorieOptionenMitVorschlaegen(

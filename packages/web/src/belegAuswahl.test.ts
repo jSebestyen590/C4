@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   artikelPatch,
   enterWaehltErsteOption,
+  blurWaehltMarkierte,
   artikelSteuersatz,
   istNeueWareText,
   NEUE_WARE,
@@ -199,5 +200,84 @@ describe('enterWaehltErsteOption', () => {
     enterWaehltErsteOption(t.e);
     expect(t.klicks).toEqual(['B']);
     expect(t.verhindert()).toBe(true);
+  });
+});
+
+describe('Pfeiltasten und Blur', () => {
+  const aufbau = (selected: number | null, texte = ['A', 'B', 'C']) => {
+    document.body.innerHTML = `<ul id="l">${texte
+      .map(
+        (x, i) =>
+          `<li id="o${i}" data-combobox-option ${i === selected ? 'data-combobox-selected' : ''}>${x}</li>`,
+      )
+      .join('')}</ul><input id="i" aria-controls="l" aria-expanded="true">`;
+    const klicks: string[] = [];
+    document
+      .querySelectorAll('li')
+      .forEach((li) => li.addEventListener('click', () => klicks.push(li.textContent!)));
+    const input = document.getElementById('i')!;
+    const taste = (key: string) => {
+      const r = { verhindert: false, gestoppt: false };
+      enterWaehltErsteOption({
+        key,
+        nativeEvent: { isComposing: false },
+        target: input,
+        preventDefault: () => (r.verhindert = true),
+        stopPropagation: () => (r.gestoppt = true),
+      });
+      return r;
+    };
+    const markiert = () =>
+      [...document.querySelectorAll('li')].findIndex((li) =>
+        li.hasAttribute('data-combobox-selected'),
+      );
+    return { input, klicks, taste, markiert };
+  };
+  it('ArrowDown starts at the first option and moves on, wrapping', () => {
+    const t = aufbau(null);
+    expect(t.taste('ArrowDown').gestoppt).toBe(true);
+    expect(t.markiert()).toBe(0);
+    t.taste('ArrowDown');
+    t.taste('ArrowDown');
+    expect(t.markiert()).toBe(2);
+    t.taste('ArrowDown');
+    expect(t.markiert()).toBe(0);
+    expect(t.input.getAttribute('aria-activedescendant')).toBe('o0');
+  });
+  it('ArrowUp moves up and starts at the last option', () => {
+    const t = aufbau(1);
+    t.taste('ArrowUp');
+    expect(t.markiert()).toBe(0);
+    const u = aufbau(null);
+    u.taste('ArrowUp');
+    expect(u.markiert()).toBe(2);
+  });
+  it('Enter after ArrowDown picks the moved-to option', () => {
+    const t = aufbau(0);
+    t.taste('ArrowDown');
+    t.taste('Enter');
+    expect(t.klicks).toEqual(['B']);
+  });
+  it('leaves the keys alone when the list is closed', () => {
+    const t = aufbau(null);
+    document.getElementById('l')!.id = 'x';
+    expect(t.taste('ArrowDown').gestoppt).toBe(false);
+  });
+  it('blur picks the highlighted option, nothing when none or the list is closed', () => {
+    const t = aufbau(1);
+    blurWaehltMarkierte({ target: t.input });
+    expect(t.klicks).toEqual(['B']);
+    const n = aufbau(null);
+    blurWaehltMarkierte({ target: n.input });
+    expect(n.klicks).toEqual([]);
+    const z = aufbau(1);
+    z.input.setAttribute('aria-expanded', 'false');
+    blurWaehltMarkierte({ target: z.input });
+    expect(z.klicks).toEqual([]);
+  });
+  it('blur never picks "Neue Ware anlegen"', () => {
+    const t = aufbau(1, ['A', '„Sterni“ als neue Ware anlegen']);
+    blurWaehltMarkierte({ target: t.input });
+    expect(t.klicks).toEqual([]);
   });
 });

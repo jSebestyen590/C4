@@ -27,6 +27,7 @@ import {
   artikelPatch,
   artWechselPatch,
   enterWaehltErsteOption,
+  blurWaehltMarkierte,
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
@@ -87,7 +88,7 @@ export function BelegPostenZeile({
   const [wareSuche, setWareSuche] = useState('');
   const wareEingabe = useRef<HTMLInputElement>(null);
   // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
-  // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
+  // pick another option (blur pick) or move on; reset when the field gets the focus back.
   const neueWareGewaehlt = useRef(false);
   // Set when a Ware was picked; the blur on leaving must not pick another one (see `wareWahl`).
   const wareGewaehlt = useRef(false);
@@ -127,7 +128,7 @@ export function BelegPostenZeile({
               placeholder="Ware suchen"
               allowDeselect={false}
               searchable
-              autoSelectOnBlur
+              onBlurCapture={blurWaehltMarkierte}
               onFocus={() => {
                 neueWareGewaehlt.current = false;
                 wareGewaehlt.current = false;
@@ -200,7 +201,7 @@ export function BelegPostenZeile({
               onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Kategorie suchen"
               searchable
-              autoSelectOnBlur
+              onBlurCapture={blurWaehltMarkierte}
               selectFirstOptionOnChange
               allowDeselect={false}
               data={

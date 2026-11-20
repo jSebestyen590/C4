@@ -29,6 +29,7 @@ import {
   artikelNamen,
   artikelPatch,
   enterWaehltErsteOption,
+  blurWaehltMarkierte,
   fokusAnzahl,
   kategorieOptionenMitVorschlaegen,
   kategoriePatch,
@@ -287,7 +288,7 @@ function PostenTabellenZeile({
   const [wareSuche, setWareSuche] = useState('');
   const wareEingabe = useRef<HTMLInputElement>(null);
   // Set when "Neue Ware anlegen" was picked: the dialog takes the focus and the field's blur must not
-  // pick another option (autoSelectOnBlur) or move on; reset when the field gets the focus back.
+  // pick another option (blur pick) or move on; reset when the field gets the focus back.
   const neueWareGewaehlt = useRef(false);
   // Set when a Ware was picked; the blur on leaving must not pick another one (see `wareWahl`).
   const wareGewaehlt = useRef(false);
@@ -360,7 +361,7 @@ function PostenTabellenZeile({
         onKeyDownCapture={enterWaehltErsteOption}
         placeholder="Kategorie suchen"
         searchable
-        autoSelectOnBlur
+        onBlurCapture={blurWaehltMarkierte}
         onFocus={(e) => e.currentTarget.select()}
         selectFirstOptionOnChange
         allowDeselect={false}
@@ -393,7 +394,7 @@ function PostenTabellenZeile({
               placeholder="Ware suchen"
               allowDeselect={false}
               searchable
-              autoSelectOnBlur
+              onBlurCapture={blurWaehltMarkierte}
               onFocus={(e) => {
                 neueWareGewaehlt.current = false;
                 wareGewaehlt.current = false;

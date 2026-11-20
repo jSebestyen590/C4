@@ -243,29 +243,82 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
   return f;
 }
 
-/**
- * Enter in a searchable select with an open list picks the highlighted option, else the first one.
- * Mantine's own Enter handling relies on an internal index that can be -1 although an option is shown
- * highlighted (quick "type + Enter", or an autofocused select), so we always click the option ourselves,
- * as Mantine would. Use as `onKeyDownCapture`.
- */
-export function enterWaehltErsteOption(e: {
+const OPTION = '[data-combobox-option]:not([data-combobox-disabled])';
+
+/** The open option list of a searchable select input (null while closed). */
+function offeneListe(input: HTMLElement): HTMLElement | null {
+  const id = input.getAttribute?.('aria-controls');
+  return id ? input.ownerDocument.getElementById(id) : null;
+}
+
+/** Moves the keyboard highlight to an option (DOM only: Mantine's own index can be out of sync). */
+function markieren(input: HTMLElement, liste: HTMLElement, option: HTMLElement): void {
+  liste
+    .querySelectorAll('[data-combobox-selected]')
+    .forEach((o) => o.removeAttribute('data-combobox-selected'));
+  option.setAttribute('data-combobox-selected', 'true');
+  if (option.id) input.setAttribute('aria-activedescendant', option.id);
+  option.scrollIntoView?.({ block: 'nearest' });
+}
+
+type TastenEreignis = {
   key: string;
   nativeEvent: { isComposing: boolean };
   target: EventTarget;
   preventDefault(): void;
   stopPropagation(): void;
-}): void {
-  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+};
+
+/**
+ * Keyboard handling of a searchable select with an open list, owned by us because Mantine's internal
+ * option index is -1 although an option is shown highlighted (its "active option" timer on open
+ * overwrites the index set by selectFirstOptionOnChange). Use as `onKeyDownCapture`:
+ * - ArrowDown/ArrowUp move the highlight (wrapping) and are swallowed;
+ * - Enter picks the highlighted option, else the first one, by clicking it as Mantine would.
+ */
+export function enterWaehltErsteOption(e: TastenEreignis): void {
+  if (e.nativeEvent.isComposing) return;
   const input = e.target as HTMLElement;
-  const id = input.getAttribute?.('aria-controls');
-  const liste = id ? input.ownerDocument.getElementById(id) : null;
+  const liste = offeneListe(input);
   if (!liste) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const optionen = Array.from(liste.querySelectorAll<HTMLElement>(OPTION));
+    if (optionen.length === 0) return;
+    const aktuell = optionen.findIndex((o) => o.hasAttribute('data-combobox-selected'));
+    const schritt = e.key === 'ArrowDown' ? 1 : -1;
+    const ziel =
+      aktuell === -1
+        ? e.key === 'ArrowDown'
+          ? 0
+          : optionen.length - 1
+        : (aktuell + schritt + optionen.length) % optionen.length;
+    markieren(input, liste, optionen[ziel]!);
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (e.key !== 'Enter') return;
   const option =
     liste.querySelector<HTMLElement>('[data-combobox-option][data-combobox-selected]') ??
-    liste.querySelector<HTMLElement>('[data-combobox-option]:not([data-combobox-disabled])');
+    liste.querySelector<HTMLElement>(OPTION);
   if (!option) return;
   e.preventDefault();
   e.stopPropagation();
+  option.click();
+}
+
+/**
+ * Replaces `autoSelectOnBlur` (which relies on Mantine's unreliable index): leaving a select whose
+ * list is open picks the highlighted option (typed + Tab), but never "Neue Ware anlegen". Use as
+ * `onBlurCapture`; it runs before Mantine resets the search text.
+ */
+export function blurWaehltMarkierte(e: { target: EventTarget }): void {
+  const input = e.target as HTMLElement;
+  if (input.getAttribute?.('aria-expanded') !== 'true') return;
+  const liste = offeneListe(input);
+  const option = liste?.querySelector<HTMLElement>(
+    '[data-combobox-option][data-combobox-selected]',
+  );
+  if (!option || istNeueWareText(option.textContent?.trim() ?? '')) return;
   option.click();
 }

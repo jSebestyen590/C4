@@ -42,7 +42,12 @@ import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungK
 import { BelegPostenTabellen, type PostenBetraege } from '../BelegPostenTabellen';
 import { BelegNeueWare } from '../BelegNeueWare';
 import { FeldZeile } from '../FeldZeile';
-import { enterWaehltErsteOption, fokusAnzahl, warePatch } from '../belegAuswahl';
+import {
+  blurWaehltMarkierte,
+  enterWaehltErsteOption,
+  fokusAnzahl,
+  warePatch,
+} from '../belegAuswahl';
 import { useAuth } from '../auth';
 import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
@@ -566,7 +571,7 @@ export function FinanzenBelegPage() {
                   allowDeselect={false}
                   autoFocus={!id}
                   searchable
-                  autoSelectOnBlur
+                  onBlurCapture={blurWaehltMarkierte}
                   selectFirstOptionOnChange
                   data={(rechnungssteller.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
                   value={form.rechnungsstellerId}
@@ -669,6 +674,8 @@ export function FinanzenBelegPage() {
               </Group>
               <SegmentedControl
                 aria-label="Preise sind"
+                // Rarely changed: stays clickable but Tab goes from Belegsumme straight to the Posten.
+                ref={(el) => el?.querySelectorAll('input').forEach((i) => (i.tabIndex = -1))}
                 value={form.modus}
                 onChange={(v) => aendern((f) => ({ ...f, modus: v as BelegModus }))}
                 data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
