@@ -27,7 +27,7 @@ export function ProtokollNeuPage() {
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
 
   // Preselect the Sitzung closest to now (upcoming ones are listed too) until the user picks another.
-  const jetzt = Date.now();
+  const [jetzt] = useState(() => Date.now());
   const naechste = sitzungen.data?.reduce<(typeof sitzungen.data)[number] | null>(
     (best, s) =>
       !best || Math.abs(Date.parse(s.beginn) - jetzt) < Math.abs(Date.parse(best.beginn) - jetzt)

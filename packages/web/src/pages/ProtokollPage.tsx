@@ -189,7 +189,8 @@ function ProtokollAnsicht({
   // Writers edit a draft only while this tab holds the edit lock; without it they see the document.
   const editierbar = darfSchreiben && entwurf && sperre.art === 'eigen';
   // Closing only makes sense once the Sitzung has begun (the API enforces it too).
-  const nochNichtBegonnen = Date.parse(dto.sitzung.beginn) > Date.now();
+  const [geoeffnetUm] = useState(() => Date.now());
+  const nochNichtBegonnen = Date.parse(dto.sitzung.beginn) > geoeffnetUm;
   const sperrePrueft =
     darfSchreiben && entwurf && (sperre.art === 'pruefe' || sperre.art === 'inaktiv');
 
