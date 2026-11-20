@@ -389,6 +389,7 @@ function PostenTabellenZeile({
               aria-label={`Ware, ${zeile}`}
               onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Ware suchen"
+              allowDeselect={false}
               searchable
               autoSelectOnBlur
               onFocus={(e) => {

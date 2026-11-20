@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BELEG_MODI,
+  belegEntwurfSchema,
   BELEG_MODUS_LABELS,
   centAnzeigen,
   STEUERSAETZE,
@@ -89,7 +90,7 @@ import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StueckelungFeld } from '../StueckelungFeld';
 import { HINWEIS_DAUER_MS } from '../gebuchtHinweis';
 import { lokalIstNeuer, lokalLesen, lokalLoeschen, lokalSpeichern } from '../entwurfSpeicher';
-import { enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
+import { dropdownOffen, enterWeiter, useVerwerfenWarnung } from '../useVerwerfenWarnung';
 import { ApiFehler, fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
 
@@ -187,6 +188,8 @@ export function FinanzenBelegPage() {
   });
   const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
   const nachspeichern = useRef(false);
+  // Why the last save was skipped (the draft is not valid yet), else null.
+  const ungueltig = useRef<string | null>(null);
   const warnung = useVerwerfenWarnung(stand !== 'gespeichert');
 
   // The draft of the route is loaded once; later changes come from this page.
@@ -217,6 +220,15 @@ export function FinanzenBelegPage() {
       setStand('speichert');
       try {
         const daten = formularZuDaten(f);
+        // Never send a draft the API would refuse (400): keep it locally until it is valid.
+        const geprueft = belegEntwurfSchema.safeParse({ daten });
+        if (!geprueft.success) {
+          setStand('ungespeichert');
+          setSpeicherFehler(null);
+          ungueltig.current = geprueft.error.issues[0]?.message ?? 'Ungültige Eingabe.';
+          return false;
+        }
+        ungueltig.current = null;
         if (entwurfId.current) {
           await unwrap(
             await api.finanzen['beleg-entwuerfe'][':id'].$put({
@@ -408,7 +420,11 @@ export function FinanzenBelegPage() {
     }
     buchen.reset();
     schluessel.current = null;
-    if (!(await speichernJetzt()) || !entwurfId.current) return;
+    if (!(await speichernJetzt()) || !entwurfId.current) {
+      if (ungueltig.current)
+        setSpeicherFehler(`Der Entwurf kann nicht gespeichert werden: ${ungueltig.current}`);
+      return;
+    }
     try {
       const aktuell = await qc.fetchQuery({
         queryKey: finanzenKeys.belegEntwurf(entwurfId.current),
@@ -473,7 +489,7 @@ export function FinanzenBelegPage() {
             !e.ctrlKey &&
             !e.metaKey &&
             ziel.hasAttribute('data-posten-ende') &&
-            ziel.getAttribute('aria-expanded') !== 'true'
+            !dropdownOffen(ziel)
           ) {
             e.preventDefault();
             const art = ziel.getAttribute('data-posten-ende') as BelegPostenArt;
@@ -546,6 +562,8 @@ export function FinanzenBelegPage() {
                   }
                   placeholder="Rechnungssteller suchen"
                   onKeyDownCapture={enterWaehltErsteOption}
+                  onFocus={(e) => e.currentTarget.select()}
+                  allowDeselect={false}
                   autoFocus={!id}
                   searchable
                   autoSelectOnBlur

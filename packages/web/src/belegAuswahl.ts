@@ -254,7 +254,7 @@ export function enterWaehltErsteOption(e: {
   const input = e.target as HTMLElement;
   const id = input.getAttribute?.('aria-controls');
   const liste = id ? input.ownerDocument.getElementById(id) : null;
-  if (!liste || input.getAttribute('aria-expanded') !== 'true') return;
+  if (!liste) return;
   if (liste.querySelector('[data-combobox-selected]')) return;
   const erste = liste.querySelector<HTMLElement>(
     '[data-combobox-option]:not([data-combobox-disabled])',

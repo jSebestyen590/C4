@@ -53,6 +53,15 @@ export function useVerwerfenWarnung(ungespeichert: boolean) {
   };
 }
 
+/**
+ * Whether the list of a Mantine select/combobox input is open. Mantine's searchable `Select` sets
+ * `data-expanded` (and `aria-controls`) while open, but not `aria-expanded` unless asked to.
+ */
+export const dropdownOffen = (el: Element): boolean =>
+  el.getAttribute('aria-expanded') === 'true' ||
+  el.hasAttribute('data-expanded') ||
+  el.hasAttribute('aria-controls');
+
 /** Enter in a `data-nav` field moves to the next one; after the last one `amEnde` runs. */
 export function enterWeiter(
   e: {
@@ -75,7 +84,7 @@ export function enterWeiter(
   const el = e.target as HTMLElement;
   if (!el.matches('[data-nav]')) return;
   // An open dropdown uses Enter to pick the highlighted entry.
-  if (el.getAttribute('aria-expanded') === 'true') return;
+  if (dropdownOffen(el)) return;
   const felder = [...(wurzel?.querySelectorAll<HTMLElement>('[data-nav]') ?? [])];
   const naechstes = felder[felder.indexOf(el) + 1];
   e.preventDefault();

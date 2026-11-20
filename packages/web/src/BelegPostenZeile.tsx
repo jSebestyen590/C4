@@ -123,6 +123,7 @@ export function BelegPostenZeile({
               label="Ware"
               onKeyDownCapture={enterWaehltErsteOption}
               placeholder="Ware suchen"
+              allowDeselect={false}
               searchable
               autoSelectOnBlur
               onFocus={() => {

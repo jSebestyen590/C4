@@ -1,3 +1,4 @@
+import { dropdownOffen } from '../useVerwerfenWarnung';
 import {
   Alert,
   Anchor,
@@ -181,7 +182,7 @@ export function FinanzenBuchenPage() {
     const el = e.target as HTMLElement;
     if (!el.matches('[data-nav]')) return;
     // An open account dropdown uses Enter to pick the highlighted entry.
-    if (el.getAttribute('aria-expanded') === 'true') return;
+    if (dropdownOffen(el)) return;
     const felder = [...(formRef.current?.querySelectorAll<HTMLElement>('[data-nav]') ?? [])];
     const i = felder.indexOf(el);
     const naechstes = felder[i + 1];
