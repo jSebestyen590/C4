@@ -27,7 +27,9 @@ const voll = (): BelegFormular => ({
   ...leeresFormular(),
   rechnungsstellerId: 'r1',
   belegdatum: '2027-03-01',
-  posten: [{ ...neuerPosten(1900), kategorieId: 'k1', anzahl: '2', einzelpreisCent: 500 }],
+  posten: [
+    { ...neuerPosten(1900), kategorieId: 'k1', text: 'Deko', anzahl: '2', einzelpreisCent: 500 },
+  ],
   zahlweg: 'bar',
   bezahldatum: '2027-03-01',
   fachId: 'f1',
@@ -108,7 +110,7 @@ describe('formularZuDaten', () => {
       {
         art: 'kategorie',
         kategorieId: 'k1',
-        text: '',
+        text: 'Deko',
         anzahlMilli: 2000,
         einzelpreisCent: 500,
         steuersatz: 1900,
@@ -199,7 +201,6 @@ describe('Ware, Leergut und Einreichung', () => {
       wareId: 'w1',
       gebindeId: 'g1',
       kategorieId: 'k1',
-      text: '',
       anzahlMilli: 2000,
       einzelpreisCent: 1000,
       steuersatz: 700,

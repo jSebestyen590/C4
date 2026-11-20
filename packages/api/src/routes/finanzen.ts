@@ -25,6 +25,7 @@ import {
   type BelegeSeiteDto,
   type BelegListeDto,
   type BelegUploadDto,
+  type ArtikelKategorieVorschlaege,
   type BelegWareDto,
   type WarengruppeKategorieDto,
   buchungEingabeSchema,
@@ -723,10 +724,11 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         return c.json(dto);
       })
       .get('/finanzen/einreichungen/auswahl', auth, belegeEinreichen, async (c) => {
-        const [steller, konten, waren] = await Promise.all([
+        const [steller, konten, waren, artikelVorschlaege] = await Promise.all([
           deps.finanzen.rechnungssteller(false),
           deps.finanzen.konten(false),
           deps.finanzen.belegWaren(),
+          deps.finanzen.artikelVorschlaege(),
         ]);
         const dto: EinreichungAuswahlDto = {
           rechnungssteller: steller.map((r) => ({ id: r.id, name: r.name })),
@@ -734,6 +736,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             .filter((k) => k.art === 'aufwand' && !k.archiviert)
             .map((k) => ({ id: k.id, name: k.name })),
           waren,
+          artikelVorschlaege,
         };
         return c.json(dto);
       })
@@ -817,6 +820,11 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
       // Waren with Gebinde, deposit, MHD kind and suggested Kategorie for the Ware items of a Beleg.
       .get('/finanzen/beleg-waren', auth, finanzenLesen, async (c) => {
         const dto: BelegWareDto[] = await deps.finanzen.belegWaren();
+        return c.json(dto);
+      })
+      // Artikel names of booked Kategorie items with the Kategorien used for them (most often first).
+      .get('/finanzen/artikel-vorschlaege', auth, finanzenLesen, async (c) => {
+        const dto: ArtikelKategorieVorschlaege = await deps.finanzen.artikelVorschlaege();
         return c.json(dto);
       })
       .get('/finanzen/auslagen', auth, finanzenLesen, async (c) => {

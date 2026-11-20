@@ -280,6 +280,11 @@ export const wareSchema = z.object({
       (a) => new Set(a.map((x) => x.toLowerCase())).size === a.length,
       'Jeder Alias darf nur einmal vorkommen.',
     ),
+  /**
+   * Preselected Gebinde on Belege; must be one of the Ware's Gebinde (the API checks it). `null` clears it,
+   * omitted keeps the current one (reset when that Gebinde is removed from the Ware).
+   */
+  standardGebindeId: idSchema('Ungültiges Standard-Gebinde.').nullish(),
 });
 export type WareEingabe = z.input<typeof wareSchema>;
 
@@ -1228,4 +1233,31 @@ export function inventurKorrekturen(
       menge: z.differenz,
       art: 'korrektur' as const,
     }));
+}
+
+/** A Ware found by `wareSuchen`; `alias` is the alias that matched when the name itself did not. */
+export interface WareTreffer<T> {
+  ware: T;
+  alias: string | null;
+}
+
+/**
+ * Wares whose name or one of whose aliases contains `suchtext` (case-insensitive, trimmed). An empty
+ * search returns all Waren without alias. A name match wins over an alias match (`alias` is null then).
+ */
+export function wareSuchen<T extends { name: string; aliase?: readonly string[] }>(
+  waren: readonly T[],
+  suchtext: string,
+): WareTreffer<T>[] {
+  const q = suchtext.trim().toLowerCase();
+  if (!q) return waren.map((ware) => ({ ware, alias: null }));
+  const treffer: WareTreffer<T>[] = [];
+  for (const ware of waren) {
+    if (ware.name.toLowerCase().includes(q)) treffer.push({ ware, alias: null });
+    else {
+      const alias = (ware.aliase ?? []).find((a) => a.toLowerCase().includes(q));
+      if (alias !== undefined) treffer.push({ ware, alias });
+    }
+  }
+  return treffer;
 }

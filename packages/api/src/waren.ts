@@ -434,12 +434,31 @@ export interface WarengruppeDaten {
   parentId: string | null;
 }
 
+/**
+ * The Standard-Gebinde to store for a Ware save: `angegeben` (null clears it) or, when omitted, the
+ * current one, reset to null once it is no longer one of the Ware's Gebinde. Throws when the given
+ * one does not belong to the Ware.
+ */
+export function standardGebindeBestimmen(
+  angegeben: string | null | undefined,
+  bisher: string | null,
+  gebindeIds: readonly string[],
+): string | null {
+  if (angegeben === undefined)
+    return bisher !== null && gebindeIds.includes(bisher) ? bisher : null;
+  if (angegeben !== null && !gebindeIds.includes(angegeben)) {
+    throw new WarenUngueltig('Das Standard-Gebinde muss eines der Gebinde der Ware sein.');
+  }
+  return angegeben;
+}
+
 export interface WareDaten {
   name: string;
   warengruppeId: string;
   mhdArt: MhdArt;
   gebindeIds: string[];
   aliase: string[];
+  standardGebindeId?: string | null;
 }
 
 export interface WareDetails extends WareRow {
@@ -1024,11 +1043,18 @@ export function createWarenStore(db: Db): WarenStore {
       );
     }
 
+    const standardGebindeId = standardGebindeBestimmen(
+      daten.standardGebindeId,
+      bisher[0]?.standardGebindeId ?? null,
+      gebindeIds,
+    );
+
     const wareId = id ?? randomUUID();
     const werte = {
       name: daten.name,
       warengruppeId: daten.warengruppeId,
       mhdArt: daten.mhdArt,
+      standardGebindeId,
     };
     if (id) {
       await tx.update(waren).set(werte).where(eq(waren.id, id));

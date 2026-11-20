@@ -164,22 +164,24 @@ export function BelegPostenZeile({
               {...(p.art === 'kategorie' && { 'data-kategorie': '' })}
             />
           )}
-          <TextInput
-            label={p.art === 'leergut' ? 'Beschreibung' : 'Text'}
-            placeholder={
-              p.art === 'leergut' ? 'z. B. Pfandrückgabe Kästen' : ware ? ware.name : 'optional'
-            }
-            maxLength={200}
-            value={p.text}
-            onChange={(e) => onAendern({ text: e.currentTarget.value })}
-            error={
-              versucht && p.art === 'leergut' && p.text.trim() === ''
-                ? 'Bitte beschreibe das Leergut.'
-                : undefined
-            }
-            data-nav=""
-            {...(p.art === 'leergut' && { 'data-kategorie': '' })}
-          />
+          {p.art !== 'ware' && (
+            <TextInput
+              label={p.art === 'leergut' ? 'Beschreibung' : 'Artikel'}
+              placeholder={p.art === 'leergut' ? 'z. B. Pfandrückgabe Kästen' : 'z. B. Deko'}
+              maxLength={p.art === 'leergut' ? 200 : 100}
+              value={p.text}
+              onChange={(e) => onAendern({ text: e.currentTarget.value })}
+              error={
+                versucht && p.text.trim() === ''
+                  ? p.art === 'leergut'
+                    ? 'Bitte beschreibe das Leergut.'
+                    : 'Bitte gib den Artikel an.'
+                  : undefined
+              }
+              data-nav=""
+              {...(p.art === 'leergut' && { 'data-kategorie': '' })}
+            />
+          )}
         </SimpleGrid>
 
         <SimpleGrid

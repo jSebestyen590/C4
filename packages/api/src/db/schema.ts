@@ -187,6 +187,8 @@ export const waren = pgTable('waren', {
     .references(() => warengruppen.id),
   mhdArt: text('mhd_art').$type<MhdArt>().notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Soft reference to `gebinde.id`; must be one of the Ware's Gebinde (checked in the API). */
+  standardGebindeId: text('standard_gebinde_id'),
 });
 export type WareRow = typeof waren.$inferSelect;
 

@@ -183,7 +183,15 @@ describe('belegPruefen', () => {
     belegEntwurfDatenSchema.parse({
       rechnungsstellerId: 'r1',
       belegdatum: '2027-01-05',
-      posten: [{ kategorieId: 'k1', anzahlMilli: 1000, einzelpreisCent: 1190, steuersatz: 1900 }],
+      posten: [
+        {
+          kategorieId: 'k1',
+          text: 'Deko',
+          anzahlMilli: 1000,
+          einzelpreisCent: 1190,
+          steuersatz: 1900,
+        },
+      ],
       zahlweg: 'bank',
       bezahldatum: '2027-01-06',
       datei: {

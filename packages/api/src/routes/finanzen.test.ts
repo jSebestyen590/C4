@@ -2062,7 +2062,13 @@ describe('finanzen', () => {
       expect(ohneDatei.status).toBe(201);
       const kat = await t.entwurf({
         posten: [
-          { kategorieId: 'safe', text: '', anzahlMilli: 1000, einzelpreisCent: 100, steuersatz: 0 },
+          {
+            kategorieId: 'safe',
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 100,
+            steuersatz: 0,
+          },
         ],
       });
       expect(((await (await t.buchenE(kat)).json()) as Dto).error).toContain(
@@ -2076,7 +2082,7 @@ describe('finanzen', () => {
         posten: [
           {
             kategorieId: t.kat,
-            text: '',
+            text: 'Deko',
             anzahlMilli: 1000,
             einzelpreisCent: 60000,
             steuersatz: 0,
@@ -2120,7 +2126,13 @@ describe('finanzen', () => {
         zahlweg: 'bar',
         fachId: fach,
         posten: [
-          { kategorieId: t.kat, text: '', anzahlMilli: 1000, einzelpreisCent: 1200, steuersatz: 0 },
+          {
+            kategorieId: t.kat,
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 1200,
+            steuersatz: 0,
+          },
         ],
         stueckelung,
       });
@@ -2225,7 +2237,13 @@ describe('finanzen', () => {
         mitgliedId: 'm2',
         bezahldatum: null,
         posten: [
-          { kategorieId: t.kat, text: '', anzahlMilli: 1000, einzelpreisCent: 1500, steuersatz: 0 },
+          {
+            kategorieId: t.kat,
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 1500,
+            steuersatz: 0,
+          },
         ],
       });
       const body = {
@@ -2478,6 +2496,44 @@ describe('finanzen', () => {
         expect(auswahl.waren.map((w: Dto) => w.id)).toEqual(['w1', 'w3']);
       });
 
+      it('suggests Kategorien per Artikel from booked Kategorie items, not from Ware items', async () => {
+        const t = await wareSetup();
+        const kat = (text: string) => ({
+          kategorieId: t.kat,
+          text,
+          anzahlMilli: 1000,
+          einzelpreisCent: 100,
+          steuersatz: 0,
+        });
+        await t.gebucht({ posten: [kat('Deko'), kat('deko '), t.ware()] });
+        await t.gebucht({ posten: [kat('Kerzen')] });
+        const erwartet = [
+          { artikel: 'Deko', kategorien: [{ kategorieId: t.kat, anzahl: 2 }] },
+          { artikel: 'Kerzen', kategorien: [{ kategorieId: t.kat, anzahl: 1 }] },
+        ];
+        expect(await t.lesen<Dto>('vorstand-token', '/artikel-vorschlaege')).toEqual(erwartet);
+        expect(
+          (await t.lesen<Dto>('member-token', '/einreichungen/auswahl')).artikelVorschlaege,
+        ).toEqual(erwartet);
+        expect((await t.roh('member-token', 'GET', '/artikel-vorschlaege')).status).toBe(403);
+      });
+
+      it('requires an Artikel on Kategorie items of a submission and ignores a Ware text', async () => {
+        const t = await wareSetup();
+        const senden = (posten: Dto[]) =>
+          t.roh('member-token', 'POST', '/einreichungen', {
+            datei: datei('5'.repeat(64)),
+            belegdatum: '2027-01-05',
+            betragCent: 100,
+            posten,
+          });
+        const kat = { kategorieId: t.kat, anzahlMilli: 1000, einzelpreisCent: 100, steuersatz: 0 };
+        expect((await senden([kat])).status).toBe(400);
+        expect((await senden([{ ...kat, text: '  ' }])).status).toBe(400);
+        expect((await senden([{ ...kat, text: 'x'.repeat(101) }])).status).toBe(400);
+        expect((await senden([{ ...kat, text: 'Deko' }])).status).toBe(201);
+      });
+
       it('warns when the stated amount differs from the sum and copies the submission data', async () => {
         const t = await wareSetup();
         const id = await t.entwurf({ eingereichtBetragCent: 1000 });
@@ -2558,6 +2614,8 @@ describe('finanzen', () => {
           warengruppeId: 'unten',
           archiviert: false,
           gebindeIds: ['g1'],
+          aliase: ['Coke'],
+          standardGebindeId: 'g1',
         });
         t.l.waren.set('w2', {
           id: 'w2',
@@ -2571,6 +2629,8 @@ describe('finanzen', () => {
           {
             id: 'w1',
             name: 'Cola',
+            aliase: ['Coke'],
+            standardGebindeId: 'g1',
             kategorieId: t.kat,
             gebinde: [{ id: 'g1', pfandGesamtCent: 25 }],
           },

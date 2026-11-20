@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  artikelVorschlaegeBilden,
   belegBerechnen,
   belegBuchungstext,
   einreichungStatus,
@@ -60,6 +61,8 @@ export interface FakeLager {
       warengruppeId: string;
       archiviert: boolean;
       gebindeIds: string[];
+      aliase?: string[];
+      standardGebindeId?: string | null;
     }
   >;
   gebinde: Map<string, Gebinde & { archiviert: boolean }>;
@@ -425,7 +428,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           datei: e.daten.datei ?? null,
           posten: e.daten.posten.map((p) => ({
             kategorieId: 'kategorieId' in p ? (p.kategorieId ?? null) : null,
-            text: p.text,
+            text: 'text' in p ? p.text : '',
             betragCent: postenBetrag(p),
             steuersatz: p.steuersatz,
             wareId: p.art === 'ware' ? (p.wareId ?? null) : null,
@@ -602,6 +605,25 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
       g.kategorieId = kategorieId;
       return true;
     },
+    async artikelVorschlaege() {
+      const storno = storniert();
+      const zaehler = new Map<string, { artikel: string; kategorieId: string; anzahl: number }>();
+      for (const b of belege) {
+        if (storno.has(b.buchungId)) continue;
+        for (const p of b.posten) {
+          if (p.art !== 'kategorie' || !p.text.trim()) continue;
+          const schluessel = `${p.text.trim().toLowerCase()}\u0000${p.kategorieId}`;
+          const z = zaehler.get(schluessel) ?? {
+            artikel: p.text.trim(),
+            kategorieId: p.kategorieId,
+            anzahl: 0,
+          };
+          z.anzahl += 1;
+          zaehler.set(schluessel, z);
+        }
+      }
+      return artikelVorschlaegeBilden([...zaehler.values()]);
+    },
     async belegWaren() {
       const gruppen = [...k.lager.warengruppen.values()];
       const alle = [...k.lager.gebinde.values()];
@@ -613,6 +635,8 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
           name: w.name,
           warengruppeId: w.warengruppeId,
           kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+          aliase: [...(w.aliase ?? [])],
+          standardGebindeId: w.standardGebindeId ?? null,
           gebinde: w.gebindeIds.flatMap((gid) => {
             const g = k.lager.gebinde.get(gid);
             return g && !g.archiviert

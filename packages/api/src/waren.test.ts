@@ -13,6 +13,7 @@ import {
   inventurUeberlappt,
   naechstePosition,
   reihenfolgeFehler,
+  standardGebindeBestimmen,
   verwendetMeldung,
   WarenUngueltig,
   zaehlungenNormalisieren,
@@ -368,5 +369,21 @@ describe('inventurUeberlappt', () => {
     expect(inventurUeberlappt(alle, ['regal'], 'regal')).toBe(true);
     expect(inventurUeberlappt(alle, ['lager'], 'etage')).toBe(true);
     expect(inventurUeberlappt(alle, ['etage'], 'lager')).toBe(true);
+  });
+});
+
+describe('standardGebindeBestimmen', () => {
+  const gebinde = ['a', 'b'];
+  it('takes a given Standard-Gebinde of the Ware, null clears it', () => {
+    expect(standardGebindeBestimmen('b', 'a', gebinde)).toBe('b');
+    expect(standardGebindeBestimmen(null, 'a', gebinde)).toBeNull();
+  });
+  it('rejects one that is not a Gebinde of the Ware', () => {
+    expect(() => standardGebindeBestimmen('x', null, gebinde)).toThrow(WarenUngueltig);
+  });
+  it('keeps the current one when omitted and resets it once the Gebinde was removed', () => {
+    expect(standardGebindeBestimmen(undefined, 'a', gebinde)).toBe('a');
+    expect(standardGebindeBestimmen(undefined, 'c', gebinde)).toBeNull();
+    expect(standardGebindeBestimmen(undefined, null, gebinde)).toBeNull();
   });
 });

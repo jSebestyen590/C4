@@ -46,6 +46,8 @@ import {
   type PruefKonto,
   type RechnungsstellerDto,
   postenBetrag,
+  artikelVorschlaegeBilden,
+  type ArtikelKategorieVorschlaege,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
@@ -53,6 +55,7 @@ import {
   finBelegEntwuerfe,
   finBelegKorrekturen,
   finBelegposten,
+  wareAliase,
   finBuchungen,
   finErstattungBelege,
   finErstattungen,
@@ -229,7 +232,7 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
       datum: daten.zahlweg === 'auslage' ? daten.belegdatum : daten.bezahldatum!,
       rechnungssteller: steller!.name,
       postenTexte: daten.posten.map((p) =>
-        p.art === 'ware' && !p.text ? (waren.get(p.wareId!)?.name ?? '') : p.text,
+        p.art === 'ware' ? (waren.get(p.wareId!)?.name ?? '') : p.text,
       ),
     },
   };
@@ -392,6 +395,8 @@ export interface BelegeStore {
   warengruppeKategorieSetzen(id: string, kategorieId: string | null): Promise<boolean>;
   /** Non-archived Waren with their Gebinde, deposit and suggested Kategorie, for the Beleg form. */
   belegWaren(): Promise<BelegWareDto[]>;
+  /** Artikel names of booked, not reversed Kategorie items with the Kategorien used for them. */
+  artikelVorschlaege(): Promise<ArtikelKategorieVorschlaege>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
     eingabe: ErstattungEingabe,
@@ -832,7 +837,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         datei: d.datei,
         posten: d.posten.map((p) => ({
           kategorieId: 'kategorieId' in p ? (p.kategorieId ?? null) : null,
-          text: p.text,
+          text: 'text' in p ? p.text : '',
           betragCent: postenBetrag(p),
           steuersatz: p.steuersatz,
           wareId: p.art === 'ware' ? (p.wareId ?? null) : null,
@@ -1355,12 +1360,33 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       );
     },
 
+    async artikelVorschlaege() {
+      const rows = await db
+        .select({
+          artikel: sql<string>`min(trim(${finBelegposten.text}))`,
+          kategorieId: finBelegposten.kategorieId,
+          anzahl: sql<number>`count(*)::int`,
+        })
+        .from(finBelegposten)
+        .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+        .where(
+          and(
+            eq(finBelegposten.art, 'kategorie'),
+            sql`trim(${finBelegposten.text}) <> ''`,
+            sql`not exists (select 1 from fin_buchungen s where s.storno_von = ${finBelege.buchungId})`,
+          ),
+        )
+        .groupBy(sql`lower(trim(${finBelegposten.text}))`, finBelegposten.kategorieId);
+      return artikelVorschlaegeBilden(rows);
+    },
+
     async belegWaren() {
-      const [gruppen, wareRows, verknuepft, alleGebinde] = await Promise.all([
+      const [gruppen, wareRows, verknuepft, alleGebinde, aliasRows] = await Promise.all([
         db.select().from(warengruppen),
         db.select().from(waren).where(eq(waren.archiviert, false)).orderBy(asc(waren.name)),
         db.select().from(wareGebinde),
         db.select().from(gebinde),
+        db.select().from(wareAliase),
       ]);
       const alle = alleGebinde as Gebinde[];
       return wareRows.map((w) => ({
@@ -1368,6 +1394,11 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         name: w.name,
         warengruppeId: w.warengruppeId,
         kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+        aliase: aliasRows
+          .filter((a) => a.wareId === w.id)
+          .map((a) => a.alias)
+          .sort((a, b) => a.localeCompare(b, 'de')),
+        standardGebindeId: w.standardGebindeId,
         gebinde: verknuepft
           .filter((v) => v.wareId === w.id)
           .flatMap((v) => {

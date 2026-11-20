@@ -132,15 +132,28 @@ const anzahlMilliFeld = z
   .min(-1_000_000, 'Die Anzahl ist zu groß.')
   .max(1_000_000, 'Die Anzahl ist zu groß.');
 
+/** Artikel of a Kategorie item (e.g. "Deko"), stored in `text`. */
+const artikelFeld = z
+  .string('Bitte gib den Artikel an.')
+  .trim()
+  .min(1, 'Bitte gib den Artikel an.')
+  .max(100, 'Höchstens 100 Zeichen erlaubt.');
+
 /** Item booked to an Aufwand Konto. Drafts without `art` are of this kind. */
 export const belegPostenKategorieSchema = z.object({
   art: z.literal('kategorie').default('kategorie'),
   /** Konto of the kind `aufwand`; null while the draft is incomplete. */
   kategorieId: nullish(z.string().min(1)),
-  text: textFeld,
+  /** The Artikel (required). */
+  text: artikelFeld,
   anzahlMilli: anzahlMilliFeld,
   einzelpreisCent: centFeld,
   steuersatz: steuersatzFeld,
+});
+
+/** Drafts may still miss the Artikel; `belegPruefen` requires it when booking. */
+const belegPostenKategorieEntwurfSchema = belegPostenKategorieSchema.extend({
+  text: z.string().trim().max(100, 'Höchstens 100 Zeichen erlaubt.').default(''),
 });
 
 /** Stock item: a Ware in a Gebinde. The unit price excludes the deposit, which is `pfandCent` per Gebinde. */
@@ -150,8 +163,6 @@ export const belegPostenWareSchema = z.object({
   gebindeId: nullish(z.string().min(1)),
   /** Aufwand Konto; suggested from the Warengruppe, required when booking. */
   kategorieId: nullish(z.string().min(1)),
-  /** Optional, the name of the Ware by default. */
-  text: textFeld,
   /** Number of Gebinde in thousandths. */
   anzahlMilli: anzahlMilliFeld,
   /** Price per Gebinde without deposit. */
@@ -171,7 +182,7 @@ export const belegPostenLeergutSchema = z.object({
 });
 
 export const belegPostenSchema = z.discriminatedUnion('art', [
-  belegPostenKategorieSchema,
+  belegPostenKategorieEntwurfSchema,
   belegPostenWareSchema,
   belegPostenLeergutSchema,
 ]);
@@ -533,6 +544,7 @@ export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
       if (!p.wareId) f('posten', `${n}: Bitte wähle eine Ware.`);
       else if (!p.gebindeId) f('posten', `${n}: Bitte wähle ein Gebinde.`);
     }
+    if (p.art === 'kategorie' && !p.text) f('posten', `${n}: Bitte gib den Artikel an.`);
     if (p.art === 'leergut' && !p.text) f('posten', `${n}: Bitte beschreibe das Leergut.`);
   });
   const rechnung = belegBerechnen(daten);
@@ -645,6 +657,8 @@ export interface EinreichungAuswahlDto {
   kategorien: { id: string; name: string }[];
   /** Non-archived Waren with their Gebinde, for Ware items. */
   waren: BelegWareDto[];
+  /** Artikel names booked so far with their Kategorien, for the Artikel autocomplete and Kategorie suggestion. */
+  artikelVorschlaege: ArtikelKategorieVorschlaege;
 }
 
 /** `GET /api/finanzen/einreichungen/:id`: own submission with the file. */
@@ -743,7 +757,41 @@ export interface BelegWareDto {
   warengruppeId: string;
   /** Suggested Kategorie from the Warengruppe (inherited); null without an assignment. */
   kategorieId: string | null;
+  /** Other names the Ware is found by (`waren.aliase`). */
+  aliase: string[];
+  /** Gebinde to preselect; null = none (then the only Gebinde, if there is exactly one). */
+  standardGebindeId: string | null;
   gebinde: BelegGebindeDto[];
+}
+
+/** Artikel names already booked on Kategorie items, with the Kategorien used for them (most often first). */
+export type ArtikelKategorieVorschlaege = {
+  artikel: string;
+  kategorien: { kategorieId: string; anzahl: number }[];
+}[];
+
+/**
+ * Builds the suggestions from counted (Artikel, Kategorie) groups. Artikel are compared case-insensitively
+ * and trimmed; the shown spelling is the one of the most frequent group (ties: alphabetically first).
+ * Artikel are sorted by name, Kategorien by `anzahl` descending.
+ */
+export function artikelVorschlaegeBilden(
+  zeilen: readonly { artikel: string; kategorieId: string; anzahl: number }[],
+): ArtikelKategorieVorschlaege {
+  const sortiert = zeilen
+    .filter((z) => z.artikel.trim() !== '')
+    .sort((a, b) => b.anzahl - a.anzahl || a.artikel.localeCompare(b.artikel, 'de'));
+  const nachName = new Map<string, ArtikelKategorieVorschlaege[number]>();
+  for (const z of sortiert) {
+    const schluessel = z.artikel.trim().toLowerCase();
+    const eintrag = nachName.get(schluessel) ?? { artikel: z.artikel.trim(), kategorien: [] };
+    const vorhanden = eintrag.kategorien.find((k) => k.kategorieId === z.kategorieId);
+    if (vorhanden) vorhanden.anzahl += z.anzahl;
+    else eintrag.kategorien.push({ kategorieId: z.kategorieId, anzahl: z.anzahl });
+    nachName.set(schluessel, eintrag);
+  }
+  for (const e of nachName.values()) e.kategorien.sort((a, b) => b.anzahl - a.anzahl);
+  return [...nachName.values()].sort((a, b) => a.artikel.localeCompare(b.artikel, 'de'));
 }
 
 export interface RechnungsstellerDto {

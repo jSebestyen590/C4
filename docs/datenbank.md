@@ -65,6 +65,10 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   vorzeichenbehafteter `menge` in Basiseinheiten, `grund`, `text`, `datum`; `ware_id` und `erstellt_von` ohne Fremdschlüssel, die API prüft
   die Ware), 0231 die allgemeine Schlüssel-Wert-Tabelle `einstellungen` (erster Schlüssel `lager_abgleich_stichtag`, ISO-Datum; änderbar).
   Die Down-Dateien löschen die Tabellen. Rollback-Ziel nur dafür: `0229_fin_beleg_entwuerfe_verworfen_am`.
+- 0232 (Finanzen, Belege 4d): `waren.standard_gebinde_id text NULL` (Standard-Gebinde der Ware, wird im Beleg vorbelegt; ohne
+  Fremdschlüssel, die API prüft, dass es zu den Gebinden der Ware gehört, und setzt es zurück, wenn das Gebinde entfernt wird).
+  `ADD COLUMN IF NOT EXISTS`, die Down-Datei leert nur die Werte (DSQL kann keine Spalten löschen). Rollback-Ziel:
+  `0231_einstellungen`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden

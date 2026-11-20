@@ -169,15 +169,18 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
     steuersatz: p.steuersatz,
   };
   if (p.art === 'leergut') return { art: 'leergut', ...basis };
-  if (p.art === 'ware')
+  if (p.art === 'ware') {
     return {
       art: 'ware',
-      ...basis,
+      anzahlMilli: basis.anzahlMilli,
+      einzelpreisCent: basis.einzelpreisCent,
+      steuersatz: basis.steuersatz,
       wareId: p.wareId,
       gebindeId: p.gebindeId,
       kategorieId: p.kategorieId,
       pfandCent: p.pfandCent,
     };
+  }
   return { art: 'kategorie', kategorieId: p.kategorieId, ...basis };
 }
 
@@ -246,7 +249,7 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     key: neuerKey(),
     art: p.art,
     kategorieId: p.art === 'leergut' ? null : (p.kategorieId ?? null),
-    text: p.text,
+    text: p.art === 'ware' ? '' : p.text,
     anzahl: anzahlText(p.anzahlMilli),
     einzelpreisCent: p.einzelpreisCent,
     steuersatz: p.steuersatz,
