@@ -551,8 +551,9 @@ export const belegNummer = (jahr: number, n: number): string =>
 export const belegBuchungstext = (nummer: string, rechnungssteller: string): string =>
   `Beleg ${nummer}: ${rechnungssteller}`;
 
-export const erstattungBuchungstext = (mitglied: string, anzahl: number): string =>
-  `Erstattung Auslagen an ${mitglied} (${anzahl} ${anzahl === 1 ? 'Beleg' : 'Belege'})`;
+/** A negative sum is an Einlage: the member pays the club. */
+export const erstattungBuchungstext = (mitglied: string, anzahl: number, summeCent = 1): string =>
+  `${summeCent < 0 ? `Einlage von ${mitglied} für Auslagen` : `Erstattung Auslagen an ${mitglied}`} (${anzahl} ${anzahl === 1 ? 'Beleg' : 'Belege'})`;
 
 // ----- Validation
 

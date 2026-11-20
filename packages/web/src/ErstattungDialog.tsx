@@ -92,8 +92,8 @@ export function ErstattungDialog({
         color: 'green',
         autoClose: HINWEIS_DAUER_MS,
         message: wiederholt
-          ? `Erstattung war schon gebucht (Buchung Nr. ${buchungSeq}).`
-          : `Erstattung gebucht (Buchung Nr. ${buchungSeq}).`,
+          ? `${summe < 0 ? 'Einlage' : 'Erstattung'} war schon gebucht (Buchung Nr. ${buchungSeq}).`
+          : `${summe < 0 ? 'Einlage' : 'Erstattung'} gebucht (Buchung Nr. ${buchungSeq}).`,
       });
       onClose();
     },

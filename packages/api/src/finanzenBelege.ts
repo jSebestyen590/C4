@@ -324,7 +324,7 @@ export function planeErstattung(
     fehler,
     zeilen,
     summeCent,
-    text: erstattungBuchungstext(kontext.mitgliedName, ids.length),
+    text: erstattungBuchungstext(kontext.mitgliedName, ids.length, summeCent),
   };
 }
 
