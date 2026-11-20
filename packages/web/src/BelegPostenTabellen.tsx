@@ -339,6 +339,7 @@ function PostenTabellenZeile({
         aria-label={`Kategorie, Posten ${nr}`}
         placeholder="Kategorie suchen"
         searchable
+        onFocus={(e) => e.currentTarget.select()}
         selectFirstOptionOnChange
         allowDeselect={false}
         data={
@@ -372,6 +373,7 @@ function PostenTabellenZeile({
               aria-label={`Ware, Posten ${nr}`}
               placeholder="Ware suchen"
               searchable
+              onFocus={(e) => e.currentTarget.select()}
               selectFirstOptionOnChange
               data={wareOptionen(waren)}
               filter={wareFilter(waren)}
