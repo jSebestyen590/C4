@@ -15,6 +15,8 @@ import {
   mengenAus,
   pfandJeSatz,
   neuerPosten,
+  postenHinzufuegen,
+  postenSortieren,
   satzText,
   steuersatzVorschlag,
   stueckelungAus,
@@ -28,7 +30,13 @@ const voll = (): BelegFormular => ({
   rechnungsstellerId: 'r1',
   belegdatum: '2027-03-01',
   posten: [
-    { ...neuerPosten(1900), kategorieId: 'k1', text: 'Deko', anzahl: '2', einzelpreisCent: 500 },
+    {
+      ...neuerPosten(1900, 'kategorie'),
+      kategorieId: 'k1',
+      text: 'Deko',
+      anzahl: '2',
+      einzelpreisCent: 500,
+    },
   ],
   zahlweg: 'bar',
   bezahldatum: '2027-03-01',
@@ -186,8 +194,8 @@ describe('Ware, Leergut und Einreichung', () => {
         einzelpreisCent: 1000,
         pfandCent: 300,
       },
+      { ...neuerPosten(1900, 'kategorie'), kategorieId: 'k2', einzelpreisCent: 100 },
       { ...neuerPosten(700), art: 'leergut', text: 'Leergut', anzahl: '1', einzelpreisCent: -600 },
-      { ...neuerPosten(1900), kategorieId: 'k2', einzelpreisCent: 100 },
     ],
     eingereichtBetragCent: 1234,
     rechnungsstellerName: ' Getränke Müller ',
@@ -206,14 +214,14 @@ describe('Ware, Leergut und Einreichung', () => {
       steuersatz: 700,
       pfandCent: 300,
     });
-    expect(d.posten[1]).toEqual({
+    expect(d.posten[2]).toEqual({
       art: 'leergut',
       text: 'Leergut',
       anzahlMilli: 1000,
       einzelpreisCent: -600,
       steuersatz: 700,
     });
-    expect(d.posten[2]!.art).toBe('kategorie');
+    expect(d.posten[1]!.art).toBe('kategorie');
   });
   it('trägt Betrag, Name und Notiz ohne Verlust', () => {
     const d = formularZuDaten(lager());
@@ -245,7 +253,7 @@ describe('Ware, Leergut und Einreichung', () => {
   it('verlangt Ware, Gebinde und Leergut-Text', () => {
     const f = lager();
     f.posten[0] = { ...f.posten[0]!, wareId: null };
-    f.posten[1] = { ...f.posten[1]!, text: '' };
+    f.posten[2] = { ...f.posten[2]!, text: '' };
     const m = formularFehler(f)
       .map((x) => x.meldung)
       .join(' ');
@@ -253,7 +261,7 @@ describe('Ware, Leergut und Einreichung', () => {
     expect(m).toContain('Bitte beschreibe das Leergut');
   });
   it('zählt eine Ware-Zeile als Inhalt', () => {
-    const f = { ...leeresFormular(), posten: [{ ...neuerPosten(), art: 'ware' as const }] };
+    const f = { ...leeresFormular(), posten: [{ ...neuerPosten(), wareId: 'w1' }] };
     expect(hatInhalt(f)).toBe(true);
   });
 });
@@ -322,5 +330,51 @@ describe('Datei', () => {
     expect(groesseText(500)).toBe('500 B');
     expect(groesseText(2048)).toBe('2 KB');
     expect(groesseText(1.5 * 1024 * 1024)).toBe('1,5 MB');
+  });
+});
+
+describe('Reihenfolge der Posten', () => {
+  const p = (art: 'ware' | 'kategorie' | 'leergut', key: string) => ({
+    ...neuerPosten(700, art),
+    key,
+  });
+  it('neue Posten sind standardmäßig Ware', () => {
+    expect(neuerPosten().art).toBe('ware');
+  });
+  it('sortiert Waren, Kategorien, Leergut und erhält die Reihenfolge innerhalb einer Art', () => {
+    const s = postenSortieren([
+      p('leergut', 'a'),
+      p('kategorie', 'b'),
+      p('ware', 'c'),
+      p('kategorie', 'd'),
+      p('ware', 'e'),
+    ]);
+    expect(s.map((x) => x.key)).toEqual(['c', 'e', 'b', 'd', 'a']);
+  });
+  it('fügt einen Posten am Ende seiner Gruppe ein', () => {
+    const liste = [p('ware', 'a'), p('kategorie', 'b'), p('leergut', 'c')];
+    expect(postenHinzufuegen(liste, p('ware', 'n')).map((x) => x.key)).toEqual([
+      'a',
+      'n',
+      'b',
+      'c',
+    ]);
+    expect(postenHinzufuegen(liste, p('leergut', 'n')).map((x) => x.key)).toEqual([
+      'a',
+      'b',
+      'c',
+      'n',
+    ]);
+    expect(postenHinzufuegen([], p('kategorie', 'n')).map((x) => x.key)).toEqual(['n']);
+  });
+  it('speichert die Posten gruppiert', () => {
+    const f = {
+      ...voll(),
+      posten: [
+        { ...p('leergut', 'a'), text: 'L' },
+        { ...p('ware', 'b'), anzahl: '1' },
+      ],
+    };
+    expect(formularZuDaten(f).posten.map((x) => x.art)).toEqual(['ware', 'leergut']);
   });
 });

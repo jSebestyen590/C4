@@ -1,5 +1,11 @@
 import type { ComboboxItem, ComboboxItemGroup, OptionsFilter } from '@mantine/core';
-import { wareSuchen, type ArtikelKategorieVorschlaege } from '@c4/shared';
+import {
+  wareSuchen,
+  type ArtikelKategorieVorschlaege,
+  type BelegWareDto,
+  type KontoDto,
+} from '@c4/shared';
+import { anzahlLesen, steuersatzVorschlag, type PostenZeile } from './belegFormular';
 
 /** Options of a Ware select (value = Ware id, label = name). */
 export const wareOptionen = (waren: readonly { id: string; name: string }[]): ComboboxItem[] =>
@@ -87,3 +93,72 @@ export function vorgeschlageneKategorie(
 /** Artikel names for an Autocomplete. */
 export const artikelNamen = (vorschlaege: ArtikelKategorieVorschlaege): string[] =>
   vorschlaege.map((v) => v.artikel);
+
+// ----- Field logic shared by the card mask and the tables
+
+/** Patch for choosing a Kategorie: the id plus the Kategorie's standard tax rate. */
+export function kategoriePatch(
+  aufwand: readonly KontoDto[],
+  id: string | null,
+): Partial<PostenZeile> {
+  const satz = steuersatzVorschlag(aufwand.find((k) => k.id === id));
+  return { kategorieId: id, ...(satz !== null && { steuersatz: satz }) };
+}
+
+/** Patch for choosing a Ware: standard Gebinde with deposit and the Warengruppe's Kategorie. */
+export function warePatch(
+  waren: readonly BelegWareDto[],
+  aufwand: readonly KontoDto[],
+  id: string | null,
+): Partial<PostenZeile> {
+  const neu = waren.find((w) => w.id === id);
+  return {
+    wareId: id,
+    ...standardGebindeWaehlen(neu),
+    ...(neu?.kategorieId && kategoriePatch(aufwand, neu.kategorieId)),
+  };
+}
+
+/** Patch for typing the Artikel of a Kategorie item: preselects the most frequent Kategorie while it is empty. */
+export function artikelPatch(
+  p: Pick<PostenZeile, 'kategorieId'>,
+  aufwand: readonly KontoDto[],
+  vorschlaege: ArtikelKategorieVorschlaege,
+  artikel: string,
+): Partial<PostenZeile> {
+  const vorschlag = p.kategorieId ? null : vorgeschlageneKategorie(aufwand, vorschlaege, artikel);
+  return { text: artikel, ...(vorschlag !== null && kategoriePatch(aufwand, vorschlag)) };
+}
+
+/** Patch for changing the kind of an item (clears the fields of the other kinds). */
+export function artWechselPatch(art: PostenZeile['art']): Partial<PostenZeile> {
+  if (art === 'leergut')
+    return { art, kategorieId: null, wareId: null, gebindeId: null, pfandCent: null };
+  if (art === 'kategorie') return { art, wareId: null, gebindeId: null, pfandCent: null };
+  return { art };
+}
+
+export interface PostenFeldFehler {
+  ware?: string;
+  gebinde?: string;
+  kategorie?: string;
+  text?: string;
+  anzahl?: string;
+  preis?: string;
+}
+
+/** Messages per field of an item; the missing-value ones only after the first book attempt. */
+export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldFehler {
+  const f: PostenFeldFehler = {};
+  if (p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null) f.anzahl = 'Ungültig, z. B. 1,5';
+  if (!versucht) return f;
+  if (p.art === 'ware') {
+    if (!p.wareId) f.ware = 'Bitte wähle eine Ware.';
+    else if (!p.gebindeId) f.gebinde = 'Bitte wähle ein Gebinde.';
+  }
+  if (p.art !== 'leergut' && !p.kategorieId) f.kategorie = 'Bitte wähle eine Kategorie.';
+  if (p.art === 'kategorie' && p.text.trim() === '') f.text = 'Bitte gib den Artikel an.';
+  if (p.art === 'leergut' && p.text.trim() === '') f.text = 'Bitte beschreibe das Leergut.';
+  if (p.einzelpreisCent === null) f.preis = 'Bitte angeben.';
+  return f;
+}

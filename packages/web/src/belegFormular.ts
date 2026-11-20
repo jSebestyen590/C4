@@ -69,18 +69,45 @@ export interface BelegFormular {
 let zaehler = 0;
 const neuerKey = () => `p${++zaehler}`;
 
-export const neuerPosten = (steuersatz: number = STEUERSAETZE[0]): PostenZeile => ({
+export const neuerPosten = (
+  steuersatz: number = STEUERSAETZE[0],
+  art: BelegPostenArt = 'ware',
+): PostenZeile => ({
   key: neuerKey(),
   kategorieId: null,
   text: '',
   anzahl: '1',
   einzelpreisCent: null,
   steuersatz,
-  art: 'kategorie',
+  art,
   wareId: null,
   gebindeId: null,
   pfandCent: null,
 });
+
+/** Order of the item kinds in a Beleg (and the three tables of the Finanzer:in form). */
+export const POSTEN_REIHENFOLGE: readonly BelegPostenArt[] = ['ware', 'kategorie', 'leergut'];
+const rang = (art: BelegPostenArt) => POSTEN_REIHENFOLGE.indexOf(art);
+
+/** Items grouped by kind (Waren, Kategorien, Leergut); stable within a kind. */
+export const postenSortieren = <T extends { art: BelegPostenArt }>(posten: readonly T[]): T[] =>
+  posten
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => rang(a.p.art) - rang(b.p.art) || a.i - b.i)
+    .map((x) => x.p);
+
+/** Appends an item at the end of its kind's group (the list stays grouped). */
+export function postenHinzufuegen<T extends { art: BelegPostenArt }>(
+  posten: readonly T[],
+  neu: T,
+): T[] {
+  const sortiert = postenSortieren(posten);
+  let ende = -1;
+  sortiert.forEach((p, i) => {
+    if (rang(p.art) <= rang(neu.art)) ende = i;
+  });
+  return [...sortiert.slice(0, ende + 1), neu, ...sortiert.slice(ende + 1)];
+}
 
 export const leeresFormular = (): BelegFormular => ({
   rechnungsstellerId: null,
@@ -200,7 +227,7 @@ export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
     rechnungsstellerId: f.rechnungsstellerId,
     belegdatum: f.belegdatum || null,
     modus: f.modus,
-    posten: f.posten.map(postenZuDaten),
+    posten: postenSortieren(f.posten).map(postenZuDaten),
     korrekturen,
     zahlweg: f.zahlweg,
     bezahldatum: f.zahlweg && f.zahlweg !== 'auslage' && f.bezahldatum ? f.bezahldatum : null,
@@ -221,7 +248,7 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     rechnungsstellerId: d.rechnungsstellerId,
     belegdatum: d.belegdatum ?? '',
     modus: d.modus,
-    posten: d.posten.length > 0 ? d.posten.map(postenZuZeile) : [neuerPosten()],
+    posten: d.posten.length > 0 ? postenSortieren(d.posten.map(postenZuZeile)) : [neuerPosten()],
     korrekturen: Object.fromEntries(
       d.korrekturen.map((k) => [
         k.steuersatz,
@@ -269,7 +296,8 @@ export function hatInhalt(f: BelegFormular): boolean {
     f.notiz.trim() !== '' ||
     f.posten.some(
       (p) =>
-        p.art !== 'kategorie' ||
+        p.art !== 'ware' ||
+        p.wareId ||
         p.kategorieId ||
         p.text.trim() !== '' ||
         p.einzelpreisCent !== null,

@@ -21,14 +21,17 @@ import {
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { anzahlLesen, satzText, steuersatzVorschlag, type PostenZeile } from './belegFormular';
+import { satzText, type PostenZeile } from './belegFormular';
 import {
   artikelNamen,
+  artikelPatch,
+  artWechselPatch,
   kategorieOptionenMitVorschlaegen,
-  standardGebindeWaehlen,
-  vorgeschlageneKategorie,
+  kategoriePatch,
+  postenFeldFehler,
   wareFilter,
   wareOptionen,
+  warePatch,
 } from './belegAuswahl';
 import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
@@ -73,29 +76,10 @@ export function BelegPostenZeile({
 }>) {
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
-  const kategorieSetzen = (id: string | null) => {
-    const satz = steuersatzVorschlag(aufwand.find((k) => k.id === id));
-    return { kategorieId: id, ...(satz !== null && { steuersatz: satz }) };
-  };
-  const artWechseln = (art: BelegPostenArt) =>
-    onAendern(
-      art === 'leergut'
-        ? { art, kategorieId: null, wareId: null, gebindeId: null, pfandCent: null }
-        : art === 'kategorie'
-          ? { art, wareId: null, gebindeId: null, pfandCent: null }
-          : { art },
-    );
-  const wareWaehlen = (id: string | null) => {
-    const neu = waren.find((w) => w.id === id);
-    onAendern({
-      wareId: id,
-      ...standardGebindeWaehlen(neu),
-      ...(neu?.kategorieId && kategorieSetzen(neu.kategorieId)),
-    });
-  };
+  const fehler = postenFeldFehler(p, versucht);
 
   return (
-    <Paper withBorder p="sm">
+    <Paper withBorder p="sm" data-zeile={p.key}>
       <Stack gap="xs">
         <Group justify="space-between" wrap="nowrap" gap="xs">
           <Text size="sm" fw={600}>
@@ -105,7 +89,7 @@ export function BelegPostenZeile({
             size="xs"
             aria-label={`Art von Posten ${index + 1}`}
             value={p.art}
-            onChange={(v) => artWechseln(v as BelegPostenArt)}
+            onChange={(v) => onAendern(artWechselPatch(v as BelegPostenArt))}
             data={BELEG_POSTEN_ARTEN.map((a) => ({ value: a, label: BELEG_POSTEN_ART_LABELS[a] }))}
           />
           <ActionIcon
@@ -130,9 +114,9 @@ export function BelegPostenZeile({
               data={wareOptionen(waren)}
               filter={wareFilter(waren)}
               value={p.wareId}
-              onChange={wareWaehlen}
+              onChange={(v) => onAendern(warePatch(waren, aufwand, v))}
               nothingFoundMessage="Keine Ware gefunden"
-              error={versucht && !p.wareId ? 'Bitte wähle eine Ware.' : undefined}
+              error={fehler.ware}
               data-nav=""
               data-kategorie=""
             />
@@ -149,7 +133,7 @@ export function BelegPostenZeile({
                   pfandCent: ware?.gebinde.find((g) => g.id === v)?.pfandGesamtCent ?? null,
                 })
               }
-              error={versucht && ware && !p.gebindeId ? 'Bitte wähle ein Gebinde.' : undefined}
+              error={fehler.gebinde}
               data-nav=""
             />
           </SimpleGrid>
@@ -163,16 +147,8 @@ export function BelegPostenZeile({
               maxLength={100}
               data={artikelNamen(artikelVorschlaege)}
               value={p.text}
-              onChange={(v) => {
-                const vorschlag = p.kategorieId
-                  ? null
-                  : vorgeschlageneKategorie(aufwand, artikelVorschlaege, v);
-                onAendern({
-                  text: v,
-                  ...(vorschlag !== null && kategorieSetzen(vorschlag)),
-                });
-              }}
-              error={versucht && p.text.trim() === '' ? 'Bitte gib den Artikel an.' : undefined}
+              onChange={(v) => onAendern(artikelPatch(p, aufwand, artikelVorschlaege, v))}
+              error={fehler.text}
               data-nav=""
               data-kategorie=""
             />
@@ -189,14 +165,14 @@ export function BelegPostenZeile({
                   : aufwand.map((k) => ({ value: k.id, label: k.name }))
               }
               value={p.kategorieId}
-              onChange={(v) => onAendern(kategorieSetzen(v))}
+              onChange={(v) => onAendern(kategoriePatch(aufwand, v))}
               nothingFoundMessage="Keine Kategorie gefunden"
               description={
                 p.art === 'ware' && p.wareId && !p.kategorieId
                   ? 'Der Warengruppe ist keine Kategorie zugeordnet.'
                   : undefined
               }
-              error={versucht && !p.kategorieId ? 'Bitte wähle eine Kategorie.' : undefined}
+              error={fehler.kategorie}
               data-nav=""
             />
           )}
@@ -207,7 +183,7 @@ export function BelegPostenZeile({
               maxLength={200}
               value={p.text}
               onChange={(e) => onAendern({ text: e.currentTarget.value })}
-              error={versucht && p.text.trim() === '' ? 'Bitte beschreibe das Leergut.' : undefined}
+              error={fehler.text}
               data-nav=""
               data-kategorie=""
             />
@@ -230,11 +206,7 @@ export function BelegPostenZeile({
             autoComplete="off"
             value={p.anzahl}
             onChange={(e) => onAendern({ anzahl: e.currentTarget.value })}
-            error={
-              p.anzahl.trim() !== '' && anzahlLesen(p.anzahl) === null
-                ? 'Ungültig, z. B. 1,5'
-                : undefined
-            }
+            error={fehler.anzahl}
             styles={{ input: { textAlign: 'right' } }}
             data-nav=""
           />
@@ -243,7 +215,7 @@ export function BelegPostenZeile({
             negativ={p.art !== 'ware'}
             value={p.einzelpreisCent}
             onWert={(c) => onAendern({ einzelpreisCent: c })}
-            error={versucht && p.einzelpreisCent === null ? 'Bitte angeben.' : undefined}
+            error={fehler.preis}
             data-nav=""
           />
           {p.art === 'ware' && (
@@ -262,7 +234,7 @@ export function BelegPostenZeile({
             value={String(p.steuersatz)}
             onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
             data-nav=""
-            {...(letzte && { 'data-posten-ende': '' })}
+            {...(letzte && { 'data-posten-ende': 'ware' })}
           />
           <Stack gap={2} justify="flex-end">
             <Text size="sm" fw={500}>

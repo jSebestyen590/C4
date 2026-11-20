@@ -13,7 +13,9 @@ import {
   TextInput,
   Title,
   useMatches,
+  useMantineTheme,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,11 +30,13 @@ import {
   type BelegDatei as BelegDateiDaten,
   type BelegGebuchtDto,
   type BelegModus,
+  type BelegPostenArt,
   type BelegWarnungDto,
   type Zahlweg,
 } from '@c4/shared';
 import { useApi, unwrap } from '../api';
 import { BelegEinreichungKopf, BelegVerwerfenDialog } from '../BelegEinreichungKopf';
+import { BelegPostenTabellen } from '../BelegPostenTabellen';
 import { BelegPostenZeile } from '../BelegPostenZeile';
 import { BelegBuchenDialog } from '../BelegBuchenDialog';
 import { BelegDateiFeld } from '../BelegDatei';
@@ -47,6 +51,8 @@ import {
   datenZuFormular,
   leeresFormular,
   neuerPosten,
+  postenHinzufuegen,
+  postenSortieren,
   stueckelungHinweis,
   verwendeteSaetze,
   type BelegFormular,
@@ -148,6 +154,11 @@ export function FinanzenBelegPage() {
   const timer = useRef<number | undefined>(undefined);
   const kette = useRef<Promise<unknown>>(Promise.resolve());
   const wurzel = useRef<HTMLFormElement>(null);
+  const theme = useMantineTheme();
+  // From md: three item tables; below: item cards.
+  const breit = useMediaQuery(`(min-width: ${theme.breakpoints.md})`, true, {
+    getInitialValueInEffect: false,
+  });
   const schluessel = useRef<{ schluessel: string; inhalt: string } | null>(null);
   const vorbelegt = useRef(false);
   const nachspeichern = useRef(false);
@@ -319,18 +330,24 @@ export function FinanzenBelegPage() {
   const dateiUrl = lokaleUrl ?? entwurf.data?.dateiUrl ?? null;
 
   const postenAendern = (key: string, patch: Partial<PostenZeile>) =>
-    aendern((f) => ({
-      ...f,
-      posten: f.posten.map((p) => (p.key === key ? { ...p, ...patch } : p)),
-    }));
-  const postenHinzu = () => {
-    aendern((f) => ({
-      ...f,
-      posten: [...f.posten, neuerPosten(f.posten.at(-1)?.steuersatz ?? STEUERSAETZE[0])],
-    }));
+    aendern((f) => {
+      const posten = f.posten.map((p) => (p.key === key ? { ...p, ...patch } : p));
+      // A changed kind moves the item into its group.
+      return { ...f, posten: 'art' in patch ? postenSortieren(posten) : posten };
+    });
+  const postenEntfernen = (key: string) =>
+    aendern((f) => ({ ...f, posten: f.posten.filter((x) => x.key !== key) }));
+  const postenHinzu = (art: BelegPostenArt = 'ware') => {
+    const neu = neuerPosten(
+      form.posten.filter((p) => p.art === art).at(-1)?.steuersatz ??
+        form.posten.at(-1)?.steuersatz ??
+        STEUERSAETZE[0],
+      art,
+    );
+    aendern((f) => ({ ...f, posten: postenHinzufuegen(f.posten, neu) }));
     setTimeout(() => {
-      const felder = wurzel.current?.querySelectorAll<HTMLElement>('[data-kategorie]');
-      felder?.[felder.length - 1]?.focus();
+      // First input of the new row (table) or card.
+      wurzel.current?.querySelector<HTMLElement>(`[data-zeile="${neu.key}"] [data-nav]`)?.focus();
     }, 0);
   };
 
@@ -455,7 +472,7 @@ export function FinanzenBelegPage() {
               ziel.getAttribute('aria-expanded') !== 'true'
             ) {
               e.preventDefault();
-              postenHinzu();
+              postenHinzu(ziel.getAttribute('data-posten-ende') as BelegPostenArt);
               return;
             }
             enterWeiter(e, wurzel.current, () => void pruefenOeffnen());
@@ -562,34 +579,52 @@ export function FinanzenBelegPage() {
                   data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
                 />
               </Group>
-              {form.posten.map((p, i) => (
-                <BelegPostenZeile
-                  key={p.key}
-                  p={p}
-                  index={i}
-                  letzte={i === form.posten.length - 1}
+              {breit ? (
+                <BelegPostenTabellen
+                  posten={form.posten}
+                  betraege={berechnung.postenBetraege}
+                  pfandBetraege={berechnung.pfandBetraege}
                   modus={form.modus}
                   aufwand={aufwand}
                   waren={belegWaren.data ?? []}
                   artikelVorschlaege={artikelVorschlaege.data ?? []}
-                  betragCent={berechnung.postenBetraege[i] ?? 0}
-                  pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
                   versucht={versucht}
                   kannEntfernen={form.posten.length > 1}
-                  onAendern={(patch) => postenAendern(p.key, patch)}
-                  onEntfernen={() =>
-                    aendern((f) => ({ ...f, posten: f.posten.filter((x) => x.key !== p.key) }))
-                  }
+                  onAendern={postenAendern}
+                  onEntfernen={postenEntfernen}
+                  onHinzu={postenHinzu}
                 />
-              ))}
-              <Group>
-                <Button variant="light" leftSection={<IconPlus size={18} />} onClick={postenHinzu}>
-                  Posten hinzufügen
-                </Button>
-                <Text size="sm" c="dimmed" visibleFrom="sm">
-                  Enter im letzten Feld legt den nächsten Posten an.
-                </Text>
-              </Group>
+              ) : (
+                <>
+                  {form.posten.map((p, i) => (
+                    <BelegPostenZeile
+                      key={p.key}
+                      p={p}
+                      index={i}
+                      letzte={i === form.posten.length - 1}
+                      modus={form.modus}
+                      aufwand={aufwand}
+                      waren={belegWaren.data ?? []}
+                      artikelVorschlaege={artikelVorschlaege.data ?? []}
+                      betragCent={berechnung.postenBetraege[i] ?? 0}
+                      pfandBetragCent={berechnung.pfandBetraege[i] ?? 0}
+                      versucht={versucht}
+                      kannEntfernen={form.posten.length > 1}
+                      onAendern={(patch) => postenAendern(p.key, patch)}
+                      onEntfernen={() => postenEntfernen(p.key)}
+                    />
+                  ))}
+                  <Group>
+                    <Button
+                      variant="light"
+                      leftSection={<IconPlus size={18} />}
+                      onClick={() => postenHinzu()}
+                    >
+                      Posten hinzufügen
+                    </Button>
+                  </Group>
+                </>
+              )}
             </Stack>
 
             {form.modus === 'netto' && (
