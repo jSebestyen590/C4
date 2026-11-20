@@ -1,0 +1,2 @@
+-- Backfill from the old numeric default (1900 -> regel, 700 -> ermaessigt, 0 -> keine); other values have no Art (idempotent).
+UPDATE fin_konten SET steuersatz_art = CASE steuersatz_standard WHEN 1900 THEN 'regel' WHEN 700 THEN 'ermaessigt' WHEN 0 THEN 'keine' END WHERE steuersatz_art IS NULL AND steuersatz_standard IS NOT NULL

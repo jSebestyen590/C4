@@ -16,7 +16,13 @@ import { IconArchive, IconArchiveOff, IconEdit, IconPlus } from '@tabler/icons-r
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { centAnzeigen, KONTO_ART_LABELS, KONTO_ARTEN, type KontoDto } from '@c4/shared';
+import {
+  centAnzeigen,
+  KONTO_ART_LABELS,
+  KONTO_ARTEN,
+  STEUERSATZ_ART_LABELS,
+  type KontoDto,
+} from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -164,9 +170,9 @@ export function FinanzenKontenPage() {
                         Unter {namen.get(k.parentId) ?? 'unbekannt'}
                       </Text>
                     )}
-                    {k.steuersatzStandard !== null && (
+                    {k.steuersatzArt !== null && (
                       <Text size="sm" c="dimmed">
-                        Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                        Steuersatz: {STEUERSATZ_ART_LABELS[k.steuersatzArt]}
                       </Text>
                     )}
                   </Stack>
@@ -223,9 +229,9 @@ export function FinanzenKontenPage() {
                           Unter {namen.get(k.parentId) ?? 'unbekannt'}
                         </Text>
                       )}
-                      {k.steuersatzStandard !== null && (
+                      {k.steuersatzArt !== null && (
                         <Text size="xs" c="dimmed">
-                          Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                          Steuersatz: {STEUERSATZ_ART_LABELS[k.steuersatzArt]}
                         </Text>
                       )}
                     </Table.Td>

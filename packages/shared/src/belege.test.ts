@@ -202,6 +202,16 @@ describe('Nummer, Dateischlüssel, Erstattungszeilen', () => {
   });
 });
 
+const PRUEF_KONTEXT = {
+  heute: '2027-06-01',
+  zeitraeume: [
+    { ab: '2007-01-01', regel: 1900, ermaessigt: 700 },
+    { ab: '2020-07-01', regel: 1600, ermaessigt: 500 },
+    { ab: '2021-01-01', regel: 1900, ermaessigt: 700 },
+  ],
+};
+const pruefen = (d: Parameters<typeof belegPruefen>[0]) => belegPruefen(d, PRUEF_KONTEXT);
+
 describe('belegPruefen', () => {
   const sha = 'b'.repeat(64);
   const gut = () =>
@@ -229,11 +239,11 @@ describe('belegPruefen', () => {
     });
 
   it('accepts a complete Beleg', () => {
-    expect(belegPruefen(gut())).toEqual([]);
+    expect(pruefen(gut())).toEqual([]);
   });
 
   it('reports the missing fields of an empty draft', () => {
-    const felder = belegPruefen(belegEntwurfDatenSchema.parse({})).map((f) => f.feld);
+    const felder = pruefen(belegEntwurfDatenSchema.parse({})).map((f) => f.feld);
     expect(felder).toEqual([
       'rechnungssteller',
       'belegdatum',
@@ -245,10 +255,10 @@ describe('belegPruefen', () => {
   });
 
   it('requires the Belegsumme and that it equals the sum of the Posten', () => {
-    expect(belegPruefen({ ...gut(), belegsummeCent: null })).toEqual([
+    expect(pruefen({ ...gut(), belegsummeCent: null })).toEqual([
       { feld: 'belegsumme', meldung: 'Bitte gib die Belegsumme an.' },
     ]);
-    expect(belegPruefen({ ...gut(), belegsummeCent: 1000 })).toEqual([
+    expect(pruefen({ ...gut(), belegsummeCent: 1000 })).toEqual([
       {
         feld: 'belegsumme',
         meldung: `Die Posten ergeben ${formatEuro(1190)}, die Belegsumme ist ${formatEuro(1000)}.`,
@@ -262,10 +272,10 @@ describe('belegPruefen', () => {
       d.posten[0]!,
       { art: 'leergut', text: 'K', anzahlMilli: 1000, einzelpreisCent: 1190, steuersatz: 1900 },
     ];
-    expect(belegPruefen(d)).toEqual([]);
-    expect(belegPruefen({ ...d, zahlweg: 'bar' })).toEqual([]);
+    expect(pruefen(d)).toEqual([]);
+    expect(pruefen({ ...d, zahlweg: 'bar' })).toEqual([]);
     expect(
-      belegPruefen({ ...d, zahlweg: 'bar', stueckelung: [{ nennwertCent: 100, anzahl: 1 }] }).map(
+      pruefen({ ...d, zahlweg: 'bar', stueckelung: [{ nennwertCent: 100, anzahl: 1 }] }).map(
         (f) => f.feld,
       ),
     ).toEqual(['stueckelung']);
@@ -280,14 +290,14 @@ describe('belegPruefen', () => {
       steuersatz: 0,
     };
     const neg = { ...gut(), posten: [leergut], belegsummeCent: -310 };
-    expect(belegPruefen(neg)).toEqual([]);
-    expect(belegPruefen({ ...neg, zahlweg: 'auslage', mitgliedId: 'm1' })).toEqual([]);
+    expect(pruefen(neg)).toEqual([]);
+    expect(pruefen({ ...neg, zahlweg: 'auslage', mitgliedId: 'm1' })).toEqual([]);
     const bar = { ...neg, zahlweg: 'bar' as const, fachId: 'f1' };
     expect(
-      belegPruefen({ ...bar, stueckelung: [{ nennwertCent: 100, anzahl: 3 }] }).map((f) => f.feld),
+      pruefen({ ...bar, stueckelung: [{ nennwertCent: 100, anzahl: 3 }] }).map((f) => f.feld),
     ).toEqual(['stueckelung']);
     expect(
-      belegPruefen({
+      pruefen({
         ...bar,
         stueckelung: [
           { nennwertCent: 200, anzahl: 1 },
@@ -300,16 +310,14 @@ describe('belegPruefen', () => {
 
   it('needs a reason instead of a file (Eigenbeleg)', () => {
     const d = { ...gut(), datei: null };
-    expect(belegPruefen(d).map((f) => f.feld)).toEqual(['datei']);
-    expect(belegPruefen({ ...d, eigenbelegBegruendung: 'Beleg verloren' })).toEqual([]);
+    expect(pruefen(d).map((f) => f.feld)).toEqual(['datei']);
+    expect(pruefen({ ...d, eigenbelegBegruendung: 'Beleg verloren' })).toEqual([]);
   });
 
   it('needs the Zahlweg fields', () => {
-    expect(belegPruefen({ ...gut(), bezahldatum: null }).map((f) => f.feld)).toEqual([
-      'bezahldatum',
-    ]);
-    expect(belegPruefen({ ...gut(), zahlweg: 'auslage' }).map((f) => f.feld)).toEqual(['mitglied']);
-    expect(belegPruefen({ ...gut(), zahlweg: 'bar' }).map((f) => f.feld)).toEqual([
+    expect(pruefen({ ...gut(), bezahldatum: null }).map((f) => f.feld)).toEqual(['bezahldatum']);
+    expect(pruefen({ ...gut(), zahlweg: 'auslage' }).map((f) => f.feld)).toEqual(['mitglied']);
+    expect(pruefen({ ...gut(), zahlweg: 'bar' }).map((f) => f.feld)).toEqual([
       'fach',
       'stueckelung',
     ]);
@@ -318,7 +326,7 @@ describe('belegPruefen', () => {
   it('checks that the Stückelung equals the amount', () => {
     const bar = { ...gut(), zahlweg: 'bar' as const, fachId: 'f1' };
     const falsch = { ...bar, stueckelung: [{ nennwertCent: 1000, anzahl: -1 }] };
-    expect(belegPruefen(falsch).map((f) => f.feld)).toEqual(['stueckelung']);
+    expect(pruefen(falsch).map((f) => f.feld)).toEqual(['stueckelung']);
     const richtig = {
       ...bar,
       stueckelung: [
@@ -329,7 +337,7 @@ describe('belegPruefen', () => {
       ],
     };
     expect(
-      belegPruefen({
+      pruefen({
         ...richtig,
         posten: [{ ...richtig.posten[0]!, einzelpreisCent: 1200, steuersatz: 0 }],
         belegsummeCent: 1200,
@@ -515,7 +523,7 @@ describe('belegPruefen mit Ware', () => {
     ...extra,
   });
   const pruefe = (posten: unknown[], extra: Record<string, unknown> = {}) =>
-    belegPruefen(belegEntwurfDatenSchema.parse({ ...basis, posten, ...extra }));
+    pruefen(belegEntwurfDatenSchema.parse({ ...basis, posten, ...extra }));
 
   it('treats a posten without art as Kategorie', () => {
     const d = belegEntwurfDatenSchema.parse({
@@ -555,7 +563,7 @@ describe('belegPruefen mit Ware', () => {
       'Waren, Zeile 2: Bitte wähle ein Gebinde.',
       'Waren, Zeile 3: Bitte wähle eine Ware.',
       'Leergut, Zeile 1: Bitte beschreibe das Leergut.',
-      'Leergut, Zeile 2: Die Anzahl darf nicht 0 sein.',
+      'Leergut, Zeile 2: Bitte gib die Anzahl an.',
     ]);
     expect(
       belegEntwurfDatenSchema.safeParse({
@@ -682,10 +690,10 @@ describe('Artikel', () => {
         { artikel: 'deko ', kategorieId: 'k2', anzahl: 1 },
         { artikel: 'Tüte', kategorieId: 'k1', anzahl: 1 },
       ],
-      new Map([['deko', 700]]),
+      new Map([['deko', 'ermaessigt' as const]]),
     );
-    expect(r.map((e) => [e.artikel, e.steuersatz])).toEqual([
-      ['Deko', 700],
+    expect(r.map((e) => [e.artikel, e.steuersatzArt])).toEqual([
+      ['Deko', 'ermaessigt'],
       ['Tüte', null],
     ]);
   });
@@ -693,8 +701,8 @@ describe('Artikel', () => {
   it('lists Artikel with Kategorien, Posten count and latest booking', () => {
     const r = artikelListeBilden(
       [
-        { id: 'a2', name: 'Tüte', steuersatz: 1900 },
-        { id: 'a1', name: 'Deko', steuersatz: 700 },
+        { id: 'a2', name: 'Tüte', steuersatzArt: 'regel' as const },
+        { id: 'a1', name: 'Deko', steuersatzArt: 'ermaessigt' as const },
       ],
       [
         { artikel: 'Deko', kategorieId: 'k1', anzahl: 1, zuletztAm: '2027-01-01T10:00:00Z' },
@@ -705,7 +713,7 @@ describe('Artikel', () => {
       {
         id: 'a1',
         name: 'Deko',
-        steuersatz: 700,
+        steuersatzArt: 'ermaessigt',
         kategorien: [
           { kategorieId: 'k2', anzahl: 3 },
           { kategorieId: 'k1', anzahl: 1 },
@@ -716,7 +724,7 @@ describe('Artikel', () => {
       {
         id: 'a2',
         name: 'Tüte',
-        steuersatz: 1900,
+        steuersatzArt: 'regel',
         kategorien: [],
         postenAnzahl: 0,
         zuletztAm: null,

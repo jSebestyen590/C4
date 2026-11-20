@@ -153,7 +153,7 @@ describe('finanzen', () => {
     const neu = await t.anfrage('admin-token', 'POST', '/konten', {
       name: 'Getränke',
       art: 'erloes',
-      steuersatzStandard: 1900,
+      steuersatzArt: 'regel',
     });
     expect(neu.status).toBe(201);
     const { id } = (await neu.json()) as { id: string };
@@ -174,7 +174,7 @@ describe('finanzen', () => {
     ).find((k) => k.id === id);
     expect(nachher).toMatchObject({
       name: 'Getränke 19',
-      steuersatzStandard: 1900,
+      steuersatzArt: 'regel',
       parentId: null,
     });
 
@@ -223,9 +223,9 @@ describe('finanzen', () => {
     expect((await aendern({ stueckelung: true })).status).toBe(409);
     expect((await aendern({ parentId: 'safe' })).status).toBe(409);
     // unchanged values and name/tax rate stay possible
-    expect((await aendern({ art: 'bank', name: 'Bank neu', steuersatzStandard: 700 })).status).toBe(
-      200,
-    );
+    expect(
+      (await aendern({ art: 'bank', name: 'Bank neu', steuersatzArt: 'ermaessigt' })).status,
+    ).toBe(200);
   });
 
   it('books, shows the entry in the journal and moves the balances', async () => {
@@ -801,7 +801,7 @@ describe('finanzen', () => {
         art: 'bargeld',
         parentId: f,
         stueckelung: true,
-        steuersatzStandard: null,
+        steuersatzArt: null,
         archiviert: false,
       });
       const res = await t.anfrage('admin-token', 'POST', `/buchungen/${b.id}/storno`, {
@@ -1129,7 +1129,7 @@ describe('finanzen', () => {
           await t.anfrage('admin-token', 'POST', '/konten', {
             name: 'Getränke',
             art: 'erloes',
-            steuersatzStandard: 1900,
+            steuersatzArt: 'regel',
           })
         ).json()) as { id: string }
       ).id;
@@ -2108,13 +2108,157 @@ describe('finanzen', () => {
           (x) => x.code,
         ),
       ).toContain('datei_doppelt');
-      // A date in the future too.
-      const spaet = await t.entwurf({ belegdatum: '2027-12-01', datei: datei('d'.repeat(64)) });
+      // A Bezahldatum in the future too.
+      const spaet = await t.entwurf({ bezahldatum: '2027-12-01', datei: datei('d'.repeat(64)) });
       expect(
         ((await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${spaet}`)).warnungen as Dto[]).map(
           (x) => x.code,
         ),
       ).toContain('zukunft');
+      // A Belegdatum older than two months is warned about (booking asks for confirmation).
+      const alt = await t.entwurf({ belegdatum: '2026-12-31', datei: datei('e'.repeat(64)) });
+      expect(
+        ((await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${alt}`)).warnungen as Dto[]).map(
+          (x) => x.code,
+        ),
+      ).toContain('belegdatum_alt');
+      // A Belegdatum in the future cannot be booked at all.
+      const zukunft = await t.entwurf({ belegdatum: '2027-03-02', datei: datei('f'.repeat(64)) });
+      const abgelehnt = await t.buchenE(zukunft);
+      expect(abgelehnt.status).toBe(400);
+      expect(JSON.stringify(await abgelehnt.json())).toContain('nicht in der Zukunft');
+    });
+
+    it('books an Eigenbeleg without Vorsteuer (whole amount is expense)', async () => {
+      const t = await belegSetup();
+      const res = await t.gebucht({ datei: null, eigenbelegBegruendung: 'Beleg verloren' });
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${res.buchungId}`);
+      expect(buchung.zeilen).toMatchObject([
+        { kontoId: t.kat, betragCent: 1190, nettoCent: null, steuerCent: null, steuerArt: 'keine' },
+        { kontoId: 'bank', betragCent: -1190, steuerArt: 'keine' },
+      ]);
+      const detail = await t.lesen<Dto>('admin-token', `/belege/${res.id}`);
+      expect(detail.jeSteuersatz).toMatchObject([
+        { satz: 1900, netto: 1190, steuer: 0, brutto: 1190 },
+      ]);
+    });
+
+    it('books a Gesamtpreis line exactly and stores the rounded unit price', async () => {
+      const t = await belegSetup();
+      const res = await t.gebucht({
+        belegsummeCent: 799,
+        posten: [
+          {
+            kategorieId: t.kat,
+            text: 'Steaks',
+            anzahlMilli: 8000,
+            einzelpreisCent: 0,
+            gesamtCent: 799,
+            steuersatz: 700,
+          },
+        ],
+      });
+      const detail = await t.lesen<Dto>('admin-token', `/belege/${res.id}`);
+      expect(detail.summeCent).toBe(799);
+      expect(detail.posten).toMatchObject([
+        { betragCent: 799, gesamtCent: 799, einzelpreisCent: 100, anzahlMilli: 8000 },
+      ]);
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${res.buchungId}`);
+      expect(buchung.zeilen[0]).toMatchObject({ kontoId: t.kat, betragCent: 799 });
+      const artikel = await t.lesen<Dto[]>('vorstand-token', '/artikel');
+      expect(artikel).toMatchObject([{ name: 'Steaks', steuersatzArt: 'ermaessigt' }]);
+    });
+
+    it('checks tax rates against the period of the Belegdatum (Covid) and the Artikel Art', async () => {
+      const t = await belegSetup();
+      const covid = { belegdatum: '2020-08-15', bezahldatum: '2027-01-06' };
+      const posten = (satz: number) => [
+        {
+          kategorieId: t.kat,
+          text: 'Cola',
+          anzahlMilli: 1000,
+          einzelpreisCent: 1190,
+          steuersatz: satz,
+        },
+      ];
+      const falsch = await t.buchenE(await t.entwurf({ ...covid, posten: posten(1900) }));
+      expect(falsch.status).toBe(400);
+      expect(JSON.stringify(await falsch.json())).toContain('gilt am Belegdatum nicht');
+      const alt = (await t.lesen<Dto[]>('admin-token', '/steuersatz-zeitraeume')).length;
+      expect(alt).toBe(3);
+      const w = await t.gebucht({ ...covid, posten: posten(1600) });
+      expect(w.nummer).toBe('B-2027-0001');
+      const artikel = await t.lesen<Dto[]>('vorstand-token', '/artikel');
+      expect(artikel).toMatchObject([{ name: 'Cola', steuersatzArt: 'regel' }]);
+    });
+
+    it('lists, adds and deletes tax rate periods', async () => {
+      const t = await belegSetup();
+      const liste = await t.lesen<Dto[]>('vorstand-token', '/steuersatz-zeitraeume');
+      expect(liste.map((z) => [z.ab, z.regel, z.ermaessigt])).toEqual([
+        ['2007-01-01', 1900, 700],
+        ['2020-07-01', 1600, 500],
+        ['2021-01-01', 1900, 700],
+      ]);
+      expect((await t.roh('member-token', 'GET', '/steuersatz-zeitraeume')).status).toBe(403);
+      const neu = { ab: '2030-01-01', regel: 2000, ermaessigt: 800 };
+      expect((await t.roh('vorstand-token', 'POST', '/steuersatz-zeitraeume', neu)).status).toBe(
+        403,
+      );
+      const angelegt = await t.roh('admin-token', 'POST', '/steuersatz-zeitraeume', neu);
+      expect(angelegt.status).toBe(201);
+      const id = ((await angelegt.json()) as Dto).id as string;
+      expect((await t.roh('admin-token', 'POST', '/steuersatz-zeitraeume', neu)).status).toBe(400);
+      expect(
+        (
+          await t.roh('admin-token', 'POST', '/steuersatz-zeitraeume', {
+            ...neu,
+            ab: '2031-01-01',
+            ermaessigt: 2000,
+          })
+        ).status,
+      ).toBe(400);
+      // Members get the periods with the choices of their submission form.
+      const auswahl = await t.lesen<Dto>('member-token', '/einreichungen/auswahl');
+      expect(auswahl.steuersatzZeitraeume).toHaveLength(4);
+      // A rate of the new period is not valid before it starts.
+      const zu = await t.roh('member-token', 'POST', '/einreichungen', {
+        datei: datei('9'.repeat(64)),
+        belegdatum: '2027-01-05',
+        betragCent: 100,
+        posten: [
+          {
+            kategorieId: t.kat,
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 100,
+            steuersatz: 2000,
+          },
+        ],
+      });
+      expect(zu.status).toBe(400);
+      expect((await t.roh('admin-token', 'DELETE', `/steuersatz-zeitraeume/${id}`)).status).toBe(
+        200,
+      );
+      expect((await t.roh('admin-token', 'DELETE', `/steuersatz-zeitraeume/${id}`)).status).toBe(
+        404,
+      );
+      // A period with a booked Beleg cannot be deleted (the Beleg of 2027-01-05 is in the last one).
+      await t.gebucht();
+      const letzte = (await t.lesen<Dto[]>('vorstand-token', '/steuersatz-zeitraeume')).find(
+        (z) => z.ab === '2021-01-01',
+      )!;
+      expect(letzte.loeschbar).toBe(false);
+      expect(
+        (await t.roh('admin-token', 'DELETE', `/steuersatz-zeitraeume/${letzte.id}`)).status,
+      ).toBe(400);
+      const covid = (await t.lesen<Dto[]>('vorstand-token', '/steuersatz-zeitraeume')).find(
+        (z) => z.ab === '2020-07-01',
+      )!;
+      expect(covid.loeschbar).toBe(true);
+      expect(
+        (await t.roh('admin-token', 'DELETE', `/steuersatz-zeitraeume/${covid.id}`)).status,
+      ).toBe(200);
     });
 
     it('books cash payment out of a Fach with denominations and checks the sum', async () => {
@@ -2673,8 +2817,16 @@ describe('finanzen', () => {
         await t.gebucht({ belegsummeCent: 2880, posten: [kat('Deko'), kat('deko '), t.ware()] });
         await t.gebucht({ belegsummeCent: 100, posten: [kat('Kerzen')] });
         const erwartet = [
-          { artikel: 'Deko', steuersatz: 0, kategorien: [{ kategorieId: t.kat, anzahl: 2 }] },
-          { artikel: 'Kerzen', steuersatz: 0, kategorien: [{ kategorieId: t.kat, anzahl: 1 }] },
+          {
+            artikel: 'Deko',
+            steuersatzArt: 'keine',
+            kategorien: [{ kategorieId: t.kat, anzahl: 2 }],
+          },
+          {
+            artikel: 'Kerzen',
+            steuersatzArt: 'keine',
+            kategorien: [{ kategorieId: t.kat, anzahl: 1 }],
+          },
         ];
         expect(await t.lesen<Dto>('vorstand-token', '/artikel-vorschlaege')).toEqual(erwartet);
         expect(
@@ -2703,26 +2855,31 @@ describe('finanzen', () => {
         expect(liste).toMatchObject([
           {
             name: 'Deko',
-            steuersatz: 700,
+            steuersatzArt: 'ermaessigt',
             kategorien: [{ kategorieId: t.kat, anzahl: 2 }],
             postenAnzahl: 2,
           },
-          { name: 'Kerzen', steuersatz: 1900, postenAnzahl: 1 },
+          { name: 'Kerzen', steuersatzArt: 'regel', postenAnzahl: 1 },
         ]);
         expect(liste[0]!.zuletztAm).toEqual(expect.any(String));
         expect((await t.roh('member-token', 'GET', '/artikel')).status).toBe(403);
         const deko = liste[0]!.id as string;
         expect(
-          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatz: 1900 })).status,
+          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatzArt: 'regel' }))
+            .status,
         ).toBe(200);
         expect((await t.lesen<Dto[]>('vorstand-token', '/artikel'))[0]).toMatchObject({
-          steuersatz: 1900,
+          steuersatzArt: 'regel',
         });
         expect(
-          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatz: -1 })).status,
+          (await t.roh('admin-token', 'PATCH', `/artikel/${deko}`, { steuersatzArt: 'x' })).status,
         ).toBe(400);
         expect(
-          (await t.roh('admin-token', 'PATCH', '/artikel/gibt-es-nicht', { steuersatz: 0 })).status,
+          (
+            await t.roh('admin-token', 'PATCH', '/artikel/gibt-es-nicht', {
+              steuersatzArt: 'keine',
+            })
+          ).status,
         ).toBe(404);
       });
 

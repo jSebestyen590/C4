@@ -74,6 +74,16 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `lower(trim(name))`, die API legt fehlende Artikel beim Buchen eines Belegs an und übernimmt den Steuersatz des Postens), 0235
   übernimmt die Namen gebuchter, nicht stornierter Kategorie-Posten (`erstellt_von = 'migration'`, Steuersatz und Datum des frühesten Postens;
   Down löscht diese Zeilen), 0236 ist der Unique-Index `fin_artikel_name_norm_idx` (`ASYNC`). Rollback-Ziel nur für die Artikel: `0233_waren_standard_gebinde_backfill`.
+- 0237–0244 (Finanzen, Belege 4f): 0237 legt `fin_steuersatz_zeitraeume` an (Steuersatz-Zeiträume: `ab` Datum, `regel` und
+  `ermaessigt` in Basispunkten; ein Zeitraum gilt bis zum `ab` des nächsten, der älteste auch davor), 0238 ist ihr Unique-Index auf `ab`
+  (`ASYNC`), 0239 füllt die Zeiträume (2007-01-01 19/7 %, 2020-07-01 16/5 %, 2021-01-01 19/7 %; nur in eine leere Tabelle; Down löscht die
+  Zeilen von `migration`). 0240/0242 fügen `fin_konten.steuersatz_art` und `fin_artikel.steuersatz_art` hinzu (`regel` | `ermaessigt` |
+  `keine`, null = keine Vorgabe; der Wert ergibt sich aus dem Belegdatum), 0241/0243 füllen sie aus den alten Zahlen (1900, 700, 0). Die
+  alten Spalten `fin_konten.steuersatz_standard` und `fin_artikel.steuersatz` bleiben (DSQL kann keine Spalten löschen); die API liest sie
+  nicht mehr. `fin_artikel.steuersatz` ist `NOT NULL`, deshalb schreibt die API beim Anlegen eines Artikels weiter eine Zahl hinein.
+  0244 fügt `fin_belegposten.gesamt_cent` hinzu (Gesamtpreis der Zeile ohne Pfand; gesetzt = `betrag_cent` ist genau dieser Wert,
+  `einzelpreis_cent` der gerundete Einzelpreis). Down-Dateien der ADD COLUMN leeren nur die Werte, die der Backfills tun nichts.
+  Rollback-Ziel nur dafür: `0236_fin_artikel_name_norm_idx`.
 - 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
   `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
   `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden

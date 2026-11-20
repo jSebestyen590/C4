@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { centAnzeigen, type KontoDto } from '@c4/shared';
+import {
+  centAnzeigen,
+  type KontoDto,
+  type SteuersatzArt,
+  type SteuersatzZeitraumEingabe,
+} from '@c4/shared';
 import { unwrap, useApi } from './api';
 import { pruefen } from './warenApi';
 
@@ -30,6 +35,7 @@ export const finanzenKeys = {
   belegWaren: ['finanzen', 'belegWaren'] as const,
   artikelVorschlaege: ['finanzen', 'artikelVorschlaege'] as const,
   artikel: ['finanzen', 'artikel'] as const,
+  steuersatzZeitraeume: ['finanzen', 'steuersatzZeitraeume'] as const,
   warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
 };
 
@@ -255,6 +261,46 @@ export function useEinreichungAuswahl() {
   });
 }
 
+/** Tax rate periods (oldest first, with whether each may be deleted); needs the right to read Finanzen. */
+export function useSteuersatzZeitraeume(enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.steuersatzZeitraeume,
+    enabled,
+    queryFn: async () => unwrap(await api.finanzen['steuersatz-zeitraeume'].$get()),
+  });
+}
+
+/** Adds a tax rate period. */
+export function useSteuersatzZeitraumAnlegen() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async (eingabe: SteuersatzZeitraumEingabe) =>
+      jsonOderFehler(await api.finanzen['steuersatz-zeitraeume'].$post({ json: eingabe })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: finanzenKeys.steuersatzZeitraeume });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.einreichungAuswahl });
+    },
+  });
+}
+
+/** Deletes a tax rate period (only while nothing is booked in it). */
+export function useSteuersatzZeitraumLoeschen() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async (id: string) =>
+      jsonOderFehler(await api.finanzen['steuersatz-zeitraeume'][':id'].$delete({ param: { id } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: finanzenKeys.steuersatzZeitraeume });
+      void qc.invalidateQueries({ queryKey: finanzenKeys.einreichungAuswahl });
+    },
+  });
+}
+
 /** Artikel (names of Posten) with their default tax rate and booking statistics. */
 export function useArtikel() {
   const api = useApi();
@@ -264,17 +310,17 @@ export function useArtikel() {
   });
 }
 
-/** Sets the default tax rate (basis points) of an Artikel. */
-export function useArtikelSteuersatz() {
+/** Sets the default tax rate (Art) of an Artikel. */
+export function useArtikelSteuersatzArt() {
   const api = useApi();
   const qc = useQueryClient();
   return useMutation({
     meta: { eigeneFehlermeldung: true },
-    mutationFn: async (a: { id: string; steuersatz: number }) =>
+    mutationFn: async (a: { id: string; steuersatzArt: SteuersatzArt }) =>
       jsonOderFehler(
         await api.finanzen.artikel[':id'].$patch({
           param: { id: a.id },
-          json: { steuersatz: a.steuersatz },
+          json: { steuersatzArt: a.steuersatzArt },
         }),
       ),
     onSuccess: () => {

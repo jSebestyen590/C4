@@ -13,7 +13,6 @@ import { useRef, useState } from 'react';
 import {
   centAnzeigen,
   postenZeilenLabel,
-  STEUERSAETZE,
   type ArtikelKategorieVorschlaege,
   type BelegPostenArt,
   type BelegWareDto,
@@ -42,12 +41,7 @@ import {
 import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
 import { NUR_RAND_KLASSE } from './FeldZeile';
-
-/** Tax rate in a narrow column: "19", "7", "0" (the header says "Steuer %"). */
-const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({
-  value: String(s),
-  label: (s / 100).toLocaleString('de-DE'),
-}));
+import { satzOptionen, useSteuersaetze } from './steuersaetze';
 
 const TITEL: Record<BelegPostenArt, string> = {
   ware: 'Waren',
@@ -273,6 +267,7 @@ function PostenTabellenZeile({
   onAendern: (patch: Partial<PostenZeile>) => void;
   onEntfernen: () => void;
 }>) {
+  const saetze = useSteuersaetze();
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
   // Empty rows show no errors: nothing is checked there.
@@ -328,7 +323,7 @@ function PostenTabellenZeile({
         size="sm"
         aria-label={`Steuersatz, ${zeile}`}
         allowDeselect={false}
-        data={SATZ_OPTIONEN}
+        data={satzOptionen(saetze.saetze, true)}
         value={String(p.steuersatz)}
         onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
         comboboxProps={{ width: 100 }}
@@ -371,7 +366,7 @@ function PostenTabellenZeile({
             : aufwand.map((k) => ({ value: k.id, label: k.name }))
         }
         value={p.kategorieId}
-        onChange={(v) => onAendern(kategoriePatch(aufwand, v))}
+        onChange={(v) => onAendern(kategoriePatch(aufwand, v, saetze))}
         nothingFoundMessage="Keine Kategorie gefunden"
         comboboxProps={dropdown}
         error={rot(fehler.kategorie)}
@@ -421,7 +416,7 @@ function PostenTabellenZeile({
                   return;
                 }
                 wareGewaehlt.current = true;
-                onAendern(warePatch(waren, aufwand, v));
+                onAendern(warePatch(waren, aufwand, v, saetze));
                 if (v) fokusAnzahl(p.key);
               }}
               nothingFoundMessage="Keine Ware gefunden"
@@ -477,7 +472,7 @@ function PostenTabellenZeile({
               maxLength={100}
               data={artikelNamen(artikelVorschlaege)}
               value={p.text}
-              onChange={(v) => onAendern(artikelPatch(p, aufwand, artikelVorschlaege, v))}
+              onChange={(v) => onAendern(artikelPatch(p, aufwand, artikelVorschlaege, v, saetze))}
               error={rot(fehler.text)}
               data-nav=""
             />

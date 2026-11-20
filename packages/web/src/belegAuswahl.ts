@@ -1,7 +1,8 @@
 import type { ComboboxItem, ComboboxItemGroup, OptionsFilter } from '@mantine/core';
 import {
-  STEUERSAETZE,
+  steuersatzFuerArt,
   wareSuchen,
+  type SteuersaetzeAm,
   type ArtikelKategorieVorschlaege,
   type BelegWareDto,
   type KontoDto,
@@ -141,14 +142,21 @@ export const artikelNamen = (vorschlaege: ArtikelKategorieVorschlaege): string[]
 // ----- Field logic shared by the card mask and the tables
 
 /** A Kategorie as the forms offer it; members get no standard tax rate. */
-export type KategorieAuswahl = Pick<KontoDto, 'id'> & Partial<Pick<KontoDto, 'steuersatzStandard'>>;
+export type KategorieAuswahl = Pick<KontoDto, 'id'> & Partial<Pick<KontoDto, 'steuersatzArt'>>;
+
+/** The rates valid on the Belegdatum (`steuersaetzeAm`). */
+export type SaetzeAm = Pick<SteuersaetzeAm, 'regel' | 'ermaessigt'>;
 
 /** Patch for choosing a Kategorie: the id plus the Kategorie's standard tax rate. */
 export function kategoriePatch(
   aufwand: readonly KategorieAuswahl[],
   id: string | null,
+  saetze: SaetzeAm,
 ): Partial<PostenZeile> {
-  const satz = steuersatzVorschlag(aufwand.find((k) => k.id === id));
+  const satz = steuersatzVorschlag(
+    aufwand.find((k) => k.id === id),
+    saetze,
+  );
   return { kategorieId: id, ...(satz !== null && { steuersatz: satz }) };
 }
 
@@ -157,12 +165,13 @@ export function warePatch(
   waren: readonly BelegWareDto[],
   aufwand: readonly KategorieAuswahl[],
   id: string | null,
+  saetze: SaetzeAm,
 ): Partial<PostenZeile> {
   const neu = waren.find((w) => w.id === id);
   return {
     wareId: id,
     ...standardGebindeWaehlen(neu),
-    ...(neu?.kategorieId && kategoriePatch(aufwand, neu.kategorieId)),
+    ...(neu?.kategorieId && kategoriePatch(aufwand, neu.kategorieId, saetze)),
   };
 }
 
@@ -170,11 +179,14 @@ export function warePatch(
 export function artikelSteuersatz(
   vorschlaege: ArtikelKategorieVorschlaege,
   artikel: string,
+  saetze: SaetzeAm,
 ): number | null {
   const q = norm(artikel);
   if (!q) return null;
-  const satz = vorschlaege.find((v) => norm(v.artikel) === q)?.steuersatz ?? null;
-  return satz !== null && (STEUERSAETZE as readonly number[]).includes(satz) ? satz : null;
+  return steuersatzFuerArt(
+    vorschlaege.find((v) => norm(v.artikel) === q)?.steuersatzArt ?? null,
+    saetze,
+  );
 }
 
 /**
@@ -186,12 +198,13 @@ export function artikelPatch(
   aufwand: readonly KategorieAuswahl[],
   vorschlaege: ArtikelKategorieVorschlaege,
   artikel: string,
+  saetze: SaetzeAm,
 ): Partial<PostenZeile> {
   const vorschlag = p.kategorieId ? null : vorgeschlageneKategorie(aufwand, vorschlaege, artikel);
-  const satz = artikelSteuersatz(vorschlaege, artikel);
+  const satz = artikelSteuersatz(vorschlaege, artikel, saetze);
   return {
     text: artikel,
-    ...(vorschlag !== null && kategoriePatch(aufwand, vorschlag)),
+    ...(vorschlag !== null && kategoriePatch(aufwand, vorschlag, saetze)),
     ...(satz !== null && { steuersatz: satz }),
   };
 }

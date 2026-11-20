@@ -20,6 +20,7 @@ import type {
   EventArt,
   KontoArt,
   SteuerArt,
+  SteuersatzArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -1230,8 +1231,8 @@ export const finKonten = pgTable('fin_konten', {
   art: text('art').$type<KontoArt>().notNull(),
   parentId: text('parent_id').references((): AnyPgColumn => finKonten.id),
   stueckelung: boolean('stueckelung').notNull().default(false),
-  /** Basis points, 1900 = 19 %. */
-  steuersatzStandard: integer('steuersatz_standard'),
+  /** Default tax rate as Art; the old column `steuersatz_standard` is no longer read or written. */
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
   archiviert: boolean('archiviert').notNull().default(false),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -1650,6 +1651,8 @@ export const finBelegposten = pgTable(
     einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
     steuersatz: integer('steuersatz').notNull(),
     betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+    /** Gesamtpreis of the line (without deposit); when set, `betragCent` equals it. */
+    gesamtCent: bigint('gesamt_cent', { mode: 'number' }),
     /** `kategorie` | `ware` | `leergut`; null counts as `kategorie`. Leergut items use `kategorie_id` 'pfand'. */
     art: text('art').$type<BelegPostenArt>(),
     wareId: text('ware_id'),
@@ -1669,11 +1672,23 @@ export const finArtikel = pgTable('fin_artikel', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   nameNorm: text('name_norm').notNull(),
+  /** Legacy NOT NULL column, written on insert only (basis points, never read); the default is `steuersatzArt`. */
   steuersatz: integer('steuersatz').notNull(),
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
   erstelltVon: text('erstellt_von').notNull(),
 });
 export type FinArtikelRow = typeof finArtikel.$inferSelect;
+
+/** Tax rate periods (`ab` is a `YYYY-MM-DD` date); the unique index on `ab` guards against duplicates. */
+export const finSteuersatzZeitraeume = pgTable('fin_steuersatz_zeitraeume', {
+  id: text('id').primaryKey(),
+  ab: date('ab', { mode: 'string' }).notNull(),
+  regel: integer('regel').notNull(),
+  ermaessigt: integer('ermaessigt').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
 
 /** Rounding corrections per tax rate of a net Beleg (insert-only). */
 export const finBelegKorrekturen = pgTable(

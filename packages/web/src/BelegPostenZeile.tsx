@@ -15,13 +15,12 @@ import {
   BELEG_POSTEN_ARTEN,
   BELEG_POSTEN_ART_LABELS,
   centAnzeigen,
-  STEUERSAETZE,
   type BelegPostenArt,
   type ArtikelKategorieVorschlaege,
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { satzText, type PostenZeile } from './belegFormular';
+import { type PostenZeile } from './belegFormular';
 import {
   artikelNamen,
   artikelPatch,
@@ -42,8 +41,7 @@ import { BETRAG_STIL } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
 import { FeldLabel } from './InfoHinweis';
 import { FeldZeile } from './FeldZeile';
-
-const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
+import { satzOptionen, useSteuersaetze } from './steuersaetze';
 
 /**
  * One item row of the Beleg form: kind (Kategorie, Ware, Leergut), the kind's fields and the
@@ -82,6 +80,7 @@ export function BelegPostenZeile({
   onAendern: (patch: Partial<PostenZeile>) => void;
   onEntfernen: () => void;
 }>) {
+  const saetze = useSteuersaetze();
   const ware = waren.find((w) => w.id === p.wareId);
   const gebinde = ware?.gebinde.find((g) => g.id === p.gebindeId);
   const fehler = postenFeldFehler(p, versucht);
@@ -154,7 +153,7 @@ export function BelegPostenZeile({
                   return;
                 }
                 wareGewaehlt.current = true;
-                onAendern(warePatch(waren, aufwand, v));
+                onAendern(warePatch(waren, aufwand, v, saetze));
                 if (v) fokusAnzahl(p.key);
               }}
               nothingFoundMessage="Keine Ware gefunden"
@@ -189,7 +188,7 @@ export function BelegPostenZeile({
               maxLength={100}
               data={artikelNamen(artikelVorschlaege)}
               value={p.text}
-              onChange={(v) => onAendern(artikelPatch(p, aufwand, artikelVorschlaege, v))}
+              onChange={(v) => onAendern(artikelPatch(p, aufwand, artikelVorschlaege, v, saetze))}
               error={fehler.text}
               data-nav=""
               data-kategorie=""
@@ -210,7 +209,7 @@ export function BelegPostenZeile({
                   : aufwand.map((k) => ({ value: k.id, label: k.name }))
               }
               value={p.kategorieId}
-              onChange={(v) => onAendern(kategoriePatch(aufwand, v))}
+              onChange={(v) => onAendern(kategoriePatch(aufwand, v, saetze))}
               nothingFoundMessage="Keine Kategorie gefunden"
               description={
                 p.art === 'ware' && p.wareId && !p.kategorieId
@@ -282,7 +281,7 @@ export function BelegPostenZeile({
           <Select
             label={<FeldLabel text="Steuersatz" hilfe={HILFE.belege.steuersatz} />}
             allowDeselect={false}
-            data={SATZ_OPTIONEN}
+            data={satzOptionen(saetze.saetze)}
             value={String(p.steuersatz)}
             onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
             data-nav=""

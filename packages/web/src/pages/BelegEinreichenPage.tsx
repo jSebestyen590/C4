@@ -22,10 +22,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   BELEG_POSTEN_ANZAHL_MAX,
   centAnzeigen,
+  steuersaetzeAm,
   type BelegDatei as BelegDateiDaten,
   type BelegWareDto,
 } from '@c4/shared';
 import { useApi } from '../api';
+import { satzOptionen } from '../steuersaetze';
 import { useAuth } from '../auth';
 import { BelegNeueWare } from '../BelegNeueWare';
 import { FeldZeile } from '../FeldZeile';
@@ -95,7 +97,7 @@ function WareWahl({
       size="md"
       searchable
       onBlurCapture={blurWaehltMarkierte}
-onKeyDownCapture={enterWaehltErsteOption}
+      onKeyDownCapture={enterWaehltErsteOption}
       onFocus={() => {
         gewaehlt.current = false;
       }}
@@ -144,12 +146,6 @@ const mitgliedPatch = ({
     ...(kategorieId !== undefined && { kategorieId }),
   };
 };
-
-const STEUER_OPTIONEN = [
-  { value: '1900', label: '19 %' },
-  { value: '700', label: '7 %' },
-  { value: '0', label: '0 %' },
-];
 
 /** Local storage key of the form being typed; cleared on submit or "Neu beginnen". */
 const LOKAL = 'beleg-einreichen';
@@ -205,6 +201,8 @@ export function BelegEinreichenPage() {
   const waren = auswahl.data?.waren ?? [];
   const [neueWare, setNeueWare] = useState<{ key: number; name: string } | null>(null);
   const kategorien = auswahl.data?.kategorien ?? [];
+  // The tax rates follow the Belegdatum.
+  const saetzeAm = steuersaetzeAm(auswahl.data?.steuersatzZeitraeume ?? [], datum || heute());
   const artikelVorschlaege = auswahl.data?.artikelVorschlaege ?? [];
   const [aufteilen, setAufteilen] = useState(start?.aufteilen ?? false);
   const [posten, setPosten] = useState<PostenZeile[]>(start?.posten ?? []);
@@ -219,7 +217,10 @@ export function BelegEinreichenPage() {
   const wareAngelegt = async (key: number, ware: { id: string }) => {
     await qc.invalidateQueries({ queryKey: finanzenKeys.einreichungAuswahl });
     const neu = qc.getQueryData<typeof auswahl.data>(finanzenKeys.einreichungAuswahl);
-    aendern(key, mitgliedPatch(warePatch(neu?.waren ?? [], neu?.kategorien ?? [], ware.id)));
+    aendern(
+      key,
+      mitgliedPatch(warePatch(neu?.waren ?? [], neu?.kategorien ?? [], ware.id, saetzeAm)),
+    );
     fokusAnzahl(String(key));
   };
   const aendern = (key: number, teil: Partial<PostenZeile>) =>
@@ -464,7 +465,7 @@ export function BelegEinreichenPage() {
                           aendern(
                             p.key,
                             (({ text, ...teil }) => ({ text, ...mitgliedPatch(teil) }))(
-                              artikelPatch(p, kategorien, artikelVorschlaege, v),
+                              artikelPatch(p, kategorien, artikelVorschlaege, v, saetzeAm),
                             ),
                           )
                         }
@@ -477,7 +478,7 @@ export function BelegEinreichenPage() {
                         size="md"
                         searchable
                         onBlurCapture={blurWaehltMarkierte}
-onKeyDownCapture={enterWaehltErsteOption}
+                        onKeyDownCapture={enterWaehltErsteOption}
                         selectFirstOptionOnChange
                         allowDeselect={false}
                         data={kategorieOptionenMitVorschlaegen(
@@ -521,7 +522,7 @@ onKeyDownCapture={enterWaehltErsteOption}
                         onWare={(v) =>
                           aendern(p.key, {
                             wareId: v,
-                            ...mitgliedPatch(warePatch(waren, kategorien, v)),
+                            ...mitgliedPatch(warePatch(waren, kategorien, v, saetzeAm)),
                           })
                         }
                         onNeueWare={(suche) => setNeueWare({ key: p.key, name: suche.trim() })}
@@ -618,9 +619,9 @@ onKeyDownCapture={enterWaehltErsteOption}
                     label="Steuersatz"
                     size="md"
                     allowDeselect={false}
-                    data={STEUER_OPTIONEN}
+                    data={satzOptionen(saetzeAm.saetze)}
                     value={p.steuersatz}
-                    onChange={(v) => aendern(p.key, { steuersatz: v ?? '1900' })}
+                    onChange={(v) => aendern(p.key, { steuersatz: v ?? String(saetzeAm.regel) })}
                   />
                 </FeldZeile>
                 {p.art === 'leergut' && p.betragCent !== null && Number(p.anzahl) >= 1 && (
@@ -648,7 +649,7 @@ onKeyDownCapture={enterWaehltErsteOption}
                     pfandCent: null,
                     text: '',
                     betragCent: null,
-                    steuersatz: '1900',
+                    steuersatz: String(saetzeAm.regel),
                   },
                 ]);
                 setNaechsterKey((k) => k + 1);

@@ -23,7 +23,7 @@ const konten = [
 ];
 const vorschlaege = [
   {
-    steuersatz: null,
+    steuersatzArt: null,
     artikel: 'Luftballons',
     kategorien: [
       { kategorieId: 'k2', anzahl: 5 },
@@ -130,23 +130,28 @@ describe('Neue Ware anlegen', () => {
   });
 });
 
+const SAETZE = { regel: 1900, ermaessigt: 700 };
+
 describe('Artikel-Steuersatz', () => {
   const v = [
-    { artikel: 'Deko', steuersatz: 700, kategorien: [{ kategorieId: 'k1', anzahl: 1 }] },
-    { artikel: 'Seltsam', steuersatz: 1234, kategorien: [] },
-    { artikel: 'Ohne', steuersatz: null, kategorien: [] },
+    {
+      artikel: 'Deko',
+      steuersatzArt: 'ermaessigt' as const,
+      kategorien: [{ kategorieId: 'k1', anzahl: 1 }],
+    },
+    { artikel: 'Ohne', steuersatzArt: null, kategorien: [] },
   ];
   it('finds the rate of a known Artikel, ignoring case and edge spaces', () => {
-    expect(artikelSteuersatz(v, ' deko ')).toBe(700);
-    expect(artikelSteuersatz(v, 'Seltsam')).toBeNull();
-    expect(artikelSteuersatz(v, 'Ohne')).toBeNull();
-    expect(artikelSteuersatz(v, 'Unbekannt')).toBeNull();
+    expect(artikelSteuersatz(v, ' deko ', SAETZE)).toBe(700);
+    expect(artikelSteuersatz(v, ' deko ', { regel: 1600, ermaessigt: 500 })).toBe(500);
+    expect(artikelSteuersatz(v, 'Ohne', SAETZE)).toBeNull();
+    expect(artikelSteuersatz(v, 'Unbekannt', SAETZE)).toBeNull();
   });
   it('wins over the standard rate of the suggested Kategorie', () => {
-    const aufwand = [{ id: 'k1', steuersatzStandard: 1900 }] as unknown as Parameters<
+    const aufwand = [{ id: 'k1', steuersatzArt: 'regel' }] as unknown as Parameters<
       typeof artikelPatch
     >[1];
-    expect(artikelPatch({ kategorieId: null }, aufwand, v, 'Deko')).toEqual({
+    expect(artikelPatch({ kategorieId: null }, aufwand, v, 'Deko', SAETZE)).toEqual({
       text: 'Deko',
       kategorieId: 'k1',
       steuersatz: 700,

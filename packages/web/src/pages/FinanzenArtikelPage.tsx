@@ -1,17 +1,15 @@
 import { Alert, Group, Loader, Paper, Select, Stack, Table, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMemo } from 'react';
-import { STEUERSAETZE, type ArtikelDto } from '@c4/shared';
+import { type ArtikelDto, type SteuersatzArt } from '@c4/shared';
 import { useAuth } from '../auth';
-import { satzText } from '../belegFormular';
-import { useArtikel, useArtikelSteuersatz, useKonten } from '../finanzenDaten';
+import { useArtikel, useArtikelSteuersatzArt, useKonten } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { InfoHinweis } from '../InfoHinweis';
 import { KartenOderTabelle } from '../KartenOderTabelle';
+import { artOptionen, useHeutigeSaetze } from '../steuersaetze';
 import { fehlerAnzeigen } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
-
-const SATZ_OPTIONEN = STEUERSAETZE.map((s) => ({ value: String(s), label: satzText(s) }));
 
 const datumText = (iso: string | null) =>
   iso
@@ -29,7 +27,8 @@ export function FinanzenArtikelPage() {
   const darf = can('finanzen:buchen');
   const liste = useArtikel();
   const konten = useKonten(true);
-  const setzen = useArtikelSteuersatz();
+  const setzen = useArtikelSteuersatzArt();
+  const heute = useHeutigeSaetze();
   const kontoName = useMemo(
     () => new Map((konten.data ?? []).map((k) => [k.id, k.name])),
     [konten.data],
@@ -45,16 +44,17 @@ export function FinanzenArtikelPage() {
   const satzFeld = (a: ArtikelDto) => (
     <Select
       aria-label={`Standard-Steuersatz von ${a.name}`}
-      data={SATZ_OPTIONEN}
-      value={String(a.steuersatz)}
+      data={artOptionen(heute)}
+      value={a.steuersatzArt}
+      placeholder="Keine Vorgabe"
       allowDeselect={false}
       readOnly={!darf}
       disabled={setzen.isPending && setzen.variables?.id === a.id}
       w={{ base: '100%', sm: 130 }}
       onChange={(v) => {
-        if (!v || Number(v) === a.steuersatz) return;
+        if (!v || v === a.steuersatzArt) return;
         setzen.mutate(
-          { id: a.id, steuersatz: Number(v) },
+          { id: a.id, steuersatzArt: v as SteuersatzArt },
           {
             onSuccess: () =>
               notifications.show({

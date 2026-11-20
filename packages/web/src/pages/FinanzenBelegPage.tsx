@@ -21,12 +21,14 @@ import { IconPlus } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { SteuersaetzeKontext } from '../steuersaetze';
 import {
   BELEG_MODI,
   belegEntwurfSchema,
   BELEG_MODUS_LABELS,
   centAnzeigen,
-  STEUERSAETZE,
+  heuteBerlin,
+  steuersaetzeAm,
   ZAHLWEGE,
   ZAHLWEG_LABELS,
   type BelegDatei as BelegDateiDaten,
@@ -87,6 +89,7 @@ import {
   useArtikelVorschlaege,
   useBargeld,
   useBelegWaren,
+  useSteuersatzZeitraeume,
   useKonten,
   useRechnungssteller,
 } from '../finanzenDaten';
@@ -116,9 +119,9 @@ const lokalSchluessel = (id: string) => `beleg-${id}`;
 
 type LeereZeilen = Record<BelegPostenArt, PostenZeile>;
 const neueLeere = (): LeereZeilen => ({
-  ware: neuerPosten(STEUERSAETZE[0], 'ware'),
-  kategorie: neuerPosten(STEUERSAETZE[0], 'kategorie'),
-  leergut: neuerPosten(STEUERSAETZE[0], 'leergut'),
+  ware: neuerPosten(undefined, 'ware'),
+  kategorie: neuerPosten(undefined, 'kategorie'),
+  leergut: neuerPosten(undefined, 'leergut'),
 });
 
 /** The locally stored form, when it still has the shape of one. */
@@ -142,6 +145,7 @@ export function FinanzenBelegPage() {
   const rechnungssteller = useRechnungssteller(false);
   const mitglieder = useMitgliederListe();
   const belegWaren = useBelegWaren();
+  const zeitraeume = useSteuersatzZeitraeume();
   const artikelVorschlaege = useArtikelVorschlaege();
   // Set once the draft is booked or deleted, so the removed query is not fetched again (404).
   const [erledigt, setErledigt] = useState(false);
@@ -349,7 +353,9 @@ export function FinanzenBelegPage() {
   const faecher = bargeld.data?.faecher ?? [];
   const fach = faecher.find((x) => x.id === form.fachId);
   const berechnung = formularSumme(form);
-  const fehler = formularFehler(form);
+  // The tax rates follow the Belegdatum (today while it is empty).
+  const saetzeAm = steuersaetzeAm(zeitraeume.data ?? [], form.belegdatum || heuteBerlin());
+  const fehler = formularFehler(form, zeitraeume.data ?? []);
   const fz = (feld: string) => (versucht ? fehlerZu(fehler, feld) : undefined);
   const stueckHinweis = stueckelungHinweis(berechnung.summe, form.gegeben, form.wechselgeld);
   const zahler = (mitglieder.data ?? []).find((m) => m.sub === form.mitgliedId);
@@ -400,14 +406,14 @@ export function FinanzenBelegPage() {
   const wareAngelegt = async (key: string, ware: { id: string }) => {
     await qc.invalidateQueries({ queryKey: finanzenKeys.belegWaren });
     const waren = qc.getQueryData<BelegWareDto[]>(finanzenKeys.belegWaren) ?? [];
-    postenAendern(key, warePatch(waren, aufwand, ware.id));
+    postenAendern(key, warePatch(waren, aufwand, ware.id, saetzeAm));
     fokusAnzahl(key);
   };
   const postenHinzu = (art: BelegPostenArt = 'ware') => {
     const neu = neuerPosten(
       form.posten.filter((p) => p.art === art).at(-1)?.steuersatz ??
         form.posten.at(-1)?.steuersatz ??
-        STEUERSAETZE[0],
+        saetzeAm.regel,
       art,
     );
     aendern((f) => ({ ...f, posten: postenHinzufuegen(f.posten, neu) }));
@@ -466,577 +472,591 @@ export function FinanzenBelegPage() {
     (konten.data ?? []).find((k) => k.id === konto)?.name ?? '';
 
   return (
-    <Stack>
-      <ZurueckLink to="/finanzen/belege">Belege</ZurueckLink>
-      <Group justify="space-between" align="flex-end" wrap="wrap">
-        <Title order={2}>{id ? 'Beleg-Entwurf' : 'Neuer Beleg'}</Title>
-        {(id || stand !== 'gespeichert') && (
-          <Text size="sm" c={stand === 'fehler' ? 'red' : 'dimmed'} role="status">
-            {SPEICHER_TEXT[stand]}
-          </Text>
+    <SteuersaetzeKontext.Provider value={saetzeAm}>
+      <Stack>
+        <ZurueckLink to="/finanzen/belege">Belege</ZurueckLink>
+        <Group justify="space-between" align="flex-end" wrap="wrap">
+          <Title order={2}>{id ? 'Beleg-Entwurf' : 'Neuer Beleg'}</Title>
+          {(id || stand !== 'gespeichert') && (
+            <Text size="sm" c={stand === 'fehler' ? 'red' : 'dimmed'} role="status">
+              {SPEICHER_TEXT[stand]}
+            </Text>
+          )}
+        </Group>
+        {speicherFehler && <Alert color="red">{speicherFehler}</Alert>}
+        {eingereicht && entwurf.data && (
+          <BelegEinreichungKopf
+            entwurf={entwurf.data}
+            betragCent={form.eingereichtBetragCent}
+            notiz={form.notiz}
+            rechnungsstellerName={form.rechnungsstellerName}
+          />
         )}
-      </Group>
-      {speicherFehler && <Alert color="red">{speicherFehler}</Alert>}
-      {eingereicht && entwurf.data && (
-        <BelegEinreichungKopf
-          entwurf={entwurf.data}
-          betragCent={form.eingereichtBetragCent}
-          notiz={form.notiz}
-          rechnungsstellerName={form.rechnungsstellerName}
-        />
-      )}
-      <div
-        ref={wurzel}
-        onKeyDown={(e) => {
-          const ziel = e.target as HTMLElement;
-          if (
-            e.key === 'Enter' &&
-            !e.ctrlKey &&
-            !e.metaKey &&
-            ziel.hasAttribute('data-posten-ende') &&
-            !dropdownOffen(ziel)
-          ) {
-            e.preventDefault();
-            const art = ziel.getAttribute('data-posten-ende') as BelegPostenArt;
-            // Tables: on to the empty row of the table; cards: a new card.
-            const leer = wurzel.current?.querySelector<HTMLElement>(
-              `[data-tabelle="${art}"] [data-leer] [data-nav]`,
-            );
-            if (leer) leer.focus();
-            else postenHinzu(art);
-            return;
-          }
-          enterWeiter(e, wurzel.current, () => void pruefenOeffnen());
-        }}
-      >
-        <Stack gap="lg">
-          <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
-            <Stack style={vorschauStil}>
-              <BelegDateiFeld
-                datei={form.datei}
-                vorschauUrl={dateiUrl}
-                doppeltText={entwurf.data?.warnungen.find((w) => w.code === 'datei_doppelt')?.text}
-                fehler={fz('datei') && !form.eigenbeleg ? fz('datei') : undefined}
-                onDatei={(datei: BelegDateiDaten, url) => {
-                  setLokaleUrl(url);
-                  aendern((f) => ({ ...f, datei, eigenbeleg: false }));
-                  void speichernJetzt();
-                }}
-                onEntfernen={() => {
-                  setLokaleUrl(null);
-                  aendern((f) => ({ ...f, datei: null }));
-                }}
+        <div
+          ref={wurzel}
+          onKeyDown={(e) => {
+            const ziel = e.target as HTMLElement;
+            if (
+              e.key === 'Enter' &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              ziel.hasAttribute('data-posten-ende') &&
+              !dropdownOffen(ziel)
+            ) {
+              e.preventDefault();
+              const art = ziel.getAttribute('data-posten-ende') as BelegPostenArt;
+              // Tables: on to the empty row of the table; cards: a new card.
+              const leer = wurzel.current?.querySelector<HTMLElement>(
+                `[data-tabelle="${art}"] [data-leer] [data-nav]`,
+              );
+              if (leer) leer.focus();
+              else postenHinzu(art);
+              return;
+            }
+            enterWeiter(e, wurzel.current, () => void pruefenOeffnen());
+          }}
+        >
+          <Stack gap="lg">
+            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
+              <Stack style={vorschauStil}>
+                <BelegDateiFeld
+                  datei={form.datei}
+                  vorschauUrl={dateiUrl}
+                  doppeltText={
+                    entwurf.data?.warnungen.find((w) => w.code === 'datei_doppelt')?.text
+                  }
+                  fehler={fz('datei') && !form.eigenbeleg ? fz('datei') : undefined}
+                  onDatei={(datei: BelegDateiDaten, url) => {
+                    setLokaleUrl(url);
+                    aendern((f) => ({ ...f, datei, eigenbeleg: false }));
+                    void speichernJetzt();
+                  }}
+                  onEntfernen={() => {
+                    setLokaleUrl(null);
+                    aendern((f) => ({ ...f, datei: null }));
+                  }}
+                />
+                {!form.datei && (
+                  <Stack gap="xs">
+                    <Group gap={2}>
+                      <Switch
+                        label="Eigenbeleg (ohne Datei)"
+                        checked={form.eigenbeleg}
+                        onChange={(e) => {
+                          const an = e.currentTarget.checked;
+                          aendern((f) => ({ ...f, eigenbeleg: an }));
+                        }}
+                      />
+                      <InfoHinweis feld="Eigenbeleg" text={HILFE.belege.eigenbeleg} />
+                    </Group>
+                    {form.eigenbeleg && (
+                      <Textarea
+                        label="Begründung"
+                        description="Warum gibt es keinen Beleg?"
+                        autosize
+                        minRows={2}
+                        maxLength={500}
+                        value={form.eigenbelegBegruendung}
+                        onChange={(e) => {
+                          const wert = e.currentTarget.value;
+                          aendern((f) => ({ ...f, eigenbelegBegruendung: wert }));
+                        }}
+                        error={fz('datei')}
+                      />
+                    )}
+                  </Stack>
+                )}
+              </Stack>
+
+              <Stack gap="lg">
+                <FeldZeile
+                  cols={{ base: 1, sm: 2 }}
+                  spacing="md"
+                  verticalSpacing={0}
+                  platz="2.8rem"
+                >
+                  <Select
+                    label={
+                      <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
+                    }
+                    placeholder="Rechnungssteller suchen"
+                    onKeyDownCapture={enterWaehltErsteOption}
+                    onFocus={(e) => e.currentTarget.select()}
+                    allowDeselect={false}
+                    autoFocus={!id}
+                    searchable
+                    onBlurCapture={blurWaehltMarkierte}
+                    selectFirstOptionOnChange
+                    data={(rechnungssteller.data ?? []).map((r) => ({
+                      value: r.id,
+                      label: r.name,
+                    }))}
+                    value={form.rechnungsstellerId}
+                    onChange={(v) => aendern((f) => ({ ...f, rechnungsstellerId: v }))}
+                    nothingFoundMessage="Keiner gefunden, lege ihn neu an"
+                    error={fz('rechnungssteller')}
+                    data-nav=""
+                  />
+                  <DatumFeld
+                    label="Belegdatum"
+                    tippbar
+                    value={form.belegdatum}
+                    onWert={(wert) =>
+                      aendern((f) => ({
+                        ...f,
+                        belegdatum: wert,
+                        bezahldatum:
+                          f.bezahldatum === '' || f.bezahldatum === f.belegdatum
+                            ? wert
+                            : f.bezahldatum,
+                      }))
+                    }
+                    loeschbar={false}
+                    error={fz('belegdatum')}
+                    data-nav=""
+                  />
+                  <BetragFeld
+                    label={<FeldLabel text="Belegsumme (brutto)" hilfe={HILFE.belege.belegsumme} />}
+                    negativ
+                    value={form.belegsummeCent}
+                    onWert={(c) => aendern((f) => ({ ...f, belegsummeCent: c }))}
+                    error={fz('belegsumme')}
+                    data-nav=""
+                  />
+                </FeldZeile>
+                {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
+                  <Button
+                    variant="light"
+                    size="compact-md"
+                    onClick={() => setNeuerName(form.rechnungsstellerName)}
+                    tabIndex={-1}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
+                  </Button>
+                )}
+                {neuerName === null ? (
+                  <Button
+                    variant="subtle"
+                    size="compact-md"
+                    leftSection={<IconPlus size={16} />}
+                    onClick={() => setNeuerName('')}
+                    tabIndex={-1}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Neuen Rechnungssteller anlegen
+                  </Button>
+                ) : (
+                  <Group align="flex-start" gap="xs" wrap="nowrap">
+                    <TextInput
+                      style={{ flex: 1 }}
+                      aria-label="Name des neuen Rechnungsstellers"
+                      placeholder="Name"
+                      value={neuerName}
+                      maxLength={120}
+                      onChange={(e) => setNeuerName(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (neuerName.trim()) anlegen.mutate(neuerName.trim());
+                        }
+                      }}
+                      error={anlegen.isError ? fehlerText(anlegen.error) : undefined}
+                      data-autofocus
+                    />
+                    <Button
+                      onClick={() => anlegen.mutate(neuerName.trim())}
+                      loading={anlegen.isPending}
+                      disabled={neuerName.trim() === ''}
+                    >
+                      Anlegen
+                    </Button>
+                    <Button variant="default" onClick={() => setNeuerName(null)}>
+                      Abbrechen
+                    </Button>
+                  </Group>
+                )}
+              </Stack>
+            </SimpleGrid>
+
+            <Stack gap="xs">
+              <Group justify="space-between" align="center" gap="xs">
+                <Group gap={2}>
+                  <Text fw={600}>Posten</Text>
+                  <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
+                  <InfoHinweis feld="Postenart" text={HILFE.belege.postenArt} />
+                  <InfoHinweis feld="Lager-Posten" text={HILFE.belege.lagerPosten} />
+                  <InfoHinweis feld="Neue Ware" text={HILFE.belege.neueWare} />
+                </Group>
+                <SegmentedControl
+                  aria-label="Preise sind"
+                  // Rarely changed: stays clickable but Tab goes from Belegsumme straight to the Posten.
+                  ref={(el) => el?.querySelectorAll('input').forEach((i) => (i.tabIndex = -1))}
+                  value={form.modus}
+                  onChange={(v) => aendern((f) => ({ ...f, modus: v as BelegModus }))}
+                  data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
+                />
+              </Group>
+              {breit ? (
+                <BelegPostenTabellen
+                  posten={form.posten}
+                  leere={leere}
+                  betraege={betraege}
+                  modus={form.modus}
+                  aufwand={aufwand}
+                  waren={belegWaren.data ?? []}
+                  artikelVorschlaege={artikelVorschlaege.data ?? []}
+                  versucht={versucht}
+                  onNeueWare={neueWareFn}
+                  onAendern={postenAendern}
+                  onEntfernen={postenEntfernen}
+                />
+              ) : (
+                <>
+                  {form.posten.map((p, i) => (
+                    <BelegPostenZeile
+                      key={p.key}
+                      p={p}
+                      index={i}
+                      letzte={i === form.posten.length - 1}
+                      modus={form.modus}
+                      aufwand={aufwand}
+                      waren={belegWaren.data ?? []}
+                      artikelVorschlaege={artikelVorschlaege.data ?? []}
+                      betragCent={betraege.get(p.key)?.betragCent ?? 0}
+                      pfandBetragCent={betraege.get(p.key)?.pfandCent ?? 0}
+                      versucht={versucht}
+                      kannEntfernen={form.posten.length > 1}
+                      onNeueWare={neueWareFn}
+                      onAendern={(patch) => postenAendern(p.key, patch)}
+                      onEntfernen={() => postenEntfernen(p.key)}
+                    />
+                  ))}
+                  <Group>
+                    <Button
+                      variant="light"
+                      leftSection={<IconPlus size={18} />}
+                      onClick={() => postenHinzu()}
+                    >
+                      Posten hinzufügen
+                    </Button>
+                  </Group>
+                </>
+              )}
+              <BelegsummeZeile postenCent={berechnung.summe} belegsummeCent={form.belegsummeCent} />
+            </Stack>
+
+            {form.modus === 'netto' && (
+              <Stack gap="xs">
+                <Group gap={2}>
+                  <Text fw={600}>Korrektur je Steuersatz</Text>
+                  <InfoHinweis feld="Korrektur" text={HILFE.belege.korrektur} />
+                </Group>
+                {verwendeteSaetze(form).map((satz) => (
+                  <FeldZeile key={satz} cols={{ base: 2, sm: 3 }} spacing="xs" verticalSpacing={0}>
+                    <Text size="sm" fw={500} style={{ lineHeight: '42px' }}>
+                      {satzText(satz)}
+                    </Text>
+                    <BetragFeld
+                      aria-label={`Korrektur Netto bei ${satzText(satz)}`}
+                      label="Netto ±"
+                      negativ
+                      value={form.korrekturen[satz]?.nettoCent ?? null}
+                      onWert={(c) =>
+                        aendern((f) => ({
+                          ...f,
+                          korrekturen: {
+                            ...f.korrekturen,
+                            [satz]: {
+                              nettoCent: c,
+                              steuerCent: f.korrekturen[satz]?.steuerCent ?? null,
+                            },
+                          },
+                        }))
+                      }
+                      data-nav=""
+                    />
+                    <BetragFeld
+                      aria-label={`Korrektur Steuer bei ${satzText(satz)}`}
+                      label="Steuer ±"
+                      negativ
+                      value={form.korrekturen[satz]?.steuerCent ?? null}
+                      onWert={(c) =>
+                        aendern((f) => ({
+                          ...f,
+                          korrekturen: {
+                            ...f.korrekturen,
+                            [satz]: {
+                              nettoCent: f.korrekturen[satz]?.nettoCent ?? null,
+                              steuerCent: c,
+                            },
+                          },
+                        }))
+                      }
+                      data-nav=""
+                    />
+                  </FeldZeile>
+                ))}
+              </Stack>
+            )}
+
+            <Stack gap="xs">
+              <BelegSummen
+                jeSteuersatz={berechnung.jeSteuersatz}
+                summeCent={berechnung.summe}
+                pfand={pfandJeSatz(gefuellt, berechnung.pfandBetraege)}
               />
-              {!form.datei && (
+              {berechnung.fehler.map((m) => (
+                <Text key={m} size="sm" c="red">
+                  {m}
+                </Text>
+              ))}
+            </Stack>
+
+            <Stack gap="md">
+              <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0}>
+                <Select
+                  label={<FeldLabel text="Zahlweg" hilfe={HILFE.belege.zahlweg} />}
+                  placeholder="Zahlweg wählen"
+                  allowDeselect={false}
+                  data={ZAHLWEGE.map((z) => ({ value: z, label: ZAHLWEG_LABELS[z] }))}
+                  value={form.zahlweg}
+                  onChange={(v) =>
+                    aendern((f) => ({
+                      ...f,
+                      zahlweg: v as Zahlweg | null,
+                      bezahldatum: f.bezahldatum || f.belegdatum,
+                    }))
+                  }
+                  error={fz('zahlweg')}
+                  data-nav=""
+                />
+                {form.zahlweg === 'bar' && (
+                  <Select
+                    label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
+                    placeholder="Fach suchen"
+                    searchable
+                    selectFirstOptionOnChange
+                    data={faecher.map((x) => ({ value: x.id, label: x.name }))}
+                    value={form.fachId}
+                    onChange={(v) => aendern((f) => ({ ...f, fachId: v }))}
+                    nothingFoundMessage="Kein Fach gefunden"
+                    error={fz('fach')}
+                    data-nav=""
+                  />
+                )}
+                {form.zahlweg && form.zahlweg !== 'auslage' && (
+                  <DatumFeld
+                    label={<FeldLabel text="Bezahldatum" hilfe={HILFE.belege.bezahldatum} />}
+                    value={form.bezahldatum}
+                    onWert={(wert) => aendern((f) => ({ ...f, bezahldatum: wert }))}
+                    loeschbar={false}
+                    tippbar
+                    error={fz('bezahldatum')}
+                    data-nav=""
+                  />
+                )}
+                {form.zahlweg === 'auslage' && (
+                  <Select
+                    label={<FeldLabel text="Mitglied (hat bezahlt)" hilfe={HILFE.belege.auslage} />}
+                    placeholder="Mitglied suchen"
+                    searchable
+                    selectFirstOptionOnChange
+                    data={mitgliedOptionen((mitglieder.data ?? []).filter((m) => !m.deaktiviert))}
+                    value={form.mitgliedId}
+                    onChange={(v) => aendern((f) => ({ ...f, mitgliedId: v }))}
+                    nothingFoundMessage="Kein Mitglied gefunden"
+                    error={fz('mitglied')}
+                    data-nav=""
+                  />
+                )}
+              </FeldZeile>
+              {form.zahlweg === 'bar' && (
                 <Stack gap="xs">
                   <Group gap={2}>
-                    <Switch
-                      label="Eigenbeleg (ohne Datei)"
-                      checked={form.eigenbeleg}
-                      onChange={(e) => {
-                        const an = e.currentTarget.checked;
-                        aendern((f) => ({ ...f, eigenbeleg: an }));
-                      }}
-                    />
-                    <InfoHinweis feld="Eigenbeleg" text={HILFE.belege.eigenbeleg} />
+                    <Text fw={500} size="sm">
+                      Münzen und Scheine
+                    </Text>
+                    <InfoHinweis feld="Stückelung" text={HILFE.belege.stueckelung} />
                   </Group>
-                  {form.eigenbeleg && (
-                    <Textarea
-                      label="Begründung"
-                      description="Warum gibt es keinen Beleg?"
-                      autosize
-                      minRows={2}
-                      maxLength={500}
-                      value={form.eigenbelegBegruendung}
-                      onChange={(e) => {
-                        const wert = e.currentTarget.value;
-                        aendern((f) => ({ ...f, eigenbelegBegruendung: wert }));
-                      }}
-                      error={fz('datei')}
-                    />
+                  <StueckelungFeld
+                    label={
+                      berechnung.summe < 0
+                        ? 'Münzen und Scheine, die in die Kasse kommen'
+                        : 'Münzen und Scheine, die du gibst, und Wechselgeld'
+                    }
+                    bestand={fach?.bestand}
+                    spalten={[
+                      {
+                        id: 'ab',
+                        label: berechnung.summe < 0 ? 'Abgang (zurückgegeben)' : 'Abgang (gegeben)',
+                        value: form.gegeben,
+                        onChange: (m) => aendern((f) => ({ ...f, gegeben: m })),
+                        richtung: 'ab',
+                        begrenzen: !!fach,
+                      },
+                      {
+                        id: 'zu',
+                        label: berechnung.summe < 0 ? 'Eingang (erhalten)' : 'Wechselgeld',
+                        value: form.wechselgeld,
+                        onChange: (m) => aendern((f) => ({ ...f, wechselgeld: m })),
+                        richtung: 'zu',
+                      },
+                    ]}
+                  />
+                  {(stueckHinweis ?? fz('stueckelung')) && (
+                    <Text size="sm" c="orange.8" role="status">
+                      {stueckHinweis ?? fz('stueckelung')}
+                    </Text>
                   )}
                 </Stack>
               )}
             </Stack>
 
-            <Stack gap="lg">
-              <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0} platz="2.8rem">
-                <Select
-                  label={
-                    <FeldLabel text="Rechnungssteller" hilfe={HILFE.belege.rechnungssteller} />
-                  }
-                  placeholder="Rechnungssteller suchen"
-                  onKeyDownCapture={enterWaehltErsteOption}
-                  onFocus={(e) => e.currentTarget.select()}
-                  allowDeselect={false}
-                  autoFocus={!id}
-                  searchable
-                  onBlurCapture={blurWaehltMarkierte}
-                  selectFirstOptionOnChange
-                  data={(rechnungssteller.data ?? []).map((r) => ({ value: r.id, label: r.name }))}
-                  value={form.rechnungsstellerId}
-                  onChange={(v) => aendern((f) => ({ ...f, rechnungsstellerId: v }))}
-                  nothingFoundMessage="Keiner gefunden, lege ihn neu an"
-                  error={fz('rechnungssteller')}
-                  data-nav=""
-                />
-                <DatumFeld
-                  label="Belegdatum"
-                  tippbar
-                  value={form.belegdatum}
-                  onWert={(wert) =>
-                    aendern((f) => ({
-                      ...f,
-                      belegdatum: wert,
-                      bezahldatum:
-                        f.bezahldatum === '' || f.bezahldatum === f.belegdatum
-                          ? wert
-                          : f.bezahldatum,
-                    }))
-                  }
-                  loeschbar={false}
-                  error={fz('belegdatum')}
-                  data-nav=""
-                />
-                <BetragFeld
-                  label={<FeldLabel text="Belegsumme (brutto)" hilfe={HILFE.belege.belegsumme} />}
-                  negativ
-                  value={form.belegsummeCent}
-                  onWert={(c) => aendern((f) => ({ ...f, belegsummeCent: c }))}
-                  error={fz('belegsumme')}
-                  data-nav=""
-                />
-              </FeldZeile>
-              {neuerName === null && form.rechnungsstellerName && !form.rechnungsstellerId && (
+            {versucht && fehler.length > 0 && (
+              <Alert id="beleg-fehler" color="red" title="Noch nicht buchbar">
+                <Stack gap={2}>
+                  {fehler.map((x) => (
+                    <Text key={x.meldung} size="sm">
+                      {x.meldung}
+                    </Text>
+                  ))}
+                </Stack>
+              </Alert>
+            )}
+
+            <Group align="center" gap="md">
+              <Button type="button" onClick={() => void pruefenOeffnen()}>
+                Prüfen und buchen
+              </Button>
+              <Text size="sm" c="dimmed" visibleFrom="sm">
+                Tastenkürzel: Strg+Enter
+              </Text>
+              {eingereicht ? (
                 <Button
-                  variant="light"
-                  size="compact-md"
-                  onClick={() => setNeuerName(form.rechnungsstellerName)}
-                  tabIndex={-1}
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  „{form.rechnungsstellerName}“ als Rechnungssteller anlegen
-                </Button>
-              )}
-              {neuerName === null ? (
-                <Button
+                  type="button"
                   variant="subtle"
-                  size="compact-md"
-                  leftSection={<IconPlus size={16} />}
-                  onClick={() => setNeuerName('')}
-                  tabIndex={-1}
-                  style={{ alignSelf: 'flex-start' }}
+                  color="red"
+                  onClick={() => setEinreichungVerwerfen(true)}
                 >
-                  Neuen Rechnungssteller anlegen
+                  Verwerfen
                 </Button>
               ) : (
-                <Group align="flex-start" gap="xs" wrap="nowrap">
-                  <TextInput
-                    style={{ flex: 1 }}
-                    aria-label="Name des neuen Rechnungsstellers"
-                    placeholder="Name"
-                    value={neuerName}
-                    maxLength={120}
-                    onChange={(e) => setNeuerName(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (neuerName.trim()) anlegen.mutate(neuerName.trim());
-                      }
-                    }}
-                    error={anlegen.isError ? fehlerText(anlegen.error) : undefined}
-                    data-autofocus
-                  />
-                  <Button
-                    onClick={() => anlegen.mutate(neuerName.trim())}
-                    loading={anlegen.isPending}
-                    disabled={neuerName.trim() === ''}
-                  >
-                    Anlegen
-                  </Button>
-                  <Button variant="default" onClick={() => setNeuerName(null)}>
-                    Abbrechen
-                  </Button>
-                </Group>
+                <Button
+                  type="button"
+                  variant="subtle"
+                  color="red"
+                  onClick={() => {
+                    if (entwurfId.current) return setVerwerfen(true);
+                    lokalLoeschen(NEU);
+                    void navigate('/finanzen/belege');
+                  }}
+                >
+                  Entwurf verwerfen
+                </Button>
               )}
-            </Stack>
-          </SimpleGrid>
-
-          <Stack gap="xs">
-            <Group justify="space-between" align="center" gap="xs">
-              <Group gap={2}>
-                <Text fw={600}>Posten</Text>
-                <InfoHinweis feld="Brutto und Netto" text={HILFE.belege.modus} />
-                <InfoHinweis feld="Postenart" text={HILFE.belege.postenArt} />
-                <InfoHinweis feld="Lager-Posten" text={HILFE.belege.lagerPosten} />
-                <InfoHinweis feld="Neue Ware" text={HILFE.belege.neueWare} />
-              </Group>
-              <SegmentedControl
-                aria-label="Preise sind"
-                // Rarely changed: stays clickable but Tab goes from Belegsumme straight to the Posten.
-                ref={(el) => el?.querySelectorAll('input').forEach((i) => (i.tabIndex = -1))}
-                value={form.modus}
-                onChange={(v) => aendern((f) => ({ ...f, modus: v as BelegModus }))}
-                data={BELEG_MODI.map((m) => ({ value: m, label: BELEG_MODUS_LABELS[m] }))}
-              />
             </Group>
-            {breit ? (
-              <BelegPostenTabellen
-                posten={form.posten}
-                leere={leere}
-                betraege={betraege}
-                modus={form.modus}
-                aufwand={aufwand}
-                waren={belegWaren.data ?? []}
-                artikelVorschlaege={artikelVorschlaege.data ?? []}
-                versucht={versucht}
-                onNeueWare={neueWareFn}
-                onAendern={postenAendern}
-                onEntfernen={postenEntfernen}
-              />
-            ) : (
-              <>
-                {form.posten.map((p, i) => (
-                  <BelegPostenZeile
-                    key={p.key}
-                    p={p}
-                    index={i}
-                    letzte={i === form.posten.length - 1}
-                    modus={form.modus}
-                    aufwand={aufwand}
-                    waren={belegWaren.data ?? []}
-                    artikelVorschlaege={artikelVorschlaege.data ?? []}
-                    betragCent={betraege.get(p.key)?.betragCent ?? 0}
-                    pfandBetragCent={betraege.get(p.key)?.pfandCent ?? 0}
-                    versucht={versucht}
-                    kannEntfernen={form.posten.length > 1}
-                    onNeueWare={neueWareFn}
-                    onAendern={(patch) => postenAendern(p.key, patch)}
-                    onEntfernen={() => postenEntfernen(p.key)}
-                  />
-                ))}
-                <Group>
-                  <Button
-                    variant="light"
-                    leftSection={<IconPlus size={18} />}
-                    onClick={() => postenHinzu()}
-                  >
-                    Posten hinzufügen
-                  </Button>
-                </Group>
-              </>
-            )}
-            <BelegsummeZeile postenCent={berechnung.summe} belegsummeCent={form.belegsummeCent} />
           </Stack>
+        </div>
 
-          {form.modus === 'netto' && (
-            <Stack gap="xs">
-              <Group gap={2}>
-                <Text fw={600}>Korrektur je Steuersatz</Text>
-                <InfoHinweis feld="Korrektur" text={HILFE.belege.korrektur} />
-              </Group>
-              {verwendeteSaetze(form).map((satz) => (
-                <FeldZeile key={satz} cols={{ base: 2, sm: 3 }} spacing="xs" verticalSpacing={0}>
-                  <Text size="sm" fw={500} style={{ lineHeight: '42px' }}>
-                    {satzText(satz)}
-                  </Text>
-                  <BetragFeld
-                    aria-label={`Korrektur Netto bei ${satzText(satz)}`}
-                    label="Netto ±"
-                    negativ
-                    value={form.korrekturen[satz]?.nettoCent ?? null}
-                    onWert={(c) =>
-                      aendern((f) => ({
-                        ...f,
-                        korrekturen: {
-                          ...f.korrekturen,
-                          [satz]: {
-                            nettoCent: c,
-                            steuerCent: f.korrekturen[satz]?.steuerCent ?? null,
-                          },
-                        },
-                      }))
-                    }
-                    data-nav=""
-                  />
-                  <BetragFeld
-                    aria-label={`Korrektur Steuer bei ${satzText(satz)}`}
-                    label="Steuer ±"
-                    negativ
-                    value={form.korrekturen[satz]?.steuerCent ?? null}
-                    onWert={(c) =>
-                      aendern((f) => ({
-                        ...f,
-                        korrekturen: {
-                          ...f.korrekturen,
-                          [satz]: {
-                            nettoCent: f.korrekturen[satz]?.nettoCent ?? null,
-                            steuerCent: c,
-                          },
-                        },
-                      }))
-                    }
-                    data-nav=""
-                  />
-                </FeldZeile>
-              ))}
-            </Stack>
-          )}
-
-          <Stack gap="xs">
-            <BelegSummen
-              jeSteuersatz={berechnung.jeSteuersatz}
-              summeCent={berechnung.summe}
-              pfand={pfandJeSatz(gefuellt, berechnung.pfandBetraege)}
-            />
-            {berechnung.fehler.map((m) => (
-              <Text key={m} size="sm" c="red">
-                {m}
-              </Text>
-            ))}
-          </Stack>
-
-          <Stack gap="md">
-            <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0}>
-              <Select
-                label={<FeldLabel text="Zahlweg" hilfe={HILFE.belege.zahlweg} />}
-                placeholder="Zahlweg wählen"
-                allowDeselect={false}
-                data={ZAHLWEGE.map((z) => ({ value: z, label: ZAHLWEG_LABELS[z] }))}
-                value={form.zahlweg}
-                onChange={(v) =>
-                  aendern((f) => ({
-                    ...f,
-                    zahlweg: v as Zahlweg | null,
-                    bezahldatum: f.bezahldatum || f.belegdatum,
-                  }))
-                }
-                error={fz('zahlweg')}
-                data-nav=""
-              />
-              {form.zahlweg === 'bar' && (
-                <Select
-                  label={<FeldLabel text="Fach" hilfe={HILFE.bargeld.fach} />}
-                  placeholder="Fach suchen"
-                  searchable
-                  selectFirstOptionOnChange
-                  data={faecher.map((x) => ({ value: x.id, label: x.name }))}
-                  value={form.fachId}
-                  onChange={(v) => aendern((f) => ({ ...f, fachId: v }))}
-                  nothingFoundMessage="Kein Fach gefunden"
-                  error={fz('fach')}
-                  data-nav=""
-                />
-              )}
-              {form.zahlweg && form.zahlweg !== 'auslage' && (
-                <DatumFeld
-                  label={<FeldLabel text="Bezahldatum" hilfe={HILFE.belege.bezahldatum} />}
-                  value={form.bezahldatum}
-                  onWert={(wert) => aendern((f) => ({ ...f, bezahldatum: wert }))}
-                  loeschbar={false}
-                  tippbar
-                  error={fz('bezahldatum')}
-                  data-nav=""
-                />
-              )}
-              {form.zahlweg === 'auslage' && (
-                <Select
-                  label={<FeldLabel text="Mitglied (hat bezahlt)" hilfe={HILFE.belege.auslage} />}
-                  placeholder="Mitglied suchen"
-                  searchable
-                  selectFirstOptionOnChange
-                  data={mitgliedOptionen((mitglieder.data ?? []).filter((m) => !m.deaktiviert))}
-                  value={form.mitgliedId}
-                  onChange={(v) => aendern((f) => ({ ...f, mitgliedId: v }))}
-                  nothingFoundMessage="Kein Mitglied gefunden"
-                  error={fz('mitglied')}
-                  data-nav=""
-                />
-              )}
-            </FeldZeile>
-            {form.zahlweg === 'bar' && (
-              <Stack gap="xs">
-                <Group gap={2}>
-                  <Text fw={500} size="sm">
-                    Münzen und Scheine
-                  </Text>
-                  <InfoHinweis feld="Stückelung" text={HILFE.belege.stueckelung} />
-                </Group>
-                <StueckelungFeld
-                  label={
-                    berechnung.summe < 0
-                      ? 'Münzen und Scheine, die in die Kasse kommen'
-                      : 'Münzen und Scheine, die du gibst, und Wechselgeld'
-                  }
-                  bestand={fach?.bestand}
-                  spalten={[
-                    {
-                      id: 'ab',
-                      label: berechnung.summe < 0 ? 'Abgang (zurückgegeben)' : 'Abgang (gegeben)',
-                      value: form.gegeben,
-                      onChange: (m) => aendern((f) => ({ ...f, gegeben: m })),
-                      richtung: 'ab',
-                      begrenzen: !!fach,
-                    },
-                    {
-                      id: 'zu',
-                      label: berechnung.summe < 0 ? 'Eingang (erhalten)' : 'Wechselgeld',
-                      value: form.wechselgeld,
-                      onChange: (m) => aendern((f) => ({ ...f, wechselgeld: m })),
-                      richtung: 'zu',
-                    },
-                  ]}
-                />
-                {(stueckHinweis ?? fz('stueckelung')) && (
-                  <Text size="sm" c="orange.8" role="status">
-                    {stueckHinweis ?? fz('stueckelung')}
-                  </Text>
-                )}
-              </Stack>
-            )}
-          </Stack>
-
-          {versucht && fehler.length > 0 && (
-            <Alert id="beleg-fehler" color="red" title="Noch nicht buchbar">
-              <Stack gap={2}>
-                {fehler.map((x) => (
-                  <Text key={x.meldung} size="sm">
-                    {x.meldung}
-                  </Text>
-                ))}
-              </Stack>
-            </Alert>
-          )}
-
-          <Group align="center" gap="md">
-            <Button type="button" onClick={() => void pruefenOeffnen()}>
-              Prüfen und buchen
-            </Button>
-            <Text size="sm" c="dimmed" visibleFrom="sm">
-              Tastenkürzel: Strg+Enter
+        {dialog && form.rechnungsstellerId && form.zahlweg && (
+          <BelegBuchenDialog
+            form={form}
+            rechnungssteller={
+              (rechnungssteller.data ?? []).find((r) => r.id === form.rechnungsstellerId)?.name ??
+              ''
+            }
+            zahlwegZusatz={
+              form.zahlweg === 'bar'
+                ? (fach?.name ?? null)
+                : form.zahlweg === 'auslage' && zahler
+                  ? (zahler.username ?? `${zahler.vorname} ${zahler.nachname}`)
+                  : null
+            }
+            posten={gefuellt.map((p) => ({
+              key: p.key,
+              kategorie: postenName(p),
+              text: p.text.trim(),
+              betragCent: betragVon(p),
+            }))}
+            berechnung={berechnung}
+            warnungen={warnungen}
+            laeuft={buchen.isPending}
+            fehler={
+              buchen.isError && !(buchen.error instanceof ApiFehler && buchen.error.status === 409)
+                ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.')
+                : buchen.isError
+                  ? fehlerText(buchen.error)
+                  : null
+            }
+            onBuchen={(bestaetigt) => buchen.mutate(bestaetigt)}
+            onClose={() => setDialog(false)}
+          />
+        )}
+        {neueWare && (
+          <BelegNeueWare
+            name={neueWare.name}
+            onAngelegt={(ware) => void wareAngelegt(neueWare.key, ware)}
+            onClose={() => setNeueWare(null)}
+          />
+        )}
+        {verwerfen && (
+          <BestaetigenDialog
+            titel="Entwurf verwerfen?"
+            bestaetigenText="Verwerfen"
+            onClose={() => setVerwerfen(false)}
+            onBestaetigt={async () => {
+              await unwrap(
+                await api.finanzen['beleg-entwuerfe'][':id'].$delete({
+                  param: { id: entwurfId.current! },
+                }),
+              );
+              window.clearTimeout(timer.current);
+              lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
+              warnung.abgeschlossen();
+              void qc.invalidateQueries({
+                queryKey: finanzenKeys.alle,
+                predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
+              });
+              setErledigt(true);
+              qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
+              void navigate('/finanzen/belege', { replace: true });
+            }}
+          >
+            <Text>
+              Der Entwurf wird gelöscht. Eine hochgeladene Datei bleibt im Archiv, das ist so
+              gewollt.
             </Text>
-            {eingereicht ? (
-              <Button
-                type="button"
-                variant="subtle"
-                color="red"
-                onClick={() => setEinreichungVerwerfen(true)}
-              >
-                Verwerfen
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                variant="subtle"
-                color="red"
-                onClick={() => {
-                  if (entwurfId.current) return setVerwerfen(true);
-                  lokalLoeschen(NEU);
-                  void navigate('/finanzen/belege');
-                }}
-              >
-                Entwurf verwerfen
-              </Button>
-            )}
-          </Group>
-        </Stack>
-      </div>
-
-      {dialog && form.rechnungsstellerId && form.zahlweg && (
-        <BelegBuchenDialog
-          form={form}
-          rechnungssteller={
-            (rechnungssteller.data ?? []).find((r) => r.id === form.rechnungsstellerId)?.name ?? ''
-          }
-          zahlwegZusatz={
-            form.zahlweg === 'bar'
-              ? (fach?.name ?? null)
-              : form.zahlweg === 'auslage' && zahler
-                ? (zahler.username ?? `${zahler.vorname} ${zahler.nachname}`)
-                : null
-          }
-          posten={gefuellt.map((p) => ({
-            key: p.key,
-            kategorie: postenName(p),
-            text: p.text.trim(),
-            betragCent: betragVon(p),
-          }))}
-          berechnung={berechnung}
-          warnungen={warnungen}
-          laeuft={buchen.isPending}
-          fehler={
-            buchen.isError && !(buchen.error instanceof ApiFehler && buchen.error.status === 409)
-              ? fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.')
-              : buchen.isError
-                ? fehlerText(buchen.error)
-                : null
-          }
-          onBuchen={(bestaetigt) => buchen.mutate(bestaetigt)}
-          onClose={() => setDialog(false)}
-        />
-      )}
-      {neueWare && (
-        <BelegNeueWare
-          name={neueWare.name}
-          onAngelegt={(ware) => void wareAngelegt(neueWare.key, ware)}
-          onClose={() => setNeueWare(null)}
-        />
-      )}
-      {verwerfen && (
-        <BestaetigenDialog
-          titel="Entwurf verwerfen?"
-          bestaetigenText="Verwerfen"
-          onClose={() => setVerwerfen(false)}
-          onBestaetigt={async () => {
-            await unwrap(
-              await api.finanzen['beleg-entwuerfe'][':id'].$delete({
-                param: { id: entwurfId.current! },
-              }),
-            );
-            window.clearTimeout(timer.current);
-            lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
-            warnung.abgeschlossen();
-            void qc.invalidateQueries({
-              queryKey: finanzenKeys.alle,
-              predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
-            });
-            setErledigt(true);
-            qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
-            void navigate('/finanzen/belege', { replace: true });
-          }}
-        >
-          <Text>
-            Der Entwurf wird gelöscht. Eine hochgeladene Datei bleibt im Archiv, das ist so gewollt.
-          </Text>
-        </BestaetigenDialog>
-      )}
-      {einreichungVerwerfen && (
-        <BelegVerwerfenDialog
-          onClose={() => setEinreichungVerwerfen(false)}
-          onVerwerfen={async (grund) => {
-            await unwrap(
-              await api.finanzen['beleg-entwuerfe'][':id'].verwerfen.$post({
-                param: { id: entwurfId.current! },
-                json: { grund },
-              }),
-            );
-            window.clearTimeout(timer.current);
-            lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
-            warnung.abgeschlossen();
-            void qc.invalidateQueries({
-              queryKey: finanzenKeys.alle,
-              predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
-            });
-            setErledigt(true);
-            qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
-            notifications.show({ color: 'green', message: 'Der Beleg wurde verworfen.' });
-            void navigate('/finanzen/belege', { replace: true });
-          }}
-        />
-      )}
-      {warnung.dialog}
-    </Stack>
+          </BestaetigenDialog>
+        )}
+        {einreichungVerwerfen && (
+          <BelegVerwerfenDialog
+            onClose={() => setEinreichungVerwerfen(false)}
+            onVerwerfen={async (grund) => {
+              await unwrap(
+                await api.finanzen['beleg-entwuerfe'][':id'].verwerfen.$post({
+                  param: { id: entwurfId.current! },
+                  json: { grund },
+                }),
+              );
+              window.clearTimeout(timer.current);
+              lokalLoeschen(NEU, lokalSchluessel(entwurfId.current ?? ''));
+              warnung.abgeschlossen();
+              void qc.invalidateQueries({
+                queryKey: finanzenKeys.alle,
+                predicate: (q) => q.queryKey[1] !== 'belegEntwurf',
+              });
+              setErledigt(true);
+              qc.removeQueries({ queryKey: ['finanzen', 'belegEntwurf'] });
+              notifications.show({ color: 'green', message: 'Der Beleg wurde verworfen.' });
+              void navigate('/finanzen/belege', { replace: true });
+            }}
+          />
+        )}
+        {warnung.dialog}
+      </Stack>
+    </SteuersaetzeKontext.Provider>
   );
 }
 

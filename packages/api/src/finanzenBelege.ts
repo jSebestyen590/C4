@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 import {
   AUSLAGEN_KONTO_ID,
   PFAND_KONTO_ID,
@@ -45,8 +45,19 @@ import {
   type KontoArt,
   type PruefKonto,
   type RechnungsstellerDto,
+  istEigenbeleg,
   postenBetrag,
   postenZeilenLabel,
+  belegdatumAlt,
+  datumAnzeigen,
+  einzelpreisAusGesamt,
+  heuteBerlin,
+  steuersatzArtVon,
+  steuersatzZeitraumAm,
+  zeitraumEnde,
+  type SteuersatzArt,
+  type SteuersatzZeitraumDto,
+  type SteuersatzZeitraumEingabe,
   artikelListeBilden,
   artikelNameNorm,
   artikelVorschlaegeBilden,
@@ -60,6 +71,8 @@ import {
   finBelegKorrekturen,
   finArtikel,
   finBelegposten,
+  finKassenabrechnungen,
+  finSteuersatzZeitraeume,
   wareAliase,
   finBuchungen,
   finErstattungBelege,
@@ -94,8 +107,7 @@ export class BelegWarnungenOffen extends Error {
 }
 
 /** Date (`YYYY-MM-DD`) of an instant in Berlin. */
-export const datumBerlin = (jetzt: Date): string =>
-  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
+export const datumBerlin = (jetzt: Date): string => heuteBerlin(jetzt);
 
 /** What `einreichungWarePosten` needs to know about a Ware. */
 export interface EinreichungWare {
@@ -158,6 +170,9 @@ export interface BelegPlanKontext {
   rechnungssteller: RechnungsstellerKurz | undefined;
   /** The Waren of the Ware items of the draft. */
   waren: readonly BelegWare[];
+  /** Tax rate periods and today (Berlin): the Belegdatum must not lie ahead, rates must be valid on it. */
+  zeitraeume: readonly { ab: string; regel: number; ermaessigt: number }[];
+  heute: string;
 }
 
 export interface BelegPlan {
@@ -188,7 +203,9 @@ export const belegKontoIds = (daten: BelegEntwurfDaten): string[] => [
 
 /** Validates a draft against the accounts and builds the journal lines of the Beleg. */
 export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext): BelegPlan {
-  const fehler = belegPruefen(daten).map((f) => f.meldung);
+  const fehler = belegPruefen(daten, { heute: kontext.heute, zeitraeume: kontext.zeitraeume }).map(
+    (f) => f.meldung,
+  );
   const steller = kontext.rechnungssteller;
   if (daten.rechnungsstellerId && !steller) fehler.push('Den Rechnungssteller gibt es nicht.');
   else if (steller?.archiviert)
@@ -221,7 +238,12 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
     daten.zahlweg === 'bar' ? daten.fachId! : daten.zahlweg === 'bank' ? 'bank' : AUSLAGEN_KONTO_ID;
   const rechnung = belegBerechnen(daten);
   const zeilen = belegBuchungszeilen(
-    { modus: daten.modus, posten: daten.posten, korrekturen: daten.korrekturen },
+    {
+      modus: daten.modus,
+      posten: daten.posten,
+      korrekturen: daten.korrekturen,
+      eigenbeleg: istEigenbeleg(daten),
+    },
     {
       kontoId: gegenKontoId,
       ...(daten.zahlweg === 'bar' && { stueckelung: daten.stueckelung }),
@@ -257,8 +279,14 @@ export function belegWarnungenBilden(p: {
 }): BelegWarnungDto[] {
   const w: BelegWarnungDto[] = [];
   const { belegdatum, bezahldatum } = p.daten;
-  if ((belegdatum && belegdatum > p.heute) || (bezahldatum && bezahldatum > p.heute))
-    w.push({ code: 'zukunft', text: 'Ein Datum liegt in der Zukunft.' });
+  // A Belegdatum in the future is an error (`belegPruefen`); only the Bezahldatum is warned about.
+  if (bezahldatum && bezahldatum > p.heute)
+    w.push({ code: 'zukunft', text: 'Das Bezahldatum liegt in der Zukunft.' });
+  if (belegdatum && belegdatum <= p.heute && belegdatumAlt(belegdatum, p.heute))
+    w.push({
+      code: 'belegdatum_alt',
+      text: `Das Belegdatum (${datumAnzeigen(belegdatum)}) liegt mehr als 2 Monate zurück.`,
+    });
   if (p.dateiDoppelt)
     w.push({
       code: 'datei_doppelt',
@@ -408,8 +436,17 @@ export interface BelegeStore {
   artikelVorschlaege(): Promise<ArtikelKategorieVorschlaege>;
   /** All Artikel with their Kategorien, number of booked Posten and latest booking. */
   artikel(): Promise<ArtikelDto[]>;
-  /** Sets the default tax rate of an Artikel; false when it does not exist. */
-  artikelSteuersatzSetzen(id: string, steuersatz: number): Promise<boolean>;
+  /** Sets the default tax rate (Art) of an Artikel; false when it does not exist. */
+  artikelSteuersatzArtSetzen(id: string, steuersatzArt: SteuersatzArt): Promise<boolean>;
+  /** The tax rate periods, oldest first, with whether each may be deleted. */
+  steuersatzZeitraeume(): Promise<SteuersatzZeitraumDto[]>;
+  /** Adds a period; throws BuchungUngueltig when one with the same `ab` exists. Returns the id. */
+  steuersatzZeitraumAnlegen(eingabe: SteuersatzZeitraumEingabe, sub: string): Promise<string>;
+  /**
+   * Deletes a period; false when it does not exist; throws BuchungUngueltig when a Beleg or a
+   * Kassenabrechnung dates into it, or when it is the only one.
+   */
+  steuersatzZeitraumLoeschen(id: string): Promise<boolean>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
     eingabe: ErstattungEingabe,
@@ -455,6 +492,49 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       (await q.select().from(finRechnungssteller)).map((r) => [r.id, r.name] as [string, string]),
     );
 
+  const zeitraeumeLaden = async (q: Q) =>
+    (await q.select().from(finSteuersatzZeitraeume).orderBy(asc(finSteuersatzZeitraeume.ab))).map(
+      (z) => ({ id: z.id, ab: z.ab, regel: z.regel, ermaessigt: z.ermaessigt }),
+    );
+
+  /**
+   * Number of Belege and Kassenabrechnungen dated in a period, i.e. from its `ab` (open for the
+   * oldest, which also covers earlier dates) until the next period's `ab`. A draft is not booked yet
+   * and does not count.
+   */
+  const zeitraumBelegt = async (
+    q: Q,
+    zeitraeume: readonly { id: string; ab: string }[],
+    id: string,
+  ): Promise<number> => {
+    const z = zeitraeume.find((x) => x.id === id);
+    if (!z) return 0;
+    const von =
+      [...zeitraeume].sort((a, b) => a.ab.localeCompare(b.ab))[0]!.id === id ? null : z.ab;
+    const bis = zeitraumEnde(zeitraeume, z.ab);
+    const [belege, abrechnungen] = await Promise.all([
+      q
+        .select({ n: sql<number>`count(*)::int` })
+        .from(finBelege)
+        .where(
+          and(
+            von ? gte(finBelege.belegdatum, von) : undefined,
+            bis ? lt(finBelege.belegdatum, bis) : undefined,
+          ),
+        ),
+      q
+        .select({ n: sql<number>`count(*)::int` })
+        .from(finKassenabrechnungen)
+        .where(
+          and(
+            von ? gte(finKassenabrechnungen.datum, von) : undefined,
+            bis ? lt(finKassenabrechnungen.datum, bis) : undefined,
+          ),
+        ),
+    ]);
+    return (belege[0]?.n ?? 0) + (abrechnungen[0]?.n ?? 0);
+  };
+
   const planKontext = async (q: Q, daten: BelegEntwurfDaten): Promise<BelegPlanKontext> => {
     const { pruef, bestand, rows } = await kern.kontenMitBestand(q, belegKontoIds(daten));
     const art = new Map(rows.map((k) => [k.id, k.art]));
@@ -482,6 +562,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .where(inArray(wareGebinde.wareId, wareIds))
       : [];
     return {
+      zeitraeume: await zeitraeumeLaden(q),
+      heute: datumBerlin(new Date()),
       konten: pruef.map((k) => ({ ...k, art: art.get(k.id)! })),
       bestand,
       rechnungssteller: steller,
@@ -650,7 +732,12 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
               p.art === 'ware' && p.pfandCent !== null ? rechnung.pfandBetraege[i]! : null,
             text: plan.buchung!.postenTexte[i]!,
             anzahlMilli: p.anzahlMilli,
-            einzelpreisCent: p.einzelpreisCent,
+            // A Gesamtpreis line stores the rounded unit price; the amount is the Gesamtpreis itself.
+            einzelpreisCent:
+              p.art !== 'leergut' && p.gesamtCent != null
+                ? einzelpreisAusGesamt(p.gesamtCent, p.anzahlMilli)
+                : p.einzelpreisCent,
+            gesamtCent: p.art !== 'leergut' ? (p.gesamtCent ?? null) : null,
             steuersatz: p.steuersatz,
             betragCent: rechnung.postenBetraege[i]!,
           })),
@@ -661,12 +748,20 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         if (korrekturen.length > 0)
           await tx.insert(finBelegKorrekturen).values(korrekturen.map((k) => ({ belegId, ...k })));
         // Artikel names booked for the first time become Artikel with the tax rate of their item.
-        const neueArtikel = new Map<string, { name: string; steuersatz: number }>();
+        const neueArtikel = new Map<
+          string,
+          { name: string; steuersatz: number; art: SteuersatzArt | null }
+        >();
+        const zeitraum = steuersatzZeitraumAm(await zeitraeumeLaden(tx), daten.belegdatum!);
         daten.posten.forEach((p, i) => {
           const name = plan.buchung!.postenTexte[i]!.trim();
           const schluessel = artikelNameNorm(name);
           if (p.art === 'kategorie' && name !== '' && !neueArtikel.has(schluessel))
-            neueArtikel.set(schluessel, { name, steuersatz: p.steuersatz });
+            neueArtikel.set(schluessel, {
+              name,
+              steuersatz: p.steuersatz,
+              art: zeitraum ? steuersatzArtVon(p.steuersatz, zeitraum) : null,
+            });
         });
         if (neueArtikel.size > 0) {
           const bekannt = new Set(
@@ -686,7 +781,9 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
                   id: randomUUID(),
                   name: a.name,
                   nameNorm,
+                  // Legacy NOT NULL column, never read; the default is the Art.
                   steuersatz: a.steuersatz,
+                  steuersatzArt: a.art,
                   erstelltAm: jetzt,
                   erstelltVon: sub,
                 })),
@@ -1130,6 +1227,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         modus: b.modus,
         posten: posten.map((x) => x.p),
         korrekturen,
+        eigenbeleg: !b.dateiSha256 && !!b.eigenbelegBegruendung,
       });
       return {
         id: b.id,
@@ -1164,6 +1262,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
+          gesamtCent: p.gesamtCent,
           steuersatz: p.steuersatz,
           betragCent: p.betragCent,
         })),
@@ -1348,6 +1447,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
+          gesamtCent: p.gesamtCent,
           steuersatz: p.steuersatz,
         })),
         korrekturen: detail.korrekturen,
@@ -1426,7 +1526,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       const artikel = await db.select().from(finArtikel);
       return artikelVorschlaegeBilden(
         rows,
-        new Map(artikel.map((a) => [a.nameNorm, a.steuersatz])),
+        new Map(artikel.map((a) => [a.nameNorm, a.steuersatzArt])),
       );
     },
 
@@ -1460,13 +1560,66 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       );
     },
 
-    async artikelSteuersatzSetzen(id, steuersatz) {
+    async artikelSteuersatzArtSetzen(id, steuersatzArt) {
       const rows = await db
         .update(finArtikel)
-        .set({ steuersatz })
+        .set({ steuersatzArt })
         .where(eq(finArtikel.id, id))
         .returning({ id: finArtikel.id });
       return rows.length > 0;
+    },
+
+    async steuersatzZeitraeume() {
+      const zeitraeume = await zeitraeumeLaden(db);
+      return Promise.all(
+        zeitraeume.map(async (z) => ({
+          ...z,
+          loeschbar: zeitraeume.length > 1 && (await zeitraumBelegt(db, zeitraeume, z.id)) === 0,
+        })),
+      );
+    },
+
+    async steuersatzZeitraumAnlegen(eingabe, sub) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const vorhanden = await tx
+            .select({ id: finSteuersatzZeitraeume.id })
+            .from(finSteuersatzZeitraeume)
+            .where(eq(finSteuersatzZeitraeume.ab, eingabe.ab));
+          if (vorhanden.length > 0)
+            throw new BuchungUngueltig([
+              `Es gibt schon einen Zeitraum ab ${datumAnzeigen(eingabe.ab)}.`,
+            ]);
+          const id = randomUUID();
+          await tx.insert(finSteuersatzZeitraeume).values({
+            id,
+            ab: eingabe.ab,
+            regel: eingabe.regel,
+            ermaessigt: eingabe.ermaessigt,
+            erstelltAm: new Date(),
+            erstelltVon: sub,
+          });
+          return id;
+        }),
+      );
+    },
+
+    async steuersatzZeitraumLoeschen(id) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const zeitraeume = await zeitraeumeLaden(tx);
+          const z = zeitraeume.find((x) => x.id === id);
+          if (!z) return false;
+          if (zeitraeume.length === 1)
+            throw new BuchungUngueltig(['Der letzte Zeitraum kann nicht gelöscht werden.']);
+          if ((await zeitraumBelegt(tx, zeitraeume, id)) > 0)
+            throw new BuchungUngueltig([
+              'In diesem Zeitraum sind schon Belege oder Kassenabrechnungen gebucht.',
+            ]);
+          await tx.delete(finSteuersatzZeitraeume).where(eq(finSteuersatzZeitraeume.id, id));
+          return true;
+        }),
+      );
     },
 
     async belegWaren() {

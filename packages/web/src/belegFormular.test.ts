@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STEUERSATZ_ZEITRAEUME_SEED } from '@c4/shared';
 import {
   anzahlLesen,
   anzahlText,
@@ -31,7 +32,7 @@ import {
 const voll = (): BelegFormular => ({
   ...leeresFormular(),
   rechnungsstellerId: 'r1',
-  belegdatum: '2027-03-01',
+  belegdatum: '2026-03-01',
   posten: [
     {
       ...neuerPosten(1900, 'kategorie'),
@@ -50,6 +51,8 @@ const voll = (): BelegFormular => ({
   eigenbeleg: true,
   eigenbelegBegruendung: 'Kassenbon verloren',
 });
+
+const ZEITRAEUME = STEUERSATZ_ZEITRAEUME_SEED;
 
 describe('anzahlLesen / anzahlText', () => {
   it('liest Dezimalkomma und Punkt in Tausendstel', () => {
@@ -76,11 +79,15 @@ describe('satzText und Vorschlag', () => {
     expect(satzText(1900)).toBe('19 %');
     expect(satzText(700)).toBe('7 %');
   });
-  it('schlägt nur angebotene Sätze vor', () => {
-    expect(steuersatzVorschlag({ steuersatzStandard: 700 })).toBe(700);
-    expect(steuersatzVorschlag({ steuersatzStandard: 1600 })).toBeNull();
-    expect(steuersatzVorschlag({ steuersatzStandard: null })).toBeNull();
-    expect(steuersatzVorschlag(undefined)).toBeNull();
+  it('schlägt den Satz der Art im jeweiligen Zeitraum vor', () => {
+    const normal = { regel: 1900, ermaessigt: 700 };
+    expect(steuersatzVorschlag({ steuersatzArt: 'ermaessigt' }, normal)).toBe(700);
+    expect(steuersatzVorschlag({ steuersatzArt: 'regel' }, { regel: 1600, ermaessigt: 500 })).toBe(
+      1600,
+    );
+    expect(steuersatzVorschlag({ steuersatzArt: 'keine' }, normal)).toBe(0);
+    expect(steuersatzVorschlag({ steuersatzArt: null }, normal)).toBeNull();
+    expect(steuersatzVorschlag(undefined, normal)).toBeNull();
   });
 });
 
@@ -125,6 +132,7 @@ describe('formularZuDaten', () => {
         text: 'Deko',
         anzahlMilli: 2000,
         einzelpreisCent: 500,
+        gesamtCent: null,
         steuersatz: 1900,
       },
     ]);
@@ -219,6 +227,7 @@ describe('Ware, Leergut und Einreichung', () => {
       kategorieId: 'k1',
       anzahlMilli: 2000,
       einzelpreisCent: 1000,
+      gesamtCent: null,
       steuersatz: 700,
       pfandCent: 300,
     });
@@ -262,7 +271,7 @@ describe('Ware, Leergut und Einreichung', () => {
     const f = lager();
     f.posten[0] = { ...f.posten[0]!, gebindeId: null };
     f.posten[2] = { ...f.posten[2]!, text: '' };
-    const m = formularFehler(f)
+    const m = formularFehler(f, ZEITRAEUME)
       .map((x) => x.meldung)
       .join(' ');
     expect(m).toContain('Bitte wähle ein Gebinde');
@@ -277,10 +286,10 @@ describe('Ware, Leergut und Einreichung', () => {
 describe('formularFehler', () => {
   it('lässt einen vollständigen Beleg durch', () => {
     const f = { ...voll(), gegeben: { 1000: 1 } };
-    expect(formularFehler(f)).toEqual([]);
+    expect(formularFehler(f, ZEITRAEUME)).toEqual([]);
   });
   it('verlangt Rechnungssteller, Datum, Datei oder Begründung', () => {
-    const felder = formularFehler(leeresFormular()).map((x) => x.feld);
+    const felder = formularFehler(leeresFormular(), ZEITRAEUME).map((x) => x.feld);
     expect(felder).toEqual(
       expect.arrayContaining(['rechnungssteller', 'belegdatum', 'datei', 'zahlweg']),
     );
@@ -288,7 +297,7 @@ describe('formularFehler', () => {
   it('meldet eine unlesbare Anzahl und einen fehlenden Preis', () => {
     const f = voll();
     f.posten = [{ ...f.posten[0]!, anzahl: 'x', einzelpreisCent: null }];
-    const m = formularFehler(f)
+    const m = formularFehler(f, ZEITRAEUME)
       .map((x) => x.meldung)
       .join('\n');
     expect(m).toContain('Kategorien, Zeile 1: Die Anzahl');
@@ -301,21 +310,26 @@ describe('formularFehler', () => {
       { ...neuerPosten(0, 'ware'), wareId: 'w1', einzelpreisCent: null },
       { ...f.posten[0]!, einzelpreisCent: null },
     ];
-    const m = formularFehler(f).map((x) => x.meldung);
+    const m = formularFehler(f, ZEITRAEUME).map((x) => x.meldung);
     expect(m).toContain('Waren, Zeile 1: Bitte gib den Einzelpreis an.');
     expect(m).toContain('Kategorien, Zeile 2: Bitte gib den Einzelpreis an.');
   });
   it('prüft die Stückelung gegen die Summe', () => {
     const f = { ...voll(), gegeben: { 500: 1 } };
-    expect(formularFehler(f).some((x) => x.feld === 'stueckelung')).toBe(true);
+    expect(formularFehler(f, ZEITRAEUME).some((x) => x.feld === 'stueckelung')).toBe(true);
   });
 });
 
 describe('Summen und Sätze', () => {
   it('rechnet brutto je Steuersatz', () => {
-    const s = formularSumme(voll());
+    const s = formularSumme({ ...voll(), eigenbeleg: false });
     expect(s.summe).toBe(1000);
     expect(s.jeSteuersatz.find((g) => g.satz === 1900)!.steuer).toBe(160);
+  });
+  it('rechnet einen Eigenbeleg ohne Vorsteuer', () => {
+    const s = formularSumme(voll());
+    expect(s.summe).toBe(1000);
+    expect(s.jeSteuersatz.find((g) => g.satz === 1900)!.steuer).toBe(0);
   });
   it('listet die verwendeten Sätze absteigend', () => {
     const f = {

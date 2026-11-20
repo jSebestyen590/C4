@@ -3,7 +3,10 @@ import {
   belegBerechnen,
   belegPruefen,
   postenZeilenLabel,
-  STEUERSAETZE,
+  STEUERSATZ_NOTFALL,
+  heuteBerlin,
+  steuersatzFuerArt,
+  type SteuersatzZeitraum,
   type BelegDatei,
   type BelegDateiTyp,
   type BelegEntwurfDaten,
@@ -29,6 +32,8 @@ export interface PostenZeile {
   anzahl: string;
   einzelpreisCent: number | null;
   steuersatz: number;
+  /** Gesamtpreis of the line (cent); null = price per piece/Gebinde. */
+  gesamtCent: number | null;
   /** Item kind: Kategorie (Aufwand), Ware (stock) or Leergut (returned empties). */
   art: BelegPostenArt;
   /** Ware items: the Ware, the Gebinde the quantity counts and the deposit per Gebinde (null = none). */
@@ -73,7 +78,7 @@ let zaehler = 0;
 const neuerKey = () => `p${++zaehler}`;
 
 export const neuerPosten = (
-  steuersatz: number = STEUERSAETZE[0],
+  steuersatz: number = STEUERSATZ_NOTFALL.regel,
   art: BelegPostenArt = 'ware',
 ): PostenZeile => ({
   key: neuerKey(),
@@ -81,6 +86,7 @@ export const neuerPosten = (
   text: '',
   anzahl: '1',
   einzelpreisCent: null,
+  gesamtCent: null,
   steuersatz,
   art,
   wareId: null,
@@ -199,14 +205,13 @@ export function anzahlText(milli: number): string {
 /** Tax rate as text: 1900 -> "19 %", 700 -> "7 %". */
 export const satzText = (satz: number): string => `${(satz / 100).toLocaleString('de-DE')} %`;
 
-/** The standard tax rate of a Kategorie when it is one the form offers. */
+/** The tax rate of a Kategorie's default Art in the period (`saetze`), or null without a default. */
 export function steuersatzVorschlag(
-  konto: Partial<Pick<KontoDto, 'steuersatzStandard'>> | undefined,
-) {
-  const satz = konto?.steuersatzStandard;
-  return satz !== null && satz !== undefined && (STEUERSAETZE as readonly number[]).includes(satz)
-    ? satz
-    : null;
+  konto: Partial<Pick<KontoDto, 'steuersatzArt'>> | undefined,
+  saetze: Pick<SteuersatzZeitraum, 'regel' | 'ermaessigt'>,
+): number | null {
+  const art = konto?.steuersatzArt;
+  return art === undefined ? null : steuersatzFuerArt(art, saetze);
 }
 
 // ----- Denominations: signed as booked on the Fach (given negative, change positive)
@@ -246,14 +251,24 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
     text: p.text.trim(),
     anzahlMilli: postenAnzahl(p),
     einzelpreisCent: p.einzelpreisCent ?? 0,
+    gesamtCent: p.gesamtCent,
     steuersatz: p.steuersatz,
   };
-  if (p.art === 'leergut') return { art: 'leergut', ...basis };
+  if (p.art === 'leergut') {
+    return {
+      art: 'leergut',
+      text: basis.text,
+      anzahlMilli: basis.anzahlMilli,
+      einzelpreisCent: basis.einzelpreisCent,
+      steuersatz: basis.steuersatz,
+    };
+  }
   if (p.art === 'ware') {
     return {
       art: 'ware',
       anzahlMilli: basis.anzahlMilli,
       einzelpreisCent: basis.einzelpreisCent,
+      gesamtCent: basis.gesamtCent,
       steuersatz: basis.steuersatz,
       wareId: p.wareId,
       gebindeId: p.gebindeId,
@@ -334,6 +349,7 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     text: p.art === 'ware' ? '' : p.text,
     anzahl: anzahlText(p.anzahlMilli),
     einzelpreisCent: p.einzelpreisCent,
+    gesamtCent: p.art === 'leergut' ? null : (p.gesamtCent ?? null),
     steuersatz: p.steuersatz,
     wareId: ware?.wareId ?? null,
     gebindeId: ware?.gebindeId ?? null,
@@ -355,8 +371,11 @@ export function hatInhalt(f: BelegFormular): boolean {
 }
 
 /** What is missing before the Beleg can be booked, incl. unreadable quantities. */
-export function formularFehler(f: BelegFormular): BelegFehler[] {
-  const fehler = belegPruefen(formularZuDaten(f));
+export function formularFehler(
+  f: BelegFormular,
+  zeitraeume: readonly Pick<SteuersatzZeitraum, 'ab' | 'regel' | 'ermaessigt'>[],
+): BelegFehler[] {
+  const fehler = belegPruefen(formularZuDaten(f), { heute: heuteBerlin(), zeitraeume });
   // Same order and numbering as `formularZuDaten`: the position within the art.
   const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
   gefuelltePosten(f.posten).forEach((p) => {

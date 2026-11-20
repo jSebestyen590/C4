@@ -1,0 +1,2 @@
+-- Default tax rate of an Artikel as Art (regel | ermaessigt | keine; null = none). The old column steuersatz stays (NOT NULL, DSQL cannot relax it): the API still writes a number there when it creates an Artikel, but never reads it.
+ALTER TABLE fin_artikel ADD COLUMN IF NOT EXISTS steuersatz_art text

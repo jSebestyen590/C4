@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { heuteBerlin, monateVerschieben } from './datum';
 import {
   finanzDatumSchema,
   formatEuro,
@@ -8,14 +9,26 @@ import {
   type HashZeile,
   type StueckelungDto,
 } from './finanzen';
+import {
+  steuersaetzeAm,
+  steuersatzArtSchema,
+  type SteuersatzArt,
+  type SteuersatzZeitraum,
+} from './steuersaetze';
 
 // Finanzen Belege (see docs/finanzen.md): a Beleg is an expense with an optional file. Pure logic
 // only: the totals per tax rate, the journal lines of a Beleg and of an Erstattung, validation, and
 // the open Auslagen. Money is whole cents, tax rates are basis points (1900 = 19 %), quantities are
 // thousandths (1500 = 1,5).
 
-/** Tax rates offered on a Beleg (basis points). */
-export const STEUERSAETZE = [1900, 700, 0] as const;
+/** At most one correction per tax rate: regular, reduced and 0 (`steuersaetzeAm`). */
+export const BELEG_KORREKTUREN_MAX = 3;
+/** A Belegdatum older than this many months gets a warning when booking. */
+export const BELEGDATUM_ALT_MONATE = 2;
+
+/** Whether `belegdatum` is older than `BELEGDATUM_ALT_MONATE` months before `heute` (both `YYYY-MM-DD`). */
+export const belegdatumAlt = (belegdatum: string, heute: string): boolean =>
+  belegdatum < monateVerschieben(heute, -BELEGDATUM_ALT_MONATE);
 
 export const BELEG_MODI = ['brutto', 'netto'] as const;
 export type BelegModus = (typeof BELEG_MODI)[number];
@@ -139,6 +152,12 @@ const artikelFeld = z
   .min(1, 'Bitte gib den Artikel an.')
   .max(100, 'Höchstens 100 Zeichen erlaubt.');
 
+/**
+ * Gesamtpreis of an item (without deposit): when set, the amount of the item is exactly this value and
+ * the unit price is `einzelpreisAusGesamt` (info only). Null = amount from quantity times unit price.
+ */
+const gesamtFeld = nullish(centFeld);
+
 /** Item booked to an Aufwand Konto. Drafts without `art` are of this kind. */
 export const belegPostenKategorieSchema = z.object({
   art: z.literal('kategorie').default('kategorie'),
@@ -148,6 +167,7 @@ export const belegPostenKategorieSchema = z.object({
   text: artikelFeld,
   anzahlMilli: anzahlMilliFeld,
   einzelpreisCent: centFeld,
+  gesamtCent: gesamtFeld,
   steuersatz: steuersatzFeld,
 });
 
@@ -167,6 +187,8 @@ export const belegPostenWareSchema = z.object({
   anzahlMilli: anzahlMilliFeld,
   /** Price per Gebinde without deposit. */
   einzelpreisCent: centFeld,
+  /** Gesamtpreis of the line without deposit (see `gesamtFeld`). */
+  gesamtCent: gesamtFeld,
   steuersatz: steuersatzFeld,
   /** Deposit per Gebinde; null = no deposit. */
   pfandCent: nullish(centFeld),
@@ -211,7 +233,7 @@ export const belegEntwurfDatenSchema = z.object({
     .array(belegPostenSchema)
     .max(BELEG_POSTEN_ANZAHL_MAX, `Höchstens ${BELEG_POSTEN_ANZAHL_MAX} Posten erlaubt.`)
     .default([]),
-  korrekturen: z.array(belegKorrekturSchema).max(STEUERSAETZE.length).default([]),
+  korrekturen: z.array(belegKorrekturSchema).max(BELEG_KORREKTUREN_MAX).default([]),
   zahlweg: nullish(z.enum(ZAHLWEGE, 'Bitte wähle einen Zahlweg.')),
   bezahldatum: nullish(finanzDatumSchema),
   /** Fach the cash comes from (Zahlweg bar). */
@@ -245,7 +267,10 @@ export const belegEntwurfSchema = z.object({ daten: belegEntwurfDatenSchema });
 /** Body of `POST /api/finanzen/einreichungen` (a member submits a Beleg; always an Auslage). */
 export const belegEinreichenSchema = z.object({
   datei: belegDateiSchema,
-  belegdatum: finanzDatumSchema,
+  belegdatum: finanzDatumSchema.refine(
+    (d) => d <= heuteBerlin(),
+    'Das Belegdatum darf nicht in der Zukunft liegen.',
+  ),
   betragCent: z
     .number('Bitte gib den Betrag an.')
     .int('Beträge müssen ganze Cent sein.')
@@ -329,6 +354,28 @@ export const erstattungEingabeSchema = z
   });
 export type ErstattungEingabe = z.output<typeof erstattungEingabeSchema>;
 
+// ----- Tax rate periods
+
+const basispunkte = (was: string) =>
+  z
+    .number(`Bitte gib den ${was} an.`)
+    .int(`Der ${was} muss in ganzen Basispunkten angegeben werden.`)
+    .min(1, `Der ${was} muss größer als 0 sein.`)
+    .max(10000, `Der ${was} darf höchstens 100 % betragen.`);
+
+/** Body of `POST /api/finanzen/steuersatz-zeitraeume`. */
+export const steuersatzZeitraumEingabeSchema = z
+  .object({
+    ab: finanzDatumSchema,
+    regel: basispunkte('Regelsatz'),
+    ermaessigt: basispunkte('ermäßigten Satz'),
+  })
+  .refine((v) => v.ermaessigt < v.regel, {
+    message: 'Der ermäßigte Satz muss kleiner als der Regelsatz sein.',
+    path: ['ermaessigt'],
+  });
+export type SteuersatzZeitraumEingabe = z.output<typeof steuersatzZeitraumEingabeSchema>;
+
 // ----- Calculation
 
 export interface BelegRechnung {
@@ -336,11 +383,25 @@ export interface BelegRechnung {
   posten: readonly (Pick<BelegPosten, 'anzahlMilli' | 'einzelpreisCent' | 'steuersatz'> & {
     /** Leergut items count negative (`postenBetrag`); null counts as Kategorie. */
     art?: BelegPostenArt | null;
+    /** Gesamtpreis of the line: the amount is exactly this (`postenBetrag`). */
+    gesamtCent?: number | null;
     /** Deposit per Gebinde of a Ware item (the quantity is the number of Gebinde). */
     pfandCent?: number | null;
   })[];
   korrekturen: readonly BelegKorrektur[];
+  /**
+   * Eigenbeleg (no file, with a reason): no Vorsteuer, the whole amount is expense. When omitted it
+   * follows from `datei` and `eigenbelegBegruendung` if present (a `BelegEntwurfDaten` works as is).
+   */
+  eigenbeleg?: boolean;
+  datei?: unknown;
+  eigenbelegBegruendung?: string | null;
 }
+
+/** Whether the Beleg is an Eigenbeleg (booked without Vorsteuer). */
+export const istEigenbeleg = (
+  b: Pick<BelegRechnung, 'eigenbeleg' | 'datei' | 'eigenbelegBegruendung'>,
+): boolean => b.eigenbeleg ?? (!b.datei && !!b.eigenbelegBegruendung);
 
 export interface SteuersatzSumme {
   satz: number;
@@ -364,17 +425,23 @@ export interface BelegBerechnung {
 const runde = (x: number): number => (x < 0 ? -Math.round(-x) : Math.round(x));
 
 /**
- * Amount of an item: quantity (thousandths) times unit price. Leergut (a return) is negative:
- * `-round(anzahl * Pfand)`.
+ * Amount of an item: quantity (thousandths) times unit price, or exactly the Gesamtpreis when set
+ * (not for Leergut). Leergut (a return) is negative: `-round(anzahl * Pfand)`.
  */
 export const postenBetrag = (p: {
   anzahlMilli: number;
   einzelpreisCent: number;
   art?: BelegPostenArt | null;
+  gesamtCent?: number | null;
 }): number => {
+  if (p.gesamtCent != null && p.art !== 'leergut') return p.gesamtCent;
   const betrag = runde((p.anzahlMilli * p.einzelpreisCent) / 1000);
   return p.art === 'leergut' ? -betrag : betrag;
 };
+
+/** Unit price of a Gesamtpreis line: `round(gesamt / anzahl)`; 0 without a quantity. */
+export const einzelpreisAusGesamt = (gesamtCent: number, anzahlMilli: number): number =>
+  anzahlMilli === 0 ? 0 : runde((gesamtCent * 1000) / anzahlMilli);
 
 /** Plural table name of a Posten art as used in messages ("Waren, Zeile 2: ..."). */
 export const BELEG_POSTEN_TABELLEN_LABELS: Record<BelegPostenArt, string> = {
@@ -391,10 +458,13 @@ export const postenZeilenLabel = (art: BelegPostenArt, position: number): string
  * Totals of a Beleg per tax rate. Brutto: the tax of a rate is its gross sum minus the rounded net
  * (`brutto - round(brutto / (1 + satz))`). Netto: tax = `round(netto * satz)` plus the correction,
  * which may move netto and tax of a rate by at most 10 ct each so the sums match the paper Beleg.
- * The tax is calculated on the sum of a rate, not per item.
+ * The tax is calculated on the sum of a rate, not per item. An Eigenbeleg has no Vorsteuer: Brutto has
+ * tax 0; Netto still adds the calculated tax to the paid amount, but it is expense, not Vorsteuer
+ * (`belegBuchungszeilen`).
  */
 export function belegBerechnen(beleg: BelegRechnung): BelegBerechnung {
   const fehler: string[] = [];
+  const eigenbeleg = istEigenbeleg(beleg);
   const postenBetraege = beleg.posten.map((p) => postenBetrag(p));
   const pfandBetraege = beleg.posten.map((p) =>
     postenBetrag({ anzahlMilli: p.anzahlMilli, einzelpreisCent: p.pfandCent ?? 0 }),
@@ -426,6 +496,8 @@ export function belegBerechnen(beleg: BelegRechnung): BelegBerechnung {
     .sort((a, b) => b[0] - a[0])
     .map(([satz, summe]) => {
       if (beleg.modus === 'brutto') {
+        // Eigenbeleg: no Vorsteuer, the gross amount is the expense.
+        if (eigenbeleg) return { satz, netto: summe, steuer: 0, brutto: summe };
         const netto = runde((summe * 10000) / (10000 + satz));
         return { satz, netto, steuer: summe - netto, brutto: summe };
       }
@@ -457,7 +529,8 @@ const OHNE_STEUER = {
  * The journal lines of a Beleg: one line (gross, with the Vorsteuer fields) per Konto and tax rate;
  * net and tax of a rate are calculated per Konto from its own signed amount, the rounding cent goes to the largest one. A Ware
  * item goes to its category, its deposit and every Leergut item to the Pfand Konto. The counter line
- * takes the whole amount. The lines add up to 0.
+ * takes the whole amount. The lines add up to 0. An Eigenbeleg has no Vorsteuer: the lines carry the
+ * gross amount with `steuerArt` `keine`.
  */
 export function belegBuchungszeilen(
   beleg: Omit<BelegRechnung, 'posten'> & {
@@ -471,6 +544,7 @@ export function belegBuchungszeilen(
 ): BelegZeile[] {
   const b = belegBerechnen(beleg);
   const modus = beleg.modus;
+  const eigenbeleg = istEigenbeleg(beleg);
   const zeilen: BelegZeile[] = [];
   for (const g of b.jeSteuersatz) {
     const jeKonto = new Map<string, number>();
@@ -490,11 +564,12 @@ export function belegBuchungszeilen(
     const betraege = ids.map((id) => jeKonto.get(id)!);
     // Each Konto gets its own signed net/tax with the rounding rule of `belegBerechnen`; the rounding
     // difference to the rate totals goes to the Konto with the largest absolute amount.
+    const ohneVorsteuer = eigenbeleg && modus === 'brutto';
     const netto = betraege.map((x) =>
-      modus === 'brutto' ? runde((x * 10000) / (10000 + g.satz)) : x,
+      modus === 'brutto' && !ohneVorsteuer ? runde((x * 10000) / (10000 + g.satz)) : x,
     );
     const steuer = betraege.map((x, i) =>
-      modus === 'brutto' ? x - netto[i]! : runde((x * g.satz) / 10000),
+      ohneVorsteuer ? 0 : modus === 'brutto' ? x - netto[i]! : runde((x * g.satz) / 10000),
     );
     let groesster = 0;
     betraege.forEach((x, i) => {
@@ -509,7 +584,8 @@ export function belegBuchungszeilen(
         kontoId,
         betragCent,
         stueckelung: [],
-        ...(g.satz > 0
+        // Eigenbeleg: the whole amount is expense, no Vorsteuer (also Pfand and Leergut).
+        ...(g.satz > 0 && !eigenbeleg
           ? {
               nettoCent: netto[i]!,
               steuerCent: steuer[i]!,
@@ -563,18 +639,40 @@ export interface BelegFehler {
   meldung: string;
 }
 
-/** Whether the draft is complete enough to book: required fields, items, file or reason, Zahlweg fields. */
-export function belegPruefen(daten: BelegEntwurfDaten): BelegFehler[] {
+/** What `belegPruefen` needs besides the draft: today (Berlin) and the tax rate periods. */
+export interface BelegPruefKontext {
+  heute: string;
+  zeitraeume: readonly Pick<SteuersatzZeitraum, 'ab' | 'regel' | 'ermaessigt'>[];
+}
+
+/** `19 %`, `7 %`, `0 %`, `5,5 %`. */
+const satzText = (satz: number): string => `${(satz / 100).toLocaleString('de-DE')} %`;
+
+/**
+ * Whether the draft is complete enough to book: required fields, items, file or reason, Zahlweg
+ * fields. The Belegdatum must not lie in the future and every tax rate must be valid on it.
+ */
+export function belegPruefen(daten: BelegEntwurfDaten, kontext: BelegPruefKontext): BelegFehler[] {
   const fehler: BelegFehler[] = [];
   const f = (feld: string, meldung: string) => fehler.push({ feld, meldung });
   if (!daten.rechnungsstellerId) f('rechnungssteller', 'Bitte wähle einen Rechnungssteller.');
   if (!daten.belegdatum) f('belegdatum', 'Bitte gib das Belegdatum an.');
+  else if (daten.belegdatum > kontext.heute)
+    f('belegdatum', 'Das Belegdatum darf nicht in der Zukunft liegen.');
+  const gueltig = daten.belegdatum
+    ? steuersaetzeAm(kontext.zeitraeume, daten.belegdatum).saetze
+    : null;
   if (daten.posten.length === 0) f('posten', 'Bitte gib mindestens einen Posten an.');
   const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
   daten.posten.forEach((p) => {
     const n = postenZeilenLabel(p.art, ++zaehler[p.art]);
     if (p.art !== 'leergut' && !p.kategorieId) f('posten', `${n}: Bitte wähle eine Kategorie.`);
-    if (p.anzahlMilli === 0) f('posten', `${n}: Die Anzahl darf nicht 0 sein.`);
+    if (p.anzahlMilli === 0) f('posten', `${n}: Bitte gib die Anzahl an.`);
+    if (gueltig && !gueltig.includes(p.steuersatz))
+      f(
+        'posten',
+        `${n}: Der Steuersatz ${satzText(p.steuersatz)} gilt am Belegdatum nicht (erlaubt: ${gueltig.map(satzText).join(', ')}).`,
+      );
     if (p.art === 'ware') {
       if (!p.wareId) f('posten', `${n}: Bitte wähle eine Ware.`);
       else if (!p.gebindeId) f('posten', `${n}: Bitte wähle ein Gebinde.`);
@@ -707,6 +805,8 @@ export interface EinreichungAuswahlDto {
   waren: BelegWareDto[];
   /** Artikel names booked so far with their Kategorien, for the Artikel autocomplete and Kategorie suggestion. */
   artikelVorschlaege: ArtikelKategorieVorschlaege;
+  /** Tax rate periods: the rates a Beleg date allows (`steuersaetzeAm`). */
+  steuersatzZeitraeume: SteuersatzZeitraum[];
 }
 
 /** `GET /api/finanzen/einreichungen/:id`: own submission with the file. */
@@ -816,8 +916,8 @@ export interface BelegWareDto {
 /** Artikel names already booked on Kategorie items, with the Kategorien used for them (most often first). */
 export type ArtikelKategorieVorschlaege = {
   artikel: string;
-  /** Default tax rate of the Artikel (`fin_artikel`, basis points); null when it has none yet. */
-  steuersatz: number | null;
+  /** Default tax rate of the Artikel (`fin_artikel`) as Art; null when it has none yet. */
+  steuersatzArt: SteuersatzArt | null;
   kategorien: { kategorieId: string; anzahl: number }[];
 }[];
 
@@ -828,8 +928,8 @@ export const artikelNameNorm = (name: string): string => name.trim().toLowerCase
 export interface ArtikelDto {
   id: string;
   name: string;
-  /** Default tax rate in basis points (1900 = 19 %). */
-  steuersatz: number;
+  /** Default tax rate as Art; the value follows from the date of the Beleg. */
+  steuersatzArt: SteuersatzArt | null;
   /** Kategorien it was booked on, most often first. */
   kategorien: { kategorieId: string; anzahl: number }[];
   /** Number of booked Posten with this name. */
@@ -839,14 +939,14 @@ export interface ArtikelDto {
 }
 
 /** Body of `PATCH /api/finanzen/artikel/:id`. */
-export const artikelAendernSchema = z.object({ steuersatz: steuersatzFeld });
+export const artikelAendernSchema = z.object({ steuersatzArt: steuersatzArtSchema });
 
 /**
  * Builds the Artikel list from `fin_artikel` rows and counted booked (Artikel, Kategorie) groups
  * (`zuletztAm` = latest booking of that group). Sorted by name.
  */
 export function artikelListeBilden(
-  artikel: readonly { id: string; name: string; steuersatz: number }[],
+  artikel: readonly { id: string; name: string; steuersatzArt: SteuersatzArt | null }[],
   zeilen: readonly {
     artikel: string;
     kategorieId: string;
@@ -859,7 +959,7 @@ export function artikelListeBilden(
     jeName.set(artikelNameNorm(a.name), {
       id: a.id,
       name: a.name,
-      steuersatz: a.steuersatz,
+      steuersatzArt: a.steuersatzArt,
       kategorien: [],
       postenAnzahl: 0,
       zuletztAm: null,
@@ -886,8 +986,8 @@ export function artikelListeBilden(
  */
 export function artikelVorschlaegeBilden(
   zeilen: readonly { artikel: string; kategorieId: string; anzahl: number }[],
-  /** Default tax rate per Artikel, keyed by `artikelNameNorm`. */
-  steuersaetze: ReadonlyMap<string, number> = new Map(),
+  /** Default tax rate Art per Artikel, keyed by `artikelNameNorm`. */
+  steuersatzArten: ReadonlyMap<string, SteuersatzArt | null> = new Map(),
 ): ArtikelKategorieVorschlaege {
   const sortiert = zeilen
     .filter((z) => z.artikel.trim() !== '')
@@ -897,7 +997,7 @@ export function artikelVorschlaegeBilden(
     const schluessel = artikelNameNorm(z.artikel);
     const eintrag = nachName.get(schluessel) ?? {
       artikel: z.artikel.trim(),
-      steuersatz: steuersaetze.get(schluessel) ?? null,
+      steuersatzArt: steuersatzArten.get(schluessel) ?? null,
       kategorien: [],
     };
     const vorhanden = eintrag.kategorien.find((k) => k.kategorieId === z.kategorieId);
@@ -1002,6 +1102,8 @@ export interface BelegPostenDto {
   text: string;
   anzahlMilli: number;
   einzelpreisCent: number;
+  /** Set on a Gesamtpreis line: the amount is exactly this and `einzelpreisCent` is derived. */
+  gesamtCent: number | null;
   steuersatz: number;
   betragCent: number;
 }

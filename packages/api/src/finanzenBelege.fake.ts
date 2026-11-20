@@ -29,6 +29,14 @@ import {
   type KontoDto,
   type Zahlweg,
   postenBetrag,
+  datumAnzeigen,
+  einzelpreisAusGesamt,
+  steuersatzArtVon,
+  steuersatzZeitraumAm,
+  zeitraumEnde,
+  STEUERSATZ_ZEITRAEUME_SEED,
+  type SteuersatzArt,
+  type SteuersatzZeitraum,
 } from '@c4/shared';
 import {
   BelegWarnungenOffen,
@@ -126,13 +134,29 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
   const steller = new Map<string, { id: string; name: string; archiviert: boolean }>();
   const entwuerfe = new Map<string, BelegEntwurfEintrag>();
   const belege: FakeBeleg[] = [];
-  const artikelListe = new Map<string, { id: string; name: string; steuersatz: number }>();
+  const artikelListe = new Map<
+    string,
+    { id: string; name: string; steuersatzArt: SteuersatzArt | null }
+  >();
+  let zeitraeume: SteuersatzZeitraum[] = STEUERSATZ_ZEITRAEUME_SEED.map((z) => ({ ...z }));
   const erstattungen: FakeErstattung[] = [];
   const zaehler = new Map<number, number>();
+
+  /** A Beleg dates into the period (the oldest one also covers earlier dates). */
+  const zeitraumHatBelege = (id: string): boolean => {
+    const sortiert = [...zeitraeume].sort((a, b) => a.ab.localeCompare(b.ab));
+    const z = sortiert.find((x) => x.id === id);
+    if (!z) return false;
+    const von = sortiert[0]!.id === id ? '' : z.ab;
+    const bis = zeitraumEnde(sortiert, z.ab);
+    return belege.some((b) => b.belegdatum >= von && (bis === null || b.belegdatum < bis));
+  };
 
   const storniert = () => new Set(k.buchungen.flatMap((b) => (b.stornoVon ? [b.stornoVon] : [])));
   const gleich = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   const kontext = (daten: BelegEntwurfDaten) => ({
+    zeitraeume,
+    heute: datumBerlin(new Date()),
     konten: k.pruefKonten(),
     bestand: k.alleBestand(),
     rechnungssteller: daten.rechnungsstellerId ? steller.get(daten.rechnungsstellerId) : undefined,
@@ -317,6 +341,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         modus: b.modus,
         posten: b.posten,
         korrekturen: b.korrekturen,
+        eigenbeleg: !b.datei && !!b.eigenbelegBegruendung,
       });
       return {
         id: b.id,
@@ -550,7 +575,11 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
               p.art === 'ware' && p.pfandCent !== null ? rechnung.pfandBetraege[i]! : null,
             text: plan.buchung!.postenTexte[i]!,
             anzahlMilli: p.anzahlMilli,
-            einzelpreisCent: p.einzelpreisCent,
+            einzelpreisCent:
+              p.art !== 'leergut' && p.gesamtCent != null
+                ? einzelpreisAusGesamt(p.gesamtCent, p.anzahlMilli)
+                : p.einzelpreisCent,
+            gesamtCent: p.art !== 'leergut' ? (p.gesamtCent ?? null) : null,
             steuersatz: p.steuersatz,
             betragCent: rechnung.postenBetraege[i]!,
           };
@@ -566,11 +595,16 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         erstelltVon: sub,
         erstelltAm: new Date().toISOString(),
       });
+      const zeitraum = steuersatzZeitraumAm(zeitraeume, daten.belegdatum!);
       daten.posten.forEach((p, i) => {
         const name = plan.buchung!.postenTexte[i]!.trim();
         const schluessel = artikelNameNorm(name);
         if (p.art === 'kategorie' && name !== '' && !artikelListe.has(schluessel))
-          artikelListe.set(schluessel, { id: randomUUID(), name, steuersatz: p.steuersatz });
+          artikelListe.set(schluessel, {
+            id: randomUUID(),
+            name,
+            steuersatzArt: zeitraum ? steuersatzArtVon(p.steuersatz, zeitraum) : null,
+          });
       });
       entwuerfe.delete(id);
       return { id: belegId, nummer, buchungId: gebucht.id, buchungSeq: gebucht.seq };
@@ -633,7 +667,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
       }
       return artikelVorschlaegeBilden(
         [...zaehler.values()],
-        new Map([...artikelListe].map(([schluessel, a]) => [schluessel, a.steuersatz])),
+        new Map([...artikelListe].map(([schluessel, a]) => [schluessel, a.steuersatzArt])),
       );
     },
     async artikel() {
@@ -660,10 +694,40 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
       }
       return artikelListeBilden([...artikelListe.values()], [...zeilen.values()]);
     },
-    async artikelSteuersatzSetzen(id, steuersatz) {
+    async artikelSteuersatzArtSetzen(id, steuersatzArt) {
       const a = [...artikelListe.values()].find((x) => x.id === id);
       if (!a) return false;
-      a.steuersatz = steuersatz;
+      a.steuersatzArt = steuersatzArt;
+      return true;
+    },
+    async steuersatzZeitraeume() {
+      const sortiert = [...zeitraeume].sort((a, b) => a.ab.localeCompare(b.ab));
+      return sortiert.map((z) => ({
+        ...z,
+        loeschbar: sortiert.length > 1 && !zeitraumHatBelege(z.id),
+      }));
+    },
+    async steuersatzZeitraumAnlegen(eingabe) {
+      if (zeitraeume.some((z) => z.ab === eingabe.ab))
+        throw new BuchungUngueltig([
+          `Es gibt schon einen Zeitraum ab ${datumAnzeigen(eingabe.ab)}.`,
+        ]);
+      const id = randomUUID();
+      zeitraeume = [
+        ...zeitraeume,
+        { id, ab: eingabe.ab, regel: eingabe.regel, ermaessigt: eingabe.ermaessigt },
+      ];
+      return id;
+    },
+    async steuersatzZeitraumLoeschen(id) {
+      if (!zeitraeume.some((z) => z.id === id)) return false;
+      if (zeitraeume.length === 1)
+        throw new BuchungUngueltig(['Der letzte Zeitraum kann nicht gelöscht werden.']);
+      if (zeitraumHatBelege(id))
+        throw new BuchungUngueltig([
+          'In diesem Zeitraum sind schon Belege oder Kassenabrechnungen gebucht.',
+        ]);
+      zeitraeume = zeitraeume.filter((z) => z.id !== id);
       return true;
     },
     async belegWaren() {

@@ -24,6 +24,7 @@ export * from './roles';
 export * from './schemas';
 export * from './schluessel';
 export * from './status';
+export * from './steuersaetze';
 export * from './statusVerlauf';
 export * from './todos';
 export * from './trichter';

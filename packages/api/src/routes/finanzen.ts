@@ -5,6 +5,9 @@ import {
   BELEGE_MAX,
   belegBuchenSchema,
   belegEinreichenSchema,
+  steuersatzGueltigAm,
+  steuersatzZeitraumEingabeSchema,
+  type SteuersatzZeitraumDto,
   belegEntwurfDatenSchema,
   belegVerwerfenSchema,
   formatEuro,
@@ -195,8 +198,8 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
                 ...(daten.art !== undefined && { art: daten.art }),
                 ...(daten.parentId !== undefined && { parentId: daten.parentId }),
                 ...(daten.stueckelung !== undefined && { stueckelung: daten.stueckelung }),
-                ...(daten.steuersatzStandard !== undefined && {
-                  steuersatzStandard: daten.steuersatzStandard,
+                ...(daten.steuersatzArt !== undefined && {
+                  steuersatzArt: daten.steuersatzArt,
                 }),
               })
               .catch(finanzenFehler),
@@ -689,6 +692,16 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             if (!steller.some((r) => r.id === eingabe.rechnungsstellerId))
               throw new HTTPException(400, { message: 'Den Rechnungssteller gibt es nicht.' });
           }
+          // The rate of every item must be valid on the Belegdatum.
+          const zeitraeume = await deps.finanzen.steuersatzZeitraeume();
+          if (
+            eingabe.posten.some(
+              (p) => !steuersatzGueltigAm(zeitraeume, p.steuersatz, eingabe.belegdatum),
+            )
+          )
+            throw new HTTPException(400, {
+              message: 'Ein Steuersatz gilt am Belegdatum nicht.',
+            });
           const daten = belegEntwurfDatenSchema.parse({
             rechnungsstellerId: eingabe.rechnungsstellerId,
             rechnungsstellerName: eingabe.rechnungsstellerName,
@@ -728,12 +741,14 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         return c.json(dto);
       })
       .get('/finanzen/einreichungen/auswahl', auth, belegeEinreichen, async (c) => {
-        const [steller, konten, waren, artikelVorschlaege] = await Promise.all([
-          deps.finanzen.rechnungssteller(false),
-          deps.finanzen.konten(false),
-          deps.finanzen.belegWaren(),
-          deps.finanzen.artikelVorschlaege(),
-        ]);
+        const [steller, konten, waren, artikelVorschlaege, steuersatzZeitraeume] =
+          await Promise.all([
+            deps.finanzen.rechnungssteller(false),
+            deps.finanzen.konten(false),
+            deps.finanzen.belegWaren(),
+            deps.finanzen.artikelVorschlaege(),
+            deps.finanzen.steuersatzZeitraeume(),
+          ]);
         const dto: EinreichungAuswahlDto = {
           rechnungssteller: steller.map((r) => ({ id: r.id, name: r.name })),
           kategorien: konten
@@ -741,6 +756,12 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             .map((k) => ({ id: k.id, name: k.name })),
           waren,
           artikelVorschlaege,
+          steuersatzZeitraeume: steuersatzZeitraeume.map((z) => ({
+            id: z.id,
+            ab: z.ab,
+            regel: z.regel,
+            ermaessigt: z.ermaessigt,
+          })),
         };
         return c.json(dto);
       })
@@ -843,15 +864,40 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         zValidator('json', artikelAendernSchema),
         async (c) => {
           gefunden(
-            await deps.finanzen.artikelSteuersatzSetzen(
+            await deps.finanzen.artikelSteuersatzArtSetzen(
               c.req.param('id'),
-              c.req.valid('json').steuersatz,
+              c.req.valid('json').steuersatzArt,
             ),
             'Artikel nicht gefunden',
           );
           return c.json({ ok: true });
         },
       )
+      // Tax rate periods (regular and reduced rate valid from a date); changing them needs the same
+      // right as the Kontenplan.
+      .get('/finanzen/steuersatz-zeitraeume', auth, finanzenLesen, async (c) => {
+        const dto: SteuersatzZeitraumDto[] = await deps.finanzen.steuersatzZeitraeume();
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/steuersatz-zeitraeume',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', steuersatzZeitraumEingabeSchema),
+        async (c) => {
+          const id = await deps.finanzen
+            .steuersatzZeitraumAnlegen(c.req.valid('json'), c.get('user').sub)
+            .catch(finanzenFehler);
+          return c.json({ id }, 201);
+        },
+      )
+      .delete('/finanzen/steuersatz-zeitraeume/:id', auth, finanzenVerwalten, async (c) => {
+        gefunden(
+          await deps.finanzen.steuersatzZeitraumLoeschen(c.req.param('id')).catch(finanzenFehler),
+          'Zeitraum nicht gefunden',
+        );
+        return c.json({ ok: true });
+      })
       .get('/finanzen/auslagen', auth, finanzenLesen, async (c) => {
         const [liste, mitglied] = await Promise.all([
           deps.finanzen.auslagen(),

@@ -1,0 +1,1 @@
+DELETE FROM fin_steuersatz_zeitraeume WHERE erstellt_von = 'migration'

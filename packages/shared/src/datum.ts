@@ -19,7 +19,7 @@ export function tagNachher(iso: string, tage: number): string {
 }
 
 /** Shifts an ISO date by whole months; the day is clamped to the target month's length. */
-function monateVerschieben(iso: string, monate: number): string {
+export function monateVerschieben(iso: string, monate: number): string {
   const [jahr, monat, tag] = iso.split('-').map(Number) as [number, number, number];
   const ziel = new Date(Date.UTC(jahr, monat - 1 + monate, 1));
   const letzterTag = new Date(

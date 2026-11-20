@@ -36,6 +36,9 @@ import {
   type KassenabrechnungEingabeInput,
   type KassenabrechnungErgebnisDto,
   type KassenabrechnungVorschauDto,
+  steuersatzAm,
+  type SteuersatzArt,
+  type SteuersatzZeitraum,
 } from '@c4/shared';
 import { useApi } from '../api';
 import { BetragFeld } from '../BetragFeld';
@@ -51,6 +54,7 @@ import {
   useBargeld,
   useKassenAbrechnungVorschau,
   useKonten,
+  useSteuersatzZeitraeume,
 } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
@@ -426,12 +430,15 @@ function AbrechnenFormular({
   kontoNamen,
   erloesOptionen,
   steuersaetze,
+  zeitraeume,
 }: Readonly<{
   vorschau: KassenabrechnungVorschauDto;
   faecher: readonly BargeldFachDto[];
   kontoNamen: ReadonlyMap<string, string>;
   erloesOptionen: readonly { value: string; label: string }[];
-  steuersaetze: ReadonlyMap<string, number | null>;
+  /** Default tax rate Art per Konto. */
+  steuersaetze: ReadonlyMap<string, SteuersatzArt | null>;
+  zeitraeume: readonly SteuersatzZeitraum[];
 }>) {
   const api = useApi();
   const qc = useQueryClient();
@@ -508,7 +515,10 @@ function AbrechnenFormular({
         grundbestand: kasse.grundbestand,
         ist: istListe,
         transfers,
-        erloesKonto: { id: erloesId, steuersatzStandard: steuersaetze.get(erloesId) ?? null },
+        erloesKonto: {
+          id: erloesId,
+          steuersatz: steuersatzAm(zeitraeume, steuersaetze.get(erloesId) ?? null, datum),
+        },
         zielFachId: zielId,
         events,
       }),
@@ -522,6 +532,8 @@ function AbrechnenFormular({
       zielId,
       erloesId,
       steuersaetze,
+      zeitraeume,
+      datum,
       eventEingabe,
       vorschau,
     ],
@@ -1043,6 +1055,7 @@ export function FinanzenKasseAbrechnenPage() {
   const vorschau = useKassenAbrechnungVorschau(kontoId);
   const bargeld = useBargeld();
   const konten = useKonten(true);
+  const zeitraeume = useSteuersatzZeitraeume();
   if (vorschau.isError || bargeld.isError || konten.isError) {
     return (
       <Stack>
@@ -1051,7 +1064,7 @@ export function FinanzenKasseAbrechnenPage() {
       </Stack>
     );
   }
-  if (!vorschau.data || !bargeld.data || !konten.data)
+  if (!vorschau.data || !bargeld.data || !konten.data || !zeitraeume.data)
     return <Loader m="md" aria-label="Wird geladen" />;
   const eltern = new Set(konten.data.map((k) => k.parentId));
   const erloesOptionen = konten.data
@@ -1069,7 +1082,8 @@ export function FinanzenKasseAbrechnenPage() {
       faecher={bargeld.data.faecher}
       kontoNamen={new Map(konten.data.map((k) => [k.id, k.name]))}
       erloesOptionen={erloesOptionen}
-      steuersaetze={new Map(konten.data.map((k) => [k.id, k.steuersatzStandard]))}
+      steuersaetze={new Map(konten.data.map((k) => [k.id, k.steuersatzArt]))}
+      zeitraeume={zeitraeume.data}
     />
   );
 }
