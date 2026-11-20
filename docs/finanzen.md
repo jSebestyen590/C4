@@ -58,8 +58,9 @@ Die ersten drei Rechte stehen in `STATUS_PERMISSIONS`, die `finanzen:*`-Rechte v
 
 ## Kontenplan
 
-Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersatz_standard`
-(Basispunkte, 1900 = 19 %), `archiviert`.
+Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersatz_art`
+(`regel` | `ermaessigt` | `keine`, null = keine Vorgabe; der Satz ergibt sich aus dem Datum, siehe „Steuersatz-Zeiträume“),
+`archiviert`. Die alte Spalte `steuersatz_standard` bleibt ungenutzt.
 
 - **Arten:** Bargeld, Bank, Durchlauf, Erlöse, Aufwand, Neutral. Eine Art „Buch“ gibt es bewusst nicht:
   Das Buch der Mitglieder (Scheibe 2) ist ein Nebenbuch ohne Journalbuchungen.
@@ -285,7 +286,7 @@ erscheint wie jedes Fach unter „Bargeld“ und wird mit Umbuchen gefüllt. Rei
   wieder der Vorschlag). Die Summe zählt alle Kassen des Events; eine zugewiesene, noch nicht gezählte Kasse macht sie „unvollständig“.
 - **Abrechnung** (`finanzen:buchen`): Die Finanzer:in zählt die Kasse (Ist). `Soll` ist der Bestand laut Buchhaltung,
   **Einnahme = Ist − Soll** (darf negativ sein). Die **gesamte** Einnahme geht auf **ein** Erlöskonto (Standard der Kasse,
-  änderbar), Steuer = `steuersatz_standard` des Kontos (`ust`, netto/steuer aus dem Brutto); keine Aufteilung 19/7 in einer
+  änderbar), Steuer = Satz der `steuersatz_art` des Kontos am Abrechnungsdatum (`ust`, netto/steuer aus dem Brutto); keine Aufteilung 19/7 in einer
   Abrechnung, dafür getrennte Kassen.
 - **Zuordnung zu Events:** Alle Dienst-Zählungen der Kasse seit der letzten (nicht stornierten) Abrechnung, je Event die
   neueste, nach Event-Beginn. Vorschlag: Einnahme des Events = Zählung − vorige Zählung (Start mit `Soll`); die Beträge sind
@@ -330,8 +331,8 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
 
 - **Ablauf:** „Neuer Beleg“, Datei wählen (Handy: Kamera); der Browser berechnet den SHA-256, die Datei geht direkt ins Archiv und
   es entsteht ein **Entwurf** (`fin_beleg_entwuerfe`, änderbar, wird automatisch gespeichert, ohne Nummer). Maske: Rechnungssteller
-  (suchbar, inline anlegbar; bei neuem Beleg nicht vorbelegt und mit Autofokus, bei Entwurf oder eingereichtem Beleg ohne), Belegdatum, **Belegsumme**, Brutto oder Netto, Posten (Kategorie = Aufwandskonto, Text, Anzahl, Einzelpreis,
-  Steuersatz 19/7/0 %; der Vorschlag kommt aus `fin_konten.steuersatz_standard` der Kategorie), Zahlweg. „Buchen“ zeigt eine
+  (suchbar, als Option im Dropdown anlegbar; bei neuem Beleg nicht vorbelegt und mit Autofokus, bei Entwurf oder eingereichtem Beleg ohne), Belegdatum, **Belegsumme**, Brutto oder Netto, Posten (Kategorie = Aufwandskonto, Text, Anzahl, Einzelpreis,
+  Steuersatz: Regelsatz, ermäßigter Satz oder 0 %, je nach Belegdatum; der Vorschlag kommt aus `fin_konten.steuersatz_art` der Kategorie), Zahlweg. „Buchen“ zeigt eine
   Zusammenfassung mit Warnungen; danach ist der Beleg unveränderlich.
 - **Posten-Arten** (`art`; fehlt sie, gilt `kategorie`):
   - `kategorie`: **Artikel** (Pflicht, `text`, z. B. „Deko“), Aufwandskonto, Anzahl, Einzelpreis (wie oben).
@@ -350,7 +351,7 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   - **Immer eine leere Zeile:** Jede Tabelle endet mit genau einer leeren Zeile; sobald darin etwas steht, erscheint darunter die
     nächste. Es gibt kein „Zeile hinzufügen“ und keine Spalte „Nr.“. Leere Zeilen werden nicht gespeichert, nicht geprüft und haben
     kein Löschen-Icon. „Inhalt“: Ware = Ware gewählt; Kategorie = Artikel, Kategorie oder Preis; Leergut = Beschreibung oder Preis
-    (vorbelegte Anzahl und Steuersatz zählen nicht). Der Steuersatz steht ohne „%“ in den Optionen („19“, „7“, „0“, Kopf „Steuer %“).
+    (vorbelegte Anzahl und Steuersatz zählen nicht). Der Steuersatz steht ohne „%“ in den Optionen (z. B. „19“, „7“, „0“, Kopf „Steuer %“); die Sätze kommen aus dem Belegdatum.
   - **Meldungen** nennen Tabelle und Zeile, z. B. „Waren, Zeile 2: Bitte wähle ein Gebinde.“ (Zeile = Position innerhalb der Art;
     `belegPruefen`, API und Zellfehler unter den Tabellen). Zellen mit Fehlern sind rot; Fehlertexte verschieben keine Felder.
   - **Fokusführung:** Enter springt ins nächste Feld, in der letzten Zelle einer gefüllten Zeile in die nächste (leere) Zeile,
@@ -363,16 +364,21 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   - **Neuer Rechnungssteller aus dem Beleg:** Im Rechnungssteller-Feld steht mit Suchtext unten „„X“ als neuen Rechnungssteller
     anlegen“ (nicht bei vorhandenem Namen); Wählen legt ihn sofort an (nur Name), wählt ihn aus und springt zum Belegdatum. Nie per
     Tab/Blur (`rechnungsstellerWahl`, `blurWaehltMarkierte`).
-  - **Anzahl** ist nirgends vorbelegt; leer = Fehler „Bitte angeben.“ an der Zelle.
+  - **Anzahl** ist nirgends vorbelegt (auch nicht bei Karten und Mitglied); leer = Fehler „Bitte angeben.“ an der Zelle.
   - **Gesamtpreis je Zeile:** Checkbox „Gesamt“ (Waren, Kategorien) direkt vor dem Preis: Das Preisfeld ist dann der Gesamtpreis der
     Zeile (ohne Pfand), der Betrag ist genau dieser Preis; „≈ X € je Gebinde/Stück“ unter dem Betrag (`einzelpreisAusGesamt`, wird
-    als Einzelpreis mitgespeichert). Das Umschalten behält die getippte Zahl, nur ihre Bedeutung wechselt (`gesamt`,
+    als Einzelpreis mitgespeichert, `fin_belegposten.gesamt_cent`; Betrag exakt, daher keine Rundungsdifferenz und keine Korrektur
+    nötig; der gerundete Einzelpreis ist nur Info, z. B. für die Lagerbewertung). Das Umschalten behält die getippte Zahl, nur ihre Bedeutung wechselt (`gesamt`,
     `gesamtCent` in `PostenZeile`).
-  - **Belegdatum:** In der Zukunft = Fehler am Feld (live); älter als 2 Monate = orange Hinweis am Feld und im Buchen-Dialog.
+  - **Info-i „Kategorie“** (Tabellenkopf, Karten, Mitglied): Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe
+    gebucht wird. Das Info-i zu „Preise sind“ (Brutto/Netto) steht direkt am Umschalter.
+  - **Belegdatum:** In der Zukunft = Fehler am Feld (live; Buchen gesperrt, auch serverseitig und bei Mitglied-Einreichungen);
+    älter als 2 Monate = orange Hinweis am Feld und Warnung `belegdatum_alt` im Buchen-Dialog (bucht trotzdem).
     Wechselt es in einen anderen Steuersatz-Zeitraum, werden Posten mit Regel-/ermäßigtem Satz umgestellt (Hinweis,
     `saetzeUmstellen`); Steuersatz-Optionen kommen aus dem Datum.
-  - **Eigenbeleg** (ohne Datei, mit Begründung): Hinweis „keine Vorsteuer, der volle Betrag ist Aufwand“, Summen und Dialog ohne
-    Netto/Steuer.
+  - **Eigenbeleg** (ohne Datei, mit Begründung) bucht **ohne Vorsteuer**: je Steuersatz der Bruttobetrag voll auf die Kategorie,
+    Steuer 0, `steuer_art = keine` (auch Pfand und Leergut). Hinweis „keine Vorsteuer, der volle Betrag ist Aufwand“, Summen und
+    Dialog ohne Netto/Steuer; im Netto-Modus ist Netto + berechnete Steuer der gezahlte Betrag. Gilt auch für Einreichungen ohne Datei.
   - **Vorschau** der Datei: bei neuen Belegen aus, bei eingereichten an („Vorschau ein-/ausblenden“); ausgeblendet nutzen die
     Kopffelder die volle Breite.
   - **Serienerfassung** (Checkbox unter „Prüfen und buchen“, initial an): neuer Beleg = nach dem Buchen gleich `/finanzen/belege/neu`
@@ -381,6 +387,10 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   - **Speichern vor dem Verlassen:** Eine Navigation weg vom Entwurf speichert zuerst und geht bei Erfolg weiter; schlägt es fehl,
     fragt ein Dialog „trotzdem verlassen?“ (Eingaben bleiben lokal). Der Entwurf-Cache (`belegEntwurf`) wird nach jedem Speichern
     aktualisiert und beim Öffnen immer frisch geladen.
+  - Die **Belege-Liste** ist clientseitig sortierbar (`useSortierung`, `sortierung.tsx`): Klick auf den Spaltenkopf (Nummer, Belegdatum,
+    Rechnungssteller, Summe, Zahlweg, Mitglied), zweiter Klick dreht die Richtung; auf dem Handy ein Select „Sortieren nach“.
+  - Das **Beleg-Detail** zeigt Ware-Posten ohne doppelten Namen: „Ur-Krostitzer, 20 x 0,5l Flasche 3,10 € … 131,00 € (davon Pfand
+    31,00 €)“; Gesamtpreis-Zeilen „Gesamtpreis, ≈ X je Stück“.
   - Unter `md` bleibt die Karten-Maske (`BelegPostenZeile.tsx`, gleiche Regeln) mit „Posten hinzufügen“. Hilfen:
     `packages/web/src/belegAuswahl.ts`.
 - **Belegsumme:** Die Finanzer:in gibt oben die **Belegsumme (brutto)** an (Pflicht). Unter den Tabellen steht live „Posten: X € ·
@@ -396,10 +406,19 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   Kategorie. Das Dropdown zeigt oben die **Vorschläge** (Kategorien, in denen der Artikelname schon gebucht wurde, nach Häufigkeit;
   die häufigste ist vorbelegt, solange die Kategorie leer ist), darunter **Alle Kategorien**. Quelle: gebuchte, nicht stornierte
   Posten mit `art = kategorie` (Vergleich ohne Groß/Klein und Leerzeichen am Rand). Gilt auch für Mitglieder.
-- **Artikel** (`fin_artikel`, Migrationen `0234`–`0236`): Name, normalisierter Name (eindeutig) und **Standard-Steuersatz**. Ein Artikel
-  entsteht beim **Buchen** eines Kategorie-Postens mit unbekanntem Namen, mit dessen Steuersatz (gleiche Transaktion, Konflikt auf
+- **Artikel** (`fin_artikel`, Migrationen `0234`–`0236`, `0242`/`0243`): Name, normalisierter Name (eindeutig) und **Standard-Steuersatz als
+  Art** (`steuersatz_art`: Regelsatz, ermäßigt, keine; die alte Zahl `steuersatz` wird beim Anlegen noch geschrieben, weil `NOT NULL`,
+  aber nicht gelesen). Ein Artikel
+  entsteht beim **Buchen** eines Kategorie-Postens mit unbekanntem Namen, mit der Art von dessen Steuersatz (gleiche Transaktion, Konflikt auf
   `name_norm` wird ignoriert); bestehende gebuchte Artikel übernimmt die Migration. Wählt man im Formular einen bekannten Artikel,
-  ist sein Steuersatz vorbelegt (vor dem Kategorie-Standard). Kein Umbenennen oder Zusammenführen. Seite `/finanzen/artikel`.
+  ist seine Art vorbelegt (vor dem Kategorie-Standard); der Wert ergibt sich aus dem Belegdatum. Kein Umbenennen oder Zusammenführen. Seite `/finanzen/artikel`.
+- **Steuersatz-Zeiträume** (`fin_steuersatz_zeitraeume`, Migrationen `0237`–`0239`): je Zeitraum `ab` (Datum), Regelsatz und ermäßigter
+  Satz in Basispunkten. Seed: ab 2007-01-01 19/7 %, ab 2020-07-01 16/5 %, ab 2021-01-01 19/7 %. Für ein Datum gilt der letzte Zeitraum
+  mit `ab` ≤ Datum (der älteste gilt auch davor); wählbar sind Regelsatz, ermäßigter Satz und 0. Posten speichern weiter die Zahl;
+  Konten und Artikel nur die Art. Geprüft wird der Satz am **Belegdatum** (Kassenabrechnung: am Abrechnungsdatum), Mitglied-Einreichungen
+  ebenso. Seite `/finanzen/steuersaetze` (Link von Kontenplan und Belege-Seite): Liste und „Zeitraum hinzufügen“ (Datum, Regelsatz, ermäßigt);
+  ein Zeitraum ist nur löschbar (`loeschbar`), wenn darin noch kein Beleg und keine Kassenabrechnung gebucht ist und es nicht der
+  einzige ist. Wechselt das Belegdatum in einen anderen Zeitraum, stellt das Formular die Posten um (siehe „Belegdatum“).
 - **Ware-Auswahl:** Die Suche findet Waren auch über ihre Aliase ([waren.md](./waren.md)); gewählt wird das Standard-Gebinde samt Pfand
   vorbelegt (sonst das einzige Gebinde).
 - **Pfand:** Konto `pfand` „Pfand/Leergut“ (Art Durchlauf, Forderung, kein Aufwand, Migration `0213`). Das Pfand trägt die **Vorsteuer
@@ -407,7 +426,7 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
 - **Warengruppe → Kategorie:** `warengruppen.kategorie_id` (Aufwandskonto, nullable) wird an Untergruppen vererbt (nächster Vorfahr mit
   Zuordnung). Gepflegt auf `/finanzen/warengruppen-kategorien` (Link von der Belege-Seite, Ändern `finanzen:buchen`).
 - **Einreichen durch Mitglieder:** Auf `/belege/einreichen` (Handy zuerst) lädt ein Mitglied Foto/Datei hoch und gibt Belegdatum und
-  Gesamtbetrag an (Pflicht; der Betrag darf auch 0 oder negativ sein); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten (Artikel + Kategorie mit Vorschlägen), **Ware-Posten** (Ware, Gebinde, Anzahl, Preis je Gebinde, Pfand vorbelegt) und **Leergut** (Anzahl = Rückgabe, Betrag negativ); neue Posten sind Ware, „Aufteilen (optional)“ ist ab dem ersten Posten immer offen (vorher einklappbar), damit Fehler sichtbar sind. Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren und `artikelVorschlaege`. Der
+  Gesamtbetrag an (Pflicht; der Betrag darf auch 0 oder negativ sein; Belegdatum nicht in der Zukunft, Sätze nach Datum); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten (Artikel + Kategorie mit Vorschlägen und Info-i), **Ware-Posten** (Ware, Gebinde, Anzahl ohne Vorbelegung, Preis je Gebinde oder per „Gesamt“ Gesamtpreis, Pfand vorbelegt; Kategorie-Posten haben dort keine Anzahl und kein Gesamt) und **Leergut** (Anzahl = Rückgabe, Betrag negativ); neue Posten sind Ware, „Aufteilen (optional)“ ist ab dem ersten Posten immer offen (vorher einklappbar), damit Fehler sichtbar sind. Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren und `artikelVorschlaege`. Der
   Beleg ist immer eine **Auslage** (Zahler = Einreicher:in), kein Eigenbeleg. Es entsteht ein Entwurf mit `status = eingereicht`
   (`eingereicht_von`, `eingereicht_am`, `eingereicht_betrag_cent`; fehlt `status`, gilt `entwurf`). Die Finanzer:in sieht
   Einreichungen in der Belege-Liste, ergänzt sie wie jeden Entwurf (auch den Zahlweg) und bucht sie.
@@ -425,9 +444,10 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   Verwerfen und Erstattung (siehe [benachrichtigungen.md](./benachrichtigungen.md)).
 - **Datei:** Pflicht, außer **Eigenbeleg** (dann Begründung Pflicht). PDF, JPEG, PNG oder HEIC, höchstens 20 MB, das Original wird
   unverändert archiviert. Ein Beleg hat Datei, Hash und Typ; dieselbe Datei hat denselben Schlüssel (Dublettenhinweis). Verworfene
-  Entwürfe hinterlassen ihre Datei im Archiv, das ist gewollt.
+  Entwürfe und gelöschte Einreichungen hinterlassen ihre Datei im Archiv: Object Lock erlaubt kein Löschen, eine Ansicht gibt es
+  nicht, das ist gewollt (GoBD).
 - **Rechnungssteller** (`fin_rechnungssteller`): nur Name (eindeutig ohne Rücksicht auf Groß-/Kleinschreibung) und archiviert; im
-  Formular der Finanzer:in ist keiner vorbelegt.
+  Formular der Finanzer:in ist keiner vorbelegt; angelegt wird er dort als Option im Dropdown.
 - **Brutto/Netto:** Brutto: Steuer je Steuersatz aus der Summe der Gruppe (wie Kassenbons), nicht je Posten. Netto: Steuer =
   gerundet Netto × Satz; stimmen die Summen nicht mit dem Beleg überein, korrigiert man je Steuersatz Netto und Steuer um höchstens
   ±10 ct (`fin_beleg_korrekturen`). Die Vorsteuer ist ein **Merkmal der Aufwandszeile** (`steuer_art = vorsteuer`, Netto, Steuer und
@@ -444,7 +464,7 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
 | Bank    | gegen das Konto `bank` (Scheibe 6 ordnet den Umsatz später zu, ohne neue Buchung)   | Bezahldatum                                                 |
 | Auslage | gegen das Durchlaufkonto `auslagen` („Auslagen Mitglieder“), Mitglied am Beleg      | Belegdatum; Bezahldatum = Datum der Erstattung (abgeleitet) |
 
-- **Warnungen** (serverseitig mit Codes `zukunft`, `datei_doppelt`, `beleg_doppelt`, `hoher_betrag` ab 500 €, `saldo:<n>`): Die
+- **Warnungen** (serverseitig mit Codes `zukunft`, `belegdatum_alt`, `datei_doppelt`, `beleg_doppelt`, `hoher_betrag` ab 500 €, `saldo:<n>`): Die
   Buchungsroute liefert sie in einer 409-Antwort, solange der Client sie nicht in `bestaetigt` zurückschickt.
 - **Korrektur:** Ein gebuchter Beleg ist unveränderlich. Storno läuft über die Buchung im Journal; „Als Entwurf kopieren“ legt einen
   neuen Entwurf mit denselben Daten und derselben Datei an. Der Status „storniert“ wird aus `fin_buchungen.storno_von` abgeleitet.
@@ -525,7 +545,8 @@ Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung v
 | `/finanzen/lager-abgleich`, `/:wareId`                | `finanzen:lesen` oder `waren:verwalten`                  | Lager-Beleg-Abgleich: Liste je Ware und Zeitleiste, Stichtag und „Ausgleichen“ mit `finanzen:buchen` oder `waren:verwalten` (siehe „Lager-Beleg-Abgleich“)                                                                                                                                                                                                                                                                                   |
 | `/finanzen/warengruppen-kategorien`                   | `finanzen:lesen`, Ändern `finanzen:buchen`               | Warengruppe → Kategorie zuordnen (Link von `/finanzen/belege`)                                                                                                                                                                                                                                                                                                                                                                               |
 | `/finanzen/auslagen`                                  | `finanzen:lesen`, Erstatten `finanzen:buchen`            | Offene Auslagen je Mitglied, Auswahl und Sammelerstattung (bar mit Stückelung oder Bank) mit Zusammenfassung                                                                                                                                                                                                                                                                                                                                 |
-| `/finanzen/artikel`                                   | `finanzen:lesen`, Steuersatz ändern `finanzen:buchen`    | Artikel (Karten auf dem Handy, Tabelle ab `sm`): Name, Standard-Steuersatz (inline änderbar), Kategorien mit Häufigkeit, Anzahl Posten, zuletzt gebucht (Link von `/finanzen/belege`)                                                                                                                                                                                                                                                        |
+| `/finanzen/artikel`                                   | `finanzen:lesen`, Steuersatz ändern `finanzen:buchen`    | Artikel (Karten auf dem Handy, Tabelle ab `sm`): Name, Standard-Steuersatzart (inline änderbar), Kategorien mit Häufigkeit, Anzahl Posten, zuletzt gebucht (Link von `/finanzen/belege`)                                                                                                                                                                                                                                                     |
+| `/finanzen/steuersaetze`                              | `finanzen:lesen`, Ändern `finanzen:verwalten`            | Steuersatz-Zeiträume: Liste (Gültig ab, Regelsatz, ermäßigt, löschbar), „Zeitraum hinzufügen“, Löschen nur ohne Buchungen im Zeitraum                                                                                                                                                                                                                                                                                                        |
 | `/finanzen/rechnungssteller`                          | `finanzen:lesen`, Pflege `finanzen:buchen`               | Rechnungssteller anlegen, umbenennen, archivieren                                                                                                                                                                                                                                                                                                                                                                                            |
 | `/finanzen/kette`                                     | `finanzen:pruefen`                                       | „Kette prüfen“ mit Ergebnis                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `/finanzen/bargeld`                                   | `finanzen:lesen`                                         | Fächer (Spalten) × Nennwerte (Zeilen, aufsteigend von 1 ct bis 100 €) mit Summen; unter `sm` eine Karte je Fach; Zugänge zu Umbuchen, Wechseln, Zählen, Zählungen und „Fach anlegen“ (Kontenplan)                                                                                                                                                                                                                                            |
@@ -554,7 +575,10 @@ eine geglückte Buchung erzeugt einen neuen.
 | Route                                               | Recht                                    | Hinweise                                                                                                                                                                                                                                                 |
 | --------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/finanzen/konten`                          | `finanzen:lesen`                         | `?archiviert=1` nimmt archivierte mit; je Konto `saldoCent`                                                                                                                                                                                              |
-| `POST /api/finanzen/konten`                         | `finanzen:verwalten`                     | `name`, `art`, `parentId`, `stueckelung`, `steuersatzStandard`; Antwort `{ id }`                                                                                                                                                                         |
+| `GET /api/finanzen/steuersatz-zeitraeume`           | `finanzen:lesen`                         | Zeiträume `{ id, ab, regel, ermaessigt, loeschbar }[]`                                                                                                                                                                                                   |
+| `POST /api/finanzen/steuersatz-zeitraeume`          | `finanzen:verwalten`                     | `{ ab, regel, ermaessigt }`; 201 `{ id }`, 400 bei doppeltem `ab`                                                                                                                                                                                        |
+| `DELETE /api/finanzen/steuersatz-zeitraeume/:id`    | `finanzen:verwalten`                     | 400, wenn im Zeitraum schon gebucht ist oder es der einzige ist                                                                                                                                                                                          |
+| `POST /api/finanzen/konten`                         | `finanzen:verwalten`                     | `name`, `art`, `parentId`, `stueckelung`, `steuersatzArt`; Antwort `{ id }`                                                                                                                                                                              |
 | `PUT /api/finanzen/konten/:id`                      | `finanzen:verwalten`                     | beliebige Felder; 409 bei Art/Stückelung/Eltern mit Buchungen                                                                                                                                                                                            |
 | `PUT /api/finanzen/konten/:id/archiv`               | `finanzen:verwalten`                     | `{ archiviert }`                                                                                                                                                                                                                                         |
 | `GET /api/finanzen/buchungen`                       | `finanzen:lesen`                         | `von`, `bis`, `kontoId`, `storno` (`1`); alle Treffer, neueste zuerst, höchstens 2000 (`gekappt`)                                                                                                                                                        |
@@ -592,9 +616,9 @@ eine geglückte Buchung erzeugt einen neuen.
 | `GET /api/finanzen/einreichungen`, `/:id`           | `belege:einreichen`                      | eigene Einreichungen (Liste, Detail mit Status, Grund, Posten, Datei-URL); die Liste „Eingereicht“ der Seite nutzt `GET /api/finanzen/belege` (`entwurfStatus`, freier Rechnungssteller-Name als `rechnungsstellerName`, in der Liste als „(Vorschlag)“) |
 | `DELETE /api/finanzen/einreichungen/:id`            | `belege:einreichen`                      | Zurückziehen, nur eigene und noch eingereichte (409 sonst)                                                                                                                                                                                               |
 | `GET /api/finanzen/einreichungen/auswahl`           | `belege:einreichen`                      | `id`/`name` der Rechnungssteller und aktiven Aufwandskonten, dazu die Waren für Ware-Posten und `artikelVorschlaege`                                                                                                                                     |
-| `GET /api/finanzen/artikel-vorschlaege`             | `finanzen:lesen`                         | Artikelnamen gebuchter Kategorie-Posten mit Kategorien, Häufigkeit und Standard-Steuersatz `{ artikel, steuersatz, kategorien: { kategorieId, anzahl }[] }[]`                                                                                            |
-| `GET /api/finanzen/artikel`                         | `finanzen:lesen`                         | Artikel `{ id, name, steuersatz, kategorien, postenAnzahl, zuletztAm }`                                                                                                                                                                                  |
-| `PATCH /api/finanzen/artikel/:id`                   | `finanzen:buchen`                        | `{ steuersatz }`                                                                                                                                                                                                                                         |
+| `GET /api/finanzen/artikel-vorschlaege`             | `finanzen:lesen`                         | Artikelnamen gebuchter Kategorie-Posten mit Kategorien, Häufigkeit und Standard-Steuersatzart `{ artikel, steuersatzArt, kategorien: { kategorieId, anzahl }[] }[]`                                                                                      |
+| `GET /api/finanzen/artikel`                         | `finanzen:lesen`                         | Artikel `{ id, name, steuersatzArt, kategorien, postenAnzahl, zuletztAm }`                                                                                                                                                                               |
+| `PATCH /api/finanzen/artikel/:id`                   | `finanzen:buchen`                        | `{ steuersatzArt }`                                                                                                                                                                                                                                      |
 | `GET /api/lager-abgleich`, `/waren/:id`             | `finanzen:lesen` oder `waren:verwalten`  | Liste je Ware (`stichtag: null` ohne Stichtag) und Zeitleiste einer Ware (409 ohne Stichtag)                                                                                                                                                             |
 | `POST /api/lager-abgleich/korrekturen`              | `finanzen:buchen` oder `waren:verwalten` | `{ wareId, menge, grund, text?, datum }`; 409 ohne Stichtag, 400 bei Datum vor Stichtag oder in der Zukunft                                                                                                                                              |
 | `PUT /api/lager-abgleich/stichtag`                  | `finanzen:buchen` oder `waren:verwalten` | `{ stichtag }`                                                                                                                                                                                                                                           |

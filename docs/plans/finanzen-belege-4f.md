@@ -4,6 +4,14 @@ Folgt auf [finanzen-belege-4e.md](./finanzen-belege-4e.md), gleicher Branch `fin
 Nutzers vom 20.11.2026 nach den 4e-Checks. Rückfragen beantwortet: Eigenbeleg ohne Vorsteuer **jetzt**; Archivdateien bleiben
 (keine Ansicht); Steuersätze **mit Gültigkeit ab Datum**.
 
+**Status: umgesetzt** (Phasen 1-4).
+
+Abweichungen bei der Umsetzung:
+
+- Gesamtpreis ohne Rundungskorrektur: Der Betrag ist exakt der Gesamtpreis, der gerundete Einzelpreis ist nur Info.
+- Mitglied: „Gesamt“ gibt es nur bei Ware-Posten; Kategorie-Posten haben dort keine Anzahl.
+- `fin_artikel.steuersatz` wird beim Anlegen noch geschrieben (`NOT NULL`), aber nicht gelesen.
+
 ## Entscheidungen
 
 | Thema                    | Entscheidung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
