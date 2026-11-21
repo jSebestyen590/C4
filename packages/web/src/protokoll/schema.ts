@@ -2,6 +2,7 @@ import { Extension, mergeAttributes, Node } from '@tiptap/react';
 import { ListItem } from '@tiptap/extension-list';
 import { Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   BAUSTEIN_TYPEN,
   BILD_TYP,
@@ -24,6 +25,33 @@ export const ABSCHNITT_TITEL: Record<ProtokollAbschnitt, string> = {
 const istAbschnittArt = (art: unknown): art is ProtokollAbschnitt =>
   (PROTOKOLL_ABSCHNITTE as readonly string[]).includes(art as string);
 
+const blockPunktKey = new PluginKey<DecorationSet>('blockPunkt');
+
+/** Whether the list item is an empty paragraph followed by a block (not by a paragraph or a list). */
+export function istBlockPunktKnoten(item: PmNode): boolean {
+  if (item.type.name !== 'listItem' || item.childCount < 2) return false;
+  const erstes = item.child(0);
+  const zweites = item.child(1).type.name;
+  return (
+    erstes.type.name === 'paragraph' &&
+    erstes.content.size === 0 &&
+    zweites !== 'paragraph' &&
+    zweites !== 'bulletList' &&
+    zweites !== 'orderedList'
+  );
+}
+
+export function blockPunkte(doc: PmNode): DecorationSet {
+  const dekorationen: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (istBlockPunktKnoten(node)) {
+      dekorationen.push(Decoration.node(pos, pos + node.nodeSize, { class: 'pk-ohne-punkt' }));
+    }
+    return !node.isTextblock;
+  });
+  return DecorationSet.create(doc, dekorationen);
+}
+
 /**
  * A list item: its text, then further blocks and nested lists, and also the nestable Bausteine (votes,
  * erscheint / geht, Todo, Thema) and quotes: a Baustein inserted from a list item becomes a child of the
@@ -32,6 +60,22 @@ const istAbschnittArt = (art: unknown): art is ProtokollAbschnitt =>
  */
 export const ListenPunkt = ListItem.extend({
   content: 'paragraph (block | notizbaustein | thema)*',
+
+  addProseMirrorPlugins() {
+    return [
+      // Marks the items that only carry a block (empty first line, then a Baustein or quote): the CSS hides
+      // their bullet and the empty line. A decoration instead of a DOM selector, so it does not depend on
+      // how the node views render.
+      new Plugin({
+        key: blockPunktKey,
+        state: {
+          init: (_config, state) => blockPunkte(state.doc),
+          apply: (tr, alt) => (tr.docChanged ? blockPunkte(tr.doc) : alt),
+        },
+        props: { decorations: (state) => blockPunktKey.getState(state) },
+      }),
+    ];
+  },
 
   addKeyboardShortcuts() {
     const eltern = this.parent?.() ?? {};

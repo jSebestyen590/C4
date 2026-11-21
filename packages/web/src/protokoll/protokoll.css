@@ -46,18 +46,14 @@
 }
 
 /*
- * A list item that holds only an empty paragraph and then a Baustein or quote (a block inserted into the
- * first item of a nested list): no bullet, the empty line is not shown. The trailing <br> is what
- * ProseMirror renders in an empty paragraph.
+ * A list item that holds only an empty paragraph and then a Baustein or quote (a block inserted into an
+ * empty item): no bullet, the empty line is not shown. The class comes from a decoration (`ListenPunkt`).
  */
-.protokoll-editor
-  li:has(> p:first-child:has(> br.ProseMirror-trailingBreak:only-child) + :not(p, ul, ol)) {
+.protokoll-editor li.pk-ohne-punkt {
   list-style: none;
 }
 
-.protokoll-editor
-  li:has(> p:first-child:has(> br.ProseMirror-trailingBreak:only-child) + :not(p, ul, ol))
-  > p:first-child {
+.protokoll-editor li.pk-ohne-punkt > p:first-child {
   min-height: 0;
   height: 0;
   margin: 0;

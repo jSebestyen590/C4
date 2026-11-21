@@ -158,9 +158,11 @@ describe('einfuegeStelle in lists', () => {
     expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toContain('[[#]]');
   });
 
-  it('appends the Baustein to the previous item when the cursor is in an empty last item', () => {
+  it('keeps an empty last item at its level, holding the Baustein, and adds an empty one behind', () => {
     const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')), p('z'))]);
-    expect(ergebnis(doc, stelle(doc, ''), 'bausteinMeinungsbild')).toContain('[[[[a #] [_]] z]]');
+    expect(ergebnis(doc, stelle(doc, ''), 'bausteinMeinungsbild')).toContain(
+      '[[[[a] [_ #] [_]] z]]',
+    );
   });
 
   it('puts the Baustein in the same item, below its text, when the item has text', () => {
@@ -172,7 +174,7 @@ describe('einfuegeStelle in lists', () => {
     const n1 = n('listItem', p('Notiz 1'), liste(punkt('Unter 1'), punkt(''), punkt('Unter 2')));
     const doc = abschnitte([n('bausteinEvent', liste(n1, punkt('Notiz 2')))]);
     expect(ergebnis(doc, stelle(doc, ''), 'bausteinBeschluss')).toContain(
-      '[[[[Notiz 1 [[Unter 1 #] [_] [Unter 2]]] [Notiz 2]]]]',
+      '[[[[Notiz 1 [[Unter 1] [_ #] [_] [Unter 2]]] [Notiz 2]]]]',
     );
   });
 
@@ -192,17 +194,18 @@ describe('einfuegeStelle in lists', () => {
   it('puts erscheint / geht, a Todo and a Thema into the item like a vote', () => {
     for (const typ of ['bausteinAnwesenheit', 'bausteinTodo', 'bausteinThema'] as const) {
       const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')))]);
-      expect(ergebnis(doc, stelle(doc, ''), typ), typ).toContain('[[[[a #] [_]]]]');
+      expect(ergebnis(doc, stelle(doc, ''), typ), typ).toContain('[[[[a] [_ #] [_]]]]');
     }
   });
 
-  it('puts a quote in the previous item, below the text of an item or in front of the first one', () => {
+  it('puts a quote into the empty item or below the text of an item', () => {
     const doc = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')), p('z'))]);
     const s = zitatStelle(doc, stelle(doc, ''))!;
     const tr = EditorState.create({ doc }).tr;
     stelleAnwenden(tr, s, n('blockquote', p('q')), p());
-    expect(tr.doc.child(0).child(0).child(0).child(0).child(1).type.name).toBe('blockquote');
-    expect(tr.doc.child(0).child(0).child(0).childCount).toBe(2);
+    const eintraege = tr.doc.child(0).child(0).child(0);
+    expect(eintraege.child(1).child(1).type.name).toBe('blockquote');
+    expect(eintraege.childCount).toBe(3);
     // With text: after it in the same item.
     const mitText = abschnitte([liste(punkt('a'), punkt('b'))]);
     const s2 = zitatStelle(mitText, stelle(mitText, 'a'))!;
@@ -222,7 +225,7 @@ describe('einfuegeStelle in lists', () => {
     const leer = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt(''), punkt('')), p('z'))]);
     // The first empty item: the block goes to "a", the item behind it already is empty.
     expect(ergebnis(leer, stelle(leer, ''), 'bausteinBeschluss')).toContain(
-      '[[[[a #] [_] [_]] z]]',
+      '[[[[a] [_ #] [_]] z]]',
     );
     const mitte = abschnitte([n('bausteinEvent', liste(punkt('a'), punkt('')), p('z'))]);
     // Cursor in "a" with an empty item right behind: no second one.

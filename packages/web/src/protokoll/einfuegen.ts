@@ -121,11 +121,9 @@ const LISTEN = ['bulletList', 'orderedList'];
  * Baustein (or -1 for none) the list must belong to directly, else null (a vote between them).
  * - The paragraph is not the item's first child, or the item has text / further children: right after
  *   the paragraph, as a child of the same item (an empty later paragraph is replaced).
- * - The item is empty and has no other children: with a previous item in its list the block becomes the
- *   last child of that one (same level, below its text and sub list) and the empty item stays behind it.
- *   The first item of a NESTED list keeps its level: it becomes `listItem(empty paragraph, block)`
- *   (shown without bullet). The first item of a list in the notes: the block goes in front of the list
- *   (replaces it when the item was its only one).
+ * - The item is empty and has no other children: it keeps its level as `listItem(empty paragraph, block)`
+ *   (shown without bullet), except the first item of a list directly in the notes: the block goes in front
+ *   of the list (replaces it when the item was its only one).
  * Either way an empty item follows the block (`punktDanach`). Null: the cursor is not in such a paragraph.
  */
 export function listenStelle($pos: ResolvedPos, container = -1): EinfuegeStelle | null {
@@ -153,10 +151,9 @@ export function listenStelle($pos: ResolvedPos, container = -1): EinfuegeStelle 
   const liste = $pos.node(punkt - 1);
   const index = $pos.index(punkt - 1);
   const itemVon = $pos.before(punkt);
-  if (index > 0) {
-    // End of the previous item's content; the empty item stays as the one behind the block.
-    return { von: itemVon - 1, bis: itemVon - 1 };
-  }
+  // Not the first item, or the first of a nested list: the item stays at its level as
+  // `listItem(empty paragraph, block)`.
+  if (index > 0) return { von: nach, bis: nach, punktDanach };
   if (punkt >= 2 && $pos.node(punkt - 2).type.name === 'listItem') {
     return { von: nach, bis: nach, punktDanach };
   }
@@ -313,15 +310,10 @@ export function bausteinEinfuegen(
   const tr = state.tr;
   if (loeschen) tr.delete(loeschen.from, loeschen.to);
 
-  const { von, bis, entfernen } = einfuegeStelle(tr.doc, tr.selection.from, wahl.typ);
+  const stelle = einfuegeStelle(tr.doc, tr.selection.from, wahl.typ);
   const json: ProtokollKnoten = bausteinNeu(wahl.typ, wahl.daten);
   const knoten = state.schema.nodeFromJSON(json);
-  const eingefuegt = stelleAnwenden(
-    tr,
-    { von, bis, entfernen },
-    knoten,
-    state.schema.nodes.paragraph!.create(),
-  );
+  const eingefuegt = stelleAnwenden(tr, stelle, knoten, state.schema.nodes.paragraph!.create());
   view.dispatch(tr.scrollIntoView());
 
   // The inserted node can have moved if the trailing-paragraph rule added nodes before it; find it by id

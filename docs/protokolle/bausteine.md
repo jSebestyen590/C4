@@ -176,10 +176,9 @@ Listenpunkts (`ListenPunkt` in `schema.ts`: Inhalt `paragraph (block | notizbaus
 Punkts) und wird ohne Aufzählungspunkt, eingerückt auf Höhe dieses Punkts gezeigt; die folgenden Punkte behalten ihre Ebene
 (Platzierung: `listenStelle` in `einfuegen.ts`):
 
-- Leerer Punkt (nur der Rest des getippten `/…`) mit vorherigem Punkt derselben Liste: Der Baustein wird letztes Kind des vorherigen
-  Punkts (hinter dessen Text und Unterliste); der leere Punkt bleibt dahinter stehen (Ort zum Weitertippen).
-- Leerer erster Punkt einer Unterliste: Er bleibt auf seiner Ebene als `listItem(leerer Absatz, Baustein)`; Editor-CSS (`protokoll.css`,
-  `:has`), Dokument-Ansicht und PDF blenden Aufzählungspunkt und leere Zeile aus (`istBlockPunkt`).
+- Leerer Punkt (nur der Rest des getippten `/…`), außer dem ersten Punkt einer Liste direkt in den Notizen: Er bleibt auf seiner Ebene als
+  `listItem(leerer Absatz, Baustein)`; Aufzählungspunkt und leere Zeile werden ausgeblendet (Editor: Dekoration `pk-ohne-punkt` aus `schema.ts`
+  - CSS in `protokoll.css`; Dokument-Ansicht und PDF: `istBlockPunkt`).
 - Leerer erster Punkt einer Liste direkt in den Notizen: Der Punkt entfällt, der Baustein steht vor der Liste (war es der einzige Punkt, ersetzt er die Liste).
 - Punkt mit Text (oder mit Unterliste): Der Baustein steht direkt hinter dem Text im selben Punkt; ein leerer Folgeabsatz im Punkt wird ersetzt.
 - Hinter dem Punkt mit dem Baustein folgt immer ein leerer Punkt auf gleicher Ebene (wird angelegt, außer der nächste ist schon leer); der Cursor
