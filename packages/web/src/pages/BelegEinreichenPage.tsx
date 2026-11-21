@@ -68,6 +68,8 @@ interface PostenZeile {
   anzahl: number | string;
   /** Ware items: unrounded price (cent) of a typed calculation that is no whole cent; null = `betragCent` is exact. */
   preisExaktCent?: number | null;
+  /** The typed calculation of the price, shown again after leaving the field. */
+  preisFormel?: string | null;
   pfandCent: number | null;
   text: string;
   betragCent: number | null;
@@ -639,9 +641,11 @@ export function BelegEinreichenPage() {
                     negativ={p.art === 'kategorie'}
                     rechnen
                     value={p.betragCent}
-                    onWert={(c, exakt) =>
+                    formel={p.preisFormel}
+                    onWert={(c, exakt, formel) =>
                       aendern(p.key, {
                         betragCent: c,
+                        preisFormel: formel || null,
                         preisExaktCent:
                           p.art === 'ware' && c !== null && exakt != null && exakt !== c
                             ? exakt

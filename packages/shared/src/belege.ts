@@ -158,6 +158,9 @@ const artikelFeld = z
  */
 const gesamtFeld = nullish(centFeld);
 
+/** The typed calculation of the price (`(7,99 + 4,50)/12`), kept in drafts only so it can be corrected later. */
+const preisFormelFeld = z.string().trim().max(200, 'Höchstens 200 Zeichen erlaubt.').nullish();
+
 /** Item booked to an Aufwand Konto. Drafts without `art` are of this kind. */
 export const belegPostenKategorieSchema = z.object({
   art: z.literal('kategorie').default('kategorie'),
@@ -168,6 +171,7 @@ export const belegPostenKategorieSchema = z.object({
   anzahlMilli: anzahlMilliFeld,
   einzelpreisCent: centFeld,
   gesamtCent: gesamtFeld,
+  preisFormel: preisFormelFeld,
   steuersatz: steuersatzFeld,
 });
 
@@ -189,6 +193,7 @@ export const belegPostenWareSchema = z.object({
   einzelpreisCent: centFeld,
   /** Gesamtpreis of the line without deposit (see `gesamtFeld`). */
   gesamtCent: gesamtFeld,
+  preisFormel: preisFormelFeld,
   steuersatz: steuersatzFeld,
   /** Deposit per Gebinde; null = no deposit. */
   pfandCent: nullish(centFeld),
@@ -204,6 +209,7 @@ export const belegPostenLeergutSchema = z.object({
   text: textFeld,
   anzahlMilli: anzahlMilliFeld.min(0, 'Die Anzahl beim Leergut darf nicht negativ sein.'),
   einzelpreisCent: centFeld.min(0, 'Der Pfand je Stück darf nicht negativ sein.'),
+  preisFormel: preisFormelFeld,
   steuersatz: steuersatzFeld,
 });
 

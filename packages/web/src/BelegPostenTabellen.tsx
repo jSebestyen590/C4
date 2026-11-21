@@ -351,7 +351,8 @@ function PostenTabellenZeile({
         negativ={art === 'kategorie'}
         rechnen
         value={p.einzelpreisCent}
-        onWert={(c, exakt) => onAendern(preisPatch(c, exakt))}
+        formel={p.preisFormel}
+        onWert={(c, exakt, formel) => onAendern(preisPatch(c, exakt, formel))}
         error={rot(fehler.preis)}
         data-nav=""
         {...ende(eigenbeleg && art !== 'ware')}

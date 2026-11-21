@@ -276,7 +276,8 @@ export function BelegPostenZeile({
             negativ={p.art === 'kategorie'}
             rechnen
             value={p.einzelpreisCent}
-            onWert={(c, exakt) => onAendern(preisPatch(c, exakt))}
+            formel={p.preisFormel}
+            onWert={(c, exakt, formel) => onAendern(preisPatch(c, exakt, formel))}
             error={fehler.preis}
             data-nav=""
             {...(letzte && eigenbeleg && p.art !== 'ware' && { 'data-posten-ende': 'ware' })}

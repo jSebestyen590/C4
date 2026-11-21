@@ -886,7 +886,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
               <BelegsummeZeile postenCent={berechnung.summe} belegsummeCent={form.belegsummeCent} />
             </Stack>
 
-            {form.modus === 'netto' && (
+            {form.modus === 'netto' && !eigenbeleg && (
               <Stack gap="xs">
                 <Group gap={2}>
                   <Text fw={600}>Korrektur je Steuersatz</Text>

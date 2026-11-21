@@ -3,7 +3,6 @@ import {
   belegBerechnen,
   belegPruefen,
   einzelpreisAusGesamt,
-  istEigenbeleg,
   postenZeilenLabel,
   STEUERSATZ_NOTFALL,
   heuteBerlin,
@@ -41,6 +40,8 @@ export interface PostenZeile {
    * line total `gesamtCent = round(preisExaktCent * Anzahl)`.
    */
   preisExaktCent: number | null;
+  /** The typed calculation of the price (shown again after leaving the field and after a reload); null = plain amount. */
+  preisFormel: string | null;
   /** Item kind: Kategorie (Aufwand), Ware (stock) or Leergut (returned empties). */
   art: BelegPostenArt;
   /** Ware items: the Ware, the Gebinde the quantity counts and the deposit per Gebinde (null = none). */
@@ -94,6 +95,7 @@ export const neuerPosten = (
   anzahl: '',
   einzelpreisCent: null,
   preisExaktCent: null,
+  preisFormel: null,
   steuersatz,
   art,
   wareId: null,
@@ -148,8 +150,10 @@ export function postenLeer(
 export const preisPatch = (
   cent: number | null,
   exaktCent?: number | null,
+  formel?: string | null,
 ): Partial<PostenZeile> => ({
   einzelpreisCent: cent,
+  preisFormel: formel || null,
   preisExaktCent: cent !== null && exaktCent != null && exaktCent !== cent ? exaktCent : null,
 });
 
@@ -314,6 +318,7 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
         : einzelpreisAusGesamt(gesamtCent, postenAnzahl(p)),
     gesamtCent,
     steuersatz: p.steuersatz,
+    ...(p.preisFormel && { preisFormel: p.preisFormel }),
   };
   if (p.art === 'leergut') {
     return {
@@ -321,6 +326,7 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
       text: basis.text,
       anzahlMilli: basis.anzahlMilli,
       einzelpreisCent: basis.einzelpreisCent,
+      ...(basis.preisFormel && { preisFormel: basis.preisFormel }),
       steuersatz: basis.steuersatz,
     };
   }
@@ -330,6 +336,7 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
       anzahlMilli: basis.anzahlMilli,
       einzelpreisCent: basis.einzelpreisCent,
       gesamtCent: basis.gesamtCent,
+      ...(basis.preisFormel && { preisFormel: basis.preisFormel }),
       steuersatz: basis.steuersatz,
       wareId: p.wareId,
       gebindeId: p.gebindeId,
@@ -343,7 +350,7 @@ function postenZuDaten(p: PostenZeile): BelegPosten {
 /** The draft data as the API stores it. Unreadable inputs become 0 (the check names them). */
 export function formularZuDaten(f: BelegFormular): BelegEntwurfDaten {
   const korrekturen =
-    f.modus === 'netto'
+    f.modus === 'netto' && !formularEigenbeleg(f)
       ? Object.entries(f.korrekturen)
           .map(([satz, k]) => ({
             steuersatz: Number(satz),
@@ -418,6 +425,7 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     anzahl: anzahlText(p.anzahlMilli),
     einzelpreisCent: p.einzelpreisCent,
     preisExaktCent: preisExakt(p),
+    preisFormel: p.preisFormel ?? null,
     steuersatz: p.steuersatz,
     wareId: ware?.wareId ?? null,
     gebindeId: ware?.gebindeId ?? null,
@@ -426,13 +434,8 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
 }
 
 /** Whether the form is an Eigenbeleg (no file, with reason): booked without Vorsteuer. */
-export const formularEigenbeleg = (
-  f: Pick<BelegFormular, 'datei' | 'eigenbeleg' | 'eigenbelegBegruendung'>,
-): boolean =>
-  istEigenbeleg({
-    datei: f.datei,
-    eigenbelegBegruendung: f.eigenbeleg && !f.datei ? f.eigenbelegBegruendung.trim() : null,
-  });
+export const formularEigenbeleg = (f: Pick<BelegFormular, 'datei' | 'eigenbeleg'>): boolean =>
+  f.eigenbeleg && !f.datei;
 
 /** Text under the summaries of an Eigenbeleg. */
 export const EIGENBELEG_HINWEIS = 'Eigenbeleg: keine Vorsteuer, der volle Betrag ist Aufwand.';
@@ -455,7 +458,10 @@ export function formularFehler(
   f: BelegFormular,
   zeitraeume: readonly Pick<SteuersatzZeitraum, 'ab' | 'regel' | 'ermaessigt'>[],
 ): BelegFehler[] {
-  const fehler = belegPruefen(formularZuDaten(f), { heute: heuteBerlin(), zeitraeume });
+  const eigenbeleg = formularEigenbeleg(f);
+  const fehler = belegPruefen(formularZuDaten(f), { heute: heuteBerlin(), zeitraeume })
+    // An Eigenbeleg has no visible Steuersatz field: its rates are not checked.
+    .filter((x) => !(eigenbeleg && x.meldung.includes('gilt am Belegdatum nicht')));
   // Same order and numbering as `formularZuDaten`: the position within the art.
   const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
   gefuelltePosten(f.posten).forEach((p) => {
@@ -483,7 +489,7 @@ export const fehlerZu = (fehler: readonly BelegFehler[], feld: string): string |
 
 /** Totals of the form per tax rate (live display). */
 export function formularSumme(f: BelegFormular) {
-  return belegBerechnen(formularZuDaten(f));
+  return belegBerechnen({ ...formularZuDaten(f), eigenbeleg: formularEigenbeleg(f) });
 }
 
 /** Deposit (cent, incl. tax) per tax rate: the part of the totals that comes from the Pfand of Ware items. */

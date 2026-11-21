@@ -165,6 +165,7 @@ describe('formularZuDaten', () => {
   it('speichert Korrekturen nur bei Netto und ohne Nullen', () => {
     const f = {
       ...voll(),
+      eigenbeleg: false,
       korrekturen: {
         1900: { nettoCent: 1, steuerCent: null },
         700: { nettoCent: 0, steuerCent: 0 },
@@ -174,6 +175,8 @@ describe('formularZuDaten', () => {
     expect(formularZuDaten({ ...f, modus: 'netto' }).korrekturen).toEqual([
       { steuersatz: 1900, nettoCent: 1, steuerCent: 0 },
     ]);
+    // An Eigenbeleg shows no Steuersatz fields, so no Korrektur per rate either.
+    expect(formularZuDaten({ ...f, eigenbeleg: true, modus: 'netto' }).korrekturen).toEqual([]);
   });
   it('macht aus leeren Feldern null bzw. 0', () => {
     const d = formularZuDaten({
@@ -506,7 +509,11 @@ describe('Gesamtpreis, Eigenbeleg und Sätze nach Belegdatum', () => {
       gesamtCent: null,
     });
     expect(einzelpreisHinweis(p)).toBeNull();
-    expect(preisPatch(null, null)).toEqual({ einzelpreisCent: null, preisExaktCent: null });
+    expect(preisPatch(null, null)).toEqual({
+      einzelpreisCent: null,
+      preisExaktCent: null,
+      preisFormel: null,
+    });
   });
 
   it('rechnet den Betrag bei geänderter Anzahl aus dem exakten Preis neu', () => {
@@ -529,13 +536,27 @@ describe('Gesamtpreis, Eigenbeleg und Sätze nach Belegdatum', () => {
     expect(datenZuFormular({ ...d, belegsummeCent: 500 }).belegsummeCent).toBe(500);
   });
 
-  it('erkennt einen Eigenbeleg erst mit Begründung', () => {
-    expect(formularEigenbeleg({ datei: null, eigenbeleg: true, eigenbelegBegruendung: ' ' })).toBe(
-      false,
+  it('ein Eigenbeleg gilt, sobald der Schalter an ist und keine Datei da ist', () => {
+    expect(formularEigenbeleg({ datei: null, eigenbeleg: true })).toBe(true);
+    expect(formularEigenbeleg({ datei: null, eigenbeleg: false })).toBe(false);
+  });
+
+  it('rechnet einen Eigenbeleg ohne Begründung schon ohne Vorsteuer', () => {
+    const f = { ...voll(), datei: null, eigenbeleg: true, eigenbelegBegruendung: '' };
+    expect(formularSumme(f).jeSteuersatz.every((g) => g.steuer === 0)).toBe(true);
+    const falsch = { ...f, posten: [{ ...zeile(), steuersatz: 1234 }] };
+    expect(formularFehler(falsch, ZEITRAEUME).map((x) => x.meldung)).not.toContain(
+      expect.stringContaining('gilt am Belegdatum nicht'),
     );
-    expect(
-      formularEigenbeleg({ datei: null, eigenbeleg: true, eigenbelegBegruendung: 'Bon weg' }),
-    ).toBe(true);
+  });
+
+  it('behält die getippte Formel im Entwurf', () => {
+    const p = { ...zeile(), anzahl: '8', ...preisPatch(100, 99.875, '799/8') };
+    expect(p.preisFormel).toBe('799/8');
+    const daten = formularZuDaten({ ...voll(), posten: [p] });
+    expect(daten.posten[0]).toMatchObject({ preisFormel: '799/8' });
+    expect(datenZuFormular(daten).posten[0]).toMatchObject({ preisFormel: '799/8' });
+    expect(preisPatch(100, 100, null).preisFormel).toBeNull();
   });
 
   it('stellt Regel- und ermäßigten Satz beim Wechsel des Zeitraums um', () => {

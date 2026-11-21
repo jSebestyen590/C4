@@ -367,8 +367,9 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   - **Anzahl** ist nirgends vorbelegt (auch nicht bei Karten und Mitglied); leer = Fehler „Bitte angeben.“ an der Zelle.
   - **Rechnen im Preisfeld:** Die Preisfelder der Posten (Waren, Kategorien, Leergut; nicht die Belegsumme) nehmen einen Rechenausdruck
     mit `+ - * /`, Klammern und Dezimalkomma, z. B. `(7,99 + 4,50)/12` (`BetragFeld` mit `rechnen`, Parser `betragRechnen` in
-    `betragEingabe.ts`, kein `eval`; Fehler „Ungültige Rechnung“, Division durch 0 ist ein Fehler). Beim Verlassen zeigt das Feld das auf
-    Cent gerundete Ergebnis. Die Zeile hält den ungerundeten Preis (`preisExaktCent`); ist er kein ganzer Cent, wird beim Speichern
+    `betragEingabe.ts`, kein `eval`; Fehler „Ungültige Rechnung“, Division durch 0 ist ein Fehler). Beim Verlassen bleibt die getippte Formel im
+    Feld stehen (zum schnellen Korrigieren; ein einfacher Betrag wird wie sonst formatiert); sie liegt als `preisFormel` in der Zeile und im Entwurf
+    (`belegPostenSchema`, max. 200 Zeichen, nicht in `fin_belegposten`) und erscheint nach dem Neuladen wieder. Das Ergebnis steht im „≈ X €“-Hinweis. Die Zeile hält den ungerundeten Preis (`preisExaktCent`); ist er kein ganzer Cent, wird beim Speichern
     `gesamtCent = round(preisExakt × Anzahl)` gesetzt (`fin_belegposten.gesamt_cent`, Betrag exakt, der gerundete Einzelpreis
     wird mit `einzelpreisAusGesamt` mitgespeichert), sonst `null`. Ändert sich die Anzahl, rechnet sich der Betrag aus dem exakten Preis neu;
     beim Laden gilt `preisExakt = gesamtCent / Anzahl`. Leergut wird gerundet (kein `gesamtCent`). Unter dem Betrag steht „≈ X € je
@@ -379,10 +380,10 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
     älter als 2 Monate = orange Hinweis am Feld und Warnung `belegdatum_alt` im Buchen-Dialog (bucht trotzdem).
     Wechselt es in einen anderen Steuersatz-Zeitraum, werden Posten mit Regel-/ermäßigtem Satz umgestellt (Hinweis,
     `saetzeUmstellen`); Steuersatz-Optionen kommen aus dem Datum.
-  - **Eigenbeleg** (ohne Datei, mit Begründung) bucht **ohne Vorsteuer**: je Steuersatz der Bruttobetrag voll auf die Kategorie,
+  - **Eigenbeleg** (ohne Datei, mit Begründung; die Steuersatz-Felder entfallen schon, sobald der Schalter an ist, `formularEigenbeleg`) bucht **ohne Vorsteuer**: je Steuersatz der Bruttobetrag voll auf die Kategorie,
     Steuer 0, `steuer_art = keine` (auch Pfand und Leergut). Hinweis „keine Vorsteuer, der volle Betrag ist Aufwand“, Summen und
     Dialog ohne Netto/Steuer; in der Erfassung entfällt die Steuersatz-Spalte (Karten: das Feld; die Werte der Zeilen bleiben für den Fall, dass
-    der Schalter zurückgestellt wird), die Summen zeigen nur die Gesamtsumme (und davon Pfand), `belegPruefen` prüft die Sätze am Belegdatum nicht; im Netto-Modus ist Netto + berechnete Steuer der gezahlte Betrag. Gilt auch für Einreichungen ohne Datei.
+    der Schalter zurückgestellt wird), die Summen zeigen nur die Gesamtsumme (und davon Pfand), `belegPruefen` prüft die Sätze am Belegdatum nicht (das Formular blendet die Meldung bei Eigenbeleg aus), im Netto-Modus entfällt auch „Korrektur je Steuersatz“; im Netto-Modus ist Netto + berechnete Steuer der gezahlte Betrag. Gilt auch für Einreichungen ohne Datei.
   - **Vorschau** der Datei: bei neuen Belegen aus, bei eingereichten an („Vorschau ein-/ausblenden“); der Kopf ist ab `lg` immer zweispaltig (links Datei mit Vorschau,
     Eigenbeleg-Schalter und Begründung, rechts Rechnungssteller, Belegdatum, Belegsumme). Die Summen-Tabelle hat ab `md` rechts eine leere Spalte
     (Breite der Lösch-Spalte), damit sie mit den Posten-Tabellen bündig ist.

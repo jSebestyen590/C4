@@ -59,9 +59,10 @@ describe('betragFormatieren', () => {
 
 describe('betragRechnen', () => {
   it('liest einen einfachen Betrag wie betragLesen', () => {
-    expect(betragRechnen('1,10')).toEqual({ cent: 110, exaktCent: 110 });
+    expect(betragRechnen('1,10')).toEqual({ cent: 110, exaktCent: 110, rechnung: false });
     expect(betragRechnen('1.234,56')).toMatchObject({ cent: 123456 });
-    expect(betragRechnen('')).toEqual({ cent: null, exaktCent: null });
+    expect(betragRechnen('')).toEqual({ cent: null, exaktCent: null, rechnung: false });
+    expect(betragRechnen('1+1').rechnung).toBe(true);
   });
 
   it('rechnet mit Klammern und Dezimalkomma', () => {
