@@ -1185,6 +1185,8 @@ describe('kalender', () => {
         'buch.ueberzug',
         'privatpartys.anfrage',
         'privatpartys.nachricht',
+        'belege.eingereicht',
+        'belege.status',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
       expect(

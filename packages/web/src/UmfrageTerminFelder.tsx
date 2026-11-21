@@ -179,7 +179,7 @@ function ZeitFelder({
   onChange: (z: { beginn: string; ende: string }) => void;
 }>) {
   return (
-    <Group grow gap="xs" preventGrowOverflow={false}>
+    <Group align="flex-end" grow gap="xs" preventGrowOverflow={false}>
       <TextInput
         size="md"
         type="time"
@@ -302,7 +302,7 @@ export function TerminQuelleFelder({
               value={werte.dienstformId}
               onChange={(v) => set('dienstformId', v)}
             />
-            <Group grow gap="xs" preventGrowOverflow={false}>
+            <Group align="flex-end" grow gap="xs" preventGrowOverflow={false}>
               <ZahlFeld
                 size="md"
                 label="Minimum"

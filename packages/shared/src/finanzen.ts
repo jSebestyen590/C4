@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Anrede } from './anrede';
 import { name } from './bausteine';
 import type { MitgliedStatus } from './status';
+import { steuersatzArtSchema, type SteuersatzArt } from './steuersaetze';
 
 // Finanzen: chart of accounts and the append-only journal with double-entry bookkeeping, a gapless
 // `seq` and a SHA-256 hash chain (see docs/finanzen.md). Money is always whole cents; a line's
@@ -102,11 +103,6 @@ const cent = (meldung: string) =>
 const nullish = <T extends z.ZodType>(schema: T) =>
   schema.nullish().transform((v): z.output<T> | null => v ?? null);
 
-const steuersatzFeld = z
-  .number('Bitte gib einen Steuersatz an.')
-  .int('Der Steuersatz muss in ganzen Basispunkten angegeben werden.')
-  .min(0, 'Der Steuersatz darf nicht negativ sein.')
-  .max(10000, 'Der Steuersatz darf höchstens 100 % betragen.');
 const kontoArtFeld = z.enum(KONTO_ARTEN, 'Bitte wähle eine Kontoart.');
 const parentFeld = z.string().min(1);
 
@@ -115,8 +111,8 @@ export const kontoEingabeSchema = z.object({
   art: kontoArtFeld,
   parentId: nullish(parentFeld),
   stueckelung: z.boolean('Bitte gib an, ob das Konto eine Stückelung hat.').default(false),
-  /** Default tax rate in basis points (1900 = 19 %). */
-  steuersatzStandard: nullish(steuersatzFeld),
+  /** Default tax rate as Art; the value follows from the date of the Beleg. */
+  steuersatzArt: nullish(steuersatzArtSchema),
 });
 export type KontoEingabe = z.input<typeof kontoEingabeSchema>;
 export type KontoDaten = z.output<typeof kontoEingabeSchema>;
@@ -128,7 +124,7 @@ export const kontoAendernSchema = z
     art: kontoArtFeld.optional(),
     parentId: parentFeld.nullable().optional(),
     stueckelung: z.boolean('Bitte gib an, ob das Konto eine Stückelung hat.').optional(),
-    steuersatzStandard: steuersatzFeld.nullable().optional(),
+    steuersatzArt: steuersatzArtSchema.nullable().optional(),
   })
   .refine(
     (v) => Object.values(v).some((x) => x !== undefined),
@@ -604,8 +600,8 @@ export interface KontoDto {
   art: KontoArt;
   parentId: string | null;
   stueckelung: boolean;
-  /** Basis points, 1900 = 19 %. */
-  steuersatzStandard: number | null;
+  /** Default tax rate as Art (`null` = none); the value follows from the date of the Beleg. */
+  steuersatzArt: SteuersatzArt | null;
   archiviert: boolean;
   /** Sum of all lines on this account (without sub accounts). */
   saldoCent: number;

@@ -170,7 +170,7 @@ export function FinanzenBargeldUmbuchenPage() {
           }}
         >
           <Stack>
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+            <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
               <DatumFeld
                 label="Datum"
                 value={datum}

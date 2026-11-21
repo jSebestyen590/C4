@@ -140,6 +140,20 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     standardAktiv: true,
     minuten: null,
   },
+  {
+    // A member submitted a Beleg; only holders of `finanzen:buchen` receive it.
+    key: 'belege.eingereicht',
+    bereich: 'belege',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    // Status of a submitted Beleg changed (booked, rejected, reimbursed); goes to the submitter.
+    key: 'belege.status',
+    bereich: 'belege',
+    standardAktiv: true,
+    minuten: null,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

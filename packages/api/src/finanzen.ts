@@ -49,6 +49,7 @@ import {
   type KettenBuchung,
   type KontoArt,
   type KontoDto,
+  type SteuersatzArt,
   type StornoEingabe,
 } from '@c4/shared';
 import type { Db } from './db/client';
@@ -71,6 +72,7 @@ import {
   finKassenzaehlungPosten,
   finKassenzaehlungen,
   finKonten,
+  finSteuersatzZeitraeume,
   finStueckelung,
   finZaehler,
   finZaehlungen,
@@ -115,7 +117,7 @@ export interface KontoNeu {
   art: KontoArt;
   parentId: string | null;
   stueckelung: boolean;
-  steuersatzStandard: number | null;
+  steuersatzArt: SteuersatzArt | null;
 }
 
 export interface GebuchtErgebnis {
@@ -877,7 +879,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         art: k.art,
         stueckelung: k.stueckelung,
         archiviert: k.archiviert,
-        steuersatzStandard: k.steuersatzStandard,
+        steuersatzArt: k.steuersatzArt,
         hatUnterkonten: gruppen.get(k.id) ?? false,
       })),
       bestand,
@@ -1168,6 +1170,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             },
             konten,
             bestand,
+            zeitraeume: await tx.select().from(finSteuersatzZeitraeume),
           });
           const fehler = [...eventFehler, ...plan.fehler];
           if (fehler.length > 0 || !plan.rechnung || !kasse) throw new BuchungUngueltig(fehler);
@@ -1367,7 +1370,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           art: k.art,
           parentId: k.parentId,
           stueckelung: k.stueckelung,
-          steuersatzStandard: k.steuersatzStandard,
+          steuersatzArt: k.steuersatzArt,
           archiviert: k.archiviert,
           saldoCent: saldo.get(k.id) ?? 0,
           saldoGesamtCent: gesamt.get(k.id) ?? 0,
@@ -1581,7 +1584,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             art: 'bargeld',
             parentId: SAFE_KONTO_ID,
             stueckelung: true,
-            steuersatzStandard: null,
+            steuersatzArt: null,
           });
           await tx.insert(finKassen).values({
             kontoId: id,

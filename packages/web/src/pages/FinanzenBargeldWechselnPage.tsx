@@ -129,7 +129,7 @@ export function FinanzenBargeldWechselnPage() {
           }}
         >
           <Stack>
-            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+            <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 3 }} spacing="md">
               <DatumFeld
                 label="Datum"
                 value={datum}

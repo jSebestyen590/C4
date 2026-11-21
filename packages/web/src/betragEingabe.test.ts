@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BETRAG_MAX_CENT } from '@c4/shared';
-import { betragFormatieren, betragLesen } from './betragEingabe';
+import { betragFormatieren, betragLesen, betragRechnen } from './betragEingabe';
 
 describe('betragLesen', () => {
   it('treats an empty field as no value without an error', () => {
@@ -54,5 +54,49 @@ describe('betragFormatieren', () => {
     for (const c of [1, 99, 100, 123456, 999999999]) {
       expect(betragLesen(betragFormatieren(c)).cent).toBe(c);
     }
+  });
+});
+
+describe('betragRechnen', () => {
+  it('liest einen einfachen Betrag wie betragLesen', () => {
+    expect(betragRechnen('1,10')).toEqual({ cent: 110, exaktCent: 110, rechnung: false });
+    expect(betragRechnen('1.234,56')).toMatchObject({ cent: 123456 });
+    expect(betragRechnen('')).toEqual({ cent: null, exaktCent: null, rechnung: false });
+    expect(betragRechnen('1+1').rechnung).toBe(true);
+  });
+
+  it('rechnet mit Klammern und Dezimalkomma', () => {
+    const r = betragRechnen('(7,99 + 4,50)/12');
+    expect(r.exaktCent).toBeCloseTo(104.0833, 3);
+    expect(r.cent).toBe(104);
+  });
+
+  it('beachtet Punkt vor Strich und mehrere Operatoren', () => {
+    expect(betragRechnen('1+2*3').cent).toBe(700);
+    expect(betragRechnen('10 - 2,5 - 1').cent).toBe(650);
+    expect(betragRechnen('2*(1+0,5)').cent).toBe(300);
+  });
+
+  it('rundet auf ganze Cent', () => {
+    expect(betragRechnen('1/3')).toMatchObject({ cent: 33 });
+    expect(betragRechnen('2/3')).toMatchObject({ cent: 67 });
+  });
+
+  it('meldet ungültige Rechnungen', () => {
+    for (const t of ['1+', '(1+2', '1+2)', '2**3', 'abc+1', '1 + a'])
+      expect(betragRechnen(t)).toMatchObject({ cent: null, fehler: 'Ungültige Rechnung' });
+  });
+
+  it('meldet Division durch 0', () => {
+    const r = betragRechnen('5/0');
+    expect(r.cent).toBeNull();
+    expect(r.fehler).toContain('Division durch 0');
+    expect(betragRechnen('5/(1-1)').cent).toBeNull();
+  });
+
+  it('negative Ergebnisse nur mit negativ', () => {
+    expect(betragRechnen('1-3').fehler).toBeDefined();
+    expect(betragRechnen('1-3', true)).toMatchObject({ cent: -200, exaktCent: -200 });
+    expect(betragRechnen('-(1+1)', true).cent).toBe(-200);
   });
 });

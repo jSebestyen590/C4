@@ -11,12 +11,16 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import type {
+  AbgleichGrund,
   Anrede,
+  BelegPostenArt,
+  EntwurfStatus,
   BuchungsArt,
   Einheit,
   EventArt,
   KontoArt,
   SteuerArt,
+  SteuersatzArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -155,6 +159,8 @@ export const warengruppen = pgTable('warengruppen', {
   parentId: text('parent_id').references((): AnyPgColumn => warengruppen.id),
   name: text('name').notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Aufwand Konto suggested for Ware items on a Beleg (inherited by subgroups), checked in the API. */
+  kategorieId: text('kategorie_id'),
 });
 export type WarengruppeRow = typeof warengruppen.$inferSelect;
 
@@ -182,6 +188,8 @@ export const waren = pgTable('waren', {
     .references(() => warengruppen.id),
   mhdArt: text('mhd_art').$type<MhdArt>().notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Soft reference to `gebinde.id`; must be one of the Ware's Gebinde (checked in the API). */
+  standardGebindeId: text('standard_gebinde_id'),
 });
 export type WareRow = typeof waren.$inferSelect;
 
@@ -1223,8 +1231,8 @@ export const finKonten = pgTable('fin_konten', {
   art: text('art').$type<KontoArt>().notNull(),
   parentId: text('parent_id').references((): AnyPgColumn => finKonten.id),
   stueckelung: boolean('stueckelung').notNull().default(false),
-  /** Basis points, 1900 = 19 %. */
-  steuersatzStandard: integer('steuersatz_standard'),
+  /** Default tax rate as Art; the old column `steuersatz_standard` is no longer read or written. */
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
   archiviert: boolean('archiviert').notNull().default(false),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -1584,6 +1592,14 @@ export const finBelegEntwuerfe = pgTable('fin_beleg_entwuerfe', {
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
   geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+  /** `entwurf` | `eingereicht` | `verworfen`; null counts as `entwurf`. */
+  status: text('status').$type<EntwurfStatus>(),
+  /** Cognito sub of the member who submitted the draft. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  verworfenGrund: text('verworfen_grund'),
+  verworfenVon: text('verworfen_von'),
+  verworfenAm: timestamp('verworfen_am', { withTimezone: true }),
 });
 export type FinBelegEntwurfRow = typeof finBelegEntwuerfe.$inferSelect;
 
@@ -1612,6 +1628,10 @@ export const finBelege = pgTable('fin_belege', {
   idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** Cognito sub of the member who submitted the Beleg. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  eingereichtBetragCent: bigint('eingereicht_betrag_cent', { mode: 'number' }),
 });
 export type FinBelegRow = typeof finBelege.$inferSelect;
 
@@ -1631,9 +1651,44 @@ export const finBelegposten = pgTable(
     einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
     steuersatz: integer('steuersatz').notNull(),
     betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+    /** Gesamtpreis of the line (without deposit); when set, `betragCent` equals it. */
+    gesamtCent: bigint('gesamt_cent', { mode: 'number' }),
+    /** `kategorie` | `ware` | `leergut`; null counts as `kategorie`. Leergut items use `kategorie_id` 'pfand'. */
+    art: text('art').$type<BelegPostenArt>(),
+    wareId: text('ware_id'),
+    gebindeId: text('gebinde_id'),
+    /** Deposit per Gebinde and its amount (Ware items). */
+    pfandCent: bigint('pfand_cent', { mode: 'number' }),
+    pfandBetragCent: bigint('pfand_betrag_cent', { mode: 'number' }),
   },
   (t) => [primaryKey({ columns: [t.belegId, t.pos] })],
 );
+
+/**
+ * Artikel of Kategorie items with their default tax rate (basis points); created when a Beleg is
+ * booked. `name_norm` = lower(trim(name)) has a unique index.
+ */
+export const finArtikel = pgTable('fin_artikel', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  nameNorm: text('name_norm').notNull(),
+  /** Legacy NOT NULL column, written on insert only (basis points, never read); the default is `steuersatzArt`. */
+  steuersatz: integer('steuersatz').notNull(),
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
+export type FinArtikelRow = typeof finArtikel.$inferSelect;
+
+/** Tax rate periods (`ab` is a `YYYY-MM-DD` date); the unique index on `ab` guards against duplicates. */
+export const finSteuersatzZeitraeume = pgTable('fin_steuersatz_zeitraeume', {
+  id: text('id').primaryKey(),
+  ab: date('ab', { mode: 'string' }).notNull(),
+  regel: integer('regel').notNull(),
+  ermaessigt: integer('ermaessigt').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
 
 /** Rounding corrections per tax rate of a net Beleg (insert-only). */
 export const finBelegKorrekturen = pgTable(
@@ -1689,4 +1744,27 @@ export const finExporte = pgTable('fin_exporte', {
   kopfHash: text('kopf_hash').notNull(),
   schluessel: text('schluessel').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
+export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
+  id: text('id').primaryKey(),
+  /** Soft reference to `waren.id` (checked in the API). */
+  wareId: text('ware_id').notNull(),
+  menge: integer('menge').notNull(),
+  grund: text('grund').$type<AbgleichGrund>().notNull(),
+  text: text('text'),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type WarenAbgleichKorrekturRow = typeof warenAbgleichKorrekturen.$inferSelect;
+
+/** General key/value settings (e.g. `lager_abgleich_stichtag`). */
+export const einstellungen = pgTable('einstellungen', {
+  schluessel: text('schluessel').primaryKey(),
+  wert: text('wert').notNull(),
+  geaendertVon: text('geaendert_von').notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
 });

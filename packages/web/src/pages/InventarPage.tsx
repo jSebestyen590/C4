@@ -708,7 +708,7 @@ export function InventarPage() {
       )}
       {ansicht !== 'verliehen' && (
         <>
-          <SimpleGrid cols={{ base: 1, sm: imGegenstand ? 2 : 1 }}>
+          <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: imGegenstand ? 2 : 1 }}>
             <TextInput
               placeholder={
                 imGegenstand ? 'Name, IFCO oder Platz suchen' : 'Name oder Inhalt suchen'

@@ -92,7 +92,7 @@ export function ZeitfensterFelder({
         onChange={(e) => setze({ ganzerTag: e.currentTarget.checked })}
       />
       {!werte.ganzerTag && (
-        <Group gap="xs" align="flex-start" wrap="nowrap" grow>
+        <Group gap="xs" align="flex-end" wrap="nowrap" grow>
           <TextInput
             size="md"
             label="Ab"

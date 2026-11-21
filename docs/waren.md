@@ -54,9 +54,14 @@ Abschnitte: Invarianten, Dateien, Rechte, Datenmodell, IFCO-Lagerplätze, Regale
 ## Datenmodell
 
 Migrationen `0010`–`0023` (`0012_gebinde.sql` wurde vor dem Merge für das neue Gebinde-Modell umgeschrieben). Bestand ist die Summe der `bestandsbuchungen.menge` je Ware, Lagerort, Gebinde und MHD;
-ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
+ein `bestandsvorgang` (Einlagerung, Entnahme, Umlagerung, Inventur; `quelle` u. a. `inventur`) hat viele Zeilen mit der Art `zugang`, `abgang`, `anbruch`, `umlagerung` oder `korrektur`. `erstellt_von` ist die Cognito-`sub` ohne
 Fremdschlüssel. Entnahmen werden beim Buchen FIFO geplant (Bestand zum gewählten Zeitpunkt, Teilbaum des Lagerorts; die Sammel-Entnahme `/bestand/entnahmen` nur auf dem Platz selbst) und
 nie neu berechnet; negativer Bestand ist erlaubt.
+
+**Belege und Lager:** Ein Beleg bucht nichts ins Lager; Einlagerungen und Ware-Posten der Belege gleicht der Lager-Beleg-Abgleich je Ware ab
+(`/finanzen/lager-abgleich`, Diskrepanz auch auf `/lager` und `/waren/:id`; siehe [finanzen.md](./finanzen.md), „Lager-Beleg-Abgleich“). **Warengruppe → Kategorie:**
+`warengruppen.kategorie_id` (Aufwandskonto, nullable, an Untergruppen vererbt) schlägt die Kategorie für Ware-Posten vor; gepflegt auf
+`/finanzen/warengruppen-kategorien`.
 
 Stammdaten werden nur gelöscht, wenn nichts darauf verweist (sonst 409), ansonsten archiviert
 (`PUT …/:id/archiv { archiviert }`). Ein Lagerort lässt sich nur archivieren, wenn der Bestand seines ganzen Teilbaums 0 ist und im Teilbaum kein Inventar
@@ -124,6 +129,16 @@ Ein Gebinde hat keinen freien Namen; die Bezeichnung wird aus den Attributen geb
 - Regeln (`gebindeSchema`, `gebindeFehler`): vollständige Basis- oder Obergebinde-Kombination, nur eine Verschachtelungsebene.
   Identische Gebinde (alle Attribute inkl. Pfand, bei Obergebinden Untergebinde + Anzahl) gibt es nur einmal (409
   „Dieses Gebinde gibt es schon.“, `gebindeDoppelt`). Sortierung: erst Basis-, dann Obergebinde (`gebindeSortieren`).
+- **Standard-Gebinde (Pflicht):** `waren.standard_gebinde_id` (Spalte nullable, Migrationen `0232`/`0233`; die Pflicht prüft die API,
+  `standardGebindeId` im `wareSchema`). Das Ware-Formular wählt das erste gewählte Gebinde vor, solange keins gesetzt ist; ohne
+  Standard-Gebinde kein Speichern. Entfernt man es aus der Auswahl, muss ein neues gewählt werden (Vorbelegung wieder das erste).
+  Die API lehnt ein Standard-Gebinde ab, das nicht zur Ware gehört, und setzt nichts mehr still zurück. Die Detailseite markiert es
+  mit „(Standard)“ hinter dem Gebinde. Auf Belegen ist es beim Wählen der Ware vorbelegt. Die Ware-Suche in Belegen findet auch
+  Aliase (`wareSuchen`).
+- **Eindeutige Namen und Aliase:** Name und Aliase sind über **alle** Waren eindeutig, auch archivierte, ohne Rücksicht auf
+  Groß-/Kleinschreibung und Leerzeichen am Rand. Ein Alias darf keinem Namen einer anderen Ware gleichen und umgekehrt, auch nicht
+  dem eigenen Namen. Prüfung in `wareSpeichern` und als Vorprüfung im Formular (`wareNamenKonflikt` in `shared/src/waren.ts`); die
+  Meldung „„X“ wird schon von der Ware „Y“ verwendet.“ steht am passenden Feld (Name oder Alias).
 - `GET /waren/:id/verlauf` liefert `gebinde: [{ id, bezeichnung, kurz }]`.
 
 ## FIFO-Entnahme

@@ -45,7 +45,9 @@ import {
   tiefensuche,
   verlauf,
   verlaufSerien,
+  wareNamenKonflikt,
   wareSchema,
+  wareSuchen,
   type Buchung,
   type Buchungszeile,
   type Gebinde,
@@ -614,7 +616,13 @@ describe('schemas', () => {
     expect(gebindeSchema.safeParse({ ...flasche, pfandCent: 1.5 }).success).toBe(false);
   });
   it('validates Ware', () => {
-    const basis = { name: 'Krosti', warengruppeId: 'g', mhdArt: 'monat', gebindeIds: ['K', 'F'] };
+    const basis = {
+      name: 'Krosti',
+      warengruppeId: 'g',
+      mhdArt: 'monat',
+      gebindeIds: ['K', 'F'],
+      standardGebindeId: 'K',
+    };
     expect(wareSchema.safeParse(basis).data?.aliase).toEqual([]);
     expect(wareSchema.safeParse({ ...basis, aliase: [' Krostitzer '] }).data?.aliase).toEqual([
       'Krostitzer',
@@ -952,5 +960,85 @@ describe('anzahlSchema', () => {
     expect(anzahlSchema.safeParse(1_000_001).success).toBe(false);
     expect(anzahlSchema.safeParse(0).success).toBe(false);
     expect(anzahlSchema.safeParse(1.5).success).toBe(false);
+  });
+});
+
+describe('wareSuchen', () => {
+  const waren = [
+    { id: '1', name: 'Sternburg Export', aliase: ['Sterni'] },
+    { id: '2', name: 'Club Mate', aliase: [] },
+    { id: '3', name: 'Sternburg Pils', aliase: ['Sternchen'] },
+  ];
+  it('matches the name case-insensitively and trimmed', () => {
+    expect(wareSuchen(waren, '  club ').map((t) => [t.ware.id, t.alias])).toEqual([['2', null]]);
+  });
+  it('finds a Ware by alias and reports which alias matched', () => {
+    expect(wareSuchen(waren, 'STERNI').map((t) => [t.ware.id, t.alias])).toEqual([['1', 'Sterni']]);
+  });
+  it('prefers the name match over an alias match', () => {
+    expect(wareSuchen(waren, 'stern').map((t) => [t.ware.id, t.alias])).toEqual([
+      ['1', null],
+      ['3', null],
+    ]);
+  });
+  it('returns everything for an empty search and tolerates missing aliases', () => {
+    expect(wareSuchen([{ name: 'A' }], ' ')).toHaveLength(1);
+    expect(wareSuchen(waren, '')).toHaveLength(3);
+  });
+});
+
+describe('wareSchema standardGebindeId', () => {
+  const basis = { name: 'X', warengruppeId: 'g', mhdArt: 'keins', gebindeIds: ['a', 'b'] };
+  it('is required', () => {
+    expect(wareSchema.safeParse(basis).success).toBe(false);
+    expect(wareSchema.safeParse({ ...basis, standardGebindeId: null }).success).toBe(false);
+    expect(wareSchema.safeParse({ ...basis, standardGebindeId: 'a' }).data?.standardGebindeId).toBe(
+      'a',
+    );
+  });
+  it('rejects an alias equal to the own name', () => {
+    const r = wareSchema.safeParse({
+      ...basis,
+      standardGebindeId: 'a',
+      aliase: [' x '],
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('wareNamenKonflikt', () => {
+  const waren = [
+    { id: '1', name: 'Sternburg Export', aliase: ['Sterni'] },
+    { id: '2', name: 'Pizza', aliase: [] },
+  ];
+  it('finds a name equal to another name or alias, ignoring case and edge spaces', () => {
+    expect(wareNamenKonflikt(waren, { name: ' pizza ', aliase: [] })).toMatchObject({
+      feld: 'name',
+      wareName: 'Pizza',
+      meldung: '„pizza“ wird schon von der Ware „Pizza“ verwendet.',
+    });
+    expect(wareNamenKonflikt(waren, { name: 'STERNI', aliase: [] })?.feld).toBe('name');
+  });
+  it('finds an alias equal to another name or alias', () => {
+    expect(
+      wareNamenKonflikt(waren, { name: 'Bier', aliase: ['x', 'sternburg export'] }),
+    ).toMatchObject({
+      feld: 'alias',
+      wert: 'sternburg export',
+      wareName: 'Sternburg Export',
+    });
+    expect(wareNamenKonflikt(waren, { name: 'Bier', aliase: ['sterni'] })?.feld).toBe('alias');
+  });
+  it('rejects an alias equal to the own name', () => {
+    expect(wareNamenKonflikt([], { name: 'Bier', aliase: ['BIER '] })).toMatchObject({
+      feld: 'alias',
+      meldung: 'Der Alias „BIER“ ist schon der Name dieser Ware.',
+    });
+  });
+  it('does not compare a Ware with itself and returns null without a clash', () => {
+    expect(
+      wareNamenKonflikt(waren, { id: '1', name: 'Sternburg Export', aliase: ['Sterni'] }),
+    ).toBeNull();
+    expect(wareNamenKonflikt(waren, { name: 'Bier', aliase: ['Pils'] })).toBeNull();
   });
 });

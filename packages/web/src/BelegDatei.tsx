@@ -140,6 +140,9 @@ export function BelegDateiFeld({
   disabled = false,
   fehler,
   doppeltText,
+  einreichung = false,
+  vorschauSichtbar = true,
+  onVorschau,
 }: Readonly<{
   datei: BelegDateiDaten | null;
   /** Presigned or local URL of the file for the preview. */
@@ -150,6 +153,11 @@ export function BelegDateiFeld({
   fehler?: string;
   /** Warning text of a loaded draft whose file is already part of a booked Beleg. */
   doppeltText?: string;
+  /** Member submission: uploads through the `einreichungen` route (needs only `belege:einreichen`). */
+  einreichung?: boolean;
+  /** Whether the preview of the file is shown (default); with `onVorschau` a button switches it. */
+  vorschauSichtbar?: boolean;
+  onVorschau?: (sichtbar: boolean) => void;
 }>) {
   const api = useApi();
   const waehlen = useRef<HTMLInputElement>(null);
@@ -173,7 +181,9 @@ export function BelegDateiFeld({
       setAnteil(0);
       const sha256 = hexVon(await crypto.subtle.digest('SHA-256', await gewaehlt.arrayBuffer()));
       const upload = await jsonOderFehler<BelegUploadDto>(
-        await api.finanzen['beleg-dateien'].upload.$post({
+        await (
+          einreichung ? api.finanzen.einreichungen.upload : api.finanzen['beleg-dateien'].upload
+        ).$post({
           json: { sha256, groesse: gewaehlt.size, typ, name: gewaehlt.name },
         }),
       );
@@ -302,6 +312,11 @@ export function BelegDateiFeld({
             </Text>
             {!disabled && (
               <Group gap="xs">
+                {onVorschau && (
+                  <Button variant="default" onClick={() => onVorschau(!vorschauSichtbar)}>
+                    {vorschauSichtbar ? 'Vorschau ausblenden' : 'Vorschau einblenden'}
+                  </Button>
+                )}
                 <Button
                   variant="default"
                   onClick={() => waehlen.current?.click()}
@@ -315,7 +330,7 @@ export function BelegDateiFeld({
               </Group>
             )}
           </Group>
-          {vorschauUrl ? (
+          {!vorschauSichtbar ? null : vorschauUrl ? (
             <BelegVorschau url={vorschauUrl} typ={datei.typ} name={datei.name} />
           ) : (
             <Text size="sm" c="dimmed">

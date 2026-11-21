@@ -73,7 +73,7 @@ export function WarenPage() {
           </Button>
         )}
       </Group>
-      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+      <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2 }}>
         <TextInput
           placeholder="Name oder Alias suchen"
           aria-label="Suche"

@@ -9,6 +9,7 @@ import {
   pruefeBuchung,
   pruefeKassenTransfers,
   stueckelungVollstaendig,
+  steuersatzAm,
   type BestandKonto,
   type BuchungVerweisDto,
   type KasseDto,
@@ -43,6 +44,8 @@ export function planeKassenabrechnung(p: {
   stamm: KassenStamm;
   konten: readonly KassenKonto[];
   bestand: readonly BestandKonto[];
+  /** Tax rate periods: the Art of the Erlöskonto is turned into the rate valid on the date of the Abrechnung. */
+  zeitraeume: readonly { ab: string; regel: number; ermaessigt: number }[];
 }): KassenPlan {
   const { eingabe } = p;
   const nach = new Map(p.konten.map((k) => [k.id, k]));
@@ -66,7 +69,10 @@ export function planeKassenabrechnung(p: {
     grundbestand: p.stamm.grundbestand,
     ist: eingabe.ist,
     transfers: eingabe.transfers,
-    erloesKonto: { id: erloes.id, steuersatzStandard: erloes.steuersatzStandard ?? null },
+    erloesKonto: {
+      id: erloes.id,
+      steuersatz: steuersatzAm(p.zeitraeume, erloes.steuersatzArt ?? null, eingabe.datum),
+    },
     zielFachId: eingabe.zielFachId,
     events: eingabe.events,
   });

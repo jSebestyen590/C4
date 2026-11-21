@@ -265,23 +265,79 @@ export const gebindeSchema = z
   });
 export type GebindeEingabe = z.input<typeof gebindeSchema>;
 
-export const wareSchema = z.object({
-  name: name(),
-  warengruppeId: idSchema('Bitte wähle eine Warengruppe.'),
-  mhdArt: z.enum(MHD_ARTEN, 'Ungültige MHD-Art.'),
-  gebindeIds: z
-    .array(idSchema('Ungültiges Gebinde.'))
-    .min(1, 'Bitte wähle mindestens ein Gebinde.')
-    .refine(eindeutig, 'Jedes Gebinde darf nur einmal vorkommen.'),
-  aliase: z
-    .array(z.string().trim().min(1, 'Ein Alias darf nicht leer sein.').max(100))
-    .default([])
-    .refine(
-      (a) => new Set(a.map((x) => x.toLowerCase())).size === a.length,
-      'Jeder Alias darf nur einmal vorkommen.',
-    ),
-});
+/** Names and aliases are compared trimmed and case-insensitively. */
+export const wareNameNorm = (s: string): string => s.trim().toLowerCase();
+const namenGleich = (a: string, b: string): boolean => wareNameNorm(a) === wareNameNorm(b);
+
+export const wareSchema = z
+  .object({
+    name: name(),
+    warengruppeId: idSchema('Bitte wähle eine Warengruppe.'),
+    mhdArt: z.enum(MHD_ARTEN, 'Ungültige MHD-Art.'),
+    gebindeIds: z
+      .array(idSchema('Ungültiges Gebinde.'))
+      .min(1, 'Bitte wähle mindestens ein Gebinde.')
+      .refine(eindeutig, 'Jedes Gebinde darf nur einmal vorkommen.'),
+    aliase: z
+      .array(z.string().trim().min(1, 'Ein Alias darf nicht leer sein.').max(100))
+      .default([])
+      .refine(
+        (a) => new Set(a.map((x) => x.toLowerCase())).size === a.length,
+        'Jeder Alias darf nur einmal vorkommen.',
+      ),
+    /**
+     * Preselected Gebinde on Belege (required): must be one of the Ware's Gebinde or their Untergebinde
+     * (the schema cannot know the Untergebinde, the API checks it).
+     */
+    standardGebindeId: idSchema('Bitte wähle ein Standard-Gebinde.'),
+  })
+  .refine((w) => !w.aliase.some((a) => namenGleich(a, w.name)), {
+    message: 'Ein Alias darf nicht dem Namen der Ware gleichen.',
+    path: ['aliase'],
+  });
 export type WareEingabe = z.input<typeof wareSchema>;
+
+export interface WareNamenKonflikt {
+  /** The field of the candidate that clashes. */
+  feld: 'name' | 'alias';
+  /** The clashing name or alias as the candidate wrote it. */
+  wert: string;
+  /** Name of the other Ware using it (the candidate's own name for an alias equal to its name). */
+  wareName: string;
+  meldung: string;
+}
+
+/**
+ * Names and aliases are unique across all Waren (archived ones too), compared trimmed and
+ * case-insensitively; an alias must not equal a name either, also not the Ware's own. Returns the first
+ * clash of `kandidat` (a Ware with `id` is not compared with itself), or null.
+ */
+export function wareNamenKonflikt(
+  waren: readonly { id: string; name: string; aliase: readonly string[] }[],
+  kandidat: { id?: string | null; name: string; aliase: readonly string[] },
+): WareNamenKonflikt | null {
+  const konflikt = (feld: 'name' | 'alias', wert: string, wareName: string): WareNamenKonflikt => ({
+    feld,
+    wert,
+    wareName,
+    meldung:
+      wareName === kandidat.name && feld === 'alias'
+        ? `Der Alias „${wert.trim()}“ ist schon der Name dieser Ware.`
+        : `„${wert.trim()}“ wird schon von der Ware „${wareName}“ verwendet.`,
+  });
+  const eigenerAlias = kandidat.aliase.find((a) => namenGleich(a, kandidat.name));
+  if (eigenerAlias !== undefined) return konflikt('alias', eigenerAlias, kandidat.name);
+  for (const w of waren) {
+    if (kandidat.id && w.id === kandidat.id) continue;
+    if (namenGleich(w.name, kandidat.name) || w.aliase.some((a) => namenGleich(a, kandidat.name)))
+      return konflikt('name', kandidat.name, w.name);
+    for (const alias of kandidat.aliase) {
+      if (namenGleich(w.name, alias) || w.aliase.some((a) => namenGleich(a, alias)))
+        return konflikt('alias', alias, w.name);
+    }
+  }
+  return null;
+}
 
 /** Tolerance for a phone clock that runs ahead when booking. */
 export const ZUKUNFT_TOLERANZ_MS = 5 * 60_000;
@@ -1228,4 +1284,31 @@ export function inventurKorrekturen(
       menge: z.differenz,
       art: 'korrektur' as const,
     }));
+}
+
+/** A Ware found by `wareSuchen`; `alias` is the alias that matched when the name itself did not. */
+export interface WareTreffer<T> {
+  ware: T;
+  alias: string | null;
+}
+
+/**
+ * Wares whose name or one of whose aliases contains `suchtext` (case-insensitive, trimmed). An empty
+ * search returns all Waren without alias. A name match wins over an alias match (`alias` is null then).
+ */
+export function wareSuchen<T extends { name: string; aliase?: readonly string[] }>(
+  waren: readonly T[],
+  suchtext: string,
+): WareTreffer<T>[] {
+  const q = suchtext.trim().toLowerCase();
+  if (!q) return waren.map((ware) => ({ ware, alias: null }));
+  const treffer: WareTreffer<T>[] = [];
+  for (const ware of waren) {
+    if (ware.name.toLowerCase().includes(q)) treffer.push({ ware, alias: null });
+    else {
+      const alias = (ware.aliase ?? []).find((a) => a.toLowerCase().includes(q));
+      if (alias !== undefined) treffer.push({ ware, alias });
+    }
+  }
+  return treffer;
 }

@@ -76,7 +76,7 @@ export function BoedenFelder({
   const namenFehler = bodenNamenFehler(wert.namen, vorhanden);
   return (
     <Stack gap="sm">
-      <SimpleGrid cols={2} spacing="sm">
+      <SimpleGrid style={{ alignItems: 'end' }} cols={2} spacing="sm">
         <ZahlFeld
           label="Reihen"
           value={wert.reihen}

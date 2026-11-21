@@ -118,7 +118,7 @@ describe('berechneKassenabrechnung', () => {
     grundbestand: st([100, 30], [500, 2]),
     ist: st([100, 30], [500, 2]),
     transfers: [],
-    erloesKonto: { id: 'erloes', steuersatzStandard: 1900 },
+    erloesKonto: { id: 'erloes', steuersatz: 1900 },
     zielFachId: 'zaehlbrett',
     events: [],
   };
@@ -178,7 +178,7 @@ describe('berechneKassenabrechnung', () => {
   it('Erlöskonto ohne Steuersatz bucht ohne Steuer', () => {
     const r = rechne({
       ist: st([100, 31], [500, 2]),
-      erloesKonto: { id: 'erloes', steuersatzStandard: null },
+      erloesKonto: { id: 'erloes', steuersatz: null },
     });
     expect(r.zeilen.find((z) => z.kontoId === 'erloes')).toMatchObject({
       betragCent: -100,
@@ -397,22 +397,38 @@ describe('Einnahme eines Events je Kasse', () => {
   });
   it('ist vorläufig der Vorschlag der Abrechnung (Differenz zur Zählung davor, Start mit dem Soll)', () => {
     const zaehlungen = [z('e1', 9000, 1), z('e2', 13000, 2)];
-    expect(eventKassenEinnahme({ eventId: 'e1', sollCent: 4000, zaehlungen, abgerechnetCent: null })).toEqual({
+    expect(
+      eventKassenEinnahme({ eventId: 'e1', sollCent: 4000, zaehlungen, abgerechnetCent: null }),
+    ).toEqual({
       einnahmeCent: 5000,
       status: 'vorlaeufig',
     });
-    expect(eventKassenEinnahme({ eventId: 'e2', sollCent: 4000, zaehlungen, abgerechnetCent: null })).toEqual({
+    expect(
+      eventKassenEinnahme({ eventId: 'e2', sollCent: 4000, zaehlungen, abgerechnetCent: null }),
+    ).toEqual({
       einnahmeCent: 4000,
       status: 'vorlaeufig',
     });
   });
   it('ist nach der Abrechnung der gebuchte Betrag', () => {
     expect(
-      eventKassenEinnahme({ eventId: 'e1', sollCent: 0, zaehlungen: [z('e1', 9000, 1)], abgerechnetCent: 4500 }),
+      eventKassenEinnahme({
+        eventId: 'e1',
+        sollCent: 0,
+        zaehlungen: [z('e1', 9000, 1)],
+        abgerechnetCent: 4500,
+      }),
     ).toEqual({ einnahmeCent: 4500, status: 'abgerechnet' });
   });
   it('ohne Zählung und Abrechnung gibt es nichts', () => {
-    expect(eventKassenEinnahme({ eventId: 'e9', sollCent: 0, zaehlungen: [z('e1', 1, 1)], abgerechnetCent: null })).toEqual({
+    expect(
+      eventKassenEinnahme({
+        eventId: 'e9',
+        sollCent: 0,
+        zaehlungen: [z('e1', 1, 1)],
+        abgerechnetCent: null,
+      }),
+    ).toEqual({
       einnahmeCent: null,
       status: null,
     });
@@ -425,7 +441,12 @@ describe('Einnahme eines Events je Kasse', () => {
         { zugewiesen: false, einnahmeCent: 300 },
       ]),
     ).toEqual({ summeCent: 5300, unvollstaendig: true });
-    expect(eventKassenSumme([{ zugewiesen: true, einnahmeCent: 1 }, { zugewiesen: false, einnahmeCent: null }])).toEqual({
+    expect(
+      eventKassenSumme([
+        { zugewiesen: true, einnahmeCent: 1 },
+        { zugewiesen: false, einnahmeCent: null },
+      ]),
+    ).toEqual({
       summeCent: 1,
       unvollstaendig: false,
     });

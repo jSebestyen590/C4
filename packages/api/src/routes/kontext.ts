@@ -23,7 +23,7 @@ import {
   terminVorbereiten as terminVorbereitenModul,
   umfrageSpeichern as umfrageSpeichernModul,
 } from '../umfrageSpeichern';
-import { authenticate, requirePermission } from '../auth';
+import { authenticate, requireAnyPermission, requirePermission } from '../auth';
 import type { AppDeps } from '../app';
 
 /** "2026-11-01T09:00:00.000Z_<id>" */
@@ -72,8 +72,11 @@ export function baueKontext(deps: AppDeps) {
   const kasseZaehlen = requirePermission('kasse:zaehlen');
   const finanzenLesen = requirePermission('finanzen:lesen');
   const finanzenBuchen = requirePermission('finanzen:buchen');
+  const belegeEinreichen = requirePermission('belege:einreichen');
   const finanzenVerwalten = requirePermission('finanzen:verwalten');
   const finanzenPruefen = requirePermission('finanzen:pruefen');
+  const abgleichLesen = requireAnyPermission('finanzen:lesen', 'waren:verwalten');
+  const abgleichSchreiben = requireAnyPermission('finanzen:buchen', 'waren:verwalten');
   const bilderLesen = requirePermission('bilder:lesen');
   const protokolleLesen = requirePermission('protokolle:lesen');
   const protokolleSchreiben = requirePermission('protokolle:schreiben');
@@ -143,7 +146,12 @@ export function baueKontext(deps: AppDeps) {
 
   /** Maps the Waren store's domain errors to 400 (invalid) and 409 (conflict). */
   const warenFehler = (err: unknown): never => {
-    if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
+    if (err instanceof WarenUngueltig)
+      throw new HTTPException(400, {
+        message: err.message,
+        // `onError` adds it to the body as `feld`, so a form can show the message at the field.
+        cause: err.feld ? { feld: err.feld } : undefined,
+      });
     if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
     throw err;
   };
@@ -350,8 +358,11 @@ export function baueKontext(deps: AppDeps) {
     kasseZaehlen,
     finanzenLesen,
     finanzenBuchen,
+    belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
+    abgleichLesen,
+    abgleichSchreiben,
     bilderLesen,
     protokolleLesen,
     protokolleSchreiben,
