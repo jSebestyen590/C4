@@ -168,6 +168,7 @@ export function BelegBuchenDialog({
                   checked={bestaetigt.has(w.code)}
                   onChange={(e) => umschalten(w.code, e.currentTarget.checked)}
                   label={w.text}
+                  aria-label={w.text}
                   disabled={laeuft}
                 />
               ))}
