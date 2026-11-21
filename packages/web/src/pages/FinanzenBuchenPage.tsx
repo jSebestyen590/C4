@@ -1,3 +1,4 @@
+import { dropdownOffen } from '../useVerwerfenWarnung';
 import {
   Alert,
   Anchor,
@@ -181,7 +182,7 @@ export function FinanzenBuchenPage() {
     const el = e.target as HTMLElement;
     if (!el.matches('[data-nav]')) return;
     // An open account dropdown uses Enter to pick the highlighted entry.
-    if (el.getAttribute('aria-expanded') === 'true') return;
+    if (dropdownOffen(el)) return;
     const felder = [...(formRef.current?.querySelectorAll<HTMLElement>('[data-nav]') ?? [])];
     const i = felder.indexOf(el);
     const naechstes = felder[i + 1];
@@ -232,7 +233,7 @@ export function FinanzenBuchenPage() {
               ]}
               w={{ base: '100%', sm: 320 }}
             />
-            <Grid gap="md">
+            <Grid align="flex-end" gap="md">
               <Grid.Col span={{ base: 12, sm: 4 }}>
                 <DatumFeld
                   label={<FeldLabel text="Datum" hilfe={HILFE.buchen.datum} />}
@@ -261,7 +262,7 @@ export function FinanzenBuchenPage() {
             </Grid>
 
             {modus === 'umbuchung' ? (
-              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, md: 3 }} spacing="md">
                 <Select
                   selectFirstOptionOnChange
                   label="Von Konto"

@@ -49,8 +49,17 @@ export function ErstattungDialog({
   const fach = faecher.find((f) => f.id === fachId);
   const hinweis = stueckelungHinweis(summe, gegeben, wechselgeld);
   const gruende = [
+    ...(summe === 0
+      ? ['Die Summe der gewählten Belege ist 0 €: Es gibt nichts zu erstatten.']
+      : []),
     ...(datum === '' ? ['Bitte gib das Datum an.'] : []),
-    ...(zahlweg === 'bar' && !fachId ? ['Bitte wähle das Fach, aus dem bar gezahlt wird.'] : []),
+    ...(zahlweg === 'bar' && !fachId
+      ? [
+          summe < 0
+            ? 'Bitte wähle das Fach, in das bar eingezahlt wird.'
+            : 'Bitte wähle das Fach, aus dem bar gezahlt wird.',
+        ]
+      : []),
     ...(zahlweg === 'bar' && mengenLeer(gegeben) && mengenLeer(wechselgeld)
       ? ['Bitte gib die Stückelung an.']
       : zahlweg === 'bar' && bezahltCent(gegeben, wechselgeld) !== summe
@@ -83,8 +92,8 @@ export function ErstattungDialog({
         color: 'green',
         autoClose: HINWEIS_DAUER_MS,
         message: wiederholt
-          ? `Erstattung war schon gebucht (Buchung Nr. ${buchungSeq}).`
-          : `Erstattung gebucht (Buchung Nr. ${buchungSeq}).`,
+          ? `${summe < 0 ? 'Einlage' : 'Erstattung'} war schon gebucht (Buchung Nr. ${buchungSeq}).`
+          : `${summe < 0 ? 'Einlage' : 'Erstattung'} gebucht (Buchung Nr. ${buchungSeq}).`,
       });
       onClose();
     },
@@ -94,7 +103,7 @@ export function ErstattungDialog({
     <Modal
       opened
       onClose={erstatten.isPending ? () => undefined : onClose}
-      title="Auslagen erstatten"
+      title={summe < 0 ? 'Einlage verbuchen' : 'Auslagen erstatten'}
       size="lg"
     >
       <Stack>
@@ -119,15 +128,25 @@ export function ErstattungDialog({
               </Table.Tr>
             ))}
             <Table.Tr fw={700}>
-              <Table.Td colSpan={2}>Summe</Table.Td>
+              <Table.Td colSpan={2}>{summe < 0 ? 'Summe (Mitglied zahlt ein)' : 'Summe'}</Table.Td>
               <Table.Td style={BETRAG_STIL}>{centAnzeigen(summe)}</Table.Td>
             </Table.Tr>
           </Table.Tbody>
         </Table>
+        {summe < 0 && (
+          <Alert color="blue" variant="light">
+            {mitglied ? (
+              <StatusName status={mitglied.status}>{mitgliedName(mitglied)}</StatusName>
+            ) : (
+              'Das Mitglied'
+            )}{' '}
+            schuldet dem Verein {centAnzeigen(-summe)}. {HILFE.belege.erstattungEinlage}
+          </Alert>
+        )}
         <Text size="sm" c="dimmed">
           {HILFE.belege.erstattung}
         </Text>
-        <Group align="flex-start" grow>
+        <Group align="flex-end" grow>
           <DatumFeld
             label="Datum der Erstattung"
             value={datum}
@@ -135,11 +154,16 @@ export function ErstattungDialog({
             loeschbar={false}
           />
           <Select
-            label={<FeldLabel text="Gezahlt per" hilfe={HILFE.belege.zahlweg} />}
+            label={
+              <FeldLabel
+                text={summe < 0 ? 'Eingezahlt per' : 'Gezahlt per'}
+                hilfe={HILFE.belege.zahlweg}
+              />
+            }
             allowDeselect={false}
             data={[
               { value: 'bank', label: 'Bank' },
-              { value: 'bar', label: 'Bar (aus dem Safe)' },
+              { value: 'bar', label: summe < 0 ? 'Bar (in den Safe)' : 'Bar (aus dem Safe)' },
             ]}
             value={zahlweg}
             onChange={(v) => setZahlweg(v === 'bar' ? 'bar' : 'bank')}
@@ -157,12 +181,16 @@ export function ErstattungDialog({
               error={versucht && !fachId ? 'Bitte wähle ein Fach.' : undefined}
             />
             <StueckelungFeld
-              label="Münzen und Scheine, die du gibst, und Wechselgeld"
+              label={
+                summe < 0
+                  ? 'Münzen und Scheine, die du erhältst'
+                  : 'Münzen und Scheine, die du gibst, und Wechselgeld'
+              }
               bestand={fach?.bestand}
               spalten={[
                 {
                   id: 'ab',
-                  label: 'Abgang (gegeben)',
+                  label: summe < 0 ? 'Abgang (zurückgegeben)' : 'Abgang (gegeben)',
                   value: gegeben,
                   onChange: setGegeben,
                   richtung: 'ab',
@@ -170,7 +198,7 @@ export function ErstattungDialog({
                 },
                 {
                   id: 'zu',
-                  label: 'Wechselgeld',
+                  label: summe < 0 ? 'Eingang (erhalten)' : 'Wechselgeld',
                   value: wechselgeld,
                   onChange: setWechselgeld,
                   richtung: 'zu',
@@ -199,7 +227,7 @@ export function ErstattungDialog({
               if (gruende.length === 0) erstatten.mutate();
             }}
           >
-            Erstattung buchen
+            {summe < 0 ? 'Einlage buchen' : 'Erstattung buchen'}
           </Button>
         </Group>
       </Stack>

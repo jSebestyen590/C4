@@ -744,13 +744,46 @@ describe('posten', () => {
         warengruppeId: 'g',
         mhdArt: 'tag',
         gebindeIds: ['gb1'],
+        standardGebindeId: 'gb1',
       });
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: 'Die Warengruppe existiert nicht.' });
       expect(
+        (
+          await ware({
+            name: 'Cola',
+            warengruppeId: 'g',
+            mhdArt: 'tag',
+            gebindeIds: ['gb1'],
+            standardGebindeId: 'gb1',
+          })
+        ).status,
+      ).toBe(201);
+      // The Standard-Gebinde is required.
+      expect(
         (await ware({ name: 'Cola', warengruppeId: 'g', mhdArt: 'tag', gebindeIds: ['gb1'] }))
           .status,
-      ).toBe(201);
+      ).toBe(400);
+      // A name or alias clash names the field, so the form can show it there.
+      waren.wareAnlegen.mockRejectedValueOnce(
+        new WarenUngueltig(
+          '„Sterni“ wird schon von der Ware „Sternburg Export“ verwendet.',
+          'alias',
+        ),
+      );
+      const aliasKonflikt = await ware({
+        name: 'Cola',
+        warengruppeId: 'g',
+        mhdArt: 'tag',
+        gebindeIds: ['gb1'],
+        standardGebindeId: 'gb1',
+        aliase: ['Sterni'],
+      });
+      expect(aliasKonflikt.status).toBe(400);
+      expect(await aliasKonflikt.json()).toEqual({
+        error: '„Sterni“ wird schon von der Ware „Sternburg Export“ verwendet.',
+        feld: 'alias',
+      });
 
       expect((await app.request('/api/waren/nope', json('reader-token', 'GET'))).status).toBe(404);
       expect(

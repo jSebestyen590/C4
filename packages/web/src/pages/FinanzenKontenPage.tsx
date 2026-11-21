@@ -25,6 +25,7 @@ import { InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { KontoFormular } from '../KontoFormular';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { artText, useHeutigeSaetze } from '../steuersaetze';
 import { ZurueckLink } from '../ZurueckLink';
 
 const nachName = (a: KontoDto, b: KontoDto) =>
@@ -63,6 +64,7 @@ export function FinanzenKontenPage() {
   const [formular, setFormular] = useState<{ konto?: KontoDto } | null>(null);
   // Always load the archived accounts too (parent options, names); the switch only filters.
   const konten = useKonten(true);
+  const heute = useHeutigeSaetze();
   const namen = useMemo(
     () => new Map((konten.data ?? []).map((k) => [k.id, k.name])),
     [konten.data],
@@ -112,11 +114,16 @@ export function FinanzenKontenPage() {
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>
       <Group justify="space-between" wrap="wrap">
         <Title order={2}>Kontenplan</Title>
-        {darfVerwalten && (
-          <Button leftSection={<IconPlus size={18} />} onClick={() => setFormular({})}>
-            Konto anlegen
+        <Group wrap="wrap">
+          <Button component={Link} to="/finanzen/steuersaetze" variant="default">
+            Steuersätze
           </Button>
-        )}
+          {darfVerwalten && (
+            <Button leftSection={<IconPlus size={18} />} onClick={() => setFormular({})}>
+              Konto anlegen
+            </Button>
+          )}
+        </Group>
       </Group>
       <Group gap={2}>
         <Switch
@@ -164,9 +171,9 @@ export function FinanzenKontenPage() {
                         Unter {namen.get(k.parentId) ?? 'unbekannt'}
                       </Text>
                     )}
-                    {k.steuersatzStandard !== null && (
+                    {k.steuersatzArt !== null && (
                       <Text size="sm" c="dimmed">
-                        Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                        Steuersatz: {artText(k.steuersatzArt, heute)}
                       </Text>
                     )}
                   </Stack>
@@ -223,9 +230,9 @@ export function FinanzenKontenPage() {
                           Unter {namen.get(k.parentId) ?? 'unbekannt'}
                         </Text>
                       )}
-                      {k.steuersatzStandard !== null && (
+                      {k.steuersatzArt !== null && (
                         <Text size="xs" c="dimmed">
-                          Steuersatz {(k.steuersatzStandard / 100).toLocaleString('de-DE')} %
+                          Steuersatz: {artText(k.steuersatzArt, heute)}
                         </Text>
                       )}
                     </Table.Td>

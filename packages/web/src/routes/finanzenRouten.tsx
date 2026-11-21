@@ -1,8 +1,11 @@
 import { Route } from 'react-router-dom';
 import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
+import { FinanzenArtikelPage } from '../pages/FinanzenArtikelPage';
+import { FinanzenSteuersaetzePage } from '../pages/FinanzenSteuersaetzePage';
 import { FinanzenBelegDetailPage } from '../pages/FinanzenBelegDetailPage';
 import { FinanzenBelegePage } from '../pages/FinanzenBelegePage';
 import { FinanzenBelegPage } from '../pages/FinanzenBelegPage';
+import { FinanzenWarengruppenKategorienPage } from '../pages/FinanzenWarengruppenKategorienPage';
 import { FinanzenRechnungsstellerPage } from '../pages/FinanzenRechnungsstellerPage';
 import { FinanzenBargeldPage } from '../pages/FinanzenBargeldPage';
 import { FinanzenBargeldUmbuchenPage } from '../pages/FinanzenBargeldUmbuchenPage';
@@ -18,13 +21,48 @@ import { FinanzenKassenPage } from '../pages/FinanzenKassenPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
+import { LagerAbgleichPage } from '../pages/LagerAbgleichPage';
+import { LagerAbgleichWarePage } from '../pages/LagerAbgleichWarePage';
 import { FinanzenZaehlungPage } from '../pages/FinanzenZaehlungPage';
 import { FinanzenZaehlungenPage } from '../pages/FinanzenZaehlungenPage';
+import { BelegEinreichenPage } from '../pages/BelegEinreichenPage';
+import { MeineBelegePage } from '../pages/MeineBelegePage';
+import { MeinBelegPage } from '../pages/MeinBelegPage';
 import { Protected, RequireUsername } from './Geschuetzt';
 
 export function finanzenRouten() {
   return (
     <>
+      <Route
+        path="/belege"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <MeineBelegePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/belege/einreichen"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <BelegEinreichenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/belege/:id"
+        element={
+          <Protected permission="belege:einreichen">
+            <RequireUsername>
+              <MeinBelegPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
       <Route
         path="/finanzen"
         element={
@@ -186,6 +224,26 @@ export function finanzenRouten() {
         }
       />
       <Route
+        path="/finanzen/lager-abgleich"
+        element={
+          <Protected anyOf={['finanzen:lesen', 'waren:verwalten']}>
+            <RequireUsername>
+              <LagerAbgleichPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/lager-abgleich/:wareId"
+        element={
+          <Protected anyOf={['finanzen:lesen', 'waren:verwalten']}>
+            <RequireUsername>
+              <LagerAbgleichWarePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
         path="/finanzen/belege/neu"
         element={
           <Protected permission="finanzen:buchen">
@@ -226,11 +284,41 @@ export function finanzenRouten() {
         }
       />
       <Route
+        path="/finanzen/artikel"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenArtikelPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/steuersaetze"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenSteuersaetzePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
         path="/finanzen/rechnungssteller"
         element={
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenRechnungsstellerPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/warengruppen-kategorien"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenWarengruppenKategorienPage />
             </RequireUsername>
           </Protected>
         }

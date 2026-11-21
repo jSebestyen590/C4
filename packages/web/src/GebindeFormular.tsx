@@ -129,7 +129,7 @@ export function GebindeFormular({
             ]}
           />
           {art === 'einzel' ? (
-            <SimpleGrid cols={2}>
+            <SimpleGrid style={{ alignItems: 'end' }} cols={2}>
               <ZahlFeld
                 label="Menge"
                 placeholder="0,5"

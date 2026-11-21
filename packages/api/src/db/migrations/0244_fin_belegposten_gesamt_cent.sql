@@ -1,0 +1,2 @@
+-- Gesamtpreis of an item line (without deposit): when set, betrag_cent equals it exactly and einzelpreis_cent is the rounded unit price. Null = amount from quantity times unit price.
+ALTER TABLE fin_belegposten ADD COLUMN IF NOT EXISTS gesamt_cent bigint

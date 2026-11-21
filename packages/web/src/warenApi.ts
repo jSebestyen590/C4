@@ -3,9 +3,12 @@ import { notifications } from '@mantine/notifications';
 /** A non-2xx API answer; `message` is the German text sent by the API when there is one. */
 export class ApiFehler extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** Form field the API blames (`name`, `alias`, `standardGebindeId`), when it names one. */
+  readonly feld?: string;
+  constructor(status: number, message: string, feld?: string) {
     super(message);
     this.status = status;
+    this.feld = feld;
   }
 }
 
@@ -19,13 +22,15 @@ export async function pruefen(res: {
 }): Promise<void> {
   if (res.ok) return;
   let meldung = STANDARD_FEHLER;
+  let feld: string | undefined;
   try {
-    const body = (await res.json()) as { error?: unknown } | null;
+    const body = (await res.json()) as { error?: unknown; feld?: unknown } | null;
     if (typeof body?.error === 'string') meldung = body.error;
+    if (typeof body?.feld === 'string') feld = body.feld;
   } catch {
     // Keep the generic message.
   }
-  throw new ApiFehler(res.status, meldung);
+  throw new ApiFehler(res.status, meldung, feld);
 }
 
 export const fehlerText = (e: unknown, standard = STANDARD_FEHLER): string =>

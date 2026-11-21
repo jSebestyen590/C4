@@ -71,16 +71,30 @@ export function FinanzenAuslagenPage() {
                   )}
                   <Text size="sm" c="dimmed">
                     {m.belege.length} {m.belege.length === 1 ? 'Beleg' : 'Belege'}, zusammen{' '}
-                    <Text span fw={600} c="dark">
+                    <Text span fw={600} c={m.summeCent < 0 ? 'red.8' : 'dark'}>
                       {centAnzeigen(m.summeCent)}
                     </Text>
                   </Text>
+                  {m.summeCent < 0 && (
+                    <Text size="sm" fw={600} c="red.8">
+                      {m.mitglied ? (
+                        <StatusName status={m.mitglied.status}>
+                          {mitgliedName(m.mitglied)}
+                        </StatusName>
+                      ) : (
+                        'Das Mitglied'
+                      )}{' '}
+                      schuldet dem Verein {centAnzeigen(-m.summeCent)}.
+                    </Text>
+                  )}
                 </Stack>
                 {can('finanzen:buchen') && (
                   <Button disabled={gewaehlt.length === 0} onClick={() => setErstatten(m)}>
                     {gewaehlt.length === 0
                       ? 'Belege wählen'
-                      : `${gewaehlt.length} erstatten (${centAnzeigen(gewaehlt.reduce((s, b) => s + b.summeCent, 0))})`}
+                      : gewaehlt.reduce((s, b) => s + b.summeCent, 0) < 0
+                        ? `${gewaehlt.length} als Einlage buchen (${centAnzeigen(-gewaehlt.reduce((s, b) => s + b.summeCent, 0))})`
+                        : `${gewaehlt.length} erstatten (${centAnzeigen(gewaehlt.reduce((s, b) => s + b.summeCent, 0))})`}
                   </Button>
                 )}
               </Group>

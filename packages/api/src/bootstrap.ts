@@ -36,6 +36,7 @@ import { ladeKontext } from './umfrageAnsicht';
 import { registriereUmfrageAufgaben } from './umfrageBenachrichtigungen';
 import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
+import { createLagerAbgleichStore } from './lagerAbgleich';
 import { finanzExport } from './finanzExport';
 import { createFinanzenStore } from './finanzen';
 import { createBuchStore } from './buch';
@@ -109,6 +110,7 @@ export function createProduction() {
     todos,
     umfragen,
     trichter: createTrichterStore(db),
+    lagerAbgleich: createLagerAbgleichStore(db),
     finanzen,
     buch: createBuchStore(db),
     protokolle: createProtokolleStore(db),

@@ -44,6 +44,7 @@ export interface WareEintrag {
   archiviert: boolean;
   aliase: string[];
   gebindeIds: string[];
+  standardGebindeId: string | null;
   bestand: Bestandsposten[];
   fruehestesMhd: string | null;
 }
