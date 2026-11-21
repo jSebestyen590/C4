@@ -130,6 +130,29 @@ describe('Baustein Todo', () => {
     );
   });
 
+  it('accepts list items that hold an empty paragraph and a block, and empty items', () => {
+    const d = protokollLeer();
+    d.content[2]!.content = [
+      bausteinErzeugen('bausteinThema', undefined, [
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [
+                { type: 'paragraph' },
+                bausteinErzeugen('bausteinBeschluss'),
+                { type: 'blockquote', content: [{ type: 'paragraph' }] },
+              ],
+            },
+            { type: 'listItem', content: [{ type: 'paragraph' }] },
+          ],
+        },
+      ]),
+    ];
+    expect(protokollDokumentPruefen(d)).toBeNull();
+  });
+
   it('is not carried into the next protocol', () => {
     const letztes = protokollLeer();
     const event = bausteinErzeugen(

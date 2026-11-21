@@ -562,6 +562,29 @@ export function istLeereListe(k: ProtokollKnoten): boolean {
   );
 }
 
+/** A list item of empty paragraphs only (no text, no sub list, no Baustein): never shown as a bullet. */
+export function istLeererPunkt(k: ProtokollKnoten): boolean {
+  const kinder = k.content ?? [];
+  return k.type === 'listItem' && kinder.every(istLeererAbsatz);
+}
+
+/**
+ * A list item that only carries a block: an empty first paragraph, then a Baustein or quote (a block
+ * inserted into the first item of a nested list). Shown without bullet and without the empty line.
+ */
+export function istBlockPunkt(k: ProtokollKnoten): boolean {
+  const [erstes, zweites] = k.content ?? [];
+  return (
+    k.type === 'listItem' &&
+    !!erstes &&
+    istLeererAbsatz(erstes) &&
+    !!zweites &&
+    zweites.type !== 'paragraph' &&
+    zweites.type !== 'bulletList' &&
+    zweites.type !== 'orderedList'
+  );
+}
+
 const istLeer = (k: ProtokollKnoten): boolean => istLeererAbsatz(k) || istLeereListe(k);
 
 /**

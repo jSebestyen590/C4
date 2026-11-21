@@ -45,6 +45,25 @@
   color: var(--mantine-color-placeholder);
 }
 
+/*
+ * A list item that holds only an empty paragraph and then a Baustein or quote (a block inserted into the
+ * first item of a nested list): no bullet, the empty line is not shown. The trailing <br> is what
+ * ProseMirror renders in an empty paragraph.
+ */
+.protokoll-editor
+  li:has(> p:first-child:has(> br.ProseMirror-trailingBreak:only-child) + :not(p, ul, ol)) {
+  list-style: none;
+}
+
+.protokoll-editor
+  li:has(> p:first-child:has(> br.ProseMirror-trailingBreak:only-child) + :not(p, ul, ol))
+  > p:first-child {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
 /* Empty text blocks keep a line to click into. */
 .protokoll-editor .ProseMirror p {
   min-height: 1.5em;

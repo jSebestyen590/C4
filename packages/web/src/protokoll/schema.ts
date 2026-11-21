@@ -9,6 +9,7 @@ import {
   istVerschachtelbar,
   type ProtokollAbschnitt,
 } from '@c4/shared';
+import { zitatInPunktVerlassen } from './einfuegen';
 import { bausteinAnfangTiefe, letztesFormularFeld } from './tabFolge';
 
 // Document structure of the minutes: four fixed sections, each holding text blocks and Bausteine.
@@ -31,6 +32,22 @@ const istAbschnittArt = (art: unknown): art is ProtokollAbschnitt =>
  */
 export const ListenPunkt = ListItem.extend({
   content: 'paragraph (block | notizbaustein | thema)*',
+
+  addKeyboardShortcuts() {
+    const eltern = this.parent?.() ?? {};
+    return {
+      ...eltern,
+      // Enter on the empty last line of a quote in a list item continues in the next item (same level).
+      Enter: (args) => {
+        const tr = zitatInPunktVerlassen(this.editor.state);
+        if (tr) {
+          this.editor.view.dispatch(tr);
+          return true;
+        }
+        return eltern.Enter?.(args) ?? false;
+      },
+    };
+  },
 });
 
 /** The document is exactly the four sections (old documents get an empty "Sonstiges" on loading). */

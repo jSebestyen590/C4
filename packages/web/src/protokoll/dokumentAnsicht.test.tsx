@@ -241,6 +241,69 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html).toMatch(/<blockquote><p>Zitat im Punkt<\/p><\/blockquote><\/li><li><p>Notiz 2/);
   });
 
+  it('never shows empty list items and shows a block-only item without bullet', () => {
+    const leer = (): ProtokollKnoten => ({ type: 'listItem', content: [{ type: 'paragraph' }] });
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const event = zukuenftiges!.content![0]!;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          gegenwaertiges!,
+          {
+            ...zukuenftiges!,
+            content: [
+              {
+                ...event,
+                content: [
+                  {
+                    type: 'bulletList',
+                    content: [
+                      { type: 'listItem', content: [text('Eins')] },
+                      leer(),
+                      {
+                        type: 'listItem',
+                        content: [
+                          text('Zwei'),
+                          {
+                            type: 'bulletList',
+                            content: [
+                              {
+                                type: 'listItem',
+                                content: [
+                                  { type: 'paragraph' },
+                                  { type: 'blockquote', content: [text('Zitat unten')] },
+                                ],
+                              },
+                              leer(),
+                            ],
+                          },
+                        ],
+                      },
+                      leer(),
+                    ],
+                  },
+                  { type: 'paragraph' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    // The block-only item has no bullet, the empty items are not shown at all.
+    expect(html).toContain('<li class="pk-dok-ohne-punkt"><blockquote>');
+    expect(html).not.toContain('<li></li>');
+    expect(html).not.toMatch(/<li><p><\/p>/);
+  });
+
   it('renders a Todo as a bullet of the notes it stands in, its notes one level deeper, marked for me', () => {
     const todo = (id: string, daten: Record<string, unknown>, content: ProtokollKnoten[]) =>
       ({

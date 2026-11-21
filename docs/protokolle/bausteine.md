@@ -152,7 +152,7 @@ und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. D
 ### Bedienung im Editor
 
 - **Farbleiste:** Jede Baustein-Karte hat links eine 4 px breite Leiste in der Farbe ihres Typs (eine Zuordnung in `protokoll.css`, Block „Colour bar“; Zitat bleibt in der Primärfarbe). Verschachtelte Bausteine zeigen mehrere Leisten nebeneinander. Nur im Editor, nicht in Dokument-Ansicht und PDF.
-- **Tab-Reihenfolge:** Tab auf dem letzten Feld des Formulars setzt den Cursor an den Anfang der Notizen dieses Bausteins (`BausteinKnoten.tsx`, `fokusSetzen`). Shift+Tab am Anfang des ersten Absatzes der Notizen (nicht in einer Liste) springt zurück auf das letzte Formularfeld (`schema.ts`, Hilfen in `tabFolge.ts`). Reine Icon-Buttons (Baustein entfernen, Datum löschen) sind kein Tab-Stopp. Die Picker-Symbole der nativen Datums-/Zeitfelder sind browserseitig kein Tab-Stopp und bleiben unverändert.
+- **Tab-Reihenfolge:** Tab auf dem letzten Feld des Formulars (kein weiterer Tab-Stopp dahinter: ohne unsichtbare/inerte Elemente, bei Radiogruppen zählt nur der gewählte) setzt den Cursor an den Anfang der Notizen dieses Bausteins (`BausteinKnoten.tsx`, `fokusSetzen`). Shift+Tab am Anfang des ersten Absatzes der Notizen (nicht in einer Liste) springt zurück auf das letzte Formularfeld (`schema.ts`, Hilfen in `tabFolge.ts`). Reine Icon-Buttons (Baustein entfernen, Datum löschen) sind kein Tab-Stopp. Die Picker-Symbole der nativen Datums-/Zeitfelder sind browserseitig kein Tab-Stopp und bleiben unverändert.
 
 ## Bausteine in Notizen und verschachtelte Themen
 
@@ -176,11 +176,16 @@ Listenpunkts (`ListenPunkt` in `schema.ts`: Inhalt `paragraph (block | notizbaus
 Punkts) und wird ohne Aufzählungspunkt, eingerückt auf Höhe dieses Punkts gezeigt; die folgenden Punkte behalten ihre Ebene
 (Platzierung: `listenStelle` in `einfuegen.ts`):
 
-- Leerer Punkt (nur der Rest des getippten `/…`) mit vorherigem Punkt derselben Liste: Der Punkt entfällt, der Baustein wird letztes
-  Kind des vorherigen Punkts (hinter dessen Text und Unterliste).
-- Leerer erster Punkt: Der Punkt entfällt, der Baustein steht vor der Liste (in der Unterliste im übergeordneten Punkt, dort eine
-  Ebene weniger eingerückt). War es der einzige Punkt, ersetzt der Baustein die Liste.
+- Leerer Punkt (nur der Rest des getippten `/…`) mit vorherigem Punkt derselben Liste: Der Baustein wird letztes Kind des vorherigen
+  Punkts (hinter dessen Text und Unterliste); der leere Punkt bleibt dahinter stehen (Ort zum Weitertippen).
+- Leerer erster Punkt einer Unterliste: Er bleibt auf seiner Ebene als `listItem(leerer Absatz, Baustein)`; Editor-CSS (`protokoll.css`,
+  `:has`), Dokument-Ansicht und PDF blenden Aufzählungspunkt und leere Zeile aus (`istBlockPunkt`).
+- Leerer erster Punkt einer Liste direkt in den Notizen: Der Punkt entfällt, der Baustein steht vor der Liste (war es der einzige Punkt, ersetzt er die Liste).
 - Punkt mit Text (oder mit Unterliste): Der Baustein steht direkt hinter dem Text im selben Punkt; ein leerer Folgeabsatz im Punkt wird ersetzt.
+- Hinter dem Punkt mit dem Baustein folgt immer ein leerer Punkt auf gleicher Ebene (wird angelegt, außer der nächste ist schon leer); der Cursor
+  springt dorthin (Erscheint/Geht) bzw. er ist per Klick erreichbar. Enter auf der leeren letzten Zeile eines Zitats im Punkt setzt den Cursor
+  in diesen Folgepunkt (`zitatInPunktVerlassen`), statt eine Ebene höher zu springen.
+- Punkte nur aus leeren Absätzen zeigen Dokument-Ansicht und PDF nirgends als Aufzählungspunkt (auch nicht mitten in den Notizen).
 - Top-Level-Bausteine (Event usw.) und alle Listen auf oberster Ebene eines Abschnitts verhalten sich wie vorher (hinter dem Block des Abschnitts).
 
 Prüfung und Auswertungen laufen rekursiv: Die Todo-Regel („nur in Notizen“) richtet sich nach dem umgebenden Baustein, nicht nach der

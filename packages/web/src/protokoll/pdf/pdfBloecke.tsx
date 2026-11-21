@@ -29,6 +29,9 @@ import {
   istLeererAbsatz,
   istQuellenzeile,
   meinungsbildZeilen,
+  istBlockPunkt,
+  istLeereListe,
+  istLeererPunkt,
   naechsteSitzungSatz,
   naechsteSitzungWert,
   ohneLeereEnden,
@@ -244,15 +247,20 @@ function listenBlock(
     n += 1;
   }
   for (const [i, eintrag] of (k.content ?? []).entries()) {
+    // Empty items are never shown; an item that only carries a block has no bullet and no empty line.
+    if (istLeererPunkt(eintrag)) continue;
+    const nurBlock = istBlockPunkt(eintrag);
     eintraege.push(
       <View key={i} style={stile.eintrag}>
-        <View style={stile.marke}>{marke(n)}</View>
+        <View style={stile.marke}>{nurBlock ? null : marke(n)}</View>
         <View style={stile.eintragInhalt}>
-          {(eintrag.content ?? []).map((c, j) => knotenInListe(c, ctx, tiefe + 1, j))}
+          {(nurBlock ? (eintrag.content ?? []).slice(1) : (eintrag.content ?? [])).map((c, j) =>
+            knotenInListe(c, ctx, tiefe + 1, j),
+          )}
         </View>
       </View>,
     );
-    n += 1;
+    if (!nurBlock) n += 1;
   }
   // Todos behind the list are further items of it, their notes bullets one level deeper.
   for (const [i, todo] of todos.entries()) {
@@ -441,6 +449,7 @@ function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
     }
     case 'bulletList':
     case 'orderedList':
+      if (istLeereListe(k)) return [];
       return [listeAlsBlock(listenBlock(k, ctx, 0), k, ctx)];
     case 'blockquote':
       return [

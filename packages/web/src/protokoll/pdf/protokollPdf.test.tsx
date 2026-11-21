@@ -493,4 +493,51 @@ describe('PDF: Bausteine in list items', () => {
     expect(outline).toEqual(alsTitel(gliederung));
     expect(JSON.stringify(outline)).toContain('ThemaImPunkt');
   });
+
+  it('skips empty items and sets a block-only item without bullet', () => {
+    const leer: ProtokollKnoten = { type: 'listItem', content: [{ type: 'paragraph' }] };
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        ...eingabe.inhalt,
+        content: [
+          eingabe.inhalt.content[0]!,
+          eingabe.inhalt.content[1]!,
+          {
+            ...eingabe.inhalt.content[2]!,
+            content: [
+              event('b', 'Superbowl', [
+                {
+                  type: 'bulletList',
+                  content: [
+                    { type: 'listItem', content: [text('Punkt A')] },
+                    leer,
+                    {
+                      type: 'listItem',
+                      content: [
+                        { type: 'paragraph' },
+                        { type: 'blockquote', content: [text('Zitat im Punkt')] },
+                      ],
+                    },
+                    leer,
+                  ],
+                },
+                { type: 'paragraph' },
+              ]),
+            ],
+          },
+        ],
+      },
+    };
+    const json = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    const ab = json.indexOf('Punkt A');
+    const bis = json.indexOf('Zitat im Punkt');
+    expect(bis).toBeGreaterThan(ab);
+    // One bullet for "Punkt A" in the list of the Event; none for the empty and the block-only items.
+    const liste = json.slice(json.lastIndexOf('"•"', ab), json.indexOf('Zitat im Punkt') + 200);
+    expect(liste.split('"•"')).toHaveLength(2);
+  });
 });
