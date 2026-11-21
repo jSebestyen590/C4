@@ -393,10 +393,16 @@ export interface KalenderStore {
   /** The given events in brief (unknown ids are left out). */
   eventsKurz(ids: readonly string[]): Promise<EventKurz[]>;
   /**
-   * Events of Kategorien with `protokoll` that are not cancelled and begin at or before `bis`, newest
-   * first, at most `limit`, without the events in `ausser` (those that already have minutes).
+   * Events of Kategorien with `protokoll` that are not cancelled and begin after `nach` (if given) and
+   * at or before `bis` (if given), at most `limit`, without the events in `ausser` (those that already
+   * have minutes). Newest first, or earliest first with `aufsteigend`.
    */
-  sitzungen(bis: Date, limit: number, ausser: readonly string[]): Promise<EventKurz[]>;
+  sitzungen(
+    zeitraum: { nach?: Date; bis?: Date },
+    limit: number,
+    ausser: readonly string[],
+    aufsteigend?: boolean,
+  ): Promise<EventKurz[]>;
   /**
    * Events of Kategorien with `protokoll` (any art) that are not cancelled and begin after `nach`,
    * earliest first, at most `limit`.
@@ -1763,15 +1769,17 @@ export function createKalenderStore(db: Db): KalenderStore {
       if (ids.length === 0) return [];
       return eventsKurzLesen(inArray(events.id, [...ids]));
     },
-    async sitzungen(bis, limit, ausser) {
+    async sitzungen({ nach, bis }, limit, ausser, aufsteigend) {
       return eventsKurzLesen(
         and(
           eq(eventKategorien.protokoll, true),
           eq(events.abgesagt, false),
-          lte(events.beginn, bis),
+          nach ? gt(events.beginn, nach) : undefined,
+          bis ? lte(events.beginn, bis) : undefined,
           ausser.length > 0 ? notInArray(events.id, [...ausser]) : undefined,
         ),
         limit,
+        aufsteigend,
       );
     },
     async kommendeSitzungen(nach, limit) {

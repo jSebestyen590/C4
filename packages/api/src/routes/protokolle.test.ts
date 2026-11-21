@@ -374,24 +374,44 @@ describe('protokolle', () => {
     });
   });
 
-  it('offers the Sitzungen without protocol up to tomorrow', async () => {
+  it('offers past and upcoming Sitzungen without protocol, newest first', async () => {
     const t = await setup();
     await t.anlegen('admin-token', { eventId: 's1' });
-    t.kalender.sitzungen.mockResolvedValue([sitzung('s2', '2026-11-03T18:00:00.000Z')]);
+    t.kalender.sitzungen.mockImplementation(async (zeitraum) =>
+      zeitraum.nach
+        ? [sitzung('s9', '2030-01-01T18:00:00.000Z')]
+        : [sitzung('s2', '2026-11-03T18:00:00.000Z')],
+    );
     const res = await t.app.request('/api/protokolle/sitzungen', json('vorstand-token', 'GET'));
-    expect(await res.json()).toEqual([
-      {
-        id: 's2',
-        titel: 'Sitzung',
-        beginn: '2026-11-03T18:00:00.000Z',
-        kategorie: sitzungsKategorie,
-        art: 'sitzung',
-      },
-    ]);
-    const [bis, limit, ausser] = t.kalender.sitzungen.mock.calls[0]!;
-    expect(Math.abs(bis.getTime() - (Date.now() + 24 * 3600_000))).toBeLessThan(60_000);
-    expect(limit).toBe(20);
-    expect(ausser).toEqual(['s1']);
+    const liste = (await res.json()) as { id: string }[];
+    expect(liste.map((e) => e.id)).toEqual(['s9', 's2']);
+    const [vergangen, kommend] = t.kalender.sitzungen.mock.calls;
+    expect(Math.abs(vergangen![0].bis!.getTime() - Date.now())).toBeLessThan(60_000);
+    expect(vergangen![1]).toBe(20);
+    expect(vergangen![2]).toEqual(['s1']);
+    expect(Math.abs(kommend![0].nach!.getTime() - Date.now())).toBeLessThan(60_000);
+    expect(kommend![1]).toBe(5);
+    expect(kommend![3]).toBe(true);
+  });
+
+  it('refuses closing before the Sitzung has begun, but allows it afterwards', async () => {
+    const t = await setup();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-01T10:00:00Z'));
+      const { id } = (await (await t.anlegen('admin-token', { eventId: 's2' })).json()) as {
+        id: string;
+      };
+      const schliessen = () =>
+        t.app.request(`/api/protokolle/${id}/status`, {
+          ...json('admin-token', 'PUT', { status: 'abgeschlossen' }),
+        });
+      const frueh = await schliessen();
+      expect(frueh.status).toBe(400);
+      expect(JSON.stringify(await frueh.json())).toContain('erst, wenn die Sitzung begonnen');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('derives the attendance from the answers and lets overrides win', async () => {
