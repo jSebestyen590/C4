@@ -2077,6 +2077,33 @@ describe('finanzen', () => {
       );
     });
 
+    it('warns about items with price 0', async () => {
+      const t = await belegSetup();
+      const id = await t.entwurf({
+        belegsummeCent: 100,
+        posten: [
+          {
+            kategorieId: t.kat,
+            text: 'Deko',
+            anzahlMilli: 1000,
+            einzelpreisCent: 100,
+            steuersatz: 0,
+          },
+          {
+            kategorieId: t.kat,
+            text: 'Sterni',
+            anzahlMilli: 1000,
+            einzelpreisCent: 0,
+            steuersatz: 0,
+          },
+        ],
+      });
+      const w = (await t.lesen<Dto>('admin-token', `/beleg-entwuerfe/${id}`)).warnungen as Dto[];
+      expect(w.find((x) => x.code === 'preis_null')?.text).toBe(
+        'Posten mit Preis 0: Kategorien 2 (Sterni).',
+      );
+    });
+
     it('asks to confirm warnings before booking', async () => {
       const t = await belegSetup();
       const teuer = {

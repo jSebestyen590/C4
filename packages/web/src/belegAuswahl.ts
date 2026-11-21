@@ -7,7 +7,7 @@ import {
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import { anzahlLesen, postenPreis, steuersatzVorschlag, type PostenZeile } from './belegFormular';
+import { anzahlLesen, steuersatzVorschlag, type PostenZeile } from './belegFormular';
 
 /** Value of the last option of a Ware select: "Neue Ware anlegen" (never a Ware id). */
 export const NEUE_WARE = '__neue-ware__';
@@ -279,8 +279,7 @@ export function artWechselPatch(art: PostenZeile['art']): Partial<PostenZeile> {
       wareId: null,
       gebindeId: null,
       pfandCent: null,
-      gesamt: false,
-      gesamtCent: null,
+      preisExaktCent: null,
     };
   if (art === 'kategorie') return { art, wareId: null, gebindeId: null, pfandCent: null };
   return { art };
@@ -312,7 +311,7 @@ export function postenFeldFehler(p: PostenZeile, versucht: boolean): PostenFeldF
   if (p.art !== 'leergut' && !p.kategorieId) f.kategorie = 'Bitte wähle eine Kategorie.';
   if (p.art === 'kategorie' && p.text.trim() === '') f.text = 'Bitte gib den Artikel an.';
   if (p.art === 'leergut' && p.text.trim() === '') f.text = 'Bitte beschreibe das Leergut.';
-  if (postenPreis(p) === null) f.preis = 'Bitte angeben.';
+  if (p.einzelpreisCent === null) f.preis = 'Bitte angeben.';
   return f;
 }
 

@@ -659,9 +659,11 @@ export function belegPruefen(daten: BelegEntwurfDaten, kontext: BelegPruefKontex
   if (!daten.belegdatum) f('belegdatum', 'Bitte gib das Belegdatum an.');
   else if (daten.belegdatum > kontext.heute)
     f('belegdatum', 'Das Belegdatum darf nicht in der Zukunft liegen.');
-  const gueltig = daten.belegdatum
-    ? steuersaetzeAm(kontext.zeitraeume, daten.belegdatum).saetze
-    : null;
+  // An Eigenbeleg has no visible Steuersatz field and books no Vorsteuer: no check there.
+  const gueltig =
+    daten.belegdatum && !istEigenbeleg(daten)
+      ? steuersaetzeAm(kontext.zeitraeume, daten.belegdatum).saetze
+      : null;
   if (daten.posten.length === 0) f('posten', 'Bitte gib mindestens einen Posten an.');
   const zaehler: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
   daten.posten.forEach((p) => {

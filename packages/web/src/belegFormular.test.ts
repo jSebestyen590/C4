@@ -5,8 +5,6 @@ import {
   anzahlText,
   einzelpreisHinweis,
   formularEigenbeleg,
-  gesamtPatch,
-  postenPreis,
   preisPatch,
   saetzeUmstellen,
   bezahltCent,
@@ -492,28 +490,43 @@ describe('Gesamtpreis, Eigenbeleg und Sätze nach Belegdatum', () => {
     );
   });
 
-  it('der Preis ist mit "Gesamt" der Gesamtpreis, der Einzelpreis ist gerundet', () => {
-    const p = { ...zeile(), ...gesamtPatch({ einzelpreisCent: 799, gesamtCent: null }, true) };
-    expect(postenPreis(p)).toBe(799);
+  it('ein exakter Preis wird als Gesamtbetrag der Zeile gespeichert', () => {
+    const p = { ...zeile(), anzahl: '8', ...preisPatch(100, 799 / 8) };
+    expect(p).toMatchObject({ einzelpreisCent: 100, preisExaktCent: 99.875 });
     const d = formularZuDaten({ ...voll(), posten: [p] }).posten[0]!;
     expect(d).toMatchObject({ gesamtCent: 799, einzelpreisCent: 100 });
     expect(formularSumme({ ...voll(), posten: [p] }).summe).toBe(799);
     expect(einzelpreisHinweis(p)).toBe(100);
   });
 
-  it('der Schalter behält die getippte Zahl und kehrt zurück', () => {
-    const an = { ...zeile(), ...gesamtPatch({ einzelpreisCent: 500, gesamtCent: null }, true) };
-    expect(an).toMatchObject({ gesamt: true, gesamtCent: 500, einzelpreisCent: null });
-    const aus = { ...an, ...gesamtPatch(an, false) };
-    expect(aus).toMatchObject({ gesamt: false, gesamtCent: null, einzelpreisCent: 500 });
-    expect(preisPatch(an, 700)).toEqual({ gesamtCent: 700 });
-    expect(preisPatch(aus, 700)).toEqual({ einzelpreisCent: 700 });
+  it('ein ganzer Cent-Preis speichert keinen Gesamtbetrag', () => {
+    const p = { ...zeile(), anzahl: '8', ...preisPatch(100, 100) };
+    expect(p.preisExaktCent).toBeNull();
+    expect(formularZuDaten({ ...voll(), posten: [p] }).posten[0]).toMatchObject({
+      gesamtCent: null,
+    });
+    expect(einzelpreisHinweis(p)).toBeNull();
+    expect(preisPatch(null, null)).toEqual({ einzelpreisCent: null, preisExaktCent: null });
   });
 
-  it('liest und schreibt den Gesamtpreis durch den Entwurf', () => {
-    const p = { ...zeile(), gesamt: true, gesamtCent: 799 };
+  it('rechnet den Betrag bei geänderter Anzahl aus dem exakten Preis neu', () => {
+    const p = { ...zeile(), anzahl: '8', ...preisPatch(100, 99.875) };
+    const mehr = { ...p, anzahl: '16' };
+    expect(formularZuDaten({ ...voll(), posten: [mehr] }).posten[0]).toMatchObject({
+      gesamtCent: 1598,
+    });
+  });
+
+  it('liest den exakten Preis aus dem Gesamtbetrag des Entwurfs', () => {
+    const p = { ...zeile(), anzahl: '8', ...preisPatch(100, 99.875) };
     const zurueck = datenZuFormular(formularZuDaten({ ...voll(), posten: [p] }));
-    expect(zurueck.posten[0]).toMatchObject({ gesamt: true, gesamtCent: 799 });
+    expect(zurueck.posten[0]).toMatchObject({ einzelpreisCent: 100, preisExaktCent: 99.875 });
+  });
+
+  it('füllt die Belegsumme mit dem eingereichten Betrag, wenn sie leer ist', () => {
+    const d = { ...formularZuDaten(voll()), belegsummeCent: null, eingereichtBetragCent: 1234 };
+    expect(datenZuFormular(d).belegsummeCent).toBe(1234);
+    expect(datenZuFormular({ ...d, belegsummeCent: 500 }).belegsummeCent).toBe(500);
   });
 
   it('erkennt einen Eigenbeleg erst mit Begründung', () => {

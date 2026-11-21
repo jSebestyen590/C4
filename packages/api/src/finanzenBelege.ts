@@ -48,6 +48,7 @@ import {
   istEigenbeleg,
   postenBetrag,
   postenZeilenLabel,
+  type BelegPostenArt,
   belegdatumAlt,
   datumAnzeigen,
   einzelpreisAusGesamt,
@@ -308,6 +309,20 @@ export function belegWarnungenBilden(p: {
       code: 'betrag_abweichung',
       text: `Der eingereichte Betrag (${formatEuro(eingereicht)}) weicht von der Summe der Posten (${formatEuro(p.summeCent)}) ab.`,
     });
+  const nummer: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
+  const nullPreise: string[] = [];
+  for (const posten of p.daten.posten) {
+    const n = ++nummer[posten.art];
+    const gesamt = posten.art === 'leergut' ? null : (posten.gesamtCent ?? null);
+    if (posten.einzelpreisCent === 0 && (gesamt ?? 0) === 0) {
+      const label = postenZeilenLabel(posten.art, n);
+      const [tabelle, zeile] = label.split(', Zeile ');
+      const name = posten.art === 'ware' ? '' : posten.text.trim();
+      nullPreise.push(`${tabelle} ${zeile ?? n}${name ? ` (${name})` : ''}`);
+    }
+  }
+  if (nullPreise.length > 0)
+    w.push({ code: 'preis_null', text: `Posten mit Preis 0: ${nullPreise.join(', ')}.` });
   p.saldo.forEach((text, i) => w.push({ code: `saldo:${i}`, text }));
   return w;
 }

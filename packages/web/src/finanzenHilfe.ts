@@ -133,8 +133,8 @@ export const HILFE = {
       'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert. Ein Eigenbeleg wird ohne Vorsteuer gebucht: Der volle Betrag ist Aufwand.',
     kategorie:
       'Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe gebucht wird.',
-    gesamtpreis:
-      'Mit „Gesamt“ gibst du den Preis der ganzen Zeile ein (ohne Pfand), z. B. 7,99 € für 8 Stück. Der Betrag der Zeile ist genau dieser Preis. Der Preis je Stück ist auf Cent gerundet und nur zur Info (z. B. für die Lagerbewertung).',
+    preisRechnen:
+      'Im Preisfeld darfst du rechnen mit + - * / und Klammern, z. B. (7,99 + 4,50)/12. Meist teilst du den Gesamtpreis durch die Anzahl. Das Feld zeigt das Ergebnis auf Cent gerundet; der Betrag der Zeile wird mit dem exakten Preis gerechnet (Preis mal Anzahl, gerundet).',
     serienerfassung:
       'Neuer Beleg: Nach dem Buchen öffnet sich gleich ein leerer Beleg. Eingereichter Beleg: Nach dem Buchen oder Verwerfen geht es mit der nächsten Einreichung weiter (älteste zuerst). Ausgeschaltet kommst du zur Beleg-Seite.',
     modus:

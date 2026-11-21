@@ -365,11 +365,14 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
     anlegen“ (nicht bei vorhandenem Namen); Wählen legt ihn sofort an (nur Name), wählt ihn aus und springt zum Belegdatum. Nie per
     Tab/Blur (`rechnungsstellerWahl`, `blurWaehltMarkierte`).
   - **Anzahl** ist nirgends vorbelegt (auch nicht bei Karten und Mitglied); leer = Fehler „Bitte angeben.“ an der Zelle.
-  - **Gesamtpreis je Zeile:** Checkbox „Gesamt“ (Waren, Kategorien) direkt vor dem Preis: Das Preisfeld ist dann der Gesamtpreis der
-    Zeile (ohne Pfand), der Betrag ist genau dieser Preis; „≈ X € je Gebinde/Stück“ unter dem Betrag (`einzelpreisAusGesamt`, wird
-    als Einzelpreis mitgespeichert, `fin_belegposten.gesamt_cent`; Betrag exakt, daher keine Rundungsdifferenz und keine Korrektur
-    nötig; der gerundete Einzelpreis ist nur Info, z. B. für die Lagerbewertung). Das Umschalten behält die getippte Zahl, nur ihre Bedeutung wechselt (`gesamt`,
-    `gesamtCent` in `PostenZeile`).
+  - **Rechnen im Preisfeld:** Die Preisfelder der Posten (Waren, Kategorien, Leergut; nicht die Belegsumme) nehmen einen Rechenausdruck
+    mit `+ - * /`, Klammern und Dezimalkomma, z. B. `(7,99 + 4,50)/12` (`BetragFeld` mit `rechnen`, Parser `betragRechnen` in
+    `betragEingabe.ts`, kein `eval`; Fehler „Ungültige Rechnung“, Division durch 0 ist ein Fehler). Beim Verlassen zeigt das Feld das auf
+    Cent gerundete Ergebnis. Die Zeile hält den ungerundeten Preis (`preisExaktCent`); ist er kein ganzer Cent, wird beim Speichern
+    `gesamtCent = round(preisExakt × Anzahl)` gesetzt (`fin_belegposten.gesamt_cent`, Betrag exakt, der gerundete Einzelpreis
+    wird mit `einzelpreisAusGesamt` mitgespeichert), sonst `null`. Ändert sich die Anzahl, rechnet sich der Betrag aus dem exakten Preis neu;
+    beim Laden gilt `preisExakt = gesamtCent / Anzahl`. Leergut wird gerundet (kein `gesamtCent`). Unter dem Betrag steht „≈ X € je
+    Gebinde/Stück“ (gerundeter Preis), wenn exakt ≠ gerundet. Info-i am Preis: `HILFE.belege.preisRechnen`.
   - **Info-i „Kategorie“** (Tabellenkopf, Karten, Mitglied): Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe
     gebucht wird. Das Info-i zu „Preise sind“ (Brutto/Netto) steht direkt am Umschalter.
   - **Belegdatum:** In der Zukunft = Fehler am Feld (live; Buchen gesperrt, auch serverseitig und bei Mitglied-Einreichungen);
@@ -378,9 +381,11 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
     `saetzeUmstellen`); Steuersatz-Optionen kommen aus dem Datum.
   - **Eigenbeleg** (ohne Datei, mit Begründung) bucht **ohne Vorsteuer**: je Steuersatz der Bruttobetrag voll auf die Kategorie,
     Steuer 0, `steuer_art = keine` (auch Pfand und Leergut). Hinweis „keine Vorsteuer, der volle Betrag ist Aufwand“, Summen und
-    Dialog ohne Netto/Steuer; im Netto-Modus ist Netto + berechnete Steuer der gezahlte Betrag. Gilt auch für Einreichungen ohne Datei.
-  - **Vorschau** der Datei: bei neuen Belegen aus, bei eingereichten an („Vorschau ein-/ausblenden“); ausgeblendet nutzen die
-    Kopffelder die volle Breite.
+    Dialog ohne Netto/Steuer; in der Erfassung entfällt die Steuersatz-Spalte (Karten: das Feld; die Werte der Zeilen bleiben für den Fall, dass
+    der Schalter zurückgestellt wird), die Summen zeigen nur die Gesamtsumme (und davon Pfand), `belegPruefen` prüft die Sätze am Belegdatum nicht; im Netto-Modus ist Netto + berechnete Steuer der gezahlte Betrag. Gilt auch für Einreichungen ohne Datei.
+  - **Vorschau** der Datei: bei neuen Belegen aus, bei eingereichten an („Vorschau ein-/ausblenden“); der Kopf ist ab `lg` immer zweispaltig (links Datei mit Vorschau,
+    Eigenbeleg-Schalter und Begründung, rechts Rechnungssteller, Belegdatum, Belegsumme). Die Summen-Tabelle hat ab `md` rechts eine leere Spalte
+    (Breite der Lösch-Spalte), damit sie mit den Posten-Tabellen bündig ist.
   - **Serienerfassung** (Checkbox unter „Prüfen und buchen“, initial an): neuer Beleg = nach dem Buchen gleich `/finanzen/belege/neu`
     (Hinweis mit Link zum gebuchten Beleg); eingereichter Beleg = nach Buchen oder Verwerfen zur nächsten Einreichung (älteste
     zuerst), ausgegraut ohne weitere. Die Seite bekommt dafür einen frischen Durchlauf (Key), kein Rest des alten Formulars.
@@ -390,10 +395,10 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
   - Die **Belege-Liste** ist clientseitig sortierbar (`useSortierung`, `sortierung.tsx`): Klick auf den Spaltenkopf (Nummer, Belegdatum,
     Rechnungssteller, Summe, Zahlweg, Mitglied), zweiter Klick dreht die Richtung; auf dem Handy ein Select „Sortieren nach“.
   - Das **Beleg-Detail** zeigt Ware-Posten ohne doppelten Namen: „Ur-Krostitzer, 20 x 0,5l Flasche 3,10 € … 131,00 € (davon Pfand
-    31,00 €)“; Gesamtpreis-Zeilen „Gesamtpreis, ≈ X je Stück“.
+    31,00 €)“; Zeilen mit exaktem Preis „Gesamtpreis, ≈ X je Stück“.
   - Unter `md` bleibt die Karten-Maske (`BelegPostenZeile.tsx`, gleiche Regeln) mit „Posten hinzufügen“. Hilfen:
     `packages/web/src/belegAuswahl.ts`.
-- **Belegsumme:** Die Finanzer:in gibt oben die **Belegsumme (brutto)** an (Pflicht). Unter den Tabellen steht live „Posten: X € ·
+- **Belegsumme:** Die Finanzer:in gibt oben die **Belegsumme (brutto)** an (Pflicht; bei eingereichten Belegen vorbelegt mit dem eingereichten Betrag, wenn sie leer ist). Unter den Tabellen steht live „Posten: X € ·
   Belegsumme: Y € · Differenz: Z €“ (Differenz rot, wenn ≠ 0). Gebucht wird nur, wenn die Summe der Posten (inkl. Pfand, Leergut
   negativ) gleich der Belegsumme ist („Die Posten ergeben X €, die Belegsumme ist Y €.“, in `belegPruefen`, also auch serverseitig).
   Gespeichert wird sie nur im Entwurf-JSON (`belegsummeCent`); bei eingereichten Belegen ist sie mit dem eingereichten Betrag
@@ -426,7 +431,7 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
 - **Warengruppe → Kategorie:** `warengruppen.kategorie_id` (Aufwandskonto, nullable) wird an Untergruppen vererbt (nächster Vorfahr mit
   Zuordnung). Gepflegt auf `/finanzen/warengruppen-kategorien` (Link von der Belege-Seite, Ändern `finanzen:buchen`).
 - **Einreichen durch Mitglieder:** Auf `/belege/einreichen` (Handy zuerst) lädt ein Mitglied Foto/Datei hoch und gibt Belegdatum und
-  Gesamtbetrag an (Pflicht; der Betrag darf auch 0 oder negativ sein; Belegdatum nicht in der Zukunft, Sätze nach Datum); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten (Artikel + Kategorie mit Vorschlägen und Info-i), **Ware-Posten** (Ware, Gebinde, Anzahl ohne Vorbelegung, Preis je Gebinde oder per „Gesamt“ Gesamtpreis, Pfand vorbelegt; Kategorie-Posten haben dort keine Anzahl und kein Gesamt) und **Leergut** (Anzahl = Rückgabe, Betrag negativ); neue Posten sind Ware, „Aufteilen (optional)“ ist ab dem ersten Posten immer offen (vorher einklappbar), damit Fehler sichtbar sind. Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren und `artikelVorschlaege`. Der
+  Gesamtbetrag an (Pflicht; der Betrag darf auch 0 oder negativ sein; Belegdatum nicht in der Zukunft, Sätze nach Datum); optional Rechnungssteller (Auswahl oder freier Name als Vorschlag), Notiz und Posten: Kategorie-Posten (Artikel + Kategorie mit Vorschlägen und Info-i), **Ware-Posten** (Ware, Gebinde, Anzahl ohne Vorbelegung, Preis je Gebinde, im Preisfeld rechenbar wie in der Erfassung, z. B. `(7,99 + 4,50)/12`, ein exakter Preis wird als `gesamtCent` mitgeschickt; Pfand vorbelegt; Kategorie-Posten haben dort keine Anzahl) und **Leergut** (Anzahl = Rückgabe, Betrag negativ); neue Posten sind Ware, „Aufteilen (optional)“ ist ab dem ersten Posten immer offen (vorher einklappbar), damit Fehler sichtbar sind. Bei Ware-Posten setzt die API die Kategorie aus der Warengruppe (das Mitglied wählt sie nicht); fehlt sie, ergänzt die Finanzer:in sie vor dem Buchen. Die Auswahl (`/einreichungen/auswahl`) liefert dafür auch die Waren und `artikelVorschlaege`. Der
   Beleg ist immer eine **Auslage** (Zahler = Einreicher:in), kein Eigenbeleg. Es entsteht ein Entwurf mit `status = eingereicht`
   (`eingereicht_von`, `eingereicht_am`, `eingereicht_betrag_cent`; fehlt `status`, gilt `entwurf`). Die Finanzer:in sieht
   Einreichungen in der Belege-Liste, ergänzt sie wie jeden Entwurf (auch den Zahlweg) und bucht sie.
@@ -464,7 +469,7 @@ Entwürfe, Buchen, Erstattung und Rechnungssteller `finanzen:buchen`, Einreichen
 | Bank    | gegen das Konto `bank` (Scheibe 6 ordnet den Umsatz später zu, ohne neue Buchung)   | Bezahldatum                                                 |
 | Auslage | gegen das Durchlaufkonto `auslagen` („Auslagen Mitglieder“), Mitglied am Beleg      | Belegdatum; Bezahldatum = Datum der Erstattung (abgeleitet) |
 
-- **Warnungen** (serverseitig mit Codes `zukunft`, `belegdatum_alt`, `datei_doppelt`, `beleg_doppelt`, `hoher_betrag` ab 500 €, `saldo:<n>`): Die
+- **Warnungen** (serverseitig mit Codes `zukunft`, `belegdatum_alt`, `datei_doppelt`, `beleg_doppelt`, `hoher_betrag` ab 500 €, `preis_null` für Posten mit Preis 0 (listet Zeilen wie „Waren 2, Kategorien 1 (Deko)“), `saldo:<n>`): Die
   Buchungsroute liefert sie in einer 409-Antwort, solange der Client sie nicht in `bestaetigt` zurückschickt.
 - **Korrektur:** Ein gebuchter Beleg ist unveränderlich. Storno läuft über die Buchung im Journal; „Als Entwurf kopieren“ legt einen
   neuen Entwurf mit denselben Daten und derselben Datei an. Der Status „storniert“ wird aus `fin_buchungen.storno_von` abgeleitet.

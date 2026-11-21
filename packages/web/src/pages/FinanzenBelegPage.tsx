@@ -505,8 +505,6 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
     (b) => b.entwurfStatus === 'eingereicht' && b.id !== id,
   );
   const serieMoeglich = !eingereicht || weitereEinreichung;
-  // Fields of the head use the whole width while the preview is hidden.
-  const kopfSpalten = vorschauAn ? 2 : 3;
 
   // Filled items in Beleg order = the order of the totals (`formularZuDaten` leaves empty rows out).
   const gefuellt = gefuelltePosten(form.posten);
@@ -663,11 +661,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
           }}
         >
           <Stack gap="lg">
-            <SimpleGrid
-              cols={{ base: 1, lg: vorschauAn ? 2 : 1 }}
-              spacing="lg"
-              style={{ alignItems: 'start' }}
-            >
+            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg" style={{ alignItems: 'start' }}>
               <Stack style={vorschauAn ? vorschauStil : undefined}>
                 <BelegDateiFeld
                   datei={form.datei}
@@ -722,7 +716,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
 
               <Stack gap="lg">
                 <FeldZeile
-                  cols={{ base: 1, sm: 2, lg: kopfSpalten }}
+                  cols={{ base: 1, sm: 2 }}
                   spacing="md"
                   verticalSpacing={0}
                   platz="2.8rem"
@@ -851,6 +845,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                   waren={belegWaren.data ?? []}
                   artikelVorschlaege={artikelVorschlaege.data ?? []}
                   versucht={versucht}
+                  eigenbeleg={eigenbeleg}
                   onNeueWare={neueWareFn}
                   onAendern={postenAendern}
                   onEntfernen={postenEntfernen}
@@ -863,6 +858,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                       p={p}
                       index={i}
                       letzte={i === form.posten.length - 1}
+                      eigenbeleg={eigenbeleg}
                       modus={form.modus}
                       aufwand={aufwand}
                       waren={belegWaren.data ?? []}
@@ -950,6 +946,7 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                 summeCent={berechnung.summe}
                 pfand={pfandJeSatz(gefuellt, berechnung.pfandBetraege)}
                 ohneVorsteuer={eigenbeleg}
+                leereSpalte={breit}
               />
               {eigenbeleg && (
                 <Text size="sm" c="dimmed" role="status">

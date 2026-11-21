@@ -35,10 +35,12 @@ export interface PostenZeile {
   anzahl: string;
   einzelpreisCent: number | null;
   steuersatz: number;
-  /** Gesamtpreis of the line (cent), the typed price while `gesamt` is on. */
-  gesamtCent: number | null;
-  /** "Gesamt" checkbox: the typed price is the Gesamtpreis of the line, not the price per piece/Gebinde. */
-  gesamt: boolean;
+  /**
+   * Unrounded price (cent, may have fractions) when the typed price is a calculation like
+   * `(7,99 + 4,50)/12` that is no whole cent; null = `einzelpreisCent` is exact. Saved as the exact
+   * line total `gesamtCent = round(preisExaktCent * Anzahl)`.
+   */
+  preisExaktCent: number | null;
   /** Item kind: Kategorie (Aufwand), Ware (stock) or Leergut (returned empties). */
   art: BelegPostenArt;
   /** Ware items: the Ware, the Gebinde the quantity counts and the deposit per Gebinde (null = none). */
@@ -91,8 +93,7 @@ export const neuerPosten = (
   text: '',
   anzahl: '',
   einzelpreisCent: null,
-  gesamtCent: null,
-  gesamt: false,
+  preisExaktCent: null,
   steuersatz,
   art,
   wareId: null,
@@ -132,52 +133,36 @@ export function postenHinzufuegen<T extends { art: BelegPostenArt }>(
  * rate do not count.
  */
 export function postenLeer(
-  p: Pick<
-    PostenZeile,
-    'art' | 'wareId' | 'text' | 'kategorieId' | 'einzelpreisCent' | 'gesamtCent' | 'gesamt'
-  >,
+  p: Pick<PostenZeile, 'art' | 'wareId' | 'text' | 'kategorieId' | 'einzelpreisCent'>,
 ): boolean {
   if (p.art === 'ware') return !p.wareId;
   if (p.art === 'kategorie')
-    return p.text.trim() === '' && !p.kategorieId && postenPreis(p) === null;
+    return p.text.trim() === '' && !p.kategorieId && p.einzelpreisCent === null;
   return p.text.trim() === '' && p.einzelpreisCent === null;
 }
 
-/** The typed price of a row: the Gesamtpreis while `gesamt` is on, else the price per piece/Gebinde. */
-export const postenPreis = (
-  p: Pick<PostenZeile, 'einzelpreisCent' | 'gesamtCent' | 'gesamt'>,
-): number | null => (p.gesamt ? p.gesamtCent : p.einzelpreisCent);
-
-/** Patch for the price input of a row (Gesamtpreis or price per piece, by `gesamt`). */
-export const preisPatch = (
-  p: Pick<PostenZeile, 'gesamt'>,
-  cent: number | null,
-): Partial<PostenZeile> => (p.gesamt ? { gesamtCent: cent } : { einzelpreisCent: cent });
-
 /**
- * Patch for the "Gesamt" checkbox: the typed number stays in the field and changes its meaning
- * (Gesamtpreis <-> price per piece); never for Leergut.
+ * Patch for the price input of a row: the rounded price and, when the typed calculation is no
+ * whole cent, the exact one.
  */
-export const gesamtPatch = (
-  p: Pick<PostenZeile, 'einzelpreisCent' | 'gesamtCent'>,
-  an: boolean,
-): Partial<PostenZeile> =>
-  an
-    ? { gesamt: true, gesamtCent: p.einzelpreisCent, einzelpreisCent: null }
-    : {
-        gesamt: false,
-        gesamtCent: null,
-        einzelpreisCent: p.gesamtCent,
-      };
+export const preisPatch = (
+  cent: number | null,
+  exaktCent?: number | null,
+): Partial<PostenZeile> => ({
+  einzelpreisCent: cent,
+  preisExaktCent: cent !== null && exaktCent != null && exaktCent !== cent ? exaktCent : null,
+});
 
-/** The price per piece/Gebinde implied by a Gesamtpreis row ("≈ 1,00 € je Stück"), or null. */
+/** The rounded price per piece/Gebinde ("≈ 1,00 € je Stück") when the exact price differs, else null. */
 export function einzelpreisHinweis(
-  p: Pick<PostenZeile, 'gesamt' | 'gesamtCent' | 'anzahl'>,
+  p: Pick<PostenZeile, 'einzelpreisCent' | 'preisExaktCent'>,
 ): number | null {
-  if (!p.gesamt || p.gesamtCent === null) return null;
-  const anzahl = anzahlLesen(p.anzahl);
-  return anzahl ? einzelpreisAusGesamt(p.gesamtCent, anzahl) : null;
+  return p.preisExaktCent === null ? null : p.einzelpreisCent;
 }
+
+/** Exact line total (cent) of an item with an exact price: `round(preisExakt * Anzahl)`. */
+export const gesamtAusExakt = (preisExaktCent: number, anzahlMilli: number): number =>
+  Math.round((preisExaktCent * anzahlMilli) / 1000);
 
 /** The filled items in Beleg order (grouped by kind): what is saved, checked and booked. */
 export const gefuelltePosten = (posten: readonly PostenZeile[]): PostenZeile[] =>
@@ -316,16 +301,18 @@ export const bezahltCent = (gegeben: Mengen, wechselgeld: Mengen): number =>
 const postenAnzahl = (p: PostenZeile): number => anzahlLesen(p.anzahl) ?? 0;
 
 function postenZuDaten(p: PostenZeile): BelegPosten {
+  const gesamtCent =
+    p.preisExaktCent !== null && p.art !== 'leergut'
+      ? gesamtAusExakt(p.preisExaktCent, postenAnzahl(p))
+      : null;
   const basis = {
     text: p.text.trim(),
     anzahlMilli: postenAnzahl(p),
     einzelpreisCent:
-      p.gesamt && p.art !== 'leergut'
-        ? p.gesamtCent === null
-          ? 0
-          : einzelpreisAusGesamt(p.gesamtCent, postenAnzahl(p))
-        : (p.einzelpreisCent ?? 0),
-    gesamtCent: p.gesamt && p.art !== 'leergut' ? p.gesamtCent : null,
+      gesamtCent === null
+        ? (p.einzelpreisCent ?? 0)
+        : einzelpreisAusGesamt(gesamtCent, postenAnzahl(p)),
+    gesamtCent,
     steuersatz: p.steuersatz,
   };
   if (p.art === 'leergut') {
@@ -407,11 +394,18 @@ export function datenZuFormular(d: BelegEntwurfDaten): BelegFormular {
     eigenbeleg: d.eigenbelegBegruendung !== null && !d.datei,
     eigenbelegBegruendung: d.eigenbelegBegruendung ?? '',
     datei: d.datei,
-    belegsummeCent: d.belegsummeCent ?? null,
+    belegsummeCent: d.belegsummeCent ?? d.eingereichtBetragCent ?? null,
     eingereichtBetragCent: d.eingereichtBetragCent ?? null,
     rechnungsstellerName: d.rechnungsstellerName ?? '',
     notiz: d.notiz ?? '',
   };
+}
+
+/** The exact price of a loaded line: `gesamtCent / Anzahl` when that is no whole cent, else null. */
+function preisExakt(p: BelegPosten): number | null {
+  if (p.art === 'leergut' || (p.gesamtCent ?? null) === null || p.anzahlMilli === 0) return null;
+  const exakt = Number(((p.gesamtCent! * 1000) / p.anzahlMilli).toFixed(6));
+  return Number.isInteger(exakt) ? null : exakt;
 }
 
 function postenZuZeile(p: BelegPosten): PostenZeile {
@@ -423,8 +417,7 @@ function postenZuZeile(p: BelegPosten): PostenZeile {
     text: p.art === 'ware' ? '' : p.text,
     anzahl: anzahlText(p.anzahlMilli),
     einzelpreisCent: p.einzelpreisCent,
-    gesamtCent: p.art === 'leergut' ? null : (p.gesamtCent ?? null),
-    gesamt: p.art !== 'leergut' && (p.gesamtCent ?? null) !== null,
+    preisExaktCent: preisExakt(p),
     steuersatz: p.steuersatz,
     wareId: ware?.wareId ?? null,
     gebindeId: ware?.gebindeId ?? null,
@@ -472,11 +465,8 @@ export function formularFehler(
         feld: 'posten',
         meldung: `${n}: Die Anzahl ist ungültig, bitte gib z. B. 2 oder 1,5 ein.`,
       });
-    if (postenPreis(p) === null)
-      fehler.push({
-        feld: 'posten',
-        meldung: `${n}: Bitte gib ${p.gesamt ? 'den Gesamtpreis' : 'den Einzelpreis'} an.`,
-      });
+    if (p.einzelpreisCent === null)
+      fehler.push({ feld: 'posten', meldung: `${n}: Bitte gib den Einzelpreis an.` });
     if (p.art === 'leergut' && p.einzelpreisCent !== null && p.einzelpreisCent < 0)
       fehler.push({ feld: 'posten', meldung: `${n}: Das Pfand je Stück darf nicht negativ sein.` });
     if (p.art === 'leergut' && (anzahlLesen(p.anzahl) ?? 0) < 0)

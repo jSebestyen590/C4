@@ -3,7 +3,6 @@ import {
   Alert,
   Autocomplete,
   Button,
-  Checkbox,
   Collapse,
   Group,
   Paper,
@@ -23,7 +22,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   BELEG_POSTEN_ANZAHL_MAX,
   centAnzeigen,
-  einzelpreisAusGesamt,
   heuteBerlin,
   steuersaetzeAm,
   steuersatzUmstellen,
@@ -36,7 +34,8 @@ import { useAuth } from '../auth';
 import { BelegNeueWare } from '../BelegNeueWare';
 import { FeldZeile } from '../FeldZeile';
 import { HILFE } from '../finanzenHilfe';
-import { FeldLabel, InfoHinweis } from '../InfoHinweis';
+import { FeldLabel } from '../InfoHinweis';
+import { gesamtAusExakt } from '../belegFormular';
 import { BelegDateiFeld } from '../BelegDatei';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
@@ -67,8 +66,8 @@ interface PostenZeile {
   wareId: string | null;
   gebindeId: string | null;
   anzahl: number | string;
-  /** Ware items: the price field is the Gesamtpreis of the whole line (without deposit). */
-  gesamt?: boolean;
+  /** Ware items: unrounded price (cent) of a typed calculation that is no whole cent; null = `betragCent` is exact. */
+  preisExaktCent?: number | null;
   pfandCent: number | null;
   text: string;
   betragCent: number | null;
@@ -311,13 +310,13 @@ export function BelegEinreichenPage() {
                       wareId: p.wareId,
                       gebindeId: p.gebindeId,
                       anzahlMilli: Math.round(Number(p.anzahl) * 1000),
-                      einzelpreisCent: p.gesamt
-                        ? einzelpreisAusGesamt(
-                            p.betragCent as number,
-                            Math.round(Number(p.anzahl) * 1000),
-                          )
-                        : (p.betragCent as number),
-                      ...(p.gesamt && { gesamtCent: p.betragCent as number }),
+                      einzelpreisCent: p.betragCent as number,
+                      ...(p.preisExaktCent != null && {
+                        gesamtCent: gesamtAusExakt(
+                          p.preisExaktCent,
+                          Math.round(Number(p.anzahl) * 1000),
+                        ),
+                      }),
                       steuersatz: Number(p.steuersatz),
                       pfandCent: p.pfandCent,
                     }
@@ -480,7 +479,7 @@ export function BelegEinreichenPage() {
                       pfandCent: null,
                       betragCent: null,
                       anzahl: '',
-                      gesamt: false,
+                      preisExaktCent: null,
                     })
                   }
                   data={[
@@ -625,18 +624,30 @@ export function BelegEinreichenPage() {
                 >
                   <BetragFeld
                     label={
-                      p.art === 'ware'
-                        ? p.gesamt
-                          ? 'Gesamtpreis (brutto)'
-                          : 'Preis je Gebinde (brutto)'
-                        : p.art === 'leergut'
-                          ? 'Pfand je Stück'
-                          : 'Betrag (brutto)'
+                      <FeldLabel
+                        text={
+                          p.art === 'ware'
+                            ? 'Preis je Gebinde (brutto)'
+                            : p.art === 'leergut'
+                              ? 'Pfand je Stück'
+                              : 'Betrag (brutto)'
+                        }
+                        hilfe={HILFE.belege.preisRechnen}
+                      />
                     }
                     size="md"
                     negativ={p.art === 'kategorie'}
+                    rechnen
                     value={p.betragCent}
-                    onWert={(c) => aendern(p.key, { betragCent: c })}
+                    onWert={(c, exakt) =>
+                      aendern(p.key, {
+                        betragCent: c,
+                        preisExaktCent:
+                          p.art === 'ware' && c !== null && exakt != null && exakt !== c
+                            ? exakt
+                            : null,
+                      })
+                    }
                     error={
                       versucht &&
                       (p.betragCent === null || (p.art !== 'kategorie' && p.betragCent < 0))
@@ -664,24 +675,9 @@ export function BelegEinreichenPage() {
                     onChange={(v) => aendern(p.key, { steuersatz: v ?? String(saetzeAm.regel) })}
                   />
                 </FeldZeile>
-                {p.art === 'ware' && (
-                  <Group gap={2} wrap="nowrap" mih={42} align="center">
-                    <Checkbox
-                      size="md"
-                      label="Gesamtpreis"
-                      checked={p.gesamt === true}
-                      onChange={(e) => aendern(p.key, { gesamt: e.currentTarget.checked })}
-                    />
-                    <InfoHinweis feld="Gesamtpreis" text={HILFE.belege.gesamtpreis} />
-                  </Group>
-                )}
-                {p.art === 'ware' && p.gesamt && p.betragCent !== null && Number(p.anzahl) >= 1 && (
+                {p.art === 'ware' && p.preisExaktCent != null && (
                   <Text size="sm" c="dimmed">
-                    ≈{' '}
-                    {centAnzeigen(
-                      einzelpreisAusGesamt(p.betragCent, Math.round(Number(p.anzahl) * 1000)),
-                    )}{' '}
-                    je Gebinde
+                    ≈ {centAnzeigen(p.betragCent ?? 0)} je Gebinde
                   </Text>
                 )}
                 {p.art === 'leergut' && p.betragCent !== null && Number(p.anzahl) >= 1 && (

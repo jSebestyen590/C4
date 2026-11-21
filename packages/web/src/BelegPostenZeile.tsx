@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Autocomplete,
-  Checkbox,
   Group,
   Paper,
   SegmentedControl,
@@ -21,13 +20,7 @@ import {
   type BelegWareDto,
   type KontoDto,
 } from '@c4/shared';
-import {
-  einzelpreisHinweis,
-  gesamtPatch,
-  postenPreis,
-  preisPatch,
-  type PostenZeile,
-} from './belegFormular';
+import { einzelpreisHinweis, preisPatch, type PostenZeile } from './belegFormular';
 import {
   artikelNamen,
   artikelPatch,
@@ -46,7 +39,7 @@ import {
 import { BetragFeld } from './BetragFeld';
 import { BETRAG_STIL } from './finanzenDaten';
 import { HILFE } from './finanzenHilfe';
-import { FeldLabel, InfoHinweis } from './InfoHinweis';
+import { FeldLabel } from './InfoHinweis';
 import { FeldZeile } from './FeldZeile';
 import { satzOptionen, useSteuersaetze } from './steuersaetze';
 
@@ -58,6 +51,7 @@ export function BelegPostenZeile({
   p,
   index,
   letzte,
+  eigenbeleg = false,
   modus,
   aufwand,
   waren,
@@ -73,6 +67,8 @@ export function BelegPostenZeile({
   p: PostenZeile;
   index: number;
   letzte: boolean;
+  /** Eigenbeleg: no Steuersatz field (the value of the item stays). */
+  eigenbeleg?: boolean;
   modus: 'brutto' | 'netto';
   aufwand: readonly KontoDto[];
   waren: readonly BelegWareDto[];
@@ -270,25 +266,20 @@ export function BelegPostenZeile({
             data-nav=""
             data-anzahl=""
           />
-          {p.art !== 'leergut' && (
-            <Group gap={2} wrap="nowrap" mih={42} align="center">
-              <Checkbox
-                size="md"
-                label="Gesamtpreis"
-                checked={p.gesamt}
-                onChange={(e) => onAendern(gesamtPatch(p, e.currentTarget.checked))}
-                data-nav=""
-              />
-              <InfoHinweis feld="Gesamtpreis" text={HILFE.belege.gesamtpreis} />
-            </Group>
-          )}
           <BetragFeld
-            label={`${p.gesamt ? 'Gesamtpreis' : p.art === 'ware' ? 'Preis je Gebinde' : p.art === 'leergut' ? 'Pfand je Stück' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
+            label={
+              <FeldLabel
+                text={`${p.art === 'ware' ? 'Preis je Gebinde' : p.art === 'leergut' ? 'Pfand je Stück' : 'Preis'} (${modus === 'netto' ? 'netto' : 'brutto'})`}
+                hilfe={HILFE.belege.preisRechnen}
+              />
+            }
             negativ={p.art === 'kategorie'}
-            value={postenPreis(p)}
-            onWert={(c) => onAendern(preisPatch(p, c))}
+            rechnen
+            value={p.einzelpreisCent}
+            onWert={(c, exakt) => onAendern(preisPatch(c, exakt))}
             error={fehler.preis}
             data-nav=""
+            {...(letzte && eigenbeleg && p.art !== 'ware' && { 'data-posten-ende': 'ware' })}
           />
           {p.art === 'ware' && (
             <BetragFeld
@@ -297,17 +288,20 @@ export function BelegPostenZeile({
               value={p.pfandCent}
               onWert={(c) => onAendern({ pfandCent: c })}
               data-nav=""
+              {...(letzte && eigenbeleg && { 'data-posten-ende': 'ware' })}
             />
           )}
-          <Select
-            label={<FeldLabel text="Steuersatz" hilfe={HILFE.belege.steuersatz} />}
-            allowDeselect={false}
-            data={satzOptionen(saetze.saetze)}
-            value={String(p.steuersatz)}
-            onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
-            data-nav=""
-            {...(letzte && { 'data-posten-ende': 'ware' })}
-          />
+          {!eigenbeleg && (
+            <Select
+              label={<FeldLabel text="Steuersatz" hilfe={HILFE.belege.steuersatz} />}
+              allowDeselect={false}
+              data={satzOptionen(saetze.saetze)}
+              value={String(p.steuersatz)}
+              onChange={(v) => v && onAendern({ steuersatz: Number(v) })}
+              data-nav=""
+              {...(letzte && { 'data-posten-ende': 'ware' })}
+            />
+          )}
           <Stack gap={2} justify="flex-end">
             <Text size="sm" fw={500}>
               Betrag

@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Autocomplete,
-  Checkbox,
   Group,
   Select,
   Stack,
@@ -22,9 +21,7 @@ import {
 } from '@c4/shared';
 import {
   einzelpreisHinweis,
-  gesamtPatch,
   POSTEN_REIHENFOLGE,
-  postenPreis,
   preisPatch,
   tabellenZeilen,
   type PostenZeile,
@@ -73,8 +70,13 @@ const SPALTEN: Record<BelegPostenArt, readonly Spalte[]> = {
     { name: 'Ware', breite: '17%' },
     { name: 'Gebinde', breite: '11%' },
     { name: 'Anzahl', breite: '7%', rechts: true },
-    { name: 'Gesamt', breite: '7%', hilfe: HILFE.belege.gesamtpreis },
-    { name: 'Preis je Gebinde', breite: '11%', rechts: true, preis: true },
+    {
+      name: 'Preis je Gebinde',
+      breite: '11%',
+      rechts: true,
+      preis: true,
+      hilfe: HILFE.belege.preisRechnen,
+    },
     { name: 'Pfand je Gebinde', breite: '10%', rechts: true },
     { name: 'Steuer %', breite: '7%' },
     { name: 'Kategorie', breite: '16%', hilfe: HILFE.belege.kategorie },
@@ -84,15 +86,26 @@ const SPALTEN: Record<BelegPostenArt, readonly Spalte[]> = {
     { name: 'Artikel', breite: '23%' },
     { name: 'Kategorie', breite: '22%', hilfe: HILFE.belege.kategorie },
     { name: 'Anzahl', breite: '9%', rechts: true },
-    { name: 'Gesamt', breite: '7%', hilfe: HILFE.belege.gesamtpreis },
-    { name: 'Einzelpreis', breite: '13%', rechts: true, preis: true },
+    {
+      name: 'Einzelpreis',
+      breite: '13%',
+      rechts: true,
+      preis: true,
+      hilfe: HILFE.belege.preisRechnen,
+    },
     { name: 'Steuer %', breite: '8%' },
     { name: 'Betrag', breite: '18%', rechts: true },
   ],
   leergut: [
     { name: 'Beschreibung', breite: '38%' },
     { name: 'Anzahl zurück', breite: '13%', rechts: true },
-    { name: 'Pfand je Stück', breite: '18%', rechts: true, preis: true },
+    {
+      name: 'Pfand je Stück',
+      breite: '18%',
+      rechts: true,
+      preis: true,
+      hilfe: HILFE.belege.preisRechnen,
+    },
     { name: 'Steuer %', breite: '11%' },
     { name: 'Betrag', breite: '20%', rechts: true },
   ],
@@ -104,6 +117,8 @@ interface Gemeinsam {
   waren: readonly BelegWareDto[];
   artikelVorschlaege: ArtikelKategorieVorschlaege;
   versucht: boolean;
+  /** Eigenbeleg: no Steuersatz column (the values of the rows stay). */
+  eigenbeleg?: boolean;
   /** Opens "Neue Ware anlegen" for the row with the item key and the typed search text; unset = not allowed. */
   onNeueWare?: (key: string, suche: string) => void;
 }
@@ -172,6 +187,7 @@ export function BelegPostenTabelle({
   waren,
   artikelVorschlaege,
   versucht,
+  eigenbeleg = false,
   onNeueWare,
   onAendern,
   onEntfernen,
@@ -184,7 +200,7 @@ export function BelegPostenTabelle({
     onEntfernen: (key: string) => void;
   }
 >) {
-  const spalten = SPALTEN[art];
+  const spalten = SPALTEN[art].filter((s) => !(eigenbeleg && s.name === 'Steuer %'));
   const preisLabel = modus === 'netto' ? 'netto' : 'brutto';
   const letzterGefuellt = zeilen.filter((z) => !z.leer).at(-1)?.p.key;
   const meldungen = versucht
@@ -239,6 +255,7 @@ export function BelegPostenTabelle({
                 waren={waren}
                 artikelVorschlaege={artikelVorschlaege}
                 versucht={versucht}
+                eigenbeleg={eigenbeleg}
                 onNeueWare={onNeueWare}
                 onAendern={(patch) => onAendern(z.p.key, patch)}
                 onEntfernen={() => onEntfernen(z.p.key)}
@@ -269,6 +286,7 @@ function PostenTabellenZeile({
   waren,
   artikelVorschlaege,
   versucht,
+  eigenbeleg,
   onNeueWare,
   onAendern,
   onEntfernen,
@@ -282,6 +300,7 @@ function PostenTabellenZeile({
   waren: readonly BelegWareDto[];
   artikelVorschlaege: ArtikelKategorieVorschlaege;
   versucht: boolean;
+  eigenbeleg: boolean;
   onNeueWare?: (key: string, suche: string) => void;
   onAendern: (patch: Partial<PostenZeile>) => void;
   onEntfernen: () => void;
@@ -323,30 +342,18 @@ function PostenTabellenZeile({
       />
     </Table.Td>
   );
-  // "Gesamt" sits right before the price, so the price's meaning is clear when it is reached by Tab.
-  const gesamt = (
-    <Table.Td>
-      <Checkbox
-        size="md"
-        aria-label={`Gesamtpreis statt Preis je ${art === 'ware' ? 'Gebinde' : 'Stück'}, ${zeile}`}
-        checked={p.gesamt}
-        onChange={(e) => onAendern(gesamtPatch(p, e.currentTarget.checked))}
-        styles={{ root: { display: 'flex', justifyContent: 'center' } }}
-        data-nav=""
-      />
-    </Table.Td>
-  );
   const preis = (
     <Table.Td>
       <BetragFeld
         size="sm"
-        aria-label={`${p.gesamt ? 'Gesamtpreis' : art === 'ware' ? 'Preis je Gebinde' : art === 'leergut' ? 'Pfand je Stück' : 'Preis'}, ${zeile}`}
-        placeholder={p.gesamt ? 'Gesamt' : undefined}
+        aria-label={`${art === 'ware' ? 'Preis je Gebinde' : art === 'leergut' ? 'Pfand je Stück' : 'Preis'}, ${zeile}`}
         negativ={art === 'kategorie'}
-        value={postenPreis(p)}
-        onWert={(c) => onAendern(preisPatch(p, c))}
+        rechnen
+        value={p.einzelpreisCent}
+        onWert={(c, exakt) => onAendern(preisPatch(c, exakt))}
         error={rot(fehler.preis)}
         data-nav=""
+        {...ende(eigenbeleg && art !== 'ware')}
       />
     </Table.Td>
   );
@@ -485,7 +492,6 @@ function PostenTabellenZeile({
             />
           </Table.Td>
           {anzahl}
-          {gesamt}
           {preis}
           <Table.Td>
             <BetragFeld
@@ -497,7 +503,7 @@ function PostenTabellenZeile({
               data-nav=""
             />
           </Table.Td>
-          {steuersatz}
+          {!eigenbeleg && steuersatz}
           {kategorieZelle(false)}
           {betrag}
         </>
@@ -519,9 +525,8 @@ function PostenTabellenZeile({
           </Table.Td>
           {kategorieZelle(true)}
           {anzahl}
-          {gesamt}
           {preis}
-          {steuersatz}
+          {!eigenbeleg && steuersatz}
           {betrag}
         </>
       )}
@@ -541,7 +546,7 @@ function PostenTabellenZeile({
           </Table.Td>
           {anzahl}
           {preis}
-          {steuersatz}
+          {!eigenbeleg && steuersatz}
           {betrag}
         </>
       )}

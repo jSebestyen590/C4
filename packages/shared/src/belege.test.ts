@@ -242,6 +242,14 @@ describe('belegPruefen', () => {
     expect(pruefen(gut())).toEqual([]);
   });
 
+  it('checks the Steuersatz on the Belegdatum, but not for an Eigenbeleg', () => {
+    const falsch = { ...gut(), posten: [{ ...gut().posten[0]!, steuersatz: 1600 }] };
+    expect(pruefen(falsch).map((f) => f.meldung)).toEqual([
+      expect.stringContaining('gilt am Belegdatum nicht'),
+    ]);
+    expect(pruefen({ ...falsch, datei: null, eigenbelegBegruendung: 'Bon weg' })).toEqual([]);
+  });
+
   it('reports the missing fields of an empty draft', () => {
     const felder = pruefen(belegEntwurfDatenSchema.parse({})).map((f) => f.feld);
     expect(felder).toEqual([
