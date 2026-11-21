@@ -34,7 +34,10 @@ import {
   beschlussfaehigkeitText,
   dokumentKopf,
   eroeffnungSatz,
+  istBlockPunkt,
+  istLeereListe,
   istLeererAbsatz,
+  istLeererPunkt,
   istQuellenzeile,
   naechsteSitzungSatz,
   naechsteSitzungWert,
@@ -239,18 +242,29 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       );
     }
     case 'bulletList':
+      if (istLeereListe(k)) return null;
       return (
         <ul>
           <Kinder liste={k.content} ctx={ctx} />
         </ul>
       );
     case 'orderedList':
+      if (istLeereListe(k)) return null;
       return (
         <ol>
           <Kinder liste={k.content} ctx={ctx} />
         </ol>
       );
     case 'listItem':
+      // Empty items (the place to continue after a block) are never shown; a block-only item has no bullet.
+      if (istLeererPunkt(k)) return null;
+      if (istBlockPunkt(k)) {
+        return (
+          <li className="pk-dok-ohne-punkt">
+            <Kinder liste={k.content?.slice(1)} ctx={ctx} />
+          </li>
+        );
+      }
       return (
         <li>
           <Kinder liste={k.content} ctx={ctx} />
@@ -286,6 +300,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           <Baustein k={k} ctx={ctx} innen />
         </div>
       );
+    case 'bausteinAnwesenheit':
+      // erscheint / geht inside the notes of a Baustein (or in a list item of them).
+      return <Baustein k={k} ctx={ctx} innen />;
     case 'bausteinTodo':
       // A Todo is a bullet of the notes it stands in (see `Kinder`); alone it gets a list of its own.
       return (

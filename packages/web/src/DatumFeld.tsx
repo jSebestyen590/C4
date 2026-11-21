@@ -95,6 +95,7 @@ export function DatumFeld({
             variant="subtle"
             color="gray"
             size={42}
+            tabIndex={-1}
             aria-label="Datum löschen"
             onClick={() => onWert('')}
           >

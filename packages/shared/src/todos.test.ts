@@ -9,6 +9,7 @@ import {
   protokollLeer,
   protokollNotizenText,
   protokollVorschlag,
+  type ProtokollKnoten,
   todoZustaendigeAufloesen,
 } from './protokolle';
 import {
@@ -107,6 +108,49 @@ describe('Baustein Todo', () => {
         'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.',
       );
     }
+  });
+
+  it('may stand in a list item of the notes of a Baustein, but not in a list of a section', () => {
+    const imPunkt = (): ProtokollKnoten => ({
+      type: 'bulletList',
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph' }, bausteinErzeugen('bausteinTodo')],
+        },
+      ],
+    });
+    const gut = protokollLeer();
+    gut.content[2]!.content = [bausteinErzeugen('bausteinThema', undefined, [imPunkt()])];
+    expect(protokollDokumentPruefen(gut)).toBeNull();
+    const schlecht = protokollLeer();
+    schlecht.content[2]!.content = [imPunkt()];
+    expect(protokollDokumentPruefen(schlecht)).toBe(
+      'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.',
+    );
+  });
+
+  it('accepts list items that hold an empty paragraph and a block, and empty items', () => {
+    const d = protokollLeer();
+    d.content[2]!.content = [
+      bausteinErzeugen('bausteinThema', undefined, [
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [
+                { type: 'paragraph' },
+                bausteinErzeugen('bausteinBeschluss'),
+                { type: 'blockquote', content: [{ type: 'paragraph' }] },
+              ],
+            },
+            { type: 'listItem', content: [{ type: 'paragraph' }] },
+          ],
+        },
+      ]),
+    ];
+    expect(protokollDokumentPruefen(d)).toBeNull();
   });
 
   it('is not carried into the next protocol', () => {

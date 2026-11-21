@@ -199,19 +199,16 @@ describe('first stage', () => {
     expect(slashEintraege('', daten, true).map((e) => e.titel)).not.toContain('Todo');
   });
   it('leaves out the Todo at the top level of a section, also by its aliases', () => {
-    expect(slashEintraege('', daten, false, false, true).map((e) => e.titel)).not.toContain('Todo');
-    expect(bausteinEintraege('', false, false, true).map((e) => e.titel)).not.toContain('Todo');
+    expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Todo');
+    expect(bausteinEintraege('', false, true).map((e) => e.titel)).not.toContain('Todo');
     for (const q of ['todo', 'aufgabe', 'aufgaben']) {
-      expect(slashEintraege(q, daten, false, false, true)).toEqual([]);
+      expect(slashEintraege(q, daten, false, true)).toEqual([]);
     }
     // The other Bausteine stay.
-    expect(slashEintraege('', daten, false, false, true).map((e) => e.titel)).toContain(
-      'Abstimmung',
-    );
+    expect(slashEintraege('', daten, false, true).map((e) => e.titel)).toContain('Abstimmung');
   });
-  it('leaves out the quote inside a list item', () => {
-    expect(slashEintraege('', daten, false, true).map((e) => e.titel)).not.toContain('Zitat');
-    expect(slashEintraege('zit', daten, false, true)).toEqual([]);
+  it('offers the quote everywhere', () => {
+    expect(slashEintraege('', daten, true, true).map((e) => e.titel)).toContain('Zitat');
     expect(slashEintraege('zit', daten)).toHaveLength(1);
   });
   it('inserts Anwärter and Abstimmung directly', () => {

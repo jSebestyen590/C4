@@ -115,7 +115,7 @@ describe('slash entry', () => {
   });
 
   it('is in the Baustein menu list, also inside votes and lists', () => {
-    expect(bausteinEintraege('', true, true).map((e) => e.schluessel)).toContain('bild');
+    expect(bausteinEintraege('', true).map((e) => e.schluessel)).toContain('bild');
   });
 });
 

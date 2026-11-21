@@ -9,15 +9,17 @@ import {
   istBausteinInNotizen,
   istVerschachtelbar,
   kannBausteineEnthalten,
+  type ProtokollKnoten,
 } from '@c4/shared';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
-import { AbschnittKnoten, ProtokollDokumentKnoten } from './schema';
+import { AbschnittKnoten, ListenPunkt, ProtokollDokumentKnoten } from './schema';
 
 const schema = getSchema([
   ProtokollDokumentKnoten,
   AbschnittKnoten,
-  StarterKit.configure({ document: false, blockquote: false, link: false }),
+  StarterKit.configure({ document: false, blockquote: false, link: false, listItem: false }),
   Blockquote.extend({ content: 'paragraph+' }),
+  ListenPunkt,
   ...BAUSTEIN_KNOTEN,
 ]);
 
@@ -39,6 +41,36 @@ describe('editor schema', () => {
     }
   });
 
+  it('lets erscheint / geht stand in the notes of Bausteine with notes, but not in votes or Anwesenheit', () => {
+    const anwesenheit = schema.nodeFromJSON(bausteinErzeugen('bausteinAnwesenheit')).type;
+    for (const typ of BAUSTEIN_TYPEN) {
+      const erlaubt = kannBausteineEnthalten(typ);
+      const passt = schema.nodes[typ]!.contentMatch.matchType(anwesenheit) !== null;
+      expect(passt, `Anwesenheit in ${typ}`).toBe(erlaubt);
+    }
+    expect(istVerschachtelbar('bausteinAnwesenheit')).toBe(true);
+  });
+
+  it('lets Bausteine and quotes stand in a list item, after its text', () => {
+    const punkt = schema.nodes.listItem!;
+    for (const typ of [
+      'bausteinBeschluss',
+      'bausteinTodo',
+      'bausteinThema',
+      'bausteinAnwesenheit',
+    ] as const) {
+      const knoten = schema.nodeFromJSON(bausteinErzeugen(typ)).type;
+      expect(
+        punkt.contentMatch.matchType(schema.nodes.paragraph!)!.matchType(knoten),
+        typ,
+      ).not.toBeNull();
+      // Never in front of the item's text.
+      expect(punkt.contentMatch.matchType(knoten), typ).toBeNull();
+    }
+    const zitat = schema.nodes.blockquote!;
+    expect(punkt.contentMatch.matchType(schema.nodes.paragraph!)!.matchType(zitat)).not.toBeNull();
+  });
+
   it('keeps the Todo out of the top level of a section and of lists, but lets it into notes', () => {
     const todo = schema.nodeFromJSON(bausteinErzeugen('bausteinTodo')).type;
     expect(schema.nodes.abschnitt!.contentMatch.matchType(todo)).toBeNull();
@@ -58,6 +90,40 @@ describe('editor schema', () => {
   it('keeps the other Bausteine out of the notes', () => {
     const anwaerter = schema.nodes.bausteinAnwaerter!;
     expect(schema.nodes.bausteinEvent!.contentMatch.matchType(anwaerter)).toBeNull();
+  });
+
+  it('accepts a document with Bausteine and a quote nested in list items', () => {
+    const punkt = (...kinder: ProtokollKnoten[]): ProtokollKnoten => ({
+      type: 'listItem',
+      content: [{ type: 'paragraph' }, ...kinder],
+    });
+    const ereignis = bausteinErzeugen('bausteinEvent', undefined, [
+      {
+        type: 'bulletList',
+        content: [
+          punkt({
+            type: 'bulletList',
+            content: [
+              punkt(bausteinErzeugen('bausteinAnwesenheit'), bausteinErzeugen('bausteinTodo'), {
+                type: 'blockquote',
+                content: [{ type: 'paragraph' }],
+              }),
+              punkt(),
+            ],
+          }),
+        ],
+      },
+      { type: 'paragraph' },
+    ]);
+    const doc = schema.nodeFromJSON({
+      type: 'doc',
+      content: ['vergangenes', 'gegenwaertiges', 'zukuenftiges', 'sonstiges'].map((art, i) => ({
+        type: 'abschnitt',
+        attrs: { art },
+        content: i === 1 ? [ereignis, { type: 'paragraph' }] : [{ type: 'paragraph' }],
+      })),
+    });
+    expect(() => doc.check()).not.toThrow();
   });
 
   it('accepts a document with a nested Abstimmung and Meinungsbild', () => {

@@ -96,10 +96,11 @@ export const istThema = (typ: string): boolean => typ === 'bausteinThema';
 
 /**
  * Whether a Baustein of this type may stand in the notes of another Baustein: Abstimmung, Meinungsbild,
- * Wahl and Thema. All others are top-level only.
+ * Wahl, Todo, Thema and Anwesenheit (erscheint / geht). All others are top-level only. Nested ones may
+ * also stand inside a list item of those notes (as a child after the item's text).
  */
 export const istVerschachtelbar = (typ: string): boolean =>
-  istBausteinInNotizen(typ) || istThema(typ);
+  istBausteinInNotizen(typ) || istThema(typ) || typ === 'bausteinAnwesenheit';
 
 /**
  * Whether the notes of a Baustein of this type may hold other Bausteine (Abstimmung, Meinungsbild, Wahl
@@ -871,7 +872,7 @@ export interface ProtokollBildUploadDto {
 }
 
 /** Structure of one node and its descendants: types, depth, Baustein fields; returns an error message or null. */
-function knotenFehler(knoten: unknown, tiefe: number): string | null {
+function knotenFehler(knoten: unknown, tiefe: number, imBaustein = false): string | null {
   if (tiefe > PROTOKOLL_MAX_TIEFE) return 'Das Protokoll ist zu tief verschachtelt.';
   if (!istObjekt(knoten)) return 'Das Protokoll ist ungültig.';
   const { type, attrs, content, text, marks } = knoten;
@@ -895,7 +896,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
       }
     }
   }
-  if (tiefe === 2 && istNurInNotizen(type)) {
+  // Lists add depth, so "in a Baustein" is tracked instead of the depth: a Todo in a list of a section is
+  // as wrong as one directly in the section.
+  if (!imBaustein && istNurInNotizen(type)) {
     return 'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.';
   }
   if (istBausteinTyp(type)) {
@@ -913,8 +916,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
     if (!Array.isArray(content) || content.length > MAX_KNOTEN_KINDER) {
       return 'Das Protokoll ist ungültig.';
     }
+    const innen = imBaustein || istBausteinTyp(type);
     for (const kind of content) {
-      const fehler = knotenFehler(kind, tiefe + 1);
+      const fehler = knotenFehler(kind, tiefe + 1, innen);
       if (fehler) return fehler;
     }
   }

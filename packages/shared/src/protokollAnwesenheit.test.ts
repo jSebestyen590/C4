@@ -442,6 +442,32 @@ describe('Aufnahme, Meinungsbild and nested blocks', () => {
   });
 });
 
+describe('Anwesenheit blocks in list items of notes', () => {
+  const imPunkt = (...bloecke: ProtokollKnoten[]): ProtokollKnoten => ({
+    type: 'bulletList',
+    content: [{ type: 'listItem', content: [{ type: 'paragraph' }, ...bloecke] }],
+  });
+
+  it('are valid, found in document order and count for the votes after them', () => {
+    const teilnahme: T[] = [...mitglieder(1), { sub: 'v', status: 'mitglied', wert: 'verspaetet' }];
+    const vorher = beschluss();
+    const innen = anw('erscheint', 'v');
+    const danach = beschluss();
+    const ereignis = bausteinErzeugen('bausteinEvent', undefined, [
+      { type: 'paragraph' },
+      vorher,
+      imPunkt(innen),
+      imPunkt(danach),
+    ]);
+    const d = doc(ereignis);
+    expect(protokollDokumentPruefen(d)).toBeNull();
+    const v = anwesenheitsVerlauf(d, { art: 'sitzung', teilnahme });
+    expect(v.bausteine[vorher.attrs.id]!.anwesend).toBe(1);
+    expect(v.bausteine[danach.attrs.id]!.anwesend).toBe(2);
+    expect(anwesenheitsZeiten(d)).toBeDefined();
+  });
+});
+
 describe('protokollKopfSchema additions', () => {
   it('reads an old kopf without the new fields', () => {
     const kopf = protokollKopfSchema.parse({ teilnahme: { a: 'anwesend' }, gaeste: 'x' });

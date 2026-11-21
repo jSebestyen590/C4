@@ -1,5 +1,5 @@
 import type { Node as PmNode, ResolvedPos } from '@tiptap/pm/model';
-import { TextSelection, type EditorState } from '@tiptap/pm/state';
+import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/react';
 import {
   BAUSTEIN_TYPEN,
@@ -26,10 +26,12 @@ const bausteinNamen: readonly string[] = BAUSTEIN_TYPEN;
  * (`von` = `bis` inserts, otherwise the range, an empty paragraph, is replaced).
  * - Most Bausteine are top level: after the block of the section the cursor is in (an empty paragraph is
  *   replaced); inside a Baustein's free text that means after that Baustein (no nesting).
- * - Abstimmung, Meinungsbild, Wahl and Thema may also go into the free text of another Baustein: at the
- *   cursor's block there (an empty paragraph is replaced, else after the block). A Thema goes into the
- *   innermost Baustein that can hold others (a Thema inside a Thema, at any depth); inside an Abstimmung,
- *   Meinungsbild or Wahl they go after that one (votes hold no Bausteine).
+ * - Abstimmung, Meinungsbild, Wahl, Todo, Thema and erscheint / geht may also go into the free text of another
+ *   Baustein: at the cursor's block there (an empty paragraph is replaced, else after the block). A Thema
+ *   goes into the innermost Baustein that can hold others (a Thema inside a Thema, at any depth); inside
+ *   an Abstimmung, Meinungsbild or Wahl they go after that one (votes hold no Bausteine).
+ * - From a list item in such notes (also for a quote, see `listenStelle`) the Baustein stands in the list
+ *   item instead of after the whole list, so the following items keep their level.
  */
 interface Entfernen {
   von: number;
@@ -38,11 +40,16 @@ interface Entfernen {
   ersatz?: boolean;
 }
 
-/** `von`..`bis` is replaced by the Baustein; `entfernen` (before `von`) is an empty list item to clean up. */
+/** `von`..`bis` is replaced by the Baustein; `entfernen` (before or after `von`) is an empty list item to clean up. */
 export interface EinfuegeStelle {
   von: number;
   bis: number;
   entfernen?: Entfernen;
+  /**
+   * Position right behind the list item the block stands in: an empty item must follow there (the place
+   * to continue typing), one is added unless the next sibling already is an empty item.
+   */
+  punktDanach?: number;
 }
 
 export function einfuegeStelle(
@@ -80,6 +87,11 @@ export function einfuegeStelle(
     const ende = doc.content.size - 1;
     return { von: ende, bis: ende };
   }
+  // From a list item inside the notes of a Baustein: into the list item (not after the whole list).
+  if (!bild && $pos.node(container).type.name !== 'abschnitt') {
+    const imPunkt = listenStelle($pos, container);
+    if (imPunkt) return imPunkt;
+  }
   const blockDepth = container + 1;
   if ($pos.depth < blockDepth) return { von: $pos.pos, bis: $pos.pos };
   const block = $pos.node(blockDepth);
@@ -102,6 +114,99 @@ export function einfuegeStelle(
 }
 
 const LISTEN = ['bulletList', 'orderedList'];
+
+/**
+ * Where a block (Baustein or quote) goes when the cursor is in a paragraph that is a direct child of a list
+ * item, so it stands in the list and the following items keep their level. `container`: depth of the
+ * Baustein (or -1 for none) the list must belong to directly, else null (a vote between them).
+ * - The paragraph is not the item's first child, or the item has text / further children: right after
+ *   the paragraph, as a child of the same item (an empty later paragraph is replaced).
+ * - The item is empty and has no other children: it keeps its level as `listItem(empty paragraph, block)`
+ *   (shown without bullet), except the first item of a list directly in the notes: the block goes in front
+ *   of the list (replaces it when the item was its only one).
+ * Either way an empty item follows the block (`punktDanach`). Null: the cursor is not in such a paragraph.
+ */
+export function listenStelle($pos: ResolvedPos, container = -1): EinfuegeStelle | null {
+  const d = $pos.depth;
+  if (d < 2 || $pos.parent.type.name !== 'paragraph') return null;
+  const punkt = d - 1;
+  if ($pos.node(punkt).type.name !== 'listItem') return null;
+  // The outermost list of the chain list > item > list > item ...; what holds it must be the container.
+  let aussen = punkt - 1;
+  while (aussen > 1 && $pos.node(aussen - 1).type.name === 'listItem') aussen -= 2;
+  if (container !== -1 && aussen - 1 !== container) return null;
+
+  const absatz = $pos.parent;
+  const nach = $pos.after(d);
+  const item = $pos.node(punkt);
+  const punktDanach = $pos.after(punkt);
+  if ($pos.index(punkt) > 0) {
+    const leer = absatz.content.size === 0;
+    return leer
+      ? { von: $pos.before(d), bis: nach, punktDanach }
+      : { von: nach, bis: nach, punktDanach };
+  }
+  if (absatz.content.size > 0 || item.childCount > 1) return { von: nach, bis: nach, punktDanach };
+
+  const liste = $pos.node(punkt - 1);
+  const index = $pos.index(punkt - 1);
+  const itemVon = $pos.before(punkt);
+  // Not the first item, or the first of a nested list: the item stays at its level as
+  // `listItem(empty paragraph, block)`.
+  if (index > 0) return { von: nach, bis: nach, punktDanach };
+  if (punkt >= 2 && $pos.node(punkt - 2).type.name === 'listItem') {
+    return { von: nach, bis: nach, punktDanach };
+  }
+  if (liste.childCount === 1) return { von: $pos.before(punkt - 1), bis: $pos.after(punkt - 1) };
+  return {
+    von: $pos.before(punkt - 1),
+    bis: $pos.before(punkt - 1),
+    entfernen: { von: itemVon, bis: $pos.after(punkt) },
+  };
+}
+
+/** Where a quote goes at `position`: see `listenStelle`; null when the cursor is not in a list item. */
+export function zitatStelle(doc: PmNode, position: number): EinfuegeStelle | null {
+  return listenStelle(doc.resolve(Math.min(position, doc.content.size)));
+}
+
+/**
+ * Replaces `stelle.von..bis` by `knoten` and removes `stelle.entfernen` (a range that can lie before or
+ * after it; an `ersatz` one is replaced by `absatz`). Returns the position of the inserted node.
+ */
+export function stelleAnwenden(
+  tr: Transaction,
+  stelle: EinfuegeStelle,
+  knoten: PmNode,
+  absatz: PmNode,
+): number {
+  const start = tr.steps.length;
+  tr.replaceWith(stelle.von, stelle.bis, knoten);
+  const e = stelle.entfernen;
+  if (e) {
+    const m = tr.mapping.slice(start);
+    const von = m.map(e.von, 1);
+    const bis = m.map(e.bis, -1);
+    if (e.ersatz) tr.replaceWith(von, bis, absatz);
+    else tr.delete(von, bis);
+  }
+  const pos = tr.mapping.slice(start).map(stelle.von, -1);
+  if (stelle.punktDanach !== undefined) {
+    // A place to continue: an empty list item right behind the one holding the block.
+    const danach = tr.mapping.slice(start).map(stelle.punktDanach, 1);
+    const naechster = tr.doc.resolve(danach).nodeAfter;
+    const leer =
+      naechster?.type.name === 'listItem' &&
+      naechster.childCount === 1 &&
+      naechster.firstChild!.type.name === 'paragraph' &&
+      naechster.firstChild!.content.size === 0;
+    if (!leer) {
+      const { listItem } = tr.doc.type.schema.nodes;
+      tr.insert(danach, listItem!.create(null, absatz));
+    }
+  }
+  return pos;
+}
 
 /**
  * The empty last list item the cursor is in, with what to remove: the item, or its (nested) list if it
@@ -174,12 +279,6 @@ export function slashErlaubt($pos: ResolvedPos): boolean {
   return aussen === 'abschnitt' || bausteinNamen.includes(aussen);
 }
 
-/** Whether the cursor is in a list (the quote entry is not offered there). */
-export function imListenpunkt(state: EditorState): boolean {
-  const { $from } = state.selection;
-  return $from.depth >= 2 && $from.node($from.depth - 1).type.name === 'listItem';
-}
-
 /** Whether the cursor is inside an Abstimmung or Meinungsbild (where neither of them can be inserted). */
 export function imVerschachtelbaren(state: EditorState): boolean {
   const { $from } = state.selection;
@@ -211,22 +310,16 @@ export function bausteinEinfuegen(
   const tr = state.tr;
   if (loeschen) tr.delete(loeschen.from, loeschen.to);
 
-  const { von, bis, entfernen } = einfuegeStelle(tr.doc, tr.selection.from, wahl.typ);
+  const stelle = einfuegeStelle(tr.doc, tr.selection.from, wahl.typ);
   const json: ProtokollKnoten = bausteinNeu(wahl.typ, wahl.daten);
   const knoten = state.schema.nodeFromJSON(json);
-  tr.replaceWith(von, bis, knoten);
-  // Before the insertion point, so the positions above stay valid.
-  if (entfernen?.ersatz) {
-    tr.replaceWith(entfernen.von, entfernen.bis, state.schema.nodes.paragraph!.create());
-  } else if (entfernen) {
-    tr.delete(entfernen.von, entfernen.bis);
-  }
+  const eingefuegt = stelleAnwenden(tr, stelle, knoten, state.schema.nodes.paragraph!.create());
   view.dispatch(tr.scrollIntoView());
 
   // The inserted node can have moved if the trailing-paragraph rule added nodes before it; find it by id
   // (also inside other Bausteine).
   const id = (json.attrs as { id: string }).id;
-  let pos = von;
+  let pos = eingefuegt;
   let gefunden = false;
   editor.state.doc.descendants((n, p) => {
     if (gefunden) return false;
@@ -254,6 +347,17 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
       if (!knoten) return;
       const ende = Math.min(pos + knoten.nodeSize, editor.state.doc.content.size);
       const tr = editor.state.tr;
+      // In a list item: the next item (an empty one follows every block inserted from a list).
+      const $ende = tr.doc.resolve(ende);
+      if ($ende.parent.type.name === 'listItem') {
+        const hinter = $ende.after();
+        if (tr.doc.resolve(hinter).nodeAfter?.type.name === 'listItem') {
+          tr.setSelection(TextSelection.near(tr.doc.resolve(hinter + 1)));
+          editor.view.dispatch(tr.scrollIntoView());
+          editor.view.focus();
+          return;
+        }
+      }
       // Behind the block: its next paragraph, or a new one if something else follows.
       if (!tr.doc.resolve(ende).nodeAfter?.isTextblock) {
         tr.insert(ende, editor.state.schema.nodes.paragraph!.create());
@@ -287,11 +391,62 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
 /**
  * Turns the paragraph at the cursor into a quote (after deleting `loeschen`, e.g. the typed "/query") and
  * keeps the cursor inside it. Unlike Bausteine this works wherever the cursor is, also in a Baustein's
- * free text. Already inside a quote: only deletes the query. One transaction = one undo step.
+ * free text and in list items. Already inside a quote: only deletes the query. One transaction = one undo step.
  */
 export function zitatEinfuegen(editor: Editor, loeschen?: TextBereich): void {
+  // In a list item the quote becomes a child of the list (see `listenStelle`), not a quote around the item's text.
+  const { state, view } = editor;
+  const tr = state.tr;
+  if (loeschen) tr.delete(loeschen.from, loeschen.to);
+  const stelle = zitatStelle(tr.doc, tr.selection.from);
+  if (stelle) {
+    const { blockquote, paragraph } = state.schema.nodes;
+    const pos = stelleAnwenden(
+      tr,
+      stelle,
+      blockquote!.create(null, paragraph!.create()),
+      paragraph!.create(),
+    );
+    tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 2)));
+    view.dispatch(tr.scrollIntoView());
+    view.focus();
+    return;
+  }
   const kette = editor.chain().focus();
   if (loeschen) kette.deleteRange(loeschen);
   if (!editor.isActive('blockquote')) kette.setParagraph().wrapIn('blockquote');
   kette.scrollIntoView().run();
+}
+
+/**
+ * Enter on the empty last paragraph of a quote that stands in a list item: the paragraph goes and the cursor
+ * continues in a sibling item behind the item holding the quote (the next one when it is empty, else a new
+ * one), so the level stays. Null: not that situation (the default Enter applies).
+ */
+export function zitatInPunktVerlassen(state: EditorState): Transaction | null {
+  const { $from, empty } = state.selection;
+  const d = $from.depth;
+  if (!empty || d < 3 || $from.parent.type.name !== 'paragraph' || $from.parent.content.size > 0) {
+    return null;
+  }
+  const zitat = $from.node(d - 1);
+  if (zitat.type.name !== 'blockquote' || $from.node(d - 2).type.name !== 'listItem') return null;
+  if ($from.index(d - 1) !== zitat.childCount - 1) return null;
+  const punktEnde = $from.after(d - 2);
+  const tr = state.tr;
+  // The empty paragraph goes; a quote that consisted only of it goes as well.
+  if (zitat.childCount === 1) tr.delete($from.before(d - 1), $from.after(d - 1));
+  else tr.delete($from.before(d), $from.after(d));
+  const danach = tr.mapping.map(punktEnde);
+  const naechster = tr.doc.resolve(danach).nodeAfter;
+  const leer =
+    naechster?.type.name === 'listItem' &&
+    naechster.childCount === 1 &&
+    naechster.firstChild!.content.size === 0;
+  if (!leer) {
+    const { listItem, paragraph } = state.schema.nodes;
+    tr.insert(danach, listItem!.create(null, paragraph!.create()));
+  }
+  tr.setSelection(TextSelection.near(tr.doc.resolve(danach + 2)));
+  return tr.scrollIntoView();
 }

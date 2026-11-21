@@ -49,12 +49,14 @@ import {
 } from './BausteinFormulare';
 import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
 import { BildKnoten } from './BildKnoten';
+import { fokusSetzen } from './einfuegen';
+import { istLetztesFeld } from './tabFolge';
 
 /** Text content allowed in the free text of every Baustein. */
 const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote | bild';
 /**
- * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl (group
- * `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
+ * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl and
+ * erscheint / geht (group `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
  * only, so Bausteine nest only through Themen. The Todo (group `notizbaustein`, no `block`) stands only here,
  * never at the top level of a section.
  */
@@ -105,7 +107,19 @@ function BausteinAnsicht<T extends BausteinTyp>({
     >
       <Paper withBorder p="sm" radius="md" shadow={props.selected ? 'sm' : undefined}>
         <Stack gap="xs">
-          <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
+          <div
+            contentEditable={false}
+            {...{ [FORMULAR_ATTRIBUT]: '' }}
+            onKeyDown={(e) => {
+              // Tab on the last field of the form continues in the Notizen of this Baustein.
+              if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+              if (!editierbar || !istLetztesFeld(e.currentTarget, e.target as Element)) return;
+              const pos = getPos();
+              if (pos === undefined) return;
+              e.preventDefault();
+              fokusSetzen(editor, pos, 'text');
+            }}
+          >
             <Stack gap="xs">
               <Group justify="space-between" wrap="nowrap" gap="xs">
                 <Group gap="xs" wrap="nowrap" c="dimmed">
@@ -121,6 +135,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
                       color="red"
                       size={42}
                       className="protokoll-nicht-drucken"
+                      tabIndex={-1}
                       aria-label={`${BAUSTEIN_TITEL[typ]} entfernen`}
                       onClick={() => setLoeschen(true)}
                     >
@@ -191,9 +206,11 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
       ? 'notizbaustein'
       : istBausteinInNotizen(typ)
         ? 'block innerbaustein'
-        : istThema(typ)
-          ? 'thema'
-          : 'block',
+        : typ === 'bausteinAnwesenheit'
+          ? 'block innerbaustein'
+          : istThema(typ)
+            ? 'thema'
+            : 'block',
     ...(ohneText
       ? { atom: true }
       : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),

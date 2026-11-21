@@ -10,6 +10,7 @@ import {
 import {
   bausteinErzeugen,
   bausteinLeer,
+  protokollDokumentPruefen,
   protokollLeer,
   type BausteinDatenVon,
   type BausteinTyp,
@@ -629,6 +630,21 @@ describe('Todo', () => {
       },
     });
     expect(a!.plan).toMatchObject({ todo: { subs: ['a', 'b'] } });
+  });
+
+  it('finds a Todo that stands in a list item of the notes of another Baustein', () => {
+    const b = baustein('bausteinTodo', { ...daten, zustaendig: [...daten.zustaendig] }, notizen);
+    const id = (b.attrs as { id: string }).id;
+    const liste: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }, b] }],
+    };
+    const ereignis = baustein('bausteinThema', {}, [liste]);
+    const dokument = dok(ereignis);
+    expect(protokollDokumentPruefen(dokument)).toBeNull();
+    const aktionen = protokollAktionen(dokument, kontext({ personen, protokollId: 'p1' }));
+    expect(aktionen.map((a) => a.id)).toEqual([`${id}:todo.anlegen`]);
+    expect(bausteinIdsInReihenfolge(dokument)).toContain(id);
   });
 
   it('uses the singular for one person', () => {

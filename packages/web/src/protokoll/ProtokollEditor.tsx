@@ -29,6 +29,7 @@ import { ProtokollKontext } from './kontext';
 import {
   absatzAmEndeEinfuegen,
   AbschnittKnoten,
+  ListenPunkt,
   ProtokollAbsicherung,
   ProtokollDokumentKnoten,
 } from './schema';
@@ -187,6 +188,8 @@ export function ProtokollEditor({
         heading: { levels: [2, 3] },
         // Replaced by the Blockquote below (quotes hold paragraphs only).
         blockquote: false,
+        // Replaced by `ListenPunkt` (a Baustein may stand in a list item).
+        listItem: false,
         // Not part of the minutes (and `trailingNode` would append a paragraph after the last section).
         code: false,
         codeBlock: false,
@@ -198,6 +201,7 @@ export function ProtokollEditor({
       }),
       // Quotes hold plain paragraphs only (the default `block+` would let Bausteine nest inside).
       Blockquote.extend({ content: 'paragraph+' }),
+      ListenPunkt,
       Link.configure({
         openOnClick: 'whenNotEditable',
         autolink: true,

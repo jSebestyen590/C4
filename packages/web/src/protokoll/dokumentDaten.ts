@@ -552,10 +552,49 @@ export function istLeererAbsatz(k: ProtokollKnoten): boolean {
   );
 }
 
-/** The nodes without trailing empty paragraphs. */
+/** A bullet / ordered list whose items hold nothing but empty paragraphs (e.g. the initial empty bullet). */
+export function istLeereListe(k: ProtokollKnoten): boolean {
+  return (
+    (k.type === 'bulletList' || k.type === 'orderedList') &&
+    (k.content ?? []).every((item) =>
+      (item.content ?? []).every((c) => istLeererAbsatz(c) || istLeereListe(c)),
+    )
+  );
+}
+
+/** A list item of empty paragraphs only (no text, no sub list, no Baustein): never shown as a bullet. */
+export function istLeererPunkt(k: ProtokollKnoten): boolean {
+  const kinder = k.content ?? [];
+  return k.type === 'listItem' && kinder.every(istLeererAbsatz);
+}
+
+/**
+ * A list item that only carries a block: an empty first paragraph, then a Baustein or quote (a block
+ * inserted into the first item of a nested list). Shown without bullet and without the empty line.
+ */
+export function istBlockPunkt(k: ProtokollKnoten): boolean {
+  const [erstes, zweites] = k.content ?? [];
+  return (
+    k.type === 'listItem' &&
+    !!erstes &&
+    istLeererAbsatz(erstes) &&
+    !!zweites &&
+    zweites.type !== 'paragraph' &&
+    zweites.type !== 'bulletList' &&
+    zweites.type !== 'orderedList'
+  );
+}
+
+const istLeer = (k: ProtokollKnoten): boolean => istLeererAbsatz(k) || istLeereListe(k);
+
+/**
+ * The nodes without trailing empty paragraphs / empty lists and without leading empty lists (the empty
+ * bullet a Baustein starts with). Leading empty paragraphs stay.
+ */
 export function ohneLeereEnden(knoten: readonly ProtokollKnoten[] | undefined): ProtokollKnoten[] {
   const liste = [...(knoten ?? [])];
-  while (liste.length > 0 && istLeererAbsatz(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeer(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeereListe(liste[0]!)) liste.shift();
   return liste;
 }
 
