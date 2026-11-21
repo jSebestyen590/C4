@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { OneDriveStatusDto } from '@c4/shared';
 import type { Benachrichtigungen } from './benachrichtigungen';
 import type { Db } from './db/client';
+import type { SecretStore } from './secrets';
 import { bilderFreigaben, bilderOrdnerCache, onedriveVerbindung } from './db/schema';
 
 // Access to the club's OneDrive photo folders through Microsoft Graph (delegated, personal account,
@@ -126,26 +127,62 @@ export interface VerbindungRow {
 }
 
 export interface OneDriveStore {
-  lesen(): Promise<VerbindungRow | null>;
+  /** `frisch` bypasses caches (used before the refresh token is rotated). */
+  lesen(frisch?: boolean): Promise<VerbindungRow | null>;
   /** Upsert of the given columns of the single row. */
   speichern(daten: Partial<VerbindungRow>): Promise<void>;
 }
 
-export function createOneDriveStore(db: Db): OneDriveStore {
+/** What lives in the Secrets Manager secret `c4-<env>-onedrive`; the rest of the connection is in the DB. */
+interface OneDriveGeheimnis {
+  clientSecret?: string | null;
+  refreshToken?: string | null;
+  accessToken?: string | null;
+  /** ISO timestamp. */
+  accessAblauf?: string | null;
+}
+
+const GEHEIMNIS_FELDER = ['clientSecret', 'refreshToken', 'accessToken', 'accessAblauf'] as const;
+
+export function createOneDriveStore(db: Db, secrets: SecretStore): OneDriveStore {
   return {
-    async lesen() {
+    async lesen(frisch = false) {
       const [row] = await db
         .select()
         .from(onedriveVerbindung)
         .where(eq(onedriveVerbindung.id, VERBINDUNG_ID));
       if (!row) return null;
-      return row;
+      const g = (await secrets.get<OneDriveGeheimnis>('onedrive', frisch)) ?? {};
+      return {
+        clientId: row.clientId,
+        basisPfad: row.basisPfad,
+        konto: row.konto,
+        verbundenVon: row.verbundenVon,
+        verbundenAm: row.verbundenAm,
+        fehler: row.fehler,
+        tokenErneuertAm: row.tokenErneuertAm,
+        clientSecret: g.clientSecret ?? null,
+        refreshToken: g.refreshToken ?? null,
+        accessToken: g.accessToken ?? null,
+        accessAblauf: g.accessAblauf ? new Date(g.accessAblauf) : null,
+      };
     },
     async speichern(daten) {
+      const dbDaten: Partial<VerbindungRow> = { ...daten };
+      for (const f of GEHEIMNIS_FELDER) delete dbDaten[f];
+      const geaendert = GEHEIMNIS_FELDER.filter((f) => f in daten);
+      if (geaendert.length > 0) {
+        const g = (await secrets.get<OneDriveGeheimnis>('onedrive', true)) ?? {};
+        for (const f of geaendert) {
+          const v = daten[f];
+          (g as Record<string, unknown>)[f] = v instanceof Date ? v.toISOString() : (v ?? null);
+        }
+        await secrets.put('onedrive', g);
+      }
       await db
         .insert(onedriveVerbindung)
-        .values({ id: VERBINDUNG_ID, ...daten })
-        .onConflictDoUpdate({ target: onedriveVerbindung.id, set: daten });
+        .values({ id: VERBINDUNG_ID, ...dbDaten })
+        .onConflictDoUpdate({ target: onedriveVerbindung.id, set: dbDaten });
     },
   };
 }
@@ -362,7 +399,9 @@ export function createOneDrive(deps: OneDriveDeps): OneDrive {
     };
   };
 
-  const erneuernAusfuehren = async (row: VerbindungRow): Promise<string> => {
+  const erneuernAusfuehren = async (gelesen: VerbindungRow): Promise<string> => {
+    // Another instance may have rotated the refresh token since `gelesen` was cached: re-read.
+    const row = (await store.lesen(true)) ?? gelesen;
     if (!row.refreshToken) throw new NichtVerbunden();
     const jetztWert = jetzt();
     const erg = await tokenAnfrage(row, {
