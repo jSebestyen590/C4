@@ -223,10 +223,11 @@ export function BelegPostenTabelle({
         <Table verticalSpacing={4} horizontalSpacing={4} style={{ tableLayout: 'fixed' }}>
           <Table.Thead>
             <Table.Tr>
-              {spalten.map((s) => (
+              {spalten.map((s, i) => (
                 <Table.Th
                   key={s.name}
-                  w={s.breite}
+                  // The first column has no width: it takes what is left, so the trailing delete column stays 44px.
+                  w={i === 0 ? undefined : s.breite}
                   style={s.rechts ? { textAlign: 'right' } : undefined}
                 >
                   {s.hilfe ? (
