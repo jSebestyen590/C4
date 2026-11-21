@@ -51,8 +51,9 @@ export function RequireUsername({ children }: Readonly<{ children: ReactNode }>)
     },
   });
   // Pages query ['me'] themselves; mounting them for an errored query would refetch it, flip it
-  // back to pending, unmount them here and loop endlessly. So stop at the error.
-  if (me.isError || mitglied.isError)
+  // back to pending, unmount them here and loop endlessly. So stop at the error, but only without
+  // cached data: a failed background refetch keeps the app rendered.
+  if ((me.isError && me.data === undefined) || (mitglied.isError && mitglied.data === undefined))
     return (
       <Alert color="red" title="Verbindung fehlgeschlagen" m="md">
         <Stack gap="sm" align="flex-start">

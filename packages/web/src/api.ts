@@ -1,6 +1,7 @@
 import { hc } from 'hono/client';
 import type { AppType } from '@c4/api';
 import { useAuth } from './auth';
+import { fetchMitWiederholung } from './fetchWiederholen';
 import { ApiFehler } from './warenApi';
 
 /** Typed API client; the Authorization header is read lazily so it always carries the current token. */
@@ -9,7 +10,7 @@ export function useApi() {
   return hc<AppType>('/', {
     // On 401 (token expired between renewals) renew once and retry.
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      const res = await fetch(input, init);
+      const res = await fetchMitWiederholung(input, init);
       // An admin may deactivate the account mid-session; show the lock page instead of errors.
       if (res.status === 403) {
         const body = (await res
@@ -23,7 +24,7 @@ export function useApi() {
       if (!token) return res;
       const headers = new Headers(init?.headers);
       headers.set('authorization', `Bearer ${token}`);
-      return fetch(input, { ...init, headers });
+      return fetchMitWiederholung(input, { ...init, headers });
     },
     headers: () => {
       const token = getAccessToken();
