@@ -1,0 +1,2 @@
+-- Default tax rate of a Konto as Art (regel | ermaessigt | keine; null = none); the number follows from the Beleg date. The old column steuersatz_standard stays but is no longer read or written.
+ALTER TABLE fin_konten ADD COLUMN IF NOT EXISTS steuersatz_art text

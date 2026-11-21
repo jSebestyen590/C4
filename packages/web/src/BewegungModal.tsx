@@ -136,7 +136,7 @@ export function BewegungModal({
           onChange={setAnzahl}
           data-autofocus
         />
-        <Group grow align="flex-start" wrap="wrap">
+        <Group grow align="flex-end" wrap="wrap">
           <Select
             label="Grund"
             allowDeselect={false}

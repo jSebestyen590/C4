@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
 import {
   AUSLAGEN_KONTO_ID,
+  PFAND_KONTO_ID,
   BELEG_BETRAG_WARNUNG_CENT,
   belegBerechnen,
   belegBuchungstext,
@@ -9,6 +10,9 @@ import {
   belegEntwurfDatenSchema,
   belegNummer,
   belegPruefen,
+  gebindeBezeichnung,
+  pfandGesamtCent,
+  warengruppeKategorie,
   erstattungBuchungstext,
   erstattungBuchungszeilen,
   formatEuro,
@@ -19,12 +23,18 @@ import {
   type AuslageBelegEintrag,
   type AuslageMitgliedEintrag,
   type BelegBuchen,
+  type BelegDatei,
   type BelegDateiInfo,
+  type EinreichungDto,
+  einreichungStatus,
   type BelegDetailEintrag,
   type BelegEntwurfDaten,
   type BelegEntwurfEintrag,
   type BelegeAbfrage,
   type BelegGebuchtDto,
+  type BelegWareDto,
+  type WarengruppeKategorieDto,
+  type Gebinde,
   type BelegListeEintrag,
   type BelegStatus,
   type BelegWarnungDto,
@@ -35,18 +45,45 @@ import {
   type KontoArt,
   type PruefKonto,
   type RechnungsstellerDto,
+  istEigenbeleg,
+  postenBetrag,
+  postenZeilenLabel,
+  type BelegPostenArt,
+  belegdatumAlt,
+  datumAnzeigen,
+  einzelpreisAusGesamt,
+  heuteBerlin,
+  steuersatzArtVon,
+  steuersatzZeitraumAm,
+  zeitraumEnde,
+  type SteuersatzArt,
+  type SteuersatzZeitraumDto,
+  type SteuersatzZeitraumEingabe,
+  artikelListeBilden,
+  artikelNameNorm,
+  artikelVorschlaegeBilden,
+  type ArtikelDto,
+  type ArtikelKategorieVorschlaege,
 } from '@c4/shared';
 import type { Db } from './db/client';
 import {
   finBelege,
   finBelegEntwuerfe,
   finBelegKorrekturen,
+  finArtikel,
   finBelegposten,
+  finKassenabrechnungen,
+  finSteuersatzZeitraeume,
+  wareAliase,
   finBuchungen,
   finErstattungBelege,
   finErstattungen,
   finKonten,
   finRechnungssteller,
+  gebinde,
+  wareGebinde,
+  waren,
+  warengruppen,
   finZaehler,
   type FinBelegRow,
   type FinKontoRow,
@@ -71,13 +108,54 @@ export class BelegWarnungenOffen extends Error {
 }
 
 /** Date (`YYYY-MM-DD`) of an instant in Berlin. */
-export const datumBerlin = (jetzt: Date): string =>
-  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(jetzt);
+export const datumBerlin = (jetzt: Date): string => heuteBerlin(jetzt);
+
+/** What `einreichungWarePosten` needs to know about a Ware. */
+export interface EinreichungWare {
+  archiviert: boolean;
+  /** Ids of the non-archived Gebinde of the Ware. */
+  gebindeIds: string[];
+  /** Kategorie suggested by the Warengruppe (inherited); null without an assignment. */
+  kategorieId: string | null;
+}
+
+/**
+ * Checks the Ware items a member submits (Ware exists and is not archived, Gebinde belongs to it)
+ * and fills their Kategorie from the Warengruppe; without an assignment it stays empty and
+ * `belegPruefen` flags it when booking.
+ */
+export function einreichungWarePosten(
+  daten: BelegEntwurfDaten,
+  ware: (id: string) => EinreichungWare | undefined,
+): { daten: BelegEntwurfDaten; fehler: string[] } {
+  const fehler: string[] = [];
+  let wareZeile = 0;
+  const posten = daten.posten.map((p) => {
+    if (p.art !== 'ware') return p;
+    const n = postenZeilenLabel('ware', ++wareZeile);
+    const w = p.wareId ? ware(p.wareId) : undefined;
+    if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
+    else if (w.archiviert) fehler.push(`${n}: Die Ware ist archiviert.`);
+    else if (!p.gebindeId || !w.gebindeIds.includes(p.gebindeId))
+      fehler.push(`${n}: Dieses Gebinde gehört nicht zur Ware.`);
+    return { ...p, kategorieId: p.kategorieId ?? w?.kategorieId ?? null };
+  });
+  return { daten: { ...daten, posten }, fehler };
+}
 
 type Q = Pick<Db, 'select'>;
 
 export interface BelegKonto extends PruefKonto {
   art: KontoArt;
+}
+
+/** A Ware as the planning of Ware items sees it. */
+export interface BelegWare {
+  id: string;
+  name: string;
+  archiviert: boolean;
+  /** Gebinde of the Ware; `archiviert` ones cannot be booked on. */
+  gebinde: readonly { id: string; archiviert: boolean }[];
 }
 
 export interface RechnungsstellerKurz {
@@ -91,18 +169,33 @@ export interface BelegPlanKontext {
   konten: readonly BelegKonto[];
   bestand: readonly BestandKonto[];
   rechnungssteller: RechnungsstellerKurz | undefined;
+  /** The Waren of the Ware items of the draft. */
+  waren: readonly BelegWare[];
+  /** Tax rate periods and today (Berlin): the Belegdatum must not lie ahead, rates must be valid on it. */
+  zeitraeume: readonly { ab: string; regel: number; ermaessigt: number }[];
+  heute: string;
 }
 
 export interface BelegPlan {
   fehler: string[];
   /** Set when `fehler` is empty. */
-  buchung?: { zeilen: BelegZeile[]; summeCent: number; datum: string; rechnungssteller: string };
+  buchung?: {
+    zeilen: BelegZeile[];
+    summeCent: number;
+    datum: string;
+    rechnungssteller: string;
+    /** Text per item: the typed text, for Ware items the name of the Ware by default. */
+    postenTexte: string[];
+  };
 }
 
 /** Accounts the planning needs: the Kategorien of the items, the Fach and the Gegenkonto. */
 export const belegKontoIds = (daten: BelegEntwurfDaten): string[] => [
   ...new Set([
-    ...daten.posten.flatMap((p) => (p.kategorieId ? [p.kategorieId] : [])),
+    ...daten.posten.flatMap((p) => (p.art !== 'leergut' && p.kategorieId ? [p.kategorieId] : [])),
+    ...(daten.posten.some((p) => p.art === 'leergut' || (p.art === 'ware' && p.pfandCent))
+      ? [PFAND_KONTO_ID]
+      : []),
     ...(daten.fachId ? [daten.fachId] : []),
     'bank',
     AUSLAGEN_KONTO_ID,
@@ -111,26 +204,47 @@ export const belegKontoIds = (daten: BelegEntwurfDaten): string[] => [
 
 /** Validates a draft against the accounts and builds the journal lines of the Beleg. */
 export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext): BelegPlan {
-  const fehler = belegPruefen(daten).map((f) => f.meldung);
+  const fehler = belegPruefen(daten, { heute: kontext.heute, zeitraeume: kontext.zeitraeume }).map(
+    (f) => f.meldung,
+  );
   const steller = kontext.rechnungssteller;
   if (daten.rechnungsstellerId && !steller) fehler.push('Den Rechnungssteller gibt es nicht.');
   else if (steller?.archiviert)
     fehler.push(`Der Rechnungssteller „${steller.name}“ ist archiviert.`);
   const konten = new Map(kontext.konten.map((k) => [k.id, k]));
-  for (const id of new Set(daten.posten.flatMap((p) => (p.kategorieId ? [p.kategorieId] : [])))) {
+  for (const id of new Set(
+    daten.posten.flatMap((p) => (p.art !== 'leergut' && p.kategorieId ? [p.kategorieId] : [])),
+  )) {
     const k = konten.get(id);
     if (!k) fehler.push('Eine Kategorie gibt es nicht.');
     else if (k.art !== 'aufwand') fehler.push(`„${k.name}“ ist keine Aufwandskategorie.`);
   }
+  const waren = new Map(kontext.waren.map((w) => [w.id, w]));
+  let wareZeile = 0;
+  daten.posten.forEach((p) => {
+    if (p.art !== 'ware') return;
+    const n = postenZeilenLabel('ware', ++wareZeile);
+    if (!p.wareId || !p.gebindeId) return;
+    const w = waren.get(p.wareId);
+    const g = w?.gebinde.find((x) => x.id === p.gebindeId);
+    if (!w) fehler.push(`${n}: Die Ware gibt es nicht.`);
+    else if (w.archiviert) fehler.push(`${n}: Die Ware „${w.name}“ ist archiviert.`);
+    else if (!g) fehler.push(`${n}: Dieses Gebinde gehört nicht zur Ware „${w.name}“.`);
+    else if (g.archiviert) fehler.push(`${n}: Das Gebinde ist archiviert.`);
+  });
   if (daten.zahlweg === 'bar' && daten.fachId)
     fehler.push(...zaehlungKontoFehler(konten.get(daten.fachId)));
   if (fehler.length > 0 || !daten.zahlweg || !daten.belegdatum) return { fehler };
   const gegenKontoId =
     daten.zahlweg === 'bar' ? daten.fachId! : daten.zahlweg === 'bank' ? 'bank' : AUSLAGEN_KONTO_ID;
-  const posten = daten.posten.map((p) => ({ ...p, kategorieId: p.kategorieId! }));
   const rechnung = belegBerechnen(daten);
   const zeilen = belegBuchungszeilen(
-    { modus: daten.modus, posten, korrekturen: daten.korrekturen },
+    {
+      modus: daten.modus,
+      posten: daten.posten,
+      korrekturen: daten.korrekturen,
+      eigenbeleg: istEigenbeleg(daten),
+    },
     {
       kontoId: gegenKontoId,
       ...(daten.zahlweg === 'bar' && { stueckelung: daten.stueckelung }),
@@ -148,6 +262,9 @@ export function planeBeleg(daten: BelegEntwurfDaten, kontext: BelegPlanKontext):
       summeCent: rechnung.summe,
       datum: daten.zahlweg === 'auslage' ? daten.belegdatum : daten.bezahldatum!,
       rechnungssteller: steller!.name,
+      postenTexte: daten.posten.map((p) =>
+        p.art === 'ware' ? (waren.get(p.wareId!)?.name ?? '') : p.text,
+      ),
     },
   };
 }
@@ -163,8 +280,14 @@ export function belegWarnungenBilden(p: {
 }): BelegWarnungDto[] {
   const w: BelegWarnungDto[] = [];
   const { belegdatum, bezahldatum } = p.daten;
-  if ((belegdatum && belegdatum > p.heute) || (bezahldatum && bezahldatum > p.heute))
-    w.push({ code: 'zukunft', text: 'Ein Datum liegt in der Zukunft.' });
+  // A Belegdatum in the future is an error (`belegPruefen`); only the Bezahldatum is warned about.
+  if (bezahldatum && bezahldatum > p.heute)
+    w.push({ code: 'zukunft', text: 'Das Bezahldatum liegt in der Zukunft.' });
+  if (belegdatum && belegdatum <= p.heute && belegdatumAlt(belegdatum, p.heute))
+    w.push({
+      code: 'belegdatum_alt',
+      text: `Das Belegdatum (${datumAnzeigen(belegdatum)}) liegt mehr als 2 Monate zurück.`,
+    });
   if (p.dateiDoppelt)
     w.push({
       code: 'datei_doppelt',
@@ -175,11 +298,31 @@ export function belegWarnungenBilden(p: {
       code: 'beleg_doppelt',
       text: 'Es gibt schon einen gebuchten Beleg desselben Rechnungsstellers mit gleichem Datum und gleicher Summe.',
     });
-  if (p.summeCent !== null && p.summeCent > BELEG_BETRAG_WARNUNG_CENT)
+  if (p.summeCent !== null && Math.abs(p.summeCent) > BELEG_BETRAG_WARNUNG_CENT)
     w.push({
       code: 'hoher_betrag',
       text: `Der Betrag ist hoch (${formatEuro(p.summeCent)}). Bitte prüfe ihn.`,
     });
+  const eingereicht = p.daten.eingereichtBetragCent;
+  if (eingereicht !== null && p.summeCent !== null && eingereicht !== p.summeCent)
+    w.push({
+      code: 'betrag_abweichung',
+      text: `Der eingereichte Betrag (${formatEuro(eingereicht)}) weicht von der Summe der Posten (${formatEuro(p.summeCent)}) ab.`,
+    });
+  const nummer: Record<BelegPostenArt, number> = { ware: 0, kategorie: 0, leergut: 0 };
+  const nullPreise: string[] = [];
+  for (const posten of p.daten.posten) {
+    const n = ++nummer[posten.art];
+    const gesamt = posten.art === 'leergut' ? null : (posten.gesamtCent ?? null);
+    if (posten.einzelpreisCent === 0 && (gesamt ?? 0) === 0) {
+      const label = postenZeilenLabel(posten.art, n);
+      const [tabelle, zeile] = label.split(', Zeile ');
+      const name = posten.art === 'ware' ? '' : posten.text.trim();
+      nullPreise.push(`${tabelle} ${zeile ?? n}${name ? ` (${name})` : ''}`);
+    }
+  }
+  if (nullPreise.length > 0)
+    w.push({ code: 'preis_null', text: `Posten mit Preis 0: ${nullPreise.join(', ')}.` });
   p.saldo.forEach((text, i) => w.push({ code: `saldo:${i}`, text }));
   return w;
 }
@@ -209,7 +352,8 @@ export function planeErstattung(
     ...(eingabe.zahlweg === 'bar' && { stueckelung: eingabe.stueckelung }),
   });
   if (fehler.length === 0) {
-    if (summeCent <= 0) fehler.push('Die Summe der Erstattung muss größer als 0 sein.');
+    // A negative sum is allowed: the member pays money in (Fach: positive Stückelung; Bank: incoming).
+    if (summeCent === 0) fehler.push('Die Summe der Erstattung darf nicht 0 sein.');
     if (eingabe.zahlweg === 'bar') {
       const fach = kontext.konten.find((k) => k.id === zielId);
       fehler.push(...zaehlungKontoFehler(fach));
@@ -223,11 +367,28 @@ export function planeErstattung(
     fehler,
     zeilen,
     summeCent,
-    text: erstattungBuchungstext(kontext.mitgliedName, ids.length),
+    text: erstattungBuchungstext(kontext.mitgliedName, ids.length, summeCent),
   };
 }
 
 // ----- Store
+
+export type EinreichungAktion = 'ok' | 'fehlt' | 'nicht_eingereicht';
+
+/** An own submission: the DTO plus the file reference (the route adds the presigned URL). */
+export interface EinreichungEintrag extends EinreichungDto {
+  datei: BelegDatei | null;
+  posten: {
+    kategorieId: string | null;
+    text: string;
+    betragCent: number;
+    steuersatz: number;
+    /** Ware items only. */
+    wareId: string | null;
+    gebindeId: string | null;
+    anzahlMilli: number | null;
+  }[];
+}
 
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
 export interface BelegeStore {
@@ -248,6 +409,18 @@ export interface BelegeStore {
   /** False when the draft does not exist (e.g. already booked). */
   entwurfSpeichern(id: string, daten: BelegEntwurfDaten): Promise<boolean>;
   entwurfLoeschen(id: string): Promise<boolean>;
+  /** New draft submitted by a member (status `eingereicht`). */
+  einreichungAnlegen(daten: BelegEntwurfDaten, sub: string): Promise<string>;
+  /** Rejects a submitted draft with a reason; 'nicht_eingereicht' when it is in another state. */
+  entwurfVerwerfen(id: string, grund: string, sub: string): Promise<EinreichungAktion>;
+  /** Withdraws an own submission while it is `eingereicht`; 'fehlt' for foreign or missing ones. */
+  einreichungZurueckziehen(id: string, sub: string): Promise<EinreichungAktion>;
+  /** Own submissions (open drafts, rejected, booked), newest first. */
+  einreichungen(sub: string): Promise<EinreichungEintrag[]>;
+  /** One own submission by draft id or Beleg id; undefined when missing or foreign. */
+  einreichung(id: string, sub: string): Promise<EinreichungEintrag | undefined>;
+  /** Submitter and amount of the submitted ones among these Belege (for the Erstattung push). */
+  eingereichteBelege(belegIds: string[]): Promise<{ eingereichtVon: string; summeCent: number }[]>;
   /** The warnings before booking; undefined when the draft does not exist. */
   belegWarnungen(id: string): Promise<BelegWarnungDto[] | undefined>;
   /**
@@ -265,6 +438,30 @@ export interface BelegeStore {
   dateiGebucht(sha256: string): Promise<{ id: string; nummer: string } | null>;
   /** The open Auslagen per member. */
   auslagen(): Promise<AuslageMitgliedEintrag[]>;
+  /** All Warengruppen with their assigned and effective Kategorie. */
+  warengruppenKategorien(): Promise<WarengruppeKategorieDto[]>;
+  /**
+   * Assigns (or removes, `null`) the Kategorie of a Warengruppe. False when the group does not exist;
+   * throws BuchungUngueltig when the Konto is no active Aufwand Konto.
+   */
+  warengruppeKategorieSetzen(id: string, kategorieId: string | null): Promise<boolean>;
+  /** Non-archived Waren with their Gebinde, deposit and suggested Kategorie, for the Beleg form. */
+  belegWaren(): Promise<BelegWareDto[]>;
+  /** Artikel names of booked, not reversed Kategorie items with the Kategorien used for them. */
+  artikelVorschlaege(): Promise<ArtikelKategorieVorschlaege>;
+  /** All Artikel with their Kategorien, number of booked Posten and latest booking. */
+  artikel(): Promise<ArtikelDto[]>;
+  /** Sets the default tax rate (Art) of an Artikel; false when it does not exist. */
+  artikelSteuersatzArtSetzen(id: string, steuersatzArt: SteuersatzArt): Promise<boolean>;
+  /** The tax rate periods, oldest first, with whether each may be deleted. */
+  steuersatzZeitraeume(): Promise<SteuersatzZeitraumDto[]>;
+  /** Adds a period; throws BuchungUngueltig when one with the same `ab` exists. Returns the id. */
+  steuersatzZeitraumAnlegen(eingabe: SteuersatzZeitraumEingabe, sub: string): Promise<string>;
+  /**
+   * Deletes a period; false when it does not exist; throws BuchungUngueltig when a Beleg or a
+   * Kassenabrechnung dates into it, or when it is the only one.
+   */
+  steuersatzZeitraumLoeschen(id: string): Promise<boolean>;
   /** Books the Sammelerstattung; throws BuchungUngueltig, e.g. for a Beleg that is not open. */
   erstatten(
     eingabe: ErstattungEingabe,
@@ -310,6 +507,49 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       (await q.select().from(finRechnungssteller)).map((r) => [r.id, r.name] as [string, string]),
     );
 
+  const zeitraeumeLaden = async (q: Q) =>
+    (await q.select().from(finSteuersatzZeitraeume).orderBy(asc(finSteuersatzZeitraeume.ab))).map(
+      (z) => ({ id: z.id, ab: z.ab, regel: z.regel, ermaessigt: z.ermaessigt }),
+    );
+
+  /**
+   * Number of Belege and Kassenabrechnungen dated in a period, i.e. from its `ab` (open for the
+   * oldest, which also covers earlier dates) until the next period's `ab`. A draft is not booked yet
+   * and does not count.
+   */
+  const zeitraumBelegt = async (
+    q: Q,
+    zeitraeume: readonly { id: string; ab: string }[],
+    id: string,
+  ): Promise<number> => {
+    const z = zeitraeume.find((x) => x.id === id);
+    if (!z) return 0;
+    const von =
+      [...zeitraeume].sort((a, b) => a.ab.localeCompare(b.ab))[0]!.id === id ? null : z.ab;
+    const bis = zeitraumEnde(zeitraeume, z.ab);
+    const [belege, abrechnungen] = await Promise.all([
+      q
+        .select({ n: sql<number>`count(*)::int` })
+        .from(finBelege)
+        .where(
+          and(
+            von ? gte(finBelege.belegdatum, von) : undefined,
+            bis ? lt(finBelege.belegdatum, bis) : undefined,
+          ),
+        ),
+      q
+        .select({ n: sql<number>`count(*)::int` })
+        .from(finKassenabrechnungen)
+        .where(
+          and(
+            von ? gte(finKassenabrechnungen.datum, von) : undefined,
+            bis ? lt(finKassenabrechnungen.datum, bis) : undefined,
+          ),
+        ),
+    ]);
+    return (belege[0]?.n ?? 0) + (abrechnungen[0]?.n ?? 0);
+  };
+
   const planKontext = async (q: Q, daten: BelegEntwurfDaten): Promise<BelegPlanKontext> => {
     const { pruef, bestand, rows } = await kern.kontenMitBestand(q, belegKontoIds(daten));
     const art = new Map(rows.map((k) => [k.id, k.art]));
@@ -319,10 +559,37 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finRechnungssteller)
           .where(eq(finRechnungssteller.id, daten.rechnungsstellerId))
       : [];
+    const wareIds = [
+      ...new Set(daten.posten.flatMap((p) => (p.art === 'ware' && p.wareId ? [p.wareId] : []))),
+    ];
+    const wareRows = wareIds.length
+      ? await q.select().from(waren).where(inArray(waren.id, wareIds))
+      : [];
+    const verknuepft = wareIds.length
+      ? await q
+          .select({
+            wareId: wareGebinde.wareId,
+            gebindeId: wareGebinde.gebindeId,
+            archiviert: gebinde.archiviert,
+          })
+          .from(wareGebinde)
+          .innerJoin(gebinde, eq(gebinde.id, wareGebinde.gebindeId))
+          .where(inArray(wareGebinde.wareId, wareIds))
+      : [];
     return {
+      zeitraeume: await zeitraeumeLaden(q),
+      heute: datumBerlin(new Date()),
       konten: pruef.map((k) => ({ ...k, art: art.get(k.id)! })),
       bestand,
       rechnungssteller: steller,
+      waren: wareRows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        archiviert: w.archiviert,
+        gebinde: verknuepft
+          .filter((v) => v.wareId === w.id)
+          .map((v) => ({ id: v.gebindeId, archiviert: v.archiviert })),
+      })),
     };
   };
 
@@ -419,6 +686,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finBelegEntwuerfe)
           .where(eq(finBelegEntwuerfe.id, id));
         if (!entwurf) return undefined;
+        if (entwurf.status === 'verworfen')
+          throw new BuchungUngueltig(['Die Einreichung wurde verworfen.']);
         const daten = datenAusRow(entwurf.daten);
         const plan = planeBeleg(daten, await planKontext(tx, daten));
         if (!plan.buchung) throw new BuchungUngueltig(plan.fehler);
@@ -459,17 +728,33 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           idempotenzSchluessel: eingabe.idempotenzSchluessel,
           erstelltVon: sub,
           erstelltAm: jetzt,
+          // A submitted draft: keep who submitted it, when and which amount they stated.
+          eingereichtVon: entwurf.eingereichtVon,
+          eingereichtAm: entwurf.eingereichtAm,
+          eingereichtBetragCent: daten.eingereichtBetragCent,
         });
+        const rechnung = belegBerechnen(daten);
         await tx.insert(finBelegposten).values(
           daten.posten.map((p, i) => ({
             belegId,
             pos: i + 1,
-            kategorieId: p.kategorieId!,
-            text: p.text,
+            art: p.art,
+            kategorieId: p.art === 'leergut' ? PFAND_KONTO_ID : p.kategorieId!,
+            wareId: p.art === 'ware' ? p.wareId : null,
+            gebindeId: p.art === 'ware' ? p.gebindeId : null,
+            pfandCent: p.art === 'ware' ? p.pfandCent : null,
+            pfandBetragCent:
+              p.art === 'ware' && p.pfandCent !== null ? rechnung.pfandBetraege[i]! : null,
+            text: plan.buchung!.postenTexte[i]!,
             anzahlMilli: p.anzahlMilli,
-            einzelpreisCent: p.einzelpreisCent,
+            // A Gesamtpreis line stores the rounded unit price; the amount is the Gesamtpreis itself.
+            einzelpreisCent:
+              p.art !== 'leergut' && p.gesamtCent != null
+                ? einzelpreisAusGesamt(p.gesamtCent, p.anzahlMilli)
+                : p.einzelpreisCent,
+            gesamtCent: p.art !== 'leergut' ? (p.gesamtCent ?? null) : null,
             steuersatz: p.steuersatz,
-            betragCent: belegBerechnen(daten).postenBetraege[i]!,
+            betragCent: rechnung.postenBetraege[i]!,
           })),
         );
         const korrekturen = daten.korrekturen.filter(
@@ -477,7 +762,51 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         );
         if (korrekturen.length > 0)
           await tx.insert(finBelegKorrekturen).values(korrekturen.map((k) => ({ belegId, ...k })));
+        // Artikel names booked for the first time become Artikel with the tax rate of their item.
+        const neueArtikel = new Map<
+          string,
+          { name: string; steuersatz: number; art: SteuersatzArt | null }
+        >();
+        const zeitraum = steuersatzZeitraumAm(await zeitraeumeLaden(tx), daten.belegdatum!);
+        daten.posten.forEach((p, i) => {
+          const name = plan.buchung!.postenTexte[i]!.trim();
+          const schluessel = artikelNameNorm(name);
+          if (p.art === 'kategorie' && name !== '' && !neueArtikel.has(schluessel))
+            neueArtikel.set(schluessel, {
+              name,
+              steuersatz: p.steuersatz,
+              art: zeitraum ? steuersatzArtVon(p.steuersatz, zeitraum) : null,
+            });
+        });
+        if (neueArtikel.size > 0) {
+          const bekannt = new Set(
+            (
+              await tx
+                .select({ nameNorm: finArtikel.nameNorm })
+                .from(finArtikel)
+                .where(inArray(finArtikel.nameNorm, [...neueArtikel.keys()]))
+            ).map((a) => a.nameNorm),
+          );
+          const fehlend = [...neueArtikel].filter(([schluessel]) => !bekannt.has(schluessel));
+          if (fehlend.length > 0)
+            await tx
+              .insert(finArtikel)
+              .values(
+                fehlend.map(([nameNorm, a]) => ({
+                  id: randomUUID(),
+                  name: a.name,
+                  nameNorm,
+                  // Legacy NOT NULL column, never read; the default is the Art.
+                  steuersatz: a.steuersatz,
+                  steuersatzArt: a.art,
+                  erstelltAm: jetzt,
+                  erstelltVon: sub,
+                })),
+              )
+              .onConflictDoNothing();
+        }
         await tx.delete(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+        // The route sends the push `belege.status` (gebucht) to `eingereichtVon` after this returns.
         return { id: belegId, nummer, buchungId: gebucht.id, buchungSeq: gebucht.seq };
       }),
     );
@@ -485,6 +814,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
   const entwurfEintrag = (r: typeof finBelegEntwuerfe.$inferSelect): BelegEntwurfEintrag => ({
     id: r.id,
     daten: datenAusRow(r.daten),
+    status: r.status ?? 'entwurf',
+    eingereichtVon: r.eingereichtVon,
+    eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
+    verworfenGrund: r.verworfenGrund,
     erstelltVon: r.erstelltVon,
     erstelltAm: r.erstelltAm.toISOString(),
     geaendertAm: r.geaendertAm.toISOString(),
@@ -618,6 +951,125 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       }),
     );
 
+  const dateiAus = (r: {
+    dateiSha256: string | null;
+    dateiSchluessel: string | null;
+    dateiTyp: string | null;
+    dateiName: string | null;
+  }): BelegDatei | null =>
+    r.dateiSha256 && r.dateiSchluessel && r.dateiTyp && r.dateiName
+      ? ({
+          sha256: r.dateiSha256,
+          schluessel: r.dateiSchluessel,
+          typ: r.dateiTyp,
+          name: r.dateiName,
+        } as BelegDatei)
+      : null;
+
+  /** The own submissions: drafts still in the review plus the booked Belege that came from members. */
+  const einreichungenAus = async (sub: string, id?: string): Promise<EinreichungEintrag[]> => {
+    const namen = await stellerNamen(db);
+    const entwuerfe = await db
+      .select()
+      .from(finBelegEntwuerfe)
+      .where(
+        and(
+          eq(finBelegEntwuerfe.eingereichtVon, sub),
+          id ? eq(finBelegEntwuerfe.id, id) : undefined,
+        ),
+      );
+    const eintraege: EinreichungEintrag[] = entwuerfe.map((e) => {
+      const d = datenAusRow(e.daten);
+      return {
+        id: e.id,
+        status: einreichungStatus({ entwurfStatus: e.status ?? 'entwurf', beleg: null }),
+        belegdatum: d.belegdatum,
+        betragCent: d.eingereichtBetragCent,
+        rechnungssteller: d.rechnungsstellerId
+          ? (namen.get(d.rechnungsstellerId) ?? null)
+          : (d.rechnungsstellerName ?? null),
+        notiz: d.notiz,
+        verworfenGrund: e.verworfenGrund,
+        belegNummer: null,
+        eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
+        datei: d.datei,
+        posten: d.posten.map((p) => ({
+          kategorieId: 'kategorieId' in p ? (p.kategorieId ?? null) : null,
+          text: 'text' in p ? p.text : '',
+          betragCent: postenBetrag(p),
+          steuersatz: p.steuersatz,
+          wareId: p.art === 'ware' ? (p.wareId ?? null) : null,
+          gebindeId: p.art === 'ware' ? (p.gebindeId ?? null) : null,
+          anzahlMilli: p.art === 'ware' ? p.anzahlMilli : null,
+        })),
+      };
+    });
+    const belege = await db
+      .select()
+      .from(finBelege)
+      .where(and(eq(finBelege.eingereichtVon, sub), id ? eq(finBelege.id, id) : undefined));
+    if (belege.length > 0) {
+      const postenRows = await db
+        .select()
+        .from(finBelegposten)
+        .where(
+          inArray(
+            finBelegposten.belegId,
+            belege.map((b) => b.id),
+          ),
+        )
+        .orderBy(asc(finBelegposten.pos));
+      const links = await db
+        .select({
+          belegId: finErstattungBelege.belegId,
+          buchungId: finErstattungen.buchungId,
+        })
+        .from(finErstattungBelege)
+        .innerJoin(finErstattungen, eq(finErstattungen.id, finErstattungBelege.erstattungId))
+        .where(
+          inArray(
+            finErstattungBelege.belegId,
+            belege.map((b) => b.id),
+          ),
+        );
+      const storno = await stornierte(db, [
+        ...belege.map((b) => b.buchungId),
+        ...links.map((l) => l.buchungId),
+      ]);
+      for (const b of belege)
+        eintraege.push({
+          id: b.id,
+          status: einreichungStatus({
+            entwurfStatus: null,
+            beleg: {
+              storniert: storno.has(b.buchungId),
+              erstattet: links.some((l) => l.belegId === b.id && !storno.has(l.buchungId)),
+            },
+          }),
+          belegdatum: b.belegdatum,
+          betragCent: b.eingereichtBetragCent ?? b.summeCent,
+          rechnungssteller: namen.get(b.rechnungsstellerId) ?? null,
+          notiz: null,
+          verworfenGrund: null,
+          belegNummer: b.nummer,
+          eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
+          datei: dateiAus(b),
+          posten: postenRows
+            .filter((p) => p.belegId === b.id)
+            .map((p) => ({
+              kategorieId: p.kategorieId,
+              text: p.text,
+              betragCent: p.betragCent,
+              steuersatz: p.steuersatz,
+              wareId: p.art === 'ware' ? p.wareId : null,
+              gebindeId: p.art === 'ware' ? p.gebindeId : null,
+              anzahlMilli: p.art === 'ware' ? p.anzahlMilli : null,
+            })),
+        });
+    }
+    return eintraege.sort((a, b) => (b.eingereichtAm ?? '').localeCompare(a.eingereichtAm ?? ''));
+  };
+
   const store: BelegeStore = {
     async rechnungssteller(mitArchiv) {
       const [rows, zuletzt] = await Promise.all([
@@ -695,6 +1147,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .from(finBelegEntwuerfe)
           .orderBy(desc(finBelegEntwuerfe.geaendertAm));
         for (const e of entwuerfe) {
+          if (e.status === 'verworfen') continue;
           const d = datenAusRow(e.daten);
           const eintrag: BelegListeEintrag = {
             id: e.id,
@@ -704,12 +1157,17 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             rechnungssteller: d.rechnungsstellerId
               ? (namen.get(d.rechnungsstellerId) ?? null)
               : null,
+            rechnungsstellerName: d.rechnungsstellerName ?? null,
             belegdatum: d.belegdatum,
             summeCent: d.posten.length > 0 ? belegBerechnen(d).summe : null,
             zahlweg: d.zahlweg,
             mitgliedId: d.mitgliedId,
             hatDatei: d.datei !== null,
             erstelltAm: e.erstelltAm.toISOString(),
+            entwurfStatus: e.status === 'eingereicht' ? 'eingereicht' : 'entwurf',
+            eingereichtVon: e.eingereichtVon,
+            eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
+            eingereichtBetragCent: d.eingereichtBetragCent,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -731,12 +1189,17 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             nummer: r.nummer,
             rechnungsstellerId: r.rechnungsstellerId,
             rechnungssteller: namen.get(r.rechnungsstellerId) ?? null,
+            rechnungsstellerName: null,
             belegdatum: r.belegdatum,
             summeCent: r.summeCent,
             zahlweg: r.zahlweg,
             mitgliedId: r.mitgliedId,
             hatDatei: r.dateiSchluessel !== null,
             erstelltAm: r.erstelltAm.toISOString(),
+            entwurfStatus: null,
+            eingereichtVon: r.eingereichtVon,
+            eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
+            eingereichtBetragCent: r.eingereichtBetragCent,
           };
           return passt(eintrag) && (!abfrage.status || abfrage.status === status) ? [eintrag] : [];
         });
@@ -755,9 +1218,10 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       const b = row.beleg;
       const [posten, korrekturen, [buchung], erstattungen] = await Promise.all([
         db
-          .select({ p: finBelegposten, kategorie: finKonten.name })
+          .select({ p: finBelegposten, kategorie: finKonten.name, ware: waren.name })
           .from(finBelegposten)
           .innerJoin(finKonten, eq(finKonten.id, finBelegposten.kategorieId))
+          .leftJoin(waren, eq(waren.id, finBelegposten.wareId))
           .where(eq(finBelegposten.belegId, id))
           .orderBy(asc(finBelegposten.pos)),
         db.select().from(finBelegKorrekturen).where(eq(finBelegKorrekturen.belegId, id)),
@@ -778,6 +1242,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         modus: b.modus,
         posten: posten.map((x) => x.p),
         korrekturen,
+        eigenbeleg: !b.dateiSha256 && !!b.eigenbelegBegruendung,
       });
       return {
         id: b.id,
@@ -799,13 +1264,20 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
                 name: b.dateiName,
               }
             : null,
-        posten: posten.map(({ p, kategorie }) => ({
+        posten: posten.map(({ p, kategorie, ware }) => ({
           pos: p.pos,
+          art: p.art ?? 'kategorie',
           kategorieId: p.kategorieId,
           kategorieName: kategorie,
+          wareId: p.wareId,
+          wareName: ware,
+          gebindeId: p.gebindeId,
+          pfandCent: p.pfandCent,
+          pfandBetragCent: p.pfandBetragCent,
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
+          gesamtCent: p.gesamtCent,
           steuersatz: p.steuersatz,
           betragCent: p.betragCent,
         })),
@@ -825,6 +1297,9 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
               buchung: { id: aktiv.e.buchungId, seq: aktiv.seq },
             }
           : null,
+        eingereichtVon: b.eingereichtVon,
+        eingereichtAm: b.eingereichtAm?.toISOString() ?? null,
+        eingereichtBetragCent: b.eingereichtBetragCent,
         erstelltVon: b.erstelltVon,
         erstelltAm: b.erstelltAm.toISOString(),
       };
@@ -866,6 +1341,93 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       return rows.length > 0;
     },
 
+    async einreichungAnlegen(eingabe, sub) {
+      const [gruppen, wareRows, verknuepft, alleGebinde] = await Promise.all([
+        db.select().from(warengruppen),
+        db.select().from(waren),
+        db.select().from(wareGebinde),
+        db.select().from(gebinde),
+      ]);
+      const { daten, fehler } = einreichungWarePosten(eingabe, (wid) => {
+        const w = wareRows.find((x) => x.id === wid);
+        return w
+          ? {
+              archiviert: w.archiviert,
+              gebindeIds: verknuepft
+                .filter((v) => v.wareId === wid)
+                .map((v) => v.gebindeId)
+                .filter((gid) => !alleGebinde.find((g) => g.id === gid)?.archiviert),
+              kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+            }
+          : undefined;
+      });
+      if (fehler.length > 0) throw new BuchungUngueltig(fehler);
+      const id = randomUUID();
+      const jetzt = new Date();
+      await db.insert(finBelegEntwuerfe).values({
+        id,
+        daten: JSON.stringify(daten),
+        ...dateiSpalten(daten),
+        status: 'eingereicht',
+        eingereichtVon: sub,
+        eingereichtAm: jetzt,
+        erstelltVon: sub,
+        erstelltAm: jetzt,
+        geaendertAm: jetzt,
+      });
+      return id;
+    },
+
+    async entwurfVerwerfen(id, grund, sub) {
+      const [row] = await db.select().from(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+      if (!row) return 'fehlt';
+      const jetzt = new Date();
+      const rows = await db
+        .update(finBelegEntwuerfe)
+        .set({
+          status: 'verworfen',
+          verworfenGrund: grund,
+          verworfenVon: sub,
+          verworfenAm: jetzt,
+          geaendertAm: jetzt,
+        })
+        .where(and(eq(finBelegEntwuerfe.id, id), eq(finBelegEntwuerfe.status, 'eingereicht')))
+        .returning({ id: finBelegEntwuerfe.id });
+      return rows.length > 0 ? 'ok' : 'nicht_eingereicht';
+    },
+
+    async einreichungZurueckziehen(id, sub) {
+      const [row] = await db.select().from(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
+      if (!row || row.eingereichtVon !== sub) return 'fehlt';
+      const rows = await db
+        .delete(finBelegEntwuerfe)
+        .where(and(eq(finBelegEntwuerfe.id, id), eq(finBelegEntwuerfe.status, 'eingereicht')))
+        .returning({ id: finBelegEntwuerfe.id });
+      return rows.length > 0 ? 'ok' : 'nicht_eingereicht';
+    },
+
+    einreichungen: (sub) => einreichungenAus(sub),
+
+    async einreichung(id, sub) {
+      return (await einreichungenAus(sub, id))[0];
+    },
+
+    async eingereichteBelege(belegIds) {
+      if (belegIds.length === 0) return [];
+      const rows = await db
+        .select({
+          eingereichtVon: finBelege.eingereichtVon,
+          summeCent: finBelege.summeCent,
+          eingereichtBetragCent: finBelege.eingereichtBetragCent,
+        })
+        .from(finBelege)
+        .where(and(inArray(finBelege.id, belegIds), isNotNull(finBelege.eingereichtVon)));
+      return rows.map((r) => ({
+        eingereichtVon: r.eingereichtVon!,
+        summeCent: r.eingereichtBetragCent ?? r.summeCent,
+      }));
+    },
+
     async belegWarnungen(id) {
       const [row] = await db.select().from(finBelegEntwuerfe).where(eq(finBelegEntwuerfe.id, id));
       return row ? warnungenFuer(db, datenAusRow(row.daten)) : undefined;
@@ -892,10 +1454,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         belegdatum: detail.belegdatum,
         modus: detail.modus,
         posten: detail.posten.map((p) => ({
+          art: p.art,
           kategorieId: p.kategorieId,
+          wareId: p.wareId,
+          gebindeId: p.gebindeId,
+          pfandCent: p.pfandCent,
           text: p.text,
           anzahlMilli: p.anzahlMilli,
           einzelpreisCent: p.einzelpreisCent,
+          gesamtCent: p.gesamtCent,
           steuersatz: p.steuersatz,
         })),
         korrekturen: detail.korrekturen,
@@ -922,6 +1489,190 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
     },
 
     auslagen: () => auslageDaten(db),
+
+    async warengruppenKategorien() {
+      const rows = await db.select().from(warengruppen).orderBy(asc(warengruppen.name));
+      return rows.map((g) => ({
+        id: g.id,
+        name: g.name,
+        parentId: g.parentId,
+        archiviert: g.archiviert,
+        kategorieId: g.kategorieId,
+        wirksamKategorieId: warengruppeKategorie(rows, g.id),
+      }));
+    },
+
+    async warengruppeKategorieSetzen(id, kategorieId) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const [gruppe] = await tx.select().from(warengruppen).where(eq(warengruppen.id, id));
+          if (!gruppe) return false;
+          if (kategorieId) {
+            const [konto] = await tx.select().from(finKonten).where(eq(finKonten.id, kategorieId));
+            if (!konto) throw new BuchungUngueltig(['Die Kategorie gibt es nicht.']);
+            if (konto.art !== 'aufwand')
+              throw new BuchungUngueltig([`„${konto.name}“ ist keine Aufwandskategorie.`]);
+            if (konto.archiviert)
+              throw new BuchungUngueltig([`Die Kategorie „${konto.name}“ ist archiviert.`]);
+          }
+          await tx.update(warengruppen).set({ kategorieId }).where(eq(warengruppen.id, id));
+          return true;
+        }),
+      );
+    },
+
+    async artikelVorschlaege() {
+      const rows = await db
+        .select({
+          artikel: sql<string>`min(trim(${finBelegposten.text}))`,
+          kategorieId: finBelegposten.kategorieId,
+          anzahl: sql<number>`count(*)::int`,
+        })
+        .from(finBelegposten)
+        .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+        .where(
+          and(
+            eq(finBelegposten.art, 'kategorie'),
+            sql`trim(${finBelegposten.text}) <> ''`,
+            sql`not exists (select 1 from fin_buchungen s where s.storno_von = ${finBelege.buchungId})`,
+          ),
+        )
+        .groupBy(sql`lower(trim(${finBelegposten.text}))`, finBelegposten.kategorieId);
+      const artikel = await db.select().from(finArtikel);
+      return artikelVorschlaegeBilden(
+        rows,
+        new Map(artikel.map((a) => [a.nameNorm, a.steuersatzArt])),
+      );
+    },
+
+    async artikel() {
+      const [artikel, rows] = await Promise.all([
+        db.select().from(finArtikel),
+        db
+          .select({
+            artikel: sql<string>`min(trim(${finBelegposten.text}))`,
+            kategorieId: finBelegposten.kategorieId,
+            anzahl: sql<number>`count(*)::int`,
+            zuletztAm: sql<string | Date>`max(${finBelege.erstelltAm})`,
+          })
+          .from(finBelegposten)
+          .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+          .where(
+            and(
+              eq(finBelegposten.art, 'kategorie'),
+              sql`trim(${finBelegposten.text}) <> ''`,
+              sql`not exists (select 1 from fin_buchungen s where s.storno_von = ${finBelege.buchungId})`,
+            ),
+          )
+          .groupBy(sql`lower(trim(${finBelegposten.text}))`, finBelegposten.kategorieId),
+      ]);
+      return artikelListeBilden(
+        artikel,
+        rows.map((r) => ({
+          ...r,
+          zuletztAm: r.zuletztAm ? new Date(r.zuletztAm).toISOString() : null,
+        })),
+      );
+    },
+
+    async artikelSteuersatzArtSetzen(id, steuersatzArt) {
+      const rows = await db
+        .update(finArtikel)
+        .set({ steuersatzArt })
+        .where(eq(finArtikel.id, id))
+        .returning({ id: finArtikel.id });
+      return rows.length > 0;
+    },
+
+    async steuersatzZeitraeume() {
+      const zeitraeume = await zeitraeumeLaden(db);
+      return Promise.all(
+        zeitraeume.map(async (z) => ({
+          ...z,
+          loeschbar: zeitraeume.length > 1 && (await zeitraumBelegt(db, zeitraeume, z.id)) === 0,
+        })),
+      );
+    },
+
+    async steuersatzZeitraumAnlegen(eingabe, sub) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const vorhanden = await tx
+            .select({ id: finSteuersatzZeitraeume.id })
+            .from(finSteuersatzZeitraeume)
+            .where(eq(finSteuersatzZeitraeume.ab, eingabe.ab));
+          if (vorhanden.length > 0)
+            throw new BuchungUngueltig([
+              `Es gibt schon einen Zeitraum ab ${datumAnzeigen(eingabe.ab)}.`,
+            ]);
+          const id = randomUUID();
+          await tx.insert(finSteuersatzZeitraeume).values({
+            id,
+            ab: eingabe.ab,
+            regel: eingabe.regel,
+            ermaessigt: eingabe.ermaessigt,
+            erstelltAm: new Date(),
+            erstelltVon: sub,
+          });
+          return id;
+        }),
+      );
+    },
+
+    async steuersatzZeitraumLoeschen(id) {
+      return kern.wiederholen(() =>
+        db.transaction(async (tx) => {
+          const zeitraeume = await zeitraeumeLaden(tx);
+          const z = zeitraeume.find((x) => x.id === id);
+          if (!z) return false;
+          if (zeitraeume.length === 1)
+            throw new BuchungUngueltig(['Der letzte Zeitraum kann nicht gelöscht werden.']);
+          if ((await zeitraumBelegt(tx, zeitraeume, id)) > 0)
+            throw new BuchungUngueltig([
+              'In diesem Zeitraum sind schon Belege oder Kassenabrechnungen gebucht.',
+            ]);
+          await tx.delete(finSteuersatzZeitraeume).where(eq(finSteuersatzZeitraeume.id, id));
+          return true;
+        }),
+      );
+    },
+
+    async belegWaren() {
+      const [gruppen, wareRows, verknuepft, alleGebinde, aliasRows] = await Promise.all([
+        db.select().from(warengruppen),
+        db.select().from(waren).where(eq(waren.archiviert, false)).orderBy(asc(waren.name)),
+        db.select().from(wareGebinde),
+        db.select().from(gebinde),
+        db.select().from(wareAliase),
+      ]);
+      const alle = alleGebinde as Gebinde[];
+      return wareRows.map((w) => ({
+        id: w.id,
+        name: w.name,
+        warengruppeId: w.warengruppeId,
+        kategorieId: warengruppeKategorie(gruppen, w.warengruppeId),
+        aliase: aliasRows
+          .filter((a) => a.wareId === w.id)
+          .map((a) => a.alias)
+          .sort((a, b) => a.localeCompare(b, 'de')),
+        // Every Ware has one (required by the API, filled by migration 0233).
+        standardGebindeId: w.standardGebindeId!,
+        gebinde: verknuepft
+          .filter((v) => v.wareId === w.id)
+          .flatMap((v) => {
+            const g = alleGebinde.find((x) => x.id === v.gebindeId);
+            return g && !g.archiviert
+              ? [
+                  {
+                    id: g.id,
+                    bezeichnung: gebindeBezeichnung(g as Gebinde, alle),
+                    pfandGesamtCent: pfandGesamtCent(g as Gebinde, alle),
+                  },
+                ]
+              : [];
+          }),
+      }));
+    },
 
     async erstatten(eingabe, sub, mitgliedName) {
       try {

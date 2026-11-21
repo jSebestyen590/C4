@@ -177,7 +177,7 @@ function Formular({
                   value={t.datum}
                   onWert={(datum) => aendern(t.key, { datum })}
                 />
-                <SimpleGrid cols={2} spacing="xs">
+                <SimpleGrid style={{ alignItems: 'end' }} cols={2} spacing="xs">
                   <TextInput
                     size="md"
                     type="time"

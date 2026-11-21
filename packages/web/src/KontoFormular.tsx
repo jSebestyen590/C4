@@ -11,14 +11,12 @@ import {
   type KontoArt,
   type KontoEingabe,
   type KontoDto,
+  type SteuersatzArt,
 } from '@c4/shared';
 import { useApi } from './api';
 import { finanzenKeys } from './finanzenDaten';
 import { fehlerText, pruefen } from './warenApi';
-import { ZahlFeld } from './ZahlFeld';
-
-/** Basis points -> percent for the field (1900 -> 19). */
-const prozent = (bp: number | null): number | string => (bp === null ? '' : bp / 100);
+import { artOptionen, useHeutigeSaetze } from './steuersaetze';
 
 /** All accounts below `id` (to keep them out of the parent options and avoid cycles). */
 function nachfahren(id: string, konten: readonly KontoDto[]): Set<string> {
@@ -53,7 +51,8 @@ export function KontoFormular({
   const [art, setArt] = useState<KontoArt>(konto?.art ?? 'neutral');
   const [parentId, setParentId] = useState<string | null>(konto?.parentId ?? null);
   const [stueckelung, setStueckelung] = useState(konto?.stueckelung ?? false);
-  const [steuer, setSteuer] = useState<number | string>(prozent(konto?.steuersatzStandard ?? null));
+  const [steuerArt, setSteuerArt] = useState<SteuersatzArt | null>(konto?.steuersatzArt ?? null);
+  const heute = useHeutigeSaetze();
   const [fehler, setFehler] = useState<string | null>(null);
 
   const ausgeschlossen = konto ? nachfahren(konto.id, konten) : new Set<string>();
@@ -77,9 +76,7 @@ export function KontoFormular({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const satz =
-      typeof steuer === 'number' ? Math.round(steuer * 100) : steuer === '' ? null : Number.NaN;
-    const eingabe = { name, art, parentId, stueckelung, steuersatzStandard: satz };
+    const eingabe = { name, art, parentId, stueckelung, steuersatzArt: steuerArt };
     const parsed = kontoEingabeSchema.safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
     setFehler(null);
@@ -91,8 +88,7 @@ export function KontoFormular({
     if (d.art !== konto.art) aenderung.art = d.art;
     if (d.parentId !== konto.parentId) aenderung.parentId = d.parentId;
     if (d.stueckelung !== konto.stueckelung) aenderung.stueckelung = d.stueckelung;
-    if (d.steuersatzStandard !== konto.steuersatzStandard)
-      aenderung.steuersatzStandard = d.steuersatzStandard;
+    if (d.steuersatzArt !== konto.steuersatzArt) aenderung.steuersatzArt = d.steuersatzArt;
     if (Object.keys(aenderung).length === 0) return onClose();
     speichern.mutate(aenderung);
   };
@@ -135,23 +131,19 @@ export function KontoFormular({
             checked={stueckelung}
             onChange={(e) => setStueckelung(e.currentTarget.checked)}
           />
-          <ZahlFeld
+          <Select
             label={
               <FeldLabel
                 text="Standard-Steuersatz (optional)"
                 hilfe={HILFE.konto.steuersatzStandard}
               />
             }
-            value={steuer}
-            onChange={setSteuer}
-            min={0}
-            max={100}
-            step={1}
-            decimalScale={2}
-            decimalSeparator=","
-            allowNegative={false}
-            suffix=" %"
-            inputMode="decimal"
+            size="md"
+            data={artOptionen(heute)}
+            value={steuerArt}
+            onChange={(v) => setSteuerArt(v as SteuersatzArt | null)}
+            placeholder="Keine Vorgabe"
+            clearable
           />
           {speichern.isError && (
             <Alert color="red">{fehlerText(speichern.error, 'Speichern fehlgeschlagen.')}</Alert>

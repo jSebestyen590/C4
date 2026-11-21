@@ -17,12 +17,14 @@ import {
   BELEG_MODUS_LABELS,
   centAnzeigen,
   datumAnzeigen,
+  einzelpreisAusGesamt,
+  istEigenbeleg,
   ZAHLWEG_LABELS,
   type BelegPostenDto,
 } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
-import { anzahlText, satzText } from '../belegFormular';
+import { anzahlText, pfandJeSatz, satzText } from '../belegFormular';
 import { BelegVorschau } from '../BelegDatei';
 import { BelegSummen } from '../BelegSummen';
 import {
@@ -32,14 +34,60 @@ import {
   finanzenKeys,
   jsonOderFehler,
   useBeleg,
+  useBelegWaren,
 } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { KartenOderTabelle } from '../KartenOderTabelle';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { StatusName } from '../StatusAnzeige';
+import { formatDatumZeit } from '../datum';
 import { fehlerText } from '../warenApi';
 import { ZurueckLink } from '../ZurueckLink';
+
+/** "Gesamtpreis, ≈ 1,00 € je Stück" for a Gesamtpreis line, else the price per unit. */
+const preisText = (p: BelegPostenDto): string =>
+  p.gesamtCent === null || p.art === 'leergut'
+    ? centAnzeigen(p.einzelpreisCent)
+    : `Gesamtpreis, ≈ ${centAnzeigen(einzelpreisAusGesamt(p.gesamtCent, p.anzahlMilli))} je ${p.art === 'ware' ? 'Gebinde' : 'Stück'}`;
+
+/**
+ * Ware of a Ware item (linked to the Ware page) with the Gebinde; with `kurz` the whole line
+ * "Ur-Krostitzer, 20 x 0,5l Flasche 3,10 €" (the Ware name once, no deposit text).
+ */
+function WareAngabe({
+  p,
+  gebindeName,
+  kurz = false,
+}: Readonly<{ p: BelegPostenDto; gebindeName: string | null; kurz?: boolean }>) {
+  if (p.art !== 'ware' || !p.wareId) return null;
+  return (
+    <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+      <Anchor component={Link} to={`/waren/${encodeURIComponent(p.wareId)}`}>
+        {p.wareName ?? 'Ware'}
+      </Anchor>
+      {kurz
+        ? `, ${anzahlText(p.anzahlMilli)} x ${gebindeName ? `${gebindeName} ` : ''}${preisText(p)}`
+        : gebindeName
+          ? `, ${gebindeName}`
+          : ''}
+    </Text>
+  );
+}
+
+/** Amount of an item with the deposit shown as "(davon Pfand 31,00 €)". */
+function PostenBetrag({ p }: Readonly<{ p: BelegPostenDto }>) {
+  return (
+    <>
+      {centAnzeigen(p.betragCent + (p.pfandBetragCent ?? 0))}
+      {!!p.pfandBetragCent && (
+        <Text size="xs" c="dimmed" fw={400}>
+          (davon Pfand {centAnzeigen(p.pfandBetragCent)})
+        </Text>
+      )}
+    </>
+  );
+}
 
 const Zeile = ({
   label,
@@ -75,6 +123,12 @@ export function FinanzenBelegDetailPage() {
     },
   });
   const b = beleg.data;
+  const eigenbeleg = !!b && istEigenbeleg(b);
+  const satzOderKeine = (satz: number) => (eigenbeleg ? 'ohne Vorsteuer' : satzText(satz));
+  const waren = useBelegWaren(!!b?.posten.some((p) => p.art === 'ware'));
+  const gebindeName = (p: BelegPostenDto) =>
+    (waren.data ?? []).find((w) => w.id === p.wareId)?.gebinde.find((g) => g.id === p.gebindeId)
+      ?.bezeichnung ?? null;
 
   return (
     <Stack maw={1100}>
@@ -145,7 +199,19 @@ export function FinanzenBelegDetailPage() {
                 </Zeile>
               )}
               {b.eigenbelegBegruendung && (
-                <Zeile label="Eigenbeleg">{b.eigenbelegBegruendung}</Zeile>
+                <Zeile label="Eigenbeleg">{b.eigenbelegBegruendung} (ohne Vorsteuer)</Zeile>
+              )}
+              {b.eingereichtVon && (
+                <Zeile label="Eingereicht von">
+                  <Anchor component={Link} to={mitgliedLink(b.eingereichtVon)}>
+                    <StatusName status={b.eingereichtVon.status}>
+                      {mitgliedName(b.eingereichtVon)}
+                    </StatusName>
+                  </Anchor>
+                  {b.eingereichtAm ? `, ${formatDatumZeit(b.eingereichtAm)}` : ''}
+                  {b.eingereichtBetragCent !== null &&
+                    `, genannter Betrag ${centAnzeigen(b.eingereichtBetragCent)}`}
+                </Zeile>
               )}
               {b.erstelltVon && (
                 <Zeile label="Erfasst von">
@@ -167,20 +233,22 @@ export function FinanzenBelegDetailPage() {
                 <Group justify="space-between" wrap="nowrap" align="flex-start">
                   <Stack gap={0}>
                     <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
-                      {p.kategorieName}
+                      {p.art === 'leergut' ? 'Leergut' : p.kategorieName}
                     </Text>
-                    {p.text && (
+                    <WareAngabe p={p} gebindeName={gebindeName(p)} kurz />
+                    {p.text && p.art !== 'ware' && (
                       <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
                         {p.text}
                       </Text>
                     )}
                     <Text size="sm" c="dimmed">
-                      {anzahlText(p.anzahlMilli)} × {centAnzeigen(p.einzelpreisCent)} ·{' '}
-                      {satzText(p.steuersatz)}
+                      {p.art === 'ware'
+                        ? satzOderKeine(p.steuersatz)
+                        : `${anzahlText(p.anzahlMilli)} × ${preisText(p)} · ${satzOderKeine(p.steuersatz)}`}
                     </Text>
                   </Stack>
-                  <Text fw={600} style={BETRAG_STIL}>
-                    {centAnzeigen(p.betragCent)}
+                  <Text fw={600} style={BETRAG_STIL} component="div">
+                    <PostenBetrag p={p} />
                   </Text>
                 </Group>
               </Paper>
@@ -197,16 +265,28 @@ export function FinanzenBelegDetailPage() {
             }
             zeile={(p) => (
               <Table.Tr>
-                <Table.Td>{p.kategorieName}</Table.Td>
-                <Table.Td style={{ overflowWrap: 'anywhere' }}>{p.text}</Table.Td>
+                <Table.Td>{p.art === 'leergut' ? 'Leergut' : p.kategorieName}</Table.Td>
+                <Table.Td style={{ overflowWrap: 'anywhere' }}>
+                  {p.art === 'ware' ? null : p.text}
+                  <WareAngabe p={p} gebindeName={gebindeName(p)} />
+                </Table.Td>
                 <Table.Td style={BETRAG_STIL}>{anzahlText(p.anzahlMilli)}</Table.Td>
-                <Table.Td style={BETRAG_STIL}>{centAnzeigen(p.einzelpreisCent)}</Table.Td>
-                <Table.Td style={BETRAG_STIL}>{satzText(p.steuersatz)}</Table.Td>
-                <Table.Td style={BETRAG_STIL}>{centAnzeigen(p.betragCent)}</Table.Td>
+                <Table.Td style={BETRAG_STIL}>{preisText(p)}</Table.Td>
+                <Table.Td style={BETRAG_STIL}>{satzOderKeine(p.steuersatz)}</Table.Td>
+                <Table.Td style={BETRAG_STIL}>
+                  <PostenBetrag p={p} />
+                </Table.Td>
               </Table.Tr>
             )}
           />
-          <BelegSummen jeSteuersatz={b.jeSteuersatz} summeCent={b.summeCent} />
+          <BelegSummen
+            jeSteuersatz={b.jeSteuersatz}
+            summeCent={b.summeCent}
+            pfand={pfandJeSatz(
+              b.posten,
+              b.posten.map((p) => p.pfandBetragCent ?? 0),
+            )}
+          />
           {b.korrekturen.length > 0 && (
             <Text size="sm" c="dimmed">
               Korrektur:{' '}

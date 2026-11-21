@@ -18,7 +18,9 @@ import {
   type Gebinde,
   type MhdArt,
 } from '@c4/shared';
+import { HILFE } from './finanzenHilfe';
 import { MHD_ART_LABELS } from './i18n';
+import { FeldLabel } from './InfoHinweis';
 
 /** Editable fields of a Ware; `warengruppeId` is null until one is chosen. */
 export interface WareWerte {
@@ -27,6 +29,8 @@ export interface WareWerte {
   mhdArt: MhdArt;
   gebindeIds: string[];
   aliase: string[];
+  /** Gebinde preselected in Belege; required, one of `gebindeIds`. Null only while nothing is chosen. */
+  standardGebindeId: string | null;
 }
 
 export const leereWareWerte: WareWerte = {
@@ -35,6 +39,7 @@ export const leereWareWerte: WareWerte = {
   mhdArt: 'keins',
   gebindeIds: [],
   aliase: [],
+  standardGebindeId: null,
 };
 
 export const wareWerte = (w: {
@@ -43,12 +48,14 @@ export const wareWerte = (w: {
   mhdArt: MhdArt;
   gebindeIds: string[];
   aliase: string[];
+  standardGebindeId?: string | null;
 }): WareWerte => ({
   name: w.name,
   warengruppeId: w.warengruppeId,
   mhdArt: w.mhdArt,
   gebindeIds: [...w.gebindeIds],
   aliase: [...w.aliase],
+  standardGebindeId: w.standardGebindeId ?? null,
 });
 
 type WarengruppeOption = BaumKnoten & { archiviert?: boolean };
@@ -59,6 +66,8 @@ export function WareFelder({
   werte,
   onChange,
   fehler,
+  aliasFehler = null,
+  standardFehler = null,
   warengruppen,
   gebinde,
 }: Readonly<{
@@ -66,6 +75,10 @@ export function WareFelder({
   onChange: (werte: WareWerte) => void;
   /** Validation message shown below the name. */
   fehler: string | null;
+  /** Message shown below the Aliase. */
+  aliasFehler?: string | null;
+  /** Message shown below the Standard-Gebinde. */
+  standardFehler?: string | null;
   warengruppen: WarengruppeOption[];
   gebinde: GebindeOption[];
 }>) {
@@ -119,8 +132,31 @@ export function WareFelder({
         placeholder={werte.gebindeIds.length === 0 ? 'Gebinde wählen' : undefined}
         data={gebindeDaten}
         value={werte.gebindeIds}
-        onChange={(ids) => onChange({ ...werte, gebindeIds: gebindeErgaenzen(ids, gebinde) })}
+        onChange={(ids) => {
+          const gebindeIds = gebindeErgaenzen(ids, gebinde);
+          onChange({
+            ...werte,
+            gebindeIds,
+            // The Standard-Gebinde is required: keep it, else preselect the first selected one.
+            standardGebindeId:
+              werte.standardGebindeId !== null && gebindeIds.includes(werte.standardGebindeId)
+                ? werte.standardGebindeId
+                : (gebindeIds[0] ?? null),
+          });
+        }}
         nothingFoundMessage="Kein Gebinde gefunden"
+      />
+      <Select
+        label={<FeldLabel text="Standard-Gebinde" hilfe={HILFE.waren.standardGebinde} />}
+        description="Wird beim Erfassen eines Belegs vorausgewählt."
+        placeholder="Standard-Gebinde wählen"
+        required
+        allowDeselect={false}
+        error={standardFehler}
+        disabled={werte.gebindeIds.length === 0}
+        data={gebindeDaten.filter((g) => werte.gebindeIds.includes(g.value))}
+        value={werte.standardGebindeId}
+        onChange={(standardGebindeId) => onChange({ ...werte, standardGebindeId })}
       />
       <TagsInput
         label="Aliase"
@@ -128,6 +164,7 @@ export function WareFelder({
         placeholder="Alias eingeben und bestätigen"
         splitChars={[',']}
         value={werte.aliase}
+        error={aliasFehler}
         onChange={(aliase) => onChange({ ...werte, aliase })}
       />
     </Stack>

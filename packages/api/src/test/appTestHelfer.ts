@@ -62,6 +62,7 @@ import { createFakeProtokolleStore } from '../protokolle.fake';
 import { createFakeSchluesselAnfragenStore } from '../schluesselAnfragen.fake';
 import { createFakeTodosStore } from '../todos.fake';
 import { createFakeTrichterStore } from '../trichter.fake';
+import { createFakeLagerAbgleichStore } from '../lagerAbgleich.fake';
 import { createFakeFinanzenStore } from '../finanzen.fake';
 import { createFakeBuchStore } from '../buch.fake';
 import { createFakeUmfragenStore } from '../umfragen.fake';
@@ -791,6 +792,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: schluessel } = makeSchluesselFake(anfragenFake.planungVerbrauchen);
   const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const { store: trichter } = createFakeTrichterStore();
+  const lagerAbgleichFake = createFakeLagerAbgleichStore();
+  const lagerAbgleich = lagerAbgleichFake.store;
   const finanzenFake = createFakeFinanzenStore();
   const finanzen = finanzenFake.store;
   const buchFake = createFakeBuchStore();
@@ -864,6 +867,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     todos,
     umfragen,
     trichter,
+    lagerAbgleich,
     finanzen,
     buch,
     protokolle,
@@ -905,6 +909,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragen,
     umfragenListe,
     trichter,
+    lagerAbgleichFake,
     finanzenFake,
     buchFake,
     protokollListe,

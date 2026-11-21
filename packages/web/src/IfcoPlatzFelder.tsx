@@ -89,7 +89,7 @@ export function IfcoPlatzFelder({
       />
       {wert.aktiv && !gesperrt && (
         <>
-          <SimpleGrid cols={2} spacing="sm">
+          <SimpleGrid style={{ alignItems: 'end' }} cols={2} spacing="sm">
             <ZahlFeld
               label={reihen > 1 ? 'Höhe Reihe 1 (cm)' : 'Höhe (cm)'}
               value={wert.hoeheCm}

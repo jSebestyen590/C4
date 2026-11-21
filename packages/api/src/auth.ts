@@ -78,6 +78,17 @@ export function authenticate(
   });
 }
 
+/** Like `requirePermission`, but any one of the permissions is enough. */
+export function requireAnyPermission(...permissions: Permission[]) {
+  return createMiddleware<AuthEnv>(async (c, next) => {
+    const vorhanden = c.get('permissions');
+    if (!permissions.some((p) => vorhanden.includes(p))) {
+      throw new HTTPException(403, { message: 'Forbidden' });
+    }
+    await next();
+  });
+}
+
 export function requirePermission(permission: Permission) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     if (!c.get('permissions').includes(permission)) {

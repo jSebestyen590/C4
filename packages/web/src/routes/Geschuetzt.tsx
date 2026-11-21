@@ -10,13 +10,19 @@ import { mitgliederKeys } from '../queryKeys';
 export function Protected({
   children,
   permission,
-}: Readonly<{ children: ReactNode; permission?: Permission }>) {
+  anyOf,
+}: Readonly<{
+  children: ReactNode;
+  permission?: Permission;
+  /** Alternative to `permission`: one of these is enough. */
+  anyOf?: readonly Permission[];
+}>) {
   const { user, can, login } = useAuth();
   if (!user) {
     void login();
     return <Loader m="md" aria-label="Weiterleitung zur Anmeldung" />;
   }
-  if (permission && !can(permission))
+  if ((permission && !can(permission)) || (anyOf && !anyOf.some((p) => can(p))))
     return (
       <Alert color="red" title="Kein Zugriff">
         Du darfst diese Seite nicht ansehen.

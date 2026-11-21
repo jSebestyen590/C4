@@ -28,6 +28,7 @@ import {
   type BuchungRichtungDto,
   type KettenBuchung,
   type KontoDto,
+  STEUERSATZ_ZEITRAEUME_SEED,
 } from '@c4/shared';
 import {
   baueEventKassen,
@@ -52,7 +53,7 @@ import {
   zaehlungKontoFehler,
   type FinanzenStore,
 } from './finanzen';
-import { createFakeBelegeStore } from './finanzenBelege.fake';
+import { createFakeBelegeStore, createFakeLager } from './finanzenBelege.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
 interface FakeKasse {
@@ -83,8 +84,9 @@ export function createFakeFinanzenStore() {
     { id: 'eroeffnung', name: 'Eröffnung / Saldovortrag', art: 'neutral', stueckelung: false },
     { id: 'kassendifferenz', name: 'Kassendifferenz', art: 'neutral', stueckelung: false },
     { id: 'auslagen', name: 'Auslagen Mitglieder', art: 'durchlauf', stueckelung: false },
+    { id: 'pfand', name: 'Pfand/Leergut', art: 'durchlauf', stueckelung: false },
   ] as const) {
-    konten.set(k.id, { ...k, parentId: null, steuersatzStandard: null, archiviert: false });
+    konten.set(k.id, { ...k, parentId: null, steuersatzArt: null, archiviert: false });
   }
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
@@ -251,7 +253,9 @@ export function createFakeFinanzenStore() {
       g.filter((x) => x.anzahl > 0).map((x) => [x.nennwertCent, x.anzahl] as [number, number]),
     );
 
+  const lager = createFakeLager();
   const belege = createFakeBelegeStore({
+    lager,
     konten,
     buchungen,
     pruefKonten: () => pruefKonten().map((k) => ({ ...k, art: konten.get(k.id)!.art })),
@@ -517,7 +521,7 @@ export function createFakeFinanzenStore() {
         art: 'bargeld',
         parentId: SAFE_KONTO_ID,
         stueckelung: true,
-        steuersatzStandard: null,
+        steuersatzArt: null,
         archiviert: false,
       });
       kassen.set(id, {
@@ -603,6 +607,7 @@ export function createFakeFinanzenStore() {
         },
         konten: kassenKonten(),
         bestand: alleBestand(),
+        zeitraeume: STEUERSATZ_ZEITRAEUME_SEED,
       });
       const fehler = [...eventFehler, ...plan.fehler];
       if (fehler.length > 0 || !plan.rechnung) throw new BuchungUngueltig(fehler);
@@ -819,5 +824,5 @@ export function createFakeFinanzenStore() {
       };
     },
   };
-  return { store, exporte, konten, buchungen, zaehler, events, kassen, kategorien };
+  return { store, exporte, konten, buchungen, zaehler, events, kassen, kategorien, lager };
 }

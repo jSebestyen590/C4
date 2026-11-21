@@ -130,9 +130,19 @@ export const HILFE = {
     datei:
       'Das Original wird unverändert archiviert (PDF, JPEG, PNG oder HEIC, höchstens 20 MB) und lässt sich danach nicht mehr ändern oder löschen. Auch ein verworfener Entwurf hinterlässt die Datei im Archiv. Die gleiche Datei erkennt die App an ihrem Fingerabdruck und warnt vor Dubletten.',
     eigenbeleg:
-      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert.',
+      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert. Ein Eigenbeleg wird ohne Vorsteuer gebucht: Der volle Betrag ist Aufwand.',
+    kategorie:
+      'Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe gebucht wird.',
+    preisRechnen:
+      'Im Preisfeld darfst du rechnen mit + - * / und Klammern, z. B. (7,99 + 4,50)/12. Meist teilst du den Gesamtpreis durch die Anzahl. Das Feld zeigt das Ergebnis auf Cent gerundet; der Betrag der Zeile wird mit dem exakten Preis gerechnet (Preis mal Anzahl, gerundet).',
+    serienerfassung:
+      'Neuer Beleg: Nach dem Buchen öffnet sich gleich ein leerer Beleg. Eingereichter Beleg: Nach dem Buchen oder Verwerfen geht es mit der nächsten Einreichung weiter (älteste zuerst). Ausgeschaltet kommst du zur Beleg-Seite.',
     modus:
-      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Ein Beleg ist immer eine Ausgabe, eine Gutschrift (z. B. Pfandrückgabe) tippst du als Posten mit negativem Preis.',
+      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Pfandrückgaben erfasst du als Leergut-Posten (Betrag negativ).',
+    belegsumme:
+      'Die Summe (brutto), die auf dem Beleg steht, auch negativ (z. B. reine Pfandrückgabe). Gebucht wird nur, wenn die Summe der Posten (inkl. Pfand, Leergut negativ) genau so hoch ist; die Differenz steht unter den Tabellen.',
+    neueWare:
+      'Steht die Ware nicht in der Liste, wähle ganz unten „Neue Ware anlegen“ (mit dem Recht „Waren verwalten“). Das Formular ist mit dem getippten Namen vorbelegt; danach steht die Ware in der Zeile.',
     steuersatz:
       'Der Steuersatz wird mit der Kategorie vorgeschlagen und gilt je Posten. Die Steuer wird je Steuersatz auf die Summe der Posten gerechnet (wie auf Kassenbons), nicht je Posten.',
     anzahl: 'Die Anzahl darf Dezimalstellen haben, mit Komma getippt, z. B. 1,5 für 1,5 kg.',
@@ -148,9 +158,53 @@ export const HILFE = {
       'Hat ein Mitglied etwas vorgestreckt, wird es als Auslage gebucht und steht auf „Offene Auslagen“, bis du es erstattest. Mehrere Belege eines Mitglieds erstattest du gemeinsam in einer Buchung, bar oder per Bank.',
     erstattung:
       'Die Erstattung bucht „Auslagen Mitglieder“ gegen das Fach oder die Bank, zu ihrem eigenen Datum. Storniert du die Erstattung im Journal, sind die Belege wieder offen.',
+    erstattungEinlage:
+      'Das ist eine Einlage: Bar zählst du die erhaltenen Münzen und Scheine ins Fach, per Bank erwartest du eine Überweisung an den Verein.',
+    betragNegativ:
+      'Ein negativer Betrag bedeutet, dass du Geld zurückbekommen hast (z. B. reine Pfandrückgabe). Die Finanzer:innen buchen das als Einlage, bis das Geld beim Verein ist.',
+    leergutMitglied:
+      'Leergut ist eine Rückgabe: „Anzahl zurück“ mal Pfand je Stück ergibt einen negativen Betrag.',
     kopieren:
       'Ein gebuchter Beleg ist unveränderlich. „Als Entwurf kopieren“ legt einen neuen Entwurf mit denselben Angaben und derselben Datei an, z. B. nach einem Storno über das Journal.',
     rechnungssteller:
       'Wer die Rechnung gestellt hat (Händler, Lieferant). Archivierte Rechnungssteller erscheinen nicht mehr in der Auswahl, bleiben aber an alten Belegen erhalten. Vorbelegt wird der zuletzt verwendete.',
+    postenArt:
+      'Kategorie: ein normaler Aufwandsposten. Ware (Lager): eine Ware aus dem Lager in einem Gebinde (Kasten, Flasche …), mit Anzahl Gebinde und Preis je Gebinde; sie kann beim Buchen eingelagert werden. Leergut: zurückgegebene Pfandflaschen oder -kästen (Anzahl = Rückgabe, Preis = Pfand je Stück).',
+    pfand:
+      'Das Pfand je Gebinde wird aus dem Gebinde der Ware vorbelegt (inkl. Untergebinde) und lässt sich überschreiben; leer heißt kein Pfand. Es steht nicht im Aufwand, sondern auf dem Konto „Pfand/Leergut“, trägt aber die Steuer der Ware. Der Saldo des Kontos ist das ausstehende Leergut. Zurückgegebenes Leergut erfasst du als Posten der Art „Leergut“: Anzahl = zurückgegebene Stück (größer als 0), Preis = Pfand je Stück; der Betrag wird negativ (Steuersatz wie beim Pfand).',
+    lagerPosten:
+      'Bei einem Posten der Art „Ware (Lager)“ wählst du Ware und Gebinde; der Preis gilt je Gebinde ohne Pfand. Die Kategorie wird aus der Warengruppe der Ware vorgeschlagen und lässt sich ändern. Ohne Zuordnung musst du sie selbst wählen.',
+    artikelKategorie:
+      'Bei einem Kategorie-Posten trägst du zuerst den Artikel ein (z. B. „Deko“). Wurde ein Artikel mit diesem Namen schon gebucht, stehen die Kategorien, in denen er gebucht wurde, oben als Vorschläge (die häufigste ist vorausgewählt, solange die Kategorie leer ist). Groß- und Kleinschreibung zählen nicht. Alle anderen Kategorien stehen darunter.',
+    warengruppeKategorie:
+      'Jede Warengruppe kann einer Kategorie (Aufwandskonto) zugeordnet werden. Untergruppen erben die Zuordnung der nächsten Obergruppe, solange sie keine eigene haben. Beim Erfassen eines Ware-Postens wird sie vorgeschlagen.',
+    einreichen:
+      'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
+  },
+  steuersaetze: {
+    zeitraeume:
+      'Regelsatz und ermäßigter Satz gelten ab einem Datum, bis der nächste Zeitraum beginnt (z. B. 16 % und 5 % vom 1.7.2020 bis 31.12.2020). Für ein Belegdatum gilt der letzte Zeitraum, der an oder vor diesem Datum beginnt. Kategorien und Artikel merken sich nur „Regelsatz“, „Ermäßigt“ oder „Keine Steuer“; der Prozentwert ergibt sich aus dem Datum.',
+    loeschen:
+      'Ein Zeitraum lässt sich nur löschen, solange noch kein Beleg und keine Kassenabrechnung in ihm gebucht ist. Der Zeitraum davor gilt dann wieder bis zum nächsten.',
+  },
+  sortierung: {
+    spalten:
+      'Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter Klick dreht die Richtung. Auf dem Handy wählst du Spalte und Richtung über „Sortieren nach“. Leere Werte stehen immer am Ende.',
+  },
+  artikel: {
+    erklaerung:
+      'Ein Artikel ist ein Name, der auf gebuchten Posten vorkommt (Kategorie-Posten). Seine Steuersatz-Vorgabe wird beim Erfassen eines Postens mit diesem Namen vorausgewählt; im Beleg kannst du sie weiter ändern. Gebuchte Belege bleiben unverändert.',
+    steuersatz:
+      'Standard-Steuersatz des Artikels: wird bei einem neuen Posten mit diesem Namen vorausgewählt.',
+  },
+  waren: {
+    standardGebinde:
+      'Das Standard-Gebinde wird beim Erfassen eines Ware-Postens vorausgewählt (samt Pfand). Ohne Standard wird das Gebinde nur vorausgewählt, wenn die Ware genau eines hat. Pflichtfeld; es muss eines der gewählten Gebinde der Ware sein.',
+  },
+  lagerAbgleich: {
+    erklaerung:
+      'Der Abgleich prüft je Ware, ob Lager und Belege zusammenpassen, gezählt ab dem Stichtag. Lager (Ist): Was eingelagert wurde. Belege (Soll): Was auf gebuchten Belegen als Ware gekauft wurde. Korrektur: Eine Erklärung für eine Abweichung, z. B. Bruch. Diskrepanz = Lager − Belege − Korrekturen. 0 bedeutet: alles passt. Positiv: mehr eingelagert als gekauft; negativ: mehr gekauft als eingelagert (Ware fehlt oder wurde noch nicht eingelagert). Alle Mengen sind in Basiseinheiten (kleinstes Gebinde), z. B. Flaschen.',
+    stichtag:
+      'Erst Einlagerungen, Belege und Korrekturen ab diesem Tag zählen. Davor liegende Bestände bleiben außen vor.',
   },
 } as const;

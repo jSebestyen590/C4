@@ -141,7 +141,7 @@ export function FinanzenBuchTarifePage() {
           >
             <Stack>
               <Title order={3}>Neuer Tarif</Title>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 2, lg: 4 }}>
                 <Select
                   size="md"
                   label={<FeldLabel text="Status" hilfe={HILFE.buch.tarifStatus} />}

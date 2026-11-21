@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { anzahlenAus, stueckelungSumme } from './bargeld';
 import { name } from './bausteine';
+import type { SteuersatzArt } from './steuersaetze';
 import {
   ANZAHL_MAX,
   BETRAG_MAX_CENT,
@@ -188,8 +189,8 @@ export interface KassenKonto {
   stueckelung: boolean;
   archiviert: boolean;
   hatUnterkonten?: boolean;
-  /** Basis points; `null` = none. */
-  steuersatzStandard?: number | null;
+  /** Default tax rate as Art; `null` = none. */
+  steuersatzArt?: SteuersatzArt | null;
 }
 
 /** Why an account is not a usable Fach (empty = fine). */
@@ -375,7 +376,9 @@ export function eventKassenEinnahme(p: {
 }): { einnahmeCent: number | null; status: EventEinnahmeStatus | null } {
   if (p.abgerechnetCent !== null) return { einnahmeCent: p.abgerechnetCent, status: 'abgerechnet' };
   const e = eventEinnahmenVorschlag(p.sollCent, p.zaehlungen).find((x) => x.eventId === p.eventId);
-  return e ? { einnahmeCent: e.betragCent, status: 'vorlaeufig' } : { einnahmeCent: null, status: null };
+  return e
+    ? { einnahmeCent: e.betragCent, status: 'vorlaeufig' }
+    : { einnahmeCent: null, status: null };
 }
 
 /** Sum of all incomes of an event; incomplete while an assigned Kasse has none yet. */
@@ -440,7 +443,8 @@ export interface KassenRechnungEingabe {
   grundbestand: readonly StueckelungDto[];
   ist: readonly StueckelungDto[];
   transfers: readonly KassenTransfer[];
-  erloesKonto: { id: string; steuersatzStandard: number | null };
+  /** `steuersatz` in basis points valid on the date of the Abrechnung (from the Art of the Konto); null = none. */
+  erloesKonto: { id: string; steuersatz: number | null };
   zielFachId: string;
   events: readonly { betragCent: number; zaehlungId?: string | null }[];
 }
@@ -534,7 +538,7 @@ export function berechneKassenabrechnung(e: KassenRechnungEingabe): KassenRechnu
   if (weniger.length > 0) zeilen.push(zeile(e.kasse.id, weniger));
   if (einnahmeCent !== 0) {
     const brutto = -einnahmeCent;
-    const satz = e.erloesKonto.steuersatzStandard;
+    const satz = e.erloesKonto.steuersatz;
     zeilen.push(
       satz === null
         ? zeile(e.erloesKonto.id, [], brutto)

@@ -138,6 +138,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   todo: 'Todos',
   privatpartys: 'Privatpartys',
   buch: 'Buch',
+  belege: 'Belege',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -223,6 +224,14 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       titel: 'Neue Nachricht zu einer Privatparty',
       beschreibung:
         'Wenn zu einer bestehenden Privatparty eine weitere Nachricht eingeht. Nur mit dem Recht „Privatpartys verwalten“.',
+    },
+    'belege.eingereicht': {
+      titel: 'Neuer eingereichter Beleg',
+      beschreibung: 'Wenn ein Mitglied einen Beleg einreicht. Nur mit dem Recht „Finanzen buchen“.',
+    },
+    'belege.status': {
+      titel: 'Status deines Belegs',
+      beschreibung: 'Wenn ein von dir eingereichter Beleg gebucht, verworfen oder erstattet wurde.',
     },
   };
 
