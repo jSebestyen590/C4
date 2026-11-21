@@ -75,6 +75,9 @@ import type { RoutenKontext } from './kontext';
 /** How many Sitzungen without protocol the "new protocol" page offers. */
 const PROTOKOLL_SITZUNGEN_MAX = 20;
 
+/** How many upcoming Sitzungen the "new protocol" page offers in advance. */
+const PROTOKOLL_KOMMENDE_MAX = 5;
+
 /** Upcoming Sitzungen offered as "next Sitzung" in the editor. */
 const PROTOKOLL_NAECHSTE_SITZUNGEN_MAX = 10;
 
@@ -447,11 +450,25 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
         });
         return c.json(liste.sort((a, b) => Date.parse(b.beginn) - Date.parse(a.beginn)));
       })
-      // Sitzungen a protocol can still be started for: up to tomorrow, newest first.
+      // Sitzungen a protocol can still be started for: past ones plus the next few upcoming ones,
+      // newest first.
       .get('/protokolle/sitzungen', auth, protokolleSchreiben, async (c) => {
         const vorhandene = (await deps.protokolle.alle()).map((p) => p.eventId);
-        const bis = new Date(Date.now() + 24 * 3600_000);
-        const sitzungen = await deps.kalender.sitzungen(bis, PROTOKOLL_SITZUNGEN_MAX, vorhandene);
+        const jetzt = new Date();
+        const vergangene = await deps.kalender.sitzungen(
+          { bis: jetzt },
+          PROTOKOLL_SITZUNGEN_MAX,
+          vorhandene,
+        );
+        const kommende = await deps.kalender.sitzungen(
+          { nach: jetzt },
+          PROTOKOLL_KOMMENDE_MAX,
+          vorhandene,
+          true,
+        );
+        const sitzungen = [...vergangene, ...kommende].sort(
+          (a, b) => Date.parse(b.beginn) - Date.parse(a.beginn),
+        );
         return c.json(
           sitzungen.map((e): ProtokollSitzungDto => ({
             id: e.id,
@@ -636,6 +653,11 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           }
 
           const [event] = await deps.kalender.eventsKurz([p.eventId]);
+          if (event && Date.parse(event.beginn) > Date.now()) {
+            throw new HTTPException(400, {
+              message: 'Abschließen geht erst, wenn die Sitzung begonnen hat.',
+            });
+          }
           const mitglieder = await protokollMitglieder();
           const antworten = await deps.kalender.teilnahmeAntworten(p.eventId);
           const art = event?.protokollArt ?? 'sitzung';
