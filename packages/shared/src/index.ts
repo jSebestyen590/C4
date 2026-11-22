@@ -31,3 +31,4 @@ export * from './todos';
 export * from './trichter';
 export * from './umfragen';
 export * from './waren';
+export * from './finanzenDatenexport';

@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
+import { createHash } from 'node:crypto';
+import { strToU8, zipSync } from 'fflate';
 import {
   BELEGE_MAX,
   pruefeArchiv,
@@ -63,6 +65,13 @@ import {
   ersterOffenerTag,
   festgeschriebenBis,
   festschreibungEingabeSchema,
+  DATENEXPORT_TABELLEN,
+  beschreibungTxt,
+  datenexportEingabeSchema,
+  indexXml,
+  tabelleAlsCsv,
+  type DatenexportDto,
+  type DatenexportErgebnisDto,
   monatAnzeigen,
   naechsterFestschreibbarerMonat,
   type FestschreibungDto,
@@ -108,6 +117,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
+    finanzenPruefenOderVerwalten,
     gefunden,
   } = ctx;
 
@@ -1141,6 +1151,85 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           geprueftAm: new Date().toISOString(),
         };
         return c.json(dto);
+      })
+      // ZIP with CSV files + index.xml (GDPdU) for the tax office; the file goes to the archive, the
+      // client downloads it through a presigned URL (API Gateway limits responses to 6 MB).
+      .post(
+        '/finanzen/datenexporte',
+        auth,
+        finanzenPruefenOderVerwalten,
+        zValidator('json', datenexportEingabeSchema),
+        async (c) => {
+          const { von, bis } = c.req.valid('json');
+          if (!deps.finanzarchiv.eingerichtet)
+            throw new HTTPException(503, {
+              message: 'Das Finanzarchiv ist nicht eingerichtet. Ein Export ist nicht möglich.',
+            });
+          const sub = c.get('user').sub;
+          const jetzt = new Date();
+          const [daten, mitglied] = await Promise.all([
+            deps.finanzen.datenexportDaten(von, bis),
+            finanzenMitglieder(),
+          ]);
+          const ersteller = mitglied(sub);
+          const zip = zipSync({
+            ...Object.fromEntries(
+              DATENEXPORT_TABELLEN.map((t) => [t.datei, strToU8(tabelleAlsCsv(t, daten))]),
+            ),
+            'index.xml': strToU8(indexXml(DATENEXPORT_TABELLEN, 'C4 Leipzig')),
+            'beschreibung.txt': strToU8(
+              beschreibungTxt({
+                von,
+                bis,
+                erstelltVon: ersteller ? anzeigeName(ersteller) : sub,
+                erstelltAm: jetzt.toISOString(),
+              }),
+            ),
+          });
+          const sha256 = createHash('sha256').update(zip).digest('hex');
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+          const schluessel = `datenexport/${stempel}-${von}-${bis}.zip`;
+          let url: string;
+          try {
+            await deps.finanzarchiv.exportSchreiben(schluessel, zip);
+            url = await deps.finanzarchiv.anzeigeUrl(schluessel);
+          } catch {
+            throw new HTTPException(503, {
+              message:
+                'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+            });
+          }
+          const id = await deps.finanzen.datenexportEintragen({
+            von,
+            bis,
+            schluessel,
+            sha256,
+            erstelltVon: sub,
+            erstelltAm: jetzt,
+          });
+          const ergebnis: DatenexportErgebnisDto = { id, url };
+          return c.json(ergebnis, 201);
+        },
+      )
+      .get('/finanzen/datenexporte', auth, finanzenPruefenOderVerwalten, async (c) => {
+        if (!deps.finanzarchiv.eingerichtet) return c.json([] as DatenexportDto[]);
+        const [eintraege, mitglied] = await Promise.all([
+          deps.finanzen.datenexporte(),
+          finanzenMitglieder(),
+        ]);
+        const liste: DatenexportDto[] = await Promise.all(
+          eintraege.map(async (e) => ({
+            id: e.id,
+            von: e.von,
+            bis: e.bis,
+            schluessel: e.schluessel,
+            sha256: e.sha256,
+            erstelltVon: mitglied(e.erstelltVon),
+            erstelltAm: e.erstelltAm.toISOString(),
+            url: await deps.finanzarchiv.anzeigeUrl(e.schluessel),
+          })),
+        );
+        return c.json(liste);
       })
   );
   // ----- Umfragen;

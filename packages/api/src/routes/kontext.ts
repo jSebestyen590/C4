@@ -75,6 +75,10 @@ export function baueKontext(deps: AppDeps) {
   const belegeEinreichen = requirePermission('belege:einreichen');
   const finanzenVerwalten = requirePermission('finanzen:verwalten');
   const finanzenPruefen = requirePermission('finanzen:pruefen');
+  const finanzenPruefenOderVerwalten = requireAnyPermission(
+    'finanzen:pruefen',
+    'finanzen:verwalten',
+  );
   const abgleichLesen = requireAnyPermission('finanzen:lesen', 'waren:verwalten');
   const abgleichSchreiben = requireAnyPermission('finanzen:buchen', 'waren:verwalten');
   const bilderLesen = requirePermission('bilder:lesen');
@@ -361,6 +365,7 @@ export function baueKontext(deps: AppDeps) {
     belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
+    finanzenPruefenOderVerwalten,
     abgleichLesen,
     abgleichSchreiben,
     bilderLesen,

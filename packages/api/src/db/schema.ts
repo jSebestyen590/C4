@@ -1761,6 +1761,19 @@ export const finFestschreibungen = pgTable('fin_festschreibungen', {
   festgeschriebenAm: timestamp('festgeschrieben_am', { withTimezone: true }).notNull(),
 });
 
+/** Data exports for the tax office (ZIP in the archive bucket; insert-only). */
+export const finDatenexporte = pgTable('fin_datenexporte', {
+  id: text('id').primaryKey(),
+  von: date('von', { mode: 'string' }).notNull(),
+  bis: date('bis', { mode: 'string' }).notNull(),
+  schluessel: text('schluessel').notNull(),
+  /** Hex SHA-256 of the ZIP. */
+  sha256: text('sha256').notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
 /** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
 export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
   id: text('id').primaryKey(),

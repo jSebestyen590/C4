@@ -635,8 +635,9 @@ export async function pruefeArchiv(
     const vergleich = (v: string) => {
       if (jsonl) return v;
       try {
-        const { erstellt_am: _, ...rest } = JSON.parse(v) as Record<string, unknown>;
-        return kanonischJson(rest);
+        const obj = JSON.parse(v) as Record<string, unknown>;
+        delete obj.erstellt_am;
+        return kanonischJson(obj);
       } catch {
         return v;
       }

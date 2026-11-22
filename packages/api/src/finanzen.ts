@@ -24,6 +24,7 @@ import {
   monatAnzeigen,
   monatsEnde,
   naechsterFestschreibbarerMonat,
+  type DatenexportDaten,
   type FestschreibungHinweisDto,
   kassenabrechnungBuchungstext,
   kasseKontenFehler,
@@ -80,6 +81,7 @@ import {
   events,
   finBelege,
   finBelegEntwuerfe,
+  finDatenexporte,
   finExporte,
   finFestschreibungen,
   finBuchungen,
@@ -181,6 +183,17 @@ export interface FestschreibungNeu {
   erwarteterZaehler: number;
 }
 
+/** A written Datenexport (ZIP). */
+export interface DatenexportEintrag {
+  id: string;
+  von: string;
+  bis: string;
+  schluessel: string;
+  sha256: string;
+  erstelltVon: string;
+  erstelltAm: Date;
+}
+
 export interface KettenDaten {
   buchungen: KettenBuchung[];
   /** Beleg files of the chain (hash as in `belege`) with their archive key. */
@@ -234,6 +247,15 @@ export interface FinanzenStore extends BelegeStore {
    * any more, was closed already or the counter moved on since the chain was verified.
    */
   festschreibungAnlegen(neu: FestschreibungNeu): Promise<void>;
+  /**
+   * Everything for the Datenexport in one snapshot: bookings dated in [von, bis] with their lines,
+   * Stückelung and Belege; Konten, Rechnungssteller and Festschreibungen completely.
+   */
+  datenexportDaten(von: string, bis: string): Promise<DatenexportDaten>;
+  /** Earlier exports, newest first. */
+  datenexporte(): Promise<DatenexportEintrag[]>;
+  /** Records a written ZIP; returns the id. */
+  datenexportEintragen(neu: Omit<DatenexportEintrag, 'id'>): Promise<string>;
   /** `bis_seq` of the last export (0 when there is none yet). */
   letzterExportSeq(): Promise<number>;
   /** Records a written export. */
@@ -2130,6 +2152,101 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         undefined,
         BUCHEN_WARTEN_MS,
       );
+    },
+
+    async datenexportDaten(von, bis) {
+      return db.transaction(async (tx) => {
+        const imZeitraum = and(gte(finBuchungen.datum, von), lte(finBuchungen.datum, bis));
+        const [konten, buchungen, zeilen, stueck, festschreibungen] = await Promise.all([
+          tx.select().from(finKonten).orderBy(asc(finKonten.name)),
+          tx.select().from(finBuchungen).where(imZeitraum).orderBy(asc(finBuchungen.seq)),
+          tx
+            .select({ z: finBuchungszeilen })
+            .from(finBuchungszeilen)
+            .innerJoin(finBuchungen, eq(finBuchungen.id, finBuchungszeilen.buchungId))
+            .where(imZeitraum)
+            .orderBy(asc(finBuchungen.seq), asc(finBuchungszeilen.pos)),
+          tx
+            .select({
+              s: finStueckelung,
+              buchungId: finBuchungszeilen.buchungId,
+              pos: finBuchungszeilen.pos,
+            })
+            .from(finStueckelung)
+            .innerJoin(finBuchungszeilen, eq(finBuchungszeilen.id, finStueckelung.zeileId))
+            .innerJoin(finBuchungen, eq(finBuchungen.id, finBuchungszeilen.buchungId))
+            .where(imZeitraum)
+            .orderBy(
+              asc(finBuchungen.seq),
+              asc(finBuchungszeilen.pos),
+              asc(finStueckelung.nennwertCent),
+            ),
+          tx.select().from(finFestschreibungen).orderBy(asc(finFestschreibungen.monat)),
+        ]);
+        const belegTeil = await belege.datenexportBelege(von, bis, tx);
+        return {
+          konten: konten.map((k) => ({
+            id: k.id,
+            name: k.name,
+            art: k.art,
+            parentId: k.parentId,
+            stueckelung: k.stueckelung,
+            steuersatzArt: k.steuersatzArt,
+            archiviert: k.archiviert,
+          })),
+          buchungen: buchungen.map((b) => ({
+            id: b.id,
+            seq: b.seq,
+            datum: b.datum,
+            text: b.text,
+            quelleTyp: b.quelleTyp,
+            quelleId: b.quelleId,
+            eventId: b.eventId,
+            stornoVon: b.stornoVon,
+            erstelltVon: b.erstelltVon,
+            erstelltAm: b.erstelltAm.toISOString(),
+            prevHash: b.prevHash,
+            hash: b.hash,
+          })),
+          zeilen: zeilen.map(({ z }) => ({
+            buchungId: z.buchungId,
+            pos: z.pos,
+            kontoId: z.kontoId,
+            betragCent: z.betragCent,
+            nettoCent: z.nettoCent,
+            steuerCent: z.steuerCent,
+            steuersatz: z.steuersatz,
+            steuerArt: z.steuerArt,
+          })),
+          stueckelung: stueck.map((r) => ({
+            buchungId: r.buchungId,
+            pos: r.pos,
+            nennwertCent: r.s.nennwertCent,
+            anzahl: r.s.anzahl,
+          })),
+          ...belegTeil,
+          festschreibungen: festschreibungen.map((f) => ({
+            id: f.id,
+            monat: f.monat,
+            bisSeq: f.bisSeq,
+            kopfHash: f.kopfHash,
+            anzahl: f.anzahl,
+            exportSchluessel: f.exportSchluessel,
+            festgeschriebenVon: f.festgeschriebenVon,
+            festgeschriebenAm: f.festgeschriebenAm.toISOString(),
+          })),
+        };
+      });
+    },
+
+    async datenexporte() {
+      return db.select().from(finDatenexporte).orderBy(desc(finDatenexporte.erstelltAm));
+    },
+
+    async datenexportEintragen(neu) {
+      const id = randomUUID();
+      await db.insert(finDatenexporte).values({ id, ...neu });
+      return id;
     },
 
     async letzterExportSeq() {

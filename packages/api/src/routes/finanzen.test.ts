@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { strFromU8, unzipSync } from 'fflate';
 import { kanonisch, kanonischJson } from '@c4/shared';
 import { makeApp, bearer } from '../test/appTestHelfer';
 
@@ -3617,6 +3618,85 @@ describe('finanzen', () => {
       expect((await t.lesen<Dto>('vorstand-token', '/festschreibungen')).hinweise).toEqual([
         { art: 'beleg_entwurf', anzahl: 2, text: 'Zwei Belege' },
       ]);
+    });
+  });
+
+  describe('Datenexport', () => {
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const exportieren = (
+      t: Awaited<ReturnType<typeof setup>>,
+      token: string,
+      body: unknown = { von: '2027-01-01', bis: '2027-12-31' },
+    ) => t.roh(token, 'POST', '/datenexporte', body);
+
+    it('is open to finanzen:pruefen and finanzen:verwalten, not to others', async () => {
+      const t = await setup();
+      for (const token of ['member-token', 'vorstand-token']) {
+        expect((await exportieren(t, token)).status, token).toBe(403);
+        expect((await t.roh(token, 'GET', '/datenexporte')).status, token).toBe(403);
+      }
+      expect((await exportieren(t, 'reader-token')).status).toBe(201);
+      expect((await exportieren(t, 'admin-token')).status).toBe(201);
+    });
+
+    it('validates the period', async () => {
+      const t = await setup();
+      const falsch = await exportieren(t, 'admin-token', { von: '2027-02-01', bis: '2027-01-01' });
+      expect(falsch.status).toBe(400);
+      const zuLang = await exportieren(t, 'admin-token', { von: '2010-01-01', bis: '2020-01-01' });
+      expect(zuLang.status).toBe(400);
+      expect((await exportieren(t, 'admin-token', { von: 'x' })).status).toBe(400);
+    });
+
+    it('answers 503 without a Finanzarchiv', async () => {
+      const t = await setup();
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      expect((await exportieren(t, 'admin-token')).status).toBe(503);
+    });
+
+    it('writes a ZIP with all files, records it and lists it again', async () => {
+      const t = await setup();
+      await t.umbuchung(500, { text: 'Text; mit "Zeichen"' });
+      await t.umbuchung(700, { datum: '2028-02-01' });
+      const res = await exportieren(t, 'reader-token');
+      expect(res.status).toBe(201);
+      const { id, url } = (await res.json()) as { id: string; url: string };
+      const [schluessel, inhalt] = t.finanzarchiv.exportSchreiben.mock.calls.at(-1)!;
+      expect(schluessel).toMatch(/^datenexport\/\d{8}-\d{6}-2027-01-01-2027-12-31\.zip$/);
+      expect(url).toBe(`https://s3.example/finanzarchiv/${schluessel}`);
+      const dateien = unzipSync(inhalt as Uint8Array);
+      expect(Object.keys(dateien).sort()).toEqual(
+        [
+          'beschreibung.txt',
+          'belege.csv',
+          'belegposten.csv',
+          'buchungen.csv',
+          'buchungszeilen.csv',
+          'festschreibungen.csv',
+          'index.xml',
+          'konten.csv',
+          'rechnungssteller.csv',
+          'stueckelung.csv',
+        ].sort(),
+      );
+      const buchungen = strFromU8(dateien['buchungen.csv']!);
+      expect(buchungen).toContain('05.01.2027;"Text; mit ""Zeichen"""');
+      expect(buchungen).not.toContain('01.02.2028');
+      expect(strFromU8(dateien['buchungszeilen.csv']!)).toContain('geldtransit;5,00');
+      expect(strFromU8(dateien['index.xml']!)).toContain('gdpdu-01-08-2002.dtd');
+      expect(strFromU8(dateien['beschreibung.txt']!)).toContain('01.01.2027 bis 31.12.2027');
+      expect(strFromU8(dateien['konten.csv']!)).toContain('geldtransit');
+      const liste = await t.lesen<Dto[]>('admin-token', '/datenexporte');
+      expect(liste).toHaveLength(1);
+      expect(liste[0]).toMatchObject({
+        id,
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        schluessel,
+        url,
+        erstelltVon: { username: 'user-r', status: expect.any(String) },
+      });
+      expect(liste[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
     });
   });
 });

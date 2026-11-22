@@ -71,7 +71,14 @@ export function createFinanzarchiv(bucket: string, region: string): Finanzarchiv
         expiresIn: ANZEIGE_GUELTIG_S,
       }),
     async exportSchreiben(schluessel, inhalt) {
-      await s3.send(new PutObjectCommand({ Bucket: bucket, Key: schluessel, Body: inhalt }));
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: schluessel,
+          Body: inhalt,
+          ...(schluessel.endsWith('.zip') && { ContentType: 'application/zip' }),
+        }),
+      );
     },
     async versionenAuflisten(prefix) {
       const jeSchluessel = new Map<string, { versionId: string; zeit: number }[]>();

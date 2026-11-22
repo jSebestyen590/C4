@@ -827,6 +827,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   };
   /** Fake archive objects: every `exportSchreiben` adds a version; `pruefsummen` overrides a file's checksum. */
   const archivObjekte = new Map<string, string[]>();
+  /** Raw bytes of binary archive objects (ZIPs), by key. */
+  const archivBytes = new Map<string, Uint8Array>();
   const archivPruefsummen = new Map<string, string | null>();
   const finanzarchiv = {
     eingerichtet: true,
@@ -838,6 +840,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
     exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
       async (schluessel, inhalt) => {
+        if (typeof inhalt !== 'string') archivBytes.set(schluessel, inhalt);
         archivObjekte.set(schluessel, [
           ...(archivObjekte.get(schluessel) ?? []),
           typeof inhalt === 'string' ? inhalt : new TextDecoder().decode(inhalt),
@@ -921,6 +924,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     protokollbilder,
     finanzarchiv,
     archivObjekte,
+    archivBytes,
     archivPruefsummen,
     waren,
     inventar,

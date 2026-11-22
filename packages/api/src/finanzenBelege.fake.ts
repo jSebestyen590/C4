@@ -226,6 +226,54 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
   };
 
   const store: BelegeStore = {
+    async datenexportBelege(von, bis) {
+      const buchungIds = new Set(
+        k.buchungen.filter((b) => b.datum >= von && b.datum <= bis).map((b) => b.id),
+      );
+      const imZeitraum = belege
+        .filter((b) => buchungIds.has(b.buchungId))
+        .sort((a, b) => a.nummer.localeCompare(b.nummer));
+      return {
+        belege: imZeitraum.map((b) => ({
+          id: b.id,
+          nummer: b.nummer,
+          rechnungsstellerId: b.rechnungsstellerId,
+          belegdatum: b.belegdatum,
+          modus: b.modus,
+          zahlweg: b.zahlweg,
+          bezahldatum: b.bezahldatum,
+          mitgliedId: b.mitgliedId,
+          eigenbelegBegruendung: b.eigenbelegBegruendung,
+          dateiSha256: b.datei?.sha256 ?? null,
+          dateiSchluessel: b.datei?.schluessel ?? null,
+          dateiTyp: b.datei?.typ ?? null,
+          dateiName: b.datei?.name ?? null,
+          summeCent: b.summeCent,
+          buchungId: b.buchungId,
+          erstelltVon: b.erstelltVon,
+          erstelltAm: b.erstelltAm,
+        })),
+        belegposten: imZeitraum.flatMap((b) =>
+          b.posten.map((p) => ({
+            belegId: b.id,
+            pos: p.pos,
+            kategorieId: p.kategorieId,
+            art: p.art,
+            text: p.text,
+            anzahlMilli: p.anzahlMilli,
+            einzelpreisCent: p.einzelpreisCent,
+            steuersatz: p.steuersatz,
+            betragCent: p.betragCent,
+            gesamtCent: p.gesamtCent,
+            pfandCent: p.pfandCent,
+            pfandBetragCent: p.pfandBetragCent,
+          })),
+        ),
+        rechnungssteller: [...steller.values()]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((r) => ({ id: r.id, name: r.name, archiviert: r.archiviert })),
+      };
+    },
     async rechnungssteller(mitArchiv) {
       return [...steller.values()]
         .filter((r) => mitArchiv || !r.archiviert)

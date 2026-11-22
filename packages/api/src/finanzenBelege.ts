@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import {
+  type DatenexportDaten,
   AUSLAGEN_KONTO_ID,
   PFAND_KONTO_ID,
   BELEG_BETRAG_WARNUNG_CENT,
@@ -392,6 +393,12 @@ export interface EinreichungEintrag extends EinreichungDto {
 
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
 export interface BelegeStore {
+  /** Belege (with items) of the bookings dated in [von, bis] and all Rechnungssteller, for the Datenexport. */
+  datenexportBelege(
+    von: string,
+    bis: string,
+    tx?: Tx,
+  ): Promise<Pick<DatenexportDaten, 'belege' | 'belegposten' | 'rechnungssteller'>>;
   /** By name; archived ones only on request. */
   rechnungssteller(mitArchiv: boolean): Promise<RechnungsstellerDto[]>;
   /** Throws BuchungUngueltig when the name exists already (case-insensitive). Returns the id. */
@@ -1073,6 +1080,67 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
   };
 
   const store: BelegeStore = {
+    async datenexportBelege(von, bis, tx) {
+      const q: Q = tx ?? db;
+      const imZeitraum = and(gte(finBuchungen.datum, von), lte(finBuchungen.datum, bis));
+      const [belege, posten, steller] = await Promise.all([
+        q
+          .select({ b: finBelege })
+          .from(finBelege)
+          .innerJoin(finBuchungen, eq(finBuchungen.id, finBelege.buchungId))
+          .where(imZeitraum)
+          .orderBy(asc(finBelege.nummer)),
+        q
+          .select({ p: finBelegposten })
+          .from(finBelegposten)
+          .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+          .innerJoin(finBuchungen, eq(finBuchungen.id, finBelege.buchungId))
+          .where(imZeitraum)
+          .orderBy(asc(finBelege.nummer), asc(finBelegposten.pos)),
+        q.select().from(finRechnungssteller).orderBy(asc(finRechnungssteller.name)),
+      ]);
+      return {
+        belege: belege.map(({ b }) => ({
+          id: b.id,
+          nummer: b.nummer,
+          rechnungsstellerId: b.rechnungsstellerId,
+          belegdatum: b.belegdatum,
+          modus: b.modus,
+          zahlweg: b.zahlweg,
+          bezahldatum: b.bezahldatum,
+          mitgliedId: b.mitgliedId,
+          eigenbelegBegruendung: b.eigenbelegBegruendung,
+          dateiSha256: b.dateiSha256,
+          dateiSchluessel: b.dateiSchluessel,
+          dateiTyp: b.dateiTyp,
+          dateiName: b.dateiName,
+          summeCent: b.summeCent,
+          buchungId: b.buchungId,
+          erstelltVon: b.erstelltVon,
+          erstelltAm: b.erstelltAm.toISOString(),
+        })),
+        belegposten: posten.map(({ p }) => ({
+          belegId: p.belegId,
+          pos: p.pos,
+          kategorieId: p.kategorieId,
+          art: p.art ?? 'kategorie',
+          text: p.text,
+          anzahlMilli: p.anzahlMilli,
+          einzelpreisCent: p.einzelpreisCent,
+          steuersatz: p.steuersatz,
+          betragCent: p.betragCent,
+          gesamtCent: p.gesamtCent,
+          pfandCent: p.pfandCent,
+          pfandBetragCent: p.pfandBetragCent,
+        })),
+        rechnungssteller: steller.map((r) => ({
+          id: r.id,
+          name: r.name,
+          archiviert: r.archiviert,
+        })),
+      };
+    },
+
     async rechnungssteller(mitArchiv) {
       const [rows, zuletzt] = await Promise.all([
         db.select().from(finRechnungssteller).orderBy(asc(finRechnungssteller.name)),
