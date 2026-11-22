@@ -122,11 +122,11 @@ function AbschliessenAktionen({
 }: Readonly<{
   /** Whether the draft is saved (null = still saving). */
   gespeichert: boolean | null;
-  q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isPending' | 'isError'>;
+  q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isLoading' | 'isError'>;
   auswahl: readonly string[];
   onAuswahl: (ids: string[]) => void;
 }>) {
-  if (gespeichert === null || (gespeichert === true && q.isPending)) {
+  if (gespeichert === null || (gespeichert === true && q.isLoading)) {
     return (
       <Group gap="xs">
         <Loader size="sm" aria-label="Aktionen werden geladen" />
@@ -263,7 +263,7 @@ function ProtokollAnsicht({
   const gewaehlteAktionen =
     eigeneAuswahl ?? (dialogAktionen.data ? vorgewaehlteAktionen(dialogAktionen.data) : []);
   const aktionenLaden =
-    entwurfGespeichert === null || (entwurfGespeichert === true && dialogAktionen.isPending);
+    entwurfGespeichert === null || (entwurfGespeichert === true && dialogAktionen.isLoading);
   // The Aktionen card of a closed protocol (writers only).
   const kartenAktionen = useProtokollAktionen(dto.id, darfSchreiben && !entwurf && !offiziell);
   const offiziellAnlegen = useOffiziellesProtokollAnlegen();
