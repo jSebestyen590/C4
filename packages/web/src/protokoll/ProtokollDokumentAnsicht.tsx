@@ -740,13 +740,13 @@ function Baustein({
           )}
           {z.abgelehnt.length > 0 && (
             <p>
-              Nimmt die Wahl nicht an:{' '}
               {z.abgelehnt.map((g, i) => (
                 <Fragment key={g.id}>
                   {i > 0 && ', '}
-                  <WahlName k={g} ctx={ctx} />
+                  <WahlName k={g} ctx={ctx} /> nimmt die Wahl nicht an
                 </Fragment>
               ))}
+              .
             </p>
           )}
           {(z.anwesend || z.nichtBeschlussfaehig) && (

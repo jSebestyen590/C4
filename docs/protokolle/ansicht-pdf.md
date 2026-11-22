@@ -73,7 +73,7 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Meinungsbild:** Block „Meinungsbild: Frage“, „Ja 4 · Nein 3 · Enthaltung 2“ (Optionen ohne Text entfallen), klein „(nicht
   bindend)“, dann die Notizen.
 - **Wahl:** auf oberster Ebene mit Überschrift „Wahl: Posten (2 Plätze)“ (nicht in der Gliederung; bei einem Platz ohne Anzahl), in Notizen steht diese Zeile im Block. **Reihenfolge:** zuerst die Notizen (die Aussprache davor), zuletzt der blaue Ergebnis-Block, in dem die Abstimmung abschließt; der Block enthält bei gesetztem „Gilt ab“ die Zeile „Gilt ab 01.01.2027“, „Kandidat:innen: A 5 · B 3 · C 3 · Enthaltung 1“, je Stichwahl „Stichwahl: B 4 ·
-  C 2 · Enthaltung 0“, dann „Nicht angetreten: X, Y“ (nur wenn gesetzt), „Gewählt: A, B“ (nur Annehmende; mit festgehaltener Annahme „Gewählt: A, A nimmt die Wahl an.“; oder rot „Noch offen: Stichwahl nötig“), „Nimmt die Wahl nicht an: Z“ (nur wenn jemand abgelehnt hat), „(x von y Mitgliedern anwesend)“ (rot
+  C 2 · Enthaltung 0“, dann „Nicht angetreten: X, Y“ (nur wenn gesetzt), „Gewählt: A, B“ (nur Annehmende; mit festgehaltener Annahme „Gewählt: A, A nimmt die Wahl an.“; oder rot „Noch offen: Stichwahl nötig“), „Z nimmt die Wahl nicht an.“ (nur wenn jemand abgelehnt hat), „(x von y Mitgliedern anwesend)“ (rot
   „nicht beschlussfähig“). Personen als `StatusName`.
 - **Todo:** ein gewöhnlicher Aufzählungspunkt in den Notizen, in denen es steht, kein farbiger Block, keine Überschrift und nicht in der
   Gliederung: „• **Todo:** Titel – Anna, Ben, @Alle (bis 14.11.2026)“. Seine Notizen folgen als Aufzählungspunkte eine Ebene tiefer. Steht das

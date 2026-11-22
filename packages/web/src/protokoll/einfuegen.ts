@@ -403,7 +403,10 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
       // Behind the block: its next paragraph; else the first text block inside what follows (e.g. the
       // list with the empty bullet the slash command was typed in); else a new paragraph.
       const dahinter = tr.doc.resolve(ende).nodeAfter;
-      if (dahinter && !dahinter.isTextblock) {
+      if (
+        dahinter &&
+        (dahinter.type.name === 'bulletList' || dahinter.type.name === 'orderedList')
+      ) {
         const erster = TextSelection.findFrom(tr.doc.resolve(ende), 1, true);
         if (erster && erster.from < ende + dahinter.nodeSize) {
           tr.setSelection(erster);

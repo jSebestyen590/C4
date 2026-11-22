@@ -11,6 +11,7 @@ import {
   type ProtokollAbschnitt,
 } from '@c4/shared';
 import { zitatInPunktVerlassen } from './einfuegen';
+import { mausFokusPlugin } from './formular';
 
 // Document structure of the minutes: four fixed sections, each holding text blocks and Bausteine.
 
@@ -247,6 +248,7 @@ export const ProtokollAbsicherung = Extension.create({
 
   addProseMirrorPlugins() {
     return [
+      mausFokusPlugin(),
       new Plugin({
         key,
         filterTransaction: (tr) => !tr.docChanged || abschnitteIntakt(tr.doc),

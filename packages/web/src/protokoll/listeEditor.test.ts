@@ -177,6 +177,24 @@ describe('fokusSetzen', () => {
     expect($from.node($from.depth - 1).type.name).toBe('listItem');
   });
 
+  it("'nach' does not descend into a following Baustein", async () => {
+    const anwe = bausteinErzeugen('bausteinAnwesenheit', {
+      art: 'erscheint',
+      sub: 'x',
+      uhrzeit: '',
+    });
+    const thema = bausteinErzeugen('bausteinThema', undefined, [absatz('Innen')]);
+    const e = baue([absatz('A'), anwe, thema]);
+    let pos = -1;
+    e.state.doc.descendants((n, p) => {
+      if (pos === -1 && n.type.name === 'bausteinAnwesenheit') pos = p;
+      return pos === -1;
+    });
+    fokusSetzen(e, pos, 'nach');
+    await pause();
+    expect(notizen(e)).toBe('Them(A Anwe() _ Them(Innen) _)');
+  });
+
   it("'nach' adds a paragraph when no text block follows", async () => {
     const anwe = bausteinErzeugen('bausteinAnwesenheit', {
       art: 'erscheint',

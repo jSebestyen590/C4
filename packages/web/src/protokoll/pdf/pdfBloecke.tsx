@@ -843,8 +843,14 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
             )}
             {z.abgelehnt.length > 0 && (
               <Text>
-                {'Nimmt die Wahl nicht an: '}
-                <Liste personen={z.abgelehnt} ctx={ctx} />
+                {z.abgelehnt.map((g, i) => (
+                  <Fragment key={g.id}>
+                    {i > 0 && ', '}
+                    <Liste personen={[g]} ctx={ctx} />
+                    {' nimmt die Wahl nicht an'}
+                  </Fragment>
+                ))}
+                {'.'}
               </Text>
             )}
             {(z.anwesend || z.nichtBeschlussfaehig) && (
