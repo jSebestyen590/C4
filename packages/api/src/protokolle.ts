@@ -67,9 +67,16 @@ export interface ProtokollStore {
   /** All protocols without their text. */
   alle(): Promise<ProtokollKurz[]>;
   holen(id: string): Promise<ProtokollDaten | undefined>;
+  /** The NORMAL protocol of the event (never an official copy). */
   nachEvent(eventId: string): Promise<ProtokollDaten | undefined>;
-  /** Throws ProtokollExistiert when the event has a protocol already. */
-  anlegen(daten: { eventId: string; inhalt: string; kopf: string }, von: string): Promise<string>;
+  /**
+   * Throws ProtokollExistiert when the event has a normal protocol already (or, with
+   * `offiziellVon`, the source has an official copy already).
+   */
+  anlegen(
+    daten: { id?: string; eventId: string; inhalt: string; kopf: string; offiziellVon?: string },
+    von: string,
+  ): Promise<string>;
   /**
    * Saves a draft if `daten.version` is the stored one. Undefined when missing; throws
    * ProtokollAbgeschlossen for closed protocols and ProtokollVeraltet for another version.
@@ -199,6 +206,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
         .select({
           id: protokolle.id,
           eventId: protokolle.eventId,
+          offiziellVon: protokolle.offiziellVon,
           status: protokolle.status,
           version: protokolle.version,
           erstelltVon: protokolle.erstelltVon,
@@ -215,17 +223,21 @@ export function createProtokolleStore(db: Db): ProtokollStore {
     },
 
     async nachEvent(eventId) {
-      const [row] = await db.select().from(protokolle).where(eq(protokolle.eventId, eventId));
+      const [row] = await db
+        .select()
+        .from(protokolle)
+        .where(and(eq(protokolle.eventId, eventId), isNull(protokolle.offiziellVon)));
       return row;
     },
 
     async anlegen(daten, von) {
-      const id = randomUUID();
+      const id = daten.id ?? randomUUID();
       const jetzt = new Date();
       try {
         await db.insert(protokolle).values({
           id,
           eventId: daten.eventId,
+          offiziellVon: daten.offiziellVon ?? null,
           inhalt: daten.inhalt,
           kopf: daten.kopf,
           erstelltVon: von,

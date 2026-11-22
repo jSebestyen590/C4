@@ -103,6 +103,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0104–0109 (Bilder): 0104 löscht die Tabelle `onedrive_verbindung`, 0108 die Tabelle `bilder_freigaben`, 0109 die Tabelle `bilder_ordner_cache`; 0105–0107 fügen `events.bilder_ordner_id`,
   `events.bilder_ordner_url` und `event_vorlagen.bilder_ordner` per `ALTER` hinzu, ihre Down-Dateien leeren nur die Werte.
   Rollback-Ziel nur für die Bilder: `0103_gegenstaende_anzahl_je`.
+- 0245–0248 (offizielles Protokoll): `protokolle.offiziell_von`, partieller Unique-Index `protokolle_event_normal_idx`, Unique-Index auf `offiziell_von`, dann Entfernen von `protokolle_event_idx`; die Down-Datei von 0248 scheitert, solange offizielle Kopien dieselbe `event_id` haben.
 - 0110–0113 (Protokolle): 0110 löscht die Tabelle `protokolle`, 0111 den Index `protokolle_event_idx`; 0112 und 0113 fügen
   `event_kategorien.protokoll` und `protokoll_art` per `ALTER` hinzu, die Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Protokolle:
   `0109_bilder_ordner_cache`.

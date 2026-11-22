@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
@@ -151,7 +152,12 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
     const events = await deps.kalender.eventsKurz(alle.map((p) => p.eventId));
     const beginn = (id: string) => Date.parse(events.find((e) => e.id === id)?.beginn ?? '');
     const davor = alle
-      .filter((p) => p.eventId !== sitzung.id && beginn(p.eventId) < Date.parse(sitzung.beginn))
+      .filter(
+        (p) =>
+          p.offiziellVon === null &&
+          p.eventId !== sitzung.id &&
+          beginn(p.eventId) < Date.parse(sitzung.beginn),
+      )
       .sort((a, b) => beginn(b.eventId) - beginn(a.eventId));
     const letztes = davor[0] && (await deps.protokolle.holen(davor[0].id));
     const dokument = letztes ? protokollInhaltLesen(letztes.inhalt) : null;
@@ -244,28 +250,40 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
       deps.kalender.teilnahmeAntworten(p.eventId),
     ]);
     const kopf = protokollKopfLesen(p.kopf);
-    const geschlossen = p.status === 'abgeschlossen' && kopf.naechsteSitzungSchnappschuss !== null;
+    // An official copy keeps the snapshot of its source in every status: it never shows live data.
+    const ansichtStatus = p.offiziellVon ? 'abgeschlossen' : p.status;
+    const geschlossen =
+      ansichtStatus === 'abgeschlossen' && kopf.naechsteSitzungSchnappschuss !== null;
     const naechste = geschlossen ? [] : await naechsteSitzungenLesen(event?.beginn);
+    const offiziellId = p.offiziellVon
+      ? null
+      : ((await deps.protokolle.alle()).find((x) => x.offiziellVon === p.id)?.id ?? null);
     const von = mitglieder.find((m) => m.sub === p.geaendertVon);
     const inhalt = protokollInhaltLesen(p.inhalt);
     return {
       id: p.id,
       eventId: p.eventId,
+      offiziellVon: p.offiziellVon,
+      offiziellId,
       sitzung: {
         id: p.eventId,
         titel: event?.titel ?? 'Sitzung',
         beginn: event?.beginn ?? p.erstelltAm.toISOString(),
         kategorie: event?.kategorie ?? null,
-        art: protokollArtVon(kopf, p.status, event?.protokollArt ?? 'sitzung'),
+        art: protokollArtVon(kopf, ansichtStatus, event?.protokollArt ?? 'sitzung'),
       },
       inhalt,
       bilder: await protokollBilderUrls(p.id, inhalt),
       kopf,
       status: p.status,
       version: p.version,
-      naechsteSitzungVorschlag: naechsteSitzungVorschlagVon(kopf, p.status, naechste[0] ?? null),
-      naechsteSitzungen: p.status === 'entwurf' ? naechste : [],
-      ...protokollListen(kopf, p.status, mitglieder, antworten),
+      naechsteSitzungVorschlag: naechsteSitzungVorschlagVon(
+        kopf,
+        ansichtStatus,
+        naechste[0] ?? null,
+      ),
+      naechsteSitzungen: p.status === 'entwurf' && !p.offiziellVon ? naechste : [],
+      ...protokollListen(kopf, ansichtStatus, mitglieder, antworten),
       geaendertAm: p.geaendertAm.toISOString(),
       geaendertVon: von ? mitgliedDto(von) : null,
     };
@@ -441,6 +459,8 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           return {
             id: p.id,
             eventId: p.eventId,
+            offiziellVon: p.offiziellVon,
+            offiziellId: alle.find((x) => x.offiziellVon === p.id)?.id ?? null,
             titel: event?.titel ?? 'Sitzung',
             beginn,
             status: p.status,
@@ -526,6 +546,64 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           }
         },
       )
+      // Official copy of a closed normal protocol (real names in the Dokument; see docs/protokolle.md).
+      .post('/protokolle/:id/offiziell', auth, protokolleSchreiben, async (c) => {
+        const quelle = gefunden(
+          await deps.protokolle.holen(c.req.param('id')),
+          'Protokoll nicht gefunden',
+        );
+        if (quelle.offiziellVon) {
+          throw new HTTPException(400, {
+            message: 'Von einem offiziellen Protokoll lässt sich kein weiteres anlegen.',
+          });
+        }
+        if (quelle.status !== 'abgeschlossen') {
+          throw new HTTPException(400, {
+            message:
+              'Ein offizielles Protokoll gibt es erst, wenn das Protokoll abgeschlossen ist.',
+          });
+        }
+        const vorhanden = (await deps.protokolle.alle()).find((x) => x.offiziellVon === quelle.id);
+        const existiert = () =>
+          c.json(
+            {
+              error: 'Zu diesem Protokoll gibt es schon ein offizielles Protokoll.',
+              offiziellId: vorhanden?.id,
+            },
+            409,
+          );
+        if (vorhanden) return existiert();
+        const inhalt = protokollInhaltLesen(quelle.inhalt);
+        const sub = c.get('user').sub;
+        // Images live under the prefix of their protocol (and the save checks that), so the copy
+        // gets its own copies of the objects and the keys in its document are rewritten.
+        const neueId = randomUUID();
+        const vonPrefix = protokollBildPrefix(quelle.id);
+        const bilder = protokollBildSchluessel(inhalt).filter((k) => k.startsWith(vonPrefix));
+        if (bilder.length > 0) {
+          await deps.protokollbilder.kopieren(quelle.id, neueId, bilder);
+        }
+        const inhaltText = quelle.inhalt.split(vonPrefix).join(protokollBildPrefix(neueId));
+        try {
+          const id = await deps.protokolle.anlegen(
+            {
+              id: neueId,
+              eventId: quelle.eventId,
+              inhalt: inhaltText,
+              kopf: quelle.kopf,
+              offiziellVon: quelle.id,
+            },
+            sub,
+          );
+          return c.json({ id }, 201);
+        } catch (err) {
+          if (err instanceof ProtokollExistiert) {
+            await deps.protokollbilder.loeschen(neueId).catch(() => {});
+            return existiert();
+          }
+          throw err;
+        }
+      })
       .get('/protokolle/:id', auth, protokolleLesen, async (c) => {
         const p = gefunden(
           await deps.protokolle.holen(c.req.param('id')),
@@ -634,6 +712,25 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           const ohneSperre = await protokollOhneSperre(c, p);
           if (ohneSperre) return ohneSperre;
           const kopf = protokollKopfLesen(p.kopf);
+          // An official copy only switches the status: it keeps the snapshot of its source and runs
+          // no Aktionen (the normal protocol did that already).
+          if (p.offiziellVon) {
+            try {
+              const ergebnis = gefunden(
+                await deps.protokolle.statusBelegen(
+                  p.id,
+                  p.version,
+                  akteur,
+                  status,
+                  JSON.stringify(kopf),
+                ),
+                'Protokoll nicht gefunden',
+              );
+              return c.json(antwort(ergebnis));
+            } catch (err) {
+              return protokollKonflikt(err, c);
+            }
+          }
           if (status === 'entwurf') {
             try {
               const ergebnis = gefunden(
@@ -779,6 +876,7 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           await deps.protokolle.holen(c.req.param('id')),
           'Protokoll nicht gefunden',
         );
+        if (p.offiziellVon) return c.json({ aktionen: [] } satisfies ProtokollAktionenAntwort);
         const antwort: ProtokollAktionenAntwort = {
           aktionen: await aktionenDtos(
             p,
@@ -800,6 +898,11 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
             await deps.protokolle.holen(c.req.param('id')),
             'Protokoll nicht gefunden',
           );
+          if (p.offiziellVon) {
+            throw new HTTPException(409, {
+              message: 'Ein offizielles Protokoll führt keine Aktionen aus.',
+            });
+          }
           if (p.status !== 'abgeschlossen') {
             throw new HTTPException(409, {
               message: 'Die Aktionen laufen beim Abschließen des Protokolls.',
@@ -876,6 +979,21 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
           const aktiv = vorhanden.sperreBis !== null && vorhanden.sperreBis.getTime() > Date.now();
           // A free or expired lock allows deleting; only a valid lock of another tab refuses.
           if (aktiv) return ohneSperre;
+        }
+        if (vorhanden && !vorhanden.offiziellVon) {
+          const offiziell = (await deps.protokolle.alle()).find(
+            (x) => x.offiziellVon === vorhanden.id,
+          );
+          if (offiziell) {
+            return c.json(
+              {
+                error:
+                  'Zu diesem Protokoll gibt es ein offizielles Protokoll. Lösche zuerst das offizielle Protokoll.',
+                offiziellId: offiziell.id,
+              },
+              409,
+            );
+          }
         }
         try {
           gefunden(await deps.protokolle.loeschen(c.req.param('id')), 'Protokoll nicht gefunden');
