@@ -29,7 +29,11 @@ export function mutationFehlerBehandeln(
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
+    defaultOptions: {
+      // No refetch on focus: returning to the PWA would refetch every active query at once and
+      // exceed the Lambda concurrency (#90). Pages refetch on navigation (staleTime) and pull-to-refresh.
+      queries: { retry: false, staleTime: 30_000, refetchOnWindowFocus: false },
+    },
     mutationCache: new MutationCache({
       onError: (error, _variables, _context, mutation) =>
         mutationFehlerBehandeln(error, mutation.meta),

@@ -102,7 +102,7 @@ Menü steht weiterhin in `AppLayout`.
 zeigt eine rote Notification mit der Meldung des `ApiFehler`, sonst „Das hat nicht geklappt. Bitte versuch es noch einmal.“.
 Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, Inline-`Alert`, `try/catch` um `mutateAsync`),
 setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
-bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).
+bekommen die globale Meldung. GET-Anfragen (`fetchMitWiederholung`, `fetchWiederholen.ts`) werden bei Netzfehler oder 429/502/503/504 bis zu zweimal wiederholt (Lambda-Drosselung beim Zurückkehren in die App). `RequireUsername` zeigt „Verbindung fehlgeschlagen“ nur, wenn keine Daten geladen sind. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben) und laden beim Zurückkehren in die App nicht neu (`refetchOnWindowFocus: false`, sonst feuern alle aktiven Queries gleichzeitig und überschreiten das Lambda-Limit, #90); Ausnahme: Benachrichtigungen.
 
 ## Query-Keys (Web)
 
