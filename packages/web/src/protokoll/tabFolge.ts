@@ -1,6 +1,3 @@
-import type { ResolvedPos } from '@tiptap/pm/model';
-import { FORMULAR_ATTRIBUT } from './formular';
-
 // Tab order of a Baustein card: form fields, then the Notizen (the free text lives in the same
 // ProseMirror root as the form, so the browser never tabs into it on its own).
 
@@ -50,24 +47,4 @@ export function istLetztesFeld(wurzel: HTMLElement, el: Element): boolean {
       !(gruppe && f instanceof HTMLInputElement && f.type === 'radio' && f.name === gruppe.name) &&
       (el.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
   );
-}
-
-/**
- * Depth of the Baustein whose very first text block the cursor is at the start of (not inside a list or
- * quote: there Shift+Tab has its own meaning), or `null`.
- */
-export function bausteinAnfangTiefe(
-  $from: ResolvedPos,
-  istBaustein: (name: string) => boolean,
-): number | null {
-  const tiefe = $from.depth - 1;
-  if (tiefe < 0 || !$from.parent.isTextblock || $from.parentOffset !== 0) return null;
-  if (!istBaustein($from.node(tiefe).type.name) || $from.index(tiefe) !== 0) return null;
-  return tiefe;
-}
-
-/** The last field of the form of the Baustein card `karte` (its own form, not that of nested ones). */
-export function letztesFormularFeld(karte: HTMLElement): HTMLElement | undefined {
-  const formular = karte.querySelector<HTMLElement>(`[${FORMULAR_ATTRIBUT}]`);
-  return formular ? tabbareFelder(formular).at(-1) : undefined;
 }

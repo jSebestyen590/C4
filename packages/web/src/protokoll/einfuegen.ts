@@ -336,12 +336,54 @@ export function bausteinEinfuegen(
 /**
  * Focuses the input marked `data-fokus="<ziel>"` of the Baustein at `pos`, or puts the cursor into its
  * free text for `ziel === 'text'`. The node view renders a moment after the transaction, so this retries
- * for a short while (timers, not animation frames: those pause in background tabs).
+ * for a short while (timers, not animation frames: those pause in background tabs). It gives up as soon
+ * as the user does something else (click, key, focus change) or the node at `pos` is no longer the same
+ * one, so a late retry never pulls the focus to a stale position.
  */
 export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
+  const ursprung = editor.state.doc.nodeAt(pos);
+  if (!ursprung) return;
+  const kennung = (n: typeof ursprung) => (n.attrs.id ?? n.attrs.schluessel ?? null) as unknown;
+  const ereignisse = ['mousedown', 'touchstart', 'keydown', 'focusin'] as const;
   let versuche = 0;
+  let abgebrochen = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const beenden = () => {
+    for (const e of ereignisse) document.removeEventListener(e, abbrechen, true);
+  };
+  const abbrechen = () => {
+    abgebrochen = true;
+    clearTimeout(timer);
+    beenden();
+  };
+  for (const e of ereignisse) document.addEventListener(e, abbrechen, true);
   const schritt = () => {
-    if (editor.isDestroyed) return;
+    const aktuell = editor.isDestroyed ? null : editor.state.doc.nodeAt(pos);
+    if (
+      abgebrochen ||
+      !aktuell ||
+      aktuell.type !== ursprung.type ||
+      kennung(aktuell) !== kennung(ursprung)
+    ) {
+      beenden();
+      return;
+    }
+    if (ziel !== 'nach' && ziel !== 'text') {
+      const dom = editor.view.nodeDOM(pos);
+      const feld =
+        dom instanceof HTMLElement
+          ? dom.querySelector<HTMLElement>(`[data-fokus="${ziel}"]`)
+          : null;
+      if (!feld) {
+        if (versuche++ < 40) timer = setTimeout(schritt, 30);
+        else beenden();
+        return;
+      }
+      beenden();
+      feld.focus();
+      return;
+    }
+    beenden();
     if (ziel === 'nach') {
       const knoten = editor.state.doc.nodeAt(pos);
       if (!knoten) return;
@@ -376,16 +418,8 @@ export function fokusSetzen(editor: Editor, pos: number, ziel: string): void {
       editor.view.focus();
       return;
     }
-    const dom = editor.view.nodeDOM(pos);
-    const feld =
-      dom instanceof HTMLElement ? dom.querySelector<HTMLElement>(`[data-fokus="${ziel}"]`) : null;
-    if (feld) {
-      feld.focus();
-      return;
-    }
-    if (versuche++ < 40) setTimeout(schritt, 30);
   };
-  setTimeout(schritt, 0);
+  timer = setTimeout(schritt, 0);
 }
 
 /**

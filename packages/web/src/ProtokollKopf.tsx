@@ -1,3 +1,4 @@
+import { ZeitFeld } from './ZeitFeld';
 import {
   Box,
   Button,
@@ -12,7 +13,6 @@ import {
   Stack,
   Text,
   Textarea,
-  TextInput,
   Title,
   UnstyledButton,
   useMantineTheme,
@@ -309,6 +309,7 @@ export function ProtokollKopf({
     setzen: (sub: string | null) => void,
   ) => (
     <Select
+      allowDeselect={false}
       size="md"
       label={label}
       aria-label={aria}
@@ -351,13 +352,11 @@ export function ProtokollKopf({
                 onChange({ ...kopf, protokollfuehrung: sub }),
               )}
             </SimpleGrid>
-            <TextInput
-              type="time"
-              size="md"
+            <ZeitFeld
               label="Eröffnung"
               w={{ base: '100%', sm: 160 }}
               value={kopf.eroeffnung}
-              onChange={(e) => onChange({ ...kopf, eroeffnung: e.currentTarget.value })}
+              onWert={(eroeffnung) => onChange({ ...kopf, eroeffnung })}
             />
             <QuorumZeile art={dto.sitzung.art} personen={effektiv} inhalt={inhalt} />
           </Stack>

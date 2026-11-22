@@ -6,7 +6,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bausteinErzeugen, bausteinLeer, type ProtokollKnoten } from '@c4/shared';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
-import { bausteinEinfuegen } from './einfuegen';
+import { bausteinEinfuegen, fokusSetzen } from './einfuegen';
 import {
   AbschnittKnoten,
   blockPunkte,
@@ -109,5 +109,62 @@ describe('Bausteine from list items in the real editor', () => {
     const ende = e.state.selection.from;
     bausteinEinfuegen(e, abstimmung, { from: ende - '/abstim'.length, to: ende });
     expect(notizen(e)).toMatch(/li\(_ Anwe\(\)\) li\(_ Besc\(.*\)\) li\(_\)/);
+  });
+});
+
+const taste = (e: Editor, key: string, shiftKey = false): boolean =>
+  e.view.someProp('handleKeyDown', (f) =>
+    f(e.view, new KeyboardEvent('keydown', { key, shiftKey, bubbles: true })),
+  ) === true;
+
+describe('Tab in the Notizen', () => {
+  it('is always consumed and never leaves the text: no list item to indent or outdent changes nothing', () => {
+    const e = baue([absatz('Notiz'), liste(punkt(absatz('Eins')), punkt(absatz('Zwei')))]);
+    const vorher = notizen(e);
+    cursorIn(e, 'Notiz');
+    expect(taste(e, 'Tab')).toBe(true);
+    expect(taste(e, 'Tab', true)).toBe(true);
+    cursorIn(e, 'Eins'); // first item: nothing to sink under
+    expect(taste(e, 'Tab')).toBe(true);
+    expect(notizen(e)).toBe(vorher);
+  });
+
+  it('indents and outdents a list item', () => {
+    const e = baue([liste(punkt(absatz('Eins')), punkt(absatz('Zwei')))]);
+    cursorIn(e, 'Zwei');
+    expect(taste(e, 'Tab')).toBe(true);
+    expect(notizen(e)).toBe('Them(ul(li(Eins ul(li(Zwei)))))');
+    expect(taste(e, 'Tab', true)).toBe(true);
+    expect(notizen(e)).toBe('Them(ul(li(Eins) li(Zwei)))');
+  });
+});
+
+describe('fokusSetzen', () => {
+  const pause = () => new Promise((r) => setTimeout(r, 100));
+  const bausteinPos = (e: Editor) => {
+    let pos = -1;
+    e.state.doc.descendants((n, p) => {
+      if (pos === -1 && n.type.name === 'bausteinThema') pos = p;
+      return pos === -1;
+    });
+    return pos;
+  };
+
+  it('puts the cursor into the Notizen of the Baustein', async () => {
+    const e = baue([absatz('Notiz')]);
+    fokusSetzen(e, bausteinPos(e), 'text');
+    await pause();
+    expect(e.state.selection.$from.parent.textContent).toBe('Notiz');
+  });
+
+  it('gives up when the user does something else first', async () => {
+    const e = baue([absatz('Notiz')]);
+    cursorIn(e, 'Notiz');
+    e.commands.setTextSelection(1);
+    const vorher = e.state.selection.from;
+    fokusSetzen(e, bausteinPos(e), 'text');
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await pause();
+    expect(e.state.selection.from).toBe(vorher);
   });
 });

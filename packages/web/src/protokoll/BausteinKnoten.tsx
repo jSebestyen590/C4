@@ -32,7 +32,7 @@ import {
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
 import { BeschlussHinweis, MeinungsbildHinweis } from './BeschlussHinweis';
-import { FORMULAR_ATTRIBUT } from './formular';
+import { FORMULAR_ATTRIBUT, formularMausTaste } from './formular';
 import {
   AnwaerterFormular,
   AufnahmeFormular,
@@ -110,6 +110,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
           <div
             contentEditable={false}
             {...{ [FORMULAR_ATTRIBUT]: '' }}
+            onMouseDown={formularMausTaste}
             onKeyDown={(e) => {
               // Tab on the last field of the form continues in the Notizen of this Baustein.
               if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;

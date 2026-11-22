@@ -1,4 +1,5 @@
-import { ActionIcon, Badge, Group, Paper, Stack, Text, TextInput } from '@mantine/core';
+import { ZeitFeld } from '../ZeitFeld';
+import { ActionIcon, Badge, Group, Paper, Stack, Text } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import type { VorlageSchicht } from '@c4/shared';
 import { anzahlSetzen, bedarfSetzen, schichtKurz, schichtZeitSetzen } from './bausteinLogik';
@@ -38,22 +39,16 @@ export function SchichtEditor({
               </ActionIcon>
             </Group>
             <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-              <TextInput
+              <ZeitFeld
                 label="Beginn"
-                type="time"
                 value={s.beginnZeit}
-                onChange={(e) =>
-                  ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', e.currentTarget.value))
-                }
+                onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', w))}
                 style={{ minWidth: 0 }}
               />
-              <TextInput
+              <ZeitFeld
                 label="Ende"
-                type="time"
                 value={s.endeZeit}
-                onChange={(e) =>
-                  ersetzen(i, schichtZeitSetzen(s, 'endeZeit', e.currentTarget.value))
-                }
+                onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'endeZeit', w))}
                 style={{ minWidth: 0 }}
               />
             </Group>

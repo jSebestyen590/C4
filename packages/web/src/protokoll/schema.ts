@@ -11,7 +11,6 @@ import {
   type ProtokollAbschnitt,
 } from '@c4/shared';
 import { zitatInPunktVerlassen } from './einfuegen';
-import { bausteinAnfangTiefe, letztesFormularFeld } from './tabFolge';
 
 // Document structure of the minutes: four fixed sections, each holding text blocks and Bausteine.
 
@@ -187,6 +186,28 @@ const bausteinNamen = new Set<string>(BAUSTEIN_TYPEN);
 const key = new PluginKey('protokollAbsicherung');
 
 /**
+ * Tab never leaves the Notizen: it indents a list item or does nothing, Shift+Tab outdents or does
+ * nothing. Low priority, so the Slash/@ popup (Tab picks an entry) and the list item's own handling win.
+ */
+export const NotizenTabulator = Extension.create({
+  name: 'notizenTabulator',
+  priority: 10,
+
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        this.editor.commands.sinkListItem('listItem');
+        return true;
+      },
+      'Shift-Tab': () => {
+        this.editor.commands.liftListItem('listItem');
+        return true;
+      },
+    };
+  },
+});
+
+/**
  * Safeguards of the structure:
  * - Backspace/Delete over a selection that spans sections only empties them (`addKeyboardShortcuts`).
  * - `filterTransaction` rejects every change that would remove, merge, reorder or re-label a section
@@ -196,6 +217,10 @@ const key = new PluginKey('protokollAbsicherung');
  */
 export const ProtokollAbsicherung = Extension.create({
   name: 'protokollAbsicherung',
+
+  addExtensions() {
+    return [NotizenTabulator];
+  },
 
   addKeyboardShortcuts() {
     // A selection over several sections (select all) is deleted section by section, so the sections
@@ -217,19 +242,7 @@ export const ProtokollAbsicherung = Extension.create({
         dispatch?.(tr.scrollIntoView());
         return true;
       });
-    // Shift+Tab at the very start of the Notizen leads back to the last field of the Baustein's form.
-    const zumFormular = () => {
-      const { selection } = this.editor.state;
-      if (!selection.empty) return false;
-      const tiefe = bausteinAnfangTiefe(selection.$from, (name) => bausteinNamen.has(name));
-      if (tiefe === null) return false;
-      const dom = this.editor.view.nodeDOM(selection.$from.before(tiefe));
-      const feld = dom instanceof HTMLElement ? letztesFormularFeld(dom) : undefined;
-      if (!feld) return false;
-      feld.focus();
-      return true;
-    };
-    return { Backspace: loeschen, Delete: loeschen, 'Shift-Tab': zumFormular };
+    return { Backspace: loeschen, Delete: loeschen };
   },
 
   addProseMirrorPlugins() {

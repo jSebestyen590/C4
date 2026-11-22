@@ -89,6 +89,7 @@ import {
 import { GRUPPE_TITEL } from './erwaehnungLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
 import { WiederholungHinweis } from './WiederholungHinweis';
+import { ZeitFeld } from '../ZeitFeld';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
 import { SchichtEditor, SchichtListe } from './SchichtEditor';
 import { postenKeys } from '../queryKeys';
@@ -232,6 +233,7 @@ export function EventFormular({
       />
       <Group grow {...zweiSpalten}>
         <DatumFeld
+          tippbar
           label={mehrtaegig || !daten.vorlageId ? 'Von' : 'Datum'}
           data-fokus="datum"
           loeschbar={false}
@@ -241,6 +243,7 @@ export function EventFormular({
         />
         {(mehrtaegig || !daten.vorlageId || daten.bisDatum) && (
           <DatumFeld
+            tippbar
             label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
             value={daten.bisDatum ?? ''}
             min={daten.datum ?? undefined}
@@ -251,20 +254,18 @@ export function EventFormular({
       </Group>
       {dauer !== 'ganztaegig' && (
         <Group grow {...zweiSpalten}>
-          <LokalText
+          <ZeitFeld
             label="Beginn"
-            type="time"
-            wert={daten.beginnZeit ?? ''}
+            value={daten.beginnZeit ?? ''}
             onWert={(w) => {
               const zeit = zeitWert(w);
               if (zeit !== undefined) aendern((d) => ({ ...d, beginnZeit: zeit }));
             }}
             style={{ minWidth: 0 }}
           />
-          <LokalText
+          <ZeitFeld
             label="Ende"
-            type="time"
-            wert={daten.endeZeit ?? ''}
+            value={daten.endeZeit ?? ''}
             onWert={(w) => {
               const zeit = zeitWert(w);
               if (zeit !== undefined) aendern((d) => ({ ...d, endeZeit: zeit }));
@@ -286,6 +287,7 @@ export function EventFormular({
         </Stack>
       )}
       <Select
+        allowDeselect={false}
         label="Kategorie"
         description={
           kategorieWert
@@ -302,6 +304,7 @@ export function EventFormular({
         nothingFoundMessage="Keine Kategorie gefunden"
       />
       <Select
+        allowDeselect={false}
         label="Verantwortliche:r"
         placeholder="Niemand"
         searchable
@@ -312,6 +315,7 @@ export function EventFormular({
         nothingFoundMessage="Niemand gefunden"
       />
       <Select
+        allowDeselect={false}
         label="Im Kalender"
         description="Verknüpft den Baustein mit einem bestehenden Event und übernimmt dessen Angaben (Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste). Die Notizen bleiben."
         placeholder="Noch nicht im Kalender"
@@ -448,6 +452,7 @@ export function TodoFormular({
         }}
       />
       <DatumFeld
+        tippbar
         label="Deadline"
         loeschbar={false}
         value={daten.faelligAm ?? ''}
@@ -512,6 +517,7 @@ export function VergangenesEventFormular({
   return (
     <Stack gap="xs">
       <Select
+        allowDeselect={false}
         label="Event aus dem Kalender"
         placeholder="Event wählen"
         searchable
@@ -547,6 +553,7 @@ export function VergangenesEventFormular({
             onWert={(name) => aendern((d) => ({ ...d, name }))}
           />
           <DatumFeld
+            tippbar
             label="Datum"
             data-fokus="datum"
             value={daten.datum ?? ''}
@@ -776,6 +783,7 @@ export function EmFormular({
     <Stack gap="xs">
       <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
       <Select
+        allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
         data-fokus="person"
@@ -852,6 +860,7 @@ export function AufnahmeFormular({
     <Stack gap="xs">
       <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
       <Select
+        allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
         data-fokus="person"
@@ -1224,6 +1233,7 @@ export function WahlFormular({
         }
       />
       <DatumFeld
+        tippbar
         label="Gilt ab"
         value={daten.gueltigAb ?? ''}
         onWert={(gueltigAb) => aendern((d) => ({ ...d, gueltigAb }))}
@@ -1247,6 +1257,7 @@ export function WahlFormular({
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
               <Select
+                allowDeselect={false}
                 label={`Kandidat:in ${i + 1}`}
                 placeholder="Person wählen"
                 size="md"

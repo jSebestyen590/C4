@@ -1,3 +1,4 @@
+import { ZeitFeld } from '../ZeitFeld';
 import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
@@ -9,7 +10,6 @@ import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesen
 import { istZeit } from './bausteinLogik';
 import { FORMULAR_ATTRIBUT } from './formular';
 import { useProtokollKontext } from './kontext';
-import { LokalText } from './LokalFelder';
 import { SlashIcon } from './symbole';
 
 const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht: 'Geht' };
@@ -64,6 +64,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
           {editierbar ? (
             <Flex gap="xs" align="center" wrap="wrap">
               <Select
+                allowDeselect={false}
                 size="md"
                 aria-label="Person"
                 placeholder="Person wählen"
@@ -95,11 +96,10 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 <SlashIcon symbol={daten.art} size={18} />
                 <Text>{ART_LABEL[daten.art]}</Text>
               </Group>
-              <LokalText
-                type="time"
-                size="md"
-                aria-label="Uhrzeit"
-                wert={daten.uhrzeit}
+              <ZeitFeld
+                hoursInputLabel="Uhrzeit, Stunden"
+                minutesInputLabel="Uhrzeit, Minuten"
+                value={daten.uhrzeit}
                 onWert={(w) => {
                   if (w === '' || istZeit(w)) aendern((d) => ({ ...d, uhrzeit: w }));
                 }}
