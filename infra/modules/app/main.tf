@@ -159,9 +159,9 @@ resource "aws_iam_role_policy" "lambda" {
         ]
       },
       {
-        # Finanzarchiv: write and read only. No delete, no BypassGovernanceRetention.
+        # Finanzarchiv: write and read only (incl. versions). No delete, no BypassGovernanceRetention.
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:ListBucket", "s3:ListBucketVersions"]
         Resource = [aws_s3_bucket.finanzarchiv.arn, "${aws_s3_bucket.finanzarchiv.arn}/*"]
       },
       {
@@ -577,6 +577,129 @@ resource "aws_s3_bucket_cors_configuration" "finanzarchiv" {
     allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
     allowed_headers = ["content-type", "x-amz-checksum-sha256"]
     max_age_seconds = 3000
+  }
+}
+
+# ---------------------------------------------------------------- CloudTrail (Finanzarchiv)
+# Tamper-evident log of the writes to the Finanzarchiv (data events) and, in prod, of the account's
+# management events. Log files go to their own Object Lock bucket.
+locals {
+  trail_name = "${local.name}-trail"
+  trail_arn  = "arn:aws:cloudtrail:${local.region}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
+}
+
+resource "aws_s3_bucket" "cloudtrail" {
+  bucket              = "${local.name}-cloudtrail-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudtrail" {
+  bucket                  = aws_s3_bucket.cloudtrail.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
+  bucket     = aws_s3_bucket.cloudtrail.id
+  depends_on = [aws_s3_bucket_versioning.cloudtrail]
+  rule {
+    default_retention {
+      mode = var.finanzarchiv_retention_mode
+      days = var.finanzarchiv_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail" {
+  bucket     = aws_s3_bucket.cloudtrail.id
+  depends_on = [aws_s3_bucket_public_access_block.cloudtrail]
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "CloudTrailAclCheck"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:GetBucketAcl"
+        Resource  = aws_s3_bucket.cloudtrail.arn
+        Condition = { StringEquals = { "aws:SourceArn" = local.trail_arn } }
+      },
+      {
+        Sid       = "CloudTrailWrite"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl"  = "bucket-owner-full-control"
+            "aws:SourceArn" = local.trail_arn
+          }
+        }
+      },
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource  = [aws_s3_bucket.cloudtrail.arn, "${aws_s3_bucket.cloudtrail.arn}/*"]
+        Condition = { Bool = { "aws:SecureTransport" = "false" } }
+      },
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "finanzarchiv" {
+  name                          = local.trail_name
+  s3_bucket_name                = aws_s3_bucket.cloudtrail.id
+  is_multi_region_trail         = false
+  include_global_service_events = false
+  enable_log_file_validation    = true
+  depends_on                    = [aws_s3_bucket_policy.cloudtrail]
+
+  # Advanced selectors, so that with management events off only the data events are logged.
+  dynamic "advanced_event_selector" {
+    for_each = var.cloudtrail_verwaltungsereignisse ? [1] : []
+    content {
+      name = "Management events (write)"
+      field_selector {
+        field  = "eventCategory"
+        equals = ["Management"]
+      }
+      field_selector {
+        field  = "readOnly"
+        equals = ["false"]
+      }
+    }
+  }
+
+  advanced_event_selector {
+    name = "Finanzarchiv objects (write)"
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Data"]
+    }
+    field_selector {
+      field  = "resources.type"
+      equals = ["AWS::S3::Object"]
+    }
+    field_selector {
+      field  = "readOnly"
+      equals = ["false"]
+    }
+    field_selector {
+      field       = "resources.ARN"
+      starts_with = ["${aws_s3_bucket.finanzarchiv.arn}/"]
+    }
   }
 }
 
