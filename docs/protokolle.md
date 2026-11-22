@@ -169,6 +169,12 @@ Protokoll bearbeitet (Sperre, Autosave, Version); Echtnamen und Farblosigkeit im
 - **Löschen:** Die Quelle lässt sich nicht löschen, solange es eine Kopie gibt (409 mit `offiziellId`); die Kopie lässt sich im Entwurf
   löschen. Die Quelle bleibt wieder öffnenbar, die Kopie ändert sich dadurch nicht.
 - `ProtokollDto` und der Listeneintrag tragen `offiziellVon` (Kopie → Quelle) und `offiziellId` (Quelle → Kopie).
+- **Oberfläche:** Auf einem abgeschlossenen normalen Protokoll (mit `protokolle:schreiben`, ohne Kopie) steht „Offizielles Protokoll
+  erstellen“ samt Erklärung; danach öffnet die Seite die Kopie. Gibt es eine Kopie, verlinkt das Original „Offizielles Protokoll
+  öffnen“, die Kopie trägt das Badge „Offiziell“ und den Link „Zum Original-Protokoll“; die Liste zeigt das Badge ebenfalls. Beim
+  Abschließen der Kopie entfallen Aktionen, Aktionen-Karte, Stimmenprüfung und die Prüfung auf den Beginn der Sitzung. Dokument,
+  Vorschau, Druck und PDF zeigen Klarnamen und keine Statusfarben
+  ([protokolle/ansicht-pdf.md](./protokolle/ansicht-pdf.md#dokumentansicht)); der Editor bleibt unverändert.
 
 ## Speichern
 

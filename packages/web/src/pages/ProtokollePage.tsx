@@ -22,11 +22,21 @@ import { StatusName } from '../StatusAnzeige';
 import { KartenOderTabelle } from '../KartenOderTabelle';
 
 function EntwurfBadge({ p }: Readonly<{ p: ProtokollListeEintragDto }>) {
-  return p.status === 'entwurf' ? (
-    <Badge color="yellow" variant="light">
-      Entwurf
-    </Badge>
-  ) : null;
+  if (p.status !== 'entwurf' && !p.offiziellVon) return null;
+  return (
+    <Group gap={4} wrap="nowrap">
+      {p.offiziellVon && (
+        <Badge color="indigo" variant="light">
+          Offiziell
+        </Badge>
+      )}
+      {p.status === 'entwurf' && (
+        <Badge color="yellow" variant="light">
+          Entwurf
+        </Badge>
+      )}
+    </Group>
+  );
 }
 
 function GeaendertVon({ p }: Readonly<{ p: ProtokollListeEintragDto }>) {
