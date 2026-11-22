@@ -133,6 +133,17 @@ describe('event.anlegen', () => {
     expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null });
   });
 
+  it('drops a leftover bisDatum for a single-day Kategorie', () => {
+    const [a] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, bisDatum: '2026-12-09' })),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(a!.ausfuehrbar).toBe(true);
+    expect(a!.plan).toMatchObject({
+      eingabe: { beginn: '2026-12-05T18:00:00.000Z', ende: '2026-12-05T21:00:00.000Z' },
+    });
+  });
+
   it('needs no times for whole-day Kategorien', () => {
     const [a] = protokollAktionen(
       dok(

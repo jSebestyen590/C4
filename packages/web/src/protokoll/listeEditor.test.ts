@@ -157,6 +157,43 @@ describe('fokusSetzen', () => {
     expect(e.state.selection.$from.parent.textContent).toBe('Notiz');
   });
 
+  it("'nach' goes into the first text block of a following list instead of adding a paragraph", async () => {
+    const anwe = bausteinErzeugen('bausteinAnwesenheit', {
+      art: 'erscheint',
+      sub: 'x',
+      uhrzeit: '',
+    });
+    const e = baue([absatz('A'), anwe, liste(punkt(absatz()))]);
+    let pos = -1;
+    e.state.doc.descendants((n, p) => {
+      if (pos === -1 && n.type.name === 'bausteinAnwesenheit') pos = p;
+      return pos === -1;
+    });
+    fokusSetzen(e, pos, 'nach');
+    await pause();
+    expect(notizen(e)).toBe('Them(A Anwe() ul(li(_)))');
+    const { $from } = e.state.selection;
+    expect($from.parent.type.name).toBe('paragraph');
+    expect($from.node($from.depth - 1).type.name).toBe('listItem');
+  });
+
+  it("'nach' adds a paragraph when no text block follows", async () => {
+    const anwe = bausteinErzeugen('bausteinAnwesenheit', {
+      art: 'erscheint',
+      sub: 'x',
+      uhrzeit: '',
+    });
+    const e = baue([absatz('A'), anwe]);
+    let pos = -1;
+    e.state.doc.descendants((n, p) => {
+      if (pos === -1 && n.type.name === 'bausteinAnwesenheit') pos = p;
+      return pos === -1;
+    });
+    fokusSetzen(e, pos, 'nach');
+    await pause();
+    expect(notizen(e)).toBe('Them(A Anwe() _)');
+  });
+
   it('gives up when the user does something else first', async () => {
     const e = baue([absatz('Notiz')]);
     cursorIn(e, 'Notiz');

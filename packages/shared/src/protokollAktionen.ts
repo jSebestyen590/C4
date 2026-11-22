@@ -267,7 +267,11 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   if (kategorie.dauer !== 'ganztaegig' && (!daten.beginnZeit || !daten.endeZeit)) {
     return nichtAusfuehrbar(text, 'Die Uhrzeit fehlt.');
   }
-  const bis = daten.bisDatum && daten.bisDatum >= daten.datum ? daten.bisDatum : daten.datum;
+  // A single-day Kategorie has no end date: a leftover `bisDatum` is dropped.
+  const bis =
+    kategorie.dauer !== 'eintaegig' && daten.bisDatum && daten.bisDatum >= daten.datum
+      ? daten.bisDatum
+      : daten.datum;
   const eingabe: EventEingabe = {
     ...ausVorlage(
       {

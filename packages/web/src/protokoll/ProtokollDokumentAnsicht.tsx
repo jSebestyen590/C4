@@ -727,6 +727,14 @@ function Baustein({
                     <WahlName k={g} ctx={ctx} />
                   </Fragment>
                 ))}
+                {z.angenommen.length > 0 && ', '}
+                {z.angenommen.map((g, i) => (
+                  <Fragment key={g.id}>
+                    {i > 0 && ', '}
+                    <WahlName k={g} ctx={ctx} /> nimmt die Wahl an
+                  </Fragment>
+                ))}
+                {z.angenommen.length > 0 && '.'}
               </p>
             )
           )}
@@ -818,6 +826,7 @@ function Baustein({
   if (k.type === 'bausteinEm') {
     const z = emZeilen(daten, ctx.verlauf.bausteine[id]);
     const p = z.sub ? ctx.person(z.sub) : null;
+    const antrag = z.antragSub ? ctx.person(z.antragSub) : null;
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
@@ -831,6 +840,11 @@ function Baustein({
           )}
         </Ueberschrift>
         {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
+        {antrag && (
+          <p>
+            <PersonName p={antrag} /> beantragt die Ehrenmitgliedschaft.
+          </p>
+        )}
         {z.abstimmung && (
           <p>
             {z.abstimmung}

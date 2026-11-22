@@ -306,6 +306,9 @@ describe('Texte', () => {
     expect(abgesagt.offen).toBe(true);
     expect(abgesagt.gewaehlt).toEqual([]);
     expect(wahlZeilen({ posten: 'x' }, stand)).toBeNull();
+    const angenommen = wahlZeilen({ ...wahl([]), anzahl: 1, annahme: { a: true } }, stand)!;
+    expect(angenommen.angenommen.map((g) => g.id)).toEqual(['a']);
+    expect(wahlZeilen({ ...wahl([]), anzahl: 1 }, stand)!.angenommen).toEqual([]);
   });
 
   it('Neues EM lines', () => {
@@ -315,6 +318,7 @@ describe('Texte', () => {
       wiederholung: '',
       name: '',
       sub: 'a',
+      antragSub: null,
       abstimmung:
         'Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)',
       nichtBeschlussfaehig: false,
@@ -328,9 +332,14 @@ describe('Texte', () => {
       wiederholung: '',
       name: '',
       sub: 'a',
+      antragSub: null,
       abstimmung: '',
       nichtBeschlussfaehig: false,
     });
+    expect(emZeilen({ sub: 'a', name: '', abstimmung, antragSub: 'b' }, stand).antragSub).toBe('b');
+    expect(
+      emZeilen({ sub: 'a', name: '', abstimmung: null, antragSub: 'b' }, stand).antragSub,
+    ).toBe(null);
   });
 });
 

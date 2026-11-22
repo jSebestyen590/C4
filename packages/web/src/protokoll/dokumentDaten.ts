@@ -414,6 +414,8 @@ export interface WahlZeilen {
   gewaehlt: WahlKandidat[];
   /** Elected but declined. */
   abgelehnt: WahlKandidat[];
+  /** Elected and recorded as accepting ("nimmt die Wahl an"); a subset of `gewaehlt`. */
+  angenommen: WahlKandidat[];
   /** Proposed persons (subs) who do not run. */
   nichtAngetreten: string[];
   /** A tie is still open: no result yet. */
@@ -456,6 +458,9 @@ export function wahlZeilen(
     giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
+    angenommen: ergebnis.gewaehlt
+      .filter((id) => w.annahme[id] === true)
+      .flatMap((id) => von(id, 0)),
     nichtAngetreten: w.nichtAngetreten,
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',
@@ -525,6 +530,8 @@ export interface EmZeilen {
   /** Free-text name (used when the Baustein has no `sub`), trimmed. */
   name: string;
   sub: string | null;
+  /** Person (sub) who moves the vote; null without a vote or when not set. */
+  antragSub: string | null;
   /** "Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)" or '' without a vote. */
   abstimmung: string;
   nichtBeschlussfaehig: boolean;
@@ -534,7 +541,14 @@ export interface EmZeilen {
 export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined): EmZeilen {
   const d = bausteinEmDatenSchema.safeParse(daten);
   if (!d.success) {
-    return { wiederholung: '', name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+    return {
+      wiederholung: '',
+      name: '',
+      sub: null,
+      antragSub: null,
+      abstimmung: '',
+      nichtBeschlussfaehig: false,
+    };
   }
   const { sub, name, abstimmung: a } = d.data;
   const anwesend = stand ? ` (${anwesendText(stand)})` : '';
@@ -542,6 +556,7 @@ export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined)
     wiederholung: wiederholungZeile('Abstimmung', d.data.wiederholung),
     name: name.trim(),
     sub,
+    antragSub: a ? (d.data.antragSub ?? null) : null,
     abstimmung: a ? `Abstimmung: ${stimmenText(a)}${anwesend}` : '',
     nichtBeschlussfaehig: a !== null && stand !== undefined && !stand.beschlussfaehig,
   };

@@ -60,10 +60,10 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Abschnitte** als große Überschrift in der Primärfarbe (leere zeigen nur die Überschrift, ein leeres Sonstiges entfällt ganz), darin Text mit Absätzen,
   Überschriften, Listen (zweite Ebene „○“), fett, kursiv, Links. Ein **Zitat** ist rechtsbündig und kursiv, eine Zeile mit
   „–“/„—“ davor (Quelle) steht aufrecht.
-- **Event:** Überschrift `<Datum> <Kategorie> <Name>`, z. B. `10.10. PP Caro` oder ohne Namen `11.10. Sitzung` (bei mehreren Tagen von–bis; Kategorie aus `kategorieId`, sonst die der Vorlage; gleicht der Name der Kategorie, steht sie nur einmal), dann der Punkt „Verantwortlich: @Name“ (nur wenn
+- **Event:** Überschrift `<Datum> <Kategorie> <Name>`, z. B. `10.10. PP Caro` oder ohne Namen `11.10. Sitzung` (bei mehreren Tagen von–bis, im selben Monat kompakt `25. – 30.11.`, sonst `28.11. – 02.12.`; Kategorie aus `kategorieId`, sonst die der Vorlage; gleicht der Name der Kategorie, steht sie nur einmal), dann der Punkt „Verantwortlich: @Name“ (nur wenn
   gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift wie beim Event, die Kategorie kommt vom verknüpften Kalender-Event (ohne Verknüpfung keine; es wird nichts Neues gespeichert), Notizen. Die Kategorienamen liefert `DokumentEingabe.kategorien` (`kategorieNamen.ts`; Seite: `useKategorieNamen`, PDF: `kategorieNamenLaden`); sie gelten auch in der Dokument-Gliederung und der Gliederung im Editor.
   **Thema:** Überschrift mit dem Titel (leer: „Thema“) auf Ebene der Events, in der Gliederung, dann die Notizen. **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail). **Neues EM:** Überschrift „Neues EM: <Name>“ (Person als
-  `StatusName`, sonst der Freitext-Name); mit Abstimmung die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
+  `StatusName`, sonst der Freitext-Name); mit Abstimmung und gesetztem „Beantragt von“ zuerst „<Name> beantragt die Ehrenmitgliedschaft.“, dann die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
   25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
   danach die Notizen.
 - **Abstimmung:** auf oberster Ebene mit Überschrift „Abstimmung: Antrag“ (nicht in der Gliederung), darunter ein Block; in den Notizen eines anderen Bausteins steht „Abstimmung: Antrag“ im Block. Der Block zeigt „Ja 8 · Nein 3 · Enthaltung 2 – angenommen“ und „(13 von 25
@@ -73,7 +73,7 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Meinungsbild:** Block „Meinungsbild: Frage“, „Ja 4 · Nein 3 · Enthaltung 2“ (Optionen ohne Text entfallen), klein „(nicht
   bindend)“, dann die Notizen.
 - **Wahl:** auf oberster Ebene mit Überschrift „Wahl: Posten (2 Plätze)“ (nicht in der Gliederung; bei einem Platz ohne Anzahl), in Notizen steht diese Zeile im Block. **Reihenfolge:** zuerst die Notizen (die Aussprache davor), zuletzt der blaue Ergebnis-Block, in dem die Abstimmung abschließt; der Block enthält bei gesetztem „Gilt ab“ die Zeile „Gilt ab 01.01.2027“, „Kandidat:innen: A 5 · B 3 · C 3 · Enthaltung 1“, je Stichwahl „Stichwahl: B 4 ·
-  C 2 · Enthaltung 0“, dann „Nicht angetreten: X, Y“ (nur wenn gesetzt), „Gewählt: A, B“ (nur Annehmende; oder rot „Noch offen: Stichwahl nötig“), „Nimmt die Wahl nicht an: Z“ (nur wenn jemand abgelehnt hat), „(x von y Mitgliedern anwesend)“ (rot
+  C 2 · Enthaltung 0“, dann „Nicht angetreten: X, Y“ (nur wenn gesetzt), „Gewählt: A, B“ (nur Annehmende; mit festgehaltener Annahme „Gewählt: A, A nimmt die Wahl an.“; oder rot „Noch offen: Stichwahl nötig“), „Nimmt die Wahl nicht an: Z“ (nur wenn jemand abgelehnt hat), „(x von y Mitgliedern anwesend)“ (rot
   „nicht beschlussfähig“). Personen als `StatusName`.
 - **Todo:** ein gewöhnlicher Aufzählungspunkt in den Notizen, in denen es steht, kein farbiger Block, keine Überschrift und nicht in der
   Gliederung: „• **Todo:** Titel – Anna, Ben, @Alle (bis 14.11.2026)“. Seine Notizen folgen als Aufzählungspunkte eine Ebene tiefer. Steht das

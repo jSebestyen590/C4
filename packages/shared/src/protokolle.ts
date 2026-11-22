@@ -250,6 +250,8 @@ export const bausteinEmDatenSchema = z.strictObject({
   sub: idOderNull,
   name: z.string().max(200),
   abstimmung: bausteinEmAbstimmungSchema.nullable(),
+  /** Person of the app who moves the vote; only meaningful with an `abstimmung`. */
+  antragSub: idOderNull.optional(),
   wiederholung: wiederholungSchema,
 });
 export type BausteinEmDaten = z.infer<typeof bausteinEmDatenSchema>;
