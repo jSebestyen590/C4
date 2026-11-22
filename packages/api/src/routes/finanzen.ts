@@ -56,6 +56,17 @@ import {
   kontoArchivSchema,
   kontoEingabeSchema,
   pruefeKette,
+  kanonisch,
+  kanonischJson,
+  heuteBerlin,
+  ersterOffenerTag,
+  festgeschriebenBis,
+  festschreibungEingabeSchema,
+  monatAnzeigen,
+  naechsterFestschreibbarerMonat,
+  type FestschreibungDto,
+  type FestschreibungErgebnisDto,
+  type FestschreibungsUebersichtDto,
   stornoEingabeSchema,
   type BuchungDetailDto,
   type BuchungenSeiteDto,
@@ -71,7 +82,13 @@ import {
   type KettenErgebnisDto,
   type KontoDto,
 } from '@c4/shared';
-import { BuchungUngueltig, KontoKonflikt, KontoUngueltig, StornoKonflikt } from '../finanzen';
+import {
+  BuchungUngueltig,
+  FestschreibungKonflikt,
+  KontoKonflikt,
+  KontoUngueltig,
+  StornoKonflikt,
+} from '../finanzen';
 import { BelegWarnungenOffen, type EinreichungEintrag } from '../finanzenBelege';
 import { bestEffort, type Sendung } from '../benachrichtigungen';
 import { mitgliederMitRecht } from '../privatpartyBenachrichtigungen';
@@ -148,6 +165,8 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     if (err instanceof BuchungUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof KontoUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof StornoKonflikt) throw new HTTPException(409, { message: err.message });
+    if (err instanceof FestschreibungKonflikt)
+      throw new HTTPException(409, { message: err.message });
     if (err instanceof KontoKonflikt) throw new HTTPException(409, { message: err.message });
     if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
@@ -940,6 +959,148 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
               );
           }
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
+        },
+      )
+      // Festschreibung (GoBD): closed months, one after the other; see docs/finanzen.md.
+      .get('/finanzen/festschreibungen', auth, finanzenLesen, async (c) => {
+        const [eintraege, frueh, mitglied] = await Promise.all([
+          deps.finanzen.festschreibungen(),
+          deps.finanzen.fruehesteBuchung(),
+          finanzenMitglieder(),
+        ]);
+        const monate = eintraege.map((f) => f.monat);
+        const festBis = festgeschriebenBis(monate);
+        const naechsterMonat = naechsterFestschreibbarerMonat({
+          letzterFest: [...monate].sort().at(-1) ?? null,
+          fruehesteBuchung: frueh,
+          heuteBerlin: heuteBerlin(),
+        });
+        const dto: FestschreibungsUebersichtDto = {
+          festgeschriebenBis: festBis,
+          ersterOffenerTag: ersterOffenerTag(festBis),
+          naechsterMonat,
+          hinweise: naechsterMonat
+            ? await deps.finanzen.festschreibungHinweise(naechsterMonat)
+            : [],
+          liste: eintraege.map((f): FestschreibungDto => ({
+            id: f.id,
+            monat: f.monat,
+            bisSeq: f.bisSeq,
+            kopfHash: f.kopfHash,
+            anzahl: f.anzahl,
+            exportSchluessel: f.exportSchluessel,
+            festgeschriebenVon: mitglied(f.festgeschriebenVon),
+            festgeschriebenAm: f.festgeschriebenAm.toISOString(),
+          })),
+        };
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/festschreibungen',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', festschreibungEingabeSchema),
+        async (c) => {
+          const { monat } = c.req.valid('json');
+          const sub = c.get('user').sub;
+          const konflikt = (message: string) => new HTTPException(409, { message });
+          const eintraege = await deps.finanzen.festschreibungen();
+          const schon = eintraege.find((f) => f.monat === monat);
+          if (schon) {
+            const ergebnis: FestschreibungErgebnisDto = {
+              id: schon.id,
+              monat: schon.monat,
+              bisSeq: schon.bisSeq,
+              kopfHash: schon.kopfHash,
+              anzahl: schon.anzahl,
+              wiederholt: true,
+            };
+            return c.json(ergebnis, 200);
+          }
+          const naechster = naechsterFestschreibbarerMonat({
+            letzterFest:
+              eintraege
+                .map((f) => f.monat)
+                .sort()
+                .at(-1) ?? null,
+            fruehesteBuchung: await deps.finanzen.fruehesteBuchung(),
+            heuteBerlin: heuteBerlin(),
+          });
+          if (naechster !== monat)
+            throw konflikt(
+              naechster
+                ? `Als Nächstes ist ${monatAnzeigen(naechster)} dran.`
+                : 'Es kann kein Monat festgeschrieben werden.',
+            );
+          const daten = await deps.finanzen.kettenDaten();
+          const kette = await pruefeKette(daten.buchungen);
+          if (
+            kette.fehler.length > 0 ||
+            daten.zaehlerWert !== kette.letzteSeq ||
+            daten.zaehlerHash !== kette.kopfHash
+          )
+            throw konflikt('Die Kette hat Fehler, Festschreibung nicht möglich.');
+          const imMonat = daten.buchungen.filter((b) => b.datum.slice(0, 7) === monat.slice(0, 7));
+          const jetzt = new Date();
+          const schluessel = `festschreibung/${monat.slice(0, 7)}`;
+          try {
+            await deps.finanzarchiv.exportSchreiben(
+              `${schluessel}.jsonl`,
+              imMonat
+                .map(
+                  (b) =>
+                    kanonischJson({
+                      hash: b.hash,
+                      prev_hash: b.prevHash,
+                      buchung: JSON.parse(kanonisch(b)),
+                    }) + '\n',
+                )
+                .join(''),
+            );
+            await deps.finanzarchiv.exportSchreiben(
+              `${schluessel}.json`,
+              JSON.stringify({
+                monat,
+                bis_seq: kette.letzteSeq,
+                kopf_hash: kette.kopfHash,
+                anzahl: imMonat.length,
+                erstellt_am: jetzt.toISOString(),
+              }),
+            );
+          } catch {
+            throw new HTTPException(503, {
+              message:
+                'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+            });
+          }
+          await deps.finanzen
+            .festschreibungAnlegen({
+              monat,
+              bisSeq: kette.letzteSeq,
+              kopfHash: kette.kopfHash,
+              anzahl: imMonat.length,
+              exportSchluessel: `${schluessel}.jsonl`,
+              sub,
+              jetzt,
+              erwarteterZaehler: daten.zaehlerWert,
+            })
+            .catch(finanzenFehler);
+          await pushSenden(async () => ({
+            subs: await mitgliederMitRecht(deps, 'finanzen:pruefen'),
+            art: 'finanzen.festgeschrieben',
+            titel: `Monat ${monatAnzeigen(monat)} festgeschrieben`,
+            text: `Kopf-Hash: ${kette.kopfHash.slice(0, 16)}…, Nr. bis ${kette.letzteSeq}`,
+            url: '/app/finanzen/festschreibung',
+          }));
+          const neu = (await deps.finanzen.festschreibungen()).find((f) => f.monat === monat);
+          const ergebnis: FestschreibungErgebnisDto = {
+            id: neu?.id ?? '',
+            monat,
+            bisSeq: kette.letzteSeq,
+            kopfHash: kette.kopfHash,
+            anzahl: imMonat.length,
+          };
+          return c.json(ergebnis, 201);
         },
       )
       // Verifies the whole hash chain and compares the counter with the last booking.

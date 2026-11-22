@@ -1,9 +1,30 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  max,
+  min,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   anzahlenAus,
   berechneZaehlung,
+  buchungsdatumFuer,
   buchungsHash,
+  festgeschriebenBis,
+  monatAnzeigen,
+  monatsEnde,
+  naechsterFestschreibbarerMonat,
+  type FestschreibungHinweisDto,
   kassenabrechnungBuchungstext,
   kasseKontenFehler,
   stueckelungSumme,
@@ -28,6 +49,7 @@ import {
   SAFE_KONTO_ID,
   saldoGesamt,
   stornoZeilen,
+  tagNachher,
   stueckelungVollstaendig,
   zaehlungBuchungstext,
   type BargeldUebersichtDto,
@@ -57,7 +79,9 @@ import {
   eventKategorien,
   events,
   finBelege,
+  finBelegEntwuerfe,
   finExporte,
+  finFestschreibungen,
   finBuchungen,
   finBuchungszeilen,
   finEventKassen,
@@ -91,7 +115,7 @@ import {
   planeKassenabrechnung,
   type AbrechnungKurz,
 } from './finanzenKassen';
-import { createBelegeStore, type BelegeStore } from './finanzenBelege';
+import { createBelegeStore, datumBerlin, type BelegeStore } from './finanzenBelege';
 import type { Tx } from './waren';
 
 // Finanzen: chart of accounts and the append-only journal (see docs/finanzen.md). Bookings are
@@ -125,6 +149,36 @@ export interface GebuchtErgebnis {
   seq: number;
   /** True when the idempotency key was already used: the existing booking is returned. */
   wiederholt?: boolean;
+  /** The date the booking was made with (differs from the wished one when it was moved out of a closed month). */
+  datum?: string;
+}
+
+/** The month was closed meanwhile, or the journal changed while the Festschreibung was prepared. */
+export class FestschreibungKonflikt extends Error {}
+
+/** A closed month. */
+export interface FestschreibungEintrag {
+  id: string;
+  /** First day of the month. */
+  monat: string;
+  bisSeq: number;
+  kopfHash: string;
+  anzahl: number;
+  exportSchluessel: string;
+  festgeschriebenVon: string;
+  festgeschriebenAm: Date;
+}
+
+export interface FestschreibungNeu {
+  monat: string;
+  bisSeq: number;
+  kopfHash: string;
+  anzahl: number;
+  exportSchluessel: string;
+  sub: string;
+  jetzt: Date;
+  /** Counter value the chain was verified at; a booking in between makes it fail. */
+  erwarteterZaehler: number;
 }
 
 export interface KettenDaten {
@@ -166,6 +220,18 @@ export interface FinanzenStore extends BelegeStore {
   zaehlung(id: string): Promise<ZaehlungDetailEintrag | undefined>;
   /** All bookings by `seq` plus the counter, read in one consistent snapshot. */
   kettenDaten(): Promise<KettenDaten>;
+  /** The closed months, newest first. */
+  festschreibungen(): Promise<FestschreibungEintrag[]>;
+  /** Date of the earliest booking (`YYYY-MM-DD`), null without bookings. */
+  fruehesteBuchung(): Promise<string | null>;
+  /** Open things with a business date in the month (first day): Beleg drafts/submissions, Kassenzählungen without Abrechnung. */
+  festschreibungHinweise(monat: string): Promise<FestschreibungHinweisDto[]>;
+  /**
+   * Closes the month in one transaction that also touches the journal counter, so that a parallel booking
+   * or Festschreibung aborts one of them. Throws FestschreibungKonflikt when the month is not the next one
+   * any more, was closed already or the counter moved on since the chain was verified.
+   */
+  festschreibungAnlegen(neu: FestschreibungNeu): Promise<void>;
   /** `bis_seq` of the last export (0 when there is none yet). */
   letzterExportSeq(): Promise<number>;
   /** Records a written export. */
@@ -229,6 +295,11 @@ export interface BuchungsEntwurf {
   zeilen: Omit<HashZeile, 'pos'>[];
   /** SHA-256 of the Beleg files; part of the hash. */
   belege?: { sha256: string }[];
+  /**
+   * True when the date is only a business date stored elsewhere (Beleg, Erstattung, Zählung,
+   * Kassenabrechnung): inside a closed month the booking is made on the first open day instead of failing.
+   */
+  datumVerschiebbar?: boolean;
 }
 
 /** Numbers an entry and chains it to `prevHash`; `jetzt` has millisecond precision by itself. */
@@ -609,7 +680,22 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     }));
   };
 
-  const einfuegen = async (tx: Tx, entwurf: BuchungsEntwurf): Promise<GebuchtErgebnis> => {
+  /** Last day of the latest closed month; read inside the booking transaction. */
+  const festBisLesen = async (q: Q): Promise<string | null> => {
+    const [row] = await q
+      .select({ monat: max(finFestschreibungen.monat) })
+      .from(finFestschreibungen);
+    return festgeschriebenBis(row?.monat ? [row.monat] : []);
+  };
+
+  const einfuegen = async (tx: Tx, urspruenglich: BuchungsEntwurf): Promise<GebuchtErgebnis> => {
+    const datumErgebnis = buchungsdatumFuer(
+      urspruenglich.datum,
+      await festBisLesen(tx),
+      urspruenglich.datumVerschiebbar ?? false,
+    );
+    if (datumErgebnis.fehler !== undefined) throw new BuchungUngueltig([datumErgebnis.fehler]);
+    const entwurf = { ...urspruenglich, datum: datumErgebnis.datum };
     const [zaehler] = await tx
       .update(finZaehler)
       .set({ wert: sql`${finZaehler.wert} + 1` })
@@ -662,7 +748,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       .update(finZaehler)
       .set({ letzterHash: buchung.hash })
       .where(eq(finZaehler.name, 'journal'));
-    return { id: buchung.id, seq: buchung.seq };
+    return { id: buchung.id, seq: buchung.seq, datum: buchung.datum };
   };
 
   /** Looks up the booking made with this idempotency key. */
@@ -822,6 +908,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
               datum: eingabe.datum,
               text: eingabe.text ?? zaehlungBuchungstext(fach.name, ergebnis.differenzCent),
               quelleTyp: 'zaehlung',
+              datumVerschiebbar: true,
               quelleId: zaehlungId,
               eventId: null,
               stornoVon: null,
@@ -1182,6 +1269,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
                   datum: eingabe.datum,
                   text: kassenabrechnungBuchungstext(kasse.name, r.einnahmeCent),
                   quelleTyp: 'kassenabrechnung',
+                  datumVerschiebbar: true,
                   quelleId: abrechnungId,
                   eventId: null,
                   stornoVon: null,
@@ -1913,6 +2001,133 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         }
         throw err;
       }
+    },
+
+    async festschreibungen() {
+      return db.select().from(finFestschreibungen).orderBy(desc(finFestschreibungen.monat));
+    },
+
+    async fruehesteBuchung() {
+      const [row] = await db.select({ datum: min(finBuchungen.datum) }).from(finBuchungen);
+      return row?.datum ?? null;
+    },
+
+    async festschreibungHinweise(monat) {
+      const hinweise: FestschreibungHinweisDto[] = [];
+      const von = `${monat.slice(0, 7)}-01`;
+      const bis = monatsEnde(monat);
+      const entwuerfe = await db
+        .select({ daten: finBelegEntwuerfe.daten })
+        .from(finBelegEntwuerfe)
+        .where(
+          or(
+            isNull(finBelegEntwuerfe.status),
+            inArray(finBelegEntwuerfe.status, ['entwurf', 'eingereicht']),
+          ),
+        );
+      const belege = entwuerfe.filter((e) => {
+        try {
+          const datum = (JSON.parse(e.daten) as { belegdatum?: string | null }).belegdatum;
+          return !!datum && datum >= von && datum <= bis;
+        } catch {
+          return false;
+        }
+      }).length;
+      if (belege > 0)
+        hinweise.push({
+          art: 'beleg_entwurf',
+          anzahl: belege,
+          text:
+            belege === 1
+              ? `Ein Beleg mit Belegdatum im Monat ${monatAnzeigen(von)} ist noch nicht gebucht (Entwurf oder Einreichung).`
+              : `${belege} Belege mit Belegdatum im Monat ${monatAnzeigen(von)} sind noch nicht gebucht (Entwürfe oder Einreichungen).`,
+        });
+      // A wide UTC window, the Berlin date is checked per event below.
+      const gezaehlt = await db
+        .selectDistinct({ eventId: finKassenzaehlungen.eventId, beginn: events.beginn })
+        .from(finKassenzaehlungen)
+        .innerJoin(events, eq(events.id, finKassenzaehlungen.eventId))
+        .where(
+          and(
+            eq(events.abgesagt, false),
+            gte(events.beginn, new Date(`${tagNachher(von, -1)}T00:00:00Z`)),
+            lte(events.beginn, new Date(`${tagNachher(bis, 2)}T00:00:00Z`)),
+          ),
+        );
+      const imMonat = gezaehlt.filter((g) => {
+        const d = datumBerlin(g.beginn);
+        return d >= von && d <= bis;
+      });
+      const ids = imMonat.map((g) => g.eventId);
+      const abgerechnet =
+        ids.length === 0
+          ? new Set<string>()
+          : new Set(
+              (
+                await db
+                  .select({ eventId: finKassenabrechnungEvents.eventId })
+                  .from(finKassenabrechnungEvents)
+                  .where(inArray(finKassenabrechnungEvents.eventId, ids))
+              ).map((r) => r.eventId),
+            );
+      const offen = new Set(ids.filter((id) => !abgerechnet.has(id))).size;
+      if (offen > 0)
+        hinweise.push({
+          art: 'kassenzaehlung',
+          anzahl: offen,
+          text:
+            offen === 1
+              ? `Für eine Veranstaltung im Monat ${monatAnzeigen(von)} gibt es eine Kassenzählung ohne Kassenabrechnung.`
+              : `Für ${offen} Veranstaltungen im Monat ${monatAnzeigen(von)} gibt es Kassenzählungen ohne Kassenabrechnung.`,
+        });
+      return hinweise;
+    },
+
+    async festschreibungAnlegen(neu) {
+      await mitWiederholung(
+        () =>
+          db.transaction(async (tx) => {
+            // Touch the counter (same value): a parallel booking or Festschreibung conflicts with this.
+            const [zaehler] = await tx
+              .update(finZaehler)
+              .set({ wert: sql`${finZaehler.wert}` })
+              .where(eq(finZaehler.name, 'journal'))
+              .returning({ wert: finZaehler.wert });
+            if (!zaehler) throw new Error('Der Journal-Zähler fehlt (Migration 0148).');
+            if (zaehler.wert !== neu.erwarteterZaehler)
+              throw new FestschreibungKonflikt(
+                'Es wurde gleichzeitig gebucht. Bitte versuche es noch einmal.',
+              );
+            const [letzter] = await tx
+              .select({ monat: max(finFestschreibungen.monat) })
+              .from(finFestschreibungen);
+            const [frueh] = await tx.select({ datum: min(finBuchungen.datum) }).from(finBuchungen);
+            const naechster = naechsterFestschreibbarerMonat({
+              letzterFest: letzter?.monat ?? null,
+              fruehesteBuchung: frueh?.datum ?? null,
+              heuteBerlin: datumBerlin(neu.jetzt),
+            });
+            if (naechster !== neu.monat)
+              throw new FestschreibungKonflikt(
+                naechster
+                  ? `Als Nächstes ist ${monatAnzeigen(naechster)} dran.`
+                  : 'Es kann kein Monat festgeschrieben werden.',
+              );
+            await tx.insert(finFestschreibungen).values({
+              id: randomUUID(),
+              monat: neu.monat,
+              bisSeq: neu.bisSeq,
+              kopfHash: neu.kopfHash,
+              anzahl: neu.anzahl,
+              exportSchluessel: neu.exportSchluessel,
+              festgeschriebenVon: neu.sub,
+              festgeschriebenAm: neu.jetzt,
+            });
+          }),
+        BUCHEN_VERSUCHE,
+        undefined,
+        BUCHEN_WARTEN_MS,
+      );
     },
 
     async letzterExportSeq() {

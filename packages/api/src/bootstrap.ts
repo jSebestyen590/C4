@@ -130,7 +130,10 @@ export function createProduction() {
     app,
     pingDb,
     finanzExportJob: (jetzt: Date) =>
-      finanzExport({ store: finanzen, archiv: finanzarchiv }, jetzt),
+      finanzExport(
+        { store: finanzen, archiv: finanzarchiv, benachrichtigungen, posten, userAdmin },
+        jetzt,
+      ),
     pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
     mailJob: (jetzt: Date) =>
       mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),

@@ -5,6 +5,7 @@ export * from './datum';
 export * from './bargeld';
 export * from './buch';
 export * from './finanzen';
+export * from './finanzenAbschluss';
 export * from './belege';
 export * from './geburtstag';
 export * from './ifco';

@@ -1746,6 +1746,21 @@ export const finExporte = pgTable('fin_exporte', {
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
 });
 
+/** Closed months (Festschreibung, GoBD; insert-only). `monat` = first day, unique index. */
+export const finFestschreibungen = pgTable('fin_festschreibungen', {
+  id: text('id').primaryKey(),
+  monat: date('monat', { mode: 'string' }).notNull(),
+  /** Highest `seq` when the month was closed (also bookings of later months). */
+  bisSeq: bigint('bis_seq', { mode: 'number' }).notNull(),
+  kopfHash: text('kopf_hash').notNull(),
+  /** Bookings dated in the month. */
+  anzahl: integer('anzahl').notNull(),
+  exportSchluessel: text('export_schluessel').notNull(),
+  /** Cognito sub, without a foreign key. */
+  festgeschriebenVon: text('festgeschrieben_von').notNull(),
+  festgeschriebenAm: timestamp('festgeschrieben_am', { withTimezone: true }).notNull(),
+});
+
 /** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
 export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
   id: text('id').primaryKey(),

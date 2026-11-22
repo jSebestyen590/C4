@@ -1187,6 +1187,8 @@ describe('kalender', () => {
         'privatpartys.nachricht',
         'belege.eingereicht',
         'belege.status',
+        'finanzen.festgeschrieben',
+        'finanzen.festschreibung_faellig',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
       expect(
