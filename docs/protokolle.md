@@ -21,7 +21,7 @@ Abschnitte: Invarianten, Seiten, Datenmodell, Dateien, Sitzungen, Kopf, Vorbeleg
 
 ## Invarianten
 
-- Je Event höchstens ein normales Protokoll (partieller eindeutiger Index `protokolle_event_normal_idx` auf `event_id WHERE offiziell_von IS NULL`, Migration 0246; ein zweites gibt 409), dazu höchstens eine offizielle Kopie je Protokoll (siehe [Offizielles Protokoll](#offizielles-protokoll)). Ein Event
+- Je Event höchstens ein normales Protokoll (eindeutiger Index `protokolle_event_fassung_idx` auf `(event_id, fassung)`, Migration 0248; ein zweites gibt 409), dazu höchstens eine offizielle Kopie je Sitzung und damit je Protokoll (siehe [Offizielles Protokoll](#offizielles-protokoll)). Ein Event
   mit Protokoll lässt sich nicht löschen (409).
 - Das Dokument hat immer vier Abschnitte in fester Reihenfolge; Editor und API (`protokollDokumentPruefen`) lehnen andere Formen ab.
 - Ein abgeschlossenes Protokoll ist schreibgeschützt (`PUT`, `DELETE`, Bilder-Upload geben 409); gelöscht wird nur im Entwurf.
@@ -50,7 +50,7 @@ Abschnitte: Invarianten, Seiten, Datenmodell, Dateien, Sitzungen, Kopf, Vorbeleg
 
 ## Datenmodell
 
-Tabelle `protokolle`: `id`, `event_id` (unter den normalen Protokollen eindeutig), `offiziell_von` (Id des normalen Quell-Protokolls, `NULL` = normales Protokoll; eindeutig, ohne Fremdschlüssel, DSQL; Migrationen 0245–0248), `inhalt` (Text, TipTap-JSON), `kopf` (Text, JSON), `status`
+Tabelle `protokolle`: `id`, `event_id` (zusammen mit `fassung` eindeutig), `fassung` (`normal`/`offiziell`, schreibt immer die API), `offiziell_von` (Id des normalen Quell-Protokolls, `NULL` = normales Protokoll; ohne Fremdschlüssel, DSQL; Migrationen 0245–0249), `inhalt` (Text, TipTap-JSON), `kopf` (Text, JSON), `status`
 (`entwurf`/`abgeschlossen`), `version` (zählt bei jeder Änderung hoch), `erstellt_von/_am`, `geaendert_von/_am`. Migrationen
 `0110`–`0113` und `0163`–`0165` (Sperre; siehe [datenbank.md](./datenbank.md)); `event_kategorien.protokoll` ist das Sitzungs-Häkchen, `event_kategorien.protokoll_art` die Art der Sitzung.
 
@@ -157,8 +157,8 @@ eine offizielle Kopie an (`POST /api/protokolle/:id/offiziell`, Recht `protokoll
 Schnappschuss) werden kopiert, Status `entwurf`, gleiche `event_id`, `offiziell_von` = Id der Quelle. Die Kopie wird danach wie ein
 Protokoll bearbeitet (Sperre, Autosave, Version); Echtnamen und Farblosigkeit im Dokument/PDF sind Sache der Web-Oberfläche.
 
-- 400, wenn die Quelle selbst offiziell oder nicht abgeschlossen ist; 409 mit `offiziellId`, wenn es schon eine Kopie gibt (je Protokoll
-  genau eine, Index `protokolle_offiziell_von_idx`).
+- 400, wenn die Quelle selbst offiziell oder nicht abgeschlossen ist; 409 mit `offiziellId`, wenn es schon eine Kopie gibt (je Sitzung
+  genau eine, über den Index auf `(event_id, fassung)`).
 - **Bilder:** Schlüssel gehören zum Präfix ihres Protokolls (`protokollbilder/<id>/`, das `PUT` prüft das). Die Kopie bekommt deshalb
   eigene S3-Objekte (`Protokollbilder.kopieren`), die Schlüssel im Inhalt werden umgeschrieben; Löschen der Kopie löscht nur deren Bilder.
 - **Keine Aktionen:** Abschließen und Wieder öffnen der Kopie setzen nur den Status (Schnappschuss bleibt, keine Prüfung von Beginn und

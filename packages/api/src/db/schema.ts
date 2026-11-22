@@ -811,10 +811,12 @@ export const protokolle = pgTable('protokolle', {
   id: text('id').primaryKey(),
   /**
    * Event of a Kategorie with `protokoll`, deliberately without a foreign key (checked in the API).
-   * Unique among normal protocols (partial index `protokolle_event_normal_idx`, `offiziell_von IS NULL`).
+   * Unique together with `fassung` (index `protokolle_event_fassung_idx`).
    */
   eventId: text('event_id').notNull(),
-  /** Official copy: id of the normal protocol it was copied from (unique, no foreign key); null = normal protocol. */
+  /** `normal` or `offiziell` (official copy); the API always writes it (column added with a backfill, no DB default). */
+  fassung: text('fassung').$type<'normal' | 'offiziell'>().notNull(),
+  /** Official copy: id of the normal protocol it was copied from (no foreign key); null = normal protocol. */
   offiziellVon: text('offiziell_von'),
   inhalt: text('inhalt').notNull(),
   kopf: text('kopf').notNull(),

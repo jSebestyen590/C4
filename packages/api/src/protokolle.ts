@@ -70,8 +70,8 @@ export interface ProtokollStore {
   /** The NORMAL protocol of the event (never an official copy). */
   nachEvent(eventId: string): Promise<ProtokollDaten | undefined>;
   /**
-   * Throws ProtokollExistiert when the event has a normal protocol already (or, with
-   * `offiziellVon`, the source has an official copy already).
+   * Throws ProtokollExistiert when the event already has a protocol of that `fassung` (normal, or
+   * official when `offiziellVon` is set; unique index on `(event_id, fassung)`).
    */
   anlegen(
     daten: { id?: string; eventId: string; inhalt: string; kopf: string; offiziellVon?: string },
@@ -206,6 +206,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
         .select({
           id: protokolle.id,
           eventId: protokolle.eventId,
+          fassung: protokolle.fassung,
           offiziellVon: protokolle.offiziellVon,
           status: protokolle.status,
           version: protokolle.version,
@@ -226,7 +227,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
       const [row] = await db
         .select()
         .from(protokolle)
-        .where(and(eq(protokolle.eventId, eventId), isNull(protokolle.offiziellVon)));
+        .where(and(eq(protokolle.eventId, eventId), eq(protokolle.fassung, 'normal')));
       return row;
     },
 
@@ -237,6 +238,7 @@ export function createProtokolleStore(db: Db): ProtokollStore {
         await db.insert(protokolle).values({
           id,
           eventId: daten.eventId,
+          fassung: daten.offiziellVon ? 'offiziell' : 'normal',
           offiziellVon: daten.offiziellVon ?? null,
           inhalt: daten.inhalt,
           kopf: daten.kopf,

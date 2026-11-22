@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS protokolle_event_normal_idx

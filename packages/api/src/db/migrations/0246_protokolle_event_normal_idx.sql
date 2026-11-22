@@ -1,2 +1,0 @@
--- At most one normal protocol per event (an official copy shares the event of its source).
-CREATE UNIQUE INDEX ASYNC IF NOT EXISTS protokolle_event_normal_idx ON protokolle (event_id) WHERE offiziell_von IS NULL

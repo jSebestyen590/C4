@@ -1,1 +1,0 @@
-DROP INDEX IF EXISTS protokolle_offiziell_von_idx
