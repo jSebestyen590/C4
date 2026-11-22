@@ -20,6 +20,7 @@ import {
   type BausteinEventDaten,
   type BausteinTodoDaten,
   type BausteinTyp,
+  type EventArt,
   type EventDauer,
   eventUeberschrift,
   eventZeitenAus,
@@ -69,6 +70,8 @@ export function eventDatenAusVorlage(
     verantwortlichSub: null,
     eventId: null,
     kategorieId: vorlage.kategorieId ?? null,
+    teilnahmeStatus: null,
+    eingeladen: [],
   };
 }
 
@@ -92,13 +95,20 @@ export function eventDatumSetzen(
 /** The "Bis" date is offered for multi-day Kategorien and while no Kategorie is chosen. */
 export const eventZeigtBis = (dauer: EventDauer | undefined): boolean => dauer !== 'eintaegig';
 
-/** Sets the Kategorie; a single-day Kategorie has no last day, so `bisDatum` is dropped. */
+/**
+ * Sets the Kategorie; a single-day Kategorie has no last day, so `bisDatum` is dropped. A `teilnahme`
+ * Kategorie has no Dienste (`schichten` cleared), one with Dienste no participation circle and invitations.
+ */
 export function eventKategorieSetzen(
   daten: BausteinEventDaten,
   kategorieId: string | null,
   dauer: EventDauer | undefined,
+  art?: EventArt,
 ): BausteinEventDaten {
-  return { ...daten, kategorieId, ...(eventZeigtBis(dauer) ? {} : { bisDatum: null }) };
+  const neu = { ...daten, kategorieId, ...(eventZeigtBis(dauer) ? {} : { bisDatum: null }) };
+  if (art === 'teilnahme') return { ...neu, schichten: [] };
+  if (art === 'dienste') return { ...neu, teilnahmeStatus: null, eingeladen: [] };
+  return neu;
 }
 
 /** Option label of a calendar event: the same "25. – 30.11. PP Name" as the headings. */
@@ -337,17 +347,14 @@ export function nichtAngetretenSetzen(
   return { ...daten, nichtAngetreten: [...new Set(subs)].slice(0, WAHL_MAX_KANDIDATEN) };
 }
 
-/**
- * Whether the elected candidate accepts: `true` = accepts (stated in the document), `false` =
- * declines, `null` = not recorded (no entry; counts as accepted for the result, but is not stated).
- */
+/** Whether the elected candidate accepts; a decline is stored as `false`, accepting removes the entry. */
 export function annahmeSetzen(
   daten: BausteinWahlDaten,
   id: string,
-  nimmtAn: boolean | null,
+  nimmtAn: boolean,
 ): BausteinWahlDaten {
   const rest = Object.fromEntries(Object.entries(daten.annahme).filter(([k]) => k !== id));
-  return { ...daten, annahme: nimmtAn === null ? rest : { ...rest, [id]: nimmtAn } };
+  return { ...daten, annahme: nimmtAn ? rest : { ...rest, [id]: false } };
 }
 
 /** A vote with runoffs: the Wahl or the Auswahl (they share seats, votes per person and runoff rounds). */

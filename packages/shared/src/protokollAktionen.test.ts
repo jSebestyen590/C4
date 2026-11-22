@@ -120,6 +120,32 @@ describe('event.anlegen', () => {
     });
   });
 
+  it('passes the participation of a teilnahme Kategorie on and ignores Dienste', () => {
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      kategorieId: 'k1',
+      teilnahmeStatus: ['mitglied', 'em'],
+      eingeladen: ['x'],
+    });
+    const [a] = protokollAktionen(dok(b), kontext());
+    expect(a!.plan).toMatchObject({
+      art: 'event.anlegen',
+      eingabe: { schichten: [], teilnahmeStatus: ['mitglied', 'em'], eingeladen: ['x'] },
+    });
+    const [standard] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, kategorieId: 'k1' })),
+      kontext(),
+    );
+    expect(standard!.plan).toMatchObject({
+      eingabe: { teilnahmeStatus: ['mitglied'], eingeladen: [] },
+    });
+    const [dienste] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, teilnahmeStatus: ['em'], eingeladen: ['x'] })),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(dienste!.plan).toMatchObject({ eingabe: { teilnahmeStatus: null, eingeladen: [] } });
+  });
+
   it.each([
     ['the date', { datum: null }, 'Das Datum fehlt.'],
     ['the Kategorie', { kategorieId: null }, 'Die Kategorie fehlt.'],
@@ -168,6 +194,25 @@ describe('event.anlegen', () => {
 describe('event.aendern', () => {
   const kt = { kategorien: dienstKategorien };
   const mitEvent = (e = ereignis()) => kontext({ ...kt, events: { [e.id]: e } });
+
+  it('changes the participation of a linked teilnahme event', () => {
+    const e = ereignis({ kategorieId: 'k1', schichten: [], teilnahmeStatus: ['mitglied'] });
+    const k = kontext({ events: { e1: e } });
+    const gleich = baustein('bausteinEvent', { ...eventDaten, kategorieId: 'k1', eventId: 'e1' });
+    expect(protokollAktionen(dok(gleich), k)).toEqual([]);
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      kategorieId: 'k1',
+      eventId: 'e1',
+      teilnahmeStatus: ['em'],
+      eingeladen: ['y'],
+    });
+    const [a] = protokollAktionen(dok(b), k);
+    expect(a!.text).toContain('Teilnahme');
+    expect(a!.plan).toMatchObject({
+      eingabe: { teilnahmeStatus: ['em'], eingeladen: ['y'], schichten: [] },
+    });
+  });
 
   it('does nothing when the block matches the calendar', () => {
     const b = baustein('bausteinEvent', { ...eventDaten, eventId: 'e1' });

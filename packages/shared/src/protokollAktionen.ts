@@ -280,8 +280,8 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
         kategorieId,
         beginnZeit: daten.beginnZeit ?? '00:00',
         endeZeit: daten.endeZeit ?? '00:00',
-        schichten: daten.schichten,
-        teilnahmeStatus: null,
+        schichten: kategorie.art === 'teilnahme' ? [] : daten.schichten,
+        teilnahmeStatus: kategorie.art === 'teilnahme' ? daten.teilnahmeStatus : null,
         tage: Math.max(1, tage(daten.datum, bis) + 1),
       },
       daten.datum,
@@ -289,6 +289,7 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     ),
     verantwortlichSub: daten.verantwortlichSub,
   };
+  if (kategorie.art === 'teilnahme') eingabe.eingeladen = daten.eingeladen;
   const fehler = eventDauerFehler(kategorie.dauer, eingabe.beginn, eingabe.ende);
   if (fehler) return nichtAusfuehrbar(text, fehler);
   return {
@@ -333,6 +334,18 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   const schichtenGleichHier =
     teilnahme || schichtenGleich(daten.schichten, schichtenAusEvent(ev.beginn, ev.schichten));
   if (!schichtenGleichHier) unterschiede.push('Schichten');
+  // Participation of the Baustein; null / empty = leave the event's as it is.
+  const kreis = teilnahme && kategorieId === ev.kategorieId ? daten.teilnahmeStatus : null;
+  const kreisGleich =
+    kreis === null ||
+    (ev.teilnahmeStatus !== null &&
+      kreis.length === ev.teilnahmeStatus.length &&
+      kreis.every((s) => ev.teilnahmeStatus!.includes(s)));
+  const eingeladen = teilnahme && daten.eingeladen.length > 0 ? daten.eingeladen : ev.eingeladen;
+  const eingeladenGleich =
+    eingeladen.length === ev.eingeladen.length &&
+    eingeladen.every((s) => ev.eingeladen.includes(s));
+  if (!kreisGleich || !eingeladenGleich) unterschiede.push('Teilnahme');
 
   const text = `Event „${ev.titel}“ im Kalender ändern (${unterschiede.join(', ')})`;
   if (unterschiede.length === 0) return null;
@@ -348,7 +361,7 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
       beginnZeit,
       endeZeit,
       schichten: teilnahme ? [] : daten.schichten,
-      teilnahmeStatus: null,
+      teilnahmeStatus: teilnahme ? daten.teilnahmeStatus : null,
       tage: Math.max(1, tage(datum, bis) + 1),
     },
     datum,
@@ -365,8 +378,9 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     beginn: spanne.beginn,
     ende: spanne.ende,
     schichten,
-    teilnahmeStatus: kategorieId === ev.kategorieId ? ev.teilnahmeStatus : neu.teilnahmeStatus,
-    eingeladen: ev.eingeladen,
+    teilnahmeStatus:
+      kategorieId === ev.kategorieId ? (kreis ?? ev.teilnahmeStatus) : neu.teilnahmeStatus,
+    eingeladen: teilnahme ? eingeladen : ev.eingeladen,
     verantwortlichSub: daten.verantwortlichSub,
   };
   return {

@@ -8,6 +8,7 @@ import {
   bausteinEmDatenSchema,
   bausteinAuswahlDatenSchema,
   bausteinWahlDatenSchema,
+  type BausteinWahlDaten,
   auswahlErgebnis,
   wahlErgebnis,
   wahlRunden,
@@ -431,8 +432,11 @@ export interface WahlZeilen {
   gewaehlt: WahlKandidat[];
   /** Elected but declined. */
   abgelehnt: WahlKandidat[];
-  /** Elected and recorded as accepting ("nimmt die Wahl an"); a subset of `gewaehlt`. */
-  angenommen: WahlKandidat[];
+  /**
+   * Elected and declined candidates together in vote order (the order they would have been elected
+   * in had they all accepted); `nimmtAn` is false for a decline.
+   */
+  reihenfolge: { kandidat: WahlKandidat; nimmtAn: boolean }[];
   /** Proposed persons (subs) who do not run. */
   nichtAngetreten: string[];
   /** A tie is still open: no result yet. */
@@ -440,6 +444,43 @@ export interface WahlZeilen {
   /** "(13 von 25 Mitgliedern anwesend)" or '' */
   anwesend: string;
   nichtBeschlussfaehig: boolean;
+}
+
+/** Ids in vote order: main-round votes, then the runoff rounds in turn (descending); stable otherwise. */
+function stimmenReihenfolge(w: BausteinWahlDaten, ids: readonly string[]): string[] {
+  const nachId = new Map(w.kandidaten.map((k) => [k.id, k]));
+  const stimmen = (id: string, runde: number) =>
+    runde < 0 ? (nachId.get(id)?.stimmen ?? 0) : (w.stichwahlen[runde]?.stimmen[id] ?? 0);
+  return [...ids].sort((a, b) => {
+    for (let r = -1; r < w.stichwahlen.length; r++) {
+      const d = stimmen(b, r) - stimmen(a, r);
+      if (d !== 0) return d;
+    }
+    return 0;
+  });
+}
+
+/** A sentence of the Wahl text: a run of elected persons or one person who declined. */
+export type WahlAbschnitt =
+  { art: 'gewaehlt'; personen: WahlKandidat[] } | { art: 'abgelehnt'; person: WahlKandidat };
+
+/**
+ * The Wahl text in vote order: consecutive elected persons form one "Gewählt: A, B, A nimmt die
+ * Wahl an, B nimmt die Wahl an." sentence, each decliner "Y nimmt die Wahl nicht an." at its place.
+ * While a tie is open the elected are not stated, only the declines.
+ */
+export function wahlAbschnitte(z: Pick<WahlZeilen, 'reihenfolge' | 'offen'>): WahlAbschnitt[] {
+  const aus: WahlAbschnitt[] = [];
+  for (const { kandidat, nimmtAn } of z.reihenfolge) {
+    if (!nimmtAn) {
+      aus.push({ art: 'abgelehnt', person: kandidat });
+    } else if (!z.offen) {
+      const letzter = aus.at(-1);
+      if (letzter?.art === 'gewaehlt') letzter.personen.push(kandidat);
+      else aus.push({ art: 'gewaehlt', personen: [kandidat] });
+    }
+  }
+  return aus;
 }
 
 /** Lines of a `bausteinWahl`; null when the data are invalid. */
@@ -475,9 +516,10 @@ export function wahlZeilen(
     giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
-    angenommen: ergebnis.gewaehlt
-      .filter((id) => w.annahme[id] === true)
-      .flatMap((id) => von(id, 0)),
+    reihenfolge: stimmenReihenfolge(w, [...ergebnis.gewaehlt, ...ergebnis.abgelehnt]).flatMap(
+      (id) =>
+        von(id, 0).map((kandidat) => ({ kandidat, nimmtAn: !ergebnis.abgelehnt.includes(id) })),
+    ),
     nichtAngetreten: w.nichtAngetreten,
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',

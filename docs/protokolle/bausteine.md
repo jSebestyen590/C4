@@ -24,8 +24,8 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Event (`bausteinEvent`)
 
-- Felder: Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kategorie (`kategorieId`, nötig zum Anlegen, Standard `null`), Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event).
-- Reihenfolge im Formular: Im Kalender (die Optionen heißen wie die Überschrift: `25. – 30.11. PP Name`; hier landet auch der erste Fokus), Kategorie, Name, Datum, Zeiten, Verantwortliche:r, Dienste. „Bis“ gibt es nur bei mehrtägigen und ganztägigen Kategorien (ohne Kategorie ebenfalls); wechselt man auf eine eintägige Kategorie, wird `bisDatum` geleert, und `event.anlegen` ignoriert ein übrig gebliebenes `bisDatum` bei eintägigen Kategorien.
+- Felder: Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kategorie (`kategorieId`, nötig zum Anlegen, Standard `null`), bei einer Kategorie mit Teilnahme der Teilnehmerkreis (`teilnahmeStatus`: Status-Liste, `null` = Standard der Kategorie; `eingeladen`: Subs einzeln Eingeladener), Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event).
+- Reihenfolge im Formular: Im Kalender (die Optionen heißen wie die Überschrift: `25. – 30.11. PP Name`; hier landet auch der erste Fokus), Kategorie, Name, Datum, Zeiten, Verantwortliche:r, Dienste **oder** (Kategorie mit Teilnahme, z. B. Clubfahrt) „Wer nimmt teil?“ mit denselben Feldern wie im Kalender (`TeilnahmeFelder`: alle Mitglieder, nach Status, niemand vorab, dazu einzelne Einladungen); Plätze, Anmeldeschluss oder Kosten kennt der Kalender nicht. Beim Wechsel auf eine Teilnahme-Kategorie werden `schichten` geleert, beim Wechsel auf eine Kategorie mit Diensten `teilnahmeStatus` und `eingeladen` (`eventKategorieSetzen`). „Bis“ gibt es nur bei mehrtägigen und ganztägigen Kategorien (ohne Kategorie ebenfalls); wechselt man auf eine eintägige Kategorie, wird `bisDatum` geleert, und `event.anlegen` ignoriert ein übrig gebliebenes `bisDatum` bei eintägigen Kategorien.
 - Notizen: normaler Freitext, nimmt andere Bausteine auf (siehe [Bausteine in Notizen](#bausteine-in-notizen-und-verschachtelte-themen)).
 
 ### Anwesenheit (`bausteinAnwesenheit`)
@@ -61,7 +61,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Neues EM (`bausteinEm`)
 
-- Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`). Mit Abstimmung gibt es das Feld „Beantragt von“ (`antragSub`, Person der App, optional); Dokument und PDF zeigen darüber „<Name> beantragt die Ehrenmitgliedschaft.“
+- Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`). Mit Abstimmung gibt es das Feld „Beantragt von“ (`antragSub`, Person der App, optional); Dokument und PDF zeigen darüber „<Name> beantragt die Ehrenmitgliedschaft“
 - **Ab diesem Baustein ist die Person kein Mitglied mehr und hat kein Stimmrecht, immer, egal wie die Abstimmung ausgeht** (`anwesenheitsVerlauf`: raus aus „alle“ und „anwesend“). Der Baustein zeigt wie Erscheint „x von y Mitgliedern anwesend“ mit den neuen Zahlen (z. B. „2 von 8“ wird „1 von 7“), alle späteren Beschlüsse (Editor, Dokument, PDF) rechnen mit den verringerten Zahlen. Die Aktion `em.status` setzt ohne Abstimmung auf Extern, mit Abstimmung auf EM (angenommen) bzw. Extern (abgelehnt); ohne Ergebnis wartet sie. Eine Aufnahme ändert das Stimmrecht dagegen nicht (erst ab der nächsten Sitzung).
 
 ### Aufnahme (`bausteinAufnahme`)
@@ -81,7 +81,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 - Kandidat:innen (`kandidaten`, höchstens 30: `id`, Person `sub`, Stimmen; nur Personen der App, alte Daten mit Freitext-`name` ohne `sub` werden weiter angezeigt), `enthaltung`.
 - Stichwahlen (`stichwahlen`, höchstens 10: Stimmen je Kandidat:in und Enthaltung).
 - `nichtAngetreten`: Personen der App, die vorgeschlagen wurden, aber nicht antreten; höchstens 30, nur Anzeige; Mehrfachauswahl „Vorgeschlagen, tritt nicht an“.
-- `annahme`: je Kandidat-Id `true` (nimmt die Wahl an, wird im Dokument genannt), `false` (nimmt sie nicht an); fehlt der Eintrag, ist nichts festgehalten (zählt für das Ergebnis als angenommen).
+- `annahme`: je Kandidat-Id `false` (nimmt die Wahl nicht an); fehlt der Eintrag, nimmt die Person an.
 - Nur Mitglieder stimmen, Beschlussfähigkeit wie bei der Abstimmung (`anwesenheitsVerlauf`), Ergebnis siehe unten.
 - Alte Wahlen ohne `postenId`, `gueltigAb`, `stimmenProPerson`, `nichtAngetreten` und `annahme` bleiben gültig (Standard `null`, leer bzw. `[]`/`{}`).
 
@@ -93,9 +93,9 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Event-Baustein im Editor
 
-Das Feld „Kategorie“ (nicht archivierte Kategorien) steht neben der Vorlage; wird im Feld „Im Kalender“ ein Event gewählt, übernimmt der Baustein dessen Angaben (Kalender gewinnt: Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste über `eventDatenAusKalender`), die Notizen bleiben.
+Das Feld „Kategorie“ (nicht archivierte Kategorien) steht neben der Vorlage; wird im Feld „Im Kalender“ ein Event gewählt, übernimmt der Baustein dessen Angaben (Kalender gewinnt: Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste über `eventDatenAusKalender`; die Teilnahme bleibt `null`/leer = so, wie das Event sie hat), die Notizen bleiben.
 
-**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Der Abschnitt „Dienste“ steht immer im Formular, auch ohne Vorlage und wenn er leer ist. „Dienst hinzufügen“ legt eine Schicht Aufbau, Betrieb oder Putzen an (Zeiten vom Event, sonst 18:00–22:00; Betrieb mit der ersten aktiven Dienstform, Aufbau/Putzen am Eventtag mit 1/2), höchstens 20. Schichten lassen sich entfernen; bei einem Betrieb kommen weitere Dienstformen per „Dienstform hinzufügen“ dazu (je Dienstform einmal) und lassen sich entfernen, solange mindestens eine bleibt. Beim Abschließen legt `event.anlegen` die Schichten an, ob mit oder ohne Vorlage; bei einer Kategorie mit Teilnahme statt Diensten werden sie nicht übernommen (Hinweis im Formular). Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
+**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Der Abschnitt „Dienste“ steht (bei Kategorien ohne Teilnahme) immer im Formular, auch ohne Vorlage und wenn er leer ist. „Dienst hinzufügen“ legt eine Schicht Aufbau, Betrieb oder Putzen an (Zeiten vom Event, sonst 18:00–22:00; Betrieb mit der ersten aktiven Dienstform, Aufbau/Putzen am Eventtag mit 1/2), höchstens 20. Schichten lassen sich entfernen; bei einem Betrieb kommen weitere Dienstformen per „Dienstform hinzufügen“ dazu (je Dienstform einmal) und lassen sich entfernen, solange mindestens eine bleibt. Beim Abschließen legt `event.anlegen` die Schichten an, ob mit oder ohne Vorlage; bei einer Kategorie mit Teilnahme gibt es keine Dienste (Abschnitt ausgeblendet, nichts wird übernommen); dort übernimmt `event.anlegen` stattdessen `teilnahmeStatus` (`null` = Standard der Kategorie) und `eingeladen`, `event.aendern` setzt abweichende Werte. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
 
 Die Feld-Schemata (`BAUSTEIN_DATEN_SCHEMAS`) prüft die API streng, im Entwurf dürfen Felder leer sein. Das übrige Dokument prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500 KB).
 
@@ -127,9 +127,8 @@ ignoriert die Logik; der Editor bietet an, sie zu entfernen.
 
 **Auswahl, Ergebnis (`auswahlErgebnis` in `protokolle.ts`):** Es gelten dieselben Regeln wie bei der Wahl (`rangErgebnis`: Rangfolge nach den Stimmen der Hauptrunde, Gleichstand um den letzten Platz führt in eine Stichwahl, mehrere Runden möglich), nur ohne Annahme: `abgelehnt` ist immer leer. Das Ergebnis erscheint als „Ergebnis: A, B“ (grün) bzw. als Hinweis „Gleichstand zwischen B und C um 1 Platz – Stichwahl nötig“ mit dem Knopf „Stichwahl hinzufügen“; überflüssige Stichwahlen lassen sich entfernen. Die Annahme-Schalter der Wahl behalten im Editor eine feste Reihenfolge (nach Kandidat:innen, nicht nach Ergebnis), damit der gedrückte Schalter beim Umschalten den Fokus behält.
 
-**Wahl, Annahme:** Nach dem Ergebnis hat jede gewählte Person im Editor eine Auswahl „<Name> nimmt die Wahl an?“ mit Offen (Standard) / Nimmt an / Nimmt nicht an.
-Dokument und PDF schreiben bei „Nimmt an“ hinter die Gewählten „X nimmt die Wahl an“ (mehrere kommagetrennt, am Ende ein Punkt).
-„Nimmt nicht an“ (`annahme[id] = false`; Dokument und PDF: „X nimmt die Wahl nicht an.“), wird das Ergebnis so berechnet, als stünde die Person nicht auf der Liste: gleiche
+**Wahl, Annahme:** Nach dem Ergebnis hat jede gewählte Person im Editor einen Schalter „<Name> nimmt die Wahl an“ (Standard an; ausschalten speichert `annahme[id] = false`, einschalten entfernt den Eintrag).
+Dokument und PDF nennen die Personen in der Reihenfolge der Stimmen (so, wie sie ohne Absagen gewählt worden wären): je Absage „Y nimmt die Wahl nicht an.“, aufeinanderfolgende Gewählte als ein Satz „Gewählt: A, B, A nimmt die Wahl an, B nimmt die Wahl an.“ (`wahlAbschnitte` in `dokumentDaten.ts`; bei einem offenen Gleichstand nur die Absagen). Bei „Nimmt nicht an“ wird das Ergebnis so berechnet, als stünde die Person nicht auf der Liste: gleiche
 Stimmen, gleiche Stichwahl-Regeln, die Nächstplatzierte rückt nach (ein Gleichstand an der neuen Grenze braucht wie üblich eine
 Stichwahl). Das wiederholt sich, bis keine gewählte Person mehr abgelehnt hat. `wahlErgebnis` liefert dann nur die Annehmenden in
 `gewaehlt` und die Übersprungenen in `abgelehnt` (ihr Schalter bleibt, aus, und lässt sich wieder einschalten). Absagen von nicht
