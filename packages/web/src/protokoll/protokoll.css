@@ -146,6 +146,7 @@
 .protokoll-anwesenheit {
   padding: var(--mantine-spacing-xs);
   border: 1px solid var(--mantine-color-default-border);
+  border-left: 4px solid var(--baustein-farbe);
   border-radius: var(--mantine-radius-md);
 }
 
