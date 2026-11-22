@@ -28,6 +28,7 @@ import {
   ERWAEHNUNG_GRUPPEN,
   eventDatenAusKalender,
   MEINUNGSBILD_MAX_OPTIONEN,
+  MITGLIED_STATI,
   WAHL_MAX_ANZAHL,
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
@@ -54,10 +55,17 @@ import { aufnahmeOptionen, emKandidaten, personenOptionen } from './anwesenheit'
 import { useProtokollKontext } from './kontext';
 import { unwrap, useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
+import { labelFuer, MITGLIED_STATUS_LABELS } from '../i18n';
 import { useDienstformen, useEventKategorien, useVorlagen } from '../kalenderDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
+import {
+  eingeladeneAus,
+  TeilnahmeFelder,
+  teilnahmeKreisAus,
+  teilnahmeWerteAus,
+} from '../TeilnahmeFelder';
 import {
   annahmeSchalterIds,
   eventKategorieSetzen,
@@ -161,6 +169,28 @@ export function EventFormular({
   const kategorieWert = daten.kategorieId ?? vorlage?.kategorieId ?? null;
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
   const dienstformName = (id: string) => dienstformen.nachId.get(id)?.name ?? 'Dienstform';
+  // A Kategorie with participation has no Dienste but a circle of participants instead.
+  const teilnahme = kategorie?.art === 'teilnahme';
+  const teilnahmeWerte = teilnahmeWerteAus(
+    daten.teilnahmeStatus ?? kategorie?.teilnahmeStatus ?? [...MITGLIED_STATI],
+    daten.eingeladen,
+  );
+  const teilnahmeText = daten.teilnahmeStatus
+    ? [
+        teilnahmeWerte.modus === 'alle'
+          ? 'Alle Mitglieder'
+          : daten.teilnahmeStatus.length > 0
+            ? daten.teilnahmeStatus
+                .map((st) => labelFuer(MITGLIED_STATUS_LABELS, st, 'neutral'))
+                .join(', ')
+            : '',
+        daten.eingeladen.length > 0 ? `${daten.eingeladen.length} eingeladen` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ')
+    : daten.eingeladen.length > 0
+      ? `${daten.eingeladen.length} eingeladen`
+      : '';
   const vorlageText = daten.vorlageId
     ? `Vorlage: ${vorlage?.titel || kategorie?.name || (vorlagen.isPending ? '…' : 'gelöscht')}`
     : 'Ohne Vorlage';
@@ -190,9 +220,10 @@ export function EventFormular({
               (kategorien.isPending ? '…' : 'Unbekannt')}
           </Text>
         )}
-        {daten.schichten.length > 0 && (
+        {!teilnahme && daten.schichten.length > 0 && (
           <SchichtListe schichten={daten.schichten} dienstformName={dienstformName} />
         )}
+        {teilnahme && teilnahmeText && <Text size="sm">Teilnahme: {teilnahmeText}</Text>}
         {daten.verantwortlichSub && (
           <Text size="sm">
             Verantwortlich: <Mitglied sub={daten.verantwortlichSub} />
@@ -264,7 +295,7 @@ export function EventFormular({
         value={kategorieWert}
         onChange={(kategorieId) => {
           const neu = kategorien.liste.find((k) => k.id === (kategorieId ?? vorlage?.kategorieId));
-          aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer));
+          aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer, neu?.art));
         }}
         nothingFoundMessage="Keine Kategorie gefunden"
       />
@@ -329,23 +360,32 @@ export function EventFormular({
         onChange={(verantwortlichSub) => aendern((d) => ({ ...d, verantwortlichSub }))}
         nothingFoundMessage="Niemand gefunden"
       />
-      <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          Dienste
-        </Text>
-        {kategorie?.art === 'teilnahme' && (
-          <Text size="xs" c="dimmed">
-            Bei einer Kategorie mit Teilnahme statt Diensten werden die Dienste nicht übernommen.
-          </Text>
-        )}
-        <SchichtEditor
-          schichten={daten.schichten}
-          dienstformName={dienstformName}
-          dienstformen={dienstformen.aktive}
-          zeiten={{ beginnZeit: daten.beginnZeit, endeZeit: daten.endeZeit }}
-          onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
+      {teilnahme ? (
+        <TeilnahmeFelder
+          titel={null}
+          werte={teilnahmeWerte}
+          onChange={(w) =>
+            aendern((d) => ({
+              ...d,
+              teilnahmeStatus: teilnahmeKreisAus(w),
+              eingeladen: eingeladeneAus(w),
+            }))
+          }
         />
-      </Stack>
+      ) : (
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Dienste
+          </Text>
+          <SchichtEditor
+            schichten={daten.schichten}
+            dienstformName={dienstformName}
+            dienstformen={dienstformen.aktive}
+            zeiten={{ beginnZeit: daten.beginnZeit, endeZeit: daten.endeZeit }}
+            onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
+          />
+        </Stack>
+      )}
     </Stack>
   );
 }
@@ -1068,9 +1108,8 @@ function NichtAngetreten({
 interface AnnahmeSteuerung {
   /** Ids to show a switch for, in a stable order (the order of the candidates, not of the result). */
   ids: readonly string[];
-  /** `true` accepts (stated in the document), `false` declines, `null` not recorded. */
-  wert: (id: string) => boolean | null;
-  setzen: (id: string, nimmtAn: boolean | null) => void;
+  nimmtAn: (id: string) => boolean;
+  setzen: (id: string, nimmtAn: boolean) => void;
   label: (id: string) => ReactNode;
 }
 
@@ -1122,22 +1161,13 @@ function WahlErgebnisBereich({
         </Text>
       )}
       {annahme?.ids.map((id) => (
-        <Stack key={id} gap={4}>
-          <Text size="sm" fw={500} style={{ overflowWrap: 'anywhere' }}>
-            {annahme.label(id)}
-          </Text>
-          <SegmentedControl
-            fullWidth
-            size="md"
-            value={annahme.wert(id) === null ? 'offen' : annahme.wert(id) ? 'ja' : 'nein'}
-            onChange={(w) => annahme.setzen(id, w === 'offen' ? null : w === 'ja')}
-            data={[
-              { value: 'offen', label: 'Offen' },
-              { value: 'ja', label: 'Nimmt an' },
-              { value: 'nein', label: 'Nimmt nicht an' },
-            ]}
-          />
-        </Stack>
+        <Switch
+          key={id}
+          size="md"
+          checked={annahme.nimmtAn(id)}
+          onChange={(e) => annahme.setzen(id, e.currentTarget.checked)}
+          label={annahme.label(id)}
+        />
       ))}
       {offen && (
         <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
@@ -1193,9 +1223,9 @@ function WahlErgebnisAnzeige({
         aendern && {
           // Stable order: toggling must not move the focused switch in the DOM.
           ids: annahmeSchalterIds(daten),
-          wert: (id) => daten.annahme[id] ?? null,
+          nimmtAn: (id) => daten.annahme[id] !== false,
           setzen: (id, nimmtAn) => aendern((d) => annahmeSetzen(d, id, nimmtAn)),
-          label: (id) => <>{name(id)} nimmt die Wahl an?</>,
+          label: (id) => <>{name(id)} nimmt die Wahl an</>,
         }
       }
     />

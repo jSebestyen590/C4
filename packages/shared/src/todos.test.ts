@@ -168,6 +168,8 @@ describe('Baustein Todo', () => {
         verantwortlichSub: null,
         eventId: 'e1',
         kategorieId: null,
+        teilnahmeStatus: null,
+        eingeladen: [],
       },
       [bausteinErzeugen('bausteinTodo')],
     );

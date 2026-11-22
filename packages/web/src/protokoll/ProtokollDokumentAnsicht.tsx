@@ -29,6 +29,7 @@ import {
   meinungsbildZeilen,
   emZeilen,
   auswahlZeilen,
+  wahlAbschnitte,
   wahlZeilen,
   type WahlKandidat,
   beschlussfaehigkeitText,
@@ -715,39 +716,31 @@ function Baustein({
               })}
             </p>
           )}
-          {z.offen ? (
-            <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>
-          ) : (
-            z.gewaehlt.length > 0 && (
-              <p>
+          {z.offen && <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>}
+          {wahlAbschnitte(z).map((a, i) =>
+            a.art === 'abgelehnt' ? (
+              <p key={i}>
+                <WahlName k={a.person} ctx={ctx} /> nimmt die Wahl nicht an.
+              </p>
+            ) : (
+              <p key={i}>
                 Gewählt:{' '}
-                {z.gewaehlt.map((g, i) => (
+                {a.personen.map((g, j) => (
                   <Fragment key={g.id}>
-                    {i > 0 && ', '}
+                    {j > 0 && ', '}
                     <WahlName k={g} ctx={ctx} />
                   </Fragment>
                 ))}
-                {z.angenommen.length > 0 && ', '}
-                {z.angenommen.map((g, i) => (
+                {', '}
+                {a.personen.map((g, j) => (
                   <Fragment key={g.id}>
-                    {i > 0 && ', '}
+                    {j > 0 && ', '}
                     <WahlName k={g} ctx={ctx} /> nimmt die Wahl an
                   </Fragment>
                 ))}
-                {z.angenommen.length > 0 && '.'}
+                .
               </p>
-            )
-          )}
-          {z.abgelehnt.length > 0 && (
-            <p>
-              {z.abgelehnt.map((g, i) => (
-                <Fragment key={g.id}>
-                  {i > 0 && ', '}
-                  <WahlName k={g} ctx={ctx} /> nimmt die Wahl nicht an
-                </Fragment>
-              ))}
-              .
-            </p>
+            ),
           )}
           {(z.anwesend || z.nichtBeschlussfaehig) && (
             <p>
@@ -842,7 +835,7 @@ function Baustein({
         {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
         {antrag && (
           <p>
-            <PersonName p={antrag} /> beantragt die Ehrenmitgliedschaft.
+            <PersonName p={antrag} /> beantragt die Ehrenmitgliedschaft
           </p>
         )}
         {z.abstimmung && (

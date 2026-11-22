@@ -132,6 +132,22 @@ describe('Datum', () => {
     expect(eventZeigtBis('ganztaegig')).toBe(true);
     expect(eventZeigtBis('eintaegig')).toBe(false);
   });
+  it('clears Dienste for a teilnahme Kategorie and the circle for a Dienste Kategorie', () => {
+    const schicht = { art: 'betrieb', beginnZeit: '18:00', endeZeit: '22:00', bedarfe: [] };
+    const mit = {
+      ...basis,
+      schichten: [schicht as never],
+      teilnahmeStatus: ['mitglied' as const],
+      eingeladen: ['s1'],
+    };
+    const teilnahme = eventKategorieSetzen(mit, 'k', 'ganztaegig', 'teilnahme');
+    expect(teilnahme.schichten).toEqual([]);
+    expect(teilnahme).toMatchObject({ teilnahmeStatus: ['mitglied'], eingeladen: ['s1'] });
+    const dienste = eventKategorieSetzen(mit, 'k', 'eintaegig', 'dienste');
+    expect(dienste).toMatchObject({ teilnahmeStatus: null, eingeladen: [] });
+    expect(dienste.schichten).toHaveLength(1);
+    expect(eventKategorieSetzen(mit, null, undefined)).toMatchObject({ eingeladen: ['s1'] });
+  });
   it('labels calendar events like the headings', () => {
     const e = {
       anzeigeTitel: 'Caro',
@@ -333,8 +349,7 @@ describe('Wahl', () => {
   it('stores a decline as false and accepting again removes the entry', () => {
     const nein = annahmeSetzen(leer, 'a', false);
     expect(nein.annahme).toEqual({ a: false });
-    expect(annahmeSetzen(nein, 'a', true).annahme).toEqual({ a: true });
-    expect(annahmeSetzen(nein, 'a', null).annahme).toEqual({});
+    expect(annahmeSetzen(nein, 'a', true).annahme).toEqual({});
     const mit = annahmeSetzen(kandidatHinzufuegen(leer, 'a'), 'a', false);
     expect(kandidatEntfernen(mit, 'a').annahme).toEqual({});
   });
@@ -573,6 +588,8 @@ describe('kalenderEventFuerBaustein', () => {
       verantwortlichSub: null,
       eventId: null,
       kategorieId: null,
+      teilnahmeStatus: null,
+      eingeladen: [],
     });
     expect(daten).toMatchObject({
       vorlageId: 'v1',

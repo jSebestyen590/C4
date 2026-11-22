@@ -444,8 +444,10 @@ describe('ProtokollDokumentAnsicht', () => {
     );
     expect(abgesagt).toContain('Nicht angetreten: ');
     expect(abgesagt).toContain('Niklas');
-    expect(abgesagt).toContain('Gewählt: Anna, Bea');
-    expect(abgesagt).toContain('Cem nimmt die Wahl nicht an');
+    // Vote order: Anna (5), Cem (runoff, declined), Bea.
+    expect(abgesagt).toMatch(
+      /Gewählt: Anna, Anna nimmt die Wahl an\.<\/p><p>Cem nimmt die Wahl nicht an\.<\/p><p>Gewählt: Bea, Bea nimmt die Wahl an\./,
+    );
     expect(fertig).not.toContain('Nicht angetreten');
     expect(fertig).not.toContain('nimmt die Wahl nicht an');
   });

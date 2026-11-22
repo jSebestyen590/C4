@@ -183,6 +183,17 @@ export const bausteinEventDatenSchema = z.strictObject({
   eventId: idOderNull,
   /** Kategorie of the event (needed to create it); null = not chosen (and in old data). */
   kategorieId: idOderNull.default(null),
+  /**
+   * Participation circle of an event of a `teilnahme` Kategorie (statuses, `[]` = nobody by status);
+   * null = the Kategorie's default. Always null for a Kategorie with Dienste.
+   */
+  teilnahmeStatus: z
+    .array(z.enum(MITGLIED_STATI))
+    .max(MITGLIED_STATI.length)
+    .nullable()
+    .default(null),
+  /** Subs of the members invited individually (`teilnahme` Kategorie only). */
+  eingeladen: z.array(z.string().min(1).max(100)).max(500).default([]),
 });
 export type BausteinEventDaten = z.infer<typeof bausteinEventDatenSchema>;
 
@@ -562,6 +573,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         verantwortlichSub: null,
         eventId: null,
         kategorieId: null,
+        teilnahmeStatus: null,
+        eingeladen: [],
       };
     case 'bausteinThema':
       return { titel: '' };
@@ -1155,6 +1168,8 @@ export function eventDatenAusKalender(
     verantwortlichSub: e.verantwortlichSub,
     eventId: e.id,
     kategorieId: e.kategorieId,
+    teilnahmeStatus: null,
+    eingeladen: [],
   };
 }
 

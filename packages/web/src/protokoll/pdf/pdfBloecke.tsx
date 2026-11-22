@@ -40,6 +40,7 @@ import {
   personName,
   todoZeile,
   auswahlZeilen,
+  wahlAbschnitte,
   wahlZeilen,
   type DokumentEingabe,
   type Person,
@@ -822,36 +823,28 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
                 })}
               </Text>
             )}
-            {z.offen ? (
-              <Text style={stile.warnung}>Noch offen: Stichwahl nötig</Text>
-            ) : (
-              z.gewaehlt.length > 0 && (
-                <Text>
+            {z.offen && <Text style={stile.warnung}>Noch offen: Stichwahl nötig</Text>}
+            {wahlAbschnitte(z).map((a, i) =>
+              a.art === 'abgelehnt' ? (
+                <Text key={i}>
+                  <Liste personen={[a.person]} ctx={ctx} />
+                  {' nimmt die Wahl nicht an.'}
+                </Text>
+              ) : (
+                <Text key={i}>
                   {'Gewählt: '}
-                  <Liste personen={z.gewaehlt} ctx={ctx} />
-                  {z.angenommen.length > 0 && ', '}
-                  {z.angenommen.map((g, i) => (
+                  <Liste personen={a.personen} ctx={ctx} />
+                  {', '}
+                  {a.personen.map((g, j) => (
                     <Fragment key={g.id}>
-                      {i > 0 && ', '}
+                      {j > 0 && ', '}
                       <Liste personen={[g]} ctx={ctx} />
                       {' nimmt die Wahl an'}
                     </Fragment>
                   ))}
-                  {z.angenommen.length > 0 && '.'}
+                  {'.'}
                 </Text>
-              )
-            )}
-            {z.abgelehnt.length > 0 && (
-              <Text>
-                {z.abgelehnt.map((g, i) => (
-                  <Fragment key={g.id}>
-                    {i > 0 && ', '}
-                    <Liste personen={[g]} ctx={ctx} />
-                    {' nimmt die Wahl nicht an'}
-                  </Fragment>
-                ))}
-                {'.'}
-              </Text>
+              ),
             )}
             {(z.anwesend || z.nichtBeschlussfaehig) && (
               <Text>
@@ -956,7 +949,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
               block(
                 <Absatz>
                   <Name p={antrag} />
-                  {' beantragt die Ehrenmitgliedschaft.'}
+                  {' beantragt die Ehrenmitgliedschaft'}
                 </Absatz>,
               ),
             ]
