@@ -12,6 +12,7 @@ import {
   type ProtokollKnoten,
 } from '@c4/shared';
 import { MITGLIED_STATUS_MEHRZAHL } from '../i18n';
+import type { KategorieNamen } from './kategorieNamen';
 import { dokumentUeberschriften } from './dokumentUeberschriften';
 import { knotenText } from './dokumentDaten';
 import { normalisieren, type ListenEintrag } from './slashLogik';
@@ -165,6 +166,7 @@ export function meineErwaehnungen(
   dokument: ProtokollDokument,
   ich: { sub: string; status: MitgliedStatus } | null | undefined,
   personName: (sub: string) => string | null = () => null,
+  kategorien?: KategorieNamen,
 ): MeineErwaehnungen {
   const ids = new Map<ProtokollKnoten, string>();
   const eintraege: MeineErwaehnung[] = [];
@@ -172,6 +174,7 @@ export function meineErwaehnungen(
   const { eintraege: ueberschriften, ids: ueberschriftIds } = dokumentUeberschriften(
     dokument,
     personName,
+    kategorien,
   );
   const titel = new Map(ueberschriften.map((u) => [u.id, u.text]));
   let aktuell: { id: string; text: string } | null = null;

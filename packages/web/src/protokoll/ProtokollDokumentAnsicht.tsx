@@ -938,7 +938,7 @@ export function ProtokollDokumentAnsicht({
     return m ? personName(m) : null;
   };
   const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen, eingabe.kategorien);
-  const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen);
+  const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen, eingabe.kategorien);
   const ctx: Kontext = {
     eingabe,
     verlauf,
