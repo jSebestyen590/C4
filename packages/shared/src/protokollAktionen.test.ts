@@ -344,19 +344,19 @@ describe('em.status', () => {
   const plan = (abstimmung: ReturnType<typeof ergebnis> | null) =>
     protokollAktionen(dok(baustein('bausteinEm', { sub: 'p', abstimmung })), k)[0]!;
 
-  it('makes the person EM without a vote or with a yes', () => {
-    expect(plan(null).plan).toMatchObject({ art: 'em.status', status: 'em' });
-    expect(plan(ergebnis('angenommen')).plan).toMatchObject({ status: 'em' });
+  it('makes the person EM after a yes', () => {
+    expect(plan(ergebnis('angenommen')).plan).toMatchObject({ art: 'em.status', status: 'em' });
   });
-  it('makes the person extern after a no', () => {
+  it('makes the person extern without a vote or after a no', () => {
+    expect(plan(null).plan).toMatchObject({ status: 'extern' });
     expect(plan(ergebnis('abgelehnt')).plan).toMatchObject({ status: 'extern' });
   });
   it('waits for the result of a vote', () => {
     expect(plan(ergebnis(null))).toMatchObject({ ausfuehrbar: false });
   });
-  it('is done when the person is EM', () => {
+  it('is done when the person already has the target status', () => {
     const [a] = protokollAktionen(
-      dok(baustein('bausteinEm', { sub: 'p' })),
+      dok(baustein('bausteinEm', { sub: 'p', abstimmung: ergebnis('angenommen') })),
       kontext({ personen: { p: person('em') } }),
     );
     expect(a).toMatchObject({ erledigt: true, grund: AKTION_BEREITS_ERLEDIGT });
@@ -475,7 +475,7 @@ describe('aktionenMitZustand', () => {
   });
 
   it('is done when the state says so, and not executable otherwise', () => {
-    const erledigt = protokollAktionen(dok(b), kontext({ personen: { p: person('em') } }));
+    const erledigt = protokollAktionen(dok(b), kontext({ personen: { p: person('extern') } }));
     expect(aktionenMitZustand(erledigt, {})[0]).toMatchObject({ zustand: 'erledigt' });
     const keine = protokollAktionen(dok(b), kontext());
     expect(aktionenMitZustand(keine, {})[0]).toMatchObject({ zustand: 'nicht_ausfuehrbar' });

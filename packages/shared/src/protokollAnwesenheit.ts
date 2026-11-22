@@ -117,9 +117,10 @@ export function teilnahmeMitBloecken<T extends { sub: string; wert: ProtokollTei
  * Who is present where in the document. At the opening the members with attendance `anwesend`
  * (`verspaetet` in old data counts as `anwesend`) count, except those whose first Anwesenheit block
  * is an `erscheint` (they arrive later); members whose first block is `geht` count at the opening.
- * Then the blocks are applied: `erscheint` adds a member, `geht` removes one. Blocks for somebody
- * who is not a Mitglied (Anwärter:in, EM, unknown) or that change nothing leave the member count
- * alone; blocks without a person are ignored. The head count of all people (for a Meinungsbild)
+ * Then the blocks are applied: `erscheint` adds a member, `geht` removes one; a Neues EM removes the
+ * person from the Mitglieder altogether (total and present, whatever the vote result). Blocks for
+ * somebody who is not a Mitglied (Anwärter:in, EM, Extern, unknown) or that change nothing leave
+ * the member count alone; blocks without a person are ignored. The head count of all people (for a Meinungsbild)
  * follows the same rules for every status.
  */
 export function anwesenheitsVerlauf(
@@ -172,9 +173,18 @@ export function anwesenheitsVerlauf(
       const neu = stand();
       bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
       aktuell = neu;
+    } else if (knoten.type === 'bausteinEm') {
+      // From here on the person is no longer a Mitglied and has no vote, whatever the vote result.
+      const daten = bausteinEmDatenSchema.safeParse(knoten.attrs?.daten);
+      if (daten.success && daten.data.sub !== null) {
+        alle.delete(daten.data.sub);
+        da.delete(daten.data.sub);
+      }
+      const neu = stand();
+      bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
+      aktuell = neu;
     } else if (
       knoten.type === 'bausteinBeschluss' ||
-      knoten.type === 'bausteinEm' ||
       knoten.type === 'bausteinAufnahme' ||
       knoten.type === 'bausteinWahl' ||
       knoten.type === 'bausteinAuswahl'

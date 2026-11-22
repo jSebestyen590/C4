@@ -22,11 +22,11 @@ const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht
 export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
-  const { teilnahme, verlauf, onAnwesenheit } = useProtokollKontext();
+  const { kandidaten, verlauf, onAnwesenheit } = useProtokollKontext();
   const daten = node.attrs.daten as BausteinAnwesenheitDaten;
   const id = node.attrs.id as string;
   const stand = verlauf.bausteine[id];
-  const person = teilnahme.find((t) => t.sub === daten.sub);
+  const person = kandidaten.find((t) => t.sub === daten.sub);
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
   const aendern = (f: (alt: BausteinAnwesenheitDaten) => BausteinAnwesenheitDaten) => {
@@ -40,10 +40,11 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
     );
   };
 
-  const optionen = personenOptionen(teilnahme);
-  const status = new Map(teilnahme.map((t) => [t.sub, t.status]));
+  const optionen = personenOptionen(kandidaten);
+  const status = new Map(kandidaten.map((t) => [t.sub, t.status]));
 
-  const quorum = stand && stand.gesamt > 0 && (
+  // Only Mitglieder count for the quorum: no head count for Anwärter:innen, EMs and Externe.
+  const quorum = stand && stand.gesamt > 0 && (!person || person.status === 'mitglied') && (
     <Text size="xs" c="dimmed">
       {stand.anwesend} von {mitgliedernText(stand.gesamt)} anwesend
       {stand.wechsel && (

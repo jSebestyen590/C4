@@ -536,6 +536,72 @@ describe('headings', () => {
   });
 });
 
+describe('Neues EM removes the person from the Mitglieder', () => {
+  const emFuer = (sub: string | null, abstimmung: boolean) =>
+    bausteinErzeugen('bausteinEm', {
+      ...bausteinLeer('bausteinEm'),
+      sub,
+      abstimmung: abstimmung ? { ja: 0, nein: 0, enthaltung: 0, ergebnis: 'abgelehnt' } : null,
+    });
+  const id = (k: ProtokollKnoten) => k.attrs!.id as string;
+
+  it('lowers total and present for a present Mitglied, whatever the vote', () => {
+    const a = emFuer('m0', false);
+    const b = emFuer('m1', true);
+    const v = anwesenheitsVerlauf(doc(a, b), { art: 'sitzung', teilnahme: mitglieder(8) });
+    expect(v.start).toMatchObject({ anwesend: 8, gesamt: 8 });
+    expect(v.bausteine[id(a)]).toMatchObject({ anwesend: 7, gesamt: 7 });
+    expect(v.bausteine[id(b)]).toMatchObject({ anwesend: 6, gesamt: 6 });
+  });
+
+  it('lowers only the total for an absent Mitglied', () => {
+    const a = emFuer('m0', false);
+    const t = mitglieder(8);
+    t[0]!.wert = 'entschuldigt';
+    const v = anwesenheitsVerlauf(doc(a), { art: 'sitzung', teilnahme: t });
+    expect(v.bausteine[id(a)]).toMatchObject({ anwesend: 7, gesamt: 7 });
+    const t2 = mitglieder(8);
+    t2[0]!.wert = 'entschuldigt';
+    const v2 = anwesenheitsVerlauf(doc(emFuer('m1', false)), { art: 'sitzung', teilnahme: t2 });
+    expect(v2.start).toMatchObject({ anwesend: 7, gesamt: 8 });
+  });
+
+  it('leaves the numbers alone for non-Mitglieder, an empty person and a repeated person', () => {
+    const t: T[] = [...mitglieder(3), { sub: 'x', status: 'anwaerter', wert: 'anwesend' }];
+    const a = emFuer('x', false);
+    const b = emFuer(null, false);
+    const c = emFuer('m0', false);
+    const d = emFuer('m0', false);
+    const v = anwesenheitsVerlauf(doc(a, b, c, d), { art: 'sitzung', teilnahme: t });
+    expect(v.bausteine[id(a)]).toMatchObject({ gesamt: 3 });
+    expect(v.bausteine[id(b)]).toMatchObject({ gesamt: 3 });
+    expect(v.bausteine[id(c)]).toMatchObject({ gesamt: 2 });
+    expect(v.bausteine[id(d)]).toMatchObject({ gesamt: 2 });
+  });
+
+  it('feeds the reduced numbers to later votes and reports a quorum change', () => {
+    // 5 present of 8 is beschlussfähig (more than half); removing 3 absent ones keeps it, removing present ones breaks it.
+    const t = mitglieder(8).map((m, i) => ({
+      ...m,
+      wert: i < 4 ? ('anwesend' as const) : ('entschuldigt' as const),
+    }));
+    const a = emFuer('m0', false);
+    const b = beschluss();
+    const v = anwesenheitsVerlauf(doc(a, b), { art: 'sitzung', teilnahme: t });
+    expect(v.bausteine[id(b)]).toMatchObject({ anwesend: 3, gesamt: 7 });
+    expect(v.bausteine[id(a)]!.wechsel).toBe(
+      v.bausteine[id(a)]!.beschlussfaehig !== v.start.beschlussfaehig,
+    );
+  });
+
+  it('does not count a non-Mitglied leaving or arriving', () => {
+    const t: T[] = [...mitglieder(3), { sub: 'g', status: 'extern', wert: 'entschuldigt' }];
+    const a = anw('erscheint', 'g');
+    const v = anwesenheitsVerlauf(doc(a), { art: 'sitzung', teilnahme: t });
+    expect(v.bausteine[id(a)]).toMatchObject({ anwesend: 3, gesamt: 3 });
+  });
+});
+
 describe('nichtBeschlussfaehigeAbstimmungen', () => {
   const em = (abstimmung: boolean) =>
     bausteinErzeugen('bausteinEm', {

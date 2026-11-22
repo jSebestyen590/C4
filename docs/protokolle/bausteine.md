@@ -29,7 +29,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Anwesenheit (`bausteinAnwesenheit`)
 
-- Felder: Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional).
+- Felder: Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional). Zur Auswahl steht jede nicht deaktivierte Person, egal welchen Status (Anwärter:in, Mitglied, EM, Extern; `anwesenheitsKandidaten`), nicht nur die Teilnahmeliste. Nur Mitglieder zählen für die Beschlussfähigkeit: Kommt oder geht jemand anderes, ändert das die Zahlen nicht und der Hinweis „x von y Mitgliedern anwesend“ entfällt. In den Kopf (Teilnahmeliste) kommen solche Personen nicht (`kopfNachAnwesenheit` kennt nur die Teilnahmeliste); für Meinungsbilder zählen sie als anwesend.
 - Ohne Freitext (Atom, kein `content`; alte Bausteine mit Absatz werden beim Laden bereinigt). Kommt nicht in den Vorschlag fürs nächste Protokoll.
 - Steht auf oberster Ebene oder in den Notizen eines Bausteins mit Notizen (`istVerschachtelbar`, Knotengruppe `innerbaustein`), auch in einem Listenpunkt dort. Alle Auswertungen (Teilnahme, Beschlussfähigkeit, Stimmen-Prüfung, Kopf) laufen rekursiv in Dokumentreihenfolge und finden ihn überall.
 
@@ -61,6 +61,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 ### Neues EM (`bausteinEm`)
 
 - Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`).
+- **Ab diesem Baustein ist die Person kein Mitglied mehr und hat kein Stimmrecht, immer, egal wie die Abstimmung ausgeht** (`anwesenheitsVerlauf`: raus aus „alle“ und „anwesend“). Der Baustein zeigt wie Erscheint „x von y Mitgliedern anwesend“ mit den neuen Zahlen (z. B. „2 von 8“ wird „1 von 7“), alle späteren Beschlüsse (Editor, Dokument, PDF) rechnen mit den verringerten Zahlen. Die Aktion `em.status` setzt ohne Abstimmung auf Extern, mit Abstimmung auf EM (angenommen) bzw. Extern (abgelehnt); ohne Ergebnis wartet sie. Eine Aufnahme ändert das Stimmrecht dagegen nicht (erst ab der nächsten Sitzung).
 
 ### Aufnahme (`bausteinAufnahme`)
 
@@ -93,7 +94,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 Das Feld „Kategorie“ (nicht archivierte Kategorien) steht neben der Vorlage; wird im Feld „Im Kalender“ ein Event gewählt, übernimmt der Baustein dessen Angaben (Kalender gewinnt: Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste über `eventDatenAusKalender`), die Notizen bleiben.
 
-**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Schichten lassen sich nicht hinzufügen oder entfernen (höchstens 20), und die Vorlage bestimmt die Dienstformen. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
+**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Der Abschnitt „Dienste“ steht immer im Formular, auch ohne Vorlage und wenn er leer ist. „Dienst hinzufügen“ legt eine Schicht Aufbau, Betrieb oder Putzen an (Zeiten vom Event, sonst 18:00–22:00; Betrieb mit der ersten aktiven Dienstform, Aufbau/Putzen am Eventtag mit 1/2), höchstens 20. Schichten lassen sich entfernen; bei einem Betrieb kommen weitere Dienstformen per „Dienstform hinzufügen“ dazu (je Dienstform einmal) und lassen sich entfernen, solange mindestens eine bleibt. Beim Abschließen legt `event.anlegen` die Schichten an, ob mit oder ohne Vorlage; bei einer Kategorie mit Teilnahme statt Diensten werden sie nicht übernommen (Hinweis im Formular). Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
 
 Die Feld-Schemata (`BAUSTEIN_DATEN_SCHEMAS`) prüft die API streng, im Entwurf dürfen Felder leer sein. Das übrige Dokument prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500 KB).
 
@@ -209,7 +210,7 @@ Tiefe (`knotenFehler`); Gliederung (auch Ziehen, Einfügen neben die Liste), Dok
   blendet Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung samt Hinweis zur Beschlussfähigkeit ein.
 - Die **Abstimmung** (`/abstimmung`, Alias `/beschluss`) hat eine zweite Stufe: `/abstimmung` + Enter zeigt „Ja / Nein“ (die Abstimmung mit Antrag) und „Mehrere Möglichkeiten“ (die Auswahl), filterbar (`/abstimmung meh`). Die Auswahl lässt sich auch direkt mit `/auswahl`, `/mehrfach` oder `/mehrfachauswahl` einfügen (nur mit Suchtext, nicht in der Liste); Cursor ins Feld „Frage“. Das Symbol-Menü „Baustein“ öffnet dieselbe zweite Stufe.
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
-  Teilnahmeliste, filterbar (`/erscheint jul`). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
+  Teilnahmeliste, den EMs und allen weiteren aktiven Personen jedes Status, filterbar (`/erscheint jul`; der Status steht in der Beschreibung). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = aktuelle
   Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter in den nächsten Absatz (bei Bedarf wird einer angelegt). Der Baustein ist eine Zeile (Person, erscheint/geht,
   Uhrzeit; „Erscheint“ bzw. „Geht“ steht fest und lässt sich nicht umschalten, dafür Baustein entfernen und neu einfügen) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“

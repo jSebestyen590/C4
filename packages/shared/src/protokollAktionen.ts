@@ -614,11 +614,13 @@ export function protokollAktionen(
           if (!d.success) break;
           const a = d.data.abstimmung;
           const ziel: MitgliedStatus | null =
-            a === null || a.ergebnis === 'angenommen'
-              ? 'em'
-              : a.ergebnis === 'abgelehnt'
-                ? 'extern'
-                : null;
+            a === null
+              ? 'extern'
+              : a.ergebnis === 'angenommen'
+                ? 'em'
+                : a.ergebnis === 'abgelehnt'
+                  ? 'extern'
+                  : null;
           hinzu(
             knoten,
             'em.status',

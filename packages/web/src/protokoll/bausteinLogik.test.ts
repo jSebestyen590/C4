@@ -7,6 +7,9 @@ import {
 } from '@c4/shared';
 import {
   anzahlSetzen,
+  bedarfEntfernen,
+  bedarfHinzufuegen,
+  schichtNeu,
   bedarfSetzen,
   dokumentNormalisieren,
   ersterLeererFeld,
@@ -582,5 +585,32 @@ describe('Todo Zuständige', () => {
         { art: 'person', sub: 'b' },
       ]),
     ).toBe(false);
+  });
+});
+
+describe('Dienste hinzufügen', () => {
+  const zeiten = { beginnZeit: '20:00', endeZeit: '04:00' };
+  it('creates valid Schichten of every art with the event times', () => {
+    for (const art of ['betrieb', 'aufbau', 'putzen'] as const) {
+      const s = schichtNeu(art, zeiten, 'd1');
+      expect(vorlageSchichtSchema.safeParse(s).success).toBe(true);
+      expect(s).toMatchObject({ art, beginnZeit: '20:00', endeZeit: '04:00' });
+    }
+  });
+  it('falls back to default times for an all-day event', () => {
+    expect(schichtNeu('aufbau', { beginnZeit: null, endeZeit: null }, 'd1')).toMatchObject({
+      beginnZeit: '18:00',
+      endeZeit: '22:00',
+    });
+  });
+  it('adds a Bedarf once per Dienstform and keeps the last one', () => {
+    const s = schichtNeu('betrieb', zeiten, 'd1');
+    const zwei = bedarfHinzufuegen(s, 'd2');
+    expect(zwei.art === 'betrieb' && zwei.bedarfe.map((b) => b.dienstformId)).toEqual(['d1', 'd2']);
+    expect(bedarfHinzufuegen(zwei, 'd2')).toBe(zwei);
+    expect(vorlageSchichtSchema.safeParse(zwei).success).toBe(true);
+    const eins = bedarfEntfernen(zwei, 0);
+    expect(eins.art === 'betrieb' && eins.bedarfe.map((b) => b.dienstformId)).toEqual(['d2']);
+    expect(bedarfEntfernen(eins, 0)).toBe(eins);
   });
 });

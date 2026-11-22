@@ -16,6 +16,8 @@ export interface ProtokollKontextWert {
   art: ProtokollArt;
   /** Everybody in the attendance list with the attendance that currently counts. */
   teilnahme: readonly AnwesenheitPerson[];
+  /** Everybody an Erscheint / Geht block can name: the attendance list plus EMs and all other active members. */
+  kandidaten: readonly AnwesenheitPerson[];
   /** The active EMs (candidates for a Neues EM block next to the attendance list). */
   ems: readonly ProtokollMitgliedDto[];
   /** All members (names of @mentions, also of people who are not in the attendance list). */
@@ -36,6 +38,7 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   sitzungBeginn: new Date().toISOString(),
   art: 'sitzung',
   teilnahme: [],
+  kandidaten: [],
   ems: [],
   mitglieder: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },

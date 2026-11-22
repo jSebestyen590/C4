@@ -149,6 +149,43 @@ export function anzahlSetzen(
   return { ...s, minimum, wunsch };
 }
 
+/** Most Schichten an Event Baustein holds (`bausteinEventDatenSchema`). */
+export const MAX_SCHICHTEN = 20;
+
+/** Times of a new Schicht when the event has none (all-day Kategorie, nothing entered yet). */
+const STANDARD_BEGINN = '18:00';
+const STANDARD_ENDE = '22:00';
+
+/**
+ * A new Schicht of the given art with the event's times (else 18:00-22:00). A Betrieb starts with
+ * one Bedarf for `dienstformId` (1/1); Aufbau/Putzen with 1/2 on the event day.
+ */
+export function schichtNeu(
+  art: VorlageSchicht['art'],
+  zeiten: { beginnZeit: string | null; endeZeit: string | null },
+  dienstformId: string,
+): VorlageSchicht {
+  const beginnZeit =
+    zeiten.beginnZeit && istZeit(zeiten.beginnZeit) ? zeiten.beginnZeit : STANDARD_BEGINN;
+  const endeZeit = zeiten.endeZeit && istZeit(zeiten.endeZeit) ? zeiten.endeZeit : STANDARD_ENDE;
+  if (art === 'betrieb') {
+    return { art, beginnZeit, endeZeit, bedarfe: [{ dienstformId, minimum: 1, wunsch: 1 }] };
+  }
+  return { art, beginnZeit, endeZeit, tagVersatz: 0, minimum: 1, wunsch: 2 };
+}
+
+/** A Betrieb Schicht with one more Bedarf (1/1) for a Dienstform it does not have yet. */
+export function bedarfHinzufuegen(s: VorlageSchicht, dienstformId: string): VorlageSchicht {
+  if (s.art !== 'betrieb' || s.bedarfe.some((b) => b.dienstformId === dienstformId)) return s;
+  return { ...s, bedarfe: [...s.bedarfe, { dienstformId, minimum: 1, wunsch: 1 }] };
+}
+
+/** A Betrieb Schicht without the Bedarf at `index`; the last Bedarf stays (a Betrieb needs one). */
+export function bedarfEntfernen(s: VorlageSchicht, index: number): VorlageSchicht {
+  if (s.art !== 'betrieb' || s.bedarfe.length <= 1) return s;
+  return { ...s, bedarfe: s.bedarfe.filter((_, i) => i !== index) };
+}
+
 /** "Betrieb 20:00–04:00" for the title of a Schicht. */
 export function schichtTitel(s: Pick<VorlageSchicht, 'art' | 'beginnZeit' | 'endeZeit'>): string {
   const art = s.art === 'betrieb' ? 'Betrieb' : s.art === 'aufbau' ? 'Aufbau' : 'Putzen';

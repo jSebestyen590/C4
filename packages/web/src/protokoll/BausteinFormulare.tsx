@@ -274,18 +274,23 @@ export function EventFormular({
           />
         </Group>
       )}
-      {daten.schichten.length > 0 && (
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Dienste
+      <Stack gap={4}>
+        <Text size="sm" fw={500}>
+          Dienste
+        </Text>
+        {kategorie?.art === 'teilnahme' && (
+          <Text size="xs" c="dimmed">
+            Bei einer Kategorie mit Teilnahme statt Diensten werden die Dienste nicht übernommen.
           </Text>
-          <SchichtEditor
-            schichten={daten.schichten}
-            dienstformName={dienstformName}
-            onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
-          />
-        </Stack>
-      )}
+        )}
+        <SchichtEditor
+          schichten={daten.schichten}
+          dienstformName={dienstformName}
+          dienstformen={dienstformen.aktive}
+          zeiten={{ beginnZeit: daten.beginnZeit, endeZeit: daten.endeZeit }}
+          onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
+        />
+      </Stack>
       <Select
         allowDeselect={false}
         label="Kategorie"

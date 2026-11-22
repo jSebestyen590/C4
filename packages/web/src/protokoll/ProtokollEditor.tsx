@@ -19,7 +19,11 @@ import {
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { BlockVerschieben } from './verschieben';
-import type { AnwesenheitPerson } from './anwesenheit';
+import {
+  anwesenheitsKandidaten,
+  type AnwesenheitMitglied,
+  type AnwesenheitPerson,
+} from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { Gliederung } from './GliederungBaum';
 import { dokumentNormalisieren } from './bausteinLogik';
@@ -66,7 +70,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
   linkEditorSave: 'Übernehmen',
 };
 
-const KEINE_MITGLIEDER: readonly ErwaehnungPerson[] = [];
+const KEINE_MITGLIEDER: readonly AnwesenheitMitglied[] = [];
 const KEINE_BILDER: Readonly<Record<string, string>> = {};
 
 /** Height of the app header (`AppLayout`): the sticky toolbar sits right below it. */
@@ -100,7 +104,7 @@ export function ProtokollEditor({
   /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
   ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
   /** All members: the choices of the @mention list and the names shown for mentions. */
-  mitglieder?: readonly ErwaehnungPerson[];
+  mitglieder?: readonly AnwesenheitMitglied[];
   /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
   onAnwesenheit?: (sub: string) => void;
   /** Image URLs and uploads of the protocol; without it images cannot be added. */
@@ -119,7 +123,11 @@ export function ProtokollEditor({
     onAnwesenheitRef.current = onAnwesenheit;
   });
   const anwesenheit = useCallback((sub: string) => onAnwesenheitRef.current?.(sub), []);
-  const basisDaten = useSlashDaten(sitzungBeginn, teilnahme);
+  const kandidaten = useMemo(
+    () => anwesenheitsKandidaten(teilnahme, ems, mitglieder),
+    [teilnahme, ems, mitglieder],
+  );
+  const basisDaten = useSlashDaten(sitzungBeginn, kandidaten);
   const slashDaten = useMemo(() => ({ ...basisDaten, anwesenheit }), [basisDaten, anwesenheit]);
   // The document as the quorum needs it (a little behind the typing).
   const [dokument, setDokument] = useState(inhalt);
@@ -252,6 +260,7 @@ export function ProtokollEditor({
       sitzungBeginn,
       art,
       teilnahme,
+      kandidaten,
       ems,
       mitglieder,
       onAnwesenheit: anwesenheit,
@@ -268,7 +277,7 @@ export function ProtokollEditor({
         ems: ems.filter((e) => e.ausgewaehlt),
       }).pruefungen,
     }),
-    [sitzungBeginn, art, teilnahme, ems, mitglieder, dokument, anwesenheit, bilder],
+    [sitzungBeginn, art, teilnahme, kandidaten, ems, mitglieder, dokument, anwesenheit, bilder],
   );
 
   return (

@@ -154,8 +154,11 @@ function BausteinAnsicht<T extends BausteinTyp>({
               {typ === 'bausteinMeinungsbild' && (
                 <MeinungsbildHinweis id={node.attrs.id as string} />
               )}
-              {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).abstimmung && (
-                <BeschlussHinweis id={node.attrs.id as string} />
+              {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).sub !== null && (
+                <BeschlussHinweis
+                  id={node.attrs.id as string}
+                  mitAbstimmung={(daten as unknown as BausteinEmDaten).abstimmung !== null}
+                />
               )}
               {(editierbar || hatText) && (
                 <Text size="xs" c="dimmed" fw={500}>
