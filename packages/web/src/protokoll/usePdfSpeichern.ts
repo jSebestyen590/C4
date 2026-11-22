@@ -3,6 +3,7 @@ import type { ProtokollDto, ProtokollPdfAntwort } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { pruefen } from '../warenApi';
 import { protokollBildSchluessel } from '@c4/shared';
+import { kategorieNamenLaden } from './kategorieNamenLaden';
 import { bilderFuerPdf } from './pdfBilder';
 import { mitLiveKopf } from './dokumentDaten';
 import { blobHerunterladen, blobZuBase64, protokollPdfAblauf, type PdfMeldung } from './pdfAblauf';
@@ -43,8 +44,13 @@ export function useProtokollPdfSpeichern() {
         const mitglieder = await unwrap(await api.mitglieder.$get()).catch(() => []);
         // Fresh URLs from the DTO, loaded here so a broken image only becomes a placeholder in the PDF.
         const bilder = await bilderFuerPdf(protokollBildSchluessel(dto.inhalt), dto.bilder, fetch);
+        // Kategorie names for the headings of Event / Vergangenes Event; without them the heading just has no Kategorie.
+        const kategorien = await kategorieNamenLaden(api, dto.sitzung.beginn).catch(
+          () => undefined,
+        );
         return {
           inhalt: dto.inhalt,
+          kategorien,
           bilder,
           kopf: dto.kopf,
           ...mitLiveKopf(dto, dto.kopf),

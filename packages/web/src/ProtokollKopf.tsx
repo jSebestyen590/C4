@@ -49,7 +49,7 @@ export const PROTOKOLL_DRUCK_CSS = `
 .pk-nur-druck { display: none; }
 @page { margin: 12mm; }
 @media print {
-  .mantine-AppShell-header, .mantine-AppShell-navbar, [data-druck="aus"],
+  .mantine-AppShell-header, .mantine-AppShell-navbar, [data-druck="aus"], .mantine-Drawer-root,
   .mantine-RichTextEditor-toolbar { display: none !important; }
   .mantine-AppShell-main { padding: 0 !important; }
   .pk-nur-druck { display: block; }

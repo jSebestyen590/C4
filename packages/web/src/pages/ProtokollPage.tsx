@@ -1,8 +1,11 @@
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
+  Box,
   Button,
+  Drawer,
   Group,
   Loader,
   SegmentedControl,
@@ -10,8 +13,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconChevronLeft,
   IconCloudUpload,
   IconLock,
   IconLockOpen,
@@ -47,6 +52,7 @@ import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht'
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { KonfliktHinweis } from '../protokoll/KonfliktHinweis';
 import { SperreFreiHinweis, SperreHinweis } from '../protokoll/SperreHinweis';
+import { useKategorieNamen } from '../protokoll/useKategorieNamen';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokollBilder } from '../protokoll/bilderDaten';
 import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
@@ -215,6 +221,24 @@ function ProtokollAnsicht({
       }).problems,
     [inhalt, dto.sitzung.art, teilnahme, ems],
   );
+  const kategorien = useKategorieNamen(dto.sitzung.beginn);
+  // The document view and the preview drawer of the editor show the same live data.
+  const dokumentEingabe = useMemo(
+    () => ({
+      inhalt,
+      kopf,
+      ...mitLiveKopf(dto, kopf),
+      sitzung: dto.sitzung,
+      naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
+      mitglieder: mitgliederListe,
+      ich,
+      bilder: bilder.urls,
+      bilderErneuern: bilder.erneuern,
+      kategorien,
+    }),
+    [inhalt, kopf, dto, mitgliederListe, ich, bilder.urls, bilder.erneuern, kategorien],
+  );
+  const [vorschauOffen, vorschau] = useDisclosure(false);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -511,20 +535,46 @@ function ProtokollAnsicht({
         />
       )}
       {sperrePrueft && <Loader m="md" aria-label="Bearbeitung wird vorbereitet" />}
-      {dokumentSichtbar && !sperrePrueft && (
-        <ProtokollDokumentAnsicht
-          eingabe={{
-            inhalt,
-            kopf,
-            ...mitLiveKopf(dto, kopf),
-            sitzung: dto.sitzung,
-            naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
-            mitglieder: mitgliederListe,
-            ich,
-            bilder: bilder.urls,
-            bilderErneuern: bilder.erneuern,
-          }}
-        />
+      {dokumentSichtbar && !sperrePrueft && <ProtokollDokumentAnsicht eingabe={dokumentEingabe} />}
+      {editierbar && !dokumentSichtbar && !sperrePrueft && (
+        <>
+          <Box
+            data-druck="aus"
+            style={{
+              position: 'fixed',
+              top: '50%',
+              right: 'env(safe-area-inset-right)',
+              transform: 'translateY(-50%)',
+              zIndex: 100,
+            }}
+          >
+            <ActionIcon
+              variant="default"
+              size={48}
+              aria-label="Dokument-Vorschau"
+              title="Dokument-Vorschau"
+              onClick={vorschau.open}
+              style={{
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0,
+                boxShadow: 'var(--mantine-shadow-md)',
+              }}
+            >
+              <IconChevronLeft size={24} />
+            </ActionIcon>
+          </Box>
+          <Drawer
+            opened={vorschauOffen}
+            onClose={vorschau.close}
+            position="right"
+            size="min(52rem, 100%)"
+            title="Dokument-Vorschau"
+            zIndex={300}
+            padding="sm"
+          >
+            <ProtokollDokumentAnsicht eingabe={dokumentEingabe} ohneGliederung />
+          </Drawer>
+        </>
       )}
 
       {dialog === 'abschliessen' && (

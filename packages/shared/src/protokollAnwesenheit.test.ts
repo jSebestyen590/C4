@@ -518,6 +518,22 @@ describe('headings', () => {
       '11.02. Barabend',
     );
   });
+
+  it('puts the Kategorie between date and name', () => {
+    expect(eventUeberschrift({ name: 'Caro', datum: '2026-10-10', kategorie: 'PP' })).toBe(
+      '10.10. PP Caro',
+    );
+    expect(eventUeberschrift({ name: '', datum: '2026-10-11', kategorie: 'Sitzung' })).toBe(
+      '11.10. Sitzung',
+    );
+    // The name is the Kategorie's name already (calendar events without a title): shown once.
+    expect(
+      vergangenesUeberschrift({ name: 'Sitzung', datum: '2026-10-11', kategorie: 'Sitzung' }),
+    ).toBe('11.10. Sitzung');
+    expect(vergangenesUeberschrift({ name: 'Caro', datum: '2026-10-10', kategorie: null })).toBe(
+      '10.10. Caro',
+    );
+  });
 });
 
 describe('nichtBeschlussfaehigeAbstimmungen', () => {

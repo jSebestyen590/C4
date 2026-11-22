@@ -1,3 +1,5 @@
+import { bausteinKategorie } from '../kategorieNamen';
+import { bildNummern, bildUnterschrift } from '../bildNummern';
 import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { Image, Link, StyleSheet, Text, View } from '@react-pdf/renderer';
 import {
@@ -158,6 +160,8 @@ interface Kontext {
   titel: Map<string, string>;
   /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...). */
   ebene: number;
+  /** Figure numbers of the images with a description (see `bildNummern`). */
+  bildNr: ReadonlyMap<ProtokollKnoten, number>;
 }
 
 /** PDF style of a heading level (the deepest levels share the smallest). */
@@ -393,6 +397,7 @@ function bildElement(k: ProtokollKnoten, ctx: Kontext, spalte: boolean): ReactEl
   const ausrichtung = (BILD_AUSRICHTUNGEN as readonly unknown[]).includes(k.attrs?.ausrichtung)
     ? (k.attrs?.ausrichtung as (typeof BILD_AUSRICHTUNGEN)[number])
     : 'mitte';
+  const nummer = ctx.bildNr.get(k);
   const url = ctx.eingabe.bilder?.[schluessel];
   const inhalt = (
     <View wrap={false}>
@@ -404,7 +409,7 @@ function bildElement(k: ProtokollKnoten, ctx: Kontext, spalte: boolean): ReactEl
       ) : (
         <Text style={stile.klein}>{BILD_NICHT_VERFUEGBAR}</Text>
       )}
-      {beschreibung ? (
+      {nummer !== undefined ? (
         <Text
           style={{
             ...stile.klein,
@@ -412,7 +417,7 @@ function bildElement(k: ProtokollKnoten, ctx: Kontext, spalte: boolean): ReactEl
             textAlign: spalte ? 'left' : BILD_TEXT_AUSRICHTUNG[ausrichtung],
           }}
         >
-          {beschreibung}
+          {bildUnterschrift(nummer, beschreibung)}
         </Text>
       ) : null}
     </View>
@@ -689,7 +694,12 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
   switch (k.type) {
     case 'bausteinEvent': {
       const d = bausteinEventDatenSchema.safeParse(daten);
-      const titel = d.success ? eventUeberschrift(d.data) : '';
+      const titel = d.success
+        ? eventUeberschrift({
+            ...d.data,
+            kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+          })
+        : '';
       const verantwortlich =
         d.success && d.data.verantwortlichSub ? ctx.person(d.data.verantwortlichSub) : null;
       return [
@@ -713,7 +723,12 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
     }
     case 'bausteinVergangenesEvent': {
       const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
-      const titel = d.success ? vergangenesUeberschrift(d.data) : '';
+      const titel = d.success
+        ? vergangenesUeberschrift({
+            ...d.data,
+            kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+          })
+        : '';
       return [ueberschrift(k, ctx, titel || 'Vergangenes Event'), ...notizen(k.content, ctxIn)];
     }
     case 'bausteinAnwaerter': {
@@ -987,15 +1002,20 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
   });
   const alle = alleMitglieder(eingabe);
-  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, (sub) => {
-    const m = alle.find((x) => x.sub === sub);
-    return m ? personName(m) : null;
-  });
+  const { eintraege, ids } = dokumentUeberschriften(
+    eingabe.inhalt,
+    (sub) => {
+      const m = alle.find((x) => x.sub === sub);
+      return m ? personName(m) : null;
+    },
+    eingabe.kategorien,
+  );
   const ctx: Kontext = {
     eingabe,
     verlauf,
     ids,
     titel: new Map(eintraege.map((e) => [e.id, e.text])),
+    bildNr: bildNummern(eingabe.inhalt),
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);

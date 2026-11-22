@@ -230,12 +230,20 @@ interface UeberschriftDaten {
   name: string;
   datum: string | null;
   bisDatum?: string | null;
+  /** Name of the event's Kategorie; left out when empty or the same as the name. */
+  kategorie?: string | null;
 }
 
-const ueberschrift = (d: UeberschriftDaten): string =>
-  `${datumKurz(d.datum, d.bisDatum)} ${d.name}`.trim();
+const ueberschrift = (d: UeberschriftDaten): string => {
+  const name = d.name.trim();
+  const kategorie = d.kategorie?.trim() ?? '';
+  const zeigeKategorie = kategorie !== '' && kategorie.toLowerCase() !== name.toLowerCase();
+  return [datumKurz(d.datum, d.bisDatum), zeigeKategorie ? kategorie : '', name]
+    .filter(Boolean)
+    .join(' ');
+};
 
-/** `31.05. – 02.06. Name` of a `bausteinEvent`; without a date just the name. */
+/** `31.05. – 02.06. PP Name` of a `bausteinEvent` (date, Kategorie, name); parts that are missing are left out. */
 export const eventUeberschrift = (daten: UeberschriftDaten): string => ueberschrift(daten);
 
 /** Same for a `bausteinVergangenesEvent`. */

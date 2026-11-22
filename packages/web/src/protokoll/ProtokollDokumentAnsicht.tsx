@@ -48,6 +48,8 @@ import {
   type Person,
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
+import { bausteinKategorie } from './kategorieNamen';
+import { bildNummern, bildUnterschrift } from './bildNummern';
 import { hatBilder, notizAbschnitte } from './notizAbschnitte';
 import { DokumentRahmen } from './DokumentGliederung';
 import {
@@ -69,6 +71,8 @@ interface Kontext {
   erwIds: Map<ProtokollKnoten, string>;
   /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...; see `MAX_EBENE`). */
   ebene: number;
+  /** Figure numbers of the images with a description (see `bildNummern`). */
+  bildNr: ReadonlyMap<ProtokollKnoten, number>;
 }
 
 /** A heading element of the given level (`h2`..`h6`), styled by `pk-dok-h<level>`. */
@@ -409,6 +413,7 @@ function BildFigur({
   const ausrichtung = (BILD_AUSRICHTUNGEN as readonly unknown[]).includes(k.attrs?.ausrichtung)
     ? (k.attrs?.ausrichtung as string)
     : 'mitte';
+  const nummer = ctx.bildNr.get(k);
   const url = ctx.eingabe.bilder?.[schluessel];
   // One refresh per image: the URL may have expired.
   const erneuert = useRef(false);
@@ -433,7 +438,9 @@ function BildFigur({
       ) : (
         <p className="pk-dok-klein">Bild nicht verfügbar</p>
       )}
-      {beschreibung && <figcaption className="pk-dok-klein">{beschreibung}</figcaption>}
+      {nummer !== undefined && (
+        <figcaption className="pk-dok-klein">{bildUnterschrift(nummer, beschreibung)}</figcaption>
+      )}
     </figure>
   );
 }
@@ -544,7 +551,12 @@ function Baustein({
 
   if (k.type === 'bausteinEvent') {
     const d = bausteinEventDatenSchema.safeParse(daten);
-    const titel = d.success ? eventUeberschrift(d.data) : '';
+    const titel = d.success
+      ? eventUeberschrift({
+          ...d.data,
+          kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+        })
+      : '';
     const verantwortlich =
       d.success && d.data.verantwortlichSub ? ctx.person(d.data.verantwortlichSub) : null;
     return (
@@ -591,7 +603,12 @@ function Baustein({
   }
   if (k.type === 'bausteinVergangenesEvent') {
     const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
-    const titel = d.success ? vergangenesUeberschrift(d.data) : '';
+    const titel = d.success
+      ? vergangenesUeberschrift({
+          ...d.data,
+          kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+        })
+      : '';
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
@@ -900,7 +917,14 @@ function Zeile({ label, children }: Readonly<{ label: string; children?: ReactNo
  * The finished document of the minutes: title, attendance lines, opening, quorum and the four
  * sections with the Bausteine as text. Everything is derived from the given (live) data.
  */
-export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>) {
+export function ProtokollDokumentAnsicht({
+  eingabe,
+  ohneGliederung = false,
+}: Readonly<{
+  eingabe: DokumentEingabe;
+  /** Without the outline (aside / button), e.g. inside the preview drawer. */
+  ohneGliederung?: boolean;
+}>) {
   const kopf = dokumentKopf(eingabe);
   const art = eingabe.sitzung.art;
   const verlauf = anwesenheitsVerlauf(eingabe.inhalt, {
@@ -913,13 +937,14 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
     const m = alle.find((x) => x.sub === sub);
     return m ? personName(m) : null;
   };
-  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen);
+  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen, eingabe.kategorien);
   const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen);
   const ctx: Kontext = {
     eingabe,
     verlauf,
     ids,
     erwIds: meine.ids,
+    bildNr: bildNummern(eingabe.inhalt),
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
@@ -937,6 +962,7 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
 
   return (
     <DokumentRahmen
+      ohneGliederung={ohneGliederung}
       eintraege={eintraege}
       erwaehnungen={meine.eintraege}
       zeigeErwaehnungen={!!eingabe.ich}

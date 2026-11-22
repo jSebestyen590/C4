@@ -134,8 +134,11 @@ export function DokumentRahmen({
   eintraege,
   erwaehnungen,
   zeigeErwaehnungen = false,
+  ohneGliederung = false,
   children,
 }: Readonly<{
+  /** Show only the document (preview drawer). */
+  ohneGliederung?: boolean;
   eintraege: readonly DokumentUeberschrift[];
   /** The mentions that concern the viewer. */
   erwaehnungen?: readonly MeineErwaehnung[];
@@ -146,7 +149,7 @@ export function DokumentRahmen({
   const theme = useMantineTheme();
   const breit = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false);
   const [offen, { open, close }] = useDisclosure(false);
-  const mitGliederung = eintraege.length > 0 || zeigeErwaehnungen;
+  const mitGliederung = !ohneGliederung && (eintraege.length > 0 || zeigeErwaehnungen);
   const titel = eintraege.length > 0 ? 'Gliederung' : 'Meine Erwähnungen';
   const meine = zeigeErwaehnungen ? (erwaehnungen ?? []) : undefined;
 

@@ -21,6 +21,7 @@ import {
   type BausteinWahlDaten,
   type ProtokollAbschnitt,
 } from '@c4/shared';
+import { bausteinKategorie, type KategorieNamen } from './kategorieNamen';
 import { BAUSTEIN_TITEL, bausteinSymbol } from './symbole';
 import type { SlashSymbol } from './slashLogik';
 import { ABSCHNITT_TITEL } from './schema';
@@ -65,6 +66,7 @@ export function gliederungTitel(
   typ: BausteinTyp,
   daten: unknown,
   personName: (sub: string) => string | undefined = () => undefined,
+  kategorien?: KategorieNamen,
 ): string {
   const d = (daten ?? {}) as Record<string, unknown>;
   const person = (sub: unknown, name: unknown): string =>
@@ -72,13 +74,24 @@ export function gliederungTitel(
     (typeof name === 'string' ? name : '');
   switch (typ) {
     case 'bausteinEvent':
-      return kurz(eventUeberschrift(d as unknown as BausteinEventDaten)) || BAUSTEIN_TITEL[typ];
+      return (
+        kurz(
+          eventUeberschrift({
+            ...(d as unknown as BausteinEventDaten),
+            kategorie: bausteinKategorie(typ, d, kategorien),
+          }),
+        ) || BAUSTEIN_TITEL[typ]
+      );
     case 'bausteinThema':
       return kurz(String(d.titel ?? '')) || BAUSTEIN_TITEL[typ];
     case 'bausteinVergangenesEvent':
       return (
-        kurz(vergangenesUeberschrift(d as unknown as BausteinVergangenesEventDaten)) ||
-        BAUSTEIN_TITEL[typ]
+        kurz(
+          vergangenesUeberschrift({
+            ...(d as unknown as BausteinVergangenesEventDaten),
+            kategorie: bausteinKategorie(typ, d, kategorien),
+          }),
+        ) || BAUSTEIN_TITEL[typ]
       );
     case 'bausteinAnwaerter': {
       const a = d as unknown as BausteinAnwaerterDaten;
@@ -143,14 +156,18 @@ function bausteineUnter(eltern: PmNode, elternPos = 0, ausser?: PmNode): Unterba
   return liste;
 }
 
-function eintrag(node: PmNode, personName: (sub: string) => string | undefined): GliederungEintrag {
+function eintrag(
+  node: PmNode,
+  personName: (sub: string) => string | undefined,
+  kategorien?: KategorieNamen,
+): GliederungEintrag {
   const typ = node.type.name as BausteinTyp;
   const kinder: GliederungEintrag[] = [];
-  for (const kind of bausteineUnter(node)) kinder.push(eintrag(kind.node, personName));
+  for (const kind of bausteineUnter(node)) kinder.push(eintrag(kind.node, personName, kategorien));
   return {
     id: node.attrs.id as string,
     typ,
-    titel: gliederungTitel(typ, node.attrs.daten, personName),
+    titel: gliederungTitel(typ, node.attrs.daten, personName, kategorien),
     symbol: bausteinSymbol(typ, node.attrs.daten),
     verschachtelbar: istVerschachtelbar(typ),
     // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl hold text only.
@@ -169,13 +186,15 @@ const mitNachfahren = (e: GliederungEintrag): GliederungEintrag[] => [
 export function gliederungBauen(
   doc: PmNode,
   personName?: (sub: string) => string | undefined,
+  kategorien?: KategorieNamen,
 ): GliederungAbschnitt[] {
   const name = personName ?? (() => undefined);
   return PROTOKOLL_ABSCHNITTE.map((art, i) => {
     const eintraege: GliederungEintrag[] = [];
     const abschnitt = doc.maybeChild(i);
     if (abschnitt)
-      for (const kind of bausteineUnter(abschnitt)) eintraege.push(eintrag(kind.node, name));
+      for (const kind of bausteineUnter(abschnitt))
+        eintraege.push(eintrag(kind.node, name, kategorien));
     return { art, titel: ABSCHNITT_TITEL[art], eintraege };
   });
 }

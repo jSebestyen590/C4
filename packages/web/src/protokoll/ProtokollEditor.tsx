@@ -26,6 +26,7 @@ import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
 import { mitgliedName } from '../mitglied';
 import { ProtokollKontext } from './kontext';
+import { useKategorieNamen } from './useKategorieNamen';
 import {
   absatzAmEndeEinfuegen,
   AbschnittKnoten,
@@ -237,6 +238,7 @@ export function ProtokollEditor({
   const theme = useMantineTheme();
   const breit = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false);
   const [gliederungOffen, { open: oeffnen, close: schliessen }] = useDisclosure(false);
+  const kategorien = useKategorieNamen(sitzungBeginn);
   const personName = useCallback(
     (sub: string) => {
       const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
@@ -350,7 +352,7 @@ export function ProtokollEditor({
               borderRadius: 'var(--mantine-radius-md)',
             }}
           >
-            <Gliederung editor={editor} personName={personName} />
+            <Gliederung editor={editor} personName={personName} kategorien={kategorien} />
           </Box>
         )}
       </div>
@@ -362,7 +364,12 @@ export function ProtokollEditor({
           size="min(24rem, 100%)"
           title="Gliederung"
         >
-          <Gliederung editor={editor} personName={personName} onGewaehlt={schliessen} />
+          <Gliederung
+            editor={editor}
+            personName={personName}
+            kategorien={kategorien}
+            onGewaehlt={schliessen}
+          />
         </Drawer>
       )}
       {editierbar && <SlashPopup zustand={slash} auswahl={auswahl} onZeiger={setAuswahl} />}

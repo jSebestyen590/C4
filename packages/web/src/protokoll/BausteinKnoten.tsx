@@ -9,7 +9,7 @@ import {
   useEditorState,
   type ReactNodeViewProps,
 } from '@tiptap/react';
-import { useState, type ComponentType, type ReactElement } from 'react';
+import { useState, type ComponentType, type CSSProperties, type ReactElement } from 'react';
 import {
   BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
@@ -47,7 +47,7 @@ import {
   VergangenesEventFormular,
   type FormularProps,
 } from './BausteinFormulare';
-import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
+import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, bausteinFarbeCss, SlashIcon } from './symbole';
 import { BildKnoten } from './BildKnoten';
 import { fokusSetzen } from './einfuegen';
 import { istLetztesFeld } from './tabFolge';
@@ -104,6 +104,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
       className="protokoll-baustein"
       data-baustein={typ}
       data-id={node.attrs.id as string}
+      style={{ '--baustein-farbe': bausteinFarbeCss(typ) } as CSSProperties}
     >
       <Paper withBorder p="sm" radius="md" shadow={props.selected ? 'sm' : undefined}>
         <Stack gap="xs">

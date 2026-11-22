@@ -1,5 +1,6 @@
 import { ZeitFeld } from '../ZeitFeld';
 import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
+import type { CSSProperties } from 'react';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
 import { Link } from 'react-router-dom';
@@ -10,7 +11,7 @@ import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesen
 import { istZeit } from './bausteinLogik';
 import { FORMULAR_ATTRIBUT } from './formular';
 import { useProtokollKontext } from './kontext';
-import { SlashIcon } from './symbole';
+import { bausteinFarbeCss, SlashIcon } from './symbole';
 
 const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht: 'Geht' };
 
@@ -58,6 +59,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
     <NodeViewWrapper
       className="protokoll-baustein protokoll-anwesenheit"
       data-baustein="bausteinAnwesenheit"
+      style={{ '--baustein-farbe': bausteinFarbeCss('bausteinAnwesenheit') } as CSSProperties}
     >
       <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
         <Stack gap={4} className="protokoll-anwesenheit-kopf">

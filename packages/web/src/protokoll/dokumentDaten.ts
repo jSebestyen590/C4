@@ -32,6 +32,7 @@ import {
   type TodoZustaendig,
   type Wiederholung,
 } from '@c4/shared';
+import type { KategorieNamen } from './kategorieNamen';
 import { wiederholungText, type WiederholungArt } from './wiederholungText';
 
 // Pure derivation of the finished document ("Dokument" view) of the minutes: header lines, opening
@@ -51,6 +52,8 @@ export interface DokumentEingabe {
   bilder?: Readonly<Record<string, string>>;
   /** An image of the view failed to load (expired URL?): the page fetches fresh URLs. */
   bilderErneuern?: () => void;
+  /** Kategorie names for the headings of Event / Vergangenes Event (without: no Kategorie in the heading). */
+  kategorien?: KategorieNamen;
   /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
   ich?: { sub: string; status: MitgliedStatus } | null;
 }

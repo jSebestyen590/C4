@@ -60,8 +60,8 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Abschnitte** als große Überschrift in der Primärfarbe (leere zeigen nur die Überschrift, ein leeres Sonstiges entfällt ganz), darin Text mit Absätzen,
   Überschriften, Listen (zweite Ebene „○“), fett, kursiv, Links. Ein **Zitat** ist rechtsbündig und kursiv, eine Zeile mit
   „–“/„—“ davor (Quelle) steht aufrecht.
-- **Event:** Überschrift `11.02. Superbowl` (bei mehreren Tagen von–bis), dann der Punkt „Verantwortlich: @Name“ (nur wenn
-  gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift, Notizen.
+- **Event:** Überschrift `<Datum> <Kategorie> <Name>`, z. B. `10.10. PP Caro` oder ohne Namen `11.10. Sitzung` (bei mehreren Tagen von–bis; Kategorie aus `kategorieId`, sonst die der Vorlage; gleicht der Name der Kategorie, steht sie nur einmal), dann der Punkt „Verantwortlich: @Name“ (nur wenn
+  gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift wie beim Event, die Kategorie kommt vom verknüpften Kalender-Event (ohne Verknüpfung keine; es wird nichts Neues gespeichert), Notizen. Die Kategorienamen liefert `DokumentEingabe.kategorien` (`kategorieNamen.ts`; Seite: `useKategorieNamen`, PDF: `kategorieNamenLaden`); sie gelten auch in der Dokument-Gliederung und der Gliederung im Editor.
   **Thema:** Überschrift mit dem Titel (leer: „Thema“) auf Ebene der Events, in der Gliederung, dann die Notizen. **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail). **Neues EM:** Überschrift „Neues EM: <Name>“ (Person als
   `StatusName`, sonst der Freitext-Name); mit Abstimmung die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
   25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
@@ -90,6 +90,13 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   Es gilt der Wert von Hand aus dem Kopf, sonst der automatische Vorschlag (`naechsteSitzungWert`).
 - **Anwesenheit:** rechtsbündige, kursive Zeile wie ein Zitat: „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Uhrzeit „Strobi geht.“, ohne Person entfällt sie); ändert
   sich dadurch die Beschlussfähigkeit, steht im selben rechtsbündigen, kursiven Zitat darunter (nicht fett) „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.
+
+### Vorschau beim Schreiben
+
+Im Bearbeiten-Modus sitzt am rechten Rand, vertikal mittig, ein Knopf (Chevron links, „Dokument-Vorschau“, 48 px, Safe-Area, nicht
+gedruckt). Er öffnet eine Schublade von rechts (`min(52rem, 100%)`, am Handy volle Breite) mit der Dokumentansicht der aktuellen
+Eingaben (`dokumentEingabe` in `ProtokollPage`, dieselbe wie im Reiter „Dokument“), ohne eigene Gliederung (`ohneGliederung`).
+Schließen per Klick auf den Hintergrund oder das Kreuz.
 
 ## Autosave (Oberfläche)
 
@@ -149,6 +156,9 @@ Ein Protokoll kann Fotos und Bilder enthalten (Knoten `protokollBild`, Block und
   aller Bausteine mit Freitext, auch in Abstimmung, Meinungsbild und Wahl; nicht in Zitaten und Listen. `knotenFehler` prüft die Form des
   Schlüssels, die API beim Speichern zusätzlich, dass er zu diesem Protokoll gehört (400 sonst); beim Anlegen (`POST /api/protokolle`) ist jeder Bildschlüssel im Inhalt ein 400, weil es die Protokoll-Id noch nicht gibt. `protokollVorschlag` übernimmt keine Bilder
   ins nächste Protokoll.
+- **Abbildungsnummern:** Bilder mit Beschreibung werden wie in einem Abbildungsverzeichnis in Dokumentreihenfolge durchnummeriert
+  (Abschnittsebene, Notizen, auch verschachtelt; `bildNummern` in `protokoll/bildNummern.ts`, getestet) und in Dokumentansicht und PDF
+  mit „Abb. N: Beschreibung“ unterschrieben. Bilder ohne Beschreibung haben weder Nummer noch Unterschrift; die Nummern haben keine Lücken.
 - **Speicher:** Derselbe S3-Bucket wie die Profilbilder (`PROFILBILD_BUCKET`), Präfix `protokollbilder/<Protokoll-Id>/`
   (`packages/api/src/protokollbilder.ts`). `POST /api/protokolle/:id/bilder` gibt eine presigned PUT-URL (feste Größe, `image/jpeg`, 5 MB)
   und den Schlüssel. `GET /api/protokolle/:id` gibt `bilder` (Schlüssel → presigned GET-URL, 1 Stunde) für die Schlüssel mit dem Präfix des

@@ -188,6 +188,24 @@ describe('gliederungTitel', () => {
     );
     expect(gliederungTitel('bausteinBeschluss', { antrag: '' })).toBe('Abstimmung');
     expect(gliederungTitel('bausteinEvent', { name: '', datum: null })).toBe('Event');
+    const namen = {
+      kategorien: { k1: 'PP' },
+      vorlagen: { v1: 'k1' },
+      events: { e1: 'PP' },
+    };
+    const ev = { name: 'Caro', datum: '2026-10-10' };
+    expect(gliederungTitel('bausteinEvent', { ...ev, kategorieId: 'k1' }, undefined, namen)).toBe(
+      '10.10. PP Caro',
+    );
+    expect(gliederungTitel('bausteinEvent', { ...ev, vorlageId: 'v1' }, undefined, namen)).toBe(
+      '10.10. PP Caro',
+    );
+    expect(
+      gliederungTitel('bausteinVergangenesEvent', { ...ev, eventId: 'e1' }, undefined, namen),
+    ).toBe('10.10. PP Caro');
+    expect(
+      gliederungTitel('bausteinVergangenesEvent', { ...ev, eventId: null }, undefined, namen),
+    ).toBe('10.10. Caro');
     expect(gliederungTitel('bausteinThema', { titel: ' Hausordnung ' })).toBe('Hausordnung');
     expect(gliederungTitel('bausteinThema', { titel: '' })).toBe('Thema');
     expect(gliederungTitel('bausteinTodo', { titel: ' Putzen ' })).toBe('Todo: Putzen');
