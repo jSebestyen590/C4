@@ -58,8 +58,13 @@ export function FinanzenKettePage() {
               {e.fehler.length > 0 && (
                 <List size="sm" spacing={4}>
                   {e.fehler.map((f) => (
-                    <List.Item key={`${f.seq}-${f.art}`}>
-                      Nr. {f.seq}: {KETTEN_FEHLER_LABELS[f.art]}
+                    <List.Item key={`${f.seq}-${f.art}-${f.schluessel ?? ''}`}>
+                      {f.seq > 0 ? `Nr. ${f.seq}` : 'Archiv'}: {KETTEN_FEHLER_LABELS[f.art]}
+                      {f.schluessel && (
+                        <Text size="xs" ff="monospace" style={{ overflowWrap: 'anywhere' }}>
+                          {f.schluessel}
+                        </Text>
+                      )}
                     </List.Item>
                   ))}
                 </List>
@@ -73,6 +78,25 @@ export function FinanzenKettePage() {
           <Text>Letzte Nr.: {e.letzteSeq}</Text>
           <Text>Zähler passt: {e.zaehlerPasst ? 'ja' : 'nein'}</Text>
           <HashAnzeige label="Kopf-Hash" wert={e.kopfHash} />
+          <Title order={4}>
+            <Group gap={4}>
+              Archiv
+              <InfoHinweis feld="Archiv" text={HILFE.kette.archiv} />
+            </Group>
+          </Title>
+          {e.archiv.eingerichtet ? (
+            <Stack gap={2}>
+              <Text>Exporte: {e.archiv.exporte}</Text>
+              <Text>Anker: {e.archiv.anker}</Text>
+              <Text>Festschreibungen: {e.archiv.festschreibungen}</Text>
+              <Text>Belegdateien: {e.archiv.belegdateien}</Text>
+              <Text>Noch nicht exportierte Buchungen: {e.archiv.nichtExportiert}</Text>
+            </Stack>
+          ) : (
+            <Alert color="yellow">
+              Das Archiv ist nicht eingerichtet. Geprüft wurde nur die Datenbank.
+            </Alert>
+          )}
           <Text size="sm" c="dimmed">
             Geprüft am {zeitText(e.geprueftAm)}
           </Text>

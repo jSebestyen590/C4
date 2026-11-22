@@ -45,6 +45,7 @@ import { BetragFeld } from '../BetragFeld';
 import { mengenLeer, mengenStueckelung, stueckelungMengen, type Mengen } from '../bargeldFormular';
 import { schluesselFuer } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
+import { VerschiebHinweis } from '../FestschreibungHinweise';
 import {
   BETRAG_STIL,
   detailPfad,
@@ -710,13 +711,16 @@ function AbrechnenFormular({
       >
         <Stack>
           <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 3 }} spacing="md">
-            <DatumFeld
-              label="Datum"
-              value={datum}
-              onWert={setDatum}
-              loeschbar={false}
-              data-nav=""
-            />
+            <Stack gap={4}>
+              <DatumFeld
+                label="Datum"
+                value={datum}
+                onWert={setDatum}
+                loeschbar={false}
+                data-nav=""
+              />
+              <VerschiebHinweis datum={datum} />
+            </Stack>
             <Select
               label={<FeldLabel text="Erlöskonto" hilfe={HILFE.kassen.erloeskonto} />}
               searchable

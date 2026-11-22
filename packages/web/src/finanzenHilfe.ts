@@ -79,9 +79,26 @@ export const HILFE = {
     storno:
       'Eine Abrechnung lässt sich nicht ändern. Zum Korrigieren stornierst du die Buchung im Journal; die Dienst-Zählungen erscheinen dann in der nächsten Abrechnung wieder.',
   },
+  festschreibung: {
+    bis: 'Bis zu diesem Tag sind alle Monate festgeschrieben. Mit einem früheren Datum lässt sich nichts mehr buchen.',
+    monat:
+      'Monate werden der Reihe nach festgeschrieben, ab dem 10. des Folgemonats ist der Vormonat fällig. Die Festschreibung sichert den Stand des Journals im Archiv und lässt sich nicht rückgängig machen.',
+    hinweise:
+      'Das sind offene Vorgänge im Monat. Sie blockieren nicht, aber danach lassen sich Buchungen mit Datum in diesem Monat nicht mehr anlegen: Belege und Kassenabrechnungen werden dann mit dem ersten offenen Tag gebucht.',
+    kopfHash:
+      'Der Hash der letzten Buchung des Monats. Er hängt von allen früheren Buchungen ab und weist nach, dass sich nichts verändert hat.',
+  },
+  datenexport: {
+    zeitraum:
+      'Der Zeitraum der Buchungen, die exportiert werden (Buchungsdatum). Höchstens 10 Jahre. Vorgabe ist das Vorjahr.',
+    export:
+      'Der Export ist eine ZIP-Datei mit CSV-Dateien, einer index.xml (Beschreibungsstandard für die Datenträgerüberlassung) und einer Beschreibung. Er wird im Archiv abgelegt und bleibt dort erhalten.',
+  },
   kette: {
     ergebnis:
-      'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Geprüft wird derzeit nur gegen die Datenbank, nicht gegen das spätere Archiv.',
+      'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Außerdem vergleicht sie die Datenbank mit dem Archiv (Exporte, Anker, Festschreibungen, Belegdateien). Ist das Archiv nicht eingerichtet, wird nur die Datenbank geprüft.',
+    archiv:
+      'Das Archiv ist ein unveränderlicher Speicher außerhalb der Datenbank. „Nicht exportiert“ sind Buchungen, die noch nicht ins Archiv geschrieben wurden; das ist kein Fehler.',
   },
   buch: {
     nummer:

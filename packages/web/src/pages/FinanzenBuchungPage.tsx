@@ -31,6 +31,7 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
+import { DatumsgrenzeHinweis, useDatumsgrenze } from '../FestschreibungHinweise';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { richtungWort, zeilenBetragText } from '../buchungFormular';
@@ -69,6 +70,7 @@ function StornoDialog({
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const grenze = useDatumsgrenze();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
   const [beruehrt, setBeruehrt] = useState(false);
@@ -88,7 +90,11 @@ function StornoDialog({
       bestaetigenText="Stornieren"
       groesse="lg"
       gesperrt={
-        !geprueft || !datum || text.trim() === '' || saldoHinweise.some((w) => !bestaetigt.has(w))
+        !geprueft ||
+        !datum ||
+        (!!grenze.min && datum < grenze.min) ||
+        text.trim() === '' ||
+        saldoHinweise.some((w) => !bestaetigt.has(w))
       }
       onClose={onClose}
       onBestaetigt={async () => {
@@ -124,7 +130,12 @@ function StornoDialog({
         value={datum}
         onWert={setDatum}
         loeschbar={false}
+        min={grenze.min}
+        error={
+          datum && grenze.min && datum < grenze.min ? (grenze.hinweis ?? undefined) : undefined
+        }
       />
+      <DatumsgrenzeHinweis />
       <TextInput
         required
         label={<FeldLabel text="Begründung" hilfe={HILFE.storno.begruendung} />}

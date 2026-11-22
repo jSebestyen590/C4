@@ -88,6 +88,7 @@ import { BelegSummen } from '../BelegSummen';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { BetragFeld } from '../BetragFeld';
 import { DatumFeld } from '../DatumFeld';
+import { VerschiebHinweis } from '../FestschreibungHinweise';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import {
@@ -809,6 +810,9 @@ function BelegSeite({ neuerDurchlauf }: Readonly<{ neuerDurchlauf: () => void }>
                     Das Belegdatum liegt mehr als 2 Monate zurück. Prüfe es, gebucht wird trotzdem.
                   </Text>
                 )}
+                <VerschiebHinweis
+                  datum={form.zahlweg === 'auslage' ? form.belegdatum : form.bezahldatum}
+                />
               </Stack>
             </SimpleGrid>
 
