@@ -825,7 +825,11 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
     loeschen: vi.fn<(protokollId: string) => Promise<void>>(async () => {}),
   };
+  /** Fake archive objects: every `exportSchreiben` adds a version; `pruefsummen` overrides a file's checksum. */
+  const archivObjekte = new Map<string, string[]>();
+  const archivPruefsummen = new Map<string, string | null>();
   const finanzarchiv = {
+    eingerichtet: true,
     uploadVorbereiten: vi.fn(async (d: { sha256: string; groesse: number; typ: string }) => ({
       uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
       schluessel: `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
@@ -833,8 +837,32 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     })),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
     exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
-      async () => {},
+      async (schluessel, inhalt) => {
+        archivObjekte.set(schluessel, [
+          ...(archivObjekte.get(schluessel) ?? []),
+          typeof inhalt === 'string' ? inhalt : new TextDecoder().decode(inhalt),
+        ]);
+      },
     ),
+    versionenAuflisten: vi.fn(async (prefix: string) =>
+      [...archivObjekte.keys()]
+        .filter((k) => k.startsWith(prefix))
+        .sort()
+        .map((schluessel) => ({
+          schluessel,
+          versionIds: archivObjekte.get(schluessel)!.map((_, i) => String(i)),
+        })),
+    ),
+    lesen: vi.fn(async (schluessel: string, versionId?: string) => {
+      const versionen = archivObjekte.get(schluessel) ?? [];
+      return versionen[versionId === undefined ? versionen.length - 1 : Number(versionId)] ?? '';
+    }),
+    // By default a Beleg file has the checksum its key (`belege/<sha256>.<ext>`) promises.
+    dateiPruefsumme: vi.fn(async (schluessel: string): Promise<string | null> => {
+      if (archivPruefsummen.has(schluessel)) return archivPruefsummen.get(schluessel)!;
+      const sha = /^belege\/([0-9a-f]{64})\./.exec(schluessel)?.[1];
+      return sha ? Buffer.from(sha, 'hex').toString('base64') : null;
+    }),
   };
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
@@ -892,6 +920,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     profilbilder,
     protokollbilder,
     finanzarchiv,
+    archivObjekte,
+    archivPruefsummen,
     waren,
     inventar,
     inventarVerwendet,

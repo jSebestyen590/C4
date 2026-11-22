@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
   BELEGE_MAX,
+  pruefeArchiv,
   belegBuchenSchema,
   belegEinreichenSchema,
   steuersatzGueltigAm,
@@ -94,6 +95,7 @@ import { bestEffort, type Sendung } from '../benachrichtigungen';
 import { mitgliederMitRecht } from '../privatpartyBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig } from '../waren';
 import { type AuthEnv } from '../auth';
+import { archivLaden } from '../finanzarchiv';
 import type { RoutenKontext } from './kontext';
 
 export const finanzenRoutes = (ctx: RoutenKontext) => {
@@ -1109,12 +1111,33 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         const ergebnis = await pruefeKette(daten.buchungen);
         const zaehlerPasst =
           daten.zaehlerWert === ergebnis.letzteSeq && daten.zaehlerHash === ergebnis.kopfHash;
+        const { fehler: archivFehler, ...archivZahlen } = deps.finanzarchiv.eingerichtet
+          ? await pruefeArchiv(
+              daten.buchungen,
+              await archivLaden(deps.finanzarchiv, daten.belegDateien).catch(() => {
+                throw new HTTPException(502, {
+                  message:
+                    'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+                });
+              }),
+            )
+          : {
+              fehler: [],
+              exporte: 0,
+              anker: 0,
+              festschreibungen: 0,
+              belegdateien: 0,
+              nichtExportiert: 0,
+            };
+        const fehler = [...ergebnis.fehler, ...archivFehler];
         const dto: KettenErgebnisDto = {
           ...ergebnis,
+          fehler,
+          archiv: { ...archivZahlen, eingerichtet: deps.finanzarchiv.eingerichtet },
           zaehlerWert: daten.zaehlerWert,
           zaehlerHash: daten.zaehlerHash,
           zaehlerPasst,
-          ok: zaehlerPasst && ergebnis.fehler.length === 0,
+          ok: zaehlerPasst && fehler.length === 0,
           geprueftAm: new Date().toISOString(),
         };
         return c.json(dto);

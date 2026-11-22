@@ -183,6 +183,8 @@ export interface FestschreibungNeu {
 
 export interface KettenDaten {
   buchungen: KettenBuchung[];
+  /** Beleg files of the chain (hash as in `belege`) with their archive key. */
+  belegDateien: { sha256: string; schluessel: string }[];
   zaehlerWert: number;
   zaehlerHash: string;
 }
@@ -2147,6 +2149,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       // DSQL transactions read from one snapshot, so the counter matches the bookings read.
       return db.transaction(async (tx) => {
         const buchungen: KettenBuchung[] = [];
+        const belegDateien = new Map<string, string>();
         for (let nach = 0; ;) {
           const seite = await tx
             .select()
@@ -2166,11 +2169,18 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             belegIds.length === 0
               ? []
               : await tx
-                  .select({ id: finBelege.id, sha256: finBelege.dateiSha256 })
+                  .select({
+                    id: finBelege.id,
+                    sha256: finBelege.dateiSha256,
+                    schluessel: finBelege.dateiSchluessel,
+                  })
                   .from(finBelege)
                   .where(inArray(finBelege.id, belegIds));
           for (const b of seite) {
-            const sha256 = dateien.find((d) => d.id === b.quelleId)?.sha256;
+            const datei = dateien.find((d) => d.id === b.quelleId);
+            const sha256 = datei?.sha256;
+            if (b.quelleTyp === 'beleg' && sha256 && datei.schluessel)
+              belegDateien.set(sha256, datei.schluessel);
             buchungen.push({
               seq: b.seq,
               id: b.id,
@@ -2204,6 +2214,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
         const [zaehler] = await tx.select().from(finZaehler).where(eq(finZaehler.name, 'journal'));
         return {
           buchungen,
+          belegDateien: [...belegDateien].map(([sha256, schluessel]) => ({ sha256, schluessel })),
           zaehlerWert: zaehler?.wert ?? 0,
           zaehlerHash: zaehler?.letzterHash ?? '',
         };

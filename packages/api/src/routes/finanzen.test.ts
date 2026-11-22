@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { kanonisch, kanonischJson } from '@c4/shared';
 import { makeApp, bearer } from '../test/appTestHelfer';
 
 describe('finanzen', () => {
@@ -673,6 +674,112 @@ describe('finanzen', () => {
       '/kette',
     );
     expect(res).toMatchObject({ ok: false, zaehlerPasst: false, fehler: [] });
+  });
+
+  describe('chain check against the archive', () => {
+    type Kette = {
+      ok: boolean;
+      fehler: { seq: number; art: string; schluessel?: string }[];
+      archiv: { exporte: number; anker: number; nichtExportiert: number; eingerichtet: boolean };
+    };
+    const exportZeilen = (t: Awaited<ReturnType<typeof setup>>, bis: number) =>
+      t.finanzenFake.buchungen
+        .filter((b) => b.seq <= bis)
+        .map(
+          (b) =>
+            kanonischJson({
+              hash: b.hash,
+              prev_hash: b.prevHash,
+              buchung: JSON.parse(kanonisch(b)),
+            }) + '\n',
+        )
+        .join('');
+
+    it('accepts a matching export and counts what is not exported yet', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      await t.umbuchung(300);
+      const b1 = t.finanzenFake.buchungen[0]!;
+      t.archivObjekte.set('export/2027-01-07.jsonl', [exportZeilen(t, 1)]);
+      t.archivObjekte.set('anker/2027-01-07.json', [
+        JSON.stringify({ bis_seq: 1, kopf_hash: b1.hash, erstellt_am: 'x' }),
+      ]);
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette).toMatchObject({
+        ok: true,
+        fehler: [],
+        archiv: { exporte: 1, anker: 1, nichtExportiert: 1, eingerichtet: true },
+      });
+    });
+
+    it('finds a manipulated line, a divergent anchor and a second version', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      const b1 = t.finanzenFake.buchungen[0]!;
+      const zeile = exportZeilen(t, 1);
+      t.archivObjekte.set('export/a.jsonl', [zeile.replace('"text":"', '"text":"X')]);
+      t.archivObjekte.set('anker/a.json', [
+        JSON.stringify({ bis_seq: 1, kopf_hash: 'f'.repeat(64) }),
+        JSON.stringify({ bis_seq: 1, kopf_hash: b1.hash }),
+      ]);
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette.ok).toBe(false);
+      expect(kette.fehler).toContainEqual({
+        seq: 1,
+        art: 'archiv_abweichung',
+        schluessel: 'export/a.jsonl',
+      });
+      expect(kette.fehler).toContainEqual({ seq: 1, art: 'anker', schluessel: 'anker/a.json' });
+      expect(kette.fehler).toContainEqual({
+        seq: 0,
+        art: 'archiv_ueberschrieben',
+        schluessel: 'anker/a.json',
+      });
+    });
+
+    it('finds an archive entry that is missing in the database', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      await t.umbuchung(300);
+      t.archivObjekte.set('export/a.jsonl', [exportZeilen(t, 2)]);
+      t.finanzenFake.buchungen.pop();
+      t.finanzenFake.zaehler.wert = 1;
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette.fehler).toContainEqual({
+        seq: 2,
+        art: 'archiv_fehlt_in_db',
+        schluessel: 'export/a.jsonl',
+      });
+    });
+
+    it('checks the checksum of Beleg files', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      const sha = 'cd'.repeat(32);
+      const schluessel = `belege/${sha}.pdf`;
+      t.finanzenFake.buchungen[0]!.belege = [{ sha256: sha }];
+      t.finanzenFake.belegDateien.push({ sha256: sha, schluessel });
+      const gut = await t.lesen<Kette>('reader-token', '/kette');
+      expect(gut.fehler.filter((f) => f.art === 'beleg_datei')).toEqual([]);
+      t.archivPruefsummen.set(schluessel, 'AAAA');
+      expect((await t.lesen<Kette>('reader-token', '/kette')).fehler).toContainEqual({
+        seq: 1,
+        art: 'beleg_datei',
+      });
+      t.archivPruefsummen.set(schluessel, null);
+      expect((await t.lesen<Kette>('reader-token', '/kette')).fehler).toContainEqual({
+        seq: 1,
+        art: 'beleg_datei',
+      });
+    });
+
+    it('only checks the database without a bucket', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette).toMatchObject({ ok: true, archiv: { eingerichtet: false } });
+    });
   });
 
   it('has no routes to change or delete bookings', async () => {

@@ -98,6 +98,7 @@ export function createFakeFinanzenStore() {
   }
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
+  const belegDateien: { sha256: string; schluessel: string }[] = [];
   const zaehler = { wert: 0, letzterHash: GENESIS_HASH };
   const exporte: {
     datum: string;
@@ -883,6 +884,7 @@ export function createFakeFinanzenStore() {
     async kettenDaten() {
       return {
         buchungen: structuredClone(buchungen),
+        belegDateien: structuredClone(belegDateien),
         zaehlerWert: zaehler.wert,
         zaehlerHash: zaehler.letzterHash,
       };
@@ -895,6 +897,8 @@ export function createFakeFinanzenStore() {
     hinweise,
     konten,
     buchungen,
+    /** Beleg files `kettenDaten` reports (tests add their own). */
+    belegDateien,
     zaehler,
     events,
     kassen,

@@ -8,6 +8,10 @@ const archivFake = () => {
   return {
     dateien,
     archiv: {
+      eingerichtet: true,
+      versionenAuflisten: () => Promise.reject(new Error('nicht benötigt')),
+      lesen: () => Promise.reject(new Error('nicht benötigt')),
+      dateiPruefsumme: () => Promise.reject(new Error('nicht benötigt')),
       uploadVorbereiten: () => Promise.reject(new Error('nicht benötigt')),
       anzeigeUrl: () => Promise.reject(new Error('nicht benötigt')),
       exportSchreiben: async (k: string, inhalt: string | Uint8Array) => {

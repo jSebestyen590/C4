@@ -1,6 +1,12 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectVersionsCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { belegDateiSchluessel, type BelegDateiTyp } from '@c4/shared';
+import { belegDateiSchluessel, type ArchivDaten, type BelegDateiTyp } from '@c4/shared';
 
 const UPLOAD_GUELTIG_S = 300;
 const ANZEIGE_GUELTIG_S = 3600;
@@ -11,6 +17,8 @@ const ANZEIGE_GUELTIG_S = 3600;
  * Nothing is ever deleted or overwritten with different content.
  */
 export interface Finanzarchiv {
+  /** False without a bucket (local development): the chain check then only looks at the database. */
+  readonly eingerichtet: boolean;
   /**
    * Presigned PUT for a Beleg file. The SHA-256 (hex from the browser) is a signed header: the
    * browser must send `x-amz-checksum-sha256` (Base64, returned) and the `Content-Type`, and S3 rejects
@@ -24,11 +32,18 @@ export interface Finanzarchiv {
   anzeigeUrl(schluessel: string): Promise<string>;
   /** Writes an export or anchor file. */
   exportSchreiben(schluessel: string, inhalt: string | Uint8Array): Promise<void>;
+  /** All stored versions below a prefix, grouped by key (version ids oldest first). */
+  versionenAuflisten(prefix: string): Promise<{ schluessel: string; versionIds: string[] }[]>;
+  /** Text of an object, of one version when `versionId` is given. */
+  lesen(schluessel: string, versionId?: string): Promise<string>;
+  /** Stored SHA-256 checksum (Base64) of an object, `null` when it does not exist or has none. */
+  dateiPruefsumme(schluessel: string): Promise<string | null>;
 }
 
 export function createFinanzarchiv(bucket: string, region: string): Finanzarchiv {
   const s3 = new S3Client({ region });
   return {
+    eingerichtet: true,
     async uploadVorbereiten({ sha256, groesse, typ }) {
       const schluessel = belegDateiSchluessel(sha256, typ);
       const checksumSha256 = Buffer.from(sha256, 'hex').toString('base64');
@@ -58,12 +73,100 @@ export function createFinanzarchiv(bucket: string, region: string): Finanzarchiv
     async exportSchreiben(schluessel, inhalt) {
       await s3.send(new PutObjectCommand({ Bucket: bucket, Key: schluessel, Body: inhalt }));
     },
+    async versionenAuflisten(prefix) {
+      const jeSchluessel = new Map<string, { versionId: string; zeit: number }[]>();
+      let keyMarker: string | undefined;
+      let versionMarker: string | undefined;
+      do {
+        const seite = await s3.send(
+          new ListObjectVersionsCommand({
+            Bucket: bucket,
+            Prefix: prefix,
+            KeyMarker: keyMarker,
+            VersionIdMarker: versionMarker,
+          }),
+        );
+        for (const v of seite.Versions ?? []) {
+          if (!v.Key) continue;
+          const liste = jeSchluessel.get(v.Key) ?? [];
+          liste.push({ versionId: v.VersionId ?? 'null', zeit: v.LastModified?.getTime() ?? 0 });
+          jeSchluessel.set(v.Key, liste);
+        }
+        keyMarker = seite.IsTruncated ? seite.NextKeyMarker : undefined;
+        versionMarker = seite.IsTruncated ? seite.NextVersionIdMarker : undefined;
+      } while (keyMarker !== undefined || versionMarker !== undefined);
+      return [...jeSchluessel]
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([schluessel, v]) => ({
+          schluessel,
+          versionIds: v.sort((a, b) => a.zeit - b.zeit).map((x) => x.versionId),
+        }));
+    },
+    async lesen(schluessel, versionId) {
+      const res = await s3.send(
+        new GetObjectCommand({ Bucket: bucket, Key: schluessel, VersionId: versionId }),
+      );
+      return (await res.Body?.transformToString('utf-8')) ?? '';
+    },
+    async dateiPruefsumme(schluessel) {
+      try {
+        const res = await s3.send(
+          new HeadObjectCommand({ Bucket: bucket, Key: schluessel, ChecksumMode: 'ENABLED' }),
+        );
+        return res.ChecksumSHA256 ?? null;
+      } catch (e) {
+        const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+        if (status === 404) return null;
+        throw e;
+      }
+    },
   };
 }
 
 /** Used while `FINANZARCHIV_BUCKET` is not set (local development): every use fails with a clear message. */
 export const finanzarchivNichtEingerichtet: Finanzarchiv = {
+  eingerichtet: false,
   uploadVorbereiten: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
   anzeigeUrl: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
   exportSchreiben: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
+  versionenAuflisten: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
+  lesen: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
+  dateiPruefsumme: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
 };
+
+const S3_PARALLEL = 16;
+
+/** Maps with at most `S3_PARALLEL` calls at a time, keeping the order. */
+async function begrenzt<T, R>(liste: readonly T[], f: (x: T) => Promise<R>): Promise<R[]> {
+  const ergebnis: R[] = new Array<R>(liste.length);
+  let naechster = 0;
+  const arbeiter = async () => {
+    while (naechster < liste.length) {
+      const i = naechster++;
+      ergebnis[i] = await f(liste[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(S3_PARALLEL, liste.length) }, arbeiter));
+  return ergebnis;
+}
+
+/** Reads everything `pruefeArchiv` needs: all versions of the export, anchor and Festschreibung objects and the Beleg checksums. */
+export async function archivLaden(
+  archiv: Finanzarchiv,
+  belegDateien: readonly { sha256: string; schluessel: string }[],
+): Promise<ArchivDaten> {
+  const gelistet = (
+    await Promise.all(
+      ['export/', 'anker/', 'festschreibung/'].map((p) => archiv.versionenAuflisten(p)),
+    )
+  ).flat();
+  const objekte = await begrenzt(gelistet, async (o) => ({
+    schluessel: o.schluessel,
+    versionen: await Promise.all(o.versionIds.map((v) => archiv.lesen(o.schluessel, v))),
+  }));
+  const dateien = await begrenzt(belegDateien, async (d) => ({
+    sha256: d.sha256,
+    pruefsumme: await archiv.dateiPruefsumme(d.schluessel),
+  }));
+  return { objekte, belegDateien: dateien };
+}
