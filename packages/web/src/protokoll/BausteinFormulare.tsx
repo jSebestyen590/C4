@@ -60,6 +60,9 @@ import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import {
   annahmeSchalterIds,
+  eventKategorieSetzen,
+  eventZeigtBis,
+  kalenderEventLabel,
   auswahlOptionEntfernen,
   auswahlOptionHinzufuegen,
   auswahlOptionSetzen,
@@ -202,13 +205,13 @@ export function EventFormular({
 
   const kalenderOptionen = events.kommende.map((e) => ({
     value: e.id,
-    label: `${eventDatumText(e)} ${e.anzeigeTitel}`,
+    label: kalenderEventLabel(e),
   }));
   if (daten.eventId && !kalenderOptionen.some((o) => o.value === daten.eventId)) {
     const e = events.alle.find((x) => x.id === daten.eventId);
     kalenderOptionen.unshift({
       value: daten.eventId,
-      label: e ? `${eventDatumText(e)} ${e.anzeigeTitel}` : 'Verknüpftes Event',
+      label: e ? kalenderEventLabel(e) : 'Verknüpftes Event',
     });
   }
   const kategorieOptionen = kategorien.aktive.map((k) => ({ value: k.id, label: k.name }));
@@ -217,6 +220,8 @@ export function EventFormular({
     kategorieOptionen.unshift({ value: daten.kategorieId, label: k?.name ?? 'Unbekannt' });
   }
   const mehrtaegig = dauer !== 'eintaegig';
+  // Single-day Kategorien have no "Bis"; without a Kategorie it is still open.
+  const zeigeBis = eventZeigtBis(kategorie?.dauer);
   const tage = vorlage?.tage ?? 1;
 
   return (
@@ -224,6 +229,45 @@ export function EventFormular({
       <Text size="sm" c="dimmed">
         {vorlageText}
       </Text>
+      <Select
+        allowDeselect={false}
+        label="Im Kalender"
+        data-fokus="kalender"
+        description="Verknüpft den Baustein mit einem bestehenden Event und übernimmt dessen Angaben (Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste). Die Notizen bleiben."
+        placeholder="Noch nicht im Kalender"
+        searchable
+        clearable
+        data={kalenderOptionen}
+        value={daten.eventId}
+        onChange={(eventId) => {
+          const e = eventId ? events.alle.find((x) => x.id === eventId) : undefined;
+          aendern((d) =>
+            e ? eventDatenAusKalender(kalenderEventFuerBaustein(e), d) : { ...d, eventId: eventId },
+          );
+        }}
+        nothingFoundMessage="Kein Event gefunden"
+      />
+      {daten.eventId && <KalenderLink eventId={daten.eventId} />}
+      <Select
+        allowDeselect={false}
+        label="Kategorie"
+        description={
+          kategorieWert
+            ? undefined
+            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
+        }
+        placeholder="Keine Kategorie"
+        searchable
+        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
+        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
+        data={kategorieOptionen}
+        value={kategorieWert}
+        onChange={(kategorieId) => {
+          const neu = kategorien.liste.find((k) => k.id === (kategorieId ?? vorlage?.kategorieId));
+          aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer));
+        }}
+        nothingFoundMessage="Keine Kategorie gefunden"
+      />
       <LokalText
         label="Name"
         data-fokus="name"
@@ -234,14 +278,14 @@ export function EventFormular({
       <Group grow {...zweiSpalten}>
         <DatumFeld
           tippbar
-          label={mehrtaegig || !daten.vorlageId ? 'Von' : 'Datum'}
+          label={zeigeBis ? 'Von' : 'Datum'}
           data-fokus="datum"
           loeschbar={false}
           value={daten.datum ?? ''}
           onWert={(datum) => aendern((d) => eventDatumSetzen(d, datum || null, dauer, tage))}
           style={{ minWidth: 0 }}
         />
-        {(mehrtaegig || !daten.vorlageId || daten.bisDatum) && (
+        {zeigeBis && (
           <DatumFeld
             tippbar
             label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
@@ -274,6 +318,17 @@ export function EventFormular({
           />
         </Group>
       )}
+      <Select
+        allowDeselect={false}
+        label="Verantwortliche:r"
+        placeholder="Niemand"
+        searchable
+        clearable
+        data={mitgliedOptionen(mitglieder.data ?? [])}
+        value={daten.verantwortlichSub}
+        onChange={(verantwortlichSub) => aendern((d) => ({ ...d, verantwortlichSub }))}
+        nothingFoundMessage="Niemand gefunden"
+      />
       <Stack gap={4}>
         <Text size="sm" fw={500}>
           Dienste
@@ -291,52 +346,6 @@ export function EventFormular({
           onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
         />
       </Stack>
-      <Select
-        allowDeselect={false}
-        label="Kategorie"
-        description={
-          kategorieWert
-            ? undefined
-            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
-        }
-        placeholder="Keine Kategorie"
-        searchable
-        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
-        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
-        data={kategorieOptionen}
-        value={kategorieWert}
-        onChange={(kategorieId) => aendern((d) => ({ ...d, kategorieId }))}
-        nothingFoundMessage="Keine Kategorie gefunden"
-      />
-      <Select
-        allowDeselect={false}
-        label="Verantwortliche:r"
-        placeholder="Niemand"
-        searchable
-        clearable
-        data={mitgliedOptionen(mitglieder.data ?? [])}
-        value={daten.verantwortlichSub}
-        onChange={(verantwortlichSub) => aendern((d) => ({ ...d, verantwortlichSub }))}
-        nothingFoundMessage="Niemand gefunden"
-      />
-      <Select
-        allowDeselect={false}
-        label="Im Kalender"
-        description="Verknüpft den Baustein mit einem bestehenden Event und übernimmt dessen Angaben (Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste). Die Notizen bleiben."
-        placeholder="Noch nicht im Kalender"
-        searchable
-        clearable
-        data={kalenderOptionen}
-        value={daten.eventId}
-        onChange={(eventId) => {
-          const e = eventId ? events.alle.find((x) => x.id === eventId) : undefined;
-          aendern((d) =>
-            e ? eventDatenAusKalender(kalenderEventFuerBaustein(e), d) : { ...d, eventId: eventId },
-          );
-        }}
-        nothingFoundMessage="Kein Event gefunden"
-      />
-      {daten.eventId && <KalenderLink eventId={daten.eventId} />}
     </Stack>
   );
 }
@@ -779,6 +788,11 @@ export function EmFormular({
       <Stack gap={4}>
         <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
         <PersonOderName person={person} name={name} />
+        {a && daten.antragSub && (
+          <Text size="sm">
+            Beantragt von: <Mitglied sub={daten.antragSub} />
+          </Text>
+        )}
         {a && <StimmenAnzeige a={a} />}
       </Stack>
     );
@@ -826,6 +840,28 @@ export function EmFormular({
           aendern((d) => ({ ...d, abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null }));
         }}
       />
+      {a && (
+        <Select
+          allowDeselect={false}
+          label="Beantragt von"
+          placeholder="Person wählen"
+          size="md"
+          searchable
+          clearable
+          nothingFoundMessage="Niemand gefunden"
+          data={personenOptionen(personen)}
+          value={daten.antragSub}
+          onChange={(antragSub) => aendern((d) => ({ ...d, antragSub }))}
+          renderOption={({ option }) => {
+            const s = status.get(option.value);
+            return s ? (
+              <StatusName status={s}>{option.label}</StatusName>
+            ) : (
+              <span>{option.label}</span>
+            );
+          }}
+        />
+      )}
       {a && (
         <StimmenFelder
           daten={a}
@@ -952,6 +988,7 @@ export function MeinungsbildFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Option ${i + 1} entfernen`}
                 onClick={() => aendern((d) => optionEntfernen(d, i))}
               >
@@ -1031,8 +1068,9 @@ function NichtAngetreten({
 interface AnnahmeSteuerung {
   /** Ids to show a switch for, in a stable order (the order of the candidates, not of the result). */
   ids: readonly string[];
-  nimmtAn: (id: string) => boolean;
-  setzen: (id: string, nimmtAn: boolean) => void;
+  /** `true` accepts (stated in the document), `false` declines, `null` not recorded. */
+  wert: (id: string) => boolean | null;
+  setzen: (id: string, nimmtAn: boolean | null) => void;
   label: (id: string) => ReactNode;
 }
 
@@ -1084,13 +1122,22 @@ function WahlErgebnisBereich({
         </Text>
       )}
       {annahme?.ids.map((id) => (
-        <Switch
-          key={id}
-          size="md"
-          checked={annahme.nimmtAn(id)}
-          onChange={(e) => annahme.setzen(id, e.currentTarget.checked)}
-          label={annahme.label(id)}
-        />
+        <Stack key={id} gap={4}>
+          <Text size="sm" fw={500} style={{ overflowWrap: 'anywhere' }}>
+            {annahme.label(id)}
+          </Text>
+          <SegmentedControl
+            fullWidth
+            size="md"
+            value={annahme.wert(id) === null ? 'offen' : annahme.wert(id) ? 'ja' : 'nein'}
+            onChange={(w) => annahme.setzen(id, w === 'offen' ? null : w === 'ja')}
+            data={[
+              { value: 'offen', label: 'Offen' },
+              { value: 'ja', label: 'Nimmt an' },
+              { value: 'nein', label: 'Nimmt nicht an' },
+            ]}
+          />
+        </Stack>
       ))}
       {offen && (
         <Alert color="yellow" variant="light" py={6} px="xs" icon={<IconAlertTriangle size={18} />}>
@@ -1146,9 +1193,9 @@ function WahlErgebnisAnzeige({
         aendern && {
           // Stable order: toggling must not move the focused switch in the DOM.
           ids: annahmeSchalterIds(daten),
-          nimmtAn: (id) => daten.annahme[id] !== false,
+          wert: (id) => daten.annahme[id] ?? null,
           setzen: (id, nimmtAn) => aendern((d) => annahmeSetzen(d, id, nimmtAn)),
-          label: (id) => <>{name(id)} nimmt die Wahl an</>,
+          label: (id) => <>{name(id)} nimmt die Wahl an?</>,
         }
       }
     />
@@ -1261,30 +1308,40 @@ export function WahlFormular({
         <Paper key={k.id} withBorder p="xs" radius="md">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
-              <Select
-                allowDeselect={false}
-                label={`Kandidat:in ${i + 1}`}
-                placeholder="Person wählen"
-                size="md"
-                searchable
-                nothingFoundMessage="Niemand gefunden"
-                style={{ flex: 1, minWidth: 0 }}
-                data={personenOptionen(personen)}
-                value={k.sub}
-                onChange={(sub) => aendern((d) => kandidatSetzen(d, k.id, { sub }))}
-                renderOption={({ option }) => {
-                  const s = status.get(option.value);
-                  return s ? (
-                    <StatusName status={s}>{option.label}</StatusName>
-                  ) : (
-                    <span>{option.label}</span>
-                  );
-                }}
-              />
+              <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
+                <Select
+                  allowDeselect={false}
+                  label={`Kandidat:in ${i + 1}`}
+                  placeholder="Person wählen"
+                  size="md"
+                  searchable
+                  nothingFoundMessage="Niemand gefunden"
+                  style={{ flex: '1 1 10rem', minWidth: 0 }}
+                  data={personenOptionen(personen)}
+                  value={k.sub}
+                  onChange={(sub) => aendern((d) => kandidatSetzen(d, k.id, { sub }))}
+                  renderOption={({ option }) => {
+                    const s = status.get(option.value);
+                    return s ? (
+                      <StatusName status={s}>{option.label}</StatusName>
+                    ) : (
+                      <span>{option.label}</span>
+                    );
+                  }}
+                />
+                <div style={{ flex: '0 0 auto', width: '10rem' }}>
+                  <LokalZahl
+                    label="Stimmen"
+                    wert={k.stimmen}
+                    onWert={(stimmen) => aendern((d) => kandidatSetzen(d, k.id, { stimmen }))}
+                  />
+                </div>
+              </Group>
               <ActionIcon
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Kandidat:in ${i + 1} entfernen`}
                 onClick={() => aendern((d) => kandidatEntfernen(d, k.id))}
               >
@@ -1296,11 +1353,6 @@ export function WahlFormular({
                 Bisher ohne App-Konto: {k.name.trim()}. Wähle eine Person, um sie zu ersetzen.
               </Text>
             )}
-            <LokalZahl
-              label="Stimmen"
-              wert={k.stimmen}
-              onWert={(stimmen) => aendern((d) => kandidatSetzen(d, k.id, { stimmen }))}
-            />
           </Stack>
         </Paper>
       ))}
@@ -1350,6 +1402,7 @@ export function WahlFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >
@@ -1499,29 +1552,34 @@ export function AuswahlFormular({
         <Paper key={o.id} withBorder p="xs" radius="md">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
-              <LokalText
-                label={`Möglichkeit ${i + 1}`}
-                autoComplete="off"
-                wert={o.text}
-                maxLength={200}
-                style={{ flex: 1, minWidth: 0 }}
-                onWert={(text) => aendern((d) => auswahlOptionSetzen(d, o.id, { text }))}
-              />
+              <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
+                <LokalText
+                  label={`Möglichkeit ${i + 1}`}
+                  autoComplete="off"
+                  wert={o.text}
+                  maxLength={200}
+                  style={{ flex: '1 1 10rem', minWidth: 0 }}
+                  onWert={(text) => aendern((d) => auswahlOptionSetzen(d, o.id, { text }))}
+                />
+                <div style={{ flex: '0 0 auto', width: '10rem' }}>
+                  <LokalZahl
+                    label="Stimmen"
+                    wert={o.stimmen}
+                    onWert={(stimmen) => aendern((d) => auswahlOptionSetzen(d, o.id, { stimmen }))}
+                  />
+                </div>
+              </Group>
               <ActionIcon
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Möglichkeit ${i + 1} entfernen`}
                 onClick={() => aendern((d) => auswahlOptionEntfernen(d, o.id))}
               >
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            <LokalZahl
-              label="Stimmen"
-              wert={o.stimmen}
-              onWert={(stimmen) => aendern((d) => auswahlOptionSetzen(d, o.id, { stimmen }))}
-            />
           </Stack>
         </Paper>
       ))}
@@ -1548,6 +1606,7 @@ export function AuswahlFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >

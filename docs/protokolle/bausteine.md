@@ -25,6 +25,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 ### Event (`bausteinEvent`)
 
 - Felder: Vorlage (`vorlageId`, optional), Name, Datum (bei mehreren Tagen von/bis), Beginn und Ende, Dienste (Schichten im Format der Vorlage), Verantwortliche:r, Kategorie (`kategorieId`, nötig zum Anlegen, Standard `null`), Kalender-Event (`eventId`, mit Link „Im Kalender öffnen“ in neuem Tab, auch bei Vergangenes Event).
+- Reihenfolge im Formular: Im Kalender (die Optionen heißen wie die Überschrift: `25. – 30.11. PP Name`; hier landet auch der erste Fokus), Kategorie, Name, Datum, Zeiten, Verantwortliche:r, Dienste. „Bis“ gibt es nur bei mehrtägigen und ganztägigen Kategorien (ohne Kategorie ebenfalls); wechselt man auf eine eintägige Kategorie, wird `bisDatum` geleert, und `event.anlegen` ignoriert ein übrig gebliebenes `bisDatum` bei eintägigen Kategorien.
 - Notizen: normaler Freitext, nimmt andere Bausteine auf (siehe [Bausteine in Notizen](#bausteine-in-notizen-und-verschachtelte-themen)).
 
 ### Anwesenheit (`bausteinAnwesenheit`)
@@ -60,7 +61,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Neues EM (`bausteinEm`)
 
-- Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`).
+- Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`). Mit Abstimmung gibt es das Feld „Beantragt von“ (`antragSub`, Person der App, optional); Dokument und PDF zeigen darüber „<Name> beantragt die Ehrenmitgliedschaft.“
 - **Ab diesem Baustein ist die Person kein Mitglied mehr und hat kein Stimmrecht, immer, egal wie die Abstimmung ausgeht** (`anwesenheitsVerlauf`: raus aus „alle“ und „anwesend“). Der Baustein zeigt wie Erscheint „x von y Mitgliedern anwesend“ mit den neuen Zahlen (z. B. „2 von 8“ wird „1 von 7“), alle späteren Beschlüsse (Editor, Dokument, PDF) rechnen mit den verringerten Zahlen. Die Aktion `em.status` setzt ohne Abstimmung auf Extern, mit Abstimmung auf EM (angenommen) bzw. Extern (abgelehnt); ohne Ergebnis wartet sie. Eine Aufnahme ändert das Stimmrecht dagegen nicht (erst ab der nächsten Sitzung).
 
 ### Aufnahme (`bausteinAufnahme`)
@@ -80,7 +81,7 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 - Kandidat:innen (`kandidaten`, höchstens 30: `id`, Person `sub`, Stimmen; nur Personen der App, alte Daten mit Freitext-`name` ohne `sub` werden weiter angezeigt), `enthaltung`.
 - Stichwahlen (`stichwahlen`, höchstens 10: Stimmen je Kandidat:in und Enthaltung).
 - `nichtAngetreten`: Personen der App, die vorgeschlagen wurden, aber nicht antreten; höchstens 30, nur Anzeige; Mehrfachauswahl „Vorgeschlagen, tritt nicht an“.
-- `annahme`: je Kandidat-Id `false`, wenn die gewählte Person die Wahl nicht annimmt; fehlt der Eintrag, nimmt sie an.
+- `annahme`: je Kandidat-Id `true` (nimmt die Wahl an, wird im Dokument genannt), `false` (nimmt sie nicht an); fehlt der Eintrag, ist nichts festgehalten (zählt für das Ergebnis als angenommen).
 - Nur Mitglieder stimmen, Beschlussfähigkeit wie bei der Abstimmung (`anwesenheitsVerlauf`), Ergebnis siehe unten.
 - Alte Wahlen ohne `postenId`, `gueltigAb`, `stimmenProPerson`, `nichtAngetreten` und `annahme` bleiben gültig (Standard `null`, leer bzw. `[]`/`{}`).
 
@@ -126,8 +127,9 @@ ignoriert die Logik; der Editor bietet an, sie zu entfernen.
 
 **Auswahl, Ergebnis (`auswahlErgebnis` in `protokolle.ts`):** Es gelten dieselben Regeln wie bei der Wahl (`rangErgebnis`: Rangfolge nach den Stimmen der Hauptrunde, Gleichstand um den letzten Platz führt in eine Stichwahl, mehrere Runden möglich), nur ohne Annahme: `abgelehnt` ist immer leer. Das Ergebnis erscheint als „Ergebnis: A, B“ (grün) bzw. als Hinweis „Gleichstand zwischen B und C um 1 Platz – Stichwahl nötig“ mit dem Knopf „Stichwahl hinzufügen“; überflüssige Stichwahlen lassen sich entfernen. Die Annahme-Schalter der Wahl behalten im Editor eine feste Reihenfolge (nach Kandidat:innen, nicht nach Ergebnis), damit der gedrückte Schalter beim Umschalten den Fokus behält.
 
-**Wahl, Annahme:** Nach dem Ergebnis hat jede gewählte Person im Editor einen Schalter „<Name> nimmt die Wahl an“ (Standard: an).
-Schaltet man ihn aus (`annahme[id] = false`), wird das Ergebnis so berechnet, als stünde die Person nicht auf der Liste: gleiche
+**Wahl, Annahme:** Nach dem Ergebnis hat jede gewählte Person im Editor eine Auswahl „<Name> nimmt die Wahl an?“ mit Offen (Standard) / Nimmt an / Nimmt nicht an.
+Dokument und PDF schreiben bei „Nimmt an“ hinter die Gewählten „X nimmt die Wahl an“ (mehrere kommagetrennt, am Ende ein Punkt).
+„Nimmt nicht an“ (`annahme[id] = false`; Dokument und PDF: „X nimmt die Wahl nicht an.“), wird das Ergebnis so berechnet, als stünde die Person nicht auf der Liste: gleiche
 Stimmen, gleiche Stichwahl-Regeln, die Nächstplatzierte rückt nach (ein Gleichstand an der neuen Grenze braucht wie üblich eine
 Stichwahl). Das wiederholt sich, bis keine gewählte Person mehr abgelehnt hat. `wahlErgebnis` liefert dann nur die Annehmenden in
 `gewaehlt` und die Übersprungenen in `abgelehnt` (ihr Schalter bleibt, aus, und lässt sich wieder einschalten). Absagen von nicht
@@ -153,7 +155,7 @@ und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. D
 ### Bedienung im Editor
 
 - **Farbleiste:** Jede Baustein-Karte hat links eine 4 px breite Leiste in der Farbe ihres Typs (eine Zuordnung `BAUSTEIN_FARBE` in `symbole.tsx`, setzt `--baustein-farbe`; dieselbe Farbe hat das Symbol in der Gliederung; Zitat bleibt in der Primärfarbe). Verschachtelte Bausteine zeigen mehrere Leisten nebeneinander. Nur im Editor, nicht in Dokument-Ansicht und PDF.
-- **Tab-Reihenfolge:** Tab auf dem letzten Feld des Formulars (kein weiterer Tab-Stopp dahinter: ohne unsichtbare/inerte Elemente, bei Radiogruppen zählt nur der gewählte) setzt den Cursor an den Anfang der Notizen dieses Bausteins, beim Bild hinter das Bild (`BausteinKnoten.tsx`, `BildKnoten.tsx`, `fokusSetzen`, Hilfen in `tabFolge.ts`). In den Notizen (auch im Text eines Abschnitts) verlässt Tab den Text nie: Er rückt einen Listenpunkt ein, sonst tut er nichts; Shift+Tab rückt aus oder tut nichts (`NotizenTabulator` in `schema.ts`, niedrige Priorität, damit Tab im Slash-/@-Popup weiter den Eintrag wählt). Zurück ins Formular geht es nur per Pfeiltasten oder Maus. Reine Icon-Buttons (Baustein entfernen, Datum löschen) sind kein Tab-Stopp.
+- **Tab-Reihenfolge:** Tab auf dem letzten Feld des Formulars (kein weiterer Tab-Stopp dahinter: ohne unsichtbare/inerte Elemente, bei Radiogruppen zählt nur der gewählte) setzt den Cursor an den Anfang der Notizen dieses Bausteins, beim Bild hinter das Bild (`BausteinKnoten.tsx`, `BildKnoten.tsx`, `fokusSetzen`, Hilfen in `tabFolge.ts`). In den Notizen (auch im Text eines Abschnitts) verlässt Tab den Text nie: Er rückt einen Listenpunkt ein, sonst tut er nichts; Shift+Tab rückt aus oder tut nichts (`NotizenTabulator` in `schema.ts`, niedrige Priorität, damit Tab im Slash-/@-Popup weiter den Eintrag wählt). Zurück ins Formular geht es nur per Pfeiltasten oder Maus. Reine Icon-Buttons (Baustein entfernen, Datum löschen) sind kein Tab-Stopp. **Klick auf den Rahmen eines Bausteins** (Kopfzeile, Innenabstand, Lücken im Formular) setzt weder Fokus noch Cursor: `mausFokusPlugin` (`formular.ts`) verhindert dort das Standardverhalten des mousedown, überspringt die Klickbehandlung von ProseMirror und blurt den Editor, falls er trotzdem den Fokus bekäme (sonst stellt ProseMirror die alte Auswahl wieder her und scrollt dorthin, z. B. nach unten in „Sonstiges“, wenn ein Select geöffnet war). Klicks auf Text und Notizen sowie Tab-Fokus (`fokusSetzen`) sind nicht betroffen.
 - **Formularfelder:** Datum ist ein tippbares Mantine-`DateInput` (`DatumFeld` mit `tippbar`), Uhrzeit ein Mantine-`TimePicker` (`ZeitFeld.tsx`, Wert `HH:mm`, leer solange unvollständig), damit kein natives Picker-Symbol als Tab-Stopp stört. Selects haben `allowDeselect={false}`: Ein erneuter Klick auf den gewählten Wert leert ihn nicht (leeren nur über das Kreuz bei `clearable`).
 - **Fokus:** Ein Klick auf eine Stelle im Formular, die kein Eingabeelement ist (Label, Rand), würde der Browser sonst selbst in die Notizen setzen (das Formular ist eine `contenteditable=false`-Insel im Editor, ProseMirror sieht die Events nicht); `formularMausTaste` verhindert das. `fokusSetzen` bricht bei jeder anderen Eingabe (Klick, Taste, Fokuswechsel) oder geänderter Knotenposition ab.
 
@@ -225,7 +227,7 @@ Tiefe (`knotenFehler`); Gliederung (auch Ziehen, Einfügen neben die Liste), Dok
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
   einfach eine weitere Zeile. In einem Listenpunkt wird es zum Kind des Listenpunkts (siehe „Bausteine in Aufzählungen“) statt den Text des Punkts zu umschließen. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
   prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).
-- **Bild** (`/bild`, `/foto`, `/image`) öffnet die Dateiauswahl und lädt das Bild hoch, siehe [Bilder](./ansicht-pdf.md#bilder). Es kommt hinter den
+- **Bild** (`/bild`, `/foto`, `/image`) öffnet die Dateiauswahl und lädt das Bild hoch (danach springt der Fokus ins Feld „Beschreibung“; Tab dort geht in den ersten Textabsatz dahinter, z. B. den leeren Aufzählungspunkt, sonst in einen neuen Absatz), siehe [Bilder](./ansicht-pdf.md#bilder). Es kommt hinter den
   aktuellen Block, im Freitext eines Bausteins (auch einer Abstimmung) in dessen Notizen.
 - Der Baustein kommt hinter den aktuellen Block (ein leerer Absatz wird ersetzt, im Freitext eines Bausteins dahinter; keine
   Verschachtelung). Abstimmung, Meinungsbild, Wahl, Todo, Thema und Erscheint/Geht kommen dagegen in die Notizen am Cursor (leerer Absatz ersetzt, sonst hinter

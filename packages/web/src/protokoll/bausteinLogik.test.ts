@@ -20,6 +20,9 @@ import {
   eventBisSetzen,
   eventDatenAusVorlage,
   eventDatumSetzen,
+  eventKategorieSetzen,
+  eventZeigtBis,
+  kalenderEventLabel,
   kalenderEventFuerBaustein,
   kommendeEvents,
   optionEntfernen,
@@ -116,6 +119,31 @@ describe('Datum', () => {
   it('never puts the last day before the date', () => {
     const mit = { ...basis, datum: '2026-05-05' };
     expect(eventBisSetzen(mit, '2026-05-01').bisDatum).toBe('2026-05-05');
+  });
+  it('drops the last day when the Kategorie is single-day, keeps it otherwise', () => {
+    const mit = { ...basis, datum: '2026-05-05', bisDatum: '2026-05-07' };
+    expect(eventKategorieSetzen(mit, 'k', 'eintaegig')).toMatchObject({
+      kategorieId: 'k',
+      bisDatum: null,
+    });
+    expect(eventKategorieSetzen(mit, 'k', 'mehrtaegig').bisDatum).toBe('2026-05-07');
+    expect(eventKategorieSetzen(mit, null, undefined).bisDatum).toBe('2026-05-07');
+    expect(eventZeigtBis(undefined)).toBe(true);
+    expect(eventZeigtBis('ganztaegig')).toBe(true);
+    expect(eventZeigtBis('eintaegig')).toBe(false);
+  });
+  it('labels calendar events like the headings', () => {
+    const e = {
+      anzeigeTitel: 'Caro',
+      beginn: '2026-11-25T09:00:00.000Z',
+      ende: '2026-11-30T17:00:00.000Z',
+      dauer: 'mehrtaegig' as const,
+      kategorie: { id: 'k', name: 'PP' },
+    };
+    expect(kalenderEventLabel(e as never)).toBe('25. – 30.11. PP Caro');
+    expect(
+      kalenderEventLabel({ ...e, ende: '2026-11-25T12:00:00.000Z', dauer: 'eintaegig' } as never),
+    ).toBe('25.11. PP Caro');
   });
 });
 
@@ -305,7 +333,8 @@ describe('Wahl', () => {
   it('stores a decline as false and accepting again removes the entry', () => {
     const nein = annahmeSetzen(leer, 'a', false);
     expect(nein.annahme).toEqual({ a: false });
-    expect(annahmeSetzen(nein, 'a', true).annahme).toEqual({});
+    expect(annahmeSetzen(nein, 'a', true).annahme).toEqual({ a: true });
+    expect(annahmeSetzen(nein, 'a', null).annahme).toEqual({});
     const mit = annahmeSetzen(kandidatHinzufuegen(leer, 'a'), 'a', false);
     expect(kandidatEntfernen(mit, 'a').annahme).toEqual({});
   });
@@ -369,9 +398,15 @@ describe('Wahl', () => {
 
 describe('ersterLeererFeld', () => {
   it('picks Datum when a Vorlage filled the name, else Name', () => {
-    expect(ersterLeererFeld('bausteinEvent', { name: 'Bar', datum: null })).toBe('datum');
-    expect(ersterLeererFeld('bausteinEvent', { name: '', datum: null })).toBe('name');
-    expect(ersterLeererFeld('bausteinEvent', { name: 'Bar', datum: '2026-05-01' })).toBe('text');
+    const e = { eventId: 'e1' };
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: 'Bar', datum: null })).toBe('datum');
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: '', datum: null })).toBe('name');
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: 'Bar', datum: '2026-05-01' })).toBe(
+      'text',
+    );
+    expect(ersterLeererFeld('bausteinEvent', { eventId: null, name: 'Bar', datum: null })).toBe(
+      'kalender',
+    );
   });
   it('handles the other Bausteine', () => {
     expect(

@@ -229,10 +229,14 @@ export function nichtBeschlussfaehigeAbstimmungen(
 
 const tagMonat = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 
-/** `11.02.`; a range `31.05. – 02.06.`; the same day twice is one day; empty `von` gives ''. */
+/**
+ * `11.02.`; a range `31.05. – 02.06.`, or `25. – 30.11.` within one month; the same day twice is one
+ * day; empty `von` gives ''.
+ */
 export function datumKurz(von: string | null | undefined, bis?: string | null): string {
   if (!von) return '';
   if (!bis || bis === von) return tagMonat(von);
+  if (von.slice(0, 7) === bis.slice(0, 7)) return `${von.slice(8, 10)}. – ${tagMonat(bis)}`;
   return `${tagMonat(von)} – ${tagMonat(bis)}`;
 }
 

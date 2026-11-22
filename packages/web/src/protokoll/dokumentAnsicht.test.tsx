@@ -445,9 +445,9 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(abgesagt).toContain('Nicht angetreten: ');
     expect(abgesagt).toContain('Niklas');
     expect(abgesagt).toContain('Gewählt: Anna, Bea');
-    expect(abgesagt).toContain('Nimmt die Wahl nicht an: Cem');
+    expect(abgesagt).toContain('Cem nimmt die Wahl nicht an');
     expect(fertig).not.toContain('Nicht angetreten');
-    expect(fertig).not.toContain('Nimmt die Wahl nicht an');
+    expect(fertig).not.toContain('nimmt die Wahl nicht an');
   });
 
   it('renders an Auswahl titled like an Abstimmung: notes, then options, runoff and result', () => {

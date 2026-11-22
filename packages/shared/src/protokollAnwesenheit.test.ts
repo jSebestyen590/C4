@@ -500,6 +500,9 @@ describe('headings', () => {
   it('formats short dates', () => {
     expect(datumKurz('2026-02-11')).toBe('11.02.');
     expect(datumKurz('2026-05-31', '2026-06-02')).toBe('31.05. – 02.06.');
+    expect(datumKurz('2026-11-25', '2026-11-30')).toBe('25. – 30.11.');
+    expect(datumKurz('2026-11-28', '2026-12-02')).toBe('28.11. – 02.12.');
+    expect(datumKurz('2026-12-30', '2027-01-02')).toBe('30.12. – 02.01.');
     expect(datumKurz('2026-05-31', '2026-05-31')).toBe('31.05.');
     expect(datumKurz('2026-05-31', '')).toBe('31.05.');
     expect(datumKurz('', '2026-06-02')).toBe('');

@@ -832,13 +832,28 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
                 <Text>
                   {'Gewählt: '}
                   <Liste personen={z.gewaehlt} ctx={ctx} />
+                  {z.angenommen.length > 0 && ', '}
+                  {z.angenommen.map((g, i) => (
+                    <Fragment key={g.id}>
+                      {i > 0 && ', '}
+                      <Liste personen={[g]} ctx={ctx} />
+                      {' nimmt die Wahl an'}
+                    </Fragment>
+                  ))}
+                  {z.angenommen.length > 0 && '.'}
                 </Text>
               )
             )}
             {z.abgelehnt.length > 0 && (
               <Text>
-                {'Nimmt die Wahl nicht an: '}
-                <Liste personen={z.abgelehnt} ctx={ctx} />
+                {z.abgelehnt.map((g, i) => (
+                  <Fragment key={g.id}>
+                    {i > 0 && ', '}
+                    <Liste personen={[g]} ctx={ctx} />
+                    {' nimmt die Wahl nicht an'}
+                  </Fragment>
+                ))}
+                {'.'}
               </Text>
             )}
             {(z.anwesend || z.nichtBeschlussfaehig) && (
@@ -921,6 +936,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
     case 'bausteinEm': {
       const z = emZeilen(daten, ctx.verlauf.bausteine[id]);
       const p = z.sub ? ctx.person(z.sub) : null;
+      const antrag = z.antragSub ? ctx.person(z.antragSub) : null;
       return [
         ueberschrift(
           k,
@@ -938,6 +954,16 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
           </>,
         ),
         ...(z.wiederholung ? [block(<Klein>{z.wiederholung}</Klein>)] : []),
+        ...(antrag
+          ? [
+              block(
+                <Absatz>
+                  <Name p={antrag} />
+                  {' beantragt die Ehrenmitgliedschaft.'}
+                </Absatz>,
+              ),
+            ]
+          : []),
         ...(z.abstimmung
           ? [
               block(

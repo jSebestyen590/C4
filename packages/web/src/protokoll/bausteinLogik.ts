@@ -21,6 +21,8 @@ import {
   type BausteinTodoDaten,
   type BausteinTyp,
   type EventDauer,
+  eventUeberschrift,
+  eventZeitenAus,
   type EventDto,
   type EventKategorieDto,
   type ProtokollKalenderEvent,
@@ -85,6 +87,31 @@ export function eventDatumSetzen(
   if (dauer === 'eintaegig') return { ...daten, datum };
   const bis = daten.bisDatum && daten.bisDatum >= datum ? daten.bisDatum : null;
   return { ...daten, datum, bisDatum: bis ?? tageDazu(datum, Math.max(1, tage) - 1) };
+}
+
+/** The "Bis" date is offered for multi-day Kategorien and while no Kategorie is chosen. */
+export const eventZeigtBis = (dauer: EventDauer | undefined): boolean => dauer !== 'eintaegig';
+
+/** Sets the Kategorie; a single-day Kategorie has no last day, so `bisDatum` is dropped. */
+export function eventKategorieSetzen(
+  daten: BausteinEventDaten,
+  kategorieId: string | null,
+  dauer: EventDauer | undefined,
+): BausteinEventDaten {
+  return { ...daten, kategorieId, ...(eventZeigtBis(dauer) ? {} : { bisDatum: null }) };
+}
+
+/** Option label of a calendar event: the same "25. – 30.11. PP Name" as the headings. */
+export function kalenderEventLabel(
+  e: Pick<EventDto, 'anzeigeTitel' | 'beginn' | 'ende' | 'dauer' | 'kategorie'>,
+): string {
+  const zeiten = eventZeitenAus(e.dauer, e.beginn, e.ende);
+  return eventUeberschrift({
+    name: e.anzeigeTitel,
+    datum: zeiten.datum,
+    bisDatum: zeiten.bis,
+    kategorie: e.kategorie?.name,
+  });
 }
 
 /** Last day; never before the date. */
@@ -310,14 +337,17 @@ export function nichtAngetretenSetzen(
   return { ...daten, nichtAngetreten: [...new Set(subs)].slice(0, WAHL_MAX_KANDIDATEN) };
 }
 
-/** Whether the elected candidate accepts; accepting is the default and stored as no entry. */
+/**
+ * Whether the elected candidate accepts: `true` = accepts (stated in the document), `false` =
+ * declines, `null` = not recorded (no entry; counts as accepted for the result, but is not stated).
+ */
 export function annahmeSetzen(
   daten: BausteinWahlDaten,
   id: string,
-  nimmtAn: boolean,
+  nimmtAn: boolean | null,
 ): BausteinWahlDaten {
   const rest = Object.fromEntries(Object.entries(daten.annahme).filter(([k]) => k !== id));
-  return { ...daten, annahme: nimmtAn ? rest : { ...rest, [id]: false } };
+  return { ...daten, annahme: nimmtAn === null ? rest : { ...rest, [id]: nimmtAn } };
 }
 
 /** A vote with runoffs: the Wahl or the Auswahl (they share seats, votes per person and runoff rounds). */
@@ -474,6 +504,7 @@ export const todoNurEinePerson = (zustaendig: readonly TodoZustaendig[]): boolea
 export type FokusZiel =
   | 'name'
   | 'datum'
+  | 'kalender'
   | 'titel'
   | 'vorname'
   | 'nachname'
@@ -492,7 +523,13 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
   const leer = (k: string) => d[k] === null || d[k] === undefined || d[k] === '';
   switch (typ) {
     case 'bausteinEvent':
-      return leer('name') ? 'name' : leer('datum') ? 'datum' : 'text';
+      return leer('eventId')
+        ? 'kalender'
+        : leer('name')
+          ? 'name'
+          : leer('datum')
+            ? 'datum'
+            : 'text';
     case 'bausteinThema':
     case 'bausteinTodo':
       return leer('titel') ? 'titel' : 'text';
