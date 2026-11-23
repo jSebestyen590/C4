@@ -326,11 +326,16 @@ export function FinanzenRechnungDetailPage() {
         <Title order={4}>PDF</Title>
         {r.datei ? (
           <>
-            <Group gap="md">
-              <Anchor href={r.datei.url} target="_blank" rel="noreferrer">
-                {rechnungDateiname(r)} öffnen
-              </Anchor>
-            </Group>
+            <Button
+              component="a"
+              href={r.datei.url}
+              target="_blank"
+              rel="noreferrer"
+              variant="default"
+              w="fit-content"
+            >
+              {rechnungDateiname(r)} öffnen
+            </Button>
             <BelegVorschau url={r.datei.url} typ="application/pdf" name={rechnungDateiname(r)} />
           </>
         ) : (

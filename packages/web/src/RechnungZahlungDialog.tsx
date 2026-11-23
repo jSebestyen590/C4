@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import {
   RECHNUNG_ZAHLWEGE,
-  RECHNUNG_ZAHLWEG_LABELS,
   centAnzeigen,
   heuteBerlin,
   type BelegWarnungDto,
@@ -25,6 +24,8 @@ import { FeldLabel } from './InfoHinweis';
 import { StueckelungFeld } from './StueckelungFeld';
 import { ApiFehler, fehlerText } from './warenApi';
 
+const KURZ: Record<RechnungZahlweg, string> = { bank: 'Bank', bar: 'Bar', sumup: 'Karte (SumUp)' };
+
 /**
  * Records the full payment of a Rechnung: date and Zahlweg (Bank, bar into a Fach with the counted
  * notes and coins, or card via SumUp). Books the money in and moves the revenue with VAT to the
@@ -38,12 +39,12 @@ export function RechnungZahlungDialog({
   const qc = useQueryClient();
   const bargeld = useBargeld();
   const heute = heuteBerlin();
-  const [datum, setDatum] = useState(heute);
-  const [zahlweg, setZahlweg] = useState<RechnungZahlweg>('bank');
-  const [fachId, setFachId] = useState<string | null>(null);
+  const [datum, setDatumRoh] = useState(heute);
+  const [zahlweg, setZahlwegRoh] = useState<RechnungZahlweg>('bank');
+  const [fachId, setFachIdRoh] = useState<string | null>(null);
   // Money comes in: notes received (Eingang) and change given back (Abgang).
-  const [erhalten, setErhalten] = useState<Mengen>({});
-  const [zurueck, setZurueck] = useState<Mengen>({});
+  const [erhalten, setErhaltenRoh] = useState<Mengen>({});
+  const [zurueck, setZurueckRoh] = useState<Mengen>({});
   const [versucht, setVersucht] = useState(false);
   const [warnungen, setWarnungen] = useState<BelegWarnungDto[]>([]);
   const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
@@ -102,6 +103,20 @@ export function RechnungZahlungDialog({
     },
   });
 
+  // A changed input clears the error of the last attempt.
+  const neu =
+    <T,>(setze: (v: T) => void) =>
+    (v: T) => {
+      zahlen.reset();
+      setVersucht(false);
+      setze(v);
+    };
+  const setDatum = neu(setDatumRoh);
+  const setZahlweg = neu(setZahlwegRoh);
+  const setFachId = neu(setFachIdRoh);
+  const setErhalten = neu(setErhaltenRoh);
+  const setZurueck = neu(setZurueckRoh);
+
   return (
     <Modal
       opened
@@ -126,7 +141,7 @@ export function RechnungZahlungDialog({
           <Select
             label={<FeldLabel text="Zahlweg" hilfe={HILFE.rechnungen.zahlweg} />}
             allowDeselect={false}
-            data={RECHNUNG_ZAHLWEGE.map((z) => ({ value: z, label: RECHNUNG_ZAHLWEG_LABELS[z] }))}
+            data={RECHNUNG_ZAHLWEGE.map((z) => ({ value: z, label: KURZ[z] }))}
             value={zahlweg}
             onChange={(v) => v && setZahlweg(v as RechnungZahlweg)}
           />
@@ -148,14 +163,14 @@ export function RechnungZahlungDialog({
               spalten={[
                 {
                   id: 'zu',
-                  label: 'Eingang (erhalten)',
+                  label: 'Eingang',
                   value: erhalten,
                   onChange: setErhalten,
                   richtung: 'zu',
                 },
                 {
                   id: 'ab',
-                  label: 'Wechselgeld (zurückgegeben)',
+                  label: 'Wechselgeld',
                   value: zurueck,
                   onChange: setZurueck,
                   richtung: 'ab',

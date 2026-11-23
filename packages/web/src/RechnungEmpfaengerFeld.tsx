@@ -129,10 +129,12 @@ export function RechnungEmpfaengerFeld({
           {m && (
             <Text size="sm">
               <StatusName status={m.status}>{mitgliedName(m)}</StatusName>
-              {' · '}
-              <Text span size="sm" c="dimmed">
-                {m.vorname} {m.nachname}
-              </Text>
+              {`${m.vorname} ${m.nachname}`.trim() && (
+                <Text span size="sm" c="dimmed">
+                  {' · '}
+                  {`${m.vorname} ${m.nachname}`.trim()}
+                </Text>
+              )}
             </Text>
           )}
           {e && (

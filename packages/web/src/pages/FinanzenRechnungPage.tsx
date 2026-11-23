@@ -514,6 +514,32 @@ export function FinanzenRechnungPage() {
                 ?.focus();
               return;
             }
+            // Last input of the last filled row of a table: on to the empty row of that table.
+            const zeile = ziel.closest('[data-zeile]');
+            const tabelle = ziel.closest('[data-tabelle]');
+            if (
+              e.key === 'Enter' &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              zeile &&
+              tabelle &&
+              !dropdownOffen(ziel)
+            ) {
+              const felder = zeile.querySelectorAll('[data-nav]');
+              const leer = tabelle.querySelector<HTMLElement>('[data-leer] [data-nav]');
+              if (
+                felder[felder.length - 1] === ziel &&
+                leer &&
+                leer.closest('[data-zeile]') !== zeile
+              ) {
+                const naechste = zeile.nextElementSibling;
+                if (naechste?.hasAttribute('data-leer')) {
+                  e.preventDefault();
+                  leer.focus();
+                  return;
+                }
+              }
+            }
             enterWeiter(e, wurzel.current, () => void pruefenOeffnen());
           }}
         >
@@ -554,6 +580,7 @@ export function FinanzenRechnungPage() {
                   value={form.leistungBis}
                   onWert={(wert) => aendern((f) => ({ ...f, leistungBis: wert }))}
                   min={form.leistungVon || undefined}
+                  disabled={form.leistungVon === ''}
                   data-nav=""
                 />
                 <TextInput

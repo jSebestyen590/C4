@@ -109,13 +109,13 @@ export function FinanzenRechnungenPage() {
           </Button>
         )}
       </Group>
-      <Group gap="md">
-        <Text size="sm">
-          <Link to="/finanzen/rechnungsempfaenger">Empfänger</Link>
-        </Text>
-        <Text size="sm">
-          <Link to="/finanzen/rechnungen/einstellungen">Einstellungen</Link>
-        </Text>
+      <Group gap="xs">
+        <Button component={Link} to="/finanzen/rechnungsempfaenger" variant="subtle">
+          Empfänger
+        </Button>
+        <Button component={Link} to="/finanzen/rechnungen/einstellungen" variant="subtle">
+          Einstellungen
+        </Button>
       </Group>
       {rechnungen.data && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
