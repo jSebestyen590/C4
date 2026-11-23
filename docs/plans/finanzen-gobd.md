@@ -38,8 +38,8 @@ Weitere Festlegungen (vom Planer, ohne Rückfrage):
 `id text PK`, `monat date` (Erster des Monats), `bis_seq bigint` (höchste `seq` beim Festschreiben, auch Buchungen
 späterer Monate), `kopf_hash text` (Hash bei `bis_seq`), `anzahl integer` (Buchungen mit Datum im Monat),
 `export_schluessel text`, `festgeschrieben_von text` (sub), `festgeschrieben_am timestamptz`.
-Migrationen (je ein Statement, Down-Dateien in `db/migrations/down/`): `0245_fin_festschreibungen.sql`,
-`0246_fin_festschreibungen_monat_idx.sql` (eindeutig auf `monat`, Muster 0236/0238). Drizzle in `db/schema.ts`.
+Migrationen (je ein Statement, Down-Dateien in `db/migrations/down/`): `0250_fin_festschreibungen.sql`,
+`0251_fin_festschreibungen_monat_idx.sql` (eindeutig auf `monat`, Muster 0236/0238). Drizzle in `db/schema.ts`.
 
 **Shared** (`packages/shared/src/finanzenAbschluss.ts`, mit Unit-Tests):
 - `festgeschriebenBis(monate: string[]): string | null` (letzter Tag des letzten Monats, `JJJJ-MM-TT`)
@@ -109,7 +109,7 @@ Tests: Fake-Archiv mit manipulierter Exportzeile, abweichendem Anker, zweiter Ve
 `POST /api/finanzen/datenexporte` (`finanzen:pruefen` **oder** `finanzen:verwalten`), Body `{ von, bis }`
 (Datum, Standard auf der Seite: Vorjahr). Erzeugt ein ZIP (neue Abhängigkeit `fflate` in `packages/api`, kein
 ZIP-Code von Hand), legt es unter `datenexport/<JJJJ-MM-TT-HHmmss>-<von>-<bis>.zip` ins Archiv, trägt eine Zeile in
-`fin_datenexporte` ein (nur INSERT, NurInsert-Test; Migration `0247_fin_datenexporte.sql`: `id`, `von`, `bis`,
+`fin_datenexporte` ein (nur INSERT, NurInsert-Test; Migration `0252_fin_datenexporte.sql`: `id`, `von`, `bis`,
 `schluessel`, `sha256`, `erstellt_von`, `erstellt_am`) und gibt `{ id, url }` (Presigned GET) zurück.
 `GET /api/finanzen/datenexporte` listet frühere Exporte mit frischer URL. (Kein Direkt-Download: API Gateway
 begrenzt Antworten auf 6 MB.)
