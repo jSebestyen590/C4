@@ -3,7 +3,6 @@ import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion } from '@tiptap/suggestion';
 import {
   bausteinEinfuegen,
-  imListenpunkt,
   ausserhalbBaustein,
   imVerschachtelbaren,
   slashErlaubt,
@@ -55,7 +54,6 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               query,
               steuerung.daten(),
               imVerschachtelbaren(editor.state),
-              imListenpunkt(editor.state),
               ausserhalbBaustein(editor.state),
             ),
           command: ({ editor, range, props }) => {

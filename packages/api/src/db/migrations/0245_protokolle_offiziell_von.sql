@@ -1,0 +1,2 @@
+-- Official copy of a protocol: id of the normal protocol it was copied from (no foreign key, DSQL; checked in the API). Null = normal protocol.
+ALTER TABLE protokolle ADD COLUMN IF NOT EXISTS offiziell_von text

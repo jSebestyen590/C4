@@ -1,6 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { protokollKopfLeer, type ProtokollDto, type ProtokollTeilnahmeWert } from '@c4/shared';
-import { anwesenheitUhrzeit, fehltZuBeginn, kopfNachAnwesenheit, wertVon } from './anwesenheit';
+import {
+  anwesenheitUhrzeit,
+  anwesenheitsKandidaten,
+  fehltZuBeginn,
+  kopfNachAnwesenheit,
+  wertVon,
+} from './anwesenheit';
+
+describe('anwesenheitsKandidaten', () => {
+  const p = (
+    sub: string,
+    status: 'mitglied' | 'em' | 'extern' | 'anwaerter',
+    deaktiviert = false,
+  ) => ({
+    sub,
+    username: sub,
+    vorname: '',
+    nachname: '',
+    status,
+    deaktiviert,
+  });
+  it('offers the attendance list, EMs and all active members of any status, each once', () => {
+    const teilnahme = [
+      { ...person('a', 'anwesend'), status: 'mitglied' as const, anrede: 'neutral' as const },
+    ];
+    const liste = anwesenheitsKandidaten(
+      teilnahme,
+      [{ ...p('e', 'em'), anrede: 'neutral' as const, ausgewaehlt: true }],
+      [
+        p('a', 'mitglied'),
+        p('e', 'em'),
+        p('x', 'extern'),
+        p('n', 'anwaerter'),
+        p('d', 'extern', true),
+      ],
+    );
+    expect(liste.map((x) => x.sub)).toEqual(['a', 'e', 'x', 'n']);
+    expect(liste.find((x) => x.sub === 'e')?.wert).toBe('anwesend');
+    expect(liste.find((x) => x.sub === 'x')?.status).toBe('extern');
+  });
+});
 
 const person = (sub: string, abgeleitet: ProtokollTeilnahmeWert) => ({
   sub,

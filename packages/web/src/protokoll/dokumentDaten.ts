@@ -8,6 +8,7 @@ import {
   bausteinEmDatenSchema,
   bausteinAuswahlDatenSchema,
   bausteinWahlDatenSchema,
+  type BausteinWahlDaten,
   auswahlErgebnis,
   wahlErgebnis,
   wahlRunden,
@@ -32,6 +33,7 @@ import {
   type TodoZustaendig,
   type Wiederholung,
 } from '@c4/shared';
+import type { KategorieNamen } from './kategorieNamen';
 import { wiederholungText, type WiederholungArt } from './wiederholungText';
 
 // Pure derivation of the finished document ("Dokument" view) of the minutes: header lines, opening
@@ -51,8 +53,12 @@ export interface DokumentEingabe {
   bilder?: Readonly<Record<string, string>>;
   /** An image of the view failed to load (expired URL?): the page fetches fresh URLs. */
   bilderErneuern?: () => void;
+  /** Kategorie names for the headings of Event / Vergangenes Event (without: no Kategorie in the heading). */
+  kategorien?: KategorieNamen;
   /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
   ich?: { sub: string; status: MitgliedStatus } | null;
+  /** Official copy: real names ("Vorname Nachname") instead of usernames, plain text instead of status colors. */
+  offiziell?: boolean;
 }
 
 /** The next Sitzung that counts: Berlin date, time ('' = unknown) and the calendar event, if any. */
@@ -103,6 +109,8 @@ export interface Person {
   name: string;
   status: MitgliedStatus;
   zusatz: string;
+  /** Official copy: shown as plain text, not bold in the status color. */
+  farblos?: boolean;
 }
 
 export interface Namen {
@@ -113,15 +121,26 @@ export interface Namen {
   status: MitgliedStatus;
 }
 
-export const personName = (m: Pick<Namen, 'username' | 'vorname' | 'nachname'>): string =>
-  m.username ?? (`${m.vorname} ${m.nachname}`.trim() || '–');
+export const personName = (
+  m: Pick<Namen, 'username' | 'vorname' | 'nachname'>,
+  offiziell = false,
+): string => {
+  const klar = `${m.vorname} ${m.nachname}`.trim();
+  if (offiziell) return klar || m.username || '–';
+  return m.username ?? (klar || '–');
+};
 
-const person = (m: Namen, zusatz = ''): Person => ({
+/** A member of the document as `Person`; with `offiziell` the real name and no status color. */
+export const dokumentPerson = (m: Namen, offiziell = false, zusatz = ''): Person => ({
   sub: m.sub,
-  name: personName(m),
+  name: personName(m, offiziell),
   status: m.status,
   zusatz,
+  ...(offiziell ? { farblos: true } : {}),
 });
+
+const person = (m: Namen, zusatz = '', offiziell = false): Person =>
+  dokumentPerson(m, offiziell, zusatz);
 
 /** Everybody who can be looked up by `sub` in the document: attendance list, EMs, then all members. */
 export const alleMitglieder = (
@@ -183,13 +202,13 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
   };
   const da = teilnahme.filter((t) => t.wert === 'anwesend');
   const mitglieder = (liste: typeof teilnahme) =>
-    liste.filter((t) => t.status === 'mitglied').map((t) => person(t, zusatz(t)));
+    liste.filter((t) => t.status === 'mitglied').map((t) => person(t, zusatz(t), e.offiziell));
   const fehlend = (wert: ProtokollTeilnahmeWert) => teilnahme.filter((t) => t.wert === wert);
 
   const alle: Namen[] = [...e.teilnahme, ...e.ems];
   const finde = (sub: string | null): Person | null => {
     const m = sub === null ? undefined : alle.find((x) => x.sub === sub);
-    return m ? person(m) : null;
+    return m ? person(m, '', e.offiziell) : null;
   };
   const verlauf = anwesenheitsVerlauf(e.inhalt, {
     art: e.sitzung.art,
@@ -202,9 +221,11 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     anwesende: mitglieder(da),
     entschuldigt: mitglieder(fehlend('entschuldigt')),
     unentschuldigt: mitglieder(fehlend('unentschuldigt')),
-    ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m)),
+    ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m, '', e.offiziell)),
     emsFreitext: e.kopf.emsFreitext.trim(),
-    anwaerter: da.filter((t) => t.status === 'anwaerter').map((t) => person(t, zusatz(t))),
+    anwaerter: da
+      .filter((t) => t.status === 'anwaerter')
+      .map((t) => person(t, zusatz(t), e.offiziell)),
     gaeste: e.kopf.gaeste.trim(),
     leitung: finde(e.kopf.sitzungsleitung),
     protokoll: finde(e.kopf.protokollfuehrung),
@@ -411,6 +432,11 @@ export interface WahlZeilen {
   gewaehlt: WahlKandidat[];
   /** Elected but declined. */
   abgelehnt: WahlKandidat[];
+  /**
+   * Elected and declined candidates together in vote order (the order they would have been elected
+   * in had they all accepted); `nimmtAn` is false for a decline.
+   */
+  reihenfolge: { kandidat: WahlKandidat; nimmtAn: boolean }[];
   /** Proposed persons (subs) who do not run. */
   nichtAngetreten: string[];
   /** A tie is still open: no result yet. */
@@ -418,6 +444,43 @@ export interface WahlZeilen {
   /** "(13 von 25 Mitgliedern anwesend)" or '' */
   anwesend: string;
   nichtBeschlussfaehig: boolean;
+}
+
+/** Ids in vote order: main-round votes, then the runoff rounds in turn (descending); stable otherwise. */
+function stimmenReihenfolge(w: BausteinWahlDaten, ids: readonly string[]): string[] {
+  const nachId = new Map(w.kandidaten.map((k) => [k.id, k]));
+  const stimmen = (id: string, runde: number) =>
+    runde < 0 ? (nachId.get(id)?.stimmen ?? 0) : (w.stichwahlen[runde]?.stimmen[id] ?? 0);
+  return [...ids].sort((a, b) => {
+    for (let r = -1; r < w.stichwahlen.length; r++) {
+      const d = stimmen(b, r) - stimmen(a, r);
+      if (d !== 0) return d;
+    }
+    return 0;
+  });
+}
+
+/** A sentence of the Wahl text: a run of elected persons or one person who declined. */
+export type WahlAbschnitt =
+  { art: 'gewaehlt'; personen: WahlKandidat[] } | { art: 'abgelehnt'; person: WahlKandidat };
+
+/**
+ * The Wahl text in vote order: consecutive elected persons form one "Gewählt: A, B, A nimmt die
+ * Wahl an, B nimmt die Wahl an." sentence, each decliner "Y nimmt die Wahl nicht an." at its place.
+ * While a tie is open the elected are not stated, only the declines.
+ */
+export function wahlAbschnitte(z: Pick<WahlZeilen, 'reihenfolge' | 'offen'>): WahlAbschnitt[] {
+  const aus: WahlAbschnitt[] = [];
+  for (const { kandidat, nimmtAn } of z.reihenfolge) {
+    if (!nimmtAn) {
+      aus.push({ art: 'abgelehnt', person: kandidat });
+    } else if (!z.offen) {
+      const letzter = aus.at(-1);
+      if (letzter?.art === 'gewaehlt') letzter.personen.push(kandidat);
+      else aus.push({ art: 'gewaehlt', personen: [kandidat] });
+    }
+  }
+  return aus;
 }
 
 /** Lines of a `bausteinWahl`; null when the data are invalid. */
@@ -453,6 +516,10 @@ export function wahlZeilen(
     giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
+    reihenfolge: stimmenReihenfolge(w, [...ergebnis.gewaehlt, ...ergebnis.abgelehnt]).flatMap(
+      (id) =>
+        von(id, 0).map((kandidat) => ({ kandidat, nimmtAn: !ergebnis.abgelehnt.includes(id) })),
+    ),
     nichtAngetreten: w.nichtAngetreten,
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',
@@ -522,6 +589,8 @@ export interface EmZeilen {
   /** Free-text name (used when the Baustein has no `sub`), trimmed. */
   name: string;
   sub: string | null;
+  /** Person (sub) who moves the vote; null without a vote or when not set. */
+  antragSub: string | null;
   /** "Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)" or '' without a vote. */
   abstimmung: string;
   nichtBeschlussfaehig: boolean;
@@ -531,7 +600,14 @@ export interface EmZeilen {
 export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined): EmZeilen {
   const d = bausteinEmDatenSchema.safeParse(daten);
   if (!d.success) {
-    return { wiederholung: '', name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+    return {
+      wiederholung: '',
+      name: '',
+      sub: null,
+      antragSub: null,
+      abstimmung: '',
+      nichtBeschlussfaehig: false,
+    };
   }
   const { sub, name, abstimmung: a } = d.data;
   const anwesend = stand ? ` (${anwesendText(stand)})` : '';
@@ -539,6 +615,7 @@ export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined)
     wiederholung: wiederholungZeile('Abstimmung', d.data.wiederholung),
     name: name.trim(),
     sub,
+    antragSub: a ? (d.data.antragSub ?? null) : null,
     abstimmung: a ? `Abstimmung: ${stimmenText(a)}${anwesend}` : '',
     nichtBeschlussfaehig: a !== null && stand !== undefined && !stand.beschlussfaehig,
   };
@@ -552,10 +629,49 @@ export function istLeererAbsatz(k: ProtokollKnoten): boolean {
   );
 }
 
-/** The nodes without trailing empty paragraphs. */
+/** A bullet / ordered list whose items hold nothing but empty paragraphs (e.g. the initial empty bullet). */
+export function istLeereListe(k: ProtokollKnoten): boolean {
+  return (
+    (k.type === 'bulletList' || k.type === 'orderedList') &&
+    (k.content ?? []).every((item) =>
+      (item.content ?? []).every((c) => istLeererAbsatz(c) || istLeereListe(c)),
+    )
+  );
+}
+
+/** A list item of empty paragraphs only (no text, no sub list, no Baustein): never shown as a bullet. */
+export function istLeererPunkt(k: ProtokollKnoten): boolean {
+  const kinder = k.content ?? [];
+  return k.type === 'listItem' && kinder.every(istLeererAbsatz);
+}
+
+/**
+ * A list item that only carries a block: an empty first paragraph, then a Baustein or quote (a block
+ * inserted into the first item of a nested list). Shown without bullet and without the empty line.
+ */
+export function istBlockPunkt(k: ProtokollKnoten): boolean {
+  const [erstes, zweites] = k.content ?? [];
+  return (
+    k.type === 'listItem' &&
+    !!erstes &&
+    istLeererAbsatz(erstes) &&
+    !!zweites &&
+    zweites.type !== 'paragraph' &&
+    zweites.type !== 'bulletList' &&
+    zweites.type !== 'orderedList'
+  );
+}
+
+const istLeer = (k: ProtokollKnoten): boolean => istLeererAbsatz(k) || istLeereListe(k);
+
+/**
+ * The nodes without trailing empty paragraphs / empty lists and without leading empty lists (the empty
+ * bullet a Baustein starts with). Leading empty paragraphs stay.
+ */
 export function ohneLeereEnden(knoten: readonly ProtokollKnoten[] | undefined): ProtokollKnoten[] {
   const liste = [...(knoten ?? [])];
-  while (liste.length > 0 && istLeererAbsatz(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeer(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeereListe(liste[0]!)) liste.shift();
   return liste;
 }
 
@@ -572,12 +688,13 @@ export const istQuellenzeile = (k: ProtokollKnoten): boolean =>
  * File name offered when printing the minutes to PDF ("YYYY-MM-DD_Sitzungsname"): browsers take it from
  * the page title, which also becomes the PDF's title. Characters not allowed in file names are dropped.
  */
-export function druckTitel(sitzung: { titel: string; beginn: string }): string {
+export function druckTitel(sitzung: { titel: string; beginn: string }, offiziell = false): string {
   const name = sitzung.titel
     .replace(/[\\/:*?"<>|]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     // No trailing dot: "Sitzung 04.11." would end up as "….pdf" with two dots.
     .replace(/[.\s]+$/, '');
-  return name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
+  const basis = name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
+  return offiziell ? `${basis}_offiziell` : basis;
 }

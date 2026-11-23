@@ -17,6 +17,7 @@ import {
   ohneLeereEnden,
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
+import { bausteinKategorie, type KategorieNamen } from './kategorieNamen';
 
 // Outline of the document view ("Dokument"): the headings only (sections, Bausteine shown as a
 // heading, headings typed in the free text), not votes, attendance lines or lists. Derived from the
@@ -77,12 +78,20 @@ export function personSuffix(
 export function bausteinUeberschrift(
   k: ProtokollKnoten,
   personName: (sub: string) => string | null,
+  kategorien?: KategorieNamen,
 ): string | null {
   const daten: unknown = k.attrs?.daten;
   switch (k.type) {
     case 'bausteinEvent': {
       const d = bausteinEventDatenSchema.safeParse(daten);
-      return (d.success ? eventUeberschrift(d.data) : '') || 'Event';
+      return (
+        (d.success
+          ? eventUeberschrift({
+              ...d.data,
+              kategorie: bausteinKategorie(k.type, d.data, kategorien),
+            })
+          : '') || 'Event'
+      );
     }
     case 'bausteinThema': {
       const d = bausteinThemaDatenSchema.safeParse(daten);
@@ -90,7 +99,14 @@ export function bausteinUeberschrift(
     }
     case 'bausteinVergangenesEvent': {
       const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
-      return (d.success ? vergangenesUeberschrift(d.data) : '') || 'Vergangenes Event';
+      return (
+        (d.success
+          ? vergangenesUeberschrift({
+              ...d.data,
+              kategorie: bausteinKategorie(k.type, d.data, kategorien),
+            })
+          : '') || 'Vergangenes Event'
+      );
     }
     case 'bausteinAnwaerter': {
       const d = bausteinAnwaerterDatenSchema.safeParse(daten);
@@ -114,6 +130,7 @@ export function bausteinUeberschrift(
 export function dokumentUeberschriften(
   inhalt: ProtokollDokument,
   personName: (sub: string) => string | null,
+  kategorien?: KategorieNamen,
 ): DokumentGliederungDaten {
   const eintraege: DokumentUeberschrift[] = [];
   const ids = new Map<ProtokollKnoten, string>();
@@ -130,7 +147,7 @@ export function dokumentUeberschriften(
     if (k.type === 'heading') {
       neu(k, unterEbene(eltern, eigeneUeberschriftSchritte(k.attrs?.level)), knotenText(k));
     } else {
-      const titel = bausteinUeberschrift(k, personName);
+      const titel = bausteinUeberschrift(k, personName, kategorien);
       if (titel !== null) {
         hier = unterEbene(eltern);
         neu(k, hier, titel);

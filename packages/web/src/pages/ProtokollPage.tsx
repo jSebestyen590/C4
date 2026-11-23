@@ -1,8 +1,11 @@
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
+  Box,
   Button,
+  Drawer,
   Group,
   Loader,
   SegmentedControl,
@@ -10,8 +13,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
+  IconChevronLeft,
   IconCloudUpload,
   IconLock,
   IconLockOpen,
@@ -30,6 +35,7 @@ import {
 import { AktionsMenue } from '../AktionsMenue';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
+import { protokollLink, useOffiziellesProtokollAnlegen } from '../protokollDaten';
 import { PROTOKOLL_STATUS_LABELS } from '../i18n';
 import { tagAnzeigen } from '../kalenderZeit';
 import { mitgliedName } from '../mitglied';
@@ -47,6 +53,7 @@ import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht'
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
 import { KonfliktHinweis } from '../protokoll/KonfliktHinweis';
 import { SperreFreiHinweis, SperreHinweis } from '../protokoll/SperreHinweis';
+import { useKategorieNamen } from '../protokoll/useKategorieNamen';
 import { ProtokollEditor } from '../protokoll/ProtokollEditor';
 import { useProtokollBilder } from '../protokoll/bilderDaten';
 import { useProtokollPdfSpeichern } from '../protokoll/usePdfSpeichern';
@@ -115,11 +122,11 @@ function AbschliessenAktionen({
 }: Readonly<{
   /** Whether the draft is saved (null = still saving). */
   gespeichert: boolean | null;
-  q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isPending' | 'isError'>;
+  q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isLoading' | 'isError'>;
   auswahl: readonly string[];
   onAuswahl: (ids: string[]) => void;
 }>) {
-  if (gespeichert === null || (gespeichert === true && q.isPending)) {
+  if (gespeichert === null || (gespeichert === true && q.isLoading)) {
     return (
       <Group gap="xs">
         <Loader size="sm" aria-label="Aktionen werden geladen" />
@@ -185,12 +192,13 @@ function ProtokollAnsicht({
   }, [mitgliederListe, eigeneSub]);
   const navigate = useNavigate();
   const darfSchreiben = can('protokolle:schreiben');
+  const offiziell = dto.offiziellVon !== null;
   const entwurf = dto.status === 'entwurf';
   // Writers edit a draft only while this tab holds the edit lock; without it they see the document.
   const editierbar = darfSchreiben && entwurf && sperre.art === 'eigen';
   // Closing only makes sense once the Sitzung has begun (the API enforces it too).
   const [geoeffnetUm] = useState(() => Date.now());
-  const nochNichtBegonnen = Date.parse(dto.sitzung.beginn) > geoeffnetUm;
+  const nochNichtBegonnen = !offiziell && Date.parse(dto.sitzung.beginn) > geoeffnetUm;
   const sperrePrueft =
     darfSchreiben && entwurf && (sperre.art === 'pruefe' || sperre.art === 'inaktiv');
 
@@ -204,17 +212,38 @@ function ProtokollAnsicht({
   // Binding votes that do not match the members present: they block closing.
   const stimmenProbleme = useMemo(
     () =>
-      stimmenPruefen(inhalt, {
-        art: dto.sitzung.art,
-        teilnahme,
-        ems: ems.filter((e) => e.ausgewaehlt),
-        personName: (sub) => {
-          const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
-          return m ? mitgliedName(m) : undefined;
-        },
-      }).problems,
-    [inhalt, dto.sitzung.art, teilnahme, ems],
+      offiziell
+        ? []
+        : stimmenPruefen(inhalt, {
+            art: dto.sitzung.art,
+            teilnahme,
+            ems: ems.filter((e) => e.ausgewaehlt),
+            personName: (sub) => {
+              const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
+              return m ? mitgliedName(m) : undefined;
+            },
+          }).problems,
+    [inhalt, dto.sitzung.art, teilnahme, ems, offiziell],
   );
+  const kategorien = useKategorieNamen(dto.sitzung.beginn);
+  // The document view and the preview drawer of the editor show the same live data.
+  const dokumentEingabe = useMemo(
+    () => ({
+      inhalt,
+      kopf,
+      ...mitLiveKopf(dto, kopf),
+      sitzung: dto.sitzung,
+      naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
+      mitglieder: mitgliederListe,
+      ich,
+      bilder: bilder.urls,
+      bilderErneuern: bilder.erneuern,
+      kategorien,
+      offiziell,
+    }),
+    [inhalt, kopf, dto, mitgliederListe, ich, bilder.urls, bilder.erneuern, kategorien, offiziell],
+  );
+  const [vorschauOffen, vorschau] = useDisclosure(false);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -227,16 +256,17 @@ function ProtokollAnsicht({
   const [entwurfGespeichert, setEntwurfGespeichert] = useState<boolean | null>(null);
   const dialogAktionen = useProtokollAktionen(
     dto.id,
-    dialog === 'abschliessen' && entwurfGespeichert === true,
+    dialog === 'abschliessen' && entwurfGespeichert === true && !offiziell,
   );
   // The user's choice; until they touch it the executable open Aktionen are checked.
   const [eigeneAuswahl, setEigeneAuswahl] = useState<string[] | null>(null);
   const gewaehlteAktionen =
     eigeneAuswahl ?? (dialogAktionen.data ? vorgewaehlteAktionen(dialogAktionen.data) : []);
   const aktionenLaden =
-    entwurfGespeichert === null || (entwurfGespeichert === true && dialogAktionen.isPending);
+    entwurfGespeichert === null || (entwurfGespeichert === true && dialogAktionen.isLoading);
   // The Aktionen card of a closed protocol (writers only).
-  const kartenAktionen = useProtokollAktionen(dto.id, darfSchreiben && !entwurf);
+  const kartenAktionen = useProtokollAktionen(dto.id, darfSchreiben && !entwurf && !offiziell);
+  const offiziellAnlegen = useOffiziellesProtokollAnlegen();
 
   const { zustand, aendern, jetzt } = useProtokollAutosave({
     id: dto.id,
@@ -276,7 +306,7 @@ function ProtokollAnsicht({
     if (druckAuftrag > 0) window.print();
   }, [druckAuftrag]);
   // Printing to PDF proposes the page title as file name (and PDF title): "2026-11-04_Sitzung".
-  const druckName = druckTitel(dto.sitzung);
+  const druckName = druckTitel(dto.sitzung, offiziell);
   useEffect(() => {
     let vorher = document.title;
     const vor = () => {
@@ -334,6 +364,15 @@ function ProtokollAnsicht({
     setTimeout(() => zuBausteinIdScrollen(id), 350);
   };
 
+  const offiziellErstellen = async () => {
+    try {
+      const neuId = await offiziellAnlegen.mutateAsync(dto.id);
+      void navigate(protokollLink(neuId));
+    } catch (e) {
+      fehlerAnzeigen(e);
+    }
+  };
+
   const wiederOeffnen = async () => {
     try {
       await statusSetzen('entwurf');
@@ -358,9 +397,16 @@ function ProtokollAnsicht({
       </div>
       <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs" data-druck="aus">
         <Stack gap={2} style={{ minWidth: 0 }}>
-          <Title order={2} style={{ overflowWrap: 'anywhere' }}>
-            {dto.sitzung.titel}
-          </Title>
+          <Group gap="xs" align="center">
+            <Title order={2} style={{ overflowWrap: 'anywhere' }}>
+              {dto.sitzung.titel}
+            </Title>
+            {offiziell && (
+              <Badge color="indigo" variant="light">
+                Offiziell
+              </Badge>
+            )}
+          </Group>
           <Anchor
             component={Link}
             to={`/kalender/events/${encodeURIComponent(dto.sitzung.id)}`}
@@ -416,6 +462,31 @@ function ProtokollAnsicht({
             ]}
           />
         </Group>
+      )}
+      {offiziell && dto.offiziellVon && (
+        <Anchor component={Link} to={protokollLink(dto.offiziellVon)} size="sm" data-druck="aus">
+          Zum Original-Protokoll
+        </Anchor>
+      )}
+      {!offiziell && !entwurf && dto.offiziellId && (
+        <Anchor component={Link} to={protokollLink(dto.offiziellId)} size="sm" data-druck="aus">
+          Offizielles Protokoll öffnen
+        </Anchor>
+      )}
+      {darfSchreiben && !offiziell && !entwurf && !dto.offiziellId && (
+        <Stack gap="xs" align="flex-start" data-druck="aus">
+          <Button
+            variant="default"
+            loading={offiziellAnlegen.isPending}
+            onClick={() => void offiziellErstellen()}
+          >
+            Offizielles Protokoll erstellen
+          </Button>
+          <Text size="sm" c="dimmed">
+            Erstellt eine Kopie, die du bearbeiten kannst. Dokument und PDF zeigen darin Klarnamen
+            statt Spitznamen und keine Statusfarben.
+          </Text>
+        </Stack>
       )}
       {darfSchreiben && entwurf && nochNichtBegonnen && (
         <Text size="sm" c="dimmed" data-druck="aus">
@@ -511,20 +582,46 @@ function ProtokollAnsicht({
         />
       )}
       {sperrePrueft && <Loader m="md" aria-label="Bearbeitung wird vorbereitet" />}
-      {dokumentSichtbar && !sperrePrueft && (
-        <ProtokollDokumentAnsicht
-          eingabe={{
-            inhalt,
-            kopf,
-            ...mitLiveKopf(dto, kopf),
-            sitzung: dto.sitzung,
-            naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
-            mitglieder: mitgliederListe,
-            ich,
-            bilder: bilder.urls,
-            bilderErneuern: bilder.erneuern,
-          }}
-        />
+      {dokumentSichtbar && !sperrePrueft && <ProtokollDokumentAnsicht eingabe={dokumentEingabe} />}
+      {editierbar && !dokumentSichtbar && !sperrePrueft && (
+        <>
+          <Box
+            data-druck="aus"
+            style={{
+              position: 'fixed',
+              top: '50%',
+              right: 'env(safe-area-inset-right)',
+              transform: 'translateY(-50%)',
+              zIndex: 100,
+            }}
+          >
+            <ActionIcon
+              variant="default"
+              size={48}
+              aria-label="Dokument-Vorschau"
+              title="Dokument-Vorschau"
+              onClick={vorschau.open}
+              style={{
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0,
+                boxShadow: 'var(--mantine-shadow-md)',
+              }}
+            >
+              <IconChevronLeft size={24} />
+            </ActionIcon>
+          </Box>
+          <Drawer
+            opened={vorschauOffen}
+            onClose={vorschau.close}
+            position="right"
+            size="min(52rem, 100%)"
+            title="Dokument-Vorschau"
+            zIndex={300}
+            padding="sm"
+          >
+            <ProtokollDokumentAnsicht eingabe={dokumentEingabe} ohneGliederung />
+          </Drawer>
+        </>
       )}
 
       {dialog === 'abschliessen' && (

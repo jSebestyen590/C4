@@ -89,6 +89,26 @@ export function useProtokollAnlegen() {
   });
 }
 
+/** Creates the official copy of a closed protocol; resolves to the id of the copy. */
+export function useOffiziellesProtokollAnlegen() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    meta: { eigeneFehlermeldung: true },
+    mutationFn: async (id: string) => {
+      const res = await api.protokolle[':id'].offiziell.$post({ param: { id } });
+      await pruefen(res);
+      return ((await res.json()) as { id: string }).id;
+    },
+    onSuccess: async (_id, quelleId) => {
+      await Promise.all([
+        listenInvalidieren(qc),
+        qc.invalidateQueries({ queryKey: protokollKeys.detail(quelleId) }),
+      ]);
+    },
+  });
+}
+
 /**
  * Random id of this browser tab, kept in memory for the lifetime of the page: the edit lock belongs to
  * a tab, so the same person in a second tab or on another device is locked out, too.

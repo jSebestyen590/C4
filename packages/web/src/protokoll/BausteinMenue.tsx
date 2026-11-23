@@ -5,7 +5,6 @@ import { useState } from 'react';
 import {
   ausserhalbBaustein,
   bausteinEinfuegen,
-  imListenpunkt,
   imVerschachtelbaren,
   zitatEinfuegen,
 } from './einfuegen';
@@ -43,7 +42,6 @@ export function BausteinMenue({
   const [suche, setSuche] = useState('');
   // Inside an Abstimmung / Meinungsbild neither of them can be inserted.
   const [ohneVerschachtelt, setOhneVerschachtelt] = useState(false);
-  const [ohneZitat, setOhneZitat] = useState(false);
   // At the top level a Todo cannot be inserted (only into the notes of another Baustein).
   const [ohneTodo, setOhneTodo] = useState(false);
 
@@ -78,7 +76,6 @@ export function BausteinMenue({
         width={300}
         onOpen={() => {
           setOhneVerschachtelt(imVerschachtelbaren(editor.state));
-          setOhneZitat(imListenpunkt(editor.state));
           setOhneTodo(ausserhalbBaustein(editor.state));
         }}
       >
@@ -95,7 +92,7 @@ export function BausteinMenue({
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
-          {bausteinEintraege('', ohneVerschachtelt, ohneZitat, ohneTodo).map((e) => (
+          {bausteinEintraege('', ohneVerschachtelt, ohneTodo).map((e) => (
             <Menu.Item
               key={e.schluessel}
               leftSection={<SlashIcon symbol={e.symbol} />}

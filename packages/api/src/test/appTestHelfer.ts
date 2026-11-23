@@ -823,6 +823,9 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       schluessel: `protokollbilder/${protokollId}/00000000-0000-4000-8000-000000000001.jpg`,
     })),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
+    kopieren: vi.fn<
+      (vonId: string, nachId: string, schluessel: readonly string[]) => Promise<void>
+    >(async () => {}),
     loeschen: vi.fn<(protokollId: string) => Promise<void>>(async () => {}),
   };
   /** Fake archive objects: every `exportSchreiben` adds a version; `pruefsummen` overrides a file's checksum. */

@@ -29,8 +29,12 @@ function StimmenZeilen({ id }: Readonly<{ id: string }>) {
 /**
  * Under an Abstimmung (or the vote of a Neues EM / Aufnahme) and under a Wahl: who was present at
  * that point, the quorum, and whether the vote count matches the members present (needed to close).
+ * Without a vote (`mitAbstimmung` false, a Neues EM without Abstimmung) only the head count.
  */
-export function BeschlussHinweis({ id }: Readonly<{ id: string }>) {
+export function BeschlussHinweis({
+  id,
+  mitAbstimmung = true,
+}: Readonly<{ id: string; mitAbstimmung?: boolean }>) {
   const { verlauf } = useProtokollKontext();
   const stand = verlauf.bausteine[id];
   if (!stand) return null;
@@ -41,12 +45,12 @@ export function BeschlussHinweis({ id }: Readonly<{ id: string }>) {
           Anwesend: {stand.anwesend} von {mitgliedernText(stand.gesamt)}
         </Text>
       )}
-      {stand.gesamt > 0 && !stand.beschlussfaehig && (
+      {mitAbstimmung && stand.gesamt > 0 && !stand.beschlussfaehig && (
         <Text size="sm" fw={600} c="red">
           Nicht beschlussfähig
         </Text>
       )}
-      <StimmenZeilen id={id} />
+      {mitAbstimmung && <StimmenZeilen id={id} />}
     </Stack>
   );
 }

@@ -36,17 +36,21 @@ export function createFakeProtokolleStore() {
       return p && { ...p };
     },
     async nachEvent(eventId) {
-      const p = [...liste.values()].find((x) => x.eventId === eventId);
+      const p = [...liste.values()].find((x) => x.eventId === eventId && x.fassung === 'normal');
       return p && { ...p };
     },
     async anlegen(daten, von) {
-      if ([...liste.values()].some((p) => p.eventId === daten.eventId))
+      const offiziellVon = daten.offiziellVon ?? null;
+      const fassung = offiziellVon ? 'offiziell' : 'normal';
+      if ([...liste.values()].some((p) => p.eventId === daten.eventId && p.fassung === fassung))
         throw new ProtokollExistiert();
-      const id = `p${naechste++}`;
+      const id = daten.id ?? `p${naechste++}`;
       const jetzt = new Date();
       liste.set(id, {
         id,
         eventId: daten.eventId,
+        fassung,
+        offiziellVon,
         inhalt: daten.inhalt,
         kopf: daten.kopf,
         status: 'entwurf',

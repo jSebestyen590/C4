@@ -1,4 +1,6 @@
-import { Anchor, Button, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { ZeitFeld } from '../ZeitFeld';
+import { DatumFeld } from '../DatumFeld';
+import { Anchor, Button, Paper, Select, SimpleGrid, Stack, Text } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
@@ -98,6 +100,7 @@ export function NaechsteSitzungKarte({
           <Stack gap="xs">
             {optionen.length > 0 && (
               <Select
+                allowDeselect={false}
                 size="md"
                 label="Sitzung aus dem Kalender"
                 placeholder="Sitzung auswählen"
@@ -119,23 +122,16 @@ export function NaechsteSitzungKarte({
               />
             )}
             <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="xs">
-              <TextInput
-                type="date"
-                size="md"
+              <DatumFeld
+                tippbar
                 label="Datum"
                 value={von.datum}
-                onChange={(e) =>
-                  setzen({ eventId: null, datum: e.currentTarget.value, uhrzeit: von.uhrzeit })
-                }
+                onWert={(datum) => setzen({ eventId: null, datum, uhrzeit: von.uhrzeit })}
               />
-              <TextInput
-                type="time"
-                size="md"
+              <ZeitFeld
                 label="Uhrzeit"
                 value={von.uhrzeit}
-                onChange={(e) =>
-                  setzen({ eventId: null, datum: von.datum, uhrzeit: e.currentTarget.value })
-                }
+                onWert={(uhrzeit) => setzen({ eventId: null, datum: von.datum, uhrzeit })}
               />
             </SimpleGrid>
             {von.datum && (

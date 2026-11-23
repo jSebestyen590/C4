@@ -138,6 +138,15 @@
   margin-left: 1.6em;
 }
 
+/* A list item that only carries a block (empty first line, then a Baustein or quote): no bullet. */
+.pk-dok li.pk-dok-ohne-punkt {
+  list-style: none;
+}
+
+.pk-dok li .pk-dok-innen {
+  margin-left: 0;
+}
+
 .pk-dok-warnung {
   color: var(--mantine-color-red-7);
   font-weight: 700;

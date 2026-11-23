@@ -1,3 +1,4 @@
+import type { KategorieNamen } from './kategorieNamen';
 import { Box, Text, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
@@ -22,7 +23,7 @@ import {
   type GliederungEintrag,
   type GliederungZeile,
 } from './gliederung';
-import { SlashIcon } from './symbole';
+import { bausteinFarbeCss, SlashIcon } from './symbole';
 
 /** Space above the editor content that the sticky app header and toolbar cover. */
 const SCROLL_ABSTAND = 136;
@@ -74,16 +75,22 @@ const zu = (z: GliederungZeile): boolean => 'eingeklappt' in z && z.eingeklappt;
 export function Gliederung({
   editor,
   personName,
+  kategorien,
   onGewaehlt,
 }: Readonly<{
   editor: Editor;
+  /** Kategorie names for the titles of Event and Vergangenes Event. */
+  kategorien?: KategorieNamen;
   /** Name shown for a person (`sub`). */
   personName: (sub: string) => string | undefined;
   /** Called after an entry was chosen (the drawer closes). */
   onGewaehlt?: () => void;
 }>) {
   const doc = useEditorState({ editor, selector: (s) => s.editor.state.doc });
-  const baum = useMemo(() => gliederungBauen(doc, personName), [doc, personName]);
+  const baum = useMemo(
+    () => gliederungBauen(doc, personName, kategorien),
+    [doc, personName, kategorien],
+  );
   // Id of the Baustein being dragged: it decides which rows exist (notes slots, hidden nested rows).
   const [gezogenId, setGezogenId] = useState<string | null>(null);
   const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
@@ -95,7 +102,10 @@ export function Gliederung({
       if (!destination) return;
       // Derived from the document and the dragged id, not from render state: the responder may still
       // hold the closure of an earlier render (then the notes slots would count as collapsed).
-      const aktuell = gliederungZeilen(gliederungBauen(editor.state.doc, personName), draggableId);
+      const aktuell = gliederungZeilen(
+        gliederungBauen(editor.state.doc, personName, kategorien),
+        draggableId,
+      );
       const ziel = gliederungZiel(aktuell, draggableId, destination.index);
       if (!ziel) return;
       const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
@@ -127,7 +137,10 @@ export function Gliederung({
           gap: 'var(--mantine-spacing-xs)',
         }}
       >
-        <Box component="span" c="dimmed" style={{ display: 'flex', flexShrink: 0 }}>
+        <Box
+          component="span"
+          style={{ display: 'flex', flexShrink: 0, color: bausteinFarbeCss(e.typ) }}
+        >
           <SlashIcon symbol={e.symbol} size={18} />
         </Box>
         <Text size="sm" truncate style={{ minWidth: 0 }}>

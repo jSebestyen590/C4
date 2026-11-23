@@ -9,7 +9,7 @@ import {
   useEditorState,
   type ReactNodeViewProps,
 } from '@tiptap/react';
-import { useState, type ComponentType, type ReactElement } from 'react';
+import { useState, type ComponentType, type CSSProperties, type ReactElement } from 'react';
 import {
   BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
@@ -32,7 +32,7 @@ import {
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { AnwesenheitAnsicht } from './AnwesenheitBaustein';
 import { BeschlussHinweis, MeinungsbildHinweis } from './BeschlussHinweis';
-import { FORMULAR_ATTRIBUT } from './formular';
+import { FORMULAR_ATTRIBUT, formularMausTaste } from './formular';
 import {
   AnwaerterFormular,
   AufnahmeFormular,
@@ -47,14 +47,16 @@ import {
   VergangenesEventFormular,
   type FormularProps,
 } from './BausteinFormulare';
-import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, SlashIcon } from './symbole';
+import { BAUSTEIN_SYMBOL, BAUSTEIN_TITEL, bausteinFarbeCss, SlashIcon } from './symbole';
 import { BildKnoten } from './BildKnoten';
+import { fokusSetzen } from './einfuegen';
+import { istLetztesFeld } from './tabFolge';
 
 /** Text content allowed in the free text of every Baustein. */
 const TEXT = 'paragraph | heading | bulletList | orderedList | blockquote | bild';
 /**
- * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl (group
- * `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
+ * Free text of a Baustein that can hold others: text, an Abstimmung / Meinungsbild / Wahl and
+ * erscheint / geht (group `innerbaustein`) and a Thema (group `thema`, any depth) at the cursor. The votes take plain text
  * only, so Bausteine nest only through Themen. The Todo (group `notizbaustein`, no `block`) stands only here,
  * never at the top level of a section.
  */
@@ -102,10 +104,24 @@ function BausteinAnsicht<T extends BausteinTyp>({
       className="protokoll-baustein"
       data-baustein={typ}
       data-id={node.attrs.id as string}
+      style={{ '--baustein-farbe': bausteinFarbeCss(typ) } as CSSProperties}
     >
       <Paper withBorder p="sm" radius="md" shadow={props.selected ? 'sm' : undefined}>
         <Stack gap="xs">
-          <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
+          <div
+            contentEditable={false}
+            {...{ [FORMULAR_ATTRIBUT]: '' }}
+            onMouseDown={formularMausTaste}
+            onKeyDown={(e) => {
+              // Tab on the last field of the form continues in the Notizen of this Baustein.
+              if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+              if (!editierbar || !istLetztesFeld(e.currentTarget, e.target as Element)) return;
+              const pos = getPos();
+              if (pos === undefined) return;
+              e.preventDefault();
+              fokusSetzen(editor, pos, 'text');
+            }}
+          >
             <Stack gap="xs">
               <Group justify="space-between" wrap="nowrap" gap="xs">
                 <Group gap="xs" wrap="nowrap" c="dimmed">
@@ -121,6 +137,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
                       color="red"
                       size={42}
                       className="protokoll-nicht-drucken"
+                      tabIndex={-1}
                       aria-label={`${BAUSTEIN_TITEL[typ]} entfernen`}
                       onClick={() => setLoeschen(true)}
                     >
@@ -137,8 +154,11 @@ function BausteinAnsicht<T extends BausteinTyp>({
               {typ === 'bausteinMeinungsbild' && (
                 <MeinungsbildHinweis id={node.attrs.id as string} />
               )}
-              {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).abstimmung && (
-                <BeschlussHinweis id={node.attrs.id as string} />
+              {typ === 'bausteinEm' && (daten as unknown as BausteinEmDaten).sub !== null && (
+                <BeschlussHinweis
+                  id={node.attrs.id as string}
+                  mitAbstimmung={(daten as unknown as BausteinEmDaten).abstimmung !== null}
+                />
               )}
               {(editierbar || hatText) && (
                 <Text size="xs" c="dimmed" fw={500}>
@@ -191,9 +211,11 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
       ? 'notizbaustein'
       : istBausteinInNotizen(typ)
         ? 'block innerbaustein'
-        : istThema(typ)
-          ? 'thema'
-          : 'block',
+        : typ === 'bausteinAnwesenheit'
+          ? 'block innerbaustein'
+          : istThema(typ)
+            ? 'thema'
+            : 'block',
     ...(ohneText
       ? { atom: true }
       : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),

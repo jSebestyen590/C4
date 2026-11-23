@@ -20,7 +20,10 @@ import {
   type BausteinEventDaten,
   type BausteinTodoDaten,
   type BausteinTyp,
+  type EventArt,
   type EventDauer,
+  eventUeberschrift,
+  eventZeitenAus,
   type EventDto,
   type EventKategorieDto,
   type ProtokollKalenderEvent,
@@ -67,6 +70,8 @@ export function eventDatenAusVorlage(
     verantwortlichSub: null,
     eventId: null,
     kategorieId: vorlage.kategorieId ?? null,
+    teilnahmeStatus: null,
+    eingeladen: [],
   };
 }
 
@@ -85,6 +90,38 @@ export function eventDatumSetzen(
   if (dauer === 'eintaegig') return { ...daten, datum };
   const bis = daten.bisDatum && daten.bisDatum >= datum ? daten.bisDatum : null;
   return { ...daten, datum, bisDatum: bis ?? tageDazu(datum, Math.max(1, tage) - 1) };
+}
+
+/** The "Bis" date is offered for multi-day Kategorien and while no Kategorie is chosen. */
+export const eventZeigtBis = (dauer: EventDauer | undefined): boolean => dauer !== 'eintaegig';
+
+/**
+ * Sets the Kategorie; a single-day Kategorie has no last day, so `bisDatum` is dropped. A `teilnahme`
+ * Kategorie has no Dienste (`schichten` cleared), one with Dienste no participation circle and invitations.
+ */
+export function eventKategorieSetzen(
+  daten: BausteinEventDaten,
+  kategorieId: string | null,
+  dauer: EventDauer | undefined,
+  art?: EventArt,
+): BausteinEventDaten {
+  const neu = { ...daten, kategorieId, ...(eventZeigtBis(dauer) ? {} : { bisDatum: null }) };
+  if (art === 'teilnahme') return { ...neu, schichten: [] };
+  if (art === 'dienste') return { ...neu, teilnahmeStatus: null, eingeladen: [] };
+  return neu;
+}
+
+/** Option label of a calendar event: the same "25. – 30.11. PP Name" as the headings. */
+export function kalenderEventLabel(
+  e: Pick<EventDto, 'anzeigeTitel' | 'beginn' | 'ende' | 'dauer' | 'kategorie'>,
+): string {
+  const zeiten = eventZeitenAus(e.dauer, e.beginn, e.ende);
+  return eventUeberschrift({
+    name: e.anzeigeTitel,
+    datum: zeiten.datum,
+    bisDatum: zeiten.bis,
+    kategorie: e.kategorie?.name,
+  });
 }
 
 /** Last day; never before the date. */
@@ -147,6 +184,43 @@ export function anzahlSetzen(
   if (neu.minimum !== undefined && minimum > wunsch) wunsch = minimum;
   if (neu.wunsch !== undefined) minimum = Math.min(minimum, wunsch);
   return { ...s, minimum, wunsch };
+}
+
+/** Most Schichten an Event Baustein holds (`bausteinEventDatenSchema`). */
+export const MAX_SCHICHTEN = 20;
+
+/** Times of a new Schicht when the event has none (all-day Kategorie, nothing entered yet). */
+const STANDARD_BEGINN = '18:00';
+const STANDARD_ENDE = '22:00';
+
+/**
+ * A new Schicht of the given art with the event's times (else 18:00-22:00). A Betrieb starts with
+ * one Bedarf for `dienstformId` (1/1); Aufbau/Putzen with 1/2 on the event day.
+ */
+export function schichtNeu(
+  art: VorlageSchicht['art'],
+  zeiten: { beginnZeit: string | null; endeZeit: string | null },
+  dienstformId: string,
+): VorlageSchicht {
+  const beginnZeit =
+    zeiten.beginnZeit && istZeit(zeiten.beginnZeit) ? zeiten.beginnZeit : STANDARD_BEGINN;
+  const endeZeit = zeiten.endeZeit && istZeit(zeiten.endeZeit) ? zeiten.endeZeit : STANDARD_ENDE;
+  if (art === 'betrieb') {
+    return { art, beginnZeit, endeZeit, bedarfe: [{ dienstformId, minimum: 1, wunsch: 1 }] };
+  }
+  return { art, beginnZeit, endeZeit, tagVersatz: 0, minimum: 1, wunsch: 2 };
+}
+
+/** A Betrieb Schicht with one more Bedarf (1/1) for a Dienstform it does not have yet. */
+export function bedarfHinzufuegen(s: VorlageSchicht, dienstformId: string): VorlageSchicht {
+  if (s.art !== 'betrieb' || s.bedarfe.some((b) => b.dienstformId === dienstformId)) return s;
+  return { ...s, bedarfe: [...s.bedarfe, { dienstformId, minimum: 1, wunsch: 1 }] };
+}
+
+/** A Betrieb Schicht without the Bedarf at `index`; the last Bedarf stays (a Betrieb needs one). */
+export function bedarfEntfernen(s: VorlageSchicht, index: number): VorlageSchicht {
+  if (s.art !== 'betrieb' || s.bedarfe.length <= 1) return s;
+  return { ...s, bedarfe: s.bedarfe.filter((_, i) => i !== index) };
 }
 
 /** "Betrieb 20:00–04:00" for the title of a Schicht. */
@@ -273,7 +347,7 @@ export function nichtAngetretenSetzen(
   return { ...daten, nichtAngetreten: [...new Set(subs)].slice(0, WAHL_MAX_KANDIDATEN) };
 }
 
-/** Whether the elected candidate accepts; accepting is the default and stored as no entry. */
+/** Whether the elected candidate accepts; a decline is stored as `false`, accepting removes the entry. */
 export function annahmeSetzen(
   daten: BausteinWahlDaten,
   id: string,
@@ -437,6 +511,7 @@ export const todoNurEinePerson = (zustaendig: readonly TodoZustaendig[]): boolea
 export type FokusZiel =
   | 'name'
   | 'datum'
+  | 'kalender'
   | 'titel'
   | 'vorname'
   | 'nachname'
@@ -455,7 +530,13 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
   const leer = (k: string) => d[k] === null || d[k] === undefined || d[k] === '';
   switch (typ) {
     case 'bausteinEvent':
-      return leer('name') ? 'name' : leer('datum') ? 'datum' : 'text';
+      return leer('eventId')
+        ? 'kalender'
+        : leer('name')
+          ? 'name'
+          : leer('datum')
+            ? 'datum'
+            : 'text';
     case 'bausteinThema':
     case 'bausteinTodo':
       return leer('titel') ? 'titel' : 'text';

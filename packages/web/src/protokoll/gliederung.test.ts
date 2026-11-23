@@ -15,13 +15,19 @@ import {
   gliederungZiel,
   type GliederungZiel,
 } from './gliederung';
-import { AbschnittKnoten, ProtokollAbsicherung, ProtokollDokumentKnoten } from './schema';
+import {
+  AbschnittKnoten,
+  ListenPunkt,
+  ProtokollAbsicherung,
+  ProtokollDokumentKnoten,
+} from './schema';
 
 const schema = getSchema([
   ProtokollDokumentKnoten,
   AbschnittKnoten,
-  StarterKit.configure({ document: false, blockquote: false, link: false }),
+  StarterKit.configure({ document: false, blockquote: false, link: false, listItem: false }),
   Blockquote.extend({ content: 'paragraph+' }),
+  ListenPunkt,
   ...BAUSTEIN_KNOTEN,
 ]);
 
@@ -59,7 +65,13 @@ const zustand = (...abschnitte: ProtokollKnoten[][]): EditorState => {
 const form = (doc: PmNode): string => {
   const knoten = (k: PmNode): string => {
     if (k.type.name === 'paragraph') return k.content.size ? 't' : '_';
-    const kinder = k.children.filter((c) => c.type.name.startsWith('baustein'));
+    const kinder: PmNode[] = [];
+    const sammeln = (n: PmNode) =>
+      n.forEach((c) => {
+        if (c.type.name.startsWith('baustein')) kinder.push(c);
+        else if (!c.isTextblock) sammeln(c);
+      });
+    sammeln(k);
     return `${k.attrs.id as string}${kinder.length ? `(${kinder.map(knoten).join(' ')})` : ''}`;
   };
   // The empty "Sonstiges" at the end is left out to keep the expectations short.
@@ -74,6 +86,34 @@ const verschieben = (s: EditorState, id: string, ziel: GliederungZiel) => {
   neu.doc.check();
   return form(neu.doc);
 };
+
+const imPunkt = (...kinder: ProtokollKnoten[]): ProtokollKnoten => ({
+  type: 'bulletList',
+  content: [{ type: 'listItem', content: [absatz('x'), ...kinder] }],
+});
+
+describe('Bausteine in list items', () => {
+  const s = () =>
+    zustand([
+      event('e', 'Event', [imPunkt(abstimmung('a', 'A')), abstimmung('b', 'B'), absatz()]),
+      abstimmung('c', 'C'),
+      absatz(),
+    ]);
+
+  it('show up below their Baustein in the outline, in document order', () => {
+    const [abschnitt] = gliederungBauen(s().doc);
+    expect(abschnitt!.eintraege.map((e) => e.id)).toEqual(['e', 'c']);
+    expect(abschnitt!.eintraege[0]!.kinder.map((k) => k.id)).toEqual(['a', 'b']);
+  });
+
+  it('can be found and moved; the others are placed next to the list that holds them', () => {
+    expect(verschieben(s(), 'a', { elternId: 'e', index: 1 })).toBe('e(b a) c _ | _ | _');
+    // Before the one in the list: in front of the list.
+    expect(verschieben(s(), 'b', { elternId: 'e', index: 0 })).toBe('e(b a) c _ | _ | _');
+    // A top-level Baustein into the notes, before the list-nested one.
+    expect(verschieben(s(), 'c', { elternId: 'e', index: 0 })).toBe('e(c a b) _ | _ | _');
+  });
+});
 
 describe('gliederungBauen', () => {
   it('lists the Bausteine per section and nested ones below their parent, without free text', () => {
@@ -148,6 +188,24 @@ describe('gliederungTitel', () => {
     );
     expect(gliederungTitel('bausteinBeschluss', { antrag: '' })).toBe('Abstimmung');
     expect(gliederungTitel('bausteinEvent', { name: '', datum: null })).toBe('Event');
+    const namen = {
+      kategorien: { k1: 'PP' },
+      vorlagen: { v1: 'k1' },
+      events: { e1: 'PP' },
+    };
+    const ev = { name: 'Caro', datum: '2026-10-10' };
+    expect(gliederungTitel('bausteinEvent', { ...ev, kategorieId: 'k1' }, undefined, namen)).toBe(
+      '10.10. PP Caro',
+    );
+    expect(gliederungTitel('bausteinEvent', { ...ev, vorlageId: 'v1' }, undefined, namen)).toBe(
+      '10.10. PP Caro',
+    );
+    expect(
+      gliederungTitel('bausteinVergangenesEvent', { ...ev, eventId: 'e1' }, undefined, namen),
+    ).toBe('10.10. PP Caro');
+    expect(
+      gliederungTitel('bausteinVergangenesEvent', { ...ev, eventId: null }, undefined, namen),
+    ).toBe('10.10. Caro');
     expect(gliederungTitel('bausteinThema', { titel: ' Hausordnung ' })).toBe('Hausordnung');
     expect(gliederungTitel('bausteinThema', { titel: '' })).toBe('Thema');
     expect(gliederungTitel('bausteinTodo', { titel: ' Putzen ' })).toBe('Todo: Putzen');

@@ -6,11 +6,13 @@ import {
   type ProtokollDto,
   type ProtokollKopf,
   type ProtokollMitgliedDto,
+  type Anrede,
   type AnwesenheitsZeit,
   type ProtokollTeilnahmeWert,
   zeitBerlin,
 } from '@c4/shared';
 import { MITGLIED_STATUS_LABELS, labelFuer } from '../i18n';
+import type { ErwaehnungPerson } from './erwaehnungLogik';
 import { mitgliedOptionen } from '../organisator';
 import type { SlashPerson } from './slashLogik';
 
@@ -100,6 +102,40 @@ export function aufnahmeOptionen(
     { group: 'Anwärter:innen', items: anwaerter },
     { group: 'Weitere Personen', items: weitere },
   ].filter((g) => g.items.length > 0);
+}
+
+/** A member of the full members list (the @mention list) with what the person choices need. */
+export type AnwesenheitMitglied = ErwaehnungPerson & { anrede?: Anrede; deaktiviert?: boolean };
+
+/**
+ * Everybody who can come or go in an Anwesenheit block (/erscheint, /geht): the attendance list, the
+ * EMs of the Sitzung and every non-deactivated member of any status (Anwärter:in, Mitglied, EM,
+ * Extern), each person once. Only the attendance list counts for the quorum; the others change
+ * nothing there (see `anwesenheitsVerlauf`).
+ */
+export function anwesenheitsKandidaten(
+  teilnahme: readonly AnwesenheitPerson[],
+  ems: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[],
+  mitglieder: readonly AnwesenheitMitglied[],
+): AnwesenheitPerson[] {
+  const gesehen = new Set(teilnahme.map((t) => t.sub));
+  const weitere: AnwesenheitPerson[] = [];
+  const hinzu = (p: AnwesenheitMitglied, wert: ProtokollTeilnahmeWert) => {
+    if (gesehen.has(p.sub)) return;
+    gesehen.add(p.sub);
+    weitere.push({
+      sub: p.sub,
+      username: p.username,
+      vorname: p.vorname,
+      nachname: p.nachname,
+      status: p.status,
+      anrede: p.anrede ?? 'neutral',
+      wert,
+    });
+  };
+  for (const e of ems) hinzu(e, e.ausgewaehlt ? 'anwesend' : 'entschuldigt');
+  for (const m of mitglieder) if (!m.deaktiviert) hinzu(m, 'entschuldigt');
+  return [...teilnahme, ...weitere];
 }
 
 /** The persons as the second stage of /erscheint and /geht lists them. */

@@ -72,6 +72,7 @@ export function DatumFeld({
         size="md"
         valueFormat="DD.MM.YYYY"
         dateParser={(text) => datumTextAlsIso(text)}
+        minDate={typeof rest.min === 'string' && rest.min ? rest.min : undefined}
         value={value || null}
         minDate={min || undefined}
         onChange={(v) => onWert(datumWertAlsIso(v))}
@@ -100,6 +101,7 @@ export function DatumFeld({
             variant="subtle"
             color="gray"
             size={42}
+            tabIndex={-1}
             aria-label="Datum löschen"
             onClick={() => onWert('')}
           >
