@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_rechnungsempfaenger_name_idx

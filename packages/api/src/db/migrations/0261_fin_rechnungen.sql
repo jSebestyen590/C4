@@ -1,0 +1,28 @@
+-- Finanzen: issued Rechnungen and Stornorechnungen (insert-only; the content is a snapshot). mitglied_sub: Cognito sub.
+CREATE TABLE IF NOT EXISTS fin_rechnungen (
+  id text PRIMARY KEY,
+  nummer text NOT NULL,
+  jahr integer NOT NULL,
+  lfd integer NOT NULL,
+  rechnungsdatum date NOT NULL,
+  leistung_von date NOT NULL,
+  leistung_bis date,
+  faellig_am date NOT NULL,
+  mitglied_sub text,
+  empfaenger_id text REFERENCES fin_rechnungsempfaenger (id),
+  empfaenger_name text NOT NULL,
+  empfaenger_anschrift text NOT NULL,
+  empfaenger_ust_id text,
+  verein text NOT NULL,
+  modus text NOT NULL CHECK (modus IN ('brutto', 'netto')),
+  betreff text NOT NULL,
+  einleitung text,
+  hinweis text,
+  brutto_cent bigint NOT NULL,
+  storno_von text REFERENCES fin_rechnungen (id),
+  storno_begruendung text,
+  buchung_id text NOT NULL REFERENCES fin_buchungen (id),
+  idempotenz_schluessel text NOT NULL,
+  erstellt_von text NOT NULL,
+  erstellt_am timestamptz NOT NULL
+)

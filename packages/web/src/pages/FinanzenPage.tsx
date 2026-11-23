@@ -6,6 +6,7 @@ import {
   IconFileExport,
   IconLock,
   IconFileInvoice,
+  IconFileText,
   IconReceiptRefund,
   IconListDetails,
   IconNotebook,
@@ -15,10 +16,10 @@ import {
 } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { heuteBerlin, monatAnzeigen } from '@c4/shared';
+import { centAnzeigen, heuteBerlin, monatAnzeigen } from '@c4/shared';
 import { useAuth } from '../auth';
 import { festschreibungFaellig } from '../FestschreibungHinweise';
-import { useFestschreibungen } from '../finanzenDaten';
+import { useFestschreibungen, useRechnungen } from '../finanzenDaten';
 
 function Kachel({
   to,
@@ -50,6 +51,13 @@ export function FinanzenPage() {
   const { can } = useAuth();
   const festschreibung = useFestschreibungen(can('finanzen:verwalten'));
   const faellig = festschreibung.data?.naechsterMonat ?? null;
+  // The key figures count all Rechnungen; the year filter only keeps the list short.
+  const rechnungen = useRechnungen({ jahr: heuteBerlin().slice(0, 4) }).data;
+  const rechnungenText = rechnungen
+    ? `Offen: ${centAnzeigen(rechnungen.offeneSummeCent)}${
+        rechnungen.ueberfaelligAnzahl > 0 ? `, ${rechnungen.ueberfaelligAnzahl} überfällig` : ''
+      }. Rechnungen an Mitglieder und Externe schreiben.`
+    : 'Rechnungen an Mitglieder und Externe schreiben.';
   return (
     <Stack>
       <Title order={2}>Finanzen</Title>
@@ -103,6 +111,12 @@ export function FinanzenPage() {
           icon={<IconFileInvoice size={28} />}
           titel="Belege"
           text="Rechnungen und Bons erfassen, buchen und ablegen."
+        />
+        <Kachel
+          to="/finanzen/rechnungen"
+          icon={<IconFileText size={28} />}
+          titel="Rechnungen"
+          text={rechnungenText}
         />
         <Kachel
           to="/finanzen/auslagen"

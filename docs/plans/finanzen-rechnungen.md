@@ -1,18 +1,25 @@
 # Finanzen Scheibe 8: Rechnungen schreiben
 
+> **Umgesetzt.** Beschreibung des Gebauten: [finanzen.md](../finanzen.md), „Rechnungen“. Abweichungen vom Plan:
+>
+> - Die Stornorechnung ist eine eigene Zeile in `fin_rechnungen` mit `storno_von` und negativen Beträgen; zusätzlich die Spalte `storno_begruendung`.
+> - `fin_rechnungsposten` hat die zusätzliche Spalte `einheit`; `fin_rechnungen` hat `leistung_von`/`leistung_bis` (statt `leistungsdatum`).
+> - Die `quelleId` beider Buchungen (Stellung und Zahlung) ist die Id der Rechnung.
+> - Die Stellungsbuchung ist im Journal nicht direkt stornierbar, nur über die Stornorechnung.
+
 Umsetzungsplan für Scheibe 8 aus [finanzen.md](./finanzen.md). Ausgangsrechnungen an Mitglieder oder externe
 Empfänger, lückenlos nummeriert, als PDF im Finanzarchiv, mit Buchung nach **Ist-Versteuerung** (Erlös und USt erst bei
 Zahlung). Arbeitsseiten **desktop first** (Regeln „Bedienung“ in [finanzen.md](./finanzen.md)).
 
 ## Entscheidungen (mit dir geklärt am 23.11.2026)
 
-| Thema            | Entscheidung                                                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Buchung          | Beim **Stellen**: `forderungen` an `erloese_offen` (zwei Durchlaufkonten, kein Erlös, keine USt). Bei **Zahlung**: Geld an `forderungen` **und** `erloese_offen` an Erlöskonten mit USt (Zahldatum) |
-| Steuer           | Ist-Versteuerung: Erlös und USt entstehen erst mit dem Geldfluss, das Journal ist damit selbst Ist; Scheibe 9 braucht keine Sonderregel                                                            |
-| Aufschlag        | **entfällt** (stand nur im Gesamtplan, kein Anwendungsfall)                                                                                                                                        |
-| Vereinsdaten     | Einstellungsseite „Rechnungs-Einstellungen“ (`finanzen:verwalten`), in der DB; beim Stellen in die Rechnung kopiert                                                                               |
-| Zahlwege         | Bank, bar (Safe-Fach mit Stückelung), SumUp/Karte. **Nicht** aufs Buch (Buch-Abzahlungen werden schon über die Kasse Erlös → doppelt)                                                              |
+| Thema        | Entscheidung                                                                                                                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Buchung      | Beim **Stellen**: `forderungen` an `erloese_offen` (zwei Durchlaufkonten, kein Erlös, keine USt). Bei **Zahlung**: Geld an `forderungen` **und** `erloese_offen` an Erlöskonten mit USt (Zahldatum) |
+| Steuer       | Ist-Versteuerung: Erlös und USt entstehen erst mit dem Geldfluss, das Journal ist damit selbst Ist; Scheibe 9 braucht keine Sonderregel                                                             |
+| Aufschlag    | **entfällt** (stand nur im Gesamtplan, kein Anwendungsfall)                                                                                                                                         |
+| Vereinsdaten | Einstellungsseite „Rechnungs-Einstellungen“ (`finanzen:verwalten`), in der DB; beim Stellen in die Rechnung kopiert                                                                                 |
+| Zahlwege     | Bank, bar (Safe-Fach mit Stückelung), SumUp/Karte. **Nicht** aufs Buch (Buch-Abzahlungen werden schon über die Kasse Erlös → doppelt)                                                               |
 
 Eigene Festlegungen (beim Plan-Review änderbar):
 
@@ -66,11 +73,11 @@ Eigene Festlegungen (beim Plan-Review änderbar):
 
 Beispiel 119 € brutto Freitext 19 % + Ware 24 € (inkl. 3,10 € Pfand, 7 %):
 
-| Schritt         | Zeilen                                                                                                                                       | Datum        |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| Stellen         | `forderungen` +Brutto, `erloese_offen` −Brutto (`steuer_art keine`)                                                                          | Rechnungsdat |
-| Zahlung         | Geld (`bank` / Safe-Fach mit Stückelung / `sumup`) +Brutto, `forderungen` −Brutto, `erloese_offen` +Brutto, je (Erlöskonto, Satz) −Brutto mit `steuer_art ust`, Netto, Steuer; Pfand gegen `pfand` (mit Satz der Ware, wie Belege) | Zahldatum    |
-| Stornorechnung  | Storno der Stellungsbuchung (`quelle_typ storno` wie im Journal, Text „Stornorechnung NNN-JJJJ zu NNN-JJJJ“) in derselben Transaktion wie `fin_rechnungen` mit `storno_von` | heute        |
+| Schritt        | Zeilen                                                                                                                                                                                                                             | Datum        |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Stellen        | `forderungen` +Brutto, `erloese_offen` −Brutto (`steuer_art keine`)                                                                                                                                                                | Rechnungsdat |
+| Zahlung        | Geld (`bank` / Safe-Fach mit Stückelung / `sumup`) +Brutto, `forderungen` −Brutto, `erloese_offen` +Brutto, je (Erlöskonto, Satz) −Brutto mit `steuer_art ust`, Netto, Steuer; Pfand gegen `pfand` (mit Satz der Ware, wie Belege) | Zahldatum    |
+| Stornorechnung | Storno der Stellungsbuchung (`quelle_typ storno` wie im Journal, Text „Stornorechnung NNN-JJJJ zu NNN-JJJJ“) in derselben Transaktion wie `fin_rechnungen` mit `storno_von`                                                        | heute        |
 
 - Reine Funktionen in `packages/shared/src/rechnungen.ts`: `rechnungBerechnen` (Summen je Satz, Pfand; Logik aus
   `belegBerechnen` wiederverwenden bzw. gemeinsamen Kern herausziehen, **nicht kopieren**), `rechnungPruefen` (Meldungen mit

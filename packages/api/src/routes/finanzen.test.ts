@@ -144,11 +144,14 @@ describe('finanzen', () => {
     expect(konten.map((k) => k.id).sort()).toEqual([
       'auslagen',
       'bank',
+      'erloese_offen',
       'eroeffnung',
+      'forderungen',
       'geldtransit',
       'kassendifferenz',
       'pfand',
       'safe',
+      'sumup',
     ]);
     expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
 
@@ -3136,6 +3139,34 @@ describe('finanzen', () => {
           },
         ]);
         expect(waren[0]!.gebinde[0].bezeichnung).toContain('Flasche');
+        // Never bought: no last price; afterwards the newest gross price per Gebinde without deposit.
+        expect(waren[0]!.gebinde[0].letzterPreisCent).toBeNull();
+        const ware = (preis: number) => ({
+          belegsummeCent: preis + 25,
+          posten: [
+            {
+              art: 'ware',
+              wareId: 'w1',
+              gebindeId: 'g1',
+              kategorieId: t.kat,
+              anzahlMilli: 1000,
+              einzelpreisCent: preis,
+              steuersatz: 1900,
+              pfandCent: 25,
+            },
+          ],
+        });
+        await t.gebucht(ware(1190));
+        const neuer = await t.gebucht({ ...ware(1290), belegdatum: '2027-01-08' });
+        const nachher = await t.lesen<Dto[]>('vorstand-token', '/beleg-waren');
+        expect(nachher[0]!.gebinde[0].letzterPreisCent).toBe(1290);
+        // A reversed Beleg does not count.
+        await t.anfrage('admin-token', 'POST', `/buchungen/${neuer.buchungId}/storno`, {
+          datum: '2027-03-01',
+          text: 'Falsch',
+        });
+        const danach = await t.lesen<Dto[]>('vorstand-token', '/beleg-waren');
+        expect(danach[0]!.gebinde[0].letzterPreisCent).toBe(1190);
       });
     });
 
@@ -3682,7 +3713,10 @@ describe('finanzen', () => {
           'gdpdu-01-03-2019.dtd',
           'index.xml',
           'konten.csv',
+          'rechnungen.csv',
+          'rechnungsposten.csv',
           'rechnungssteller.csv',
+          'rechnungszahlungen.csv',
           'stueckelung.csv',
         ].sort(),
       );
@@ -3741,6 +3775,695 @@ describe('finanzen', () => {
       expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
       (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
       expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
+    });
+  });
+
+  describe('Rechnungen', () => {
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    afterEach(() => vi.useRealTimers());
+    const jetzt = (iso: string) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(iso));
+    };
+    const einstellungen = {
+      vereinsname: 'C4 e. V.',
+      anschrift: 'Musterweg 1\n04109 Leipzig',
+      steuernummer: '232/123/45678',
+      bankName: 'Fyrst',
+      iban: 'DE02120300000000202051',
+      bic: 'BYLADEM1001',
+      vorstand: 'Vertreten durch den Vorstand',
+      zahlungszielTage: 14,
+    };
+
+    /** Settings, an Erlös category, an external recipient and a Fach. */
+    async function rechnungSetup(mitEinstellungen = true) {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      const post = async (pfad: string, body: unknown, token = 'admin-token') =>
+        (await (await t.roh(token, 'POST', pfad, body)).json()) as Dto;
+      if (mitEinstellungen) {
+        const res = await t.roh('admin-token', 'POST', '/rechnung-einstellungen', einstellungen);
+        expect(res.status).toBe(201);
+      }
+      const erloes = (await post('/konten', { name: 'Erlöse Beratung', art: 'erloes' }))
+        .id as string;
+      const extern = (
+        await post('/rechnungsempfaenger', {
+          name: 'Muster GmbH',
+          anschrift: 'Hauptstr. 5\n10115 Berlin',
+        })
+      ).id as string;
+      const fach = await t.fach();
+      const posten = (extra: Dto = {}) => ({
+        art: 'frei',
+        text: 'Beratung',
+        anzahlMilli: 1000,
+        einzelpreisCent: 11900,
+        steuersatz: 1900,
+        erloesKontoId: erloes,
+        ...extra,
+      });
+      const daten = (extra: Dto = {}) => ({
+        empfaenger: { typ: 'extern', id: extern },
+        leistungVon: '2027-02-20',
+        betreff: 'Beratung Februar',
+        posten: [posten()],
+        ...extra,
+      });
+      const entwurf = async (extra: Dto = {}) => {
+        const res = await t.roh('admin-token', 'POST', '/rechnung-entwuerfe', {
+          daten: daten(extra),
+        });
+        expect(res.status).toBe(201);
+        return ((await res.json()) as Dto).id as string;
+      };
+      const stellenE = (id: string, extra: Dto = {}, token = 'admin-token') =>
+        t.roh(token, 'POST', `/rechnung-entwuerfe/${id}/stellen`, {
+          idempotenzSchluessel: crypto.randomUUID(),
+          ...extra,
+        });
+      /** Drafts and issues a Rechnung; returns the result. */
+      const gestellt = async (extra: Dto = {}) => {
+        const res = await stellenE(await entwurf(extra));
+        expect(res.status, await res.clone().text()).toBe(201);
+        return (await res.json()) as Dto;
+      };
+      const zahlen = (id: string, extra: Dto = {}, token = 'admin-token') =>
+        t.roh(token, 'POST', `/rechnungen/${id}/zahlung`, {
+          idempotenzSchluessel: crypto.randomUUID(),
+          zahlweg: 'bank',
+          datum: '2027-03-01',
+          ...extra,
+        });
+      const storno = (id: string, extra: Dto = {}) =>
+        t.roh('admin-token', 'POST', `/rechnungen/${id}/storno`, {
+          idempotenzSchluessel: crypto.randomUUID(),
+          begruendung: 'Falsch ausgestellt',
+          ...extra,
+        });
+      const saldo = async (kontoId: string) =>
+        (await t.lesen<Dto[]>('admin-token', '/konten')).find((k) => k.id === kontoId)!
+          .saldoCent as number;
+      const bar = {
+        zahlweg: 'bar',
+        fachId: fach,
+        stueckelung: [
+          { nennwertCent: 5000, anzahl: 2 },
+          { nennwertCent: 1000, anzahl: 1 },
+          { nennwertCent: 500, anzahl: 1 },
+          { nennwertCent: 200, anzahl: 2 },
+        ],
+      };
+      return {
+        ...t,
+        erloes,
+        extern,
+        fach,
+        posten,
+        daten,
+        entwurf,
+        stellenE,
+        gestellt,
+        zahlen,
+        storno,
+        saldo,
+        bar,
+      };
+    }
+
+    it('requires the matching right on every route', async () => {
+      const t = await rechnungSetup();
+      const id = await t.entwurf();
+      const schreiben: [string, string][] = [
+        ['POST', '/rechnungsempfaenger'],
+        ['PUT', '/rechnungsempfaenger/x'],
+        ['POST', '/rechnung-entwuerfe'],
+        ['PUT', `/rechnung-entwuerfe/${id}`],
+        ['DELETE', `/rechnung-entwuerfe/${id}`],
+        ['POST', `/rechnung-entwuerfe/${id}/stellen`],
+        ['POST', '/rechnungen/x/zahlung'],
+        ['POST', '/rechnungen/x/storno'],
+        ['POST', '/rechnungen/x/kopieren'],
+        ['POST', '/rechnungen/x/datei'],
+        ['POST', '/rechnung-dateien/upload'],
+      ];
+      for (const [method, pfad] of schreiben)
+        expect(
+          (await t.anfrage('vorstand-token', method, pfad, {})).status,
+          `${method} ${pfad}`,
+        ).toBe(403);
+      // finanzen:lesen alone reads but does not manage the settings.
+      expect((await t.anfrage('vorstand-token', 'GET', '/rechnungen')).status).toBe(200);
+      expect((await t.anfrage('vorstand-token', 'GET', '/rechnung-einstellungen')).status).toBe(
+        200,
+      );
+      expect(
+        (await t.anfrage('vorstand-token', 'POST', '/rechnung-einstellungen', {})).status,
+      ).toBe(403);
+      expect((await t.anfrage('member-token', 'GET', '/rechnungen')).status).toBe(403);
+    });
+
+    it('stores the settings as versions; the newest applies', async () => {
+      const t = await rechnungSetup(false);
+      expect(
+        (await t.lesen<Dto | null>('admin-token', '/rechnung-einstellungen')) ?? null,
+      ).toBeNull();
+      expect(
+        (await t.roh('admin-token', 'POST', '/rechnung-einstellungen', { vereinsname: 'x' }))
+          .status,
+      ).toBe(400);
+      await t.roh('admin-token', 'POST', '/rechnung-einstellungen', einstellungen);
+      await t.roh('admin-token', 'POST', '/rechnung-einstellungen', {
+        ...einstellungen,
+        vereinsname: 'C4 Leipzig e. V.',
+      });
+      const e = await t.lesen<Dto>('admin-token', '/rechnung-einstellungen');
+      expect(e).toMatchObject({
+        vereinsname: 'C4 Leipzig e. V.',
+        zahlungszielTage: 14,
+        erstelltVon: { username: 'user-a' },
+      });
+    });
+
+    it('manages external recipients without duplicate names', async () => {
+      const t = await rechnungSetup();
+      const dup = await t.roh('admin-token', 'POST', '/rechnungsempfaenger', {
+        name: ' muster gmbh ',
+        anschrift: 'x',
+      });
+      expect(dup.status).toBe(400);
+      expect(
+        (
+          await t.roh('admin-token', 'PUT', `/rechnungsempfaenger/${t.extern}`, {
+            anschrift: 'Neue Str. 1',
+            archiviert: true,
+          })
+        ).status,
+      ).toBe(200);
+      expect(await t.lesen<Dto[]>('admin-token', '/rechnungsempfaenger')).toEqual([]);
+      const alle = await t.lesen<Dto[]>('admin-token', '/rechnungsempfaenger?archiviert=1');
+      expect(alle).toMatchObject([
+        { name: 'Muster GmbH', anschrift: 'Neue Str. 1', archiviert: true },
+      ]);
+      expect(
+        (await t.roh('admin-token', 'PUT', '/rechnungsempfaenger/nope', { name: 'X' })).status,
+      ).toBe(404);
+    });
+
+    it('issues a Rechnung: number, claim against open revenue, no revenue and no VAT yet', async () => {
+      const t = await rechnungSetup();
+      const id = await t.entwurf();
+      const e = await t.lesen<Dto>('admin-token', `/rechnung-entwuerfe/${id}`);
+      expect(e).toMatchObject({
+        warnungen: [],
+        empfaenger: { typ: 'extern', name: 'Muster GmbH', adresseFehlt: false },
+      });
+      const res = await t.stellenE(id);
+      expect(res.status).toBe(201);
+      const r = (await res.json()) as Dto;
+      expect(r.nummer).toBe('001-2027');
+      expect((await t.roh('admin-token', 'GET', `/rechnung-entwuerfe/${id}`)).status).toBe(404);
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${r.buchungId}`);
+      expect(buchung).toMatchObject({
+        quelleTyp: 'rechnung',
+        quelleId: r.id,
+        datum: '2027-03-01',
+        text: 'Rechnung 001-2027: Muster GmbH',
+      });
+      expect(buchung.zeilen).toMatchObject([
+        { kontoId: 'forderungen', betragCent: 11900, steuerArt: 'keine' },
+        { kontoId: 'erloese_offen', betragCent: -11900, steuerArt: 'keine' },
+      ]);
+      expect(await t.saldo(t.erloes)).toBe(0);
+      const detail = await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`);
+      expect(detail).toMatchObject({
+        nummer: '001-2027',
+        status: 'gestellt',
+        ueberfaellig: false,
+        rechnungsdatum: '2027-03-01',
+        faelligAm: '2027-03-15',
+        bruttoCent: 11900,
+        empfaengerName: 'Muster GmbH',
+        empfaengerAnschrift: 'Hauptstr. 5\n10115 Berlin',
+        verein: { vereinsname: 'C4 e. V.', iban: 'DE02120300000000202051' },
+        summen: [{ satz: 1900, netto: 10000, steuer: 1900, brutto: 11900 }],
+        zahlung: null,
+        datei: null,
+        stornorechnung: null,
+      });
+      expect(detail.posten).toMatchObject([
+        {
+          pos: 1,
+          art: 'frei',
+          text: 'Beratung',
+          betragCent: 11900,
+          erloesKontoName: 'Erlöse Beratung',
+        },
+      ]);
+      const liste = await t.lesen<Dto>('admin-token', '/rechnungen');
+      expect(liste).toMatchObject({
+        offeneSummeCent: 11900,
+        ueberfaelligAnzahl: 0,
+        gekappt: false,
+      });
+      expect(liste.rechnungen).toMatchObject([
+        { id: r.id, status: 'gestellt', nummer: '001-2027', bruttoCent: 11900 },
+      ]);
+      const kette = await t.lesen<Dto>('admin-token', '/kette');
+      expect(kette.ok).toBe(true);
+    });
+
+    it('is idempotent and numbers gapless per year', async () => {
+      const t = await rechnungSetup();
+      const id = await t.entwurf();
+      const schluessel = crypto.randomUUID();
+      const erst = await t.stellenE(id, { idempotenzSchluessel: schluessel });
+      const nochmal = await t.stellenE(id, { idempotenzSchluessel: schluessel });
+      expect(erst.status).toBe(201);
+      expect(nochmal.status).toBe(200);
+      const a = (await erst.json()) as Dto;
+      const b = (await nochmal.json()) as Dto;
+      expect(b).toMatchObject({ id: a.id, nummer: '001-2027', wiederholt: true });
+      expect((await t.gestellt()).nummer).toBe('002-2027');
+      jetzt('2027-12-31T10:00:00Z');
+      expect((await t.gestellt()).nummer).toBe('003-2027');
+      jetzt('2028-01-02T10:00:00Z');
+      expect((await t.gestellt()).nummer).toBe('001-2028');
+      expect((await t.gestellt()).nummer).toBe('002-2028');
+    });
+
+    it('lists drafts first and filters by status, year and search', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const entwurf = await t.entwurf({ betreff: 'Noch offen' });
+      const alle = await t.lesen<Dto>('admin-token', '/rechnungen');
+      expect(alle.rechnungen.map((x: Dto) => [x.id, x.status])).toEqual([
+        [entwurf, 'entwurf'],
+        [r.id, 'gestellt'],
+      ]);
+      const nurEntwurf = await t.lesen<Dto>('admin-token', '/rechnungen?status=entwurf');
+      expect(nurEntwurf.rechnungen).toHaveLength(1);
+      expect((await t.lesen<Dto>('admin-token', '/rechnungen?jahr=2026')).rechnungen).toHaveLength(
+        1,
+      );
+      expect((await t.lesen<Dto>('admin-token', '/rechnungen?q=001-2027')).rechnungen).toHaveLength(
+        1,
+      );
+      expect(
+        (await t.lesen<Dto>('admin-token', '/rechnungen?q=gibtsnicht')).rechnungen,
+      ).toHaveLength(0);
+    });
+
+    it('asks for confirmation of warnings, errors on missing settings and invalid drafts', async () => {
+      const t = await rechnungSetup();
+      const id = await t.entwurf({ leistungVon: '2027-04-01' });
+      const entwurf = await t.lesen<Dto>('admin-token', `/rechnung-entwuerfe/${id}`);
+      expect(entwurf.warnungen.map((w: Dto) => w.code)).toEqual(['leistung_zukunft']);
+      const offen = await t.stellenE(id);
+      expect(offen.status).toBe(409);
+      expect(((await offen.json()) as Dto).warnungen.map((w: Dto) => w.code)).toEqual([
+        'leistung_zukunft',
+      ]);
+      const ok = await t.stellenE(id, { bestaetigt: ['leistung_zukunft'] });
+      expect(ok.status).toBe(201);
+      // High amount and zero price warn as well.
+      const hoch = await t.entwurf({
+        posten: [t.posten({ einzelpreisCent: 60000 }), t.posten({ einzelpreisCent: 0 })],
+      });
+      const w = await t.stellenE(hoch);
+      expect(((await w.json()) as Dto).warnungen.map((x: Dto) => x.code)).toEqual([
+        'hoher_betrag',
+        'preis_null',
+      ]);
+      // An incomplete draft is an error, not a warning.
+      const leer = await t.roh('admin-token', 'POST', '/rechnung-entwuerfe', { daten: {} });
+      const leerId = ((await leer.json()) as Dto).id;
+      const fehler = await t.stellenE(leerId);
+      expect(fehler.status).toBe(400);
+      expect(((await fehler.json()) as Dto).error).toContain('Bitte wähle einen Empfänger.');
+      // A category that is no Erlöse account.
+      const aufwand = (
+        (await (
+          await t.roh('admin-token', 'POST', '/konten', { name: 'Material', art: 'aufwand' })
+        ).json()) as Dto
+      ).id;
+      const falsch = await t.stellenE(
+        await t.entwurf({ posten: [t.posten({ erloesKontoId: aufwand })] }),
+      );
+      expect(falsch.status).toBe(400);
+      expect(((await falsch.json()) as Dto).error).toContain('keine Erlös-Kategorie');
+    });
+
+    it('needs the Einstellungen to issue', async () => {
+      const t = await rechnungSetup(false);
+      const res = await t.stellenE(await t.entwurf());
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as Dto).error).toContain(
+        'Bitte erst die Rechnungs-Einstellungen ausfüllen.',
+      );
+    });
+
+    it('addresses a member by real name and profile address; no address is an error', async () => {
+      const t = await rechnungSetup();
+      const empfaenger = { empfaenger: { typ: 'mitglied', sub: 'm2' } };
+      const id = await t.entwurf(empfaenger);
+      const vorher = await t.lesen<Dto>('admin-token', `/rechnung-entwuerfe/${id}`);
+      expect(vorher.empfaenger).toMatchObject({
+        typ: 'mitglied',
+        name: 'A B',
+        adresseFehlt: true,
+        mitglied: { username: 'user-m2' },
+      });
+      const res = await t.stellenE(id);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as Dto).error).toBe(
+        'Für user-m2 ist im Profil keine Adresse hinterlegt.',
+      );
+      await t.mitglieder.speichern('m2', {
+        vorname: 'Erika',
+        nachname: 'Muster',
+        anrede: 'neutral',
+        kontaktkanaele: null,
+        discordName: null,
+        adresse: 'Weg 3\n04109 Leipzig',
+        telefon: null,
+        ueberMich: null,
+        profilbildKey: null,
+        geburtsdatum: null,
+        geburtstagImKalender: null,
+        wohnheim: null,
+      });
+      const ok = await t.stellenE(id);
+      expect(ok.status).toBe(201);
+      const detail = await t.lesen<Dto>(
+        'admin-token',
+        `/rechnungen/${((await ok.json()) as Dto).id}`,
+      );
+      expect(detail).toMatchObject({
+        empfaengerName: 'Erika Muster',
+        empfaengerAnschrift: 'Weg 3\n04109 Leipzig',
+        mitglied: { sub: 'm2', username: 'user-m2' },
+      });
+    });
+
+    it('books the payment by bank with revenue and VAT at the payment date', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const res = await t.zahlen(r.id);
+      expect(res.status).toBe(201);
+      const z = (await res.json()) as Dto;
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${z.buchungId}`);
+      expect(buchung).toMatchObject({
+        quelleTyp: 'rechnungszahlung',
+        quelleId: r.id,
+        datum: '2027-03-01',
+        text: 'Zahlung Rechnung 001-2027: Muster GmbH',
+      });
+      expect(buchung.zeilen).toMatchObject([
+        { kontoId: 'bank', betragCent: 11900, steuerArt: 'keine' },
+        { kontoId: 'forderungen', betragCent: -11900 },
+        { kontoId: 'erloese_offen', betragCent: 11900 },
+        {
+          kontoId: t.erloes,
+          betragCent: -11900,
+          nettoCent: -10000,
+          steuerCent: -1900,
+          steuersatz: 1900,
+          steuerArt: 'ust',
+        },
+      ]);
+      expect(await t.saldo('forderungen')).toBe(0);
+      expect(await t.saldo('erloese_offen')).toBe(0);
+      expect(await t.saldo(t.erloes)).toBe(-11900);
+      const detail = await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`);
+      expect(detail).toMatchObject({
+        status: 'bezahlt',
+        zahlung: { zahlweg: 'bank', datum: '2027-03-01', buchungId: z.buchungId },
+      });
+      expect((await t.lesen<Dto>('admin-token', '/rechnungen')).offeneSummeCent).toBe(0);
+    });
+
+    it('books cash payments into a Fach with the denominations', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const falsch = await t.zahlen(r.id, {
+        ...t.bar,
+        stueckelung: [{ nennwertCent: 5000, anzahl: 1 }],
+      });
+      expect(falsch.status).toBe(400);
+      expect(((await falsch.json()) as Dto).error).toContain('passt nicht zum Rechnungsbetrag');
+      const ohneFach = await t.zahlen(r.id, { zahlweg: 'bar' });
+      expect(ohneFach.status).toBe(400);
+      const res = await t.zahlen(r.id, t.bar);
+      expect(res.status, await res.clone().text()).toBe(201);
+      expect(await t.saldo(t.fach)).toBe(11900);
+      const buchung = await t.lesen<Dto>(
+        'admin-token',
+        `/buchungen/${((await res.json()) as Dto).buchungId}`,
+      );
+      expect(buchung.zeilen[0]).toMatchObject({ kontoId: t.fach, betragCent: 11900 });
+      expect(buchung.zeilen[0].stueckelung).toHaveLength(4);
+    });
+
+    it('books card payments against the SumUp account', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      expect((await t.zahlen(r.id, { zahlweg: 'sumup' })).status).toBe(201);
+      expect(await t.saldo('sumup')).toBe(11900);
+      expect(await t.saldo('bank')).toBe(0);
+    });
+
+    it('rejects a second payment, is idempotent and checks the payment date', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      // Future payment date: error; before the Rechnungsdatum: warning.
+      const zukunft = await t.zahlen(r.id, { datum: '2027-03-05' });
+      expect(zukunft.status).toBe(400);
+      const vor = await t.zahlen(r.id, { datum: '2027-02-27' });
+      expect(vor.status).toBe(409);
+      expect(((await vor.json()) as Dto).warnungen).toMatchObject([
+        { code: 'zahlung_vor_rechnung' },
+      ]);
+      const schluessel = crypto.randomUUID();
+      const erst = await t.zahlen(r.id, { idempotenzSchluessel: schluessel });
+      expect(erst.status).toBe(201);
+      const nochmal = await t.zahlen(r.id, { idempotenzSchluessel: schluessel });
+      expect(nochmal.status).toBe(200);
+      expect(((await nochmal.json()) as Dto).wiederholt).toBe(true);
+      const doppelt = await t.zahlen(r.id);
+      expect(doppelt.status).toBe(409);
+      expect(((await doppelt.json()) as Dto).error).toBe('Die Rechnung ist schon bezahlt.');
+      expect(await t.saldo('bank')).toBe(11900);
+      expect((await t.zahlen('nope')).status).toBe(404);
+    });
+
+    it('does not reverse the Stellungsbuchung in the journal, but the payment', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const storno = (buchungId: string) =>
+        t.anfrage('admin-token', 'POST', `/buchungen/${buchungId}/storno`, {
+          datum: '2027-03-01',
+          text: 'Falsch',
+        });
+      const abgelehnt = await storno(r.buchungId);
+      expect(abgelehnt.status).toBe(409);
+      expect(((await abgelehnt.json()) as Dto).error).toContain('Stornorechnung');
+      const z = (await (await t.zahlen(r.id)).json()) as Dto;
+      expect((await storno(z.buchungId)).status).toBe(201);
+      expect((await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`)).status).toBe('gestellt');
+    });
+
+    it('pays a Rechnung again after the payment booking was reversed in the journal', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const z = (await (await t.zahlen(r.id)).json()) as Dto;
+      const stornoBuchung = await t.anfrage(
+        'admin-token',
+        'POST',
+        `/buchungen/${z.buchungId}/storno`,
+        {
+          datum: '2027-03-01',
+          text: 'Zahlung falsch zugeordnet',
+        },
+      );
+      expect(stornoBuchung.status).toBe(201);
+      expect((await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`)).status).toBe('gestellt');
+      expect((await t.zahlen(r.id)).status).toBe(201);
+    });
+
+    it('cancels an unpaid Rechnung with a Stornorechnung from the same number sequence', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const res = await t.storno(r.id);
+      expect(res.status).toBe(201);
+      const s = (await res.json()) as Dto;
+      expect(s.nummer).toBe('002-2027');
+      const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${s.buchungId}`);
+      expect(buchung).toMatchObject({
+        quelleTyp: 'storno',
+        text: expect.stringContaining('Stornorechnung 002-2027 zu 001-2027'),
+      });
+      expect(await t.saldo('forderungen')).toBe(0);
+      expect(await t.saldo('erloese_offen')).toBe(0);
+      const original = await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`);
+      expect(original).toMatchObject({
+        status: 'storniert',
+        stornorechnung: { id: s.id, nummer: '002-2027' },
+      });
+      const storno = await t.lesen<Dto>('admin-token', `/rechnungen/${s.id}`);
+      expect(storno).toMatchObject({
+        istStorno: true,
+        status: 'storniert',
+        bruttoCent: -11900,
+        stornoBegruendung: 'Falsch ausgestellt',
+        stornoVon: { id: r.id, nummer: '001-2027' },
+        summen: [{ satz: 1900, netto: -10000, steuer: -1900, brutto: -11900 }],
+      });
+      expect(storno.posten[0]).toMatchObject({ anzahlMilli: -1000, betragCent: -11900 });
+      // Neither again nor pay, neither the Stornorechnung itself.
+      expect((await t.storno(r.id)).status).toBe(409);
+      expect((await t.storno(s.id)).status).toBe(409);
+      expect((await t.zahlen(r.id)).status).toBe(409);
+      expect((await t.zahlen(s.id)).status).toBe(409);
+      expect((await t.lesen<Dto>('admin-token', '/rechnungen')).offeneSummeCent).toBe(0);
+      expect((await t.lesen<Dto>('admin-token', '/kette')).ok).toBe(true);
+    });
+
+    it('refuses to cancel a paid Rechnung until the payment is reversed', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const z = (await (await t.zahlen(r.id)).json()) as Dto;
+      const abgelehnt = await t.storno(r.id);
+      expect(abgelehnt.status).toBe(409);
+      expect(((await abgelehnt.json()) as Dto).error).toContain('Zahlungsbuchung');
+      await t.anfrage('admin-token', 'POST', `/buchungen/${z.buchungId}/storno`, {
+        datum: '2027-03-01',
+        text: 'Falsch',
+      });
+      expect((await t.storno(r.id)).status).toBe(201);
+    });
+
+    it('requires a reason for the Stornorechnung', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      expect((await t.storno(r.id, { begruendung: ' ' })).status).toBe(400);
+      expect((await t.storno('nope')).status).toBe(404);
+    });
+
+    it('copies an issued Rechnung into a new draft', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const res = await t.roh('admin-token', 'POST', `/rechnungen/${r.id}/kopieren`);
+      expect(res.status).toBe(201);
+      const e = await t.lesen<Dto>(
+        'admin-token',
+        `/rechnung-entwuerfe/${((await res.json()) as Dto).id}`,
+      );
+      expect(e.daten).toMatchObject({
+        empfaenger: { typ: 'extern', id: t.extern },
+        betreff: 'Beratung Februar',
+        leistungVon: null,
+        posten: [{ art: 'frei', text: 'Beratung', einzelpreisCent: 11900 }],
+      });
+      const s = (await (await t.storno(r.id)).json()) as Dto;
+      expect((await t.roh('admin-token', 'POST', `/rechnungen/${s.id}/kopieren`)).status).toBe(409);
+      expect((await t.roh('admin-token', 'POST', '/rechnungen/nope/kopieren')).status).toBe(404);
+    });
+
+    it('registers one PDF per Rechnung in the archive', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      const sha = 'b'.repeat(64);
+      const upload = await t.roh('admin-token', 'POST', '/rechnung-dateien/upload', {
+        rechnungId: r.id,
+        sha256: sha,
+        groesse: 1234,
+      });
+      expect(upload.status).toBe(200);
+      expect(((await upload.json()) as Dto).schluessel).toBe(`rechnungen/${sha}.pdf`);
+      expect(
+        (
+          await t.roh('admin-token', 'POST', '/rechnung-dateien/upload', {
+            rechnungId: 'nope',
+            sha256: sha,
+            groesse: 1,
+          })
+        ).status,
+      ).toBe(404);
+      const reg = await t.roh('admin-token', 'POST', `/rechnungen/${r.id}/datei`, {
+        sha256: sha,
+        groesse: 1234,
+      });
+      expect(reg.status).toBe(201);
+      const nochmal = await t.roh('admin-token', 'POST', `/rechnungen/${r.id}/datei`, {
+        sha256: 'c'.repeat(64),
+        groesse: 5,
+      });
+      expect(nochmal.status).toBe(409);
+      const detail = await t.lesen<Dto>('admin-token', `/rechnungen/${r.id}`);
+      expect(detail.datei).toMatchObject({
+        sha256: sha,
+        groesse: 1234,
+        url: `https://s3.example/finanzarchiv/rechnungen/${sha}.pdf`,
+      });
+      expect(
+        (await t.roh('admin-token', 'POST', '/rechnungen/nope/datei', { sha256: sha, groesse: 1 }))
+          .status,
+      ).toBe(404);
+    });
+
+    it('answers 503 for the PDF without a Finanzarchiv', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      const sha = 'b'.repeat(64);
+      expect(
+        (
+          await t.roh('admin-token', 'POST', '/rechnung-dateien/upload', {
+            rechnungId: r.id,
+            sha256: sha,
+            groesse: 1,
+          })
+        ).status,
+      ).toBe(503);
+      expect(
+        (
+          await t.roh('admin-token', 'POST', `/rechnungen/${r.id}/datei`, {
+            sha256: sha,
+            groesse: 1,
+          })
+        ).status,
+      ).toBe(503);
+    });
+
+    it('marks an unpaid Rechnung overdue after the due date', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      jetzt('2027-03-20T10:00:00Z');
+      const liste = await t.lesen<Dto>('admin-token', '/rechnungen');
+      expect(liste).toMatchObject({ offeneSummeCent: 11900, ueberfaelligAnzahl: 1 });
+      expect(liste.rechnungen[0]).toMatchObject({
+        id: r.id,
+        status: 'gestellt',
+        ueberfaellig: true,
+      });
+    });
+
+    it('exports Rechnungen, items and payments in the Datenexport', async () => {
+      const t = await rechnungSetup();
+      const r = await t.gestellt();
+      await t.zahlen(r.id);
+      const res = await t.roh('admin-token', 'POST', '/datenexporte', {
+        von: '2027-01-01',
+        bis: '2027-12-31',
+      });
+      expect(res.status).toBe(201);
+      const [, inhalt] = t.finanzarchiv.exportSchreiben.mock.calls.at(-1)!;
+      const dateien = unzipSync(inhalt as Uint8Array);
+      expect(strFromU8(dateien['rechnungen.csv']!)).toContain('001-2027;01.03.2027');
+      expect(strFromU8(dateien['rechnungsposten.csv']!)).toContain(`${r.id};1;frei;Beratung`);
+      expect(strFromU8(dateien['rechnungszahlungen.csv']!)).toContain(`${r.id};bank;01.03.2027`);
     });
   });
 });

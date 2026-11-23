@@ -30,6 +30,8 @@ export interface Finanzarchiv {
     sha256: string;
     groesse: number;
     typ: BelegDateiTyp;
+    /** Explicit archive key (Rechnung PDFs); default: `belege/<sha256>.<ext>`. */
+    schluessel?: string;
   }): Promise<{ uploadUrl: string; schluessel: string; checksumSha256: string }>;
   anzeigeUrl(schluessel: string): Promise<string>;
   /** Writes an export or anchor file. */
@@ -50,8 +52,8 @@ export function createFinanzarchiv(bucket: string, region: string): Finanzarchiv
   const s3 = new S3Client({ region });
   return {
     eingerichtet: true,
-    async uploadVorbereiten({ sha256, groesse, typ }) {
-      const schluessel = belegDateiSchluessel(sha256, typ);
+    async uploadVorbereiten({ sha256, groesse, typ, schluessel: eigener }) {
+      const schluessel = eigener ?? belegDateiSchluessel(sha256, typ);
       const checksumSha256 = Buffer.from(sha256, 'hex').toString('base64');
       const uploadUrl = await getSignedUrl(
         s3,

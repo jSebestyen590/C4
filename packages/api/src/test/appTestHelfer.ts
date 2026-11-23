@@ -837,11 +837,15 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   const archivPruefsummen = new Map<string, string | null>();
   const finanzarchiv = {
     eingerichtet: true,
-    uploadVorbereiten: vi.fn(async (d: { sha256: string; groesse: number; typ: string }) => ({
-      uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
-      schluessel: `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
-      checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
-    })),
+    uploadVorbereiten: vi.fn(
+      async (d: { sha256: string; groesse: number; typ: string; schluessel?: string }) => ({
+        uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
+        schluessel:
+          d.schluessel ??
+          `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
+        checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
+      }),
+    ),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
     exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
       async (schluessel, inhalt) => {

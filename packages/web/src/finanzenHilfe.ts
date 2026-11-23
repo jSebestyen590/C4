@@ -214,6 +214,32 @@ export const HILFE = {
     steuersatz:
       'Standard-Steuersatz des Artikels: wird bei einem neuen Posten mit diesem Namen vorausgewählt.',
   },
+  rechnungen: {
+    istVersteuerung:
+      'Der Verein versteuert nach vereinnahmten Entgelten (Ist-Versteuerung): Erlös und Umsatzsteuer entstehen erst, wenn bezahlt wird. Beim Stellen bucht die App deshalb nur die offene Forderung. Erst die Zahlung bucht den Erlös mit Umsatzsteuer, mit dem Datum der Zahlung.',
+    nummer:
+      'Die Rechnungsnummer (NNN-Jahr, z. B. 001-2027) wird beim Stellen vergeben, lückenlos je Jahr. Das Jahr ist das des Rechnungsdatums (heute). Entwürfe haben noch keine Nummer. Auch Stornorechnungen bekommen eine Nummer aus derselben Reihe.',
+    leistungsdatum:
+      'Der Tag der Lieferung oder Leistung, bei einem Zeitraum der erste Tag. Pflicht auf jeder Rechnung. Das Rechnungsdatum ist immer der Tag des Stellens und lässt sich nicht ändern.',
+    zahlungsziel:
+      'Tage ab dem Rechnungsdatum, bis die Rechnung fällig ist. Leer: der Standard aus den Rechnungs-Einstellungen. Danach gilt die Rechnung in der Liste als überfällig.',
+    empfaenger:
+      'Mitglieder bekommen die Rechnung mit Vor- und Nachname und der Adresse aus dem Profil; fehlt die Adresse, kann die Rechnung nicht gestellt werden. Externe Empfänger legst du hier oder unter „Empfänger“ an. Name und Anschrift werden beim Stellen in die Rechnung kopiert.',
+    waren:
+      'Waren stammen aus dem Lager. Der Preis gilt je Gebinde ohne Pfand und ist mit dem letzten Einkaufspreis vorbelegt (brutto). Das Pfand je Gebinde wird auf der Rechnung als eigene Zeile ausgewiesen.',
+    anschrift:
+      'Die Anschrift wird so auf die Rechnung gedruckt, Zeile für Zeile: z. B. Straße und Hausnummer, dann PLZ und Ort. Der Name steht schon darüber.',
+    erloesKategorie:
+      'Das Erlöskonto, auf das die Zahlung gebucht wird. Der Steuersatz wird mit dem Standard der Kategorie vorbelegt und lässt sich ändern.',
+    modus:
+      'Brutto: Die Preise enthalten die Steuer, sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer, die Steuer kommt je Steuersatz obendrauf.',
+    storno:
+      'Eine gestellte Rechnung wird nie geändert oder gelöscht. Die Stornorechnung ist eine neue Rechnung mit eigener Nummer und negativen Beträgen, die auf die Ursprungsrechnung verweist. Sie ist nur möglich, solange nicht bezahlt wurde: Storniere bei einer bezahlten Rechnung zuerst die Zahlungsbuchung im Journal.',
+    zahlweg:
+      'Bank: Überweisung aufs Vereinskonto. Bar: Das Geld kommt in ein Fach des Safes, du gibst die Münzen und Scheine an. Karte (SumUp): Das Geld liegt zunächst als SumUp-Guthaben, bis die Auszahlung mit dem Bankkonto abgeglichen wird. Eine Rechnung wird immer ganz bezahlt, Teilzahlungen gibt es nicht. Ins Buch lässt sich nicht zahlen.',
+    einstellungen:
+      'Diese Angaben erscheinen auf jeder Rechnung. Beim Stellen wird eine Kopie in die Rechnung geschrieben: Spätere Änderungen betreffen nur neue Rechnungen.',
+  },
   waren: {
     standardGebinde:
       'Das Standard-Gebinde wird beim Erfassen eines Ware-Postens vorausgewählt (samt Pfand). Ohne Standard wird das Gebinde nur vorausgewählt, wenn die Ware genau eines hat. Pflichtfeld; es muss eines der gewählten Gebinde der Ware sein.',

@@ -13,6 +13,8 @@ import {
   belegPruefen,
   gebindeBezeichnung,
   pfandGesamtCent,
+  letzterPreisJeGebinde,
+  warenGebindeKey,
   warengruppeKategorie,
   erstattungBuchungstext,
   erstattungBuchungszeilen,
@@ -1743,14 +1745,37 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
     },
 
     async belegWaren() {
-      const [gruppen, wareRows, verknuepft, alleGebinde, aliasRows] = await Promise.all([
-        db.select().from(warengruppen),
-        db.select().from(waren).where(eq(waren.archiviert, false)).orderBy(asc(waren.name)),
-        db.select().from(wareGebinde),
-        db.select().from(gebinde),
-        db.select().from(wareAliase),
-      ]);
+      const [gruppen, wareRows, verknuepft, alleGebinde, aliasRows, eingekauft] = await Promise.all(
+        [
+          db.select().from(warengruppen),
+          db.select().from(waren).where(eq(waren.archiviert, false)).orderBy(asc(waren.name)),
+          db.select().from(wareGebinde),
+          db.select().from(gebinde),
+          db.select().from(wareAliase),
+          db
+            .select({
+              wareId: finBelegposten.wareId,
+              gebindeId: finBelegposten.gebindeId,
+              einzelpreisCent: finBelegposten.einzelpreisCent,
+              steuersatz: finBelegposten.steuersatz,
+              modus: finBelege.modus,
+              buchungId: finBelege.buchungId,
+            })
+            .from(finBelegposten)
+            .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+            .where(and(eq(finBelegposten.art, 'ware'), isNotNull(finBelegposten.wareId)))
+            .orderBy(
+              desc(finBelege.belegdatum),
+              desc(finBelege.erstelltAm),
+              desc(finBelegposten.pos),
+            ),
+        ],
+      );
       const alle = alleGebinde as Gebinde[];
+      const storno = await stornierte(db, [...new Set(eingekauft.map((e) => e.buchungId))]);
+      const letzte = letzterPreisJeGebinde(
+        eingekauft.filter((e) => !storno.has(e.buchungId)).map((e) => ({ ...e, modus: e.modus })),
+      );
       return wareRows.map((w) => ({
         id: w.id,
         name: w.name,
@@ -1772,6 +1797,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
                     id: g.id,
                     bezeichnung: gebindeBezeichnung(g as Gebinde, alle),
                     pfandGesamtCent: pfandGesamtCent(g as Gebinde, alle),
+                    letzterPreisCent: letzte.get(warenGebindeKey(w.id, g.id)) ?? null,
                   },
                 ]
               : [];

@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_rechnungsempfaenger_name_idx ON fin_rechnungsempfaenger (name)

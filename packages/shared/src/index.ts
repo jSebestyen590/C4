@@ -7,6 +7,7 @@ export * from './buch';
 export * from './finanzen';
 export * from './finanzenAbschluss';
 export * from './belege';
+export * from './rechnungen';
 export * from './geburtstag';
 export * from './ifco';
 export * from './inventar';

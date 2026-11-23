@@ -38,6 +38,7 @@ import { todosRoutes } from './routes/todos';
 import { protokolleRoutes } from './routes/protokolle';
 import { trichterRoutes } from './routes/trichter';
 import { finanzenRoutes } from './routes/finanzen';
+import { finanzenRechnungenRoutes } from './routes/finanzenRechnungen';
 import { lagerAbgleichRoutes } from './routes/lagerAbgleich';
 import { buchRoutes } from './routes/buch';
 import { umfragenRoutes } from './routes/umfragen';
@@ -119,6 +120,7 @@ export function createApp(deps: AppDeps) {
       .route('/', protokolleRoutes(ctx))
       .route('/', trichterRoutes(ctx))
       .route('/', finanzenRoutes(ctx))
+      .route('/', finanzenRechnungenRoutes(ctx))
       .route('/', lagerAbgleichRoutes(ctx))
       .route('/', buchRoutes(ctx))
       .route('/', umfragenRoutes(ctx))
