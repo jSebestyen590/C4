@@ -10,6 +10,7 @@ import {
   type BelegWarnungDto,
   type Zahlweg,
 } from '@c4/shared';
+import { useDatumsgrenze, verschiebText } from './FestschreibungHinweise';
 import { BelegSummen } from './BelegSummen';
 import { BETRAG_STIL } from './finanzenDaten';
 import { stueckelungText } from './bargeldFormular';
@@ -61,6 +62,11 @@ export function BelegBuchenDialog({
       return neu;
     });
   const zahlweg = form.zahlweg as Zahlweg;
+  const { festBis } = useDatumsgrenze();
+  const verschiebung = verschiebText(
+    zahlweg === 'auslage' ? form.belegdatum : form.bezahldatum,
+    festBis,
+  );
   const eigenbeleg = formularEigenbeleg(form);
   const stueckelung = stueckelungAus(form.gegeben, form.wechselgeld);
   return (
@@ -72,6 +78,11 @@ export function BelegBuchenDialog({
       closeOnClickOutside={!laeuft}
     >
       <Stack>
+        {verschiebung && (
+          <Alert color="yellow" title="Buchungsdatum verschoben">
+            {verschiebung}
+          </Alert>
+        )}
         <Text size="sm" c="dimmed">
           Die Belegnummer wird beim Buchen vergeben. Ein gebuchter Beleg lässt sich nicht mehr
           ändern.

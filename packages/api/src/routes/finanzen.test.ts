@@ -3463,6 +3463,12 @@ describe('finanzen', () => {
         expect(detail.belegdatum).toBe('2027-01-05');
         const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${beleg.buchungId}`);
         expect(buchung.datum).toBe('2027-02-01');
+        expect(detail.buchungsdatum).toBe('2027-02-01');
+        expect(detail.buchungVerschoben).toBe(true);
+        const liste = await t.lesen<Dto>('admin-token', '/belege');
+        const eintrag = (liste.belege as Dto[]).find((b) => b.id === beleg.id);
+        expect(eintrag?.buchungsdatum).toBe('2027-02-01');
+        expect(eintrag?.buchungVerschoben).toBe(true);
       });
     });
   });

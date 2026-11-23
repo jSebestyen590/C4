@@ -17,6 +17,7 @@ import {
   BELEG_MODUS_LABELS,
   centAnzeigen,
   datumAnzeigen,
+  monatAnzeigen,
   einzelpreisAusGesamt,
   istEigenbeleg,
   ZAHLWEG_LABELS,
@@ -189,6 +190,14 @@ export function FinanzenBelegDetailPage() {
                 <Anchor component={Link} to={detailPfad(b.buchung.id)}>
                   Nr. {b.buchung.seq}
                 </Anchor>
+                {b.buchungVerschoben && (
+                  <Text span c="orange.8">
+                    {' '}
+                    · gebucht am {datumAnzeigen(b.buchungsdatum)} (
+                    {monatAnzeigen(b.zahlweg === 'auslage' ? b.belegdatum : (b.bezahldatum ?? ''))}{' '}
+                    war festgeschrieben)
+                  </Text>
+                )}
               </Zeile>
               {b.erstattung && (
                 <Zeile label="Erstattung">

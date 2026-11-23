@@ -3,6 +3,7 @@ import {
   artikelListeBilden,
   artikelVorschlaegeBilden,
   belegBerechnen,
+  belegBuchungVerschoben,
   belegBuchungszeilen,
   belegDateiSchluessel,
   belegEntwurfDatenSchema,
@@ -738,5 +739,23 @@ describe('Artikel', () => {
         zuletztAm: null,
       },
     ]);
+  });
+});
+
+describe('belegBuchungVerschoben', () => {
+  const b = { belegdatum: '2026-10-01', bezahldatum: '2026-10-03' };
+  it('compares with the Belegdatum for an Auslage, else the Bezahldatum', () => {
+    expect(belegBuchungVerschoben({ ...b, zahlweg: 'auslage', buchungsdatum: '2026-10-01' })).toBe(
+      false,
+    );
+    expect(belegBuchungVerschoben({ ...b, zahlweg: 'auslage', buchungsdatum: '2026-11-01' })).toBe(
+      true,
+    );
+    expect(belegBuchungVerschoben({ ...b, zahlweg: 'bar', buchungsdatum: '2026-10-03' })).toBe(
+      false,
+    );
+    expect(belegBuchungVerschoben({ ...b, zahlweg: 'bar', buchungsdatum: '2026-10-01' })).toBe(
+      true,
+    );
   });
 });

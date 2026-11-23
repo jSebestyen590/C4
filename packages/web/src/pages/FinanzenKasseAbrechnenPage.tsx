@@ -45,7 +45,7 @@ import { BetragFeld } from '../BetragFeld';
 import { mengenLeer, mengenStueckelung, stueckelungMengen, type Mengen } from '../bargeldFormular';
 import { schluesselFuer } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
-import { VerschiebHinweis } from '../FestschreibungHinweise';
+import { useDatumsgrenze, verschiebText, VerschiebHinweis } from '../FestschreibungHinweise';
 import {
   BETRAG_STIL,
   detailPfad,
@@ -261,6 +261,7 @@ function Zusammenfassung({
   const [bestaetigt, setBestaetigt] = useState<ReadonlySet<string>>(new Set());
   const offen = warnungen.some((w) => !bestaetigt.has(w));
   const erloesZeile = rechnung.zeilen.find((z) => z.kontoId === erloesKontoId);
+  const verschiebung = verschiebText(datum, useDatumsgrenze().festBis);
   return (
     <Modal
       opened
@@ -270,6 +271,11 @@ function Zusammenfassung({
       closeOnClickOutside={!laeuft}
     >
       <Stack>
+        {verschiebung && (
+          <Alert color="yellow" title="Buchungsdatum verschoben">
+            {verschiebung}
+          </Alert>
+        )}
         <Text>
           <Text span fw={600}>
             Kasse:

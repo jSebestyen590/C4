@@ -39,6 +39,20 @@ import { StatusName } from '../StatusAnzeige';
 import { SortierAuswahl, SortierKopf, useSortierung, type SortSpalte } from '../sortierung';
 import { ZurueckLink } from '../ZurueckLink';
 
+/** Marker for a Beleg booked on a later day than normal (closed month); renders nothing otherwise. */
+function VerschobenMarke({ b }: Readonly<{ b: BelegListeDto }>) {
+  if (!b.buchungVerschoben || !b.buchungsdatum) return null;
+  return (
+    <Text
+      size="xs"
+      c="orange.8"
+      title="Der Monat war festgeschrieben, der Beleg wurde auf den ersten offenen Tag gebucht."
+    >
+      gebucht am {datumAnzeigen(b.buchungsdatum)}
+    </Text>
+  );
+}
+
 const pfadVon = (b: BelegListeDto) =>
   b.status === 'entwurf' ? belegEntwurfPfad(b.id) : belegPfad(b.id);
 
@@ -121,6 +135,7 @@ function BelegTabelle({ zeilen: eintraege }: Readonly<{ zeilen: readonly BelegLi
                   {b.nummer ?? 'Entwurf'}
                   {b.belegdatum ? ` · ${datumAnzeigen(b.belegdatum)}` : ''}
                 </Text>
+                <VerschobenMarke b={b} />
               </Group>
               {b.eingereichtVon && (
                 <Text size="sm" c="dimmed">
@@ -188,6 +203,7 @@ function BelegTabelle({ zeilen: eintraege }: Readonly<{ zeilen: readonly BelegLi
             </Table.Td>
             <Table.Td style={{ whiteSpace: 'nowrap' }}>
               {b.belegdatum ? datumAnzeigen(b.belegdatum) : '–'}
+              <VerschobenMarke b={b} />
             </Table.Td>
             <Table.Td style={{ overflowWrap: 'anywhere' }}>
               <StellerAnzeige b={b} leer="–" />

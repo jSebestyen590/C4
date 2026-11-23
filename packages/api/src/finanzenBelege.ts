@@ -50,6 +50,7 @@ import {
   postenBetrag,
   postenZeilenLabel,
   type BelegPostenArt,
+  belegBuchungVerschoben,
   belegdatumAlt,
   datumAnzeigen,
   einzelpreisAusGesamt,
@@ -507,6 +508,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       .from(finBuchungen)
       .where(inArray(finBuchungen.stornoVon, buchungIds));
     return new Set(rows.flatMap((r) => (r.stornoVon ? [r.stornoVon] : [])));
+  };
+
+  const buchungsdaten = async (q: Q, buchungIds: string[]): Promise<Map<string, string>> => {
+    if (buchungIds.length === 0) return new Map();
+    const rows = await q
+      .select({ id: finBuchungen.id, datum: finBuchungen.datum })
+      .from(finBuchungen)
+      .where(inArray(finBuchungen.id, buchungIds));
+    return new Map(rows.map((r) => [r.id, r.datum] as [string, string]));
   };
 
   const stellerNamen = async (q: Q): Promise<Map<string, string>> =>
@@ -1238,6 +1248,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             eingereichtVon: e.eingereichtVon,
             eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
             eingereichtBetragCent: d.eingereichtBetragCent,
+            buchungsdatum: null,
+            buchungVerschoben: false,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -1251,7 +1263,12 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           db,
           rows.map((r) => r.buchungId),
         );
+        const datumJeBuchung = await buchungsdaten(
+          db,
+          rows.map((r) => r.buchungId),
+        );
         const gebucht = rows.flatMap((r): BelegListeEintrag[] => {
+          const buchungsdatum = datumJeBuchung.get(r.buchungId) ?? null;
           const status: BelegStatus = storno.has(r.buchungId) ? 'storniert' : 'gebucht';
           const eintrag: BelegListeEintrag = {
             id: r.id,
@@ -1270,6 +1287,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             eingereichtVon: r.eingereichtVon,
             eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
             eingereichtBetragCent: r.eingereichtBetragCent,
+            buchungsdatum,
+            buchungVerschoben:
+              buchungsdatum !== null &&
+              belegBuchungVerschoben({
+                zahlweg: r.zahlweg,
+                belegdatum: r.belegdatum,
+                bezahldatum: r.bezahldatum,
+                buchungsdatum,
+              }),
           };
           return passt(eintrag) && (!abfrage.status || abfrage.status === status) ? [eintrag] : [];
         });
@@ -1296,7 +1322,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .orderBy(asc(finBelegposten.pos)),
         db.select().from(finBelegKorrekturen).where(eq(finBelegKorrekturen.belegId, id)),
         db
-          .select({ seq: finBuchungen.seq })
+          .select({ seq: finBuchungen.seq, datum: finBuchungen.datum })
           .from(finBuchungen)
           .where(eq(finBuchungen.id, b.buchungId)),
         db
@@ -1359,6 +1385,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         jeSteuersatz: rechnung.jeSteuersatz,
         summeCent: b.summeCent,
         buchung: { id: b.buchungId, seq: buchung?.seq ?? 0 },
+        buchungsdatum: buchung?.datum ?? b.belegdatum,
+        buchungVerschoben:
+          !!buchung &&
+          belegBuchungVerschoben({
+            zahlweg: b.zahlweg,
+            belegdatum: b.belegdatum,
+            bezahldatum: b.bezahldatum,
+            buchungsdatum: buchung.datum,
+          }),
         storniert: storno.has(b.buchungId),
         erstattung: aktiv
           ? {

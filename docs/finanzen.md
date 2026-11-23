@@ -235,7 +235,11 @@ Je Monat schließt `finanzen:verwalten` das Journal ab (Seite `/finanzen/festsch
 - **Sperre:** `einfuegen` im Journal liest in der Transaktion den letzten festgeschriebenen Monat. Freie Buchung,
   Umbuchung und Storno mit Datum in einem festgeschriebenen Monat: 400 („Der Monat MM/JJJJ ist festgeschrieben. Buche
   mit einem Datum ab TT.MM.JJJJ.“). Beleg, Erstattung, Zählung und Kassenabrechnung buchen mit dem **ersten offenen
-  Tag** als Buchungsdatum; Beleg-, Bezahl- und Eventdatum bleiben unverändert. Die Seiten zeigen das vorher an.
+  Tag** als Buchungsdatum; Beleg-, Bezahl- und Eventdatum bleiben unverändert. Die Seiten zeigen das vorher an: unter dem Datumsfeld und als gelber Hinweis
+  „Buchungsdatum verschoben“ ganz oben im Prüf-Dialog (Beleg, Kassenabrechnung). Die Belegliste („gebucht am …“ unter dem
+  Belegdatum) und die Beleg-Detailseite („Buchung Nr. …, gebucht am … (MM/JJJJ war festgeschrieben)“) zeigen, dass die
+  Buchung verschoben wurde; die DTOs tragen `buchungsdatum` und `buchungVerschoben` (Belegdatum bei Auslage, sonst
+  Bezahldatum weicht vom Buchungsdatum ab).
   Ein Storno einer Buchung aus einem festgeschriebenen Monat bucht in einem offenen Monat; die alte Buchung bleibt unverändert.
 - **Ablauf:** `POST /api/finanzen/festschreibungen` (`{ monat, idempotenzSchluessel }`) schreibt in einer Transaktion
   (mit Zählerzeile, damit parallele Buchungen kollidieren und wiederholt werden) die Zeile und legt im Archiv
@@ -258,6 +262,10 @@ Für das Finanzamt (Betriebsprüfung, Z3-Zugriff) erzeugt `POST /api/finanzen/da
   liegen nicht im ZIP), `belegposten.csv`, `rechnungssteller.csv`, `festschreibungen.csv`
 - `index.xml`: Beschreibungsstandard GDPdU Version 1.6 vom 01.03.2019, die DTD `gdpdu-01-03-2019.dtd` liegt im ZIP neben der `index.xml`: je Tabelle Datei, Name, Spalten mit Typ, Schlüssel
 - `beschreibung.txt`: Zeitraum, Ersteller, Spaltenbedeutung, Hinweis auf die Hash-Kette
+
+Die offizielle DTD 1.6 enthält für `Media` ein nicht-deterministisches Inhaltsmodell (`Command*, Table*, Command*`);
+`xmllint --valid` meldet das als Gültigkeitsfehler der DTD selbst. Sie liegt bewusst unverändert im ZIP, weil es die
+offizielle Datei ist.
 
 CSV: UTF-8, Trenner `;`, CRLF, Beträge `1234,56`, Datum `TT.MM.JJJJ`. Das ZIP liegt im Archiv unter
 `datenexport/<Zeitstempel>-<von>-<bis>.zip`, eine Zeile in `fin_datenexporte` (nur INSERT) hält Zeitraum, Schlüssel,
