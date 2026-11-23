@@ -809,8 +809,15 @@ export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
 /** Meeting minutes of one event (see docs/protokolle.md); `inhalt` is the TipTap document and `kopf` the header, both JSON text. */
 export const protokolle = pgTable('protokolle', {
   id: text('id').primaryKey(),
-  /** Event of a Kategorie with `protokoll`; unique, deliberately without a foreign key (checked in the API). */
+  /**
+   * Event of a Kategorie with `protokoll`, deliberately without a foreign key (checked in the API).
+   * Unique together with `fassung` (index `protokolle_event_fassung_idx`).
+   */
   eventId: text('event_id').notNull(),
+  /** `normal` or `offiziell` (official copy); the API always writes it (column added with a backfill, no DB default). */
+  fassung: text('fassung').$type<'normal' | 'offiziell'>().notNull(),
+  /** Official copy: id of the normal protocol it was copied from (no foreign key); null = normal protocol. */
+  offiziellVon: text('offiziell_von'),
   inhalt: text('inhalt').notNull(),
   kopf: text('kopf').notNull(),
   /** `entwurf` or `abgeschlossen` (CHECK). */

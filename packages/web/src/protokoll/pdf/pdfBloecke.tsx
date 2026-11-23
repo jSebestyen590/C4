@@ -38,6 +38,7 @@ import {
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  dokumentPerson,
   todoZeile,
   auswahlZeilen,
   wahlAbschnitte,
@@ -172,7 +173,9 @@ const ueberschriftStil = (ebene: number) =>
 const SICHERE_LINKS = /^(https?:|mailto:|tel:)/i;
 
 const Name = ({ p }: Readonly<{ p: Person }>) => (
-  <Text style={{ fontWeight: 700, color: STATUS_FARBE[p.status] }}>{p.name}</Text>
+  <Text style={p.farblos ? undefined : { fontWeight: 700, color: STATUS_FARBE[p.status] }}>
+    {p.name}
+  </Text>
 );
 
 /** An @mention: "@username" bold in the color of the status, "@Mitglieder" as plain text (no highlighter). */
@@ -1025,7 +1028,7 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     eingabe.inhalt,
     (sub) => {
       const m = alle.find((x) => x.sub === sub);
-      return m ? personName(m) : null;
+      return m ? personName(m, eingabe.offiziell) : null;
     },
     eingabe.kategorien,
   );
@@ -1038,7 +1041,7 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
-      return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;
+      return m ? dokumentPerson(m, eingabe.offiziell) : null;
     },
   };
   const satz = eroeffnungSatz(art, kopf.leitung !== null, kopf.eroeffnung);

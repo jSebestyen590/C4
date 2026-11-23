@@ -57,6 +57,7 @@ export function useProtokollPdfSpeichern() {
           sitzung: dto.sitzung,
           naechsteSitzungVorschlag: dto.naechsteSitzungVorschlag,
           mitglieder,
+          offiziell: dto.offiziellVon !== null,
         };
       },
       erzeugen: async (eingabe) => (await import('./pdf/pdfErzeugen')).protokollPdfBlob(eingabe),

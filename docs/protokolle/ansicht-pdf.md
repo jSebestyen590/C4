@@ -98,6 +98,11 @@ gedruckt). Er öffnet eine Schublade von rechts (`min(52rem, 100%)`, am Handy vo
 Eingaben (`dokumentEingabe` in `ProtokollPage`, dieselbe wie im Reiter „Dokument“), ohne eigene Gliederung (`ohneGliederung`).
 Schließen per Klick auf den Hintergrund oder das Kreuz.
 
+- **Offizielle Kopie:** `DokumentEingabe.offiziell` schaltet alle Personen auf den Klarnamen „Vorname Nachname“ (ohne Klarnamen der
+  Benutzername) und auf einfachen Text ohne Fettdruck und Statusfarbe (`Person.farblos`, `dokumentPerson`): Kopf, Bausteine,
+  @Erwähnungen, Abstimmungslisten, Überschriften, Vorschau, Druck und PDF. Der PDF-Dateiname bekommt `_offiziell`
+  (`druckTitel(sitzung, true)`).
+
 ## Autosave (Oberfläche)
 
 - **Autosave** 2 Sekunden nach der letzten Änderung (Dokument und Kopf); Statuszeile „Gespeichert · 20:14“ bzw. „Wird

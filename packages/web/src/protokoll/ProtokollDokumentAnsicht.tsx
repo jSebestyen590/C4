@@ -44,6 +44,7 @@ import {
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  dokumentPerson,
   todoZeile,
   type DokumentEingabe,
   type Person,
@@ -199,7 +200,7 @@ function Erwaehnung({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) 
     if (m && mitglied) {
       inhalt = (
         <Link to={mitgliedLink(mitglied)} style={{ textDecoration: 'none' }}>
-          <StatusName status={m.status}>{`@${m.name}`}</StatusName>
+          {m.farblos ? `@${m.name}` : <StatusName status={m.status}>{`@${m.name}`}</StatusName>}
         </Link>
       );
     } else {
@@ -447,6 +448,7 @@ function BildFigur({
 }
 
 function PersonName({ p }: Readonly<{ p: Person }>) {
+  if (p.farblos) return <>{p.name}</>;
   return <StatusName status={p.status}>{p.name}</StatusName>;
 }
 
@@ -942,7 +944,7 @@ export function ProtokollDokumentAnsicht({
   const alle = alleMitglieder(eingabe);
   const namen = (sub: string) => {
     const m = alle.find((x) => x.sub === sub);
-    return m ? personName(m) : null;
+    return m ? personName(m, eingabe.offiziell) : null;
   };
   const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen, eingabe.kategorien);
   const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen, eingabe.kategorien);
@@ -955,7 +957,7 @@ export function ProtokollDokumentAnsicht({
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
-      return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;
+      return m ? dokumentPerson(m, eingabe.offiziell) : null;
     },
   };
   const satz = eroeffnungSatz(art, kopf.leitung !== null, kopf.eroeffnung);

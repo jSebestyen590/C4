@@ -10,7 +10,12 @@ import { BlockBaumAnsicht, blockBaum, pdfBloecke, stile } from './pdfBloecke';
 export function ProtokollPdf({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>) {
   const baum = blockBaum(pdfBloecke(eingabe));
   return (
-    <Document title={druckTitel(eingabe.sitzung)} language="de-DE" creator="C4" producer="C4">
+    <Document
+      title={druckTitel(eingabe.sitzung, eingabe.offiziell)}
+      language="de-DE"
+      creator="C4"
+      producer="C4"
+    >
       <Page size="A4" style={stile.seite}>
         <BlockBaumAnsicht knoten={baum} />
         <View style={stile.fuss} fixed>

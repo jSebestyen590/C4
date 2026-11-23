@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -20,6 +21,8 @@ export interface Protokollbilder {
     groesse: number,
   ): Promise<{ uploadUrl: string; schluessel: string }>;
   anzeigeUrl(schluessel: string): Promise<string>;
+  /** Copies the given images (keys of `vonId`) into the prefix of `nachId`; same file names. */
+  kopieren(vonId: string, nachId: string, schluessel: readonly string[]): Promise<void>;
   /** Deletes every image of the protocol. */
   loeschen(protokollId: string): Promise<void>;
 }
@@ -45,6 +48,21 @@ export function createProtokollbilder(bucket: string, region: string): Protokoll
       getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: schluessel }), {
         expiresIn: ANZEIGE_GUELTIG_S,
       }),
+    async kopieren(vonId, nachId, schluessel) {
+      const von = protokollBildPrefix(vonId);
+      await Promise.all(
+        schluessel.map((k) => {
+          if (!k.startsWith(von)) throw new Error('Bild gehört nicht zum Quell-Protokoll');
+          return s3.send(
+            new CopyObjectCommand({
+              Bucket: bucket,
+              CopySource: `${bucket}/${k}`,
+              Key: `${protokollBildPrefix(nachId)}${k.slice(von.length)}`,
+            }),
+          );
+        }),
+      );
+    },
     async loeschen(protokollId) {
       let token: string | undefined;
       do {

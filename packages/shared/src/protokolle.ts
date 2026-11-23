@@ -1444,6 +1444,10 @@ export interface ProtokollListeEintragDto {
   /** ISO instant of the Sitzung. */
   beginn: string;
   status: ProtokollStatus;
+  /** Official copy: id of the normal protocol it comes from; null = normal protocol. */
+  offiziellVon: string | null;
+  /** Normal protocol: id of its official copy, if there is one. */
+  offiziellId: string | null;
   /** ISO instant. */
   geaendertAm: string;
   geaendertVon: ProtokollMitgliedDto | null;
@@ -1477,6 +1481,10 @@ export interface ProtokollDto {
     /** Art of the Sitzung (frozen once closed). */
     art: ProtokollArt;
   };
+  /** Official copy: id of the normal protocol it comes from; null = normal protocol. */
+  offiziellVon: string | null;
+  /** Normal protocol: id of its official copy, if there is one. */
+  offiziellId: string | null;
   inhalt: ProtokollDokument;
   /** Presigned GET URLs (1 h) of the images in `inhalt`, by key. */
   bilder: Record<string, string>;

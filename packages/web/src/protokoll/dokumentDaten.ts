@@ -57,6 +57,8 @@ export interface DokumentEingabe {
   kategorien?: KategorieNamen;
   /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
   ich?: { sub: string; status: MitgliedStatus } | null;
+  /** Official copy: real names ("Vorname Nachname") instead of usernames, plain text instead of status colors. */
+  offiziell?: boolean;
 }
 
 /** The next Sitzung that counts: Berlin date, time ('' = unknown) and the calendar event, if any. */
@@ -107,6 +109,8 @@ export interface Person {
   name: string;
   status: MitgliedStatus;
   zusatz: string;
+  /** Official copy: shown as plain text, not bold in the status color. */
+  farblos?: boolean;
 }
 
 export interface Namen {
@@ -117,15 +121,26 @@ export interface Namen {
   status: MitgliedStatus;
 }
 
-export const personName = (m: Pick<Namen, 'username' | 'vorname' | 'nachname'>): string =>
-  m.username ?? (`${m.vorname} ${m.nachname}`.trim() || '–');
+export const personName = (
+  m: Pick<Namen, 'username' | 'vorname' | 'nachname'>,
+  offiziell = false,
+): string => {
+  const klar = `${m.vorname} ${m.nachname}`.trim();
+  if (offiziell) return klar || m.username || '–';
+  return m.username ?? (klar || '–');
+};
 
-const person = (m: Namen, zusatz = ''): Person => ({
+/** A member of the document as `Person`; with `offiziell` the real name and no status color. */
+export const dokumentPerson = (m: Namen, offiziell = false, zusatz = ''): Person => ({
   sub: m.sub,
-  name: personName(m),
+  name: personName(m, offiziell),
   status: m.status,
   zusatz,
+  ...(offiziell ? { farblos: true } : {}),
 });
+
+const person = (m: Namen, zusatz = '', offiziell = false): Person =>
+  dokumentPerson(m, offiziell, zusatz);
 
 /** Everybody who can be looked up by `sub` in the document: attendance list, EMs, then all members. */
 export const alleMitglieder = (
@@ -187,13 +202,13 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
   };
   const da = teilnahme.filter((t) => t.wert === 'anwesend');
   const mitglieder = (liste: typeof teilnahme) =>
-    liste.filter((t) => t.status === 'mitglied').map((t) => person(t, zusatz(t)));
+    liste.filter((t) => t.status === 'mitglied').map((t) => person(t, zusatz(t), e.offiziell));
   const fehlend = (wert: ProtokollTeilnahmeWert) => teilnahme.filter((t) => t.wert === wert);
 
   const alle: Namen[] = [...e.teilnahme, ...e.ems];
   const finde = (sub: string | null): Person | null => {
     const m = sub === null ? undefined : alle.find((x) => x.sub === sub);
-    return m ? person(m) : null;
+    return m ? person(m, '', e.offiziell) : null;
   };
   const verlauf = anwesenheitsVerlauf(e.inhalt, {
     art: e.sitzung.art,
@@ -206,9 +221,11 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     anwesende: mitglieder(da),
     entschuldigt: mitglieder(fehlend('entschuldigt')),
     unentschuldigt: mitglieder(fehlend('unentschuldigt')),
-    ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m)),
+    ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m, '', e.offiziell)),
     emsFreitext: e.kopf.emsFreitext.trim(),
-    anwaerter: da.filter((t) => t.status === 'anwaerter').map((t) => person(t, zusatz(t))),
+    anwaerter: da
+      .filter((t) => t.status === 'anwaerter')
+      .map((t) => person(t, zusatz(t), e.offiziell)),
     gaeste: e.kopf.gaeste.trim(),
     leitung: finde(e.kopf.sitzungsleitung),
     protokoll: finde(e.kopf.protokollfuehrung),
@@ -671,12 +688,13 @@ export const istQuellenzeile = (k: ProtokollKnoten): boolean =>
  * File name offered when printing the minutes to PDF ("YYYY-MM-DD_Sitzungsname"): browsers take it from
  * the page title, which also becomes the PDF's title. Characters not allowed in file names are dropped.
  */
-export function druckTitel(sitzung: { titel: string; beginn: string }): string {
+export function druckTitel(sitzung: { titel: string; beginn: string }, offiziell = false): string {
   const name = sitzung.titel
     .replace(/[\\/:*?"<>|]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     // No trailing dot: "Sitzung 04.11." would end up as "….pdf" with two dots.
     .replace(/[.\s]+$/, '');
-  return name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
+  const basis = name ? `${datumBerlin(sitzung.beginn)}_${name}` : datumBerlin(sitzung.beginn);
+  return offiziell ? `${basis}_offiziell` : basis;
 }

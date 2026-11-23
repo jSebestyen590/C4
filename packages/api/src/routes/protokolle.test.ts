@@ -1248,6 +1248,188 @@ describe('protokolle', () => {
     );
   });
 
+  describe('Offizielles Protokoll', () => {
+    const uuid = '00000000-0000-4000-8000-000000000001';
+    const todoBaustein = bausteinErzeugen(
+      'bausteinTodo',
+      {
+        ...bausteinLeer('bausteinTodo'),
+        titel: 'Kasse prüfen',
+        faelligAm: '2026-11-14',
+        zustaendig: [{ art: 'person', sub: 'm2' }],
+      },
+      [absatzKnoten('Zählen')],
+    );
+
+    function absatzKnoten(text: string) {
+      return { type: 'paragraph', content: [{ type: 'text', text }] };
+    }
+
+    /** A closed normal protocol of `s1` with a Todo Baustein and an image. */
+    async function geschlossen() {
+      const t = await setup();
+      const doc = protokollLeer();
+      doc.content[1]!.content = [
+        bausteinErzeugen('bausteinThema', { ...bausteinLeer('bausteinThema'), titel: 'Kasse' }, [
+          todoBaustein,
+        ]),
+      ];
+      const id = (await (await t.anlegen('admin-token', { eventId: 's1', inhalt: doc })).json())
+        .id as string;
+      const mitBild = structuredClone((await t.holen(id)).inhalt);
+      mitBild.content[0]!.content!.push({
+        type: 'protokollBild',
+        attrs: {
+          schluessel: `protokollbilder/${id}/${uuid}.jpg`,
+          breite: 'voll',
+          ausrichtung: 'mitte',
+          beschreibung: 'Tafel',
+        },
+      } as never);
+      const stand = await t.holen(id);
+      expect(
+        (
+          await t.app.request(
+            `/api/protokolle/${id}`,
+            json('admin-token', 'PUT', {
+              inhalt: mitBild,
+              kopf: stand.kopf,
+              version: stand.version,
+            }),
+          )
+        ).status,
+      ).toBe(200);
+      const status = (pid: string, status: string, aktionen?: string[]) =>
+        t.app.request(
+          `/api/protokolle/${pid}/status`,
+          json('admin-token', 'PUT', { status, aktionen }),
+        );
+      const offiziell = (pid: string, token = 'admin-token') =>
+        t.app.request(`/api/protokolle/${pid}/offiziell`, json(token, 'POST'));
+      return { ...t, id, status, offiziell };
+    }
+
+    it('copies a closed protocol, including its images, and links both ways', async () => {
+      const t = await geschlossen();
+      expect((await t.offiziell(t.id)).status).toBe(400); // still a draft
+      expect((await t.status(t.id, 'abgeschlossen')).status).toBe(200);
+      expect((await t.offiziell(t.id, 'reader-token')).status).toBe(403);
+      const res = await t.offiziell(t.id);
+      expect(res.status).toBe(201);
+      const { id: offId } = (await res.json()) as { id: string };
+      const kopie = await t.holen(offId);
+      const quelle = await t.holen(t.id);
+      expect(kopie).toMatchObject({
+        eventId: 's1',
+        status: 'entwurf',
+        offiziellVon: t.id,
+        offiziellId: null,
+      });
+      expect(quelle).toMatchObject({ offiziellVon: null, offiziellId: offId });
+      expect(kopie.kopf.schnappschuss).toEqual(quelle.kopf.schnappschuss);
+      // The images are copied to the prefix of the copy and the keys rewritten.
+      expect(t.protokollbilder.kopieren).toHaveBeenCalledWith(t.id, offId, [
+        `protokollbilder/${t.id}/${uuid}.jpg`,
+      ]);
+      const json1 = JSON.stringify(kopie.inhalt);
+      expect(json1).toContain(`protokollbilder/${offId}/${uuid}.jpg`);
+      expect(json1).not.toContain(`protokollbilder/${t.id}/`);
+      expect(Object.keys(kopie.bilder)).toEqual([`protokollbilder/${offId}/${uuid}.jpg`]);
+      // The list shows both with their links.
+      const liste = (await (
+        await t.app.request('/api/protokolle', json('reader-token', 'GET'))
+      ).json()) as ProtokollListeEintragDto[];
+      expect(liste.map((p) => [p.id, p.offiziellVon, p.offiziellId]).sort()).toEqual(
+        [
+          [t.id, null, offId],
+          [offId, t.id, null],
+        ].sort(),
+      );
+    });
+
+    it('allows one official copy per protocol and none of an official one', async () => {
+      const t = await geschlossen();
+      await t.status(t.id, 'abgeschlossen');
+      const { id: offId } = (await (await t.offiziell(t.id)).json()) as { id: string };
+      const zweite = await t.offiziell(t.id);
+      expect(zweite.status).toBe(409);
+      expect(await zweite.json()).toMatchObject({
+        error: 'Zu diesem Protokoll gibt es schon ein offizielles Protokoll.',
+        offiziellId: offId,
+      });
+      await t.status(offId, 'abgeschlossen');
+      expect((await t.offiziell(offId)).status).toBe(400);
+      expect((await t.offiziell('gibtsnicht')).status).toBe(404);
+    });
+
+    it('runs no Aktionen when closing the copy and refuses them', async () => {
+      const t = await geschlossen();
+      await t.status(t.id, 'abgeschlossen');
+      const { id: offId } = (await (await t.offiziell(t.id)).json()) as { id: string };
+      const bausteinId = (todoBaustein.attrs as { id: string }).id;
+      const res = await t.status(offId, 'abgeschlossen', [`${bausteinId}:todo.anlegen`]);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ status: 'abgeschlossen', aktionen: [] });
+      expect(t.todosListe.size).toBe(0);
+      expect((await t.holen(offId)).status).toBe('abgeschlossen');
+      // Reopening keeps the snapshot of the source.
+      expect((await t.status(offId, 'entwurf')).status).toBe(200);
+      expect((await t.holen(offId)).kopf.schnappschuss).not.toBeNull();
+      const liste = await t.app.request(
+        `/api/protokolle/${offId}/aktionen`,
+        json('admin-token', 'GET'),
+      );
+      expect(await liste.json()).toEqual({ aktionen: [] });
+      await t.status(offId, 'abgeschlossen');
+      const lauf = await t.app.request(
+        `/api/protokolle/${offId}/aktionen`,
+        json('admin-token', 'POST', { aktionen: [`${bausteinId}:todo.anlegen`] }),
+      );
+      expect(lauf.status).toBe(409);
+      expect(t.todosListe.size).toBe(0);
+    });
+
+    it('leaves the normal protocol the one of the Sitzung', async () => {
+      const t = await geschlossen();
+      await t.status(t.id, 'abgeschlossen');
+      const { id: offId } = (await (await t.offiziell(t.id)).json()) as { id: string };
+      // No second normal protocol for the Sitzung, and the Sitzung stays taken.
+      expect((await t.anlegen('admin-token', { eventId: 's1' })).status).toBe(409);
+      t.kalender.sitzungen.mockResolvedValue([]);
+      await t.app.request('/api/protokolle/sitzungen', json('admin-token', 'GET'));
+      expect(t.kalender.sitzungen.mock.calls[0]![2]).toContain('s1');
+      // The Vorschlag for the next Sitzung builds on the normal protocol.
+      const vorschlag = await t.app.request(
+        '/api/protokolle/vorschlag?eventId=s2',
+        json('admin-token', 'GET'),
+      );
+      expect(vorschlag.status).toBe(200);
+      expect(t.protokollListe.get(offId)?.offiziellVon).toBe(t.id);
+    });
+
+    it('refuses deleting the source while a copy exists; the copy can be deleted', async () => {
+      const t = await geschlossen();
+      await t.status(t.id, 'abgeschlossen');
+      const { id: offId } = (await (await t.offiziell(t.id)).json()) as { id: string };
+      await t.status(t.id, 'entwurf');
+      const abgelehnt = await t.app.request(
+        `/api/protokolle/${t.id}`,
+        json('admin-token', 'DELETE'),
+      );
+      expect(abgelehnt.status).toBe(409);
+      expect(await abgelehnt.json()).toMatchObject({ offiziellId: offId });
+      const geloescht = await t.app.request(
+        `/api/protokolle/${offId}`,
+        json('admin-token', 'DELETE'),
+      );
+      expect(geloescht.status).toBe(200);
+      expect(t.protokollbilder.loeschen).toHaveBeenCalledWith(offId);
+      expect(
+        (await t.app.request(`/api/protokolle/${t.id}`, json('admin-token', 'DELETE'))).status,
+      ).toBe(200);
+    });
+  });
+
   describe('Todos beim Abschließen', () => {
     const todoBaustein = (daten: Record<string, unknown>) =>
       bausteinErzeugen(
