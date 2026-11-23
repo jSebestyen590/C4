@@ -217,7 +217,7 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 5: GoBD-Abschluss
 
-**Umgesetzt:** [finanzen-gobd.md](./finanzen-gobd.md).
+**Umgesetzt** (PR #97), Plan und Entscheidungen: [finanzen-gobd.md](./finanzen-gobd.md).
 
 - Festschreibung je Monat mit Export; Kopf-Hash per Push an alle mit `finanzen:pruefen` und in der
   App abrufbar (Mail bräuchte SES, offen).
@@ -361,7 +361,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                                                                     |
 | 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                                                                |
 | 4 Belege                  | 4a, 4b und 4c umgesetzt ([finanzen-belege-4c.md](./finanzen-belege-4c.md), [finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
-| 5 GoBD-Abschluss          | umgesetzt (PR folgt), Plan [finanzen-gobd.md](./finanzen-gobd.md)                                                                                                                                                   |
+| 5 GoBD-Abschluss          | umgesetzt (PR #97), Plan [finanzen-gobd.md](./finanzen-gobd.md)                                                                                                                                                     |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                                                                       |
 | 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                                                                      |
 | 8 Rechnungen              | offen                                                                                                                                                                                                               |

@@ -1,6 +1,6 @@
 # Finanzen
 
-Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen) Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand, Lager-Beleg-Abgleich) und Scheibe 5 (GoBD-Abschluss) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
+Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen), Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand, Lager-Beleg-Abgleich) und Scheibe 5 (GoBD-Abschluss) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
 Storno, freie Buchung, „Kette prüfen“ (gegen Datenbank und Archiv), Festschreibung, Datenexport fürs Finanzamt, der Safe mit Fächern, das Buch als Nebenbuch, die Barkassen mit Dienst-Zählung am Event und Abrechnung sowie Belege mit Datei-Archiv und Auslagen. Alles Weitere (Bankanbindung, …)
 steht als Zielbild unten und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Diese Seite
 wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich die Verfahrensdokumentation
