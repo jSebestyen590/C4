@@ -8,6 +8,8 @@ import {
   indexXml,
   tabelleAlsCsv,
   type DatenexportAuftrag,
+  GDPDU_DTD,
+  GDPDU_DTD_NAME,
 } from '@c4/shared';
 import { bestEffort, type Benachrichtigungen } from './benachrichtigungen';
 import type { Finanzarchiv } from './finanzarchiv';
@@ -152,6 +154,7 @@ async function zipSchreiben(
   try {
     for (const t of DATENEXPORT_TABELLEN) await text(t.datei, tabelleAlsCsv(t, daten));
     await text('index.xml', indexXml(DATENEXPORT_TABELLEN, 'C4 Leipzig'));
+    await text(GDPDU_DTD_NAME, GDPDU_DTD);
     await text(
       'beschreibung.txt',
       beschreibungTxt({

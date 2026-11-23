@@ -118,7 +118,7 @@ Inhalt (Hilfen als reine Funktionen in `packages/shared/src/finanzenDatenexport.
 Trenner `;`, UTF-8, CRLF; Beträge `1234,56`; Datum `TT.MM.JJJJ`):
 `konten.csv`, `buchungen.csv` (inkl. `seq`, Hashes, Storno-Bezug, Quelle), `buchungszeilen.csv`, `stueckelung.csv`,
 `belege.csv`, `belegposten.csv`, `rechnungssteller.csv`, `festschreibungen.csv`; `index.xml` nach GDPdU-DTD
-(`gdpdu-01-08-2002.dtd`, je Tabelle `URL`, `Name`, `Description`, `UTF8`, `DecimalSymbol` `,`,
+(Version 1.6, `gdpdu-01-03-2019.dtd` liegt im ZIP, je Tabelle `URL`, `Name`, `Description`, `UTF8`, `DecimalSymbol` `,`,
 `DigitGroupingSymbol` `.`, Spalten mit `Numeric`/`AlphaNumeric`/`Date`, Primär-/Fremdschlüssel); `beschreibung.txt`
 (Zeitraum, Erstellt von/am, Spaltenbedeutung, Hinweis auf Hash-Kette und Python-Snippet aus der Doku). Buchungen
 nach Buchungsdatum im Zeitraum; Konten und Rechnungssteller vollständig. Belegdateien standardmäßig nicht im ZIP (`belege.csv`

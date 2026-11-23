@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { datumAnzeigen } from './datum';
 import { finanzDatumSchema, type FinanzMitgliedDto } from './finanzen';
+import { GDPDU_DTD_NAME } from './gdpduDtd';
 
 // Datenexport fürs Finanzamt (GoBD Z3): CSV files plus `index.xml` (Beschreibungsstandard GDPdU) and
 // `beschreibung.txt`. Files and columns are defined once in `DATENEXPORT_TABELLEN`; CSV, index.xml and
@@ -581,11 +582,11 @@ function spaltenTypXml(typ: SpaltenTyp): string {
   }
 }
 
-/** The `index.xml` after the GDPdU description standard (DTD `gdpdu-01-08-2002.dtd`). */
+/** The `index.xml` after the GDPdU description standard 1.6 (DTD `gdpdu-01-03-2019.dtd`, shipped next to it). */
 export function indexXml(tabellen: readonly ExportTabelle[], lieferant: string): string {
   const zeilen: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<!DOCTYPE DataSet SYSTEM "gdpdu-01-08-2002.dtd">',
+    `<!DOCTYPE DataSet SYSTEM "${GDPDU_DTD_NAME}">`,
     '<DataSet>',
     '  <Version>1.0</Version>',
     '  <DataSupplier>',

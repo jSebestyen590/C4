@@ -32,3 +32,4 @@ export * from './trichter';
 export * from './umfragen';
 export * from './waren';
 export * from './finanzenDatenexport';
+export * from './gdpduDtd';

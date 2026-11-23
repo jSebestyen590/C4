@@ -3673,6 +3673,7 @@ describe('finanzen', () => {
           'buchungen.csv',
           'buchungszeilen.csv',
           'festschreibungen.csv',
+          'gdpdu-01-03-2019.dtd',
           'index.xml',
           'konten.csv',
           'rechnungssteller.csv',
@@ -3683,7 +3684,8 @@ describe('finanzen', () => {
       expect(buchungen).toContain('05.01.2027;"Text; mit ""Zeichen"""');
       expect(buchungen).not.toContain('01.02.2028');
       expect(strFromU8(dateien['buchungszeilen.csv']!)).toContain('geldtransit;5,00');
-      expect(strFromU8(dateien['index.xml']!)).toContain('gdpdu-01-08-2002.dtd');
+      expect(strFromU8(dateien['index.xml']!)).toContain('gdpdu-01-03-2019.dtd');
+      expect(strFromU8(dateien['gdpdu-01-03-2019.dtd']!)).toContain('<!ELEMENT DataSet');
       expect(strFromU8(dateien['beschreibung.txt']!)).toContain('01.01.2027 bis 31.12.2027');
       expect(strFromU8(dateien['konten.csv']!)).toContain('geldtransit');
       const liste = await t.lesen<Dto[]>('admin-token', '/datenexporte');

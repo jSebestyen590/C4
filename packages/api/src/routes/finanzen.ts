@@ -69,6 +69,8 @@ import {
   beschreibungTxt,
   datenexportEingabeSchema,
   indexXml,
+  GDPDU_DTD,
+  GDPDU_DTD_NAME,
   tabelleAlsCsv,
   type DatenexportDto,
   type DatenexportErgebnisDto,
@@ -1193,6 +1195,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
               DATENEXPORT_TABELLEN.map((t) => [t.datei, strToU8(tabelleAlsCsv(t, daten))]),
             ),
             'index.xml': strToU8(indexXml(DATENEXPORT_TABELLEN, 'C4 Leipzig')),
+            [GDPDU_DTD_NAME]: strToU8(GDPDU_DTD),
             'beschreibung.txt': strToU8(
               beschreibungTxt({
                 von,

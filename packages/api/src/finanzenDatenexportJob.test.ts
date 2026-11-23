@@ -87,7 +87,13 @@ describe('datenexportMitBelegdateien', () => {
     expect(schluessel).toBe('datenexport/20260102-100000-2025-01-01-2025-12-31.zip');
     const dateien = unzipSync(zip);
     expect(Object.keys(dateien).sort()).toEqual(
-      expect.arrayContaining(['belege.csv', 'index.xml', 'beschreibung.txt', 'buchungen.csv']),
+      expect.arrayContaining([
+        'belege.csv',
+        'index.xml',
+        'gdpdu-01-03-2019.dtd',
+        'beschreibung.txt',
+        'buchungen.csv',
+      ]),
     );
     expect(Object.keys(dateien).filter((n) => n.startsWith('belege/'))).toHaveLength(2);
     expect(dateien[`belege/${sha(inhaltA)}.pdf`]).toEqual(inhaltA);

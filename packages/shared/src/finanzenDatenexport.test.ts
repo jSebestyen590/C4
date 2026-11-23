@@ -94,7 +94,7 @@ describe('tabelleAlsCsv', () => {
 describe('indexXml', () => {
   const xml = indexXml(DATENEXPORT_TABELLEN, 'C4');
   it('has the DOCTYPE and every table and column', () => {
-    expect(xml).toContain('<!DOCTYPE DataSet SYSTEM "gdpdu-01-08-2002.dtd">');
+    expect(xml).toContain('<!DOCTYPE DataSet SYSTEM "gdpdu-01-03-2019.dtd">');
     for (const t of DATENEXPORT_TABELLEN) {
       expect(xml).toContain(`<URL>${t.datei}</URL>`);
       for (const s of t.spalten) expect(xml).toContain(`<Name>${s.name}</Name>`);
