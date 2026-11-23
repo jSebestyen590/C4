@@ -1241,6 +1241,9 @@ describe('Wiederholung nicht beschlussfähiger Abstimmungen', () => {
     expect(
       bausteinEmDatenSchema.parse({ sub: null, name: '', abstimmung: null }).wiederholung,
     ).toBeNull();
+    const em = { sub: null, name: '', abstimmung: null };
+    expect(bausteinEmDatenSchema.parse(em).antragSub).toBeUndefined();
+    expect(bausteinEmDatenSchema.parse({ ...em, antragSub: 's1' }).antragSub).toBe('s1');
     const wahl: Record<string, unknown> = { ...bausteinLeer('bausteinWahl') };
     delete wahl.wiederholung;
     expect(bausteinWahlDatenSchema.parse(wahl).wiederholung).toBeNull();

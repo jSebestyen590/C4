@@ -386,10 +386,15 @@ describe('PDF: Todo', () => {
   it('joins a bullet list in front: one list, the Todo is its last bullet', () => {
     const liste: ProtokollKnoten = {
       type: 'bulletList',
-      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Punkt' }] }],
+        },
+      ],
     };
     const text = json(mitInhalt([liste, todo]));
-    // One "•" for the empty item and one for the Todo (the notes use the second-level dot).
+    // One "•" for the item and one for the Todo (the notes use the second-level dot).
     expect(text.split('"•"')).toHaveLength(3);
   });
 
@@ -399,5 +404,140 @@ describe('PDF: Todo', () => {
     )!;
     expect(gegenwart.kinder.map((o) => o.titel)).toEqual(['Kasse']);
     expect(gegenwart.kinder[0]!.kinder).toEqual([]);
+  });
+});
+
+describe('PDF: Bausteine in list items', () => {
+  it('sets a Baustein and a quote of a list item inside the list, in order', () => {
+    const punkt = (...kinder: ProtokollKnoten[]): ProtokollKnoten => ({
+      type: 'listItem',
+      content: kinder,
+    });
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        ...eingabe.inhalt,
+        content: [
+          eingabe.inhalt.content[0]!,
+          eingabe.inhalt.content[1]!,
+          {
+            ...eingabe.inhalt.content[2]!,
+            content: [
+              event('b', 'Superbowl', [
+                {
+                  type: 'bulletList',
+                  content: [
+                    punkt(text('Punkt A'), abstimmung, {
+                      type: 'blockquote',
+                      content: [text('Zitat im Punkt')],
+                    }),
+                    punkt(text('Punkt B')),
+                  ],
+                },
+                { type: 'paragraph' },
+              ]),
+            ],
+          },
+        ],
+      },
+    };
+    const json = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    const a = json.indexOf('Punkt A');
+    expect(a).toBeGreaterThan(-1);
+    expect(json.indexOf('Neuer Tresen', a)).toBeGreaterThan(a);
+    expect(json.indexOf('Zitat im Punkt', a)).toBeGreaterThan(json.indexOf('Neuer Tresen', a));
+    expect(json.indexOf('Punkt B')).toBeGreaterThan(json.indexOf('Zitat im Punkt'));
+  });
+
+  it('puts a Thema in a list item into the bookmarks, like the Gliederung of the document view', () => {
+    const thema: ProtokollKnoten = {
+      type: 'bausteinThema',
+      attrs: { id: 'th', daten: { ...bausteinLeer('bausteinThema'), titel: 'ThemaImPunkt' } },
+      content: [text('Inhalt'), { type: 'paragraph' }],
+    };
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        ...eingabe.inhalt,
+        content: [
+          eingabe.inhalt.content[0]!,
+          eingabe.inhalt.content[1]!,
+          {
+            ...eingabe.inhalt.content[2]!,
+            content: [
+              event('b', 'Superbowl', [
+                {
+                  type: 'bulletList',
+                  content: [{ type: 'listItem', content: [text('Punkt A'), thema] }],
+                },
+                { type: 'paragraph' },
+              ]),
+            ],
+          },
+        ],
+      },
+    };
+    const bloecke = pdfBloecke(mit);
+    const outline = lesezeichen(blockBaum(bloecke));
+    const gliederung = dokumentGliederungBauen(
+      dokumentUeberschriften(mit.inhalt, (sub) => {
+        const m = mit.teilnahme.find((x) => x.sub === sub);
+        return m ? personName(m) : null;
+      }).eintraege,
+    );
+    const alsTitel = (g: typeof gliederung): unknown[] =>
+      g.map((k) => ({ titel: k.text, kinder: alsTitel(k.kinder) }));
+    expect(outline).toEqual(alsTitel(gliederung));
+    expect(JSON.stringify(outline)).toContain('ThemaImPunkt');
+  });
+
+  it('skips empty items and sets a block-only item without bullet', () => {
+    const leer: ProtokollKnoten = { type: 'listItem', content: [{ type: 'paragraph' }] };
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        ...eingabe.inhalt,
+        content: [
+          eingabe.inhalt.content[0]!,
+          eingabe.inhalt.content[1]!,
+          {
+            ...eingabe.inhalt.content[2]!,
+            content: [
+              event('b', 'Superbowl', [
+                {
+                  type: 'bulletList',
+                  content: [
+                    { type: 'listItem', content: [text('Punkt A')] },
+                    leer,
+                    {
+                      type: 'listItem',
+                      content: [
+                        { type: 'paragraph' },
+                        { type: 'blockquote', content: [text('Zitat im Punkt')] },
+                      ],
+                    },
+                    leer,
+                  ],
+                },
+                { type: 'paragraph' },
+              ]),
+            ],
+          },
+        ],
+      },
+    };
+    const json = JSON.stringify(
+      pdfBloecke(mit).map((b) => b.element),
+      (k, v: unknown) => (k === 'ctx' ? undefined : v),
+    );
+    const ab = json.indexOf('Punkt A');
+    const bis = json.indexOf('Zitat im Punkt');
+    expect(bis).toBeGreaterThan(ab);
+    // One bullet for "Punkt A" in the list of the Event; none for the empty and the block-only items.
+    const liste = json.slice(json.lastIndexOf('"•"', ab), json.indexOf('Zitat im Punkt') + 200);
+    expect(liste.split('"•"')).toHaveLength(2);
   });
 });

@@ -19,16 +19,22 @@ import {
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { BlockVerschieben } from './verschieben';
-import type { AnwesenheitPerson } from './anwesenheit';
+import {
+  anwesenheitsKandidaten,
+  type AnwesenheitMitglied,
+  type AnwesenheitPerson,
+} from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { Gliederung } from './GliederungBaum';
 import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
 import { mitgliedName } from '../mitglied';
 import { ProtokollKontext } from './kontext';
+import { useKategorieNamen } from './useKategorieNamen';
 import {
   absatzAmEndeEinfuegen,
   AbschnittKnoten,
+  ListenPunkt,
   ProtokollAbsicherung,
   ProtokollDokumentKnoten,
 } from './schema';
@@ -64,7 +70,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
   linkEditorSave: 'Übernehmen',
 };
 
-const KEINE_MITGLIEDER: readonly ErwaehnungPerson[] = [];
+const KEINE_MITGLIEDER: readonly AnwesenheitMitglied[] = [];
 const KEINE_BILDER: Readonly<Record<string, string>> = {};
 
 /** Height of the app header (`AppLayout`): the sticky toolbar sits right below it. */
@@ -98,7 +104,7 @@ export function ProtokollEditor({
   /** The active EMs (selectable in a Neues EM block); `ausgewaehlt` = counts as present. */
   ems?: readonly (ProtokollMitgliedDto & { ausgewaehlt?: boolean })[];
   /** All members: the choices of the @mention list and the names shown for mentions. */
-  mitglieder?: readonly ErwaehnungPerson[];
+  mitglieder?: readonly AnwesenheitMitglied[];
   /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
   onAnwesenheit?: (sub: string) => void;
   /** Image URLs and uploads of the protocol; without it images cannot be added. */
@@ -117,7 +123,11 @@ export function ProtokollEditor({
     onAnwesenheitRef.current = onAnwesenheit;
   });
   const anwesenheit = useCallback((sub: string) => onAnwesenheitRef.current?.(sub), []);
-  const basisDaten = useSlashDaten(sitzungBeginn, teilnahme);
+  const kandidaten = useMemo(
+    () => anwesenheitsKandidaten(teilnahme, ems, mitglieder),
+    [teilnahme, ems, mitglieder],
+  );
+  const basisDaten = useSlashDaten(sitzungBeginn, kandidaten);
   const slashDaten = useMemo(() => ({ ...basisDaten, anwesenheit }), [basisDaten, anwesenheit]);
   // The document as the quorum needs it (a little behind the typing).
   const [dokument, setDokument] = useState(inhalt);
@@ -187,6 +197,8 @@ export function ProtokollEditor({
         heading: { levels: [2, 3] },
         // Replaced by the Blockquote below (quotes hold paragraphs only).
         blockquote: false,
+        // Replaced by `ListenPunkt` (a Baustein may stand in a list item).
+        listItem: false,
         // Not part of the minutes (and `trailingNode` would append a paragraph after the last section).
         code: false,
         codeBlock: false,
@@ -198,6 +210,7 @@ export function ProtokollEditor({
       }),
       // Quotes hold plain paragraphs only (the default `block+` would let Bausteine nest inside).
       Blockquote.extend({ content: 'paragraph+' }),
+      ListenPunkt,
       Link.configure({
         openOnClick: 'whenNotEditable',
         autolink: true,
@@ -233,6 +246,7 @@ export function ProtokollEditor({
   const theme = useMantineTheme();
   const breit = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false);
   const [gliederungOffen, { open: oeffnen, close: schliessen }] = useDisclosure(false);
+  const kategorien = useKategorieNamen(sitzungBeginn);
   const personName = useCallback(
     (sub: string) => {
       const m = [...teilnahme, ...ems].find((p) => p.sub === sub);
@@ -246,6 +260,7 @@ export function ProtokollEditor({
       sitzungBeginn,
       art,
       teilnahme,
+      kandidaten,
       ems,
       mitglieder,
       onAnwesenheit: anwesenheit,
@@ -262,7 +277,7 @@ export function ProtokollEditor({
         ems: ems.filter((e) => e.ausgewaehlt),
       }).pruefungen,
     }),
-    [sitzungBeginn, art, teilnahme, ems, mitglieder, dokument, anwesenheit, bilder],
+    [sitzungBeginn, art, teilnahme, kandidaten, ems, mitglieder, dokument, anwesenheit, bilder],
   );
 
   return (
@@ -346,7 +361,7 @@ export function ProtokollEditor({
               borderRadius: 'var(--mantine-radius-md)',
             }}
           >
-            <Gliederung editor={editor} personName={personName} />
+            <Gliederung editor={editor} personName={personName} kategorien={kategorien} />
           </Box>
         )}
       </div>
@@ -358,7 +373,12 @@ export function ProtokollEditor({
           size="min(24rem, 100%)"
           title="Gliederung"
         >
-          <Gliederung editor={editor} personName={personName} onGewaehlt={schliessen} />
+          <Gliederung
+            editor={editor}
+            personName={personName}
+            kategorien={kategorien}
+            onGewaehlt={schliessen}
+          />
         </Drawer>
       )}
       {editierbar && <SlashPopup zustand={slash} auswahl={auswahl} onZeiger={setAuswahl} />}

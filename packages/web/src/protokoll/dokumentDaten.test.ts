@@ -11,6 +11,7 @@ import {
   aufnahmeZeilen,
   beschlussZeilen,
   meinungsbildZeilen,
+  wahlAbschnitte,
   wahlZeilen,
   druckTitel,
   datumLang,
@@ -306,6 +307,34 @@ describe('Texte', () => {
     expect(abgesagt.offen).toBe(true);
     expect(abgesagt.gewaehlt).toEqual([]);
     expect(wahlZeilen({ posten: 'x' }, stand)).toBeNull();
+    const angenommen = wahlZeilen({ ...wahl([]), anzahl: 1 }, stand)!;
+    expect(angenommen.reihenfolge.map((r) => [r.kandidat.id, r.nimmtAn])).toEqual([['a', true]]);
+    expect(wahlAbschnitte(angenommen)).toMatchObject([{ art: 'gewaehlt' }]);
+    // Vote order: a (5) declines, b and c tie and the runoff puts c first; only b and c are left for the two seats.
+    const ordnung = wahlZeilen(
+      {
+        ...wahl([{ stimmen: { b: 1, c: 4 }, enthaltung: 0 }]),
+        annahme: { a: false },
+      },
+      stand,
+    )!;
+    expect(ordnung.reihenfolge.map((r) => [r.kandidat.id, r.nimmtAn])).toEqual([
+      ['a', false],
+      ['c', true],
+      ['b', true],
+    ]);
+    const abschnitte = wahlAbschnitte({
+      offen: false,
+      reihenfolge: [
+        { kandidat: { id: 'y' } as never, nimmtAn: false },
+        { kandidat: { id: 'z' } as never, nimmtAn: false },
+        { kandidat: { id: 'x' } as never, nimmtAn: true },
+        { kandidat: { id: 'w' } as never, nimmtAn: true },
+      ],
+    });
+    expect(
+      abschnitte.map((a) => (a.art === 'abgelehnt' ? a.person.id : a.personen.map((p) => p.id))),
+    ).toEqual(['y', 'z', ['x', 'w']]);
   });
 
   it('Neues EM lines', () => {
@@ -315,6 +344,7 @@ describe('Texte', () => {
       wiederholung: '',
       name: '',
       sub: 'a',
+      antragSub: null,
       abstimmung:
         'Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)',
       nichtBeschlussfaehig: false,
@@ -328,9 +358,14 @@ describe('Texte', () => {
       wiederholung: '',
       name: '',
       sub: 'a',
+      antragSub: null,
       abstimmung: '',
       nichtBeschlussfaehig: false,
     });
+    expect(emZeilen({ sub: 'a', name: '', abstimmung, antragSub: 'b' }, stand).antragSub).toBe('b');
+    expect(
+      emZeilen({ sub: 'a', name: '', abstimmung: null, antragSub: 'b' }, stand).antragSub,
+    ).toBe(null);
   });
 });
 
@@ -342,6 +377,24 @@ describe('Hilfen', () => {
       istQuellenzeile({ type: 'paragraph', content: [{ type: 'text', text: '– Strobi' }] }),
     ).toBe(true);
     expect(istQuellenzeile(text)).toBe(false);
+  });
+
+  it('drops lists that only hold empty items, keeps lists with text', () => {
+    const text: ProtokollKnoten = { type: 'paragraph', content: [{ type: 'text', text: 'a' }] };
+    const leer = (type: string): ProtokollKnoten => ({
+      type,
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+    });
+    const voll: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [text] }],
+    };
+    expect(ohneLeereEnden([leer('bulletList')])).toEqual([]);
+    expect(ohneLeereEnden([leer('orderedList')])).toEqual([]);
+    expect(ohneLeereEnden([leer('bulletList'), text])).toEqual([text]);
+    expect(ohneLeereEnden([text, leer('bulletList'), { type: 'paragraph' }])).toEqual([text]);
+    expect(ohneLeereEnden([voll, leer('bulletList')])).toEqual([voll]);
+    expect(ohneLeereEnden([voll])).toEqual([voll]);
   });
 
   it('mitLiveKopf applies overrides only to drafts', () => {

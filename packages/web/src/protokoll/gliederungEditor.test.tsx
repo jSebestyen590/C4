@@ -26,7 +26,7 @@ const dokument = {
 } as unknown as ProtokollDokument;
 
 vi.mock('../kalenderDaten', () => {
-  const leer = { data: [], isPending: false };
+  const leer = { data: [], isPending: false, liste: [], aktive: [] };
   return {
     useKalenderEvents: () => leer,
     useEventKategorien: () => leer,

@@ -19,6 +19,7 @@ import {
   IconUser,
   IconUsers,
 } from '@tabler/icons-react';
+import type { MantineColor } from '@mantine/core';
 import type { BausteinTyp } from '@c4/shared';
 import type { SlashSymbol } from './slashLogik';
 
@@ -79,6 +80,29 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinAuswahl: 'auswahl',
   bausteinTodo: 'todo',
 };
+
+/**
+ * Colour of a Baustein: the bar on the left edge of its card and its icon in the outline (the only
+ * place of the map). Mantine's -6 shades read well on light and dark.
+ */
+export const BAUSTEIN_FARBE: Record<BausteinTyp, MantineColor> = {
+  bausteinEvent: 'green',
+  bausteinVergangenesEvent: 'lime',
+  bausteinThema: 'violet',
+  bausteinAnwaerter: 'cyan',
+  bausteinBeschluss: 'red',
+  bausteinEm: 'orange',
+  bausteinAnwesenheit: 'teal',
+  bausteinMeinungsbild: 'pink',
+  bausteinAufnahme: 'indigo',
+  bausteinWahl: 'grape',
+  bausteinAuswahl: 'yellow',
+  bausteinTodo: 'gray',
+};
+
+/** CSS value of the Baustein colour. */
+export const bausteinFarbeCss = (typ: BausteinTyp): string =>
+  `var(--mantine-color-${BAUSTEIN_FARBE[typ]}-6)`;
 
 /** Symbol of a Baustein from its fields: Anwesenheit shows "erscheint" or "geht". */
 export function bausteinSymbol(typ: BausteinTyp, daten: unknown): SlashSymbol {

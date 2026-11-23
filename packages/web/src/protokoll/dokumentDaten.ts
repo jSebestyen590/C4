@@ -8,6 +8,7 @@ import {
   bausteinEmDatenSchema,
   bausteinAuswahlDatenSchema,
   bausteinWahlDatenSchema,
+  type BausteinWahlDaten,
   auswahlErgebnis,
   wahlErgebnis,
   wahlRunden,
@@ -32,6 +33,7 @@ import {
   type TodoZustaendig,
   type Wiederholung,
 } from '@c4/shared';
+import type { KategorieNamen } from './kategorieNamen';
 import { wiederholungText, type WiederholungArt } from './wiederholungText';
 
 // Pure derivation of the finished document ("Dokument" view) of the minutes: header lines, opening
@@ -51,6 +53,8 @@ export interface DokumentEingabe {
   bilder?: Readonly<Record<string, string>>;
   /** An image of the view failed to load (expired URL?): the page fetches fresh URLs. */
   bilderErneuern?: () => void;
+  /** Kategorie names for the headings of Event / Vergangenes Event (without: no Kategorie in the heading). */
+  kategorien?: KategorieNamen;
   /** The viewer (current status): @mentions that concern them are highlighted. Not set for the PDF. */
   ich?: { sub: string; status: MitgliedStatus } | null;
 }
@@ -411,6 +415,11 @@ export interface WahlZeilen {
   gewaehlt: WahlKandidat[];
   /** Elected but declined. */
   abgelehnt: WahlKandidat[];
+  /**
+   * Elected and declined candidates together in vote order (the order they would have been elected
+   * in had they all accepted); `nimmtAn` is false for a decline.
+   */
+  reihenfolge: { kandidat: WahlKandidat; nimmtAn: boolean }[];
   /** Proposed persons (subs) who do not run. */
   nichtAngetreten: string[];
   /** A tie is still open: no result yet. */
@@ -418,6 +427,43 @@ export interface WahlZeilen {
   /** "(13 von 25 Mitgliedern anwesend)" or '' */
   anwesend: string;
   nichtBeschlussfaehig: boolean;
+}
+
+/** Ids in vote order: main-round votes, then the runoff rounds in turn (descending); stable otherwise. */
+function stimmenReihenfolge(w: BausteinWahlDaten, ids: readonly string[]): string[] {
+  const nachId = new Map(w.kandidaten.map((k) => [k.id, k]));
+  const stimmen = (id: string, runde: number) =>
+    runde < 0 ? (nachId.get(id)?.stimmen ?? 0) : (w.stichwahlen[runde]?.stimmen[id] ?? 0);
+  return [...ids].sort((a, b) => {
+    for (let r = -1; r < w.stichwahlen.length; r++) {
+      const d = stimmen(b, r) - stimmen(a, r);
+      if (d !== 0) return d;
+    }
+    return 0;
+  });
+}
+
+/** A sentence of the Wahl text: a run of elected persons or one person who declined. */
+export type WahlAbschnitt =
+  { art: 'gewaehlt'; personen: WahlKandidat[] } | { art: 'abgelehnt'; person: WahlKandidat };
+
+/**
+ * The Wahl text in vote order: consecutive elected persons form one "Gewählt: A, B, A nimmt die
+ * Wahl an, B nimmt die Wahl an." sentence, each decliner "Y nimmt die Wahl nicht an." at its place.
+ * While a tie is open the elected are not stated, only the declines.
+ */
+export function wahlAbschnitte(z: Pick<WahlZeilen, 'reihenfolge' | 'offen'>): WahlAbschnitt[] {
+  const aus: WahlAbschnitt[] = [];
+  for (const { kandidat, nimmtAn } of z.reihenfolge) {
+    if (!nimmtAn) {
+      aus.push({ art: 'abgelehnt', person: kandidat });
+    } else if (!z.offen) {
+      const letzter = aus.at(-1);
+      if (letzter?.art === 'gewaehlt') letzter.personen.push(kandidat);
+      else aus.push({ art: 'gewaehlt', personen: [kandidat] });
+    }
+  }
+  return aus;
 }
 
 /** Lines of a `bausteinWahl`; null when the data are invalid. */
@@ -453,6 +499,10 @@ export function wahlZeilen(
     giltAb: w.gueltigAb ? `Gilt ab ${datumAnzeigen(w.gueltigAb)}` : '',
     gewaehlt: ergebnis.gewaehlt.flatMap((id) => von(id, 0)),
     abgelehnt: ergebnis.abgelehnt.flatMap((id) => von(id, 0)),
+    reihenfolge: stimmenReihenfolge(w, [...ergebnis.gewaehlt, ...ergebnis.abgelehnt]).flatMap(
+      (id) =>
+        von(id, 0).map((kandidat) => ({ kandidat, nimmtAn: !ergebnis.abgelehnt.includes(id) })),
+    ),
     nichtAngetreten: w.nichtAngetreten,
     offen: ergebnis.offen !== null,
     anwesend: stand ? `(${anwesendText(stand)})` : '',
@@ -522,6 +572,8 @@ export interface EmZeilen {
   /** Free-text name (used when the Baustein has no `sub`), trimmed. */
   name: string;
   sub: string | null;
+  /** Person (sub) who moves the vote; null without a vote or when not set. */
+  antragSub: string | null;
   /** "Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von 25 Mitgliedern anwesend)" or '' without a vote. */
   abstimmung: string;
   nichtBeschlussfaehig: boolean;
@@ -531,7 +583,14 @@ export interface EmZeilen {
 export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined): EmZeilen {
   const d = bausteinEmDatenSchema.safeParse(daten);
   if (!d.success) {
-    return { wiederholung: '', name: '', sub: null, abstimmung: '', nichtBeschlussfaehig: false };
+    return {
+      wiederholung: '',
+      name: '',
+      sub: null,
+      antragSub: null,
+      abstimmung: '',
+      nichtBeschlussfaehig: false,
+    };
   }
   const { sub, name, abstimmung: a } = d.data;
   const anwesend = stand ? ` (${anwesendText(stand)})` : '';
@@ -539,6 +598,7 @@ export function emZeilen(daten: unknown, stand: Beschlussfaehigkeit | undefined)
     wiederholung: wiederholungZeile('Abstimmung', d.data.wiederholung),
     name: name.trim(),
     sub,
+    antragSub: a ? (d.data.antragSub ?? null) : null,
     abstimmung: a ? `Abstimmung: ${stimmenText(a)}${anwesend}` : '',
     nichtBeschlussfaehig: a !== null && stand !== undefined && !stand.beschlussfaehig,
   };
@@ -552,10 +612,49 @@ export function istLeererAbsatz(k: ProtokollKnoten): boolean {
   );
 }
 
-/** The nodes without trailing empty paragraphs. */
+/** A bullet / ordered list whose items hold nothing but empty paragraphs (e.g. the initial empty bullet). */
+export function istLeereListe(k: ProtokollKnoten): boolean {
+  return (
+    (k.type === 'bulletList' || k.type === 'orderedList') &&
+    (k.content ?? []).every((item) =>
+      (item.content ?? []).every((c) => istLeererAbsatz(c) || istLeereListe(c)),
+    )
+  );
+}
+
+/** A list item of empty paragraphs only (no text, no sub list, no Baustein): never shown as a bullet. */
+export function istLeererPunkt(k: ProtokollKnoten): boolean {
+  const kinder = k.content ?? [];
+  return k.type === 'listItem' && kinder.every(istLeererAbsatz);
+}
+
+/**
+ * A list item that only carries a block: an empty first paragraph, then a Baustein or quote (a block
+ * inserted into the first item of a nested list). Shown without bullet and without the empty line.
+ */
+export function istBlockPunkt(k: ProtokollKnoten): boolean {
+  const [erstes, zweites] = k.content ?? [];
+  return (
+    k.type === 'listItem' &&
+    !!erstes &&
+    istLeererAbsatz(erstes) &&
+    !!zweites &&
+    zweites.type !== 'paragraph' &&
+    zweites.type !== 'bulletList' &&
+    zweites.type !== 'orderedList'
+  );
+}
+
+const istLeer = (k: ProtokollKnoten): boolean => istLeererAbsatz(k) || istLeereListe(k);
+
+/**
+ * The nodes without trailing empty paragraphs / empty lists and without leading empty lists (the empty
+ * bullet a Baustein starts with). Leading empty paragraphs stay.
+ */
 export function ohneLeereEnden(knoten: readonly ProtokollKnoten[] | undefined): ProtokollKnoten[] {
   const liste = [...(knoten ?? [])];
-  while (liste.length > 0 && istLeererAbsatz(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeer(liste[liste.length - 1]!)) liste.pop();
+  while (liste.length > 0 && istLeereListe(liste[0]!)) liste.shift();
   return liste;
 }
 

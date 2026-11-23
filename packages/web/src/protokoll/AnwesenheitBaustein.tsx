@@ -1,4 +1,6 @@
+import { ZeitFeld } from '../ZeitFeld';
 import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
+import type { CSSProperties } from 'react';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
 import { Link } from 'react-router-dom';
@@ -9,8 +11,7 @@ import { anwesenheitUhrzeit, mitgliedernText, personenOptionen } from './anwesen
 import { istZeit } from './bausteinLogik';
 import { FORMULAR_ATTRIBUT } from './formular';
 import { useProtokollKontext } from './kontext';
-import { LokalText } from './LokalFelder';
-import { SlashIcon } from './symbole';
+import { bausteinFarbeCss, SlashIcon } from './symbole';
 
 const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht: 'Geht' };
 
@@ -21,11 +22,11 @@ const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht
 export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
-  const { teilnahme, verlauf, onAnwesenheit } = useProtokollKontext();
+  const { kandidaten, verlauf, onAnwesenheit } = useProtokollKontext();
   const daten = node.attrs.daten as BausteinAnwesenheitDaten;
   const id = node.attrs.id as string;
   const stand = verlauf.bausteine[id];
-  const person = teilnahme.find((t) => t.sub === daten.sub);
+  const person = kandidaten.find((t) => t.sub === daten.sub);
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
   const aendern = (f: (alt: BausteinAnwesenheitDaten) => BausteinAnwesenheitDaten) => {
@@ -39,10 +40,11 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
     );
   };
 
-  const optionen = personenOptionen(teilnahme);
-  const status = new Map(teilnahme.map((t) => [t.sub, t.status]));
+  const optionen = personenOptionen(kandidaten);
+  const status = new Map(kandidaten.map((t) => [t.sub, t.status]));
 
-  const quorum = stand && stand.gesamt > 0 && (
+  // Only Mitglieder count for the quorum: no head count for Anwärter:innen, EMs and Externe.
+  const quorum = stand && stand.gesamt > 0 && (!person || person.status === 'mitglied') && (
     <Text size="xs" c="dimmed">
       {stand.anwesend} von {mitgliedernText(stand.gesamt)} anwesend
       {stand.wechsel && (
@@ -58,12 +60,14 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
     <NodeViewWrapper
       className="protokoll-baustein protokoll-anwesenheit"
       data-baustein="bausteinAnwesenheit"
+      style={{ '--baustein-farbe': bausteinFarbeCss('bausteinAnwesenheit') } as CSSProperties}
     >
       <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
         <Stack gap={4} className="protokoll-anwesenheit-kopf">
           {editierbar ? (
             <Flex gap="xs" align="center" wrap="wrap">
               <Select
+                allowDeselect={false}
                 size="md"
                 aria-label="Person"
                 placeholder="Person wählen"
@@ -95,11 +99,10 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 <SlashIcon symbol={daten.art} size={18} />
                 <Text>{ART_LABEL[daten.art]}</Text>
               </Group>
-              <LokalText
-                type="time"
-                size="md"
-                aria-label="Uhrzeit"
-                wert={daten.uhrzeit}
+              <ZeitFeld
+                hoursInputLabel="Uhrzeit, Stunden"
+                minutesInputLabel="Uhrzeit, Minuten"
+                value={daten.uhrzeit}
                 onWert={(w) => {
                   if (w === '' || istZeit(w)) aendern((d) => ({ ...d, uhrzeit: w }));
                 }}

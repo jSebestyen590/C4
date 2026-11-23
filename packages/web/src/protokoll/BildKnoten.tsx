@@ -16,7 +16,9 @@ import {
   type BildAusrichtung,
   type BildBreite,
 } from '@c4/shared';
-import { FORMULAR_ATTRIBUT } from './formular';
+import { fokusSetzen } from './einfuegen';
+import { FORMULAR_ATTRIBUT, formularMausTaste } from './formular';
+import { istLetztesFeld } from './tabFolge';
 import { useProtokollKontext } from './kontext';
 import { LokalText } from './LokalFelder';
 
@@ -45,7 +47,20 @@ function BildAnsicht({ editor, node, getPos, deleteNode, updateAttributes }: Rea
   return (
     <NodeViewWrapper className="protokoll-bild" data-bild={schluessel}>
       <Paper withBorder p="sm" radius="md">
-        <div contentEditable={false} {...{ [FORMULAR_ATTRIBUT]: '' }}>
+        <div
+          contentEditable={false}
+          {...{ [FORMULAR_ATTRIBUT]: '' }}
+          onMouseDown={formularMausTaste}
+          onKeyDown={(e) => {
+            // Tab on the last field of the form continues behind the image.
+            if (e.key !== 'Tab' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+            if (!editierbar || !istLetztesFeld(e.currentTarget, e.target as Element)) return;
+            const stelle = getPos();
+            if (stelle === undefined) return;
+            e.preventDefault();
+            fokusSetzen(editor, stelle, 'nach');
+          }}
+        >
           <Stack gap="xs">
             <Group justify="space-between" wrap="nowrap" gap="xs">
               <Group gap="xs" wrap="nowrap" c="dimmed">
