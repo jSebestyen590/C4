@@ -1779,6 +1779,8 @@ export const finDatenexporte = pgTable('fin_datenexporte', {
   /** Cognito sub, without a foreign key. */
   erstelltVon: text('erstellt_von').notNull(),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** The ZIP contains the Beleg files (folder `belege/`). */
+  mitBelegdateien: boolean('mit_belegdateien').notNull().default(false),
 });
 
 /** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */

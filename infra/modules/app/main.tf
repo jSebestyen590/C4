@@ -165,6 +165,13 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = [aws_s3_bucket.finanzarchiv.arn, "${aws_s3_bucket.finanzarchiv.arn}/*"]
       },
       {
+        # Datenexport with Beleg files: the API invokes itself asynchronously (InvocationType Event).
+        # Built from the name, not the function ARN, because the function depends on this role.
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${local.region}:${data.aws_caller_identity.current.account_id}:function:${local.name}-api"
+      },
+      {
         # Deleting a protocol removes all its images (list + delete by prefix).
         Effect    = "Allow"
         Action    = ["s3:ListBucket"]
@@ -217,7 +224,9 @@ resource "aws_lambda_function" "api" {
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
   memory_size      = 512
-  timeout          = 15
+  # 15 minutes for the asynchronous Datenexport with Beleg files (self-invoke, see docs/finanzen.md).
+  # HTTP requests stay capped at 29 s by API Gateway whatever this is; the schedules do not depend on it.
+  timeout = 900
 
   environment {
     variables = {
@@ -406,6 +415,12 @@ resource "aws_scheduler_schedule" "finanz_export" {
   }
 }
 
+# The self-invoke of the Datenexport job must not be retried: a retry would build the export twice.
+resource "aws_lambda_function_event_invoke_config" "api" {
+  function_name          = aws_lambda_function.api.function_name
+  maximum_retry_attempts = 0
+}
+
 # Party-Mail job: fetches new mails every 2 minutes. A schedule of its own, so the push job keeps its
 # 15 seconds. The scheduler role above may invoke the whole function.
 resource "aws_scheduler_schedule" "mail_job" {
@@ -538,7 +553,8 @@ resource "aws_s3_bucket_policy" "profilbilder" {
 
 # Access logs (S3 server access logs + CloudFront standard logs), expired after 90 days.
 # ---------------------------------------------------------------- S3 (Finanzarchiv)
-# Beleg files and daily exports under Object Lock; nothing is ever deleted (no lifecycle rules).
+# Beleg files and daily exports under Object Lock; nothing is ever deleted. The only lifecycle rule
+# drops the parts of failed multipart uploads (Datenexport ZIPs), which are no objects.
 resource "aws_s3_bucket" "finanzarchiv" {
   bucket              = "${local.name}-finanzarchiv-${data.aws_caller_identity.current.account_id}"
   object_lock_enabled = true
@@ -566,6 +582,18 @@ resource "aws_s3_bucket_object_lock_configuration" "finanzarchiv" {
     default_retention {
       mode = var.finanzarchiv_retention_mode
       days = var.finanzarchiv_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "finanzarchiv" {
+  bucket = aws_s3_bucket.finanzarchiv.id
+  rule {
+    id     = "abort-incomplete-multipart"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
     }
   }
 }

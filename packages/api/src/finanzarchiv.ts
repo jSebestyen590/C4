@@ -5,6 +5,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import type { Readable } from 'node:stream';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { belegDateiSchluessel, type ArchivDaten, type BelegDateiTyp } from '@c4/shared';
 
@@ -36,6 +38,10 @@ export interface Finanzarchiv {
   versionenAuflisten(prefix: string): Promise<{ schluessel: string; versionIds: string[] }[]>;
   /** Text of an object, of one version when `versionId` is given. */
   lesen(schluessel: string, versionId?: string): Promise<string>;
+  /** Object content as a stream (for large files); rejects when the object does not exist. */
+  lesenStream(schluessel: string): Promise<Readable>;
+  /** Writes an object from a stream with a multipart upload (the size need not be known). */
+  streamSchreiben(schluessel: string, inhalt: Readable, contentType: string): Promise<void>;
   /** Stored SHA-256 checksum (Base64) of an object, `null` when it does not exist or has none. */
   dateiPruefsumme(schluessel: string): Promise<string | null>;
 }
@@ -115,6 +121,22 @@ export function createFinanzarchiv(bucket: string, region: string): Finanzarchiv
       );
       return (await res.Body?.transformToString('utf-8')) ?? '';
     },
+    async lesenStream(schluessel) {
+      const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: schluessel }));
+      if (!res.Body) throw new Error(`Objekt ${schluessel} ist leer.`);
+      return res.Body as Readable;
+    },
+    async streamSchreiben(schluessel, inhalt, contentType) {
+      // 8 MB parts, 4 in flight: about 32 MB of memory however large the object is.
+      await new Upload({
+        client: s3,
+        params: { Bucket: bucket, Key: schluessel, Body: inhalt, ContentType: contentType },
+        partSize: 8 * 1024 * 1024,
+        queueSize: 4,
+        // The role may not abort (permissions boundary); the bucket's lifecycle drops leftover parts.
+        leavePartsOnError: true,
+      }).done();
+    },
     async dateiPruefsumme(schluessel) {
       try {
         const res = await s3.send(
@@ -138,6 +160,8 @@ export const finanzarchivNichtEingerichtet: Finanzarchiv = {
   exportSchreiben: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
   versionenAuflisten: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
   lesen: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
+  lesenStream: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
+  streamSchreiben: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
   dateiPruefsumme: () => Promise.reject(new Error('FINANZARCHIV_BUCKET ist nicht gesetzt.')),
 };
 

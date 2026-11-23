@@ -1189,6 +1189,7 @@ describe('kalender', () => {
         'belege.status',
         'finanzen.festgeschrieben',
         'finanzen.festschreibung_faellig',
+        'finanzen.datenexport_fertig',
       ]);
       expect(anfang[5]).toMatchObject({ aktiv: true, abschaltbar: false });
       expect(

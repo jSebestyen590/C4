@@ -10,7 +10,12 @@ import { finanzDatumSchema, type FinanzMitgliedDto } from './finanzen';
 export const DATENEXPORT_MAX_JAHRE = 10;
 
 export const datenexportEingabeSchema = z
-  .object({ von: finanzDatumSchema, bis: finanzDatumSchema })
+  .object({
+    von: finanzDatumSchema,
+    bis: finanzDatumSchema,
+    /** Adds the Beleg files to the ZIP (asynchronous job, the result arrives as a push). */
+    mitBelegdateien: z.boolean().optional().default(false),
+  })
   .superRefine((e, ctx) => {
     if (e.von > e.bis) {
       ctx.addIssue({ code: 'custom', path: ['bis'], message: 'Das Ende liegt vor dem Beginn.' });
@@ -34,6 +39,8 @@ export interface DatenexportDto {
   sha256: string;
   erstelltVon: FinanzMitgliedDto | null;
   erstelltAm: string;
+  /** The ZIP contains the Beleg files (folder `belege/`). */
+  mitBelegdateien: boolean;
   /** Presigned download URL. */
   url: string;
 }
@@ -41,6 +48,22 @@ export interface DatenexportDto {
 export interface DatenexportErgebnisDto {
   id: string;
   url: string;
+}
+
+/** Answer (202) when the export runs as a background job; the requester gets a push when it is done. */
+export interface DatenexportStartDto {
+  id: string;
+  laeuft: true;
+}
+
+/** Event of the asynchronous Datenexport job (Lambda self-invoke). */
+export interface DatenexportAuftrag {
+  c4: 'datenexport';
+  id: string;
+  von: string;
+  bis: string;
+  /** Cognito sub of the requester (gets the push). */
+  sub: string;
 }
 
 // --- Rows (what the store loads) -------------------------------------------------------------------
@@ -102,6 +125,8 @@ export interface ExportBeleg {
   dateiSchluessel: string | null;
   dateiTyp: string | null;
   dateiName: string | null;
+  /** Path of the Beleg file in the ZIP; set by the export job when the files are included. */
+  dateiPfad?: string | null;
   summeCent: number;
   buchungId: string;
   erstelltVon: string;
@@ -355,6 +380,12 @@ export const DATENEXPORT_TABELLEN: readonly ExportTabelle[] = [
         'text',
         'Schlüssel der Belegdatei im Finanzarchiv',
         (r) => r.dateiSchluessel,
+      ),
+      sp<ExportBeleg>(
+        'datei_pfad',
+        'text',
+        'Pfad der Belegdatei im ZIP (leer, wenn der Export ohne Belegdateien erstellt wurde)',
+        (r) => r.dateiPfad ?? null,
       ),
       sp<ExportBeleg>('datei_typ', 'text', 'Dateityp der Belegdatei', (r) => r.dateiTyp),
       sp<ExportBeleg>('datei_name', 'text', 'Ursprünglicher Dateiname', (r) => r.dateiName),
@@ -612,6 +643,8 @@ export function beschreibungTxt(p: {
   erstelltVon: string;
   erstelltAm: string;
   tabellen?: readonly ExportTabelle[];
+  /** The ZIP contains the folder `belege/` with the Beleg files. */
+  mitBelegdateien?: boolean;
 }): string {
   const tabellen = p.tabellen ?? DATENEXPORT_TABELLEN;
   const z: string[] = [
@@ -637,8 +670,16 @@ export function beschreibungTxt(p: {
     'Positive Beträge stehen im Soll, negative im Haben. Gebucht wird nur durch neue Einträge; eine',
     'Korrektur ist eine Stornobuchung (Spalte storno_von) mit anschließender Neubuchung.',
     'Buchungen sind nach Buchungsdatum im genannten Zeitraum enthalten; Konten, Rechnungssteller und',
-    'Festschreibungen vollständig. Belegdateien liegen nicht im ZIP, belege.csv nennt SHA-256 und',
-    'Archivschlüssel der Datei im Finanzarchiv.',
+    'Festschreibungen vollständig.',
+    ...(p.mitBelegdateien
+      ? [
+          'Die Belegdateien der Belege liegen im Ordner belege/. Der Dateiname ist der SHA-256 des',
+          'Dateiinhalts (Hex) plus Endung; belege.csv nennt den Pfad in der Spalte datei_pfad.',
+        ]
+      : [
+          'Belegdateien liegen nicht im ZIP, belege.csv nennt SHA-256 und Archivschlüssel der Datei im',
+          'Finanzarchiv.',
+        ]),
     '',
     'Unveränderbarkeit (Hash-Kette)',
     '------------------------------',

@@ -1,4 +1,6 @@
 import { vi } from 'vitest';
+import { Readable } from 'node:stream';
+import type { DatenexportAuftrag } from '@c4/shared';
 import {
   ausleihFehler,
   ausleiheTage,
@@ -863,6 +865,21 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       const versionen = archivObjekte.get(schluessel) ?? [];
       return versionen[versionId === undefined ? versionen.length - 1 : Number(versionId)] ?? '';
     }),
+    lesenStream: vi.fn(async (schluessel: string) => {
+      const bytes = archivBytes.get(schluessel);
+      if (!bytes) throw new Error(`NoSuchKey: ${schluessel}`);
+      return Readable.from([bytes]);
+    }),
+    streamSchreiben: vi.fn(async (schluessel: string, inhalt: Readable) => {
+      const teile: Buffer[] = [];
+      for await (const teil of inhalt) teile.push(Buffer.from(teil as Uint8Array));
+      const bytes = new Uint8Array(Buffer.concat(teile));
+      archivBytes.set(schluessel, bytes);
+      archivObjekte.set(schluessel, [
+        ...(archivObjekte.get(schluessel) ?? []),
+        new TextDecoder().decode(bytes),
+      ]);
+    }),
     // By default a Beleg file has the checksum its key (`belege/<sha256>.<ext>`) promises.
     dateiPruefsumme: vi.fn(async (schluessel: string): Promise<string | null> => {
       if (archivPruefsummen.has(schluessel)) return archivPruefsummen.get(schluessel)!;
@@ -870,6 +887,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       return sha ? Buffer.from(sha, 'hex').toString('base64') : null;
     }),
   };
+  const datenexportStarten = vi.fn<(auftrag: DatenexportAuftrag) => Promise<void>>(async () => {});
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
   );
@@ -915,6 +933,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     profilbilder,
     protokollbilder,
     finanzarchiv,
+    datenexportStarten,
     pingDb,
   });
   return {
@@ -929,6 +948,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     archivObjekte,
     archivBytes,
     archivPruefsummen,
+    datenexportStarten,
     waren,
     inventar,
     inventarVerwendet,

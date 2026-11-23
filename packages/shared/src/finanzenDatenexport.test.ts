@@ -124,6 +124,57 @@ describe('beschreibungTxt', () => {
     expect(txt).toContain('01.01.2025 bis 31.12.2025');
     expect(txt).toContain('hashlib');
     for (const t of DATENEXPORT_TABELLEN) expect(txt).toContain(t.datei);
+    expect(txt).toContain('Belegdateien liegen nicht im ZIP');
+  });
+  it('mentions the folder belege/ when the files are included', () => {
+    const txt = beschreibungTxt({
+      von: '2025-01-01',
+      bis: '2025-12-31',
+      erstelltVon: 'anna',
+      erstelltAm: '2026-01-02T10:00:00.000Z',
+      mitBelegdateien: true,
+    });
+    expect(txt).toContain('Ordner belege/');
+    expect(txt).toContain('SHA-256 des');
+    expect(txt).not.toContain('nicht im ZIP');
+  });
+});
+
+describe('belege.csv datei_pfad', () => {
+  const belege = DATENEXPORT_TABELLEN.find((t) => t.datei === 'belege.csv')!;
+  const beleg = {
+    id: 'b1',
+    nummer: 'B-2025-0001',
+    rechnungsstellerId: 'r1',
+    belegdatum: '2025-03-01',
+    modus: 'brutto',
+    zahlweg: 'bar',
+    bezahldatum: null,
+    mitgliedId: null,
+    eigenbelegBegruendung: null,
+    dateiSha256: 'a'.repeat(64),
+    dateiSchluessel: `belege/${'a'.repeat(64)}.pdf`,
+    dateiTyp: 'application/pdf',
+    dateiName: 'x.pdf',
+    summeCent: 100,
+    buchungId: 'bu1',
+    erstelltVon: 'a',
+    erstelltAm: '2025-03-01T10:00:00.000Z',
+  };
+  const spalte = (csv: string) => {
+    const [kopf, zeile] = csv.split('\r\n');
+    return zeile!.split(';')[kopf!.split(';').indexOf('datei_pfad')];
+  };
+  it('is empty without files and the ZIP path with files', () => {
+    expect(spalte(tabelleAlsCsv(belege, { ...leer, belege: [beleg] }))).toBe('');
+    expect(
+      spalte(
+        tabelleAlsCsv(belege, {
+          ...leer,
+          belege: [{ ...beleg, dateiPfad: beleg.dateiSchluessel }],
+        }),
+      ),
+    ).toBe(beleg.dateiSchluessel);
   });
 });
 
@@ -132,6 +183,10 @@ describe('datenexportEingabeSchema', () => {
     expect(
       datenexportEingabeSchema.safeParse({ von: '2025-01-01', bis: '2025-12-31' }).success,
     ).toBe(true);
+  });
+  it('defaults mitBelegdateien to false', () => {
+    const r = datenexportEingabeSchema.parse({ von: '2025-01-01', bis: '2025-12-31' });
+    expect(r.mitBelegdateien).toBe(false);
   });
   it('rejects von after bis and periods over 10 years', () => {
     expect(

@@ -952,8 +952,8 @@ export function createFakeFinanzenStore() {
     async datenexporte() {
       return structuredClone([...datenexporteListe].reverse());
     },
-    async datenexportEintragen(neu) {
-      const id = `datenexport-${datenexporteListe.length + 1}`;
+    async datenexportEintragen({ id: vorgegeben, ...neu }) {
+      const id = vorgegeben ?? `datenexport-${datenexporteListe.length + 1}`;
       datenexporteListe.push({ id, ...neu });
       return id;
     },

@@ -243,6 +243,11 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
       beschreibung:
         'Wöchentliche Erinnerung ab dem 10., wenn ein vergangener Monat noch nicht festgeschrieben ist. Nur mit dem Recht „Finanzen verwalten“.',
     },
+    'finanzen.datenexport_fertig': {
+      titel: 'Datenexport fertig',
+      beschreibung:
+        'Wenn ein von dir gestarteter Datenexport mit Belegdateien fertig ist oder fehlgeschlagen ist.',
+    },
   };
 
 /** When the voters see the results of a poll. */

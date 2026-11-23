@@ -192,6 +192,7 @@ export interface DatenexportEintrag {
   sha256: string;
   erstelltVon: string;
   erstelltAm: Date;
+  mitBelegdateien: boolean;
 }
 
 export interface KettenDaten {
@@ -254,8 +255,8 @@ export interface FinanzenStore extends BelegeStore {
   datenexportDaten(von: string, bis: string): Promise<DatenexportDaten>;
   /** Earlier exports, newest first. */
   datenexporte(): Promise<DatenexportEintrag[]>;
-  /** Records a written ZIP; returns the id. */
-  datenexportEintragen(neu: Omit<DatenexportEintrag, 'id'>): Promise<string>;
+  /** Records a written ZIP; returns the id (`id` is given by the asynchronous job, which announced it before). */
+  datenexportEintragen(neu: Omit<DatenexportEintrag, 'id'> & { id?: string }): Promise<string>;
   /** `bis_seq` of the last export (0 when there is none yet). */
   letzterExportSeq(): Promise<number>;
   /** Records a written export. */
@@ -2243,8 +2244,8 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       return db.select().from(finDatenexporte).orderBy(desc(finDatenexporte.erstelltAm));
     },
 
-    async datenexportEintragen(neu) {
-      const id = randomUUID();
+    async datenexportEintragen({ id: vorgegeben, ...neu }) {
+      const id = vorgegeben ?? randomUUID();
       await db.insert(finDatenexporte).values({ id, ...neu });
       return id;
     },

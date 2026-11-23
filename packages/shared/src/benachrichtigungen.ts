@@ -168,6 +168,13 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     standardAktiv: true,
     minuten: null,
   },
+  {
+    // Result of the asynchronous Datenexport with Beleg files (done or failed); goes to the requester.
+    key: 'finanzen.datenexport_fertig',
+    bereich: 'finanzen',
+    standardAktiv: true,
+    minuten: null,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

@@ -121,8 +121,14 @@ Trenner `;`, UTF-8, CRLF; Beträge `1234,56`; Datum `TT.MM.JJJJ`):
 (`gdpdu-01-08-2002.dtd`, je Tabelle `URL`, `Name`, `Description`, `UTF8`, `DecimalSymbol` `,`,
 `DigitGroupingSymbol` `.`, Spalten mit `Numeric`/`AlphaNumeric`/`Date`, Primär-/Fremdschlüssel); `beschreibung.txt`
 (Zeitraum, Erstellt von/am, Spaltenbedeutung, Hinweis auf Hash-Kette und Python-Snippet aus der Doku). Buchungen
-nach Buchungsdatum im Zeitraum; Konten und Rechnungssteller vollständig. Belegdateien nicht im ZIP (`belege.csv`
+nach Buchungsdatum im Zeitraum; Konten und Rechnungssteller vollständig. Belegdateien standardmäßig nicht im ZIP (`belege.csv`
 nennt `sha256` und Archivschlüssel).
+
+**Erweiterung „Mit Belegdateien“** (Migration `0253_fin_datenexporte_mit_belegdateien.sql`, Spalte
+`mit_belegdateien`): Body `mitBelegdateien: true` startet einen asynchronen Job (Lambda-Selbstaufruf, `202`), der das
+ZIP als Strom (fflate `Zip`) per Multipart-Upload ins Archiv schreibt und die Belegdateien als `belege/<sha256>.<Endung>`
+einzeln aus dem Archiv liest; fehlt eine, scheitert der Export. Ergebnis als Push `finanzen.datenexport_fertig`.
+Lambda-Timeout 900 s, Selbstaufruf-Recht, keine Wiederholung. Details in `docs/finanzen.md` „Datenexport“.
 
 ## Phase 4: Web
 

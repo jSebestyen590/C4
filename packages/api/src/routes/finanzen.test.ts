@@ -3698,5 +3698,41 @@ describe('finanzen', () => {
       });
       expect(liste[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
     });
+
+    it('with Beleg files: answers 202 and hands the order to the starter without writing', async () => {
+      const t = await setup();
+      const res = await exportieren(t, 'reader-token', {
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        mitBelegdateien: true,
+      });
+      expect(res.status).toBe(202);
+      const { id, laeuft } = (await res.json()) as { id: string; laeuft: boolean };
+      expect(laeuft).toBe(true);
+      expect(t.datenexportStarten).toHaveBeenCalledTimes(1);
+      expect(t.datenexportStarten).toHaveBeenCalledWith({
+        c4: 'datenexport',
+        id,
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        sub: 'r',
+      });
+      expect(t.finanzarchiv.exportSchreiben).not.toHaveBeenCalled();
+      expect(await t.lesen<Dto[]>('admin-token', '/datenexporte')).toHaveLength(0);
+    });
+
+    it('with Beleg files: needs the right, validates, answers 503 when it cannot start', async () => {
+      const t = await setup();
+      const body = { von: '2027-01-01', bis: '2027-12-31', mitBelegdateien: true };
+      expect((await exportieren(t, 'member-token', body)).status).toBe(403);
+      expect((await exportieren(t, 'admin-token', { ...body, bis: '2026-01-01' })).status).toBe(
+        400,
+      );
+      expect(t.datenexportStarten).not.toHaveBeenCalled();
+      t.datenexportStarten.mockRejectedValueOnce(new Error('AccessDenied'));
+      expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
+    });
   });
 });

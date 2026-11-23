@@ -92,7 +92,7 @@ export const HILFE = {
     zeitraum:
       'Der Zeitraum der Buchungen, die exportiert werden (Buchungsdatum). Höchstens 10 Jahre. Vorgabe ist das Vorjahr.',
     export:
-      'Der Export ist eine ZIP-Datei mit CSV-Dateien, einer index.xml (Beschreibungsstandard für die Datenträgerüberlassung) und einer Beschreibung. Er wird im Archiv abgelegt und bleibt dort erhalten.',
+      'Der Export ist eine ZIP-Datei mit CSV-Dateien, einer index.xml (Beschreibungsstandard für die Datenträgerüberlassung) und einer Beschreibung. Er wird im Archiv abgelegt und bleibt dort erhalten. Mit Belegdateien liegen die Dateien der Belege zusätzlich im Ordner belege/; der Export wird dann im Hintergrund erstellt.',
   },
   kette: {
     ergebnis:

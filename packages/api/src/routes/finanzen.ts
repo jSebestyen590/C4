@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { strToU8, zipSync } from 'fflate';
 import {
   BELEGE_MAX,
@@ -72,6 +72,7 @@ import {
   tabelleAlsCsv,
   type DatenexportDto,
   type DatenexportErgebnisDto,
+  type DatenexportStartDto,
   monatAnzeigen,
   naechsterFestschreibbarerMonat,
   type FestschreibungDto,
@@ -1160,12 +1161,27 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
         finanzenPruefenOderVerwalten,
         zValidator('json', datenexportEingabeSchema),
         async (c) => {
-          const { von, bis } = c.req.valid('json');
+          const { von, bis, mitBelegdateien } = c.req.valid('json');
           if (!deps.finanzarchiv.eingerichtet)
             throw new HTTPException(503, {
               message: 'Das Finanzarchiv ist nicht eingerichtet. Ein Export ist nicht möglich.',
             });
           const sub = c.get('user').sub;
+          if (mitBelegdateien) {
+            // Too large for one request (GBs): a background job builds the ZIP and pushes the result.
+            const id = randomUUID();
+            try {
+              await deps.datenexportStarten({ c4: 'datenexport', id, von, bis, sub });
+            } catch (e) {
+              console.error('Datenexport konnte nicht gestartet werden', e);
+              throw new HTTPException(503, {
+                message:
+                  'Der Export konnte nicht gestartet werden. Bitte versuche es später noch einmal.',
+              });
+            }
+            const start: DatenexportStartDto = { id, laeuft: true };
+            return c.json(start, 202);
+          }
           const jetzt = new Date();
           const [daten, mitglied] = await Promise.all([
             deps.finanzen.datenexportDaten(von, bis),
@@ -1206,6 +1222,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             sha256,
             erstelltVon: sub,
             erstelltAm: jetzt,
+            mitBelegdateien: false,
           });
           const ergebnis: DatenexportErgebnisDto = { id, url };
           return c.json(ergebnis, 201);
@@ -1226,6 +1243,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
             sha256: e.sha256,
             erstelltVon: mitglied(e.erstelltVon),
             erstelltAm: e.erstelltAm.toISOString(),
+            mitBelegdateien: e.mitBelegdateien,
             url: await deps.finanzarchiv.anzeigeUrl(e.schluessel),
           })),
         );

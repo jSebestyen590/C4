@@ -1,7 +1,9 @@
 import {
   Alert,
   Anchor,
+  Badge,
   Button,
+  Checkbox,
   Grid,
   Group,
   Loader,
@@ -21,6 +23,7 @@ import {
   heuteBerlin,
   type DatenexportDto,
   type DatenexportErgebnisDto,
+  type DatenexportStartDto,
 } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
@@ -44,6 +47,13 @@ function Von({ e }: Readonly<{ e: DatenexportDto }>) {
   );
 }
 
+const MitDateienBadge = ({ e }: Readonly<{ e: DatenexportDto }>) =>
+  e.mitBelegdateien ? (
+    <Badge variant="light" color="gray">
+      mit Belegdateien
+    </Badge>
+  ) : null;
+
 const Download = ({ e }: Readonly<{ e: DatenexportDto }>) => (
   <Button
     component="a"
@@ -63,7 +73,10 @@ export function FinanzenDatenexportPage() {
   const vorjahr = Number(heuteBerlin().slice(0, 4)) - 1;
   const [von, setVon] = useState(`${vorjahr}-01-01`);
   const [bis, setBis] = useState(`${vorjahr}-12-31`);
+  const [mitBelegdateien, setMitBelegdateien] = useState(false);
   const [versucht, setVersucht] = useState(false);
+  /** Period of the export that was started in the background (the answer is a push). */
+  const [gestartet, setGestartet] = useState<string | null>(null);
 
   const liste = useQuery({
     queryKey: finanzenKeys.datenexporte,
@@ -77,12 +90,15 @@ export function FinanzenDatenexportPage() {
   const erstellen = useMutation({
     meta: { eigeneFehlermeldung: true },
     mutationFn: async () =>
-      jsonOderFehler<DatenexportErgebnisDto>(
-        await api.finanzen.datenexporte.$post({ json: { von, bis } }),
+      jsonOderFehler<DatenexportErgebnisDto | DatenexportStartDto>(
+        await api.finanzen.datenexporte.$post({ json: { von, bis, mitBelegdateien } }),
       ),
     onSuccess: async (e) => {
-      await qc.invalidateQueries({ queryKey: finanzenKeys.datenexporte });
-      window.location.assign(e.url);
+      if ('url' in e) {
+        setGestartet(null);
+        await qc.invalidateQueries({ queryKey: finanzenKeys.datenexporte });
+        window.location.assign(e.url);
+      } else setGestartet(`${datumAnzeigen(von)} bis ${datumAnzeigen(bis)}`);
     },
   });
 
@@ -94,8 +110,8 @@ export function FinanzenDatenexportPage() {
         <InfoHinweis feld="Datenexport" text={HILFE.datenexport.export} />
       </Group>
       <Text c="dimmed">
-        Exportiert die Buchführung für das Finanzamt als ZIP mit CSV-Dateien und Beschreibung. Der
-        Export wird im Archiv abgelegt.
+        Exportiert die Buchführung für das Finanzamt als ZIP mit CSV-Dateien und Beschreibung, auf
+        Wunsch samt Belegdateien. Der Export wird im Archiv abgelegt.
       </Text>
       <Paper withBorder p="md">
         <form
@@ -130,6 +146,18 @@ export function FinanzenDatenexportPage() {
                 </Button>
               </Grid.Col>
             </Grid>
+            <Checkbox
+              checked={mitBelegdateien}
+              onChange={(ev) => setMitBelegdateien(ev.currentTarget.checked)}
+              label="Mit Belegdateien"
+              description="Kann einige Minuten dauern; du bekommst eine Benachrichtigung, wenn der Export fertig ist."
+            />
+            {gestartet && (
+              <Alert color="blue">
+                Der Export {gestartet} mit Belegdateien wird erstellt. Du bekommst eine
+                Benachrichtigung, wenn er fertig ist; danach findest du ihn unter „Frühere Exporte“.
+              </Alert>
+            )}
             {versucht && fehler && (
               <Text c="red" size="sm">
                 {fehler}
@@ -156,9 +184,12 @@ export function FinanzenDatenexportPage() {
         karte={(e) => (
           <Paper withBorder p="md">
             <Stack gap="xs">
-              <Text fw={600}>
-                {datumAnzeigen(e.von)} bis {datumAnzeigen(e.bis)}
-              </Text>
+              <Group gap="xs">
+                <Text fw={600}>
+                  {datumAnzeigen(e.von)} bis {datumAnzeigen(e.bis)}
+                </Text>
+                <MitDateienBadge e={e} />
+              </Group>
               <Text size="sm">
                 Von <Von e={e} /> · {formatDatumZeit(e.erstelltAm, 'mittel')}
               </Text>
@@ -177,7 +208,7 @@ export function FinanzenDatenexportPage() {
         zeile={(e) => (
           <Table.Tr>
             <Table.Td style={{ whiteSpace: 'nowrap' }}>
-              {datumAnzeigen(e.von)} bis {datumAnzeigen(e.bis)}
+              {datumAnzeigen(e.von)} bis {datumAnzeigen(e.bis)} <MitDateienBadge e={e} />
             </Table.Td>
             <Table.Td>
               <Von e={e} />
