@@ -45,6 +45,21 @@
   color: var(--mantine-color-placeholder);
 }
 
+/*
+ * A list item that holds only an empty paragraph and then a Baustein or quote (a block inserted into an
+ * empty item): no bullet, the empty line is not shown. The class comes from a decoration (`ListenPunkt`).
+ */
+.protokoll-editor li.pk-ohne-punkt {
+  list-style: none;
+}
+
+.protokoll-editor li.pk-ohne-punkt > p:first-child {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
 /* Empty text blocks keep a line to click into. */
 .protokoll-editor .ProseMirror p {
   min-height: 1.5em;
@@ -67,6 +82,14 @@
 
 .protokoll-editor .ProseMirror blockquote p + p {
   margin-top: var(--mantine-spacing-xs);
+}
+
+/*
+ * Colour bar on the left edge of every Baustein card, one colour per type (`--baustein-farbe`, set from `BAUSTEIN_FARBE` in symbole.tsx).
+ * Nested Bausteine show several bars side by side. Mantine's -6 shades read well on light and dark.
+ */
+.protokoll-baustein > .mantine-Paper-root {
+  border-left: 4px solid var(--baustein-farbe, var(--mantine-color-gray-6));
 }
 
 .protokoll-toolbar {
@@ -123,6 +146,7 @@
 .protokoll-anwesenheit {
   padding: var(--mantine-spacing-xs);
   border: 1px solid var(--mantine-color-default-border);
+  border-left: 4px solid var(--baustein-farbe);
   border-radius: var(--mantine-radius-md);
 }
 

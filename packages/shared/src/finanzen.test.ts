@@ -11,12 +11,14 @@ import {
   kontoEingabeSchema,
   pruefeBuchung,
   pruefeKette,
+  pruefeArchiv,
   saldoWarnungen,
   stornoEingabeSchema,
   stornoZeilen,
   type BuchungZeileEingabe,
   type HashBuchung,
   type HashZeile,
+  type ArchivDaten,
   type KettenBuchung,
   type PruefKonto,
 } from './finanzen';
@@ -197,7 +199,7 @@ describe('schemas', () => {
       art: 'bargeld',
       parentId: null,
       stueckelung: false,
-      steuersatzStandard: null,
+      steuersatzArt: null,
     });
     expect(kontoEingabeSchema.safeParse({ name: 'X', art: 'buch' }).success).toBe(false);
     // a partial change must not reset the other fields
@@ -368,6 +370,22 @@ const HASH_1 = 'b793c46053220e30625e617241d37e478d90891d9fab068c3ff031e526849484
 const HASH_2 = '9f3fb5b928579b8e4538e95694b99aec5a2eb9934e0144fa9d7846b16fed9837';
 
 describe('kanonisch und buchungsHash', () => {
+  it('hashes an entry without Beleg files like before and differently with one', async () => {
+    expect(await buchungsHash(GENESIS_HASH, { ...buchung1, belege: [] })).toBe(HASH_1);
+    const mit = await buchungsHash(GENESIS_HASH, {
+      ...buchung1,
+      belege: [{ sha256: 'a'.repeat(64) }],
+    });
+    expect(mit).not.toBe(HASH_1);
+    const zwei = [{ sha256: 'b'.repeat(64) }, { sha256: 'a'.repeat(64) }];
+    expect(await buchungsHash(GENESIS_HASH, { ...buchung1, belege: zwei })).toBe(
+      await buchungsHash(GENESIS_HASH, { ...buchung1, belege: [...zwei].reverse() }),
+    );
+    expect(kanonisch({ ...buchung1, belege: zwei })).toContain(
+      `"belege":[{"sha256":"${'a'.repeat(64)}"},{"sha256":"${'b'.repeat(64)}"}]`,
+    );
+  });
+
   it('serialises an entry in the pinned canonical form', () => {
     expect(kanonisch(buchung1)).toBe(KANONISCH_1);
   });
@@ -553,5 +571,114 @@ describe('saldoWarnungen', () => {
         [k('bank', 'bank', 0), k('b', 'bargeld', 0), k('d', 'durchlauf', 0)],
       ),
     ).toEqual([]);
+  });
+});
+
+describe('pruefeArchiv', () => {
+  const sha = 'ab'.repeat(32);
+  const shaB64 = btoa(String.fromCharCode(...Array(32).fill(0xab)));
+  const db = (): KettenBuchung[] => [
+    { ...buchung1, prevHash: GENESIS_HASH, hash: HASH_1, belege: [{ sha256: sha }] },
+    { ...buchung2, prevHash: HASH_1, hash: HASH_2 },
+  ];
+  const zeile = (b: KettenBuchung, aendern: (e: Record<string, unknown>) => void = () => {}) => {
+    const e: Record<string, unknown> = {
+      hash: b.hash,
+      prev_hash: b.prevHash,
+      buchung: JSON.parse(kanonisch(b)),
+    };
+    aendern(e);
+    return kanonischJson(e) + '\n';
+  };
+  const anker = (bisSeq: number, kopfHash: string, erstelltAm = 'a') =>
+    JSON.stringify({ bis_seq: bisSeq, kopf_hash: kopfHash, erstellt_am: erstelltAm });
+  const intakt = (): ArchivDaten => ({
+    objekte: [
+      { schluessel: 'export/2027-01-07.jsonl', versionen: [zeile(db()[0]!)] },
+      { schluessel: 'anker/2027-01-07.json', versionen: [anker(1, HASH_1)] },
+    ],
+    belegDateien: [{ sha256: sha, pruefsumme: shaB64 }],
+  });
+
+  it('accepts a matching archive and counts what is not exported yet', async () => {
+    expect(await pruefeArchiv(db(), intakt())).toEqual({
+      fehler: [],
+      exporte: 1,
+      anker: 1,
+      festschreibungen: 0,
+      belegdateien: 1,
+      nichtExportiert: 1,
+    });
+  });
+
+  it('finds a manipulated export line', async () => {
+    const a = intakt();
+    const kaputt = zeile(db()[0]!, (e) => {
+      (e.buchung as Record<string, unknown>).text = 'anders';
+    });
+    const r = await pruefeArchiv(db(), {
+      ...a,
+      objekte: [{ schluessel: 'export/x.jsonl', versionen: [kaputt] }],
+    });
+    expect(r.fehler).toEqual([{ seq: 1, art: 'archiv_abweichung', schluessel: 'export/x.jsonl' }]);
+  });
+
+  it('finds an entry missing in the database', async () => {
+    const r = await pruefeArchiv([db()[0]!], {
+      ...intakt(),
+      objekte: [{ schluessel: 'export/x.jsonl', versionen: [zeile(db()[0]!) + zeile(db()[1]!)] }],
+    });
+    expect(r.fehler).toEqual([{ seq: 2, art: 'archiv_fehlt_in_db', schluessel: 'export/x.jsonl' }]);
+  });
+
+  it('finds a divergent anchor', async () => {
+    const r = await pruefeArchiv(db(), {
+      ...intakt(),
+      objekte: [{ schluessel: 'anker/x.json', versionen: [anker(2, HASH_1)] }],
+    });
+    expect(r.fehler).toEqual([{ seq: 2, art: 'anker', schluessel: 'anker/x.json' }]);
+  });
+
+  it('finds a second version of an export object', async () => {
+    const r = await pruefeArchiv(db(), {
+      ...intakt(),
+      objekte: [{ schluessel: 'export/x.jsonl', versionen: [zeile(db()[0]!), zeile(db()[0]!)] }],
+    });
+    expect(r.fehler).toEqual([
+      { seq: 0, art: 'archiv_ueberschrieben', schluessel: 'export/x.jsonl' },
+    ]);
+  });
+
+  it('tolerates a rewritten Festschreibung only with the same content', async () => {
+    const fest = (erstellt: string) => anker(2, HASH_2, erstellt);
+    const ok = await pruefeArchiv(db(), {
+      ...intakt(),
+      objekte: [{ schluessel: 'festschreibung/2027-01.json', versionen: [fest('a'), fest('b')] }],
+    });
+    expect(ok.fehler).toEqual([]);
+    expect(ok.festschreibungen).toBe(1);
+    const anders = await pruefeArchiv(db(), {
+      ...intakt(),
+      objekte: [
+        {
+          schluessel: 'festschreibung/2027-01.json',
+          versionen: [fest('a'), anker(1, HASH_1, 'a')],
+        },
+      ],
+    });
+    expect(anders.fehler.map((f) => f.art)).toEqual(['archiv_ueberschrieben']);
+  });
+
+  it('finds a wrong or missing Beleg checksum', async () => {
+    const falsch = await pruefeArchiv(db(), {
+      ...intakt(),
+      belegDateien: [{ sha256: sha, pruefsumme: 'AAAA' }],
+    });
+    expect(falsch.fehler).toEqual([{ seq: 1, art: 'beleg_datei' }]);
+    const fehlt = await pruefeArchiv(db(), {
+      ...intakt(),
+      belegDateien: [{ sha256: sha, pruefsumme: null }],
+    });
+    expect(fehlt.fehler).toEqual([{ seq: 1, art: 'beleg_datei' }]);
   });
 });

@@ -6,7 +6,7 @@ import { BILD_TYP } from '@c4/shared';
 import { ApiFehler } from '../warenApi';
 import type { BilderZugriff } from './bilderDaten';
 import { BILD_FEHLER, bildPut, bildSkalieren, istBilddatei } from './bildLogik';
-import { einfuegeStelle, type TextBereich } from './einfuegen';
+import { einfuegeStelle, fokusSetzen, type TextBereich } from './einfuegen';
 
 // Inserting an image: pick a file, scale it to a JPEG, upload it to S3 and then put the image node into
 // the document. While that runs, a placeholder with the progress is drawn at the insertion point (a
@@ -152,6 +152,8 @@ export async function bildStarten(
     });
     // Only inserts: an empty paragraph at the spot stays and ends up behind the image.
     editor.view.dispatch(tr.insert(ziel.von, knoten).scrollIntoView());
+    // The description is the next thing to fill in.
+    fokusSetzen(editor, ziel.von, 'beschreibung');
   } catch (err) {
     console.error('Uploading a protocol image failed', err);
     melden({ entfernen: id });

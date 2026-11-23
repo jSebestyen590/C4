@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__claude-code-remote__*",
+      "mcp__Claude_Code_iOS_Simulator__*",
+      "mcp__visualize__*",
+      "mcp__scheduled-tasks__*",
+      "mcp__mcp-registry__*",
+      "mcp__claude-in-chrome__*",
+      "mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c__*"
+    ]
+  }
+}

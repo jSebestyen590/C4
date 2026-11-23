@@ -1,3 +1,4 @@
+import { dropdownOffen } from '../useVerwerfenWarnung';
 import {
   Alert,
   Anchor,
@@ -40,6 +41,7 @@ import {
   type FreieZeile,
 } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
+import { DatumsgrenzeHinweis, useDatumsgrenze } from '../FestschreibungHinweise';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { finanzenKeys, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
@@ -57,6 +59,7 @@ export function FinanzenBuchenPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const konten = useKonten(false);
+  const grenze = useDatumsgrenze();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
   const [modus, setModus] = useState<FormularModus>('umbuchung');
@@ -103,6 +106,7 @@ export function FinanzenBuchenPage() {
   const umbuchungUebernehmen = modus === 'umbuchung' && !!von && !!nach;
   const gruende = [
     ...(datum ? [] : ['Bitte gib ein Datum an.']),
+    ...(datum && grenze.min && datum < grenze.min && grenze.hinweis ? [grenze.hinweis] : []),
     ...(stueckelungKonten.length > 0
       ? ['Konten mit Stückelung buchst du unter „Bargeld“ mit Münzen und Scheinen.']
       : []),
@@ -181,7 +185,7 @@ export function FinanzenBuchenPage() {
     const el = e.target as HTMLElement;
     if (!el.matches('[data-nav]')) return;
     // An open account dropdown uses Enter to pick the highlighted entry.
-    if (el.getAttribute('aria-expanded') === 'true') return;
+    if (dropdownOffen(el)) return;
     const felder = [...(formRef.current?.querySelectorAll<HTMLElement>('[data-nav]') ?? [])];
     const i = felder.indexOf(el);
     const naechstes = felder[i + 1];
@@ -232,15 +236,22 @@ export function FinanzenBuchenPage() {
               ]}
               w={{ base: '100%', sm: 320 }}
             />
-            <Grid gap="md">
+            <Grid align="flex-end" gap="md">
               <Grid.Col span={{ base: 12, sm: 4 }}>
                 <DatumFeld
                   label={<FeldLabel text="Datum" hilfe={HILFE.buchen.datum} />}
                   value={datum}
                   onWert={setDatum}
                   loeschbar={false}
+                  min={grenze.min}
                   onBlur={() => anfassen('datum')}
-                  error={zeigt('datum') && !datum ? 'Bitte gib ein Datum an.' : undefined}
+                  error={
+                    zeigt('datum') && !datum
+                      ? 'Bitte gib ein Datum an.'
+                      : datum && grenze.min && datum < grenze.min
+                        ? (grenze.hinweis ?? undefined)
+                        : undefined
+                  }
                   data-nav=""
                 />
               </Grid.Col>
@@ -259,9 +270,10 @@ export function FinanzenBuchenPage() {
                 />
               </Grid.Col>
             </Grid>
+            <DatumsgrenzeHinweis />
 
             {modus === 'umbuchung' ? (
-              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+              <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, md: 3 }} spacing="md">
                 <Select
                   selectFirstOptionOnChange
                   label="Von Konto"

@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_erstattung_belege_beleg_idx ON fin_erstattung_belege (beleg_id)

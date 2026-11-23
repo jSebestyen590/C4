@@ -1,4 +1,6 @@
 import { vi } from 'vitest';
+import { Readable } from 'node:stream';
+import type { DatenexportAuftrag } from '@c4/shared';
 import {
   ausleihFehler,
   ausleiheTage,
@@ -62,6 +64,7 @@ import { createFakeProtokolleStore } from '../protokolle.fake';
 import { createFakeSchluesselAnfragenStore } from '../schluesselAnfragen.fake';
 import { createFakeTodosStore } from '../todos.fake';
 import { createFakeTrichterStore } from '../trichter.fake';
+import { createFakeLagerAbgleichStore } from '../lagerAbgleich.fake';
 import { createFakeFinanzenStore } from '../finanzen.fake';
 import { createFakeBuchStore } from '../buch.fake';
 import { createFakeUmfragenStore } from '../umfragen.fake';
@@ -791,6 +794,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   const { fake: schluessel } = makeSchluesselFake(anfragenFake.planungVerbrauchen);
   const { store: umfragen, liste: umfragenListe } = createFakeUmfragenStore();
   const { store: trichter } = createFakeTrichterStore();
+  const lagerAbgleichFake = createFakeLagerAbgleichStore();
+  const lagerAbgleich = lagerAbgleichFake.store;
   const finanzenFake = createFakeFinanzenStore();
   const finanzen = finanzenFake.store;
   const buchFake = createFakeBuchStore();
@@ -820,8 +825,69 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       schluessel: `protokollbilder/${protokollId}/00000000-0000-4000-8000-000000000001.jpg`,
     })),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/${key}`),
+    kopieren: vi.fn<
+      (vonId: string, nachId: string, schluessel: readonly string[]) => Promise<void>
+    >(async () => {}),
     loeschen: vi.fn<(protokollId: string) => Promise<void>>(async () => {}),
   };
+  /** Fake archive objects: every `exportSchreiben` adds a version; `pruefsummen` overrides a file's checksum. */
+  const archivObjekte = new Map<string, string[]>();
+  /** Raw bytes of binary archive objects (ZIPs), by key. */
+  const archivBytes = new Map<string, Uint8Array>();
+  const archivPruefsummen = new Map<string, string | null>();
+  const finanzarchiv = {
+    eingerichtet: true,
+    uploadVorbereiten: vi.fn(async (d: { sha256: string; groesse: number; typ: string }) => ({
+      uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
+      schluessel: `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
+      checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
+    })),
+    anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
+    exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
+      async (schluessel, inhalt) => {
+        if (typeof inhalt !== 'string') archivBytes.set(schluessel, inhalt);
+        archivObjekte.set(schluessel, [
+          ...(archivObjekte.get(schluessel) ?? []),
+          typeof inhalt === 'string' ? inhalt : new TextDecoder().decode(inhalt),
+        ]);
+      },
+    ),
+    versionenAuflisten: vi.fn(async (prefix: string) =>
+      [...archivObjekte.keys()]
+        .filter((k) => k.startsWith(prefix))
+        .sort()
+        .map((schluessel) => ({
+          schluessel,
+          versionIds: archivObjekte.get(schluessel)!.map((_, i) => String(i)),
+        })),
+    ),
+    lesen: vi.fn(async (schluessel: string, versionId?: string) => {
+      const versionen = archivObjekte.get(schluessel) ?? [];
+      return versionen[versionId === undefined ? versionen.length - 1 : Number(versionId)] ?? '';
+    }),
+    lesenStream: vi.fn(async (schluessel: string) => {
+      const bytes = archivBytes.get(schluessel);
+      if (!bytes) throw new Error(`NoSuchKey: ${schluessel}`);
+      return Readable.from([bytes]);
+    }),
+    streamSchreiben: vi.fn(async (schluessel: string, inhalt: Readable) => {
+      const teile: Buffer[] = [];
+      for await (const teil of inhalt) teile.push(Buffer.from(teil as Uint8Array));
+      const bytes = new Uint8Array(Buffer.concat(teile));
+      archivBytes.set(schluessel, bytes);
+      archivObjekte.set(schluessel, [
+        ...(archivObjekte.get(schluessel) ?? []),
+        new TextDecoder().decode(bytes),
+      ]);
+    }),
+    // By default a Beleg file has the checksum its key (`belege/<sha256>.<ext>`) promises.
+    dateiPruefsumme: vi.fn(async (schluessel: string): Promise<string | null> => {
+      if (archivPruefsummen.has(schluessel)) return archivPruefsummen.get(schluessel)!;
+      const sha = /^belege\/([0-9a-f]{64})\./.exec(schluessel)?.[1];
+      return sha ? Buffer.from(sha, 'hex').toString('base64') : null;
+    }),
+  };
+  const datenexportStarten = vi.fn<(auftrag: DatenexportAuftrag) => Promise<void>>(async () => {});
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
   );
@@ -853,6 +919,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     todos,
     umfragen,
     trichter,
+    lagerAbgleich,
     finanzen,
     buch,
     protokolle,
@@ -865,6 +932,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     ...(appUrl && { appUrl }),
     profilbilder,
     protokollbilder,
+    finanzarchiv,
+    datenexportStarten,
     pingDb,
   });
   return {
@@ -875,6 +944,11 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     posten,
     profilbilder,
     protokollbilder,
+    finanzarchiv,
+    archivObjekte,
+    archivBytes,
+    archivPruefsummen,
+    datenexportStarten,
     waren,
     inventar,
     inventarVerwendet,
@@ -892,6 +966,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     umfragen,
     umfragenListe,
     trichter,
+    lagerAbgleichFake,
     finanzenFake,
     buchFake,
     protokollListe,

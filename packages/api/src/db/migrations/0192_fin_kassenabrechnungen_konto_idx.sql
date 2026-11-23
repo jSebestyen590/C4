@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_kassenabrechnungen_konto_idx ON fin_kassenabrechnungen (konto_id, erstellt_am)

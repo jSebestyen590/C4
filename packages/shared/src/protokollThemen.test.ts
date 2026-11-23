@@ -26,10 +26,11 @@ const thema = (titel: string, ...inhalt: ProtokollKnoten[]) =>
   bausteinErzeugen('bausteinThema', { titel }, [absatz, ...inhalt, absatz]);
 
 describe('rules for Bausteine in notes', () => {
-  it('lets votes, Themen and Todos be nested, nothing else', () => {
+  it('lets votes, Themen, Todos and erscheint / geht be nested, nothing else', () => {
     const nestbar = BAUSTEIN_TYPEN.filter(istVerschachtelbar);
     expect(nestbar.sort()).toEqual(
       [
+        'bausteinAnwesenheit',
         'bausteinAuswahl',
         'bausteinBeschluss',
         'bausteinMeinungsbild',
@@ -64,6 +65,9 @@ describe('rules for Bausteine in notes', () => {
     expect(darfInNotizen('bausteinBeschluss', 'bausteinThema')).toBe(false);
     expect(darfInNotizen('bausteinWahl', 'bausteinThema')).toBe(false);
     expect(darfInNotizen('bausteinAnwesenheit', 'bausteinThema')).toBe(false);
+    expect(darfInNotizen('bausteinThema', 'bausteinAnwesenheit')).toBe(true);
+    expect(darfInNotizen('bausteinEvent', 'bausteinAnwesenheit')).toBe(true);
+    expect(darfInNotizen('bausteinBeschluss', 'bausteinAnwesenheit')).toBe(false);
     expect(darfInNotizen('bausteinThema', 'bausteinEvent')).toBe(false);
   });
 });

@@ -3,6 +3,12 @@
 Ein Mitglied ist eine Person mit einem Cognito-Konto **und** einer Profilzeile in der Datenbank.
 Cognito verwaltet die Anmeldedaten (Username, E-Mail, Passwort), die Datenbank alles andere.
 
+## Überblick
+
+Ein Mitglied ist eine Person mit einem Cognito-Konto und einer Profilzeile in der Datenbank; Cognito verwaltet Username, E-Mail und Passwort, die Datenbank alles andere. Der Status ist aus `mitglied_status_verlauf` abgeleitet, die Rechte werden bei jedem Request aus Status, Gruppen und aktuellen Posten neu berechnet. Server-Code in `packages/api/src/mitglieder.ts`; die Seite beschreibt auch Kontaktkanäle, Profilbilder und Deaktivierung.
+
+Abschnitte: Invarianten, Dateien, Datenmodell, Was andere Mitglieder sehen, Statuswechsel, Status-Historie, Mitglieder anlegen, Rechte, Accounts deaktivieren, Gegenderte Texte, Kontaktkanäle, Benachrichtigungen im Profil, Ungespeicherte Änderungen, Profilbilder, Username und URLs, E-Mail ändern, Seiten und API, Datenbank zurücksetzen (nur dev)
+
 ## Invarianten
 
 - `mitglieder.status` ist **abgeleitet** aus `mitglied_status_verlauf` (jüngster Eintrag, `statusAbgleichen` in `packages/api/src/mitglieder.ts`);

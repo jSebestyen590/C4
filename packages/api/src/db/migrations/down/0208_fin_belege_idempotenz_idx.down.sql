@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_belege_idempotenz_idx

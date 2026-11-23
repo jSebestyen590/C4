@@ -29,22 +29,29 @@ import {
   meinungsbildZeilen,
   emZeilen,
   auswahlZeilen,
+  wahlAbschnitte,
   wahlZeilen,
   type WahlKandidat,
   beschlussfaehigkeitText,
   dokumentKopf,
   eroeffnungSatz,
+  istBlockPunkt,
+  istLeereListe,
   istLeererAbsatz,
+  istLeererPunkt,
   istQuellenzeile,
   naechsteSitzungSatz,
   naechsteSitzungWert,
   ohneLeereEnden,
   personName,
+  dokumentPerson,
   todoZeile,
   type DokumentEingabe,
   type Person,
 } from './dokumentDaten';
 import { ABSCHNITT_TITEL } from './schema';
+import { bausteinKategorie } from './kategorieNamen';
+import { bildNummern, bildUnterschrift } from './bildNummern';
 import { hatBilder, notizAbschnitte } from './notizAbschnitte';
 import { DokumentRahmen } from './DokumentGliederung';
 import {
@@ -66,6 +73,8 @@ interface Kontext {
   erwIds: Map<ProtokollKnoten, string>;
   /** Level of the enclosing heading (1 = section, 2 = top-level Baustein, ...; see `MAX_EBENE`). */
   ebene: number;
+  /** Figure numbers of the images with a description (see `bildNummern`). */
+  bildNr: ReadonlyMap<ProtokollKnoten, number>;
 }
 
 /** A heading element of the given level (`h2`..`h6`), styled by `pk-dok-h<level>`. */
@@ -191,7 +200,7 @@ function Erwaehnung({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) 
     if (m && mitglied) {
       inhalt = (
         <Link to={mitgliedLink(mitglied)} style={{ textDecoration: 'none' }}>
-          <StatusName status={m.status}>{`@${m.name}`}</StatusName>
+          {m.farblos ? `@${m.name}` : <StatusName status={m.status}>{`@${m.name}`}</StatusName>}
         </Link>
       );
     } else {
@@ -239,18 +248,29 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
       );
     }
     case 'bulletList':
+      if (istLeereListe(k)) return null;
       return (
         <ul>
           <Kinder liste={k.content} ctx={ctx} />
         </ul>
       );
     case 'orderedList':
+      if (istLeereListe(k)) return null;
       return (
         <ol>
           <Kinder liste={k.content} ctx={ctx} />
         </ol>
       );
     case 'listItem':
+      // Empty items (the place to continue after a block) are never shown; a block-only item has no bullet.
+      if (istLeererPunkt(k)) return null;
+      if (istBlockPunkt(k)) {
+        return (
+          <li className="pk-dok-ohne-punkt">
+            <Kinder liste={k.content?.slice(1)} ctx={ctx} />
+          </li>
+        );
+      }
       return (
         <li>
           <Kinder liste={k.content} ctx={ctx} />
@@ -286,6 +306,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
           <Baustein k={k} ctx={ctx} innen />
         </div>
       );
+    case 'bausteinAnwesenheit':
+      // erscheint / geht inside the notes of a Baustein (or in a list item of them).
+      return <Baustein k={k} ctx={ctx} innen />;
     case 'bausteinTodo':
       // A Todo is a bullet of the notes it stands in (see `Kinder`); alone it gets a list of its own.
       return (
@@ -392,6 +415,7 @@ function BildFigur({
   const ausrichtung = (BILD_AUSRICHTUNGEN as readonly unknown[]).includes(k.attrs?.ausrichtung)
     ? (k.attrs?.ausrichtung as string)
     : 'mitte';
+  const nummer = ctx.bildNr.get(k);
   const url = ctx.eingabe.bilder?.[schluessel];
   // One refresh per image: the URL may have expired.
   const erneuert = useRef(false);
@@ -416,12 +440,15 @@ function BildFigur({
       ) : (
         <p className="pk-dok-klein">Bild nicht verfügbar</p>
       )}
-      {beschreibung && <figcaption className="pk-dok-klein">{beschreibung}</figcaption>}
+      {nummer !== undefined && (
+        <figcaption className="pk-dok-klein">{bildUnterschrift(nummer, beschreibung)}</figcaption>
+      )}
     </figure>
   );
 }
 
 function PersonName({ p }: Readonly<{ p: Person }>) {
+  if (p.farblos) return <>{p.name}</>;
   return <StatusName status={p.status}>{p.name}</StatusName>;
 }
 
@@ -527,7 +554,12 @@ function Baustein({
 
   if (k.type === 'bausteinEvent') {
     const d = bausteinEventDatenSchema.safeParse(daten);
-    const titel = d.success ? eventUeberschrift(d.data) : '';
+    const titel = d.success
+      ? eventUeberschrift({
+          ...d.data,
+          kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+        })
+      : '';
     const verantwortlich =
       d.success && d.data.verantwortlichSub ? ctx.person(d.data.verantwortlichSub) : null;
     return (
@@ -574,7 +606,12 @@ function Baustein({
   }
   if (k.type === 'bausteinVergangenesEvent') {
     const d = bausteinVergangenesEventDatenSchema.safeParse(daten);
-    const titel = d.success ? vergangenesUeberschrift(d.data) : '';
+    const titel = d.success
+      ? vergangenesUeberschrift({
+          ...d.data,
+          kategorie: bausteinKategorie(k.type, d.data, ctx.eingabe.kategorien),
+        })
+      : '';
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
@@ -681,31 +718,31 @@ function Baustein({
               })}
             </p>
           )}
-          {z.offen ? (
-            <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>
-          ) : (
-            z.gewaehlt.length > 0 && (
-              <p>
+          {z.offen && <p className="pk-dok-warnung">Noch offen: Stichwahl nötig</p>}
+          {wahlAbschnitte(z).map((a, i) =>
+            a.art === 'abgelehnt' ? (
+              <p key={i}>
+                <WahlName k={a.person} ctx={ctx} /> nimmt die Wahl nicht an.
+              </p>
+            ) : (
+              <p key={i}>
                 Gewählt:{' '}
-                {z.gewaehlt.map((g, i) => (
+                {a.personen.map((g, j) => (
                   <Fragment key={g.id}>
-                    {i > 0 && ', '}
+                    {j > 0 && ', '}
                     <WahlName k={g} ctx={ctx} />
                   </Fragment>
                 ))}
+                {', '}
+                {a.personen.map((g, j) => (
+                  <Fragment key={g.id}>
+                    {j > 0 && ', '}
+                    <WahlName k={g} ctx={ctx} /> nimmt die Wahl an
+                  </Fragment>
+                ))}
+                .
               </p>
-            )
-          )}
-          {z.abgelehnt.length > 0 && (
-            <p>
-              Nimmt die Wahl nicht an:{' '}
-              {z.abgelehnt.map((g, i) => (
-                <Fragment key={g.id}>
-                  {i > 0 && ', '}
-                  <WahlName k={g} ctx={ctx} />
-                </Fragment>
-              ))}
-            </p>
+            ),
           )}
           {(z.anwesend || z.nichtBeschlussfaehig) && (
             <p>
@@ -784,6 +821,7 @@ function Baustein({
   if (k.type === 'bausteinEm') {
     const z = emZeilen(daten, ctx.verlauf.bausteine[id]);
     const p = z.sub ? ctx.person(z.sub) : null;
+    const antrag = z.antragSub ? ctx.person(z.antragSub) : null;
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
@@ -797,6 +835,11 @@ function Baustein({
           )}
         </Ueberschrift>
         {z.wiederholung && <p className="pk-dok-klein">{z.wiederholung}</p>}
+        {antrag && (
+          <p>
+            <PersonName p={antrag} /> beantragt die Ehrenmitgliedschaft
+          </p>
+        )}
         {z.abstimmung && (
           <p>
             {z.abstimmung}
@@ -883,7 +926,14 @@ function Zeile({ label, children }: Readonly<{ label: string; children?: ReactNo
  * The finished document of the minutes: title, attendance lines, opening, quorum and the four
  * sections with the Bausteine as text. Everything is derived from the given (live) data.
  */
-export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: DokumentEingabe }>) {
+export function ProtokollDokumentAnsicht({
+  eingabe,
+  ohneGliederung = false,
+}: Readonly<{
+  eingabe: DokumentEingabe;
+  /** Without the outline (aside / button), e.g. inside the preview drawer. */
+  ohneGliederung?: boolean;
+}>) {
   const kopf = dokumentKopf(eingabe);
   const art = eingabe.sitzung.art;
   const verlauf = anwesenheitsVerlauf(eingabe.inhalt, {
@@ -894,19 +944,20 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
   const alle = alleMitglieder(eingabe);
   const namen = (sub: string) => {
     const m = alle.find((x) => x.sub === sub);
-    return m ? personName(m) : null;
+    return m ? personName(m, eingabe.offiziell) : null;
   };
-  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen);
-  const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen);
+  const { eintraege, ids } = dokumentUeberschriften(eingabe.inhalt, namen, eingabe.kategorien);
+  const meine = meineErwaehnungen(eingabe.inhalt, eingabe.ich, namen, eingabe.kategorien);
   const ctx: Kontext = {
     eingabe,
     verlauf,
     ids,
     erwIds: meine.ids,
+    bildNr: bildNummern(eingabe.inhalt),
     ebene: 1,
     person: (sub) => {
       const m = alle.find((x) => x.sub === sub);
-      return m ? { sub, name: personName(m), status: m.status, zusatz: '' } : null;
+      return m ? dokumentPerson(m, eingabe.offiziell) : null;
     },
   };
   const satz = eroeffnungSatz(art, kopf.leitung !== null, kopf.eroeffnung);
@@ -920,6 +971,7 @@ export function ProtokollDokumentAnsicht({ eingabe }: Readonly<{ eingabe: Dokume
 
   return (
     <DokumentRahmen
+      ohneGliederung={ohneGliederung}
       eintraege={eintraege}
       erwaehnungen={meine.eintraege}
       zeigeErwaehnungen={!!eingabe.ich}

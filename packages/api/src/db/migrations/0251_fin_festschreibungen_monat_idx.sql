@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS fin_festschreibungen_monat_idx ON fin_festschreibungen (monat)

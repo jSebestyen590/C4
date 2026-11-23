@@ -10,6 +10,7 @@ import {
 import {
   bausteinErzeugen,
   bausteinLeer,
+  protokollDokumentPruefen,
   protokollLeer,
   type BausteinDatenVon,
   type BausteinTyp,
@@ -119,6 +120,32 @@ describe('event.anlegen', () => {
     });
   });
 
+  it('passes the participation of a teilnahme Kategorie on and ignores Dienste', () => {
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      kategorieId: 'k1',
+      teilnahmeStatus: ['mitglied', 'em'],
+      eingeladen: ['x'],
+    });
+    const [a] = protokollAktionen(dok(b), kontext());
+    expect(a!.plan).toMatchObject({
+      art: 'event.anlegen',
+      eingabe: { schichten: [], teilnahmeStatus: ['mitglied', 'em'], eingeladen: ['x'] },
+    });
+    const [standard] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, kategorieId: 'k1' })),
+      kontext(),
+    );
+    expect(standard!.plan).toMatchObject({
+      eingabe: { teilnahmeStatus: ['mitglied'], eingeladen: [] },
+    });
+    const [dienste] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, teilnahmeStatus: ['em'], eingeladen: ['x'] })),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(dienste!.plan).toMatchObject({ eingabe: { teilnahmeStatus: null, eingeladen: [] } });
+  });
+
   it.each([
     ['the date', { datum: null }, 'Das Datum fehlt.'],
     ['the Kategorie', { kategorieId: null }, 'Die Kategorie fehlt.'],
@@ -130,6 +157,17 @@ describe('event.anlegen', () => {
       kontext({ kategorien: dienstKategorien }),
     );
     expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null });
+  });
+
+  it('drops a leftover bisDatum for a single-day Kategorie', () => {
+    const [a] = protokollAktionen(
+      dok(baustein('bausteinEvent', { ...eventDaten, bisDatum: '2026-12-09' })),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(a!.ausfuehrbar).toBe(true);
+    expect(a!.plan).toMatchObject({
+      eingabe: { beginn: '2026-12-05T18:00:00.000Z', ende: '2026-12-05T21:00:00.000Z' },
+    });
   });
 
   it('needs no times for whole-day Kategorien', () => {
@@ -156,6 +194,25 @@ describe('event.anlegen', () => {
 describe('event.aendern', () => {
   const kt = { kategorien: dienstKategorien };
   const mitEvent = (e = ereignis()) => kontext({ ...kt, events: { [e.id]: e } });
+
+  it('changes the participation of a linked teilnahme event', () => {
+    const e = ereignis({ kategorieId: 'k1', schichten: [], teilnahmeStatus: ['mitglied'] });
+    const k = kontext({ events: { e1: e } });
+    const gleich = baustein('bausteinEvent', { ...eventDaten, kategorieId: 'k1', eventId: 'e1' });
+    expect(protokollAktionen(dok(gleich), k)).toEqual([]);
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      kategorieId: 'k1',
+      eventId: 'e1',
+      teilnahmeStatus: ['em'],
+      eingeladen: ['y'],
+    });
+    const [a] = protokollAktionen(dok(b), k);
+    expect(a!.text).toContain('Teilnahme');
+    expect(a!.plan).toMatchObject({
+      eingabe: { teilnahmeStatus: ['em'], eingeladen: ['y'], schichten: [] },
+    });
+  });
 
   it('does nothing when the block matches the calendar', () => {
     const b = baustein('bausteinEvent', { ...eventDaten, eventId: 'e1' });
@@ -343,19 +400,19 @@ describe('em.status', () => {
   const plan = (abstimmung: ReturnType<typeof ergebnis> | null) =>
     protokollAktionen(dok(baustein('bausteinEm', { sub: 'p', abstimmung })), k)[0]!;
 
-  it('makes the person EM without a vote or with a yes', () => {
-    expect(plan(null).plan).toMatchObject({ art: 'em.status', status: 'em' });
-    expect(plan(ergebnis('angenommen')).plan).toMatchObject({ status: 'em' });
+  it('makes the person EM after a yes', () => {
+    expect(plan(ergebnis('angenommen')).plan).toMatchObject({ art: 'em.status', status: 'em' });
   });
-  it('makes the person extern after a no', () => {
+  it('makes the person extern without a vote or after a no', () => {
+    expect(plan(null).plan).toMatchObject({ status: 'extern' });
     expect(plan(ergebnis('abgelehnt')).plan).toMatchObject({ status: 'extern' });
   });
   it('waits for the result of a vote', () => {
     expect(plan(ergebnis(null))).toMatchObject({ ausfuehrbar: false });
   });
-  it('is done when the person is EM', () => {
+  it('is done when the person already has the target status', () => {
     const [a] = protokollAktionen(
-      dok(baustein('bausteinEm', { sub: 'p' })),
+      dok(baustein('bausteinEm', { sub: 'p', abstimmung: ergebnis('angenommen') })),
       kontext({ personen: { p: person('em') } }),
     );
     expect(a).toMatchObject({ erledigt: true, grund: AKTION_BEREITS_ERLEDIGT });
@@ -474,7 +531,7 @@ describe('aktionenMitZustand', () => {
   });
 
   it('is done when the state says so, and not executable otherwise', () => {
-    const erledigt = protokollAktionen(dok(b), kontext({ personen: { p: person('em') } }));
+    const erledigt = protokollAktionen(dok(b), kontext({ personen: { p: person('extern') } }));
     expect(aktionenMitZustand(erledigt, {})[0]).toMatchObject({ zustand: 'erledigt' });
     const keine = protokollAktionen(dok(b), kontext());
     expect(aktionenMitZustand(keine, {})[0]).toMatchObject({ zustand: 'nicht_ausfuehrbar' });
@@ -629,6 +686,21 @@ describe('Todo', () => {
       },
     });
     expect(a!.plan).toMatchObject({ todo: { subs: ['a', 'b'] } });
+  });
+
+  it('finds a Todo that stands in a list item of the notes of another Baustein', () => {
+    const b = baustein('bausteinTodo', { ...daten, zustaendig: [...daten.zustaendig] }, notizen);
+    const id = (b.attrs as { id: string }).id;
+    const liste: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }, b] }],
+    };
+    const ereignis = baustein('bausteinThema', {}, [liste]);
+    const dokument = dok(ereignis);
+    expect(protokollDokumentPruefen(dokument)).toBeNull();
+    const aktionen = protokollAktionen(dokument, kontext({ personen, protokollId: 'p1' }));
+    expect(aktionen.map((a) => a.id)).toEqual([`${id}:todo.anlegen`]);
+    expect(bausteinIdsInReihenfolge(dokument)).toContain(id);
   });
 
   it('uses the singular for one person', () => {

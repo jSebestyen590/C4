@@ -96,10 +96,11 @@ export const istThema = (typ: string): boolean => typ === 'bausteinThema';
 
 /**
  * Whether a Baustein of this type may stand in the notes of another Baustein: Abstimmung, Meinungsbild,
- * Wahl and Thema. All others are top-level only.
+ * Wahl, Todo, Thema and Anwesenheit (erscheint / geht). All others are top-level only. Nested ones may
+ * also stand inside a list item of those notes (as a child after the item's text).
  */
 export const istVerschachtelbar = (typ: string): boolean =>
-  istBausteinInNotizen(typ) || istThema(typ);
+  istBausteinInNotizen(typ) || istThema(typ) || typ === 'bausteinAnwesenheit';
 
 /**
  * Whether the notes of a Baustein of this type may hold other Bausteine (Abstimmung, Meinungsbild, Wahl
@@ -182,6 +183,17 @@ export const bausteinEventDatenSchema = z.strictObject({
   eventId: idOderNull,
   /** Kategorie of the event (needed to create it); null = not chosen (and in old data). */
   kategorieId: idOderNull.default(null),
+  /**
+   * Participation circle of an event of a `teilnahme` Kategorie (statuses, `[]` = nobody by status);
+   * null = the Kategorie's default. Always null for a Kategorie with Dienste.
+   */
+  teilnahmeStatus: z
+    .array(z.enum(MITGLIED_STATI))
+    .max(MITGLIED_STATI.length)
+    .nullable()
+    .default(null),
+  /** Subs of the members invited individually (`teilnahme` Kategorie only). */
+  eingeladen: z.array(z.string().min(1).max(100)).max(500).default([]),
 });
 export type BausteinEventDaten = z.infer<typeof bausteinEventDatenSchema>;
 
@@ -249,6 +261,8 @@ export const bausteinEmDatenSchema = z.strictObject({
   sub: idOderNull,
   name: z.string().max(200),
   abstimmung: bausteinEmAbstimmungSchema.nullable(),
+  /** Person of the app who moves the vote; only meaningful with an `abstimmung`. */
+  antragSub: idOderNull.optional(),
   wiederholung: wiederholungSchema,
 });
 export type BausteinEmDaten = z.infer<typeof bausteinEmDatenSchema>;
@@ -559,6 +573,8 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
         verantwortlichSub: null,
         eventId: null,
         kategorieId: null,
+        teilnahmeStatus: null,
+        eingeladen: [],
       };
     case 'bausteinThema':
       return { titel: '' };
@@ -871,7 +887,7 @@ export interface ProtokollBildUploadDto {
 }
 
 /** Structure of one node and its descendants: types, depth, Baustein fields; returns an error message or null. */
-function knotenFehler(knoten: unknown, tiefe: number): string | null {
+function knotenFehler(knoten: unknown, tiefe: number, imBaustein = false): string | null {
   if (tiefe > PROTOKOLL_MAX_TIEFE) return 'Das Protokoll ist zu tief verschachtelt.';
   if (!istObjekt(knoten)) return 'Das Protokoll ist ungültig.';
   const { type, attrs, content, text, marks } = knoten;
@@ -895,7 +911,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
       }
     }
   }
-  if (tiefe === 2 && istNurInNotizen(type)) {
+  // Lists add depth, so "in a Baustein" is tracked instead of the depth: a Todo in a list of a section is
+  // as wrong as one directly in the section.
+  if (!imBaustein && istNurInNotizen(type)) {
     return 'Ein Todo gehört in die Notizen eines anderen Bausteins, nicht auf die oberste Ebene.';
   }
   if (istBausteinTyp(type)) {
@@ -913,8 +931,9 @@ function knotenFehler(knoten: unknown, tiefe: number): string | null {
     if (!Array.isArray(content) || content.length > MAX_KNOTEN_KINDER) {
       return 'Das Protokoll ist ungültig.';
     }
+    const innen = imBaustein || istBausteinTyp(type);
     for (const kind of content) {
-      const fehler = knotenFehler(kind, tiefe + 1);
+      const fehler = knotenFehler(kind, tiefe + 1, innen);
       if (fehler) return fehler;
     }
   }
@@ -1149,6 +1168,8 @@ export function eventDatenAusKalender(
     verantwortlichSub: e.verantwortlichSub,
     eventId: e.id,
     kategorieId: e.kategorieId,
+    teilnahmeStatus: null,
+    eingeladen: [],
   };
 }
 
@@ -1423,6 +1444,10 @@ export interface ProtokollListeEintragDto {
   /** ISO instant of the Sitzung. */
   beginn: string;
   status: ProtokollStatus;
+  /** Official copy: id of the normal protocol it comes from; null = normal protocol. */
+  offiziellVon: string | null;
+  /** Normal protocol: id of its official copy, if there is one. */
+  offiziellId: string | null;
   /** ISO instant. */
   geaendertAm: string;
   geaendertVon: ProtokollMitgliedDto | null;
@@ -1456,6 +1481,10 @@ export interface ProtokollDto {
     /** Art of the Sitzung (frozen once closed). */
     art: ProtokollArt;
   };
+  /** Official copy: id of the normal protocol it comes from; null = normal protocol. */
+  offiziellVon: string | null;
+  /** Normal protocol: id of its official copy, if there is one. */
+  offiziellId: string | null;
   inhalt: ProtokollDokument;
   /** Presigned GET URLs (1 h) of the images in `inhalt`, by key. */
   bilder: Record<string, string>;

@@ -54,6 +54,7 @@ import { kalenderInvalidieren, useDienstformen, useKalenderEvent } from '../kale
 import { kalenderLink, zeitraumAnzeigen } from '../kalenderZeit';
 import { useBilderTeilen } from '../bilderTeilen';
 import { useEigeneSub } from '../organisator';
+import { EventKasse } from '../EventKasse';
 import { EventAboButton, EventTeilnahme, EventVerfuegbarkeit } from '../EventTeilnahme';
 import { SCHICHT_ART_LABELS } from '../i18n';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
@@ -432,6 +433,7 @@ export function EventDetailPage() {
 
       <EventVerfuegbarkeit event={e} />
 
+      {can('kasse:zaehlen') && <EventKasse event={e} />}
       {dialog?.art === 'eintragen' && (
         <DienstEintragenModal
           nichtVerfuegbar={e.nichtVerfuegbar}

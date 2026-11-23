@@ -66,7 +66,7 @@ describe('Bilder in der Dokumentansicht', () => {
     expect(out).toContain('data-breite="voll" data-ausrichtung="links"');
     expect(out).toContain('src="https://s3/k1.jpg"');
     expect(out).toContain('alt="Beschreibung 1"');
-    expect(out).toContain('<figcaption class="pk-dok-klein">Beschreibung 1</figcaption>');
+    expect(out).toContain('<figcaption class="pk-dok-klein">Abb. 1: Beschreibung 1</figcaption>');
     // no grid at section level
     expect(out).not.toContain('pk-dok-notiz-bilder');
   });

@@ -10,13 +10,19 @@ import { mitgliederKeys } from '../queryKeys';
 export function Protected({
   children,
   permission,
-}: Readonly<{ children: ReactNode; permission?: Permission }>) {
+  anyOf,
+}: Readonly<{
+  children: ReactNode;
+  permission?: Permission;
+  /** Alternative to `permission`: one of these is enough. */
+  anyOf?: readonly Permission[];
+}>) {
   const { user, can, login } = useAuth();
   if (!user) {
     void login();
     return <Loader m="md" aria-label="Weiterleitung zur Anmeldung" />;
   }
-  if (permission && !can(permission))
+  if ((permission && !can(permission)) || (anyOf && !anyOf.some((p) => can(p))))
     return (
       <Alert color="red" title="Kein Zugriff">
         Du darfst diese Seite nicht ansehen.
@@ -45,8 +51,9 @@ export function RequireUsername({ children }: Readonly<{ children: ReactNode }>)
     },
   });
   // Pages query ['me'] themselves; mounting them for an errored query would refetch it, flip it
-  // back to pending, unmount them here and loop endlessly. So stop at the error.
-  if (me.isError || mitglied.isError)
+  // back to pending, unmount them here and loop endlessly. So stop at the error, but only without
+  // cached data: a failed background refetch keeps the app rendered.
+  if ((me.isError && me.data === undefined) || (mitglied.isError && mitglied.data === undefined))
     return (
       <Alert color="red" title="Verbindung fehlgeschlagen" m="md">
         <Stack gap="sm" align="flex-start">

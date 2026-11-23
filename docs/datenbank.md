@@ -4,6 +4,12 @@ Migrationen sind SQL-Dateien in `packages/api/src/db/migrations/`. `pnpm db:migr
 Namensreihenfolge an und merkt sie in `schema_migrations`. Aurora DSQL erlaubt nur ein DDL-Statement
 pro Transaktion, deshalb enthält jede Datei genau ein Statement.
 
+## Überblick
+
+Migrationen sind SQL-Dateien in `packages/api/src/db/migrations/`, die `pnpm db:migrate` in Namensreihenfolge anwendet und in `schema_migrations` merkt. Aurora DSQL erlaubt nur ein DDL-Statement pro Transaktion, deshalb enthält jede Datei genau ein Statement. Rollback läuft über Down-Dateien in `migrations/down/`; Reset und Deploy-Workflow gelten nur für dev.
+
+Abschnitte: Rollback mit Down-Dateien, Deploy-Workflow (nur dev), Deploy-Reihenfolge und additive Migrationen, Umgebungsmarke (`app_info.env`), Reset (nur dev), Gleichzeitige Zugriffe, Fremdschlüssel und Löschen, Backups
+
 ## Rollback mit Down-Dateien
 
 Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
@@ -39,6 +45,50 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0157–0162 (Finanzen, Bargeld): 0157 löscht das Konto `kassendifferenz`, 0158 setzt `safe.stueckelung` wieder auf `true`,
   0159 und 0162 löschen die Tabellen `fin_zaehlungen` und `fin_zaehlung_posten` (insert-only, mit allen Zählprotokollen),
   0160 und 0161 ihre Indizes. Rollback-Ziel nur für Bargeld: `0156_fin_buchungen_idempotenz_idx`.
+- 0194–0196 (Kassen je Event): löschen die Tabellen `fin_kassen_kategorien`, `fin_event_kassen_angepasst` und `fin_event_kassen` (veränderbare Stammdaten, mit den Zuordnungen). Rollback-Ziel nur dafür: `0193_fin_kassenabrechnung_events_event_idx`.
+- 0197–0212 (Finanzen, Belege): 0197–0205 löschen die Tabellen `fin_rechnungssteller`, `fin_beleg_entwuerfe`, `fin_belege`,
+  `fin_belegposten`, `fin_beleg_korrekturen`, `fin_erstattungen`, `fin_erstattung_belege` und `fin_exporte` (`fin_rechnungssteller`
+  und `fin_beleg_entwuerfe` sind änderbar, alle anderen insert-only, mit allen Belegen, Erstattungen und Exportvermerken); 0205
+  entfernt das Konto `auslagen` (Durchlauf, „Auslagen Mitglieder“), 0206–0212 löschen ihre Indizes. `fin_beleg_entwuerfe.daten` ist
+  `text` mit JSON, nicht `jsonb` (DSQL kennt den Typ nicht als Spalte). Rollback-Ziel nur für die Belege:
+  `0196_fin_event_kassen`.
+- 0213–0229 (Finanzen, Belege 4b): 0213 fügt das Konto `pfand` („Pfand/Leergut“, Durchlauf) idempotent ein, die Down-Datei löscht es.
+  Alle anderen sind `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (ein Statement je Datei, die Down-Dateien leeren nur die Werte, DSQL kann
+  keine Spalten löschen): 0214 `warengruppen.kategorie_id` (Aufwandskonto, ohne FK, die API prüft es); 0215–0219 `fin_belegposten.art`,
+  `ware_id`, `gebinde_id`, `pfand_cent`, `pfand_betrag_cent`; 0220–0223 `fin_belege.bestandsvorgang_id` (seit 4c ungenutzt, bleibt in der Tabelle, DSQL kann sie nicht löschen; nicht mehr im Drizzle-Schema), `eingereicht_von`,
+  `eingereicht_am`, `eingereicht_betrag_cent`; 0224–0229 `fin_beleg_entwuerfe.status`, `eingereicht_von`, `eingereicht_am`,
+  `verworfen_grund`, `verworfen_von`, `verworfen_am`. DSQL kennt kein `ADD COLUMN … NOT NULL/DEFAULT` und kein `DROP NOT NULL`:
+  `art` und `status` sind nullable (die API schreibt sie immer; `null` gilt als `kategorie` bzw. `entwurf`), und Leergut-Posten
+  tragen in `kategorie_id` das Konto `pfand`. `bestandsvorgaenge.quelle` ist freier Text (kein Check).
+  Rollback-Ziel nur dafür: `0212_fin_erstattung_belege_beleg_idx`.
+- 0230–0231 (Finanzen, Lager-Beleg-Abgleich): 0230 legt `waren_abgleich_korrekturen` an (insert-only: Korrekturen je Ware mit
+  vorzeichenbehafteter `menge` in Basiseinheiten, `grund`, `text`, `datum`; `ware_id` und `erstellt_von` ohne Fremdschlüssel, die API prüft
+  die Ware), 0231 die allgemeine Schlüssel-Wert-Tabelle `einstellungen` (erster Schlüssel `lager_abgleich_stichtag`, ISO-Datum; änderbar).
+  Die Down-Dateien löschen die Tabellen. Rollback-Ziel nur dafür: `0229_fin_beleg_entwuerfe_verworfen_am`.
+- 0232 (Finanzen, Belege 4d): `waren.standard_gebinde_id text NULL` (Standard-Gebinde der Ware, wird im Beleg vorbelegt; ohne
+  Fremdschlüssel, die API prüft, dass es zu den Gebinden der Ware gehört, und setzt es zurück, wenn das Gebinde entfernt wird).
+  `ADD COLUMN IF NOT EXISTS`, die Down-Datei leert nur die Werte (DSQL kann keine Spalten löschen). Rollback-Ziel:
+  `0231_einstellungen`.
+- 0233–0236 (Standard-Gebinde, Artikel): 0233 füllt fehlende `waren.standard_gebinde_id` mit dem ersten gewählten Gebinde (Down: nichts
+  zu tun, die Werte bleiben), 0234 legt `fin_artikel` an (Artikel eines Kategorie-Postens mit Standard-Steuersatz, `name_norm` =
+  `lower(trim(name))`, die API legt fehlende Artikel beim Buchen eines Belegs an und übernimmt den Steuersatz des Postens), 0235
+  übernimmt die Namen gebuchter, nicht stornierter Kategorie-Posten (`erstellt_von = 'migration'`, Steuersatz und Datum des frühesten Postens;
+  Down löscht diese Zeilen), 0236 ist der Unique-Index `fin_artikel_name_norm_idx` (`ASYNC`). Rollback-Ziel nur für die Artikel: `0233_waren_standard_gebinde_backfill`.
+- 0237–0244 (Finanzen, Belege 4f): 0237 legt `fin_steuersatz_zeitraeume` an (Steuersatz-Zeiträume: `ab` Datum, `regel` und
+  `ermaessigt` in Basispunkten; ein Zeitraum gilt bis zum `ab` des nächsten, der älteste auch davor), 0238 ist ihr Unique-Index auf `ab`
+  (`ASYNC`), 0239 füllt die Zeiträume (2007-01-01 19/7 %, 2020-07-01 16/5 %, 2021-01-01 19/7 %; nur in eine leere Tabelle; Down löscht die
+  Zeilen von `migration`). 0240/0242 fügen `fin_konten.steuersatz_art` und `fin_artikel.steuersatz_art` hinzu (`regel` | `ermaessigt` |
+  `keine`, null = keine Vorgabe; der Wert ergibt sich aus dem Belegdatum), 0241/0243 füllen sie aus den alten Zahlen (1900, 700, 0). Die
+  alten Spalten `fin_konten.steuersatz_standard` und `fin_artikel.steuersatz` bleiben (DSQL kann keine Spalten löschen); die API liest sie
+  nicht mehr. `fin_artikel.steuersatz` ist `NOT NULL`, deshalb schreibt die API beim Anlegen eines Artikels weiter eine Zahl hinein.
+  0244 fügt `fin_belegposten.gesamt_cent` hinzu (Gesamtpreis der Zeile ohne Pfand; gesetzt = `betrag_cent` ist genau dieser Wert,
+  `einzelpreis_cent` der gerundete Einzelpreis). Down-Dateien der ADD COLUMN leeren nur die Werte, die der Backfills tun nichts.
+  Rollback-Ziel nur dafür: `0236_fin_artikel_name_norm_idx`.
+- 0180–0193 (Finanzen, Barkassen): 0180, 0181, 0182, 0183, 0184, 0185, 0186 und 0187 löschen die Tabellen `fin_kassen`,
+  `fin_kassen_grundbestand`, `fin_kassenzaehlungen`, `fin_kassenzaehlung_posten`, `fin_kassenabrechnungen`,
+  `fin_kassenabrechnung_posten`, `fin_kassenabrechnung_transfers` und `fin_kassenabrechnung_events` (alle außer den ersten beiden
+  insert-only, mit allen Zählungen und Abrechnungen), 0188–0193 ihre Indizes. Rollback-Ziel nur für die Barkassen:
+  `0179_buch_seiten_verlauf_angelegt`.
 - 0177–0179 (Buch-Seitenverlauf): 0177 löscht die Tabelle `buch_seiten_verlauf` (insert-only), 0178 ihren Index, 0179 (Backfill
   der Zeilen `angelegt`/`archiviert` bestehender Seiten) löscht nur diese Startzeilen. Rollback-Ziel nur dafür: `0176_buch_eintraege_idempotenz_idx`.
 - 0169–0176 (Buch): 0169, 0170, 0171 und 0173 löschen die Tabellen `buch_seiten`, `buch_tarife`, `buch_abrechnungen` und
@@ -53,6 +103,7 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
 - 0104–0109 (Bilder): 0104 löscht die Tabelle `onedrive_verbindung`, 0108 die Tabelle `bilder_freigaben`, 0109 die Tabelle `bilder_ordner_cache`; 0105–0107 fügen `events.bilder_ordner_id`,
   `events.bilder_ordner_url` und `event_vorlagen.bilder_ordner` per `ALTER` hinzu, ihre Down-Dateien leeren nur die Werte.
   Rollback-Ziel nur für die Bilder: `0103_gegenstaende_anzahl_je`.
+- 0245–0249 (offizielles Protokoll): `protokolle.offiziell_von`, `protokolle.fassung` samt Backfill `normal`, Unique-Index `protokolle_event_fassung_idx` auf `(event_id, fassung)` (kein partieller Index, DSQL), dann Entfernen von `protokolle_event_idx`; die Down-Datei von 0249 scheitert, solange offizielle Kopien dieselbe `event_id` haben.
 - 0110–0113 (Protokolle): 0110 löscht die Tabelle `protokolle`, 0111 den Index `protokolle_event_idx`; 0112 und 0113 fügen
   `event_kategorien.protokoll` und `protokoll_art` per `ALTER` hinzu, die Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Protokolle:
   `0109_bilder_ordner_cache`.

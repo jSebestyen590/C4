@@ -261,7 +261,7 @@ function AnzahlEditor({
       <Text size="sm" fw={500}>
         Anzahl Personen
       </Text>
-      <Group gap="xs" align="flex-start" wrap="nowrap">
+      <Group gap="xs" align="flex-end" wrap="nowrap">
         <ZahlFeld
           label="Minimum"
           min={0}

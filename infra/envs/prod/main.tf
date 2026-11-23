@@ -42,12 +42,15 @@ module "app" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  env                      = "prod"
-  domain_name              = var.domain_name
-  lambda_source_dir        = "${path.root}/../../../packages/api/dist/lambda"
-  allow_localhost_callback = false
-  deletion_protection      = true
-  budget_email             = "aws@c4-leipzig.de"
+  finanzarchiv_retention_mode      = "COMPLIANCE"
+  finanzarchiv_retention_days      = 3650
+  cloudtrail_verwaltungsereignisse = true
+  env                              = "prod"
+  domain_name                      = var.domain_name
+  lambda_source_dir                = "${path.root}/../../../packages/api/dist/lambda"
+  allow_localhost_callback         = false
+  deletion_protection              = true
+  budget_email                     = "aws@c4-leipzig.de"
 }
 
 output "app" {

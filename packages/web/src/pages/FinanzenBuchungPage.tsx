@@ -31,11 +31,13 @@ import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
 import { BestaetigenDialog } from '../BestaetigenDialog';
 import { DatumFeld } from '../DatumFeld';
+import { DatumsgrenzeHinweis, useDatumsgrenze } from '../FestschreibungHinweise';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
+  belegPfad,
   detailPfad,
   finanzenKeys,
   jsonOderFehler,
@@ -68,6 +70,7 @@ function StornoDialog({
   const api = useApi();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const grenze = useDatumsgrenze();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
   const [beruehrt, setBeruehrt] = useState(false);
@@ -87,7 +90,11 @@ function StornoDialog({
       bestaetigenText="Stornieren"
       groesse="lg"
       gesperrt={
-        !geprueft || !datum || text.trim() === '' || saldoHinweise.some((w) => !bestaetigt.has(w))
+        !geprueft ||
+        !datum ||
+        (!!grenze.min && datum < grenze.min) ||
+        text.trim() === '' ||
+        saldoHinweise.some((w) => !bestaetigt.has(w))
       }
       onClose={onClose}
       onBestaetigt={async () => {
@@ -123,7 +130,12 @@ function StornoDialog({
         value={datum}
         onWert={setDatum}
         loeschbar={false}
+        min={grenze.min}
+        error={
+          datum && grenze.min && datum < grenze.min ? (grenze.hinweis ?? undefined) : undefined
+        }
       />
+      <DatumsgrenzeHinweis />
       <TextInput
         required
         label={<FeldLabel text="Begründung" hilfe={HILFE.storno.begruendung} />}
@@ -146,14 +158,15 @@ function StornoDialog({
                 key={w}
                 label={`${w} Das ist richtig so.`}
                 checked={bestaetigt.has(w)}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const an = e.currentTarget.checked;
                   setBestaetigt((alt) => {
                     const neu = new Set(alt);
-                    if (e.currentTarget.checked) neu.add(w);
+                    if (an) neu.add(w);
                     else neu.delete(w);
                     return neu;
-                  })
-                }
+                  });
+                }}
               />
             ))}
           </Stack>
@@ -225,6 +238,16 @@ export function FinanzenBuchungPage() {
               {b.quelleTyp === 'zaehlung' && b.quelleId && (
                 <Anchor component={Link} to={zaehlungPfad(b.quelleId)}>
                   Zur Zählung
+                </Anchor>
+              )}
+              {b.quelleTyp === 'beleg' && b.quelleId && (
+                <Anchor component={Link} to={belegPfad(b.quelleId)}>
+                  Zum Beleg
+                </Anchor>
+              )}
+              {b.quelleTyp === 'erstattung' && (
+                <Anchor component={Link} to="/finanzen/auslagen">
+                  Zu den Auslagen
                 </Anchor>
               )}
               <Text>

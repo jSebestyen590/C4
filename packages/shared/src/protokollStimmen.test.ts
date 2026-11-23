@@ -100,6 +100,21 @@ describe('stimmenPruefen: Abstimmung', () => {
     ]);
   });
 
+  it('uses an Anwesenheit block that stands in a list item of the notes', () => {
+    const geht = bausteinErzeugen('bausteinAnwesenheit', { art: 'geht', sub: 'm0', uhrzeit: '' });
+    const liste: ProtokollKnoten = {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }, geht] }],
+    };
+    const thema = bausteinErzeugen('bausteinThema', undefined, [
+      liste,
+      beschluss(2, 1, 1, 'nachher'),
+    ]);
+    // 4 votes fit the 4 members left; without the block they would be one short of 5.
+    expect(stimmenPruefen(doc(thema), eingabe(5)).problems).toEqual([]);
+    expect(stimmenPruefen(doc(beschluss(2, 1, 1)), eingabe(5)).problems).toHaveLength(1);
+  });
+
   it('counts only present members with status mitglied', () => {
     const teilnahme: T[] = [
       ...mitglieder(3),

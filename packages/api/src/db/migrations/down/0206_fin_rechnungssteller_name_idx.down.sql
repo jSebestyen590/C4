@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_rechnungssteller_name_idx

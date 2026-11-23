@@ -2,6 +2,12 @@
 
 Was für alle Features gilt: Anmeldung, Rechteberechnung, Fehlerantworten und der Umgang mit DSQL-Konflikten.
 
+## Überblick
+
+Was für alle Features gilt: Anmeldung über die Cognito-Hosted-UI (Code-Flow, `packages/web/src/auth.tsx`), Prüfung des Access-Tokens im API-Gateway-Authorizer und in `packages/api/src/auth.ts`, die Berechnung der Rechte, die Fehlerantworten und der Umgang mit DSQL-Konflikten. Dazu kommen PWA-Icons und der Offline-Hinweis. Öffentlich ohne Authorizer sind nur wenige Routen wie `GET /api/health`.
+
+Abschnitte: Auth-Modell, Rechteberechnung, Routen und Routentests, Fehler-Mapping, DSQL-Wiederholung, Routen im Web, Fehler im Web (Mutationen), Query-Keys (Web), Wiederkehrende Helfer im Web, PWA: Icons und Offline-Hinweis
+
 ## Auth-Modell
 
 - **Anmeldung:** Cognito-Hosted-UI mit Code-Flow (`oidc-client-ts`, `packages/web/src/auth.tsx`). Das Web hält den Access-Token
@@ -96,7 +102,7 @@ Menü steht weiterhin in `AppLayout`.
 zeigt eine rote Notification mit der Meldung des `ApiFehler`, sonst „Das hat nicht geklappt. Bitte versuch es noch einmal.“.
 Mutationen, die ihren Fehler selbst anzeigen (eigene Notification, `setFehler`, Inline-`Alert`, `try/catch` um `mutateAsync`),
 setzen `meta: { eigeneFehlermeldung: true }`, damit nichts doppelt erscheint. Neue Mutationen ohne eigene Anzeige tun nichts und
-bekommen die globale Meldung. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben).
+bekommen die globale Meldung. GET-Anfragen (`fetchMitWiederholung`, `fetchWiederholen.ts`) werden bei Netzfehler oder 429/502/503/504 bis zu zweimal wiederholt (Lambda-Drosselung beim Zurückkehren in die App). `RequireUsername` zeigt „Verbindung fehlgeschlagen“ nur, wenn keine Daten geladen sind. Queries haben standardmäßig `staleTime: 30_000` (einzelne Werte bleiben) und laden beim Zurückkehren in die App nicht neu (`refetchOnWindowFocus: false`, sonst feuern alle aktiven Queries gleichzeitig und überschreiten das Lambda-Limit, #90); Ausnahme: Benachrichtigungen.
 
 ## Query-Keys (Web)
 

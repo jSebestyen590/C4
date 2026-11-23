@@ -3,6 +3,12 @@
 Der Club hat eine feste Anzahl Schlüssel, die von Person zu Person weitergereicht werden. Die App hält fest, wo jeder
 Schlüssel gerade ist, und behält die letzten 10 Übergaben je Schlüssel.
 
+## Überblick
+
+Der Club hat eine feste Anzahl Schlüssel, die von Person zu Person weitergereicht werden; die App hält fest, wo jeder Schlüssel gerade ist, und behält die letzten 10 Übergaben je Schlüssel. Ein Schlüssel hat höchstens einen Halter (Mitglied, Freitext-Name oder niemand), eine Übergabe gilt sofort und Fehler werden durch eine weitere Übergabe korrigiert. Planungen ändern den Halter nie.
+
+Abschnitte: Invarianten, Dateien, Halter, Übergaben, Anfragen: Bedarf und Abgabe, Geplante Übergaben, Benachrichtigungen, Rechte, Datenmodell, Seiten und API
+
 ## Invarianten
 
 - Ein Schlüssel hat immer höchstens einen Halter: Mitglied (`halter_sub`) **oder** Freitext-Name (`halter_name`) **oder** niemand

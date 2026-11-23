@@ -21,6 +21,7 @@ import {
   type BausteinWahlDaten,
   type ProtokollAbschnitt,
 } from '@c4/shared';
+import { bausteinKategorie, type KategorieNamen } from './kategorieNamen';
 import { BAUSTEIN_TITEL, bausteinSymbol } from './symbole';
 import type { SlashSymbol } from './slashLogik';
 import { ABSCHNITT_TITEL } from './schema';
@@ -65,6 +66,7 @@ export function gliederungTitel(
   typ: BausteinTyp,
   daten: unknown,
   personName: (sub: string) => string | undefined = () => undefined,
+  kategorien?: KategorieNamen,
 ): string {
   const d = (daten ?? {}) as Record<string, unknown>;
   const person = (sub: unknown, name: unknown): string =>
@@ -72,13 +74,24 @@ export function gliederungTitel(
     (typeof name === 'string' ? name : '');
   switch (typ) {
     case 'bausteinEvent':
-      return kurz(eventUeberschrift(d as unknown as BausteinEventDaten)) || BAUSTEIN_TITEL[typ];
+      return (
+        kurz(
+          eventUeberschrift({
+            ...(d as unknown as BausteinEventDaten),
+            kategorie: bausteinKategorie(typ, d, kategorien),
+          }),
+        ) || BAUSTEIN_TITEL[typ]
+      );
     case 'bausteinThema':
       return kurz(String(d.titel ?? '')) || BAUSTEIN_TITEL[typ];
     case 'bausteinVergangenesEvent':
       return (
-        kurz(vergangenesUeberschrift(d as unknown as BausteinVergangenesEventDaten)) ||
-        BAUSTEIN_TITEL[typ]
+        kurz(
+          vergangenesUeberschrift({
+            ...(d as unknown as BausteinVergangenesEventDaten),
+            kategorie: bausteinKategorie(typ, d, kategorien),
+          }),
+        ) || BAUSTEIN_TITEL[typ]
       );
     case 'bausteinAnwaerter': {
       const a = d as unknown as BausteinAnwaerterDaten;
@@ -111,16 +124,50 @@ export function gliederungTitel(
   }
 }
 
-function eintrag(node: PmNode, personName: (sub: string) => string | undefined): GliederungEintrag {
+interface Unterbaustein {
+  node: PmNode;
+  /** Position of the Baustein. */
+  pos: number;
+  /** Position and end of the child of the parent it belongs to (the list holding it, if it is in a list item). */
+  blockPos: number;
+  blockEnde: number;
+}
+
+/**
+ * The Bausteine directly below `eltern` (a section or Baustein) in document order: its children, and
+ * those in its list items and sub lists (a Baustein inserted from a list item); not the ones inside
+ * other Bausteine. `ausser` (and what it holds) is left out.
+ */
+function bausteineUnter(eltern: PmNode, elternPos = 0, ausser?: PmNode): Unterbaustein[] {
+  const liste: Unterbaustein[] = [];
+  const sammeln = (knoten: PmNode, pos: number, block?: { pos: number; ende: number }): void => {
+    knoten.forEach((kind, offset) => {
+      const kindPos = pos + 1 + offset;
+      const b = block ?? { pos: kindPos, ende: kindPos + kind.nodeSize };
+      if (istBaustein(kind)) {
+        if (kind !== ausser)
+          liste.push({ node: kind, pos: kindPos, blockPos: b.pos, blockEnde: b.ende });
+      } else if (!kind.isTextblock && !kind.isAtom) {
+        sammeln(kind, kindPos, b);
+      }
+    });
+  };
+  sammeln(eltern, elternPos);
+  return liste;
+}
+
+function eintrag(
+  node: PmNode,
+  personName: (sub: string) => string | undefined,
+  kategorien?: KategorieNamen,
+): GliederungEintrag {
   const typ = node.type.name as BausteinTyp;
   const kinder: GliederungEintrag[] = [];
-  node.forEach((kind) => {
-    if (istBaustein(kind)) kinder.push(eintrag(kind, personName));
-  });
+  for (const kind of bausteineUnter(node)) kinder.push(eintrag(kind.node, personName, kategorien));
   return {
     id: node.attrs.id as string,
     typ,
-    titel: gliederungTitel(typ, node.attrs.daten, personName),
+    titel: gliederungTitel(typ, node.attrs.daten, personName, kategorien),
     symbol: bausteinSymbol(typ, node.attrs.daten),
     verschachtelbar: istVerschachtelbar(typ),
     // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl hold text only.
@@ -139,14 +186,15 @@ const mitNachfahren = (e: GliederungEintrag): GliederungEintrag[] => [
 export function gliederungBauen(
   doc: PmNode,
   personName?: (sub: string) => string | undefined,
+  kategorien?: KategorieNamen,
 ): GliederungAbschnitt[] {
   const name = personName ?? (() => undefined);
   return PROTOKOLL_ABSCHNITTE.map((art, i) => {
     const eintraege: GliederungEintrag[] = [];
     const abschnitt = doc.maybeChild(i);
-    abschnitt?.forEach((kind) => {
-      if (istBaustein(kind)) eintraege.push(eintrag(kind, name));
-    });
+    if (abschnitt)
+      for (const kind of bausteineUnter(abschnitt))
+        eintraege.push(eintrag(kind.node, name, kategorien));
     return { art, titel: ABSCHNITT_TITEL[art], eintraege };
   });
 }
@@ -309,7 +357,8 @@ export function findeBaustein(doc: PmNode, id: string): Fund | null {
       fund = { node, pos };
       return false;
     }
-    return istBaustein(node) || node.type.name === 'abschnitt';
+    // Also into lists (a Baustein can stand in a list item), not into text.
+    return !node.isTextblock && !node.isAtom;
   });
   return fund;
 }
@@ -354,18 +403,14 @@ export function bausteinInGliederungVerschieben(
     elternPos = f.pos;
   }
 
-  const liste: Fund[] = [];
-  eltern.forEach((kind, offset) => {
-    if (istBaustein(kind) && kind !== quelle.node)
-      liste.push({ node: kind, pos: elternPos + 1 + offset });
-  });
+  // The outline counts Bausteine in list items too; they are inserted next to the list holding them.
+  const liste = bausteineUnter(eltern, elternPos, quelle.node);
   const index = Math.max(0, Math.min(ziel.index, liste.length));
   let einfuegen: number;
   if (index < liste.length) {
-    einfuegen = liste[index]!.pos;
+    einfuegen = liste[index]!.blockPos;
   } else if (liste.length > 0) {
-    const letzter = liste[liste.length - 1]!;
-    einfuegen = letzter.pos + letzter.node.nodeSize;
+    einfuegen = liste[liste.length - 1]!.blockEnde;
   } else {
     einfuegen = elternPos + eltern.nodeSize - 1;
     if (istLeererAbsatz(eltern.lastChild)) einfuegen -= eltern.lastChild!.nodeSize;

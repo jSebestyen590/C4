@@ -172,6 +172,138 @@ describe('ProtokollDokumentAnsicht', () => {
     expect(html.indexOf('notes')).toBeLessThan(html.indexOf('Meinungsbild:'));
   });
 
+  it('renders a Baustein, a quote and erscheint / geht inside a list item through the normal renderers', () => {
+    const abstimmung: ProtokollKnoten = {
+      type: 'bausteinBeschluss',
+      attrs: {
+        id: 'li1',
+        daten: { antrag: 'Neuer Tresen', ja: 1, nein: 0, enthaltung: 0, ergebnis: 'angenommen' },
+      },
+      content: [text('Notiz zur Abstimmung')],
+    };
+    const erscheint: ProtokollKnoten = {
+      type: 'bausteinAnwesenheit',
+      attrs: { id: 'li2', daten: { art: 'erscheint', sub: '1', uhrzeit: '20:15' } },
+    };
+    const punkt = (...kinder: ProtokollKnoten[]): ProtokollKnoten => ({
+      type: 'listItem',
+      content: kinder,
+    });
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const event = zukuenftiges!.content![0]!;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          gegenwaertiges!,
+          {
+            ...zukuenftiges!,
+            content: [
+              {
+                ...event,
+                content: [
+                  {
+                    type: 'bulletList',
+                    content: [
+                      punkt(
+                        text('Notiz 1'),
+                        {
+                          type: 'bulletList',
+                          content: [
+                            punkt(text('Unter 1'), abstimmung, erscheint),
+                            punkt(text('Unter 2')),
+                          ],
+                        },
+                        { type: 'blockquote', content: [text('Zitat im Punkt')] },
+                      ),
+                      punkt(text('Notiz 2')),
+                    ],
+                  },
+                  { type: 'paragraph' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    // The Abstimmung and the arrival sit in the item "Unter 1", the following items stay.
+    expect(html).toMatch(
+      /<li><p>Unter 1<\/p>.*Neuer Tresen.*pk-dok-anwesenheit.*<\/li><li><p>Unter 2/,
+    );
+    expect(html).toMatch(/<blockquote><p>Zitat im Punkt<\/p><\/blockquote><\/li><li><p>Notiz 2/);
+  });
+
+  it('never shows empty list items and shows a block-only item without bullet', () => {
+    const leer = (): ProtokollKnoten => ({ type: 'listItem', content: [{ type: 'paragraph' }] });
+    const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;
+    const event = zukuenftiges!.content![0]!;
+    const mit: DokumentEingabe = {
+      ...eingabe,
+      inhalt: {
+        type: 'doc',
+        content: [
+          vergangenes!,
+          gegenwaertiges!,
+          {
+            ...zukuenftiges!,
+            content: [
+              {
+                ...event,
+                content: [
+                  {
+                    type: 'bulletList',
+                    content: [
+                      { type: 'listItem', content: [text('Eins')] },
+                      leer(),
+                      {
+                        type: 'listItem',
+                        content: [
+                          text('Zwei'),
+                          {
+                            type: 'bulletList',
+                            content: [
+                              {
+                                type: 'listItem',
+                                content: [
+                                  { type: 'paragraph' },
+                                  { type: 'blockquote', content: [text('Zitat unten')] },
+                                ],
+                              },
+                              leer(),
+                            ],
+                          },
+                        ],
+                      },
+                      leer(),
+                    ],
+                  },
+                  { type: 'paragraph' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <MantineProvider>
+        <ProtokollDokumentAnsicht eingabe={mit} />
+      </MantineProvider>,
+    );
+    // The block-only item has no bullet, the empty items are not shown at all.
+    expect(html).toContain('<li class="pk-dok-ohne-punkt"><blockquote>');
+    expect(html).not.toContain('<li></li>');
+    expect(html).not.toMatch(/<li><p><\/p>/);
+  });
+
   it('renders a Todo as a bullet of the notes it stands in, its notes one level deeper, marked for me', () => {
     const todo = (id: string, daten: Record<string, unknown>, content: ProtokollKnoten[]) =>
       ({
@@ -312,10 +444,12 @@ describe('ProtokollDokumentAnsicht', () => {
     );
     expect(abgesagt).toContain('Nicht angetreten: ');
     expect(abgesagt).toContain('Niklas');
-    expect(abgesagt).toContain('Gewählt: Anna, Bea');
-    expect(abgesagt).toContain('Nimmt die Wahl nicht an: Cem');
+    // Vote order: Anna (5), Cem (runoff, declined), Bea.
+    expect(abgesagt).toMatch(
+      /Gewählt: Anna, Anna nimmt die Wahl an\.<\/p><p>Cem nimmt die Wahl nicht an\.<\/p><p>Gewählt: Bea, Bea nimmt die Wahl an\./,
+    );
     expect(fertig).not.toContain('Nicht angetreten');
-    expect(fertig).not.toContain('Nimmt die Wahl nicht an');
+    expect(fertig).not.toContain('nimmt die Wahl nicht an');
   });
 
   it('renders an Auswahl titled like an Abstimmung: notes, then options, runoff and result', () => {

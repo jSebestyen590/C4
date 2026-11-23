@@ -153,14 +153,15 @@ function ZaehlungsZusammenfassung({
                   key={w}
                   label={`${w} Das ist richtig so.`}
                   checked={bestaetigt.has(w)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const an = e.currentTarget.checked;
                     setBestaetigt((alt) => {
                       const neu = new Set(alt);
-                      if (e.currentTarget.checked) neu.add(w);
+                      if (an) neu.add(w);
                       else neu.delete(w);
                       return neu;
-                    })
-                  }
+                    });
+                  }}
                 />
               ))}
             </Stack>
@@ -321,7 +322,7 @@ export function FinanzenBargeldZaehlenPage() {
           }}
         >
           <Stack>
-            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+            <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, sm: 3 }} spacing="md">
               <Select
                 ref={fachRef}
                 selectFirstOptionOnChange

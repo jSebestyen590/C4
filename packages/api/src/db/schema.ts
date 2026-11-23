@@ -11,12 +11,16 @@ import {
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import type {
+  AbgleichGrund,
   Anrede,
+  BelegPostenArt,
+  EntwurfStatus,
   BuchungsArt,
   Einheit,
   EventArt,
   KontoArt,
   SteuerArt,
+  SteuersatzArt,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -155,6 +159,8 @@ export const warengruppen = pgTable('warengruppen', {
   parentId: text('parent_id').references((): AnyPgColumn => warengruppen.id),
   name: text('name').notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Aufwand Konto suggested for Ware items on a Beleg (inherited by subgroups), checked in the API. */
+  kategorieId: text('kategorie_id'),
 });
 export type WarengruppeRow = typeof warengruppen.$inferSelect;
 
@@ -182,6 +188,8 @@ export const waren = pgTable('waren', {
     .references(() => warengruppen.id),
   mhdArt: text('mhd_art').$type<MhdArt>().notNull(),
   archiviert: boolean('archiviert').notNull().default(false),
+  /** Soft reference to `gebinde.id`; must be one of the Ware's Gebinde (checked in the API). */
+  standardGebindeId: text('standard_gebinde_id'),
 });
 export type WareRow = typeof waren.$inferSelect;
 
@@ -760,7 +768,7 @@ export const pushVersand = pgTable('push_versand', {
   gesendet: timestamp('gesendet', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0181. */
+/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0255. */
 export const pushSchluessel = pgTable('push_schluessel', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
@@ -773,7 +781,7 @@ export const onedriveVerbindung = pgTable('onedrive_verbindung', {
   id: text('id').primaryKey(),
   clientId: text('client_id'),
   // Deprecated: client_secret, refresh_token, access_token, access_ablauf live in Secrets Manager
-  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0180, DSQL cannot drop columns).
+  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0254, DSQL cannot drop columns).
   clientSecret: text('client_secret'),
   basisPfad: text('basis_pfad').notNull().default('Cloud4/Bilder'),
   refreshToken: text('refresh_token'),
@@ -803,8 +811,15 @@ export const bilderOrdnerCache = pgTable('bilder_ordner_cache', {
 /** Meeting minutes of one event (see docs/protokolle.md); `inhalt` is the TipTap document and `kopf` the header, both JSON text. */
 export const protokolle = pgTable('protokolle', {
   id: text('id').primaryKey(),
-  /** Event of a Kategorie with `protokoll`; unique, deliberately without a foreign key (checked in the API). */
+  /**
+   * Event of a Kategorie with `protokoll`, deliberately without a foreign key (checked in the API).
+   * Unique together with `fassung` (index `protokolle_event_fassung_idx`).
+   */
   eventId: text('event_id').notNull(),
+  /** `normal` or `offiziell` (official copy); the API always writes it (column added with a backfill, no DB default). */
+  fassung: text('fassung').$type<'normal' | 'offiziell'>().notNull(),
+  /** Official copy: id of the normal protocol it was copied from (no foreign key); null = normal protocol. */
+  offiziellVon: text('offiziell_von'),
   inhalt: text('inhalt').notNull(),
   kopf: text('kopf').notNull(),
   /** `entwurf` or `abgeschlossen` (CHECK). */
@@ -1225,8 +1240,8 @@ export const finKonten = pgTable('fin_konten', {
   art: text('art').$type<KontoArt>().notNull(),
   parentId: text('parent_id').references((): AnyPgColumn => finKonten.id),
   stueckelung: boolean('stueckelung').notNull().default(false),
-  /** Basis points, 1900 = 19 %. */
-  steuersatzStandard: integer('steuersatz_standard'),
+  /** Default tax rate as Art; the old column `steuersatz_standard` is no longer read or written. */
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
   archiviert: boolean('archiviert').notNull().default(false),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -1401,4 +1416,394 @@ export const finZaehler = pgTable('fin_zaehler', {
 export const sperren = pgTable('sperren', {
   schluessel: text('schluessel').primaryKey(),
   beruehrtAm: timestamp('beruehrt_am', { withTimezone: true }).notNull(),
+});
+
+// ----- Barkassen (docs/finanzen.md): a Kasse is a Fach of the Safe with master data and Abrechnungen.
+
+/** Master data of a Kasse (editable): the Fach (`kontoId`) and the default accounts of the Abrechnung. */
+export const finKassen = pgTable('fin_kassen', {
+  kontoId: text('konto_id')
+    .primaryKey()
+    .references(() => finKonten.id),
+  standardErloesKontoId: text('standard_erloes_konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  standardZielFachId: text('standard_ziel_fach_id')
+    .notNull()
+    .references(() => finKonten.id),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+});
+export type FinKasseRow = typeof finKassen.$inferSelect;
+
+/** Grundbestand of a Kasse per denomination (editable, replaced when saved). */
+export const finKassenGrundbestand = pgTable(
+  'fin_kassen_grundbestand',
+  {
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.kontoId, t.nennwertCent] })],
+);
+
+/** Dienst-Zählung of a Kasse at an event (insert-only, not binding, no booking). */
+export const finKassenzaehlungen = pgTable('fin_kassenzaehlungen', {
+  id: text('id').primaryKey(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKassen.kontoId),
+  eventId: text('event_id')
+    .notNull()
+    .references(() => events.id),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  /** Cognito sub, deliberately without a foreign key. */
+  gezaehltVon: text('gezaehlt_von').notNull(),
+  gezaehltAm: timestamp('gezaehlt_am', { withTimezone: true }).notNull(),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+});
+
+export const finKassenzaehlungPosten = pgTable(
+  'fin_kassenzaehlung_posten',
+  {
+    zaehlungId: text('zaehlung_id')
+      .notNull()
+      .references(() => finKassenzaehlungen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.zaehlungId, t.nennwertCent] })],
+);
+
+/** Kassenabrechnung by the Finanzer:in (insert-only); `buchungId` is null when nothing changed. */
+export const finKassenabrechnungen = pgTable('fin_kassenabrechnungen', {
+  id: text('id').primaryKey(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKassen.kontoId),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  buchungId: text('buchung_id').references(() => finBuchungen.id),
+  erloesKontoId: text('erloes_konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  zielFachId: text('ziel_fach_id')
+    .notNull()
+    .references(() => finKonten.id),
+  sollCent: bigint('soll_cent', { mode: 'number' }).notNull(),
+  istCent: bigint('ist_cent', { mode: 'number' }).notNull(),
+  einnahmeCent: bigint('einnahme_cent', { mode: 'number' }).notNull(),
+  transferCent: bigint('transfer_cent', { mode: 'number' }).notNull(),
+  fehlerCent: bigint('fehler_cent', { mode: 'number' }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** Unique index. */
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+});
+
+export const finKassenabrechnungPosten = pgTable(
+  'fin_kassenabrechnung_posten',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    soll: integer('soll').notNull(),
+    ist: integer('ist').notNull(),
+    grundbestand: integer('grundbestand').notNull(),
+    danach: integer('danach').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.nennwertCent] })],
+);
+
+/** Ziel-Fach: positive = Kasse to Ziel-Fach; Nachschub-Fach: negative = Fach to Ziel-Fach. */
+export const finKassenabrechnungTransfers = pgTable(
+  'fin_kassenabrechnung_transfers',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    fachId: text('fach_id')
+      .notNull()
+      .references(() => finKonten.id),
+    nennwertCent: integer('nennwert_cent').notNull(),
+    anzahl: integer('anzahl').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.fachId, t.nennwertCent] })],
+);
+
+export const finKassenabrechnungEvents = pgTable(
+  'fin_kassenabrechnung_events',
+  {
+    abrechnungId: text('abrechnung_id')
+      .notNull()
+      .references(() => finKassenabrechnungen.id),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    zaehlungId: text('zaehlung_id').references(() => finKassenzaehlungen.id),
+    betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.abrechnungId, t.eventId] })],
+);
+
+/** Standard Kassen per event Kategorie (editable). */
+export const finKassenKategorien = pgTable(
+  'fin_kassen_kategorien',
+  {
+    kategorieId: text('kategorie_id')
+      .notNull()
+      .references(() => eventKategorien.id),
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+  },
+  (t) => [primaryKey({ columns: [t.kategorieId, t.kontoId] })],
+);
+
+/** Marks an event whose Kassen were set explicitly (editable, deleted with the event). */
+export const finEventKassenAngepasst = pgTable('fin_event_kassen_angepasst', {
+  eventId: text('event_id')
+    .primaryKey()
+    .references(() => events.id),
+});
+
+/** The Kassen of an explicitly set event (editable, deleted with the event). */
+export const finEventKassen = pgTable(
+  'fin_event_kassen',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id),
+    kontoId: text('konto_id')
+      .notNull()
+      .references(() => finKassen.kontoId),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.kontoId] })],
+);
+
+/** Rechnungssteller of Belege (editable master data, archived instead of deleted). */
+export const finRechnungssteller = pgTable('fin_rechnungssteller', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+
+/** Draft of a Beleg (editable, deleted when booked or discarded); `daten` is the form state as JSON text. */
+export const finBelegEntwuerfe = pgTable('fin_beleg_entwuerfe', {
+  id: text('id').primaryKey(),
+  daten: text('daten').notNull(),
+  dateiSha256: text('datei_sha256'),
+  dateiSchluessel: text('datei_schluessel'),
+  dateiTyp: text('datei_typ'),
+  dateiName: text('datei_name'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+  /** `entwurf` | `eingereicht` | `verworfen`; null counts as `entwurf`. */
+  status: text('status').$type<EntwurfStatus>(),
+  /** Cognito sub of the member who submitted the draft. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  verworfenGrund: text('verworfen_grund'),
+  verworfenVon: text('verworfen_von'),
+  verworfenAm: timestamp('verworfen_am', { withTimezone: true }),
+});
+export type FinBelegEntwurfRow = typeof finBelegEntwuerfe.$inferSelect;
+
+/** Booked Beleg (insert-only); `nummer` (B-YYYY-NNNN) and `idempotenz_schluessel` have unique indexes. */
+export const finBelege = pgTable('fin_belege', {
+  id: text('id').primaryKey(),
+  nummer: text('nummer').notNull(),
+  rechnungsstellerId: text('rechnungssteller_id')
+    .notNull()
+    .references(() => finRechnungssteller.id),
+  belegdatum: date('belegdatum', { mode: 'string' }).notNull(),
+  modus: text('modus').$type<'brutto' | 'netto'>().notNull(),
+  zahlweg: text('zahlweg').$type<'bar' | 'bank' | 'auslage'>().notNull(),
+  bezahldatum: date('bezahldatum', { mode: 'string' }),
+  /** Cognito sub of the member who paid (Auslage only), without a foreign key. */
+  mitgliedId: text('mitglied_id'),
+  eigenbelegBegruendung: text('eigenbeleg_begruendung'),
+  dateiSha256: text('datei_sha256'),
+  dateiSchluessel: text('datei_schluessel'),
+  dateiTyp: text('datei_typ'),
+  dateiName: text('datei_name'),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** Cognito sub of the member who submitted the Beleg. */
+  eingereichtVon: text('eingereicht_von'),
+  eingereichtAm: timestamp('eingereicht_am', { withTimezone: true }),
+  eingereichtBetragCent: bigint('eingereicht_betrag_cent', { mode: 'number' }),
+});
+export type FinBelegRow = typeof finBelege.$inferSelect;
+
+/** Items of a booked Beleg (insert-only); `anzahlMilli` in thousandths, `steuersatz` in basis points. */
+export const finBelegposten = pgTable(
+  'fin_belegposten',
+  {
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+    pos: integer('pos').notNull(),
+    kategorieId: text('kategorie_id')
+      .notNull()
+      .references(() => finKonten.id),
+    text: text('text').notNull(),
+    anzahlMilli: integer('anzahl_milli').notNull(),
+    einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
+    steuersatz: integer('steuersatz').notNull(),
+    betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+    /** Gesamtpreis of the line (without deposit); when set, `betragCent` equals it. */
+    gesamtCent: bigint('gesamt_cent', { mode: 'number' }),
+    /** `kategorie` | `ware` | `leergut`; null counts as `kategorie`. Leergut items use `kategorie_id` 'pfand'. */
+    art: text('art').$type<BelegPostenArt>(),
+    wareId: text('ware_id'),
+    gebindeId: text('gebinde_id'),
+    /** Deposit per Gebinde and its amount (Ware items). */
+    pfandCent: bigint('pfand_cent', { mode: 'number' }),
+    pfandBetragCent: bigint('pfand_betrag_cent', { mode: 'number' }),
+  },
+  (t) => [primaryKey({ columns: [t.belegId, t.pos] })],
+);
+
+/**
+ * Artikel of Kategorie items with their default tax rate (basis points); created when a Beleg is
+ * booked. `name_norm` = lower(trim(name)) has a unique index.
+ */
+export const finArtikel = pgTable('fin_artikel', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  nameNorm: text('name_norm').notNull(),
+  /** Legacy NOT NULL column, written on insert only (basis points, never read); the default is `steuersatzArt`. */
+  steuersatz: integer('steuersatz').notNull(),
+  steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
+export type FinArtikelRow = typeof finArtikel.$inferSelect;
+
+/** Tax rate periods (`ab` is a `YYYY-MM-DD` date); the unique index on `ab` guards against duplicates. */
+export const finSteuersatzZeitraeume = pgTable('fin_steuersatz_zeitraeume', {
+  id: text('id').primaryKey(),
+  ab: date('ab', { mode: 'string' }).notNull(),
+  regel: integer('regel').notNull(),
+  ermaessigt: integer('ermaessigt').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+});
+
+/** Rounding corrections per tax rate of a net Beleg (insert-only). */
+export const finBelegKorrekturen = pgTable(
+  'fin_beleg_korrekturen',
+  {
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+    steuersatz: integer('steuersatz').notNull(),
+    nettoCent: bigint('netto_cent', { mode: 'number' }).notNull(),
+    steuerCent: bigint('steuer_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.belegId, t.steuersatz] })],
+);
+
+/** Collective reimbursement of Auslagen (insert-only); `idempotenz_schluessel` has a unique index. */
+export const finErstattungen = pgTable('fin_erstattungen', {
+  id: text('id').primaryKey(),
+  /** Cognito sub, without a foreign key. */
+  mitgliedId: text('mitglied_id').notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  zahlweg: text('zahlweg').$type<'bar' | 'bank'>().notNull(),
+  summeCent: bigint('summe_cent', { mode: 'number' }).notNull(),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type FinErstattungRow = typeof finErstattungen.$inferSelect;
+
+/** The Belege of an Erstattung (insert-only); a reversed Erstattung frees them again. */
+export const finErstattungBelege = pgTable(
+  'fin_erstattung_belege',
+  {
+    erstattungId: text('erstattung_id')
+      .notNull()
+      .references(() => finErstattungen.id),
+    belegId: text('beleg_id')
+      .notNull()
+      .references(() => finBelege.id),
+  },
+  (t) => [primaryKey({ columns: [t.erstattungId, t.belegId] })],
+);
+
+/** Daily export of the journal to the archive bucket (insert-only). */
+export const finExporte = pgTable('fin_exporte', {
+  id: text('id').primaryKey(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  vonSeq: bigint('von_seq', { mode: 'number' }).notNull(),
+  bisSeq: bigint('bis_seq', { mode: 'number' }).notNull(),
+  kopfHash: text('kopf_hash').notNull(),
+  schluessel: text('schluessel').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** Closed months (Festschreibung, GoBD; insert-only). `monat` = first day, unique index. */
+export const finFestschreibungen = pgTable('fin_festschreibungen', {
+  id: text('id').primaryKey(),
+  monat: date('monat', { mode: 'string' }).notNull(),
+  /** Highest `seq` when the month was closed (also bookings of later months). */
+  bisSeq: bigint('bis_seq', { mode: 'number' }).notNull(),
+  kopfHash: text('kopf_hash').notNull(),
+  /** Bookings dated in the month. */
+  anzahl: integer('anzahl').notNull(),
+  exportSchluessel: text('export_schluessel').notNull(),
+  /** Cognito sub, without a foreign key. */
+  festgeschriebenVon: text('festgeschrieben_von').notNull(),
+  festgeschriebenAm: timestamp('festgeschrieben_am', { withTimezone: true }).notNull(),
+});
+
+/** Data exports for the tax office (ZIP in the archive bucket; insert-only). */
+export const finDatenexporte = pgTable('fin_datenexporte', {
+  id: text('id').primaryKey(),
+  von: date('von', { mode: 'string' }).notNull(),
+  bis: date('bis', { mode: 'string' }).notNull(),
+  schluessel: text('schluessel').notNull(),
+  /** Hex SHA-256 of the ZIP. */
+  sha256: text('sha256').notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** The ZIP contains the Beleg files (folder `belege/`). */
+  mitBelegdateien: boolean('mit_belegdateien'),
+});
+
+/** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
+export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
+  id: text('id').primaryKey(),
+  /** Soft reference to `waren.id` (checked in the API). */
+  wareId: text('ware_id').notNull(),
+  menge: integer('menge').notNull(),
+  grund: text('grund').$type<AbgleichGrund>().notNull(),
+  text: text('text'),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type WarenAbgleichKorrekturRow = typeof warenAbgleichKorrekturen.$inferSelect;
+
+/** General key/value settings (e.g. `lager_abgleich_stichtag`). */
+export const einstellungen = pgTable('einstellungen', {
+  schluessel: text('schluessel').primaryKey(),
+  wert: text('wert').notNull(),
+  geaendertVon: text('geaendert_von').notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
 });

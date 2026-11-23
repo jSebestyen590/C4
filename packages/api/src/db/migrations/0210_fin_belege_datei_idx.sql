@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_belege_datei_idx ON fin_belege (datei_sha256)

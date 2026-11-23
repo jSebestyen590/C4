@@ -26,6 +26,7 @@ import {
   umlagerungPlanen,
   verlauf,
   verlaufSerien,
+  wareNamenKonflikt,
   vergleicheBuchungsZeilen,
   type Anrede,
   type BaumKnoten,
@@ -80,7 +81,15 @@ import { ifcoPlatzMasse, ifcoPlatzPruefen } from './ifcoPlatz';
 // Errors
 
 /** The request is well-formed but names unknown/archived entries or violates a domain rule (400). */
-export class WarenUngueltig extends Error {}
+export class WarenUngueltig extends Error {
+  /** Set when the problem belongs to one field of the form (e.g. `name`, `alias`), see `warenFehler`. */
+  constructor(
+    message: string,
+    readonly feld?: string,
+  ) {
+    super(message);
+  }
+}
 
 /** The request conflicts with the current state, e.g. the entry is still in use (409). */
 export class WarenKonflikt extends Error {}
@@ -434,12 +443,32 @@ export interface WarengruppeDaten {
   parentId: string | null;
 }
 
+/**
+ * The Standard-Gebinde to store for a Ware save: required, and one of the Ware's Gebinde (with their
+ * Untergebinde). Throws `WarenUngueltig` otherwise.
+ */
+export function standardGebindeBestimmen(
+  angegeben: string | null | undefined,
+  gebindeIds: readonly string[],
+): string {
+  if (!angegeben)
+    throw new WarenUngueltig('Bitte wähle ein Standard-Gebinde.', 'standardGebindeId');
+  if (!gebindeIds.includes(angegeben)) {
+    throw new WarenUngueltig(
+      'Das Standard-Gebinde muss eines der Gebinde der Ware sein.',
+      'standardGebindeId',
+    );
+  }
+  return angegeben;
+}
+
 export interface WareDaten {
   name: string;
   warengruppeId: string;
   mhdArt: MhdArt;
   gebindeIds: string[];
   aliase: string[];
+  standardGebindeId: string;
 }
 
 export interface WareDetails extends WareRow {
@@ -1024,11 +1053,28 @@ export function createWarenStore(db: Db): WarenStore {
       );
     }
 
+    const standardGebindeId = standardGebindeBestimmen(daten.standardGebindeId, gebindeIds);
+
+    // Names and aliases are unique across all Waren, archived ones included.
+    const [alleWaren, alleAliase] = await Promise.all([
+      tx.select({ id: waren.id, name: waren.name }).from(waren),
+      tx.select().from(wareAliase),
+    ]);
+    const konflikt = wareNamenKonflikt(
+      alleWaren.map((w) => ({
+        ...w,
+        aliase: alleAliase.filter((a) => a.wareId === w.id).map((a) => a.alias),
+      })),
+      { id, name: daten.name, aliase: daten.aliase },
+    );
+    if (konflikt) throw new WarenUngueltig(konflikt.meldung, konflikt.feld);
+
     const wareId = id ?? randomUUID();
     const werte = {
       name: daten.name,
       warengruppeId: daten.warengruppeId,
       mhdArt: daten.mhdArt,
+      standardGebindeId,
     };
     if (id) {
       await tx.update(waren).set(werte).where(eq(waren.id, id));

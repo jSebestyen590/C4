@@ -7,6 +7,12 @@ wahlweise in **IFCOs** (Euronormboxen, z. B. „Spanngurtkiste“). Gegenstände
 `packages/api/src/inventar.ts`, Routen in `packages/api/src/routes/inventar.ts`. Fehlerklassen und Hilfen
 (`WarenUngueltig` → 400, `WarenKonflikt` → 409) kommen aus `packages/api/src/waren.ts`.
 
+## Überblick
+
+Dauerhaftes Betriebsvermögen des Clubs: Gegenstände in einem Kategorienbaum, mit einer Anzahl (aus dem Verlauf der Zugänge und Abgänge) auf einem oder mehreren Plätzen im Lagerort-Baum, wahlweise in IFCOs. Gegenstände lassen sich verleihen und können aus Teilen bestehen. Fachlogik liegt in `packages/shared/src/inventar.ts`, Speicherung und Regeln in `packages/api/src/inventar.ts`, Routen in `packages/api/src/routes/inventar.ts`; Fehlerklassen kommen aus `packages/api/src/waren.ts`.
+
+Abschnitte: Invarianten, Dateien, Rechte, Datenmodell, Teile, IFCO-Typen und IFCO-Lagerplätze, Aufräumen, Regeln, API, Oberfläche (Details)
+
 ## Invarianten
 
 - `gegenstaende.anzahl` ist die Summe des Verlaufs (`gegenstand_bewegungen`) und ändert sich nur über Zugänge und Abgänge (Anlegen bucht

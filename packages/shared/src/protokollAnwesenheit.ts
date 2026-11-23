@@ -117,9 +117,10 @@ export function teilnahmeMitBloecken<T extends { sub: string; wert: ProtokollTei
  * Who is present where in the document. At the opening the members with attendance `anwesend`
  * (`verspaetet` in old data counts as `anwesend`) count, except those whose first Anwesenheit block
  * is an `erscheint` (they arrive later); members whose first block is `geht` count at the opening.
- * Then the blocks are applied: `erscheint` adds a member, `geht` removes one. Blocks for somebody
- * who is not a Mitglied (Anwärter:in, EM, unknown) or that change nothing leave the member count
- * alone; blocks without a person are ignored. The head count of all people (for a Meinungsbild)
+ * Then the blocks are applied: `erscheint` adds a member, `geht` removes one; a Neues EM removes the
+ * person from the Mitglieder altogether (total and present, whatever the vote result). Blocks for
+ * somebody who is not a Mitglied (Anwärter:in, EM, Extern, unknown) or that change nothing leave
+ * the member count alone; blocks without a person are ignored. The head count of all people (for a Meinungsbild)
  * follows the same rules for every status.
  */
 export function anwesenheitsVerlauf(
@@ -172,9 +173,18 @@ export function anwesenheitsVerlauf(
       const neu = stand();
       bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
       aktuell = neu;
+    } else if (knoten.type === 'bausteinEm') {
+      // From here on the person is no longer a Mitglied and has no vote, whatever the vote result.
+      const daten = bausteinEmDatenSchema.safeParse(knoten.attrs?.daten);
+      if (daten.success && daten.data.sub !== null) {
+        alle.delete(daten.data.sub);
+        da.delete(daten.data.sub);
+      }
+      const neu = stand();
+      bausteine[id] = { ...neu, wechsel: neu.beschlussfaehig !== aktuell.beschlussfaehig };
+      aktuell = neu;
     } else if (
       knoten.type === 'bausteinBeschluss' ||
-      knoten.type === 'bausteinEm' ||
       knoten.type === 'bausteinAufnahme' ||
       knoten.type === 'bausteinWahl' ||
       knoten.type === 'bausteinAuswahl'
@@ -219,10 +229,14 @@ export function nichtBeschlussfaehigeAbstimmungen(
 
 const tagMonat = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 
-/** `11.02.`; a range `31.05. – 02.06.`; the same day twice is one day; empty `von` gives ''. */
+/**
+ * `11.02.`; a range `31.05. – 02.06.`, or `25. – 30.11.` within one month; the same day twice is one
+ * day; empty `von` gives ''.
+ */
 export function datumKurz(von: string | null | undefined, bis?: string | null): string {
   if (!von) return '';
   if (!bis || bis === von) return tagMonat(von);
+  if (von.slice(0, 7) === bis.slice(0, 7)) return `${von.slice(8, 10)}. – ${tagMonat(bis)}`;
   return `${tagMonat(von)} – ${tagMonat(bis)}`;
 }
 
@@ -230,12 +244,20 @@ interface UeberschriftDaten {
   name: string;
   datum: string | null;
   bisDatum?: string | null;
+  /** Name of the event's Kategorie; left out when empty or the same as the name. */
+  kategorie?: string | null;
 }
 
-const ueberschrift = (d: UeberschriftDaten): string =>
-  `${datumKurz(d.datum, d.bisDatum)} ${d.name}`.trim();
+const ueberschrift = (d: UeberschriftDaten): string => {
+  const name = d.name.trim();
+  const kategorie = d.kategorie?.trim() ?? '';
+  const zeigeKategorie = kategorie !== '' && kategorie.toLowerCase() !== name.toLowerCase();
+  return [datumKurz(d.datum, d.bisDatum), zeigeKategorie ? kategorie : '', name]
+    .filter(Boolean)
+    .join(' ');
+};
 
-/** `31.05. – 02.06. Name` of a `bausteinEvent`; without a date just the name. */
+/** `31.05. – 02.06. PP Name` of a `bausteinEvent` (date, Kategorie, name); parts that are missing are left out. */
 export const eventUeberschrift = (daten: UeberschriftDaten): string => ueberschrift(daten);
 
 /** Same for a `bausteinVergangenesEvent`. */

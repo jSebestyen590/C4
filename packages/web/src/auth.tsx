@@ -1,6 +1,7 @@
 import { ErrorResponse, UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { DeaktiviertSeite } from './DeaktiviertSeite';
+import { fetchMitWiederholung } from './fetchWiederholen';
 import { aktuellesZiel } from './ruecksprung';
 import { meSchema, type AppConfig, type Permission } from '@c4/shared';
 
@@ -101,7 +102,7 @@ export function AuthProvider({
   const accessToken = user?.access_token;
   useEffect(() => {
     if (!accessToken) return;
-    void fetch('/api/me', { headers: { authorization: `Bearer ${accessToken}` } })
+    void fetchMitWiederholung('/api/me', { headers: { authorization: `Bearer ${accessToken}` } })
       .then(async (res) => {
         if (res.status === 403) {
           const body = (await res.json().catch(() => null)) as { deaktiviert?: boolean } | null;
@@ -110,10 +111,12 @@ export function AuthProvider({
             return [];
           }
         }
+        if (!res.ok) throw new Error('Rechte konnten nicht geladen werden');
         return meSchema.parse(await res.json()).permissions as Permission[];
       })
-      .catch(() => [])
-      .then(setPermissions);
+      // A transient failure must not wipe permissions that were already loaded.
+      .catch(() => null)
+      .then((neu) => setPermissions((prev) => neu ?? prev ?? []));
   }, [accessToken]);
 
   const value = useMemo<AuthState>(() => {

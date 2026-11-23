@@ -5,6 +5,12 @@ Das Buch ist die digitale Strichliste des Vereins (Scheibe 2 der [Finanzen](./fi
 `fin_konten`, kein Teil des Bargeldbestands. Das Geld der Abzahlungen liegt in einer Barkasse und wird mit deren
 Abrechnung (spätere Scheibe) als Bareinnahme gebucht.
 
+## Überblick
+
+Das Buch ist die digitale Strichliste des Vereins und ein Nebenbuch der Finanzen (Scheibe 2): keine Journalbuchungen, keine Konten in `fin_konten`, kein Teil des Bargeldbestands. Eine Seite (`buch_seiten`) gehört einem Mitglied oder einem externen Namen, hat eine Nummer und kann archiviert werden. Das Geld der Abzahlungen liegt in einer Barkasse und wird erst mit deren Abrechnung gebucht.
+
+Abschnitte: Konzept, Rechte, Routen (`routes/buch.ts`), Oberfläche, Tabellen
+
 ## Konzept
 
 - Eine **Seite** (`buch_seiten`) gehört einem Mitglied oder einem externen Namen (genau eins von beiden), hat eine
@@ -26,6 +32,8 @@ Abrechnung (spätere Scheibe) als Bareinnahme gebucht.
   nutzen den Tarif des Status `extern`, Mitglieder-Seiten den **aktuellen** Status des Mitglieds. Der Strichwert wird im
   Eintrag gespeichert und ändert sich später nicht. Ohne Tarif sind Striche nicht möglich (400 mit Hinweis), Bar und
   Abzahlung schon.
+- Die **Abzahlungen** landen als Bargeld in der Barkasse und gehen erst mit deren Abrechnung als Einnahme ins Journal
+  ([finanzen.md](./finanzen.md), „Barkassen“); das Buch selbst bucht nichts.
 - Alles ist **nur INSERT** (`buch_tarife`, `buch_abrechnungen`, `buch_eintraege`; Guard: `finanzenNurInsert.test.ts`).
   Einzig `buch_seiten.archiviert_am` wird gesetzt. Korrektur = **Storno**: ein neuer Eintrag mit umgekehrten Werten
   (gleicher Strichwert), `storno_von`, Pflicht-Begründung. Ein Eintrag lässt sich nur einmal stornieren (409), ein Storno

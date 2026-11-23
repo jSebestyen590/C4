@@ -1,0 +1,2 @@
+-- Every Ware needs a Standard-Gebinde: fill the missing ones with the first of the Ware's Gebinde (idempotent).
+UPDATE waren SET standard_gebinde_id = (SELECT min(wg.gebinde_id) FROM ware_gebinde wg WHERE wg.ware_id = waren.id) WHERE standard_gebinde_id IS NULL

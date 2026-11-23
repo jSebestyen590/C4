@@ -266,7 +266,7 @@ export function GegenstandFormular({
                 value={anzahl}
                 onChange={setAnzahl}
               />
-              <Group grow align="flex-start" wrap="wrap">
+              <Group grow align="flex-end" wrap="wrap">
                 <Select
                   label="Grund"
                   allowDeselect={false}

@@ -4,6 +4,12 @@ Stand eines Reviews des gesamten Repos vom 10.–12.11.2026 (PR #33). Die Seite 
 bewusst offen gelassen wurde, damit ein späteres Refactoring dort weitermacht und nichts doppelt prüft. Wer einen Punkt aus
 [Offen](#offen) erledigt, verschiebt ihn nach [Erledigt](#erledigt) oder löscht ihn.
 
+## Überblick
+
+Stand eines Reviews des gesamten Repos vom 10.–12.11.2026 (PR #33): Die Seite hält fest, was geprüft, was behoben und was bewusst offen gelassen wurde, damit ein späteres Refactoring dort weitermacht und nichts doppelt prüft. Wer einen Punkt aus „Offen“ erledigt, verschiebt ihn nach „Erledigt“ oder löscht ihn. Nicht geprüft wurden der Finanzen-Code und der Benachrichtigungsverlauf.
+
+Abschnitte: Umfang und Methode, Geprüft und in Ordnung, Erledigt, Offen
+
 ## Umfang und Methode
 
 Geprüft wurde der Stand von `main` nach #29 (Schlüssel-Anfragen), später zusammengeführt mit #31 (Finanzen Scheibe 0), #34

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { DatenexportAuftrag } from '@c4/shared';
 import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
 import { type UserAdmin } from './admin';
@@ -15,12 +16,14 @@ import { type TodosStore } from './todos';
 import { type SchluesselStore } from './schluessel';
 import { type SchluesselAnfragenStore } from './schluesselAnfragen';
 import { type TrichterStore } from './trichter';
+import { type LagerAbgleichStore } from './lagerAbgleich';
 import { type FinanzenStore } from './finanzen';
 import { type BuchStore } from './buch';
 import { type ProtokollStore } from './protokolle';
 import { type UmfragenStore } from './umfragen';
 import { type MitgliederStore } from './mitglieder';
 import { type Profilbilder } from './profilbilder';
+import { type Finanzarchiv } from './finanzarchiv';
 import { type Protokollbilder } from './protokollbilder';
 import { DEAKTIVIERT, type AuthEnv, type TokenVerifier } from './auth';
 import { baueKontext } from './routes/kontext';
@@ -35,6 +38,7 @@ import { todosRoutes } from './routes/todos';
 import { protokolleRoutes } from './routes/protokolle';
 import { trichterRoutes } from './routes/trichter';
 import { finanzenRoutes } from './routes/finanzen';
+import { lagerAbgleichRoutes } from './routes/lagerAbgleich';
 import { buchRoutes } from './routes/buch';
 import { umfragenRoutes } from './routes/umfragen';
 import { warenRoutes } from './routes/waren';
@@ -59,6 +63,7 @@ export interface AppDeps {
   todos: TodosStore;
   umfragen: UmfragenStore;
   trichter: TrichterStore;
+  lagerAbgleich: LagerAbgleichStore;
   finanzen: FinanzenStore;
   buch: BuchStore;
   protokolle: ProtokollStore;
@@ -75,6 +80,13 @@ export interface AppDeps {
   appUrl?: string;
   profilbilder: Profilbilder;
   protokollbilder: Protokollbilder;
+  /** Archive bucket of the Finanzen (Beleg files, exports). */
+  finanzarchiv: Finanzarchiv;
+  /**
+   * Starts the asynchronous Datenexport with Beleg files (Lambda self-invoke; locally the job runs
+   * in the background of the same process). Rejects when it cannot be started.
+   */
+  datenexportStarten: (auftrag: DatenexportAuftrag) => Promise<void>;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }
@@ -107,6 +119,7 @@ export function createApp(deps: AppDeps) {
       .route('/', protokolleRoutes(ctx))
       .route('/', trichterRoutes(ctx))
       .route('/', finanzenRoutes(ctx))
+      .route('/', lagerAbgleichRoutes(ctx))
       .route('/', buchRoutes(ctx))
       .route('/', umfragenRoutes(ctx))
       .route('/', warenRoutes(ctx))
@@ -121,6 +134,8 @@ export function createApp(deps: AppDeps) {
           if (err.cause === DEAKTIVIERT) {
             return c.json({ error: err.message, deaktiviert: true }, err.status);
           }
+          const feld = (err.cause as { feld?: unknown } | undefined)?.feld;
+          if (typeof feld === 'string') return c.json({ error: err.message, feld }, err.status);
           return c.json({ error: err.message }, err.status);
         }
         console.error(err);

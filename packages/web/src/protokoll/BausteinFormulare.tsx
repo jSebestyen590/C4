@@ -28,6 +28,7 @@ import {
   ERWAEHNUNG_GRUPPEN,
   eventDatenAusKalender,
   MEINUNGSBILD_MAX_OPTIONEN,
+  MITGLIED_STATI,
   WAHL_MAX_ANZAHL,
   WAHL_MAX_KANDIDATEN,
   WAHL_MAX_STICHWAHLEN,
@@ -54,12 +55,22 @@ import { aufnahmeOptionen, emKandidaten, personenOptionen } from './anwesenheit'
 import { useProtokollKontext } from './kontext';
 import { unwrap, useApi } from '../api';
 import { DatumFeld } from '../DatumFeld';
+import { labelFuer, MITGLIED_STATUS_LABELS } from '../i18n';
 import { useDienstformen, useEventKategorien, useVorlagen } from '../kalenderDaten';
 import { mitgliedLink, mitgliedName } from '../mitglied';
 import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import {
+  eingeladeneAus,
+  TeilnahmeFelder,
+  teilnahmeKreisAus,
+  teilnahmeWerteAus,
+} from '../TeilnahmeFelder';
+import {
   annahmeSchalterIds,
+  eventKategorieSetzen,
+  eventZeigtBis,
+  kalenderEventLabel,
   auswahlOptionEntfernen,
   auswahlOptionHinzufuegen,
   auswahlOptionSetzen,
@@ -89,6 +100,7 @@ import {
 import { GRUPPE_TITEL } from './erwaehnungLogik';
 import { eventDatumText, useProtokollEvents } from './daten';
 import { WiederholungHinweis } from './WiederholungHinweis';
+import { ZeitFeld } from '../ZeitFeld';
 import { LokalText, LokalTextbereich, LokalZahl } from './LokalFelder';
 import { SchichtEditor, SchichtListe } from './SchichtEditor';
 import { postenKeys } from '../queryKeys';
@@ -157,6 +169,28 @@ export function EventFormular({
   const kategorieWert = daten.kategorieId ?? vorlage?.kategorieId ?? null;
   const dauer: EventDauer = kategorie?.dauer ?? 'eintaegig';
   const dienstformName = (id: string) => dienstformen.nachId.get(id)?.name ?? 'Dienstform';
+  // A Kategorie with participation has no Dienste but a circle of participants instead.
+  const teilnahme = kategorie?.art === 'teilnahme';
+  const teilnahmeWerte = teilnahmeWerteAus(
+    daten.teilnahmeStatus ?? kategorie?.teilnahmeStatus ?? [...MITGLIED_STATI],
+    daten.eingeladen,
+  );
+  const teilnahmeText = daten.teilnahmeStatus
+    ? [
+        teilnahmeWerte.modus === 'alle'
+          ? 'Alle Mitglieder'
+          : daten.teilnahmeStatus.length > 0
+            ? daten.teilnahmeStatus
+                .map((st) => labelFuer(MITGLIED_STATUS_LABELS, st, 'neutral'))
+                .join(', ')
+            : '',
+        daten.eingeladen.length > 0 ? `${daten.eingeladen.length} eingeladen` : '',
+      ]
+        .filter(Boolean)
+        .join(' + ')
+    : daten.eingeladen.length > 0
+      ? `${daten.eingeladen.length} eingeladen`
+      : '';
   const vorlageText = daten.vorlageId
     ? `Vorlage: ${vorlage?.titel || kategorie?.name || (vorlagen.isPending ? '…' : 'gelöscht')}`
     : 'Ohne Vorlage';
@@ -186,9 +220,10 @@ export function EventFormular({
               (kategorien.isPending ? '…' : 'Unbekannt')}
           </Text>
         )}
-        {daten.schichten.length > 0 && (
+        {!teilnahme && daten.schichten.length > 0 && (
           <SchichtListe schichten={daten.schichten} dienstformName={dienstformName} />
         )}
+        {teilnahme && teilnahmeText && <Text size="sm">Teilnahme: {teilnahmeText}</Text>}
         {daten.verantwortlichSub && (
           <Text size="sm">
             Verantwortlich: <Mitglied sub={daten.verantwortlichSub} />
@@ -201,13 +236,13 @@ export function EventFormular({
 
   const kalenderOptionen = events.kommende.map((e) => ({
     value: e.id,
-    label: `${eventDatumText(e)} ${e.anzeigeTitel}`,
+    label: kalenderEventLabel(e),
   }));
   if (daten.eventId && !kalenderOptionen.some((o) => o.value === daten.eventId)) {
     const e = events.alle.find((x) => x.id === daten.eventId);
     kalenderOptionen.unshift({
       value: daten.eventId,
-      label: e ? `${eventDatumText(e)} ${e.anzeigeTitel}` : 'Verknüpftes Event',
+      label: e ? kalenderEventLabel(e) : 'Verknüpftes Event',
     });
   }
   const kategorieOptionen = kategorien.aktive.map((k) => ({ value: k.id, label: k.name }));
@@ -216,6 +251,8 @@ export function EventFormular({
     kategorieOptionen.unshift({ value: daten.kategorieId, label: k?.name ?? 'Unbekannt' });
   }
   const mehrtaegig = dauer !== 'eintaegig';
+  // Single-day Kategorien have no "Bis"; without a Kategorie it is still open.
+  const zeigeBis = eventZeigtBis(kategorie?.dauer);
   const tage = vorlage?.tage ?? 1;
 
   return (
@@ -223,96 +260,10 @@ export function EventFormular({
       <Text size="sm" c="dimmed">
         {vorlageText}
       </Text>
-      <LokalText
-        label="Name"
-        data-fokus="name"
-        wert={daten.name}
-        maxLength={200}
-        onWert={(name) => aendern((d) => ({ ...d, name }))}
-      />
-      <Group grow {...zweiSpalten}>
-        <DatumFeld
-          label={mehrtaegig || !daten.vorlageId ? 'Von' : 'Datum'}
-          data-fokus="datum"
-          loeschbar={false}
-          value={daten.datum ?? ''}
-          onWert={(datum) => aendern((d) => eventDatumSetzen(d, datum || null, dauer, tage))}
-          style={{ minWidth: 0 }}
-        />
-        {(mehrtaegig || !daten.vorlageId || daten.bisDatum) && (
-          <DatumFeld
-            label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
-            value={daten.bisDatum ?? ''}
-            min={daten.datum ?? undefined}
-            onWert={(bis) => aendern((d) => eventBisSetzen(d, bis || null))}
-            style={{ minWidth: 0 }}
-          />
-        )}
-      </Group>
-      {dauer !== 'ganztaegig' && (
-        <Group grow {...zweiSpalten}>
-          <LokalText
-            label="Beginn"
-            type="time"
-            wert={daten.beginnZeit ?? ''}
-            onWert={(w) => {
-              const zeit = zeitWert(w);
-              if (zeit !== undefined) aendern((d) => ({ ...d, beginnZeit: zeit }));
-            }}
-            style={{ minWidth: 0 }}
-          />
-          <LokalText
-            label="Ende"
-            type="time"
-            wert={daten.endeZeit ?? ''}
-            onWert={(w) => {
-              const zeit = zeitWert(w);
-              if (zeit !== undefined) aendern((d) => ({ ...d, endeZeit: zeit }));
-            }}
-            style={{ minWidth: 0 }}
-          />
-        </Group>
-      )}
-      {daten.schichten.length > 0 && (
-        <Stack gap={4}>
-          <Text size="sm" fw={500}>
-            Dienste
-          </Text>
-          <SchichtEditor
-            schichten={daten.schichten}
-            dienstformName={dienstformName}
-            onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
-          />
-        </Stack>
-      )}
       <Select
-        label="Kategorie"
-        description={
-          kategorieWert
-            ? undefined
-            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
-        }
-        placeholder="Keine Kategorie"
-        searchable
-        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
-        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
-        data={kategorieOptionen}
-        value={kategorieWert}
-        onChange={(kategorieId) => aendern((d) => ({ ...d, kategorieId }))}
-        nothingFoundMessage="Keine Kategorie gefunden"
-      />
-      <Select
-        label="Verantwortliche:r"
-        placeholder="Niemand"
-        searchable
-        clearable
-        data={mitgliedOptionen(mitglieder.data ?? [])}
-        value={daten.verantwortlichSub}
-        onChange={(verantwortlichSub) => aendern((d) => ({ ...d, verantwortlichSub }))}
-        nothingFoundMessage="Niemand gefunden"
-      />
-      <Select
+        allowDeselect={false}
         label="Im Kalender"
+        data-fokus="kalender"
         description="Verknüpft den Baustein mit einem bestehenden Event und übernimmt dessen Angaben (Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste). Die Notizen bleiben."
         placeholder="Noch nicht im Kalender"
         searchable
@@ -328,6 +279,113 @@ export function EventFormular({
         nothingFoundMessage="Kein Event gefunden"
       />
       {daten.eventId && <KalenderLink eventId={daten.eventId} />}
+      <Select
+        allowDeselect={false}
+        label="Kategorie"
+        description={
+          kategorieWert
+            ? undefined
+            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
+        }
+        placeholder="Keine Kategorie"
+        searchable
+        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
+        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
+        data={kategorieOptionen}
+        value={kategorieWert}
+        onChange={(kategorieId) => {
+          const neu = kategorien.liste.find((k) => k.id === (kategorieId ?? vorlage?.kategorieId));
+          aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer, neu?.art));
+        }}
+        nothingFoundMessage="Keine Kategorie gefunden"
+      />
+      <LokalText
+        label="Name"
+        data-fokus="name"
+        wert={daten.name}
+        maxLength={200}
+        onWert={(name) => aendern((d) => ({ ...d, name }))}
+      />
+      <Group grow {...zweiSpalten}>
+        <DatumFeld
+          tippbar
+          label={zeigeBis ? 'Von' : 'Datum'}
+          data-fokus="datum"
+          loeschbar={false}
+          value={daten.datum ?? ''}
+          onWert={(datum) => aendern((d) => eventDatumSetzen(d, datum || null, dauer, tage))}
+          style={{ minWidth: 0 }}
+        />
+        {zeigeBis && (
+          <DatumFeld
+            tippbar
+            label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
+            value={daten.bisDatum ?? ''}
+            min={daten.datum ?? undefined}
+            onWert={(bis) => aendern((d) => eventBisSetzen(d, bis || null))}
+            style={{ minWidth: 0 }}
+          />
+        )}
+      </Group>
+      {dauer !== 'ganztaegig' && (
+        <Group grow {...zweiSpalten}>
+          <ZeitFeld
+            label="Beginn"
+            value={daten.beginnZeit ?? ''}
+            onWert={(w) => {
+              const zeit = zeitWert(w);
+              if (zeit !== undefined) aendern((d) => ({ ...d, beginnZeit: zeit }));
+            }}
+            style={{ minWidth: 0 }}
+          />
+          <ZeitFeld
+            label="Ende"
+            value={daten.endeZeit ?? ''}
+            onWert={(w) => {
+              const zeit = zeitWert(w);
+              if (zeit !== undefined) aendern((d) => ({ ...d, endeZeit: zeit }));
+            }}
+            style={{ minWidth: 0 }}
+          />
+        </Group>
+      )}
+      <Select
+        allowDeselect={false}
+        label="Verantwortliche:r"
+        placeholder="Niemand"
+        searchable
+        clearable
+        data={mitgliedOptionen(mitglieder.data ?? [])}
+        value={daten.verantwortlichSub}
+        onChange={(verantwortlichSub) => aendern((d) => ({ ...d, verantwortlichSub }))}
+        nothingFoundMessage="Niemand gefunden"
+      />
+      {teilnahme ? (
+        <TeilnahmeFelder
+          titel={null}
+          werte={teilnahmeWerte}
+          onChange={(w) =>
+            aendern((d) => ({
+              ...d,
+              teilnahmeStatus: teilnahmeKreisAus(w),
+              eingeladen: eingeladeneAus(w),
+            }))
+          }
+        />
+      ) : (
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Dienste
+          </Text>
+          <SchichtEditor
+            schichten={daten.schichten}
+            dienstformName={dienstformName}
+            dienstformen={dienstformen.aktive}
+            zeiten={{ beginnZeit: daten.beginnZeit, endeZeit: daten.endeZeit }}
+            onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
+          />
+        </Stack>
+      )}
     </Stack>
   );
 }
@@ -448,6 +506,7 @@ export function TodoFormular({
         }}
       />
       <DatumFeld
+        tippbar
         label="Deadline"
         loeschbar={false}
         value={daten.faelligAm ?? ''}
@@ -512,6 +571,7 @@ export function VergangenesEventFormular({
   return (
     <Stack gap="xs">
       <Select
+        allowDeselect={false}
         label="Event aus dem Kalender"
         placeholder="Event wählen"
         searchable
@@ -547,6 +607,7 @@ export function VergangenesEventFormular({
             onWert={(name) => aendern((d) => ({ ...d, name }))}
           />
           <DatumFeld
+            tippbar
             label="Datum"
             data-fokus="datum"
             value={daten.datum ?? ''}
@@ -767,6 +828,11 @@ export function EmFormular({
       <Stack gap={4}>
         <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
         <PersonOderName person={person} name={name} />
+        {a && daten.antragSub && (
+          <Text size="sm">
+            Beantragt von: <Mitglied sub={daten.antragSub} />
+          </Text>
+        )}
         {a && <StimmenAnzeige a={a} />}
       </Stack>
     );
@@ -776,6 +842,7 @@ export function EmFormular({
     <Stack gap="xs">
       <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
       <Select
+        allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
         data-fokus="person"
@@ -813,6 +880,28 @@ export function EmFormular({
           aendern((d) => ({ ...d, abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null }));
         }}
       />
+      {a && (
+        <Select
+          allowDeselect={false}
+          label="Beantragt von"
+          placeholder="Person wählen"
+          size="md"
+          searchable
+          clearable
+          nothingFoundMessage="Niemand gefunden"
+          data={personenOptionen(personen)}
+          value={daten.antragSub}
+          onChange={(antragSub) => aendern((d) => ({ ...d, antragSub }))}
+          renderOption={({ option }) => {
+            const s = status.get(option.value);
+            return s ? (
+              <StatusName status={s}>{option.label}</StatusName>
+            ) : (
+              <span>{option.label}</span>
+            );
+          }}
+        />
+      )}
       {a && (
         <StimmenFelder
           daten={a}
@@ -852,6 +941,7 @@ export function AufnahmeFormular({
     <Stack gap="xs">
       <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
       <Select
+        allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
         data-fokus="person"
@@ -938,6 +1028,7 @@ export function MeinungsbildFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Option ${i + 1} entfernen`}
                 onClick={() => aendern((d) => optionEntfernen(d, i))}
               >
@@ -1224,6 +1315,7 @@ export function WahlFormular({
         }
       />
       <DatumFeld
+        tippbar
         label="Gilt ab"
         value={daten.gueltigAb ?? ''}
         onWert={(gueltigAb) => aendern((d) => ({ ...d, gueltigAb }))}
@@ -1246,29 +1338,40 @@ export function WahlFormular({
         <Paper key={k.id} withBorder p="xs" radius="md">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
-              <Select
-                label={`Kandidat:in ${i + 1}`}
-                placeholder="Person wählen"
-                size="md"
-                searchable
-                nothingFoundMessage="Niemand gefunden"
-                style={{ flex: 1, minWidth: 0 }}
-                data={personenOptionen(personen)}
-                value={k.sub}
-                onChange={(sub) => aendern((d) => kandidatSetzen(d, k.id, { sub }))}
-                renderOption={({ option }) => {
-                  const s = status.get(option.value);
-                  return s ? (
-                    <StatusName status={s}>{option.label}</StatusName>
-                  ) : (
-                    <span>{option.label}</span>
-                  );
-                }}
-              />
+              <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
+                <Select
+                  allowDeselect={false}
+                  label={`Kandidat:in ${i + 1}`}
+                  placeholder="Person wählen"
+                  size="md"
+                  searchable
+                  nothingFoundMessage="Niemand gefunden"
+                  style={{ flex: '1 1 10rem', minWidth: 0 }}
+                  data={personenOptionen(personen)}
+                  value={k.sub}
+                  onChange={(sub) => aendern((d) => kandidatSetzen(d, k.id, { sub }))}
+                  renderOption={({ option }) => {
+                    const s = status.get(option.value);
+                    return s ? (
+                      <StatusName status={s}>{option.label}</StatusName>
+                    ) : (
+                      <span>{option.label}</span>
+                    );
+                  }}
+                />
+                <div style={{ flex: '0 0 auto', width: '10rem' }}>
+                  <LokalZahl
+                    label="Stimmen"
+                    wert={k.stimmen}
+                    onWert={(stimmen) => aendern((d) => kandidatSetzen(d, k.id, { stimmen }))}
+                  />
+                </div>
+              </Group>
               <ActionIcon
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Kandidat:in ${i + 1} entfernen`}
                 onClick={() => aendern((d) => kandidatEntfernen(d, k.id))}
               >
@@ -1280,11 +1383,6 @@ export function WahlFormular({
                 Bisher ohne App-Konto: {k.name.trim()}. Wähle eine Person, um sie zu ersetzen.
               </Text>
             )}
-            <LokalZahl
-              label="Stimmen"
-              wert={k.stimmen}
-              onWert={(stimmen) => aendern((d) => kandidatSetzen(d, k.id, { stimmen }))}
-            />
           </Stack>
         </Paper>
       ))}
@@ -1334,6 +1432,7 @@ export function WahlFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >
@@ -1483,29 +1582,34 @@ export function AuswahlFormular({
         <Paper key={o.id} withBorder p="xs" radius="md">
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
-              <LokalText
-                label={`Möglichkeit ${i + 1}`}
-                autoComplete="off"
-                wert={o.text}
-                maxLength={200}
-                style={{ flex: 1, minWidth: 0 }}
-                onWert={(text) => aendern((d) => auswahlOptionSetzen(d, o.id, { text }))}
-              />
+              <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
+                <LokalText
+                  label={`Möglichkeit ${i + 1}`}
+                  autoComplete="off"
+                  wert={o.text}
+                  maxLength={200}
+                  style={{ flex: '1 1 10rem', minWidth: 0 }}
+                  onWert={(text) => aendern((d) => auswahlOptionSetzen(d, o.id, { text }))}
+                />
+                <div style={{ flex: '0 0 auto', width: '10rem' }}>
+                  <LokalZahl
+                    label="Stimmen"
+                    wert={o.stimmen}
+                    onWert={(stimmen) => aendern((d) => auswahlOptionSetzen(d, o.id, { stimmen }))}
+                  />
+                </div>
+              </Group>
               <ActionIcon
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Möglichkeit ${i + 1} entfernen`}
                 onClick={() => aendern((d) => auswahlOptionEntfernen(d, o.id))}
               >
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            <LokalZahl
-              label="Stimmen"
-              wert={o.stimmen}
-              onWert={(stimmen) => aendern((d) => auswahlOptionSetzen(d, o.id, { stimmen }))}
-            />
           </Stack>
         </Paper>
       ))}
@@ -1532,6 +1636,7 @@ export function AuswahlFormular({
                 variant="subtle"
                 color="red"
                 size={42}
+                tabIndex={-1}
                 aria-label={`Stichwahl ${i + 1} entfernen`}
                 onClick={() => aendern((d) => stichwahlEntfernen(d, i))}
               >

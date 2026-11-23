@@ -7,6 +7,9 @@ import {
 } from '@c4/shared';
 import {
   anzahlSetzen,
+  bedarfEntfernen,
+  bedarfHinzufuegen,
+  schichtNeu,
   bedarfSetzen,
   dokumentNormalisieren,
   ersterLeererFeld,
@@ -17,6 +20,9 @@ import {
   eventBisSetzen,
   eventDatenAusVorlage,
   eventDatumSetzen,
+  eventKategorieSetzen,
+  eventZeigtBis,
+  kalenderEventLabel,
   kalenderEventFuerBaustein,
   kommendeEvents,
   optionEntfernen,
@@ -113,6 +119,47 @@ describe('Datum', () => {
   it('never puts the last day before the date', () => {
     const mit = { ...basis, datum: '2026-05-05' };
     expect(eventBisSetzen(mit, '2026-05-01').bisDatum).toBe('2026-05-05');
+  });
+  it('drops the last day when the Kategorie is single-day, keeps it otherwise', () => {
+    const mit = { ...basis, datum: '2026-05-05', bisDatum: '2026-05-07' };
+    expect(eventKategorieSetzen(mit, 'k', 'eintaegig')).toMatchObject({
+      kategorieId: 'k',
+      bisDatum: null,
+    });
+    expect(eventKategorieSetzen(mit, 'k', 'mehrtaegig').bisDatum).toBe('2026-05-07');
+    expect(eventKategorieSetzen(mit, null, undefined).bisDatum).toBe('2026-05-07');
+    expect(eventZeigtBis(undefined)).toBe(true);
+    expect(eventZeigtBis('ganztaegig')).toBe(true);
+    expect(eventZeigtBis('eintaegig')).toBe(false);
+  });
+  it('clears Dienste for a teilnahme Kategorie and the circle for a Dienste Kategorie', () => {
+    const schicht = { art: 'betrieb', beginnZeit: '18:00', endeZeit: '22:00', bedarfe: [] };
+    const mit = {
+      ...basis,
+      schichten: [schicht as never],
+      teilnahmeStatus: ['mitglied' as const],
+      eingeladen: ['s1'],
+    };
+    const teilnahme = eventKategorieSetzen(mit, 'k', 'ganztaegig', 'teilnahme');
+    expect(teilnahme.schichten).toEqual([]);
+    expect(teilnahme).toMatchObject({ teilnahmeStatus: ['mitglied'], eingeladen: ['s1'] });
+    const dienste = eventKategorieSetzen(mit, 'k', 'eintaegig', 'dienste');
+    expect(dienste).toMatchObject({ teilnahmeStatus: null, eingeladen: [] });
+    expect(dienste.schichten).toHaveLength(1);
+    expect(eventKategorieSetzen(mit, null, undefined)).toMatchObject({ eingeladen: ['s1'] });
+  });
+  it('labels calendar events like the headings', () => {
+    const e = {
+      anzeigeTitel: 'Caro',
+      beginn: '2026-11-25T09:00:00.000Z',
+      ende: '2026-11-30T17:00:00.000Z',
+      dauer: 'mehrtaegig' as const,
+      kategorie: { id: 'k', name: 'PP' },
+    };
+    expect(kalenderEventLabel(e as never)).toBe('25. – 30.11. PP Caro');
+    expect(
+      kalenderEventLabel({ ...e, ende: '2026-11-25T12:00:00.000Z', dauer: 'eintaegig' } as never),
+    ).toBe('25.11. PP Caro');
   });
 });
 
@@ -366,9 +413,15 @@ describe('Wahl', () => {
 
 describe('ersterLeererFeld', () => {
   it('picks Datum when a Vorlage filled the name, else Name', () => {
-    expect(ersterLeererFeld('bausteinEvent', { name: 'Bar', datum: null })).toBe('datum');
-    expect(ersterLeererFeld('bausteinEvent', { name: '', datum: null })).toBe('name');
-    expect(ersterLeererFeld('bausteinEvent', { name: 'Bar', datum: '2026-05-01' })).toBe('text');
+    const e = { eventId: 'e1' };
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: 'Bar', datum: null })).toBe('datum');
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: '', datum: null })).toBe('name');
+    expect(ersterLeererFeld('bausteinEvent', { ...e, name: 'Bar', datum: '2026-05-01' })).toBe(
+      'text',
+    );
+    expect(ersterLeererFeld('bausteinEvent', { eventId: null, name: 'Bar', datum: null })).toBe(
+      'kalender',
+    );
   });
   it('handles the other Bausteine', () => {
     expect(
@@ -535,6 +588,8 @@ describe('kalenderEventFuerBaustein', () => {
       verantwortlichSub: null,
       eventId: null,
       kategorieId: null,
+      teilnahmeStatus: null,
+      eingeladen: [],
     });
     expect(daten).toMatchObject({
       vorlageId: 'v1',
@@ -582,5 +637,32 @@ describe('Todo Zuständige', () => {
         { art: 'person', sub: 'b' },
       ]),
     ).toBe(false);
+  });
+});
+
+describe('Dienste hinzufügen', () => {
+  const zeiten = { beginnZeit: '20:00', endeZeit: '04:00' };
+  it('creates valid Schichten of every art with the event times', () => {
+    for (const art of ['betrieb', 'aufbau', 'putzen'] as const) {
+      const s = schichtNeu(art, zeiten, 'd1');
+      expect(vorlageSchichtSchema.safeParse(s).success).toBe(true);
+      expect(s).toMatchObject({ art, beginnZeit: '20:00', endeZeit: '04:00' });
+    }
+  });
+  it('falls back to default times for an all-day event', () => {
+    expect(schichtNeu('aufbau', { beginnZeit: null, endeZeit: null }, 'd1')).toMatchObject({
+      beginnZeit: '18:00',
+      endeZeit: '22:00',
+    });
+  });
+  it('adds a Bedarf once per Dienstform and keeps the last one', () => {
+    const s = schichtNeu('betrieb', zeiten, 'd1');
+    const zwei = bedarfHinzufuegen(s, 'd2');
+    expect(zwei.art === 'betrieb' && zwei.bedarfe.map((b) => b.dienstformId)).toEqual(['d1', 'd2']);
+    expect(bedarfHinzufuegen(zwei, 'd2')).toBe(zwei);
+    expect(vorlageSchichtSchema.safeParse(zwei).success).toBe(true);
+    const eins = bedarfEntfernen(zwei, 0);
+    expect(eins.art === 'betrieb' && eins.bedarfe.map((b) => b.dienstformId)).toEqual(['d2']);
+    expect(bedarfEntfernen(eins, 0)).toBe(eins);
   });
 });

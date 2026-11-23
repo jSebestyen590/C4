@@ -32,7 +32,7 @@ export async function protokollPdfAblauf(
   let dateiname: string;
   try {
     const eingabe = await d.eingabe();
-    dateiname = `${druckTitel(eingabe.sitzung)}.pdf`;
+    dateiname = `${druckTitel(eingabe.sitzung, eingabe.offiziell)}.pdf`;
     pdf = await d.erzeugen(eingabe);
   } catch (err) {
     console.error('Creating the protocol PDF failed', err);

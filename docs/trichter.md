@@ -3,6 +3,12 @@
 Wer trichtert, wird eingetragen. Aus den Einträgen entsteht eine Rangliste mit Trichterkönig:in für das laufende Jahr und
 für alle Zeiten.
 
+## Überblick
+
+Wer trichtert, wird eingetragen; aus den Einträgen entsteht eine Rangliste mit Trichterkönig:in für das laufende Jahr und für alle Zeiten. Volumen werden als ganze Milliliter gespeichert (`volumen_ml`), ein Durchgang gilt geteilt (Volumen durch Anzahl Teilnehmende). Man trägt nie sich selbst ein, und auf archivierte Trichter lassen sich keine neuen Durchgänge eintragen.
+
+Abschnitte: Invarianten, Grenzen, Dateien, Trichter und Durchgänge, Königswertung, Rechte, Datenmodell, Seiten und API
+
 ## Invarianten
 
 - Volumen werden überall als ganze Milliliter gespeichert (`volumen_ml`); nur die Eingabe läuft in Litern (`literZuMl`).

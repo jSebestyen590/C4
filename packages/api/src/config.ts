@@ -4,6 +4,8 @@ export interface Config {
   clientId: string;
   dsqlEndpoint: string;
   profilbildBucket: string;
+  /** Finanzarchiv bucket (Object Lock) for Beleg files and exports; unset = the Belege upload is off. */
+  finanzarchivBucket?: string;
   /** Public origin of the web app for links in the calendar feed; unset = no links. */
   appUrl?: string;
   /** Secrets Manager secret with the Party-Mail credentials; unset = Party-Mail off. */
@@ -25,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     clientId: need('CLIENT_ID'),
     dsqlEndpoint: need('DSQL_ENDPOINT'),
     profilbildBucket: need('PROFILBILD_BUCKET'),
+    ...(env.FINANZARCHIV_BUCKET && { finanzarchivBucket: env.FINANZARCHIV_BUCKET }),
     ...(env.PARTYMAIL_SECRET_ARN && { partymailSecretArn: env.PARTYMAIL_SECRET_ARN }),
     ...(env.ONEDRIVE_SECRET_ARN && { onedriveSecretArn: env.ONEDRIVE_SECRET_ARN }),
     ...(env.VAPID_SECRET_ARN && { vapidSecretArn: env.VAPID_SECRET_ARN }),

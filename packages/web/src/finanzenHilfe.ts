@@ -11,7 +11,7 @@ export const HILFE = {
     stueckelung:
       'Das Konto führt seinen Bestand je Münze und Schein (Stückelung). Das brauchst du für die Fächer des Safes und für Kassen. Bei jeder Buchung auf dieses Konto gibst du an, welche Münzen und Scheine es sind. Lässt sich nach der ersten Buchung nicht mehr ändern.',
     steuersatzStandard:
-      'Nur ein Vorschlagswert für die spätere Belegerfassung bei Erlös- und Aufwandskonten. Die Buchungszeile trägt den tatsächlichen Satz. Bei Bargeld, Bank, Durchlauf und Neutral ist er ohne Bedeutung. Derzeit wird er noch nirgends vorbelegt.',
+      'Nur ein Vorschlagswert bei Erlös- und Aufwandskonten: Wählst du das Konto als Kategorie eines Belegpostens, wird der Steuersatz damit vorbelegt (du kannst ihn ändern). Die Buchungszeile trägt den tatsächlichen Satz. Bei Bargeld, Bank, Durchlauf und Neutral ist er ohne Bedeutung.',
     archivieren:
       'Konten werden nie gelöscht, sondern archiviert. Ein archiviertes Konto nimmt keine neuen Buchungen mehr an, seine bisherigen Buchungszeilen bleiben erhalten. Du kannst es jederzeit wiederherstellen.',
   },
@@ -54,9 +54,51 @@ export const HILFE = {
     zaehlprotokoll:
       'Jede Zählung wird als Protokoll gespeichert, auch wenn alles stimmt. Eine gespeicherte Zählung lässt sich nicht ändern; Fehler korrigierst du mit einer neuen Zählung.',
   },
+  kassen: {
+    kasse:
+      'Eine Kasse ist ein Fach des Safes (Bargeld mit Stückelung) mit Zusatzdaten: Grundbestand, Standard-Erlöskonto und Standard-Ziel-Fach. Den Namen und das Archivieren änderst du im Kontenplan.',
+    grundbestand:
+      'Das soll in der Kasse sein, wenn sie rausgeht: je Münze und Schein eine Anzahl. Die Abrechnung füllt die Kasse darauf auf und führt den Rest ab. Den Grundbestand kannst du jederzeit ändern.',
+    erloeskonto:
+      'Auf dieses Erlöskonto geht die gesamte Einnahme einer Abrechnung. Der Steuersatz kommt vom Erlöskonto. Gibt es Getränke und Essen mit verschiedenen Steuersätzen, nimm getrennte Kassen.',
+    zielFach:
+      'Der Überschuss der Kasse geht in dieses Fach, und fehlende Münzen und Scheine kommen von dort. In der Abrechnung kannst du es ändern.',
+    standardKategorien:
+      'Bei Events dieser Kategorien ist die Kasse automatisch vorgesehen und wartet am Event auf ihre Zählung. Das gilt für alle Events, auch für schon angelegte, solange die Finanzer:in die Kassen eines Events nicht selbst festlegt.',
+    dienstZaehlung:
+      'Wer Dienst hat, kann die Kasse am Event zählen. Das ist unverbindlich: Es dient nur der Übersicht und der Zuordnung der Einnahmen zu Events und löst keine Buchung aus. Zählst du eine Kasse mehrfach, zählt die neueste Zählung.',
+    ist: 'Zähle die Kasse durch und trage ein, was wirklich drin ist. Felder, die du leer lässt, zählen als 0. Bestand ist, was laut Buchhaltung in der Kasse sein müsste. Einnahme ist Ist minus Bestand und darf auch negativ sein.',
+    transfer:
+      'Transfer ist, was zwischen Kasse und Ziel-Fach wandert: positiv = aus der Kasse ins Ziel-Fach (Überschuss), negativ = aus dem Ziel-Fach in die Kasse (Auffüllen). Vorgeschlagen wird, was die Kasse auf den Grundbestand bringt, du kannst es ändern. „Kasse danach“ zeigt, was in der Kasse bleibt.',
+    fehlbestand:
+      'Reichen die Münzen im Ziel-Fach nicht, um die Kasse aufzufüllen, fehlen sie. Du kannst Münzrollen aus einem anderen Fach ins Ziel-Fach holen (die Rolle wird dort geöffnet, der Rest bleibt im Ziel-Fach) oder die Kasse diesmal mit weniger Münzen rausgehen lassen. Der Grundbestand bleibt in beiden Fällen unverändert.',
+    eventZuordnung:
+      'Die Einnahme wird auf die Events verteilt, an denen die Kasse seit der letzten Abrechnung gezählt wurde: Vorschlag ist die Differenz der Dienst-Zählungen. Die Beträge kannst du ändern. Das ist nur eine Zuordnung für Auswertungen, gebucht wird die gesamte Einnahme als ein Erlös.',
+    fehler:
+      'Fehler ohne Event ist die Einnahme minus die Summe der Event-Einnahmen. Er steht nur in der Zuordnung und ändert die Buchung nicht. Beispiel: Du zählst 100 €, Event 1 hatte 50 € und Event 2 40 €, dann sind 10 € Fehler.',
+    storno:
+      'Eine Abrechnung lässt sich nicht ändern. Zum Korrigieren stornierst du die Buchung im Journal; die Dienst-Zählungen erscheinen dann in der nächsten Abrechnung wieder.',
+  },
+  festschreibung: {
+    bis: 'Bis zu diesem Tag sind alle Monate festgeschrieben. Mit einem früheren Datum lässt sich nichts mehr buchen.',
+    monat:
+      'Monate werden der Reihe nach festgeschrieben, ab dem 10. des Folgemonats ist der Vormonat fällig. Die Festschreibung sichert den Stand des Journals im Archiv und lässt sich nicht rückgängig machen.',
+    hinweise:
+      'Das sind offene Vorgänge im Monat. Sie blockieren nicht, aber danach lassen sich Buchungen mit Datum in diesem Monat nicht mehr anlegen: Belege und Kassenabrechnungen werden dann mit dem ersten offenen Tag gebucht.',
+    kopfHash:
+      'Der Hash der letzten Buchung des Monats. Er hängt von allen früheren Buchungen ab und weist nach, dass sich nichts verändert hat.',
+  },
+  datenexport: {
+    zeitraum:
+      'Der Zeitraum der Buchungen, die exportiert werden (Buchungsdatum). Höchstens 10 Jahre. Vorgabe ist das Vorjahr.',
+    export:
+      'Der Export ist eine ZIP-Datei mit CSV-Dateien, einer index.xml (Beschreibungsstandard für die Datenträgerüberlassung) und einer Beschreibung. Er wird im Archiv abgelegt und bleibt dort erhalten. Mit Belegdateien liegen die Dateien der Belege zusätzlich im Ordner belege/; der Export wird dann im Hintergrund erstellt.',
+  },
   kette: {
     ergebnis:
-      'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Geprüft wird derzeit nur gegen die Datenbank, nicht gegen das spätere Archiv.',
+      'Die Prüfung liest alle Buchungen und kontrolliert lückenlose Nummern, den Verweis jeder Buchung auf die vorige, die Hashes (erkennen nachträglich veränderte Inhalte), dass jede Buchung aufgeht und den Zähler. „Kette intakt“ heißt: nichts wurde verändert. Außerdem vergleicht sie die Datenbank mit dem Archiv (Exporte, Anker, Festschreibungen, Belegdateien). Ist das Archiv nicht eingerichtet, wird nur die Datenbank geprüft.',
+    archiv:
+      'Das Archiv ist ein unveränderlicher Speicher außerhalb der Datenbank. „Nicht exportiert“ sind Buchungen, die noch nicht ins Archiv geschrieben wurden; das ist kein Fehler.',
   },
   buch: {
     nummer:
@@ -98,5 +140,88 @@ export const HILFE = {
       'Ein Eintrag wird nie geändert oder gelöscht. Das Storno ist ein neuer Eintrag mit umgekehrten Werten und deiner Begründung. Jeder Eintrag lässt sich nur einmal stornieren, ein Storno nicht.',
     rangliste:
       'Die Rangliste sortiert nach Umsatz in Euro: Striche mal Strichwert plus Bar. Abzahlungen zählen nicht. Stornierte Einträge zählen nicht mit.',
+  },
+  belege: {
+    nummer:
+      'Die Belegnummer (B-Jahr-Nummer, z. B. B-2027-0001) wird beim Buchen vergeben, lückenlos je Jahr. Das Jahr ist das des Buchens, nicht das Belegdatum. Entwürfe haben noch keine Nummer.',
+    datei:
+      'Das Original wird unverändert archiviert (PDF, JPEG, PNG oder HEIC, höchstens 20 MB) und lässt sich danach nicht mehr ändern oder löschen. Auch ein verworfener Entwurf hinterlässt die Datei im Archiv. Die gleiche Datei erkennt die App an ihrem Fingerabdruck und warnt vor Dubletten.',
+    eigenbeleg:
+      'Gibt es keinen Beleg (z. B. Bon verloren), erfasst du einen Eigenbeleg ohne Datei. Dann ist die Begründung Pflicht; sie wird mit dem Beleg gespeichert. Ein Eigenbeleg wird ohne Vorsteuer gebucht: Der volle Betrag ist Aufwand.',
+    kategorie:
+      'Kategorien sind die Aufwandskonten im Kontenplan, auf die die Ausgabe gebucht wird.',
+    preisRechnen:
+      'Im Preisfeld darfst du rechnen mit + - * / und Klammern, z. B. (7,99 + 4,50)/12. Meist teilst du den Gesamtpreis durch die Anzahl. Das Feld zeigt das Ergebnis auf Cent gerundet; der Betrag der Zeile wird mit dem exakten Preis gerechnet (Preis mal Anzahl, gerundet).',
+    serienerfassung:
+      'Neuer Beleg: Nach dem Buchen öffnet sich gleich ein leerer Beleg. Eingereichter Beleg: Nach dem Buchen oder Verwerfen geht es mit der nächsten Einreichung weiter (älteste zuerst). Ausgeschaltet kommst du zur Beleg-Seite.',
+    modus:
+      'Brutto: Die Preise auf dem Beleg enthalten die Steuer; sie wird je Steuersatz herausgerechnet. Netto: Die Preise sind ohne Steuer; die Steuer kommt je Steuersatz obendrauf. Pfandrückgaben erfasst du als Leergut-Posten (Betrag negativ).',
+    belegsumme:
+      'Die Summe (brutto), die auf dem Beleg steht, auch negativ (z. B. reine Pfandrückgabe). Gebucht wird nur, wenn die Summe der Posten (inkl. Pfand, Leergut negativ) genau so hoch ist; die Differenz steht unter den Tabellen.',
+    neueWare:
+      'Steht die Ware nicht in der Liste, wähle ganz unten „Neue Ware anlegen“ (mit dem Recht „Waren verwalten“). Das Formular ist mit dem getippten Namen vorbelegt; danach steht die Ware in der Zeile.',
+    steuersatz:
+      'Der Steuersatz wird mit der Kategorie vorgeschlagen und gilt je Posten. Die Steuer wird je Steuersatz auf die Summe der Posten gerechnet (wie auf Kassenbons), nicht je Posten.',
+    anzahl: 'Die Anzahl darf Dezimalstellen haben, mit Komma getippt, z. B. 1,5 für 1,5 kg.',
+    korrektur:
+      'Bei Netto-Belegen kann die gerechnete Steuer um Cent vom Beleg abweichen. Mit der Korrektur je Steuersatz gleichst du Netto und Steuer an den Beleg an, höchstens um 10 Cent je Wert. Mehr ist keine Rundung, dann stimmen die Posten nicht.',
+    zahlweg:
+      'Bar: Das Geld kommt aus einem Safe-Fach, du gibst die Münzen und Scheine an. Bank: Gebucht wird direkt gegen das Bankkonto zum Bezahldatum. Auslage: Ein Mitglied hat bezahlt; der Beleg bleibt offen, bis du die Auslagen erstattest.',
+    bezahldatum:
+      'Das Datum, an dem bezahlt wurde; bei Bar und Bank das Buchungsdatum. Bei einer Auslage buchst du zum Belegdatum, das Bezahldatum ist später das Datum der Erstattung und wird nicht eingegeben.',
+    stueckelung:
+      'Abgang ist, was du aus dem Fach hergibst, Wechselgeld, was du zurückbekommst. Abgang minus Wechselgeld muss genau die Summe des Belegs ergeben. Der Abgang ist auf den Bestand des Fachs begrenzt.',
+    auslage:
+      'Hat ein Mitglied etwas vorgestreckt, wird es als Auslage gebucht und steht auf „Offene Auslagen“, bis du es erstattest. Mehrere Belege eines Mitglieds erstattest du gemeinsam in einer Buchung, bar oder per Bank.',
+    erstattung:
+      'Die Erstattung bucht „Auslagen Mitglieder“ gegen das Fach oder die Bank, zu ihrem eigenen Datum. Storniert du die Erstattung im Journal, sind die Belege wieder offen.',
+    erstattungEinlage:
+      'Das ist eine Einlage: Bar zählst du die erhaltenen Münzen und Scheine ins Fach, per Bank erwartest du eine Überweisung an den Verein.',
+    betragNegativ:
+      'Ein negativer Betrag bedeutet, dass du Geld zurückbekommen hast (z. B. reine Pfandrückgabe). Die Finanzer:innen buchen das als Einlage, bis das Geld beim Verein ist.',
+    leergutMitglied:
+      'Leergut ist eine Rückgabe: „Anzahl zurück“ mal Pfand je Stück ergibt einen negativen Betrag.',
+    kopieren:
+      'Ein gebuchter Beleg ist unveränderlich. „Als Entwurf kopieren“ legt einen neuen Entwurf mit denselben Angaben und derselben Datei an, z. B. nach einem Storno über das Journal.',
+    rechnungssteller:
+      'Wer die Rechnung gestellt hat (Händler, Lieferant). Archivierte Rechnungssteller erscheinen nicht mehr in der Auswahl, bleiben aber an alten Belegen erhalten. Vorbelegt wird der zuletzt verwendete.',
+    postenArt:
+      'Kategorie: ein normaler Aufwandsposten. Ware (Lager): eine Ware aus dem Lager in einem Gebinde (Kasten, Flasche …), mit Anzahl Gebinde und Preis je Gebinde; sie kann beim Buchen eingelagert werden. Leergut: zurückgegebene Pfandflaschen oder -kästen (Anzahl = Rückgabe, Preis = Pfand je Stück).',
+    pfand:
+      'Das Pfand je Gebinde wird aus dem Gebinde der Ware vorbelegt (inkl. Untergebinde) und lässt sich überschreiben; leer heißt kein Pfand. Es steht nicht im Aufwand, sondern auf dem Konto „Pfand/Leergut“, trägt aber die Steuer der Ware. Der Saldo des Kontos ist das ausstehende Leergut. Zurückgegebenes Leergut erfasst du als Posten der Art „Leergut“: Anzahl = zurückgegebene Stück (größer als 0), Preis = Pfand je Stück; der Betrag wird negativ (Steuersatz wie beim Pfand).',
+    lagerPosten:
+      'Bei einem Posten der Art „Ware (Lager)“ wählst du Ware und Gebinde; der Preis gilt je Gebinde ohne Pfand. Die Kategorie wird aus der Warengruppe der Ware vorgeschlagen und lässt sich ändern. Ohne Zuordnung musst du sie selbst wählen.',
+    artikelKategorie:
+      'Bei einem Kategorie-Posten trägst du zuerst den Artikel ein (z. B. „Deko“). Wurde ein Artikel mit diesem Namen schon gebucht, stehen die Kategorien, in denen er gebucht wurde, oben als Vorschläge (die häufigste ist vorausgewählt, solange die Kategorie leer ist). Groß- und Kleinschreibung zählen nicht. Alle anderen Kategorien stehen darunter.',
+    warengruppeKategorie:
+      'Jede Warengruppe kann einer Kategorie (Aufwandskonto) zugeordnet werden. Untergruppen erben die Zuordnung der nächsten Obergruppe, solange sie keine eigene haben. Beim Erfassen eines Ware-Postens wird sie vorgeschlagen.',
+    einreichen:
+      'Mitglieder reichen Belege mit Foto, Datum und Betrag als Auslage ein. Sie erscheinen im Bereich „Eingereicht“. Du ergänzt Rechnungssteller, Kategorien und Posten und buchst sie; den Zahlweg darfst du ändern. Passt der genannte Betrag nicht zur Summe, warnt dich das Buchen. „Verwerfen“ braucht eine Begründung, die das Mitglied per Nachricht erhält; es kann den Beleg neu einreichen.',
+  },
+  steuersaetze: {
+    zeitraeume:
+      'Regelsatz und ermäßigter Satz gelten ab einem Datum, bis der nächste Zeitraum beginnt (z. B. 16 % und 5 % vom 1.7.2020 bis 31.12.2020). Für ein Belegdatum gilt der letzte Zeitraum, der an oder vor diesem Datum beginnt. Kategorien und Artikel merken sich nur „Regelsatz“, „Ermäßigt“ oder „Keine Steuer“; der Prozentwert ergibt sich aus dem Datum.',
+    loeschen:
+      'Ein Zeitraum lässt sich nur löschen, solange noch kein Beleg und keine Kassenabrechnung in ihm gebucht ist. Der Zeitraum davor gilt dann wieder bis zum nächsten.',
+  },
+  sortierung: {
+    spalten:
+      'Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter Klick dreht die Richtung. Auf dem Handy wählst du Spalte und Richtung über „Sortieren nach“. Leere Werte stehen immer am Ende.',
+  },
+  artikel: {
+    erklaerung:
+      'Ein Artikel ist ein Name, der auf gebuchten Posten vorkommt (Kategorie-Posten). Seine Steuersatz-Vorgabe wird beim Erfassen eines Postens mit diesem Namen vorausgewählt; im Beleg kannst du sie weiter ändern. Gebuchte Belege bleiben unverändert.',
+    steuersatz:
+      'Standard-Steuersatz des Artikels: wird bei einem neuen Posten mit diesem Namen vorausgewählt.',
+  },
+  waren: {
+    standardGebinde:
+      'Das Standard-Gebinde wird beim Erfassen eines Ware-Postens vorausgewählt (samt Pfand). Ohne Standard wird das Gebinde nur vorausgewählt, wenn die Ware genau eines hat. Pflichtfeld; es muss eines der gewählten Gebinde der Ware sein.',
+  },
+  lagerAbgleich: {
+    erklaerung:
+      'Der Abgleich prüft je Ware, ob Lager und Belege zusammenpassen, gezählt ab dem Stichtag. Lager (Ist): Was eingelagert wurde. Belege (Soll): Was auf gebuchten Belegen als Ware gekauft wurde. Korrektur: Eine Erklärung für eine Abweichung, z. B. Bruch. Diskrepanz = Lager − Belege − Korrekturen. 0 bedeutet: alles passt. Positiv: mehr eingelagert als gekauft; negativ: mehr gekauft als eingelagert (Ware fehlt oder wurde noch nicht eingelagert). Alle Mengen sind in Basiseinheiten (kleinstes Gebinde), z. B. Flaschen.',
+    stichtag:
+      'Erst Einlagerungen, Belege und Korrekturen ab diesem Tag zählen. Davor liegende Bestände bleiben außen vor.',
   },
 } as const;

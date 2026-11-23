@@ -11,6 +11,12 @@ Umfragen kommen auf einmal (`GET /api/umfragen`), beendete seitenweise zu je 20,
 wird, liest sie in Stapeln zu 50 weiter, bis die Seite voll ist; sortiert wird nach `erstellt_am`, `id` (Index Migration
 `0091`). Der Erinnerungs-Job liest nur laufende Umfragen.
 
+## Überblick
+
+Jedes Mitglied kann Umfragen erstellen: eine oder mehrere Fragen mit festen Antworten und/oder Freitext, ein Ablaufdatum und zwei Personenkreise (wer abstimmen muss, wer abstimmen darf). Seiten liegen unter `/umfragen`; die Liste gliedert sich in „Offen für dich“, „Laufend“ und „Beendet“, auf dem Handy als Kacheln, ab `sm` als Tabelle. Beendete Umfragen werden seitenweise geladen, ein Erinnerungs-Job liest nur laufende.
+
+Abschnitte: Invarianten, Dateien, Formular, Regeln, Terminfindung, Bearbeiten, Benachrichtigungen, Datenmodell, Rechte, API
+
 ## Invarianten
 
 - Die Kreise (Pflicht/Optional) werden bei jedem Zugriff **dynamisch** gegen aktuelle Mitglieder, Status und Posten-Besetzungen

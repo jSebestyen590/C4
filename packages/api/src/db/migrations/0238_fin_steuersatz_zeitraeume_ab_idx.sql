@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS fin_steuersatz_zeitraeume_ab_idx ON fin_steuersatz_zeitraeume (ab)
