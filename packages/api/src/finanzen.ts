@@ -2241,7 +2241,11 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     },
 
     async datenexporte() {
-      return db.select().from(finDatenexporte).orderBy(desc(finDatenexporte.erstelltAm));
+      const zeilen = await db
+        .select()
+        .from(finDatenexporte)
+        .orderBy(desc(finDatenexporte.erstelltAm));
+      return zeilen.map((z) => ({ ...z, mitBelegdateien: z.mitBelegdateien ?? false }));
     },
 
     async datenexportEintragen({ id: vorgegeben, ...neu }) {
