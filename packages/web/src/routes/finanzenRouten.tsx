@@ -18,6 +18,8 @@ import { FinanzenKasseAbrechnenPage } from '../pages/FinanzenKasseAbrechnenPage'
 import { FinanzenKassenabrechnungPage } from '../pages/FinanzenKassenabrechnungPage';
 import { FinanzenKassenabrechnungenPage } from '../pages/FinanzenKassenabrechnungenPage';
 import { FinanzenKassenPage } from '../pages/FinanzenKassenPage';
+import { FinanzenDatenexportPage } from '../pages/FinanzenDatenexportPage';
+import { FinanzenFestschreibungPage } from '../pages/FinanzenFestschreibungPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
@@ -329,6 +331,26 @@ export function finanzenRouten() {
           <Protected permission="finanzen:pruefen">
             <RequireUsername>
               <FinanzenKettePage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/festschreibung"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenFestschreibungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/datenexport"
+        element={
+          <Protected anyOf={['finanzen:pruefen', 'finanzen:verwalten']}>
+            <RequireUsername>
+              <FinanzenDatenexportPage />
             </RequireUsername>
           </Protected>
         }

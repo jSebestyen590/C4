@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import {
+  type DatenexportDaten,
   AUSLAGEN_KONTO_ID,
   PFAND_KONTO_ID,
   BELEG_BETRAG_WARNUNG_CENT,
@@ -49,6 +50,7 @@ import {
   postenBetrag,
   postenZeilenLabel,
   type BelegPostenArt,
+  belegBuchungVerschoben,
   belegdatumAlt,
   datumAnzeigen,
   einzelpreisAusGesamt,
@@ -392,6 +394,12 @@ export interface EinreichungEintrag extends EinreichungDto {
 
 /** Belege part of `FinanzenStore`. Subs are Cognito subs; the routes turn them into member DTOs. */
 export interface BelegeStore {
+  /** Belege (with items) of the bookings dated in [von, bis] and all Rechnungssteller, for the Datenexport. */
+  datenexportBelege(
+    von: string,
+    bis: string,
+    tx?: Tx,
+  ): Promise<Pick<DatenexportDaten, 'belege' | 'belegposten' | 'rechnungssteller'>>;
   /** By name; archived ones only on request. */
   rechnungssteller(mitArchiv: boolean): Promise<RechnungsstellerDto[]>;
   /** Throws BuchungUngueltig when the name exists already (case-insensitive). Returns the id. */
@@ -500,6 +508,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
       .from(finBuchungen)
       .where(inArray(finBuchungen.stornoVon, buchungIds));
     return new Set(rows.flatMap((r) => (r.stornoVon ? [r.stornoVon] : [])));
+  };
+
+  const buchungsdaten = async (q: Q, buchungIds: string[]): Promise<Map<string, string>> => {
+    if (buchungIds.length === 0) return new Map();
+    const rows = await q
+      .select({ id: finBuchungen.id, datum: finBuchungen.datum })
+      .from(finBuchungen)
+      .where(inArray(finBuchungen.id, buchungIds));
+    return new Map(rows.map((r) => [r.id, r.datum] as [string, string]));
   };
 
   const stellerNamen = async (q: Q): Promise<Map<string, string>> =>
@@ -702,6 +719,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           datum: plan.buchung.datum,
           text: belegBuchungstext(nummer, plan.buchung.rechnungssteller),
           quelleTyp: 'beleg',
+          datumVerschiebbar: true,
           quelleId: belegId,
           eventId: null,
           stornoVon: null,
@@ -922,6 +940,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           datum: eingabe.datum,
           text: plan.text,
           quelleTyp: 'erstattung',
+          datumVerschiebbar: true,
           quelleId: erstattungId,
           eventId: null,
           stornoVon: null,
@@ -1071,6 +1090,67 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
   };
 
   const store: BelegeStore = {
+    async datenexportBelege(von, bis, tx) {
+      const q: Q = tx ?? db;
+      const imZeitraum = and(gte(finBuchungen.datum, von), lte(finBuchungen.datum, bis));
+      const [belege, posten, steller] = await Promise.all([
+        q
+          .select({ b: finBelege })
+          .from(finBelege)
+          .innerJoin(finBuchungen, eq(finBuchungen.id, finBelege.buchungId))
+          .where(imZeitraum)
+          .orderBy(asc(finBelege.nummer)),
+        q
+          .select({ p: finBelegposten })
+          .from(finBelegposten)
+          .innerJoin(finBelege, eq(finBelege.id, finBelegposten.belegId))
+          .innerJoin(finBuchungen, eq(finBuchungen.id, finBelege.buchungId))
+          .where(imZeitraum)
+          .orderBy(asc(finBelege.nummer), asc(finBelegposten.pos)),
+        q.select().from(finRechnungssteller).orderBy(asc(finRechnungssteller.name)),
+      ]);
+      return {
+        belege: belege.map(({ b }) => ({
+          id: b.id,
+          nummer: b.nummer,
+          rechnungsstellerId: b.rechnungsstellerId,
+          belegdatum: b.belegdatum,
+          modus: b.modus,
+          zahlweg: b.zahlweg,
+          bezahldatum: b.bezahldatum,
+          mitgliedId: b.mitgliedId,
+          eigenbelegBegruendung: b.eigenbelegBegruendung,
+          dateiSha256: b.dateiSha256,
+          dateiSchluessel: b.dateiSchluessel,
+          dateiTyp: b.dateiTyp,
+          dateiName: b.dateiName,
+          summeCent: b.summeCent,
+          buchungId: b.buchungId,
+          erstelltVon: b.erstelltVon,
+          erstelltAm: b.erstelltAm.toISOString(),
+        })),
+        belegposten: posten.map(({ p }) => ({
+          belegId: p.belegId,
+          pos: p.pos,
+          kategorieId: p.kategorieId,
+          art: p.art ?? 'kategorie',
+          text: p.text,
+          anzahlMilli: p.anzahlMilli,
+          einzelpreisCent: p.einzelpreisCent,
+          steuersatz: p.steuersatz,
+          betragCent: p.betragCent,
+          gesamtCent: p.gesamtCent,
+          pfandCent: p.pfandCent,
+          pfandBetragCent: p.pfandBetragCent,
+        })),
+        rechnungssteller: steller.map((r) => ({
+          id: r.id,
+          name: r.name,
+          archiviert: r.archiviert,
+        })),
+      };
+    },
+
     async rechnungssteller(mitArchiv) {
       const [rows, zuletzt] = await Promise.all([
         db.select().from(finRechnungssteller).orderBy(asc(finRechnungssteller.name)),
@@ -1168,6 +1248,8 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             eingereichtVon: e.eingereichtVon,
             eingereichtAm: e.eingereichtAm?.toISOString() ?? null,
             eingereichtBetragCent: d.eingereichtBetragCent,
+            buchungsdatum: null,
+            buchungVerschoben: false,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -1181,7 +1263,12 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           db,
           rows.map((r) => r.buchungId),
         );
+        const datumJeBuchung = await buchungsdaten(
+          db,
+          rows.map((r) => r.buchungId),
+        );
         const gebucht = rows.flatMap((r): BelegListeEintrag[] => {
+          const buchungsdatum = datumJeBuchung.get(r.buchungId) ?? null;
           const status: BelegStatus = storno.has(r.buchungId) ? 'storniert' : 'gebucht';
           const eintrag: BelegListeEintrag = {
             id: r.id,
@@ -1200,6 +1287,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
             eingereichtVon: r.eingereichtVon,
             eingereichtAm: r.eingereichtAm?.toISOString() ?? null,
             eingereichtBetragCent: r.eingereichtBetragCent,
+            buchungsdatum,
+            buchungVerschoben:
+              buchungsdatum !== null &&
+              belegBuchungVerschoben({
+                zahlweg: r.zahlweg,
+                belegdatum: r.belegdatum,
+                bezahldatum: r.bezahldatum,
+                buchungsdatum,
+              }),
           };
           return passt(eintrag) && (!abfrage.status || abfrage.status === status) ? [eintrag] : [];
         });
@@ -1226,7 +1322,7 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
           .orderBy(asc(finBelegposten.pos)),
         db.select().from(finBelegKorrekturen).where(eq(finBelegKorrekturen.belegId, id)),
         db
-          .select({ seq: finBuchungen.seq })
+          .select({ seq: finBuchungen.seq, datum: finBuchungen.datum })
           .from(finBuchungen)
           .where(eq(finBuchungen.id, b.buchungId)),
         db
@@ -1289,6 +1385,15 @@ export function createBelegeStore(db: Db, kern: BelegeKern): BelegeStore {
         jeSteuersatz: rechnung.jeSteuersatz,
         summeCent: b.summeCent,
         buchung: { id: b.buchungId, seq: buchung?.seq ?? 0 },
+        buchungsdatum: buchung?.datum ?? b.belegdatum,
+        buchungVerschoben:
+          !!buchung &&
+          belegBuchungVerschoben({
+            zahlweg: b.zahlweg,
+            belegdatum: b.belegdatum,
+            bezahldatum: b.bezahldatum,
+            buchungsdatum: buchung.datum,
+          }),
         storniert: storno.has(b.buchungId),
         erstattung: aktiv
           ? {

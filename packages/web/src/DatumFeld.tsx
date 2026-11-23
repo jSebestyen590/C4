@@ -48,15 +48,18 @@ export function DatumFeld({
   onWert,
   loeschbar = true,
   tippbar = false,
+  min,
   ...rest
 }: Readonly<
-  Omit<TextInputProps, 'type' | 'value' | 'onChange'> & {
+  Omit<TextInputProps, 'type' | 'value' | 'onChange' | 'min'> & {
     value: string;
     onWert: (wert: string) => void;
     /** Shows the clear button (default); turn off for required dates, which also saves width. */
     loeschbar?: boolean;
     /** Typeable "TT.MM.JJJJ" (also "20.11.26", "20.11.") with a calendar popover, for fast desktop entry. */
     tippbar?: boolean;
+    /** Earliest selectable day (`YYYY-MM-DD`). */
+    min?: string | null;
   }
 >) {
   if (tippbar)
@@ -69,8 +72,8 @@ export function DatumFeld({
         size="md"
         valueFormat="DD.MM.YYYY"
         dateParser={(text) => datumTextAlsIso(text)}
-        minDate={typeof rest.min === 'string' && rest.min ? rest.min : undefined}
         value={value || null}
+        minDate={min || undefined}
         onChange={(v) => onWert(datumWertAlsIso(v))}
         clearable={loeschbar}
         allowDeselect={loeschbar}
@@ -86,6 +89,7 @@ export function DatumFeld({
     <TextInput
       {...rest}
       type="date"
+      min={min || undefined}
       value={value}
       onChange={(e) => onWert(e.currentTarget.value)}
       rightSectionWidth={loeschbar ? 42 : undefined}

@@ -16,15 +16,15 @@ Deploy auf dev. Zu Beginn jeder Scheibe werden deren „Offene Punkte" mit dir g
 
 ## Getroffene Entscheidungen
 
-| Thema         | Entscheidung                                                            |
-| ------------- | ----------------------------------------------------------------------- |
-| GoBD-Anker    | S3 Object Lock (Compliance) im **bestehenden** AWS-Konto                |
-| Kassenprüfung | Posten „Kassenprüfung" mit eigenem Recht in der App                     |
-| Altdaten      | Nur Stammdaten + Anfangsbestände; Access bleibt Archiv bis 2026         |
-| Stichtag      | **01.01.2027** (2026 wird in Access abgeschlossen)                      |
-| Konto         | FinTS direkt, Datei-Import (CSV/CAMT) als Fallback                      |
-| SumUp         | Abruf per SumUp-API                                                     |
-| Buch-Sicht    | Eigene Seite + Rangliste für alle; Rest nur mit Finanzrecht             |
+| Thema         | Entscheidung                                                                   |
+| ------------- | ------------------------------------------------------------------------------ |
+| GoBD-Anker    | S3 Object Lock (Compliance) im **bestehenden** AWS-Konto                       |
+| Kassenprüfung | Posten „Kassenprüfung" mit eigenem Recht in der App                            |
+| Altdaten      | Nur Stammdaten + Anfangsbestände; Access bleibt Archiv bis 2026                |
+| Stichtag      | **01.01.2027** (2026 wird in Access abgeschlossen)                             |
+| Konto         | FinTS direkt, Datei-Import (CSV/CAMT) als Fallback                             |
+| SumUp         | Abruf per SumUp-API                                                            |
+| Buch-Sicht    | Eigene Seite + Rangliste für alle; Rest nur mit Finanzrecht                    |
 | Lager         | Belegposten verweisen auf Ware + Gebinde; Abgleich Lager ↔ Belege je Ware (4c) |
 
 ## Architektur (gilt für alle Scheiben)
@@ -217,6 +217,8 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 5: GoBD-Abschluss
 
+**Umgesetzt:** [finanzen-gobd.md](./finanzen-gobd.md).
+
 - Festschreibung je Monat mit Export; Kopf-Hash per Push an alle mit `finanzen:pruefen` und in der
   App abrufbar (Mail bräuchte SES, offen).
 - „Kette prüfen" gegen Archiv-Exporte und Beleg-Hashes, Abweichungen anzeigen.
@@ -352,22 +354,22 @@ FinTS-Überweisungen, E-Rechnung.
 
 ## Stand
 
-| Scheibe                   | Stand                                                                                                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md))                     |
-| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                     |
-| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                        |
-| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                   |
+| Scheibe                   | Stand                                                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 Fundament               | umgesetzt (PR #31); Arbeitsseiten desktop first nachgezogen, Idempotenz-Schlüssel; keine eigene DB-Rolle ([Spike](./finanzen-spike-dsql-rolle.md))                                                                  |
+| 1 Bargeld                 | umgesetzt (PR #55)                                                                                                                                                                                                  |
+| 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                                                                     |
+| 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                                                                |
 | 4 Belege                  | 4a, 4b und 4c umgesetzt ([finanzen-belege-4c.md](./finanzen-belege-4c.md), [finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
-| 5 GoBD-Abschluss          | offen                                                                                                                                                                  |
-| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                          |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                         |
-| 8 Rechnungen              | offen                                                                                                                                                                  |
-| 9 Auswertungen            | offen                                                                                                                                                                  |
-| Ü Übernahme               | offen                                                                                                                                                                  |
-| 10 Unentgeltliche Abgaben | offen                                                                                                                                                                  |
-| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                |
-| 12 Auslagen-Auswertung    | offen                                                                                                                                                                  |
+| 5 GoBD-Abschluss          | umgesetzt (PR folgt), Plan [finanzen-gobd.md](./finanzen-gobd.md)                                                                                                                                                   |
+| 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                                                                       |
+| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                                                                      |
+| 8 Rechnungen              | offen                                                                                                                                                                                                               |
+| 9 Auswertungen            | offen                                                                                                                                                                                                               |
+| Ü Übernahme               | offen                                                                                                                                                                                                               |
+| 10 Unentgeltliche Abgaben | offen                                                                                                                                                                                                               |
+| 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                                                             |
+| 12 Auslagen-Auswertung    | offen                                                                                                                                                                                                               |
 
 ## Verifikation (je Scheibe)
 

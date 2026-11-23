@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pingDb = vi.fn<() => Promise<void>>();
 const finanzExportJob = vi.fn(async () => ({ neu: 2, bisSeq: 5 }));
+const datenexportJob = vi.fn<(e: unknown) => Promise<{ ok: boolean; id: string }>>(async () => ({
+  ok: true,
+  id: 'x1',
+}));
 
 vi.mock('./bootstrap', () => ({
   createProduction: () => ({
@@ -9,6 +13,7 @@ vi.mock('./bootstrap', () => ({
     pingDb,
     mailJob: vi.fn(),
     finanzExportJob,
+    datenexportJob,
     pushJob: vi.fn(),
   }),
 }));
@@ -18,6 +23,13 @@ describe('lambda handler', () => {
   beforeEach(() => {
     pingDb.mockReset();
     pingDb.mockResolvedValue();
+  });
+
+  it('datenexport event runs the export job with the event as order', async () => {
+    const { handler } = await import('./lambda');
+    const auftrag = { c4: 'datenexport', id: 'x1', von: '2025-01-01', bis: '2025-12-31', sub: 'a' };
+    expect(await handler(auftrag, {})).toEqual({ ok: true, id: 'x1' });
+    expect(datenexportJob).toHaveBeenCalledWith(auftrag);
   });
 
   it('health event pings the database', async () => {

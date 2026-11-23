@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
+import { createHash, randomUUID } from 'node:crypto';
+import { strToU8, zipSync } from 'fflate';
 import {
   BELEGE_MAX,
+  pruefeArchiv,
   belegBuchenSchema,
   belegEinreichenSchema,
   steuersatzGueltigAm,
@@ -56,6 +59,27 @@ import {
   kontoArchivSchema,
   kontoEingabeSchema,
   pruefeKette,
+  kanonisch,
+  kanonischJson,
+  heuteBerlin,
+  ersterOffenerTag,
+  festgeschriebenBis,
+  festschreibungEingabeSchema,
+  DATENEXPORT_TABELLEN,
+  beschreibungTxt,
+  datenexportEingabeSchema,
+  indexXml,
+  GDPDU_DTD,
+  GDPDU_DTD_NAME,
+  tabelleAlsCsv,
+  type DatenexportDto,
+  type DatenexportErgebnisDto,
+  type DatenexportStartDto,
+  monatAnzeigen,
+  naechsterFestschreibbarerMonat,
+  type FestschreibungDto,
+  type FestschreibungErgebnisDto,
+  type FestschreibungsUebersichtDto,
   stornoEingabeSchema,
   type BuchungDetailDto,
   type BuchungenSeiteDto,
@@ -71,12 +95,19 @@ import {
   type KettenErgebnisDto,
   type KontoDto,
 } from '@c4/shared';
-import { BuchungUngueltig, KontoKonflikt, KontoUngueltig, StornoKonflikt } from '../finanzen';
+import {
+  BuchungUngueltig,
+  FestschreibungKonflikt,
+  KontoKonflikt,
+  KontoUngueltig,
+  StornoKonflikt,
+} from '../finanzen';
 import { BelegWarnungenOffen, type EinreichungEintrag } from '../finanzenBelege';
 import { bestEffort, type Sendung } from '../benachrichtigungen';
 import { mitgliederMitRecht } from '../privatpartyBenachrichtigungen';
 import { WarenKonflikt, WarenUngueltig } from '../waren';
 import { type AuthEnv } from '../auth';
+import { archivLaden } from '../finanzarchiv';
 import type { RoutenKontext } from './kontext';
 
 export const finanzenRoutes = (ctx: RoutenKontext) => {
@@ -89,6 +120,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     belegeEinreichen,
     finanzenVerwalten,
     finanzenPruefen,
+    finanzenPruefenOderVerwalten,
     gefunden,
   } = ctx;
 
@@ -148,6 +180,8 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
     if (err instanceof BuchungUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof KontoUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof StornoKonflikt) throw new HTTPException(409, { message: err.message });
+    if (err instanceof FestschreibungKonflikt)
+      throw new HTTPException(409, { message: err.message });
     if (err instanceof KontoKonflikt) throw new HTTPException(409, { message: err.message });
     if (err instanceof WarenUngueltig) throw new HTTPException(400, { message: err.message });
     if (err instanceof WarenKonflikt) throw new HTTPException(409, { message: err.message });
@@ -942,21 +976,281 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
           return c.json(ergebnis, ergebnis.wiederholt ? 200 : 201);
         },
       )
+      // Festschreibung (GoBD): closed months, one after the other; see docs/finanzen.md.
+      .get('/finanzen/festschreibungen', auth, finanzenLesen, async (c) => {
+        const [eintraege, frueh, mitglied] = await Promise.all([
+          deps.finanzen.festschreibungen(),
+          deps.finanzen.fruehesteBuchung(),
+          finanzenMitglieder(),
+        ]);
+        const monate = eintraege.map((f) => f.monat);
+        const festBis = festgeschriebenBis(monate);
+        const naechsterMonat = naechsterFestschreibbarerMonat({
+          letzterFest: [...monate].sort().at(-1) ?? null,
+          fruehesteBuchung: frueh,
+          heuteBerlin: heuteBerlin(),
+        });
+        const dto: FestschreibungsUebersichtDto = {
+          festgeschriebenBis: festBis,
+          ersterOffenerTag: ersterOffenerTag(festBis),
+          naechsterMonat,
+          hinweise: naechsterMonat
+            ? await deps.finanzen.festschreibungHinweise(naechsterMonat)
+            : [],
+          liste: eintraege.map((f): FestschreibungDto => ({
+            id: f.id,
+            monat: f.monat,
+            bisSeq: f.bisSeq,
+            kopfHash: f.kopfHash,
+            anzahl: f.anzahl,
+            exportSchluessel: f.exportSchluessel,
+            festgeschriebenVon: mitglied(f.festgeschriebenVon),
+            festgeschriebenAm: f.festgeschriebenAm.toISOString(),
+          })),
+        };
+        return c.json(dto);
+      })
+      .post(
+        '/finanzen/festschreibungen',
+        auth,
+        finanzenVerwalten,
+        zValidator('json', festschreibungEingabeSchema),
+        async (c) => {
+          const { monat } = c.req.valid('json');
+          const sub = c.get('user').sub;
+          const konflikt = (message: string) => new HTTPException(409, { message });
+          const eintraege = await deps.finanzen.festschreibungen();
+          const schon = eintraege.find((f) => f.monat === monat);
+          if (schon) {
+            const ergebnis: FestschreibungErgebnisDto = {
+              id: schon.id,
+              monat: schon.monat,
+              bisSeq: schon.bisSeq,
+              kopfHash: schon.kopfHash,
+              anzahl: schon.anzahl,
+              wiederholt: true,
+            };
+            return c.json(ergebnis, 200);
+          }
+          const naechster = naechsterFestschreibbarerMonat({
+            letzterFest:
+              eintraege
+                .map((f) => f.monat)
+                .sort()
+                .at(-1) ?? null,
+            fruehesteBuchung: await deps.finanzen.fruehesteBuchung(),
+            heuteBerlin: heuteBerlin(),
+          });
+          if (naechster !== monat)
+            throw konflikt(
+              naechster
+                ? `Als Nächstes ist ${monatAnzeigen(naechster)} dran.`
+                : 'Es kann kein Monat festgeschrieben werden.',
+            );
+          const daten = await deps.finanzen.kettenDaten();
+          const kette = await pruefeKette(daten.buchungen);
+          if (
+            kette.fehler.length > 0 ||
+            daten.zaehlerWert !== kette.letzteSeq ||
+            daten.zaehlerHash !== kette.kopfHash
+          )
+            throw konflikt('Die Kette hat Fehler, Festschreibung nicht möglich.');
+          const imMonat = daten.buchungen.filter((b) => b.datum.slice(0, 7) === monat.slice(0, 7));
+          const jetzt = new Date();
+          const schluessel = `festschreibung/${monat.slice(0, 7)}`;
+          try {
+            await deps.finanzarchiv.exportSchreiben(
+              `${schluessel}.jsonl`,
+              imMonat
+                .map(
+                  (b) =>
+                    kanonischJson({
+                      hash: b.hash,
+                      prev_hash: b.prevHash,
+                      buchung: JSON.parse(kanonisch(b)),
+                    }) + '\n',
+                )
+                .join(''),
+            );
+            await deps.finanzarchiv.exportSchreiben(
+              `${schluessel}.json`,
+              JSON.stringify({
+                monat,
+                bis_seq: kette.letzteSeq,
+                kopf_hash: kette.kopfHash,
+                anzahl: imMonat.length,
+                erstellt_am: jetzt.toISOString(),
+              }),
+            );
+          } catch {
+            throw new HTTPException(503, {
+              message:
+                'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+            });
+          }
+          await deps.finanzen
+            .festschreibungAnlegen({
+              monat,
+              bisSeq: kette.letzteSeq,
+              kopfHash: kette.kopfHash,
+              anzahl: imMonat.length,
+              exportSchluessel: `${schluessel}.jsonl`,
+              sub,
+              jetzt,
+              erwarteterZaehler: daten.zaehlerWert,
+            })
+            .catch(finanzenFehler);
+          await pushSenden(async () => ({
+            subs: await mitgliederMitRecht(deps, 'finanzen:pruefen'),
+            art: 'finanzen.festgeschrieben',
+            titel: `Monat ${monatAnzeigen(monat)} festgeschrieben`,
+            text: `Kopf-Hash: ${kette.kopfHash.slice(0, 16)}…, Nr. bis ${kette.letzteSeq}`,
+            url: '/app/finanzen/festschreibung',
+          }));
+          const neu = (await deps.finanzen.festschreibungen()).find((f) => f.monat === monat);
+          const ergebnis: FestschreibungErgebnisDto = {
+            id: neu?.id ?? '',
+            monat,
+            bisSeq: kette.letzteSeq,
+            kopfHash: kette.kopfHash,
+            anzahl: imMonat.length,
+          };
+          return c.json(ergebnis, 201);
+        },
+      )
       // Verifies the whole hash chain and compares the counter with the last booking.
       .get('/finanzen/kette', auth, finanzenPruefen, async (c) => {
         const daten = await deps.finanzen.kettenDaten();
         const ergebnis = await pruefeKette(daten.buchungen);
         const zaehlerPasst =
           daten.zaehlerWert === ergebnis.letzteSeq && daten.zaehlerHash === ergebnis.kopfHash;
+        const { fehler: archivFehler, ...archivZahlen } = deps.finanzarchiv.eingerichtet
+          ? await pruefeArchiv(
+              daten.buchungen,
+              await archivLaden(deps.finanzarchiv, daten.belegDateien).catch(() => {
+                throw new HTTPException(502, {
+                  message:
+                    'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+                });
+              }),
+            )
+          : {
+              fehler: [],
+              exporte: 0,
+              anker: 0,
+              festschreibungen: 0,
+              belegdateien: 0,
+              nichtExportiert: 0,
+            };
+        const fehler = [...ergebnis.fehler, ...archivFehler];
         const dto: KettenErgebnisDto = {
           ...ergebnis,
+          fehler,
+          archiv: { ...archivZahlen, eingerichtet: deps.finanzarchiv.eingerichtet },
           zaehlerWert: daten.zaehlerWert,
           zaehlerHash: daten.zaehlerHash,
           zaehlerPasst,
-          ok: zaehlerPasst && ergebnis.fehler.length === 0,
+          ok: zaehlerPasst && fehler.length === 0,
           geprueftAm: new Date().toISOString(),
         };
         return c.json(dto);
+      })
+      // ZIP with CSV files + index.xml (GDPdU) for the tax office; the file goes to the archive, the
+      // client downloads it through a presigned URL (API Gateway limits responses to 6 MB).
+      .post(
+        '/finanzen/datenexporte',
+        auth,
+        finanzenPruefenOderVerwalten,
+        zValidator('json', datenexportEingabeSchema),
+        async (c) => {
+          const { von, bis, mitBelegdateien } = c.req.valid('json');
+          if (!deps.finanzarchiv.eingerichtet)
+            throw new HTTPException(503, {
+              message: 'Das Finanzarchiv ist nicht eingerichtet. Ein Export ist nicht möglich.',
+            });
+          const sub = c.get('user').sub;
+          if (mitBelegdateien) {
+            // Too large for one request (GBs): a background job builds the ZIP and pushes the result.
+            const id = randomUUID();
+            try {
+              await deps.datenexportStarten({ c4: 'datenexport', id, von, bis, sub });
+            } catch (e) {
+              console.error('Datenexport konnte nicht gestartet werden', e);
+              throw new HTTPException(503, {
+                message:
+                  'Der Export konnte nicht gestartet werden. Bitte versuche es später noch einmal.',
+              });
+            }
+            const start: DatenexportStartDto = { id, laeuft: true };
+            return c.json(start, 202);
+          }
+          const jetzt = new Date();
+          const [daten, mitglied] = await Promise.all([
+            deps.finanzen.datenexportDaten(von, bis),
+            finanzenMitglieder(),
+          ]);
+          const ersteller = mitglied(sub);
+          const zip = zipSync({
+            ...Object.fromEntries(
+              DATENEXPORT_TABELLEN.map((t) => [t.datei, strToU8(tabelleAlsCsv(t, daten))]),
+            ),
+            'index.xml': strToU8(indexXml(DATENEXPORT_TABELLEN, 'C4 Leipzig')),
+            [GDPDU_DTD_NAME]: strToU8(GDPDU_DTD),
+            'beschreibung.txt': strToU8(
+              beschreibungTxt({
+                von,
+                bis,
+                erstelltVon: ersteller ? anzeigeName(ersteller) : sub,
+                erstelltAm: jetzt.toISOString(),
+              }),
+            ),
+          });
+          const sha256 = createHash('sha256').update(zip).digest('hex');
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+          const schluessel = `datenexport/${stempel}-${von}-${bis}.zip`;
+          let url: string;
+          try {
+            await deps.finanzarchiv.exportSchreiben(schluessel, zip);
+            url = await deps.finanzarchiv.anzeigeUrl(schluessel);
+          } catch {
+            throw new HTTPException(503, {
+              message:
+                'Das Finanzarchiv ist nicht erreichbar. Bitte versuche es später noch einmal.',
+            });
+          }
+          const id = await deps.finanzen.datenexportEintragen({
+            von,
+            bis,
+            schluessel,
+            sha256,
+            erstelltVon: sub,
+            erstelltAm: jetzt,
+            mitBelegdateien: false,
+          });
+          const ergebnis: DatenexportErgebnisDto = { id, url };
+          return c.json(ergebnis, 201);
+        },
+      )
+      .get('/finanzen/datenexporte', auth, finanzenPruefenOderVerwalten, async (c) => {
+        if (!deps.finanzarchiv.eingerichtet) return c.json([] as DatenexportDto[]);
+        const [eintraege, mitglied] = await Promise.all([
+          deps.finanzen.datenexporte(),
+          finanzenMitglieder(),
+        ]);
+        const liste: DatenexportDto[] = await Promise.all(
+          eintraege.map(async (e) => ({
+            id: e.id,
+            von: e.von,
+            bis: e.bis,
+            schluessel: e.schluessel,
+            sha256: e.sha256,
+            erstelltVon: mitglied(e.erstelltVon),
+            erstelltAm: e.erstelltAm.toISOString(),
+            mitBelegdateien: e.mitBelegdateien,
+            url: await deps.finanzarchiv.anzeigeUrl(e.schluessel),
+          })),
+        );
+        return c.json(liste);
       })
   );
   // ----- Umfragen;

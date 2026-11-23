@@ -68,3 +68,9 @@ variable "finanzarchiv_retention_days" {
   default     = 1
   description = "Object Lock default retention of the Finanzarchiv bucket in days (3650 = 10 years in prod)."
 }
+
+variable "cloudtrail_verwaltungsereignisse" {
+  type        = bool
+  default     = false
+  description = "Log management events (write) in the CloudTrail trail. Only prod: dev and prod share the account and only the first trail with management events is free."
+}

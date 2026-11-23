@@ -5,6 +5,7 @@ import {
   artikelVorschlaegeBilden,
   belegBerechnen,
   belegBuchungstext,
+  belegBuchungVerschoben,
   einreichungStatus,
   belegEntwurfDatenSchema,
   belegNummer,
@@ -152,6 +153,20 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
     return belege.some((b) => b.belegdatum >= von && (bis === null || b.belegdatum < bis));
   };
 
+  const buchungsdatumVon = (buchungId: string): string | null =>
+    k.buchungen.find((x) => x.id === buchungId)?.datum ?? null;
+  const verschoben = (b: FakeBeleg): boolean => {
+    const buchungsdatum = buchungsdatumVon(b.buchungId);
+    return (
+      buchungsdatum !== null &&
+      belegBuchungVerschoben({
+        zahlweg: b.zahlweg,
+        belegdatum: b.belegdatum,
+        bezahldatum: b.bezahldatum,
+        buchungsdatum,
+      })
+    );
+  };
   const storniert = () => new Set(k.buchungen.flatMap((b) => (b.stornoVon ? [b.stornoVon] : [])));
   const gleich = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   const kontext = (daten: BelegEntwurfDaten) => ({
@@ -226,6 +241,54 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
   };
 
   const store: BelegeStore = {
+    async datenexportBelege(von, bis) {
+      const buchungIds = new Set(
+        k.buchungen.filter((b) => b.datum >= von && b.datum <= bis).map((b) => b.id),
+      );
+      const imZeitraum = belege
+        .filter((b) => buchungIds.has(b.buchungId))
+        .sort((a, b) => a.nummer.localeCompare(b.nummer));
+      return {
+        belege: imZeitraum.map((b) => ({
+          id: b.id,
+          nummer: b.nummer,
+          rechnungsstellerId: b.rechnungsstellerId,
+          belegdatum: b.belegdatum,
+          modus: b.modus,
+          zahlweg: b.zahlweg,
+          bezahldatum: b.bezahldatum,
+          mitgliedId: b.mitgliedId,
+          eigenbelegBegruendung: b.eigenbelegBegruendung,
+          dateiSha256: b.datei?.sha256 ?? null,
+          dateiSchluessel: b.datei?.schluessel ?? null,
+          dateiTyp: b.datei?.typ ?? null,
+          dateiName: b.datei?.name ?? null,
+          summeCent: b.summeCent,
+          buchungId: b.buchungId,
+          erstelltVon: b.erstelltVon,
+          erstelltAm: b.erstelltAm,
+        })),
+        belegposten: imZeitraum.flatMap((b) =>
+          b.posten.map((p) => ({
+            belegId: b.id,
+            pos: p.pos,
+            kategorieId: p.kategorieId,
+            art: p.art,
+            text: p.text,
+            anzahlMilli: p.anzahlMilli,
+            einzelpreisCent: p.einzelpreisCent,
+            steuersatz: p.steuersatz,
+            betragCent: p.betragCent,
+            gesamtCent: p.gesamtCent,
+            pfandCent: p.pfandCent,
+            pfandBetragCent: p.pfandBetragCent,
+          })),
+        ),
+        rechnungssteller: [...steller.values()]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((r) => ({ id: r.id, name: r.name, archiviert: r.archiviert })),
+      };
+    },
     async rechnungssteller(mitArchiv) {
       return [...steller.values()]
         .filter((r) => mitArchiv || !r.archiviert)
@@ -294,6 +357,8 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
             eingereichtVon: e.eingereichtVon,
             eingereichtAm: e.eingereichtAm,
             eingereichtBetragCent: d.eingereichtBetragCent,
+            buchungsdatum: null,
+            buchungVerschoben: false,
           };
           if (passt(eintrag)) liste.push(eintrag);
         }
@@ -323,6 +388,8 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
               eingereichtVon: b.eingereichtVon,
               eingereichtAm: b.eingereichtAm,
               eingereichtBetragCent: b.eingereichtBetragCent,
+              buchungsdatum: buchungsdatumVon(b.buchungId),
+              buchungVerschoben: verschoben(b),
             };
             return passt(eintrag) && (!abfrage.status || abfrage.status === status)
               ? [eintrag]
@@ -360,6 +427,8 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         jeSteuersatz: rechnung.jeSteuersatz,
         summeCent: b.summeCent,
         buchung: { id: b.buchungId, seq: b.buchungSeq },
+        buchungsdatum: buchungsdatumVon(b.buchungId) ?? b.belegdatum,
+        buchungVerschoben: verschoben(b),
         storniert: storno.has(b.buchungId),
         erstattung: e
           ? { id: e.id, datum: e.datum, buchung: { id: e.buchungId, seq: e.buchungSeq } }
@@ -540,6 +609,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         datum: plan.buchung.datum,
         text: belegBuchungstext(nummer, plan.buchung.rechnungssteller),
         quelleTyp: 'beleg',
+        datumVerschiebbar: true,
         quelleId: belegId,
         eventId: null,
         stornoVon: null,
@@ -787,6 +857,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
         datum: eingabe.datum,
         text: plan.text,
         quelleTyp: 'erstattung',
+        datumVerschiebbar: true,
         quelleId: id,
         eventId: null,
         stornoVon: null,

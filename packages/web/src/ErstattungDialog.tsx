@@ -8,6 +8,7 @@ import { mengenLeer, type Mengen } from './bargeldFormular';
 import { bezahltCent, stueckelungAus, stueckelungHinweis } from './belegFormular';
 import { schluesselFuer } from './buchungFormular';
 import { DatumFeld } from './DatumFeld';
+import { VerschiebHinweis } from './FestschreibungHinweise';
 import { BETRAG_STIL, finanzenKeys, jsonOderFehler, useBargeld } from './finanzenDaten';
 import { HINWEIS_DAUER_MS } from './gebuchtHinweis';
 import { HILFE } from './finanzenHilfe';
@@ -146,6 +147,7 @@ export function ErstattungDialog({
         <Text size="sm" c="dimmed">
           {HILFE.belege.erstattung}
         </Text>
+        <VerschiebHinweis datum={datum} />
         <Group align="flex-end" grow>
           <DatumFeld
             label="Datum der Erstattung"

@@ -154,6 +154,27 @@ export const BENACHRICHTIGUNGS_ARTEN = [
     standardAktiv: true,
     minuten: null,
   },
+  {
+    // A month was closed (Festschreibung); goes to holders of `finanzen:pruefen`.
+    key: 'finanzen.festgeschrieben',
+    bereich: 'finanzen',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    // Weekly reminder from the 10th on that a past month is not closed yet; goes to holders of `finanzen:verwalten`.
+    key: 'finanzen.festschreibung_faellig',
+    bereich: 'finanzen',
+    standardAktiv: true,
+    minuten: null,
+  },
+  {
+    // Result of the asynchronous Datenexport with Beleg files (done or failed); goes to the requester.
+    key: 'finanzen.datenexport_fertig',
+    bereich: 'finanzen',
+    standardAktiv: true,
+    minuten: null,
+  },
 ] as const satisfies readonly BenachrichtigungsArt[];
 
 export type BenachrichtigungsArtKey = (typeof BENACHRICHTIGUNGS_ARTEN)[number]['key'];

@@ -208,7 +208,7 @@ resource "aws_iam_policy" "workload_boundary" {
       {
         Sid    = "S3EnvBucketObjects"
         Effect = "Allow"
-        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Action = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject"]
         Resource = [
           "arn:aws:s3:::c4-${each.value}-*/*",
         ]
@@ -216,7 +216,7 @@ resource "aws_iam_policy" "workload_boundary" {
       {
         Sid      = "S3EnvBucketList"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
+        Action   = ["s3:ListBucket", "s3:ListBucketVersions"]
         Resource = ["arn:aws:s3:::c4-${each.value}-*"]
       },
       {
@@ -293,6 +293,20 @@ resource "aws_iam_role_policy" "deploy" {
         Effect   = "Allow"
         Action   = ["lambda:*"]
         Resource = ["arn:aws:lambda:${local.region}:${local.account}:function:c4-${each.key}-*"]
+      },
+      {
+        # CloudTrail of the Finanzarchiv (infra/modules/app): trail of this env only.
+        Sid      = "CloudTrail"
+        Effect   = "Allow"
+        Action   = ["cloudtrail:*"]
+        Resource = ["arn:aws:cloudtrail:${local.region}:${local.account}:trail/c4-${each.key}-*"]
+      },
+      {
+        # Read-only calls that have no resource ARN (the provider lists/describes trails).
+        Sid      = "CloudTrailRead"
+        Effect   = "Allow"
+        Action   = ["cloudtrail:DescribeTrails", "cloudtrail:ListTrails", "cloudtrail:GetTrail", "cloudtrail:GetTrailStatus", "cloudtrail:ListTags"]
+        Resource = ["*"]
       },
       {
         # EventBridge Scheduler runs the push job of the API Lambda (infra/modules/app).

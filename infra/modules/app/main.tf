@@ -159,10 +159,17 @@ resource "aws_iam_role_policy" "lambda" {
         ]
       },
       {
-        # Finanzarchiv: write and read only. No delete, no BypassGovernanceRetention.
+        # Finanzarchiv: write and read only (incl. versions). No delete, no BypassGovernanceRetention.
         Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:ListBucket", "s3:ListBucketVersions"]
         Resource = [aws_s3_bucket.finanzarchiv.arn, "${aws_s3_bucket.finanzarchiv.arn}/*"]
+      },
+      {
+        # Datenexport with Beleg files: the API invokes itself asynchronously (InvocationType Event).
+        # Built from the name, not the function ARN, because the function depends on this role.
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${local.region}:${data.aws_caller_identity.current.account_id}:function:${local.name}-api"
       },
       {
         # Deleting a protocol removes all its images (list + delete by prefix).
@@ -217,7 +224,9 @@ resource "aws_lambda_function" "api" {
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
   memory_size      = 512
-  timeout          = 15
+  # 15 minutes for the asynchronous Datenexport with Beleg files (self-invoke, see docs/finanzen.md).
+  # HTTP requests stay capped at 29 s by API Gateway whatever this is; the schedules do not depend on it.
+  timeout = 900
 
   environment {
     variables = {
@@ -406,6 +415,12 @@ resource "aws_scheduler_schedule" "finanz_export" {
   }
 }
 
+# The self-invoke of the Datenexport job must not be retried: a retry would build the export twice.
+resource "aws_lambda_function_event_invoke_config" "api" {
+  function_name          = aws_lambda_function.api.function_name
+  maximum_retry_attempts = 0
+}
+
 # Party-Mail job: fetches new mails every 2 minutes. A schedule of its own, so the push job keeps its
 # 15 seconds. The scheduler role above may invoke the whole function.
 resource "aws_scheduler_schedule" "mail_job" {
@@ -538,7 +553,8 @@ resource "aws_s3_bucket_policy" "profilbilder" {
 
 # Access logs (S3 server access logs + CloudFront standard logs), expired after 90 days.
 # ---------------------------------------------------------------- S3 (Finanzarchiv)
-# Beleg files and daily exports under Object Lock; nothing is ever deleted (no lifecycle rules).
+# Beleg files and daily exports under Object Lock; nothing is ever deleted. The only lifecycle rule
+# drops the parts of failed multipart uploads (Datenexport ZIPs), which are no objects.
 resource "aws_s3_bucket" "finanzarchiv" {
   bucket              = "${local.name}-finanzarchiv-${data.aws_caller_identity.current.account_id}"
   object_lock_enabled = true
@@ -570,6 +586,18 @@ resource "aws_s3_bucket_object_lock_configuration" "finanzarchiv" {
   }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "finanzarchiv" {
+  bucket = aws_s3_bucket.finanzarchiv.id
+  rule {
+    id     = "abort-incomplete-multipart"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
 resource "aws_s3_bucket_cors_configuration" "finanzarchiv" {
   bucket = aws_s3_bucket.finanzarchiv.id
   cors_rule {
@@ -577,6 +605,129 @@ resource "aws_s3_bucket_cors_configuration" "finanzarchiv" {
     allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
     allowed_headers = ["content-type", "x-amz-checksum-sha256"]
     max_age_seconds = 3000
+  }
+}
+
+# ---------------------------------------------------------------- CloudTrail (Finanzarchiv)
+# Tamper-evident log of the writes to the Finanzarchiv (data events) and, in prod, of the account's
+# management events. Log files go to their own Object Lock bucket.
+locals {
+  trail_name = "${local.name}-trail"
+  trail_arn  = "arn:aws:cloudtrail:${local.region}:${data.aws_caller_identity.current.account_id}:trail/${local.trail_name}"
+}
+
+resource "aws_s3_bucket" "cloudtrail" {
+  bucket              = "${local.name}-cloudtrail-${data.aws_caller_identity.current.account_id}"
+  object_lock_enabled = true
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudtrail" {
+  bucket                  = aws_s3_bucket.cloudtrail.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
+  bucket     = aws_s3_bucket.cloudtrail.id
+  depends_on = [aws_s3_bucket_versioning.cloudtrail]
+  rule {
+    default_retention {
+      mode = var.finanzarchiv_retention_mode
+      days = var.finanzarchiv_retention_days
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail" {
+  bucket     = aws_s3_bucket.cloudtrail.id
+  depends_on = [aws_s3_bucket_public_access_block.cloudtrail]
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "CloudTrailAclCheck"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:GetBucketAcl"
+        Resource  = aws_s3_bucket.cloudtrail.arn
+        Condition = { StringEquals = { "aws:SourceArn" = local.trail_arn } }
+      },
+      {
+        Sid       = "CloudTrailWrite"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl"  = "bucket-owner-full-control"
+            "aws:SourceArn" = local.trail_arn
+          }
+        }
+      },
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource  = [aws_s3_bucket.cloudtrail.arn, "${aws_s3_bucket.cloudtrail.arn}/*"]
+        Condition = { Bool = { "aws:SecureTransport" = "false" } }
+      },
+    ]
+  })
+}
+
+resource "aws_cloudtrail" "finanzarchiv" {
+  name                          = local.trail_name
+  s3_bucket_name                = aws_s3_bucket.cloudtrail.id
+  is_multi_region_trail         = false
+  include_global_service_events = false
+  enable_log_file_validation    = true
+  depends_on                    = [aws_s3_bucket_policy.cloudtrail]
+
+  # Advanced selectors, so that with management events off only the data events are logged.
+  dynamic "advanced_event_selector" {
+    for_each = var.cloudtrail_verwaltungsereignisse ? [1] : []
+    content {
+      name = "Management events (write)"
+      field_selector {
+        field  = "eventCategory"
+        equals = ["Management"]
+      }
+      field_selector {
+        field  = "readOnly"
+        equals = ["false"]
+      }
+    }
+  }
+
+  advanced_event_selector {
+    name = "Finanzarchiv objects (write)"
+    field_selector {
+      field  = "eventCategory"
+      equals = ["Data"]
+    }
+    field_selector {
+      field  = "resources.type"
+      equals = ["AWS::S3::Object"]
+    }
+    field_selector {
+      field  = "readOnly"
+      equals = ["false"]
+    }
+    field_selector {
+      field       = "resources.ARN"
+      starts_with = ["${aws_s3_bucket.finanzarchiv.arn}/"]
+    }
   }
 }
 

@@ -38,6 +38,9 @@ import { createProtokolleStore } from './protokolle';
 import { createTrichterStore } from './trichter';
 import { createLagerAbgleichStore } from './lagerAbgleich';
 import { finanzExport } from './finanzExport';
+import { datenexportMitBelegdateien } from './finanzenDatenexportJob';
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
+import type { DatenexportAuftrag } from '@c4/shared';
 import { createFinanzenStore } from './finanzen';
 import { createBuchStore } from './buch';
 import { createUmfragenStore } from './umfragen';
@@ -96,6 +99,37 @@ export function createProduction() {
   const finanzarchiv = config.finanzarchivBucket
     ? createFinanzarchiv(config.finanzarchivBucket, config.region)
     : finanzarchivNichtEingerichtet;
+  /** Display name of a member for texts in exports. */
+  const erstellerName = async (sub: string) => {
+    const [rows, konten] = await Promise.all([mitglieder.alle(), userAdmin.konten()]);
+    const zeile = rows.find((r) => r.sub === sub);
+    return konten.get(sub)?.username ?? (zeile ? `${zeile.vorname} ${zeile.nachname}` : sub);
+  };
+  const datenexportJob = (auftrag: DatenexportAuftrag) =>
+    datenexportMitBelegdateien(
+      { store: finanzen, archiv: finanzarchiv, benachrichtigungen, erstellerName },
+      auftrag,
+      new Date(),
+    );
+  const lambdaName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const lambdaClient = lambdaName ? new LambdaClient({ region: config.region }) : undefined;
+  /**
+   * In Lambda: asynchronous self-invoke (`Event`, no retries), the job runs in its own invocation
+   * (see `lambda.ts`). Locally (no Lambda environment): the job runs in the background of this process.
+   */
+  const datenexportStarten = async (auftrag: DatenexportAuftrag) => {
+    if (!lambdaClient) {
+      void datenexportJob(auftrag);
+      return;
+    }
+    await lambdaClient.send(
+      new InvokeCommand({
+        FunctionName: lambdaName,
+        InvocationType: 'Event',
+        Payload: Buffer.from(JSON.stringify(auftrag)),
+      }),
+    );
+  };
   const app = createApp({
     verifyToken: createCognitoVerifier(config),
     userAdmin,
@@ -124,13 +158,18 @@ export function createProduction() {
     profilbilder: createProfilbilder(config.profilbildBucket, config.region),
     protokollbilder: createProtokollbilder(config.profilbildBucket, config.region),
     finanzarchiv,
+    datenexportStarten,
     pingDb,
   });
   return {
     app,
     pingDb,
     finanzExportJob: (jetzt: Date) =>
-      finanzExport({ store: finanzen, archiv: finanzarchiv }, jetzt),
+      finanzExport(
+        { store: finanzen, archiv: finanzarchiv, benachrichtigungen, posten, userAdmin },
+        jetzt,
+      ),
+    datenexportJob,
     pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
     mailJob: (jetzt: Date) =>
       mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),

@@ -1,16 +1,16 @@
 # Finanzen
 
-Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen) und Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand, Lager-Beleg-Abgleich) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
-Storno, freie Buchung, „Kette prüfen“ (nur gegen die Datenbank), der Safe mit Fächern, das Buch als Nebenbuch, die Barkassen mit Dienst-Zählung am Event und Abrechnung sowie Belege mit Datei-Archiv und Auslagen. Alles Weitere (Bankanbindung, …)
+Stand: **Scheibe 0 (Fundament), Scheibe 1 (Bargeld), Scheibe 2 (Buch, siehe [buch.md](./buch.md)), Scheibe 3 (Barkassen) Scheibe 4 (Belege inkl. Einreichen, Lager-Posten, Pfand, Lager-Beleg-Abgleich) und Scheibe 5 (GoBD-Abschluss) sind gebaut**: Kontenplan, Journal mit Hash-Kette,
+Storno, freie Buchung, „Kette prüfen“ (gegen Datenbank und Archiv), Festschreibung, Datenexport fürs Finanzamt, der Safe mit Fächern, das Buch als Nebenbuch, die Barkassen mit Dienst-Zählung am Event und Abrechnung sowie Belege mit Datei-Archiv und Auslagen. Alles Weitere (Bankanbindung, …)
 steht als Zielbild unten und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Diese Seite
 wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich die Verfahrensdokumentation
 (wer bucht wie, wo liegen Belege, wie läuft die Prüfung).
 
 ## Überblick
 
-Die Finanzen des Vereins laufen ab dem 01.01.2027 über die App und lösen die Access-Datenbank ab. Gebaut sind Fundament (Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung, „Kette prüfen“), Bargeld (Safe mit Fächern), das Buch ([buch.md](./buch.md)) die Barkassen (Dienst-Zählung am Event, Abrechnung mit einer Buchung) und die Belege (Datei-Archiv, Zahlwege, Auslagen mit Sammelerstattung, täglicher Export, Lager-Posten, Pfand, Einreichen durch Mitglieder, Lager-Beleg-Abgleich); alles Weitere steht als Zielbild und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Die Seite wird mit jeder Scheibe ergänzt und ist zugleich die Verfahrensdokumentation (GoBD: jede Änderung erkennbar, Rechte, Prüfung).
+Die Finanzen des Vereins laufen ab dem 01.01.2027 über die App und lösen die Access-Datenbank ab. Gebaut sind Fundament (Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung, „Kette prüfen“), Bargeld (Safe mit Fächern), das Buch ([buch.md](./buch.md)) die Barkassen (Dienst-Zählung am Event, Abrechnung mit einer Buchung) die Belege (Datei-Archiv, Zahlwege, Auslagen mit Sammelerstattung, täglicher Export, Lager-Posten, Pfand, Einreichen durch Mitglieder, Lager-Beleg-Abgleich) und der GoBD-Abschluss (Festschreibung je Monat, Kette prüfen gegen das Archiv, CloudTrail, Datenexport, Verfahrensdokumentation); alles Weitere steht als Zielbild und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Die Seite wird mit jeder Scheibe ergänzt und ist zugleich die Verfahrensdokumentation (GoBD: jede Änderung erkennbar, Rechte, Prüfung).
 
-Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Lager-Beleg-Abgleich, Seiten, API, Datenbankrolle
+Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Lager-Beleg-Abgleich, Festschreibung, Datenexport, CloudTrail, Seiten, API, Datenbankrolle, Verfahrensdokumentation
 
 ## Zielbild
 
@@ -33,11 +33,12 @@ Die Finanzen des Vereins laufen ab dem **01.01.2027** über die App und lösen d
 
 Ziel ist nicht, Manipulation unmöglich zu machen, sondern jede Änderung erkennbar:
 
-- Journal nur mit INSERT, lückenlose Nummer, Storno statt Ändern, Festschreibung je Monat.
+- Journal nur mit INSERT, lückenlose Nummer, Storno statt Ändern, Festschreibung je Monat (siehe „Festschreibung“).
 - Hash-Kette über alle Buchungen samt Hash der Belegdateien.
 - Originalbelege, tägliche Journal-Exporte und der Ketten-Hash liegen in S3 mit Object Lock
   (Compliance, 10 Jahre). Der tägliche Export läuft ab 01.01.2027.
-- Der Posten „Kassenprüfung“ liest alles und kann die Kette gegen das Archiv prüfen.
+- Der Posten „Kassenprüfung“ liest alles, kann die Kette gegen das Archiv prüfen und den Datenexport fürs Finanzamt erzeugen.
+- Zugriffe auf das Archiv protokolliert CloudTrail in einen eigenen Object-Lock-Bucket (siehe „CloudTrail“).
 
 ## Rechte
 
@@ -48,8 +49,8 @@ Ziel ist nicht, Manipulation unmöglich zu machen, sondern jede Änderung erkenn
 | `belege:einreichen`  | alle Status                                                                   | eigene Auslagen-Belege einreichen, ansehen und zurückziehen (`/belege`)                                                           |
 | `finanzen:lesen`     | Admin, Buchhaltung, Vorstandsvorsitz, Stellv. Vorstandsvorsitz, Kassenprüfung | Kontenplan und Journal lesen                                                                                                      |
 | `finanzen:buchen`    | Admin, Buchhaltung                                                            | buchen, stornieren, Belege erfassen und buchen, Auslagen erstatten, Rechnungssteller pflegen, Buch abrechnen und Seiten verwalten |
-| `finanzen:verwalten` | Admin, Buchhaltung                                                            | Kontenplan und Buch-Tarife pflegen (später Anbindungen, Festschreibung)                                                           |
-| `finanzen:pruefen`   | Admin, Kassenprüfung                                                          | „Kette prüfen“ (später Prüfexport)                                                                                                |
+| `finanzen:verwalten` | Admin, Buchhaltung                                                            | Kontenplan und Buch-Tarife pflegen (später Anbindungen), Monate festschreiben, Datenexport                                        |
+| `finanzen:pruefen`   | Admin, Kassenprüfung                                                          | „Kette prüfen“, Datenexport fürs Finanzamt                                                                                        |
 
 Die ersten drei Rechte stehen in `STATUS_PERMISSIONS`, die `finanzen:*`-Rechte vergeben Posten
 (Migration `0142`, siehe [posten.md](./posten.md)) und die Gruppe `admin`. Der Posten
@@ -205,9 +206,98 @@ Zeilen und Zähler in einem Snapshot und prüft mit `pruefeKette`:
 - Stückelung jeder Zeile, die eine hat, passt zum Betrag
 - die Zählerzeile `fin_zaehler` stimmt mit letzter `seq` und letztem Hash überein
 
-Das Ergebnis zeigt Anzahl, Kopf-Hash und Fehler je `seq`. **In dieser Scheibe wird nur gegen die
-Datenbank geprüft.** Wer die Datenbank ändern kann, könnte Buchungen samt Hashes neu schreiben; der
-Abgleich gegen Exporte und Kopf-Hash im S3-Archiv (Object Lock) kommt mit Scheibe 5.
+**Abgleich mit dem Archiv** (Object Lock): Wer die Datenbank ändern kann, könnte Buchungen samt Hashes neu
+schreiben; das Archiv kann er nicht ändern. Deshalb prüft `pruefeArchiv` zusätzlich:
+
+- `export/*.jsonl` und `festschreibung/*.jsonl`: je `seq` müssen Hash, `prev_hash` und die kanonische Buchung mit der
+  Datenbank übereinstimmen (Fehler „Archiv weicht ab“); eine `seq` im Archiv, die in der Datenbank fehlt, ist ein Fehler.
+  Buchungen nach dem letzten Export sind kein Fehler, das Ergebnis zählt sie als `nichtExportiert`.
+- `anker/*.json` und `festschreibung/*.json`: der Datenbank-Hash bei `bis_seq` muss dem `kopf_hash` entsprechen.
+- Alle Versionen der Objekte unter `export/`, `anker/` und `festschreibung/` werden gelesen. Mehrere Versionen
+  eines Exports oder Ankers sind ein Fehler („Archiv überschrieben“). Festschreibungs-Objekte dürfen identisch
+  neu geschrieben worden sein (ohne `erstellt_am`), etwa nach einem abgebrochenen Lauf.
+- Jede Beleg-Datei der Kette: die SHA-256-Prüfsumme in S3 (`HeadObject`) muss dem Hash in der Buchung entsprechen
+  (auch fehlende Dateien sind ein Fehler).
+
+Das Ergebnis zeigt Anzahl, Kopf-Hash, Fehler je `seq` und `archiv` (Zähler für Exporte, Anker, Festschreibungen,
+Belegdateien, `nichtExportiert`, `eingerichtet`). Ohne Archiv-Bucket (`eingerichtet: false`, lokal) wird nur gegen die
+Datenbank geprüft; die Seite sagt das. Das Archiv wird parallel (höchstens 16 Zugriffe) gelesen.
+
+## Festschreibung
+
+Je Monat schließt `finanzen:verwalten` das Journal ab (Seite `/finanzen/festschreibung`). Regeln:
+
+- **Der Reihe nach:** erster Monat = Monat der frühesten Buchung, danach jeweils der nächste (leere Monate
+  eingeschlossen). Nur ganz vergangene Monate (vor dem aktuellen Monat, Europe/Berlin).
+- **Nicht rücknehmbar:** Tabelle `fin_festschreibungen` (nur INSERT, eindeutig auf `monat`) mit Monat, `bis_seq`
+  (höchste Nummer beim Festschreiben), `kopf_hash`, Anzahl Buchungen des Monats, Archivschlüssel, wer und wann. Es gibt keine
+  Route zum Aufheben.
+- **Sperre:** `einfuegen` im Journal liest in der Transaktion den letzten festgeschriebenen Monat. Freie Buchung,
+  Umbuchung und Storno mit Datum in einem festgeschriebenen Monat: 400 („Der Monat MM/JJJJ ist festgeschrieben. Buche
+  mit einem Datum ab TT.MM.JJJJ.“). Beleg, Erstattung, Zählung und Kassenabrechnung buchen mit dem **ersten offenen
+  Tag** als Buchungsdatum; Beleg-, Bezahl- und Eventdatum bleiben unverändert. Die Seiten zeigen das vorher an: unter dem Datumsfeld und als gelber Hinweis
+  „Buchungsdatum verschoben“ ganz oben im Prüf-Dialog (Beleg, Kassenabrechnung). Die Belegliste („gebucht am …“ unter dem
+  Belegdatum) und die Beleg-Detailseite („Buchung Nr. …, gebucht am … (MM/JJJJ war festgeschrieben)“) zeigen, dass die
+  Buchung verschoben wurde; die DTOs tragen `buchungsdatum` und `buchungVerschoben` (Belegdatum bei Auslage, sonst
+  Bezahldatum weicht vom Buchungsdatum ab).
+  Ein Storno einer Buchung aus einem festgeschriebenen Monat bucht in einem offenen Monat; die alte Buchung bleibt unverändert.
+- **Ablauf:** `POST /api/finanzen/festschreibungen` (`{ monat, idempotenzSchluessel }`) schreibt in einer Transaktion
+  (mit Zählerzeile, damit parallele Buchungen kollidieren und wiederholt werden) die Zeile und legt im Archiv
+  `festschreibung/<JJJJ-MM>.jsonl` (alle Buchungen bis `bis_seq`) und `festschreibung/<JJJJ-MM>.json` (Monat,
+  `bis_seq`, `kopf_hash`) ab. Wiederholung für denselben Monat: 200 mit `wiederholt`. „Kette prüfen“ gleicht diese Objekte ab.
+- **Hinweise** vor dem Festschreiben (blockieren nicht, Bestätigung nötig): Beleg-Entwürfe und Einreichungen mit
+  Belegdatum im Monat, Events im Monat mit Kassenzählung ohne Abrechnung.
+- **Benachrichtigung:** Push `finanzen.festgeschrieben` (Kopf-Hash) an alle mit `finanzen:pruefen`; der Kopf-Hash steht
+  auch auf der Seite. Der Tagesjob erinnert ab dem 10. des Folgemonats mit `finanzen.festschreibung_faellig`
+  (höchstens einmal pro Woche, an `finanzen:verwalten`); die Übersicht zeigt zusätzlich einen Hinweis. Mail gibt es
+  nicht (kein SES).
+
+## Datenexport
+
+Für das Finanzamt (Betriebsprüfung, Z3-Zugriff) erzeugt `POST /api/finanzen/datenexporte` (`{ von, bis }`;
+`finanzen:pruefen` oder `finanzen:verwalten`, Seite `/finanzen/datenexport`, Standard: Vorjahr) ein ZIP:
+
+- `konten.csv`, `buchungen.csv` (mit `seq`, Hashes, Storno-Bezug, Quelle; nach Buchungsdatum im Zeitraum),
+  `buchungszeilen.csv`, `stueckelung.csv`, `belege.csv` (mit `sha256` und Archivschlüssel; die Belegdateien selbst
+  liegen nicht im ZIP), `belegposten.csv`, `rechnungssteller.csv`, `festschreibungen.csv`
+- `index.xml`: Beschreibungsstandard GDPdU Version 1.6 vom 01.03.2019, die DTD `gdpdu-01-03-2019.dtd` liegt im ZIP neben der `index.xml`: je Tabelle Datei, Name, Spalten mit Typ, Schlüssel
+- `beschreibung.txt`: Zeitraum, Ersteller, Spaltenbedeutung, Hinweis auf die Hash-Kette
+
+Die offizielle DTD 1.6 enthält für `Media` ein nicht-deterministisches Inhaltsmodell (`Command*, Table*, Command*`);
+`xmllint --valid` meldet das als Gültigkeitsfehler der DTD selbst. Sie liegt bewusst unverändert im ZIP, weil es die
+offizielle Datei ist.
+
+CSV: UTF-8, Trenner `;`, CRLF, Beträge `1234,56`, Datum `TT.MM.JJJJ`. Das ZIP liegt im Archiv unter
+`datenexport/<Zeitstempel>-<von>-<bis>.zip`, eine Zeile in `fin_datenexporte` (nur INSERT) hält Zeitraum, Schlüssel,
+SHA-256 und Ersteller. Die Antwort enthält eine kurzlebige Download-URL (kein Direkt-Download: API Gateway begrenzt
+Antworten auf 6 MB); `GET /api/finanzen/datenexporte` listet frühere Exporte mit frischer URL.
+
+**Mit Belegdateien** (`mitBelegdateien: true`, Checkbox „Mit Belegdateien“): Die Belegdateien können Gigabytes
+ergeben, deshalb läuft der Export im Hintergrund. Die Route prüft die Eingabe und ruft die API-Lambda asynchron
+selbst auf (`InvocationType: Event`, Ereignis `{ c4: 'datenexport', id, von, bis, sub }`, keine Wiederholung); Antwort
+`202 { id, laeuft: true }`. Lokal (ohne Lambda-Umgebung) läuft der Job im Hintergrund desselben Prozesses. Der Job
+(`finanzenDatenexportJob.ts`) schreibt das ZIP als Strom (fflate `Zip`: CSV/XML/TXT komprimiert, Belegdateien
+unkomprimiert) direkt in einen Multipart-Upload ins Archiv (`@aws-sdk/lib-storage`); der Speicherbedarf bleibt klein,
+egal wie groß das ZIP wird. Die Belegdateien liegen als `belege/<sha256>.<Endung>` im ZIP (jede Datei einmal), ihr
+Pfad steht in `belege.csv` (Spalte `datei_pfad`, leer beim Export ohne Dateien), `beschreibung.txt` nennt den Ordner.
+Der Job prüft den SHA-256 jeder Datei. Fehlt oder stimmt eine Datei nicht, scheitert der ganze Export (kein
+unvollständiges ZIP, keine Zeile) und die Meldung nennt die Belegnummer. Ein ZIP über 4 GB wird abgelehnt (fflate
+schreibt kein Zip64): dann den Zeitraum verkürzen. Am Ende steht eine Zeile in `fin_datenexporte`
+(`mit_belegdateien = true`, `id` wie in der 202-Antwort) und der Anfragende bekommt einen Push der Art
+`finanzen.datenexport_fertig` („Dein Datenexport TT.MM.JJJJ–TT.MM.JJJJ mit Belegdateien ist fertig.“ bzw. „… ist
+fehlgeschlagen.“, Ziel `/app/finanzen/datenexport`); Fehler stehen im Log. Die Liste zeigt „mit Belegdateien“ als
+Badge. Infra: Lambda-Timeout 900 s (HTTP bleibt durch API Gateway auf 29 s begrenzt), Recht `lambda:InvokeFunction`
+auf die eigene Funktion, `maximum_retry_attempts = 0`, Lifecycle-Regel für abgebrochene Multipart-Uploads.
+
+## CloudTrail
+
+Ein Trail (`c4-<env>-trail`, Single-Region, Log-Dateivalidierung) schreibt in den Bucket `c4-<env>-cloudtrail-<Konto>`
+(Object Lock, Versionierung, gleiche Retention wie das Finanzarchiv, kein öffentlicher Zugriff). Er protokolliert
+schreibende Datenereignisse auf dem Finanzarchiv, also wer wann Objekte angelegt oder gelöscht hat. Verwaltungsereignisse
+(Write) nur in prod (`cloudtrail_verwaltungsereignisse`), weil dev und prod im selben Konto liegen und nur der erste
+Trail kostenlos ist. Die Lambda darf im Archiv `s3:GetObjectVersion` und `ListBucketVersions` (für „Kette prüfen“),
+aber weder löschen noch Retention umgehen. **Einmalig vor dem Deploy:** `infra/bootstrap` neu anwenden
+(Deploy-Rolle braucht `cloudtrail:*` auf `c4-<env>-*`, Boundary die Versions-Rechte).
 
 ## Warnungen je Kontoart
 
@@ -554,7 +644,9 @@ Eingabe per Tastatur (Enter springt weiter), Prüfung am Feld, Zusammenfassung v
 | `/finanzen/artikel`                                   | `finanzen:lesen`, Steuersatz ändern `finanzen:buchen`    | Artikel (Karten auf dem Handy, Tabelle ab `sm`): Name, Standard-Steuersatzart (inline änderbar), Kategorien mit Häufigkeit, Anzahl Posten, zuletzt gebucht (Link von `/finanzen/belege`)                                                                                                                                                                                                                                                     |
 | `/finanzen/steuersaetze`                              | `finanzen:lesen`, Ändern `finanzen:verwalten`            | Steuersatz-Zeiträume: Liste (Gültig ab, Regelsatz, ermäßigt, löschbar), „Zeitraum hinzufügen“, Löschen nur ohne Buchungen im Zeitraum                                                                                                                                                                                                                                                                                                        |
 | `/finanzen/rechnungssteller`                          | `finanzen:lesen`, Pflege `finanzen:buchen`               | Rechnungssteller anlegen, umbenennen, archivieren                                                                                                                                                                                                                                                                                                                                                                                            |
-| `/finanzen/kette`                                     | `finanzen:pruefen`                                       | „Kette prüfen“ mit Ergebnis                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `/finanzen/festschreibung`                            | `finanzen:lesen`, Festschreiben `finanzen:verwalten`     | Festgeschrieben bis, nächster Monat mit Hinweisen und Bestätigung, Liste mit Kopf-Hash; Tabelle ab `sm`, Karten darunter                                                                                                                                                                                                                                                                                                                     |
+| `/finanzen/datenexport`                               | `finanzen:pruefen` oder `finanzen:verwalten`             | Zeitraum wählen, optional mit Belegdateien (Hintergrund-Job, Push), ZIP erstellen, frühere Exporte laden                                                                                                                                                                                                                                                                                                                                     |
+| `/finanzen/kette`                                     | `finanzen:pruefen`                                       | „Kette prüfen“ mit Ergebnis und Abschnitt „Archiv“                                                                                                                                                                                                                                                                                                                                                                                           |
 | `/finanzen/bargeld`                                   | `finanzen:lesen`                                         | Fächer (Spalten) × Nennwerte (Zeilen, aufsteigend von 1 ct bis 100 €) mit Summen; unter `sm` eine Karte je Fach; Zugänge zu Umbuchen, Wechseln, Zählen, Zählungen und „Fach anlegen“ (Kontenplan)                                                                                                                                                                                                                                            |
 | `/finanzen/bargeld/umbuchen`, `/wechseln`, `/zaehlen` | `finanzen:buchen`                                        | Erfassung per `StueckelungFeld` (13 Zahlfelder von 1 ct bis 100 €, Tab/Enter von oben nach unten, Spalten Bestand/Soll und Differenz, Summenzeile); Zusammenfassung vor dem Speichern, Idempotenz-Schlüssel je Erfassung                                                                                                                                                                                                                     |
 | `/finanzen/bargeld/zaehlungen` und `/:id`             | `finanzen:lesen`                                         | Protokoll der Zählungen (Tabelle ab `sm`, Karten darunter, Filter Fach) und Detail mit Soll/Ist/Differenz je Nennwert, Zähler:in (`StatusName`), Link zur Buchung                                                                                                                                                                                                                                                                            |
@@ -630,7 +722,11 @@ eine geglückte Buchung erzeugt einen neuen.
 | `PUT /api/lager-abgleich/stichtag`                  | `finanzen:buchen` oder `waren:verwalten` | `{ stichtag }`                                                                                                                                                                                                                                           |
 | `GET /api/finanzen/auslagen`                        | `finanzen:lesen`                         | offene Auslagen je Mitglied                                                                                                                                                                                                                              |
 | `POST /api/finanzen/erstattungen`                   | `finanzen:buchen`                        | `idempotenzSchluessel`, `mitgliedId`, `datum`, Belege, Zahlweg (bar mit Fach und Stückelung oder Bank); 201, bei bekanntem Schlüssel 200; 409 bei schon erstatteten Belegen                                                                              |
-| `GET /api/finanzen/kette`                           | `finanzen:pruefen`                       | Ergebnis von „Kette prüfen“                                                                                                                                                                                                                              |
+| `GET /api/finanzen/kette`                           | `finanzen:pruefen`                       | Ergebnis von „Kette prüfen“ inkl. `archiv`                                                                                                                                                                                                               |
+| `GET /api/finanzen/festschreibungen`                | `finanzen:lesen`                         | `festgeschriebenBis`, `ersterOffenerTag`, `naechsterMonat`, `hinweise`, `liste`                                                                                                                                                                          |
+| `POST /api/finanzen/festschreibungen`               | `finanzen:verwalten`                     | `{ monat, idempotenzSchluessel }`; 201, bei schon festgeschriebenem Monat 200 mit `wiederholt`; 409, wenn nicht der nächste Monat dran ist, die Kette Fehler hat oder gleichzeitig gebucht wurde; 503 ohne Archiv                                        |
+| `POST /api/finanzen/datenexporte`                   | `finanzen:pruefen` oder `verwalten`      | `{ von, bis, mitBelegdateien? }`; ZIP im Archiv, Antwort `{ id, url }`; mit Belegdateien `202 { id, laeuft }` (Job)                                                                                                                                      |
+| `GET /api/finanzen/datenexporte`                    | `finanzen:pruefen` oder `verwalten`      | frühere Exporte mit frischer URL                                                                                                                                                                                                                         |
 
 Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username und Status.
 
@@ -639,5 +735,30 @@ Der Ersteller einer Buchung erscheint als Mitglied (`StatusName`) mit Username u
 Es gibt bewusst **keine eigene DB-Rolle** für die Journaltabellen (Entscheidung 11.11.2026, Begründung
 in [plans/finanzen-spike-dsql-rolle.md](./plans/finanzen-spike-dsql-rolle.md)). Es schützen: die API
 hat keine Update-/Delete-Routen, der Test `packages/api/src/finanzenNurInsert.test.ts` schlägt an,
-sobald Code `fin_buchungen`, `fin_buchungszeilen`, `fin_stueckelung` oder die Protokolltabellen (Zählungen, Kassenzählungen, Kassenabrechnungen, Belege, Posten, Korrekturen, Erstattungen, Exporte) ändert oder löscht, dazu
+sobald Code `fin_buchungen`, `fin_buchungszeilen`, `fin_stueckelung` oder die Protokolltabellen (Zählungen, Kassenzählungen, Kassenabrechnungen, Belege, Posten, Korrekturen, Erstattungen, Exporte, Festschreibungen, Datenexporte) ändert oder löscht, dazu
 Hash-Kette und Anker.
+
+## Verfahrensdokumentation
+
+Gliederung nach GoBD; die Abschnitte dieser Seite sind die Verfahrensdokumentation.
+
+| Teil                           | Inhalt                                                                                                                              |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Allgemeine Beschreibung        | Zweck und Umfang: „Zielbild“, „GoBD“; Konten: „Kontenplan“                                                                          |
+| Anwenderdokumentation          | Wer bucht wie: „Rechte“, „Journal“, „Bargeld (Safe)“, „Barkassen“, „Belege“, „Lager-Beleg-Abgleich“, „Seiten“; [buch.md](./buch.md) |
+| Technische Systemdokumentation | „Hash-Kette“, „Festschreibung“, „Datenexport“, „API“, „Datenbankrolle“, Datenmodell in `packages/api/src/db/schema.ts`              |
+| Betriebsdokumentation          | Archiv und Täglicher Export („Belege“), „CloudTrail“, Datensicherung und Änderungsprozess (unten)                                   |
+| Internes Kontrollsystem        | „Kette prüfen“, „Festschreibung“, „Warnungen je Kontoart“, Idempotenz-Schlüssel, nur INSERT mit Test                                |
+
+- **Zuständigkeiten (Posten, siehe [posten.md](./posten.md)):** Buchhaltung bucht (`finanzen:buchen`) und schreibt
+  Monate fest (`finanzen:verwalten`); Kassenprüfung prüft (`finanzen:pruefen`: Kette, Datenexport); Admin hat alle Rechte.
+  Alle Mitglieder zählen Kassen und reichen Belege ein.
+- **Aufbewahrung:** Belege, Exporte, Anker, Festschreibungen, Datenexporte und CloudTrail-Logs liegen mindestens 10 Jahre
+  in S3 mit Object Lock (Compliance); die Access-Datenbank bleibt Archiv bis einschließlich 2026.
+- **Änderungsprozess:** Änderungen am Programm nur per Pull Request mit grüner CI (Lint, Typen, Tests); Deploy auf dev
+  per Workflow, Deploy auf prod (Tag `v*`) erst nach Freigabe durch den Repo-Owner in der Umgebung `prod`. Änderungen
+  an der Infrastruktur laufen über Terraform im Repo, das Bootstrap wendet der Owner von Hand an.
+- **Datensicherung:** Aurora DSQL mit AWS-Backups (siehe README, „Bootstrap: Rechte der Deploy-Rolle und Backups“); das
+  Archiv ist durch Object Lock und Versionierung geschützt und gleichzeitig Gegenstück zur Datenbank für „Kette prüfen“.
+- **Prüfung durch das Finanzamt:** Datenexport (GDPdU-Index) für Z3; „Kette prüfen“ weist nach, dass Datenbank und
+  Archiv übereinstimmen.

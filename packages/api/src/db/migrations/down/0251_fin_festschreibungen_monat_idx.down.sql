@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_festschreibungen_monat_idx

@@ -1753,6 +1753,36 @@ export const finExporte = pgTable('fin_exporte', {
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
 });
 
+/** Closed months (Festschreibung, GoBD; insert-only). `monat` = first day, unique index. */
+export const finFestschreibungen = pgTable('fin_festschreibungen', {
+  id: text('id').primaryKey(),
+  monat: date('monat', { mode: 'string' }).notNull(),
+  /** Highest `seq` when the month was closed (also bookings of later months). */
+  bisSeq: bigint('bis_seq', { mode: 'number' }).notNull(),
+  kopfHash: text('kopf_hash').notNull(),
+  /** Bookings dated in the month. */
+  anzahl: integer('anzahl').notNull(),
+  exportSchluessel: text('export_schluessel').notNull(),
+  /** Cognito sub, without a foreign key. */
+  festgeschriebenVon: text('festgeschrieben_von').notNull(),
+  festgeschriebenAm: timestamp('festgeschrieben_am', { withTimezone: true }).notNull(),
+});
+
+/** Data exports for the tax office (ZIP in the archive bucket; insert-only). */
+export const finDatenexporte = pgTable('fin_datenexporte', {
+  id: text('id').primaryKey(),
+  von: date('von', { mode: 'string' }).notNull(),
+  bis: date('bis', { mode: 'string' }).notNull(),
+  schluessel: text('schluessel').notNull(),
+  /** Hex SHA-256 of the ZIP. */
+  sha256: text('sha256').notNull(),
+  /** Cognito sub, without a foreign key. */
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  /** The ZIP contains the Beleg files (folder `belege/`). */
+  mitBelegdateien: boolean('mit_belegdateien'),
+});
+
 /** Correction of the Lager-Beleg-Abgleich per Ware (insert-only); `menge` is signed, in base units. */
 export const warenAbgleichKorrekturen = pgTable('waren_abgleich_korrekturen', {
   id: text('id').primaryKey(),

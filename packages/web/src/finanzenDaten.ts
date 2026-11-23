@@ -11,6 +11,8 @@ import { pruefen } from './warenApi';
 /** Prefix of all Finanzen queries; invalidate it after any change. */
 export const finanzenKeys = {
   alle: ['finanzen'] as const,
+  festschreibungen: ['finanzen', 'festschreibungen'] as const,
+  datenexporte: ['finanzen', 'datenexporte'] as const,
   konten: (filter: { archiviert: boolean }) => ['finanzen', 'konten', filter] as const,
   bargeld: ['finanzen', 'bargeld'] as const,
   zaehlungen: (filter: { kontoId: string | null }) => ['finanzen', 'zaehlungen', filter] as const,
@@ -52,6 +54,16 @@ export function useKonten(archiviert: boolean) {
     queryKey: finanzenKeys.konten({ archiviert }),
     queryFn: async () =>
       unwrap(await api.finanzen.konten.$get({ query: archiviert ? { archiviert: '1' } : {} })),
+  });
+}
+
+/** Festschreibungen (closed months) with the next month to close; shared by all pages with booking dates. */
+export function useFestschreibungen(enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.festschreibungen,
+    enabled,
+    queryFn: async () => unwrap(await api.finanzen.festschreibungen.$get()),
   });
 }
 

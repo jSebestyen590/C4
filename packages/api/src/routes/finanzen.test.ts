@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { strFromU8, unzipSync } from 'fflate';
+import { kanonisch, kanonischJson } from '@c4/shared';
 import { makeApp, bearer } from '../test/appTestHelfer';
 
 describe('finanzen', () => {
@@ -673,6 +675,112 @@ describe('finanzen', () => {
       '/kette',
     );
     expect(res).toMatchObject({ ok: false, zaehlerPasst: false, fehler: [] });
+  });
+
+  describe('chain check against the archive', () => {
+    type Kette = {
+      ok: boolean;
+      fehler: { seq: number; art: string; schluessel?: string }[];
+      archiv: { exporte: number; anker: number; nichtExportiert: number; eingerichtet: boolean };
+    };
+    const exportZeilen = (t: Awaited<ReturnType<typeof setup>>, bis: number) =>
+      t.finanzenFake.buchungen
+        .filter((b) => b.seq <= bis)
+        .map(
+          (b) =>
+            kanonischJson({
+              hash: b.hash,
+              prev_hash: b.prevHash,
+              buchung: JSON.parse(kanonisch(b)),
+            }) + '\n',
+        )
+        .join('');
+
+    it('accepts a matching export and counts what is not exported yet', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      await t.umbuchung(300);
+      const b1 = t.finanzenFake.buchungen[0]!;
+      t.archivObjekte.set('export/2027-01-07.jsonl', [exportZeilen(t, 1)]);
+      t.archivObjekte.set('anker/2027-01-07.json', [
+        JSON.stringify({ bis_seq: 1, kopf_hash: b1.hash, erstellt_am: 'x' }),
+      ]);
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette).toMatchObject({
+        ok: true,
+        fehler: [],
+        archiv: { exporte: 1, anker: 1, nichtExportiert: 1, eingerichtet: true },
+      });
+    });
+
+    it('finds a manipulated line, a divergent anchor and a second version', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      const b1 = t.finanzenFake.buchungen[0]!;
+      const zeile = exportZeilen(t, 1);
+      t.archivObjekte.set('export/a.jsonl', [zeile.replace('"text":"', '"text":"X')]);
+      t.archivObjekte.set('anker/a.json', [
+        JSON.stringify({ bis_seq: 1, kopf_hash: 'f'.repeat(64) }),
+        JSON.stringify({ bis_seq: 1, kopf_hash: b1.hash }),
+      ]);
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette.ok).toBe(false);
+      expect(kette.fehler).toContainEqual({
+        seq: 1,
+        art: 'archiv_abweichung',
+        schluessel: 'export/a.jsonl',
+      });
+      expect(kette.fehler).toContainEqual({ seq: 1, art: 'anker', schluessel: 'anker/a.json' });
+      expect(kette.fehler).toContainEqual({
+        seq: 0,
+        art: 'archiv_ueberschrieben',
+        schluessel: 'anker/a.json',
+      });
+    });
+
+    it('finds an archive entry that is missing in the database', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      await t.umbuchung(300);
+      t.archivObjekte.set('export/a.jsonl', [exportZeilen(t, 2)]);
+      t.finanzenFake.buchungen.pop();
+      t.finanzenFake.zaehler.wert = 1;
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette.fehler).toContainEqual({
+        seq: 2,
+        art: 'archiv_fehlt_in_db',
+        schluessel: 'export/a.jsonl',
+      });
+    });
+
+    it('checks the checksum of Beleg files', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      const sha = 'cd'.repeat(32);
+      const schluessel = `belege/${sha}.pdf`;
+      t.finanzenFake.buchungen[0]!.belege = [{ sha256: sha }];
+      t.finanzenFake.belegDateien.push({ sha256: sha, schluessel });
+      const gut = await t.lesen<Kette>('reader-token', '/kette');
+      expect(gut.fehler.filter((f) => f.art === 'beleg_datei')).toEqual([]);
+      t.archivPruefsummen.set(schluessel, 'AAAA');
+      expect((await t.lesen<Kette>('reader-token', '/kette')).fehler).toContainEqual({
+        seq: 1,
+        art: 'beleg_datei',
+      });
+      t.archivPruefsummen.set(schluessel, null);
+      expect((await t.lesen<Kette>('reader-token', '/kette')).fehler).toContainEqual({
+        seq: 1,
+        art: 'beleg_datei',
+      });
+    });
+
+    it('only checks the database without a bucket', async () => {
+      const t = await setup();
+      await t.umbuchung(500);
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      const kette = await t.lesen<Kette>('reader-token', '/kette');
+      expect(kette).toMatchObject({ ok: true, archiv: { eingerichtet: false } });
+    });
   });
 
   it('has no routes to change or delete bookings', async () => {
@@ -3340,6 +3448,299 @@ describe('finanzen', () => {
           { endpoint: 'https://push.example/m2', text: 'Dein Beleg wurde verworfen: unleserlich' },
         ]);
       });
+    });
+
+    describe('Festschreibung', () => {
+      it('books a Beleg dated in a closed month on the first open day, the Belegdatum stays', async () => {
+        const t = await belegSetup();
+        const monat = await t.roh('admin-token', 'POST', '/festschreibungen', {
+          monat: '2027-01-01',
+          idempotenzSchluessel: crypto.randomUUID(),
+        });
+        expect(monat.status, await monat.clone().text()).toBe(201);
+        const beleg = await t.gebucht();
+        const detail = await t.lesen<Dto>('admin-token', `/belege/${beleg.id}`);
+        expect(detail.belegdatum).toBe('2027-01-05');
+        const buchung = await t.lesen<Dto>('admin-token', `/buchungen/${beleg.buchungId}`);
+        expect(buchung.datum).toBe('2027-02-01');
+        expect(detail.buchungsdatum).toBe('2027-02-01');
+        expect(detail.buchungVerschoben).toBe(true);
+        const liste = await t.lesen<Dto>('admin-token', '/belege');
+        const eintrag = (liste.belege as Dto[]).find((b) => b.id === beleg.id);
+        expect(eintrag?.buchungsdatum).toBe('2027-02-01');
+        expect(eintrag?.buchungVerschoben).toBe(true);
+      });
+    });
+  });
+
+  describe('Festschreibung', () => {
+    const jetzt = (iso: string) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(iso));
+    };
+    afterEach(() => vi.useRealTimers());
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const festschreiben = (
+      t: Awaited<ReturnType<typeof setup>>,
+      monat: string,
+      token = 'admin-token',
+    ) =>
+      t.roh(token, 'POST', '/festschreibungen', {
+        monat,
+        idempotenzSchluessel: crypto.randomUUID(),
+      });
+
+    it('needs finanzen:verwalten to close and finanzen:lesen to read', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      await t.umbuchung();
+      for (const token of ['member-token', 'reader-token', 'vorstand-token'])
+        expect((await festschreiben(t, '2027-01-01', token)).status, token).toBe(403);
+      expect((await t.roh('vorstand-token', 'GET', '/festschreibungen')).status).toBe(200);
+      expect((await t.roh('member-token', 'GET', '/festschreibungen')).status).toBe(403);
+      expect((await festschreiben(t, '2027-01-15')).status).toBe(400);
+    });
+
+    it('closes month by month in order, never the current month, and replays a closed one', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(409);
+      await t.umbuchung();
+      const leer = await t.lesen<Dto>('vorstand-token', '/festschreibungen');
+      expect(leer).toMatchObject({
+        festgeschriebenBis: null,
+        ersterOffenerTag: null,
+        naechsterMonat: '2027-01-01',
+        liste: [],
+      });
+      const zuFrueh = await festschreiben(t, '2027-02-01');
+      expect(zuFrueh.status).toBe(409);
+      expect(await zuFrueh.text()).toContain('Als Nächstes ist 01/2027 dran.');
+      const erste = await festschreiben(t, '2027-01-01');
+      expect(erste.status, await erste.clone().text()).toBe(201);
+      expect(await erste.json()).toMatchObject({ monat: '2027-01-01', bisSeq: 1, anzahl: 1 });
+      expect(t.finanzarchiv.exportSchreiben.mock.calls.map((c) => c[0])).toEqual([
+        'festschreibung/2027-01.jsonl',
+        'festschreibung/2027-01.json',
+      ]);
+      expect(
+        String(t.finanzarchiv.exportSchreiben.mock.calls[0]![1]).trim().split('\n'),
+      ).toHaveLength(1);
+      expect(JSON.parse(String(t.finanzarchiv.exportSchreiben.mock.calls[1]![1]))).toMatchObject({
+        monat: '2027-01-01',
+        bis_seq: 1,
+        anzahl: 1,
+      });
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(200);
+      const danach = await t.lesen<Dto>('vorstand-token', '/festschreibungen');
+      expect(danach).toMatchObject({
+        festgeschriebenBis: '2027-01-31',
+        ersterOffenerTag: '2027-02-01',
+        naechsterMonat: '2027-02-01',
+        liste: [{ monat: '2027-01-01', festgeschriebenVon: { username: 'user-a' } }],
+      });
+      // An empty month in between is closed as well; the current month is never closable.
+      expect((await festschreiben(t, '2027-02-01')).status).toBe(201);
+      const aktuell = await festschreiben(t, '2027-03-01');
+      expect(aktuell.status).toBe(409);
+      expect(await aktuell.text()).toContain('Es kann kein Monat festgeschrieben werden.');
+    });
+
+    it('refuses to close when the chain has errors or the archive is not reachable', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      await t.umbuchung();
+      t.finanzarchiv.exportSchreiben.mockRejectedValueOnce(new Error('weg'));
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(503);
+      expect((await t.lesen<Dto>('admin-token', '/festschreibungen')).liste).toEqual([]);
+      t.finanzenFake.buchungen[0]!.text = 'verändert';
+      const res = await festschreiben(t, '2027-01-01');
+      expect(res.status).toBe(409);
+      expect(await res.text()).toContain('Die Kette hat Fehler');
+    });
+
+    it('refuses free bookings and Stornos in a closed month', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      const { id } = (await (await t.umbuchung()).json()) as { id: string };
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(201);
+      const abgelehnt = await t.umbuchung(100, { datum: '2027-01-31' });
+      expect(abgelehnt.status).toBe(400);
+      expect(await abgelehnt.text()).toContain(
+        'Der Monat 01/2027 ist festgeschrieben. Buche mit einem Datum ab 01.02.2027.',
+      );
+      expect((await t.umbuchung(100, { datum: '2027-02-01' })).status).toBe(201);
+      const storno = (datum: string) =>
+        t.anfrage('admin-token', 'POST', `/buchungen/${id}/storno`, { datum, text: 'Falsch' });
+      expect((await storno('2027-01-20')).status).toBe(400);
+      expect((await storno('2027-02-02')).status).toBe(201);
+    });
+
+    it('books a Zählung dated in a closed month on the first open day', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      const fach = await t.fach();
+      await t.befuellen(fach, [[500, 2]]);
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(201);
+      const res = await t.anfrage('admin-token', 'POST', '/zaehlungen', {
+        kontoId: fach,
+        datum: '2027-01-10',
+        ist: [{ nennwertCent: 500, anzahl: 1 }],
+      });
+      expect(res.status, await res.clone().text()).toBe(201);
+      const z = (await res.json()) as { buchungId: string };
+      expect((await t.lesen<Dto>('admin-token', `/buchungen/${z.buchungId}`)).datum).toBe(
+        '2027-02-01',
+      );
+    });
+
+    it('pushes the closing to the holders of finanzen:pruefen, the reminder dedupe key per week', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      for (const sub of ['a', 'r', 'v'])
+        await t.push.store.aboSpeichern(sub, {
+          endpoint: `https://push.example/${sub}`,
+          keys: { p256dh: 'p', auth: 'a' },
+        });
+      t.posten.inhaberMitRecht.mockResolvedValue(['r']);
+      t.userAdmin.rollen.mockResolvedValue(new Map([['a', ['admin']]]));
+      await t.umbuchung();
+      expect((await festschreiben(t, '2027-01-01')).status).toBe(201);
+      expect(t.gesendet.map((g) => g.endpoint).sort()).toEqual([
+        'https://push.example/a',
+        'https://push.example/r',
+      ]);
+      expect(t.gesendet[0]).toMatchObject({
+        text: expect.stringMatching(/^Kopf-Hash: [0-9a-f]{16}…, Nr\. bis 1$/),
+        url: '/app/finanzen/festschreibung',
+      });
+    });
+
+    it('returns the hints for the next month', async () => {
+      jetzt('2027-03-01T10:00:00Z');
+      const t = await setup();
+      await t.umbuchung();
+      t.finanzenFake.hinweise.push({ art: 'beleg_entwurf', anzahl: 2, text: 'Zwei Belege' });
+      expect((await t.lesen<Dto>('vorstand-token', '/festschreibungen')).hinweise).toEqual([
+        { art: 'beleg_entwurf', anzahl: 2, text: 'Zwei Belege' },
+      ]);
+    });
+  });
+
+  describe('Datenexport', () => {
+    type Dto = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const exportieren = (
+      t: Awaited<ReturnType<typeof setup>>,
+      token: string,
+      body: unknown = { von: '2027-01-01', bis: '2027-12-31' },
+    ) => t.roh(token, 'POST', '/datenexporte', body);
+
+    it('is open to finanzen:pruefen and finanzen:verwalten, not to others', async () => {
+      const t = await setup();
+      for (const token of ['member-token', 'vorstand-token']) {
+        expect((await exportieren(t, token)).status, token).toBe(403);
+        expect((await t.roh(token, 'GET', '/datenexporte')).status, token).toBe(403);
+      }
+      expect((await exportieren(t, 'reader-token')).status).toBe(201);
+      expect((await exportieren(t, 'admin-token')).status).toBe(201);
+    });
+
+    it('validates the period', async () => {
+      const t = await setup();
+      const falsch = await exportieren(t, 'admin-token', { von: '2027-02-01', bis: '2027-01-01' });
+      expect(falsch.status).toBe(400);
+      const zuLang = await exportieren(t, 'admin-token', { von: '2010-01-01', bis: '2020-01-01' });
+      expect(zuLang.status).toBe(400);
+      expect((await exportieren(t, 'admin-token', { von: 'x' })).status).toBe(400);
+    });
+
+    it('answers 503 without a Finanzarchiv', async () => {
+      const t = await setup();
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      expect((await exportieren(t, 'admin-token')).status).toBe(503);
+    });
+
+    it('writes a ZIP with all files, records it and lists it again', async () => {
+      const t = await setup();
+      await t.umbuchung(500, { text: 'Text; mit "Zeichen"' });
+      await t.umbuchung(700, { datum: '2028-02-01' });
+      const res = await exportieren(t, 'reader-token');
+      expect(res.status).toBe(201);
+      const { id, url } = (await res.json()) as { id: string; url: string };
+      const [schluessel, inhalt] = t.finanzarchiv.exportSchreiben.mock.calls.at(-1)!;
+      expect(schluessel).toMatch(/^datenexport\/\d{8}-\d{6}-2027-01-01-2027-12-31\.zip$/);
+      expect(url).toBe(`https://s3.example/finanzarchiv/${schluessel}`);
+      const dateien = unzipSync(inhalt as Uint8Array);
+      expect(Object.keys(dateien).sort()).toEqual(
+        [
+          'beschreibung.txt',
+          'belege.csv',
+          'belegposten.csv',
+          'buchungen.csv',
+          'buchungszeilen.csv',
+          'festschreibungen.csv',
+          'gdpdu-01-03-2019.dtd',
+          'index.xml',
+          'konten.csv',
+          'rechnungssteller.csv',
+          'stueckelung.csv',
+        ].sort(),
+      );
+      const buchungen = strFromU8(dateien['buchungen.csv']!);
+      expect(buchungen).toContain('05.01.2027;"Text; mit ""Zeichen"""');
+      expect(buchungen).not.toContain('01.02.2028');
+      expect(strFromU8(dateien['buchungszeilen.csv']!)).toContain('geldtransit;5,00');
+      expect(strFromU8(dateien['index.xml']!)).toContain('gdpdu-01-03-2019.dtd');
+      expect(strFromU8(dateien['gdpdu-01-03-2019.dtd']!)).toContain('<!ELEMENT DataSet');
+      expect(strFromU8(dateien['beschreibung.txt']!)).toContain('01.01.2027 bis 31.12.2027');
+      expect(strFromU8(dateien['konten.csv']!)).toContain('geldtransit');
+      const liste = await t.lesen<Dto[]>('admin-token', '/datenexporte');
+      expect(liste).toHaveLength(1);
+      expect(liste[0]).toMatchObject({
+        id,
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        schluessel,
+        url,
+        erstelltVon: { username: 'user-r', status: expect.any(String) },
+      });
+      expect(liste[0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('with Beleg files: answers 202 and hands the order to the starter without writing', async () => {
+      const t = await setup();
+      const res = await exportieren(t, 'reader-token', {
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        mitBelegdateien: true,
+      });
+      expect(res.status).toBe(202);
+      const { id, laeuft } = (await res.json()) as { id: string; laeuft: boolean };
+      expect(laeuft).toBe(true);
+      expect(t.datenexportStarten).toHaveBeenCalledTimes(1);
+      expect(t.datenexportStarten).toHaveBeenCalledWith({
+        c4: 'datenexport',
+        id,
+        von: '2027-01-01',
+        bis: '2027-12-31',
+        sub: 'r',
+      });
+      expect(t.finanzarchiv.exportSchreiben).not.toHaveBeenCalled();
+      expect(await t.lesen<Dto[]>('admin-token', '/datenexporte')).toHaveLength(0);
+    });
+
+    it('with Beleg files: needs the right, validates, answers 503 when it cannot start', async () => {
+      const t = await setup();
+      const body = { von: '2027-01-01', bis: '2027-12-31', mitBelegdateien: true };
+      expect((await exportieren(t, 'member-token', body)).status).toBe(403);
+      expect((await exportieren(t, 'admin-token', { ...body, bis: '2026-01-01' })).status).toBe(
+        400,
+      );
+      expect(t.datenexportStarten).not.toHaveBeenCalled();
+      t.datenexportStarten.mockRejectedValueOnce(new Error('AccessDenied'));
+      expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
+      (t.finanzarchiv as { eingerichtet: boolean }).eingerichtet = false;
+      expect((await exportieren(t, 'admin-token', body)).status).toBe(503);
     });
   });
 });

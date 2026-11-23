@@ -139,6 +139,7 @@ export const BENACHRICHTIGUNG_BEREICH_LABELS: Record<string, string> = {
   privatpartys: 'Privatpartys',
   buch: 'Buch',
   belege: 'Belege',
+  finanzen: 'Finanzen',
 };
 
 /** Notification types (key = `art` in BENACHRICHTIGUNGS_ARTEN): title and one-line explanation. */
@@ -232,6 +233,20 @@ export const BENACHRICHTIGUNG_ART_LABELS: Record<string, { titel: string; beschr
     'belege.status': {
       titel: 'Status deines Belegs',
       beschreibung: 'Wenn ein von dir eingereichter Beleg gebucht, verworfen oder erstattet wurde.',
+    },
+    'finanzen.festgeschrieben': {
+      titel: 'Monat festgeschrieben',
+      beschreibung: 'Wenn ein Monat festgeschrieben wurde. Nur mit dem Recht „Finanzen prüfen“.',
+    },
+    'finanzen.festschreibung_faellig': {
+      titel: 'Festschreibung fällig',
+      beschreibung:
+        'Wöchentliche Erinnerung ab dem 10., wenn ein vergangener Monat noch nicht festgeschrieben ist. Nur mit dem Recht „Finanzen verwalten“.',
+    },
+    'finanzen.datenexport_fertig': {
+      titel: 'Datenexport fertig',
+      beschreibung:
+        'Wenn ein von dir gestarteter Datenexport mit Belegdateien fertig ist oder fehlgeschlagen ist.',
     },
   };
 

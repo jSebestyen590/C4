@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { DatenexportAuftrag } from '@c4/shared';
 import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
 import { type UserAdmin } from './admin';
@@ -81,6 +82,11 @@ export interface AppDeps {
   protokollbilder: Protokollbilder;
   /** Archive bucket of the Finanzen (Beleg files, exports). */
   finanzarchiv: Finanzarchiv;
+  /**
+   * Starts the asynchronous Datenexport with Beleg files (Lambda self-invoke; locally the job runs
+   * in the background of the same process). Rejects when it cannot be started.
+   */
+  datenexportStarten: (auftrag: DatenexportAuftrag) => Promise<void>;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }

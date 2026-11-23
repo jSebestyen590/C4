@@ -493,11 +493,24 @@ export function buchungsHash(prevHash: string, buchung: HashBuchung): Promise<st
   return sha256Hex(`${prevHash}\n${kanonisch(buchung)}`);
 }
 
-export type KettenFehlerArt = 'luecke' | 'prev_hash' | 'hash' | 'summe' | 'stueckelung';
+export type KettenFehlerArt =
+  | 'luecke'
+  | 'prev_hash'
+  | 'hash'
+  | 'summe'
+  | 'stueckelung'
+  | 'archiv_abweichung'
+  | 'archiv_fehlt_in_db'
+  | 'anker'
+  | 'archiv_ueberschrieben'
+  | 'beleg_datei';
 
 export interface KettenFehler {
+  /** 0 when the error belongs to an archive object as a whole (then `schluessel` is set). */
   seq: number;
   art: KettenFehlerArt;
+  /** Archive object the error was found in (archive checks only). */
+  schluessel?: string;
 }
 
 export interface KettenErgebnis {
@@ -551,7 +564,156 @@ export const KETTEN_FEHLER_LABELS: Record<KettenFehlerArt, string> = {
   hash: 'Inhalt passt nicht zum Hash (nachträglich verändert)',
   summe: 'Zeilen ergeben nicht 0',
   stueckelung: 'Stückelung passt nicht zum Betrag',
+  archiv_abweichung: 'Die Buchung im Archiv weicht von der Datenbank ab',
+  archiv_fehlt_in_db: 'Die Buchung steht im Archiv, aber nicht in der Datenbank',
+  anker: 'Der Anker im Archiv passt nicht zur Kette in der Datenbank',
+  archiv_ueberschrieben: 'Die Datei im Archiv wurde überschrieben (mehrere Versionen)',
+  beleg_datei: 'Die Beleg-Datei fehlt im Archiv oder hat eine andere Prüfsumme',
 };
+
+/** An archive object with the text of every stored version (oldest first). */
+export interface ArchivObjekt {
+  schluessel: string;
+  versionen: readonly string[];
+}
+
+export interface ArchivDaten {
+  /** Everything under `export/`, `anker/` and `festschreibung/`. */
+  objekte: readonly ArchivObjekt[];
+  /** Beleg files of the chain with their SHA-256 checksum in the archive (Base64), `null` = missing. */
+  belegDateien: readonly { sha256: string; pruefsumme: string | null }[];
+}
+
+export interface ArchivErgebnis {
+  fehler: KettenFehler[];
+  exporte: number;
+  anker: number;
+  festschreibungen: number;
+  belegdateien: number;
+  /** Entries newer than the last exported one: no error, just not archived yet. */
+  nichtExportiert: number;
+}
+
+const hexZuBase64 = (hex: string): string => {
+  const bytes = hex.match(/../g) ?? [];
+  return btoa(String.fromCharCode(...bytes.map((b) => parseInt(b, 16))));
+};
+
+function istObjekt(w: unknown): w is Record<string, unknown> {
+  return typeof w === 'object' && w !== null && !Array.isArray(w);
+}
+
+/**
+ * Compares the archive with the database (pure): every line of `export/*.jsonl` and
+ * `festschreibung/*.jsonl` must equal the stored entry (`archiv_abweichung`, `archiv_fehlt_in_db`),
+ * every anchor (`anker/*.json`, `festschreibung/*.json`) must match the chain hash at `bis_seq`
+ * (`anker`), and every Beleg file needs its checksum in the archive (`beleg_datei`). More than one
+ * version of an `export/` or `anker/` object is `archiv_ueberschrieben`; `festschreibung/` objects
+ * may be written again after a failed attempt, so only versions with different content (ignoring
+ * `erstellt_am`) count. All versions are checked.
+ */
+export async function pruefeArchiv(
+  db: readonly KettenBuchung[],
+  archiv: ArchivDaten,
+): Promise<ArchivErgebnis> {
+  const fehler: KettenFehler[] = [];
+  const jeSeq = new Map(db.map((b) => [b.seq, b]));
+  const fehlerObjekt = (schluessel: string, art: KettenFehlerArt, seq = 0) =>
+    fehler.push({ seq, art, schluessel });
+  let exporte = 0;
+  let anker = 0;
+  let festschreibungen = 0;
+  let hoechsteExportSeq = 0;
+
+  for (const o of archiv.objekte) {
+    const jsonl = o.schluessel.endsWith('.jsonl');
+    const festschreibung = o.schluessel.startsWith('festschreibung/');
+    if (jsonl && !festschreibung) exporte++;
+    else if (!jsonl && festschreibung) festschreibungen++;
+    else if (!jsonl) anker++;
+
+    const vergleich = (v: string) => {
+      if (jsonl) return v;
+      try {
+        const obj = JSON.parse(v) as Record<string, unknown>;
+        delete obj.erstellt_am;
+        return kanonischJson(obj);
+      } catch {
+        return v;
+      }
+    };
+    const verschieden = new Set(o.versionen.map(vergleich)).size > 1;
+    if (festschreibung ? verschieden : o.versionen.length > 1)
+      fehlerObjekt(o.schluessel, 'archiv_ueberschrieben');
+
+    for (const text of o.versionen) {
+      if (jsonl) {
+        for (const zeile of text.split('\n')) {
+          if (zeile.trim() === '') continue;
+          let eintrag: unknown;
+          try {
+            eintrag = JSON.parse(zeile);
+          } catch {
+            fehlerObjekt(o.schluessel, 'archiv_abweichung');
+            continue;
+          }
+          const seq = istObjekt(eintrag) && istObjekt(eintrag.buchung) ? eintrag.buchung.seq : null;
+          if (typeof seq !== 'number') {
+            fehlerObjekt(o.schluessel, 'archiv_abweichung');
+            continue;
+          }
+          if (!festschreibung) hoechsteExportSeq = Math.max(hoechsteExportSeq, seq);
+          const b = jeSeq.get(seq);
+          if (!b) {
+            fehlerObjekt(o.schluessel, 'archiv_fehlt_in_db', seq);
+            continue;
+          }
+          const erwartet = kanonischJson({
+            hash: b.hash,
+            prev_hash: b.prevHash,
+            buchung: JSON.parse(kanonisch(b)),
+          });
+          let aktuell: string | null = null;
+          try {
+            aktuell = kanonischJson(eintrag);
+          } catch {
+            // not canonicalisable: counts as different
+          }
+          if (aktuell !== erwartet) fehlerObjekt(o.schluessel, 'archiv_abweichung', seq);
+        }
+      } else {
+        let bisSeq: unknown;
+        let kopfHash: unknown;
+        try {
+          const j = JSON.parse(text) as unknown;
+          if (istObjekt(j)) ({ bis_seq: bisSeq, kopf_hash: kopfHash } = j);
+        } catch {
+          // handled below
+        }
+        const erwartet =
+          bisSeq === 0 ? GENESIS_HASH : typeof bisSeq === 'number' ? jeSeq.get(bisSeq)?.hash : null;
+        if (!erwartet || erwartet !== kopfHash)
+          fehlerObjekt(o.schluessel, 'anker', typeof bisSeq === 'number' ? bisSeq : 0);
+      }
+    }
+  }
+
+  const belegSeq = new Map<string, number>();
+  for (const b of db)
+    for (const x of b.belege ?? []) if (!belegSeq.has(x.sha256)) belegSeq.set(x.sha256, b.seq);
+  for (const d of archiv.belegDateien)
+    if (d.pruefsumme !== hexZuBase64(d.sha256))
+      fehler.push({ seq: belegSeq.get(d.sha256) ?? 0, art: 'beleg_datei' });
+
+  return {
+    fehler,
+    exporte,
+    anker,
+    festschreibungen,
+    belegdateien: archiv.belegDateien.length,
+    nichtExportiert: db.filter((b) => b.seq > hoechsteExportSeq).length,
+  };
+}
 
 // ----- Euro input
 
@@ -723,6 +885,8 @@ export interface KettenErgebnisDto extends KettenErgebnis {
   zaehlerWert: number;
   zaehlerHash: string;
   zaehlerPasst: boolean;
+  /** Result of the comparison with the archive (`eingerichtet` false: only the database was checked). */
+  archiv: Omit<ArchivErgebnis, 'fehler'> & { eingerichtet: boolean };
   /** No errors and the counter matches. */
   ok: boolean;
   geprueftAm: string;

@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import {
   anzahlenAus,
   berechneZaehlung,
+  buchungsdatumFuer,
+  festgeschriebenBis,
+  monatAnzeigen,
+  naechsterFestschreibbarerMonat,
+  type FestschreibungHinweisDto,
   GENESIS_HASH,
   kassenabrechnungBuchungstext,
   kasseKontenFehler,
@@ -45,6 +50,9 @@ import {
   BuchungUngueltig,
   buchungErzeugen,
   entwurfZeilen,
+  FestschreibungKonflikt,
+  type DatenexportEintrag,
+  type FestschreibungEintrag,
   KontoKonflikt,
   KontoUngueltig,
   ohnePos,
@@ -53,6 +61,7 @@ import {
   zaehlungKontoFehler,
   type FinanzenStore,
 } from './finanzen';
+import { datumBerlin } from './finanzenBelege';
 import { createFakeBelegeStore, createFakeLager } from './finanzenBelege.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
@@ -90,6 +99,7 @@ export function createFakeFinanzenStore() {
   }
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
+  const belegDateien: { sha256: string; schluessel: string }[] = [];
   const zaehler = { wert: 0, letzterHash: GENESIS_HASH };
   const exporte: {
     datum: string;
@@ -187,7 +197,21 @@ export function createFakeFinanzenStore() {
     return b ? { ...b, wiederholt: true } : undefined;
   };
 
-  const anhaengen = async (entwurf: Parameters<typeof buchungErzeugen>[0]) => {
+  /** Closed months; tests may push into it. */
+  const festschreibungenListe: FestschreibungEintrag[] = [];
+  /** Written Datenexporte (ZIPs). */
+  const datenexporteListe: DatenexportEintrag[] = [];
+  /** Hints `festschreibungHinweise` returns; tests may fill it. */
+  const hinweise: FestschreibungHinweisDto[] = [];
+
+  const anhaengen = async (urspruenglich: Parameters<typeof buchungErzeugen>[0]) => {
+    const datumErgebnis = buchungsdatumFuer(
+      urspruenglich.datum,
+      festgeschriebenBis(festschreibungenListe.map((f) => f.monat)),
+      urspruenglich.datumVerschiebbar ?? false,
+    );
+    if (datumErgebnis.fehler !== undefined) throw new BuchungUngueltig([datumErgebnis.fehler]);
+    const entwurf = { ...urspruenglich, datum: datumErgebnis.datum };
     const { buchung } = await buchungErzeugen(
       entwurf,
       zaehler.wert + 1,
@@ -199,7 +223,7 @@ export function createFakeFinanzenStore() {
     zaehler.letzterHash = buchung.hash;
     if (entwurf.idempotenzSchluessel)
       schluessel.set(entwurf.idempotenzSchluessel, { id: buchung.id, seq: buchung.seq });
-    return { id: buchung.id, seq: buchung.seq };
+    return { id: buchung.id, seq: buchung.seq, datum: buchung.datum };
   };
 
   const kassenKonten = (): KassenKonto[] =>
@@ -451,6 +475,7 @@ export function createFakeFinanzenStore() {
           datum: eingabe.datum,
           text: eingabe.text ?? zaehlungBuchungstext(fach.name, ergebnis.differenzCent),
           quelleTyp: 'zaehlung',
+          datumVerschiebbar: true,
           quelleId: id,
           eventId: null,
           stornoVon: null,
@@ -619,6 +644,7 @@ export function createFakeFinanzenStore() {
               datum: eingabe.datum,
               text: kassenabrechnungBuchungstext(kasse.name, r.einnahmeCent),
               quelleTyp: 'kassenabrechnung',
+              datumVerschiebbar: true,
               quelleId: id,
               eventId: null,
               stornoVon: null,
@@ -810,8 +836,126 @@ export function createFakeFinanzenStore() {
       });
       return { id, summeCent };
     },
+    async festschreibungen() {
+      return structuredClone(
+        [...festschreibungenListe].sort((a, b) => b.monat.localeCompare(a.monat)),
+      );
+    },
+    async fruehesteBuchung() {
+      return buchungen.map((b) => b.datum).sort()[0] ?? null;
+    },
+    async festschreibungHinweise() {
+      return structuredClone(hinweise);
+    },
+    async festschreibungAnlegen(neu) {
+      if (neu.erwarteterZaehler !== zaehler.wert)
+        throw new FestschreibungKonflikt(
+          'Es wurde gleichzeitig gebucht. Bitte versuche es noch einmal.',
+        );
+      const naechster = naechsterFestschreibbarerMonat({
+        letzterFest:
+          festschreibungenListe
+            .map((f) => f.monat)
+            .sort()
+            .at(-1) ?? null,
+        fruehesteBuchung: buchungen.map((b) => b.datum).sort()[0] ?? null,
+        heuteBerlin: datumBerlin(neu.jetzt),
+      });
+      if (naechster !== neu.monat)
+        throw new FestschreibungKonflikt(
+          naechster
+            ? `Als Nächstes ist ${monatAnzeigen(naechster)} dran.`
+            : 'Es kann kein Monat festgeschrieben werden.',
+        );
+      festschreibungenListe.push({
+        id: randomUUID(),
+        monat: neu.monat,
+        bisSeq: neu.bisSeq,
+        kopfHash: neu.kopfHash,
+        anzahl: neu.anzahl,
+        exportSchluessel: neu.exportSchluessel,
+        festgeschriebenVon: neu.sub,
+        festgeschriebenAm: neu.jetzt,
+      });
+    },
     async letzterExportSeq() {
       return Math.max(0, ...exporte.map((e) => e.bisSeq));
+    },
+    async datenexportDaten(von, bis) {
+      const imZeitraum = structuredClone(buchungen)
+        .filter((b) => b.datum >= von && b.datum <= bis)
+        .sort((a, b) => a.seq - b.seq);
+      const belegTeil = await belege.datenexportBelege(von, bis);
+      return {
+        konten: [...konten.values()]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((k) => ({
+            id: k.id,
+            name: k.name,
+            art: k.art,
+            parentId: k.parentId,
+            stueckelung: k.stueckelung,
+            steuersatzArt: k.steuersatzArt ?? null,
+            archiviert: k.archiviert,
+          })),
+        buchungen: imZeitraum.map((b) => ({
+          id: b.id,
+          seq: b.seq,
+          datum: b.datum,
+          text: b.text,
+          quelleTyp: b.quelleTyp,
+          quelleId: b.quelleId,
+          eventId: b.eventId,
+          stornoVon: b.stornoVon,
+          erstelltVon: b.erstelltVon,
+          erstelltAm: new Date(b.erstelltAm).toISOString(),
+          prevHash: b.prevHash,
+          hash: b.hash,
+        })),
+        zeilen: imZeitraum.flatMap((b) =>
+          b.zeilen.map((z) => ({
+            buchungId: b.id,
+            pos: z.pos,
+            kontoId: z.kontoId,
+            betragCent: z.betragCent,
+            nettoCent: z.nettoCent ?? null,
+            steuerCent: z.steuerCent ?? null,
+            steuersatz: z.steuersatz ?? null,
+            steuerArt: z.steuerArt,
+          })),
+        ),
+        stueckelung: imZeitraum.flatMap((b) =>
+          b.zeilen.flatMap((z) =>
+            (z.stueckelung ?? []).map((s) => ({
+              buchungId: b.id,
+              pos: z.pos,
+              nennwertCent: s.nennwertCent,
+              anzahl: s.anzahl,
+            })),
+          ),
+        ),
+        ...belegTeil,
+        festschreibungen: [...festschreibungenListe]
+          .sort((a, b) => a.monat.localeCompare(b.monat))
+          .map((f) => ({
+            id: f.id,
+            monat: f.monat,
+            bisSeq: f.bisSeq,
+            kopfHash: f.kopfHash,
+            anzahl: f.anzahl,
+            exportSchluessel: f.exportSchluessel,
+            festgeschriebenVon: f.festgeschriebenVon,
+            festgeschriebenAm: f.festgeschriebenAm.toISOString(),
+          })),
+      };
+    },
+    async datenexporte() {
+      return structuredClone([...datenexporteListe].reverse());
+    },
+    async datenexportEintragen({ id: vorgegeben, ...neu }) {
+      const id = vorgegeben ?? `datenexport-${datenexporteListe.length + 1}`;
+      datenexporteListe.push({ id, ...neu });
+      return id;
     },
     async exportEintragen(e) {
       exporte.push(e);
@@ -819,10 +963,26 @@ export function createFakeFinanzenStore() {
     async kettenDaten() {
       return {
         buchungen: structuredClone(buchungen),
+        belegDateien: structuredClone(belegDateien),
         zaehlerWert: zaehler.wert,
         zaehlerHash: zaehler.letzterHash,
       };
     },
   };
-  return { store, exporte, konten, buchungen, zaehler, events, kassen, kategorien, lager };
+  return {
+    store,
+    exporte,
+    festschreibungenListe,
+    datenexporteListe,
+    hinweise,
+    konten,
+    buchungen,
+    /** Beleg files `kettenDaten` reports (tests add their own). */
+    belegDateien,
+    zaehler,
+    events,
+    kassen,
+    kategorien,
+    lager,
+  };
 }

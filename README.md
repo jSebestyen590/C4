@@ -99,6 +99,11 @@ see `docs/benachrichtigungen.md`). Without it the Terraform apply of the environ
 the schedule `c4-<env>-mail-job` (every 2 minutes). Fill the secret as described in step 7 of the first-time setup;
 until then the Party-Mail is off and the app says so.
 
+**Re-apply `infra/bootstrap` once before deploying Finanzen Scheibe 5** (GoBD): the deploy roles need `cloudtrail:*` on
+`c4-<env>-*` for the trail `c4-<env>-trail`, and the permissions boundary needs `s3:GetObjectVersion` and
+`s3:ListBucketVersions` on `c4-<env>-*` (the API reads all versions of the Finanzarchiv for "Kette prüfen").
+Without it the Terraform apply of the environment fails (see `docs/finanzen.md`, "CloudTrail").
+
 See `docs/privatpartys.md`.
 
 ### Bootstrap: Rechte der Deploy-Rolle und Backups

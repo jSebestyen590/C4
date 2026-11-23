@@ -41,6 +41,7 @@ import {
   type FreieZeile,
 } from '../buchungFormular';
 import { DatumFeld } from '../DatumFeld';
+import { DatumsgrenzeHinweis, useDatumsgrenze } from '../FestschreibungHinweise';
 import { FeldLabel, InfoHinweis } from '../InfoHinweis';
 import { HILFE } from '../finanzenHilfe';
 import { finanzenKeys, jsonOderFehler, kontoOptionen, useKonten } from '../finanzenDaten';
@@ -58,6 +59,7 @@ export function FinanzenBuchenPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const konten = useKonten(false);
+  const grenze = useDatumsgrenze();
   const [datum, setDatum] = useState(heuteBerlin());
   const [text, setText] = useState('');
   const [modus, setModus] = useState<FormularModus>('umbuchung');
@@ -104,6 +106,7 @@ export function FinanzenBuchenPage() {
   const umbuchungUebernehmen = modus === 'umbuchung' && !!von && !!nach;
   const gruende = [
     ...(datum ? [] : ['Bitte gib ein Datum an.']),
+    ...(datum && grenze.min && datum < grenze.min && grenze.hinweis ? [grenze.hinweis] : []),
     ...(stueckelungKonten.length > 0
       ? ['Konten mit Stückelung buchst du unter „Bargeld“ mit Münzen und Scheinen.']
       : []),
@@ -240,8 +243,15 @@ export function FinanzenBuchenPage() {
                   value={datum}
                   onWert={setDatum}
                   loeschbar={false}
+                  min={grenze.min}
                   onBlur={() => anfassen('datum')}
-                  error={zeigt('datum') && !datum ? 'Bitte gib ein Datum an.' : undefined}
+                  error={
+                    zeigt('datum') && !datum
+                      ? 'Bitte gib ein Datum an.'
+                      : datum && grenze.min && datum < grenze.min
+                        ? (grenze.hinweis ?? undefined)
+                        : undefined
+                  }
                   data-nav=""
                 />
               </Grid.Col>
@@ -260,6 +270,7 @@ export function FinanzenBuchenPage() {
                 />
               </Grid.Col>
             </Grid>
+            <DatumsgrenzeHinweis />
 
             {modus === 'umbuchung' ? (
               <SimpleGrid style={{ alignItems: 'end' }} cols={{ base: 1, md: 3 }} spacing="md">

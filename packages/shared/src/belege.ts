@@ -1060,6 +1060,17 @@ export interface BelegEntwurfDto {
   geaendertAm: string;
 }
 
+/**
+ * The date a Beleg is booked on without a closed month: the Belegdatum for an Auslage, else the
+ * Bezahldatum. True when the actual `buchungsdatum` differs (the booking was shifted).
+ */
+export const belegBuchungVerschoben = (b: {
+  zahlweg: Zahlweg;
+  belegdatum: string;
+  bezahldatum: string | null;
+  buchungsdatum: string;
+}): boolean => b.buchungsdatum !== (b.zahlweg === 'auslage' ? b.belegdatum : b.bezahldatum);
+
 /** Entry of the Beleg list: a draft (no number yet) or a booked Beleg. */
 export interface BelegListeEintrag {
   id: string;
@@ -1082,6 +1093,10 @@ export interface BelegListeEintrag {
   eingereichtAm: string | null;
   /** The amount the member stated (cent). */
   eingereichtBetragCent: number | null;
+  /** Booked Belege: the date of the booking; null for drafts. */
+  buchungsdatum: string | null;
+  /** Booked on a later day than the date it would normally get (the month was festgeschrieben). */
+  buchungVerschoben: boolean;
 }
 
 export interface BelegListeDto extends Omit<BelegListeEintrag, 'mitgliedId' | 'eingereichtVon'> {
@@ -1147,6 +1162,10 @@ export interface BelegDetailEintrag {
   jeSteuersatz: SteuersatzSumme[];
   summeCent: number;
   buchung: { id: string; seq: number };
+  /** The date of the booking of the Beleg. */
+  buchungsdatum: string;
+  /** Booked on a later day than the date it would normally get (the month was festgeschrieben). */
+  buchungVerschoben: boolean;
   /** The booking of the Beleg is reversed. */
   storniert: boolean;
   erstattung: BelegErstattungVerweis | null;
