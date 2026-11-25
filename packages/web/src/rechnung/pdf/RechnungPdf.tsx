@@ -1,5 +1,10 @@
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
-import { centAnzeigen, datumAnzeigen, type RechnungDetailDto } from '@c4/shared';
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import {
+  centAnzeigen,
+  datumAnzeigen,
+  rechnungTextFuellen,
+  type RechnungDetailDto,
+} from '@c4/shared';
 import { anzahlText } from '../../belegFormular';
 import { PDF_SCHRIFT } from '../../protokoll/pdf/schriften';
 import { rechnungTitel } from '../rechnungDatei';
@@ -11,10 +16,9 @@ const stile = StyleSheet.create({
   seite: {
     fontFamily: PDF_SCHRIFT,
     fontSize: 10,
-    paddingTop: 50,
-    paddingBottom: 110,
+    paddingTop: 36,
+    paddingBottom: 130,
     paddingHorizontal: 56,
-    lineHeight: 1.3,
   },
   absenderzeile: {
     fontSize: 7.5,
@@ -25,7 +29,8 @@ const stile = StyleSheet.create({
     marginBottom: 4,
     width: 250,
   },
-  kopf: { flexDirection: 'row', justifyContent: 'space-between', minHeight: 110 },
+  logo: { alignSelf: 'flex-end', width: 67, height: 55, marginBottom: 6 },
+  kopf: { flexDirection: 'row', justifyContent: 'space-between', minHeight: 100 },
   anschrift: { width: 250 },
   info: { width: 190, fontSize: 9.5 },
   infoZeile: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 1 },
@@ -78,8 +83,8 @@ const stile = StyleSheet.create({
     color: GEDAEMPFT,
   },
   fussSpalten: { flexDirection: 'row', justifyContent: 'space-between' },
-  fussSpalte: { width: '32%' },
-  seitenzahl: { textAlign: 'right', marginTop: 4 },
+  fussSpalte: { flex: 1, paddingRight: 8 },
+  seitenzahl: { textAlign: 'right', marginTop: 3 },
 });
 
 const satzText = (satz: number) => `${(satz / 100).toLocaleString('de-DE')} %`;
@@ -92,7 +97,12 @@ const zeilen = (text: string) => text.split(/\r?\n/).filter((z) => z.trim() !== 
  * has its own title, the reference to the cancelled Rechnung and negative amounts. The fonts must
  * be registered before rendering (see `schriftenRegistrieren`).
  */
-export function RechnungPdf({ rechnung: r }: Readonly<{ rechnung: RechnungDetailDto }>) {
+// Note: no `lineHeight` on the Page style. Together with a `render` Text (page number) react-pdf
+// drops the whole fixed footer (and the Text), so no Vorstand etc. appeared on the invoice.
+export function RechnungPdf({
+  rechnung: r,
+  logo,
+}: Readonly<{ rechnung: RechnungDetailDto; logo?: string }>) {
   const v = r.verein;
   const preisArt = r.modus === 'netto' ? 'netto' : 'brutto';
   const netto = r.summen.reduce((s, x) => s + x.netto, 0);
@@ -105,6 +115,7 @@ export function RechnungPdf({ rechnung: r }: Readonly<{ rechnung: RechnungDetail
       producer="C4"
     >
       <Page size="A4" style={stile.seite}>
+        {logo && <Image src={logo} style={stile.logo} />}
         <View style={stile.kopf}>
           <View style={stile.anschrift}>
             <Text style={stile.absenderzeile}>
@@ -157,7 +168,7 @@ export function RechnungPdf({ rechnung: r }: Readonly<{ rechnung: RechnungDetail
           <Text style={stile.spPos}>Pos.</Text>
           <Text style={stile.spText}>Bezeichnung</Text>
           <Text style={stile.spAnzahl}>Anzahl</Text>
-          <Text style={stile.spPreis}>Einzelpreis ({preisArt})</Text>
+          <Text style={stile.spPreis}>{`Einzelpreis\n(${preisArt})`}</Text>
           <Text style={stile.spSatz}>USt</Text>
           <Text style={stile.spBetrag}>Betrag</Text>
         </View>
@@ -220,12 +231,16 @@ export function RechnungPdf({ rechnung: r }: Readonly<{ rechnung: RechnungDetail
             </Text>
           ) : (
             <Text style={stile.absatz}>
-              Bitte überweise den Betrag bis zum {datumAnzeigen(r.faelligAm)} auf das folgende Konto
-              und gib dabei die Rechnungsnummer {r.nummer} an: {v.bankName}, IBAN {v.iban}, BIC{' '}
-              {v.bic}.
+              {rechnungTextFuellen(v.fusstext, {
+                nummer: r.nummer,
+                faellig: datumAnzeigen(r.faelligAm),
+                betrag: centAnzeigen(r.bruttoCent),
+                bank: v.bankName,
+                iban: v.iban,
+                bic: v.bic,
+              })}
             </Text>
           )}
-          {v.fusstext && <Text style={stile.absatz}>{v.fusstext}</Text>}
         </View>
 
         <View style={stile.fuss} fixed>
@@ -238,15 +253,18 @@ export function RechnungPdf({ rechnung: r }: Readonly<{ rechnung: RechnungDetail
               {v.kontakt && zeilen(v.kontakt).map((z, i) => <Text key={`k${i}`}>{z}</Text>)}
             </View>
             <View style={stile.fussSpalte}>
-              <Text>Steuernummer: {v.steuernummer}</Text>
-              {v.ustId && <Text>USt-IdNr.: {v.ustId}</Text>}
               {zeilen(v.vorstand).map((z, i) => (
-                <Text key={i}>{z}</Text>
+                <Text key={i}>
+                  {i === 0 && !/vorstand|vertreten/i.test(v.vorstand) ? 'Vorstand: ' : ''}
+                  {z}
+                </Text>
               ))}
               {v.register && <Text>{v.register}</Text>}
+              <Text>Steuernummer: {v.steuernummer}</Text>
+              {v.ustId && <Text>USt-IdNr.: {v.ustId}</Text>}
             </View>
             <View style={stile.fussSpalte}>
-              <Text>{v.bankName}</Text>
+              <Text>Bank: {v.bankName}</Text>
               <Text>IBAN: {v.iban}</Text>
               <Text>BIC: {v.bic}</Text>
             </View>

@@ -238,7 +238,7 @@ export const HILFE = {
     zahlweg:
       'Bank: Überweisung aufs Vereinskonto. Bar: Das Geld kommt in ein Fach des Safes, du gibst die Münzen und Scheine an. Karte (SumUp): Das Geld liegt zunächst als SumUp-Guthaben, bis die Auszahlung mit dem Bankkonto abgeglichen wird. Eine Rechnung wird immer ganz bezahlt, Teilzahlungen gibt es nicht. Ins Buch lässt sich nicht zahlen.',
     einstellungen:
-      'Diese Angaben erscheinen auf jeder Rechnung. Beim Stellen wird eine Kopie in die Rechnung geschrieben: Spätere Änderungen betreffen nur neue Rechnungen.',
+      'Diese Angaben erscheinen auf jeder Rechnung. Beim Stellen wird eine Kopie in die Rechnung geschrieben: Spätere Änderungen betreffen nur neue Rechnungen. Der „Text unter den Posten“ ersetzt den Zahlungssatz unter der Summe; Platzhalter wie {nummer} oder {faellig} werden beim PDF eingesetzt.',
   },
   waren: {
     standardGebinde:

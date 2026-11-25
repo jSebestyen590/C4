@@ -20,6 +20,7 @@ import {
   letzterPreisJeGebinde,
   warenGebindeKey,
   type RechnungEntwurfDaten,
+  rechnungTextFuellen,
 } from './rechnungen';
 import { STEUERSATZ_ZEITRAEUME_SEED } from './steuersaetze';
 
@@ -276,5 +277,32 @@ describe('letzterPreisJeGebinde', () => {
     expect(preise.get(warenGebindeKey('w', 'g'))).toBe(1190);
     expect(preise.get(warenGebindeKey('w', 'h'))).toBe(700);
     expect(preise.size).toBe(2);
+  });
+});
+
+describe('rechnungTextFuellen', () => {
+  const werte = {
+    nummer: '001-2027',
+    faellig: '29.01.2027',
+    betrag: '119,00 €',
+    bank: 'Sparkasse',
+    iban: 'DE02',
+    bic: 'WELA',
+  };
+  it('replaces all placeholders, also repeated ones', () => {
+    expect(
+      rechnungTextFuellen(
+        '{nummer} bis {faellig}: {betrag} ({nummer}) {bank} {iban} {bic} {x}',
+        werte,
+      ),
+    ).toBe('001-2027 bis 29.01.2027: 119,00 € (001-2027) Sparkasse DE02 WELA {x}');
+  });
+  it('falls back to the default text when empty', () => {
+    for (const leer of [null, undefined, '  ']) {
+      const t = rechnungTextFuellen(leer, werte);
+      expect(t).toContain('29.01.2027');
+      expect(t).toContain('001-2027');
+      expect(t).not.toContain('{');
+    }
   });
 });

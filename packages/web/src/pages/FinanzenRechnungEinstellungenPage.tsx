@@ -13,6 +13,8 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
+  RECHNUNG_TEXT_PLATZHALTER,
+  RECHNUNG_TEXT_STANDARD,
   RECHNUNG_ZAHLUNGSZIEL_STANDARD,
   rechnungEinstellungenEingabeSchema,
   type RechnungEinstellungenDto,
@@ -57,7 +59,7 @@ const werteVon = (e: RechnungEinstellungenDto | null | undefined): Werte => ({
   vorstand: e?.vorstand ?? '',
   register: e?.register ?? '',
   kontakt: e?.kontakt ?? '',
-  fusstext: e?.fusstext ?? '',
+  fusstext: e?.fusstext ?? RECHNUNG_TEXT_STANDARD,
   zahlungszielTage: String(e?.zahlungszielTage ?? RECHNUNG_ZAHLUNGSZIEL_STANDARD),
   erloesKontoWaren: e?.erloesKontoWaren ?? null,
 });
@@ -203,7 +205,11 @@ function Formular({ aktuell }: Readonly<{ aktuell: RechnungEinstellungenDto | nu
           {text('register', 'Vereinsregister', { maxLength: 200, optional: true })}
           {mehrzeilig('kontakt', 'Kontakt', { maxLength: 300, optional: true })}
         </FeldZeile>
-        {mehrzeilig('fusstext', 'Text unter der Rechnung', { maxLength: 500, optional: true })}
+        {mehrzeilig('fusstext', 'Text unter den Posten', {
+          maxLength: 1000,
+          optional: true,
+          beschreibung: `Steht unter der Summe jeder Rechnung. Platzhalter: ${RECHNUNG_TEXT_PLATZHALTER.map((p) => `${p.platzhalter} (${p.beschreibung})`).join(', ')}. Leer: Standardtext.`,
+        })}
         <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0}>
           <TextInput
             label="Zahlungsziel in Tagen"

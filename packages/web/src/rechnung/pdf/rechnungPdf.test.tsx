@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { pdf } from '@react-pdf/renderer';
 import { describe, expect, it } from 'vitest';
 import type { RechnungDetailDto } from '@c4/shared';
@@ -112,7 +113,9 @@ const storno: RechnungDetailDto = {
   })),
 };
 
-async function rendern(r: RechnungDetailDto): Promise<Buffer> {
+const logoDatei = fileURLToPath(new URL('../../assets/logo-rechnung.png', import.meta.url));
+
+async function rendern(r: RechnungDetailDto, mitLogo = true): Promise<Buffer> {
   const require = createRequire(import.meta.url);
   const datei = (n: string) =>
     require.resolve(`@fontsource/noto-sans/files/noto-sans-latin-${n}.woff`);
@@ -122,7 +125,9 @@ async function rendern(r: RechnungDetailDto): Promise<Buffer> {
     kursiv: datei('400-italic'),
     fettKursiv: datei('700-italic'),
   });
-  const strom = await pdf(<RechnungPdf rechnung={r} />).toBuffer();
+  const strom = await pdf(
+    <RechnungPdf rechnung={r} logo={mitLogo ? logoDatei : undefined} />,
+  ).toBuffer();
   const teile: Buffer[] = [];
   for await (const t of strom) teile.push(Buffer.from(t as Uint8Array));
   return Buffer.concat(teile);
@@ -140,6 +145,8 @@ describe('Rechnung PDF', () => {
     expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
     expect(bytes.length).toBeGreaterThan(3000);
     expect(bytes.toString('latin1')).toContain('/Title');
+    expect(bytes.toString('latin1')).toContain('/Subtype /Image');
+    expect((await rendern(rechnung, false)).toString('latin1')).not.toContain('/Subtype /Image');
   });
 
   it('renders a Stornorechnung with negative amounts', async () => {

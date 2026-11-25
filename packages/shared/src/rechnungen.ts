@@ -84,6 +84,40 @@ const pflichtText = (meldung: string, max: number) =>
 const optText = (max: number) => nullish(kurzText(max)).transform((v) => (v === '' ? null : v));
 const preisFormelFeld = z.string().trim().max(200, 'Höchstens 200 Zeichen erlaubt.').nullish();
 
+/** Default of the editable text below the items; `{...}` are placeholders. */
+export const RECHNUNG_TEXT_STANDARD =
+  'Bitte überweise den Betrag bis zum {faellig} auf das folgende Konto und gib dabei die Rechnungsnummer {nummer} an: {bank}, IBAN {iban}.';
+export const RECHNUNG_TEXT_PLATZHALTER = [
+  { platzhalter: '{nummer}', beschreibung: 'Rechnungsnummer' },
+  { platzhalter: '{faellig}', beschreibung: 'Fälligkeitsdatum' },
+  { platzhalter: '{betrag}', beschreibung: 'Gesamtbetrag (brutto)' },
+  { platzhalter: '{bank}', beschreibung: 'Name der Bank' },
+  { platzhalter: '{iban}', beschreibung: 'IBAN' },
+  { platzhalter: '{bic}', beschreibung: 'BIC' },
+] as const;
+
+/**
+ * Fills the placeholders of the text below the items. An empty text falls back to the default;
+ * unknown `{...}` stay as they are.
+ */
+export function rechnungTextFuellen(
+  vorlage: string | null | undefined,
+  werte: {
+    nummer: string;
+    faellig: string;
+    betrag: string;
+    bank: string;
+    iban: string;
+    bic: string;
+  },
+): string {
+  const text = vorlage && vorlage.trim() !== '' ? vorlage : RECHNUNG_TEXT_STANDARD;
+  return text.replace(
+    /\{(nummer|faellig|betrag|bank|iban|bic)\}/g,
+    (_, k: keyof typeof werte) => werte[k],
+  );
+}
+
 /** Club data printed on the invoices; a copy is stored with every Rechnung. */
 export const rechnungVereinSchema = z.object({
   vereinsname: pflichtText('Bitte gib den Vereinsnamen an.', 120),
@@ -96,7 +130,8 @@ export const rechnungVereinSchema = z.object({
   vorstand: pflichtText('Bitte gib den Vorstand an.', 300),
   register: optText(200),
   kontakt: optText(300),
-  fusstext: optText(500),
+  /** "Text unter den Posten" with placeholders, see `RECHNUNG_TEXT_PLATZHALTER`. */
+  fusstext: optText(1000),
 });
 export type RechnungVerein = z.output<typeof rechnungVereinSchema>;
 
