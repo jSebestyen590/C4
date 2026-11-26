@@ -18,10 +18,12 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl, Themen
   wieder auf Abschnittsebene. Alle anderen Bausteine lassen sich nicht in Notizen ablegen. Ein Baustein nimmt seine Notizen samt
   verschachtelten Bausteinen mit; ein Thema in sein eigenes Thema (oder dessen Nachfahren) zu legen geht nicht (diese Zeilen sind beim Ziehen eingeklappt).
 - **Technik:** Die Gliederung ist **eine** flache Liste (ein `Droppable`): Abschnittskopf (nicht ziehbar), Baustein, verschachtelter
-  Baustein (nach Tiefe eingerückt, Tiefe-zuerst-Reihenfolge, „In die Notizen“ hinter den Kindern jedes Bausteins mit Notizen). Die Menge der Zeilen ist immer gleich (pangea erlaubt kein Hinzufügen/Entfernen während des Ziehens); nicht nutzbare Zeilen
-  haben Höhe 0 (`inert`). Hinter jedem Baustein mit Notizen (nicht Abstimmung/Meinungsbild/Wahl/Anwesenheit) steht eine Zeile „In die
-  Notizen“, die nur beim Ziehen eines verschachtelbaren Bausteins aufgeklappt ist; die verschachtelten Zeilen eines gezogenen
-  Bausteins sind eingeklappt. Das Ziel
+  Baustein (nach Tiefe eingerückt, Tiefe-zuerst-Reihenfolge, Tiefe-zuerst-Reihenfolge). Beim Heben darf sich das Layout über der gezogenen Zeile nicht ändern (pangea misst danach): Es gibt
+  keine eingefügten Ablagezonen; die verschachtelten Zeilen des gezogenen Bausteins sind eingeklappt (Höhe 0, `inert`). **In die
+  Notizen** legst du, indem du den Baustein **auf eine Zeile** ziehst (pangea-Combine, `isCombineEnabled`): Die Zeile wird
+  hervorgehoben, der Baustein landet am Ende ihrer Notizen (`onDragEnd` mit `combine`, geprüft von `bausteinVerschiebenErgebnis`;
+  geht es nicht, erscheint „Hierhin lässt sich der Baustein nicht verschieben.“). Der gezogene Baustein wird per `renderClone` in
+  den `body` gerendert (ein transformierter Vorfahre wie der Drawer würde sonst `position: fixed` verschieben). Das Ziel
   ergibt sich aus der ersten aufgeklappten Zeile **darunter** (`gliederungZiel` in `gliederung.ts`, getestet): ist es ein verschachtelter
   Baustein, kommt der gezogene davor in dessen Notizen (bei „In die Notizen“ ans Ende); nicht verschachtelbare Bausteine landen
   stattdessen direkt hinter dem Eltern-Baustein. Sonst steht er auf Abschnittsebene in dem Abschnitt der Zeile darüber (direkt

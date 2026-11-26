@@ -10,6 +10,7 @@ import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import {
   aktiveStelleId,
   bausteinInGliederungVerschieben,
+  bausteinVerschiebenErgebnis,
   gliederungBauen,
   gliederungTitel,
   gliederungZeilen,
@@ -778,5 +779,39 @@ describe('aktiveStelleId (the place the preview jumps to)', () => {
   it('uses the nearest Baustein before a Merker', () => {
     const { doc } = s();
     expect(aktiveStelleId(doc, posVon(doc, 'Prüfen'))).toBe('inner');
+  });
+});
+
+describe('combine drop (into the notes of a row)', () => {
+  const thema = (id: string, inhalt?: ProtokollKnoten[]) =>
+    baustein('bausteinThema', id, { titel: id }, inhalt);
+  const s = () =>
+    zustand([
+      thema('A', [absatz(), thema('B', [absatz(), abstimmung('b1', 'x'), absatz()]), absatz()]),
+      absatz(),
+      thema('C'),
+      absatz(),
+      abstimmung('v', 'V'),
+      absatz(),
+    ]);
+  const ende = { elternId: '', index: Number.MAX_SAFE_INTEGER };
+
+  it('puts the Baustein at the end of the notes of the row, at any depth', () => {
+    const neu = (id: string, eltern: string) => {
+      const r = bausteinVerschiebenErgebnis(s(), id, { ...ende, elternId: eltern });
+      return r && r !== 'unveraendert' ? form(s().apply(r).doc) : r;
+    };
+    expect(neu('C', 'B')).toBe('A(B(b1 C)) _ _ v _ | _ | _');
+    expect(neu('v', 'A')).toBe('A(B(b1) v) _ C _ _ | _ | _');
+  });
+
+  it('refuses a row that takes no notes, itself and its own descendants; same place is no change', () => {
+    const r = (id: string, eltern: string) =>
+      bausteinVerschiebenErgebnis(s(), id, { ...ende, elternId: eltern });
+    expect(r('C', 'v')).toBeNull();
+    expect(r('A', 'B')).toBeNull();
+    expect(r('A', 'A')).toBeNull();
+    expect(r('C', 'abschnitt:0')).toBeNull();
+    expect(r('B', 'A')).toBe('unveraendert');
   });
 });

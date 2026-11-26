@@ -46,16 +46,6 @@ export function zuBausteinScrollen(editor: Editor, id: string): void {
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-const platzhalterStil = (aktiv: boolean): CSSProperties => ({
-  minHeight: 42,
-  paddingInline: 'var(--mantine-spacing-sm)',
-  display: 'flex',
-  alignItems: 'center',
-  border: `1px dashed ${aktiv ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-default-border)'}`,
-  borderRadius: 'var(--mantine-radius-sm)',
-  background: aktiv ? 'var(--mantine-primary-color-light)' : undefined,
-});
-
 const ziehStil = (stil: CSSProperties | undefined, zieht: boolean): CSSProperties => ({
   ...stil,
   background: zieht ? 'var(--mantine-color-body)' : undefined,
@@ -93,7 +83,12 @@ export function Gliederung({
   );
   // Id of the Baustein being dragged: it decides which rows exist (notes slots, hidden nested rows).
   const [gezogenId, setGezogenId] = useState<string | null>(null);
-  const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
+  // No notes slots in the list: lifting must not change the layout above the dragged row. "Into the
+  // notes" is a combine (drop onto a row), see `ende`.
+  const zeilen = useMemo(
+    () => gliederungZeilen(baum, gezogenId).filter((z) => z.art !== 'notizen'),
+    [baum, gezogenId],
+  );
 
   // While dragging only the outline scrolls: the window is locked from the start of the drag to its
   // end (drop, cancel or unmount).
@@ -123,15 +118,25 @@ export function Gliederung({
       color: 'yellow',
       message: 'Hierhin lässt sich der Baustein nicht verschieben.',
     });
-  const ende = ({ draggableId, source, destination }: DropResult) => {
+  const ende = ({ draggableId, source, destination, combine }: DropResult) => {
     try {
+      if (combine) {
+        // Dropped onto a row: at the end of its notes (checked by the move itself).
+        const e = bausteinVerschiebenErgebnis(editor.state, draggableId, {
+          elternId: combine.draggableId,
+          index: Number.MAX_SAFE_INTEGER,
+        });
+        if (e === null) nichtMoeglich();
+        else if (e !== 'unveraendert') editor.view.dispatch(e);
+        return;
+      }
       if (!destination || destination.index === source.index) return;
       // Derived from the document and the dragged id, not from render state: the responder may still
       // hold the closure of an earlier render (then the notes slots would count as collapsed).
       const aktuell = gliederungZeilen(
         gliederungBauen(editor.state.doc, personName, kategorien),
         draggableId,
-      );
+      ).filter((z) => z.art !== 'notizen');
       const ziel = gliederungZiel(aktuell, draggableId, destination.index);
       const ergebnis = ziel ? bausteinVerschiebenErgebnis(editor.state, draggableId, ziel) : null;
       if (ergebnis === null) nichtMoeglich();
@@ -196,15 +201,7 @@ export function Gliederung({
           </Text>
         );
       case 'notizen':
-        return (
-          <div {...drag.dragHandleProps} style={{ marginLeft: einzug(z.tiefe) }}>
-            <div style={platzhalterStil(false)}>
-              <Text size="xs" c="dimmed">
-                In die Notizen
-              </Text>
-            </div>
-          </div>
-        );
+        return null;
       case 'baustein':
       case 'kind': {
         const e = z.eintrag;
@@ -213,7 +210,14 @@ export function Gliederung({
             style={{
               ...ziehStil(undefined, dragSnap.isDragging),
               marginLeft: z.art === 'kind' ? einzug(z.tiefe) : 0,
+              // Drop onto the row = into its notes: only highlighted, the height stays.
+              ...(dragSnap.combineTargetFor && {
+                outline: '2px dashed var(--mantine-primary-color-filled)',
+                background: 'var(--mantine-primary-color-light)',
+                borderRadius: 'var(--mantine-radius-sm)',
+              }),
             }}
+            title={dragSnap.combineTargetFor ? 'In die Notizen' : undefined}
           >
             {eintragZeile(
               e,
@@ -230,6 +234,7 @@ export function Gliederung({
       <nav aria-label="Gliederung">
         <Droppable
           droppableId="gliederung"
+          isCombineEnabled
           // The clone goes to the body: a transformed ancestor (the Drawer) would be the containing
           // block of its `position: fixed` and the row would be drawn far from the pointer.
           renderClone={(drag, dragSnap, rubric) => {
@@ -249,7 +254,7 @@ export function Gliederung({
                   key={z.key}
                   draggableId={z.key}
                   index={i}
-                  isDragDisabled={z.art === 'abschnitt' || z.art === 'notizen' || zu(z)}
+                  isDragDisabled={z.art === 'abschnitt' || zu(z)}
                 >
                   {(drag, dragSnap) => (
                     <div
