@@ -185,7 +185,7 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = aws_secretsmanager_secret.partymail.arn
       },
       {
-        # SumUp API key (filled in by hand, see docs/finanzen-sumup.md).
+        # SumUp API key (filled in by hand, see docs/finanzen.md („SumUp“)).
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = aws_secretsmanager_secret.sumup.arn
@@ -227,7 +227,7 @@ resource "aws_secretsmanager_secret" "partymail" {
 # so they never end up in the Terraform state.
 resource "aws_secretsmanager_secret" "sumup" {
   name                    = "${local.name}-sumup"
-  description             = "SumUp API key and merchant code for the card revenue, see docs/finanzen-sumup.md"
+  description             = "SumUp API key and merchant code for the card revenue, see docs/finanzen.md („SumUp“)"
   recovery_window_in_days = var.env == "prod" ? 30 : 0
 }
 

@@ -14,7 +14,7 @@ export interface SumupJobDeps {
 }
 
 /**
- * Fetches new SumUp transactions and payouts and stores them (docs/finanzen-sumup.md). Re-reads
+ * Fetches new SumUp transactions and payouts and stores them (docs/finanzen.md („SumUp“)). Re-reads
  * the last 3 days / 7 days again; existing ids are ignored. Nothing is booked here.
  */
 export function sumupAbrufen(deps: SumupJobDeps) {

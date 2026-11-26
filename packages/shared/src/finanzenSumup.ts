@@ -5,7 +5,7 @@ import { datumBerlin, zeitBerlin } from './kalender';
 import { nettoSteuer, type KassenZeile } from './kassen';
 
 // SumUp card revenue (Finanzen slice 7): pure logic for grouping transactions, planning the
-// bookings and matching payouts to bank transactions. See docs/finanzen-sumup.md.
+// bookings and matching payouts to bank transactions. See docs/finanzen.md („SumUp“).
 
 /** Fixed accounts. The Guthaben account already exists since migration 0256 under the id `sumup`. */
 export const SUMUP_GUTHABEN_KONTO_ID = 'sumup';

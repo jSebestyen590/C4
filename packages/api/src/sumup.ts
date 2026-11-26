@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { SumupAuszahlungZeile, SumupTransaktion } from '@c4/shared';
 import { createSecretLeser } from './secrets';
 
-// SumUp REST client (Finanzen slice 7, see docs/finanzen-sumup.md). The field names of the SumUp
+// SumUp REST client (Finanzen slice 7, see docs/finanzen.md („SumUp“)). The field names of the SumUp
 // responses are not confirmed against real data yet, so the schemas are tolerant: an item that
 // cannot be read is logged and skipped instead of failing the whole run.
 

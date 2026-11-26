@@ -7,7 +7,7 @@ import { BuchungUngueltig, FestschreibungKonflikt } from '../finanzen';
 import { SumupKonflikt, SumupUnbekannt } from '../finanzenSumup';
 import type { RoutenKontext } from './kontext';
 
-// SumUp card revenue (docs/finanzen-sumup.md): overview, manual fetch and booking per group.
+// SumUp card revenue (docs/finanzen.md („SumUp“)): overview, manual fetch and booking per group.
 export const finanzenSumupRoutes = (ctx: RoutenKontext) => {
   const { deps, auth, finanzenLesen, finanzenBuchen } = ctx;
 

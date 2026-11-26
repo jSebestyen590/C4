@@ -1,5 +1,7 @@
 # Finanzen Scheibe 7: SumUp
 
+> Umgesetzt (Doku: [finanzen.md](../finanzen.md), „SumUp“). Abweichungen: Das Konto „SumUp-Guthaben“ gab es schon als `sumup` (Migration 0256), neu sind `kartenerloese` und `sumup-gebuehren`; die Migrationen sind 0272–0279; statt Zeilensperren dienen `sperreBeruehren`-Schlüssel; der Auszahlungs-Abgleich ist nicht gebaut (Scheibe 6 hängt ihn an), Auszahlungen erscheinen nur als „offen“.
+
 ## Context
 
 Kartenzahlungen laufen über SumUp; in Access fehlten Gebühren ganz. Scheibe 7 holt Transaktionen und
@@ -42,7 +44,7 @@ Schnittstelle ist mit ihr abgestimmt (siehe unten). Größe ~50+ Schritte → la
 - Konten mit fester ID (`INSERT … ON CONFLICT (id) DO NOTHING`): `sumup-guthaben` (durchlauf),
   `kartenerloese` (erloes, `steuersatz_standard` 1900), `sumup-gebuehren` (aufwand).
 - `fin_sumup_transaktionen` (nur INSERT): `id` (SumUp-id, PK), `transaction_code`, `zeitpunkt
-  timestamptz`, `betrag_cent` (REFUND/CHARGE_BACK negativ), `typ`, `status`, `trinkgeld_cent`,
+timestamptz`, `betrag_cent` (REFUND/CHARGE_BACK negativ), `typ`, `status`, `trinkgeld_cent`,
   `sumup_benutzer`, `roh jsonb`, `abgerufen_am`. Nur `SUCCESSFUL`/`REFUNDED`-Endstände importieren;
   `ON CONFLICT DO NOTHING`.
 - `fin_sumup_auszahlungen` (nur INSERT): `id` (SumUp-Payout-Zeilen-id, PK), `datum date`, `typ`

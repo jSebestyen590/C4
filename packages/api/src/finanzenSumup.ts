@@ -51,7 +51,7 @@ export interface SumupBuchenAuftrag {
   erstelltVon: string;
 }
 
-/** SumUp part of `FinanzenStore` (docs/finanzen-sumup.md). */
+/** SumUp part of `FinanzenStore` (docs/finanzen.md („SumUp“)). */
 export interface SumupStore {
   /** Stores new rows (existing ids are left alone); returns how many were new. */
   sumupSpeichern(
