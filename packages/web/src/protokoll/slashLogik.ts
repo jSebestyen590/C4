@@ -47,7 +47,8 @@ export type SlashSymbol =
   | 'bild'
   | 'person'
   | 'gruppe'
-  | 'todo';
+  | 'todo'
+  | 'merker';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -260,10 +261,10 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
   },
   {
     schluessel: 'em',
-    titel: 'Neues EM',
-    beschreibung: 'Neues Ehrenmitglied, optional mit Abstimmung',
+    titel: 'Austritt',
+    beschreibung: 'Austritt eines Mitglieds zum Ehrenmitglied, optional mit Abstimmung',
     symbol: 'em',
-    woerter: ['em', 'ehrenmitglied', 'neues em'],
+    woerter: ['austritt', 'em', 'ehrenmitglied', 'neues em'],
     aktion: {
       art: 'einfuegen',
       wahl: { typ: 'bausteinEm', daten: bausteinLeer('bausteinEm') },
@@ -471,7 +472,7 @@ export function personEintraege(
         art: 'einfuegen' as const,
         wahl: {
           typ: 'bausteinAnwesenheit' as const,
-          daten: { art, sub: p.sub, uhrzeit },
+          daten: { art, sub: p.sub, name: '', uhrzeit },
         },
       },
     }));

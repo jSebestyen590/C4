@@ -9,6 +9,7 @@ import {
   type EventArt,
   type EventDauer,
   type EventEingabe,
+  type SchichtArt,
   type SchichtDto,
   type SchichtEingabe,
   type TeilnahmeKreis,
@@ -22,9 +23,11 @@ import {
   bausteinTodoDatenSchema,
   bausteinWahlDatenSchema,
   protokollNotizenText,
+  schichtenOhnePersonen,
   todoZustaendigeAufloesen,
   wahlErgebnis,
   type BausteinEventDaten,
+  type BausteinSchicht,
   type BausteinTodoDaten,
   type ProtokollAktionErgebnis,
   type ProtokollDokument,
@@ -143,10 +146,64 @@ export interface TodoPlan {
   bausteinId: string;
 }
 
+/**
+ * A member to enter as Dienst once the event exists. The Schicht is named by its art and times (the ids
+ * of a new event are not known yet); `dienstformId` is null for Aufbau/Putzen.
+ */
+export interface DienstPlan {
+  art: SchichtArt;
+  beginn: string;
+  ende: string;
+  dienstformId: string | null;
+  sub: string;
+}
+
+/**
+ * The Dienste of the Schichten of a block (`personen`), as `DienstPlan`s. `eingabeSchichten` are the
+ * Schichten `ausVorlage` made of the same list (same order).
+ */
+export function dienstePlanen(
+  schichten: readonly BausteinSchicht[],
+  eingabeSchichten: readonly SchichtEingabe[],
+): DienstPlan[] {
+  const plan: DienstPlan[] = [];
+  schichten.forEach((s, i) => {
+    const e = eingabeSchichten[i];
+    if (!e) return;
+    const ziel = { art: e.art, beginn: e.beginn, ende: e.ende };
+    if (s.art === 'betrieb') {
+      for (const b of s.bedarfe) {
+        for (const sub of new Set(b.personen)) {
+          plan.push({ ...ziel, dienstformId: b.dienstformId, sub });
+        }
+      }
+    } else {
+      for (const sub of new Set(s.personen)) plan.push({ ...ziel, dienstformId: null, sub });
+    }
+  });
+  return plan;
+}
+
+/** Whether the member is entered already in the Schicht of the plan (same art and times) of the event. */
+export function dienstVorhanden(schichten: readonly SchichtDto[], d: DienstPlan): boolean {
+  return schichten.some(
+    (s) =>
+      s.art === d.art &&
+      Date.parse(s.beginn) === Date.parse(d.beginn) &&
+      Date.parse(s.ende) === Date.parse(d.ende) &&
+      s.dienste.some(
+        (x) =>
+          x.person.art === 'mitglied' &&
+          x.person.sub === d.sub &&
+          (d.dienstformId === null || x.dienstformId === d.dienstformId),
+      ),
+  );
+}
+
 /** What the API has to do for an Aktion. */
 export type AktionPlan =
-  | { art: 'event.anlegen'; eingabe: EventEingabe }
-  | { art: 'event.aendern'; eventId: string; eingabe: EventEingabe }
+  | { art: 'event.anlegen'; eingabe: EventEingabe; dienste: DienstPlan[] }
+  | { art: 'event.aendern'; eventId: string; eingabe: EventEingabe; dienste: DienstPlan[] }
   | { art: 'anwaerter.einladen'; email: string; vorname: string; nachname: string; ab: string }
   | { art: 'aufnahme.status' | 'em.status'; sub: string; status: MitgliedStatus; ab: string }
   | { art: 'wahl.posten'; postenId: string; start: string; subs: string[]; ablosung: string[] }
@@ -272,23 +329,23 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     kategorie.dauer !== 'eintaegig' && daten.bisDatum && daten.bisDatum >= daten.datum
       ? daten.bisDatum
       : daten.datum;
-  const eingabe: EventEingabe = {
-    ...ausVorlage(
-      {
-        titel: name,
-        beschreibung: null,
-        kategorieId,
-        beginnZeit: daten.beginnZeit ?? '00:00',
-        endeZeit: daten.endeZeit ?? '00:00',
-        schichten: kategorie.art === 'teilnahme' ? [] : daten.schichten,
-        teilnahmeStatus: kategorie.art === 'teilnahme' ? daten.teilnahmeStatus : null,
-        tage: Math.max(1, tage(daten.datum, bis) + 1),
-      },
-      daten.datum,
-      kategorie,
-    ),
-    verantwortlichSub: daten.verantwortlichSub,
-  };
+  const vorlage = ausVorlage(
+    {
+      titel: name,
+      beschreibung: null,
+      kategorieId,
+      beginnZeit: daten.beginnZeit ?? '00:00',
+      endeZeit: daten.endeZeit ?? '00:00',
+      schichten: kategorie.art === 'teilnahme' ? [] : schichtenOhnePersonen(daten.schichten),
+      teilnahmeStatus: kategorie.art === 'teilnahme' ? daten.teilnahmeStatus : null,
+      tage: Math.max(1, tage(daten.datum, bis) + 1),
+    },
+    daten.datum,
+    kategorie,
+  );
+  const eingabe: EventEingabe = { ...vorlage, verantwortlichSub: daten.verantwortlichSub };
+  const dienste =
+    kategorie.art === 'teilnahme' ? [] : dienstePlanen(daten.schichten, vorlage.schichten);
   if (kategorie.art === 'teilnahme') eingabe.eingeladen = daten.eingeladen;
   const fehler = eventDauerFehler(kategorie.dauer, eingabe.beginn, eingabe.ende);
   if (fehler) return nichtAusfuehrbar(text, fehler);
@@ -297,7 +354,7 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     ausfuehrbar: true,
     eventId: null,
     subs: [],
-    plan: { art: 'event.anlegen', eingabe },
+    plan: { art: 'event.anlegen', eingabe, dienste },
   };
 }
 
@@ -325,6 +382,22 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     Date.parse(spanne.beginn) === Date.parse(ev.beginn) &&
     Date.parse(spanne.ende) === Date.parse(ev.ende);
 
+  const neu = ausVorlage(
+    {
+      titel: '',
+      beschreibung: null,
+      kategorieId: kategorieId ?? '',
+      beginnZeit,
+      endeZeit,
+      schichten: teilnahme ? [] : schichtenOhnePersonen(daten.schichten),
+      teilnahmeStatus: teilnahme ? daten.teilnahmeStatus : null,
+      tage: Math.max(1, tage(datum, bis) + 1),
+    },
+    datum,
+    kategorie,
+  );
+  const dienste = teilnahme ? [] : dienstePlanen(daten.schichten, neu.schichten);
+
   const name = daten.name.trim();
   const unterschiede: string[] = [];
   if (name !== '' && name !== ev.titel) unterschiede.push('Name');
@@ -332,8 +405,13 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   if (!zeitGleich) unterschiede.push('Datum und Uhrzeit');
   if (daten.verantwortlichSub !== ev.verantwortlichSub) unterschiede.push('Verantwortliche:r');
   const schichtenGleichHier =
-    teilnahme || schichtenGleich(daten.schichten, schichtenAusEvent(ev.beginn, ev.schichten));
+    teilnahme ||
+    schichtenGleich(
+      schichtenOhnePersonen(daten.schichten),
+      schichtenAusEvent(ev.beginn, ev.schichten),
+    );
   if (!schichtenGleichHier) unterschiede.push('Schichten');
+  if (dienste.some((d) => !dienstVorhanden(ev.schichten, d))) unterschiede.push('Dienste');
   // Participation of the Baustein; null / empty = leave the event's as it is.
   const kreis = teilnahme && kategorieId === ev.kategorieId ? daten.teilnahmeStatus : null;
   const kreisGleich =
@@ -353,20 +431,6 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   const fehler = eventDauerFehler(dauer, spanne.beginn, spanne.ende);
   if (fehler) return nichtAusfuehrbar(text, fehler, { eventId: ev.id });
 
-  const neu = ausVorlage(
-    {
-      titel: '',
-      beschreibung: null,
-      kategorieId: kategorieId ?? '',
-      beginnZeit,
-      endeZeit,
-      schichten: teilnahme ? [] : daten.schichten,
-      teilnahmeStatus: teilnahme ? daten.teilnahmeStatus : null,
-      tage: Math.max(1, tage(datum, bis) + 1),
-    },
-    datum,
-    kategorie,
-  );
   const schichten: SchichtEingabe[] =
     zeitGleich && schichtenGleichHier
       ? ev.schichten.map(schichtAlsEingabe)
@@ -388,7 +452,7 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     ausfuehrbar: true,
     eventId: ev.id,
     subs: [],
-    plan: { art: 'event.aendern', eventId: ev.id, eingabe },
+    plan: { art: 'event.aendern', eventId: ev.id, eingabe, dienste },
   };
 }
 

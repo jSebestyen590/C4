@@ -40,7 +40,7 @@ import {
   EmFormular,
   EventFormular,
   MeinungsbildFormular,
-  ThemaFormular,
+  ThemaKopfFeld,
   TodoFormular,
   AuswahlFormular,
   WahlFormular,
@@ -75,10 +75,14 @@ function mitStandardwerten<T extends BausteinTyp>(typ: T, daten: unknown): Baust
 function BausteinAnsicht<T extends BausteinTyp>({
   typ,
   Formular,
+  KopfFeld,
   props,
 }: Readonly<{
   typ: T;
-  Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>;
+  /** The form below the header; none for a Baustein whose only field sits in the header. */
+  Formular: ComponentType<FormularProps<BausteinDatenVon[T]>> | null;
+  /** Optional field in the header between the title and the delete icon (e.g. the title of a Thema). */
+  KopfFeld?: ComponentType<FormularProps<BausteinDatenVon[T]>>;
   props: ReactNodeViewProps;
 }>) {
   const { editor, node, getPos, deleteNode } = props;
@@ -130,6 +134,11 @@ function BausteinAnsicht<T extends BausteinTyp>({
                     {BAUSTEIN_TITEL[typ]}
                   </Text>
                 </Group>
+                {KopfFeld && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <KopfFeld daten={daten} aendern={aendern} editierbar={editierbar} />
+                  </div>
+                )}
                 {editierbar && (
                   <Group gap={0} wrap="nowrap" className="protokoll-nicht-drucken">
                     <ActionIcon
@@ -146,7 +155,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
                   </Group>
                 )}
               </Group>
-              <Formular daten={daten} aendern={aendern} editierbar={editierbar} />
+              {Formular && <Formular daten={daten} aendern={aendern} editierbar={editierbar} />}
               {typ === 'bausteinBeschluss' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinAufnahme' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinWahl' && <BeschlussHinweis id={node.attrs.id as string} />}
@@ -263,9 +272,10 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
 const karte =
   <T extends BausteinTyp>(
     typ: T,
-    Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>,
+    Formular: ComponentType<FormularProps<BausteinDatenVon[T]>> | null,
+    KopfFeld?: ComponentType<FormularProps<BausteinDatenVon[T]>>,
   ): ((props: ReactNodeViewProps) => ReactElement) =>
-  (props) => <BausteinAnsicht typ={typ} Formular={Formular} props={props} />;
+  (props) => <BausteinAnsicht typ={typ} Formular={Formular} KopfFeld={KopfFeld} props={props} />;
 
 export const BausteinEventKnoten = bausteinKnoten(
   'bausteinEvent',
@@ -273,7 +283,7 @@ export const BausteinEventKnoten = bausteinKnoten(
 );
 export const BausteinThemaKnoten = bausteinKnoten(
   'bausteinThema',
-  karte('bausteinThema', ThemaFormular as ComponentType<FormularProps<BausteinThemaDaten>>),
+  karte('bausteinThema', null, ThemaKopfFeld as ComponentType<FormularProps<BausteinThemaDaten>>),
 );
 export const BausteinTodoKnoten = bausteinKnoten(
   'bausteinTodo',

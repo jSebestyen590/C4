@@ -164,7 +164,7 @@ function KopfLesen({
           </Text>
         );
       })}
-      {(emListe.length > 0 || kopf.emsFreitext.trim()) && (
+      {(emListe.length > 0 || kopf.emsFreitext.length > 0) && (
         <Text size="sm">
           <Text span fw={600}>
             EMs:
@@ -175,20 +175,20 @@ function KopfLesen({
               <Person m={p} />
             </span>
           ))}
-          {kopf.emsFreitext.trim() && (
+          {kopf.emsFreitext.length > 0 && (
             <>
               {emListe.length > 0 && ', '}
-              {kopf.emsFreitext.trim()}
+              {kopf.emsFreitext.join(', ')}
             </>
           )}
         </Text>
       )}
-      {kopf.gaeste.trim() && (
+      {kopf.gaeste.length > 0 && (
         <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
           <Text span fw={600}>
             Gäste:
           </Text>{' '}
-          {kopf.gaeste.trim()}
+          {kopf.gaeste.join(', ')}
         </Text>
       )}
     </Stack>
@@ -442,8 +442,8 @@ export function ProtokollKopf({
               autosize
               minRows={1}
               maxLength={2000}
-              value={kopf.emsFreitext}
-              onChange={(e) => onChange({ ...kopf, emsFreitext: e.currentTarget.value })}
+              value={kopf.emsFreitext.join('\n')}
+              onChange={(e) => onChange({ ...kopf, emsFreitext: zeilen(e.currentTarget.value) })}
             />
           </Stack>
 
@@ -453,8 +453,8 @@ export function ProtokollKopf({
             autosize
             minRows={1}
             maxLength={2000}
-            value={kopf.gaeste}
-            onChange={(e) => onChange({ ...kopf, gaeste: e.currentTarget.value })}
+            value={kopf.gaeste.join('\n')}
+            onChange={(e) => onChange({ ...kopf, gaeste: zeilen(e.currentTarget.value) })}
           />
         </Stack>
       </Paper>
@@ -464,3 +464,6 @@ export function ProtokollKopf({
     </>
   );
 }
+
+/** Temporary: lines of a textarea as list (phase 3 replaces it by a chip input). */
+const zeilen = (t: string): string[] => t.split('\n');

@@ -31,6 +31,8 @@ import {
   type ProtokollKnoten,
   type TodoZustaendig,
   type VorlageDto,
+  type BausteinSchicht,
+  type BausteinVergangenesEventDaten,
   type VorlageSchicht,
 } from '@c4/shared';
 import { tageDazu } from '../kalenderZeit';
@@ -41,6 +43,14 @@ import { tageDazu } from '../kalenderZeit';
 const ZEIT = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const istZeit = (wert: string): boolean => ZEIT.test(wert);
+
+/** Vorlage Schichten as Baustein Schichten: nobody entered yet. */
+export const schichtenMitPersonen = (schichten: readonly VorlageSchicht[]): BausteinSchicht[] =>
+  schichten.map((s) =>
+    s.art === 'betrieb'
+      ? { ...s, bedarfe: s.bedarfe.map((b) => ({ ...b, personen: [] })) }
+      : { ...s, personen: [] },
+  );
 
 const kopie = <T>(wert: T): T => JSON.parse(JSON.stringify(wert)) as T;
 
@@ -66,7 +76,7 @@ export function eventDatenAusVorlage(
     bisDatum: null,
     beginnZeit: ganztaegig ? null : vorlage.beginnZeit,
     endeZeit: ganztaegig ? null : vorlage.endeZeit,
-    schichten: kategorie?.art === 'teilnahme' ? [] : kopie(vorlage.schichten),
+    schichten: kategorie?.art === 'teilnahme' ? [] : schichtenMitPersonen(kopie(vorlage.schichten)),
     verantwortlichSub: null,
     eventId: null,
     kategorieId: vorlage.kategorieId ?? null,
@@ -124,6 +134,37 @@ export function kalenderEventLabel(
   });
 }
 
+/** Fields of a Vergangenes Event Baustein from a calendar event (name, first and last day). */
+export function vergangenesAusKalender(
+  e: Pick<EventDto, 'id' | 'anzeigeTitel' | 'beginn' | 'ende' | 'dauer'>,
+): BausteinVergangenesEventDaten {
+  const zeiten = eventZeitenAus(e.dauer, e.beginn, e.ende);
+  return {
+    eventId: e.id,
+    name: e.anzeigeTitel,
+    datum: zeiten.datum,
+    bisDatum: zeiten.bis > zeiten.datum ? zeiten.bis : null,
+  };
+}
+
+/** First day of a Vergangenes Event; a last day before it is pulled along. */
+export function vergangenesDatumSetzen(
+  daten: BausteinVergangenesEventDaten,
+  datum: string | null,
+): BausteinVergangenesEventDaten {
+  const bis = daten.bisDatum && datum && daten.bisDatum < datum ? datum : daten.bisDatum;
+  return { ...daten, datum, bisDatum: bis };
+}
+
+/** Last day of a Vergangenes Event (only without a calendar link); never before the first day. */
+export function vergangenesBisSetzen(
+  daten: BausteinVergangenesEventDaten,
+  bis: string | null,
+): BausteinVergangenesEventDaten {
+  if (!bis || (daten.datum && bis <= daten.datum)) return { ...daten, bisDatum: null };
+  return { ...daten, bisDatum: bis };
+}
+
 /** Last day; never before the date. */
 export function eventBisSetzen(daten: BausteinEventDaten, bis: string | null): BausteinEventDaten {
   if (!bis) return { ...daten, bisDatum: null };
@@ -145,10 +186,10 @@ const ganz = (n: number): boolean => Number.isInteger(n);
 
 /** A Schicht with a new begin or end time; invalid times are ignored. */
 export function schichtZeitSetzen(
-  s: VorlageSchicht,
+  s: BausteinSchicht,
   feld: 'beginnZeit' | 'endeZeit',
   eingabe: string,
-): VorlageSchicht {
+): BausteinSchicht {
   return istZeit(eingabe) ? { ...s, [feld]: eingabe } : s;
 }
 
@@ -157,10 +198,10 @@ export function schichtZeitSetzen(
  * is pulled along).
  */
 export function bedarfSetzen(
-  s: VorlageSchicht,
+  s: BausteinSchicht,
   index: number,
   neu: { minimum?: number; wunsch?: number },
-): VorlageSchicht {
+): BausteinSchicht {
   if (s.art !== 'betrieb') return s;
   const alt = s.bedarfe[index];
   if (!alt) return s;
@@ -174,9 +215,9 @@ export function bedarfSetzen(
 
 /** New head count of an Aufbau/Putzen Schicht: minimum at least 0, wunsch at least 1 and the minimum. */
 export function anzahlSetzen(
-  s: VorlageSchicht,
+  s: BausteinSchicht,
   neu: { minimum?: number; wunsch?: number },
-): VorlageSchicht {
+): BausteinSchicht {
   if (s.art === 'betrieb') return s;
   let { minimum, wunsch } = s;
   if (neu.minimum !== undefined && ganz(neu.minimum)) minimum = Math.max(0, neu.minimum);
@@ -198,44 +239,74 @@ const STANDARD_ENDE = '22:00';
  * one Bedarf for `dienstformId` (1/1); Aufbau/Putzen with 1/2 on the event day.
  */
 export function schichtNeu(
-  art: VorlageSchicht['art'],
+  art: BausteinSchicht['art'],
   zeiten: { beginnZeit: string | null; endeZeit: string | null },
   dienstformId: string,
-): VorlageSchicht {
+): BausteinSchicht {
   const beginnZeit =
     zeiten.beginnZeit && istZeit(zeiten.beginnZeit) ? zeiten.beginnZeit : STANDARD_BEGINN;
   const endeZeit = zeiten.endeZeit && istZeit(zeiten.endeZeit) ? zeiten.endeZeit : STANDARD_ENDE;
   if (art === 'betrieb') {
-    return { art, beginnZeit, endeZeit, bedarfe: [{ dienstformId, minimum: 1, wunsch: 1 }] };
+    return {
+      art,
+      beginnZeit,
+      endeZeit,
+      bedarfe: [{ dienstformId, minimum: 1, wunsch: 1, personen: [] }],
+    };
   }
-  return { art, beginnZeit, endeZeit, tagVersatz: 0, minimum: 1, wunsch: 2 };
+  return { art, beginnZeit, endeZeit, tagVersatz: 0, minimum: 1, wunsch: 2, personen: [] };
 }
 
 /** A Betrieb Schicht with one more Bedarf (1/1) for a Dienstform it does not have yet. */
-export function bedarfHinzufuegen(s: VorlageSchicht, dienstformId: string): VorlageSchicht {
+export function bedarfHinzufuegen(s: BausteinSchicht, dienstformId: string): BausteinSchicht {
   if (s.art !== 'betrieb' || s.bedarfe.some((b) => b.dienstformId === dienstformId)) return s;
-  return { ...s, bedarfe: [...s.bedarfe, { dienstformId, minimum: 1, wunsch: 1 }] };
+  return { ...s, bedarfe: [...s.bedarfe, { dienstformId, minimum: 1, wunsch: 1, personen: [] }] };
 }
 
 /** A Betrieb Schicht without the Bedarf at `index`; the last Bedarf stays (a Betrieb needs one). */
-export function bedarfEntfernen(s: VorlageSchicht, index: number): VorlageSchicht {
+export function bedarfEntfernen(s: BausteinSchicht, index: number): BausteinSchicht {
   if (s.art !== 'betrieb' || s.bedarfe.length <= 1) return s;
   return { ...s, bedarfe: s.bedarfe.filter((_, i) => i !== index) };
 }
 
 /** "Betrieb 20:00–04:00" for the title of a Schicht. */
-export function schichtTitel(s: Pick<VorlageSchicht, 'art' | 'beginnZeit' | 'endeZeit'>): string {
+export function schichtTitel(s: Pick<BausteinSchicht, 'art' | 'beginnZeit' | 'endeZeit'>): string {
   const art = s.art === 'betrieb' ? 'Betrieb' : s.art === 'aufbau' ? 'Aufbau' : 'Putzen';
   return `${art} ${s.beginnZeit}–${s.endeZeit}`;
 }
 
 /** One line for the read-only view: "Betrieb 20:00–04:00 · Bar 2/3, Kasse 1/1" or "Aufbau 16:00–18:00 · 2/4". */
-export function schichtKurz(s: VorlageSchicht, dienstformName: (id: string) => string): string {
+export function schichtKurz(s: BausteinSchicht, dienstformName: (id: string) => string): string {
   const kopf = schichtTitel(s);
   if (s.art === 'betrieb') {
     return `${kopf} · ${s.bedarfe.map((b) => `${dienstformName(b.dienstformId)} ${b.minimum}/${b.wunsch}`).join(', ')}`;
   }
   return `${kopf} · ${s.minimum}/${s.wunsch}`;
+}
+
+/** Persons entered for a Bedarf of a Betrieb (`index`) or for an Aufbau/Putzen Schicht (`index` ignored). */
+export function schichtPersonen(s: BausteinSchicht, index = 0): readonly string[] {
+  return s.art === 'betrieb' ? (s.bedarfe[index]?.personen ?? []) : s.personen;
+}
+
+/** The persons of a Bedarf (Betrieb) or of the Schicht (Aufbau/Putzen) replaced. */
+export function schichtPersonenSetzen(
+  s: BausteinSchicht,
+  index: number,
+  personen: readonly string[],
+): BausteinSchicht {
+  const neu = [...new Set(personen)];
+  if (s.art !== 'betrieb') return { ...s, personen: neu };
+  return { ...s, bedarfe: s.bedarfe.map((b, i) => (i === index ? { ...b, personen: neu } : b)) };
+}
+
+/** Whole days from `von` to `bis` (both `YYYY-MM-DD`); negative when `bis` is earlier. */
+export const tageZwischen = (von: string, bis: string): number =>
+  Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);
+
+/** The new `tagVersatz` of an Aufbau/Putzen Schicht for a chosen date (kept within the schema's range). */
+export function tagVersatzFuerDatum(eventDatum: string, datum: string): number {
+  return Math.max(-365, Math.min(365, tageZwischen(eventDatum, datum)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -537,6 +608,8 @@ export function ersterLeererFeld(typ: BausteinTyp, daten: unknown): FokusZiel {
           : leer('datum')
             ? 'datum'
             : 'text';
+    case 'bausteinMerker':
+      return 'text';
     case 'bausteinThema':
     case 'bausteinTodo':
       return leer('titel') ? 'titel' : 'text';

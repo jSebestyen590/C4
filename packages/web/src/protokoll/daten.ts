@@ -6,6 +6,7 @@ import {
   ereignisFenster,
   kommendeEvents,
   vergangeneEvents,
+  vergangenesAusKalender,
 } from './bausteinLogik';
 import { useProtokollKontext } from './kontext';
 import type { SlashDaten } from './slashLogik';
@@ -56,7 +57,7 @@ export function useSlashDaten(
         id: e.id,
         titel: e.anzeigeTitel,
         beschreibung: eventDatumText(e),
-        daten: { eventId: e.id, name: e.anzeigeTitel, datum: datumBerlin(e.beginn) },
+        daten: vergangenesAusKalender(e),
       })),
     }),
     [vorlagen.data, kategorien.liste, events.vergangene],

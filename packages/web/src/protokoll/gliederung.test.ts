@@ -182,7 +182,7 @@ describe('gliederungTitel', () => {
     expect(gliederungTitel('bausteinWahl', { posten: 'Kassenwart' })).toBe('Wahl: Kassenwart');
     expect(gliederungTitel('bausteinAuswahl', { frage: 'Wohin?' })).toBe('Abstimmung: Wohin?');
     expect(gliederungTitel('bausteinAuswahl', { frage: '' })).toBe('Abstimmung');
-    expect(gliederungTitel('bausteinEm', { sub: null, name: 'Karl' })).toBe('Neues EM: Karl');
+    expect(gliederungTitel('bausteinEm', { sub: null, name: 'Karl' })).toBe('Austritt: Karl');
     expect(gliederungTitel('bausteinAufnahme', { sub: 's1', name: '' }, name)).toBe(
       'Aufnahme: Mia',
     );

@@ -1,8 +1,10 @@
 import {
+  dienstVorhanden,
   protokollAktionen,
   protokollEventIds,
   type AktionEventKontext,
   type AktionTodoKontext,
+  type DienstPlan,
   type ProtokollAktion,
   type ProtokollAktionAusgang,
   type ProtokollAktionErgebnis,
@@ -29,7 +31,7 @@ import type { TodosStore } from './todos';
 export interface AktionenDeps {
   kalender: Pick<
     KalenderStore,
-    'event' | 'kategorien' | 'vorlagen' | 'eventAnlegen' | 'eventAktualisieren'
+    'event' | 'kategorien' | 'vorlagen' | 'eventAnlegen' | 'eventAktualisieren' | 'dienstEintragen'
   >;
   mitglieder: Pick<MitgliederStore, 'alle' | 'holen' | 'speichern' | 'statusSetzen'>;
   userAdmin: Pick<UserAdmin, 'createUser'>;
@@ -208,6 +210,59 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     };
   }
 
+  /**
+   * Enters the members of a plan as Dienste in the (reloaded) event. Members who are in the Schicht
+   * already are skipped (running again does nothing); a failure of one entry does not stop the others,
+   * but the Aktion fails afterwards with a hint (the missing ones are tried again next time).
+   * Returns how many were entered.
+   */
+  async function diensteEintragen(
+    eventId: string,
+    dienste: readonly DienstPlan[],
+    akteur: string,
+  ): Promise<number> {
+    if (dienste.length === 0) return 0;
+    const ev = await deps.kalender.event(eventId);
+    if (!ev) throw new AktionFehler('Das Event gibt es nicht mehr.');
+    let eingetragen = 0;
+    const fehler: string[] = [];
+    for (const d of dienste) {
+      if (dienstVorhanden(ev.schichten, d)) continue;
+      const schicht = ev.schichten.find(
+        (s) =>
+          s.art === d.art &&
+          Date.parse(s.beginn) === Date.parse(d.beginn) &&
+          Date.parse(s.ende) === Date.parse(d.ende),
+      );
+      if (!schicht) {
+        fehler.push('Die Schicht gibt es im Event nicht.');
+        continue;
+      }
+      try {
+        const r = await deps.kalender.dienstEintragen(
+          schicht.id,
+          {
+            kommentar: null,
+            mitgliedSub: d.sub,
+            ...(d.dienstformId !== null && { dienstformId: d.dienstformId }),
+          },
+          akteur,
+        );
+        if (!r) fehler.push('Die Schicht gibt es im Event nicht.');
+        else eingetragen += 1;
+      } catch (err) {
+        fehler.push(err instanceof AktionFehler ? err.message : fehlerText(err));
+      }
+    }
+    if (fehler.length > 0) {
+      const gleiche = [...new Set(fehler)].join(' ');
+      throw new AktionFehler(
+        `Das Event ist im Kalender, aber ${fehler.length} von ${dienste.length} Diensten konnten nicht eingetragen werden (${gleiche}). Du kannst sie im Kalender nachtragen oder die Aktion erneut ausführen.`,
+      );
+    }
+    return eingetragen;
+  }
+
   /** Runs one Aktion; returns what was done. Writes back into `patches`. */
   async function ausfuehren(
     a: ProtokollAktion,
@@ -219,7 +274,10 @@ export function createProtokollAktionen(deps: AktionenDeps) {
       case 'event.anlegen': {
         const id = await deps.kalender.eventAnlegen(plan.eingabe, akteur);
         patches.push({ bausteinId: a.bausteinId, feld: 'eventId', wert: id });
-        return 'Event im Kalender angelegt.';
+        const n = await diensteEintragen(id, plan.dienste, akteur);
+        return n > 0
+          ? `Event im Kalender angelegt, ${n} ${n === 1 ? 'Dienst' : 'Dienste'} eingetragen.`
+          : 'Event im Kalender angelegt.';
       }
       case 'event.aendern': {
         const aenderung = await deps.kalender.eventAktualisieren(plan.eventId, plan.eingabe);
@@ -227,7 +285,10 @@ export function createProtokollAktionen(deps: AktionenDeps) {
         if (deps.eventGeaendert) {
           await deps.eventGeaendert(plan.eventId, aenderung, akteur).catch(() => {});
         }
-        return 'Event im Kalender geändert.';
+        const n = await diensteEintragen(plan.eventId, plan.dienste, akteur);
+        return n > 0
+          ? `Event im Kalender geändert, ${n} ${n === 1 ? 'Dienst' : 'Dienste'} eingetragen.`
+          : 'Event im Kalender geändert.';
       }
       case 'anwaerter.einladen': {
         const konto = await deps.userAdmin.createUser(plan.email, []);

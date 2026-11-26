@@ -33,6 +33,7 @@ describe('rules for Bausteine in notes', () => {
         'bausteinAnwesenheit',
         'bausteinAuswahl',
         'bausteinBeschluss',
+        'bausteinMerker',
         'bausteinMeinungsbild',
         'bausteinThema',
         'bausteinTodo',

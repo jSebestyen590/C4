@@ -30,7 +30,7 @@ const daten: SlashDaten = {
       id: 'e1',
       titel: 'Sommerfest',
       beschreibung: '01.06.2026',
-      daten: { eventId: 'e1', name: 'Sommerfest', datum: '2026-06-01' },
+      daten: { eventId: 'e1', name: 'Sommerfest', datum: '2026-06-01', bisDatum: null },
     },
   ],
   personen: [
@@ -70,7 +70,7 @@ describe('first stage', () => {
       'Abstimmung',
       'Meinungsbild',
       'Wahl',
-      'Neues EM',
+      'Austritt',
       'Todo',
       'Erscheint',
       'Geht',
@@ -91,9 +91,9 @@ describe('first stage', () => {
     for (const alias of ['wah', 'waehlen', 'wählen', 'wahlen', 'postenwahl']) {
       expect(titel(alias), alias).toEqual(['Wahl']);
     }
-    expect(titel('em')).toEqual(['Neues EM']);
-    expect(titel('ehrenmitglied')).toEqual(['Neues EM']);
-    expect(titel('neues em')).toEqual(['Neues EM']);
+    expect(titel('em')).toEqual(['Austritt']);
+    expect(titel('ehrenmitglied')).toEqual(['Austritt']);
+    expect(titel('neues em')).toEqual(['Austritt']);
     expect(titel('xyz')).toEqual([]);
   });
   it('finds Zitat by name and alias and applies it at the cursor', () => {
@@ -266,13 +266,13 @@ describe('Erscheint and Geht', () => {
       art: 'einfuegen',
       wahl: {
         typ: 'bausteinAnwesenheit',
-        daten: { art: 'erscheint', sub: 'j', uhrzeit: '21:15' },
+        daten: { art: 'erscheint', sub: 'j', name: '', uhrzeit: '21:15' },
       },
     });
   });
   it('names the person of an Erscheint block only', () => {
     const wahl = (art: 'erscheint' | 'geht', sub: string | null) =>
-      ({ typ: 'bausteinAnwesenheit', daten: { art, sub, uhrzeit: '' } }) as const;
+      ({ typ: 'bausteinAnwesenheit', daten: { art, sub, name: '', uhrzeit: '' } }) as const;
     expect(anwesenheitPerson(wahl('erscheint', 'j'))).toBe('j');
     expect(anwesenheitPerson(wahl('erscheint', null))).toBeNull();
     expect(anwesenheitPerson(wahl('geht', 'j'))).toBe('j');

@@ -5,10 +5,11 @@ import {
   datumPlusTage,
   eventZeitenAus,
   schichtenAusEvent,
-  vorlageSchichtSchema,
   type EventDauer,
   type ProtokollArt,
   type SchichtQuelle,
+  type VorlageSchicht,
+  type DienstDto,
 } from './kalender';
 import { datumSchema } from './schemas';
 import { MITGLIED_STATI, type MitgliedStatus } from './status';
@@ -67,6 +68,7 @@ export const BAUSTEIN_TYPEN = [
   'bausteinWahl',
   'bausteinAuswahl',
   'bausteinTodo',
+  'bausteinMerker',
 ] as const;
 export type BausteinTyp = (typeof BAUSTEIN_TYPEN)[number];
 
@@ -100,7 +102,16 @@ export const istThema = (typ: string): boolean => typ === 'bausteinThema';
  * also stand inside a list item of those notes (as a child after the item's text).
  */
 export const istVerschachtelbar = (typ: string): boolean =>
-  istBausteinInNotizen(typ) || istThema(typ) || typ === 'bausteinAnwesenheit';
+  istBausteinInNotizen(typ) ||
+  istThema(typ) ||
+  typ === 'bausteinAnwesenheit' ||
+  typ === 'bausteinMerker';
+
+/**
+ * The Merker "Überarbeiten": a reminder to the author with free text (plain text only, no Bausteine).
+ * It is never part of the document view, the PDF, the suggestion for a new protocol, mentions or Aktionen.
+ */
+export const istMerker = (typ: string): boolean => typ === 'bausteinMerker';
 
 /**
  * Whether the notes of a Baustein of this type may hold other Bausteine (Abstimmung, Meinungsbild, Wahl
@@ -110,6 +121,7 @@ export const istVerschachtelbar = (typ: string): boolean =>
 export const kannBausteineEnthalten = (typ: string): boolean =>
   (BAUSTEIN_TYPEN as readonly string[]).includes(typ) &&
   typ !== 'bausteinAnwesenheit' &&
+  !istMerker(typ) &&
   !istBausteinInNotizen(typ);
 
 /** Whether a Baustein of type `typ` may stand in the notes of a Baustein of type `elternTyp`. */
@@ -168,6 +180,87 @@ export const wiederholungSchema = z
   .default(null);
 export type Wiederholung = z.infer<typeof wiederholungSchema>;
 
+const schichtPersonenSchema = z.array(z.string().min(1).max(128)).max(50).default([]);
+const schichtAnzahl = z
+  .number('Bitte gib eine Anzahl an.')
+  .int('Die Anzahl muss eine ganze Zahl sein.');
+
+/**
+ * A Schicht of an Event block: the Schicht of a Vorlage (`vorlageSchichtSchema`) plus the members to
+ * enter as Dienste (`personen`, subs): per Bedarf (= per Dienstform) for a Betrieb Schicht, per Schicht
+ * for Aufbau/Putzen. `ausVorlage` gets the Schichten without `personen` (`schichtenOhnePersonen`).
+ */
+export const bausteinSchichtSchema = z.discriminatedUnion('art', [
+  z.object({
+    art: z.literal('betrieb'),
+    beginnZeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).'),
+    endeZeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).'),
+    bedarfe: z
+      .array(
+        z
+          .object({
+            dienstformId: z.string().min(1, 'Bitte wähle eine Dienstform.'),
+            minimum: schichtAnzahl.min(1, 'Das Minimum muss mindestens 1 sein.'),
+            wunsch: schichtAnzahl.min(1, 'Der Wunsch muss mindestens 1 sein.'),
+            personen: schichtPersonenSchema,
+          })
+          .refine((v) => v.wunsch >= v.minimum, {
+            message: 'Der Wunsch darf nicht unter dem Minimum liegen.',
+            path: ['wunsch'],
+          }),
+      )
+      .min(1, 'Eine Betriebs-Schicht braucht mindestens eine Dienstform.')
+      .refine((b) => new Set(b.map((x) => x.dienstformId)).size === b.length, {
+        message: 'Jede Dienstform darf nur einmal vorkommen.',
+      }),
+  }),
+  z
+    .object({
+      art: z.enum(['aufbau', 'putzen']),
+      tagVersatz: schichtAnzahl
+        .min(-365, 'Der Versatz ist zu groß.')
+        .max(365, 'Der Versatz ist zu groß.'),
+      beginnZeit: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).'),
+      endeZeit: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Bitte gib eine Uhrzeit an (HH:MM).'),
+      minimum: schichtAnzahl.min(0, 'Das Minimum darf nicht negativ sein.'),
+      wunsch: schichtAnzahl.min(1, 'Der Wunsch muss mindestens 1 sein.'),
+      personen: schichtPersonenSchema,
+    })
+    .refine((v) => v.wunsch >= v.minimum, {
+      message: 'Der Wunsch darf nicht unter dem Minimum liegen.',
+      path: ['wunsch'],
+    }),
+]);
+export type BausteinSchicht = z.infer<typeof bausteinSchichtSchema>;
+
+/** The Schichten in the Vorlage format (without the persons to enter). */
+export function schichtenOhnePersonen(schichten: readonly BausteinSchicht[]): VorlageSchicht[] {
+  return schichten.map((s): VorlageSchicht => {
+    if (s.art === 'betrieb') {
+      return {
+        art: 'betrieb',
+        beginnZeit: s.beginnZeit,
+        endeZeit: s.endeZeit,
+        bedarfe: s.bedarfe.map((b) => ({
+          dienstformId: b.dienstformId,
+          minimum: b.minimum,
+          wunsch: b.wunsch,
+        })),
+      };
+    }
+    return {
+      art: s.art,
+      tagVersatz: s.tagVersatz,
+      beginnZeit: s.beginnZeit,
+      endeZeit: s.endeZeit,
+      minimum: s.minimum,
+      wunsch: s.wunsch,
+    };
+  });
+}
+
 export const bausteinEventDatenSchema = z.strictObject({
   /** Vorlage the block was started from; null = none. */
   vorlageId: idOderNull,
@@ -177,7 +270,7 @@ export const bausteinEventDatenSchema = z.strictObject({
   bisDatum: datumSchema.nullable(),
   beginnZeit: zeitSchema,
   endeZeit: zeitSchema,
-  schichten: z.array(vorlageSchichtSchema).max(20),
+  schichten: z.array(bausteinSchichtSchema).max(20),
   verantwortlichSub: idOderNull,
   /** Set once the event exists in the calendar. */
   eventId: idOderNull,
@@ -196,6 +289,10 @@ export const bausteinEventDatenSchema = z.strictObject({
   eingeladen: z.array(z.string().min(1).max(100)).max(500).default([]),
 });
 export type BausteinEventDaten = z.infer<typeof bausteinEventDatenSchema>;
+
+/** The Merker "Überarbeiten": no fields, the text is the free text of the node. */
+export const bausteinMerkerDatenSchema = z.strictObject({});
+export type BausteinMerkerDaten = z.infer<typeof bausteinMerkerDatenSchema>;
 
 export const bausteinThemaDatenSchema = z.strictObject({
   titel: z.string().max(200).default(''),
@@ -225,6 +322,8 @@ export const bausteinVergangenesEventDatenSchema = z.strictObject({
   eventId: idOderNull,
   name: z.string().max(200),
   datum: datumSchema.nullable(),
+  /** Last day of a multi-day event; null = one day. */
+  bisDatum: datumSchema.nullable().default(null),
 });
 export type BausteinVergangenesEventDaten = z.infer<typeof bausteinVergangenesEventDatenSchema>;
 
@@ -274,6 +373,8 @@ export type AnwesenheitArt = (typeof ANWESENHEIT_ARTEN)[number];
 export const bausteinAnwesenheitDatenSchema = z.strictObject({
   art: z.enum(ANWESENHEIT_ARTEN),
   sub: idOderNull,
+  /** An external person (EM without the app, guest) by name; used only without `sub`. */
+  name: z.string().max(100).default(''),
   uhrzeit: uhrzeitOderLeerSchema,
 });
 export type BausteinAnwesenheitDaten = z.infer<typeof bausteinAnwesenheitDatenSchema>;
@@ -540,6 +641,7 @@ export interface BausteinDatenVon {
   bausteinWahl: BausteinWahlDaten;
   bausteinAuswahl: BausteinAuswahlDaten;
   bausteinTodo: BausteinTodoDaten;
+  bausteinMerker: BausteinMerkerDaten;
 }
 
 export const BAUSTEIN_DATEN_SCHEMAS = {
@@ -555,6 +657,7 @@ export const BAUSTEIN_DATEN_SCHEMAS = {
   bausteinWahl: bausteinWahlDatenSchema,
   bausteinAuswahl: bausteinAuswahlDatenSchema,
   bausteinTodo: bausteinTodoDatenSchema,
+  bausteinMerker: bausteinMerkerDatenSchema,
 } as const satisfies Record<BausteinTyp, z.ZodType>;
 
 /** Empty fields of a new Baustein. */
@@ -578,10 +681,12 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
       };
     case 'bausteinThema':
       return { titel: '' };
+    case 'bausteinMerker':
+      return {};
     case 'bausteinTodo':
       return { titel: '', zustaendig: [], faelligAm: null, modus: 'einzeln', todoId: null };
     case 'bausteinVergangenesEvent':
-      return { eventId: null, name: '', datum: null };
+      return { eventId: null, name: '', datum: null, bisDatum: null };
     case 'bausteinAnwaerter':
       return { vorname: '', nachname: '', email: null, sub: null };
     case 'bausteinBeschluss':
@@ -589,7 +694,7 @@ export function bausteinLeer(typ: BausteinTyp): BausteinDatenVon[BausteinTyp] {
     case 'bausteinEm':
       return { sub: null, name: '', abstimmung: null, wiederholung: null };
     case 'bausteinAnwesenheit':
-      return { art: 'erscheint', sub: null, uhrzeit: '' };
+      return { art: 'erscheint', sub: null, name: '', uhrzeit: '' };
     case 'bausteinMeinungsbild':
       return {
         frage: '',
@@ -1039,13 +1144,30 @@ export const protokollAktionErgebnisSchema = z.strictObject({
 });
 export type ProtokollAktionErgebnis = z.infer<typeof protokollAktionErgebnisSchema>;
 
+/**
+ * A list of names: an old value is a free text (one name per line or separated by commas) and is
+ * split into names (trimmed, empty ones dropped).
+ */
+const namenListe = z.preprocess(
+  (wert) =>
+    typeof wert === 'string'
+      ? wert
+          .split(/[\n\r,]+/)
+          .map((n) => n.trim())
+          .filter((n) => n !== '')
+      : wert,
+  z.array(z.string().max(100)).max(50).default([]),
+);
+
 export const protokollKopfSchema = z.strictObject({
   /** Overrides only; everybody else follows the answers to the Sitzung event. */
   teilnahme: z.record(subSchluessel, teilnahmeWertSchema).default({}),
   /** Chosen EMs; null = derived from the EMs who said yes. */
   ems: z.array(subSchluessel).max(500).nullable().default(null),
-  emsFreitext: z.string().max(2000).default(''),
-  gaeste: z.string().max(2000).default(''),
+  /** EMs without the app, by name (old data: free text, split by the schema). */
+  emsFreitext: namenListe,
+  /** Guests by name (old data: free text, split by the schema). */
+  gaeste: namenListe,
   /** Attendance as frozen when the protocol was closed (set by the API); null while it is a draft. */
   schnappschuss: z.record(subSchluessel, teilnahmeWertSchema).nullable().default(null),
   /** The chosen EMs as frozen when the protocol was closed (set by the API). */
@@ -1070,6 +1192,10 @@ export const protokollKopfSchema = z.strictObject({
   protokollfuehrung: subSchluessel.nullable().default(null),
   /** Time the Sitzung was opened ('' = not entered). */
   eroeffnung: uhrzeitOderLeerSchema.default(''),
+  /** Time the Sitzung ended ('' = not entered). */
+  ende: uhrzeitOderLeerSchema.default(''),
+  /** Place of the next Sitzung. */
+  naechsteSitzungOrt: z.string().max(100).default('C4'),
   /** Legacy (no longer written or shown): time a late member arrived. */
   verspaetung: z.record(subSchluessel, uhrzeitOderLeerSchema).default({}),
   /** Results of the Aktionen run when closing, by Aktion id; written by the API only. */
@@ -1080,8 +1206,8 @@ export type ProtokollKopf = z.infer<typeof protokollKopfSchema>;
 export const protokollKopfLeer = (): ProtokollKopf => ({
   teilnahme: {},
   ems: null,
-  emsFreitext: '',
-  gaeste: '',
+  emsFreitext: [],
+  gaeste: [],
   schnappschuss: null,
   emsSchnappschuss: null,
   statusSchnappschuss: null,
@@ -1091,6 +1217,8 @@ export const protokollKopfLeer = (): ProtokollKopf => ({
   sitzungsleitung: null,
   protokollfuehrung: null,
   eroeffnung: '',
+  ende: '',
+  naechsteSitzungOrt: 'C4',
   verspaetung: {},
   aktionen: {},
 });
@@ -1122,7 +1250,40 @@ export interface ProtokollKalenderEvent {
   /** The event is a Sitzung (its Kategorie has minutes). */
   sitzung: boolean;
   verantwortlichSub: string | null;
-  schichten: readonly SchichtQuelle[];
+  /** Schichten; with `dienste` (the members entered) `personen` of the Baustein is filled. */
+  schichten: readonly (SchichtQuelle & {
+    dienste?: readonly Pick<DienstDto, 'dienstformId' | 'person'>[];
+  })[];
+}
+
+/** Subs of the members entered in a Schicht (externals are left out), optionally of one Dienstform. */
+function dienstPersonen(
+  quelle: ProtokollKalenderEvent['schichten'][number],
+  dienstformId?: string,
+): string[] {
+  const subs = (quelle.dienste ?? [])
+    .filter((d) => dienstformId === undefined || d.dienstformId === dienstformId)
+    .flatMap((d) => (d.person.art === 'mitglied' ? [d.person.sub] : []));
+  return [...new Set(subs)].slice(0, 50);
+}
+
+/** `schichtenAusEvent` plus the entered members as `personen`. */
+function schichtenMitPersonen(e: ProtokollKalenderEvent): BausteinSchicht[] {
+  const ohne = schichtenAusEvent(e.beginn, e.schichten);
+  // Same order and filter as `schichtenAusEvent` (sorted by begin, Betrieb without Bedarf left out).
+  const quellen = [...e.schichten]
+    .sort((a, b) => Date.parse(a.beginn) - Date.parse(b.beginn))
+    .filter((s) => s.art !== 'betrieb' || (s.bedarfe ?? []).length > 0);
+  return ohne.map((s, i): BausteinSchicht => {
+    const q = quellen[i]!;
+    if (s.art === 'betrieb') {
+      return {
+        ...s,
+        bedarfe: s.bedarfe.map((b) => ({ ...b, personen: dienstPersonen(q, b.dienstformId) })),
+      };
+    }
+    return { ...s, personen: dienstPersonen(q) };
+  });
 }
 
 /** Without a previous protocol the past events of this many days before the Sitzung are offered. */
@@ -1164,7 +1325,7 @@ export function eventDatenAusKalender(
     bisDatum: zeiten.bis !== zeiten.datum ? zeiten.bis : null,
     beginnZeit: ganztaegig ? null : zeiten.beginnZeit,
     endeZeit: ganztaegig ? null : zeiten.endeZeit,
-    schichten: schichtenAusEvent(e.beginn, e.schichten),
+    schichten: schichtenMitPersonen(e),
     verantwortlichSub: e.verantwortlichSub,
     eventId: e.id,
     kategorieId: e.kategorieId,
@@ -1335,7 +1496,12 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
       if (aktuell) daten = eventDatenAusKalender(aktuell, daten);
       const ende = daten.bisDatum ?? daten.datum;
       if (ende !== null && ende < eingabe.sitzungDatum) {
-        vergangen.push({ eventId: daten.eventId, name: daten.name, datum: daten.datum });
+        vergangen.push({
+          eventId: daten.eventId,
+          name: daten.name,
+          datum: daten.datum,
+          bisDatum: daten.bisDatum,
+        });
       } else if (daten.eventId) {
         mitId.push({ daten, content: kopie(ohneAbstimmungen(knoten.content)) });
       } else {
@@ -1368,7 +1534,7 @@ export function protokollVorschlag(eingabe: ProtokollVorschlagEingabe): Protokol
       fensterBeginn !== null ? Date.parse(e.beginn) > fensterBeginn : daten.datum! >= fensterTag;
     if (!imFenster) continue;
     gesehen.add(e.id);
-    vergangen.push({ eventId: e.id, name: e.titel, datum: daten.datum });
+    vergangen.push({ eventId: e.id, name: e.titel, datum: daten.datum, bisDatum: daten.bisDatum });
   }
 
   const wiederholen = eingabe.wiederholen;

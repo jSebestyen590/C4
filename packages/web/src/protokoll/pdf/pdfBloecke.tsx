@@ -935,7 +935,7 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
           k,
           ctx,
           <>
-            {'Neues EM'}
+            {'Austritt'}
             {p ? (
               <>
                 {': '}

@@ -30,7 +30,7 @@ const mitglieder = (n: number, wert: ProtokollTeilnahmeWert = 'anwesend'): T[] =
   Array.from({ length: n }, (_, i) => ({ sub: `m${i}`, status: 'mitglied' as const, wert }));
 
 const anw = (art: AnwesenheitArt, sub: string | null, uhrzeit = '') =>
-  bausteinErzeugen('bausteinAnwesenheit', { art, sub, uhrzeit });
+  bausteinErzeugen('bausteinAnwesenheit', { art, sub, name: '', uhrzeit });
 const beschluss = () => bausteinErzeugen('bausteinBeschluss');
 
 function doc(...gegenwaertiges: ProtokollKnoten[]): ProtokollDokument {
@@ -307,6 +307,7 @@ describe('bausteinAnwesenheit', () => {
     expect(bausteinLeer('bausteinAnwesenheit')).toEqual({
       art: 'erscheint',
       sub: null,
+      name: '',
       uhrzeit: '',
     });
     expect(protokollDokumentPruefen(doc(anw('geht', 'a', '21:05')))).toBeNull();
@@ -320,7 +321,12 @@ describe('bausteinAnwesenheit', () => {
       expect(bausteinAnwesenheitDatenSchema.safeParse(kaputt).success).toBe(false);
     }
     const d = doc(
-      bausteinErzeugen('bausteinAnwesenheit', { art: 'geht', sub: null, uhrzeit: '99:99' }),
+      bausteinErzeugen('bausteinAnwesenheit', {
+        art: 'geht',
+        sub: null,
+        name: '',
+        uhrzeit: '99:99',
+      }),
     );
     expect(protokollDokumentPruefen(d)).not.toBeNull();
   });
@@ -656,5 +662,72 @@ describe('nichtBeschlussfaehigeAbstimmungen', () => {
       teilnahme,
     });
     expect(ids).toEqual([vorher.attrs.id]);
+  });
+});
+
+describe('external people (EM chips, guests)', () => {
+  const extern = (art: AnwesenheitArt, name: string, uhrzeit = '') =>
+    bausteinErzeugen('bausteinAnwesenheit', { art, sub: null, name, uhrzeit });
+
+  it('knows the name field (default empty)', () => {
+    expect(bausteinAnwesenheitDatenSchema.parse({ art: 'geht', sub: null, uhrzeit: '' }).name).toBe(
+      '',
+    );
+    expect(
+      bausteinAnwesenheitDatenSchema.safeParse({
+        art: 'geht',
+        sub: null,
+        name: 'x'.repeat(101),
+        uhrzeit: '',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('records times per external person under extern:<name>', () => {
+    const d = doc(
+      extern('erscheint', 'Ralle', '20:10'),
+      anw('geht', 'm0', '21:00'),
+      extern('geht', ' Ralle ', '22:00'),
+      extern('geht', '', '23:00'),
+    );
+    expect(anwesenheitsZeiten(d)).toEqual({
+      'extern:Ralle': { ab: '20:10', bis: '22:00' },
+      m0: { ab: '', bis: '21:00' },
+    });
+  });
+
+  it('never counts externals for the quorum', () => {
+    const d = doc(extern('erscheint', 'Ralle'), beschluss(), extern('geht', 'Ralle'));
+    const a = anwesenheitsVerlauf(d, {
+      art: 'sitzung',
+      teilnahme: mitglieder(4, 'abwesend' as never),
+    });
+    const ids = Object.values(a.bausteine);
+    expect(ids.every((s) => s.gesamt === 4 && s.anwesend === a.start.anwesend)).toBe(true);
+    expect(ids.some((s) => s.wechsel)).toBe(false);
+  });
+
+  it('counts present EM chips (not guests) at a Meinungsbild', () => {
+    const vorher = bausteinErzeugen('bausteinMeinungsbild');
+    const spaeter = bausteinErzeugen('bausteinMeinungsbild');
+    const nachher = bausteinErzeugen('bausteinMeinungsbild');
+    const d = doc(
+      vorher,
+      extern('erscheint', 'Ede'),
+      extern('erscheint', 'Gast'),
+      spaeter,
+      extern('geht', 'Ede'),
+      nachher,
+    );
+    const a = anwesenheitsVerlauf(d, {
+      art: 'sitzung',
+      teilnahme: mitglieder(3),
+      emsFreitext: ['Ede', 'Udo'],
+    });
+    const id = (k: ProtokollKnoten) => k.attrs!.id as string;
+    // Ede arrives later (first block erscheint), Udo is there from the start, the guest never counts.
+    expect(a.anwesendePersonen[id(vorher)]).toBe(3 + 1);
+    expect(a.anwesendePersonen[id(spaeter)]).toBe(3 + 2);
+    expect(a.anwesendePersonen[id(nachher)]).toBe(3 + 1);
   });
 });

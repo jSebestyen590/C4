@@ -97,6 +97,8 @@ export function gliederungTitel(
       const a = d as unknown as BausteinAnwaerterDaten;
       return kurz(`${a.vorname ?? ''} ${a.nachname ?? ''}`) || BAUSTEIN_TITEL[typ];
     }
+    case 'bausteinMerker':
+      return BAUSTEIN_TITEL[typ];
     case 'bausteinTodo':
       return mit(BAUSTEIN_TITEL[typ], String(d.titel ?? ''));
     case 'bausteinBeschluss':

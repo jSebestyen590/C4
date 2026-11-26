@@ -1,5 +1,6 @@
 import {
   IconBan,
+  IconPencilExclamation,
   IconChecklist,
   IconCalendarEvent,
   IconChartBar,
@@ -63,6 +64,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconUsers size={size} />;
     case 'todo':
       return <IconChecklist size={size} />;
+    case 'merker':
+      return <IconPencilExclamation size={size} />;
   }
 }
 
@@ -79,6 +82,7 @@ export const BAUSTEIN_SYMBOL: Record<BausteinTyp, SlashSymbol> = {
   bausteinWahl: 'wahl',
   bausteinAuswahl: 'auswahl',
   bausteinTodo: 'todo',
+  bausteinMerker: 'merker',
 };
 
 /**
@@ -98,6 +102,7 @@ export const BAUSTEIN_FARBE: Record<BausteinTyp, MantineColor> = {
   bausteinWahl: 'grape',
   bausteinAuswahl: 'yellow',
   bausteinTodo: 'gray',
+  bausteinMerker: 'yellow',
 };
 
 /** CSS value of the Baustein colour. */
@@ -119,11 +124,12 @@ export const BAUSTEIN_TITEL: Record<BausteinTyp, string> = {
   bausteinVergangenesEvent: 'Vergangenes Event',
   bausteinAnwaerter: 'Neue:r Anwärter:in',
   bausteinBeschluss: 'Abstimmung',
-  bausteinEm: 'Neues EM',
+  bausteinEm: 'Austritt',
   bausteinAnwesenheit: 'Anwesenheit',
   bausteinMeinungsbild: 'Meinungsbild',
   bausteinAufnahme: 'Aufnahme',
   bausteinWahl: 'Wahl',
   bausteinAuswahl: 'Abstimmung (Auswahl)',
   bausteinTodo: 'Todo',
+  bausteinMerker: 'Überarbeiten',
 };

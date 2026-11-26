@@ -337,7 +337,7 @@ describe('Texte', () => {
     ).toEqual(['y', 'z', ['x', 'w']]);
   });
 
-  it('Neues EM lines', () => {
+  it('Austritt lines', () => {
     const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
     const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
     expect(emZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({

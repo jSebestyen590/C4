@@ -1,7 +1,22 @@
 import { ZeitFeld } from '../ZeitFeld';
-import { ActionIcon, Badge, Button, Group, Menu, Paper, Stack, Text } from '@mantine/core';
-import { IconPlus, IconTrash } from '@tabler/icons-react';
-import type { VorlageSchicht } from '@c4/shared';
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Grid,
+  Group,
+  Indicator,
+  Menu,
+  Modal,
+  MultiSelect,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+} from '@mantine/core';
+import { IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
+import { useState } from 'react';
+import type { BausteinSchicht } from '@c4/shared';
 import {
   anzahlSetzen,
   bedarfEntfernen,
@@ -10,32 +25,96 @@ import {
   MAX_SCHICHTEN,
   schichtKurz,
   schichtNeu,
+  schichtPersonen,
+  schichtPersonenSetzen,
   schichtZeitSetzen,
+  tagVersatzFuerDatum,
 } from './bausteinLogik';
+import { DatumFeld } from '../DatumFeld';
+import { tageDazu } from '../kalenderZeit';
+import { mitgliedOptionen, useMitgliederListe } from '../organisator';
 import { LokalZahl } from './LokalFelder';
 
 const ART_TITEL = { betrieb: 'Betrieb', aufbau: 'Aufbau', putzen: 'Putzen' } as const;
 
+/** Persons that can be entered for a Dienst: Mitglieder, Anwärter:innen and EMs (not external ones). */
+const EINTRAG_STATI = new Set(['anwaerter', 'mitglied', 'em']);
+
+/**
+ * Icon button (with a count badge) that opens a modal to enter the persons of a Dienst. No names
+ * outside the modal.
+ */
+function PersonenKnopf({
+  titel,
+  personen,
+  onChange,
+}: Readonly<{ titel: string; personen: readonly string[]; onChange: (p: string[]) => void }>) {
+  const [offen, setOffen] = useState(false);
+  const mitglieder = useMitgliederListe();
+  const liste = (mitglieder.data ?? []).filter(
+    (m) => EINTRAG_STATI.has(m.status) && !m.deaktiviert,
+  );
+  const optionen = mitgliedOptionen(liste);
+  // Already entered people that are not (or no longer) in the list stay visible and removable.
+  for (const sub of personen) {
+    if (!optionen.some((o) => o.value === sub)) optionen.push({ value: sub, label: 'Unbekannt' });
+  }
+  return (
+    <>
+      <Indicator label={personen.length} size={18} disabled={personen.length === 0} offset={4}>
+        <ActionIcon
+          variant="light"
+          size={42}
+          aria-label="Personen eintragen"
+          onClick={() => setOffen(true)}
+        >
+          <IconUsers size={20} />
+        </ActionIcon>
+      </Indicator>
+      <Modal opened={offen} onClose={() => setOffen(false)} title={`Personen: ${titel}`} centered>
+        <Stack gap="sm">
+          <MultiSelect
+            size="md"
+            label="Personen"
+            placeholder={personen.length === 0 ? 'Person suchen' : undefined}
+            searchable
+            clearable
+            data={optionen}
+            value={[...personen]}
+            onChange={onChange}
+            nothingFoundMessage="Niemand gefunden"
+            maxValues={50}
+          />
+          <Button onClick={() => setOffen(false)}>Fertig</Button>
+        </Stack>
+      </Modal>
+    </>
+  );
+}
+
 /**
  * Dienste of an Event Baustein: shows the Schichten, adjusts times and head counts (all values stay
- * valid) and adds / removes Schichten and Bedarfe (with or without a Vorlage).
+ * valid), enters persons and adds / removes Schichten and Bedarfe (with or without a Vorlage).
  */
 export function SchichtEditor({
   schichten,
   dienstformName,
   dienstformen,
   zeiten,
+  datum,
   onChange,
 }: Readonly<{
-  schichten: readonly VorlageSchicht[];
+  schichten: readonly BausteinSchicht[];
   dienstformName: (id: string) => string;
   /** Active Dienstformen that can be added (id and name). */
   dienstformen: readonly { id: string; name: string }[];
   /** Times of the event: the default of a new Schicht. */
   zeiten: { beginnZeit: string | null; endeZeit: string | null };
-  onChange: (schichten: VorlageSchicht[]) => void;
+  /** Date of the event: Aufbau/Putzen show their own date from it (`tagVersatz`). */
+  datum: string | null;
+  onChange: (schichten: BausteinSchicht[]) => void;
 }>) {
-  const ersetzen = (index: number, neu: VorlageSchicht) =>
+  const ersetzen = (index: number, neu: BausteinSchicht) =>
     onChange(schichten.map((s, i) => (i === index ? neu : s)));
   return (
     <Stack gap="xs">
@@ -56,71 +135,113 @@ export function SchichtEditor({
                 <IconTrash size={20} />
               </ActionIcon>
             </Group>
-            <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-              <ZeitFeld
-                label="Beginn"
-                value={s.beginnZeit}
-                onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', w))}
-                style={{ minWidth: 0 }}
-              />
-              <ZeitFeld
-                label="Ende"
-                value={s.endeZeit}
-                onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'endeZeit', w))}
-                style={{ minWidth: 0 }}
-              />
-            </Group>
-            {s.art === 'betrieb' ? (
-              s.bedarfe.map((b, j) => (
-                <Stack key={b.dienstformId} gap={4}>
-                  <Group justify="space-between" wrap="nowrap" gap="xs">
-                    <Text size="sm" fw={600}>
-                      {dienstformName(b.dienstformId)}
-                    </Text>
-                    {s.bedarfe.length > 1 && (
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        size={42}
-                        aria-label={`${dienstformName(b.dienstformId)} entfernen`}
-                        onClick={() => ersetzen(i, bedarfEntfernen(s, j))}
-                      >
-                        <IconTrash size={18} />
-                      </ActionIcon>
-                    )}
-                  </Group>
-                  <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-                    <LokalZahl
-                      label="Minimum"
-                      min={1}
-                      wert={b.minimum}
-                      onWert={(minimum) => ersetzen(i, bedarfSetzen(s, j, { minimum }))}
+            <Grid gap="xs" align="flex-end">
+              <Grid.Col span={{ base: 12, sm: 6 }}>
+                <SimpleGrid
+                  cols={{ base: 2, sm: s.art === 'betrieb' ? 2 : 3 }}
+                  spacing="xs"
+                  style={{ alignItems: 'end' }}
+                >
+                  <ZeitFeld
+                    label="Beginn"
+                    value={s.beginnZeit}
+                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', w))}
+                    style={{ minWidth: 0 }}
+                  />
+                  <ZeitFeld
+                    label="Ende"
+                    value={s.endeZeit}
+                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'endeZeit', w))}
+                    style={{ minWidth: 0 }}
+                  />
+                  {s.art !== 'betrieb' && (
+                    <DatumFeld
+                      tippbar
+                      label="Datum"
+                      loeschbar={false}
+                      disabled={!datum}
+                      placeholder={datum ? undefined : 'Erst Eventdatum wählen'}
+                      value={datum ? tageDazu(datum, s.tagVersatz) : ''}
+                      onWert={(neu) => {
+                        if (datum && neu) {
+                          ersetzen(i, { ...s, tagVersatz: tagVersatzFuerDatum(datum, neu) });
+                        }
+                      }}
+                      style={{ minWidth: 0 }}
                     />
-                    <LokalZahl
-                      label="Wunsch"
-                      min={b.minimum}
-                      wert={b.wunsch}
-                      onWert={(wunsch) => ersetzen(i, bedarfSetzen(s, j, { wunsch }))}
+                  )}
+                </SimpleGrid>
+              </Grid.Col>
+              {s.art === 'betrieb' ? (
+                s.bedarfe.map((b, j) => {
+                  const name = dienstformName(b.dienstformId);
+                  return (
+                    <Grid.Col key={b.dienstformId} span={{ base: 12, sm: 6 }}>
+                      <Group gap="xs" wrap="nowrap" align="flex-end">
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <LokalZahl
+                            label={`${name} Minimum`}
+                            min={1}
+                            wert={b.minimum}
+                            onWert={(minimum) => ersetzen(i, bedarfSetzen(s, j, { minimum }))}
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <LokalZahl
+                            label={`${name} Wunsch`}
+                            min={b.minimum}
+                            wert={b.wunsch}
+                            onWert={(wunsch) => ersetzen(i, bedarfSetzen(s, j, { wunsch }))}
+                          />
+                        </div>
+                        <PersonenKnopf
+                          titel={name}
+                          personen={schichtPersonen(s, j)}
+                          onChange={(p) => ersetzen(i, schichtPersonenSetzen(s, j, p))}
+                        />
+                        {s.bedarfe.length > 1 && (
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            size={42}
+                            aria-label={`${name} entfernen`}
+                            onClick={() => ersetzen(i, bedarfEntfernen(s, j))}
+                          >
+                            <IconTrash size={18} />
+                          </ActionIcon>
+                        )}
+                      </Group>
+                    </Grid.Col>
+                  );
+                })
+              ) : (
+                <Grid.Col span={{ base: 12, sm: 6 }}>
+                  <Group gap="xs" wrap="nowrap" align="flex-end">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <LokalZahl
+                        label="Minimum"
+                        min={0}
+                        wert={s.minimum}
+                        onWert={(minimum) => ersetzen(i, anzahlSetzen(s, { minimum }))}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <LokalZahl
+                        label="Wunsch"
+                        min={Math.max(1, s.minimum)}
+                        wert={s.wunsch}
+                        onWert={(wunsch) => ersetzen(i, anzahlSetzen(s, { wunsch }))}
+                      />
+                    </div>
+                    <PersonenKnopf
+                      titel={ART_TITEL[s.art]}
+                      personen={schichtPersonen(s)}
+                      onChange={(p) => ersetzen(i, schichtPersonenSetzen(s, 0, p))}
                     />
                   </Group>
-                </Stack>
-              ))
-            ) : (
-              <Group grow gap="xs" preventGrowOverflow={false} align="flex-start">
-                <LokalZahl
-                  label="Minimum"
-                  min={0}
-                  wert={s.minimum}
-                  onWert={(minimum) => ersetzen(i, anzahlSetzen(s, { minimum }))}
-                />
-                <LokalZahl
-                  label="Wunsch"
-                  min={Math.max(1, s.minimum)}
-                  wert={s.wunsch}
-                  onWert={(wunsch) => ersetzen(i, anzahlSetzen(s, { wunsch }))}
-                />
-              </Group>
-            )}
+                </Grid.Col>
+              )}
+            </Grid>
             {s.art === 'betrieb' && (
               <DienstformMenue
                 dienstformen={dienstformen.filter(
@@ -196,7 +317,7 @@ function DienstformMenue({
 export function SchichtListe({
   schichten,
   dienstformName,
-}: Readonly<{ schichten: readonly VorlageSchicht[]; dienstformName: (id: string) => string }>) {
+}: Readonly<{ schichten: readonly BausteinSchicht[]; dienstformName: (id: string) => string }>) {
   return (
     <Stack gap={2}>
       {schichten.map((s, i) => (

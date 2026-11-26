@@ -90,7 +90,7 @@ const eventDaten = {
       art: 'betrieb' as const,
       beginnZeit: '19:00',
       endeZeit: '22:00',
-      bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2, personen: [] }],
     },
   ],
 };
@@ -236,7 +236,7 @@ describe('event.aendern', () => {
           art: 'betrieb' as const,
           beginnZeit: '19:00',
           endeZeit: '23:00',
-          bedarfe: [{ dienstformId: 'bar', minimum: 2, wunsch: 3 }],
+          bedarfe: [{ dienstformId: 'bar', minimum: 2, wunsch: 3, personen: [] }],
         },
       ],
     });
@@ -770,5 +770,110 @@ describe('Todo', () => {
     });
     const [a] = protokollAktionen(dok(b), kontext({ personen }));
     expect(a).toMatchObject({ art: 'todo.aendern', ausfuehrbar: false, grund: 'Der Titel fehlt.' });
+  });
+});
+
+describe('Dienste of an Event block (personen)', () => {
+  const mitPersonen = (personen: string[]) => ({
+    ...eventDaten,
+    schichten: [
+      {
+        art: 'betrieb' as const,
+        beginnZeit: '19:00',
+        endeZeit: '22:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2, personen }],
+      },
+    ],
+  });
+  const mitglied = (sub: string) => ({
+    art: 'mitglied' as const,
+    sub,
+    username: sub,
+    vorname: 'V',
+    nachname: 'N',
+    status: 'mitglied' as const,
+    anrede: 'neutral' as const,
+  });
+  const kt = { kategorien: dienstKategorien };
+  const mitEvent = (e = ereignis()) => kontext({ ...kt, events: { [e.id]: e } });
+
+  it('plans the persons for event.anlegen without putting them into the event input', () => {
+    const b = baustein('bausteinEvent', mitPersonen(['a', 'b']));
+    const [a] = protokollAktionen(dok(b), kontext(kt));
+    expect(a!.plan).toMatchObject({
+      art: 'event.anlegen',
+      dienste: [
+        { art: 'betrieb', dienstformId: 'bar', sub: 'a', beginn: '2026-12-05T18:00:00.000Z' },
+        { art: 'betrieb', dienstformId: 'bar', sub: 'b' },
+      ],
+    });
+    const schichtEingabe = (a!.plan as { eingabe: { schichten: unknown[] } }).eingabe.schichten[0];
+    expect(JSON.stringify(schichtEingabe)).not.toContain('personen');
+  });
+
+  it('plans persons of Aufbau/Putzen per Schicht', () => {
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      schichten: [
+        {
+          art: 'putzen' as const,
+          tagVersatz: 1,
+          beginnZeit: '10:00',
+          endeZeit: '12:00',
+          minimum: 1,
+          wunsch: 1,
+          personen: ['p'],
+        },
+      ],
+    });
+    const [a] = protokollAktionen(dok(b), kontext(kt));
+    expect(a!.plan).toMatchObject({
+      dienste: [{ art: 'putzen', dienstformId: null, sub: 'p' }],
+    });
+  });
+
+  it('adds an event.aendern for persons missing in the calendar, none when all are entered', () => {
+    const b = baustein('bausteinEvent', { ...mitPersonen(['a']), eventId: 'e1' });
+    const [a] = protokollAktionen(dok(b), mitEvent());
+    expect(a).toMatchObject({ art: 'event.aendern', ausfuehrbar: true });
+    expect(a!.text).toContain('Dienste');
+    expect(a!.plan).toMatchObject({ dienste: [{ sub: 'a', dienstformId: 'bar' }] });
+
+    const drin = ereignis({
+      schichten: [
+        schicht({
+          dienste: [
+            {
+              id: 'd1',
+              dienstformId: 'bar',
+              kommentar: null,
+              eingetragenVon: 'v',
+              person: mitglied('a'),
+            },
+          ],
+        }),
+      ],
+    });
+    expect(protokollAktionen(dok(b), mitEvent(drin))).toEqual([]);
+  });
+
+  it('does not remove people who are only in the calendar', () => {
+    const b = baustein('bausteinEvent', { ...mitPersonen([]), eventId: 'e1' });
+    const mitDienst = ereignis({
+      schichten: [
+        schicht({
+          dienste: [
+            {
+              id: 'd1',
+              dienstformId: 'bar',
+              kommentar: null,
+              eingetragenVon: 'v',
+              person: mitglied('x'),
+            },
+          ],
+        }),
+      ],
+    });
+    expect(protokollAktionen(dok(b), mitEvent(mitDienst))).toEqual([]);
   });
 });

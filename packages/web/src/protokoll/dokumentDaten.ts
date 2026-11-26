@@ -222,11 +222,11 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     entschuldigt: mitglieder(fehlend('entschuldigt')),
     unentschuldigt: mitglieder(fehlend('unentschuldigt')),
     ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m, '', e.offiziell)),
-    emsFreitext: e.kopf.emsFreitext.trim(),
+    emsFreitext: e.kopf.emsFreitext.join(', '),
     anwaerter: da
       .filter((t) => t.status === 'anwaerter')
       .map((t) => person(t, zusatz(t), e.offiziell)),
-    gaeste: e.kopf.gaeste.trim(),
+    gaeste: e.kopf.gaeste.join(', '),
     leitung: finde(e.kopf.sitzungsleitung),
     protokoll: finde(e.kopf.protokollfuehrung),
     eroeffnung: e.kopf.eroeffnung || null,

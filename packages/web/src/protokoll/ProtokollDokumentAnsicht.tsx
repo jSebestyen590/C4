@@ -825,7 +825,7 @@ function Baustein({
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
-          Neues EM
+          Austritt
           {p ? (
             <>
               : <PersonName p={p} />
