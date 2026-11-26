@@ -120,7 +120,7 @@ jobs:
             --cache-control "no-cache" --content-type application/manifest+json
           aws s3 cp packages/web/dist/sw.js "s3://$BUCKET/app/sw.js" \
             --cache-control "no-cache" --content-type text/javascript
-          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app/index.html" "/app/config.json" "/app/manifest.webmanifest" "/app/sw.js"
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/app/*"
 
       # First-ever deploy: the database only exists after apply.
       - name: Migrate database (first deploy)
