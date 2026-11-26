@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import {
   BAUSTEIN_TYPEN,
   BILD_TYP,
+  type BausteinEventDaten,
   darfInNotizen,
   istBausteinInNotizen,
   istThema,
@@ -11,7 +12,12 @@ import {
   type BausteinTyp,
   type ProtokollKnoten,
 } from '@c4/shared';
-import { bausteinNeu, ersterLeererFeld } from './bausteinLogik';
+import {
+  bausteinNeu,
+  dienstEintragen,
+  ersterLeererFeld,
+  type DienstEingabe,
+} from './bausteinLogik';
 import type { BausteinWahl } from './slashLogik';
 
 export interface TextBereich {
@@ -297,6 +303,43 @@ export function ausserhalbBaustein(state: EditorState): boolean {
   return true;
 }
 
+/** The innermost Event block around the cursor: its position and data; null when the cursor is not in one. */
+export function eventAmCursor(
+  $from: ResolvedPos,
+): { pos: number; daten: BausteinEventDaten } | null {
+  for (let d = $from.depth; d > 0; d--) {
+    const knoten = $from.node(d);
+    if (knoten.type.name !== 'bausteinEvent') continue;
+    const daten = knoten.attrs.daten as BausteinEventDaten | null;
+    if (!daten || !Array.isArray(daten.schichten)) return null;
+    return { pos: $from.before(d), daten };
+  }
+  return null;
+}
+
+/**
+ * /dienst: enters the Dienst into the Event block around the cursor (after deleting `loeschen`, the typed
+ * "/dienst …"), in one transaction. `false` when it did not fit (no Event block, too many Schichten).
+ */
+export function dienstEintragenAmCursor(
+  editor: Editor,
+  eingabe: DienstEingabe,
+  loeschen?: TextBereich,
+): boolean {
+  const tr = editor.state.tr;
+  if (loeschen) tr.delete(loeschen.from, loeschen.to);
+  // The Event block starts before the typed text, so its position survives the deletion.
+  const event = eventAmCursor(tr.selection.$from);
+  const neu = event ? dienstEintragen(event.daten, eingabe) : null;
+  if (event && neu) {
+    const knoten = tr.doc.nodeAt(event.pos);
+    if (knoten) tr.setNodeMarkup(event.pos, undefined, { ...knoten.attrs, daten: neu });
+  }
+  editor.view.dispatch(tr.scrollIntoView());
+  editor.view.focus();
+  return neu !== null;
+}
+
 /**
  * Inserts a Baustein at the cursor (after deleting `loeschen`, e.g. the typed "/query") and focuses its
  * first empty field; see `einfuegeStelle` for the position. One transaction = one undo step.
@@ -464,6 +507,16 @@ export function zitatEinfuegen(editor: Editor, loeschen?: TextBereich): void {
   if (loeschen) kette.deleteRange(loeschen);
   if (!editor.isActive('blockquote')) kette.setParagraph().wrapIn('blockquote');
   kette.scrollIntoView().run();
+}
+
+/**
+ * "Zitat im Text": removes the typed "/query" and turns the inline quote on at the cursor (the next typed
+ * text is quoted) or off again when the cursor is already in one.
+ */
+export function zitatImTextEinfuegen(editor: Editor, loeschen?: TextBereich): void {
+  const kette = editor.chain().focus();
+  if (loeschen) kette.deleteRange(loeschen);
+  kette.toggleMark('zitatInline').run();
 }
 
 /**

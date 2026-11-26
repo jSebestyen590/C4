@@ -12,7 +12,6 @@ import {
   SegmentedControl,
   Stack,
   Text,
-  Textarea,
   Title,
   UnstyledButton,
   useMantineTheme,
@@ -24,6 +23,7 @@ import {
   PROTOKOLL_TEILNAHME_WAHL,
   anwesenheitsZeitText,
   anwesenheitsZeiten,
+  externSchluessel,
   type AnwesenheitsZeit,
   type ProtokollDokument,
   type ProtokollDto,
@@ -35,6 +35,7 @@ import {
 import { PROTOKOLL_ART_LABELS, PROTOKOLL_TEILNAHME_KURZ, PROTOKOLL_TEILNAHME_LABELS } from './i18n';
 import { mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
+import { NamenChips } from './protokoll/NamenChips';
 import {
   effektiveTeilnahme,
   type AnwesenheitPerson,
@@ -123,6 +124,7 @@ function KopfLesen({
         </Text>{' '}
         {PROTOKOLL_ART_LABELS[dto.sitzung.art]}
         {kopf.eroeffnung && ` · eröffnet um ${kopf.eroeffnung} Uhr`}
+        {kopf.ende && ` · beendet um ${kopf.ende} Uhr`}
       </Text>
       {leitung && (
         <Text size="sm">
@@ -178,7 +180,7 @@ function KopfLesen({
           {kopf.emsFreitext.length > 0 && (
             <>
               {emListe.length > 0 && ', '}
-              {kopf.emsFreitext.join(', ')}
+              {kopf.emsFreitext.map((n) => externMitZeit(n, zeiten)).join(', ')}
             </>
           )}
         </Text>
@@ -188,11 +190,23 @@ function KopfLesen({
           <Text span fw={600}>
             Gäste:
           </Text>{' '}
-          {kopf.gaeste.join(', ')}
+          {kopf.gaeste.map((n) => externMitZeit(n, zeiten)).join(', ')}
         </Text>
       )}
     </Stack>
   );
+}
+
+/** "Ralle (bis 20:30)": the name of an external person with the times of their Anwesenheit blocks. */
+function externMitZeit(name: string, zeiten: Readonly<Record<string, AnwesenheitsZeit>>): string {
+  const zeit = anwesenheitsZeitText(zeiten[externSchluessel(name)]);
+  return zeit ? `${name} (${zeit})` : name;
+}
+
+/** The chip text of an external person: "Ralle · bis 20:30". */
+function externChipText(name: string, zeiten: Readonly<Record<string, AnwesenheitsZeit>>): string {
+  const zeit = anwesenheitsZeitText(zeiten[externSchluessel(name)]);
+  return zeit ? `${name} · ${zeit}` : name;
 }
 
 /** One person with the attendance buttons: stacked on phones, side by side from `sm`. */
@@ -352,12 +366,20 @@ export function ProtokollKopf({
                 onChange({ ...kopf, protokollfuehrung: sub }),
               )}
             </SimpleGrid>
-            <ZeitFeld
-              label="Eröffnung"
-              w={{ base: '100%', sm: 160 }}
-              value={kopf.eroeffnung}
-              onWert={(eroeffnung) => onChange({ ...kopf, eroeffnung })}
-            />
+            <Group gap="xs" align="flex-end">
+              <ZeitFeld
+                label="Eröffnung"
+                w={{ base: 'calc(50% - 4px)', sm: 160 }}
+                value={kopf.eroeffnung}
+                onWert={(eroeffnung) => onChange({ ...kopf, eroeffnung })}
+              />
+              <ZeitFeld
+                label="Ende"
+                w={{ base: 'calc(50% - 4px)', sm: 160 }}
+                value={kopf.ende}
+                onWert={(ende) => onChange({ ...kopf, ende })}
+              />
+            </Group>
             <QuorumZeile art={dto.sitzung.art} personen={effektiv} inhalt={inhalt} />
           </Stack>
 
@@ -436,25 +458,23 @@ export function ProtokollKopf({
                 );
               }}
             />
-            <Textarea
-              size="md"
-              label="Weitere EMs (Freitext)"
-              autosize
-              minRows={1}
-              maxLength={2000}
-              value={kopf.emsFreitext.join('\n')}
-              onChange={(e) => onChange({ ...kopf, emsFreitext: zeilen(e.currentTarget.value) })}
+            <NamenChips
+              label="Weitere EMs (ohne App)"
+              placeholder="Name eintippen, Enter"
+              werte={kopf.emsFreitext}
+              verboten={kopf.gaeste}
+              text={(n) => externChipText(n, zeiten)}
+              onChange={(emsFreitext) => onChange({ ...kopf, emsFreitext })}
             />
           </Stack>
 
-          <Textarea
-            size="md"
+          <NamenChips
             label="Gäste"
-            autosize
-            minRows={1}
-            maxLength={2000}
-            value={kopf.gaeste.join('\n')}
-            onChange={(e) => onChange({ ...kopf, gaeste: zeilen(e.currentTarget.value) })}
+            placeholder="Name eintippen, Enter"
+            werte={kopf.gaeste}
+            verboten={kopf.emsFreitext}
+            text={(n) => externChipText(n, zeiten)}
+            onChange={(gaeste) => onChange({ ...kopf, gaeste })}
           />
         </Stack>
       </Paper>
@@ -464,6 +484,3 @@ export function ProtokollKopf({
     </>
   );
 }
-
-/** Temporary: lines of a textarea as list (phase 3 replaces it by a chip input). */
-const zeilen = (t: string): string[] => t.split('\n');

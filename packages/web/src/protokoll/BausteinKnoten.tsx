@@ -13,6 +13,7 @@ import { useState, type ComponentType, type CSSProperties, type ReactElement } f
 import {
   BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
+  istMerker,
   istNurInNotizen,
   istThema,
   type BausteinAnwaerterDaten,
@@ -198,6 +199,56 @@ function BausteinAnsicht<T extends BausteinTyp>({
   );
 }
 
+/**
+ * The Merker "Überarbeiten": a yellow card with plain text, a reminder for the author (never part of the
+ * document). No form, no Notizen label.
+ */
+function MerkerAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
+  const { editor, node, deleteNode } = props;
+  const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
+  return (
+    <NodeViewWrapper
+      className="protokoll-baustein protokoll-merker"
+      data-baustein="bausteinMerker"
+      data-id={node.attrs.id as string}
+      style={{ '--baustein-farbe': bausteinFarbeCss('bausteinMerker') } as CSSProperties}
+    >
+      <Paper
+        withBorder
+        p="sm"
+        radius="md"
+        shadow={props.selected ? 'sm' : undefined}
+        style={{ background: 'var(--mantine-color-yellow-light)' }}
+      >
+        <Stack gap="xs">
+          <Group justify="space-between" wrap="nowrap" gap="xs" contentEditable={false}>
+            <Group gap="xs" wrap="nowrap" c="yellow.9">
+              <SlashIcon symbol={BAUSTEIN_SYMBOL.bausteinMerker} size={18} />
+              <Text size="sm" fw={600}>
+                {BAUSTEIN_TITEL.bausteinMerker}
+              </Text>
+            </Group>
+            {editierbar && (
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size={42}
+                className="protokoll-nicht-drucken"
+                tabIndex={-1}
+                aria-label={`${BAUSTEIN_TITEL.bausteinMerker} entfernen`}
+                onClick={() => deleteNode()}
+              >
+                <IconTrash size={20} />
+              </ActionIcon>
+            )}
+          </Group>
+          <NodeViewContent className="protokoll-baustein-text" />
+        </Stack>
+      </Paper>
+    </NodeViewWrapper>
+  );
+}
+
 const parseJson = (el: HTMLElement, attribut: string): unknown => {
   const roh = el.getAttribute(attribut);
   if (!roh) return null;
@@ -220,14 +271,21 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
       ? 'notizbaustein'
       : istBausteinInNotizen(typ)
         ? 'block innerbaustein'
-        : typ === 'bausteinAnwesenheit'
+        : typ === 'bausteinAnwesenheit' || istMerker(typ)
           ? 'block innerbaustein'
           : istThema(typ)
             ? 'thema'
             : 'block',
     ...(ohneText
       ? { atom: true }
-      : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),
+      : {
+          // The Merker holds plain paragraphs only.
+          content: istMerker(typ)
+            ? 'paragraph+'
+            : istBausteinInNotizen(typ)
+              ? FREITEXT_NUR_TEXT
+              : FREITEXT,
+        }),
     isolating: true,
     defining: true,
     draggable: false,
@@ -340,7 +398,12 @@ export const BausteinAnwesenheitKnoten = bausteinKnoten('bausteinAnwesenheit', (
   <AnwesenheitAnsicht props={props} />
 ));
 
+export const BausteinMerkerKnoten = bausteinKnoten('bausteinMerker', (props) => (
+  <MerkerAnsicht props={props} />
+));
+
 export const BAUSTEIN_KNOTEN = [
+  BausteinMerkerKnoten,
   BausteinEventKnoten,
   BausteinThemaKnoten,
   BausteinVergangenesEventKnoten,

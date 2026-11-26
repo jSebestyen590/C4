@@ -940,6 +940,7 @@ export function ProtokollDokumentAnsicht({
     art,
     teilnahme: eingabe.teilnahme,
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
+    emsFreitext: eingabe.kopf.emsFreitext,
   });
   const alle = alleMitglieder(eingabe);
   const namen = (sub: string) => {

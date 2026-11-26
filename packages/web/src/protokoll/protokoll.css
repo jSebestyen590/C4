@@ -84,6 +84,18 @@
   margin-top: var(--mantine-spacing-xs);
 }
 
+/* Inline quote: like the block quote, in „…“ in the middle of a sentence. */
+.protokoll-editor .ProseMirror q.pk-zitat-inline {
+  quotes: '„' '“';
+  color: var(--mantine-color-dimmed);
+  font-style: italic;
+}
+
+/* Merker "Überarbeiten": a yellow reminder card; its text sits in the card, not in the document. */
+.protokoll-merker .protokoll-baustein-text p {
+  margin: 0;
+}
+
 /*
  * Colour bar on the left edge of every Baustein card, one colour per type (`--baustein-farbe`, set from `BAUSTEIN_FARBE` in symbole.tsx).
  * Nested Bausteine show several bars side by side. Mantine's -6 shades read well on light and dark.

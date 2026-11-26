@@ -214,6 +214,7 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     art: e.sitzung.art,
     teilnahme,
     ems: e.ems.filter((m) => m.ausgewaehlt),
+    emsFreitext: e.kopf.emsFreitext,
   });
 
   return {

@@ -47,7 +47,7 @@ import {
   vorgewaehlteAktionen,
 } from '../protokoll/aktionenLogik';
 import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
-import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
+import { effektiveTeilnahme, kopfMitExternem, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
@@ -293,6 +293,28 @@ function ProtokollAnsicht({
       aendern({ kopf: neu });
     },
     [dto, aendern],
+  );
+  /** /erscheint or /geht with an unknown name: the chip joins the Kopf. */
+  const externHinzufuegen = useCallback(
+    (art: 'em' | 'gast', name: string) => {
+      const neu = kopfMitExternem(kopfRef.current, art, name);
+      if (!neu) return;
+      kopfRef.current = neu;
+      setKopf(neu);
+      aendern({ kopf: neu });
+    },
+    [aendern],
+  );
+  /** /ende: the end of the Sitzung is the current time. */
+  const endeSetzen = useCallback(
+    (uhrzeit: string) => {
+      const neu = { ...kopfRef.current, ende: uhrzeit };
+      kopfRef.current = neu;
+      setKopf(neu);
+      aendern({ kopf: neu });
+      notifications.show({ color: 'green', message: `Ende ${uhrzeit} eingetragen` });
+    },
+    [aendern],
   );
   const inhaltAendern = (doc: ProtokollDokument) => {
     setInhalt(doc);
@@ -558,6 +580,10 @@ function ProtokollAnsicht({
             ems={ems}
             mitglieder={mitgliederListe}
             onAnwesenheit={anwesenheit}
+            emsFreitext={kopf.emsFreitext}
+            gaeste={kopf.gaeste}
+            onExternHinzufuegen={externHinzufuegen}
+            onEnde={endeSetzen}
             bilder={bilder}
           />
           <NaechsteSitzungKarte

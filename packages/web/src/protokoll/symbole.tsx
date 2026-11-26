@@ -1,5 +1,6 @@
 import {
   IconBan,
+  IconFlag,
   IconPencilExclamation,
   IconChecklist,
   IconCalendarEvent,
@@ -66,6 +67,8 @@ export function SlashIcon({ symbol, size = 20 }: Readonly<{ symbol: SlashSymbol;
       return <IconChecklist size={size} />;
     case 'merker':
       return <IconPencilExclamation size={size} />;
+    case 'ende':
+      return <IconFlag size={size} />;
   }
 }
 

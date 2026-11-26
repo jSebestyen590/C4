@@ -31,6 +31,7 @@ vi.mock('../kalenderDaten', () => {
     useKalenderEvents: () => leer,
     useEventKategorien: () => leer,
     useVorlagen: () => leer,
+    useDienstformen: () => ({ ...leer, nachId: new Map() }),
     vorlageTitel: () => '',
   };
 });

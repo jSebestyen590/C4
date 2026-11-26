@@ -7,6 +7,7 @@ import {
   BAUSTEINE_IN_NOTIZEN,
   bausteinErzeugen,
   istBausteinInNotizen,
+  istMerker,
   istVerschachtelbar,
   kannBausteineEnthalten,
   type ProtokollKnoten,
@@ -31,8 +32,9 @@ describe('editor schema', () => {
   it('lets Abstimmung and Meinungsbild stand in the notes of other Bausteine, but not in each other', () => {
     for (const typ of BAUSTEIN_TYPEN) {
       for (const innen of BAUSTEINE_IN_NOTIZEN) {
-        // Anwesenheit has no free text at all.
-        const erlaubt = !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit';
+        // Anwesenheit has no free text at all, the Merker only plain text.
+        const erlaubt =
+          !istBausteinInNotizen(typ) && typ !== 'bausteinAnwesenheit' && !istMerker(typ);
         const knoten = schema.nodeFromJSON(bausteinErzeugen(innen));
         const eltern = schema.nodes[typ]!;
         const passt = eltern.contentMatch.matchType(knoten.type) !== null;

@@ -10,7 +10,13 @@ import {
 } from './bausteinLogik';
 import { useProtokollKontext } from './kontext';
 import type { SlashDaten } from './slashLogik';
-import { useEventKategorien, useKalenderEvents, useVorlagen, vorlageTitel } from '../kalenderDaten';
+import {
+  useDienstformen,
+  useEventKategorien,
+  useKalenderEvents,
+  useVorlagen,
+  vorlageTitel,
+} from '../kalenderDaten';
 
 /** Calendar events around the Sitzung, split into past and upcoming (one shared query). */
 export function useProtokollEvents(beginn?: string) {
@@ -37,8 +43,11 @@ export const eventDatumText = (e: Pick<EventDto, 'beginn'>): string =>
 export function useSlashDaten(
   sitzungBeginn: string,
   teilnahme: readonly AnwesenheitPerson[],
+  emsFreitext: readonly string[] = [],
+  gaeste: readonly string[] = [],
 ): SlashDaten {
   const vorlagen = useVorlagen();
+  const dienstformen = useDienstformen();
   const kategorien = useEventKategorien();
   const events = useProtokollEvents(sitzungBeginn);
   const basis = useMemo(
@@ -62,13 +71,21 @@ export function useSlashDaten(
     }),
     [vorlagen.data, kategorien.liste, events.vergangene],
   );
-  const personen = useMemo(() => slashPersonen(teilnahme), [teilnahme]);
+  const personen = useMemo(
+    () => slashPersonen(teilnahme, { emsFreitext, gaeste }),
+    [teilnahme, emsFreitext, gaeste],
+  );
+  const formen = useMemo(
+    () => dienstformen.aktive.map((d) => ({ id: d.id, name: d.name })),
+    [dienstformen.aktive],
+  );
   return useMemo(
     () => ({
       ...basis,
       personen,
+      dienstformen: formen,
       uhrzeit: () => anwesenheitUhrzeit(),
     }),
-    [basis, personen],
+    [basis, personen, formen],
   );
 }

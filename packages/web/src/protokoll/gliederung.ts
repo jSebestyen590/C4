@@ -67,6 +67,8 @@ export function gliederungTitel(
   daten: unknown,
   personName: (sub: string) => string | undefined = () => undefined,
   kategorien?: KategorieNamen,
+  /** The free text of the Baustein (the Merker is titled by its beginning). */
+  text = '',
 ): string {
   const d = (daten ?? {}) as Record<string, unknown>;
   const person = (sub: unknown, name: unknown): string =>
@@ -98,7 +100,7 @@ export function gliederungTitel(
       return kurz(`${a.vorname ?? ''} ${a.nachname ?? ''}`) || BAUSTEIN_TITEL[typ];
     }
     case 'bausteinMerker':
-      return BAUSTEIN_TITEL[typ];
+      return mit(BAUSTEIN_TITEL[typ], text);
     case 'bausteinTodo':
       return mit(BAUSTEIN_TITEL[typ], String(d.titel ?? ''));
     case 'bausteinBeschluss':
@@ -120,7 +122,7 @@ export function gliederungTitel(
     case 'bausteinAnwesenheit': {
       const a = d as unknown as BausteinAnwesenheitDaten;
       const wort = a.art === 'geht' ? 'geht' : 'erscheint';
-      const name = person(a.sub, '');
+      const name = person(a.sub, a.name);
       return name ? kurz(`${name} ${wort}`) : wort === 'geht' ? 'Geht' : 'Erscheint';
     }
   }
@@ -169,7 +171,7 @@ function eintrag(
   return {
     id: node.attrs.id as string,
     typ,
-    titel: gliederungTitel(typ, node.attrs.daten, personName, kategorien),
+    titel: gliederungTitel(typ, node.attrs.daten, personName, kategorien, node.textContent),
     symbol: bausteinSymbol(typ, node.attrs.daten),
     verschachtelbar: istVerschachtelbar(typ),
     // Attendance is a leaf (no notes); Abstimmung/Meinungsbild/Wahl hold text only.

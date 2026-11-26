@@ -11,6 +11,7 @@ import {
   type BausteinVergangenesEventDaten,
   type MitgliedStatus,
 } from '@c4/shared';
+import { eventZeiten, zeitspanneParsen, type DienstEingabe } from './bausteinLogik';
 
 // Items of the slash menu ("/") and of the toolbar's Baustein menu: pure, no TipTap/React.
 
@@ -22,11 +23,26 @@ export type BausteinWahl = {
 export type SlashAktion =
   /** Replace the typed text by `/text` (switches to the second stage). */
   | { art: 'weiter'; text: string }
-  | { art: 'einfuegen'; wahl: BausteinWahl }
-  /** Turn the current paragraph into a quote (works at the cursor, also inside a Baustein's text). */
-  | { art: 'zitat' }
+  | {
+      art: 'einfuegen';
+      wahl: BausteinWahl;
+      /** An Erscheint / Geht block for a name that is no chip yet: the chip is created in the Kopf too. */
+      neuerExterner?: { art: ExternArt; name: string };
+    }
+  /**
+   * Turn the current paragraph into a quote (works at the cursor, also inside a Baustein's text);
+   * `imText`: instead mark the selection (or the next typed text) as an inline quote.
+   */
+  | { art: 'zitat'; imText?: boolean }
+  /** Set the end of the Sitzung (Kopf) to the current time; no Baustein. */
+  | { art: 'ende' }
+  /** Enter a Dienst (with an optional person) into the surrounding Event block; no Baustein. */
+  | { art: 'dienst'; eingabe: DienstEingabe }
   /** Pick an image file and upload it (the file dialog opens, so this runs in the user's click or key press). */
   | { art: 'bild' };
+
+/** An external person of the Kopf: EM without the app (`em`) or guest (`gast`). */
+export type ExternArt = 'em' | 'gast';
 
 export type SlashSymbol =
   | 'event'
@@ -48,7 +64,8 @@ export type SlashSymbol =
   | 'person'
   | 'gruppe'
   | 'todo'
-  | 'merker';
+  | 'merker'
+  | 'ende';
 
 export interface SlashEintrag {
   schluessel: string;
@@ -85,7 +102,11 @@ export interface SlashVergangenes {
 
 /** A person of the attendance list, selectable for /erscheint and /geht. */
 export interface SlashPerson {
+  /** `sub` of an app member; '' for an external person (chip of the Kopf, see `extern`). */
   sub: string;
+  /** Set for an external person: EM chip or guest; `name` is the chip text. */
+  extern?: ExternArt;
+  name?: string;
   /** Username, else the full name. */
   titel: string;
   /** Full name and status. */
@@ -104,6 +125,24 @@ export interface SlashDaten {
   uhrzeit?: () => string;
   /** Called after an Erscheint / Geht block with a person was inserted (locks the person to "da" in the Kopf). */
   anwesenheit?: (sub: string) => void;
+  /** A chip was created by /erscheint or /geht with an unknown name (EM or guest in the Kopf). */
+  externHinzufuegen?: (art: ExternArt, name: string) => void;
+  /** Called by /ende with the current time `HH:MM`. */
+  ende?: (uhrzeit: string) => void;
+  /** Active Dienstformen (second stage of /dienst). */
+  dienstformen?: readonly SlashDienstform[];
+}
+
+/** A Dienstform selectable in /dienst. */
+export interface SlashDienstform {
+  id: string;
+  name: string;
+}
+
+/** What the slash menu knows about the place of the cursor. */
+export interface SlashKontext {
+  /** The cursor is inside an Event block: its data (enables /dienst); null elsewhere. */
+  event?: BausteinEventDaten | null;
 }
 
 /** The person of a chosen Erscheint / Geht block, else null (other Bausteine, no person). */
@@ -112,7 +151,8 @@ export function anwesenheitPerson(wahl: BausteinWahl): string | null {
   return wahl.daten.sub || null;
 }
 
-export type SlashStufe = 'bausteine' | 'vorlagen' | 'events' | 'abstimmung' | AnwesenheitArt;
+export type SlashStufe =
+  'bausteine' | 'vorlagen' | 'events' | 'abstimmung' | 'zitat' | 'dienst' | AnwesenheitArt;
 
 /** Lower case, umlauts spelled out (`Anwärter` = `anwaerter`), single spaces. */
 export function normalisieren(text: string): string {
@@ -123,6 +163,11 @@ export function normalisieren(text: string): string {
     .replace(/ü/g, 'ue')
     .replace(/ß/g, 'ss')
     .replace(/\s+/g, ' ');
+}
+
+/** What was typed after the stage word, as typed (case, umlauts): the name of a new chip. */
+export function slashRohFilter(query: string): string {
+  return query.replace(/^\s*\S+\s*/, '').trim();
 }
 
 /** Stage and filter text of what was typed after the "/". */
@@ -138,6 +183,8 @@ export function slashStufe(query: string): { stufe: SlashStufe; filter: string }
   if (wort === 'vergangenes' || wort === 'vergangen') {
     return { stufe: 'events', filter: rest.replace(/^event ?/, '').trim() };
   }
+  if (wort === 'zitat') return { stufe: 'zitat', filter: rest.trim() };
+  if (wort === 'dienst') return { stufe: 'dienst', filter: rest.trim() };
   if (wort === 'erscheint' || wort === 'erscheinen' || wort === 'kommt') {
     return { stufe: 'erscheint', filter: rest.trim() };
   }
@@ -156,6 +203,8 @@ interface Definition {
   aktion: SlashAktion;
   /** Only found by its aliases (not by the title), and only once something was typed. */
   nurAlias?: boolean;
+  /** Only in the slash menu, not in the toolbar's Baustein menu (no Baustein, or tied to the cursor's place). */
+  nurSlash?: 'ende' | 'dienst';
 }
 
 export const SLASH_DEFINITIONEN: readonly Definition[] = [
@@ -308,10 +357,39 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
   {
     schluessel: 'zitat',
     titel: 'Zitat',
-    beschreibung: 'Zitat einfügen',
+    beschreibung: 'Zitat als Absatz; mit Leerzeichen dahinter auch „im Text“',
     symbol: 'zitat',
     woerter: ['zitat', 'quote', 'blockquote'],
     aktion: { art: 'zitat' },
+  },
+  {
+    schluessel: 'merker',
+    titel: 'Überarbeiten',
+    beschreibung: 'Merker für dich: später überarbeiten, kommt nicht ins Dokument',
+    symbol: 'merker',
+    woerter: ['ueberarbeiten', 'merker', 'markieren', 'nacharbeiten'],
+    aktion: {
+      art: 'einfuegen',
+      wahl: { typ: 'bausteinMerker', daten: bausteinLeer('bausteinMerker') },
+    },
+  },
+  {
+    schluessel: 'dienst',
+    titel: 'Dienst',
+    beschreibung: 'Dienst mit Person ins Event eintragen',
+    symbol: 'gruppe',
+    woerter: ['dienst', 'schicht'],
+    nurSlash: 'dienst',
+    aktion: { art: 'weiter', text: 'dienst ' },
+  },
+  {
+    schluessel: 'ende',
+    titel: 'Ende der Sitzung',
+    beschreibung: 'Trägt die aktuelle Uhrzeit als Ende ein',
+    symbol: 'ende',
+    woerter: ['ende', 'schluss', 'beenden'],
+    nurSlash: 'ende',
+    aktion: { art: 'ende' },
   },
 ];
 
@@ -326,9 +404,13 @@ export function bausteinEintraege(
   filter: string,
   ohneVerschachtelt = false,
   ohneNurInNotizen = false,
+  kontext?: SlashKontext,
 ): SlashEintrag[] {
   const f = normalisieren(filter).trim();
   return SLASH_DEFINITIONEN.filter((d) => {
+    // Without a context (the toolbar) the slash-only entries are left out; /dienst needs an Event block.
+    if (d.nurSlash && !kontext) return false;
+    if (d.nurSlash === 'dienst' && !kontext?.event) return false;
     if (
       ohneVerschachtelt &&
       d.aktion.art === 'einfuegen' &&
@@ -446,16 +528,19 @@ export function vergangenesEintraege(
 /**
  * Second stage of "Erscheint" / "Geht": the people of the attendance list matching the filter. Those
  * who can still arrive (not present at the opening) come first for Erscheint, the present ones first for
- * Geht; then members before the rest, then by name.
+ * Geht; then members before the rest, then by name. External people (chips of the Kopf) are listed like
+ * the others. With `roh` (the typed name) and no person of exactly that name, "als Gast / als EM hinzufügen"
+ * follow the matches: they create the chip and the block.
  */
 export function personEintraege(
   art: AnwesenheitArt,
   personen: readonly SlashPerson[],
   filter: string,
   uhrzeit: string,
+  roh = '',
 ): SlashEintrag[] {
   const rang = (p: SlashPerson) => (p.da === (art === 'geht') ? 0 : 1);
-  return personen
+  const eintraege: SlashEintrag[] = personen
     .filter((p) => enthaelt(`${p.titel} ${p.beschreibung}`, filter))
     .sort(
       (a, b) =>
@@ -464,7 +549,7 @@ export function personEintraege(
         a.titel.localeCompare(b.titel, 'de'),
     )
     .map((p) => ({
-      schluessel: `person-${art}-${p.sub}`,
+      schluessel: `person-${art}-${p.extern ? `x:${p.name ?? p.titel}` : p.sub}`,
       titel: p.titel,
       beschreibung: p.beschreibung,
       symbol: art,
@@ -472,10 +557,179 @@ export function personEintraege(
         art: 'einfuegen' as const,
         wahl: {
           typ: 'bausteinAnwesenheit' as const,
-          daten: { art, sub: p.sub, name: '', uhrzeit },
+          daten: p.extern
+            ? { art, sub: null, name: p.name ?? p.titel, uhrzeit }
+            : { art, sub: p.sub, name: '', uhrzeit },
         },
       },
     }));
+  const name = roh.trim().slice(0, 100);
+  if (name !== '' && !personen.some((p) => normalisieren(p.titel) === normalisieren(name))) {
+    for (const [extern, text] of [
+      ['gast', 'Gast'],
+      ['em', 'EM'],
+    ] as const) {
+      eintraege.push({
+        schluessel: `neu-${art}-${extern}`,
+        titel: `„${name}“ als ${text} hinzufügen`,
+        beschreibung: extern === 'gast' ? 'Gast ohne App, kommt in die Gästeliste' : 'EM ohne App',
+        symbol: art,
+        aktion: {
+          art: 'einfuegen',
+          wahl: { typ: 'bausteinAnwesenheit', daten: { art, sub: null, name, uhrzeit } },
+          neuerExterner: { art: extern, name },
+        },
+      });
+    }
+  }
+  return eintraege;
+}
+
+/** "18:00–22:30" for a span. */
+const spanneText = (z: { beginnZeit: string; endeZeit: string }): string =>
+  `${z.beginnZeit}–${z.endeZeit}`;
+
+/** Separator between the parts typed after "/dienst" (time span › Dienst › person). */
+const DIENST_TRENNER = '›';
+/** Typed key of Aufbau / Putzen (a Dienstform could be called the same). */
+const DIENST_ART = { '~aufbau': 'aufbau', '~putzen': 'putzen' } as const;
+
+/**
+ * Entries of "/dienst": three stages in one query, `<Zeit> › <Dienst> › <Person>`. Stage 1 the time ("Gesamt"
+ * or a span typed as `18-22`), stage 2 the Dienstform (or Aufbau / Putzen), stage 3 "Ohne Personen" or a
+ * person. The last one inserts nothing but the entry into the Event block.
+ */
+export function dienstEintraege(
+  rest: string,
+  event: BausteinEventDaten,
+  dienstformen: readonly SlashDienstform[],
+  personen: readonly SlashPerson[],
+): SlashEintrag[] {
+  const teile = rest.split(DIENST_TRENNER).map((t) => t.trim());
+  const weiter = (schluessel: string, titel: string, beschreibung: string, text: string) =>
+    ({
+      schluessel,
+      titel,
+      beschreibung,
+      symbol: 'gruppe',
+      aktion: { art: 'weiter', text },
+    }) satisfies SlashEintrag;
+
+  if (teile.length === 1) {
+    const filter = teile[0]!;
+    const eintraege: SlashEintrag[] = [];
+    const gesamt = eventZeiten(event);
+    if (enthaelt('gesamt eventzeit', filter)) {
+      eintraege.push(
+        weiter('dienst-gesamt', 'Gesamt (Eventzeit)', spanneText(gesamt), 'dienst gesamt › '),
+      );
+    }
+    const spanne = zeitspanneParsen(filter);
+    if (spanne) {
+      eintraege.push(
+        weiter(
+          'dienst-spanne',
+          spanneText(spanne),
+          'Von–bis',
+          `dienst ${spanne.beginnZeit}-${spanne.endeZeit} › `,
+        ),
+      );
+    }
+    return eintraege;
+  }
+
+  const zeitText = teile[0]!;
+  const zeiten = zeitText === 'gesamt' ? null : zeitspanneParsen(zeitText);
+  if (zeitText !== 'gesamt' && !zeiten) return [];
+
+  if (teile.length === 2) {
+    const filter = teile[1]!;
+    const benutzt = new Set(
+      event.schichten.flatMap((s) =>
+        s.art === 'betrieb' ? s.bedarfe.map((b) => b.dienstformId) : [],
+      ),
+    );
+    // Dienstformen the event already uses first, then the others.
+    const geordnet = [...dienstformen].sort(
+      (a, b) => Number(benutzt.has(b.id)) - Number(benutzt.has(a.id)),
+    );
+    const eintraege: SlashEintrag[] = [];
+    for (const d of geordnet) {
+      if (!enthaelt(d.name, filter)) continue;
+      eintraege.push(
+        weiter(
+          `dienst-form-${d.id}`,
+          d.name,
+          'Dienstform',
+          `dienst ${zeitText} › ${normalisieren(d.name)} › `,
+        ),
+      );
+    }
+    for (const [schluessel, titel] of [
+      ['~aufbau', 'Aufbau'],
+      ['~putzen', 'Putzen'],
+    ] as const) {
+      if (enthaelt(titel, filter)) {
+        eintraege.push(
+          weiter(`dienst-${schluessel}`, titel, 'Schicht', `dienst ${zeitText} › ${schluessel} › `),
+        );
+      }
+    }
+    return eintraege;
+  }
+
+  const dienstText = teile[1]!;
+  const dienst =
+    dienstText in DIENST_ART
+      ? DIENST_ART[dienstText as keyof typeof DIENST_ART]
+      : dienstformen.find((d) => normalisieren(d.name) === dienstText)?.id;
+  if (!dienst) return [];
+  const filter = teile.slice(2).join(' ').trim();
+  const eintrag = (
+    schluessel: string,
+    titel: string,
+    beschreibung: string,
+    symbol: SlashSymbol,
+    sub: string | null,
+  ): SlashEintrag => ({
+    schluessel,
+    titel,
+    beschreibung,
+    symbol,
+    aktion: { art: 'dienst', eingabe: { zeiten, dienst, sub } },
+  });
+  const eintraege: SlashEintrag[] = [];
+  if (enthaelt('ohne personen', filter)) {
+    eintraege.push(
+      eintrag('dienst-ohne', 'Ohne Personen', 'Nur den Dienst eintragen', 'ohne', null),
+    );
+  }
+  for (const p of personen) {
+    if (p.extern || !p.sub || !enthaelt(`${p.titel} ${p.beschreibung}`, filter)) continue;
+    eintraege.push(eintrag(`dienst-person-${p.sub}`, p.titel, p.beschreibung, 'person', p.sub));
+  }
+  return eintraege;
+}
+
+/** Second stage of "Zitat": as a paragraph (the default) or inside the text. */
+export function zitatEintraege(filter: string): SlashEintrag[] {
+  const alle: SlashEintrag[] = [
+    {
+      schluessel: 'zitat-absatz',
+      titel: 'Als Absatz',
+      beschreibung: 'Der Absatz wird ein Zitat',
+      symbol: 'zitat',
+      aktion: { art: 'zitat' },
+    },
+    {
+      schluessel: 'zitat-im-text',
+      titel: 'Im Text',
+      beschreibung: 'Wörtliches Zitat mitten im Satz („…“)',
+      symbol: 'zitat',
+      aktion: { art: 'zitat', imText: true },
+    },
+  ];
+  return alle.filter((e) => enthaelt(e.titel, filter));
 }
 
 /** All items for what was typed after the "/". */
@@ -484,15 +738,28 @@ export function slashEintraege(
   daten: SlashDaten,
   ohneVerschachtelt = false,
   ohneNurInNotizen = false,
+  kontext: SlashKontext = {},
 ): SlashEintrag[] {
   const { stufe, filter } = slashStufe(query);
   if (stufe === 'vorlagen') return vorlageEintraege(daten.vorlagen, filter);
   if (stufe === 'abstimmung') return ohneVerschachtelt ? [] : abstimmungEintraege(filter);
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
-  if (stufe === 'erscheint' || stufe === 'geht') {
-    return personEintraege(stufe, daten.personen ?? [], filter, daten.uhrzeit?.() ?? '');
+  if (stufe === 'zitat') return zitatEintraege(filter);
+  if (stufe === 'dienst') {
+    return kontext.event
+      ? dienstEintraege(filter, kontext.event, daten.dienstformen ?? [], daten.personen ?? [])
+      : [];
   }
-  return bausteinEintraege(filter, ohneVerschachtelt, ohneNurInNotizen);
+  if (stufe === 'erscheint' || stufe === 'geht') {
+    return personEintraege(
+      stufe,
+      daten.personen ?? [],
+      filter,
+      daten.uhrzeit?.() ?? '',
+      slashRohFilter(query),
+    );
+  }
+  return bausteinEintraege(filter, ohneVerschachtelt, ohneNurInNotizen, kontext);
 }
 
 /**

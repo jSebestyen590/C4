@@ -1022,6 +1022,7 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     art,
     teilnahme: eingabe.teilnahme,
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
+    emsFreitext: eingabe.kopf.emsFreitext,
   });
   const alle = alleMitglieder(eingabe);
   const { eintraege, ids } = dokumentUeberschriften(

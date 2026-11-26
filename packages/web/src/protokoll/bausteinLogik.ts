@@ -230,6 +230,9 @@ export function anzahlSetzen(
 /** Most Schichten an Event Baustein holds (`bausteinEventDatenSchema`). */
 export const MAX_SCHICHTEN = 20;
 
+/** Most persons of one Dienst (`schichtPersonenSchema`). */
+const MAX_PERSONEN_DIENST = 50;
+
 /** Times of a new Schicht when the event has none (all-day Kategorie, nothing entered yet). */
 const STANDARD_BEGINN = '18:00';
 const STANDARD_ENDE = '22:00';
@@ -307,6 +310,108 @@ export const tageZwischen = (von: string, bis: string): number =>
 /** The new `tagVersatz` of an Aufbau/Putzen Schicht for a chosen date (kept within the schema's range). */
 export function tagVersatzFuerDatum(eventDatum: string, datum: string): number {
   return Math.max(-365, Math.min(365, tageZwischen(eventDatum, datum)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// /dienst: enter a Dienst into the surrounding Event block
+// ---------------------------------------------------------------------------------------------
+
+/** `H`, `HH`, `H:MM`, `HH:MM`, `H.MM` or `HHMM` as `HH:MM`; null when it is no time. */
+function zeitAusText(text: string): string | null {
+  const t = /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(text.trim()) ?? /^(\d{2})(\d{2})$/.exec(text.trim());
+  if (!t) return null;
+  const zeit = `${t[1]!.padStart(2, '0')}:${t[2] ?? '00'}`;
+  return istZeit(zeit) ? zeit : null;
+}
+
+/** A time span typed after /dienst ("18-22", "18:00 - 22:30", "18 bis 22") as `HH:MM`; null if it is none. */
+export function zeitspanneParsen(text: string): { beginnZeit: string; endeZeit: string } | null {
+  const teile = /^\s*([\d:.]+)\s*(?:-|–|—|bis)\s*([\d:.]+)\s*$/.exec(text);
+  if (!teile) return null;
+  const beginnZeit = zeitAusText(teile[1]!);
+  const endeZeit = zeitAusText(teile[2]!);
+  return beginnZeit && endeZeit ? { beginnZeit, endeZeit } : null;
+}
+
+/** The times of the whole event for a Schicht (the event's own, else 18:00-22:00). */
+export function eventZeiten(daten: Pick<BausteinEventDaten, 'beginnZeit' | 'endeZeit'>): {
+  beginnZeit: string;
+  endeZeit: string;
+} {
+  return {
+    beginnZeit: daten.beginnZeit && istZeit(daten.beginnZeit) ? daten.beginnZeit : STANDARD_BEGINN,
+    endeZeit: daten.endeZeit && istZeit(daten.endeZeit) ? daten.endeZeit : STANDARD_ENDE,
+  };
+}
+
+/** What /dienst enters: the whole event time (`null`) or a span, into a Dienstform or Aufbau/Putzen. */
+export interface DienstEingabe {
+  /** `null` = the times of the event. */
+  zeiten: { beginnZeit: string; endeZeit: string } | null;
+  /** A `dienstformId`, or `aufbau` / `putzen`. */
+  dienst: string;
+  /** The person to enter, `null` = only the Dienst without a person. */
+  sub: string | null;
+}
+
+/** The Dienst as the Event block holds it afterwards; `null` when it does not fit (too many Schichten, persons). */
+export function dienstEintragen(
+  daten: BausteinEventDaten,
+  eingabe: DienstEingabe,
+): BausteinEventDaten | null {
+  const art: BausteinSchicht['art'] =
+    eingabe.dienst === 'aufbau' || eingabe.dienst === 'putzen' ? eingabe.dienst : 'betrieb';
+  const zeiten = eingabe.zeiten ?? eventZeiten(daten);
+  const index = daten.schichten.findIndex(
+    (s) => s.art === art && s.beginnZeit === zeiten.beginnZeit && s.endeZeit === zeiten.endeZeit,
+  );
+  let schicht: BausteinSchicht;
+  if (index >= 0) {
+    schicht = daten.schichten[index]!;
+  } else {
+    if (daten.schichten.length >= MAX_SCHICHTEN) return null;
+    schicht = schichtNeu(art, zeiten, art === 'betrieb' ? eingabe.dienst : '');
+  }
+  const mit = (personen: readonly string[]): readonly string[] =>
+    eingabe.sub && !personen.includes(eingabe.sub) ? [...personen, eingabe.sub] : personen;
+
+  let neu: BausteinSchicht;
+  if (schicht.art === 'betrieb') {
+    const vorhanden = schicht.bedarfe.some((b) => b.dienstformId === eingabe.dienst);
+    const mitBedarf = vorhanden ? schicht : bedarfHinzufuegen(schicht, eingabe.dienst);
+    if (mitBedarf.art !== 'betrieb') return null;
+    neu = {
+      ...mitBedarf,
+      bedarfe: mitBedarf.bedarfe.map((b) => {
+        if (b.dienstformId !== eingabe.dienst) return b;
+        const personen = mit(b.personen);
+        const n = Math.max(1, personen.length);
+        return {
+          ...b,
+          personen: [...personen],
+          // A new Bedarf starts at the head count; an existing one only grows when it must.
+          minimum: vorhanden ? Math.max(b.minimum, n) : n,
+          wunsch: vorhanden ? Math.max(b.wunsch, n) : n,
+        };
+      }),
+    };
+  } else {
+    const personen = mit(schicht.personen);
+    const n = Math.max(1, personen.length);
+    const neuAngelegt = index < 0;
+    neu = {
+      ...schicht,
+      personen: [...personen],
+      minimum: neuAngelegt ? n : Math.max(schicht.minimum, n),
+      wunsch: neuAngelegt ? n : Math.max(schicht.wunsch, n),
+    };
+  }
+  const bedarf =
+    neu.art === 'betrieb' ? neu.bedarfe.findIndex((b) => b.dienstformId === eingabe.dienst) : 0;
+  if (schichtPersonen(neu, bedarf).length > MAX_PERSONEN_DIENST) return null;
+  const schichten =
+    index >= 0 ? daten.schichten.map((s, i) => (i === index ? neu : s)) : [...daten.schichten, neu];
+  return { ...daten, schichten };
 }
 
 // ---------------------------------------------------------------------------------------------
