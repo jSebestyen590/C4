@@ -39,6 +39,8 @@ import { createTrichterStore } from './trichter';
 import { createLagerAbgleichStore } from './lagerAbgleich';
 import { finanzExport } from './finanzExport';
 import { datenexportMitBelegdateien } from './finanzenDatenexportJob';
+import { sumupAbrufen } from './finanzenSumupJob';
+import { createSumup, createSumupSecretLeser } from './sumup';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import type { DatenexportAuftrag } from '@c4/shared';
 import { createFinanzenStore } from './finanzen';
@@ -96,6 +98,12 @@ export function createProduction() {
     await pool.query('select 1');
   };
   const finanzen = createFinanzenStore(db);
+  const sumupSecret = createSumupSecretLeser(config.sumupSecretArn, config.region);
+  const sumupJob = sumupAbrufen({
+    secret: sumupSecret,
+    api: (secret) => createSumup(secret),
+    store: finanzen,
+  });
   const finanzarchiv = config.finanzarchivBucket
     ? createFinanzarchiv(config.finanzarchivBucket, config.region)
     : finanzarchivNichtEingerichtet;
@@ -159,6 +167,7 @@ export function createProduction() {
     protokollbilder: createProtokollbilder(config.profilbildBucket, config.region),
     finanzarchiv,
     datenexportStarten,
+    sumupAbrufen: sumupJob,
     pingDb,
   });
   return {
@@ -170,6 +179,7 @@ export function createProduction() {
         jetzt,
       ),
     datenexportJob,
+    sumupJob,
     pushJob: (jetzt: Date) => benachrichtigungen.pushJob(jetzt),
     mailJob: (jetzt: Date) =>
       mailJobAusfuehren({ partymail, privatpartys, benachrichtigungen, posten, userAdmin }, jetzt),

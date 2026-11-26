@@ -119,6 +119,7 @@ import {
 } from './finanzenKassen';
 import { createBelegeStore, datumBerlin, type BelegeStore } from './finanzenBelege';
 import { createRechnungenStore, type RechnungenStore } from './finanzenRechnungen';
+import { createSumupStore, type SumupStore } from './finanzenSumup';
 import type { Tx } from './waren';
 
 // Finanzen: chart of accounts and the append-only journal (see docs/finanzen.md). Bookings are
@@ -204,7 +205,7 @@ export interface KettenDaten {
   zaehlerHash: string;
 }
 
-export interface FinanzenStore extends BelegeStore, RechnungenStore {
+export interface FinanzenStore extends BelegeStore, RechnungenStore, SumupStore {
   /** All accounts by name with their balance (sum of own lines). */
   konten(mitArchiv: boolean): Promise<KontoDto[]>;
   /** Throws KontoUngueltig for an unknown parent. */
@@ -1495,9 +1496,17 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     stornoEinfuegen,
   });
 
+  const sumup = createSumupStore(db, {
+    einfuegen,
+    kontenMitBestand,
+    wiederholen: (fn) => mitWiederholung(fn, BUCHEN_VERSUCHE, undefined, BUCHEN_WARTEN_MS),
+    vorhandene,
+  });
+
   return {
     ...belege,
     ...rechnungen,
+    ...sumup,
     async konten(mitArchiv) {
       const [alle, summen] = await Promise.all([
         db.select().from(finKonten).orderBy(asc(finKonten.name)),

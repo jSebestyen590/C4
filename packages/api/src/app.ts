@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { DatenexportAuftrag } from '@c4/shared';
+import type { DatenexportAuftrag, SumupAbrufErgebnis } from '@c4/shared';
 import { istDatenAbweichung, istKonflikt } from './db/wiederholung';
 import { HTTPException } from 'hono/http-exception';
 import { type UserAdmin } from './admin';
@@ -39,6 +39,7 @@ import { protokolleRoutes } from './routes/protokolle';
 import { trichterRoutes } from './routes/trichter';
 import { finanzenRoutes } from './routes/finanzen';
 import { finanzenRechnungenRoutes } from './routes/finanzenRechnungen';
+import { finanzenSumupRoutes } from './routes/finanzenSumup';
 import { lagerAbgleichRoutes } from './routes/lagerAbgleich';
 import { buchRoutes } from './routes/buch';
 import { umfragenRoutes } from './routes/umfragen';
@@ -88,6 +89,8 @@ export interface AppDeps {
    * in the background of the same process). Rejects when it cannot be started.
    */
   datenexportStarten: (auftrag: DatenexportAuftrag) => Promise<void>;
+  /** Fetches the new SumUp transactions and payouts (the same job the schedule runs). */
+  sumupAbrufen: (jetzt: Date) => Promise<SumupAbrufErgebnis>;
   /** Resolves when the database answers `select 1`. */
   pingDb: () => Promise<void>;
 }
@@ -121,6 +124,7 @@ export function createApp(deps: AppDeps) {
       .route('/', trichterRoutes(ctx))
       .route('/', finanzenRoutes(ctx))
       .route('/', finanzenRechnungenRoutes(ctx))
+      .route('/', finanzenSumupRoutes(ctx))
       .route('/', lagerAbgleichRoutes(ctx))
       .route('/', buchRoutes(ctx))
       .route('/', umfragenRoutes(ctx))

@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import { datumAnzeigen, tagVorher } from './datum';
+import { idempotenzSchluessel } from './finanzen';
 import { datumBerlin, zeitBerlin } from './kalender';
 import { nettoSteuer, type KassenZeile } from './kassen';
 
@@ -141,7 +143,9 @@ export function sumupGruppen(
   }
   const liste = [...gruppen.values()];
   for (const g of liste)
-    g.transaktionen.sort((a, b) => a.zeitpunkt.localeCompare(b.zeitpunkt) || a.id.localeCompare(b.id));
+    g.transaktionen.sort(
+      (a, b) => a.zeitpunkt.localeCompare(b.zeitpunkt) || a.id.localeCompare(b.id),
+    );
   return liste.sort(
     (a, b) =>
       a.geschaeftstag.localeCompare(b.geschaeftstag) ||
@@ -287,4 +291,62 @@ export function planeSumupAuszahlung(
     text: `SumUp-Auszahlung vom ${datumAnzeigen(auszahlung.datum)}`,
     zeilen,
   };
+}
+
+// ----- API DTOs
+
+/** A booking group of the overview, enriched with the suggested event. */
+export interface SumupGruppeDto extends SumupGruppe {
+  eventTitel: string | null;
+  eventBeginn: string | null;
+}
+
+/** A payout of the overview; `zugeordnet` is set once slice 6 matched it to a bank transaction. */
+export interface SumupAuszahlungDto extends SumupAuszahlung {
+  status: 'offen' | 'zugeordnet';
+}
+
+/** An event the Finanzer:in can choose for a group. */
+export interface SumupEventDto {
+  id: string;
+  titel: string | null;
+  beginn: string;
+  ende: string;
+  abgesagt: boolean;
+}
+
+export interface SumupUebersichtDto {
+  /** Open (not yet booked) transactions as groups, sorted by business day. */
+  gruppen: SumupGruppeDto[];
+  /** Events around the open transactions, for the event picker. */
+  events: SumupEventDto[];
+  auszahlungen: SumupAuszahlungDto[];
+  /** ISO instant of the last fetch; null when nothing was fetched yet. */
+  letzterAbrufAm: string | null;
+  /** Balance of the account SumUp-Guthaben in cents. */
+  saldoCent: number;
+}
+
+export interface SumupAbrufErgebnis {
+  /** True when SumUp is not set up (no secret). */
+  uebersprungen?: boolean;
+  transaktionenNeu: number;
+  auszahlungenNeu: number;
+  /** False when the run was cut at the page budget; the next run continues. */
+  vollstaendig: boolean;
+}
+
+export const sumupBuchenSchema = z.object({
+  transaktionIds: z.array(z.string().min(1)).min(1, 'Wähle mindestens eine Zahlung aus.').max(2000),
+  /** The event the group belongs to; null = booked per business day without an event. */
+  eventId: z.string().min(1).nullable(),
+  idempotenzSchluessel,
+});
+export type SumupBuchenEingabe = z.output<typeof sumupBuchenSchema>;
+
+export interface SumupBuchenErgebnis {
+  id: string;
+  seq: number;
+  datum: string;
+  wiederholt?: boolean;
 }
