@@ -25,8 +25,8 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl, Themen
   ergibt sich aus der ersten aufgeklappten Zeile **darunter** (`gliederungZiel` in `gliederung.ts`, getestet): ist es ein verschachtelter
   Baustein, kommt der gezogene davor in dessen Notizen (bei „In die Notizen“ ans Ende); nicht verschachtelbare Bausteine landen
   stattdessen direkt hinter dem Eltern-Baustein. Sonst steht er auf Abschnittsebene in dem Abschnitt der Zeile darüber (direkt
-  unter dem Abschnittskopf: an erster Stelle), vor dem nächsten Baustein. Schlägt der Zug fehl, erscheint „Verschieben hat nicht
-  geklappt.“ und die Gliederung bleibt bedienbar.
+  unter dem Abschnittskopf: an erster Stelle), vor dem nächsten Baustein. Schlägt der Zug fehl, erscheint die Fehler-Benachrichtigung „Verschieben hat nicht
+  geklappt.“ und die Gliederung bleibt bedienbar. **Scroll-Sperre:** Beim Ziehen scrollt nur die Gliederung selbst, nie die Seite oder der Editor (wichtig bei tief verschachtelten Themen). Merker stehen mit eigenem Symbol in der Gliederung und lassen sich wie andere Bausteine verschieben.
 - **Position:** „Als i-ter“ heißt direkt vor dem i-ten Baustein der Liste, am Ende hinter dem letzten Baustein bzw. (leere
   Liste) vor dem leeren Schluss-Absatz. Freitext bleibt, wo er ist. Der Zug ist **eine** Transaktion (Einfügen + Löschen):
   Rückgängig macht ihn in einem Schritt rückgängig, das Autospeichern greift wie sonst; die vier Abschnitte bleiben intakt.
@@ -37,18 +37,18 @@ Bausteine in den Notizen eines Bausteins (Abstimmung, Meinungsbild, Wahl, Themen
 Das fertige Protokoll wie früher in Word (`ProtokollDokumentAnsicht`, Ableitung in `protokoll/dokumentDaten.ts`, getestet).
 Schreibende sehen im Entwurf den Umschalter „Bearbeiten“ / „Dokument“ (der Editor bleibt dabei erhalten, die Ansicht zeigt den
 aktuellen, auch ungespeicherten Stand von Kopf und Editor); Lesende und abgeschlossene Protokolle zeigen nur das Dokument.
-Das Dokument ist höchstens etwa so breit wie eine A4-Seite (21 cm) und steht mittig.
+Das Dokument ist höchstens etwa so breit wie eine A4-Seite (21 cm) und steht mittig. Beim Wechsel auf „Dokument“ springt die Ansicht **einmal** zu der Stelle, an der im Editor der Cursor stand (nicht bei späteren Änderungen).
 
 **Gliederung der Dokumentansicht** (`DokumentGliederung`, Ableitung `dokumentUeberschriften` in `protokoll/dokumentUeberschriften.ts`,
 getestet): nur Überschriften – die Abschnitte, Bausteine, die als Überschrift stehen (Event, Thema, Vergangenes Event, Anwärter:in,
-Aufnahme, Neues EM) und im Freitext getippte Überschriften; keine Abstimmungen, Meinungsbilder, Wahlen, Todos, Anwesenheitszeilen oder
+Aufnahme, Austritt) und im Freitext getippte Überschriften; keine Abstimmungen, Meinungsbilder, Wahlen, Todos, Anwesenheitszeilen oder
 Kopf. Verschachtelt nach Ebene (Abschnitt > Überschrift > verschachteltes Thema / Zwischenüberschrift > …, bis `h6`); jede Überschrift trägt einen Anker (`id`), den
 die Ansicht setzt. Ab `lg` steht sie als sticky Seitenleiste rechts neben dem Dokument, darunter öffnet der Button „Gliederung“ eine
 Schublade von rechts; Antippen scrollt weich zur Überschrift (unter dem Header) und schließt sie. Für alle sichtbar (auch
 Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedruckt wird sie nicht (`data-druck="aus"`).
 
 - **Titel:** `<Titel der Sitzung> TT.MM.JJJJ` (Datum in Berlin).
-- **Kopfzeilen:** „Anwesende Mitglieder“ (alle „da“, auch die aus Erscheint/Geht-Bausteinen, mit „(ab 21:00 Uhr)“, „(bis 22:10 Uhr)“
+- **Kopfzeilen:** Wer später kommt oder früher geht, steht mit Zeit, z. B. „Ralle (ab 19:30 Uhr)“; EM-Chips und Gäste stehen unter „EMs“ und „Gäste“. „Anwesende Mitglieder“ (alle „da“, auch die aus Erscheint/Geht-Bausteinen, mit „(ab 21:00 Uhr)“, „(bis 22:10 Uhr)“
   oder „(ab 21:00 Uhr, bis 22:10 Uhr)“ aus den Bausteinen; wer fehlt, aber einen Baustein hat, zählt auch hier; gleich bei
   den Anwärter:innen), „Fehlende
   Mitglieder (entschuldigt)“, „(unentschuldigt)“ (immer sichtbar), „EMs“, „Anwärter:innen“ und „Gäste“ (nur wenn gefüllt),
@@ -61,8 +61,8 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
   Überschriften, Listen (zweite Ebene „○“), fett, kursiv, Links. Ein **Zitat** ist rechtsbündig und kursiv, eine Zeile mit
   „–“/„—“ davor (Quelle) steht aufrecht.
 - **Event:** Überschrift `<Datum> <Kategorie> <Name>`, z. B. `10.10. PP Caro` oder ohne Namen `11.10. Sitzung` (bei mehreren Tagen von–bis, im selben Monat kompakt `25. – 30.11.`, sonst `28.11. – 02.12.`; Kategorie aus `kategorieId`, sonst die der Vorlage; gleicht der Name der Kategorie, steht sie nur einmal), dann der Punkt „Verantwortlich: @Name“ (nur wenn
-  gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift wie beim Event, die Kategorie kommt vom verknüpften Kalender-Event (ohne Verknüpfung keine; es wird nichts Neues gespeichert), Notizen. Die Kategorienamen liefert `DokumentEingabe.kategorien` (`kategorieNamen.ts`; Seite: `useKategorieNamen`, PDF: `kategorieNamenLaden`); sie gelten auch in der Dokument-Gliederung und der Gliederung im Editor.
-  **Thema:** Überschrift mit dem Titel (leer: „Thema“) auf Ebene der Events, in der Gliederung, dann die Notizen. **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail). **Neues EM:** Überschrift „Neues EM: <Name>“ (Person als
+  gesetzt; steht als erster Punkt in der Aufzählung der Notizen), dann die Notizen. **Vergangenes Event:** Überschrift wie beim Event (mehrtägig kompakt „11.–13.02. Name“), die Kategorie kommt vom verknüpften Kalender-Event (ohne Verknüpfung keine; es wird nichts Neues gespeichert), Notizen. Die Kategorienamen liefert `DokumentEingabe.kategorien` (`kategorieNamen.ts`; Seite: `useKategorieNamen`, PDF: `kategorieNamenLaden`); sie gelten auch in der Dokument-Gliederung und der Gliederung im Editor.
+  **Thema:** Überschrift mit dem Titel (leer: „Thema“) auf Ebene der Events, in der Gliederung, dann die Notizen. **Anwärter:in:** „Neue:r Anwärter:in: Vorname Nachname“ (ohne E-Mail). **Austritt:** Überschrift „Austritt: <Name>“ (Person als
   `StatusName`, sonst der Freitext-Name); mit Abstimmung und gesetztem „Beantragt von“ zuerst „<Name> beantragt die Ehrenmitgliedschaft“, dann die Zeile „Abstimmung: Ja 8 · Nein 3 · Enthaltung 2 – angenommen (13 von
   25 Mitgliedern anwesend)“ (rot „nicht beschlussfähig“, wenn zu diesem Zeitpunkt nicht beschlussfähig), ohne Abstimmung keine Zeile;
   danach die Notizen.
@@ -85,8 +85,9 @@ Lesende und abgeschlossene Protokolle), ohne Überschriften entfällt sie, gedru
 - **Verschachtelt:** Eine Abstimmung, ein Meinungsbild oder eine Wahl in den Notizen eines anderen Bausteins steht dort, eingerückt wie die
   übrigen Notizen, an der Stelle im Text (bei einer Wahl: erst deren Notizen, dann der Block mit der Zeile „Wahl: Posten“).
 - **Auswahl:** auf oberster Ebene mit Überschrift „Abstimmung: Frage“ (nicht in der Gliederung, wie die Abstimmung), in Notizen steht „Abstimmung: Frage“ im Block. Reihenfolge wie bei der Wahl: zuerst die Notizen, zuletzt der blaue Block mit (bei mehreren Plätzen) „Anzahl zu wählen: 2“, „Möglichkeiten: A 5 · B 3 · C 3 · Enthaltung 1“ (Möglichkeit ohne Text: „–“), je Stichwahl „Stichwahl: B 4 · C 2 · Enthaltung 0“, „Ergebnis: A, B“ oder rot „Noch offen: Stichwahl nötig“ und „(x von y Mitgliedern anwesend)“ (rot „nicht beschlussfähig“); davor bei einer Wiederholung die kleine Zeile „Wiederholung der Abstimmung vom …“. Das PDF zeigt dieselben Zeilen.
-- **Nächste Sitzung:** letzte Zeile nach allen Abschnitten: „Die nächste Sitzung findet am Dienstag, 10.11.2026 um 20:00 Uhr statt.“
-  (ohne Uhrzeit „… am Dienstag, 10.11.2026 statt.“, Berliner Zeit, Wochentag ausgeschrieben; ist nichts bekannt, entfällt sie).
+- **Schlusssätze:** Ist im Kopf ein **Ende** gesetzt, steht ganz unten „<Sitzungsleitung> beendet die Sitzung um 22:30 Uhr.“ (Leitung fett in Statusfarbe; ohne Leitung „Die Sitzung endet um 22:30 Uhr.“) Merker erscheinen nie im Dokument oder PDF. Ein **Inline-Zitat** ist kursiv in „…“.
+- **Nächste Sitzung:** letzte Zeile nach allen Abschnitten, **fett**: „Die nächste Sitzung findet am Dienstag, 10.11.2026 um 20:00 Uhr in C4 statt.“
+  (Wochentag und Ort; ohne Uhrzeit „… am Dienstag, 10.11.2026 in C4 statt.“, Berliner Zeit, Wochentag ausgeschrieben; ist nichts bekannt, entfällt sie).
   Es gilt der Wert von Hand aus dem Kopf, sonst der automatische Vorschlag (`naechsteSitzungWert`).
 - **Anwesenheit:** rechtsbündige, kursive Zeile wie ein Zitat: „Julia erscheint um 21:00 Uhr.“ / „Strobi geht um 22:10 Uhr.“ (ohne Uhrzeit „Strobi geht.“, ohne Person entfällt sie); ändert
   sich dadurch die Beschlussfähigkeit, steht im selben rechtsbündigen, kursiven Zitat darunter (nicht fett) „Die Sitzung ist jetzt beschlussfähig (…)“ bzw. „… nicht mehr …“.

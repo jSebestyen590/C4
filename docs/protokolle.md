@@ -73,7 +73,7 @@ Tabelle `protokolle`: `id`, `event_id` (zusammen mit `fassung` eindeutig), `fass
   Gezählt werden nur Teilnehmende mit Status `mitglied` (nicht Anwärter:in, EM, Extern). Wer „da“ (`anwesend`) ist, zählt ab Beginn,
   **außer** wenn sein erster Anwesenheits-Baustein (in Dokument-Reihenfolge) ein „Erscheint“ ist: Dann zählt er erst ab diesem
   Baustein. Wessen erster Baustein „Geht“ ist, zählt zu Beginn mit; „Geht“ nimmt ihn heraus, „Erscheint“ holt ihn wieder dazu (`anwesenheitsVerlauf` in
-  `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jeder Abstimmung, Aufnahme und jedem Neuen EM festhält; für das Meinungsbild zählt es alle Anwesenden
+  `packages/shared/src/protokollAnwesenheit.ts`, das den Stand auch an jeder Abstimmung, Aufnahme und jedem Austritt festhält; für das Meinungsbild zählt es alle Anwesenden
   (jeder Status plus gewählte EMs, Gäste sind Freitext und zählen nicht) als `anwesendePersonen`).
 - Je Event gibt es höchstens ein Protokoll (eindeutiger Index; ein zweites gibt 409). Abgesagte Events und Events anderer
   Kategorien nimmt die API nicht an (400).
@@ -96,8 +96,11 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
   Punkt markiert Abweichungen. „Aus der Sitzung übernehmen“ verwirft alle Überschreibungen. Wählt man wieder den abgeleiteten
   Wert, entfällt die Überschreibung. Auf dem Handy ist die Liste eingeklappt.
 - **EMs:** Auswahl aus den aktiven EM-Mitgliedern plus Freitext (`emsFreitext`). Ohne Auswahl (`ems: null`) gelten die EMs mit
-  Zusage; wer ausgewählt wird, ersetzt diese Ableitung.
-- **Gäste:** nur Freitext.
+  Zusage; wer ausgewählt wird, ersetzt diese Ableitung. Externe EMs ohne App stehen als Chips (Name, mit „x“ entfernbar); alte
+  Freitext-Namen bleiben lesbar.
+- **Gäste:** nur Freitext, ebenfalls als Chips. `/erscheint` und `/geht` können unbekannte Namen als Gast oder EM hier eintragen
+  (siehe [bausteine.md](./protokolle/bausteine.md)).
+- **Ende** (`ende`, `HH:MM`, optional): Ende der Sitzung; das Zeitfeld im Kopf oder der Befehl `/ende` (setzt die aktuelle Zeit).
 - **Sitzungsleitung, Protokollführung** (`sitzungsleitung`, `protokollfuehrung`, je ein Mitglied oder leer; beim Anlegen
   wird die Protokollführung auf die anlegende Person gesetzt), **Eröffnung** (`eroeffnung`, `HH:MM`). Im Formular sind „Sitzungsleitung“ und
   „Protokoll“ durchsuchbare Auswahlfelder („username (Vorname Nachname)“), „Eröffnung“ ein Zeitfeld. Lesend steht alles als Text im Kopf.
@@ -110,7 +113,8 @@ Der Kopf ist ein Formular über dem Dokument, nicht Teil des Editors (`kopf` als
   erste nicht abgesagte Sitzung nach dieser (jede Kategorie mit Häkchen „Sitzung mit Protokoll“, jede Art; live aus dem Kalender,
   `kommendeSitzungen`). Im Bearbeiten-Modus steht unter dem Editor die Karte „Nächste Sitzung“
   (`protokoll/NaechsteSitzungKarte.tsx`, nicht Teil des Dokuments): Wert „Di, 10.11.2026, 20:00 · Sitzung (aus dem Kalender)“ mit „Im Kalender
-  öffnen“ (neuer Tab); „Ändern“ blendet eine Auswahl der kommenden Sitzungen oder Datum und Uhrzeit ein, „Automatisch“ setzt zurück.
+  öffnen“ (neuer Tab); „Ändern“ blendet eine Auswahl der kommenden Sitzungen oder Datum und Uhrzeit ein, „Automatisch“ setzt zurück. Dazu der **Ort** der
+  nächsten Sitzung (Standard „C4“, wird im Dokument genannt).
 - **Schnappschuss:** „Abschließen“ friert Teilnahme, gewählte EMs, den Mitglieds-Status aller Teilnehmenden, die Art der Sitzung und den
   automatischen Vorschlag für die nächste Sitzung ein
   (`schnappschuss`, `emsSchnappschuss`, `statusSchnappschuss`, `artSchnappschuss`, `naechsteSitzungSchnappschuss`). Danach zeigt
@@ -134,7 +138,7 @@ Events, auf die das alte Protokoll zeigt.
 - **Ausgelassen** werden abgesagte Events, Serien-Events (`serie` gesetzt) und Sitzungen. Steht ein Event schon im alten
   Protokoll, kommt es trotzdem (auch als Serien-Event) mit seinen Notizen. Jede `eventId` erscheint einmal; Events, die es im
   Kalender nicht mehr gibt, bleiben wie geschrieben.
-- **Wiederholung nicht beschlussfähiger Abstimmungen:** War die Sitzung bei einer Abstimmung, einem Neuen EM mit Abstimmung, einer
+- **Wiederholung nicht beschlussfähiger Abstimmungen:** War die Sitzung bei einer Abstimmung, einem Austritt mit Abstimmung, einer
   Aufnahme, Wahl oder Auswahl des alten Protokolls nicht beschlussfähig (`nichtBeschlussfaehigeAbstimmungen` in `protokollAnwesenheit.ts`, nach
   `anwesenheitsVerlauf` an der Stelle des Bausteins; ein Meinungsbild zählt nie), kommt derselbe Baustein ins **Gegenwärtiges** der
   neuen Sitzung, auch wenn er in den Notizen eines anderen Bausteins stand (er steht dann oben im Abschnitt, in Dokument-Reihenfolge).

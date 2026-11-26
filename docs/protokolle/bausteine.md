@@ -30,13 +30,13 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 
 ### Anwesenheit (`bausteinAnwesenheit`)
 
-- Felder: Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional). Zur Auswahl steht jede nicht deaktivierte Person, egal welchen Status (Anwärter:in, Mitglied, EM, Extern; `anwesenheitsKandidaten`), nicht nur die Teilnahmeliste. Nur Mitglieder zählen für die Beschlussfähigkeit: Kommt oder geht jemand anderes, ändert das die Zahlen nicht und der Hinweis „x von y Mitgliedern anwesend“ entfällt. In den Kopf (Teilnahmeliste) kommen solche Personen nicht (`kopfNachAnwesenheit` kennt nur die Teilnahmeliste); für Meinungsbilder zählen sie als anwesend.
+- Felder: Art (`erscheint`/`geht`), Mitglied (`sub`), Uhrzeit (`HH:MM`, optional). Zur Auswahl steht jede nicht deaktivierte Person, egal welchen Status (Anwärter:in, Mitglied, EM, Extern; `anwesenheitsKandidaten`), nicht nur die Teilnahmeliste. Nur Mitglieder zählen für die Beschlussfähigkeit: Kommt oder geht jemand anderes, ändert das die Zahlen nicht und der Hinweis „x von y Mitgliedern anwesend“ entfällt. In den Kopf (Teilnahmeliste) kommen solche Personen nicht (`kopfNachAnwesenheit` kennt nur die Teilnahmeliste); für Meinungsbilder zählen sie als anwesend. **Externe:** EMs ohne App (Chips im Kopf) zählen für das Meinungsbild, solange sie anwesend sind (zwischen Erscheint und Geht), nie für die Beschlussfähigkeit; Gäste zählen nie.
 - Ohne Freitext (Atom, kein `content`; alte Bausteine mit Absatz werden beim Laden bereinigt). Kommt nicht in den Vorschlag fürs nächste Protokoll.
 - Steht auf oberster Ebene oder in den Notizen eines Bausteins mit Notizen (`istVerschachtelbar`, Knotengruppe `innerbaustein`), auch in einem Listenpunkt dort. Alle Auswertungen (Teilnahme, Beschlussfähigkeit, Stimmen-Prüfung, Kopf) laufen rekursiv in Dokumentreihenfolge und finden ihn überall.
 
 ### Thema (`bausteinThema`)
 
-- Feld: Titel (`titel`, höchstens 200 Zeichen, Standard leer). Allgemeiner Punkt ohne weitere Felder; auf oberster Ebene oder verschachtelt (siehe unten), in den Notizen sind Abstimmung, Meinungsbild und Wahl möglich.
+- Feld: Titel (`titel`, höchstens 200 Zeichen, Standard leer; steht kompakt in der Kopfzeile des Bausteins neben dem Symbol). Allgemeiner Punkt ohne weitere Felder; auf oberster Ebene oder verschachtelt (siehe unten), in den Notizen sind Abstimmung, Meinungsbild und Wahl möglich.
 - Kommt nicht in den Vorschlag fürs nächste Protokoll, keine Aktionen.
 
 ### Todo (`bausteinTodo`)
@@ -59,9 +59,11 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 - Felder: Antrag, Ja / Nein / Enthaltung (`ZahlFeld`), Ergebnis `angenommen`/`abgelehnt` (aus den Stimmen vorgeschlagen, überschreibbar; Gleichstand = abgelehnt, ohne Ja- und Nein-Stimmen kein Vorschlag).
 - Nur Mitglieder stimmen, verbindlich. Der Knotenname bleibt `bausteinBeschluss` (alte Daten gelten weiter).
 
-### Neues EM (`bausteinEm`)
+### Austritt (`bausteinEm`, früher „Neues EM“)
 
-- Felder: Person (`sub`) oder Name als Freitext (`name`, nur ohne `sub`), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`). Mit Abstimmung gibt es das Feld „Beantragt von“ (`antragSub`, Person der App, optional); Dokument und PDF zeigen darüber „<Name> beantragt die Ehrenmitgliedschaft“
+Der Knotenname bleibt `bausteinEm`; im Editor und Dokument heißt der Baustein „Austritt“ (Befehl `/austritt`, Aliasse `/em`, `/ehrenmitglied`). Zur Auswahl stehen nur Mitglieder (kein Freitext-Name im neuen Formular; alte Bausteine mit `name` bleiben lesbar). Der Schalter „Abstimmung zum EM“ blendet die Abstimmung ein (wie `abstimmung` unten); ohne Schalter tritt die Person einfach aus.
+
+- Felder: Person (`sub`, nur Mitglieder) oder Name als Freitext (`name`, nur alte Daten), optional Abstimmung (`abstimmung`: Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung, sonst `null`). Mit Abstimmung gibt es das Feld „Beantragt von“ (`antragSub`, Person der App, optional); Dokument und PDF zeigen darüber „<Name> beantragt die Ehrenmitgliedschaft“
 - **Ab diesem Baustein ist die Person kein Mitglied mehr und hat kein Stimmrecht, immer, egal wie die Abstimmung ausgeht** (`anwesenheitsVerlauf`: raus aus „alle“ und „anwesend“). Der Baustein zeigt wie Erscheint „x von y Mitgliedern anwesend“ mit den neuen Zahlen (z. B. „2 von 8“ wird „1 von 7“), alle späteren Beschlüsse (Editor, Dokument, PDF) rechnen mit den verringerten Zahlen. Die Aktion `em.status` setzt ohne Abstimmung auf Extern, mit Abstimmung auf EM (angenommen) bzw. Extern (abgelehnt); ohne Ergebnis wartet sie. Eine Aufnahme ändert das Stimmrecht dagegen nicht (erst ab der nächsten Sitzung).
 
 ### Aufnahme (`bausteinAufnahme`)
@@ -91,24 +93,30 @@ Je Baustein: Knotenname, Felder, Besonderheiten. Die Feld-Schemata stehen in `BA
 - Eine Abstimmung über mehrere freie Möglichkeiten; ohne Posten, „Gilt ab“, Annahme und nicht Angetretene. Nur Mitglieder stimmen, Beschlussfähigkeit und Stimmenprüfung wie bei der Wahl (Meldungen „Abstimmung „Frage“: …“).
 - Formular: Frage, Anzahl zu wählen, Stimmen pro Person, je Möglichkeit Text + Stimmen + Entfernen, „Möglichkeit hinzufügen“, Enthaltung, Stichwahlen. Im Editor „Abstimmung (Auswahl)“, in der Gliederung „Abstimmung: Frage“.
 
+### Merker (`bausteinMerker`)
+
+- Felder keine (`daten` leer), nur Notizen: ein gelber Baustein „Überarbeiten“ als Erinnerung für die Protokollführung (etwa „Zahlen prüfen“). Steht auf oberster Ebene und in Notizen, nicht in Abstimmungen. Er kommt **nie** in Dokumentansicht, PDF oder den Vorschlag fürs nächste Protokoll. Beim Abschließen warnt der Dialog, wenn noch Merker offen sind (siehe [aktionen.md](./aktionen.md)). Befehl `/ueberarbeiten`, Aliasse `/merker`, `/markieren`, `/nacharbeiten`.
+
 ### Event-Baustein im Editor
+
+**Kompakt und Dienste:** Die Event-Felder stehen so eng wie möglich (Name, Datum, Zeiten in gemeinsamen Zeilen, Kopfzeile mit Name). Schichten stehen als eine Zeile je Schicht (Zeiten, Minimum, Wunsch, Entfernen-Knopf); bei Aufbau und Putzen gibt es zusätzlich ein Datum (Putzen oft am Folgetag). Die Zeile je Dienstform kann ebenfalls entfernt werden. Das Event-Layout ist in Zeilen gegliedert: Im Kalender, Kategorie/Name, Datum, Zeiten, Verantwortliche:r, Dienste.
 
 Das Feld „Kategorie“ (nicht archivierte Kategorien) steht neben der Vorlage; wird im Feld „Im Kalender“ ein Event gewählt, übernimmt der Baustein dessen Angaben (Kalender gewinnt: Name, Datum, Zeiten, Kategorie, Verantwortliche:r, Dienste über `eventDatenAusKalender`; die Teilnahme bleibt `null`/leer = so, wie das Event sie hat), die Notizen bleiben.
 
-**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Der Abschnitt „Dienste“ steht (bei Kategorien ohne Teilnahme) immer im Formular, auch ohne Vorlage und wenn er leer ist. „Dienst hinzufügen“ legt eine Schicht Aufbau, Betrieb oder Putzen an (Zeiten vom Event, sonst 18:00–22:00; Betrieb mit der ersten aktiven Dienstform, Aufbau/Putzen am Eventtag mit 1/2), höchstens 20. Schichten lassen sich entfernen; bei einem Betrieb kommen weitere Dienstformen per „Dienstform hinzufügen“ dazu (je Dienstform einmal) und lassen sich entfernen, solange mindestens eine bleibt. Beim Abschließen legt `event.anlegen` die Schichten an, ob mit oder ohne Vorlage; bei einer Kategorie mit Teilnahme gibt es keine Dienste (Abschnitt ausgeblendet, nichts wird übernommen); dort übernimmt `event.anlegen` stattdessen `teilnahmeStatus` (`null` = Standard der Kategorie) und `eingeladen`, `event.aendern` setzt abweichende Werte. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
+**Einschränkungen der Dienste** im Event-Baustein: Sie sind eine Planung, kein Eintrag im Kalender. Je Dienst lassen sich nur Zeiten und Anzahlen (Minimum, Wunsch) ändern, Der Abschnitt „Dienste“ steht (bei Kategorien ohne Teilnahme) immer im Formular, auch ohne Vorlage und wenn er leer ist. „Dienst hinzufügen“ legt eine Schicht Aufbau, Betrieb oder Putzen an (Zeiten vom Event, sonst 18:00–22:00; Betrieb mit der ersten aktiven Dienstform, Aufbau/Putzen am Eventtag mit 1/2), höchstens 20. Schichten lassen sich entfernen (Papierkorb je Zeile); bei einem Betrieb kommen weitere Dienstformen per „Dienstform hinzufügen“ dazu (je Dienstform einmal) und lassen sich entfernen, solange mindestens eine bleibt. Beim Abschließen legt `event.anlegen` die Schichten an, ob mit oder ohne Vorlage; bei einer Kategorie mit Teilnahme gibt es keine Dienste (Abschnitt ausgeblendet, nichts wird übernommen); dort übernimmt `event.anlegen` stattdessen `teilnahmeStatus` (`null` = Standard der Kategorie) und `eingeladen`, `event.aendern` setzt abweichende Werte. Die Uhrzeitfelder entfallen bei ganztägigen Kategorien, das Bis-Datum erscheint bei mehrtägigen.
 
 Die Feld-Schemata (`BAUSTEIN_DATEN_SCHEMAS`) prüft die API streng, im Entwurf dürfen Felder leer sein. Das übrige Dokument prüft sie nur in der Struktur (Knotentypen, Tiefe höchstens 30, höchstens 500 KB).
 
 ## Regeln für Abstimmungen und Wahlen
 
-**Wiederholung (`wiederholung`):** Abstimmung, Neues EM (mit Abstimmung), Aufnahme, Wahl und Auswahl haben das optionale Feld
+**Wiederholung (`wiederholung`):** Abstimmung, Austritt (mit Abstimmung), Aufnahme, Wahl und Auswahl haben das optionale Feld
 `wiederholung` (`{ datum, sitzung }` oder `null`, Standard `null`, alte Daten bleiben gültig). Es steht an Abstimmungen, die
 `protokollVorschlag` aus einer nicht beschlussfähigen Sitzung übernommen hat (siehe [Vorbelegung](../protokolle.md#vorbelegung-eines-neuen-protokolls)).
 Der Editor zeigt oben im Baustein den Hinweis „Wiederholung der Abstimmung vom 05.11.2026 (Sitzung), damals nicht
 beschlussfähig.“ (Wahl: „… der Wahl …“, Aufnahme: „… der Aufnahme-Abstimmung …“), die Dokumentansicht dieselbe Zeile klein im Block.
 
 **Stimmen müssen zur Anwesenheit passen (`stimmenPruefen` in `protokollStimmen.ts`):** Jede Abstimmung, die Abstimmung eines
-Neuen EM (falls vorhanden), jede Aufnahme, jede Wahl und jede Auswahl braucht **genau so viele Stimmen, wie Mitglieder an der Stelle anwesend
+Austritt (falls vorhanden), jede Aufnahme, jede Wahl und jede Auswahl braucht **genau so viele Stimmen, wie Mitglieder an der Stelle anwesend
 sind** (dieselbe Zahl wie „Anwesend: x von y Mitgliedern“, `anwesenheitsVerlauf`). Abstimmung: Ja + Nein + Enthaltung = x. Wahl und Auswahl,
 Hauptrunde: Stimmen aller Kandidat:innen + Enthaltung = x × Stimmen pro Person (im Formular „Stimmen pro Person“ nach „Anzahl zu
 wählen“, folgt `anzahl`, bis man es ändert). Jede geltende Stichwahl: x × min(Stimmen pro Person, Plätze der Runde). Ein offener
@@ -139,8 +147,8 @@ durch Absagen nötig gewordene. Die Stimmen-Prüfung, die Dokumentansicht und di
 ## Todo im Editor
 
 **Todo-Formular** (`TodoFormular` in `BausteinFormulare.tsx`, mobile first): „Titel“, „Zuständig“ (durchsuchbare Mehrfachauswahl: zuerst die
-Gruppen `@Anwärter:innen` … `@Alle`, dann die Mitglieder; Werte `g:<gruppe>` bzw. `p:<sub>`), „Deadline“ und „Abhaken“ (Einzeln / Gemeinsam).
-„Abhaken“ ist **immer** da und bleibt an seinem Platz: Bei genau einer Person (ohne Gruppe) ist es gesperrt und ein Hinweis erklärt, warum.
+Gruppen `@Anwärter:innen` … `@Alle`, dann die Mitglieder; Werte `g:<gruppe>` bzw. `p:<sub>`), „Deadline“ und den Schalter „Gemeinsam abhaken“ (aus = einzeln, an = gemeinsam; kompakt in einer Zeile mit „Deadline“).
+Der Schalter ist **immer** da und bleibt an seinem Platz: Bei genau einer Person (ohne Gruppe) ist er gesperrt und ein Hinweis erklärt, warum. Die Auswahl „Zuständig“ schließt ihr Dropdown nach jeder Wahl nicht, bis man außerhalb tippt.
 Das ist Absicht: Ein fokussiertes Feld, das im Editor-Knoten verschoben oder entfernt wird, verliert den Fokus, der Cursor springt in den Text
 und die Handy-Tastatur geht auf. Lesende sehen eine Textzeile wie im Dokument. Die Logik steht in `bausteinLogik.ts` (`todoZustaendigSetzen`).
 
@@ -166,7 +174,7 @@ auf oberster Ebene. Sie enthalten selbst nur Text, also keine weiteren Bausteine
 Ende der Notizen, kommt ein leerer Absatz dahinter. `protokollVorschlag` übernimmt sie nicht ins nächste Protokoll.
 
 **Verschachtelte Themen:** Ein Thema darf in den Notizen jedes Bausteins mit Notizen stehen, der kein Abstimmungs-Baustein ist
-(Event, Vergangenes Event, Anwärter:in, Aufnahme, Neues EM) und in den Notizen eines anderen Themas, beliebig tief
+(Event, Vergangenes Event, Anwärter:in, Aufnahme, Austritt) und in den Notizen eines anderen Themas, beliebig tief
 (`kannBausteineEnthalten`, `istVerschachtelbar`, `darfInNotizen` in `protokolle.ts`). Abstimmung, Meinungsbild und Wahl bleiben in jedem
 (auch verschachtelten) Thema erlaubt. Alle anderen Bausteine bleiben auf oberster Ebene. Im Editor ist das die Knotengruppe `thema`
 (Thema ist kein `block`, steht also nicht in Zitaten; in Listenpunkten ist es erlaubt, siehe unten). Alte Dokumente bleiben gültig. Im Vorschlag fürs nächste
@@ -204,14 +212,14 @@ Tiefe (`knotenFehler`); Gliederung (auch Ziehen, Einfügen neben die Liste), Dok
   Kalender-Event“ und die vergangenen, nicht abgesagten Events der letzten rund drei Monate vor der Sitzung (die Sitzung selbst
   nicht).
 - Thema (`/thema`, Aliasse `/punkt`, `/top`, `/tagesordnungspunkt`; Cursor ins Feld „Titel“), Todo (`/todo`, Aliasse `/aufgabe`, `/aufgaben`; Cursor ins Feld „Titel“), Anwärter:in, Aufnahme, Meinungsbild (`/meinungsbild`, Alias `/stimmungsbild`),
-  Wahl (`/wahl`, Aliasse `/waehlen`, `/wahlen`, `/postenwahl`; Cursor ins Feld „Posten“) und Neues EM (`/em`, `/ehrenmitglied`) werden direkt eingefügt. Bei der Aufnahme springt der Cursor ins Feld „Person“, beim
+  Wahl (`/wahl`, Aliasse `/waehlen`, `/wahlen`, `/postenwahl`; Cursor ins Feld „Posten“), Austritt (`/austritt`, Aliasse `/em`, `/ehrenmitglied`) und Merker (`/ueberarbeiten`, Aliasse `/merker`, `/markieren`, `/nacharbeiten`; nur Notizen und oberste Ebene) werden direkt eingefügt. Bei der Aufnahme springt der Cursor ins Feld „Person“, beim
   Meinungsbild ins Feld „Frage“; das Meinungsbild zeigt „Anwesend: x Personen (ohne Gäste)“ (nur Info). Innerhalb einer
-  Abstimmung, eines Meinungsbilds, einer Wahl, einer Auswahl oder eines Todos bietet das Menü Abstimmung, Meinungsbild, Wahl und Todo nicht an; Todo fehlt außerdem auf oberster Ebene (außerhalb jedes Bausteins). Beim Neuen EM springt der Cursor ins Feld
-  „Person“ (durchsuchbar, Teilnahmeliste und EMs; ohne Person erscheint „Name (falls nicht in der App)“); der Schalter „Abstimmung“
+  Abstimmung, eines Meinungsbilds, einer Wahl, einer Auswahl oder eines Todos bietet das Menü Abstimmung, Meinungsbild, Wahl und Todo nicht an; Todo fehlt außerdem auf oberster Ebene (außerhalb jedes Bausteins). Beim Austritt springt der Cursor ins Feld
+  „Person“ (durchsuchbar, nur Mitglieder); der Schalter „Abstimmung zum EM“
   blendet Ja / Nein / Enthaltung und Ergebnis wie bei der Abstimmung samt Hinweis zur Beschlussfähigkeit ein.
 - Die **Abstimmung** (`/abstimmung`, Alias `/beschluss`) hat eine zweite Stufe: `/abstimmung` + Enter zeigt „Ja / Nein“ (die Abstimmung mit Antrag) und „Mehrere Möglichkeiten“ (die Auswahl), filterbar (`/abstimmung meh`). Die Auswahl lässt sich auch direkt mit `/auswahl`, `/mehrfach` oder `/mehrfachauswahl` einfügen (nur mit Suchtext, nicht in der Liste); Cursor ins Feld „Frage“. Das Symbol-Menü „Baustein“ öffnet dieselbe zweite Stufe.
 - **Erscheint / Geht** (`/erscheint`, `/kommt`, `/geht`, `/verlaesst`): Enter öffnet die zweite Stufe mit den Personen der
-  Teilnahmeliste, den EMs und allen weiteren aktiven Personen jedes Status, filterbar (`/erscheint jul`; der Status steht in der Beschreibung). Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
+  Teilnahmeliste, den EMs, den **Externen** aus dem Kopf (EM-Chips und Gäste) und allen weiteren aktiven Personen jedes Status, filterbar (`/erscheint jul`; der Status steht in der Beschreibung). Passt ein getippter Name auf niemanden, bietet die Liste „<Name> als Gast hinzufügen“ und „<Name> als EM hinzufügen“: Das trägt den Namen im Kopf ein und fügt den Baustein ein. Bei Erscheint stehen zuerst die, die zu Beginn nicht da waren, bei Geht die
   Anwesenden; dann Mitglieder vor den übrigen, nach Name. Das Auswählen fügt den Baustein Anwesenheit ein (Uhrzeit = aktuelle
   Berliner Zeit, immer; wählt man die Person erst im Baustein und die Uhrzeit ist noch leer, wird sie ebenso gefüllt); der Cursor springt dahinter in den nächsten Absatz (bei Bedarf wird einer angelegt). Der Baustein ist eine Zeile (Person, erscheint/geht,
   Uhrzeit; „Erscheint“ bzw. „Geht“ steht fest und lässt sich nicht umschalten, dafür Baustein entfernen und neu einfügen) mit „12 von 25 Mitgliedern anwesend“ und bei Wechsel „→ Jetzt beschlussfähig“ bzw. „→ Nicht mehr beschlussfähig“
@@ -221,8 +229,10 @@ Tiefe (`knotenFehler`); Gliederung (auch Ziehen, Einfügen neben die Liste), Dok
   **Erscheint und Geht setzen den Kopf:** Bekommt ein solcher Baustein eine Person (beim Einfügen oder später im Formular) und gilt sie im
   Kopf nicht als `anwesend`, setzt das die Überschreibung `anwesend` (`kopfNachAnwesenheit` in `protokoll/anwesenheit.ts`); die Person ist
   danach gesperrt (siehe Kopf). Entfernen aller Bausteine löst die Sperre, die Überschreibung bleibt „da“.
+- **Dienst** (`/dienst`, nur im Event-Baustein, Cursor in dessen Notizen): trägt einen Dienst in die Schichten des Events ein, in drei Stufen: **Zeit** („Gesamt“ = Zeiten des Events, oder Von–bis wie `18-22`) › **Dienstform** (alle aktiven Dienstformen, bereits genutzte zuerst, dazu Aufbau und Putzen) › **Person** oder „Ohne Personen“. Die Schicht mit genau diesen Zeiten wird gesucht, sonst angelegt; eine neue Bedarf/Schicht bekommt Minimum und Wunsch = max(1, Anzahl der Personen), eine bestehende wächst nur, wenn es nötig ist. Die Personen stehen im Text des Events als Erwähnungen; `event.anlegen` bzw. `event.aendern` tragen sie beim Abschließen als Dienste ein (siehe [aktionen.md](./aktionen.md)).
+- **Ende** (`/ende`, Aliasse `/schluss`, `/beenden`) setzt im Kopf „Ende“ auf die aktuelle Berliner Zeit und meldet „Ende HH:MM eingetragen“; kein Baustein.
 - **Notizen** neuer Event-, Thema- und Vergangenes-Event-Bausteine beginnen mit einer leeren Aufzählung.
-- **Zitat** (`/zitat`, `/quote`) ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
+- **Zitat** (`/zitat`, `/quote`) hat zwei Stufen (`/zitat` + Enter bzw. `/zitat ` mit Leerzeichen): „Als Absatz“ und „Im Text“. **Im Text** schaltet das **Inline-Zitat** für die Auswahl bzw. am Cursor um (Mark, im Dokument kursiv in „…“); dasselbe tippt man als `""Text""`, oder man nutzt den Inline-Zitat-Knopf der Werkzeugleiste. **Als Absatz** ist kein Baustein: Es macht den aktuellen Absatz am Cursor zum Zitat (Knoten `blockquote`,
   nur Absätze darin) und lässt den Cursor darin. Das geht überall, auch im Freitext („Notizen“) eines Bausteins; „— Name“ ist
   einfach eine weitere Zeile. In einem Listenpunkt wird es zum Kind des Listenpunkts (siehe „Bausteine in Aufzählungen“) statt den Text des Punkts zu umschließen. Derselbe Eintrag steht im Menü „Baustein“, dazu der Zitat-Button der Werkzeugleiste. Die API
   prüft `blockquote` wie jeden anderen Knoten (Struktur, Tiefe).

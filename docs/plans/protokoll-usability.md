@@ -1,5 +1,7 @@
 # Protokolle: Usability-Runde nach dem ersten echten Protokoll
 
+> Status: umgesetzt (Phasen 1 bis 5, Doku in `docs/protokolle*.md`).
+
 ## Context
 
 Erstes komplettes Protokoll mit der App geschrieben (dev, `protokolle/23a394a7-…`). Auffällig: Externe (EMs ohne App, Gäste) passen nicht zu /erscheint und /geht, Bausteine sind zu hoch (viel Scrollen), einige Felder fehlen (Enddatum, Sitzungsende, Ort, Putz-Datum), Dienste lassen sich im Event nicht eintragen, Gliederungs-Drag bei verschachteltem Thema kaputt. Ziel: schnelleres Schreiben, kompaktere Bausteine, fehlende Angaben ergänzen.
