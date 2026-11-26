@@ -2,6 +2,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import {
   BAUSTEIN_TYPEN,
+  istMerker,
   PROTOKOLL_ABSCHNITTE,
   eventUeberschrift,
   darfInNotizen,
@@ -50,6 +51,38 @@ export interface GliederungAbschnitt {
 
 const istBaustein = (node: PmNode): boolean =>
   (BAUSTEIN_TYPEN as readonly string[]).includes(node.type.name);
+
+/**
+ * The place of the document view that belongs to the cursor at `pos`: the id of the innermost Baustein
+ * around it, else `abschnitt:<art>` of the section. A Merker is not part of the document: the nearest
+ * Baustein before it counts instead. Null if there is nothing.
+ */
+export function aktiveStelleId(doc: PmNode, pos: number): string | null {
+  const $pos = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)));
+  let eigene: PmNode | null = null;
+  let eigenePos = 0;
+  for (let d = $pos.depth; d > 0; d--) {
+    const n = $pos.node(d);
+    if (istBaustein(n)) {
+      eigene = n;
+      eigenePos = $pos.before(d);
+      break;
+    }
+  }
+  const abschnitt = $pos.depth > 0 ? $pos.node(1) : null;
+  const abschnittId =
+    abschnitt?.type.name === 'abschnitt' ? `abschnitt:${String(abschnitt.attrs.art)}` : null;
+  if (!eigene) return abschnittId;
+  if (!istMerker(eigene.type.name)) return String(eigene.attrs.id);
+  // Merker: the last visible Baustein that starts before it.
+  let davor: string | null = null;
+  doc.descendants((node, p) => {
+    if (p >= eigenePos) return false;
+    if (istBaustein(node) && !istMerker(node.type.name)) davor = String(node.attrs.id);
+    return true;
+  });
+  return davor ?? abschnittId;
+}
 
 const TITEL_LAENGE = 80;
 const kurz = (text: string): string => {
@@ -381,6 +414,19 @@ export function bausteinInGliederungVerschieben(
   id: string,
   ziel: GliederungZiel,
 ): Transaction | null {
+  const ergebnis = bausteinVerschiebenErgebnis(state, id, ziel);
+  return ergebnis === 'unveraendert' ? null : ergebnis;
+}
+
+/**
+ * Like `bausteinInGliederungVerschieben`, but tells "nothing would change" (`'unveraendert'`, no error
+ * for the user) apart from "not allowed" (null).
+ */
+export function bausteinVerschiebenErgebnis(
+  state: EditorState,
+  id: string,
+  ziel: GliederungZiel,
+): Transaction | 'unveraendert' | null {
   const { doc } = state;
   const quelle = findeBaustein(doc, id);
   if (!quelle) return null;
@@ -419,7 +465,7 @@ export function bausteinInGliederungVerschieben(
     einfuegen = elternPos + eltern.nodeSize - 1;
     if (istLeererAbsatz(eltern.lastChild)) einfuegen -= eltern.lastChild!.nodeSize;
   }
-  if (einfuegen === von || einfuegen === bis) return null;
+  if (einfuegen === von || einfuegen === bis) return 'unveraendert';
 
   const tr = state.tr;
   tr.insert(einfuegen, quelle.node);
@@ -430,5 +476,6 @@ export function bausteinInGliederungVerschieben(
   } else {
     tr.delete(von + versatz, bis + versatz);
   }
-  return tr.scrollIntoView();
+  // No `scrollIntoView`: only the outline scrolls while moving, the editor stays where it is.
+  return tr;
 }

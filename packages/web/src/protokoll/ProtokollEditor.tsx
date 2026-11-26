@@ -8,7 +8,7 @@ import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEditor, useEditorState, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   anwesenheitsVerlauf,
   stimmenPruefen,
@@ -27,6 +27,7 @@ import {
 } from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { Gliederung } from './GliederungBaum';
+import { aktiveStelleId } from './gliederung';
 import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
 import { mitgliedName } from '../mitglied';
@@ -98,6 +99,7 @@ export function ProtokollEditor({
   onExternHinzufuegen,
   onEnde,
   bilder,
+  aktiveStelleRef,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -122,6 +124,8 @@ export function ProtokollEditor({
   onEnde?: (uhrzeit: string) => void;
   /** Image URLs and uploads of the protocol; without it images cannot be added. */
   bilder?: BilderZugriff;
+  /** Filled with a function that returns the document place of the cursor (see `aktiveStelleId`). */
+  aktiveStelleRef?: MutableRefObject<(() => string | null) | null>;
 }>) {
   const bilderRef = useRef(bilder);
   useEffect(() => {
@@ -266,6 +270,14 @@ export function ProtokollEditor({
       dokumentTimer.current = setTimeout(() => setDokument(json), 200);
     },
   });
+
+  useEffect(() => {
+    if (!aktiveStelleRef || !editor) return;
+    aktiveStelleRef.current = () => aktiveStelleId(editor.state.doc, editor.state.selection.head);
+    return () => {
+      aktiveStelleRef.current = null;
+    };
+  }, [aktiveStelleRef, editor]);
 
   useEditableSync(editor, editierbar);
 

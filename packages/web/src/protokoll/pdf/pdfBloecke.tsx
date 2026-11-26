@@ -14,6 +14,7 @@ import {
   erwaehnungAttrs,
   eventUeberschrift,
   istBausteinInNotizen,
+  istMerker,
   vergangenesUeberschrift,
   type MitgliedStatus,
   type ProtokollKnoten,
@@ -27,6 +28,7 @@ import {
   beschlussZeilen,
   dokumentKopf,
   emZeilen,
+  endeSatz,
   eroeffnungSatz,
   istLeererAbsatz,
   istQuellenzeile,
@@ -187,6 +189,13 @@ function erwaehnung(k: ProtokollKnoten, person: (sub: string) => Person | null):
   return <Text>{erwaehnungText(attrs, () => null)}</Text>;
 }
 
+/** Whether the text node at `i` opens / closes an inline quote (a quote may span several text nodes). */
+const zitatRaender = (liste: readonly ProtokollKnoten[], i: number): [boolean, boolean] => {
+  const ist = (k: ProtokollKnoten | undefined) =>
+    k?.type === 'text' && (k.marks ?? []).some((m) => m.type === 'zitatInline');
+  return [!ist(liste[i - 1]), !ist(liste[i + 1])];
+};
+
 /** Text, marks and hard breaks of a paragraph. */
 function inline(
   liste: readonly ProtokollKnoten[] | undefined,
@@ -198,7 +207,9 @@ function inline(
     if (k.type !== 'text') return <Fragment key={i}>{inline(k.content, person)}</Fragment>;
     const marks = k.marks ?? [];
     const fett = marks.some((m) => m.type === 'bold');
-    const kursiv = marks.some((m) => m.type === 'italic');
+    const zitat = marks.some((m) => m.type === 'zitatInline');
+    const kursiv = zitat || marks.some((m) => m.type === 'italic');
+    const [auf, zu] = zitatRaender(liste ?? [], i);
     const text = (
       <Text
         style={{
@@ -206,7 +217,7 @@ function inline(
           ...(kursiv && { fontStyle: 'italic' as const }),
         }}
       >
-        {k.text ?? ''}
+        {`${zitat && auf ? '„' : ''}${k.text ?? ''}${zitat && zu ? '“' : ''}`}
       </Text>
     );
     const link = marks.find((m) => m.type === 'link');
@@ -437,6 +448,9 @@ function bildElement(k: ProtokollKnoten, ctx: Kontext, spalte: boolean): ReactEl
 /** Blocks of free text; unknown nodes contribute their children. */
 function textBloecke(k: ProtokollKnoten, ctx: Kontext): Block[] {
   switch (k.type) {
+    case 'bausteinMerker':
+      // A reminder to the author: never part of the document.
+      return [];
     case 'paragraph':
       return istLeererAbsatz(k) ? [] : [block(<Absatz>{inline(k.content, ctx.person)}</Absatz>)];
     case 'heading': {
@@ -686,6 +700,7 @@ const BAUSTEINE = new Set<string>(BAUSTEIN_TYPEN);
 
 /** `innen`: inside the notes of another Baustein (Abstimmung / Wahl then get no heading line of their own). */
 function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block[] {
+  if (istMerker(k.type)) return [];
   const daten: unknown = k.attrs?.daten;
   const id = typeof k.attrs?.id === 'string' ? k.attrs.id : '';
   const art = ctx.eingabe.sitzung.art;
@@ -975,12 +990,12 @@ function bausteinBloecke(k: ProtokollKnoten, ctx: Kontext, innen = false): Block
     case 'bausteinAnwesenheit': {
       const z = anwesenheitZeile(daten, art, ctx.verlauf.bausteine[id]);
       if (!z) return [];
-      const p = ctx.person(z.sub);
+      const p = z.sub === null ? null : ctx.person(z.sub);
       return [
         block(
           <View style={stile.anwesenheit} wrap={false}>
             <Text>
-              {p ? <Name p={p} /> : null}
+              {p ? <Name p={p} /> : z.name}
               {z.nach}
             </Text>
             {z.wechsel && <Text>{z.wechsel}</Text>}
@@ -1051,7 +1066,9 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
     : null;
   const naechste = naechsteSitzungSatz(
     naechsteSitzungWert(eingabe.kopf, eingabe.naechsteSitzungVorschlag),
+    eingabe.kopf.naechsteSitzungOrt,
   );
+  const ende = endeSatz(art, kopf.leitung !== null, kopf.ende);
   const emsVorhanden = kopf.ems.length > 0 || kopf.emsFreitext !== '';
 
   const bloecke: Block[] = [
@@ -1131,7 +1148,27 @@ export function pdfBloecke(eingabe: DokumentEingabe): Block[] {
       );
     }
   }
-  if (naechste) bloecke.push(block(<Absatz stil={{ marginTop: 10 }}>{naechste}</Absatz>));
+  if (naechste) {
+    bloecke.push(
+      block(
+        <Absatz stil={{ marginTop: 10 }}>
+          {naechste.vor}
+          <Text style={stile.fett}>{naechste.fett}</Text>
+          {'.'}
+        </Absatz>,
+      ),
+    );
+  }
+  if (ende) {
+    bloecke.push(
+      block(
+        <Absatz stil={{ marginTop: 10 }}>
+          {kopf.leitung && <Name p={kopf.leitung} />}
+          {ende}
+        </Absatz>,
+      ),
+    );
+  }
   return bloecke;
 }
 

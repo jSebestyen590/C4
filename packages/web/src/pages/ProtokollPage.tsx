@@ -47,6 +47,8 @@ import {
   vorgewaehlteAktionen,
 } from '../protokoll/aktionenLogik';
 import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
+import { merkerListe } from '../protokoll/merker';
+import { dokumentStelleScrollen } from '../protokoll/vorschauSprung';
 import { effektiveTeilnahme, kopfMitExternem, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
@@ -244,7 +246,24 @@ function ProtokollAnsicht({
     [inhalt, kopf, dto, mitgliederListe, ich, bilder.urls, bilder.erneuern, kategorien, offiziell],
   );
   const [vorschauOffen, vorschau] = useDisclosure(false);
+  const merker = useMemo(() => merkerListe(inhalt), [inhalt]);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
+  // The preview jumps once to the place of the cursor (no coupled scrolling).
+  const aktiveStelleRef = useRef<(() => string | null) | null>(null);
+  const springeZu = useRef<string | null>(null);
+  useEffect(() => {
+    if (ansicht !== 'dokument' || !springeZu.current) return;
+    dokumentStelleScrollen(springeZu.current);
+    springeZu.current = null;
+  }, [ansicht]);
+  useEffect(() => {
+    if (!vorschauOffen) return;
+    const id = aktiveStelleRef.current?.() ?? null;
+    if (!id) return;
+    // After the drawer's opening transition.
+    const t = setTimeout(() => dokumentStelleScrollen(id), 350);
+    return () => clearTimeout(t);
+  }, [vorschauOffen]);
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [ladeNeu, setLadeNeu] = useState(false);
@@ -551,7 +570,10 @@ function ProtokollAnsicht({
             fullWidth
             size="md"
             value={ansicht}
-            onChange={(v) => setAnsicht(v as Ansicht)}
+            onChange={(v) => {
+              if (v === 'dokument') springeZu.current = aktiveStelleRef.current?.() ?? null;
+              setAnsicht(v as Ansicht);
+            }}
             data={[
               { value: 'bearbeiten', label: 'Bearbeiten' },
               { value: 'dokument', label: 'Dokument' },
@@ -585,6 +607,7 @@ function ProtokollAnsicht({
             onExternHinzufuegen={externHinzufuegen}
             onEnde={endeSetzen}
             bilder={bilder}
+            aktiveStelleRef={aktiveStelleRef}
           />
           <NaechsteSitzungKarte
             kopf={kopf}
@@ -681,6 +704,30 @@ function ProtokollAnsicht({
                     onClick={() => zuBaustein(p.bausteinId)}
                   >
                     {p.text}
+                  </Anchor>
+                ))}
+              </Stack>
+            </Alert>
+          )}
+          {merker.length > 0 && (
+            <Alert color="yellow" title="Noch zu überarbeiten">
+              <Stack gap="xs" align="flex-start">
+                <Text size="sm">
+                  Im Protokoll{' '}
+                  {merker.length === 1 ? 'steht noch ein Merker' : 'stehen noch Merker'}. Du kannst
+                  trotzdem abschließen.
+                </Text>
+                {merker.map((m) => (
+                  <Anchor
+                    key={m.id}
+                    component="button"
+                    type="button"
+                    size="sm"
+                    ta="left"
+                    style={{ minHeight: 42, overflowWrap: 'anywhere' }}
+                    onClick={() => zuBaustein(m.id)}
+                  >
+                    {m.text || 'Merker ohne Text'}
                   </Anchor>
                 ))}
               </Stack>

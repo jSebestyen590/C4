@@ -12,10 +12,10 @@ import {
 } from '@hello-pangea/dnd';
 import { useEditorState, type Editor } from '@tiptap/react';
 import { flushSync } from 'react-dom';
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Griff } from '../SortierbareListe';
 import {
-  bausteinInGliederungVerschieben,
+  bausteinVerschiebenErgebnis,
   findeBaustein,
   gliederungBauen,
   gliederungZeilen,
@@ -95,11 +95,36 @@ export function Gliederung({
   const [gezogenId, setGezogenId] = useState<string | null>(null);
   const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
 
+  // While dragging only the outline scrolls: the window is locked from the start of the drag to its
+  // end (drop, cancel or unmount).
+  const sperre = useRef<(() => void) | null>(null);
+  const fensterSperren = () => {
+    if (sperre.current) return;
+    const html = document.documentElement;
+    const { overflow, scrollbarGutter } = html.style;
+    html.style.scrollbarGutter = 'stable';
+    html.style.overflow = 'hidden';
+    sperre.current = () => {
+      html.style.overflow = overflow;
+      html.style.scrollbarGutter = scrollbarGutter;
+      sperre.current = null;
+    };
+  };
+  useEffect(() => () => sperre.current?.(), []);
+
   // Set before pangea measures the list, so the rows of the drag are the ones that get measured.
-  const vorErfassen = (s: BeforeCapture) => flushSync(() => setGezogenId(s.draggableId));
-  const ende = ({ draggableId, destination }: DropResult) => {
+  const vorErfassen = (s: BeforeCapture) => {
+    fensterSperren();
+    flushSync(() => setGezogenId(s.draggableId));
+  };
+  const nichtMoeglich = () =>
+    notifications.show({
+      color: 'yellow',
+      message: 'Hierhin lässt sich der Baustein nicht verschieben.',
+    });
+  const ende = ({ draggableId, source, destination }: DropResult) => {
     try {
-      if (!destination) return;
+      if (!destination || destination.index === source.index) return;
       // Derived from the document and the dragged id, not from render state: the responder may still
       // hold the closure of an earlier render (then the notes slots would count as collapsed).
       const aktuell = gliederungZeilen(
@@ -107,14 +132,15 @@ export function Gliederung({
         draggableId,
       );
       const ziel = gliederungZiel(aktuell, draggableId, destination.index);
-      if (!ziel) return;
-      const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
-      if (tr) editor.view.dispatch(tr);
+      const ergebnis = ziel ? bausteinVerschiebenErgebnis(editor.state, draggableId, ziel) : null;
+      if (ergebnis === null) nichtMoeglich();
+      else if (ergebnis !== 'unveraendert') editor.view.dispatch(ergebnis);
     } catch (fehler) {
       console.error('Gliederung: Verschieben fehlgeschlagen', fehler);
       notifications.show({ color: 'red', message: 'Verschieben hat nicht geklappt.' });
     } finally {
       setGezogenId(null);
+      sperre.current?.();
     }
   };
   const waehlen = (id: string) => {

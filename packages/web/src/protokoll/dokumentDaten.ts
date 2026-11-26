@@ -13,6 +13,7 @@ import {
   wahlErgebnis,
   wahlRunden,
   anwesenheitsZeitText,
+  externSchluessel,
   anwesenheitsZeiten,
   teilnahmeMitBloecken,
   teilnahmeNormalisiert,
@@ -96,11 +97,24 @@ export function datumMitWochentag(datum: string): string {
   return `${wochentag}, ${t}.${m}.${j}`;
 }
 
-/** Closing sentence: "Die nächste Sitzung findet am Dienstag, 11.11.2026 um 20:00 Uhr statt."; null if unknown. */
-export function naechsteSitzungSatz(wert: NaechsteSitzungWert | null): string | null {
+/** "Die nächste Sitzung findet statt am **Montag, 30.11.2026 um 20:00 Uhr im C4**." as plain part + bold part. */
+export interface NaechsteSitzungSatz {
+  vor: string;
+  fett: string;
+}
+
+/** Closing sentence of the next Sitzung (`ort` = place, '' = none); null if unknown. */
+export function naechsteSitzungSatz(
+  wert: NaechsteSitzungWert | null,
+  ort = '',
+): NaechsteSitzungSatz | null {
   if (!wert?.datum) return null;
   const um = wert.uhrzeit ? ` um ${wert.uhrzeit} Uhr` : '';
-  return `Die nächste Sitzung findet am ${datumMitWochentag(wert.datum)}${um} statt.`;
+  const im = ort.trim() ? ` im ${ort.trim()}` : '';
+  return {
+    vor: 'Die nächste Sitzung findet statt am ',
+    fett: `${datumMitWochentag(wert.datum)}${um}${im}`,
+  };
 }
 
 /** A member as shown in the document (`StatusName`), with an optional note like "(ab 21:00 Uhr)". */
@@ -190,6 +204,7 @@ export interface DokumentKopfDaten {
   protokoll: Person | null;
   eroeffnung: string | null;
   beschlussfaehigkeit: Beschlussfaehigkeit | null;
+  ende: string | null;
 }
 
 export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
@@ -199,6 +214,10 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
   const zusatz = (t: { sub: string }): string => {
     const text = anwesenheitsZeitText(zeiten[t.sub], ' Uhr');
     return text ? `(${text})` : '';
+  };
+  const externMitZeit = (name: string): string => {
+    const text = anwesenheitsZeitText(zeiten[externSchluessel(name)], ' Uhr');
+    return text ? `${name} (${text})` : name;
   };
   const da = teilnahme.filter((t) => t.wert === 'anwesend');
   const mitglieder = (liste: typeof teilnahme) =>
@@ -223,15 +242,16 @@ export function dokumentKopf(e: DokumentEingabe): DokumentKopfDaten {
     entschuldigt: mitglieder(fehlend('entschuldigt')),
     unentschuldigt: mitglieder(fehlend('unentschuldigt')),
     ems: e.ems.filter((m) => m.ausgewaehlt).map((m) => person(m, '', e.offiziell)),
-    emsFreitext: e.kopf.emsFreitext.join(', '),
+    emsFreitext: e.kopf.emsFreitext.map(externMitZeit).join(', '),
     anwaerter: da
       .filter((t) => t.status === 'anwaerter')
       .map((t) => person(t, zusatz(t), e.offiziell)),
-    gaeste: e.kopf.gaeste.join(', '),
+    gaeste: e.kopf.gaeste.map(externMitZeit).join(', '),
     leitung: finde(e.kopf.sitzungsleitung),
     protokoll: finde(e.kopf.protokollfuehrung),
     eroeffnung: e.kopf.eroeffnung || null,
     beschlussfaehigkeit: verlauf.start.gesamt > 0 ? verlauf.start : null,
+    ende: e.kopf.ende || null,
   };
 }
 
@@ -254,6 +274,21 @@ export function eroeffnungSatz(
   return null;
 }
 
+/**
+ * Closing sentence. With a chair the name comes first (rendered by the caller), so this returns
+ * only the rest: " beendet die Sitzung um 22:10 Uhr.". Null without an end time.
+ */
+export function endeSatz(
+  art: ProtokollArt,
+  hatLeitung: boolean,
+  uhrzeit: string | null,
+): string | null {
+  if (!uhrzeit) return null;
+  const wort = sitzungsWort(art);
+  if (hatLeitung) return ` beendet die ${wort} um ${uhrzeit} Uhr.`;
+  return `Die ${wort} endet um ${uhrzeit} Uhr.`;
+}
+
 const mehrAls = (art: ProtokollArt) =>
   art === 'mitgliederversammlung' ? 'mehr als zwei Drittel' : 'mehr als die Hälfte';
 
@@ -274,7 +309,9 @@ export function beschlussfaehigkeitText(
 
 export interface AnwesenheitZeile {
   /** Name of the person (to render with `StatusName`); the sentence is `vor` + name + `nach`. */
-  sub: string;
+  sub: string | null;
+  /** External person (no `sub`): plain text, no `StatusName`. */
+  name: string;
   nach: string;
   /** Second line if the quorum changed. */
   wechsel: string | null;
@@ -288,7 +325,9 @@ export function anwesenheitZeile(
   stand: (Beschlussfaehigkeit & { wechsel: boolean }) | undefined,
 ): AnwesenheitZeile | null {
   const d = bausteinAnwesenheitDatenSchema.safeParse(daten);
-  if (!d.success || d.data.sub === null) return null;
+  if (!d.success) return null;
+  const name = d.data.sub === null ? d.data.name.trim() : '';
+  if (d.data.sub === null && name === '') return null;
   const verb = d.data.art === 'erscheint' ? 'erscheint' : 'geht';
   const um = d.data.uhrzeit ? ` um ${d.data.uhrzeit} Uhr` : '';
   let wechsel: string | null = null;
@@ -299,6 +338,7 @@ export function anwesenheitZeile(
   }
   return {
     sub: d.data.sub,
+    name,
     nach: ` ${verb}${um}.`,
     wechsel,
     wechselBeschlussfaehig: stand?.beschlussfaehig ?? true,

@@ -1,6 +1,6 @@
 import { ZeitFeld } from '../ZeitFeld';
 import { DatumFeld } from '../DatumFeld';
-import { Anchor, Button, Paper, Select, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Anchor, Button, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
@@ -49,6 +49,15 @@ export function NaechsteSitzungKarte({
       ? vorschlag.titel
       : optionen.find((o) => o.eventId === von.eventId)?.titel
     : vorschlag?.titel;
+  const ortFeld = (
+    <TextInput
+      size="md"
+      label="Ort"
+      value={kopf.naechsteSitzungOrt}
+      maxLength={100}
+      onChange={(e) => onChange({ ...kopf, naechsteSitzungOrt: e.currentTarget.value })}
+    />
+  );
   const quelle = wert?.eventId ? '(aus dem Kalender)' : '(von Hand)';
 
   return (
@@ -79,6 +88,7 @@ export function NaechsteSitzungKarte({
             Im Kalender öffnen
           </Anchor>
         )}
+        {editierbar && !von && ortFeld}
         {editierbar && !von && (
           <Button
             variant="default"
@@ -121,7 +131,7 @@ export function NaechsteSitzungKarte({
                 }}
               />
             )}
-            <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="xs">
+            <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="xs" style={{ alignItems: 'end' }}>
               <DatumFeld
                 tippbar
                 label="Datum"
@@ -133,6 +143,7 @@ export function NaechsteSitzungKarte({
                 value={von.uhrzeit}
                 onWert={(uhrzeit) => setzen({ eventId: null, datum: von.datum, uhrzeit })}
               />
+              {ortFeld}
             </SimpleGrid>
             {von.datum && (
               <Text size="xs" c="dimmed">
