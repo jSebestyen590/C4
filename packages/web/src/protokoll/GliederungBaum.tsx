@@ -11,7 +11,7 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd';
 import { useEditorState, type Editor } from '@tiptap/react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Griff } from '../SortierbareListe';
 import {
@@ -114,9 +114,10 @@ export function Gliederung({
 
   // Set before pangea measures the list, so the rows of the drag are the ones that get measured.
   const vorErfassen = (s: BeforeCapture) => {
-    fensterSperren();
     flushSync(() => setGezogenId(s.draggableId));
   };
+  // Locked after the lift (pangea has captured the window scroll by then).
+  const beiStart = () => fensterSperren();
   const nichtMoeglich = () =>
     notifications.show({
       color: 'yellow',
@@ -225,9 +226,22 @@ export function Gliederung({
   };
 
   return (
-    <DragDropContext onBeforeCapture={vorErfassen} onDragEnd={ende}>
+    <DragDropContext onBeforeCapture={vorErfassen} onDragStart={beiStart} onDragEnd={ende}>
       <nav aria-label="Gliederung">
-        <Droppable droppableId="gliederung">
+        <Droppable
+          droppableId="gliederung"
+          // The clone goes to the body: a transformed ancestor (the Drawer) would be the containing
+          // block of its `position: fixed` and the row would be drawn far from the pointer.
+          renderClone={(drag, dragSnap, rubric) => {
+            const z = zeilen[rubric.source.index]!;
+            return createPortal(
+              <div ref={drag.innerRef} {...drag.draggableProps} style={drag.draggableProps.style}>
+                {inhalt(z, drag, dragSnap)}
+              </div>,
+              document.body,
+            );
+          }}
+        >
           {(drop) => (
             <div ref={drop.innerRef} {...drop.droppableProps}>
               {zeilen.map((z, i) => (
