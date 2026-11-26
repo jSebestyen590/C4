@@ -14,6 +14,7 @@ import { sperreBeruehren } from './db/sperren';
 import {
   posten,
   postenBesetzungen,
+  mitglieder,
   postenRechte,
   type BesetzungRow,
   type PostenRow,
@@ -51,6 +52,48 @@ export interface PostenDetails extends PostenRow {
 export interface PostenDaten extends Bezeichnungen {
   name: string;
   beschreibung: string | null;
+  vorstand?: boolean;
+}
+
+/** A holder of a Vorstandsposten on a given day. */
+export interface VorstandBesetzung {
+  postenId: string;
+  postenName: string;
+  sub: string;
+  vorname: string;
+  nachname: string;
+}
+
+/** Holders of the non-archived Vorstandsposten on `datum`, sorted by Posten, then name. */
+export async function vorstandAm(
+  q: Pick<Db, 'select'>,
+  datum: string,
+): Promise<VorstandBesetzung[]> {
+  const rows = await q
+    .select({
+      postenId: posten.id,
+      postenName: posten.name,
+      sub: postenBesetzungen.mitgliedSub,
+      vorname: mitglieder.vorname,
+      nachname: mitglieder.nachname,
+    })
+    .from(postenBesetzungen)
+    .innerJoin(posten, eq(posten.id, postenBesetzungen.postenId))
+    .innerJoin(mitglieder, eq(mitglieder.sub, postenBesetzungen.mitgliedSub))
+    .where(
+      and(
+        eq(posten.vorstand, true),
+        eq(posten.archiviert, false),
+        lte(postenBesetzungen.startDatum, datum),
+        or(isNull(postenBesetzungen.endDatum), gte(postenBesetzungen.endDatum, datum)),
+      ),
+    );
+  return rows.sort(
+    (a, b) =>
+      a.postenName.localeCompare(b.postenName, 'de') ||
+      a.nachname.localeCompare(b.nachname, 'de') ||
+      a.vorname.localeCompare(b.vorname, 'de'),
+  );
 }
 
 /** A Posten a member currently holds, with the data needed to title the holder. */
@@ -93,6 +136,8 @@ export interface PostenStore {
   /** All Besetzungen of a member (also of archived Posten), oldest start first. */
   besetzungenVon(sub: string): Promise<BesetzungMitPosten[]>;
   aktuelleNachMitglied(heute?: string): Promise<Map<string, AktuellerPosten[]>>;
+  /** Holders of the Vorstandsposten on `datum` (default today). */
+  vorstandAm(datum?: string): Promise<VorstandBesetzung[]>;
   /** Permissions granted by the Posten the member currently holds. */
   rechteVon(sub: string, heute?: string): Promise<Permission[]>;
   /** Subs of the members who currently hold a Posten that grants `recht` (same rules as `rechteVon`). */
@@ -284,6 +329,9 @@ export function createPostenStore(db: Db): PostenStore {
         result.set(sub, [...(result.get(sub) ?? []), p]);
       }
       return result;
+    },
+    async vorstandAm(datum = heuteBerlin()) {
+      return vorstandAm(db, datum);
     },
     async rechteVon(sub, heute = heuteBerlin()) {
       const rows = await db

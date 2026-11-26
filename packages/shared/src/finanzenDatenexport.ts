@@ -155,6 +155,58 @@ export interface ExportRechnungssteller {
   archiviert: boolean;
 }
 
+export interface ExportRechnung {
+  id: string;
+  nummer: string;
+  rechnungsdatum: string;
+  leistungVon: string;
+  leistungBis: string | null;
+  faelligAm: string;
+  mitgliedSub: string | null;
+  empfaengerId: string | null;
+  empfaengerName: string;
+  empfaengerAnschrift: string;
+  empfaengerUstId: string | null;
+  modus: string;
+  betreff: string;
+  bruttoCent: number;
+  stornoVon: string | null;
+  stornoBegruendung: string | null;
+  buchungId: string;
+  dateiSha256: string | null;
+  dateiSchluessel: string | null;
+  /** Path of the PDF in the ZIP; set by the export job when the files are included. */
+  dateiPfad?: string | null;
+  erstelltVon: string;
+  erstelltAm: string;
+}
+
+export interface ExportRechnungsposten {
+  rechnungId: string;
+  pos: number;
+  art: string;
+  text: string;
+  einheit: string | null;
+  anzahlMilli: number;
+  einzelpreisCent: number;
+  pfandCent: number | null;
+  pfandBetragCent: number | null;
+  steuersatz: number;
+  erloesKontoId: string;
+  gesamtCent: number;
+}
+
+export interface ExportRechnungszahlung {
+  id: string;
+  rechnungId: string;
+  zahlweg: string;
+  datum: string;
+  kontoId: string;
+  buchungId: string;
+  erstelltVon: string;
+  erstelltAm: string;
+}
+
 export interface ExportFestschreibung {
   id: string;
   monat: string;
@@ -174,6 +226,9 @@ export interface DatenexportDaten {
   belege: ExportBeleg[];
   belegposten: ExportBelegposten[];
   rechnungssteller: ExportRechnungssteller[];
+  rechnungen: ExportRechnung[];
+  rechnungsposten: ExportRechnungsposten[];
+  rechnungszahlungen: ExportRechnungszahlung[];
   festschreibungen: ExportFestschreibung[];
 }
 
@@ -477,6 +532,189 @@ export const DATENEXPORT_TABELLEN: readonly ExportTabelle[] = [
     ],
   }),
   tabelle({
+    datei: 'rechnungen.csv',
+    name: 'Rechnungen',
+    beschreibung:
+      'Ausgangsrechnungen und Stornorechnungen der Buchungen im Zeitraum (PDFs liegen im Finanzarchiv)',
+    daten: 'rechnungen',
+    primaer: ['id'],
+    fremd: [
+      { spalten: ['storno_von'], tabelle: 'Rechnungen' },
+      { spalten: ['buchung_id'], tabelle: 'Buchungen' },
+    ],
+    spalten: [
+      sp<ExportRechnung>('id', 'text', 'Kennung der Rechnung', (r) => r.id),
+      sp<ExportRechnung>('nummer', 'text', 'Rechnungsnummer (NNN-JJJJ)', (r) => r.nummer),
+      sp<ExportRechnung>('rechnungsdatum', 'datum', 'Rechnungsdatum', (r) => r.rechnungsdatum),
+      sp<ExportRechnung>('leistung_von', 'datum', 'Beginn der Leistung', (r) => r.leistungVon),
+      sp<ExportRechnung>('leistung_bis', 'datum', 'Ende der Leistung', (r) => r.leistungBis),
+      sp<ExportRechnung>('faellig_am', 'datum', 'Fällig am', (r) => r.faelligAm),
+      sp<ExportRechnung>(
+        'mitglied_id',
+        'text',
+        'Kennung des Mitglieds bei Rechnungen an Mitglieder',
+        (r) => r.mitgliedSub,
+      ),
+      sp<ExportRechnung>(
+        'empfaenger_id',
+        'text',
+        'Kennung des externen Empfängers',
+        (r) => r.empfaengerId,
+      ),
+      sp<ExportRechnung>('empfaenger_name', 'text', 'Name des Empfängers', (r) => r.empfaengerName),
+      sp<ExportRechnung>(
+        'empfaenger_anschrift',
+        'text',
+        'Anschrift des Empfängers',
+        (r) => r.empfaengerAnschrift,
+      ),
+      sp<ExportRechnung>(
+        'empfaenger_ust_id',
+        'text',
+        'USt-IdNr. des Empfängers',
+        (r) => r.empfaengerUstId,
+      ),
+      sp<ExportRechnung>('modus', 'text', 'Preise brutto oder netto erfasst', (r) => r.modus),
+      sp<ExportRechnung>('betreff', 'text', 'Betreff', (r) => r.betreff),
+      sp<ExportRechnung>('brutto', 'betrag', 'Rechnungsbetrag brutto in Euro', (r) => r.bruttoCent),
+      sp<ExportRechnung>(
+        'storno_von',
+        'text',
+        'Bei einer Stornorechnung: Kennung der stornierten Rechnung',
+        (r) => r.stornoVon,
+      ),
+      sp<ExportRechnung>(
+        'storno_begruendung',
+        'text',
+        'Begründung der Stornorechnung',
+        (r) => r.stornoBegruendung,
+      ),
+      sp<ExportRechnung>(
+        'buchung_id',
+        'text',
+        'Kennung der Buchung beim Stellen',
+        (r) => r.buchungId,
+      ),
+      sp<ExportRechnung>(
+        'datei_sha256',
+        'text',
+        'SHA-256 des Rechnungs-PDFs',
+        (r) => r.dateiSha256,
+      ),
+      sp<ExportRechnung>(
+        'datei_schluessel',
+        'text',
+        'Schlüssel des Rechnungs-PDFs im Finanzarchiv',
+        (r) => r.dateiSchluessel,
+      ),
+      sp<ExportRechnung>(
+        'datei_pfad',
+        'text',
+        'Pfad des Rechnungs-PDFs im ZIP (leer, wenn der Export ohne Belegdateien erstellt wurde)',
+        (r) => r.dateiPfad ?? null,
+      ),
+      sp<ExportRechnung>('erstellt_von', 'text', 'Kennung des Erstellers', (r) => r.erstelltVon),
+      sp<ExportRechnung>(
+        'erstellt_am',
+        'text',
+        'Zeitpunkt des Stellens (UTC, ISO 8601)',
+        (r) => r.erstelltAm,
+      ),
+    ],
+  }),
+  tabelle({
+    datei: 'rechnungsposten.csv',
+    name: 'Rechnungsposten',
+    beschreibung: 'Posten der Rechnungen (Beträge einer Stornorechnung sind negativ)',
+    daten: 'rechnungsposten',
+    primaer: ['rechnung_id', 'pos'],
+    fremd: [
+      { spalten: ['rechnung_id'], tabelle: 'Rechnungen' },
+      { spalten: ['erloes_konto_id'], tabelle: 'Konten' },
+    ],
+    spalten: [
+      sp<ExportRechnungsposten>('rechnung_id', 'text', 'Kennung der Rechnung', (r) => r.rechnungId),
+      sp<ExportRechnungsposten>('pos', 'zahl', 'Position in der Rechnung', (r) => r.pos),
+      sp<ExportRechnungsposten>('art', 'text', 'Art des Postens (ware, frei)', (r) => r.art),
+      sp<ExportRechnungsposten>('text', 'text', 'Bezeichnung', (r) => r.text),
+      sp<ExportRechnungsposten>('einheit', 'text', 'Gebinde bei Waren', (r) => r.einheit),
+      sp<ExportRechnungsposten>(
+        'anzahl_milli',
+        'zahl',
+        'Menge in Tausendsteln (1000 = 1)',
+        (r) => r.anzahlMilli,
+      ),
+      sp<ExportRechnungsposten>(
+        'einzelpreis',
+        'betrag',
+        'Einzelpreis in Euro',
+        (r) => r.einzelpreisCent,
+      ),
+      sp<ExportRechnungsposten>('pfand', 'betrag', 'Pfand je Gebinde in Euro', (r) => r.pfandCent),
+      sp<ExportRechnungsposten>(
+        'pfand_betrag',
+        'betrag',
+        'Pfandbetrag des Postens in Euro',
+        (r) => r.pfandBetragCent,
+      ),
+      sp<ExportRechnungsposten>(
+        'steuersatz_bp',
+        'zahl',
+        'Steuersatz in Basispunkten (1900 = 19 %)',
+        (r) => r.steuersatz,
+      ),
+      sp<ExportRechnungsposten>(
+        'erloes_konto_id',
+        'text',
+        'Kennung des Erlöskontos',
+        (r) => r.erloesKontoId,
+      ),
+      sp<ExportRechnungsposten>(
+        'betrag',
+        'betrag',
+        'Betrag des Postens ohne Pfand in Euro',
+        (r) => r.gesamtCent,
+      ),
+    ],
+  }),
+  tabelle({
+    datei: 'rechnungszahlungen.csv',
+    name: 'Rechnungszahlungen',
+    beschreibung: 'Zahlungen von Rechnungen mit Buchung im Zeitraum',
+    daten: 'rechnungszahlungen',
+    primaer: ['id'],
+    fremd: [
+      { spalten: ['rechnung_id'], tabelle: 'Rechnungen' },
+      { spalten: ['konto_id'], tabelle: 'Konten' },
+      { spalten: ['buchung_id'], tabelle: 'Buchungen' },
+    ],
+    spalten: [
+      sp<ExportRechnungszahlung>('id', 'text', 'Kennung der Zahlung', (r) => r.id),
+      sp<ExportRechnungszahlung>(
+        'rechnung_id',
+        'text',
+        'Kennung der Rechnung',
+        (r) => r.rechnungId,
+      ),
+      sp<ExportRechnungszahlung>('zahlweg', 'text', 'Zahlweg (bank, bar, sumup)', (r) => r.zahlweg),
+      sp<ExportRechnungszahlung>('datum', 'datum', 'Zahldatum', (r) => r.datum),
+      sp<ExportRechnungszahlung>('konto_id', 'text', 'Konto des Geldeingangs', (r) => r.kontoId),
+      sp<ExportRechnungszahlung>('buchung_id', 'text', 'Kennung der Buchung', (r) => r.buchungId),
+      sp<ExportRechnungszahlung>(
+        'erstellt_von',
+        'text',
+        'Kennung des Erfassers',
+        (r) => r.erstelltVon,
+      ),
+      sp<ExportRechnungszahlung>(
+        'erstellt_am',
+        'text',
+        'Zeitpunkt der Erfassung (UTC, ISO 8601)',
+        (r) => r.erstelltAm,
+      ),
+    ],
+  }),
+  tabelle({
     datei: 'festschreibungen.csv',
     name: 'Festschreibungen',
     beschreibung: 'Festgeschriebene Monate (alle)',
@@ -676,10 +914,11 @@ export function beschreibungTxt(p: {
       ? [
           'Die Belegdateien der Belege liegen im Ordner belege/. Der Dateiname ist der SHA-256 des',
           'Dateiinhalts (Hex) plus Endung; belege.csv nennt den Pfad in der Spalte datei_pfad.',
+          'Die PDFs der Rechnungen liegen im Ordner rechnungen/ (Pfad in rechnungen.csv).',
         ]
       : [
           'Belegdateien liegen nicht im ZIP, belege.csv nennt SHA-256 und Archivschlüssel der Datei im',
-          'Finanzarchiv.',
+          'Finanzarchiv (ebenso rechnungen.csv für die Rechnungs-PDFs).',
         ]),
     '',
     'Unveränderbarkeit (Hash-Kette)',

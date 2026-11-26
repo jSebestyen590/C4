@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_rechnungen_idempotenz_idx

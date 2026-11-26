@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS fin_rechnungen_storno_von_idx ON fin_rechnungen (storno_von)

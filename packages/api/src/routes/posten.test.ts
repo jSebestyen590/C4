@@ -199,6 +199,28 @@ describe('posten', () => {
     );
   });
 
+  it('stores the Vorstandsposten flag, defaulting to false', async () => {
+    const { app } = makeApp();
+    const post = (body: object) =>
+      app.request('/api/posten', {
+        method: 'POST',
+        headers: { ...bearer('vorstand-token'), 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const { id } = (await (await post({ name: 'Ohne' })).json()) as { id: string };
+    const { id: id2 } = (await (await post({ name: 'Mit', vorstand: true })).json()) as {
+      id: string;
+    };
+    const lesen = async (i: string) =>
+      (await (
+        await app.request(`/api/posten/${i}`, { headers: bearer('vorstand-token') })
+      ).json()) as {
+        vorstand: boolean;
+      };
+    expect((await lesen(id)).vorstand).toBe(false);
+    expect((await lesen(id2)).vorstand).toBe(true);
+  });
+
   it('titles the holder in the list by their form of address', async () => {
     const { app, mitglieder, posten, userAdmin } = makeApp();
     for (const [sub, anrede] of [

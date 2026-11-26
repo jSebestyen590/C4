@@ -7,6 +7,11 @@ import { FinanzenBelegePage } from '../pages/FinanzenBelegePage';
 import { FinanzenBelegPage } from '../pages/FinanzenBelegPage';
 import { FinanzenWarengruppenKategorienPage } from '../pages/FinanzenWarengruppenKategorienPage';
 import { FinanzenRechnungsstellerPage } from '../pages/FinanzenRechnungsstellerPage';
+import { FinanzenRechnungDetailPage } from '../pages/FinanzenRechnungDetailPage';
+import { FinanzenRechnungEinstellungenPage } from '../pages/FinanzenRechnungEinstellungenPage';
+import { FinanzenRechnungenPage } from '../pages/FinanzenRechnungenPage';
+import { FinanzenRechnungPage } from '../pages/FinanzenRechnungPage';
+import { FinanzenRechnungsempfaengerPage } from '../pages/FinanzenRechnungsempfaengerPage';
 import { FinanzenBargeldPage } from '../pages/FinanzenBargeldPage';
 import { FinanzenBargeldUmbuchenPage } from '../pages/FinanzenBargeldUmbuchenPage';
 import { FinanzenBargeldWechselnPage } from '../pages/FinanzenBargeldWechselnPage';
@@ -271,6 +276,66 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenBelegDetailPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungen"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenRechnungenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungen/neu"
+        element={
+          <Protected permission="finanzen:buchen">
+            <RequireUsername>
+              <FinanzenRechnungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungen/entwurf/:id"
+        element={
+          <Protected permission="finanzen:buchen">
+            <RequireUsername>
+              <FinanzenRechnungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungen/einstellungen"
+        element={
+          <Protected permission="finanzen:verwalten">
+            <RequireUsername>
+              <FinanzenRechnungEinstellungenPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungen/:id"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenRechnungDetailPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/rechnungsempfaenger"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenRechnungsempfaengerPage />
             </RequireUsername>
           </Protected>
         }

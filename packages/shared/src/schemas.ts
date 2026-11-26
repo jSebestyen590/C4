@@ -240,6 +240,8 @@ export const postenAktualisierenSchema = z
     bezeichnungMaennlich: optionalerText(100),
     bezeichnungWeiblich: optionalerText(100),
     bezeichnungNeutral: optionalerText(100),
+    /** Holders of this Posten appear as Vorstand on invoices. */
+    vorstand: z.boolean().default(false),
   })
   .refine(
     (p) => {
@@ -309,6 +311,7 @@ export const postenSchema = z.object({
   bezeichnungMaennlich: z.string().nullable(),
   bezeichnungWeiblich: z.string().nullable(),
   bezeichnungNeutral: z.string().nullable(),
+  vorstand: z.boolean(),
   archiviert: z.boolean(),
   rechte: z.array(z.enum(POSTEN_RECHTE)),
   /** Current holders first, then by start date (newest first). */

@@ -5,7 +5,7 @@ Beschreibung und beliebig viele **Besetzungen**: ein Mitglied mit Startdatum und
 
 ## Überblick
 
-Ein Posten ist eine Verantwortlichkeit im Verein (z. B. Kassenwart) mit Namen, Beschreibung und beliebig vielen Besetzungen (Mitglied mit Startdatum und optionalem Enddatum). Posten können Rechte gewähren und archiviert werden; es gibt feste Vorstandsposten. Code in `packages/api/src/posten.ts`, Migrationen `0006`–`0009`.
+Ein Posten ist eine Verantwortlichkeit im Verein (z. B. Kassenwart) mit Namen, Beschreibung und beliebig vielen Besetzungen (Mitglied mit Startdatum und optionalem Enddatum). Posten können Rechte gewähren und archiviert werden; es gibt feste Vorstandsposten, und jeder Posten kann als „Vorstandsposten“ für Rechnungen markiert werden. Code in `packages/api/src/posten.ts`, Migrationen `0006`–`0009`.
 
 Abschnitte: Datenmodell, Rechte, Seiten und API, Vorstandsposten
 
@@ -13,11 +13,11 @@ Abschnitte: Datenmodell, Rechte, Seiten und API, Vorstandsposten
 
 Migrationen `0006`–`0008` (Tabellen) und `0009` (Vorstandsposten), Code in `packages/api/src/posten.ts`.
 
-| Tabelle              | Inhalt                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `posten`             | `id`, `name`, `beschreibung`, `bezeichnung_maennlich/weiblich/neutral`, `archiviert` |
-| `posten_rechte`      | Rechte, die der Posten gewährt (`posten_id` → `posten`, `recht`)                     |
-| `posten_besetzungen` | `posten_id` → `posten`, `mitglied_sub` → `mitglieder`, `start_datum`, `end_datum`    |
+| Tabelle              | Inhalt                                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `posten`             | `id`, `name`, `beschreibung`, `bezeichnung_maennlich/weiblich/neutral`, `vorstand` (Flag, null = false), `archiviert` |
+| `posten_rechte`      | Rechte, die der Posten gewährt (`posten_id` → `posten`, `recht`)                                                      |
+| `posten_besetzungen` | `posten_id` → `posten`, `mitglied_sub` → `mitglieder`, `start_datum`, `end_datum`                                     |
 
 Weil `mitglied_sub` ein Fremdschlüssel ist, kann nur zugewiesen werden, wer schon eine Profilzeile
 hat (sonst antwortet das API mit 400). Eingeladene Mitglieder bekommen ihre Zeile sofort.
@@ -101,6 +101,11 @@ Vorstandsvorsitz und Stellvertretender Vorstandsvorsitz nur `finanzen:lesen` (si
 **Kassenprüfung:** Migration `0141` legt den Posten `kassenpruefung` an (Kassenprüfer / Kassenprüferin /
 Kassenprüfer:in). Migration `0142` gibt ihm `finanzen:lesen` und `finanzen:pruefen`: Er liest den Kontenplan und das
 Journal und prüft die Hash-Kette, kann aber nicht buchen. Die Id ist fest, die Migrationen sind idempotent.
+
+**Flag „Vorstandsposten“:** Spalte `posten.vorstand` (Migration `0270`, nullable, weil DSQL kein `NOT NULL`/`DEFAULT` beim
+`ADD COLUMN` erlaubt; `0271` setzt es für die drei Vorstandsposten oben). Im Formular eine Checkbox, in Liste und
+Detailseite ein Badge „Vorstand“. Wer markierte, nicht archivierte Posten am Rechnungsdatum innehat, steht als Vorstand
+auf Rechnungen (`vorstandAm` in `posten.ts`, siehe [finanzen.md](./finanzen.md), Rechnungen).
 
 Beim Setzen des Startdatums einer Besetzung wird das Ende automatisch auf den 31.12. desselben Jahres gesetzt; es lässt sich danach ändern oder leeren.
 

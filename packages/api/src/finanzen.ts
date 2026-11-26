@@ -118,6 +118,7 @@ import {
   type AbrechnungKurz,
 } from './finanzenKassen';
 import { createBelegeStore, datumBerlin, type BelegeStore } from './finanzenBelege';
+import { createRechnungenStore, type RechnungenStore } from './finanzenRechnungen';
 import type { Tx } from './waren';
 
 // Finanzen: chart of accounts and the append-only journal (see docs/finanzen.md). Bookings are
@@ -203,7 +204,7 @@ export interface KettenDaten {
   zaehlerHash: string;
 }
 
-export interface FinanzenStore extends BelegeStore {
+export interface FinanzenStore extends BelegeStore, RechnungenStore {
   /** All accounts by name with their balance (sum of own lines). */
   konten(mitArchiv: boolean): Promise<KontoDto[]>;
   /** Throws KontoUngueltig for an unknown parent. */
@@ -822,47 +823,75 @@ export function createFinanzenStore(db: Db): FinanzenStore {
       BUCHEN_WARTEN_MS,
     );
 
+  /**
+   * Reverses a booking inside the transaction `tx` (journal Storno): checks that it is neither a
+   * Storno nor reversed already, books the mirrored lines. Undefined when the booking does not exist.
+   */
+  const stornoEinfuegen = async (
+    tx: Tx,
+    id: string,
+    e: {
+      datum: string;
+      text: (original: { seq: number }) => string;
+      sub: string;
+      idempotenzSchluessel?: string | null;
+      /** Only the Stornorechnung path may reverse the booking of an issued Rechnung. */
+      rechnungErlaubt?: boolean;
+    },
+  ): Promise<GebuchtErgebnis | undefined> => {
+    const [original] = await tx.select().from(finBuchungen).where(eq(finBuchungen.id, id));
+    if (!original) return undefined;
+    if (original.quelleTyp === 'rechnung' && !e.rechnungErlaubt)
+      throw new StornoKonflikt(
+        'Eine gestellte Rechnung stornierst du über eine Stornorechnung auf der Rechnungsseite.',
+      );
+    if (original.stornoVon !== null)
+      throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
+    const [doppelt] = await tx
+      .select({ id: finBuchungen.id })
+      .from(finBuchungen)
+      .where(eq(finBuchungen.stornoVon, id));
+    if (doppelt) throw new StornoKonflikt('Die Buchung ist bereits storniert.');
+    const quelle: HashZeile[] = (await zeilenLaden(tx, [id])).map((z) => ({
+      pos: z.pos,
+      kontoId: z.kontoId,
+      betragCent: z.betragCent,
+      nettoCent: z.nettoCent,
+      steuerCent: z.steuerCent,
+      steuersatz: z.steuersatz,
+      steuerArt: z.steuerArt,
+      stueckelung: z.stueckelung,
+    }));
+    const zeilen = stornoZeilen(quelle);
+    const { pruef, bestand } = await kontenMitBestand(tx, [
+      ...new Set(zeilen.map((z) => z.kontoId)),
+    ]);
+    const fehler = [...pruefeGruppenregel(zeilen, pruef), ...pruefeBestand(zeilen, bestand)];
+    if (fehler.length > 0) throw new BuchungUngueltig(fehler);
+    return einfuegen(tx, {
+      datum: e.datum,
+      text: e.text(original),
+      quelleTyp: 'storno',
+      quelleId: original.id,
+      eventId: original.eventId,
+      stornoVon: original.id,
+      erstelltVon: e.sub,
+      idempotenzSchluessel: e.idempotenzSchluessel ?? null,
+      zeilen: zeilen.map(ohnePos),
+    });
+  };
+
   const stornierenTx = (id: string, eingabe: StornoEingabe, sub: string) =>
     mitWiederholung(
       () =>
         db.transaction(async (tx) => {
           const schon = await vorhandene(tx, eingabe.idempotenzSchluessel);
           if (schon) return schon;
-          const [original] = await tx.select().from(finBuchungen).where(eq(finBuchungen.id, id));
-          if (!original) return undefined;
-          if (original.stornoVon !== null)
-            throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
-          const [doppelt] = await tx
-            .select({ id: finBuchungen.id })
-            .from(finBuchungen)
-            .where(eq(finBuchungen.stornoVon, id));
-          if (doppelt) throw new StornoKonflikt('Die Buchung ist bereits storniert.');
-          const quelle: HashZeile[] = (await zeilenLaden(tx, [id])).map((z) => ({
-            pos: z.pos,
-            kontoId: z.kontoId,
-            betragCent: z.betragCent,
-            nettoCent: z.nettoCent,
-            steuerCent: z.steuerCent,
-            steuersatz: z.steuersatz,
-            steuerArt: z.steuerArt,
-            stueckelung: z.stueckelung,
-          }));
-          const zeilen = stornoZeilen(quelle);
-          const { pruef, bestand } = await kontenMitBestand(tx, [
-            ...new Set(zeilen.map((z) => z.kontoId)),
-          ]);
-          const fehler = [...pruefeGruppenregel(zeilen, pruef), ...pruefeBestand(zeilen, bestand)];
-          if (fehler.length > 0) throw new BuchungUngueltig(fehler);
-          return einfuegen(tx, {
+          return stornoEinfuegen(tx, id, {
             datum: eingabe.datum,
-            text: stornoText(original, eingabe.text),
-            quelleTyp: 'storno',
-            quelleId: original.id,
-            eventId: original.eventId,
-            stornoVon: original.id,
-            erstelltVon: sub,
+            text: (original) => stornoText(original, eingabe.text),
+            sub,
             idempotenzSchluessel: eingabe.idempotenzSchluessel,
-            zeilen: zeilen.map(ohnePos),
           });
         }),
       BUCHEN_VERSUCHE,
@@ -1458,8 +1487,17 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     wiederholen: (fn) => mitWiederholung(fn, BUCHEN_VERSUCHE, undefined, BUCHEN_WARTEN_MS),
   });
 
+  const rechnungen = createRechnungenStore(db, {
+    einfuegen,
+    kontenMitBestand,
+    bestandLaden,
+    wiederholen: (fn) => mitWiederholung(fn, BUCHEN_VERSUCHE, undefined, BUCHEN_WARTEN_MS),
+    stornoEinfuegen,
+  });
+
   return {
     ...belege,
+    ...rechnungen,
     async konten(mitArchiv) {
       const [alle, summen] = await Promise.all([
         db.select().from(finKonten).orderBy(asc(finKonten.name)),
@@ -2185,6 +2223,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           tx.select().from(finFestschreibungen).orderBy(asc(finFestschreibungen.monat)),
         ]);
         const belegTeil = await belege.datenexportBelege(von, bis, tx);
+        const rechnungTeil = await rechnungen.datenexportRechnungen(von, bis, tx);
         return {
           konten: konten.map((k) => ({
             id: k.id,
@@ -2226,6 +2265,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
             anzahl: r.s.anzahl,
           })),
           ...belegTeil,
+          ...rechnungTeil,
           festschreibungen: festschreibungen.map((f) => ({
             id: f.id,
             monat: f.monat,

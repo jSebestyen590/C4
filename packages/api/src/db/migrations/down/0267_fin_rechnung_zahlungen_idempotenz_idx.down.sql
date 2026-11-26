@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_rechnung_zahlungen_idempotenz_idx

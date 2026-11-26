@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX ASYNC IF NOT EXISTS fin_rechnungen_idempotenz_idx ON fin_rechnungen (idempotenz_schluessel)

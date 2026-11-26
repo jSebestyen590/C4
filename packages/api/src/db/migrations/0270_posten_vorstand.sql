@@ -1,0 +1,1 @@
+ALTER TABLE posten ADD COLUMN IF NOT EXISTS vorstand boolean

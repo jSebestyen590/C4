@@ -140,6 +140,11 @@ export function PostenPage() {
                 <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
                   {p.name}
                 </Text>
+                {p.vorstand && (
+                  <Badge color="blue" variant="light">
+                    Vorstand
+                  </Badge>
+                )}
                 {p.archiviert && (
                   <Badge color="gray" variant="light">
                     Archiviert
@@ -174,6 +179,11 @@ export function PostenPage() {
                     {p.name}
                   </Text>
                 </Link>
+                {p.vorstand && (
+                  <Badge color="blue" variant="light">
+                    Vorstand
+                  </Badge>
+                )}
                 {p.archiviert && (
                   <Badge color="gray" variant="light">
                     Archiviert
