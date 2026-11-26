@@ -99,12 +99,20 @@ export const finanzenRechnungenRoutes = (ctx: RoutenKontext) => {
     new Hono<AuthEnv>()
       // ----- Einstellungen (club data on the invoices)
       .get('/finanzen/rechnung-einstellungen', auth, finanzenLesen, async (c) => {
-        const [e, mitglied] = await Promise.all([
+        const [e, mitglied, vorstand] = await Promise.all([
           deps.finanzen.rechnungEinstellungen(),
           finanzenMitgliederLaden(deps),
+          deps.posten.vorstandAm(),
         ]);
         const dto: RechnungEinstellungenDto | null = e
-          ? { ...e, erstelltVon: mitglied(e.erstelltVon) }
+          ? {
+              ...e,
+              erstelltVon: mitglied(e.erstelltVon),
+              vorstand: vorstand.flatMap((v) => {
+                const m = mitglied(v.sub);
+                return m ? [{ postenId: v.postenId, postenName: v.postenName, mitglied: m }] : [];
+              }),
+            }
           : null;
         return c.json(dto);
       })

@@ -136,15 +136,18 @@ export const rechnungVereinSchema = z.object({
 export type RechnungVerein = z.output<typeof rechnungVereinSchema>;
 
 /** Body of `POST /api/finanzen/rechnung-einstellungen` (adds a new version). */
-export const rechnungEinstellungenEingabeSchema = rechnungVereinSchema.extend({
-  zahlungszielTage: z
-    .number('Bitte gib das Zahlungsziel an.')
-    .int('Das Zahlungsziel muss in ganzen Tagen angegeben werden.')
-    .min(0, 'Das Zahlungsziel darf nicht negativ sein.')
-    .max(RECHNUNG_ZAHLUNGSZIEL_MAX, `Höchstens ${RECHNUNG_ZAHLUNGSZIEL_MAX} Tage erlaubt.`),
-  /** Preselected Erlös-Kategorie of Ware items. */
-  erloesKontoWaren: nullish(z.string().min(1)),
-});
+/** The Vorstand is not entered: it comes from the Posten flagged as Vorstandsposten. */
+export const rechnungEinstellungenEingabeSchema = rechnungVereinSchema
+  .omit({ vorstand: true })
+  .extend({
+    zahlungszielTage: z
+      .number('Bitte gib das Zahlungsziel an.')
+      .int('Das Zahlungsziel muss in ganzen Tagen angegeben werden.')
+      .min(0, 'Das Zahlungsziel darf nicht negativ sein.')
+      .max(RECHNUNG_ZAHLUNGSZIEL_MAX, `Höchstens ${RECHNUNG_ZAHLUNGSZIEL_MAX} Tage erlaubt.`),
+    /** Preselected Erlös-Kategorie of Ware items. */
+    erloesKontoWaren: nullish(z.string().min(1)),
+  });
 export type RechnungEinstellungenEingabe = z.output<typeof rechnungEinstellungenEingabeSchema>;
 
 const empfaengerName = pflichtText('Bitte gib einen Namen ein.', 120);
@@ -578,9 +581,18 @@ export const rechnungZahlungsKontoId = (z: {
 
 // ----- DTOs
 
+/** A current holder of a Vorstandsposten. */
+export interface RechnungVorstandDto {
+  postenId: string;
+  postenName: string;
+  mitglied: FinanzMitgliedDto;
+}
+
 /** The club data of the newest `fin_rechnung_einstellungen` row. */
-export interface RechnungEinstellungenDto extends RechnungVerein {
+export interface RechnungEinstellungenDto extends Omit<RechnungVerein, 'vorstand'> {
   id: string;
+  /** Holders of the Vorstandsposten today (not stored with the Einstellungen). */
+  vorstand: RechnungVorstandDto[];
   zahlungszielTage: number;
   erloesKontoWaren: string | null;
   erstelltVon: FinanzMitgliedDto | null;

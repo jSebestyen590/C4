@@ -3792,7 +3792,6 @@ describe('finanzen', () => {
       bankName: 'Fyrst',
       iban: 'DE02120300000000202051',
       bic: 'BYLADEM1001',
-      vorstand: 'Vertreten durch den Vorstand',
       zahlungszielTage: 14,
     };
 
@@ -3881,6 +3880,7 @@ describe('finanzen', () => {
         extern,
         fach,
         posten,
+        postenStore: t.posten,
         daten,
         entwurf,
         stellenE,
@@ -3946,6 +3946,32 @@ describe('finanzen', () => {
       });
     });
 
+    it('refuses to issue a Rechnung while no Vorstandsposten is staffed', async () => {
+      const t = await rechnungSetup();
+      const id = await t.entwurf();
+      t.finanzenFake.vorstand.length = 0;
+      const res = await t.stellenE(id);
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(await res.text()).toContain('kein Vorstandsposten');
+    });
+
+    it('lists the current Vorstand with the settings', async () => {
+      const t = await rechnungSetup();
+      t.postenStore.vorstandAm.mockResolvedValue([
+        {
+          postenId: 'vorstandsvorsitz',
+          postenName: 'Vorstandsvorsitz',
+          sub: 'a',
+          vorname: 'A',
+          nachname: 'B',
+        },
+      ]);
+      const e = await t.lesen<Dto>('admin-token', '/rechnung-einstellungen');
+      expect(e.vorstand).toMatchObject([
+        { postenId: 'vorstandsvorsitz', postenName: 'Vorstandsvorsitz' },
+      ]);
+    });
+
     it('manages external recipients without duplicate names', async () => {
       const t = await rechnungSetup();
       const dup = await t.roh('admin-token', 'POST', '/rechnungsempfaenger', {
@@ -4006,7 +4032,11 @@ describe('finanzen', () => {
         bruttoCent: 11900,
         empfaengerName: 'Muster GmbH',
         empfaengerAnschrift: 'Hauptstr. 5\n10115 Berlin',
-        verein: { vereinsname: 'C4 e. V.', iban: 'DE02120300000000202051' },
+        verein: {
+          vereinsname: 'C4 e. V.',
+          iban: 'DE02120300000000202051',
+          vorstand: 'Vorstandsvorsitz: Vera Vorstand',
+        },
         summen: [{ satz: 1900, netto: 10000, steuer: 1900, brutto: 11900 }],
         zahlung: null,
         datei: null,

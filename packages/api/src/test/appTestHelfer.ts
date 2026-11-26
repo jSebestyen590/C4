@@ -51,6 +51,7 @@ import {
   BesetzungUeberschneidung,
   ueberschneiden,
   type AktuellerPosten,
+  type VorstandBesetzung,
   type BesetzungDaten,
   type PostenDaten,
   type PostenDetails,
@@ -705,6 +706,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       postenListe.set(id, {
         id,
         ...daten,
+        vorstand: daten.vorstand ?? false,
         archiviert: false,
         aktualisiertAm: new Date(),
         rechte: [],
@@ -770,6 +772,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
         .sort((a, b) => a.startDatum.localeCompare(b.startDatum)),
     ),
     aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
+    vorstandAm: vi.fn(async (): Promise<VorstandBesetzung[]> => []),
     rechteVon: vi.fn(async (sub: string): Promise<PostenRecht[]> =>
       sub === 'v'
         ? [

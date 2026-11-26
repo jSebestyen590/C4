@@ -72,6 +72,7 @@ import {
   type BelegeKern,
   type BelegKonto,
 } from './finanzenBelege';
+import { vorstandAm, type VorstandBesetzung } from './posten';
 import type { Tx } from './waren';
 
 // Finanzen Rechnungen (see docs/finanzen.md): outgoing invoices with Ist-Versteuerung. The planning
@@ -109,7 +110,7 @@ export interface RechnungEmpfaengerAufgeloest {
 }
 export type RechnungEmpfaengerErgebnis = RechnungEmpfaengerAufgeloest | { fehler: string };
 
-export interface RechnungEinstellungenEintrag extends RechnungVerein {
+export interface RechnungEinstellungenEintrag extends Omit<RechnungVerein, 'vorstand'> {
   id: string;
   zahlungszielTage: number;
   erloesKontoWaren: string | null;
@@ -132,6 +133,8 @@ export interface RechnungPlanKontext {
   zeitraeume: readonly { ab: string; regel: number; ermaessigt: number }[];
   heute: string;
   einstellungen: RechnungEinstellungenEintrag | null;
+  /** Holders of the Vorstandsposten on the invoice date. */
+  vorstand: readonly Pick<VorstandBesetzung, 'postenName' | 'vorname' | 'nachname'>[];
   empfaenger: RechnungEmpfaengerErgebnis | null;
 }
 
@@ -175,14 +178,23 @@ export const VEREIN_FELDER = [
   'bankName',
   'iban',
   'bic',
-  'vorstand',
   'register',
   'kontakt',
   'fusstext',
 ] as const satisfies readonly (keyof RechnungVerein)[];
 
+/** One line per holder, with the real name (legal document). */
+export const vorstandText = (v: RechnungPlanKontext['vorstand']): string =>
+  v.map((x) => `${x.postenName}: ${x.vorname} ${x.nachname}`).join('\n');
+
+export const VORSTAND_FEHLT =
+  'Am Rechnungsdatum ist kein Vorstandsposten besetzt. Markiere die Vorstandsposten unter Posten und besetze sie.';
+
 /** The club data of the Einstellungen as stored with a Rechnung. */
-export const vereinAus = (e: RechnungVerein): RechnungVerein => ({
+export const vereinAus = (
+  e: Omit<RechnungVerein, 'vorstand'>,
+  vorstand: RechnungPlanKontext['vorstand'],
+): RechnungVerein => ({
   vereinsname: e.vereinsname,
   anschrift: e.anschrift,
   steuernummer: e.steuernummer,
@@ -190,7 +202,7 @@ export const vereinAus = (e: RechnungVerein): RechnungVerein => ({
   bankName: e.bankName,
   iban: e.iban,
   bic: e.bic,
-  vorstand: e.vorstand,
+  vorstand: vorstandText(vorstand),
   register: e.register,
   kontakt: e.kontakt,
   fusstext: e.fusstext,
@@ -202,6 +214,7 @@ export function planeRechnung(daten: RechnungEntwurfDaten, k: RechnungPlanKontex
     (f) => f.meldung,
   );
   if (!k.einstellungen) fehler.push('Bitte erst die Rechnungs-Einstellungen ausfüllen.');
+  if (k.vorstand.length === 0) fehler.push(VORSTAND_FEHLT);
   if (k.empfaenger && 'fehler' in k.empfaenger) fehler.push(k.empfaenger.fehler);
   const konten = new Map(k.konten.map((x) => [x.id, x]));
   for (const id of new Set(
@@ -240,7 +253,7 @@ export function planeRechnung(daten: RechnungEntwurfDaten, k: RechnungPlanKontex
       rechnungsdatum: k.heute,
       faelligAm: faelligAm(k.heute, zahlungszielTage),
       zahlungszielTage,
-      verein: vereinAus(k.einstellungen),
+      verein: vereinAus(k.einstellungen, k.vorstand),
       empfaenger: k.empfaenger,
       summeCent: berechnung.summe,
       zeilen,
@@ -535,6 +548,7 @@ export function createRechnungenStore(db: Db, kern: RechnungenKern): RechnungenS
       .from(finRechnungEinstellungen)
       .orderBy(desc(finRechnungEinstellungen.erstelltAm))
       .limit(1);
+    // The legacy `vorstand` column rides along but is never read: the Vorstand comes from the Posten.
     return row ? { ...row, erstelltAm: row.erstelltAm.toISOString() } : null;
   };
 
@@ -625,6 +639,7 @@ export function createRechnungenStore(db: Db, kern: RechnungenKern): RechnungenS
         ])
       : [[], [], []];
     const alle = alleGebinde as (Gebinde & { archiviert: boolean })[];
+    const heute = datumBerlin(new Date());
     let empfaenger: RechnungEmpfaengerErgebnis | null = null;
     if (daten.empfaenger?.typ === 'mitglied') empfaenger = mitglied;
     else if (daten.empfaenger?.typ === 'extern') {
@@ -646,8 +661,9 @@ export function createRechnungenStore(db: Db, kern: RechnungenKern): RechnungenS
     }
     return {
       zeitraeume: await zeitraeumeLaden(q),
-      heute: datumBerlin(new Date()),
+      heute,
       einstellungen: await einstellungenLaden(q),
+      vorstand: await vorstandAm(q, heute),
       empfaenger,
       konten: pruef.map((k) => ({ ...k, art: art.get(k.id)! })),
       waren: wareRows.map((w) => ({
@@ -1029,6 +1045,7 @@ export function createRechnungenStore(db: Db, kern: RechnungenKern): RechnungenS
       await db.insert(finRechnungEinstellungen).values({
         id,
         ...eingabe,
+        vorstand: '', // legacy column (NOT NULL, cannot be dropped), never read
         erloesKontoWaren: eingabe.erloesKontoWaren,
         erstelltVon: sub,
         erstelltAm: new Date(),

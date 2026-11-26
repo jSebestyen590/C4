@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Button,
   Group,
   Loader,
@@ -12,12 +13,14 @@ import {
 } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   RECHNUNG_TEXT_PLATZHALTER,
   RECHNUNG_TEXT_STANDARD,
   RECHNUNG_ZAHLUNGSZIEL_STANDARD,
   rechnungEinstellungenEingabeSchema,
   type RechnungEinstellungenDto,
+  type RechnungVorstandDto,
 } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -26,7 +29,7 @@ import { FeldZeile } from '../FeldZeile';
 import { jsonOderFehler, useKonten, useRechnungEinstellungen } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { InfoHinweis } from '../InfoHinweis';
-import { mitgliedName } from '../mitglied';
+import { mitgliedLink, mitgliedName } from '../mitglied';
 import { erloesKonten } from '../rechnungFormular';
 import { StatusName } from '../StatusAnzeige';
 import { fehlerText } from '../warenApi';
@@ -40,7 +43,6 @@ interface Werte {
   bankName: string;
   iban: string;
   bic: string;
-  vorstand: string;
   register: string;
   kontakt: string;
   fusstext: string;
@@ -56,7 +58,6 @@ const werteVon = (e: RechnungEinstellungenDto | null | undefined): Werte => ({
   bankName: e?.bankName ?? '',
   iban: e?.iban ?? '',
   bic: e?.bic ?? '',
-  vorstand: e?.vorstand ?? '',
   register: e?.register ?? '',
   kontakt: e?.kontakt ?? '',
   fusstext: e?.fusstext ?? RECHNUNG_TEXT_STANDARD,
@@ -81,6 +82,42 @@ export function FinanzenRechnungEinstellungenPage() {
       {einstellungen.data !== undefined && (
         <Formular key={einstellungen.data?.id ?? 'neu'} aktuell={einstellungen.data} />
       )}
+    </Stack>
+  );
+}
+
+/** The Vorstand printed on the invoices comes from the Posten flagged as Vorstandsposten. */
+function VorstandAnzeige({ vorstand }: Readonly<{ vorstand: RechnungVorstandDto[] | undefined }>) {
+  const zumPosten = (
+    <Anchor component={Link} to="/posten">
+      Zu den Posten
+    </Anchor>
+  );
+  return (
+    <Stack gap="xs">
+      <Text fw={500}>Vorstand</Text>
+      {vorstand && vorstand.length > 0 ? (
+        <Stack gap={2}>
+          {vorstand.map((v) => (
+            <Text key={`${v.postenId}:${v.mitglied.sub}`} size="sm">
+              {v.postenName}:{' '}
+              <Anchor component={Link} to={mitgliedLink(v.mitglied)}>
+                <StatusName status={v.mitglied.status}>{mitgliedName(v.mitglied)}</StatusName>
+              </Anchor>{' '}
+              ({v.mitglied.vorname} {v.mitglied.nachname})
+            </Text>
+          ))}
+        </Stack>
+      ) : (
+        <Alert color="orange">
+          Kein Vorstandsposten ist aktuell besetzt. Ohne Vorstand kannst du keine Rechnung stellen.{' '}
+          {zumPosten}
+        </Alert>
+      )}
+      <Text size="sm" c="dimmed">
+        Der Vorstand kommt aus den Posten, die als Vorstandsposten markiert sind. Auf der Rechnung
+        steht er mit Klarnamen. {vorstand && vorstand.length > 0 && zumPosten}
+      </Text>
     </Stack>
   );
 }
@@ -187,6 +224,7 @@ function Formular({ aktuell }: Readonly<{ aktuell: RechnungEinstellungenDto | nu
             Nur mit dem Recht „Finanzen verwalten“ lassen sich die Angaben ändern.
           </Alert>
         )}
+        <VorstandAnzeige vorstand={aktuell?.vorstand} />
         <FeldZeile cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing={0}>
           {text('vereinsname', 'Vereinsname', { maxLength: 120 })}
           {text('steuernummer', 'Steuernummer', { maxLength: 40 })}
@@ -198,10 +236,6 @@ function Formular({ aktuell }: Readonly<{ aktuell: RechnungEinstellungenDto | nu
           {text('bankName', 'Bank', { maxLength: 120 })}
           {text('iban', 'IBAN', { maxLength: 40 })}
           {text('bic', 'BIC', { maxLength: 20 })}
-          {mehrzeilig('vorstand', 'Vorstand', {
-            maxLength: 300,
-            beschreibung: 'z. B. „Vertreten durch: Vorname Nachname“.',
-          })}
           {text('register', 'Vereinsregister', { maxLength: 200, optional: true })}
           {mehrzeilig('kontakt', 'Kontakt', { maxLength: 300, optional: true })}
         </FeldZeile>

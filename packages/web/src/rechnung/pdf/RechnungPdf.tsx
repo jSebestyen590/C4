@@ -253,11 +253,9 @@ export function RechnungPdf({
               {v.kontakt && zeilen(v.kontakt).map((z, i) => <Text key={`k${i}`}>{z}</Text>)}
             </View>
             <View style={stile.fussSpalte}>
+              <Text>Vorstand:</Text>
               {zeilen(v.vorstand).map((z, i) => (
-                <Text key={i}>
-                  {i === 0 && !/vorstand|vertreten/i.test(v.vorstand) ? 'Vorstand: ' : ''}
-                  {z}
-                </Text>
+                <Text key={i}>{z}</Text>
               ))}
               {v.register && <Text>{v.register}</Text>}
               <Text>Steuernummer: {v.steuernummer}</Text>

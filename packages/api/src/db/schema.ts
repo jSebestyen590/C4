@@ -103,6 +103,8 @@ export const posten = pgTable('posten', {
   bezeichnungMaennlich: text('bezeichnung_maennlich'),
   bezeichnungWeiblich: text('bezeichnung_weiblich'),
   bezeichnungNeutral: text('bezeichnung_neutral'),
+  /** Whether the holders appear as Vorstand on invoices; null counts as false (DSQL: no DEFAULT on ADD COLUMN). */
+  vorstand: boolean('vorstand'),
   archiviert: boolean('archiviert').notNull().default(false),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });

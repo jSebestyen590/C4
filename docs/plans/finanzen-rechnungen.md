@@ -46,7 +46,7 @@ Eigene Festlegungen (beim Plan-Review änderbar):
 - **Konten** (Seed wie `auslagen`/`pfand`): `forderungen` („Forderungen aus Rechnungen“, durchlauf), `erloese_offen`
   („Erlöse aus offenen Rechnungen“, durchlauf), `sumup` („SumUp-Guthaben“, durchlauf).
 - `fin_rechnung_einstellungen` (nur INSERT, die neueste Zeile gilt): `id`, `vereinsname`, `anschrift`, `steuernummer`,
-  `ust_id` (opt.), `bank_name`, `iban`, `bic`, `vorstand` (Freitext, z. B. „Vertreten durch …“), `register` (opt., z. B.
+  `ust_id` (opt.), `bank_name`, `iban`, `bic`, `vorstand` (nur Altspalte; der Vorstand kommt aus den Vorstandsposten, siehe docs/posten.md), `register` (opt., z. B.
   „VR 1234, Amtsgericht Leipzig“), `kontakt` (opt.), `zahlungsziel_tage` (Standard 14), `fusstext` (opt.),
   `erloes_konto_waren` (Vorbelegung der Erlös-Kategorie für Ware-Posten), `erstellt_von`, `erstellt_am`.
 - `fin_rechnungsempfaenger`: `id`, `name` (eindeutig ohne Groß/Klein), `anschrift`, `email`, `ust_id`, `archiviert`.
@@ -135,7 +135,7 @@ Lesen `finanzen:lesen`, Schreiben `finanzen:buchen`, Einstellungen schreiben `fi
 - PDF `packages/web/src/rechnung/pdf/RechnungPdf.tsx` (+ Erzeugen-Funktion nach `pdfErzeugen.tsx`, Schriften aus
   `protokoll/pdf/schriften.ts` teilen): DIN-5008-nahes Layout: Absenderzeile, Empfängeranschrift, Rechnungsnummer, Datum,
   Leistungsdatum, Posten (Pos, Text bzw. Ware + Gebinde, Anzahl, Einzelpreis, Satz, Betrag), Pfand als eigene Zeile je
-  Ware-Posten, Netto je Satz, USt je Satz, Brutto, Zahlungsziel + Bankverbindung, Fuß mit Steuernummer/USt-IdNr., Vorstand,
+  Ware-Posten, Netto je Satz, USt je Satz, Brutto, Zahlungsziel + Bankverbindung, Fuß mit Steuernummer/USt-IdNr., Vorstand (aus den Vorstandsposten),
   Register. Stornorechnung: Titel „Stornorechnung“, Bezug „zu Rechnung NNN-JJJJ vom …“, negative Beträge.
 - Routen in `routes/finanzenRouten.tsx` mit `Protected`; Texte in `finanzenHilfe.ts` (`HILFE.rechnungen`: Ist-Versteuerung,
   Leistungsdatum, Erlös-Kategorie, Stornorechnung, Zahlweg SumUp). Alles deutsch, du-Form.

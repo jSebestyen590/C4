@@ -1,4 +1,4 @@
-import { Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Checkbox, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import type { Posten } from '@c4/shared';
 
 /** Editable fields of a Posten; empty strings stand for "not set". */
@@ -8,6 +8,7 @@ export interface PostenWerte {
   bezeichnungMaennlich: string;
   bezeichnungWeiblich: string;
   bezeichnungNeutral: string;
+  vorstand: boolean;
 }
 
 export const leerePostenWerte: PostenWerte = {
@@ -16,6 +17,7 @@ export const leerePostenWerte: PostenWerte = {
   bezeichnungMaennlich: '',
   bezeichnungWeiblich: '',
   bezeichnungNeutral: '',
+  vorstand: false,
 };
 
 export const postenWerte = (p: Posten): PostenWerte => ({
@@ -24,6 +26,7 @@ export const postenWerte = (p: Posten): PostenWerte => ({
   bezeichnungMaennlich: p.bezeichnungMaennlich ?? '',
   bezeichnungWeiblich: p.bezeichnungWeiblich ?? '',
   bezeichnungNeutral: p.bezeichnungNeutral ?? '',
+  vorstand: p.vorstand,
 });
 
 /** Form fields shared by the "create" and the "edit" dialog. */
@@ -36,7 +39,7 @@ export function PostenFelder({
   onChange: (werte: PostenWerte) => void;
   fehler: string | null;
 }>) {
-  const feld = (key: keyof PostenWerte) => ({
+  const feld = (key: Exclude<keyof PostenWerte, 'vorstand'>) => ({
     value: werte[key],
     onChange: (e: { currentTarget: { value: string } }) =>
       onChange({ ...werte, [key]: e.currentTarget.value }),
@@ -45,6 +48,13 @@ export function PostenFelder({
     <Stack>
       <TextInput label="Name" {...feld('name')} data-autofocus />
       <Textarea label="Beschreibung" autosize minRows={3} {...feld('beschreibung')} />
+      <Checkbox
+        size="md"
+        label="Vorstandsposten"
+        description="Wer den Posten innehat, steht als Vorstand auf Rechnungen."
+        checked={werte.vorstand}
+        onChange={(e) => onChange({ ...werte, vorstand: e.currentTarget.checked })}
+      />
       <Stack gap="xs">
         <Text size="sm" c="dimmed">
           Bezeichnung der Person, die den Posten innehat (alle drei Formen oder keine)

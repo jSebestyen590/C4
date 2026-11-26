@@ -335,7 +335,12 @@ export function createFakeFinanzenStore() {
     anhaengen,
   });
 
+  /** Holders of the Vorstandsposten used on invoices (tests may empty or change it). */
+  const vorstand: { postenName: string; vorname: string; nachname: string }[] = [
+    { postenName: 'Vorstandsvorsitz', vorname: 'Vera', nachname: 'Vorstand' },
+  ];
   const rechnungen = createFakeRechnungenStore({
+    vorstand,
     lager,
     konten,
     buchungen,
@@ -1016,6 +1021,7 @@ export function createFakeFinanzenStore() {
   };
   return {
     store,
+    vorstand,
     exporte,
     festschreibungenListe,
     datenexporteListe,

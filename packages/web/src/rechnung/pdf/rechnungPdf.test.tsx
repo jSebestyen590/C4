@@ -32,7 +32,7 @@ const rechnung: RechnungDetailDto = {
     bankName: 'Sparkasse Leipzig',
     iban: 'DE02 8605 5592 0000 0000 00',
     bic: 'WELADE8LXXX',
-    vorstand: 'Vertreten durch: Erika Mustermann',
+    vorstand: 'Vorstandsvorsitz: Erika Mustermann',
     register: 'VR 1234, Amtsgericht Leipzig',
     kontakt: null,
     fusstext: null,

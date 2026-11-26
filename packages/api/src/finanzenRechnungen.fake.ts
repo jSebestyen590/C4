@@ -27,6 +27,7 @@ import {
   entwurfAusRechnung,
   listePasst,
   planeRechnung,
+  type RechnungPlanKontext,
   planeRechnungZahlung,
   zahlungKontoIds,
   zustandBilden,
@@ -51,6 +52,8 @@ export interface RechnungenFakeKern extends BelegeFakeKern {
       rechnungErlaubt?: boolean;
     },
   ): Promise<GebuchtErgebnis>;
+  /** Holders of the Vorstandsposten on the invoice date; tests may change the array. */
+  vorstand: RechnungPlanKontext['vorstand'];
 }
 
 interface FakeRechnung {
@@ -174,6 +177,7 @@ export function createFakeRechnungenStore(k: RechnungenFakeKern): RechnungenStor
       zeitraeume: STEUERSATZ_ZEITRAEUME_SEED,
       heute: datumBerlin(new Date()),
       einstellungen: einstellungen[einstellungen.length - 1] ?? null,
+      vorstand: k.vorstand,
       empfaenger: ergebnis,
     };
   };
