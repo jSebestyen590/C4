@@ -507,57 +507,60 @@ export function TodoFormular({
           />
         </Grid.Col>
       </Grid>
-      <Group gap="xs" wrap="nowrap" align="flex-end">
-        <MultiSelect
-          style={{ flex: 1, minWidth: 0 }}
-          label="Zuständig"
-          placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
-          size="md"
-          searchable
-          clearable
-          // Opens on a click or when typing, not on focus; closes after a choice.
-          openOnFocus={false}
-          dropdownOpened={offen}
-          onDropdownOpen={() => setOffen(true)}
-          onDropdownClose={() => setOffen(false)}
-          nothingFoundMessage="Niemand gefunden"
-          data={[
-            { group: 'Gruppen', items: gruppen },
-            { group: 'Personen', items: personen },
-          ]}
-          value={gewaehlt}
-          onChange={(werte) => {
-            setOffen(false);
-            aendern((d) => todoZustaendigSetzen(d, werte));
-          }}
-          renderOption={({ option }) => {
-            const s = status.get(option.value);
-            return s ? (
-              <StatusName status={s}>{option.label}</StatusName>
-            ) : (
-              <span>{option.label}</span>
-            );
-          }}
-        />
-        <Tooltip
-          label="Bei nur einer Person gibt es nichts zu wählen."
-          disabled={!nurEine}
-          events={{ hover: true, focus: true, touch: true }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', minHeight: 42, maxWidth: '40%' }}>
-            <Switch
-              size="md"
-              label="Gemeinsam abhaken"
-              disabled={nurEine}
-              checked={daten.modus === 'gemeinsam'}
-              onChange={(e) => {
-                const gemeinsam = e.currentTarget.checked;
-                aendern((d) => ({ ...d, modus: gemeinsam ? 'gemeinsam' : 'einzeln' }));
-              }}
-            />
-          </div>
-        </Tooltip>
-      </Group>
+      <Grid gap="xs" align="flex-end">
+        <Grid.Col span={{ base: 12, sm: 8 }}>
+          <MultiSelect
+            label="Zuständig"
+            placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
+            size="md"
+            searchable
+            clearable
+            // Opens on a click or when typing, not on focus; closes after a choice.
+            openOnFocus={false}
+            dropdownOpened={offen}
+            onDropdownOpen={() => setOffen(true)}
+            onDropdownClose={() => setOffen(false)}
+            nothingFoundMessage="Niemand gefunden"
+            data={[
+              { group: 'Gruppen', items: gruppen },
+              { group: 'Personen', items: personen },
+            ]}
+            value={gewaehlt}
+            onChange={(werte) => {
+              setOffen(false);
+              aendern((d) => todoZustaendigSetzen(d, werte));
+            }}
+            renderOption={({ option }) => {
+              const s = status.get(option.value);
+              return s ? (
+                <StatusName status={s}>{option.label}</StatusName>
+              ) : (
+                <span>{option.label}</span>
+              );
+            }}
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 4 }}>
+          <Tooltip
+            label="Bei nur einer Person gibt es nichts zu wählen."
+            disabled={!nurEine}
+            events={{ hover: true, focus: true, touch: true }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', minHeight: 42 }}>
+              <Switch
+                size="md"
+                label="Gemeinsam abhaken"
+                disabled={nurEine}
+                checked={daten.modus === 'gemeinsam'}
+                onChange={(e) => {
+                  const gemeinsam = e.currentTarget.checked;
+                  aendern((d) => ({ ...d, modus: gemeinsam ? 'gemeinsam' : 'einzeln' }));
+                }}
+              />
+            </div>
+          </Tooltip>
+        </Grid.Col>
+      </Grid>
     </Stack>
   );
 }
@@ -875,46 +878,46 @@ export function EmFormular({
   return (
     <Stack gap="xs">
       <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
-      <Group gap="xs" wrap="nowrap" align="flex-end">
-        <Select
-          style={{ flex: 1, minWidth: 0 }}
-          allowDeselect={false}
-          label="Person"
-          placeholder="Person wählen"
-          data-fokus="person"
-          size="md"
-          searchable
-          clearable
-          nothingFoundMessage="Niemand gefunden"
-          data={personenOptionen(personen)}
-          value={daten.sub}
-          onChange={(sub) => aendern((d) => ({ ...d, sub }))}
-          renderOption={({ option }) => {
-            const s = status.get(option.value);
-            return s ? (
-              <StatusName status={s}>{option.label}</StatusName>
-            ) : (
-              <span>{option.label}</span>
-            );
-          }}
-        />
-        <Switch
-          style={{
-            flex: '0 0 auto',
-            maxWidth: '40%',
-            minHeight: 42,
-            alignItems: 'center',
-            display: 'flex',
-          }}
-          size="md"
-          label="Abstimmung zum EM"
-          checked={a !== null}
-          onChange={(e) => {
-            const an = e.currentTarget.checked;
-            aendern((d) => ({ ...d, abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null }));
-          }}
-        />
-      </Group>
+      <Grid gap="xs" align="flex-end">
+        <Grid.Col span={{ base: 12, sm: 8 }}>
+          <Select
+            allowDeselect={false}
+            label="Person"
+            placeholder="Person wählen"
+            data-fokus="person"
+            size="md"
+            searchable
+            clearable
+            nothingFoundMessage="Niemand gefunden"
+            data={personenOptionen(personen)}
+            value={daten.sub}
+            onChange={(sub) => aendern((d) => ({ ...d, sub }))}
+            renderOption={({ option }) => {
+              const s = status.get(option.value);
+              return s ? (
+                <StatusName status={s}>{option.label}</StatusName>
+              ) : (
+                <span>{option.label}</span>
+              );
+            }}
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 4 }}>
+          <Switch
+            style={{ minHeight: 42, alignItems: 'center', display: 'flex' }}
+            size="md"
+            label="Abstimmung zum EM"
+            checked={a !== null}
+            onChange={(e) => {
+              const an = e.currentTarget.checked;
+              aendern((d) => ({
+                ...d,
+                abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null,
+              }));
+            }}
+          />
+        </Grid.Col>
+      </Grid>
       {a && (
         <Select
           allowDeselect={false}
