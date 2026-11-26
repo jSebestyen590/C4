@@ -187,8 +187,8 @@ export function createSumup(konfig: SumupKonfig, deps: SumupDeps = {}): SumupApi
         const href = seite.links?.find((l) => l.rel === 'next')?.href;
         url = null;
         if (href && seite.items.length > 0) {
-          // The link is a query string or a path; resolve it against the history endpoint.
-          const naechste = new URL(href, wurzel);
+          // SumUp sends a bare query string ("limit=100&oldest_ref=…", no "?"); a path or URL also works.
+          const naechste = new URL(/^(\/|\?|https?:)/.test(href) ? href : `?${href}`, wurzel);
           if (naechste.origin === BASIS) url = naechste.toString();
         }
       }

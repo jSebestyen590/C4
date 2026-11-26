@@ -36,7 +36,8 @@ describe('SumUp client', () => {
         ? json({ items: [tx('b')], links: [] })
         : json({
             items: [tx('a', { tip_amount: 1.1 })],
-            links: [{ rel: 'next', href: '?oldest_time=x&page=2' }],
+            // Real SumUp format: a bare query string without "?".
+            links: [{ rel: 'next', href: 'limit=100&merchant_code=MC1&oldest_ref=a&page=2' }],
           }),
     );
     const api = createSumup({ apiKey: 'k', merchantCode: 'MC1' }, { fetch: m.fetchFn });
@@ -47,7 +48,9 @@ describe('SumUp client', () => {
       ['b', 1250, 0],
     ]);
     expect(m.urls[0]).toContain('/v2.1/merchants/MC1/transactions/history?oldest_time=');
-    expect(m.urls[1]).toContain('page=2');
+    expect(m.urls[1]).toBe(
+      'https://api.sumup.com/v2.1/merchants/MC1/transactions/history?limit=100&merchant_code=MC1&oldest_ref=a&page=2',
+    );
     expect(m.auth[0]).toBe('Bearer k');
     expect(JSON.parse(r.transaktionen[0]!.roh).id).toBe('a');
   });
