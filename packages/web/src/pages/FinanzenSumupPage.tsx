@@ -24,6 +24,7 @@ import {
   centAnzeigen,
   datumAnzeigen,
   nettoSteuer,
+  sumupGeschaeftstag,
   zeitBerlin,
   type SumupAbrufErgebnis,
   type SumupBuchenErgebnis,
@@ -36,6 +37,7 @@ import { schluesselFuer } from '../buchungFormular';
 import { BETRAG_STIL, finanzenKeys, jsonOderFehler, useSumup } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
 import { HINWEIS_DAUER_MS } from '../gebuchtHinweis';
+import { VerschiebHinweis } from '../FestschreibungHinweise';
 import { InfoHinweis } from '../InfoHinweis';
 import { tagAnzeigen } from '../kalenderZeit';
 import {
@@ -53,6 +55,8 @@ interface Buchung {
   gruppe: SumupGruppeDto;
   eventId: string | null;
   eventText: string | null;
+  /** Business day the server books on: the event's start day, else the group's day. */
+  datum: string;
   ids: string[];
   anzahl: number;
   summeCent: number;
@@ -139,10 +143,12 @@ export function FinanzenSumupPage() {
     const eventId = wahl === OHNE_EVENT ? null : wahl;
     const a = sumupAuswahl(g.transaktionen, abgewaehlt);
     const option = sumupEventOptionen(events, g).find((o) => o.value === wahl);
+    const beginn = events.find((e) => e.id === eventId)?.beginn;
     return {
       gruppe: g,
       eventId,
       eventText: eventId ? (option?.label ?? null) : null,
+      datum: beginn ? sumupGeschaeftstag(beginn) : g.geschaeftstag,
       ...a,
     };
   };
@@ -470,7 +476,7 @@ export function FinanzenSumupPage() {
               <Table.Tbody>
                 <Table.Tr>
                   <Table.Th>Tag</Table.Th>
-                  <Table.Td>{tagText(pruefen.gruppe.geschaeftstag)}</Table.Td>
+                  <Table.Td>{tagText(pruefen.datum)}</Table.Td>
                 </Table.Tr>
                 <Table.Tr>
                   <Table.Th>Event</Table.Th>
@@ -498,6 +504,7 @@ export function FinanzenSumupPage() {
                 </Table.Tr>
               </Table.Tbody>
             </Table>
+            <VerschiebHinweis datum={pruefen.datum} />
             {buchen.isError && (
               <Alert color="red">
                 {fehlerText(buchen.error, 'Das Buchen ist fehlgeschlagen.')}
