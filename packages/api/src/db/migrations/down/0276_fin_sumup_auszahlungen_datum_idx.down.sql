@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_sumup_auszahlungen_datum_idx

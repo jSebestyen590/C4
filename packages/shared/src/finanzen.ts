@@ -34,6 +34,7 @@ export const QUELLE_TYPEN = [
   'erstattung',
   'rechnung',
   'rechnungszahlung',
+  'sumup',
 ] as const;
 export type QuelleTyp = (typeof QUELLE_TYPEN)[number];
 /** The types a user may choose when booking by hand (`storno` has its own route). */
@@ -83,6 +84,7 @@ export const QUELLE_TYP_LABELS: Record<QuelleTyp, string> = {
   erstattung: 'Erstattung',
   rechnung: 'Rechnung',
   rechnungszahlung: 'Rechnungszahlung',
+  sumup: 'SumUp',
 };
 
 // ----- Schemas

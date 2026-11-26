@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_sumup_auszahlungen_datum_idx ON fin_sumup_auszahlungen (datum)
