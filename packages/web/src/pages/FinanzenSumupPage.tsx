@@ -111,6 +111,8 @@ export function FinanzenSumupPage() {
       const index = gruppen.findIndex((g) => g.key === b.gruppe.key);
       const naechste = gruppen[index + 1]?.key ?? gruppen[index - 1]?.key ?? null;
       setPruefen(null);
+      // Deselected payments of the booked group stay open; select them again for their next booking.
+      setAbgewaehlt(new Set());
       notifications.show({
         color: 'green',
         autoClose: HINWEIS_DAUER_MS,
