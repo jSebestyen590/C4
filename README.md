@@ -202,7 +202,7 @@ deploy; only new migrations or secrets do. `pnpm db:migrate` would now migrate t
 deploy the branch instead when it adds migrations.
 
 Several sessions can run side by side: set `WEB_PORT` (5173-5182, allowed as Cognito callback and CORS
-origin on dev) and `PORT` (API), e.g. `WEB_PORT=5174 PORT=3001 pnpm dev`. `.claude/launch.json` has
+origin on dev) and `API_PORT`, e.g. `WEB_PORT=5174 API_PORT=3001 pnpm dev`. `.claude/launch.json` has
 the slots `dev-1` ... `dev-9` for this; `web`/`api` use the default ports 5173/3000.
 
 ## Notes
