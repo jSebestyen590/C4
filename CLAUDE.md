@@ -53,6 +53,13 @@ they only carry the tools they need, so each call starts with a much smaller con
   end with the `- [ ]` checklist of open and re-test points and propose a new session that starts
   from that checklist and the PR/branch. Long multi-day feedback sessions grew to 200k+ average main
   context and were the most expensive sessions by far (150M+ each).
+- This starts with the first feedback round: when the implementation session of a larger feature is
+  done, it adds a section `## Stand der Umsetzung` to `docs/plans/<feature>.md` (key files per area,
+  deviations from the plan, known open points, branch/PR/deploy state), commits and pushes it, and
+  proposes a fresh session "Feedback <feature>" (context `fresh`, not `fork`; `use_worktree: false`,
+  same worktree and branch) whose brief points to that plan file, the branch and the PR. The user
+  starts it after testing on dev and gives the feedback there. Each feedback round updates that
+  section. Small features stay in one session.
 - Split the implementation of a larger plan into phases (e.g. shared types + API/DB, web, docs) and
   start a fresh `implementer` per phase with only its part of the plan plus the files the previous
   phases touched. One agent for everything grows its context to 400k+ and re-reads it on every
