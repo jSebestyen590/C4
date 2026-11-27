@@ -1,4 +1,5 @@
 import { ZeitFeld } from '../ZeitFeld';
+import { useListeUmschalten } from '../ListenSelect';
 import {
   ActionIcon,
   Badge,
@@ -14,7 +15,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconChevronDown, IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
 import { useRef, useState } from 'react';
 import type { BausteinSchicht } from '@c4/shared';
 import {
@@ -50,8 +51,7 @@ function PersonenKnopf({
   onChange,
 }: Readonly<{ titel: string; personen: readonly string[]; onChange: (p: string[]) => void }>) {
   const [offen, setOffen] = useState(false);
-  const eingabe = useRef<HTMLInputElement>(null);
-  const klickErlaubt = useRef(false);
+  const listeUmschalten = useListeUmschalten({ clearable: false });
   const feld = useRef<HTMLDivElement>(null);
   const mitglieder = useMitgliederListe();
   const liste = (mitglieder.data ?? []).filter(
@@ -69,7 +69,10 @@ function PersonenKnopf({
           variant="light"
           size={42}
           aria-label="Personen eintragen"
-          onClick={() => setOffen(true)}
+          onClick={() => {
+            listeUmschalten.schliessen();
+            setOffen(true);
+          }}
         >
           <IconUsers size={20} />
         </ActionIcon>
@@ -81,7 +84,11 @@ function PersonenKnopf({
             ref={feld}
             onClickCapture={(e) => {
               const ziel = e.target as HTMLElement;
-              if (klickErlaubt.current || ziel.closest('button') || !feld.current?.contains(ziel))
+              if (
+                listeUmschalten.offen ||
+                ziel.closest('button') ||
+                !feld.current?.contains(ziel)
+              )
                 return;
               e.stopPropagation();
             }}
@@ -93,27 +100,7 @@ function PersonenKnopf({
               searchable
               data-autofocus
               openOnFocus={false}
-              ref={eingabe}
-              rightSection={
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size={42}
-                  aria-label="Liste öffnen"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    // Mantine opens the list on a click into the input: let exactly this one through.
-                    klickErlaubt.current = true;
-                    eingabe.current?.click();
-                    klickErlaubt.current = false;
-                    eingabe.current?.focus();
-                  }}
-                >
-                  <IconChevronDown size={18} />
-                </ActionIcon>
-              }
-              rightSectionPointerEvents="all"
-              rightSectionWidth={42}
+              {...listeUmschalten.props}
               data={optionen}
               value={[...personen]}
               onChange={onChange}

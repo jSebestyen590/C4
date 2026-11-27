@@ -471,6 +471,63 @@ describe('Dienst', () => {
   });
 });
 
+describe('Schicht', () => {
+  const event = { ...bausteinLeer('bausteinEvent'), beginnZeit: '20:00', endeZeit: '04:00' };
+  const mitEvent: SlashDaten = {
+    ...daten,
+    dienstformen: [
+      { id: 'bar', name: 'Bar' },
+      { id: 'kasse', name: 'Kasse' },
+    ],
+  };
+  const eintraege = (q: string) => slashEintraege(q, mitEvent, false, false, { event });
+
+  it('is a separate entry with the same gating as /dienst', () => {
+    expect(slashEintraege('schicht', mitEvent).map((e) => e.titel)).not.toContain('Schicht');
+    expect(slashEintraege('schicht', mitEvent, false, false, { event })[0]).toMatchObject({
+      titel: 'Schicht',
+      aktion: { art: 'weiter', text: 'schicht ' },
+    });
+    expect(
+      slashEintraege('schicht', mitEvent, false, false, { event, eventIstTeilnahme: true }),
+    ).toEqual([]);
+    expect(slashEintraege('schicht ', mitEvent)).toEqual([]);
+    // No longer an alias of /dienst.
+    expect(
+      slashEintraege('dienst', mitEvent, false, false, { event }).map((e) => e.titel),
+    ).toEqual(['Dienst']);
+  });
+  it('stage 1: the whole event time or a typed span', () => {
+    expect(eintraege('schicht ')[0]?.aktion).toEqual({ art: 'weiter', text: 'schicht gesamt › ' });
+    expect(eintraege('schicht 18-22')[0]?.aktion).toEqual({
+      art: 'weiter',
+      text: 'schicht 18:00-22:00 › ',
+    });
+  });
+  it('stage 2: the Art enters the Schicht without a person', () => {
+    expect(eintraege('schicht gesamt › ').map((e) => e.titel)).toEqual([
+      'Bar',
+      'Kasse',
+      'Aufbau',
+      'Putzen',
+    ]);
+    expect(eintraege('schicht 18:00-22:00 › ba')[0]?.aktion).toEqual({
+      art: 'dienst',
+      eingabe: { zeiten: { beginnZeit: '18:00', endeZeit: '22:00' }, dienst: 'bar', sub: null },
+    });
+    expect(eintraege('schicht gesamt › bar 2/3')[0]?.aktion).toEqual({
+      art: 'dienst',
+      eingabe: { zeiten: null, dienst: 'bar', sub: null, minimum: 2, wunsch: 3 },
+    });
+    expect(eintraege('schicht gesamt › auf')[0]?.aktion).toMatchObject({
+      eingabe: { dienst: 'aufbau', sub: null },
+    });
+  });
+  it('has no person stage', () => {
+    expect(eintraege('schicht gesamt › bar › ')).toEqual([]);
+  });
+});
+
 describe('auswahlNachAenderung', () => {
   const liste = (query: string, ...schluessel: string[]) => ({ query, schluessel });
 

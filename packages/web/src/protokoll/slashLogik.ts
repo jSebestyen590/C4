@@ -162,7 +162,7 @@ export function anwesenheitPerson(wahl: BausteinWahl): string | null {
 }
 
 export type SlashStufe =
-  'bausteine' | 'vorlagen' | 'events' | 'abstimmung' | 'zitat' | 'dienst' | AnwesenheitArt;
+  'bausteine' | 'vorlagen' | 'events' | 'abstimmung' | 'zitat' | 'dienst' | 'schicht' | AnwesenheitArt;
 
 /** Lower case, umlauts spelled out (`Anwärter` = `anwaerter`), single spaces. */
 export function normalisieren(text: string): string {
@@ -195,6 +195,7 @@ export function slashStufe(query: string): { stufe: SlashStufe; filter: string }
   }
   if (wort === 'zitat') return { stufe: 'zitat', filter: rest.trim() };
   if (wort === 'dienst') return { stufe: 'dienst', filter: rest.trim() };
+  if (wort === 'schicht') return { stufe: 'schicht', filter: rest.trim() };
   if (wort === 'erscheint' || wort === 'erscheinen' || wort === 'kommt') {
     return { stufe: 'erscheint', filter: rest.trim() };
   }
@@ -214,6 +215,7 @@ interface Definition {
   /** Only found by its aliases (not by the title), and only once something was typed. */
   nurAlias?: boolean;
   /** Only in the slash menu, not in the toolbar's Baustein menu (no Baustein, or tied to the cursor's place). */
+  /** `dienst`: only next to an Event with Dienste (also for /schicht). */
   nurSlash?: 'ende' | 'dienst';
 }
 
@@ -388,9 +390,18 @@ export const SLASH_DEFINITIONEN: readonly Definition[] = [
     titel: 'Dienst',
     beschreibung: 'Dienst mit Person ins Event eintragen',
     symbol: 'gruppe',
-    woerter: ['dienst', 'schicht'],
+    woerter: ['dienst'],
     nurSlash: 'dienst',
     aktion: { art: 'weiter', text: 'dienst ' },
+  },
+  {
+    schluessel: 'schicht',
+    titel: 'Schicht',
+    beschreibung: 'Neue Schicht ins Event eintragen',
+    symbol: 'gruppe',
+    woerter: ['schicht'],
+    nurSlash: 'dienst',
+    aktion: { art: 'weiter', text: 'schicht ' },
   },
   {
     schluessel: 'ende',
@@ -605,7 +616,7 @@ const DIENST_TRENNER = '›';
 const DIENST_ART = { '~aufbau': 'aufbau', '~putzen': 'putzen' } as const;
 
 /**
- * Entries of "/dienst": three stages in one query, `<Zeit> › <Dienst> › <Person>`. Stage 1 the time ("Gesamt"
+ * Entries of "/dienst" (and "/schicht", see `wort`): three stages in one query, `<Zeit> › <Dienst> › <Person>`. Stage 1 the time ("Gesamt"
  * or a span typed as `18-22`), stage 2 the Dienstform (or Aufbau / Putzen), stage 3 "Ohne Personen" or a
  * person. The last one inserts nothing but the entry into the Event block.
  */
@@ -614,6 +625,8 @@ export function dienstEintraege(
   event: BausteinEventDaten,
   dienstformen: readonly SlashDienstform[],
   personen: readonly SlashPerson[],
+  /** `schicht`: only two stages `<Zeit> › <Art>`, the second one enters the Schicht without persons. */
+  wort: 'dienst' | 'schicht' = 'dienst',
 ): SlashEintrag[] {
   const teile = rest.split(DIENST_TRENNER).map((t) => t.trim());
   const weiter = (schluessel: string, titel: string, beschreibung: string, text: string) =>
@@ -631,17 +644,17 @@ export function dienstEintraege(
     const gesamt = eventZeiten(event);
     if (enthaelt('gesamt eventzeit', filter)) {
       eintraege.push(
-        weiter('dienst-gesamt', 'Gesamt (Eventzeit)', spanneText(gesamt), 'dienst gesamt › '),
+        weiter(`${wort}-gesamt`, 'Gesamt (Eventzeit)', spanneText(gesamt), `${wort} gesamt › `),
       );
     }
     const spanne = zeitspanneParsen(filter);
     if (spanne) {
       eintraege.push(
         weiter(
-          'dienst-spanne',
+          `${wort}-spanne`,
           spanneText(spanne),
           'Von–bis',
-          `dienst ${spanne.beginnZeit}-${spanne.endeZeit} › `,
+          `${wort} ${spanne.beginnZeit}-${spanne.endeZeit} › `,
         ),
       );
     }
@@ -654,10 +667,10 @@ export function dienstEintraege(
       gesehen.add(text);
       eintraege.push(
         weiter(
-          `dienst-schicht-${text}`,
+          `${wort}-schicht-${text}`,
           text,
           'Zeit einer Schicht',
-          `dienst ${s.beginnZeit}-${s.endeZeit} › `,
+          `${wort} ${s.beginnZeit}-${s.endeZeit} › `,
         ),
       );
     }
@@ -665,10 +678,10 @@ export function dienstEintraege(
       // Harmless when chosen: the typed text stays as it is.
       eintraege.push(
         weiter(
-          'dienst-zeit-hinweis',
+          `${wort}-zeit-hinweis`,
           'Uhrzeit eingeben',
           'z. B. 18-22 oder 18:30-22',
-          `dienst ${filter}`,
+          `${wort} ${filter}`,
         ),
       );
     }
@@ -692,16 +705,34 @@ export function dienstEintraege(
     const geordnet = [...dienstformen].sort(
       (a, b) => Number(benutzt.has(b.id)) - Number(benutzt.has(a.id)),
     );
+    // /schicht: choosing the Art enters the Schicht (no person stage, nothing is written into the text).
+    const schichtEintrag = (schluessel: string, titel: string, dienst: string): SlashEintrag => ({
+      schluessel,
+      titel,
+      beschreibung: 'Neue Schicht eintragen',
+      symbol: 'gruppe',
+      aktion: {
+        art: 'dienst',
+        eingabe: {
+          zeiten,
+          dienst,
+          sub: null,
+          ...(zahlen ? { minimum: zahlen.minimum, wunsch: zahlen.wunsch } : {}),
+        },
+      },
+    });
     const eintraege: SlashEintrag[] = [];
     for (const d of geordnet) {
       if (!enthaelt(d.name, filter)) continue;
       eintraege.push(
-        weiter(
-          `dienst-form-${d.id}`,
-          `${d.name}${zusatzTitel}`,
-          'Dienstform',
-          `dienst ${zeitText} › ${normalisieren(d.name)}${zusatz} › `,
-        ),
+        wort === 'schicht'
+          ? schichtEintrag(`schicht-form-${d.id}`, `${d.name}${zusatzTitel}`, d.id)
+          : weiter(
+              `${wort}-form-${d.id}`,
+              `${d.name}${zusatzTitel}`,
+              'Dienstform',
+              `${wort} ${zeitText} › ${normalisieren(d.name)}${zusatz} › `,
+            ),
       );
     }
     for (const [schluessel, titel] of [
@@ -710,18 +741,25 @@ export function dienstEintraege(
     ] as const) {
       if (enthaelt(titel, filter)) {
         eintraege.push(
-          weiter(
-            `dienst-${schluessel}`,
-            `${titel}${zusatzTitel}`,
-            'Schicht',
-            `dienst ${zeitText} › ${schluessel}${zusatz} › `,
-          ),
+          wort === 'schicht'
+            ? schichtEintrag(
+                `schicht-${schluessel}`,
+                `${titel}${zusatzTitel}`,
+                DIENST_ART[schluessel],
+              )
+            : weiter(
+                `${wort}-${schluessel}`,
+                `${titel}${zusatzTitel}`,
+                'Schicht',
+                `${wort} ${zeitText} › ${schluessel}${zusatz} › `,
+              ),
         );
       }
     }
     return eintraege;
   }
 
+  if (wort === 'schicht') return [];
   const { name: dienstText, zahlen } = dienstZahlenTrennen(teile[1]!);
   const dienst =
     dienstText in DIENST_ART
@@ -738,7 +776,7 @@ export function dienstEintraege(
   const bisher = new Set(dienstPersonen(event, basis));
   const zahlenTitel = zahlen ? ` (${zahlenText(zahlen)})` : '';
   // The typed text after an insert: the same stage again (an extra space makes the menu refresh).
-  const zurueck = `dienst ${zeitText} › ${teile[1]!} › `;
+  const zurueck = `${wort} ${zeitText} › ${teile[1]!} › `;
   const eintrag = (
     schluessel: string,
     titel: string,
@@ -839,9 +877,15 @@ export function slashEintraege(
   if (stufe === 'abstimmung') return ohneVerschachtelt ? [] : abstimmungEintraege(filter);
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
   if (stufe === 'zitat') return zitatEintraege(filter);
-  if (stufe === 'dienst') {
+  if (stufe === 'dienst' || stufe === 'schicht') {
     return kontext.event && !kontext.eventIstTeilnahme
-      ? dienstEintraege(filter, kontext.event, daten.dienstformen ?? [], daten.personen ?? [])
+      ? dienstEintraege(
+          filter,
+          kontext.event,
+          daten.dienstformen ?? [],
+          daten.personen ?? [],
+          stufe,
+        )
       : [];
   }
   if (stufe === 'erscheint' || stufe === 'geht') {

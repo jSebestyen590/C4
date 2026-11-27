@@ -1,3 +1,4 @@
+import { ListenMultiSelect, ListenSelect } from './ListenSelect';
 import { ZeitFeld } from './ZeitFeld';
 import {
   Box,
@@ -5,9 +6,7 @@ import {
   Collapse,
   Flex,
   Group,
-  MultiSelect,
   Paper,
-  Select,
   SimpleGrid,
   SegmentedControl,
   Stack,
@@ -322,7 +321,7 @@ export function ProtokollKopf({
     wert: string | null,
     setzen: (sub: string | null) => void,
   ) => (
-    <Select
+    <ListenSelect
       allowDeselect={false}
       size="md"
       label={label}
@@ -439,7 +438,7 @@ export function ProtokollKopf({
 
           <Stack gap="xs">
             <Title order={4}>EMs</Title>
-            <MultiSelect
+            <ListenMultiSelect
               size="md"
               aria-label="EMs"
               placeholder="EMs auswählen"

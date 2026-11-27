@@ -1,5 +1,6 @@
+import { ListenSelect } from '../ListenSelect';
 import { ZeitFeld } from '../ZeitFeld';
-import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
+import { ActionIcon, Anchor, Flex, Group, Stack, Text } from '@mantine/core';
 import type { CSSProperties } from 'react';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
@@ -90,7 +91,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
         <Stack gap={4} className="protokoll-anwesenheit-kopf">
           {editierbar ? (
             <Flex gap="xs" align="center" wrap="wrap">
-              <Select
+              <ListenSelect
                 allowDeselect={false}
                 size="md"
                 aria-label="Person"

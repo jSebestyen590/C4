@@ -1,3 +1,4 @@
+import { ListenMultiSelect, ListenSelect } from '../ListenSelect';
 import {
   Anchor,
   ActionIcon,
@@ -7,9 +8,7 @@ import {
   Button,
   Grid,
   Group,
-  MultiSelect,
   Paper,
-  Select,
   SegmentedControl,
   SimpleGrid,
   Stack,
@@ -20,7 +19,7 @@ import {
 import { InfoHinweis } from '../InfoHinweis';
 import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AUSWAHL_MAX_OPTIONEN,
@@ -263,7 +262,7 @@ export function EventFormular({
       <Text size="sm" c="dimmed">
         {vorlageText}
       </Text>
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Im Kalender"
         data-fokus="kalender"
@@ -283,7 +282,7 @@ export function EventFormular({
       />
       {daten.eventId && <KalenderLink eventId={daten.eventId} />}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" style={{ alignItems: 'end' }}>
-        <Select
+        <ListenSelect
           allowDeselect={false}
           label="Kategorie"
           description={
@@ -363,7 +362,7 @@ export function EventFormular({
           </>
         )}
       </SimpleGrid>
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Verantwortliche:r"
         placeholder="Niemand"
@@ -447,7 +446,6 @@ export function TodoFormular({
   const liste = mitglieder.data ?? [];
   const status = new Map(liste.map((m) => [`p:${m.sub}`, m.status]));
   const gewaehlt = daten.zustaendig.map(todoZustaendigWert);
-  const [offen, setOffen] = useState(false);
 
   if (!editierbar) {
     const namen = daten.zustaendig.map((z) => {
@@ -510,7 +508,7 @@ export function TodoFormular({
       </Grid>
       <Grid gap="xs" align="flex-end">
         <Grid.Col span={{ base: 12, sm: 8 }}>
-          <MultiSelect
+          <ListenMultiSelect
             label="Zuständig"
             placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
             size="md"
@@ -518,9 +516,7 @@ export function TodoFormular({
             clearable
             // Opens on a click or when typing, not on focus; closes after a choice.
             openOnFocus={false}
-            dropdownOpened={offen}
-            onDropdownOpen={() => setOffen(true)}
-            onDropdownClose={() => setOffen(false)}
+            schliessenNachWahl
             nothingFoundMessage="Niemand gefunden"
             data={[
               { group: 'Gruppen', items: gruppen },
@@ -528,7 +524,6 @@ export function TodoFormular({
             ]}
             value={gewaehlt}
             onChange={(werte) => {
-              setOffen(false);
               aendern((d) => todoZustaendigSetzen(d, werte));
             }}
             renderOption={({ option }) => {
@@ -551,7 +546,11 @@ export function TodoFormular({
               <Switch
                 size="md"
                 label="Gemeinsam abhaken"
-                styles={{ label: { lineHeight: 1.3, paddingBlock: 0 } }}
+                styles={{
+                  body: { alignItems: 'center' },
+                  labelWrapper: { justifyContent: 'center' },
+                  label: { lineHeight: 1.3, paddingBlock: 0 },
+                }}
                 disabled={nurEine}
                 checked={daten.modus === 'gemeinsam'}
                 onChange={(e) => {
@@ -604,7 +603,7 @@ export function VergangenesEventFormular({
   }
   return (
     <Stack gap="xs">
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Event aus dem Kalender"
         placeholder="Event wählen"
@@ -888,7 +887,7 @@ export function EmFormular({
       <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
       <Grid gap="xs" align="flex-end">
         <Grid.Col span={{ base: 12, sm: 8 }}>
-          <Select
+          <ListenSelect
             allowDeselect={false}
             label="Person"
             placeholder="Person wählen"
@@ -927,7 +926,7 @@ export function EmFormular({
         </Grid.Col>
       </Grid>
       {a && (
-        <Select
+        <ListenSelect
           allowDeselect={false}
           label="Beantragt von"
           placeholder="Person wählen"
@@ -986,7 +985,7 @@ export function AufnahmeFormular({
   return (
     <Stack gap="xs">
       <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
@@ -1385,7 +1384,7 @@ export function WahlFormular({
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
               <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
-                <Select
+                <ListenSelect
                   allowDeselect={false}
                   label={`Kandidat:in ${i + 1}`}
                   placeholder="Person wählen"
@@ -1446,7 +1445,7 @@ export function WahlFormular({
         wert={daten.enthaltung}
         onWert={(enthaltung) => aendern((d) => ({ ...d, enthaltung }))}
       />
-      <MultiSelect
+      <ListenMultiSelect
         label="Vorgeschlagen, tritt nicht an"
         placeholder={daten.nichtAngetreten.length === 0 ? 'Personen wählen' : undefined}
         size="md"

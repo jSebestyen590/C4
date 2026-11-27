@@ -111,7 +111,7 @@ Entscheidungen aus den Rückfragen:
 
 ## Stand der Umsetzung
 
-Branch `protokoll-usability`, PR #102 (offen, nicht gemergt), zuletzt auf dev ausgeliefert am 27.11.2026.
+Branch `protokoll-usability`, PR #102 (offen, nicht gemergt), zuletzt auf dev ausgeliefert am 27.11.2026 (Runde 2).
 
 - Shared/API: `packages/shared/src/protokolle.ts`, `protokollAnwesenheit.ts`, `protokollAktionen.ts`; API `protokollAktionen.ts`.
 - Editor: `packages/web/src/protokoll/` – `slashLogik.ts` (Stufen `/dienst`, `/zitat`), `einfuegen.ts`, `bausteinLogik.ts`,
@@ -124,6 +124,14 @@ Putz-/Aufbauschicht Datum–Beginn–Ende, Leeren-X im Feldrahmen, `/dienst` mit
 (`bar 2/3`), mehreren Personen und „Fertig“, ohne `/dienst` bei Teilnahme-Events, Personenauswahl fokussiert ohne
 offene Liste, „Gemeinsam abhaken“ ausgerichtet mit Info, `/geht`/`/erscheint` gleich breit.
 
+Feedbackrunde 2 (27.11.2026): durchsuchbare Auswahlfelder lassen sich wieder schließen (`packages/web/src/ListenSelect.tsx`:
+`useListeUmschalten`, `ListenSelect`, `ListenMultiSelect`; Chevron entscheidet nach dem Zustand beim mousedown, weil
+Mantines Click-outside die Liste schon beim mousedown schließt; Klick ins offene Feld schließt; in allen Protokoll-Formularen,
+`ProtokollKopf.tsx`, `AnwesenheitBaustein.tsx`, `SchichtEditor.tsx`). Eigener Befehl `/schicht` (nur Dienst-Events,
+Stufen Zeit › Dienstform/Aufbau/Putzen mit `bar 2/3`, legt Schicht ohne Personen an, kein Text), nicht mehr Alias von
+`/dienst`. „Gemeinsam abhaken“: Label und Info mittig zum Schalter.
+
 Offen/bekannt: Leeren-X und Datum-X sind 40 bzw. 42 px groß (E2E-Ausnahme `.mantine-InputClearButton`); im
 Personen-Modal fehlt das Leeren-X (Pills einzeln entfernen); Konsolenwarnung `<div>` in `<p>` in der Event-Auswahl
-(Badge in Text); 409 auf `/sperre` bei zwei Tabs (erwartet).
+(Badge in Text); 409 auf `/sperre` bei zwei Tabs (erwartet); Personen-Pill im „Zuständig“-Feld kürzt bei 375 px etwas
+früh ab (kosmetisch).
