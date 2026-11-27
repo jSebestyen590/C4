@@ -28,14 +28,15 @@ they only carry the tools they need, so each call starts with a much smaller con
 | `explorer`      | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat)                                      |
 | `implementer`   | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
 | `tester`        | unit/integration tests, type checks, lint, builds, Playwright E2E (`pnpm e2e`), waiting for a dev deploy                             |
-| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (page reads, phone width, screenshots)                                         |
+| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (visual judgements, new flows without a Playwright spec)                       |
 
 - The main chat doesn't run tests, take screenshots or read page trees itself; agents report a
   short result.
 - When `explorer` ran first, put its findings (files, patterns, line ranges) into the `implementer`
   prompt so it doesn't explore the same area again.
-- `implementer` doesn't run browser checks: after it finishes, a fresh `browser-check` does, with the
-  routes/pages to check named in its prompt.
+- `implementer` doesn't run browser checks: after it finishes, a `tester` runs `pnpm e2e` (layout
+  checks, existing specs), then a fresh `browser-check` covers only visual judgements and new flows
+  without a spec, with the routes/pages to check named in its prompt.
 - Split larger browser checks into one `browser-check` per page or flow (e.g. "create Kasse",
   "count at event on phone", "Abrechnung"), run one after another, not in parallel (they share the
   browser pane). An agent's context, screenshots included, is gone when it finishes; one agent for
