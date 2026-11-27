@@ -3,7 +3,7 @@
 ## Überblick
 
 Das Paket `packages/e2e` (`@c4/e2e`) prüft die App automatisiert im Browser (Playwright, nur Chromium) gegen
-`https://dev.c4-leipzig.de/app/`. Der Lauf ist deutlich billiger als ein `browser-check` im eingebauten Browser und
+`https://dev.c4-leipzig.de/app/` oder gegen den lokalen Stack mit dev-Ressourcen (siehe Einrichtung). Der Lauf ist deutlich billiger als ein `browser-check` im eingebauten Browser und
 wird vom `tester`-Agenten ausgeführt. Bisher gibt es einen **Layout-Smoke-Test über alle Routen**; fachliche Flows
 folgen später. Die Tests laufen **nicht in CI**.
 
@@ -16,6 +16,11 @@ Einmalig lokal: `pnpm install`, `pnpm --filter @c4/e2e e2e:install` (lädt Chrom
 daher in jedem neuen Worktree; Claude legt sie bei Bedarf selbst an (Passwort aus dem Memory des Users). Das
 Passwort steht nie im Repo, im Chat oder in Testausgaben. Optional
 `E2E_BASE_URL` für ein anderes Ziel.
+
+**Lokal gegen dev** (ohne Deploy): `pnpm dev:env` (einmal je Worktree) und `pnpm dev` starten, dann
+`E2E_BASE_URL=http://localhost:5173/app/ pnpm e2e` (bei parallelen Sessions den Port des eigenen Slots, siehe README). Web und API laufen lokal mit dem Code des Branches, nutzen aber
+dev-Datenbank, -Buckets, -Secrets und -Cognito. Ein Deploy ist nur nötig, wenn der Branch Migrationen oder Secrets
+ändert.
 
 Das Setup-Projekt meldet sich bei jedem Lauf neu über die Cognito-Hosted-UI an (`setup/login.setup.ts`) und schreibt
 `.auth/state.json`. Außerdem löst es per API-Aufruf IDs für Routen mit Parametern auf (`setup/idQuellen.ts`) und legt

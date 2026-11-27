@@ -28,7 +28,7 @@ variable "groups" {
 variable "allow_localhost_callback" {
   type        = bool
   default     = false
-  description = "Allow http://localhost:5173 as OAuth callback (dev only)."
+  description = "Allow http://localhost:5173-5182 as OAuth callback and CORS origin (dev only)."
 }
 
 variable "deletion_protection" {

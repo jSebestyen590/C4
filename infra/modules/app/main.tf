@@ -2,15 +2,17 @@ data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
 locals {
-  name        = "${var.project}-${var.env}"
-  region      = data.aws_region.current.region
-  custom      = var.domain_name != null && var.domain_name != ""
-  app_host    = local.custom ? var.domain_name : aws_cloudfront_distribution.this.domain_name
-  app_origin  = "https://${local.app_host}"
-  callback    = ["${local.app_origin}/app/auth/callback"]
-  logout      = ["${local.app_origin}/app/"]
-  local_cb    = var.allow_localhost_callback ? ["http://localhost:5173/app/auth/callback"] : []
-  local_out   = var.allow_localhost_callback ? ["http://localhost:5173/app/"] : []
+  name       = "${var.project}-${var.env}"
+  region     = data.aws_region.current.region
+  custom     = var.domain_name != null && var.domain_name != ""
+  app_host   = local.custom ? var.domain_name : aws_cloudfront_distribution.this.domain_name
+  app_origin = "https://${local.app_host}"
+  callback   = ["${local.app_origin}/app/auth/callback"]
+  logout     = ["${local.app_origin}/app/"]
+  # Vite ports 5173-5182, so several local sessions can run side by side (see README "Local development").
+  local_orig  = var.allow_localhost_callback ? [for p in range(5173, 5183) : "http://localhost:${p}"] : []
+  local_cb    = [for o in local.local_orig : "${o}/app/auth/callback"]
+  local_out   = [for o in local.local_orig : "${o}/app/"]
   cognito_dom = "${aws_cognito_user_pool_domain.this.domain}.auth.${local.region}.amazoncognito.com"
 }
 
@@ -541,7 +543,7 @@ resource "aws_s3_bucket_cors_configuration" "profilbilder" {
   bucket = aws_s3_bucket.profilbilder.id
   cors_rule {
     allowed_methods = ["GET", "PUT"]
-    allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
+    allowed_origins = concat([local.app_origin], local.local_orig)
     allowed_headers = ["*"]
     max_age_seconds = 3000
   }
@@ -642,7 +644,7 @@ resource "aws_s3_bucket_cors_configuration" "finanzarchiv" {
   bucket = aws_s3_bucket.finanzarchiv.id
   cors_rule {
     allowed_methods = ["PUT"]
-    allowed_origins = concat([local.app_origin], var.allow_localhost_callback ? ["http://localhost:5173"] : [])
+    allowed_origins = concat([local.app_origin], local.local_orig)
     allowed_headers = ["content-type", "x-amz-checksum-sha256"]
     max_age_seconds = 3000
   }

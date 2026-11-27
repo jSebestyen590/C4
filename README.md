@@ -21,7 +21,7 @@ pnpm install
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
-Browser E2E tests (Playwright, against dev, not part of CI): `pnpm e2e`; setup in [docs/e2e.md](docs/e2e.md).
+Browser E2E tests (Playwright, against dev or the local stack, not part of CI): `pnpm e2e`; setup in [docs/e2e.md](docs/e2e.md).
 
 ## First-time AWS setup
 
@@ -194,6 +194,17 @@ pnpm db:down   # destroys the cluster
 
 Login uses the **dev** Cognito pool (localhost callback is allowed there). Needs your AWS credentials
 (IAM token for DSQL, Cognito admin calls) and an applied `infra/envs/dev`.
+
+To run the local web and API against the **dev** resources instead (dev database, buckets, secrets),
+run `pnpm dev:env` once, then `pnpm dev`. It copies the env vars of the `c4-dev-api` Lambda into
+`packages/api/.env.local` and dev's `config.json`, overwriting a `db:up` setup. Code changes then need no
+deploy; only new migrations or secrets do. `pnpm db:migrate` would now migrate the dev database, so
+deploy the branch instead when it adds migrations. Migrations, secrets and infra are shared by dev and
+every local stack, so only one branch with such changes should be deployed to dev at a time.
+
+Several sessions can run side by side: set `WEB_PORT` (5173-5182, allowed as Cognito callback and CORS
+origin on dev) and `API_PORT`, e.g. `WEB_PORT=5174 API_PORT=3001 pnpm dev`. `.claude/launch.json` has
+the slots `dev-1` ... `dev-9` for this; `web`/`api` use the default ports 5173/3000.
 
 ## Notes
 
