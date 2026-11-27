@@ -85,12 +85,19 @@ they only carry the tools they need, so each call starts with a much smaller con
 - Browser checks then run on https://dev.c4-leipzig.de/app/ (`browser-check` agent). Log in through the dev
   Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory
   (`reference_dev_testuser.md`), never put it into the repo or chat.
-- The local API (`pnpm dev`) needs `packages/api/.env.local` from `pnpm db:up` (README); without it,
-  use dev.
+- Prefer testing locally against dev resources over a dev deploy: `pnpm dev:env` (once per worktree,
+  writes `packages/api/.env.local` and `config.json` from dev), then `pnpm dev` (in the main chat via
+  `preview_start`). Deploy to dev only when the branch adds migrations or secrets; never run
+  `pnpm db:migrate` with that setup (it migrates the dev database).
+- Other sessions may run their own local stack at the same time: if port 5173 or 3000 is taken
+  (`lsof -i :5173 -i :3000`), start the first free slot `dev-1` ... `dev-9` from `.claude/launch.json`
+  (web 5173+n, API 3000+n) via `preview_start` and pass `E2E_BASE_URL=http://localhost:<web port>/app/`
+  to `tester`.
 
 ## E2E tests (Playwright)
 
-See `docs/e2e.md`. Package `packages/e2e`, runs against dev, not in CI.
+See `docs/e2e.md`. Package `packages/e2e`, runs against dev or the local stack
+(`E2E_BASE_URL=http://localhost:5173/app/`), not in CI.
 
 - `packages/e2e/.env.e2e` is gitignored, so it is missing in a new worktree. If it is missing, the main chat
   creates it itself (`E2E_USER=Testuser2`, `E2E_PASSWORD=` taken from the user's memory

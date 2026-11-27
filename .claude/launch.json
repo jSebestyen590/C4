@@ -4,15 +4,133 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@c4/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@c4/web",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "api",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["AWS_PROFILE=C4", "pnpm", "--filter", "@c4/api", "dev"],
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "pnpm",
+        "--filter",
+        "@c4/api",
+        "dev"
+      ],
       "port": 3000,
       "url": "http://localhost:3000"
+    },
+    {
+      "name": "dev-1",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5174",
+        "PORT=3001",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5174
+    },
+    {
+      "name": "dev-2",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5175",
+        "PORT=3002",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5175
+    },
+    {
+      "name": "dev-3",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5176",
+        "PORT=3003",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5176
+    },
+    {
+      "name": "dev-4",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5177",
+        "PORT=3004",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5177
+    },
+    {
+      "name": "dev-5",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5178",
+        "PORT=3005",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5178
+    },
+    {
+      "name": "dev-6",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5179",
+        "PORT=3006",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5179
+    },
+    {
+      "name": "dev-7",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5180",
+        "PORT=3007",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5180
+    },
+    {
+      "name": "dev-8",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5181",
+        "PORT=3008",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5181
+    },
+    {
+      "name": "dev-9",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "AWS_PROFILE=C4",
+        "WEB_PORT=5182",
+        "PORT=3009",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5182
     }
   ]
 }
