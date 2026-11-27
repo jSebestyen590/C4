@@ -28,14 +28,15 @@ they only carry the tools they need, so each call starts with a much smaller con
 | `explorer`      | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat)                                      |
 | `implementer`   | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
 | `tester`        | unit/integration tests, type checks, lint, builds, Playwright E2E (`pnpm e2e`), waiting for a dev deploy                             |
-| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (page reads, phone width, screenshots)                                         |
+| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (visual judgements, new flows without a Playwright spec)                       |
 
 - The main chat doesn't run tests, take screenshots or read page trees itself; agents report a
   short result.
 - When `explorer` ran first, put its findings (files, patterns, line ranges) into the `implementer`
   prompt so it doesn't explore the same area again.
-- `implementer` doesn't run browser checks: after it finishes, a fresh `browser-check` does, with the
-  routes/pages to check named in its prompt.
+- `implementer` doesn't run browser checks: after it finishes, a `tester` runs `pnpm e2e` (layout
+  checks, existing specs), then a fresh `browser-check` covers only visual judgements and new flows
+  without a spec, with the routes/pages to check named in its prompt.
 - Split larger browser checks into one `browser-check` per page or flow (e.g. "create Kasse",
   "count at event on phone", "Abrechnung"), run one after another, not in parallel (they share the
   browser pane). An agent's context, screenshots included, is gone when it finishes; one agent for
@@ -44,7 +45,14 @@ they only carry the tools they need, so each call starts with a much smaller con
   separate sessions: after `/plan` the plan is written to `docs/plans/<feature>.md` completely
   (files, decisions, answers to open questions, docs page to update), and a new session implements
   it from that file. The planning context (docs, code, Q&A) would otherwise be re-read on every
-  implementation step. Small features stay in the planning session.
+  implementation step. Small features stay in the planning session. This applies even when the
+  prompt says "plan and implement": write the plan file, then propose a new session for the
+  implementation instead of starting it here (Scheibe 5 in one session: ~180k average main context,
+  separately planned Scheibe 8: ~145k at twice the size).
+- Dev feedback rounds run in a fresh session each: when a round is done (fixed, pushed, deployed),
+  end with the `- [ ]` checklist of open and re-test points and propose a new session that starts
+  from that checklist and the PR/branch. Long multi-day feedback sessions grew to 200k+ average main
+  context and were the most expensive sessions by far (150M+ each).
 - Split the implementation of a larger plan into phases (e.g. shared types + API/DB, web, docs) and
   start a fresh `implementer` per phase with only its part of the plan plus the files the previous
   phases touched. One agent for everything grows its context to 400k+ and re-reads it on every
