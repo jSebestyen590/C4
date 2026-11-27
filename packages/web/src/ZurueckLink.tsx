@@ -20,6 +20,8 @@ export function ZurueckLink({ to, children }: Readonly<{ to: string; children: R
       component={Link}
       to={weg ? weg.ort.pathname + weg.ort.search : to}
       size="sm"
+      display="block"
+      py={{ base: 11, md: 0 }}
       onClick={(e) => {
         if (!weg || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();

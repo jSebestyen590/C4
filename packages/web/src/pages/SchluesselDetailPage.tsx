@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Group,
@@ -13,7 +12,7 @@ import {
 import { IconArchive, IconArchiveOff, IconArrowRight, IconPencil } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { SCHLUESSEL_VERLAUF_MAX, zeitpunktAnzeigen, type UebergabeDto } from '@c4/shared';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -24,6 +23,7 @@ import { SchluesselPlanungen } from '../SchluesselPlanungen';
 import { HalterName, schluesselInvalidieren, useSchluessel } from '../schluesselDaten';
 import { pruefen } from '../warenApi';
 import { HalterZeile, personenNamen } from './SchluesselPage';
+import { ZurueckLink } from '../ZurueckLink';
 
 const gleichePerson = (a: UebergabeDto['an'], b: UebergabeDto['eingetragenVon']) =>
   a?.art === 'mitglied' && b?.art === 'mitglied' && a.sub === b.sub;
@@ -64,9 +64,7 @@ export function SchluesselDetailPage() {
   const [dialog, setDialog] = useState<'bearbeiten' | 'archiv' | null>(null);
 
   const zurueck = (
-    <Anchor component={Link} to="/schluessel" size="sm">
-      ← Zurück zur Liste
-    </Anchor>
+    <ZurueckLink to="/schluessel">Zurück zur Liste</ZurueckLink>
   );
   if (schluessel.isPending) return <Loader m="md" aria-label="Schlüssel wird geladen" />;
   if (schluessel.isError) {

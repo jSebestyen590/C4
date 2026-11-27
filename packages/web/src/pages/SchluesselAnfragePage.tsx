@@ -1,12 +1,13 @@
-import { Alert, Anchor, Button, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Button, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { zeitfensterAnzeigen, type AnfrageDto, type AntwortDto } from '@c4/shared';
 import { useApi } from '../api';
 import { AnfrageKarte, AntwortZeile } from '../SchluesselAnfragen';
 import { useEigeneSub } from '../organisator';
 import { schluesselInvalidieren, useAnfrage, useSchluesselListe } from '../schluesselDaten';
 import { fehlerAnzeigen, pruefen } from '../warenApi';
+import { ZurueckLink } from '../ZurueckLink';
 
 function VorschlagZeile({
   anfrage,
@@ -54,9 +55,7 @@ export function SchluesselAnfragePage() {
   const schluessel = useSchluesselListe();
 
   const zurueck = (
-    <Anchor component={Link} to="/schluessel" size="sm">
-      ← Zurück zu den Schlüsseln
-    </Anchor>
+    <ZurueckLink to="/schluessel">Zurück zu den Schlüsseln</ZurueckLink>
   );
   if (anfrage.isPending) return <Loader m="md" aria-label="Anfrage wird geladen" />;
   if (anfrage.isError) {

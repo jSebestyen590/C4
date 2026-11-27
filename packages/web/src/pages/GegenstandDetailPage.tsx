@@ -237,6 +237,7 @@ export function GegenstandDetailPage() {
                       component={Link}
                       to={gegenstandLink(t.id)}
                       fw={600}
+                      py={{ base: 9, md: 0 }}
                       style={{ overflowWrap: 'anywhere' }}
                     >
                       {t.name}

@@ -411,6 +411,8 @@ function ProtokollAnsicht({
             component={Link}
             to={`/kalender/events/${encodeURIComponent(dto.sitzung.id)}`}
             size="sm"
+            display="block"
+            py={{ base: 11, md: 0 }}
           >
             {tagAnzeigen(dto.sitzung.beginn)}
           </Anchor>
