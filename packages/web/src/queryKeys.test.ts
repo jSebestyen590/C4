@@ -48,6 +48,7 @@ describe('query keys', () => {
       'konten',
       { archiviert: false },
     ]);
+    expect(finanzenKeys.sumup).toEqual(['finanzen', 'sumup']);
     expect(finanzenKeys.buchung('b1')).toEqual(['finanzen', 'buchung', 'b1']);
     expect(benachrichtigungKeys.listen).toEqual(['benachrichtigung-verlauf', 'liste']);
     expect(benachrichtigungKeys.ungelesen).toEqual(['benachrichtigung-verlauf', 'ungelesen']);

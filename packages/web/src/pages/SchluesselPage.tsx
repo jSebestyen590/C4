@@ -78,6 +78,7 @@ function SchluesselKarte({
             fw={600}
             c="inherit"
             underline="hover"
+            py={10}
             style={{ overflowWrap: 'anywhere' }}
           >
             {schluessel.name}

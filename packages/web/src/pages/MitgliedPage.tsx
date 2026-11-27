@@ -1,6 +1,6 @@
-import { Alert, Anchor, Badge, Group, Loader, Stack, Text } from '@mantine/core';
+import { Alert, Badge, Group, Loader, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { datumAnzeigen } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { useAuth } from '../auth';
@@ -15,6 +15,7 @@ import { StatusFeld, StatusTitel } from '../StatusAnzeige';
 import { StatusHistorie } from '../StatusHistorie';
 import { ProfilFormular } from './ProfilPage';
 import { mitgliederKeys } from '../queryKeys';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** Detail page of one member; the owner edits their own profile here. */
 export function MitgliedPage() {
@@ -45,9 +46,7 @@ export function MitgliedPage() {
 
   return (
     <Stack>
-      <Anchor component={Link} to="/mitglieder" size="sm">
-        ← Zurück zur Liste
-      </Anchor>
+      <ZurueckLink to="/mitglieder">Zurück zur Liste</ZurueckLink>
       {m?.deaktiviert && <Alert color="gray">Dieser Account ist deaktiviert.</Alert>}
       {!m && <Alert color="yellow">Dieses Mitglied wurde nicht gefunden.</Alert>}
       {m && m.sub === me.data.sub && can('profil:bearbeiten') && (

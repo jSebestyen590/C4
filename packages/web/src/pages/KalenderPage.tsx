@@ -537,6 +537,7 @@ function EventKarte({
               to={`/kalender/events/${event.id}`}
               fw={700}
               size="lg"
+              py={{ base: 7, md: 0 }}
               td={event.abgesagt ? 'line-through' : undefined}
               style={{ overflowWrap: 'anywhere' }}
             >
@@ -811,7 +812,14 @@ export function KalenderPage() {
           <Text fw={700} size="lg" ta="center">
             {monatAnzeigen(jahr, monat)}
           </Text>
-          <Anchor component="button" type="button" size="sm" onClick={() => setMonat(aktuell)}>
+          <Anchor
+            component="button"
+            type="button"
+            size="sm"
+            mih={42}
+            px="xs"
+            onClick={() => setMonat(aktuell)}
+          >
             Heute
           </Anchor>
         </Stack>

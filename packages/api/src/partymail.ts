@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { ImapFlow } from 'imapflow';
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { z } from 'zod';
 import { imapFehlerText, ordnerHinweis, smtpFehlerText } from './partymailFehler';
 import { mailParsen } from './partymailParsen';
+import { createSecretLeser } from './secrets';
 import type { AbrufErgebnis, EingehendeMail, PartyMail, PartyMailKonfig } from './partymailTypen';
 
 export type { PartyMail } from './partymailTypen';
@@ -27,35 +27,14 @@ const konfigSchema = z.object({
   ordnerGesendet: z.string().default('Sent'),
 });
 
-const CACHE_MS = 5 * 60_000;
 /** The whole run stays well under the Lambda's 15 seconds. */
 const ABRUF_MAX_MS = 9_000;
 /** Messages above this size are skipped without downloading them. */
 const MAIL_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Reads (and caches for 5 minutes) the secret; undefined when unset, empty or unusable. */
-export function createKonfigLeser(secretArn: string | undefined, region: string) {
-  let cache: { bis: number; konfig: PartyMailKonfig | undefined } | undefined;
-  const client = secretArn ? new SecretsManagerClient({ region }) : undefined;
-  return async (): Promise<PartyMailKonfig | undefined> => {
-    if (!client || !secretArn) return undefined;
-    if (cache && cache.bis > Date.now()) return cache.konfig;
-    let konfig: PartyMailKonfig | undefined;
-    try {
-      const res = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
-      if (res.SecretString) {
-        const geparst = konfigSchema.safeParse(JSON.parse(res.SecretString));
-        if (geparst.success) konfig = geparst.data;
-        else console.error('Party-Mail secret is incomplete', geparst.error.issues[0]);
-      }
-    } catch (err) {
-      // An empty secret (no version yet) lands here, too.
-      console.error('Party-Mail secret could not be read', err instanceof Error ? err.name : err);
-    }
-    cache = { bis: Date.now() + CACHE_MS, konfig };
-    return konfig;
-  };
-}
+export const createKonfigLeser = (secretArn: string | undefined, region: string) =>
+  createSecretLeser<PartyMailKonfig>(secretArn, region, konfigSchema, 'Party-Mail');
 
 function imapClient(k: PartyMailKonfig): ImapFlow {
   return new ImapFlow({

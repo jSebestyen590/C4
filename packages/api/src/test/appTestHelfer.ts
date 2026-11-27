@@ -51,6 +51,7 @@ import {
   BesetzungUeberschneidung,
   ueberschneiden,
   type AktuellerPosten,
+  type VorstandBesetzung,
   type BesetzungDaten,
   type PostenDaten,
   type PostenDetails,
@@ -66,6 +67,9 @@ import { createFakeTodosStore } from '../todos.fake';
 import { createFakeTrichterStore } from '../trichter.fake';
 import { createFakeLagerAbgleichStore } from '../lagerAbgleich.fake';
 import { createFakeFinanzenStore } from '../finanzen.fake';
+import { sumupAbrufen } from '../finanzenSumupJob';
+import { createFakeSumup } from '../sumup.fake';
+import type { SumupSecret } from '../sumup';
 import { createFakeBuchStore } from '../buch.fake';
 import { createFakeUmfragenStore } from '../umfragen.fake';
 
@@ -705,6 +709,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       postenListe.set(id, {
         id,
         ...daten,
+        vorstand: daten.vorstand ?? false,
         archiviert: false,
         aktualisiertAm: new Date(),
         rechte: [],
@@ -770,6 +775,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
         .sort((a, b) => a.startDatum.localeCompare(b.startDatum)),
     ),
     aktuelleNachMitglied: vi.fn(async () => new Map<string, AktuellerPosten[]>()),
+    vorstandAm: vi.fn(async (): Promise<VorstandBesetzung[]> => []),
     rechteVon: vi.fn(async (sub: string): Promise<PostenRecht[]> =>
       sub === 'v'
         ? [
@@ -837,11 +843,15 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
   const archivPruefsummen = new Map<string, string | null>();
   const finanzarchiv = {
     eingerichtet: true,
-    uploadVorbereiten: vi.fn(async (d: { sha256: string; groesse: number; typ: string }) => ({
-      uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
-      schluessel: `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
-      checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
-    })),
+    uploadVorbereiten: vi.fn(
+      async (d: { sha256: string; groesse: number; typ: string; schluessel?: string }) => ({
+        uploadUrl: `https://s3.example/finanzarchiv-upload?size=${d.groesse}`,
+        schluessel:
+          d.schluessel ??
+          `belege/${d.sha256}.${d.typ === 'application/pdf' ? 'pdf' : d.typ === 'image/png' ? 'png' : d.typ === 'image/heic' ? 'heic' : 'jpg'}`,
+        checksumSha256: Buffer.from(d.sha256, 'hex').toString('base64'),
+      }),
+    ),
     anzeigeUrl: vi.fn(async (key: string) => `https://s3.example/finanzarchiv/${key}`),
     exportSchreiben: vi.fn<(schluessel: string, inhalt: string | Uint8Array) => Promise<void>>(
       async (schluessel, inhalt) => {
@@ -887,6 +897,16 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       return sha ? Buffer.from(sha, 'hex').toString('base64') : null;
     }),
   };
+  // SumUp: the fake API and secret; tests fill `sumupApi` and set `sumupSecret.wert`.
+  const sumupApi = createFakeSumup();
+  const sumupSecret: { wert: SumupSecret | undefined } = {
+    wert: { apiKey: 'test', abDatum: '2026-01-01' },
+  };
+  const sumupAbruf = sumupAbrufen({
+    secret: async () => sumupSecret.wert,
+    api: () => sumupApi,
+    store: finanzen,
+  });
   const datenexportStarten = vi.fn<(auftrag: DatenexportAuftrag) => Promise<void>>(async () => {});
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
@@ -934,6 +954,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     protokollbilder,
     finanzarchiv,
     datenexportStarten,
+    sumupAbrufen: sumupAbruf,
     pingDb,
   });
   return {
@@ -949,6 +970,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     archivBytes,
     archivPruefsummen,
     datenexportStarten,
+    sumupApi,
+    sumupSecret,
     waren,
     inventar,
     inventarVerwendet,

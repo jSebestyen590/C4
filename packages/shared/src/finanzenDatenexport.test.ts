@@ -18,6 +18,9 @@ const leer: DatenexportDaten = {
   belege: [],
   belegposten: [],
   rechnungssteller: [],
+  rechnungen: [],
+  rechnungsposten: [],
+  rechnungszahlungen: [],
   festschreibungen: [],
 };
 

@@ -1,8 +1,8 @@
-import { Alert, Anchor, Box, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
+import { Alert, Box, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { Gebinde } from '@c4/shared';
 import { unwrap, useApi } from '../api';
 import { AktionsMenue } from '../AktionsMenue';
@@ -15,6 +15,7 @@ import { useInventurSpeichern, type SpeicherStatus } from '../useInventurSpeiche
 import { fehlerAnzeigen, fehlerText, pruefen } from '../warenApi';
 import { inventurKeys } from '../queryKeys';
 import { warenKeys } from '../warenDaten';
+import { ZurueckLink } from '../ZurueckLink';
 
 const STATUS_TEXT: Record<SpeicherStatus, string> = {
   leer: '',
@@ -115,9 +116,7 @@ export function InventurPage() {
         <Alert color="blue" title="Inventur abgeschlossen">
           Diese Inventur ist abgeschlossen und kann nicht mehr bearbeitet werden.
         </Alert>
-        <Anchor component={Link} to="/lager">
-          Zurück zu den Lagerorten
-        </Anchor>
+        <ZurueckLink to="/lager">Zurück zu den Lagerorten</ZurueckLink>
       </Stack>
     );
 

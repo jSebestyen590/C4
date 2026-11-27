@@ -11,6 +11,7 @@ import {
   type StatusEintragEingabe,
 } from '@c4/shared';
 import type { Db } from './db/client';
+import { mitWiederholung } from './db/wiederholung';
 import { mitglieder, mitgliedStatusVerlauf, vcardTokens, type MitgliedRow } from './db/schema';
 
 /** How long a vCard link token stays valid. */
@@ -245,10 +246,17 @@ export function createMitgliederStore(db: Db): MitgliederStore {
       const token = randomBytes(32).toString('base64url');
       const ablauf = new Date(Date.now() + VCARD_TOKEN_GUELTIG_MS);
       const werte = { tokenHash: vcardTokenHash(token), ablauf, erstellt: new Date() };
-      await db
-        .insert(vcardTokens)
-        .values({ mitgliedSub: sub, ...werte })
-        .onConflictDoUpdate({ target: vcardTokens.mitgliedSub, set: werte });
+      // One row per member: parallel calls (two devices or tabs) conflict in DSQL, so repeat the upsert.
+      await mitWiederholung(
+        () =>
+          db
+            .insert(vcardTokens)
+            .values({ mitgliedSub: sub, ...werte })
+            .onConflictDoUpdate({ target: vcardTokens.mitgliedSub, set: werte }),
+        3,
+        undefined,
+        100,
+      );
       return { token, ablauf };
     },
     async vcardTokenSuchen(hash) {

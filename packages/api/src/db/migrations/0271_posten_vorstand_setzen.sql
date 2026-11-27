@@ -1,0 +1,1 @@
+UPDATE posten SET vorstand = true WHERE id IN ('vorstandsvorsitz', 'stellvertretender-vorstandsvorsitz', 'buchhaltung')

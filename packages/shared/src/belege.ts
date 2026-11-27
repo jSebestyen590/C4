@@ -78,7 +78,7 @@ export const BELEGE_MAX = 500;
 
 // ----- Schemas
 
-const nullish = <T extends z.ZodType>(schema: T) =>
+export const nullish = <T extends z.ZodType>(schema: T) =>
   schema.nullish().transform((v): z.output<T> | null => v ?? null);
 
 const sha256Feld = z
@@ -118,12 +118,12 @@ export const belegDateiUploadSchema = z.object({
 });
 export type BelegDateiUpload = z.output<typeof belegDateiUploadSchema>;
 
-const centFeld = z
+export const centFeld = z
   .number('Bitte gib einen Betrag an.')
   .int('Beträge müssen ganze Cent sein.')
   .min(-BELEG_POSTEN_MAX_CENT, 'Der Betrag ist zu groß.')
   .max(BELEG_POSTEN_MAX_CENT, 'Der Betrag ist zu groß.');
-const steuersatzFeld = z
+export const steuersatzFeld = z
   .number('Bitte gib einen Steuersatz an.')
   .int('Der Steuersatz muss in ganzen Basispunkten angegeben werden.')
   .min(0, 'Der Steuersatz darf nicht negativ sein.')
@@ -139,7 +139,7 @@ export const BELEG_POSTEN_ART_LABELS: Record<BelegPostenArt, string> = {
 
 const textFeld = z.string().trim().max(200, 'Höchstens 200 Zeichen erlaubt.').default('');
 /** Thousandths: 1500 = 1,5. */
-const anzahlMilliFeld = z
+export const anzahlMilliFeld = z
   .number('Bitte gib eine Anzahl an.')
   .int('Die Anzahl ist ungültig.')
   .min(-1_000_000, 'Die Anzahl ist zu groß.')
@@ -905,6 +905,8 @@ export interface BelegGebindeDto {
   bezeichnung: string;
   /** Deposit of the Gebinde including its Untergebinde (`pfandGesamtCent`); null = no deposit. */
   pfandGesamtCent: number | null;
+  /** Last booked purchase price per Gebinde (gross, without deposit); null when never bought. Prefills Rechnungen. */
+  letzterPreisCent: number | null;
 }
 
 /** `GET /api/finanzen/beleg-waren`: the Waren a Ware item can pick, with what the form pre-fills. */

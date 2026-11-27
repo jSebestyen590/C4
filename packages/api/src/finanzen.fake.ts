@@ -63,6 +63,8 @@ import {
 } from './finanzen';
 import { datumBerlin } from './finanzenBelege';
 import { createFakeBelegeStore, createFakeLager } from './finanzenBelege.fake';
+import { createFakeRechnungenStore } from './finanzenRechnungen.fake';
+import { createFakeSumupStore } from './finanzenSumup.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
 interface FakeKasse {
@@ -80,6 +82,8 @@ export interface FakeEvent {
   kategorie: string;
   /** ISO timestamp. */
   beginn: string;
+  /** ISO timestamp; default `beginn` + 4 h. */
+  ende?: string;
   abgesagt: boolean;
 }
 
@@ -94,9 +98,28 @@ export function createFakeFinanzenStore() {
     { id: 'kassendifferenz', name: 'Kassendifferenz', art: 'neutral', stueckelung: false },
     { id: 'auslagen', name: 'Auslagen Mitglieder', art: 'durchlauf', stueckelung: false },
     { id: 'pfand', name: 'Pfand/Leergut', art: 'durchlauf', stueckelung: false },
+    { id: 'forderungen', name: 'Forderungen aus Rechnungen', art: 'durchlauf', stueckelung: false },
+    {
+      id: 'erloese_offen',
+      name: 'Erlöse aus offenen Rechnungen',
+      art: 'durchlauf',
+      stueckelung: false,
+    },
+    { id: 'sumup', name: 'SumUp-Guthaben', art: 'durchlauf', stueckelung: false },
+    { id: 'sumup-gebuehren', name: 'SumUp-Gebühren', art: 'aufwand', stueckelung: false },
   ] as const) {
     konten.set(k.id, { ...k, parentId: null, steuersatzArt: null, archiviert: false });
   }
+  // Like migration 0272: card revenue at 19 %.
+  konten.set('kartenerloese', {
+    id: 'kartenerloese',
+    name: 'Kartenerlöse',
+    art: 'erloes',
+    stueckelung: false,
+    parentId: null,
+    steuersatzArt: 'regel',
+    archiviert: false,
+  });
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
   const belegDateien: { sha256: string; schluessel: string }[] = [];
@@ -226,6 +249,45 @@ export function createFakeFinanzenStore() {
     return { id: buchung.id, seq: buchung.seq, datum: buchung.datum };
   };
 
+  const stornoAnhaengen = async (
+    id: string,
+    e: {
+      datum: string;
+      text: (original: { seq: number }) => string;
+      sub: string;
+      idempotenzSchluessel?: string;
+      rechnungErlaubt?: boolean;
+    },
+  ) => {
+    const original = buchungen.find((b) => b.id === id);
+    if (!original) throw new BuchungUngueltig(['Die Buchung gibt es nicht.']);
+    if (original.quelleTyp === 'rechnung' && !e.rechnungErlaubt)
+      throw new StornoKonflikt(
+        'Eine gestellte Rechnung stornierst du über eine Stornorechnung auf der Rechnungsseite.',
+      );
+    if (original.stornoVon !== null)
+      throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
+    if (buchungen.some((b) => b.stornoVon === id))
+      throw new StornoKonflikt('Die Buchung ist bereits storniert.');
+    const zeilen = stornoZeilen(structuredClone(original.zeilen));
+    const fehler = [
+      ...pruefeGruppenregel(zeilen, pruefKonten()),
+      ...pruefeBestand(zeilen, alleBestand()),
+    ];
+    if (fehler.length > 0) throw new BuchungUngueltig(fehler);
+    return anhaengen({
+      datum: e.datum,
+      text: e.text(original),
+      quelleTyp: 'storno',
+      quelleId: original.id,
+      eventId: original.eventId,
+      stornoVon: original.id,
+      erstelltVon: e.sub,
+      idempotenzSchluessel: e.idempotenzSchluessel,
+      zeilen: zeilen.map(ohnePos),
+    });
+  };
+
   const kassenKonten = (): KassenKonto[] =>
     [...konten.values()].map((k) => ({ ...k, hatUnterkonten: hatUnterkonten(k.id) }));
   const kontoName = (id: string) => konten.get(id)?.name ?? id;
@@ -287,8 +349,32 @@ export function createFakeFinanzenStore() {
     anhaengen,
   });
 
+  /** Holders of the Vorstandsposten used on invoices (tests may empty or change it). */
+  const vorstand: { postenName: string; vorname: string; nachname: string }[] = [
+    { postenName: 'Vorstandsvorsitz', vorname: 'Vera', nachname: 'Vorstand' },
+  ];
+  const rechnungen = createFakeRechnungenStore({
+    vorstand,
+    lager,
+    konten,
+    buchungen,
+    pruefKonten: () => pruefKonten().map((k) => ({ ...k, art: konten.get(k.id)!.art })),
+    alleBestand,
+    anhaengen,
+    stornoAnhaengen,
+  });
+  const sumup = createFakeSumupStore({
+    buchungen,
+    events,
+    pruefKonten,
+    anhaengen,
+    vorhandene,
+  });
+
   const store: FinanzenStore = {
     ...belege,
+    ...rechnungen,
+    ...sumup,
     async konten(mitArchiv) {
       const gesamt = saldoGesamt(
         [...konten.values()].map((k) => ({ ...k, saldoCent: saldo(k.id) })),
@@ -349,28 +435,12 @@ export function createFakeFinanzenStore() {
     async stornieren(id, eingabe, sub) {
       const schon = vorhandene(eingabe.idempotenzSchluessel);
       if (schon) return schon;
-      const original = buchungen.find((b) => b.id === id);
-      if (!original) return undefined;
-      if (original.stornoVon !== null)
-        throw new StornoKonflikt('Ein Storno kann nicht storniert werden.');
-      if (buchungen.some((b) => b.stornoVon === id))
-        throw new StornoKonflikt('Die Buchung ist bereits storniert.');
-      const zeilen = stornoZeilen(structuredClone(original.zeilen));
-      const fehler = [
-        ...pruefeGruppenregel(zeilen, pruefKonten()),
-        ...pruefeBestand(zeilen, alleBestand()),
-      ];
-      if (fehler.length > 0) throw new BuchungUngueltig(fehler);
-      return anhaengen({
+      if (!buchungen.some((b) => b.id === id)) return undefined;
+      return stornoAnhaengen(id, {
         datum: eingabe.datum,
-        text: stornoText(original, eingabe.text),
-        quelleTyp: 'storno',
-        quelleId: original.id,
-        eventId: original.eventId,
-        stornoVon: original.id,
-        erstelltVon: sub,
+        text: (original) => stornoText(original, eingabe.text),
+        sub,
         idempotenzSchluessel: eingabe.idempotenzSchluessel,
-        zeilen: zeilen.map(ohnePos),
       });
     },
     async journal({ von, bis, kontoId, storno, limit }) {
@@ -886,6 +956,7 @@ export function createFakeFinanzenStore() {
         .filter((b) => b.datum >= von && b.datum <= bis)
         .sort((a, b) => a.seq - b.seq);
       const belegTeil = await belege.datenexportBelege(von, bis);
+      const rechnungTeil = await rechnungen.datenexportRechnungen(von, bis);
       return {
         konten: [...konten.values()]
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -935,6 +1006,7 @@ export function createFakeFinanzenStore() {
           ),
         ),
         ...belegTeil,
+        ...rechnungTeil,
         festschreibungen: [...festschreibungenListe]
           .sort((a, b) => a.monat.localeCompare(b.monat))
           .map((f) => ({
@@ -971,6 +1043,7 @@ export function createFakeFinanzenStore() {
   };
   return {
     store,
+    vorstand,
     exporte,
     festschreibungenListe,
     datenexporteListe,

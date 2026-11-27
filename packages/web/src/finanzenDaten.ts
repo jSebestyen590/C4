@@ -39,6 +39,13 @@ export const finanzenKeys = {
   artikel: ['finanzen', 'artikel'] as const,
   steuersatzZeitraeume: ['finanzen', 'steuersatzZeitraeume'] as const,
   warengruppenKategorien: ['finanzen', 'warengruppenKategorien'] as const,
+  rechnungEinstellungen: ['finanzen', 'rechnungEinstellungen'] as const,
+  rechnungsempfaenger: (filter: { archiviert: boolean }) =>
+    ['finanzen', 'rechnungsempfaenger', filter] as const,
+  rechnungen: (filter: Record<string, unknown>) => ['finanzen', 'rechnungen', filter] as const,
+  rechnung: (id: string | undefined) => ['finanzen', 'rechnung', id] as const,
+  rechnungEntwurf: (id: string | undefined) => ['finanzen', 'rechnungEntwurf', id] as const,
+  sumup: ['finanzen', 'sumup'] as const,
 };
 
 /** Key of the Dienst-Zählungen of an event (members without a Finanzen right read them, too). */
@@ -54,6 +61,15 @@ export function useKonten(archiviert: boolean) {
     queryKey: finanzenKeys.konten({ archiviert }),
     queryFn: async () =>
       unwrap(await api.finanzen.konten.$get({ query: archiviert ? { archiviert: '1' } : {} })),
+  });
+}
+
+/** SumUp overview: open payment groups, events for the picker, payouts, last fetch and balance. */
+export function useSumup() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.sumup,
+    queryFn: async () => unwrap(await api.finanzen.sumup.$get()),
   });
 }
 
@@ -237,6 +253,56 @@ export const belegEntwurfPfad = (id: string) =>
 
 export const kassenabrechnungPfad = (id: string) =>
   `/finanzen/kassen/abrechnungen/${encodeURIComponent(id)}`;
+
+export const rechnungenPfad = '/finanzen/rechnungen';
+export const rechnungPfad = (id: string) => `/finanzen/rechnungen/${encodeURIComponent(id)}`;
+export const rechnungEntwurfPfad = (id: string) =>
+  `/finanzen/rechnungen/entwurf/${encodeURIComponent(id)}`;
+
+/** The newest club data of the invoices (null while none were entered). */
+export function useRechnungEinstellungen() {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.rechnungEinstellungen,
+    queryFn: async () => unwrap(await api.finanzen['rechnung-einstellungen'].$get()),
+  });
+}
+
+/** External Rechnungsempfänger; with `archiviert` also the archived ones. */
+export function useRechnungsempfaenger(archiviert: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.rechnungsempfaenger({ archiviert }),
+    queryFn: async () =>
+      unwrap(
+        await api.finanzen.rechnungsempfaenger.$get({
+          query: archiviert ? { archiviert: '1' } : {},
+        }),
+      ),
+  });
+}
+
+/** Rechnungen (drafts first) matching the filter; empty values are left out of the query. */
+export function useRechnungen(filter: Record<string, string | null>) {
+  const api = useApi();
+  const query = Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<
+    string,
+    string
+  >;
+  return useQuery({
+    queryKey: finanzenKeys.rechnungen(query),
+    queryFn: async () => unwrap(await api.finanzen.rechnungen.$get({ query })),
+  });
+}
+
+export function useRechnung(id: string | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: finanzenKeys.rechnung(id),
+    enabled: !!id,
+    queryFn: async () => unwrap(await api.finanzen.rechnungen[':id'].$get({ param: { id: id! } })),
+  });
+}
 
 /** Own submissions of the member, newest first. */
 export function useEinreichungen() {

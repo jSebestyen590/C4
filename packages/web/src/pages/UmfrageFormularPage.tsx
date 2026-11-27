@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Alert,
-  Anchor,
   Button,
   Checkbox,
   Chip,
@@ -70,6 +69,7 @@ import { SortierbareListe } from '../SortierbareListe';
 import { ZahlFeld } from '../ZahlFeld';
 import { ApiFehler, fehlerText } from '../warenApi';
 import { postenKeys } from '../queryKeys';
+import { ZurueckLink } from '../ZurueckLink';
 
 let zaehler = 0;
 const neuerKey = () => `k${++zaehler}`;
@@ -833,9 +833,7 @@ export function UmfrageFormularPage() {
   const [typ, setTyp] = useState<UmfrageTyp | null>(null);
   return (
     <Stack maw={720}>
-      <Anchor component={Link} to={id ? umfrageLink(id) : '/umfragen'} size="sm">
-        ← Zurück
-      </Anchor>
+      <ZurueckLink to={id ? umfrageLink(id) : '/umfragen'}>Zurück</ZurueckLink>
       <Title order={2}>{id ? 'Umfrage bearbeiten' : 'Umfrage erstellen'}</Title>
       {!id && !typ && <TypWahl onWahl={setTyp} />}
       {!id && typ && (

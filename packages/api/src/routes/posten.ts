@@ -37,6 +37,7 @@ export const postenRoutes = (ctx: RoutenKontext) => {
     bezeichnungMaennlich: p.bezeichnungMaennlich,
     bezeichnungWeiblich: p.bezeichnungWeiblich,
     bezeichnungNeutral: p.bezeichnungNeutral,
+    vorstand: p.vorstand ?? false,
     archiviert: p.archiviert,
     rechte: p.rechte,
     besetzungen: p.besetzungen

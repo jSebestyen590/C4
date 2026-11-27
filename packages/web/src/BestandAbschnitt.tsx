@@ -130,7 +130,11 @@ export function BestandAbschnitt({
             Keine Waren.
           </Text>
         )}
-        <Anchor component="button" type="button" size="sm" py={10} onClick={() => setDialog(true)}>
+        <Anchor component="button" type="button" size="sm"
+          mih={42}
+          px="xs"
+          onClick={() => setDialog(true)}
+        >
           + Ware
         </Anchor>
       </Box>

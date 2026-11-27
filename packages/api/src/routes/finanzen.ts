@@ -109,6 +109,7 @@ import { WarenKonflikt, WarenUngueltig } from '../waren';
 import { type AuthEnv } from '../auth';
 import { archivLaden } from '../finanzarchiv';
 import type { RoutenKontext } from './kontext';
+import { finanzenMitgliederLaden } from './finanzenMitglieder';
 
 export const finanzenRoutes = (ctx: RoutenKontext) => {
   const {
@@ -125,22 +126,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
   } = ctx;
 
   /** Display data of the creators in Finanzen DTOs; null if the member has no profile any more. */
-  const finanzenMitglieder = async () => {
-    const [rows, konten] = await Promise.all([deps.mitglieder.alle(), deps.userAdmin.konten()]);
-    const zeilen = new Map(rows.map((r) => [r.sub, r]));
-    return (sub: string): FinanzMitgliedDto | null => {
-      const zeile = zeilen.get(sub);
-      if (!zeile) return null;
-      return {
-        sub,
-        username: konten.get(sub)?.username ?? null,
-        vorname: zeile.vorname,
-        nachname: zeile.nachname,
-        status: zeile.status,
-        anrede: zeile.anrede ?? 'neutral',
-      };
-    };
-  };
+  const finanzenMitglieder = () => finanzenMitgliederLaden(deps);
 
   const anzeigeName = (m: FinanzMitgliedDto | null) =>
     m ? (m.username ?? `${m.vorname} ${m.nachname}`) : 'Jemand';

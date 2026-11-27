@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -41,6 +40,7 @@ import { mitgliedOptionen } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import { besetzungName } from './PostenPage';
 import { mitgliederKeys, postenKeys } from '../queryKeys';
+import { ZurueckLink } from '../ZurueckLink';
 
 const zeitraum = (b: Besetzung) =>
   `${datumAnzeigen(b.start)} – ${b.ende ? datumAnzeigen(b.ende) : 'unbefristet'}`;
@@ -367,9 +367,7 @@ export function PostenDetailPage() {
 
   return (
     <Stack maw={520}>
-      <Anchor component={Link} to="/posten" size="sm">
-        ← Zurück zur Übersicht
-      </Anchor>
+      <ZurueckLink to="/posten">Zurück zur Übersicht</ZurueckLink>
       {!p && <Alert color="yellow">Dieser Posten wurde nicht gefunden.</Alert>}
       {p && (
         <>
@@ -377,11 +375,18 @@ export function PostenDetailPage() {
             <Title order={2} style={{ overflowWrap: 'anywhere' }}>
               {p.name}
             </Title>
-            {p.archiviert && (
-              <Badge color="gray" variant="light">
-                Archiviert
-              </Badge>
-            )}
+            <Group gap="xs" wrap="nowrap">
+              {p.vorstand && (
+                <Badge color="blue" variant="light">
+                  Vorstand
+                </Badge>
+              )}
+              {p.archiviert && (
+                <Badge color="gray" variant="light">
+                  Archiviert
+                </Badge>
+              )}
+            </Group>
           </Group>
           {p.beschreibung && (
             <Text style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
@@ -391,7 +396,7 @@ export function PostenDetailPage() {
           {darfBearbeiten && (
             <Group>
               <PostenBearbeiten
-                key={`${p.name}|${p.beschreibung}|${p.bezeichnungNeutral}`}
+                key={`${p.name}|${p.beschreibung}|${p.bezeichnungNeutral}|${p.vorstand}`}
                 posten={p}
               />
               <Button

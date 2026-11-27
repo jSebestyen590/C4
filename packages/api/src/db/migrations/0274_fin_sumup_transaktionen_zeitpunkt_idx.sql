@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_sumup_transaktionen_zeitpunkt_idx ON fin_sumup_transaktionen (zeitpunkt)

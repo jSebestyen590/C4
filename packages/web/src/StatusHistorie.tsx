@@ -85,7 +85,11 @@ export function StatusHistorie({
         </Timeline>
       )}
       <Text size="sm">Dauer der Mitgliedschaft: {tageText(tage)}</Text>
-      <Anchor component={Link} to={`/historie?mitglieder=${kennung}`} size="sm">
+      <Anchor component={Link} to={`/historie?mitglieder=${kennung}`}
+        size="sm"
+        display="block"
+        py={{ base: 11, md: 0 }}
+      >
         Im Zeitstrahl ansehen
       </Anchor>
       {darfBearbeiten && (

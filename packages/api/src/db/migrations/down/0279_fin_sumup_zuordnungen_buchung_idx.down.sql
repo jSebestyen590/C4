@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS fin_sumup_zuordnungen_buchung_idx

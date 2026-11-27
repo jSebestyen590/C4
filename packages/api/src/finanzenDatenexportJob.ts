@@ -93,12 +93,19 @@ async function zipSchreiben(
   const daten = {
     ...rohdaten,
     belege: rohdaten.belege.map((b) => ({ ...b, dateiPfad: b.dateiSchluessel })),
+    rechnungen: rohdaten.rechnungen.map((r) => ({ ...r, dateiPfad: r.dateiSchluessel })),
   };
   // Every file once, even when several Belege share it (same content = same SHA-256).
-  const dateien = new Map<string, { sha256: string; nummer: string }>();
+  const dateien = new Map<string, { sha256: string; bezeichnung: string }>();
   for (const b of daten.belege)
     if (b.dateiSchluessel && b.dateiSha256 && !dateien.has(b.dateiSchluessel))
-      dateien.set(b.dateiSchluessel, { sha256: b.dateiSha256, nummer: b.nummer });
+      dateien.set(b.dateiSchluessel, { sha256: b.dateiSha256, bezeichnung: `Beleg ${b.nummer}` });
+  for (const r of daten.rechnungen)
+    if (r.dateiSchluessel && r.dateiSha256 && !dateien.has(r.dateiSchluessel))
+      dateien.set(r.dateiSchluessel, {
+        sha256: r.dateiSha256,
+        bezeichnung: `Rechnung ${r.nummer}`,
+      });
 
   const out = new PassThrough();
   const hash = createHash('sha256');
@@ -183,10 +190,9 @@ async function belegdatei(
   zip: Zip,
   abfluss: () => Promise<void>,
   schluessel: string,
-  d: { sha256: string; nummer: string },
+  d: { sha256: string; bezeichnung: string },
 ): Promise<void> {
-  const fehlt = (grund: string) =>
-    new ExportFehler(`Die Belegdatei von Beleg ${d.nummer} ${grund}.`);
+  const fehlt = (grund: string) => new ExportFehler(`Die Datei von ${d.bezeichnung} ${grund}.`);
   let quelle;
   try {
     quelle = await deps.archiv.lesenStream(schluessel);

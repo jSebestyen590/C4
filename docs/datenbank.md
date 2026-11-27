@@ -104,6 +104,9 @@ Down-Dateien liegen getrennt in `packages/api/src/db/migrations/down/`:
   `events.bilder_ordner_url` und `event_vorlagen.bilder_ordner` per `ALTER` hinzu, ihre Down-Dateien leeren nur die Werte.
   Rollback-Ziel nur für die Bilder: `0103_gegenstaende_anzahl_je`.
 - 0245–0249 (offizielles Protokoll): `protokolle.offiziell_von`, `protokolle.fassung` samt Backfill `normal`, Unique-Index `protokolle_event_fassung_idx` auf `(event_id, fassung)` (kein partieller Index, DSQL), dann Entfernen von `protokolle_event_idx`; die Down-Datei von 0249 scheitert, solange offizielle Kopien dieselbe `event_id` haben.
+- 0254–0269 (Finanzen, Rechnungen): 0254–0256 fügen die Konten `forderungen`, `erloese_offen` und `sumup` idempotent ein (Down löscht sie), 0257–0269 legen die Tabellen `fin_rechnung_einstellungen`, `fin_rechnungsempfaenger`, `fin_rechnung_entwuerfe`, `fin_rechnungen`, `fin_rechnungsposten`, `fin_rechnung_zahlungen`, `fin_rechnung_dateien` und ihre Indizes an (Down löscht sie). Rollback-Ziel nur dafür: `0253_fin_datenexporte_mit_belegdateien`.
+- 0270–0271 (Posten): `posten.vorstand` (nullable boolean) und das Setzen für die drei Vorstandsposten. DSQL kann die Spalte nicht löschen, Down leert nur die Werte. Rollback-Ziel nur dafür: `0269_fin_rechnung_dateien`.
+- 0272–0279 (Finanzen, SumUp): 0272 fügt die Konten `kartenerloese` und `sumup-gebuehren` idempotent ein (das Guthaben ist das Konto `sumup` aus 0256), 0273–0279 legen `fin_sumup_transaktionen`, `fin_sumup_auszahlungen`, `fin_sumup_zuordnungen` (alle nur INSERT, `roh` als Text-JSON) und ihre Indizes an (Down löscht sie). Rollback-Ziel nur dafür: `0271_posten_vorstand_setzen`.
 - 0110–0113 (Protokolle): 0110 löscht die Tabelle `protokolle`, 0111 den Index `protokolle_event_idx`; 0112 und 0113 fügen
   `event_kategorien.protokoll` und `protokoll_art` per `ALTER` hinzu, die Down-Dateien leeren nur die Werte. Rollback-Ziel nur für die Protokolle:
   `0109_bilder_ordner_cache`.

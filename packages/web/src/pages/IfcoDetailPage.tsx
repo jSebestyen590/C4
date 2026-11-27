@@ -207,6 +207,7 @@ export function IfcoDetailPage() {
               <Anchor
                 component={Link}
                 to={`/inventar/gegenstaende/${encodeURIComponent(z.gegenstandId)}`}
+                py={{ base: 9, md: 0 }}
                 style={{ overflowWrap: 'anywhere', minWidth: 0 }}
               >
                 {z.name}

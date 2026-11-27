@@ -11,6 +11,8 @@ import {
   belegNummer,
   gebindeBezeichnung,
   pfandGesamtCent,
+  letzterPreisJeGebinde,
+  warenGebindeKey,
   warengruppeKategorie,
   PFAND_KONTO_ID,
   offeneAuslagen,
@@ -803,6 +805,21 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
     async belegWaren() {
       const gruppen = [...k.lager.warengruppen.values()];
       const alle = [...k.lager.gebinde.values()];
+      const storno = storniert();
+      const letzte = letzterPreisJeGebinde(
+        [...belege]
+          .filter((b) => !storno.has(b.buchungId))
+          .sort(
+            (a, b) =>
+              b.belegdatum.localeCompare(a.belegdatum) || b.erstelltAm.localeCompare(a.erstelltAm),
+          )
+          .flatMap((b) =>
+            b.posten
+              .filter((p) => p.art === 'ware')
+              .reverse()
+              .map((p) => ({ ...p, modus: b.modus })),
+          ),
+      );
       return [...k.lager.waren.values()]
         .filter((w) => !w.archiviert)
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -821,6 +838,7 @@ export function createFakeBelegeStore(k: BelegeFakeKern): BelegeStore {
                     id: g.id,
                     bezeichnung: gebindeBezeichnung(g, alle),
                     pfandGesamtCent: pfandGesamtCent(g, alle),
+                    letzterPreisCent: letzte.get(warenGebindeKey(w.id, g.id)) ?? null,
                   },
                 ]
               : [];

@@ -38,6 +38,7 @@ import { richtungWort, zeilenBetragText } from '../buchungFormular';
 import {
   BETRAG_STIL,
   belegPfad,
+  rechnungPfad,
   detailPfad,
   finanzenKeys,
   jsonOderFehler,
@@ -243,6 +244,11 @@ export function FinanzenBuchungPage() {
               {b.quelleTyp === 'beleg' && b.quelleId && (
                 <Anchor component={Link} to={belegPfad(b.quelleId)}>
                   Zum Beleg
+                </Anchor>
+              )}
+              {(b.quelleTyp === 'rechnung' || b.quelleTyp === 'rechnungszahlung') && b.quelleId && (
+                <Anchor component={Link} to={rechnungPfad(b.quelleId)}>
+                  Zur Rechnung
                 </Anchor>
               )}
               {b.quelleTyp === 'erstattung' && (

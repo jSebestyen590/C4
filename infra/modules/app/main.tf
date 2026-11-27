@@ -185,6 +185,12 @@ resource "aws_iam_role_policy" "lambda" {
         Resource = aws_secretsmanager_secret.partymail.arn
       },
       {
+        # SumUp API key (filled in by hand, see docs/finanzen.md („SumUp“)).
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.sumup.arn
+      },
+      {
         # OneDrive tokens and VAPID keys: read and written by the API itself (see docs/datenbank.md).
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue", "secretsmanager:PutSecretValue"]
@@ -236,6 +242,16 @@ resource "aws_secretsmanager_secret" "vapid" {
   recovery_window_in_days = var.env == "prod" ? 30 : 0
 }
 
+# ---------------------------------------------------------------- SumUp secret
+# Only the empty secret is managed here, never a version: the values (JSON with apiKey, merchantCode
+# (optional) and abDatum, the first day to import as YYYY-MM-DD) are entered by hand in the console,
+# so they never end up in the Terraform state.
+resource "aws_secretsmanager_secret" "sumup" {
+  name                    = "${local.name}-sumup"
+  description             = "SumUp API key and merchant code for the card revenue, see docs/finanzen.md („SumUp“)"
+  recovery_window_in_days = var.env == "prod" ? 30 : 0
+}
+
 resource "aws_lambda_function" "api" {
   function_name    = "${local.name}-api"
   role             = aws_iam_role.lambda.arn
@@ -260,6 +276,7 @@ resource "aws_lambda_function" "api" {
       PARTYMAIL_SECRET_ARN = aws_secretsmanager_secret.partymail.arn
       ONEDRIVE_SECRET_ARN  = aws_secretsmanager_secret.onedrive.arn
       VAPID_SECRET_ARN     = aws_secretsmanager_secret.vapid.arn
+      SUMUP_SECRET_ARN     = aws_secretsmanager_secret.sumup.arn
 
       # Origin for links in the calendar feed. Without a custom domain it is unknown here (the
       # CloudFront domain would make a dependency cycle), so the feed then carries no links.
@@ -459,6 +476,29 @@ resource "aws_scheduler_schedule" "mail_job" {
     arn      = aws_lambda_function.api.arn
     role_arn = aws_iam_role.scheduler.arn
     input    = jsonencode({ c4 = "mail-job" })
+
+    retry_policy {
+      maximum_retry_attempts       = 0
+      maximum_event_age_in_seconds = 300
+    }
+  }
+}
+
+# SumUp job: fetches new card transactions and payouts (Finanzen slice 7). Does nothing while the
+# secret above is empty.
+resource "aws_scheduler_schedule" "sumup_job" {
+  name                = "${local.name}-sumup-job"
+  description         = "Fetches new SumUp transactions and payouts into the Finanzen"
+  schedule_expression = var.sumup_job_rate
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.api.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ c4 = "sumup-job" })
 
     retry_policy {
       maximum_retry_attempts       = 0

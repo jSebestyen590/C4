@@ -217,7 +217,7 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 5: GoBD-Abschluss
 
-**Umgesetzt:** [finanzen-gobd.md](./finanzen-gobd.md).
+**Umgesetzt** (PR #97), Plan und Entscheidungen: [finanzen-gobd.md](./finanzen-gobd.md).
 
 - Festschreibung je Monat mit Export; Kopf-Hash per Push an alle mit `finanzen:pruefen` und in der
   App abrufbar (Mail bräuchte SES, offen).
@@ -244,11 +244,13 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 8: Rechnungen schreiben
 
+**Umgesetzt**, siehe [finanzen-rechnungen.md](./finanzen-rechnungen.md) und [finanzen.md](../finanzen.md), „Rechnungen“. Aufschlag gestrichen.
+
 - Empfänger ist **entweder ein Mitglied** (Name und Adresse kommen direkt aus dem Profil, kein
   eigener Empfänger-Datensatz) **oder ein externer Empfänger** (eigene Stammdaten). Beim Stellen
   der Rechnung wird die Anschrift in der Rechnung festgehalten, damit sie unverändert bleibt.
 - Rechnung mit lückenlosem Nummernkreis (`NNN-JJJJ` wie bisher), Pflichtangaben,
-  Posten als Ware + Gebinde (mit/ohne Pfand, mit/ohne Aufschlag) oder Freitext mit Erlös-Kategorie
+  Posten als Ware + Gebinde (mit/ohne Pfand; ein Aufschlag entfällt, kein Anwendungsfall) oder Freitext mit Erlös-Kategorie
   (1:1, also 150 € + 100 € bei zwei Gutschein-Posten).
 - PDF mit `@react-pdf/renderer` (Muster `packages/web/src/protokoll/pdf/`), Ablage im Archiv.
 - Status Entwurf → gestellt → bezahlt (Zuordnung zum Bankumsatz oder bar) → Stornorechnung.
@@ -361,10 +363,10 @@ FinTS-Überweisungen, E-Rechnung.
 | 2 Buch                    | umgesetzt (siehe [buch.md](../buch.md)); Push bei Überzug nach jeder Abrechnung                                                                                                                                     |
 | 3 Barkassen               | umgesetzt (PR #87, siehe [finanzen.md](../finanzen.md), „Barkassen“)                                                                                                                                                |
 | 4 Belege                  | 4a, 4b und 4c umgesetzt ([finanzen-belege-4c.md](./finanzen-belege-4c.md), [finanzen-belege.md](./finanzen-belege.md), [finanzen-belege-4b.md](./finanzen-belege-4b.md), „Belege“ in [finanzen.md](../finanzen.md)) |
-| 5 GoBD-Abschluss          | umgesetzt (PR folgt), Plan [finanzen-gobd.md](./finanzen-gobd.md)                                                                                                                                                   |
+| 5 GoBD-Abschluss          | umgesetzt (PR #97), Plan [finanzen-gobd.md](./finanzen-gobd.md)                                                                                                                                                     |
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                                                                       |
-| 7 SumUp                   | offen (API-Schlüssel besorgen)                                                                                                                                                                                      |
-| 8 Rechnungen              | offen                                                                                                                                                                                                               |
+| 7 SumUp                   | umgesetzt, Plan [finanzen-sumup.md](./finanzen-sumup.md); Auszahlungs-Abgleich folgt mit Scheibe 6                                                                                                                  |
+| 8 Rechnungen              | umgesetzt, Plan [finanzen-rechnungen.md](./finanzen-rechnungen.md); Aufschlag gestrichen                                                                                                                            |
 | 9 Auswertungen            | offen                                                                                                                                                                                                               |
 | Ü Übernahme               | offen                                                                                                                                                                                                               |
 | 10 Unentgeltliche Abgaben | offen                                                                                                                                                                                                               |

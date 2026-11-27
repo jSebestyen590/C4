@@ -103,6 +103,8 @@ export const posten = pgTable('posten', {
   bezeichnungMaennlich: text('bezeichnung_maennlich'),
   bezeichnungWeiblich: text('bezeichnung_weiblich'),
   bezeichnungNeutral: text('bezeichnung_neutral'),
+  /** Whether the holders appear as Vorstand on invoices; null counts as false (DSQL: no DEFAULT on ADD COLUMN). */
+  vorstand: boolean('vorstand'),
   archiviert: boolean('archiviert').notNull().default(false),
   aktualisiertAm: timestamp('aktualisiert_am', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -768,7 +770,7 @@ export const pushVersand = pgTable('push_versand', {
   gesendet: timestamp('gesendet', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0255. */
+/** @deprecated The VAPID pair lives in Secrets Manager (c4-<env>-vapid); the table is unused and emptied by migration 0281. */
 export const pushSchluessel = pgTable('push_schluessel', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
@@ -781,7 +783,7 @@ export const onedriveVerbindung = pgTable('onedrive_verbindung', {
   id: text('id').primaryKey(),
   clientId: text('client_id'),
   // Deprecated: client_secret, refresh_token, access_token, access_ablauf live in Secrets Manager
-  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0254, DSQL cannot drop columns).
+  // (c4-<env>-onedrive); the columns stay unused and are NULL (migration 0280, DSQL cannot drop columns).
   clientSecret: text('client_secret'),
   basisPfad: text('basis_pfad').notNull().default('Cloud4/Bilder'),
   refreshToken: text('refresh_token'),
@@ -1743,6 +1745,176 @@ export const finErstattungBelege = pgTable(
   },
   (t) => [primaryKey({ columns: [t.erstattungId, t.belegId] })],
 );
+
+/** Club data printed on Rechnungen (insert-only, the newest row applies). */
+export const finRechnungEinstellungen = pgTable('fin_rechnung_einstellungen', {
+  id: text('id').primaryKey(),
+  vereinsname: text('vereinsname').notNull(),
+  anschrift: text('anschrift').notNull(),
+  steuernummer: text('steuernummer').notNull(),
+  ustId: text('ust_id'),
+  bankName: text('bank_name').notNull(),
+  iban: text('iban').notNull(),
+  bic: text('bic').notNull(),
+  vorstand: text('vorstand').notNull(),
+  register: text('register'),
+  kontakt: text('kontakt'),
+  zahlungszielTage: integer('zahlungsziel_tage').notNull(),
+  fusstext: text('fusstext'),
+  erloesKontoWaren: text('erloes_konto_waren'),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** External recipients of Rechnungen (editable master data, archived instead of deleted). */
+export const finRechnungsempfaenger = pgTable('fin_rechnungsempfaenger', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  anschrift: text('anschrift').notNull(),
+  email: text('email'),
+  ustId: text('ust_id'),
+  archiviert: boolean('archiviert').notNull().default(false),
+});
+
+/** Draft of a Rechnung (editable, deleted when issued or discarded); `daten` is the form state as JSON text. */
+export const finRechnungEntwuerfe = pgTable('fin_rechnung_entwuerfe', {
+  id: text('id').primaryKey(),
+  daten: text('daten').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+  geaendertAm: timestamp('geaendert_am', { withTimezone: true }).notNull(),
+});
+
+/** Issued Rechnungen and Stornorechnungen (insert-only snapshot). `mitgliedSub`: Cognito sub. */
+export const finRechnungen = pgTable('fin_rechnungen', {
+  id: text('id').primaryKey(),
+  nummer: text('nummer').notNull(),
+  jahr: integer('jahr').notNull(),
+  lfd: integer('lfd').notNull(),
+  rechnungsdatum: date('rechnungsdatum', { mode: 'string' }).notNull(),
+  leistungVon: date('leistung_von', { mode: 'string' }).notNull(),
+  leistungBis: date('leistung_bis', { mode: 'string' }),
+  faelligAm: date('faellig_am', { mode: 'string' }).notNull(),
+  mitgliedSub: text('mitglied_sub'),
+  empfaengerId: text('empfaenger_id').references(() => finRechnungsempfaenger.id),
+  empfaengerName: text('empfaenger_name').notNull(),
+  empfaengerAnschrift: text('empfaenger_anschrift').notNull(),
+  empfaengerUstId: text('empfaenger_ust_id'),
+  /** JSON snapshot of the club data (`RechnungVerein`). */
+  verein: text('verein').notNull(),
+  modus: text('modus').$type<'brutto' | 'netto'>().notNull(),
+  betreff: text('betreff').notNull(),
+  einleitung: text('einleitung'),
+  hinweis: text('hinweis'),
+  bruttoCent: bigint('brutto_cent', { mode: 'number' }).notNull(),
+  /** Set on a Stornorechnung: the Rechnung it cancels (unique). */
+  stornoVon: text('storno_von').references((): AnyPgColumn => finRechnungen.id),
+  stornoBegruendung: text('storno_begruendung'),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+export type FinRechnungRow = typeof finRechnungen.$inferSelect;
+
+/** Items of a Rechnung (insert-only snapshot); amounts of a Stornorechnung are negative. */
+export const finRechnungsposten = pgTable(
+  'fin_rechnungsposten',
+  {
+    rechnungId: text('rechnung_id')
+      .notNull()
+      .references(() => finRechnungen.id),
+    pos: integer('pos').notNull(),
+    art: text('art').$type<'ware' | 'frei'>().notNull(),
+    wareId: text('ware_id'),
+    gebindeId: text('gebinde_id'),
+    /** Gebinde designation at the time of Stellen. */
+    einheit: text('einheit'),
+    text: text('text').notNull(),
+    anzahlMilli: integer('anzahl_milli').notNull(),
+    einzelpreisCent: bigint('einzelpreis_cent', { mode: 'number' }).notNull(),
+    pfandCent: bigint('pfand_cent', { mode: 'number' }),
+    pfandBetragCent: bigint('pfand_betrag_cent', { mode: 'number' }),
+    steuersatz: integer('steuersatz').notNull(),
+    erloesKontoId: text('erloes_konto_id')
+      .notNull()
+      .references(() => finKonten.id),
+    /** Amount of the line without deposit. */
+    gesamtCent: bigint('gesamt_cent', { mode: 'number' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.rechnungId, t.pos] })],
+);
+
+/** Payments of Rechnungen (insert-only); a reversed booking frees the Rechnung again. */
+export const finRechnungZahlungen = pgTable('fin_rechnung_zahlungen', {
+  id: text('id').primaryKey(),
+  rechnungId: text('rechnung_id')
+    .notNull()
+    .references(() => finRechnungen.id),
+  zahlweg: text('zahlweg').$type<'bank' | 'bar' | 'sumup'>().notNull(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  kontoId: text('konto_id')
+    .notNull()
+    .references(() => finKonten.id),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  idempotenzSchluessel: text('idempotenz_schluessel').notNull(),
+  erstelltVon: text('erstellt_von').notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** The PDF of a Rechnung in the archive bucket (insert-only, one file per Rechnung). */
+export const finRechnungDateien = pgTable('fin_rechnung_dateien', {
+  rechnungId: text('rechnung_id')
+    .primaryKey()
+    .references(() => finRechnungen.id),
+  sha256: text('sha256').notNull(),
+  groesse: bigint('groesse', { mode: 'number' }).notNull(),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
+/** Card transactions fetched from SumUp (insert-only); `betragCent` is negative for refunds. `roh` = SumUp JSON as text. */
+export const finSumupTransaktionen = pgTable('fin_sumup_transaktionen', {
+  id: text('id').primaryKey(),
+  transactionCode: text('transaction_code').notNull(),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull(),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  typ: text('typ').notNull(),
+  status: text('status').notNull(),
+  trinkgeldCent: bigint('trinkgeld_cent', { mode: 'number' }).notNull().default(0),
+  sumupBenutzer: text('sumup_benutzer'),
+  roh: text('roh').notNull(),
+  abgerufenAm: timestamp('abgerufen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Payout lines fetched from SumUp (insert-only); a payout is the sum of the lines of one `datum`. */
+export const finSumupAuszahlungen = pgTable('fin_sumup_auszahlungen', {
+  id: text('id').primaryKey(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  typ: text('typ').notNull(),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  gebuehrCent: bigint('gebuehr_cent', { mode: 'number' }).notNull().default(0),
+  transactionCode: text('transaction_code'),
+  referenz: text('referenz'),
+  status: text('status').notNull(),
+  roh: text('roh').notNull(),
+  abgerufenAm: timestamp('abgerufen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Which booking took over a SumUp transaction (insert-only); a reversed booking makes it open again. */
+export const finSumupZuordnungen = pgTable('fin_sumup_zuordnungen', {
+  id: text('id').primaryKey(),
+  transaktionId: text('transaktion_id')
+    .notNull()
+    .references(() => finSumupTransaktionen.id),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
 
 /** Daily export of the journal to the archive bucket (insert-only). */
 export const finExporte = pgTable('fin_exporte', {

@@ -36,10 +36,10 @@ export function InfoHinweis({ feld, text }: Readonly<{ feld: string; text: strin
           type="button"
           variant="subtle"
           color="gray"
-          size={28}
+          size={42}
           radius="xl"
           tabIndex={-1}
-          my={-4}
+          my={-12}
           aria-label={`Erklärung zu ${feld}`}
           data-mantine-stop-propagation={offen ? 'true' : undefined}
           onClick={() => setOffen((o) => !o)}
