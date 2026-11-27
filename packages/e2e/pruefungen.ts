@@ -10,7 +10,9 @@ export interface Funde {
 export function beobachteConsole(page: Page): () => string[] {
   const meldungen: string[] = [];
   page.on('console', (nachricht) => {
-    if (nachricht.type() === 'error') meldungen.push(`console: ${kuerzen(nachricht.text(), 150)}`);
+    if (nachricht.type() === 'error') meldungen.push(
+        `console: ${kuerzen(nachricht.text(), 150)}${nachricht.location().url ? ` ${new URL(nachricht.location().url).pathname}` : ''}`,
+      );
   });
   page.on('pageerror', (fehler) => meldungen.push(`pageerror: ${kuerzen(fehler.message, 150)}`));
   page.on('response', (antwort) => {

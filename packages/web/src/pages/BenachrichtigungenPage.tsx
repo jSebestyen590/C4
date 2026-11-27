@@ -203,7 +203,12 @@ export function BenachrichtigungenPage() {
         Push-Nachrichten musst du auf jedem Gerät einzeln aktivieren. Welche Nachrichten du
         bekommst, gilt für alle deine Geräte.
       </Text>
-      <Anchor component={Link} to="/benachrichtigungen/verlauf">
+      <Anchor
+        component={Link}
+        to="/benachrichtigungen/verlauf"
+        display="block"
+        py={{ base: 9, md: 0 }}
+      >
         Zum Benachrichtigungsverlauf
       </Anchor>
       <GeraetPush />

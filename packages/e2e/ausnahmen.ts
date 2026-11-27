@@ -33,7 +33,7 @@ export const ausnahmen: Ausnahme[] = [
   {
     route: '/protokolle/:id',
     pruefung: 'console',
-    treffer: 'status of 409',
+    treffer: /status of 409.*\/sperre$/,
     grund:
       'Erwartetes Verhalten: Ein Protokoll-Entwurf hat eine Bearbeitungssperre je Tab (docs/protokolle.md, Bearbeitungssperre). ' +
       'Phone- und Desktop-Projekt öffnen denselben Entwurf mit demselben Konto, der zweite Tab bekommt 409 auf POST /sperre ' +

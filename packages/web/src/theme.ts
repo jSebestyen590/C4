@@ -8,6 +8,7 @@ import {
   MultiSelect,
   NumberInput,
   PasswordInput,
+  InputClearButton,
   Pill,
   Select,
   Switch,
@@ -32,13 +33,18 @@ export const theme = createTheme({
         // Mantine's default label is English; the toggle fills the 42px field height.
         visibilityToggleButtonProps: {
           'aria-label': 'Passwort anzeigen oder verbergen',
-          style: { '--ai-size': '2.625rem' },
+          style: { width: '2.625rem', height: '2.625rem' },
         },
       },
     }),
     Pill: Pill.extend({ defaultProps: { removeButtonProps: { 'aria-label': 'Entfernen' } } }),
     // Clear buttons of Select/TimePicker/... and other close buttons: 42px touch target.
     CloseButton: CloseButton.extend({ styles: { root: { '--cb-size': '2.625rem' } } }),
+    // The clear button inside Select/DateInput/...: same size, German name.
+    InputClearButton: InputClearButton.extend({
+      defaultProps: { 'aria-label': 'Leeren' },
+      styles: { root: { '--cb-size': '2.625rem' } },
+    }),
     // Tab rows and switch rows: 42px touch target.
     Tabs: Tabs.extend({ styles: { tab: { minHeight: '2.625rem' } } }),
     Switch: Switch.extend({

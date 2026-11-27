@@ -537,6 +537,7 @@ function EventKarte({
               to={`/kalender/events/${event.id}`}
               fw={700}
               size="lg"
+              py={{ base: 7, md: 0 }}
               td={event.abgesagt ? 'line-through' : undefined}
               style={{ overflowWrap: 'anywhere' }}
             >
