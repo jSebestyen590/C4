@@ -5,7 +5,16 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'infra/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'infra/**',
+      'packages/e2e/.auth/**',
+      'packages/e2e/test-results/**',
+      'packages/e2e/playwright-report/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -15,7 +24,7 @@ export default defineConfig(
     rules: reactHooks.configs.recommended.rules,
   },
   {
-    files: ['packages/api/**/*.{ts,mjs}', 'packages/shared/**/*.ts'],
+    files: ['packages/api/**/*.{ts,mjs}', 'packages/shared/**/*.ts', 'packages/e2e/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
 );
