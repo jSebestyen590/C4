@@ -23,12 +23,12 @@ keep hands-on work out of it:
 Use the project's dedicated Sonnet agents (`.claude/agents/`), not `general-purpose` or `Explore`:
 they only carry the tools they need, so each call starts with a much smaller context.
 
-| Agent | For |
-|---|---|
-| `explorer` | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat) |
-| `implementer` | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
-| `tester` | unit/integration tests, type checks, lint, builds, waiting for a dev deploy |
-| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (page reads, phone width, screenshots) |
+| Agent           | For                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `explorer`      | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat)                                      |
+| `implementer`   | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
+| `tester`        | unit/integration tests, type checks, lint, builds, Playwright E2E (`pnpm e2e`), waiting for a dev deploy                             |
+| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (page reads, phone width, screenshots)                                         |
 
 - The main chat doesn't run tests, take screenshots or read page trees itself; agents report a
   short result.
@@ -72,6 +72,18 @@ they only carry the tools they need, so each call starts with a much smaller con
   (`reference_dev_testuser.md`), never put it into the repo or chat.
 - The local API (`pnpm dev`) needs `packages/api/.env.local` from `pnpm db:up` (README); without it,
   use dev.
+
+## E2E tests (Playwright)
+
+See `docs/e2e.md`. Package `packages/e2e`, runs against dev, not in CI.
+
+- Layout checks (no horizontal scroll, touch targets, input font size, console errors) run via `pnpm e2e` in a
+  `tester` agent, not via `browser-check`. A new route needs an entry in `packages/e2e/routen.ts` (plus
+  `setup/idQuellen.ts` if it has a param).
+- When a `browser-check` flow would have to run a second time (e.g. after a fix), write it as a Playwright spec in
+  `packages/e2e` instead and let `tester` run it.
+- Full E2E flows only for stable, critical Finanzen paths (Kassenzählung, Kassenabrechnung, Buchung, Beleg
+  einreichen, Rechnung), written once the slice is functionally stable. Test data uses the prefix `E2E`.
 
 ## UI: mobile first (important)
 
