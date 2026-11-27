@@ -30,10 +30,11 @@ export const theme = createTheme({
     PasswordInput: PasswordInput.extend({
       defaultProps: {
         size: 'md',
+        rightSectionWidth: '2.625rem',
         // Mantine's default label is English; the toggle fills the 42px field height.
         visibilityToggleButtonProps: {
           'aria-label': 'Passwort anzeigen oder verbergen',
-          style: { width: '2.625rem', height: '2.625rem' },
+          style: { width: '2.625rem', height: '2.625rem', flexShrink: 0 },
         },
       },
     }),
@@ -43,7 +44,9 @@ export const theme = createTheme({
     // The clear button inside Select/DateInput/...: same size, German name.
     InputClearButton: InputClearButton.extend({
       defaultProps: { 'aria-label': 'Leeren' },
-      styles: { root: { '--cb-size': '2.625rem' } },
+      styles: {
+        root: { '--cb-size': '2.625rem', width: '2.625rem', height: '2.625rem', minWidth: '2.625rem' },
+      },
     }),
     // Tab rows and switch rows: 42px touch target.
     Tabs: Tabs.extend({ styles: { tab: { minHeight: '2.625rem' } } }),
