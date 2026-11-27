@@ -108,3 +108,22 @@ Entscheidungen aus den Rückfragen:
 - `tester`: `pnpm -r test`, Typecheck, Lint, Build (`| tail -40`).
 - Push, `gh workflow run deploy.yml --ref protokoll-usability -f env=dev`, Warten im `tester`.
 - `browser-check` nacheinander, je eins: (a) verlinktes Protokoll nur **lesen**: lädt, Dokument unverändert (Kopf-Gäste/EMs als Liste); (b) neues Test-Protokoll auf einer Test-Sitzung (nicht das verlinkte) bei 375px und Desktop: Bausteine-Layouts, Thema-Kopfzeile, Todo-Dropdown, Chips + /erscheint „Ralle“ als Gast → Chip „Ralle · ab …“, `""Zitat""`, /ueberarbeiten + Warnung beim Abschließen, /ende, /dienst, Personen-Modal, Putz-Datum; (c) Vorschau-Sprung und Gliederung-DnD verschachteltes Thema, kein Editor-Scrollen; (d) Abschließen eines Test-Protokolls: Event mit Diensten + Eintragungen im Kalender, Dokument-Sätze Ende/Nächste Sitzung fett mit Ort. Test-Protokoll danach löschen bzw. Test-Daten aufräumen.
+
+## Stand der Umsetzung
+
+Branch `protokoll-usability`, PR #102 (offen, nicht gemergt), zuletzt auf dev ausgeliefert am 27.11.2026.
+
+- Shared/API: `packages/shared/src/protokolle.ts`, `protokollAnwesenheit.ts`, `protokollAktionen.ts`; API `protokollAktionen.ts`.
+- Editor: `packages/web/src/protokoll/` – `slashLogik.ts` (Stufen `/dienst`, `/zitat`), `einfuegen.ts`, `bausteinLogik.ts`,
+  `SchichtEditor.tsx`, `BausteinFormulare.tsx`, `ZitatInline.ts`, `punktVerschieben.ts` (Strg/Cmd+↑/↓ in Listen),
+  `GliederungBaum.tsx` (DnD mit Combine statt Notiz-Zonen).
+- Ansicht/PDF: `dokumentDaten.ts`, `ProtokollDokumentAnsicht.tsx`, `pdf/pdfBloecke.tsx`.
+
+Feedbackrunde 1 (27.11.2026): `/zitat` im Text schreibt weiter im Zitat (→ verlässt es), Listenpunkte verschieben,
+Putz-/Aufbauschicht Datum–Beginn–Ende, Leeren-X im Feldrahmen, `/dienst` mit Schichtzeiten, Zeit-Hinweis, Min/Wunsch
+(`bar 2/3`), mehreren Personen und „Fertig“, ohne `/dienst` bei Teilnahme-Events, Personenauswahl fokussiert ohne
+offene Liste, „Gemeinsam abhaken“ ausgerichtet mit Info, `/geht`/`/erscheint` gleich breit.
+
+Offen/bekannt: Leeren-X und Datum-X sind 40 bzw. 42 px groß (E2E-Ausnahme `.mantine-InputClearButton`); im
+Personen-Modal fehlt das Leeren-X (Pills einzeln entfernen); Konsolenwarnung `<div>` in `<p>` in der Event-Auswahl
+(Badge in Text); 409 auf `/sperre` bei zwei Tabs (erwartet).
