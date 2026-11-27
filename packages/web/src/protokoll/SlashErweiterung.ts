@@ -60,7 +60,13 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               steuerung.daten(),
               imVerschachtelbaren(editor.state),
               ausserhalbBaustein(editor.state),
-              { event: eventAmCursor(editor.state.selection.$from)?.daten ?? null },
+              (() => {
+                const event = eventAmCursor(editor.state.selection.$from)?.daten ?? null;
+                return {
+                  event,
+                  eventIstTeilnahme: event ? steuerung.daten().eventTeilnahme?.(event) : false,
+                };
+              })(),
             ),
           command: ({ editor, range, props }) => {
             if (props.aktion.art === 'weiter') {
@@ -76,7 +82,14 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               editor.chain().focus().deleteRange(range).run();
               steuerung.daten().ende?.(anwesenheitUhrzeit());
             } else if (props.aktion.art === 'dienst') {
-              if (!dienstEintragenAmCursor(editor, props.aktion.eingabe, range)) {
+              if (
+                !dienstEintragenAmCursor(
+                  editor,
+                  props.aktion.eingabe,
+                  range,
+                  props.aktion.weiter === undefined ? undefined : `/${props.aktion.weiter}`,
+                )
+              ) {
                 notifications.show({
                   color: 'red',
                   message:

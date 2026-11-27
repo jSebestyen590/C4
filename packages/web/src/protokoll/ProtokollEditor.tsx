@@ -19,6 +19,7 @@ import {
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { BlockVerschieben } from './verschieben';
+import { PunktVerschieben } from './punktVerschieben';
 import { ZitatInline } from './ZitatInline';
 import {
   anwesenheitsKandidaten,
@@ -255,6 +256,7 @@ export function ProtokollEditor({
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
       BlockVerschieben,
+      PunktVerschieben,
       ErwaehnungKnoten,
       bildErweiterung(),
       slashErweiterung(steuerung),

@@ -14,8 +14,8 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
-import { useState } from 'react';
+import { IconChevronDown, IconPlus, IconTrash, IconUsers } from '@tabler/icons-react';
+import { useRef, useState } from 'react';
 import type { BausteinSchicht } from '@c4/shared';
 import {
   anzahlSetzen,
@@ -50,6 +50,9 @@ function PersonenKnopf({
   onChange,
 }: Readonly<{ titel: string; personen: readonly string[]; onChange: (p: string[]) => void }>) {
   const [offen, setOffen] = useState(false);
+  const eingabe = useRef<HTMLInputElement>(null);
+  const klickErlaubt = useRef(false);
+  const feld = useRef<HTMLDivElement>(null);
   const mitglieder = useMitgliederListe();
   const liste = (mitglieder.data ?? []).filter(
     (m) => EINTRAG_STATI.has(m.status) && !m.deaktiviert,
@@ -73,18 +76,51 @@ function PersonenKnopf({
       </Indicator>
       <Modal opened={offen} onClose={() => setOffen(false)} title={`Personen: ${titel}`} centered>
         <Stack gap="sm">
-          <MultiSelect
-            size="md"
-            label="Personen"
-            placeholder={personen.length === 0 ? 'Person suchen' : undefined}
-            searchable
-            clearable
-            data={optionen}
-            value={[...personen]}
-            onChange={onChange}
-            nothingFoundMessage="Niemand gefunden"
-            maxValues={50}
-          />
+          {/* The list opens by typing or the chevron, not by focusing or clicking into the field. */}
+          <div
+            ref={feld}
+            onClickCapture={(e) => {
+              const ziel = e.target as HTMLElement;
+              if (klickErlaubt.current || ziel.closest('button') || !feld.current?.contains(ziel))
+                return;
+              e.stopPropagation();
+            }}
+          >
+            <MultiSelect
+              size="md"
+              label="Personen"
+              placeholder={personen.length === 0 ? 'Person suchen' : undefined}
+              searchable
+              data-autofocus
+              openOnFocus={false}
+              ref={eingabe}
+              rightSection={
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size={42}
+                  aria-label="Liste öffnen"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    // Mantine opens the list on a click into the input: let exactly this one through.
+                    klickErlaubt.current = true;
+                    eingabe.current?.click();
+                    klickErlaubt.current = false;
+                    eingabe.current?.focus();
+                  }}
+                >
+                  <IconChevronDown size={18} />
+                </ActionIcon>
+              }
+              rightSectionPointerEvents="all"
+              rightSectionWidth={42}
+              data={optionen}
+              value={[...personen]}
+              onChange={onChange}
+              nothingFoundMessage="Niemand gefunden"
+              maxValues={50}
+            />
+          </div>
           <Button onClick={() => setOffen(false)}>Fertig</Button>
         </Stack>
       </Modal>
@@ -142,18 +178,6 @@ export function SchichtEditor({
                   spacing="xs"
                   style={{ alignItems: 'end' }}
                 >
-                  <ZeitFeld
-                    label="Beginn"
-                    value={s.beginnZeit}
-                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', w))}
-                    style={{ minWidth: 0 }}
-                  />
-                  <ZeitFeld
-                    label="Ende"
-                    value={s.endeZeit}
-                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'endeZeit', w))}
-                    style={{ minWidth: 0 }}
-                  />
                   {s.art !== 'betrieb' && (
                     <DatumFeld
                       tippbar
@@ -170,6 +194,18 @@ export function SchichtEditor({
                       style={{ minWidth: 0 }}
                     />
                   )}
+                  <ZeitFeld
+                    label="Beginn"
+                    value={s.beginnZeit}
+                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'beginnZeit', w))}
+                    style={{ minWidth: 0 }}
+                  />
+                  <ZeitFeld
+                    label="Ende"
+                    value={s.endeZeit}
+                    onWert={(w) => ersetzen(i, schichtZeitSetzen(s, 'endeZeit', w))}
+                    style={{ minWidth: 0 }}
+                  />
                 </SimpleGrid>
               </Grid.Col>
               {s.art === 'betrieb' ? (

@@ -122,7 +122,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 }}
               />
               {/* Fixed when inserted (/erscheint or /geht); to change it, remove the block and insert the other. */}
-              <Group gap={6} wrap="nowrap" data-testid="anwesenheit-art">
+              <Group gap={6} wrap="nowrap" w={110} data-testid="anwesenheit-art">
                 <SlashIcon symbol={daten.art} size={18} />
                 <Text>{ART_LABEL[daten.art]}</Text>
               </Group>

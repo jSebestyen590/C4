@@ -414,7 +414,7 @@ describe('Dienst', () => {
       art: 'weiter',
       text: 'dienst 18:00-22:30 › ',
     });
-    expect(eintraege('dienst 25-26')).toEqual([]);
+    expect(eintraege('dienst 25-26').map((e) => e.titel)).toEqual(['Uhrzeit eingeben']);
   });
   it('stage 2: the Dienstformen, then Aufbau and Putzen', () => {
     expect(eintraege('dienst gesamt › ').map((e) => e.titel)).toEqual([
@@ -443,6 +443,7 @@ describe('Dienst', () => {
     expect(eintraege('dienst gesamt › bar › jul')[0]?.aktion).toEqual({
       art: 'dienst',
       eingabe: { zeiten: null, dienst: 'bar', sub: 'j' },
+      weiter: 'dienst gesamt › bar › ',
     });
     expect(eintraege('dienst gesamt › ~putzen › ')[0]?.aktion).toMatchObject({
       eingabe: { dienst: 'putzen' },

@@ -9,8 +9,8 @@ const ZITAT_EINGABE = /(?:^|\s)(""(?!\s+"")([^"]+)"")$/;
  */
 export const ZitatInline = Mark.create({
   name: 'zitatInline',
-  // Typing at the end of a quote continues outside of it.
-  inclusive: false,
+  // Typing at the end of a quote continues it (also after /zitat); ArrowRight at the end leaves it.
+  inclusive: true,
 
   parseHTML() {
     return [{ tag: 'q' }];
@@ -18,6 +18,23 @@ export const ZitatInline = Mark.create({
 
   renderHTML({ HTMLAttributes }) {
     return ['q', mergeAttributes({ class: 'pk-zitat-inline' }, HTMLAttributes), 0];
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      // At the end of the quote the arrow key only drops the active mark: the next typed text is outside.
+      ArrowRight: ({ editor }) => {
+        const { selection, storedMarks } = editor.state;
+        if (!selection.empty) return false;
+        const { $from } = selection;
+        if (!this.type.isInSet(storedMarks ?? $from.marks())) return false;
+        if ($from.nodeAfter && this.type.isInSet($from.nodeAfter.marks)) return false;
+        return editor.commands.command(({ tr }) => {
+          tr.removeStoredMark(this.type);
+          return true;
+        });
+      },
+    };
   },
 
   addInputRules() {

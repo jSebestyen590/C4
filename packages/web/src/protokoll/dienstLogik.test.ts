@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bausteinEventDatenSchema, bausteinLeer, type BausteinEventDaten } from '@c4/shared';
 import { dienstEintragen, eventZeiten, zeitspanneParsen } from './bausteinLogik';
+import { dienstEintraege } from './slashLogik';
 
 const event = (patch: Partial<BausteinEventDaten> = {}): BausteinEventDaten => ({
   ...bausteinLeer('bausteinEvent'),
@@ -135,5 +136,64 @@ describe('dienstEintragen', () => {
       })),
     });
     expect(dienstEintragen(voll, { ...bar(), sub: null })).toBeNull();
+  });
+});
+
+describe('dienstEintragen mit Zahlen', () => {
+  const bar = { zeiten: null, dienst: 'bar', sub: null } as const;
+  it('uses typed counts (minimum = wunsch, or min/wunsch)', () => {
+    const a = dienstEintragen(event(), { ...bar, minimum: 2 })!;
+    expect(a.schichten[0]).toMatchObject({ bedarfe: [{ minimum: 2, wunsch: 2 }] });
+    const b = dienstEintragen(event(), { ...bar, minimum: 2, wunsch: 3, sub: 'anna' })!;
+    expect(b.schichten[0]).toMatchObject({
+      bedarfe: [{ minimum: 2, wunsch: 3, personen: ['anna'] }],
+    });
+  });
+  it('keeps wunsch >= minimum and >= head count, and betrieb minimum >= 1', () => {
+    const a = dienstEintragen(event(), { ...bar, minimum: 3, wunsch: 1 })!;
+    expect(a.schichten[0]).toMatchObject({ bedarfe: [{ minimum: 3, wunsch: 3 }] });
+    const b = dienstEintragen(event(), { ...bar, minimum: 0 })!;
+    expect(b.schichten[0]).toMatchObject({ bedarfe: [{ minimum: 1, wunsch: 1 }] });
+    let d = dienstEintragen(event(), { ...bar, sub: 'a', minimum: 1 })!;
+    d = dienstEintragen(d, { ...bar, sub: 'b', minimum: 1 })!;
+    expect(d.schichten[0]).toMatchObject({ bedarfe: [{ minimum: 1, wunsch: 2 }] });
+  });
+});
+
+describe('dienstEintraege', () => {
+  const formen = [{ id: 'bar', name: 'Bar' }];
+  const personen = [
+    { sub: 'a', titel: 'Anna', beschreibung: '', extern: false, mitglied: true, da: true },
+    { sub: 'b', titel: 'Ben', beschreibung: '', extern: false, mitglied: true, da: true },
+  ];
+  const titel = (r: string, e = event()) =>
+    dienstEintraege(r, e, formen, personen as never).map((x) => x.titel);
+
+  it('offers Schicht times and a hint while the time does not parse', () => {
+    const e = dienstEintragen(event(), {
+      zeiten: { beginnZeit: '18:00', endeZeit: '22:00' },
+      dienst: 'bar',
+      sub: null,
+    })!;
+    expect(titel('', e)).toEqual(['Gesamt (Eventzeit)', '18:00–22:00']);
+    expect(titel('18', e)).toContain('Uhrzeit eingeben');
+    expect(titel('18-22', e)).not.toContain('Uhrzeit eingeben');
+  });
+  it('reads counts after the Dienst name', () => {
+    const t = dienstEintraege('gesamt › bar 2/3', event(), formen, [])[0]!;
+    expect(t.titel).toBe('Bar · min. 2, Wunsch 3');
+    expect((t.aktion as { text: string }).text).toBe('dienst gesamt › bar 2/3 › ');
+    const p = dienstEintraege('gesamt › bar 2 › ', event(), formen, personen as never);
+    expect(p[1]!.aktion).toMatchObject({
+      art: 'dienst',
+      eingabe: { dienst: 'bar', sub: 'a', minimum: 2 },
+      weiter: 'dienst gesamt › bar 2 › ',
+    });
+  });
+  it('hides chosen persons, offers Fertig and no Ohne Personen once someone is in', () => {
+    expect(titel('gesamt › bar › ')).toEqual(['Ohne Personen', 'Anna', 'Ben']);
+    const e = dienstEintragen(event(), { zeiten: null, dienst: 'bar', sub: 'a' })!;
+    expect(titel('gesamt › bar › ', e)).toEqual(['Fertig', 'Ben']);
+    expect(titel('gesamt › bar › b', e)).toEqual(['Ben']);
   });
 });

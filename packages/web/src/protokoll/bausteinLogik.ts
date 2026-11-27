@@ -352,6 +352,47 @@ export interface DienstEingabe {
   dienst: string;
   /** The person to enter, `null` = only the Dienst without a person. */
   sub: string | null;
+  /** Counts typed as `bar 2` / `bar 2/3`; without them the counts follow the head count. */
+  minimum?: number;
+  /** Without `wunsch` the minimum is also the wunsch. */
+  wunsch?: number;
+}
+
+/** The persons already entered for this Dienst (same Schicht and Bedarf `dienstEintragen` would use). */
+export function dienstPersonen(
+  daten: BausteinEventDaten,
+  eingabe: DienstEingabe,
+): readonly string[] {
+  const art =
+    eingabe.dienst === 'aufbau' || eingabe.dienst === 'putzen' ? eingabe.dienst : 'betrieb';
+  const zeiten = eingabe.zeiten ?? eventZeiten(daten);
+  const schicht = daten.schichten.find(
+    (s) => s.art === art && s.beginnZeit === zeiten.beginnZeit && s.endeZeit === zeiten.endeZeit,
+  );
+  if (!schicht) return [];
+  if (schicht.art !== 'betrieb') return schicht.personen;
+  return schicht.bedarfe.find((b) => b.dienstformId === eingabe.dienst)?.personen ?? [];
+}
+
+/**
+ * Minimum and wunsch after entering persons: typed counts win (wunsch at least the minimum and the head
+ * count, `betrieb` minimum at least 1); without them a new Dienst starts at the head count and an existing one
+ * only grows when it must.
+ */
+function dienstZahlen(
+  eingabe: DienstEingabe,
+  n: number,
+  alt: { minimum: number; wunsch: number } | null,
+  betrieb: boolean,
+): { minimum: number; wunsch: number } {
+  if (eingabe.minimum !== undefined) {
+    const minimum = Math.max(betrieb ? 1 : 0, eingabe.minimum);
+    return { minimum, wunsch: Math.max(1, minimum, eingabe.wunsch ?? minimum, n) };
+  }
+  return {
+    minimum: alt ? Math.max(alt.minimum, Math.max(1, n)) : Math.max(1, n),
+    wunsch: alt ? Math.max(alt.wunsch, Math.max(1, n)) : Math.max(1, n),
+  };
 }
 
 /** The Dienst as the Event block holds it afterwards; `null` when it does not fit (too many Schichten, persons). */
@@ -385,25 +426,19 @@ export function dienstEintragen(
       bedarfe: mitBedarf.bedarfe.map((b) => {
         if (b.dienstformId !== eingabe.dienst) return b;
         const personen = mit(b.personen);
-        const n = Math.max(1, personen.length);
         return {
           ...b,
           personen: [...personen],
-          // A new Bedarf starts at the head count; an existing one only grows when it must.
-          minimum: vorhanden ? Math.max(b.minimum, n) : n,
-          wunsch: vorhanden ? Math.max(b.wunsch, n) : n,
+          ...dienstZahlen(eingabe, personen.length, vorhanden ? b : null, true),
         };
       }),
     };
   } else {
     const personen = mit(schicht.personen);
-    const n = Math.max(1, personen.length);
-    const neuAngelegt = index < 0;
     neu = {
       ...schicht,
       personen: [...personen],
-      minimum: neuAngelegt ? n : Math.max(schicht.minimum, n),
-      wunsch: neuAngelegt ? n : Math.max(schicht.wunsch, n),
+      ...dienstZahlen(eingabe, personen.length, index < 0 ? null : schicht, false),
     };
   }
   const bedarf =

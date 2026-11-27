@@ -17,6 +17,7 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
+import { InfoHinweis } from '../InfoHinweis';
 import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState, type ReactNode } from 'react';
@@ -546,16 +547,23 @@ export function TodoFormular({
             disabled={!nurEine}
             events={{ hover: true, focus: true, touch: true }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', minHeight: 42 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 42 }}>
               <Switch
                 size="md"
                 label="Gemeinsam abhaken"
+                styles={{ label: { lineHeight: 1.3, paddingBlock: 0 } }}
                 disabled={nurEine}
                 checked={daten.modus === 'gemeinsam'}
                 onChange={(e) => {
                   const gemeinsam = e.currentTarget.checked;
                   aendern((d) => ({ ...d, modus: gemeinsam ? 'gemeinsam' : 'einzeln' }));
                 }}
+              />
+              <InfoHinweis
+                feld="Gemeinsam abhaken"
+                text={
+                  'An: Sobald eine zuständige Person das Todo abhakt, gilt es für alle als erledigt.\nAus: Jede zuständige Person hakt es für sich ab; erledigt ist es, wenn alle abgehakt haben.'
+                }
               />
             </div>
           </Tooltip>

@@ -99,6 +99,32 @@ describe('inline quote', () => {
   });
 });
 
+describe('inline quote typing', () => {
+  const zitate = (e: Editor) =>
+    (gegenwart(e)[0]!.content ?? [])
+      .filter((k) => k.marks?.some((m) => m.type === 'zitatInline'))
+      .map((k) => k.text)
+      .join('');
+
+  it('keeps typed text inside the quote after /zitat, until ArrowRight leaves it', () => {
+    editor = baue([absatz('Er sagte ')]);
+    let pos = 0;
+    editor.state.doc.descendants((n, q) => {
+      if (n.isText) pos = q + n.nodeSize;
+    });
+    editor.commands.setTextSelection(pos);
+    zitatImTextEinfuegen(editor);
+    for (const z of 'Hallo') tippe(editor, z);
+    expect(zitate(editor)).toBe('Hallo');
+    const pfeil = editor.view.someProp('handleKeyDown', (f) =>
+      f(editor!.view, new KeyboardEvent('keydown', { key: 'ArrowRight' })),
+    );
+    expect(pfeil).toBe(true);
+    for (const z of ' Welt') tippe(editor, z);
+    expect(zitate(editor)).toBe('Hallo');
+  });
+});
+
 describe('Merker', () => {
   it('stands at the top level and in Notizen, holds plain text, and is a valid document', () => {
     const thema = bausteinErzeugen('bausteinThema', undefined, [

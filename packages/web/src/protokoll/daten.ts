@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { datumAnzeigen, datumBerlin, type EventDto } from '@c4/shared';
+import { datumAnzeigen, datumBerlin, type BausteinEventDaten, type EventDto } from '@c4/shared';
 import { anwesenheitUhrzeit, slashPersonen, type AnwesenheitPerson } from './anwesenheit';
 import {
   eventDatenAusVorlage,
@@ -85,7 +85,13 @@ export function useSlashDaten(
       personen,
       dienstformen: formen,
       uhrzeit: () => anwesenheitUhrzeit(),
+      eventTeilnahme: (e: BausteinEventDaten) =>
+        kategorien.liste.find(
+          (k) =>
+            k.id ===
+            (e.kategorieId ?? vorlagen.data?.find((v) => v.id === e.vorlageId)?.kategorieId),
+        )?.art === 'teilnahme',
     }),
-    [basis, personen, formen],
+    [basis, personen, formen, kategorien.liste, vorlagen.data],
   );
 }

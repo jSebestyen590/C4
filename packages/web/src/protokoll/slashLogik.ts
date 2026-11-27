@@ -11,7 +11,7 @@ import {
   type BausteinVergangenesEventDaten,
   type MitgliedStatus,
 } from '@c4/shared';
-import { eventZeiten, zeitspanneParsen, type DienstEingabe } from './bausteinLogik';
+import { dienstPersonen, eventZeiten, zeitspanneParsen, type DienstEingabe } from './bausteinLogik';
 
 // Items of the slash menu ("/") and of the toolbar's Baustein menu: pure, no TipTap/React.
 
@@ -37,7 +37,13 @@ export type SlashAktion =
   /** Set the end of the Sitzung (Kopf) to the current time; no Baustein. */
   | { art: 'ende' }
   /** Enter a Dienst (with an optional person) into the surrounding Event block; no Baustein. */
-  | { art: 'dienst'; eingabe: DienstEingabe }
+  | {
+      art: 'dienst';
+      /** `null` = "Fertig": only remove the typed text. */
+      eingabe: DienstEingabe | null;
+      /** Replace the typed text by `/text` instead of removing it (the menu stays open for the next person). */
+      weiter?: string;
+    }
   /** Pick an image file and upload it (the file dialog opens, so this runs in the user's click or key press). */
   | { art: 'bild' };
 
@@ -131,6 +137,8 @@ export interface SlashDaten {
   ende?: (uhrzeit: string) => void;
   /** Active Dienstformen (second stage of /dienst). */
   dienstformen?: readonly SlashDienstform[];
+  /** Whether the event (by its data) belongs to a Kategorie with participation (no Dienste there). */
+  eventTeilnahme?: (event: BausteinEventDaten) => boolean;
 }
 
 /** A Dienstform selectable in /dienst. */
@@ -143,6 +151,8 @@ export interface SlashDienstform {
 export interface SlashKontext {
   /** The cursor is inside an Event block: its data (enables /dienst); null elsewhere. */
   event?: BausteinEventDaten | null;
+  /** The event at the cursor has a Kategorie with participation: no /dienst. */
+  eventIstTeilnahme?: boolean;
 }
 
 /** The person of a chosen Erscheint / Geht block, else null (other Bausteine, no person). */
@@ -410,7 +420,7 @@ export function bausteinEintraege(
   return SLASH_DEFINITIONEN.filter((d) => {
     // Without a context (the toolbar) the slash-only entries are left out; /dienst needs an Event block.
     if (d.nurSlash && !kontext) return false;
-    if (d.nurSlash === 'dienst' && !kontext?.event) return false;
+    if (d.nurSlash === 'dienst' && (!kontext?.event || kontext.eventIstTeilnahme)) return false;
     if (
       ohneVerschachtelt &&
       d.aktion.art === 'einfuegen' &&
@@ -635,6 +645,33 @@ export function dienstEintraege(
         ),
       );
     }
+    // The time spans of the Schichten the event already has.
+    const gesehen = new Set<string>([spanneText(gesamt)]);
+    if (spanne) gesehen.add(spanneText(spanne));
+    for (const s of event.schichten) {
+      const text = spanneText(s);
+      if (gesehen.has(text) || !enthaelt(text, filter)) continue;
+      gesehen.add(text);
+      eintraege.push(
+        weiter(
+          `dienst-schicht-${text}`,
+          text,
+          'Zeit einer Schicht',
+          `dienst ${s.beginnZeit}-${s.endeZeit} › `,
+        ),
+      );
+    }
+    if (filter !== '' && !spanne && (eintraege.length === 0 || /\d/.test(filter))) {
+      // Harmless when chosen: the typed text stays as it is.
+      eintraege.push(
+        weiter(
+          'dienst-zeit-hinweis',
+          'Uhrzeit eingeben',
+          'z. B. 18-22 oder 18:30-22',
+          `dienst ${filter}`,
+        ),
+      );
+    }
     return eintraege;
   }
 
@@ -643,7 +680,9 @@ export function dienstEintraege(
   if (zeitText !== 'gesamt' && !zeiten) return [];
 
   if (teile.length === 2) {
-    const filter = teile[1]!;
+    const { name: filter, zahlen } = dienstZahlenTrennen(teile[1]!);
+    const zusatz = zahlen ? ` ${zahlen.text}` : '';
+    const zusatzTitel = zahlen ? ` · ${zahlenText(zahlen)}` : '';
     const benutzt = new Set(
       event.schichten.flatMap((s) =>
         s.art === 'betrieb' ? s.bedarfe.map((b) => b.dienstformId) : [],
@@ -659,9 +698,9 @@ export function dienstEintraege(
       eintraege.push(
         weiter(
           `dienst-form-${d.id}`,
-          d.name,
+          `${d.name}${zusatzTitel}`,
           'Dienstform',
-          `dienst ${zeitText} › ${normalisieren(d.name)} › `,
+          `dienst ${zeitText} › ${normalisieren(d.name)}${zusatz} › `,
         ),
       );
     }
@@ -671,20 +710,35 @@ export function dienstEintraege(
     ] as const) {
       if (enthaelt(titel, filter)) {
         eintraege.push(
-          weiter(`dienst-${schluessel}`, titel, 'Schicht', `dienst ${zeitText} › ${schluessel} › `),
+          weiter(
+            `dienst-${schluessel}`,
+            `${titel}${zusatzTitel}`,
+            'Schicht',
+            `dienst ${zeitText} › ${schluessel}${zusatz} › `,
+          ),
         );
       }
     }
     return eintraege;
   }
 
-  const dienstText = teile[1]!;
+  const { name: dienstText, zahlen } = dienstZahlenTrennen(teile[1]!);
   const dienst =
     dienstText in DIENST_ART
       ? DIENST_ART[dienstText as keyof typeof DIENST_ART]
       : dienstformen.find((d) => normalisieren(d.name) === dienstText)?.id;
   if (!dienst) return [];
   const filter = teile.slice(2).join(' ').trim();
+  const basis: DienstEingabe = {
+    zeiten,
+    dienst,
+    sub: null,
+    ...(zahlen ? { minimum: zahlen.minimum, wunsch: zahlen.wunsch } : {}),
+  };
+  const bisher = new Set(dienstPersonen(event, basis));
+  const zahlenTitel = zahlen ? ` (${zahlenText(zahlen)})` : '';
+  // The typed text after an insert: the same stage again (an extra space makes the menu refresh).
+  const zurueck = `dienst ${zeitText} › ${teile[1]!} › `;
   const eintrag = (
     schluessel: string,
     titel: string,
@@ -696,20 +750,60 @@ export function dienstEintraege(
     titel,
     beschreibung,
     symbol,
-    aktion: { art: 'dienst', eingabe: { zeiten, dienst, sub } },
+    aktion: { art: 'dienst', eingabe: { ...basis, sub }, weiter: sub ? zurueck : undefined },
   });
   const eintraege: SlashEintrag[] = [];
-  if (enthaelt('ohne personen', filter)) {
+  if (bisher.size > 0 && filter === '') {
+    eintraege.push({
+      schluessel: 'dienst-fertig',
+      titel: 'Fertig',
+      beschreibung: 'Eingabe beenden',
+      symbol: 'ohne',
+      aktion: { art: 'dienst', eingabe: null },
+    });
+  }
+  if (bisher.size === 0 && enthaelt('ohne personen', filter)) {
     eintraege.push(
-      eintrag('dienst-ohne', 'Ohne Personen', 'Nur den Dienst eintragen', 'ohne', null),
+      eintrag(
+        'dienst-ohne',
+        'Ohne Personen',
+        `Nur den Dienst eintragen${zahlenTitel}`,
+        'ohne',
+        null,
+      ),
     );
   }
   for (const p of personen) {
-    if (p.extern || !p.sub || !enthaelt(`${p.titel} ${p.beschreibung}`, filter)) continue;
+    if (p.extern || !p.sub || bisher.has(p.sub)) continue;
+    if (!enthaelt(`${p.titel} ${p.beschreibung}`, filter)) continue;
     eintraege.push(eintrag(`dienst-person-${p.sub}`, p.titel, p.beschreibung, 'person', p.sub));
   }
   return eintraege;
 }
+
+/** `bar 2` / `bar 2/3` typed in the Dienst stage: the name and the counts (minimum, wunsch). */
+interface DienstZahlen {
+  minimum: number;
+  wunsch: number | undefined;
+  /** As typed in the menu text (`2` or `2/3`). */
+  text: string;
+}
+
+function dienstZahlenTrennen(text: string): { name: string; zahlen: DienstZahlen | null } {
+  const t = /^(.*?)\s+(\d{1,2})(?:\s*\/\s*(\d{1,2}))?$/.exec(text);
+  if (!t) return { name: text, zahlen: null };
+  const minimum = Number(t[2]);
+  const wunsch = t[3] === undefined ? undefined : Number(t[3]);
+  return {
+    name: t[1]!.trim(),
+    zahlen: { minimum, wunsch, text: wunsch === undefined ? `${minimum}` : `${minimum}/${wunsch}` },
+  };
+}
+
+const zahlenText = (z: DienstZahlen): string =>
+  z.wunsch === undefined || z.wunsch === z.minimum
+    ? `${z.minimum} Personen`
+    : `min. ${z.minimum}, Wunsch ${z.wunsch}`;
 
 /** Second stage of "Zitat": as a paragraph (the default) or inside the text. */
 export function zitatEintraege(filter: string): SlashEintrag[] {
@@ -746,7 +840,7 @@ export function slashEintraege(
   if (stufe === 'events') return vergangenesEintraege(daten.vergangene, filter);
   if (stufe === 'zitat') return zitatEintraege(filter);
   if (stufe === 'dienst') {
-    return kontext.event
+    return kontext.event && !kontext.eventIstTeilnahme
       ? dienstEintraege(filter, kontext.event, daten.dienstformen ?? [], daten.personen ?? [])
       : [];
   }

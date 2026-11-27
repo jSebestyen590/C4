@@ -323,11 +323,26 @@ export function eventAmCursor(
  */
 export function dienstEintragenAmCursor(
   editor: Editor,
-  eingabe: DienstEingabe,
+  eingabe: DienstEingabe | null,
   loeschen?: TextBereich,
+  /** Instead of deleting the typed text replace it by this (the slash menu stays open on that stage). */
+  ersetzen?: string,
 ): boolean {
   const tr = editor.state.tr;
-  if (loeschen) tr.delete(loeschen.from, loeschen.to);
+  if (loeschen) {
+    if (ersetzen !== undefined && eingabe) {
+      // The same text again would not refresh the menu: an extra trailing space makes it differ.
+      const alt = editor.state.doc.textBetween(loeschen.from, loeschen.to);
+      tr.insertText(alt === ersetzen ? `${ersetzen} ` : ersetzen, loeschen.from, loeschen.to);
+    } else {
+      tr.delete(loeschen.from, loeschen.to);
+    }
+  }
+  if (!eingabe) {
+    editor.view.dispatch(tr.scrollIntoView());
+    editor.view.focus();
+    return true;
+  }
   // The Event block starts before the typed text, so its position survives the deletion.
   const event = eventAmCursor(tr.selection.$from);
   const neu = event ? dienstEintragen(event.daten, eingabe) : null;
