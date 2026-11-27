@@ -57,7 +57,14 @@ export function BelegVorschau({
   const [bildFehler, setBildFehler] = useState(false);
   const istPdf = typ === 'application/pdf';
   const oeffnen = (
-    <Anchor href={url} target="_blank" rel="noreferrer" size="sm">
+    <Anchor
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      size="sm"
+      display="inline-block"
+      py={{ base: 11, md: 0 }}
+    >
       Datei in neuem Tab öffnen
     </Anchor>
   );

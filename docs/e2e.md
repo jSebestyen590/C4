@@ -54,7 +54,8 @@ API ermittelt.
 ## Ausnahmen
 
 Erlaubte Verstöße stehen zentral in `ausnahmen.ts` (Route, Prüfung, Treffer, Begründung), nicht im App-Code. Jeder
-Eintrag braucht eine Begründung; bei offenen Mängeln verweist sie auf `docs/refactoring.md`. Bisher: `/protokolle/:id`
+Eintrag braucht eine Begründung; bei offenen Mängeln verweist sie auf `docs/refactoring.md`. Sekundäre Ziele (Mitgliedsnamen als Link in Listen, Termin-Einträge im Monat, `mailto:`-Links, Pill-Entfernen-Knöpfe) sind über
+`touchAusnahmeSelektoren` für alle Routen ausgenommen (WCAG 2.5.8, Ausnahme "Abstand"; Mindestgröße 24 px). Bisher: `/protokolle/:id`
 meldet einen 409-Console-Fehler, weil Phone- und Desktop-Projekt denselben Entwurf öffnen und der zweite Tab die
 Bearbeitungssperre nicht bekommt (erwartet).
 

@@ -8,6 +8,7 @@ import {
   MultiSelect,
   NumberInput,
   PasswordInput,
+  Pill,
   Select,
   Switch,
   Tabs,
@@ -35,6 +36,7 @@ export const theme = createTheme({
         },
       },
     }),
+    Pill: Pill.extend({ defaultProps: { removeButtonProps: { 'aria-label': 'Entfernen' } } }),
     // Clear buttons of Select/TimePicker/... and other close buttons: 42px touch target.
     CloseButton: CloseButton.extend({ styles: { root: { '--cb-size': '2.625rem' } } }),
     // Tab rows and switch rows: 42px touch target.

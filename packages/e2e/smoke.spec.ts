@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { ohneAusnahmen } from './ausnahmen';
+import { ohneAusnahmen, touchAusnahmeSelektoren } from './ausnahmen';
 import {
   beobachteConsole,
   rendert,
@@ -61,7 +61,7 @@ for (const route of routen) {
     expect.soft(konsole, meldung(konsole, 'console')).toEqual([]);
 
     if (phone) {
-      const touch = await touchVerstoesse(page);
+      const touch = await touchVerstoesse(page, touchAusnahmeSelektoren.map((a) => a.selektor));
       const hart = ohneAusnahmen(route.pfad, 'touch', touch.hart);
       const weich = ohneAusnahmen(route.pfad, 'touch', touch.weich);
       const schrift = ohneAusnahmen(route.pfad, 'schrift', await schriftVerstoesse(page));

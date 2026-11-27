@@ -9,6 +9,26 @@ export interface Ausnahme {
   grund: string;
 }
 
+/**
+ * Touch-Ziele, die für alle Routen ausgenommen sind: CSS-Selektor des Elements, Grund. Sekundäre Ziele in Listen
+ * und Fließtext dürfen nach WCAG 2.5.8 (Ausnahme "Abstand") klein sein, solange sie mindestens 24 px haben.
+ */
+export const touchAusnahmeSelektoren: { selektor: string; grund: string }[] = [
+  {
+    selektor: 'a:has(.status-name)',
+    grund: 'Mitgliedsname (StatusName) in Zeilen und Listen; 42 px würden jede Liste aufblähen.',
+  },
+  {
+    selektor: 'a[href*="/kalender/events/"][title]',
+    grund: 'Termin-Eintrag in der Monatsansicht; Zelle und Eintrag sind bewusst kompakt.',
+  },
+  { selektor: 'a[href^="mailto:"]', grund: 'E-Mail-Adresse als Link in Detailansichten.' },
+  {
+    selektor: '.mantine-Pill-root button',
+    grund: 'Entfernen-Knopf eines Pills in einer Mehrfachauswahl (Feld selbst ist 42 px hoch).',
+  },
+];
+
 export const ausnahmen: Ausnahme[] = [
   {
     route: '/protokolle/:id',

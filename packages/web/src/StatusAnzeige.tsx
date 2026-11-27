@@ -66,7 +66,7 @@ export function StatusName({
 }: Readonly<{ status: MitgliedStatus; children: string }>) {
   const farbe = useStatusFarbe(status);
   return (
-    <Text component="span" fw={700} c={farbe} style={{ overflowWrap: 'anywhere' }}>
+    <Text component="span" className="status-name" fw={700} c={farbe} style={{ overflowWrap: 'anywhere' }}>
       {children}
     </Text>
   );

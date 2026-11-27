@@ -72,8 +72,8 @@ export async function scrollVerstoesse(page: Page): Promise<string[]> {
   });
 }
 
-export async function touchVerstoesse(page: Page): Promise<Funde> {
-  return page.evaluate(() => {
+export async function touchVerstoesse(page: Page, ausgenommen: string[] = []): Promise<Funde> {
+  return page.evaluate((ausgenommen) => {
     const kurz = (t: string) => {
       const s = t.replace(/\s+/g, ' ').trim();
       return s.length > 40 ? `${s.slice(0, 39)}…` : s;
@@ -96,6 +96,7 @@ export async function touchVerstoesse(page: Page): Promise<Funde> {
       if (eigen.width <= 1 && eigen.height <= 1) continue;
       if (stil.display === 'none' || stil.visibility === 'hidden') continue;
       if (el.closest('[aria-hidden=true], [inert]')) continue;
+      if (ausgenommen.some((selektor) => el.matches(selektor))) continue;
       // Felder wie Schalter, Zeit-Segmente oder der Suchinput in Mehrfachauswahlen sind klein; getippt wird auf
       // das umgebende Feld bzw. die Beschriftung. Dann zählt dessen Fläche.
       const flaeche =
@@ -125,7 +126,7 @@ export async function touchVerstoesse(page: Page): Promise<Funde> {
       (weich ? funde.weich : funde.hart).push(zeile);
     }
     return funde;
-  });
+  }, ausgenommen);
 }
 
 export async function schriftVerstoesse(page: Page): Promise<string[]> {

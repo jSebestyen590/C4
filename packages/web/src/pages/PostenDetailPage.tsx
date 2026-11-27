@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -41,6 +40,7 @@ import { mitgliedOptionen } from '../organisator';
 import { StatusName } from '../StatusAnzeige';
 import { besetzungName } from './PostenPage';
 import { mitgliederKeys, postenKeys } from '../queryKeys';
+import { ZurueckLink } from '../ZurueckLink';
 
 const zeitraum = (b: Besetzung) =>
   `${datumAnzeigen(b.start)} – ${b.ende ? datumAnzeigen(b.ende) : 'unbefristet'}`;
@@ -367,9 +367,7 @@ export function PostenDetailPage() {
 
   return (
     <Stack maw={520}>
-      <Anchor component={Link} to="/posten" size="sm">
-        ← Zurück zur Übersicht
-      </Anchor>
+      <ZurueckLink to="/posten">Zurück zur Übersicht</ZurueckLink>
       {!p && <Alert color="yellow">Dieser Posten wurde nicht gefunden.</Alert>}
       {p && (
         <>

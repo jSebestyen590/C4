@@ -1,6 +1,6 @@
-import { Alert, Anchor, Loader, Stack, Text } from '@mantine/core';
+import { Alert, Loader, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { ZurueckLink } from './ZurueckLink';
 
 /** Frame of the booking pages: heading, hint, and the loading / error / empty states. */
 export function BuchungsSeite({
@@ -39,9 +39,7 @@ export function BuchungsSeite({
       {leer ? (
         <Stack align="flex-start">
           <Text c="dimmed">{leer}</Text>
-          <Anchor component={Link} to="/lager">
-            Zurück zu den Lagerorten
-          </Anchor>
+          <ZurueckLink to="/lager">Zurück zu den Lagerorten</ZurueckLink>
         </Stack>
       ) : (
         children
