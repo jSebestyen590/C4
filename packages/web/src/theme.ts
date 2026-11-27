@@ -45,15 +45,14 @@ export const theme = createTheme({
     InputClearButton: InputClearButton.extend({
       defaultProps: { 'aria-label': 'Leeren' },
       styles: {
-        // 42px hit area, but no own background (inline style beats the hover color): the field border
-        // below it stays visible, also when the field is focused.
+        // Inside the 42px field minus its 1px border, so it doesn't cover the border or the focus ring.
         root: {
-          '--cb-size': '2.625rem',
-          width: '2.625rem',
-          height: '2.625rem',
-          minWidth: '2.625rem',
+          '--cb-size': '2.5rem',
+          '--cb-icon-size': '1.125rem',
+          width: '2.5rem',
+          height: '2.5rem',
+          minWidth: '2.5rem',
           backgroundColor: 'transparent',
-          borderRadius: 'var(--mantine-radius-sm)',
         },
       },
     }),
