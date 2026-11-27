@@ -4,6 +4,16 @@
  * docs/finanzen.md; keep them short and factual.
  */
 export const HILFE = {
+  sumup: {
+    guthaben:
+      'Karten-Einnahmen liegen zuerst als SumUp-Guthaben, bis SumUp sie aufs Bankkonto auszahlt. Beim Buchen einer Gruppe steigt das Guthaben um den Bruttobetrag, die Kartenerlöse buchen den Betrag samt 19 % USt. Die Gebühren werden erst mit der Auszahlung gebucht.',
+    event:
+      'Die Zahlungen eines Tages werden zusammen gebucht. Liegen sie in der Zeit eines Events (bis 3 Stunden nach dessen Ende), ist es vorgewählt und die Buchung bekommt den Eventnamen. Du kannst ein anderes Event oder „Ohne Event“ wählen. Gebucht wird je Gruppe als eine Buchung.',
+    auswahl:
+      'Abgewählte Zahlungen bleiben offen und tauchen nach dem Buchen als eigene Gruppe wieder auf, z. B. um sie einem anderen Event zuzuordnen.',
+    auszahlungen:
+      'Auszahlungen von SumUp werden später mit dem Kontoauszug der Bank abgeglichen (Bank-Abgleich). Bis dahin stehen sie auf „offen“.',
+  },
   konto: {
     art: 'Bargeld: Kasse, Safe und seine Fächer. Bank: Bankkonten. Durchlauf: Geld, das nur unterwegs ist, z. B. Geldtransit. Erlöse und Aufwand: Kategorien für Einnahmen und Ausgaben (Grundlage für die spätere G+V). Neutral: Konten ohne Ergebnis, z. B. Eröffnung oder Kassendifferenz.\nDie Art lässt sich nach der ersten Buchung nicht mehr ändern.',
     parent:

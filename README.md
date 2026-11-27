@@ -67,7 +67,23 @@ Browser E2E tests (Playwright, against dev, not part of CI): `pnpm e2e`; setup i
    successful fetch only records the mailbox position and imports nothing older. Give the right "Privatpartys
    verwalten" to the responsible Posten (admins have it automatically).
 
-8. **First admin user** (self sign-up is disabled). The user pool differs per environment: read its id with
+8. **Fill the SumUp secret** (card revenue, Finanzen): Terraform creates `c4-<env>-sumup` empty. Enter as plaintext:
+
+   ```json
+   {
+     "apiKey": "sup_sk_...",
+     "merchantCode": "MXXXXXXX",
+     "abDatum": "2027-01-01"
+   }
+   ```
+
+   `merchantCode` is optional (otherwise read from `GET /v0.1/me`). `abDatum` is the first day to import: `2027-01-01`
+   on prod; earlier transactions are never fetched. The hourly job `{"c4":"sumup-job"}` then fills the check list on
+   `/finanzen/sumup`; to run it once right away:
+   `AWS_PROFILE=C4 aws lambda invoke --function-name c4-<env>-api --payload '{"c4":"sumup-job"}' --cli-binary-format raw-in-base64-out /dev/stdout`
+   (or "Jetzt abrufen" on the page). See `docs/finanzen.md` ("SumUp").
+
+9. **First admin user** (self sign-up is disabled). The user pool differs per environment: read its id with
    `cd infra/envs/<env> && terraform output app` (field `user_pool_id`, `<env>` = `dev` or `prod`) and use it below.
 
    ```bash
@@ -80,10 +96,10 @@ Browser E2E tests (Playwright, against dev, not part of CI): `pnpm e2e`; setup i
    the email and the temporary password, then pick your login name on the "Choose your username" page; after
    that you can sign in with either. Further users (invited by email only) and group changes: Admin page.
 
-9. **Connect OneDrive** (event photo folders and the PDFs of the Sitzungsprotokolle; optional until needed): register the
-   app at Microsoft, then save client id, secret and base folder in the app under Bilder -> Einrichtung and sign in with
-   the OneDrive account. The full procedure is in [docs/bilder.md](docs/bilder.md#einrichtung-einmalig); it is done per
-   environment in the app, nothing for it lives in Terraform.
+10. **Connect OneDrive** (event photo folders and the PDFs of the Sitzungsprotokolle; optional until needed): register the
+    app at Microsoft, then save client id, secret and base folder in the app under Bilder -> Einrichtung and sign in with
+    the OneDrive account. The full procedure is in [docs/bilder.md](docs/bilder.md#einrichtung-einmalig); it is done per
+    environment in the app, nothing for it lives in Terraform.
 
 ### GitHub setup
 

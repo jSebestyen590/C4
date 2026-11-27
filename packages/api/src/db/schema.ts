@@ -1874,6 +1874,46 @@ export const finRechnungDateien = pgTable('fin_rechnung_dateien', {
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
 });
 
+/** Card transactions fetched from SumUp (insert-only); `betragCent` is negative for refunds. `roh` = SumUp JSON as text. */
+export const finSumupTransaktionen = pgTable('fin_sumup_transaktionen', {
+  id: text('id').primaryKey(),
+  transactionCode: text('transaction_code').notNull(),
+  zeitpunkt: timestamp('zeitpunkt', { withTimezone: true }).notNull(),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  typ: text('typ').notNull(),
+  status: text('status').notNull(),
+  trinkgeldCent: bigint('trinkgeld_cent', { mode: 'number' }).notNull().default(0),
+  sumupBenutzer: text('sumup_benutzer'),
+  roh: text('roh').notNull(),
+  abgerufenAm: timestamp('abgerufen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Payout lines fetched from SumUp (insert-only); a payout is the sum of the lines of one `datum`. */
+export const finSumupAuszahlungen = pgTable('fin_sumup_auszahlungen', {
+  id: text('id').primaryKey(),
+  datum: date('datum', { mode: 'string' }).notNull(),
+  typ: text('typ').notNull(),
+  betragCent: bigint('betrag_cent', { mode: 'number' }).notNull(),
+  gebuehrCent: bigint('gebuehr_cent', { mode: 'number' }).notNull().default(0),
+  transactionCode: text('transaction_code'),
+  referenz: text('referenz'),
+  status: text('status').notNull(),
+  roh: text('roh').notNull(),
+  abgerufenAm: timestamp('abgerufen_am', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Which booking took over a SumUp transaction (insert-only); a reversed booking makes it open again. */
+export const finSumupZuordnungen = pgTable('fin_sumup_zuordnungen', {
+  id: text('id').primaryKey(),
+  transaktionId: text('transaktion_id')
+    .notNull()
+    .references(() => finSumupTransaktionen.id),
+  buchungId: text('buchung_id')
+    .notNull()
+    .references(() => finBuchungen.id),
+  erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull(),
+});
+
 /** Daily export of the journal to the archive bucket (insert-only). */
 export const finExporte = pgTable('fin_exporte', {
   id: text('id').primaryKey(),

@@ -9,6 +9,7 @@ import { FinanzenWarengruppenKategorienPage } from '../pages/FinanzenWarengruppe
 import { FinanzenRechnungsstellerPage } from '../pages/FinanzenRechnungsstellerPage';
 import { FinanzenRechnungDetailPage } from '../pages/FinanzenRechnungDetailPage';
 import { FinanzenRechnungEinstellungenPage } from '../pages/FinanzenRechnungEinstellungenPage';
+import { FinanzenSumupPage } from '../pages/FinanzenSumupPage';
 import { FinanzenRechnungenPage } from '../pages/FinanzenRechnungenPage';
 import { FinanzenRechnungPage } from '../pages/FinanzenRechnungPage';
 import { FinanzenRechnungsempfaengerPage } from '../pages/FinanzenRechnungsempfaengerPage';
@@ -276,6 +277,16 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenBelegDetailPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finanzen/sumup"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenSumupPage />
             </RequireUsername>
           </Protected>
         }

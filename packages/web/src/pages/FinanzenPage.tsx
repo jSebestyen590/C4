@@ -3,6 +3,7 @@ import {
   IconBook2,
   IconCash,
   IconCoins,
+  IconCreditCard,
   IconFileExport,
   IconLock,
   IconFileInvoice,
@@ -117,6 +118,12 @@ export function FinanzenPage() {
           icon={<IconFileText size={28} />}
           titel="Rechnungen"
           text={rechnungenText}
+        />
+        <Kachel
+          to="/finanzen/sumup"
+          icon={<IconCreditCard size={28} />}
+          titel="SumUp"
+          text="Kartenzahlungen prüfen, je Tag oder Event buchen, Auszahlungen."
         />
         <Kachel
           to="/finanzen/auslagen"
