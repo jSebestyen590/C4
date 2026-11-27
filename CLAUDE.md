@@ -44,7 +44,14 @@ they only carry the tools they need, so each call starts with a much smaller con
   separate sessions: after `/plan` the plan is written to `docs/plans/<feature>.md` completely
   (files, decisions, answers to open questions, docs page to update), and a new session implements
   it from that file. The planning context (docs, code, Q&A) would otherwise be re-read on every
-  implementation step. Small features stay in the planning session.
+  implementation step. Small features stay in the planning session. This applies even when the
+  prompt says "plan and implement": write the plan file, then propose a new session for the
+  implementation instead of starting it here (Scheibe 5 in one session: ~180k average main context,
+  separately planned Scheibe 8: ~145k at twice the size).
+- Dev feedback rounds run in a fresh session each: when a round is done (fixed, pushed, deployed),
+  end with the `- [ ]` checklist of open and re-test points and propose a new session that starts
+  from that checklist and the PR/branch. Long multi-day feedback sessions grew to 200k+ average main
+  context and were the most expensive sessions by far (150M+ each).
 - Split the implementation of a larger plan into phases (e.g. shared types + API/DB, web, docs) and
   start a fresh `implementer` per phase with only its part of the plan plus the files the previous
   phases touched. One agent for everything grows its context to 400k+ and re-reads it on every
