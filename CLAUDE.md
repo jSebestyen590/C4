@@ -78,21 +78,26 @@ they only carry the tools they need, so each call starts with a much smaller con
 
 ## Testing on dev
 
-- Deploy a feature branch to dev with the Deploy workflow:
-  `gh workflow run deploy.yml --ref <branch> -f env=dev` (a push to `main` deploys dev automatically,
-  tags `v*` deploy prod after the repo owner approves it in the `prod` environment).
-  Commit and push first; the workflow deploys the pushed ref.
-- Browser checks then run on https://dev.c4-leipzig.de/app/ (`browser-check` agent). Log in through the dev
-  Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory
-  (`reference_dev_testuser.md`), never put it into the repo or chat.
-- Prefer testing locally against dev resources over a dev deploy: `pnpm dev:env` (once per worktree,
-  writes `packages/api/.env.local` and `config.json` from dev), then `pnpm dev` (in the main chat via
-  `preview_start`). Deploy to dev only when the branch adds migrations or secrets; never run
-  `pnpm db:migrate` with that setup (it migrates the dev database).
+- **Default: test locally against dev resources, without a deploy.** `pnpm dev:env` (once per worktree,
+  writes `packages/api/.env.local` and `config.json` from dev), then start `api` and `web` from
+  `.claude/launch.json` via `preview_start` in the main chat, and run `tester` with
+  `E2E_BASE_URL=http://localhost:5173/app/`. Never run `pnpm db:migrate` with that setup (it migrates
+  the shared dev database).
 - Other sessions may run their own local stack at the same time: if port 5173 or 3000 is taken
   (`lsof -i :5173 -i :3000`), start the first free slot `dev-1` ... `dev-9` from `.claude/launch.json`
-  (web 5173+n, API 3000+n) via `preview_start` and pass `E2E_BASE_URL=http://localhost:<web port>/app/`
-  to `tester`.
+  (web 5173+n, API 3000+n) and pass `E2E_BASE_URL=http://localhost:<web port>/app/` to `tester`.
+  Don't edit files while an E2E run is going (Vite/tsx restart and the run fails).
+- **Deploy to dev only when the branch changes migrations, secrets or infra (Terraform)**: those are
+  shared by dev and every local stack. Only one such branch may be on dev at a time. Before deploying,
+  check `gh run list --workflow deploy.yml --limit 5`: if the latest dev deploy is another branch than
+  `main` (or yours), another session is using dev; ask the user before deploying over it. After testing,
+  merging to `main` redeploys dev from `main`.
+- Deploy with `gh workflow run deploy.yml --ref <branch> -f env=dev` (a push to `main` deploys dev
+  automatically, tags `v*` deploy prod after the repo owner approves it in the `prod` environment).
+  Commit and push first; the workflow deploys the pushed ref.
+- Browser checks run locally or on https://dev.c4-leipzig.de/app/ (`browser-check` agent). Log in through
+  the dev Cognito hosted UI with the admin test account `Testuser2`; the password is in the user's memory
+  (`reference_dev_testuser.md`), never put it into the repo or chat.
 
 ## E2E tests (Playwright)
 
