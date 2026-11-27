@@ -6,6 +6,7 @@ export * from './bargeld';
 export * from './buch';
 export * from './finanzen';
 export * from './finanzenAbschluss';
+export * from './finanzenSumup';
 export * from './belege';
 export * from './rechnungen';
 export * from './geburtstag';

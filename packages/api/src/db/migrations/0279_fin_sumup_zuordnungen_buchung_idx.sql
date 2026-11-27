@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_sumup_zuordnungen_buchung_idx ON fin_sumup_zuordnungen (buchung_id)

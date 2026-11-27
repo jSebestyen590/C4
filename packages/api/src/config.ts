@@ -10,6 +10,8 @@ export interface Config {
   appUrl?: string;
   /** Secrets Manager secret with the Party-Mail credentials; unset = Party-Mail off. */
   partymailSecretArn?: string;
+  /** Secrets Manager secret with the SumUp API key; unset = SumUp off. */
+  sumupSecretArn?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -26,6 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     profilbildBucket: need('PROFILBILD_BUCKET'),
     ...(env.FINANZARCHIV_BUCKET && { finanzarchivBucket: env.FINANZARCHIV_BUCKET }),
     ...(env.PARTYMAIL_SECRET_ARN && { partymailSecretArn: env.PARTYMAIL_SECRET_ARN }),
+    ...(env.SUMUP_SECRET_ARN && { sumupSecretArn: env.SUMUP_SECRET_ARN }),
     ...(env.PUBLIC_URL && { appUrl: env.PUBLIC_URL.replace(/\/+$/, '') }),
   };
 }

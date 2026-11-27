@@ -67,6 +67,9 @@ import { createFakeTodosStore } from '../todos.fake';
 import { createFakeTrichterStore } from '../trichter.fake';
 import { createFakeLagerAbgleichStore } from '../lagerAbgleich.fake';
 import { createFakeFinanzenStore } from '../finanzen.fake';
+import { sumupAbrufen } from '../finanzenSumupJob';
+import { createFakeSumup } from '../sumup.fake';
+import type { SumupSecret } from '../sumup';
 import { createFakeBuchStore } from '../buch.fake';
 import { createFakeUmfragenStore } from '../umfragen.fake';
 
@@ -894,6 +897,16 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
       return sha ? Buffer.from(sha, 'hex').toString('base64') : null;
     }),
   };
+  // SumUp: the fake API and secret; tests fill `sumupApi` and set `sumupSecret.wert`.
+  const sumupApi = createFakeSumup();
+  const sumupSecret: { wert: SumupSecret | undefined } = {
+    wert: { apiKey: 'test', abDatum: '2026-01-01' },
+  };
+  const sumupAbruf = sumupAbrufen({
+    secret: async () => sumupSecret.wert,
+    api: () => sumupApi,
+    store: finanzen,
+  });
   const datenexportStarten = vi.fn<(auftrag: DatenexportAuftrag) => Promise<void>>(async () => {});
   const pushMitglieder: { sub: string; status: MitgliedStatus }[] = ['a', 'r', 'v', 'm2'].map(
     (sub) => ({ sub, status: 'mitglied' }),
@@ -941,6 +954,7 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     protokollbilder,
     finanzarchiv,
     datenexportStarten,
+    sumupAbrufen: sumupAbruf,
     pingDb,
   });
   return {
@@ -956,6 +970,8 @@ export function makeApp(pingDb = async () => {}, appUrl?: string) {
     archivBytes,
     archivPruefsummen,
     datenexportStarten,
+    sumupApi,
+    sumupSecret,
     waren,
     inventar,
     inventarVerwendet,

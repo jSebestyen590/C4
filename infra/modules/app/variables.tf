@@ -57,6 +57,12 @@ variable "mail_job_rate" {
   description = "How often EventBridge Scheduler runs the Party-Mail job (fetching new mails)."
 }
 
+variable "sumup_job_rate" {
+  type        = string
+  default     = "rate(1 hour)"
+  description = "How often EventBridge Scheduler runs the SumUp job (fetching card transactions and payouts)."
+}
+
 variable "finanzarchiv_retention_mode" {
   type        = string
   default     = "GOVERNANCE"

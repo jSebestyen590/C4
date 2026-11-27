@@ -317,10 +317,17 @@ export function AppLayout({ children }: Readonly<{ children: ReactNode }>) {
                 onClick={toggle}
                 hiddenFrom="md"
                 size="sm"
+                w={42}
+                h={42}
                 aria-label="Menü"
               />
             )}
-            <UnstyledButton component={Link} to="/" aria-label="C4 – zur Startseite" lh={0}>
+            <UnstyledButton component={Link} to="/" aria-label="C4 – zur Startseite"
+              lh={0}
+              mih={42}
+              miw={42}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
               <img
                 // In dark mode the stairs and the shadow are white instead of black.
                 src={farbschema === 'dark' ? logoDunkel : logo}

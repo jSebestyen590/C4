@@ -148,10 +148,12 @@ describe('finanzen', () => {
       'eroeffnung',
       'forderungen',
       'geldtransit',
+      'kartenerloese',
       'kassendifferenz',
       'pfand',
       'safe',
       'sumup',
+      'sumup-gebuehren',
     ]);
     expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
 

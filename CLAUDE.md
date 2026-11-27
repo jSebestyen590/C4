@@ -23,19 +23,20 @@ keep hands-on work out of it:
 Use the project's dedicated Sonnet agents (`.claude/agents/`), not `general-purpose` or `Explore`:
 they only carry the tools they need, so each call starts with a much smaller context.
 
-| Agent | For |
-|---|---|
-| `explorer` | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat) |
-| `implementer` | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
-| `tester` | unit/integration tests, type checks, lint, builds, waiting for a dev deploy |
-| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (page reads, phone width, screenshots) |
+| Agent           | For                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `explorer`      | code search over more than a couple of files (instead of many `grep`/`sed -n` in the main chat)                                      |
+| `implementer`   | implementing an approved plan; the main chat reviews the diff and sends corrections back via `SendMessage` instead of editing itself |
+| `tester`        | unit/integration tests, type checks, lint, builds, Playwright E2E (`pnpm e2e`), waiting for a dev deploy                             |
+| `browser-check` | browser checks in the preview or on dev.c4-leipzig.de (visual judgements, new flows without a Playwright spec)                       |
 
 - The main chat doesn't run tests, take screenshots or read page trees itself; agents report a
   short result.
 - When `explorer` ran first, put its findings (files, patterns, line ranges) into the `implementer`
   prompt so it doesn't explore the same area again.
-- `implementer` doesn't run browser checks: after it finishes, a fresh `browser-check` does, with the
-  routes/pages to check named in its prompt.
+- `implementer` doesn't run browser checks: after it finishes, a `tester` runs `pnpm e2e` (layout
+  checks, existing specs), then a fresh `browser-check` covers only visual judgements and new flows
+  without a spec, with the routes/pages to check named in its prompt.
 - Split larger browser checks into one `browser-check` per page or flow (e.g. "create Kasse",
   "count at event on phone", "Abrechnung"), run one after another, not in parallel (they share the
   browser pane). An agent's context, screenshots included, is gone when it finishes; one agent for
@@ -44,7 +45,21 @@ they only carry the tools they need, so each call starts with a much smaller con
   separate sessions: after `/plan` the plan is written to `docs/plans/<feature>.md` completely
   (files, decisions, answers to open questions, docs page to update), and a new session implements
   it from that file. The planning context (docs, code, Q&A) would otherwise be re-read on every
-  implementation step. Small features stay in the planning session.
+  implementation step. Small features stay in the planning session. This applies even when the
+  prompt says "plan and implement": write the plan file, then propose a new session for the
+  implementation instead of starting it here (Scheibe 5 in one session: ~180k average main context,
+  separately planned Scheibe 8: ~145k at twice the size).
+- Dev feedback rounds run in a fresh session each: when a round is done (fixed, pushed, deployed),
+  end with the `- [ ]` checklist of open and re-test points and propose a new session that starts
+  from that checklist and the PR/branch. Long multi-day feedback sessions grew to 200k+ average main
+  context and were the most expensive sessions by far (150M+ each).
+- This starts with the first feedback round: when the implementation session of a larger feature is
+  done, it adds a section `## Stand der Umsetzung` to `docs/plans/<feature>.md` (key files per area,
+  deviations from the plan, known open points, branch/PR/deploy state), commits and pushes it, and
+  proposes a fresh session "Feedback <feature>" (context `fresh`, not `fork`; `use_worktree: false`,
+  same worktree and branch) whose brief points to that plan file, the branch and the PR. The user
+  starts it after testing on dev and gives the feedback there. Each feedback round updates that
+  section. Small features stay in one session.
 - Split the implementation of a larger plan into phases (e.g. shared types + API/DB, web, docs) and
   start a fresh `implementer` per phase with only its part of the plan plus the files the previous
   phases touched. One agent for everything grows its context to 400k+ and re-reads it on every
@@ -72,6 +87,22 @@ they only carry the tools they need, so each call starts with a much smaller con
   (`reference_dev_testuser.md`), never put it into the repo or chat.
 - The local API (`pnpm dev`) needs `packages/api/.env.local` from `pnpm db:up` (README); without it,
   use dev.
+
+## E2E tests (Playwright)
+
+See `docs/e2e.md`. Package `packages/e2e`, runs against dev, not in CI.
+
+- `packages/e2e/.env.e2e` is gitignored, so it is missing in a new worktree. If it is missing, the main chat
+  creates it itself (`E2E_USER=Testuser2`, `E2E_PASSWORD=` taken from the user's memory
+  `reference_dev_testuser.md` via a shell command, without printing the password) before starting `tester`.
+
+- Layout checks (no horizontal scroll, touch targets, input font size, console errors) run via `pnpm e2e` in a
+  `tester` agent, not via `browser-check`. A new route needs an entry in `packages/e2e/routen.ts` (plus
+  `setup/idQuellen.ts` if it has a param).
+- When a `browser-check` flow would have to run a second time (e.g. after a fix), write it as a Playwright spec in
+  `packages/e2e` instead and let `tester` run it.
+- Full E2E flows only for stable, critical Finanzen paths (Kassenzählung, Kassenabrechnung, Buchung, Beleg
+  einreichen, Rechnung), written once the slice is functionally stable. Test data uses the prefix `E2E`.
 
 ## UI: mobile first (important)
 

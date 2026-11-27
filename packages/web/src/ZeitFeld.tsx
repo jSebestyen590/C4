@@ -19,6 +19,7 @@ export function ZeitFeld({
   return (
     <TimePicker
       size="md"
+      clearButtonProps={{ 'aria-label': 'Zeit löschen' }}
       hoursInputLabel={typeof label === 'string' ? `${label}, Stunden` : 'Stunden'}
       minutesInputLabel={typeof label === 'string' ? `${label}, Minuten` : 'Minuten'}
       {...rest}

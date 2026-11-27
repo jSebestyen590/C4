@@ -93,7 +93,9 @@ export function BestandZeile({
                 component="button"
                 type="button"
                 size="xs"
-                py={6}
+                mih={{ base: 42, md: 'auto' }}
+                py={{ md: 6 }}
+                miw={42}
                 onClick={a.onClick}
               >
                 {a.text}

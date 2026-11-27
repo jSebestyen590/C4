@@ -64,6 +64,7 @@ import {
 import { datumBerlin } from './finanzenBelege';
 import { createFakeBelegeStore, createFakeLager } from './finanzenBelege.fake';
 import { createFakeRechnungenStore } from './finanzenRechnungen.fake';
+import { createFakeSumupStore } from './finanzenSumup.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
 interface FakeKasse {
@@ -81,6 +82,8 @@ export interface FakeEvent {
   kategorie: string;
   /** ISO timestamp. */
   beginn: string;
+  /** ISO timestamp; default `beginn` + 4 h. */
+  ende?: string;
   abgesagt: boolean;
 }
 
@@ -103,9 +106,20 @@ export function createFakeFinanzenStore() {
       stueckelung: false,
     },
     { id: 'sumup', name: 'SumUp-Guthaben', art: 'durchlauf', stueckelung: false },
+    { id: 'sumup-gebuehren', name: 'SumUp-Gebühren', art: 'aufwand', stueckelung: false },
   ] as const) {
     konten.set(k.id, { ...k, parentId: null, steuersatzArt: null, archiviert: false });
   }
+  // Like migration 0272: card revenue at 19 %.
+  konten.set('kartenerloese', {
+    id: 'kartenerloese',
+    name: 'Kartenerlöse',
+    art: 'erloes',
+    stueckelung: false,
+    parentId: null,
+    steuersatzArt: 'regel',
+    archiviert: false,
+  });
   /** Ordered by seq. */
   const buchungen: KettenBuchung[] = [];
   const belegDateien: { sha256: string; schluessel: string }[] = [];
@@ -349,10 +363,18 @@ export function createFakeFinanzenStore() {
     anhaengen,
     stornoAnhaengen,
   });
+  const sumup = createFakeSumupStore({
+    buchungen,
+    events,
+    pruefKonten,
+    anhaengen,
+    vorhandene,
+  });
 
   const store: FinanzenStore = {
     ...belege,
     ...rechnungen,
+    ...sumup,
     async konten(mitArchiv) {
       const gesamt = saldoGesamt(
         [...konten.values()].map((k) => ({ ...k, saldoCent: saldo(k.id) })),

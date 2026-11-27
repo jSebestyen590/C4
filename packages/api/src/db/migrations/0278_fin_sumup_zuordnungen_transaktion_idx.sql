@@ -1,0 +1,1 @@
+CREATE INDEX ASYNC IF NOT EXISTS fin_sumup_zuordnungen_transaktion_idx ON fin_sumup_zuordnungen (transaktion_id)
