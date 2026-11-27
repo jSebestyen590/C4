@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "dev:env": "bash scripts/dev-env.sh",
     "db:up": "bash infra/local-db/up.sh",
     "db:down": "bash infra/local-db/down.sh",
     "db:migrate": "pnpm --filter @c4/api migrate",

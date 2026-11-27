@@ -61,6 +61,7 @@ const pfade: string[] = [
   '/finanzen/rechnungsempfaenger',
   '/finanzen/rechnungssteller',
   '/finanzen/steuersaetze',
+  '/finanzen/sumup',
   '/finanzen/warengruppen-kategorien',
   '/historie',
   '/inventar',
