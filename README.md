@@ -21,6 +21,8 @@ pnpm install
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 ```
 
+Browser E2E tests (Playwright, against dev, not part of CI): `pnpm e2e`; setup in [docs/e2e.md](docs/e2e.md).
+
 ## First-time AWS setup
 
 1. Export credentials for account `189575358537`. The AWS CLI and `infra/envs/*` use the default credentials chain (e.g.

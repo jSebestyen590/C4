@@ -25,6 +25,7 @@ Jede Seite beginnt direkt unter dem Titel mit einem `## Überblick` (kurze Zusam
 | [finanzen.md](./finanzen.md)                     | Finanzen: Kontenplan, Journal, Hash-Kette, Rechte; Plan in `plans/finanzen.md`                            |
 | [datenbank.md](./datenbank.md)                   | Datenbank: Migrationen, Rollback mit Down-Dateien, Reset (nur dev)                                        |
 | [querschnitt.md](./querschnitt.md)               | Querschnitt: Auth-Modell, Rechteberechnung, Fehler-Mapping, DSQL-Wiederholung, PWA-Icons, Offline-Hinweis |
+| [e2e.md](./e2e.md)                               | E2E-Tests: Playwright-Setup, Layout-Smoke-Test über alle Routen, Routen und Ausnahmen pflegen             |
 | [refactoring.md](./refactoring.md)               | Review 11/2026: geprüft, erledigt, offen (vor jedem Refactoring lesen)                                    |
 
 ## Allgemein

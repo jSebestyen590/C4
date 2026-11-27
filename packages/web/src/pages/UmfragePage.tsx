@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -34,6 +33,7 @@ import { PersonLink, umfragenInvalidieren, useUmfrage } from '../umfrageDaten';
 import { bedarfText } from '../UmfrageTerminFelder';
 import { fehlerText, pruefen } from '../warenApi';
 import { laufzeitText, UmfrageBadges } from './UmfragenPage';
+import { ZurueckLink } from '../ZurueckLink';
 
 /** The own free text answer, as a pseudo option in the inputs. */
 const FREITEXT = '__freitext__';
@@ -405,9 +405,7 @@ export function UmfragePage() {
   const [festlegen, setFestlegen] = useState<UmfrageOptionDto | null>(null);
 
   const zurueck = (
-    <Anchor component={Link} to="/umfragen" size="sm">
-      ← Zurück zur Liste
-    </Anchor>
+    <ZurueckLink to="/umfragen">Zurück zur Liste</ZurueckLink>
   );
   if (umfrage.isPending) return <Loader m="md" aria-label="Umfrage wird geladen" />;
   if (umfrage.isError) {

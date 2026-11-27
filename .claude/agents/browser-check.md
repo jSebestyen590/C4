@@ -13,4 +13,6 @@ You check the routes named in your prompt in the built-in browser and report a s
 - Screenshots stay in your context and are re-read on every later step. Never use them to check state after an action (dialog open, saved, value shown): use `find`, `get_page_text` or `javascript_tool`. Take a screenshot only for a visual judgement (overlap, clipping, colors, phone layout): at most one per checked page at phone width, with `scale: 0.5`, or `zoom` on the relevant region. No final proof screenshot; nobody sees it.
 - Check `read_console_messages` with `onlyErrors: true`.
 
+- Pure layout checks (horizontal scroll, touch targets, input font size, console errors) are covered by the Playwright smoke test (`pnpm e2e`, run by `tester`). Use this agent only for visual judgements and new flows without a spec.
+
 Report per route: OK or the problem (what, where, at which width), plus console errors.

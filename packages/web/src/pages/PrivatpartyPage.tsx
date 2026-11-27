@@ -177,7 +177,10 @@ export function PrivatpartyPage() {
         {p.person && (
           <Paper withBorder p="md">
             <Stack gap={2}>
-              <Anchor component={Link} to={privatpartyPersonLink(p.person.id)} fw={700}>
+              <Anchor component={Link} to={privatpartyPersonLink(p.person.id)}
+                fw={700}
+                py={{ base: 9, md: 0 }}
+              >
                 {p.person.name}
               </Anchor>
               {person.data?.email && (
