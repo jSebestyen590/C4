@@ -41,7 +41,13 @@ function MailText({ text }: Readonly<{ text: string }>) {
       <Text style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{neu || '…'}</Text>
       {zitat && (
         <>
-          <Anchor component="button" type="button" size="sm" onClick={() => setOffen((o) => !o)}>
+          <Anchor
+            component="button"
+            type="button"
+            size="sm"
+            mih={42}
+            onClick={() => setOffen((o) => !o)}
+          >
             {offen ? 'Zitat ausblenden' : 'Zitat anzeigen'}
           </Anchor>
           {offen && (

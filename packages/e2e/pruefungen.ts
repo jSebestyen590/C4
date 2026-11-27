@@ -91,19 +91,27 @@ export async function touchVerstoesse(page: Page): Promise<Funde> {
     ].join(',');
     const funde: { hart: string[]; weich: string[] } = { hart: [], weich: [] };
     for (const el of document.querySelectorAll<HTMLElement>(auswahl)) {
-      const rect = el.getBoundingClientRect();
+      const eigen = el.getBoundingClientRect();
       const stil = getComputedStyle(el);
-      if (rect.width <= 1 && rect.height <= 1) continue;
+      if (eigen.width <= 1 && eigen.height <= 1) continue;
       if (stil.display === 'none' || stil.visibility === 'hidden') continue;
       if (el.closest('[aria-hidden=true], [inert]')) continue;
+      // Felder wie Schalter, Zeit-Segmente oder der Suchinput in Mehrfachauswahlen sind klein; getippt wird auf
+      // das umgebende Feld bzw. die Beschriftung. Dann zählt dessen Fläche.
+      const flaeche =
+        el.tagName === 'INPUT'
+          ? el.closest<HTMLElement>(
+              '.mantine-Input-wrapper, .mantine-Switch-body, .mantine-Checkbox-body, .mantine-Radio-body, label',
+            )
+          : null;
+      const rect = flaeche?.getBoundingClientRect() ?? eigen;
       if (rect.width >= 41.5 && rect.height >= 41.5) continue;
-      if (el.tagName === 'A') {
-        const eltern = el.parentElement;
-        const imText =
-          eltern !== null &&
-          (['P', 'LI', 'TD'].includes(eltern.tagName) ||
-            kurz(eltern.textContent ?? '') !== kurz(el.textContent ?? ''));
-        if (imText) continue;
+      if (el.tagName === 'A' && stil.display === 'inline') {
+        // Link im Fließtext (WCAG 2.5.8, Ausnahme "Inline"): inline und der umgebende Textblock enthält weiteren
+        // Text. Ein Link, der durch Flex/Grid zum Block wird (Logo, Zurück-Link), zählt als eigenständig.
+        let block: HTMLElement | null = el.parentElement;
+        while (block && getComputedStyle(block).display === 'inline') block = block.parentElement;
+        if (block && kurz(block.textContent ?? '') !== kurz(el.textContent ?? '')) continue;
       }
       const name = kurz(
         el.getAttribute('aria-label') ??

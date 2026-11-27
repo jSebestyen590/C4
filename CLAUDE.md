@@ -77,6 +77,10 @@ they only carry the tools they need, so each call starts with a much smaller con
 
 See `docs/e2e.md`. Package `packages/e2e`, runs against dev, not in CI.
 
+- `packages/e2e/.env.e2e` is gitignored, so it is missing in a new worktree. If it is missing, the main chat
+  creates it itself (`E2E_USER=Testuser2`, `E2E_PASSWORD=` taken from the user's memory
+  `reference_dev_testuser.md` via a shell command, without printing the password) before starting `tester`.
+
 - Layout checks (no horizontal scroll, touch targets, input font size, console errors) run via `pnpm e2e` in a
   `tester` agent, not via `browser-check`. A new route needs an entry in `packages/e2e/routen.ts` (plus
   `setup/idQuellen.ts` if it has a param).

@@ -56,6 +56,9 @@ setup('Anmeldung und IDs auflösen', async ({ page, request, baseURL }) => {
         headers: { authorization: `Bearer ${token}` },
       });
       if (!antwort.ok()) continue;
+      if (!antwort.headers()['content-type']?.includes('application/json')) {
+        throw new Error(`${abfrage.api} liefert kein JSON (falscher Pfad?)`);
+      }
       const body: unknown = await antwort.json();
       const liste = abfrage.liste ? (body as Eintrag)[abfrage.liste] : body;
       if (!Array.isArray(liste)) continue;

@@ -9,7 +9,17 @@ export interface Ausnahme {
   grund: string;
 }
 
-export const ausnahmen: Ausnahme[] = [];
+export const ausnahmen: Ausnahme[] = [
+  {
+    route: '/protokolle/:id',
+    pruefung: 'console',
+    treffer: 'status of 409',
+    grund:
+      'Erwartetes Verhalten: Ein Protokoll-Entwurf hat eine Bearbeitungssperre je Tab (docs/protokolle.md, Bearbeitungssperre). ' +
+      'Phone- und Desktop-Projekt öffnen denselben Entwurf mit demselben Konto, der zweite Tab bekommt 409 auf POST /sperre ' +
+      'und zeigt den Sperrhinweis. Der Browser meldet die abgelehnte Anfrage als Console-Fehler.',
+  },
+];
 
 function passt(muster: string | RegExp, text: string, exakt: boolean): boolean {
   if (typeof muster === 'string') return exakt ? muster === text : text.includes(muster);

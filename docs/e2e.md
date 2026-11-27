@@ -12,8 +12,9 @@ Abschnitte: Einrichtung, Aufruf, Projekte und Prüfungen, Routen pflegen, Ausnah
 ## Einrichtung
 
 Einmalig lokal: `pnpm install`, `pnpm --filter @c4/e2e e2e:install` (lädt Chromium), dann
-`packages/e2e/.env.e2e.example` nach `packages/e2e/.env.e2e` kopieren und das Passwort des Testaccounts selbst
-eintragen. Die Datei ist gitignored; das Passwort steht nie im Repo, im Chat oder in Testausgaben. Optional
+`packages/e2e/.env.e2e` nach dem Muster von `.env.e2e.example` anlegen. Die Datei ist gitignored und fehlt
+daher in jedem neuen Worktree; Claude legt sie bei Bedarf selbst an (Passwort aus dem Memory des Users). Das
+Passwort steht nie im Repo, im Chat oder in Testausgaben. Optional
 `E2E_BASE_URL` für ein anderes Ziel.
 
 Das Setup-Projekt meldet sich bei jedem Lauf neu über die Cognito-Hosted-UI an (`setup/login.setup.ts`) und schreibt
@@ -24,8 +25,8 @@ sie in `.auth/ids.json` ab, Schlüssel ist der Router-Pfad. Ist eine Liste leer,
 ## Aufruf
 
 - Alles: `pnpm e2e 2>&1 | tail -40`
-- Eine Route: `pnpm e2e -- --grep "finanzen/konten" 2>&1 | tail -40` (Testtitel = Router-Pfad)
-- Nur ein Projekt: `pnpm e2e -- --project phone`
+- Eine Route: `pnpm e2e --grep "finanzen/konten" 2>&1 | tail -40` (Testtitel = Router-Pfad)
+- Nur ein Projekt: `pnpm e2e --project phone`
 - Fehler erscheinen als eine Zeile je Verstoß, z. B. `[phone] /finanzen/konten touch: button "Konto anlegen" 36x36`.
   Screenshots und Traces liegen in `packages/e2e/test-results/`, der HTML-Report in `playwright-report/`.
 
@@ -37,7 +38,9 @@ Je Route und Projekt (`smoke.spec.ts`, `pruefungen.ts`):
 - keine horizontale Seitenscroll
 - keine Console-Fehler, Page-Errors oder 5xx-Antworten
 - Seite rendert (kein „Kein Zugriff“, kein Redirect)
-- nur `phone`: Touch-Ziele mindestens 42 px, Input-Schrift mindestens 16 px
+- nur `phone`: Touch-Ziele mindestens 42 px, Input-Schrift mindestens 16 px. Bei Inputs zählt die Fläche des umgebenden
+  Feldes bzw. der Beschriftung (Schalter, Zeit-Segmente, Suchinput in Mehrfachauswahlen); Links im Fließtext (inline,
+  Textblock enthält weiteren Text) sind ausgenommen, eigenständige Links (Logo, Zurück-Link) nicht
 
 Der Test liest nur und legt nichts an.
 
@@ -51,7 +54,9 @@ API ermittelt.
 ## Ausnahmen
 
 Erlaubte Verstöße stehen zentral in `ausnahmen.ts` (Route, Prüfung, Treffer, Begründung), nicht im App-Code. Jeder
-Eintrag braucht eine Begründung; bei offenen Mängeln verweist sie auf `docs/refactoring.md`.
+Eintrag braucht eine Begründung; bei offenen Mängeln verweist sie auf `docs/refactoring.md`. Bisher: `/protokolle/:id`
+meldet einen 409-Console-Fehler, weil Phone- und Desktop-Projekt denselben Entwurf öffnen und der zweite Tab die
+Bearbeitungssperre nicht bekommt (erwartet).
 
 ## Testdaten
 

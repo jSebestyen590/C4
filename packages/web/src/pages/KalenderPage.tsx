@@ -811,7 +811,14 @@ export function KalenderPage() {
           <Text fw={700} size="lg" ta="center">
             {monatAnzeigen(jahr, monat)}
           </Text>
-          <Anchor component="button" type="button" size="sm" onClick={() => setMonat(aktuell)}>
+          <Anchor
+            component="button"
+            type="button"
+            size="sm"
+            mih={42}
+            px="xs"
+            onClick={() => setMonat(aktuell)}
+          >
             Heute
           </Anchor>
         </Stack>
