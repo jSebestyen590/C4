@@ -14,7 +14,6 @@ import {
   Title,
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
-import { useElementSize } from '@mantine/hooks';
 import { Fragment, useState } from 'react';
 import {
   centAnzeigen,
@@ -106,7 +105,6 @@ export function EinkaufTab() {
   const [suche, setSuche] = useTextParam('suche');
   const [betrag, setBetrag] = useTextParam('betrag', 'brutto');
   const [offen, setOffen] = useState<string | null>(null);
-  const { ref: breiteRef, width: sichtbareBreite } = useElementSize();
   const brutto = betrag !== 'netto';
   const art = brutto ? 'Brutto' : 'Netto';
   const d = q.data;
@@ -160,7 +158,6 @@ export function EinkaufTab() {
           </>
         }
       />
-      <div ref={breiteRef} style={{ width: '100%', height: 0 }} />
       <Text size="sm" c="dimmed">
         Einkauf nach Belegdatum, {brutto ? 'brutto' : 'netto'} ohne Pfand.
         <InfoHinweis feld="Durchschnittspreis" text={HILFE.auswertungen.durchschnittspreis} />
@@ -273,7 +270,9 @@ export function EinkaufTab() {
                             style={{
                               position: 'sticky',
                               left: 0,
-                              width: sichtbareBreite > 0 ? sichtbareBreite - 16 : '100%',
+                              // 100cqw = visible width of the scroll container (container query in AuswertungTabelle)
+                              width:
+                                'calc(100cqw - 2 * var(--table-horizontal-spacing, var(--mantine-spacing-xs)))',
                               maxWidth: '100%',
                             }}
                           >

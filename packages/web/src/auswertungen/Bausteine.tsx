@@ -67,6 +67,7 @@ export function AuswertungTabelle({
       minWidth={minWidth}
       maxHeight="max(360px, calc(100dvh - 280px))"
       type="native"
+      style={{ containerType: 'inline-size' }}
     >
       <Table verticalSpacing={4} tabularNums stickyHeader stickyHeaderOffset={0} fz="sm">
         {children}
