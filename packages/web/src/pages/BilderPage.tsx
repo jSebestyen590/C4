@@ -100,28 +100,32 @@ function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
       }}
     >
       <Group justify="space-between" wrap="nowrap" align="center" gap="xs">
-        <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-          {/* A real link for keyboard use, but plain text; the whole card is clickable. */}
-          <a
-            href={ordnerLink(ordner)}
-            target="_blank"
-            rel="noopener"
-            style={{ color: 'inherit', textDecoration: 'none' }}
-          >
-            <Text
-              component="span"
-              fw={700}
-              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-            >
+        {/* Name and date are the folder link, as tall as the row (>= 42px touch target). */}
+        <a
+          href={ordnerLink(ordner)}
+          target="_blank"
+          rel="noopener"
+          style={{
+            color: 'inherit',
+            textDecoration: 'none',
+            minWidth: 0,
+            flex: 1,
+            alignSelf: 'stretch',
+            minHeight: 42,
+            display: 'flex',
+          }}
+        >
+          <Stack gap={2} justify="center" style={{ flex: 1 }}>
+            <Text fw={700} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {ordner.eventName}
             </Text>
-          </a>
-          {datum && (
-            <Text size="sm" c="dimmed">
-              {datum}
-            </Text>
-          )}
-        </Stack>
+            {datum && (
+              <Text size="sm" c="dimmed">
+                {datum}
+              </Text>
+            )}
+          </Stack>
+        </a>
         {ordner.eventId && <EventBadge eventId={ordner.eventId} />}
         <TeilenKnopf ordner={ordner} />
       </Group>
