@@ -89,20 +89,33 @@ function TeilenKnopf({
 function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
   const datum = bilderDatum(ordner.von, ordner.bis, ordner.genauigkeit);
   return (
+    // Not an <a> itself: it holds the Event badge link, and links must not nest.
     <Paper
       withBorder
       p="md"
-      component="a"
-      href={ordnerLink(ordner)}
-      target="_blank"
-      rel="noopener"
-      style={{ color: 'inherit', textDecoration: 'none' }}
+      style={{ cursor: 'pointer' }}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('a, button')) return;
+        window.open(ordnerLink(ordner), '_blank', 'noopener');
+      }}
     >
       <Group justify="space-between" wrap="nowrap" align="center" gap="xs">
         <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-          <Text fw={700} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-            {ordner.eventName}
-          </Text>
+          {/* A real link for keyboard use, but plain text; the whole card is clickable. */}
+          <a
+            href={ordnerLink(ordner)}
+            target="_blank"
+            rel="noopener"
+            style={{ color: 'inherit', textDecoration: 'none' }}
+          >
+            <Text
+              component="span"
+              fw={700}
+              style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+            >
+              {ordner.eventName}
+            </Text>
+          </a>
           {datum && (
             <Text size="sm" c="dimmed">
               {datum}
