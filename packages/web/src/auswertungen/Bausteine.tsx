@@ -6,6 +6,7 @@ import {
   AUSWERTUNG_INTERVALLE,
   AUSWERTUNG_INTERVALL_LABELS,
   auswertungJahrSchema,
+  auswertungJahreSchema,
   auswertungZeitraumSchema,
   centAnzeigen,
   heuteBerlin,
@@ -76,7 +77,7 @@ export function AuswertungTabelle({
 
 export const KOPF_STIL = { background: 'var(--mantine-color-body)' } as const;
 
-function setzer(setParams: ReturnType<typeof useSearchParams>[1]) {
+export function setzer(setParams: ReturnType<typeof useSearchParams>[1]) {
   return (patch: Record<string, string>) =>
     setParams(
       (prev) => {
@@ -121,6 +122,40 @@ export function useJahrFilter() {
     fehler: parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Ungültiges Jahr.'),
     setze: setzer(setParams),
   };
+}
+
+/** Von-/Bis-Jahr in the URL (default: this year both), validated like the API does. */
+export function useJahreFilter() {
+  const [params, setParams] = useSearchParams();
+  const aktuell = heuteBerlin().slice(0, 4);
+  const vonJahr = params.get('vonJahr') ?? aktuell;
+  const bisJahr = params.get('bisJahr') ?? aktuell;
+  const parsed = auswertungJahreSchema.safeParse({ vonJahr, bisJahr });
+  return {
+    vonJahr,
+    bisJahr,
+    von: parsed.success ? parsed.data.vonJahr : null,
+    bis: parsed.success ? parsed.data.bisJahr : null,
+    fehler: parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Ungültiger Zeitraum.'),
+    setze: setzer(setParams),
+  };
+}
+
+/** A query parameter as a string; the default value is removed from the URL instead of written. */
+export function useTextParam(name: string, standard = '') {
+  const [params, setParams] = useSearchParams();
+  const wert = params.get(name) ?? standard;
+  const setze = (neu: string) =>
+    setParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (neu === standard) n.delete(name);
+        else n.set(name, neu);
+        return n;
+      },
+      { replace: true },
+    );
+  return [wert, setze] as const;
 }
 
 type ZeitraumFilter = ReturnType<typeof useZeitraumFilter>;
@@ -202,6 +237,46 @@ export function JahrLeiste({
           data={jahre}
           value={f.jahr}
           onChange={(v) => v && f.setze({ jahr: v })}
+          w={120}
+        />
+        {extra}
+        <CsvKnopf csv={csv} />
+      </Group>
+      {f.fehler && <Alert color="red">{f.fehler}</Alert>}
+    </>
+  );
+}
+
+/** Von-/Bis-Jahr pickers (same options as `JahrLeiste`), bottom aligned with the other inputs of the row. */
+export function JahreLeiste({
+  f,
+  csv,
+  extra,
+}: Readonly<{
+  f: ReturnType<typeof useJahreFilter>;
+  csv: (() => void) | null;
+  extra?: ReactNode;
+}>) {
+  const aktuell = Number(heuteBerlin().slice(0, 4));
+  const jahre = Array.from({ length: 7 }, (_, i) => String(aktuell + 1 - i));
+  for (const j of [f.vonJahr, f.bisJahr]) if (!jahre.includes(j)) jahre.push(j);
+  return (
+    <>
+      <Group align="flex-end" gap="sm">
+        <Select
+          label="Von Jahr"
+          allowDeselect={false}
+          data={jahre}
+          value={f.vonJahr}
+          onChange={(v) => v && f.setze({ vonJahr: v })}
+          w={120}
+        />
+        <Select
+          label="Bis Jahr"
+          allowDeselect={false}
+          data={jahre}
+          value={f.bisJahr}
+          onChange={(v) => v && f.setze({ bisJahr: v })}
           w={120}
         />
         {extra}

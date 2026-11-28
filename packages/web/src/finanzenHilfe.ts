@@ -120,7 +120,7 @@ export const HILFE = {
     guv: 'Erlöse und Aufwand netto je Konto und Zeitraum, nach dem Buchungsdatum. Oberkonten enthalten ihre Unterkonten. Das Ergebnis ist Erlöse minus Aufwand: positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag).',
     euer: 'Die Einnahmen-Überschuss-Rechnung eines Jahres nach Ist-Prinzip. Die Konten werden im Kontenplan den Zeilen zugeordnet. Konten ohne Zeile stehen unter „Nicht zugeordnet“ und fehlen in den Summen. Vereinnahmte Umsatzsteuer und gezahlte Vorsteuer werden aus den Steuerangaben der Buchungen berechnet.',
     durchschnittspreis:
-      'Der Durchschnittspreis ist der Nettobetrag aller Einkäufe der Ware im Jahr geteilt durch die eingekaufte Menge (ohne Pfand). Eine Ware, die in verschiedenen Einheiten gekauft wurde, steht je Einheit in einer eigenen Zeile.',
+      'Der Durchschnittspreis ist der Betrag aller Einkäufe der Ware im gewählten Zeitraum (Von Jahr bis Bis Jahr; je nach Auswahl brutto inklusive Umsatzsteuer oder netto) geteilt durch die eingekaufte Menge (ohne Pfand). Eine Ware, die in verschiedenen Einheiten gekauft wurde, steht je Einheit in einer eigenen Zeile.',
     pfandsaldo:
       'Der Pfandsaldo ist das Pfand, das der Verein an Lieferanten schuldet bzw. als Leergut noch offen hat (Konto „Pfand“). Zugang: gezahltes Pfand beim Einkauf. Abgang: zurückgegebenes Leergut.',
   },
