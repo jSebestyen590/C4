@@ -13,6 +13,7 @@ import {
   type SchichtDto,
   type SchichtEingabe,
   type TeilnahmeKreis,
+  tageDazu,
   type VorlageSchicht,
 } from './kalender';
 import {
@@ -77,6 +78,7 @@ export interface AktionEventKontext {
 }
 
 export interface AktionKategorieKontext {
+  name: string;
   art: EventArt;
   dauer: EventDauer;
   teilnahmeStatus: TeilnahmeKreis;
@@ -315,20 +317,28 @@ function eventKategorieId(daten: BausteinEventDaten, k: ProtokollAktionenKontext
 
 function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): Eintrag {
   const name = daten.name.trim();
-  const text = `Event${name ? ` „${name}“` : ''}${daten.datum ? ` am ${datumAnzeigen(daten.datum)}` : ''} im Kalender anlegen`;
-  if (!daten.datum) return nichtAusfuehrbar(text, 'Das Datum fehlt.');
   const kategorieId = eventKategorieId(daten, k);
+  const kategorie = kategorieId ? k.kategorien[kategorieId] : undefined;
+  const text = `Event${kategorie ? ` ${kategorie.name}` : ''}${name ? ` „${name}“` : ''}${daten.datum ? ` am ${datumAnzeigen(daten.datum)}` : ''} im Kalender anlegen`;
+  if (!daten.datum) return nichtAusfuehrbar(text, 'Das Datum fehlt.');
   if (!kategorieId) return nichtAusfuehrbar(text, 'Die Kategorie fehlt.');
-  const kategorie = k.kategorien[kategorieId];
   if (!kategorie) return nichtAusfuehrbar(text, 'Die Kategorie gibt es nicht mehr.');
   if (kategorie.dauer !== 'ganztaegig' && (!daten.beginnZeit || !daten.endeZeit)) {
     return nichtAusfuehrbar(text, 'Die Uhrzeit fehlt.');
   }
   // A single-day Kategorie has no end date: a leftover `bisDatum` is dropped.
-  const bis =
+  let bis =
     kategorie.dauer !== 'eintaegig' && daten.bisDatum && daten.bisDatum >= daten.datum
       ? daten.bisDatum
       : daten.datum;
+  // Over midnight on one day ("end at or before begin = next day"), as for a single-day Event.
+  if (
+    kategorie.dauer === 'mehrtaegig' &&
+    bis === daten.datum &&
+    (daten.endeZeit ?? '00:00') <= (daten.beginnZeit ?? '00:00')
+  ) {
+    bis = tageDazu(daten.datum, 1);
+  }
   const vorlage = ausVorlage(
     {
       titel: name,
@@ -347,6 +357,9 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   const dienste =
     kategorie.art === 'teilnahme' ? [] : dienstePlanen(daten.schichten, vorlage.schichten);
   if (kategorie.art === 'teilnahme') eingabe.eingeladen = daten.eingeladen;
+  if (Date.parse(eingabe.ende) <= Date.parse(eingabe.beginn)) {
+    return nichtAusfuehrbar(text, 'Das Ende liegt vor dem Beginn.');
+  }
   const fehler = eventDauerFehler(kategorie.dauer, eingabe.beginn, eingabe.ende);
   if (fehler) return nichtAusfuehrbar(text, fehler);
   return {
@@ -425,7 +438,7 @@ function eventAendern(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
     eingeladen.every((s) => ev.eingeladen.includes(s));
   if (!kreisGleich || !eingeladenGleich) unterschiede.push('Teilnahme');
 
-  const text = `Event „${ev.titel}“ im Kalender ändern (${unterschiede.join(', ')})`;
+  const text = `Event${kategorie ? ` ${kategorie.name}` : ''} „${ev.titel}“ im Kalender ändern (${unterschiede.join(', ')})`;
   if (unterschiede.length === 0) return null;
 
   const fehler = eventDauerFehler(dauer, spanne.beginn, spanne.ende);

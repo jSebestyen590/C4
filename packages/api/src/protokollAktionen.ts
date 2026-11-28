@@ -180,7 +180,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
       kategorien: Object.fromEntries(
         kategorien.map((k) => [
           k.id,
-          { art: k.art, dauer: k.dauer, teilnahmeStatus: k.teilnahmeStatus },
+          { name: k.name, art: k.art, dauer: k.dauer, teilnahmeStatus: k.teilnahmeStatus },
         ]),
       ),
       vorlageKategorien: Object.fromEntries(vorlagen.map((v) => [v.id, v.kategorieId])),

@@ -39,7 +39,14 @@ const kontext = (rest: Partial<ProtokollAktionenKontext> = {}): ProtokollAktione
   sitzungDatum: SITZUNG,
   heute: '2026-11-12',
   events: {},
-  kategorien: { k1: { art: 'teilnahme', dauer: 'eintaegig', teilnahmeStatus: ['mitglied'] } },
+  kategorien: {
+    k1: {
+      name: 'Mitgliedertreffen',
+      art: 'teilnahme',
+      dauer: 'eintaegig',
+      teilnahmeStatus: ['mitglied'],
+    },
+  },
   personen: {},
   posten: {},
   ...rest,
@@ -76,7 +83,7 @@ const ereignis = (extra: Partial<AktionEventKontext> = {}): AktionEventKontext =
 });
 
 const dienstKategorien: ProtokollAktionenKontext['kategorien'] = {
-  k2: { art: 'dienste', dauer: 'eintaegig', teilnahmeStatus: null },
+  k2: { name: 'Barabend', art: 'dienste', dauer: 'eintaegig', teilnahmeStatus: null },
 };
 
 const eventDaten = {
@@ -159,6 +166,60 @@ describe('event.anlegen', () => {
     expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null });
   });
 
+  it('names the Kategorie in the text', () => {
+    const [a] = protokollAktionen(
+      dok(baustein('bausteinEvent', eventDaten)),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(a!.text).toBe(`Event Barabend „Barabend“ am 05.12.2026 im Kalender anlegen`);
+  });
+
+  it('ends the next day for a mehrtaegig Kategorie over midnight without bisDatum', () => {
+    const [a] = protokollAktionen(
+      dok(
+        baustein('bausteinEvent', {
+          name: '',
+          datum: '2026-12-17',
+          beginnZeit: '20:00',
+          endeZeit: '02:00',
+          kategorieId: 'm',
+        }),
+      ),
+      kontext({
+        kategorien: {
+          m: { name: 'Kneipenabend', art: 'teilnahme', dauer: 'mehrtaegig', teilnahmeStatus: null },
+        },
+      }),
+    );
+    expect(a!.ausfuehrbar).toBe(true);
+    expect(a!.text).toBe('Event Kneipenabend am 17.12.2026 im Kalender anlegen');
+    expect(a!.plan).toMatchObject({
+      eingabe: { beginn: '2026-12-17T19:00:00.000Z', ende: '2026-12-18T01:00:00.000Z' },
+    });
+  });
+
+  it('is not executable when the end lies before the begin', () => {
+    const [a] = protokollAktionen(
+      dok(
+        baustein('bausteinEvent', {
+          name: 'X',
+          datum: '2026-12-17',
+          bisDatum: '2026-12-16',
+          beginnZeit: '20:00',
+          endeZeit: '02:00',
+          kategorieId: 'm',
+        }),
+      ),
+      kontext({
+        kategorien: {
+          m: { name: 'Kneipenabend', art: 'teilnahme', dauer: 'mehrtaegig', teilnahmeStatus: null },
+        },
+      }),
+    );
+    // A bisDatum before the date is dropped, so it ends the next day.
+    expect(a!.ausfuehrbar).toBe(true);
+  });
+
   it('drops a leftover bisDatum for a single-day Kategorie', () => {
     const [a] = protokollAktionen(
       dok(baustein('bausteinEvent', { ...eventDaten, bisDatum: '2026-12-09' })),
@@ -181,7 +242,9 @@ describe('event.anlegen', () => {
         }),
       ),
       kontext({
-        kategorien: { g: { art: 'teilnahme', dauer: 'ganztaegig', teilnahmeStatus: null } },
+        kategorien: {
+          g: { name: 'Fest', art: 'teilnahme', dauer: 'ganztaegig', teilnahmeStatus: null },
+        },
       }),
     );
     expect(a!.ausfuehrbar).toBe(true);

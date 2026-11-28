@@ -26,6 +26,10 @@ Bausteine in den Notizen anderer Bausteine. Eine Aktion hat `id` (`bausteinId:ar
   Häkchen bleibender Personen bleiben erhalten, ein geänderter Modus setzt alle Häkchen zurück, entfernte Personen verlieren das Todo, neue
   kommen dazu. Wird der Baustein entfernt, bleibt das Todo bestehen (es lässt sich nicht von Hand löschen, weil es aus einem Protokoll stammt);
   ein gelöschtes Todo erzeugt keine Aktion. Siehe [todos.md](../todos.md).
+- **Text der Event-Aktionen:** Der Text nennt immer die Kategorie („Event Kneipenabend „Name“ am 17.12.2026 im Kalender anlegen“,
+  Änderung: „Event Kneipenabend „Titel“ im Kalender ändern (…)“). Todo-Aktionen zeigen keine Personenliste, der Text nennt nur die Anzahl.
+- **Über Mitternacht:** Bei mehrtägigen Kategorien ohne „bis“-Datum gilt wie bei eintägigen „Ende bis einschließlich Beginn = Folgetag“
+  (20:00 bis 02:00 endet am nächsten Tag). Liegt das Ende trotzdem nicht nach dem Beginn, ist die Aktion nicht ausführbar („Das Ende liegt vor dem Beginn.“).
 - **Kategorie-Fallback:** Hat ein Event-Baustein keine `kategorieId` (Altdaten), aber eine `vorlageId`, gilt die Kategorie der
   Vorlage: in `event.anlegen` (Kontext `vorlageKategorien`), beim Übernehmen aus dem vorigen Protokoll (`protokollVorschlag`) und
   als angezeigter Wert im Event-Formular (die Hilfe unter „Kategorie“ erscheint nur ohne Kategorie).

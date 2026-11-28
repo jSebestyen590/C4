@@ -381,10 +381,14 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
     return aktionenMitZustand(liste, kopf.aktionen, bausteinIdsInReihenfolge(dokument)).map(
       (a) => ({
         ...a,
-        personen: a.subs.flatMap((sub) => {
-          const m = nachSub.get(sub);
-          return m ? [mitgliedDto(m)] : [];
-        }),
+        // The text of a Todo Aktion already says how many people; the list would only be noise.
+        personen:
+          a.art === 'todo.anlegen' || a.art === 'todo.aendern'
+            ? []
+            : a.subs.flatMap((sub) => {
+                const m = nachSub.get(sub);
+                return m ? [mitgliedDto(m)] : [];
+              }),
       }),
     );
   };

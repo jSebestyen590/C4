@@ -129,7 +129,7 @@ export function statistikJahr(iso: string): number {
   return berlinWandzeit(new Date(iso).getTime()).jahr;
 }
 
-function tageDazu(datum: string, tage: number): string {
+export function tageDazu(datum: string, tage: number): string {
   const d = new Date(`${datum}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + tage);
   return d.toISOString().slice(0, 10);
