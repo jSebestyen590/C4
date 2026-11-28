@@ -231,7 +231,15 @@ Feedback-Runde 1:
   Eingabefelds in ELSTER bzw. im amtlichen Vordruck, **nicht** die Zeilennummer im Formular (Zeilen
   wechseln jährlich, Kennzahlen bleiben). 81 = Bemessung 19 %, 86 = 7 %, 66 = Vorsteuer aus Rechnungen,
   83 = verbleibende Vorauszahlung (negativ: Überschuss). Hinweis: gilt für die Voranmeldung (UStVA); die
-  Jahreserklärung (USt 2 A) hat eigene Kennzahlen.
+  Jahreserklärung zeigt ELSTER ohne Kennzahlen, dafür gibt es die Jahresansicht (nächster Punkt).
+- [ ] **USt: Jahresansicht für die Umsatzsteuererklärung:** Intervall „Jahr“ (bzw. eigener Block) mit den
+  Werten des Kalenderjahrs, beschriftet mit den sprechenden Feldnamen des ELSTER-Formulars (dort keine
+  Kennzahlen sichtbar), sinngemäß: „Steuerpflichtige Umsätze zum Steuersatz von 19 %“ (Bemessung + USt),
+  „… von 7 %“ (Bemessung + USt), „Vorsteuerbeträge aus Rechnungen von anderen Unternehmern“,
+  „Vorauszahlungssoll“ (Summe der Zahlungen/Erstattungen auf `ust-finanzamt` im Jahr) und die
+  verbleibende Abschlusszahlung/Erstattung (USt − Vorsteuer − Vorauszahlungen). Exakte Werte mit Cent.
+  Genaue Feldnamen beim Nutzer bzw. am ELSTER-Formular 2026 bestätigen lassen, bevor sie fest in den
+  Code gehen; ins CSV übernehmen.
 - [ ] **G+V:** Info-Text: „positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag)“.
 - [ ] **Einkauf:** Schalter Netto/Brutto, Standard Brutto (betrifft Netto-Spalte, Durchschnittspreise,
   Summe, CSV; Pfand bleibt separat).
