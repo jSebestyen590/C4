@@ -93,7 +93,7 @@ Die Anfragen kommen per Mail an die Party-Mail. Die App ruft das Postfach per IM
   Werte trägt man von Hand in der Konsole ein (Plaintext, JSON), damit sie nie im Terraform-State stehen:
   `adresse`, `absenderName`, `benutzer`, `passwort`, `imapHost`, `imapPort`, `imapTls`, `smtpHost`, `smtpPort`, `smtpSecure`,
   `ordnerEingang` (z. B. `INBOX`), `ordnerGesendet` (z. B. `Sent`). Die Lambda liest es über `PARTYMAIL_SECRET_ARN` (5 Minuten
-  Cache). Die Deploy-Rollen brauchen `secretsmanager:*` auf `c4-<env>-*`: dafür **einmal `infra/bootstrap` neu anwenden** (siehe README).
+  Cache). Die Deploy-Rollen brauchen `secretsmanager`-Rechte auf `c4-<env>-*` (explizite Liste in `infra/bootstrap`): dafür **einmal `infra/bootstrap` neu anwenden** (siehe README).
 - **Nicht eingerichtet** (kein Secret, leer oder unvollständig, auch lokal und in Tests): der Job tut nichts, die Seiten zeigen
   „Party-Mail ist nicht eingerichtet.“ und das Antwortfeld fehlt; Senden und Abrufen antworten 409.
 - **Abruf-Job** (`packages/api/src/privatpartyMail.ts`, Zweig `{c4:"mail-job"}` in `lambda.ts`, Schedule `c4-<env>-mail-job` alle 2 Minuten,

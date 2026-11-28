@@ -154,6 +154,16 @@ läuft der alte Code kurz gegen das neue Schema. Migrationen müssen deshalb add
 (Spalten löschen, umbenennen oder `NOT NULL` verschärfen nie zusammen mit dem Code, der sie noch braucht).
 Beim allerersten Deploy gibt es noch keine Datenbank; dann läuft die Migration nach dem Apply.
 
+## Geheimnisse (Secrets Manager)
+
+Zugangsdaten stehen nicht in der DB, sondern in Secrets Manager (Terraform legt je Umgebung nur die leeren Secrets an, nie eine
+Version, nichts davon im State): `c4-<env>-partymail` (von Hand, `privatpartys.md`), `c4-<env>-onedrive` (Client-Secret und Tokens,
+von der API geschrieben, `bilder.md`) und `c4-<env>-vapid` (Web-Push-Schlüssel, von der API erzeugt, `benachrichtigungen.md`).
+Die Lambda bekommt die ARNs über `PARTYMAIL_SECRET_ARN`, `ONEDRIVE_SECRET_ARN`, `VAPID_SECRET_ARN` und darf `onedrive` und `vapid`
+lesen und schreiben (`src/secrets.ts`: kleiner Store mit 30-s-Cache, im Test `createMemorySecretStore`). Die alten DB-Spalten
+(`onedrive_verbindung.client_secret/refresh_token/access_token/access_ablauf`, Tabelle `push_schluessel`) bleiben im Schema
+(DSQL kennt kein `DROP COLUMN`), sind veraltet und werden per Migration geleert; Altdaten werden nicht übernommen.
+
 ## Umgebungsmarke (`app_info.env`)
 
 `pnpm db:migrate` schreibt `app_info('env', <Wert>)`, wenn `C4_ENV` gesetzt ist (der Deploy-Workflow setzt

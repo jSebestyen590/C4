@@ -122,6 +122,13 @@ until then the Party-Mail is off and the app says so.
 `s3:ListBucketVersions` on `c4-<env>-*` (the API reads all versions of the Finanzarchiv for "Kette prüfen").
 Without it the Terraform apply of the environment fails (see `docs/finanzen.md`, "CloudTrail").
 
+**Re-apply `infra/bootstrap` once before deploying the secrets move** (OneDrive tokens and VAPID keys now live in Secrets
+Manager, see `docs/datenbank.md`, "Geheimnisse"). The apply (SSO profile `C4`, `terraform apply` in `infra/bootstrap`) widens the
+workload boundary with `secretsmanager:PutSecretValue` and replaces `secretsmanager:*` of the deploy roles with an explicit list.
+Then deploy; Terraform creates the empty secrets `c4-<env>-onedrive` and `c4-<env>-vapid`. After the deploy: **reconnect OneDrive**
+in the admin UI (Bilder -> Einrichtung: enter client secret again and sign in), and expect push subscriptions to stop working:
+the VAPID pair is new, so every member has to enable notifications on their devices again.
+
 See `docs/privatpartys.md`.
 
 ### Bootstrap: Rechte der Deploy-Rolle und Backups
@@ -131,7 +138,7 @@ See `docs/privatpartys.md`.
 - **Permissions Boundary** `c4-<env>-workload-boundary` je Umgebung. Die Deploy-Rolle darf Rollen `c4-<env>-*` nur mit dieser
   Boundary anlegen oder ändern (`iam:CreateRole`, `PutRolePolicy`, `AttachRolePolicy`, `PutRolePermissionsBoundary`);
   `DeleteRolePermissionsBoundary` ist verboten. Die Boundary erlaubt nur, was Lambda- und Scheduler-Rolle brauchen
-  (Logs, DSQL-Connect, S3 der Umgebung, Lambda-Invoke, Secret lesen, Cognito-Admin) und verbietet `iam:*`. Ändert sich eine
+  (Logs, DSQL-Connect, S3 der Umgebung, Lambda-Invoke, Secrets lesen und schreiben, Cognito-Admin) und verbietet `iam:*`. Ändert sich eine
   Rollen-Policy in `infra/modules/app`, muss die Boundary mitgezogen werden.
 - **Explizite Verbote** für die Deploy-Rolle: `iam:*` auf sich selbst, Cognito/DSQL/CloudFront/API Gateway/ACM an Ressourcen mit
   dem Tag `Environment` der anderen Umgebung (Leitplanke: ohne Tag greift das Verbot nicht), `backup:*` und `backup-storage:*`.

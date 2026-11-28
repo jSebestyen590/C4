@@ -226,9 +226,10 @@ resource "aws_iam_policy" "workload_boundary" {
         Resource = ["arn:aws:lambda:${local.region}:${local.account}:function:c4-${each.value}-*"]
       },
       {
-        Sid      = "ReadEnvSecrets"
+        # The Lambda stores the OneDrive tokens and the VAPID keys in its own secrets.
+        Sid      = "EnvSecrets"
         Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:PutSecretValue"]
         Resource = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:c4-${each.value}-*"]
       },
       {
@@ -319,10 +320,25 @@ resource "aws_iam_role_policy" "deploy" {
         ]
       },
       {
-        # The empty Party-Mail secret c4-<env>-partymail (infra/modules/app); its values are entered by hand.
-        Sid      = "SecretsManager"
-        Effect   = "Allow"
-        Action   = ["secretsmanager:*"]
+        # The empty secrets c4-<env>-partymail/-onedrive/-vapid (infra/modules/app); no secret versions
+        # are managed by Terraform. Actions the AWS provider calls for aws_secretsmanager_secret.
+        Sid    = "SecretsManager"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DeleteSecret",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:UpdateSecret",
+          "secretsmanager:TagResource",
+          "secretsmanager:UntagResource",
+          "secretsmanager:GetResourcePolicy",
+          "secretsmanager:PutResourcePolicy",
+          "secretsmanager:DeleteResourcePolicy",
+          "secretsmanager:ListSecretVersionIds",
+          "secretsmanager:RestoreSecret",
+        ]
         Resource = ["arn:aws:secretsmanager:${local.region}:${local.account}:secret:c4-${each.key}-*"]
       },
       {
