@@ -22,6 +22,8 @@ export const HILFE = {
       'Das Konto führt seinen Bestand je Münze und Schein (Stückelung). Das brauchst du für die Fächer des Safes und für Kassen. Bei jeder Buchung auf dieses Konto gibst du an, welche Münzen und Scheine es sind. Lässt sich nach der ersten Buchung nicht mehr ändern.',
     steuersatzStandard:
       'Nur ein Vorschlagswert bei Erlös- und Aufwandskonten: Wählst du das Konto als Kategorie eines Belegpostens, wird der Steuersatz damit vorbelegt (du kannst ihn ändern). Die Buchungszeile trägt den tatsächlichen Satz. Bei Bargeld, Bank, Durchlauf und Neutral ist er ohne Bedeutung.',
+    euerZeile:
+      'Ordnet das Konto einer Zeile der Einnahmen-Überschuss-Rechnung (EÜR) zu. Nur Erlös-, Aufwands- und neutrale Konten. Konten ohne Zeile erscheinen in der EÜR als „Nicht zugeordnet“. Die Zeilen sind eine eigene kurze Liste, keine amtlichen Zeilennummern.',
     archivieren:
       'Konten werden nie gelöscht, sondern archiviert. Ein archiviertes Konto nimmt keine neuen Buchungen mehr an, seine bisherigen Buchungszeilen bleiben erhalten. Du kannst es jederzeit wiederherstellen.',
   },
@@ -103,6 +105,24 @@ export const HILFE = {
       'Der Zeitraum der Buchungen, die exportiert werden (Buchungsdatum). Höchstens 10 Jahre. Vorgabe ist das Vorjahr.',
     export:
       'Der Export ist eine ZIP-Datei mit CSV-Dateien, einer index.xml (Beschreibungsstandard für die Datenträgerüberlassung) und einer Beschreibung. Er wird im Archiv abgelegt und bleibt dort erhalten. Mit Belegdateien liegen die Dateien der Belege zusätzlich im Ordner belege/; der Export wird dann im Hintergrund erstellt.',
+  },
+  auswertungen: {
+    istPrinzip:
+      'Alle Auswertungen rechnen nach dem Buchungsdatum (Ist-Prinzip): Ein Betrag zählt in dem Zeitraum, in dem er gebucht wurde. Stornos zählen mit ihrem eigenen Datum und heben die ursprüngliche Buchung auf. Events werden nach dem Beginn des Events zugeordnet, der Einkauf nach dem Belegdatum.',
+    zeitraum:
+      'Von- und Bis-Tag (Buchungsdatum, beide einschließlich), höchstens 10 Jahre. Das Intervall bestimmt, ob die Zeiträume als Monate, Quartale oder Jahre getrennt werden.',
+    events:
+      'Nur Einnahmen: bar aus der Kassenabrechnung, Karte aus SumUp. Brutto ist der eingenommene Betrag, netto ohne Umsatzsteuer. Stornierte Abrechnungen zählen nicht. Belege und Rechnungen gehören keinem Event an.',
+    kennzahlen:
+      'Die Werte für das Formular der Umsatzsteuer-Voranmeldung in ELSTER. Kz 81 und Kz 86: Bemessungsgrundlage zum Regelsatz und zum ermäßigten Satz, auf volle Euro abgerundet. Kz 66: abziehbare Vorsteuer. Kz 83: verbleibende Umsatzsteuer (Zahllast), also Umsatzsteuer minus Vorsteuer. Mit dem Knopf kopierst du den Wert zum Einfügen.',
+    vorauszahlung:
+      'Der Saldo des Kontos „USt Finanzamt“ im Zeitraum: Zahlungen an das Finanzamt minus Erstattungen. Zum Vergleich mit Kz 83: Was du gezahlt hast, steht gegen das, was du schuldest.',
+    guv: 'Erlöse und Aufwand netto je Konto und Zeitraum, nach dem Buchungsdatum. Oberkonten enthalten ihre Unterkonten. Das Ergebnis ist Erlöse minus Aufwand: positiv ein Überschuss, negativ ein Fehlbetrag.',
+    euer: 'Die Einnahmen-Überschuss-Rechnung eines Jahres nach Ist-Prinzip. Die Konten werden im Kontenplan den Zeilen zugeordnet. Konten ohne Zeile stehen unter „Nicht zugeordnet“ und fehlen in den Summen. Vereinnahmte Umsatzsteuer und gezahlte Vorsteuer werden aus den Steuerangaben der Buchungen berechnet.',
+    durchschnittspreis:
+      'Der Durchschnittspreis ist der Nettobetrag aller Einkäufe der Ware im Jahr geteilt durch die eingekaufte Menge (ohne Pfand). Eine Ware, die in verschiedenen Einheiten gekauft wurde, steht je Einheit in einer eigenen Zeile.',
+    pfandsaldo:
+      'Der Pfandsaldo ist das Pfand, das der Verein an Lieferanten schuldet bzw. als Leergut noch offen hat (Konto „Pfand“). Zugang: gezahltes Pfand beim Einkauf. Abgang: zurückgegebenes Leergut.',
   },
   kette: {
     ergebnis:

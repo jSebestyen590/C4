@@ -1,0 +1,2 @@
+-- Finanzen: EÜR lines of the seed accounts (only where not set yet).
+UPDATE fin_konten SET euer_zeile = CASE id WHEN 'kartenerloese' THEN 'umsatz' WHEN 'sumup-gebuehren' THEN 'sonstige_ausgaben' END WHERE id IN ('kartenerloese', 'sumup-gebuehren') AND euer_zeile IS NULL

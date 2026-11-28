@@ -256,7 +256,7 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 - Status Entwurf → gestellt → bezahlt (Zuordnung zum Bankumsatz oder bar) → Stornorechnung.
 - Offener Punkt: E-Rechnung (ZUGFeRD) als Folgescheibe, wird für B2B absehbar Pflicht.
 
-### Scheibe 9: Auswertungen
+### Scheibe 9: Auswertungen (umgesetzt)
 
 Plan: [finanzen-auswertungen.md](./finanzen-auswertungen.md).
 
@@ -342,7 +342,7 @@ FinTS-Überweisungen, E-Rechnung.
 - **Texterkennung** für fotografierte Belege (Access hatte „Beleg scannen").
 - **Gutscheine** als eigene Verbindlichkeit (verkauft ≠ eingelöst) statt nur als Erlös.
 - **Wochenübersicht** für den Finanzer (Kassen, Buch, offene Belege, nicht zugeordnete Umsätze).
-- **Spenden, Mitgliedsbeiträge, Bandgagen, GEMA** als eigene Kategorien mit passender Sphäre.
+- **Spenden, Mitgliedsbeiträge, Bandgagen, GEMA** als eigene Kategorien.
 
 ## Risiken
 

@@ -16,7 +16,13 @@ import { IconArchive, IconArchiveOff, IconEdit, IconPlus } from '@tabler/icons-r
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { centAnzeigen, KONTO_ART_LABELS, KONTO_ARTEN, type KontoDto } from '@c4/shared';
+import {
+  centAnzeigen,
+  EUER_ZEILEN,
+  KONTO_ART_LABELS,
+  KONTO_ARTEN,
+  type KontoDto,
+} from '@c4/shared';
 import { AktionsMenue } from '../AktionsMenue';
 import { useApi } from '../api';
 import { useAuth } from '../auth';
@@ -176,6 +182,11 @@ export function FinanzenKontenPage() {
                         Steuersatz: {artText(k.steuersatzArt, heute)}
                       </Text>
                     )}
+                    {k.euerZeile && (
+                      <Text size="sm" c="dimmed">
+                        EÜR: {EUER_ZEILEN[k.euerZeile].label}
+                      </Text>
+                    )}
                   </Stack>
                   <Text
                     fw={600}
@@ -201,6 +212,7 @@ export function FinanzenKontenPage() {
               <Table.Tr>
                 <Table.Th>Konto</Table.Th>
                 <Table.Th w={130}>Stückelung</Table.Th>
+                <Table.Th w={220}>EÜR-Zeile</Table.Th>
                 <Table.Th w={160} style={BETRAG_STIL}>
                   Saldo
                 </Table.Th>
@@ -211,7 +223,7 @@ export function FinanzenKontenPage() {
             {gruppen.map(({ art, zeilen }) => (
               <Table.Tbody key={art}>
                 <Table.Tr style={{ background: 'var(--mantine-color-default-hover)' }}>
-                  <Table.Td colSpan={5}>
+                  <Table.Td colSpan={6}>
                     <Text fw={700} size="sm">
                       {KONTO_ART_LABELS[art]}
                     </Text>
@@ -242,6 +254,9 @@ export function FinanzenKontenPage() {
                           Stückelung
                         </Badge>
                       )}
+                    </Table.Td>
+                    <Table.Td>
+                      {k.euerZeile && <Text size="sm">{EUER_ZEILEN[k.euerZeile].label}</Text>}
                     </Table.Td>
                     <Table.Td style={BETRAG_STIL}>
                       <Text

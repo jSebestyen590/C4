@@ -4,6 +4,7 @@ import {
   berechneZaehlung,
   buchungsdatumFuer,
   festgeschriebenBis,
+  kontoHatEuerZeile,
   monatAnzeigen,
   naechsterFestschreibbarerMonat,
   type FestschreibungHinweisDto,
@@ -50,6 +51,8 @@ import {
   BuchungUngueltig,
   buchungErzeugen,
   entwurfZeilen,
+  EUER_ART_FEHLER,
+  euerZeileNach,
   FestschreibungKonflikt,
   type DatenexportEintrag,
   type FestschreibungEintrag,
@@ -64,6 +67,7 @@ import {
 import { datumBerlin } from './finanzenBelege';
 import { createFakeBelegeStore, createFakeLager } from './finanzenBelege.fake';
 import { createFakeRechnungenStore } from './finanzenRechnungen.fake';
+import { createFakeAuswertungenStore } from './finanzenAuswertungen.fake';
 import { createFakeSumupStore } from './finanzenSumup.fake';
 
 /** Master data of a Kasse in the fake (like `fin_kassen` and `fin_kassen_grundbestand`). */
@@ -107,8 +111,15 @@ export function createFakeFinanzenStore() {
     },
     { id: 'sumup', name: 'SumUp-Guthaben', art: 'durchlauf', stueckelung: false },
     { id: 'sumup-gebuehren', name: 'SumUp-Gebühren', art: 'aufwand', stueckelung: false },
+    { id: 'ust-finanzamt', name: 'Umsatzsteuer Finanzamt', art: 'neutral', stueckelung: false },
   ] as const) {
-    konten.set(k.id, { ...k, parentId: null, steuersatzArt: null, archiviert: false });
+    konten.set(k.id, {
+      ...k,
+      parentId: null,
+      steuersatzArt: null,
+      euerZeile: k.id === 'sumup-gebuehren' ? 'sonstige_ausgaben' : null,
+      archiviert: false,
+    });
   }
   // Like migration 0272: card revenue at 19 %.
   konten.set('kartenerloese', {
@@ -118,6 +129,7 @@ export function createFakeFinanzenStore() {
     stueckelung: false,
     parentId: null,
     steuersatzArt: 'regel',
+    euerZeile: 'umsatz',
     archiviert: false,
   });
   /** Ordered by seq. */
@@ -375,6 +387,7 @@ export function createFakeFinanzenStore() {
     ...belege,
     ...rechnungen,
     ...sumup,
+    ...createFakeAuswertungenStore({ buchungen, konten, events }),
     async konten(mitArchiv) {
       const gesamt = saldoGesamt(
         [...konten.values()].map((k) => ({ ...k, saldoCent: saldo(k.id) })),
@@ -386,6 +399,8 @@ export function createFakeFinanzenStore() {
     },
     async kontoAnlegen(daten) {
       if (daten.parentId) bestimmeParent(null, daten.parentId);
+      if (daten.euerZeile && !kontoHatEuerZeile(daten.art))
+        throw new KontoUngueltig(EUER_ART_FEHLER);
       const id = randomUUID();
       konten.set(id, { id, ...daten, archiviert: false });
       return id;
@@ -403,7 +418,8 @@ export function createFakeFinanzenStore() {
         );
       }
       if (daten.parentId) bestimmeParent(id, daten.parentId);
-      Object.assign(k, daten);
+      const euerNeu = euerZeileNach(k.art, k.euerZeile, daten);
+      Object.assign(k, daten, { euerZeile: euerNeu });
       return true;
     },
     async kontoArchivieren(id, archiviert) {
@@ -617,6 +633,7 @@ export function createFakeFinanzenStore() {
         parentId: SAFE_KONTO_ID,
         stueckelung: true,
         steuersatzArt: null,
+        euerZeile: null,
         archiviert: false,
       });
       kassen.set(id, {

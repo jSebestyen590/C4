@@ -21,6 +21,7 @@ import type {
   KontoArt,
   SteuerArt,
   SteuersatzArt,
+  EuerZeile,
   IfcoGrundflaeche,
   LagerortArt,
   MhdArt,
@@ -1242,6 +1243,8 @@ export const finKonten = pgTable('fin_konten', {
   stueckelung: boolean('stueckelung').notNull().default(false),
   /** Default tax rate as Art; the old column `steuersatz_standard` is no longer read or written. */
   steuersatzArt: text('steuersatz_art').$type<SteuersatzArt>(),
+  /** EÜR line (`EUER_ZEILEN` in `@c4/shared`; only Erlös, Aufwand, Neutral); no check constraint, validated in the API. */
+  euerZeile: text('euer_zeile').$type<EuerZeile>(),
   archiviert: boolean('archiviert').notNull().default(false),
   erstelltAm: timestamp('erstellt_am', { withTimezone: true }).notNull().defaultNow(),
 });

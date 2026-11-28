@@ -6,7 +6,11 @@ import { useState, type SubmitEvent } from 'react';
 import {
   KONTO_ART_LABELS,
   KONTO_ARTEN,
+  EUER_ZEILEN,
+  EUER_ZEILEN_ZUORDENBAR,
+  kontoHatEuerZeile,
   kontoEingabeSchema,
+  type EuerZeile,
   type KontoAendern,
   type KontoArt,
   type KontoEingabe,
@@ -51,6 +55,7 @@ export function KontoFormular({
   const [art, setArt] = useState<KontoArt>(konto?.art ?? 'neutral');
   const [parentId, setParentId] = useState<string | null>(konto?.parentId ?? null);
   const [stueckelung, setStueckelung] = useState(konto?.stueckelung ?? false);
+  const [euerZeile, setEuerZeile] = useState<EuerZeile | null>(konto?.euerZeile ?? null);
   const [steuerArt, setSteuerArt] = useState<SteuersatzArt | null>(konto?.steuersatzArt ?? null);
   const heute = useHeutigeSaetze();
   const [fehler, setFehler] = useState<string | null>(null);
@@ -76,7 +81,14 @@ export function KontoFormular({
 
   const onSubmit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const eingabe = { name, art, parentId, stueckelung, steuersatzArt: steuerArt };
+    const eingabe = {
+      name,
+      art,
+      parentId,
+      stueckelung,
+      steuersatzArt: steuerArt,
+      euerZeile: kontoHatEuerZeile(art) ? euerZeile : null,
+    };
     const parsed = kontoEingabeSchema.safeParse(eingabe);
     if (!parsed.success) return setFehler(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
     setFehler(null);
@@ -89,6 +101,7 @@ export function KontoFormular({
     if (d.parentId !== konto.parentId) aenderung.parentId = d.parentId;
     if (d.stueckelung !== konto.stueckelung) aenderung.stueckelung = d.stueckelung;
     if (d.steuersatzArt !== konto.steuersatzArt) aenderung.steuersatzArt = d.steuersatzArt;
+    if ((d.euerZeile ?? null) !== konto.euerZeile) aenderung.euerZeile = d.euerZeile ?? null;
     if (Object.keys(aenderung).length === 0) return onClose();
     speichern.mutate(aenderung);
   };
@@ -111,6 +124,21 @@ export function KontoFormular({
             onChange={(v) => v && setArt(v as KontoArt)}
             data={KONTO_ARTEN.map((a) => ({ value: a, label: KONTO_ART_LABELS[a] }))}
           />
+          {kontoHatEuerZeile(art) && (
+            <Select
+              label={<FeldLabel text="EÜR-Zeile" hilfe={HILFE.konto.euerZeile} />}
+              description="Optional, für die Auswertung „EÜR“"
+              placeholder="Nicht zugeordnet"
+              searchable
+              clearable
+              value={euerZeile}
+              onChange={(v) => setEuerZeile(v as EuerZeile | null)}
+              data={EUER_ZEILEN_ZUORDENBAR.map((z) => ({
+                value: z,
+                label: EUER_ZEILEN[z].label,
+              }))}
+            />
+          )}
           <Select
             label={<FeldLabel text="Übergeordnetes Konto" hilfe={HILFE.konto.parent} />}
             description="Optional"

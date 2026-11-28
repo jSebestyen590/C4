@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   centAnzeigen,
+  type AuswertungIntervall,
   type KontoDto,
   type SteuersatzArt,
   type SteuersatzZeitraumEingabe,
@@ -406,5 +407,58 @@ export function useArtikelSteuersatzArt() {
       void qc.invalidateQueries({ queryKey: finanzenKeys.artikelVorschlaege });
       void qc.invalidateQueries({ queryKey: finanzenKeys.belegWaren });
     },
+  });
+}
+
+export interface AuswertungZeitraumFilter {
+  von: string;
+  bis: string;
+  intervall: AuswertungIntervall;
+}
+
+export function useAuswertungEvents(filter: AuswertungZeitraumFilter | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['finanzen', 'auswertung', 'events', filter] as const,
+    enabled: filter !== null,
+    queryFn: async () => unwrap(await api.finanzen.auswertungen.events.$get({ query: filter! })),
+  });
+}
+
+export function useAuswertungUst(filter: AuswertungZeitraumFilter | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['finanzen', 'auswertung', 'ust', filter] as const,
+    enabled: filter !== null,
+    queryFn: async () => unwrap(await api.finanzen.auswertungen.ust.$get({ query: filter! })),
+  });
+}
+
+export function useAuswertungGuv(filter: AuswertungZeitraumFilter | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['finanzen', 'auswertung', 'guv', filter] as const,
+    enabled: filter !== null,
+    queryFn: async () => unwrap(await api.finanzen.auswertungen.guv.$get({ query: filter! })),
+  });
+}
+
+export function useAuswertungEuer(jahr: number | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['finanzen', 'auswertung', 'euer', jahr] as const,
+    enabled: jahr !== null,
+    queryFn: async () =>
+      unwrap(await api.finanzen.auswertungen.euer.$get({ query: { jahr: String(jahr) } })),
+  });
+}
+
+export function useAuswertungEinkauf(jahr: number | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['finanzen', 'auswertung', 'einkauf', jahr] as const,
+    enabled: jahr !== null,
+    queryFn: async () =>
+      unwrap(await api.finanzen.auswertungen.einkauf.$get({ query: { jahr: String(jahr) } })),
   });
 }

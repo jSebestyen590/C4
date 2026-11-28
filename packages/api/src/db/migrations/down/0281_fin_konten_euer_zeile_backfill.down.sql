@@ -1,0 +1,1 @@
+UPDATE fin_konten SET euer_zeile = NULL WHERE id IN ('kartenerloese', 'sumup-gebuehren')

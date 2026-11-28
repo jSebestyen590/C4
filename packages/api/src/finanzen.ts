@@ -71,6 +71,8 @@ import {
   type BuchungRichtungDto,
   type KettenBuchung,
   type KontoArt,
+  type EuerZeile,
+  kontoHatEuerZeile,
   type KontoDto,
   type SteuersatzArt,
   type StornoEingabe,
@@ -119,6 +121,7 @@ import {
 } from './finanzenKassen';
 import { createBelegeStore, datumBerlin, type BelegeStore } from './finanzenBelege';
 import { createRechnungenStore, type RechnungenStore } from './finanzenRechnungen';
+import { createAuswertungenStore, type AuswertungenStore } from './finanzenAuswertungen';
 import { createSumupStore, type SumupStore } from './finanzenSumup';
 import type { Tx } from './waren';
 
@@ -140,12 +143,31 @@ export class KontoUngueltig extends Error {}
 /** The change is not allowed in the current state (account already has lines). */
 export class KontoKonflikt extends Error {}
 
+export const EUER_ART_FEHLER =
+  'Eine EÜR-Zeile gibt es nur bei Erlös-, Aufwands- und Neutralkonten.';
+
+/** EÜR line after a change: set as given, cleared when the Art changes to one without a line. */
+export function euerZeileNach(
+  art: KontoArt,
+  euerZeile: EuerZeile | null,
+  daten: Partial<KontoNeu>,
+): EuerZeile | null {
+  const artNeu = daten.art ?? art;
+  const zeile = daten.euerZeile !== undefined ? daten.euerZeile : euerZeile;
+  if (!kontoHatEuerZeile(artNeu)) {
+    if (daten.euerZeile) throw new KontoUngueltig(EUER_ART_FEHLER);
+    return null;
+  }
+  return zeile;
+}
+
 export interface KontoNeu {
   name: string;
   art: KontoArt;
   parentId: string | null;
   stueckelung: boolean;
   steuersatzArt: SteuersatzArt | null;
+  euerZeile: EuerZeile | null;
 }
 
 export interface GebuchtErgebnis {
@@ -205,7 +227,7 @@ export interface KettenDaten {
   zaehlerHash: string;
 }
 
-export interface FinanzenStore extends BelegeStore, RechnungenStore, SumupStore {
+export interface FinanzenStore extends BelegeStore, RechnungenStore, SumupStore, AuswertungenStore {
   /** All accounts by name with their balance (sum of own lines). */
   konten(mitArchiv: boolean): Promise<KontoDto[]>;
   /** Throws KontoUngueltig for an unknown parent. */
@@ -1507,6 +1529,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
     ...belege,
     ...rechnungen,
     ...sumup,
+    ...createAuswertungenStore(db),
     async konten(mitArchiv) {
       const [alle, summen] = await Promise.all([
         db.select().from(finKonten).orderBy(asc(finKonten.name)),
@@ -1531,6 +1554,7 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           parentId: k.parentId,
           stueckelung: k.stueckelung,
           steuersatzArt: k.steuersatzArt,
+          euerZeile: k.euerZeile,
           archiviert: k.archiviert,
           saldoCent: saldo.get(k.id) ?? 0,
           saldoGesamtCent: gesamt.get(k.id) ?? 0,
@@ -1539,6 +1563,8 @@ export function createFinanzenStore(db: Db): FinanzenStore {
 
     async kontoAnlegen(daten) {
       if (daten.parentId) await parentPruefen(null, daten.parentId, null);
+      if (daten.euerZeile && !kontoHatEuerZeile(daten.art))
+        throw new KontoUngueltig(EUER_ART_FEHLER);
       const id = randomUUID();
       await db.insert(finKonten).values({ id, ...daten });
       return id;
@@ -1563,7 +1589,11 @@ export function createFinanzenStore(db: Db): FinanzenStore {
           );
       }
       if (daten.parentId) await parentPruefen(id, daten.parentId, konto.parentId);
-      await db.update(finKonten).set(daten).where(eq(finKonten.id, id));
+      const euerNeu = euerZeileNach(konto.art, konto.euerZeile, daten);
+      await db
+        .update(finKonten)
+        .set({ ...daten, euerZeile: euerNeu })
+        .where(eq(finKonten.id, id));
       return true;
     },
 

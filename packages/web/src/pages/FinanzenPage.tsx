@@ -1,6 +1,7 @@
 import { Alert, Anchor, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import {
   IconBook2,
+  IconChartBar,
   IconCash,
   IconCoins,
   IconCreditCard,
@@ -144,6 +145,12 @@ export function FinanzenPage() {
           icon={<IconLock size={28} />}
           titel="Festschreibung"
           text="Monate abschließen: danach ist darin nichts mehr buchbar."
+        />
+        <Kachel
+          to="/finanzen/auswertungen"
+          icon={<IconChartBar size={28} />}
+          titel="Auswertungen"
+          text="Events, Umsatzsteuer, G+V, EÜR und Einkauf."
         />
         {(can('finanzen:pruefen') || can('finanzen:verwalten')) && (
           <Kachel

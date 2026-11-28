@@ -221,6 +221,7 @@ export const finanzenRoutes = (ctx: RoutenKontext) => {
                 ...(daten.steuersatzArt !== undefined && {
                   steuersatzArt: daten.steuersatzArt,
                 }),
+                ...(daten.euerZeile !== undefined && { euerZeile: daten.euerZeile }),
               })
               .catch(finanzenFehler),
             'Konto nicht gefunden',

@@ -1,4 +1,4 @@
-import { Route } from 'react-router-dom';
+import { Navigate, Route } from 'react-router-dom';
 import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
 import { FinanzenArtikelPage } from '../pages/FinanzenArtikelPage';
 import { FinanzenSteuersaetzePage } from '../pages/FinanzenSteuersaetzePage';
@@ -28,6 +28,7 @@ import { FinanzenDatenexportPage } from '../pages/FinanzenDatenexportPage';
 import { FinanzenFestschreibungPage } from '../pages/FinanzenFestschreibungPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
+import { FinanzenAuswertungenPage } from '../pages/FinanzenAuswertungenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
 import { LagerAbgleichPage } from '../pages/LagerAbgleichPage';
 import { LagerAbgleichWarePage } from '../pages/LagerAbgleichWarePage';
@@ -417,6 +418,17 @@ export function finanzenRouten() {
           <Protected permission="finanzen:lesen">
             <RequireUsername>
               <FinanzenFestschreibungPage />
+            </RequireUsername>
+          </Protected>
+        }
+      />
+      <Route path="/finanzen/auswertungen" element={<Navigate to="events" replace />} />
+      <Route
+        path="/finanzen/auswertungen/:tab"
+        element={
+          <Protected permission="finanzen:lesen">
+            <RequireUsername>
+              <FinanzenAuswertungenPage />
             </RequireUsername>
           </Protected>
         }

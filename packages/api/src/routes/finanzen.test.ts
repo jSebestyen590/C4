@@ -154,6 +154,7 @@ describe('finanzen', () => {
       'safe',
       'sumup',
       'sumup-gebuehren',
+      'ust-finanzamt',
     ]);
     expect(konten.every((k) => k.saldoCent === 0)).toBe(true);
 
@@ -233,6 +234,42 @@ describe('finanzen', () => {
     expect(
       (await aendern({ art: 'bank', name: 'Bank neu', steuersatzArt: 'ermaessigt' })).status,
     ).toBe(200);
+  });
+
+  it('stores the EÜR line of an account and validates it', async () => {
+    const t = await setup();
+    type K = { id: string; euerZeile: string | null };
+    const neu = await t.anfrage('admin-token', 'POST', '/konten', {
+      name: 'Werbung',
+      art: 'aufwand',
+      euerZeile: 'werbung',
+    });
+    expect(neu.status).toBe(201);
+    const { id } = (await neu.json()) as { id: string };
+    const zeile = async (kontoId: string) =>
+      (await t.lesen<K[]>('vorstand-token', '/konten')).find((k) => k.id === kontoId)?.euerZeile;
+    expect(await zeile(id)).toBe('werbung');
+    expect(await zeile('kartenerloese')).toBe('umsatz');
+    expect(await zeile('bank')).toBeNull();
+    const aendern = (body: unknown, kontoId = id) =>
+      t.anfrage('admin-token', 'PUT', `/konten/${kontoId}`, body);
+    expect((await aendern({ euerZeile: 'raumkosten' })).status).toBe(200);
+    expect(await zeile(id)).toBe('raumkosten');
+    expect((await aendern({ euerZeile: null })).status).toBe(200);
+    expect(await zeile(id)).toBeNull();
+    // computed lines and unknown values are refused, Bank/Durchlauf accounts take no line
+    expect((await aendern({ euerZeile: 'ust_vereinnahmt' })).status).toBe(400);
+    expect((await aendern({ euerZeile: 'quatsch' })).status).toBe(400);
+    expect((await aendern({ euerZeile: 'werbung' }, 'bank')).status).toBe(400);
+    expect(
+      (
+        await t.anfrage('admin-token', 'POST', '/konten', {
+          name: 'Bank 2',
+          art: 'bank',
+          euerZeile: 'werbung',
+        })
+      ).status,
+    ).toBe(400);
   });
 
   it('books, shows the entry in the journal and moves the balances', async () => {
@@ -915,6 +952,7 @@ describe('finanzen', () => {
         parentId: f,
         stueckelung: true,
         steuersatzArt: null,
+        euerZeile: null,
         archiviert: false,
       });
       const res = await t.anfrage('admin-token', 'POST', `/buchungen/${b.id}/storno`, {

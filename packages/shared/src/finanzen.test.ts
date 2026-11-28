@@ -200,6 +200,7 @@ describe('schemas', () => {
       parentId: null,
       stueckelung: false,
       steuersatzArt: null,
+      euerZeile: null,
     });
     expect(kontoEingabeSchema.safeParse({ name: 'X', art: 'buch' }).success).toBe(false);
     // a partial change must not reset the other fields

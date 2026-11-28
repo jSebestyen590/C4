@@ -42,6 +42,7 @@ const konto = (id: string, extra: Partial<KontoDto> = {}): KontoDto => ({
   parentId: null,
   stueckelung: false,
   steuersatzArt: 'regel',
+  euerZeile: null,
   archiviert: false,
   saldoCent: 0,
   saldoGesamtCent: 0,

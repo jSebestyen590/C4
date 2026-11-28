@@ -10,7 +10,7 @@ wird mit jeder Scheibe um das tatsächlich Gebaute ergänzt und wird zugleich di
 
 Die Finanzen des Vereins laufen ab dem 01.01.2027 über die App und lösen die Access-Datenbank ab. Gebaut sind Fundament (Kontenplan, Journal mit Hash-Kette, Storno, freie Buchung, „Kette prüfen“), Bargeld (Safe mit Fächern), das Buch ([buch.md](./buch.md)) die Barkassen (Dienst-Zählung am Event, Abrechnung mit einer Buchung) die Belege (Datei-Archiv, Zahlwege, Auslagen mit Sammelerstattung, täglicher Export, Lager-Posten, Pfand, Einreichen durch Mitglieder, Lager-Beleg-Abgleich), die Rechnungen (Ausgangsrechnungen mit Ist-Versteuerung, PDF, Stornorechnung), SumUp (Kartenumsätze per API abrufen, in einer Prüfliste je Event oder Geschäftstag buchen) und der GoBD-Abschluss (Festschreibung je Monat, Kette prüfen gegen das Archiv, CloudTrail, Datenexport, Verfahrensdokumentation); alles Weitere steht als Zielbild und im Umsetzungsplan [plans/finanzen.md](./plans/finanzen.md). Die Seite wird mit jeder Scheibe ergänzt und ist zugleich die Verfahrensdokumentation (GoBD: jede Änderung erkennbar, Rechte, Prüfung).
 
-Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Lager-Beleg-Abgleich, Rechnungen, SumUp, Festschreibung, Datenexport, CloudTrail, Seiten, API, Datenbankrolle, Verfahrensdokumentation
+Abschnitte: Zielbild, GoBD, Rechte, Kontenplan, Journal, Hash-Kette, Kette prüfen, Warnungen je Kontoart, Bargeld (Safe), Barkassen, Belege, Lager-Beleg-Abgleich, Rechnungen, SumUp, Auswertungen, Festschreibung, Datenexport, CloudTrail, Seiten, API, Datenbankrolle, Verfahrensdokumentation
 
 ## Zielbild
 
@@ -71,6 +71,9 @@ Tabelle `fin_konten`: `id`, `name`, `art`, `parent_id`, `stueckelung`, `steuersa
   `finanzen:verwalten` an.
 - **Unterkonten** über `parent_id` (später z. B. Safe → Fächer). Das übergeordnete Konto muss
   existieren, Zyklen und das eigene Konto als Eltern sind ungültig.
+- **EÜR-Zeile** (`euer_zeile`, nur Erlöse, Aufwand und Neutral): ordnet das Konto einer Zeile der
+  Einnahmenüberschussrechnung zu, gepflegt im Kontenformular. Die Liste steht in
+  `packages/shared/src/finanzenEuer.ts`. Siehe „Auswertungen“.
 - **Archivieren statt löschen:** Archivierte Konten erscheinen nicht mehr in der Liste (Schalter
   „Archivierte anzeigen“) und nehmen keine neuen Buchungen an; ihre Zeilen bleiben.
 - **Art, Stückelung und Übergeordnet** lassen sich nur ändern, solange keine Buchungszeile auf dem
@@ -222,6 +225,20 @@ schreiben; das Archiv kann er nicht ändern. Deshalb prüft `pruefeArchiv` zusä
 Das Ergebnis zeigt Anzahl, Kopf-Hash, Fehler je `seq` und `archiv` (Zähler für Exporte, Anker, Festschreibungen,
 Belegdateien, `nichtExportiert`, `eingerichtet`). Ohne Archiv-Bucket (`eingerichtet: false`, lokal) wird nur gegen die
 Datenbank geprüft; die Seite sagt das. Das Archiv wird parallel (höchstens 16 Zugriffe) gelesen.
+
+## Auswertungen
+
+Seite `/finanzen/auswertungen` mit fünf Tabs (je eigene Route `/finanzen/auswertungen/events|ust|guv|euer|einkauf`), erreichbar über die Kachel auf der Finanzen-Startseite. Alles liest nur (`finanzen:lesen`), es wird nichts gebucht. Code: `packages/shared/src/finanzenAuswertungen.ts` (Rechenlogik), `packages/api/src/routes/finanzenAuswertungen.ts`, `packages/web/src/auswertungen/*`.
+
+- **Datumsbasis:** das Buchungsdatum (`fin_buchungen.datum`), also Ist-Prinzip wie gebucht. Events nach `events.beginn` (Berlin), Einkauf nach `fin_belege.belegdatum`.
+- **Storno:** USt, G+V und EÜR summieren alle Buchungen; ein Storno hebt die Ursprungsbuchung mit seinem eigenen Datum auf. Events und Einkauf lassen stornierte Quellen und Stornobuchungen aus.
+- **Zeitraum:** Events, USt und G+V nehmen `von`, `bis` und Intervall (Monat, Quartal, Jahr; höchstens zehn Jahre), EÜR und Einkauf ein Jahr.
+- **CSV-Export:** ein Button je Tab, im Browser aus denselben Daten wie die Tabelle: Trenner `;`, deutsches Komma, UTF-8 mit BOM (Excel).
+- **Events:** Einnahmen je Event, bar (Kassenabrechnung) und Karte (SumUp) getrennt, Summe brutto und netto, dazu ein Verlauf je Event-Kategorie (Diagramm mit `@mantine/charts`). Belege und Rechnungen haben kein Event.
+- **USt:** je Zeitraum und Steuersatz Umsatzsteuer, Vorsteuer und Zahllast (USt minus Vorsteuer) sowie die UStVA-Kennzahlen zum Abtippen in ELSTER: Kz 81 (Bemessung zum Regelsatz) und Kz 86 (ermäßigt) in vollen Euro abgerundet, Kz 66 (Vorsteuer) und Kz 83 (Zahllast) in Cent. Andere Sätze fließen weder in Kz 81 noch 86 ein. Die Vorauszahlung ist der Saldo des Kontos `ust-finanzamt` „Umsatzsteuer Finanzamt“ (Art Neutral, Migration `0282`); Zahlung: Bank an `ust-finanzamt`, Erstattung umgekehrt. Der Saldo lässt sich gegen Kz 83 abgleichen.
+- **G+V:** Erlöse und Aufwand je Konto (Baumreihenfolge) und Zeitraum, netto (`netto_cent`, sonst Betrag), Erlöse positiv, mit Summen und Ergebnis je Zeitraum und gesamt.
+- **EÜR:** Einnahmen und Ausgaben eines Jahres, netto, gruppiert nach der `euer_zeile` der Konten, plus berechnete Zeilen (vereinnahmte Umsatzsteuer, gezahlte Vorsteuer). Die Bewegungen auf `ust-finanzamt` zählen als Ausgabe (Zahlung) bzw. Einnahme (Erstattung). Erlös- oder Aufwandskonten ohne Zeile erscheinen unter „Nicht zugeordnet“ mit Warnung; die Zeile setzt du im Kontenplan. Keine Sphären: Der Verein ist nicht gemeinnützig.
+- **Einkauf:** je Ware (und Einheit) und Jahr die Gebinde, die Menge in Basiseinheiten, die Nettosumme ohne Pfand (Eigenbelege brutto) und der Durchschnittspreis je Basiseinheit (und je Standard-Gebinde), dazu der Pfandsaldo (Konto `pfand`: Anfang, Zugang, Abgang, Ende).
 
 ## Festschreibung
 
@@ -727,6 +744,11 @@ eine geglückte Buchung erzeugt einen neuen.
 | `GET /api/finanzen/buchungen/:id`                    | `finanzen:lesen`                         | mit Zeilen, Stückelung, Hashes                                                                                                                                                                                                                           |
 | `POST /api/finanzen/buchungen`                       | `finanzen:buchen`                        | `idempotenzSchluessel`, `datum`, `text`, `quelleTyp` (`manuell`/`umbuchung`; `zaehlung` und `storno` entstehen nur über ihre Routen), `eventId`, `zeilen`; 201 `{ id, seq }`, bei bekanntem Schlüssel 200 mit der vorhandenen Buchung                    |
 | `POST /api/finanzen/buchungen/:id/storno`            | `finanzen:buchen`                        | `idempotenzSchluessel`, `datum`, `text` (Begründung, Pflicht); 409 bei doppeltem Storno                                                                                                                                                                  |
+| `GET /api/finanzen/auswertungen/events`              | `finanzen:lesen`                         | `von`, `bis`, `intervall`; Einnahmen je Event und Verlauf je Kategorie                                                                                                                                                                                   |
+| `GET /api/finanzen/auswertungen/ust`                 | `finanzen:lesen`                         | `von`, `bis`, `intervall`; Sätze, Zeiträume, UStVA-Kennzahlen                                                                                                                                                                                            |
+| `GET /api/finanzen/auswertungen/guv`                 | `finanzen:lesen`                         | `von`, `bis`, `intervall`; Erlöse, Aufwand, Summen                                                                                                                                                                                                       |
+| `GET /api/finanzen/auswertungen/euer`                | `finanzen:lesen`                         | `jahr`; Zeilen, `nichtZugeordnet`, Summen                                                                                                                                                                                                                |
+| `GET /api/finanzen/auswertungen/einkauf`             | `finanzen:lesen`                         | `jahr`; Waren, `nettoCent`, `pfand`                                                                                                                                                                                                                      |
 | `GET /api/finanzen/bargeld`                          | `finanzen:lesen`                         | Fächer des Safes mit `saldoCent` und `bestand` (13 Nennwerte), `summeBestand`, `summeCent`                                                                                                                                                               |
 | `POST /api/finanzen/zaehlungen`                      | `finanzen:buchen`                        | `idempotenzSchluessel`, `kontoId`, `datum`, `text`, `ist` (`[{ nennwertCent, anzahl }]`); 201 `{ id, buchungId, buchungSeq, differenzCent }`, bei bekanntem Schlüssel 200; 400 bei Nicht-Fach                                                            |
 | `GET /api/finanzen/zaehlungen`                       | `finanzen:lesen`                         | `?kontoId=`; neueste zuerst, höchstens 2000 (`gekappt`)                                                                                                                                                                                                  |
