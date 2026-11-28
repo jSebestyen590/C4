@@ -172,3 +172,39 @@ Steuerfeldern der Erlös-/Aufwandszeilen; als Aufwand gebucht stünde die Steuer
 Zahlung: Bank an `ust-finanzamt`, Erstattung umgekehrt. Saldo des Kontos = Vorauszahlungen im
 Zeitraum, gegen Kz 83 abgleichbar (Hinweis auf dem USt-Tab). Nur die EÜR zählt die Bewegungen als
 Ausgabe bzw. Einnahme (siehe `euerAuswertung`).
+
+## Stand der Umsetzung
+
+Branch `finanzen-auswertungen`, auf dev deployt (Migrationen 0280–0282 laufen dort), noch kein PR.
+
+Wichtige Dateien:
+
+- Shared: `packages/shared/src/finanzenEuer.ts` (`EUER_ZEILEN`, `kontoHatEuerZeile`,
+  `UST_FINANZAMT_KONTO_ID`), `finanzenAuswertungen.ts` (+ Test: Rechenfunktionen, Zod, DTOs, `csvText`),
+  `waren.ts` (`gebindeNameOhnePfand`).
+- API: Migrationen `0280_fin_konten_euer_zeile`, `0281_…_backfill`, `0282_fin_konto_ust_finanzamt`;
+  `packages/api/src/finanzenAuswertungen.ts` (Store, nur Rohzeilen), `.fake.ts`,
+  `routes/finanzenAuswertungen.ts` (+ Test); `euerZeile` im Kontenplan (`finanzen.ts`, `routes/finanzen.ts`).
+- Web: `packages/web/src/auswertungen/` (`Bausteine.tsx` mit URL-Filtern, `AuswertungTabelle`, `Betrag`;
+  je Tab eine Datei), `pages/FinanzenAuswertungenPage.tsx`, sechs feste Routen in
+  `routes/finanzenRouten.tsx`, `csvHerunterladen.ts`, `KontoFormular.tsx` (Feld „EÜR-Zeile“).
+
+Abweichungen vom Plan:
+
+- Drei Migrationen statt einer (`migrations.test.ts` erlaubt eine Anweisung je Datei).
+- `EUER_ZEILEN` in eigener Datei `finanzenEuer.ts` (Importzyklus).
+- USt-Tabelle: Block je Zeitraum mit Zeilen je Steuersatz statt Zeiträumen als Spalten; Standard-Intervall
+  Quartal, sonst Monat; Von/Bis standardmäßig 1. Januar bis heute.
+- Zusätzlich: Vorauszahlung (Saldo `ust-finanzamt`) unter Kz 83, Pfandsaldo mit Anfang/Zugang/Abgang/Ende.
+- Feste Routen je Tab statt `:tab`, damit `routen.ts` jeden Tab im Smoke-Test prüft; `/finanzen/auswertungen`
+  zeigt direkt Events.
+
+Geprüft: lint, typecheck, Tests (shared 932, api 785, web 795), `pnpm e2e` gegen dev (204 grün), Browser am
+Desktop und bei 375×812. USt Okt./Nov. 2026 stimmt mit Handrechnung aus dem Journal.
+
+Offen:
+
+- `kassendifferenz` (neutral) hat keine EÜR-Zeile und fehlt deshalb in der EÜR.
+- Storno einer USt-Zahlung im Folgejahr erscheint dort als Erstattung (Überschuss richtig, Einnahmen und
+  Ausgaben je um den Betrag zu hoch).
+- CSV-Download nicht im Browser getestet; im Einkauf-CSV haben Summen-/Pfandzeilen eine Spalte weniger.
