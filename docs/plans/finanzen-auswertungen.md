@@ -217,7 +217,7 @@ Feedback-Runde 1:
   (= Summe der Zählungsdifferenzen); CSV-Download aller fünf Tabs im Browser (UTF-8 mit BOM, `;`,
   Dezimalkomma, gleiche Spaltenzahl je Zeile).
 
-Feedback-Runde 2 (Commits `91523d5`..`5185f5d`, auf dev deployt, keine Migration):
+Feedback-Runde 2 (Commits ab `91523d5`, auf dev deployt, keine Migration):
 
 - Neuer Baustein `packages/web/src/BereichLink.tsx` (+ Test): Links aus Finanzen-Seiten in andere Bereiche
   (Events, Waren, Mitglieder) öffnen in neuem Tab mit Pfeil; `EventKasse.tsx` bleibt (Event-Seite).
@@ -227,7 +227,9 @@ Feedback-Runde 2 (Commits `91523d5`..`5185f5d`, auf dev deployt, keine Migration
 - Einkauf: API `?vonJahr=&bisJahr=` (`auswertungJahreSchema`, höchstens 10 Jahre), DTO mit Brutto-Feldern,
   `aliase`, `kaeufe` (je Belegposten); Web `useJahreFilter`/`JahreLeiste`/`useTextParam` in `Bausteine.tsx`,
   Diagramm `auswertungen/EinkaufKaufDiagramm.tsx` (recharts `ScatterChart`, Tooltip per Klick mit Beleg-Link).
-  Detailzeile auf dem Telefon per `sticky` auf die sichtbare Breite begrenzt.
+  Detailzeile auf dem Telefon per `sticky` und Container-Query (`100cqw`, `container-type` am Scroll-Container in
+  `AuswertungTabelle`) auf die sichtbare Breite begrenzt.
+- Offen (kosmetisch): letztes Datums-Label der X-Achse ragt bei 375px ca. 4px über den Diagrammrand.
 - Geprüft: lint, typecheck, Tests (shared 937, api 785, web 796), `pnpm e2e` gegen dev (204 grün), Browser auf
   dev (Desktop, 375×812) für alle Punkte.
 
