@@ -1,5 +1,5 @@
 import { Button, Group, Stack, Title } from '@mantine/core';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { EinkaufTab } from '../auswertungen/EinkaufTab';
 import { EuerTab } from '../auswertungen/EuerTab';
 import { EventsTab } from '../auswertungen/EventsTab';
@@ -15,11 +15,11 @@ const TABS = [
   { wert: 'einkauf', label: 'Einkauf', inhalt: <EinkaufTab /> },
 ] as const;
 
+export type AuswertungTab = (typeof TABS)[number]['wert'];
+
 /** Auswertungen of the Finanzen area; every tab is its own route and keeps its filters in the URL. */
-export function FinanzenAuswertungenPage() {
-  const { tab } = useParams();
-  const aktiv = TABS.find((t) => t.wert === tab);
-  if (!aktiv) return <Navigate to="/finanzen/auswertungen/events" replace />;
+export function FinanzenAuswertungenPage({ tab }: { tab: AuswertungTab }) {
+  const aktiv = TABS.find((t) => t.wert === tab) ?? TABS[0];
   return (
     <Stack gap="md">
       <ZurueckLink to="/finanzen">Finanzen</ZurueckLink>

@@ -1,4 +1,4 @@
-import { Navigate, Route } from 'react-router-dom';
+import { Route } from 'react-router-dom';
 import { FinanzenAuslagenPage } from '../pages/FinanzenAuslagenPage';
 import { FinanzenArtikelPage } from '../pages/FinanzenArtikelPage';
 import { FinanzenSteuersaetzePage } from '../pages/FinanzenSteuersaetzePage';
@@ -28,7 +28,7 @@ import { FinanzenDatenexportPage } from '../pages/FinanzenDatenexportPage';
 import { FinanzenFestschreibungPage } from '../pages/FinanzenFestschreibungPage';
 import { FinanzenKettePage } from '../pages/FinanzenKettePage';
 import { FinanzenKontenPage } from '../pages/FinanzenKontenPage';
-import { FinanzenAuswertungenPage } from '../pages/FinanzenAuswertungenPage';
+import { FinanzenAuswertungenPage, type AuswertungTab } from '../pages/FinanzenAuswertungenPage';
 import { FinanzenPage } from '../pages/FinanzenPage';
 import { LagerAbgleichPage } from '../pages/LagerAbgleichPage';
 import { LagerAbgleichWarePage } from '../pages/LagerAbgleichWarePage';
@@ -38,6 +38,16 @@ import { BelegEinreichenPage } from '../pages/BelegEinreichenPage';
 import { MeineBelegePage } from '../pages/MeineBelegePage';
 import { MeinBelegPage } from '../pages/MeinBelegPage';
 import { Protected, RequireUsername } from './Geschuetzt';
+
+function auswertung(tab: AuswertungTab) {
+  return (
+    <Protected permission="finanzen:lesen">
+      <RequireUsername>
+        <FinanzenAuswertungenPage tab={tab} />
+      </RequireUsername>
+    </Protected>
+  );
+}
 
 export function finanzenRouten() {
   return (
@@ -422,17 +432,12 @@ export function finanzenRouten() {
           </Protected>
         }
       />
-      <Route path="/finanzen/auswertungen" element={<Navigate to="events" replace />} />
-      <Route
-        path="/finanzen/auswertungen/:tab"
-        element={
-          <Protected permission="finanzen:lesen">
-            <RequireUsername>
-              <FinanzenAuswertungenPage />
-            </RequireUsername>
-          </Protected>
-        }
-      />
+      <Route path="/finanzen/auswertungen" element={auswertung('events')} />
+      <Route path="/finanzen/auswertungen/events" element={auswertung('events')} />
+      <Route path="/finanzen/auswertungen/ust" element={auswertung('ust')} />
+      <Route path="/finanzen/auswertungen/guv" element={auswertung('guv')} />
+      <Route path="/finanzen/auswertungen/euer" element={auswertung('euer')} />
+      <Route path="/finanzen/auswertungen/einkauf" element={auswertung('einkauf')} />
       <Route
         path="/finanzen/datenexport"
         element={
