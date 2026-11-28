@@ -453,12 +453,16 @@ export function useAuswertungEuer(jahr: number | null) {
   });
 }
 
-export function useAuswertungEinkauf(jahr: number | null) {
+export function useAuswertungEinkauf(vonJahr: number | null, bisJahr: number | null) {
   const api = useApi();
   return useQuery({
-    queryKey: ['finanzen', 'auswertung', 'einkauf', jahr] as const,
-    enabled: jahr !== null,
+    queryKey: ['finanzen', 'auswertung', 'einkauf', vonJahr, bisJahr] as const,
+    enabled: vonJahr !== null && bisJahr !== null,
     queryFn: async () =>
-      unwrap(await api.finanzen.auswertungen.einkauf.$get({ query: { jahr: String(jahr) } })),
+      unwrap(
+        await api.finanzen.auswertungen.einkauf.$get({
+          query: { vonJahr: String(vonJahr), bisJahr: String(bisJahr) },
+        }),
+      ),
   });
 }

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { EUER_ZEILEN, EUER_ZEILEN_ZUORDENBAR, kontoHatEuerZeile } from './finanzenEuer';
 import {
   csvText,
+  auswertungJahreSchema,
+  elsterEuro,
+  ustAbschlussLabel,
   einkaufAuswertung,
   euerAuswertung,
   eventEinnahmen,
@@ -128,8 +131,10 @@ describe('ustAuswertung', () => {
       vorsteuerCent: 380,
     });
     expect(maerz.kennzahlen).toEqual({
-      kz81Euro: 150,
-      kz86Euro: 100,
+      kz81Cent: 15_000,
+      kz81UstCent: 2_850,
+      kz86Cent: 10_099,
+      kz86UstCent: 707,
       kz66Cent: 380,
       kz83Cent: 2_850 + 707 - 380,
     });
@@ -164,8 +169,8 @@ describe('ustAuswertung', () => {
       steuerArt: 'ust',
     });
     const r = ustAuswertung([alt, neu], '2020-08-01', '2021-02-28', 'jahr', SAETZE);
-    expect(r.zeitraeume[0]!.kennzahlen.kz81Euro).toBe(100);
-    expect(r.zeitraeume[1]!.kennzahlen.kz81Euro).toBe(0);
+    expect(r.zeitraeume[0]!.kennzahlen.kz81Cent).toBe(10_000);
+    expect(r.zeitraeume[1]!.kennzahlen.kz81Cent).toBe(0);
     expect(r.zeitraeume[1]!.zeilen[0]!.art).toBe('sonstige');
   });
 
@@ -181,6 +186,36 @@ describe('ustAuswertung', () => {
       SAETZE,
     );
     expect(r.zeitraeume[0]!.vorauszahlungCent).toBe(800);
+  });
+
+  it('adds the Erklärung figures only for the interval jahr', () => {
+    const zeilen = [
+      erloes19('2027-03-10', 11_900),
+      zeile({
+        datum: '2027-03-13',
+        betragCent: 2_380,
+        nettoCent: 2_000,
+        steuerCent: 380,
+        steuersatz: 1900,
+        steuerArt: 'vorsteuer',
+      }),
+      zeile({ kontoId: 'ust-finanzamt', datum: '2027-05-10', betragCent: 1_000 }),
+    ];
+    const jahr = ustAuswertung(zeilen, '2027-01-01', '2027-12-31', 'jahr', SAETZE);
+    expect(jahr.zeitraeume[0]!.erklaerung).toEqual({
+      regelBemessungCent: 10_000,
+      regelUstCent: 1_900,
+      ermaessigtBemessungCent: 0,
+      ermaessigtUstCent: 0,
+      vorsteuerCent: 380,
+      vorauszahlungssollCent: 1_000,
+      abschlussCent: 1_900 - 380 - 1_000,
+    });
+    const monat = ustAuswertung(zeilen, '2027-01-01', '2027-12-31', 'monat', SAETZE);
+    expect(monat.zeitraeume[0]!.erklaerung).toBeUndefined();
+    expect(elsterEuro(10_099)).toBe(100);
+    expect(ustAbschlussLabel(-1)).toBe('Erstattung');
+    expect(ustAbschlussLabel(5)).toBe('Abschlusszahlung');
   });
 });
 
@@ -294,8 +329,7 @@ describe('euerAuswertung', () => {
       [...konten, kd],
       2027,
     );
-    const konto = (r: typeof ueberschuss, z: string) =>
-      r.zeilen.find((x) => x.zeile === z)!.konten;
+    const konto = (r: typeof ueberschuss, z: string) => r.zeilen.find((x) => x.zeile === z)!.konten;
     expect(konto(ueberschuss, 'sonstige_einnahmen')).toEqual([
       { kontoId: 'kassendifferenz', name: 'Kassendifferenz', betragCent: 300 },
     ]);
@@ -404,6 +438,8 @@ describe('einkaufAuswertung', () => {
   const p = (o: Partial<EinkaufPostenRoh>): EinkaufPostenRoh => ({
     wareId: 'w1',
     wareName: 'Pils',
+    belegId: 'b1',
+    belegdatum: '2027-03-01',
     standardGebindeId: 'ka',
     gebindeId: 'ka',
     anzahlMilli: 2_000,
@@ -419,6 +455,7 @@ describe('einkaufAuswertung', () => {
     const r = einkaufAuswertung(
       [p({}), p({ gebindeId: 'fl', anzahlMilli: 10_000, betragCent: 1_000 })],
       [flasche, kasten],
+      2027,
       2027,
       pfand,
     );
@@ -439,6 +476,7 @@ describe('einkaufAuswertung', () => {
       ],
       [flasche, kasten, dose],
       2027,
+      2027,
       pfand,
     );
     expect(r.waren.map((w) => [w.einheit, w.nettoCent])).toEqual([
@@ -456,8 +494,96 @@ describe('einkaufAuswertung', () => {
         { datum: '2028-01-01', betragCent: 9_999 },
       ],
       2027,
+      2027,
     );
     expect(s).toEqual({ anfangCent: 1_000, zugangCent: 500, abgangCent: 200, endeCent: 1_300 });
+  });
+});
+
+describe('einkaufAuswertung Brutto, Käufe, Aliase, Jahre', () => {
+  const flasche: Gebinde = {
+    id: 'fl',
+    menge: 0.5,
+    einheit: 'l',
+    verpackungseinheit: 'flasche',
+    pfandCent: null,
+    unterGebindeId: null,
+    unterAnzahl: null,
+  };
+  const p = (o: Partial<EinkaufPostenRoh>): EinkaufPostenRoh => ({
+    wareId: 'w1',
+    wareName: 'Pils',
+    standardGebindeId: 'fl',
+    gebindeId: 'fl',
+    anzahlMilli: 10_000,
+    betragCent: 1_000,
+    steuersatz: 1900,
+    modus: 'netto',
+    eigenbeleg: false,
+    belegId: 'b1',
+    belegdatum: '2027-03-01',
+    ...o,
+  });
+  const pfand = { anfangCent: 0, zugangCent: 0, abgangCent: 0, endeCent: 0 };
+
+  it('derives gross, single purchases sorted by date and aliases', () => {
+    const r = einkaufAuswertung(
+      [
+        p({ belegId: 'b2', belegdatum: '2028-05-01', modus: 'brutto', betragCent: 1_190 }),
+        p({}),
+        p({ belegId: 'b3', belegdatum: '2027-06-01', eigenbeleg: true, betragCent: 500 }),
+      ],
+      [flasche],
+      2027,
+      2028,
+      pfand,
+      [
+        { wareId: 'w1', alias: 'Bier' },
+        { wareId: 'w1', alias: 'Helles' },
+        { wareId: 'w2', alias: 'Anderes' },
+      ],
+    );
+    expect(r).toMatchObject({ vonJahr: 2027, bisJahr: 2028, nettoCent: 2_500, bruttoCent: 2_880 });
+    const w = r.waren[0]!;
+    expect(w.aliase).toEqual(['Bier', 'Helles']);
+    expect(w.bruttoCent).toBe(2_880);
+    expect(w.mengeMilli).toBe(15_000);
+    expect(w.preisJeEinheitBruttoCent).toBe(192); // 28,80 / 15 l
+    expect(w.preisJeStandardGebindeBruttoCent).toBe(96); // 28,80 / 30 Flaschen
+    expect(
+      w.kaeufe.map((k) => [k.belegId, k.datum, k.mengeMilli, k.nettoCent, k.bruttoCent]),
+    ).toEqual([
+      ['b1', '2027-03-01', 5_000, 1_000, 1_190],
+      ['b3', '2027-06-01', 5_000, 500, 500],
+      ['b2', '2028-05-01', 5_000, 1_000, 1_190],
+    ]);
+  });
+
+  it('computes the Pfand balance over several years', () => {
+    const s = pfandSaldo(
+      [
+        { datum: '2026-12-31', betragCent: 1_000 },
+        { datum: '2027-01-01', betragCent: 500 },
+        { datum: '2028-12-31', betragCent: -200 },
+        { datum: '2029-01-01', betragCent: 9_999 },
+      ],
+      2027,
+      2028,
+    );
+    expect(s).toEqual({ anfangCent: 1_000, zugangCent: 500, abgangCent: 200, endeCent: 1_300 });
+  });
+});
+
+describe('auswertungJahreSchema', () => {
+  it('requires an ordered range of at most ten years', () => {
+    const ok = (vonJahr: unknown, bisJahr: unknown) =>
+      auswertungJahreSchema.safeParse({ vonJahr, bisJahr }).success;
+    expect(ok('2027', '2028')).toBe(true);
+    expect(ok(2020, 2029)).toBe(true);
+    expect(ok(2028, 2027)).toBe(false);
+    expect(ok(2020, 2030)).toBe(false);
+    expect(ok(1999, 2000)).toBe(false);
+    expect(ok(undefined, 2027)).toBe(false);
   });
 });
 

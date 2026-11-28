@@ -76,7 +76,7 @@ function GebindeZusatz({ name, pfandCent }: Readonly<{ name: string; pfandCent: 
 /** Purchases of the year per Ware (net, without deposit) and the Pfandsaldo. */
 export function EinkaufTab() {
   const f = useJahrFilter();
-  const q = useAuswertungEinkauf(f.zahl);
+  const q = useAuswertungEinkauf(f.zahl, f.zahl);
   const [suche, setSuche] = useState('');
   const d = q.data;
   const gefiltert = (d?.waren ?? []).filter((w) =>
@@ -179,7 +179,7 @@ export function EinkaufTab() {
       {d && (
         <Stack gap="xs">
           <Group gap={2}>
-            <Title order={4}>Pfandsaldo {d.jahr}</Title>
+            <Title order={4}>Pfandsaldo {d.vonJahr}</Title>
             <InfoHinweis feld="Pfandsaldo" text={HILFE.auswertungen.pfandsaldo} />
           </Group>
           <SimpleGrid cols={{ base: 2, sm: 4 }}>

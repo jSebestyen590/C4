@@ -117,7 +117,7 @@ export const auswertungZeitraumSchema = z
   });
 export type AuswertungZeitraumQuery = z.output<typeof auswertungZeitraumSchema>;
 
-/** Query of the EÜR and Einkauf evaluations. */
+/** Query of the EÜR evaluation. */
 export const auswertungJahrSchema = z.object({
   jahr: z.coerce
     .number('Bitte gib ein Jahr an.')
@@ -126,6 +126,26 @@ export const auswertungJahrSchema = z.object({
     .max(2100, 'Bitte gib ein gültiges Jahr an.'),
 });
 export type AuswertungJahrQuery = z.output<typeof auswertungJahrSchema>;
+
+const jahrFeld = (name: string) =>
+  z.coerce
+    .number(`Bitte gib ${name} an.`)
+    .int('Bitte gib ein gültiges Jahr an.')
+    .min(2000, 'Bitte gib ein gültiges Jahr an.')
+    .max(2100, 'Bitte gib ein gültiges Jahr an.');
+
+/** Query of the Einkauf evaluation: a range of calendar years (at most ten). */
+export const auswertungJahreSchema = z
+  .object({ vonJahr: jahrFeld('das erste Jahr'), bisJahr: jahrFeld('das letzte Jahr') })
+  .refine((v) => v.vonJahr <= v.bisJahr, {
+    message: 'Das erste Jahr liegt nach dem letzten Jahr.',
+    path: ['bisJahr'],
+  })
+  .refine((v) => v.bisJahr - v.vonJahr < 10, {
+    message: 'Der Zeitraum darf höchstens zehn Jahre umfassen.',
+    path: ['bisJahr'],
+  });
+export type AuswertungJahreQuery = z.output<typeof auswertungJahreSchema>;
 
 /** First and last day of a calendar year. */
 export const jahrGrenzen = (jahr: number): { von: string; bis: string } => ({
@@ -191,21 +211,58 @@ export interface UstSatzZeileDto {
 
 /** UStVA figures of a period to type into ELSTER. */
 export interface UstKennzahlenDto {
-  /** Kz 81: Bemessung at the regular rate, whole euros rounded down. */
-  kz81Euro: number;
-  /** Kz 86: Bemessung at the reduced rate, whole euros rounded down. */
-  kz86Euro: number;
+  /** Kz 81: Bemessung at the regular rate in cents (ELSTER wants `elsterEuro` of it). */
+  kz81Cent: number;
+  /** USt on the Kz 81 Bemessung in cents. */
+  kz81UstCent: number;
+  /** Kz 86: Bemessung at the reduced rate in cents. */
+  kz86Cent: number;
+  /** USt on the Kz 86 Bemessung in cents. */
+  kz86UstCent: number;
   /** Kz 66: Vorsteuer in cents. */
   kz66Cent: number;
   /** Kz 83: USt minus Vorsteuer in cents. */
   kz83Cent: number;
 }
 
+/** Whole euros as ELSTER wants them: cents rounded down. */
+export const elsterEuro = (cent: number): number => Math.floor(cent / 100);
+
+/** Figures of the annual Umsatzsteuererklärung (only for the interval `jahr`). */
+export interface UstErklaerungDto {
+  regelBemessungCent: number;
+  regelUstCent: number;
+  ermaessigtBemessungCent: number;
+  ermaessigtUstCent: number;
+  vorsteuerCent: number;
+  /** Vorauszahlungen paid to the Finanzamt minus refunds in the year (a payment is positive). */
+  vorauszahlungssollCent: number;
+  /** USt − Vorsteuer − Vorauszahlungen: positive = Abschlusszahlung, negative = Erstattung. */
+  abschlussCent: number;
+}
+
+/** German labels of the fields of the Umsatzsteuererklärung (key of `UstErklaerungDto`). */
+export const UST_ERKLAERUNG_FELDER = {
+  regelBemessungCent: 'Steuerpflichtige Umsätze zum Steuersatz von 19 % (Bemessungsgrundlage)',
+  regelUstCent: 'Steuerpflichtige Umsätze zum Steuersatz von 19 % (Steuer)',
+  ermaessigtBemessungCent: 'Steuerpflichtige Umsätze zum Steuersatz von 7 % (Bemessungsgrundlage)',
+  ermaessigtUstCent: 'Steuerpflichtige Umsätze zum Steuersatz von 7 % (Steuer)',
+  vorsteuerCent: 'Vorsteuerbeträge aus Rechnungen von anderen Unternehmern',
+  vorauszahlungssollCent: 'Vorauszahlungssoll (einschließlich Sondervorauszahlung)',
+  abschlussCent: 'Abschlusszahlung',
+} as const satisfies Record<keyof UstErklaerungDto, string>;
+
+/** Label of the closing line: Abschlusszahlung when positive, otherwise Erstattung. */
+export const ustAbschlussLabel = (abschlussCent: number): string =>
+  abschlussCent < 0 ? 'Erstattung' : UST_ERKLAERUNG_FELDER.abschlussCent;
+
 export interface UstZeitraumDto extends AuswertungZeitraumDto {
   zeilen: UstSatzZeileDto[];
   kennzahlen: UstKennzahlenDto;
   /** Net balance of the account `ust-finanzamt` in the period (payments minus refunds), for comparison with Kz 83. */
   vorauszahlungCent: number;
+  /** Set only for the interval `jahr`. */
+  erklaerung?: UstErklaerungDto;
 }
 
 export interface UstAuswertungDto {
@@ -251,16 +308,27 @@ export function ustAuswertung(
       zeile.ustCent -= z.steuerCent ?? 0;
     } else zeile.vorsteuerCent += z.steuerCent ?? 0;
   }
-  const kz = new Map<string, { kz81: number; kz86: number }>();
+  interface KzSumme {
+    kz81: number;
+    kz81Ust: number;
+    kz86: number;
+    kz86Ust: number;
+  }
+  const kz = new Map<string, KzSumme>();
   for (const z of zeilen) {
     if (z.steuerArt !== 'ust') continue;
     const schluessel = zeitraumSchluessel(z.datum, intervall);
     if (!jeZeitraum.has(schluessel)) continue;
     const am = steuersaetzeAm(saetze, z.datum);
     const satz = z.steuersatz ?? 0;
-    const k = kz.get(schluessel) ?? { kz81: 0, kz86: 0 };
-    if (satz === am.regel) k.kz81 -= nettoVon(z);
-    else if (satz === am.ermaessigt) k.kz86 -= nettoVon(z);
+    const k = kz.get(schluessel) ?? { kz81: 0, kz81Ust: 0, kz86: 0, kz86Ust: 0 };
+    if (satz === am.regel) {
+      k.kz81 -= nettoVon(z);
+      k.kz81Ust -= z.steuerCent ?? 0;
+    } else if (satz === am.ermaessigt) {
+      k.kz86 -= nettoVon(z);
+      k.kz86Ust -= z.steuerCent ?? 0;
+    }
     kz.set(schluessel, k);
   }
   return {
@@ -272,19 +340,34 @@ export function ustAuswertung(
       const rows = [...ziel.zeilen.values()]
         .map((r) => ({ ...r, zahllastCent: r.ustCent - r.vorsteuerCent }))
         .sort((a, b) => b.satz - a.satz);
-      const k = kz.get(p.schluessel) ?? { kz81: 0, kz86: 0 };
+      const k = kz.get(p.schluessel) ?? { kz81: 0, kz81Ust: 0, kz86: 0, kz86Ust: 0 };
       const ust = summiere(rows.map((r) => r.ustCent));
       const vorsteuer = summiere(rows.map((r) => r.vorsteuerCent));
       return {
         ...p,
         zeilen: rows,
         kennzahlen: {
-          kz81Euro: Math.floor(k.kz81 / 100),
-          kz86Euro: Math.floor(k.kz86 / 100),
+          kz81Cent: k.kz81,
+          kz81UstCent: k.kz81Ust,
+          kz86Cent: k.kz86,
+          kz86UstCent: k.kz86Ust,
           kz66Cent: vorsteuer,
           kz83Cent: ust - vorsteuer,
         },
         vorauszahlungCent: ziel.voraus,
+        ...(intervall === 'jahr'
+          ? {
+              erklaerung: {
+                regelBemessungCent: k.kz81,
+                regelUstCent: k.kz81Ust,
+                ermaessigtBemessungCent: k.kz86,
+                ermaessigtUstCent: k.kz86Ust,
+                vorsteuerCent: vorsteuer,
+                vorauszahlungssollCent: ziel.voraus,
+                abschlussCent: ust - vorsteuer - ziel.voraus,
+              },
+            }
+          : {}),
       };
     }),
   };
@@ -727,6 +810,9 @@ export interface EinkaufPostenRoh {
   modus: 'brutto' | 'netto';
   /** An Eigenbeleg has no Vorsteuer: the gross amount counts. */
   eigenbeleg: boolean;
+  belegId: string;
+  /** Belegdatum, `YYYY-MM-DD`. */
+  belegdatum: string;
 }
 
 export interface EinkaufGebindeDto {
@@ -734,9 +820,27 @@ export interface EinkaufGebindeDto {
   anzahlMilli: number;
 }
 
+/** One bought item (Belegposten) of a Ware. */
+export interface EinkaufKaufDto {
+  belegId: string;
+  /** Belegdatum, `YYYY-MM-DD`. */
+  datum: string;
+  /** In thousandths of the `einheit` of the Ware row. */
+  mengeMilli: number;
+  nettoCent: number;
+  bruttoCent: number;
+}
+
+/** A Ware alias of the store (`ware_aliase`). */
+export interface EinkaufAliasRoh {
+  wareId: string;
+  alias: string;
+}
+
 export interface EinkaufWareDto {
   wareId: string;
   name: string;
+  aliase: string[];
   /** Unit of `mengeMilli`; a Ware bought in different units appears once per unit. */
   einheit: Einheit;
   einheitLabel: string;
@@ -747,10 +851,18 @@ export interface EinkaufWareDto {
   mengeMilli: number;
   /** Net sum without deposit. */
   nettoCent: number;
+  /** Gross sum without deposit (net plus USt of the items; Eigenbelege count gross = net). */
+  bruttoCent: number;
   /** Average net price per `einheit` (rounded cents); null without an amount. */
   preisJeEinheitCent: number | null;
+  /** Average gross price per `einheit`; null without an amount. */
+  preisJeEinheitBruttoCent: number | null;
   /** Average net price per Standard-Gebinde of the Ware; null without one or an amount. */
   preisJeStandardGebindeCent: number | null;
+  /** Average gross price per Standard-Gebinde of the Ware; null without one or an amount. */
+  preisJeStandardGebindeBruttoCent: number | null;
+  /** Single purchases, sorted by date. */
+  kaeufe: EinkaufKaufDto[];
   /** Name of the Standard-Gebinde without deposit. */
   standardGebinde: string | null;
   /** Total deposit of one Standard-Gebinde; null without Pfand. */
@@ -758,7 +870,7 @@ export interface EinkaufWareDto {
 }
 
 export interface EinkaufPfandDto {
-  /** Open Leergut (balance of the account `pfand`) at the start and end of the year. */
+  /** Open Leergut (balance of the account `pfand`) at the start of the first and the end of the last year. */
   anfangCent: number;
   zugangCent: number;
   abgangCent: number;
@@ -766,9 +878,11 @@ export interface EinkaufPfandDto {
 }
 
 export interface EinkaufAuswertungDto {
-  jahr: number;
+  vonJahr: number;
+  bisJahr: number;
   waren: EinkaufWareDto[];
   nettoCent: number;
+  bruttoCent: number;
   pfand: EinkaufPfandDto;
 }
 
@@ -780,6 +894,14 @@ export const einkaufNetto = (
     ? p.betragCent
     : runde((p.betragCent * 10000) / (10000 + p.steuersatz));
 
+/** Gross amount of an item (Eigenbelege have no Vorsteuer: gross = net). */
+export const einkaufBrutto = (
+  p: Pick<EinkaufPostenRoh, 'betragCent' | 'steuersatz' | 'modus' | 'eigenbeleg'>,
+): number =>
+  p.modus === 'brutto' || p.eigenbeleg
+    ? p.betragCent
+    : runde((p.betragCent * (10000 + p.steuersatz)) / 10000);
+
 /**
  * Per Ware (and unit): Gebinde, amount in base units, net sum and average prices. `inBasiseinheiten`
  * resolves Obergebinde (a Kasten of 20 counts 20 Flaschen), the unit comes from the base Gebinde.
@@ -787,8 +909,10 @@ export const einkaufNetto = (
 export function einkaufAuswertung(
   posten: readonly EinkaufPostenRoh[],
   gebinde: readonly Gebinde[],
-  jahr: number,
+  vonJahr: number,
+  bisJahr: number,
   pfand: EinkaufPfandDto,
+  aliase: readonly EinkaufAliasRoh[] = [],
 ): EinkaufAuswertungDto {
   const alle = [...gebinde];
   const index = new Map(alle.map((g) => [g.id, g]));
@@ -801,6 +925,8 @@ export function einkaufAuswertung(
     basisMilli: number;
     mengeMilli: number;
     nettoCent: number;
+    bruttoCent: number;
+    kaeufe: EinkaufKaufDto[];
   }
   const jeWare = new Map<string, Summe>();
   for (const p of posten) {
@@ -819,11 +945,23 @@ export function einkaufAuswertung(
       basisMilli: 0,
       mengeMilli: 0,
       nettoCent: 0,
+      bruttoCent: 0,
+      kaeufe: [],
     };
     s.gebinde.set(p.gebindeId, (s.gebinde.get(p.gebindeId) ?? 0) + p.anzahlMilli);
     s.basisMilli += basisMilli;
     s.mengeMilli += Math.round(basisMilli * inhalt);
-    s.nettoCent += einkaufNetto(p);
+    const netto = einkaufNetto(p);
+    const brutto = einkaufBrutto(p);
+    s.nettoCent += netto;
+    s.bruttoCent += brutto;
+    s.kaeufe.push({
+      belegId: p.belegId,
+      datum: p.belegdatum,
+      mengeMilli: Math.round(basisMilli * inhalt),
+      nettoCent: netto,
+      bruttoCent: brutto,
+    });
     jeWare.set(key, s);
   }
   const waren = [...jeWare.values()]
@@ -841,6 +979,10 @@ export function einkaufAuswertung(
       return {
         wareId: s.wareId,
         name: s.name,
+        aliase: aliase
+          .filter((a) => a.wareId === s.wareId)
+          .map((a) => a.alias)
+          .sort((a, b) => a.localeCompare(b, 'de')),
         einheit: s.einheit,
         einheitLabel: EINHEIT_LABELS[s.einheit],
         gebinde: gebindeListe,
@@ -853,17 +995,32 @@ export function einkaufAuswertung(
         ),
         mengeMilli: s.mengeMilli,
         nettoCent: s.nettoCent,
+        bruttoCent: s.bruttoCent,
         preisJeEinheitCent: s.mengeMilli > 0 ? runde((s.nettoCent * 1000) / s.mengeMilli) : null,
+        preisJeEinheitBruttoCent:
+          s.mengeMilli > 0 ? runde((s.bruttoCent * 1000) / s.mengeMilli) : null,
         preisJeStandardGebindeCent:
           standardPassend && standardFaktor > 0 && s.basisMilli > 0
             ? runde((s.nettoCent * standardFaktor * 1000) / s.basisMilli)
             : null,
+        preisJeStandardGebindeBruttoCent:
+          standardPassend && standardFaktor > 0 && s.basisMilli > 0
+            ? runde((s.bruttoCent * standardFaktor * 1000) / s.basisMilli)
+            : null,
+        kaeufe: s.kaeufe.sort((a, b) => a.datum.localeCompare(b.datum)),
         standardGebinde: standardPassend ? gebindeNameOhnePfand(standard, alle) : null,
         standardGebindePfandCent: standardPassend ? pfandGesamtCent(standard, alle) : null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'de') || a.einheit.localeCompare(b.einheit));
-  return { jahr, waren, nettoCent: summiere(waren.map((w) => w.nettoCent)), pfand };
+  return {
+    vonJahr,
+    bisJahr,
+    waren,
+    nettoCent: summiere(waren.map((w) => w.nettoCent)),
+    bruttoCent: summiere(waren.map((w) => w.bruttoCent)),
+    pfand,
+  };
 }
 
 /** A line of the account `pfand` (the balance is the open Leergut). */
@@ -872,9 +1029,14 @@ export interface PfandZeileRoh {
   betragCent: number;
 }
 
-/** Pfand balance at the start and end of the year plus inflow (Pfand paid) and outflow (Leergut returned). */
-export function pfandSaldo(zeilen: readonly PfandZeileRoh[], jahr: number): EinkaufPfandDto {
-  const { von, bis } = jahrGrenzen(jahr);
+/** Pfand balance at the start and end of the years plus inflow (Pfand paid) and outflow (Leergut returned). */
+export function pfandSaldo(
+  zeilen: readonly PfandZeileRoh[],
+  vonJahr: number,
+  bisJahr: number,
+): EinkaufPfandDto {
+  const von = jahrGrenzen(vonJahr).von;
+  const bis = jahrGrenzen(bisJahr).bis;
   let anfangCent = 0;
   let zugangCent = 0;
   let abgangCent = 0;

@@ -17,6 +17,7 @@ import { Fragment, type ReactNode } from 'react';
 import {
   centZuEuroText,
   csvText,
+  elsterEuro,
   type UstAuswertungDto,
   type UstSatzArt,
   type UstZeitraumDto,
@@ -98,14 +99,14 @@ function Kennzahlen({ z }: Readonly<{ z: UstZeitraumDto }>) {
         <KennzahlZeile
           kz="Kz 81"
           text="Bemessung Regelsatz"
-          anzeige={`${k.kz81Euro.toLocaleString('de-DE')} €`}
-          wert={String(k.kz81Euro)}
+          anzeige={`${elsterEuro(k.kz81Cent).toLocaleString('de-DE')} €`}
+          wert={String(elsterEuro(k.kz81Cent))}
         />
         <KennzahlZeile
           kz="Kz 86"
           text="Bemessung ermäßigt"
-          anzeige={`${k.kz86Euro.toLocaleString('de-DE')} €`}
-          wert={String(k.kz86Euro)}
+          anzeige={`${elsterEuro(k.kz86Cent).toLocaleString('de-DE')} €`}
+          wert={String(elsterEuro(k.kz86Cent))}
         />
         <KennzahlZeile
           kz="Kz 66"
@@ -153,8 +154,8 @@ function csvDaten(d: UstAuswertungDto) {
       { cent: s.ustCent },
       { cent: s.vorsteuerCent },
       { cent: s.zahllastCent },
-      i === 0 ? z.kennzahlen.kz81Euro : null,
-      i === 0 ? z.kennzahlen.kz86Euro : null,
+      i === 0 ? elsterEuro(z.kennzahlen.kz81Cent) : null,
+      i === 0 ? elsterEuro(z.kennzahlen.kz86Cent) : null,
       i === 0 ? { cent: z.kennzahlen.kz66Cent } : null,
       i === 0 ? { cent: z.kennzahlen.kz83Cent } : null,
       i === 0 ? { cent: z.vorauszahlungCent } : null,

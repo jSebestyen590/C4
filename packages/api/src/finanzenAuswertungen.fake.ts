@@ -80,10 +80,10 @@ export function createFakeAuswertungenStore(k: AuswertungenFakeKern): Auswertung
       });
     },
     async auswertungEinkauf() {
-      return { posten: [], gebinde: [] };
+      return { posten: [], gebinde: [], aliase: [] };
     },
-    async auswertungPfandZeilen(jahr) {
-      return zeilen('0000-01-01', `${jahr}-12-31`)
+    async auswertungPfandZeilen(bisJahr) {
+      return zeilen('0000-01-01', `${bisJahr}-12-31`)
         .filter((z) => z.kontoId === PFAND_KONTO_ID)
         .map((z) => ({ datum: z.datum, betragCent: z.betragCent }));
     },

@@ -3,6 +3,7 @@ import {
   SUMUP_ERLOES_KONTO_ID,
   type AuswertungKonto,
   type AuswertungZeile,
+  type EinkaufAliasRoh,
   type EinkaufPostenRoh,
   type EventEinnahmeRoh,
   type Gebinde,
@@ -23,6 +24,7 @@ import {
   finKonten,
   finSteuersatzZeitraeume,
   gebinde,
+  wareAliase,
   waren,
 } from './db/schema';
 
@@ -34,10 +36,13 @@ export interface AuswertungenStore {
   auswertungSteuersaetze(): Promise<Pick<SteuersatzZeitraum, 'ab' | 'regel' | 'ermaessigt'>[]>;
   /** Event revenue (bar, karte) of events starting in `von..bis` (Berlin date); cancelled sources left out. */
   auswertungEventQuellen(von: string, bis: string): Promise<EventEinnahmeRoh[]>;
-  /** Ware items of booked Belege with a Belegdatum in the year plus all Gebinde. */
-  auswertungEinkauf(jahr: number): Promise<{ posten: EinkaufPostenRoh[]; gebinde: Gebinde[] }>;
-  /** Lines of the account `pfand` up to the end of the year. */
-  auswertungPfandZeilen(jahr: number): Promise<PfandZeileRoh[]>;
+  /** Ware items of booked Belege with a Belegdatum in the years plus all Gebinde and the aliases of the Waren. */
+  auswertungEinkauf(
+    vonJahr: number,
+    bisJahr: number,
+  ): Promise<{ posten: EinkaufPostenRoh[]; gebinde: Gebinde[]; aliase: EinkaufAliasRoh[] }>;
+  /** Lines of the account `pfand` up to the end of the last year. */
+  auswertungPfandZeilen(bisJahr: number): Promise<PfandZeileRoh[]>;
 }
 
 const CHUNK = 500;
@@ -217,11 +222,12 @@ export function createAuswertungenStore(db: Db): AuswertungenStore {
       return ergebnis;
     },
 
-    async auswertungEinkauf(jahr) {
+    async auswertungEinkauf(vonJahr, bisJahr) {
       const rows = await db
         .select({
           belegId: finBelege.id,
           buchungId: finBelege.buchungId,
+          belegdatum: finBelege.belegdatum,
           modus: finBelege.modus,
           eigenbelegBegruendung: finBelege.eigenbelegBegruendung,
           dateiSha256: finBelege.dateiSha256,
@@ -239,7 +245,7 @@ export function createAuswertungenStore(db: Db): AuswertungenStore {
         .where(
           and(
             eq(finBelegposten.art, 'ware'),
-            between(finBelege.belegdatum, `${jahr}-01-01`, `${jahr}-12-31`),
+            between(finBelege.belegdatum, `${vonJahr}-01-01`, `${bisJahr}-12-31`),
           ),
         );
       const storniert = await stornierte([...new Set(rows.map((r) => r.buchungId))]);
@@ -255,10 +261,23 @@ export function createAuswertungenStore(db: Db): AuswertungenStore {
           steuersatz: r.steuersatz,
           modus: r.modus,
           eigenbeleg: !r.dateiSha256 && !!r.eigenbelegBegruendung,
+          belegId: r.belegId,
+          belegdatum: r.belegdatum,
         }));
+      const wareIds = [...new Set(posten.map((p) => p.wareId))];
+      const aliase: EinkaufAliasRoh[] = [];
+      for (const teil of stuecke(wareIds)) {
+        aliase.push(
+          ...(await db
+            .select({ wareId: wareAliase.wareId, alias: wareAliase.alias })
+            .from(wareAliase)
+            .where(inArray(wareAliase.wareId, teil))),
+        );
+      }
       const alle = await db.select().from(gebinde);
       return {
         posten,
+        aliase,
         gebinde: alle.map((g) => ({
           id: g.id,
           menge: g.menge,
@@ -271,7 +290,7 @@ export function createAuswertungenStore(db: Db): AuswertungenStore {
       };
     },
 
-    async auswertungPfandZeilen(jahr) {
+    async auswertungPfandZeilen(bisJahr) {
       return db
         .select({ datum: finBuchungen.datum, betragCent: finBuchungszeilen.betragCent })
         .from(finBuchungszeilen)
@@ -279,7 +298,7 @@ export function createAuswertungenStore(db: Db): AuswertungenStore {
         .where(
           and(
             eq(finBuchungszeilen.kontoId, PFAND_KONTO_ID),
-            lte(finBuchungen.datum, `${jahr}-12-31`),
+            lte(finBuchungen.datum, `${bisJahr}-12-31`),
           ),
         );
     },

@@ -32,7 +32,7 @@ describe('finanzen Auswertungen', () => {
       `/guv${ZEITRAUM}`,
       `/euer?jahr=2027`,
       `/events${ZEITRAUM}`,
-      `/einkauf?jahr=2027`,
+      `/einkauf?vonJahr=2027&bisJahr=2027`,
     ]) {
       expect((await t.lesen('member-token', pfad)).status, pfad).toBe(403);
       expect((await t.lesen('vorstand-token', pfad)).status, pfad).toBe(200);
@@ -48,7 +48,10 @@ describe('finanzen Auswertungen', () => {
       '/events?von=kaputt&bis=2027-04-30',
       '/euer',
       '/euer?jahr=1999',
-      '/einkauf?jahr=abc',
+      '/einkauf?jahr=2027',
+      '/einkauf?vonJahr=abc&bisJahr=2027',
+      '/einkauf?vonJahr=2028&bisJahr=2027',
+      '/einkauf?vonJahr=2010&bisJahr=2030',
     ])
       expect((await t.lesen('vorstand-token', pfad)).status, pfad).toBe(400);
   });
@@ -77,8 +80,10 @@ describe('finanzen Auswertungen', () => {
     const ust = await t.json(`/ust${ZEITRAUM}`);
     expect(ust.zeitraeume.map((z: Dto) => z.schluessel)).toEqual(['2027-03', '2027-04']);
     expect(ust.zeitraeume[0].kennzahlen).toEqual({
-      kz81Euro: 100,
-      kz86Euro: 0,
+      kz81Cent: 10_000,
+      kz81UstCent: 1_900,
+      kz86Cent: 0,
+      kz86UstCent: 0,
       kz66Cent: 0,
       kz83Cent: 1_900,
     });
@@ -101,7 +106,8 @@ describe('finanzen Auswertungen', () => {
     const events = await t.json(`/events${ZEITRAUM}`);
     expect(events.events).toEqual([]);
     expect(events.verlauf.zeitraeume).toHaveLength(2);
-    const einkauf = await t.json('/einkauf?jahr=2027');
+    const einkauf = await t.json('/einkauf?vonJahr=2027&bisJahr=2028');
+    expect(einkauf).toMatchObject({ vonJahr: 2027, bisJahr: 2028, nettoCent: 0, bruttoCent: 0 });
     expect(einkauf.waren).toEqual([]);
     expect(einkauf.pfand).toEqual({ anfangCent: 0, zugangCent: 0, abgangCent: 0, endeCent: 0 });
   });

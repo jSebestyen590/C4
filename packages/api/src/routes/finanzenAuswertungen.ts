@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
   auswertungJahrSchema,
+  auswertungJahreSchema,
   auswertungZeitraumSchema,
   einkaufAuswertung,
   euerAuswertung,
@@ -113,18 +114,20 @@ export const finanzenAuswertungenRoutes = (ctx: RoutenKontext) => {
       '/finanzen/auswertungen/einkauf',
       auth,
       finanzenLesen,
-      zValidator('query', auswertungJahrSchema),
+      zValidator('query', auswertungJahreSchema),
       async (c) => {
-        const { jahr } = c.req.valid('query');
-        const [{ posten, gebinde }, pfandZeilen] = await Promise.all([
-          deps.finanzen.auswertungEinkauf(jahr),
-          deps.finanzen.auswertungPfandZeilen(jahr),
+        const { vonJahr, bisJahr } = c.req.valid('query');
+        const [{ posten, gebinde, aliase }, pfandZeilen] = await Promise.all([
+          deps.finanzen.auswertungEinkauf(vonJahr, bisJahr),
+          deps.finanzen.auswertungPfandZeilen(bisJahr),
         ]);
         const dto: EinkaufAuswertungDto = einkaufAuswertung(
           posten,
           gebinde,
-          jahr,
-          pfandSaldo(pfandZeilen, jahr),
+          vonJahr,
+          bisJahr,
+          pfandSaldo(pfandZeilen, vonJahr, bisJahr),
+          aliase,
         );
         return c.json(dto);
       },
