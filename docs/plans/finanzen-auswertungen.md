@@ -204,7 +204,7 @@ Desktop und bei 375×812. USt Okt./Nov. 2026 stimmt mit Handrechnung aus dem Jou
 
 Offen:
 
-- CSV-Download nicht im Browser getestet.
+- (keine)
 
 Feedback-Runde 1:
 
@@ -213,3 +213,6 @@ Feedback-Runde 1:
   geklärt: nicht umsatzsteuerbar, kein Vorsteuerabzug.
 - Storno einer USt-Zahlung im Folgejahr als Erstattung: bleibt so (mit Nutzer:in geklärt, unrealistisch).
 - Einkauf-CSV: Summen-/Pfandzeilen auf volle Spaltenzahl aufgefüllt.
+- Auf dev geprüft (Commit `78eb71e`): EÜR 2026 zeigt Kassendifferenz 7,43 € unter „Sonstige Einnahmen“
+  (= Summe der Zählungsdifferenzen); CSV-Download aller fünf Tabs im Browser (UTF-8 mit BOM, `;`,
+  Dezimalkomma, gleiche Spaltenzahl je Zeile).
