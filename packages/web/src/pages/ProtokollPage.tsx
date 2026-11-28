@@ -28,6 +28,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   anwesenheitsZeiten,
   stimmenPruefen,
+  type ProtokollAktionDto,
   type ProtokollDokument,
   type ProtokollDto,
   type ProtokollKopf as KopfDaten,
@@ -121,12 +122,16 @@ function AbschliessenAktionen({
   q,
   auswahl,
   onAuswahl,
+  zusaetzlich,
+  onZusaetzlich,
 }: Readonly<{
   /** Whether the draft is saved (null = still saving). */
   gespeichert: boolean | null;
   q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isLoading' | 'isError'>;
   auswahl: readonly string[];
   onAuswahl: (ids: string[]) => void;
+  zusaetzlich: readonly string[];
+  onZusaetzlich: (ids: string[]) => void;
 }>) {
   if (gespeichert === null || (gespeichert === true && q.isLoading)) {
     return (
@@ -164,6 +169,8 @@ function AbschliessenAktionen({
         aktionen={q.data}
         auswahl={auswahl}
         onAuswahl={(neu) => onAuswahl(gueltigeAuswahl(neu, q.data ?? []))}
+        zusaetzlich={zusaetzlich}
+        onZusaetzlich={onZusaetzlich}
       />
     </Stack>
   );
@@ -279,6 +286,10 @@ function ProtokollAnsicht({
   );
   // The user's choice; until they touch it the executable open Aktionen are checked.
   const [eigeneAuswahl, setEigeneAuswahl] = useState<string[] | null>(null);
+  // Aktionen with a Serienevent that are created in addition (default: they replace it).
+  const [zusaetzlich, setZusaetzlich] = useState<string[]>([]);
+  const serieErsetzenVon = (liste: readonly ProtokollAktionDto[] | undefined) =>
+    (liste ?? []).filter((a) => a.serie && !zusaetzlich.includes(a.id)).map((a) => a.id);
   const gewaehlteAktionen =
     eigeneAuswahl ?? (dialogAktionen.data ? vorgewaehlteAktionen(dialogAktionen.data) : []);
   const aktionenLaden =
@@ -370,11 +381,20 @@ function ProtokollAnsicht({
   };
 
   /** Saves pending changes first, then changes the status; the refetch remounts this view. */
-  const statusSetzen = async (neu: 'entwurf' | 'abgeschlossen', aktionen?: string[]) => {
+  const statusSetzen = async (
+    neu: 'entwurf' | 'abgeschlossen',
+    aktionen?: string[],
+    serieErsetzen?: string[],
+  ) => {
     if (editierbar && !(await jetzt())) {
       throw new ApiFehler(0, 'Das Protokoll konnte nicht gespeichert werden.');
     }
-    const antwort = await status.mutateAsync({ id: dto.id, status: neu, aktionen });
+    const antwort = await status.mutateAsync({
+      id: dto.id,
+      status: neu,
+      aktionen,
+      serieErsetzen,
+    });
     aktionenMelden(antwort.aktionen ?? []);
     // The PDF of the closed protocol goes to OneDrive (or is downloaded); closing is done either way.
     if (neu === 'abgeschlossen') void pdfSpeichern(dto.id);
@@ -383,6 +403,7 @@ function ProtokollAnsicht({
   /** Saves the draft, then the closing dialog may load the Aktionen. */
   const abschliessenOeffnen = () => {
     setEigeneAuswahl(null);
+    setZusaetzlich([]);
     setEntwurfGespeichert(null);
     setDialog('abschliessen');
     void jetzt().then(setEntwurfGespeichert, () => setEntwurfGespeichert(false));
@@ -390,7 +411,11 @@ function ProtokollAnsicht({
 
   const aktionenStarten = async (aktionId: string) => {
     try {
-      const antwort = await aktionenAusfuehren.mutateAsync({ id: dto.id, aktionen: [aktionId] });
+      const antwort = await aktionenAusfuehren.mutateAsync({
+        id: dto.id,
+        aktionen: [aktionId],
+        serieErsetzen: serieErsetzenVon(kartenAktionen.data),
+      });
       aktionenMelden(antwort.ergebnisse);
     } catch (e) {
       fehlerAnzeigen(e);
@@ -630,6 +655,8 @@ function ProtokollAnsicht({
           }
           gesperrt={aktionenAusfuehren.isPending}
           onAusfuehren={(aktionId) => void aktionenStarten(aktionId)}
+          zusaetzlich={zusaetzlich}
+          onZusaetzlich={setZusaetzlich}
         />
       )}
       {sperrePrueft && <Loader m="md" aria-label="Bearbeitung wird vorbereitet" />}
@@ -682,7 +709,9 @@ function ProtokollAnsicht({
           bestaetigenText="Abschließen"
           gesperrt={stimmenProbleme.length > 0 || aktionenLaden}
           onClose={() => setDialog(null)}
-          onBestaetigt={() => statusSetzen('abgeschlossen', gewaehlteAktionen)}
+          onBestaetigt={() =>
+            statusSetzen('abgeschlossen', gewaehlteAktionen, serieErsetzenVon(dialogAktionen.data))
+          }
         >
           <Text>
             Beim Abschließen wird die Teilnahme eingefroren: Spätere Zu- oder Absagen ändern sie
@@ -741,6 +770,8 @@ function ProtokollAnsicht({
               q={dialogAktionen}
               auswahl={gewaehlteAktionen}
               onAuswahl={setEigeneAuswahl}
+              zusaetzlich={zusaetzlich}
+              onZusaetzlich={setZusaetzlich}
             />
           )}
         </BestaetigenDialog>

@@ -200,15 +200,18 @@ export function useProtokollStatus() {
       id,
       status,
       aktionen,
+      serieErsetzen,
     }: {
       id: string;
       status: ProtokollStatus;
       aktionen?: string[];
+      /** Aktionen whose planned series event is replaced instead of creating a second event. */
+      serieErsetzen?: string[];
     }) => {
       const res = await api.protokolle[':id'].status.$put(
         {
           param: { id },
-          json: (aktionen ? { status, aktionen } : { status }) as never,
+          json: (aktionen ? { status, aktionen, serieErsetzen } : { status }) as never,
         },
         tabKopf,
       );
@@ -244,10 +247,18 @@ export function useProtokollAktionenAusfuehren() {
   const qc = useQueryClient();
   return useMutation({
     meta: { eigeneFehlermeldung: true },
-    mutationFn: async ({ id, aktionen }: { id: string; aktionen: string[] }) => {
+    mutationFn: async ({
+      id,
+      aktionen,
+      serieErsetzen,
+    }: {
+      id: string;
+      aktionen: string[];
+      serieErsetzen?: string[];
+    }) => {
       const res = await api.protokolle[':id'].aktionen.$post({
         param: { id },
-        json: { aktionen } as never,
+        json: { aktionen, serieErsetzen } as never,
       });
       await pruefen(res);
       return (await res.json()) as unknown as ProtokollAktionenAusfuehrenAntwort;

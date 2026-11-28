@@ -695,7 +695,7 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
         protokolleSchreiben,
         zValidator('json', protokollStatusSchema),
         async (c) => {
-          const { status, aktionen: aktionenIds = [] } = c.req.valid('json');
+          const { status, aktionen: aktionenIds = [], serieErsetzen } = c.req.valid('json');
           const akteur = c.get('user').sub;
           const p = gefunden(
             await deps.protokolle.holen(c.req.param('id')),
@@ -808,6 +808,7 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
             await aktionenBerechnen(p, dokument),
             aktionenIds,
             akteur,
+            serieErsetzen,
           );
           if (lauf.patches.length === 0 && Object.keys(lauf.ergebnisse).length === 0) {
             return c.json(antwort(belegt, lauf.ausgaenge));
@@ -927,6 +928,7 @@ export const protokolleRoutes = (ctx: RoutenKontext) => {
             await aktionenBerechnen(p, protokollInhaltLesen(p.inhalt)),
             c.req.valid('json').aktionen,
             akteur,
+            c.req.valid('json').serieErsetzen,
           );
           let version = stand.version;
           if (lauf.patches.length > 0 || Object.keys(lauf.ergebnisse).length > 0) {

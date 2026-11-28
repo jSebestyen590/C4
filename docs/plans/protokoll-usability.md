@@ -111,7 +111,7 @@ Entscheidungen aus den Rückfragen:
 
 ## Stand der Umsetzung
 
-Branch `protokoll-usability`, PR #102 (offen, nicht gemergt), zuletzt auf dev ausgeliefert am 27.11.2026 (Runde 2).
+Branch `protokoll-usability`, PR #102 (offen, nicht gemergt), zuletzt auf dev ausgeliefert am 28.11.2026 (Runde 3).
 
 - Shared/API: `packages/shared/src/protokolle.ts`, `protokollAnwesenheit.ts`, `protokollAktionen.ts`; API `protokollAktionen.ts`.
 - Editor: `packages/web/src/protokoll/` – `slashLogik.ts` (Stufen `/dienst`, `/zitat`), `einfuegen.ts`, `bausteinLogik.ts`,
@@ -131,7 +131,15 @@ Mantines Click-outside die Liste schon beim mousedown schließt; Klick ins offen
 Stufen Zeit › Dienstform/Aufbau/Putzen mit `bar 2/3`, legt Schicht ohne Personen an, kein Text), nicht mehr Alias von
 `/dienst`. „Gemeinsam abhaken“: Label und Info mittig zum Schalter.
 
+Feedbackrunde 3 (28.11.2026): Chevron der Suchfelder ohne Hover (`ActionIcon variant="transparent"`). Abschluss:
+Event-Aktionen nennen die Kategorie (`AktionKategorieKontext.name`), Todo-Aktionen ohne Personenliste (API liefert
+`personen: []`), mehrtägige Kategorie ohne Enddatum über Mitternacht endet am Folgetag (vorher `events_check`-Fehler),
+Sicherung „Das Ende liegt vor dem Beginn.“. Serienevent ersetzen: `kontextLesen` lädt Serien-Events an den Daten neuer
+Event-Blöcke (`serienEvents`), `event.anlegen` trägt `serie` + `plan.ersetzen`; Dialog (`SerieWahl` in
+`AktionenAnsicht.tsx`, Radios, Standard „ersetzen“) sendet `serieErsetzen` (Aktions-Ids) mit `PUT /status` und
+`POST /aktionen`; Ausführung per `serieEventErsetzen` + `eventAktualisieren(..., ersetzeSerie: true)`. Nebenbei:
+„Kommend“-Badge nicht mehr in `<p>` (`ProtokollNeuPage`), Link „Im Kalender öffnen“ 42 px hoch.
+
 Offen/bekannt: Leeren-X und Datum-X sind 40 bzw. 42 px groß (E2E-Ausnahme `.mantine-InputClearButton`); im
-Personen-Modal fehlt das Leeren-X (Pills einzeln entfernen); Konsolenwarnung `<div>` in `<p>` in der Event-Auswahl
-(Badge in Text); 409 auf `/sperre` bei zwei Tabs (erwartet); Personen-Pill im „Zuständig“-Feld kürzt bei 375 px etwas
-früh ab (kosmetisch).
+Personen-Modal fehlt das Leeren-X (Pills einzeln entfernen); 409 auf `/sperre` bei zwei Tabs (erwartet); Personen-Pill im „Zuständig“-Feld kürzt bei 375 px etwas
+früh ab (kosmetisch). `/bilder` hat `<a>` in `<a>` (E2E-Smoke rot, nicht aus diesem Branch).

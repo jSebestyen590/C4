@@ -14,6 +14,7 @@ import {
   type SchichtEingabe,
   type TeilnahmeKreis,
   tageDazu,
+  type VorlageDaten,
   type VorlageSchicht,
 } from './kalender';
 import {
@@ -111,6 +112,14 @@ export interface AktionTodoKontext {
   subs: string[];
 }
 
+/** A planned series event (not cancelled, with Dienste) that a new event of a block could replace. */
+export interface AktionSerienEventKontext {
+  id: string;
+  serieName: string;
+  /** Vorlage the series is generated from (a block with that Vorlage does not replace it). */
+  serieVorlageId: string | null;
+}
+
 export interface ProtokollAktionenKontext {
   /** Id of the protocol (stored with a created Todo as its source). */
   protokollId?: string;
@@ -121,6 +130,11 @@ export interface ProtokollAktionenKontext {
   /** The events the Event blocks point to, by id (missing = deleted). */
   events: Readonly<Record<string, AktionEventKontext>>;
   kategorien: Readonly<Record<string, AktionKategorieKontext>>;
+  /**
+   * Planned series events by Berlin date (`YYYY-MM-DD`; only Dienste events that are not cancelled), for
+   * the dates of the Event blocks without an event. An `event.anlegen` Aktion offers to replace one.
+   */
+  serienEvents?: Readonly<Record<string, readonly AktionSerienEventKontext[]>>;
   /** Kategorie of the Vorlagen by id: the fallback for Event blocks without `kategorieId` (old data). */
   vorlageKategorien?: Readonly<Record<string, string>>;
   /** Status of the people the blocks mention, by sub. */
@@ -204,7 +218,16 @@ export function dienstVorhanden(schichten: readonly SchichtDto[], d: DienstPlan)
 
 /** What the API has to do for an Aktion. */
 export type AktionPlan =
-  | { art: 'event.anlegen'; eingabe: EventEingabe; dienste: DienstPlan[] }
+  | {
+      art: 'event.anlegen';
+      eingabe: EventEingabe;
+      dienste: DienstPlan[];
+      /** What replacing the series event needs (`serieEventErsetzen`); set together with `ProtokollAktion.serie`. */
+      ersetzen?: {
+        vorlage: VorlageDaten;
+        kategorie: Pick<AktionKategorieKontext, 'art' | 'teilnahmeStatus' | 'dauer'>;
+      };
+    }
   | { art: 'event.aendern'; eventId: string; eingabe: EventEingabe; dienste: DienstPlan[] }
   | { art: 'anwaerter.einladen'; email: string; vorname: string; nachname: string; ab: string }
   | { art: 'aufnahme.status' | 'em.status'; sub: string; status: MitgliedStatus; ab: string }
@@ -230,6 +253,11 @@ export interface ProtokollAktion {
   subs: string[];
   /** The vote was not beschlussfähig: the Aktion runs provisionally, the vote is repeated next time. Only set when true. */
   vorlaeufig?: boolean;
+  /**
+   * `event.anlegen` only: a planned series event on the date that the new event can replace instead
+   * (the run decides, see `serieErsetzen` of the requests). Only set when there is one.
+   */
+  serie?: { eventId: string; name: string };
   /** Null when the Aktion cannot run. */
   plan: AktionPlan | null;
 }
@@ -339,20 +367,17 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   ) {
     bis = tageDazu(daten.datum, 1);
   }
-  const vorlage = ausVorlage(
-    {
-      titel: name,
-      beschreibung: null,
-      kategorieId,
-      beginnZeit: daten.beginnZeit ?? '00:00',
-      endeZeit: daten.endeZeit ?? '00:00',
-      schichten: kategorie.art === 'teilnahme' ? [] : schichtenOhnePersonen(daten.schichten),
-      teilnahmeStatus: kategorie.art === 'teilnahme' ? daten.teilnahmeStatus : null,
-      tage: Math.max(1, tage(daten.datum, bis) + 1),
-    },
-    daten.datum,
-    kategorie,
-  );
+  const vorlageDaten: VorlageDaten = {
+    titel: name,
+    beschreibung: null,
+    kategorieId,
+    beginnZeit: daten.beginnZeit ?? '00:00',
+    endeZeit: daten.endeZeit ?? '00:00',
+    schichten: kategorie.art === 'teilnahme' ? [] : schichtenOhnePersonen(daten.schichten),
+    teilnahmeStatus: kategorie.art === 'teilnahme' ? daten.teilnahmeStatus : null,
+    tage: Math.max(1, tage(daten.datum, bis) + 1),
+  };
+  const vorlage = ausVorlage(vorlageDaten, daten.datum, kategorie);
   const eingabe: EventEingabe = { ...vorlage, verantwortlichSub: daten.verantwortlichSub };
   const dienste =
     kategorie.art === 'teilnahme' ? [] : dienstePlanen(daten.schichten, vorlage.schichten);
@@ -362,12 +387,33 @@ function eventAnlegen(daten: BausteinEventDaten, k: ProtokollAktionenKontext): E
   }
   const fehler = eventDauerFehler(kategorie.dauer, eingabe.beginn, eingabe.ende);
   if (fehler) return nichtAusfuehrbar(text, fehler);
+  const serienEvent =
+    kategorie.art === 'teilnahme'
+      ? undefined
+      : k.serienEvents?.[daten.datum]?.find(
+          (e) => !daten.vorlageId || e.serieVorlageId !== daten.vorlageId,
+        );
   return {
     text,
     ausfuehrbar: true,
     eventId: null,
     subs: [],
-    plan: { art: 'event.anlegen', eingabe, dienste },
+    ...(serienEvent && { serie: { eventId: serienEvent.id, name: serienEvent.serieName } }),
+    plan: {
+      art: 'event.anlegen',
+      eingabe,
+      dienste,
+      ...(serienEvent && {
+        ersetzen: {
+          vorlage: vorlageDaten,
+          kategorie: {
+            art: kategorie.art,
+            teilnahmeStatus: kategorie.teilnahmeStatus,
+            dauer: kategorie.dauer,
+          },
+        },
+      }),
+    },
   };
 }
 

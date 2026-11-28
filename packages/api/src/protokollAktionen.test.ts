@@ -66,6 +66,63 @@ function aufbau(
   return { kalender, laeufer, aktion };
 }
 
+describe('Serienevent ersetzen (event.anlegen)', () => {
+  const vorlage = {
+    titel: 'Neu',
+    beschreibung: null,
+    kategorieId: 'k2',
+    beginnZeit: '19:00',
+    endeZeit: '22:00',
+    schichten: [],
+    teilnahmeStatus: null,
+    tage: 1,
+  };
+  const ersetzen = {
+    vorlage,
+    kategorie: { art: 'dienste' as const, teilnahmeStatus: null, dauer: 'eintaegig' as const },
+  };
+
+  it('updates the series event with ersetzeSerie instead of creating a new one', async () => {
+    const { kalender, laeufer, aktion } = aufbau([schicht('s1')]);
+    const alt = {
+      id: 'se1',
+      serie: 'bar',
+      abgesagt: false,
+      beginn: BEGINN,
+      schichten: [schicht('s1')],
+    };
+    kalender.event.mockImplementation((async () => alt) as never);
+    const a = {
+      ...aktion({
+        art: 'event.anlegen',
+        eingabe: { verantwortlichSub: 'v' } as EventEingabe,
+        dienste: [dienst('a')],
+        ersetzen,
+      }),
+      serie: { eventId: 'se1', name: 'Barabend' },
+    };
+    const r = await laeufer.laufen([a], [a.id], 'v', [a.id]);
+    expect(r.ausgaenge[0]).toMatchObject({ status: 'erledigt' });
+    expect(kalender.eventAnlegen).not.toHaveBeenCalled();
+    expect(kalender.eventAktualisieren).toHaveBeenCalledWith(
+      'se1',
+      expect.objectContaining({ ersetzeSerie: true, titel: 'Neu', verantwortlichSub: 'v' }),
+    );
+    expect(r.patches).toEqual([{ bausteinId: 'b1', feld: 'eventId', wert: 'se1' }]);
+  });
+
+  it('creates a new event when the Aktion is not in serieErsetzen', async () => {
+    const { kalender, laeufer, aktion } = aufbau([]);
+    const a = {
+      ...aktion({ art: 'event.anlegen', eingabe, dienste: [], ersetzen }),
+      serie: { eventId: 'se1', name: 'Barabend' },
+    };
+    await laeufer.laufen([a], [a.id], 'v', []);
+    expect(kalender.eventAnlegen).toHaveBeenCalled();
+    expect(kalender.eventAktualisieren).not.toHaveBeenCalled();
+  });
+});
+
 describe('Dienste eintragen (event.anlegen / event.aendern)', () => {
   it('enters the persons of a new event into the matching Schicht', async () => {
     const { kalender, laeufer, aktion } = aufbau([schicht('s1')]);

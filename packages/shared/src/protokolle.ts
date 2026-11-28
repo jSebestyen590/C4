@@ -1588,6 +1588,18 @@ export function protokollEventIds(dokument: ProtokollDokument): string[] {
   return [...ids];
 }
 
+/** The Berlin dates of the Event blocks that have no event yet (each once; blocks without a date are left out). */
+export function protokollNeueEventDaten(dokument: ProtokollDokument): string[] {
+  const daten = new Set<string>();
+  for (const knoten of eventBausteine(dokument)) {
+    const geparst = bausteinEventDatenSchema.safeParse(knoten.attrs?.daten);
+    if (geparst.success && !geparst.data.eventId && geparst.data.datum) {
+      daten.add(geparst.data.datum);
+    }
+  }
+  return [...daten];
+}
+
 // ---------------------------------------------------------------------------------------------
 // DTOs and inputs of the API
 // ---------------------------------------------------------------------------------------------
@@ -1708,11 +1720,17 @@ export const protokollStatusSchema = z.object({
   status: z.enum(PROTOKOLL_STATI),
   /** Ids of the Aktionen (see `protokollAktionen`) to run when closing; left out = none. */
   aktionen: aktionIdsSchema.optional(),
+  /** Ids of `event.anlegen` Aktionen that replace the planned series event of that day instead of creating a new one. */
+  serieErsetzen: aktionIdsSchema.optional(),
 });
 export type ProtokollStatusEingabe = z.infer<typeof protokollStatusSchema>;
 
 /** Ids of the Aktionen to run (again) for a protocol, open or closed. */
-export const protokollAktionenAusfuehrenSchema = z.object({ aktionen: aktionIdsSchema.min(1) });
+export const protokollAktionenAusfuehrenSchema = z.object({
+  aktionen: aktionIdsSchema.min(1),
+  /** Like `protokollStatusSchema.serieErsetzen`. */
+  serieErsetzen: aktionIdsSchema.optional(),
+});
 export type ProtokollAktionenAusfuehren = z.infer<typeof protokollAktionenAusfuehrenSchema>;
 
 /** Largest PDF of a closed protocol the API takes (Graph's simple upload and Lambda's payload limit). */

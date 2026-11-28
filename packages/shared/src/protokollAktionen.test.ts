@@ -166,6 +166,50 @@ describe('event.anlegen', () => {
     expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null });
   });
 
+  describe('Serienevent on the day', () => {
+    const serienEvents = {
+      '2026-12-05': [{ id: 'se1', serieName: 'Barabend', serieVorlageId: 'v1' }],
+    };
+    const plane = (daten: Record<string, unknown>, rest: Partial<ProtokollAktionenKontext>) =>
+      protokollAktionen(
+        dok(baustein('bausteinEvent', { ...eventDaten, ...daten })),
+        kontext({ kategorien: dienstKategorien, ...rest }),
+      )[0]!;
+
+    it('offers to replace it', () => {
+      const a = plane({}, { serienEvents });
+      expect(a.serie).toEqual({ eventId: 'se1', name: 'Barabend' });
+      expect(a.plan).toMatchObject({
+        art: 'event.anlegen',
+        ersetzen: { vorlage: { titel: 'Barabend' } },
+      });
+    });
+
+    it('offers nothing on another date, without a Serienevent or for the series Vorlage', () => {
+      expect(plane({ datum: '2026-12-06' }, { serienEvents }).serie).toBeUndefined();
+      expect(plane({}, {}).serie).toBeUndefined();
+      expect(plane({ vorlageId: 'v1' }, { serienEvents }).serie).toBeUndefined();
+    });
+
+    it('offers nothing for a teilnahme Kategorie', () => {
+      const a = plane(
+        { kategorieId: 'k1' },
+        {
+          serienEvents,
+          kategorien: {
+            k1: {
+              name: 'Treffen',
+              art: 'teilnahme',
+              dauer: 'eintaegig',
+              teilnahmeStatus: ['mitglied'],
+            },
+          },
+        },
+      );
+      expect(a.serie).toBeUndefined();
+    });
+  });
+
   it('names the Kategorie in the text', () => {
     const [a] = protokollAktionen(
       dok(baustein('bausteinEvent', eventDaten)),

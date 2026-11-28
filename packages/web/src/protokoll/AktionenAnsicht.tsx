@@ -6,6 +6,7 @@ import {
   Checkbox,
   Group,
   Paper,
+  Radio,
   Stack,
   Text,
   Title,
@@ -35,6 +36,9 @@ function AktionBezug({ aktion }: Readonly<{ aktion: ProtokollAktionDto }>) {
           target="_blank"
           rel="noopener"
           size="sm"
+          // Touch target: at least 42px high.
+          mih={42}
+          style={{ display: 'inline-flex', alignItems: 'center' }}
         >
           Im Kalender öffnen
         </Anchor>
@@ -61,6 +65,46 @@ function Vorlaeufig({ aktion }: Readonly<{ aktion: ProtokollAktionDto }>) {
   );
 }
 
+/** Replace the planned series event of the day by the new event, or create it in addition. */
+function SerieWahl({
+  aktion,
+  zusaetzlich,
+  onZusaetzlich,
+  disabled,
+}: Readonly<{
+  aktion: ProtokollAktionDto;
+  zusaetzlich: readonly string[];
+  onZusaetzlich: (neu: string[]) => void;
+  disabled?: boolean;
+}>) {
+  if (!aktion.serie || aktion.erledigt) return null;
+  const ersetzen = !zusaetzlich.includes(aktion.id);
+  return (
+    // Stacked radios instead of a SegmentedControl: long series names wrap on a phone.
+    <Radio.Group
+      aria-label={`Serienevent „${aktion.serie.name}“`}
+      value={ersetzen ? 'ersetzen' : 'zusaetzlich'}
+      onChange={(wert) =>
+        onZusaetzlich(
+          wert === 'ersetzen'
+            ? zusaetzlich.filter((id) => id !== aktion.id)
+            : [...zusaetzlich, aktion.id],
+        )
+      }
+    >
+      <Stack gap="xs">
+        <Radio
+          size="md"
+          disabled={disabled}
+          value="ersetzen"
+          label={`Serienevent „${aktion.serie.name}“ ersetzen`}
+        />
+        <Radio size="md" disabled={disabled} value="zusaetzlich" label="Zusätzlich anlegen" />
+      </Stack>
+    </Radio.Group>
+  );
+}
+
 function Erledigt() {
   return (
     <Group gap={4} wrap="nowrap" c="green" aria-label="erledigt">
@@ -77,10 +121,15 @@ export function AktionenAuswahl({
   aktionen,
   auswahl,
   onAuswahl,
+  zusaetzlich = [],
+  onZusaetzlich = () => {},
 }: Readonly<{
   aktionen: readonly ProtokollAktionDto[];
   auswahl: readonly string[];
   onAuswahl: (neu: string[]) => void;
+  /** Ids of Aktionen with a Serienevent that are created in addition instead of replacing it. */
+  zusaetzlich?: readonly string[];
+  onZusaetzlich?: (neu: string[]) => void;
 }>) {
   return (
     <Stack gap="sm" component="ul" m={0} p={0} style={{ listStyle: 'none' }}>
@@ -117,6 +166,12 @@ export function AktionenAuswahl({
                   Zuletzt fehlgeschlagen: {a.ergebnis.text}
                 </Text>
               )}
+              <SerieWahl
+                aktion={a}
+                zusaetzlich={zusaetzlich}
+                onZusaetzlich={onZusaetzlich}
+                disabled={!kannLaufen || !auswahl.includes(a.id)}
+              />
               <Vorlaeufig aktion={a} />
               <AktionBezug aktion={a} />
             </Stack>
@@ -133,6 +188,8 @@ export function AktionenKarte({
   laeuftId,
   gesperrt,
   onAusfuehren,
+  zusaetzlich = [],
+  onZusaetzlich = () => {},
 }: Readonly<{
   aktionen: readonly ProtokollAktionDto[];
   /** Id of the Aktion that is running now (its button spins), or null. */
@@ -140,6 +197,9 @@ export function AktionenKarte({
   /** Another run is in progress: no new one can start. */
   gesperrt: boolean;
   onAusfuehren: (id: string) => void;
+  /** Ids of Aktionen with a Serienevent that are created in addition instead of replacing it. */
+  zusaetzlich?: readonly string[];
+  onZusaetzlich?: (neu: string[]) => void;
 }>) {
   if (aktionen.length === 0) return null;
   return (
@@ -153,6 +213,12 @@ export function AktionenKarte({
                 <Text style={{ overflowWrap: 'anywhere' }}>{a.text}</Text>
                 <Vorlaeufig aktion={a} />
                 <AktionBezug aktion={a} />
+                <SerieWahl
+                  aktion={a}
+                  zusaetzlich={zusaetzlich}
+                  onZusaetzlich={onZusaetzlich}
+                  disabled={!aktionLaeuft(a)}
+                />
                 <AktionZustand aktion={a} />
                 {aktionLaeuft(a) && (
                   <Box>
