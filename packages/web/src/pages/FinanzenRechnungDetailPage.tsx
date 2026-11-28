@@ -11,6 +11,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -174,9 +175,9 @@ export function FinanzenRechnungDetailPage() {
               Empfänger:
             </Text>{' '}
             {r.mitglied ? (
-              <Anchor component={Link} to={mitgliedLink(r.mitglied)} underline="never">
+              <BereichLink to={mitgliedLink(r.mitglied)} underline="never">
                 <StatusName status={r.mitglied.status}>{mitgliedName(r.mitglied)}</StatusName>
-              </Anchor>
+              </BereichLink>
             ) : (
               r.empfaengerName
             )}

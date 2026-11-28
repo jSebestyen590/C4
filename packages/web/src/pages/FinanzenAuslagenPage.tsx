@@ -11,6 +11,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { centAnzeigen, datumAnzeigen, type AuslageMitgliedDto } from '@c4/shared';
@@ -63,9 +64,9 @@ export function FinanzenAuslagenPage() {
               <Group justify="space-between" align="center">
                 <Stack gap={0}>
                   {m.mitglied ? (
-                    <Anchor component={Link} to={mitgliedLink(m.mitglied)}>
+                    <BereichLink to={mitgliedLink(m.mitglied)}>
                       <StatusName status={m.mitglied.status}>{mitgliedName(m.mitglied)}</StatusName>
-                    </Anchor>
+                    </BereichLink>
                   ) : (
                     <Text fw={700}>Unbekanntes Mitglied</Text>
                   )}

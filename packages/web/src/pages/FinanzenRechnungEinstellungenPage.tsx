@@ -11,6 +11,7 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -101,9 +102,9 @@ function VorstandAnzeige({ vorstand }: Readonly<{ vorstand: RechnungVorstandDto[
           {vorstand.map((v) => (
             <Text key={`${v.postenId}:${v.mitglied.sub}`} size="sm">
               {v.postenName}:{' '}
-              <Anchor component={Link} to={mitgliedLink(v.mitglied)}>
+              <BereichLink to={mitgliedLink(v.mitglied)}>
                 <StatusName status={v.mitglied.status}>{mitgliedName(v.mitglied)}</StatusName>
-              </Anchor>{' '}
+              </BereichLink>{' '}
               ({v.mitglied.vorname} {v.mitglied.nachname})
             </Text>
           ))}

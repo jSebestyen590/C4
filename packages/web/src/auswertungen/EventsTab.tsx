@@ -1,7 +1,19 @@
 import { BarChart } from '@mantine/charts';
-import { Alert, Anchor, Badge, Loader, Stack, Table, Text, Title } from '@mantine/core';
-import { Link } from 'react-router-dom';
+
+import {
+  Alert,
+  Badge,
+  ColorSwatch,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from '@mantine/core';
 import { csvText, datumAnzeigen, heuteBerlin, type EventAuswertungDto } from '@c4/shared';
+import { BereichLink } from '../BereichLink';
 import { csvHerunterladen } from '../csvHerunterladen';
 import { BETRAG_STIL, useAuswertungEvents } from '../finanzenDaten';
 import { HILFE } from '../finanzenHilfe';
@@ -60,6 +72,49 @@ function csvDaten(d: EventAuswertungDto) {
   return csvText(kopf, zeilen);
 }
 
+interface TooltipEintrag {
+  name?: string | number;
+  value?: number | string;
+  color?: string;
+}
+
+/** Tooltip of the stacked chart: total on top, then every non-zero category with its colour. */
+function VerlaufTooltip({
+  label,
+  payload,
+  namen,
+}: Readonly<{
+  label?: string | number;
+  payload?: readonly TooltipEintrag[];
+  namen: Record<string, string>;
+}>) {
+  const eintraege = (payload ?? []).filter((p) => Number(p.value) !== 0);
+  const gesamt = (payload ?? []).reduce((s, p) => s + Number(p.value ?? 0), 0);
+  return (
+    <Paper px="md" py="sm" withBorder shadow="md" radius="md">
+      <Text fw={500} mb={5}>
+        {label}
+      </Text>
+      <Text fw={700} mb={4}>
+        Gesamt: {euroRund.format(gesamt)}
+      </Text>
+      <Stack gap={2}>
+        {eintraege.map((p) => (
+          <Group key={String(p.name)} justify="space-between" gap="md" wrap="nowrap">
+            <Group gap={6} wrap="nowrap">
+              <ColorSwatch color={p.color ?? 'gray'} size={12} withShadow={false} />
+              <Text size="sm">{namen[String(p.name)] ?? String(p.name)}</Text>
+            </Group>
+            <Text size="sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {euroRund.format(Number(p.value))}
+            </Text>
+          </Group>
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
+
 function Verlauf({ verlauf }: Readonly<{ verlauf: EventAuswertungDto['verlauf'] }>) {
   if (verlauf.kategorien.length === 0) return null;
   const daten = verlauf.zeitraeume.map((z) => {
@@ -81,6 +136,15 @@ function Verlauf({ verlauf }: Readonly<{ verlauf: EventAuswertungDto['verlauf'] 
         withLegend
         valueFormatter={(v) => euroRund.format(v)}
         yAxisProps={{ width: 70 }}
+        tooltipProps={{
+          content: ({ label, payload }) => (
+            <VerlaufTooltip
+              label={label}
+              payload={payload as readonly TooltipEintrag[] | undefined}
+              namen={Object.fromEntries(verlauf.kategorien.map((k, i) => [`k${i}`, k.name]))}
+            />
+          ),
+        }}
         series={verlauf.kategorien.map((k, i) => ({
           name: `k${i}`,
           label: k.name,
@@ -132,9 +196,9 @@ export function EventsTab() {
                 {d.events.map((e) => (
                   <Table.Tr key={e.eventId}>
                     <Table.Td>
-                      <Anchor component={Link} to={`/kalender/events/${e.eventId}`} inherit>
+                      <BereichLink to={`/kalender/events/${e.eventId}`} inherit>
                         {e.titel}
-                      </Anchor>
+                      </BereichLink>
                     </Table.Td>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{datumVon(e.beginn)}</Table.Td>
                     <Table.Td>

@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Button,
   Group,
   List,
@@ -12,10 +11,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { IconLock } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   datumAnzeigen,
   monatAnzeigen,
@@ -46,9 +45,9 @@ function Von({ f }: Readonly<{ f: FestschreibungDto }>) {
   const m = f.festgeschriebenVon;
   if (!m) return <>–</>;
   return (
-    <Anchor component={Link} to={mitgliedLink(m)} underline="never" inherit>
+    <BereichLink to={mitgliedLink(m)} underline="never" inherit>
       <StatusName status={m.status}>{mitgliedName(m)}</StatusName>
-    </Anchor>
+    </BereichLink>
   );
 }
 

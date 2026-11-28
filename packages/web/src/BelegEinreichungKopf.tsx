@@ -1,11 +1,11 @@
 import { Alert, Stack, Text, Textarea } from '@mantine/core';
+import { BereichLink } from './BereichLink';
 import { useState } from 'react';
 import { centAnzeigen, type BelegEntwurfDto } from '@c4/shared';
 import { BestaetigenDialog } from './BestaetigenDialog';
 import { formatDatumZeit } from './datum';
 import { mitgliedLink, mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
-import { Link } from 'react-router-dom';
 
 /** Header of a draft a member submitted: who, how much they stated, the note and a name suggestion. */
 export function BelegEinreichungKopf({
@@ -26,9 +26,9 @@ export function BelegEinreichungKopf({
       <Stack gap={4}>
         <Text size="sm">
           {von ? (
-            <Link to={mitgliedLink(von)} style={{ textDecoration: 'none' }}>
+            <BereichLink to={mitgliedLink(von)} underline="never">
               <StatusName status={von.status}>{mitgliedName(von)}</StatusName>
-            </Link>
+            </BereichLink>
           ) : (
             'Ein Mitglied'
           )}{' '}

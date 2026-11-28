@@ -11,6 +11,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -64,9 +65,9 @@ function WareAngabe({
   if (p.art !== 'ware' || !p.wareId) return null;
   return (
     <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
-      <Anchor component={Link} to={`/waren/${encodeURIComponent(p.wareId)}`}>
+      <BereichLink to={`/waren/${encodeURIComponent(p.wareId)}`}>
         {p.wareName ?? 'Ware'}
-      </Anchor>
+      </BereichLink>
       {kurz
         ? `, ${anzahlText(p.anzahlMilli)} x ${gebindeName ? `${gebindeName} ` : ''}${preisText(p)}`
         : gebindeName
@@ -177,9 +178,9 @@ export function FinanzenBelegDetailPage() {
                 {b.mitglied && (
                   <>
                     {': '}
-                    <Anchor component={Link} to={mitgliedLink(b.mitglied)}>
+                    <BereichLink to={mitgliedLink(b.mitglied)}>
                       <StatusName status={b.mitglied.status}>{mitgliedName(b.mitglied)}</StatusName>
-                    </Anchor>
+                    </BereichLink>
                   </>
                 )}
               </Zeile>
@@ -212,11 +213,11 @@ export function FinanzenBelegDetailPage() {
               )}
               {b.eingereichtVon && (
                 <Zeile label="Eingereicht von">
-                  <Anchor component={Link} to={mitgliedLink(b.eingereichtVon)}>
+                  <BereichLink to={mitgliedLink(b.eingereichtVon)}>
                     <StatusName status={b.eingereichtVon.status}>
                       {mitgliedName(b.eingereichtVon)}
                     </StatusName>
-                  </Anchor>
+                  </BereichLink>
                   {b.eingereichtAm ? `, ${formatDatumZeit(b.eingereichtAm)}` : ''}
                   {b.eingereichtBetragCent !== null &&
                     `, genannter Betrag ${centAnzeigen(b.eingereichtBetragCent)}`}

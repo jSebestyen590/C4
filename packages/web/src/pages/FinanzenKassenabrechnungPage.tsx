@@ -11,6 +11,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { Link, useParams } from 'react-router-dom';
 import { centAnzeigen, datumAnzeigen } from '@c4/shared';
 import { formatDatumZeit } from '../datum';
@@ -53,11 +54,11 @@ export function FinanzenKassenabrechnungPage() {
               <Text>
                 Abgerechnet von:{' '}
                 {a.erstelltVon ? (
-                  <Anchor component={Link} to={mitgliedLink(a.erstelltVon)} underline="never">
+                  <BereichLink to={mitgliedLink(a.erstelltVon)} underline="never">
                     <StatusName status={a.erstelltVon.status}>
                       {mitgliedName(a.erstelltVon)}
                     </StatusName>
-                  </Anchor>
+                  </BereichLink>
                 ) : (
                   '–'
                 )}{' '}
@@ -156,12 +157,9 @@ export function FinanzenKassenabrechnungPage() {
                   {a.events.map((e) => (
                     <Table.Tr key={e.eventId}>
                       <Table.Td>
-                        <Anchor
-                          component={Link}
-                          to={`/kalender/events/${encodeURIComponent(e.eventId)}`}
-                        >
+                        <BereichLink to={`/kalender/events/${encodeURIComponent(e.eventId)}`}>
                           {e.eventTitel}
-                        </Anchor>
+                        </BereichLink>
                         <Text size="xs" c="dimmed">
                           {datumAnzeigen(e.eventBeginn.slice(0, 10))}
                         </Text>

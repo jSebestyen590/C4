@@ -1,6 +1,5 @@
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -13,10 +12,10 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { IconDownload, IconFileExport } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   datenexportEingabeSchema,
   datumAnzeigen,
@@ -41,9 +40,9 @@ function Von({ e }: Readonly<{ e: DatenexportDto }>) {
   const m = e.erstelltVon;
   if (!m) return <>–</>;
   return (
-    <Anchor component={Link} to={mitgliedLink(m)} underline="never" inherit>
+    <BereichLink to={mitgliedLink(m)} underline="never" inherit>
       <StatusName status={m.status}>{mitgliedName(m)}</StatusName>
-    </Anchor>
+    </BereichLink>
   );
 }
 

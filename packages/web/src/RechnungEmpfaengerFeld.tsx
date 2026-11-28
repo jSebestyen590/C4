@@ -1,6 +1,6 @@
 import { Alert, Select, Stack, Text, type ComboboxItem, type OptionsFilter } from '@mantine/core';
+import { BereichLink } from './BereichLink';
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import type {
   Mitglied,
   RechnungEmpfaenger,
@@ -152,9 +152,9 @@ export function RechnungEmpfaengerFeld({
       {anzeige?.adresseFehlt && m && (
         <Alert color="red" py="xs">
           Für{' '}
-          <Text span fw={600} component={Link} to={mitgliedLink(m)} inherit>
+          <BereichLink fw={600} to={mitgliedLink(m)} inherit>
             {mitgliedName(m)}
-          </Text>{' '}
+          </BereichLink>{' '}
           ist im Profil keine Adresse hinterlegt. Ohne Adresse lässt sich die Rechnung nicht
           stellen.
         </Alert>

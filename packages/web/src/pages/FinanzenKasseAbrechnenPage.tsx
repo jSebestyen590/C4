@@ -17,6 +17,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { BereichLink } from '../BereichLink';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -946,12 +947,9 @@ function AbrechnenFormular({
                       return (
                         <Table.Tr key={z.eventId}>
                           <Table.Td>
-                            <Anchor
-                              component={Link}
-                              to={`/kalender/events/${encodeURIComponent(z.eventId)}`}
-                            >
+                            <BereichLink to={`/kalender/events/${encodeURIComponent(z.eventId)}`}>
                               {z.eventTitel}
-                            </Anchor>
+                            </BereichLink>
                             <Text size="xs" c="dimmed">
                               {datumAnzeigen(z.eventBeginn.slice(0, 10))}
                             </Text>
@@ -959,15 +957,11 @@ function AbrechnenFormular({
                           <Table.Td style={BETRAG_STIL}>{centAnzeigen(z.summeCent)}</Table.Td>
                           <Table.Td>
                             {z.gezaehltVon ? (
-                              <Anchor
-                                component={Link}
-                                to={mitgliedLink(z.gezaehltVon)}
-                                underline="never"
-                              >
+                              <BereichLink to={mitgliedLink(z.gezaehltVon)} underline="never">
                                 <StatusName status={z.gezaehltVon.status}>
                                   {mitgliedName(z.gezaehltVon)}
                                 </StatusName>
-                              </Anchor>
+                              </BereichLink>
                             ) : (
                               '–'
                             )}

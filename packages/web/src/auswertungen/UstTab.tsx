@@ -18,6 +18,9 @@ import {
   centZuEuroText,
   csvText,
   elsterEuro,
+  UST_ERKLAERUNG_FELDER,
+  ustAbschlussLabel,
+  type UstErklaerungDto,
   type UstAuswertungDto,
   type UstSatzArt,
   type UstZeitraumDto,
@@ -74,7 +77,7 @@ function KennzahlZeile({
     <Group justify="space-between" wrap="nowrap" gap="xs">
       <div style={{ minWidth: 0 }}>
         <Text size="sm" c="dimmed">
-          {kz}: {text}
+          {text ? `${kz}: ${text}` : kz}
         </Text>
         <Text fw={700} style={{ fontVariantNumeric: 'tabular-nums' }}>
           {anzeige}
@@ -92,6 +95,12 @@ function KennzahlZeile({
 
 function Kennzahlen({ z }: Readonly<{ z: UstZeitraumDto }>) {
   const k = z.kennzahlen;
+  const bemessung = (cent: number, ustCent: number) => (
+    <>
+      <Betrag cent={cent} /> (USt.: <Betrag cent={ustCent} />)
+    </>
+  );
+  const elster = (cent: number) => `in ELSTER: ${elsterEuro(cent).toLocaleString('de-DE')}`;
   return (
     <Paper withBorder p="sm" aria-label={`Kennzahlen ${z.label}`}>
       <Stack gap={4}>
@@ -99,13 +108,15 @@ function Kennzahlen({ z }: Readonly<{ z: UstZeitraumDto }>) {
         <KennzahlZeile
           kz="Kz 81"
           text="Bemessung Regelsatz"
-          anzeige={`${elsterEuro(k.kz81Cent).toLocaleString('de-DE')} €`}
+          anzeige={bemessung(k.kz81Cent, k.kz81UstCent)}
+          zusatz={elster(k.kz81Cent)}
           wert={String(elsterEuro(k.kz81Cent))}
         />
         <KennzahlZeile
           kz="Kz 86"
           text="Bemessung ermäßigt"
-          anzeige={`${elsterEuro(k.kz86Cent).toLocaleString('de-DE')} €`}
+          anzeige={bemessung(k.kz86Cent, k.kz86UstCent)}
+          zusatz={elster(k.kz86Cent)}
           wert={String(elsterEuro(k.kz86Cent))}
         />
         <KennzahlZeile
@@ -130,6 +141,37 @@ function Kennzahlen({ z }: Readonly<{ z: UstZeitraumDto }>) {
   );
 }
 
+const ERKLAERUNG_KEYS = Object.keys(UST_ERKLAERUNG_FELDER) as (keyof UstErklaerungDto)[];
+
+/** Annual tile: the fields of the Umsatzsteuererklärung (instead of the Kz of the Voranmeldung). */
+function Erklaerung({ z, e }: Readonly<{ z: UstZeitraumDto; e: UstErklaerungDto }>) {
+  return (
+    <Paper withBorder p="sm" aria-label={`Umsatzsteuererklärung ${z.label}`}>
+      <Stack gap={4}>
+        <Group gap={2}>
+          <Text fw={700}>Umsatzsteuererklärung {z.label}</Text>
+          <InfoHinweis feld="Umsatzsteuererklärung" text={HILFE.auswertungen.erklaerung} />
+        </Group>
+        {ERKLAERUNG_KEYS.map((key) => {
+          const text =
+            key === 'abschlussCent'
+              ? ustAbschlussLabel(e.abschlussCent)
+              : UST_ERKLAERUNG_FELDER[key];
+          return (
+            <KennzahlZeile
+              key={key}
+              kz={text}
+              text=""
+              anzeige={<Betrag cent={e[key]} />}
+              wert={centZuEuroText(e[key])}
+            />
+          );
+        })}
+      </Stack>
+    </Paper>
+  );
+}
+
 function csvDaten(d: UstAuswertungDto) {
   const kopf = [
     'Zeitraum',
@@ -139,11 +181,16 @@ function csvDaten(d: UstAuswertungDto) {
     'Umsatzsteuer',
     'Vorsteuer',
     'Zahllast',
-    'Kz 81 (Euro)',
-    'Kz 86 (Euro)',
+    'Kz 81',
+    'Kz 81 USt',
+    'Kz 81 in ELSTER (Euro)',
+    'Kz 86',
+    'Kz 86 USt',
+    'Kz 86 in ELSTER (Euro)',
     'Kz 66',
     'Kz 83',
     'Vorauszahlung',
+    ...ERKLAERUNG_KEYS.map((key) => UST_ERKLAERUNG_FELDER[key]),
   ];
   const zeilen = d.zeitraeume.flatMap((z) =>
     z.zeilen.map((s, i) => [
@@ -154,11 +201,18 @@ function csvDaten(d: UstAuswertungDto) {
       { cent: s.ustCent },
       { cent: s.vorsteuerCent },
       { cent: s.zahllastCent },
+      i === 0 ? { cent: z.kennzahlen.kz81Cent } : null,
+      i === 0 ? { cent: z.kennzahlen.kz81UstCent } : null,
       i === 0 ? elsterEuro(z.kennzahlen.kz81Cent) : null,
+      i === 0 ? { cent: z.kennzahlen.kz86Cent } : null,
+      i === 0 ? { cent: z.kennzahlen.kz86UstCent } : null,
       i === 0 ? elsterEuro(z.kennzahlen.kz86Cent) : null,
       i === 0 ? { cent: z.kennzahlen.kz66Cent } : null,
       i === 0 ? { cent: z.kennzahlen.kz83Cent } : null,
       i === 0 ? { cent: z.vorauszahlungCent } : null,
+      ...ERKLAERUNG_KEYS.map((key) =>
+        i === 0 && z.erklaerung ? { cent: z.erklaerung[key] } : null,
+      ),
     ]),
   );
   return csvText(kopf, zeilen);
@@ -171,6 +225,7 @@ export function UstTab() {
   const d = q.data;
   const summe = (feld: 'bemessungCent' | 'ustCent' | 'vorsteuerCent' | 'zahllastCent') =>
     (d?.zeitraeume ?? []).reduce((s, z) => s + z.zeilen.reduce((t, r) => t + r[feld], 0), 0);
+  const jahr = (d?.zeitraeume ?? []).some((z) => z.erklaerung);
   const hatZeilen = (d?.zeitraeume ?? []).some((z) => z.zeilen.length > 0);
   return (
     <Stack gap="md">
@@ -187,13 +242,19 @@ export function UstTab() {
       {d && (
         <>
           <Group gap={2}>
-            <Title order={4}>Kennzahlen für ELSTER</Title>
+            <Title order={4}>
+              {jahr ? 'Werte für die Umsatzsteuererklärung' : 'Kennzahlen für ELSTER'}
+            </Title>
             <InfoHinweis feld="Kennzahlen" text={HILFE.auswertungen.kennzahlen} />
           </Group>
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-            {d.zeitraeume.map((z) => (
-              <Kennzahlen key={z.schluessel} z={z} />
-            ))}
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+            {d.zeitraeume.map((z) =>
+              z.erklaerung ? (
+                <Erklaerung key={z.schluessel} z={z} e={z.erklaerung} />
+              ) : (
+                <Kennzahlen key={z.schluessel} z={z} />
+              ),
+            )}
           </SimpleGrid>
           {hatZeilen ? (
             <AuswertungTabelle minWidth={760}>
