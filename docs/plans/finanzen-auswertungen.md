@@ -216,3 +216,25 @@ Feedback-Runde 1:
 - Auf dev geprüft (Commit `78eb71e`): EÜR 2026 zeigt Kassendifferenz 7,43 € unter „Sonstige Einnahmen“
   (= Summe der Zählungsdifferenzen); CSV-Download aller fünf Tabs im Browser (UTF-8 mit BOM, `;`,
   Dezimalkomma, gleiche Spaltenzahl je Zeile).
+
+## Feedback-Runde 2 (offen, Entscheidungen geklärt)
+
+- [ ] **Links in neuem Tab (nur Finanzen):** Links aus Finanzen-Seiten in andere Bereiche (Events, Waren,
+  Mitglieder …) öffnen in neuem Tab (`target="_blank"`, `rel="noopener"`) mit kleinem Pfeil-Symbol
+  daneben; gemeinsamer Baustein, Links innerhalb der Finanzen bleiben wie sie sind.
+- [ ] **Events-Diagramm:** Tooltip je Eintrag oben „Gesamt: x €“ (fett) über alle Kategorien, darunter
+  die Kategorien.
+- [ ] **USt:** Kz 81/86 exakt mit Cent, daneben die USt („360,95 € (USt.: 68,59 €)“), klein darunter
+  „in ELSTER: 360“ (volle Euro abgerundet, Vorgabe von ELSTER). Alle übrigen Werte exakt.
+- [ ] **USt:** Kacheln mit den ELSTER-Kennzahlen ab großen Screens vier nebeneinander.
+- [ ] **USt:** Kurze Erklärung der Kennzahlen (Info-Icon): Kz = Kennzahl am ELSTER-Feld, Zeilennummern
+  wechseln jährlich; 81 = Bemessung 19 %, 86 = 7 %, 66 = Vorsteuer, 83 = Vorauszahlung/Überschuss.
+- [ ] **G+V:** Info-Text: „positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag)“.
+- [ ] **Einkauf:** Schalter Netto/Brutto, Standard Brutto (betrifft Netto-Spalte, Durchschnittspreise,
+  Summe, CSV; Pfand bleibt separat).
+- [ ] **Einkauf:** Suche über Name und Aliasse der Ware.
+- [ ] **Einkauf:** Schalter und Suche als Query-Parameter (wie die übrigen URL-Filter in `Bausteine.tsx`).
+- [ ] **Einkauf:** Zeitraum Start- und Endjahr, Standard aktuelles Jahr in beiden.
+- [ ] **Einkauf:** Jede Waren-Zeile aufklappbar mit Blasendiagramm: X Kaufdatum, Y Preis je Einheit
+  (netto/brutto nach Schalter), Blasengröße Menge; Tooltip Datum, Menge, Preis, Link zum Beleg.
+  Braucht Einzelkäufe je Ware (API-Erweiterung).
