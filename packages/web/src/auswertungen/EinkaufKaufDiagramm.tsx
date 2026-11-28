@@ -81,6 +81,7 @@ export function EinkaufKaufDiagramm({
             <Tooltip
               trigger="click"
               wrapperStyle={{ pointerEvents: 'auto', zIndex: 10 }}
+              allowEscapeViewBox={{ x: false, y: false }}
               content={({ active, payload }) => {
                 const p = active ? (payload?.[0]?.payload as Punkt | undefined) : undefined;
                 if (!p) return null;
