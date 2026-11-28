@@ -159,6 +159,10 @@ The whole application is **in German**: all UI texts, labels, buttons, validatio
 messages, and `<html lang="de">`. Use the informal "du" form. Every new text must be German from the
 start; don't add English user-facing strings.
 
+**Communication is always in German**: replies to the user, plans, questions, wrap-ups, and
+everything exchanged with sub-agents and other sessions (prompts, briefs, `SendMessage`, their
+reports). Tell every agent/session in its prompt to answer in German.
+
 - Fixed backend values (roles, permissions, user statuses, ...) are translated in
   `packages/web/src/i18n.ts`. When you add a role, permission or status, add its German label there.
   Example: `reader` -> "Lesender Zugriff". Use `label()` for values that may not be translated yet.
