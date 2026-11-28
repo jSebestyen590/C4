@@ -7,6 +7,7 @@ import {
   bausteinEinfuegen,
   imVerschachtelbaren,
   zitatEinfuegen,
+  zitatImTextEinfuegen,
 } from './einfuegen';
 import { SlashListe } from './SlashListe';
 import {
@@ -49,19 +50,24 @@ export function BausteinMenue({
     if (e.aktion.art === 'weiter') {
       setSuche('');
       const { stufe } = slashStufe(e.aktion.text);
-      if (stufe !== 'bausteine') setListe(stufe);
+      if (stufe in LISTEN) setListe(stufe as Liste);
       return;
     }
     setListe(null);
     if (e.aktion.art === 'zitat') {
-      zitatEinfuegen(editor);
+      if (e.aktion.imText) zitatImTextEinfuegen(editor);
+      else zitatEinfuegen(editor);
       return;
     }
+    // Only the slash menu offers these (see `bausteinEintraege`).
+    if (e.aktion.art === 'ende' || e.aktion.art === 'dienst') return;
     if (e.aktion.art === 'bild') {
       onBild?.();
       return;
     }
     bausteinEinfuegen(editor, e.aktion.wahl);
+    const extern = e.aktion.neuerExterner;
+    if (extern) daten.externHinzufuegen?.(extern.art, extern.name);
     const sub = anwesenheitPerson(e.aktion.wahl);
     if (sub) daten.anwesenheit?.(sub);
   };

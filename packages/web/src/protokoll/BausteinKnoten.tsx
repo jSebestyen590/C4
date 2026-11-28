@@ -13,6 +13,7 @@ import { useState, type ComponentType, type CSSProperties, type ReactElement } f
 import {
   BAUSTEIN_DATEN_SCHEMAS,
   istBausteinInNotizen,
+  istMerker,
   istNurInNotizen,
   istThema,
   type BausteinAnwaerterDaten,
@@ -40,7 +41,7 @@ import {
   EmFormular,
   EventFormular,
   MeinungsbildFormular,
-  ThemaFormular,
+  ThemaKopfFeld,
   TodoFormular,
   AuswahlFormular,
   WahlFormular,
@@ -75,10 +76,14 @@ function mitStandardwerten<T extends BausteinTyp>(typ: T, daten: unknown): Baust
 function BausteinAnsicht<T extends BausteinTyp>({
   typ,
   Formular,
+  KopfFeld,
   props,
 }: Readonly<{
   typ: T;
-  Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>;
+  /** The form below the header; none for a Baustein whose only field sits in the header. */
+  Formular: ComponentType<FormularProps<BausteinDatenVon[T]>> | null;
+  /** Optional field in the header between the title and the delete icon (e.g. the title of a Thema). */
+  KopfFeld?: ComponentType<FormularProps<BausteinDatenVon[T]>>;
   props: ReactNodeViewProps;
 }>) {
   const { editor, node, getPos, deleteNode } = props;
@@ -130,6 +135,11 @@ function BausteinAnsicht<T extends BausteinTyp>({
                     {BAUSTEIN_TITEL[typ]}
                   </Text>
                 </Group>
+                {KopfFeld && (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <KopfFeld daten={daten} aendern={aendern} editierbar={editierbar} />
+                  </div>
+                )}
                 {editierbar && (
                   <Group gap={0} wrap="nowrap" className="protokoll-nicht-drucken">
                     <ActionIcon
@@ -146,7 +156,7 @@ function BausteinAnsicht<T extends BausteinTyp>({
                   </Group>
                 )}
               </Group>
-              <Formular daten={daten} aendern={aendern} editierbar={editierbar} />
+              {Formular && <Formular daten={daten} aendern={aendern} editierbar={editierbar} />}
               {typ === 'bausteinBeschluss' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinAufnahme' && <BeschlussHinweis id={node.attrs.id as string} />}
               {typ === 'bausteinWahl' && <BeschlussHinweis id={node.attrs.id as string} />}
@@ -189,6 +199,56 @@ function BausteinAnsicht<T extends BausteinTyp>({
   );
 }
 
+/**
+ * The Merker "Überarbeiten": a yellow card with plain text, a reminder for the author (never part of the
+ * document). No form, no Notizen label.
+ */
+function MerkerAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
+  const { editor, node, deleteNode } = props;
+  const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
+  return (
+    <NodeViewWrapper
+      className="protokoll-baustein protokoll-merker"
+      data-baustein="bausteinMerker"
+      data-id={node.attrs.id as string}
+      style={{ '--baustein-farbe': bausteinFarbeCss('bausteinMerker') } as CSSProperties}
+    >
+      <Paper
+        withBorder
+        p="sm"
+        radius="md"
+        shadow={props.selected ? 'sm' : undefined}
+        style={{ background: 'var(--mantine-color-yellow-light)' }}
+      >
+        <Stack gap="xs">
+          <Group justify="space-between" wrap="nowrap" gap="xs" contentEditable={false}>
+            <Group gap="xs" wrap="nowrap" c="yellow.9">
+              <SlashIcon symbol={BAUSTEIN_SYMBOL.bausteinMerker} size={18} />
+              <Text size="sm" fw={600}>
+                {BAUSTEIN_TITEL.bausteinMerker}
+              </Text>
+            </Group>
+            {editierbar && (
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                size={42}
+                className="protokoll-nicht-drucken"
+                tabIndex={-1}
+                aria-label={`${BAUSTEIN_TITEL.bausteinMerker} entfernen`}
+                onClick={() => deleteNode()}
+              >
+                <IconTrash size={20} />
+              </ActionIcon>
+            )}
+          </Group>
+          <NodeViewContent className="protokoll-baustein-text" />
+        </Stack>
+      </Paper>
+    </NodeViewWrapper>
+  );
+}
+
 const parseJson = (el: HTMLElement, attribut: string): unknown => {
   const roh = el.getAttribute(attribut);
   if (!roh) return null;
@@ -211,14 +271,21 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
       ? 'notizbaustein'
       : istBausteinInNotizen(typ)
         ? 'block innerbaustein'
-        : typ === 'bausteinAnwesenheit'
+        : typ === 'bausteinAnwesenheit' || istMerker(typ)
           ? 'block innerbaustein'
           : istThema(typ)
             ? 'thema'
             : 'block',
     ...(ohneText
       ? { atom: true }
-      : { content: istBausteinInNotizen(typ) ? FREITEXT_NUR_TEXT : FREITEXT }),
+      : {
+          // The Merker holds plain paragraphs only.
+          content: istMerker(typ)
+            ? 'paragraph+'
+            : istBausteinInNotizen(typ)
+              ? FREITEXT_NUR_TEXT
+              : FREITEXT,
+        }),
     isolating: true,
     defining: true,
     draggable: false,
@@ -263,9 +330,10 @@ function bausteinKnoten(typ: BausteinTyp, ansicht: (props: ReactNodeViewProps) =
 const karte =
   <T extends BausteinTyp>(
     typ: T,
-    Formular: ComponentType<FormularProps<BausteinDatenVon[T]>>,
+    Formular: ComponentType<FormularProps<BausteinDatenVon[T]>> | null,
+    KopfFeld?: ComponentType<FormularProps<BausteinDatenVon[T]>>,
   ): ((props: ReactNodeViewProps) => ReactElement) =>
-  (props) => <BausteinAnsicht typ={typ} Formular={Formular} props={props} />;
+  (props) => <BausteinAnsicht typ={typ} Formular={Formular} KopfFeld={KopfFeld} props={props} />;
 
 export const BausteinEventKnoten = bausteinKnoten(
   'bausteinEvent',
@@ -273,7 +341,7 @@ export const BausteinEventKnoten = bausteinKnoten(
 );
 export const BausteinThemaKnoten = bausteinKnoten(
   'bausteinThema',
-  karte('bausteinThema', ThemaFormular as ComponentType<FormularProps<BausteinThemaDaten>>),
+  karte('bausteinThema', null, ThemaKopfFeld as ComponentType<FormularProps<BausteinThemaDaten>>),
 );
 export const BausteinTodoKnoten = bausteinKnoten(
   'bausteinTodo',
@@ -330,7 +398,12 @@ export const BausteinAnwesenheitKnoten = bausteinKnoten('bausteinAnwesenheit', (
   <AnwesenheitAnsicht props={props} />
 ));
 
+export const BausteinMerkerKnoten = bausteinKnoten('bausteinMerker', (props) => (
+  <MerkerAnsicht props={props} />
+));
+
 export const BAUSTEIN_KNOTEN = [
+  BausteinMerkerKnoten,
   BausteinEventKnoten,
   BausteinThemaKnoten,
   BausteinVergangenesEventKnoten,

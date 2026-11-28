@@ -92,7 +92,12 @@ describe('stimmenPruefen: Abstimmung', () => {
   });
 
   it('uses the present members at that point (Anwesenheit blocks)', () => {
-    const geht = bausteinErzeugen('bausteinAnwesenheit', { art: 'geht', sub: 'm0', uhrzeit: '' });
+    const geht = bausteinErzeugen('bausteinAnwesenheit', {
+      art: 'geht',
+      sub: 'm0',
+      name: '',
+      uhrzeit: '',
+    });
     const d = doc(beschluss(2, 1, 1, 'vorher'), geht, beschluss(2, 1, 1, 'nachher'));
     const r = stimmenPruefen(d, eingabe(5));
     expect(r.problems.map((p) => p.text)).toEqual([
@@ -101,7 +106,12 @@ describe('stimmenPruefen: Abstimmung', () => {
   });
 
   it('uses an Anwesenheit block that stands in a list item of the notes', () => {
-    const geht = bausteinErzeugen('bausteinAnwesenheit', { art: 'geht', sub: 'm0', uhrzeit: '' });
+    const geht = bausteinErzeugen('bausteinAnwesenheit', {
+      art: 'geht',
+      sub: 'm0',
+      name: '',
+      uhrzeit: '',
+    });
     const liste: ProtokollKnoten = {
       type: 'bulletList',
       content: [{ type: 'listItem', content: [{ type: 'paragraph' }, geht] }],
@@ -159,7 +169,7 @@ describe('stimmenPruefen: Neues EM und Aufnahme', () => {
       wiederholung: null,
     });
     expect(stimmenPruefen(doc(mit), eingabe(5)).problems[0]!.text).toBe(
-      'Neues EM „Ede“, Abstimmung: 1 Stimme, aber 5 Mitglieder anwesend.',
+      'Austritt „Ede“, Abstimmung: 1 Stimme, aber 5 Mitglieder anwesend.',
     );
   });
 

@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vitest';
 import { bausteinErzeugen, type BausteinTyp, type ProtokollKnoten } from '@c4/shared';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import {
+  aktiveStelleId,
   bausteinInGliederungVerschieben,
+  bausteinVerschiebenErgebnis,
   gliederungBauen,
   gliederungTitel,
   gliederungZeilen,
@@ -182,7 +184,7 @@ describe('gliederungTitel', () => {
     expect(gliederungTitel('bausteinWahl', { posten: 'Kassenwart' })).toBe('Wahl: Kassenwart');
     expect(gliederungTitel('bausteinAuswahl', { frage: 'Wohin?' })).toBe('Abstimmung: Wohin?');
     expect(gliederungTitel('bausteinAuswahl', { frage: '' })).toBe('Abstimmung');
-    expect(gliederungTitel('bausteinEm', { sub: null, name: 'Karl' })).toBe('Neues EM: Karl');
+    expect(gliederungTitel('bausteinEm', { sub: null, name: 'Karl' })).toBe('Austritt: Karl');
     expect(gliederungTitel('bausteinAufnahme', { sub: 's1', name: '' }, name)).toBe(
       'Aufnahme: Mia',
     );
@@ -648,5 +650,168 @@ describe('nested Themen in the Gliederung', () => {
   it('is one undo step including the nested content', () => {
     const tr = bausteinInGliederungVerschieben(state(), 't1', { elternId: 'top', index: 0 })!;
     expect(tr.steps.length).toBe(2);
+  });
+});
+
+describe('nested Thema in a Thema (Rückführung BZGs): every drop position', () => {
+  const thema = (id: string, titel: string, inhalt?: ProtokollKnoten[]) =>
+    baustein('bausteinThema', id, { titel }, inhalt);
+  const wahl = (id: string, posten: string) => baustein('bausteinWahl', id, { posten });
+  const IDS = ['A', 'B', 'C', 'D', 'an1', 'an2', 'b1', 'b2', 'c1'];
+  /** A( an1 B( b1 b2 ) an2 ) C(c1) D; `inListe`: B (and its votes) stand in list items. */
+  const bauen = (inListe: boolean) => () => {
+    const b = thema('B', 'Rückführung BZGs', [
+      absatz(),
+      inListe ? imPunkt(wahl('b1', 'Eins')) : wahl('b1', 'Eins'),
+      absatz(),
+      wahl('b2', 'Zwei'),
+      absatz(),
+    ]);
+    return zustand(
+      [
+        thema('A', 'A', [
+          absatz(),
+          abstimmung('an1', 'Eins'),
+          absatz(),
+          ...(inListe ? [imPunkt(b)] : [b]),
+          absatz(),
+          abstimmung('an2', 'Zwei'),
+          absatz(),
+        ]),
+        absatz(),
+        thema('C', 'C', [absatz(), wahl('c1', 'Eins'), absatz()]),
+        absatz(),
+        thema('D', 'D'),
+        absatz(),
+      ],
+      [absatz()],
+      [absatz()],
+    );
+  };
+
+  describe.each([
+    ['plain', bauen(false)],
+    ['in list items', bauen(true)],
+  ])('%s', (_name, state) => {
+    const zeilen = (id: string | null) => gliederungZeilen(gliederungBauen(state().doc), id);
+
+    it('gives every position a valid target; only a move onto its own place is a no-op', () => {
+      const fehler: string[] = [];
+      for (const id of IDS) {
+        const rows = zeilen(id);
+        const rest = rows.filter((r) => r.key !== id);
+        for (let i = 0; i <= rest.length; i++) {
+          const ziel = gliederungZiel(rows, id, i);
+          const wo = `${id}@${i} (vor ${rest[i]?.key ?? 'Ende'})`;
+          if (!ziel) {
+            fehler.push(`${wo}: kein Ziel`);
+            continue;
+          }
+          const s = state();
+          const tr = bausteinInGliederungVerschieben(s, id, ziel);
+          if (tr) s.apply(tr).doc.check();
+        }
+      }
+      expect(fehler).toEqual([]);
+    });
+
+    it('puts the dragged row right before the row below the drop position', () => {
+      const fehler: string[] = [];
+      for (const id of IDS) {
+        const rows = zeilen(id);
+        const rest = rows.filter((r) => r.key !== id);
+        const eigene = rows.find((r) => r.key === id)!;
+        const nestable = 'eintrag' in eigene && eigene.eintrag.verschachtelbar;
+        // Index 0 (above the first section header) means "first in the first section".
+        for (let i = 1; i <= rest.length; i++) {
+          const unten = rest.slice(i).find((r) => !('eingeklappt' in r && r.eingeklappt));
+          const ziel = gliederungZiel(rows, id, i);
+          if (!ziel) continue;
+          if (!nestable && unten && (unten.art === 'kind' || unten.art === 'notizen')) continue;
+          const s = state();
+          const tr = bausteinInGliederungVerschieben(s, id, ziel);
+          if (!tr) continue;
+          const neu = s.apply(tr);
+          const neueZeilen = gliederungZeilen(gliederungBauen(neu.doc), id);
+          const pos = neueZeilen.findIndex((r) => r.key === id);
+          // The rows of the dragged one are collapsed: the next visible row is the one below.
+          const danach = neueZeilen
+            .slice(pos + 1)
+            .find((r) => !('eingeklappt' in r && r.eingeklappt));
+          if ((danach?.key ?? null) !== (unten?.key ?? null))
+            fehler.push(
+              `${id}@${i}: erwartet vor ${unten?.key ?? 'Ende'}, ist vor ${danach?.key ?? 'Ende'}`,
+            );
+        }
+      }
+      expect(fehler).toEqual([]);
+    });
+  });
+});
+
+describe('aktiveStelleId (the place the preview jumps to)', () => {
+  const merker = baustein('bausteinMerker', 'm', {}, [absatz('Prüfen')]);
+  const thema = (id: string, inhalt: ProtokollKnoten[]) =>
+    baustein('bausteinThema', id, { titel: id }, inhalt);
+  const s = () =>
+    zustand([
+      event('e', 'E'),
+      thema('t', [absatz('x'), abstimmung('inner', 'I'), absatz()]),
+      absatz(),
+      merker,
+      absatz(),
+    ]);
+  const posVon = (doc: PmNode, text: string): number => {
+    let pos = -1;
+    doc.descendants((n, p) => {
+      if (n.isText && n.text === text) pos = p + 1;
+    });
+    return pos;
+  };
+
+  it('is the innermost Baustein around the cursor, else the section', () => {
+    const { doc } = s();
+    expect(aktiveStelleId(doc, posVon(doc, 'x'))).toBe('t');
+    expect(aktiveStelleId(doc, 3)).toBe('e');
+    expect(aktiveStelleId(doc, doc.child(0).nodeSize + 1)).toBe('abschnitt:gegenwaertiges');
+  });
+
+  it('uses the nearest Baustein before a Merker', () => {
+    const { doc } = s();
+    expect(aktiveStelleId(doc, posVon(doc, 'Prüfen'))).toBe('inner');
+  });
+});
+
+describe('combine drop (into the notes of a row)', () => {
+  const thema = (id: string, inhalt?: ProtokollKnoten[]) =>
+    baustein('bausteinThema', id, { titel: id }, inhalt);
+  const s = () =>
+    zustand([
+      thema('A', [absatz(), thema('B', [absatz(), abstimmung('b1', 'x'), absatz()]), absatz()]),
+      absatz(),
+      thema('C'),
+      absatz(),
+      abstimmung('v', 'V'),
+      absatz(),
+    ]);
+  const ende = { elternId: '', index: Number.MAX_SAFE_INTEGER };
+
+  it('puts the Baustein at the end of the notes of the row, at any depth', () => {
+    const neu = (id: string, eltern: string) => {
+      const r = bausteinVerschiebenErgebnis(s(), id, { ...ende, elternId: eltern });
+      return r && r !== 'unveraendert' ? form(s().apply(r).doc) : r;
+    };
+    expect(neu('C', 'B')).toBe('A(B(b1 C)) _ _ v _ | _ | _');
+    expect(neu('v', 'A')).toBe('A(B(b1) v) _ C _ _ | _ | _');
+  });
+
+  it('refuses a row that takes no notes, itself and its own descendants; same place is no change', () => {
+    const r = (id: string, eltern: string) =>
+      bausteinVerschiebenErgebnis(s(), id, { ...ende, elternId: eltern });
+    expect(r('C', 'v')).toBeNull();
+    expect(r('A', 'B')).toBeNull();
+    expect(r('A', 'A')).toBeNull();
+    expect(r('C', 'abschnitt:0')).toBeNull();
+    expect(r('B', 'A')).toBe('unveraendert');
   });
 });

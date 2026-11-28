@@ -81,6 +81,27 @@ const rendern = (el: React.ReactNode) =>
     </MantineProvider>,
   );
 
+describe('Serienevent', () => {
+  const mitSerie = [{ ...basis, serie: { eventId: 'se1', name: 'Barabend' } }];
+
+  it('offers replace or add, replacing by default', () => {
+    const html = rendern(
+      <AktionenAuswahl aktionen={mitSerie} auswahl={[basis.id]} onAuswahl={() => undefined} />,
+    );
+    expect(html).toContain('„Barabend“ ersetzen');
+    expect(html).toContain('Zusätzlich anlegen');
+    expect(html).toMatch(/<input[^>]*value="ersetzen"[^>]*>/);
+    expect(html.match(/<input[^>]*value="ersetzen"[^>]*>/)?.[0]).toContain('checked');
+  });
+
+  it('has no choice without a Serienevent', () => {
+    const html = rendern(
+      <AktionenAuswahl aktionen={[basis]} auswahl={[basis.id]} onAuswahl={() => undefined} />,
+    );
+    expect(html).not.toContain('Zusätzlich anlegen');
+  });
+});
+
 describe('AktionenAuswahl', () => {
   const html = rendern(
     <AktionenAuswahl aktionen={liste} auswahl={['a:event.anlegen']} onAuswahl={() => undefined} />,

@@ -27,6 +27,10 @@ export const touchAusnahmeSelektoren: { selektor: string; grund: string }[] = [
     selektor: '.mantine-Pill-root button',
     grund: 'Entfernen-Knopf eines Pills in einer Mehrfachauswahl (Feld selbst ist 42 px hoch).',
   },
+  {
+    selektor: '.mantine-InputClearButton',
+    grund: 'Leeren-X im 42 px hohen Feld, 40 px groß, damit es den Feldrahmen nicht überdeckt.',
+  },
 ];
 
 export const ausnahmen: Ausnahme[] = [

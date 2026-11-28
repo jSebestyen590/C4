@@ -13,6 +13,7 @@ import {
   erwaehnungAttrs,
   erwaehnungBetrifft,
   istBausteinInNotizen,
+  istMerker,
   vergangenesUeberschrift,
   type ProtokollKnoten,
 } from '@c4/shared';
@@ -34,6 +35,7 @@ import {
   type WahlKandidat,
   beschlussfaehigkeitText,
   dokumentKopf,
+  endeSatz,
   eroeffnungSatz,
   istBlockPunkt,
   istLeereListe,
@@ -92,10 +94,22 @@ function Ueberschrift({
 
 const SICHERE_LINKS = /^(https?:|mailto:|tel:)/i;
 
-function Marken({ k }: Readonly<{ k: ProtokollKnoten }>) {
+function Marken({
+  k,
+  auf = true,
+  zu = true,
+}: Readonly<{ k: ProtokollKnoten; auf?: boolean; zu?: boolean }>) {
   let inhalt: ReactNode = k.text ?? '';
   for (const m of k.marks ?? []) {
-    if (m.type === 'bold') inhalt = <strong>{inhalt}</strong>;
+    if (m.type === 'zitatInline') {
+      inhalt = (
+        <em className="pk-dok-zitat-inline">
+          {auf && '„'}
+          {inhalt}
+          {zu && '“'}
+        </em>
+      );
+    } else if (m.type === 'bold') inhalt = <strong>{inhalt}</strong>;
     else if (m.type === 'italic') inhalt = <em>{inhalt}</em>;
     else if (m.type === 'link') {
       const href = typeof m.attrs?.href === 'string' ? m.attrs.href : '';
@@ -123,6 +137,14 @@ function Kinder({ liste, ctx }: Readonly<{ liste: ProtokollKnoten[] | undefined;
     const k = alle[i]!;
     const schluessel = k.attrs?.id ? String(k.attrs.id) : i;
     const istListe = k.type === 'bulletList';
+    if (k.type === 'text') {
+      const zitat = (n: ProtokollKnoten | undefined) =>
+        n?.type === 'text' && (n.marks ?? []).some((m) => m.type === 'zitatInline');
+      inhalt.push(
+        <Marken key={schluessel} k={k} auf={!zitat(alle[i - 1])} zu={!zitat(alle[i + 1])} />,
+      );
+      continue;
+    }
     if (!istListe && k.type !== 'bausteinTodo') {
       inhalt.push(<Knoten key={schluessel} k={k} ctx={ctx} />);
       continue;
@@ -157,7 +179,7 @@ function TodoPunkt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     (c) => c.type !== 'paragraph' || (c.content?.length ?? 0) > 0,
   );
   return (
-    <li>
+    <li data-id={typeof k.attrs?.id === 'string' ? k.attrs.id : undefined}>
       <strong>Todo:</strong> {z.titel || 'Ohne Titel'}
       {z.zustaendig.length > 0 && (
         <>
@@ -309,6 +331,9 @@ function Knoten({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
     case 'bausteinAnwesenheit':
       // erscheint / geht inside the notes of a Baustein (or in a list item of them).
       return <Baustein k={k} ctx={ctx} innen />;
+    case 'bausteinMerker':
+      // A reminder to the author: never part of the document.
+      return null;
     case 'bausteinTodo':
       // A Todo is a bullet of the notes it stands in (see `Kinder`); alone it gets a list of its own.
       return (
@@ -537,8 +562,25 @@ function WahlName({ k, ctx }: Readonly<{ k: WahlKandidat; ctx: Kontext }>) {
   return p ? <PersonName p={p} /> : <>{k.name || 'Person offen'}</>;
 }
 
+/**
+ * A Baustein; a zero-height anchor with its id in front lets the editor's preview scroll to it
+ * (`data-id`; a Todo carries it on its list item).
+ */
+function Baustein(props: Readonly<{ k: ProtokollKnoten; ctx: Kontext; innen?: boolean }>) {
+  const id = props.k.attrs?.id;
+  if (istMerker(props.k.type)) return null;
+  return (
+    <>
+      {typeof id === 'string' && (
+        <span data-id={id} style={{ display: 'block', height: 0 }} aria-hidden />
+      )}
+      <BausteinInhalt {...props} />
+    </>
+  );
+}
+
 /** `innen`: inside the notes of another Baustein (Abstimmung / Wahl then get no heading of their own). */
-function Baustein({
+function BausteinInhalt({
   k,
   ctx,
   innen = false,
@@ -825,7 +867,7 @@ function Baustein({
     return (
       <>
         <Ueberschrift ebene={h} id={ctx.ids.get(k)}>
-          Neues EM
+          Austritt
           {p ? (
             <>
               : <PersonName p={p} />
@@ -855,12 +897,12 @@ function Baustein({
   if (k.type === 'bausteinAnwesenheit') {
     const z = anwesenheitZeile(daten, art, ctx.verlauf.bausteine[id]);
     if (!z) return null;
-    const p = ctx.person(z.sub);
+    const p = z.sub === null ? null : ctx.person(z.sub);
     return (
       <>
         <blockquote className="pk-dok-anwesenheit">
           <p>
-            {p ? <PersonName p={p} /> : null}
+            {p ? <PersonName p={p} /> : z.name}
             {z.nach}
           </p>
           {z.wechsel && <p>{z.wechsel}</p>}
@@ -882,7 +924,7 @@ function Abschnitt({ k, ctx }: Readonly<{ k: ProtokollKnoten; ctx: Kontext }>) {
   // "Sonstiges" is optional: it only shows with content.
   if (art === 'sonstiges' && inhalt.length === 0) return null;
   return (
-    <section>
+    <section data-id={`abschnitt:${String(art)}`}>
       {titel && (
         <h2 className="pk-dok-h1" id={ctx.ids.get(k)}>
           {titel}
@@ -940,6 +982,7 @@ export function ProtokollDokumentAnsicht({
     art,
     teilnahme: eingabe.teilnahme,
     ems: eingabe.ems.filter((m) => m.ausgewaehlt),
+    emsFreitext: eingabe.kopf.emsFreitext,
   });
   const alle = alleMitglieder(eingabe);
   const namen = (sub: string) => {
@@ -966,7 +1009,9 @@ export function ProtokollDokumentAnsicht({
     : null;
   const naechste = naechsteSitzungSatz(
     naechsteSitzungWert(eingabe.kopf, eingabe.naechsteSitzungVorschlag),
+    eingabe.kopf.naechsteSitzungOrt,
   );
+  const ende = endeSatz(art, kopf.leitung !== null, kopf.ende);
   const emsVorhanden = kopf.ems.length > 0 || kopf.emsFreitext !== '';
 
   return (
@@ -1027,7 +1072,18 @@ export function ProtokollDokumentAnsicht({
         {eingabe.inhalt.content.map((a, i) => (
           <Abschnitt key={i} k={a} ctx={ctx} />
         ))}
-        {naechste && <p data-testid="naechste-sitzung">{naechste}</p>}
+        {naechste && (
+          <p data-testid="naechste-sitzung">
+            {naechste.vor}
+            <strong>{naechste.fett}</strong>.
+          </p>
+        )}
+        {ende && (
+          <p data-testid="sitzung-ende">
+            {kopf.leitung && <PersonName p={kopf.leitung} />}
+            {ende}
+          </p>
+        )}
       </article>
     </DokumentRahmen>
   );

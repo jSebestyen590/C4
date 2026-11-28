@@ -39,7 +39,14 @@ const kontext = (rest: Partial<ProtokollAktionenKontext> = {}): ProtokollAktione
   sitzungDatum: SITZUNG,
   heute: '2026-11-12',
   events: {},
-  kategorien: { k1: { art: 'teilnahme', dauer: 'eintaegig', teilnahmeStatus: ['mitglied'] } },
+  kategorien: {
+    k1: {
+      name: 'Mitgliedertreffen',
+      art: 'teilnahme',
+      dauer: 'eintaegig',
+      teilnahmeStatus: ['mitglied'],
+    },
+  },
   personen: {},
   posten: {},
   ...rest,
@@ -76,7 +83,7 @@ const ereignis = (extra: Partial<AktionEventKontext> = {}): AktionEventKontext =
 });
 
 const dienstKategorien: ProtokollAktionenKontext['kategorien'] = {
-  k2: { art: 'dienste', dauer: 'eintaegig', teilnahmeStatus: null },
+  k2: { name: 'Barabend', art: 'dienste', dauer: 'eintaegig', teilnahmeStatus: null },
 };
 
 const eventDaten = {
@@ -90,7 +97,7 @@ const eventDaten = {
       art: 'betrieb' as const,
       beginnZeit: '19:00',
       endeZeit: '22:00',
-      bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2, personen: [] }],
     },
   ],
 };
@@ -159,6 +166,104 @@ describe('event.anlegen', () => {
     expect(a).toMatchObject({ ausfuehrbar: false, grund, plan: null });
   });
 
+  describe('Serienevent on the day', () => {
+    const serienEvents = {
+      '2026-12-05': [{ id: 'se1', serieName: 'Barabend', serieVorlageId: 'v1' }],
+    };
+    const plane = (daten: Record<string, unknown>, rest: Partial<ProtokollAktionenKontext>) =>
+      protokollAktionen(
+        dok(baustein('bausteinEvent', { ...eventDaten, ...daten })),
+        kontext({ kategorien: dienstKategorien, ...rest }),
+      )[0]!;
+
+    it('offers to replace it', () => {
+      const a = plane({}, { serienEvents });
+      expect(a.serie).toEqual({ eventId: 'se1', name: 'Barabend' });
+      expect(a.plan).toMatchObject({
+        art: 'event.anlegen',
+        ersetzen: { vorlage: { titel: 'Barabend' } },
+      });
+    });
+
+    it('offers nothing on another date, without a Serienevent or for the series Vorlage', () => {
+      expect(plane({ datum: '2026-12-06' }, { serienEvents }).serie).toBeUndefined();
+      expect(plane({}, {}).serie).toBeUndefined();
+      expect(plane({ vorlageId: 'v1' }, { serienEvents }).serie).toBeUndefined();
+    });
+
+    it('offers nothing for a teilnahme Kategorie', () => {
+      const a = plane(
+        { kategorieId: 'k1' },
+        {
+          serienEvents,
+          kategorien: {
+            k1: {
+              name: 'Treffen',
+              art: 'teilnahme',
+              dauer: 'eintaegig',
+              teilnahmeStatus: ['mitglied'],
+            },
+          },
+        },
+      );
+      expect(a.serie).toBeUndefined();
+    });
+  });
+
+  it('names the Kategorie in the text', () => {
+    const [a] = protokollAktionen(
+      dok(baustein('bausteinEvent', eventDaten)),
+      kontext({ kategorien: dienstKategorien }),
+    );
+    expect(a!.text).toBe(`Event Barabend „Barabend“ am 05.12.2026 im Kalender anlegen`);
+  });
+
+  it('ends the next day for a mehrtaegig Kategorie over midnight without bisDatum', () => {
+    const [a] = protokollAktionen(
+      dok(
+        baustein('bausteinEvent', {
+          name: '',
+          datum: '2026-12-17',
+          beginnZeit: '20:00',
+          endeZeit: '02:00',
+          kategorieId: 'm',
+        }),
+      ),
+      kontext({
+        kategorien: {
+          m: { name: 'Kneipenabend', art: 'teilnahme', dauer: 'mehrtaegig', teilnahmeStatus: null },
+        },
+      }),
+    );
+    expect(a!.ausfuehrbar).toBe(true);
+    expect(a!.text).toBe('Event Kneipenabend am 17.12.2026 im Kalender anlegen');
+    expect(a!.plan).toMatchObject({
+      eingabe: { beginn: '2026-12-17T19:00:00.000Z', ende: '2026-12-18T01:00:00.000Z' },
+    });
+  });
+
+  it('is not executable when the end lies before the begin', () => {
+    const [a] = protokollAktionen(
+      dok(
+        baustein('bausteinEvent', {
+          name: 'X',
+          datum: '2026-12-17',
+          bisDatum: '2026-12-16',
+          beginnZeit: '20:00',
+          endeZeit: '02:00',
+          kategorieId: 'm',
+        }),
+      ),
+      kontext({
+        kategorien: {
+          m: { name: 'Kneipenabend', art: 'teilnahme', dauer: 'mehrtaegig', teilnahmeStatus: null },
+        },
+      }),
+    );
+    // A bisDatum before the date is dropped, so it ends the next day.
+    expect(a!.ausfuehrbar).toBe(true);
+  });
+
   it('drops a leftover bisDatum for a single-day Kategorie', () => {
     const [a] = protokollAktionen(
       dok(baustein('bausteinEvent', { ...eventDaten, bisDatum: '2026-12-09' })),
@@ -181,7 +286,9 @@ describe('event.anlegen', () => {
         }),
       ),
       kontext({
-        kategorien: { g: { art: 'teilnahme', dauer: 'ganztaegig', teilnahmeStatus: null } },
+        kategorien: {
+          g: { name: 'Fest', art: 'teilnahme', dauer: 'ganztaegig', teilnahmeStatus: null },
+        },
       }),
     );
     expect(a!.ausfuehrbar).toBe(true);
@@ -236,7 +343,7 @@ describe('event.aendern', () => {
           art: 'betrieb' as const,
           beginnZeit: '19:00',
           endeZeit: '23:00',
-          bedarfe: [{ dienstformId: 'bar', minimum: 2, wunsch: 3 }],
+          bedarfe: [{ dienstformId: 'bar', minimum: 2, wunsch: 3, personen: [] }],
         },
       ],
     });
@@ -770,5 +877,110 @@ describe('Todo', () => {
     });
     const [a] = protokollAktionen(dok(b), kontext({ personen }));
     expect(a).toMatchObject({ art: 'todo.aendern', ausfuehrbar: false, grund: 'Der Titel fehlt.' });
+  });
+});
+
+describe('Dienste of an Event block (personen)', () => {
+  const mitPersonen = (personen: string[]) => ({
+    ...eventDaten,
+    schichten: [
+      {
+        art: 'betrieb' as const,
+        beginnZeit: '19:00',
+        endeZeit: '22:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2, personen }],
+      },
+    ],
+  });
+  const mitglied = (sub: string) => ({
+    art: 'mitglied' as const,
+    sub,
+    username: sub,
+    vorname: 'V',
+    nachname: 'N',
+    status: 'mitglied' as const,
+    anrede: 'neutral' as const,
+  });
+  const kt = { kategorien: dienstKategorien };
+  const mitEvent = (e = ereignis()) => kontext({ ...kt, events: { [e.id]: e } });
+
+  it('plans the persons for event.anlegen without putting them into the event input', () => {
+    const b = baustein('bausteinEvent', mitPersonen(['a', 'b']));
+    const [a] = protokollAktionen(dok(b), kontext(kt));
+    expect(a!.plan).toMatchObject({
+      art: 'event.anlegen',
+      dienste: [
+        { art: 'betrieb', dienstformId: 'bar', sub: 'a', beginn: '2026-12-05T18:00:00.000Z' },
+        { art: 'betrieb', dienstformId: 'bar', sub: 'b' },
+      ],
+    });
+    const schichtEingabe = (a!.plan as { eingabe: { schichten: unknown[] } }).eingabe.schichten[0];
+    expect(JSON.stringify(schichtEingabe)).not.toContain('personen');
+  });
+
+  it('plans persons of Aufbau/Putzen per Schicht', () => {
+    const b = baustein('bausteinEvent', {
+      ...eventDaten,
+      schichten: [
+        {
+          art: 'putzen' as const,
+          tagVersatz: 1,
+          beginnZeit: '10:00',
+          endeZeit: '12:00',
+          minimum: 1,
+          wunsch: 1,
+          personen: ['p'],
+        },
+      ],
+    });
+    const [a] = protokollAktionen(dok(b), kontext(kt));
+    expect(a!.plan).toMatchObject({
+      dienste: [{ art: 'putzen', dienstformId: null, sub: 'p' }],
+    });
+  });
+
+  it('adds an event.aendern for persons missing in the calendar, none when all are entered', () => {
+    const b = baustein('bausteinEvent', { ...mitPersonen(['a']), eventId: 'e1' });
+    const [a] = protokollAktionen(dok(b), mitEvent());
+    expect(a).toMatchObject({ art: 'event.aendern', ausfuehrbar: true });
+    expect(a!.text).toContain('Dienste');
+    expect(a!.plan).toMatchObject({ dienste: [{ sub: 'a', dienstformId: 'bar' }] });
+
+    const drin = ereignis({
+      schichten: [
+        schicht({
+          dienste: [
+            {
+              id: 'd1',
+              dienstformId: 'bar',
+              kommentar: null,
+              eingetragenVon: 'v',
+              person: mitglied('a'),
+            },
+          ],
+        }),
+      ],
+    });
+    expect(protokollAktionen(dok(b), mitEvent(drin))).toEqual([]);
+  });
+
+  it('does not remove people who are only in the calendar', () => {
+    const b = baustein('bausteinEvent', { ...mitPersonen([]), eventId: 'e1' });
+    const mitDienst = ereignis({
+      schichten: [
+        schicht({
+          dienste: [
+            {
+              id: 'd1',
+              dienstformId: 'bar',
+              kommentar: null,
+              eingetragenVon: 'v',
+              person: mitglied('x'),
+            },
+          ],
+        }),
+      ],
+    });
+    expect(protokollAktionen(dok(b), mitEvent(mitDienst))).toEqual([]);
   });
 });

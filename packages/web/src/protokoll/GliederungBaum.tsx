@@ -11,11 +11,11 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd';
 import { useEditorState, type Editor } from '@tiptap/react';
-import { flushSync } from 'react-dom';
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal, flushSync } from 'react-dom';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Griff } from '../SortierbareListe';
 import {
-  bausteinInGliederungVerschieben,
+  bausteinVerschiebenErgebnis,
   findeBaustein,
   gliederungBauen,
   gliederungZeilen,
@@ -45,16 +45,6 @@ export function zuBausteinScrollen(editor: Editor, id: string): void {
   el.style.scrollMarginTop = `${SCROLL_ABSTAND}px`;
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
-const platzhalterStil = (aktiv: boolean): CSSProperties => ({
-  minHeight: 42,
-  paddingInline: 'var(--mantine-spacing-sm)',
-  display: 'flex',
-  alignItems: 'center',
-  border: `1px dashed ${aktiv ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-default-border)'}`,
-  borderRadius: 'var(--mantine-radius-sm)',
-  background: aktiv ? 'var(--mantine-primary-color-light)' : undefined,
-});
 
 const ziehStil = (stil: CSSProperties | undefined, zieht: boolean): CSSProperties => ({
   ...stil,
@@ -93,28 +83,70 @@ export function Gliederung({
   );
   // Id of the Baustein being dragged: it decides which rows exist (notes slots, hidden nested rows).
   const [gezogenId, setGezogenId] = useState<string | null>(null);
-  const zeilen = useMemo(() => gliederungZeilen(baum, gezogenId), [baum, gezogenId]);
+  // No notes slots in the list: lifting must not change the layout above the dragged row. "Into the
+  // notes" is a combine (drop onto a row), see `ende`.
+  const zeilen = useMemo(
+    () => gliederungZeilen(baum, gezogenId).filter((z) => z.art !== 'notizen'),
+    [baum, gezogenId],
+  );
+
+  // While dragging only the outline scrolls: the window is locked from the start of the drag to its
+  // end (drop, cancel or unmount).
+  const sperre = useRef<(() => void) | null>(null);
+  const fensterSperren = () => {
+    if (sperre.current) return;
+    const html = document.documentElement;
+    const { overflow, scrollbarGutter } = html.style;
+    html.style.scrollbarGutter = 'stable';
+    html.style.overflow = 'hidden';
+    sperre.current = () => {
+      html.style.overflow = overflow;
+      html.style.scrollbarGutter = scrollbarGutter;
+      sperre.current = null;
+    };
+  };
+  useEffect(() => () => sperre.current?.(), []);
 
   // Set before pangea measures the list, so the rows of the drag are the ones that get measured.
-  const vorErfassen = (s: BeforeCapture) => flushSync(() => setGezogenId(s.draggableId));
-  const ende = ({ draggableId, destination }: DropResult) => {
+  const vorErfassen = (s: BeforeCapture) => {
+    flushSync(() => setGezogenId(s.draggableId));
+  };
+  // Locked after the lift (pangea has captured the window scroll by then).
+  const beiStart = () => fensterSperren();
+  const nichtMoeglich = () =>
+    notifications.show({
+      color: 'yellow',
+      message: 'Hierhin lässt sich der Baustein nicht verschieben.',
+    });
+  const ende = ({ draggableId, source, destination, combine }: DropResult) => {
     try {
-      if (!destination) return;
+      if (combine) {
+        // Dropped onto a row: at the end of its notes (checked by the move itself).
+        const e = bausteinVerschiebenErgebnis(editor.state, draggableId, {
+          elternId: combine.draggableId,
+          index: Number.MAX_SAFE_INTEGER,
+        });
+        if (e === null) nichtMoeglich();
+        else if (e !== 'unveraendert') editor.view.dispatch(e);
+        return;
+      }
+      if (!destination || destination.index === source.index) return;
       // Derived from the document and the dragged id, not from render state: the responder may still
       // hold the closure of an earlier render (then the notes slots would count as collapsed).
       const aktuell = gliederungZeilen(
         gliederungBauen(editor.state.doc, personName, kategorien),
         draggableId,
-      );
+      ).filter((z) => z.art !== 'notizen');
       const ziel = gliederungZiel(aktuell, draggableId, destination.index);
-      if (!ziel) return;
-      const tr = bausteinInGliederungVerschieben(editor.state, draggableId, ziel);
-      if (tr) editor.view.dispatch(tr);
+      const ergebnis = ziel ? bausteinVerschiebenErgebnis(editor.state, draggableId, ziel) : null;
+      if (ergebnis === null) nichtMoeglich();
+      else if (ergebnis !== 'unveraendert') editor.view.dispatch(ergebnis);
     } catch (fehler) {
       console.error('Gliederung: Verschieben fehlgeschlagen', fehler);
       notifications.show({ color: 'red', message: 'Verschieben hat nicht geklappt.' });
     } finally {
       setGezogenId(null);
+      sperre.current?.();
     }
   };
   const waehlen = (id: string) => {
@@ -169,15 +201,7 @@ export function Gliederung({
           </Text>
         );
       case 'notizen':
-        return (
-          <div {...drag.dragHandleProps} style={{ marginLeft: einzug(z.tiefe) }}>
-            <div style={platzhalterStil(false)}>
-              <Text size="xs" c="dimmed">
-                In die Notizen
-              </Text>
-            </div>
-          </div>
-        );
+        return null;
       case 'baustein':
       case 'kind': {
         const e = z.eintrag;
@@ -186,7 +210,14 @@ export function Gliederung({
             style={{
               ...ziehStil(undefined, dragSnap.isDragging),
               marginLeft: z.art === 'kind' ? einzug(z.tiefe) : 0,
+              // Drop onto the row = into its notes: only highlighted, the height stays.
+              ...(dragSnap.combineTargetFor && {
+                outline: '2px dashed var(--mantine-primary-color-filled)',
+                background: 'var(--mantine-primary-color-light)',
+                borderRadius: 'var(--mantine-radius-sm)',
+              }),
             }}
+            title={dragSnap.combineTargetFor ? 'In die Notizen' : undefined}
           >
             {eintragZeile(
               e,
@@ -199,9 +230,23 @@ export function Gliederung({
   };
 
   return (
-    <DragDropContext onBeforeCapture={vorErfassen} onDragEnd={ende}>
+    <DragDropContext onBeforeCapture={vorErfassen} onDragStart={beiStart} onDragEnd={ende}>
       <nav aria-label="Gliederung">
-        <Droppable droppableId="gliederung">
+        <Droppable
+          droppableId="gliederung"
+          isCombineEnabled
+          // The clone goes to the body: a transformed ancestor (the Drawer) would be the containing
+          // block of its `position: fixed` and the row would be drawn far from the pointer.
+          renderClone={(drag, dragSnap, rubric) => {
+            const z = zeilen[rubric.source.index]!;
+            return createPortal(
+              <div ref={drag.innerRef} {...drag.draggableProps} style={drag.draggableProps.style}>
+                {inhalt(z, drag, dragSnap)}
+              </div>,
+              document.body,
+            );
+          }}
+        >
           {(drop) => (
             <div ref={drop.innerRef} {...drop.droppableProps}>
               {zeilen.map((z, i) => (
@@ -209,7 +254,7 @@ export function Gliederung({
                   key={z.key}
                   draggableId={z.key}
                   index={i}
-                  isDragDisabled={z.art === 'abschnitt' || z.art === 'notizen' || zu(z)}
+                  isDragDisabled={z.art === 'abschnitt' || zu(z)}
                 >
                   {(drag, dragSnap) => (
                     <div

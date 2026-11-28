@@ -443,7 +443,7 @@ describe('protokolle', () => {
           ...protokollKopfLeer(),
           teilnahme: { r: 'verspaetet' },
           ems: ['e2'],
-          gaeste: 'Gast',
+          gaeste: ['Gast'],
         },
         version: 1,
       }),
@@ -459,7 +459,7 @@ describe('protokolle', () => {
       ['e1', false],
       ['e2', true],
     ]);
-    expect(dto.kopf.gaeste).toBe('Gast');
+    expect(dto.kopf.gaeste).toEqual(['Gast']);
   });
 
   it('pre-fills a new protocol from the latest earlier one', async () => {
@@ -728,7 +728,7 @@ describe('protokolle', () => {
     expect(dto.kopf).toEqual({
       ...protokollKopfLeer(),
       teilnahme: { r: 'anwesend' },
-      gaeste: 'Gast',
+      gaeste: ['Gast'],
     });
     expect(dto.teilnahme.find((x) => x.sub === 'r')?.wert).toBe('anwesend');
   });

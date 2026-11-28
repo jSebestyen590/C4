@@ -2,12 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   bausteinLeer,
   eventDatenAusKalender,
-  vorlageSchichtSchema,
+  bausteinSchichtSchema,
+  type BausteinSchicht,
   type VorlageSchicht,
 } from '@c4/shared';
 import {
   anzahlSetzen,
   bedarfEntfernen,
+  schichtenMitPersonen,
+  schichtPersonen,
+  schichtPersonenSetzen,
+  tagVersatzFuerDatum,
+  tageZwischen,
+  vergangenesBisSetzen,
+  vergangenesDatumSetzen,
   bedarfHinzufuegen,
   schichtNeu,
   bedarfSetzen,
@@ -53,7 +61,7 @@ import {
   notizenVorlage,
 } from './bausteinLogik';
 
-const betrieb: VorlageSchicht = {
+const betriebVorlage: VorlageSchicht = {
   art: 'betrieb',
   beginnZeit: '20:00',
   endeZeit: '04:00',
@@ -62,7 +70,7 @@ const betrieb: VorlageSchicht = {
     { dienstformId: 'kasse', minimum: 1, wunsch: 1 },
   ],
 };
-const aufbau: VorlageSchicht = {
+const aufbauVorlage: VorlageSchicht = {
   art: 'aufbau',
   tagVersatz: 0,
   beginnZeit: '16:00',
@@ -71,12 +79,18 @@ const aufbau: VorlageSchicht = {
   wunsch: 4,
 };
 
+// The same Schichten as Baustein Schichten (nobody entered).
+const [betrieb, aufbau] = schichtenMitPersonen([betriebVorlage, aufbauVorlage]) as [
+  BausteinSchicht,
+  BausteinSchicht,
+];
+
 describe('eventDatenAusVorlage', () => {
   const vorlage = {
     id: 'v1',
     beginnZeit: '20:00',
     endeZeit: '04:00',
-    schichten: [betrieb, aufbau],
+    schichten: [betriebVorlage, aufbauVorlage],
   };
   it('copies name, times and Schichten, leaves the date empty', () => {
     const d = eventDatenAusVorlage(vorlage, { art: 'dienste', dauer: 'eintaegig' }, 'Barabend');
@@ -185,12 +199,14 @@ describe('Schichten stay valid', () => {
       dienstformId: 'bar',
       minimum: 5,
       wunsch: 5,
+      personen: [],
     });
     const b = bedarfSetzen(betrieb, 0, { wunsch: 1 });
     expect(b.art === 'betrieb' && b.bedarfe[0]).toEqual({
       dienstformId: 'bar',
       minimum: 1,
       wunsch: 1,
+      personen: [],
     });
   });
   it('keeps the Betrieb minimum at 1 and the Aufbau minimum at 0', () => {
@@ -208,7 +224,7 @@ describe('Schichten stay valid', () => {
             : anzahlSetzen(s, { minimum: n }),
           s.art === 'betrieb' ? bedarfSetzen(s, 0, { wunsch: n }) : anzahlSetzen(s, { wunsch: n }),
         ];
-        for (const k of kandidaten) expect(vorlageSchichtSchema.safeParse(k).success).toBe(true);
+        for (const k of kandidaten) expect(bausteinSchichtSchema.safeParse(k).success).toBe(true);
       }
     }
   });
@@ -645,7 +661,7 @@ describe('Dienste hinzufügen', () => {
   it('creates valid Schichten of every art with the event times', () => {
     for (const art of ['betrieb', 'aufbau', 'putzen'] as const) {
       const s = schichtNeu(art, zeiten, 'd1');
-      expect(vorlageSchichtSchema.safeParse(s).success).toBe(true);
+      expect(bausteinSchichtSchema.safeParse(s).success).toBe(true);
       expect(s).toMatchObject({ art, beginnZeit: '20:00', endeZeit: '04:00' });
     }
   });
@@ -660,9 +676,40 @@ describe('Dienste hinzufügen', () => {
     const zwei = bedarfHinzufuegen(s, 'd2');
     expect(zwei.art === 'betrieb' && zwei.bedarfe.map((b) => b.dienstformId)).toEqual(['d1', 'd2']);
     expect(bedarfHinzufuegen(zwei, 'd2')).toBe(zwei);
-    expect(vorlageSchichtSchema.safeParse(zwei).success).toBe(true);
+    expect(bausteinSchichtSchema.safeParse(zwei).success).toBe(true);
     const eins = bedarfEntfernen(zwei, 0);
     expect(eins.art === 'betrieb' && eins.bedarfe.map((b) => b.dienstformId)).toEqual(['d2']);
     expect(bedarfEntfernen(eins, 0)).toBe(eins);
+  });
+});
+
+describe('Personen und Datum der Schichten', () => {
+  it('enters persons per Bedarf and per Aufbau/Putzen Schicht (each once)', () => {
+    const b = schichtPersonenSetzen(betrieb, 1, ['a', 'b', 'a']);
+    expect(schichtPersonen(b, 1)).toEqual(['a', 'b']);
+    expect(schichtPersonen(b, 0)).toEqual([]);
+    expect(schichtPersonen(schichtPersonenSetzen(aufbau, 0, ['x']))).toEqual(['x']);
+  });
+  it('new Schichten start without persons', () => {
+    expect(
+      schichtPersonen(schichtNeu('aufbau', { beginnZeit: null, endeZeit: null }, 'd')),
+    ).toEqual([]);
+    const s = bedarfHinzufuegen(
+      schichtNeu('betrieb', { beginnZeit: null, endeZeit: null }, 'd'),
+      'e',
+    );
+    expect(s.art === 'betrieb' && s.bedarfe.map((x) => x.personen)).toEqual([[], []]);
+  });
+  it('computes the tagVersatz from a chosen date', () => {
+    expect(tageZwischen('2026-11-28', '2026-11-27')).toBe(-1);
+    expect(tageZwischen('2026-02-27', '2026-03-02')).toBe(3);
+    expect(tagVersatzFuerDatum('2026-11-28', '2026-11-29')).toBe(1);
+    expect(tagVersatzFuerDatum('2026-11-28', '2030-11-29')).toBe(365);
+  });
+  it('keeps the last day of a Vergangenes Event after the first day', () => {
+    const d = { eventId: null, name: 'x', datum: '2026-02-11', bisDatum: '2026-02-13' };
+    expect(vergangenesDatumSetzen(d, '2026-02-14').bisDatum).toBe('2026-02-14');
+    expect(vergangenesBisSetzen(d, '2026-02-10').bisDatum).toBeNull();
+    expect(vergangenesBisSetzen(d, '2026-02-12').bisDatum).toBe('2026-02-12');
   });
 });

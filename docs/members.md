@@ -88,7 +88,7 @@ können als Anwärter:in einsteigen (`statusUebergangUeblich` in `packages/share
 Reihenfolge nicht.
 
 Statuswechsel und Einladungen entstehen auch aus **Protokollen**: Beim Abschließen laden Anwärter:in-Bausteine ein (Konto plus
-Profil als Anwärter:in), Aufnahme und Neues EM setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum (liegt es in der Zukunft, ab heute).
+Profil als Anwärter:in), Aufnahme und Austritt (früher Neues EM) setzen den Status (`mitglied`, `em` bzw. `extern`), jeweils ab dem Sitzungsdatum (liegt es in der Zukunft, ab heute).
 Das läuft mit dem Recht `protokolle:schreiben`, ohne `users:manage`; siehe [protokolle/aktionen.md](./protokolle/aktionen.md).
 
 ## Status-Historie

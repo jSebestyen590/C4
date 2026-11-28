@@ -1,10 +1,17 @@
 import { MantineProvider } from '@mantine/core';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToStaticMarkup as rendern } from 'react-dom/server';
+import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { bausteinLeer, protokollKopfLeer, type ProtokollKnoten } from '@c4/shared';
 import { WiederholungHinweis } from './WiederholungHinweis';
 import { ProtokollDokumentAnsicht } from './ProtokollDokumentAnsicht';
 import type { DokumentEingabe } from './dokumentDaten';
+
+/** The scroll anchors (`data-id`) for the preview jump are not part of what is compared. */
+const renderToStaticMarkup = (el: ReactElement): string =>
+  rendern(el)
+    .replace(/<span data-id="[^"]*"[^>]*><\/span>/g, '')
+    .replace(/ data-id="[^"]*"/g, '');
 
 const text = (t: string): ProtokollKnoten => ({
   type: 'paragraph',
@@ -594,7 +601,8 @@ describe('ProtokollDokumentAnsicht', () => {
     );
     expect(voll).toContain('>Sonstiges<');
     expect(voll).toContain('Grillen im Sommer');
-    const satz = 'Die nächste Sitzung findet am Dienstag, 13.02.2024 um 20:00 Uhr statt.';
+    const satz =
+      'Die nächste Sitzung findet statt am <strong>Dienstag, 13.02.2024 um 20:00 Uhr im C4</strong>.';
     expect(voll).toContain(satz);
     expect(voll.indexOf(satz)).toBeGreaterThan(voll.indexOf('Grillen im Sommer'));
   });
@@ -608,6 +616,98 @@ describe('Wiederholung einer Abstimmung', () => {
     content: [{ type: 'paragraph' }],
   });
   const stimmen = { ja: 0, nein: 0, enthaltung: 0, ergebnis: null };
+
+  describe('usability round', () => {
+    const roh = (e: DokumentEingabe): string =>
+      rendern(
+        <MantineProvider>
+          <ProtokollDokumentAnsicht eingabe={e} />
+        </MantineProvider>,
+      );
+    const mitInhalt = (
+      inhalt: ProtokollKnoten[],
+      kopf: Partial<DokumentEingabe['kopf']> = {},
+    ): DokumentEingabe => ({
+      ...eingabe,
+      kopf: { ...eingabe.kopf, ...kopf },
+      inhalt: {
+        type: 'doc',
+        content: [
+          {
+            type: 'abschnitt',
+            attrs: { art: 'vergangenes' },
+            content: [...inhalt, { type: 'paragraph' }],
+          },
+          { type: 'abschnitt', attrs: { art: 'gegenwaertiges' }, content: [{ type: 'paragraph' }] },
+          { type: 'abschnitt', attrs: { art: 'zukuenftiges' }, content: [{ type: 'paragraph' }] },
+        ],
+      },
+    });
+    const anwesenheit = (id: string, art: string, uhrzeit: string, daten: object) => ({
+      type: 'bausteinAnwesenheit',
+      attrs: { id, daten: { art, uhrzeit, sub: null, name: '', ...daten } },
+    });
+
+    it('lists EM chips and guests with their times; externals are plain text', () => {
+      const html = roh(
+        mitInhalt([anwesenheit('x1', 'erscheint', '19:30', { name: 'Ralle' })], {
+          emsFreitext: ['Anna'],
+          gaeste: ['Ralle', 'Bob'],
+        }),
+      );
+      expect(html).toContain('Gäste:');
+      expect(html).toContain('Ralle (ab 19:30 Uhr), Bob');
+      expect(html).toContain('Anna');
+      expect(html).toContain('Ralle erscheint um 19:30 Uhr.');
+    });
+
+    it('renders the inline quote in quotation marks, also across several text nodes', () => {
+      const html = roh(
+        mitInhalt([
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Er sagte ' },
+              { type: 'text', text: 'ganz ', marks: [{ type: 'zitatInline' }] },
+              { type: 'text', text: 'leise', marks: [{ type: 'zitatInline' }, { type: 'bold' }] },
+            ],
+          },
+        ]),
+      );
+      expect(html).toContain('„');
+      expect(html.match(/„/g)).toHaveLength(1);
+      expect(html.match(/“/g)).toHaveLength(1);
+    });
+
+    it('leaves a Merker out of the document', () => {
+      const html = roh(
+        mitInhalt([
+          {
+            type: 'bausteinMerker',
+            attrs: { id: 'm1', daten: {} },
+            content: [text('Datum prüfen')],
+          },
+        ]),
+      );
+      expect(html).not.toContain('Datum prüfen');
+    });
+
+    it('ends with the end of the Sitzung, only when it is set', () => {
+      expect(roh(mitInhalt([]))).not.toContain('beendet die Sitzung');
+      const html = roh(mitInhalt([], { ende: '22:10' }));
+      expect(html).toContain('beendet die Sitzung um 22:10 Uhr.');
+      expect(html).toContain('data-testid="sitzung-ende"');
+      const ohneLeitung = roh(mitInhalt([], { ende: '22:10', sitzungsleitung: null }));
+      expect(ohneLeitung).toContain('Die Sitzung endet um 22:10 Uhr.');
+    });
+
+    it('gives every Baustein a data-id for the preview jump', () => {
+      const html = roh(eingabe);
+      expect(html).toContain('data-id="a"');
+      expect(html).toContain('data-id="b"');
+      expect(html).toContain('data-id="abschnitt:vergangenes"');
+    });
+  });
 
   it('shows the hint in the document for every kind of vote', () => {
     const [vergangenes, gegenwaertiges, zukuenftiges] = eingabe.inhalt.content;

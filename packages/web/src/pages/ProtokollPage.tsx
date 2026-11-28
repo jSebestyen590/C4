@@ -28,6 +28,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   anwesenheitsZeiten,
   stimmenPruefen,
+  type ProtokollAktionDto,
   type ProtokollDokument,
   type ProtokollDto,
   type ProtokollKopf as KopfDaten,
@@ -47,7 +48,9 @@ import {
   vorgewaehlteAktionen,
 } from '../protokoll/aktionenLogik';
 import { zuBausteinIdScrollen } from '../protokoll/GliederungBaum';
-import { effektiveTeilnahme, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
+import { merkerListe } from '../protokoll/merker';
+import { dokumentStelleScrollen } from '../protokoll/vorschauSprung';
+import { effektiveTeilnahme, kopfMitExternem, kopfNachAnwesenheit } from '../protokoll/anwesenheit';
 import { druckTitel, mitLiveKopf } from '../protokoll/dokumentDaten';
 import { ProtokollDokumentAnsicht } from '../protokoll/ProtokollDokumentAnsicht';
 import { NaechsteSitzungKarte } from '../protokoll/NaechsteSitzungKarte';
@@ -119,12 +122,16 @@ function AbschliessenAktionen({
   q,
   auswahl,
   onAuswahl,
+  zusaetzlich,
+  onZusaetzlich,
 }: Readonly<{
   /** Whether the draft is saved (null = still saving). */
   gespeichert: boolean | null;
   q: Pick<ReturnType<typeof useProtokollAktionen>, 'data' | 'isLoading' | 'isError'>;
   auswahl: readonly string[];
   onAuswahl: (ids: string[]) => void;
+  zusaetzlich: readonly string[];
+  onZusaetzlich: (ids: string[]) => void;
 }>) {
   if (gespeichert === null || (gespeichert === true && q.isLoading)) {
     return (
@@ -162,6 +169,8 @@ function AbschliessenAktionen({
         aktionen={q.data}
         auswahl={auswahl}
         onAuswahl={(neu) => onAuswahl(gueltigeAuswahl(neu, q.data ?? []))}
+        zusaetzlich={zusaetzlich}
+        onZusaetzlich={onZusaetzlich}
       />
     </Stack>
   );
@@ -244,7 +253,24 @@ function ProtokollAnsicht({
     [inhalt, kopf, dto, mitgliederListe, ich, bilder.urls, bilder.erneuern, kategorien, offiziell],
   );
   const [vorschauOffen, vorschau] = useDisclosure(false);
+  const merker = useMemo(() => merkerListe(inhalt), [inhalt]);
   const [ansicht, setAnsicht] = useState<Ansicht>('bearbeiten');
+  // The preview jumps once to the place of the cursor (no coupled scrolling).
+  const aktiveStelleRef = useRef<(() => string | null) | null>(null);
+  const springeZu = useRef<string | null>(null);
+  useEffect(() => {
+    if (ansicht !== 'dokument' || !springeZu.current) return;
+    dokumentStelleScrollen(springeZu.current);
+    springeZu.current = null;
+  }, [ansicht]);
+  useEffect(() => {
+    if (!vorschauOffen) return;
+    const id = aktiveStelleRef.current?.() ?? null;
+    if (!id) return;
+    // After the drawer's opening transition.
+    const t = setTimeout(() => dokumentStelleScrollen(id), 350);
+    return () => clearTimeout(t);
+  }, [vorschauOffen]);
   const [druckAuftrag, setDruckAuftrag] = useState(0);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [ladeNeu, setLadeNeu] = useState(false);
@@ -260,6 +286,10 @@ function ProtokollAnsicht({
   );
   // The user's choice; until they touch it the executable open Aktionen are checked.
   const [eigeneAuswahl, setEigeneAuswahl] = useState<string[] | null>(null);
+  // Aktionen with a Serienevent that are created in addition (default: they replace it).
+  const [zusaetzlich, setZusaetzlich] = useState<string[]>([]);
+  const serieErsetzenVon = (liste: readonly ProtokollAktionDto[] | undefined) =>
+    (liste ?? []).filter((a) => a.serie && !zusaetzlich.includes(a.id)).map((a) => a.id);
   const gewaehlteAktionen =
     eigeneAuswahl ?? (dialogAktionen.data ? vorgewaehlteAktionen(dialogAktionen.data) : []);
   const aktionenLaden =
@@ -293,6 +323,28 @@ function ProtokollAnsicht({
       aendern({ kopf: neu });
     },
     [dto, aendern],
+  );
+  /** /erscheint or /geht with an unknown name: the chip joins the Kopf. */
+  const externHinzufuegen = useCallback(
+    (art: 'em' | 'gast', name: string) => {
+      const neu = kopfMitExternem(kopfRef.current, art, name);
+      if (!neu) return;
+      kopfRef.current = neu;
+      setKopf(neu);
+      aendern({ kopf: neu });
+    },
+    [aendern],
+  );
+  /** /ende: the end of the Sitzung is the current time. */
+  const endeSetzen = useCallback(
+    (uhrzeit: string) => {
+      const neu = { ...kopfRef.current, ende: uhrzeit };
+      kopfRef.current = neu;
+      setKopf(neu);
+      aendern({ kopf: neu });
+      notifications.show({ color: 'green', message: `Ende ${uhrzeit} eingetragen` });
+    },
+    [aendern],
   );
   const inhaltAendern = (doc: ProtokollDokument) => {
     setInhalt(doc);
@@ -329,11 +381,20 @@ function ProtokollAnsicht({
   };
 
   /** Saves pending changes first, then changes the status; the refetch remounts this view. */
-  const statusSetzen = async (neu: 'entwurf' | 'abgeschlossen', aktionen?: string[]) => {
+  const statusSetzen = async (
+    neu: 'entwurf' | 'abgeschlossen',
+    aktionen?: string[],
+    serieErsetzen?: string[],
+  ) => {
     if (editierbar && !(await jetzt())) {
       throw new ApiFehler(0, 'Das Protokoll konnte nicht gespeichert werden.');
     }
-    const antwort = await status.mutateAsync({ id: dto.id, status: neu, aktionen });
+    const antwort = await status.mutateAsync({
+      id: dto.id,
+      status: neu,
+      aktionen,
+      serieErsetzen,
+    });
     aktionenMelden(antwort.aktionen ?? []);
     // The PDF of the closed protocol goes to OneDrive (or is downloaded); closing is done either way.
     if (neu === 'abgeschlossen') void pdfSpeichern(dto.id);
@@ -342,6 +403,7 @@ function ProtokollAnsicht({
   /** Saves the draft, then the closing dialog may load the Aktionen. */
   const abschliessenOeffnen = () => {
     setEigeneAuswahl(null);
+    setZusaetzlich([]);
     setEntwurfGespeichert(null);
     setDialog('abschliessen');
     void jetzt().then(setEntwurfGespeichert, () => setEntwurfGespeichert(false));
@@ -349,7 +411,11 @@ function ProtokollAnsicht({
 
   const aktionenStarten = async (aktionId: string) => {
     try {
-      const antwort = await aktionenAusfuehren.mutateAsync({ id: dto.id, aktionen: [aktionId] });
+      const antwort = await aktionenAusfuehren.mutateAsync({
+        id: dto.id,
+        aktionen: [aktionId],
+        serieErsetzen: serieErsetzenVon(kartenAktionen.data),
+      });
       aktionenMelden(antwort.ergebnisse);
     } catch (e) {
       fehlerAnzeigen(e);
@@ -531,7 +597,10 @@ function ProtokollAnsicht({
             fullWidth
             size="md"
             value={ansicht}
-            onChange={(v) => setAnsicht(v as Ansicht)}
+            onChange={(v) => {
+              if (v === 'dokument') springeZu.current = aktiveStelleRef.current?.() ?? null;
+              setAnsicht(v as Ansicht);
+            }}
             data={[
               { value: 'bearbeiten', label: 'Bearbeiten' },
               { value: 'dokument', label: 'Dokument' },
@@ -560,7 +629,12 @@ function ProtokollAnsicht({
             ems={ems}
             mitglieder={mitgliederListe}
             onAnwesenheit={anwesenheit}
+            emsFreitext={kopf.emsFreitext}
+            gaeste={kopf.gaeste}
+            onExternHinzufuegen={externHinzufuegen}
+            onEnde={endeSetzen}
             bilder={bilder}
+            aktiveStelleRef={aktiveStelleRef}
           />
           <NaechsteSitzungKarte
             kopf={kopf}
@@ -581,6 +655,8 @@ function ProtokollAnsicht({
           }
           gesperrt={aktionenAusfuehren.isPending}
           onAusfuehren={(aktionId) => void aktionenStarten(aktionId)}
+          zusaetzlich={zusaetzlich}
+          onZusaetzlich={setZusaetzlich}
         />
       )}
       {sperrePrueft && <Loader m="md" aria-label="Bearbeitung wird vorbereitet" />}
@@ -633,7 +709,9 @@ function ProtokollAnsicht({
           bestaetigenText="Abschließen"
           gesperrt={stimmenProbleme.length > 0 || aktionenLaden}
           onClose={() => setDialog(null)}
-          onBestaetigt={() => statusSetzen('abgeschlossen', gewaehlteAktionen)}
+          onBestaetigt={() =>
+            statusSetzen('abgeschlossen', gewaehlteAktionen, serieErsetzenVon(dialogAktionen.data))
+          }
         >
           <Text>
             Beim Abschließen wird die Teilnahme eingefroren: Spätere Zu- oder Absagen ändern sie
@@ -662,12 +740,38 @@ function ProtokollAnsicht({
               </Stack>
             </Alert>
           )}
+          {merker.length > 0 && (
+            <Alert color="yellow" title="Noch zu überarbeiten">
+              <Stack gap="xs" align="flex-start">
+                <Text size="sm">
+                  Im Protokoll{' '}
+                  {merker.length === 1 ? 'steht noch ein Merker' : 'stehen noch Merker'}. Du kannst
+                  trotzdem abschließen.
+                </Text>
+                {merker.map((m) => (
+                  <Anchor
+                    key={m.id}
+                    component="button"
+                    type="button"
+                    size="sm"
+                    ta="left"
+                    style={{ minHeight: 42, overflowWrap: 'anywhere' }}
+                    onClick={() => zuBaustein(m.id)}
+                  >
+                    {m.text || 'Merker ohne Text'}
+                  </Anchor>
+                ))}
+              </Stack>
+            </Alert>
+          )}
           {stimmenProbleme.length === 0 && (
             <AbschliessenAktionen
               gespeichert={entwurfGespeichert}
               q={dialogAktionen}
               auswahl={gewaehlteAktionen}
               onAuswahl={setEigeneAuswahl}
+              zusaetzlich={zusaetzlich}
+              onZusaetzlich={setZusaetzlich}
             />
           )}
         </BestaetigenDialog>

@@ -42,6 +42,21 @@ export interface AnwesenheitsEingabe {
   teilnahme: ReadonlyArray<{ sub: string; status: MitgliedStatus; wert: ProtokollTeilnahmeWert }>;
   /** The EMs who count as present (chosen in the Kopf). Only used for the head count of a Meinungsbild. */
   ems?: ReadonlyArray<{ sub: string }>;
+  /**
+   * Names of the EM chips of the Kopf (EMs without the app). Like the chosen EMs they count as present
+   * for the head count of a Meinungsbild (until a `geht` block, or from an `erscheint` block on if that
+   * is their first block); they never count for the quorum. Guests are not counted at all.
+   */
+  emsFreitext?: readonly string[];
+}
+
+/** Key of an external person (EM chip, guest) by name in `anwesenheitsZeiten`: `extern:<name>`. */
+export const externSchluessel = (name: string): string => `extern:${name.trim()}`;
+
+/** The key of the person of an Anwesenheit block: the `sub`, `extern:<name>`, or null without a person. */
+function anwesenheitSchluessel(d: { sub: string | null; name: string }): string | null {
+  if (d.sub !== null) return d.sub;
+  return d.name.trim() === '' ? null : externSchluessel(d.name);
 }
 
 export interface AnwesenheitsVerlauf {
@@ -53,7 +68,7 @@ export interface AnwesenheitsVerlauf {
    */
   bausteine: Record<string, Beschlussfaehigkeit & { wechsel: boolean }>;
   /**
-   * Number of people present (every status plus the chosen EMs, guests are free text and not counted)
+   * Number of people present (every status plus the chosen EMs and the present EM chips, guests are not counted)
    * at each `bausteinMeinungsbild`, by Baustein id.
    */
   anwesendePersonen: Record<string, number>;
@@ -74,15 +89,18 @@ export interface AnwesenheitsZeit {
 /**
  * Per person with at least one Anwesenheit block (with a person) the times from the blocks, in
  * document order: `ab` = first `erscheint` that has a time, `bis` = last `geht` that has a time.
- * These people are locked to "da" in the Kopf.
+ * These people are locked to "da" in the Kopf. External people (a block with a `name` and no `sub`)
+ * are in the same record under `externSchluessel(name)` (`extern:<name>`).
  */
 export function anwesenheitsZeiten(dokument: ProtokollDokument): Record<string, AnwesenheitsZeit> {
   const zeiten: Record<string, AnwesenheitsZeit> = {};
   inReihenfolge(dokument, (knoten) => {
     if (knoten.type !== 'bausteinAnwesenheit') return;
     const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
-    if (!daten.success || daten.data.sub === null) return;
-    const { sub, art, uhrzeit } = daten.data;
+    if (!daten.success) return;
+    const sub = anwesenheitSchluessel(daten.data);
+    if (sub === null) return;
+    const { art, uhrzeit } = daten.data;
     const z = (zeiten[sub] ??= { ab: '', bis: '' });
     if (art === 'erscheint') {
       if (z.ab === '') z.ab = uhrzeit;
@@ -133,9 +151,11 @@ export function anwesenheitsVerlauf(
   inReihenfolge(dokument, (knoten) => {
     if (knoten.type !== 'bausteinAnwesenheit') return;
     const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
-    if (!daten.success || daten.data.sub === null || gesehen.has(daten.data.sub)) return;
-    gesehen.add(daten.data.sub);
-    if (daten.data.art === 'erscheint') spaeter.add(daten.data.sub);
+    if (!daten.success) return;
+    const schluessel = anwesenheitSchluessel(daten.data);
+    if (schluessel === null || gesehen.has(schluessel)) return;
+    gesehen.add(schluessel);
+    if (daten.data.art === 'erscheint') spaeter.add(schluessel);
   });
   const teilnahme = teilnahmeMitBloecken(eingabe.teilnahme, dokument);
 
@@ -151,6 +171,10 @@ export function anwesenheitsVerlauf(
     ...(eingabe.ems ?? []).map((e) => e.sub),
   ]);
 
+  // EM chips (EMs without the app) present: counted for the Meinungsbild only, never for the quorum.
+  const emChips = new Set((eingabe.emsFreitext ?? []).map((n) => externSchluessel(n)));
+  const chipsDa = new Set([...emChips].filter((k) => !spaeter.has(k)));
+
   const start = stand();
   let aktuell = start;
   const bausteine: AnwesenheitsVerlauf['bausteine'] = {};
@@ -161,6 +185,13 @@ export function anwesenheitsVerlauf(
     if (typeof id !== 'string') return;
     if (knoten.type === 'bausteinAnwesenheit') {
       const daten = bausteinAnwesenheitDatenSchema.safeParse(knoten.attrs?.daten);
+      if (daten.success && daten.data.sub === null) {
+        const k = anwesenheitSchluessel(daten.data);
+        if (k !== null && emChips.has(k)) {
+          if (daten.data.art === 'erscheint') chipsDa.add(k);
+          else chipsDa.delete(k);
+        }
+      }
       if (daten.success && daten.data.sub !== null) {
         const erscheint = daten.data.art === 'erscheint';
         if (alle.has(daten.data.sub)) {
@@ -191,7 +222,7 @@ export function anwesenheitsVerlauf(
     ) {
       bausteine[id] = { ...aktuell, wechsel: false };
     } else if (knoten.type === 'bausteinMeinungsbild') {
-      anwesendePersonen[id] = personen.size;
+      anwesendePersonen[id] = personen.size + chipsDa.size;
     }
   });
   return { start, bausteine, anwesendePersonen };

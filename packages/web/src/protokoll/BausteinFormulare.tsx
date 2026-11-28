@@ -1,3 +1,4 @@
+import { ListenMultiSelect, ListenSelect } from '../ListenSelect';
 import {
   Anchor,
   ActionIcon,
@@ -5,16 +6,17 @@ import {
   Autocomplete,
   Badge,
   Button,
+  Grid,
   Group,
-  MultiSelect,
   Paper,
-  Select,
   SegmentedControl,
   SimpleGrid,
   Stack,
   Switch,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { InfoHinweis } from '../InfoHinweis';
 import { IconAlertTriangle, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, type ReactNode } from 'react';
@@ -24,7 +26,6 @@ import {
   auswahlErgebnis,
   auswahlRunden,
   datumAnzeigen,
-  datumBerlin,
   ERWAEHNUNG_GRUPPEN,
   eventDatenAusKalender,
   MEINUNGSBILD_MAX_OPTIONEN,
@@ -75,6 +76,9 @@ import {
   auswahlOptionHinzufuegen,
   auswahlOptionSetzen,
   eventBisSetzen,
+  vergangenesAusKalender,
+  vergangenesBisSetzen,
+  vergangenesDatumSetzen,
   eventDatumSetzen,
   kandidatEntfernen,
   kandidatHinzufuegen,
@@ -111,8 +115,6 @@ export interface FormularProps<T> {
   aendern: (f: (alt: T) => T) => void;
   editierbar: boolean;
 }
-
-const zweiSpalten = { gap: 'xs', preventGrowOverflow: false, align: 'flex-start' } as const;
 
 function Mitglied({ sub }: Readonly<{ sub: string }>) {
   const mitglieder = useMitgliederListe();
@@ -260,7 +262,7 @@ export function EventFormular({
       <Text size="sm" c="dimmed">
         {vorlageText}
       </Text>
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Im Kalender"
         data-fokus="kalender"
@@ -279,77 +281,88 @@ export function EventFormular({
         nothingFoundMessage="Kein Event gefunden"
       />
       {daten.eventId && <KalenderLink eventId={daten.eventId} />}
-      <Select
-        allowDeselect={false}
-        label="Kategorie"
-        description={
-          kategorieWert
-            ? undefined
-            : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
-        }
-        placeholder="Keine Kategorie"
-        searchable
-        // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
-        clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
-        data={kategorieOptionen}
-        value={kategorieWert}
-        onChange={(kategorieId) => {
-          const neu = kategorien.liste.find((k) => k.id === (kategorieId ?? vorlage?.kategorieId));
-          aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer, neu?.art));
-        }}
-        nothingFoundMessage="Keine Kategorie gefunden"
-      />
-      <LokalText
-        label="Name"
-        data-fokus="name"
-        wert={daten.name}
-        maxLength={200}
-        onWert={(name) => aendern((d) => ({ ...d, name }))}
-      />
-      <Group grow {...zweiSpalten}>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs" style={{ alignItems: 'end' }}>
+        <ListenSelect
+          allowDeselect={false}
+          label="Kategorie"
+          description={
+            kategorieWert
+              ? undefined
+              : 'Nötig, damit das Event beim Abschließen im Kalender angelegt werden kann.'
+          }
+          placeholder="Keine Kategorie"
+          searchable
+          // Without an own value the Vorlage's Kategorie counts (old data); it cannot be cleared then.
+          clearable={!vorlage?.kategorieId || daten.kategorieId !== null}
+          data={kategorieOptionen}
+          value={kategorieWert}
+          onChange={(kategorieId) => {
+            const neu = kategorien.liste.find(
+              (k) => k.id === (kategorieId ?? vorlage?.kategorieId),
+            );
+            aendern((d) => eventKategorieSetzen(d, kategorieId, neu?.dauer, neu?.art));
+          }}
+          nothingFoundMessage="Keine Kategorie gefunden"
+        />
+        <LokalText
+          label="Name"
+          data-fokus="name"
+          wert={daten.name}
+          maxLength={200}
+          onWert={(name) => aendern((d) => ({ ...d, name }))}
+        />
+      </SimpleGrid>
+      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs" style={{ alignItems: 'end' }}>
         <DatumFeld
           tippbar
-          label={zeigeBis ? 'Von' : 'Datum'}
+          label={zeigeBis ? 'Datum von' : 'Datum'}
           data-fokus="datum"
           loeschbar={false}
           value={daten.datum ?? ''}
           onWert={(datum) => aendern((d) => eventDatumSetzen(d, datum || null, dauer, tage))}
           style={{ minWidth: 0 }}
         />
-        {zeigeBis && (
+        {zeigeBis ? (
           <DatumFeld
             tippbar
-            label={mehrtaegig ? 'Bis' : 'Bis (optional)'}
+            label={mehrtaegig ? 'Datum bis' : 'Datum bis (optional)'}
             value={daten.bisDatum ?? ''}
             min={daten.datum ?? undefined}
             onWert={(bis) => aendern((d) => eventBisSetzen(d, bis || null))}
             style={{ minWidth: 0 }}
           />
+        ) : (
+          <div />
         )}
-      </Group>
-      {dauer !== 'ganztaegig' && (
-        <Group grow {...zweiSpalten}>
-          <ZeitFeld
-            label="Beginn"
-            value={daten.beginnZeit ?? ''}
-            onWert={(w) => {
-              const zeit = zeitWert(w);
-              if (zeit !== undefined) aendern((d) => ({ ...d, beginnZeit: zeit }));
-            }}
-            style={{ minWidth: 0 }}
-          />
-          <ZeitFeld
-            label="Ende"
-            value={daten.endeZeit ?? ''}
-            onWert={(w) => {
-              const zeit = zeitWert(w);
-              if (zeit !== undefined) aendern((d) => ({ ...d, endeZeit: zeit }));
-            }}
-            style={{ minWidth: 0 }}
-          />
-        </Group>
-      )}
-      <Select
+        {dauer !== 'ganztaegig' ? (
+          <>
+            <ZeitFeld
+              label="Uhrzeit von"
+              value={daten.beginnZeit ?? ''}
+              onWert={(w) => {
+                const zeit = zeitWert(w);
+                if (zeit !== undefined) aendern((d) => ({ ...d, beginnZeit: zeit }));
+              }}
+              style={{ minWidth: 0 }}
+            />
+            <ZeitFeld
+              label="Uhrzeit bis"
+              value={daten.endeZeit ?? ''}
+              onWert={(w) => {
+                const zeit = zeitWert(w);
+                if (zeit !== undefined) aendern((d) => ({ ...d, endeZeit: zeit }));
+              }}
+              style={{ minWidth: 0 }}
+            />
+          </>
+        ) : (
+          <>
+            <div />
+            <div />
+          </>
+        )}
+      </SimpleGrid>
+      <ListenSelect
         allowDeselect={false}
         label="Verantwortliche:r"
         placeholder="Niemand"
@@ -382,6 +395,7 @@ export function EventFormular({
             dienstformName={dienstformName}
             dienstformen={dienstformen.aktive}
             zeiten={{ beginnZeit: daten.beginnZeit, endeZeit: daten.endeZeit }}
+            datum={daten.datum}
             onChange={(schichten) => aendern((d) => ({ ...d, schichten }))}
           />
         </Stack>
@@ -394,7 +408,8 @@ export function EventFormular({
 // Vergangenes Event
 // ---------------------------------------------------------------------------------------------
 
-export function ThemaFormular({
+/** Title of a Thema: sits in the header of the Baustein card (between "Thema" and the delete icon). */
+export function ThemaKopfFeld({
   daten,
   aendern,
   editierbar,
@@ -408,8 +423,8 @@ export function ThemaFormular({
   }
   return (
     <LokalText
-      label="Titel"
       placeholder="Titel"
+      aria-label="Titel"
       data-fokus="titel"
       wert={daten.titel}
       maxLength={200}
@@ -421,11 +436,6 @@ export function ThemaFormular({
 // ---------------------------------------------------------------------------------------------
 // Todo
 // ---------------------------------------------------------------------------------------------
-
-const TODO_MODUS_HINWEIS = {
-  einzeln: 'Jede Person hakt für sich ab.',
-  gemeinsam: 'Eine Person hakt ab, dann ist es für alle erledigt.',
-} as const;
 
 export function TodoFormular({
   daten,
@@ -471,70 +481,93 @@ export function TodoFormular({
   }));
   const nurEine = todoNurEinePerson(daten.zustaendig);
 
-  // All fields (also "Abhaken") are always rendered and keep their place: moving or removing a focused
-  // control inside the editor would throw the focus (and the phone keyboard) into the text.
+  // All fields (also "Gemeinsam abhaken") are always rendered and keep their place: moving or removing a
+  // focused control inside the editor would throw the focus (and the phone keyboard) into the text.
   return (
     <Stack gap="xs">
-      <LokalText
-        label="Titel"
-        placeholder="Titel"
-        data-fokus="titel"
-        wert={daten.titel}
-        maxLength={200}
-        onWert={(titel) => aendern((d) => ({ ...d, titel }))}
-      />
-      <MultiSelect
-        label="Zuständig"
-        placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
-        size="md"
-        searchable
-        clearable
-        nothingFoundMessage="Niemand gefunden"
-        data={[
-          { group: 'Gruppen', items: gruppen },
-          { group: 'Personen', items: personen },
-        ]}
-        value={gewaehlt}
-        onChange={(werte) => aendern((d) => todoZustaendigSetzen(d, werte))}
-        renderOption={({ option }) => {
-          const s = status.get(option.value);
-          return s ? (
-            <StatusName status={s}>{option.label}</StatusName>
-          ) : (
-            <span>{option.label}</span>
-          );
-        }}
-      />
-      <DatumFeld
-        tippbar
-        label="Deadline"
-        loeschbar={false}
-        value={daten.faelligAm ?? ''}
-        onWert={(datum) => aendern((d) => ({ ...d, faelligAm: datum || null }))}
-      />
-      <Stack gap={4}>
-        <Text size="sm" fw={500}>
-          Abhaken
-        </Text>
-        <SegmentedControl
-          fullWidth
-          size="md"
-          disabled={nurEine}
-          value={daten.modus}
-          data={[
-            { value: 'einzeln', label: 'Einzeln' },
-            { value: 'gemeinsam', label: 'Gemeinsam' },
-          ]}
-          onChange={(modus) =>
-            aendern((d) => ({ ...d, modus: modus === 'gemeinsam' ? 'gemeinsam' : 'einzeln' }))
-          }
-        />
-        <Text size="xs" c="dimmed">
-          {nurEine
-            ? 'Bei nur einer Person gibt es nichts zu wählen.'
-            : TODO_MODUS_HINWEIS[daten.modus]}
-        </Text>
-      </Stack>
+      <Grid gap="xs" align="flex-end">
+        <Grid.Col span={{ base: 7, sm: 8 }}>
+          <LokalText
+            label="Titel"
+            placeholder="Titel"
+            data-fokus="titel"
+            wert={daten.titel}
+            maxLength={200}
+            onWert={(titel) => aendern((d) => ({ ...d, titel }))}
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 5, sm: 4 }}>
+          <DatumFeld
+            tippbar
+            label="Deadline"
+            loeschbar={false}
+            value={daten.faelligAm ?? ''}
+            onWert={(datum) => aendern((d) => ({ ...d, faelligAm: datum || null }))}
+          />
+        </Grid.Col>
+      </Grid>
+      <Grid gap="xs" align="flex-end">
+        <Grid.Col span={{ base: 12, sm: 8 }}>
+          <ListenMultiSelect
+            label="Zuständig"
+            placeholder={daten.zustaendig.length === 0 ? 'Personen oder Gruppen wählen' : undefined}
+            size="md"
+            searchable
+            clearable
+            // Opens on a click or when typing, not on focus; closes after a choice.
+            openOnFocus={false}
+            schliessenNachWahl
+            nothingFoundMessage="Niemand gefunden"
+            data={[
+              { group: 'Gruppen', items: gruppen },
+              { group: 'Personen', items: personen },
+            ]}
+            value={gewaehlt}
+            onChange={(werte) => {
+              aendern((d) => todoZustaendigSetzen(d, werte));
+            }}
+            renderOption={({ option }) => {
+              const s = status.get(option.value);
+              return s ? (
+                <StatusName status={s}>{option.label}</StatusName>
+              ) : (
+                <span>{option.label}</span>
+              );
+            }}
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 4 }}>
+          <Tooltip
+            label="Bei nur einer Person gibt es nichts zu wählen."
+            disabled={!nurEine}
+            events={{ hover: true, focus: true, touch: true }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 42 }}>
+              <Switch
+                size="md"
+                label="Gemeinsam abhaken"
+                styles={{
+                  body: { alignItems: 'center' },
+                  labelWrapper: { justifyContent: 'center' },
+                  label: { lineHeight: 1.3, paddingBlock: 0 },
+                }}
+                disabled={nurEine}
+                checked={daten.modus === 'gemeinsam'}
+                onChange={(e) => {
+                  const gemeinsam = e.currentTarget.checked;
+                  aendern((d) => ({ ...d, modus: gemeinsam ? 'gemeinsam' : 'einzeln' }));
+                }}
+              />
+              <InfoHinweis
+                feld="Gemeinsam abhaken"
+                text={
+                  'An: Sobald eine zuständige Person das Todo abhakt, gilt es für alle als erledigt.\nAus: Jede zuständige Person hakt es für sich ab; erledigt ist es, wenn alle abgehakt haben.'
+                }
+              />
+            </div>
+          </Tooltip>
+        </Grid.Col>
+      </Grid>
     </Stack>
   );
 }
@@ -551,7 +584,7 @@ export function VergangenesEventFormular({
         <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
           {daten.name || 'Event ohne Name'}
         </Text>
-        <Text size="sm">{datumKurz(daten.datum)}</Text>
+        <Text size="sm">{datumKurz(daten.datum, daten.bisDatum)}</Text>
         {daten.eventId && <KalenderLink eventId={daten.eventId} />}
       </Stack>
     );
@@ -570,7 +603,7 @@ export function VergangenesEventFormular({
   }
   return (
     <Stack gap="xs">
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Event aus dem Kalender"
         placeholder="Event wählen"
@@ -581,11 +614,7 @@ export function VergangenesEventFormular({
         value={daten.eventId}
         onChange={(id) => {
           const e = id ? events.alle.find((x) => x.id === id) : undefined;
-          aendern((d) =>
-            e
-              ? { eventId: e.id, name: e.anzeigeTitel, datum: datumBerlin(e.beginn) }
-              : { ...d, eventId: null },
-          );
+          aendern((d) => (e ? vergangenesAusKalender(e) : { ...d, eventId: null }));
         }}
         nothingFoundMessage="Kein Event gefunden"
       />
@@ -594,26 +623,39 @@ export function VergangenesEventFormular({
           <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
             {daten.name}
           </Text>
-          <Text size="sm">{datumKurz(daten.datum)}</Text>
+          <Text size="sm">{datumKurz(daten.datum, daten.bisDatum)}</Text>
           <KalenderLink eventId={daten.eventId} />
         </Stack>
       ) : (
-        <>
-          <LokalText
-            label="Name"
-            data-fokus="name"
-            wert={daten.name}
-            maxLength={200}
-            onWert={(name) => aendern((d) => ({ ...d, name }))}
-          />
-          <DatumFeld
-            tippbar
-            label="Datum"
-            data-fokus="datum"
-            value={daten.datum ?? ''}
-            onWert={(datum) => aendern((d) => ({ ...d, datum: datum || null }))}
-          />
-        </>
+        <Grid gap="xs" align="flex-end">
+          <Grid.Col span={{ base: 12, sm: 6 }}>
+            <LokalText
+              label="Name"
+              data-fokus="name"
+              wert={daten.name}
+              maxLength={200}
+              onWert={(name) => aendern((d) => ({ ...d, name }))}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
+            <DatumFeld
+              tippbar
+              label="Von"
+              data-fokus="datum"
+              value={daten.datum ?? ''}
+              onWert={(datum) => aendern((d) => vergangenesDatumSetzen(d, datum || null))}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 6, sm: 3 }}>
+            <DatumFeld
+              tippbar
+              label="Bis"
+              min={daten.datum}
+              value={daten.bisDatum ?? ''}
+              onWert={(bis) => aendern((d) => vergangenesBisSetzen(d, bis || null))}
+            />
+          </Grid.Col>
+        </Grid>
       )}
     </Stack>
   );
@@ -818,8 +860,10 @@ export function EmFormular({
   editierbar,
 }: Readonly<FormularProps<BausteinEmDaten>>) {
   const { teilnahme, ems } = useProtokollKontext();
-  const personen = emKandidaten(teilnahme, ems);
-  const person = personen.find((p) => p.sub === daten.sub);
+  // An Austritt is for Mitglieder; an already chosen person stays visible.
+  const alle = emKandidaten(teilnahme, ems);
+  const personen = alle.filter((p) => p.status === 'mitglied' || p.sub === daten.sub);
+  const person = alle.find((p) => p.sub === daten.sub);
   const a = daten.abstimmung;
 
   if (!editierbar) {
@@ -837,51 +881,52 @@ export function EmFormular({
       </Stack>
     );
   }
-  const status = new Map(personen.map((p) => [p.sub, p.status]));
+  const status = new Map(alle.map((p) => [p.sub, p.status]));
   return (
     <Stack gap="xs">
       <WiederholungHinweis art="Abstimmung" wiederholung={daten.wiederholung} />
-      <Select
-        allowDeselect={false}
-        label="Person"
-        placeholder="Person wählen"
-        data-fokus="person"
-        size="md"
-        searchable
-        clearable
-        nothingFoundMessage="Niemand gefunden"
-        data={personenOptionen(personen)}
-        value={daten.sub}
-        onChange={(sub) => aendern((d) => ({ ...d, sub }))}
-        renderOption={({ option }) => {
-          const s = status.get(option.value);
-          return s ? (
-            <StatusName status={s}>{option.label}</StatusName>
-          ) : (
-            <span>{option.label}</span>
-          );
-        }}
-      />
-      {daten.sub === null && (
-        <LokalText
-          label="Name (falls nicht in der App)"
-          autoComplete="off"
-          wert={daten.name}
-          maxLength={200}
-          onWert={(name) => aendern((d) => ({ ...d, name }))}
-        />
-      )}
-      <Switch
-        size="md"
-        label="Abstimmung"
-        checked={a !== null}
-        onChange={(e) => {
-          const an = e.currentTarget.checked;
-          aendern((d) => ({ ...d, abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null }));
-        }}
-      />
+      <Grid gap="xs" align="flex-end">
+        <Grid.Col span={{ base: 12, sm: 8 }}>
+          <ListenSelect
+            allowDeselect={false}
+            label="Person"
+            placeholder="Person wählen"
+            data-fokus="person"
+            size="md"
+            searchable
+            clearable
+            nothingFoundMessage="Niemand gefunden"
+            data={personenOptionen(personen)}
+            value={daten.sub}
+            onChange={(sub) => aendern((d) => ({ ...d, sub }))}
+            renderOption={({ option }) => {
+              const s = status.get(option.value);
+              return s ? (
+                <StatusName status={s}>{option.label}</StatusName>
+              ) : (
+                <span>{option.label}</span>
+              );
+            }}
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 4 }}>
+          <Switch
+            style={{ minHeight: 42, alignItems: 'center', display: 'flex' }}
+            size="md"
+            label="Abstimmung zum EM"
+            checked={a !== null}
+            onChange={(e) => {
+              const an = e.currentTarget.checked;
+              aendern((d) => ({
+                ...d,
+                abstimmung: an ? (d.abstimmung ?? KEINE_ABSTIMMUNG) : null,
+              }));
+            }}
+          />
+        </Grid.Col>
+      </Grid>
       {a && (
-        <Select
+        <ListenSelect
           allowDeselect={false}
           label="Beantragt von"
           placeholder="Person wählen"
@@ -889,7 +934,7 @@ export function EmFormular({
           searchable
           clearable
           nothingFoundMessage="Niemand gefunden"
-          data={personenOptionen(personen)}
+          data={personenOptionen(alle)}
           value={daten.antragSub}
           onChange={(antragSub) => aendern((d) => ({ ...d, antragSub }))}
           renderOption={({ option }) => {
@@ -940,7 +985,7 @@ export function AufnahmeFormular({
   return (
     <Stack gap="xs">
       <WiederholungHinweis art="Aufnahme-Abstimmung" wiederholung={daten.wiederholung} />
-      <Select
+      <ListenSelect
         allowDeselect={false}
         label="Person"
         placeholder="Person wählen"
@@ -1339,7 +1384,7 @@ export function WahlFormular({
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap" align="flex-end">
               <Group gap="xs" wrap="wrap" align="flex-end" style={{ flex: 1, minWidth: 0 }}>
-                <Select
+                <ListenSelect
                   allowDeselect={false}
                   label={`Kandidat:in ${i + 1}`}
                   placeholder="Person wählen"
@@ -1400,7 +1445,7 @@ export function WahlFormular({
         wert={daten.enthaltung}
         onWert={(enthaltung) => aendern((d) => ({ ...d, enthaltung }))}
       />
-      <MultiSelect
+      <ListenMultiSelect
         label="Vorgeschlagen, tritt nicht an"
         placeholder={daten.nichtAngetreten.length === 0 ? 'Personen wählen' : undefined}
         size="md"

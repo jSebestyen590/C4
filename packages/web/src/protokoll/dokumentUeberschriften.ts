@@ -119,7 +119,7 @@ export function bausteinUeberschrift(
     }
     case 'bausteinEm': {
       const z = emZeilen(daten, undefined);
-      return `Neues EM${personSuffix(z.sub, z.name, personName)}`;
+      return `Austritt${personSuffix(z.sub, z.name, personName)}`;
     }
     default:
       return null;

@@ -1,8 +1,14 @@
 import {
+  dienstVorhanden,
   protokollAktionen,
   protokollEventIds,
+  protokollNeueEventDaten,
+  serieEventErsetzen,
+  datumBerlin,
   type AktionEventKontext,
+  type AktionSerienEventKontext,
   type AktionTodoKontext,
+  type DienstPlan,
   type ProtokollAktion,
   type ProtokollAktionAusgang,
   type ProtokollAktionErgebnis,
@@ -29,7 +35,14 @@ import type { TodosStore } from './todos';
 export interface AktionenDeps {
   kalender: Pick<
     KalenderStore,
-    'event' | 'kategorien' | 'vorlagen' | 'eventAnlegen' | 'eventAktualisieren'
+    | 'event'
+    | 'events'
+    | 'serien'
+    | 'kategorien'
+    | 'vorlagen'
+    | 'eventAnlegen'
+    | 'eventAktualisieren'
+    | 'dienstEintragen'
   >;
   mitglieder: Pick<MitgliederStore, 'alle' | 'holen' | 'speichern' | 'statusSetzen'>;
   userAdmin: Pick<UserAdmin, 'createUser'>;
@@ -117,6 +130,33 @@ function fehlerText(err: unknown): string {
 class AktionFehler extends Error {}
 
 export function createProtokollAktionen(deps: AktionenDeps) {
+  /**
+   * The planned series events (Dienste events, not cancelled) on the given Berlin dates, by date: what a
+   * new event of an Event block can replace.
+   */
+  async function serienEventsLesen(
+    daten: readonly string[],
+  ): Promise<Record<string, AktionSerienEventKontext[]>> {
+    if (daten.length === 0) return {};
+    const sortiert = [...daten].sort();
+    const [events, serien] = await Promise.all([
+      deps.kalender.events(sortiert[0]!, sortiert[sortiert.length - 1]!),
+      deps.kalender.serien(),
+    ]);
+    const ergebnis: Record<string, AktionSerienEventKontext[]> = {};
+    for (const e of events) {
+      const tag = datumBerlin(e.beginn);
+      if (e.serie === null || e.art === 'teilnahme' || e.abgesagt || !daten.includes(tag)) continue;
+      const serie = serien.find((x) => x.id === e.serie);
+      (ergebnis[tag] ??= []).push({
+        id: e.id,
+        serieName: serie?.name ?? 'Serie',
+        serieVorlageId: serie?.vorlageId ?? null,
+      });
+    }
+    return ergebnis;
+  }
+
   /** The state of the app the Aktionen of the document depend on. */
   async function kontextLesen(
     dokument: ProtokollDokument,
@@ -125,18 +165,22 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     protokollId?: string,
   ): Promise<ProtokollAktionenKontext> {
     const postenIds = postenIdsVon(dokument);
-    const [events, kategorien, vorlagen, personen, posten, todos] = await Promise.all([
-      Promise.all(protokollEventIds(dokument).map((id) => deps.kalender.event(id))),
-      deps.kalender.kategorien(true),
-      deps.kalender.vorlagen(true),
-      deps.mitglieder.alle(),
-      Promise.all(postenIds.map((id) => deps.posten.holen(id))),
-      deps.todos.byIds(todoIdsVon(dokument)),
-    ]);
+    const [events, kategorien, vorlagen, personen, posten, todos, serienEvents] = await Promise.all(
+      [
+        Promise.all(protokollEventIds(dokument).map((id) => deps.kalender.event(id))),
+        deps.kalender.kategorien(true),
+        deps.kalender.vorlagen(true),
+        deps.mitglieder.alle(),
+        Promise.all(postenIds.map((id) => deps.posten.holen(id))),
+        deps.todos.byIds(todoIdsVon(dokument)),
+        serienEventsLesen(protokollNeueEventDaten(dokument)),
+      ],
+    );
     return {
       ...(protokollId !== undefined && { protokollId }),
       sitzungDatum,
       heute,
+      serienEvents,
       todos: Object.fromEntries(
         todos.map((t) => [
           t.id,
@@ -178,7 +222,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
       kategorien: Object.fromEntries(
         kategorien.map((k) => [
           k.id,
-          { art: k.art, dauer: k.dauer, teilnahmeStatus: k.teilnahmeStatus },
+          { name: k.name, art: k.art, dauer: k.dauer, teilnahmeStatus: k.teilnahmeStatus },
         ]),
       ),
       vorlageKategorien: Object.fromEntries(vorlagen.map((v) => [v.id, v.kategorieId])),
@@ -208,18 +252,113 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     };
   }
 
+  /**
+   * Enters the members of a plan as Dienste in the (reloaded) event. Members who are in the Schicht
+   * already are skipped (running again does nothing); a failure of one entry does not stop the others,
+   * but the Aktion fails afterwards with a hint (the missing ones are tried again next time).
+   * Returns how many were entered.
+   */
+  async function diensteEintragen(
+    eventId: string,
+    dienste: readonly DienstPlan[],
+    akteur: string,
+  ): Promise<number> {
+    if (dienste.length === 0) return 0;
+    const ev = await deps.kalender.event(eventId);
+    if (!ev) throw new AktionFehler('Das Event gibt es nicht mehr.');
+    let eingetragen = 0;
+    const fehler: string[] = [];
+    for (const d of dienste) {
+      if (dienstVorhanden(ev.schichten, d)) continue;
+      const schicht = ev.schichten.find(
+        (s) =>
+          s.art === d.art &&
+          Date.parse(s.beginn) === Date.parse(d.beginn) &&
+          Date.parse(s.ende) === Date.parse(d.ende),
+      );
+      if (!schicht) {
+        fehler.push('Die Schicht gibt es im Event nicht.');
+        continue;
+      }
+      try {
+        const r = await deps.kalender.dienstEintragen(
+          schicht.id,
+          {
+            kommentar: null,
+            mitgliedSub: d.sub,
+            ...(d.dienstformId !== null && { dienstformId: d.dienstformId }),
+          },
+          akteur,
+        );
+        if (!r) fehler.push('Die Schicht gibt es im Event nicht.');
+        else eingetragen += 1;
+      } catch (err) {
+        fehler.push(err instanceof AktionFehler ? err.message : fehlerText(err));
+      }
+    }
+    if (fehler.length > 0) {
+      const gleiche = [...new Set(fehler)].join(' ');
+      throw new AktionFehler(
+        `Das Event ist im Kalender, aber ${fehler.length} von ${dienste.length} Diensten konnten nicht eingetragen werden (${gleiche}). Du kannst sie im Kalender nachtragen oder die Aktion erneut ausführen.`,
+      );
+    }
+    return eingetragen;
+  }
+
+  /**
+   * Replaces the planned series event by the event of the block (like the calendar: the first Betrieb
+   * Schicht and Dienstformen with Dienste keep their Dienste, the event leaves its series).
+   */
+  async function serieErsetzen(
+    serieEventId: string,
+    a: ProtokollAktion,
+    plan: Extract<NonNullable<ProtokollAktion['plan']>, { art: 'event.anlegen' }>,
+    akteur: string,
+    patches: Rueckschreibung[],
+  ): Promise<string> {
+    const alt = await deps.kalender.event(serieEventId);
+    if (!alt || alt.serie === null || alt.abgesagt) {
+      throw new AktionFehler(
+        'Das Serien-Event gibt es nicht mehr. Lege das Event stattdessen zusätzlich an.',
+      );
+    }
+    const eingabe = {
+      ...serieEventErsetzen(alt, plan.ersetzen!.vorlage, plan.ersetzen!.kategorie),
+      verantwortlichSub: plan.eingabe.verantwortlichSub,
+      ersetzeSerie: true,
+    };
+    const aenderung = await deps.kalender.eventAktualisieren(serieEventId, eingabe);
+    if (!aenderung) throw new AktionFehler('Das Serien-Event gibt es nicht mehr.');
+    // Remember the event at once: a failure below must not lead to a second event.
+    patches.push({ bausteinId: a.bausteinId, feld: 'eventId', wert: serieEventId });
+    if (deps.eventGeaendert) {
+      await deps.eventGeaendert(serieEventId, aenderung, akteur).catch(() => {});
+    }
+    const n = await diensteEintragen(serieEventId, plan.dienste, akteur);
+    return n > 0
+      ? `Serien-Event ersetzt, ${n} ${n === 1 ? 'Dienst' : 'Dienste'} eingetragen.`
+      : 'Serien-Event ersetzt.';
+  }
+
   /** Runs one Aktion; returns what was done. Writes back into `patches`. */
   async function ausfuehren(
     a: ProtokollAktion,
     akteur: string,
     patches: Rueckschreibung[],
+    ersetzen = false,
   ): Promise<string> {
     const plan = a.plan!;
     switch (plan.art) {
       case 'event.anlegen': {
+        if (ersetzen && a.serie && plan.ersetzen) {
+          return serieErsetzen(a.serie.eventId, a, plan, akteur, patches);
+        }
         const id = await deps.kalender.eventAnlegen(plan.eingabe, akteur);
         patches.push({ bausteinId: a.bausteinId, feld: 'eventId', wert: id });
-        return 'Event im Kalender angelegt.';
+        const n = await diensteEintragen(id, plan.dienste, akteur);
+        return n > 0
+          ? `Event im Kalender angelegt, ${n} ${n === 1 ? 'Dienst' : 'Dienste'} eingetragen.`
+          : 'Event im Kalender angelegt.';
       }
       case 'event.aendern': {
         const aenderung = await deps.kalender.eventAktualisieren(plan.eventId, plan.eingabe);
@@ -227,7 +366,10 @@ export function createProtokollAktionen(deps: AktionenDeps) {
         if (deps.eventGeaendert) {
           await deps.eventGeaendert(plan.eventId, aenderung, akteur).catch(() => {});
         }
-        return 'Event im Kalender geändert.';
+        const n = await diensteEintragen(plan.eventId, plan.dienste, akteur);
+        return n > 0
+          ? `Event im Kalender geändert, ${n} ${n === 1 ? 'Dienst' : 'Dienste'} eingetragen.`
+          : 'Event im Kalender geändert.';
       }
       case 'anwaerter.einladen': {
         const konto = await deps.userAdmin.createUser(plan.email, []);
@@ -331,6 +473,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
     liste: readonly ProtokollAktion[],
     ids: readonly string[],
     akteur: string,
+    serieErsetzenIds: readonly string[] = [],
   ): Promise<{
     ausgaenge: ProtokollAktionAusgang[];
     patches: Rueckschreibung[];
@@ -355,7 +498,7 @@ export function createProtokollAktionen(deps: AktionenDeps) {
       let status: ProtokollAktionErgebnis['status'];
       let meldung: string;
       try {
-        meldung = await ausfuehren(a, akteur, patches);
+        meldung = await ausfuehren(a, akteur, patches, serieErsetzenIds.includes(a.id));
         status = 'erledigt';
       } catch (err) {
         meldung = err instanceof AktionFehler ? err.message : fehlerText(err);

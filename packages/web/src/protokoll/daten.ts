@@ -1,15 +1,22 @@
 import { useMemo } from 'react';
-import { datumAnzeigen, datumBerlin, type EventDto } from '@c4/shared';
+import { datumAnzeigen, datumBerlin, type BausteinEventDaten, type EventDto } from '@c4/shared';
 import { anwesenheitUhrzeit, slashPersonen, type AnwesenheitPerson } from './anwesenheit';
 import {
   eventDatenAusVorlage,
   ereignisFenster,
   kommendeEvents,
   vergangeneEvents,
+  vergangenesAusKalender,
 } from './bausteinLogik';
 import { useProtokollKontext } from './kontext';
 import type { SlashDaten } from './slashLogik';
-import { useEventKategorien, useKalenderEvents, useVorlagen, vorlageTitel } from '../kalenderDaten';
+import {
+  useDienstformen,
+  useEventKategorien,
+  useKalenderEvents,
+  useVorlagen,
+  vorlageTitel,
+} from '../kalenderDaten';
 
 /** Calendar events around the Sitzung, split into past and upcoming (one shared query). */
 export function useProtokollEvents(beginn?: string) {
@@ -36,8 +43,11 @@ export const eventDatumText = (e: Pick<EventDto, 'beginn'>): string =>
 export function useSlashDaten(
   sitzungBeginn: string,
   teilnahme: readonly AnwesenheitPerson[],
+  emsFreitext: readonly string[] = [],
+  gaeste: readonly string[] = [],
 ): SlashDaten {
   const vorlagen = useVorlagen();
+  const dienstformen = useDienstformen();
   const kategorien = useEventKategorien();
   const events = useProtokollEvents(sitzungBeginn);
   const basis = useMemo(
@@ -56,18 +66,32 @@ export function useSlashDaten(
         id: e.id,
         titel: e.anzeigeTitel,
         beschreibung: eventDatumText(e),
-        daten: { eventId: e.id, name: e.anzeigeTitel, datum: datumBerlin(e.beginn) },
+        daten: vergangenesAusKalender(e),
       })),
     }),
     [vorlagen.data, kategorien.liste, events.vergangene],
   );
-  const personen = useMemo(() => slashPersonen(teilnahme), [teilnahme]);
+  const personen = useMemo(
+    () => slashPersonen(teilnahme, { emsFreitext, gaeste }),
+    [teilnahme, emsFreitext, gaeste],
+  );
+  const formen = useMemo(
+    () => dienstformen.aktive.map((d) => ({ id: d.id, name: d.name })),
+    [dienstformen.aktive],
+  );
   return useMemo(
     () => ({
       ...basis,
       personen,
+      dienstformen: formen,
       uhrzeit: () => anwesenheitUhrzeit(),
+      eventTeilnahme: (e: BausteinEventDaten) =>
+        kategorien.liste.find(
+          (k) =>
+            k.id ===
+            (e.kategorieId ?? vorlagen.data?.find((v) => v.id === e.vorlageId)?.kategorieId),
+        )?.art === 'teilnahme',
     }),
-    [basis, personen],
+    [basis, personen, formen, kategorien.liste, vorlagen.data],
   );
 }
