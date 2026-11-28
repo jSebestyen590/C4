@@ -26,7 +26,8 @@ export function useListeUmschalten({ clearable = false }: { clearable?: boolean 
     onDropdownClose: () => setOffen(false),
     rightSection: (
       <ActionIcon
-        variant="subtle"
+        // No hover background: the chevron looks like a plain icon in the field.
+        variant="transparent"
         color="gray"
         size={42}
         aria-label={offen ? 'Liste schließen' : 'Liste öffnen'}
