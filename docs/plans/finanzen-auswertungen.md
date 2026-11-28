@@ -227,8 +227,11 @@ Feedback-Runde 1:
 - [ ] **USt:** Kz 81/86 exakt mit Cent, daneben die USt („360,95 € (USt.: 68,59 €)“), klein darunter
   „in ELSTER: 360“ (volle Euro abgerundet, Vorgabe von ELSTER). Alle übrigen Werte exakt.
 - [ ] **USt:** Kacheln mit den ELSTER-Kennzahlen ab großen Screens vier nebeneinander.
-- [ ] **USt:** Kurze Erklärung der Kennzahlen (Info-Icon): Kz = Kennzahl am ELSTER-Feld, Zeilennummern
-  wechseln jährlich; 81 = Bemessung 19 %, 86 = 7 %, 66 = Vorsteuer, 83 = Vorauszahlung/Überschuss.
+- [ ] **USt:** Erklärung der Kennzahlen (Info-Icon, ausführlich): „Kz“ = Kennzahl, die feste Nummer eines
+  Eingabefelds in ELSTER bzw. im amtlichen Vordruck, **nicht** die Zeilennummer im Formular (Zeilen
+  wechseln jährlich, Kennzahlen bleiben). 81 = Bemessung 19 %, 86 = 7 %, 66 = Vorsteuer aus Rechnungen,
+  83 = verbleibende Vorauszahlung (negativ: Überschuss). Hinweis: gilt für die Voranmeldung (UStVA); die
+  Jahreserklärung (USt 2 A) hat eigene Kennzahlen.
 - [ ] **G+V:** Info-Text: „positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag)“.
 - [ ] **Einkauf:** Schalter Netto/Brutto, Standard Brutto (betrifft Netto-Spalte, Durchschnittspreise,
   Summe, CSV; Pfand bleibt separat).
