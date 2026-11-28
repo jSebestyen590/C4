@@ -217,22 +217,36 @@ Feedback-Runde 1:
   (= Summe der Zählungsdifferenzen); CSV-Download aller fünf Tabs im Browser (UTF-8 mit BOM, `;`,
   Dezimalkomma, gleiche Spaltenzahl je Zeile).
 
-## Feedback-Runde 2 (offen, Entscheidungen geklärt)
+Feedback-Runde 2 (Commits `91523d5`..`5185f5d`, auf dev deployt, keine Migration):
 
-- [ ] **Links in neuem Tab (nur Finanzen):** Links aus Finanzen-Seiten in andere Bereiche (Events, Waren,
+- Neuer Baustein `packages/web/src/BereichLink.tsx` (+ Test): Links aus Finanzen-Seiten in andere Bereiche
+  (Events, Waren, Mitglieder) öffnen in neuem Tab mit Pfeil; `EventKasse.tsx` bleibt (Event-Seite).
+- USt: `UstKennzahlenDto` mit `kz81Cent`/`kz81UstCent`/`kz86Cent`/`kz86UstCent`, `elsterEuro()`;
+  Jahresansicht über `UstZeitraumDto.erklaerung` (nur Intervall „Jahr“), Feldnamen in `UST_ERKLAERUNG_FELDER`
+  (mit Nutzer:in bestätigt), `ustAbschlussLabel()`; Hilfetexte in `finanzenHilfe.ts`.
+- Einkauf: API `?vonJahr=&bisJahr=` (`auswertungJahreSchema`, höchstens 10 Jahre), DTO mit Brutto-Feldern,
+  `aliase`, `kaeufe` (je Belegposten); Web `useJahreFilter`/`JahreLeiste`/`useTextParam` in `Bausteine.tsx`,
+  Diagramm `auswertungen/EinkaufKaufDiagramm.tsx` (recharts `ScatterChart`, Tooltip per Klick mit Beleg-Link).
+  Detailzeile auf dem Telefon per `sticky` auf die sichtbare Breite begrenzt.
+- Geprüft: lint, typecheck, Tests (shared 937, api 785, web 796), `pnpm e2e` gegen dev (204 grün), Browser auf
+  dev (Desktop, 375×812) für alle Punkte.
+
+## Feedback-Runde 2 (umgesetzt)
+
+- [x] **Links in neuem Tab (nur Finanzen):** Links aus Finanzen-Seiten in andere Bereiche (Events, Waren,
   Mitglieder …) öffnen in neuem Tab (`target="_blank"`, `rel="noopener"`) mit kleinem Pfeil-Symbol
   daneben; gemeinsamer Baustein, Links innerhalb der Finanzen bleiben wie sie sind.
-- [ ] **Events-Diagramm:** Tooltip je Eintrag oben „Gesamt: x €“ (fett) über alle Kategorien, darunter
+- [x] **Events-Diagramm:** Tooltip je Eintrag oben „Gesamt: x €“ (fett) über alle Kategorien, darunter
   die Kategorien.
-- [ ] **USt:** Kz 81/86 exakt mit Cent, daneben die USt („360,95 € (USt.: 68,59 €)“), klein darunter
+- [x] **USt:** Kz 81/86 exakt mit Cent, daneben die USt („360,95 € (USt.: 68,59 €)“), klein darunter
   „in ELSTER: 360“ (volle Euro abgerundet, Vorgabe von ELSTER). Alle übrigen Werte exakt.
-- [ ] **USt:** Kacheln mit den ELSTER-Kennzahlen ab großen Screens vier nebeneinander.
-- [ ] **USt:** Erklärung der Kennzahlen (Info-Icon, ausführlich): „Kz“ = Kennzahl, die feste Nummer eines
+- [x] **USt:** Kacheln mit den ELSTER-Kennzahlen ab großen Screens vier nebeneinander.
+- [x] **USt:** Erklärung der Kennzahlen (Info-Icon, ausführlich): „Kz“ = Kennzahl, die feste Nummer eines
   Eingabefelds in ELSTER bzw. im amtlichen Vordruck, **nicht** die Zeilennummer im Formular (Zeilen
   wechseln jährlich, Kennzahlen bleiben). 81 = Bemessung 19 %, 86 = 7 %, 66 = Vorsteuer aus Rechnungen,
   83 = verbleibende Vorauszahlung (negativ: Überschuss). Hinweis: gilt für die Voranmeldung (UStVA); die
   Jahreserklärung zeigt ELSTER ohne Kennzahlen, dafür gibt es die Jahresansicht (nächster Punkt).
-- [ ] **USt: Jahresansicht für die Umsatzsteuererklärung:** Intervall „Jahr“ (bzw. eigener Block) mit den
+- [x] **USt: Jahresansicht für die Umsatzsteuererklärung:** Intervall „Jahr“ (bzw. eigener Block) mit den
   Werten des Kalenderjahrs, beschriftet mit den sprechenden Feldnamen des ELSTER-Formulars (dort keine
   Kennzahlen sichtbar), sinngemäß: „Steuerpflichtige Umsätze zum Steuersatz von 19 %“ (Bemessung + USt),
   „… von 7 %“ (Bemessung + USt), „Vorsteuerbeträge aus Rechnungen von anderen Unternehmern“,
@@ -240,12 +254,12 @@ Feedback-Runde 1:
   verbleibende Abschlusszahlung/Erstattung (USt − Vorsteuer − Vorauszahlungen). Exakte Werte mit Cent.
   Genaue Feldnamen beim Nutzer bzw. am ELSTER-Formular 2026 bestätigen lassen, bevor sie fest in den
   Code gehen; ins CSV übernehmen.
-- [ ] **G+V:** Info-Text: „positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag)“.
-- [ ] **Einkauf:** Schalter Netto/Brutto, Standard Brutto (betrifft Netto-Spalte, Durchschnittspreise,
+- [x] **G+V:** Info-Text: „positiv ein Gewinn (Überschuss), negativ ein Verlust (Fehlbetrag)“.
+- [x] **Einkauf:** Schalter Netto/Brutto, Standard Brutto (betrifft Netto-Spalte, Durchschnittspreise,
   Summe, CSV; Pfand bleibt separat).
-- [ ] **Einkauf:** Suche über Name und Aliasse der Ware.
-- [ ] **Einkauf:** Schalter und Suche als Query-Parameter (wie die übrigen URL-Filter in `Bausteine.tsx`).
-- [ ] **Einkauf:** Zeitraum Start- und Endjahr, Standard aktuelles Jahr in beiden.
-- [ ] **Einkauf:** Jede Waren-Zeile aufklappbar mit Blasendiagramm: X Kaufdatum, Y Preis je Einheit
+- [x] **Einkauf:** Suche über Name und Aliasse der Ware.
+- [x] **Einkauf:** Schalter und Suche als Query-Parameter (wie die übrigen URL-Filter in `Bausteine.tsx`).
+- [x] **Einkauf:** Zeitraum Start- und Endjahr, Standard aktuelles Jahr in beiden.
+- [x] **Einkauf:** Jede Waren-Zeile aufklappbar mit Blasendiagramm: X Kaufdatum, Y Preis je Einheit
   (netto/brutto nach Schalter), Blasengröße Menge; Tooltip Datum, Menge, Preis, Link zum Beleg.
   Braucht Einzelkäufe je Ware (API-Erweiterung).
