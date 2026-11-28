@@ -89,26 +89,43 @@ function TeilenKnopf({
 function BilderKarte({ ordner }: Readonly<{ ordner: BilderOrdnerDto }>) {
   const datum = bilderDatum(ordner.von, ordner.bis, ordner.genauigkeit);
   return (
+    // Not an <a> itself: it holds the Event badge link, and links must not nest.
     <Paper
       withBorder
       p="md"
-      component="a"
-      href={ordnerLink(ordner)}
-      target="_blank"
-      rel="noopener"
-      style={{ color: 'inherit', textDecoration: 'none' }}
+      style={{ cursor: 'pointer' }}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('a, button')) return;
+        window.open(ordnerLink(ordner), '_blank', 'noopener');
+      }}
     >
       <Group justify="space-between" wrap="nowrap" align="center" gap="xs">
-        <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-          <Text fw={700} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
-            {ordner.eventName}
-          </Text>
-          {datum && (
-            <Text size="sm" c="dimmed">
-              {datum}
+        {/* Name and date are the folder link, as tall as the row (>= 42px touch target). */}
+        <a
+          href={ordnerLink(ordner)}
+          target="_blank"
+          rel="noopener"
+          style={{
+            color: 'inherit',
+            textDecoration: 'none',
+            minWidth: 0,
+            flex: 1,
+            alignSelf: 'stretch',
+            minHeight: 42,
+            display: 'flex',
+          }}
+        >
+          <Stack gap={2} justify="center" style={{ flex: 1 }}>
+            <Text fw={700} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+              {ordner.eventName}
             </Text>
-          )}
-        </Stack>
+            {datum && (
+              <Text size="sm" c="dimmed">
+                {datum}
+              </Text>
+            )}
+          </Stack>
+        </a>
         {ordner.eventId && <EventBadge eventId={ordner.eventId} />}
         <TeilenKnopf ordner={ordner} />
       </Group>
