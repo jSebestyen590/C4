@@ -48,31 +48,18 @@ function csvDaten(d: EinkaufAuswertungDto) {
     w.standardGebinde,
     w.standardGebindePfandCent === null ? null : { cent: w.standardGebindePfandCent },
   ]);
-  zeilen.push(['Summe', null, null, null, { cent: d.nettoCent }, null, null, null]);
-  zeilen.push([]);
-  zeilen.push(['Pfandsaldo', null, null, null, null, null, null, null]);
-  zeilen.push(['Anfang', null, null, null, { cent: d.pfand.anfangCent }, null, null, null]);
-  zeilen.push([
-    'Zugang (Pfand bezahlt)',
-    null,
-    null,
-    null,
-    { cent: d.pfand.zugangCent },
-    null,
-    null,
-    null,
-  ]);
-  zeilen.push([
-    'Abgang (Leergut zurück)',
-    null,
-    null,
-    null,
-    { cent: d.pfand.abgangCent },
-    null,
-    null,
-    null,
-  ]);
-  zeilen.push(['Ende', null, null, null, { cent: d.pfand.endeCent }, null, null, null]);
+  // Summary rows: label in the first column, amount in "Netto", padded to the header width.
+  const summe = (label: string, cent?: number) => {
+    const zeile: (string | { cent: number } | null)[] = kopf.map(() => null);
+    zeile[0] = label;
+    if (cent !== undefined) zeile[4] = { cent };
+    return zeile;
+  };
+  zeilen.push(summe('Summe', d.nettoCent), []);
+  zeilen.push(summe('Pfandsaldo'), summe('Anfang', d.pfand.anfangCent));
+  zeilen.push(summe('Zugang (Pfand bezahlt)', d.pfand.zugangCent));
+  zeilen.push(summe('Abgang (Leergut zurück)', d.pfand.abgangCent));
+  zeilen.push(summe('Ende', d.pfand.endeCent));
   return csvText(kopf, zeilen);
 }
 

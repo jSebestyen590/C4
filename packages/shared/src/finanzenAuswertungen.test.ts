@@ -278,6 +278,37 @@ describe('euerAuswertung', () => {
     expect(r.summeAusgabenCent).toBe(20_000 + 3_800 + 700 + 1_000);
     expect(r.ueberschussCent).toBe(r.summeEinnahmenCent - r.summeAusgabenCent);
   });
+  it('nets kassendifferenz per year into sonstige Einnahmen or Ausgaben', () => {
+    const kd = {
+      id: 'kassendifferenz',
+      name: 'Kassendifferenz',
+      art: 'neutral' as const,
+      parentId: null,
+      euerZeile: null,
+    };
+    const ueberschuss = euerAuswertung(
+      [
+        zeile({ kontoId: 'kassendifferenz', betragCent: -500 }),
+        zeile({ kontoId: 'kassendifferenz', betragCent: 200 }),
+      ],
+      [...konten, kd],
+      2027,
+    );
+    const konto = (r: typeof ueberschuss, z: string) =>
+      r.zeilen.find((x) => x.zeile === z)!.konten;
+    expect(konto(ueberschuss, 'sonstige_einnahmen')).toEqual([
+      { kontoId: 'kassendifferenz', name: 'Kassendifferenz', betragCent: 300 },
+    ]);
+    expect(konto(ueberschuss, 'sonstige_ausgaben')).toEqual([]);
+    expect(ueberschuss.ueberschussCent).toBe(300);
+    const fehlbetrag = euerAuswertung(
+      [zeile({ kontoId: 'kassendifferenz', betragCent: 400 })],
+      [...konten, kd],
+      2027,
+    );
+    expect(konto(fehlbetrag, 'sonstige_ausgaben')[0]!.betragCent).toBe(400);
+    expect(fehlbetrag.ueberschussCent).toBe(-400);
+  });
 });
 
 describe('Konto-EÜR-Zeile', () => {

@@ -204,7 +204,12 @@ Desktop und bei 375×812. USt Okt./Nov. 2026 stimmt mit Handrechnung aus dem Jou
 
 Offen:
 
-- `kassendifferenz` (neutral) hat keine EÜR-Zeile und fehlt deshalb in der EÜR.
-- Storno einer USt-Zahlung im Folgejahr erscheint dort als Erstattung (Überschuss richtig, Einnahmen und
-  Ausgaben je um den Betrag zu hoch).
-- CSV-Download nicht im Browser getestet; im Einkauf-CSV haben Summen-/Pfandzeilen eine Spalte weniger.
+- CSV-Download nicht im Browser getestet.
+
+Feedback-Runde 1:
+
+- `kassendifferenz`: Jahressaldo in der EÜR ohne USt, Überschuss unter `sonstige_einnahmen`, Fehlbetrag unter
+  `sonstige_ausgaben` (Sonderfall in `euerAuswertung` wie `ust-finanzamt`; keine Migration). Mit Nutzer:in
+  geklärt: nicht umsatzsteuerbar, kein Vorsteuerabzug.
+- Storno einer USt-Zahlung im Folgejahr als Erstattung: bleibt so (mit Nutzer:in geklärt, unrealistisch).
+- Einkauf-CSV: Summen-/Pfandzeilen auf volle Spaltenzahl aufgefüllt.

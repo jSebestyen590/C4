@@ -9,6 +9,7 @@ import {
   type EuerSeite,
   type EuerZeile,
 } from './finanzenEuer';
+import { KASSENDIFFERENZ_KONTO_ID } from './bargeld';
 import { finanzDatumSchema, type KontoArt, type SteuerArt } from './finanzen';
 import { steuersaetzeAm, type SteuersatzZeitraum } from './steuersaetze';
 import {
@@ -457,7 +458,8 @@ export interface EuerAuswertungDto {
 /**
  * EÜR of a year: net amounts grouped by the `euer_zeile` of the account, plus the computed lines
  * (collected USt, paid Vorsteuer). Neutral accounts count only with a line; the account `ust-finanzamt`
- * is split by sign into `ust_zahlung` (outflow) and `ust_erstattung` (inflow).
+ * is split by sign into `ust_zahlung` (outflow) and `ust_erstattung` (inflow); the yearly net of
+ * `kassendifferenz` goes to `sonstige_einnahmen` (surplus) or `sonstige_ausgaben` (shortfall).
  */
 export function euerAuswertung(
   zeilen: readonly AuswertungZeile[],
@@ -470,6 +472,7 @@ export function euerAuswertung(
   let vorsteuerGezahlt = 0;
   let ustZahlung = 0;
   let ustErstattung = 0;
+  let kassendifferenz = 0;
   for (const z of zeilen) {
     if (!z.datum.startsWith(`${jahr}-`)) continue;
     if (z.steuerArt === 'ust') ustVereinnahmt -= z.steuerCent ?? 0;
@@ -477,6 +480,10 @@ export function euerAuswertung(
     if (z.kontoId === UST_FINANZAMT_KONTO_ID) {
       if (z.betragCent > 0) ustZahlung += z.betragCent;
       else ustErstattung -= z.betragCent;
+      continue;
+    }
+    if (z.kontoId === KASSENDIFFERENZ_KONTO_ID) {
+      kassendifferenz += z.betragCent;
       continue;
     }
     summen.set(z.kontoId, (summen.get(z.kontoId) ?? 0) + nettoVon(z));
@@ -502,6 +509,20 @@ export function euerAuswertung(
     jeZeile.set(k.euerZeile, [
       ...(jeZeile.get(k.euerZeile) ?? []),
       { kontoId: id, name: k.name, betragCent: betrag },
+    ]);
+  }
+  // Net cash difference of the year, without USt: a surplus (credit) is a sonstige Einnahme, a
+  // shortfall (debit) a sonstige Ausgabe.
+  const kassendifferenzKonto = nachId.get(KASSENDIFFERENZ_KONTO_ID);
+  if (kassendifferenzKonto && kassendifferenz !== 0) {
+    const zeile: EuerZeile = kassendifferenz < 0 ? 'sonstige_einnahmen' : 'sonstige_ausgaben';
+    jeZeile.set(zeile, [
+      ...(jeZeile.get(zeile) ?? []),
+      {
+        kontoId: kassendifferenzKonto.id,
+        name: kassendifferenzKonto.name,
+        betragCent: Math.abs(kassendifferenz),
+      },
     ]);
   }
   const finanzamt = nachId.get(UST_FINANZAMT_KONTO_ID);
