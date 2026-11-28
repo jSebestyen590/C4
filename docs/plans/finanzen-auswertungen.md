@@ -60,12 +60,13 @@ intervall)` (lückenlose Spalten, auch leere Zeiträume).
   Kz 83 = USt − Vorsteuer (Cent). Andere Sätze (0 %, Altsätze) als eigene Zeile mit Hinweis
   „nicht in Kz 81/86“.
 - `guvAuswertung(zeilen, konten, intervall)`: je `erloes`/`aufwand`-Konto und Zeitraum Netto
-  (`netto_cent`, bei `steuer_art='keine'` den Wert prüfen, ggf. `betrag_cent`), Erlöse positiv
+  (`netto_cent ?? betrag_cent`: ohne Steuer ist `netto_cent` NULL, `pruefeBuchung`), Erlöse positiv
   angezeigt, Summen Erlöse, Aufwand, Ergebnis. Unterkonten nach `parent_id` eingerückt.
 - `euerAuswertung(zeilen, konten, jahr)`: G+V-Werte gruppiert nach `euer_zeile`, plus berechnete
   Zeilen `ust_vereinnahmt`/`vorsteuer_gezahlt` aus den Steuerfeldern, „Nicht zugeordnet“, Summen
-  Einnahmen/Ausgaben/Überschuss. `neutral`-Konten nur, wenn sie eine Zeile haben (z. B.
-  USt-Zahlung).
+  Einnahmen/Ausgaben/Überschuss. `neutral`-Konten nur, wenn sie eine Zeile haben. Sonderfall Konto
+  `ust-finanzamt`: Saldo-Bewegungen nach Vorzeichen auf `ust_zahlung` (Abfluss) und
+  `ust_erstattung` (Zufluss) verteilen.
 - `eventEinnahmen(quellen)`: Zeile je Event mit bar/karte brutto, netto, Summe; `eventVerlauf(
 zeilen, intervall)` je Event-Kategorie und Zeitraum (für das Chart).
 - `einkaufAuswertung(posten, gebinde, jahr)`: je Ware: Anzahl Gebinde, Basismenge über
@@ -163,8 +164,11 @@ Danach `tester` (lint, typecheck, test, `pnpm e2e` lokal), Deploy auf dev wegen 
 und einmal bei 375×812. Fachlicher Abgleich: USt-Werte eines Monats gegen eine Handrechnung aus dem
 Journal.
 
-## Offene Punkte für die Umsetzung
+## Steuerzahlungen ans Finanzamt
 
-- `netto_cent` bei `steuer_art='keine'`: gefüllt oder NULL? (bestimmt G+V-Formel)
-- Wie wird eine USt-Zahlung ans Finanzamt heute gebucht (Konto)? Ggf. Konto `ust-zahlung`
-  (`neutral`, Zeile `ust_zahlung`) in der Migration anlegen.
+Eigenes Konto `ust-finanzamt` „Umsatzsteuer Finanzamt“, Art **`neutral`** (kein neuer Kontotyp, kein
+Aufwand), in der Migration angelegt. Grund: Die G+V rechnet netto, die USt steckt schon in den
+Steuerfeldern der Erlös-/Aufwandszeilen; als Aufwand gebucht stünde die Steuer doppelt im Ergebnis.
+Zahlung: Bank an `ust-finanzamt`, Erstattung umgekehrt. Saldo des Kontos = Vorauszahlungen im
+Zeitraum, gegen Kz 83 abgleichbar (Hinweis auf dem USt-Tab). Nur die EÜR zählt die Bewegungen als
+Ausgabe bzw. Einnahme (siehe `euerAuswertung`).
