@@ -258,10 +258,12 @@ mehrere Unterseiten stehen; 12 braucht 4a (und 9 für den gemeinsamen CSV-Export
 
 ### Scheibe 9: Auswertungen
 
+Plan: [finanzen-auswertungen.md](./finanzen-auswertungen.md).
+
 - Einnahmen pro Event und Verlauf je Event-Kategorie (`event_kategorien`), mit `@mantine/charts`.
 - USt: Umsatzsteuer, Vorsteuer und Zahllast je Steuersatz, Intervall Monat/Quartal/Jahr.
-- EÜR-Vorbereitung: Kategorien auf EÜR-Zeilen und Vereinssphären (ideell, Vermögensverwaltung,
-  Zweckbetrieb, wirtschaftlicher Geschäftsbetrieb) abbilden; G+V je Monat/Jahr.
+- EÜR-Vorbereitung: Kategorien auf EÜR-Zeilen abbilden (keine Sphären, der Verein ist nicht
+  gemeinnützig); G+V je Monat/Jahr.
 - Einkauf: Menge, Liter (aus Gebinde) und Durchschnittspreis je Ware und Jahr; Pfandsaldo.
 - CSV-Export jeder Auswertung.
 
@@ -348,7 +350,7 @@ FinTS-Überweisungen, E-Rechnung.
   Rechnungen und Auswertungen können im ersten Quartal folgen und rückwirkend ab 01.01. buchen;
   die Festschreibung für Januar braucht Scheibe 5 erst im Februar.
 - **FinTS** ist der unsicherste Teil (Registrierung, TAN-Verfahren, Lambda-Laufzeit).
-- **Steuerfragen** (Aufteilung der Bareinnahmen 19 %/7 %, Sphären, E-Rechnung) solltest du
+- **Steuerfragen** (Aufteilung der Bareinnahmen 19 %/7 %, E-Rechnung) solltest du
   mit Steuerberatung oder Kassenprüfung abstimmen; der Plan lässt sie je Scheibe offen.
 - **Object Lock im Compliance-Modus** ist nicht rückholbar: erst auf dev mit Governance erproben.
 - Das Bootstrap-Terraform braucht für neue Dienste (CloudTrail, ggf. zweites Lambda) einen
@@ -367,7 +369,7 @@ FinTS-Überweisungen, E-Rechnung.
 | 6 Konto                   | offen (FinTS-Produktregistrierung beantragen)                                                                                                                                                                       |
 | 7 SumUp                   | umgesetzt, Plan [finanzen-sumup.md](./finanzen-sumup.md); Auszahlungs-Abgleich folgt mit Scheibe 6                                                                                                                  |
 | 8 Rechnungen              | umgesetzt, Plan [finanzen-rechnungen.md](./finanzen-rechnungen.md); Aufschlag gestrichen                                                                                                                            |
-| 9 Auswertungen            | offen                                                                                                                                                                                                               |
+| 9 Auswertungen            | geplant ([finanzen-auswertungen.md](./finanzen-auswertungen.md))                                                                                                                                                    |
 | Ü Übernahme               | offen                                                                                                                                                                                                               |
 | 10 Unentgeltliche Abgaben | offen                                                                                                                                                                                                               |
 | 11 Navigation             | offen (Untermenü; Idee „zwei Seiten nebeneinander" noch zu durchdenken)                                                                                                                                             |
