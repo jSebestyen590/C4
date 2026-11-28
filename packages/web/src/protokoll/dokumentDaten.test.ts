@@ -337,7 +337,7 @@ describe('Texte', () => {
     ).toEqual(['y', 'z', ['x', 'w']]);
   });
 
-  it('Neues EM lines', () => {
+  it('Austritt lines', () => {
     const stand = { gesamt: 25, anwesend: 13, mindestens: 13, beschlussfaehig: true };
     const abstimmung = { ja: 8, nein: 3, enthaltung: 2, ergebnis: 'angenommen' };
     expect(emZeilen({ sub: 'a', name: '', abstimmung }, stand)).toEqual({
@@ -415,9 +415,12 @@ describe('naechsteSitzung', () => {
   it('takes the calendar suggestion while automatic (Berlin time)', () => {
     const w = naechsteSitzungWert(protokollKopfLeer(), vorschlag);
     expect(w).toEqual({ eventId: 'e9', datum: '2026-11-10', uhrzeit: '20:00' });
-    expect(naechsteSitzungSatz(w)).toBe(
-      'Die nächste Sitzung findet am Dienstag, 10.11.2026 um 20:00 Uhr statt.',
-    );
+    expect(naechsteSitzungSatz(w, 'C4')).toEqual({
+      vor: 'Die nächste Sitzung findet statt am ',
+      fett: 'Dienstag, 10.11.2026 um 20:00 Uhr im C4',
+    });
+    // An empty place leaves out "im …".
+    expect(naechsteSitzungSatz(w, ' ')?.fett).toBe('Dienstag, 10.11.2026 um 20:00 Uhr');
     expect(naechsteSitzungWert(protokollKopfLeer(), null)).toBeNull();
     expect(naechsteSitzungSatz(null)).toBeNull();
   });
@@ -427,12 +430,12 @@ describe('naechsteSitzung', () => {
       ...protokollKopfLeer(),
       naechsteSitzung: { eventId: null, datum, uhrzeit },
     });
-    expect(naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-01', ''), vorschlag))).toBe(
-      'Die nächste Sitzung findet am Dienstag, 01.12.2026 statt.',
+    expect(naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-01', ''), vorschlag))?.fett).toBe(
+      'Dienstag, 01.12.2026',
     );
-    expect(naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-02', '19:30'), vorschlag))).toBe(
-      'Die nächste Sitzung findet am Mittwoch, 02.12.2026 um 19:30 Uhr statt.',
-    );
+    expect(
+      naechsteSitzungSatz(naechsteSitzungWert(kopf('2026-12-02', '19:30'), vorschlag), 'C4')?.fett,
+    ).toBe('Mittwoch, 02.12.2026 um 19:30 Uhr im C4');
     expect(naechsteSitzungWert(kopf('', ''), vorschlag)).toBeNull();
   });
 });

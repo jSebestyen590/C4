@@ -1,14 +1,14 @@
 import { Box, Button, Drawer, useMantineTheme } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { RichTextEditor, type RichTextEditorLabels } from '@mantine/tiptap';
-import { IconListTree } from '@tabler/icons-react';
+import { IconListTree, IconQuotes } from '@tabler/icons-react';
 import Blockquote from '@tiptap/extension-blockquote';
-import { auswahlNachAenderung } from './slashLogik';
+import { auswahlNachAenderung, type ExternArt } from './slashLogik';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEditor, type Editor } from '@tiptap/react';
+import { useEditor, useEditorState, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   anwesenheitsVerlauf,
   stimmenPruefen,
@@ -19,6 +19,8 @@ import {
 import './protokoll.css';
 import { BAUSTEIN_KNOTEN } from './BausteinKnoten';
 import { BlockVerschieben } from './verschieben';
+import { PunktVerschieben } from './punktVerschieben';
+import { ZitatInline } from './ZitatInline';
 import {
   anwesenheitsKandidaten,
   type AnwesenheitMitglied,
@@ -26,6 +28,7 @@ import {
 } from './anwesenheit';
 import { BausteinMenue } from './BausteinMenue';
 import { Gliederung } from './GliederungBaum';
+import { aktiveStelleId } from './gliederung';
 import { dokumentNormalisieren } from './bausteinLogik';
 import { useSlashDaten } from './daten';
 import { mitgliedName } from '../mitglied';
@@ -58,7 +61,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
   h3ControlLabel: 'Zwischenüberschrift',
   bulletListControlLabel: 'Aufzählung',
   orderedListControlLabel: 'Nummerierte Liste',
-  blockquoteControlLabel: 'Zitat',
+  blockquoteControlLabel: 'Zitat als Absatz',
   linkControlLabel: 'Link einfügen',
   unlinkControlLabel: 'Link entfernen',
   undoControlLabel: 'Rückgängig',
@@ -71,6 +74,7 @@ const LABELS: Partial<RichTextEditorLabels> = {
 };
 
 const KEINE_MITGLIEDER: readonly AnwesenheitMitglied[] = [];
+const KEINE_NAMEN: readonly string[] = [];
 const KEINE_BILDER: Readonly<Record<string, string>> = {};
 
 /** Height of the app header (`AppLayout`): the sticky toolbar sits right below it. */
@@ -91,7 +95,12 @@ export function ProtokollEditor({
   ems = [],
   mitglieder = KEINE_MITGLIEDER,
   onAnwesenheit,
+  emsFreitext = KEINE_NAMEN,
+  gaeste = KEINE_NAMEN,
+  onExternHinzufuegen,
+  onEnde,
   bilder,
+  aktiveStelleRef,
 }: Readonly<{
   inhalt: ProtokollDokument;
   editierbar: boolean;
@@ -107,8 +116,17 @@ export function ProtokollEditor({
   mitglieder?: readonly AnwesenheitMitglied[];
   /** A person got an Erscheint / Geht block (inserted or set); not called when read-only. */
   onAnwesenheit?: (sub: string) => void;
+  /** The EM chips (EMs without the app) and guest chips of the Kopf. */
+  emsFreitext?: readonly string[];
+  gaeste?: readonly string[];
+  /** /erscheint or /geht with an unknown name: the chip is to be created in the Kopf. */
+  onExternHinzufuegen?: (art: ExternArt, name: string) => void;
+  /** /ende: the end of the Sitzung (`HH:MM`) is to be set in the Kopf. */
+  onEnde?: (uhrzeit: string) => void;
   /** Image URLs and uploads of the protocol; without it images cannot be added. */
   bilder?: BilderZugriff;
+  /** Filled with a function that returns the document place of the cursor (see `aktiveStelleId`). */
+  aktiveStelleRef?: MutableRefObject<(() => string | null) | null>;
 }>) {
   const bilderRef = useRef(bilder);
   useEffect(() => {
@@ -123,12 +141,26 @@ export function ProtokollEditor({
     onAnwesenheitRef.current = onAnwesenheit;
   });
   const anwesenheit = useCallback((sub: string) => onAnwesenheitRef.current?.(sub), []);
+  const onExternRef = useRef(onExternHinzufuegen);
+  const onEndeRef = useRef(onEnde);
+  useEffect(() => {
+    onExternRef.current = onExternHinzufuegen;
+    onEndeRef.current = onEnde;
+  });
+  const externHinzufuegen = useCallback(
+    (art: ExternArt, name: string) => onExternRef.current?.(art, name),
+    [],
+  );
+  const ende = useCallback((uhrzeit: string) => onEndeRef.current?.(uhrzeit), []);
   const kandidaten = useMemo(
     () => anwesenheitsKandidaten(teilnahme, ems, mitglieder),
     [teilnahme, ems, mitglieder],
   );
-  const basisDaten = useSlashDaten(sitzungBeginn, kandidaten);
-  const slashDaten = useMemo(() => ({ ...basisDaten, anwesenheit }), [basisDaten, anwesenheit]);
+  const basisDaten = useSlashDaten(sitzungBeginn, kandidaten, emsFreitext, gaeste);
+  const slashDaten = useMemo(
+    () => ({ ...basisDaten, anwesenheit, externHinzufuegen, ende }),
+    [basisDaten, anwesenheit, externHinzufuegen, ende],
+  );
   // The document as the quorum needs it (a little behind the typing).
   const [dokument, setDokument] = useState(inhalt);
   const dokumentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -211,6 +243,7 @@ export function ProtokollEditor({
       // Quotes hold plain paragraphs only (the default `block+` would let Bausteine nest inside).
       Blockquote.extend({ content: 'paragraph+' }),
       ListenPunkt,
+      ZitatInline,
       Link.configure({
         openOnClick: 'whenNotEditable',
         autolink: true,
@@ -223,6 +256,7 @@ export function ProtokollEditor({
       ...BAUSTEIN_KNOTEN,
       ProtokollAbsicherung,
       BlockVerschieben,
+      PunktVerschieben,
       ErwaehnungKnoten,
       bildErweiterung(),
       slashErweiterung(steuerung),
@@ -238,6 +272,14 @@ export function ProtokollEditor({
       dokumentTimer.current = setTimeout(() => setDokument(json), 200);
     },
   });
+
+  useEffect(() => {
+    if (!aktiveStelleRef || !editor) return;
+    aktiveStelleRef.current = () => aktiveStelleId(editor.state.doc, editor.state.selection.head);
+    return () => {
+      aktiveStelleRef.current = null;
+    };
+  }, [aktiveStelleRef, editor]);
 
   useEditableSync(editor, editierbar);
 
@@ -263,6 +305,8 @@ export function ProtokollEditor({
       kandidaten,
       ems,
       mitglieder,
+      emsFreitext,
+      gaeste,
       onAnwesenheit: anwesenheit,
       bilder: bilder?.urls ?? KEINE_BILDER,
       bilderErneuern: bilder?.erneuern,
@@ -270,6 +314,7 @@ export function ProtokollEditor({
         art,
         teilnahme,
         ems: ems.filter((e) => e.ausgewaehlt),
+        emsFreitext,
       }),
       stimmen: stimmenPruefen(dokument, {
         art,
@@ -277,7 +322,19 @@ export function ProtokollEditor({
         ems: ems.filter((e) => e.ausgewaehlt),
       }).pruefungen,
     }),
-    [sitzungBeginn, art, teilnahme, kandidaten, ems, mitglieder, dokument, anwesenheit, bilder],
+    [
+      sitzungBeginn,
+      art,
+      teilnahme,
+      kandidaten,
+      ems,
+      mitglieder,
+      emsFreitext,
+      gaeste,
+      dokument,
+      anwesenheit,
+      bilder,
+    ],
   );
 
   return (
@@ -330,6 +387,7 @@ export function ProtokollEditor({
                   <RichTextEditor.BulletList />
                   <RichTextEditor.OrderedList />
                   <RichTextEditor.Blockquote />
+                  <ZitatImTextKnopf editor={editor} />
                 </RichTextEditor.ControlsGroup>
                 <RichTextEditor.ControlsGroup>
                   <RichTextEditor.Link />
@@ -383,6 +441,21 @@ export function ProtokollEditor({
       )}
       {editierbar && <SlashPopup zustand={slash} auswahl={auswahl} onZeiger={setAuswahl} />}
     </ProtokollKontext.Provider>
+  );
+}
+
+/** Toolbar toggle for the inline quote („…“ in the middle of a sentence). */
+function ZitatImTextKnopf({ editor }: Readonly<{ editor: Editor }>) {
+  const aktiv = useEditorState({ editor, selector: (s) => s.editor.isActive('zitatInline') });
+  return (
+    <RichTextEditor.Control
+      aria-label="Zitat im Text"
+      title="Zitat im Text"
+      active={aktiv}
+      onClick={() => editor.chain().focus().toggleMark('zitatInline').run()}
+    >
+      <IconQuotes size={16} stroke={1.5} />
+    </RichTextEditor.Control>
   );
 }
 

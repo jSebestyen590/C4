@@ -44,6 +44,13 @@ import {
   type ProtokollKalenderEvent,
   type ProtokollKnoten,
   istNurInNotizen,
+  istVerschachtelbar,
+  kannBausteineEnthalten,
+  protokollNotizenText,
+  bausteinVergangenesEventDatenSchema,
+  bausteinEventDatenSchema,
+  schichtenOhnePersonen,
+  eventDatenAusKalender,
 } from './protokolle';
 
 const absatz = (text: string): ProtokollKnoten => ({
@@ -411,9 +418,39 @@ describe('protokollKopfSchema', () => {
     const kopf = protokollKopfSchema.parse({
       teilnahme: { a: 'verspaetet' },
       ems: ['e1'],
-      gaeste: 'Gast',
+      gaeste: ['Gast'],
     });
-    expect(kopf).toMatchObject({ teilnahme: { a: 'verspaetet' }, ems: ['e1'], gaeste: 'Gast' });
+    expect(kopf).toMatchObject({ teilnahme: { a: 'verspaetet' }, ems: ['e1'], gaeste: ['Gast'] });
+  });
+  it('has the new defaults', () => {
+    const kopf = protokollKopfSchema.parse({});
+    expect(kopf).toMatchObject({
+      emsFreitext: [],
+      gaeste: [],
+      ende: '',
+      naechsteSitzungOrt: 'C4',
+    });
+  });
+  it('splits an old free text of guests / EMs into names (same content)', () => {
+    const kopf = protokollKopfSchema.parse({
+      gaeste: 'Ralle, Anna Beispiel\n\n  Tom  ,',
+      emsFreitext: 'Ede\r\nUdo',
+    });
+    expect(kopf.gaeste).toEqual(['Ralle', 'Anna Beispiel', 'Tom']);
+    expect(kopf.emsFreitext).toEqual(['Ede', 'Udo']);
+    expect(protokollKopfSchema.parse({ gaeste: '' }).gaeste).toEqual([]);
+  });
+  it('limits the names and the Ende / Ort', () => {
+    expect(protokollKopfSchema.safeParse({ gaeste: ['x'.repeat(101)] }).success).toBe(false);
+    expect(
+      protokollKopfSchema.safeParse({ gaeste: Array.from({ length: 51 }, (_, i) => `g${i}`) })
+        .success,
+    ).toBe(false);
+    expect(protokollKopfSchema.safeParse({ ende: '25:00' }).success).toBe(false);
+    expect(protokollKopfSchema.safeParse({ ende: '22:10' }).success).toBe(true);
+    expect(protokollKopfSchema.safeParse({ naechsteSitzungOrt: 'x'.repeat(101) }).success).toBe(
+      false,
+    );
   });
   it('rejects unknown attendance values and fields', () => {
     expect(protokollKopfSchema.safeParse({ teilnahme: { a: 'da' } }).success).toBe(false);
@@ -461,8 +498,8 @@ describe('protokollVorschlag', () => {
       'bausteinVergangenesEvent',
     ]);
     expect(vergangen.map((v) => v.attrs?.daten)).toEqual([
-      { eventId: 'e1', name: 'Früh', datum: '2026-11-02' },
-      { eventId: 'e2', name: 'Spät', datum: '2026-11-05' },
+      { eventId: 'e1', name: 'Früh', datum: '2026-11-02', bisDatum: null },
+      { eventId: 'e2', name: 'Spät', datum: '2026-11-05', bisDatum: null },
     ]);
     expect(vergangen[0]!.content).toEqual([{ type: 'paragraph' }]);
     // The block without a date has no end yet: it stays upcoming.
@@ -1532,5 +1569,162 @@ describe('Bilder', () => {
     });
     expect(protokollBildSchluessel(doc)).toEqual([]);
     expect(JSON.stringify(doc)).toContain('Text');
+  });
+});
+
+describe('Usability round: Merker, Schicht-Personen, Vergangenes bisDatum, zitatInline', () => {
+  it('knows the Merker: empty data, nestable, holds no Bausteine', () => {
+    expect(bausteinLeer('bausteinMerker')).toEqual({});
+    expect(istVerschachtelbar('bausteinMerker')).toBe(true);
+    expect(kannBausteineEnthalten('bausteinMerker')).toBe(false);
+    const merker = bausteinErzeugen('bausteinMerker', {}, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Noch klären' }] },
+    ]);
+    const d = protokollLeer();
+    d.content[0]!.content = [merker];
+    expect(protokollDokumentPruefen(d)).toBeNull();
+    // strict: no fields
+    const kaputt = JSON.parse(JSON.stringify(merker)) as typeof merker;
+    (kaputt.attrs.daten as Record<string, unknown>).x = 1;
+    d.content[0]!.content = [kaputt];
+    expect(protokollDokumentPruefen(d)).not.toBeNull();
+  });
+  it('leaves a Merker out of the plain text of notes and of the suggestion for the next protocol', () => {
+    const merker = bausteinErzeugen('bausteinMerker', {}, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'geheim' }] },
+    ]);
+    expect(protokollNotizenText([merker])).toBe('');
+    const event = bausteinErzeugen(
+      'bausteinEvent',
+      { ...bausteinLeer('bausteinEvent'), eventId: 'e9', name: 'Fest', datum: '2099-01-01' },
+      [{ type: 'paragraph', content: [{ type: 'text', text: 'Notiz' }] }, merker],
+    );
+    const letztes = protokollLeer();
+    letztes.content[2]!.content = [event];
+    const neu = protokollVorschlag({ sitzungDatum: '2026-01-01', letztes });
+    expect(JSON.stringify(neu)).not.toContain('geheim');
+    expect(JSON.stringify(neu)).toContain('Notiz');
+  });
+  it('accepts the mark zitatInline in the text', () => {
+    const d = protokollLeer();
+    d.content[0]!.content = [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Wortlaut', marks: [{ type: 'zitatInline' }] }],
+      },
+    ];
+    expect(protokollDokumentPruefen(d)).toBeNull();
+  });
+  it('gives a Vergangenes Event a bisDatum (default null)', () => {
+    expect(
+      bausteinVergangenesEventDatenSchema.parse({ eventId: null, name: 'X', datum: null }),
+    ).toEqual({ eventId: null, name: 'X', datum: null, bisDatum: null });
+    expect(
+      bausteinVergangenesEventDatenSchema.safeParse({
+        eventId: null,
+        name: 'X',
+        datum: '2026-02-11',
+        bisDatum: '2026-02-13',
+      }).success,
+    ).toBe(true);
+    expect(
+      bausteinVergangenesEventDatenSchema.safeParse({
+        eventId: null,
+        name: 'X',
+        datum: '2026-02-11',
+        bisDatum: 'morgen',
+      }).success,
+    ).toBe(false);
+  });
+  it('defaults personen of Schichten to [] and keeps entered ones', () => {
+    const roh = [
+      {
+        art: 'betrieb',
+        beginnZeit: '19:00',
+        endeZeit: '22:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
+        art: 'aufbau',
+        tagVersatz: 0,
+        beginnZeit: '15:00',
+        endeZeit: '18:00',
+        minimum: 1,
+        wunsch: 2,
+        personen: ['a'],
+      },
+    ];
+    const d = bausteinEventDatenSchema.parse({ ...bausteinLeer('bausteinEvent'), schichten: roh });
+    expect(d.schichten[0]).toMatchObject({ bedarfe: [{ personen: [] }] });
+    expect(d.schichten[1]).toMatchObject({ personen: ['a'] });
+    expect(schichtenOhnePersonen(d.schichten)).toEqual([
+      {
+        art: 'betrieb',
+        beginnZeit: '19:00',
+        endeZeit: '22:00',
+        bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+      },
+      {
+        art: 'aufbau',
+        tagVersatz: 0,
+        beginnZeit: '15:00',
+        endeZeit: '18:00',
+        minimum: 1,
+        wunsch: 2,
+      },
+    ]);
+    const zuViele = { ...roh[1], personen: Array.from({ length: 51 }, (_, i) => `p${i}`) };
+    expect(
+      bausteinEventDatenSchema.safeParse({ ...bausteinLeer('bausteinEvent'), schichten: [zuViele] })
+        .success,
+    ).toBe(false);
+  });
+  it('fills personen from the Dienste of the calendar (members only)', () => {
+    const mitglied = (sub: string) => ({
+      art: 'mitglied' as const,
+      sub,
+      username: sub,
+      vorname: 'V',
+      nachname: 'N',
+      status: 'mitglied' as const,
+      anrede: 'neutral' as const,
+    });
+    const daten = eventDatenAusKalender({
+      id: 'e1',
+      titel: 'Fest',
+      beginn: '2026-12-05T18:00:00.000Z',
+      ende: '2026-12-05T21:00:00.000Z',
+      abgesagt: false,
+      kategorieId: 'k',
+      dauer: 'eintaegig',
+      serie: null,
+      sitzung: false,
+      verantwortlichSub: null,
+      schichten: [
+        {
+          art: 'betrieb',
+          beginn: '2026-12-05T18:00:00.000Z',
+          ende: '2026-12-05T21:00:00.000Z',
+          bedarfe: [{ dienstformId: 'bar', minimum: 1, wunsch: 2 }],
+          dienste: [
+            { dienstformId: 'bar', person: mitglied('a') },
+            { dienstformId: 'bar', person: { art: 'extern', id: 'x', name: 'Ext' } as never },
+          ],
+        },
+        {
+          art: 'putzen',
+          beginn: '2026-12-05T21:00:00.000Z',
+          ende: '2026-12-05T22:00:00.000Z',
+          minimum: 1,
+          wunsch: 1,
+          dienste: [{ dienstformId: null, person: mitglied('b') }],
+        },
+      ],
+    });
+    expect(daten.schichten[0]).toMatchObject({
+      art: 'betrieb',
+      bedarfe: [{ dienstformId: 'bar', personen: ['a'] }],
+    });
+    expect(daten.schichten[1]).toMatchObject({ art: 'putzen', personen: ['b'] });
   });
 });

@@ -1,9 +1,13 @@
 import { Extension, type Editor } from '@tiptap/react';
 import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion } from '@tiptap/suggestion';
+import { notifications } from '@mantine/notifications';
 import {
   bausteinEinfuegen,
   ausserhalbBaustein,
+  dienstEintragenAmCursor,
+  eventAmCursor,
+  zitatImTextEinfuegen,
   imVerschachtelbaren,
   slashErlaubt,
   zitatEinfuegen,
@@ -15,6 +19,7 @@ import {
   type SlashDaten,
   type SlashEintrag,
 } from './slashLogik';
+import { anwesenheitUhrzeit } from './anwesenheit';
 import type { SlashZustand } from './SlashPopup';
 
 /** Plugin key of the slash menu (the @mention suggestion yields while it is open). */
@@ -55,6 +60,13 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
               steuerung.daten(),
               imVerschachtelbaren(editor.state),
               ausserhalbBaustein(editor.state),
+              (() => {
+                const event = eventAmCursor(editor.state.selection.$from)?.daten ?? null;
+                return {
+                  event,
+                  eventIstTeilnahme: event ? steuerung.daten().eventTeilnahme?.(event) : false,
+                };
+              })(),
             ),
           command: ({ editor, range, props }) => {
             if (props.aktion.art === 'weiter') {
@@ -64,11 +76,32 @@ export function slashErweiterung(steuerung: SlashSteuerung) {
                 return true;
               });
             } else if (props.aktion.art === 'zitat') {
-              zitatEinfuegen(editor, range);
+              if (props.aktion.imText) zitatImTextEinfuegen(editor, range);
+              else zitatEinfuegen(editor, range);
+            } else if (props.aktion.art === 'ende') {
+              editor.chain().focus().deleteRange(range).run();
+              steuerung.daten().ende?.(anwesenheitUhrzeit());
+            } else if (props.aktion.art === 'dienst') {
+              if (
+                !dienstEintragenAmCursor(
+                  editor,
+                  props.aktion.eingabe,
+                  range,
+                  props.aktion.weiter === undefined ? undefined : `/${props.aktion.weiter}`,
+                )
+              ) {
+                notifications.show({
+                  color: 'red',
+                  message:
+                    'Der Dienst passt nicht mehr ins Event (zu viele Schichten oder Personen).',
+                });
+              }
             } else if (props.aktion.art === 'bild') {
               steuerung.bild(editor, range);
             } else {
               bausteinEinfuegen(editor, props.aktion.wahl, range);
+              const extern = props.aktion.neuerExterner;
+              if (extern) steuerung.daten().externHinzufuegen?.(extern.art, extern.name);
               const sub = anwesenheitPerson(props.aktion.wahl);
               if (sub) steuerung.daten().anwesenheit?.(sub);
             }

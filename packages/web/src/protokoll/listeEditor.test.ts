@@ -78,7 +78,7 @@ function cursorIn(e: Editor, text: string) {
 
 const anwesenheit = {
   typ: 'bausteinAnwesenheit',
-  daten: { art: 'erscheint', sub: 'x', uhrzeit: '' },
+  daten: { art: 'erscheint', sub: 'x', name: '', uhrzeit: '' },
 } as const;
 const abstimmung = { typ: 'bausteinBeschluss', daten: bausteinLeer('bausteinBeschluss') } as const;
 const start = () =>
@@ -161,6 +161,7 @@ describe('fokusSetzen', () => {
     const anwe = bausteinErzeugen('bausteinAnwesenheit', {
       art: 'erscheint',
       sub: 'x',
+      name: '',
       uhrzeit: '',
     });
     const e = baue([absatz('A'), anwe, liste(punkt(absatz()))]);
@@ -181,6 +182,7 @@ describe('fokusSetzen', () => {
     const anwe = bausteinErzeugen('bausteinAnwesenheit', {
       art: 'erscheint',
       sub: 'x',
+      name: '',
       uhrzeit: '',
     });
     const thema = bausteinErzeugen('bausteinThema', undefined, [absatz('Innen')]);
@@ -199,6 +201,7 @@ describe('fokusSetzen', () => {
     const anwe = bausteinErzeugen('bausteinAnwesenheit', {
       art: 'erscheint',
       sub: 'x',
+      name: '',
       uhrzeit: '',
     });
     const e = baue([absatz('A'), anwe]);

@@ -4,7 +4,9 @@ import {
   anwesenheitUhrzeit,
   anwesenheitsKandidaten,
   fehltZuBeginn,
+  kopfMitExternem,
   kopfNachAnwesenheit,
+  slashPersonen,
   wertVon,
 } from './anwesenheit';
 
@@ -107,5 +109,22 @@ describe('wertVon', () => {
     expect(wertVon(t, protokollKopfLeer(), true)).toBe('entschuldigt');
     expect(wertVon(t, protokollKopfLeer(), true, { e: { ab: '21:00', bis: '' } })).toBe('anwesend');
     expect(wertVon({ ...v, wert: 'verspaetet' }, protokollKopfLeer(), false)).toBe('anwesend');
+  });
+});
+
+describe('external people', () => {
+  const kopf = { ...protokollKopfLeer(), emsFreitext: ['Ralle'], gaeste: ['Gerd'] };
+  it('slashPersonen lists the chips after the app people', () => {
+    const liste = slashPersonen([], { emsFreitext: ['Ralle'], gaeste: ['Gerd'] });
+    expect(liste.map((p) => [p.name, p.extern, p.beschreibung, p.sub])).toEqual([
+      ['Ralle', 'em', 'EM (extern)', ''],
+      ['Gerd', 'gast', 'Gast', ''],
+    ]);
+  });
+  it('kopfMitExternem adds a chip once, across both lists', () => {
+    expect(kopfMitExternem(kopf, 'gast', ' Jürgen ')?.gaeste).toEqual(['Gerd', 'Jürgen']);
+    expect(kopfMitExternem(kopf, 'em', 'Anna')?.emsFreitext).toEqual(['Ralle', 'Anna']);
+    expect(kopfMitExternem(kopf, 'gast', 'ralle')).toBeNull();
+    expect(kopfMitExternem(kopf, 'em', '  ')).toBeNull();
   });
 });

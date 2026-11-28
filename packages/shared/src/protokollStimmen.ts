@@ -21,11 +21,11 @@ import {
 } from './protokolle';
 
 // Vote counts of binding votes against the members present (see docs/protokolle.md): every
-// Abstimmung (also the one of a Neues EM / Aufnahme) and every Wahl / Auswahl round must have exactly as many
+// Abstimmung (also the one of an Austritt / Aufnahme) and every Wahl / Auswahl round must have exactly as many
 // votes as the present members can cast. Pure functions; the document is only walked.
 
 export interface StimmenEingabe extends AnwesenheitsEingabe {
-  /** Name of a person for the texts of a Neues EM / Aufnahme; unknown people fall back to the free-text name. */
+  /** Name of a person for the texts of an Austritt / Aufnahme; unknown people fall back to the free-text name. */
   personName?: (sub: string) => string | undefined;
 }
 
@@ -177,7 +177,7 @@ export function stimmenPruefen(
       } else if (knoten.type === 'bausteinEm') {
         const d = bausteinEmDatenSchema.safeParse(roh);
         if (d.success && d.data.abstimmung) {
-          const titel = mitTitel('Neues EM', name(d.data.sub, d.data.name));
+          const titel = mitTitel('Austritt', name(d.data.sub, d.data.name));
           abstimmung(id, `${titel}, Abstimmung`, stand, d.data.abstimmung);
         }
       } else if (knoten.type === 'bausteinAufnahme') {

@@ -22,6 +22,9 @@ export interface ProtokollKontextWert {
   ems: readonly ProtokollMitgliedDto[];
   /** All members (names of @mentions, also of people who are not in the attendance list). */
   mitglieder: readonly ErwaehnungPerson[];
+  /** EM chips (EMs without the app) and guest chips of the Kopf. */
+  emsFreitext: readonly string[];
+  gaeste: readonly string[];
   /** Quorum at the opening and at each Anwesenheit / Abstimmung / Neues EM / Aufnahme block of the current document. */
   verlauf: AnwesenheitsVerlauf;
   /** Vote count checks of the binding votes (Abstimmung, Wahl rounds) against the members present. */
@@ -41,6 +44,8 @@ export const ProtokollKontext = createContext<ProtokollKontextWert>({
   kandidaten: [],
   ems: [],
   mitglieder: [],
+  emsFreitext: [],
+  gaeste: [],
   verlauf: { start: quorumBeiEroeffnung('sitzung', []), bausteine: {}, anwesendePersonen: {} },
   stimmen: [],
   bilder: {},

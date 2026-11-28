@@ -1,3 +1,4 @@
+import { ListenMultiSelect, ListenSelect } from './ListenSelect';
 import { ZeitFeld } from './ZeitFeld';
 import {
   Box,
@@ -5,14 +6,11 @@ import {
   Collapse,
   Flex,
   Group,
-  MultiSelect,
   Paper,
-  Select,
   SimpleGrid,
   SegmentedControl,
   Stack,
   Text,
-  Textarea,
   Title,
   UnstyledButton,
   useMantineTheme,
@@ -24,6 +22,7 @@ import {
   PROTOKOLL_TEILNAHME_WAHL,
   anwesenheitsZeitText,
   anwesenheitsZeiten,
+  externSchluessel,
   type AnwesenheitsZeit,
   type ProtokollDokument,
   type ProtokollDto,
@@ -35,6 +34,7 @@ import {
 import { PROTOKOLL_ART_LABELS, PROTOKOLL_TEILNAHME_KURZ, PROTOKOLL_TEILNAHME_LABELS } from './i18n';
 import { mitgliedName } from './mitglied';
 import { StatusName } from './StatusAnzeige';
+import { NamenChips } from './protokoll/NamenChips';
 import {
   effektiveTeilnahme,
   type AnwesenheitPerson,
@@ -123,6 +123,7 @@ function KopfLesen({
         </Text>{' '}
         {PROTOKOLL_ART_LABELS[dto.sitzung.art]}
         {kopf.eroeffnung && ` · eröffnet um ${kopf.eroeffnung} Uhr`}
+        {kopf.ende && ` · beendet um ${kopf.ende} Uhr`}
       </Text>
       {leitung && (
         <Text size="sm">
@@ -164,7 +165,7 @@ function KopfLesen({
           </Text>
         );
       })}
-      {(emListe.length > 0 || kopf.emsFreitext.trim()) && (
+      {(emListe.length > 0 || kopf.emsFreitext.length > 0) && (
         <Text size="sm">
           <Text span fw={600}>
             EMs:
@@ -175,24 +176,36 @@ function KopfLesen({
               <Person m={p} />
             </span>
           ))}
-          {kopf.emsFreitext.trim() && (
+          {kopf.emsFreitext.length > 0 && (
             <>
               {emListe.length > 0 && ', '}
-              {kopf.emsFreitext.trim()}
+              {kopf.emsFreitext.map((n) => externMitZeit(n, zeiten)).join(', ')}
             </>
           )}
         </Text>
       )}
-      {kopf.gaeste.trim() && (
+      {kopf.gaeste.length > 0 && (
         <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
           <Text span fw={600}>
             Gäste:
           </Text>{' '}
-          {kopf.gaeste.trim()}
+          {kopf.gaeste.map((n) => externMitZeit(n, zeiten)).join(', ')}
         </Text>
       )}
     </Stack>
   );
+}
+
+/** "Ralle (bis 20:30)": the name of an external person with the times of their Anwesenheit blocks. */
+function externMitZeit(name: string, zeiten: Readonly<Record<string, AnwesenheitsZeit>>): string {
+  const zeit = anwesenheitsZeitText(zeiten[externSchluessel(name)]);
+  return zeit ? `${name} (${zeit})` : name;
+}
+
+/** The chip text of an external person: "Ralle · bis 20:30". */
+function externChipText(name: string, zeiten: Readonly<Record<string, AnwesenheitsZeit>>): string {
+  const zeit = anwesenheitsZeitText(zeiten[externSchluessel(name)]);
+  return zeit ? `${name} · ${zeit}` : name;
 }
 
 /** One person with the attendance buttons: stacked on phones, side by side from `sm`. */
@@ -308,7 +321,7 @@ export function ProtokollKopf({
     wert: string | null,
     setzen: (sub: string | null) => void,
   ) => (
-    <Select
+    <ListenSelect
       allowDeselect={false}
       size="md"
       label={label}
@@ -352,12 +365,20 @@ export function ProtokollKopf({
                 onChange({ ...kopf, protokollfuehrung: sub }),
               )}
             </SimpleGrid>
-            <ZeitFeld
-              label="Eröffnung"
-              w={{ base: '100%', sm: 160 }}
-              value={kopf.eroeffnung}
-              onWert={(eroeffnung) => onChange({ ...kopf, eroeffnung })}
-            />
+            <Group gap="xs" align="flex-end">
+              <ZeitFeld
+                label="Eröffnung"
+                w={{ base: 'calc(50% - 4px)', sm: 160 }}
+                value={kopf.eroeffnung}
+                onWert={(eroeffnung) => onChange({ ...kopf, eroeffnung })}
+              />
+              <ZeitFeld
+                label="Ende"
+                w={{ base: 'calc(50% - 4px)', sm: 160 }}
+                value={kopf.ende}
+                onWert={(ende) => onChange({ ...kopf, ende })}
+              />
+            </Group>
             <QuorumZeile art={dto.sitzung.art} personen={effektiv} inhalt={inhalt} />
           </Stack>
 
@@ -417,7 +438,7 @@ export function ProtokollKopf({
 
           <Stack gap="xs">
             <Title order={4}>EMs</Title>
-            <MultiSelect
+            <ListenMultiSelect
               size="md"
               aria-label="EMs"
               placeholder="EMs auswählen"
@@ -436,25 +457,23 @@ export function ProtokollKopf({
                 );
               }}
             />
-            <Textarea
-              size="md"
-              label="Weitere EMs (Freitext)"
-              autosize
-              minRows={1}
-              maxLength={2000}
-              value={kopf.emsFreitext}
-              onChange={(e) => onChange({ ...kopf, emsFreitext: e.currentTarget.value })}
+            <NamenChips
+              label="Weitere EMs (ohne App)"
+              placeholder="Name eintippen, Enter"
+              werte={kopf.emsFreitext}
+              verboten={kopf.gaeste}
+              text={(n) => externChipText(n, zeiten)}
+              onChange={(emsFreitext) => onChange({ ...kopf, emsFreitext })}
             />
           </Stack>
 
-          <Textarea
-            size="md"
+          <NamenChips
             label="Gäste"
-            autosize
-            minRows={1}
-            maxLength={2000}
-            value={kopf.gaeste}
-            onChange={(e) => onChange({ ...kopf, gaeste: e.currentTarget.value })}
+            placeholder="Name eintippen, Enter"
+            werte={kopf.gaeste}
+            verboten={kopf.emsFreitext}
+            text={(n) => externChipText(n, zeiten)}
+            onChange={(gaeste) => onChange({ ...kopf, gaeste })}
           />
         </Stack>
       </Paper>

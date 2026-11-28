@@ -139,8 +139,21 @@ export function anwesenheitsKandidaten(
 }
 
 /** The persons as the second stage of /erscheint and /geht lists them. */
-export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPerson[] {
-  return personen.map((p) => {
+export function slashPersonen(
+  personen: readonly AnwesenheitPerson[],
+  externe: Readonly<{ emsFreitext?: readonly string[]; gaeste?: readonly string[] }> = {},
+): SlashPerson[] {
+  const chips = (namen: readonly string[] | undefined, extern: 'em' | 'gast'): SlashPerson[] =>
+    (namen ?? []).map((name) => ({
+      sub: '',
+      extern,
+      name,
+      titel: name,
+      beschreibung: extern === 'em' ? 'EM (extern)' : 'Gast',
+      mitglied: false,
+      da: true,
+    }));
+  const apps = personen.map((p) => {
     const voll = `${p.vorname} ${p.nachname}`.trim();
     const neben = p.username ? voll : '';
     const status = labelFuer(MITGLIED_STATUS_LABELS, p.status, p.anrede);
@@ -152,6 +165,7 @@ export function slashPersonen(personen: readonly AnwesenheitPerson[]): SlashPers
       da: p.wert === 'anwesend',
     };
   });
+  return [...apps, ...chips(externe.emsFreitext, 'em'), ...chips(externe.gaeste, 'gast')];
 }
 
 /** Current Berlin time `HH:MM`: the default of a new Erscheint / Geht block. */
@@ -177,4 +191,28 @@ export function kopfNachAnwesenheit(
   const person = dto.teilnahme.find((t) => t.sub === sub);
   if (!person || wertVon(person, kopf, true) === 'anwesend') return null;
   return { ...kopf, teilnahme: { ...kopf.teilnahme, [sub]: 'anwesend' } };
+}
+
+/** Most chips (EMs without the app, guests) each of the Kopf holds (`protokollKopfSchema`). */
+export const MAX_EXTERNE = 50;
+
+/**
+ * The Kopf with a new chip: an EM without the app (`em`) or a guest (`gast`). Null when nothing changes
+ * (empty name, a chip of that name exists in either list, the list is full).
+ */
+export function kopfMitExternem(
+  kopf: ProtokollKopf,
+  art: 'em' | 'gast',
+  name: string,
+): ProtokollKopf | null {
+  const n = name.trim().slice(0, 100);
+  if (n === '') return null;
+  const vorhanden = [...kopf.emsFreitext, ...kopf.gaeste].some(
+    (x) => x.trim().toLowerCase() === n.toLowerCase(),
+  );
+  const liste = art === 'em' ? kopf.emsFreitext : kopf.gaeste;
+  if (vorhanden || liste.length >= MAX_EXTERNE) return null;
+  return art === 'em'
+    ? { ...kopf, emsFreitext: [...liste, n] }
+    : { ...kopf, gaeste: [...liste, n] };
 }

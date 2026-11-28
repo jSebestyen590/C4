@@ -87,7 +87,7 @@ export function ProtokollNeuPage() {
                     size="md"
                     label={
                       <Stack gap={0}>
-                        <Text fw={700} style={{ overflowWrap: 'anywhere' }}>
+                        <Text component="div" fw={700} style={{ overflowWrap: 'anywhere' }}>
                           {s.titel}
                           {Date.parse(s.beginn) > jetzt && (
                             <Badge variant="light" ml="xs">

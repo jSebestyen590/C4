@@ -1,5 +1,6 @@
+import { ListenSelect } from '../ListenSelect';
 import { ZeitFeld } from '../ZeitFeld';
-import { ActionIcon, Anchor, Flex, Group, Select, Stack, Text } from '@mantine/core';
+import { ActionIcon, Anchor, Flex, Group, Stack, Text } from '@mantine/core';
 import type { CSSProperties } from 'react';
 import { IconTrash } from '@tabler/icons-react';
 import { NodeViewWrapper, useEditorState, type ReactNodeViewProps } from '@tiptap/react';
@@ -13,6 +14,22 @@ import { FORMULAR_ATTRIBUT } from './formular';
 import { useProtokollKontext } from './kontext';
 import { bausteinFarbeCss, SlashIcon } from './symbole';
 
+/** Options for the chips of the Kopf (values `x:<name>`), plus the name of this block when it has no chip. */
+function externOptionen(
+  ems: readonly string[],
+  gaeste: readonly string[],
+  eigener: string,
+): { value: string; label: string }[] {
+  const optionen = [
+    ...ems.map((n) => ({ value: `x:${n}`, label: `${n} (EM, extern)` })),
+    ...gaeste.map((n) => ({ value: `x:${n}`, label: `${n} (Gast)` })),
+  ];
+  if (eigener && !optionen.some((o) => o.value === `x:${eigener}`)) {
+    optionen.push({ value: `x:${eigener}`, label: eigener });
+  }
+  return optionen;
+}
+
 const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht: 'Geht' };
 
 /**
@@ -22,11 +39,13 @@ const ART_LABEL: Record<AnwesenheitArt, string> = { erscheint: 'Erscheint', geht
 export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewProps }>) {
   const { editor, node, getPos, deleteNode } = props;
   const editierbar = useEditorState({ editor, selector: (s) => s.editor.isEditable });
-  const { kandidaten, verlauf, onAnwesenheit } = useProtokollKontext();
+  const { kandidaten, verlauf, onAnwesenheit, emsFreitext, gaeste } = useProtokollKontext();
   const daten = node.attrs.daten as BausteinAnwesenheitDaten;
   const id = node.attrs.id as string;
   const stand = verlauf.bausteine[id];
   const person = kandidaten.find((t) => t.sub === daten.sub);
+  // An external person (chip of the Kopf) is named in `name`; shown as plain text, never counts for the quorum.
+  const externName = daten.sub === null ? (daten.name ?? '').trim() : '';
 
   // Always applies to the latest fields of the node, so quick successive edits do not overwrite each other.
   const aendern = (f: (alt: BausteinAnwesenheitDaten) => BausteinAnwesenheitDaten) => {
@@ -40,21 +59,27 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
     );
   };
 
-  const optionen = personenOptionen(kandidaten);
-  const status = new Map(kandidaten.map((t) => [t.sub, t.status]));
+  const optionen = [
+    ...personenOptionen(kandidaten).map((o) => ({ ...o, value: `p:${o.value}` })),
+    ...externOptionen(emsFreitext, gaeste, externName),
+  ];
+  const status = new Map(kandidaten.map((t) => [`p:${t.sub}`, t.status]));
 
   // Only Mitglieder count for the quorum: no head count for Anwärter:innen, EMs and Externe.
-  const quorum = stand && stand.gesamt > 0 && (!person || person.status === 'mitglied') && (
-    <Text size="xs" c="dimmed">
-      {stand.anwesend} von {mitgliedernText(stand.gesamt)} anwesend
-      {stand.wechsel && (
-        <Text span size="xs" fw={600} c={stand.beschlussfaehig ? 'green' : 'red'}>
-          {' '}
-          → {stand.beschlussfaehig ? 'Jetzt beschlussfähig' : 'Nicht mehr beschlussfähig'}
-        </Text>
-      )}
-    </Text>
-  );
+  const quorum = stand &&
+    stand.gesamt > 0 &&
+    !externName &&
+    (!person || person.status === 'mitglied') && (
+      <Text size="xs" c="dimmed">
+        {stand.anwesend} von {mitgliedernText(stand.gesamt)} anwesend
+        {stand.wechsel && (
+          <Text span size="xs" fw={600} c={stand.beschlussfaehig ? 'green' : 'red'}>
+            {' '}
+            → {stand.beschlussfaehig ? 'Jetzt beschlussfähig' : 'Nicht mehr beschlussfähig'}
+          </Text>
+        )}
+      </Text>
+    );
 
   return (
     <NodeViewWrapper
@@ -66,7 +91,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
         <Stack gap={4} className="protokoll-anwesenheit-kopf">
           {editierbar ? (
             <Flex gap="xs" align="center" wrap="wrap">
-              <Select
+              <ListenSelect
                 allowDeselect={false}
                 size="md"
                 aria-label="Person"
@@ -75,12 +100,15 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 searchable
                 nothingFoundMessage="Niemand gefunden"
                 data={optionen}
-                value={daten.sub}
-                onChange={(sub) => {
+                value={daten.sub ? `p:${daten.sub}` : externName ? `x:${externName}` : null}
+                onChange={(wahl) => {
+                  const sub = wahl?.startsWith('p:') ? wahl.slice(2) : null;
+                  const name = wahl?.startsWith('x:') ? wahl.slice(2) : '';
                   aendern((d) => ({
                     ...d,
                     sub,
-                    uhrzeit: sub && !d.uhrzeit ? anwesenheitUhrzeit() : d.uhrzeit,
+                    name,
+                    uhrzeit: wahl && !d.uhrzeit ? anwesenheitUhrzeit() : d.uhrzeit,
                   }));
                   if (sub) onAnwesenheit?.(sub);
                 }}
@@ -95,7 +123,7 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                 }}
               />
               {/* Fixed when inserted (/erscheint or /geht); to change it, remove the block and insert the other. */}
-              <Group gap={6} wrap="nowrap" data-testid="anwesenheit-art">
+              <Group gap={6} wrap="nowrap" w={110} data-testid="anwesenheit-art">
                 <SlashIcon symbol={daten.art} size={18} />
                 <Text>{ART_LABEL[daten.art]}</Text>
               </Group>
@@ -132,7 +160,9 @@ export function AnwesenheitAnsicht({ props }: Readonly<{ props: ReactNodeViewPro
                     </StatusName>
                   </Anchor>
                 ) : (
-                  'Unbekannt'
+                  <Text span fw={600}>
+                    {externName || 'Unbekannt'}
+                  </Text>
                 )}{' '}
                 {daten.art === 'erscheint' ? 'erscheint' : 'geht'}
                 {daten.uhrzeit && ` um ${daten.uhrzeit} Uhr`}

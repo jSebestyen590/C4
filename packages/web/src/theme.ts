@@ -45,7 +45,15 @@ export const theme = createTheme({
     InputClearButton: InputClearButton.extend({
       defaultProps: { 'aria-label': 'Leeren' },
       styles: {
-        root: { '--cb-size': '2.625rem', width: '2.625rem', height: '2.625rem', minWidth: '2.625rem' },
+        // Inside the 42px field minus its 1px border, so it doesn't cover the border or the focus ring.
+        root: {
+          '--cb-size': '2.5rem',
+          '--cb-icon-size': '1.125rem',
+          width: '2.5rem',
+          height: '2.5rem',
+          minWidth: '2.5rem',
+          backgroundColor: 'transparent',
+        },
       },
     }),
     // Tab rows and switch rows: 42px touch target.
