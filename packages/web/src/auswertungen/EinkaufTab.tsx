@@ -35,6 +35,7 @@ function csvDaten(d: EinkaufAuswertungDto) {
     'Durchschnittspreis je Einheit',
     'Durchschnittspreis je Standard-Gebinde',
     'Standard-Gebinde',
+    'Pfand je Standard-Gebinde',
   ];
   const zeilen = d.waren.map((w) => [
     w.name,
@@ -45,6 +46,7 @@ function csvDaten(d: EinkaufAuswertungDto) {
     w.preisJeEinheitCent === null ? null : { cent: w.preisJeEinheitCent },
     w.preisJeStandardGebindeCent === null ? null : { cent: w.preisJeStandardGebindeCent },
     w.standardGebinde,
+    w.standardGebindePfandCent === null ? null : { cent: w.standardGebindePfandCent },
   ]);
   zeilen.push(['Summe', null, null, null, { cent: d.nettoCent }, null, null, null]);
   zeilen.push([]);
@@ -72,6 +74,16 @@ function csvDaten(d: EinkaufAuswertungDto) {
   ]);
   zeilen.push(['Ende', null, null, null, { cent: d.pfand.endeCent }, null, null, null]);
   return csvText(kopf, zeilen);
+}
+
+/** The Gebinde name below the price, with its Pfand labelled explicitly. */
+function GebindeZusatz({ name, pfandCent }: Readonly<{ name: string; pfandCent: number | null }>) {
+  return (
+    <Text size="xs" c="dimmed">
+      je {name}
+      {pfandCent !== null && ` (zzgl. ${centAnzeigen(pfandCent)} Pfand)`}
+    </Text>
+  );
 }
 
 /** Purchases of the year per Ware (net, without deposit) and the Pfandsaldo. */
@@ -152,7 +164,12 @@ export function EinkaufTab() {
                     ) : (
                       <>
                         <Betrag cent={w.preisJeStandardGebindeCent} />
-                        {w.standardGebinde ? ` / ${w.standardGebinde}` : ''}
+                        {w.standardGebinde && (
+                          <GebindeZusatz
+                            name={w.standardGebinde}
+                            pfandCent={w.standardGebindePfandCent}
+                          />
+                        )}
                       </>
                     )}
                   </Table.Td>

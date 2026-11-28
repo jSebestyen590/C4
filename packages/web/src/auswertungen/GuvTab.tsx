@@ -49,11 +49,14 @@ export function GuvTab() {
     d && (
       <Fragment>
         <Table.Tr style={{ background: 'var(--mantine-color-default-hover)' }}>
-          <Table.Td colSpan={d.zeitraeume.length + 2} style={ERSTE_SPALTE_STIL}>
+          <Table.Td
+            style={{ ...ERSTE_SPALTE_STIL, background: 'var(--mantine-color-default-hover)' }}
+          >
             <Text fw={700} size="sm">
               {titel}
             </Text>
           </Table.Td>
+          <Table.Td colSpan={d.zeitraeume.length + 1} />
         </Table.Tr>
         {konten.map((k) => (
           <Table.Tr key={k.kontoId}>

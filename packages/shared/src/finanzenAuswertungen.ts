@@ -15,8 +15,9 @@ import {
   EINHEIT_LABELS,
   bestandAnzeigen,
   basisGebinde,
-  gebindeBezeichnung,
+  gebindeNameOhnePfand,
   inBasiseinheiten,
+  pfandGesamtCent,
   type Einheit,
   type Gebinde,
 } from './waren';
@@ -729,7 +730,10 @@ export interface EinkaufWareDto {
   preisJeEinheitCent: number | null;
   /** Average net price per Standard-Gebinde of the Ware; null without one or an amount. */
   preisJeStandardGebindeCent: number | null;
+  /** Name of the Standard-Gebinde without deposit. */
   standardGebinde: string | null;
+  /** Total deposit of one Standard-Gebinde; null without Pfand. */
+  standardGebindePfandCent: number | null;
 }
 
 export interface EinkaufPfandDto {
@@ -833,7 +837,8 @@ export function einkaufAuswertung(
           standardPassend && standardFaktor > 0 && s.basisMilli > 0
             ? runde((s.nettoCent * standardFaktor * 1000) / s.basisMilli)
             : null,
-        standardGebinde: standardPassend ? gebindeBezeichnung(standard, alle) : null,
+        standardGebinde: standardPassend ? gebindeNameOhnePfand(standard, alle) : null,
+        standardGebindePfandCent: standardPassend ? pfandGesamtCent(standard, alle) : null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'de') || a.einheit.localeCompare(b.einheit));

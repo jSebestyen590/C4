@@ -713,14 +713,19 @@ function basisBezeichnung(g: Gebinde, pfand: boolean): string {
   return pfand && g.pfandCent !== null ? `${text} ${centAnzeigen(g.pfandCent)}` : text;
 }
 
+/** Name without deposit: `0,5l Flasche`, `20 x 0,5l Flasche`. */
+export function gebindeNameOhnePfand(g: Gebinde, alle: Gebinde[]): string {
+  if (!istOber(g)) return basisBezeichnung(g, false);
+  const unter = gebindeIndex(alle).get(g.unterGebindeId!);
+  return `${g.unterAnzahl} x ${unter ? basisBezeichnung(unter, false) : '?'}`;
+}
+
 /**
  * Full name: `0,5l Flasche 0,08 €`, `1l Packung`, `20 x 0,5l Flasche 3,10 €`. An Obergebinde is
  * described by its content and the aggregated deposit; its own Verpackungseinheit is not part of it.
  */
 export function gebindeBezeichnung(g: Gebinde, alle: Gebinde[]): string {
-  if (!istOber(g)) return basisBezeichnung(g, true);
-  const unter = gebindeIndex(alle).get(g.unterGebindeId!);
-  const text = `${g.unterAnzahl} x ${unter ? basisBezeichnung(unter, false) : '?'}`;
+  const text = gebindeNameOhnePfand(g, alle);
   const pfand = pfandGesamtCent(g, alle);
   return pfand === null ? text : `${text} ${centAnzeigen(pfand)}`;
 }

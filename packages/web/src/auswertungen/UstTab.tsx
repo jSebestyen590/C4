@@ -13,9 +13,8 @@ import {
   CopyButton,
 } from '@mantine/core';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
-  centAnzeigen,
   centZuEuroText,
   csvText,
   type UstAuswertungDto,
@@ -69,7 +68,7 @@ function KennzahlZeile({
   anzeige,
   wert,
   zusatz,
-}: Readonly<{ kz: string; text: string; anzeige: string; wert: string; zusatz?: string }>) {
+}: Readonly<{ kz: string; text: string; anzeige: ReactNode; wert: string; zusatz?: ReactNode }>) {
   return (
     <Group justify="space-between" wrap="nowrap" gap="xs">
       <div style={{ minWidth: 0 }}>
@@ -111,15 +110,19 @@ function Kennzahlen({ z }: Readonly<{ z: UstZeitraumDto }>) {
         <KennzahlZeile
           kz="Kz 66"
           text="Abziehbare Vorsteuer"
-          anzeige={centAnzeigen(k.kz66Cent)}
+          anzeige={<Betrag cent={k.kz66Cent} />}
           wert={centZuEuroText(k.kz66Cent)}
         />
         <KennzahlZeile
           kz="Kz 83"
           text="Verbleibende Umsatzsteuer"
-          anzeige={centAnzeigen(k.kz83Cent)}
+          anzeige={<Betrag cent={k.kz83Cent} />}
           wert={centZuEuroText(k.kz83Cent)}
-          zusatz={`Bereits gezahlt (Vorauszahlung): ${centAnzeigen(z.vorauszahlungCent)}`}
+          zusatz={
+            <>
+              Bereits gezahlt (Vorauszahlung): <Betrag cent={z.vorauszahlungCent} />
+            </>
+          }
         />
       </Stack>
     </Paper>
@@ -185,7 +188,6 @@ export function UstTab() {
           <Group gap={2}>
             <Title order={4}>Kennzahlen für ELSTER</Title>
             <InfoHinweis feld="Kennzahlen" text={HILFE.auswertungen.kennzahlen} />
-            <InfoHinweis feld="Vorauszahlung" text={HILFE.auswertungen.vorauszahlung} />
           </Group>
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
             {d.zeitraeume.map((z) => (

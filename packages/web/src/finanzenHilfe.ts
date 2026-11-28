@@ -114,9 +114,7 @@ export const HILFE = {
     events:
       'Nur Einnahmen: bar aus der Kassenabrechnung, Karte aus SumUp. Brutto ist der eingenommene Betrag, netto ohne Umsatzsteuer. Stornierte Abrechnungen zählen nicht. Belege und Rechnungen gehören keinem Event an.',
     kennzahlen:
-      'Die Werte für das Formular der Umsatzsteuer-Voranmeldung in ELSTER. Kz 81 und Kz 86: Bemessungsgrundlage zum Regelsatz und zum ermäßigten Satz, auf volle Euro abgerundet. Kz 66: abziehbare Vorsteuer. Kz 83: verbleibende Umsatzsteuer (Zahllast), also Umsatzsteuer minus Vorsteuer. Mit dem Knopf kopierst du den Wert zum Einfügen.',
-    vorauszahlung:
-      'Der Saldo des Kontos „USt Finanzamt“ im Zeitraum: Zahlungen an das Finanzamt minus Erstattungen. Zum Vergleich mit Kz 83: Was du gezahlt hast, steht gegen das, was du schuldest.',
+      'Die Werte für das Formular der Umsatzsteuer-Voranmeldung in ELSTER. Kz 81 und Kz 86: Bemessungsgrundlage zum Regelsatz und zum ermäßigten Satz, auf volle Euro abgerundet. Kz 66: abziehbare Vorsteuer. Kz 83: verbleibende Umsatzsteuer (Zahllast), also Umsatzsteuer minus Vorsteuer. Mit dem Knopf kopierst du den Wert zum Einfügen. Die Vorauszahlung ist der Saldo des Kontos „USt Finanzamt“ im Zeitraum: Zahlungen an das Finanzamt minus Erstattungen. Zum Vergleich mit Kz 83: Was du gezahlt hast, steht gegen das, was du schuldest.',
     guv: 'Erlöse und Aufwand netto je Konto und Zeitraum, nach dem Buchungsdatum. Oberkonten enthalten ihre Unterkonten. Das Ergebnis ist Erlöse minus Aufwand: positiv ein Überschuss, negativ ein Fehlbetrag.',
     euer: 'Die Einnahmen-Überschuss-Rechnung eines Jahres nach Ist-Prinzip. Die Konten werden im Kontenplan den Zeilen zugeordnet. Konten ohne Zeile stehen unter „Nicht zugeordnet“ und fehlen in den Summen. Vereinnahmte Umsatzsteuer und gezahlte Vorsteuer werden aus den Steuerangaben der Buchungen berechnet.',
     durchschnittspreis:
